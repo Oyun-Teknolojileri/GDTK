@@ -1,0 +1,199 @@
+<S version="v0.4.7" name="ms-box">
+	<Object Cl="Cube">
+		<PB>
+			<P t="11" name="Id" v="836809411794858768"/>
+			<P t="9" name="Name" v="Cube_1"/>
+			<P t="9" name="Tag" v="target"/>
+			<P t="10" name="Visible" v="1"/>
+			<P t="10" name="TransformLock" v="0"/>
+			<P t="5" name="CubeScale" x="1.000000" y="1.000000" z="1.000000"/>
+		</PB>
+		<Entity>
+			<N is="0">
+				<T x="0.000000" y="1.500000" z="0.000000"/>
+				<R x="0.000000" y="0.000000" z="0.000000" w="1.000000"/>
+				<S x="1.500000" y="1.500000" z="1.500000"/>
+			</N>
+			<Ca>
+				<Object Cl="MeshComponent">
+					<PB>
+						<P t="11" name="Id" v="3525642933002439809"/>
+						<P t="12" name="Mesh"/>
+						<P t="10" name="CastShadow" v="1"/>
+					</PB>
+					<Component>
+						<MeshComponent/>
+					</Component>
+				</Object>
+				<Object Cl="MaterialComponent">
+					<PB>
+						<P t="11" name="Id" v="17062151856422059629"/>
+						<P t="13" name="Material"/>
+					</PB>
+					<Component>
+						<MaterialComponent MaterialCount="1">
+							<0>
+								<ResourceRef Class="Material" File="ToolKit\lambertWhite.material"/>
+							</0>
+						</MaterialComponent>
+					</Component>
+				</Object>
+			</Ca>
+			<Cube/>
+		</Entity>
+	</Object>
+	<Object Cl="GradientSky">
+		<PB>
+			<P t="11" name="Id" v="14173687039515170502"/>
+			<P t="9" name="Name" v="GradientSky"/>
+			<P t="9" name="Tag" v=""/>
+			<P t="10" name="Visible" v="1"/>
+			<P t="10" name="TransformLock" v="0"/>
+			<P t="10" name="DrawSky" v="1"/>
+			<P t="10" name="Illuminate" v="1"/>
+			<P t="2" name="Intensity" v="0.500000"/>
+			<P t="19" name="IBLTextureSize">
+				<List size="5">
+					<CurrVal v="1"/>
+					<0 valType="3" valName="256" v="256"/>
+					<1 valType="3" valName="512" v="512"/>
+					<2 valType="3" valName="1024" v="1024"/>
+					<3 valType="3" valName="2048" v="2048"/>
+					<4 valType="3" valName="4096" v="4096"/>
+				</List>
+			</P>
+			<P t="5" name="TopColor" x="0.300000" y="0.300000" z="1.000000"/>
+			<P t="5" name="MiddleColor" x="1.000000" y="1.000000" z="0.800000"/>
+			<P t="5" name="BottomColor" x="0.500000" y="0.300000" z="0.100000"/>
+			<P t="2" name="GradientExponent" v="0.300000"/>
+			<P t="2" name="IrradianceResolution" v="64.000000"/>
+		</PB>
+		<Entity>
+			<N is="0">
+				<T x="0.000000" y="0.000000" z="0.000000"/>
+				<R x="0.000000" y="0.000000" z="0.000000" w="1.000000"/>
+				<S x="1.000000" y="1.000000" z="1.000000"/>
+			</N>
+			<Ca>
+				<Object Cl="EnvironmentComponent">
+					<PB>
+						<P t="11" name="Id" v="16234824055251614870"/>
+						<P t="15" name="Hdri"/>
+						<P t="5" name="PositionOffset" x="0.000000" y="0.000000" z="0.000000"/>
+						<P t="5" name="Size" x="340282346638528859811704183484516925440.000000" y="340282346638528859811704183484516925440.000000" z="340282346638528859811704183484516925440.000000"/>
+						<P t="10" name="Illuminate" v="1"/>
+						<P t="2" name="Intensity" v="0.500000"/>
+						<P t="2" name="Exposure" v="1.000000"/>
+						<P t="19" name="IBLTextureSize">
+							<List size="6">
+								<CurrVal v="1"/>
+								<0 valType="3" valName="32" v="32"/>
+								<1 valType="3" valName="64" v="64"/>
+								<2 valType="3" valName="128" v="128"/>
+								<3 valType="3" valName="256" v="256"/>
+								<4 valType="3" valName="512" v="512"/>
+								<5 valType="3" valName="1024" v="1024"/>
+							</List>
+						</P>
+					</PB>
+					<Component>
+						<EnvironmentComponent/>
+					</Component>
+				</Object>
+			</Ca>
+			<SkyBase>
+				<GradientSky/>
+			</SkyBase>
+		</Entity>
+	</Object>
+	<Object Cl="DirectionalLight">
+		<PB>
+			<P t="11" name="Id" v="1945406361564993032"/>
+			<P t="9" name="Name" v="DirectionalLight"/>
+			<P t="9" name="Tag" v=""/>
+			<P t="10" name="Visible" v="1"/>
+			<P t="10" name="TransformLock" v="0"/>
+			<P t="19" name="ShadowRes">
+				<List size="3">
+					<CurrVal v="1"/>
+					<0 valType="2" valName="512" v="512.000000"/>
+					<1 valType="2" valName="1024" v="1024.000000"/>
+					<2 valType="2" valName="2048" v="2048.000000"/>
+				</List>
+			</P>
+			<P t="5" name="Color" x="1.000000" y="1.000000" z="1.000000"/>
+			<P t="2" name="Intensity" v="1.000000"/>
+			<P t="10" name="CastShadow" v="1"/>
+			<P t="3" name="PCFSamples" v="128"/>
+			<P t="2" name="PCFRadius" v="0.010000"/>
+			<P t="2" name="ShadowBias" v="0.100000"/>
+			<P t="2" name="BleedingReduction" v="0.100000"/>
+			<P t="2" name="LightBleedingReduction" v="0.100000"/>
+		</PB>
+		<Entity>
+			<N is="0">
+				<T x="0.000000" y="6.502029" z="0.000000"/>
+				<R x="-0.353553" y="-0.353553" z="-0.146447" w="0.853553"/>
+				<S x="1.000000" y="1.000000" z="1.000000"/>
+			</N>
+			<Ca>
+				<Object Cl="DirectionComponent">
+					<PB>
+						<P t="11" name="Id" v="597714352924928151"/>
+					</PB>
+					<Component>
+						<DirectionComponent/>
+					</Component>
+				</Object>
+			</Ca>
+			<Light>
+				<DirectionalLight/>
+			</Light>
+		</Entity>
+	</Object>
+	<Object Cl="Cube">
+		<PB>
+			<P t="11" name="Id" v="7829318352378935587"/>
+			<P t="9" name="Name" v="Cube"/>
+			<P t="9" name="Tag" v=""/>
+			<P t="10" name="Visible" v="1"/>
+			<P t="10" name="TransformLock" v="0"/>
+			<P t="5" name="CubeScale" x="1.000000" y="1.000000" z="1.000000"/>
+		</PB>
+		<Entity>
+			<N is="0">
+				<T x="0.000000" y="0.000000" z="0.000000"/>
+				<R x="0.000000" y="0.000000" z="0.000000" w="1.000000"/>
+				<S x="20.000000" y="0.010000" z="20.000000"/>
+			</N>
+			<Ca>
+				<Object Cl="MeshComponent">
+					<PB>
+						<P t="11" name="Id" v="15729399246562019543"/>
+						<P t="12" name="Mesh"/>
+						<P t="10" name="CastShadow" v="1"/>
+					</PB>
+					<Component>
+						<MeshComponent/>
+					</Component>
+				</Object>
+				<Object Cl="MaterialComponent">
+					<PB>
+						<P t="11" name="Id" v="7358916130616711761"/>
+						<P t="13" name="Material"/>
+					</PB>
+					<Component>
+						<MaterialComponent MaterialCount="1">
+							<0>
+								<ResourceRef Class="Material" File="ToolKit\checkerBoard.material"/>
+							</0>
+						</MaterialComponent>
+					</Component>
+				</Object>
+			</Ca>
+			<Cube/>
+		</Entity>
+	</Object>
+	<PostProcessing TonemappingEnabled="1" TonemapperMode="1" EnableBloom="1" BloomIntensity="1.000000" BloomThreshold="1.000000" BloomIterationCount="5" GammaCorrectionEnabled="1" Gamma="2.200000" SSAOEnabled="1" SSAORadius="0.500000" SSAOBias="0.025000" SSAOKernelSize="16" DepthOfFieldEnabled="0" FocusPoint="10.000000" FocusScale="5.000000" DofQuality="1" FXAAEnabled="0"/>
+</S>
+

@@ -1,0 +1,345 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="AABBTree.cpp" />
+    <ClCompile Include="Animation.cpp" />
+    <ClCompile Include="AnimationControllerComponent.cpp" />
+    <ClCompile Include="Audio.cpp">
+      <OrderInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">101</OrderInUnityFile>
+    </ClCompile>
+    <ClCompile Include="BillboardPass.cpp" />
+    <ClCompile Include="BinPack2D.cpp" />
+    <ClCompile Include="BloomPass.cpp" />
+    <ClCompile Include="Canvas.cpp" />
+    <ClCompile Include="Component.cpp" />
+    <ClCompile Include="Camera.cpp" />
+    <ClCompile Include="CubemapPass.cpp" />
+    <ClCompile Include="DirectionComponent.cpp" />
+    <ClCompile Include="DofPass.cpp" />
+    <ClCompile Include="Dpad.cpp" />
+    <ClCompile Include="Drawable.cpp" />
+    <ClCompile Include="EngineSettings.cpp" />
+    <ClCompile Include="Entity.cpp" />
+    <ClCompile Include="EnvironmentComponent.cpp" />
+    <ClCompile Include="FileManager.cpp" />
+    <ClCompile Include="ForwardPreProcessPass.cpp" />
+    <ClCompile Include="ForwardPass.cpp" />
+    <ClCompile Include="Framebuffer.cpp" />
+    <ClCompile Include="FullQuadPass.cpp" />
+    <ClCompile Include="GameRenderer.cpp" />
+    <ClCompile Include="GameViewport.cpp" />
+    <ClCompile Include="GammaTonemapFxaaPass.cpp" />
+    <ClCompile Include="GlErrorReporter.cpp" />
+    <ClCompile Include="GpuProgram.cpp" />
+    <ClCompile Include="GradientSky.cpp" />
+    <ClCompile Include="Light.cpp" />
+    <ClCompile Include="Logger.cpp" />
+    <ClCompile Include="Material.cpp" />
+    <ClCompile Include="MaterialComponent.cpp" />
+    <ClCompile Include="MathUtil.cpp" />
+    <ClCompile Include="Mesh.cpp" />
+    <ClCompile Include="MeshComponent.cpp" />
+    <ClCompile Include="ForwardSceneRenderPath.cpp" />
+    <ClCompile Include="Node.cpp" />
+    <ClCompile Include="ObjectFactory.cpp" />
+    <ClCompile Include="OutlinePass.cpp" />
+    <ClCompile Include="ParameterBlock.cpp" />
+    <ClCompile Include="Pass.cpp" />
+    <ClCompile Include="Plugin.cpp" />
+    <ClCompile Include="PluginManager.cpp">
+      <IncludeInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</IncludeInUnityFile>
+    </ClCompile>
+    <ClCompile Include="Prefab.cpp" />
+    <ClCompile Include="Primative.cpp" />
+    <ClCompile Include="Renderer.cpp" />
+    <ClCompile Include="RenderState.cpp" />
+    <ClCompile Include="RenderSystem.cpp" />
+    <ClCompile Include="Resource.cpp" />
+    <ClCompile Include="AABBOverrideComponent.cpp" />
+    <ClCompile Include="ResourceManager.cpp" />
+    <ClCompile Include="RHI.cpp" />
+    <ClCompile Include="Scene.cpp" />
+    <ClCompile Include="Shader.cpp" />
+    <ClCompile Include="ShaderUniform.cpp" />
+    <ClCompile Include="ShadowPass.cpp" />
+    <ClCompile Include="Skeleton.cpp" />
+    <ClCompile Include="SkeletonComponent.cpp" />
+    <ClCompile Include="Sky.cpp" />
+    <ClCompile Include="SplashScreenRenderPath.cpp" />
+    <ClCompile Include="SpriteSheet.cpp" />
+    <ClCompile Include="SsaoPass.cpp" />
+    <ClCompile Include="StateMachine.cpp" />
+    <ClCompile Include="stdafx.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="StencilPass.cpp" />
+    <ClCompile Include="Surface.cpp" />
+    <ClCompile Include="Texture.cpp" />
+    <ClCompile Include="Object.cpp" />
+    <ClCompile Include="Threads.cpp" />
+    <ClCompile Include="Image.cpp" />
+    <ClCompile Include="TKOpenGL.cpp">
+      <OrderInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">150</OrderInUnityFile>
+    </ClCompile>
+    <ClCompile Include="Stats.cpp" />
+    <ClCompile Include="ToolKit.cpp" />
+    <ClCompile Include="UIManager.cpp" />
+    <ClCompile Include="UniformBuffer.cpp" />
+    <ClCompile Include="Util.cpp" />
+    <ClCompile Include="Viewport.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="AABBTree.h" />
+    <ClInclude Include="Animation.h" />
+    <ClInclude Include="AnimationControllerComponent.h" />
+    <ClInclude Include="Audio.h" />
+    <ClInclude Include="BillboardPass.h" />
+    <ClInclude Include="BinPack2D.h" />
+    <ClInclude Include="BloomPass.h" />
+    <ClInclude Include="Canvas.h" />
+    <ClInclude Include="Class.h" />
+    <ClInclude Include="Component.h" />
+    <ClInclude Include="CubemapPass.h" />
+    <ClInclude Include="DebugNew.h" />
+    <ClInclude Include="Camera.h" />
+    <ClInclude Include="DirectionComponent.h" />
+    <ClInclude Include="DofPass.h" />
+    <ClInclude Include="Dpad.h" />
+    <ClInclude Include="Drawable.h" />
+    <ClInclude Include="TextureBuffer.h" />
+    <ClInclude Include="EngineSettings.h" />
+    <ClInclude Include="Entity.h" />
+    <ClInclude Include="EnvironmentComponent.h" />
+    <ClInclude Include="Events.h" />
+    <ClInclude Include="FileManager.h" />
+    <ClInclude Include="ForwardPreProcessPass.h" />
+    <ClInclude Include="ForwardPass.h" />
+    <ClInclude Include="Framebuffer.h" />
+    <ClInclude Include="FullQuadPass.h" />
+    <ClInclude Include="GameRenderer.h" />
+    <ClInclude Include="GameViewport.h" />
+    <ClInclude Include="GammaTonemapFxaaPass.h" />
+    <ClInclude Include="GlErrorReporter.h" />
+    <ClInclude Include="GenericBuffers.h" />
+    <ClInclude Include="GpuProgram.h" />
+    <ClInclude Include="GradientSky.h" />
+    <ClInclude Include="MaterialComponent.h" />
+    <ClInclude Include="MeshComponent.h" />
+    <ClInclude Include="ForwardSceneRenderPath.h" />
+    <ClInclude Include="ObjectFactory.h" />
+    <ClInclude Include="OutlinePass.h" />
+    <ClInclude Include="Pass.h" />
+    <ClInclude Include="RenderSystem.h" />
+    <ClInclude Include="RHI.h" />
+    <ClInclude Include="Light.h" />
+    <ClInclude Include="Logger.h" />
+    <ClInclude Include="Material.h" />
+    <ClInclude Include="MathUtil.h" />
+    <ClInclude Include="Mesh.h" />
+    <ClInclude Include="Node.h" />
+    <ClInclude Include="ParameterBlock.h" />
+    <ClInclude Include="Plugin.h" />
+    <ClInclude Include="PluginManager.h" />
+    <ClInclude Include="Prefab.h" />
+    <ClInclude Include="Primative.h" />
+    <ClInclude Include="Renderer.h" />
+    <ClInclude Include="RenderState.h" />
+    <ClInclude Include="Resource.h" />
+    <ClInclude Include="AABBOverrideComponent.h" />
+    <ClInclude Include="ResourceManager.h" />
+    <ClInclude Include="Scene.h" />
+    <ClInclude Include="Serialize.h" />
+    <ClInclude Include="Shader.h" />
+    <ClInclude Include="ShaderUniform.h" />
+    <ClInclude Include="ShadowPass.h" />
+    <ClInclude Include="Skeleton.h" />
+    <ClInclude Include="SkeletonComponent.h" />
+    <ClInclude Include="Sky.h" />
+    <ClInclude Include="SplashScreenRenderPath.h" />
+    <ClInclude Include="SpriteSheet.h" />
+    <ClInclude Include="SsaoPass.h" />
+    <ClInclude Include="StateMachine.h" />
+    <ClInclude Include="stdafx.h" />
+    <ClInclude Include="StencilPass.h" />
+    <ClInclude Include="Surface.h" />
+    <ClInclude Include="Texture.h" />
+    <ClInclude Include="Threads.h" />
+    <ClInclude Include="TKAssert.h" />
+    <ClInclude Include="Object.h" />
+    <ClInclude Include="Image.h" />
+    <ClInclude Include="Platform.h" />
+    <ClInclude Include="Stats.h" />
+    <ClInclude Include="ToolKit.h" />
+    <ClInclude Include="TKOpenGL.h" />
+    <ClInclude Include="Types.h" />
+    <ClInclude Include="UIManager.h" />
+    <ClInclude Include="UniformBuffer.h" />
+    <ClInclude Include="Util.h" />
+    <ClInclude Include="Viewport.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\Resources\Engine\Shaders\AO.shader" />
+    <None Include="..\Resources\Engine\Shaders\avgBlurFrag.shader" />
+    <None Include="..\Resources\Engine\Shaders\avgBlurVert.shader" />
+    <None Include="..\Resources\Engine\Shaders\bloomDownsample.shader" />
+    <None Include="..\Resources\Engine\Shaders\bloomUpsample.shader" />
+    <None Include="..\Resources\Engine\Shaders\BRDFLutFrag.shader" />
+    <None Include="..\Resources\Engine\Shaders\cameraDataInc.shader" />
+    <None Include="..\Resources\Engine\Shaders\copyTextureFrag.shader" />
+    <None Include="..\Resources\Engine\Shaders\copyTextureVert.shader" />
+    <None Include="..\Resources\Engine\Shaders\cubemapToEquirectFrag.shader" />
+    <None Include="..\Resources\Engine\Shaders\defaultFragment.shader" />
+    <None Include="..\Resources\Engine\Shaders\defaultVertex.shader" />
+    <None Include="..\Resources\Engine\Shaders\depthOfFieldFrag.shader" />
+    <None Include="..\Resources\Engine\Shaders\dilateFrag.shader" />
+    <None Include="..\Resources\Engine\Shaders\drawDataInc.shader" />
+    <None Include="..\Resources\Engine\Shaders\equirectToCubeFrag.shader" />
+    <None Include="..\Resources\Engine\Shaders\equirectToCubeVert.shader" />
+    <None Include="..\Resources\Engine\Shaders\forwardPreProcess.shader" />
+    <None Include="..\Resources\Engine\Shaders\forwardPreProcessVert.shader" />
+    <None Include="..\Resources\Engine\Shaders\fullQuadVert.shader" />
+    <None Include="..\Resources\Engine\Shaders\fxaaFunctions.shader" />
+    <None Include="..\Resources\Engine\Shaders\gammaFunctions.shader" />
+    <None Include="..\Resources\Engine\Shaders\gammaTonemapFxaa.shader" />
+    <None Include="..\Resources\Engine\Shaders\gausBlur7x1Frag.shader" />
+    <None Include="..\Resources\Engine\Shaders\gausBlur7x1Vert.shader" />
+    <None Include="..\Resources\Engine\Shaders\gradientSkyboxFrag.shader" />
+    <None Include="..\Resources\Engine\Shaders\gridFragment.shader" />
+    <None Include="..\Resources\Engine\Shaders\gridVertex.shader" />
+    <None Include="..\Resources\Engine\Shaders\ibl.shader" />
+    <None Include="..\Resources\Engine\Shaders\irradianceGenerateFrag.shader" />
+    <None Include="..\Resources\Engine\Shaders\irradianceGenerateVert.shader" />
+    <None Include="..\Resources\Engine\Shaders\lighting.shader" />
+    <None Include="..\Resources\Engine\Shaders\materialCacheInc.shader" />
+    <None Include="..\Resources\Engine\Shaders\normalFrag.shader" />
+    <None Include="..\Resources\Engine\Shaders\orthogonalDepthFrag.shader" />
+    <None Include="..\Resources\Engine\Shaders\orthogonalDepthVert.shader" />
+    <None Include="..\Resources\Engine\Shaders\orthogonalDepthViewFrag.shader" />
+    <None Include="..\Resources\Engine\Shaders\orthogonalDepthViewVert.shader" />
+    <None Include="..\Resources\Engine\Shaders\pbr.shader" />
+    <None Include="..\Resources\Engine\Shaders\perspectiveDepthFrag.shader" />
+    <None Include="..\Resources\Engine\Shaders\perspectiveDepthVert.shader" />
+    <None Include="..\Resources\Engine\Shaders\perspectiveDepthViewFrag.shader" />
+    <None Include="..\Resources\Engine\Shaders\positionVert.shader" />
+    <None Include="..\Resources\Engine\Shaders\preFilterEnvMapFrag.shader" />
+    <None Include="..\Resources\Engine\Shaders\shadow.shader" />
+    <None Include="..\Resources\Engine\Shaders\skinning.shader" />
+    <None Include="..\Resources\Engine\Shaders\skyboxFrag.shader" />
+    <None Include="..\Resources\Engine\Shaders\skyboxVert.shader" />
+    <None Include="..\Resources\Engine\Shaders\ssaoCalcFrag.shader" />
+    <None Include="..\Resources\Engine\Shaders\texCoordFrag.shader" />
+    <None Include="..\Resources\Engine\Shaders\textureUtil.shader" />
+    <None Include="..\Resources\Engine\Shaders\tonemapFunctions.shader" />
+    <None Include="..\Resources\Engine\Shaders\unlitFrag.shader" />
+    <None Include="..\Resources\Engine\Shaders\VSM.shader" />
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>16.0</VCProjectVersion>
+    <ProjectGuid>{85523A06-924E-4B9D-B95C-411CB388936B}</ProjectGuid>
+    <RootNamespace>ToolKit</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>NotSet</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>NotSet</CharacterSet>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <OutDir>..\Bin\</OutDir>
+    <IncludePath>$(ProjectDir);$(SolutionDir)Dependency;$(SolutionDir)Dependency\glm;$(SolutionDir)Dependency\RapidXml;$(SolutionDir)Dependency\SDL2\include;$(SolutionDir)Dependency\Stb;$(SolutionDir)Dependency\minizip-ng;$(SolutionDir)Dependency\minizip-ng\compat;$(SolutionDir)Dependency\poolSTL\include</IncludePath>
+    <LibraryPath>$(SolutionDir)Dependency\Intermediate\Windows\Debug;$(LibraryPath)</LibraryPath>
+    <TargetName>$(ProjectName)d</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <OutDir>..\Bin\</OutDir>
+    <IncludePath>$(ProjectDir);$(SolutionDir)Dependency;$(SolutionDir)Dependency\glm;$(SolutionDir)Dependency\RapidXml;$(SolutionDir)Dependency\SDL2\include;$(SolutionDir)Dependency\Stb;$(SolutionDir)Dependency\minizip-ng;$(SolutionDir)Dependency\minizip-ng\compat;$(SolutionDir)Dependency\poolSTL\include</IncludePath>
+    <LibraryPath>$(SolutionDir)Dependency\Intermediate\Windows\RelWithDebInfo;$(LibraryPath)</LibraryPath>
+    <TargetName>$(ProjectName)</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <SDLCheck>true</SDLCheck>
+      <ConformanceMode>true</ConformanceMode>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;TK_GL_ES_3_0;TK_DEBUG;TK_DLL_EXPORT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <IncludeInUnityFile>true</IncludeInUnityFile>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalOptions>/FI "stdafx.h" /bigobj %(AdditionalOptions)</AdditionalOptions>
+      <RuntimeTypeInfo>false</RuntimeTypeInfo>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <AdditionalDependencies>OpenGL32.lib;zstd_staticd.lib;minizipd.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <PreBuildEvent />
+    <PostBuildEvent />
+    <PostBuildEvent>
+      <Command>$(SolutionDir)UtilArtifacts.bat debug</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <ConformanceMode>true</ConformanceMode>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;TK_GL_ES_3_0;NDEBUG;TK_DLL_EXPORT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalOptions>/FI "stdafx.h" %(AdditionalOptions)</AdditionalOptions>
+      <RuntimeTypeInfo>false</RuntimeTypeInfo>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <AdditionalDependencies>OpenGL32.lib;zstd_static.lib;minizip.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <Lib />
+    <PostBuildEvent />
+    <PostBuildEvent>
+      <Command>$(SolutionDir)UtilArtifacts.bat release</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

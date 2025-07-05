@@ -1,0 +1,28 @@
+<Resource version="v0.4.9">
+	<Object Cl="Material">
+		<PB>
+			<P t="11" name="Id" v="8967003096120688563"/>
+			<P t="21" name="VertexShader">
+				<ResourceRef Class="Shader" File="ToolKit/defaultVertex.shader"/>
+			</P>
+			<P t="21" name="FragmentShader">
+				<ResourceRef Class="Shader" File="ToolKit/unlitFrag.shader"/>
+			</P>
+			<P t="20" name="DiffuseTexture">
+				<ResourceRef Class="Texture" File="ToolKit/splash.png"/>
+			</P>
+			<P t="20" name="EmissiveTexture"/>
+			<P t="20" name="NormalTexture"/>
+			<P t="20" name="MetallicRoughnessTexture"/>
+			<P t="2" name="Alpha" v="1.000000"/>
+			<P t="2" name="Metallic" v="0.200000"/>
+			<P t="2" name="Roughness" v="0.500000"/>
+			<P t="5" name="Color" x="1.000000" y="1.000000" z="1.000000"/>
+			<P t="5" name="EmissiveColor" x="0.000000" y="0.000000" z="0.000000"/>
+		</PB>
+		<Material>
+			<renderState cullMode="2" depthTest="1" depthFunc="513" blendFunction="1" alphaMaskTreshold="0.001000" drawType="4"/>
+		</Material>
+	</Object>
+</Resource>
+

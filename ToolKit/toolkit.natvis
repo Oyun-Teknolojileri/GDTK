@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+	<Type Name="ToolKit::Object">
+		<DisplayString>Object - {((uint64_t*)&amp;m_localData.m_variants[Id_Index].m_var)[0]}</DisplayString>
+		<Expand>
+			<!-- Show Parameters -->
+			<Synthetic Name="[Parameters]">
+				<DisplayString>Parameters ({m_localData.m_variants.size()})</DisplayString>
+				<Expand>
+					<CustomListItems>
+						<Variable Name="i" InitialValue="0"/>
+						<Size>m_localData.m_variants.size()</Size>
+						<Loop>
+							<If Condition="i &lt; m_localData.m_variants.size()">
+								<Item Name="{m_localData.m_variants[i].m_name,sb}">m_localData.m_variants[i].m_var</Item>
+								<Exec>i++</Exec>
+							</If>
+						</Loop>
+					</CustomListItems>
+				</Expand>
+			</Synthetic>
+		</Expand>
+	</Type>
+	<Type Name="ToolKit::Entity">
+		<DisplayString>Entity - {((std::string*)&amp;m_localData.m_variants[Name_Index].m_var)[0]}</DisplayString>
+		<Expand>
+			<!-- Show Parameters -->
+			<Synthetic Name="[Parameters]">
+				<DisplayString>Parameters ({m_localData.m_variants.size()})</DisplayString>
+				<Expand>
+					<CustomListItems>
+						<Variable Name="i" InitialValue="0"/>
+						<Size>m_localData.m_variants.size()</Size>
+						<Loop>
+							<If Condition="i &lt; m_localData.m_variants.size()">
+								<Item Name="{m_localData.m_variants[i].m_name,sb}">m_localData.m_variants[i].m_var</Item>
+								<Exec>i++</Exec>
+							</If>
+						</Loop>
+					</CustomListItems>
+				</Expand>
+			</Synthetic>
+			<!-- Show Components -->
+			<Synthetic Name="[Components]">
+				<DisplayString>Components ({m_components.size()})</DisplayString>
+				<Expand>
+					<CustomListItems>
+						<Variable Name="j" InitialValue="0"/>
+						<Size>m_components.size()</Size>
+						<Loop>
+							<If Condition="j &lt; m_components.size()">
+								<Item Name="Component[{j}]">m_components[j]</Item>
+								<Exec>j++</Exec>
+							</If>
+						</Loop>
+					</CustomListItems>
+				</Expand>
+			</Synthetic>
+		</Expand>
+	</Type>
+</AutoVisualizer>

@@ -1,0 +1,63 @@
+<Settings version="v0.4.9">
+	<Object Cl="WindowSettings">
+		<PB>
+			<P t="11" name="Id" v="4556948592096351670"/>
+			<P t="9" name="Name" v="ToolKit"/>
+			<P t="4" name="Width" v="1280"/>
+			<P t="4" name="Height" v="720"/>
+			<P t="10" name="FullScreen" v="0"/>
+		</PB>
+	</Object>
+	<Object Cl="GraphicSettings">
+		<PB>
+			<P t="11" name="Id" v="2978963876798453600"/>
+			<P t="19" name="MSAA">
+				<List size="4">
+					<CurrVal v="1"/>
+					<0 valType="3" valName="0" v="0"/>
+					<1 valType="3" valName="2" v="2"/>
+					<2 valType="3" valName="4" v="4"/>
+					<3 valType="3" valName="8" v="8"/>
+				</List>
+			</P>
+			<P t="19" name="AnisotropicTextureFiltering">
+				<List size="5">
+					<CurrVal v="1"/>
+					<0 valType="3" valName="0" v="0"/>
+					<1 valType="3" valName="2" v="2"/>
+					<2 valType="3" valName="4" v="4"/>
+					<3 valType="3" valName="8" v="8"/>
+					<4 valType="3" valName="16" v="16"/>
+				</List>
+			</P>
+			<P t="3" name="FPS" v="60"/>
+			<P t="10" name="EnableGpuTimer" v="0"/>
+			<P t="10" name="HDRPipeline" v="1"/>
+			<P t="2" name="RenderResolutionScale" v="1.000000"/>
+		</PB>
+	</Object>
+	<Object Cl="ShadowSettings">
+		<PB>
+			<P t="11" name="Id" v="5250761863265191082"/>
+			<P t="19" name="ShadowSamples">
+				<List size="4">
+					<CurrVal v="1"/>
+					<0 valType="3" valName="1" v="1"/>
+					<1 valType="3" valName="9" v="9"/>
+					<2 valType="3" valName="25" v="25"/>
+					<3 valType="3" valName="49" v="49"/>
+				</List>
+			</P>
+			<P t="3" name="CascadeCount" v="4"/>
+			<P t="6" name="CascadeDistances" x="14.456484" y="30.251013" z="53.438175" w="100.000000"/>
+			<P t="2" name="ShadowMinDistance" v="1.000000"/>
+			<P t="10" name="UseParallelSplitPartitioning" v="1"/>
+			<P t="2" name="ParallelSplitLambda" v="0.500000"/>
+			<P t="10" name="StableShadowMap" v="0"/>
+			<P t="10" name="UseEVSM4" v="0"/>
+			<P t="10" name="Use32BitShadowMap" v="0"/>
+		</PB>
+	</Object>
+	<Plugins/>
+</Settings>
+
