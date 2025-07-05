@@ -53,15 +53,14 @@ Its important to set environment path such that git, cmake and ninja commands ar
 
 #### Compile Steps
 
-* Clone the repo recursively.
+* Clone the repo.
 ```bash
-git clone --recursive https://github.com/Oyun-Teknolojileri/ToolKit.git
+git clone https://github.com/Oyun-Teknolojileri/GDTK.git
 ```
 * Run build dependency script.
 ```bash
-cd .\ToolKit\
-cd .\DependencyBuildScripts\
-.\BuildAllDependencies.bat
+cd .\GDTK\
+.\BuildDependencies.bat
 ```
 
 After this point ToolKit/ToolKit.sln file can be open and build.
@@ -104,7 +103,7 @@ In order to see the project's code folder and start development, you can press t
 - glad - MIT
 - Dear imgui - MIT
 - Assimp - BSD
-- Zlib - Zlib
+- minizip-ng - Zlib
 
 ## License
 
