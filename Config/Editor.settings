@@ -1,6 +1,6 @@
 <App version="v0.4.9">
 	<Settings>
-		<Size width="1920" height="1009" maximized="1"/>
+		<Size width="1280" height="720" maximized="1"/>
 	</Settings>
 	<Windows>
 		<Object Cl="EditorViewport">
@@ -8,12 +8,12 @@
 				<P t="11" name="Id" v="5066036208500106767"/>
 			</PB>
 			<Window version="v0.4.9" name="3D Viewport" id="16" visible="1" shown="1">
-				<Size x="1047" y="686"/>
-				<Location x="1030" y="442"/>
+				<Size x="740" y="433"/>
+				<Location x="1166" y="588"/>
 				<Viewport alignment="0" lock="0">
 					<Object Cl="Camera">
 						<PB>
-							<P t="11" name="Id" v="8652305865524783591"/>
+							<P t="11" name="Id" v="9421209025540705890"/>
 							<P t="9" name="Name" v="Entity"/>
 							<P t="9" name="Tag" v=""/>
 							<P t="10" name="Visible" v="1"/>
@@ -27,7 +27,7 @@
 						</PB>
 						<Entity>
 							<N is="0">
-								<T x="4.013504" y="3.931898" z="5.282781"/>
+								<T x="3.446429" y="5.048482" z="4.445644"/>
 								<R x="-0.346982" y="0.239676" z="0.092195" w="0.902031"/>
 								<S x="1.000005" y="1.000007" z="1.000009"/>
 							</N>
@@ -41,7 +41,7 @@
 									</Component>
 								</Object>
 							</Ca>
-							<Camera fov="1.570796" aspect="1.586154" near="0.010000" far="1000.000000" ortographic="0" left="-10.000000" right="10.000000" top="10.000000" bottom="-10.000000" scale="0.001000"/>
+							<Camera fov="0.785398" aspect="1.823678" near="0.500000" far="1000.000000" ortographic="0" left="-10.000000" right="10.000000" top="10.000000" bottom="-10.000000" scale="0.001000"/>
 						</Entity>
 					</Object>
 				</Viewport>
@@ -52,12 +52,12 @@
 				<P t="11" name="Id" v="12274268932586889139"/>
 			</PB>
 			<Window version="v0.4.9" name="2D Viewport" id="17" visible="1" shown="0">
-				<Size x="1047" y="683"/>
-				<Location x="1030" y="445"/>
+				<Size x="1280" y="700"/>
+				<Location x="896" y="524"/>
 				<Viewport alignment="0" lock="0">
 					<Object Cl="Camera">
 						<PB>
-							<P t="11" name="Id" v="17753733815090849035"/>
+							<P t="11" name="Id" v="16798039355583755484"/>
 							<P t="9" name="Name" v="Entity"/>
 							<P t="9" name="Tag" v=""/>
 							<P t="10" name="Visible" v="1"/>
@@ -71,7 +71,7 @@
 						</PB>
 						<Entity>
 							<N is="0">
-								<T x="415.500000" y="223.500000" z="10.000000"/>
+								<T x="297.500000" y="141.500000" z="10.000000"/>
 								<R x="0.000000" y="0.000000" z="0.000000" w="1.000000"/>
 								<S x="1.000000" y="1.000000" z="1.000000"/>
 							</N>
@@ -85,7 +85,7 @@
 									</Component>
 								</Object>
 							</Ca>
-							<Camera fov="1.570796" aspect="1.593508" near="-100.000000" far="100.000000" ortographic="1" left="-515.500000" right="515.500000" top="323.500000" bottom="-323.500000" scale="1.000000"/>
+							<Camera fov="1.570796" aspect="1.903614" near="-100.000000" far="100.000000" ortographic="1" left="-632.000000" right="632.000000" top="332.000000" bottom="-332.000000" scale="1.000000"/>
 						</Entity>
 					</Object>
 				</Viewport>
@@ -101,7 +101,7 @@
 				<Viewport alignment="1" lock="1">
 					<Object Cl="Camera">
 						<PB>
-							<P t="11" name="Id" v="15893148828233043192"/>
+							<P t="11" name="Id" v="3552702062619096816"/>
 							<P t="9" name="Name" v="Entity"/>
 							<P t="9" name="Tag" v=""/>
 							<P t="10" name="Visible" v="1"/>
@@ -141,7 +141,7 @@
 			</PB>
 			<Window version="v0.4.9" name="Console" id="19" visible="1" shown="1">
 				<Size x="640" y="480"/>
-				<Location x="1030" y="1130"/>
+				<Location x="1166" y="1023"/>
 			</Window>
 		</Object>
 		<Object Cl="FolderWindow">
@@ -150,7 +150,7 @@
 			</PB>
 			<Window version="v0.4.9" name="Asset Browser" id="20" visible="1" shown="1">
 				<Size x="640" y="480"/>
-				<Location x="576" y="651"/>
+				<Location x="896" y="680"/>
 				<FolderWindow activeFolder="0" showStructure="1"/>
 			</Window>
 		</Object>
@@ -160,7 +160,7 @@
 			</PB>
 			<Window version="v0.4.9" name="Outliner" id="21" visible="1" shown="1">
 				<Size x="640" y="480"/>
-				<Location x="2079" y="379"/>
+				<Location x="1908" y="524"/>
 			</Window>
 		</Object>
 		<Object Cl="PropInspectorWindow">
@@ -169,7 +169,7 @@
 			</PB>
 			<Window version="v0.4.9" name="Property Inspector" id="22" visible="1" shown="1">
 				<Size x="640" y="480"/>
-				<Location x="2079" y="781"/>
+				<Location x="1908" y="873"/>
 			</Window>
 		</Object>
 		<Object Cl="SimulationWindow">
@@ -178,7 +178,7 @@
 			</PB>
 			<Window version="v0.4.9" name="Simulation" id="25" visible="1" shown="1">
 				<Size x="640" y="480"/>
-				<Location x="1030" y="379"/>
+				<Location x="1166" y="524"/>
 				<Simulation>
 					<Resolution name="" sizeX="0" sizeY="0"/>
 				</Simulation>
@@ -194,7 +194,7 @@
 				<Viewport alignment="0" lock="0">
 					<Object Cl="Camera">
 						<PB>
-							<P t="11" name="Id" v="259032568594846272"/>
+							<P t="11" name="Id" v="256797625276858612"/>
 							<P t="9" name="Name" v="Entity"/>
 							<P t="9" name="Tag" v=""/>
 							<P t="10" name="Visible" v="1"/>
@@ -234,7 +234,7 @@
 			</PB>
 			<Window version="v0.4.9" name="Render Settings" id="28" visible="1" shown="0">
 				<Size x="640" y="480"/>
-				<Location x="576" y="651"/>
+				<Location x="0" y="0"/>
 			</Window>
 		</Object>
 		<Object Cl="StatsWindow">
@@ -243,7 +243,7 @@
 			</PB>
 			<Window version="v0.4.9" name="Statistics" id="29" visible="1" shown="1">
 				<Size x="640" y="480"/>
-				<Location x="576" y="379"/>
+				<Location x="896" y="524"/>
 			</Window>
 		</Object>
 		<Object Cl="PluginWindow">
@@ -252,7 +252,7 @@
 			</PB>
 			<Window version="v0.4.9" name="Plugins" id="16" visible="1" shown="0">
 				<Size x="640" y="480"/>
-				<Location x="576" y="1130"/>
+				<Location x="1166" y="1023"/>
 			</Window>
 		</Object>
 	</Windows>
