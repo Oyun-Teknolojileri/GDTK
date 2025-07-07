@@ -1,6 +1,6 @@
 # ToolKit
 
-<img align="left" width="48" height="48" src="https://github.com/Oyun-Teknolojileri/ToolKit/blob/master/Resources/Engine/Textures/Icons/app.png?raw=true">ToolKit is a 3d editor & interactive application development platform. It allows users to create 3d scenes and bring in the interactivity via C++ plug-ins.
+<img src="Resources/Engine/Textures/Icons/app.png" width="48" align="left">ToolKit is a 3d editor & interactive application development platform. It allows users to create 3d scenes and bring in the interactivity via C++ plug-ins.
 
 ## Motivation
 
