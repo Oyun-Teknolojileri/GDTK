@@ -528,16 +528,20 @@ namespace ToolKit
       MeshPtr mesh = MakeNewPtr<Mesh>();
       for (int i = 0; i < m_handles.size(); i++)
       {
-        mesh->m_subMeshes.push_back(m_handles[i]->m_mesh);
+        // Not all handles generated. 2d view only generates Z.
+        if (MeshPtr subMesh = m_handles[i]->m_mesh)
+        {
+          mesh->m_subMeshes.push_back(subMesh);
+        }
       }
 
-      MeshPtrArray subs;
-      mesh->GetAllSubMeshes(subs);
-      for (MeshPtr m : subs)
+      MeshPtrArray subMeshes;
+      mesh->GetAllSubMeshes(subMeshes);
+      for (MeshPtr subMesh : subMeshes)
       {
-        if (m->m_vertexCount > 0)
+        if (subMesh->m_vertexCount > 0)
         {
-          root->m_subMeshes.push_back(m);
+          root->m_subMeshes.push_back(subMesh);
         }
       }
 
@@ -732,12 +736,12 @@ namespace ToolKit
       for (int i = 0; i < 3; i++)
       {
         // If gizmo is in 2D view, just generate Z axis
-        if (viewport2D && i != static_cast<int>(AxisLabel::Z))
+        if (viewport2D && i != (int) AxisLabel::Z)
         {
           continue;
         }
 
-        if (m_grabbedAxis == static_cast<AxisLabel>(i))
+        if (m_grabbedAxis == (AxisLabel) i)
         {
           p.color = g_selectHighLightPrimaryColor;
         }
@@ -746,17 +750,17 @@ namespace ToolKit
           p.color = g_gizmoColor[i];
         }
 
-        if (IsLocked(static_cast<AxisLabel>(i)))
+        if (IsLocked((AxisLabel) i))
         {
           p.color = g_gizmoLocked;
         }
-        else if (m_lastHovered == static_cast<AxisLabel>(i))
+        else if (m_lastHovered == (AxisLabel) i)
         {
           p.color       = g_selectHighLightSecondaryColor;
           m_lastHovered = AxisLabel::None;
         }
 
-        p.axis = static_cast<AxisLabel>(i);
+        p.axis = (AxisLabel) i;
         if (IsGrabbed(p.axis))
         {
           p.grabPnt = m_grabPoint;
