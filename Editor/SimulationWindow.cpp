@@ -385,6 +385,18 @@ namespace ToolKit
         UILayerPtrArray layers;
         GetUIManager()->GetLayers(viewport->m_viewportId, layers);
 
+        // If this is 2d view, warn the user about no layer.
+        if (layers.empty())
+        {
+          if (g_app->GetActiveViewport() == viewport)
+          {
+            if (viewport->IsShown())
+            {
+              g_app->SetStatusMsg("Resize Failed. No Layer !");
+            }
+          }
+        }
+
         g_app->GetCurrentScene()->ClearSelection();
         for (const UILayerPtr& layer : layers)
         {
