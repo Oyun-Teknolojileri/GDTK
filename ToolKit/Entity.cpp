@@ -161,7 +161,7 @@ namespace ToolKit
   {
     Super::ParameterConstructor();
 
-    Name_Define(StaticClass()->Name, EntityCategory.Name, EntityCategory.Priority, true, true);
+    Name_Define(Class()->Name, EntityCategory.Name, EntityCategory.Priority, true, true);
     Tag_Define("", EntityCategory.Name, EntityCategory.Priority, true, true);
     Visible_Define(true, EntityCategory.Name, EntityCategory.Priority, true, true);
     TransformLock_Define(false, EntityCategory.Name, EntityCategory.Priority, true, true);
