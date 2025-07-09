@@ -53,8 +53,10 @@ namespace ToolKit
     XmlNode* DeSerializeImp(const SerializationFileInfo& info, XmlNode* parent) override;
     XmlNode* DeSerializeImpV045(const SerializationFileInfo& info, XmlNode* parent);
 
+    /** Creates a quad geometry for surface. */
+    virtual void CreateQuat();
+
    private:
-    void CreateQuat();
     void CreateQuat(const SpriteEntry& val);
     void SetSizeFromTexture();
 

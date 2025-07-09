@@ -71,6 +71,7 @@ namespace ToolKit
     typedef std::vector<DynamicMenuPtr> DynamicMenuPtrArray;
     typedef std::shared_ptr<class Window> WindowPtr;
     typedef std::vector<WindowPtr> WindowPtrArray;
+    typedef std::shared_ptr<class EditorCanvas> EditorCanvasPtr;
 
     typedef std::function<void(int)> SysCommandDoneCallback;
     typedef std::function<int(StringView, bool, bool, SysCommandDoneCallback)> SysCommandExecutionFn;

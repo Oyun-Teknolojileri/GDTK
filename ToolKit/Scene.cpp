@@ -25,7 +25,12 @@ namespace ToolKit
 {
   TKDefineClass(Scene, Resource);
 
-  Scene::Scene() { m_name = "NewScene"; }
+  Scene::Scene()
+  {
+    m_name     = "NewScene";
+    m_isLayer  = false;
+    m_isPrefab = false;
+  }
 
   Scene::~Scene() { Destroy(false); }
 
@@ -47,12 +52,15 @@ namespace ToolKit
     {
       String path = GetFile();
       m_isPrefab  = path.find("Prefabs") != String::npos;
+      m_isLayer   = EndsWith(path, LAYER);
 
       ParseDocument(XmlSceneElement);
 
       m_loaded = true;
     }
   }
+
+  bool Scene::IsLayerScene() { return m_isLayer; }
 
   void Scene::Save(bool onlyIfDirty)
   {
