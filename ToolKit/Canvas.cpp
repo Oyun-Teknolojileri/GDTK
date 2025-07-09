@@ -31,12 +31,10 @@ namespace ToolKit
 
     // TODO: Quad lines are not needed for the game engine. This can be moved to EditorCanvas.
     m_canvasMaterial                              = GetMaterialManager()->GetCopyOfUnlitMaterial();
-    m_canvasMaterial->m_name                      = "CavasBorder";
+    m_canvasMaterial->m_name                      = "CanvasBorder";
     m_canvasMaterial->GetRenderState()->drawType  = DrawType::Line;
     m_canvasMaterial->GetRenderState()->lineWidth = 3.0f;
     GetMaterialComponent()->SetFirstMaterial(m_canvasMaterial);
-
-    CreateQuadLines();
   }
 
   void Canvas::ParameterConstructor()
@@ -77,16 +75,12 @@ namespace ToolKit
 
     // Old file, keep parsing.
     XmlNode* surfaceNode = Surface::DeSerializeImp(info, parent);
-    CreateQuadLines();
-
     return surfaceNode;
   }
 
   XmlNode* Canvas::DeSerializeImpV045(const SerializationFileInfo& info, XmlNode* parent)
   {
     XmlNode* surfaceNode = Surface::DeSerializeImp(info, parent);
-    CreateQuadLines();
-
     return surfaceNode->first_node(StaticClass()->Name.c_str());
   }
 
@@ -183,6 +177,8 @@ namespace ToolKit
         }
       }
     }
+
+    UpdateGeometry(false);
   }
 
   void Canvas::CreateQuadLines()
