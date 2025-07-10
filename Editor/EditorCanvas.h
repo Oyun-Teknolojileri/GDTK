@@ -25,10 +25,14 @@ namespace ToolKit
       virtual ~EditorCanvas();
       void NativeConstruct() override;
       void UpdateGeometry(bool byTexture) override;
+      EntityPtr GetBorderGizmo();
 
      protected:
       /** Create lines for editor to draw a boundary. */
       void CreateQuat() override;
+
+     private:
+      EntityPtr m_borderGizmo;
     };
 
   } // namespace Editor

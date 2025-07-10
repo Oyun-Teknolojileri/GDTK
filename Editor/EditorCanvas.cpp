@@ -36,15 +36,26 @@ namespace ToolKit
         matMan->Manage(canvasBorderMaterial);
       }
 
-      // Use canvas material.
-      GetMaterialComponent()->SetFirstMaterial(canvasBorderMaterial);
-      AddComponent<MeshComponent>(); // This will be used for editor boundary.
+      // Create border gizmo.
+      m_borderGizmo = MakeNewPtr<Entity>();
+      m_borderGizmo->AddComponent<MeshComponent>();
+      m_borderGizmo->AddComponent<MaterialComponent>();
+      m_borderGizmo->GetMaterialComponent()->SetFirstMaterial(canvasBorderMaterial);
     }
 
     void EditorCanvas::UpdateGeometry(bool byTexture)
     {
       Super::UpdateGeometry(byTexture);
       CreateQuat();
+    }
+
+    EntityPtr EditorCanvas::GetBorderGizmo()
+    {
+      // Sync gizmo transform.
+      Mat4 transform = m_node->GetTransform();
+      m_borderGizmo->m_node->SetTransform(transform);
+
+      return m_borderGizmo;
     }
 
     void EditorCanvas::CreateQuat()
@@ -71,7 +82,9 @@ namespace ToolKit
       mesh->m_clientSideVertices = vertices;
       mesh->CalculateAABB();
       mesh->Init();
-      GetMeshComponent()->SetMeshVal(mesh);
+
+      // Update border.
+      m_borderGizmo->GetMeshComponent()->SetMeshVal(mesh);
     }
 
   } // namespace Editor

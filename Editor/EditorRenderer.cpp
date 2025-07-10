@@ -8,6 +8,7 @@
 #include "EditorRenderer.h"
 
 #include "App.h"
+#include "EditorCanvas.h"
 #include "EditorScene.h"
 #include "EditorViewport.h"
 #include "EditorViewport2d.h"
@@ -249,6 +250,19 @@ namespace ToolKit
           if (light->As<EditorPointLight>()->GizmoActive())
           {
             editorEntities.push_back(light->Self<Entity>());
+          }
+        }
+      }
+
+      // Add canvas gizmos.
+      if (scene->IsLayerScene())
+      {
+        const EntityPtrArray& ntties = scene->GetEntities();
+        for (EntityPtr ntt : ntties)
+        {
+          if (EditorCanvas* canvas = ntt->As<EditorCanvas>())
+          {
+            editorEntities.push_back(canvas->GetBorderGizmo());
           }
         }
       }
