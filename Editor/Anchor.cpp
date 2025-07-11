@@ -32,7 +32,8 @@ namespace ToolKit
         m_handles[i]->m_params.direction = static_cast<DirectionLabel>(val + i);
       }
 
-      Update(0.0f);
+      m_grabbedDirection = DirectionLabel::None;
+      m_lastHovered      = DirectionLabel::None;
     }
 
     EditorBillboardBase::BillboardType Anchor::GetBillboardType() const { return BillboardType::Anchor; }
