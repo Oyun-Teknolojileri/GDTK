@@ -81,7 +81,6 @@ namespace ToolKit
       MeshPtr mesh               = MakeNewPtr<Mesh>();
       mesh->m_clientSideVertices = vertices;
       mesh->CalculateAABB();
-      mesh->Init();
 
       // Update border.
       m_borderGizmo->GetMeshComponent()->SetMeshVal(mesh);
@@ -94,6 +93,13 @@ namespace ToolKit
       cpy->CreateQuat();
 
       return cpyNtt;
+    }
+
+    XmlNode* EditorCanvas::DeSerializeImp(const SerializationFileInfo& info, XmlNode* parent)
+    {
+      XmlNode* node = Super::DeSerializeImp(info, parent);
+      CreateQuat();
+      return node;
     }
 
   } // namespace Editor

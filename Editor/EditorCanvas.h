@@ -30,7 +30,10 @@ namespace ToolKit
      protected:
       /** Create lines for editor to draw a boundary. */
       void CreateQuat() override;
+      /** Copies canvas and reconstructs the border gizmo for the other. */
       Entity* CopyTo(Entity* other) const override;
+      /** Deserialize canvas and construct border gizmo. */
+      XmlNode* DeSerializeImp(const SerializationFileInfo& info, XmlNode* parent) override;
 
      private:
       EntityPtr m_borderGizmo;

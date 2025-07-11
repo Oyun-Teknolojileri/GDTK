@@ -313,7 +313,6 @@ namespace ToolKit
 
       if (m_resolutionSettingsWindowEnabled)
       {
-
         ImGui::SetNextWindowSizeConstraints(Vec2(400.0f, 0.0f), Vec2(TK_FLT_MAX));
         ImGui::Begin("Edit Resolutions",
                      &m_resolutionSettingsWindowEnabled,
@@ -397,7 +396,6 @@ namespace ToolKit
           }
         }
 
-        g_app->GetCurrentScene()->ClearSelection();
         for (const UILayerPtr& layer : layers)
         {
           layer->ResizeUI(Vec2((float) width, (float) height));

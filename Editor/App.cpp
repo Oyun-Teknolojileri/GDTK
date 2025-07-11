@@ -1111,7 +1111,6 @@ namespace ToolKit
 
                                       UIManager* uiMan = GetUIManager();
                                       uiMan->AddLayer(viewport->m_viewportId, layer);
-                                      uiMan->ResizeLayers(viewport);
                                     }
                                     else
                                     {
