@@ -30,6 +30,7 @@ namespace ToolKit
      protected:
       /** Create lines for editor to draw a boundary. */
       void CreateQuat() override;
+      Entity* CopyTo(Entity* other) const override;
 
      private:
       EntityPtr m_borderGizmo;

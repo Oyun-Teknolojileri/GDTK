@@ -225,7 +225,9 @@ namespace ToolKit
 
   Entity* Surface::CopyTo(Entity* other) const
   {
-    Entity* cpy = Super::CopyTo(other);
+    Entity* cpy             = Super::CopyTo(other);
+    Surface* cpySurf        = static_cast<Surface*>(cpy);
+    cpySurf->m_anchorParams = m_anchorParams;
 
     // Create an independent mesh.
     if (MeshComponentPtr meshComp = cpy->GetMeshComponent())

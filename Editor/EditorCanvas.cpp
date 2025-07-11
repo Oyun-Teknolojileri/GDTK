@@ -87,5 +87,14 @@ namespace ToolKit
       m_borderGizmo->GetMeshComponent()->SetMeshVal(mesh);
     }
 
+    Entity* EditorCanvas::CopyTo(Entity* other) const
+    {
+      Entity* cpyNtt    = Super::CopyTo(other);
+      EditorCanvas* cpy = static_cast<EditorCanvas*>(cpyNtt);
+      cpy->CreateQuat();
+
+      return cpyNtt;
+    }
+
   } // namespace Editor
 } // namespace ToolKit
