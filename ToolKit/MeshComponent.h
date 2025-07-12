@@ -62,7 +62,8 @@ namespace ToolKit
     TKDeclareParam(bool, CastShadow);
 
    private:
-    BoundingBox m_boundingBox;
+    /** Stores local bounding box of the mesh. */
+    BoundingBox m_cachedBoundingBox;
   };
 
 } // namespace ToolKit
