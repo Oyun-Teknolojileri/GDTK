@@ -25,7 +25,12 @@ namespace ToolKit
 {
   TKDefineClass(Scene, Resource);
 
-  Scene::Scene() { m_name = "NewScene"; }
+  Scene::Scene()
+  {
+    m_name     = "NewScene";
+    m_isLayer  = false;
+    m_isPrefab = false;
+  }
 
   Scene::~Scene() { Destroy(false); }
 
@@ -47,12 +52,15 @@ namespace ToolKit
     {
       String path = GetFile();
       m_isPrefab  = path.find("Prefabs") != String::npos;
+      m_isLayer   = EndsWith(path, LAYER);
 
       ParseDocument(XmlSceneElement);
 
       m_loaded = true;
     }
   }
+
+  bool Scene::IsLayerScene() { return m_isLayer; }
 
   void Scene::Save(bool onlyIfDirty)
   {
@@ -65,16 +73,21 @@ namespace ToolKit
       fullPath = ScenePath(m_name + SCENE);
     }
 
-    String path;
-    DecomposePath(fullPath, &path, nullptr, nullptr);
-
-    std::error_code err;
-    std::filesystem::create_directories(path, err);
-
-    if (err)
+    // Create folder paths.
+    NormalizePathInplace(fullPath);
+    if (fullPath.find(GetPathSeparator()) != String::npos)
     {
-      TK_ERR("Save scene failed: %s", err.message().c_str());
-      return;
+      String path;
+      DecomposePath(fullPath, &path, nullptr, nullptr);
+
+      std::error_code err;
+      std::filesystem::create_directories(path, err);
+
+      if (err)
+      {
+        TK_ERR("Save scene failed: %s", err.message().c_str());
+        return;
+      }
     }
 
     std::ofstream file;

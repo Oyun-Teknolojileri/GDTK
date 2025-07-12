@@ -1108,7 +1108,9 @@ namespace ToolKit
                                     if (EditorViewport2dPtr viewport = GetWindow<EditorViewport2d>(g_2dViewport))
                                     {
                                       UILayerPtr layer = MakeNewPtr<UILayer>(scene);
-                                      GetUIManager()->AddLayer(viewport->m_viewportId, layer);
+
+                                      UIManager* uiMan = GetUIManager();
+                                      uiMan->AddLayer(viewport->m_viewportId, layer);
                                     }
                                     else
                                     {

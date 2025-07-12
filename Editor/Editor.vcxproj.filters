@@ -34,6 +34,9 @@
     <Filter Include="Entities\Light">
       <UniqueIdentifier>{c12b5b45-b985-4c76-b98c-0b6df21c0976}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Entities\UI">
+      <UniqueIdentifier>{1e18ef1a-b6b1-495b-be99-3e8e4f30295c}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -195,6 +198,7 @@
     <ClCompile Include="EditorBillboard.cpp">
       <Filter>Entities</Filter>
     </ClCompile>
+    <ClCompile Include="EditorCanvas.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Mod.h">
@@ -352,6 +356,9 @@
     </ClInclude>
     <ClInclude Include="EditorBillboard.h">
       <Filter>Entities</Filter>
+    </ClInclude>
+    <ClInclude Include="EditorCanvas.h">
+      <Filter>Entities\UI</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

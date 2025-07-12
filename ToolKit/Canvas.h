@@ -13,8 +13,13 @@
 
 namespace ToolKit
 {
+
   static VariantCategory CanvasCategory {"Canvas", 90};
 
+  /**
+   * A logical entity used as a storage for surfaces.
+   * Used to resize and transform the containing Surfaces for responsible user interfaces.
+   */
   class TK_API Canvas : public Surface
   {
    public:
@@ -22,9 +27,10 @@ namespace ToolKit
 
     Canvas();
     void NativeConstruct() override;
-
-    void UpdateGeometry(bool byTexture) override;
     void ApplyRecursiveResizePolicy(float width, float height);
+
+    /** Skip geometry creation. Canvas does not uses a mesh. */
+    void UpdateGeometry(bool byTexture) override;
 
    protected:
     void ParameterConstructor() override;
@@ -35,15 +41,13 @@ namespace ToolKit
     XmlNode* DeSerializeImp(const SerializationFileInfo& info, XmlNode* parent) override;
     XmlNode* DeSerializeImpV045(const SerializationFileInfo& info, XmlNode* parent);
 
-   private:
-    void CreateQuadLines();
+    /** Overrides the quad creation to skip mesh generation. Canvas does not need a mesh. */
+    void CreateQuat() override {};
 
    public:
     // Local events.
     SurfaceEventCallback m_onMouseEnterLocal;
     SurfaceEventCallback m_onMouseExitLocal;
-
-   private:
-    MaterialPtr m_canvasMaterial;
   };
+
 } //  namespace ToolKit

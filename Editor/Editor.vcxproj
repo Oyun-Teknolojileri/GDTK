@@ -108,6 +108,7 @@
     <ClCompile Include="EditorApi.cpp" />
     <ClCompile Include="EditorBillboard.cpp" />
     <ClCompile Include="EditorCamera.cpp" />
+    <ClCompile Include="EditorCanvas.cpp" />
     <ClCompile Include="EditorLight.cpp" />
     <ClCompile Include="EditorRenderer.cpp" />
     <ClCompile Include="EditorViewport2d.cpp" />
@@ -176,6 +177,7 @@
     <ClInclude Include="EditorApi.h" />
     <ClInclude Include="EditorBillboard.h" />
     <ClInclude Include="EditorCamera.h" />
+    <ClInclude Include="EditorCanvas.h" />
     <ClInclude Include="EditorLight.h" />
     <ClInclude Include="EditorRenderer.h" />
     <ClInclude Include="EditorViewport2d.h" />

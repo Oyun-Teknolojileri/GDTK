@@ -313,7 +313,6 @@ namespace ToolKit
 
       if (m_resolutionSettingsWindowEnabled)
       {
-
         ImGui::SetNextWindowSizeConstraints(Vec2(400.0f, 0.0f), Vec2(TK_FLT_MAX));
         ImGui::Begin("Edit Resolutions",
                      &m_resolutionSettingsWindowEnabled,
@@ -385,7 +384,18 @@ namespace ToolKit
         UILayerPtrArray layers;
         GetUIManager()->GetLayers(viewport->m_viewportId, layers);
 
-        g_app->GetCurrentScene()->ClearSelection();
+        // If this is 2d view, warn the user about no layer.
+        if (layers.empty())
+        {
+          if (g_app->GetActiveViewport() == viewport)
+          {
+            if (viewport->IsShown())
+            {
+              g_app->SetStatusMsg("Resize Failed. No Layer !");
+            }
+          }
+        }
+
         for (const UILayerPtr& layer : layers)
         {
           layer->ResizeUI(Vec2((float) width, (float) height));

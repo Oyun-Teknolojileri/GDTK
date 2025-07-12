@@ -10,6 +10,7 @@
 #include "App.h"
 #include "ConsoleWindow.h"
 #include "EditorCamera.h"
+#include "EditorCanvas.h"
 #include "EditorViewport2d.h"
 #include "Gizmo.h"
 #include "Grid.h"
@@ -194,7 +195,7 @@ namespace ToolKit
             SDL_CreateWindow(settings.m_window->GetNameVal().c_str(),
                              SDL_WINDOWPOS_CENTERED,
                              SDL_WINDOWPOS_CENTERED,
-                             1024,
+                             512,
                              512,
                              SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_BORDERLESS);
 
@@ -246,6 +247,7 @@ namespace ToolKit
             objFactory->Override<EditorSpotLight, SpotLight>();
             objFactory->Override<EditorScene, Scene>();
             objFactory->Override<EditorCamera, Camera>();
+            objFactory->Override<EditorCanvas, Canvas>();
 
             // Override SceneManager.
             SafeDel(g_proxy->m_sceneManager);
@@ -299,7 +301,7 @@ namespace ToolKit
                 {
                   SDL_ShowWindow(g_window);
                   splashRenderer = MakeNewPtr<SplashScreenRenderPath>();
-                  splashRenderer->Init({1024, 512});
+                  splashRenderer->Init({512, 512});
                 }
 
                 if (elapsedTime < 1000.0f)

@@ -58,6 +58,9 @@ namespace ToolKit
     /** Loads the scene from its file. */
     void Load() override;
 
+    /** Returns true if this scene is created as a 2D layer. */
+    bool IsLayerScene();
+
     /**
      * Saves the scene to its file.
      *
@@ -305,6 +308,7 @@ namespace ToolKit
    protected:
     EntityPtrArray m_entities; //!< The entities in the scene.
     bool m_isPrefab;           //!< Whether or not the scene is a prefab.
+    bool m_isLayer;            //!< Whether or not the scene is a 2D layer.
 
     mutable LightRawPtrArray m_lightCache;                         //!< Cached light entities which is added to scene.
     mutable LightRawPtrArray m_directionalLightCache;              //!< Cached directional lights in the scene.

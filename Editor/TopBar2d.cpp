@@ -34,36 +34,58 @@ namespace ToolKit
       {
         EditorScenePtr currScene = g_app->GetCurrentScene();
 
+        auto failCheckFn         = [currScene]() -> bool
+        {
+          if (currScene->IsLayerScene())
+          {
+            return true;
+          }
+
+          g_app->SetStatusMsg("Failed. A layer is needed.");
+          return false;
+        };
+
         if (ImGui::MenuItem("Surface"))
         {
-          SurfacePtr surface = MakeNewPtr<Surface>();
-          surface->Update(Vec2(100.0f, 30.0f), Vec2(0.0f));
-          surface->GetMeshComponent()->Init(false);
-          currScene->AddEntity(surface);
+          if (failCheckFn())
+          {
+            SurfacePtr surface = MakeNewPtr<Surface>();
+            surface->Update(Vec2(100.0f, 30.0f), Vec2(0.0f));
+            surface->GetMeshComponent()->Init(false);
+            currScene->AddEntity(surface);
+          }
         }
 
         if (ImGui::MenuItem("Button"))
         {
-          ButtonPtr btn = MakeNewPtr<Button>();
-          btn->Update(Vec2(100.0f, 30.0f));
-          btn->GetMeshComponent()->Init(false);
-          currScene->AddEntity(btn);
+          if (failCheckFn())
+          {
+            ButtonPtr btn = MakeNewPtr<Button>();
+            btn->Update(Vec2(100.0f, 30.0f));
+            btn->GetMeshComponent()->Init(false);
+            currScene->AddEntity(btn);
+          }
         }
 
         if (ImGui::MenuItem("Canvas"))
         {
-          CanvasPtr canvasPanel = MakeNewPtr<Canvas>();
-          canvasPanel->Update(Vec2(800.0f, 600.0f));
-          canvasPanel->GetMeshComponent()->Init(false);
-          currScene->AddEntity(canvasPanel);
+          if (failCheckFn())
+          {
+            CanvasPtr canvasPanel = MakeNewPtr<Canvas>();
+            canvasPanel->Update(Vec2(512.0f));
+            currScene->AddEntity(canvasPanel);
+          }
         }
 
         if (ImGui::MenuItem("Dpad"))
         {
-          DpadPtr dpad = MakeNewPtr<Dpad>();
-          dpad->Update(Vec2(100.0f, 100.0f), Vec2(-0.5f));
-          dpad->GetMeshComponent()->Init(false);
-          currScene->AddEntity(dpad);
+          if (failCheckFn())
+          {
+            DpadPtr dpad = MakeNewPtr<Dpad>();
+            dpad->Update(Vec2(100.0f, 100.0f), Vec2(-0.5f));
+            dpad->GetMeshComponent()->Init(false);
+            currScene->AddEntity(dpad);
+          }
         }
 
         ImGui::Separator();
