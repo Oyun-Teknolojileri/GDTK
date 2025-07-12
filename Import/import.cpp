@@ -986,7 +986,13 @@ namespace ToolKit
         }
         else
         {
-          meshComp->GetMeshVal()->m_subMeshes.push_back(g_meshes[aMesh]);
+          // Check if a combination is needed.
+          MeshPtr mesh = meshComp->GetMeshVal();
+          if (mesh->GetMeshCount() != node->mNumMeshes)
+          {
+            mesh->m_subMeshes.push_back(g_meshes[aMesh]);
+            mesh->m_dirty = true; // We only mesh to be saved.
+          }
         }
       }
 
@@ -996,6 +1002,18 @@ namespace ToolKit
         matComp = ntt->AddComponent<MaterialComponent>();
       }
       matComp->UpdateMaterialList();
+    }
+
+    // Re save combined mesh.
+    if (node->mNumMeshes > 1)
+    {
+      if (MeshComponentPtr meshCom = ntt->GetMeshComponent())
+      {
+        if (MeshPtr combinedMesh = meshCom->GetMeshVal())
+        {
+          combinedMesh->Save(true);
+        }
+      }
     }
 
     for (uint childIndx = 0; childIndx < node->mNumChildren; childIndx++)
