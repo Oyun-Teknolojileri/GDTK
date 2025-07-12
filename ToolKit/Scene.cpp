@@ -73,16 +73,21 @@ namespace ToolKit
       fullPath = ScenePath(m_name + SCENE);
     }
 
-    String path;
-    DecomposePath(fullPath, &path, nullptr, nullptr);
-
-    std::error_code err;
-    std::filesystem::create_directories(path, err);
-
-    if (err)
+    // Create folder paths.
+    NormalizePathInplace(fullPath);
+    if (fullPath.find(GetPathSeparator()) != String::npos)
     {
-      TK_ERR("Save scene failed: %s", err.message().c_str());
-      return;
+      String path;
+      DecomposePath(fullPath, &path, nullptr, nullptr);
+
+      std::error_code err;
+      std::filesystem::create_directories(path, err);
+
+      if (err)
+      {
+        TK_ERR("Save scene failed: %s", err.message().c_str());
+        return;
+      }
     }
 
     std::ofstream file;
