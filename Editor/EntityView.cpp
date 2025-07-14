@@ -246,7 +246,7 @@ namespace ToolKit
 
     void EntityView::Show()
     {
-      m_entity      = g_app->GetCurrentScene()->GetCurrentSelection();
+      m_entity      = GetApp()->GetCurrentScene()->GetCurrentSelection();
       EntityPtr ntt = m_entity.lock();
 
       if (ntt == nullptr)
@@ -334,7 +334,7 @@ namespace ToolKit
       {
         Quaternion rotate;
         Vec3 translate;
-        Mat4 ts = ntt->m_node->GetTransform(g_app->m_transformSpace);
+        Mat4 ts = ntt->m_node->GetTransform(GetApp()->m_transformSpace);
         DecomposeMatrix(ts, &translate, &rotate, nullptr);
 
         Vec3 scale = ntt->m_node->GetScale();
@@ -360,7 +360,7 @@ namespace ToolKit
           }
         };
 
-        TransformationSpace space = g_app->m_transformSpace;
+        TransformationSpace space = GetApp()->m_transformSpace;
         Vec3 newTranslate         = translate;
         if (ImGui::DragFloat3("Translate", &newTranslate[0], 0.25f))
         {

@@ -353,8 +353,8 @@ namespace ToolKit
           }
 
           // Apply smoothing factor
-          float smoothDeltaX     = delta.x * g_app->m_mouseSensitivity;
-          float smoothDeltaY     = delta.y * g_app->m_mouseSensitivity;
+          float smoothDeltaX     = delta.x * GetApp()->m_mouseSensitivity;
+          float smoothDeltaY     = delta.y * GetApp()->m_mouseSensitivity;
 
           DirectionComponent* dc = cam->GetComponentFast<DirectionComponent>();
           dc->Pitch(-glm::radians(smoothDeltaY));
@@ -365,7 +365,7 @@ namespace ToolKit
           up          = Y_AXIS;
           right       = X_AXIS;
 
-          float speed = g_app->m_camSpeed;
+          float speed = GetApp()->m_camSpeed;
 
           Vec3 move;
           if (ImGui::IsKeyDown(ImGuiKey_A))
@@ -439,7 +439,7 @@ namespace ToolKit
         if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle))
         {
           // Figure out orbiting point.
-          EditorScenePtr currScene = g_app->GetCurrentScene();
+          EditorScenePtr currScene = GetApp()->GetCurrentScene();
           EntityPtr currEntity     = currScene->GetCurrentSelection();
           if (currEntity == nullptr)
           {
@@ -450,7 +450,7 @@ namespace ToolKit
 
               if (pd.entity == nullptr)
               {
-                if (!g_app->m_grid->HitTest(orbitRay, orbitPnt))
+                if (!GetApp()->m_grid->HitTest(orbitRay, orbitPnt))
                 {
                   orbitPnt = PointOnRay(orbitRay, 5.0f);
                 }
@@ -517,8 +517,8 @@ namespace ToolKit
             Mat4 camTs    = cam->m_node->GetTransform(TransformationSpace::TS_WORLD);
             Mat4 ts       = glm::translate(Mat4(), orbitPnt);
             Mat4 its      = glm::translate(Mat4(), -orbitPnt);
-            Quaternion qx = glm::angleAxis(-glm::radians(y * g_app->m_mouseSensitivity), r);
-            Quaternion qy = glm::angleAxis(-glm::radians(x * g_app->m_mouseSensitivity), Y_AXIS);
+            Quaternion qx = glm::angleAxis(-glm::radians(y * GetApp()->m_mouseSensitivity), r);
+            Quaternion qy = glm::angleAxis(-glm::radians(x * GetApp()->m_mouseSensitivity), Y_AXIS);
 
             camTs         = ts * glm::toMat4(qy * qx) * its * camTs;
             cam->m_node->SetTransform(camTs, TransformationSpace::TS_WORLD);
@@ -559,7 +559,7 @@ namespace ToolKit
     void EditorViewport::HandleDrop()
     {
       // Current scene
-      EditorScenePtr currScene        = g_app->GetCurrentScene();
+      EditorScenePtr currScene        = GetApp()->GetCurrentScene();
 
       // Asset drag and drop loading variables
       static LineBatchPtr boundingBox = nullptr;
@@ -622,7 +622,7 @@ namespace ToolKit
             openButton.m_callback = [entry]() -> void
             {
               String fullPath = entry.GetFullPath();
-              g_app->OpenSceneAsync(fullPath);
+              GetApp()->OpenSceneAsync(fullPath);
             };
 
             MultiChoiceButtonInfo linkButton;
@@ -630,7 +630,7 @@ namespace ToolKit
             linkButton.m_callback = [entry]() -> void
             {
               String fullPath = entry.GetFullPath();
-              g_app->LinkScene(fullPath);
+              GetApp()->LinkScene(fullPath);
             };
 
             MultiChoiceButtonInfo mergeButton;
@@ -638,7 +638,7 @@ namespace ToolKit
             mergeButton.m_callback = [entry]() -> void
             {
               String fullPath = entry.GetFullPath();
-              g_app->MergeScene(fullPath);
+              GetApp()->MergeScene(fullPath);
             };
 
             MultiChoiceButtonArray buttons = {openButton, linkButton, mergeButton};
@@ -657,7 +657,7 @@ namespace ToolKit
               // If there is a mesh component, update material component.
               if (Prefab::GetPrefabRoot(pd.entity) != nullptr)
               {
-                g_app->SetStatusMsg(g_statusFailed);
+                GetApp()->SetStatusMsg(g_statusFailed);
                 TK_ERR("Failed. Target is Prefab.");
               }
               else
@@ -684,7 +684,7 @@ namespace ToolKit
                 MaterialComponentPtr mmPtr = pd.entity->GetMaterialComponent();
                 if (mmPtr == nullptr)
                 {
-                  g_app->SetStatusMsg(g_statusMaterialComponentAdded);
+                  GetApp()->SetStatusMsg(g_statusMaterialComponentAdded);
                   mmPtr = pd.entity->AddComponent<MaterialComponent>();
                   mmPtr->UpdateMaterialList();
                 }
@@ -716,14 +716,14 @@ namespace ToolKit
 
     void EditorViewport::DrawOverlays()
     {
-      if (g_app->m_showOverlayUI)
+      if (GetApp()->m_showOverlayUI)
       {
-        if (IsActive() || g_app->m_showOverlayUIAlways)
+        if (IsActive() || GetApp()->m_showOverlayUIAlways)
         {
           bool onPlugin = false;
-          if (m_name == g_3dViewport && g_app->m_gameMod != GameMod::Stop)
+          if (m_name == g_3dViewport && GetApp()->m_gameMod != GameMod::Stop)
           {
-            if (!g_app->m_simulatorSettings.Windowed)
+            if (!GetApp()->m_simulatorSettings.Windowed)
             {
               // Game is being drawn on 3d viewport. Hide overlays.
               onPlugin = true;
@@ -771,11 +771,11 @@ namespace ToolKit
 
     void EditorViewport::UpdateSnaps()
     {
-      if (m_mouseOverContentArea && g_app->m_snapsEnabled)
+      if (m_mouseOverContentArea && GetApp()->m_snapsEnabled)
       {
-        g_app->m_moveDelta   = m_snapDeltas.x;
-        g_app->m_rotateDelta = m_snapDeltas.y;
-        g_app->m_scaleDelta  = m_snapDeltas.z;
+        GetApp()->m_moveDelta   = m_snapDeltas.x;
+        GetApp()->m_rotateDelta = m_snapDeltas.y;
+        GetApp()->m_scaleDelta  = m_snapDeltas.z;
       }
     }
 
@@ -859,7 +859,7 @@ namespace ToolKit
       {
         // Locate the mesh to grid
         lastDragMeshPos = PointOnRay(ray, 5.0f);
-        g_app->m_grid->HitTest(ray, lastDragMeshPos);
+        GetApp()->m_grid->HitTest(ray, lastDragMeshPos);
       }
 
       // Change drop mode with space key

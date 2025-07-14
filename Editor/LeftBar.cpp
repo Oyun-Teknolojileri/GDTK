@@ -99,22 +99,22 @@ namespace ToolKit
         switch (currentItem)
         {
         case 0:
-          g_app->m_camSpeed = 0.5f;
+          GetApp()->m_camSpeed = 0.5f;
           break;
         case 1:
-          g_app->m_camSpeed = 1.0f;
+          GetApp()->m_camSpeed = 1.0f;
           break;
         case 2:
-          g_app->m_camSpeed = 2.0f;
+          GetApp()->m_camSpeed = 2.0f;
           break;
         case 3:
-          g_app->m_camSpeed = 4.0f;
+          GetApp()->m_camSpeed = 4.0f;
           break;
         case 4:
-          g_app->m_camSpeed = 16.0f;
+          GetApp()->m_camSpeed = 16.0f;
           break;
         default:
-          g_app->m_camSpeed = 8;
+          GetApp()->m_camSpeed = 8;
           break;
         }
 

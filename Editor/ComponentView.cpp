@@ -310,7 +310,7 @@ namespace ToolKit
                                   false) &&
               !removeComp)
           {
-            g_app->SetStatusMsg(headerName + " " + g_statusRemoved);
+            GetApp()->SetStatusMsg(headerName + " " + g_statusRemoved);
             removeComp = true;
           }
         }
@@ -371,7 +371,7 @@ namespace ToolKit
 
           if (mesh != nullptr && mesh->GetMeshVal()->IsSkinned())
           {
-            g_app->SetStatusMsg(g_statusFailed);
+            GetApp()->SetStatusMsg(g_statusFailed);
             TK_WRN("Skeleton component is in use, it can't be removed.");
             return false;
           }
@@ -395,7 +395,7 @@ namespace ToolKit
 
     void ComponentView::Show()
     {
-      m_entity      = g_app->GetCurrentScene()->GetCurrentSelection();
+      m_entity      = GetApp()->GetCurrentScene()->GetCurrentSelection();
       EntityPtr ntt = m_entity.lock();
 
       if (ntt == nullptr)

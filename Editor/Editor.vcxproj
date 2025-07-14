@@ -105,7 +105,6 @@
     <ClCompile Include="CustomDataView.cpp" />
     <ClCompile Include="DirectoryEntry.cpp" />
     <ClCompile Include="DynamicMenu.cpp" />
-    <ClCompile Include="EditorApi.cpp" />
     <ClCompile Include="EditorBillboard.cpp" />
     <ClCompile Include="EditorCamera.cpp" />
     <ClCompile Include="EditorCanvas.cpp" />
@@ -174,7 +173,6 @@
     <ClInclude Include="CustomDataView.h" />
     <ClInclude Include="DirectoryEntry.h" />
     <ClInclude Include="DynamicMenu.h" />
-    <ClInclude Include="EditorApi.h" />
     <ClInclude Include="EditorBillboard.h" />
     <ClInclude Include="EditorCamera.h" />
     <ClInclude Include="EditorCanvas.h" />

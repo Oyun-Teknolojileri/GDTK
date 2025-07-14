@@ -51,7 +51,7 @@ namespace ToolKit
     void Window::AddToUI()
     {
       m_visible = true;
-      if (g_app != nullptr)
+      if (GetApp() != nullptr)
       {
         UI::m_volatileWindows.push_back(Self<Window>());
       }
@@ -60,7 +60,7 @@ namespace ToolKit
     void Window::RemoveFromUI()
     {
       m_visible = false;
-      if (g_app != nullptr)
+      if (GetApp() != nullptr)
       {
         Object* self = this;
         erase_if(UI::m_volatileWindows, [self](WindowPtr wnd) -> bool { return wnd->IsSame(self); });
@@ -170,11 +170,11 @@ namespace ToolKit
       if (IsA<EditorViewport>())
       {
         // get the self ref.
-        for (WindowPtr wnd : g_app->m_windows)
+        for (WindowPtr wnd : GetApp()->m_windows)
         {
           if (wnd->GetIdVal() == GetIdVal())
           {
-            g_app->m_lastActiveViewport = Cast<EditorViewport>(wnd);
+            GetApp()->m_lastActiveViewport = Cast<EditorViewport>(wnd);
           }
         }
       }
@@ -261,14 +261,14 @@ namespace ToolKit
 
       if (ImGui::IsKeyPressed(ImGuiKey_F, false) && !Exist(mask, ImGuiKey_F))
       {
-        if (EntityPtr ntt = g_app->GetCurrentScene()->GetCurrentSelection())
+        if (EntityPtr ntt = GetApp()->GetCurrentScene()->GetCurrentSelection())
         {
-          if (OutlinerWindowPtr outliner = g_app->GetOutliner())
+          if (OutlinerWindowPtr outliner = GetApp()->GetOutliner())
           {
             outliner->Focus(ntt);
           }
           // Focus the object in the scene
-          g_app->FocusEntity(ntt);
+          GetApp()->FocusEntity(ntt);
         }
       }
 
@@ -290,24 +290,24 @@ namespace ToolKit
 
       if (ImGui::IsKeyPressed(ImGuiKey_Escape, false))
       {
-        g_app->GetCurrentScene()->ClearSelection();
+        GetApp()->GetCurrentScene()->ClearSelection();
       }
 
       if (ImGui::IsKeyDown(ImGuiKey_ModCtrl) && ImGui::IsKeyPressed(ImGuiKey_S, false))
       {
-        g_app->GetCurrentScene()->ClearSelection();
-        g_app->OnSaveScene();
+        GetApp()->GetCurrentScene()->ClearSelection();
+        GetApp()->OnSaveScene();
       }
 
       if (ImGui::IsKeyPressed(ImGuiKey_F5, false))
       {
-        if (g_app->m_gameMod == GameMod::Playing || g_app->m_gameMod == GameMod::Paused)
+        if (GetApp()->m_gameMod == GameMod::Playing || GetApp()->m_gameMod == GameMod::Paused)
         {
-          g_app->SetGameMod(GameMod::Stop);
+          GetApp()->SetGameMod(GameMod::Stop);
         }
         else
         {
-          g_app->SetGameMod(GameMod::Playing);
+          GetApp()->SetGameMod(GameMod::Playing);
         }
       }
     }

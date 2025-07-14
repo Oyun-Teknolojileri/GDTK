@@ -82,7 +82,7 @@ namespace ToolKit
     void PrefabView::Show()
     {
       EntityPtr ntt = m_entity.lock();
-      EntityPtr cur = g_app->GetCurrentScene()->GetCurrentSelection();
+      EntityPtr cur = GetApp()->GetCurrentScene()->GetCurrentSelection();
       if (cur != ntt)
       {
         m_entity            = cur;

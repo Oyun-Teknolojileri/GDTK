@@ -732,7 +732,7 @@ namespace ToolKit
         m_handles[i]->m_mesh = nullptr;
       }
 
-      EditorViewport2d* viewport2D = g_app->GetActiveViewport()->As<EditorViewport2d>();
+      EditorViewport2d* viewport2D = GetApp()->GetActiveViewport()->As<EditorViewport2d>();
       for (int i = 0; i < 3; i++)
       {
         // If gizmo is in 2D view, just generate Z axis

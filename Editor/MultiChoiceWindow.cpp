@@ -20,7 +20,7 @@ namespace ToolKit::Editor
   {
     if (m_variant.Choices.size() < 2ull)
     {
-      g_app->SetStatusMsg(g_statusFailed);
+      GetApp()->SetStatusMsg(g_statusFailed);
 
       TK_ERR("You must define at least two parameter.");
       return false;
@@ -30,7 +30,7 @@ namespace ToolKit::Editor
     {
       if (var.m_name.size() < 1)
       {
-        g_app->SetStatusMsg(g_statusFailed);
+        GetApp()->SetStatusMsg(g_statusFailed);
         TK_ERR("Name can't be empty.");
         return false;
       }

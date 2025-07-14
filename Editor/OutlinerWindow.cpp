@@ -85,7 +85,7 @@ namespace ToolKit
       }
 
       ImGuiTreeNodeFlags nodeFlags = g_treeNodeFlags;
-      EditorScenePtr currScene     = g_app->GetCurrentScene();
+      EditorScenePtr currScene     = GetApp()->GetCurrentScene();
       if (currScene->IsSelected(ntt->GetIdVal()))
       {
         nodeFlags |= ImGuiTreeNodeFlags_Selected;
@@ -207,7 +207,7 @@ namespace ToolKit
 
     void OutlinerWindow::SetItemState(EntityPtr ntt)
     {
-      EditorScenePtr currScene = g_app->GetCurrentScene();
+      EditorScenePtr currScene = GetApp()->GetCurrentScene();
       bool itemHovered         = ImGui::IsItemHovered();
 
       if (itemHovered && ImGui::IsMouseReleased(ImGuiMouseButton_Left))
@@ -233,7 +233,7 @@ namespace ToolKit
         else
         {
           currScene->AddToSelection(ntt->GetIdVal(), true);
-          g_app->GetPropInspector()->m_activeView = ViewType::Entity;
+          GetApp()->GetPropInspector()->m_activeView = ViewType::Entity;
         }
         m_lastClickedEntity = ntt;
       }
@@ -376,7 +376,7 @@ namespace ToolKit
       }
 
       int selectedIndex              = m_insertSelectedIndex;
-      EditorScenePtr scene           = g_app->GetCurrentScene();
+      EditorScenePtr scene           = GetApp()->GetCurrentScene();
       const EntityPtrArray& entities = scene->GetEntities();
 
       SortDraggedEntitiesByNodeIndex();
@@ -497,7 +497,7 @@ namespace ToolKit
 
     void OutlinerWindow::Show()
     {
-      EditorScenePtr currScene = g_app->GetCurrentScene();
+      EditorScenePtr currScene = GetApp()->GetCurrentScene();
 
       if (ImGui::Begin(m_name.c_str(), &m_visible))
       {
@@ -662,7 +662,7 @@ namespace ToolKit
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("HierarcyChange"))
         {
           EntityPtrArray selected;
-          EditorScenePtr currScene = g_app->GetCurrentScene();
+          EditorScenePtr currScene = GetApp()->GetCurrentScene();
           currScene->GetSelectedEntities(selected);
 
           for (int i = 0; i < selected.size(); i++)
@@ -820,11 +820,11 @@ namespace ToolKit
             String path, name;
             DecomposePath(val, &path, &name, nullptr);
 
-            if (ScenePtr scene = g_app->GetCurrentScene())
+            if (ScenePtr scene = GetApp()->GetCurrentScene())
             {
               scene->SavePrefab(ntt, name, path);
 
-              for (FolderWindow* browser : g_app->GetAssetBrowsers())
+              for (FolderWindow* browser : GetApp()->GetAssetBrowsers())
               {
                 String folderPath, fullPath = PrefabPath("");
                 DecomposePath(fullPath, &folderPath, nullptr, nullptr);

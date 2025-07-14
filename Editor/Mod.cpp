@@ -109,9 +109,9 @@ namespace ToolKit
           m_modStack.push_back(nextMod);
 
           // #ConsoleDebug_Mod
-          if (g_app->m_showStateTransitionsDebug)
+          if (GetApp()->m_showStateTransitionsDebug)
           {
-            if (ConsoleWindowPtr console = g_app->GetConsole())
+            if (ConsoleWindowPtr console = GetApp()->GetConsole())
             {
               console->AddLog(modNameDbg, "ModDbg");
             }
@@ -122,7 +122,7 @@ namespace ToolKit
         // used (in StateTransitionTo state), delete the last function
         // pointers from the array, since the function
         // parameters are not valid anymore.
-        if (EditorViewportPtr vp = g_app->GetActiveViewport())
+        if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
         {
           vp->m_drawCommands.clear();
         }
@@ -186,14 +186,14 @@ namespace ToolKit
       m_stateMachine->Signal(signal);
 
       // #ConsoleDebug_Mod
-      if (g_app->m_showStateTransitionsDebug)
+      if (GetApp()->m_showStateTransitionsDebug)
       {
         State* nextState = m_stateMachine->m_currentState;
         if (prevStateDbg != nextState)
         {
           if (prevStateDbg && nextState)
           {
-            if (ConsoleWindowPtr consol = g_app->GetConsole())
+            if (ConsoleWindowPtr consol = GetApp()->GetConsole())
             {
               String log = "\t" + prevStateDbg->GetType() + " -> " + nextState->GetType();
               consol->AddLog(log, "ModDbg");
@@ -266,20 +266,20 @@ namespace ToolKit
       // Construct the ignore list.
       m_ignoreList.clear();
       EntityPtrArray ignores;
-      if (EditorViewportPtr vp = g_app->GetActiveViewport())
+      if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
       {
         if (vp->IsA<EditorViewport2d>())
         {
-          ignores = g_app->GetCurrentScene()->Filter([](EntityPtr ntt) -> bool { return !ntt->IsA<Surface>(); });
+          ignores = GetApp()->GetCurrentScene()->Filter([](EntityPtr ntt) -> bool { return !ntt->IsA<Surface>(); });
         }
         else if (vp->IsA<EditorViewport>())
         {
-          ignores = g_app->GetCurrentScene()->Filter([](EntityPtr ntt) -> bool { return ntt->IsA<Surface>(); });
+          ignores = GetApp()->GetCurrentScene()->Filter([](EntityPtr ntt) -> bool { return ntt->IsA<Surface>(); });
         }
       }
 
       m_ignoreList = ToEntityIdArray(ignores);
-      m_ignoreList.push_back(g_app->m_grid->GetIdVal());
+      m_ignoreList.push_back(GetApp()->m_grid->GetIdVal());
     }
 
     SignalId StateBeginPick::Update(float deltaTime) { return NullSignal; }
@@ -288,7 +288,7 @@ namespace ToolKit
     {
       if (signal == BaseMod::m_leftMouseBtnDownSgnl)
       {
-        if (EditorViewportPtr vp = g_app->GetActiveViewport())
+        if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
         {
           m_mouseData[0] = vp->GetLastMousePosScreenSpace();
         }
@@ -296,23 +296,23 @@ namespace ToolKit
 
       if (signal == BaseMod::m_leftMouseBtnUpSgnl)
       {
-        if (EditorViewportPtr vp = g_app->GetActiveViewport())
+        if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
         {
           m_mouseData[0]           = vp->GetLastMousePosScreenSpace();
 
           Ray ray                  = vp->RayFromMousePosition();
-          EditorScenePtr currScene = g_app->GetCurrentScene();
+          EditorScenePtr currScene = GetApp()->GetCurrentScene();
           EditorScene::PickData pd = currScene->PickObject(ray, m_ignoreList);
           m_pickData.push_back(pd);
 
-          if (g_app->m_showPickingDebug)
+          if (GetApp()->m_showPickingDebug)
           {
-            g_app->m_cursor->m_worldLocation = pd.pickPos;
+            GetApp()->m_cursor->m_worldLocation = pd.pickPos;
 
-            if (g_app->m_dbgArrow != nullptr)
+            if (GetApp()->m_dbgArrow != nullptr)
             {
-              g_app->m_dbgArrow->m_node->SetTranslation(pd.pickPos + (ray.position - pd.pickPos) * 0.1f);
-              g_app->m_dbgArrow->m_node->SetOrientation(RotationTo(X_AXIS, ray.direction));
+              GetApp()->m_dbgArrow->m_node->SetTranslation(pd.pickPos + (ray.position - pd.pickPos) * 0.1f);
+              GetApp()->m_dbgArrow->m_node->SetOrientation(RotationTo(X_AXIS, ray.direction));
             }
           }
 
@@ -340,7 +340,7 @@ namespace ToolKit
       if (signal == BaseMod::m_leftMouseBtnUpSgnl)
       {
         // Frustum - AABB test.
-        if (EditorViewportPtr vp = g_app->GetActiveViewport())
+        if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
         {
           CameraPtr cam = vp->GetCamera();
 
@@ -407,12 +407,12 @@ namespace ToolKit
 
           // Perform picking.
           std::vector<EditorScene::PickData> entities;
-          EditorScenePtr currScene = g_app->GetCurrentScene();
+          EditorScenePtr currScene = GetApp()->GetCurrentScene();
           currScene->PickObject(frustum, entities, m_ignoreList);
           m_pickData.insert(m_pickData.end(), entities.begin(), entities.end());
 
           // Debug draw the picking frustum.
-          if (g_app->m_showPickingDebug)
+          if (GetApp()->m_showPickingDebug)
           {
             Vec3Array corners = {rect3d[0],
                                  rect3d[1],
@@ -440,14 +440,14 @@ namespace ToolKit
                                  rect3d[0] + rays[0].direction * depth};
 
             // Generate debug frustum.
-            if (g_app->m_dbgFrustum == nullptr)
+            if (GetApp()->m_dbgFrustum == nullptr)
             {
-              g_app->m_dbgFrustum = MakeNewPtr<LineBatch>();
-              g_app->m_dbgFrustum->Generate(corners, X_AXIS, DrawType::Line);
+              GetApp()->m_dbgFrustum = MakeNewPtr<LineBatch>();
+              GetApp()->m_dbgFrustum->Generate(corners, X_AXIS, DrawType::Line);
             }
             else
             {
-              g_app->m_dbgFrustum->Generate(corners, X_AXIS, DrawType::Line);
+              GetApp()->m_dbgFrustum->Generate(corners, X_AXIS, DrawType::Line);
             }
           }
         }
@@ -457,7 +457,7 @@ namespace ToolKit
 
       if (signal == BaseMod::m_leftMouseBtnDragSgnl)
       {
-        if (EditorViewportPtr vp = g_app->GetActiveViewport())
+        if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
         {
           m_mouseData[1] = vp->GetLastMousePosScreenSpace();
 
@@ -507,7 +507,7 @@ namespace ToolKit
 
     SignalId StateDeletePick::Update(float deltaTime)
     {
-      WindowPtr activeWnd = g_app->GetActiveWindow();
+      WindowPtr activeWnd = GetApp()->GetActiveWindow();
 
       // Prevent delete key during the text edit from deleting entities.
       if (UI::IsKeyboardCaptured())
@@ -517,7 +517,7 @@ namespace ToolKit
 
       // Gather the selection hierarchy.
       EntityPtrArray deleteList;
-      g_app->GetCurrentScene()->GetSelectedEntities(deleteList);
+      GetApp()->GetCurrentScene()->GetSelectedEntities(deleteList);
 
       EntityPtrArray roots;
       GetRootEntities(deleteList, roots);
@@ -562,7 +562,7 @@ namespace ToolKit
     void StateDuplicate::TransitionIn(State* prevState)
     {
       EntityPtrArray selecteds;
-      EditorScenePtr currScene = g_app->GetCurrentScene();
+      EditorScenePtr currScene = GetApp()->GetCurrentScene();
       currScene->GetSelectedEntities(selecteds);
       if (!selecteds.empty())
       {
@@ -605,7 +605,7 @@ namespace ToolKit
             currScene->AddToSelection(copies.front()->GetIdVal(), true);
             cpyCount += (int) copies.size();
 
-            g_app->SetStatusMsg(std::to_string(cpyCount) + " " + g_statusEntitiesCopied);
+            GetApp()->SetStatusMsg(std::to_string(cpyCount) + " " + g_statusEntitiesCopied);
           }
         }
         ActionManager::GetInstance()->GroupLastActions(cpyCount);
@@ -649,7 +649,7 @@ namespace ToolKit
         StateEndPick* endPick = static_cast<StateEndPick*>(m_stateMachine->m_currentState);
         IDArray entities;
         endPick->PickDataToEntityId(entities);
-        g_app->GetCurrentScene()->AddToSelection(entities, ImGui::GetIO().KeyShift);
+        GetApp()->GetCurrentScene()->AddToSelection(entities, ImGui::GetIO().KeyShift);
 
         ModManager::GetInstance()->DispatchSignal(BaseMod::m_backToStart);
       }
@@ -682,9 +682,9 @@ namespace ToolKit
 
       if (m_stateMachine->m_currentState->GetType() == StateType::StateEndPick)
       {
-        StateEndPick* endPick            = static_cast<StateEndPick*>(m_stateMachine->m_currentState);
-        EditorScene::PickData& pd        = endPick->m_pickData.back();
-        g_app->m_cursor->m_worldLocation = pd.pickPos;
+        StateEndPick* endPick               = static_cast<StateEndPick*>(m_stateMachine->m_currentState);
+        EditorScene::PickData& pd           = endPick->m_pickData.back();
+        GetApp()->m_cursor->m_worldLocation = pd.pickPos;
 
         m_stateMachine->Signal(BaseMod::m_backToStart);
       }

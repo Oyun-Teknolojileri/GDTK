@@ -145,7 +145,7 @@ namespace ToolKit
 
       // Execute commands that activates on selection.
       // A better approach would be creating an editor event OnSelected.
-      if (g_app->m_selectEffectingLights && !ntt->IsA<Light>())
+      if (GetApp()->m_selectEffectingLights && !ntt->IsA<Light>())
       {
         LightRawPtrArray lights = GetLights();
         for (Light* light : lights)
@@ -336,7 +336,7 @@ namespace ToolKit
       {
         if (curr->IsSame(this))
         {
-          if (OutlinerWindowPtr wnd = g_app->GetOutliner())
+          if (OutlinerWindowPtr wnd = GetApp()->GetOutliner())
           {
             wnd->ClearOutliner();
           }
@@ -579,7 +579,7 @@ namespace ToolKit
 
     void EditorScene::UpdateBillboardsForPicking()
     {
-      if (EditorViewportPtr vp = g_app->GetActiveViewport())
+      if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
       {
         if (CameraPtr cam = vp->GetCamera())
         {

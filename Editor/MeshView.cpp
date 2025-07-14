@@ -74,7 +74,7 @@ namespace ToolKit
         {
           ImGui::SameLine();
           m_viewport->SetViewportSize((uint) viewportSize.x, (uint) viewportSize.y);
-          m_viewport->Update(g_app->GetDeltaTime());
+          m_viewport->Update(GetApp()->GetDeltaTime());
           m_viewport->Show();
         }
       }
@@ -95,7 +95,7 @@ namespace ToolKit
                    submesh->m_material->GetFile(),
                    [this](const DirectoryEntry& entry)
                    {
-                     g_app->SetStatusMsg(g_statusFailed);
+                     GetApp()->SetStatusMsg(g_statusFailed);
                      TK_ERR("You can't change mesh's default material.");
                    });
           if (i < submeshes.size() - 1)

@@ -34,17 +34,24 @@
 #include <array>
 #include <chrono>
 
-SDL_Window* g_window    = nullptr;
-SDL_GLContext g_context = nullptr;
+SDL_Window* g_window        = nullptr;
+SDL_GLContext g_context     = nullptr;
+
+// Main loop signal handle.
+bool g_running              = true;
+
+// ToolKit Application main handle.
+ToolKit::Editor::App* g_app = nullptr;
 
 namespace ToolKit
 {
   namespace Editor
   {
 
-    bool g_running                            = true;
-    App* g_app                                = nullptr;
+    // ToolKit main handle.
     Main* g_proxy                             = nullptr;
+
+    // External event pool that collect and convert system events to toolkit events.
     SDLEventPool<TK_PLATFORM>* g_sdlEventPool = nullptr;
 
     // Windows util function for creating ToolKit Cfg files in AppData.

@@ -265,3 +265,6 @@ namespace ToolKit
 
   } // namespace Editor
 } // namespace ToolKit
+
+/** Provides editor access to plugins. */
+extern "C" TK_EDITOR_API ToolKit::Editor::App* TK_STDCAL GetApp();

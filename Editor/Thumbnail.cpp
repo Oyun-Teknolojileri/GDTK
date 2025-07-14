@@ -164,7 +164,7 @@ namespace ToolKit
       }
       else // extension is not recognized, this is probably shader file.
       {
-        return g_app->m_thumbnailManager.GetDefaultThumbnail();
+        return GetApp()->m_thumbnailManager.GetDefaultThumbnail();
       }
 
       m_thumbnailScene->Update(0.0f);

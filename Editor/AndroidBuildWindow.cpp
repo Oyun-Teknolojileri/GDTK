@@ -82,7 +82,7 @@ namespace ToolKit::Editor
 
     if (ImGui::Button("Build"))
     {
-      PublishManager* publisher     = g_app->m_publishManager;
+      PublishManager* publisher     = GetApp()->m_publishManager;
       publisher->m_minSdk           = m_minSdk;
       publisher->m_maxSdk           = m_maxSdk;
       publisher->m_appName          = m_appName;
@@ -91,7 +91,7 @@ namespace ToolKit::Editor
       publisher->m_deployAfterBuild = m_deployAfterBuild;
       publisher->m_selectedABI      = m_selectedABI; // Pass the selected ABI
 
-      g_app->m_publishManager->Publish(PublishPlatform::Android, m_publishType);
+      GetApp()->m_publishManager->Publish(PublishPlatform::Android, m_publishType);
       RemoveFromUI();
     }
 
@@ -102,7 +102,7 @@ namespace ToolKit::Editor
   {
     if (m_appName.empty())
     {
-      m_appName = g_app->m_workspace.GetActiveProject().name;
+      m_appName = GetApp()->m_workspace.GetActiveProject().name;
     }
 
     if (m_defaultIcon == nullptr)

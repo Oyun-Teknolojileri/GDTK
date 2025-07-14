@@ -40,8 +40,8 @@ namespace ToolKit
         ImGui::Text(info.c_str());
 
         // If the status message has changed.
-        static String prevMsg = g_app->GetStatusMsg();
-        String statusMsg      = g_app->GetStatusMsg();
+        static String prevMsg = GetApp()->GetStatusMsg();
+        String statusMsg      = GetApp()->GetStatusMsg();
 
         bool noTerminate      = EndsWith(statusMsg, g_statusNoTerminate);
         if (statusMsg != g_statusOk && !noTerminate)
@@ -61,7 +61,7 @@ namespace ToolKit
           if (elapsedTime > 3)
           {
             elapsedTime = 0.0f;
-            g_app->SetStatusMsg(g_statusOk);
+            GetApp()->SetStatusMsg(g_statusOk);
           }
         }
 
@@ -97,7 +97,7 @@ namespace ToolKit
         if (wndWidth * 0.3f > msgSize.x)
         {
           // Draw Projcet Info.
-          Project prj = g_app->m_workspace.GetActiveProject();
+          Project prj = GetApp()->m_workspace.GetActiveProject();
           info        = "Project: " + prj.name + "Scene: " + prj.scene;
           pos         = ImGui::CalcTextSize(info.c_str());
 
@@ -109,7 +109,7 @@ namespace ToolKit
           ImGui::BulletText(info.c_str());
 
           // Draw Fps.
-          String fps = "Fps: " + std::to_string(g_app->m_fps);
+          String fps = "Fps: " + std::to_string(GetApp()->m_fps);
           ImGui::SameLine(m_owner->m_wndContentAreaSize.x - 70.0f);
           ImGui::Text(fps.c_str());
         }

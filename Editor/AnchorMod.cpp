@@ -58,9 +58,9 @@ namespace ToolKit
 
     void StateAnchorBase::MakeSureAnchorIsValid()
     {
-      g_app->m_anchor          = nullptr;
+      GetApp()->m_anchor       = nullptr;
 
-      EditorScenePtr currScene = g_app->GetCurrentScene();
+      EditorScenePtr currScene = GetApp()->GetCurrentScene();
       if (currScene->GetSelectedEntityCount() == 0)
       {
         m_anchor->m_entity = nullptr;
@@ -77,7 +77,7 @@ namespace ToolKit
             if (parentNtt->IsA<Canvas>())
             {
               m_anchor->m_entity = surface;
-              g_app->m_anchor    = m_anchor;
+              GetApp()->m_anchor = m_anchor;
             }
           }
         }
@@ -109,9 +109,9 @@ namespace ToolKit
     {
       StateAnchorBase::Update(deltaTime);
 
-      if (g_app->GetCurrentScene()->GetCurrentSelection() != nullptr)
+      if (GetApp()->GetCurrentScene()->GetCurrentSelection() != nullptr)
       {
-        if (EditorViewportPtr vp = g_app->GetActiveViewport())
+        if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
         {
           const DirectionLabel axis = m_anchor->HitTest(vp->RayFromMousePosition());
           if (axis != DirectionLabel::None)
@@ -130,14 +130,14 @@ namespace ToolKit
     {
       if (signal == BaseMod::m_leftMouseBtnDownSgnl)
       {
-        if (EditorViewportPtr vp = g_app->GetActiveViewport())
+        if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
         {
           m_mouseData[0]      = vp->GetLastMousePosScreenSpace();
           DirectionLabel axis = m_anchor->HitTest(vp->RayFromMousePosition());
           m_anchor->Grab(axis);
         }
 
-        if (!m_anchor->IsGrabbed(DirectionLabel::None) && g_app->GetCurrentScene()->GetCurrentSelection() != nullptr)
+        if (!m_anchor->IsGrabbed(DirectionLabel::None) && GetApp()->GetCurrentScene()->GetCurrentSelection() != nullptr)
         {
           CalculateIntersectionPlane();
           CalculateGrabPoint();
@@ -152,7 +152,7 @@ namespace ToolKit
 
       if (signal == BaseMod::m_leftMouseBtnDragSgnl)
       {
-        if (g_app->GetCurrentScene()->GetCurrentSelection() == nullptr)
+        if (GetApp()->GetCurrentScene()->GetCurrentSelection() == nullptr)
         {
           return StateType::Null;
         }
@@ -170,7 +170,7 @@ namespace ToolKit
 
     void StateAnchorBegin::CalculateIntersectionPlane()
     {
-      if (EditorViewportPtr vp = g_app->GetActiveViewport())
+      if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
       {
         Vec3 camOrg         = vp->GetCamera()->m_node->GetTranslation(TransformationSpace::TS_WORLD);
         Vec3 anchorOrg      = m_anchor->m_worldLocation;
@@ -183,7 +183,7 @@ namespace ToolKit
     {
       m_anchor->m_grabPoint = ZERO;
 
-      if (EditorViewportPtr vp = g_app->GetActiveViewport())
+      if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
       {
         float t;
         Ray ray = vp->RayFromMousePosition();
@@ -224,7 +224,7 @@ namespace ToolKit
       StateAnchorBase::TransitionIn(prevState);
 
       EntityPtrArray entities, selecteds;
-      EditorScenePtr currScene = g_app->GetCurrentScene();
+      EditorScenePtr currScene = GetApp()->GetCurrentScene();
       currScene->GetSelectedEntities(selecteds);
       GetRootEntities(selecteds, entities);
       if (!entities.empty())
@@ -268,7 +268,7 @@ namespace ToolKit
       Transform(m_anchorDeltaTransform);
       StateAnchorBase::Update(deltaTime);
       ImGui::SetMouseCursor(ImGuiMouseCursor_None);
-      if (EditorViewportPtr vp = g_app->GetActiveViewport())
+      if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
       {
         Vec2 contentMin, contentMax;
         vp->GetContentAreaScreenCoordinates(&contentMin, &contentMax);
@@ -314,7 +314,7 @@ namespace ToolKit
 
       SDL_WarpMouseGlobal(m_mouseInitialLoc.x, m_mouseInitialLoc.y);
 
-      if (EditorViewportPtr vp = g_app->GetActiveViewport())
+      if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
       {
         float t;
         Ray ray = vp->RayFromScreenSpacePoint(m_mouseData[1]);
@@ -339,7 +339,7 @@ namespace ToolKit
     void StateAnchorTo::Transform(const Vec3& delta)
     {
       EntityPtrArray roots;
-      EditorScenePtr currScene = g_app->GetCurrentScene();
+      EditorScenePtr currScene = GetApp()->GetCurrentScene();
       currScene->GetSelectedEntities(roots);
 
       EntityPtr ntt = currScene->GetCurrentSelection();
@@ -374,11 +374,11 @@ namespace ToolKit
 
       Vec3 deltaX, deltaY;
 
-      if (g_app->m_snapsEnabled)
+      if (GetApp()->m_snapsEnabled)
       {
         m_deltaAccum           += m_anchorDeltaTransform;
         m_anchorDeltaTransform  = ZERO;
-        float spacing           = g_app->m_moveDelta;
+        float spacing           = GetApp()->m_moveDelta;
         for (uint i = 0; i < 2; i++)
         {
           if (abs(m_deltaAccum[i]) > spacing)
@@ -537,7 +537,7 @@ namespace ToolKit
 
     AnchorMod::AnchorMod(ModId id) : BaseMod(id) {}
 
-    AnchorMod::~AnchorMod() { g_app->m_anchor = nullptr; }
+    AnchorMod::~AnchorMod() { GetApp()->m_anchor = nullptr; }
 
     void AnchorMod::Init()
     {
@@ -552,7 +552,7 @@ namespace ToolKit
       m_stateMachine->PushState(new StateAnchorTo());
       m_stateMachine->PushState(new StateAnchorEnd());
 
-      m_prevTransformSpace = g_app->m_transformSpace;
+      m_prevTransformSpace = GetApp()->m_transformSpace;
     }
 
     void AnchorMod::UnInit() {}
