@@ -457,25 +457,73 @@ namespace ToolKit
       // Warp mouse move.
       SDL_WarpMouseGlobal(m_mouseInitialLoc.x, m_mouseInitialLoc.y);
 
-      float t;
-      if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
+      if (m_type == TransformType::Rotate)
       {
-        Ray ray = vp->RayFromScreenSpacePoint(m_mouseData[1]);
-        if (RayPlaneIntersection(ray, m_intersectionPlane, t))
-        {
-          // This point.
-          Vec3 p = PointOnRay(ray, t);
+        GetApp()->m_perFrameDebugObjects.push_back(CreatePlaneDebugObject(m_intersectionPlane, 3.0f));
 
-          // Previous. point.
-          ray    = vp->RayFromScreenSpacePoint(m_mouseData[0]);
-          RayPlaneIntersection(ray, m_intersectionPlane, t);
-          Vec3 p0 = PointOnRay(ray, t);
-          m_delta = p - p0;
-        }
-        else
+        // Calculate angular offset.
+        if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
         {
-          assert(false && "Intersection expected.");
-          m_delta = ZERO;
+          Ray ray0         = vp->RayFromScreenSpacePoint(m_mouseData[0]);
+          Ray ray1         = vp->RayFromScreenSpacePoint(m_mouseData[1]);
+
+          Vec3 planeCenter = m_intersectionPlane.normal * -m_intersectionPlane.d;
+          Vec3 gizmoCenter = m_gizmo->m_worldLocation;
+
+          // Move rays to plane's translation space.
+          ray0.position    = ray0.position + (ray0.position - gizmoCenter) - (ray0.position - planeCenter);
+          ray1.position    = ray1.position + (ray1.position - gizmoCenter) - (ray1.position - planeCenter);
+
+          float t          = 0.0f;
+          Vec3 p0; // Point 0 on gizmo.
+          if (RayPlaneIntersection(ray0, m_intersectionPlane, t))
+          {
+            p0 = PointOnRay(ray0, t);
+            p0 = glm::normalize(p0 - planeCenter);
+          }
+
+          Vec3 p1; // Point 1 on gizmo.
+          if (RayPlaneIntersection(ray0, m_intersectionPlane, t))
+          {
+            p1 = PointOnRay(ray1, t);
+            p1 = glm::normalize(p1 - planeCenter);
+          }
+
+          GetApp()->m_perFrameDebugObjects.push_back(CreateLineDebugObject({planeCenter, p0, planeCenter, p1}));
+
+          m_delta   = ZERO;
+          m_delta.z = AngleBetweenVectors(p0, p1);
+
+          assert(glm::isnan(m_delta.z) != true);
+
+          // Detect signature.
+          Vec3 rotNorm  = glm::cross(p0, p1);
+          float sig     = glm::sign(glm::dot(rotNorm, m_intersectionPlane.normal));
+          m_delta.z    *= sig;
+        }
+      }
+      else
+      {
+        float t;
+        if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
+        {
+          Ray ray = vp->RayFromScreenSpacePoint(m_mouseData[1]);
+          if (RayPlaneIntersection(ray, m_intersectionPlane, t))
+          {
+            // This point.
+            Vec3 p = PointOnRay(ray, t);
+
+            // Previous. point.
+            ray    = vp->RayFromScreenSpacePoint(m_mouseData[0]);
+            RayPlaneIntersection(ray, m_intersectionPlane, t);
+            Vec3 p0 = PointOnRay(ray, t);
+            m_delta = p - p0;
+          }
+          else
+          {
+            assert(false && "Intersection expected.");
+            m_delta = ZERO;
+          }
         }
       }
 
@@ -596,19 +644,7 @@ namespace ToolKit
 
     void StateTransformTo::Rotate(EntityPtr ntt)
     {
-      EditorViewportPtr viewport  = GetApp()->GetActiveViewport();
-      PolarGizmo* pg              = static_cast<PolarGizmo*>(m_gizmo.get());
-      int axisInd                 = (int) (m_gizmo->GetGrabbedAxis());
-      Vec3 projAxis               = pg->m_handles[axisInd]->m_tangentDir;
-      Vec3 mouseDelta             = m_delta;
-
-      float delta                 = glm::dot(projAxis, mouseDelta);
-      Vec3 deltaInWS              = Vec3(delta, 0.0f, 0.0f);
-      Vec2 deltaInSS              = viewport->TransformWorldSpaceToScreenSpace(deltaInWS);
-      deltaInSS                  -= viewport->TransformWorldSpaceToScreenSpace(Vec3(0));
-      deltaInSS = Vec2(deltaInSS.x / viewport->m_wndContentAreaSize.x, deltaInSS.y / viewport->m_wndContentAreaSize.y);
-      delta     = glm::length(deltaInSS) * ((delta > 0.0f) ? 1 : -1);
-      delta     = glm::degrees(delta) / 9.0f;
+      float delta     = m_delta.z;
 
       m_deltaAccum.x += delta;
       float spacing   = glm::radians(GetApp()->m_rotateDelta);
@@ -626,6 +662,9 @@ namespace ToolKit
 
       if (glm::notEqual(delta, 0.0f))
       {
+        PolarGizmo* pg      = static_cast<PolarGizmo*>(m_gizmo.get());
+        int axisInd         = (int) (m_gizmo->GetGrabbedAxis());
+
         Quaternion rotation = glm::angleAxis(delta, m_gizmo->m_normalVectors[axisInd]);
         ntt->m_node->Rotate(rotation, TransformationSpace::TS_WORLD);
       }
