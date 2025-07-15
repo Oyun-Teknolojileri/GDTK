@@ -90,7 +90,7 @@ namespace ToolKit
       Vec3 axes[3];
       ExtractAxes(m_gizmo->m_normalVectors, axes[0], axes[1], axes[2]);
 
-      int first = static_cast<int>(m_gizmo->GetGrabbedAxis()) % 3;
+      int first = (int) (m_gizmo->GetGrabbedAxis()) % 3;
       if (n == 0)
       {
         return axes[first];
@@ -459,8 +459,6 @@ namespace ToolKit
 
       if (m_type == TransformType::Rotate)
       {
-        GetApp()->m_perFrameDebugObjects.push_back(CreatePlaneDebugObject(m_intersectionPlane, 3.0f));
-
         // Calculate angular offset.
         if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
         {
@@ -488,8 +486,6 @@ namespace ToolKit
             p1 = PointOnRay(ray1, t);
             p1 = glm::normalize(p1 - planeCenter);
           }
-
-          GetApp()->m_perFrameDebugObjects.push_back(CreateLineDebugObject({planeCenter, p0, planeCenter, p1}));
 
           m_delta       = ZERO;
           m_delta.z     = AngleBetweenVectors(p0, p1);
@@ -597,7 +593,7 @@ namespace ToolKit
       Vec3 delta = m_delta;
       if (!IsPlaneMod())
       {
-        int axis = static_cast<int>(m_gizmo->GetGrabbedAxis());
+        int axis = (int) m_gizmo->GetGrabbedAxis();
         Vec3 dir = m_gizmo->m_normalVectors[axis];
         dir      = glm::normalize(dir);
         delta    = glm::dot(dir, m_delta) * dir;
