@@ -738,8 +738,13 @@ namespace ToolKit
 
   float AngleBetweenVectors(const Vec3& v1, const Vec3& v2)
   {
-    float angle = glm::acos(glm::dot(glm::normalize(v1), glm::normalize(v2)));
-    return angle;
+    Vec3 n1   = glm::normalize(v1);
+    Vec3 n2   = glm::normalize(v2);
+
+    float dot = glm::dot(n1, n2);
+    dot       = glm::clamp(dot, -1.0f, 1.0f);
+
+    return glm::acos(dot);
   }
 
   Vec3 PointOnRay(const Ray& ray, float t) { return ray.position + ray.direction * t; }

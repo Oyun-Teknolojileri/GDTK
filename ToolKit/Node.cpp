@@ -153,6 +153,7 @@ namespace ToolKit
   Mat3 Node::GetTransformAxes()
   {
     Quaternion q = GetOrientation();
+    q            = glm::normalize(q);
     Mat3 axes    = glm::toMat3(q);
 
     return axes;

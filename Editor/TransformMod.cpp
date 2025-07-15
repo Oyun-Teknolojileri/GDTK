@@ -491,10 +491,8 @@ namespace ToolKit
 
           GetApp()->m_perFrameDebugObjects.push_back(CreateLineDebugObject({planeCenter, p0, planeCenter, p1}));
 
-          m_delta   = ZERO;
-          m_delta.z = AngleBetweenVectors(p0, p1);
-
-          assert(glm::isnan(m_delta.z) != true);
+          m_delta       = ZERO;
+          m_delta.z     = AngleBetweenVectors(p0, p1);
 
           // Detect signature.
           Vec3 rotNorm  = glm::cross(p0, p1);
