@@ -261,10 +261,9 @@ namespace ToolKit
             if (RayPlaneIntersection(ray, axisPlane, t))
             {
               Vec3 intersectPnt   = PointOnRay(ray, t);
-              intersectPnt        = glm::normalize(intersectPnt - p);
               pg->m_grabPoint     = intersectPnt;
 
-              m_intersectionPlane = PlaneFrom(intersectPnt + m_gizmo->m_worldLocation, axis);
+              m_intersectionPlane = axisPlane;
             }
           }
         }
@@ -465,26 +464,21 @@ namespace ToolKit
           Ray ray0         = vp->RayFromScreenSpacePoint(m_mouseData[0]);
           Ray ray1         = vp->RayFromScreenSpacePoint(m_mouseData[1]);
 
-          Vec3 planeCenter = m_intersectionPlane.normal * -m_intersectionPlane.d;
           Vec3 gizmoCenter = m_gizmo->m_worldLocation;
-
-          // Move rays to plane's translation space.
-          ray0.position    = ray0.position + (ray0.position - gizmoCenter) - (ray0.position - planeCenter);
-          ray1.position    = ray1.position + (ray1.position - gizmoCenter) - (ray1.position - planeCenter);
 
           float t          = 0.0f;
           Vec3 p0; // Point 0 on gizmo.
           if (RayPlaneIntersection(ray0, m_intersectionPlane, t))
           {
             p0 = PointOnRay(ray0, t);
-            p0 = glm::normalize(p0 - planeCenter);
+            p0 = glm::normalize(p0 - gizmoCenter);
           }
 
           Vec3 p1; // Point 1 on gizmo.
           if (RayPlaneIntersection(ray0, m_intersectionPlane, t))
           {
             p1 = PointOnRay(ray1, t);
-            p1 = glm::normalize(p1 - planeCenter);
+            p1 = glm::normalize(p1 - gizmoCenter);
           }
 
           m_delta       = ZERO;
