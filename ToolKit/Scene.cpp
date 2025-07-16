@@ -721,7 +721,7 @@ namespace ToolKit
     String path = GetSerializeFile();
     DecomposePath(path, nullptr, &m_name, nullptr);
 
-    TK_LOG("Loading scene %s", path.c_str());
+    TK_SYSLOG("Loading scene %s", path.c_str());
 
     if (m_version >= TKV045)
     {

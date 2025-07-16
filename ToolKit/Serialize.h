@@ -61,7 +61,7 @@ namespace ToolKit
     {
       m_numberOfThingsLoaded += loadedCount;
       float percent           = GetLoadedPercent();
-      TK_LOG("Loaded %.2f percent", percent);
+      TK_SYSLOG("Loaded %.2f percent", percent);
       if (m_progressCallback)
       {
         m_progressCallback(percent);
