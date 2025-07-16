@@ -15,6 +15,7 @@
 #include "Logger.h"
 #include "Object.h"
 #include "Platform.h"
+#include "Threads.h"
 #include "Types.h"
 
 /**
@@ -28,9 +29,7 @@ namespace ToolKit
    */
   typedef std::function<void(float deltaTime)> TKUpdateFn;
 
-  /**
-   * A class that Provides a unique handle when needed.
-   */
+  /** A class that Provides a unique handle when needed. */
   class TK_API HandleManager
   {
    public:
@@ -49,6 +48,7 @@ namespace ToolKit
    private:
     ObjectId m_randomXor[2];                  //!< Random seed.
     std::unordered_set<ObjectId> m_uniqueIDs; //!< Container for all acquired handles.
+    Spinlock m_uniqueIdWriteLock;             //!< Guaranties thread safety for modifying handle manager's state.
   };
 
   /**

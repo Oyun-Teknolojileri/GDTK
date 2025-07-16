@@ -325,7 +325,7 @@ namespace ToolKit
     }
 
     // If there are threads in work, wait for them.
-    HyperThreadSpinWait(availableThreadCount.load() < m_maxThreadCount);
+    SpinWaitBarrier([&]() -> bool { return availableThreadCount.load() < m_maxThreadCount; });
 
     entities.reserve(m_nodeCapacity);
 

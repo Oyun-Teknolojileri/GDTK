@@ -828,6 +828,8 @@ namespace ToolKit
 
         m_filter              = ToLower(m_filter);
         char itemBuffer[1024] = {0};
+
+        m_itemLock.Lock();
         for (size_t i = 0; i < m_items.size(); i++)
         {
           const String item = m_items[i];
@@ -883,6 +885,7 @@ namespace ToolKit
             ImGui::PopStyleColor();
           }
         }
+        m_itemLock.Unlock();
 
         if (m_scrollToBottom || ImGui::GetScrollY() >= ImGui::GetScrollMaxY())
         {
@@ -938,8 +941,9 @@ namespace ToolKit
 
         if (ImGui::Button("Clear"))
         {
-          m_items.clear();
+          ClearLog();
         }
+
         ImGui::EndTable();
       }
       ImGui::End();
@@ -983,15 +987,21 @@ namespace ToolKit
       }
       m_scrollToBottom = true;
 
-      std::unique_lock<std::mutex> lock(m_itemMutex);
+      m_itemLock.Lock();
       m_items.push_back(prefixed);
+      m_itemLock.Unlock();
+
       if (m_items.size() > 1024)
       {
         ClearLog();
       }
     }
 
-    void ConsoleWindow::ClearLog() { m_items.clear(); }
+    void ConsoleWindow::ClearLog()
+    {
+      SpinlockGuard lock(m_itemLock);
+      m_items.clear();
+    }
 
     void ConsoleWindow::ExecCommand(const String& commandLine)
     {

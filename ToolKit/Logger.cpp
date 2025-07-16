@@ -37,6 +37,7 @@ namespace ToolKit
 
   void Logger::Log(const String& message)
   {
+    SpinlockGuard lock(m_writeLock);
     if constexpr (TK_PLATFORM == PLATFORM::TKWeb)
     {
       String emLog = message + "\n";
@@ -50,6 +51,7 @@ namespace ToolKit
 
   void Logger::Log(LogType logType, const char* msg, ...)
   {
+    SpinlockGuard lock(m_writeLock);
     va_list args;
     va_start(args, msg);
 
@@ -75,6 +77,7 @@ namespace ToolKit
 
   void Logger::WriteTKConsole(LogType logType, const char* msg, ...)
   {
+    SpinlockGuard lock(m_writeLock);
     if (strlen(msg) >= TKMessageBufferLength)
     {
       if (m_platfromConsoleFn)
@@ -100,6 +103,7 @@ namespace ToolKit
 
   void Logger::WritePlatformConsole(LogType logType, const char* msg, ...)
   {
+    SpinlockGuard lock(m_writeLock);
     if (strlen(msg) >= TKMessageBufferLength)
     {
       if (m_platfromConsoleFn)

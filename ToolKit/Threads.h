@@ -11,13 +11,83 @@
 
 #include <poolSTL/include/poolstl/poolstl.hpp>
 
+#if defined(__EMSCRIPTEN__)
+  // WebAssembly: no-op
+  #define HyperThreadPause() ((void) 0)
+
+#elif defined(__aarch64__) || defined(__arm__)
+  // ARM: use yield hint
+  #define HyperThreadPause() asm volatile("yield")
+
+#elif defined(_MSC_VER)
+  // MSVC x86/x64: use _mm_pause
+  #include <immintrin.h>
+  #define HyperThreadPause() _mm_pause()
+
+#elif defined(__i386__) || defined(__x86_64__)
+  // GCC/Clang x86/x64: builtin pause
+  #define HyperThreadPause() __builtin_ia32_pause()
+
+#else
+  // Fallback: no-op
+  #define HyperThreadPause() ((void) 0)
+#endif
+
 namespace ToolKit
 {
 
-  /** Spin waits until the cond become false. Release cpu resources for hyper threading. */
-#define HyperThreadSpinWait(cond)                                                                                      \
-  while (cond)                                                                                                         \
-    HyperThreadPause();
+  /**
+   * Spinlock suitable for low contention quick locking. If threads will wait more than nano seconds, use a mutex.
+   * original implementation https://rigtorp.se/spinlock/
+   */
+  struct Spinlock
+  {
+    std::atomic<bool> lock {false};
+
+    void Lock() noexcept
+    {
+      for (;;)
+      {
+        // Try to acquire lock optimistically
+        if (!lock.exchange(true, std::memory_order_acquire))
+          return;
+
+        // Spin until it's released
+        while (lock.load(std::memory_order_relaxed))
+        {
+          HyperThreadPause(); // CPU hint
+        }
+      }
+    }
+
+    bool TryLock() noexcept
+    {
+      // Quick relaxed check to avoid cache miss
+      return !lock.load(std::memory_order_relaxed) && !lock.exchange(true, std::memory_order_acquire);
+    }
+
+    void Unlock() noexcept { lock.store(false, std::memory_order_release); }
+  };
+
+  /** Scope aware auto lock unlock mechanism for SpinLock.*/
+  struct SpinlockGuard
+  {
+    Spinlock& lock;
+
+    explicit SpinlockGuard(Spinlock& l) : lock(l) { lock.Lock(); }
+
+    ~SpinlockGuard() { lock.Unlock(); }
+  };
+
+  /** Spin waits until the cond become false. Condition must be a lambda that returns boolean. */
+  template <typename Condition>
+  void SpinWaitBarrier(Condition cond)
+  {
+    while (cond())
+    {
+      HyperThreadPause();
+    }
+  }
 
   typedef task_thread_pool::task_thread_pool ThreadPool;
   typedef std::queue<std::packaged_task<void()>> TaskQueue;

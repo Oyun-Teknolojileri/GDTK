@@ -39,30 +39,36 @@ namespace ToolKit
 
   ObjectId HandleManager::GenerateHandle()
   {
-    ObjectId id = Xoroshiro128Plus(m_randomXor);
-    // If collision happens, change generate new id
-    while (m_uniqueIDs.find(id) != m_uniqueIDs.end() || id == NullHandle)
+    ObjectId id;
+    SpinlockGuard lock(m_uniqueIdWriteLock);
+
+    do
     {
       id = Xoroshiro128Plus(m_randomXor);
-    }
-    m_uniqueIDs.insert(id);
+    } while (m_uniqueIDs.find(id) != m_uniqueIDs.end() || id == NullHandle);
 
-    return id; // non zero
+    m_uniqueIDs.insert(id);
+    return id;
   }
 
-  void HandleManager::AddHandle(ObjectId val) { m_uniqueIDs.insert(val); }
+  void HandleManager::AddHandle(ObjectId val)
+  {
+    SpinlockGuard lock(m_uniqueIdWriteLock);
+    m_uniqueIDs.insert(val);
+  }
+
+  bool HandleManager::IsHandleUnique(ObjectId val)
+  {
+    SpinlockGuard lock(m_uniqueIdWriteLock);
+    bool unique = (m_uniqueIDs.find(val) == m_uniqueIDs.end());
+    return unique;
+  }
 
   void HandleManager::ReleaseHandle(ObjectId val)
   {
-
-    auto it = m_uniqueIDs.find(val);
-    if (it != m_uniqueIDs.end())
-    {
-      m_uniqueIDs.erase(it);
-    }
+    SpinlockGuard lock(m_uniqueIdWriteLock);
+    m_uniqueIDs.erase(val);
   }
-
-  bool HandleManager::IsHandleUnique(ObjectId val) { return m_uniqueIDs.find(val) == m_uniqueIDs.end(); }
 
   Main* Main::m_proxy = nullptr;
 
