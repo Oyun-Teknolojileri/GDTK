@@ -270,6 +270,22 @@ namespace ToolKit
       circle->Generate(corners, params.color, DrawType::LineStrip, 4.0f);
       MeshPtr circleMesh = circle->GetComponent<MeshComponent>()->GetMeshVal();
       m_mesh             = circleMesh;
+
+      // Guide line.
+      if (!glm::isNull(params.grabPnt, glm::epsilon<float>()))
+      {
+        // Bring the grab point to object space.
+        Vec3 grabLcl       = params.grabPnt;
+        grabLcl            = glm::inverse(params.normals) * grabLcl;
+
+        int axisIndx       = (int) params.axis;
+
+        LineBatchPtr guide = MakeNewPtr<LineBatch>();
+        guide->Generate({ZERO, grabLcl}, g_gizmoColor[axisIndx], DrawType::Line, 1.0f);
+
+        MeshPtr guideMesh = guide->GetComponent<MeshComponent>()->GetMeshVal();
+        m_mesh->m_subMeshes.push_back(guideMesh);
+      }
     }
 
     bool PolarHandle::HitTest(const Ray& ray, float& t) const

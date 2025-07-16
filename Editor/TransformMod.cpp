@@ -246,26 +246,13 @@ namespace ToolKit
       if (PolarGizmo* pg = m_gizmo->As<PolarGizmo>())
       {
         // Polar intersection plane.
-        if ((int) (m_gizmo->GetGrabbedAxis()) < 3)
+        if (m_gizmo->GetGrabbedAxis() <= AxisLabel::Z)
         {
           assert(m_gizmo->GetGrabbedAxis() != AxisLabel::None);
 
-          Vec3 p    = m_gizmo->m_worldLocation;
-          Vec3 axis = GetGrabbedAxis(0);
-
-          if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
-          {
-            float t;
-            PlaneEquation axisPlane = PlaneFrom(p, axis);
-            Ray ray                 = vp->RayFromMousePosition();
-            if (RayPlaneIntersection(ray, axisPlane, t))
-            {
-              Vec3 intersectPnt   = PointOnRay(ray, t);
-              pg->m_grabPoint     = intersectPnt;
-
-              m_intersectionPlane = axisPlane;
-            }
-          }
+          Vec3 p              = m_gizmo->m_worldLocation;
+          Vec3 axis           = GetGrabbedAxis(0);
+          m_intersectionPlane = PlaneFrom(p, axis);
         }
       }
       else
@@ -330,6 +317,11 @@ namespace ToolKit
         if (RayPlaneIntersection(ray, m_intersectionPlane, t))
         {
           m_gizmo->m_grabPoint = PointOnRay(ray, t);
+          if (m_gizmo->IsA<PolarGizmo>())
+          {
+            m_gizmo->m_grabPoint -= m_gizmo->m_worldLocation;
+            m_gizmo->m_grabPoint  = glm::normalize(m_gizmo->m_grabPoint);
+          }
         }
       }
     }
@@ -477,8 +469,9 @@ namespace ToolKit
           Vec3 p1; // Point 1 on gizmo.
           if (RayPlaneIntersection(ray0, m_intersectionPlane, t))
           {
-            p1 = PointOnRay(ray1, t);
-            p1 = glm::normalize(p1 - gizmoCenter);
+            p1                   = PointOnRay(ray1, t);
+            p1                   = glm::normalize(p1 - gizmoCenter);
+            m_gizmo->m_grabPoint = p1;
           }
 
           m_delta       = ZERO;
