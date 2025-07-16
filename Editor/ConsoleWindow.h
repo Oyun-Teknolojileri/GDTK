@@ -9,6 +9,8 @@
 
 #include "Window.h"
 
+#include <Threads.h>
+
 namespace ToolKit
 {
   namespace Editor
@@ -134,7 +136,8 @@ namespace ToolKit
 
       // Buffers.
       StringArray m_items;
-      std::mutex m_itemMutex;
+      Spinlock m_itemLock;
+
       StringArray m_commands;
       std::unordered_map<String, std::function<void(TagArgArray&)>> m_commandExecutors;
 
