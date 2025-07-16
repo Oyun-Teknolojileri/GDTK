@@ -184,7 +184,7 @@ namespace ToolKit
             ImGui::AlignTextToFramePadding();
             if (ImGui::ImageButton("##build", Convert2ImGuiTexture(UI::m_buildIcn), btnSize))
             {
-              g_app->CompilePlugin(plugin.name);
+              GetApp()->CompilePlugin(plugin.name);
             }
             UI::AddTooltipToLastItem("If a change is detected, compiles and reloads the plugin.\n"
                                      "This may cause crash, save the work before.");
@@ -193,9 +193,9 @@ namespace ToolKit
             ImGui::AlignTextToFramePadding();
             if (ImGui::ImageButton("##folder", Convert2ImGuiTexture(UI::m_folderIcon), btnSize))
             {
-              String pluginDir = g_app->m_workspace.GetPluginDirectory();
+              String pluginDir = GetApp()->m_workspace.GetPluginDirectory();
               String dir       = ConcatPaths({pluginDir, plugin.name, "Codes"});
-              g_app->m_shellOpenDirFn(dir);
+              GetApp()->m_shellOpenDirFn(dir);
             }
             UI::AddTooltipToLastItem("Show plugin folder in file explorerer.");
 
@@ -221,7 +221,7 @@ namespace ToolKit
     void PluginWindow::LoadPluginSettings()
     {
       m_plugins.clear();
-      String plugDir = g_app->m_workspace.GetPluginDirectory();
+      String plugDir = GetApp()->m_workspace.GetPluginDirectory();
 
       namespace fs   = std::filesystem;
       if (fs::exists(plugDir) && fs::is_directory(plugDir))

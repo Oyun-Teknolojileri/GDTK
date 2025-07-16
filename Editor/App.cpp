@@ -32,6 +32,11 @@
 
 #include <sstream>
 
+extern ToolKit::Editor::App* g_app; // Defined in main cpp to provide global handle for app.
+extern bool g_running;              // Defined in main cpp that controls the main loop's life time.
+
+extern "C" TK_EDITOR_API ToolKit::Editor::App* TK_STDCAL GetApp() { return g_app; };
+
 namespace ToolKit
 {
   namespace Editor

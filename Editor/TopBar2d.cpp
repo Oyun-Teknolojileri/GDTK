@@ -32,7 +32,7 @@ namespace ToolKit
 
       auto ShowAddMenuFn = []() -> void
       {
-        EditorScenePtr currScene = g_app->GetCurrentScene();
+        EditorScenePtr currScene = GetApp()->GetCurrentScene();
 
         auto failCheckFn         = [currScene]() -> bool
         {
@@ -41,7 +41,7 @@ namespace ToolKit
             return true;
           }
 
-          g_app->SetStatusMsg("Failed. A layer is needed.");
+          GetApp()->SetStatusMsg("Failed. A layer is needed.");
           return false;
         };
 

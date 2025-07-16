@@ -103,7 +103,7 @@ namespace ToolKit
     {
       if (contains(m_illegalChars, (char) data->EventChar))
       {
-        g_app->SetStatusMsg(g_statusInvalidCharater);
+        GetApp()->SetStatusMsg(g_statusInvalidCharater);
         return 1;
       }
       return 0;

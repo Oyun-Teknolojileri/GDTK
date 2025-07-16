@@ -141,15 +141,13 @@ namespace ToolKit
      protected:
       virtual GizmoHandle::Params GetParam() const;
 
-      /**
-       * Collects all the handles under a non empty root mesh for drawing.
-       */
+      /** Collects all the handles under a non empty root mesh for drawing. */
       void Consume();
 
      public:
-      Vec3 m_grabPoint;
-      Vec3 m_initialPoint;
-      Mat3 m_normalVectors;
+      Vec3 m_grabPoint;     //!< Grab location of the gizmo.
+      Vec3 m_initialPoint;  //!< Gizmo's entities initial center before any movement.
+      Mat3 m_normalVectors; //!< Gizmo's entities normal axes.
       AxisLabel m_lastHovered;
       std::vector<GizmoHandle*> m_handles;
 

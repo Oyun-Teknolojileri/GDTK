@@ -195,20 +195,20 @@ namespace ToolKit
         if (ImGui::Checkbox("HDR Pipeline##1", &hdrPipeline))
         {
           graphics->SetHDRPipelineVal(hdrPipeline);
-          g_app->ReInitViewports();
+          GetApp()->ReInitViewports();
         }
 
         float renderScale = graphics->GetRenderResolutionScaleVal();
         if (ImGui::DragFloat("Resolution Multiplier", &renderScale, 0.05f, 0.25f, 1.0f))
         {
           graphics->SetRenderResolutionScaleVal(renderScale);
-          g_app->ReInitViewports();
+          GetApp()->ReInitViewports();
         }
 
         ImGui::SeparatorText("Multi Sample Anti Aliasing");
         CustomDataView::ShowVariant(&graphics->ParamMSAA(),
                                     nullptr,
-                                    [](const Value& vold, const Value& vnew) -> void { g_app->ReInitViewports(); });
+                                    [](const Value& vold, const Value& vnew) -> void { GetApp()->ReInitViewports(); });
 
         ImGui::SeparatorText("Shadows");
 

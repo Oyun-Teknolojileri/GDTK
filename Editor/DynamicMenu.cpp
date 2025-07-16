@@ -7,9 +7,9 @@
 
 #include "DynamicMenu.h"
 
+#include "App.h"
 #include "EditorScene.h"
 #include "UI.h"
-#include "App.h"
 
 #include <ObjectFactory.h>
 
@@ -47,7 +47,7 @@ namespace ToolKit
             if (ImGui::MenuItem(menuEntry.second.c_str()))
             {
               EntityPtr entity = MakeNewPtrCasted<Entity>(menuEntry.first);
-              g_app->GetCurrentScene()->AddEntity(entity);
+              GetApp()->GetCurrentScene()->AddEntity(entity);
             }
           }
 

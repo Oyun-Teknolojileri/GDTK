@@ -7,11 +7,11 @@
 
 #include "TopBar.h"
 
+#include "App.h"
 #include "ConsoleWindow.h"
 #include "EditorCamera.h"
 #include "IconsFontAwesome.h"
 #include "OutlinerWindow.h"
-#include "App.h"
 
 #include <Dpad.h>
 #include <Drawable.h>
@@ -28,7 +28,7 @@ namespace ToolKit
 
     void OverlayTopBar::ShowAddMenuPopup()
     {
-      EditorScenePtr currScene = g_app->GetCurrentScene();
+      EditorScenePtr currScene = GetApp()->GetCurrentScene();
       EntityPtr createdEntity  = nullptr;
       if (ImGui::BeginMenu("Mesh"))
       {
@@ -147,7 +147,7 @@ namespace ToolKit
 
       // Create dynamic menu.
       ImGui::Separator();
-      for (DynamicMenuPtr root : g_app->m_customObjectsMenu)
+      for (DynamicMenuPtr root : GetApp()->m_customObjectsMenu)
       {
         ShowDynamicMenu(root);
       }
@@ -167,15 +167,15 @@ namespace ToolKit
         createdEntity->SetNameVal(typeName + suffix);
 
         // Adjust entity location.
-        if (g_app && g_app->m_cursor)
+        if (GetApp() && GetApp()->m_cursor)
         {
-          Vec3 loc = g_app->m_cursor->m_worldLocation;
+          Vec3 loc = GetApp()->m_cursor->m_worldLocation;
           createdEntity->m_node->SetTranslation(loc);
         }
 
         currScene->AddEntity(createdEntity);
 
-        if (OutlinerWindowPtr outliner = g_app->GetOutliner())
+        if (OutlinerWindowPtr outliner = GetApp()->GetOutliner())
         {
           if (outliner->IsInsertingAtTheEndOfEntities())
           {
@@ -308,7 +308,7 @@ namespace ToolKit
         }
 
         String cmd = "SetTransformOrientation " + ts;
-        g_app->GetConsole()->ExecCommand(cmd);
+        GetApp()->GetConsole()->ExecCommand(cmd);
       }
       UI::HelpMarker(TKLoc + m_owner->m_name, "Transform orientations\n");
     }
@@ -319,20 +319,20 @@ namespace ToolKit
       static bool autoSnapActivated = false;
       if (ImGui::GetIO().KeyCtrl)
       {
-        if (!g_app->m_snapsEnabled)
+        if (!GetApp()->m_snapsEnabled)
         {
-          autoSnapActivated     = true;
-          g_app->m_snapsEnabled = true;
+          autoSnapActivated        = true;
+          GetApp()->m_snapsEnabled = true;
         }
       }
       else if (autoSnapActivated)
       {
-        autoSnapActivated     = false;
-        g_app->m_snapsEnabled = false;
+        autoSnapActivated        = false;
+        GetApp()->m_snapsEnabled = false;
       }
 
       ImGui::TableSetColumnIndex(nextItemIndex++);
-      g_app->m_snapsEnabled = UI::ToggleButton(UI::m_snapIcon->m_textureId, Vec2(16.0), g_app->m_snapsEnabled);
+      GetApp()->m_snapsEnabled = UI::ToggleButton(UI::m_snapIcon->m_textureId, Vec2(16.0), GetApp()->m_snapsEnabled);
       UI::HelpMarker(TKLoc + m_owner->m_name, "Grid snaping\nRight click for options");
 
       if (ImGui::BeginPopupContextItem("##SnapMenu"))
@@ -418,11 +418,11 @@ namespace ToolKit
         if (view == "User")
         {
           bool noCamera = true;
-          if (EntityPtr cam = g_app->GetCurrentScene()->GetCurrentSelection())
+          if (EntityPtr cam = GetApp()->GetCurrentScene()->GetCurrentSelection())
           {
             if (cam->IsA<Camera>())
             {
-              if (EditorViewportPtr vp = g_app->GetActiveViewport())
+              if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
               {
                 vp->AttachCamera(cam->GetIdVal());
                 noCamera = false;
@@ -433,13 +433,13 @@ namespace ToolKit
           if (noCamera)
           {
             m_owner->m_cameraAlignment = rollBack;
-            g_app->SetStatusMsg(g_statusFailed);
+            GetApp()->SetStatusMsg(g_statusFailed);
             TK_ERR("No camera selected.\nSelect a camera from the scene.");
           }
         }
         else
         {
-          if (EditorViewportPtr vp = g_app->GetActiveViewport())
+          if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
           {
             vp->AttachCamera(NullHandle);
           }
@@ -448,7 +448,7 @@ namespace ToolKit
           {
             m_owner->m_cameraAlignment = CameraAlignment::Free;
             String cmd                 = "SetCameraTransform --v \"" + m_owner->m_name + "\" " + view;
-            g_app->GetConsole()->ExecCommand(cmd);
+            GetApp()->GetConsole()->ExecCommand(cmd);
           }
         }
       }

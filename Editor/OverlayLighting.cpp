@@ -53,7 +53,7 @@ namespace ToolKit
         {
           ImGui::TableSetColumnIndex(nextItemIndex++);
           ImGui::PushItemWidth(160);
-          uint lightModeIndx     = (uint) g_app->m_sceneLightingMode;
+          uint lightModeIndx     = (uint) GetApp()->m_sceneLightingMode;
           StringView itemNames[] = {"Editor Lit", "Full Lit", "Lighting Only", "Game"};
 
           uint itemCount         = sizeof(itemNames) / sizeof(itemNames[0]);
@@ -75,13 +75,13 @@ namespace ToolKit
           }
 
           ImGui::PopItemWidth();
-          g_app->m_sceneLightingMode = (EditorLitMode) lightModeIndx;
+          GetApp()->m_sceneLightingMode = (EditorLitMode) lightModeIndx;
         }
         else
         {
-          if (g_app->m_gameMod == GameMod::Stop)
+          if (GetApp()->m_gameMod == GameMod::Stop)
           {
-            g_app->m_sceneLightingMode = EditorLitMode::EditorLit;
+            GetApp()->m_sceneLightingMode = EditorLitMode::EditorLit;
           }
         }
 

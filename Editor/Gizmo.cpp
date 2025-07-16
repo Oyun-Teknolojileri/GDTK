@@ -202,7 +202,7 @@ namespace ToolKit
         Vec3Array pnts     = {axis * 999.0f, axis * -999.0f};
 
         LineBatchPtr guide = MakeNewPtr<LineBatch>();
-        guide->Generate(pnts, g_gizmoColor[axisInd % 3], DrawType::Line, 1.0f);
+        guide->Generate(pnts, g_gizmoColor[axisInd % 3], DrawType::Line, 2.0f);
         MeshPtr guideMesh = guide->GetComponent<MeshComponent>()->GetMeshVal();
         m_mesh->m_subMeshes.push_back(guideMesh);
       }
@@ -275,24 +275,13 @@ namespace ToolKit
       if (!glm::isNull(params.grabPnt, glm::epsilon<float>()))
       {
         // Bring the grab point to object space.
-        Vec3 glcl    = params.grabPnt - params.worldLoc;
-        glcl         = glm::normalize(glm::inverse(params.normals) * glcl);
+        Vec3 grabLcl       = params.grabPnt;
+        grabLcl            = glm::inverse(params.normals) * grabLcl * 999.0f;
 
-        int axisIndx = static_cast<int>(params.axis);
-        Vec3 axis    = AXIS[axisIndx];
-
-        // Neighbor points for parallel line.
-        Vec3 p1      = glm::normalize(glm::angleAxis(0.0001f, axis) * glcl);
-        Vec3 p2      = glm::normalize(glm::angleAxis(-0.0001f, axis) * glcl);
-        Vec3 dir     = glm::normalize(p1 - p2);
-        m_tangentDir = glm::normalize(params.normals * dir);
-
-        Vec3Array pnts;
-        pnts.push_back(glcl + dir * 999.0f);
-        pnts.push_back(glcl - dir * 999.0f);
+        int axisIndx       = (int) params.axis;
 
         LineBatchPtr guide = MakeNewPtr<LineBatch>();
-        guide->Generate(pnts, g_gizmoColor[axisIndx], DrawType::Line, 1.0f);
+        guide->Generate({ZERO, grabLcl}, g_gizmoColor[axisIndx], DrawType::Line, 2.0f);
 
         MeshPtr guideMesh = guide->GetComponent<MeshComponent>()->GetMeshVal();
         m_mesh->m_subMeshes.push_back(guideMesh);
@@ -732,7 +721,7 @@ namespace ToolKit
         m_handles[i]->m_mesh = nullptr;
       }
 
-      EditorViewport2d* viewport2D = g_app->GetActiveViewport()->As<EditorViewport2d>();
+      EditorViewport2d* viewport2D = GetApp()->GetActiveViewport()->As<EditorViewport2d>();
       for (int i = 0; i < 3; i++)
       {
         // If gizmo is in 2D view, just generate Z axis

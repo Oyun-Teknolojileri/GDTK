@@ -222,7 +222,7 @@ namespace ToolKit
         setNode = CreateXmlNode(lclDoc, XmlNodeProject.data(), settings);
         WriteAttr(setNode, lclDoc, XmlNodeName.data(), m_activeProject.name);
 
-        String sceneFile = g_app->GetCurrentScene()->GetFile();
+        String sceneFile = GetApp()->GetCurrentScene()->GetFile();
         if (GetSceneManager()->Exist(sceneFile))
         {
           String sceneRoot = ScenePath("");

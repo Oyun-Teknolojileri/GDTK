@@ -28,7 +28,7 @@ namespace ToolKit
       String publishArguments = ConstructPublishArgs(platform, publishConfig, false);
 
       GetFileManager()->WriteAllText("PublishArguments.txt", publishArguments);
-      g_app->SetStatusMsg(g_statusPublishing + g_statusNoTerminate);
+      GetApp()->SetStatusMsg(g_statusPublishing + g_statusNoTerminate);
 
       String packerPath = NormalizePath("Utils/Packer/Packer.exe");
 
@@ -44,12 +44,12 @@ namespace ToolKit
         if (res != 0)
         {
           TK_ERR("Publish Failed.");
-          g_app->SetStatusMsg(g_statusFailed);
+          GetApp()->SetStatusMsg(g_statusFailed);
         }
         else
         {
           TK_LOG("Publish Ended.");
-          g_app->SetStatusMsg(g_statusSucceeded);
+          GetApp()->SetStatusMsg(g_statusSucceeded);
         }
         m_isBuilding = false;
       };
@@ -75,19 +75,19 @@ namespace ToolKit
           if (res != 0)
           {
             TK_ERR("Plugin Building Failed.");
-            g_app->SetStatusMsg(g_statusFailed);
+            GetApp()->SetStatusMsg(g_statusFailed);
             m_isBuilding = false;
             return;
           }
           else
           {
             TK_LOG("Plugin Building Ended.");
-            g_app->SetStatusMsg(g_statusSucceeded);
+            GetApp()->SetStatusMsg(g_statusSucceeded);
           }
 
           auto afterCompile = [=]() -> void
           {
-            String fullPath = g_app->m_workspace.GetBinPath();
+            String fullPath = GetApp()->m_workspace.GetBinPath();
             if (platform == PublishPlatform::EditorPlugin)
             {
               fullPath = ConcatPaths({m_appName, "Bin", m_pluginName});
@@ -105,7 +105,7 @@ namespace ToolKit
               }
               else // or game.
               {
-                g_app->LoadGamePlugin();
+                GetApp()->LoadGamePlugin();
               }
             }
           };
@@ -117,7 +117,7 @@ namespace ToolKit
         };
       }
 
-      g_app->ExecSysCommand(packerPath, true, true, afterPackFn);
+      GetApp()->ExecSysCommand(packerPath, true, true, afterPackFn);
     }
 
     void PublishManager::Pack()
@@ -132,7 +132,7 @@ namespace ToolKit
       String publishArguments = ConstructPublishArgs(PublishPlatform::Windows, PublishConfig::Debug, true);
 
       GetFileManager()->WriteAllText("PublishArguments.txt", publishArguments);
-      g_app->SetStatusMsg(g_statusPacking + g_statusNoTerminate);
+      GetApp()->SetStatusMsg(g_statusPacking + g_statusNoTerminate);
 
       String packerPath = NormalizePath("Utils/Packer/Packer.exe");
 
@@ -148,29 +148,29 @@ namespace ToolKit
         if (res != 0)
         {
           TK_ERR("Packing Failed.");
-          g_app->SetStatusMsg(g_statusFailed);
+          GetApp()->SetStatusMsg(g_statusFailed);
         }
         else
         {
           TK_LOG("Packing Ended.");
-          g_app->SetStatusMsg(g_statusSucceeded);
+          GetApp()->SetStatusMsg(g_statusSucceeded);
         }
         m_isBuilding = false;
       };
 
-      g_app->ExecSysCommand(packerPath, true, true, afterPackFn);
+      GetApp()->ExecSysCommand(packerPath, true, true, afterPackFn);
     }
 
     String PublishManager::ConstructPublishArgs(PublishPlatform platform, PublishConfig publishConfig, bool packOnly)
     {
       // Project name for publishing.
-      String publishArguments  = g_app->m_workspace.GetActiveProject().name + '\n';
+      String publishArguments  = GetApp()->m_workspace.GetActiveProject().name + '\n';
 
       // Workspace for publishing resources.
-      publishArguments        += g_app->m_workspace.GetActiveWorkspace() + '\n';
+      publishArguments        += GetApp()->m_workspace.GetActiveWorkspace() + '\n';
 
       // App name for publishing.
-      publishArguments += m_appName.empty() ? g_app->m_workspace.GetActiveProject().name + '\n' : m_appName + '\n';
+      publishArguments += m_appName.empty() ? GetApp()->m_workspace.GetActiveProject().name + '\n' : m_appName + '\n';
 
       // Try deploying the app after publishing. Try running the app.
       publishArguments += std::to_string((int) m_deployAfterBuild) + '\n';

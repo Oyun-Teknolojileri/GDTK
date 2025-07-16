@@ -468,7 +468,7 @@ namespace ToolKit
       ShowAppMainMenuBar();
 
       // Show persistent windows.
-      for (WindowPtr wnd : g_app->m_windows)
+      for (WindowPtr wnd : GetApp()->m_windows)
       {
         wnd->ResetState();
 
@@ -500,9 +500,9 @@ namespace ToolKit
       }
       closedWindows.clear();
 
-      if (g_app->m_simulationViewport->IsVisible())
+      if (GetApp()->m_simulationViewport->IsVisible())
       {
-        g_app->m_simulationViewport->Show();
+        GetApp()->m_simulationViewport->Show();
       }
 
       if (m_imguiSampleWindow)
@@ -537,7 +537,7 @@ namespace ToolKit
       if (m_firstFrame)
       {
         m_firstFrame = false;
-        for (WindowPtr wnd : g_app->m_windows)
+        for (WindowPtr wnd : GetApp()->m_windows)
         {
           if (wnd->_hadFocus)
           {
@@ -606,31 +606,31 @@ namespace ToolKit
           inputWnd->m_inputVal          = g_newSceneStr;
           inputWnd->m_inputLabel        = "Name";
           inputWnd->m_hint              = "Scene name";
-          inputWnd->m_taskFn            = [](const String& val) { g_app->OnNewScene(val); };
+          inputWnd->m_taskFn            = [](const String& val) { GetApp()->OnNewScene(val); };
           inputWnd->AddToUI();
         }
 
         ImGui::Separator();
         if (ImGui::MenuItem("Save", "Ctrl+S"))
         {
-          g_app->OnSaveScene();
+          GetApp()->OnSaveScene();
         }
 
         if (ImGui::MenuItem("SaveAs"))
         {
-          g_app->OnSaveAsScene();
+          GetApp()->OnSaveAsScene();
         }
 
         if (ImGui::MenuItem("Save All Resources"))
         {
-          g_app->SaveAllResources();
+          GetApp()->SaveAllResources();
         }
         ImGui::EndMenu();
       }
 
       if (ImGui::MenuItem("Quit", "Alt+F4"))
       {
-        g_app->OnQuit();
+        GetApp()->OnQuit();
       }
 
       ImGui::Separator();
@@ -641,7 +641,7 @@ namespace ToolKit
     template <typename T>
     void ShowPersistentWindow(const String& name)
     {
-      if (std::shared_ptr<T> wnd = g_app->CreateOrRetrieveWindow<T>(name))
+      if (std::shared_ptr<T> wnd = GetApp()->CreateOrRetrieveWindow<T>(name))
       {
         if (ImGui::MenuItem(name.c_str(), nullptr, nullptr, !wnd->IsVisible()))
         {
@@ -654,9 +654,9 @@ namespace ToolKit
     {
       auto handleMultiWindowFn = [](ClassMeta* Class) -> void
       {
-        for (int i = (int) (g_app->m_windows.size()) - 1; i >= 0; i--)
+        for (int i = (int) (GetApp()->m_windows.size()) - 1; i >= 0; i--)
         {
-          WindowPtr wnd = g_app->m_windows[i];
+          WindowPtr wnd = GetApp()->m_windows[i];
           if (wnd->Class() != Class)
           {
             continue;
@@ -693,7 +693,7 @@ namespace ToolKit
 
             if (canDelete)
             {
-              g_app->m_windows.erase(g_app->m_windows.begin() + i);
+              GetApp()->m_windows.erase(GetApp()->m_windows.begin() + i);
             }
           }
           ImGui::EndGroup();
@@ -710,7 +710,7 @@ namespace ToolKit
         {
           EditorViewportPtr vp = MakeNewPtr<EditorViewport>();
           vp->Init({640.0f, 480.0f});
-          g_app->m_windows.push_back(vp);
+          GetApp()->m_windows.push_back(vp);
         }
 
         ImGui::EndMenu();
@@ -725,7 +725,7 @@ namespace ToolKit
           FolderWindowPtr wnd = MakeNewPtr<FolderWindow>();
           wnd->m_name         = g_assetBrowserStr + "##" + std::to_string(wnd->m_id);
           wnd->IterateFolders(true);
-          g_app->m_windows.push_back(wnd);
+          GetApp()->m_windows.push_back(wnd);
         }
 
         ImGui::EndMenu();
@@ -745,7 +745,7 @@ namespace ToolKit
 
       if (ImGui::MenuItem("Reset Layout"))
       {
-        TKAsyncTask(WorkerManager::MainThread, []() -> void { g_app->ResetUI(); });
+        TKAsyncTask(WorkerManager::MainThread, []() -> void { GetApp()->ResetUI(); });
       }
 
       if constexpr (TKDebug)
@@ -778,7 +778,7 @@ namespace ToolKit
         inputWnd->m_inputVal          = "New Project";
         inputWnd->m_inputLabel        = "Name";
         inputWnd->m_hint              = "Project name";
-        inputWnd->m_taskFn            = [](const String& val) { g_app->OnNewProject(val); };
+        inputWnd->m_taskFn            = [](const String& val) { GetApp()->OnNewProject(val); };
         inputWnd->AddToUI();
       }
 
@@ -788,17 +788,17 @@ namespace ToolKit
         inputWnd->m_inputVal          = "New Plugin";
         inputWnd->m_inputLabel        = "Name";
         inputWnd->m_hint              = "Plugin name";
-        inputWnd->m_taskFn            = [](const String& val) { g_app->OnNewPlugin(val); };
+        inputWnd->m_taskFn            = [](const String& val) { GetApp()->OnNewPlugin(val); };
         inputWnd->AddToUI();
       }
 
       if (ImGui::BeginMenu("Open Project"))
       {
-        for (const Project& project : g_app->m_workspace.m_projects)
+        for (const Project& project : GetApp()->m_workspace.m_projects)
         {
           if (ImGui::MenuItem(project.name.c_str()))
           {
-            g_app->OpenProject(project);
+            GetApp()->OpenProject(project);
           }
         }
         ImGui::EndMenu();
@@ -813,7 +813,7 @@ namespace ToolKit
         }
         else
         {
-          g_app->m_publishManager->Publish(publishPlatform, publishType);
+          GetApp()->m_publishManager->Publish(publishPlatform, publishType);
         }
       };
 
@@ -852,7 +852,7 @@ namespace ToolKit
       {
         if (ImGui::MenuItem("Pack"))
         {
-          g_app->PackResources();
+          GetApp()->PackResources();
         }
 
         if (ImGui::BeginMenu("Web"))
@@ -892,7 +892,7 @@ namespace ToolKit
         {
           for (String& file : ImportData.Files)
           {
-            if (g_app->CanImport(file))
+            if (GetApp()->CanImport(file))
             {
               importList << file + "\n";
             }
@@ -900,9 +900,9 @@ namespace ToolKit
         }
       }
 
-      if (g_app->m_importSlient)
+      if (GetApp()->m_importSlient)
       {
-        g_app->Import(load, ImportData.SubDir, ImportData.Overwrite);
+        GetApp()->Import(load, ImportData.SubDir, ImportData.Overwrite);
         load.clear();
         ImportData.Files.clear();
         ImportData.ShowImportWindow = false;
@@ -929,7 +929,7 @@ namespace ToolKit
         {
           for (int i = (int) (ImportData.Files.size()) - 1; i >= 0; i--)
           {
-            bool canImp = g_app->CanImport(ImportData.Files[i]);
+            bool canImp = GetApp()->CanImport(ImportData.Files[i]);
             if (!canImp)
             {
               fails.push_back(ImportData.Files[i]);
@@ -982,7 +982,7 @@ namespace ToolKit
             }
             else
             {
-              g_app->SetStatusMsg(g_statusDropDiscarded);
+              GetApp()->SetStatusMsg(g_statusDropDiscarded);
               TK_ERR("File isn't imported because it's not dropped into Textures folder.");
             }
             ImportData.Files.erase(ImportData.Files.begin() + i);
@@ -1009,7 +1009,7 @@ namespace ToolKit
         ImGui::InputTextWithHint("Subdir", "optional", &ImportData.SubDir);
         if (ImGui::Button("OK", ImVec2(120, 0)))
         {
-          if (g_app->Import(load, importFolder, ImportData.Overwrite) == -1)
+          if (GetApp()->Import(load, importFolder, ImportData.Overwrite) == -1)
           {
             // Fall back to search.
             ImGui::EndPopup();
@@ -1108,7 +1108,7 @@ namespace ToolKit
             target = ConcatPaths({ImportData.ActiveView->m_folder, ImportData.SubDir});
           }
 
-          g_app->Import("", target, ImportData.Overwrite);
+          GetApp()->Import("", target, ImportData.Overwrite);
           ImportData.Files.clear();
           ImGui::CloseCurrentPopup();
         }
@@ -1171,7 +1171,7 @@ namespace ToolKit
 
         if (ImGui::Button("OK", ImVec2(120, 0)))
         {
-          g_app->OnNewScene(sceneName);
+          GetApp()->OnNewScene(sceneName);
           m_showNewSceneWindow = false;
           ImGui::CloseCurrentPopup();
         }

@@ -108,7 +108,7 @@ namespace ToolKit
       ImGui::TableNextColumn();
       if (ImGui::ImageButton("##disk", Convert2ImGuiTexture(UI::m_diskDriveIcon), ImVec2(20.0f, 20.0f)))
       {
-        g_app->SaveAllResources();
+        GetApp()->SaveAllResources();
       }
       UI::HelpMarker(TKLoc, "Saves all resources.");
 
@@ -130,7 +130,7 @@ namespace ToolKit
           if (err)
           {
             TK_ERR("Copy failed: %s", err.message().c_str());
-            g_app->SetStatusMsg(g_statusFailed);
+            GetApp()->SetStatusMsg(g_statusFailed);
           }
         }
         else if (g_cuttingFiles)
@@ -139,7 +139,7 @@ namespace ToolKit
           if (std::rename(src.c_str(), dst.c_str()))
           {
             TK_ERR("File cut & paste failed!");
-            g_app->SetStatusMsg(g_statusFailed);
+            GetApp()->SetStatusMsg(g_statusFailed);
           }
         }
       }
@@ -147,7 +147,7 @@ namespace ToolKit
       g_coppiedFiles.clear();
 
       // refresh all folder views
-      for (FolderWindow* window : g_app->GetAssetBrowsers())
+      for (FolderWindow* window : GetApp()->GetAssetBrowsers())
       {
         window->SetViewsDirty();
       }
@@ -183,7 +183,7 @@ namespace ToolKit
         }
         g_selectedFiles.clear();
         // refresh all folder views
-        for (FolderWindow* window : g_app->GetAssetBrowsers())
+        for (FolderWindow* window : GetApp()->GetAssetBrowsers())
         {
           window->SetViewsDirty();
         }
@@ -362,7 +362,7 @@ namespace ToolKit
           }
           else if (thumbExtensions.count(dirEnt.m_ext) > 0)
           {
-            if (g_app->m_thumbnailManager.TryGetThumbnail(iconId, dirEnt))
+            if (GetApp()->m_thumbnailManager.TryGetThumbnail(iconId, dirEnt))
             {
               flipRenderTarget = true;
             }
@@ -430,11 +430,11 @@ namespace ToolKit
               }
               else if (rm->m_baseType == Mesh::StaticClass())
               {
-                g_app->GetPropInspector()->SetMeshView(rm->Create<Mesh>(dirEnt.GetFullPath()));
+                GetApp()->GetPropInspector()->SetMeshView(rm->Create<Mesh>(dirEnt.GetFullPath()));
               }
               else if (rm->m_baseType == SkinMesh::StaticClass())
               {
-                g_app->GetPropInspector()->SetMeshView(rm->Create<SkinMesh>(dirEnt.GetFullPath()));
+                GetApp()->GetPropInspector()->SetMeshView(rm->Create<SkinMesh>(dirEnt.GetFullPath()));
               }
             }
           }
@@ -712,7 +712,7 @@ namespace ToolKit
       {
         // Always fetch the active view for self.
         FolderViewRawPtrArray list = {};
-        for (FolderWindow* folder : g_app->GetAssetBrowsers())
+        for (FolderWindow* folder : GetApp()->GetAssetBrowsers())
         {
           if (FolderView* activeView = folder->GetActiveView())
           {
@@ -733,7 +733,7 @@ namespace ToolKit
         if (ec)
         {
           TK_ERR("Delete failed: %s", ec.message().c_str());
-          g_app->SetStatusMsg(g_statusFailed);
+          GetApp()->SetStatusMsg(g_statusFailed);
         }
 
         for (FolderView* view : getSameViewsFn(thisView))
@@ -754,7 +754,7 @@ namespace ToolKit
 
         if (ImGui::MenuItem("Show In Explorer"))
         {
-          g_app->m_shellOpenDirFn(views[0]->m_path.c_str());
+          GetApp()->m_shellOpenDirFn(views[0]->m_path.c_str());
           ImGui::CloseCurrentPopup();
         }
       };
@@ -842,7 +842,7 @@ namespace ToolKit
               String file = ConcatPaths({path, val + ext});
               if (CheckFile(file))
               {
-                g_app->GetConsole()->AddLog("Can't rename. A file with the same name exist", LogType::Error);
+                GetApp()->GetConsole()->AddLog("Can't rename. A file with the same name exist", LogType::Error);
               }
               else
               {
@@ -976,7 +976,7 @@ namespace ToolKit
             String file = ConcatPaths({views[0]->m_path, val + extention});
             if (CheckFile(file))
             {
-              g_app->GetConsole()->AddLog("Can't create. A scene with the same name exist", LogType::Error);
+              GetApp()->GetConsole()->AddLog("Can't create. A scene with the same name exist", LogType::Error);
             }
             else
             {
@@ -1026,7 +1026,7 @@ namespace ToolKit
               String file = ConcatPaths({views[0]->m_path, val + MATERIAL});
               if (CheckFile(file))
               {
-                g_app->GetConsole()->AddLog("Can't create. A material with the same name exist", LogType::Error);
+                GetApp()->GetConsole()->AddLog("Can't create. A material with the same name exist", LogType::Error);
               }
               else
               {
@@ -1071,7 +1071,7 @@ namespace ToolKit
         if (errCode)
         {
           TK_ERR("Rename failed: %s", errCode.message().c_str());
-          g_app->SetStatusMsg(g_statusFailed);
+          GetApp()->SetStatusMsg(g_statusFailed);
         }
         else
         {

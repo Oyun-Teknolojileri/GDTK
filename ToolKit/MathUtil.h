@@ -109,14 +109,17 @@ namespace ToolKit
 
   TK_API bool RaySphereIntersection(const Ray& ray, const BoundingSphere& sphere, float& t);
 
-  /** Finds a point at t distance away from the ray. */
-  TK_API Vec3 PointOnRay(const Ray& ray, float t);
-
   /** Tests whether the given point is inside the given boundary. */
   TK_API bool PointInsideBBox(const Vec3& point, const Vec3& max, const Vec3& min);
 
   // Geometric Operations
   //////////////////////////////////////////
+
+  /** Calculates angle from vec1 to  vec2 in radians. */
+  TK_API float AngleBetweenVectors(const Vec3& v1, const Vec3& v2);
+
+  /** Finds a point at t distance away from the ray. */
+  TK_API Vec3 PointOnRay(const Ray& ray, float t);
 
   /** Transforms the 8 corners of the bounding box and recalculates new boundary from transformed points. */
   TK_API void TransformAABB(BoundingBox& box, const Mat4& transform);

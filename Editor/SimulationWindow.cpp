@@ -23,7 +23,7 @@ namespace ToolKit
     SimulationWindow::SimulationWindow() : m_numDefaultResNames((int) m_emulatorResolutionNames.size())
     {
       m_name     = "Simulation";
-      m_settings = &g_app->m_simulatorSettings;
+      m_settings = &GetApp()->m_simulatorSettings;
     }
 
     SimulationWindow::~SimulationWindow() {}
@@ -48,7 +48,7 @@ namespace ToolKit
 
     void SimulationWindow::RemoveResolutionName(const String& name)
     {
-      for (int i = 0; i < m_emulatorResolutionNames.size(); ++i)
+      for (int i = 0; i < m_emulatorResolutionNames.size(); i++)
       {
         if (name == m_emulatorResolutionNames[i])
         {
@@ -129,7 +129,7 @@ namespace ToolKit
 
     void SimulationWindow::UpdateSimulationWndSize()
     {
-      if (g_app->m_simulationViewport)
+      if (GetApp()->m_simulationViewport)
       {
         uint width  = uint(m_settings->Width * m_settings->Scale);
         uint height = uint(m_settings->Height * m_settings->Scale);
@@ -138,7 +138,7 @@ namespace ToolKit
           std::swap(width, height);
         }
 
-        g_app->m_simulationViewport->ResizeWindow(width, height);
+        GetApp()->m_simulationViewport->ResizeWindow(width, height);
         UpdateCanvas(width, height);
       }
     }
@@ -185,13 +185,13 @@ namespace ToolKit
       float offset   = glm::max(ImGui::GetWindowWidth() * 0.5f - 100.0f, 0.0f);
       ImGui::SetCursorPosX(offset);
 
-      if (g_app->m_gameMod == GameMod::Playing)
+      if (GetApp()->m_gameMod == GameMod::Playing)
       {
         GreenTint();
         // Pause.
         if (ImGui::ImageButton("##pause", Convert2ImGuiTexture(UI::m_pauseIcon), btnSize))
         {
-          g_app->SetGameMod(GameMod::Paused);
+          GetApp()->SetGameMod(GameMod::Paused);
         }
 
         ImGui::PopStyleColor(3);
@@ -200,10 +200,10 @@ namespace ToolKit
       {
         GreenTint();
         // Play.
-        if (ImGui::ImageButton("##play", Convert2ImGuiTexture(UI::m_playIcon), btnSize) && !g_app->IsCompiling())
+        if (ImGui::ImageButton("##play", Convert2ImGuiTexture(UI::m_playIcon), btnSize) && !GetApp()->IsCompiling())
         {
           m_simulationModeDisabled = true;
-          g_app->SetGameMod(GameMod::Playing);
+          GetApp()->SetGameMod(GameMod::Playing);
         }
 
         ImGui::PopStyleColor(3);
@@ -214,10 +214,10 @@ namespace ToolKit
 
       if (ImGui::ImageButton("##stop", Convert2ImGuiTexture(UI::m_stopIcon), btnSize))
       {
-        if (g_app->m_gameMod != GameMod::Stop)
+        if (GetApp()->m_gameMod != GameMod::Stop)
         {
           m_simulationModeDisabled = false;
-          g_app->SetGameMod(GameMod::Stop);
+          GetApp()->SetGameMod(GameMod::Stop);
         }
       }
 
@@ -227,11 +227,11 @@ namespace ToolKit
       // VS Code.
       if (ImGui::ImageButton("##vscode", Convert2ImGuiTexture(UI::m_vsCodeIcon), btnSize))
       {
-        String codePath = ConcatPaths({g_app->m_workspace.GetCodeDirectory(), "..", "."});
+        String codePath = ConcatPaths({GetApp()->m_workspace.GetCodeDirectory(), "..", "."});
         if (CheckFile(codePath))
         {
           String cmd = "code \"" + codePath + "\"";
-          int result = g_app->ExecSysCommand(cmd, true, false);
+          int result = GetApp()->ExecSysCommand(cmd, true, false);
           if (result != 0)
           {
             TK_ERR("Visual Studio Code can't be started. Make sure it is installed.", );
@@ -248,9 +248,9 @@ namespace ToolKit
 
       if (ImGui::ImageButton("##build", Convert2ImGuiTexture(UI::m_buildIcn), btnSize))
       {
-        String buildBat         = g_app->m_workspace.GetCodeDirectory();
+        String buildBat         = GetApp()->m_workspace.GetCodeDirectory();
         PublishConfig buildType = TKDebug ? PublishConfig::Debug : PublishConfig::Develop;
-        g_app->m_publishManager->Publish(PublishPlatform::GamePlugin, buildType);
+        GetApp()->m_publishManager->Publish(PublishPlatform::GamePlugin, buildType);
       }
 
       UI::HelpMarker(TKLoc, "Build\nBuilds the projects code files.");
@@ -379,7 +379,7 @@ namespace ToolKit
 
     void SimulationWindow::UpdateCanvas(uint width, uint height)
     {
-      if (EditorViewport2dPtr viewport = g_app->GetWindow<EditorViewport2d>(g_2dViewport))
+      if (EditorViewport2dPtr viewport = GetApp()->GetWindow<EditorViewport2d>(g_2dViewport))
       {
         UILayerPtrArray layers;
         GetUIManager()->GetLayers(viewport->m_viewportId, layers);
@@ -387,11 +387,11 @@ namespace ToolKit
         // If this is 2d view, warn the user about no layer.
         if (layers.empty())
         {
-          if (g_app->GetActiveViewport() == viewport)
+          if (GetApp()->GetActiveViewport() == viewport)
           {
             if (viewport->IsShown())
             {
-              g_app->SetStatusMsg("Resize Failed. No Layer !");
+              GetApp()->SetStatusMsg("Resize Failed. No Layer !");
             }
           }
         }

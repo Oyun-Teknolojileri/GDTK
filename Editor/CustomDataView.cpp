@@ -67,7 +67,7 @@ namespace ToolKit
     ValueUpdateFn CustomDataView::MultiUpdate(ParameterVariant* var, ClassMeta* componentClass)
     {
       EntityPtrArray entities;
-      g_app->GetCurrentScene()->GetSelectedEntities(entities);
+      GetApp()->GetCurrentScene()->GetSelectedEntities(entities);
 
       // Remove current selected because its already updated.
       entities.pop_back();
@@ -289,7 +289,7 @@ namespace ToolKit
         if (removeIndex != -1)
         {
           ParameterVariant* var = &entity->m_localData[removeIndex];
-          g_app->SetStatusMsg(Format("Parameter %d: %s removed.", displayIndex + 1, var->m_name.c_str()));
+          GetApp()->SetStatusMsg(Format("Parameter %d: %s removed.", displayIndex + 1, var->m_name.c_str()));
           entity->m_localData.Remove(removeIndex);
         }
       }
@@ -800,7 +800,7 @@ namespace ToolKit
 
     void CustomDataView::Show()
     {
-      m_entity      = g_app->GetCurrentScene()->GetCurrentSelection();
+      m_entity      = GetApp()->GetCurrentScene()->GetCurrentSelection();
       EntityPtr ntt = m_entity.lock();
 
       if (ntt == nullptr)

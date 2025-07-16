@@ -147,7 +147,7 @@ namespace ToolKit
           ImGui::SameLine();
           m_viewport->m_isTempView = m_isTempView;
           m_viewport->SetViewportSize((uint) viewportSize.x, (uint) viewportSize.y);
-          m_viewport->Update(g_app->GetDeltaTime());
+          m_viewport->Update(GetApp()->GetDeltaTime());
           m_viewport->Show();
           ImGui::SameLine();
           ImGui::BeginGroup();
@@ -174,7 +174,7 @@ namespace ToolKit
       auto updateThumbFn = [this, mat]() -> void
       {
         DirectoryEntry dirEnt(mat->GetFile());
-        g_app->m_thumbnailManager.UpdateThumbnail(dirEnt);
+        GetApp()->m_thumbnailManager.UpdateThumbnail(dirEnt);
       };
 
       if (ImGui::CollapsingHeader("Shaders"))
@@ -192,7 +192,7 @@ namespace ToolKit
                  {
                    if (strcmp(dirEnt.m_ext.c_str(), ".shader") != 0)
                    {
-                     g_app->SetStatusMsg(g_statusFailed);
+                     GetApp()->SetStatusMsg(g_statusFailed);
                      TK_ERR("Failed. Shader expected.");
                      return;
                    }

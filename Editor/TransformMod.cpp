@@ -31,10 +31,10 @@ namespace ToolKit
 
     SignalId StateTransformBase::Update(float deltaTime)
     {
-      EditorScenePtr currScene = g_app->GetCurrentScene();
+      EditorScenePtr currScene = GetApp()->GetCurrentScene();
       if (currScene->GetSelectedEntityCount() == 0)
       {
-        g_app->m_gizmo = nullptr;
+        GetApp()->m_gizmo = nullptr;
         return NullSignal;
       }
 
@@ -44,7 +44,7 @@ namespace ToolKit
         // Get world location as gizmo origin.
         m_gizmo->m_worldLocation = ntt->m_node->GetTranslation();
 
-        if (g_app->m_transformSpace == TransformationSpace::TS_LOCAL)
+        if (GetApp()->m_transformSpace == TransformationSpace::TS_LOCAL)
         {
           m_gizmo->m_normalVectors = ntt->m_node->GetTransformAxes();
         }
@@ -75,12 +75,12 @@ namespace ToolKit
 
     void StateTransformBase::MakeSureGizmoIsValid()
     {
-      if (g_app->m_gizmo == nullptr)
+      if (GetApp()->m_gizmo == nullptr)
       {
-        EntityPtr ntt = g_app->GetCurrentScene()->GetCurrentSelection();
+        EntityPtr ntt = GetApp()->GetCurrentScene()->GetCurrentSelection();
         if (ntt != nullptr)
         {
-          g_app->m_gizmo = m_gizmo;
+          GetApp()->m_gizmo = m_gizmo;
         }
       }
     }
@@ -90,7 +90,7 @@ namespace ToolKit
       Vec3 axes[3];
       ExtractAxes(m_gizmo->m_normalVectors, axes[0], axes[1], axes[2]);
 
-      int first = static_cast<int>(m_gizmo->GetGrabbedAxis()) % 3;
+      int first = (int) (m_gizmo->GetGrabbedAxis()) % 3;
       if (n == 0)
       {
         return axes[first];
@@ -129,10 +129,10 @@ namespace ToolKit
 
       MakeSureGizmoIsValid();
 
-      EntityPtr ntt = g_app->GetCurrentScene()->GetCurrentSelection();
+      EntityPtr ntt = GetApp()->GetCurrentScene()->GetCurrentSelection();
       if (ntt != nullptr)
       {
-        EditorViewportPtr vp = g_app->GetActiveViewport();
+        EditorViewportPtr vp = GetApp()->GetActiveViewport();
         if (vp == nullptr)
         {
           // Console commands may put the process here whit out active viewport.
@@ -184,7 +184,7 @@ namespace ToolKit
     {
       if (signal == BaseMod::m_leftMouseBtnDownSgnl)
       {
-        if (EditorViewportPtr vp = g_app->GetActiveViewport())
+        if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
         {
           m_mouseData[0] = vp->GetLastMousePosScreenSpace();
           AxisLabel axis = m_gizmo->HitTest(vp->RayFromMousePosition());
@@ -194,7 +194,7 @@ namespace ToolKit
           }
         }
 
-        EntityPtr ntt = g_app->GetCurrentScene()->GetCurrentSelection();
+        EntityPtr ntt = GetApp()->GetCurrentScene()->GetCurrentSelection();
         if (m_gizmo->IsGrabbed(AxisLabel::None) || ntt == nullptr)
         {
           return StateType::StateBeginPick;
@@ -214,7 +214,7 @@ namespace ToolKit
 
       if (signal == BaseMod::m_leftMouseBtnDragSgnl)
       {
-        EntityPtr ntt = g_app->GetCurrentScene()->GetCurrentSelection();
+        EntityPtr ntt = GetApp()->GetCurrentScene()->GetCurrentSelection();
         if (ntt == nullptr)
         {
           return StateType::Null;
@@ -246,34 +246,20 @@ namespace ToolKit
       if (PolarGizmo* pg = m_gizmo->As<PolarGizmo>())
       {
         // Polar intersection plane.
-        if ((int) (m_gizmo->GetGrabbedAxis()) < 3)
+        if (m_gizmo->GetGrabbedAxis() <= AxisLabel::Z)
         {
           assert(m_gizmo->GetGrabbedAxis() != AxisLabel::None);
 
-          Vec3 p    = m_gizmo->m_worldLocation;
-          Vec3 axis = GetGrabbedAxis(0);
-
-          if (EditorViewportPtr vp = g_app->GetActiveViewport())
-          {
-            float t;
-            PlaneEquation axisPlane = PlaneFrom(p, axis);
-            Ray ray                 = vp->RayFromMousePosition();
-            if (RayPlaneIntersection(ray, axisPlane, t))
-            {
-              Vec3 intersectPnt   = PointOnRay(ray, t);
-              intersectPnt        = glm::normalize(intersectPnt - p);
-              pg->m_grabPoint     = intersectPnt;
-
-              m_intersectionPlane = PlaneFrom(intersectPnt + m_gizmo->m_worldLocation, axis);
-            }
-          }
+          Vec3 p              = m_gizmo->m_worldLocation;
+          Vec3 axis           = GetGrabbedAxis(0);
+          m_intersectionPlane = PlaneFrom(p, axis);
         }
       }
       else
       {
         // Linear intersection plane.
         Vec3 camOrg;
-        if (EditorViewportPtr vp = g_app->GetActiveViewport())
+        if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
         {
           camOrg = vp->GetCamera()->m_node->GetTranslation(TransformationSpace::TS_WORLD);
         }
@@ -324,13 +310,18 @@ namespace ToolKit
       assert(m_gizmo->GetGrabbedAxis() != AxisLabel::None);
       m_gizmo->m_grabPoint = ZERO;
 
-      if (EditorViewportPtr vp = g_app->GetActiveViewport())
+      if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
       {
         float t;
         Ray ray = vp->RayFromMousePosition();
         if (RayPlaneIntersection(ray, m_intersectionPlane, t))
         {
           m_gizmo->m_grabPoint = PointOnRay(ray, t);
+          if (m_gizmo->IsA<PolarGizmo>())
+          {
+            m_gizmo->m_grabPoint -= m_gizmo->m_worldLocation;
+            m_gizmo->m_grabPoint  = glm::normalize(m_gizmo->m_grabPoint);
+          }
         }
       }
     }
@@ -365,7 +356,7 @@ namespace ToolKit
       StateTransformBase::TransitionIn(prevState);
 
       EntityPtrArray entities, selecteds;
-      EditorScenePtr currScene = g_app->GetCurrentScene();
+      EditorScenePtr currScene = GetApp()->GetCurrentScene();
       currScene->GetSelectedEntities(selecteds);
       GetRootEntities(selecteds, entities);
       if (!entities.empty())
@@ -409,7 +400,7 @@ namespace ToolKit
       Transform(m_delta);
       StateTransformBase::Update(deltaTime);
       ImGui::SetMouseCursor(ImGuiMouseCursor_None);
-      if (EditorViewportPtr vp = g_app->GetActiveViewport())
+      if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
       {
         Vec2 contentMin, contentMax;
         vp->GetContentAreaScreenCoordinates(&contentMin, &contentMax);
@@ -457,25 +448,63 @@ namespace ToolKit
       // Warp mouse move.
       SDL_WarpMouseGlobal(m_mouseInitialLoc.x, m_mouseInitialLoc.y);
 
-      float t;
-      if (EditorViewportPtr vp = g_app->GetActiveViewport())
+      if (m_type == TransformType::Rotate)
       {
-        Ray ray = vp->RayFromScreenSpacePoint(m_mouseData[1]);
-        if (RayPlaneIntersection(ray, m_intersectionPlane, t))
+        // Calculate angular offset.
+        if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
         {
-          // This point.
-          Vec3 p = PointOnRay(ray, t);
+          Ray ray0         = vp->RayFromScreenSpacePoint(m_mouseData[0]);
+          Ray ray1         = vp->RayFromScreenSpacePoint(m_mouseData[1]);
 
-          // Previous. point.
-          ray    = vp->RayFromScreenSpacePoint(m_mouseData[0]);
-          RayPlaneIntersection(ray, m_intersectionPlane, t);
-          Vec3 p0 = PointOnRay(ray, t);
-          m_delta = p - p0;
+          Vec3 gizmoCenter = m_gizmo->m_worldLocation;
+
+          float t          = 0.0f;
+          Vec3 p0; // Point 0 on gizmo.
+          if (RayPlaneIntersection(ray0, m_intersectionPlane, t))
+          {
+            p0 = PointOnRay(ray0, t);
+            p0 = glm::normalize(p0 - gizmoCenter);
+          }
+
+          Vec3 p1; // Point 1 on gizmo.
+          if (RayPlaneIntersection(ray0, m_intersectionPlane, t))
+          {
+            p1                   = PointOnRay(ray1, t);
+            p1                   = glm::normalize(p1 - gizmoCenter);
+            m_gizmo->m_grabPoint = p1;
+          }
+
+          m_delta       = ZERO;
+          m_delta.z     = AngleBetweenVectors(p0, p1);
+
+          // Detect signature.
+          Vec3 rotNorm  = glm::cross(p0, p1);
+          float sig     = glm::sign(glm::dot(rotNorm, m_intersectionPlane.normal));
+          m_delta.z    *= sig;
         }
-        else
+      }
+      else
+      {
+        float t;
+        if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
         {
-          assert(false && "Intersection expected.");
-          m_delta = ZERO;
+          Ray ray = vp->RayFromScreenSpacePoint(m_mouseData[1]);
+          if (RayPlaneIntersection(ray, m_intersectionPlane, t))
+          {
+            // This point.
+            Vec3 p = PointOnRay(ray, t);
+
+            // Previous. point.
+            ray    = vp->RayFromScreenSpacePoint(m_mouseData[0]);
+            RayPlaneIntersection(ray, m_intersectionPlane, t);
+            Vec3 p0 = PointOnRay(ray, t);
+            m_delta = p - p0;
+          }
+          else
+          {
+            assert(false && "Intersection expected.");
+            m_delta = ZERO;
+          }
         }
       }
 
@@ -485,7 +514,7 @@ namespace ToolKit
     void StateTransformTo::Transform(const Vec3& delta)
     {
       EntityPtrArray roots;
-      EditorScenePtr currScene = g_app->GetCurrentScene();
+      EditorScenePtr currScene = GetApp()->GetCurrentScene();
       currScene->GetSelectedEntities(roots);
 
       EntityPtr currentNtt = currScene->GetCurrentSelection();
@@ -530,7 +559,7 @@ namespace ToolKit
       else
       {
         // Warn user
-        g_app->SetStatusMsg(g_statusFailed);
+        GetApp()->SetStatusMsg(g_statusFailed);
         TK_ERR("Transform failed. Transform locked.");
       }
 
@@ -551,7 +580,7 @@ namespace ToolKit
       Vec3 delta = m_delta;
       if (!IsPlaneMod())
       {
-        int axis = static_cast<int>(m_gizmo->GetGrabbedAxis());
+        int axis = (int) m_gizmo->GetGrabbedAxis();
         Vec3 dir = m_gizmo->m_normalVectors[axis];
         dir      = glm::normalize(dir);
         delta    = glm::dot(dir, m_delta) * dir;
@@ -561,10 +590,10 @@ namespace ToolKit
       Vec3 target   = ntt->m_node->GetTranslation(TransformationSpace::TS_WORLD);
 
       // Snap for pos.
-      if (g_app->m_snapsEnabled)
+      if (GetApp()->m_snapsEnabled)
       {
         target                = m_initialLoc + m_deltaAccum;
-        float spacing         = g_app->m_moveDelta;
+        float spacing         = GetApp()->m_moveDelta;
         Vec3 snapped          = glm::round(target / spacing) * spacing;
 
         // Apply axis lock.
@@ -596,23 +625,11 @@ namespace ToolKit
 
     void StateTransformTo::Rotate(EntityPtr ntt)
     {
-      EditorViewportPtr viewport  = g_app->GetActiveViewport();
-      PolarGizmo* pg              = static_cast<PolarGizmo*>(m_gizmo.get());
-      int axisInd                 = (int) (m_gizmo->GetGrabbedAxis());
-      Vec3 projAxis               = pg->m_handles[axisInd]->m_tangentDir;
-      Vec3 mouseDelta             = m_delta;
-
-      float delta                 = glm::dot(projAxis, mouseDelta);
-      Vec3 deltaInWS              = Vec3(delta, 0.0f, 0.0f);
-      Vec2 deltaInSS              = viewport->TransformWorldSpaceToScreenSpace(deltaInWS);
-      deltaInSS                  -= viewport->TransformWorldSpaceToScreenSpace(Vec3(0));
-      deltaInSS = Vec2(deltaInSS.x / viewport->m_wndContentAreaSize.x, deltaInSS.y / viewport->m_wndContentAreaSize.y);
-      delta     = glm::length(deltaInSS) * ((delta > 0.0f) ? 1 : -1);
-      delta     = glm::degrees(delta) / 9.0f;
+      float delta     = m_delta.z;
 
       m_deltaAccum.x += delta;
-      float spacing   = glm::radians(g_app->m_rotateDelta);
-      if (g_app->m_snapsEnabled)
+      float spacing   = glm::radians(GetApp()->m_rotateDelta);
+      if (GetApp()->m_snapsEnabled)
       {
         if (glm::abs(m_deltaAccum.x) < spacing)
         {
@@ -626,6 +643,9 @@ namespace ToolKit
 
       if (glm::notEqual(delta, 0.0f))
       {
+        PolarGizmo* pg      = static_cast<PolarGizmo*>(m_gizmo.get());
+        int axisInd         = (int) (m_gizmo->GetGrabbedAxis());
+
         Quaternion rotation = glm::angleAxis(delta, m_gizmo->m_normalVectors[axisInd]);
         ntt->m_node->Rotate(rotation, TransformationSpace::TS_WORLD);
       }
@@ -655,8 +675,8 @@ namespace ToolKit
       delta                           *= glm::normalize(axis);
       m_deltaAccum                    += delta;
 
-      float spacing                    = g_app->m_scaleDelta;
-      if (g_app->m_snapsEnabled)
+      float spacing                    = GetApp()->m_scaleDelta;
+      if (GetApp()->m_snapsEnabled)
       {
         if (IsPlaneMod())
         { // Snapping on, 2 dimension grabbed
@@ -709,7 +729,7 @@ namespace ToolKit
         delta *= mas;
       }
 
-      if (g_app->m_snapsEnabled)
+      if (GetApp()->m_snapsEnabled)
       {
         for (uint i = 0; i < 3; i++)
         {
@@ -762,7 +782,7 @@ namespace ToolKit
 
     TransformMod::TransformMod(ModId id) : BaseMod(id) { m_gizmo = nullptr; }
 
-    TransformMod::~TransformMod() { g_app->m_gizmo = nullptr; }
+    TransformMod::~TransformMod() { GetApp()->m_gizmo = nullptr; }
 
     void TransformMod::Init()
     {
@@ -809,10 +829,10 @@ namespace ToolKit
       state->m_links[m_backToStart] = StateType::StateTransformBegin;
       m_stateMachine->PushState(state);
 
-      m_prevTransformSpace = g_app->m_transformSpace;
+      m_prevTransformSpace = GetApp()->m_transformSpace;
       if (m_id == ModId::Scale)
       {
-        g_app->m_transformSpace = TransformationSpace::TS_LOCAL;
+        GetApp()->m_transformSpace = TransformationSpace::TS_LOCAL;
       }
     }
 
@@ -820,7 +840,7 @@ namespace ToolKit
     {
       if (m_id == ModId::Scale)
       {
-        g_app->m_transformSpace = m_prevTransformSpace;
+        GetApp()->m_transformSpace = m_prevTransformSpace;
       }
     }
 
@@ -830,7 +850,7 @@ namespace ToolKit
       // Important for proper picking.
       if (m_gizmo != nullptr)
       {
-        if (EditorViewportPtr vp = g_app->GetActiveViewport())
+        if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
         {
           m_gizmo->LookAt(vp->GetCamera(), vp->GetBillboardScale());
         }
@@ -844,7 +864,7 @@ namespace ToolKit
 
         IDArray entities;
         endPick->PickDataToEntityId(entities);
-        g_app->GetCurrentScene()->AddToSelection(entities, ImGui::GetIO().KeyShift);
+        GetApp()->GetCurrentScene()->AddToSelection(entities, ImGui::GetIO().KeyShift);
 
         ModManager::GetInstance()->DispatchSignal(m_backToStart);
       }

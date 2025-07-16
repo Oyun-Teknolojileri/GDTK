@@ -77,10 +77,6 @@ namespace ToolKit
     typedef std::function<int(StringView, bool, bool, SysCommandDoneCallback)> SysCommandExecutionFn;
     typedef std::function<void(const StringView)> ShellOpenDirFn;
 
-    // Handles.
-    extern class App* g_app;
-    extern bool g_running;
-
     // UI Strings
     const String g_consoleStr("Console");
     const String g_assetBrowserStr("Asset Browser");

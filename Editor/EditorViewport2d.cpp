@@ -68,7 +68,7 @@ namespace ToolKit
       // Resize Grid
       if (IsShown())
       {
-        g_app->m_2dGrid->Resize(g_max2dGridSize, AxisLabel::XY, (float) (m_gridCellSizeByPixel), 2.0f);
+        GetApp()->m_2dGrid->Resize(g_max2dGridSize, AxisLabel::XY, (float) (m_gridCellSizeByPixel), 2.0f);
       }
 
       if (!IsActive())
@@ -161,7 +161,7 @@ namespace ToolKit
             openButton.m_callback = [entry]() -> void
             {
               String fullPath = entry->GetFullPath();
-              g_app->OpenSceneAsync(fullPath);
+              GetApp()->OpenSceneAsync(fullPath);
             };
 
             MultiChoiceButtonInfo linkButton;
@@ -177,7 +177,7 @@ namespace ToolKit
             mergeButton.m_callback = [entry]() -> void
             {
               String fullPath = entry->GetFullPath();
-              g_app->MergeScene(fullPath);
+              GetApp()->MergeScene(fullPath);
             };
 
             MultiChoiceButtonArray buttons = {openButton, linkButton, mergeButton};
@@ -193,9 +193,9 @@ namespace ToolKit
 
     void EditorViewport2d::DrawOverlays()
     {
-      if (g_app->m_showOverlayUI)
+      if (GetApp()->m_showOverlayUI)
       {
-        if (IsActive() || g_app->m_showOverlayUIAlways)
+        if (IsActive() || GetApp()->m_showOverlayUIAlways)
         {
           // Draw all overlays except 3DViewportOptions!
           for (size_t i = 0; i < m_overlays.size(); i++)
@@ -236,7 +236,7 @@ namespace ToolKit
         {
           if (m_zoomPercentage == 800)
           {
-            g_app->SetStatusMsg(g_statusMaxZoom);
+            GetApp()->SetStatusMsg(g_statusMaxZoom);
             return;
           }
           m_zoomPercentage += 10;
@@ -245,7 +245,7 @@ namespace ToolKit
         {
           if (m_zoomPercentage < 20)
           {
-            g_app->SetStatusMsg(g_statusMinZoom);
+            GetApp()->SetStatusMsg(g_statusMinZoom);
             return;
           }
           m_zoomPercentage -= 10;

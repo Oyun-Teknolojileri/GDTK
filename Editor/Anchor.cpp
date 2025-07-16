@@ -275,7 +275,7 @@ namespace ToolKit
           p.scale     = Vec3(0.5f, 1.1f, 1.f);
         }
 
-        if (EditorViewportPtr vp = g_app->GetViewport(g_2dViewport))
+        if (EditorViewportPtr vp = GetApp()->GetViewport(g_2dViewport))
         {
           if (vp->IsVisible())
           {

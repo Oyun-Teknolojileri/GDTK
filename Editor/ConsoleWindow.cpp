@@ -76,34 +76,34 @@ namespace ToolKit
 
     void ShowPickDebugExec(TagArgArray tagArgs)
     {
-      BoolCheck(tagArgs, &g_app->m_showPickingDebug);
+      BoolCheck(tagArgs, &GetApp()->m_showPickingDebug);
 
-      if (!g_app->m_showPickingDebug)
+      if (!GetApp()->m_showPickingDebug)
       {
-        EditorScenePtr currScene = g_app->GetCurrentScene();
-        if (g_app->m_dbgArrow)
+        EditorScenePtr currScene = GetApp()->GetCurrentScene();
+        if (GetApp()->m_dbgArrow)
         {
-          currScene->RemoveEntity(g_app->m_dbgArrow->GetIdVal());
-          g_app->m_dbgArrow = nullptr;
+          currScene->RemoveEntity(GetApp()->m_dbgArrow->GetIdVal());
+          GetApp()->m_dbgArrow = nullptr;
         }
 
-        if (g_app->m_dbgFrustum)
+        if (GetApp()->m_dbgFrustum)
         {
-          currScene->RemoveEntity(g_app->m_dbgFrustum->GetIdVal());
-          g_app->m_dbgFrustum = nullptr;
+          currScene->RemoveEntity(GetApp()->m_dbgFrustum->GetIdVal());
+          GetApp()->m_dbgFrustum = nullptr;
         }
       }
     }
 
-    void ShowOverlayExec(TagArgArray tagArgs) { BoolCheck(tagArgs, &g_app->m_showOverlayUI); }
+    void ShowOverlayExec(TagArgArray tagArgs) { BoolCheck(tagArgs, &GetApp()->m_showOverlayUI); }
 
-    void ShowOverlayAlwaysExec(TagArgArray tagArgs) { BoolCheck(tagArgs, &g_app->m_showOverlayUIAlways); }
+    void ShowOverlayAlwaysExec(TagArgArray tagArgs) { BoolCheck(tagArgs, &GetApp()->m_showOverlayUIAlways); }
 
-    void ShowModTransitionsExec(TagArgArray tagArgs) { BoolCheck(tagArgs, &g_app->m_showStateTransitionsDebug); }
+    void ShowModTransitionsExec(TagArgArray tagArgs) { BoolCheck(tagArgs, &GetApp()->m_showStateTransitionsDebug); }
 
     void TransformInternal(TagArgArray tagArgs, bool set)
     {
-      EntityPtr ntt = g_app->GetCurrentScene()->GetCurrentSelection();
+      EntityPtr ntt = GetApp()->GetCurrentScene()->GetCurrentSelection();
       if (ntt == nullptr)
       {
         return;
@@ -216,7 +216,7 @@ namespace ToolKit
           return;
         }
 
-        if (EditorViewportPtr vp = g_app->GetViewport(viewportTag->second[0]))
+        if (EditorViewportPtr vp = GetApp()->GetViewport(viewportTag->second[0]))
         {
           if (CameraPtr c = vp->GetCamera())
           {
@@ -272,7 +272,7 @@ namespace ToolKit
 
     void ResetCameraExec(TagArgArray tagArgs)
     {
-      if (EditorViewportPtr vp = g_app->GetActiveViewport())
+      if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
       {
         vp->ResetCameraToDefault();
       }
@@ -280,7 +280,7 @@ namespace ToolKit
 
     void GetTransformExec(TagArgArray tagArgs)
     {
-      EntityPtr e = g_app->GetCurrentScene()->GetCurrentSelection();
+      EntityPtr e = GetApp()->GetCurrentScene()->GetCurrentSelection();
       if (e != nullptr)
       {
         auto PrintTransform = [e](TransformationSpace ts) -> void
@@ -289,7 +289,7 @@ namespace ToolKit
           Vec3 t       = e->m_node->GetTranslation(ts);
           Vec3 s       = e->m_node->GetScale();
 
-          if (ConsoleWindowPtr cwnd = g_app->GetConsole())
+          if (ConsoleWindowPtr cwnd = GetApp()->GetConsole())
           {
             String str = "T: " + glm::to_string(t);
             cwnd->AddLog(str);
@@ -336,12 +336,12 @@ namespace ToolKit
       String tsStr = tagArgs.front().second.front();
       if (tsStr == "world")
       {
-        g_app->m_transformSpace = TransformationSpace::TS_WORLD;
+        GetApp()->m_transformSpace = TransformationSpace::TS_WORLD;
       }
 
       if (tsStr == "local")
       {
-        g_app->m_transformSpace = TransformationSpace::TS_LOCAL;
+        GetApp()->m_transformSpace = TransformationSpace::TS_LOCAL;
       }
 
       BaseMod* mod = ModManager::GetInstance()->m_modStack.back();
@@ -351,7 +351,7 @@ namespace ToolKit
       }
     }
 
-    void ImportSlient(TagArgArray tagArgs) { BoolCheck(tagArgs, &g_app->m_importSlient); }
+    void ImportSlient(TagArgArray tagArgs) { BoolCheck(tagArgs, &GetApp()->m_importSlient); }
 
     void SelectByTag(TagArgArray tagArgs)
     {
@@ -366,7 +366,7 @@ namespace ToolKit
 
       String args = tagArgs.front().second.front();
 
-      g_app->GetCurrentScene()->SelectByTag(args);
+      GetApp()->GetCurrentScene()->SelectByTag(args);
     }
 
     void LookAt(TagArgArray tagArgs)
@@ -386,7 +386,7 @@ namespace ToolKit
 
         Vec3 target;
         ParseVec(target, targetTag);
-        if (EditorViewportPtr vp = g_app->GetViewport(g_3dViewport))
+        if (EditorViewportPtr vp = GetApp()->GetViewport(g_3dViewport))
         {
           vp->GetCamera()->GetComponent<DirectionComponent>()->LookAt(target);
         }
@@ -398,7 +398,7 @@ namespace ToolKit
       // Caviate: A reload is neded since hardware buffers are not updated.
       // After refreshing hardware buffers,
       // transforms of the entity can be set to identity.
-      EntityPtr ntt = g_app->GetCurrentScene()->GetCurrentSelection();
+      EntityPtr ntt = GetApp()->GetCurrentScene()->GetCurrentSelection();
       if (ntt->IsDrawable())
       {
         MeshRawPtrArray meshes;
@@ -415,13 +415,13 @@ namespace ToolKit
       }
       else
       {
-        g_app->GetConsole()->AddLog(g_noValidEntity, LogType::Error);
+        GetApp()->GetConsole()->AddLog(g_noValidEntity, LogType::Error);
       }
     }
 
     void SaveMesh(TagArgArray tagArgs)
     {
-      EntityPtr ntt = g_app->GetCurrentScene()->GetCurrentSelection();
+      EntityPtr ntt = GetApp()->GetCurrentScene()->GetCurrentSelection();
       if (ntt->IsDrawable())
       {
         TagArgCIt nameTag = GetTag("n", tagArgs);
@@ -446,11 +446,11 @@ namespace ToolKit
       }
       else
       {
-        g_app->GetConsole()->AddLog(g_noValidEntity, LogType::Error);
+        GetApp()->GetConsole()->AddLog(g_noValidEntity, LogType::Error);
       }
     }
 
-    void ShowSelectionBoundary(TagArgArray tagArgs) { BoolCheck(tagArgs, &g_app->m_showSelectionBoundary); }
+    void ShowSelectionBoundary(TagArgArray tagArgs) { BoolCheck(tagArgs, &GetApp()->m_showSelectionBoundary); }
 
     void ShowGraphicsApiLogs(TagArgArray tagArgs)
     {
@@ -464,8 +464,8 @@ namespace ToolKit
         return;
       }
 
-      String lvl                     = tagArgs.front().second.front();
-      g_app->m_showGraphicsApiErrors = std::atoi(lvl.c_str());
+      String lvl                        = tagArgs.front().second.front();
+      GetApp()->m_showGraphicsApiErrors = std::atoi(lvl.c_str());
     }
 
     void SetWorkspaceDir(TagArgArray tagArgs)
@@ -480,10 +480,10 @@ namespace ToolKit
         if (CheckFile(path) && std::filesystem::is_directory(path))
         {
           // Try updating Workspace.settings
-          if (g_app->m_workspace.SetDefaultWorkspace(path))
+          if (GetApp()->m_workspace.SetDefaultWorkspace(path))
           {
             String info = "Your Workspace directry set to: " + path + "\n" + manUpMsg;
-            g_app->GetConsole()->AddLog(info, LogType::Memo);
+            GetApp()->GetConsole()->AddLog(info, LogType::Memo);
             return;
           }
         }
@@ -493,7 +493,7 @@ namespace ToolKit
         err.append(" Projects will be saved in your installment folder.\n");
         err += manUpMsg;
 
-        g_app->GetConsole()->AddLog(err, LogType::Error);
+        GetApp()->GetConsole()->AddLog(err, LogType::Error);
       }
     }
 
@@ -512,9 +512,9 @@ namespace ToolKit
       GetPluginManager()->Load(plugin);
     }
 
-    void ShowShadowFrustum(TagArgArray tagArgs) { BoolCheck(tagArgs, &g_app->m_showDirectionalLightShadowFrustum); }
+    void ShowShadowFrustum(TagArgArray tagArgs) { BoolCheck(tagArgs, &GetApp()->m_showDirectionalLightShadowFrustum); }
 
-    void SelectAllEffectingLights(TagArgArray tagArgs) { BoolCheck(tagArgs, &g_app->m_selectEffectingLights); }
+    void SelectAllEffectingLights(TagArgArray tagArgs) { BoolCheck(tagArgs, &GetApp()->m_selectEffectingLights); }
 
     void CheckSceneHealth(TagArgArray tagArgs)
     {
@@ -584,16 +584,16 @@ namespace ToolKit
       }
     }
 
-    void ShowSceneBoundary(TagArgArray tagArgs) { BoolCheck(tagArgs, &g_app->m_showSceneBoundary); }
+    void ShowSceneBoundary(TagArgArray tagArgs) { BoolCheck(tagArgs, &GetApp()->m_showSceneBoundary); }
 
-    void ShowBVHNodes(TagArgArray tagArgs) { BoolCheck(tagArgs, &g_app->m_showBVHNodes); }
+    void ShowBVHNodes(TagArgArray tagArgs) { BoolCheck(tagArgs, &GetApp()->m_showBVHNodes); }
 
     void DeleteSelection(TagArgArray tagArgs)
     {
       bool isDeep = false;
       BoolCheck(tagArgs, &isDeep);
 
-      EditorScenePtr scene = g_app->GetCurrentScene();
+      EditorScenePtr scene = GetApp()->GetCurrentScene();
 
       EntityPtrArray selection;
       scene->GetSelectedEntities(selection);
@@ -670,7 +670,7 @@ namespace ToolKit
 
       String searchBy = arg.second.front();
 
-      if (EditorScenePtr currScene = g_app->GetCurrentScene())
+      if (EditorScenePtr currScene = GetApp()->GetCurrentScene())
       {
         if (EntityPtr currNtt = currScene->GetCurrentSelection())
         {

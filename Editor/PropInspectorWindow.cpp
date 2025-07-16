@@ -120,7 +120,7 @@ namespace ToolKit
       ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(3.0f, 0.0f));
       ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(2.0f, style.ItemSpacing.y));
 
-      EntityPtr curEntity = g_app->GetCurrentScene()->GetCurrentSelection();
+      EntityPtr curEntity = GetApp()->GetCurrentScene()->GetCurrentSelection();
       bool isPrefab       = curEntity != nullptr && curEntity->IsA<Prefab>();
 
       UIntArray views     = isPrefab ? m_prefabViews : m_entityViews;

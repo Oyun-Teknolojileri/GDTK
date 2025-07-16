@@ -39,7 +39,7 @@ namespace ToolKit
       DirectoryEntry dirEnt;
 
       bool fileExist                        = GetFileManager()->CheckFileFromResources(file);
-      FolderWindowRawPtrArray folderWindows = g_app->GetAssetBrowsers();
+      FolderWindowRawPtrArray folderWindows = GetApp()->GetAssetBrowsers();
       for (FolderWindow* folderWnd : folderWindows)
       {
         if (folderWnd->GetFileEntry(file, dirEnt))
@@ -51,7 +51,7 @@ namespace ToolKit
       uint iconId                        = fallbackIcon;
       ImVec2 texCoords                   = ImVec2(1.0f, 1.0f);
 
-      ThumbnailManager& thumbnailManager = g_app->m_thumbnailManager;
+      ThumbnailManager& thumbnailManager = GetApp()->m_thumbnailManager;
 
       if (dirEnt.m_ext.length())
       {
@@ -118,7 +118,7 @@ namespace ToolKit
             MaterialPtr mr = man->Create<Material>(file);
             if (clicked)
             {
-              PropInspectorWindowPtr propInspector = g_app->GetPropInspector();
+              PropInspectorWindowPtr propInspector = GetApp()->GetPropInspector();
               propInspector->GetMaterialView()->SetSelectedMaterial(mr);
               propInspector->SetActiveView(ViewType::Material);
             }
@@ -139,7 +139,7 @@ namespace ToolKit
 
             if (clicked)
             {
-              g_app->GetPropInspector()->SetMeshView(mesh);
+              GetApp()->GetPropInspector()->SetMeshView(mesh);
             }
 
             info += "File: " + dirEnt.m_fileName + dirEnt.m_ext + "\n";

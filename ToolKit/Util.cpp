@@ -748,7 +748,7 @@ namespace ToolKit
     y      = glm::normalize(glm::cross(z, x));
 
     NormalizePlaneEquation(plane);
-    Vec3 o      = plane.normal * plane.d;
+    Vec3 o      = plane.normal * -plane.d;
 
     float hSize = size * 0.5f;
     Vec3Array corners {o + x * hSize + y * hSize,

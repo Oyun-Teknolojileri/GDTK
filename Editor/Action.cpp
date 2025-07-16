@@ -65,7 +65,7 @@ namespace ToolKit
     {
       assert(m_ntt != nullptr);
 
-      EditorScenePtr currScene = g_app->GetCurrentScene();
+      EditorScenePtr currScene = GetApp()->GetCurrentScene();
       currScene->AddEntity(m_ntt);
 
       if (m_parentId != NullHandle)
@@ -92,7 +92,7 @@ namespace ToolKit
         pNode->Orphan(m_ntt->m_node);
       }
 
-      g_app->GetCurrentScene()->RemoveEntity(m_ntt->GetIdVal());
+      GetApp()->GetCurrentScene()->RemoveEntity(m_ntt->GetIdVal());
 
       m_actionComitted = true;
       HandleCompSpecificOps(m_ntt, m_actionComitted);
@@ -106,7 +106,7 @@ namespace ToolKit
       m_ntt                    = ntt;
       m_actionComitted         = true;
 
-      EditorScenePtr currScene = g_app->GetCurrentScene();
+      EditorScenePtr currScene = GetApp()->GetCurrentScene();
       currScene->GetSelectedEntities(m_selecteds);
       currScene->AddEntity(ntt);
     }
@@ -123,7 +123,7 @@ namespace ToolKit
     {
       SwapSelection();
 
-      EditorScenePtr currScene = g_app->GetCurrentScene();
+      EditorScenePtr currScene = GetApp()->GetCurrentScene();
       currScene->RemoveEntity(m_ntt->GetIdVal());
 
       m_actionComitted = false;
@@ -131,7 +131,7 @@ namespace ToolKit
 
     void CreateAction::Redo()
     {
-      EditorScenePtr currScene = g_app->GetCurrentScene();
+      EditorScenePtr currScene = GetApp()->GetCurrentScene();
       currScene->AddEntity(m_ntt);
 
       SwapSelection();
@@ -141,7 +141,7 @@ namespace ToolKit
     void CreateAction::SwapSelection()
     {
       IDArray selection;
-      EditorScenePtr currScene = g_app->GetCurrentScene();
+      EditorScenePtr currScene = GetApp()->GetCurrentScene();
       currScene->GetSelectedEntities(selection);
       currScene->AddToSelection(m_selecteds, false);
       std::swap(m_selecteds, selection);
@@ -167,7 +167,7 @@ namespace ToolKit
       {
         owner->AddComponent(m_com);
 
-        EditorScenePtr currScene = g_app->GetCurrentScene();
+        EditorScenePtr currScene = GetApp()->GetCurrentScene();
         currScene->ValidateBillboard(m_com->OwnerEntity());
       }
     }

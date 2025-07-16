@@ -736,6 +736,17 @@ namespace ToolKit
     return true;
   }
 
+  float AngleBetweenVectors(const Vec3& v1, const Vec3& v2)
+  {
+    Vec3 n1   = glm::normalize(v1);
+    Vec3 n2   = glm::normalize(v2);
+
+    float dot = glm::dot(n1, n2);
+    dot       = glm::clamp(dot, -1.0f, 1.0f);
+
+    return glm::acos(dot);
+  }
+
   Vec3 PointOnRay(const Ray& ray, float t) { return ray.position + ray.direction * t; }
 
   // https://www8.cs.umu.se/kurser/5DV051/HT12/lab/plane_extraction.pdf
