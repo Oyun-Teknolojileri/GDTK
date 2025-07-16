@@ -317,7 +317,7 @@ namespace ToolKit
     }
 
     // Tell user about where the location of output files is
-    TK_SUC("Building for WINDOWS has been completed successfully.\n");
+    TK_SUCCESS("Building for WINDOWS has been completed successfully.\n");
     TK_LOG("Output files location: %s\n", std::filesystem::absolute(publishDirectory).string().c_str());
 
     PlatformHelpers::OpenExplorer(publishDirectory);
@@ -605,7 +605,7 @@ namespace ToolKit
     }
 
     // Tell user about where the location of output files is
-    TK_SUC("Building for ANDROID has been completed successfully.\n");
+    TK_SUCCESS("Building for ANDROID has been completed successfully.\n");
     TK_LOG("Output files location: %s\n", std::filesystem::absolute(publishDirStr).string().c_str());
 
     PlatformHelpers::OpenExplorer(publishDirStr);
@@ -686,7 +686,7 @@ namespace ToolKit
       return -1;
     }
 
-    TK_SUC("Building for plugin has been completed successfully.\n");
+    TK_SUCCESS("Building for plugin has been completed successfully.\n");
     return 0;
   }
 
@@ -780,7 +780,7 @@ namespace ToolKit
     }
 
     // Output user about where are the output files
-    TK_SUC("Building for web has been completed successfully.\n");
+    TK_SUCCESS("Building for web has been completed successfully.\n");
     TK_LOG("Output files location: %s\n", std::filesystem::absolute(publishDirectory).string().c_str());
 
     PlatformHelpers::OpenExplorer(publishDirectory);

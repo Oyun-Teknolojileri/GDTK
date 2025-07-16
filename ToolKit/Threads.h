@@ -36,7 +36,10 @@
 namespace ToolKit
 {
 
-  /** Spinlock suitable for low contention quick locking. If threads will wait more than nano seconds, use a mutex. */
+  /**
+   * Spinlock suitable for low contention quick locking. If threads will wait more than nano seconds, use a mutex.
+   * original implementation https://rigtorp.se/spinlock/
+   */
   struct Spinlock
   {
     std::atomic<bool> lock {false};
@@ -64,6 +67,16 @@ namespace ToolKit
     }
 
     void Unlock() noexcept { lock.store(false, std::memory_order_release); }
+  };
+
+  /** Scope aware auto lock unlock mechanism for SpinLock.*/
+  struct SpinlockGuard
+  {
+    Spinlock& lock;
+
+    explicit SpinlockGuard(Spinlock& l) : lock(l) { lock.Lock(); }
+
+    ~SpinlockGuard() { lock.Unlock(); }
   };
 
   /** Spin waits until the cond become false. Condition must be a lambda that returns boolean. */
