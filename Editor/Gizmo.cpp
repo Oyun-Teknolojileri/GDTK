@@ -202,7 +202,7 @@ namespace ToolKit
         Vec3Array pnts     = {axis * 999.0f, axis * -999.0f};
 
         LineBatchPtr guide = MakeNewPtr<LineBatch>();
-        guide->Generate(pnts, g_gizmoColor[axisInd % 3], DrawType::Line, 1.0f);
+        guide->Generate(pnts, g_gizmoColor[axisInd % 3], DrawType::Line, 2.0f);
         MeshPtr guideMesh = guide->GetComponent<MeshComponent>()->GetMeshVal();
         m_mesh->m_subMeshes.push_back(guideMesh);
       }
@@ -276,12 +276,12 @@ namespace ToolKit
       {
         // Bring the grab point to object space.
         Vec3 grabLcl       = params.grabPnt;
-        grabLcl            = glm::inverse(params.normals) * grabLcl;
+        grabLcl            = glm::inverse(params.normals) * grabLcl * 999.0f;
 
         int axisIndx       = (int) params.axis;
 
         LineBatchPtr guide = MakeNewPtr<LineBatch>();
-        guide->Generate({ZERO, grabLcl}, g_gizmoColor[axisIndx], DrawType::Line, 1.0f);
+        guide->Generate({ZERO, grabLcl}, g_gizmoColor[axisIndx], DrawType::Line, 2.0f);
 
         MeshPtr guideMesh = guide->GetComponent<MeshComponent>()->GetMeshVal();
         m_mesh->m_subMeshes.push_back(guideMesh);
