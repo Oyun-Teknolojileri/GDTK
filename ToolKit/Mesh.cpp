@@ -776,15 +776,15 @@ namespace ToolKit
                     }
 
                     BoundingBox& meshAABB = AABBs[index];
-                    std::mutex meshAABBLocker;
+                    Spinlock aabbWriteLock;
 
                     std::for_each(TKExecBy(WorkerManager::FramePool),
                                   m->m_clientSideVertices.begin(),
                                   m->m_clientSideVertices.end(),
-                                  [skel, boneMap, &meshAABBLocker, &meshAABB](SkinVertex& v)
+                                  [skel, boneMap, &aabbWriteLock, &meshAABB](SkinVertex& v)
                                   {
                                     Vec3 skinnedPos = CPUSkinning(&v, skel, boneMap, false);
-                                    std::lock_guard<std::mutex> guard(meshAABBLocker);
+                                    SpinlockGuard lock(aabbWriteLock);
                                     meshAABB.UpdateBoundary(skinnedPos);
                                   });
                   });
