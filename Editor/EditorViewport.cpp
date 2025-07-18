@@ -103,8 +103,11 @@ namespace ToolKit
       }
 
       // Update viewport mods.
-      FpsNavigationMod(deltaTime);
-      OrbitPanMod(deltaTime);
+      if (GetApp()->m_gameMod != GameMod::Playing)
+      {
+        FpsNavigationMod(deltaTime);
+        OrbitPanMod(deltaTime);
+      }
     }
 
     bool EditorViewport::IsViewportQueriable() const
