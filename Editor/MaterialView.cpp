@@ -235,7 +235,8 @@ namespace ToolKit
         {
           String target            = GetPathSeparatorAsStr();
           ParameterVariant& texVar = mat->m_localData[textureParamIndex];
-          if (TexturePtr texture = texVar.GetVar<TexturePtr>())
+          TexturePtr texture       = texVar.GetVar<TexturePtr>();
+          if (texture)
           {
             target = texture->GetFile();
           }
@@ -253,6 +254,19 @@ namespace ToolKit
                 updateThumbFn();
               },
               label.data());
+
+          if (texture)
+          {
+            ImGui::SameLine();
+            String labelClose = String(label) + "#x";
+            ImGui::PushID(labelClose.c_str());
+            if (UI::ImageButtonDecorless(UI::m_closeIcon->m_textureId, Vec2(16.0f, 16.0f), false))
+            {
+              texVar = TexturePtr();
+              updateThumbFn();
+            }
+            ImGui::PopID();
+          }
 
           ImGui::PopID();
           ImGui::EndGroup();

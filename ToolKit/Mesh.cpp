@@ -499,6 +499,7 @@ namespace ToolKit
     {
       typeString = "skinMesh";
     }
+
     for (node = node->first_node(typeString.c_str()); node; node = node->next_sibling(typeString.c_str()))
     {
       if (mesh == nullptr)
@@ -524,44 +525,40 @@ namespace ToolKit
       }
 
       XmlNode* vertex = node->first_node("vertices");
-      // Vertex Buffer stored as binary
       if (XmlAttribute* dataSizeAttr = vertex->first_attribute("VertexCount"))
       {
+        // Vertex Buffer stored as binary.
         uint vertexCount = 0;
         ReadAttr(vertex, "VertexCount", vertexCount);
         mesh->m_clientSideVertices.resize(vertexCount);
         XmlNode* b64Node = vertex->first_node("Base64");
         b64tobin(mesh->m_clientSideVertices.data(), b64Node->value());
-
-        if constexpr (std::is_same<T, Mesh>())
-        {
-          mesh->CalculateAABB();
-        }
       }
       else
       {
+        // Vertex Buffer stored as text.
         for (XmlNode* v = vertex->first_node("v"); v; v = v->next_sibling())
         {
           SkinVertex vd;
           ReadVec(v->first_node("p"), vd.pos);
-          mainMesh->m_boundingBox.UpdateBoundary(vd.pos);
-
           ReadVec(v->first_node("n"), vd.norm);
           ReadVec(v->first_node("t"), vd.tex);
           ReadVec(v->first_node("bt"), vd.btan);
+
           if constexpr (std::is_same<T, SkinMesh>())
           {
             ReadVec(v->first_node("b"), vd.bones);
             ReadVec(v->first_node("w"), vd.weights);
           }
+
           mesh->m_clientSideVertices.push_back(vd);
         }
       }
 
       XmlNode* faces = node->first_node("faces");
-
       if (XmlAttribute* faceCountAttr = faces->first_attribute("FaceCount"))
       {
+        // Binary.
         uint faceCount = 0;
         ReadAttr(faces, "FaceCount", faceCount);
         mesh->m_clientSideIndices.resize(faceCount);
@@ -570,6 +567,7 @@ namespace ToolKit
       }
       else
       {
+        // Text.
         for (XmlNode* i = faces->first_node("f"); i; i = i->next_sibling())
         {
           glm::ivec3 indices;
@@ -585,6 +583,8 @@ namespace ToolKit
       mesh->m_indexCount  = (int) (mesh->m_clientSideIndices.size());
       mesh                = nullptr;
     }
+
+    mainMesh->CalculateAABB();
   }
 
   XmlNode* Mesh::SerializeImp(XmlDocument* doc, XmlNode* parent) const
@@ -774,16 +774,17 @@ namespace ToolKit
                     {
                       return;
                     }
+
                     BoundingBox& meshAABB = AABBs[index];
-                    std::mutex meshAABBLocker;
+                    Spinlock aabbWriteLock;
 
                     std::for_each(TKExecBy(WorkerManager::FramePool),
                                   m->m_clientSideVertices.begin(),
                                   m->m_clientSideVertices.end(),
-                                  [skel, boneMap, &meshAABBLocker, &meshAABB](SkinVertex& v)
+                                  [skel, boneMap, &aabbWriteLock, &meshAABB](SkinVertex& v)
                                   {
                                     Vec3 skinnedPos = CPUSkinning(&v, skel, boneMap, false);
-                                    std::lock_guard<std::mutex> guard(meshAABBLocker);
+                                    SpinlockGuard lock(aabbWriteLock);
                                     meshAABB.UpdateBoundary(skinnedPos);
                                   });
                   });
@@ -798,6 +799,25 @@ namespace ToolKit
     m_bindPoseAABB           = finalAABB;
 
     return finalAABB;
+  }
+
+  void SkinMesh::CalculateAABB()
+  {
+    // Construct aabb of all submeshes.
+    MeshRawPtrArray meshes;
+    GetAllMeshes(meshes, true);
+
+    BoundingBox aabb;
+    for (Mesh* mesh : meshes)
+    {
+      SkinMesh* smesh = static_cast<SkinMesh*>(mesh);
+      for (size_t i = 0; i < smesh->m_clientSideVertices.size(); i++)
+      {
+        SkinVertex& v = smesh->m_clientSideVertices[i];
+        aabb.UpdateBoundary(v.pos);
+      }
+    }
+    m_boundingBox = aabb;
   }
 
   uint SkinMesh::TotalVertexCount() const

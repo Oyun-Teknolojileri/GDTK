@@ -138,7 +138,7 @@ namespace ToolKit
      * After calling this function, m_boundingBox will contain the updated bounds
      * based on the vertices in the client-side array.
      */
-    void CalculateAABB();
+    virtual void CalculateAABB();
 
     /**
      * @brief Accumulate all meshes and sub meshes recursively and returns the flattened array.
@@ -364,6 +364,9 @@ namespace ToolKit
      * @return The calculated AABB for the current pose.
      */
     BoundingBox CalculateAABB(const Skeleton* skel, DynamicBoneMapPtr boneMap);
+
+    /** Calculates object space bounding box of the mesh without any skinning applied. */
+    void CalculateAABB() override;
 
    protected:
     XmlNode* DeSerializeImp(const SerializationFileInfo& info, XmlNode* parent) override;

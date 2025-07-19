@@ -526,8 +526,15 @@ namespace ToolKit
 
         if (m_gameMod == GameMod::Stop)
         {
+          // First game plugin must be initialized.
+          gamePlugin->Init(Main::GetInstance());
+
+          // Set storage state because we are doing initialization manually here.
+          PluginManager* pm                          = GetPluginManager();
+          pm->GetRegister(gamePlugin)->m_initialized = true;
+
+          // Then call on play.
           gamePlugin->OnPlay();
-          SetStatusMsg(g_statusGameIsPlaying);
         }
 
         if (m_gameMod == GameMod::Paused)
