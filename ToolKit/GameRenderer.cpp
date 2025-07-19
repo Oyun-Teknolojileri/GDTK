@@ -64,8 +64,7 @@ namespace ToolKit
 
     // Post Process Pass
     PostProcessingSettingsPtr pps                          = m_params.postProcessSettings;
-    bool gammaNeeded                                       = GetRenderSystem()->IsGammaCorrectionNeeded();
-    m_gammaTonemapFxaaPass->m_params.enableGammaCorrection = pps->GetGammaCorrectionEnabledVal() && gammaNeeded;
+    m_gammaTonemapFxaaPass->m_params.enableGammaCorrection = GetRenderSystem()->IsGammaCorrectionNeeded();
 
     m_gammaTonemapFxaaPass->m_params.enableFxaa            = pps->GetFXAAEnabledVal();
     m_gammaTonemapFxaaPass->m_params.enableTonemapping     = pps->GetTonemappingEnabledVal();

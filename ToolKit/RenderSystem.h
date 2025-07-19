@@ -109,7 +109,7 @@ namespace ToolKit
     void EndFrame();
 
     /** Returns true if back buffer is not srgb. */
-    bool IsGammaCorrectionNeeded() { return !m_backbufferFormatIsSRGB; }
+    bool IsGammaCorrectionNeeded();
 
     /** Checks if the backbuffer is srgb and sets m_backbufferFormatIsSRGB. */
     void TestSRGBBackBuffer();
@@ -132,7 +132,7 @@ namespace ToolKit
     int m_skipFrames              = 0;
 
     /** States if the back buffer is srgb. */
-    bool m_backbufferFormatIsSRGB = true;
+    bool m_backbufferFormatIsSRGB = false;
 
     /** Number of elapsed frames since the engine start. */
     uint m_frameCount             = 0;
