@@ -179,7 +179,6 @@ namespace ToolKit
       // Simulation
       EditorViewportPtr GetSimulationViewport();
       void UpdateSimulation();
-
       float GetDeltaTime();
 
      protected:
@@ -194,6 +193,7 @@ namespace ToolKit
       void CreateEditorEntities();
       void DestroyEditorEntities();
       void CreateNewScene();
+      void ImplementMetaKeys();
 
      public:
       // UI elements.

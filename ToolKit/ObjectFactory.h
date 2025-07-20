@@ -59,9 +59,7 @@ namespace ToolKit
      * @param constructorFn - This is the callback function that is responsible of creating the given object.
      */
     template <typename T>
-    void Register(
-        ObjectConstructorCallback constructorFn = []() -> T* { return new T(); },
-        bool overrideClass                      = false)
+    void Register(ObjectConstructorCallback constructorFn = []() -> T* { return new T(); }, bool overrideClass = false)
     {
       ClassMeta* objectClass = T::StaticClass();
 
@@ -96,6 +94,8 @@ namespace ToolKit
 
       objectClass->SuperClassLookUp.clear();
       ClassLookUpBuilder(objectClass, objectClass);
+
+      CallMetaProcessors(objectClass->MetaKeys, m_metaProcessorRegisterMap);
     }
 
     template <typename T>
@@ -104,6 +104,8 @@ namespace ToolKit
       ClassMeta* objectClass = T::StaticClass();
       m_constructorFnMap.erase(objectClass->Name);
       m_allRegisteredClasses.erase(objectClass->HashId);
+
+      CallMetaProcessors(objectClass->MetaKeys, m_metaProcessorUnRegisterMap);
     }
 
     /**
@@ -171,6 +173,19 @@ namespace ToolKit
      * For the given class fills the class look up table.
      */
     void ClassLookUpBuilder(ClassMeta* Class, ClassMeta* FirstClass);
+
+   public:
+    /**
+     * Each MetaKey has a corresponding meta processor. When a class registered and it has a MetaKey that corresponds to
+     * one of MetaProcessor in the map, processor gets called with MetaKey's value.
+     */
+    MetaProcessorMap m_metaProcessorRegisterMap;
+
+    /**
+     * Each MetaKey has a corresponding meta processor. When a class unregistered and it has a MetaKey that corresponds
+     * to one of MetaProcessor in the map, processor gets called with MetaKey's value.
+     */
+    MetaProcessorMap m_metaProcessorUnRegisterMap;
 
    private:
     std::unordered_map<StringView, ObjectConstructorCallback> m_constructorFnMap;

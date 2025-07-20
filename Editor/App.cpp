@@ -10,6 +10,7 @@
 #include "AndroidBuildWindow.h"
 #include "ConsoleWindow.h"
 #include "EditorCamera.h"
+#include "EditorMetaKeys.h"
 #include "EditorViewport2d.h"
 #include "Grid.h"
 #include "OutlinerWindow.h"
@@ -60,6 +61,7 @@ namespace ToolKit
 
     void App::Init()
     {
+      ImplementMetaKeys();
       AssignManagerReporters();
       CreateEditorEntities();
 
@@ -147,6 +149,42 @@ namespace ToolKit
       scene->m_name     = sceneName + SCENE;
       scene->m_newScene = true;
       SetCurrentScene(scene);
+    }
+
+    void App::ImplementMetaKeys()
+    {
+      if (ObjectFactory* objFactory = GetObjectFactory())
+      {
+        // Allow classes with the MenuMetaKey to be created from the add menu.
+        objFactory->m_metaProcessorRegisterMap[EntityMenuMetaKey] = [](StringView val) -> void
+        {
+          bool exist = false;
+          for (String& meta : g_app->m_customObjectMetaValues)
+          {
+            if (meta == val)
+            {
+              exist = true;
+              break;
+            }
+          }
+
+          if (!exist)
+          {
+            g_app->m_customObjectMetaValues.push_back(String(val));
+          }
+        };
+
+        objFactory->m_metaProcessorUnRegisterMap[EntityMenuMetaKey] = [](StringView val) -> void
+        {
+          for (int i = (int) g_app->m_customObjectMetaValues.size() - 1; i >= 0; i--)
+          {
+            if (g_app->m_customObjectMetaValues[i] == val)
+            {
+              g_app->m_customObjectMetaValues.erase(g_app->m_customObjectMetaValues.begin() + i);
+            }
+          }
+        };
+      }
     }
 
     void App::Destroy()
@@ -527,14 +565,17 @@ namespace ToolKit
         if (m_gameMod == GameMod::Stop)
         {
           // First game plugin must be initialized.
-          gamePlugin->Init(Main::GetInstance());
-
-          // Set storage state because we are doing initialization manually here.
-          PluginManager* pm                          = GetPluginManager();
-          pm->GetRegister(gamePlugin)->m_initialized = true;
+          PluginManager* pm   = GetPluginManager();
+          PluginRegister* reg = pm->GetRegister(gamePlugin);
+          if (!reg->m_initialized)
+          {
+            gamePlugin->Init(Main::GetInstance());
+            reg->m_initialized = true;
+          }
 
           // Then call on play.
           gamePlugin->OnPlay();
+          SetStatusMsg(g_statusGameIsPlaying);
         }
 
         if (m_gameMod == GameMod::Paused)
