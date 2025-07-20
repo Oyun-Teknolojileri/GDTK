@@ -156,7 +156,7 @@ namespace ToolKit
       if (ObjectFactory* objFactory = GetObjectFactory())
       {
         // Allow classes with the MenuMetaKey to be created from the add menu.
-        objFactory->m_metaProcessorRegisterMap[EntityMenuMetaKey] = [](StringView val) -> void
+        objFactory->m_metaProcessorRegisterMap[EntityMenuMetaKey] = [this](StringView val) -> void
         {
           bool exist = false;
           for (String& meta : g_app->m_customObjectMetaValues)
@@ -171,16 +171,18 @@ namespace ToolKit
           if (!exist)
           {
             g_app->m_customObjectMetaValues.push_back(String(val));
+            ReconstructDynamicMenus();
           }
         };
 
-        objFactory->m_metaProcessorUnRegisterMap[EntityMenuMetaKey] = [](StringView val) -> void
+        objFactory->m_metaProcessorUnRegisterMap[EntityMenuMetaKey] = [this](StringView val) -> void
         {
           for (int i = (int) g_app->m_customObjectMetaValues.size() - 1; i >= 0; i--)
           {
             if (g_app->m_customObjectMetaValues[i] == val)
             {
               g_app->m_customObjectMetaValues.erase(g_app->m_customObjectMetaValues.begin() + i);
+              ReconstructDynamicMenus();
             }
           }
         };
@@ -629,7 +631,6 @@ namespace ToolKit
       {
         String pluginPath = m_workspace.GetBinPath();
         pluginMan->Load(pluginPath);
-        ReconstructDynamicMenus();
       }
     }
 
