@@ -18,13 +18,16 @@ namespace ToolKit
      * @brief Adds a new menu entry to Editor for a registered class.
      * External classes with this meta key, causes to add new classes to the Editor's menu system.
      * The classes are added according to the specified menu descriptor pattern.
-     * 
+     *
      * Menu descriptor pattern is a string that follows the pattern "Menu/SubMenu/Class:Name".
      * The "Menu/SubMenu" defines the location in the target menu where the class will appear.
      * The "Class" is the identifier used to construct the object, typically obtained from T::StaticClass()->Name.
      * The "Name" is the display name for the object in the menu.
      */
-    constexpr StringView EntityMenuMetaKey = "EntityMenuMetaKey";
+    constexpr StringView EntityMenuMetaKey    = "EntityMenuMetaKey";
+
+    /** Same as EntityMenuMetaKey the ony difference is, this appears in component view. */
+    constexpr StringView ComponentMenuMetaKey = "ComponentMenuMetaKey";
 
   } // namespace Editor
 } // namespace ToolKit

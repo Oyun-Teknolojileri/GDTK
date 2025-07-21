@@ -23,7 +23,10 @@ namespace ToolKit
       void AddSubMenuUnique(DynamicMenuPtr subMenu);
     };
 
-    extern void ShowDynamicMenu(DynamicMenuPtr parentMenu);
+    /** Creates the object using Class name. Lambda is responsible for constructing and placing the object. */
+    extern void ShowDynamicMenu(DynamicMenuPtr parentMenu, const std::function<void(const StringView&)>& constructor);
+
+    /** Construct dynamic object menu from the menu-class descriptor. */
     extern void ConstructDynamicMenu(StringArray menuDescriptors, DynamicMenuPtrArray& menuArray);
 
   } // namespace Editor

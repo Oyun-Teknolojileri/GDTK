@@ -31,7 +31,7 @@ namespace ToolKit
       SubMenuArray.push_back(subMenu);
     }
 
-    void ShowDynamicMenu(DynamicMenuPtr parentMenu)
+    void ShowDynamicMenu(DynamicMenuPtr parentMenu, const std::function<void(const StringView&)>& constructor)
     {
       if (DynamicMenuPtr menu = parentMenu)
       {
@@ -39,15 +39,14 @@ namespace ToolKit
         {
           for (DynamicMenuPtr& subMenu : menu->SubMenuArray)
           {
-            ShowDynamicMenu(subMenu);
+            ShowDynamicMenu(subMenu, constructor);
           }
 
           for (auto& menuEntry : menu->MenuEntries)
           {
             if (ImGui::MenuItem(menuEntry.second.c_str()))
             {
-              EntityPtr entity = MakeNewPtrCasted<Entity>(menuEntry.first);
-              GetApp()->GetCurrentScene()->AddEntity(entity);
+              constructor(menuEntry.first);
             }
           }
 

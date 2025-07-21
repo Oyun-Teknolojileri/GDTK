@@ -149,7 +149,12 @@ namespace ToolKit
       ImGui::Separator();
       for (DynamicMenuPtr root : GetApp()->m_customObjectsMenu)
       {
-        ShowDynamicMenu(root);
+        ShowDynamicMenu(root,
+                        [](const StringView& className) -> void
+                        {
+                          EntityPtr entity = MakeNewPtrCasted<Entity>(className);
+                          GetApp()->GetCurrentScene()->AddEntity(entity);
+                        });
       }
 
       if (createdEntity != nullptr)
