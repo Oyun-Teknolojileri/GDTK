@@ -54,28 +54,35 @@ namespace ToolKit
     // External event pool that collect and convert system events to toolkit events.
     SDLEventPool<TK_PLATFORM>* g_sdlEventPool = nullptr;
 
-    // Windows util function for creating ToolKit Cfg files in AppData.
+    // Windows util function for creating ToolKit config files in AppData.
     void CreateAppData()
     {
-      // For windows check appdata.
+      // Get APPDATA environment variable
       StringView appData = getenv("APPDATA");
       if (appData.empty())
       {
         return;
       }
 
-      std::array<String, 4> files = {"Workspace.settings", "Editor.settings", "UILayout.ini", "Engine.settings"};
+      std::array<String, 5> files = {"Workspace.settings",
+                                     "Editor.settings",
+                                     "UILayout.ini",
+                                     "Engine.settings",
+                                     "GamePluginBuild.bat"};
+
       String cfgPath              = ConcatPaths({String(appData), "ToolKit", "Config"});
 
-      // Create ToolKit Configs.
+      // Create ToolKit Config directory if not exist
       bool doesConfigFolderExists = true;
       if (!CheckSystemFile(cfgPath))
       {
         doesConfigFolderExists = std::filesystem::create_directories(cfgPath);
       }
+
+      // Copy config files if they don't exist
       if (doesConfigFolderExists)
       {
-        for (int i = 0; i < files.size(); i++)
+        for (int i = 0; i < (int) files.size(); i++)
         {
           String targetFile = ConcatPaths({cfgPath, files[i]});
           if (!CheckSystemFile(targetFile))
@@ -89,7 +96,42 @@ namespace ToolKit
         }
       }
 
-      // Create Path file.
+      // Update GamePluginBuild.bat with correct BUILD_CONFIG
+      String buildBatPath   = ConcatPaths({cfgPath, "GamePluginBuild.bat"});
+      String buildConfigStr = (TKDebug == 1) ? "Debug" : "RelWithDebInfo";
+
+      // Read the batch file lines, replace the placeholder line, then write back
+      {
+        std::ifstream inFile(buildBatPath);
+        if (inFile.is_open())
+        {
+          String line;
+          StringArray lines;
+          const String token = "set BUILD_CONFIG=__ENGINE_CONFIG__";
+
+          while (std::getline(inFile, line))
+          {
+            if (line.find(token) != String::npos)
+            {
+              line = "set BUILD_CONFIG=" + buildConfigStr;
+            }
+            lines.push_back(line);
+          }
+          inFile.close();
+
+          std::ofstream outFile(buildBatPath, std::ios::trunc);
+          if (outFile.is_open())
+          {
+            for (String& l : lines)
+            {
+              outFile << l << "\n";
+            }
+            outFile.close();
+          }
+        }
+      }
+
+      // Create Path.txt file with parent directory of current path
       String pathFile = ConcatPaths({cfgPath, "Path.txt"});
 
       std::fstream file;

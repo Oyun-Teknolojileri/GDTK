@@ -503,7 +503,8 @@ namespace ToolKit
       UnixifyPath(pluginSettingsPath);
       TemplateUpdate(pluginSettingsPath, "PluginTemplate", name);
 
-      m_shellOpenDirFn(ConcatPaths({fullPath, "Codes"}));
+      SetStatusMsg(g_statusSucceeded);
+      TK_LOG("A new plugin has been created.");
 
       if (PluginWindowPtr wnd = GetWindow<PluginWindow>(g_pluginWindow))
       {
