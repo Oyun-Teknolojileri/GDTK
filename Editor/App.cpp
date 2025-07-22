@@ -155,37 +155,51 @@ namespace ToolKit
     {
       if (ObjectFactory* objFactory = GetObjectFactory())
       {
-        // Allow classes with the MenuMetaKey to be created from the add menu.
-        objFactory->m_metaProcessorRegisterMap[EntityMenuMetaKey] = [this](StringView val) -> void
+        // Action to take when a class with given metakey is registered.
+        auto registerMeta = [this](StringView metaKeyValue, StringArray& metaKeyValueArray)
         {
-          bool exist = false;
-          for (String& meta : g_app->m_customObjectMetaValues)
+          if (std::find(metaKeyValueArray.begin(), metaKeyValueArray.end(), metaKeyValue) == metaKeyValueArray.end())
           {
-            if (meta == val)
-            {
-              exist = true;
-              break;
-            }
-          }
-
-          if (!exist)
-          {
-            g_app->m_customObjectMetaValues.push_back(String(val));
+            // Add key values and construct menus. Effectively add new classes to dynamic menus.
+            metaKeyValueArray.push_back(String(metaKeyValue));
             ReconstructDynamicMenus();
           }
         };
 
-        objFactory->m_metaProcessorUnRegisterMap[EntityMenuMetaKey] = [this](StringView val) -> void
+        // Action to take when a class with given metakey is unregistered.
+        auto unregisterMeta = [this](StringView metaKeyValue, StringArray& metaKeyValueArray)
         {
-          for (int i = (int) g_app->m_customObjectMetaValues.size() - 1; i >= 0; i--)
+          for (int i = static_cast<int>(metaKeyValueArray.size()) - 1; i >= 0; --i)
           {
-            if (g_app->m_customObjectMetaValues[i] == val)
+            if (metaKeyValueArray[i] == metaKeyValue)
             {
-              g_app->m_customObjectMetaValues.erase(g_app->m_customObjectMetaValues.begin() + i);
+              // Remove key values and construct menus. Effectively drop registered class from dynamic menus.
+              metaKeyValueArray.erase(metaKeyValueArray.begin() + i);
               ReconstructDynamicMenus();
             }
           }
         };
+
+        struct MetaBinding
+        {
+          StringView metaKey;
+          StringArray* metaKeyValueArray;
+        };
+
+        std::array<MetaBinding, 2> metaBindings = {
+            {{EntityMenuMetaKey, &m_customObjectMetaValues}, {ComponentMenuMetaKey, &m_customComponentMetaValues}}
+        };
+
+        for (auto& binding : metaBindings)
+        {
+          objFactory->m_metaProcessorRegisterMap[binding.metaKey] =
+              [this, listPtr = binding.metaKeyValueArray, registerMeta](StringView metaKeyVal)
+          { registerMeta(metaKeyVal, *listPtr); };
+
+          objFactory->m_metaProcessorUnRegisterMap[binding.metaKey] =
+              [this, listPtr = binding.metaKeyValueArray, unregisterMeta](StringView metaKeyVal)
+          { unregisterMeta(metaKeyVal, *listPtr); };
+        }
       }
     }
 
@@ -847,6 +861,9 @@ namespace ToolKit
     {
       m_customObjectsMenu.clear();
       ConstructDynamicMenu(m_customObjectMetaValues, m_customObjectsMenu);
+
+      m_customComponentsMenu.clear();
+      ConstructDynamicMenu(m_customComponentMetaValues, m_customComponentsMenu);
     }
 
     int App::Import(const String& fullPath, const String& subDir, bool overwrite)

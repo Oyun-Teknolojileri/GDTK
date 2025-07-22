@@ -554,6 +554,32 @@ namespace ToolKit
             }
           }
 
+          // Create dynamic menu.
+          ImGui::Separator();
+          for (DynamicMenuPtr root : editor->m_customComponentsMenu)
+          {
+            ShowDynamicMenu(root,
+                            [ntt, &componentAdded](const StringView& className) -> void
+                            {
+                              App* editor = GetApp();
+                              if (ComponentPtr cmp = MakeNewPtrCasted<Component>(className))
+                              {
+                                if (ntt->GetComponent(cmp->Class()) == nullptr)
+                                {
+                                  ntt->AddComponent(cmp);
+                                  componentAdded = true;
+
+                                  editor->SetStatusMsg(g_successStr);
+                                }
+                                else
+                                {
+                                  editor->SetStatusMsg(g_statusFailed);
+                                  TK_WRN("Component already exists: %s", className.data());
+                                }
+                              }
+                            });
+          }
+
           // State changed this means a new component has been added.
           if (componentAdded)
           {
