@@ -309,42 +309,48 @@ namespace ToolKit
 
       ImGui::Indent();
 
-      // skip if material component,
-      // because we render it below ( ShowMultiMaterialComponent )
-      if (!comp->IsA<MaterialComponent>())
+      if (comp->IsA<MaterialComponent>())
       {
-        for (VariantCategory& category : categories)
+        ShowMultiMaterialComponent(comp, showCompFunc, modifiableComp);
+      }
+      else
+      {
+        // Show header if no categories exist.
+        if (categories.empty())
         {
-          bool isOpen = showCompFunc(category.Name);
-
-          if (isOpen)
+          showCompFunc(comp->Class()->Name);
+        }
+        else
+        {
+          // Show each parameter under corresponding category.
+          for (VariantCategory& category : categories)
           {
-            ParameterVariantRawPtrArray vars;
-            comp->m_localData.GetByCategory(category.Name, vars);
+            bool isOpen = showCompFunc(category.Name);
 
-            for (ParameterVariant* var : vars)
+            if (isOpen)
             {
-              bool editable = var->m_editable;
-              if (!modifiableComp)
+              ParameterVariantRawPtrArray vars;
+              comp->m_localData.GetByCategory(category.Name, vars);
+
+              for (ParameterVariant* var : vars)
               {
-                var->m_editable = false;
-              }
-              ValueUpdateFn multiUpdate = CustomDataView::MultiUpdate(var, comp->Class());
-              var->m_onValueChangedFn.push_back(multiUpdate);
-              CustomDataView::ShowVariant(var, comp);
-              var->m_onValueChangedFn.pop_back();
-              if (!modifiableComp)
-              {
-                var->m_editable = true;
+                bool editable = var->m_editable;
+                if (!modifiableComp)
+                {
+                  var->m_editable = false;
+                }
+                ValueUpdateFn multiUpdate = CustomDataView::MultiUpdate(var, comp->Class());
+                var->m_onValueChangedFn.push_back(multiUpdate);
+                CustomDataView::ShowVariant(var, comp);
+                var->m_onValueChangedFn.pop_back();
+                if (!modifiableComp)
+                {
+                  var->m_editable = true;
+                }
               }
             }
           }
         }
-      }
-
-      if (comp->IsA<MaterialComponent>())
-      {
-        ShowMultiMaterialComponent(comp, showCompFunc, modifiableComp);
       }
 
       if (removeComp)
