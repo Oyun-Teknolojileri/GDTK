@@ -177,6 +177,7 @@
     <ClInclude Include="EditorCamera.h" />
     <ClInclude Include="EditorCanvas.h" />
     <ClInclude Include="EditorLight.h" />
+    <ClInclude Include="EditorMetaKeys.h" />
     <ClInclude Include="EditorRenderer.h" />
     <ClInclude Include="EditorViewport2d.h" />
     <ClInclude Include="EntityView.h" />

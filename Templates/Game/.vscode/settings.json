@@ -1,0 +1,4 @@
+{
+    "cmake.buildBeforeRun": false,
+    "cmake.configureOnOpen": false
+}

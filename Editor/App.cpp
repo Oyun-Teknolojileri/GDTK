@@ -10,6 +10,7 @@
 #include "AndroidBuildWindow.h"
 #include "ConsoleWindow.h"
 #include "EditorCamera.h"
+#include "EditorMetaKeys.h"
 #include "EditorViewport2d.h"
 #include "Grid.h"
 #include "OutlinerWindow.h"
@@ -60,6 +61,7 @@ namespace ToolKit
 
     void App::Init()
     {
+      ImplementMetaKeys();
       AssignManagerReporters();
       CreateEditorEntities();
 
@@ -147,6 +149,58 @@ namespace ToolKit
       scene->m_name     = sceneName + SCENE;
       scene->m_newScene = true;
       SetCurrentScene(scene);
+    }
+
+    void App::ImplementMetaKeys()
+    {
+      if (ObjectFactory* objFactory = GetObjectFactory())
+      {
+        // Action to take when a class with given metakey is registered.
+        auto registerMeta = [this](StringView metaKeyValue, StringArray& metaKeyValueArray)
+        {
+          if (std::find(metaKeyValueArray.begin(), metaKeyValueArray.end(), metaKeyValue) == metaKeyValueArray.end())
+          {
+            // Add key values and construct menus. Effectively add new classes to dynamic menus.
+            metaKeyValueArray.push_back(String(metaKeyValue));
+            ReconstructDynamicMenus();
+          }
+        };
+
+        // Action to take when a class with given metakey is unregistered.
+        auto unregisterMeta = [this](StringView metaKeyValue, StringArray& metaKeyValueArray)
+        {
+          for (int i = static_cast<int>(metaKeyValueArray.size()) - 1; i >= 0; --i)
+          {
+            if (metaKeyValueArray[i] == metaKeyValue)
+            {
+              // Remove key values and construct menus. Effectively drop registered class from dynamic menus.
+              metaKeyValueArray.erase(metaKeyValueArray.begin() + i);
+              ReconstructDynamicMenus();
+            }
+          }
+        };
+
+        struct MetaBinding
+        {
+          StringView metaKey;
+          StringArray* metaKeyValueArray;
+        };
+
+        std::array<MetaBinding, 2> metaBindings = {
+            {{EntityMenuMetaKey, &m_customObjectMetaValues}, {ComponentMenuMetaKey, &m_customComponentMetaValues}}
+        };
+
+        for (auto& binding : metaBindings)
+        {
+          objFactory->m_metaProcessorRegisterMap[binding.metaKey] =
+              [this, listPtr = binding.metaKeyValueArray, registerMeta](StringView metaKeyVal)
+          { registerMeta(metaKeyVal, *listPtr); };
+
+          objFactory->m_metaProcessorUnRegisterMap[binding.metaKey] =
+              [this, listPtr = binding.metaKeyValueArray, unregisterMeta](StringView metaKeyVal)
+          { unregisterMeta(metaKeyVal, *listPtr); };
+        }
+      }
     }
 
     void App::Destroy()
@@ -463,7 +517,8 @@ namespace ToolKit
       UnixifyPath(pluginSettingsPath);
       TemplateUpdate(pluginSettingsPath, "PluginTemplate", name);
 
-      m_shellOpenDirFn(ConcatPaths({fullPath, "Codes"}));
+      SetStatusMsg(g_statusSucceeded);
+      TK_LOG("A new plugin has been created.");
 
       if (PluginWindowPtr wnd = GetWindow<PluginWindow>(g_pluginWindow))
       {
@@ -527,14 +582,17 @@ namespace ToolKit
         if (m_gameMod == GameMod::Stop)
         {
           // First game plugin must be initialized.
-          gamePlugin->Init(Main::GetInstance());
-
-          // Set storage state because we are doing initialization manually here.
-          PluginManager* pm                          = GetPluginManager();
-          pm->GetRegister(gamePlugin)->m_initialized = true;
+          PluginManager* pm   = GetPluginManager();
+          PluginRegister* reg = pm->GetRegister(gamePlugin);
+          if (!reg->m_initialized)
+          {
+            gamePlugin->Init(Main::GetInstance());
+            reg->m_initialized = true;
+          }
 
           // Then call on play.
           gamePlugin->OnPlay();
+          SetStatusMsg(g_statusGameIsPlaying);
         }
 
         if (m_gameMod == GameMod::Paused)
@@ -588,7 +646,6 @@ namespace ToolKit
       {
         String pluginPath = m_workspace.GetBinPath();
         pluginMan->Load(pluginPath);
-        ReconstructDynamicMenus();
       }
     }
 
@@ -804,6 +861,9 @@ namespace ToolKit
     {
       m_customObjectsMenu.clear();
       ConstructDynamicMenu(m_customObjectMetaValues, m_customObjectsMenu);
+
+      m_customComponentsMenu.clear();
+      ConstructDynamicMenu(m_customComponentMetaValues, m_customComponentsMenu);
     }
 
     int App::Import(const String& fullPath, const String& subDir, bool overwrite)

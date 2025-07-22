@@ -179,7 +179,6 @@ namespace ToolKit
       // Simulation
       EditorViewportPtr GetSimulationViewport();
       void UpdateSimulation();
-
       float GetDeltaTime();
 
      protected:
@@ -194,6 +193,7 @@ namespace ToolKit
       void CreateEditorEntities();
       void DestroyEditorEntities();
       void CreateNewScene();
+      void ImplementMetaKeys();
 
      public:
       // UI elements.
@@ -244,8 +244,14 @@ namespace ToolKit
       EditorLitMode m_sceneLightingMode        = EditorLitMode::EditorLit;
       EditorViewportPtr m_lastActiveViewport   = nullptr;
       Workspace m_workspace;
+
+      // Dynamic Entity Menus.
       StringArray m_customObjectMetaValues;    //!< Add menu shows this additional classes.
       DynamicMenuPtrArray m_customObjectsMenu; //!< Constructed menus based on m_customObjectMetaValues.
+
+      // Dynamic Component Menus.
+      StringArray m_customComponentMetaValues;    //!< Add menu shows this additional components.
+      DynamicMenuPtrArray m_customComponentsMenu; //!< Constructed menus based on m_customComponentMetaValues.
 
       // Snap settings.
       bool m_snapsEnabled = false; // Delta transforms.

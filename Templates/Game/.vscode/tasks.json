@@ -1,0 +1,21 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Game Plugin Build",
+            "type": "shell",
+            "command": "cmd",
+            "args": [
+                "/c",
+                "%APPDATA%/ToolKit/Config/GamePluginBuild.bat",
+                "${workspaceFolder}",                        // -S
+                "${workspaceFolder}/Intermediate/Plugin"   // -B
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        }
+    ]
+}

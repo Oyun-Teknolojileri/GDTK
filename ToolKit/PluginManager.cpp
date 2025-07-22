@@ -65,10 +65,11 @@ namespace ToolKit
         reg.m_plugin->Init(Main::GetInstance());
         reg.m_initialized = true;
         reg.m_plugin->OnLoad(reg.m_stateCache);
-        reg.m_loaded        = true;
-        reg.m_stateCache    = nullptr;
-        reg.m_file          = fullPath;
-        reg.m_lastWriteTime = GetCreationTime(fullPath);
+        reg.m_plugin->m_currentState = PluginState::Started;
+        reg.m_loaded                 = true;
+        reg.m_stateCache             = nullptr;
+        reg.m_file                   = fullPath;
+        reg.m_lastWriteTime          = GetCreationTime(fullPath);
 
         UnixifyPath(fullPath);
         size_t beg = fullPath.find_last_of("/") + 1;

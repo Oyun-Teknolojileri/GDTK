@@ -149,7 +149,12 @@ namespace ToolKit
       ImGui::Separator();
       for (DynamicMenuPtr root : GetApp()->m_customObjectsMenu)
       {
-        ShowDynamicMenu(root);
+        ShowDynamicMenu(root,
+                        [](const StringView& className) -> void
+                        {
+                          EntityPtr entity = MakeNewPtrCasted<Entity>(className);
+                          GetApp()->GetCurrentScene()->AddEntity(entity);
+                        });
       }
 
       if (createdEntity != nullptr)
@@ -234,19 +239,27 @@ namespace ToolKit
     void OverlayTopBar::ShowAddMenu(std::function<void()> showMenuFn, uint& nextItemIndex)
     {
       ImGui::TableSetColumnIndex(nextItemIndex++);
-      // Get the current cursor position
-      ImVec2 cursor_pos = ImGui::GetCursorPos();
-      // Set the new cursor position with an offset
-      ImGui::SetCursorPos(ImVec2(cursor_pos.x + 3.0f, cursor_pos.y + 3.0f));
+
+      ImVec2 cursorPos = ImGui::GetCursorPos();
+      ImGui::SetCursorPos(ImVec2(cursorPos.x + 3.0f, cursorPos.y + 3.0f));
       ImGui::Text(ICON_FA_GLOBE);
-      // Reset the cursor position to the default value
-      ImGui::SetCursorPos(cursor_pos);
+      ImGui::SetCursorPos(cursorPos);
 
       ImGui::TableSetColumnIndex(nextItemIndex++);
+
       if (ImGui::Button("Add"))
       {
         ImGui::OpenPopup("##AddMenu");
       }
+
+      // Get button position
+      ImVec2 buttonMin = ImGui::GetItemRectMin();
+      ImVec2 buttonMax = ImGui::GetItemRectMax();
+
+      ImVec2 popupPos(buttonMin.x, buttonMax.y);
+
+      // Align menu left bottom to make it appear like drop down.
+      ImGui::SetNextWindowPos(popupPos, ImGuiCond_Appearing);
 
       if (ImGui::BeginPopup("##AddMenu"))
       {

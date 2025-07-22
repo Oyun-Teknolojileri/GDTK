@@ -56,6 +56,22 @@ namespace ToolKit
 
     PositionOffset_Define(Vec3(0.0f), AABBOverrideCompCategory.Name, AABBOverrideCompCategory.Priority, true, true);
     Size_Define(Vec3(1.0f), AABBOverrideCompCategory.Name, AABBOverrideCompCategory.Priority, true, true);
+
+    UpdateBoundaryFromMesh_Define(
+        [this]() -> void
+        {
+          if (EntityPtr ntt = OwnerEntity())
+          {
+            if (MeshComponent* meshComp = ntt->GetComponentFast<MeshComponent>())
+            {
+              SetBoundingBox(meshComp->GetBoundingBox());
+            }
+          }
+        },
+        AABBOverrideCompCategory.Name,
+        AABBOverrideCompCategory.Priority,
+        true,
+        true);
   }
 
   void AABBOverrideComponent::ParameterEventConstructor()

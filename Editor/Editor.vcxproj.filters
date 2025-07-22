@@ -195,7 +195,9 @@
     <ClCompile Include="EditorBillboard.cpp">
       <Filter>Entities</Filter>
     </ClCompile>
-    <ClCompile Include="EditorCanvas.cpp" />
+    <ClCompile Include="EditorCanvas.cpp">
+      <Filter>Entities\UI</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Mod.h">
@@ -353,6 +355,9 @@
     </ClInclude>
     <ClInclude Include="EditorCanvas.h">
       <Filter>Entities\UI</Filter>
+    </ClInclude>
+    <ClInclude Include="EditorMetaKeys.h">
+      <Filter>Source</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

@@ -31,24 +31,33 @@ namespace ToolKit
       void Update(float deltaTime) override;
 
       // Selection operations.
+      //////////////////////////////////////////
+
+      /** Returns the selected entities in the scene. */
       bool IsSelected(ObjectId id) const;
+
+      /** Remove the entity with the given id from selection list. */
       void RemoveFromSelection(ObjectId id);
+
       void AddToSelection(const IDArray& entities, bool additive);
       void AddToSelection(const EntityPtrArray& entities, bool additive);
       void AddToSelection(ObjectId id, bool additive);
       void ClearSelection();
       bool IsCurrentSelection(ObjectId id) const;
 
-      // Makes the entity current selection.
+      /** Makes the entity current selection.  */
       void MakeCurrentSelection(ObjectId id);
 
       uint GetSelectedEntityCount() const;
       EntityPtr GetCurrentSelection() const;
 
       // Resource operations
+      //////////////////////////////////////////
       void Save(bool onlyIfDirty) override;
 
       // Entity operations.
+      //////////////////////////////////////////
+
       void AddEntity(EntityPtr entity, int index = -1) override;
       void RemoveEntity(const EntityPtrArray& entities, bool deep = true) override;
 
@@ -77,11 +86,25 @@ namespace ToolKit
                       const EntityPtrArray& extraList = {}) override;
 
       // Gizmo operations
+      //////////////////////////////////////////
+
+      /** Checks if a gizmo addable to the entity, and adds a gizmo for it if so. */
       void AddBillboard(EntityPtr entity);
+
+      /** If there is an associated gizmo with the entity, removes the gizmo. */
       void RemoveBillboard(EntityPtr entity);
+
+      /** Returns all entity billboards in the scene. */
       EntityPtrArray GetBillboards();
       EntityPtr GetBillboard(EntityPtr entity);
+
+      /**
+       * Makes sure the entity has right type of billboard.
+       * Update or change the billboard type based on components if necessary.
+       */
       void ValidateBillboard(EntityPtr entity);
+
+      /** Performs billboard validation for an array of entities. */
       void ValidateBillboard(EntityPtrArray& entities);
 
      private:
@@ -97,15 +120,20 @@ namespace ToolKit
       void AddToSelectionSane(ObjectId id);
 
      public:
-      // Indicates if this is created via new scene.
-      // That is not saved on the disk.
+      /**
+       * Indicates whether the scene is saved to disk or not. If true its a new scene. Not yet saved.
+       * It may have a file but not yet saved to that file.
+       */
       bool m_newScene;
 
      private:
+      /** Holds the selected entities in the scene. */
       IDArray m_selectedEntities;
 
-      // Billboard gizmos
+      /** Holds a map for matching billboards with owner entities. */
       std::unordered_map<EntityPtr, EditorBillboardPtr> m_entityBillboardMap;
+
+      /** Holds all entity billboards in the scene. */
       EntityPtrArray m_billboards;
     };
 

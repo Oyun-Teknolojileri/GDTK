@@ -46,6 +46,7 @@ namespace ToolKit
    private:
     TKDeclareParam(Vec3, PositionOffset);
     TKDeclareParam(Vec3, Size);
+    TKDeclareParam(VariantCallback, UpdateBoundaryFromMesh);
   };
 
 } //  namespace ToolKit

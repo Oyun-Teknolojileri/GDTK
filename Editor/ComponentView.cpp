@@ -83,18 +83,6 @@ namespace ToolKit
       }
     }
 
-    void ShowAABBOverrideComponent(ComponentPtr& comp, std::function<bool(const String&)> showCompFunc, bool isEditable)
-    {
-      AABBOverrideComponent* overrideComp = (AABBOverrideComponent*) comp.get();
-      ImGui::BeginDisabled(!isEditable);
-      MeshComponentPtr meshComp = overrideComp->OwnerEntity()->GetComponent<MeshComponent>();
-      if (meshComp && ImGui::Button("Update from MeshComponent"))
-      {
-        overrideComp->SetBoundingBox(meshComp->GetBoundingBox());
-      }
-      ImGui::EndDisabled();
-    }
-
     void ComponentView::ShowAnimControllerComponent(ParameterVariant* var, ComponentPtr comp)
     {
       AnimRecordPtrMap& mref = var->GetVar<AnimRecordPtrMap>();
@@ -321,46 +309,48 @@ namespace ToolKit
 
       ImGui::Indent();
 
-      // skip if material component,
-      // because we render it below ( ShowMultiMaterialComponent )
-      if (!comp->IsA<MaterialComponent>())
-      {
-        for (VariantCategory& category : categories)
-        {
-          bool isOpen = showCompFunc(category.Name);
-
-          if (isOpen)
-          {
-            ParameterVariantRawPtrArray vars;
-            comp->m_localData.GetByCategory(category.Name, vars);
-
-            for (ParameterVariant* var : vars)
-            {
-              bool editable = var->m_editable;
-              if (!modifiableComp)
-              {
-                var->m_editable = false;
-              }
-              ValueUpdateFn multiUpdate = CustomDataView::MultiUpdate(var, comp->Class());
-              var->m_onValueChangedFn.push_back(multiUpdate);
-              CustomDataView::ShowVariant(var, comp);
-              var->m_onValueChangedFn.pop_back();
-              if (!modifiableComp)
-              {
-                var->m_editable = true;
-              }
-            }
-          }
-        }
-      }
-
       if (comp->IsA<MaterialComponent>())
       {
         ShowMultiMaterialComponent(comp, showCompFunc, modifiableComp);
       }
-      else if (comp->IsA<AABBOverrideComponent>())
+      else
       {
-        ShowAABBOverrideComponent(comp, showCompFunc, modifiableComp);
+        // Show header if no categories exist.
+        if (categories.empty())
+        {
+          showCompFunc(comp->Class()->Name);
+        }
+        else
+        {
+          // Show each parameter under corresponding category.
+          for (VariantCategory& category : categories)
+          {
+            bool isOpen = showCompFunc(category.Name);
+
+            if (isOpen)
+            {
+              ParameterVariantRawPtrArray vars;
+              comp->m_localData.GetByCategory(category.Name, vars);
+
+              for (ParameterVariant* var : vars)
+              {
+                bool editable = var->m_editable;
+                if (!modifiableComp)
+                {
+                  var->m_editable = false;
+                }
+                ValueUpdateFn multiUpdate = CustomDataView::MultiUpdate(var, comp->Class());
+                var->m_onValueChangedFn.push_back(multiUpdate);
+                CustomDataView::ShowVariant(var, comp);
+                var->m_onValueChangedFn.pop_back();
+                if (!modifiableComp)
+                {
+                  var->m_editable = true;
+                }
+              }
+            }
+          }
+        }
       }
 
       if (removeComp)
@@ -434,35 +424,66 @@ namespace ToolKit
         EditorScenePtr edtScene = Cast<EditorScene>(scene);
         edtScene->ValidateBillboard(ntt);
 
-        ImGui::PushItemWidth(150);
-        static bool addInAction = false;
+        ImGui::Separator();
 
-        if (addInAction)
+        // Draw the centered button
+        if (UI::BeginCenteredTextButton("Add Component"))
         {
-          int dataType = 0;
-          if (ImGui::Combo("##NewComponent",
-                           &dataType,
-                           "..."
-                           "\0Mesh Component"
-                           "\0Material Component"
-                           "\0Environment Component"
-                           "\0Animation Controller Component"
-                           "\0Skeleton Component"
-                           "\0AABB Override Component"))
+          // Open the popup manually
+          ImGui::OpenPopup("##NewComponentMenu");
+        }
+        UI::EndCenteredTextButton();
+
+        // Get button rect (for positioning popup below)
+        ImVec2 buttonMin = ImGui::GetItemRectMin();
+        ImVec2 buttonMax = ImGui::GetItemRectMax();
+        ImVec2 popupPos(buttonMin.x, buttonMax.y);
+
+        // Set the popup position to appear right below the button
+        ImGui::SetNextWindowPos(popupPos, ImGuiCond_Appearing);
+        ImGui::PushItemWidth(150);
+
+        if (ImGui::BeginPopup("##NewComponentMenu"))
+        {
+          App* editor         = GetApp();
+          bool componentAdded = false;
+
+          if (ImGui::MenuItem("Mesh Component"))
           {
-            size_t cmpCnt = ntt->GetComponentPtrArray().size();
-            switch (dataType)
+            if (ntt->GetComponentFast<MeshComponent>() == nullptr)
             {
-            case 1:
               ntt->AddComponent<MeshComponent>();
-              break;
-            case 2:
+              componentAdded = true;
+
+              editor->SetStatusMsg(g_successStr);
+            }
+            else
+            {
+              editor->SetStatusMsg(g_statusFailed);
+              TK_WRN("Mesh Component already exists.");
+            }
+          }
+
+          if (ImGui::MenuItem("Material Component"))
+          {
+            if (ntt->GetComponentFast<MaterialComponent>() == nullptr)
             {
               MaterialComponentPtr mmComp = ntt->AddComponent<MaterialComponent>();
               mmComp->UpdateMaterialList();
+              componentAdded = true;
+
+              editor->SetStatusMsg(g_successStr);
             }
-            break;
-            case 3:
+            else
+            {
+              editor->SetStatusMsg(g_statusFailed);
+              TK_WRN("Material Component already exists.");
+            }
+          }
+
+          if (ImGui::MenuItem("Environment Component"))
+          {
+            if (ntt->GetComponentFast<EnvironmentComponent>() == nullptr)
             {
               // A default hdri must be given for component creation via editor.
               // Create a default hdri.
@@ -473,38 +494,109 @@ namespace ToolKit
               envCom->SetHdriVal(hdri);
 
               ntt->AddComponent(envCom);
-            }
-            break;
-            case 4:
-              ntt->AddComponent<AnimControllerComponent>();
-              break;
-            case 5:
-              ntt->AddComponent<SkeletonComponent>();
-              break;
-            case 6:
-              ntt->AddComponent<AABBOverrideComponent>();
-              break;
-            default:
-              break;
-            }
+              componentAdded = true;
 
-            if (cmpCnt > ntt->GetComponentPtrArray().size())
+              editor->SetStatusMsg(g_successStr);
+            }
+            else
             {
-              edtScene->AddBillboard(ntt);
-              addInAction = false;
+              editor->SetStatusMsg(g_statusFailed);
+              TK_WRN("Environment Component already exists.");
             }
           }
-          ImGui::Unindent();
+
+          if (ImGui::MenuItem("Animation Controller Component"))
+          {
+            if (ntt->GetComponentFast<AnimControllerComponent>() == nullptr)
+            {
+              ntt->AddComponent<AnimControllerComponent>();
+              componentAdded = true;
+              editor->SetStatusMsg(g_successStr);
+            }
+            else
+            {
+              editor->SetStatusMsg(g_statusFailed);
+              TK_WRN("Animation Controller Component already exists.");
+            }
+          }
+
+          if (ImGui::MenuItem("Skeleton Component"))
+          {
+            if (ntt->GetComponentFast<SkeletonComponent>() == nullptr)
+            {
+              // Check if mesh component is skinned.
+              MeshComponentPtr meshComp = ntt->GetComponent<MeshComponent>();
+              if (meshComp && meshComp->GetMeshVal()->IsSkinned())
+              {
+                ntt->AddComponent<SkeletonComponent>();
+                componentAdded = true;
+                editor->SetStatusMsg(g_successStr);
+              }
+              else
+              {
+                editor->SetStatusMsg(g_statusFailed);
+                TK_WRN("Skeleton Component can only be added to skinned meshes.");
+              }
+            }
+            else
+            {
+              editor->SetStatusMsg(g_statusFailed);
+              TK_WRN("Skeleton Component already exists.");
+            }
+          }
+
+          if (ImGui::MenuItem("AABB Override Component"))
+          {
+            if (ntt->GetComponentFast<AABBOverrideComponent>() == nullptr)
+            {
+              ntt->AddComponent<AABBOverrideComponent>();
+              componentAdded = true;
+              editor->SetStatusMsg(g_successStr);
+            }
+            else
+            {
+              editor->SetStatusMsg(g_statusFailed);
+              TK_WRN("AABB Override Component already exists.");
+            }
+          }
+
+          // Create dynamic menu.
+          ImGui::Separator();
+          for (DynamicMenuPtr root : editor->m_customComponentsMenu)
+          {
+            ShowDynamicMenu(root,
+                            [ntt, &componentAdded](const StringView& className) -> void
+                            {
+                              App* editor = GetApp();
+                              if (ComponentPtr cmp = MakeNewPtrCasted<Component>(className))
+                              {
+                                if (ntt->GetComponent(cmp->Class()) == nullptr)
+                                {
+                                  ntt->AddComponent(cmp);
+                                  componentAdded = true;
+
+                                  editor->SetStatusMsg(g_successStr);
+                                }
+                                else
+                                {
+                                  editor->SetStatusMsg(g_statusFailed);
+                                  TK_WRN("Component already exists: %s", className.data());
+                                }
+                              }
+                            });
+          }
+
+          // State changed this means a new component has been added.
+          if (componentAdded)
+          {
+            edtScene->AddBillboard(ntt);
+          }
+
+          ImGui::EndPopup();
         }
+        ImGui::Unindent();
+
         ImGui::PopItemWidth();
-
-        ImGui::Separator();
-        if (UI::BeginCenteredTextButton("Add Component"))
-        {
-          addInAction = true;
-        }
-        UI::EndCenteredTextButton();
-
         ImGui::PopStyleVar();
       }
       else
