@@ -434,77 +434,84 @@ namespace ToolKit
         EditorScenePtr edtScene = Cast<EditorScene>(scene);
         edtScene->ValidateBillboard(ntt);
 
-        ImGui::PushItemWidth(150);
-        static bool addInAction = false;
-
-        if (addInAction)
-        {
-          int dataType = 0;
-          if (ImGui::Combo("##NewComponent",
-                           &dataType,
-                           "..."
-                           "\0Mesh Component"
-                           "\0Material Component"
-                           "\0Environment Component"
-                           "\0Animation Controller Component"
-                           "\0Skeleton Component"
-                           "\0AABB Override Component"))
-          {
-            size_t cmpCnt = ntt->GetComponentPtrArray().size();
-            switch (dataType)
-            {
-            case 1:
-              ntt->AddComponent<MeshComponent>();
-              break;
-            case 2:
-            {
-              MaterialComponentPtr mmComp = ntt->AddComponent<MaterialComponent>();
-              mmComp->UpdateMaterialList();
-            }
-            break;
-            case 3:
-            {
-              // A default hdri must be given for component creation via editor.
-              // Create a default hdri.
-              TextureManager* texMan         = GetTextureManager();
-              HdriPtr hdri                   = texMan->Create<Hdri>(texMan->GetDefaultResource(Hdri::StaticClass()));
-
-              EnvironmentComponentPtr envCom = MakeNewPtr<EnvironmentComponent>();
-              envCom->SetHdriVal(hdri);
-
-              ntt->AddComponent(envCom);
-            }
-            break;
-            case 4:
-              ntt->AddComponent<AnimControllerComponent>();
-              break;
-            case 5:
-              ntt->AddComponent<SkeletonComponent>();
-              break;
-            case 6:
-              ntt->AddComponent<AABBOverrideComponent>();
-              break;
-            default:
-              break;
-            }
-
-            if (cmpCnt > ntt->GetComponentPtrArray().size())
-            {
-              edtScene->AddBillboard(ntt);
-              addInAction = false;
-            }
-          }
-          ImGui::Unindent();
-        }
-        ImGui::PopItemWidth();
-
         ImGui::Separator();
+
+        // Draw the centered button
         if (UI::BeginCenteredTextButton("Add Component"))
         {
-          addInAction = true;
+          // Open the popup manually
+          ImGui::OpenPopup("##NewComponentMenu");
         }
         UI::EndCenteredTextButton();
 
+        // Get button rect (for positioning popup below)
+        ImVec2 buttonMin = ImGui::GetItemRectMin();
+        ImVec2 buttonMax = ImGui::GetItemRectMax();
+        ImVec2 popupPos(buttonMin.x, buttonMax.y);
+
+        // Set the popup position to appear right below the button
+        ImGui::SetNextWindowPos(popupPos, ImGuiCond_Appearing);
+        ImGui::PushItemWidth(150);
+
+        if (ImGui::BeginPopup("##NewComponentMenu"))
+        {
+          bool componentAdded = false;
+          if (ImGui::MenuItem("Mesh Component"))
+          {
+            ntt->AddComponent<MeshComponent>();
+            componentAdded = false;
+          }
+
+          if (ImGui::MenuItem("Material Component"))
+          {
+            MaterialComponentPtr mmComp = ntt->AddComponent<MaterialComponent>();
+            mmComp->UpdateMaterialList();
+            componentAdded = false;
+          }
+
+          if (ImGui::MenuItem("Environment Component"))
+          {
+            // A default hdri must be given for component creation via editor.
+            // Create a default hdri.
+            TextureManager* texMan         = GetTextureManager();
+            HdriPtr hdri                   = texMan->Create<Hdri>(texMan->GetDefaultResource(Hdri::StaticClass()));
+
+            EnvironmentComponentPtr envCom = MakeNewPtr<EnvironmentComponent>();
+            envCom->SetHdriVal(hdri);
+
+            ntt->AddComponent(envCom);
+            componentAdded = false;
+          }
+
+          if (ImGui::MenuItem("Animation Controller Component"))
+          {
+            ntt->AddComponent<AnimControllerComponent>();
+            componentAdded = false;
+          }
+
+          if (ImGui::MenuItem("Skeleton Component"))
+          {
+            ntt->AddComponent<SkeletonComponent>();
+            componentAdded = false;
+          }
+
+          if (ImGui::MenuItem("AABB Override Component"))
+          {
+            ntt->AddComponent<AABBOverrideComponent>();
+            componentAdded = false;
+          }
+
+          // State changed this means a new component has been added.
+          if (componentAdded)
+          {
+            edtScene->AddBillboard(ntt);
+          }
+
+          ImGui::EndPopup();
+        }
+        ImGui::Unindent();
+
+        ImGui::PopItemWidth();
         ImGui::PopStyleVar();
       }
       else
