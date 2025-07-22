@@ -83,18 +83,6 @@ namespace ToolKit
       }
     }
 
-    void ShowAABBOverrideComponent(ComponentPtr& comp, std::function<bool(const String&)> showCompFunc, bool isEditable)
-    {
-      AABBOverrideComponent* overrideComp = (AABBOverrideComponent*) comp.get();
-      ImGui::BeginDisabled(!isEditable);
-      MeshComponentPtr meshComp = overrideComp->OwnerEntity()->GetComponent<MeshComponent>();
-      if (meshComp && ImGui::Button("Update from MeshComponent"))
-      {
-        overrideComp->SetBoundingBox(meshComp->GetBoundingBox());
-      }
-      ImGui::EndDisabled();
-    }
-
     void ComponentView::ShowAnimControllerComponent(ParameterVariant* var, ComponentPtr comp)
     {
       AnimRecordPtrMap& mref = var->GetVar<AnimRecordPtrMap>();
@@ -357,10 +345,6 @@ namespace ToolKit
       if (comp->IsA<MaterialComponent>())
       {
         ShowMultiMaterialComponent(comp, showCompFunc, modifiableComp);
-      }
-      else if (comp->IsA<AABBOverrideComponent>())
-      {
-        ShowAABBOverrideComponent(comp, showCompFunc, modifiableComp);
       }
 
       if (removeComp)
