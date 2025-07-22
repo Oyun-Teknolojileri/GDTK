@@ -455,50 +455,119 @@ namespace ToolKit
 
         if (ImGui::BeginPopup("##NewComponentMenu"))
         {
+          App* editor         = GetApp();
           bool componentAdded = false;
+
           if (ImGui::MenuItem("Mesh Component"))
           {
-            ntt->AddComponent<MeshComponent>();
-            componentAdded = false;
+            if (ntt->GetComponentFast<MeshComponent>() == nullptr)
+            {
+              ntt->AddComponent<MeshComponent>();
+              componentAdded = true;
+
+              editor->SetStatusMsg(g_successStr);
+            }
+            else
+            {
+              editor->SetStatusMsg(g_statusFailed);
+              TK_WRN("Mesh Component already exists.");
+            }
           }
 
           if (ImGui::MenuItem("Material Component"))
           {
-            MaterialComponentPtr mmComp = ntt->AddComponent<MaterialComponent>();
-            mmComp->UpdateMaterialList();
-            componentAdded = false;
+            if (ntt->GetComponentFast<MaterialComponent>() == nullptr)
+            {
+              MaterialComponentPtr mmComp = ntt->AddComponent<MaterialComponent>();
+              mmComp->UpdateMaterialList();
+              componentAdded = true;
+
+              editor->SetStatusMsg(g_successStr);
+            }
+            else
+            {
+              editor->SetStatusMsg(g_statusFailed);
+              TK_WRN("Material Component already exists.");
+            }
           }
 
           if (ImGui::MenuItem("Environment Component"))
           {
-            // A default hdri must be given for component creation via editor.
-            // Create a default hdri.
-            TextureManager* texMan         = GetTextureManager();
-            HdriPtr hdri                   = texMan->Create<Hdri>(texMan->GetDefaultResource(Hdri::StaticClass()));
+            if (ntt->GetComponentFast<EnvironmentComponent>() == nullptr)
+            {
+              // A default hdri must be given for component creation via editor.
+              // Create a default hdri.
+              TextureManager* texMan         = GetTextureManager();
+              HdriPtr hdri                   = texMan->Create<Hdri>(texMan->GetDefaultResource(Hdri::StaticClass()));
 
-            EnvironmentComponentPtr envCom = MakeNewPtr<EnvironmentComponent>();
-            envCom->SetHdriVal(hdri);
+              EnvironmentComponentPtr envCom = MakeNewPtr<EnvironmentComponent>();
+              envCom->SetHdriVal(hdri);
 
-            ntt->AddComponent(envCom);
-            componentAdded = false;
+              ntt->AddComponent(envCom);
+              componentAdded = true;
+
+              editor->SetStatusMsg(g_successStr);
+            }
+            else
+            {
+              editor->SetStatusMsg(g_statusFailed);
+              TK_WRN("Environment Component already exists.");
+            }
           }
 
           if (ImGui::MenuItem("Animation Controller Component"))
           {
-            ntt->AddComponent<AnimControllerComponent>();
-            componentAdded = false;
+            if (ntt->GetComponentFast<AnimControllerComponent>() == nullptr)
+            {
+              ntt->AddComponent<AnimControllerComponent>();
+              componentAdded = true;
+              editor->SetStatusMsg(g_successStr);
+            }
+            else
+            {
+              editor->SetStatusMsg(g_statusFailed);
+              TK_WRN("Animation Controller Component already exists.");
+            }
           }
 
           if (ImGui::MenuItem("Skeleton Component"))
           {
-            ntt->AddComponent<SkeletonComponent>();
-            componentAdded = false;
+            if (ntt->GetComponentFast<SkeletonComponent>() == nullptr)
+            {
+              // Check if mesh component is skinned.
+              MeshComponentPtr meshComp = ntt->GetComponent<MeshComponent>();
+              if (meshComp && meshComp->GetMeshVal()->IsSkinned())
+              {
+                ntt->AddComponent<SkeletonComponent>();
+                componentAdded = true;
+                editor->SetStatusMsg(g_successStr);
+              }
+              else
+              {
+                editor->SetStatusMsg(g_statusFailed);
+                TK_WRN("Skeleton Component can only be added to skinned meshes.");
+              }
+            }
+            else
+            {
+              editor->SetStatusMsg(g_statusFailed);
+              TK_WRN("Skeleton Component already exists.");
+            }
           }
 
           if (ImGui::MenuItem("AABB Override Component"))
           {
-            ntt->AddComponent<AABBOverrideComponent>();
-            componentAdded = false;
+            if (ntt->GetComponentFast<AABBOverrideComponent>() == nullptr)
+            {
+              ntt->AddComponent<AABBOverrideComponent>();
+              componentAdded = true;
+              editor->SetStatusMsg(g_successStr);
+            }
+            else
+            {
+              editor->SetStatusMsg(g_statusFailed);
+              TK_WRN("AABB Override Component already exists.");
+            }
           }
 
           // State changed this means a new component has been added.
