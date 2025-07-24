@@ -68,6 +68,7 @@ namespace ToolKit
    public:
     /** States if the mouse button is released. True means button is up. */
     bool m_release  = false;
+
     /** Mouse position in application window coordinates */
     int absolute[2] = {0, 0};
     /** Mouse delta move. */
@@ -82,8 +83,30 @@ namespace ToolKit
     TouchEvent() { m_type = EventType::Touch; }
 
    public:
+    /** States whether touch down or up. True means touch released. */
     bool m_release    = false;
-    float absolute[2] = {0.0f, 0.0f}; // x, y. Between 0-1
+
+    /** Normalized x,y coordinates. Multiply by screen resolution to get pixel position. */
+    float absolute[2] = {0.0f, 0.0f};
+
+    /** Normalized delta x,y coordinates. Multiply by screen resolution to get pixel position. */
+    float relative[2] = {0.0f, 0.0f};
+
+    /** Angle between fingers in radiance. Valid when finger count > 1. */
+    float theta       = 0.0f;
+
+    /**
+     * Normalized delta distance between fingers.
+     * Positive values means fingers get away from each other. Vise versa for negative values.
+     * Valid when finger count > 1.
+     */
+    float distance    = 0.0f;
+
+    /** Normalized center point of the touch event. Multiply by screen resolution to get pixel position. */
+    float center[2]   = {0.0f, 0.0f};
+
+    /** Number of fingers on the screen. */
+    int fingerCount   = 1;
   };
 
   enum class GamepadButton : uint
