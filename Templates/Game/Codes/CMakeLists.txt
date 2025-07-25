@@ -110,7 +110,7 @@ if ("${TK_PLATFORM}" STREQUAL "${TK_ANDROID}")
     target_link_directories(${GAME_PROJECT_NAME} PRIVATE ${TK_OUT_DIR})
     
     find_library(GLESv3 GLESv3)
-    target_link_libraries(${GAME_PROJECT_NAME} PRIVATE GLESv3 jnigraphics android log SDL2 SDL2main minizip libzstd ToolKit)
+    target_link_libraries(${GAME_PROJECT_NAME} PRIVATE GLESv3 jnigraphics android log ${sdl2} ${sdl2main} minizip libzstd ToolKit)
 endif()
 
 # Windows build project.
