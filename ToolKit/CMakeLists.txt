@@ -39,5 +39,4 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${TK_OUT_DIR}")
 add_library(ToolKit STATIC ${SOURCES})
 
 set(PCH_HEADER "stdafx.h")
-set(PCH_SOURCE "stdafx.cpp")
 target_precompile_headers(ToolKit PRIVATE ${PCH_HEADER})

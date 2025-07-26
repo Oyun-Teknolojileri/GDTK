@@ -88,7 +88,7 @@ namespace ToolKit
     g_proxy->m_cfgPath      = ConcatPaths({internalPath, "Config"});
 
     // Set log function
-    GetLogger()->SetWriteConsoleFn([](LogType lt, String ms) -> void { ANDROID_LOG("%s", ms.c_str()); });
+    GetLogger()->SetPlatformConsoleFn([](LogType lt, String ms) -> void { ANDROID_LOG("%s", ms.c_str()); });
 
     CopyAllAssetsToDataPath(internalPath);
   }

@@ -63,22 +63,6 @@ namespace ToolKit
       m_touchEventPool.clear();
     }
 
-    /** Enables capturing multi touch gestures. */
-    void CaptureGestures() { SDL_RecordGesture(-1); }
-
-    /** When set to true, replicates touch events as mouse events. */
-    void SimulateMouseEvents(bool replicate)
-    {
-      if (replicate)
-      {
-        SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "1");
-      }
-      else
-      {
-        SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
-      }
-    }
-
     // Utility functions for Pooling & Releaseing SDL events for ToolKit.
     void PoolEvent(const SDL_Event& event)
     {

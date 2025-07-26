@@ -62,9 +62,9 @@ namespace rapidxml
 
         file(const char* buffer, unsigned int size)
         {
-          m_data.reserve(size + 1);
-          m_data = std::vector<char>(buffer, buffer + size + 1);
-          m_data[size] = 0;
+            m_data.resize(size + 1);
+            std::memcpy(m_data.data(), buffer, size);
+            m_data[size] = '\0';
         }
         
         //! Gets file data.

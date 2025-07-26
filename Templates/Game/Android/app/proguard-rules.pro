@@ -96,3 +96,7 @@
     void hapticRun(int, float, int);
     void hapticStop(int);
 }
+
+-keep class com.otyazilim.toolkit.ToolKitActivity {
+    native <methods>;
+}
