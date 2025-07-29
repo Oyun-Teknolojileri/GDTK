@@ -43,11 +43,24 @@ namespace ToolKit
 
     void NativeConstruct() override;
 
+    /** Returns the parent entity if any exist. */
     EntityPtr Parent() const;
+
+    /** Returns true if entity has mesh with non zero vertex. */
     virtual bool IsDrawable() const;
+
+    /** Sets the transformation of the entity based on the animation / time. Can be used with skin meshes too. */
     virtual void SetPose(const AnimationPtr& anim, float time);
+
+    /** Returns the bounding box of the entity. If exist uses mesh to calculate boundary. */
     virtual const BoundingBox& GetBoundingBox(bool inWorld = false);
+
     ObjectPtr Copy() const override;
+
+    /**
+     * Empty function. Suppose to remove allocated resources from corresponding managers.
+     * Potentially leading to destroy for unreferenced resources.
+     */
     virtual void RemoveResources();
 
     /**
@@ -56,9 +69,13 @@ namespace ToolKit
      */
     virtual bool IsVisible();
 
+    /** Sets the visibility of the entity. If deep is true, all child entities gets the given value. */
     void SetVisibility(bool vis, bool deep);
-    void SetTransformLock(bool vis, bool deep);
 
+    /** Locks the transformation of the entity. If deep is true, all child entities gets the given value. */
+    void SetTransformLock(bool lock, bool deep);
+
+    /** Adds a component with the given type to the entity. */
     template <typename T>
     std::shared_ptr<T> AddComponent(bool componentSerializable = true)
     {
@@ -70,6 +87,7 @@ namespace ToolKit
       return component;
     }
 
+    /** Adds given component to entity. */
     void AddComponent(const ComponentPtr& component);
 
     /**
