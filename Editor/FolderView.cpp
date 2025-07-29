@@ -1013,7 +1013,7 @@ namespace ToolKit
 
         if (ImGui::BeginMenu("Create"))
         {
-          auto inputWindowFn = [&views, &thisView]()
+          auto inputWindowFn = [&views, &thisView](int type)
           {
             StringInputWindowPtr inputWnd = MakeNewPtr<StringInputWindow>("Material Name##NwMat", true);
             inputWnd->m_inputVal          = "New Material";
@@ -1021,7 +1021,7 @@ namespace ToolKit
             inputWnd->m_hint              = "New material name";
             inputWnd->AddToUI();
 
-            inputWnd->m_taskFn = [views](const String& val)
+            inputWnd->m_taskFn = [views, type](const String& val)
             {
               String file = ConcatPaths({views[0]->m_path, val + MATERIAL});
               if (CheckFile(file))
@@ -1030,16 +1030,25 @@ namespace ToolKit
               }
               else
               {
-                MaterialManager* man = GetMaterialManager();
-                MaterialPtr mat      = man->GetCopyOfDefaultMaterial();
-                mat->m_name          = val;
-                mat->SetFile(file);
+                MaterialManager* materialManager = GetMaterialManager();
+                MaterialPtr material             = nullptr;
+                if (type == 0)
+                {
+                  material = materialManager->GetCopyOfDefaultMaterial();
+                }
+                else if (type == 1)
+                {
+                  material = materialManager->GetCopyOfUIMaterial();
+                }
+
+                material->m_name = val;
+                material->SetFile(file);
                 for (FolderView* view : views)
                 {
                   view->m_dirty = true;
                 }
-                mat->Save(true);
-                man->Manage(mat);
+                material->Save(true);
+                materialManager->Manage(material);
               }
             };
             thisView->m_parent->ReconstructFolderTree();
@@ -1048,7 +1057,12 @@ namespace ToolKit
 
           if (ImGui::MenuItem("PBR Material"))
           {
-            inputWindowFn();
+            inputWindowFn(0);
+          }
+
+          if (ImGui::MenuItem("UI Material"))
+          {
+            inputWindowFn(1);
           }
           ImGui::EndMenu();
         }
