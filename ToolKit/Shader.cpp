@@ -7,6 +7,7 @@
 
 #include "Shader.h"
 
+#include "EngineSettings.h"
 #include "FileManager.h"
 #include "GpuProgram.h"
 #include "Logger.h"
@@ -119,6 +120,9 @@ namespace ToolKit
 
     if (!m_defineArray.empty())
     {
+      // Try syncing presets.
+      GetEngineSettings().m_shaderSettings->SyncDefinesForShader(GetFile(), m_defineArray);
+
       ShaderDefineCombinaton defineCombo;
       ComplieShaderCombinations(m_defineArray, 0, defineCombo);
     }

@@ -1461,7 +1461,7 @@ namespace ToolKit
         XmlDocument* docPtr   = lclDoc.get();
 
         XmlNode* app          = CreateXmlNode(docPtr, "App");
-        WriteAttr(app, docPtr, "version", TKVersionStr);
+        WriteAttr(app, docPtr, XmlVersion.data(), TKVersionStr);
 
         XmlNode* settings = CreateXmlNode(docPtr, "Settings", app);
         XmlNode* setNode  = CreateXmlNode(docPtr, "Size", settings);
@@ -1509,7 +1509,7 @@ namespace ToolKit
 
       if (XmlNode* root = doc->first_node("App"))
       {
-        ReadAttr(root, "version", m_version, TKV044);
+        ReadAttr(root, XmlVersion.data(), m_version, TKV044);
 
         if (XmlNode* settings = root->first_node("Settings"))
         {

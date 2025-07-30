@@ -25,7 +25,7 @@ namespace ToolKit
     XmlNode* pluginNode = CreateXmlNode(doc, "Settings", parent);
     XmlNode* node       = CreateXmlNode(doc, "Plugin", pluginNode);
     WriteAttr(node, doc, "autoLoad", std::to_string(autoLoad));
-    WriteAttr(node, doc, "version", version);
+    WriteAttr(node, doc, XmlVersion.data(), version);
     WriteAttr(node, doc, "engine", engine);
 
     node = CreateXmlNode(doc, "Description", pluginNode);
@@ -50,7 +50,7 @@ namespace ToolKit
       if (XmlNode* plugin = settings->first_node("Plugin"))
       {
         ReadAttr(plugin, "autoLoad", autoLoad);
-        ReadAttr(plugin, "version", version);
+        ReadAttr(plugin, XmlVersion.data(), version);
         ReadAttr(plugin, "engine", engine);
       }
 
