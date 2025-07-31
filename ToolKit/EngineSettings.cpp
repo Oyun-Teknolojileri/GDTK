@@ -137,7 +137,6 @@ namespace ToolKit
     EnableGpuTimer_Define(false, "GraphicSettings", 0, 0, 0);
     HDRPipeline_Define(true, "GraphicSettings", 0, 0, 0);
     RenderResolutionScale_Define(1.0f, "GraphicSettings", 0, 0, 0);
-    SetShaderDefines_Define(true, "GraphicSettings", 0, 0, 0);
   }
 
   // PostProcessingSettings
@@ -382,7 +381,7 @@ namespace ToolKit
     if (file.is_open())
     {
       // Set shader defines for current graphics settings.
-      if (m_graphics->GetSetShaderDefinesVal())
+      if (m_graphics->m_saveShaderDefines)
       {
         SetShaderSettings();
       }
@@ -448,6 +447,25 @@ namespace ToolKit
 
     def.define   = "TextureArray";
     def.variants = {"0"};
+    m_shaderSettings->SetShaderDefine(file, def);
+
+    // Shadow defines.
+    file         = ShaderPath("orthogonalDepthFrag" + SHADER, true);
+    def.define   = "EVSM4";
+    def.variants = {m_graphics->m_shadows->GetUseEVSM4Val() ? "1" : "0"};
+    m_shaderSettings->SetShaderDefine(file, def);
+
+    def.define   = "SMFormat16Bit";
+    def.variants = {m_graphics->m_shadows->GetUse32BitShadowMapVal() ? "0" : "1"};
+    m_shaderSettings->SetShaderDefine(file, def);
+
+    file         = ShaderPath("perspectiveDepthFrag" + SHADER, true);
+    def.define   = "EVSM4";
+    def.variants = {m_graphics->m_shadows->GetUseEVSM4Val() ? "1" : "0"};
+    m_shaderSettings->SetShaderDefine(file, def);
+
+    def.define   = "SMFormat16Bit";
+    def.variants = {m_graphics->m_shadows->GetUse32BitShadowMapVal() ? "0" : "1"};
     m_shaderSettings->SetShaderDefine(file, def);
   }
 
