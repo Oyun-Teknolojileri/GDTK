@@ -162,6 +162,7 @@ namespace ToolKit
 
     // Construct the key.
     String key;
+    bool defineFound = false;
     for (int i = 0; i < (int) m_currentDefineValues.size(); i++)
     {
       int defineIndx  = m_currentDefineValues[i].define;
@@ -170,6 +171,8 @@ namespace ToolKit
       // If define found
       if (m_defineArray[defineIndx].define == name)
       {
+        defineFound = true;
+
         // find the variant.
         variantIndx = -1;
         for (int ii = 0; ii < (int) m_defineArray[defineIndx].variants.size(); ii++)
@@ -184,14 +187,24 @@ namespace ToolKit
 
         if (variantIndx == -1)
         {
-          TK_WRN("Shader define can't be set. There is no variant: %s for define: %s", name.data(), val.data());
-          return;
+          // Push a new define variant.
+          m_defineArray[defineIndx].variants.push_back(val.data());
+          variantIndx                      = (int) m_defineArray[defineIndx].variants.size() - 1;
+          m_currentDefineValues[i].variant = variantIndx;
         }
       }
 
       const String& defName  = m_defineArray[defineIndx].define;
       const String& defVal   = m_defineArray[defineIndx].variants[variantIndx];
       key                   += defName + ":" + defVal + "|";
+    }
+
+    // Check if define was found.
+    if (!defineFound)
+    {
+      // In this case, shader must be updated, because the define is not present in the shader.
+      TK_ERR("Define: %s not found in shader: %s", name.data(), GetFile().data());
+      return;
     }
 
     key.pop_back();
@@ -204,7 +217,10 @@ namespace ToolKit
     }
     else
     {
-      TK_ERR("Unknown shader combination %s", key.c_str());
+      TK_WRN("Compiling shader during runtime for a new variant. Define: %s for Variant: %s", name.data(), val.data());
+      ShaderDefineCombinaton defineCombo;
+      ComplieShaderCombinations(m_defineArray, 0, defineCombo);
+      m_shaderHandle = m_shaderVariantMap[key];
     }
   }
 
@@ -451,11 +467,18 @@ namespace ToolKit
       defineText     += "#define " + defName + " " + defVal + "\n";
     }
 
+    key.pop_back(); // remove last "|"
+
+    // Check if the key exist before.
+    // New variants causes recompile, so we can skip existing variants.
+    if (m_shaderVariantMap.find(key) != m_shaderVariantMap.end())
+    {
+      return;
+    }
+
     // Insert defines.
     uint mergeLoc = FindShaderMergeLocation(source);
     source.insert(mergeLoc, defineText);
-
-    key.pop_back(); // remove last "|"
 
     TK_LOG("Compiling shader with defines: %s", key.c_str());
 

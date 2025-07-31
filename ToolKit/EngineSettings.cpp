@@ -436,7 +436,7 @@ namespace ToolKit
     m_shaderSettings->SetShaderDefine(file, def);
 
     def.define   = "SMFormat16Bit";
-    def.variants = {m_graphics->m_shadows->GetUse32BitShadowMapVal() ? "1" : "0"};
+    def.variants = {m_graphics->m_shadows->GetUse32BitShadowMapVal() ? "0" : "1"};
     m_shaderSettings->SetShaderDefine(file, def);
 
     // Gauss blur defines.

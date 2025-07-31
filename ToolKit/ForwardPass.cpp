@@ -183,9 +183,6 @@ namespace ToolKit
       frag->SetDefine("SMFormat16Bit", std::to_string(is16Bit));
     }
 
-    uint adc = glm::min(RHIConstants::MaxDirectionalLightPerObject, m_params.activeDirectionalLightCount);
-    frag->SetDefine("ActiveDirectionalLightCount", std::to_string(adc));
-
     int shadowSample = shadows->GetShadowSamples();
     frag->SetDefine("ShadowSampleCount", std::to_string(shadowSample));
   }
