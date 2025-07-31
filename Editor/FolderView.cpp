@@ -564,16 +564,16 @@ namespace ToolKit
 
     void FolderView::Iterate()
     {
-      // Temporary vectors that holds DirectoryEntry's
-      std::vector<DirectoryEntry> m_temp_dirs;
-      std::vector<DirectoryEntry> m_temp_files;
+      // Temporary vectors that holds DirectoryEntries.
+      std::vector<DirectoryEntry> tempDirs;
+      std::vector<DirectoryEntry> tempFiles;
 
       m_entries.clear();
       for (const std::filesystem::directory_entry& e : std::filesystem::directory_iterator(m_path))
       {
         DirectoryEntry de;
         de.m_isDirectory = e.is_directory();
-        de.m_rootPath    = e.path().parent_path().u8string();
+        de.m_rootPath    = NormalizePath(e.path().parent_path().u8string());
         de.m_fileName    = e.path().stem().u8string();
         de.m_ext         = e.path().filename().extension().u8string();
 
@@ -584,23 +584,23 @@ namespace ToolKit
         }
         if (de.m_isDirectory)
         {
-          m_temp_dirs.push_back(de);
+          tempDirs.push_back(de);
         }
         else
         {
-          m_temp_files.push_back(de);
+          tempFiles.push_back(de);
         }
       }
 
       // Folder first, files next
-      for (int i = 0; i < (int) m_temp_dirs.size(); i++)
+      for (int i = 0; i < (int) tempDirs.size(); i++)
       {
-        m_entries.push_back(m_temp_dirs[i]);
+        m_entries.push_back(tempDirs[i]);
       }
 
-      for (int i = 0; i < (int) m_temp_files.size(); i++)
+      for (int i = 0; i < (int) tempFiles.size(); i++)
       {
-        m_entries.push_back(m_temp_files[i]);
+        m_entries.push_back(tempFiles[i]);
       }
     }
 

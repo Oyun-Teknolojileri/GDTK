@@ -53,6 +53,7 @@ namespace ToolKit
           TK_WRN("File: %s is missing. Using default resource.", rel.c_str());
           resource->SetFile(def);
           resource->_missingFile = file;
+          UnixifyPath(resource->_missingFile);
         }
         else
         {

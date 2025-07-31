@@ -147,7 +147,7 @@ namespace ToolKit
       void UpdateCurrentRoot();
 
       void ShowFolderTree();
-      int CreateTreeRec(int parent, const std::filesystem::path& path);
+      int CreateTreeRec(int parent, const String& path);
       void DrawTreeRec(int index, float depth);
       void Iterate(const String& path, bool clear, bool addEngine = true);
 

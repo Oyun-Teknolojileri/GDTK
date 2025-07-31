@@ -324,9 +324,9 @@ namespace ToolKit
       auto saveFn = [this]() -> void
       {
         // Serialize engine settings.
-        g_app->m_workspace.SerializeEngineSettings();
+        GetApp()->m_workspace.SerializeEngineSettings();
 
-        EditorScenePtr cScene = g_app->GetCurrentScene();
+        EditorScenePtr cScene = GetApp()->GetCurrentScene();
         cScene->Save(false);
 
         String rootFolder;
@@ -336,7 +336,7 @@ namespace ToolKit
         TK_LOG(msg.c_str());
         SetStatusMsg(g_statusSceneSaved);
 
-        FolderWindowRawPtrArray folderWindows = g_app->GetAssetBrowsers();
+        FolderWindowRawPtrArray folderWindows = GetApp()->GetAssetBrowsers();
         for (FolderWindow* folderWnd : folderWindows)
         {
           folderWnd->UpdateContent();
@@ -353,11 +353,7 @@ namespace ToolKit
 
         overrideScene->m_yesCallback = [&saveFn]() { saveFn(); };
         overrideScene->m_noCallback  = []()
-        {
-          g_app->GetConsole()->AddLog("Scene has not been saved.\n"
-                                      "A scene with the same name exist. Use File->SaveAs.",
-                                      LogType::Error);
-        };
+        { TK_ERR("Scene has not been saved.\nA scene with the same name exist. Use File->SaveAs."); };
       }
       else
       {
@@ -375,14 +371,14 @@ namespace ToolKit
       inputWnd->m_taskFn = [](const String& val)
       {
         String path;
-        EditorScenePtr currScene = g_app->GetCurrentScene();
+        EditorScenePtr currScene = GetApp()->GetCurrentScene();
         DecomposePath(currScene->GetFile(), &path, nullptr, nullptr);
 
-        String fullPath = NormalizePath(ConcatPaths({path, val + SCENE}));
+        String fullPath = ConcatPaths({path, val + SCENE});
 
         currScene->SetFile(fullPath);
         currScene->m_name = val;
-        g_app->OnSaveScene();
+        GetApp()->OnSaveScene();
       };
     }
 
@@ -459,27 +455,20 @@ namespace ToolKit
                              {".filters", ".vcxproj", ".user", ".cxx"});
 
       // Update cmake.
-      String currentPath = std::filesystem::current_path().parent_path().u8string();
+      String currentPath = GetCurrentParentPath();
       String cmakePath   = ConcatPaths({fullPath, "Codes", "CMakeLists.txt"});
-      UnixifyPath(cmakePath);
       TemplateUpdate(cmakePath, "__projectname__", name);
 
       // update vscode includes.
       String cppPropertiesPath = ConcatPaths({fullPath, ".vscode", "c_cpp_properties.json"});
-      UnixifyPath(cppPropertiesPath);
 
-      String tkRoot = std::filesystem::absolute(currentPath).u8string();
-      UnixifyPath(tkRoot);
-      String tkPath = ConcatPaths({tkRoot, "ToolKit"});
-      UnixifyPath(tkPath);
-      String depPath = ConcatPaths({tkRoot, "Dependency"});
-      UnixifyPath(depPath);
-      String glmPath = ConcatPaths({tkRoot, "Dependency", "glm"});
-      UnixifyPath(glmPath);
-      String imguiPath = ConcatPaths({tkRoot, "Dependency", "tkimgui"});
-      UnixifyPath(imguiPath);
+      String tkRoot            = currentPath;
+      String tkPath            = ConcatPaths({tkRoot, "ToolKit"});
+      String depPath           = ConcatPaths({tkRoot, "Dependency"});
+      String glmPath           = ConcatPaths({tkRoot, "Dependency", "glm"});
+      String imguiPath         = ConcatPaths({tkRoot, "Dependency", "tkimgui"});
 
-      String replacement = "\"" + tkRoot + "\",\n" + "\t\t\t\t\"" + tkPath + "\",\n" + "\t\t\t\t\"" + depPath +
+      String replacement       = "\"" + tkRoot + "\",\n" + "\t\t\t\t\"" + tkPath + "\",\n" + "\t\t\t\t\"" + depPath +
                            "\",\n" + "\t\t\t\t\"" + glmPath + "\",\n" + "\t\t\t\t\"" + imguiPath + "\"";
 
       TemplateUpdate(cppPropertiesPath, "__tk_includes__", replacement);
@@ -510,11 +499,9 @@ namespace ToolKit
       // Update cmake.
       String currentPath = std::filesystem::current_path().parent_path().u8string();
       String cmakePath   = ConcatPaths({fullPath, "Codes", "CMakeLists.txt"});
-      UnixifyPath(cmakePath);
       TemplateUpdate(cmakePath, "__projectname__", name);
 
       String pluginSettingsPath = ConcatPaths({fullPath, "Config", "Plugin.settings"});
-      UnixifyPath(pluginSettingsPath);
       TemplateUpdate(pluginSettingsPath, "PluginTemplate", name);
 
       SetStatusMsg(g_statusSucceeded);

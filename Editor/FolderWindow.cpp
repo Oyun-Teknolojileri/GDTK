@@ -76,11 +76,11 @@ namespace ToolKit
     void FolderWindow::IterateFolders(bool includeEngine) { Iterate(ResourcePath(), true, includeEngine); }
 
     // parent will start with -1
-    int FolderWindow::CreateTreeRec(int parent, const std::filesystem::path& path)
+    int FolderWindow::CreateTreeRec(int parent, const String& path)
     {
-      String folderName = path.filename().u8string();
+      String folderName = GetFileName(path);
       int index         = (int) m_folderNodes.size();
-      m_folderNodes.emplace_back(index, std::filesystem::absolute(path).u8string(), folderName);
+      m_folderNodes.emplace_back(index, ToAbsolutePath(path), folderName);
 
       for (const std::filesystem::directory_entry& directory : std::filesystem::directory_iterator(path))
       {
@@ -89,7 +89,8 @@ namespace ToolKit
           continue;
         }
 
-        int childIdx = CreateTreeRec(parent + 1, directory.path());
+        String subDir = NormalizePath(directory.path().u8string());
+        int childIdx  = CreateTreeRec(parent + 1, subDir);
         m_folderNodes[index].childs.push_back(childIdx);
       }
 
@@ -406,7 +407,7 @@ namespace ToolKit
         if (entry.is_directory())
         {
           FolderView view(this);
-          String path = entry.path().u8string();
+          String path = NormalizePath(entry.path().u8string());
           view.m_root = CountChar(path, pathSep) == baseCount + 1;
 
           view.SetPath(path);
