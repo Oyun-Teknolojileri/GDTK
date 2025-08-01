@@ -462,9 +462,9 @@ namespace ToolKit
     static String absolutePath;
     if (absolutePath.empty())
     {
-      String cur = std::filesystem::current_path().string();
       StringArray splits;
-      Split(cur, GetPathSeparatorAsStr(), splits);
+      String currentPath = GetCurrentPath();
+      Split(currentPath, GetPathSeparatorAsStr(), splits);
       splits.erase(splits.end() - 1);
       splits.push_back("Resources");
       splits.push_back("Engine");
@@ -553,7 +553,7 @@ namespace ToolKit
 
   String LayerPath(const String& file, bool def) { return ProcessPath(file, "Layers", def); }
 
-  TK_API String PluginPath(const String& file, bool def)
+  String PluginPath(const String& file, bool def)
   {
     String path        = ConcatPaths({"Plugins", file, "Codes", "Bin"});
     path               = ProcessPath(file, path, def);
@@ -564,7 +564,7 @@ namespace ToolKit
     return path;
   }
 
-  TK_API String PluginConfigPath(const String& file, bool def)
+  String PluginConfigPath(const String& file, bool def)
   {
     String path        = ConcatPaths({"Plugins", file, "Config"});
     path               = ProcessPath("Plugin.settings", path, def);

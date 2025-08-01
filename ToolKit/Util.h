@@ -16,12 +16,18 @@ namespace ToolKit
   // Xml Processing.
   //////////////////////////////////////////
 
+  /** Deserialize the value as vector from node's attributes x,y,z,w. */
   template <typename T>
   void ReadVec(XmlNode* node, T& val);
+
+  /** Serialize the value as a vector to the node's attributes x,y,z,w. */
   template <typename T>
   void WriteVec(XmlNode* node, XmlDocument* doc, const T& val);
+
+  /** Writes an attribute to the given node. */
   TK_API void WriteAttr(XmlNode* node, XmlDocument* doc, const StringView& name, const StringView& val);
 
+  /** Reads attributes from given node. */
   TK_API void ReadAttr(XmlNode* node, const String& name, bool& val);
   TK_API void ReadAttr(XmlNode* node, const String& name, float& val);
   TK_API void ReadAttr(XmlNode* node, const String& name, int& val);
@@ -30,16 +36,27 @@ namespace ToolKit
   TK_API void ReadAttr(XmlNode* node, const String& name, byte& val);
   TK_API void ReadAttr(XmlNode* node, const String& name, ubyte& val);
   TK_API void ReadAttr(XmlNode* node, const String& name, String& val, StringView defaultVal = "");
+
+  /** Query an xml node recursively. If string array contains A/B/C, query returns a Node C whose grand parent is A. */
   TK_API XmlNode* Query(XmlDocument* doc, const StringArray& path);
 
-  // Updates or inject the attribute with val. Returns true if successful.
+  /** Updates or inject the attribute with val.Returns true if successful. */
   TK_API bool UpdateAttribute(XmlDocument* doc, const StringArray& path, const String& attribute, const String& val);
 
-  // Create an xml node with given name.
-  // Append it to parent if not null else append it to doc.
+  /** Create an xml node with given name.Append it to parent if not null else append it to doc. */
   TK_API XmlNode* CreateXmlNode(XmlDocument* doc, const StringView& name, XmlNode* parent = nullptr);
 
+  /**
+   * DEPRECATED: Use Resource::SerializeRef.
+   * Serializes a material node in to the parent.
+   */
   TK_API void WriteMaterial(XmlNode* parent, XmlDocument* doc, const String& file);
+
+  /**
+   * DEPRECATED: Use Resource::DeserializeRef.
+   * Reads a material node from the parent.
+   * @return MaterialPtr if the material is found, nullptr otherwise.
+   */
   TK_API MaterialPtr ReadMaterial(XmlNode* parent);
 
   // File path operations.
@@ -60,18 +77,39 @@ namespace ToolKit
    */
   TK_API bool CheckFile(const String& path);
 
+  /** Return absolute current working directory. */
+  TK_API String GetCurrentPath();
+
+  /** Return absolute parent path of current working directory. */
+  TK_API String GetCurrentParentPath();
+
+  /** Returns the absolute path for the given path. */
+  TK_API String ToAbsolutePath(const String& path);
+
   /** Creates a file name, if there is a file with the same name, adds a number incrementally to end of file. */
   TK_API String CreateIncrementalFileFullPath(const String& fullPath, const String& postFix = "_copy");
+
+  /** Decomposes a given path into path, name, extention parts. */
   TK_API void DecomposePath(const String& fullPath, String* path, String* name, String* ext);
 
   TK_API String NormalizePath(String path);
+
+  /** Lexically normalize and unixify path in place. */
   TK_API void NormalizePathInplace(String& path);
+
+  /** Unixify path by converting back slashes to forward. */
   TK_API void UnixifyPath(String& path);
+
+  /** Dosify path by converting forward slashes to backward. */
   TK_API void DosifyPath(String& path);
+
+  /** Concatenates multiple entries to create a unixified path. */
   TK_API String ConcatPaths(const StringArray& entries);
 
-  // copys all of the directories and folders recursively
-  // note that ignored names can be empty and ignoredExtensions will not copied
+  /**
+   * Copies all of the directories and folders recursively.
+   * Note that ignored names can be empty and ignoredExtensions will not copied
+   */
   TK_API void RecursiveCopyDirectory(const String& source,
                                      const String& destination,
                                      const StringArray& ignoredExtensions);
@@ -100,9 +138,7 @@ namespace ToolKit
    */
   TK_API bool HasToolKitRoot(const String& path);
 
-  /**
-   * Extracts the file name with the extension from a path.
-   */
+  /** Extracts the file name with the extension from a path. */
   TK_API String GetFileName(const String& path);
 
   TK_API String CreatePathFromResourceType(const String& file, struct ClassMeta* Class);

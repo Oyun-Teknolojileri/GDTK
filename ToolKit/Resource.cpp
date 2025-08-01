@@ -182,6 +182,10 @@ namespace ToolKit
     return _missingFile;
   }
 
-  void Resource::SetFile(const String& file) { m_file = file; }
+  void Resource::SetFile(const String& file)
+  {
+    m_file = file;
+    UnixifyPath(m_file);
+  }
 
 } // namespace ToolKit

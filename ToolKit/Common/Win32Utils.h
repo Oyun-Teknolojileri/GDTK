@@ -169,7 +169,9 @@ namespace ToolKit
 
     void OpenExplorer(const StringView utf8Path)
     {
-      std::wstring utf16Path = UTF8Util::ConvertUTF8ToUTF16(utf8Path.data());
+      std::filesystem::path systemPath = utf8Path;
+      String systemPathStr             = systemPath.lexically_normal().u8string(); // Windows style path normalization.
+      std::wstring utf16Path           = UTF8Util::ConvertUTF8ToUTF16(systemPathStr);
       HINSTANCE result =
           ShellExecuteW(GetActiveWindow(), L"open", L"explorer.exe", utf16Path.data(), NULL, SW_SHOWNORMAL);
 

@@ -215,6 +215,27 @@ namespace ToolKit
 
   bool CheckFile(const String& path) { return GetFileManager()->CheckFileFromResources(path); }
 
+  String GetCurrentPath()
+  {
+    String path = std::filesystem::current_path().u8string();
+    UnixifyPath(path);
+    return path;
+  }
+
+  String GetCurrentParentPath()
+  {
+    String path = std::filesystem::current_path().parent_path().u8string();
+    UnixifyPath(path);
+    return path;
+  }
+
+  String ToAbsolutePath(const String& path)
+  {
+    String absolutePath = std::filesystem::absolute(path).u8string();
+    NormalizePathInplace(absolutePath);
+    return absolutePath;
+  }
+
   String CreateIncrementalFileFullPath(const String& fullPath, const String& postFix)
   {
     String cpyPath = fullPath;
@@ -269,27 +290,14 @@ namespace ToolKit
 
   void NormalizePathInplace(String& path)
   {
-    if constexpr (TK_PLATFORM == PLATFORM::TKWindows)
-    {
-      DosifyPath(path);
-    }
-    else
-    {
-      UnixifyPath(path);
-    }
+    std::filesystem::path patify = path;
+    path                         = patify.lexically_normal().u8string();
+    UnixifyPath(path);
   }
 
   String NormalizePath(String path)
   {
-    if constexpr (TK_PLATFORM == PLATFORM::TKWindows)
-    {
-      DosifyPath(path);
-    }
-    else
-    {
-      UnixifyPath(path);
-    }
-
+    NormalizePathInplace(path);
     return path;
   }
 
@@ -318,10 +326,12 @@ namespace ToolKit
     for (uint64 i = 0; i < entries.size() - 1; i++)
     {
       path += entries[i];
-      path += GetPathSeparatorAsStr();
+      path += "/";
     }
 
     path += entries.back(); // Add the last entry
+    UnixifyPath(path);      // Make sure all path is unixified.
+
     return path;
   }
 
@@ -541,14 +551,7 @@ namespace ToolKit
     return String();
   }
 
-  char GetPathSeparator()
-  {
-#ifdef _WIN32
-    return '\\';
-#else
-    return '/';
-#endif
-  }
+  char GetPathSeparator() { return '/'; }
 
   String GetPathSeparatorAsStr()
   {
