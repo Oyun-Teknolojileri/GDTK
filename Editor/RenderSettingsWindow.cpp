@@ -28,147 +28,33 @@ namespace ToolKit
     void RenderSettingsWindow::Show()
     {
       EngineSettings& engineSettings = GetEngineSettings();
-      GraphicSettingsPtr graphics    = engineSettings.m_graphics;
-      ShadowSettingsPtr shadows      = graphics->m_shadows;
 
       ImGui::SetNextWindowSize(ImVec2(300, 600), ImGuiCond_Once);
       if (ImGui::Begin(m_name.c_str(), &m_visible))
       {
         HandleStates();
-
-        PostProcessingSettingsPtr pps = engineSettings.m_postProcessing;
-
-        ImGui::SeparatorText("Post Process");
-
-        if (ImGui::CollapsingHeader("ToneMapping"))
+        if (ImGui::BeginTabBar("RenderSettingsTabs", ImGuiTabBarFlags_None))
         {
-          bool tonemappingEnabled = pps->GetTonemappingEnabledVal();
-          if (ImGui::Checkbox("Enable Tonemapping", &tonemappingEnabled))
-          {
-            pps->SetTonemappingEnabledVal(tonemappingEnabled);
-          }
-          CustomDataView::ShowVariant(&pps->ParamTonemapperMode(), nullptr);
+          ShowGeneralTab();
+          ShowPostProcessingTab();
+          ImGui::EndTabBar();
         }
+      }
+      ImGui::End();
+    }
 
-        if (ImGui::CollapsingHeader("Bloom"))
-        {
-          bool bloomEnabled = pps->GetBloomEnabledVal();
-          if (ImGui::Checkbox("Bloom##1", &bloomEnabled))
-          {
-            pps->SetBloomEnabledVal(bloomEnabled);
-          }
+    // ShowGeneralTab
+    //////////////////////////////////////////
 
-          float bloomIntensity = pps->GetBloomIntensityVal();
-          if (ImGui::DragFloat("Bloom Intensity", &bloomIntensity, 0.01f, 0.0f, 100.0f))
-          {
-            pps->SetBloomIntensityVal(bloomIntensity);
-          }
+    void RenderSettingsWindow::ShowGeneralTab()
+    {
+      EngineSettings& engineSettings = GetEngineSettings();
+      GraphicSettingsPtr graphics    = engineSettings.m_graphics;
+      ShadowSettingsPtr shadows      = graphics->m_shadows;
 
-          float bloomThreshold = pps->GetBloomThresholdVal();
-          if (ImGui::DragFloat("Bloom Threshold", &bloomThreshold, 0.01f, 0.0f, 100.0f))
-          {
-            pps->SetBloomThresholdVal(bloomThreshold);
-          }
-
-          int bloomIterationCount = pps->GetBloomIterationCountVal();
-          if (ImGui::InputInt("Bloom Iteration Count", &bloomIterationCount, 1, 2))
-          {
-            pps->SetBloomIterationCountVal(bloomIterationCount);
-          }
-        }
-
-        if (ImGui::CollapsingHeader("Depth of Field"))
-        {
-          bool dofEnabled = pps->GetDepthOfFieldEnabledVal();
-          if (ImGui::Checkbox("Depth of Field##1", &dofEnabled))
-          {
-            pps->SetDepthOfFieldEnabledVal(dofEnabled);
-          }
-
-          ImGui::BeginDisabled(!dofEnabled);
-
-          float dofFocusPoint = pps->GetFocusPointVal();
-          if (ImGui::DragFloat("Focus Point", &dofFocusPoint, 0.1f, 0.0f, 100.0f))
-          {
-            pps->SetFocusPointVal(dofFocusPoint);
-          }
-
-          float dofFocusScale = pps->GetFocusScaleVal();
-          if (ImGui::DragFloat("Focus Scale", &dofFocusScale, 0.01f, 1.0f, 200.0f))
-          {
-            pps->SetFocusScaleVal(dofFocusScale);
-          }
-
-          const char* items[] = {"Low", "Normal", "High"};
-          uint itemCount      = sizeof(items) / sizeof(items[0]);
-          int blurQuality     = pps->GetDofBlurQualityVal();
-          if (ImGui::BeginCombo("Blur Quality", items[blurQuality]))
-          {
-            for (uint itemIndx = 0; itemIndx < itemCount; itemIndx++)
-            {
-              bool isSelected      = false;
-              const char* itemName = items[itemIndx];
-              ImGui::Selectable(itemName, &isSelected);
-              if (isSelected)
-              {
-                pps->SetDofBlurQualityVal(itemIndx);
-              }
-            }
-
-            ImGui::EndCombo();
-          }
-          ImGui::EndDisabled();
-        }
-
-        if (ImGui::CollapsingHeader("Ambient Occlusion"))
-        {
-          bool ssaoEnabled = pps->GetSSAOEnabledVal();
-          if (ImGui::Checkbox("SSAO##1", &ssaoEnabled))
-          {
-            pps->SetSSAOEnabledVal(ssaoEnabled);
-          }
-          ImGui::BeginDisabled(!ssaoEnabled);
-
-          float ssaoRadius = pps->GetSSAORadiusVal();
-          if (ImGui::DragFloat("Radius", &ssaoRadius, 0.001f, 0.0f, 1.0f))
-          {
-            pps->SetSSAORadiusVal(ssaoRadius);
-          }
-
-          float ssaoSpread = pps->GetSSAOSpreadVal();
-          if (ImGui::DragFloat("Spread", &ssaoSpread, 0.001f, 0.0f, 1.0f))
-          {
-            pps->SetSSAOSpreadVal(ssaoSpread);
-          }
-
-          float ssaoBias = pps->GetSSAOBiasVal();
-          if (ImGui::DragFloat("Bias", &ssaoBias, 0.001f, 0.0f, 1.0f))
-          {
-            pps->SetSSAOBiasVal(ssaoBias);
-          }
-
-          int ssaoKernelSize = pps->GetSSAOKernelSizeVal();
-          if (ImGui::DragInt("KernelSize", &ssaoKernelSize, 1, 8, 128))
-          {
-            pps->SetSSAOKernelSizeVal(ssaoKernelSize);
-          }
-
-          ImGui::EndDisabled();
-        }
-
-        if (ImGui::CollapsingHeader("Anti Aliasing"))
-        {
-          bool fxaaEnabled = pps->GetFXAAEnabledVal();
-          if (ImGui::Checkbox("FXAA##1", &fxaaEnabled))
-          {
-            pps->SetFXAAEnabledVal(fxaaEnabled);
-          }
-        }
-
-        //// GENERAL-BEGIN
-
-        ImGui::SeparatorText("General");
-
+      // General Settings Tab
+      if (ImGui::BeginTabItem("General Settings"))
+      {
         static bool lockFps = true;
         if (ImGui::Checkbox("FPS Lock##1", &lockFps))
         {
@@ -216,10 +102,6 @@ namespace ToolKit
         CustomDataView::ShowVariant(&graphics->ParamAnisotropicTextureFiltering(), nullptr);
         UI::AddTooltipToLastItem("Apply anisotropic filtering if the value is greater than 0. \nOnly effects all "
                                  "textures after editor restarted.");
-
-        //// GENERAL-END
-
-        //// SHADOW-BEGIN
 
         ImGui::SeparatorText("Shadows");
 
@@ -382,10 +264,6 @@ namespace ToolKit
         }
         UI::AddTooltipToLastItem("Highlights shadow cascades for debugging purpose.");
 
-        //// SHADOW-END
-
-        //// PRESET-BEGIN
-
         ImGui::SeparatorText("Presets");
 
         ImGui::Checkbox("Save Shader Defines", &graphics->m_saveShaderDefines);
@@ -482,10 +360,149 @@ namespace ToolKit
 
           ImGui::End();
         }
-
-        //// PRESET-END
+        ImGui::EndTabItem(); // End General Settings Tab
       }
-      ImGui::End();
+    }
+
+    // ShowPostProcessingTab
+    //////////////////////////////////////////
+
+    void RenderSettingsWindow::ShowPostProcessingTab()
+    {
+      EngineSettings& engineSettings = GetEngineSettings();
+      PostProcessingSettingsPtr pps  = engineSettings.m_postProcessing;
+
+      // ImGui Tab Bar
+
+      // Post Process Settings Tab
+      if (ImGui::BeginTabItem("Post Process Settings", nullptr))
+      {
+        if (ImGui::CollapsingHeader("ToneMapping"))
+        {
+          bool tonemappingEnabled = pps->GetTonemappingEnabledVal();
+          if (ImGui::Checkbox("Enable Tonemapping", &tonemappingEnabled))
+          {
+            pps->SetTonemappingEnabledVal(tonemappingEnabled);
+          }
+          CustomDataView::ShowVariant(&pps->ParamTonemapperMode(), nullptr);
+        }
+
+        if (ImGui::CollapsingHeader("Bloom"))
+        {
+          bool bloomEnabled = pps->GetBloomEnabledVal();
+          if (ImGui::Checkbox("Bloom##1", &bloomEnabled))
+          {
+            pps->SetBloomEnabledVal(bloomEnabled);
+          }
+
+          float bloomIntensity = pps->GetBloomIntensityVal();
+          if (ImGui::DragFloat("Bloom Intensity", &bloomIntensity, 0.01f, 0.0f, 100.0f))
+          {
+            pps->SetBloomIntensityVal(bloomIntensity);
+          }
+
+          float bloomThreshold = pps->GetBloomThresholdVal();
+          if (ImGui::DragFloat("Bloom Threshold", &bloomThreshold, 0.01f, 0.0f, 100.0f))
+          {
+            pps->SetBloomThresholdVal(bloomThreshold);
+          }
+
+          int bloomIterationCount = pps->GetBloomIterationCountVal();
+          if (ImGui::InputInt("Bloom Iteration Count", &bloomIterationCount, 1, 2))
+          {
+            pps->SetBloomIterationCountVal(bloomIterationCount);
+          }
+        }
+
+        if (ImGui::CollapsingHeader("Depth of Field"))
+        {
+          bool dofEnabled = pps->GetDepthOfFieldEnabledVal();
+          if (ImGui::Checkbox("Depth of Field##1", &dofEnabled))
+          {
+            pps->SetDepthOfFieldEnabledVal(dofEnabled);
+          }
+
+          ImGui::BeginDisabled(!dofEnabled);
+
+          float dofFocusPoint = pps->GetFocusPointVal();
+          if (ImGui::DragFloat("Focus Point", &dofFocusPoint, 0.1f, 0.0f, 100.0f))
+          {
+            pps->SetFocusPointVal(dofFocusPoint);
+          }
+
+          float dofFocusScale = pps->GetFocusScaleVal();
+          if (ImGui::DragFloat("Focus Scale", &dofFocusScale, 0.01f, 1.0f, 200.0f))
+          {
+            pps->SetFocusScaleVal(dofFocusScale);
+          }
+
+          const char* items[] = {"Low", "Normal", "High"};
+          uint itemCount      = sizeof(items) / sizeof(items[0]);
+          int blurQuality     = pps->GetDofBlurQualityVal();
+          if (ImGui::BeginCombo("Blur Quality", items[blurQuality]))
+          {
+            for (uint itemIndx = 0; itemIndx < itemCount; itemIndx++)
+            {
+              bool isSelected      = false;
+              const char* itemName = items[itemIndx];
+              ImGui::Selectable(itemName, &isSelected);
+              if (isSelected)
+              {
+                pps->SetDofBlurQualityVal(itemIndx);
+              }
+            }
+
+            ImGui::EndCombo();
+          }
+          ImGui::EndDisabled();
+        }
+
+        if (ImGui::CollapsingHeader("Ambient Occlusion"))
+        {
+          bool ssaoEnabled = pps->GetSSAOEnabledVal();
+          if (ImGui::Checkbox("SSAO##1", &ssaoEnabled))
+          {
+            pps->SetSSAOEnabledVal(ssaoEnabled);
+          }
+          ImGui::BeginDisabled(!ssaoEnabled);
+
+          float ssaoRadius = pps->GetSSAORadiusVal();
+          if (ImGui::DragFloat("Radius", &ssaoRadius, 0.001f, 0.0f, 1.0f))
+          {
+            pps->SetSSAORadiusVal(ssaoRadius);
+          }
+
+          float ssaoSpread = pps->GetSSAOSpreadVal();
+          if (ImGui::DragFloat("Spread", &ssaoSpread, 0.001f, 0.0f, 1.0f))
+          {
+            pps->SetSSAOSpreadVal(ssaoSpread);
+          }
+
+          float ssaoBias = pps->GetSSAOBiasVal();
+          if (ImGui::DragFloat("Bias", &ssaoBias, 0.001f, 0.0f, 1.0f))
+          {
+            pps->SetSSAOBiasVal(ssaoBias);
+          }
+
+          int ssaoKernelSize = pps->GetSSAOKernelSizeVal();
+          if (ImGui::DragInt("KernelSize", &ssaoKernelSize, 1, 8, 128))
+          {
+            pps->SetSSAOKernelSizeVal(ssaoKernelSize);
+          }
+
+          ImGui::EndDisabled();
+        }
+
+        if (ImGui::CollapsingHeader("Anti Aliasing"))
+        {
+          bool fxaaEnabled = pps->GetFXAAEnabledVal();
+          if (ImGui::Checkbox("FXAA##1", &fxaaEnabled))
+          {
+            pps->SetFXAAEnabledVal(fxaaEnabled);
+          }
+        }
+        ImGui::EndTabItem(); // End Post Process Settings Tab
+      }
     }
 
   } // namespace Editor

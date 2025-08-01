@@ -1233,7 +1233,6 @@ namespace ToolKit
       GetPluginManager()->UnloadGamePlugin();
       m_workspace.SetActiveProject(project);
       m_workspace.Serialize(nullptr, nullptr);
-      m_workspace.SerializeEngineSettings();
       CreateNewScene();
 
       LoadGamePlugin();

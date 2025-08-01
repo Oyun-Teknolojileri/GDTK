@@ -243,7 +243,6 @@ namespace ToolKit
         lclDoc->clear();
         SafeDel(lclDoc);
       }
-      SerializeEngineSettings();
 
       return nullptr;
     }
