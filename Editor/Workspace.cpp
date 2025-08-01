@@ -243,22 +243,23 @@ namespace ToolKit
         lclDoc->clear();
         SafeDel(lclDoc);
       }
-      SerializeEngineSettings();
 
       return nullptr;
     }
 
-    void Workspace::SerializeEngineSettings() const
+    void Workspace::SerializeEngineSettings(const String& name) const
     {
-      String path = ConcatPaths({GetConfigDirectory(), "Engine.settings"});
-      GetEngineSettings().Save(path);
+      String settingsFile = name.empty() ? ConcatPaths({GetConfigDirectory(), "Engine.settings"})
+                                         : ConcatPaths({GetConfigDirectory(), name});
+      GetEngineSettings().Save(settingsFile);
     }
 
-    void Workspace::DeSerializeEngineSettings()
+    void Workspace::DeSerializeEngineSettings(const String& name)
     {
-      String settingsFile = ConcatPaths({GetConfigDirectory(), "Engine.settings"});
+      String settingsFile = name.empty() ? ConcatPaths({GetConfigDirectory(), "Engine.settings"})
+                                         : ConcatPaths({GetConfigDirectory(), name});
 
-      // search for project/Engine.settings file,
+      // Search for settings file,
       // if its not exist pull default Engine.settings file from appdata
       if (!CheckSystemFile(settingsFile))
       {

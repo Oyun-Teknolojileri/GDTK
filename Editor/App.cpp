@@ -323,9 +323,6 @@ namespace ToolKit
 
       auto saveFn = [this]() -> void
       {
-        // Serialize engine settings.
-        GetApp()->m_workspace.SerializeEngineSettings();
-
         EditorScenePtr cScene = GetApp()->GetCurrentScene();
         cScene->Save(false);
 
@@ -1236,7 +1233,6 @@ namespace ToolKit
       GetPluginManager()->UnloadGamePlugin();
       m_workspace.SetActiveProject(project);
       m_workspace.Serialize(nullptr, nullptr);
-      m_workspace.SerializeEngineSettings();
       CreateNewScene();
 
       LoadGamePlugin();

@@ -22,6 +22,10 @@ namespace ToolKit
       RenderSettingsWindow();
       virtual ~RenderSettingsWindow();
       void Show() override;
+
+     protected:
+      void ShowGeneralTab();
+      void ShowPostProcessingTab();
     };
 
   } // namespace Editor
