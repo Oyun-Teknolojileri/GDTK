@@ -48,8 +48,8 @@ namespace ToolKit
 
       void RefreshProjects();
 
-      void SerializeEngineSettings() const;
-      void DeSerializeEngineSettings();
+      void SerializeEngineSettings(const String& name = "") const;
+      void DeSerializeEngineSettings(const String& name = "");
 
      protected:
       XmlNode* SerializeImp(XmlDocument* doc, XmlNode* parent) const override;

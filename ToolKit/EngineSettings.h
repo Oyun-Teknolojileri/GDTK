@@ -164,7 +164,7 @@ namespace ToolKit
     TKDeclareParam(MultiChoiceVariant, AnisotropicTextureFiltering);
 
     /** When set to true, graphics settings saved as shader defines. Preventing compiling all define configurations.  */
-    bool m_saveShaderDefines = false;
+    bool m_saveShaderDefines = true;
 
     /** Global shadow settings. */
     ShadowSettingsPtr m_shadows;
