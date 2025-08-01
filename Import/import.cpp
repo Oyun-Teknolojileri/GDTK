@@ -52,20 +52,6 @@ GLMtype convertAssimpColorToGlm(AiType source)
   return color;
 }
 
-char GetPathSeparator()
-{
-  static char sep    = '/';
-  const wchar_t pref = fs::path::preferred_separator;
-  wcstombs(&sep, &pref, 1);
-  return sep;
-}
-
-void NormalizePath(string& path)
-{
-  fs::path patify = path;
-  path            = patify.lexically_normal().u8string();
-}
-
 void TrunckToFileName(string& fullPath)
 {
   fs::path patify = fullPath;
@@ -74,6 +60,12 @@ void TrunckToFileName(string& fullPath)
 
 namespace ToolKit
 {
+
+  vector<string> g_usedFiles;
+  SkeletonPtr g_skeleton;
+  bool isSkeletonEntityCreated = false;
+  const aiScene* g_scene       = nullptr;
+
   Vec3 toVec3(aiVector3f vec)
   {
     Vec3 gv;
@@ -115,18 +107,18 @@ namespace ToolKit
    public:
     BoneNode() {}
 
-    BoneNode(aiNode* node, unsigned int index)
+    BoneNode(aiNode* node, uint index)
     {
       boneIndex = index;
       boneNode  = node;
     }
 
-    aiNode* boneNode       = nullptr;
-    aiBone* bone           = nullptr;
-    unsigned int boneIndex = 0;
+    aiNode* boneNode = nullptr;
+    aiBone* bone     = nullptr;
+    uint boneIndex   = 0;
   };
 
-  vector<string> g_usedFiles;
+  unordered_map<string, BoneNode> g_skeletonMap;
 
   bool IsUsed(const string& file) { return find(g_usedFiles.begin(), g_usedFiles.end(), file) == g_usedFiles.end(); }
 
@@ -139,34 +131,14 @@ namespace ToolKit
     }
   }
 
-  void ClearForbidden(std::string& str)
+  void ClearForbidden(string& str)
   {
-    const std::string forbiddenChars = "\\/:?\"<>|";
-    std::replace_if(
+    const string forbiddenChars = "\\/:?\"<>|";
+    replace_if(
         str.begin(),
         str.end(),
-        [&forbiddenChars](char c) { return std::string::npos != forbiddenChars.find(c); },
+        [&forbiddenChars](char c) { return string::npos != forbiddenChars.find(c); },
         ' ');
-  }
-
-  unordered_map<string, BoneNode> g_skeletonMap;
-  SkeletonPtr g_skeleton;
-  bool isSkeletonEntityCreated = false;
-  const aiScene* g_scene       = nullptr;
-
-  void Decompose(string& fullPath, string& path, string& name)
-  {
-    NormalizePath(fullPath);
-    path     = "";
-
-    size_t i = fullPath.find_last_of(GetPathSeparator());
-    if (i != string::npos)
-    {
-      path = fullPath.substr(0, fullPath.find_last_of(GetPathSeparator()) + 1);
-    }
-
-    name = fullPath.substr(fullPath.find_last_of(GetPathSeparator()) + 1);
-    name = name.substr(0, name.find_last_of('.'));
   }
 
   void DecomposeAssimpMatrix(aiMatrix4x4 transform, Vec3* t, Quaternion* r, Vec3* s)
@@ -191,7 +163,15 @@ namespace ToolKit
     }
 
     NormalizePath(name);
-    name = name + "." + texture->achFormatHint;
+
+    String fpath, fname, fext;
+    DecomposePath(name, &fpath, &fname, &fext);
+    if (fext.empty())
+    {
+      fext = texture->achFormatHint;
+    }
+
+    name = fname + fext;
 
     return name;
   }
@@ -484,7 +464,7 @@ namespace ToolKit
 
         string fileName = tName;
         TrunckToFileName(fileName);
-        string textPath = fs::path(filePath + fileName).lexically_normal().u8string();
+        string textPath = NormalizePath(fs::path(filePath + fileName).lexically_normal().u8string());
 
         if (!embedded && !std::filesystem::exists(textPath))
         {
@@ -701,7 +681,7 @@ namespace ToolKit
   void ImportMeshes(string& filePath)
   {
     string path, name;
-    Decompose(filePath, path, name);
+    DecomposePath(filePath, &path, &name, nullptr);
     mainSkinMesh = nullptr;
 
     // Skinned meshes will be merged because they're using the same skeleton
@@ -739,7 +719,7 @@ namespace ToolKit
           fileName = aMesh->mName.C_Str();
         }
         ClearForbidden(fileName);
-        String meshPath = path + fileName + MESH;
+        String meshPath = ConcatPaths({path, fileName + MESH});
 
         Assimp::DefaultLogger::get()->info("file name: ", meshPath);
 
@@ -752,7 +732,7 @@ namespace ToolKit
     if (mainSkinMesh)
     {
       ClearForbidden(name);
-      String skinMeshPath = path + name + SKINMESH;
+      String skinMeshPath = ConcatPaths({path, name + SKINMESH});
       mainSkinMesh->SetFile(skinMeshPath);
 
       AddToUsedFiles(skinMeshPath);
@@ -1028,9 +1008,9 @@ namespace ToolKit
   {
     // Print Scene.
     string path, name;
-    Decompose(filePath, path, name);
+    DecomposePath(filePath, &path, &name, nullptr);
 
-    string fullPath = path + name + SCENE;
+    string fullPath = ConcatPaths({path, name + SCENE});
     AddToUsedFiles(fullPath);
     ScenePtr tScene = MakeNewPtr<Scene>();
 
@@ -1147,8 +1127,8 @@ namespace ToolKit
     assignBoneIndexFn(g_scene->mRootNode, boneIndex);
 
     string name, path;
-    Decompose(filePath, path, name);
-    string fullPath = path + name + SKELETON;
+    DecomposePath(filePath, &path, &name, nullptr);
+    string fullPath = ConcatPaths({path, name + SKELETON});
 
     g_skeleton      = MakeNewPtr<Skeleton>();
     g_skeleton->SetFile(fullPath);
@@ -1294,7 +1274,7 @@ namespace ToolKit
         }
       }
 
-      dest = fs::path(dest).lexically_normal().u8string();
+      dest = NormalizePath(fs::path(dest).lexically_normal().u8string());
       if (!dest.empty())
       {
         fs::create_directories(dest);
@@ -1357,7 +1337,7 @@ namespace ToolKit
         // Clear global materials for each scene to prevent wrong referencing
         tMaterials.clear();
 
-        int optFlags = aiProcess_FlipUVs | aiProcess_GlobalScale;
+        int optFlags = aiProcess_FlipUVs | aiProcess_GlobalScale | aiProcess_Triangulate;
         if (optimizationLevel == 1)
         {
           optFlags |= aiProcessPreset_TargetRealtime_MaxQuality;
@@ -1424,6 +1404,7 @@ namespace ToolKit
 
     return 0;
   }
+
 } // namespace ToolKit
 
 int main(int argc, char* argv[]) { return ToolKit::ToolKitMain(argc, argv); }
