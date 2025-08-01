@@ -8,6 +8,7 @@
 #pragma once
 
 #include "Object.h"
+#include "Shader.h"
 
 namespace ToolKit
 {
@@ -162,6 +163,9 @@ namespace ToolKit
     /** Anisotropic texture filtering value. It can be 0, 2 ,4, 8, 16. Clamped with gpu max anisotropy. */
     TKDeclareParam(MultiChoiceVariant, AnisotropicTextureFiltering);
 
+    /** When set to true, graphics settings saved as shader defines. Preventing compiling all define configurations.  */
+    bool m_saveShaderDefines = false;
+
     /** Global shadow settings. */
     ShadowSettingsPtr m_shadows;
   };
@@ -223,6 +227,39 @@ namespace ToolKit
 
   typedef std::shared_ptr<PostProcessingSettings> PostProcessingSettingsPtr;
 
+  // ShaderSettings
+  //////////////////////////////////////////
+
+  /**
+   * Compiling all shader define combinations leads to long compile times. These settings makes an upfront choice for
+   * each define if present here. Compile will not perform full define set compilation, instead only the existing define
+   * set will be compiled for the provided values. This can help to create predefined categories like "Low", "Medium",
+   * "High" or "Ultra" settings. Shader compile works only for the chosen defines and their values.
+   */
+  class TK_API ShaderSettings : public Object
+  {
+   public:
+    TKDeclareClass(ShaderSettings, Object);
+
+    /** If there exist presets for the defines of the given shader, syncs the input defines array with presets. */
+    void SyncDefinesForShader(const String& shaderPath, ShaderDefineArray& defines) const;
+
+    /** Add or set a shader define to the list for the given shader path. */
+    void SetShaderDefine(const String& shaderPath, const ShaderDefine& define);
+
+    XmlNode* SerializeImp(XmlDocument* doc, XmlNode* parent) const override;
+    XmlNode* DeSerializeImp(const SerializationFileInfo& info, XmlNode* parent) override;
+
+   public:
+    /**
+     * Map of shader defines and their values. Key is a shader file path. If specific defines provided, instead of full
+     * define range, the given values are used to compile the shader at initialization.
+     */
+    std::map<String, ShaderDefineArray> m_shaderDefines;
+  };
+
+  typedef std::shared_ptr<ShaderSettings> ShaderSettingsPtr;
+
   // EngineSettings
   //////////////////////////////////////////
 
@@ -242,10 +279,15 @@ namespace ToolKit
     void Save(const String& path);
     void Load(const String& path);
 
+   protected:
+    /** Sets shader defines for current graphics settings. */
+    void SetShaderSettings();
+
    public:
     WindowSettingsPtr m_window;
     GraphicSettingsPtr m_graphics;
     PostProcessingSettingsPtr m_postProcessing;
+    ShaderSettingsPtr m_shaderSettings;
     StringArray m_loadedPlugins;
   };
 

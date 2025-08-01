@@ -526,9 +526,9 @@ namespace ToolKit
     String buildType     = m_publishConfig == PublishConfig::Debug ? "debug" : "release";
 
     // clean apk output directory
-    String buildLocation = NormalizePath(ConcatPaths({projectLocation, "Android/app/build/outputs/apk"}));
+    String buildLocation = ConcatPaths({projectLocation, "Android/app/build/outputs/apk"});
 
-    if (!std::filesystem::exists(buildLocation))
+    if (!CheckSystemFile(buildLocation))
     {
       std::filesystem::create_directories(buildLocation, m_errorCode);
       if (CheckErrorReturn("Creating directory " + buildLocation))

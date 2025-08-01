@@ -9,6 +9,7 @@
 
 #include "App.h"
 #include "CustomDataView.h"
+#include "UI.h"
 
 #include <EngineSettings.h>
 
@@ -204,6 +205,11 @@ namespace ToolKit
           graphics->SetRenderResolutionScaleVal(renderScale);
           GetApp()->ReInitViewports();
         }
+
+        ImGui::Checkbox("Save Shader Defines", &graphics->m_saveShaderDefines);
+        UI::AddTooltipToLastItem("If enabled, shader defines are saved to the engine settings file. "
+                                 "This prevents compiling all shader combinations, but requires "
+                                 "recompiling shaders when a define is changed.");
 
         ImGui::SeparatorText("Multi Sample Anti Aliasing");
         CustomDataView::ShowVariant(&graphics->ParamMSAA(),

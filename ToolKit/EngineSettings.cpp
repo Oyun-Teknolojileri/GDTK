@@ -176,6 +176,106 @@ namespace ToolKit
     FXAAEnabled_Define(true, "PostProcessingSettings", 0, 0, 0);
   }
 
+  // ShaderSettings
+  //////////////////////////////////////////
+
+  TKDefineClass(ShaderSettings, Object);
+
+  void ShaderSettings::SyncDefinesForShader(const String& shaderPath, ShaderDefineArray& defines) const
+  {
+    auto it = m_shaderDefines.find(shaderPath);
+    if (it == m_shaderDefines.end())
+    {
+      return;
+    }
+
+    for (const ShaderDefine& def : it->second)
+    {
+      auto existing = std::find(defines.begin(), defines.end(), def);
+      if (existing != defines.end())
+      {
+        *existing = def;
+      }
+      else
+      {
+        defines.push_back(def);
+      }
+    }
+  }
+
+  void ShaderSettings::SetShaderDefine(const String& shaderPath, const ShaderDefine& define)
+  {
+    ShaderDefineArray& defines = m_shaderDefines[shaderPath];
+    auto it                    = std::find(defines.begin(), defines.end(), define);
+    if (it == defines.end())
+    {
+      defines.push_back(define); // Add.
+    }
+    else
+    {
+      *it = define; // or update.
+    }
+  }
+
+  XmlNode* ShaderSettings::SerializeImp(XmlDocument* doc, XmlNode* parent) const
+  {
+    parent                = Super::SerializeImp(doc, parent);
+    XmlNode* settingsNode = CreateXmlNode(doc, "ShaderSettings", parent);
+    for (const auto& entry : m_shaderDefines)
+    {
+      XmlNode* shaderNode = CreateXmlNode(doc, "shader", settingsNode);
+      WriteAttr(shaderNode, doc, "file", entry.first);
+      for (const ShaderDefine& def : entry.second)
+      {
+        XmlNode* defineNode = CreateXmlNode(doc, "define", shaderNode);
+        WriteAttr(defineNode, doc, "name", def.define);
+
+        // Merge variants.
+        String result;
+        for (size_t i = 0; i < def.variants.size(); i++)
+        {
+          result += def.variants[i];
+          if (i != def.variants.size() - 1)
+          {
+            result += ", ";
+          }
+        }
+
+        WriteAttr(defineNode, doc, "val", result);
+      }
+    }
+
+    return parent;
+  }
+
+  XmlNode* ShaderSettings::DeSerializeImp(const SerializationFileInfo& info, XmlNode* parent)
+  {
+    parent = Super::DeSerializeImp(info, parent);
+    if (XmlNode* settingsNode = parent->first_node("ShaderSettings"))
+    {
+      for (XmlNode* shaderNode = settingsNode->first_node("shader"); shaderNode;
+           shaderNode          = shaderNode->next_sibling("shader"))
+      {
+        String file;
+        ReadAttr(shaderNode, "file", file);
+        ShaderDefineArray defines;
+        for (XmlNode* defineNode = shaderNode->first_node("define"); defineNode;
+             defineNode          = defineNode->next_sibling("define"))
+        {
+          ShaderDefine def;
+          ReadAttr(defineNode, "name", def.define);
+          String val;
+          ReadAttr(defineNode, "val", val);
+          Split(val, ", ", def.variants);
+          defines.push_back(def);
+        }
+        m_shaderDefines[file] = defines;
+      }
+    }
+
+    return parent;
+  }
+
   // EngineSettings
   //////////////////////////////////////////
 
@@ -184,6 +284,7 @@ namespace ToolKit
     m_window         = MakeNewPtr<WindowSettings>();
     m_graphics       = MakeNewPtr<GraphicSettings>();
     m_postProcessing = MakeNewPtr<PostProcessingSettings>();
+    m_shaderSettings = MakeNewPtr<ShaderSettings>();
   }
 
   XmlNode* EngineSettings::SerializeImp(XmlDocument* doc, XmlNode* parent) const
@@ -194,11 +295,12 @@ namespace ToolKit
     }
 
     XmlNode* settingsNode = CreateXmlNode(doc, "Settings", nullptr);
-    WriteAttr(settingsNode, doc, "version", TKVersionStr);
+    WriteAttr(settingsNode, doc, XmlVersion.data(), TKVersionStr);
 
     m_window->Serialize(doc, settingsNode);
     m_graphics->Serialize(doc, settingsNode);
     m_graphics->m_shadows->Serialize(doc, settingsNode);
+    m_shaderSettings->Serialize(doc, settingsNode);
 
     XmlNode* pluginNode = CreateXmlNode(doc, "Plugins", settingsNode);
     if (PluginManager* plugMan = GetPluginManager())
@@ -248,6 +350,10 @@ namespace ToolKit
       {
         m_graphics->m_shadows->DeSerialize(info, objNode);
       }
+      else if (className == ShaderSettings::StaticClass()->Name)
+      {
+        m_shaderSettings->DeSerialize(info, objNode);
+      }
     } while (objNode = objNode->next_sibling());
 
     if (XmlNode* pluginNode = settingsNode->first_node("Plugins"))
@@ -274,6 +380,12 @@ namespace ToolKit
 
     if (file.is_open())
     {
+      // Set shader defines for current graphics settings.
+      if (m_graphics->m_saveShaderDefines)
+      {
+        SetShaderSettings();
+      }
+
       XmlDocument* lclDoc = new XmlDocument();
       SerializeImp(lclDoc, nullptr);
 
@@ -301,6 +413,60 @@ namespace ToolKit
 
     SafeDel(lclFile);
     SafeDel(lclDoc);
+  }
+
+  void EngineSettings::SetShaderSettings()
+  {
+    // Default fragment shader defines.
+    // The defines below saves 2*4*2*2 combination.
+    String file = ShaderPath("defaultFragment" + SHADER, true);
+
+    ShaderDefine def;
+    def.define   = "highlightCascades";
+    def.variants = {"0"};
+    m_shaderSettings->SetShaderDefine(file, def);
+
+    def.define   = "ShadowSampleCount";
+    def.variants = {std::to_string(m_graphics->m_shadows->GetShadowSamples())};
+    m_shaderSettings->SetShaderDefine(file, def);
+
+    def.define   = "EVSM4";
+    def.variants = {m_graphics->m_shadows->GetUseEVSM4Val() ? "1" : "0"};
+    m_shaderSettings->SetShaderDefine(file, def);
+
+    def.define   = "SMFormat16Bit";
+    def.variants = {m_graphics->m_shadows->GetUse32BitShadowMapVal() ? "0" : "1"};
+    m_shaderSettings->SetShaderDefine(file, def);
+
+    // Gauss blur defines.
+    // The defines below saves 2*3 combination.
+    file         = ShaderPath("gaussBlur7x1Frag" + SHADER, true);
+    def.define   = "KernelSize";
+    def.variants = {"7"};
+    m_shaderSettings->SetShaderDefine(file, def);
+
+    def.define   = "TextureArray";
+    def.variants = {"0"};
+    m_shaderSettings->SetShaderDefine(file, def);
+
+    // Shadow defines.
+    file         = ShaderPath("orthogonalDepthFrag" + SHADER, true);
+    def.define   = "EVSM4";
+    def.variants = {m_graphics->m_shadows->GetUseEVSM4Val() ? "1" : "0"};
+    m_shaderSettings->SetShaderDefine(file, def);
+
+    def.define   = "SMFormat16Bit";
+    def.variants = {m_graphics->m_shadows->GetUse32BitShadowMapVal() ? "0" : "1"};
+    m_shaderSettings->SetShaderDefine(file, def);
+
+    file         = ShaderPath("perspectiveDepthFrag" + SHADER, true);
+    def.define   = "EVSM4";
+    def.variants = {m_graphics->m_shadows->GetUseEVSM4Val() ? "1" : "0"};
+    m_shaderSettings->SetShaderDefine(file, def);
+
+    def.define   = "SMFormat16Bit";
+    def.variants = {m_graphics->m_shadows->GetUse32BitShadowMapVal() ? "0" : "1"};
+    m_shaderSettings->SetShaderDefine(file, def);
   }
 
 } // namespace ToolKit

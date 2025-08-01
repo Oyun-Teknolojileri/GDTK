@@ -719,7 +719,7 @@ namespace ToolKit
   {
     // Match scene name with file name.
     String path = GetSerializeFile();
-    DecomposePath(path, nullptr, &m_name, nullptr);
+    m_name      = GetFileName(path);
 
     TK_SYSLOG("Loading scene %s", path.c_str());
 

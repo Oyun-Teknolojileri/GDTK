@@ -43,8 +43,8 @@ namespace ToolKit
    * Notes on defines, master shaders and include shaders:
    * Master shaders are the one which contains the shader entry functions on the other hand include shaders can be
    * included many master shader but they don't have an entry point.
-   * Include Shaders should not declare defines. The master shaders should declare defines and set their values. Include
-   * shaders however can directly use defines declared in master shaders.
+   * Include Shaders should not declare defines. The master shaders should declare defines and set their values.
+   * However, include shaders can directly use defines declared in master shaders.
    */
   class TK_API Shader : public Resource
   {
@@ -62,9 +62,8 @@ namespace ToolKit
 
     /**
      * Sets a value for a define deceleration in the shader file.
-     * There must be a value declared in the shader file matching with new val.
      * To set the define values, the shader must be initialized.
-     * This function won't add new defines or variants, only sets the existing shader variant.
+     * This function won't add new defines, only sets / adds the shader variant.
      */
     void SetDefine(const StringView name, const StringView val);
 
