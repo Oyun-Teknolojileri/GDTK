@@ -137,6 +137,7 @@ namespace ToolKit
 
    protected:
     void ParameterConstructor() override;
+    void ParameterEventConstructor() override;
 
    public:
     /** Target fps for application. */
@@ -153,6 +154,9 @@ namespace ToolKit
 
     /** Sets render targets as floating point, allows values larger than 1.0 for HDR rendering. */
     TKDeclareParam(bool, HDRPipeline);
+
+    /** When set to true, async tasks runs on actual threads and thread pools, otherwise they reside in task array. */
+    TKDeclareParam(bool, MultiThreaded);
 
     /**
      * Viewport render target multiplier that adjusts the resolution.
