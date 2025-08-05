@@ -40,12 +40,11 @@ namespace ToolKit
           reg->m_stateCache = MakeNewPtr<XmlDocument>();
           Unload(fullPath);
         }
-      }
-
-      if (reg->m_loaded && reg->m_plugin)
-      {
-        TK_LOG("Plugin has already loaded.");
-        return reg;
+        else
+        {
+          TK_LOG("Plugin has already loaded.");
+          return reg;
+        }
       }
     }
 
