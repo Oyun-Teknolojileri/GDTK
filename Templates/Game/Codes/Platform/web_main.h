@@ -30,7 +30,7 @@ namespace ToolKit
 
   inline void PlatformMainLoop(bool* running, void (*TK_Loop)())
   {
-    emscripten_set_main_loop_arg((em_arg_callback_func) TK_Loop, nullptr, 0, 1);
+    emscripten_set_main_loop((em_callback_func) TK_Loop, 0, true);
   }
 
   inline void PlatformAdjustEngineSettings(int availableWidth, int availableHeight, EngineSettings* engineSettings) {}

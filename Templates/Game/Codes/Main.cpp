@@ -132,7 +132,16 @@ namespace ToolKit
     g_proxy->m_renderSys->InitGl((void*) SDL_GL_GetProcAddress, [](const String& msg) { TK_LOG("%s", msg.c_str()); });
 
     // Set defaults
-    SDL_GL_SetSwapInterval(0);
+    if constexpr (TK_PLATFORM != PLATFORM::TKWeb)
+    {
+      if (!SDL_GL_SetSwapInterval(-1)) // Try adaptive VSync.
+      {
+        if (!SDL_GL_SetSwapInterval(1)) // VSync.
+        {
+          TK_ERR("VSync can't be set. SDL Error: %s", SDL_GetError());
+        }
+      }
+    }
 
     // ToolKit Init
     g_proxy->Init();
