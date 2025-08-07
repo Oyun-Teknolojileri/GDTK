@@ -93,7 +93,7 @@ if ("${TK_PLATFORM}" STREQUAL "${TK_WEB}")
     set(PRELOAD_DMP_FLAG "--preload-file ${GAME_CODE_DIR}/../Config/Engine.settings@Resources/Dmp/Engine.settings") # This is to make sure Resource folder created for web build.
     set(PRELOAD_MINRES_FLAG "--preload-file ${GAME_CODE_DIR}/../MinResources.pak@MinResources.pak")
     set(PRELOAD_CONFIG_FLAG "--preload-file ${GAME_CODE_DIR}/../Config@Config")
-    set(WEBGL_FLAGS "-sALLOW_MEMORY_GROWTH=1 -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sFULL_ES3 -sSTACK_SIZE=131072")
+    set(WEBGL_FLAGS "-sALLOW_MEMORY_GROWTH=1 -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sFULL_ES3 -sINITIAL_MEMORY=268435456 -sSTACK_SIZE=1048576 -sPTHREAD_POOL_SIZE=4")
     set(OUTPUT_FLAG "-o ${PROJECT_NAME}.html")
 
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OUTPUT_FLAG} ${SHELL_FILE_FLAG} ${PRELOAD_DMP_FLAG} ${PRELOAD_MINRES_FLAG} ${PRELOAD_CONFIG_FLAG} ${WEBGL_FLAGS}")

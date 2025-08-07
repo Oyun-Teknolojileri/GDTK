@@ -137,6 +137,17 @@ namespace ToolKit
     EnableGpuTimer_Define(false, "GraphicSettings", 0, 0, 0);
     HDRPipeline_Define(true, "GraphicSettings", 0, 0, 0);
     RenderResolutionScale_Define(1.0f, "GraphicSettings", 0, 0, 0);
+    MultiThreaded_Define(true, "GraphicSettings", 0, 0, 0);
+  }
+
+  void GraphicSettings::ParameterEventConstructor()
+  {
+    ParamMultiThreaded().m_onValueChangedFn.push_back(
+        [](Value& oldVal, Value& newVal) -> void
+        {
+          bool multiThreaded              = std::get<bool>(newVal);
+          Main::GetInstance()->m_threaded = multiThreaded;
+        });
   }
 
   // PostProcessingSettings

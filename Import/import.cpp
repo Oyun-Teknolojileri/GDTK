@@ -169,6 +169,10 @@ namespace ToolKit
     if (fext.empty())
     {
       fext = texture->achFormatHint;
+      if (!StartsWith(fext, "."))
+      {
+        fext = "." + fext;
+      }
     }
 
     name = fname + fext;

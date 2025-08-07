@@ -68,17 +68,10 @@ namespace ToolKit
           }
         }
 
-        static bool multiThreaded = true;
+        bool multiThreaded = graphics->GetMultiThreadedVal();
         if (ImGui::Checkbox("MultiThread##1", &multiThreaded))
         {
-          if (multiThreaded)
-          {
-            Main::GetInstance()->m_threaded = true;
-          }
-          else
-          {
-            Main::GetInstance()->m_threaded = false;
-          }
+          graphics->SetMultiThreadedVal(multiThreaded);
         }
 
         bool hdrPipeline = graphics->GetHDRPipelineVal();

@@ -194,9 +194,6 @@ namespace ToolKit
   {
     m_logger->Log("Main PostUninit");
 
-    // After all the resources, we can safely free modules.
-    m_pluginManager->UnInit();
-
     SafeDel(m_gpuBuffers);
     SafeDel(m_gpuProgramManager);
     SafeDel(m_renderSys);
