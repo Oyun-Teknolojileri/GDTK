@@ -109,4 +109,6 @@ namespace ToolKit
     }
   }
 
+  std::shared_ptr<Object> LocalObjectPtr(Object* rawPtr) { return std::shared_ptr<Object>(rawPtr); }
+
 } // namespace ToolKit

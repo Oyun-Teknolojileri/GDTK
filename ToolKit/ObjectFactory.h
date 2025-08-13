@@ -193,6 +193,30 @@ namespace ToolKit
     std::unordered_map<ObjectId, ClassMeta*> m_allRegisteredClasses;
   };
 
+  /** Static cast, fast but does not validate convertibility at runtime. */
+  template <typename T>
+  inline std::shared_ptr<T> Cast(ObjectPtr tkObj)
+  {
+    assert(tkObj->IsA<T>());
+    return std::static_pointer_cast<T>(tkObj);
+  }
+
+  /**  Dynamic cast, slower but checks convertibility at runtime. If not convertible returns nullptr. */
+  template <typename T>
+  inline std::shared_ptr<T> SafeCast(ObjectPtr tkObj)
+  {
+    if (tkObj->IsA<T>())
+    {
+      return std::static_pointer_cast<T>(tkObj);
+    }
+
+    return nullptr;
+  }
+
+  /** Helper function to perform shared_ptr control block allocation to occur in the engine. */
+  TK_API std::shared_ptr<Object> LocalObjectPtr(Object* rawPtr);
+
+  /** ToolKit Object constructor. */
   template <typename T, typename... Args>
   inline std::shared_ptr<T> MakeNewPtr(Args&&... args)
   {
@@ -202,7 +226,7 @@ namespace ToolKit
       {
         if constexpr (ObjectFactory::HasStaticClass<T>::value)
         {
-          std::shared_ptr<T> obj = std::shared_ptr<T>(of->MakeNew<T>());
+          std::shared_ptr<T> obj = Cast<T>(LocalObjectPtr(of->MakeNew<T>()));
           obj->m_self            = obj;
           obj->NativeConstruct(std::forward<Args>(args)...);
           return obj;
@@ -217,6 +241,7 @@ namespace ToolKit
     return nullptr;
   }
 
+  /** ToolKit Object constructor with class name. */
   template <typename T, typename... Args>
   inline std::shared_ptr<T> MakeNewPtrCasted(const StringView Class, Args&&... args)
   {
@@ -235,30 +260,6 @@ namespace ToolKit
 
         return obj;
       }
-    }
-
-    return nullptr;
-  }
-
-  /**
-   * Static cast, fast but does not validate convertibility at runtime.
-   */
-  template <typename T>
-  inline std::shared_ptr<T> Cast(ObjectPtr tkObj)
-  {
-    assert(tkObj->IsA<T>());
-    return std::static_pointer_cast<T>(tkObj);
-  }
-
-  /**
-   * Dynamic cast, slower but checks convertibility at runtime. If not convertible returns nullptr.
-   */
-  template <typename T>
-  inline std::shared_ptr<T> SafeCast(ObjectPtr tkObj)
-  {
-    if (tkObj->IsA<T>())
-    {
-      return std::static_pointer_cast<T>(tkObj);
     }
 
     return nullptr;
