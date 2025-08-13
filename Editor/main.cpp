@@ -396,10 +396,9 @@ namespace ToolKit
 
     void Exit()
     {
-      g_proxy->PreUninit();
-
       SafeDel(g_app);
 
+      g_proxy->PreUninit();
       g_proxy->Uninit();
       g_proxy->PostUninit();
       SafeDel(g_proxy);
