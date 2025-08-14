@@ -677,6 +677,7 @@ namespace ToolKit
       // Clear queued render tasks.
       GetRenderSystem()->FlushRenderTasks();
       GetRenderSystem()->FlushGpuPrograms();
+      GetWorkerManager()->Flush();
 
       // Clear all the object references from the scene about to be destroyed.
       if (OutlinerWindowPtr wnd = GetOutliner())
@@ -698,7 +699,6 @@ namespace ToolKit
       GetUIManager()->ClearViewportsToUpdateLayers();
 
       m_perFrameDebugObjects.clear();
-      GetWorkerManager()->Flush();
 
       ActionManager::GetInstance()->ClearAllActions();
 
