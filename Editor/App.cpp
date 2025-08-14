@@ -53,11 +53,7 @@ namespace ToolKit
       SetStatusMsg(g_statusOk);
     }
 
-    App::~App()
-    {
-      Destroy();
-      UI::UnInit();
-    }
+    App::~App() {}
 
     void App::Init()
     {
@@ -111,18 +107,19 @@ namespace ToolKit
 
       m_simulatorSettings.Resolution = EmulatorResolution::Custom;
       m_publishManager               = new PublishManager();
+      m_thumbnailManager             = new ThumbnailManager();
       GetRenderSystem()->SetClearColor(g_wndBgColor);
     }
 
     void App::DestroyEditorEntities()
     {
-      SafeDel(m_publishManager);
-
       // Editor objects.
       m_2dGrid = nullptr;
       m_grid   = nullptr;
       m_origin = nullptr;
       m_cursor = nullptr;
+      m_gizmo  = nullptr;
+      m_anchor = nullptr;
 
       if (m_dbgArrow)
       {
@@ -169,7 +166,7 @@ namespace ToolKit
         // Action to take when a class with given metakey is unregistered.
         auto unregisterMeta = [this](StringView metaKeyValue, StringArray& metaKeyValueArray)
         {
-          for (int i = static_cast<int>(metaKeyValueArray.size()) - 1; i >= 0; --i)
+          for (int i = (int) (metaKeyValueArray.size()) - 1; i >= 0; i--)
           {
             if (metaKeyValueArray[i] == metaKeyValue)
             {
@@ -222,6 +219,11 @@ namespace ToolKit
 
       GetLogger()->SetWriteConsoleFn(nullptr);
       GetLogger()->SetClearConsoleFn(nullptr);
+
+      SafeDel(m_publishManager);
+      SafeDel(m_thumbnailManager);
+
+      UI::UnInit();
     }
 
     void App::Frame(float deltaTime)
@@ -836,6 +838,8 @@ namespace ToolKit
         SafeDel(EditorViewport::m_overlays[i]);
       }
 
+      m_simulationViewport = nullptr;
+      m_lastActiveViewport = nullptr;
       m_simulationViewport = nullptr;
 
       UI::m_volatileWindows.clear();
@@ -1609,6 +1613,16 @@ namespace ToolKit
     }
 
     float App::GetDeltaTime() { return m_deltaTime; }
+
+    ThumbnailManager* GetThumbnailManager()
+    {
+      if (g_app)
+      {
+        return g_app->m_thumbnailManager;
+      }
+
+      return nullptr;
+    }
 
   } // namespace Editor
 } // namespace ToolKit

@@ -396,11 +396,13 @@ namespace ToolKit
 
     void Exit()
     {
-      SafeDel(g_app);
+      g_app->Destroy();
 
       g_proxy->PreUninit();
       g_proxy->Uninit();
       g_proxy->PostUninit();
+
+      SafeDel(g_app);
       SafeDel(g_proxy);
 
       SafeDel(g_sdlEventPool);

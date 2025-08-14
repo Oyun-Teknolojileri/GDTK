@@ -169,7 +169,7 @@ namespace ToolKit
 
   void Main::PostInit() { m_pluginManager->Init(); }
 
-  void Main::PreUninit() { m_pluginManager->UnInit(); }
+  void Main::PreUninit() {}
 
   void Main::Uninit()
   {
@@ -193,6 +193,8 @@ namespace ToolKit
   void Main::PostUninit()
   {
     m_logger->Log("Main PostUninit");
+
+    m_pluginManager->UnInit();
 
     SafeDel(m_gpuBuffers);
     SafeDel(m_gpuProgramManager);
