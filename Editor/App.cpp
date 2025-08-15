@@ -627,12 +627,27 @@ namespace ToolKit
 
     void App::LoadGamePlugin()
     {
+      // Clear all dependencies to old game.
       ClearSession();
 
+      EditorScenePtr scene = GetCurrentScene();
+      if (scene)
+      {
+        scene->UnInit();
+      }
+
+      // Load new code.
       if (PluginManager* pluginMan = GetPluginManager())
       {
         String pluginPath = m_workspace.GetBinPath();
         pluginMan->Load(pluginPath);
+      }
+
+      // Reload the scene to reflect code changes.
+      if (!scene->m_newScene)
+      {
+        scene->Load();
+        scene->Init();
       }
     }
 
