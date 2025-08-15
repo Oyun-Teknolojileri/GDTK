@@ -700,6 +700,7 @@ namespace ToolKit
       GetAnimationPlayer()->Destroy();
       GetUIManager()->DestroyLayers();
       GetUIManager()->ClearViewportsToUpdateLayers();
+      GetSceneManager()->Clear();
 
       m_perFrameDebugObjects.clear();
 

@@ -322,24 +322,16 @@ namespace ToolKit
   class TK_API SceneManager : public ResourceManager
   {
    public:
-    /**
-     * Constructor.
-     */
+    /** Default constructor. */
     SceneManager();
 
-    /**
-     * Destructor.
-     */
+    /** Default destructor. */
     virtual ~SceneManager();
 
-    /**
-     * Initializes the scene manager.
-     */
+    /** Initializes the manager and a null current scene. */
     void Init() override;
 
-    /**
-     * Uninitializes the scene manager.
-     */
+    /** Uninit the manager and set current scene to null. */
     void Uninit() override;
 
     /**
@@ -367,6 +359,9 @@ namespace ToolKit
      * @param scene A pointer to the new current scene.
      */
     void SetCurrentScene(const ScenePtr& scene);
+
+    /** All stored scene instances are released. Current scene is kept, it needs to be handled explicitly. */
+    void Clear();
 
    private:
     ScenePtr m_currentScene; //!< A pointer to the currently active scene.

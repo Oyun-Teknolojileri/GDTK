@@ -912,4 +912,6 @@ namespace ToolKit
     GetEngineSettings().m_postProcessing = m_currentScene->m_postProcessSettings;
   }
 
+  void SceneManager::Clear() { m_storage.clear(); }
+
 } // namespace ToolKit
