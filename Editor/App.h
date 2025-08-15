@@ -200,13 +200,13 @@ namespace ToolKit
       WindowPtrArray m_windows; //!< Persistent windows that get serialized with editor.
 
       // Editor variables.
-      float m_camSpeed         = 8.0; // Meters per sec.
-      float m_mouseSensitivity = 0.08f;
-      ThumbnailManager m_thumbnailManager;
-
+      float m_camSpeed                     = 8.0; // Meters per sec.
+      float m_mouseSensitivity             = 0.08f;
+      ThumbnailManager* m_thumbnailManager = nullptr;
       // Simulator settings.
       EditorViewportPtr m_simulationViewport;
       SimulationSettings m_simulatorSettings;
+      UVec2 m_displayBounds; //!< Maximum primary display size. Other windows may be different.
 
       // Publisher.
       class PublishManager* m_publishManager = nullptr;
@@ -268,6 +268,9 @@ namespace ToolKit
       String m_statusMsg;
       Mutex m_statusMsgMutex;
     };
+
+    // Accessor functions for the App class.
+    ThumbnailManager* GetThumbnailManager();
 
   } // namespace Editor
 } // namespace ToolKit

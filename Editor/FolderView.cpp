@@ -362,7 +362,7 @@ namespace ToolKit
           }
           else if (thumbExtensions.count(dirEnt.m_ext) > 0)
           {
-            if (GetApp()->m_thumbnailManager.TryGetThumbnail(iconId, dirEnt))
+            if (GetThumbnailManager()->TryGetThumbnail(iconId, dirEnt))
             {
               flipRenderTarget = true;
             }

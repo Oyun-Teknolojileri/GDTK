@@ -51,11 +51,11 @@ namespace ToolKit
       uint iconId                        = fallbackIcon;
       ImVec2 texCoords                   = ImVec2(1.0f, 1.0f);
 
-      ThumbnailManager& thumbnailManager = GetApp()->m_thumbnailManager;
+      ThumbnailManager* thumbnailManager = GetThumbnailManager();
 
       if (dirEnt.m_ext.length())
       {
-        if (thumbnailManager.TryGetThumbnail(iconId, dirEnt))
+        if (thumbnailManager->TryGetThumbnail(iconId, dirEnt))
         {
           texCoords = ImVec2(1.0f, -1.0f);
         }
@@ -63,8 +63,7 @@ namespace ToolKit
       else if (fileExist)
       {
         DecomposePath(file, &dirEnt.m_rootPath, &dirEnt.m_fileName, &dirEnt.m_ext);
-
-        thumbnailManager.TryGetThumbnail(iconId, dirEnt);
+        thumbnailManager->TryGetThumbnail(iconId, dirEnt);
       }
 
       if (!dropName.empty())

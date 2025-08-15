@@ -50,7 +50,10 @@ namespace ToolKit
     /** Returns if loading of the serializable object is completed. */
     bool IsLoadingComplated() { return glm::greaterThanEqual(GetLoadedPercent(), 100.0f); }
 
-    /** Sets progress callback function, which called with the complated percent every time progress updated. */
+    /**
+     * Sets progress callback function, which called with the completed percent every time progress updated.
+     * Callback automatically cleared upon complete.
+     */
     void SetProgressCallback(ProgressCallback callback) { m_progressCallback = callback; }
 
     /**
@@ -96,6 +99,7 @@ namespace ToolKit
     {
       // At this point all loading must be complete.
       m_numberOfThingsLoaded = m_numberOfThingsToLoad;
+      m_progressCallback     = nullptr;
     }
 
    public:

@@ -336,6 +336,7 @@ namespace ToolKit
       for (UILayerPtr layer : vpLayerArray.second)
       {
         layer->Uninit();
+        layer->m_scene->UnInit();
       }
     }
 

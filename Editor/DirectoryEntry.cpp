@@ -62,7 +62,7 @@ namespace ToolKit
       return nullptr;
     }
 
-    RenderTargetPtr DirectoryEntry::GetThumbnail() const { return GetApp()->m_thumbnailManager.GetThumbnail(*this); }
+    RenderTargetPtr DirectoryEntry::GetThumbnail() const { return GetThumbnailManager()->GetThumbnail(*this); }
 
   } // namespace Editor
 } // namespace ToolKit

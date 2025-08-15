@@ -174,7 +174,7 @@ namespace ToolKit
       auto updateThumbFn = [this, mat]() -> void
       {
         DirectoryEntry dirEnt(mat->GetFile());
-        GetApp()->m_thumbnailManager.UpdateThumbnail(dirEnt);
+        GetThumbnailManager()->UpdateThumbnail(dirEnt);
       };
 
       if (ImGui::CollapsingHeader("Shaders"))

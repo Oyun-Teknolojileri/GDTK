@@ -22,24 +22,16 @@ namespace ToolKit
   class TK_API UILayer
   {
    public:
-    /**
-     * Default constructor.
-     */
+    /** Default constructor. */
     UILayer();
 
-    /**
-     * Construct the layer from a file.
-     */
+    /** Construct the layer from a file. */
     UILayer(const String& file);
 
-    /**
-     * Construct the layer from a scene.
-     */
+    /** Construct the layer from a scene. */
     UILayer(ScenePtr scene);
 
-    /**
-     * Empty destructor.
-     */
+    /** Empty destructor. */
     virtual ~UILayer();
 
     /**
@@ -48,16 +40,10 @@ namespace ToolKit
      */
     virtual void Init();
 
-    /**
-     * Resource uninitializations and event callback resets should be performed
-     * in this function.
-     */
+    /** Resource uninitializations and event callback resets should be performed in this function. */
     virtual void Uninit();
 
-    /**
-     * Update routine of the layer. Any logic related the ui can be performed
-     * here.
-     */
+    /** Update routine of the layer. Any logic related the ui can be performed here. */
     virtual void Update(float deltaTime);
 
     /**
@@ -75,34 +61,22 @@ namespace ToolKit
   class TK_API UIManager
   {
    public:
-    /**
-     * Default constructor. Initiates a UI Camera.
-     */
+    /** Default constructor. Initiates a UI Camera. */
     UIManager();
 
-    /**
-     * Default destructor.
-     */
+    /** Default destructor. */
     virtual ~UIManager();
 
-    /**
-     * Updates viewport that are registered
-     */
+    /** Updates viewport that are registered. */
     void Update(float deltaTime);
 
-    /**
-     * Register a viewport to update layers
-     */
+    /** Register a viewport to update layers. */
     void RegisterViewport(ViewportPtr viewport);
 
-    /**
-     * Unregister a viewport to stop update layers
-     */
+    /** Unregister a viewport to stop update layers. */
     void UnRegisterViewport(ViewportPtr viewport);
 
-    /**
-     * Clears viewports to that updates layers
-     */
+    /** Clears viewports to that updates layers. */
     void ClearViewportsToUpdateLayers();
 
     /**
@@ -153,10 +127,7 @@ namespace ToolKit
      */
     int Exist(ObjectId viewportId, ObjectId layerId);
 
-    /**
-     * Destroys all the layers of all viewports. Memories of the layers are
-     * cleared.
-     */
+    /** Destroys all layers, layer scenes of all viewports. Memories of the layers are cleared.*/
     void DestroyLayers();
 
     /**
@@ -209,10 +180,7 @@ namespace ToolKit
     std::unordered_map<ObjectId, UILayerPtrArray> m_viewportIdLayerArrayMap;
 
    private:
-    /**
-     * Camera to render the UI and update the layers with.
-     */
-    CameraPtr m_uiCamera = nullptr;
+    CameraPtr m_uiCamera = nullptr; //!< Camera to render the UI and update the layers with.
     bool m_mouseReleased = true;
 
     ViewportPtrArray m_viewportsToUpdateLayers; //!< UIManager only updates the layers in these viewports.
