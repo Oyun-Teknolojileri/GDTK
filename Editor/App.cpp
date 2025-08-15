@@ -47,6 +47,7 @@ namespace ToolKit
     {
       UI::Init();
 
+      m_displayBounds    = UVec2(windowWidth, windowHeight);
       m_cursor           = nullptr;
       RenderSystem* rsys = GetRenderSystem();
       rsys->SetAppWindowSize((uint) windowWidth, (uint) windowHeight);
@@ -1508,6 +1509,9 @@ namespace ToolKit
             uint height = 0;
             ReadAttr(setNode, "height", height);
             ReadAttr(setNode, "maximized", m_windowMaximized);
+
+            width  = glm::min(width, m_displayBounds.x);
+            height = glm::min(height, m_displayBounds.y);
 
             if (width > 0 && height > 0)
             {

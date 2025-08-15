@@ -206,6 +206,7 @@ namespace ToolKit
       // Simulator settings.
       EditorViewportPtr m_simulationViewport;
       SimulationSettings m_simulatorSettings;
+      UVec2 m_displayBounds; //!< Maximum primary display size. Other windows may be different.
 
       // Publisher.
       class PublishManager* m_publishManager = nullptr;

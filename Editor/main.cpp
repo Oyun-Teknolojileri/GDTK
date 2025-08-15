@@ -310,7 +310,7 @@ namespace ToolKit
 
             // Get the display bounds for the primary display
             SDL_Rect displayBounds;
-            if (SDL_GetDisplayBounds(0, &displayBounds) == 0)
+            if (SDL_GetDisplayUsableBounds(0, &displayBounds) == 0)
             {
               // Clamp the requested window size to the display bounds
               uint width  = settings.m_window->GetWidthVal();
@@ -325,6 +325,7 @@ namespace ToolKit
 
             // Init app
             g_app                   = new App(settings.m_window->GetWidthVal(), settings.m_window->GetHeightVal());
+            g_app->m_displayBounds  = UVec2(displayBounds.w, displayBounds.h);
             g_app->m_sysComExecFn   = &ToolKit::PlatformHelpers::SysComExec;
             g_app->m_shellOpenDirFn = &ToolKit::PlatformHelpers::OpenExplorer;
 
