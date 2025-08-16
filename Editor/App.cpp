@@ -627,12 +627,29 @@ namespace ToolKit
 
     void App::LoadGamePlugin()
     {
+      // Store the current state to restore after loading the game plugin.
+      XmlDocumentPtr memoryDoc = MakeNewPtr<XmlDocument>();
+      EditorScenePtr scene     = GetCurrentScene();
+      if (scene)
+      {
+        scene->SaveSnapShot(memoryDoc);
+        scene->UnInit();
+      }
+
+      // Clear all dependencies to old game.
       ClearSession();
 
+      // Load new code.
       if (PluginManager* pluginMan = GetPluginManager())
       {
         String pluginPath = m_workspace.GetBinPath();
         pluginMan->Load(pluginPath);
+      }
+
+      // Reload the scene to reflect code changes.
+      if (scene)
+      {
+        scene->LoadSnapShot(memoryDoc);
       }
     }
 

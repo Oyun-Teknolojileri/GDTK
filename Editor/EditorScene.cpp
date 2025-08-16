@@ -97,6 +97,63 @@ namespace ToolKit
       }
     }
 
+    void EditorScene::SaveSnapShot(XmlDocumentPtr memoryDoc)
+    {
+      XmlDocument* doc     = memoryDoc.get();
+      XmlNode* editorState = CreateXmlNode(doc, "EditorState");
+      WriteAttr(editorState, doc, "isNew", std::to_string(m_newScene));
+
+      XmlNode* selection = CreateXmlNode(doc, "Selection", editorState);
+      for (const ObjectId& id : m_selectedEntities)
+      {
+        XmlNode* entityNode = CreateXmlNode(doc, "Entity", selection);
+        WriteAttr(entityNode, doc, "id", std::to_string(id));
+      }
+
+      XmlNode* scene = CreateXmlNode(doc, "EditorScene", editorState);
+      Serialize(doc, scene);
+    }
+
+    void EditorScene::LoadSnapShot(XmlDocumentPtr memoryDoc)
+    {
+      XmlDocument* doc = memoryDoc.get();
+      if (XmlNode* editorState = doc->first_node("EditorState"))
+      {
+        ReadAttr(editorState, "isNew", m_newScene);
+
+        IDArray selectedIds;
+        m_selectedEntities.clear();
+        if (XmlNode* selection = editorState->first_node("Selection"))
+        {
+          for (XmlNode* entityNode = selection->first_node("Entity"); entityNode;
+               entityNode          = entityNode->next_sibling("Entity"))
+          {
+            ObjectId id;
+            ReadAttr(entityNode, "id", id);
+            selectedIds.push_back(id);
+          }
+        }
+
+        if (XmlNode* editorScene = editorState->first_node("EditorScene"))
+        {
+          SerializationFileInfo fileInfo;
+          fileInfo.Document = doc;
+          fileInfo.Version  = TKVersionStr;
+
+          if (XmlNode* scene = editorScene->first_node(XmlSceneElement.c_str()))
+          {
+            DeSerialize(fileInfo, scene);
+            Init(false);
+          }
+        }
+
+        if (!selectedIds.empty())
+        {
+          AddToSelection(selectedIds, false);
+        }
+      }
+    }
+
     bool EditorScene::IsSelected(ObjectId id) const
     {
       return std::find(m_selectedEntities.begin(), m_selectedEntities.end(), id) != m_selectedEntities.end();
@@ -593,8 +650,24 @@ namespace ToolKit
 
     void EditorScene::AddToSelectionSane(ObjectId id)
     {
-      assert(id != NullHandle);
-      assert(IsSelected(id) == false);
+      if (id == NullHandle)
+      {
+        TK_ERR("Trying to add a null entity to selection.");
+        return;
+      }
+
+      if (IsSelected(id))
+      {
+        TK_ERR("Entity '%s' is already selected.", std::to_string(id).c_str());
+        return;
+      }
+
+      if (GetEntity(id) == nullptr)
+      {
+        TK_ERR("Entity '%s' does not exist in the scene.", std::to_string(id).c_str());
+        return;
+      }
+
       m_selectedEntities.push_back(id);
     }
 
