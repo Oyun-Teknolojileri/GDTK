@@ -801,7 +801,22 @@ namespace ToolKit
 
   void Scene::DeSerializeImpV045(const SerializationFileInfo& info, XmlNode* parent)
   {
-    XmlNode* root = info.Document->first_node(XmlSceneElement.c_str());
+    XmlNode* root = nullptr;
+    if (parent)
+    {
+      root = parent;
+    }
+    else
+    {
+      root = info.Document->first_node(XmlSceneElement.c_str());
+    }
+
+    if (!root)
+    {
+      TK_ERR("Scene root node not found in XML document.");
+      return;
+    }
+
     XmlNode* node = nullptr;
 
     EntityPtrArray prefabList;

@@ -283,9 +283,8 @@ namespace ToolKit
     float DeltaTime =
         (float) (pNodeAnim->mPositionKeys[NextPositionIndex].mTime - pNodeAnim->mPositionKeys[PositionIndex].mTime);
 
-    float Factor = (AnimationTime - (float) (pNodeAnim->mPositionKeys[PositionIndex].mTime)) / DeltaTime;
-
-    glm::clamp(Factor, 0.0f, 1.0f);
+    float Factor            = (AnimationTime - (float) (pNodeAnim->mPositionKeys[PositionIndex].mTime)) / DeltaTime;
+    Factor                  = glm::clamp(Factor, 0.0f, 1.0f);
 
     const aiVector3D& Start = pNodeAnim->mPositionKeys[PositionIndex].mValue;
     const aiVector3D& End   = pNodeAnim->mPositionKeys[NextPositionIndex].mValue;
@@ -310,8 +309,7 @@ namespace ToolKit
         (float) (pNodeAnim->mRotationKeys[NextRotationIndex].mTime - pNodeAnim->mRotationKeys[RotationIndex].mTime);
 
     float Factor = (AnimationTime - (float) (pNodeAnim->mRotationKeys[RotationIndex].mTime)) / DeltaTime;
-
-    glm::clamp(Factor, 0.0f, 1.0f);
+    Factor       = glm::clamp(Factor, 0.0f, 1.0f);
 
     const aiQuaternion& StartRotationQ = pNodeAnim->mRotationKeys[RotationIndex].mValue;
     const aiQuaternion& EndRotationQ   = pNodeAnim->mRotationKeys[NextRotationIndex].mValue;
@@ -334,9 +332,8 @@ namespace ToolKit
     float DeltaTime =
         (float) (pNodeAnim->mScalingKeys[NextScalingIndex].mTime - pNodeAnim->mScalingKeys[ScalingIndex].mTime);
 
-    float Factor = (AnimationTime - (float) (pNodeAnim->mScalingKeys[ScalingIndex].mTime)) / DeltaTime;
-
-    glm::clamp(Factor, 0.0f, 1.0f);
+    float Factor            = (AnimationTime - (float) (pNodeAnim->mScalingKeys[ScalingIndex].mTime)) / DeltaTime;
+    Factor                  = glm::clamp(Factor, 0.0f, 1.0f);
 
     const aiVector3D& Start = pNodeAnim->mScalingKeys[ScalingIndex].mValue;
     const aiVector3D& End   = pNodeAnim->mScalingKeys[NextScalingIndex].mValue;

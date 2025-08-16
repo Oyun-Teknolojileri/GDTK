@@ -30,6 +30,12 @@ namespace ToolKit
       void Load() override;
       void Update(float deltaTime) override;
 
+      /** Utility function to serialize the current scene state to memory. */
+      void SaveSnapShot(XmlDocumentPtr memoryDoc);
+
+      /** Utility function to load the scene state from memory. */
+      void LoadSnapShot(XmlDocumentPtr memoryDoc);
+
       // Selection operations.
       //////////////////////////////////////////
 
@@ -116,7 +122,10 @@ namespace ToolKit
        */
       void UpdateBillboardsForPicking();
 
-      /** Internally used to sanitize selection before adding it. */
+      /**
+       * Internally used to sanitize selection before adding it.
+       * Does not add the entity if it is already selected or does not exist in the scene.
+       */
       void AddToSelectionSane(ObjectId id);
 
      public:
