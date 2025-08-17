@@ -56,6 +56,7 @@ namespace ToolKit
       {
         String foundPath;
         ReadAttr(node, XmlNodePath.data(), foundPath);
+        NormalizePathInplace(foundPath);
         if (CheckFile(foundPath))
         {
           path = foundPath;
@@ -102,8 +103,12 @@ namespace ToolKit
 
     String Workspace::GetCodeDirectory() const
     {
-      String codePath = ConcatPaths({GetActiveWorkspace(), m_activeProject.name, "Codes"});
+      if (m_activeProject.name.empty())
+      {
+        TK_ERR("Code directory does not exist. There is no active project.");
+      }
 
+      String codePath = ConcatPaths({GetActiveWorkspace(), m_activeProject.name, "Codes"});
       return codePath;
     }
 
@@ -285,6 +290,7 @@ namespace ToolKit
         {
           String foundWorkspacePath;
           ReadAttr(setNode, XmlNodePath.data(), foundWorkspacePath);
+          NormalizePathInplace(foundWorkspacePath);
           if (CheckFile(foundWorkspacePath))
           {
             m_activeWorkspace = foundWorkspacePath;
