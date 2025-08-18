@@ -660,14 +660,10 @@ namespace ToolKit
         return;
       }
 
-      PublishPlatform pluginType = PublishPlatform::EditorPlugin;
-      if (gamePlugin)
-      {
-        pluginType                     = PublishPlatform::GamePlugin;
-        String pluginDir               = g_app->m_workspace.GetPluginDirectory();
-        m_publishManager->m_appName    = ConcatPaths({pluginDir, name, "Codes"});
-        m_publishManager->m_pluginName = name;
-      }
+      PublishPlatform pluginType     = gamePlugin ? PublishPlatform::GamePlugin : PublishPlatform::EditorPlugin;
+      String pluginDir               = g_app->m_workspace.GetPluginDirectory();
+      m_publishManager->m_appName    = ConcatPaths({pluginDir, name, "Codes"});
+      m_publishManager->m_pluginName = name;
 
       m_publishManager->Publish(pluginType, TKDebug ? PublishConfig::Debug : PublishConfig::Deploy);
     }

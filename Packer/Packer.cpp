@@ -795,13 +795,11 @@ namespace ToolKit
     g_proxy->PreInit();
 
     String publishArguments = GetFileManager()->ReadAllText("PublishArguments.txt");
+    ReplaceStringInPlace(publishArguments, "\r\n", "\n"); // Normalize new lines.
+
     StringArray arguments;
-
-    const auto whitePredFn = [](char c) { return c != '\n' && std::isspace(c); };
-    // remove whitespace from string
-    erase_if(publishArguments, whitePredFn);
-
     Split(publishArguments, "\n", arguments);
+
     Packer packer {};
     activeProjectName         = NormalizePath(arguments[0]);
     workspacePath             = NormalizePath(arguments[1]);
