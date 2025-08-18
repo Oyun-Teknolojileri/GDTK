@@ -1344,7 +1344,7 @@ namespace ToolKit
       }
     }
 
-    bool App::IsWorkspaceSane(bool checkProject, bool reportError)
+    bool App::IsWorkspaceSane(bool checkProject, bool reportError) const
     {
       if (m_workspace.GetActiveWorkspace().empty())
       {
@@ -1550,6 +1550,12 @@ namespace ToolKit
 
     XmlNode* App::SerializeImp(XmlDocument* doc, XmlNode* parent) const
     {
+      if (!IsWorkspaceSane(true, false))
+      {
+        TK_SYSLOG("No Workspace or Project. Can't serialize Editor.");
+        return nullptr;
+      }
+
       m_workspace.Serialize(nullptr, nullptr);
 
       std::ofstream file;
