@@ -221,12 +221,12 @@ namespace ToolKit
     void PluginWindow::LoadPluginSettings()
     {
       m_plugins.clear();
-      String plugDir = GetApp()->m_workspace.GetPluginDirectory();
+      String pluginDir = GetApp()->m_workspace.GetPluginDirectory();
 
-      namespace fs   = std::filesystem;
-      if (fs::exists(plugDir) && fs::is_directory(plugDir))
+      if (CheckSystemFile(pluginDir) && IsDirectory(pluginDir))
       {
-        for (const auto& entry : fs::directory_iterator(plugDir))
+        namespace fs = std::filesystem;
+        for (const auto& entry : fs::directory_iterator(pluginDir))
         {
           String path    = entry.path().u8string();
           String cfgFile = ConcatPaths({path, "Config", "Plugin.settings"});

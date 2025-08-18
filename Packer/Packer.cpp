@@ -156,7 +156,7 @@ namespace ToolKit
     String packPath   = ConcatPaths({ResourcePath(), "..", "MinResources.pak"});
 
     bool needPacking  = m_publishConfig == PublishConfig::Deploy;
-    needPacking      |= !std::filesystem::exists(packPath);
+    needPacking      |= !CheckSystemFile(packPath);
     needPacking      |= m_onlyPack;
 
     if (needPacking)
@@ -574,7 +574,7 @@ namespace ToolKit
 
     bool apkIsUnsigned = false;
     // See if the apk is unsigned or not
-    if (std::filesystem::exists(ConcatPaths({buildLocation, "app-release-unsigned.apk"})))
+    if (CheckSystemFile(ConcatPaths({buildLocation, "app-release-unsigned.apk"})))
     {
       apkIsUnsigned = true;
     }

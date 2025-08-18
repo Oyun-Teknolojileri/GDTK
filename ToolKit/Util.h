@@ -62,6 +62,9 @@ namespace ToolKit
   // File path operations.
   //////////////////////////////////////////
 
+  /** Tests whether given path is a directory or not. */
+  TK_API bool IsDirectory(StringView path);
+
   /**
    * Checks if a file exist in the host system.
    * @param path is the full file path to check for.

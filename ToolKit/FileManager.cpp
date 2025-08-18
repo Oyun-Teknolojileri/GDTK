@@ -208,7 +208,7 @@ namespace ToolKit
     // Copy assets under android assets if exists
     String androidAssetFolder = ConcatPaths({ResourcePath(), "..", "Android", "app", "src", "main", "assets"});
     String minResourcesPath   = ConcatPaths({ResourcePath(), "..", "MinResources.pak"});
-    if (std::filesystem::exists(androidAssetFolder) && std::filesystem::exists(minResourcesPath))
+    if (CheckSystemFile(androidAssetFolder) && CheckSystemFile(minResourcesPath))
     {
       std::error_code ec;
       std::filesystem::copy(minResourcesPath,
