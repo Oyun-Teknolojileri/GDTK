@@ -101,6 +101,9 @@ namespace ToolKit
        */
       bool IsWorkspaceSane(bool checkProject, bool reportError);
 
+      /** Project and plugin names must be valid C++ library names. Performs the check.  */
+      bool IsValidCppLibraryName(const String& name);
+
       // UI.
       //////////////////////////////////////////
 

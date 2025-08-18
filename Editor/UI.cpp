@@ -775,9 +775,9 @@ namespace ToolKit
       if (ImGui::MenuItem("New Project"))
       {
         StringInputWindowPtr inputWnd = MakeNewPtr<StringInputWindow>("NewProject", true);
-        inputWnd->m_inputVal          = "New Project";
+        inputWnd->m_inputVal          = "NewProject";
         inputWnd->m_inputLabel        = "Name";
-        inputWnd->m_hint              = "Project name";
+        inputWnd->m_hint              = g_validLibraryNameRules;
         inputWnd->m_taskFn            = [](const String& val) { GetApp()->OnNewProject(val); };
         inputWnd->AddToUI();
       }
@@ -785,9 +785,9 @@ namespace ToolKit
       if (ImGui::MenuItem("New Plugin"))
       {
         StringInputWindowPtr inputWnd = MakeNewPtr<StringInputWindow>("NewPlugin", true);
-        inputWnd->m_inputVal          = "New Plugin";
+        inputWnd->m_inputVal          = "NewPlugin";
         inputWnd->m_inputLabel        = "Name";
-        inputWnd->m_hint              = "Plugin name";
+        inputWnd->m_hint              = g_validLibraryNameRules;
         inputWnd->m_taskFn            = [](const String& val) { GetApp()->OnNewPlugin(val); };
         inputWnd->AddToUI();
       }

@@ -456,10 +456,19 @@ namespace ToolKit
         return;
       }
 
+      if (!IsValidCppLibraryName(name))
+      {
+        TK_ERR("Invalid project name: %s.", name.c_str());
+        TK_LOG("%s", g_validLibraryNameRules.c_str());
+        m_statusMsg = g_statusFailed;
+        return;
+      }
+
       String fullPath = ConcatPaths({m_workspace.GetActiveWorkspace(), name});
       if (CheckFile(fullPath))
       {
         TK_ERR("Project already exist.");
+        m_statusMsg = g_statusFailed;
         return;
       }
 
@@ -497,10 +506,19 @@ namespace ToolKit
         return;
       }
 
+      if (!IsValidCppLibraryName(name))
+      {
+        TK_ERR("Invalid plugin name: %s.", name.c_str());
+        TK_LOG("%s", g_validLibraryNameRules.c_str());
+        m_statusMsg = g_statusFailed;
+        return;
+      }
+
       String fullPath = ConcatPaths({m_workspace.GetPluginDirectory(), name});
       if (CheckSystemFile(fullPath))
       {
         TK_ERR("A plugin with the same name already exist in the project.");
+        m_statusMsg = g_statusFailed;
         return;
       }
 
@@ -1353,6 +1371,31 @@ namespace ToolKit
           }
           return false;
         }
+      }
+
+      return true;
+    }
+
+    bool App::IsValidCppLibraryName(const String& name)
+    {
+      if (name.empty())
+      {
+        return false;
+      }
+
+      for (ubyte c : name)
+      {
+        // Allow only alphanumeric characters and underscore
+        if (!std::isalnum((ubyte) c) && c != '_')
+        {
+          return false;
+        }
+      }
+
+      // Ensure it doesn't start with a digit.
+      if (std::isdigit((ubyte) name[0]))
+      {
+        return false;
       }
 
       return true;

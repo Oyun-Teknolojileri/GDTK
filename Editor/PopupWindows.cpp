@@ -58,6 +58,11 @@ namespace ToolKit
             { return (reinterpret_cast<StringInputWindow*>(data->UserData))->FilterChars(data); },
             reinterpret_cast<void*>(this));
 
+        if (m_hint.empty())
+        {
+          UI::AddTooltipToLastItem(m_hint.c_str());
+        }
+
         // Center buttons.
         ImGui::BeginTable("##FilterZoom", m_showCancel ? 4 : 3, ImGuiTableFlags_SizingFixedFit);
 
