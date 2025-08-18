@@ -310,12 +310,22 @@ namespace ToolKit
 
     void App::OnNewScene(const String& name)
     {
+      if (!IsWorkspaceSane(true, true))
+      {
+        return;
+      }
+
       ClearSession();
       CreateNewScene();
     }
 
     void App::OnSaveScene()
     {
+      if (!IsWorkspaceSane(true, true))
+      {
+        return;
+      }
+
       // Prevent overriding default scene.
       EditorScenePtr currScene = GetCurrentScene();
       if (GetSceneManager()->GetDefaultResource(Scene::StaticClass()) == currScene->GetFile())
@@ -363,6 +373,11 @@ namespace ToolKit
 
     void App::OnSaveAsScene()
     {
+      if (!IsWorkspaceSane(true, true))
+      {
+        return;
+      }
+
       StringInputWindowPtr inputWnd = MakeNewPtr<StringInputWindow>("SaveScene##SvScn1", true);
       inputWnd->m_inputLabel        = "Name";
       inputWnd->m_hint              = "Scene name";
@@ -436,9 +451,8 @@ namespace ToolKit
     // note: only copy template folder
     void App::OnNewProject(const String& name)
     {
-      if (m_workspace.GetActiveWorkspace().empty())
+      if (!IsWorkspaceSane(false, true))
       {
-        TK_ERR("No workspace. Project can't be created.");
         return;
       }
 
@@ -478,9 +492,8 @@ namespace ToolKit
 
     void App::OnNewPlugin(const String& name)
     {
-      if (m_workspace.GetActiveWorkspace().empty())
+      if (!IsWorkspaceSane(true, true))
       {
-        TK_ERR("No project. There must be an open project to create plugin for.");
         return;
       }
 
@@ -515,6 +528,11 @@ namespace ToolKit
 
     void App::SetGameMod(const GameMod mod)
     {
+      if (!IsWorkspaceSane(true, true))
+      {
+        return;
+      }
+
       if (mod == m_gameMod)
       {
         return;
@@ -617,12 +635,23 @@ namespace ToolKit
 
     bool App::IsCompiling() { return m_isCompiling; }
 
-    void App::CompilePlugin(const String& name)
+    void App::CompilePlugin(const String& name, bool gamePlugin)
     {
-      String pluginDir               = g_app->m_workspace.GetPluginDirectory();
-      m_publishManager->m_appName    = ConcatPaths({pluginDir, name, "Codes"});
-      m_publishManager->m_pluginName = name;
-      m_publishManager->Publish(PublishPlatform::EditorPlugin, TKDebug ? PublishConfig::Debug : PublishConfig::Deploy);
+      if (!IsWorkspaceSane(true, true))
+      {
+        return;
+      }
+
+      PublishPlatform pluginType = PublishPlatform::EditorPlugin;
+      if (gamePlugin)
+      {
+        pluginType                     = PublishPlatform::GamePlugin;
+        String pluginDir               = g_app->m_workspace.GetPluginDirectory();
+        m_publishManager->m_appName    = ConcatPaths({pluginDir, name, "Codes"});
+        m_publishManager->m_pluginName = name;
+      }
+
+      m_publishManager->Publish(pluginType, TKDebug ? PublishConfig::Debug : PublishConfig::Deploy);
     }
 
     void App::LoadGamePlugin()
@@ -1267,7 +1296,15 @@ namespace ToolKit
       }
     }
 
-    void App::PackResources() { m_publishManager->Pack(); }
+    void App::PackResources()
+    {
+      if (!IsWorkspaceSane(true, true))
+      {
+        return;
+      }
+
+      m_publishManager->Pack();
+    }
 
     void App::SaveAllResources()
     {
@@ -1291,6 +1328,34 @@ namespace ToolKit
           }
         }
       }
+    }
+
+    bool App::IsWorkspaceSane(bool checkProject, bool reportError)
+    {
+      if (m_workspace.GetActiveWorkspace().empty())
+      {
+        if (reportError)
+        {
+          TK_ERR("No workspace. Can not proceed with operation.");
+          m_statusMsg = g_statusFailed;
+        }
+        return false;
+      }
+
+      if (checkProject)
+      {
+        if (m_workspace.GetActiveProject().name.empty())
+        {
+          if (reportError)
+          {
+            TK_ERR("No project. Can not proceed with operation.");
+            m_statusMsg = g_statusFailed;
+          }
+          return false;
+        }
+      }
+
+      return true;
     }
 
     WindowPtr App::GetActiveWindow()

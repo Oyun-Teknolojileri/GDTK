@@ -184,7 +184,7 @@ namespace ToolKit
             ImGui::AlignTextToFramePadding();
             if (ImGui::ImageButton("##build", Convert2ImGuiTexture(UI::m_buildIcn), btnSize))
             {
-              GetApp()->CompilePlugin(plugin.name);
+              GetApp()->CompilePlugin(plugin.name, false);
             }
             UI::AddTooltipToLastItem("If a change is detected, compiles and reloads the plugin.\n"
                                      "This may cause crash, save the work before.");
@@ -214,6 +214,11 @@ namespace ToolKit
         }
 
         ImGui::EndTable();
+
+        if (ImGui::Button("Refresh"))
+        {
+          LoadPluginSettings();
+        }
       }
       ImGui::End();
     }

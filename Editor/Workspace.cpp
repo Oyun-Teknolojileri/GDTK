@@ -319,6 +319,11 @@ namespace ToolKit
           }
         }
       }
+      else
+      {
+        TK_ERR("Workspace.settings file is faulty. Remove %appdata%/ToolKit folder on windows to reset settings.");
+        assert(0 && "Workspace.settings file is faulty.");
+      }
 
       DeSerializeEngineSettings();
       return nullptr;

@@ -806,6 +806,11 @@ namespace ToolKit
 
       auto callPublisherForPlatformFn = [&](PublishPlatform publishPlatform, PublishConfig publishType)
       {
+        if (!GetApp()->IsWorkspaceSane(true, true))
+        {
+          return;
+        }
+
         if (publishPlatform == PublishPlatform::Android)
         {
           AndroidBuildWindowPtr androidBuildWindow = MakeNewPtr<AndroidBuildWindow>();

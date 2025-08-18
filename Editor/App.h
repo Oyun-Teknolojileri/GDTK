@@ -36,7 +36,7 @@ namespace ToolKit
       void OnNewProject(const String& name);
       void OnNewPlugin(const String& name);
       void SetGameMod(const GameMod mod);
-      void CompilePlugin(const String& name);
+      void CompilePlugin(const String& name, bool gamePlugin);
       void LoadGamePlugin();
       bool IsCompiling();
       EditorScenePtr GetCurrentScene();
@@ -93,6 +93,13 @@ namespace ToolKit
       void OpenProject(const Project& project);
       void PackResources();
       void SaveAllResources();
+
+      /**
+       * Looks for a valid workspace and scene. Returns true if both exist.
+       * If checkProject is true, expect an active project.
+       * If reportError is true, reports a console error.
+       */
+      bool IsWorkspaceSane(bool checkProject, bool reportError);
 
       // UI.
       //////////////////////////////////////////

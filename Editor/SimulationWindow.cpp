@@ -248,9 +248,7 @@ namespace ToolKit
 
       if (ImGui::ImageButton("##build", Convert2ImGuiTexture(UI::m_buildIcn), btnSize))
       {
-        String buildBat         = GetApp()->m_workspace.GetCodeDirectory();
-        PublishConfig buildType = TKDebug ? PublishConfig::Debug : PublishConfig::Develop;
-        GetApp()->m_publishManager->Publish(PublishPlatform::GamePlugin, buildType);
+        GetApp()->CompilePlugin("", true);
       }
 
       UI::HelpMarker(TKLoc, "Build\nBuilds the projects code files.");
