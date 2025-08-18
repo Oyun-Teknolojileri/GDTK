@@ -227,19 +227,22 @@ namespace ToolKit
       // VS Code.
       if (ImGui::ImageButton("##vscode", Convert2ImGuiTexture(UI::m_vsCodeIcon), btnSize))
       {
-        String codePath = ConcatPaths({GetApp()->m_workspace.GetCodeDirectory(), "..", "."});
-        if (CheckFile(codePath))
+        if (GetApp()->IsWorkspaceSane(true, true))
         {
-          String cmd = "code \"" + codePath + "\"";
-          int result = GetApp()->ExecSysCommand(cmd, true, false);
-          if (result != 0)
+          String codePath = ConcatPaths({GetApp()->m_workspace.GetCodeDirectory(), "..", "."});
+          if (CheckFile(codePath))
           {
-            TK_ERR("Visual Studio Code can't be started. Make sure it is installed.", );
+            String cmd = "code \"" + codePath + "\"";
+            int result = GetApp()->ExecSysCommand(cmd, true, false);
+            if (result != 0)
+            {
+              TK_ERR("Visual Studio Code can't be started. Make sure it is installed.", );
+            }
           }
-        }
-        else
-        {
-          TK_ERR("There is not a vaild code folder.");
+          else
+          {
+            TK_ERR("There is not a vaild code folder.");
+          }
         }
       }
 
@@ -248,9 +251,7 @@ namespace ToolKit
 
       if (ImGui::ImageButton("##build", Convert2ImGuiTexture(UI::m_buildIcn), btnSize))
       {
-        String buildBat         = GetApp()->m_workspace.GetCodeDirectory();
-        PublishConfig buildType = TKDebug ? PublishConfig::Debug : PublishConfig::Develop;
-        GetApp()->m_publishManager->Publish(PublishPlatform::GamePlugin, buildType);
+        GetApp()->CompilePlugin("", true);
       }
 
       UI::HelpMarker(TKLoc, "Build\nBuilds the projects code files.");

@@ -211,7 +211,31 @@ namespace ToolKit
     return nullptr;
   }
 
-  bool CheckSystemFile(StringView path) { return std::filesystem::exists(path); }
+  bool IsDirectory(StringView path)
+  {
+    std::error_code ec;
+    bool result = std::filesystem::is_directory(path, ec);
+    if (ec)
+    {
+      TK_ERR("IsDirectory: %s", ec.message().c_str());
+      return false;
+    }
+
+    return result;
+  }
+
+  bool CheckSystemFile(StringView path)
+  {
+    std::error_code ec;
+    bool result = std::filesystem::exists(path, ec);
+    if (ec)
+    {
+      TK_ERR("CheckSystemFile: %s", ec.message().c_str());
+      return false;
+    }
+
+    return result;
+  }
 
   bool CheckFile(const String& path) { return GetFileManager()->CheckFileFromResources(path); }
 

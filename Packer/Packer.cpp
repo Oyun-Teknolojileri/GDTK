@@ -156,7 +156,7 @@ namespace ToolKit
     String packPath   = ConcatPaths({ResourcePath(), "..", "MinResources.pak"});
 
     bool needPacking  = m_publishConfig == PublishConfig::Deploy;
-    needPacking      |= !std::filesystem::exists(packPath);
+    needPacking      |= !CheckSystemFile(packPath);
     needPacking      |= m_onlyPack;
 
     if (needPacking)
@@ -574,7 +574,7 @@ namespace ToolKit
 
     bool apkIsUnsigned = false;
     // See if the apk is unsigned or not
-    if (std::filesystem::exists(ConcatPaths({buildLocation, "app-release-unsigned.apk"})))
+    if (CheckSystemFile(ConcatPaths({buildLocation, "app-release-unsigned.apk"})))
     {
       apkIsUnsigned = true;
     }
@@ -795,13 +795,11 @@ namespace ToolKit
     g_proxy->PreInit();
 
     String publishArguments = GetFileManager()->ReadAllText("PublishArguments.txt");
+    ReplaceStringInPlace(publishArguments, "\r\n", "\n"); // Normalize new lines.
+
     StringArray arguments;
-
-    const auto whitePredFn = [](char c) { return c != '\n' && std::isspace(c); };
-    // remove whitespace from string
-    erase_if(publishArguments, whitePredFn);
-
     Split(publishArguments, "\n", arguments);
+
     Packer packer {};
     activeProjectName         = NormalizePath(arguments[0]);
     workspacePath             = NormalizePath(arguments[1]);

@@ -3,20 +3,25 @@ cmake_minimum_required(VERSION 3.6)
 # Master android cmake for toolkit projects.
 project(ToolKitApp)
 
+# Get ToolKit directory.
 if(DEFINED ENV{APPDATA})
-	set(CFG_FILE_PATH "$ENV{APPDATA}/ToolKit/Config/Path.txt")
+    set(CFG_FILE_PATH "$ENV{APPDATA}/ToolKit/Config/Path.txt")
 
-	if(NOT EXISTS ${CFG_FILE_PATH})
-		message(SEND_ERROR "Set TOOLKIT_DIR or provide ${CFG_FILE_PATH} containing path to ToolKit.")
-		return()
-	else()
-		file(STRINGS ${CFG_FILE_PATH} TOOLKIT_DIR)
-	endif()
+    if(NOT EXISTS "${CFG_FILE_PATH}")
+        message(SEND_ERROR "Set TOOLKIT_DIR or provide ${CFG_FILE_PATH} containing path to ToolKit.")
+        return()
+    else()
+        file(STRINGS "${CFG_FILE_PATH}" TOOLKIT_DIR_LINES ENCODING UTF-8)
+        list(GET TOOLKIT_DIR_LINES 0 TOOLKIT_DIR)
+        string(STRIP "${TOOLKIT_DIR}" TOOLKIT_DIR)
+        file(TO_CMAKE_PATH "${TOOLKIT_DIR}" TOOLKIT_DIR)
+    endif()
 endif()
 
-if(NOT EXISTS ${TOOLKIT_DIR}/ToolKit/ToolKit.h)
-	message(SEND_ERROR "Please use Forward slashes instead of backslashes. Can't find ToolKit.h in ${TOOLKIT_DIR}")
-	return()
+if(NOT EXISTS "${TOOLKIT_DIR}/ToolKit/ToolKit.h")
+    message(SEND_ERROR "Can't find ToolKit.h in '${TOOLKIT_DIR}'")
+    message(STATUS "Checked path: '${TOOLKIT_DIR}/ToolKit/ToolKit.h'")
+    return()
 endif()
 
 # Provide platform definitions.

@@ -467,7 +467,7 @@ namespace ToolKit
         TrunckToFileName(fileName);
         string textPath = NormalizePath(fs::path(filePath + fileName).lexically_normal().u8string());
 
-        if (!embedded && !std::filesystem::exists(textPath))
+        if (!embedded && !CheckSystemFile(textPath))
         {
           // Try copying texture.
           fs::path fullPath = pathOrg;

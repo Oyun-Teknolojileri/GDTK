@@ -184,7 +184,7 @@ namespace ToolKit
             ImGui::AlignTextToFramePadding();
             if (ImGui::ImageButton("##build", Convert2ImGuiTexture(UI::m_buildIcn), btnSize))
             {
-              GetApp()->CompilePlugin(plugin.name);
+              GetApp()->CompilePlugin(plugin.name, false);
             }
             UI::AddTooltipToLastItem("If a change is detected, compiles and reloads the plugin.\n"
                                      "This may cause crash, save the work before.");
@@ -214,6 +214,11 @@ namespace ToolKit
         }
 
         ImGui::EndTable();
+
+        if (ImGui::Button("Refresh"))
+        {
+          LoadPluginSettings();
+        }
       }
       ImGui::End();
     }
@@ -221,12 +226,12 @@ namespace ToolKit
     void PluginWindow::LoadPluginSettings()
     {
       m_plugins.clear();
-      String plugDir = GetApp()->m_workspace.GetPluginDirectory();
+      String pluginDir = GetApp()->m_workspace.GetPluginDirectory();
 
-      namespace fs   = std::filesystem;
-      if (fs::exists(plugDir) && fs::is_directory(plugDir))
+      if (CheckSystemFile(pluginDir) && IsDirectory(pluginDir))
       {
-        for (const auto& entry : fs::directory_iterator(plugDir))
+        namespace fs = std::filesystem;
+        for (const auto& entry : fs::directory_iterator(pluginDir))
         {
           String path    = entry.path().u8string();
           String cfgFile = ConcatPaths({path, "Config", "Plugin.settings"});

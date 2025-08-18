@@ -37,7 +37,7 @@ namespace ToolKit
       GetFileManager()->CloseZipFile();
 
       m_isBuilding                       = true;
-      packerPath                         = std::filesystem::absolute(ConcatPaths({"..", packerPath})).string();
+      packerPath                         = ToAbsolutePath(ConcatPaths({"..", packerPath}));
 
       SysCommandDoneCallback afterPackFn = [&](int res) -> void
       {
