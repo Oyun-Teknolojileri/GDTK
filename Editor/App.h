@@ -99,7 +99,7 @@ namespace ToolKit
        * If checkProject is true, expect an active project.
        * If reportError is true, reports a console error.
        */
-      bool IsWorkspaceSane(bool checkProject, bool reportError);
+      bool IsWorkspaceSane(bool checkProject, bool reportError) const;
 
       /** Project and plugin names must be valid C++ library names. Performs the check.  */
       bool IsValidCppLibraryName(const String& name);
@@ -275,7 +275,7 @@ namespace ToolKit
       float m_deltaTime  = 0.0f;
       bool m_isCompiling = false;
 
-      String m_statusMsg;
+      mutable String m_statusMsg;
       Mutex m_statusMsgMutex;
     };
 
