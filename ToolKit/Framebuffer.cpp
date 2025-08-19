@@ -154,11 +154,7 @@ namespace ToolKit
     GLenum attachment = dt->m_stencil ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT;
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, attachment, GL_RENDERBUFFER, m_depthAtch->m_textureId);
 
-    // Check if framebuffer is complete
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-    {
-      GetLogger()->Log("Error: Framebuffer incomplete!");
-    }
+    CheckFramebufferComplete();
   }
 
   DepthTexturePtr Framebuffer::GetDepthTexture() { return m_depthAtch; }

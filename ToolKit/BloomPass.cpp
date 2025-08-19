@@ -26,7 +26,6 @@ namespace ToolKit
   void BloomPass::Render()
   {
     RenderTargetPtr mainRt = m_params.FrameBuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
-
     if (mainRt == nullptr || m_invalidRenderParams)
     {
       return;
@@ -171,8 +170,6 @@ namespace ToolKit
           return;
         }
 
-        RenderTargetPtr& rt = m_tempTextures[i];
-
         TextureSettings set;
         set.InternalFormat = GraphicTypes::FormatRGBA16F;
         set.Format         = GraphicTypes::FormatRGBA;
@@ -184,7 +181,7 @@ namespace ToolKit
         set.WarpT          = GraphicTypes::UVClampToEdge;
         set.GenerateMipMap = false;
 
-        rt                 = MakeNewPtr<RenderTarget>(curRes.x, curRes.y, set);
+        RenderTargetPtr rt = MakeNewPtr<RenderTarget>(curRes.x, curRes.y, set);
         rt->Init();
 
         FramebufferPtr& frameBuffer = m_tempFrameBuffers[i];

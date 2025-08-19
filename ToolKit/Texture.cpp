@@ -270,18 +270,19 @@ namespace ToolKit
     glGenRenderbuffers(1, &m_textureId);
     glBindRenderbuffer(GL_RENDERBUFFER, m_textureId);
 
+    int sizeMultiplier = 1;
     if (m_multiSample > 0 && glRenderbufferStorageMultisampleEXT != nullptr)
     {
       glRenderbufferStorageMultisampleEXT(GL_RENDERBUFFER, m_multiSample, (GLenum) GetDepthFormat(), m_width, m_height);
+      sizeMultiplier = m_multiSample;
     }
     else
     {
-      GLenum component = (GLenum) GetDepthFormat();
-      glRenderbufferStorage(GL_RENDERBUFFER, component, m_width, m_height);
+      glRenderbufferStorage(GL_RENDERBUFFER, (GLenum) GetDepthFormat(), m_width, m_height);
     }
 
     uint64 internalFormatSize = stencil ? 4 : 3;
-    Stats::AddVRAMUsageInBytes((uint64) (m_width * m_height) * internalFormatSize);
+    Stats::AddVRAMUsageInBytes((uint64) (m_width * m_height) * internalFormatSize * sizeMultiplier);
   }
 
   void DepthTexture::UnInit()
