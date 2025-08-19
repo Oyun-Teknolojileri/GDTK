@@ -25,6 +25,7 @@ namespace ToolKit
     GraphicTypes InternalFormat = GraphicTypes::FormatRGBA16F;
     GraphicTypes Format         = GraphicTypes::FormatRGBA;
     GraphicTypes Type           = GraphicTypes::TypeFloat;
+    int msaaCount               = 1;     //!< MSAA Render target is created if this is grater than 1.
     int Layers                  = 0;     //!< Number of layers that this texture have if this is a texture array.
     bool GenerateMipMap         = false; //!< Generates mipmaps for the texture automatically.
 
@@ -104,16 +105,16 @@ namespace ToolKit
 
    public:
     /** States if the depth texture is constructed with stencil. */
-    bool m_stencil     = false;
+    bool m_stencil           = false;
 
     /**
      * States if the render target for depth is constructed.
      * Construction occurs when the depth texture is attached to a frame buffer.
      */
-    bool m_constructed = false;
+    bool m_constructed       = false;
 
-    /** States sample count of the depth buffer. */
-    int m_multiSample;
+    /** If an msaa depth texture is created, resolved single sample handle is assigned to this handle. */
+    uint m_resolvedTextureId = 0;
   };
 
   // DataTexture
@@ -258,6 +259,10 @@ namespace ToolKit
     void Init(bool flushClientSideArray = false) override;
     void Reconstruct(int width, int height, const TextureSettings& settings);
     void ReconstructIfNeeded(int width, int height, const TextureSettings* settings = nullptr);
+
+   public:
+    /** If an msaa render target is created, resolved single sample handle is assigned to this handle. */
+    uint m_resolvedTextureId = 0;
   };
 
   // TextureManager

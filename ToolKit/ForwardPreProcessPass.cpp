@@ -44,7 +44,7 @@ namespace ToolKit
   void ForwardPreProcessPass::InitBuffers(int width, int height, int sampleCount)
   {
     const FramebufferSettings& fbs = m_framebuffer->GetSettings();
-    bool requiresReconstruct       = fbs.width != width || fbs.height != height;
+    bool requiresReconstruct       = fbs.width != width || fbs.height != height || fbs.msaaCount != sampleCount;
 
     if (requiresReconstruct)
     {

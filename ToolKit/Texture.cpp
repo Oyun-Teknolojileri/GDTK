@@ -252,9 +252,9 @@ namespace ToolKit
     int internalFormatSize = m_stencil ? 4 : 3;
 
     int sizeMultiplier     = 1;
-    if (m_multiSample > 0 && glRenderbufferStorageMultisampleEXT != nullptr)
+    if (m_settings.msaaCount > 0 && glRenderbufferStorageMultisampleEXT != nullptr)
     {
-      sizeMultiplier = m_multiSample;
+      sizeMultiplier = m_settings.msaaCount;
     }
 
     return internalFormatSize * sizeMultiplier;
@@ -267,15 +267,15 @@ namespace ToolKit
       return;
     }
 
-    m_initiated   = true;
-    m_width       = width;
-    m_height      = height;
-    m_stencil     = stencil;
-    m_multiSample = multiSample;
+    m_initiated          = true;
+    m_width              = width;
+    m_height             = height;
+    m_stencil            = stencil;
+    m_settings.msaaCount = multiSample;
 
     if constexpr (GraphicSettings::disableMSAA)
     {
-      m_multiSample = 0;
+      m_settings.msaaCount = 1;
     }
 
     glGenRenderbuffers(1, &m_textureId);
@@ -284,10 +284,10 @@ namespace ToolKit
     Stats::SetGpuResourceLabel(m_label, GpuResourceType::RenderBuffer, m_textureId);
 
     int sizeMultiplier = 1;
-    if (m_multiSample > 0 && glRenderbufferStorageMultisampleEXT != nullptr)
+    if (m_settings.msaaCount > 0 && glRenderbufferStorageMultisampleEXT != nullptr)
     {
-      glRenderbufferStorageMultisampleEXT(GL_RENDERBUFFER, m_multiSample, (GLenum) GetDepthFormat(), m_width, m_height);
-      sizeMultiplier = m_multiSample;
+      glRenderbufferStorageMultisampleEXT(GL_RENDERBUFFER, m_settings.msaaCount, (GLenum) GetDepthFormat(), m_width, m_height);
+      sizeMultiplier = m_settings.msaaCount;
     }
     else
     {
@@ -905,17 +905,30 @@ namespace ToolKit
     uint64 pixelCount = (uint64) m_width * (uint64) m_height;
     if (m_settings.Target == GraphicTypes::Target2D)
     {
-      glTexImage2D(GL_TEXTURE_2D,
-                   0,
-                   (int) m_settings.InternalFormat,
-                   m_width,
-                   m_height,
-                   0,
-                   (int) m_settings.Format,
-                   (int) m_settings.Type,
-                   0);
+      if (m_settings.msaaCount > 1)
+      {
+        glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE,
+                                  m_settings.msaaCount,
+                                  (int) m_settings.InternalFormat,
+                                  m_width,
+                                  m_height,
+                                  GL_FALSE);
+        TKCheckGL();
+      }
+      else
+      {
+        glTexImage2D(GL_TEXTURE_2D,
+                     0,
+                     (int) m_settings.InternalFormat,
+                     m_width,
+                     m_height,
+                     0,
+                     (int) m_settings.Format,
+                     (int) m_settings.Type,
+                     0);
+      }
 
-      Stats::AddVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat));
+      Stats::AddVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat) * m_settings.msaaCount);
     }
     else if (m_settings.Target == GraphicTypes::TargetCubeMap)
     {

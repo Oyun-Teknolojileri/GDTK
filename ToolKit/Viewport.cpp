@@ -109,10 +109,17 @@ namespace ToolKit
   TextureSettings Viewport::GetRenderTargetSettings()
   {
     TextureSettings texureSet;
-    if (!GetEngineSettings().m_graphics->GetHDRPipelineVal())
+    const EngineSettings& engineSettings = GetEngineSettings();
+    if (!engineSettings.m_graphics->GetHDRPipelineVal())
     {
       texureSet.InternalFormat = GraphicTypes::FormatRGBA8;
       texureSet.Type           = GraphicTypes::TypeUnsignedByte;
+    }
+
+    int msaaCount = engineSettings.m_graphics->GetMSAAVal().GetValue<int>();
+    if (!engineSettings.m_graphics->disableMSAA && msaaCount > 1)
+    {
+      texureSet.msaaCount = msaaCount;
     }
 
     return texureSet;

@@ -76,6 +76,12 @@ namespace ToolKit
     // Set the default depth test.
     Renderer* renderer = GetRenderer();
     renderer->SetDepthTestFunc(CompareFunctions::FuncLess);
+
+    // Resolve render target if necessary.
+    if (m_params.FrameBuffer->GetSettings().msaaCount > 1)
+    {
+      //FramebufferPtr frameBuffer = m_params.FrameBuffer->
+    }
   }
 
   void ForwardRenderPass::RenderOpaque(RenderData* renderData)

@@ -25,7 +25,8 @@ namespace ToolKit
   {
     for (int i = 0; i < m_maxColorAttachmentCount; ++i)
     {
-      m_colorAtchs[i] = nullptr;
+      m_colorAtchs[i]             = nullptr;
+      m_resolutionFrameBuffers[i] = 0;
     }
 
     m_depthAtch = nullptr;
@@ -55,12 +56,15 @@ namespace ToolKit
 
     if constexpr (GraphicSettings::disableMSAA)
     {
-      m_settings.multiSampleFrameBuffer = 0;
+      m_settings.msaaCount = 1;
     }
 
     // Create framebuffer object
     glGenFramebuffers(1, &m_fboId);
     RHI::SetFramebuffer(GL_FRAMEBUFFER, m_fboId);
+
+    // Generate frame buffers for resolve.
+    glGenFramebuffers(m_maxColorAttachmentCount + 1, m_resolutionFrameBuffers);
 
     Stats::SetGpuResourceLabel(m_label, GpuResourceType::FrameBuffer, m_fboId);
 
@@ -77,10 +81,7 @@ namespace ToolKit
     if (m_settings.useDefaultDepth)
     {
       m_depthAtch = MakeNewPtr<DepthTexture>();
-      m_depthAtch->Init(m_settings.width,
-                        m_settings.height,
-                        m_settings.depthStencil,
-                        m_settings.multiSampleFrameBuffer);
+      m_depthAtch->Init(m_settings.width, m_settings.height, m_settings.depthStencil, m_settings.msaaCount);
 
       AttachDepthTexture(m_depthAtch);
     }
@@ -136,6 +137,61 @@ namespace ToolKit
 
       m_settings = settings;
       Init();
+    }
+  }
+
+  void Framebuffer::Resolve()
+  {
+    RHI::SetFramebuffer(GL_FRAMEBUFFER, m_fboId);
+    if (m_settings.msaaCount <= 1)
+    {
+      TK_ERR("Trying to resolve single sample frame buffer.");
+      return;
+    }
+
+    if (m_depthAtch)
+    {
+      assert(m_depthAtch->Settings().msaaCount <= 1 && "Multi sample frambuffer / attachment missmathc.");
+
+      // Create a single sample texture.
+      if (m_depthAtch->m_resolvedTextureId == 0)
+      {
+        glGenTextures(1, &m_depthAtch->m_resolvedTextureId);
+        RHI::SetTexture(GL_TEXTURE_2D, m_depthAtch->m_resolvedTextureId);
+        glTexStorage2D(GL_TEXTURE_2D,
+                       1,
+                       (GLenum) m_depthAtch->Settings().InternalFormat,
+                       m_settings.width,
+                       m_settings.height);
+
+        TKCheckGL();
+      }
+
+      // Convert the multi sample depth to single sample texture.
+      RHI::SetTexture(GL_TEXTURE_2D, m_depthAtch->m_resolvedTextureId);
+      glBlitFramebuffer(0,
+                        0,
+                        m_settings.width,
+                        m_settings.width,
+                        0,
+                        0,
+                        m_settings.width,
+                        m_settings.height,
+                        m_depthAtch->m_stencil ? (GLenum) GraphicBitFields::DepthStencilBits
+                                               : (GLenum) GraphicBitFields::ColorDepthBits,
+                        GL_NEAREST);
+
+      TKCheckGL();
+
+      constexpr GLenum invalidAttachments[1] = {GL_DEPTH_ATTACHMENT};
+      RHI::SetFramebuffer(GL_READ_FRAMEBUFFER, m_fboId);
+      glInvalidateFramebuffer(GL_READ_FRAMEBUFFER, 1, invalidAttachments);
+
+      TKCheckGL();
+    }
+    else
+    {
+      // if (RenderTargetPtr colorAttachment = m_colorAtchs[(int) attachment]) {}
     }
   }
 
@@ -204,23 +260,9 @@ namespace ToolKit
       }
       else
       {
-        if (m_settings.multiSampleFrameBuffer > 0)
+        if (m_settings.msaaCount > 1)
         {
-          if (glFramebufferTexture2DMultisampleEXT != nullptr)
-          {
-            glFramebufferTexture2DMultisampleEXT(GL_FRAMEBUFFER,
-                                                 attachment,
-                                                 GL_TEXTURE_2D,
-                                                 rt->m_textureId,
-                                                 mip,
-                                                 m_settings.multiSampleFrameBuffer);
-          }
-          else
-          {
-            // Fall back to single sample frame buffer.
-            glFramebufferTexture2D(GL_FRAMEBUFFER, attachment, GL_TEXTURE_2D, rt->m_textureId, mip);
-            m_settings.multiSampleFrameBuffer = 0;
-          }
+          glFramebufferTexture2D(GL_FRAMEBUFFER, attachment, GL_TEXTURE_2D_MULTISAMPLE, rt->m_textureId, mip);
         }
         else
         {

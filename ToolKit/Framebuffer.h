@@ -16,15 +16,15 @@ namespace ToolKit
   struct FramebufferSettings
   {
     /**Height of the frame buffer. */
-    int width                  = 128;
+    int width            = 128;
     /** Width of the frame buffer. */
-    int height                 = 128;
+    int height           = 128;
     /** States whether the default depth has stencil or not. */
-    bool depthStencil          = false;
+    bool depthStencil    = false;
     /** Creates a default depth attachment. */
-    bool useDefaultDepth       = true;
-    /** Creates multi sample frame buffers. Suggested values are 0, 2, 4, 6. */
-    int multiSampleFrameBuffer = 0;
+    bool useDefaultDepth = true;
+    /** Creates multi sample frame buffers if greater than 1. Suggested values are 1, 2, 4, 8. */
+    int msaaCount        = 1;
 
     bool operator==(const FramebufferSettings& other) const
     {
@@ -96,10 +96,18 @@ namespace ToolKit
     void ReconstructIfNeeded(int width, int height);
     void ReconstructIfNeeded(const FramebufferSettings& settings);
 
+    /** Resolves all attachment in the frame buffer. */
+    void Resolve();
+
    private:
     void SetDrawBuffers();
     bool IsColorAttachment(Attachment atc);
     void CheckFramebufferComplete();
+
+    // Resolve frame buffer handlers.
+    void EnsureResolveFboForColor(int idx);
+    void EnsureResolveFboForDepth();
+    void DestroyResolveFbos();
 
    public:
     static const int m_maxColorAttachmentCount = 8;
@@ -107,6 +115,7 @@ namespace ToolKit
 
    private:
     FramebufferSettings m_settings;
+    uint m_resolutionFrameBuffers[m_maxColorAttachmentCount + 1]; // Last one is for depth buffer.
 
     uint m_fboId        = 0;
     uint m_defaultRboId = 0;

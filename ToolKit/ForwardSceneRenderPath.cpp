@@ -108,7 +108,7 @@ namespace ToolKit
     if (RequiresForwardPreProcessPass())
     {
       FramebufferSettings settings = m_params.MainFramebuffer->GetSettings();
-      m_forwardPreProcessPass->InitBuffers(settings.width, settings.height, settings.multiSampleFrameBuffer);
+      m_forwardPreProcessPass->InitBuffers(settings.width, settings.height, settings.msaaCount);
     }
   }
 
