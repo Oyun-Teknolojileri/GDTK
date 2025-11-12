@@ -104,7 +104,7 @@ namespace ToolKit
 
   namespace Stats
   {
-    TK_API void SetGpuResourceLabel(StringView label, GpuResourceType resourceType, uint resourceId)
+    void SetGpuResourceLabel(StringView label, GpuResourceType resourceType, uint resourceId)
     {
       if (glLabelObjectEXT != nullptr && label.size() > 0)
       {

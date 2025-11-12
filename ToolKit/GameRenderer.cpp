@@ -16,8 +16,13 @@ namespace ToolKit
   {
     m_sceneRenderPath      = MakeNewPtr<ForwardSceneRenderPath>();
     m_uiPass               = MakeNewPtr<ForwardRenderPass>();
+    m_uiPass->SetName("UI Pass");
+
     m_gammaTonemapFxaaPass = MakeNewPtr<GammaTonemapFxaaPass>();
+    m_gammaTonemapFxaaPass->SetName("Gamma Tonemap FXAA Pass");
+
     m_fullQuadPass         = MakeNewPtr<FullQuadPass>();
+    m_fullQuadPass->SetName("Final Blit Pass");
   }
 
   GameRenderer::~GameRenderer()

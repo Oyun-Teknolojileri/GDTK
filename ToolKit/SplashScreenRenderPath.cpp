@@ -31,7 +31,7 @@ namespace ToolKit
 
     m_uiPass->m_params.FrameBuffer              = m_viewport->m_framebuffer;
 
-    m_gammaPass->m_params.enableGammaCorrection = true;
+    m_gammaPass->m_params.enableGammaCorrection = GetRenderSystem()->IsGammaCorrectionNeeded();
     m_gammaPass->m_params.enableTonemapping     = false;
     m_gammaPass->m_params.enableFxaa            = false;
     m_gammaPass->m_params.screenSize            = Vec2((float) screenSize.x, (float) screenSize.y);
@@ -52,7 +52,10 @@ namespace ToolKit
 
     m_passArray.clear();
     m_passArray.push_back(m_uiPass);
-    m_passArray.push_back(m_gammaPass);
+    if (m_gammaPass->IsEnabled())
+    {
+      m_passArray.push_back(m_gammaPass);
+    }
   }
 
   void SplashScreenRenderPath::Render(Renderer* renderer)

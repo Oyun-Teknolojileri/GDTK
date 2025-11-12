@@ -145,9 +145,7 @@ namespace ToolKit
   {
     // Initialize opengl functions.
     LoadGlFunctions(glGetProcAddres);
-
     InitGLErrorReport(callback);
-    TestSRGBBackBuffer();
   }
 
   void RenderSystem::ExecuteTaskImp(RenderTask& task)
@@ -199,14 +197,5 @@ namespace ToolKit
   }
 
   bool RenderSystem::IsGammaCorrectionNeeded() { return !m_backbufferFormatIsSRGB; }
-
-  void RenderSystem::TestSRGBBackBuffer()
-  {
-    RHI::SetFramebuffer(GL_FRAMEBUFFER, 0);
-
-    // Srgb back buffer is not set. Assuming linear back buffer.
-    // To set and get the back buffer's format, use platform functions.
-    m_backbufferFormatIsSRGB = false;
-  }
 
 } // namespace ToolKit

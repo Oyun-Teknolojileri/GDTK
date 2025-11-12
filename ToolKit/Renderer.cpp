@@ -101,7 +101,8 @@ namespace ToolKit
     glEnable(GL_CULL_FACE);
     glEnable(GL_DEPTH_TEST);
 
-    glClearDepthf(1.0f);
+    SrgbAutoEncoding(GetRenderSystem()->m_backbufferFormatIsSRGB);
+
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
   }
 
@@ -115,6 +116,20 @@ namespace ToolKit
 
     m_framebuffer                   = nullptr;
     m_shadowAtlas                   = nullptr;
+  }
+
+  void Renderer::SrgbAutoEncoding(bool enable)
+  {
+#ifdef TK_GL_3_0
+    if (enable)
+    {
+      glEnable(GL_FRAMEBUFFER_SRGB);
+    }
+    else
+    {
+      glDisable(GL_FRAMEBUFFER_SRGB);
+    }
+#endif
   }
 
   int Renderer::GetMaxArrayTextureLayers()
@@ -453,40 +468,41 @@ namespace ToolKit
 
   void Renderer::StartTimerQuery()
   {
-    m_cpuTime               = GetElapsedMilliSeconds();
+    m_cpuTime = GetElapsedMilliSeconds();
+#ifdef GL_TIME_ELAPSED_EXT
     GraphicSettingsPtr gset = GetEngineSettings().m_graphics;
     if (gset->GetEnableGpuTimerVal())
     {
       if constexpr (TK_PLATFORM == PLATFORM::TKWindows)
       {
-#ifdef GL_TIME_ELAPSED_EXT
         glBeginQuery(GL_TIME_ELAPSED_EXT, m_gpuTimerQuery);
-#endif
       }
     }
+#endif
   }
 
   void Renderer::EndTimerQuery()
   {
-    float cpuTime           = GetElapsedMilliSeconds();
-    m_cpuTime               = cpuTime - m_cpuTime;
+    float cpuTime = GetElapsedMilliSeconds();
+    m_cpuTime     = cpuTime - m_cpuTime;
 
+#ifdef GL_TIME_ELAPSED_EXT
     GraphicSettingsPtr gset = GetEngineSettings().m_graphics;
     if (gset->GetEnableGpuTimerVal())
     {
       if constexpr (TK_PLATFORM == PLATFORM::TKWindows)
       {
-#ifdef GL_TIME_ELAPSED_EXT
         glEndQuery(GL_TIME_ELAPSED_EXT);
-#endif
       }
     }
+#endif
   }
 
   void Renderer::GetElapsedTime(float& cpu, float& gpu)
   {
     cpu = m_cpuTime;
     gpu = 1.0f;
+#ifdef GL_TIME_ELAPSED_EXT
     if constexpr (TK_PLATFORM == PLATFORM::TKWindows)
     {
       GraphicSettingsPtr gset = GetEngineSettings().m_graphics;
@@ -498,6 +514,7 @@ namespace ToolKit
         gpu = glm::max(1.0f, (float) (elapsedTime) / 1000000.0f);
       }
     }
+#endif
   }
 
   FramebufferPtr Renderer::GetFrameBuffer() { return m_framebuffer; }
@@ -547,46 +564,17 @@ namespace ToolKit
     SetFramebuffer(lastFb, GraphicBitFields::None);
   }
 
-// By invalidating the frame buffers attachment, bandwith and performance saving is aimed,
-// Nvidia driver issue makes the invalidate perform much worse. Clear will work the same in terms of bandwith saving
-// with no performance penalty.
-#define PREFER_CLEAR_OVER_INVALIDATE 1
-
   void Renderer::InvalidateFramebufferDepth(FramebufferPtr frameBuffer)
   {
-#if PREFER_CLEAR_OVER_INVALIDATE
     SetFramebuffer(frameBuffer, GraphicBitFields::DepthBits);
-#else
-    constexpr GLenum invalidAttachments[1] = {GL_DEPTH_ATTACHMENT};
-
-    SetFramebuffer(frameBuffer, GraphicBitFields::None);
-    RHI::InvalidateFramebuffer(GL_FRAMEBUFFER, 1, invalidAttachments);
-#endif
   }
 
   void Renderer::InvalidateFramebufferStencil(FramebufferPtr frameBuffer)
   {
-#if PREFER_CLEAR_OVER_INVALIDATE
     SetFramebuffer(frameBuffer, GraphicBitFields::StencilBits);
-#else
-    constexpr GLenum invalidAttachments[1] = {GL_STENCIL_ATTACHMENT};
-
-    SetFramebuffer(frameBuffer, GraphicBitFields::None);
-    RHI::InvalidateFramebuffer(GL_FRAMEBUFFER, 1, invalidAttachments);
-#endif
   }
 
-  void Renderer::InvalidateFramebufferDepthStencil(FramebufferPtr frameBuffer)
-  {
-#if PREFER_CLEAR_OVER_INVALIDATE
-    SetFramebuffer(frameBuffer, GraphicBitFields::DepthStencilBits);
-#else
-    constexpr GLenum invalidAttachments[2] = {GL_DEPTH_ATTACHMENT, GL_STENCIL_ATTACHMENT};
-
-    SetFramebuffer(frameBuffer, GraphicBitFields::None);
-    RHI::InvalidateFramebuffer(GL_FRAMEBUFFER, 2, invalidAttachments);
-#endif
-  }
+  void Renderer::InvalidateFramebufferDepthStencil(FramebufferPtr frameBuffer) {}
 
   void Renderer::SetViewport(Viewport* viewport) { SetFramebuffer(viewport->m_framebuffer, GraphicBitFields::AllBits); }
 

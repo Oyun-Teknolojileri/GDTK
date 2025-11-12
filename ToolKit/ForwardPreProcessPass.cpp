@@ -44,19 +44,23 @@ namespace ToolKit
   void ForwardPreProcessPass::InitBuffers(int width, int height, int sampleCount)
   {
     const FramebufferSettings& fbs = m_framebuffer->GetSettings();
-    bool requiresReconstruct = fbs.width != width || fbs.height != height || fbs.multiSampleFrameBuffer != sampleCount;
+    bool requiresReconstruct       = fbs.width != width || fbs.height != height;
 
     if (requiresReconstruct)
     {
-      m_framebuffer->ReconstructIfNeeded({width, height, false, false, sampleCount});
+      m_framebuffer->DetachDepthTexture();
+      m_framebuffer->ReconstructIfNeeded({width, height, false, false, 0});
       m_normalRt->ReconstructIfNeeded(width, height);
       m_linearDepthRt->ReconstructIfNeeded(width, height);
 
       m_framebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_linearDepthRt);
       m_framebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment1, m_normalRt);
+    }
 
-      // Pass incoming depth buffer to create z buffer for early z test.
-      if (DepthTexturePtr depth = m_params.FrameBuffer->GetDepthTexture())
+    // Pass incoming depth buffer to create z buffer for early z test.
+    if (DepthTexturePtr depth = m_params.FrameBuffer->GetDepthTexture())
+    {
+      if (depth != m_framebuffer->GetDepthTexture())
       {
         m_framebuffer->AttachDepthTexture(depth);
       }
@@ -106,6 +110,13 @@ namespace ToolKit
     Renderer* renderer = GetRenderer();
     renderer->SetFramebuffer(m_framebuffer, GraphicBitFields::AllBits);
     renderer->SetCamera(m_params.Cam, true);
+  }
+
+  void ForwardPreProcessPass::PostRender()
+  {
+    Pass::PostRender();
+    // Don't clear / invalidate depth, its being used for upcoming passes. Render pass uses it for Z pre-pass.
+    // Color channels are used for post process passes.
   }
 
 } // namespace ToolKit

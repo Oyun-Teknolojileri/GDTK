@@ -262,6 +262,10 @@ namespace ToolKit
     float nearClip             = shadows->GetShadowMinDistanceVal();
     float farClip              = cascadeDists[0];
 
+    // Prevents light leaking when view near is far away. Don't use shadowMinDistance here. It does
+    // not provide float precision since the projection is orthogonal.
+    nearClip                   = 0.001f;
+
     for (int i = 0; i < cascades; i++)
     {
       // Setting near far to cascade z boundaries for calculating tight cascade frustum.

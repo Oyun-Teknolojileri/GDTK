@@ -55,6 +55,18 @@ namespace ToolKit
       // Only the visible fragments will pass the test.
       renderer->SetDepthTestFunc(CompareFunctions::FuncLequal);
     }
+
+    if (DepthTexturePtr depthTexture = m_params.FrameBuffer->GetDepthTexture())
+    {
+      if (depthTexture->m_stencil)
+      {
+        renderer->InvalidateFramebufferDepth(m_params.FrameBuffer);
+      }
+      else
+      {
+        renderer->InvalidateFramebufferDepthStencil(m_params.FrameBuffer);
+      }
+    }
   }
 
   void ForwardRenderPass::PostRender()

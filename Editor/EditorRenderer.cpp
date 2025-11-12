@@ -77,7 +77,7 @@ namespace ToolKit
         m_passArray.push_back(m_uiPass);
         if (m_gammaTonemapFxaaPass->IsEnabled())
         {
-          m_passArray.push_back(m_gammaTonemapFxaaPass);
+          //m_passArray.push_back(m_gammaTonemapFxaaPass);
         }
         RenderPath::Render(renderer);
         m_params.App->ShowGizmos();
@@ -111,7 +111,7 @@ namespace ToolKit
         // Post process.
         if (m_gammaTonemapFxaaPass->IsEnabled())
         {
-          m_passArray.push_back(m_gammaTonemapFxaaPass);
+          //m_passArray.push_back(m_gammaTonemapFxaaPass);
         }
 
         RenderPath::Render(renderer);

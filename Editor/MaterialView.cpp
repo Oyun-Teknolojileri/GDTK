@@ -295,7 +295,7 @@ namespace ToolKit
         if (mat->GetDiffuseTextureVal() == nullptr)
         {
           Vec3 color = mat->GetColorVal();
-          if (ImGui::ColorEdit3("Diffuse Color", &color.x))
+          if (UI::SRGBColorEdit3("Diffuse Color", color))
           {
             mat->SetColorVal(color);
             updateThumbFn();
@@ -312,9 +312,9 @@ namespace ToolKit
         if (mat->GetEmissiveTextureVal() == nullptr)
         {
           Vec3 color = mat->GetEmissiveColorVal();
-          if (ImGui::ColorEdit3("Emissivity Color Multiplier##1",
-                                &color.x,
-                                ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_NoLabel | ImGuiColorEditFlags_Float))
+          if (UI::SRGBColorEdit3("Emissivity Color Multiplier##1",
+                                 color,
+                                 ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_NoLabel | ImGuiColorEditFlags_Float))
           {
             mat->SetEmissiveColorVal(color);
             updateThumbFn();

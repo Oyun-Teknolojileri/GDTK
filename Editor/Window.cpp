@@ -226,7 +226,7 @@ namespace ToolKit
         ModManager::GetInstance()->DispatchSignal(BaseMod::m_delete);
       }
 
-      if ((ImGui::IsKeyDown(ImGuiKey_ModCtrl) || ImGui::IsKeyDown(ImGuiKey_ModShift)) &&
+      if ((ImGui::IsKeyDown(ImGuiMod_Ctrl) || ImGui::IsKeyDown(ImGuiMod_Shift)) &&
           ImGui::IsKeyPressed(ImGuiKey_D, false) && !ImGui::IsMouseDown(ImGuiMouseButton_Right) &&
           !Exist(mask, ImGuiKey_D))
       {
@@ -275,9 +275,9 @@ namespace ToolKit
       // Undo - Redo.
       if (ImGui::IsKeyPressed(ImGuiKey_Z, false) && !Exist(mask, ImGuiKey_Z))
       {
-        if (ImGui::IsKeyDown(ImGuiKey_ModCtrl))
+        if (ImGui::IsKeyDown(ImGuiMod_Ctrl))
         {
-          if (ImGui::IsKeyDown(ImGuiKey_ModShift))
+          if (ImGui::IsKeyDown(ImGuiMod_Shift))
           {
             ActionManager::GetInstance()->Redo();
           }
@@ -293,7 +293,7 @@ namespace ToolKit
         GetApp()->GetCurrentScene()->ClearSelection();
       }
 
-      if (ImGui::IsKeyDown(ImGuiKey_ModCtrl) && ImGui::IsKeyPressed(ImGuiKey_S, false))
+      if (ImGui::IsKeyDown(ImGuiMod_Ctrl) && ImGui::IsKeyPressed(ImGuiKey_S, false))
       {
         GetApp()->GetCurrentScene()->ClearSelection();
         GetApp()->OnSaveScene();

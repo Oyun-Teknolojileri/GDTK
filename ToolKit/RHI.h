@@ -68,7 +68,6 @@ namespace ToolKit
    private:
     static void SetFramebuffer(GLenum target, GLuint framebufferID);
     static void DeleteFramebuffers(GLsizei n, const GLuint* framebuffers);
-    static void InvalidateFramebuffer(GLenum target, GLsizei numAttachments, const GLenum* attachments);
 
    private:
     static GLuint m_currentReadFramebufferID;

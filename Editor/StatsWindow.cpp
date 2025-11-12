@@ -46,10 +46,12 @@ namespace ToolKit
 
         UI::AddTooltipToLastItem("Enable to see the gpu frame time.\nHave a negative impact on cpu performance.");
 
-        EditorViewportPtr viewport = GetApp()->GetViewport(g_3dViewport);
-        ImGui::Text("Viewport Resolution: %dx%d",
-                    (int) viewport->m_wndContentAreaSize.x,
-                    (int) viewport->m_wndContentAreaSize.y);
+        if (EditorViewportPtr viewport = GetApp()->GetViewport(g_3dViewport))
+        {
+          ImGui::Text("Viewport Resolution: %dx%d",
+                      (int) viewport->m_wndContentAreaSize.x,
+                      (int) viewport->m_wndContentAreaSize.y);
+        }
 
         String stats = tkStats->GetPerFrameStats();
         ImGui::TextUnformatted(stats.c_str());

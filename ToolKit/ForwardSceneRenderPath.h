@@ -30,7 +30,6 @@ namespace ToolKit
       Cam                   = nullptr;
       Scene                 = nullptr;
       grid                  = nullptr;
-      applyGammaTonemapFxaa = false;
       postProcessSettings   = MakeNewPtr<PostProcessingSettings>();
     }
 
@@ -40,12 +39,9 @@ namespace ToolKit
     FramebufferPtr MainFramebuffer;
     EntityPtr grid;
     PostProcessingSettingsPtr postProcessSettings;
-    bool applyGammaTonemapFxaa;
   };
 
-  /**
-   * Forward scene render path. All objects are drawn in forward manner. Bandwidth optimized.
-   */
+  /** Forward scene render path. All objects are drawn in forward manner. Bandwidth optimized. */
   class TK_API ForwardSceneRenderPath : public RenderPath
   {
    public:

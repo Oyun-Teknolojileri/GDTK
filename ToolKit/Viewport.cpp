@@ -133,7 +133,7 @@ namespace ToolKit
     int msaaVal    = engineSettings.m_graphics->GetMSAAVal().GetValue<int>();
     m_framebuffer->ReconstructIfNeeded({width, height, false, true, msaaVal});
 
-    m_renderTarget = MakeNewPtr<RenderTarget>(width, height, settings);
+    m_renderTarget = MakeNewPtr<RenderTarget>(width, height, settings, "ViewportRT");
     m_renderTarget->Init();
     m_framebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_renderTarget);
   }

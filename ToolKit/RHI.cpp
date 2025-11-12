@@ -82,11 +82,6 @@ namespace ToolKit
     }
   }
 
-  void RHI::InvalidateFramebuffer(GLenum target, GLsizei numAttachments, const GLenum* attachments)
-  {
-    glInvalidateFramebuffer(target, numAttachments, attachments);
-  }
-
   void RHI::SetTexture(GLenum target, GLuint textureID, GLenum textureSlot)
   {
     assert(textureSlot >= 0 && textureSlot <= 31);
