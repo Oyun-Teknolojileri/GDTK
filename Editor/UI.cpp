@@ -35,7 +35,7 @@ namespace ToolKit
 
     const float g_indentSpacing = 6.0f;
     const int g_treeNodeFlags   = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick |
-                                ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowItemOverlap;
+                                ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowOverlap;
 
     bool UI::m_windowMenushowMetrics = false;
     bool UI::m_imguiSampleWindow     = false;
