@@ -123,11 +123,11 @@ namespace ToolKit
 #ifdef TK_GL_3_0
     if (enable)
     {
-      glEnable(GL_FRAMEBUFFER_SRGB);
+      glEnable(GL_FRAMEBUFFER_SRGB_EXT);
     }
     else
     {
-      glDisable(GL_FRAMEBUFFER_SRGB);
+      glDisable(GL_FRAMEBUFFER_SRGB_EXT);
     }
 #endif
   }

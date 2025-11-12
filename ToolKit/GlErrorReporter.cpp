@@ -23,7 +23,7 @@ namespace ToolKit
   void InitGLErrorReport(GlReportCallback callback)
   {
 #ifdef _WIN32
-    if (glDebugMessageCallback != NULL)
+    /*if (glDebugMessageCallback != NULL)
     {
       glEnable(GL_DEBUG_OUTPUT);
       glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
@@ -34,7 +34,7 @@ namespace ToolKit
       glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DEBUG_SEVERITY_LOW, 0, nullptr, GL_FALSE);
       glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DEBUG_SEVERITY_MEDIUM, 0, nullptr, GL_TRUE);
       glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DEBUG_SEVERITY_HIGH, 0, nullptr, GL_TRUE);
-    }
+    }*/
 #endif
     if (callback)
     {
@@ -59,12 +59,12 @@ namespace ToolKit
       case GL_INVALID_OPERATION:
         error = "INVALID_OPERATION";
         break;
-      case GL_STACK_OVERFLOW:
+      /* case GL_STACK_OVERFLOW:
         error = "STACK_OVERFLOW";
         break;
       case GL_STACK_UNDERFLOW:
         error = "STACK_UNDERFLOW";
-        break;
+        break;*/
       case GL_OUT_OF_MEMORY:
         error = "OUT_OF_MEMORY";
         break;

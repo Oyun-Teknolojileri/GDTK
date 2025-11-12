@@ -12,8 +12,8 @@
 #elif defined(TK_WEB)
   #include <GLES3/gl32.h>
 #else
-  #include <glad/gl.h>
-  //#include <glad/gles2.h>
+  //#include <glad/gl.h>
+  #include <glad/gles2.h>
 #endif
 
 #include "GlErrorReporter.h"
