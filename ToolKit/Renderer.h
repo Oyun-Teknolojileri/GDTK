@@ -114,6 +114,9 @@ namespace ToolKit
     Renderer();
     ~Renderer();
 
+    /** If the back buffer is srgb, enables auto encoding from linear render target to backbuffer. */
+    void SrgbAutoEncoding(bool enable);
+
     /** Performs required operations per frame at the begging of a full render cycle. */
     void BeginRenderFrame();
 

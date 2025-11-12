@@ -218,19 +218,9 @@ namespace ToolKit
       }
       else
       {
-
-#ifdef TK_GL_ES_3_0
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
-#endif
-
-// Opengl debuging & profiling features requires es 3_2 context
-#ifdef TK_GL_ES_3_2
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
-#endif
 
         SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
         SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
@@ -239,6 +229,8 @@ namespace ToolKit
 #ifdef TK_DEBUG
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
 #endif
+
+        SDL_GL_SetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, 0);
 
         g_window =
             SDL_CreateWindow(settings.m_window->GetNameVal().c_str(),
@@ -255,7 +247,11 @@ namespace ToolKit
         }
         else
         {
-          g_context = SDL_GL_CreateContext(g_window);
+          int srgbFlag = 0;
+          SDL_GL_GetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, &srgbFlag);
+          g_proxy->m_renderSys->m_backbufferFormatIsSRGB = (srgbFlag == 1);
+
+          g_context                                      = SDL_GL_CreateContext(g_window);
 
           if (g_context == nullptr)
           {

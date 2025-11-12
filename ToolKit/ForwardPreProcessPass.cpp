@@ -48,15 +48,19 @@ namespace ToolKit
 
     if (requiresReconstruct)
     {
+      m_framebuffer->DetachDepthTexture();
       m_framebuffer->ReconstructIfNeeded({width, height, false, false, 0});
       m_normalRt->ReconstructIfNeeded(width, height);
       m_linearDepthRt->ReconstructIfNeeded(width, height);
 
       m_framebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_linearDepthRt);
       m_framebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment1, m_normalRt);
+    }
 
-      // Pass incoming depth buffer to create z buffer for early z test.
-      if (DepthTexturePtr depth = m_params.FrameBuffer->GetDepthTexture())
+    // Pass incoming depth buffer to create z buffer for early z test.
+    if (DepthTexturePtr depth = m_params.FrameBuffer->GetDepthTexture())
+    {
+      if (depth != m_framebuffer->GetDepthTexture())
       {
         m_framebuffer->AttachDepthTexture(depth);
       }

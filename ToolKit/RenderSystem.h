@@ -111,12 +111,13 @@ namespace ToolKit
     /** Returns true if back buffer is not srgb. */
     bool IsGammaCorrectionNeeded();
 
-    /** Checks if the backbuffer is srgb and sets m_backbufferFormatIsSRGB. */
-    void TestSRGBBackBuffer();
-
    private:
     /** Implementation for executing render tasks. */
     void ExecuteTaskImp(RenderTask& task);
+
+   public:
+    /** States if the back buffer is srgb. */
+    bool m_backbufferFormatIsSRGB = false;
 
    private:
     /** High priority render queue. Tasks in this queue always finished. */
@@ -126,16 +127,13 @@ namespace ToolKit
     RenderTaskArray m_lowQueue;
 
     /** Current Renderer. */
-    Renderer* m_renderer          = nullptr;
+    Renderer* m_renderer = nullptr;
 
     /** Holds number of frames to skip. If its greater than zero renderer skip given frames. */
-    int m_skipFrames              = 0;
-
-    /** States if the back buffer is srgb. */
-    bool m_backbufferFormatIsSRGB = false;
+    int m_skipFrames     = 0;
 
     /** Number of elapsed frames since the engine start. */
-    uint m_frameCount             = 0;
+    uint m_frameCount    = 0;
   };
 
 } // namespace ToolKit

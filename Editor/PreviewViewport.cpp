@@ -21,10 +21,13 @@ namespace ToolKit
 
     PreviewViewport::PreviewViewport()
     {
-      m_previewRenderer                                 = MakeNewPtr<ForwardSceneRenderPath>();
-      m_previewRenderer->m_params.applyGammaTonemapFxaa = true;
-      m_previewRenderer->m_params.Cam                   = GetCamera();
-      m_previewRenderer->m_params.MainFramebuffer       = m_framebuffer;
+      m_previewRenderer                           = MakeNewPtr<ForwardSceneRenderPath>();
+      m_previewRenderer->m_params.Cam             = GetCamera();
+      m_previewRenderer->m_params.MainFramebuffer = m_framebuffer;
+
+      // Post process settings.
+      m_previewRenderer->m_params.postProcessSettings->SetFXAAEnabledVal(false);
+      m_previewRenderer->m_params.postProcessSettings->SetTonemappingEnabledVal(false);
     }
 
     PreviewViewport::~PreviewViewport() { m_previewRenderer = nullptr; }

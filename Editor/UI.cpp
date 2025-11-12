@@ -286,7 +286,7 @@ namespace ToolKit
       }
 
       // Fix gamma correction
-      if (!GetRenderSystem()->IsGammaCorrectionNeeded())
+      /* if (!GetRenderSystem()->IsGammaCorrectionNeeded())
       {
         float gamma = GetEngineSettings().m_postProcessing->GetGammaVal();
         for (ImVec4& col : ImGui::GetStyle().Colors)
@@ -295,7 +295,7 @@ namespace ToolKit
           col.y = std::powf(col.y, gamma);
           col.z = std::powf(col.z, gamma);
         }
-      }
+      }*/
     }
 
     void DarkTheme()
@@ -1358,6 +1358,18 @@ namespace ToolKit
 
       ImGui::SetCursorPosX((windowWidth - textWidth) * 0.5f);
       ImGui::Text(text.c_str());
+    }
+
+    bool UI::SRGBColorEdit3(const StringView label, Vec3& rgbColor, int flags)
+    {
+      Vec3 srgb = glm::pow(rgbColor, Vec3(1.0f / 2.2f));
+      if (ImGui::ColorEdit3(label.data(), &srgb.x, flags))
+      {
+        rgbColor = glm::pow(srgb, Vec3(2.2f));
+        return true;
+      }
+
+      return false;
     }
 
     String UI::EntityTypeToIcon(ClassMeta* Class)

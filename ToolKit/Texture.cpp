@@ -129,11 +129,9 @@ namespace ToolKit
                    m_width,
                    m_height,
                    0,
-                   GL_RGBA,
-                   GL_UNSIGNED_BYTE,
+                   (GLenum) m_settings.Format,
+                   (GLenum) m_settings.Type,
                    m_image);
-
-      Stats::AddVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat));
     }
     else
     {
@@ -143,12 +141,12 @@ namespace ToolKit
                    m_width,
                    m_height,
                    0,
-                   GL_RGBA,
-                   GL_FLOAT,
+                   (GLenum) m_settings.Format,
+                   (GLenum) m_settings.Type,
                    m_imagef);
-
-      Stats::AddVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat));
     }
+
+    Stats::AddVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat));
 
     if (m_settings.GenerateMipMap)
     {
@@ -249,6 +247,19 @@ namespace ToolKit
 
   void DepthTexture::Clear() { UnInit(); }
 
+  int DepthTexture::GetFormatSize()
+  {
+    int internalFormatSize = m_stencil ? 4 : 3;
+
+    int sizeMultiplier     = 1;
+    if (m_multiSample > 0 && glRenderbufferStorageMultisampleEXT != nullptr)
+    {
+      sizeMultiplier = m_multiSample;
+    }
+
+    return internalFormatSize * sizeMultiplier;
+  }
+
   void DepthTexture::Init(int width, int height, bool stencil, int multiSample)
   {
     if (m_initiated)
@@ -270,6 +281,8 @@ namespace ToolKit
     glGenRenderbuffers(1, &m_textureId);
     glBindRenderbuffer(GL_RENDERBUFFER, m_textureId);
 
+    Stats::SetGpuResourceLabel(m_label, GpuResourceType::RenderBuffer, m_textureId);
+
     int sizeMultiplier = 1;
     if (m_multiSample > 0 && glRenderbufferStorageMultisampleEXT != nullptr)
     {
@@ -281,8 +294,7 @@ namespace ToolKit
       glRenderbufferStorage(GL_RENDERBUFFER, (GLenum) GetDepthFormat(), m_width, m_height);
     }
 
-    uint64 internalFormatSize = stencil ? 4 : 3;
-    Stats::AddVRAMUsageInBytes((uint64) (m_width * m_height) * internalFormatSize * sizeMultiplier);
+    Stats::AddVRAMUsageInBytes((uint64) (m_width * m_height) * GetFormatSize());
   }
 
   void DepthTexture::UnInit()
@@ -293,9 +305,7 @@ namespace ToolKit
     }
 
     glDeleteRenderbuffers(1, &m_textureId);
-
-    uint64 internalFormatSize = m_stencil ? 4 : 3;
-    Stats::RemoveVRAMUsageInBytes((uint64) (m_width * m_height) * internalFormatSize);
+    Stats::RemoveVRAMUsageInBytes((uint64) (m_width * m_height) * GetFormatSize());
 
     m_textureId   = 0;
     m_initiated   = false;
@@ -927,7 +937,17 @@ namespace ToolKit
     else if (m_settings.Target == GraphicTypes::Target2DArray)
     {
       assert(m_settings.Layers > 0 && "Layer count must be at least 1");
-      glTexStorage3D(GL_TEXTURE_2D_ARRAY, 1, (int) m_settings.InternalFormat, m_width, m_height, m_settings.Layers);
+      glTexImage3D(GL_TEXTURE_2D_ARRAY,
+                   0,
+                   (int) m_settings.InternalFormat,
+                   m_width,
+                   m_height,
+                   m_settings.Layers,
+                   0,
+                   (int) m_settings.Format,
+                   (int) m_settings.Type,
+                   nullptr);
+
       Stats::AddVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat) * m_settings.Layers);
     }
 

@@ -97,12 +97,7 @@ namespace ToolKit
 
     if (m_depthAtch != nullptr)
     {
-      if (m_depthAtch.use_count() == 1)
-      {
-        // Only uninit, if its not shared.
-        m_depthAtch->UnInit();
-      }
-
+      m_depthAtch->UnInit();
       m_depthAtch = nullptr;
     }
 
@@ -146,15 +141,29 @@ namespace ToolKit
 
   void Framebuffer::AttachDepthTexture(DepthTexturePtr dt)
   {
-    m_depthAtch = dt;
-
+    assert(dt != nullptr && "Depth texture can't be null.");
     RHI::SetFramebuffer(GL_FRAMEBUFFER, m_fboId);
 
     // Attach depth buffer to FBO
-    GLenum attachment = dt->m_stencil ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT;
+    m_depthAtch       = dt;
+    GLenum attachment = m_depthAtch->m_stencil ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT;
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, attachment, GL_RENDERBUFFER, m_depthAtch->m_textureId);
 
     CheckFramebufferComplete();
+  }
+
+  DepthTexturePtr Framebuffer::DetachDepthTexture()
+  {
+    RHI::SetFramebuffer(GL_FRAMEBUFFER, m_fboId);
+
+    // Detach any renderbuffer attachments
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, 0);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, 0);
+
+    DepthTexturePtr dt = m_depthAtch;
+    m_depthAtch        = nullptr;
+
+    return dt;
   }
 
   DepthTexturePtr Framebuffer::GetDepthTexture() { return m_depthAtch; }
