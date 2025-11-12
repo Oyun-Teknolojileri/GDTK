@@ -103,6 +103,9 @@ namespace ToolKit
 
     SrgbAutoEncoding(GetRenderSystem()->m_backbufferFormatIsSRGB);
 
+    // Validate sRGB automatic encoding on backbuffer if enabled.
+    ValidateBackbufferSrgbEncoding();
+
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
   }
 
@@ -1599,6 +1602,66 @@ namespace ToolKit
     newCubeMap->Consume(cubemapRt);
 
     return newCubeMap;
+  }
+
+  void Renderer::ValidateBackbufferSrgbEncoding()
+  {
+    RenderSystem* rs = GetRenderSystem();
+    if (!rs)
+    {
+      return;
+    }
+
+    if (!rs->m_backbufferFormatIsSRGB)
+    {
+      // Nothing to validate if backbuffer not sRGB.
+      return;
+    }
+
+    // Work on backbuffer
+    RHI::SetFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    RHI::SetFramebuffer(GL_READ_FRAMEBUFFER, 0);
+    glViewport(0, 0, (GLsizei) 100, (GLsizei) 100);
+
+    // Clear with linear 0.5 gray
+    const float testLinear = 0.5f;
+    glClearColor(testLinear, testLinear, testLinear, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glFinish(); // Make sure clear completed
+
+    // Read back a single pixel
+    ubyte rgba[4] = {0, 0, 0, 0};
+    glReadPixels(0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+
+    // Expected sRGB encoding: encode_srgb(linear) = round(255 * srgb(linear))
+    auto linearToSrgb8 = [](float c) -> ubyte
+    {
+      float s;
+      if (c <= 0.0031308f)
+      {
+        s = 12.92f * c;
+      }
+      else
+      {
+        s = 1.055f * std::pow(c, 1.0f / 2.4f) - 0.055f;
+      }
+      int v = (int) glm::round(glm::clamp(s, 0.0f, 1.0f) * 255.0f);
+      return (ubyte) glm::clamp(v, 0, 255);
+    };
+
+    ubyte expected               = linearToSrgb8(testLinear);
+
+    // Allow small tolerance due to driver rounding
+    int tolerance                = 2;
+    bool matchR                  = std::abs((int) rgba[0] - (int) expected) <= tolerance;
+    bool matchG                  = std::abs((int) rgba[1] - (int) expected) <= tolerance;
+    bool matchB                  = std::abs((int) rgba[2] - (int) expected) <= tolerance;
+
+    bool backbufferIsSrgbEncoded = matchR && matchG && matchB;
+    if (!backbufferIsSrgbEncoded)
+    {
+      rs->m_backbufferFormatIsSRGB = false;
+    }
   }
 
 } // namespace ToolKit
