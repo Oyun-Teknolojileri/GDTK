@@ -22,6 +22,7 @@ namespace ToolKit
 
   void InitGLErrorReport(GlReportCallback callback)
   {
+#ifdef glDebugMessageCallback
     if (glDebugMessageCallback != NULL)
     {
       glEnable(GL_DEBUG_OUTPUT);
@@ -34,6 +35,7 @@ namespace ToolKit
       glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DEBUG_SEVERITY_MEDIUM, 0, nullptr, GL_TRUE);
       glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DEBUG_SEVERITY_HIGH, 0, nullptr, GL_TRUE);
     }
+#endif
 
     if (callback)
     {
