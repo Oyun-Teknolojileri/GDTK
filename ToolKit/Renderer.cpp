@@ -103,6 +103,9 @@ namespace ToolKit
 
     SrgbAutoEncoding(GetRenderSystem()->m_backbufferFormatIsSRGB);
 
+    // Validate sRGB automatic encoding on backbuffer if enabled.
+    ValidateBackbufferSrgbEncoding();
+
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
   }
 
@@ -120,14 +123,14 @@ namespace ToolKit
 
   void Renderer::SrgbAutoEncoding(bool enable)
   {
-#ifdef TK_GL_3_0
+#ifdef GL_FRAMEBUFFER_SRGB_EXT
     if (enable)
     {
-      glEnable(GL_FRAMEBUFFER_SRGB);
+      glEnable(GL_FRAMEBUFFER_SRGB_EXT);
     }
     else
     {
-      glDisable(GL_FRAMEBUFFER_SRGB);
+      glDisable(GL_FRAMEBUFFER_SRGB_EXT);
     }
 #endif
   }
@@ -1599,6 +1602,51 @@ namespace ToolKit
     newCubeMap->Consume(cubemapRt);
 
     return newCubeMap;
+  }
+
+  void Renderer::ValidateBackbufferSrgbEncoding()
+  {
+    RenderSystem* rsys = GetRenderSystem();
+    if (!rsys)
+    {
+      return;
+    }
+
+    if (!rsys->m_backbufferFormatIsSRGB)
+    {
+      // Nothing to validate if backbuffer not sRGB.
+      return;
+    }
+
+    // Work on backbuffer
+    RHI::SetFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    RHI::SetFramebuffer(GL_READ_FRAMEBUFFER, 0);
+    glViewport(0, 0, (GLsizei) 100, (GLsizei) 100);
+
+    // Clear with linear 0.5 gray
+    const float testLinear = 0.5f;
+    glClearColor(testLinear, testLinear, testLinear, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glFinish(); // Make sure clear completed
+
+    // Read back a single pixel
+    ubyte rgba[4] = {0, 0, 0, 0};
+    glReadPixels(0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+
+    // Expected sRGB encoding value
+    ubyte expected               = 188;
+
+    // Allow small tolerance due to driver rounding
+    int tolerance                = 2;
+    bool matchR                  = std::abs((int) rgba[0] - (int) expected) <= tolerance;
+    bool matchG                  = std::abs((int) rgba[1] - (int) expected) <= tolerance;
+    bool matchB                  = std::abs((int) rgba[2] - (int) expected) <= tolerance;
+
+    bool backbufferIsSrgbEncoded = matchR && matchG && matchB;
+    if (!backbufferIsSrgbEncoded)
+    {
+      rsys->m_backbufferFormatIsSRGB = false;
+    }
   }
 
 } // namespace ToolKit

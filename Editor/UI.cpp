@@ -101,6 +101,23 @@ namespace ToolKit
     UI::AnchorPresetImages UI::m_anchorPresetIcons;
 
     ImFont *LiberationSans, *LiberationSansBold, *IconFont;
+    static void (*Platform_CreateWindow)(ImGuiViewport* vp);
+
+    void TK_Platform_CreateWindow(ImGuiViewport* vp)
+    {
+      if (RenderSystem* rsys = GetRenderSystem())
+      {
+        if (rsys->m_backbufferFormatIsSRGB)
+        {
+          rsys->SrgbAutoEncoding(true);
+        }
+      }
+
+      if (Platform_CreateWindow)
+      {
+        Platform_CreateWindow(vp);
+      }
+    }
 
     void UI::Init()
     {
@@ -111,10 +128,18 @@ namespace ToolKit
       io.ConfigFlags                       |= ImGuiConfigFlags_DockingEnable | ImGuiConfigFlags_ViewportsEnable;
       io.ConfigWindowsMoveFromTitleBarOnly  = true;
 
+      if (RenderSystem* rsys = GetRenderSystem())
+      {
+        if (!rsys->m_backbufferFormatIsSRGB)
+        {
+          io.BackendFlags |= ImGuiBackendFlags_ToolKitGammaEncode;
+        }
+      }
+
       // Handle font loading.
-      static const ImWchar utf8TR[]         = {0x0020, 0x00FF, 0x00c7, 0x00c7, 0x00e7, 0x00e7, 0x011e, 0x011e, 0x011f,
-                                               0x011f, 0x0130, 0x0130, 0x0131, 0x0131, 0x00d6, 0x00d6, 0x00f6, 0x00f6,
-                                               0x015e, 0x015e, 0x015f, 0x015f, 0x00dc, 0x00dc, 0x00fc, 0x00fc, 0};
+      static const ImWchar utf8TR[] = {0x0020, 0x00FF, 0x00c7, 0x00c7, 0x00e7, 0x00e7, 0x011e, 0x011e, 0x011f,
+                                       0x011f, 0x0130, 0x0130, 0x0131, 0x0131, 0x00d6, 0x00d6, 0x00f6, 0x00f6,
+                                       0x015e, 0x015e, 0x015f, 0x015f, 0x00dc, 0x00dc, 0x00fc, 0x00fc, 0};
 
       io.Fonts->Clear();
       LiberationSans =
@@ -132,6 +157,11 @@ namespace ToolKit
 
       ImGui_ImplSDL2_InitForOpenGL(g_window, g_context);
       ImGui_ImplOpenGL3_Init("#version 300 es");
+
+      // Platform window create override.
+      ImGuiPlatformIO& pio      = ImGui::GetPlatformIO();
+      Platform_CreateWindow     = pio.Platform_CreateWindow;
+      pio.Platform_CreateWindow = &TK_Platform_CreateWindow;
 
       InitIcons();
       InitTheme();
@@ -548,6 +578,7 @@ namespace ToolKit
 
       ImGui::UpdatePlatformWindows();
       ImGui::RenderPlatformWindowsDefault();
+      SDL_GL_MakeCurrent(g_window, g_context);
     }
 
     void UI::ShowAppMainMenuBar()

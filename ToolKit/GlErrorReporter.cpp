@@ -22,7 +22,7 @@ namespace ToolKit
 
   void InitGLErrorReport(GlReportCallback callback)
   {
-#ifdef _WIN32
+#ifdef glDebugMessageCallback
     if (glDebugMessageCallback != NULL)
     {
       glEnable(GL_DEBUG_OUTPUT);
@@ -36,6 +36,7 @@ namespace ToolKit
       glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DEBUG_SEVERITY_HIGH, 0, nullptr, GL_TRUE);
     }
 #endif
+
     if (callback)
     {
       GlErrorReporter::Report = callback;

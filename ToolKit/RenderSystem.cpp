@@ -198,4 +198,12 @@ namespace ToolKit
 
   bool RenderSystem::IsGammaCorrectionNeeded() { return !m_backbufferFormatIsSRGB; }
 
+  void RenderSystem::SrgbAutoEncoding(bool enable)
+  {
+    if (m_renderer)
+    {
+      m_renderer->SrgbAutoEncoding(enable);
+    }
+  }
+
 } // namespace ToolKit
