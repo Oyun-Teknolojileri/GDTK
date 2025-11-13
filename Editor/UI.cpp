@@ -101,6 +101,23 @@ namespace ToolKit
     UI::AnchorPresetImages UI::m_anchorPresetIcons;
 
     ImFont *LiberationSans, *LiberationSansBold, *IconFont;
+    static void (*Platform_CreateWindow)(ImGuiViewport* vp);
+
+    void TK_Platform_CreateWindow(ImGuiViewport* vp)
+    {
+      if (RenderSystem* rsys = GetRenderSystem())
+      {
+        if (rsys->m_backbufferFormatIsSRGB)
+        {
+          rsys->SrgbAutoEncoding(true);
+        }
+      }
+
+      if (Platform_CreateWindow)
+      {
+        Platform_CreateWindow(vp);
+      }
+    }
 
     void UI::Init()
     {
@@ -140,6 +157,11 @@ namespace ToolKit
 
       ImGui_ImplSDL2_InitForOpenGL(g_window, g_context);
       ImGui_ImplOpenGL3_Init("#version 300 es");
+
+      // Platform window create override.
+      ImGuiPlatformIO& pio      = ImGui::GetPlatformIO();
+      Platform_CreateWindow     = pio.Platform_CreateWindow;
+      pio.Platform_CreateWindow = &TK_Platform_CreateWindow;
 
       InitIcons();
       InitTheme();

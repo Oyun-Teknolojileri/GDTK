@@ -123,7 +123,6 @@ namespace ToolKit
 
   void Renderer::SrgbAutoEncoding(bool enable)
   {
-#ifdef TK_GL_3_0
     if (enable)
     {
       glEnable(GL_FRAMEBUFFER_SRGB_EXT);
@@ -132,7 +131,6 @@ namespace ToolKit
     {
       glDisable(GL_FRAMEBUFFER_SRGB_EXT);
     }
-#endif
   }
 
   int Renderer::GetMaxArrayTextureLayers()
@@ -1606,13 +1604,13 @@ namespace ToolKit
 
   void Renderer::ValidateBackbufferSrgbEncoding()
   {
-    RenderSystem* rs = GetRenderSystem();
-    if (!rs)
+    RenderSystem* rsys = GetRenderSystem();
+    if (!rsys)
     {
       return;
     }
 
-    if (!rs->m_backbufferFormatIsSRGB)
+    if (!rsys->m_backbufferFormatIsSRGB)
     {
       // Nothing to validate if backbuffer not sRGB.
       return;
@@ -1633,23 +1631,8 @@ namespace ToolKit
     ubyte rgba[4] = {0, 0, 0, 0};
     glReadPixels(0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
 
-    // Expected sRGB encoding: encode_srgb(linear) = round(255 * srgb(linear))
-    auto linearToSrgb8 = [](float c) -> ubyte
-    {
-      float s;
-      if (c <= 0.0031308f)
-      {
-        s = 12.92f * c;
-      }
-      else
-      {
-        s = 1.055f * std::pow(c, 1.0f / 2.4f) - 0.055f;
-      }
-      int v = (int) glm::round(glm::clamp(s, 0.0f, 1.0f) * 255.0f);
-      return (ubyte) glm::clamp(v, 0, 255);
-    };
-
-    ubyte expected               = linearToSrgb8(testLinear);
+    // Expected sRGB encoding value
+    ubyte expected               = 188;
 
     // Allow small tolerance due to driver rounding
     int tolerance                = 2;
@@ -1660,7 +1643,7 @@ namespace ToolKit
     bool backbufferIsSrgbEncoded = matchR && matchG && matchB;
     if (!backbufferIsSrgbEncoded)
     {
-      rs->m_backbufferFormatIsSRGB = false;
+      rsys->m_backbufferFormatIsSRGB = false;
     }
   }
 

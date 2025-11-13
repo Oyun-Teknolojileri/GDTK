@@ -111,6 +111,9 @@ namespace ToolKit
     /** Returns true if back buffer is not srgb. */
     bool IsGammaCorrectionNeeded();
 
+    /** Enables gamma encoding when back buffer is srgb. */
+    void SrgbAutoEncoding(bool enable);
+
    private:
     /** Implementation for executing render tasks. */
     void ExecuteTaskImp(RenderTask& task);
