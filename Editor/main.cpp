@@ -376,9 +376,7 @@ namespace ToolKit
 
             TKUpdateFn postUpdateFn = [](float deltaTime)
             {
-              SDL_GL_MakeCurrent(g_window, g_context);
               SDL_GL_SwapWindow(g_window);
-
               g_sdlEventPool->ClearPool(); // Clear after consumption.
             };
 

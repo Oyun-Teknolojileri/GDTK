@@ -39,19 +39,18 @@ namespace ToolKit
 
     EditorRenderer::~EditorRenderer()
     {
-      m_billboardPass        = nullptr;
-      m_lightSystem          = nullptr;
-      m_sceneRenderPath      = nullptr;
-      m_uiPass               = nullptr;
-      m_editorPass           = nullptr;
-      m_gizmoPass            = nullptr;
-      m_outlinePass          = nullptr;
-      m_gammaTonemapFxaaPass = nullptr;
+      m_billboardPass   = nullptr;
+      m_lightSystem     = nullptr;
+      m_sceneRenderPath = nullptr;
+      m_uiPass          = nullptr;
+      m_editorPass      = nullptr;
+      m_gizmoPass       = nullptr;
+      m_outlinePass     = nullptr;
     }
 
     void EditorRenderer::Render(Renderer* renderer)
     {
-      PreRender();
+      PreRender(renderer);
       SetLitMode(renderer, m_params.LitMode);
 
       m_passArray.clear();
@@ -64,7 +63,7 @@ namespace ToolKit
         m_passArray.push_back(m_skipFramePass);
         RenderPath::Render(renderer);
 
-        PostRender();
+        PostRender(renderer);
         return;
       }
 
@@ -75,10 +74,6 @@ namespace ToolKit
         sceneRenderer->m_params.grid = nullptr;
         sceneRenderer->Render(renderer);
         m_passArray.push_back(m_uiPass);
-        if (m_gammaTonemapFxaaPass->IsEnabled())
-        {
-          //m_passArray.push_back(m_gammaTonemapFxaaPass);
-        }
         RenderPath::Render(renderer);
         m_params.App->ShowGizmos();
         break;
@@ -108,19 +103,13 @@ namespace ToolKit
         // Scene meshes can't block editor billboards. Desired for this case.
         m_passArray.push_back(m_billboardPass);
 
-        // Post process.
-        if (m_gammaTonemapFxaaPass->IsEnabled())
-        {
-          //m_passArray.push_back(m_gammaTonemapFxaaPass);
-        }
-
         RenderPath::Render(renderer);
       }
 
-      PostRender();
+      PostRender(renderer);
     }
 
-    void EditorRenderer::PreRender()
+    void EditorRenderer::PreRender(Renderer* renderer)
     {
       App* app                            = m_params.App;
       m_camera                            = m_params.Viewport->GetCamera();
@@ -150,6 +139,12 @@ namespace ToolKit
 
       m_sceneRenderPath->m_params.MainFramebuffer = viewport->m_framebuffer;
       m_sceneRenderPath->m_params.Scene           = scene;
+
+      if (!GetRenderSystem()->m_backbufferFormatIsSRGB)
+      {
+        // If a linear space back buffer is used, we need to apply gamma after imgui, so skip it in scene render path.
+        m_sceneRenderPath->m_params.postProcessSettings->SetGammaCorrectionEnabledVal(false);
+      }
 
       if (app->m_showSceneBoundary)
       {
@@ -295,24 +290,15 @@ namespace ToolKit
 
       RenderJobProcessor::SeperateRenderData(m_uiRenderData, true);
 
-      m_uiPass->m_params.renderData                          = &m_uiRenderData;
-      m_uiPass->m_params.Cam                                 = GetUIManager()->GetUICamera();
-      m_uiPass->m_params.FrameBuffer                         = viewport->m_framebuffer;
-      m_uiPass->m_params.clearBuffer                         = GraphicBitFields::DepthBits;
-
-      // Post process pass
-      m_gammaTonemapFxaaPass->m_params.frameBuffer           = viewport->m_framebuffer;
-      m_gammaTonemapFxaaPass->m_params.enableGammaCorrection = GetRenderSystem()->IsGammaCorrectionNeeded();
-      m_gammaTonemapFxaaPass->m_params.enableFxaa            = pps->GetFXAAEnabledVal();
-      m_gammaTonemapFxaaPass->m_params.enableTonemapping     = pps->GetTonemappingEnabledVal();
-      m_gammaTonemapFxaaPass->m_params.gamma                 = pps->GetGammaVal();
-      m_gammaTonemapFxaaPass->m_params.screenSize            = viewport->m_size;
-      m_gammaTonemapFxaaPass->m_params.tonemapMethod         = pps->GetTonemapperModeVal().GetEnum<TonemapMethod>();
+      m_uiPass->m_params.renderData  = &m_uiRenderData;
+      m_uiPass->m_params.Cam         = GetUIManager()->GetUICamera();
+      m_uiPass->m_params.FrameBuffer = viewport->m_framebuffer;
+      m_uiPass->m_params.clearBuffer = GraphicBitFields::DepthBits;
 
       // Gizmo Pass.
-      m_gizmoPass->m_params.Viewport                         = viewport;
+      m_gizmoPass->m_params.Viewport = viewport;
 
-      EditorBillboardPtr anchorGizmo                         = nullptr;
+      EditorBillboardPtr anchorGizmo = nullptr;
       if (viewport->IsA<EditorViewport2d>())
       {
         anchorGizmo = app->m_anchor;
@@ -320,7 +306,7 @@ namespace ToolKit
       m_gizmoPass->m_params.GizmoArray = {app->m_gizmo, anchorGizmo};
     }
 
-    void EditorRenderer::PostRender() { m_params.App->m_perFrameDebugObjects.clear(); }
+    void EditorRenderer::PostRender(Renderer* renderer) { m_params.App->m_perFrameDebugObjects.clear(); }
 
     void EditorRenderer::SetLitMode(Renderer* renderer, EditorLitMode mode)
     {
@@ -347,14 +333,13 @@ namespace ToolKit
       m_unlitOverride->Init();
       m_blackMaterial->Init();
 
-      m_billboardPass        = MakeNewPtr<BillboardPass>();
-      m_sceneRenderPath      = MakeNewPtr<ForwardSceneRenderPath>();
-      m_uiPass               = MakeNewPtr<ForwardRenderPass>();
-      m_editorPass           = MakeNewPtr<ForwardRenderPass>();
-      m_gizmoPass            = MakeNewPtr<GizmoPass>();
-      m_outlinePass          = MakeNewPtr<OutlinePass>();
-      m_skipFramePass        = MakeNewPtr<FullQuadPass>();
-      m_gammaTonemapFxaaPass = MakeNewPtr<GammaTonemapFxaaPass>();
+      m_billboardPass   = MakeNewPtr<BillboardPass>();
+      m_sceneRenderPath = MakeNewPtr<ForwardSceneRenderPath>();
+      m_uiPass          = MakeNewPtr<ForwardRenderPass>();
+      m_editorPass      = MakeNewPtr<ForwardRenderPass>();
+      m_gizmoPass       = MakeNewPtr<GizmoPass>();
+      m_outlinePass     = MakeNewPtr<OutlinePass>();
+      m_skipFramePass   = MakeNewPtr<FullQuadPass>();
     }
 
     void EditorRenderer::OutlineSelecteds(Renderer* renderer)

@@ -111,10 +111,18 @@ namespace ToolKit
       io.ConfigFlags                       |= ImGuiConfigFlags_DockingEnable | ImGuiConfigFlags_ViewportsEnable;
       io.ConfigWindowsMoveFromTitleBarOnly  = true;
 
+      if (RenderSystem* rsys = GetRenderSystem())
+      {
+        if (!rsys->m_backbufferFormatIsSRGB)
+        {
+          io.BackendFlags |= ImGuiBackendFlags_ToolKitGammaEncode;
+        }
+      }
+
       // Handle font loading.
-      static const ImWchar utf8TR[]         = {0x0020, 0x00FF, 0x00c7, 0x00c7, 0x00e7, 0x00e7, 0x011e, 0x011e, 0x011f,
-                                               0x011f, 0x0130, 0x0130, 0x0131, 0x0131, 0x00d6, 0x00d6, 0x00f6, 0x00f6,
-                                               0x015e, 0x015e, 0x015f, 0x015f, 0x00dc, 0x00dc, 0x00fc, 0x00fc, 0};
+      static const ImWchar utf8TR[] = {0x0020, 0x00FF, 0x00c7, 0x00c7, 0x00e7, 0x00e7, 0x011e, 0x011e, 0x011f,
+                                       0x011f, 0x0130, 0x0130, 0x0131, 0x0131, 0x00d6, 0x00d6, 0x00f6, 0x00f6,
+                                       0x015e, 0x015e, 0x015f, 0x015f, 0x00dc, 0x00dc, 0x00fc, 0x00fc, 0};
 
       io.Fonts->Clear();
       LiberationSans =
@@ -548,6 +556,7 @@ namespace ToolKit
 
       ImGui::UpdatePlatformWindows();
       ImGui::RenderPlatformWindowsDefault();
+      SDL_GL_MakeCurrent(g_window, g_context);
     }
 
     void UI::ShowAppMainMenuBar()
