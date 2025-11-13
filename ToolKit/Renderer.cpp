@@ -123,6 +123,7 @@ namespace ToolKit
 
   void Renderer::SrgbAutoEncoding(bool enable)
   {
+#ifdef GL_FRAMEBUFFER_SRGB_EXT
     if (enable)
     {
       glEnable(GL_FRAMEBUFFER_SRGB_EXT);
@@ -131,6 +132,7 @@ namespace ToolKit
     {
       glDisable(GL_FRAMEBUFFER_SRGB_EXT);
     }
+#endif
   }
 
   int Renderer::GetMaxArrayTextureLayers()
