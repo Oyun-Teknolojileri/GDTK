@@ -83,8 +83,7 @@ namespace ToolKit
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
 
-    // EGL does not support sRGB backbuffer. Need to use an extension
-    // https://stackoverflow.com/questions/20396523/android-egl-srgb-default-renderbuffer
+    SDL_GL_SetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, 1);
 
     SDL_DisplayMode DM;
     SDL_GetCurrentDisplayMode(0, &DM);
@@ -123,6 +122,10 @@ namespace ToolKit
       g_running = false;
       return;
     }
+
+    int srgbFlag = 0;
+    SDL_GL_GetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, &srgbFlag);
+    g_proxy->m_renderSys->m_backbufferFormatIsSRGB = (srgbFlag == 1);
 
     SDL_GL_MakeCurrent(g_window, g_context);
     const char* error = SDL_GetError();

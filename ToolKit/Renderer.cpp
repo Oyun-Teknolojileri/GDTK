@@ -101,10 +101,10 @@ namespace ToolKit
     glEnable(GL_CULL_FACE);
     glEnable(GL_DEPTH_TEST);
 
-    SrgbAutoEncoding(GetRenderSystem()->m_backbufferFormatIsSRGB);
-
     // Validate sRGB automatic encoding on backbuffer if enabled.
     ValidateBackbufferSrgbEncoding();
+
+    SrgbAutoEncoding(GetRenderSystem()->m_backbufferFormatIsSRGB);
 
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
   }
@@ -123,16 +123,25 @@ namespace ToolKit
 
   void Renderer::SrgbAutoEncoding(bool enable)
   {
-#ifdef GL_FRAMEBUFFER_SRGB_EXT
-    if (enable)
-    {
-      glEnable(GL_FRAMEBUFFER_SRGB_EXT);
-    }
-    else
-    {
-      glDisable(GL_FRAMEBUFFER_SRGB_EXT);
-    }
+#ifdef GL_FRAMEBUFFER_SRGB
+    const int glSrgbFlag = GL_FRAMEBUFFER_SRGB;
+#elif defined(GL_FRAMEBUFFER_SRGB_EXT)
+    const int glSrgbFlag = GL_FRAMEBUFFER_SRGB_EXT;
+#else
+    const int glSrgbFlag = 0;
 #endif
+
+    if constexpr (glSrgbFlag)
+    {
+      if (enable)
+      {
+        glEnable(glSrgbFlag);
+      }
+      else
+      {
+        glDisable(glSrgbFlag);
+      }
+    }
   }
 
   int Renderer::GetMaxArrayTextureLayers()
