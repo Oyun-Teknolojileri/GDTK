@@ -450,24 +450,29 @@ namespace ToolKit
     }
   }
 
-  void Renderer::SetFramebuffer(FramebufferPtr fb,
+  void Renderer::SetFramebuffer(FramebufferPtr frameBuffer,
                                 GraphicBitFields attachmentsToClear,
                                 const Vec4& clearColor,
-                                GraphicFramebufferTypes fbType)
+                                GraphicFramebufferTypes frameBufferType)
   {
-    if (fb != nullptr)
+    if (frameBuffer != nullptr)
     {
-      RHI::SetFramebuffer((GLenum) fbType, fb->GetFboId());
+      RHI::SetFramebuffer((GLenum) frameBufferType, frameBuffer->GetFboId());
+      if (m_framebuffer != frameBuffer)
+      {
+        frameBuffer->SetDrawBuffers();
+      }
 
-      const FramebufferSettings& fbSet = fb->GetSettings();
+      const FramebufferSettings& fbSet = frameBuffer->GetSettings();
       SetViewportSize(fbSet.width, fbSet.height);
     }
     else
     {
       // Backbuffer
-      RHI::SetFramebuffer((GLenum) fbType, 0);
-
+      RHI::SetFramebuffer((GLenum) frameBufferType, 0);
       SetViewportSize(m_windowSize.x, m_windowSize.y);
+
+      glDrawBuffer(GL_BACK);
     }
 
     if (attachmentsToClear != GraphicBitFields::None)
@@ -475,7 +480,7 @@ namespace ToolKit
       ClearBuffer(attachmentsToClear, clearColor);
     }
 
-    m_framebuffer = fb;
+    m_framebuffer = frameBuffer;
   }
 
   void Renderer::StartTimerQuery()
@@ -578,15 +583,27 @@ namespace ToolKit
 
   void Renderer::InvalidateFramebufferDepth(FramebufferPtr frameBuffer)
   {
-    SetFramebuffer(frameBuffer, GraphicBitFields::DepthBits);
+    constexpr GLenum invalidAttachments[1] = {GL_DEPTH_ATTACHMENT};
+    RHI::SetFramebuffer(GL_READ_FRAMEBUFFER, frameBuffer->GetFboId());
+    // glInvalidateFramebuffer(GL_READ_FRAMEBUFFER, 1, invalidAttachments);
+    glClear(GL_DEPTH_BUFFER_BIT);
   }
 
   void Renderer::InvalidateFramebufferStencil(FramebufferPtr frameBuffer)
   {
-    SetFramebuffer(frameBuffer, GraphicBitFields::StencilBits);
+    constexpr GLenum invalidAttachments[1] = {GL_STENCIL_ATTACHMENT};
+    RHI::SetFramebuffer(GL_READ_FRAMEBUFFER, frameBuffer->GetFboId());
+    // glInvalidateFramebuffer(GL_READ_FRAMEBUFFER, 1, invalidAttachments);
+    glClear(GL_STENCIL_BUFFER_BIT);
   }
 
-  void Renderer::InvalidateFramebufferDepthStencil(FramebufferPtr frameBuffer) {}
+  void Renderer::InvalidateFramebufferDepthStencil(FramebufferPtr frameBuffer)
+  {
+    constexpr GLenum invalidAttachments[1] = {GL_DEPTH_STENCIL_ATTACHMENT};
+    RHI::SetFramebuffer(GL_READ_FRAMEBUFFER, frameBuffer->GetFboId());
+    // glInvalidateFramebuffer(GL_READ_FRAMEBUFFER, 1, invalidAttachments);
+    glClear(GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+  }
 
   void Renderer::SetViewport(Viewport* viewport) { SetFramebuffer(viewport->m_framebuffer, GraphicBitFields::AllBits); }
 

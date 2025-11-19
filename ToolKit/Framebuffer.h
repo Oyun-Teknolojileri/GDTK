@@ -99,8 +99,10 @@ namespace ToolKit
     /** Resolves all attachment in the frame buffer. */
     void Resolve();
 
-   private:
+    /** Sets attachments as draw buffers. Must be called when the frame buffer set as current. */
     void SetDrawBuffers();
+
+   private:
     bool IsColorAttachment(Attachment atc);
     void CheckFramebufferComplete();
 

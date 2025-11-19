@@ -68,6 +68,9 @@ namespace ToolKit
     /** Removes image data. */
     virtual void Clear();
 
+    /** Used to set graphics api settings for texture creation.*/
+    void ApplyTextureSettings(const TextureSettings& settings);
+
    public:
     uint m_textureId  = 0;
     int m_width       = 0;

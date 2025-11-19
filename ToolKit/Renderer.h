@@ -146,10 +146,10 @@ namespace ToolKit
 
     FramebufferPtr GetFrameBuffer();
 
-    void SetFramebuffer(FramebufferPtr fb,
+    void SetFramebuffer(FramebufferPtr frameBuffer,
                         GraphicBitFields attachmentsToClear,
-                        const Vec4& clearColor         = Vec4(0.0f),
-                        GraphicFramebufferTypes fbType = GraphicFramebufferTypes::Framebuffer);
+                        const Vec4& clearColor                  = Vec4(0.0f),
+                        GraphicFramebufferTypes frameBufferType = GraphicFramebufferTypes::Framebuffer);
 
     void InvalidateFramebufferDepth(FramebufferPtr frameBuffer);
     void InvalidateFramebufferStencil(FramebufferPtr frameBuffer);
