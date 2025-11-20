@@ -64,15 +64,21 @@ namespace ToolKit
     static void SetTexture(GLenum target, GLuint textureID, GLenum textureSlot = 31);
     static void DeleteTexture(GLuint textureID);
     static void BindVertexArray(GLuint VAO);
-
-   private:
     static void SetFramebuffer(GLenum target, GLuint framebufferID);
     static void DeleteFramebuffers(GLsizei n, const GLuint* framebuffers);
+
+    static void StoreFramebufferBindings();
+    static void RestoreFramebufferBindings();
 
    private:
     static GLuint m_currentReadFramebufferID;
     static GLuint m_currentDrawFramebufferID;
     static GLuint m_currentFramebufferID;
+
+    static GLuint m_storedReadFramebufferID;
+    static GLuint m_storedDrawFramebufferID;
+    static GLuint m_storedFramebufferID;
+
     static GLuint m_currentVAO;
 
     static TextureIdSlotMap m_textureIdSlotMap;

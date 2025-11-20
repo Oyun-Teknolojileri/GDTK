@@ -42,7 +42,7 @@ namespace ToolKit
                    GraphicTypes::FormatSRGB8_A8,
                    GraphicTypes::FormatRGBA,
                    GraphicTypes::TypeUnsignedByte,
-                    1,
+                   1,
                    -1,
                    true};
 
@@ -236,6 +236,10 @@ namespace ToolKit
     glGenerateMipmap((GLenum) m_settings.Target);
   }
 
+  bool Texture::IsMultiSampled() { return m_settings.msaaCount > 1; }
+
+  void Texture::Resolve() { TK_WRN("Resolve not implemented for this texture type."); }
+
   void Texture::Clear()
   {
     ImageFree(m_image);
@@ -262,6 +266,14 @@ namespace ToolKit
   //////////////////////////////////////////
 
   TKDefineClass(DepthTexture, Texture);
+
+  DepthTexture::DepthTexture()
+  {
+    m_settings.MinFilter = GraphicTypes::SampleNearest;
+    m_settings.MagFilter = GraphicTypes::SampleNearest;
+    m_settings.WarpS     = GraphicTypes::UVClampToEdge;
+    m_settings.WarpT     = GraphicTypes::UVClampToEdge;
+  }
 
   void DepthTexture::Load() {}
 
@@ -332,15 +344,87 @@ namespace ToolKit
     glDeleteRenderbuffers(1, &m_textureId);
     Stats::RemoveVRAMUsageInBytes((uint64) (m_width * m_height) * GetFormatSize());
 
-    m_textureId   = 0;
-    m_initiated   = false;
-    m_constructed = false;
-    m_stencil     = false;
+    m_textureId = 0;
+    m_initiated = false;
+    m_stencil   = false;
   }
 
   GraphicTypes DepthTexture::GetDepthFormat()
   {
     return m_stencil ? GraphicTypes::FormatDepth24Stencil8 : GraphicTypes::FormatDepth24;
+  }
+
+  void DepthTexture::Resolve()
+  {
+    // Create resolved depth texture if it doesn't exist
+    uint resolvedTextureId = 0;
+    if (m_resolvedTexture == nullptr)
+    {
+      glGenTextures(1, &resolvedTextureId);
+      RHI::SetTexture(GL_TEXTURE_2D, resolvedTextureId);
+
+      glTexImage2D(GL_TEXTURE_2D,
+                   0,
+                   (GLenum) GetDepthFormat(),
+                   m_width,
+                   m_height,
+                   0,
+                   GL_DEPTH_COMPONENT,
+                   GL_UNSIGNED_INT,
+                   nullptr);
+
+      // Apply basic texture settings for depth
+      ApplyTextureSettings(m_settings);
+
+      m_resolvedTexture                = MakeNewPtr<Texture>();
+      m_resolvedTexture->m_textureId   = resolvedTextureId;
+      m_resolvedTexture->m_width       = m_width;
+      m_resolvedTexture->m_height      = m_height;
+
+      TextureSettings resolvedSettings = m_settings;
+      resolvedSettings.msaaCount       = 1;
+      m_resolvedTexture->Settings(resolvedSettings);
+      m_resolvedTexture->m_initiated = true;
+    }
+    else
+    {
+      resolvedTextureId = m_resolvedTexture->m_textureId;
+    }
+
+    // Create temporary framebuffers
+    GLuint readFBO = 0, drawFBO = 0;
+    glGenFramebuffers(1, &readFBO);
+    glGenFramebuffers(1, &drawFBO);
+
+    // Setup read framebuffer with MSAA depth renderbuffer
+    RHI::SetFramebuffer(GL_READ_FRAMEBUFFER, readFBO);
+    GLenum depthAttachment = m_stencil ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT;
+    glFramebufferRenderbuffer(GL_READ_FRAMEBUFFER, depthAttachment, GL_RENDERBUFFER, m_textureId);
+
+    // Setup draw framebuffer with resolved depth texture
+    RHI::SetFramebuffer(GL_DRAW_FRAMEBUFFER, drawFBO);
+    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, depthAttachment, GL_TEXTURE_2D, resolvedTextureId, 0);
+
+    // Check framebuffer completeness
+    GLenum readStatus = glCheckFramebufferStatus(GL_READ_FRAMEBUFFER);
+    GLenum drawStatus = glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER);
+
+    if (readStatus != GL_FRAMEBUFFER_COMPLETE || drawStatus != GL_FRAMEBUFFER_COMPLETE)
+    {
+      TK_ERR("Depth framebuffer incomplete during resolve. Read: 0x%X, Draw: 0x%X", readStatus, drawStatus);
+      RHI::DeleteFramebuffers(1, &readFBO);
+      RHI::DeleteFramebuffers(1, &drawFBO);
+      return;
+    }
+
+    // Blit depth (and stencil if present)
+    GLbitfield blitMask = m_stencil ? (GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT) : GL_DEPTH_BUFFER_BIT;
+
+    glBlitFramebuffer(0, 0, m_width, m_height, 0, 0, m_width, m_height, blitMask, GL_NEAREST);
+
+    // Cleanup
+    glDeleteFramebuffers(1, &readFBO);
+    glDeleteFramebuffers(1, &drawFBO);
   }
 
   // DataTexture
@@ -1022,6 +1106,87 @@ namespace ToolKit
     {
       Reconstruct(width, height, settings != nullptr ? *settings : m_settings);
     }
+  }
+
+  void RenderTarget::Resolve()
+  {
+    assert(m_initiated && "Render target is not initialized.");
+    assert(IsMultiSampled() && "Render target is not multi sampled.");
+
+    // MSAA render target is a renderbuffer, we need to create a regular texture
+    uint resolvedTextureId = 0;
+    if (m_resolvedTexture == nullptr)
+    {
+      // Create single-sample texture for resolved output
+      glGenTextures(1, &resolvedTextureId);
+      RHI::SetTexture(GL_TEXTURE_2D, resolvedTextureId);
+
+      // Allocate storage for resolved texture
+      glTexImage2D(GL_TEXTURE_2D,
+                   0,
+                   (int) m_settings.InternalFormat,
+                   m_width,
+                   m_height,
+                   0,
+                   (int) m_settings.Format,
+                   (int) m_settings.Type,
+                   nullptr);
+
+      // Apply texture settings to resolved texture
+      TextureSettings resolvedSettings = m_settings;
+      resolvedSettings.msaaCount       = 1;
+      ApplyTextureSettings(resolvedSettings);
+
+      // Generate mipmaps if needed
+      if (m_settings.GenerateMipMap)
+      {
+        glGenerateMipmap(GL_TEXTURE_2D);
+      }
+
+      m_resolvedTexture              = MakeNewPtr<RenderTarget>();
+      m_resolvedTexture->m_textureId = resolvedTextureId;
+      m_resolvedTexture->m_width     = m_width;
+      m_resolvedTexture->m_height    = m_height;
+      m_resolvedTexture->Settings(resolvedSettings);
+      m_resolvedTexture->m_initiated = true;
+    }
+    else
+    {
+      resolvedTextureId = m_resolvedTexture->m_textureId;
+    }
+
+    // We need two framebuffers: one for MSAA renderbuffer (read), one for resolved texture (draw)
+    GLuint readFBO = 0, drawFBO = 0;
+
+    glGenFramebuffers(1, &readFBO);
+    glGenFramebuffers(1, &drawFBO);
+
+    // Attach MSAA renderbuffer to read framebuffer
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, readFBO);
+    glFramebufferRenderbuffer(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, m_textureId);
+
+    // Attach resolved texture to draw framebuffer
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, drawFBO);
+    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, resolvedTextureId, 0);
+
+    // Check framebuffer completeness
+    GLenum readStatus = glCheckFramebufferStatus(GL_READ_FRAMEBUFFER);
+    GLenum drawStatus = glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER);
+
+    if (readStatus != GL_FRAMEBUFFER_COMPLETE || drawStatus != GL_FRAMEBUFFER_COMPLETE)
+    {
+      TK_ERR("Framebuffer incomplete during MSAA resolve. Read: 0x%X, Draw: 0x%X", readStatus, drawStatus);
+      glDeleteFramebuffers(1, &readFBO);
+      glDeleteFramebuffers(1, &drawFBO);
+      return;
+    }
+
+    // Blit from MSAA to single-sample (this performs the resolve)
+    glBlitFramebuffer(0, 0, m_width, m_height, 0, 0, m_width, m_height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+
+    // Cleanup temporary framebuffers
+    glDeleteFramebuffers(1, &readFBO);
+    glDeleteFramebuffers(1, &drawFBO);
   }
 
   // TextureManager

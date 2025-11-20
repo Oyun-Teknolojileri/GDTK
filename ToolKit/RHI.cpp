@@ -11,10 +11,14 @@
 
 namespace ToolKit
 {
-  GLuint RHI::m_currentReadFramebufferID = UINT_MAX;
-  GLuint RHI::m_currentDrawFramebufferID = UINT_MAX;
-  GLuint RHI::m_currentFramebufferID     = UINT_MAX;
-  GLuint RHI::m_currentVAO               = UINT_MAX;
+  GLuint RHI::m_currentReadFramebufferID = -1;
+  GLuint RHI::m_currentDrawFramebufferID = -1;
+  GLuint RHI::m_currentFramebufferID     = -1;
+  GLuint RHI::m_currentVAO               = -1;
+  GLuint RHI::m_storedReadFramebufferID  = -1;
+  GLuint RHI::m_storedDrawFramebufferID  = -1;
+  GLuint RHI::m_storedFramebufferID      = -1;
+
   RHI::TextureIdSlotMap RHI::m_textureIdSlotMap;
 
   void RHI::SetFramebuffer(GLenum target, GLuint framebufferID)
@@ -80,6 +84,24 @@ namespace ToolKit
         m_currentDrawFramebufferID = -1;
       }
     }
+  }
+
+  void RHI::StoreFramebufferBindings()
+  {
+    m_storedReadFramebufferID = m_currentReadFramebufferID;
+    m_storedDrawFramebufferID = m_currentDrawFramebufferID;
+    m_storedFramebufferID     = m_currentFramebufferID;
+  }
+
+  void RHI::RestoreFramebufferBindings()
+  {
+    SetFramebuffer(GL_READ_FRAMEBUFFER, m_storedReadFramebufferID);
+    SetFramebuffer(GL_DRAW_FRAMEBUFFER, m_storedDrawFramebufferID);
+    SetFramebuffer(GL_FRAMEBUFFER, m_storedFramebufferID);
+
+    m_storedReadFramebufferID = -1;
+    m_storedDrawFramebufferID = -1;
+    m_storedFramebufferID     = -1;
   }
 
   void RHI::SetTexture(GLenum target, GLuint textureID, GLenum textureSlot)

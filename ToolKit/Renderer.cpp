@@ -676,6 +676,8 @@ namespace ToolKit
 
   void Renderer::CopyTexture(TexturePtr src, TexturePtr dst)
   {
+    RHI::StoreFramebufferBindings();
+
     assert(src->m_initiated && dst->m_initiated && "Texture is not initialized.");
     assert(src->m_width == dst->m_width && src->m_height == dst->m_height && "Sizes of the textures are not the same.");
 
@@ -688,9 +690,7 @@ namespace ToolKit
 
     m_copyFb->ReconstructIfNeeded(src->m_width, src->m_height);
 
-    FramebufferPtr lastFb = m_framebuffer;
-
-    RenderTargetPtr rt    = Cast<RenderTarget>(dst);
+    RenderTargetPtr rt = Cast<RenderTarget>(dst);
     m_copyFb->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, rt);
     SetFramebuffer(m_copyFb, GraphicBitFields::AllBits);
 
@@ -708,7 +708,8 @@ namespace ToolKit
     m_copyMaterial->Init();
 
     DrawFullQuad(m_copyMaterial);
-    SetFramebuffer(lastFb, GraphicBitFields::None);
+
+    RHI::RestoreFramebufferBindings();
   }
 
   void Renderer::OverrideBlendState(bool enableOverride, BlendFunction func)

@@ -25,11 +25,20 @@ namespace ToolKit
   {
     Pass::PreRender();
 
-    RenderTargetPtr srcTexture = m_params.frameBuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
-    m_processTexture->ReconstructIfNeeded(srcTexture->m_width, srcTexture->m_height, &srcTexture->Settings());
-
-    Renderer* renderer = GetRenderer();
-    renderer->CopyTexture(srcTexture, m_processTexture);
+    Renderer* renderer         = GetRenderer();
+    FramebufferPtr framebuffer = m_params.frameBuffer;
+    if (framebuffer->IsMultiSampled())
+    {
+      framebuffer->Resolve();
+      m_processTexture = Cast<RenderTarget>(
+          framebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0)->m_resolvedTexture);
+    }
+    else
+    {
+      RenderTargetPtr srcTexture = m_params.frameBuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
+      m_processTexture->ReconstructIfNeeded(srcTexture->m_width, srcTexture->m_height, &srcTexture->Settings());
+      renderer->CopyTexture(srcTexture, m_processTexture);
+    }
 
     m_quadPass->m_material->SetDiffuseTextureVal(m_processTexture);
     m_quadPass->SetFragmentShader(m_postProcessShader, renderer);

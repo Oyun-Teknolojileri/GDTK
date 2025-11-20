@@ -96,6 +96,9 @@ namespace ToolKit
     void ReconstructIfNeeded(int width, int height);
     void ReconstructIfNeeded(const FramebufferSettings& settings);
 
+    /** Returns if the framebuffer is multi sampled. */
+    bool IsMultiSampled();
+
     /** Resolves all attachment in the frame buffer. */
     void Resolve();
 
@@ -105,11 +108,6 @@ namespace ToolKit
    private:
     bool IsColorAttachment(Attachment atc);
     void CheckFramebufferComplete();
-
-    // Resolve frame buffer handlers.
-    void EnsureResolveFboForColor(int idx);
-    void EnsureResolveFboForDepth();
-    void DestroyResolveFbos();
 
    public:
     static const int m_maxColorAttachmentCount = 8;

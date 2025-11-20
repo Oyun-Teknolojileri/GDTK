@@ -64,6 +64,12 @@ namespace ToolKit
     /** Generate mip maps for the texture. */
     void GenerateMipMaps();
 
+    /** Returns if the texture is multi sampled. */
+    bool IsMultiSampled();
+
+    /** Resolves multi sampled texture to single sample texture. */
+    virtual void Resolve();
+
    protected:
     /** Removes image data. */
     virtual void Clear();
@@ -75,10 +81,17 @@ namespace ToolKit
     uint m_textureId  = 0;
     int m_width       = 0;
     int m_height      = 0;
-    int m_numChannels = 0; //!< Number of channels (r, g, b, a) for loaded images.
     uint8* m_image    = nullptr;
     float* m_imagef   = nullptr;
-    StringView m_label; //!< Debug label which appears in the gpu debuggers.
+
+    /** Number of channels (r, g, b, a) for loaded images. */
+    int m_numChannels = 0;
+
+    /** Debug label which appears in the gpu debuggers. */
+    StringView m_label;
+
+    /** If an msaa texture is created, resolved single sample texture is assigned to this texture. */
+    TexturePtr m_resolvedTexture;
 
    protected:
     TextureSettings m_settings;
@@ -93,12 +106,21 @@ namespace ToolKit
     TKDeclareClass(DepthTexture, Texture);
 
    public:
+    DepthTexture();
+
     void Load() override;
     void Init(int width, int height, bool stencil, int multiSample = 0);
     void UnInit() override;
 
     /** Returns depth buffer format in use. */
     GraphicTypes GetDepthFormat();
+
+    /**
+     * Resolves multi sampled depth texture to single sample texture.
+     * Also can be used to copy depth buffer to a texture.
+     * Resulting texture will be placed in m_resolvedTextureId.
+     */
+    void Resolve() override;
 
    protected:
     /** UnInit the texture. */
@@ -108,16 +130,7 @@ namespace ToolKit
 
    public:
     /** States if the depth texture is constructed with stencil. */
-    bool m_stencil           = false;
-
-    /**
-     * States if the render target for depth is constructed.
-     * Construction occurs when the depth texture is attached to a frame buffer.
-     */
-    bool m_constructed       = false;
-
-    /** If an msaa depth texture is created, resolved single sample handle is assigned to this handle. */
-    uint m_resolvedTextureId = 0;
+    bool m_stencil = false;
   };
 
   // DataTexture
@@ -263,9 +276,7 @@ namespace ToolKit
     void Reconstruct(int width, int height, const TextureSettings& settings);
     void ReconstructIfNeeded(int width, int height, const TextureSettings* settings = nullptr);
 
-   public:
-    /** If an msaa render target is created, resolved single sample handle is assigned to this handle. */
-    uint m_resolvedTextureId = 0;
+    void Resolve() override;
   };
 
   // TextureManager

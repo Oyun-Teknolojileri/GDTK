@@ -140,59 +140,35 @@ namespace ToolKit
     }
   }
 
+  bool Framebuffer::IsMultiSampled() { return m_settings.msaaCount > 1; }
+
   void Framebuffer::Resolve()
   {
-    RHI::SetFramebuffer(GL_FRAMEBUFFER, m_fboId);
-    if (m_settings.msaaCount <= 1)
+    if (!IsMultiSampled())
     {
-      TK_ERR("Trying to resolve single sample frame buffer.");
+      TK_WRN("Trying to resolve single sample framebuffer.");
       return;
     }
 
-    if (m_depthAtch)
-    {
-      assert(m_depthAtch->Settings().msaaCount <= 1 && "Multi sample frambuffer / attachment missmathc.");
+    RHI::StoreFramebufferBindings();
 
-      // Create a single sample texture.
-      if (m_depthAtch->m_resolvedTextureId == 0)
+    // Resolve color attachments
+    for (int i = 0; i < m_maxColorAttachmentCount; i++)
+    {
+      RenderTargetPtr colorAttachment = m_colorAtchs[i];
+      if (colorAttachment != nullptr && colorAttachment->IsMultiSampled())
       {
-        glGenTextures(1, &m_depthAtch->m_resolvedTextureId);
-        RHI::SetTexture(GL_TEXTURE_2D, m_depthAtch->m_resolvedTextureId);
-        glTexStorage2D(GL_TEXTURE_2D,
-                       1,
-                       (GLenum) m_depthAtch->Settings().InternalFormat,
-                       m_settings.width,
-                       m_settings.height);
-
-        TKCheckGL();
+        colorAttachment->Resolve();
       }
-
-      // Convert the multi sample depth to single sample texture.
-      RHI::SetTexture(GL_TEXTURE_2D, m_depthAtch->m_resolvedTextureId);
-      glBlitFramebuffer(0,
-                        0,
-                        m_settings.width,
-                        m_settings.width,
-                        0,
-                        0,
-                        m_settings.width,
-                        m_settings.height,
-                        m_depthAtch->m_stencil ? (GLenum) GraphicBitFields::DepthStencilBits
-                                               : (GLenum) GraphicBitFields::ColorDepthBits,
-                        GL_NEAREST);
-
-      TKCheckGL();
-
-      constexpr GLenum invalidAttachments[1] = {GL_DEPTH_ATTACHMENT};
-      RHI::SetFramebuffer(GL_READ_FRAMEBUFFER, m_fboId);
-      glInvalidateFramebuffer(GL_READ_FRAMEBUFFER, 1, invalidAttachments);
-
-      TKCheckGL();
     }
-    else
+
+    // Resolve depth attachment (if present and multi-sampled)
+    if (m_depthAtch && m_depthAtch->IsMultiSampled())
     {
-      // if (RenderTargetPtr colorAttachment = m_colorAtchs[(int) attachment]) {}
+      m_depthAtch->Resolve();
     }
+
+    RHI::RestoreFramebufferBindings();
   }
 
   void Framebuffer::AttachDepthTexture(DepthTexturePtr dt)

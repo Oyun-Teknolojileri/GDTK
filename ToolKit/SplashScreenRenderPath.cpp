@@ -33,7 +33,7 @@ namespace ToolKit
     m_gammaPass->m_params.enableTonemapping     = false;
     m_gammaPass->m_params.enableFxaa            = false;
     m_gammaPass->m_params.screenSize            = Vec2((float) screenSize.x, (float) screenSize.y);
-    // m_gammaPass->m_params.frameBuffer           = m_viewport->m_framebuffer;
+    m_gammaPass->m_params.frameBuffer           = m_viewport->m_framebuffer;
   }
 
   void SplashScreenRenderPath::PreRender(Renderer* renderer)
@@ -51,7 +51,7 @@ namespace ToolKit
     m_passArray.push_back(m_uiPass);
     if (m_gammaPass->IsEnabled())
     {
-      // m_passArray.push_back(m_gammaPass);
+      m_passArray.push_back(m_gammaPass);
     }
   }
 
