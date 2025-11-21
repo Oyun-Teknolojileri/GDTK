@@ -240,6 +240,11 @@ namespace ToolKit
 
   void Texture::Resolve() { TK_WRN("Resolve not implemented for this texture type."); }
 
+  TexturePtr Texture::GetResolvedTexture()
+  {
+    return m_resolvedTexture != nullptr ? m_resolvedTexture : Self<Texture>();
+  }
+
   void Texture::Clear()
   {
     ImageFree(m_image);

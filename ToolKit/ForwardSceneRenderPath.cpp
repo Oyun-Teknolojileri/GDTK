@@ -110,6 +110,8 @@ namespace ToolKit
       FramebufferSettings settings = m_params.MainFramebuffer->GetSettings();
       m_forwardPreProcessPass->InitBuffers(settings.width, settings.height, settings.msaaCount);
     }
+
+    m_forwardRenderPass->m_params.resolveFrameBuffer = true;
   }
 
   void ForwardSceneRenderPath::PostRender(Renderer* renderer) { RenderPath::PostRender(renderer); }

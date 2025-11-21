@@ -78,9 +78,10 @@ namespace ToolKit
     renderer->SetDepthTestFunc(CompareFunctions::FuncLess);
 
     // Resolve render target if necessary.
-    if (m_params.FrameBuffer->GetSettings().msaaCount > 1)
+    if (m_params.FrameBuffer->IsMultiSampled() && m_params.resolveFrameBuffer)
     {
-      //FramebufferPtr frameBuffer = m_params.FrameBuffer->
+      FramebufferPtr frameBuffer = m_params.FrameBuffer;
+      frameBuffer->Resolve(); 
     }
   }
 

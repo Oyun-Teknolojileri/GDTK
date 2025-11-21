@@ -21,6 +21,7 @@ namespace ToolKit
     GraphicBitFields clearBuffer     = GraphicBitFields::AllBits;
     bool hasForwardPrePass           = false;
     uint activeDirectionalLightCount = 0;
+    bool resolveFrameBuffer          = false;
   };
 
   /**

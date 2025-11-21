@@ -31,7 +31,9 @@ namespace ToolKit
   void BloomPass::Render()
   {
     RenderTargetPtr mainRt = m_params.FrameBuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
-    if (mainRt == nullptr || m_invalidRenderParams)
+    mainRt                 = Cast<RenderTarget>(mainRt->GetResolvedTexture());
+
+    if (m_invalidRenderParams)
     {
       return;
     }
@@ -50,6 +52,7 @@ namespace ToolKit
       m_pass->UpdateUniform(ShaderUniform("threshold", m_params.minThreshold));
 
       TexturePtr prevRt = m_params.FrameBuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
+      prevRt            = prevRt->GetResolvedTexture();
 
       renderer->SetTexture(0, prevRt->m_textureId);
       m_pass->m_params.frameBuffer      = m_resampleFrameBuffers[0];
@@ -77,9 +80,9 @@ namespace ToolKit
         // Find previous framebuffer & RT
         FramebufferPtr prevFramebuffer = m_resampleFrameBuffers[i];
         TexturePtr prevRt              = prevFramebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
+        prevRt                         = prevRt->GetResolvedTexture();
 
         // Set pass' shader and parameters
-
         int passIndx                   = i + 1;
 
         m_pass->UpdateUniform(ShaderUniform("passIndx", passIndx));
@@ -109,6 +112,7 @@ namespace ToolKit
 
         FramebufferPtr prevFramebuffer = m_resampleFrameBuffers[i];
         TexturePtr prevRt              = prevFramebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
+        prevRt                         = prevRt->GetResolvedTexture();
         renderer->SetTexture(0, prevRt->m_textureId);
 
         m_pass->m_params.blendFunc        = BlendFunction::ONE_TO_ONE;
@@ -125,6 +129,7 @@ namespace ToolKit
 
       FramebufferPtr prevFramebuffer = m_resampleFrameBuffers[0];
       TexturePtr prevRt              = prevFramebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
+      prevRt                         = prevRt->GetResolvedTexture();
       renderer->SetTexture(0, prevRt->m_textureId);
 
       m_pass->m_params.blendFunc        = BlendFunction::ONE_TO_ONE;
@@ -142,13 +147,10 @@ namespace ToolKit
     Pass::PreRender();
 
     RenderTargetPtr mainRt = m_params.FrameBuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
-    if (!mainRt)
-    {
-      return;
-    }
+    mainRt                 = Cast<RenderTarget>(mainRt->GetResolvedTexture());
 
     // Set to minimum iteration count
-    Vec2 mainRes = UVec2(mainRt->m_width, mainRt->m_height);
+    Vec2 mainRes           = UVec2(mainRt->m_width, mainRt->m_height);
     const IVec2 maxIterCounts(glm::log2(mainRes) - 1.0f);
     int iterationCount = glm::min(m_params.iterationCount, glm::min(maxIterCounts.x, maxIterCounts.y));
 

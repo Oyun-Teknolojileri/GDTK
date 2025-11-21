@@ -545,7 +545,8 @@ namespace ToolKit
 
   MaterialPtr MaterialManager::GetCopyOfDefaultMaterial(bool storeInMaterialManager)
   {
-    ResourcePtr source = m_storage[MaterialPath("default.material", true)];
+    String file        = MaterialPath("default.material", true);
+    ResourcePtr source = m_storage[file];
     return Copy<Material>(source, storeInMaterialManager);
   }
 

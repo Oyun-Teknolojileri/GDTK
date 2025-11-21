@@ -70,6 +70,9 @@ namespace ToolKit
     /** Resolves multi sampled texture to single sample texture. */
     virtual void Resolve();
 
+    /** Returns resolved texture if exist, or the original texture. */
+    TexturePtr GetResolvedTexture();
+
    protected:
     /** Removes image data. */
     virtual void Clear();

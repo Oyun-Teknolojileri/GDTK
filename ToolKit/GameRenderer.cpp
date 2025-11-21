@@ -14,14 +14,14 @@ namespace ToolKit
 
   GameRenderer::GameRenderer()
   {
-    m_sceneRenderPath      = MakeNewPtr<ForwardSceneRenderPath>();
-    m_uiPass               = MakeNewPtr<ForwardRenderPass>();
+    m_sceneRenderPath = MakeNewPtr<ForwardSceneRenderPath>();
+    m_uiPass          = MakeNewPtr<ForwardRenderPass>();
     m_uiPass->SetName("UI Pass");
 
     m_gammaTonemapFxaaPass = MakeNewPtr<GammaTonemapFxaaPass>();
     m_gammaTonemapFxaaPass->SetName("Gamma Tonemap FXAA Pass");
 
-    m_fullQuadPass         = MakeNewPtr<FullQuadPass>();
+    m_fullQuadPass = MakeNewPtr<FullQuadPass>();
     m_fullQuadPass->SetName("Final Blit Pass");
   }
 
@@ -46,6 +46,7 @@ namespace ToolKit
     m_sceneRenderPath->m_params.postProcessSettings->SetGammaCorrectionEnabledVal(false);
     m_sceneRenderPath->m_params.postProcessSettings->SetTonemappingEnabledVal(false);
     m_sceneRenderPath->m_params.postProcessSettings->SetFXAAEnabledVal(false);
+    m_sceneRenderPath->m_forwardRenderPass->m_params.resolveFrameBuffer = true;
 
     // UI params
     UILayerPtrArray layers;

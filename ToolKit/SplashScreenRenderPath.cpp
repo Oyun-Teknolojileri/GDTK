@@ -43,9 +43,10 @@ namespace ToolKit
     EntityRawPtrArray rawEntities = ToEntityRawPtrArray(m_splashScreen->m_scene->GetEntities());
     RenderJobProcessor::CreateRenderJobs(m_uiRenderData.jobs, rawEntities);
     RenderJobProcessor::SeperateRenderData(m_uiRenderData, true);
-    m_uiPass->m_params.renderData  = &m_uiRenderData;
-    m_uiPass->m_params.clearBuffer = GraphicBitFields::AllBits;
-    m_uiPass->m_params.FrameBuffer = m_viewport->m_framebuffer;
+    m_uiPass->m_params.renderData         = &m_uiRenderData;
+    m_uiPass->m_params.clearBuffer        = GraphicBitFields::AllBits;
+    m_uiPass->m_params.FrameBuffer        = m_viewport->m_framebuffer;
+    m_uiPass->m_params.resolveFrameBuffer = true;
 
     m_passArray.clear();
     m_passArray.push_back(m_uiPass);

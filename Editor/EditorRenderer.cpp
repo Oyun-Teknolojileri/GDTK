@@ -62,28 +62,20 @@ namespace ToolKit
 
         m_passArray.push_back(m_skipFramePass);
         RenderPath::Render(renderer);
-
-        PostRender(renderer);
-        return;
       }
-
-      switch (m_params.LitMode)
+      else if (m_params.LitMode == EditorLitMode::Game)
       {
-      case EditorLitMode::Game:
         m_params.App->HideGizmos();
         sceneRenderer->m_params.grid = nullptr;
         sceneRenderer->Render(renderer);
         m_passArray.push_back(m_uiPass);
         RenderPath::Render(renderer);
         m_params.App->ShowGizmos();
-        break;
-      default:
-        sceneRenderer->Render(renderer);
-        break;
       }
-
-      if (m_params.LitMode != EditorLitMode::Game)
+      else
       {
+        sceneRenderer->Render(renderer);
+
         // Draw scene and apply bloom effect.
         RenderPath::Render(renderer);
         m_passArray.clear();
@@ -121,7 +113,6 @@ namespace ToolKit
       m_camera->m_node->AddChild(m_lightSystem->m_parentNode);
 
       EditorScenePtr scene                            = app->GetCurrentScene();
-
       EditorViewport* viewport                        = static_cast<EditorViewport*>(m_params.Viewport);
 
       // Scene renderer will render the given scene independent of editor.
@@ -306,7 +297,16 @@ namespace ToolKit
       m_gizmoPass->m_params.GizmoArray = {app->m_gizmo, anchorGizmo};
     }
 
-    void EditorRenderer::PostRender(Renderer* renderer) { m_params.App->m_perFrameDebugObjects.clear(); }
+    void EditorRenderer::PostRender(Renderer* renderer)
+    {
+      m_params.App->m_perFrameDebugObjects.clear();
+
+      FramebufferPtr vpFrameBuffer = m_params.Viewport->m_framebuffer;
+      if (vpFrameBuffer && vpFrameBuffer->IsMultiSampled())
+      {
+        vpFrameBuffer->Resolve();
+      }
+    }
 
     void EditorRenderer::SetLitMode(Renderer* renderer, EditorLitMode mode)
     {
