@@ -297,16 +297,7 @@ namespace ToolKit
       m_gizmoPass->m_params.GizmoArray = {app->m_gizmo, anchorGizmo};
     }
 
-    void EditorRenderer::PostRender(Renderer* renderer)
-    {
-      m_params.App->m_perFrameDebugObjects.clear();
-
-      FramebufferPtr vpFrameBuffer = m_params.Viewport->m_framebuffer;
-      if (vpFrameBuffer && vpFrameBuffer->IsMultiSampled())
-      {
-        vpFrameBuffer->Resolve();
-      }
-    }
+    void EditorRenderer::PostRender(Renderer* renderer) { m_params.App->m_perFrameDebugObjects.clear(); }
 
     void EditorRenderer::SetLitMode(Renderer* renderer, EditorLitMode mode)
     {

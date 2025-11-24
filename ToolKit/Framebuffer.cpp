@@ -142,35 +142,6 @@ namespace ToolKit
 
   bool Framebuffer::IsMultiSampled() { return m_settings.msaaCount > 1; }
 
-  void Framebuffer::Resolve()
-  {
-    if (!IsMultiSampled())
-    {
-      TK_WRN("Trying to resolve single sample framebuffer.");
-      return;
-    }
-
-    RHI::StoreFramebufferBindings();
-
-    // Resolve color attachments
-    for (int i = 0; i < m_maxColorAttachmentCount; i++)
-    {
-      RenderTargetPtr colorAttachment = m_colorAtchs[i];
-      if (colorAttachment != nullptr && colorAttachment->IsMultiSampled())
-      {
-        colorAttachment->Resolve();
-      }
-    }
-
-    // Resolve depth attachment (if present and multi-sampled)
-    if (m_depthAtch && m_depthAtch->IsMultiSampled())
-    {
-      m_depthAtch->Resolve();
-    }
-
-    RHI::RestoreFramebufferBindings();
-  }
-
   void Framebuffer::AttachDepthTexture(DepthTexturePtr dt)
   {
     assert(dt != nullptr && "Depth texture can't be null.");
@@ -256,7 +227,7 @@ namespace ToolKit
 
   RenderTargetPtr Framebuffer::GetColorAttachment(Attachment atc)
   {
-    if (atc < Attachment::DepthAttachment)
+    if (atc >= Attachment::ColorAttachment0 && atc <= Attachment::ColorAttachment7)
     {
       return m_colorAtchs[(int) atc];
     }

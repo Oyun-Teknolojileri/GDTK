@@ -28,6 +28,7 @@ namespace ToolKit
     m_bloomPass             = MakeNewPtr<BloomPass>();
     m_dofPass               = MakeNewPtr<DoFPass>();
     m_gammaTonemapFxaaPass  = MakeNewPtr<GammaTonemapFxaaPass>();
+    m_resolvedFramebuffer   = MakeNewPtr<Framebuffer>();
   }
 
   ForwardSceneRenderPath::~ForwardSceneRenderPath()
@@ -111,7 +112,19 @@ namespace ToolKit
       m_forwardPreProcessPass->InitBuffers(settings.width, settings.height, settings.msaaCount);
     }
 
-    m_forwardRenderPass->m_params.resolveFrameBuffer = true;
+    // Apply multi-sample resolve if needed.
+    m_forwardRenderPass->m_params.resolveFrameBuffer = nullptr;
+    if (m_params.MainFramebuffer->IsMultiSampled())
+    {
+      FramebufferSettings settings = m_params.MainFramebuffer->GetSettings();
+      settings.msaaCount           = 1;
+
+      m_resolvedFramebuffer->ReconstructIfNeeded(settings);
+      m_forwardRenderPass->m_params.resolveFrameBuffer = m_resolvedFramebuffer;
+
+      m_bloomPass->m_params.FrameBuffer                = m_resolvedFramebuffer;
+      m_gammaTonemapFxaaPass->m_params.frameBuffer     = m_resolvedFramebuffer;
+    }
   }
 
   void ForwardSceneRenderPath::PostRender(Renderer* renderer) { RenderPath::PostRender(renderer); }

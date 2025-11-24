@@ -67,9 +67,6 @@ namespace ToolKit
     /** Returns if the texture is multi sampled. */
     bool IsMultiSampled();
 
-    /** Resolves multi sampled texture to single sample texture. */
-    virtual void Resolve();
-
     /** Returns resolved texture if exist, or the original texture. */
     TexturePtr GetResolvedTexture();
 
@@ -117,13 +114,6 @@ namespace ToolKit
 
     /** Returns depth buffer format in use. */
     GraphicTypes GetDepthFormat();
-
-    /**
-     * Resolves multi sampled depth texture to single sample texture.
-     * Also can be used to copy depth buffer to a texture.
-     * Resulting texture will be placed in m_resolvedTextureId.
-     */
-    void Resolve() override;
 
    protected:
     /** UnInit the texture. */
@@ -278,8 +268,6 @@ namespace ToolKit
     void Init(bool flushClientSideArray = false) override;
     void Reconstruct(int width, int height, const TextureSettings& settings);
     void ReconstructIfNeeded(int width, int height, const TextureSettings* settings = nullptr);
-
-    void Resolve() override;
   };
 
   // TextureManager

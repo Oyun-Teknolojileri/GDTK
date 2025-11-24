@@ -88,6 +88,7 @@ namespace ToolKit
   {
     m_uiCamera                      = MakeNewPtr<Camera>();
     m_oneColorAttachmentFramebuffer = MakeNewPtr<Framebuffer>("RendererOneColorFB");
+    m_copyFrameBuffer               = MakeNewPtr<Framebuffer>("RendererCopyFB");
     m_dummyDrawCube                 = MakeNewPtr<Cube>();
 
     m_gpuProgramManager             = GetGpuProgramManager();
@@ -114,7 +115,7 @@ namespace ToolKit
     m_oneColorAttachmentFramebuffer = nullptr;
     m_gaussianBlurMaterial          = nullptr;
     m_averageBlurMaterial           = nullptr;
-    m_copyFb                        = nullptr;
+    m_copyFrameBuffer               = nullptr;
     m_copyMaterial                  = nullptr;
 
     m_framebuffer                   = nullptr;
@@ -605,6 +606,53 @@ namespace ToolKit
     glClear(GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
   }
 
+  void Renderer::ResolveFramebuffer(FramebufferPtr source, FramebufferPtr target, const IntArray& attachments)
+  {
+    RHI::StoreFramebufferBindings();
+    RHI::SetFramebuffer(GL_READ_FRAMEBUFFER, source->GetFboId());
+    RHI::SetFramebuffer(GL_DRAW_FRAMEBUFFER, target->GetFboId());
+
+    assert(source->Initialized() && "Source framebuffer is not initialized.");
+    assert(target->Initialized() && "Target framebuffer is not initialized.");
+
+    for (int atc : attachments)
+    {
+      // Sanity check.
+      using Attachment      = Framebuffer::Attachment;
+      Attachment atcEnum    = (Attachment) ((int) Attachment::ColorAttachment0 + atc);
+
+      RenderTargetPtr srcRt = source->GetColorAttachment(atcEnum);
+      assert(srcRt && "Trying to resolve a non existing attachment.");
+
+      RenderTargetPtr targetRt = target->GetColorAttachment(atcEnum);
+      if (targetRt == nullptr)
+      {
+        TextureSettings settings = srcRt->Settings();
+        settings.msaaCount       = 1;
+        RenderTargetPtr rt       = MakeNewPtr<RenderTarget>();
+        rt->ReconstructIfNeeded(srcRt->m_width, srcRt->m_height, &settings);
+        target->SetColorAttachment(atcEnum, rt);
+
+        srcRt->m_resolvedTexture = rt;
+      }
+
+      GLenum attachment = GL_COLOR_ATTACHMENT0 + atc;
+      glReadBuffer(attachment);
+      glDrawBuffer(attachment);
+      glBlitFramebuffer(0,
+                        0,
+                        source->GetSettings().width,
+                        source->GetSettings().height,
+                        0,
+                        0,
+                        target->GetSettings().width,
+                        target->GetSettings().height,
+                        GL_COLOR_BUFFER_BIT,
+                        GL_NEAREST);
+    }
+    RHI::RestoreFramebufferBindings();
+  }
+
   void Renderer::SetViewport(Viewport* viewport) { SetFramebuffer(viewport->m_framebuffer, GraphicBitFields::AllBits); }
 
   void Renderer::SetViewportSize(uint width, uint height)
@@ -681,18 +729,12 @@ namespace ToolKit
     assert(src->m_initiated && dst->m_initiated && "Texture is not initialized.");
     assert(src->m_width == dst->m_width && src->m_height == dst->m_height && "Sizes of the textures are not the same.");
 
-    if (m_copyFb == nullptr)
-    {
-      FramebufferSettings fbSettings = {src->m_width, src->m_height, false, false};
-      m_copyFb                       = MakeNewPtr<Framebuffer>(fbSettings, "RendererCopyFB");
-      m_copyFb->Init();
-    }
-
-    m_copyFb->ReconstructIfNeeded(src->m_width, src->m_height);
+    FramebufferSettings copyBuffer = {src->m_width, src->m_height, false, false, dst->Settings().msaaCount};
+    m_copyFrameBuffer->ReconstructIfNeeded(copyBuffer);
 
     RenderTargetPtr rt = Cast<RenderTarget>(dst);
-    m_copyFb->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, rt);
-    SetFramebuffer(m_copyFb, GraphicBitFields::AllBits);
+    m_copyFrameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, rt);
+    SetFramebuffer(m_copyFrameBuffer, GraphicBitFields::AllBits);
 
     // Render to texture
     if (m_copyMaterial == nullptr)

@@ -99,9 +99,6 @@ namespace ToolKit
     /** Returns if the framebuffer is multi sampled. */
     bool IsMultiSampled();
 
-    /** Resolves all attachment in the frame buffer. */
-    void Resolve();
-
     /** Sets attachments as draw buffers. Must be called when the frame buffer set as current. */
     void SetDrawBuffers();
 

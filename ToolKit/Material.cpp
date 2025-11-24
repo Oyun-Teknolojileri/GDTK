@@ -523,7 +523,8 @@ namespace ToolKit
 
   MaterialPtr MaterialManager::GetCopyOfUnlitMaterial(bool storeInMaterialManager)
   {
-    ResourcePtr source = m_storage[MaterialPath("unlit.material", true)];
+    String file        = MaterialPath("unlit.material", true);
+    ResourcePtr source = m_storage[file];
     return Copy<Material>(source, storeInMaterialManager);
   }
 

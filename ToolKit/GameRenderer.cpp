@@ -46,7 +46,6 @@ namespace ToolKit
     m_sceneRenderPath->m_params.postProcessSettings->SetGammaCorrectionEnabledVal(false);
     m_sceneRenderPath->m_params.postProcessSettings->SetTonemappingEnabledVal(false);
     m_sceneRenderPath->m_params.postProcessSettings->SetFXAAEnabledVal(false);
-    m_sceneRenderPath->m_forwardRenderPass->m_params.resolveFrameBuffer = true;
 
     // UI params
     UILayerPtrArray layers;
