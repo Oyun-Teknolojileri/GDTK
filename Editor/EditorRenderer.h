@@ -93,6 +93,9 @@ namespace ToolKit
 
       /** Internal render job array for rendering selected entities. */
       RenderJobArray m_unCulledRenderJobs;
+
+      /** Resolved viewport frame buffer is stored here. */
+      FramebufferPtr m_resolvedFramebuffer = nullptr;
     };
 
   } // namespace Editor

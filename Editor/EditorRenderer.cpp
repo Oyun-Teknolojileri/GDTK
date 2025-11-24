@@ -82,6 +82,18 @@ namespace ToolKit
 
         SetLitMode(renderer, EditorLitMode::EditorLit);
 
+        // Draw resolved framebuffer on to msaa buffer if needed.
+        // Resolved frame buffer contains correct scene rendering with post processings.
+        // To continue msaa rendering for editor objects, we need to copy resolved buffer to main msaa buffer.
+        using Attachment          = Framebuffer::Attachment;
+        FramebufferPtr mainBuffer = m_params.Viewport->m_framebuffer;
+        if (mainBuffer->IsMultiSampled() && sceneRenderer->m_resolvedFramebuffer)
+        {
+          RenderTargetPtr rRT = sceneRenderer->m_resolvedFramebuffer->GetColorAttachment(Attachment::ColorAttachment0);
+          RenderTargetPtr mRT = mainBuffer->GetColorAttachment(Attachment::ColorAttachment0);
+          renderer->CopyTexture(rRT, mRT);
+        }
+
         // Draw outlines.
         OutlineSelecteds(renderer);
         m_passArray.clear();
@@ -96,6 +108,15 @@ namespace ToolKit
         m_passArray.push_back(m_billboardPass);
 
         RenderPath::Render(renderer);
+
+        // Finally resolve the multi sampled main buffer if needed.
+        if (mainBuffer->IsMultiSampled())
+        {
+          FramebufferSettings settings = mainBuffer->GetSettings();
+          settings.msaaCount           = 1;
+          m_resolvedFramebuffer->ReconstructIfNeeded(settings);
+          renderer->ResolveFramebuffer(mainBuffer, m_resolvedFramebuffer, {0});
+        }
       }
 
       PostRender(renderer);
@@ -324,13 +345,14 @@ namespace ToolKit
       m_unlitOverride->Init();
       m_blackMaterial->Init();
 
-      m_billboardPass   = MakeNewPtr<BillboardPass>();
-      m_sceneRenderPath = MakeNewPtr<ForwardSceneRenderPath>();
-      m_uiPass          = MakeNewPtr<ForwardRenderPass>();
-      m_editorPass      = MakeNewPtr<ForwardRenderPass>();
-      m_gizmoPass       = MakeNewPtr<GizmoPass>();
-      m_outlinePass     = MakeNewPtr<OutlinePass>();
-      m_skipFramePass   = MakeNewPtr<FullQuadPass>();
+      m_billboardPass       = MakeNewPtr<BillboardPass>();
+      m_sceneRenderPath     = MakeNewPtr<ForwardSceneRenderPath>();
+      m_uiPass              = MakeNewPtr<ForwardRenderPass>();
+      m_editorPass          = MakeNewPtr<ForwardRenderPass>();
+      m_gizmoPass           = MakeNewPtr<GizmoPass>();
+      m_outlinePass         = MakeNewPtr<OutlinePass>();
+      m_skipFramePass       = MakeNewPtr<FullQuadPass>();
+      m_resolvedFramebuffer = MakeNewPtr<Framebuffer>();
     }
 
     void EditorRenderer::OutlineSelecteds(Renderer* renderer)

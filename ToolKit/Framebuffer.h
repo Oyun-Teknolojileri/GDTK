@@ -112,7 +112,6 @@ namespace ToolKit
 
    private:
     FramebufferSettings m_settings;
-    uint m_resolutionFrameBuffers[m_maxColorAttachmentCount + 1]; // Last one is for depth buffer.
 
     uint m_fboId        = 0;
     uint m_defaultRboId = 0;

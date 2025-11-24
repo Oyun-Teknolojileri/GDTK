@@ -25,8 +25,7 @@ namespace ToolKit
   {
     for (int i = 0; i < m_maxColorAttachmentCount; ++i)
     {
-      m_colorAtchs[i]             = nullptr;
-      m_resolutionFrameBuffers[i] = 0;
+      m_colorAtchs[i] = nullptr;
     }
 
     m_depthAtch = nullptr;
@@ -62,9 +61,6 @@ namespace ToolKit
     // Create framebuffer object
     glGenFramebuffers(1, &m_fboId);
     RHI::SetFramebuffer(GL_FRAMEBUFFER, m_fboId);
-
-    // Generate frame buffers for resolve.
-    glGenFramebuffers(m_maxColorAttachmentCount + 1, m_resolutionFrameBuffers);
 
     Stats::SetGpuResourceLabel(m_label, GpuResourceType::FrameBuffer, m_fboId);
 
