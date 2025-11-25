@@ -629,14 +629,14 @@ namespace ToolKit
       {
         TextureSettings settings = srcRt->Settings();
         settings.msaaCount       = 1;
-        RenderTargetPtr rt       = MakeNewPtr<RenderTarget>();
-        rt->ReconstructIfNeeded(srcRt->m_width, srcRt->m_height, &settings);
-        target->SetColorAttachment(atcEnum, rt);
-
-        srcRt->m_resolvedTexture = rt;
+        targetRt                 = MakeNewPtr<RenderTarget>();
+        targetRt->ReconstructIfNeeded(srcRt->m_width, srcRt->m_height, &settings);
+        target->SetColorAttachment(atcEnum, targetRt);
       }
 
-      GLenum attachment = GL_COLOR_ATTACHMENT0 + atc;
+      srcRt->m_resolvedTexture = targetRt;
+
+      GLenum attachment        = GL_COLOR_ATTACHMENT0 + atc;
       glReadBuffer(attachment);
       glDrawBuffer(attachment);
       glBlitFramebuffer(0,

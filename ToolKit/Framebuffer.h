@@ -113,8 +113,7 @@ namespace ToolKit
    private:
     FramebufferSettings m_settings;
 
-    uint m_fboId        = 0;
-    uint m_defaultRboId = 0;
+    uint m_fboId = 0;
     RenderTargetPtr m_colorAtchs[m_maxColorAttachmentCount];
     DepthTexturePtr m_depthAtch = nullptr;
   };
