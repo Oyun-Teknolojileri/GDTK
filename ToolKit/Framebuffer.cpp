@@ -181,6 +181,8 @@ namespace ToolKit
       return nullptr;
     }
 
+    RHI::StoreFramebufferBindings();
+
     RenderTargetPtr oldRt = m_colorAtchs[(int) atc];
     RHI::SetFramebuffer(GL_FRAMEBUFFER, m_fboId);
 
@@ -217,6 +219,8 @@ namespace ToolKit
 
     SetDrawBuffers();
     CheckFramebufferComplete();
+
+    RHI::RestoreFramebufferBindings();
 
     return oldRt;
   }

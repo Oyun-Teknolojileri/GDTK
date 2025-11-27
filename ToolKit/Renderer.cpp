@@ -724,6 +724,7 @@ namespace ToolKit
 
   void Renderer::CopyTexture(TexturePtr src, TexturePtr dst)
   {
+    Stats::BeginGpuScope("CopyTexture");
     RHI::StoreFramebufferBindings();
 
     assert(src->m_initiated && dst->m_initiated && "Texture is not initialized.");
@@ -752,6 +753,7 @@ namespace ToolKit
     DrawFullQuad(m_copyMaterial);
 
     RHI::RestoreFramebufferBindings();
+    Stats::EndGpuScope();
   }
 
   void Renderer::OverrideBlendState(bool enableOverride, BlendFunction func)
