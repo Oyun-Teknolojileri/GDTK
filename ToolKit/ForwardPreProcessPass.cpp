@@ -49,7 +49,7 @@ namespace ToolKit
     if (requiresReconstruct)
     {
       m_framebuffer->DetachDepthTexture();
-      m_framebuffer->ReconstructIfNeeded({width, height, false, false, 0});
+      m_framebuffer->ReconstructIfNeeded({width, height, false, false, sampleCount});
       m_normalRt->ReconstructIfNeeded(width, height);
       m_linearDepthRt->ReconstructIfNeeded(width, height);
 
@@ -71,7 +71,6 @@ namespace ToolKit
   {
     // Currently transparent objects are not rendered to export screen space normals or linear depth
     // we want SSAO and DOF to effect on opaque objects only renderLinearDepthAndNormalFn(m_params.TranslucentJobs);
-
     RenderJobItr begin = m_params.renderData->GetForwardOpaqueBegin();
     RenderJobItr end   = m_params.renderData->GetForwardAlphaMaskedBegin();
 
