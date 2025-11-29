@@ -50,7 +50,7 @@ namespace ToolKit
     class TK_EDITOR_API PublishManager
     {
      public:
-      void Publish(PublishPlatform platform, PublishConfig publishConfig);
+      void Publish(PublishPlatform platform, PublishConfig publishConfig, bool isAsync = true);
       void Pack();
 
      private:
