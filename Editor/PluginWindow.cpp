@@ -250,5 +250,27 @@ namespace ToolKit
       }
     }
 
+    void PluginWindow::LoadAutoEnabledPlugins()
+    {
+
+      for (const auto& plugin : m_plugins)
+      {
+        if (plugin.autoLoad)
+        {
+          GetApp()->CompilePlugin(plugin.name, false, false);
+
+          PluginManager* plugMan = GetPluginManager();
+          String fullPath        = plugin.file + GetPluginExtention();
+          PluginRegister* reg    = plugMan->GetRegister(fullPath);
+          bool isLoaded          = reg != nullptr && reg->m_loaded;
+
+          if (reg = plugMan->Load(plugin.file))
+          {
+            reg->m_plugin->m_currentState = PluginState::Running;
+          }
+        }
+      }
+    }
+
   } // namespace Editor
 } // namespace ToolKit
