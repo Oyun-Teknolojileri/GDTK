@@ -17,7 +17,7 @@ namespace ToolKit
   namespace Editor
   {
 
-    void PublishManager::Publish(PublishPlatform platform, PublishConfig publishConfig)
+    void PublishManager::Publish(PublishPlatform platform, PublishConfig publishConfig, bool isAsync)
     {
       if (m_isBuilding)
       {
@@ -117,7 +117,7 @@ namespace ToolKit
         };
       }
 
-      GetApp()->ExecSysCommand(packerPath, true, true, afterPackFn);
+      GetApp()->ExecSysCommand(packerPath, isAsync, true, afterPackFn);
     }
 
     void PublishManager::Pack()
