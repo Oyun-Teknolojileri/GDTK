@@ -49,6 +49,7 @@ namespace ToolKit
 
       void Show() override;
       void LoadPluginSettings();
+      void LoadAutoEnabledPlugins();
 
      private:
       std::vector<PluginSettings> m_plugins;
