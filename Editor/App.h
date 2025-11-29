@@ -36,7 +36,7 @@ namespace ToolKit
       void OnNewProject(const String& name);
       void OnNewPlugin(const String& name);
       void SetGameMod(const GameMod mod);
-      void CompilePlugin(const String& name, bool gamePlugin);
+      void CompilePlugin(const String& name, bool gamePlugin, bool isAsync = true);
       void LoadGamePlugin();
       bool IsCompiling();
       EditorScenePtr GetCurrentScene();

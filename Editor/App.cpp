@@ -52,6 +52,7 @@ namespace ToolKit
       RenderSystem* rsys = GetRenderSystem();
       rsys->SetAppWindowSize((uint) windowWidth, (uint) windowHeight);
       SetStatusMsg(g_statusOk);
+      m_publishManager = new PublishManager();
     }
 
     App::~App() {}
@@ -107,7 +108,6 @@ namespace ToolKit
       }
 
       m_simulatorSettings.Resolution = EmulatorResolution::Custom;
-      m_publishManager               = new PublishManager();
       m_thumbnailManager             = new ThumbnailManager();
       GetRenderSystem()->SetClearColor(g_wndBgColor);
     }
@@ -653,7 +653,7 @@ namespace ToolKit
 
     bool App::IsCompiling() { return m_isCompiling; }
 
-    void App::CompilePlugin(const String& name, bool gamePlugin)
+    void App::CompilePlugin(const String& name, bool gamePlugin, bool isAsync)
     {
       if (!IsWorkspaceSane(true, true))
       {
@@ -665,7 +665,7 @@ namespace ToolKit
       m_publishManager->m_appName    = ConcatPaths({pluginDir, name, "Codes"});
       m_publishManager->m_pluginName = name;
 
-      m_publishManager->Publish(pluginType, TKDebug ? PublishConfig::Debug : PublishConfig::Deploy);
+      m_publishManager->Publish(pluginType, TKDebug ? PublishConfig::Debug : PublishConfig::Deploy, isAsync);
     }
 
     void App::LoadGamePlugin()
@@ -1302,6 +1302,10 @@ namespace ToolKit
       CreateNewScene();
 
       LoadGamePlugin();
+      if (PluginWindowPtr wnd = GetWindow<PluginWindow>(g_pluginWindow))
+      {
+        wnd->LoadAutoEnabledPlugins();
+      }
 
       FolderWindowRawPtrArray browsers = GetAssetBrowsers();
       for (FolderWindow* browser : browsers)
@@ -1655,6 +1659,11 @@ namespace ToolKit
       if (!activeProject.name.empty())
       {
         LoadGamePlugin();
+
+        if (PluginWindowPtr wnd = GetWindow<PluginWindow>(g_pluginWindow))
+        {
+          wnd->LoadAutoEnabledPlugins();
+        }
 
         if (!activeProject.scene.empty())
         {
