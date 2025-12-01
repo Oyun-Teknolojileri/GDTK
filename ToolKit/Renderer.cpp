@@ -472,8 +472,6 @@ namespace ToolKit
       // Backbuffer
       RHI::SetFramebuffer((GLenum) frameBufferType, 0);
       SetViewportSize(m_windowSize.x, m_windowSize.y);
-
-      glDrawBuffer(GL_BACK);
     }
 
     if (attachmentsToClear != GraphicBitFields::None)
@@ -638,7 +636,6 @@ namespace ToolKit
 
       GLenum attachment        = GL_COLOR_ATTACHMENT0 + atc;
       glReadBuffer(attachment);
-      glDrawBuffer(attachment);
       glBlitFramebuffer(0,
                         0,
                         source->GetSettings().width,
