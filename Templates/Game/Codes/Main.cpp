@@ -83,7 +83,8 @@ namespace ToolKit
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
 
-    SDL_GL_SetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, 1);
+    // GLES 3.0 fails to create sRGB backbuffer on some platforms.
+    // SDL_GL_SetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, 1);
 
     SDL_DisplayMode DM;
     SDL_GetCurrentDisplayMode(0, &DM);
