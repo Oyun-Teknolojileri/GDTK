@@ -56,6 +56,21 @@ namespace ToolKit
       m_passArray.clear();
 
       SceneRenderPathPtr sceneRenderer = m_sceneRenderPath;
+      FramebufferPtr mainBuffer        = m_params.Viewport->m_framebuffer;
+      auto copyToMultiSampleBuffer     = [this, renderer, mainBuffer, sceneRenderer]()
+      {
+        // Draw resolved framebuffer on to msaa buffer if needed.
+        // Resolved frame buffer contains correct scene rendering with post processings.
+        // To continue msaa rendering for editor objects, we need to copy resolved buffer to main msaa buffer.
+        using Attachment = Framebuffer::Attachment;
+        if (mainBuffer->IsMultiSampled() && sceneRenderer->m_resolvedFramebuffer)
+        {
+          RenderTargetPtr rRT = sceneRenderer->m_resolvedFramebuffer->GetColorAttachment(Attachment::ColorAttachment0);
+          RenderTargetPtr mRT = mainBuffer->GetColorAttachment(Attachment::ColorAttachment0);
+          renderer->CopyTexture(rRT, mRT);
+        }
+      };
+
       if (GetRenderSystem()->IsSkipFrame())
       {
         sceneRenderer->Render(renderer);
@@ -68,7 +83,20 @@ namespace ToolKit
         m_params.App->HideGizmos();
         sceneRenderer->m_params.grid = nullptr;
         sceneRenderer->Render(renderer);
-        m_passArray.push_back(m_uiPass);
+
+        if (!m_uiPass->m_params.renderData->jobs.empty())
+        {
+          copyToMultiSampleBuffer();
+
+          m_uiPass->m_params.resolveFrameBuffer = nullptr;
+          if (mainBuffer->IsMultiSampled() && sceneRenderer->m_resolvedFramebuffer)
+          {
+            m_uiPass->m_params.resolveFrameBuffer = sceneRenderer->m_resolvedFramebuffer;
+          }
+
+          m_passArray.push_back(m_uiPass);
+        }
+
         RenderPath::Render(renderer);
         m_params.App->ShowGizmos();
       }
@@ -82,17 +110,7 @@ namespace ToolKit
 
         SetLitMode(renderer, EditorLitMode::EditorLit);
 
-        // Draw resolved framebuffer on to msaa buffer if needed.
-        // Resolved frame buffer contains correct scene rendering with post processings.
-        // To continue msaa rendering for editor objects, we need to copy resolved buffer to main msaa buffer.
-        using Attachment          = Framebuffer::Attachment;
-        FramebufferPtr mainBuffer = m_params.Viewport->m_framebuffer;
-        if (mainBuffer->IsMultiSampled() && sceneRenderer->m_resolvedFramebuffer)
-        {
-          RenderTargetPtr rRT = sceneRenderer->m_resolvedFramebuffer->GetColorAttachment(Attachment::ColorAttachment0);
-          RenderTargetPtr mRT = mainBuffer->GetColorAttachment(Attachment::ColorAttachment0);
-          renderer->CopyTexture(rRT, mRT);
-        }
+        copyToMultiSampleBuffer();
 
         // Draw outlines.
         OutlineSelecteds(renderer);
@@ -108,15 +126,15 @@ namespace ToolKit
         m_passArray.push_back(m_billboardPass);
 
         RenderPath::Render(renderer);
+      }
 
-        // Finally resolve the multi sampled main buffer if needed.
-        if (mainBuffer->IsMultiSampled())
-        {
-          FramebufferSettings settings = mainBuffer->GetSettings();
-          settings.msaaCount           = 1;
-          m_resolvedFramebuffer->ReconstructIfNeeded(settings);
-          renderer->ResolveFramebuffer(mainBuffer, m_resolvedFramebuffer, {0});
-        }
+      // Finally resolve the multi sampled main buffer if needed.
+      if (mainBuffer->IsMultiSampled())
+      {
+        FramebufferSettings settings = mainBuffer->GetSettings();
+        settings.msaaCount           = 1;
+        m_resolvedFramebuffer->ReconstructIfNeeded(settings);
+        renderer->ResolveFramebuffer(mainBuffer, m_resolvedFramebuffer, {0});
       }
 
       PostRender(renderer);
