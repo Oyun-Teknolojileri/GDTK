@@ -696,6 +696,15 @@ namespace ToolKit
       }
     }
 
+    void App::LoadProjectPlugins()
+    {
+      // Get all plugins in the project plugin directory.
+      if (PluginWindowPtr pluginWnd = GetWindow<PluginWindow>(g_pluginWindow))
+      {
+        pluginWnd->LoadEnabledPlugins();
+      }
+    }
+
     EditorScenePtr App::GetCurrentScene()
     {
       ScenePtr scene = GetSceneManager()->GetCurrentScene();
@@ -1297,15 +1306,24 @@ namespace ToolKit
     {
       ClearSession();
       GetPluginManager()->UnloadGamePlugin();
+
+      PluginWindowPtr pluginWindow = GetWindow<PluginWindow>(g_pluginWindow);
+      if (pluginWindow == nullptr)
+      {
+        SetStatusMsg(g_statusFailed);
+        TK_ERR("Plugin window is not available.");
+        return;
+      }
+
+      pluginWindow->UnloadProjectPlugins();
+
       m_workspace.SetActiveProject(project);
       m_workspace.Serialize(nullptr, nullptr);
       CreateNewScene();
 
       LoadGamePlugin();
-      if (PluginWindowPtr wnd = GetWindow<PluginWindow>(g_pluginWindow))
-      {
-        wnd->LoadAutoEnabledPlugins();
-      }
+      pluginWindow->LoadPluginSettings();
+      pluginWindow->LoadEnabledPlugins();
 
       FolderWindowRawPtrArray browsers = GetAssetBrowsers();
       for (FolderWindow* browser : browsers)
@@ -1659,10 +1677,9 @@ namespace ToolKit
       if (!activeProject.name.empty())
       {
         LoadGamePlugin();
-
         if (PluginWindowPtr wnd = GetWindow<PluginWindow>(g_pluginWindow))
         {
-          wnd->LoadAutoEnabledPlugins();
+          wnd->LoadEnabledPlugins();
         }
 
         if (!activeProject.scene.empty())

@@ -369,12 +369,13 @@ namespace ToolKit
 
     if (XmlNode* pluginNode = settingsNode->first_node("Plugins"))
     {
+      m_loadedPlugins.clear();
       XmlNode* plugin = pluginNode->first_node();
       while (plugin)
       {
         String pluginName;
         ReadAttr(plugin, "name", pluginName);
-        m_loadedPlugins.push_back(pluginName);
+        m_loadedPlugins.insert(pluginName);
 
         plugin = plugin->next_sibling();
       }

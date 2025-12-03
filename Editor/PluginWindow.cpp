@@ -58,8 +58,6 @@ namespace ToolKit
       ImGui::InputText("Engine", buffer, IM_ARRAYSIZE(buffer));
       m_bckup.engine = buffer;
 
-      ImGui::Checkbox("Auto Load", &m_bckup.autoLoad);
-
       // Developer data
       ImGui::SeparatorText("Developer");
 
@@ -164,21 +162,28 @@ namespace ToolKit
 
             if (ImGui::Checkbox("##Load", &isLoaded))
             {
+              EngineSettings& settings = GetEngineSettings();
               if (!isLoaded)
               {
                 plugMan->Unload(fullPath);
+                settings.m_loadedPlugins.erase(plugin.name);
               }
               else
               {
                 if (reg = plugMan->Load(plugin.file))
                 {
                   reg->m_plugin->m_currentState = PluginState::Running;
+                  settings.m_loadedPlugins.insert(plugin.name);
+                }
+                else
+                {
+                  GetApp()->SetStatusMsg("Failed to load plugin. Is it compiled ?");
                 }
               }
             }
             UI::AddTooltipToLastItem("Loads or unloads the plugin.\n"
-                                     "State is stored in engine settings and preserved on next editor run.\n"
-                                     "This may cause crash, save the work before.");
+                                     "Save the engine settings to preserve plugin loaded state.\n"
+                                     "This may cause crashes, save your work before.");
 
             ImGui::TableSetColumnIndex(3);
             ImGui::AlignTextToFramePadding();
@@ -187,7 +192,7 @@ namespace ToolKit
               GetApp()->CompilePlugin(plugin.name, false);
             }
             UI::AddTooltipToLastItem("If a change is detected, compiles and reloads the plugin.\n"
-                                     "This may cause crash, save the work before.");
+                                     "This may cause crashes, save your work before.");
 
             ImGui::TableSetColumnIndex(4);
             ImGui::AlignTextToFramePadding();
@@ -197,7 +202,7 @@ namespace ToolKit
               String dir       = ConcatPaths({pluginDir, plugin.name, "Codes"});
               GetApp()->m_shellOpenDirFn(dir);
             }
-            UI::AddTooltipToLastItem("Show plugin folder in file explorerer.");
+            UI::AddTooltipToLastItem("Show plugin folder in file explorer.");
 
             ImGui::TableSetColumnIndex(5);
             ImGui::AlignTextToFramePadding();
@@ -231,7 +236,7 @@ namespace ToolKit
       if (CheckSystemFile(pluginDir) && IsDirectory(pluginDir))
       {
         namespace fs = std::filesystem;
-        for (const auto& entry : fs::directory_iterator(pluginDir))
+        for (const fs::directory_entry& entry : fs::directory_iterator(pluginDir))
         {
           String path    = entry.path().u8string();
           String cfgFile = ConcatPaths({path, "Config", "Plugin.settings"});
@@ -250,15 +255,13 @@ namespace ToolKit
       }
     }
 
-    void PluginWindow::LoadAutoEnabledPlugins()
+    void PluginWindow::LoadEnabledPlugins()
     {
-
-      for (const auto& plugin : m_plugins)
+      const EngineSettings& settings = GetEngineSettings();
+      for (const PluginSettings& plugin : m_plugins)
       {
-        if (plugin.autoLoad)
+        if (settings.m_loadedPlugins.find(plugin.name) != settings.m_loadedPlugins.end())
         {
-          GetApp()->CompilePlugin(plugin.name, false, false);
-
           PluginManager* plugMan = GetPluginManager();
           String fullPath        = plugin.file + GetPluginExtention();
           PluginRegister* reg    = plugMan->GetRegister(fullPath);
@@ -269,6 +272,16 @@ namespace ToolKit
             reg->m_plugin->m_currentState = PluginState::Running;
           }
         }
+      }
+    }
+
+    void PluginWindow::UnloadProjectPlugins()
+    {
+      for (const PluginSettings& plugin : m_plugins)
+      {
+        PluginManager* plugMan = GetPluginManager();
+        String fullPath        = plugin.file + GetPluginExtention();
+        plugMan->Unload(fullPath);
       }
     }
 

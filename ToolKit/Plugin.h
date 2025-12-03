@@ -21,7 +21,6 @@ namespace ToolKit
     // Plugin data.
     String version;
     String engine;
-    bool autoLoad = false;
     // Description data.
     String name;
     String brief;
