@@ -75,6 +75,8 @@ namespace ToolKit
         size_t end = fullPath.find(m_pluginExtention);
         reg.m_name = fullPath.substr(beg, end - beg);
 
+        TK_LOG("Plugin is loaded.");
+
         m_storage.push_back(reg);
         return &m_storage.back();
       }
@@ -116,6 +118,8 @@ namespace ToolKit
     FreeModule(reg->m_module);
     reg->m_module = nullptr;
     reg->m_loaded = false;
+
+    TK_LOG("Plugin is unloaded.");
 
     m_storage.erase(m_storage.begin() + indx);
   }

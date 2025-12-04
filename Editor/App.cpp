@@ -711,7 +711,11 @@ namespace ToolKit
       return Cast<EditorScene>(scene);
     }
 
-    void App::SetCurrentScene(const EditorScenePtr& scene) { GetSceneManager()->SetCurrentScene(scene); }
+    void App::SetCurrentScene(const EditorScenePtr& scene)
+    {
+      scene->Init();
+      GetSceneManager()->SetCurrentScene(scene);
+    }
 
     void App::FocusEntity(EntityPtr entity)
     {
@@ -1250,7 +1254,6 @@ namespace ToolKit
                                   }
 
                                   SetCurrentScene(scene);
-                                  scene->Init();
                                   m_workspace.SetScene(scene->m_name);
                                 });
                   });
@@ -1304,16 +1307,16 @@ namespace ToolKit
 
     void App::OpenProject(const Project& project)
     {
-      ClearSession();
-      GetPluginManager()->UnloadGamePlugin();
-
       PluginWindowPtr pluginWindow = GetWindow<PluginWindow>(g_pluginWindow);
       if (pluginWindow == nullptr)
       {
         SetStatusMsg(g_statusFailed);
-        TK_ERR("Plugin window is not available.");
+        TK_ERR("Can not access project plugins. Plugin window is not available.");
         return;
       }
+
+      ClearSession();
+      GetPluginManager()->UnloadGamePlugin();
 
       pluginWindow->UnloadProjectPlugins();
 
@@ -1321,9 +1324,9 @@ namespace ToolKit
       m_workspace.Serialize(nullptr, nullptr);
       CreateNewScene();
 
-      LoadGamePlugin();
       pluginWindow->LoadPluginSettings();
-      pluginWindow->LoadEnabledPlugins();
+      LoadGamePlugin();
+      LoadProjectPlugins();
 
       FolderWindowRawPtrArray browsers = GetAssetBrowsers();
       for (FolderWindow* browser : browsers)
@@ -1677,10 +1680,7 @@ namespace ToolKit
       if (!activeProject.name.empty())
       {
         LoadGamePlugin();
-        if (PluginWindowPtr wnd = GetWindow<PluginWindow>(g_pluginWindow))
-        {
-          wnd->LoadEnabledPlugins();
-        }
+        LoadProjectPlugins();
 
         if (!activeProject.scene.empty())
         {

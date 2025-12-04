@@ -57,8 +57,7 @@ namespace ToolKit
       void UnloadProjectPlugins();
 
      private:
-      std::vector<PluginSettings> m_plugins;
+      std::vector<PluginSettings> m_pluginSettings;
     };
-
   } // namespace Editor
 } // namespace ToolKit

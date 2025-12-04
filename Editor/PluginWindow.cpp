@@ -151,7 +151,7 @@ namespace ToolKit
 
           Vec2 btnSize   = Vec2(20.0f);
           int imPluginId = 0;
-          for (PluginSettings& plugin : m_plugins)
+          for (PluginSettings& plugin : m_pluginSettings)
           {
             ImGui::PushID(imPluginId++);
 
@@ -248,7 +248,7 @@ namespace ToolKit
 
     void PluginWindow::LoadPluginSettings()
     {
-      m_plugins.clear();
+      m_pluginSettings.clear();
       String pluginDir = GetApp()->m_workspace.GetPluginDirectory();
 
       if (CheckSystemFile(pluginDir) && IsDirectory(pluginDir))
@@ -263,7 +263,7 @@ namespace ToolKit
             PluginSettings pluginSet;
             pluginSet.Load(cfgFile);
 
-            m_plugins.emplace_back(pluginSet);
+            m_pluginSettings.emplace_back(pluginSet);
           }
         }
       }
@@ -276,7 +276,7 @@ namespace ToolKit
     void PluginWindow::LoadEnabledPlugins()
     {
       const EngineSettings& settings = GetEngineSettings();
-      for (const PluginSettings& plugin : m_plugins)
+      for (const PluginSettings& plugin : m_pluginSettings)
       {
         if (settings.m_loadedPlugins.find(plugin.name) != settings.m_loadedPlugins.end())
         {
@@ -289,13 +289,18 @@ namespace ToolKit
           {
             reg->m_plugin->m_currentState = PluginState::Running;
           }
+          else
+          {
+            assert(false && "Failed to load plugin.");
+            TK_ERR("Failed to load plugin: %s. Is it compiled ?", plugin.name.c_str());
+          }
         }
       }
     }
 
     void PluginWindow::UnloadProjectPlugins()
     {
-      for (const PluginSettings& plugin : m_plugins)
+      for (const PluginSettings& plugin : m_pluginSettings)
       {
         PluginManager* plugMan = GetPluginManager();
         String fullPath        = plugin.file + GetPluginExtention();
