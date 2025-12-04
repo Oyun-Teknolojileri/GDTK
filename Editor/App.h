@@ -114,7 +114,7 @@ namespace ToolKit
       FolderWindowRawPtrArray GetAssetBrowsers();
       OutlinerWindowPtr GetOutliner();
       PropInspectorWindowPtr GetPropInspector();
-      RenderSettingsWindowPtr GetRenderSettingsWindow();
+      RenderSettingsWindowPtr GetEngineSettingsWindow();
       StatsWindowPtr GetStatsWindow();
       PluginWindowPtr GetPluginWindow();
 

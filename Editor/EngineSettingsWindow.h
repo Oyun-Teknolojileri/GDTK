@@ -14,13 +14,13 @@ namespace ToolKit
   namespace Editor
   {
 
-    class TK_EDITOR_API RenderSettingsWindow : public Window
+    class TK_EDITOR_API EngineSettingsWindow : public Window
     {
      public:
-      TKDeclareClass(RenderSettingsWindow, Window);
+      TKDeclareClass(EngineSettingsWindow, Window);
 
-      RenderSettingsWindow();
-      virtual ~RenderSettingsWindow();
+      EngineSettingsWindow();
+      virtual ~EngineSettingsWindow();
       void Show() override;
 
      protected:

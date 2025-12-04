@@ -5,7 +5,7 @@
  * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
  */
 
-#include "RenderSettingsWindow.h"
+#include "EngineSettingsWindow.h"
 
 #include "App.h"
 #include "CustomDataView.h"
@@ -19,11 +19,11 @@ namespace ToolKit
   namespace Editor
   {
 
-    TKDefineClass(RenderSettingsWindow, Window);
+    TKDefineClass(EngineSettingsWindow, Window);
 
-    RenderSettingsWindow::RenderSettingsWindow() { m_name = g_renderSettings; }
+    EngineSettingsWindow::EngineSettingsWindow() { m_name = g_engineSettingsStr; }
 
-    RenderSettingsWindow::~RenderSettingsWindow() {}
+    EngineSettingsWindow::~EngineSettingsWindow() {}
 
     // Utility function to calculate footer height. Update if footer content changes.
     float CalcFooterHeight()
@@ -43,7 +43,7 @@ namespace ToolKit
       return sepH + checkH + buttonsH + gaps + bottomPad;
     }
 
-    void RenderSettingsWindow::Show()
+    void EngineSettingsWindow::Show()
     {
       EngineSettings& engineSettings = GetEngineSettings();
       GraphicSettingsPtr graphics    = engineSettings.m_graphics;
@@ -156,7 +156,7 @@ namespace ToolKit
       ImGui::End();
     }
 
-    void RenderSettingsWindow::ShowGraphicsTab()
+    void EngineSettingsWindow::ShowGraphicsTab()
     {
       EngineSettings& engineSettings = GetEngineSettings();
       GraphicSettingsPtr graphics    = engineSettings.m_graphics;
@@ -209,7 +209,7 @@ namespace ToolKit
       }
     }
 
-    void RenderSettingsWindow::ShowShadowsTab()
+    void EngineSettingsWindow::ShowShadowsTab()
     {
       EngineSettings& engineSettings = GetEngineSettings();
       GraphicSettingsPtr graphics    = engineSettings.m_graphics;
@@ -380,7 +380,7 @@ namespace ToolKit
       }
     }
 
-    void RenderSettingsWindow::ShowPostProcessingTab()
+    void EngineSettingsWindow::ShowPostProcessingTab()
     {
       EngineSettings& engineSettings = GetEngineSettings();
       PostProcessingSettingsPtr pps  = engineSettings.m_postProcessing;

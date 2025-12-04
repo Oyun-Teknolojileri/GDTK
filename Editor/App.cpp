@@ -12,13 +12,13 @@
 #include "EditorCamera.h"
 #include "EditorMetaKeys.h"
 #include "EditorViewport2d.h"
+#include "EngineSettingsWindow.h"
 #include "Grid.h"
 #include "OutlinerWindow.h"
 #include "OverlayUI.h"
 #include "PluginWindow.h"
 #include "PopupWindows.h"
 #include "PropInspectorWindow.h"
-#include "RenderSettingsWindow.h"
 #include "StatsWindow.h"
 #include "StatusBar.h"
 
@@ -1463,7 +1463,10 @@ namespace ToolKit
 
     PropInspectorWindowPtr App::GetPropInspector() { return GetWindow<PropInspectorWindow>(g_propInspector); }
 
-    RenderSettingsWindowPtr App::GetRenderSettingsWindow() { return GetWindow<RenderSettingsWindow>(g_renderSettings); }
+    RenderSettingsWindowPtr App::GetEngineSettingsWindow()
+    {
+      return GetWindow<EngineSettingsWindow>(g_engineSettingsStr);
+    }
 
     StatsWindowPtr App::GetStatsWindow() { return GetWindow<StatsWindow>(g_statsView); }
 

@@ -180,7 +180,7 @@
     <ClCompile Include="PreviewViewport.cpp">
       <Filter>UI\Viewport</Filter>
     </ClCompile>
-    <ClCompile Include="RenderSettingsWindow.cpp">
+    <ClCompile Include="EngineSettingsWindow.cpp">
       <Filter>UI\Window</Filter>
     </ClCompile>
     <ClCompile Include="StatsWindow.cpp">
@@ -338,7 +338,7 @@
     <ClInclude Include="PreviewViewport.h">
       <Filter>UI\Viewport</Filter>
     </ClInclude>
-    <ClInclude Include="RenderSettingsWindow.h">
+    <ClInclude Include="EngineSettingsWindow.h">
       <Filter>UI\Window</Filter>
     </ClInclude>
     <ClInclude Include="StatsWindow.h">
