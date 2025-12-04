@@ -24,8 +24,12 @@ namespace ToolKit
       void Show() override;
 
      protected:
-      void ShowGeneralTab();
       void ShowPostProcessingTab();
+      void ShowGraphicsTab();
+      void ShowShadowsTab();
+
+     private:
+      bool m_showLoadWindow = false; // Footer load dialog state
     };
 
   } // namespace Editor
