@@ -258,7 +258,7 @@ namespace ToolKit
       ShowParameterBlock();
 
       // Missing data reporter.
-      if (ntt->IsDrawable())
+      if (ntt->IsDrawable() || ntt->m_creationFailureFlags)
       {
         MeshRawPtrArray meshes;
         if (Prefab* prefab = ntt->As<Prefab>())
@@ -277,8 +277,11 @@ namespace ToolKit
         }
         else
         {
-          MeshPtr mesh = ntt->GetComponent<MeshComponent>()->GetMeshVal();
-          mesh->GetAllMeshes(meshes);
+          if (MeshComponentPtr meshCom = ntt->GetComponent<MeshComponent>())
+          {
+            MeshPtr mesh = meshCom->GetMeshVal();
+            mesh->GetAllMeshes(meshes);
+          }
         }
 
         StringArray missingData;
@@ -306,9 +309,21 @@ namespace ToolKit
           }
         }
 
+        if (ntt->m_creationFailureFlags != 0)
+        {
+          if (ntt->m_creationFailureFlags & EntityCreateFailure::MissingComponentClass)
+          {
+            missingData.push_back("Entity contains missing component.");
+          }
+          if (ntt->m_creationFailureFlags & EntityCreateFailure::MissingEntityClass)
+          {
+            missingData.push_back("Entity class is missing.");
+          }
+        }
+
         if (!missingData.empty())
         {
-          ImGui::Text("Missing Data: ");
+          ImGui::SeparatorText("Missing Data");
           ImGui::Separator();
           ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 0, 0, 255));
           for (const String& data : missingData)
@@ -499,12 +514,15 @@ namespace ToolKit
             var->m_onValueChangedFn.pop_back();
           }
 
-          // Show the function callbacks at the end of variables.
-          ImGui::SeparatorText("Functions");
-
-          for (ParameterVariant* var : varCallbacks)
+          if (!varCallbacks.empty())
           {
-            CustomDataView::ShowVariant(var, nullptr);
+            // Show the function callbacks at the end of variables.
+            ImGui::SeparatorText("Functions");
+
+            for (ParameterVariant* var : varCallbacks)
+            {
+              CustomDataView::ShowVariant(var, nullptr);
+            }
           }
         }
 
