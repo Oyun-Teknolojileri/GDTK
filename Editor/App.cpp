@@ -1224,38 +1224,44 @@ namespace ToolKit
       TKAsyncTask(WorkerManager::BackgroundPool,
                   [this, fullPath, progressReportFn]() -> void
                   {
+                    SceneManager* sceneManager = GetSceneManager();
+                    sceneManager->Remove(fullPath); // Make sure to force a reload.
+
                     // Load scene in background.
-                    EditorScenePtr scene = GetSceneManager()->Create<EditorScene>(fullPath, progressReportFn);
+                    EditorScenePtr nextScene = sceneManager->Create<EditorScene>(fullPath, progressReportFn);
+                    sceneManager->Remove(fullPath); // Preserve the loaded scene getting destroyed in ClearSession.
+
                     SetStatusMsg(g_statusComplate);
 
                     // Initiate and set the scene in the main thread.
-                    TKAsyncTask(WorkerManager::MainThread,
-                                [this, fullPath]() -> void
-                                {
-                                  ClearSession();
-                                  GetCurrentScene()->Destroy(false);
-                                  GetSceneManager()->Remove(GetCurrentScene()->GetFile());
+                    TKAsyncTask(
+                        WorkerManager::MainThread,
+                        [this, fullPath](EditorScenePtr nextScene) -> void
+                        {
+                          ClearSession();
 
-                                  // Get the loaded scene.
-                                  EditorScenePtr scene = GetSceneManager()->Create<EditorScene>(fullPath);
-                                  if (IsLayer(fullPath))
-                                  {
-                                    if (EditorViewport2dPtr viewport = GetWindow<EditorViewport2d>(g_2dViewport))
-                                    {
-                                      UILayerPtr layer = MakeNewPtr<UILayer>(scene);
+                          // Set the loaded scene.
+                          SceneManager* sceneManager = GetSceneManager();
+                          sceneManager->Manage(nextScene);
+                          if (IsLayer(fullPath))
+                          {
+                            if (EditorViewport2dPtr viewport = GetWindow<EditorViewport2d>(g_2dViewport))
+                            {
+                              UILayerPtr layer = MakeNewPtr<UILayer>(nextScene);
 
-                                      UIManager* uiMan = GetUIManager();
-                                      uiMan->AddLayer(viewport->m_viewportId, layer);
-                                    }
-                                    else
-                                    {
-                                      SetStatusMsg(g_statusNo2dViewports);
-                                    }
-                                  }
+                              UIManager* uiMan = GetUIManager();
+                              uiMan->AddLayer(viewport->m_viewportId, layer);
+                            }
+                            else
+                            {
+                              SetStatusMsg(g_statusNo2dViewports);
+                            }
+                          }
 
-                                  SetCurrentScene(scene);
-                                  m_workspace.SetScene(scene->m_name);
-                                });
+                          SetCurrentScene(nextScene);
+                          m_workspace.SetScene(nextScene->m_name);
+                        },
+                        nextScene);
                   });
     }
 
