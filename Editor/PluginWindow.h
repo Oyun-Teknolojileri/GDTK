@@ -49,7 +49,6 @@ namespace ToolKit
 
       void Show() override;
       void LoadPluginSettings();
-      void LoadAutoEnabledPlugins();
 
       /** Loads enabled plugins. Enable status is stored in engine settings. */
       void LoadEnabledPlugins();
