@@ -26,11 +26,11 @@ namespace ToolKit
   {
     SceneRenderPathParams()
     {
-      MainFramebuffer       = nullptr;
-      Cam                   = nullptr;
-      Scene                 = nullptr;
-      grid                  = nullptr;
-      postProcessSettings   = MakeNewPtr<PostProcessingSettings>();
+      MainFramebuffer     = nullptr;
+      Cam                 = nullptr;
+      Scene               = nullptr;
+      grid                = nullptr;
+      postProcessSettings = MakeNewPtr<PostProcessingSettings>();
     }
 
     LightPtrArray overrideLights;
@@ -68,6 +68,7 @@ namespace ToolKit
     BloomPassPtr m_bloomPass                         = nullptr;
     DoFPassPtr m_dofPass                             = nullptr;
     GammaTonemapFxaaPassPtr m_gammaTonemapFxaaPass   = nullptr;
+    FramebufferPtr m_resolvedFramebuffer             = nullptr;
 
    protected:
     bool m_drawSky   = false;

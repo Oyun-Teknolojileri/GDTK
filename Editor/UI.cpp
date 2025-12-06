@@ -11,11 +11,11 @@
 #include "App.h"
 #include "ConsoleWindow.h"
 #include "EditorViewport2d.h"
+#include "EngineSettingsWindow.h"
 #include "OutlinerWindow.h"
 #include "PluginWindow.h"
 #include "PopupWindows.h"
 #include "PropInspectorWindow.h"
-#include "RenderSettingsWindow.h"
 #include "StatsWindow.h"
 
 #include <Audio.h>
@@ -768,7 +768,7 @@ namespace ToolKit
       ShowPersistentWindow<OutlinerWindow>(g_outlinerStr);
       ShowPersistentWindow<PropInspectorWindow>(g_propInspector);
       ShowPersistentWindow<SimulationWindow>(g_simulationWindowStr);
-      ShowPersistentWindow<RenderSettingsWindow>(g_renderSettings);
+      ShowPersistentWindow<EngineSettingsWindow>(g_engineSettingsStr);
       ShowPersistentWindow<StatsWindow>(g_statsView);
       ShowPersistentWindow<PluginWindow>(g_pluginWindow);
 

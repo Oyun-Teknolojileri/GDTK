@@ -829,7 +829,14 @@ namespace ToolKit
     {
       XmlAttribute* typeAttr = node->first_attribute(xmlObjectType);
       ObjectPtr obj          = MakeNewPtrCasted<Object>(typeAttr->value());
-      obj->m_version         = m_version;
+      if (obj == nullptr)
+      {
+        TK_ERR("Failed to create entity of class %s", typeAttr->value());
+        EntityPtr nullEntity                = MakeNewPtr<Entity>();
+        nullEntity->m_creationFailureFlags |= EntityCreateFailure::MissingEntityClass;
+        obj                                 = nullEntity;
+      }
+      obj->m_version = m_version;
 
       if (EntityPtr ntt = SafeCast<Entity>(obj))
       {

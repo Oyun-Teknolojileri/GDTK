@@ -47,11 +47,9 @@ namespace ToolKit
    private:
     GameRendererParams m_params;
 
-    SceneRenderPathPtr m_sceneRenderPath           = nullptr;
-    ForwardRenderPassPtr m_uiPass                  = nullptr;
-    GammaTonemapFxaaPassPtr m_gammaTonemapFxaaPass = nullptr;
-    FullQuadPassPtr m_fullQuadPass                 = nullptr;
-    MaterialPtr m_quadUnlitMaterial                = nullptr;
+    SceneRenderPathPtr m_sceneRenderPath = nullptr;
+    ForwardRenderPassPtr m_uiPass        = nullptr;
+    GammaTonemapFxaaPassPtr m_gammaPass  = nullptr;
 
     RenderJobArray m_uiRenderJobs;
     RenderData m_uiRenderData;

@@ -25,6 +25,7 @@ namespace ToolKit
     GraphicTypes InternalFormat = GraphicTypes::FormatRGBA16F;
     GraphicTypes Format         = GraphicTypes::FormatRGBA;
     GraphicTypes Type           = GraphicTypes::TypeFloat;
+    int msaaCount               = 1;     //!< MSAA Render target is created if this is grater than 1.
     int Layers                  = 0;     //!< Number of layers that this texture have if this is a texture array.
     bool GenerateMipMap         = false; //!< Generates mipmaps for the texture automatically.
 
@@ -63,18 +64,34 @@ namespace ToolKit
     /** Generate mip maps for the texture. */
     void GenerateMipMaps();
 
+    /** Returns if the texture is multi sampled. */
+    bool IsMultiSampled();
+
+    /** Returns resolved texture if exist, or the original texture. */
+    TexturePtr GetResolvedTexture();
+
    protected:
     /** Removes image data. */
     virtual void Clear();
+
+    /** Used to set graphics api settings for texture creation.*/
+    void ApplyTextureSettings(const TextureSettings& settings);
 
    public:
     uint m_textureId  = 0;
     int m_width       = 0;
     int m_height      = 0;
-    int m_numChannels = 0; //!< Number of channels (r, g, b, a) for loaded images.
     uint8* m_image    = nullptr;
     float* m_imagef   = nullptr;
-    StringView m_label; //!< Debug label which appears in the gpu debuggers.
+
+    /** Number of channels (r, g, b, a) for loaded images. */
+    int m_numChannels = 0;
+
+    /** Debug label which appears in the gpu debuggers. */
+    StringView m_label;
+
+    /** If an msaa texture is created, resolved single sample texture is assigned to this texture. */
+    TexturePtr m_resolvedTexture;
 
    protected:
     TextureSettings m_settings;
@@ -89,6 +106,8 @@ namespace ToolKit
     TKDeclareClass(DepthTexture, Texture);
 
    public:
+    DepthTexture();
+
     void Load() override;
     void Init(int width, int height, bool stencil, int multiSample = 0);
     void UnInit() override;
@@ -104,16 +123,7 @@ namespace ToolKit
 
    public:
     /** States if the depth texture is constructed with stencil. */
-    bool m_stencil     = false;
-
-    /**
-     * States if the render target for depth is constructed.
-     * Construction occurs when the depth texture is attached to a frame buffer.
-     */
-    bool m_constructed = false;
-
-    /** States sample count of the depth buffer. */
-    int m_multiSample;
+    bool m_stencil = false;
   };
 
   // DataTexture

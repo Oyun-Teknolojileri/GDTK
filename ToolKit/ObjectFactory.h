@@ -227,7 +227,12 @@ namespace ToolKit
         if constexpr (ObjectFactory::HasStaticClass<T>::value)
         {
           std::shared_ptr<T> obj = Cast<T>(LocalObjectPtr(of->MakeNew<T>()));
-          obj->m_self            = obj;
+          if (obj == nullptr)
+          {
+            return nullptr;
+          }
+
+          obj->m_self = obj;
           obj->NativeConstruct(std::forward<Args>(args)...);
           return obj;
         }
@@ -250,6 +255,11 @@ namespace ToolKit
       if (ObjectFactory* of = main->m_objectFactory)
       {
         std::shared_ptr<T> obj = std::shared_ptr<T>(static_cast<T*>(of->MakeNew(Class)));
+        if (obj == nullptr)
+        {
+          return nullptr;
+        }
+
         assert(obj->template IsA<T>() && "Wrong type cast.");
 
         if constexpr (ObjectFactory::HasStaticClass<T>::value)

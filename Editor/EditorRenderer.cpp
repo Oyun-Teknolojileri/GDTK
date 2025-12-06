@@ -56,39 +56,61 @@ namespace ToolKit
       m_passArray.clear();
 
       SceneRenderPathPtr sceneRenderer = m_sceneRenderPath;
+      FramebufferPtr mainBuffer        = m_params.Viewport->m_framebuffer;
+      auto copyToMultiSampleBuffer     = [this, renderer, mainBuffer, sceneRenderer]()
+      {
+        // Draw resolved framebuffer on to msaa buffer if needed.
+        // Resolved frame buffer contains correct scene rendering with post processings.
+        // To continue msaa rendering for editor objects, we need to copy resolved buffer to main msaa buffer.
+        using Attachment = Framebuffer::Attachment;
+        if (mainBuffer->IsMultiSampled() && sceneRenderer->m_resolvedFramebuffer)
+        {
+          RenderTargetPtr rRT = sceneRenderer->m_resolvedFramebuffer->GetColorAttachment(Attachment::ColorAttachment0);
+          RenderTargetPtr mRT = mainBuffer->GetColorAttachment(Attachment::ColorAttachment0);
+          renderer->CopyTexture(rRT, mRT);
+        }
+      };
+
       if (GetRenderSystem()->IsSkipFrame())
       {
         sceneRenderer->Render(renderer);
 
         m_passArray.push_back(m_skipFramePass);
         RenderPath::Render(renderer);
-
-        PostRender(renderer);
-        return;
       }
-
-      switch (m_params.LitMode)
+      else if (m_params.LitMode == EditorLitMode::Game)
       {
-      case EditorLitMode::Game:
         m_params.App->HideGizmos();
         sceneRenderer->m_params.grid = nullptr;
         sceneRenderer->Render(renderer);
-        m_passArray.push_back(m_uiPass);
+
+        if (!m_uiPass->m_params.renderData->jobs.empty())
+        {
+          copyToMultiSampleBuffer();
+
+          m_uiPass->m_params.resolveFrameBuffer = nullptr;
+          if (mainBuffer->IsMultiSampled() && sceneRenderer->m_resolvedFramebuffer)
+          {
+            m_uiPass->m_params.resolveFrameBuffer = sceneRenderer->m_resolvedFramebuffer;
+          }
+
+          m_passArray.push_back(m_uiPass);
+        }
+
         RenderPath::Render(renderer);
         m_params.App->ShowGizmos();
-        break;
-      default:
-        sceneRenderer->Render(renderer);
-        break;
       }
-
-      if (m_params.LitMode != EditorLitMode::Game)
+      else
       {
+        sceneRenderer->Render(renderer);
+
         // Draw scene and apply bloom effect.
         RenderPath::Render(renderer);
         m_passArray.clear();
 
         SetLitMode(renderer, EditorLitMode::EditorLit);
+
+        copyToMultiSampleBuffer();
 
         // Draw outlines.
         OutlineSelecteds(renderer);
@@ -106,6 +128,15 @@ namespace ToolKit
         RenderPath::Render(renderer);
       }
 
+      // Finally resolve the multi sampled main buffer if needed.
+      if (mainBuffer->IsMultiSampled())
+      {
+        FramebufferSettings settings = mainBuffer->GetSettings();
+        settings.msaaCount           = 1;
+        m_resolvedFramebuffer->ReconstructIfNeeded(settings);
+        renderer->ResolveFramebuffer(mainBuffer, m_resolvedFramebuffer, {0});
+      }
+
       PostRender(renderer);
     }
 
@@ -121,7 +152,6 @@ namespace ToolKit
       m_camera->m_node->AddChild(m_lightSystem->m_parentNode);
 
       EditorScenePtr scene                            = app->GetCurrentScene();
-
       EditorViewport* viewport                        = static_cast<EditorViewport*>(m_params.Viewport);
 
       // Scene renderer will render the given scene independent of editor.
@@ -333,13 +363,14 @@ namespace ToolKit
       m_unlitOverride->Init();
       m_blackMaterial->Init();
 
-      m_billboardPass   = MakeNewPtr<BillboardPass>();
-      m_sceneRenderPath = MakeNewPtr<ForwardSceneRenderPath>();
-      m_uiPass          = MakeNewPtr<ForwardRenderPass>();
-      m_editorPass      = MakeNewPtr<ForwardRenderPass>();
-      m_gizmoPass       = MakeNewPtr<GizmoPass>();
-      m_outlinePass     = MakeNewPtr<OutlinePass>();
-      m_skipFramePass   = MakeNewPtr<FullQuadPass>();
+      m_billboardPass       = MakeNewPtr<BillboardPass>();
+      m_sceneRenderPath     = MakeNewPtr<ForwardSceneRenderPath>();
+      m_uiPass              = MakeNewPtr<ForwardRenderPass>();
+      m_editorPass          = MakeNewPtr<ForwardRenderPass>();
+      m_gizmoPass           = MakeNewPtr<GizmoPass>();
+      m_outlinePass         = MakeNewPtr<OutlinePass>();
+      m_skipFramePass       = MakeNewPtr<FullQuadPass>();
+      m_resolvedFramebuffer = MakeNewPtr<Framebuffer>();
     }
 
     void EditorRenderer::OutlineSelecteds(Renderer* renderer)

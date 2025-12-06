@@ -242,10 +242,19 @@ namespace ToolKit
         String cls;
         ReadAttr(comNode, XmlObjectClassAttr.data(), cls);
         ComponentPtr com = MakeNewPtrCasted<Component>(cls);
-        com->m_version   = m_version;
-        com->DeSerialize(info, comNode);
 
-        AddComponent(com);
+        if (com == nullptr)
+        {
+          TK_ERR("Failed to create component of class %s", cls.c_str());
+          m_creationFailureFlags |= EntityCreateFailure::MissingComponentClass;
+        }
+        else
+        {
+          com->m_version = m_version;
+          com->DeSerialize(info, comNode);
+
+          AddComponent(com);
+        }
 
         comNode = comNode->next_sibling();
       }

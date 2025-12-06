@@ -29,6 +29,7 @@ namespace ToolKit
     GameViewportPtr m_viewport          = nullptr;
     UILayerPtr m_splashScreen           = nullptr;
     RenderData m_uiRenderData;
+    FramebufferPtr m_resolvedFramebuffer = nullptr;
   };
 
   typedef std::shared_ptr<SplashScreenRenderPath> SplashScreenRenderPathPtr;

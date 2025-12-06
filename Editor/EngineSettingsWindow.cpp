@@ -5,7 +5,7 @@
  * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
  */
 
-#include "RenderSettingsWindow.h"
+#include "EngineSettingsWindow.h"
 
 #include "App.h"
 #include "CustomDataView.h"
@@ -19,41 +19,150 @@ namespace ToolKit
   namespace Editor
   {
 
-    TKDefineClass(RenderSettingsWindow, Window);
+    TKDefineClass(EngineSettingsWindow, Window);
 
-    RenderSettingsWindow::RenderSettingsWindow() { m_name = g_renderSettings; }
+    EngineSettingsWindow::EngineSettingsWindow() { m_name = g_engineSettingsStr; }
 
-    RenderSettingsWindow::~RenderSettingsWindow() {}
+    EngineSettingsWindow::~EngineSettingsWindow() {}
 
-    void RenderSettingsWindow::Show()
+    // Utility function to calculate footer height. Update if footer content changes.
+    float CalcFooterHeight()
+    {
+      const ImGuiStyle& style = ImGui::GetStyle();
+
+      float sepH              = ImGui::GetTextLineHeightWithSpacing(); // SeparatorText row
+      float checkH            = ImGui::GetFrameHeight();               // Checkbox row
+      float buttonsH          = ImGui::GetFrameHeight();               // Buttons row
+
+      // Vertical spacings between rows (SeparatorText -> Checkbox -> Buttons)
+      float gaps              = style.ItemSpacing.y * 2.0f;
+
+      // bottom padding
+      float bottomPad         = style.ItemSpacing.y * 2.0f;
+
+      return sepH + checkH + buttonsH + gaps + bottomPad;
+    }
+
+    void EngineSettingsWindow::Show()
     {
       EngineSettings& engineSettings = GetEngineSettings();
+      GraphicSettingsPtr graphics    = engineSettings.m_graphics;
 
       ImGui::SetNextWindowSize(ImVec2(300, 600), ImGuiCond_Once);
       if (ImGui::Begin(m_name.c_str(), &m_visible))
       {
         HandleStates();
+
+        // Tighter footer reservation to leave more space for tabs
+        float footerHeight = CalcFooterHeight();
+
+        ImVec2 avail       = ImGui::GetContentRegionAvail();
+        float childHeight  = glm::max(0.0f, avail.y - footerHeight);
+
+        ImGui::BeginChild("RenderSettingsTabsChild", ImVec2(0, childHeight), false, ImGuiWindowFlags_None);
         if (ImGui::BeginTabBar("RenderSettingsTabs", ImGuiTabBarFlags_None))
         {
-          ShowGeneralTab();
+          ShowGraphicsTab();
+          ShowShadowsTab();
           ShowPostProcessingTab();
           ImGui::EndTabBar();
+        }
+        ImGui::EndChild();
+
+        // Footer
+        ImGui::SeparatorText("Presets");
+        ImGui::Checkbox("Save Shader Defines", &graphics->m_saveShaderDefines);
+        UI::AddTooltipToLastItem("If enabled, shader defines are saved to the engine settings file.\n"
+                                 "This prevents compiling all shader combinations, but requires "
+                                 "recompiling shaders when a define is changed.");
+
+        if (ImGui::Button("Save Settings"))
+        {
+          GetApp()->m_workspace.SerializeEngineSettings();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Save Settings As"))
+        {
+          StringInputWindowPtr saveAsWindow = MakeNewPtr<StringInputWindow>("Save Settings As##SaveSettingsAs", true);
+          saveAsWindow->m_inputLabel        = "Name";
+          saveAsWindow->m_hint              = "Enter settings name";
+          saveAsWindow->m_taskFn            = [](const String& val)
+          { GetApp()->m_workspace.SerializeEngineSettings(val + ".settings"); };
+          saveAsWindow->AddToUI();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Load Settings"))
+        {
+          m_showLoadWindow = true;
+        }
+
+        if (m_showLoadWindow)
+        {
+          static StringArray settingsFiles;
+          static String selectedFile;
+          if (settingsFiles.empty())
+          {
+            String path = GetApp()->m_workspace.GetConfigDirectory();
+            for (const auto& entry : std::filesystem::directory_iterator(path))
+            {
+              if (entry.is_regular_file() && entry.path().extension() == ".settings")
+              {
+                String filename = entry.path().stem().u8string();
+                if (filename != "Editor")
+                {
+                  settingsFiles.push_back(filename);
+                }
+              }
+            }
+            if (!settingsFiles.empty())
+            {
+              selectedFile = settingsFiles[0];
+            }
+          }
+
+          ImGui::SetNextWindowSizeConstraints(ImVec2(300, 0), ImVec2(TK_FLT_MAX, TK_FLT_MAX));
+          ImGui::Begin("Load Settings", &m_showLoadWindow, ImGuiWindowFlags_AlwaysAutoResize);
+          if (settingsFiles.empty())
+          {
+            ImGui::Text("No .settings files found.");
+          }
+          else
+          {
+            for (const String& file : settingsFiles)
+            {
+              bool selected = (file == selectedFile);
+              if (ImGui::Selectable(file.c_str(), selected))
+              {
+                selectedFile = file;
+              }
+            }
+            ImGui::Dummy(ImVec2(0.0f, ImGui::GetFrameHeight()));
+            if (ImGui::Button("Ok"))
+            {
+              GetApp()->m_workspace.DeSerializeEngineSettings(selectedFile);
+              m_showLoadWindow = false;
+              settingsFiles.clear();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel"))
+            {
+              m_showLoadWindow = false;
+              settingsFiles.clear();
+            }
+          }
+          ImGui::End();
         }
       }
       ImGui::End();
     }
 
-    // ShowGeneralTab
-    //////////////////////////////////////////
-
-    void RenderSettingsWindow::ShowGeneralTab()
+    void EngineSettingsWindow::ShowGraphicsTab()
     {
       EngineSettings& engineSettings = GetEngineSettings();
       GraphicSettingsPtr graphics    = engineSettings.m_graphics;
-      ShadowSettingsPtr shadows      = graphics->m_shadows;
 
-      // General Settings Tab
-      if (ImGui::BeginTabItem("General Settings"))
+      // Graphics Tab
+      if (ImGui::BeginTabItem("Graphics"))
       {
         static bool lockFps = true;
         if (ImGui::Checkbox("FPS Lock##1", &lockFps))
@@ -96,8 +205,19 @@ namespace ToolKit
         UI::AddTooltipToLastItem("Apply anisotropic filtering if the value is greater than 0. \nOnly effects all "
                                  "textures after editor restarted.");
 
-        ImGui::SeparatorText("Shadows");
+        ImGui::EndTabItem(); // End Graphics Tab
+      }
+    }
 
+    void EngineSettingsWindow::ShowShadowsTab()
+    {
+      EngineSettings& engineSettings = GetEngineSettings();
+      GraphicSettingsPtr graphics    = engineSettings.m_graphics;
+      ShadowSettingsPtr shadows      = graphics->m_shadows;
+
+      // Shadows Tab
+      if (ImGui::BeginTabItem("Shadows"))
+      {
         bool evsm4 = shadows->GetUseEVSM4Val();
         if (ImGui::RadioButton("Use EVSM2", !evsm4))
         {
@@ -149,7 +269,6 @@ namespace ToolKit
         UI::AddTooltipToLastItem("Number of samples taken from shadow map to calculate shadow factor.");
 
         Vec4 data            = shadows->GetCascadeDistancesVal();
-
         int lastCascadeIndex = shadows->GetCascadeCountVal() - 1;
         Vec2 contentSize     = ImGui::GetContentRegionAvail();
         float width          = contentSize.x * 0.95f / 4.0f;
@@ -257,118 +376,17 @@ namespace ToolKit
         }
         UI::AddTooltipToLastItem("Highlights shadow cascades for debugging purpose.");
 
-        ImGui::SeparatorText("Presets");
-
-        ImGui::Checkbox("Save Shader Defines", &graphics->m_saveShaderDefines);
-        UI::AddTooltipToLastItem("If enabled, shader defines are saved to the engine settings file. "
-                                 "This prevents compiling all shader combinations, but requires "
-                                 "recompiling shaders when a define is changed.");
-
-        if (ImGui::Button("Save Settings"))
-        {
-          GetApp()->m_workspace.SerializeEngineSettings();
-        }
-
-        ImGui::SameLine();
-        if (ImGui::Button("Save Settings As"))
-        {
-          StringInputWindowPtr saveAsWindow = MakeNewPtr<StringInputWindow>("Save Settings As##SaveSettingsAs", true);
-
-          saveAsWindow->m_inputLabel        = "Name";
-          saveAsWindow->m_hint              = "Enter settings name";
-          saveAsWindow->m_taskFn            = [](const String& val)
-          { GetApp()->m_workspace.SerializeEngineSettings(val + ".settings"); };
-
-          saveAsWindow->AddToUI();
-        }
-
-        static bool showLoadWindow = false;
-        ImGui::SameLine();
-        if (ImGui::Button("Load Settings"))
-        {
-          showLoadWindow = true;
-        }
-
-        // Load window UI
-        if (showLoadWindow)
-        {
-          static StringArray settingsFiles;
-          static String selectedFile;
-
-          if (settingsFiles.empty())
-          {
-            String path = GetApp()->m_workspace.GetConfigDirectory();
-            for (const auto& entry : std::filesystem::directory_iterator(path))
-            {
-              if (entry.is_regular_file() && entry.path().extension() == ".settings")
-              {
-                String filename = entry.path().stem().u8string();
-                if (filename != "Editor")
-                {
-                  settingsFiles.push_back(filename);
-                }
-              }
-            }
-
-            if (!settingsFiles.empty())
-            {
-              selectedFile = settingsFiles[0];
-            }
-          }
-
-          ImGui::SetNextWindowSizeConstraints(ImVec2(300, 0), ImVec2(TK_FLT_MAX, TK_FLT_MAX));
-          ImGui::Begin("Load Settings", &showLoadWindow, ImGuiWindowFlags_AlwaysAutoResize);
-
-          if (settingsFiles.empty())
-          {
-            ImGui::Text("No .settings files found.");
-          }
-          else
-          {
-            for (const String& file : settingsFiles)
-            {
-              bool selected = (file == selectedFile);
-              if (ImGui::Selectable(file.c_str(), selected))
-              {
-                selectedFile = file;
-              }
-            }
-
-            ImGui::Dummy(ImVec2(0.0f, ImGui::GetFrameHeight()));
-
-            if (ImGui::Button("Ok"))
-            {
-              GetApp()->m_workspace.DeSerializeEngineSettings(selectedFile);
-              showLoadWindow = false;
-              settingsFiles.clear();
-            }
-
-            ImGui::SameLine();
-            if (ImGui::Button("Cancel"))
-            {
-              showLoadWindow = false;
-              settingsFiles.clear();
-            }
-          }
-
-          ImGui::End();
-        }
-        ImGui::EndTabItem(); // End General Settings Tab
+        ImGui::EndTabItem(); // End Shadows Tab
       }
     }
 
-    // ShowPostProcessingTab
-    //////////////////////////////////////////
-
-    void RenderSettingsWindow::ShowPostProcessingTab()
+    void EngineSettingsWindow::ShowPostProcessingTab()
     {
       EngineSettings& engineSettings = GetEngineSettings();
       PostProcessingSettingsPtr pps  = engineSettings.m_postProcessing;
 
-      // ImGui Tab Bar
-
-      // Post Process Settings Tab
-      if (ImGui::BeginTabItem("Post Process Settings", nullptr))
+      // Post Processing Tab
+      if (ImGui::BeginTabItem("Post Processing", nullptr))
       {
         if (ImGui::CollapsingHeader("ToneMapping"))
         {
@@ -494,7 +512,8 @@ namespace ToolKit
             pps->SetFXAAEnabledVal(fxaaEnabled);
           }
         }
-        ImGui::EndTabItem(); // End Post Process Settings Tab
+
+        ImGui::EndTabItem(); // End Post Processing Tab
       }
     }
 

@@ -495,21 +495,22 @@ namespace ToolKit
                                    bufferFormat,
                                    bufferComponents,
                                    GraphicTypes::TypeFloat,
+                                   1,
                                    m_layerCount,
                                    false};
 
-      m_shadowFramebuffer->DetachColorAttachment(Framebuffer::Attachment::ColorAttachment0);
-      m_shadowAtlas->Reconstruct(RHIConstants::ShadowAtlasTextureSize, RHIConstants::ShadowAtlasTextureSize, set);
+      // m_shadowFramebuffer->DetachColorAttachment(Framebuffer::Attachment::ColorAttachment0);
+      m_shadowAtlas->ReconstructIfNeeded(RHIConstants::ShadowAtlasTextureSize,
+                                         RHIConstants::ShadowAtlasTextureSize,
+                                         &set);
 
-      if (!m_shadowFramebuffer->Initialized())
-      {
-        FramebufferSettings fbSettings = {RHIConstants::ShadowAtlasTextureSize,
-                                          RHIConstants::ShadowAtlasTextureSize,
-                                          false,
-                                          true};
-        m_shadowFramebuffer->ReconstructIfNeeded(fbSettings);
-      }
+      FramebufferSettings fbSettings = {RHIConstants::ShadowAtlasTextureSize,
+                                        RHIConstants::ShadowAtlasTextureSize,
+                                        false,
+                                        true,
+                                        1};
 
+      m_shadowFramebuffer->ReconstructIfNeeded(fbSettings);
       m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowAtlas, 0, 0);
     }
   }

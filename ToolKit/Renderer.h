@@ -146,14 +146,20 @@ namespace ToolKit
 
     FramebufferPtr GetFrameBuffer();
 
-    void SetFramebuffer(FramebufferPtr fb,
+    void SetFramebuffer(FramebufferPtr frameBuffer,
                         GraphicBitFields attachmentsToClear,
-                        const Vec4& clearColor         = Vec4(0.0f),
-                        GraphicFramebufferTypes fbType = GraphicFramebufferTypes::Framebuffer);
+                        const Vec4& clearColor                  = Vec4(0.0f),
+                        GraphicFramebufferTypes frameBufferType = GraphicFramebufferTypes::Framebuffer);
 
     void InvalidateFramebufferDepth(FramebufferPtr frameBuffer);
     void InvalidateFramebufferStencil(FramebufferPtr frameBuffer);
     void InvalidateFramebufferDepthStencil(FramebufferPtr frameBuffer);
+
+    /**
+     * Resolves source multi sample buffer to single sample target buffer.
+     * Source attachment must exist, target attachment will be created if not existing.
+     */
+    void ResolveFramebuffer(FramebufferPtr source, FramebufferPtr target, const IntArray& attachments);
 
     /**
      * Sets the src and dest frame buffers and copies the given fields.
@@ -327,7 +333,7 @@ namespace ToolKit
     QuadPtr m_tempQuad                             = nullptr;
     MaterialPtr m_tempQuadMaterial                 = nullptr;
 
-    FramebufferPtr m_copyFb                        = nullptr;
+    FramebufferPtr m_copyFrameBuffer                        = nullptr;
     MaterialPtr m_copyMaterial                     = nullptr;
 
     int m_maxArrayTextureLayers                    = -1;

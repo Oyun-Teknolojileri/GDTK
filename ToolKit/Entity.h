@@ -28,8 +28,13 @@ namespace ToolKit
 
   static VariantCategory EntityCategory {"Meta", 100};
 
+  namespace EntityCreateFailure
+  {
+    const int None = 0, MissingEntityClass = 1 << 0, MissingComponentClass = 1 << 1;
+  };
+
   /**
-   * Fundamental object that all the ToolKit utilities can interacted with.
+   * Fundamental object that all the ToolKit utilities can interact with.
    * Entity is the base class for all the objects that can be inserted in any
    * scene.
    */
@@ -246,6 +251,9 @@ namespace ToolKit
 
     /** If true, transform related caches (aabb, abbtree etc...) are updated upon access. */
     bool m_spatialCachesInvalidated = true;
+
+    /** If during creation of a the entity, a failure happens, its noted here. */
+    int m_creationFailureFlags      = EntityCreateFailure::None;
 
    protected:
     BoundingBox m_localBoundingBoxCache;

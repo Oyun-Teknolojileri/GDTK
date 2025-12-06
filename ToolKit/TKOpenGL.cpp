@@ -5,7 +5,7 @@
  * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
  */
 
-#define GLAD_GLES2_IMPLEMENTATION
+#define GLAD_GL_IMPLEMENTATION
 #include "TKOpenGL.h"
 
 #include "Types.h"
@@ -41,7 +41,7 @@ namespace ToolKit
   void LoadGlFunctions(void* glGetProcAddres)
   {
 #ifdef TK_WIN
-    gladLoadGLES2((GLADloadfunc) glGetProcAddres);
+    gladLoadGL((GLADloadfunc) glGetProcAddres);
 
   #ifdef GL_EXT_multisampled_render_to_texture
     if (GLAD_GL_EXT_multisampled_render_to_texture == 1)

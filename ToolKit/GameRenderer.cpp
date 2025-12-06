@@ -14,38 +14,35 @@ namespace ToolKit
 
   GameRenderer::GameRenderer()
   {
-    m_sceneRenderPath      = MakeNewPtr<ForwardSceneRenderPath>();
-    m_uiPass               = MakeNewPtr<ForwardRenderPass>();
+    m_sceneRenderPath = MakeNewPtr<ForwardSceneRenderPath>();
+    m_uiPass          = MakeNewPtr<ForwardRenderPass>();
     m_uiPass->SetName("UI Pass");
 
-    m_gammaTonemapFxaaPass = MakeNewPtr<GammaTonemapFxaaPass>();
-    m_gammaTonemapFxaaPass->SetName("Gamma Tonemap FXAA Pass");
-
-    m_fullQuadPass         = MakeNewPtr<FullQuadPass>();
-    m_fullQuadPass->SetName("Final Blit Pass");
+    m_gammaPass                             = MakeNewPtr<GammaTonemapFxaaPass>();
+    m_gammaPass->m_params.enableTonemapping = false;
+    m_gammaPass->m_params.enableFxaa        = false;
+    m_gammaPass->SetName("Gamma Pass");
   }
 
   GameRenderer::~GameRenderer()
   {
-    m_sceneRenderPath      = nullptr;
-    m_uiPass               = nullptr;
-    m_gammaTonemapFxaaPass = nullptr;
-    m_fullQuadPass         = nullptr;
-    m_quadUnlitMaterial    = nullptr;
+    m_sceneRenderPath = nullptr;
+    m_uiPass          = nullptr;
+    m_gammaPass       = nullptr;
   }
 
   void GameRenderer::PreRender(Renderer* renderer)
   {
+    RenderPath::PreRender(renderer);
+
     // Scene pass params
     m_sceneRenderPath->m_params.Cam                 = m_params.viewport->GetCamera();
     m_sceneRenderPath->m_params.MainFramebuffer     = m_params.viewport->m_framebuffer;
     m_sceneRenderPath->m_params.Scene               = m_params.scene;
     m_sceneRenderPath->m_params.postProcessSettings = m_params.postProcessSettings;
 
-    // These post processings will be done after ui pass
+    // Post process pass. Gamma will be applied in the final pass.
     m_sceneRenderPath->m_params.postProcessSettings->SetGammaCorrectionEnabledVal(false);
-    m_sceneRenderPath->m_params.postProcessSettings->SetTonemappingEnabledVal(false);
-    m_sceneRenderPath->m_params.postProcessSettings->SetFXAAEnabledVal(false);
 
     // UI params
     UILayerPtrArray layers;
@@ -62,50 +59,30 @@ namespace ToolKit
 
     RenderJobProcessor::SeperateRenderData(m_uiRenderData, true);
 
-    m_uiPass->m_params.renderData                          = &m_uiRenderData;
-    m_uiPass->m_params.Cam                                 = GetUIManager()->GetUICamera();
-    m_uiPass->m_params.FrameBuffer                         = m_params.viewport->m_framebuffer;
-    m_uiPass->m_params.clearBuffer                         = GraphicBitFields::DepthBits;
+    m_uiPass->m_params.renderData               = &m_uiRenderData;
+    m_uiPass->m_params.Cam                      = GetUIManager()->GetUICamera();
+    m_uiPass->m_params.FrameBuffer              = m_params.viewport->m_framebuffer;
+    m_uiPass->m_params.clearBuffer              = GraphicBitFields::DepthBits;
 
-    // Post Process Pass
-    PostProcessingSettingsPtr pps                          = m_params.postProcessSettings;
-    m_gammaTonemapFxaaPass->m_params.enableGammaCorrection = GetRenderSystem()->IsGammaCorrectionNeeded();
-
-    m_gammaTonemapFxaaPass->m_params.enableFxaa            = pps->GetFXAAEnabledVal();
-    m_gammaTonemapFxaaPass->m_params.enableTonemapping     = pps->GetTonemappingEnabledVal();
-    m_gammaTonemapFxaaPass->m_params.frameBuffer           = m_params.viewport->m_framebuffer;
-    m_gammaTonemapFxaaPass->m_params.tonemapMethod         = pps->GetTonemapperModeVal().GetEnum<TonemapMethod>();
-    m_gammaTonemapFxaaPass->m_params.gamma                 = pps->GetGammaVal();
-    m_gammaTonemapFxaaPass->m_params.screenSize            = m_params.viewport->m_wndContentAreaSize;
-
-    // Full quad pass
-    m_fullQuadPass->m_params.frameBuffer                   = nullptr; // backbuffer
-    m_fullQuadPass->m_params.clearFrameBuffer              = GraphicBitFields::AllBits;
-
-    if (m_quadUnlitMaterial == nullptr)
-    {
-      m_quadUnlitMaterial = GetMaterialManager()->GetCopyOfUnlitMaterial(false);
-      ShaderPtr vert      = GetShaderManager()->Create<Shader>(ShaderPath("fullQuadVert.shader", true));
-      m_quadUnlitMaterial->SetVertexShaderVal(vert);
-    }
-
-    ViewportPtr viewport = m_params.viewport;
-    RenderTargetPtr atc  = viewport->m_framebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
-    m_quadUnlitMaterial->SetDiffuseTextureVal(Cast<Texture>(atc));
+    // Gamma Pass.
+    PostProcessingSettingsPtr pps               = m_params.postProcessSettings;
+    m_gammaPass->m_params.enableGammaCorrection = GetRenderSystem()->IsGammaCorrectionNeeded();
+    m_gammaPass->m_params.frameBuffer           = m_params.viewport->m_framebuffer;
+    m_gammaPass->m_params.gamma                 = pps->GetGammaVal();
   }
 
-  void GameRenderer::PostRender(Renderer* renderer) { renderer->ResetUsedTextureSlots(); }
+  void GameRenderer::PostRender(Renderer* renderer) { RenderPath::PostRender(renderer); }
 
   void GameRenderer::SetParams(const GameRendererParams& gameRendererParams) { m_params = gameRendererParams; }
 
   void GameRenderer::Render(Renderer* renderer)
   {
+    PreRender(renderer);
+
     if (m_params.scene == nullptr || m_params.viewport == nullptr)
     {
       return;
     }
-
-    PreRender(renderer);
 
     // Scene renderer
     SceneRenderPathPtr sceneRenderer = m_sceneRenderPath;
@@ -113,19 +90,44 @@ namespace ToolKit
 
     m_passArray.clear();
 
-    // UI render pass
-    m_passArray.push_back(m_uiPass);
-
-    // Post processings
-    if (m_gammaTonemapFxaaPass->IsEnabled())
+    // Draw UI on top of scene.
+    FramebufferPtr mainBuffer = m_params.viewport->m_framebuffer;
+    if (!m_uiPass->m_params.renderData->jobs.empty())
     {
-      m_passArray.push_back(m_gammaTonemapFxaaPass);
+      m_uiPass->m_params.resolveFrameBuffer = nullptr;
+
+      // Draw resolved framebuffer on to msaa buffer if needed.
+      using Attachment                      = Framebuffer::Attachment;
+      if (mainBuffer->IsMultiSampled() && sceneRenderer->m_resolvedFramebuffer)
+      {
+        RenderTargetPtr rRT = sceneRenderer->m_resolvedFramebuffer->GetColorAttachment(Attachment::ColorAttachment0);
+        RenderTargetPtr mRT = mainBuffer->GetColorAttachment(Attachment::ColorAttachment0);
+        renderer->CopyTexture(rRT, mRT);
+
+        m_uiPass->m_params.resolveFrameBuffer = sceneRenderer->m_resolvedFramebuffer;
+      }
+
+      m_passArray.push_back(m_uiPass);
+      RenderPath::Render(renderer);
+      m_passArray.clear();
     }
 
-    m_fullQuadPass->m_material = m_quadUnlitMaterial;
-    m_passArray.push_back(m_fullQuadPass);
+    // Continue from resolved buffer if msaa is enabled.
+    if (mainBuffer->IsMultiSampled() && sceneRenderer->m_resolvedFramebuffer)
+    {
+      mainBuffer = sceneRenderer->m_resolvedFramebuffer;
+    }
+
+    // Post processings
+    if (m_gammaPass->IsEnabled())
+    {
+      m_gammaPass->m_params.frameBuffer = mainBuffer;
+      m_passArray.push_back(m_gammaPass);
+    }
 
     RenderPath::Render(renderer);
+
+    renderer->CopyFrameBuffer(mainBuffer, nullptr, GraphicBitFields::ColorBits);
 
     PostRender(renderer);
   }

@@ -88,6 +88,7 @@ namespace ToolKit
   {
     m_uiCamera                      = MakeNewPtr<Camera>();
     m_oneColorAttachmentFramebuffer = MakeNewPtr<Framebuffer>("RendererOneColorFB");
+    m_copyFrameBuffer               = MakeNewPtr<Framebuffer>("RendererCopyFB");
     m_dummyDrawCube                 = MakeNewPtr<Cube>();
 
     m_gpuProgramManager             = GetGpuProgramManager();
@@ -101,10 +102,10 @@ namespace ToolKit
     glEnable(GL_CULL_FACE);
     glEnable(GL_DEPTH_TEST);
 
-    SrgbAutoEncoding(GetRenderSystem()->m_backbufferFormatIsSRGB);
-
     // Validate sRGB automatic encoding on backbuffer if enabled.
     ValidateBackbufferSrgbEncoding();
+
+    SrgbAutoEncoding(GetRenderSystem()->m_backbufferFormatIsSRGB);
 
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
   }
@@ -114,7 +115,7 @@ namespace ToolKit
     m_oneColorAttachmentFramebuffer = nullptr;
     m_gaussianBlurMaterial          = nullptr;
     m_averageBlurMaterial           = nullptr;
-    m_copyFb                        = nullptr;
+    m_copyFrameBuffer               = nullptr;
     m_copyMaterial                  = nullptr;
 
     m_framebuffer                   = nullptr;
@@ -123,16 +124,25 @@ namespace ToolKit
 
   void Renderer::SrgbAutoEncoding(bool enable)
   {
-#ifdef GL_FRAMEBUFFER_SRGB_EXT
-    if (enable)
-    {
-      glEnable(GL_FRAMEBUFFER_SRGB_EXT);
-    }
-    else
-    {
-      glDisable(GL_FRAMEBUFFER_SRGB_EXT);
-    }
+#ifdef GL_FRAMEBUFFER_SRGB
+    const int glSrgbFlag = GL_FRAMEBUFFER_SRGB;
+#elif defined(GL_FRAMEBUFFER_SRGB_EXT)
+    const int glSrgbFlag = GL_FRAMEBUFFER_SRGB_EXT;
+#else
+    const int glSrgbFlag = 0;
 #endif
+
+    if constexpr (glSrgbFlag)
+    {
+      if (enable)
+      {
+        glEnable(glSrgbFlag);
+      }
+      else
+      {
+        glDisable(glSrgbFlag);
+      }
+    }
   }
 
   int Renderer::GetMaxArrayTextureLayers()
@@ -441,23 +451,26 @@ namespace ToolKit
     }
   }
 
-  void Renderer::SetFramebuffer(FramebufferPtr fb,
+  void Renderer::SetFramebuffer(FramebufferPtr frameBuffer,
                                 GraphicBitFields attachmentsToClear,
                                 const Vec4& clearColor,
-                                GraphicFramebufferTypes fbType)
+                                GraphicFramebufferTypes frameBufferType)
   {
-    if (fb != nullptr)
+    if (frameBuffer != nullptr)
     {
-      RHI::SetFramebuffer((GLenum) fbType, fb->GetFboId());
+      RHI::SetFramebuffer((GLenum) frameBufferType, frameBuffer->GetFboId());
+      if (m_framebuffer != frameBuffer)
+      {
+        frameBuffer->SetDrawBuffers();
+      }
 
-      const FramebufferSettings& fbSet = fb->GetSettings();
+      const FramebufferSettings& fbSet = frameBuffer->GetSettings();
       SetViewportSize(fbSet.width, fbSet.height);
     }
     else
     {
       // Backbuffer
-      RHI::SetFramebuffer((GLenum) fbType, 0);
-
+      RHI::SetFramebuffer((GLenum) frameBufferType, 0);
       SetViewportSize(m_windowSize.x, m_windowSize.y);
     }
 
@@ -466,7 +479,7 @@ namespace ToolKit
       ClearBuffer(attachmentsToClear, clearColor);
     }
 
-    m_framebuffer = fb;
+    m_framebuffer = frameBuffer;
   }
 
   void Renderer::StartTimerQuery()
@@ -569,15 +582,73 @@ namespace ToolKit
 
   void Renderer::InvalidateFramebufferDepth(FramebufferPtr frameBuffer)
   {
-    SetFramebuffer(frameBuffer, GraphicBitFields::DepthBits);
+    constexpr GLenum invalidAttachments[1] = {GL_DEPTH_ATTACHMENT};
+    RHI::SetFramebuffer(GL_READ_FRAMEBUFFER, frameBuffer->GetFboId());
+    // glInvalidateFramebuffer(GL_READ_FRAMEBUFFER, 1, invalidAttachments);
+    glClear(GL_DEPTH_BUFFER_BIT);
   }
 
   void Renderer::InvalidateFramebufferStencil(FramebufferPtr frameBuffer)
   {
-    SetFramebuffer(frameBuffer, GraphicBitFields::StencilBits);
+    constexpr GLenum invalidAttachments[1] = {GL_STENCIL_ATTACHMENT};
+    RHI::SetFramebuffer(GL_READ_FRAMEBUFFER, frameBuffer->GetFboId());
+    // glInvalidateFramebuffer(GL_READ_FRAMEBUFFER, 1, invalidAttachments);
+    glClear(GL_STENCIL_BUFFER_BIT);
   }
 
-  void Renderer::InvalidateFramebufferDepthStencil(FramebufferPtr frameBuffer) {}
+  void Renderer::InvalidateFramebufferDepthStencil(FramebufferPtr frameBuffer)
+  {
+    constexpr GLenum invalidAttachments[1] = {GL_DEPTH_STENCIL_ATTACHMENT};
+    RHI::SetFramebuffer(GL_READ_FRAMEBUFFER, frameBuffer->GetFboId());
+    // glInvalidateFramebuffer(GL_READ_FRAMEBUFFER, 1, invalidAttachments);
+    glClear(GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+  }
+
+  void Renderer::ResolveFramebuffer(FramebufferPtr source, FramebufferPtr target, const IntArray& attachments)
+  {
+    RHI::StoreFramebufferBindings();
+    RHI::SetFramebuffer(GL_READ_FRAMEBUFFER, source->GetFboId());
+    RHI::SetFramebuffer(GL_DRAW_FRAMEBUFFER, target->GetFboId());
+
+    assert(source->Initialized() && "Source framebuffer is not initialized.");
+    assert(target->Initialized() && "Target framebuffer is not initialized.");
+
+    for (int atc : attachments)
+    {
+      // Sanity check.
+      using Attachment      = Framebuffer::Attachment;
+      Attachment atcEnum    = (Attachment) ((int) Attachment::ColorAttachment0 + atc);
+
+      RenderTargetPtr srcRt = source->GetColorAttachment(atcEnum);
+      assert(srcRt && "Trying to resolve a non existing attachment.");
+
+      RenderTargetPtr targetRt = target->GetColorAttachment(atcEnum);
+      if (targetRt == nullptr)
+      {
+        TextureSettings settings = srcRt->Settings();
+        settings.msaaCount       = 1;
+        targetRt                 = MakeNewPtr<RenderTarget>();
+        targetRt->ReconstructIfNeeded(srcRt->m_width, srcRt->m_height, &settings);
+        target->SetColorAttachment(atcEnum, targetRt);
+      }
+
+      srcRt->m_resolvedTexture = targetRt;
+
+      GLenum attachment        = GL_COLOR_ATTACHMENT0 + atc;
+      glReadBuffer(attachment);
+      glBlitFramebuffer(0,
+                        0,
+                        source->GetSettings().width,
+                        source->GetSettings().height,
+                        0,
+                        0,
+                        target->GetSettings().width,
+                        target->GetSettings().height,
+                        GL_COLOR_BUFFER_BIT,
+                        GL_NEAREST);
+    }
+    RHI::RestoreFramebufferBindings();
+  }
 
   void Renderer::SetViewport(Viewport* viewport) { SetFramebuffer(viewport->m_framebuffer, GraphicBitFields::AllBits); }
 
@@ -650,23 +721,18 @@ namespace ToolKit
 
   void Renderer::CopyTexture(TexturePtr src, TexturePtr dst)
   {
+    Stats::BeginGpuScope("CopyTexture");
+    RHI::StoreFramebufferBindings();
+
     assert(src->m_initiated && dst->m_initiated && "Texture is not initialized.");
     assert(src->m_width == dst->m_width && src->m_height == dst->m_height && "Sizes of the textures are not the same.");
 
-    if (m_copyFb == nullptr)
-    {
-      FramebufferSettings fbSettings = {src->m_width, src->m_height, false, false};
-      m_copyFb                       = MakeNewPtr<Framebuffer>(fbSettings, "RendererCopyFB");
-      m_copyFb->Init();
-    }
+    FramebufferSettings copyBuffer = {src->m_width, src->m_height, false, false, dst->Settings().msaaCount};
+    m_copyFrameBuffer->ReconstructIfNeeded(copyBuffer);
 
-    m_copyFb->ReconstructIfNeeded(src->m_width, src->m_height);
-
-    FramebufferPtr lastFb = m_framebuffer;
-
-    RenderTargetPtr rt    = Cast<RenderTarget>(dst);
-    m_copyFb->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, rt);
-    SetFramebuffer(m_copyFb, GraphicBitFields::AllBits);
+    RenderTargetPtr rt = Cast<RenderTarget>(dst);
+    m_copyFrameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, rt);
+    SetFramebuffer(m_copyFrameBuffer, GraphicBitFields::AllBits);
 
     // Render to texture
     if (m_copyMaterial == nullptr)
@@ -682,7 +748,9 @@ namespace ToolKit
     m_copyMaterial->Init();
 
     DrawFullQuad(m_copyMaterial);
-    SetFramebuffer(lastFb, GraphicBitFields::None);
+
+    RHI::RestoreFramebufferBindings();
+    Stats::EndGpuScope();
   }
 
   void Renderer::OverrideBlendState(bool enableOverride, BlendFunction func)

@@ -228,11 +228,11 @@
 				</Viewport>
 			</Window>
 		</Object>
-		<Object Cl="RenderSettingsWindow">
+		<Object Cl="EngineSettingsWindow">
 			<PB>
 				<P t="11" name="Id" v="13625752535987616505"/>
 			</PB>
-			<Window version="v0.4.9" name="Render Settings" id="28" visible="1" shown="0">
+			<Window version="v0.4.9" name="Engine Settings" id="28" visible="1" shown="0">
 				<Size x="640" y="480"/>
 				<Location x="0" y="0"/>
 			</Window>

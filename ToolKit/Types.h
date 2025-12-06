@@ -107,7 +107,7 @@ namespace ToolKit
   typedef std::string String;
   typedef std::string_view StringView;
   typedef std::vector<String> StringArray;
-  typedef std::set<std::string> StringSet;
+  typedef std::set<String> StringSet;
   typedef glm::ivec2 IVec2;
   typedef glm::vec2 Vec2;
   typedef std::vector<Vec2> Vec2Array;

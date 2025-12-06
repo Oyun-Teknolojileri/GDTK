@@ -11,10 +11,13 @@
 
 namespace ToolKit
 {
-  GLuint RHI::m_currentReadFramebufferID = UINT_MAX;
-  GLuint RHI::m_currentDrawFramebufferID = UINT_MAX;
-  GLuint RHI::m_currentFramebufferID     = UINT_MAX;
-  GLuint RHI::m_currentVAO               = UINT_MAX;
+  GLuint RHI::m_currentReadFramebufferID = -1;
+  GLuint RHI::m_currentDrawFramebufferID = -1;
+  GLuint RHI::m_currentVAO               = -1;
+
+  IntArray RHI::m_storedReadFramebufferStack;
+  IntArray RHI::m_storedDrawFramebufferStack;
+
   RHI::TextureIdSlotMap RHI::m_textureIdSlotMap;
 
   void RHI::SetFramebuffer(GLenum target, GLuint framebufferID)
@@ -43,14 +46,12 @@ namespace ToolKit
     }
     else
     {
-      if (m_currentFramebufferID == framebufferID && m_currentReadFramebufferID == framebufferID &&
-          m_currentDrawFramebufferID == framebufferID)
+      if (m_currentReadFramebufferID == framebufferID && m_currentDrawFramebufferID == framebufferID)
       {
         return;
       }
       else
       {
-        m_currentFramebufferID     = framebufferID;
         m_currentReadFramebufferID = framebufferID;
         m_currentDrawFramebufferID = framebufferID;
       }
@@ -65,11 +66,6 @@ namespace ToolKit
 
     for (int i = 0; i < n; ++i)
     {
-      if (framebuffers[i] == m_currentFramebufferID)
-      {
-        m_currentFramebufferID = -1;
-      }
-
       if (framebuffers[i] == m_currentReadFramebufferID)
       {
         m_currentReadFramebufferID = -1;
@@ -80,6 +76,32 @@ namespace ToolKit
         m_currentDrawFramebufferID = -1;
       }
     }
+  }
+
+  void RHI::StoreFramebufferBindings()
+  {
+    m_storedReadFramebufferStack.push_back(m_currentReadFramebufferID);
+    m_storedDrawFramebufferStack.push_back(m_currentDrawFramebufferID);
+  }
+
+  void RHI::RestoreFramebufferBindings()
+  {
+    // Ensure there is a stored state to restore
+    if (m_storedReadFramebufferStack.empty() || m_storedDrawFramebufferStack.empty())
+    {
+      // Nothing to restore.
+      assert(false && "RestoreFramebufferBindings called without a matching StoreFramebufferBindings.");
+      return;
+    }
+
+    GLuint readId = m_storedReadFramebufferStack.back();
+    GLuint drawId = m_storedDrawFramebufferStack.back();
+
+    m_storedReadFramebufferStack.pop_back();
+    m_storedDrawFramebufferStack.pop_back();
+
+    SetFramebuffer(GL_READ_FRAMEBUFFER, readId);
+    SetFramebuffer(GL_DRAW_FRAMEBUFFER, drawId);
   }
 
   void RHI::SetTexture(GLenum target, GLuint textureID, GLenum textureSlot)
