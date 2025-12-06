@@ -206,7 +206,7 @@ namespace ToolKit
       std::copy_if(m_storage.begin(),
                    m_storage.end(),
                    std::back_inserter(result),
-                   [&](PluginRegister obj) { return &obj != gameReg; });
+                   [&](PluginRegister obj) { return obj.m_name != gameReg->m_name; });
 
       return result;
     }
