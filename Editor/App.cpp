@@ -615,6 +615,10 @@ namespace ToolKit
 
           // Then call on play.
           gamePlugin->OnPlay();
+
+          //TODO(erendegirmenci: call registered plugin OnPlay)
+
+
           SetStatusMsg(g_statusGameIsPlaying);
         }
 

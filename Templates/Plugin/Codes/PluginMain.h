@@ -25,6 +25,7 @@ namespace ToolKit
       void Frame(float deltaTime) override;
       void OnLoad(XmlDocumentPtr state) override;
       void OnUnload(XmlDocumentPtr state) override;
+      void OnPlay() override;
     };
 
   } // namespace Editor
