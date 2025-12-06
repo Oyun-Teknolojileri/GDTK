@@ -615,6 +615,12 @@ namespace ToolKit
 
           // Then call on play.
           gamePlugin->OnPlay();
+
+          for (auto& plugin : pm->GetRegisteredPlugins()) {
+            if (plugin.m_initialized)
+                plugin.m_plugin->OnPlay();
+          }
+
           SetStatusMsg(g_statusGameIsPlaying);
         }
 

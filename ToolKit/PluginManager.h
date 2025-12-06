@@ -92,6 +92,9 @@ namespace ToolKit
      */
     PluginRegister* GetRegister(const Plugin* plugin);
 
+    //TODO(erendgrmnc): func def desc + better naming ?
+    std::vector<PluginRegister> GetRegisteredPlugins();
+
     GamePlugin* GetGamePlugin();
     void UnloadGamePlugin();
 
