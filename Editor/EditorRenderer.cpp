@@ -84,10 +84,10 @@ namespace ToolKit
         sceneRenderer->m_params.grid = nullptr;
         sceneRenderer->Render(renderer);
 
+        copyToMultiSampleBuffer(); // Resolved buffer may need to be drawn to msaa buffer.
+
         if (!m_uiPass->m_params.renderData->jobs.empty())
         {
-          copyToMultiSampleBuffer();
-
           m_uiPass->m_params.resolveFrameBuffer = nullptr;
           if (mainBuffer->IsMultiSampled() && sceneRenderer->m_resolvedFramebuffer)
           {
