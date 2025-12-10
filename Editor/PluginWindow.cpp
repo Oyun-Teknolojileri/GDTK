@@ -291,7 +291,6 @@ namespace ToolKit
           }
           else
           {
-            assert(false && "Failed to load plugin.");
             TK_ERR("Failed to load plugin: %s. Is it compiled ?", plugin.name.c_str());
           }
         }
