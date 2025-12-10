@@ -26,5 +26,13 @@ namespace ToolKit
 
     void PluginMain::OnUnload(XmlDocumentPtr state) {}
 
+    void PluginMain::OnPlay() {}
+
+    void PluginMain::OnPause() {}
+
+    void PluginMain::OnResume() {}
+
+    void PluginMain::OnStop() {}
+
   } // namespace Editor
 } // namespace ToolKit

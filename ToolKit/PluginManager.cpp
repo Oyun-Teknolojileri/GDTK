@@ -195,6 +195,27 @@ namespace ToolKit
     return nullptr;
   }
 
+  PluginRegisterArray PluginManager::GetRegisteredPlugins()
+  {
+    PluginRegisterArray result;
+    result.reserve(m_storage.size() - 1);
+
+    std::copy_if(m_storage.begin(),
+                 m_storage.end(),
+                 std::back_inserter(result),
+                 [&](PluginRegister obj)
+                 {
+                   if (obj.m_plugin != nullptr)
+                   {
+                     return obj.m_plugin->GetType() != PluginType::Game;
+                   }
+
+                   return false;
+                 });
+
+    return result;
+  }
+
   GamePlugin* PluginManager::GetGamePlugin()
   {
     if (PluginRegister* reg = GetGameRegister())
@@ -217,9 +238,12 @@ namespace ToolKit
   {
     for (size_t i = 0; i < m_storage.size(); i++)
     {
-      if (m_storage[i].m_plugin != nullptr)
+      if (Plugin* gamePlug = m_storage[i].m_plugin)
       {
-        return &m_storage[i];
+        if (gamePlug->GetType() == PluginType::Game)
+        {
+          return &m_storage[i];
+        }
       }
     }
 

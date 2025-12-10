@@ -556,7 +556,14 @@ namespace ToolKit
         return;
       }
 
-      GamePlugin* gamePlugin = GetPluginManager()->GetGamePlugin();
+      GamePlugin* gamePlugin = nullptr;
+      PluginRegisterArray projectPlugins;
+      if (PluginManager* plugMan = GetPluginManager())
+      {
+        gamePlugin     = plugMan->GetGamePlugin();
+        projectPlugins = plugMan->GetRegisteredPlugins();
+      }
+
       if (gamePlugin == nullptr)
       {
         return;
@@ -615,12 +622,30 @@ namespace ToolKit
 
           // Then call on play.
           gamePlugin->OnPlay();
+
+          for (PluginRegister& plugin : projectPlugins)
+          {
+            if (plugin.m_initialized)
+            {
+              plugin.m_plugin->OnPlay();
+            }
+          }
+
           SetStatusMsg(g_statusGameIsPlaying);
         }
 
         if (m_gameMod == GameMod::Paused)
         {
           gamePlugin->OnResume();
+
+          for (PluginRegister& plugin : projectPlugins)
+          {
+            if (plugin.m_initialized)
+            {
+              plugin.m_plugin->OnResume();
+            }
+          }
+
           SetStatusMsg(g_statusGameIsResumed);
         }
 
@@ -632,6 +657,14 @@ namespace ToolKit
         gamePlugin->m_currentState = PluginState::Paused;
         gamePlugin->OnPause();
 
+        for (PluginRegister& plugin : projectPlugins)
+        {
+          if (plugin.m_initialized)
+          {
+            plugin.m_plugin->OnPause();
+          }
+        }
+
         SetStatusMsg(g_statusGameIsPaused);
         m_gameMod = mod;
       }
@@ -640,6 +673,14 @@ namespace ToolKit
       {
         gamePlugin->m_currentState = PluginState::Stop;
         gamePlugin->OnStop();
+
+        for (PluginRegister& plugin : projectPlugins)
+        {
+          if (plugin.m_initialized)
+          {
+            plugin.m_plugin->OnStop();
+          }
+        }
 
         SetStatusMsg(g_statusGameIsStopped);
         m_gameMod = mod;
