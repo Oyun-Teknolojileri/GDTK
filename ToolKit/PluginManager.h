@@ -34,6 +34,8 @@ namespace ToolKit
     bool m_initialized;
   };
 
+  typedef std::vector<PluginRegister> PluginRegisterArray;
+
   class TK_API PluginManager
   {
    public:
@@ -68,14 +70,10 @@ namespace ToolKit
      */
     void Update(float deltaTime);
 
-    /**
-     * Initialize plugin manager and loads all plugins for the current project.
-     */
+    /** Initialize plugin manager and loads all plugins for the current project. */
     void Init();
 
-    /**
-     * Uninitialize all plugins and the plugin manager.
-     */
+    /** Uninitialize all plugins and the plugin manager. */
     void UnInit();
 
     /**
@@ -92,25 +90,34 @@ namespace ToolKit
      */
     PluginRegister* GetRegister(const Plugin* plugin);
 
-    //TODO(erendgrmnc): func def desc + better naming ?
-    std::vector<PluginRegister> GetRegisteredPlugins();
+    // TODO(erendgrmnc): func def desc + better naming ?
+    PluginRegisterArray GetRegisteredPlugins();
 
+    /** Returns the game plugin or null. */
     GamePlugin* GetGamePlugin();
+
+    /** Unloads the current game plugin if any. */
     void UnloadGamePlugin();
 
+    /** Handle for platform specific module load function. */
     LoadModuleFn LoadModule           = nullptr;
+    /** Handle for platform specific module free function. */
     FreeModuleFn FreeModule           = nullptr;
+    /** Handle for platform specific get function. */
     GetFunctionFn GetFunction         = nullptr;
+    /** Handle for platform specific get creation time of a file. */
     GetCreationTimeFn GetCreationTime = nullptr;
 
    private:
+    /** Returns the current game plugin register. */
     PluginRegister* GetGameRegister();
 
    public:
-    std::vector<PluginRegister> m_storage;
+    PluginRegisterArray m_storage;
 
    private:
-    String m_pluginExtention; //!< System specific library extension.
+    /** System specific library extension. */
+    String m_pluginExtention;
   };
 
 } // namespace ToolKit
