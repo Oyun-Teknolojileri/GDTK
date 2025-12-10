@@ -90,7 +90,7 @@ namespace ToolKit
      */
     PluginRegister* GetRegister(const Plugin* plugin);
 
-    // TODO(erendgrmnc): func def desc + better naming ?
+    /** Returns all plugins other than the game plugin. */
     PluginRegisterArray GetRegisteredPlugins();
 
     /** Returns the game plugin or null. */

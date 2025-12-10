@@ -557,11 +557,11 @@ namespace ToolKit
       }
 
       GamePlugin* gamePlugin = nullptr;
-      PluginRegisterArray customPlugins;
+      PluginRegisterArray projectPlugins;
       if (PluginManager* plugMan = GetPluginManager())
       {
-        gamePlugin    = plugMan->GetGamePlugin();
-        customPlugins = plugMan->GetRegisteredPlugins();
+        gamePlugin     = plugMan->GetGamePlugin();
+        projectPlugins = plugMan->GetRegisteredPlugins();
       }
 
       if (gamePlugin == nullptr)
@@ -623,7 +623,7 @@ namespace ToolKit
           // Then call on play.
           gamePlugin->OnPlay();
 
-          for (PluginRegister& plugin : customPlugins)
+          for (PluginRegister& plugin : projectPlugins)
           {
             if (plugin.m_initialized)
             {
@@ -638,7 +638,7 @@ namespace ToolKit
         {
           gamePlugin->OnResume();
 
-          for (PluginRegister& plugin : customPlugins)
+          for (PluginRegister& plugin : projectPlugins)
           {
             if (plugin.m_initialized)
             {
@@ -657,7 +657,7 @@ namespace ToolKit
         gamePlugin->m_currentState = PluginState::Paused;
         gamePlugin->OnPause();
 
-        for (PluginRegister& plugin : customPlugins)
+        for (PluginRegister& plugin : projectPlugins)
         {
           if (plugin.m_initialized)
           {
@@ -674,7 +674,7 @@ namespace ToolKit
         gamePlugin->m_currentState = PluginState::Stop;
         gamePlugin->OnStop();
 
-        for (PluginRegister& plugin : customPlugins)
+        for (PluginRegister& plugin : projectPlugins)
         {
           if (plugin.m_initialized)
           {
