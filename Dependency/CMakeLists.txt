@@ -16,20 +16,22 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${TK_DEPENDECY_OUT_DIR}")
 
 #---- MINIZIP ----#
 set(MZ_COMPAT ON)
+set(MZ_ZSTD ON)               # <-- enable zstd
+set(MZ_FETCH_LIBS ON)         # <-- fetch zstd automatically
+set(MZ_FORCE_FETCH_LIBS OFF)
 set(ZSTD_BUILD_STATIC ON)
 set(BUILD_SHARED_LIBS OFF)
 set(ZSTD_BUILD_SHARED OFF)
 set(MZ_ZLIB OFF)
 set(MZ_BZIP2 OFF)
 set(MZ_LZMA OFF)
-set(MZ_FETCH_LIBS ON)
-set(MZ_FORCE_FETCH_LIBS OFF)
 set(MZ_PKCRYPT OFF)
 set(MZ_WZAES OFF)
 set(MZ_ICONV OFF)
 set(FETCHCONTENT_BASE_DIR ${CMAKE_CURRENT_LIST_DIR}/Intermediate/${TK_PLATFORM}/minizip-ng/_deps CACHE STRING "" FORCE)
 set(CMAKE_DEBUG_POSTFIX d)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/minizip-ng ${CMAKE_CURRENT_LIST_DIR}/Intermediate/${TK_PLATFORM}/minizip-ng)
+
 
 #---- IMGUI ----#
 if (NOT ${SKIP_IMGUI})
@@ -117,4 +119,20 @@ if ("${TK_PLATFORM}" STREQUAL "Windows")
     message(STATUS "  - Bin: ${CMAKE_CURRENT_LIST_DIR}/../Bin/")
     message(STATUS "  - Import: ${CMAKE_CURRENT_LIST_DIR}/../Utils/Import/")
     message(STATUS "  - Packer: ${CMAKE_CURRENT_LIST_DIR}/../Utils/Packer/")
+endif()
+
+# On non-Windows platforms, build dependencies without copying DLLs
+if (NOT "${TK_PLATFORM}" STREQUAL "Windows")
+    set(COPY_DEPENDENCIES_LIST minizip SDL2)
+    if (NOT ${SKIP_IMGUI})
+        list(APPEND COPY_DEPENDENCIES_LIST imgui)
+    endif()
+    if (NOT ${SKIP_ASSIMP})
+        list(APPEND COPY_DEPENDENCIES_LIST assimp)
+    endif()
+
+    add_custom_target(CopyDependencies ALL
+        DEPENDS ${COPY_DEPENDENCIES_LIST}
+        COMMENT "Building dependency libraries for ${TK_PLATFORM}"
+    )
 endif()
