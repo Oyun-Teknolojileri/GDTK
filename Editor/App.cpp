@@ -27,7 +27,7 @@
 #include <Mesh.h>
 #include <PluginManager.h>
 #include <Resource.h>
-#include <SDL.h>
+#include "SDL.h"
 #include <Stats.h>
 #include <UIManager.h>
 

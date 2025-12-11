@@ -22,9 +22,14 @@
 #include "UI.h"
 
 #include <Common/SDLEventPool.h>
-#include <Common/Win32Utils.h>
+#if defined(_WIN32)
+  #include <Common/Win32Utils.h>
+#elif defined(__APPLE__)
+  #include <Common/MacUtils.h>
+  #include <mach-o/dyld.h>  // For _NSGetExecutablePath
+#endif
 #include <FileManager.h>
-#include <ImGui/backends/imgui_impl_sdl2.h>
+#include "imgui/backends/imgui_impl_sdl2.h"
 #include <PluginManager.h>
 #include <SDL.h>
 #include <TKOpenGL.h>
@@ -54,103 +59,168 @@ namespace ToolKit
     // External event pool that collect and convert system events to toolkit events.
     SDLEventPool<TK_PLATFORM>* g_sdlEventPool = nullptr;
 
+    // Get the project root directory from the executable path
+    String GetProjectRoot()
+    {
+#if defined(__APPLE__)
+        char exePath[1024];
+        uint32_t size = sizeof(exePath);
+
+        if (_NSGetExecutablePath(exePath, &size) == 0)
+        {
+            String execDir = exePath;
+            size_t lastSlash = execDir.find_last_of('/');
+            if (lastSlash != String::npos)
+            {
+                execDir = execDir.substr(0, lastSlash);
+            }
+
+            // Go up 3 levels: Editor -> TKMac -> Intermediate -> Project Root
+            String projectRoot = ConcatPaths({execDir, "..", "..", ".."});
+
+            char resolvedPath[1024];
+            if (realpath(projectRoot.c_str(), resolvedPath) != nullptr)
+            {
+                return String(resolvedPath);
+            }
+        }
+        return "";
+#elif defined(_WIN32)
+        // Windows implementation would go here if needed
+        return "";
+#else
+        return "";
+#endif
+    }
+
     // Windows util function for creating ToolKit config files in AppData.
     void CreateAppData()
     {
-      // Get APPDATA environment variable
-      StringView appData = getenv("APPDATA");
-      if (appData.empty())
-      {
-        return;
-      }
+        // Determine base path for config files
+        const char* rawAppData = nullptr;
 
-      std::array<String, 5> files = {"Workspace.settings",
-                                     "Editor.settings",
-                                     "UILayout.ini",
-                                     "Engine.settings",
-                                     "GamePluginBuild.bat"};
-
-      String cfgPath              = ConcatPaths({String(appData), "ToolKit", "Config"});
-
-      // Create ToolKit Config directory if not exist
-      bool doesConfigFolderExists = true;
-      if (!CheckSystemFile(cfgPath))
-      {
-        doesConfigFolderExists = std::filesystem::create_directories(cfgPath);
-      }
-
-      // Copy config files if they don't exist
-      if (doesConfigFolderExists)
-      {
-        for (int i = 0; i < (int) files.size(); i++)
+    #if defined(_WIN32)
+        rawAppData = std::getenv("APPDATA");
+        if (!rawAppData)
         {
-          String targetFile = ConcatPaths({cfgPath, files[i]});
-          if (!CheckSystemFile(targetFile))
-          {
-            String sourceFile = ConcatPaths({ConfigPath(), files[i]});
-            if (CheckSystemFile(sourceFile))
-            {
-              std::filesystem::copy(sourceFile, targetFile, std::filesystem::copy_options::overwrite_existing);
-            }
-          }
+            // fallback to HOME if APPDATA not set (unlikely on Windows)
+            rawAppData = std::getenv("HOME");
         }
-      }
+    #else
+        // macOS / Linux fallback: use HOME directory
+        rawAppData = std::getenv("HOME");
+    #endif
 
-      // Update GamePluginBuild.bat with correct BUILD_CONFIG
-      String buildBatPath   = ConcatPaths({cfgPath, "GamePluginBuild.bat"});
-      String buildConfigStr = (TKDebug == 1) ? "Debug" : "RelWithDebInfo";
-
-      // Read the batch file lines, replace the placeholder line, then write back
-      {
-        std::ifstream inFile(buildBatPath);
-        if (inFile.is_open())
+        if (!rawAppData)
         {
-          String line;
-          StringArray lines;
-          const String token = "set BUILD_CONFIG=__ENGINE_CONFIG__";
-
-          while (std::getline(inFile, line))
-          {
-            if (line.find(token) != String::npos)
-            {
-              line = "set BUILD_CONFIG=" + buildConfigStr;
-            }
-            lines.push_back(line);
-          }
-          inFile.close();
-
-          std::ofstream outFile(buildBatPath, std::ios::trunc);
-          if (outFile.is_open())
-          {
-            for (String& l : lines)
-            {
-              outFile << l << "\n";
-            }
-            outFile.close();
-          }
+            TK_ERR("Could not determine a base directory for config files.");
+            return;
         }
-      }
 
-      // Create Path.txt file with parent directory of current path
-      String pathFile = ConcatPaths({cfgPath, "Path.txt"});
+        StringView appData(rawAppData);
 
-      std::fstream file;
-      file.open(pathFile, std::ios::trunc | std::ios::out);
-      if (file.is_open())
-      {
-        std::filesystem::path path = std::filesystem::current_path();
-        if (path.has_parent_path())
+        // Build config folder path
+        String cfgPath = ConcatPaths({String(appData), "ToolKit", "Config"});
+
+        // Create ToolKit Config directory if it doesn't exist
+        if (!CheckSystemFile(cfgPath))
         {
-          String utf8Path = path.parent_path().u8string();
-          utf8Path.erase(remove(utf8Path.begin(), utf8Path.end(), '\"'), utf8Path.end());
-          UnixifyPath(utf8Path);
-
-          file << utf8Path;
+            if (!std::filesystem::create_directories(cfgPath))
+            {
+                TK_ERR("Failed to create config directory: %s", cfgPath.c_str());
+                return;
+            }
         }
-        file.close();
-      }
 
-      Main::GetInstance()->SetConfigPath(cfgPath);
+        // Get the project root to find source config files
+        String projectRoot = GetProjectRoot();
+        String sourceConfigPath;
+
+        if (!projectRoot.empty())
+        {
+            sourceConfigPath = ConcatPaths({projectRoot, "Config"});
+            std::cout << "Project root: " << projectRoot << "\n";
+            std::cout << "Source config path: " << sourceConfigPath << "\n";
+        }
+        else
+        {
+            TK_ERR("Could not determine project root directory.");
+            return;
+        }
+
+        // Default config files
+        std::array<String, 5> files = {
+            "Workspace.settings",
+            "Editor.settings",
+            "UILayout.ini",
+            "Engine.settings",
+            "GamePluginBuild.bat"
+        };
+
+        // Copy missing config files from source
+        for (auto& fileName : files)
+        {
+            String targetFile = ConcatPaths({cfgPath, fileName});
+            if (!CheckSystemFile(targetFile))
+            {
+                String sourceFile = ConcatPaths({sourceConfigPath, fileName});
+                std::cout << "Copying: " << sourceFile << " -> " << targetFile << "\n";
+
+                if (CheckSystemFile(sourceFile))
+                {
+                    std::filesystem::copy(
+                        sourceFile,
+                        targetFile,
+                        std::filesystem::copy_options::overwrite_existing
+                    );
+                }
+                else
+                {
+                    TK_WRN("Source config file not found: %s", sourceFile.c_str());
+                }
+            }
+        }
+
+        // Update GamePluginBuild.bat with correct BUILD_CONFIG
+        String buildBatPath = ConcatPaths({cfgPath, "GamePluginBuild.bat"});
+        String buildConfigStr = (TKDebug == 1) ? "Debug" : "RelWithDebInfo";
+
+        if (CheckSystemFile(buildBatPath))
+        {
+            StringArray lines;
+            std::ifstream inFile(buildBatPath);
+            String line;
+            const String token = "set BUILD_CONFIG=__ENGINE_CONFIG__";
+
+            while (std::getline(inFile, line))
+            {
+                if (line.find(token) != String::npos)
+                {
+                    line = "set BUILD_CONFIG=" + buildConfigStr;
+                }
+                lines.push_back(line);
+            }
+            inFile.close();
+
+            std::ofstream outFile(buildBatPath, std::ios::trunc);
+            for (auto& l : lines)
+            {
+                outFile << l << "\n";
+            }
+        }
+
+        // Create Path.txt file with project root path
+        String pathFile = ConcatPaths({cfgPath, "Path.txt"});
+        std::ofstream file(pathFile, std::ios::trunc);
+        if (file.is_open())
+        {
+            UnixifyPath(projectRoot);
+            file << projectRoot;
+            std::cout << "Path.txt created with: " << projectRoot << "\n";
+        }
+
+        // Set final config path in Main
+        Main::GetInstance()->SetConfigPath(cfgPath);
     }
 
     void ProcessEvent(const SDL_Event& e)
@@ -193,6 +263,23 @@ namespace ToolKit
       // PreInit Main
       g_proxy        = new Main();
       Main::SetProxy(g_proxy);
+
+      // Set resource paths based on executable location (cross-platform)
+      String projectRoot = GetProjectRoot();
+      if (!projectRoot.empty())
+      {
+        g_proxy->m_resourceRoot = ConcatPaths({projectRoot, "Resources"});
+        g_proxy->m_defaultResourceRoot = ConcatPaths({projectRoot, "Resources", "Engine"});
+        std::cout << "Editor - Resource root: " << g_proxy->m_resourceRoot << "\n";
+        std::cout << "Editor - Default resource root: " << g_proxy->m_defaultResourceRoot << "\n";
+      }
+      else
+      {
+        TK_WRN("Could not determine project root, using relative paths");
+        g_proxy->m_resourceRoot = ConcatPaths({".", "..", "Resources"});
+        g_proxy->m_defaultResourceRoot = ConcatPaths({".", "..", "Resources", "Engine"});
+      }
+
       CreateAppData();
       g_proxy->PreInit();
 
@@ -230,6 +317,14 @@ namespace ToolKit
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
+#endif
+
+// macOS / Desktop OpenGL: Use Core Profile 3.3 or higher
+#if defined(__APPLE__) && !defined(TK_GL_ES_3_0) && !defined(TK_GL_ES_3_2)
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
 #endif
 
         SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);

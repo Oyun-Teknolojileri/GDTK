@@ -60,8 +60,8 @@ namespace ToolKit
       // Construct dynamic menu map.
       std::unordered_map<String, DynamicMenuPtr> menuMap;
 
-      auto errContinueFn = [](String& metaVal) -> void { TK_WRN("Wrong menu descriptor format: %s", metaVal); };
-
+      auto errContinueFn = [](String& metaVal) -> void { TK_WRN("Wrong menu descriptor format: %s", metaVal.c_str()); };
+ 
       for (String& descriptor : menuDescriptors)
       {
         StringArray parts;

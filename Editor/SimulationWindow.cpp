@@ -10,6 +10,7 @@
 #include "App.h"
 #include "EditorViewport2d.h"
 #include "PublishManager.h"
+#include "Logger.h"
 
 #include <UIManager.h>
 
@@ -236,7 +237,7 @@ namespace ToolKit
             int result = GetApp()->ExecSysCommand(cmd, true, false);
             if (result != 0)
             {
-              TK_ERR("Visual Studio Code can't be started. Make sure it is installed.", );
+              TK_ERR("Visual Studio Code can't be started. Make sure it is installed." );
             }
           }
           else

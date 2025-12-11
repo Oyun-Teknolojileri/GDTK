@@ -16,6 +16,9 @@
 #ifdef TK_ANDROID
   #include "Platform/android_main.h"
 #endif
+#ifdef TK_MAC
+  #include "Platform/macos_main.h"
+#endif
 
 #include "Common/SDLEventPool.h"
 #include "EngineSettings.h"

@@ -13,6 +13,7 @@
 #include "ToolKit.h"
 #include "Types.h"
 #include "Util.h"
+#include <iostream>
 
 namespace ToolKit
 {
@@ -42,6 +43,11 @@ namespace ToolKit
         if (!CheckFile(file))
         {
           String def = GetDefaultResource(T::StaticClass());
+          std::cout << "Current working directory: " 
+                    << std::filesystem::current_path() 
+                    << std::endl;
+
+          std::cout << "Looking for file: " << def << "\n";
           if (!CheckFile(def))
           {
             TK_ERR("No default for Class %s", T::StaticClass()->Name.c_str());

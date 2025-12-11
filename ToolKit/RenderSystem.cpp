@@ -141,13 +141,16 @@ namespace ToolKit
 
   void RenderSystem::SkipSceneFrames(int numFrames) { m_skipFrames = numFrames; }
 
-  void RenderSystem::InitGl(void* glGetProcAddres, GlReportCallback callback)
+  void RenderSystem::InitGl(void* (*glGetProcAddress)(const char*), GlReportCallback callback)
   {
-    // Initialize opengl functions.
-    LoadGlFunctions(glGetProcAddres);
+      // Initialize OpenGL functions
+      LoadGlFunctions(glGetProcAddress);
 
-    InitGLErrorReport(callback);
-    TestSRGBBackBuffer();
+      // Initialize error reporting callback
+      InitGLErrorReport(callback);
+
+      // Test backbuffer format (sRGB or not)
+      TestSRGBBackBuffer();
   }
 
   void RenderSystem::ExecuteTaskImp(RenderTask& task)

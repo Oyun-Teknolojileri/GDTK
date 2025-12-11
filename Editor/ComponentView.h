@@ -8,6 +8,7 @@
 #pragma once
 
 #include "View.h"
+#include "Component.h"
 
 namespace ToolKit
 {

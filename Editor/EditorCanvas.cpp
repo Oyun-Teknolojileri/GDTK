@@ -1,5 +1,5 @@
 #include "EditorCanvas.h"
-
+#include "Material.h"
 #include <Mesh.h>
 
 namespace ToolKit

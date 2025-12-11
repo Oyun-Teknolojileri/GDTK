@@ -429,6 +429,26 @@ namespace ToolKit
       str = source.c_str();
     }
 
+#if defined(__APPLE__) && !defined(TK_GL_ES_3_0) && !defined(TK_GL_ES_3_2)
+    // macOS desktop OpenGL: Convert GLSL ES to desktop GLSL
+    // Replace "#version 300 es" with "#version 330 core"
+    size_t versionPos = source.find("#version 300 es");
+    if (versionPos != String::npos)
+    {
+      source.replace(versionPos, 16, "#version 330 core");
+      str = source.c_str();
+      TK_LOG("Converted shader to GLSL 330 core for macOS");
+    }
+    // Also handle "#version 320 es" if present
+    versionPos = source.find("#version 320 es");
+    if (versionPos != String::npos)
+    {
+      source.replace(versionPos, 16, "#version 330 core");
+      str = source.c_str();
+      TK_LOG("Converted shader to GLSL 330 core for macOS");
+    }
+#endif
+
     glShaderSource(m_shaderHandle, 1, &str, nullptr);
     glCompileShader(m_shaderHandle);
 

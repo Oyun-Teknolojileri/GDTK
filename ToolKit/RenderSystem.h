@@ -100,7 +100,8 @@ namespace ToolKit
      * @param glGetProcAddress is the address of opengl function getter.
      * @param callback is error callback function for opengl.
      */
-    void InitGl(void* glGetProcAddres, GlReportCallback callback = nullptr);
+    
+    void InitGl(void* (*glGetProcAddress)(const char*), GlReportCallback callback = nullptr);
 
     /** This function should be called at the start of the frame. */
     void StartFrame();

@@ -18,6 +18,8 @@ extern void* g_context;
   #else
     #define TK_EDITOR_API __declspec(dllimport)
   #endif
+#else
+  #define TK_EDITOR_API
 #endif
 
 namespace ToolKit

@@ -8,12 +8,13 @@
 #pragma once
 
 #include "EditorTypes.h"
+#include "Primative.h"
+#include "UniformBuffer.h"
 
 namespace ToolKit
 {
   namespace Editor
   {
-
     // EditorBillboardBase
     //////////////////////////////////////////
 

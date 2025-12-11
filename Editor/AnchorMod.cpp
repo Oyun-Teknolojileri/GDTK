@@ -13,7 +13,7 @@
 #include <Camera.h>
 #include <Canvas.h>
 #include <MathUtil.h>
-#include <SDL.h>
+#include "SDL.h"
 #include <Surface.h>
 
 namespace ToolKit

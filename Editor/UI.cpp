@@ -22,11 +22,11 @@
 #include <GradientSky.h>
 #include <MathUtil.h>
 #include <Prefab.h>
-#include <SDL.h>
+#include "SDL.h"
 #include <Sky.h>
 #include <TKOpenGL.h>
-#include <imgui/backends/imgui_impl_opengl3.h>
-#include <imgui/backends/imgui_impl_sdl2.h>
+#include "imgui/backends/imgui_impl_opengl3.h"
+#include "imgui/backends/imgui_impl_sdl2.h"
 
 namespace ToolKit
 {
@@ -131,7 +131,15 @@ namespace ToolKit
           io.Fonts->AddFontFromFileTTF(FontPath("LiberationSans-Bold.ttf").c_str(), 14.0f, nullptr, utf8TR);
 
       ImGui_ImplSDL2_InitForOpenGL(g_window, g_context);
+
+      // Set the appropriate GLSL version based on platform
+#if defined(TK_GL_ES_3_0)
       ImGui_ImplOpenGL3_Init("#version 300 es");
+#elif defined(__APPLE__)
+      ImGui_ImplOpenGL3_Init("#version 150");  // OpenGL 3.3 Core on macOS
+#else
+      ImGui_ImplOpenGL3_Init("#version 130");  // OpenGL 3.0 on other desktop platforms
+#endif
 
       InitIcons();
       InitTheme();
