@@ -154,7 +154,11 @@ namespace ToolKit
             "Editor.settings",
             "UILayout.ini",
             "Engine.settings",
+#if defined(_WIN32)
             "GamePluginBuild.bat"
+#else
+            "GamePluginBuild.sh"
+#endif
         };
 
         // Copy missing config files from source
@@ -181,32 +185,52 @@ namespace ToolKit
             }
         }
 
-        // Update GamePluginBuild.bat with correct BUILD_CONFIG
-        String buildBatPath = ConcatPaths({cfgPath, "GamePluginBuild.bat"});
+        // Update GamePluginBuild script with correct BUILD_CONFIG
+#if defined(_WIN32)
+        String buildScriptPath = ConcatPaths({cfgPath, "GamePluginBuild.bat"});
+        const String setToken = "set BUILD_CONFIG=__ENGINE_CONFIG__";
+        const String setPrefix = "set BUILD_CONFIG=";
+#else
+        String buildScriptPath = ConcatPaths({cfgPath, "GamePluginBuild.sh"});
+        const String setToken = "BUILD_CONFIG=\"__ENGINE_CONFIG__\"";
+        const String setPrefix = "BUILD_CONFIG=\"";
+#endif
         String buildConfigStr = (TKDebug == 1) ? "Debug" : "RelWithDebInfo";
 
-        if (CheckSystemFile(buildBatPath))
+        if (CheckSystemFile(buildScriptPath))
         {
             StringArray lines;
-            std::ifstream inFile(buildBatPath);
+            std::ifstream inFile(buildScriptPath);
             String line;
-            const String token = "set BUILD_CONFIG=__ENGINE_CONFIG__";
 
             while (std::getline(inFile, line))
             {
-                if (line.find(token) != String::npos)
+                if (line.find(setToken) != String::npos)
                 {
-                    line = "set BUILD_CONFIG=" + buildConfigStr;
+#if defined(_WIN32)
+                    line = setPrefix + buildConfigStr;
+#else
+                    line = setPrefix + buildConfigStr + "\"";
+#endif
                 }
                 lines.push_back(line);
             }
             inFile.close();
 
-            std::ofstream outFile(buildBatPath, std::ios::trunc);
+            std::ofstream outFile(buildScriptPath, std::ios::trunc);
             for (auto& l : lines)
             {
                 outFile << l << "\n";
             }
+            outFile.close();
+
+#if !defined(_WIN32)
+            // Make shell script executable on Unix-like systems
+            std::filesystem::permissions(buildScriptPath,
+                std::filesystem::perms::owner_all |
+                std::filesystem::perms::group_read | std::filesystem::perms::group_exec |
+                std::filesystem::perms::others_read | std::filesystem::perms::others_exec);
+#endif
         }
 
         // Create Path.txt file with project root path

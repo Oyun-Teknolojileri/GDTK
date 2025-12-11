@@ -72,7 +72,12 @@ endif()
 
 # Dependency library directories.
 set(TK_DEPENDECY_OUT_DIR "${TOOLKIT_DIR}/Dependency/Intermediate/${TK_PLATFORM}/${TK_BUILD_TYPE}")
-set(TK_OUT_DIR "${TOOLKIT_DIR}/Intermediate/${TK_PLATFORM}/ToolKit/ToolKit/${TK_BUILD_TYPE}")
+# On macOS/Linux with single-config generators, ToolKit is built without config subdirectory
+if(PLUGIN_BUILD AND NOT WIN32)
+    set(TK_OUT_DIR "${TOOLKIT_DIR}/Intermediate/${TK_PLATFORM}/ToolKit/ToolKit")
+else()
+    set(TK_OUT_DIR "${TOOLKIT_DIR}/Intermediate/${TK_PLATFORM}/ToolKit/ToolKit/${TK_BUILD_TYPE}")
+endif()
 
 message("Using dependency output directory: ${TK_DEPENDECY_OUT_DIR}")
 message("Using toolkit output directory: ${TK_OUT_DIR}")
@@ -127,8 +132,35 @@ if (${PLUGIN_BUILD})
     set(CMAKE_DEBUG_POSTFIX d) # Only editor needs to know the postfix for loading correct version of the plugin.
     add_library(${GAME_PROJECT_NAME} SHARED ${SOURCE} ${HEADERS}) # Plugin must be a dll.
 
-    target_link_directories(${GAME_PROJECT_NAME} PRIVATE "${TOOLKIT_DIR}/Bin")
-    target_link_libraries(${GAME_PROJECT_NAME} PRIVATE ${toolkit})
+    # Remove 'lib' prefix on Unix platforms for consistency with Windows DLL naming
+    set_target_properties(${GAME_PROJECT_NAME} PROPERTIES PREFIX "")
+
+    # On Windows, ToolKit is in Bin directory. On other platforms, use TK_OUT_DIR.
+    if(WIN32)
+        target_link_directories(${GAME_PROJECT_NAME} PRIVATE "${TOOLKIT_DIR}/Bin")
+        target_link_libraries(${GAME_PROJECT_NAME} PRIVATE ${toolkit})
+    else()
+        target_link_directories(${GAME_PROJECT_NAME} PRIVATE ${TK_OUT_DIR})
+        target_link_directories(${GAME_PROJECT_NAME} PRIVATE ${TK_DEPENDECY_OUT_DIR})
+
+        # Link against ToolKit and its dependencies
+        target_link_libraries(${GAME_PROJECT_NAME} PRIVATE ${toolkit} ${minizip} ${zstd})
+
+        # Link against required system libraries on macOS
+        if(APPLE)
+            find_package(OpenSSL REQUIRED)
+            find_library(COMPRESSION_FRAMEWORK Compression REQUIRED)
+            target_link_libraries(${GAME_PROJECT_NAME} PRIVATE
+                ${COMPRESSION_FRAMEWORK}
+                bz2
+                iconv
+                lzma
+                OpenSSL::Crypto
+                OpenSSL::SSL
+            )
+        endif()
+    endif()
+
     target_compile_definitions(${GAME_PROJECT_NAME} PRIVATE TK_WITH_EDITOR TK_DLL_IMPORT)
 endif()
 
@@ -146,6 +178,7 @@ target_compile_definitions(${GAME_PROJECT_NAME} PRIVATE $<$<CONFIG:Debug>:TK_DEB
 # Packer picks them from here to create publishable packages.
 set_target_properties(${GAME_PROJECT_NAME} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${GAME_BIN_DIR}
+    LIBRARY_OUTPUT_DIRECTORY ${GAME_BIN_DIR}
     ARCHIVE_OUTPUT_DIRECTORY ${GAME_BIN_DIR}
 )
 
@@ -155,6 +188,7 @@ if(isMultiConfig)
         string(TOUPPER ${config} config_upper)
         set_target_properties(${GAME_PROJECT_NAME} PROPERTIES
             RUNTIME_OUTPUT_DIRECTORY_${config_upper} ${GAME_BIN_DIR}
+            LIBRARY_OUTPUT_DIRECTORY_${config_upper} ${GAME_BIN_DIR}
             ARCHIVE_OUTPUT_DIRECTORY_${config_upper} ${GAME_BIN_DIR}
             PDB_OUTPUT_DIRECTORY_${config_upper} ${GAME_BIN_DIR}
         )
@@ -169,7 +203,11 @@ endif()
 #For hot reload rename the previous output.
 if (${PLUGIN_BUILD})
     set(DLL $<SHELL_PATH:$<TARGET_FILE:${GAME_PROJECT_NAME}>>)
-    set(PDB $<SHELL_PATH:$<TARGET_PDB_FILE:${GAME_PROJECT_NAME}>>)
+    if(MSVC)
+        set(PDB $<SHELL_PATH:$<TARGET_PDB_FILE:${GAME_PROJECT_NAME}>>)
+    else()
+        set(PDB "")
+    endif()
 
     add_custom_command(TARGET ${GAME_PROJECT_NAME} PRE_BUILD COMMAND ${CMAKE_COMMAND} -Ddll=${DLL} -Dpdb=${PDB} -Dtmp="${GAME_BIN_DIR}/tmp" -P "${GAME_CODE_DIR}/CMakeHotReload.cmake")
 endif()

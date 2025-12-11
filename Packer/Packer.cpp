@@ -664,7 +664,11 @@ namespace ToolKit
     }
 
     // Compile game plugin.
+#if defined(_WIN32)
     String cmd     = "cmake -S . -B ./Intermediate/Plugin -A x64";
+#else
+    String cmd     = "cmake -S . -B ./Intermediate/Plugin";
+#endif
     int compileRes = std::system(cmd.c_str());
     if (compileRes != 0)
     {

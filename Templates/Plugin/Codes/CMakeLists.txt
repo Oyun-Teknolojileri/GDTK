@@ -7,18 +7,22 @@ set(PLUGIN_CODE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set(PLUGIN_BIN_DIR "${PLUGIN_CODE_DIR}/Bin")
 
 # Get ToolKit directory.
-if(DEFINED ENV{APPDATA})
+if(WIN32)
+    # Windows: Use APPDATA
     set(CFG_FILE_PATH "$ENV{APPDATA}/ToolKit/Config/Path.txt")
+else()
+    # macOS/Linux: Use HOME
+    set(CFG_FILE_PATH "$ENV{HOME}/ToolKit/Config/Path.txt")
+endif()
 
-    if(NOT EXISTS "${CFG_FILE_PATH}")
-        message(SEND_ERROR "Set TOOLKIT_DIR or provide ${CFG_FILE_PATH} containing path to ToolKit.")
-        return()
-    else()
-        file(STRINGS "${CFG_FILE_PATH}" TOOLKIT_DIR_LINES ENCODING UTF-8)
-        list(GET TOOLKIT_DIR_LINES 0 TOOLKIT_DIR)
-        string(STRIP "${TOOLKIT_DIR}" TOOLKIT_DIR)
-        file(TO_CMAKE_PATH "${TOOLKIT_DIR}" TOOLKIT_DIR)
-    endif()
+if(NOT EXISTS "${CFG_FILE_PATH}")
+    message(SEND_ERROR "Set TOOLKIT_DIR or provide ${CFG_FILE_PATH} containing path to ToolKit.")
+    return()
+else()
+    file(STRINGS "${CFG_FILE_PATH}" TOOLKIT_DIR_LINES ENCODING UTF-8)
+    list(GET TOOLKIT_DIR_LINES 0 TOOLKIT_DIR)
+    string(STRIP "${TOOLKIT_DIR}" TOOLKIT_DIR)
+    file(TO_CMAKE_PATH "${TOOLKIT_DIR}" TOOLKIT_DIR)
 endif()
 
 if(NOT EXISTS "${TOOLKIT_DIR}/ToolKit/ToolKit.h")
@@ -90,7 +94,13 @@ message("Using toolkit output directory: ${TK_OUT_DIR}")
 set(CMAKE_DEBUG_POSTFIX d) # Only editor needs to know the postfix for loading correct version of the plugin.
 add_library(${PLUGIN_PROJECT_NAME} SHARED ${SOURCE} ${HEADERS}) # Plugin must be a dll.
 
-target_link_directories(${PLUGIN_PROJECT_NAME} PRIVATE "${TOOLKIT_DIR}/Bin")
+# On Windows, ToolKit is in Bin directory. On other platforms, use TK_OUT_DIR.
+if(WIN32)
+    target_link_directories(${PLUGIN_PROJECT_NAME} PRIVATE "${TOOLKIT_DIR}/Bin")
+else()
+    target_link_directories(${PLUGIN_PROJECT_NAME} PRIVATE ${TK_OUT_DIR})
+endif()
+
 target_link_directories(${PLUGIN_PROJECT_NAME} PRIVATE "${TK_DEPENDECY_OUT_DIR}")
 target_link_libraries(${PLUGIN_PROJECT_NAME} PRIVATE ${toolkit} ${imgui} ${editor})
 target_compile_definitions(${PLUGIN_PROJECT_NAME} PRIVATE TK_WITH_EDITOR TK_DLL_IMPORT)

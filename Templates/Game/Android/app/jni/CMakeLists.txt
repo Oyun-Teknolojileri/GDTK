@@ -4,18 +4,22 @@ cmake_minimum_required(VERSION 3.6)
 project(ToolKitApp)
 
 # Get ToolKit directory.
-if(DEFINED ENV{APPDATA})
+if(WIN32)
+    # Windows: Use APPDATA
     set(CFG_FILE_PATH "$ENV{APPDATA}/ToolKit/Config/Path.txt")
+else()
+    # macOS/Linux: Use HOME
+    set(CFG_FILE_PATH "$ENV{HOME}/ToolKit/Config/Path.txt")
+endif()
 
-    if(NOT EXISTS "${CFG_FILE_PATH}")
-        message(SEND_ERROR "Set TOOLKIT_DIR or provide ${CFG_FILE_PATH} containing path to ToolKit.")
-        return()
-    else()
-        file(STRINGS "${CFG_FILE_PATH}" TOOLKIT_DIR_LINES ENCODING UTF-8)
-        list(GET TOOLKIT_DIR_LINES 0 TOOLKIT_DIR)
-        string(STRIP "${TOOLKIT_DIR}" TOOLKIT_DIR)
-        file(TO_CMAKE_PATH "${TOOLKIT_DIR}" TOOLKIT_DIR)
-    endif()
+if(NOT EXISTS "${CFG_FILE_PATH}")
+    message(SEND_ERROR "Set TOOLKIT_DIR or provide ${CFG_FILE_PATH} containing path to ToolKit.")
+    return()
+else()
+    file(STRINGS "${CFG_FILE_PATH}" TOOLKIT_DIR_LINES ENCODING UTF-8)
+    list(GET TOOLKIT_DIR_LINES 0 TOOLKIT_DIR)
+    string(STRIP "${TOOLKIT_DIR}" TOOLKIT_DIR)
+    file(TO_CMAKE_PATH "${TOOLKIT_DIR}" TOOLKIT_DIR)
 endif()
 
 if(NOT EXISTS "${TOOLKIT_DIR}/ToolKit/ToolKit.h")

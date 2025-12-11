@@ -25,6 +25,15 @@ namespace ToolKit
         return;
       }
 
+#if !defined(_WIN32)
+      // On non-Windows platforms, use direct cmake execution for plugin builds
+      if (platform == PublishPlatform::GamePlugin || platform == PublishPlatform::EditorPlugin)
+      {
+        DirectPluginBuild(platform, publishConfig);
+        return;
+      }
+#endif
+
       String publishArguments = ConstructPublishArgs(platform, publishConfig, false);
 
       GetFileManager()->WriteAllText("PublishArguments.txt", publishArguments);
@@ -201,6 +210,104 @@ namespace ToolKit
       publishArguments += std::to_string((int) packOnly) + '\n';
 
       return publishArguments;
+    }
+
+    void PublishManager::DirectPluginBuild(PublishPlatform platform, PublishConfig publishConfig)
+    {
+      TK_LOG("Building Plugin...");
+      m_isBuilding = true;
+      GetApp()->SetStatusMsg(g_statusPublishing + g_statusNoTerminate);
+
+      // Determine build configuration
+      String buildConfig;
+      if (publishConfig == PublishConfig::Debug)
+      {
+        buildConfig = "Debug";
+      }
+      else if (publishConfig == PublishConfig::Develop)
+      {
+        buildConfig = "RelWithDebInfo";
+      }
+      else
+      {
+        buildConfig = "Release";
+      }
+
+      // Get the project directory
+      String projectDir = ConcatPaths({GetApp()->m_workspace.GetActiveWorkspace(),
+                                       GetApp()->m_workspace.GetActiveProject().name});
+      if (platform == PublishPlatform::EditorPlugin)
+      {
+        projectDir = m_appName;
+      }
+
+      // Build cmake commands
+      // Note: Do NOT pass -DTK_PLATFORM for plugin builds - the CMakeLists.txt detects plugin build by absence of TK_PLATFORM
+      String configCmd = "cd \"" + projectDir + "\" && cmake -S . -B ./Intermediate/Plugin -DCMAKE_BUILD_TYPE=" + buildConfig;
+      String buildCmd  = "cd \"" + projectDir + "\" && cmake --build ./Intermediate/Plugin --config " + buildConfig;
+
+      // Execute cmake configure
+      SysCommandDoneCallback afterConfigFn = [=](int res) -> void
+      {
+        if (res != 0)
+        {
+          TK_ERR("CMake configure failed.");
+          GetApp()->SetStatusMsg(g_statusFailed);
+          m_isBuilding = false;
+          return;
+        }
+
+        TK_LOG("CMake configure succeeded. Starting build...");
+
+        // Execute cmake build
+        SysCommandDoneCallback afterBuildFn = [=](int res) -> void
+        {
+          if (res != 0)
+          {
+            TK_ERR("Plugin Building Failed.");
+            GetApp()->SetStatusMsg(g_statusFailed);
+            m_isBuilding = false;
+            return;
+          }
+
+          TK_LOG("Plugin Building Ended.");
+          GetApp()->SetStatusMsg(g_statusSucceeded);
+
+          // Reload the plugin
+          auto afterCompile = [=]() -> void
+          {
+            String fullPath = GetApp()->m_workspace.GetBinPath();
+            if (platform == PublishPlatform::EditorPlugin)
+            {
+              fullPath = ConcatPaths({m_appName, "Bin", m_pluginName});
+            }
+
+            String binFile = fullPath + GetPluginExtention();
+            if (PluginManager* plugMan = GetPluginManager())
+            {
+              if (fullPath.find("Plugins") != String::npos) // Deal with plugins
+              {
+                if (PluginRegister* reg = plugMan->Load(fullPath))
+                {
+                  reg->m_plugin->m_currentState = PluginState::Running;
+                }
+              }
+              else // or game.
+              {
+                GetApp()->LoadGamePlugin();
+              }
+            }
+          };
+
+          // Reload at the end of frame.
+          TKAsyncTask(WorkerManager::MainThread, afterCompile);
+          m_isBuilding = false;
+        };
+
+        GetApp()->ExecSysCommand(buildCmd, true, true, afterBuildFn);
+      };
+
+      GetApp()->ExecSysCommand(configCmd, true, true, afterConfigFn);
     }
 
   } // namespace Editor

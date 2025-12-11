@@ -55,6 +55,7 @@ namespace ToolKit
 
      private:
       String ConstructPublishArgs(PublishPlatform platform, PublishConfig publishConfig, bool packOnly);
+      void DirectPluginBuild(PublishPlatform platform, PublishConfig publishConfig);
 
      public:
       TexturePtr m_icon = nullptr;
