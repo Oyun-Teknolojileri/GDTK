@@ -198,20 +198,22 @@ namespace ToolKit
   PluginRegisterArray PluginManager::GetRegisteredPlugins()
   {
     PluginRegisterArray result;
-    result.reserve(m_storage.size() - 1);
-
-    std::copy_if(m_storage.begin(),
-                 m_storage.end(),
-                 std::back_inserter(result),
-                 [&](PluginRegister obj)
-                 {
-                   if (obj.m_plugin != nullptr)
+    if (!m_storage.empty())
+    {
+      result.reserve(m_storage.size() - 1);
+      std::copy_if(m_storage.begin(),
+                   m_storage.end(),
+                   std::back_inserter(result),
+                   [&](PluginRegister obj)
                    {
-                     return obj.m_plugin->GetType() != PluginType::Game;
-                   }
+                     if (obj.m_plugin != nullptr)
+                     {
+                       return obj.m_plugin->GetType() != PluginType::Game;
+                     }
 
-                   return false;
-                 });
+                     return false;
+                   });
+    }
 
     return result;
   }
