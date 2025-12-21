@@ -28,6 +28,12 @@ namespace ToolKit
       // Post process settings.
       m_previewRenderer->m_params.postProcessSettings->SetFXAAEnabledVal(false);
       m_previewRenderer->m_params.postProcessSettings->SetTonemappingEnabledVal(false);
+
+      if (!GetRenderSystem()->m_backbufferFormatIsSRGB)
+      {
+        // If a linear space back buffer is used, we need to apply gamma after imgui, so skip it in scene render path.
+        m_previewRenderer->m_params.postProcessSettings->SetGammaCorrectionEnabledVal(false);
+      }
     }
 
     PreviewViewport::~PreviewViewport() { m_previewRenderer = nullptr; }
@@ -56,7 +62,8 @@ namespace ToolKit
 
       ImGui::Dummy(imageSize);
 
-      ImGui::GetWindowDrawList()->AddImageRounded(Convert2ImGuiTexture(m_renderTarget),
+      TexturePtr texture = m_renderTarget->GetResolvedTexture();
+      ImGui::GetWindowDrawList()->AddImageRounded(Convert2ImGuiTexture(texture),
                                                   currentCursorPos,
                                                   currentCursorPos + imageSize,
                                                   Vec2(0.0f, 0.0f),
