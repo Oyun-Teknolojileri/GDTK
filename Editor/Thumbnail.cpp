@@ -29,7 +29,7 @@ namespace ToolKit
     {
       m_maxThumbSize                 = 300;
 
-      FramebufferSettings fbSettings = {m_maxThumbSize, m_maxThumbSize, false, true, 4};
+      FramebufferSettings fbSettings = {m_maxThumbSize, m_maxThumbSize, false, true};
       m_thumbnailBuffer              = MakeNewPtr<Framebuffer>(fbSettings, "ThumbnailRendererFB");
       m_thumbnailBuffer->Init();
 
@@ -74,6 +74,12 @@ namespace ToolKit
       m_params.postProcessSettings = MakeNewPtr<PostProcessingSettings>();
       m_params.postProcessSettings->SetFXAAEnabledVal(false);
       m_params.postProcessSettings->SetTonemappingEnabledVal(false);
+
+      if (!GetRenderSystem()->m_backbufferFormatIsSRGB)
+      {
+        // If a linear space back buffer is used, we need to apply gamma after imgui, so skip it in scene render path.
+        m_params.postProcessSettings->SetGammaCorrectionEnabledVal(false);
+      }
 
       // TODO: This function should not load meshes.
       // Instead another task queue may be used to load meshes async.
