@@ -8,6 +8,7 @@
 #include "UI.h"
 
 #include "AndroidBuildWindow.h"
+#include "MacOSBuildWindow.h"
 #include "App.h"
 #include "ConsoleWindow.h"
 #include "EditorViewport2d.h"
@@ -824,6 +825,11 @@ namespace ToolKit
           AndroidBuildWindowPtr androidBuildWindow = MakeNewPtr<AndroidBuildWindow>();
           androidBuildWindow->OpenBuildWindow(publishType);
         }
+        else if (publishPlatform == PublishPlatform::MacOS)
+        {
+          MacOSBuildWindowPtr macOSBuildWindow = MakeNewPtr<MacOSBuildWindow>();
+          macOSBuildWindow->OpenBuildWindow(publishType);
+        }
         else
         {
           GetApp()->m_publishManager->Publish(publishPlatform, publishType);
@@ -882,6 +888,13 @@ namespace ToolKit
         {
           choosePublishPlatformFn(PublishPlatform::Windows);
         }
+
+#if defined(__APPLE__)
+        if (ImGui::BeginMenu("macOS"))
+        {
+          choosePublishPlatformFn(PublishPlatform::MacOS);
+        }
+#endif
 
         ImGui::EndMenu();
       }
