@@ -28,6 +28,7 @@ namespace ToolKit
   {
 
     typedef std::shared_ptr<class AndroidBuildWindow> AndroidBuildWindowPtr;
+    typedef std::shared_ptr<class MacOSBuildWindow> MacOSBuildWindowPtr;
     typedef std::shared_ptr<class PreviewViewport> PreviewViewportPtr;
     typedef std::shared_ptr<class EditorViewport> EditorViewportPtr;
     typedef std::vector<EditorViewportPtr> EditorViewportPtrArray;
