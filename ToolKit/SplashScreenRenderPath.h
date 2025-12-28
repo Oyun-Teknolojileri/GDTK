@@ -2,7 +2,8 @@
 
 #include "ForwardPass.h"
 #include "GameViewport.h"
-#include "GammaTonemapFxaaPass.h"
+ // TODO(erendgrmnc): Gamma pass causes white texture on macOS
+// #include "GammaTonemapFxaaPass.h" 
 #include "RenderSystem.h"
 #include "Scene.h"
 #include "UIManager.h"
@@ -24,10 +25,11 @@ namespace ToolKit
     void PostRender(Renderer* renderer) override;
 
    private:
-    ForwardRenderPassPtr m_uiPass       = nullptr;
-    GammaTonemapFxaaPassPtr m_gammaPass = nullptr;
-    GameViewportPtr m_viewport          = nullptr;
-    UILayerPtr m_splashScreen           = nullptr;
+    ForwardRenderPassPtr m_uiPass = nullptr;
+    // TODO(erendgrmnc): Gamma pass causes white texture on macOS
+    // GammaTonemapFxaaPassPtr m_gammaPass = nullptr;  
+    GameViewportPtr m_viewport    = nullptr;
+    UILayerPtr m_splashScreen     = nullptr;
     RenderData m_uiRenderData;
   };
 
