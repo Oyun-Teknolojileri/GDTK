@@ -14,7 +14,7 @@ echo "Detected platform: $(uname)"
 # Detect platform
 # -----------------------------
 if [[ "$OSTYPE" == "darwin"* ]]; then
-    PLATFORM="TKMac"
+    PLATFORM="MacOS"
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
     PLATFORM="TKNative"
 else

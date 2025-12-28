@@ -15,6 +15,7 @@
 
 #include <iostream>
 #include <chrono>
+#include <filesystem>
 #include <unistd.h>
 #include <limits.h>       // For PATH_MAX
 extern "C" {
@@ -30,10 +31,10 @@ namespace ToolKit
 
   inline void PlatformPreInit(Main* g_proxy)
   {
-    // macOS app bundles usually store data relative to the executable path.
+    // macOS app bundles store the executable in .app/Contents/MacOS/
     // We need to get the executable's directory and set paths relative to the project root.
-    // The executable is typically at: <project>/Intermediate/TKMac/Editor/Editor
-    // So we need to go up 3 levels to reach the project root.
+    // For .app bundles: <publishDir>/Bin/<appName>.app/Contents/MacOS/<appName>
+    // For dev builds: <project>/Intermediate/TKMac/Editor/Editor
 
     char exePath[1024];
     uint32_t size = sizeof(exePath);
@@ -49,9 +50,21 @@ namespace ToolKit
         execDir = execDir.substr(0, lastSlash);
       }
 
-      // The executable is in <project>/Intermediate/TKMac/Editor/
-      // Go up 3 levels to get to project root
-      String projectRoot = ConcatPaths({execDir, "..", "..", ".."});
+      String projectRoot;
+
+      // Check if we're running from inside an .app bundle
+      if (execDir.find(".app/Contents/MacOS") != String::npos)
+      {
+        // We're in a .app bundle: <publishDir>/Bin/<appName>.app/Contents/MacOS/
+        // Go up 4 levels to get to publish root (MacOS->Contents->.app->Bin->MacOS publish dir)
+        projectRoot = ConcatPaths({execDir, "..", "..", "..", ".."});
+      }
+      else
+      {
+        // Development build: <project>/Intermediate/TKMac/Editor/
+        // Go up 3 levels to get to project root
+        projectRoot = ConcatPaths({execDir, "..", "..", ".."});
+      }
 
       // Normalize the path to resolve ".." components
       char resolvedPath[1024];
@@ -65,6 +78,10 @@ namespace ToolKit
       g_proxy->m_resourceRoot = ConcatPaths({projectRoot, "Resources"});
       g_proxy->m_defaultResourceRoot = ConcatPaths({projectRoot, "Resources", "Engine"});
       g_proxy->m_cfgPath = ConcatPaths({projectRoot, "Config"});
+
+      // Change the current working directory to the project root
+      // This is needed because some code uses relative paths based on CWD
+      std::filesystem::current_path(projectRoot);
 
       std::cout << "Executable path: " << exePath << "\n";
       std::cout << "Project root: " << projectRoot << "\n";

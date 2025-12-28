@@ -87,7 +87,6 @@ target_link_libraries(Editor
         "${DEPENDENCY_LIB_DIR}/libSDL2-2.0.0.dylib"
         "${DEPENDENCY_LIB_DIR}/libSDL2-2.0.dylib"
         "${DEPENDENCY_LIB_DIR}/libSDL2main.a"
-        "${DEPENDENCY_LIB_DIR}/libSDL2_test.a"
         "${DEPENDENCY_LIB_DIR}/libimgui.dylib"
         "${DEPENDENCY_LIB_DIR}/libminizip.a"
         "${DEPENDENCY_LIB_DIR}/libzstd.a"

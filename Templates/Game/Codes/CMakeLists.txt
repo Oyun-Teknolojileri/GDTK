@@ -60,18 +60,39 @@ endif()
 
 # Set lib names.
 set(toolkit "ToolKit$<$<CONFIG:Debug>:d>")
-set(minizip "minizip$<$<CONFIG:Debug>:d>")
-set(sdl2 "SDL2$<$<CONFIG:Debug>:d>")
-set(sdl2main "SDL2main$<$<CONFIG:Debug>:d>")
 
-if (NOT "${TK_PLATFORM}" STREQUAL "${TK_WINDOWS}")
-    set(zstd "zstd$<$<CONFIG:Debug>:d>")
+# On macOS native builds, dependencies don't have debug versions
+if ("${TK_PLATFORM}" STREQUAL "${TK_MAC}" AND NOT PLUGIN_BUILD)
+    set(minizip "minizip")
+    set(zstd "zstd")
+    set(sdl2 "SDL2")
+    set(sdl2main "SDL2main")
 else()
-    set(zstd "zstd_static$<$<CONFIG:Debug>:d>")
+    set(minizip "minizip$<$<CONFIG:Debug>:d>")
+
+    # SDL2 debug postfix only on Windows
+    if ("${TK_PLATFORM}" STREQUAL "${TK_WINDOWS}")
+        set(sdl2 "SDL2$<$<CONFIG:Debug>:d>")
+        set(sdl2main "SDL2main$<$<CONFIG:Debug>:d>")
+    else()
+        set(sdl2 "SDL2")
+        set(sdl2main "SDL2main")
+    endif()
+
+    if (NOT "${TK_PLATFORM}" STREQUAL "${TK_WINDOWS}")
+        set(zstd "zstd$<$<CONFIG:Debug>:d>")
+    else()
+        set(zstd "zstd_static$<$<CONFIG:Debug>:d>")
+    endif()
 endif()
 
 # Dependency library directories.
-set(TK_DEPENDECY_OUT_DIR "${TOOLKIT_DIR}/Dependency/Intermediate/${TK_PLATFORM}/${TK_BUILD_TYPE}")
+# On macOS native builds, dependencies are only built for Release, so always use Release folder
+if ("${TK_PLATFORM}" STREQUAL "${TK_MAC}" AND NOT PLUGIN_BUILD)
+    set(TK_DEPENDECY_OUT_DIR "${TOOLKIT_DIR}/Dependency/Intermediate/${TK_PLATFORM}/Release")
+else()
+    set(TK_DEPENDECY_OUT_DIR "${TOOLKIT_DIR}/Dependency/Intermediate/${TK_PLATFORM}/${TK_BUILD_TYPE}")
+endif()
 # On macOS/Linux with single-config generators, ToolKit is built without config subdirectory
 if(PLUGIN_BUILD AND NOT WIN32)
     set(TK_OUT_DIR "${TOOLKIT_DIR}/Intermediate/${TK_PLATFORM}/ToolKit/ToolKit")
@@ -121,10 +142,52 @@ endif()
 # Windows build project.
 if ("${TK_PLATFORM}" STREQUAL "${TK_WINDOWS}")
     add_executable(${GAME_PROJECT_NAME} WIN32 ${SOURCE} ${HEADERS})
-    
+
     target_link_directories(${GAME_PROJECT_NAME} PRIVATE ${TK_DEPENDECY_OUT_DIR})
     target_link_directories(${GAME_PROJECT_NAME} PRIVATE ${TK_OUT_DIR})
     target_link_libraries(${GAME_PROJECT_NAME} PRIVATE OpenGL32 ${sdl2} ${sdl2main} ${minizip} ${zstd} ToolKit)
+endif()
+
+# macOS build project.
+message("DEBUG: TK_PLATFORM='${TK_PLATFORM}' TK_MAC='${TK_MAC}' PLUGIN_BUILD='${PLUGIN_BUILD}'")
+if ("${TK_PLATFORM}" STREQUAL "${TK_MAC}" AND NOT PLUGIN_BUILD)
+    message("Building macOS app bundle")
+    add_executable(${GAME_PROJECT_NAME} MACOSX_BUNDLE ${SOURCE} ${HEADERS})
+
+    target_link_directories(${GAME_PROJECT_NAME} PRIVATE ${TK_DEPENDECY_OUT_DIR})
+    target_link_directories(${GAME_PROJECT_NAME} PRIVATE ${TK_OUT_DIR})
+
+    # Find SDL2 in the dependency directory
+    find_library(SDL2_LIBRARY NAMES SDL2-2.0 SDL2 PATHS ${TK_DEPENDECY_OUT_DIR} NO_DEFAULT_PATH REQUIRED)
+    find_library(SDL2MAIN_LIBRARY NAMES SDL2main PATHS ${TK_DEPENDECY_OUT_DIR} NO_DEFAULT_PATH REQUIRED)
+
+    # Link required frameworks and libraries for macOS
+    find_library(COCOA_FRAMEWORK Cocoa REQUIRED)
+    find_library(IOKIT_FRAMEWORK IOKit REQUIRED)
+    find_library(COREVIDEO_FRAMEWORK CoreVideo REQUIRED)
+    find_library(CARBON_FRAMEWORK Carbon REQUIRED)
+    find_library(OPENGL_FRAMEWORK OpenGL REQUIRED)
+    find_library(COMPRESSION_FRAMEWORK Compression REQUIRED)
+    find_package(OpenSSL REQUIRED)
+
+    target_link_libraries(${GAME_PROJECT_NAME} PRIVATE
+        ${COCOA_FRAMEWORK}
+        ${IOKIT_FRAMEWORK}
+        ${COREVIDEO_FRAMEWORK}
+        ${CARBON_FRAMEWORK}
+        ${OPENGL_FRAMEWORK}
+        ${COMPRESSION_FRAMEWORK}
+        ${SDL2_LIBRARY}
+        ${SDL2MAIN_LIBRARY}
+        ${minizip}
+        ${zstd}
+        bz2
+        iconv
+        lzma
+        OpenSSL::Crypto
+        OpenSSL::SSL
+        ToolKit
+    )
 endif()
 
 # Plugin build for editor.

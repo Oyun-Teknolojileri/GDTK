@@ -343,7 +343,7 @@ namespace ToolKit
       String buildConfig = GetBuildConfigString(publishConfig);
 
       // Build cmake commands for native macOS build
-      String configCmd = "cd \"" + projectDir + "\" && cmake -S . -B ./Intermediate/MacOS -DTK_PLATFORM=TKMac -DCMAKE_BUILD_TYPE=" + buildConfig;
+      String configCmd = "cd \"" + projectDir + "\" && cmake -S . -B ./Intermediate/MacOS -DTK_PLATFORM=MacOS -DCMAKE_BUILD_TYPE=" + buildConfig;
       String buildCmd  = "cd \"" + projectDir + "\" && cmake --build ./Intermediate/MacOS --config " + buildConfig;
 
       // Execute cmake configure with callback
@@ -426,8 +426,41 @@ namespace ToolKit
       // Generate Info.plist
       GenerateInfoPlist(config);
 
-      // Copy app icon (if present) and config files
+      // Copy app icon (if present) to bundle Resources
       CopyMacOSResources(config);
+
+      // Copy project Resources folder to publish directory
+      std::error_code resourceEc;
+      String resourcesSrc = ConcatPaths({config.toolkitPath, "Resources"});
+      String resourcesDst = ConcatPaths({config.publishDirectory, "Resources"});
+
+      if (std::filesystem::exists(resourcesSrc, resourceEc))
+      {
+        // Remove old Resources if it exists
+        if (std::filesystem::exists(resourcesDst, resourceEc))
+        {
+          std::filesystem::remove_all(resourcesDst, resourceEc);
+        }
+
+        // Copy entire Resources directory
+        std::filesystem::copy(resourcesSrc, resourcesDst,
+                             std::filesystem::copy_options::recursive, resourceEc);
+        if (resourceEc)
+        {
+          TK_ERR(("CRITICAL: Failed to copy Resources directory: " + resourceEc.message()).c_str());
+          TK_ERR("Build will not run correctly without engine resources");
+        }
+        else
+        {
+          TK_LOG("Resources directory copied to publish directory");
+        }
+      }
+      else
+      {
+        TK_ERR(("CRITICAL: Resources directory not found at: " + resourcesSrc).c_str());
+      }
+
+      // Copy config files
       CopyMacOSConfig(config);
 
       // Copy MinResources.pak to publish directory
@@ -538,7 +571,7 @@ namespace ToolKit
 
     void PublishManager::BundleSDL2Library(const MacOSBuildConfig& config)
     {
-      String sdl2LibSrc = ConcatPaths({config.toolkitPath, "Dependency", "Intermediate", "TKMac", "Release", "libSDL2-2.0.0.dylib"});
+      String sdl2LibSrc = ConcatPaths({config.toolkitPath, "Dependency", "Intermediate", "MacOS", "Release", "libSDL2-2.0.0.dylib"});
       String sdl2LibDst = ConcatPaths({config.frameworksPath, "libSDL2-2.0.0.dylib"});
 
       std::error_code ec;

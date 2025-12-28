@@ -233,12 +233,28 @@ namespace ToolKit
           String codePath = ConcatPaths({GetApp()->m_workspace.GetCodeDirectory(), "..", "."});
           if (CheckFile(codePath))
           {
+#ifdef __APPLE__
+            // On macOS, try to open with the VS Code app bundle first
+            String cmd = "open -a \"Visual Studio Code\" \"" + codePath + "\"";
+            int result = GetApp()->ExecSysCommand(cmd, true, false);
+            if (result != 0)
+            {
+              // Fallback to 'code' command if the app bundle approach fails
+              cmd = "code \"" + codePath + "\"";
+              result = GetApp()->ExecSysCommand(cmd, true, false);
+              if (result != 0)
+              {
+                TK_ERR("Visual Studio Code can't be started. Make sure it is installed.");
+              }
+            }
+#else
             String cmd = "code \"" + codePath + "\"";
             int result = GetApp()->ExecSysCommand(cmd, true, false);
             if (result != 0)
             {
               TK_ERR("Visual Studio Code can't be started. Make sure it is installed." );
             }
+#endif
           }
           else
           {

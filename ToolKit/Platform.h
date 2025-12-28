@@ -38,6 +38,7 @@ namespace ToolKit
 #elif defined(__APPLE__)
   #include <TargetConditionals.h>
   #define TK_PLATFORM PLATFORM::TKMac
+  #define TK_MAC
 #else
   #error "Unknown platform!"
 #endif

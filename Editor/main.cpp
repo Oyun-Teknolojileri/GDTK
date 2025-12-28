@@ -75,7 +75,7 @@ namespace ToolKit
                 execDir = execDir.substr(0, lastSlash);
             }
 
-            // Go up 3 levels: Editor -> TKMac -> Intermediate -> Project Root
+            // Go up 3 levels: Editor -> MacOS -> Intermediate -> Project Root
             String projectRoot = ConcatPaths({execDir, "..", "..", ".."});
 
             char resolvedPath[1024];
@@ -86,8 +86,27 @@ namespace ToolKit
         }
         return "";
 #elif defined(_WIN32)
-        // Windows implementation would go here if needed
-        return "";
+        char exePath[MAX_PATH];
+        DWORD length = GetModuleFileNameA(NULL, exePath, MAX_PATH);
+
+        if (length > 0 && length < MAX_PATH)
+        {
+            String execDir = exePath;
+            size_t lastSlash = execDir.find_last_of('\\');
+            if (lastSlash != String::npos)
+            {
+                execDir = execDir.substr(0, lastSlash);
+            }
+
+            // Go up 3 levels: Editor -> Windows -> Intermediate -> Project Root
+            String projectRoot = ConcatPaths({execDir, "..", "..", ".."});
+
+            char resolvedPath[MAX_PATH];
+            if (_fullpath(resolvedPath, projectRoot.c_str(), MAX_PATH) != nullptr)
+            {
+                return String(resolvedPath);
+            }
+        }
 #else
         return "";
 #endif
