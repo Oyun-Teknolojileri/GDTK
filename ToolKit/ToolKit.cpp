@@ -460,24 +460,19 @@ namespace ToolKit
 
   String DefaultAbsolutePath()
   {
-    // First check if m_defaultResourceRoot has been set by the application
     String& defaultRoot = Main::GetInstance()->m_defaultResourceRoot;
     if (!defaultRoot.empty())
     {
       return defaultRoot;
     }
-
-    // Fallback: compute from current path
     static String absolutePath;
     if (absolutePath.empty())
     {
-      // Use filesystem to properly construct absolute paths on all platforms
       String currentPath = GetCurrentPath();
       std::filesystem::path current(currentPath);
       std::filesystem::path parent = current.parent_path();
       std::filesystem::path resourcePath = parent / "Resources" / "Engine";
 
-      // Convert to absolute path and normalize
       absolutePath = std::filesystem::absolute(resourcePath).u8string();
       NormalizePathInplace(absolutePath);
     }
