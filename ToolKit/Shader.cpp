@@ -553,7 +553,19 @@ namespace ToolKit
 
   String ShaderManager::GetDefaultResource(ClassMeta* Class)
   {
-    return ShaderPath(TK_DEFAULT_VERTEX_SHADER, true);
+    // If m_defaultVertexShaderFile is already set (Init() was called), use it
+    if (!m_defaultVertexShaderFile.empty())
+    {
+      TK_LOG("ShaderManager::GetDefaultResource() - Using cached path: %s", m_defaultVertexShaderFile.c_str());
+      return m_defaultVertexShaderFile;
+    }
+
+    // Otherwise compute the path
+    String path = ShaderPath(TK_DEFAULT_VERTEX_SHADER, true);
+    TK_LOG("ShaderManager::GetDefaultResource() - Computed path: %s", path.c_str());
+    TK_LOG("  m_defaultResourceRoot: %s", Main::GetInstance()->m_defaultResourceRoot.c_str());
+    TK_LOG("  Current working directory: %s", std::filesystem::current_path().string().c_str());
+    return path;
   }
 
   ShaderPtr ShaderManager::GetDefaultVertexShader() { return Cast<Shader>(m_storage[m_defaultVertexShaderFile]); }
