@@ -29,14 +29,12 @@ namespace ToolKit
         return;
       }
 
-#if !defined(TK_WIN)
-      // On non-Windows platforms, use direct cmake execution for plugin builds
+      // Use direct cmake execution for plugin builds on all platforms
       if (platform == PublishPlatform::GamePlugin || platform == PublishPlatform::EditorPlugin)
       {
         DirectPluginBuild(platform, publishConfig);
         return;
       }
-#endif
 
 #ifdef TK_MAC
       // On macOS, use direct cmake execution for native macOS builds
@@ -247,6 +245,8 @@ namespace ToolKit
       String configCmd = "cd \"" + projectDir + "\" && cmake -S . -B ./Intermediate/Plugin -DCMAKE_BUILD_TYPE=" + buildConfig;
       String buildCmd  = "cd \"" + projectDir + "\" && cmake --build ./Intermediate/Plugin --config " + buildConfig;
 
+      TK_LOG("Executing CMake configure: %s", configCmd.c_str());
+
       // Execute cmake configure
       SysCommandDoneCallback afterConfigFn = [=](int res) -> void
       {
@@ -259,6 +259,7 @@ namespace ToolKit
         }
 
         TK_LOG("CMake configure succeeded. Starting build...");
+        TK_LOG("Executing CMake build: %s", buildCmd.c_str());
 
         // Execute cmake build
         SysCommandDoneCallback afterBuildFn = [=](int res) -> void

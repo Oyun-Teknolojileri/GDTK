@@ -104,7 +104,7 @@ message("Using dependency output directory: ${TK_DEPENDECY_OUT_DIR}")
 message("Using toolkit output directory: ${TK_OUT_DIR}")
 
 # Web build project.
-if ("${TK_PLATFORM}" STREQUAL "${TK_WEB}")
+if ("${TK_PLATFORM}" STREQUAL "${TK_WEB}" AND NOT PLUGIN_BUILD)
     set(CMAKE_EXECUTABLE_SUFFIX ".html")
     add_executable(${GAME_PROJECT_NAME} ${SOURCE} ${HEADERS})
 
@@ -126,7 +126,7 @@ if ("${TK_PLATFORM}" STREQUAL "${TK_WEB}")
 endif()
 
 # Android build project.
-if ("${TK_PLATFORM}" STREQUAL "${TK_ANDROID}")
+if ("${TK_PLATFORM}" STREQUAL "${TK_ANDROID}" AND NOT PLUGIN_BUILD)
     # Reset game project name to main if it is android build, sdl expect a libmain.so
     set(GAME_PROJECT_NAME "main")
     add_library(${GAME_PROJECT_NAME} SHARED ${SOURCE} ${HEADERS})
@@ -140,7 +140,7 @@ if ("${TK_PLATFORM}" STREQUAL "${TK_ANDROID}")
 endif()
 
 # Windows build project.
-if ("${TK_PLATFORM}" STREQUAL "${TK_WINDOWS}")
+if ("${TK_PLATFORM}" STREQUAL "${TK_WINDOWS}" AND NOT PLUGIN_BUILD)
     add_executable(${GAME_PROJECT_NAME} WIN32 ${SOURCE} ${HEADERS})
 
     target_link_directories(${GAME_PROJECT_NAME} PRIVATE ${TK_DEPENDECY_OUT_DIR})
