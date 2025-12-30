@@ -552,21 +552,7 @@ namespace ToolKit
   bool ShaderManager::CanStore(ClassMeta* Class) { return Class == Shader::StaticClass(); }
 
   String ShaderManager::GetDefaultResource(ClassMeta* Class)
-  {  if (!m_defaultVertexShaderFile.empty())
-    {
-      String defaultResourceRoot = DefaultAbsolutePath();
-      size_t pos = m_defaultVertexShaderFile.find("Shaders");
-      if (pos != String::npos)
-      {
-        String shaderRelativePath = m_defaultVertexShaderFile.substr(pos);
-        String absolutePath = ConcatPaths({defaultResourceRoot, shaderRelativePath});
-        NormalizePathInplace(absolutePath);
-        return absolutePath;
-      }
-      return m_defaultVertexShaderFile;
-    }
-
-    // If Init() hasn't been called yet, compute the absolute path directly
+  {
     String defaultResourceRoot = DefaultAbsolutePath();
     String path = ConcatPaths({defaultResourceRoot, "Shaders", TK_DEFAULT_VERTEX_SHADER});
     NormalizePathInplace(path);
