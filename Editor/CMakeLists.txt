@@ -103,6 +103,25 @@ target_link_libraries(Editor
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/Bin")
 
 # ----------------------------
+# RPATH configuration for macOS
+# ----------------------------
+if(APPLE)
+    # Set RPATH for finding dylibs relative to executable
+    set_target_properties(Editor PROPERTIES
+        BUILD_WITH_INSTALL_RPATH TRUE
+        INSTALL_RPATH "@executable_path;@executable_path/../lib;@executable_path/../Frameworks"
+        INSTALL_RPATH_USE_LINK_PATH TRUE
+    )
+
+    # For .app bundles, use @executable_path/../Frameworks
+    if(CMAKE_MACOSX_BUNDLE)
+        set_target_properties(Editor PROPERTIES
+            INSTALL_RPATH "@executable_path/../Frameworks"
+        )
+    endif()
+endif()
+
+# ----------------------------
 # Compiler flags for debug/native builds
 # ----------------------------
 if(NOT EMSCRIPTEN)
