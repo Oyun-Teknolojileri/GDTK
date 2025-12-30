@@ -857,11 +857,11 @@ namespace ToolKit
       }
     }
 
-    int App::ExecSysCommand(StringView cmd, bool async, bool showConsole, SysCommandDoneCallback callback)
+    int App::ExecSysCommand(StringView cmd, bool async, bool showConsole, SysCommandDoneCallback callback, bool captureOutput)
     {
       if (m_sysComExecFn)
       {
-        return m_sysComExecFn(cmd, async, showConsole, callback);
+        return m_sysComExecFn(cmd, async, showConsole, callback, captureOutput);
       }
 
       return -1;

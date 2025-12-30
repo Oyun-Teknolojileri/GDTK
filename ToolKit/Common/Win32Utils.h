@@ -55,23 +55,27 @@ namespace ToolKit
     } // namespace UTF8Util
 
     // Win32 console command execution callback.
-    int SysComExec(StringView cmd, bool async, bool showConsole, std::function<void(int)> callback)
+    int SysComExec(StringView cmd, bool async, bool showConsole, std::function<void(int)> callback, bool captureOutput = false)
     {
       // https://learn.microsoft.com/en-us/windows/win32/procthread/creating-processes
-      
+
       HANDLE hStdOutRead = NULL, hStdOutWrite = NULL;
       SECURITY_ATTRIBUTES sa;
-      ZeroMemory(&sa, sizeof(sa));
-      sa.nLength              = sizeof(SECURITY_ATTRIBUTES);
-      sa.bInheritHandle       = TRUE;
-      sa.lpSecurityDescriptor = NULL;
 
-      if (!CreatePipe(&hStdOutRead, &hStdOutWrite, &sa, 0))
+      if (captureOutput)
       {
-        TK_ERR("CreatePipe failed (%d).\n", GetLastError());
-        return -1;
+        ZeroMemory(&sa, sizeof(sa));
+        sa.nLength              = sizeof(SECURITY_ATTRIBUTES);
+        sa.bInheritHandle       = TRUE;
+        sa.lpSecurityDescriptor = NULL;
+
+        if (!CreatePipe(&hStdOutRead, &hStdOutWrite, &sa, 0))
+        {
+          TK_ERR("CreatePipe failed (%d).\n", GetLastError());
+          return -1;
+        }
+        SetHandleInformation(hStdOutRead, HANDLE_FLAG_INHERIT, 0);
       }
-      SetHandleInformation(hStdOutRead, HANDLE_FLAG_INHERIT, 0);
 
       STARTUPINFOW si;
       PROCESS_INFORMATION pi;
@@ -79,46 +83,63 @@ namespace ToolKit
       ZeroMemory(&si, sizeof(si));
       si.cb = sizeof(si);
 
-      si.dwFlags     = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
-      si.hStdOutput  = hStdOutWrite;
-      si.hStdError   = hStdOutWrite;
-      si.hStdInput   = GetStdHandle(STD_INPUT_HANDLE);
-      si.wShowWindow = showConsole ? SW_SHOWNORMAL : SW_HIDE;
+      if (captureOutput)
+      {
+        si.dwFlags     = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+        si.hStdOutput  = hStdOutWrite;
+        si.hStdError   = hStdOutWrite;
+        si.hStdInput   = GetStdHandle(STD_INPUT_HANDLE);
+        si.wShowWindow = showConsole ? SW_SHOWNORMAL : SW_HIDE;
+      }
+      else
+      {
+        si.dwFlags     = STARTF_USESHOWWINDOW;
+        si.wShowWindow = showConsole ? SW_SHOWNORMAL : SW_HIDE;
+      }
 
       ZeroMemory(&pi, sizeof(pi));
 
       std::wstring wCmd = UTF8Util::ConvertUTF8ToUTF16("cmd /C ") + UTF8Util::ConvertUTF8ToUTF16(cmd.data());
 
       // Start the child process.
-      if (!CreateProcessW(NULL,        // No module name (use command line)
-                          wCmd.data(), // Command line
-                          NULL,        // Process handle not inheritable
-                          NULL,        // Thread handle not inheritable
-                          TRUE,        // Set handle inheritance to TRUE (for pipe)
-                          0,           // No creation flags
-                          NULL,        // Use parent's environment block
-                          NULL,        // Use parent's starting directory
-                          &si,         // Pointer to STARTUPINFO structure
-                          &pi)         // Pointer to PROCESS_INFORMATION structure
+      if (!CreateProcessW(NULL,                    // No module name (use command line)
+                          wCmd.data(),             // Command line
+                          NULL,                    // Process handle not inheritable
+                          NULL,                    // Thread handle not inheritable
+                          captureOutput ? TRUE : FALSE, // Set handle inheritance (for pipe)
+                          0,                       // No creation flags
+                          NULL,                    // Use parent's environment block
+                          NULL,                    // Use parent's starting directory
+                          &si,                     // Pointer to STARTUPINFO structure
+                          &pi)                     // Pointer to PROCESS_INFORMATION structure
       )
       {
         DWORD errCode = GetLastError();
         TK_ERR("CreateProcess failed (%d).\n", errCode);
-        CloseHandle(hStdOutRead);
-        CloseHandle(hStdOutWrite);
+        if (captureOutput)
+        {
+          CloseHandle(hStdOutRead);
+          CloseHandle(hStdOutWrite);
+        }
         return (int) errCode;
       }
-      
-      CloseHandle(hStdOutWrite);
+
+      if (captureOutput)
+      {
+        CloseHandle(hStdOutWrite);
+      }
 
       if (!showConsole)
       {
         SetWindowPos((HWND) pi.hProcess, HWND_TOPMOST, 0, 0, 0, 0, 0);
       }
 
-      auto finalizeFn = [pi, callback, hStdOutRead](DWORD stat) -> int
+      auto finalizeFn = [pi, callback, hStdOutRead, captureOutput](DWORD stat) -> int
       {
-        CloseHandle(hStdOutRead);
+        if (captureOutput)
+        {
+          CloseHandle(hStdOutRead);
+        }
 
         // Close process and thread handles.
         CloseHandle(pi.hProcess);
@@ -167,7 +188,10 @@ namespace ToolKit
 
       if (!async)
       {
-        readOutputFn();
+        if (captureOutput)
+        {
+          readOutputFn();
+        }
 
         // Wait until child process exits.
         WaitForSingleObject(pi.hProcess, INFINITE);
@@ -182,10 +206,13 @@ namespace ToolKit
         if (callback != nullptr)
         {
           std::thread t(
-              [pi, callback, finalizeFn, hStdOutRead, readOutputFn]() -> void
+              [pi, callback, finalizeFn, hStdOutRead, readOutputFn, captureOutput]() -> void
               {
-                std::thread outputThread(readOutputFn);
-                outputThread.detach();
+                if (captureOutput)
+                {
+                  std::thread outputThread(readOutputFn);
+                  outputThread.detach();
+                }
 
                 DWORD stat = 0;
                 bool exit  = false;
@@ -200,7 +227,10 @@ namespace ToolKit
                   std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 }
 
-                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                if (captureOutput)
+                {
+                  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                }
 
                 finalizeFn(stat);
               });
