@@ -16,8 +16,8 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${TK_DEPENDECY_OUT_DIR}")
 
 #---- MINIZIP ----#
 set(MZ_COMPAT ON)
-set(MZ_ZSTD ON)               # <-- enable zstd
-set(MZ_FETCH_LIBS ON)         # <-- fetch zstd automatically
+set(MZ_ZSTD ON)              
+set(MZ_FETCH_LIBS ON)
 set(MZ_FORCE_FETCH_LIBS OFF)
 set(ZSTD_BUILD_STATIC ON)
 set(BUILD_SHARED_LIBS OFF)
@@ -63,76 +63,73 @@ set(CMAKE_DEBUG_POSTFIX d)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/SDL2 ${CMAKE_CURRENT_LIST_DIR}/Intermediate/${TK_PLATFORM}/SDL2)
 
 #---- Copy DLL/LIB ----#
+# Create target directories (common for all platforms)
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/../Bin/")
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/../Utils/Import/")
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/../Utils/Packer/")
+
+# Set dependencies list (common for all platforms)
+set(COPY_DEPENDENCIES_LIST minizip SDL2)
+if (NOT ${SKIP_IMGUI})
+    list(APPEND COPY_DEPENDENCIES_LIST imgui)
+endif()
+if (NOT ${SKIP_ASSIMP})
+    list(APPEND COPY_DEPENDENCIES_LIST assimp)
+endif()
+
+# Windows also needs zstd copied
 if ("${TK_PLATFORM}" STREQUAL "Windows")
-    # Create target directories
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/../Bin/")
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/../Utils/Import/")
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/../Utils/Packer/")
-    
-    # Set dependencies list
-    if (NOT ${SKIP_ASSIMP})
-        set(COPY_DEPENDENCIES minizip zstd SDL2 imgui assimp)
-    else()
-        set(COPY_DEPENDENCIES minizip zstd SDL2 imgui)
-    endif()
-    
-    add_custom_target(CopyDependencies ALL
-        # Copy SDL2
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different 
-            "$<TARGET_FILE:SDL2>" 
+    list(APPEND COPY_DEPENDENCIES_LIST zstd)
+endif()
+
+# Create copy target (common for all platforms)
+add_custom_target(CopyDependencies ALL
+    # Copy SDL2 to all required directories
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:SDL2>"
+        "${CMAKE_CURRENT_LIST_DIR}/../Bin/"
+
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:SDL2>"
+        "${CMAKE_CURRENT_LIST_DIR}/../Utils/Import/"
+
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:SDL2>"
+        "${CMAKE_CURRENT_LIST_DIR}/../Utils/Packer/"
+
+    DEPENDS ${COPY_DEPENDENCIES_LIST}
+    COMMENT "Copying dependency libraries for ${TK_PLATFORM}: $<CONFIG>"
+    VERBATIM
+)
+
+# Copy ImGui if enabled (common for all platforms)
+if (NOT ${SKIP_IMGUI})
+    add_custom_command(TARGET CopyDependencies POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:imgui>"
             "${CMAKE_CURRENT_LIST_DIR}/../Bin/"
-        
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different 
-            "$<TARGET_FILE:SDL2>" 
-            "${CMAKE_CURRENT_LIST_DIR}/../Utils/Import/"
-        
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different 
-            "$<TARGET_FILE:SDL2>" 
-            "${CMAKE_CURRENT_LIST_DIR}/../Utils/Packer/"
-        
-        # Copy ImGui
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different 
-            "$<TARGET_FILE:imgui>" 
-            "${CMAKE_CURRENT_LIST_DIR}/../Bin/"
-        
-        DEPENDS ${COPY_DEPENDENCIES}
-        COMMENT "Copying dependencies for configuration: $<CONFIG>"
-        VERBATIM
+        COMMENT "Copying ImGui library"
     )
-    
-    # Add Assimp copy conditionally
-    if (NOT ${SKIP_ASSIMP})
-        add_custom_command(TARGET CopyDependencies POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different 
-                "$<TARGET_FILE:assimp>" 
-                "${CMAKE_CURRENT_LIST_DIR}/../Utils/Import/"
-            COMMENT "Copying Assimp for configuration: $<CONFIG>"
-        )
-    endif()
-    
-    # Debug information
-    message(STATUS "TK_PLATFORM: ${TK_PLATFORM}")
+endif()
+
+# Copy Assimp if enabled (common for all platforms)
+if (NOT ${SKIP_ASSIMP})
+    add_custom_command(TARGET CopyDependencies POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:assimp>"
+            "${CMAKE_CURRENT_LIST_DIR}/../Utils/Import/"
+        COMMENT "Copying Assimp library"
+    )
+endif()
+
+# Debug information (common for all platforms)
+message(STATUS "TK_PLATFORM: ${TK_PLATFORM}")
+if ("${TK_PLATFORM}" STREQUAL "Windows")
     message(STATUS "CMAKE_CURRENT_LIST_DIR: ${CMAKE_CURRENT_LIST_DIR}")
     message(STATUS "CMAKE_GENERATOR: ${CMAKE_GENERATOR}")
     message(STATUS "CMAKE_CONFIGURATION_TYPES: ${CMAKE_CONFIGURATION_TYPES}")
-    message(STATUS "Target directories:")
-    message(STATUS "  - Bin: ${CMAKE_CURRENT_LIST_DIR}/../Bin/")
-    message(STATUS "  - Import: ${CMAKE_CURRENT_LIST_DIR}/../Utils/Import/")
-    message(STATUS "  - Packer: ${CMAKE_CURRENT_LIST_DIR}/../Utils/Packer/")
 endif()
-
-# On non-Windows platforms, build dependencies without copying DLLs
-if (NOT "${TK_PLATFORM}" STREQUAL "Windows")
-    set(COPY_DEPENDENCIES_LIST minizip SDL2)
-    if (NOT ${SKIP_IMGUI})
-        list(APPEND COPY_DEPENDENCIES_LIST imgui)
-    endif()
-    if (NOT ${SKIP_ASSIMP})
-        list(APPEND COPY_DEPENDENCIES_LIST assimp)
-    endif()
-
-    add_custom_target(CopyDependencies ALL
-        DEPENDS ${COPY_DEPENDENCIES_LIST}
-        COMMENT "Building dependency libraries for ${TK_PLATFORM}"
-    )
-endif()
+message(STATUS "Target directories:")
+message(STATUS "  - Bin: ${CMAKE_CURRENT_LIST_DIR}/../Bin/")
+message(STATUS "  - Import: ${CMAKE_CURRENT_LIST_DIR}/../Utils/Import/")
+message(STATUS "  - Packer: ${CMAKE_CURRENT_LIST_DIR}/../Utils/Packer/")
