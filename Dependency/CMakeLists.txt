@@ -63,9 +63,15 @@ if (NOT ${SKIP_ASSIMP})
 
     add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/assimp ${CMAKE_CURRENT_LIST_DIR}/Intermediate/${TK_PLATFORM}/assimp)
 
-    # After Assimp is configured, ensure the debug library has the correct name
+    # After Assimp is configured, override the OUTPUT_NAME to remove version stamps
+    # Assimp's CMakeLists.txt sets OUTPUT_NAME to "assimp${LIBRARY_SUFFIX}" where
+    # LIBRARY_SUFFIX = "${ASSIMP_LIBRARY_SUFFIX}-${MSVC_PREFIX}-mt" on Windows
+    # We need to override this AFTER add_subdirectory to ensure clean names
     if(TARGET assimp)
-        set_target_properties(assimp PROPERTIES DEBUG_POSTFIX "d")
+        set_target_properties(assimp PROPERTIES
+            OUTPUT_NAME "assimp"
+            DEBUG_POSTFIX "d"
+        )
     endif()
 endif()
 
