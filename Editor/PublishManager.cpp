@@ -524,7 +524,8 @@ namespace ToolKit
       }
       else
       {
-        TK_WRN("Engine.settings not found at: " + engineSettingsSrc);
+        String warningMsg = "Engine.settings not found at: " + engineSettingsSrc;
+        TK_WRN(warningMsg.c_str());
       }
 
       TK_LOG(("Windows App published to: " + publishDir).c_str());
