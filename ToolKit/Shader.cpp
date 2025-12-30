@@ -553,7 +553,7 @@ namespace ToolKit
 
   String ShaderManager::GetDefaultResource(ClassMeta* Class)
   {
-    return m_defaultVertexShaderFile;
+    return ShaderPath(TK_DEFAULT_VERTEX_SHADER, true);
   }
 
   ShaderPtr ShaderManager::GetDefaultVertexShader() { return Cast<Shader>(m_storage[m_defaultVertexShaderFile]); }
