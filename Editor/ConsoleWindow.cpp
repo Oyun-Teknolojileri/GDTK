@@ -482,7 +482,7 @@ namespace ToolKit
 
         // Check if path is absolute (starts with / on Unix or drive letter on Windows)
         bool isAbsolutePath = false;
-        #ifdef _WIN32
+        #ifdef TK_WIN
           isAbsolutePath = (path.length() >= 2 && path[1] == ':');
         #else
           isAbsolutePath = (!path.empty() && path[0] == '/');
@@ -496,7 +496,7 @@ namespace ToolKit
           const char* homeDir = std::getenv("HOME");
           if (!homeDir)
           {
-            #ifdef _WIN32
+            #ifdef TK_WIN
               homeDir = std::getenv("USERPROFILE");
             #endif
           }

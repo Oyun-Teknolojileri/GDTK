@@ -115,23 +115,23 @@ namespace ToolKit
      private:
       String ConstructPublishArgs(PublishPlatform platform, PublishConfig publishConfig, bool packOnly);
       void DirectPluginBuild(PublishPlatform platform, PublishConfig publishConfig);
-      void DirectMacOSBuild(PublishConfig publishConfig);
 
       // Helper functions
       String GetBuildConfigString(PublishConfig publishConfig);
       String GetToolkitPath();
 
-      // macOS build helper functions
+#ifdef TK_MAC
+      // macOS-specific build functions (only declared on macOS)
+      void DirectMacOSBuild(PublishConfig publishConfig);
       MacOSBuildConfig CreateMacOSBuildConfig(PublishConfig publishConfig);
       void CreateMacOSPublishDirectories(const MacOSBuildConfig& config);
       void BundleSDL2Library(const MacOSBuildConfig& config);
       void GenerateInfoPlist(const MacOSBuildConfig& config);
       void CopyMacOSResources(const MacOSBuildConfig& config);
       void CopyMacOSConfig(const MacOSBuildConfig& config);
-
-      // macOS build callback functions
       void OnMacOSConfigureComplete(int exitCode, PublishConfig publishConfig, const String& buildCmd);
       void OnMacOSBuildComplete(int exitCode, PublishConfig publishConfig);
+#endif // TK_MAC
 
      public:
       TexturePtr m_icon = nullptr;

@@ -233,7 +233,7 @@ namespace ToolKit
           String codePath = ConcatPaths({GetApp()->m_workspace.GetCodeDirectory(), "..", "."});
           if (CheckFile(codePath))
           {
-#ifdef __APPLE__
+#ifdef TK_MAC
             // On macOS, try to open with the VS Code app bundle first
             String cmd = "open -a \"Visual Studio Code\" \"" + codePath + "\"";
             int result = GetApp()->ExecSysCommand(cmd, true, false);

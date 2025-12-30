@@ -1,6 +1,6 @@
 #pragma once
 
-#ifdef __APPLE__
+#ifdef TK_MAC
 
 #include <filesystem>
 #include <string>

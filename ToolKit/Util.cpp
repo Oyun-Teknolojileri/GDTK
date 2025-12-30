@@ -610,13 +610,13 @@ namespace ToolKit
 
   String GetPluginExtention()
   {
-#if defined(_WIN32)
+#if defined(TK_WIN)
     if constexpr (TKDebug)
     {
       return "d.dll";
     }
     return ".dll";
-#elif defined(__APPLE__)
+#elif defined(TK_MAC)
     if constexpr (TKDebug)
     {
       return "d.dylib";

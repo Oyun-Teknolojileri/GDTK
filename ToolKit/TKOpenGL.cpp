@@ -117,7 +117,7 @@ namespace ToolKit
       TK_GL_EXT_texture_filter_anisotropic = extensionsStr.find("GL_EXT_texture_filter_anisotropic") != std::string::npos;
   #endif // TK_WEB
 
-  #ifdef __APPLE__
+  #ifdef TK_MAC
       // macOS / iOS
   gladLoadGLES2((GLADloadfunc)glGetProcAddress);
 
@@ -137,7 +137,7 @@ namespace ToolKit
       TK_GL_OES_texture_float_linear = 1;
   #endif
 
-  #endif // __APPLE__
+  #endif // TK_MAC
   }
 
 } // namespace ToolKit

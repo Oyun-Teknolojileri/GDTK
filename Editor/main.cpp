@@ -22,9 +22,9 @@
 #include "UI.h"
 
 #include <Common/SDLEventPool.h>
-#if defined(_WIN32)
+#if defined(TK_WIN)
   #include <Common/Win32Utils.h>
-#elif defined(__APPLE__)
+#elif defined(TK_MAC)
   #include <Common/MacUtils.h>
   #include <mach-o/dyld.h>  // For _NSGetExecutablePath
 #endif
@@ -62,7 +62,7 @@ namespace ToolKit
     // Get the project root directory from the executable path
     String GetProjectRoot()
     {
-#if defined(__APPLE__)
+#if defined(TK_MAC)
         char exePath[1024];
         uint32_t size = sizeof(exePath);
 
@@ -85,7 +85,7 @@ namespace ToolKit
             }
         }
         return "";
-#elif defined(_WIN32)
+#elif defined(TK_WIN)
         char exePath[MAX_PATH];
         DWORD length = GetModuleFileNameA(NULL, exePath, MAX_PATH);
 
@@ -118,7 +118,7 @@ namespace ToolKit
         // Determine base path for config files
         const char* rawAppData = nullptr;
 
-    #if defined(_WIN32)
+    #if defined(TK_WIN)
         rawAppData = std::getenv("APPDATA");
         if (!rawAppData)
         {
@@ -173,7 +173,7 @@ namespace ToolKit
             "Editor.settings",
             "UILayout.ini",
             "Engine.settings",
-#if defined(_WIN32)
+#if defined(TK_WIN)
             "GamePluginBuild.bat"
 #else
             "GamePluginBuild.sh"
@@ -205,7 +205,7 @@ namespace ToolKit
         }
 
         // Update GamePluginBuild script with correct BUILD_CONFIG
-#if defined(_WIN32)
+#if defined(TK_WIN)
         String buildScriptPath = ConcatPaths({cfgPath, "GamePluginBuild.bat"});
         const String setToken = "set BUILD_CONFIG=__ENGINE_CONFIG__";
         const String setPrefix = "set BUILD_CONFIG=";
@@ -226,7 +226,7 @@ namespace ToolKit
             {
                 if (line.find(setToken) != String::npos)
                 {
-#if defined(_WIN32)
+#if defined(TK_WIN)
                     line = setPrefix + buildConfigStr;
 #else
                     line = setPrefix + buildConfigStr + "\"";
@@ -243,7 +243,7 @@ namespace ToolKit
             }
             outFile.close();
 
-#if !defined(_WIN32)
+#if !defined(TK_WIN)
             // Make shell script executable on Unix-like systems
             std::filesystem::permissions(buildScriptPath,
                 std::filesystem::perms::owner_all |
@@ -363,7 +363,7 @@ namespace ToolKit
 #endif
 
 // macOS / Desktop OpenGL: Use Core Profile 3.3 or higher
-#if defined(__APPLE__) && !defined(TK_GL_ES_3_0) && !defined(TK_GL_ES_3_2)
+#if defined(TK_MAC) && !defined(TK_GL_ES_3_0) && !defined(TK_GL_ES_3_2)
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);

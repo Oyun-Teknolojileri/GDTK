@@ -12,7 +12,7 @@
 #include <FileManager.h>
 #include <PluginManager.h>
 
-#ifdef __APPLE__
+#ifdef TK_MAC
   #include <sys/stat.h>
 #endif
 
@@ -29,7 +29,7 @@ namespace ToolKit
         return;
       }
 
-#if !defined(_WIN32)
+#if !defined(TK_WIN)
       // On non-Windows platforms, use direct cmake execution for plugin builds
       if (platform == PublishPlatform::GamePlugin || platform == PublishPlatform::EditorPlugin)
       {
@@ -38,7 +38,7 @@ namespace ToolKit
       }
 #endif
 
-#if defined(__APPLE__)
+#ifdef TK_MAC
       // On macOS, use direct cmake execution for native macOS builds
       if (platform == PublishPlatform::MacOS)
       {
@@ -311,6 +311,8 @@ namespace ToolKit
       GetApp()->ExecSysCommand(configCmd, true, true, afterConfigFn);
     }
 
+#ifdef TK_MAC
+    // macOS-specific build functions (only compiled on macOS)
     void PublishManager::DirectMacOSBuild(PublishConfig publishConfig)
     {
       TK_LOG("Building macOS App...");
@@ -727,6 +729,7 @@ namespace ToolKit
         TK_WRN("No config directory found - using default settings");
       }
     }
+#endif // TK_MAC
 
   } // namespace Editor
 } // namespace ToolKit

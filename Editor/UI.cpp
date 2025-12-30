@@ -136,7 +136,7 @@ namespace ToolKit
       // Set the appropriate GLSL version based on platform
 #if defined(TK_GL_ES_3_0)
       ImGui_ImplOpenGL3_Init("#version 300 es");
-#elif defined(__APPLE__)
+#elif defined(TK_MAC)
       ImGui_ImplOpenGL3_Init("#version 150");  // OpenGL 3.3 Core on macOS
 #else
       ImGui_ImplOpenGL3_Init("#version 130");  // OpenGL 3.0 on other desktop platforms
@@ -889,7 +889,7 @@ namespace ToolKit
           choosePublishPlatformFn(PublishPlatform::Windows);
         }
 
-#if defined(__APPLE__)
+#if defined(TK_MAC)
         if (ImGui::BeginMenu("macOS"))
         {
           choosePublishPlatformFn(PublishPlatform::MacOS);

@@ -429,7 +429,7 @@ namespace ToolKit
       str = source.c_str();
     }
 
-#if defined(__APPLE__) && !defined(TK_GL_ES_3_0) && !defined(TK_GL_ES_3_2)
+#if defined(TK_MAC) && !defined(TK_GL_ES_3_0) && !defined(TK_GL_ES_3_2)
     // macOS desktop OpenGL: Convert GLSL ES to desktop GLSL
     // Replace "#version 300 es" with "#version 330 core"
     size_t versionPos = source.find("#version 300 es");
