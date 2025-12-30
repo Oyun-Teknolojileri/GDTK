@@ -98,8 +98,9 @@ namespace ToolKit
                 execDir = execDir.substr(0, lastSlash);
             }
 
-            // Go up 3 levels: Editor -> Windows -> Intermediate -> Project Root
-            String projectRoot = ConcatPaths({execDir, "..", "..", ".."});
+            // Go up 1 level: Bin -> Project Root
+            // (Editor executable is in Bin/ directory as per CMakeLists.txt)
+            String projectRoot = ConcatPaths({execDir, ".."});
 
             char resolvedPath[MAX_PATH];
             if (_fullpath(resolvedPath, projectRoot.c_str(), MAX_PATH) != nullptr)
@@ -107,6 +108,7 @@ namespace ToolKit
                 return String(resolvedPath);
             }
         }
+        return "";
 #else
         return "";
 #endif
