@@ -10,7 +10,12 @@
 #include "Threads.h"
 #include "Types.h"
 
-namespace ToolKit { class Logger; Logger* GetLogger(); }
+// Forward declarations for early use in macros
+namespace ToolKit
+{
+  class Logger;
+  TK_API Logger* GetLogger();
+}
 
 #define TK_LOG(format, ...)     ToolKit::GetLogger()->WriteTKConsole(ToolKit::LogType::Memo, format, ##__VA_ARGS__)
 #define TK_SYSLOG(format, ...)  ToolKit::GetLogger()->WritePlatformConsole(ToolKit::LogType::Memo, format, ##__VA_ARGS__)

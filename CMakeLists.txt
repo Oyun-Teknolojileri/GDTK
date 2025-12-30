@@ -14,8 +14,8 @@ if(ANDROID OR IOS OR EMSCRIPTEN)
   add_definitions(-DTK_GL_ES_3_0)
 endif()
 
-# Define TK_DLL_EXPORT globally
-add_definitions(-DTK_DLL_EXPORT)
+# NOTE: TK_DLL_EXPORT should NOT be defined globally since ToolKit is built as a STATIC library
+# If building as a DLL in the future, define it only for that specific build configuration
 
 # Build ToolKit
 add_subdirectory(${TOOLKIT_DIR}/ToolKit "${TOOLKIT_DIR}/Intermediate/${TK_PLATFORM}/ToolKit/ToolKit")
