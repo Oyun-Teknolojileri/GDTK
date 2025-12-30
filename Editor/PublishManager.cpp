@@ -36,6 +36,15 @@ namespace ToolKit
         return;
       }
 
+#ifdef TK_WIN
+      // On Windows, use direct cmake execution for native Windows builds
+      if (platform == PublishPlatform::Windows)
+      {
+        DirectWindowsBuild(publishConfig);
+        return;
+      }
+#endif
+
 #ifdef TK_MAC
       // On macOS, use direct cmake execution for native macOS builds
       if (platform == PublishPlatform::MacOS)
@@ -346,6 +355,78 @@ namespace ToolKit
 
       return toolkitPath;
     }
+
+#ifdef TK_WIN
+    void PublishManager::DirectWindowsBuild(PublishConfig publishConfig)
+    {
+      TK_LOG("Building Windows App...");
+      m_isBuilding = true;
+      GetApp()->SetStatusMsg(g_statusPublishing + g_statusNoTerminate);
+
+      String projectDir = ConcatPaths({GetApp()->m_workspace.GetActiveWorkspace(),
+                                       GetApp()->m_workspace.GetActiveProject().name});
+      String pakPath = ConcatPaths({projectDir, "MinResources.pak"});
+
+      bool needPacking = (publishConfig == PublishConfig::Deploy);
+      needPacking |= !std::filesystem::exists(pakPath);
+
+      if (needPacking)
+      {
+        TK_LOG("Packing resources...");
+        int packResult = GetFileManager()->PackResources();
+        if (packResult != 0)
+        {
+          TK_ERR("Resource packing failed.");
+          GetApp()->SetStatusMsg(g_statusFailed);
+          m_isBuilding = false;
+          return;
+        }
+        TK_LOG("Resources packed successfully.");
+      }
+
+      String buildConfig = GetBuildConfigString(publishConfig);
+
+      String configCmd = "cd \"" + projectDir + "\" && cmake -S . -B ./Intermediate/Windows -DTK_PLATFORM=Windows -DCMAKE_BUILD_TYPE=" + buildConfig;
+      String buildCmd  = "cd \"" + projectDir + "\" && cmake --build ./Intermediate/Windows --config " + buildConfig;
+
+      TK_LOG("Executing CMake configure: %s", configCmd.c_str());
+
+      auto afterConfigFn = std::bind(&PublishManager::OnWindowsConfigureComplete, this, std::placeholders::_1, publishConfig, buildCmd);
+      GetApp()->ExecSysCommand(configCmd, true, false, afterConfigFn);
+    }
+
+    void PublishManager::OnWindowsConfigureComplete(int exitCode, PublishConfig publishConfig, const String& buildCmd)
+    {
+      if (exitCode != 0)
+      {
+        TK_ERR("CMake configure failed.");
+        GetApp()->SetStatusMsg(g_statusFailed);
+        m_isBuilding = false;
+        return;
+      }
+
+      TK_LOG("CMake configure succeeded. Starting build...");
+      TK_LOG("Executing CMake build: %s", buildCmd.c_str());
+
+      auto afterBuildFn = std::bind(&PublishManager::OnWindowsBuildComplete, this, std::placeholders::_1, publishConfig);
+      GetApp()->ExecSysCommand(buildCmd, true, false, afterBuildFn);
+    }
+
+    void PublishManager::OnWindowsBuildComplete(int exitCode, PublishConfig publishConfig)
+    {
+      if (exitCode != 0)
+      {
+        TK_ERR("Windows App Building Failed.");
+        GetApp()->SetStatusMsg(g_statusFailed);
+        m_isBuilding = false;
+        return;
+      }
+
+      TK_LOG("Windows App Building Ended.");
+      GetApp()->SetStatusMsg(g_statusSucceeded);
+      m_isBuilding = false;
+    }
+#endif // TK_WIN
 
 #ifdef TK_MAC
     // macOS-specific build functions (only compiled on macOS)

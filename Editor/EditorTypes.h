@@ -79,7 +79,7 @@ namespace ToolKit
     typedef std::shared_ptr<class EditorCanvas> EditorCanvasPtr;
 
     typedef std::function<void(int)> SysCommandDoneCallback;
-    typedef std::function<int(StringView, bool, bool, SysCommandDoneCallback)> SysCommandExecutionFn;
+    typedef std::function<int(StringView, bool, bool, SysCommandDoneCallback, bool)> SysCommandExecutionFn;
     typedef std::function<void(const StringView)> ShellOpenDirFn;
 
     // UI Strings

@@ -120,6 +120,12 @@ namespace ToolKit
       String GetBuildConfigString(PublishConfig publishConfig);
       String GetToolkitPath();
 
+#ifdef TK_WIN
+      void DirectWindowsBuild(PublishConfig publishConfig);
+      void OnWindowsConfigureComplete(int exitCode, PublishConfig publishConfig, const String& buildCmd);
+      void OnWindowsBuildComplete(int exitCode, PublishConfig publishConfig);
+#endif // TK_WIN
+
 #ifdef TK_MAC
       // macOS-specific build functions (only declared on macOS)
       void DirectMacOSBuild(PublishConfig publishConfig);
