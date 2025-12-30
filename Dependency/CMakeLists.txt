@@ -41,17 +41,27 @@ endif()
 
 #---- ASSIMP ----#
 if (NOT ${SKIP_ASSIMP})
-    set(ASSIMP_BUILD_TESTS OFF)
-    set(ASSIMP_INJECT_DEBUG_POSTFIX ON)
+    set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "" FORCE)
+    set(ASSIMP_INSTALL OFF CACHE BOOL "" FORCE)
+    set(ASSIMP_INJECT_DEBUG_POSTFIX ON CACHE BOOL "" FORCE)
     set(BUILD_SHARED_LIBS ON)
     set(CMAKE_DEBUG_POSTFIX d)
-    
+
     # Force Assimp to use our output directories
     set(ASSIMP_LIBRARY_OUTPUT_DIRECTORY "${TK_DEPENDECY_OUT_DIR}" CACHE STRING "" FORCE)
     set(ASSIMP_RUNTIME_OUTPUT_DIRECTORY "${TK_DEPENDECY_OUT_DIR}" CACHE STRING "" FORCE)
     set(ASSIMP_ARCHIVE_OUTPUT_DIRECTORY "${TK_DEPENDECY_OUT_DIR}" CACHE STRING "" FORCE)
-    
+
+    # Ensure debug postfix is applied
+    set(CMAKE_DEBUG_POSTFIX "d" CACHE STRING "" FORCE)
+
     add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/assimp ${CMAKE_CURRENT_LIST_DIR}/Intermediate/${TK_PLATFORM}/assimp)
+
+    # After Assimp is configured, ensure the debug library has the correct name
+    if(TARGET assimp)
+        set_target_properties(assimp PROPERTIES DEBUG_POSTFIX "d")
+    endif()
 endif()
 
 #---- SDL2 ----#
