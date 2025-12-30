@@ -552,19 +552,24 @@ namespace ToolKit
   bool ShaderManager::CanStore(ClassMeta* Class) { return Class == Shader::StaticClass(); }
 
   String ShaderManager::GetDefaultResource(ClassMeta* Class)
-  {
-    // If m_defaultVertexShaderFile is already set (Init() was called), use it
-    if (!m_defaultVertexShaderFile.empty())
+  {  if (!m_defaultVertexShaderFile.empty())
     {
-      TK_LOG("ShaderManager::GetDefaultResource() - Using cached path: %s", m_defaultVertexShaderFile.c_str());
+      String defaultResourceRoot = DefaultAbsolutePath();
+      size_t pos = m_defaultVertexShaderFile.find("Shaders");
+      if (pos != String::npos)
+      {
+        String shaderRelativePath = m_defaultVertexShaderFile.substr(pos);
+        String absolutePath = ConcatPaths({defaultResourceRoot, shaderRelativePath});
+        NormalizePathInplace(absolutePath);
+        return absolutePath;
+      }
       return m_defaultVertexShaderFile;
     }
 
-    // Otherwise compute the path
-    String path = ShaderPath(TK_DEFAULT_VERTEX_SHADER, true);
-    TK_LOG("ShaderManager::GetDefaultResource() - Computed path: %s", path.c_str());
-    TK_LOG("  m_defaultResourceRoot: %s", Main::GetInstance()->m_defaultResourceRoot.c_str());
-    TK_LOG("  Current working directory: %s", std::filesystem::current_path().string().c_str());
+    // If Init() hasn't been called yet, compute the absolute path directly
+    String defaultResourceRoot = DefaultAbsolutePath();
+    String path = ConcatPaths({defaultResourceRoot, "Shaders", TK_DEFAULT_VERTEX_SHADER});
+    NormalizePathInplace(path);
     return path;
   }
 
