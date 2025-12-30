@@ -422,6 +422,112 @@ namespace ToolKit
         return;
       }
 
+      TK_LOG("Windows build succeeded. Creating publish directory...");
+
+      String projectDir = ConcatPaths({GetApp()->m_workspace.GetActiveWorkspace(),
+                                       GetApp()->m_workspace.GetActiveProject().name});
+      String projectName = GetApp()->m_workspace.GetActiveProject().name;
+      String buildConfig = GetBuildConfigString(publishConfig);
+
+      String intermediatePath = ConcatPaths({projectDir, "Intermediate", "Windows", buildConfig});
+
+      String codesBinPath = ConcatPaths({projectDir, "Codes", "Bin"});
+      String publishDir = ConcatPaths({projectDir, "Publish", "Windows"});
+      String publishBinDir = ConcatPaths({publishDir, "Bin"});
+      String publishConfigDir = ConcatPaths({publishDir, "Config"});
+
+      std::error_code ec;
+      std::filesystem::create_directories(publishBinDir, ec);
+      if (ec)
+      {
+        TK_ERR(("Failed to create publish bin directory: " + ec.message()).c_str());
+        GetApp()->SetStatusMsg(g_statusFailed);
+        m_isBuilding = false;
+        return;
+      }
+
+      std::filesystem::create_directories(publishConfigDir, ec);
+      if (ec)
+      {
+        TK_ERR(("Failed to create publish config directory: " + ec.message()).c_str());
+        GetApp()->SetStatusMsg(g_statusFailed);
+        m_isBuilding = false;
+        return;
+      }
+
+      String exeSrc = ConcatPaths({codesBinPath, projectName + ".exe"});
+      String exeDst = ConcatPaths({publishBinDir, projectName + ".exe"});
+
+      if (std::filesystem::exists(exeSrc, ec))
+      {
+        std::filesystem::copy_file(exeSrc, exeDst, std::filesystem::copy_options::overwrite_existing, ec);
+        if (ec)
+        {
+          TK_ERR(("Failed to copy executable: " + ec.message()).c_str());
+        }
+        else
+        {
+          TK_LOG(("Copied executable: " + projectName + ".exe").c_str());
+        }
+      }
+      else
+      {
+        TK_ERR(("Executable not found at: " + exeSrc).c_str());
+      }
+
+      String toolkitPath = GetToolkitPath();
+      String tkBinPath = ConcatPaths({toolkitPath, "Bin"});
+      String sdlName = (buildConfig == "Debug") ? "SDL2d.dll" : "SDL2.dll";
+
+      String sdlDllSrc = ConcatPaths({tkBinPath, sdlName});
+      String sdlDllDst = ConcatPaths({publishBinDir, sdlName});
+      if (std::filesystem::exists(sdlDllSrc, ec))
+      {
+        std::filesystem::copy_file(sdlDllSrc, sdlDllDst, std::filesystem::copy_options::overwrite_existing, ec);
+        if (!ec)
+        {
+          TK_LOG(("Copied " + sdlName).c_str());
+        }
+      }
+      else
+      {
+        TK_WRN(("SDL2 DLL not found at: " + sdlDllSrc).c_str());
+      }
+
+      // Copy MinResources.pak (required for the game to run)
+      String pakSrc = ConcatPaths({projectDir, "MinResources.pak"});
+      String pakDst = ConcatPaths({publishDir, "MinResources.pak"});
+
+      if (std::filesystem::exists(pakSrc, ec))
+      {
+        std::filesystem::copy_file(pakSrc, pakDst, std::filesystem::copy_options::overwrite_existing, ec);
+        if (!ec)
+        {
+          TK_LOG("Copied MinResources.pak");
+        }
+      }
+      else
+      {
+        TK_WRN("MinResources.pak not found - game may not run correctly");
+      }
+
+      String engineSettingsSrc = ConcatPaths({projectDir, "Config", "Windows", "Engine.settings"});
+      String engineSettingsDst = ConcatPaths({publishConfigDir, "Engine.settings"});
+
+      if (std::filesystem::exists(engineSettingsSrc, ec))
+      {
+        std::filesystem::copy_file(engineSettingsSrc, engineSettingsDst, std::filesystem::copy_options::overwrite_existing, ec);
+        if (!ec)
+        {
+          TK_LOG("Copied Engine.settings");
+        }
+      }
+      else
+      {
+        TK_WRN("Engine.settings not found at: " + engineSettingsSrc);
+      }
+
+      TK_LOG(("Windows App published to: " + publishDir).c_str());
       TK_LOG("Windows App Building Ended.");
       GetApp()->SetStatusMsg(g_statusSucceeded);
       m_isBuilding = false;
