@@ -43,10 +43,6 @@ namespace ToolKit
         if (!CheckFile(file))
         {
           String def = GetDefaultResource(T::StaticClass());
-          std::cout << "Current working directory: " 
-                    << std::filesystem::current_path() 
-                    << std::endl;
-                    
           if (!CheckFile(def))
           {
             TK_ERR("No default for Class %s", T::StaticClass()->Name.c_str());

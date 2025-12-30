@@ -551,6 +551,11 @@ namespace ToolKit
 
   bool ShaderManager::CanStore(ClassMeta* Class) { return Class == Shader::StaticClass(); }
 
+  String ShaderManager::GetDefaultResource(ClassMeta* Class)
+  {
+    return m_defaultVertexShaderFile;
+  }
+
   ShaderPtr ShaderManager::GetDefaultVertexShader() { return Cast<Shader>(m_storage[m_defaultVertexShaderFile]); }
 
   ShaderPtr ShaderManager::GetPbrForwardShader() { return Cast<Shader>(m_storage[m_pbrForwardShaderFile]); }
