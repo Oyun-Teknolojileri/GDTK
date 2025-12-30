@@ -48,6 +48,11 @@ if (NOT ${SKIP_ASSIMP})
     set(BUILD_SHARED_LIBS ON)
     set(CMAKE_DEBUG_POSTFIX d)
 
+    # Remove Visual Studio version stamp from DLL names
+    # This prevents vc143, vc145, etc. from appearing in filenames
+    # Results in: assimp.dll (Release) and assimpd.dll (Debug) on all VS versions
+    set(ASSIMP_LIBRARY_SUFFIX "" CACHE STRING "" FORCE)
+
     # Force Assimp to use our output directories
     set(ASSIMP_LIBRARY_OUTPUT_DIRECTORY "${TK_DEPENDECY_OUT_DIR}" CACHE STRING "" FORCE)
     set(ASSIMP_RUNTIME_OUTPUT_DIRECTORY "${TK_DEPENDECY_OUT_DIR}" CACHE STRING "" FORCE)
