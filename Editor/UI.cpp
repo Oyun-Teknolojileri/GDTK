@@ -8,7 +8,9 @@
 #include "UI.h"
 
 #include "AndroidBuildWindow.h"
-#include "MacOSBuildWindow.h"
+#ifdef TK_MAC
+  #include "MacOSBuildWindow.h"
+#endif
 #include "App.h"
 #include "ConsoleWindow.h"
 #include "EditorViewport2d.h"
@@ -825,11 +827,13 @@ namespace ToolKit
           AndroidBuildWindowPtr androidBuildWindow = MakeNewPtr<AndroidBuildWindow>();
           androidBuildWindow->OpenBuildWindow(publishType);
         }
+#ifdef TK_MAC
         else if (publishPlatform == PublishPlatform::MacOS)
         {
           MacOSBuildWindowPtr macOSBuildWindow = MakeNewPtr<MacOSBuildWindow>();
           macOSBuildWindow->OpenBuildWindow(publishType);
         }
+#endif
         else
         {
           GetApp()->m_publishManager->Publish(publishPlatform, publishType);
