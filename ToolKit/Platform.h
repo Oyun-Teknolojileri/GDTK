@@ -60,12 +60,8 @@ namespace ToolKit
     #define TK_API
   #endif
 #else
-  // On macOS, Linux, Web: default visibility.
-  #if __GNUC__ >= 4 || defined(__clang__)
-    #define TK_API __attribute__((visibility("default")))
-  #else
-    #define TK_API
-  #endif
+  // On macOS, Linux, Web, Android: no special attributes needed for static library
+  #define TK_API
 #endif
 
 // Plugin API
