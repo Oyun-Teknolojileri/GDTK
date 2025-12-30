@@ -91,33 +91,58 @@ namespace ToolKit
 
         if (length > 0 && length < MAX_PATH)
         {
-            String execDir = exePath;
+            String execPath = exePath;
+            String execDir = execPath;
             size_t lastSlash = execDir.find_last_of('\\');
             if (lastSlash != String::npos)
             {
                 execDir = execDir.substr(0, lastSlash);
             }
 
-            std::cout << "Editor executable directory: " << execDir << std::endl;
+            // Write debug info to the AppData folder where we can find it
+            const char* appData = std::getenv("APPDATA");
+            if (appData)
+            {
+                String debugPath = String(appData) + "\\ToolKit\\Debug_Path.txt";
+                std::ofstream debugFile(debugPath);
+                if (debugFile.is_open())
+                {
+                    debugFile << "Executable full path: " << execPath << std::endl;
+                    debugFile << "Executable directory: " << execDir << std::endl;
 
-            // Go up 1 level: Bin -> Project Root
-            // (Editor executable is in Bin/ directory as per Editor.vcxproj OutDir setting)
+                    // Go up 1 level: Bin -> Project Root
+                    String projectRoot = ConcatPaths({execDir, ".."});
+                    debugFile << "Project root (before resolve): " << projectRoot << std::endl;
+
+                    char resolvedPath[MAX_PATH];
+                    if (_fullpath(resolvedPath, projectRoot.c_str(), MAX_PATH) != nullptr)
+                    {
+                        debugFile << "Resolved project root: " << resolvedPath << std::endl;
+                        debugFile << "Expected shaders path: " << resolvedPath << "\\Resources\\Engine\\Shaders" << std::endl;
+                        debugFile.close();
+                        return String(resolvedPath);
+                    }
+                    else
+                    {
+                        debugFile << "ERROR: Failed to resolve path!" << std::endl;
+                        debugFile.close();
+                    }
+                }
+            }
+
+            // Fallback if debug file fails
             String projectRoot = ConcatPaths({execDir, ".."});
-
             char resolvedPath[MAX_PATH];
             if (_fullpath(resolvedPath, projectRoot.c_str(), MAX_PATH) != nullptr)
             {
-                std::cout << "Resolved project root: " << resolvedPath << std::endl;
                 return String(resolvedPath);
             }
-            else
-            {
-                TK_ERR("Failed to resolve project root path from: %s", projectRoot.c_str());
-            }
+
+            TK_ERR("Failed to resolve project root path.");
         }
         else
         {
-            TK_ERR("Failed to get executable path. GetModuleFileName error.");
+            TK_ERR("Failed to get executable path.");
         }
         return "";
 #else
