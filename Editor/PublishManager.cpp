@@ -311,6 +311,41 @@ namespace ToolKit
       GetApp()->ExecSysCommand(configCmd, true, true, afterConfigFn);
     }
 
+    // Helper functions (cross-platform)
+    String PublishManager::GetBuildConfigString(PublishConfig publishConfig)
+    {
+      switch (publishConfig)
+      {
+        case PublishConfig::Debug:
+          return "Debug";
+        case PublishConfig::Develop:
+          return "RelWithDebInfo";
+        case PublishConfig::Deploy:
+          return "Release";
+        default:
+          return "Release";
+      }
+    }
+
+    String PublishManager::GetToolkitPath()
+    {
+      // Get the GDTK toolkit root directory from m_defaultResourceRoot
+      // m_defaultResourceRoot is: /path/to/GDTK/Resources/Engine
+      // So go up 2 levels to get to /path/to/GDTK
+      String defaultResourceRoot = Main::GetInstance()->m_defaultResourceRoot;
+      String toolkitPath = ConcatPaths({defaultResourceRoot, "..", ".."});
+
+      // Normalize the path using std::filesystem (cross-platform)
+      std::error_code ec;
+      std::filesystem::path canonical = std::filesystem::canonical(toolkitPath, ec);
+      if (!ec)
+      {
+        toolkitPath = canonical.string();
+      }
+
+      return toolkitPath;
+    }
+
 #ifdef TK_MAC
     // macOS-specific build functions (only compiled on macOS)
     void PublishManager::DirectMacOSBuild(PublishConfig publishConfig)
@@ -500,39 +535,6 @@ namespace ToolKit
       }
 
       m_isBuilding = false;
-    }
-
-    String PublishManager::GetBuildConfigString(PublishConfig publishConfig)
-    {
-      switch (publishConfig)
-      {
-        case PublishConfig::Debug:
-          return "Debug";
-        case PublishConfig::Develop:
-          return "RelWithDebInfo";
-        case PublishConfig::Deploy:
-          return "Release";
-        default:
-          return "Release";
-      }
-    }
-
-    String PublishManager::GetToolkitPath()
-    {
-      // Get the GDTK toolkit root directory from m_defaultResourceRoot
-      // m_defaultResourceRoot is: /path/to/GDTK/Resources/Engine
-      // So go up 2 levels to get to /path/to/GDTK
-      String defaultResourceRoot = Main::GetInstance()->m_defaultResourceRoot;
-      String toolkitPath = ConcatPaths({defaultResourceRoot, "..", ".."});
-
-      // Normalize the path
-      char resolvedPath[1024];
-      if (realpath(toolkitPath.c_str(), resolvedPath) != nullptr)
-      {
-        toolkitPath = resolvedPath;
-      }
-
-      return toolkitPath;
     }
 
     MacOSBuildConfig PublishManager::CreateMacOSBuildConfig(PublishConfig publishConfig)
