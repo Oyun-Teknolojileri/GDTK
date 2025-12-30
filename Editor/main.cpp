@@ -98,15 +98,26 @@ namespace ToolKit
                 execDir = execDir.substr(0, lastSlash);
             }
 
+            std::cout << "Editor executable directory: " << execDir << std::endl;
+
             // Go up 1 level: Bin -> Project Root
-            // (Editor executable is in Bin/ directory as per CMakeLists.txt)
+            // (Editor executable is in Bin/ directory as per Editor.vcxproj OutDir setting)
             String projectRoot = ConcatPaths({execDir, ".."});
 
             char resolvedPath[MAX_PATH];
             if (_fullpath(resolvedPath, projectRoot.c_str(), MAX_PATH) != nullptr)
             {
+                std::cout << "Resolved project root: " << resolvedPath << std::endl;
                 return String(resolvedPath);
             }
+            else
+            {
+                TK_ERR("Failed to resolve project root path from: %s", projectRoot.c_str());
+            }
+        }
+        else
+        {
+            TK_ERR("Failed to get executable path. GetModuleFileName error.");
         }
         return "";
 #else
