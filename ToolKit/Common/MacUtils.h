@@ -25,8 +25,10 @@ namespace ToolKit
       }
     }
 
-    inline int SysComExec(std::string_view cmd, bool async, bool showConsole, std::function<void(int)> callback)
+    inline int SysComExec(std::string_view cmd, bool async, bool showConsole, std::function<void(int)> callback, bool captureOutput = false)
     {
+      //TODO(erendgrmnc): Add output capture to mac builds
+      (void)captureOutput; 
       std::string command = std::string(cmd);
 
       if (async)
