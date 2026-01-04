@@ -3,6 +3,7 @@
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
  * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * Author: erendgrmnc
  */
 
 #pragma once
@@ -13,6 +14,8 @@ namespace ToolKit
 {
   namespace Editor
   {
+    // Forward declaration
+    class AsyncBuildManager;
 
     enum class PublishConfig
     {
@@ -51,16 +54,23 @@ namespace ToolKit
     struct BuildConfig
     {
       String appName;
+      String pluginName;
       String projectDir;
       String buildConfig;
       String toolkitPath;
       String publishDirectory;
       String publishBinDir;
       String publishConfigDir;
+      TexturePtr icon = nullptr;
+      bool deployAfterBuild = false;
     };
 
     struct MacOSBuildConfig : public BuildConfig
     {
+      // macOS-specific settings
+      String bundleIdentifier = "com.otsoftware.game";
+      String minMacOSVersion = "11.0";
+
       // macOS-specific paths
       String cmakeBundlePath;    // Intermediate CMake output: ProjectDir/Codes/Bin/appName.app
       String targetBundlePath;   // Final location: publishBinDir/appName.app
@@ -109,51 +119,35 @@ namespace ToolKit
     class TK_EDITOR_API PublishManager
     {
      public:
+      PublishManager();
+      ~PublishManager();
+
       void Publish(PublishPlatform platform, PublishConfig publishConfig);
       void Pack();
 
      private:
       String ConstructPublishArgs(PublishPlatform platform, PublishConfig publishConfig, bool packOnly);
-      void DirectPluginBuild(PublishPlatform platform, PublishConfig publishConfig);
 
-      // Helper functions
-      String GetBuildConfigString(PublishConfig publishConfig);
-      String GetToolkitPath();
-
-#ifdef TK_WIN
-      void DirectWindowsBuild(PublishConfig publishConfig);
-      void OnWindowsConfigureComplete(int exitCode, PublishConfig publishConfig, const String& buildCmd);
-      void OnWindowsBuildComplete(int exitCode, PublishConfig publishConfig);
-#endif // TK_WIN
-
-#ifdef TK_MAC
-      // macOS-specific build functions (only declared on macOS)
-      void DirectMacOSBuild(PublishConfig publishConfig);
-      MacOSBuildConfig CreateMacOSBuildConfig(PublishConfig publishConfig);
-      void CreateMacOSPublishDirectories(const MacOSBuildConfig& config);
-      void BundleSDL2Library(const MacOSBuildConfig& config);
-      void GenerateInfoPlist(const MacOSBuildConfig& config);
-      void CopyMacOSResources(const MacOSBuildConfig& config);
-      void CopyMacOSConfig(const MacOSBuildConfig& config);
-      void OnMacOSConfigureComplete(int exitCode, PublishConfig publishConfig, const String& buildCmd);
-      void OnMacOSBuildComplete(int exitCode, PublishConfig publishConfig);
-#endif // TK_MAC
+      std::shared_ptr<AsyncBuildManager> m_buildManager;
 
      public:
+      // UI-bound settings that are used to populate build configs
       TexturePtr m_icon = nullptr;
       String m_appName;
       String m_pluginName;
       bool m_deployAfterBuild = false;
+
+      // Android-specific settings
       int m_minSdk            = 27;
       int m_maxSdk            = 32;
-
       MobileOriantation m_oriantation;
-      bool m_isBuilding        = false;
       AndroidABI m_selectedABI = AndroidABI::All;
 
-      // macOS specific settings
+      // macOS-specific settings
       String m_bundleIdentifier = "com.otsoftware.game";
       String m_minMacOSVersion  = "11.0";
+
+      bool m_isBuilding        = false;
     };
 
   } // namespace Editor
