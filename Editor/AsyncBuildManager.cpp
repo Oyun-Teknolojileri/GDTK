@@ -44,7 +44,6 @@ namespace ToolKit
       m_buildActive = true;
       m_currentBuildConfig = std::make_unique<BuildConfig>(buildConfig);
 
-      // Extract platform-specific settings from derived configs
       if (platform == PublishPlatform::MacOS)
       {
         const MacOSBuildConfig* macConfig = static_cast<const MacOSBuildConfig*>(&buildConfig);
@@ -52,7 +51,6 @@ namespace ToolKit
         m_minMacOSVersion = macConfig->minMacOSVersion;
       }
 
-      // Dispatch to platform-specific build
       if (platform == PublishPlatform::GamePlugin || platform == PublishPlatform::EditorPlugin)
       {
         BuildPlugin(platform, config, buildConfig);
@@ -114,10 +112,8 @@ namespace ToolKit
       TK_LOG("Building Plugin...");
       m_app->SetStatusMsg("Building Plugin...");
 
-      // Determine build configuration
       String buildConfigStr = GetBuildConfigString(config);
 
-      // Get the project directory
       String projectDir = ConcatPaths({m_app->m_workspace.GetActiveWorkspace(),
                                        m_app->m_workspace.GetActiveProject().name});
       if (platform == PublishPlatform::EditorPlugin)
@@ -125,17 +121,14 @@ namespace ToolKit
         projectDir = buildConfig.appName;
       }
 
-      // Build cmake commands
       // Note: DO NOT pass -DTK_PLATFORM for plugin builds - the CMakeLists.txt detects plugin build by absence of TK_PLATFORM
       String configCmd = "cd \"" + projectDir + "\" && cmake -S . -B ./Intermediate/Plugin -DCMAKE_BUILD_TYPE=" + buildConfigStr;
       String buildCmd  = "cd \"" + projectDir + "\" && cmake --build ./Intermediate/Plugin --config " + buildConfigStr;
 
       TK_LOG("Executing CMake configure: %s", configCmd.c_str());
 
-      // Capture this in a shared_ptr to keep AsyncBuildManager alive during async operations
       auto self = shared_from_this();
 
-      // Execute cmake configure
       auto afterConfigFn = [this, self, platform, buildCmd](int res) -> void
       {
         if (res != 0)
@@ -148,7 +141,6 @@ namespace ToolKit
         TK_LOG("CMake configure succeeded. Starting build...");
         TK_LOG("Executing CMake build: %s", buildCmd.c_str());
 
-        // Execute cmake build
         auto afterBuildFn = [this, self, platform](int res) -> void
         {
           if (res != 0)
@@ -160,7 +152,6 @@ namespace ToolKit
 
           TK_LOG("Plugin Building Ended.");
 
-          // Reload the plugin
           auto afterCompile = [this, platform]() -> void
           {
             String fullPath = m_app->m_workspace.GetBinPath();
@@ -172,21 +163,20 @@ namespace ToolKit
             String binFile = fullPath + GetPluginExtention();
             if (PluginManager* plugMan = GetPluginManager())
             {
-              if (fullPath.find("Plugins") != String::npos) // Deal with plugins
+              if (fullPath.find("Plugins") != String::npos)
               {
                 if (PluginRegister* reg = plugMan->Load(fullPath))
                 {
                   reg->m_plugin->m_currentState = PluginState::Running;
                 }
               }
-              else // or game.
+              else
               {
                 m_app->LoadGamePlugin();
               }
             }
           };
 
-          // Reload at the end of frame.
           TKAsyncTask(WorkerManager::MainThread, afterCompile);
           OnBuildComplete(platform, 0);
         };
@@ -199,14 +189,12 @@ namespace ToolKit
 
 
 #ifdef TK_MAC
-    // macOS-specific build functions (only compiled on macOS)
     void AsyncBuildManager::DirectMacOSBuild(PublishConfig publishConfig)
     {
       TK_LOG("Building macOS App...");
       m_buildActive = true;
       GetApp()->SetStatusMsg(g_statusPublishing + g_statusNoTerminate);
 
-      // Pack resources if needed (Deploy config or if MinResources.pak doesn't exist)
       String projectDir = ConcatPaths({GetApp()->m_workspace.GetActiveWorkspace(),
                                        GetApp()->m_workspace.GetActiveProject().name});
       String pakPath = ConcatPaths({projectDir, "MinResources.pak"});
@@ -228,14 +216,11 @@ namespace ToolKit
         TK_LOG("Resources packed successfully.");
       }
 
-      // Determine build configuration
       String buildConfig = GetBuildConfigString(publishConfig);
 
-      // Build cmake commands for native macOS build
       String configCmd = "cd \"" + projectDir + "\" && cmake -S . -B ./Intermediate/MacOS -DTK_PLATFORM=MacOS -DCMAKE_BUILD_TYPE=" + buildConfig;
       String buildCmd  = "cd \"" + projectDir + "\" && cmake --build ./Intermediate/MacOS --config " + buildConfig;
 
-      // Execute cmake configure with callback
       auto afterConfigFn = std::bind(&AsyncBuildManager::OnMacOSConfigureComplete, this, std::placeholders::_1, publishConfig, buildCmd);
       GetApp()->ExecSysCommand(configCmd, true, true, afterConfigFn);
     }
@@ -252,7 +237,6 @@ namespace ToolKit
 
       TK_LOG("CMake configure succeeded. Starting build...");
 
-      // Execute cmake build with callback
       auto afterBuildFn = std::bind(&AsyncBuildManager::OnMacOSBuildComplete, this, std::placeholders::_1, publishConfig);
       GetApp()->ExecSysCommand(buildCmd, true, true, afterBuildFn);
     }
@@ -269,13 +253,9 @@ namespace ToolKit
 
       TK_LOG("macOS App Building Ended.");
 
-      // Create macOS build configuration
       MacOSBuildConfig config = CreateMacOSBuildConfig(publishConfig);
 
-      // Create publish directories
       CreateMacOSPublishDirectories(config);
-
-      // Check if CMake created the bundle
       if (!std::filesystem::exists(config.cmakeBundlePath))
       {
         TK_ERR(("CMake did not create .app bundle at: " + config.cmakeBundlePath).c_str());
@@ -284,21 +264,17 @@ namespace ToolKit
         return;
       }
 
-      // Remove old target bundle if it exists
       if (std::filesystem::exists(config.targetBundlePath))
       {
         std::filesystem::remove_all(config.targetBundlePath);
       }
 
-      // Copy the CMake-generated bundle to the target location
       std::filesystem::copy(config.cmakeBundlePath, config.targetBundlePath,
                            std::filesystem::copy_options::recursive);
 
-      // Create Frameworks and Resources directories
       std::filesystem::create_directories(config.resourcesPath);
       std::filesystem::create_directories(config.frameworksPath);
 
-      // Verify executable exists and is executable
       if (std::filesystem::exists(config.executablePath))
       {
         chmod(config.executablePath.c_str(), 0755);
@@ -309,29 +285,23 @@ namespace ToolKit
         TK_ERR(("Executable not found in bundle: " + config.executablePath).c_str());
       }
 
-      // Bundle SDL2 library
       BundleSDL2Library(config);
 
-      // Generate Info.plist
       GenerateInfoPlist(config);
 
-      // Copy app icon (if present) to bundle Resources
       CopyMacOSResources(config);
 
-      // Copy project Resources folder to publish directory
       std::error_code resourceEc;
       String resourcesSrc = ConcatPaths({config.toolkitPath, "Resources"});
       String resourcesDst = ConcatPaths({config.publishDirectory, "Resources"});
 
       if (std::filesystem::exists(resourcesSrc, resourceEc))
       {
-        // Remove old Resources if it exists
         if (std::filesystem::exists(resourcesDst, resourceEc))
         {
           std::filesystem::remove_all(resourcesDst, resourceEc);
         }
 
-        // Copy entire Resources directory
         std::filesystem::copy(resourcesSrc, resourcesDst,
                              std::filesystem::copy_options::recursive, resourceEc);
         if (resourceEc)
@@ -349,10 +319,8 @@ namespace ToolKit
         TK_ERR(("CRITICAL: Resources directory not found at: " + resourcesSrc).c_str());
       }
 
-      // Copy config files
       CopyMacOSConfig(config);
 
-      // Copy MinResources.pak to publish directory
       std::error_code ec;
       String pakSrc = ConcatPaths({config.projectDir, "MinResources.pak"});
       String pakDst = ConcatPaths({config.publishDirectory, "MinResources.pak"});
@@ -379,7 +347,6 @@ namespace ToolKit
       GetApp()->SetStatusMsg(g_statusSucceeded);
       TK_LOG(("macOS app published to: " + config.publishDirectory).c_str());
 
-      // Deploy if requested
       if (m_currentBuildConfig->deployAfterBuild)
       {
         String openCmd = "open \"" + config.targetBundlePath + "\"";
@@ -393,13 +360,11 @@ namespace ToolKit
     {
       MacOSBuildConfig config;
 
-      // Copy common fields from m_currentBuildConfig
       config.appName = m_currentBuildConfig->appName.empty() ? GetApp()->m_workspace.GetActiveProject().name : m_currentBuildConfig->appName;
       config.pluginName = m_currentBuildConfig->pluginName;
       config.icon = m_currentBuildConfig->icon;
       config.deployAfterBuild = m_currentBuildConfig->deployAfterBuild;
 
-      // Copy macOS-specific fields from stored member variables
       config.bundleIdentifier = m_bundleIdentifier;
       config.minMacOSVersion = m_minMacOSVersion;
 
@@ -408,16 +373,13 @@ namespace ToolKit
       config.buildConfig = GetBuildConfigString(publishConfig);
       config.toolkitPath = GetToolkitPath();
 
-      // CMake bundle path
       config.cmakeBundlePath = ConcatPaths({config.projectDir, "Codes", "Bin", config.appName + ".app"});
 
-      // Publish directory structure
       config.publishDirectory = ConcatPaths({config.projectDir, "Publish", "MacOS"});
       config.publishBinDir = ConcatPaths({config.publishDirectory, "Bin"});
       config.publishConfigDir = ConcatPaths({config.publishDirectory, "Config"});
       config.targetBundlePath = ConcatPaths({config.publishBinDir, config.appName + ".app"});
 
-      // Bundle internal paths
       config.contentsPath = ConcatPaths({config.targetBundlePath, "Contents"});
       config.macOSPath = ConcatPaths({config.contentsPath, "MacOS"});
       config.resourcesPath = ConcatPaths({config.contentsPath, "Resources"});
@@ -441,7 +403,6 @@ namespace ToolKit
       std::error_code ec;
       if (std::filesystem::exists(sdl2LibSrc, ec))
       {
-        // Copy SDL2 library to Frameworks directory
         bool copySuccess = std::filesystem::copy_file(sdl2LibSrc, sdl2LibDst,
                                                       std::filesystem::copy_options::overwrite_existing, ec);
         if (!copySuccess || ec)
@@ -451,10 +412,8 @@ namespace ToolKit
           return;
         }
 
-        // Make library executable
         chmod(sdl2LibDst.c_str(), 0755);
 
-        // Fix the executable's rpath to look in @executable_path/../Frameworks
         String installNameCmd = "install_name_tool -change @rpath/libSDL2-2.0.0.dylib @executable_path/../Frameworks/libSDL2-2.0.0.dylib \"" + config.executablePath + "\"";
         system(installNameCmd.c_str());
 
@@ -481,7 +440,6 @@ namespace ToolKit
       infoPlist += "\t<key>LSMinimumSystemVersion</key>\n\t<string>" + config.minMacOSVersion + "</string>\n";
       infoPlist += "\t<key>NSHighResolutionCapable</key>\n\t<true/>\n";
 
-      // Add icon if present
       if (config.icon != nullptr)
       {
         infoPlist += "\t<key>CFBundleIconFile</key>\n\t<string>AppIcon</string>\n";
@@ -497,7 +455,6 @@ namespace ToolKit
     {
       std::error_code ec;
 
-      // Copy icon if present (non-critical)
       if (config.icon != nullptr)
       {
         String iconSrc = config.icon->GetFile();
@@ -522,16 +479,15 @@ namespace ToolKit
     void AsyncBuildManager::CopyMacOSConfig(const MacOSBuildConfig& config)
     {
       std::error_code ec;
-      String configSrc = ConcatPaths({config.projectDir, "Config", "Windows"}); // Use Windows config as macOS doesn't have specific one
+      String configSrc = ConcatPaths({config.projectDir, "Config", "Windows"});
 
       if (!std::filesystem::exists(configSrc, ec))
       {
-        configSrc = ConcatPaths({config.projectDir, "Config"}); // Fallback to root Config
+        configSrc = ConcatPaths({config.projectDir, "Config"});
       }
 
       if (std::filesystem::exists(configSrc, ec))
       {
-        // If using platform-specific config, copy just the Engine.settings file
         if (configSrc.find("Windows") != String::npos)
         {
           String engineSettingsSrc = ConcatPaths({configSrc, "Engine.settings"});
@@ -551,7 +507,6 @@ namespace ToolKit
         }
         else
         {
-          // Copy entire Config directory contents
           for (const auto& entry : std::filesystem::directory_iterator(configSrc, ec))
           {
             if (ec)
@@ -561,7 +516,6 @@ namespace ToolKit
             }
 
             String filename = entry.path().filename().string();
-            // Skip platform-specific subdirectories
             if (filename == "Android" || filename == "Windows" || filename == "Web")
             {
               continue;
@@ -575,7 +529,7 @@ namespace ToolKit
               if (ec)
               {
                 TK_WRN(("Failed to copy config file '" + filename + "': " + ec.message()).c_str());
-                ec.clear(); // Continue with other files
+                ec.clear();
               }
             }
           }
@@ -731,7 +685,6 @@ namespace ToolKit
         TK_WRN(("SDL2 DLL not found at: " + sdlDllSrc).c_str());
       }
 
-      // Copy MinResources.pak (required for the game to run)
       String pakSrc = ConcatPaths({projectDir, "MinResources.pak"});
       String pakDst = ConcatPaths({publishDir, "MinResources.pak"});
 
@@ -772,7 +725,6 @@ namespace ToolKit
     }
 #endif // TK_WIN
 
-    // Helper functions (cross-platform)
     String AsyncBuildManager::GetBuildConfigString(PublishConfig publishConfig)
     {
       switch (publishConfig)
@@ -790,13 +742,9 @@ namespace ToolKit
 
     String AsyncBuildManager::GetToolkitPath()
     {
-      // Get the GDTK toolkit root directory from m_defaultResourceRoot
-      // m_defaultResourceRoot is: /path/to/GDTK/Resources/Engine
-      // So go up 2 levels to get to /path/to/GDTK
       String defaultResourceRoot = Main::GetInstance()->m_defaultResourceRoot;
       String toolkitPath = ConcatPaths({defaultResourceRoot, "..", ".."});
 
-      // Normalize the path using std::filesystem (cross-platform)
       std::error_code ec;
       std::filesystem::path canonical = std::filesystem::canonical(toolkitPath, ec);
       if (!ec)

@@ -69,14 +69,11 @@ namespace ToolKit
 #endif // TK_MAC
 
 
-      // Helper to execute system commands
       int ExecCommand(StringView cmd, bool async, bool showConsole,
                      std::function<void(int)> callback, bool captureOutput = false);
 
-      // Build completion callback
       void OnBuildComplete(PublishPlatform platform, int exitCode);
 
-      // Helper functions
       String GetBuildConfigString(PublishConfig publishConfig);
       String GetToolkitPath();
 
@@ -85,9 +82,8 @@ namespace ToolKit
       bool m_buildActive;
       std::unique_ptr<BuildConfig> m_currentBuildConfig;
 
-      // Platform-specific config extensions
-      String m_bundleIdentifier;  // macOS
-      String m_minMacOSVersion;   // macOS
+      String m_bundleIdentifier;
+      String m_minMacOSVersion;
     };
 
   } // namespace Editor
