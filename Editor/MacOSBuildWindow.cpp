@@ -3,6 +3,7 @@
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
  * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * Author: erendgrmnc
  */
 
 #include "MacOSBuildWindow.h"
@@ -19,7 +20,6 @@ namespace ToolKit::Editor
 
   void MacOSBuildWindow::Show()
   {
-    // Enable the close button and auto-resize flag
     bool isOpen = true;
     if (!ImGui::Begin(m_name.c_str(), &isOpen, ImGuiWindowFlags_AlwaysAutoResize))
     {
@@ -29,7 +29,7 @@ namespace ToolKit::Editor
 
     if (!isOpen)
     {
-      RemoveFromUI(); // Handle close button
+      RemoveFromUI();
       ImGui::End();
       return;
     }
@@ -49,7 +49,7 @@ namespace ToolKit::Editor
       if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("BrowserDragZone"))
       {
         const FileDragData& dragData = FolderView::GetFileDragData();
-        DirectoryEntry& entry        = *dragData.Entries[0]; // get first entry
+        DirectoryEntry& entry        = *dragData.Entries[0];
         m_icon                       = GetTextureManager()->Create<Texture>(entry.GetFullPath());
         m_icon->Init(false);
       }
@@ -57,7 +57,6 @@ namespace ToolKit::Editor
       ImGui::EndDragDropTarget();
     }
 
-    // Minimum macOS version dropdown
     ImGui::Text("Minimum macOS Version:");
     const char* macOSVersions[] = {"10.15", "11.0", "12.0", "13.0", "14.0"};
     int currentVersionIdx       = 1; // Default to 11.0
@@ -110,7 +109,6 @@ namespace ToolKit::Editor
 
     if (m_bundleIdentifier == "com.otsoftware.game")
     {
-      // Generate a better default bundle ID from app name
       String sanitizedName = m_appName;
       std::transform(sanitizedName.begin(), sanitizedName.end(), sanitizedName.begin(), ::tolower);
       m_bundleIdentifier = "com.otsoftware." + sanitizedName;

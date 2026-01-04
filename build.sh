@@ -1,4 +1,7 @@
+# Dependency initialisation and project build sh file.
+# Author: erendgrmnc
 #!/bin/bash
+
 set -e  # Exit immediately if any command fails
 
 # -----------------------------

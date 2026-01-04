@@ -1,5 +1,8 @@
-#!/bin/bash
 # Game Plugin Build Script for macOS/Linux
+# Author: erendgrmnc
+#!/bin/bash
+
+
 
 SOURCE_DIR="$1"
 BUILD_DIR="$2"
