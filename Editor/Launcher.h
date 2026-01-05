@@ -29,6 +29,8 @@ namespace ToolKit
       Launcher() {} // hide default constructor
 
       void HandleWorkspace();
+      void ShowWorkspacePopup();
+      void ShowNewProjectPopup();
 
      private:
       App* m_app              = nullptr;
@@ -38,8 +40,12 @@ namespace ToolKit
 
       Workspace* m_workspace  = nullptr;
       String m_workspacePathOnUI;
+      bool m_showWorkspacePopup = false;
+      bool m_showNewProjectPopup = false;
 
       String m_newProjectName;
+      TexturePtr m_logoTexture = nullptr;
+      String m_logoPath = "/Icons/app.png"; // TODO fix path
     };
   } // namespace Editor
 } // namespace ToolKit
