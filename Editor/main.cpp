@@ -322,13 +322,13 @@ namespace ToolKit
               TK_ERR("SDL_GetDisplayBounds Error: %s", SDL_GetError());
             }
 
-            g_launcher              = new Launcher(settings.m_window->GetWidthVal() / 2, settings.m_window->GetHeightVal() / 2);
-
             // Init app
             g_app                   = new App(settings.m_window->GetWidthVal(), settings.m_window->GetHeightVal());
             g_app->m_displayBounds  = UVec2(displayBounds.w, displayBounds.h);
             g_app->m_sysComExecFn   = &ToolKit::PlatformHelpers::SysComExec;
             g_app->m_shellOpenDirFn = &ToolKit::PlatformHelpers::OpenExplorer;
+
+            g_launcher              = new Launcher(settings.m_window->GetWidthVal() / 2, settings.m_window->GetHeightVal() / 2, g_app);
 
             // Register update functions
             TKUpdateFn preUpdateFn  = [](float deltaTime)

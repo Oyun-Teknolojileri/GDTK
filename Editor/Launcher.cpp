@@ -19,8 +19,8 @@ namespace ToolKit
 {
   namespace Editor
   {
-    Launcher::Launcher(int windowWidth, int windowHeight)
-        : m_windowWidth(windowWidth), m_windowHeight(windowHeight)
+    Launcher::Launcher(int windowWidth, int windowHeight, App* app)
+        : m_windowWidth(windowWidth), m_windowHeight(windowHeight), m_app(app)
     {
     }
 
@@ -148,10 +148,23 @@ namespace ToolKit
       float totalButtonWidth = buttonWidth * 2 + buttonSpacing;
       float buttonStartX = (windowSize.x - totalButtonWidth) * 0.5f;
 
-      ImGui::SetCursorPosX(buttonStartX);
-      if (ImGui::Button("New Project", ImVec2(buttonWidth, 0)))
+      if (m_workspace && m_app->IsWorkspaceSane(false, false))
       {
-        // TODO New project action
+        ImGui::SameLine();
+        ImGui::PushItemWidth(200.0f);
+        ImGui::InputText("##newProjectName", &m_newProjectName);
+        ImGui::PopItemWidth();
+        ImGui::SameLine();
+        ImGui::SetCursorPosX(buttonStartX);
+        if (ImGui::Button("New Project", ImVec2(buttonWidth, 0)))
+        {
+          if (!m_newProjectName.empty())
+          {
+            g_launcherRunning = false; // Close launcher to open new project
+            m_app->OnNewProject(m_newProjectName, false);
+            m_workspace->SetActiveProject({m_newProjectName, ""});
+          }
+        }
       }
 
       ImGui::End();
@@ -172,6 +185,7 @@ namespace ToolKit
         }
 
         m_workspacePathOnUI = m_workspace->GetDefaultWorkspace();
+        m_app->m_workspace  = m_workspace;
       }
 
       // Workspace path input UI

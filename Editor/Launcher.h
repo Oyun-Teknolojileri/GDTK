@@ -13,10 +13,12 @@ namespace ToolKit
 {
   namespace Editor
   {
+    class App;
+
     class Launcher
     {
      public:
-      Launcher(int windowWidth, int windowHeight);
+      Launcher(int windowWidth, int windowHeight, App* app);
       virtual ~Launcher();
 
       void ShowLauncherWindow();
@@ -24,14 +26,20 @@ namespace ToolKit
       inline Workspace* GetWorkspace() const { return m_workspace; }
 
      private:
+      Launcher() {} // hide default constructor
+
       void HandleWorkspace();
 
      private:
-      int m_windowWidth = 640;
-      int m_windowHeight = 480;
+      App* m_app              = nullptr;
 
-      Workspace* m_workspace = nullptr;
+      int m_windowWidth       = 640;
+      int m_windowHeight      = 480;
+
+      Workspace* m_workspace  = nullptr;
       String m_workspacePathOnUI;
+
+      String m_newProjectName;
     };
   } // namespace Editor
 } // namespace ToolKit

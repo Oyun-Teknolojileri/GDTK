@@ -433,7 +433,7 @@ namespace ToolKit
     }
 
     // note: only copy template folder
-    void App::OnNewProject(const String& name)
+    void App::OnNewProject(const String& name, bool openProjectAfterCreate)
     {
       if (!IsWorkspaceSane(false, true))
       {
