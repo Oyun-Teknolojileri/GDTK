@@ -21,9 +21,17 @@ namespace ToolKit
 
       void ShowLauncherWindow();
 
+      inline Workspace* GetWorkspace() const { return m_workspace; }
+
+     private:
+      void HandleWorkspace();
+
      private:
       int m_windowWidth = 640;
       int m_windowHeight = 480;
+
+      Workspace* m_workspace = nullptr;
+      String m_workspacePathOnUI;
     };
   } // namespace Editor
 } // namespace ToolKit

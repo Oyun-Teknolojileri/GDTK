@@ -825,7 +825,7 @@ namespace ToolKit
 
       if (ImGui::BeginMenu("Open Project"))
       {
-        for (const Project& project : GetApp()->m_workspace.m_projects)
+        for (const Project& project : GetApp()->m_workspace->m_projects)
         {
           if (ImGui::MenuItem(project.name.c_str()))
           {

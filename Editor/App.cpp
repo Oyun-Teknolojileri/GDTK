@@ -57,8 +57,10 @@ namespace ToolKit
 
     App::~App() {}
 
-    void App::Init()
+    void App::Init(Workspace* workspace)
     {
+      m_workspace = workspace;
+
       ImplementMetaKeys();
       AssignManagerReporters();
       CreateEditorEntities();
@@ -67,10 +69,8 @@ namespace ToolKit
       ModManager::GetInstance()->SetMod(true, ModId::Select);
       ActionManager::GetInstance()->Init();
 
-      m_workspace.Init();
-
       // Load the last scene or create a new scene.
-      String lastScene = m_workspace.GetActiveProject().scene;
+      String lastScene = m_workspace->GetActiveProject().scene;
       if (lastScene.empty())
       {
         CreateNewScene();
@@ -87,25 +87,6 @@ namespace ToolKit
       }
 
       ApplyProjectSettings(false);
-
-      if (!CheckFile(m_workspace.GetActiveWorkspace()))
-      {
-        StringInputWindowPtr wsDir = MakeNewPtr<StringInputWindow>("Set Workspace Directory##SetWsdir", false);
-        wsDir->m_hint              = "User/Documents/ToolKit";
-        wsDir->m_inputLabel        = "Workspace Directory";
-        wsDir->m_name              = "Set Workspace Directory";
-        wsDir->AddToUI();
-
-        wsDir->m_taskFn = [](const String& val) -> void
-        {
-          String cmd = "SetWorkspaceDir --path \"" + val + "\"";
-          g_app->GetConsole()->ExecCommand(cmd);
-        };
-      }
-      else
-      {
-        m_workspace.RefreshProjects();
-      }
 
       m_simulatorSettings.Resolution = EmulatorResolution::Custom;
       m_thumbnailManager             = new ThumbnailManager();
@@ -467,7 +448,7 @@ namespace ToolKit
         return;
       }
 
-      String fullPath = ConcatPaths({m_workspace.GetActiveWorkspace(), name});
+      String fullPath = ConcatPaths({m_workspace->GetActiveWorkspace(), name});
       if (CheckFile(fullPath))
       {
         TK_ERR("Project already exist.");
@@ -517,7 +498,7 @@ namespace ToolKit
         return;
       }
 
-      String fullPath = ConcatPaths({m_workspace.GetPluginDirectory(), name});
+      String fullPath = ConcatPaths({m_workspace->GetPluginDirectory(), name});
       if (CheckSystemFile(fullPath))
       {
         TK_ERR("A plugin with the same name already exist in the project.");
@@ -706,7 +687,7 @@ namespace ToolKit
       }
 
       PublishPlatform pluginType     = gamePlugin ? PublishPlatform::GamePlugin : PublishPlatform::EditorPlugin;
-      String pluginDir               = g_app->m_workspace.GetPluginDirectory();
+      String pluginDir               = g_app->m_workspace->GetPluginDirectory();
       m_publishManager->m_appName    = ConcatPaths({pluginDir, name, "Codes"});
       m_publishManager->m_pluginName = name;
 
@@ -730,7 +711,7 @@ namespace ToolKit
       // Load new code.
       if (PluginManager* pluginMan = GetPluginManager())
       {
-        String pluginPath = m_workspace.GetBinPath();
+        String pluginPath = m_workspace->GetBinPath();
         pluginMan->Load(pluginPath);
       }
 
@@ -887,18 +868,18 @@ namespace ToolKit
       DeleteWindows();
 
       String defaultEditorSettings = ConcatPaths({ConfigPath(), g_editorSettingsFile});
-      if (CheckFile(defaultEditorSettings) && CheckFile(m_workspace.GetActiveWorkspace()))
+      if (CheckFile(defaultEditorSettings) && CheckFile(m_workspace->GetActiveWorkspace()))
       {
         // Try reading defaults.
         SerializationFileInfo serializeInfo;
         serializeInfo.File = defaultEditorSettings;
 
         // Prevent loading last scene.
-        Project project    = m_workspace.GetActiveProject();
-        m_workspace.SetScene("");
+        Project project    = m_workspace->GetActiveProject();
+        m_workspace->SetScene("");
 
         DeSerialize(serializeInfo, nullptr);
-        m_workspace.SetScene(project.scene);
+        m_workspace->SetScene(project.scene);
 
         String settingsFile = ConcatPaths({ConfigPath(), g_uiLayoutFile});
         ImGui::LoadIniSettingsFromDisk(settingsFile.c_str());
@@ -1313,7 +1294,7 @@ namespace ToolKit
                           }
 
                           SetCurrentScene(nextScene);
-                          m_workspace.SetScene(nextScene->m_name);
+                          m_workspace->SetScene(nextScene->m_name);
                         },
                         nextScene);
                   });
@@ -1331,10 +1312,10 @@ namespace ToolKit
 
     void App::ApplyProjectSettings(bool setDefaults)
     {
-      if (CheckFile(ConcatPaths({m_workspace.GetConfigDirectory(), g_editorSettingsFile})) && !setDefaults)
+      if (CheckFile(ConcatPaths({m_workspace->GetConfigDirectory(), g_editorSettingsFile})) && !setDefaults)
       {
         DeSerialize(SerializationFileInfo(), nullptr);
-        m_workspace.DeSerializeEngineSettings();
+        m_workspace->DeSerializeEngineSettings();
         UI::InitSettings();
       }
       else
@@ -1380,8 +1361,8 @@ namespace ToolKit
 
       pluginWindow->UnloadProjectPlugins();
 
-      m_workspace.SetActiveProject(project);
-      m_workspace.Serialize(nullptr, nullptr);
+      m_workspace->SetActiveProject(project);
+      m_workspace->Serialize(nullptr, nullptr);
       CreateNewScene();
 
       pluginWindow->LoadPluginSettings();
@@ -1431,7 +1412,7 @@ namespace ToolKit
 
     bool App::IsWorkspaceSane(bool checkProject, bool reportError) const
     {
-      if (m_workspace.GetActiveWorkspace().empty())
+      if (m_workspace->GetActiveWorkspace().empty())
       {
         if (reportError)
         {
@@ -1443,7 +1424,7 @@ namespace ToolKit
 
       if (checkProject)
       {
-        if (m_workspace.GetActiveProject().name.empty())
+        if (m_workspace->GetActiveProject().name.empty())
         {
           if (reportError)
           {
@@ -1644,10 +1625,10 @@ namespace ToolKit
         return nullptr;
       }
 
-      m_workspace.Serialize(nullptr, nullptr);
+      m_workspace->Serialize(nullptr, nullptr);
 
       std::ofstream file;
-      String cfgPath              = m_workspace.GetConfigDirectory();
+      String cfgPath              = m_workspace->GetConfigDirectory();
       String fileName             = ConcatPaths({cfgPath, g_editorSettingsFile});
 
       // File or Config folder is missing.
@@ -1697,7 +1678,7 @@ namespace ToolKit
       String settingsFile = info.File;
       if (settingsFile.empty())
       {
-        settingsFile = ConcatPaths({m_workspace.GetConfigDirectory(), g_editorSettingsFile});
+        settingsFile = ConcatPaths({m_workspace->GetConfigDirectory(), g_editorSettingsFile});
       }
 
       if (!CheckFile(settingsFile))
@@ -1739,7 +1720,7 @@ namespace ToolKit
         DeserializeWindows(root);
       }
 
-      Project activeProject = m_workspace.GetActiveProject();
+      Project activeProject = m_workspace->GetActiveProject();
       if (!activeProject.name.empty())
       {
         LoadGamePlugin();

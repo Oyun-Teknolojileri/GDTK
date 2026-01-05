@@ -482,7 +482,7 @@ namespace ToolKit
         if (CheckFile(path) && IsDirectory(path))
         {
           // Try updating Workspace.settings
-          if (GetApp()->m_workspace.SetDefaultWorkspace(path))
+          if (GetApp()->m_workspace->SetDefaultWorkspace(path))
           {
             String info = "Your Workspace directry set to: " + path + "\n" + manUpMsg;
             GetApp()->GetConsole()->AddLog(info, LogType::Memo);

@@ -25,7 +25,7 @@ namespace ToolKit
       App(int windowWidth, int windowHeight);
       virtual ~App();
 
-      void Init();
+      void Init(Workspace* workspace);
       void Destroy();
       void Frame(float deltaTime);
       void OnResize(uint width, uint height);
@@ -264,7 +264,7 @@ namespace ToolKit
       ShellOpenDirFn m_shellOpenDirFn          = nullptr;
       EditorLitMode m_sceneLightingMode        = EditorLitMode::EditorLit;
       EditorViewportPtr m_lastActiveViewport   = nullptr;
-      Workspace m_workspace;
+      Workspace* m_workspace                   = nullptr; // this is set at Init function
 
       // Dynamic Entity Menus.
       StringArray m_customObjectMetaValues;    //!< Add menu shows this additional classes.

@@ -7,11 +7,13 @@
 
 #include "Launcher.h"
 #include "UI.h"
+#include "PopupWindows.h"
 
 #define IMGUI_USER_CONFIG "tk_imconfig.h"
 #include <imgui/imgui.h>
 
 extern bool g_running; // Defined in main.cpp
+extern bool g_launcherRunning; // Defined in main.cpp
 
 namespace ToolKit
 {
@@ -24,29 +26,16 @@ namespace ToolKit
 
     Launcher::~Launcher()
     {
+      if (m_workspace)
+      {
+        SafeDel(m_workspace);
+      }
     }
 
     void Launcher::ShowLauncherWindow()
     {
       UI::BeginUI();
 
-      // Mockup project data
-      struct ProjectCard
-      {
-        const char* name;
-        const char* description;
-      };
-
-      ProjectCard projects[] = {
-          {"My Game Project", "A 3D action adventure game"},
-          {"Platformer Demo", "2D platformer prototype"},
-          {"Racing Game", "High-speed racing simulation"},
-          {"RPG Project", "Fantasy role-playing game"},
-          {"Puzzle Game", "Brain-teasing puzzle mechanics"},
-          {"Shooter Demo", "First-person shooter prototype"},
-      };
-
-      const int numProjects = sizeof(projects) / sizeof(projects[0]);
       const float cardSize   = 150.0f;
       const float cardSpacing = 20.0f;
       const int itemsPerRow   = 4;
@@ -89,60 +78,63 @@ namespace ToolKit
       ImGui::Separator();
       ImGui::Spacing();
 
+      HandleWorkspace();
+
       // Project cards grid
       float startX = (windowSize.x - (itemsPerRow * cardSize + (itemsPerRow - 1) * cardSpacing)) * 0.5f;
       ImGui::SetCursorPosX(startX);
 
-      for (int i = 0; i < numProjects; ++i)
+      if (m_workspace)
       {
-        if (i > 0 && i % itemsPerRow == 0)
+        const size_t numProjects = m_workspace->m_projects.size();
+        for (size_t i = 0; i < numProjects; ++i)
         {
-          ImGui::SetCursorPosX(startX);
-        }
+          const Project& project = m_workspace->m_projects[i];
+          if (i > 0 && i % itemsPerRow == 0)
+          {
+            ImGui::SetCursorPosX(startX);
+          }
 
-        ImGui::BeginGroup();
+          ImGui::BeginGroup();
 
-        // Card square/button
-        ImVec2 cardPos = ImGui::GetCursorScreenPos();
-        ImVec2 cardButtonSize(cardSize, cardSize);
+          // Card square/button
+          ImVec2 cardPos = ImGui::GetCursorScreenPos();
+          ImVec2 cardButtonSize(cardSize, cardSize);
 
-        ImGui::PushID(i);
-        if (ImGui::Button("", cardButtonSize))
-        {
-          // Project selected - can add action here
-        }
-        ImGui::PopID();
+          ImGui::PushID((int)i);
+          if (ImGui::Button("", cardButtonSize))
+          {
+            m_workspace->SetActiveProject(project);
+            g_launcherRunning = false; // Close launcher to open project
+          }
+          ImGui::PopID();
 
-        // Card background/hover effect
-        if (ImGui::IsItemHovered())
-        {
-          ImDrawList* drawList = ImGui::GetWindowDrawList();
-          drawList->AddRectFilled(cardPos,
-                                  ImVec2(cardPos.x + cardSize, cardPos.y + cardSize),
-                                  ImGui::GetColorU32(ImGuiCol_ButtonHovered),
-                                  4.0f);
-        }
+          // Card background/hover effect
+          if (ImGui::IsItemHovered())
+          {
+            ImDrawList* drawList = ImGui::GetWindowDrawList();
+            drawList->AddRectFilled(cardPos,
+                                    ImVec2(cardPos.x + cardSize, cardPos.y + cardSize),
+                                    ImGui::GetColorU32(ImGuiCol_ButtonHovered),
+                                    4.0f);
+          }
 
-        // Text below the card
-        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (cardSize - ImGui::CalcTextSize(projects[i].name).x) * 0.5f);
-        ImGui::Text("%s", projects[i].name);
+          // Text below the card
+          ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (cardSize - ImGui::CalcTextSize(project.name.c_str()).x) * 0.5f);
+          ImGui::Text("%s", project.name.c_str());
 
-        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (cardSize - ImGui::CalcTextSize(projects[i].description).x) * 0.5f);
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
-        ImGui::Text("%s", projects[i].description);
-        ImGui::PopStyleColor();
+          ImGui::EndGroup();
 
-        ImGui::EndGroup();
-
-        // Spacing between cards
-        if ((i + 1) % itemsPerRow != 0)
-        {
-          ImGui::SameLine(0.0f, cardSpacing);
-        }
-        else
-        {
-          ImGui::Spacing();
-          ImGui::Spacing();
+          // Spacing between cards
+          if ((i + 1) % itemsPerRow != 0)
+          {
+            ImGui::SameLine(0.0f, cardSpacing);
+          }
+          else
+          {
+            ImGui::Spacing();
+            ImGui::Spacing();
+          }
         }
       }
 
@@ -159,13 +151,7 @@ namespace ToolKit
       ImGui::SetCursorPosX(buttonStartX);
       if (ImGui::Button("New Project", ImVec2(buttonWidth, 0)))
       {
-        // New project action
-      }
-
-      ImGui::SameLine(0.0f, buttonSpacing);
-      if (ImGui::Button("Open Project", ImVec2(buttonWidth, 0)))
-      {
-        // Open project action
+        // TODO New project action
       }
 
       ImGui::End();
@@ -173,6 +159,32 @@ namespace ToolKit
       UI::EndUI();
     }
 
+    void Launcher::HandleWorkspace()
+    {
+      if (!m_workspace)
+      {
+        m_workspace = new Workspace();
+        m_workspace->Init();
+
+        if (CheckFile(m_workspace->GetActiveWorkspace()))
+        {
+          m_workspace->RefreshProjects();
+        }
+
+        m_workspacePathOnUI = m_workspace->GetDefaultWorkspace();
+      }
+
+      // Workspace path input UI
+      ImGui::Text("Workspace Path:");
+      ImGui::SameLine();
+      ImGui::PushItemWidth(400.0f);
+      ImGui::InputText("##workspacePath", &m_workspacePathOnUI);
+      ImGui::PopItemWidth();
+      ImGui::SameLine();
+      if (ImGui::Button("Enter", ImVec2(80.0f, 0.0f)))
+      {
+        m_workspace->SetDefaultWorkspace(m_workspacePathOnUI);
+      }
+    }
   } // namespace Editor
 } // namespace ToolKit
-

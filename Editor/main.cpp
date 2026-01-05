@@ -350,7 +350,6 @@ namespace ToolKit
               }
               else
               {
-
                 if (showSplashScreen)
                 {
                   RenderSystem* rsys = GetRenderSystem();
@@ -371,7 +370,7 @@ namespace ToolKit
                   {
                     showSplashScreen = false;
                     splashRenderer   = nullptr;
-                    g_app->Init();
+                    g_app->Init(g_launcher->GetWorkspace());
 
                     SDL_SetWindowBordered(g_window, SDL_TRUE);
                     SDL_SetWindowResizable(g_window, SDL_TRUE);

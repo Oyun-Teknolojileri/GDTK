@@ -97,7 +97,7 @@ namespace ToolKit
         if (wndWidth * 0.3f > msgSize.x)
         {
           // Draw Projcet Info.
-          Project prj = GetApp()->m_workspace.GetActiveProject();
+          Project prj = GetApp()->m_workspace->GetActiveProject();
           info        = "Project: " + prj.name + "Scene: " + prj.scene;
           pos         = ImGui::CalcTextSize(info.c_str());
 
