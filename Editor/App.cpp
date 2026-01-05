@@ -208,7 +208,10 @@ namespace ToolKit
 
       DestroyEditorEntities();
 
-      GetCurrentScene()->Destroy(false);
+      if (EditorScenePtr currentScene = GetCurrentSceneSafe())
+      {
+        currentScene->Destroy(false);
+      }
 
       GetAnimationPlayer()->Destroy();
 
@@ -544,6 +547,7 @@ namespace ToolKit
       }
     }
 
+
     void App::SetGameMod(const GameMod mod)
     {
       if (!IsWorkspaceSane(true, true))
@@ -750,6 +754,15 @@ namespace ToolKit
     {
       ScenePtr scene = GetSceneManager()->GetCurrentScene();
       return Cast<EditorScene>(scene);
+    }
+
+    EditorScenePtr App::GetCurrentSceneSafe()
+    {
+      ScenePtr scene = GetSceneManager()->GetCurrentScene();
+      if (scene)
+        return Cast<EditorScene>(scene);
+      else
+        return nullptr;
     }
 
     void App::SetCurrentScene(const EditorScenePtr& scene)

@@ -20,6 +20,7 @@
 #include "SplashScreenRenderPath.h"
 #include "Stats.h"
 #include "UI.h"
+#include "Launcher.h"
 
 #include <Common/SDLEventPool.h>
 #include <Common/Win32Utils.h>
@@ -39,9 +40,11 @@ SDL_GLContext g_context     = nullptr;
 
 // Main loop signal handle.
 bool g_running              = true;
+bool g_launcherRunning      = true;
 
 // ToolKit Application main handle.
 ToolKit::Editor::App* g_app = nullptr;
+ToolKit::Editor::Launcher* g_launcher = nullptr;
 
 namespace ToolKit
 {
@@ -319,6 +322,8 @@ namespace ToolKit
               TK_ERR("SDL_GetDisplayBounds Error: %s", SDL_GetError());
             }
 
+            g_launcher              = new Launcher(settings.m_window->GetWidthVal() / 2, settings.m_window->GetHeightVal() / 2);
+
             // Init app
             g_app                   = new App(settings.m_window->GetWidthVal(), settings.m_window->GetHeightVal());
             g_app->m_displayBounds  = UVec2(displayBounds.w, displayBounds.h);
@@ -339,36 +344,44 @@ namespace ToolKit
               static float elapsedTime                        = 0.0f;
               static SplashScreenRenderPathPtr splashRenderer = nullptr;
 
-              if (showSplashScreen)
+              if (g_launcherRunning)
               {
-                RenderSystem* rsys = GetRenderSystem();
-
-                if (splashRenderer == nullptr)
-                {
-                  SDL_ShowWindow(g_window);
-                  splashRenderer = MakeNewPtr<SplashScreenRenderPath>();
-                  splashRenderer->Init({512, 512});
-                }
-
-                if (elapsedTime < 1000.0f)
-                {
-                  elapsedTime += deltaTime;
-                  rsys->AddRenderTask({[](Renderer* renderer) -> void { splashRenderer->Render(renderer); }});
-                }
-                else
-                {
-                  showSplashScreen = false;
-                  splashRenderer   = nullptr;
-                  g_app->Init();
-
-                  SDL_SetWindowBordered(g_window, SDL_TRUE);
-                  SDL_SetWindowResizable(g_window, SDL_TRUE);
-                  PlatformHelpers::UpdateAppIcon(); // Sdl wipes the editor icon. This fixes it.
-                }
+                g_launcher->ShowLauncherWindow();
               }
               else
               {
-                g_app->Frame(deltaTime);
+
+                if (showSplashScreen)
+                {
+                  RenderSystem* rsys = GetRenderSystem();
+
+                  if (splashRenderer == nullptr)
+                  {
+                    SDL_ShowWindow(g_window);
+                    splashRenderer = MakeNewPtr<SplashScreenRenderPath>();
+                    splashRenderer->Init({512, 512});
+                  }
+
+                  if (elapsedTime < 1000.0f)
+                  {
+                    elapsedTime += deltaTime;
+                    rsys->AddRenderTask({[](Renderer* renderer) -> void { splashRenderer->Render(renderer); }});
+                  }
+                  else
+                  {
+                    showSplashScreen = false;
+                    splashRenderer   = nullptr;
+                    g_app->Init();
+
+                    SDL_SetWindowBordered(g_window, SDL_TRUE);
+                    SDL_SetWindowResizable(g_window, SDL_TRUE);
+                    PlatformHelpers::UpdateAppIcon(); // Sdl wipes the editor icon. This fixes it.
+                  }
+                }
+                else
+                {
+                  g_app->Frame(deltaTime);
+                }
               }
             };
 
@@ -397,6 +410,7 @@ namespace ToolKit
       g_proxy->Uninit();
       g_proxy->PostUninit();
 
+      SafeDel(g_launcher);
       SafeDel(g_app);
       SafeDel(g_proxy);
 

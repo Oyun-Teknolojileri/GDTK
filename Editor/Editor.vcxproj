@@ -117,6 +117,7 @@
     <ClCompile Include="Gizmo.cpp" />
     <ClCompile Include="GizmoPass.cpp" />
     <ClCompile Include="Grid.cpp" />
+    <ClCompile Include="Launcher.cpp" />
     <ClCompile Include="LeftBar.cpp">
       <OrderInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">50</OrderInUnityFile>
     </ClCompile>
@@ -187,6 +188,7 @@
     <ClInclude Include="EditorTypes.h" />
     <ClInclude Include="Grid.h" />
     <ClInclude Include="IconsFontAwesome.h" />
+    <ClInclude Include="Launcher.h" />
     <ClInclude Include="LeftBar.h" />
     <ClInclude Include="LightMeshGenerator.h" />
     <ClInclude Include="MaterialView.h" />
