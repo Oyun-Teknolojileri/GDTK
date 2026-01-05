@@ -328,7 +328,7 @@ namespace ToolKit
             g_app->m_sysComExecFn   = &ToolKit::PlatformHelpers::SysComExec;
             g_app->m_shellOpenDirFn = &ToolKit::PlatformHelpers::OpenExplorer;
 
-            g_launcher              = new Launcher(settings.m_window->GetWidthVal() / 2, settings.m_window->GetHeightVal() / 2, g_app);
+            g_launcher              = new Launcher(640, 360, g_app);
 
             // Register update functions
             TKUpdateFn preUpdateFn  = [](float deltaTime)

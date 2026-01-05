@@ -189,7 +189,7 @@ namespace ToolKit
 
       DestroyEditorEntities();
 
-      if (EditorScenePtr currentScene = GetCurrentSceneSafe())
+      if (EditorScenePtr currentScene = GetCurrentScene())
       {
         currentScene->Destroy(false);
       }
@@ -733,17 +733,14 @@ namespace ToolKit
 
     EditorScenePtr App::GetCurrentScene()
     {
-      ScenePtr scene = GetSceneManager()->GetCurrentScene();
-      return Cast<EditorScene>(scene);
-    }
-
-    EditorScenePtr App::GetCurrentSceneSafe()
-    {
-      ScenePtr scene = GetSceneManager()->GetCurrentScene();
-      if (scene)
+      if (ScenePtr scene = GetSceneManager()->GetCurrentScene())
+      {
         return Cast<EditorScene>(scene);
+      }
       else
+      {
         return nullptr;
+      }
     }
 
     void App::SetCurrentScene(const EditorScenePtr& scene)

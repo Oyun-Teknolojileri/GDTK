@@ -50,7 +50,6 @@ namespace ToolKit
       bool IsCompiling();
 
       EditorScenePtr GetCurrentScene();
-      EditorScenePtr GetCurrentSceneSafe();
       void SetCurrentScene(const EditorScenePtr& scene);
       void FocusEntity(EntityPtr entity);
 
