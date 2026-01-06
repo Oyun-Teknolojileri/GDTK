@@ -33,7 +33,7 @@ namespace ToolKit
 
     void AsyncBuildManager::StartBuild(PublishPlatform platform,
                                        PublishConfig config,
-                                       const BuildConfig& buildConfig)
+                                       const BuildConfig& buildConfig, bool isCapturingOutput)
     {
       if (m_buildActive)
       {
@@ -42,6 +42,7 @@ namespace ToolKit
       }
 
       m_buildActive = true;
+      m_isCapturingOutput  = isCapturingOutput;
       m_currentBuildConfig = std::make_unique<BuildConfig>(buildConfig);
 
       if (platform == PublishPlatform::MacOS)
@@ -582,8 +583,8 @@ namespace ToolKit
 
       TK_LOG("Executing CMake configure: %s", configCmd.c_str());
 
-      auto afterConfigFn = std::bind(&PublishManager::OnWindowsConfigureComplete, this, std::placeholders::_1, publishConfig, buildCmd);
-      GetApp()->ExecSysCommand(configCmd, true, false, afterConfigFn);
+      auto afterConfigFn = std::bind(&AsyncBuildManager::OnWindowsConfigureComplete, this, std::placeholders::_1, publishConfig, buildCmd);
+      GetApp()->ExecSysCommand(configCmd, true, false, afterConfigFn, m_buildActive);
     }
 
     void AsyncBuildManager::OnWindowsConfigureComplete(int exitCode, PublishConfig publishConfig, const String& buildCmd)
@@ -599,8 +600,8 @@ namespace ToolKit
       TK_LOG("CMake configure succeeded. Starting build...");
       TK_LOG("Executing CMake build: %s", buildCmd.c_str());
 
-      auto afterBuildFn = std::bind(&PublishManager::OnWindowsBuildComplete, this, std::placeholders::_1, publishConfig);
-      GetApp()->ExecSysCommand(buildCmd, true, false, afterBuildFn);
+      auto afterBuildFn = std::bind(&AsyncBuildManager::OnWindowsBuildComplete, this, std::placeholders::_1, publishConfig);
+      GetApp()->ExecSysCommand(buildCmd, true, false, afterBuildFn, m_isCapturingOutput);
     }
 
     void AsyncBuildManager::OnWindowsBuildComplete(int exitCode, PublishConfig publishConfig)

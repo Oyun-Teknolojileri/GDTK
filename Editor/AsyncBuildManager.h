@@ -37,7 +37,7 @@ namespace ToolKit
       ~AsyncBuildManager();
 
       // Main entry point for builds
-      void StartBuild(PublishPlatform platform, PublishConfig config, const BuildConfig& buildConfig);
+      void StartBuild(PublishPlatform platform, PublishConfig config, const BuildConfig& buildConfig, bool isCapturingOutput = true);
 
       // Cancel any ongoing build
       void CancelBuild();
@@ -80,6 +80,7 @@ namespace ToolKit
     private:
       App* m_app;
       bool m_buildActive;
+      bool m_isCapturingOutput;
       std::unique_ptr<BuildConfig> m_currentBuildConfig;
 
       String m_bundleIdentifier;
