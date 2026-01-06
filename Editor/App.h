@@ -22,10 +22,10 @@ namespace ToolKit
     class App : Serializable
     {
      public:
-      App(int windowWidth, int windowHeight);
+      App(int windowWidth, int windowHeight, Workspace* workspace);
       virtual ~App();
 
-      void Init(Workspace* workspace);
+      void Init();
       void Destroy();
       void Frame(float deltaTime);
       void OnResize(uint width, uint height);

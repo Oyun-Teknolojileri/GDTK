@@ -24,8 +24,8 @@ namespace ToolKit
 {
   namespace Editor
   {
-    Launcher::Launcher(int windowWidth, int windowHeight, App* app)
-        : m_windowWidth(windowWidth), m_windowHeight(windowHeight), m_app(app)
+    Launcher::Launcher(Workspace* workspace, App* app)
+        : m_workspace(workspace), m_app(app)
     {
       // Load logo texture
       if (m_logoTexture == nullptr)
@@ -74,10 +74,6 @@ namespace ToolKit
 
     Launcher::~Launcher()
     {
-      if (m_workspace)
-      {
-        SafeDel(m_workspace);
-      }
     }
 
     void Launcher::ShowLauncherWindow()
@@ -91,7 +87,7 @@ namespace ToolKit
       ImGuiViewport* viewport = ImGui::GetMainViewport();
       ImVec2 center           = ImVec2(viewport->Pos.x + viewport->Size.x * 0.5f,
                               viewport->Pos.y + viewport->Size.y * 0.5f);
-      ImVec2 windowSize       = ImVec2(1000.0f, 700.0f);
+      ImVec2 windowSize = ImVec2(m_windowWidth, m_windowHeight);
       ImGui::SetNextWindowPos(center, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
       ImGui::SetNextWindowSize(windowSize, ImGuiCond_Always);
 
@@ -455,11 +451,27 @@ namespace ToolKit
           }
         });
 
-        ImGui::SetCursorPosX((toolsPanelWidth - buttonWidth) * 0.5f);
-        drawToolButton("##tool_shortcut", m_shortcutIconTexture, "Create Shortcut", [&]()
+        if (m_createProjectShortcutOnDesktopFn)
         {
-          // TODO: Implement create shortcut action.
-        });
+          ImGui::SetCursorPosX((toolsPanelWidth - buttonWidth) * 0.5f);
+          drawToolButton("##tool_shortcut",
+                         m_shortcutIconTexture,
+                         "Create Shortcut",
+                         [&]()
+                         {
+                           const Project& selected = m_workspace->m_projects[m_selectedProjectIndex];
+
+                           // Two separate arguments: workspace path and project name
+                           String workspacePath    = m_workspace->GetActiveWorkspace();
+                           String projectName      = selected.name;
+
+                           // Argument string to be read from main(int argc, char* argv[])
+                           // Format: --workspace "<workspace_path>" --project-name "<project_name>"
+                           String args = "--workspace \"" + workspacePath + "\" --project-name \"" + projectName + "\"";
+
+                           m_createProjectShortcutOnDesktopFn(selected.name, args);
+                         });
+        }
 
         ImGui::EndDisabled();
       }
@@ -484,7 +496,7 @@ namespace ToolKit
       HandleWorkspace();
       
       ImGui::EndChild();
-      
+
       // New Project Button - panelsiz, right side (aligned to right with padding)
       if (m_workspace && m_app->IsWorkspaceSane(false, false))
       {
@@ -520,9 +532,7 @@ namespace ToolKit
       // Initialize workspace if needed
       if (!m_workspace)
       {
-        m_workspace = new Workspace();
-        m_workspace->Init();
-        m_app->m_workspace = m_workspace;
+        return;
       }
 
       String currentWorkspace = m_workspace->GetActiveWorkspace();

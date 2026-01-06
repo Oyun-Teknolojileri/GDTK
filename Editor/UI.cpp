@@ -143,17 +143,17 @@ namespace ToolKit
 
       io.Fonts->Clear();
       LiberationSans =
-          io.Fonts->AddFontFromFileTTF(FontPath("LiberationSans-Regular.ttf").c_str(), 14.0f, nullptr, utf8TR);
+          io.Fonts->AddFontFromFileTTF(FontPath("LiberationSans-Regular.ttf", true).c_str(), 14.0f, nullptr, utf8TR);
 
       static const ImWchar icons_ranges[] = {ICON_MIN_FA, ICON_MAX_FA, 0};
       ImFontConfig icons_config;
       icons_config.MergeMode = true;
       // icons_config.PixelSnapH = true;
       IconFont =
-          io.Fonts->AddFontFromFileTTF(FontPath(FONT_ICON_FILE_NAME_FA).c_str(), 14.0f, &icons_config, icons_ranges);
+          io.Fonts->AddFontFromFileTTF(FontPath(FONT_ICON_FILE_NAME_FA, true).c_str(), 14.0f, &icons_config, icons_ranges);
 
       LiberationSansBold =
-          io.Fonts->AddFontFromFileTTF(FontPath("LiberationSans-Bold.ttf").c_str(), 14.0f, nullptr, utf8TR);
+          io.Fonts->AddFontFromFileTTF(FontPath("LiberationSans-Bold.ttf", true).c_str(), 14.0f, nullptr, utf8TR);
 
       ImGui_ImplSDL2_InitForOpenGL(g_window, g_context);
       ImGui_ImplOpenGL3_Init("#version 300 es");

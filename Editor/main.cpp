@@ -21,6 +21,7 @@
 #include "Stats.h"
 #include "UI.h"
 #include "Launcher.h"
+#include "Workspace.h"
 
 #include <Common/SDLEventPool.h>
 #include <Common/Win32Utils.h>
@@ -45,6 +46,7 @@ bool g_launcherRunning      = true;
 // ToolKit Application main handle.
 ToolKit::Editor::App* g_app = nullptr;
 ToolKit::Editor::Launcher* g_launcher = nullptr;
+ToolKit::Editor::Workspace* g_workspace = nullptr;
 
 namespace ToolKit
 {
@@ -56,6 +58,62 @@ namespace ToolKit
 
     // External event pool that collect and convert system events to toolkit events.
     SDLEventPool<TK_PLATFORM>* g_sdlEventPool = nullptr;
+
+    void HandleSkipLauncher(char* argv[], int argc)
+    {
+      // if --workspace and --project-name are provided, skip launcher.
+
+      String workspacePath;
+      String projectName;
+      for (int i = 1; i < argc; ++i)
+      {
+        if (strcmp(argv[i], "--workspace") == 0 && i + 1 < argc)
+        {
+          workspacePath = argv[i + 1];
+          if (workspacePath.front() == '"' && workspacePath.back() == '"')
+          {
+            workspacePath = workspacePath.substr(1, workspacePath.length() - 2);
+          }
+          ++i;
+        }
+        else if (strcmp(argv[i], "--project-name") == 0 && i + 1 < argc)
+        {
+          projectName = argv[i + 1];
+          if (projectName.front() == '"' && projectName.back() == '"')
+          {
+            projectName = projectName.substr(1, projectName.length() - 2);
+          }
+          ++i;
+        }
+      }
+
+      if (!workspacePath.empty() && !projectName.empty())
+      {
+        // Set workspace
+        g_workspace->SetDefaultWorkspace(workspacePath);
+        g_workspace->RefreshProjects();
+
+        // set active project
+        Project targetProject;
+        targetProject.name = projectName;
+        bool found         = false;
+        for (const auto& proj : g_workspace->m_projects)
+        {
+          if (proj.name == projectName)
+          {
+            targetProject = proj;
+            found         = true;
+            break;
+          }
+        }
+
+        if (found)
+        {
+          g_workspace->SetActiveProject(targetProject);
+          g_launcherRunning = false;
+        }
+      }
+    }
 
     // Windows util function for creating ToolKit config files in AppData.
     void CreateAppData()
@@ -191,6 +249,10 @@ namespace ToolKit
 
     void PreInit()
     {
+      // Fix working directory when launched from shortcut (shortcut's working dir is Desktop).
+      // Set it to project root (parent of Bin/) so Resources/Config relative paths work.
+      PlatformHelpers::FixWorkingDirectory();
+
       g_sdlEventPool = new SDLEventPool<TK_PLATFORM>();
 
       // PreInit Main
@@ -208,7 +270,7 @@ namespace ToolKit
                                         { ToolKit::PlatformHelpers::OutputLog((int) type, msg.c_str()); });
     }
 
-    void Init()
+    void Init(int argc, char* argv[])
     {
       EngineSettings& settings  = GetEngineSettings();
       const String settingsFile = EngineSettingsPath();
@@ -322,16 +384,22 @@ namespace ToolKit
               TK_ERR("SDL_GetDisplayBounds Error: %s", SDL_GetError());
             }
 
+            g_workspace = new Workspace();
+            g_workspace->Init();
+
             // Init app
-            g_app                   = new App(settings.m_window->GetWidthVal(), settings.m_window->GetHeightVal());
+            g_app                   = new App(settings.m_window->GetWidthVal(), settings.m_window->GetHeightVal(), g_workspace);
             g_app->m_displayBounds  = UVec2(displayBounds.w, displayBounds.h);
             g_app->m_sysComExecFn   = &ToolKit::PlatformHelpers::SysComExec;
             g_app->m_shellOpenDirFn = &ToolKit::PlatformHelpers::OpenExplorer;
 
-            g_launcher              = new Launcher(640, 360, g_app);
+            g_launcher = new Launcher(g_workspace, g_app);
+            g_launcher->m_createProjectShortcutOnDesktopFn = &PlatformHelpers::CreateProjectShortcutOnDesktop;
+
+            HandleSkipLauncher(argv, argc);
 
             // Register update functions
-            TKUpdateFn preUpdateFn  = [](float deltaTime)
+            TKUpdateFn preUpdateFn  = [argc, argv](float deltaTime)
             {
               SDL_Event sdlEvent;
               while (SDL_PollEvent(&sdlEvent))
@@ -370,7 +438,7 @@ namespace ToolKit
                   {
                     showSplashScreen = false;
                     splashRenderer   = nullptr;
-                    g_app->Init(g_launcher->GetWorkspace());
+                    g_app->Init();
 
                     SDL_SetWindowBordered(g_window, SDL_TRUE);
                     SDL_SetWindowResizable(g_window, SDL_TRUE);
@@ -412,6 +480,7 @@ namespace ToolKit
       SafeDel(g_launcher);
       SafeDel(g_app);
       SafeDel(g_proxy);
+      SafeDel(g_workspace);
 
       SafeDel(g_sdlEventPool);
       SDL_DestroyWindow(g_window);
@@ -438,7 +507,7 @@ namespace ToolKit
     int ToolKit_Main(int argc, char* argv[])
     {
       PreInit();
-      Init();
+      Init(argc, argv);
 
       TK_Loop();
 

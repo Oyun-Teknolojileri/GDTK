@@ -43,8 +43,10 @@ namespace ToolKit
   namespace Editor
   {
 
-    App::App(int windowWidth, int windowHeight)
+    App::App(int windowWidth, int windowHeight, Workspace* workspace)
     {
+      m_workspace        = workspace;
+
       UI::Init();
 
       m_displayBounds    = UVec2(windowWidth, windowHeight);
@@ -57,10 +59,8 @@ namespace ToolKit
 
     App::~App() {}
 
-    void App::Init(Workspace* workspace)
+    void App::Init()
     {
-      m_workspace = workspace;
-
       ImplementMetaKeys();
       AssignManagerReporters();
       CreateEditorEntities();

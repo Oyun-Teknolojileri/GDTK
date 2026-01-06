@@ -76,6 +76,7 @@ namespace ToolKit
     typedef std::function<void(int)> SysCommandDoneCallback;
     typedef std::function<int(StringView, bool, bool, SysCommandDoneCallback)> SysCommandExecutionFn;
     typedef std::function<void(const StringView)> ShellOpenDirFn;
+    typedef std::function<void(const String&, const String&)> CreateProjectShortcutOnDesktopFn;
 
     // UI Strings
     const String g_consoleStr("Console");

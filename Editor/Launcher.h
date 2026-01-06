@@ -18,12 +18,10 @@ namespace ToolKit
     class Launcher
     {
      public:
-      Launcher(int windowWidth, int windowHeight, App* app);
+      Launcher(Workspace* workspace, App* app);
       virtual ~Launcher();
 
       void ShowLauncherWindow();
-
-      inline Workspace* GetWorkspace() const { return m_workspace; }
 
      private:
       Launcher() {} // hide default constructor
@@ -32,11 +30,14 @@ namespace ToolKit
       void ShowWorkspacePopup();
       void ShowNewProjectPopup();
 
+     public:
+      CreateProjectShortcutOnDesktopFn m_createProjectShortcutOnDesktopFn;
+
      private:
       App* m_app              = nullptr;
 
-      int m_windowWidth       = 640;
-      int m_windowHeight      = 480;
+      float m_windowWidth     = 1000.0f;
+      float m_windowHeight    = 700.0f;
 
       Workspace* m_workspace  = nullptr;
       String m_workspacePathOnUI;
