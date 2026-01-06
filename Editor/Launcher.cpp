@@ -39,6 +39,37 @@ namespace ToolKit
 
       // Default project thumbnail is initially logo; can be replaced per project.
       m_defaultProjectThumbnail = m_logoTexture;
+
+      // Load tool button icons (PNG) if available.
+      if (m_launchIconTexture == nullptr)
+      {
+        m_launchIconTexture =
+            GetTextureManager()->Create<Texture>(TexturePath(m_launchIconPath.c_str(), true));
+        if (m_launchIconTexture)
+        {
+          m_launchIconTexture->Init();
+        }
+      }
+
+      if (m_folderIconTexture == nullptr)
+      {
+        m_folderIconTexture =
+            GetTextureManager()->Create<Texture>(TexturePath(m_folderIconPath.c_str(), true));
+        if (m_folderIconTexture)
+        {
+          m_folderIconTexture->Init();
+        }
+      }
+
+      if (m_shortcutIconTexture == nullptr)
+      {
+        m_shortcutIconTexture =
+            GetTextureManager()->Create<Texture>(TexturePath(m_shortcutIconPath.c_str(), true));
+        if (m_shortcutIconTexture)
+        {
+          m_shortcutIconTexture->Init();
+        }
+      }
     }
 
     Launcher::~Launcher()
@@ -216,9 +247,10 @@ namespace ToolKit
           // Card item - square style
           ImVec2 cardSizeVec(cardSize, cardSize);
           
-          // Use InvisibleButton for clickable area (selection only)
+          // Use InvisibleButton for clickable area
           if (ImGui::InvisibleButton("##projectCard", cardSizeVec))
           {
+            // Single click: only select
             m_selectedProjectIndex = (int)i;
           }
           
@@ -237,6 +269,14 @@ namespace ToolKit
           ImVec4 panelBgColor = ImGui::GetStyle().Colors[ImGuiCol_FrameBg];
           ImU32 bgColor = ImGui::GetColorU32(panelBgColor);
           
+          // Double-click to launch project directly
+          if (isHovered && ImGui::IsMouseDoubleClicked(0))
+          {
+            m_selectedProjectIndex = (int)i;
+            m_workspace->SetActiveProject(project);
+            g_launcherRunning = false;
+          }
+
           // Very subtle hover effect - slightly lighter
           if (isHovered)
           {
@@ -335,39 +375,91 @@ namespace ToolKit
 
         ImGui::BeginDisabled(!hasSelection);
 
-        ImGui::SetCursorPosX((toolsPanelWidth - buttonWidth) * 0.5f);
-        if (ImGui::Button("Open", ImVec2(buttonWidth, buttonHeight)))
+        auto drawToolButton = [&](const char* id,
+                                  TexturePtr icon,
+                                  const char* label,
+                                  auto onClick)
         {
-          if (hasSelection)
+          ImVec2 cursorPos = ImGui::GetCursorScreenPos();
+          ImVec2 size(buttonWidth, buttonHeight);
+
+          ImGui::InvisibleButton(id, size);
+          bool pressed = ImGui::IsItemClicked() && hasSelection;
+          bool hovered = ImGui::IsItemHovered() && hasSelection;
+          bool held    = ImGui::IsItemActive()  && hasSelection;
+
+          ImDrawList* dl = ImGui::GetWindowDrawList();
+          ImVec2 min = cursorPos;
+          ImVec2 max = ImVec2(cursorPos.x + size.x, cursorPos.y + size.y);
+
+          ImVec4 col = ImGui::GetStyle().Colors[ImGuiCol_Button];
+          if (!hasSelection)
           {
-            const Project& selected = m_workspace->m_projects[m_selectedProjectIndex];
-            m_workspace->SetActiveProject(selected);
-            g_launcherRunning = false;
+            col.w *= 0.5f;
           }
-        }
+          else if (held)
+          {
+            col = ImGui::GetStyle().Colors[ImGuiCol_ButtonActive];
+          }
+          else if (hovered)
+          {
+            col = ImGui::GetStyle().Colors[ImGuiCol_ButtonHovered];
+          }
+
+          dl->AddRectFilled(min, max, ImGui::GetColorU32(col), 4.0f);
+
+          // Icon on the left, vertically centered.
+          float iconSize = buttonHeight - 8.0f;
+          ImVec2 iconMin = ImVec2(min.x + 6.0f, min.y + (size.y - iconSize) * 0.5f);
+          ImVec2 iconMax = ImVec2(iconMin.x + iconSize, iconMin.y + iconSize);
+
+          if (icon && icon->m_textureId != 0)
+          {
+            dl->AddImage(Convert2ImGuiTexture(icon), iconMin, iconMax);
+          }
+
+          // Text centered vertically, with small gap after icon.
+          ImVec2 textSize = ImGui::CalcTextSize(label);
+          float textX = iconMax.x + 6.0f;
+          float textY = min.y + (size.y - textSize.y) * 0.5f;
+          dl->AddText(ImVec2(textX, textY), ImGui::GetColorU32(ImGuiCol_Text), label);
+
+          if (pressed)
+          {
+            onClick();
+          }
+
+          // Add vertical spacing item so layout grows correctly (slightly reduced).
+          ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().ItemSpacing.y * 0.5f));
+        };
 
         ImGui::SetCursorPosX((toolsPanelWidth - buttonWidth) * 0.5f);
-        if (ImGui::Button("Open in Folder", ImVec2(buttonWidth, buttonHeight)))
+        drawToolButton("##tool_launch", m_launchIconTexture, "Launch", [&]()
         {
-          if (hasSelection)
-          {
-            const Project& selected = m_workspace->m_projects[m_selectedProjectIndex];
-            // Project folder is assumed to be <workspace>/<project.name>
-            String projectFolder = ConcatPaths({ m_workspace->GetActiveWorkspace(), selected.name });
-
-            ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
-            if (platform_io.Platform_OpenInShellFn)
-            {
-              platform_io.Platform_OpenInShellFn(ImGui::GetCurrentContext(), projectFolder.c_str());
-            }
-          }
-        }
+          const Project& selected = m_workspace->m_projects[m_selectedProjectIndex];
+          m_workspace->SetActiveProject(selected);
+          g_launcherRunning = false;
+        });
 
         ImGui::SetCursorPosX((toolsPanelWidth - buttonWidth) * 0.5f);
-        if (ImGui::Button("Create Shortcut", ImVec2(buttonWidth, buttonHeight)))
+        drawToolButton("##tool_open_folder", m_folderIconTexture, "Open in Folder", [&]()
+        {
+          const Project& selected = m_workspace->m_projects[m_selectedProjectIndex];
+          // Project folder is assumed to be <workspace>/<project.name>
+          String projectFolder = ConcatPaths({ m_workspace->GetActiveWorkspace(), selected.name });
+
+          ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
+          if (platform_io.Platform_OpenInShellFn)
+          {
+            platform_io.Platform_OpenInShellFn(ImGui::GetCurrentContext(), projectFolder.c_str());
+          }
+        });
+
+        ImGui::SetCursorPosX((toolsPanelWidth - buttonWidth) * 0.5f);
+        drawToolButton("##tool_shortcut", m_shortcutIconTexture, "Create Shortcut", [&]()
         {
           // TODO: Implement create shortcut action.
-        }
+        });
 
         ImGui::EndDisabled();
       }

@@ -49,6 +49,12 @@ namespace ToolKit
       TexturePtr m_defaultProjectThumbnail = nullptr;
       String m_logoPath = "/Icons/app.png";
       String m_thumbnailPath = "../../thumbnail.png";
+      String m_launchIconPath = "/Icons/play.png";
+      String m_folderIconPath = "/Icons/folder.png";
+      String m_shortcutIconPath = "/Icons/file.png";
+      TexturePtr m_launchIconTexture = nullptr;
+      TexturePtr m_folderIconTexture = nullptr;
+      TexturePtr m_shortcutIconTexture = nullptr;
     };
   } // namespace Editor
 } // namespace ToolKit
