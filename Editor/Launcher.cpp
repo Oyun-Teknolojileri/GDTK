@@ -273,13 +273,13 @@ namespace ToolKit
             g_launcherRunning = false;
           }
 
-          // Very subtle hover effect - slightly lighter
+          // Very subtle hover effect - slightly lighter (reduced to compensate for gamma)
           if (isHovered)
           {
             ImVec4 hoverColor = panelBgColor;
-            hoverColor.x = (hoverColor.x + 0.05f > 1.0f) ? 1.0f : (hoverColor.x + 0.05f);
-            hoverColor.y = (hoverColor.y + 0.05f > 1.0f) ? 1.0f : (hoverColor.y + 0.05f);
-            hoverColor.z = (hoverColor.z + 0.05f > 1.0f) ? 1.0f : (hoverColor.z + 0.05f);
+            hoverColor.x = (hoverColor.x + 0.02f > 1.0f) ? 1.0f : (hoverColor.x + 0.02f);
+            hoverColor.y = (hoverColor.y + 0.02f > 1.0f) ? 1.0f : (hoverColor.y + 0.02f);
+            hoverColor.z = (hoverColor.z + 0.02f > 1.0f) ? 1.0f : (hoverColor.z + 0.02f);
             bgColor = ImGui::GetColorU32(hoverColor);
           }
 
@@ -289,17 +289,23 @@ namespace ToolKit
           // Draw background
           childDrawList->AddRectFilled(itemPos, itemMax, bgColor, 4.0f);
 
-          // If selected, draw an outline.
+          // If selected, draw an outline (reduced brightness to compensate for gamma)
           if (isSelected)
           {
-            ImU32 borderColor = ImGui::GetColorU32(ImVec4(0.9f, 0.9f, 0.9f, 1.0f));
+            ImU32 borderColor = ImGui::GetColorU32(ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
             childDrawList->AddRect(itemPos, itemMax, borderColor, 4.0f, 0, 2.0f);
           }
           
-          // Project icon in center-top - project thumbnail or default
-          float iconSize = 64.0f;
-          float iconPadding = (cardSize - iconSize) * 0.5f;
-          ImVec2 iconPos = ImVec2(itemPos.x + iconPadding, itemPos.y + 10.0f);
+          // Calculate text height for project name
+          const char* projectName = project.name.c_str();
+          float textHeight = ImGui::GetTextLineHeight();
+          float textWidth = ImGui::CalcTextSize(projectName).x;
+          
+          // Image takes up most of the card, text at bottom with minimal spacing
+          float imageHeight = cardSize - textHeight - 4.0f; // 4px spacing between image and text
+          float imageWidth = cardSize;
+          ImVec2 imagePos = ImVec2(itemPos.x, itemPos.y);
+          ImVec2 imageMax = ImVec2(itemPos.x + imageWidth, itemPos.y + imageHeight);
 
           // see if there is thumnail for the project
           const String thumbnailPath  = ConcatPaths({m_workspace->GetActiveWorkspace(), project.name, "thumbnail.png"});
@@ -313,8 +319,8 @@ namespace ToolKit
           if (thumbTexture && thumbTexture->m_textureId != 0)
           {
             childDrawList->AddImageRounded(Convert2ImGuiTexture(thumbTexture),
-                                          iconPos,
-                                          ImVec2(iconPos.x + iconSize, iconPos.y + iconSize),
+                                          imagePos,
+                                          imageMax,
                                           ImVec2(0, 0), ImVec2(1, 1),
                                           ImGui::GetColorU32(ImVec4(1, 1, 1, 1)), 4.0f);
           }
@@ -322,15 +328,11 @@ namespace ToolKit
           {
             // Fallback placeholder
             ImU32 iconBgColor = ImGui::GetColorU32(ImGuiCol_Button);
-            childDrawList->AddRectFilled(iconPos, 
-                                        ImVec2(iconPos.x + iconSize, iconPos.y + iconSize),
-                                        iconBgColor, 4.0f);
+            childDrawList->AddRectFilled(imagePos, imageMax, iconBgColor, 4.0f);
           }
           
-          // Project name below icon - centered
-          float textY = itemPos.y + iconSize + 20.0f;
-          const char* projectName = project.name.c_str();
-          float textWidth = ImGui::CalcTextSize(projectName).x;
+          // Project name at bottom - centered, no extra spacing
+          float textY = itemPos.y + imageHeight + 2.0f; // 2px spacing from image
           ImVec2 textPos = ImVec2(itemPos.x + (cardSize - textWidth) * 0.5f, textY);
           childDrawList->AddText(textPos, ImGui::GetColorU32(ImGuiCol_Text), projectName);
           
