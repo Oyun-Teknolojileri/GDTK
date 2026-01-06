@@ -424,7 +424,7 @@ namespace ToolKit
                             viewport->Pos.y + viewport->Size.y * 0.5f);
  
       // Calculate content size - use fixed values for stability
-      float padding = 40.0f; // Window padding
+      float padding = 20.0f; // Window padding
       float textHeight = 20.0f; // Fixed text height
       float inputHeight = 25.0f; // Fixed input height
       float buttonHeight = 25.0f; // Fixed button height
@@ -452,10 +452,16 @@ namespace ToolKit
       if (ImGui::BeginPopupModal("Set Workspace", &m_showWorkspacePopup, 
                                  ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove))
       {
+        float innerPad = 10.0f;
+
+        // Label
+        ImGui::SetCursorPosX(innerPad);
         ImGui::Text("Workspace Path:");
         ImGui::Spacing();
         
-        ImGui::PushItemWidth(-1);
+        // Input with horizontal padding
+        ImGui::SetCursorPosX(innerPad);
+        ImGui::PushItemWidth(ImGui::GetWindowWidth() - innerPad * 2);
         bool enterPressed = ImGui::InputText("##workspacePath", &m_workspacePathOnUI, 
                                             ImGuiInputTextFlags_EnterReturnsTrue);
         ImGui::PopItemWidth();
@@ -505,7 +511,7 @@ namespace ToolKit
                             viewport->Pos.y + viewport->Size.y * 0.5f);
 
       // Calculate content size
-      float padding = 40.0f; // Window padding
+      float padding = 20.0f; // Window padding
       float textHeight = ImGui::GetTextLineHeight();
       float inputHeight = ImGui::GetFrameHeight();
       float buttonHeight = ImGui::GetFrameHeight();
@@ -533,10 +539,14 @@ namespace ToolKit
       if (ImGui::BeginPopupModal("New Project", &m_showNewProjectPopup, 
                                  ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove))
       {
+        float innerPad = 10.0f;
+
+        ImGui::SetCursorPosX(innerPad);
         ImGui::Text("Project Name:");
         ImGui::Spacing();
         
-        ImGui::PushItemWidth(-1);
+        ImGui::SetCursorPosX(innerPad);
+        ImGui::PushItemWidth(ImGui::GetWindowWidth() - innerPad * 2);
         bool enterPressed = ImGui::InputText("##newProjectName", &m_newProjectName, 
                                             ImGuiInputTextFlags_EnterReturnsTrue);
         ImGui::PopItemWidth();
