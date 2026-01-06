@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Path to your root project
-set(TOOLKIT_DIR /Users/erendegirmenci/Desktop/Projects/GDTK)
+set(TOOLKIT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/..")
 
 # ----------------------------
 # Add ToolKit library
