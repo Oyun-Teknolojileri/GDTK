@@ -70,62 +70,63 @@ namespace ToolKit
                                               !isCurrentMod,
                                           ModId::Scale);
         UI::HelpMarker(TKLoc + m_owner->m_name, "Scale\nScale (resize) selected items.");
+
+        ImGui::Spacing();
         ImGui::Separator();
+        ImGui::Spacing();
 
-        const char* items[]    = {"1", "2", "4", "8", "16"};
-        static int currentItem = 3; // Also the default.
-        ImGui::PushItemWidth(40);
-        if (ImGui::BeginCombo("##CS", items[currentItem], ImGuiComboFlags_None))
+        static bool isEditingSpeed = false;
+        static float editSpeedValue = 0.0f;
+        float camSpeed = GetApp()->m_camSpeed;
+        
+        ImVec2 contentRegionMin = ImGui::GetWindowContentRegionMin();
+        ImVec2 contentRegionMax = ImGui::GetWindowContentRegionMax();
+        float contentWidth = contentRegionMax.x - contentRegionMin.x;
+        float contentHeight = contentRegionMax.y - contentRegionMin.y;
+        float inputWidth = 40.0f;
+        
+        if (isEditingSpeed)
         {
-          for (int n = 0; n < IM_ARRAYSIZE(items); n++)
+          float startX = contentRegionMin.x + (contentWidth - inputWidth) * 0.5f;
+          ImGui::SetCursorPosX(startX);
+          ImGui::PushItemWidth(inputWidth);
+          ImGui::SetKeyboardFocusHere();
+          ImGui::InputFloat("##speedInput", &editSpeedValue, 0.0f, 0.0f, "%.1f",
+                            ImGuiInputTextFlags_AutoSelectAll);
+          
+          if (ImGui::IsItemDeactivatedAfterEdit())
           {
-            bool isSelected = (currentItem == n);
-            if (ImGui::Selectable(items[n], isSelected))
+            if (editSpeedValue >= 0.0f && editSpeedValue <= 1000.0f)
             {
-              currentItem = n;
+              GetApp()->m_camSpeed = editSpeedValue;
             }
-
-            if (isSelected)
-            {
-              ImGui::SetItemDefaultFocus();
-            }
+            isEditingSpeed = false;
           }
-          ImGui::EndCombo();
+          else if (ImGui::IsItemDeactivated())
+          {
+            isEditingSpeed = false;
+          }
+          ImGui::PopItemWidth();
         }
-        Vec2 comboHeight = ImGui::GetItemRectSize();
-
-        ImGui::PopItemWidth();
-
-        switch (currentItem)
+        else
         {
-        case 0:
-          GetApp()->m_camSpeed = 0.5f;
-          break;
-        case 1:
-          GetApp()->m_camSpeed = 1.0f;
-          break;
-        case 2:
-          GetApp()->m_camSpeed = 2.0f;
-          break;
-        case 3:
-          GetApp()->m_camSpeed = 4.0f;
-          break;
-        case 4:
-          GetApp()->m_camSpeed = 16.0f;
-          break;
-        default:
-          GetApp()->m_camSpeed = 8;
-          break;
+          char speedText[16];
+          snprintf(speedText, sizeof(speedText), "%.1f", camSpeed);
+          float textWidth = ImGui::CalcTextSize(speedText).x;
+          float startX = contentRegionMin.x + (contentWidth - textWidth) * 0.5f;
+          float frameHeight = ImGui::GetFrameHeight();
+          ImGui::SetCursorPosX(startX);
+          
+          if (ImGui::Selectable(speedText, false, 0, ImVec2(textWidth, frameHeight)))
+          {
+            isEditingSpeed = true;
+            editSpeedValue = camSpeed;
+          }
+          if (ImGui::IsItemHovered())
+          {
+            ImGui::SetTooltip("Camera Speed: %.1f units/sec\nClick to edit, Right click + scroll to adjust", camSpeed);
+          }
         }
-
-        ImGuiStyle& style = ImGui::GetStyle();
-        float spacing     = style.ItemInnerSpacing.x;
-
-        ImGui::SameLine(0, spacing);
-        UI::HelpMarker(TKLoc + m_owner->m_name, "Camera speed m/s\n");
-
-        // Calculate the height of the child frame based on its content
-        overlaySize.y = ImGui::GetCursorPosY() + style.ItemSpacing.y + comboHeight.y;
       }
       ImGui::EndChildFrame();
     }
