@@ -556,18 +556,14 @@ namespace ToolKit
         float textY = ImGui::GetCursorPosY();
         ImGui::Text("Workspace:");
         
-        // Button right aligned on same line with padding
-        ImGui::SetCursorPos(ImVec2(panelWidth - buttonWidth - buttonPadding, textY));
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.3f, 0.5f, 0.8f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.4f, 0.6f, 0.9f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.2f, 0.4f, 0.7f, 1.0f));
-        
+        // Button right aligned on same line with padding, slightly higher (like Edit button)
+        ImGui::SetCursorPos(ImVec2(panelWidth - buttonWidth - buttonPadding, textY - 5.0f));
+        // Use default button style (no custom colors)
         if (ImGui::Button("Set Workspace", ImVec2(buttonWidth, 0.0f)))
         {
           m_showWorkspacePopup = true;
           m_workspacePathOnUI = m_workspace->GetDefaultWorkspace();
         }
-        ImGui::PopStyleColor(3);
       }
       else
       {
@@ -629,12 +625,12 @@ namespace ToolKit
       float textHeight = 20.0f; // Fixed text height
       float inputHeight = 25.0f; // Fixed input height
       float buttonHeight = 25.0f; // Fixed button height
-      float spacing = 8.0f; // Fixed spacing
+      float spacing = 5.0f; // Reduced spacing for compact layout
       
       float minWidth = 500.0f;
-      float separatorHeight = 2.0f; // Fixed separator height
-      float minHeight = padding * 2 + textHeight + spacing + inputHeight + spacing + 
-                        separatorHeight + spacing + buttonHeight;
+      // No separator anymore, buttons directly below input
+      float minHeight = padding + textHeight + spacing + inputHeight + 8.0f + 
+                        buttonHeight + padding * 0.3f; // Very small bottom padding
       
       // Maximum size
       ImVec2 maxSize(viewport->Size.x * 0.9f, viewport->Size.y * 0.6f);
@@ -658,7 +654,7 @@ namespace ToolKit
         // Label
         ImGui::SetCursorPosX(innerPad);
         ImGui::Text("Workspace Path:");
-        ImGui::Spacing();
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 4.0f); // Small spacing instead of Spacing()
         
         // Input with horizontal padding
         ImGui::SetCursorPosX(innerPad);
@@ -667,19 +663,17 @@ namespace ToolKit
                                             ImGuiInputTextFlags_EnterReturnsTrue);
         ImGui::PopItemWidth();
         
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
-
+        // Buttons directly below input field
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 8.0f); // Small spacing after input
+        
         float buttonWidth = 120.0f;
         float buttonSpacing = 15.0f;
-        float totalWidth = buttonWidth * 3 + buttonSpacing * 2;
+        float totalWidth = buttonWidth * 2 + buttonSpacing;
         float currentWidth = ImGui::GetWindowWidth();
         float startX = (currentWidth - totalWidth) * 0.5f;
 
         ImGui::SetCursorPosX(startX);
         
-        ImGui::SameLine(0.0f, buttonSpacing);
         if (ImGui::Button("OK", ImVec2(buttonWidth, 0)) || enterPressed)
         {
           if (!m_workspacePathOnUI.empty())
@@ -691,7 +685,7 @@ namespace ToolKit
           }
         }
         
-        ImGui::SameLine();
+        ImGui::SameLine(0.0f, buttonSpacing);
         if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0)))
         {
           m_showWorkspacePopup = false;
@@ -721,10 +715,10 @@ namespace ToolKit
       float separatorHeight = 2.0f;
       
       float minWidth = 500.0f;
-      // Fixed height: padding + tab + spacing + (text + spacing + input) * 2 (for Local tab with 2 inputs) + spacing + separator + spacing + button + padding
-      // Local tab has 2 input fields (Project Name + Local Path), so we need more height
+      // Fixed height: padding + tab + spacing + text + spacing + input + spacing + separator + spacing + button + padding
+      // Both tabs now have only 1 input field (Local: Project Name only, Remote: Git URL)
       float minHeight = padding * 2 + tabHeight + spacing + 
-                        (textHeight + spacing + inputHeight) * 2 + spacing + 
+                        textHeight + spacing + inputHeight + spacing + 
                         separatorHeight + spacing + buttonHeight + padding;
       
       ImVec2 popupSize(minWidth, minHeight);
@@ -737,9 +731,17 @@ namespace ToolKit
       if (ImGui::BeginPopupModal("New Project", &m_showNewProjectPopup, 
                                  ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove))
       {
-        float innerPad = 10.0f;
+        // Set window padding for title and content spacing
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(20.0f, 15.0f));
+        
+        float innerPad = 15.0f; // Padding from left/right edges for labels and inputs
+        float tabBarPadding = 15.0f; // Padding for tab bar from edges
 
-        // Tab bar: Local / Remote
+        // Small spacing from top before tab bar
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 5.0f);
+        
+        // Tab bar: Local / Remote with padding
+        ImGui::SetCursorPosX(tabBarPadding);
         if (ImGui::BeginTabBar("##NewProjectTabs"))
         {
           if (ImGui::BeginTabItem("Local"))
@@ -755,7 +757,7 @@ namespace ToolKit
           ImGui::EndTabBar();
         }
         
-        ImGui::Spacing();
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 5.0f); // Small spacing after tab bar
 
         // Disable inputs while cloning
         if (m_isCloning)
@@ -765,32 +767,22 @@ namespace ToolKit
 
         // Show different inputs based on active tab
         bool enterPressed = false;
+        
+        // Remove border from input fields
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+        
         if (m_newProjectTabLocal)
         {
-          // Local tab: show project name and path inputs
+          // Local tab: show only project name input (path is workspace)
           ImGui::SetCursorPosX(innerPad);
           ImGui::Text("Project Name:");
-          ImGui::Spacing();
+          ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 4.0f); // Small spacing between label and input
           
+          // Input field with padding from edges
           ImGui::SetCursorPosX(innerPad);
           ImGui::PushItemWidth(ImGui::GetWindowWidth() - innerPad * 2);
           enterPressed = ImGui::InputText("##newProjectName", &m_newProjectName, 
                                           ImGuiInputTextFlags_EnterReturnsTrue);
-          ImGui::PopItemWidth();
-          
-          ImGui::Spacing();
-          
-          ImGui::SetCursorPosX(innerPad);
-          ImGui::Text("Local Path:");
-          ImGui::Spacing();
-          
-          ImGui::SetCursorPosX(innerPad);
-          ImGui::PushItemWidth(ImGui::GetWindowWidth() - innerPad * 2);
-          if (ImGui::InputText("##newProjectPath", &m_newProjectPathOrUrl, 
-                              ImGuiInputTextFlags_EnterReturnsTrue))
-          {
-            enterPressed = true;
-          }
           ImGui::PopItemWidth();
         }
         else
@@ -798,14 +790,17 @@ namespace ToolKit
           // Remote tab: show only git URL input, project name auto-extracted on create
           ImGui::SetCursorPosX(innerPad);
           ImGui::Text("Git URL:");
-          ImGui::Spacing();
+          ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 4.0f); // Small spacing between label and input
           
+          // Input field with padding from edges
           ImGui::SetCursorPosX(innerPad);
           ImGui::PushItemWidth(ImGui::GetWindowWidth() - innerPad * 2);
           enterPressed = ImGui::InputText("##newProjectUrl", &m_newProjectPathOrUrl,
                                           ImGuiInputTextFlags_EnterReturnsTrue);
           ImGui::PopItemWidth();
         }
+        
+        ImGui::PopStyleVar(); // Restore border style
 
         if (m_isCloning)
         {
@@ -815,7 +810,7 @@ namespace ToolKit
         // Show cloning progress
         if (m_isCloning)
         {
-          ImGui::Spacing();
+          ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 5.0f); // Small spacing before progress text
           ImGui::SetCursorPosX(innerPad);
           ImGui::Text("Cloning repository...");
           if (!m_cloneProgress.empty())
@@ -826,8 +821,20 @@ namespace ToolKit
             ImGui::PopStyleColor();
           }
         }
+        else
+        {
+          // Small spacing after input field when not cloning
+          ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 5.0f);
+        }
         
-        ImGui::Spacing();
+        // Push buttons closer to bottom
+        float availableHeight = ImGui::GetContentRegionAvail().y;
+        float buttonAreaHeight = ImGui::GetFrameHeight() + spacing * 2;
+        if (availableHeight > buttonAreaHeight)
+        {
+          ImGui::SetCursorPosY(ImGui::GetCursorPosY() + availableHeight - buttonAreaHeight);
+        }
+        
         ImGui::Separator();
         ImGui::Spacing();
 
@@ -856,7 +863,7 @@ namespace ToolKit
           
           if (m_newProjectTabLocal)
           {
-            canCreate = !m_newProjectName.empty() && !m_newProjectPathOrUrl.empty();
+            canCreate = !m_newProjectName.empty();
           }
           else
           {
@@ -949,6 +956,8 @@ namespace ToolKit
         {
           ImGui::EndDisabled();
         }
+        
+        ImGui::PopStyleVar(); // Restore window padding
 
         ImGui::EndPopup();
       }
