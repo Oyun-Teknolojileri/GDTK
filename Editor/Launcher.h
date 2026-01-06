@@ -45,7 +45,9 @@ namespace ToolKit
 
       String m_newProjectName;
       TexturePtr m_logoTexture = nullptr;
-      String m_logoPath = "/Icons/app.png"; // TODO fix path
+      TexturePtr m_defaultProjectThumbnail = nullptr;
+      String m_logoPath = "/Icons/app.png";
+      String m_thumbnailPath = "../../thumbnail.png";
     };
   } // namespace Editor
 } // namespace ToolKit

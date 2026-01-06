@@ -36,6 +36,9 @@ namespace ToolKit
           m_logoTexture->Init();
         }
       }
+
+      // Default project thumbnail is initially logo; can be replaced per project.
+      m_defaultProjectThumbnail = m_logoTexture;
     }
 
     Launcher::~Launcher()
@@ -229,15 +232,23 @@ namespace ToolKit
           // Draw background
           childDrawList->AddRectFilled(itemPos, itemMax, bgColor, 4.0f);
           
-          // Project icon in center-top - Toolkit PNG
+          // Project icon in center-top - project thumbnail or default
           float iconSize = 64.0f;
           float iconPadding = (cardSize - iconSize) * 0.5f;
           ImVec2 iconPos = ImVec2(itemPos.x + iconPadding, itemPos.y + 10.0f);
-          
-          // Draw Toolkit logo texture
-          if (m_logoTexture && m_logoTexture->m_textureId != 0)
+
+          // see if there is thumnail for the project
+          const String thumbnailPath  = ConcatPaths({m_workspace->GetActiveWorkspace(), project.name, "thumbnail.png"});
+          bool thumbnailExists = CheckSystemFile(thumbnailPath);
+          TexturePtr projectThumbnail = GetTextureManager()->Create<Texture>(thumbnailPath);
+          if (projectThumbnail)
           {
-            childDrawList->AddImageRounded(Convert2ImGuiTexture(m_logoTexture),
+            projectThumbnail->Init();
+          }
+          TexturePtr thumbTexture = thumbnailExists ? projectThumbnail : m_logoTexture;
+          if (thumbTexture && thumbTexture->m_textureId != 0)
+          {
+            childDrawList->AddImageRounded(Convert2ImGuiTexture(thumbTexture),
                                           iconPos,
                                           ImVec2(iconPos.x + iconSize, iconPos.y + iconSize),
                                           ImVec2(0, 0), ImVec2(1, 1),
