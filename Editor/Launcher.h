@@ -44,6 +44,7 @@ namespace ToolKit
       bool m_showNewProjectPopup = false;
 
       String m_newProjectName;
+      int m_selectedProjectIndex = -1;
       TexturePtr m_logoTexture = nullptr;
       TexturePtr m_defaultProjectThumbnail = nullptr;
       String m_logoPath = "/Icons/app.png";

@@ -153,9 +153,22 @@ namespace ToolKit
       float spacingBetweenPanels = 10.0f; // Space between projects list and workspace panel
       float titleHeight = ImGui::GetTextLineHeight() + ImGui::GetStyle().ItemSpacing.y;
       float listHeight = windowSize.y - headerSize.y - titleHeight - bottomPanelHeight - bottomPadding - panelPadding - spacingBetweenPanels;
-      ImGui::SetCursorPosX(panelPadding); // Ensure proper left padding
+
+      // Layout: left projects grid + right tools panel
+      float toolsPanelWidth = 180.0f;
+      float projectsPanelWidth = panelWidth - toolsPanelWidth - panelSpacing;
+      if (projectsPanelWidth < 200.0f)
+      {
+        projectsPanelWidth = 200.0f; // clamp
+      }
+
+      // Remember Y start for both panels
+      float listStartY = ImGui::GetCursorPosY();
+
+      // Left: Projects grid panel
+      ImGui::SetCursorPos(ImVec2(panelPadding, listStartY));
       ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetColorU32(ImGuiCol_FrameBg));
-      ImGui::BeginChild("ProjectsListPanel", ImVec2(panelWidth, listHeight), true);
+      ImGui::BeginChild("ProjectsListPanel", ImVec2(projectsPanelWidth, listHeight), true);
       ImGui::PopStyleColor();
       
       if (m_workspace && !m_workspace->m_projects.empty())
@@ -172,6 +185,12 @@ namespace ToolKit
         ImGui::SetCursorPos(ImVec2(gridPadding, gridPadding));
         
         const size_t numProjects = m_workspace->m_projects.size();
+
+        // Clamp selected index if list shrunk.
+        if (m_selectedProjectIndex >= (int)numProjects)
+        {
+          m_selectedProjectIndex = -1;
+        }
         
         // Calculate grid layout (account for padding)
         float availableWidth = ImGui::GetContentRegionAvail().x - gridPadding * 2;
@@ -197,11 +216,10 @@ namespace ToolKit
           // Card item - square style
           ImVec2 cardSizeVec(cardSize, cardSize);
           
-          // Use InvisibleButton for clickable area
+          // Use InvisibleButton for clickable area (selection only)
           if (ImGui::InvisibleButton("##projectCard", cardSizeVec))
           {
-            m_workspace->SetActiveProject(project);
-            g_launcherRunning = false;
+            m_selectedProjectIndex = (int)i;
           }
           
           // Check if item is hovered for visual feedback
@@ -228,9 +246,19 @@ namespace ToolKit
             hoverColor.z = (hoverColor.z + 0.05f > 1.0f) ? 1.0f : (hoverColor.z + 0.05f);
             bgColor = ImGui::GetColorU32(hoverColor);
           }
+
+          // Selected state: slightly darker border to indicate selection.
+          bool isSelected = (m_selectedProjectIndex == (int)i);
           
           // Draw background
           childDrawList->AddRectFilled(itemPos, itemMax, bgColor, 4.0f);
+
+          // If selected, draw an outline.
+          if (isSelected)
+          {
+            ImU32 borderColor = ImGui::GetColorU32(ImVec4(0.9f, 0.9f, 0.9f, 1.0f));
+            childDrawList->AddRect(itemPos, itemMax, borderColor, 4.0f, 0, 2.0f);
+          }
           
           // Project icon in center-top - project thumbnail or default
           float iconSize = 64.0f;
@@ -279,6 +307,7 @@ namespace ToolKit
       }
       else if (m_workspace)
       {
+        m_selectedProjectIndex = -1;
         // No projects message
         ImGui::SetCursorPosX((panelWidth - ImGui::CalcTextSize("No projects found. Create a new project to get started.").x) * 0.5f);
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
@@ -286,6 +315,51 @@ namespace ToolKit
         ImGui::PopStyleColor();
       }
       
+      ImGui::EndChild();
+
+      // Right: Tools panel (Open, Open in Folder, Create Shortcut)
+      ImGui::SetCursorPos(ImVec2(panelPadding + projectsPanelWidth + panelSpacing, listStartY));
+      ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetColorU32(ImGuiCol_WindowBg));
+      ImGui::BeginChild("ToolsPanel", ImVec2(toolsPanelWidth, listHeight), true);
+      ImGui::PopStyleColor();
+      {
+        float buttonWidth = toolsPanelWidth - 20.0f; // small inner padding
+        float buttonHeight = 28.0f;
+
+        // Small top padding so buttons are not stuck to the top border
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 8.0f);
+
+        bool hasSelection = m_workspace && 
+                            m_selectedProjectIndex >= 0 && 
+                            m_selectedProjectIndex < (int)m_workspace->m_projects.size();
+
+        ImGui::BeginDisabled(!hasSelection);
+
+        ImGui::SetCursorPosX((toolsPanelWidth - buttonWidth) * 0.5f);
+        if (ImGui::Button("Open", ImVec2(buttonWidth, buttonHeight)))
+        {
+          if (hasSelection)
+          {
+            const Project& selected = m_workspace->m_projects[m_selectedProjectIndex];
+            m_workspace->SetActiveProject(selected);
+            g_launcherRunning = false;
+          }
+        }
+
+        ImGui::SetCursorPosX((toolsPanelWidth - buttonWidth) * 0.5f);
+        if (ImGui::Button("Open in Folder", ImVec2(buttonWidth, buttonHeight)))
+        {
+          // TODO: Implement open project folder action.
+        }
+
+        ImGui::SetCursorPosX((toolsPanelWidth - buttonWidth) * 0.5f);
+        if (ImGui::Button("Create Shortcut", ImVec2(buttonWidth, buttonHeight)))
+        {
+          // TODO: Implement create shortcut action.
+        }
+
+        ImGui::EndDisabled();
+      }
       ImGui::EndChild();
       
       // Bottom row: Workspace Panel (left) + New Project Button (right, panelsiz)
