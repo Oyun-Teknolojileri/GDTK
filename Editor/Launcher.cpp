@@ -232,8 +232,7 @@ namespace ToolKit
           
           ImDrawList* childDrawList = ImGui::GetWindowDrawList();
           
-          ImVec4 panelBgColor = ImGui::GetStyle().Colors[ImGuiCol_FrameBg];
-          ImU32 bgColor = ImGui::GetColorU32(panelBgColor);
+          bool isSelected = (m_selectedProjectIndex == (int)i);
           
           if (isHovered && ImGui::IsMouseDoubleClicked(0))
           {
@@ -241,34 +240,53 @@ namespace ToolKit
             m_workspace->SetActiveProject(project);
             g_launcherRunning = false;
           }
-
-          if (isHovered)
+ 
+          if (isHovered || isSelected)
           {
+            ImVec4 panelBgColor = ImGui::GetStyle().Colors[ImGuiCol_FrameBg];
             ImVec4 hoverColor = panelBgColor;
-            hoverColor.x = (hoverColor.x + 0.02f > 1.0f) ? 1.0f : (hoverColor.x + 0.02f);
-            hoverColor.y = (hoverColor.y + 0.02f > 1.0f) ? 1.0f : (hoverColor.y + 0.02f);
-            hoverColor.z = (hoverColor.z + 0.02f > 1.0f) ? 1.0f : (hoverColor.z + 0.02f);
-            bgColor = ImGui::GetColorU32(hoverColor);
-          }
-
-          bool isSelected = (m_selectedProjectIndex == (int)i);
-          
-          childDrawList->AddRectFilled(itemPos, itemMax, bgColor, 4.0f);
-
-          if (isSelected)
-          {
-            ImU32 borderColor = ImGui::GetColorU32(ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
-            childDrawList->AddRect(itemPos, itemMax, borderColor, 4.0f, 0, 2.0f);
+            
+            if (isHovered)
+            {
+              hoverColor.x = (hoverColor.x + 0.02f > 1.0f) ? 1.0f : (hoverColor.x + 0.02f);
+              hoverColor.y = (hoverColor.y + 0.02f > 1.0f) ? 1.0f : (hoverColor.y + 0.02f);
+              hoverColor.z = (hoverColor.z + 0.02f > 1.0f) ? 1.0f : (hoverColor.z + 0.02f);
+            }
+            
+            ImU32 bgColor = ImGui::GetColorU32(hoverColor);
+            childDrawList->AddRectFilled(itemPos, itemMax, bgColor, 4.0f);
+            
+            if (isHovered)
+            {
+              float hoverBorderPadding = 2.0f;
+              ImVec2 hoverBorderMin = ImVec2(itemPos.x + hoverBorderPadding, itemPos.y + hoverBorderPadding);
+              ImVec2 hoverBorderMax = ImVec2(itemMax.x - hoverBorderPadding, itemMax.y - hoverBorderPadding);
+              ImU32 borderColor = ImGui::GetColorU32(ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
+              childDrawList->AddRect(hoverBorderMin, hoverBorderMax, borderColor, 4.0f, 0, 1.0f);
+            }
+            
+            if (isSelected)
+            {
+              float selectionBorderPadding = 1.0f;
+              ImVec2 selectionBorderMin = ImVec2(itemPos.x - selectionBorderPadding, itemPos.y - selectionBorderPadding);
+              ImVec2 selectionBorderMax = ImVec2(itemMax.x + selectionBorderPadding, itemMax.y + selectionBorderPadding);
+              ImU32 borderColor = ImGui::GetColorU32(ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
+              childDrawList->AddRect(selectionBorderMin, selectionBorderMax, borderColor, 4.0f, 0, 2.0f);
+            }
           }
           
           const char* projectName = project.name.c_str();
           float textHeight = ImGui::GetTextLineHeight();
           float textWidth = ImGui::CalcTextSize(projectName).x;
           
-          float imageHeight = cardSize - textHeight - 4.0f;
-          float imageWidth = cardSize;
-          ImVec2 imagePos = ImVec2(itemPos.x, itemPos.y);
-          ImVec2 imageMax = ImVec2(itemPos.x + imageWidth, itemPos.y + imageHeight);
+          float imagePadding = 4.0f;
+          float imageHeight = cardSize - textHeight - 4.0f - imagePadding * 2;
+          float imageWidth = cardSize - imagePadding * 2;
+          float displaySize = glm::min(imageWidth, imageHeight);
+          float imageX = itemPos.x + (cardSize - displaySize) * 0.5f;
+          float imageY = itemPos.y + imagePadding + (imageHeight - displaySize) * 0.5f;
+          ImVec2 imagePos = ImVec2(imageX, imageY);
+          ImVec2 imageMax = ImVec2(imageX + displaySize, imageY + displaySize);
 
           const String thumbnailPath = ConcatPaths({m_workspace->GetActiveWorkspace(), project.name, "thumbnail.png"});
           bool thumbnailExists = CheckSystemFile(thumbnailPath);
@@ -280,10 +298,32 @@ namespace ToolKit
           TexturePtr thumbTexture = thumbnailExists ? projectThumbnail : m_logoTexture;
           if (thumbTexture && thumbTexture->m_textureId != 0)
           {
+            ImVec2 uvMin(0, 0);
+            ImVec2 uvMax(1, 1);
+            
+            if (thumbTexture->m_width > 0 && thumbTexture->m_height > 0)
+            {
+              float texAspect = (float)thumbTexture->m_width / (float)thumbTexture->m_height;
+              if (texAspect > 1.0f)
+              {
+                float uvWidth = 1.0f / texAspect;
+                float uvOffset = (1.0f - uvWidth) * 0.5f;
+                uvMin.x = uvOffset;
+                uvMax.x = uvOffset + uvWidth;
+              }
+              else if (texAspect < 1.0f)
+              {
+                float uvHeight = texAspect;
+                float uvOffset = (1.0f - uvHeight) * 0.5f;
+                uvMin.y = uvOffset;
+                uvMax.y = uvOffset + uvHeight;
+              }
+            }
+            
             childDrawList->AddImageRounded(Convert2ImGuiTexture(thumbTexture),
                                           imagePos,
                                           imageMax,
-                                          ImVec2(0, 0), ImVec2(1, 1),
+                                          uvMin, uvMax,
                                           ImGui::GetColorU32(ImVec4(1, 1, 1, 1)), 4.0f);
           }
           else
