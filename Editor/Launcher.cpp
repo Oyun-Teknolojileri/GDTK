@@ -349,7 +349,18 @@ namespace ToolKit
         ImGui::SetCursorPosX((toolsPanelWidth - buttonWidth) * 0.5f);
         if (ImGui::Button("Open in Folder", ImVec2(buttonWidth, buttonHeight)))
         {
-          // TODO: Implement open project folder action.
+          if (hasSelection)
+          {
+            const Project& selected = m_workspace->m_projects[m_selectedProjectIndex];
+            // Project folder is assumed to be <workspace>/<project.name>
+            String projectFolder = ConcatPaths({ m_workspace->GetActiveWorkspace(), selected.name });
+
+            ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
+            if (platform_io.Platform_OpenInShellFn)
+            {
+              platform_io.Platform_OpenInShellFn(ImGui::GetCurrentContext(), projectFolder.c_str());
+            }
+          }
         }
 
         ImGui::SetCursorPosX((toolsPanelWidth - buttonWidth) * 0.5f);
