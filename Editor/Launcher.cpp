@@ -13,6 +13,7 @@
 
 #include <Util.h>
 #include <Texture.h>
+#include <Common/Win32Utils.h>
 
 #define IMGUI_USER_CONFIG "tk_imconfig.h"
 #include <imgui/imgui.h>
@@ -710,46 +711,121 @@ namespace ToolKit
       ImVec2 center = ImVec2(viewport->Pos.x + viewport->Size.x * 0.5f,
                             viewport->Pos.y + viewport->Size.y * 0.5f);
 
-      // Calculate content size
-      float padding = 20.0f; // Window padding
+      // Fixed size for popup (no dynamic resizing)
+      float padding = 20.0f;
+      float tabHeight = ImGui::GetFrameHeight();
       float textHeight = ImGui::GetTextLineHeight();
       float inputHeight = ImGui::GetFrameHeight();
       float buttonHeight = ImGui::GetFrameHeight();
-      float spacing = ImGui::GetStyle().ItemSpacing.y;
+      float spacing = 8.0f;
+      float separatorHeight = 2.0f;
       
-      float minWidth = 400.0f;
-      float separatorHeight = ImGui::GetFrameHeight() * 0.5f; // Approximate separator height
-      float minHeight = padding * 2 + textHeight + spacing + inputHeight + spacing + 
-                        separatorHeight + spacing + buttonHeight;
+      float minWidth = 500.0f;
+      // Fixed height: padding + tab + spacing + (text + spacing + input) * 2 (for Local tab with 2 inputs) + spacing + separator + spacing + button + padding
+      // Local tab has 2 input fields (Project Name + Local Path), so we need more height
+      float minHeight = padding * 2 + tabHeight + spacing + 
+                        (textHeight + spacing + inputHeight) * 2 + spacing + 
+                        separatorHeight + spacing + buttonHeight + padding;
       
-      // Maximum size
-      ImVec2 maxSize(viewport->Size.x * 0.9f, viewport->Size.y * 0.6f);
+      ImVec2 popupSize(minWidth, minHeight);
       
-      // Use minimum of content size and max size
-      ImVec2 popupSize(
-        (minWidth < maxSize.x) ? minWidth : maxSize.x,
-        (minHeight < maxSize.y) ? minHeight : maxSize.y
-      );
-      
-      ImGui::OpenPopup("New Project");
+      // SetNextWindow calls must be BEFORE OpenPopup
       ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
       ImGui::SetNextWindowSize(popupSize, ImGuiCond_Appearing);
-      ImGui::SetNextWindowSizeConstraints(ImVec2(minWidth, minHeight), maxSize);
+      ImGui::OpenPopup("New Project");
 
       if (ImGui::BeginPopupModal("New Project", &m_showNewProjectPopup, 
                                  ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove))
       {
         float innerPad = 10.0f;
 
-        ImGui::SetCursorPosX(innerPad);
-        ImGui::Text("Project Name:");
-        ImGui::Spacing();
+        // Tab bar: Local / Remote
+        if (ImGui::BeginTabBar("##NewProjectTabs"))
+        {
+          if (ImGui::BeginTabItem("Local"))
+          {
+            m_newProjectTabLocal = true;
+            ImGui::EndTabItem();
+          }
+          if (ImGui::BeginTabItem("Remote"))
+          {
+            m_newProjectTabLocal = false;
+            ImGui::EndTabItem();
+          }
+          ImGui::EndTabBar();
+        }
         
-        ImGui::SetCursorPosX(innerPad);
-        ImGui::PushItemWidth(ImGui::GetWindowWidth() - innerPad * 2);
-        bool enterPressed = ImGui::InputText("##newProjectName", &m_newProjectName, 
-                                            ImGuiInputTextFlags_EnterReturnsTrue);
-        ImGui::PopItemWidth();
+        ImGui::Spacing();
+
+        // Disable inputs while cloning
+        if (m_isCloning)
+        {
+          ImGui::BeginDisabled();
+        }
+
+        // Show different inputs based on active tab
+        bool enterPressed = false;
+        if (m_newProjectTabLocal)
+        {
+          // Local tab: show project name and path inputs
+          ImGui::SetCursorPosX(innerPad);
+          ImGui::Text("Project Name:");
+          ImGui::Spacing();
+          
+          ImGui::SetCursorPosX(innerPad);
+          ImGui::PushItemWidth(ImGui::GetWindowWidth() - innerPad * 2);
+          enterPressed = ImGui::InputText("##newProjectName", &m_newProjectName, 
+                                          ImGuiInputTextFlags_EnterReturnsTrue);
+          ImGui::PopItemWidth();
+          
+          ImGui::Spacing();
+          
+          ImGui::SetCursorPosX(innerPad);
+          ImGui::Text("Local Path:");
+          ImGui::Spacing();
+          
+          ImGui::SetCursorPosX(innerPad);
+          ImGui::PushItemWidth(ImGui::GetWindowWidth() - innerPad * 2);
+          if (ImGui::InputText("##newProjectPath", &m_newProjectPathOrUrl, 
+                              ImGuiInputTextFlags_EnterReturnsTrue))
+          {
+            enterPressed = true;
+          }
+          ImGui::PopItemWidth();
+        }
+        else
+        {
+          // Remote tab: show only git URL input, project name auto-extracted on create
+          ImGui::SetCursorPosX(innerPad);
+          ImGui::Text("Git URL:");
+          ImGui::Spacing();
+          
+          ImGui::SetCursorPosX(innerPad);
+          ImGui::PushItemWidth(ImGui::GetWindowWidth() - innerPad * 2);
+          enterPressed = ImGui::InputText("##newProjectUrl", &m_newProjectPathOrUrl,
+                                          ImGuiInputTextFlags_EnterReturnsTrue);
+          ImGui::PopItemWidth();
+        }
+
+        if (m_isCloning)
+        {
+          ImGui::EndDisabled();
+        }
+        
+        // Show cloning progress
+        if (m_isCloning)
+        {
+          ImGui::Spacing();
+          ImGui::SetCursorPosX(innerPad);
+          ImGui::Text("Cloning repository...");
+          if (!m_cloneProgress.empty())
+          {
+            ImGui::SetCursorPosX(innerPad);
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
+            ImGui::TextWrapped("%s", m_cloneProgress.c_str());
+            ImGui::PopStyleColor();
+          }
+        }
         
         ImGui::Spacing();
         ImGui::Separator();
@@ -762,23 +838,116 @@ namespace ToolKit
         float startX = (currentWidth - totalWidth) * 0.5f;
 
         ImGui::SetCursorPosX(startX);
-        if (ImGui::Button("Create", ImVec2(buttonWidth, 0)) || enterPressed)
+        
+        // Disable buttons while cloning
+        bool wasCloning = m_isCloning;
+        if (m_isCloning)
         {
-          if (!m_newProjectName.empty())
+          ImGui::BeginDisabled();
+        }
+        
+        bool createClicked = ImGui::Button("Create", ImVec2(buttonWidth, 0));
+        bool shouldCreate = (createClicked || (enterPressed && !m_isCloning));
+        
+        if (shouldCreate)
+        {
+          bool canCreate = false;
+          String projectName = m_newProjectName;
+          
+          if (m_newProjectTabLocal)
           {
-            g_launcherRunning = false;
-            m_app->OnNewProject(m_newProjectName, false);
-            m_workspace->SetActiveProject({m_newProjectName, ""});
-            m_showNewProjectPopup = false;
-            ImGui::CloseCurrentPopup();
+            canCreate = !m_newProjectName.empty() && !m_newProjectPathOrUrl.empty();
+          }
+          else
+          {
+            // Remote: extract project name from git URL
+            if (!m_newProjectPathOrUrl.empty())
+            {
+              String url = m_newProjectPathOrUrl;
+              // Remove .git suffix if present
+              if (url.size() > 4 && url.substr(url.size() - 4) == ".git")
+              {
+                url = url.substr(0, url.size() - 4);
+              }
+              // Extract last part after / or :
+              size_t lastSlash = url.find_last_of("/");
+              size_t lastColon = url.find_last_of(":");
+              size_t startPos = (lastSlash != String::npos) ? lastSlash + 1 : 
+                               ((lastColon != String::npos) ? lastColon + 1 : 0);
+              if (startPos < url.size())
+              {
+                projectName = url.substr(startPos);
+                canCreate = !projectName.empty();
+              }
+            }
+          }
+          
+          if (canCreate)
+          {
+            // Use tab selection to determine if it's git clone or local path
+            if (!m_newProjectTabLocal)
+            {
+              // Git clone
+              m_isCloning = true;
+              m_cloneProgress = "Starting git clone...";
+              
+              String workspacePath = m_workspace->GetActiveWorkspace();
+              String targetPath = ConcatPaths({workspacePath, projectName});
+              
+              // Build git clone command
+              String gitCmd = "git clone \"" + m_newProjectPathOrUrl + "\" \"" + targetPath + "\"";
+              
+              // Execute git clone asynchronously
+              PlatformHelpers::SysComExec(gitCmd, true, false, 
+                [this, targetPath](int exitCode) -> void
+                {
+                  m_isCloning = false;
+                  if (exitCode == 0)
+                  {
+                    m_cloneProgress = "Clone completed successfully!";
+                    // Refresh workspace to show new project
+                    m_workspace->RefreshProjects();
+                    // Close popup after a short delay
+                    m_showNewProjectPopup = false;
+                    ImGui::CloseCurrentPopup();
+                    m_newProjectName.clear();
+                    m_newProjectPathOrUrl.clear();
+                    m_cloneProgress.clear();
+                  }
+                  else
+                  {
+                    m_cloneProgress = "Git clone failed with exit code: " + std::to_string(exitCode);
+                  }
+                });
+            }
+            else
+            {
+              // Local tab - create project normally
+              g_launcherRunning = false;
+              m_app->OnNewProject(projectName, false);
+              m_workspace->SetActiveProject({projectName, ""});
+              m_showNewProjectPopup = false;
+              ImGui::CloseCurrentPopup();
+              m_newProjectName.clear();
+              m_newProjectPathOrUrl.clear();
+            }
           }
         }
         
         ImGui::SameLine(0.0f, buttonSpacing);
-        if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0)))
+        if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0)) && !m_isCloning)
         {
           m_showNewProjectPopup = false;
           ImGui::CloseCurrentPopup();
+          m_newProjectName.clear();
+          m_newProjectPathOrUrl.clear();
+          m_isCloning = false;
+          m_cloneProgress.clear();
+        }
+        
+        if (wasCloning)
+        {
+          ImGui::EndDisabled();
         }
 
         ImGui::EndPopup();
