@@ -24,7 +24,7 @@ namespace ToolKit
       void ShowLauncherWindow();
 
      private:
-      Launcher() {} // hide default constructor
+      Launcher() {}
 
       void HandleWorkspace();
       void ShowWorkspacePopup();
@@ -45,10 +45,10 @@ namespace ToolKit
       bool m_showNewProjectPopup = false;
 
       String m_newProjectName;
-      String m_newProjectPathOrUrl; // Can be local path or git URL
+      String m_newProjectPathOrUrl;
       bool m_isCloning = false;
       String m_cloneProgress;
-      bool m_newProjectTabLocal = true; // true = Local, false = Remote
+      bool m_newProjectTabLocal = true;
       int m_selectedProjectIndex = -1;
       TexturePtr m_logoTexture = nullptr;
       TexturePtr m_defaultProjectThumbnail = nullptr;
