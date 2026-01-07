@@ -163,15 +163,24 @@ namespace ToolKit
       float panelWidth   = windowSize.x - panelPadding * 2;
 
       ImGui::SetCursorPosX(panelPadding);
-      ImGui::Text("Projects");
-      ImGui::Spacing();
-
+      
       float bottomPanelHeight    = 40.0f;
       float bottomPadding        = 20.0f;
       float spacingBetweenPanels = 10.0f;
-      float titleHeight          = ImGui::GetTextLineHeight() + ImGui::GetStyle().ItemSpacing.y;
-      float listHeight = windowSize.y - headerSize.y - titleHeight - bottomPanelHeight - bottomPadding - panelPadding -
+      float tabBarHeight         = ImGui::GetFrameHeight();
+      float listHeight = windowSize.y - headerSize.y - tabBarHeight - bottomPanelHeight - bottomPadding - panelPadding -
                          spacingBetweenPanels;
+
+      if (ImGui::BeginTabBar("##MainTabs"))
+      {
+        if (ImGui::BeginTabItem("Projects"))
+        {
+          ImGui::EndTabItem();
+        }
+        ImGui::EndTabBar();
+      }
+      
+      ImGui::Spacing();
 
       float toolsPanelWidth    = 180.0f;
       float projectsPanelWidth = panelWidth - toolsPanelWidth - panelSpacing;
@@ -226,9 +235,13 @@ namespace ToolKit
           int row = (int) (i / actualItemsPerRow);
           int col = (int) (i % actualItemsPerRow);
 
-          if (col == 0 && i > 0)
+          if (col == 0)
           {
-            ImGui::NewLine();
+            if (i > 0)
+            {
+              ImGui::NewLine();
+            }
+            ImGui::SetCursorPosX(gridPadding);
           }
 
           ImVec2 cardSizeVec(cardSize, cardSize);
@@ -814,13 +827,6 @@ namespace ToolKit
           ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 5.0f);
           ImGui::SetCursorPosX(innerPad);
           ImGui::Text("Cloning repository...");
-          if (!m_cloneProgress.empty())
-          {
-            ImGui::SetCursorPosX(innerPad);
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
-            ImGui::TextWrapped("%s", m_cloneProgress.c_str());
-            ImGui::PopStyleColor();
-          }
         }
         else
         {
