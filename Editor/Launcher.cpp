@@ -28,16 +28,18 @@ namespace ToolKit
   {
     Launcher::Launcher(Workspace* workspace, App* app) : m_workspace(workspace), m_app(app)
     {
-      if (m_logoTexture == nullptr)
+      m_logoTexture = GetTextureManager()->Create<Texture>(TexturePath(m_logoPath.c_str(), true));
+      if (m_logoTexture)
       {
-        m_logoTexture = GetTextureManager()->Create<Texture>(TexturePath(m_logoPath.c_str(), true));
-        if (m_logoTexture)
-        {
-          m_logoTexture->Init();
-        }
+        m_logoTexture->Init();
       }
 
-      m_defaultProjectThumbnail = m_logoTexture;
+      m_defaultProjectThumbnail =
+          GetTextureManager()->Create<Texture>(TexturePath(m_defaultThumbnailPath.c_str(), true));
+      if (m_defaultProjectThumbnail)
+      {
+        m_defaultProjectThumbnail->Init();
+      }
 
       if (m_launchIconTexture == nullptr)
       {
@@ -291,7 +293,7 @@ namespace ToolKit
           {
             projectThumbnail->Init();
           }
-          TexturePtr thumbTexture = thumbnailExists ? projectThumbnail : m_logoTexture;
+          TexturePtr thumbTexture = thumbnailExists ? projectThumbnail : m_defaultProjectThumbnail;
           if (thumbTexture && thumbTexture->m_textureId != 0)
           {
             ImVec2 uvMin(0, 0);

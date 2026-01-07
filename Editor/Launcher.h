@@ -52,7 +52,8 @@ namespace ToolKit
       int m_selectedProjectIndex           = -1;
       TexturePtr m_logoTexture             = nullptr;
       TexturePtr m_defaultProjectThumbnail = nullptr;
-      String m_logoPath                    = "/splash.png";
+      String m_logoPath                    = "/Icons/app_big.png";
+      String m_defaultThumbnailPath        = "/splash.png";
       String m_thumbnailPath               = "../../thumbnail.png";
       String m_launchIconPath              = "/Icons/play.png";
       String m_folderIconPath              = "/Icons/folder.png";
