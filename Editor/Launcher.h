@@ -8,6 +8,7 @@
 #pragma once
 
 #include "Workspace.h"
+#include <unordered_map>
 
 namespace ToolKit
 {
@@ -61,6 +62,9 @@ namespace ToolKit
       TexturePtr m_launchIconTexture       = nullptr;
       TexturePtr m_folderIconTexture       = nullptr;
       TexturePtr m_shortcutIconTexture     = nullptr;
+
+      std::unordered_map<String, bool> m_thumbnailCache;
+      void UpdateThumbnailCache();
     };
   } // namespace Editor
 } // namespace ToolKit

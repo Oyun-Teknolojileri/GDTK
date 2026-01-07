@@ -71,6 +71,19 @@ namespace ToolKit
 
     Launcher::~Launcher() {}
 
+    void Launcher::UpdateThumbnailCache()
+    {
+      m_thumbnailCache.clear();
+      if (m_workspace)
+      {
+        for (const Project& project : m_workspace->m_projects)
+        {
+          String thumbnailPath = ConcatPaths({m_workspace->GetActiveWorkspace(), project.name, "thumbnail.png"});
+          m_thumbnailCache[project.name] = CheckSystemFile(thumbnailPath);
+        }
+      }
+    }
+
     void Launcher::ShowLauncherWindow()
     {
       UI::BeginUI();
@@ -174,9 +187,14 @@ namespace ToolKit
       ImGui::BeginChild("ProjectsListPanel", ImVec2(projectsPanelWidth, listHeight), true);
       ImGui::PopStyleColor();
 
-      if (m_workspace && !m_workspace->m_projects.empty())
-      {
-        ImGui::BeginChild("ProjectsList", ImVec2(-1, -1), false);
+        if (m_workspace && !m_workspace->m_projects.empty())
+        {
+          if (m_thumbnailCache.empty())
+          {
+            UpdateThumbnailCache();
+          }
+
+          ImGui::BeginChild("ProjectsList", ImVec2(-1, -1), false);
 
         const float cardSize    = 120.0f;
         const float cardSpacing = 15.0f;
@@ -287,7 +305,16 @@ namespace ToolKit
           ImVec2 imageMax             = ImVec2(imageX + displaySize, imageY + displaySize);
 
           const String thumbnailPath  = ConcatPaths({m_workspace->GetActiveWorkspace(), project.name, "thumbnail.png"});
-          bool thumbnailExists        = CheckSystemFile(thumbnailPath);
+          bool thumbnailExists        = false;
+          if (m_thumbnailCache.count(project.name) > 0)
+          {
+            thumbnailExists = m_thumbnailCache[project.name];
+          }
+          else
+          {
+            thumbnailExists = CheckSystemFile(thumbnailPath);
+            m_thumbnailCache[project.name] = thumbnailExists;
+          }
           TexturePtr projectThumbnail = GetTextureManager()->Create<Texture>(thumbnailPath);
           if (projectThumbnail)
           {
@@ -638,6 +665,7 @@ namespace ToolKit
           {
             m_workspace->SetDefaultWorkspace(m_workspacePathOnUI);
             m_workspace->RefreshProjects();
+            UpdateThumbnailCache();
             m_showWorkspacePopup = false;
             ImGui::CloseCurrentPopup();
           }
@@ -846,6 +874,7 @@ namespace ToolKit
                                             {
                                               m_cloneProgress = "Clone completed successfully!";
                                               m_workspace->RefreshProjects();
+                                              UpdateThumbnailCache();
                                               m_showNewProjectPopup = false;
                                               ImGui::CloseCurrentPopup();
                                               m_newProjectName.clear();
