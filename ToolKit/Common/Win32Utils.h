@@ -16,9 +16,9 @@
   #include <strsafe.h>
 
   #include <chrono>
-  #include <thread>
   #include <filesystem>
   #include <fstream>
+  #include <thread>
 
 namespace ToolKit
 {
@@ -197,12 +197,12 @@ namespace ToolKit
     inline void FixWorkingDirectory()
     {
       wchar_t exePathW[MAX_PATH] = {0};
-      DWORD len = ::GetModuleFileNameW(nullptr, exePathW, MAX_PATH);
+      DWORD len                  = ::GetModuleFileNameW(nullptr, exePathW, MAX_PATH);
       if (len > 0 && len < MAX_PATH)
       {
         std::filesystem::path exePath(exePathW);
-        std::filesystem::path exeDir = exePath.parent_path();      // .../Bin
-        std::wstring exeDirW = exeDir.wstring();
+        std::filesystem::path exeDir = exePath.parent_path(); // .../Bin
+        std::wstring exeDirW         = exeDir.wstring();
         if (!exeDirW.empty())
         {
           ::SetCurrentDirectoryW(exeDirW.c_str());
@@ -233,7 +233,10 @@ namespace ToolKit
 
     inline void TKFreeModule(void* module) { FreeLibrary((HMODULE) module); }
 
-    inline void* TKGetFunction(void* module, StringView func) { return (void*) GetProcAddress((HMODULE) module, func.data()); }
+    inline void* TKGetFunction(void* module, StringView func)
+    {
+      return (void*) GetProcAddress((HMODULE) module, func.data());
+    }
 
     inline void UpdateAppIcon()
     {
@@ -288,15 +291,11 @@ namespace ToolKit
       }
 
       // Initialize COM for shell link creation.
-      hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-      bool needUninit = SUCCEEDED(hr);
+      hr                     = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+      bool needUninit        = SUCCEEDED(hr);
 
       IShellLinkW* shellLink = nullptr;
-      hr = CoCreateInstance(CLSID_ShellLink,
-                            nullptr,
-                            CLSCTX_INPROC_SERVER,
-                            IID_IShellLinkW,
-                            (LPVOID*) &shellLink);
+      hr = CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLinkW, (LPVOID*) &shellLink);
       if (FAILED(hr) || shellLink == nullptr)
       {
         if (needUninit)
@@ -317,13 +316,13 @@ namespace ToolKit
       }
 
       // Resolve .lnk path on desktop.
-      String shortcutFileNameUtf8 = shortcutName + ".lnk";
+      String shortcutFileNameUtf8    = shortcutName + ".lnk";
       std::wstring shortcutFileNameW = UTF8Util::ConvertUTF8ToUTF16(shortcutFileNameUtf8);
       std::filesystem::path shortcutPathFs(desktopPathW);
-      shortcutPathFs /= shortcutFileNameW;
+      shortcutPathFs            /= shortcutFileNameW;
 
-      IPersistFile* persistFile = nullptr;
-      hr = shellLink->QueryInterface(IID_IPersistFile, (void**) &persistFile);
+      IPersistFile* persistFile  = nullptr;
+      hr                         = shellLink->QueryInterface(IID_IPersistFile, (void**) &persistFile);
       if (FAILED(hr) || persistFile == nullptr)
       {
         shellLink->Release();

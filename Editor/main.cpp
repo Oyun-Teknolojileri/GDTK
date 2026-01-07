@@ -14,13 +14,13 @@
 #include "EditorViewport2d.h"
 #include "Gizmo.h"
 #include "Grid.h"
+#include "Launcher.h"
 #include "Mod.h"
 #include "PopupWindows.h"
 #include "PreviewViewport.h"
 #include "SplashScreenRenderPath.h"
 #include "Stats.h"
 #include "UI.h"
-#include "Launcher.h"
 #include "Workspace.h"
 
 #include <Common/SDLEventPool.h>
@@ -36,16 +36,16 @@
 #include <array>
 #include <chrono>
 
-SDL_Window* g_window        = nullptr;
-SDL_GLContext g_context     = nullptr;
+SDL_Window* g_window                    = nullptr;
+SDL_GLContext g_context                 = nullptr;
 
 // Main loop signal handle.
-bool g_running              = true;
-bool g_launcherRunning      = true;
+bool g_running                          = true;
+bool g_launcherRunning                  = true;
 
 // ToolKit Application main handle.
-ToolKit::Editor::App* g_app = nullptr;
-ToolKit::Editor::Launcher* g_launcher = nullptr;
+ToolKit::Editor::App* g_app             = nullptr;
+ToolKit::Editor::Launcher* g_launcher   = nullptr;
 ToolKit::Editor::Workspace* g_workspace = nullptr;
 
 namespace ToolKit
@@ -388,18 +388,18 @@ namespace ToolKit
             g_workspace->Init();
 
             // Init app
-            g_app                   = new App(settings.m_window->GetWidthVal(), settings.m_window->GetHeightVal(), g_workspace);
-            g_app->m_displayBounds  = UVec2(displayBounds.w, displayBounds.h);
-            g_app->m_sysComExecFn   = &ToolKit::PlatformHelpers::SysComExec;
-            g_app->m_shellOpenDirFn = &ToolKit::PlatformHelpers::OpenExplorer;
+            g_app = new App(settings.m_window->GetWidthVal(), settings.m_window->GetHeightVal(), g_workspace);
+            g_app->m_displayBounds                         = UVec2(displayBounds.w, displayBounds.h);
+            g_app->m_sysComExecFn                          = &ToolKit::PlatformHelpers::SysComExec;
+            g_app->m_shellOpenDirFn                        = &ToolKit::PlatformHelpers::OpenExplorer;
 
-            g_launcher = new Launcher(g_workspace, g_app);
+            g_launcher                                     = new Launcher(g_workspace, g_app);
             g_launcher->m_createProjectShortcutOnDesktopFn = &PlatformHelpers::CreateProjectShortcutOnDesktop;
 
             HandleSkipLauncher(argv, argc);
 
             // Register update functions
-            TKUpdateFn preUpdateFn  = [](float deltaTime)
+            TKUpdateFn preUpdateFn = [](float deltaTime)
             {
               SDL_Event sdlEvent;
               while (SDL_PollEvent(&sdlEvent))

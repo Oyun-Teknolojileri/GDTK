@@ -45,7 +45,7 @@ namespace ToolKit
 
     App::App(int windowWidth, int windowHeight, Workspace* workspace)
     {
-      m_workspace        = workspace;
+      m_workspace = workspace;
 
       UI::Init();
 
@@ -527,7 +527,6 @@ namespace ToolKit
         wnd->LoadPluginSettings();
       }
     }
-
 
     void App::SetGameMod(const GameMod mod)
     {

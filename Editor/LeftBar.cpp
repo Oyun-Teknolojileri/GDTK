@@ -75,25 +75,24 @@ namespace ToolKit
         ImGui::Separator();
         ImGui::Spacing();
 
-        static bool isEditingSpeed = false;
+        static bool isEditingSpeed  = false;
         static float editSpeedValue = 0.0f;
-        float camSpeed = GetApp()->m_camSpeed;
-        
-        ImVec2 contentRegionMin = ImGui::GetWindowContentRegionMin();
-        ImVec2 contentRegionMax = ImGui::GetWindowContentRegionMax();
-        float contentWidth = contentRegionMax.x - contentRegionMin.x;
-        float contentHeight = contentRegionMax.y - contentRegionMin.y;
-        float inputWidth = 40.0f;
-        
+        float camSpeed              = GetApp()->m_camSpeed;
+
+        ImVec2 contentRegionMin     = ImGui::GetWindowContentRegionMin();
+        ImVec2 contentRegionMax     = ImGui::GetWindowContentRegionMax();
+        float contentWidth          = contentRegionMax.x - contentRegionMin.x;
+        float contentHeight         = contentRegionMax.y - contentRegionMin.y;
+        float inputWidth            = 40.0f;
+
         if (isEditingSpeed)
         {
           float startX = contentRegionMin.x + (contentWidth - inputWidth) * 0.5f;
           ImGui::SetCursorPosX(startX);
           ImGui::PushItemWidth(inputWidth);
           ImGui::SetKeyboardFocusHere();
-          ImGui::InputFloat("##speedInput", &editSpeedValue, 0.0f, 0.0f, "%.1f",
-                            ImGuiInputTextFlags_AutoSelectAll);
-          
+          ImGui::InputFloat("##speedInput", &editSpeedValue, 0.0f, 0.0f, "%.1f", ImGuiInputTextFlags_AutoSelectAll);
+
           if (ImGui::IsItemDeactivatedAfterEdit())
           {
             if (editSpeedValue >= 0.0f && editSpeedValue <= 1000.0f)
@@ -112,11 +111,11 @@ namespace ToolKit
         {
           char speedText[16];
           snprintf(speedText, sizeof(speedText), "%.1f", camSpeed);
-          float textWidth = ImGui::CalcTextSize(speedText).x;
-          float startX = contentRegionMin.x + (contentWidth - textWidth) * 0.5f;
+          float textWidth   = ImGui::CalcTextSize(speedText).x;
+          float startX      = contentRegionMin.x + (contentWidth - textWidth) * 0.5f;
           float frameHeight = ImGui::GetFrameHeight();
           ImGui::SetCursorPosX(startX);
-          
+
           if (ImGui::Selectable(speedText, false, 0, ImVec2(textWidth, frameHeight)))
           {
             isEditingSpeed = true;
