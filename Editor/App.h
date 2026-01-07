@@ -33,7 +33,7 @@ namespace ToolKit
       void OnSaveScene();
       void OnSaveAsScene();
       void OnQuit();
-      void OnNewProject(const String& name);
+      bool OnNewProject(const String& name);
       void OnNewPlugin(const String& name);
       void SetGameMod(const GameMod mod);
 
@@ -100,7 +100,7 @@ namespace ToolKit
       void MergeScene(const String& fullPath);
       void LinkScene(const String& fullPath);
       void ApplyProjectSettings(bool setDefaults);
-      void OpenProject(const Project& project);
+      bool OpenProject(const Project& project);
       void PackResources();
       void SaveAllResources();
 

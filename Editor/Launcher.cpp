@@ -304,8 +304,10 @@ namespace ToolKit
               if (isHovered && ImGui::IsMouseDoubleClicked(0))
               {
                 m_selectedProjectIndex = (int) i;
-                m_workspace->SetActiveProject(project);
-                g_launcherRunning = false;
+                if (m_app->OpenProject(project))
+                {
+                  g_launcherRunning = false;
+                }
               }
 
               if (isHovered || isSelected)
@@ -508,8 +510,10 @@ namespace ToolKit
                        [&]()
                        {
                          const Project& selected = m_workspace->m_projects[m_selectedProjectIndex];
-                         m_workspace->SetActiveProject(selected);
-                         g_launcherRunning = false;
+                         if (m_app->OpenProject(selected))
+                         {
+                           g_launcherRunning = false;
+                         }
                        });
 
         ImGui::SetCursorPosX((toolsPanelWidth - buttonWidth) * 0.5f);
@@ -990,9 +994,12 @@ namespace ToolKit
             }
             else
             {
-              g_launcherRunning = false;
-              m_app->OnNewProject(projectName);
-              m_workspace->SetActiveProject({projectName, ""});
+              bool result = m_app->OnNewProject(projectName);
+              if (result)
+              {
+                g_launcherRunning = false;
+                m_workspace->SetActiveProject({projectName, ""});
+              }
               m_showNewProjectPopup = false;
               ImGui::CloseCurrentPopup();
               m_newProjectName.clear();

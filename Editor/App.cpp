@@ -433,11 +433,11 @@ namespace ToolKit
     }
 
     // note: only copy template folder
-    void App::OnNewProject(const String& name)
+    bool App::OnNewProject(const String& name)
     {
       if (!IsWorkspaceSane(false, true))
       {
-        return;
+        return false;
       }
 
       if (!IsValidCppLibraryName(name))
@@ -445,7 +445,7 @@ namespace ToolKit
         TK_ERR("Invalid project name: %s.", name.c_str());
         TK_LOG("%s", g_validLibraryNameRules.c_str());
         m_statusMsg = g_statusFailed;
-        return;
+        return false;
       }
 
       String fullPath = ConcatPaths({m_workspace->GetActiveWorkspace(), name});
@@ -453,7 +453,7 @@ namespace ToolKit
       {
         TK_ERR("Project already exist.");
         m_statusMsg = g_statusFailed;
-        return;
+        return false;
       }
 
       // copy template folder to new workspace
@@ -480,7 +480,8 @@ namespace ToolKit
 
       TemplateUpdate(cppPropertiesPath, "__tk_includes__", replacement);
 
-      OpenProject({name, ""});
+      bool result = OpenProject({ name, "" });
+      return result;
     }
 
     void App::OnNewPlugin(const String& name)
@@ -1342,14 +1343,22 @@ namespace ToolKit
       }
     }
 
-    void App::OpenProject(const Project& project)
+    bool App::OpenProject(const Project& project)
     {
+      String projectPath = ConcatPaths({m_workspace->GetActiveWorkspace(), project.name});
+      if (!CheckSystemFile(projectPath))
+      {
+        SetStatusMsg("Project folder not found: " + projectPath);
+        TK_ERR("Project folder does not exist: %s", projectPath.c_str());
+        return false;
+      }
+
       PluginWindowPtr pluginWindow = GetWindow<PluginWindow>(g_pluginWindow);
       if (pluginWindow == nullptr)
       {
         SetStatusMsg(g_statusFailed);
         TK_ERR("Can not access project plugins. Plugin window is not available.");
-        return;
+        return false;
       }
 
       ClearSession();
@@ -1370,6 +1379,8 @@ namespace ToolKit
       {
         browser->IterateFolders(true);
       }
+
+      return true;
     }
 
     void App::PackResources()
