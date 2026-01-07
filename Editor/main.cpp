@@ -399,7 +399,7 @@ namespace ToolKit
             HandleSkipLauncher(argv, argc);
 
             // Register update functions
-            TKUpdateFn preUpdateFn  = [argc, argv](float deltaTime)
+            TKUpdateFn preUpdateFn  = [](float deltaTime)
             {
               SDL_Event sdlEvent;
               while (SDL_PollEvent(&sdlEvent))

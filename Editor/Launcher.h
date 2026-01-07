@@ -36,8 +36,8 @@ namespace ToolKit
      private:
       App* m_app              = nullptr;
 
-      float m_windowWidth     = 1000.0f;
-      float m_windowHeight    = 700.0f;
+      float m_windowWidth     = 1024.0f;
+      float m_windowHeight    = 768.0f;
 
       Workspace* m_workspace  = nullptr;
       String m_workspacePathOnUI;

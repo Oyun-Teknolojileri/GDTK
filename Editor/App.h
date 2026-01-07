@@ -33,7 +33,7 @@ namespace ToolKit
       void OnSaveScene();
       void OnSaveAsScene();
       void OnQuit();
-      void OnNewProject(const String& name, bool openProjectAfterCreate = true);
+      void OnNewProject(const String& name);
       void OnNewPlugin(const String& name);
       void SetGameMod(const GameMod mod);
 
@@ -263,7 +263,7 @@ namespace ToolKit
       ShellOpenDirFn m_shellOpenDirFn          = nullptr;
       EditorLitMode m_sceneLightingMode        = EditorLitMode::EditorLit;
       EditorViewportPtr m_lastActiveViewport   = nullptr;
-      Workspace* m_workspace                   = nullptr; // this is set at Init function
+      Workspace* m_workspace                   = nullptr; // this is set at cosntructor
 
       // Dynamic Entity Menus.
       StringArray m_customObjectMetaValues;    //!< Add menu shows this additional classes.

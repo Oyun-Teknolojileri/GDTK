@@ -861,7 +861,7 @@ namespace ToolKit
             else
             {
               g_launcherRunning = false;
-              m_app->OnNewProject(projectName, false);
+              m_app->OnNewProject(projectName);
               m_workspace->SetActiveProject({projectName, ""});
               m_showNewProjectPopup = false;
               ImGui::CloseCurrentPopup();
