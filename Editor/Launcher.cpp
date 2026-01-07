@@ -816,6 +816,7 @@ namespace ToolKit
           ImGui::PushItemWidth(ImGui::GetWindowWidth() - innerPad * 2);
           
           bool projectNameExists = false;
+          bool projectNameInvalid = false;
           if (m_workspace && !m_newProjectName.empty())
           {
             for (const Project& project : m_workspace->m_projects)
@@ -826,9 +827,14 @@ namespace ToolKit
                 break;
               }
             }
+            
+            if (!projectNameExists && m_app)
+            {
+              projectNameInvalid = !m_app->IsValidCppLibraryName(m_newProjectName);
+            }
           }
           
-          if (projectNameExists)
+          if (projectNameExists || projectNameInvalid)
           {
             ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(1.0f, 0.2f, 0.2f, 1.0f));
             ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
@@ -836,14 +842,21 @@ namespace ToolKit
           
           enterPressed = ImGui::InputText("##newProjectName", &m_newProjectName, ImGuiInputTextFlags_EnterReturnsTrue);
           
-          if (projectNameExists)
+          if (projectNameExists || projectNameInvalid)
           {
             ImGui::PopStyleVar();
             ImGui::PopStyleColor(1);
             
             if (ImGui::IsItemHovered())
             {
-              ImGui::SetTooltip("There is already a project with this name!");
+              if (projectNameExists)
+              {
+                ImGui::SetTooltip("There is already a project with this name!");
+              }
+              else if (projectNameInvalid)
+              {
+                ImGui::SetTooltip("%s", g_validLibraryNameRules.c_str());
+              }
             }
           }
           
@@ -899,6 +912,7 @@ namespace ToolKit
         ImGui::SetCursorPosX(startX);
 
         bool projectNameExists = false;
+        bool projectNameInvalid = false;
         if (m_workspace && !m_newProjectName.empty() && m_newProjectTabLocal)
         {
           for (const Project& project : m_workspace->m_projects)
@@ -909,10 +923,15 @@ namespace ToolKit
               break;
             }
           }
+          
+          if (!projectNameExists && m_app)
+          {
+            projectNameInvalid = !m_app->IsValidCppLibraryName(m_newProjectName);
+          }
         }
         
         bool wasCloning = m_isCloning;
-        bool wasCreateDisabled = (m_isCloning || projectNameExists);
+        bool wasCreateDisabled = (m_isCloning || projectNameExists || projectNameInvalid);
         if (wasCreateDisabled)
         {
           ImGui::BeginDisabled();
@@ -933,7 +952,7 @@ namespace ToolKit
 
           if (m_newProjectTabLocal)
           {
-            canCreate = !m_newProjectName.empty();
+            canCreate = !m_newProjectName.empty() && m_app && m_app->IsValidCppLibraryName(m_newProjectName);
           }
           else
           {
@@ -951,7 +970,7 @@ namespace ToolKit
               if (startPos < url.size())
               {
                 projectName = url.substr(startPos);
-                canCreate   = !projectName.empty();
+                canCreate   = !projectName.empty() && m_app && m_app->IsValidCppLibraryName(projectName);
               }
             }
           }
