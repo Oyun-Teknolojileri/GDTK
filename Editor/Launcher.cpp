@@ -175,230 +175,269 @@ namespace ToolKit
       {
         if (ImGui::BeginTabItem("Projects"))
         {
-          ImGui::EndTabItem();
-        }
-        ImGui::EndTabBar();
-      }
-      
-      ImGui::Spacing();
-
-      float toolsPanelWidth    = 180.0f;
-      float projectsPanelWidth = panelWidth - toolsPanelWidth - panelSpacing;
-      if (projectsPanelWidth < 200.0f)
-      {
-        projectsPanelWidth = 200.0f;
-      }
-
-      float listStartY = ImGui::GetCursorPosY();
-
-      ImGui::SetCursorPos(ImVec2(panelPadding, listStartY));
-      ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetColorU32(ImGuiCol_FrameBg));
-      ImGui::BeginChild("ProjectsListPanel", ImVec2(projectsPanelWidth, listHeight), true);
-      ImGui::PopStyleColor();
-
-        if (m_workspace && !m_workspace->m_projects.empty())
-        {
-          if (m_thumbnailCache.empty())
+          float toolsPanelWidth    = 180.0f;
+          float projectsPanelWidth = panelWidth - toolsPanelWidth - panelSpacing;
+          if (projectsPanelWidth < 200.0f)
           {
-            UpdateThumbnailCache();
+            projectsPanelWidth = 200.0f;
           }
 
-          ImGui::BeginChild("ProjectsList", ImVec2(-1, -1), false);
+          float listStartY = ImGui::GetCursorPosY();
 
-        const float cardSize    = 120.0f;
-        const float cardSpacing = 15.0f;
-        const float gridPadding = 15.0f;
-        const int itemsPerRow   = 6;
-
-        ImGui::SetCursorPos(ImVec2(gridPadding, gridPadding));
-
-        const size_t numProjects = m_workspace->m_projects.size();
-
-        if (m_selectedProjectIndex >= (int) numProjects)
-        {
-          m_selectedProjectIndex = -1;
-        }
-
-        float availableWidth  = ImGui::GetContentRegionAvail().x - gridPadding * 2;
-        int actualItemsPerRow = (int) ((availableWidth + cardSpacing) / (cardSize + cardSpacing));
-        if (actualItemsPerRow < 1)
-          actualItemsPerRow = 1;
-        if (actualItemsPerRow > itemsPerRow)
-          actualItemsPerRow = itemsPerRow;
-
-        for (size_t i = 0; i < numProjects; ++i)
-        {
-          const Project& project = m_workspace->m_projects[i];
-
-          ImGui::PushID((int) i);
-
-          int row = (int) (i / actualItemsPerRow);
-          int col = (int) (i % actualItemsPerRow);
-
-          if (col == 0)
+          if (m_workspace && !m_workspace->m_projects.empty())
           {
-            if (i > 0)
+            if (m_thumbnailCache.empty())
             {
-              ImGui::NewLine();
-            }
-            ImGui::SetCursorPosX(gridPadding);
-          }
-
-          ImVec2 cardSizeVec(cardSize, cardSize);
-
-          if (ImGui::InvisibleButton("##projectCard", cardSizeVec))
-          {
-            m_selectedProjectIndex = (int) i;
-          }
-
-          bool isHovered            = ImGui::IsItemHovered();
-          bool isActive             = ImGui::IsItemActive();
-
-          ImVec2 itemPos            = ImGui::GetItemRectMin();
-          ImVec2 itemMax            = ImGui::GetItemRectMax();
-
-          ImDrawList* childDrawList = ImGui::GetWindowDrawList();
-
-          bool isSelected           = (m_selectedProjectIndex == (int) i);
-
-          if (isHovered && ImGui::IsMouseDoubleClicked(0))
-          {
-            m_selectedProjectIndex = (int) i;
-            m_workspace->SetActiveProject(project);
-            g_launcherRunning = false;
-          }
-
-          if (isHovered || isSelected)
-          {
-            ImVec4 panelBgColor = ImGui::GetStyle().Colors[ImGuiCol_FrameBg];
-            ImVec4 hoverColor   = panelBgColor;
-
-            if (isHovered)
-            {
-              hoverColor.x = (hoverColor.x + 0.02f > 1.0f) ? 1.0f : (hoverColor.x + 0.02f);
-              hoverColor.y = (hoverColor.y + 0.02f > 1.0f) ? 1.0f : (hoverColor.y + 0.02f);
-              hoverColor.z = (hoverColor.z + 0.02f > 1.0f) ? 1.0f : (hoverColor.z + 0.02f);
+              UpdateThumbnailCache();
             }
 
-            ImU32 bgColor = ImGui::GetColorU32(hoverColor);
-            childDrawList->AddRectFilled(itemPos, itemMax, bgColor, 4.0f);
+            ImGui::SetCursorPosX(panelPadding + 15.0f);
+            ImGui::SetCursorPosY(listStartY + 10.0f);
+            float searchBarWidth = glm::min(300.0f, projectsPanelWidth - 30.0f);
+            ImGui::PushItemWidth(searchBarWidth);
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6.0f, 3.0f));
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
+            ImGui::PushStyleColor(ImGuiCol_FrameBg, ImGui::GetColorU32(ImGuiCol_WindowBg));
+            ImGui::InputTextWithHint("##searchProjects", "Search...", &m_searchFilter);
+            ImGui::PopStyleColor();
+            ImGui::PopStyleVar(3);
+            ImGui::PopItemWidth();
 
-            if (isHovered)
+            float searchBarHeight = ImGui::GetItemRectSize().y;
+            float projectsListStartY = listStartY + searchBarHeight + 14.0f;
+            float projectsListHeight = listHeight - (projectsListStartY - listStartY);
+
+            ImGui::SetCursorPos(ImVec2(panelPadding, projectsListStartY));
+            ImGui::BeginChild("ProjectsList", ImVec2(projectsPanelWidth, projectsListHeight), false);
+
+            const float cardSize    = 120.0f;
+            const float cardSpacing = 15.0f;
+            const float gridPadding = 15.0f;
+            const int itemsPerRow   = 6;
+
+            ImGui::SetCursorPos(ImVec2(gridPadding, gridPadding));
+
+            std::vector<size_t> filteredIndices;
+            for (size_t i = 0; i < m_workspace->m_projects.size(); ++i)
             {
-              float hoverBorderPadding = 2.0f;
-              ImVec2 hoverBorderMin    = ImVec2(itemPos.x + hoverBorderPadding, itemPos.y + hoverBorderPadding);
-              ImVec2 hoverBorderMax    = ImVec2(itemMax.x - hoverBorderPadding, itemMax.y - hoverBorderPadding);
-              ImU32 borderColor        = ImGui::GetColorU32(ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
-              childDrawList->AddRect(hoverBorderMin, hoverBorderMax, borderColor, 4.0f, 0, 1.0f);
-            }
-
-            if (isSelected)
-            {
-              float selectionBorderPadding = 1.0f;
-              ImVec2 selectionBorderMin =
-                  ImVec2(itemPos.x - selectionBorderPadding, itemPos.y - selectionBorderPadding);
-              ImVec2 selectionBorderMax =
-                  ImVec2(itemMax.x + selectionBorderPadding, itemMax.y + selectionBorderPadding);
-              ImU32 borderColor = ImGui::GetColorU32(ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
-              childDrawList->AddRect(selectionBorderMin, selectionBorderMax, borderColor, 4.0f, 0, 2.0f);
-            }
-          }
-
-          const char* projectName     = project.name.c_str();
-          float textHeight            = ImGui::GetTextLineHeight();
-          float textWidth             = ImGui::CalcTextSize(projectName).x;
-
-          float imagePadding          = 4.0f;
-          float imageHeight           = cardSize - textHeight - 4.0f - imagePadding * 2;
-          float imageWidth            = cardSize - imagePadding * 2;
-          float displaySize           = glm::min(imageWidth, imageHeight);
-          float imageX                = itemPos.x + (cardSize - displaySize) * 0.5f;
-          float imageY                = itemPos.y + imagePadding + (imageHeight - displaySize) * 0.5f;
-          ImVec2 imagePos             = ImVec2(imageX, imageY);
-          ImVec2 imageMax             = ImVec2(imageX + displaySize, imageY + displaySize);
-
-          const String thumbnailPath  = ConcatPaths({m_workspace->GetActiveWorkspace(), project.name, "thumbnail.png"});
-          bool thumbnailExists        = false;
-          if (m_thumbnailCache.count(project.name) > 0)
-          {
-            thumbnailExists = m_thumbnailCache[project.name];
-          }
-          else
-          {
-            thumbnailExists = CheckSystemFile(thumbnailPath);
-            m_thumbnailCache[project.name] = thumbnailExists;
-          }
-          TexturePtr projectThumbnail = GetTextureManager()->Create<Texture>(thumbnailPath);
-          if (projectThumbnail)
-          {
-            projectThumbnail->Init();
-          }
-          TexturePtr thumbTexture = thumbnailExists ? projectThumbnail : m_defaultProjectThumbnail;
-          if (thumbTexture && thumbTexture->m_textureId != 0)
-          {
-            ImVec2 uvMin(0, 0);
-            ImVec2 uvMax(1, 1);
-
-            if (thumbTexture->m_width > 0 && thumbTexture->m_height > 0)
-            {
-              float texAspect = (float) thumbTexture->m_width / (float) thumbTexture->m_height;
-              if (texAspect > 1.0f)
+              const Project& project = m_workspace->m_projects[i];
+              if (m_searchFilter.empty())
               {
-                float uvWidth  = 1.0f / texAspect;
-                float uvOffset = (1.0f - uvWidth) * 0.5f;
-                uvMin.x        = uvOffset;
-                uvMax.x        = uvOffset + uvWidth;
+                filteredIndices.push_back(i);
               }
-              else if (texAspect < 1.0f)
+              else
               {
-                float uvHeight = texAspect;
-                float uvOffset = (1.0f - uvHeight) * 0.5f;
-                uvMin.y        = uvOffset;
-                uvMax.y        = uvOffset + uvHeight;
+                String projectNameLower = project.name;
+                String filterLower = m_searchFilter;
+                for (size_t j = 0; j < projectNameLower.size(); ++j)
+                {
+                  if (projectNameLower[j] >= 'A' && projectNameLower[j] <= 'Z')
+                  {
+                    projectNameLower[j] = projectNameLower[j] - 'A' + 'a';
+                  }
+                }
+                for (size_t j = 0; j < filterLower.size(); ++j)
+                {
+                  if (filterLower[j] >= 'A' && filterLower[j] <= 'Z')
+                  {
+                    filterLower[j] = filterLower[j] - 'A' + 'a';
+                  }
+                }
+                if (projectNameLower.find(filterLower) != String::npos)
+                {
+                  filteredIndices.push_back(i);
+                }
               }
             }
 
-            childDrawList->AddImageRounded(Convert2ImGuiTexture(thumbTexture),
-                                           imagePos,
-                                           imageMax,
-                                           uvMin,
-                                           uvMax,
-                                           ImGui::GetColorU32(ImVec4(1, 1, 1, 1)),
-                                           4.0f);
+            const size_t numProjects = filteredIndices.size();
+
+            if (m_selectedProjectIndex >= (int) m_workspace->m_projects.size())
+            {
+              m_selectedProjectIndex = -1;
+            }
+
+            float availableWidth  = ImGui::GetContentRegionAvail().x - gridPadding * 2;
+            int actualItemsPerRow = (int) ((availableWidth + cardSpacing) / (cardSize + cardSpacing));
+            if (actualItemsPerRow < 1)
+              actualItemsPerRow = 1;
+            if (actualItemsPerRow > itemsPerRow)
+              actualItemsPerRow = itemsPerRow;
+
+            for (size_t filterIdx = 0; filterIdx < numProjects; ++filterIdx)
+            {
+              size_t i = filteredIndices[filterIdx];
+              const Project& project = m_workspace->m_projects[i];
+
+              ImGui::PushID((int) i);
+
+              int row = (int) (filterIdx / actualItemsPerRow);
+              int col = (int) (filterIdx % actualItemsPerRow);
+
+              if (col == 0)
+              {
+                if (filterIdx > 0)
+                {
+                  ImGui::NewLine();
+                }
+                ImGui::SetCursorPosX(gridPadding);
+              }
+
+              ImVec2 cardSizeVec(cardSize, cardSize);
+
+              if (ImGui::InvisibleButton("##projectCard", cardSizeVec))
+              {
+                m_selectedProjectIndex = (int) i;
+              }
+
+              bool isHovered            = ImGui::IsItemHovered();
+              bool isActive             = ImGui::IsItemActive();
+
+              ImVec2 itemPos            = ImGui::GetItemRectMin();
+              ImVec2 itemMax            = ImGui::GetItemRectMax();
+
+              ImDrawList* childDrawList = ImGui::GetWindowDrawList();
+
+              bool isSelected           = (m_selectedProjectIndex == (int) i);
+
+              if (isHovered && ImGui::IsMouseDoubleClicked(0))
+              {
+                m_selectedProjectIndex = (int) i;
+                m_workspace->SetActiveProject(project);
+                g_launcherRunning = false;
+              }
+
+              if (isHovered || isSelected)
+              {
+                ImVec4 panelBgColor = ImGui::GetStyle().Colors[ImGuiCol_FrameBg];
+                ImVec4 hoverColor   = panelBgColor;
+
+                if (isHovered)
+                {
+                  hoverColor.x = (hoverColor.x + 0.02f > 1.0f) ? 1.0f : (hoverColor.x + 0.02f);
+                  hoverColor.y = (hoverColor.y + 0.02f > 1.0f) ? 1.0f : (hoverColor.y + 0.02f);
+                  hoverColor.z = (hoverColor.z + 0.02f > 1.0f) ? 1.0f : (hoverColor.z + 0.02f);
+                }
+
+                ImU32 bgColor = ImGui::GetColorU32(hoverColor);
+                childDrawList->AddRectFilled(itemPos, itemMax, bgColor, 4.0f);
+
+                if (isHovered)
+                {
+                  float hoverBorderPadding = 2.0f;
+                  ImVec2 hoverBorderMin    = ImVec2(itemPos.x + hoverBorderPadding, itemPos.y + hoverBorderPadding);
+                  ImVec2 hoverBorderMax    = ImVec2(itemMax.x - hoverBorderPadding, itemMax.y - hoverBorderPadding);
+                  ImU32 borderColor        = ImGui::GetColorU32(ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
+                  childDrawList->AddRect(hoverBorderMin, hoverBorderMax, borderColor, 4.0f, 0, 1.0f);
+                }
+
+                if (isSelected)
+                {
+                  float selectionBorderPadding = 1.0f;
+                  ImVec2 selectionBorderMin =
+                      ImVec2(itemPos.x - selectionBorderPadding, itemPos.y - selectionBorderPadding);
+                  ImVec2 selectionBorderMax =
+                      ImVec2(itemMax.x + selectionBorderPadding, itemMax.y + selectionBorderPadding);
+                  ImU32 borderColor = ImGui::GetColorU32(ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
+                  childDrawList->AddRect(selectionBorderMin, selectionBorderMax, borderColor, 4.0f, 0, 2.0f);
+                }
+              }
+
+              const char* projectName     = project.name.c_str();
+              float textHeight            = ImGui::GetTextLineHeight();
+              float textWidth             = ImGui::CalcTextSize(projectName).x;
+
+              float imagePadding          = 4.0f;
+              float imageHeight           = cardSize - textHeight - 4.0f - imagePadding * 2;
+              float imageWidth            = cardSize - imagePadding * 2;
+              float displaySize           = glm::min(imageWidth, imageHeight);
+              float imageX                = itemPos.x + (cardSize - displaySize) * 0.5f;
+              float imageY                = itemPos.y + imagePadding + (imageHeight - displaySize) * 0.5f;
+              ImVec2 imagePos             = ImVec2(imageX, imageY);
+              ImVec2 imageMax             = ImVec2(imageX + displaySize, imageY + displaySize);
+
+              const String thumbnailPath  = ConcatPaths({m_workspace->GetActiveWorkspace(), project.name, "thumbnail.png"});
+              bool thumbnailExists        = false;
+              if (m_thumbnailCache.count(project.name) > 0)
+              {
+                thumbnailExists = m_thumbnailCache[project.name];
+              }
+              else
+              {
+                thumbnailExists = CheckSystemFile(thumbnailPath);
+                m_thumbnailCache[project.name] = thumbnailExists;
+              }
+              TexturePtr projectThumbnail = GetTextureManager()->Create<Texture>(thumbnailPath);
+              if (projectThumbnail)
+              {
+                projectThumbnail->Init();
+              }
+              TexturePtr thumbTexture = thumbnailExists ? projectThumbnail : m_defaultProjectThumbnail;
+              if (thumbTexture && thumbTexture->m_textureId != 0)
+              {
+                ImVec2 uvMin(0, 0);
+                ImVec2 uvMax(1, 1);
+
+                if (thumbTexture->m_width > 0 && thumbTexture->m_height > 0)
+                {
+                  float texAspect = (float) thumbTexture->m_width / (float) thumbTexture->m_height;
+                  if (texAspect > 1.0f)
+                  {
+                    float uvWidth  = 1.0f / texAspect;
+                    float uvOffset = (1.0f - uvWidth) * 0.5f;
+                    uvMin.x        = uvOffset;
+                    uvMax.x        = uvOffset + uvWidth;
+                  }
+                  else if (texAspect < 1.0f)
+                  {
+                    float uvHeight = texAspect;
+                    float uvOffset = (1.0f - uvHeight) * 0.5f;
+                    uvMin.y        = uvOffset;
+                    uvMax.y        = uvOffset + uvHeight;
+                  }
+                }
+
+                childDrawList->AddImageRounded(Convert2ImGuiTexture(thumbTexture),
+                                               imagePos,
+                                               imageMax,
+                                               uvMin,
+                                               uvMax,
+                                               ImGui::GetColorU32(ImVec4(1, 1, 1, 1)),
+                                               4.0f);
+              }
+              else
+              {
+                ImU32 iconBgColor = ImGui::GetColorU32(ImGuiCol_Button);
+                childDrawList->AddRectFilled(imagePos, imageMax, iconBgColor, 4.0f);
+              }
+
+              float textY    = itemPos.y + imageHeight + 2.0f;
+              ImVec2 textPos = ImVec2(itemPos.x + (cardSize - textWidth) * 0.5f, textY);
+              childDrawList->AddText(textPos, ImGui::GetColorU32(ImGuiCol_Text), projectName);
+
+              ImGui::SameLine(0.0f, cardSpacing);
+
+              ImGui::PopID();
+            }
+
+            ImGui::EndChild();
           }
-          else
+          else if (m_workspace)
           {
-            ImU32 iconBgColor = ImGui::GetColorU32(ImGuiCol_Button);
-            childDrawList->AddRectFilled(imagePos, imageMax, iconBgColor, 4.0f);
+            m_selectedProjectIndex = -1;
+            ImGui::SetCursorPos(ImVec2(panelPadding, listStartY));
+            ImGui::SetCursorPosX(
+                (panelWidth - ImGui::CalcTextSize("No projects found. Create a new project to get started.").x) * 0.5f);
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
+            ImGui::Text("No projects found. Create a new project to get started.");
+            ImGui::PopStyleColor();
           }
 
-          float textY    = itemPos.y + imageHeight + 2.0f;
-          ImVec2 textPos = ImVec2(itemPos.x + (cardSize - textWidth) * 0.5f, textY);
-          childDrawList->AddText(textPos, ImGui::GetColorU32(ImGuiCol_Text), projectName);
-
-          ImGui::SameLine(0.0f, cardSpacing);
-
-          ImGui::PopID();
-        }
-
-        ImGui::EndChild();
-      }
-      else if (m_workspace)
-      {
-        m_selectedProjectIndex = -1;
-        ImGui::SetCursorPosX(
-            (panelWidth - ImGui::CalcTextSize("No projects found. Create a new project to get started.").x) * 0.5f);
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
-        ImGui::Text("No projects found. Create a new project to get started.");
-        ImGui::PopStyleColor();
-      }
-
-      ImGui::EndChild();
-
-      ImGui::SetCursorPos(ImVec2(panelPadding + projectsPanelWidth + panelSpacing, listStartY));
-      ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetColorU32(ImGuiCol_WindowBg));
-      ImGui::BeginChild("ToolsPanel", ImVec2(toolsPanelWidth, listHeight), true);
-      ImGui::PopStyleColor();
+          ImGui::SetCursorPos(ImVec2(panelPadding + projectsPanelWidth + panelSpacing, listStartY));
+          ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetColorU32(ImGuiCol_WindowBg));
+          ImGui::BeginChild("ToolsPanel", ImVec2(toolsPanelWidth, listHeight), true);
+          ImGui::PopStyleColor();
       {
         float buttonWidth  = toolsPanelWidth - 20.0f;
         float buttonHeight = 28.0f;
@@ -505,39 +544,43 @@ namespace ToolKit
                          });
         }
 
-        ImGui::EndDisabled();
-      }
-      ImGui::EndChild();
+            ImGui::EndDisabled();
+          }
+          ImGui::EndChild();
 
-      ImGui::SetCursorPosY(windowSize.y - bottomPanelHeight - bottomPadding);
+          ImGui::SetCursorPosY(windowSize.y - bottomPanelHeight - bottomPadding);
 
-      ImGui::SetCursorPosX(panelPadding);
-      float workspacePanelWidth = panelWidth * 0.5f;
-      ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetColorU32(ImGuiCol_WindowBg));
-      ImGui::BeginChild("WorkspacePanel", ImVec2(workspacePanelWidth, bottomPanelHeight), true);
-      ImGui::PopStyleColor();
+          ImGui::SetCursorPosX(panelPadding);
+          float workspacePanelWidth = panelWidth * 0.5f;
+          ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetColorU32(ImGuiCol_WindowBg));
+          ImGui::BeginChild("WorkspacePanel", ImVec2(workspacePanelWidth, bottomPanelHeight), true);
+          ImGui::PopStyleColor();
 
-      float contentHeight  = ImGui::GetTextLineHeight();
-      float verticalOffset = (bottomPanelHeight - contentHeight) * 0.5f;
-      ImGui::SetCursorPosY(verticalOffset);
+          float contentHeight  = ImGui::GetTextLineHeight();
+          float verticalOffset = (bottomPanelHeight - contentHeight) * 0.5f;
+          ImGui::SetCursorPosY(verticalOffset);
 
-      HandleWorkspace();
+          HandleWorkspace();
 
-      ImGui::EndChild();
+          ImGui::EndChild();
 
-      if (m_workspace && m_app->IsWorkspaceSane(false, false))
-      {
-        float buttonWidth  = 150.0f;
-        float buttonHeight = 35.0f;
+          if (m_workspace && m_app->IsWorkspaceSane(false, false))
+          {
+            float buttonWidth  = 150.0f;
+            float buttonHeight = 35.0f;
 
-        ImGui::SetCursorPosY(windowSize.y - buttonHeight - bottomPadding);
-        float buttonX = windowSize.x - buttonWidth - panelPadding;
-        ImGui::SetCursorPosX(buttonX);
+            ImGui::SetCursorPosY(windowSize.y - buttonHeight - bottomPadding);
+            float buttonX = windowSize.x - buttonWidth - panelPadding;
+            ImGui::SetCursorPosX(buttonX);
 
-        if (ImGui::Button("+ New Project", ImVec2(buttonWidth, buttonHeight)))
-        {
-          m_showNewProjectPopup = true;
+            if (ImGui::Button("+ New Project", ImVec2(buttonWidth, buttonHeight)))
+            {
+              m_showNewProjectPopup = true;
+            }
+          }
         }
+        ImGui::EndTabItem();
+        ImGui::EndTabBar();
       }
 
       ShowWorkspacePopup();

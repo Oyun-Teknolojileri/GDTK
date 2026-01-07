@@ -64,6 +64,7 @@ namespace ToolKit
       TexturePtr m_shortcutIconTexture     = nullptr;
 
       std::unordered_map<String, bool> m_thumbnailCache;
+      String m_searchFilter;
       void UpdateThumbnailCache();
     };
   } // namespace Editor
