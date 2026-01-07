@@ -754,7 +754,39 @@ namespace ToolKit
 
           ImGui::SetCursorPosX(innerPad);
           ImGui::PushItemWidth(ImGui::GetWindowWidth() - innerPad * 2);
+          
+          bool projectNameExists = false;
+          if (m_workspace && !m_newProjectName.empty())
+          {
+            for (const Project& project : m_workspace->m_projects)
+            {
+              if (project.name == m_newProjectName)
+              {
+                projectNameExists = true;
+                break;
+              }
+            }
+          }
+          
+          if (projectNameExists)
+          {
+            ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(1.0f, 0.2f, 0.2f, 1.0f));
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
+          }
+          
           enterPressed = ImGui::InputText("##newProjectName", &m_newProjectName, ImGuiInputTextFlags_EnterReturnsTrue);
+          
+          if (projectNameExists)
+          {
+            ImGui::PopStyleVar();
+            ImGui::PopStyleColor(1);
+            
+            if (ImGui::IsItemHovered())
+            {
+              ImGui::SetTooltip("There is already a project with this name!");
+            }
+          }
+          
           ImGui::PopItemWidth();
         }
         else
@@ -813,15 +845,34 @@ namespace ToolKit
 
         ImGui::SetCursorPosX(startX);
 
+        bool projectNameExists = false;
+        if (m_workspace && !m_newProjectName.empty() && m_newProjectTabLocal)
+        {
+          for (const Project& project : m_workspace->m_projects)
+          {
+            if (project.name == m_newProjectName)
+            {
+              projectNameExists = true;
+              break;
+            }
+          }
+        }
+        
         bool wasCloning = m_isCloning;
-        if (m_isCloning)
+        bool wasCreateDisabled = (m_isCloning || projectNameExists);
+        if (wasCreateDisabled)
         {
           ImGui::BeginDisabled();
         }
 
         bool createClicked = ImGui::Button("Create", ImVec2(buttonWidth, 0));
-        bool shouldCreate  = (createClicked || (enterPressed && !m_isCloning));
-
+        
+        if (wasCreateDisabled)
+        {
+          ImGui::EndDisabled();
+        }
+        
+        bool shouldCreate  = (createClicked || (enterPressed && !m_isCloning && !projectNameExists));
         if (shouldCreate)
         {
           bool canCreate     = false;
@@ -910,11 +961,6 @@ namespace ToolKit
           m_newProjectPathOrUrl.clear();
           m_isCloning = false;
           m_cloneProgress.clear();
-        }
-
-        if (wasCloning)
-        {
-          ImGui::EndDisabled();
         }
 
         ImGui::PopStyleVar();
