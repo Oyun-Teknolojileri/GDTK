@@ -107,9 +107,9 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/Bin")
 # ----------------------------
 if(APPLE)
     # Set RPATH for finding dylibs relative to executable
-    set_target_properties(Editor PROPERTIES
+set_target_properties(Editor PROPERTIES
         BUILD_WITH_INSTALL_RPATH TRUE
-        INSTALL_RPATH "@executable_path;@executable_path/../lib;@executable_path/../Frameworks"
+        INSTALL_RPATH "@executable_path;@executable_path/../lib;@executable_path/../Frameworks;${DEPENDENCY_LIB_DIR}"
         INSTALL_RPATH_USE_LINK_PATH TRUE
     )
 
