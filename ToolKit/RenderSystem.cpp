@@ -145,12 +145,7 @@ namespace ToolKit
   {
     // Initialize OpenGL functions
     LoadGlFunctions(glGetProcAddress);
-
-    // Initialize error reporting callback
     InitGLErrorReport(callback);
-
-    // Test backbuffer format (sRGB or not)
-    TestSRGBBackBuffer();
   }
 
   void RenderSystem::ExecuteTaskImp(RenderTask& task)
