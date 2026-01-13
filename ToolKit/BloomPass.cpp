@@ -21,13 +21,19 @@ namespace ToolKit
     m_downsampleShader = GetShaderManager()->Create<Shader>(ShaderPath("bloomDownsample.shader", true));
     m_upsampleShader   = GetShaderManager()->Create<Shader>(ShaderPath("bloomUpsample.shader", true));
     m_pass             = MakeNewPtr<FullQuadPass>();
+
+    // Cache initialization
+    m_cachedMainRes    = UVec2(0, 0);
+    m_cachedIterCount  = -1;
+    m_resourcesValid   = false;
   }
 
   void BloomPass::Render()
   {
     RenderTargetPtr mainRt = m_params.FrameBuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
+    mainRt                 = Cast<RenderTarget>(mainRt->GetResolvedTexture());
 
-    if (mainRt == nullptr || m_invalidRenderParams)
+    if (m_invalidRenderParams)
     {
       return;
     }
@@ -46,9 +52,10 @@ namespace ToolKit
       m_pass->UpdateUniform(ShaderUniform("threshold", m_params.minThreshold));
 
       TexturePtr prevRt = m_params.FrameBuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
+      prevRt            = prevRt->GetResolvedTexture();
 
       renderer->SetTexture(0, prevRt->m_textureId);
-      m_pass->m_params.frameBuffer      = m_tempFrameBuffers[0];
+      m_pass->m_params.frameBuffer      = m_resampleFrameBuffers[0];
       m_pass->m_params.blendFunc        = BlendFunction::NONE;
       m_pass->m_params.clearFrameBuffer = GraphicBitFields::AllBits;
 
@@ -71,11 +78,11 @@ namespace ToolKit
         const Vec2 prevRes             = Vec2(mainRes) * Vec2((1.0f / powVal));
 
         // Find previous framebuffer & RT
-        FramebufferPtr prevFramebuffer = m_tempFrameBuffers[i];
+        FramebufferPtr prevFramebuffer = m_resampleFrameBuffers[i];
         TexturePtr prevRt              = prevFramebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
+        prevRt                         = prevRt->GetResolvedTexture();
 
         // Set pass' shader and parameters
-
         int passIndx                   = i + 1;
 
         m_pass->UpdateUniform(ShaderUniform("passIndx", passIndx));
@@ -85,7 +92,7 @@ namespace ToolKit
 
         // Set pass parameters
         m_pass->m_params.clearFrameBuffer = GraphicBitFields::AllBits;
-        m_pass->m_params.frameBuffer      = m_tempFrameBuffers[i + 1];
+        m_pass->m_params.frameBuffer      = m_resampleFrameBuffers[i + 1];
         m_pass->m_params.blendFunc        = BlendFunction::NONE;
 
         RenderSubPass(m_pass);
@@ -103,13 +110,14 @@ namespace ToolKit
       for (int i = m_currentIterationCount; i > 0; i--)
       {
 
-        FramebufferPtr prevFramebuffer = m_tempFrameBuffers[i];
+        FramebufferPtr prevFramebuffer = m_resampleFrameBuffers[i];
         TexturePtr prevRt              = prevFramebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
+        prevRt                         = prevRt->GetResolvedTexture();
         renderer->SetTexture(0, prevRt->m_textureId);
 
         m_pass->m_params.blendFunc        = BlendFunction::ONE_TO_ONE;
         m_pass->m_params.clearFrameBuffer = GraphicBitFields::None;
-        m_pass->m_params.frameBuffer      = m_tempFrameBuffers[i - 1];
+        m_pass->m_params.frameBuffer      = m_resampleFrameBuffers[i - 1];
 
         RenderSubPass(m_pass);
       }
@@ -119,8 +127,9 @@ namespace ToolKit
     {
       m_pass->SetFragmentShader(m_upsampleShader, renderer);
 
-      FramebufferPtr prevFramebuffer = m_tempFrameBuffers[0];
+      FramebufferPtr prevFramebuffer = m_resampleFrameBuffers[0];
       TexturePtr prevRt              = prevFramebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
+      prevRt                         = prevRt->GetResolvedTexture();
       renderer->SetTexture(0, prevRt->m_textureId);
 
       m_pass->m_params.blendFunc        = BlendFunction::ONE_TO_ONE;
@@ -138,13 +147,10 @@ namespace ToolKit
     Pass::PreRender();
 
     RenderTargetPtr mainRt = m_params.FrameBuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
-    if (!mainRt)
-    {
-      return;
-    }
+    mainRt                 = Cast<RenderTarget>(mainRt->GetResolvedTexture());
 
     // Set to minimum iteration count
-    Vec2 mainRes = UVec2(mainRt->m_width, mainRt->m_height);
+    Vec2 mainRes           = UVec2(mainRt->m_width, mainRt->m_height);
     const IVec2 maxIterCounts(glm::log2(mainRes) - 1.0f);
     int iterationCount = glm::min(m_params.iterationCount, glm::min(maxIterCounts.x, maxIterCounts.y));
 
@@ -154,12 +160,16 @@ namespace ToolKit
       return;
     }
 
-    if (iterationCount != m_currentIterationCount)
-    {
-      m_tempTextures.resize(m_params.iterationCount + 1);
-      m_tempFrameBuffers.resize(m_params.iterationCount + 1);
+    // Check if we need to recreate resources
+    bool needsRecreation =
+        (m_cachedMainRes != UVec2(mainRes)) || (m_cachedIterCount != iterationCount) || !m_resourcesValid;
 
-      for (int i = 0; i < m_params.iterationCount + 1; i++)
+    if (needsRecreation)
+    {
+      m_resampleRenderTargets.resize(iterationCount + 1);
+      m_resampleFrameBuffers.resize(iterationCount + 1);
+
+      for (int i = 0; i < iterationCount + 1; i++)
       {
         const Vec2 factor(1.0f / glm::pow(2.0f, float(i)));
         const UVec2 curRes    = Vec2(mainRes) * factor;
@@ -170,8 +180,6 @@ namespace ToolKit
           m_invalidRenderParams = true;
           return;
         }
-
-        RenderTargetPtr& rt = m_tempTextures[i];
 
         TextureSettings set;
         set.InternalFormat = GraphicTypes::FormatRGBA16F;
@@ -184,10 +192,10 @@ namespace ToolKit
         set.WarpT          = GraphicTypes::UVClampToEdge;
         set.GenerateMipMap = false;
 
-        rt                 = MakeNewPtr<RenderTarget>(curRes.x, curRes.y, set);
+        RenderTargetPtr rt = MakeNewPtr<RenderTarget>(curRes.x, curRes.y, set);
         rt->Init();
 
-        FramebufferPtr& frameBuffer = m_tempFrameBuffers[i];
+        FramebufferPtr& frameBuffer = m_resampleFrameBuffers[i];
         if (frameBuffer == nullptr)
         {
           FramebufferSettings fbSettings;
@@ -204,8 +212,13 @@ namespace ToolKit
         frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, rt);
       }
 
-      m_currentIterationCount = iterationCount;
+      // Update cache
+      m_cachedMainRes   = UVec2(mainRes);
+      m_cachedIterCount = iterationCount;
+      m_resourcesValid  = true;
     }
+
+    m_currentIterationCount = iterationCount;
   }
 
   void BloomPass::PostRender() { Pass::PostRender(); }

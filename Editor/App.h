@@ -36,9 +36,19 @@ namespace ToolKit
       void OnNewProject(const String& name);
       void OnNewPlugin(const String& name);
       void SetGameMod(const GameMod mod);
-      void CompilePlugin(const String& name, bool gamePlugin);
+
+      /** Compiles the plugin with the given name. */
+      void CompilePlugin(const String& name, bool gamePlugin, bool isAsync = true);
+
+      /** Loads / reloads the project's game plugin. */
       void LoadGamePlugin();
+
+      /** Loads project's plugins saved as loaded within the editor. */
+      void LoadProjectPlugins();
+
+      /** States if the compiler is compiling a plugin. */
       bool IsCompiling();
+
       EditorScenePtr GetCurrentScene();
       void SetCurrentScene(const EditorScenePtr& scene);
       void FocusEntity(EntityPtr entity);
@@ -116,7 +126,7 @@ namespace ToolKit
       FolderWindowRawPtrArray GetAssetBrowsers();
       OutlinerWindowPtr GetOutliner();
       PropInspectorWindowPtr GetPropInspector();
-      RenderSettingsWindowPtr GetRenderSettingsWindow();
+      RenderSettingsWindowPtr GetEngineSettingsWindow();
       StatsWindowPtr GetStatsWindow();
       PluginWindowPtr GetPluginWindow();
 

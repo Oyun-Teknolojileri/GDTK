@@ -357,19 +357,9 @@ namespace ToolKit
       }
       else
       {
-
-#ifdef TK_GL_ES_3_0
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
-#endif
-
-// Opengl debuging & profiling features requires es 3_2 context
-#ifdef TK_GL_ES_3_2
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
-#endif
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2); // Intel Iris can't create 3.0 context.
 
 // macOS / Desktop OpenGL: Use Core Profile 3.3 or higher
 #if defined(TK_MAC) && !defined(TK_GL_ES_3_0) && !defined(TK_GL_ES_3_2)
@@ -387,6 +377,8 @@ namespace ToolKit
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
 #endif
 
+        SDL_GL_SetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, 1);
+
         g_window =
             SDL_CreateWindow(settings.m_window->GetNameVal().c_str(),
                              SDL_WINDOWPOS_CENTERED,
@@ -402,7 +394,11 @@ namespace ToolKit
         }
         else
         {
-          g_context = SDL_GL_CreateContext(g_window);
+          int srgbFlag = 0;
+          SDL_GL_GetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, &srgbFlag);
+          g_proxy->m_renderSys->m_backbufferFormatIsSRGB = (srgbFlag == 1);
+
+          g_context                                      = SDL_GL_CreateContext(g_window);
 
           if (g_context == nullptr)
           {
@@ -527,9 +523,7 @@ namespace ToolKit
 
             TKUpdateFn postUpdateFn = [](float deltaTime)
             {
-              SDL_GL_MakeCurrent(g_window, g_context);
               SDL_GL_SwapWindow(g_window);
-
               g_sdlEventPool->ClearPool(); // Clear after consumption.
             };
 

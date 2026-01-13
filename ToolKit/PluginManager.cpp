@@ -75,6 +75,8 @@ namespace ToolKit
         size_t end = fullPath.find(m_pluginExtention);
         reg.m_name = fullPath.substr(beg, end - beg);
 
+        TK_LOG("Plugin is loaded.");
+
         m_storage.push_back(reg);
         return &m_storage.back();
       }
@@ -116,6 +118,8 @@ namespace ToolKit
     FreeModule(reg->m_module);
     reg->m_module = nullptr;
     reg->m_loaded = false;
+
+    TK_LOG("Plugin is unloaded.");
 
     m_storage.erase(m_storage.begin() + indx);
   }
@@ -191,6 +195,29 @@ namespace ToolKit
     return nullptr;
   }
 
+  PluginRegisterArray PluginManager::GetRegisteredPlugins()
+  {
+    PluginRegisterArray result;
+    if (!m_storage.empty())
+    {
+      result.reserve(m_storage.size() - 1);
+      std::copy_if(m_storage.begin(),
+                   m_storage.end(),
+                   std::back_inserter(result),
+                   [&](PluginRegister obj)
+                   {
+                     if (obj.m_plugin != nullptr)
+                     {
+                       return obj.m_plugin->GetType() != PluginType::Game;
+                     }
+
+                     return false;
+                   });
+    }
+
+    return result;
+  }
+
   GamePlugin* PluginManager::GetGamePlugin()
   {
     if (PluginRegister* reg = GetGameRegister())
@@ -213,9 +240,12 @@ namespace ToolKit
   {
     for (size_t i = 0; i < m_storage.size(); i++)
     {
-      if (m_storage[i].m_plugin != nullptr)
+      if (Plugin* gamePlug = m_storage[i].m_plugin)
       {
-        return &m_storage[i];
+        if (gamePlug->GetType() == PluginType::Game)
+        {
+          return &m_storage[i];
+        }
       }
     }
 

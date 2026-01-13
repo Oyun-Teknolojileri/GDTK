@@ -97,7 +97,7 @@ namespace ToolKit
       return object;
     }
 
-    assert(false && "Unknown object type.");
+    TK_ERR("Unknown object type: %s", Class.data());
     return nullptr;
   }
 

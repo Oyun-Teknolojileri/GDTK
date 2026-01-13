@@ -14,18 +14,17 @@ namespace ToolKit
 
   struct ForwardRenderPassParams
   {
-    RenderData* renderData           = nullptr;
-    CameraPtr Cam                    = nullptr;
-    FramebufferPtr FrameBuffer       = nullptr;
-    RenderTargetPtr SsaoTexture      = nullptr;
-    GraphicBitFields clearBuffer     = GraphicBitFields::AllBits;
-    bool hasForwardPrePass           = false;
-    uint activeDirectionalLightCount = 0;
+    RenderData* renderData            = nullptr;
+    CameraPtr Cam                     = nullptr;
+    FramebufferPtr FrameBuffer        = nullptr;
+    RenderTargetPtr SsaoTexture       = nullptr;
+    GraphicBitFields clearBuffer      = GraphicBitFields::AllBits;
+    bool hasForwardPrePass            = false;
+    uint activeDirectionalLightCount  = 0;
+    FramebufferPtr resolveFrameBuffer = nullptr;
   };
 
-  /**
-   * Renders given entities with given lights using forward rendering
-   */
+  /** Renders given entities with given lights using forward rendering. */
   class TK_API ForwardRenderPass : public Pass
   {
    public:

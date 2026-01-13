@@ -14,11 +14,11 @@
 #include "App.h"
 #include "ConsoleWindow.h"
 #include "EditorViewport2d.h"
+#include "EngineSettingsWindow.h"
 #include "OutlinerWindow.h"
 #include "PluginWindow.h"
 #include "PopupWindows.h"
 #include "PropInspectorWindow.h"
-#include "RenderSettingsWindow.h"
 #include "StatsWindow.h"
 
 #include <Audio.h>
@@ -38,7 +38,7 @@ namespace ToolKit
 
     const float g_indentSpacing = 6.0f;
     const int g_treeNodeFlags   = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick |
-                                ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowItemOverlap;
+                                ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowOverlap;
 
     bool UI::m_windowMenushowMetrics = false;
     bool UI::m_imguiSampleWindow     = false;
@@ -104,6 +104,23 @@ namespace ToolKit
     UI::AnchorPresetImages UI::m_anchorPresetIcons;
 
     ImFont *LiberationSans, *LiberationSansBold, *IconFont;
+    static void (*Platform_CreateWindow)(ImGuiViewport* vp);
+
+    void TK_Platform_CreateWindow(ImGuiViewport* vp)
+    {
+      if (RenderSystem* rsys = GetRenderSystem())
+      {
+        if (rsys->m_backbufferFormatIsSRGB)
+        {
+          rsys->SrgbAutoEncoding(true);
+        }
+      }
+
+      if (Platform_CreateWindow)
+      {
+        Platform_CreateWindow(vp);
+      }
+    }
 
     void UI::Init()
     {
@@ -114,10 +131,18 @@ namespace ToolKit
       io.ConfigFlags                       |= ImGuiConfigFlags_DockingEnable | ImGuiConfigFlags_ViewportsEnable;
       io.ConfigWindowsMoveFromTitleBarOnly  = true;
 
+      if (RenderSystem* rsys = GetRenderSystem())
+      {
+        if (!rsys->m_backbufferFormatIsSRGB)
+        {
+          io.BackendFlags |= ImGuiBackendFlags_ToolKitGammaEncode;
+        }
+      }
+
       // Handle font loading.
-      static const ImWchar utf8TR[]         = {0x0020, 0x00FF, 0x00c7, 0x00c7, 0x00e7, 0x00e7, 0x011e, 0x011e, 0x011f,
-                                               0x011f, 0x0130, 0x0130, 0x0131, 0x0131, 0x00d6, 0x00d6, 0x00f6, 0x00f6,
-                                               0x015e, 0x015e, 0x015f, 0x015f, 0x00dc, 0x00dc, 0x00fc, 0x00fc, 0};
+      static const ImWchar utf8TR[] = {0x0020, 0x00FF, 0x00c7, 0x00c7, 0x00e7, 0x00e7, 0x011e, 0x011e, 0x011f,
+                                       0x011f, 0x0130, 0x0130, 0x0131, 0x0131, 0x00d6, 0x00d6, 0x00f6, 0x00f6,
+                                       0x015e, 0x015e, 0x015f, 0x015f, 0x00dc, 0x00dc, 0x00fc, 0x00fc, 0};
 
       io.Fonts->Clear();
       LiberationSans =
@@ -143,6 +168,11 @@ namespace ToolKit
 #else
       ImGui_ImplOpenGL3_Init("#version 130");  // OpenGL 3.0 on other desktop platforms
 #endif
+
+      // Platform window create override.
+      ImGuiPlatformIO& pio      = ImGui::GetPlatformIO();
+      Platform_CreateWindow     = pio.Platform_CreateWindow;
+      pio.Platform_CreateWindow = &TK_Platform_CreateWindow;
 
       InitIcons();
       InitTheme();
@@ -297,7 +327,7 @@ namespace ToolKit
       }
 
       // Fix gamma correction
-      if (!GetRenderSystem()->IsGammaCorrectionNeeded())
+      /* if (!GetRenderSystem()->IsGammaCorrectionNeeded())
       {
         float gamma = GetEngineSettings().m_postProcessing->GetGammaVal();
         for (ImVec4& col : ImGui::GetStyle().Colors)
@@ -306,7 +336,7 @@ namespace ToolKit
           col.y = std::powf(col.y, gamma);
           col.z = std::powf(col.z, gamma);
         }
-      }
+      }*/
     }
 
     void DarkTheme()
@@ -559,6 +589,7 @@ namespace ToolKit
 
       ImGui::UpdatePlatformWindows();
       ImGui::RenderPlatformWindowsDefault();
+      SDL_GL_MakeCurrent(g_window, g_context);
     }
 
     void UI::ShowAppMainMenuBar()
@@ -748,7 +779,7 @@ namespace ToolKit
       ShowPersistentWindow<OutlinerWindow>(g_outlinerStr);
       ShowPersistentWindow<PropInspectorWindow>(g_propInspector);
       ShowPersistentWindow<SimulationWindow>(g_simulationWindowStr);
-      ShowPersistentWindow<RenderSettingsWindow>(g_renderSettings);
+      ShowPersistentWindow<EngineSettingsWindow>(g_engineSettingsStr);
       ShowPersistentWindow<StatsWindow>(g_statsView);
       ShowPersistentWindow<PluginWindow>(g_pluginWindow);
 
@@ -1383,6 +1414,18 @@ namespace ToolKit
 
       ImGui::SetCursorPosX((windowWidth - textWidth) * 0.5f);
       ImGui::Text(text.c_str());
+    }
+
+    bool UI::SRGBColorEdit3(const StringView label, Vec3& rgbColor, int flags)
+    {
+      Vec3 srgb = glm::pow(rgbColor, Vec3(1.0f / 2.2f));
+      if (ImGui::ColorEdit3(label.data(), &srgb.x, flags))
+      {
+        rgbColor = glm::pow(srgb, Vec3(2.2f));
+        return true;
+      }
+
+      return false;
     }
 
     String UI::EntityTypeToIcon(ClassMeta* Class)

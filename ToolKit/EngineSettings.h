@@ -293,7 +293,7 @@ namespace ToolKit
     GraphicSettingsPtr m_graphics;
     PostProcessingSettingsPtr m_postProcessing;
     ShaderSettingsPtr m_shaderSettings;
-    StringArray m_loadedPlugins;
+    StringSet m_loadedPlugins;
   };
 
 } // namespace ToolKit

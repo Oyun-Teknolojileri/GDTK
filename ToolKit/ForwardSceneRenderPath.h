@@ -26,12 +26,11 @@ namespace ToolKit
   {
     SceneRenderPathParams()
     {
-      MainFramebuffer       = nullptr;
-      Cam                   = nullptr;
-      Scene                 = nullptr;
-      grid                  = nullptr;
-      applyGammaTonemapFxaa = false;
-      postProcessSettings   = MakeNewPtr<PostProcessingSettings>();
+      MainFramebuffer     = nullptr;
+      Cam                 = nullptr;
+      Scene               = nullptr;
+      grid                = nullptr;
+      postProcessSettings = MakeNewPtr<PostProcessingSettings>();
     }
 
     LightPtrArray overrideLights;
@@ -40,12 +39,9 @@ namespace ToolKit
     FramebufferPtr MainFramebuffer;
     EntityPtr grid;
     PostProcessingSettingsPtr postProcessSettings;
-    bool applyGammaTonemapFxaa;
   };
 
-  /**
-   * Forward scene render path. All objects are drawn in forward manner. Bandwidth optimized.
-   */
+  /** Forward scene render path. All objects are drawn in forward manner. Bandwidth optimized. */
   class TK_API ForwardSceneRenderPath : public RenderPath
   {
    public:
@@ -72,6 +68,7 @@ namespace ToolKit
     BloomPassPtr m_bloomPass                         = nullptr;
     DoFPassPtr m_dofPass                             = nullptr;
     GammaTonemapFxaaPassPtr m_gammaTonemapFxaaPass   = nullptr;
+    FramebufferPtr m_resolvedFramebuffer             = nullptr;
 
    protected:
     bool m_drawSky   = false;

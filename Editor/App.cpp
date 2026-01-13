@@ -12,13 +12,13 @@
 #include "EditorCamera.h"
 #include "EditorMetaKeys.h"
 #include "EditorViewport2d.h"
+#include "EngineSettingsWindow.h"
 #include "Grid.h"
 #include "OutlinerWindow.h"
 #include "OverlayUI.h"
 #include "PluginWindow.h"
 #include "PopupWindows.h"
 #include "PropInspectorWindow.h"
-#include "RenderSettingsWindow.h"
 #include "StatsWindow.h"
 #include "StatusBar.h"
 
@@ -52,6 +52,7 @@ namespace ToolKit
       RenderSystem* rsys = GetRenderSystem();
       rsys->SetAppWindowSize((uint) windowWidth, (uint) windowHeight);
       SetStatusMsg(g_statusOk);
+      m_publishManager = new PublishManager();
     }
 
     App::~App() {}
@@ -107,7 +108,6 @@ namespace ToolKit
       }
 
       m_simulatorSettings.Resolution = EmulatorResolution::Custom;
-      m_publishManager               = new PublishManager();
       m_thumbnailManager             = new ThumbnailManager();
       GetRenderSystem()->SetClearColor(g_wndBgColor);
     }
@@ -608,7 +608,14 @@ namespace ToolKit
         return;
       }
 
-      GamePlugin* gamePlugin = GetPluginManager()->GetGamePlugin();
+      GamePlugin* gamePlugin = nullptr;
+      PluginRegisterArray projectPlugins;
+      if (PluginManager* plugMan = GetPluginManager())
+      {
+        gamePlugin     = plugMan->GetGamePlugin();
+        projectPlugins = plugMan->GetRegisteredPlugins();
+      }
+
       if (gamePlugin == nullptr)
       {
         return;
@@ -667,12 +674,30 @@ namespace ToolKit
 
           // Then call on play.
           gamePlugin->OnPlay();
+
+          for (PluginRegister& plugin : projectPlugins)
+          {
+            if (plugin.m_initialized)
+            {
+              plugin.m_plugin->OnPlay();
+            }
+          }
+
           SetStatusMsg(g_statusGameIsPlaying);
         }
 
         if (m_gameMod == GameMod::Paused)
         {
           gamePlugin->OnResume();
+
+          for (PluginRegister& plugin : projectPlugins)
+          {
+            if (plugin.m_initialized)
+            {
+              plugin.m_plugin->OnResume();
+            }
+          }
+
           SetStatusMsg(g_statusGameIsResumed);
         }
 
@@ -684,6 +709,14 @@ namespace ToolKit
         gamePlugin->m_currentState = PluginState::Paused;
         gamePlugin->OnPause();
 
+        for (PluginRegister& plugin : projectPlugins)
+        {
+          if (plugin.m_initialized)
+          {
+            plugin.m_plugin->OnPause();
+          }
+        }
+
         SetStatusMsg(g_statusGameIsPaused);
         m_gameMod = mod;
       }
@@ -692,6 +725,14 @@ namespace ToolKit
       {
         gamePlugin->m_currentState = PluginState::Stop;
         gamePlugin->OnStop();
+
+        for (PluginRegister& plugin : projectPlugins)
+        {
+          if (plugin.m_initialized)
+          {
+            plugin.m_plugin->OnStop();
+          }
+        }
 
         SetStatusMsg(g_statusGameIsStopped);
         m_gameMod = mod;
@@ -705,7 +746,7 @@ namespace ToolKit
 
     bool App::IsCompiling() { return m_isCompiling; }
 
-    void App::CompilePlugin(const String& name, bool gamePlugin)
+    void App::CompilePlugin(const String& name, bool gamePlugin, bool isAsync)
     {
       if (!IsWorkspaceSane(true, true))
       {
@@ -717,7 +758,7 @@ namespace ToolKit
       m_publishManager->m_appName    = ConcatPaths({pluginDir, name, "Codes"});
       m_publishManager->m_pluginName = name;
 
-      m_publishManager->Publish(pluginType, TKDebug ? PublishConfig::Debug : PublishConfig::Deploy);
+      m_publishManager->Publish(pluginType, TKDebug ? PublishConfig::Debug : PublishConfig::Deploy, isAsync);
     }
 
     void App::LoadGamePlugin()
@@ -748,13 +789,26 @@ namespace ToolKit
       }
     }
 
+    void App::LoadProjectPlugins()
+    {
+      // Get all plugins in the project plugin directory.
+      if (PluginWindowPtr pluginWnd = GetWindow<PluginWindow>(g_pluginWindow))
+      {
+        pluginWnd->LoadEnabledPlugins();
+      }
+    }
+
     EditorScenePtr App::GetCurrentScene()
     {
       ScenePtr scene = GetSceneManager()->GetCurrentScene();
       return Cast<EditorScene>(scene);
     }
 
-    void App::SetCurrentScene(const EditorScenePtr& scene) { GetSceneManager()->SetCurrentScene(scene); }
+    void App::SetCurrentScene(const EditorScenePtr& scene)
+    {
+      scene->Init();
+      GetSceneManager()->SetCurrentScene(scene);
+    }
 
     void App::FocusEntity(EntityPtr entity)
     {
@@ -1263,39 +1317,44 @@ namespace ToolKit
       TKAsyncTask(WorkerManager::BackgroundPool,
                   [this, fullPath, progressReportFn]() -> void
                   {
+                    SceneManager* sceneManager = GetSceneManager();
+                    sceneManager->Remove(fullPath); // Make sure to force a reload.
+
                     // Load scene in background.
-                    EditorScenePtr scene = GetSceneManager()->Create<EditorScene>(fullPath, progressReportFn);
+                    EditorScenePtr nextScene = sceneManager->Create<EditorScene>(fullPath, progressReportFn);
+                    sceneManager->Remove(fullPath); // Preserve the loaded scene getting destroyed in ClearSession.
+
                     SetStatusMsg(g_statusComplate);
 
                     // Initiate and set the scene in the main thread.
-                    TKAsyncTask(WorkerManager::MainThread,
-                                [this, fullPath]() -> void
-                                {
-                                  ClearSession();
-                                  GetCurrentScene()->Destroy(false);
-                                  GetSceneManager()->Remove(GetCurrentScene()->GetFile());
+                    TKAsyncTask(
+                        WorkerManager::MainThread,
+                        [this, fullPath](EditorScenePtr nextScene) -> void
+                        {
+                          ClearSession();
 
-                                  // Get the loaded scene.
-                                  EditorScenePtr scene = GetSceneManager()->Create<EditorScene>(fullPath);
-                                  if (IsLayer(fullPath))
-                                  {
-                                    if (EditorViewport2dPtr viewport = GetWindow<EditorViewport2d>(g_2dViewport))
-                                    {
-                                      UILayerPtr layer = MakeNewPtr<UILayer>(scene);
+                          // Set the loaded scene.
+                          SceneManager* sceneManager = GetSceneManager();
+                          sceneManager->Manage(nextScene);
+                          if (IsLayer(fullPath))
+                          {
+                            if (EditorViewport2dPtr viewport = GetWindow<EditorViewport2d>(g_2dViewport))
+                            {
+                              UILayerPtr layer = MakeNewPtr<UILayer>(nextScene);
 
-                                      UIManager* uiMan = GetUIManager();
-                                      uiMan->AddLayer(viewport->m_viewportId, layer);
-                                    }
-                                    else
-                                    {
-                                      SetStatusMsg(g_statusNo2dViewports);
-                                    }
-                                  }
+                              UIManager* uiMan = GetUIManager();
+                              uiMan->AddLayer(viewport->m_viewportId, layer);
+                            }
+                            else
+                            {
+                              SetStatusMsg(g_statusNo2dViewports);
+                            }
+                          }
 
-                                  SetCurrentScene(scene);
-                                  scene->Init();
-                                  m_workspace.SetScene(scene->m_name);
-                                });
+                          SetCurrentScene(nextScene);
+                          m_workspace.SetScene(nextScene->m_name);
+                        },
+                        nextScene);
                   });
     }
 
@@ -1347,13 +1406,26 @@ namespace ToolKit
 
     void App::OpenProject(const Project& project)
     {
+      PluginWindowPtr pluginWindow = GetWindow<PluginWindow>(g_pluginWindow);
+      if (pluginWindow == nullptr)
+      {
+        SetStatusMsg(g_statusFailed);
+        TK_ERR("Can not access project plugins. Plugin window is not available.");
+        return;
+      }
+
       ClearSession();
       GetPluginManager()->UnloadGamePlugin();
+
+      pluginWindow->UnloadProjectPlugins();
+
       m_workspace.SetActiveProject(project);
       m_workspace.Serialize(nullptr, nullptr);
       CreateNewScene();
 
+      pluginWindow->LoadPluginSettings();
       LoadGamePlugin();
+      LoadProjectPlugins();
 
       FolderWindowRawPtrArray browsers = GetAssetBrowsers();
       for (FolderWindow* browser : browsers)
@@ -1515,7 +1587,10 @@ namespace ToolKit
 
     PropInspectorWindowPtr App::GetPropInspector() { return GetWindow<PropInspectorWindow>(g_propInspector); }
 
-    RenderSettingsWindowPtr App::GetRenderSettingsWindow() { return GetWindow<RenderSettingsWindow>(g_renderSettings); }
+    RenderSettingsWindowPtr App::GetEngineSettingsWindow()
+    {
+      return GetWindow<EngineSettingsWindow>(g_engineSettingsStr);
+    }
 
     StatsWindowPtr App::GetStatsWindow() { return GetWindow<StatsWindow>(g_statsView); }
 
@@ -1707,6 +1782,7 @@ namespace ToolKit
       if (!activeProject.name.empty())
       {
         LoadGamePlugin();
+        LoadProjectPlugins();
 
         if (!activeProject.scene.empty())
         {

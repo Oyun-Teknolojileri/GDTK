@@ -68,6 +68,13 @@ namespace ToolKit
       static void CenteredText(const String& text);
 
       /**
+       * Takes an rgb color, gamma encode it and render the color picker. If color changed, returns an rgb color.
+       * This makes sure the color picker shows the correct color in srgb space. You can use paint or web colors to pick
+       * colors.
+       */
+      static bool SRGBColorEdit3(const StringView label, Vec3& rgbColor, int flags = 0);
+
+      /**
        * Returns a font / icon for Entity classes.
        * @Class is the Class type to query font for.
        * @return FontAwesome string (icon) from any given entity class.

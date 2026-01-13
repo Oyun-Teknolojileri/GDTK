@@ -60,7 +60,7 @@
       <SDLCheck>true</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>Use</PrecompiledHeader>
-      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;TK_EDITOR;TK_EDITOR_DLL_EXPORT;TK_GL_ES_3_0;TK_DEBUG;TK_DLL_IMPORT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;TK_EDITOR;TK_EDITOR_DLL_EXPORT;TK_GL_3_0;TK_DEBUG;TK_DLL_IMPORT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <IncludeInUnityFile>true</IncludeInUnityFile>
       <LanguageStandard>stdcpp17</LanguageStandard>
@@ -80,7 +80,7 @@
       <SDLCheck>true</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>Use</PrecompiledHeader>
-      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;TK_EDITOR;TK_EDITOR_DLL_EXPORT;TK_GL_ES_3_0;TK_DLL_IMPORT;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;TK_EDITOR;TK_EDITOR_DLL_EXPORT;TK_GL_3_0;TK_DLL_IMPORT;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <AdditionalOptions>/FI "stdafx.h" %(AdditionalOptions)</AdditionalOptions>
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
@@ -138,7 +138,7 @@
     <ClCompile Include="PreviewViewport.cpp" />
     <ClCompile Include="PropInspectorWindow.cpp" />
     <ClCompile Include="PublishManager.cpp" />
-    <ClCompile Include="RenderSettingsWindow.cpp" />
+    <ClCompile Include="EngineSettingsWindow.cpp" />
     <ClCompile Include="StatsWindow.cpp" />
     <ClCompile Include="StatusBar.cpp" />
     <ClCompile Include="Thumbnail.cpp" />
@@ -201,7 +201,7 @@
     <ClInclude Include="PrefabView.h" />
     <ClInclude Include="PreviewViewport.h" />
     <ClInclude Include="PublishManager.h" />
-    <ClInclude Include="RenderSettingsWindow.h" />
+    <ClInclude Include="EngineSettingsWindow.h" />
     <ClInclude Include="StatsWindow.h" />
     <ClInclude Include="StatusBar.h" />
     <ClInclude Include="Thumbnail.h" />

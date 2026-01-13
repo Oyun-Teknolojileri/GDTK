@@ -159,6 +159,9 @@ namespace ToolKit
     needPacking      |= !CheckSystemFile(packPath);
     needPacking      |= m_onlyPack;
 
+    // Prevent packing for plugins.
+    needPacking      &= (m_platform != PublishPlatform::EditorPlugin && m_platform != PublishPlatform::GamePlugin);
+
     if (needPacking)
     {
       int packResult = PackResources();

@@ -34,6 +34,9 @@ namespace ToolKit
     /** This function is used to pass custom uniforms to this pass. */
     void UpdateUniform(const ShaderUniform& shaderUniform);
 
+    /** Label that appears in the gpu profile / debug applications(RenderDoc etc...). */
+    void SetName(StringView name) { m_name = name; }
+
    protected:
     GpuProgramPtr m_program = nullptr; //!< Program used to draw objects with in the pass.
     StringView m_name; //!< Label that appears in the gpu profile / debug applications (RenderDoc etc...).

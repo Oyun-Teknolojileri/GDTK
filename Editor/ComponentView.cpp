@@ -287,7 +287,7 @@ namespace ToolKit
       {
         ImGui::PushID((int) comp->GetIdVal());
         String varName = headerName + "##" + std::to_string(modifiableComp);
-        bool isOpen    = ImGui::CollapsingHeader(varName.c_str(), nullptr, ImGuiTreeNodeFlags_AllowItemOverlap);
+        bool isOpen    = ImGui::CollapsingHeader(varName.c_str(), nullptr, ImGuiTreeNodeFlags_AllowOverlap);
 
         if (modifiableComp)
         {

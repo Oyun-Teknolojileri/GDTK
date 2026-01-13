@@ -276,7 +276,8 @@ namespace ToolKit
           uint texId = 0;
           if (m_framebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0) != nullptr)
           {
-            texId = m_framebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0)->m_textureId;
+            RenderTargetPtr rt = m_framebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
+            texId              = rt->GetResolvedTexture()->m_textureId;
           }
 
           // Imgui blends the alpha of the image ( in our case, render target for the scene ) with its window

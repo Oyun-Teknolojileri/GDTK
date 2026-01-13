@@ -27,6 +27,7 @@ namespace ToolKit
     void InitBuffers(int width, int height, int sampleCount);
     void Render() override;
     void PreRender() override;
+    void PostRender() override;
 
    public:
     ForwardRenderPassParams m_params;

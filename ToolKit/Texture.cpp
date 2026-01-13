@@ -42,6 +42,7 @@ namespace ToolKit
                    GraphicTypes::FormatSRGB8_A8,
                    GraphicTypes::FormatRGBA,
                    GraphicTypes::TypeUnsignedByte,
+                   1,
                    -1,
                    true};
 
@@ -129,11 +130,9 @@ namespace ToolKit
                    m_width,
                    m_height,
                    0,
-                   GL_RGBA,
-                   GL_UNSIGNED_BYTE,
+                   (GLenum) m_settings.Format,
+                   (GLenum) m_settings.Type,
                    m_image);
-
-      Stats::AddVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat));
     }
     else
     {
@@ -143,23 +142,13 @@ namespace ToolKit
                    m_width,
                    m_height,
                    0,
-                   GL_RGBA,
-                   GL_FLOAT,
+                   (GLenum) m_settings.Format,
+                   (GLenum) m_settings.Type,
                    m_imagef);
-
-      Stats::AddVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat));
     }
 
-    if (m_settings.GenerateMipMap)
-    {
-      glGenerateMipmap(GL_TEXTURE_2D);
-    }
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, (GLint) m_settings.MinFilter);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, (GLint) m_settings.MagFilter);
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, (GLint) m_settings.WarpS);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, (GLint) m_settings.WarpT);
+    ApplyTextureSettings(m_settings);
+    Stats::AddVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat));
 
     if (TK_GL_EXT_texture_filter_anisotropic == 1)
     {
@@ -172,6 +161,11 @@ namespace ToolKit
       aniso                    = glm::min(maxAniso, aniso);
 
       glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, aniso);
+    }
+
+    if (m_settings.GenerateMipMap)
+    {
+      glGenerateMipmap(GL_TEXTURE_2D);
     }
 
     if (flushClientSideArray)
@@ -192,15 +186,27 @@ namespace ToolKit
     uint64 pixelCount = (uint64) m_width * (uint64) m_height;
     if (m_settings.Target == GraphicTypes::Target2D)
     {
-      Stats::RemoveVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat));
+      if (m_settings.msaaCount > 1)
+      {
+        // There is no msaa render texture, so delete the renderbuffer.
+        glDeleteRenderbuffers(1, &m_textureId);
+        Stats::RemoveVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat) * m_settings.msaaCount);
+      }
+      else
+      {
+        RHI::DeleteTexture(m_textureId);
+        Stats::RemoveVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat));
+      }
     }
     else if (m_settings.Target == GraphicTypes::Target2DArray)
     {
       assert(m_settings.Layers > 0 && "Layer count must be greater than 0");
+      RHI::DeleteTexture(m_textureId);
       Stats::RemoveVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat) * m_settings.Layers);
     }
     else if (m_settings.Target == GraphicTypes::TargetCubeMap)
     {
+      RHI::DeleteTexture(m_textureId);
       Stats::RemoveVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat) * 6);
     }
     else
@@ -208,7 +214,6 @@ namespace ToolKit
       assert(false);
     }
 
-    RHI::DeleteTexture(m_textureId);
     m_textureId = 0;
     m_initiated = false;
   }
@@ -231,6 +236,13 @@ namespace ToolKit
     glGenerateMipmap((GLenum) m_settings.Target);
   }
 
+  bool Texture::IsMultiSampled() { return m_settings.msaaCount > 1; }
+
+  TexturePtr Texture::GetResolvedTexture()
+  {
+    return m_resolvedTexture != nullptr ? m_resolvedTexture : Self<Texture>();
+  }
+
   void Texture::Clear()
   {
     ImageFree(m_image);
@@ -240,14 +252,48 @@ namespace ToolKit
     m_imagef = nullptr;
   }
 
+  void Texture::ApplyTextureSettings(const TextureSettings& settings)
+  {
+    glTexParameteri((GLenum) settings.Target, GL_TEXTURE_MIN_FILTER, (GLint) settings.MinFilter);
+    glTexParameteri((GLenum) settings.Target, GL_TEXTURE_MAG_FILTER, (GLint) settings.MagFilter);
+    glTexParameteri((GLenum) settings.Target, GL_TEXTURE_WRAP_S, (GLint) settings.WarpS);
+    glTexParameteri((GLenum) settings.Target, GL_TEXTURE_WRAP_T, (GLint) settings.WarpT);
+
+    if (settings.Target == GraphicTypes::TargetCubeMap)
+    {
+      glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, (GLint) settings.WarpR);
+    }
+  }
+
   // DepthTexture
   //////////////////////////////////////////
 
   TKDefineClass(DepthTexture, Texture);
 
+  DepthTexture::DepthTexture()
+  {
+    m_settings.MinFilter = GraphicTypes::SampleNearest;
+    m_settings.MagFilter = GraphicTypes::SampleNearest;
+    m_settings.WarpS     = GraphicTypes::UVClampToEdge;
+    m_settings.WarpT     = GraphicTypes::UVClampToEdge;
+  }
+
   void DepthTexture::Load() {}
 
   void DepthTexture::Clear() { UnInit(); }
+
+  int DepthTexture::GetFormatSize()
+  {
+    int internalFormatSize = m_stencil ? 4 : 3;
+
+    int sizeMultiplier     = 1;
+    if (m_settings.msaaCount > 1 && glRenderbufferStorageMultisampleEXT != nullptr)
+    {
+      sizeMultiplier = m_settings.msaaCount;
+    }
+
+    return internalFormatSize * sizeMultiplier;
+  }
 
   void DepthTexture::Init(int width, int height, bool stencil, int multiSample)
   {
@@ -256,32 +302,39 @@ namespace ToolKit
       return;
     }
 
-    m_initiated   = true;
-    m_width       = width;
-    m_height      = height;
-    m_stencil     = stencil;
-    m_multiSample = multiSample;
+    m_initiated          = true;
+    m_width              = width;
+    m_height             = height;
+    m_stencil            = stencil;
+    m_settings.msaaCount = multiSample;
 
     if constexpr (GraphicSettings::disableMSAA)
     {
-      m_multiSample = 0;
+      m_settings.msaaCount = 1;
     }
 
     glGenRenderbuffers(1, &m_textureId);
     glBindRenderbuffer(GL_RENDERBUFFER, m_textureId);
 
-    if (m_multiSample > 0 && glRenderbufferStorageMultisampleEXT != nullptr)
+    Stats::SetGpuResourceLabel(m_label, GpuResourceType::RenderBuffer, m_textureId);
+
+    int sizeMultiplier = 1;
+    if (m_settings.msaaCount > 1)
     {
-      glRenderbufferStorageMultisampleEXT(GL_RENDERBUFFER, m_multiSample, (GLenum) GetDepthFormat(), m_width, m_height);
+      glRenderbufferStorageMultisample(GL_RENDERBUFFER,
+                                       m_settings.msaaCount,
+                                       (GLenum) GetDepthFormat(),
+                                       m_width,
+                                       m_height);
+
+      sizeMultiplier = m_settings.msaaCount;
     }
     else
     {
-      GLenum component = (GLenum) GetDepthFormat();
-      glRenderbufferStorage(GL_RENDERBUFFER, component, m_width, m_height);
+      glRenderbufferStorage(GL_RENDERBUFFER, (GLenum) GetDepthFormat(), m_width, m_height);
     }
 
-    uint64 internalFormatSize = stencil ? 4 : 3;
-    Stats::AddVRAMUsageInBytes((uint64) (m_width * m_height) * internalFormatSize);
+    Stats::AddVRAMUsageInBytes((uint64) (m_width * m_height) * GetFormatSize());
   }
 
   void DepthTexture::UnInit()
@@ -292,14 +345,11 @@ namespace ToolKit
     }
 
     glDeleteRenderbuffers(1, &m_textureId);
+    Stats::RemoveVRAMUsageInBytes((uint64) (m_width * m_height) * GetFormatSize());
 
-    uint64 internalFormatSize = m_stencil ? 4 : 3;
-    Stats::RemoveVRAMUsageInBytes((uint64) (m_width * m_height) * internalFormatSize);
-
-    m_textureId   = 0;
-    m_initiated   = false;
-    m_constructed = false;
-    m_stencil     = false;
+    m_textureId = 0;
+    m_initiated = false;
+    m_stencil   = false;
   }
 
   GraphicTypes DepthTexture::GetDepthFormat()
@@ -335,11 +385,7 @@ namespace ToolKit
                  (GLenum) m_settings.Type,
                  data);
 
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, (GLint) m_settings.MinFilter);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, (GLint) m_settings.MagFilter);
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, (GLint) m_settings.WarpS);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, (GLint) m_settings.WarpT);
+    ApplyTextureSettings(m_settings);
 
     m_loaded    = true;
     m_initiated = true;
@@ -388,7 +434,15 @@ namespace ToolKit
 
   TKDefineClass(CubeMap, Texture);
 
-  CubeMap::CubeMap() : Texture() {}
+  CubeMap::CubeMap() : Texture()
+  {
+    m_settings.Target    = GraphicTypes::TargetCubeMap;
+    m_settings.MinFilter = GraphicTypes::SampleLinearMipmapLinear;
+    m_settings.MagFilter = GraphicTypes::SampleLinear;
+    m_settings.WarpR     = GraphicTypes::UVClampToEdge;
+    m_settings.WarpS     = GraphicTypes::UVClampToEdge;
+    m_settings.WarpT     = GraphicTypes::UVClampToEdge;
+  }
 
   CubeMap::CubeMap(const String& file) : Texture() { SetFile(file); }
 
@@ -506,14 +560,8 @@ namespace ToolKit
     uint64 pixelCount = (uint64) m_width * (uint64) m_height;
     Stats::AddVRAMUsageInBytes(pixelCount * 4 * 6); // Component count * times face count.
 
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
+    ApplyTextureSettings(m_settings);
     glGenerateMipmap(GL_TEXTURE_CUBE_MAP);
-
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
 
     if (flushClientSideArray)
     {
@@ -886,25 +934,48 @@ namespace ToolKit
 
     // Create frame buffer color texture
     assert(m_textureId == 0 && "Texture already initialized.");
-    glGenTextures(1, &m_textureId);
-    RHI::SetTexture((GLenum) m_settings.Target, m_textureId);
+
+    if (m_settings.msaaCount > 1)
+    {
+      glGenRenderbuffers(1, &m_textureId);
+      glBindRenderbuffer(GL_RENDERBUFFER, m_textureId);
+    }
+    else
+    {
+      glGenTextures(1, &m_textureId);
+      RHI::SetTexture((GLenum) m_settings.Target, m_textureId);
+    }
 
     Stats::SetGpuResourceLabel(m_label, GpuResourceType::Texture, m_textureId);
 
     uint64 pixelCount = (uint64) m_width * (uint64) m_height;
     if (m_settings.Target == GraphicTypes::Target2D)
     {
-      glTexImage2D(GL_TEXTURE_2D,
-                   0,
-                   (int) m_settings.InternalFormat,
-                   m_width,
-                   m_height,
-                   0,
-                   (int) m_settings.Format,
-                   (int) m_settings.Type,
-                   0);
+      if (m_settings.msaaCount > 1)
+      {
+        // Opengl 3.0 / es 3.0 does not support multisampled textures directly.
+        // Render buffer is used.
+        glRenderbufferStorageMultisample(GL_RENDERBUFFER,
+                                         m_settings.msaaCount,
+                                         (GLenum) m_settings.InternalFormat,
+                                         m_width,
+                                         m_height);
+      }
+      else
+      {
+        glTexImage2D(GL_TEXTURE_2D,
+                     0,
+                     (int) m_settings.InternalFormat,
+                     m_width,
+                     m_height,
+                     0,
+                     (int) m_settings.Format,
+                     (int) m_settings.Type,
+                     0);
+      }
 
-      Stats::AddVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat));
+      ApplyTextureSettings(m_settings);
+      Stats::AddVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat) * m_settings.msaaCount);
     }
     else if (m_settings.Target == GraphicTypes::TargetCubeMap)
     {
@@ -921,25 +992,26 @@ namespace ToolKit
                      0);
       }
 
+      ApplyTextureSettings(m_settings);
       Stats::AddVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat) * 6);
     }
     else if (m_settings.Target == GraphicTypes::Target2DArray)
     {
       assert(m_settings.Layers > 0 && "Layer count must be at least 1");
-      glTexStorage3D(GL_TEXTURE_2D_ARRAY, 1, (int) m_settings.InternalFormat, m_width, m_height, m_settings.Layers);
+      glTexImage3D(GL_TEXTURE_2D_ARRAY,
+                   0,
+                   (int) m_settings.InternalFormat,
+                   m_width,
+                   m_height,
+                   m_settings.Layers,
+                   0,
+                   (int) m_settings.Format,
+                   (int) m_settings.Type,
+                   nullptr);
+
+      ApplyTextureSettings(m_settings);
       Stats::AddVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat) * m_settings.Layers);
     }
-
-    glTexParameteri((int) m_settings.Target, GL_TEXTURE_WRAP_S, (int) m_settings.WarpS);
-    glTexParameteri((int) m_settings.Target, GL_TEXTURE_WRAP_T, (int) m_settings.WarpT);
-
-    if (m_settings.Target == GraphicTypes::TargetCubeMap)
-    {
-      glTexParameteri((int) m_settings.Target, GL_TEXTURE_WRAP_R, (int) m_settings.WarpR);
-    }
-
-    glTexParameteri((int) m_settings.Target, GL_TEXTURE_MIN_FILTER, (int) m_settings.MinFilter);
-    glTexParameteri((int) m_settings.Target, GL_TEXTURE_MAG_FILTER, (int) m_settings.MagFilter);
 
     m_initiated = true;
   }

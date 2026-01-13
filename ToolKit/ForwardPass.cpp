@@ -55,6 +55,18 @@ namespace ToolKit
       // Only the visible fragments will pass the test.
       renderer->SetDepthTestFunc(CompareFunctions::FuncLequal);
     }
+
+    if (DepthTexturePtr depthTexture = m_params.FrameBuffer->GetDepthTexture())
+    {
+      if (depthTexture->m_stencil)
+      {
+        renderer->InvalidateFramebufferDepth(m_params.FrameBuffer);
+      }
+      else
+      {
+        renderer->InvalidateFramebufferDepthStencil(m_params.FrameBuffer);
+      }
+    }
   }
 
   void ForwardRenderPass::PostRender()
@@ -64,6 +76,14 @@ namespace ToolKit
     // Set the default depth test.
     Renderer* renderer = GetRenderer();
     renderer->SetDepthTestFunc(CompareFunctions::FuncLess);
+
+    // Resolve render target if necessary.
+    if (m_params.FrameBuffer->IsMultiSampled() && m_params.resolveFrameBuffer != nullptr)
+    {
+      renderer->ResolveFramebuffer(m_params.FrameBuffer,
+                                   m_params.resolveFrameBuffer,
+                                   {(int) Framebuffer::Attachment::ColorAttachment0});
+    }
   }
 
   void ForwardRenderPass::RenderOpaque(RenderData* renderData)

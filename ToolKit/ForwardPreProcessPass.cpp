@@ -44,19 +44,23 @@ namespace ToolKit
   void ForwardPreProcessPass::InitBuffers(int width, int height, int sampleCount)
   {
     const FramebufferSettings& fbs = m_framebuffer->GetSettings();
-    bool requiresReconstruct = fbs.width != width || fbs.height != height || fbs.multiSampleFrameBuffer != sampleCount;
+    bool requiresReconstruct       = fbs.width != width || fbs.height != height || fbs.msaaCount != sampleCount;
 
     if (requiresReconstruct)
     {
+      m_framebuffer->DetachDepthTexture();
       m_framebuffer->ReconstructIfNeeded({width, height, false, false, sampleCount});
       m_normalRt->ReconstructIfNeeded(width, height);
       m_linearDepthRt->ReconstructIfNeeded(width, height);
 
       m_framebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_linearDepthRt);
       m_framebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment1, m_normalRt);
+    }
 
-      // Pass incoming depth buffer to create z buffer for early z test.
-      if (DepthTexturePtr depth = m_params.FrameBuffer->GetDepthTexture())
+    // Pass incoming depth buffer to create z buffer for early z test.
+    if (DepthTexturePtr depth = m_params.FrameBuffer->GetDepthTexture())
+    {
+      if (depth != m_framebuffer->GetDepthTexture())
       {
         m_framebuffer->AttachDepthTexture(depth);
       }
@@ -67,7 +71,6 @@ namespace ToolKit
   {
     // Currently transparent objects are not rendered to export screen space normals or linear depth
     // we want SSAO and DOF to effect on opaque objects only renderLinearDepthAndNormalFn(m_params.TranslucentJobs);
-
     RenderJobItr begin = m_params.renderData->GetForwardOpaqueBegin();
     RenderJobItr end   = m_params.renderData->GetForwardAlphaMaskedBegin();
 
@@ -106,6 +109,13 @@ namespace ToolKit
     Renderer* renderer = GetRenderer();
     renderer->SetFramebuffer(m_framebuffer, GraphicBitFields::AllBits);
     renderer->SetCamera(m_params.Cam, true);
+  }
+
+  void ForwardPreProcessPass::PostRender()
+  {
+    Pass::PostRender();
+    // Don't clear / invalidate depth, its being used for upcoming passes. Render pass uses it for Z pre-pass.
+    // Color channels are used for post process passes.
   }
 
 } // namespace ToolKit

@@ -16,15 +16,15 @@ namespace ToolKit
   struct FramebufferSettings
   {
     /**Height of the frame buffer. */
-    int width                  = 128;
+    int width            = 128;
     /** Width of the frame buffer. */
-    int height                 = 128;
+    int height           = 128;
     /** States whether the default depth has stencil or not. */
-    bool depthStencil          = false;
+    bool depthStencil    = false;
     /** Creates a default depth attachment. */
-    bool useDefaultDepth       = true;
-    /** Creates multi sample frame buffers. Suggested values are 0, 2, 4, 6. */
-    int multiSampleFrameBuffer = 0;
+    bool useDefaultDepth = true;
+    /** Creates multi sample frame buffers if greater than 1. Suggested values are 1, 2, 4, 8. */
+    int msaaCount        = 1;
 
     bool operator==(const FramebufferSettings& other) const
     {
@@ -89,14 +89,20 @@ namespace ToolKit
 
     DepthTexturePtr GetDepthTexture();
     void AttachDepthTexture(DepthTexturePtr rt);
+    DepthTexturePtr DetachDepthTexture();
 
     uint GetFboId();
     const FramebufferSettings& GetSettings();
     void ReconstructIfNeeded(int width, int height);
     void ReconstructIfNeeded(const FramebufferSettings& settings);
 
-   private:
+    /** Returns if the framebuffer is multi sampled. */
+    bool IsMultiSampled();
+
+    /** Sets attachments as draw buffers. Must be called when the frame buffer set as current. */
     void SetDrawBuffers();
+
+   private:
     bool IsColorAttachment(Attachment atc);
     void CheckFramebufferComplete();
 
@@ -107,8 +113,7 @@ namespace ToolKit
    private:
     FramebufferSettings m_settings;
 
-    uint m_fboId        = 0;
-    uint m_defaultRboId = 0;
+    uint m_fboId = 0;
     RenderTargetPtr m_colorAtchs[m_maxColorAttachmentCount];
     DepthTexturePtr m_depthAtch = nullptr;
   };

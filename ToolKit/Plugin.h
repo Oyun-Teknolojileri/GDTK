@@ -9,10 +9,6 @@
 
 #include "Types.h"
 
-/**
- * Plugin functions that needs to be accessible by the editor needs to export their functionality using this macro.
- */
-
 namespace ToolKit
 {
 
@@ -21,7 +17,6 @@ namespace ToolKit
     // Plugin data.
     String version;
     String engine;
-    bool autoLoad = false;
     // Description data.
     String name;
     String brief;
@@ -38,29 +33,19 @@ namespace ToolKit
     void Save(const String& path);
   };
 
-  /**
-   * Enums for plugin types.
-   */
+  /** Enums for plugin types. */
   enum class PluginType
   {
     Base,
-    /**
-     * Plugin type that is used to extend engine features.
-     */
+    /** Plugin type that is used to extend engine features. */
     Engine,
-    /**
-     * Plugin type for games and simulations.
-     */
+    /** Plugin type for games and simulations. */
     Game,
-    /**
-     * Plugin type for extending the editor.
-     */
+    /** Plugin type for extending the editor. */
     Editor
   };
 
-  /**
-   * Enums for plugin states.
-   */
+  /** Enums for plugin states. */
   enum class PluginState
   {
     /**
@@ -83,9 +68,7 @@ namespace ToolKit
     Stop
   };
 
-  /**
-   * Base plugin interface.
-   */
+  /** Base plugin interface. */
   class TK_API Plugin
   {
    public:
@@ -124,13 +107,23 @@ namespace ToolKit
      */
     virtual void OnUnload(XmlDocumentPtr state) = 0;
 
+    /** This callback gets called when the play session started for the first time. */
+    virtual void OnPlay()                       = 0;
+
+    /** This callback gets called when the play session stopped. */
+    virtual void OnPause()                      = 0;
+
+    /** This callback gets called play session continue after paused. */
+    virtual void OnResume()                     = 0;
+
+    /** This callback gets called play session continue stopped. */
+    virtual void OnStop()                       = 0;
+
    public:
     PluginState m_currentState = PluginState::Stop;
   };
 
-  /**
-   * Plugin type that can be used for simulation, games and other interactive applications.
-   */
+  /** Plugin type that can be used for simulation, games and other interactive applications. */
   class TK_API GamePlugin : public Plugin
   {
    public:
@@ -146,30 +139,8 @@ namespace ToolKit
      */
     PluginType GetType() { return PluginType::Game; }
 
-    /**
-     * This callback gets called when the play session started for the first time.
-     */
-    virtual void OnPlay()   = 0;
-
-    /**
-     * This callback gets called when the play session stopped.
-     */
-    virtual void OnPause()  = 0;
-
-    /**
-     * This callback gets called play session continue after paused.
-     */
-    virtual void OnResume() = 0;
-
-    /**
-     * This callback gets called play session continue stopped.
-     */
-    virtual void OnStop()   = 0;
-
    protected:
-    /**
-     * Viewport where the game played on.
-     */
+    /** Viewport where the game played on. */
     ViewportPtr m_viewport = nullptr;
   };
 

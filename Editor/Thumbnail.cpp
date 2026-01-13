@@ -29,7 +29,7 @@ namespace ToolKit
     {
       m_maxThumbSize                 = 300;
 
-      FramebufferSettings fbSettings = {m_maxThumbSize, m_maxThumbSize, false, true, 4};
+      FramebufferSettings fbSettings = {m_maxThumbSize, m_maxThumbSize, false, true};
       m_thumbnailBuffer              = MakeNewPtr<Framebuffer>(fbSettings, "ThumbnailRendererFB");
       m_thumbnailBuffer->Init();
 
@@ -46,9 +46,7 @@ namespace ToolKit
       m_lightSystem = MakeNewPtr<ThreePointLightSystem>();
       m_lightSystem->m_lights[0]->SetIntensityVal(2.0f);
 
-      m_cam                          = MakeNewPtr<Camera>();
-
-      m_params.applyGammaTonemapFxaa = true;
+      m_cam = MakeNewPtr<Camera>();
     }
 
     ThumbnailRenderer::~ThumbnailRenderer()
@@ -74,6 +72,14 @@ namespace ToolKit
 
       m_thumbnailScene->AddEntity(m_sky);
       m_params.postProcessSettings = MakeNewPtr<PostProcessingSettings>();
+      m_params.postProcessSettings->SetFXAAEnabledVal(false);
+      m_params.postProcessSettings->SetTonemappingEnabledVal(false);
+
+      if (!GetRenderSystem()->m_backbufferFormatIsSRGB)
+      {
+        // If a linear space back buffer is used, we need to apply gamma after imgui, so skip it in scene render path.
+        m_params.postProcessSettings->SetGammaCorrectionEnabledVal(false);
+      }
 
       // TODO: This function should not load meshes.
       // Instead another task queue may be used to load meshes async.
@@ -190,7 +196,7 @@ namespace ToolKit
     // ThumbnailManager
     //////////////////////////////////////////
 
-    ThumbnailManager::ThumbnailManager() { m_defaultThumbnail = MakeNewPtr<RenderTarget>(10u, 10u, TextureSettings()); }
+    ThumbnailManager::ThumbnailManager() { m_defaultThumbnail = MakeNewPtr<RenderTarget>(10, 10, TextureSettings()); }
 
     ThumbnailManager::~ThumbnailManager()
     {

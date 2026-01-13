@@ -55,8 +55,8 @@ namespace ToolKit
       virtual ~EditorRenderer();
 
       void Render(Renderer* renderer) override;
-      void PreRender();
-      void PostRender();
+      void PreRender(Renderer* renderer) override;
+      void PostRender(Renderer* renderer) override;
 
      private:
       void SetLitMode(Renderer* renderer, EditorLitMode mode);
@@ -69,22 +69,21 @@ namespace ToolKit
 
      private:
       /** Three point lighting system which is used to illuminate the scene in EditorLit mode. */
-      ThreePointLightSystemPtr m_lightSystem         = nullptr;
+      ThreePointLightSystemPtr m_lightSystem = nullptr;
 
       /** Override material for EditorLitMode::Unlit. */
-      MaterialPtr m_unlitOverride                    = nullptr;
-      MaterialPtr m_blackMaterial                    = nullptr;
+      MaterialPtr m_unlitOverride            = nullptr;
+      MaterialPtr m_blackMaterial            = nullptr;
 
-      BillboardPassPtr m_billboardPass               = nullptr;
-      SceneRenderPathPtr m_sceneRenderPath           = nullptr;
-      ForwardRenderPassPtr m_uiPass                  = nullptr;
-      ForwardRenderPassPtr m_editorPass              = nullptr;
-      GizmoPassPtr m_gizmoPass                       = nullptr;
-      SSAOPassPtr m_ssaoPass                         = nullptr;
-      OutlinePassPtr m_outlinePass                   = nullptr;
-      FullQuadPassPtr m_skipFramePass                = nullptr;
-      GammaTonemapFxaaPassPtr m_gammaTonemapFxaaPass = nullptr;
-      CameraPtr m_camera                             = nullptr;
+      BillboardPassPtr m_billboardPass       = nullptr;
+      SceneRenderPathPtr m_sceneRenderPath   = nullptr;
+      ForwardRenderPassPtr m_uiPass          = nullptr;
+      ForwardRenderPassPtr m_editorPass      = nullptr;
+      GizmoPassPtr m_gizmoPass               = nullptr;
+      SSAOPassPtr m_ssaoPass                 = nullptr;
+      OutlinePassPtr m_outlinePass           = nullptr;
+      FullQuadPassPtr m_skipFramePass        = nullptr;
+      CameraPtr m_camera                     = nullptr;
 
       /** Selected entity list. */
       EntityPtrArray m_selecteds;
@@ -94,6 +93,9 @@ namespace ToolKit
 
       /** Internal render job array for rendering selected entities. */
       RenderJobArray m_unCulledRenderJobs;
+
+      /** Resolved viewport frame buffer is stored here. */
+      FramebufferPtr m_resolvedFramebuffer = nullptr;
     };
 
   } // namespace Editor

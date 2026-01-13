@@ -61,7 +61,7 @@ namespace ToolKit
       String publishDirectory;
       String publishBinDir;
       String publishConfigDir;
-      TexturePtr icon = nullptr;
+      TexturePtr icon       = nullptr;
       bool deployAfterBuild = false;
     };
 
@@ -69,33 +69,33 @@ namespace ToolKit
     {
       // macOS-specific settings
       String bundleIdentifier = "com.otsoftware.game";
-      String minMacOSVersion = "11.0";
+      String minMacOSVersion  = "11.0";
 
       // macOS-specific paths
-      String cmakeBundlePath;    // Intermediate CMake output: ProjectDir/Codes/Bin/appName.app
-      String targetBundlePath;   // Final location: publishBinDir/appName.app
+      String cmakeBundlePath;  // Intermediate CMake output: ProjectDir/Codes/Bin/appName.app
+      String targetBundlePath; // Final location: publishBinDir/appName.app
 
       // Bundle internal paths
-      String contentsPath;       // targetBundlePath/Contents
-      String macOSPath;          // Contents/MacOS
-      String resourcesPath;      // Contents/Resources
-      String frameworksPath;     // Contents/Frameworks
-      String executablePath;     // MacOS/appName
+      String contentsPath;   // targetBundlePath/Contents
+      String macOSPath;      // Contents/MacOS
+      String resourcesPath;  // Contents/Resources
+      String frameworksPath; // Contents/Frameworks
+      String executablePath; // MacOS/appName
     };
 
     struct WindowsBuildConfig : public BuildConfig
     {
-      String architecture;       // "x64", "Win32"
-      String executablePath;     // publishBinDir/appName.exe
-      String sdl2DllPath;        // SDL2.dll or SDL2d.dll path
+      String architecture;   // "x64", "Win32"
+      String executablePath; // publishBinDir/appName.exe
+      String sdl2DllPath;    // SDL2.dll or SDL2d.dll path
     };
 
     struct AndroidBuildConfig : public BuildConfig
     {
-      String packageName;        // com.company.appname
-      String gradlePath;         // projectDir/Android
-      String assetsPath;         // Android/app/src/main/assets
-      String apkOutputPath;      // Android/app/build/outputs/apk/...
+      String packageName;   // com.company.appname
+      String gradlePath;    // projectDir/Android
+      String assetsPath;    // Android/app/src/main/assets
+      String apkOutputPath; // Android/app/build/outputs/apk/...
       int minSdk;
       int maxSdk;
       MobileOriantation orientation;
@@ -104,15 +104,15 @@ namespace ToolKit
 
     struct WebBuildConfig : public BuildConfig
     {
-      String htmlOutputPath;     // publishBinDir/appName.html
-      String wasmOutputPath;     // publishBinDir/appName.wasm
-      String dataOutputPath;     // publishBinDir/appName.data
+      String htmlOutputPath; // publishBinDir/appName.html
+      String wasmOutputPath; // publishBinDir/appName.wasm
+      String dataOutputPath; // publishBinDir/appName.data
     };
 
     struct PluginBuildConfig : public BuildConfig
     {
       String pluginName;
-      String pluginOutputPath;   // GetBinPath()/pluginName.dll or .so
+      String pluginOutputPath; // GetBinPath()/pluginName.dll or .so
       bool isEditorPlugin;
     };
 
@@ -122,7 +122,7 @@ namespace ToolKit
       PublishManager();
       ~PublishManager();
 
-      void Publish(PublishPlatform platform, PublishConfig publishConfig);
+      void Publish(PublishPlatform platform, PublishConfig publishConfig, bool isAsync = true);
       void Pack();
 
      private:
@@ -141,13 +141,13 @@ namespace ToolKit
       int m_minSdk            = 27;
       int m_maxSdk            = 32;
       MobileOriantation m_oriantation;
-      AndroidABI m_selectedABI = AndroidABI::All;
+      AndroidABI m_selectedABI  = AndroidABI::All;
 
       // macOS-specific settings
       String m_bundleIdentifier = "com.otsoftware.game";
       String m_minMacOSVersion  = "11.0";
 
-      bool m_isBuilding        = false;
+      bool m_isBuilding         = false;
     };
 
   } // namespace Editor

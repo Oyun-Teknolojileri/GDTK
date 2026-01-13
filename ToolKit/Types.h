@@ -107,7 +107,7 @@ namespace ToolKit
   typedef std::string String;
   typedef std::string_view StringView;
   typedef std::vector<String> StringArray;
-  typedef std::set<std::string> StringSet;
+  typedef std::set<String> StringSet;
   typedef glm::ivec2 IVec2;
   typedef glm::vec2 Vec2;
   typedef std::vector<Vec2> Vec2Array;
@@ -143,7 +143,9 @@ namespace ToolKit
   typedef std::shared_ptr<class DepthTexture> DepthTexturePtr;
   typedef std::shared_ptr<class Hdri> HdriPtr;
   typedef std::shared_ptr<class RenderTarget> RenderTargetPtr;
+  typedef std::vector<RenderTargetPtr> RenderTargetPtrArray;
   typedef std::shared_ptr<class Framebuffer> FramebufferPtr;
+  typedef std::vector<FramebufferPtr> FramebufferPtrArray;
   typedef std::shared_ptr<class SpriteSheet> SpriteSheetPtr;
   typedef std::shared_ptr<class Mesh> MeshPtr;
   typedef std::shared_ptr<class Skeleton> SkeletonPtr;

@@ -14,18 +14,22 @@ namespace ToolKit
   namespace Editor
   {
 
-    class TK_EDITOR_API RenderSettingsWindow : public Window
+    class TK_EDITOR_API EngineSettingsWindow : public Window
     {
      public:
-      TKDeclareClass(RenderSettingsWindow, Window);
+      TKDeclareClass(EngineSettingsWindow, Window);
 
-      RenderSettingsWindow();
-      virtual ~RenderSettingsWindow();
+      EngineSettingsWindow();
+      virtual ~EngineSettingsWindow();
       void Show() override;
 
      protected:
-      void ShowGeneralTab();
       void ShowPostProcessingTab();
+      void ShowGraphicsTab();
+      void ShowShadowsTab();
+
+     private:
+      bool m_showLoadWindow = false; // Footer load dialog state
     };
 
   } // namespace Editor

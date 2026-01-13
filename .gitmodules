@@ -8,7 +8,7 @@
 [submodule "Dependency/tkimgui/imgui"]
 	path = Dependency/tkimgui/imgui
 	url = https://github.com/Oyun-Teknolojileri/imgui.git
-	branch = docking
+	branch = toolkit/docking
 [submodule "Dependency/assimp"]
 	path = Dependency/assimp
 	url = https://github.com/Oyun-Teknolojileri/assimp.git

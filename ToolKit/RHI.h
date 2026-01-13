@@ -57,24 +57,30 @@ namespace ToolKit
     friend class Main;
 
    public:
-    typedef std::unordered_map<int, int> TextureIdSlotMap;
+    using TextureIdSlotMap = std::unordered_map<GLenum, GLuint>;
 
-   public:
-    /** Sets the given texture to given slot. textureSlot can be between 0 & 31. */
-    static void SetTexture(GLenum target, GLuint textureID, GLenum textureSlot = 31);
-    static void DeleteTexture(GLuint textureID);
-    static void BindVertexArray(GLuint VAO);
-
-   private:
+    // Framebuffer helpers
     static void SetFramebuffer(GLenum target, GLuint framebufferID);
     static void DeleteFramebuffers(GLsizei n, const GLuint* framebuffers);
-    static void InvalidateFramebuffer(GLenum target, GLsizei numAttachments, const GLenum* attachments);
+
+    static void StoreFramebufferBindings();
+    static void RestoreFramebufferBindings();
+
+    // Texture helpers
+    static void SetTexture(GLenum target, GLuint textureID, GLenum textureSlot = 0);
+    static void DeleteTexture(GLuint textureID);
+
+    // Vertex array helpers
+    static void BindVertexArray(GLuint VAO);
 
    private:
     static GLuint m_currentReadFramebufferID;
     static GLuint m_currentDrawFramebufferID;
-    static GLuint m_currentFramebufferID;
     static GLuint m_currentVAO;
+
+    // Stacks to support nested Store/Restore calls
+    static IntArray m_storedReadFramebufferStack;
+    static IntArray m_storedDrawFramebufferStack;
 
     static TextureIdSlotMap m_textureIdSlotMap;
   };

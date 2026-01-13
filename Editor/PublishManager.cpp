@@ -6,9 +6,9 @@
  */
 
 #include "PublishManager.h"
-#include "AsyncBuildManager.h"
 
 #include "App.h"
+#include "AsyncBuildManager.h"
 
 #include <FileManager.h>
 #include <PluginManager.h>
@@ -22,14 +22,11 @@ namespace ToolKit
   namespace Editor
   {
 
-    PublishManager::PublishManager()
-    {
-      m_buildManager = std::make_shared<AsyncBuildManager>(GetApp());
-    }
+    PublishManager::PublishManager() { m_buildManager = std::make_shared<AsyncBuildManager>(GetApp()); }
 
     PublishManager::~PublishManager() = default;
 
-    void PublishManager::Publish(PublishPlatform platform, PublishConfig publishConfig)
+    void PublishManager::Publish(PublishPlatform platform, PublishConfig publishConfig, bool isAsync)
     {
       if (m_isBuilding)
       {
@@ -38,30 +35,28 @@ namespace ToolKit
       }
 
       // Use AsyncBuildManager for plugin and native platform builds
-      if (platform == PublishPlatform::GamePlugin ||
-          platform == PublishPlatform::EditorPlugin ||
-          platform == PublishPlatform::Windows ||
-          platform == PublishPlatform::MacOS)
+      if (platform == PublishPlatform::GamePlugin || platform == PublishPlatform::EditorPlugin ||
+          platform == PublishPlatform::Windows || platform == PublishPlatform::MacOS)
       {
         // Create appropriate build config based on platform
         if (platform == PublishPlatform::MacOS)
         {
           MacOSBuildConfig config;
-          config.appName = m_appName;
-          config.pluginName = m_pluginName;
-          config.icon = m_icon;
+          config.appName          = m_appName;
+          config.pluginName       = m_pluginName;
+          config.icon             = m_icon;
           config.deployAfterBuild = m_deployAfterBuild;
           config.bundleIdentifier = m_bundleIdentifier;
-          config.minMacOSVersion = m_minMacOSVersion;
+          config.minMacOSVersion  = m_minMacOSVersion;
           m_buildManager->StartBuild(platform, publishConfig, config);
         }
         else
         {
           // For Windows and plugins, use base BuildConfig
           BuildConfig config;
-          config.appName = m_appName;
-          config.pluginName = m_pluginName;
-          config.icon = m_icon;
+          config.appName          = m_appName;
+          config.pluginName       = m_pluginName;
+          config.icon             = m_icon;
           config.deployAfterBuild = m_deployAfterBuild;
           m_buildManager->StartBuild(platform, publishConfig, config);
         }
@@ -160,7 +155,7 @@ namespace ToolKit
         };
       }
 
-      GetApp()->ExecSysCommand(packerPath, true, true, afterPackFn);
+      GetApp()->ExecSysCommand(packerPath, isAsync, true, afterPackFn);
     }
 
     void PublishManager::Pack()

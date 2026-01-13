@@ -119,7 +119,7 @@ namespace ToolKit
     if (m_params.KernelSize != m_currentKernelSize || m_prevSpread != m_params.spread)
     {
       // Update kernel
-      for (int i = 0; i < m_params.KernelSize; ++i)
+      for (int i = 0; i < m_params.KernelSize; i++)
       {
         m_quadPass->UpdateUniform(ShaderUniform(m_ssaoSamplesStrCache[i], m_ssaoKernel[i]));
       }
@@ -155,7 +155,7 @@ namespace ToolKit
       std::uniform_real_distribution<float> randomFloats(0.0f, 1.0f);
       std::default_random_engine generator;
 
-      for (unsigned int i = 0; i < 16; i++)
+      for (uint i = 0; i < 16; i++)
       {
         Vec2 noise(randomFloats(generator) * 2.0f - 1.0f, randomFloats(generator) * 2.0f - 1.0f);
         m_ssaoNoise.push_back(noise);

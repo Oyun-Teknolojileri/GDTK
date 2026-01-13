@@ -143,14 +143,14 @@ namespace ToolKit
 
   void RenderSystem::InitGl(void* (*glGetProcAddress)(const char*), GlReportCallback callback)
   {
-      // Initialize OpenGL functions
-      LoadGlFunctions(glGetProcAddress);
+    // Initialize OpenGL functions
+    LoadGlFunctions(glGetProcAddress);
 
-      // Initialize error reporting callback
-      InitGLErrorReport(callback);
+    // Initialize error reporting callback
+    InitGLErrorReport(callback);
 
-      // Test backbuffer format (sRGB or not)
-      TestSRGBBackBuffer();
+    // Test backbuffer format (sRGB or not)
+    TestSRGBBackBuffer();
   }
 
   void RenderSystem::ExecuteTaskImp(RenderTask& task)
@@ -203,13 +203,12 @@ namespace ToolKit
 
   bool RenderSystem::IsGammaCorrectionNeeded() { return !m_backbufferFormatIsSRGB; }
 
-  void RenderSystem::TestSRGBBackBuffer()
+  void RenderSystem::SrgbAutoEncoding(bool enable)
   {
-    RHI::SetFramebuffer(GL_FRAMEBUFFER, 0);
-
-    // Srgb back buffer is not set. Assuming linear back buffer.
-    // To set and get the back buffer's format, use platform functions.
-    m_backbufferFormatIsSRGB = false;
+    if (m_renderer)
+    {
+      m_renderer->SrgbAutoEncoding(enable);
+    }
   }
 
 } // namespace ToolKit

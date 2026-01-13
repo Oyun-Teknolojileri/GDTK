@@ -63,7 +63,7 @@ namespace ToolKit
     typedef std::vector<class Action*> ActionRawPtrArray;
     typedef std::shared_ptr<class GizmoPass> GizmoPassPtr;
     typedef std::shared_ptr<class PropInspectorWindow> PropInspectorWindowPtr;
-    typedef std::shared_ptr<class RenderSettingsWindow> RenderSettingsWindowPtr;
+    typedef std::shared_ptr<class EngineSettingsWindow> RenderSettingsWindowPtr;
     typedef std::shared_ptr<class SimulationWindow> SimulationWindowPtr;
     typedef std::shared_ptr<class StatsWindow> StatsWindowPtr;
     typedef std::shared_ptr<class StatusBar> StatusBarPtr;
@@ -87,7 +87,7 @@ namespace ToolKit
     const String g_assetBrowserStr("Asset Browser");
     const String g_outlinerStr("Outliner");
     const String g_propInspector("Property Inspector");
-    const String g_renderSettings("Render Settings");
+    const String g_engineSettingsStr("Engine Settings");
     const String g_statsView("Statistics");
     const String g_matInspector("Material Inspector");
     const String g_simulationWindowStr("Simulation");

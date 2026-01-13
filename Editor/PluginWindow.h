@@ -50,9 +50,14 @@ namespace ToolKit
       void Show() override;
       void LoadPluginSettings();
 
-     private:
-      std::vector<PluginSettings> m_plugins;
-    };
+      /** Loads enabled plugins. Enable status is stored in engine settings. */
+      void LoadEnabledPlugins();
 
+      /** Unloads all plugins for the current project. */
+      void UnloadProjectPlugins();
+
+     private:
+      std::vector<PluginSettings> m_pluginSettings;
+    };
   } // namespace Editor
 } // namespace ToolKit

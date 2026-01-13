@@ -109,10 +109,17 @@ namespace ToolKit
   TextureSettings Viewport::GetRenderTargetSettings()
   {
     TextureSettings texureSet;
-    if (!GetEngineSettings().m_graphics->GetHDRPipelineVal())
+    const EngineSettings& engineSettings = GetEngineSettings();
+    if (!engineSettings.m_graphics->GetHDRPipelineVal())
     {
       texureSet.InternalFormat = GraphicTypes::FormatRGBA8;
       texureSet.Type           = GraphicTypes::TypeUnsignedByte;
+    }
+
+    int msaaCount = engineSettings.m_graphics->GetMSAAVal().GetValue<int>();
+    if (!engineSettings.m_graphics->disableMSAA && msaaCount > 1)
+    {
+      texureSet.msaaCount = msaaCount;
     }
 
     return texureSet;
@@ -133,8 +140,15 @@ namespace ToolKit
     int msaaVal    = engineSettings.m_graphics->GetMSAAVal().GetValue<int>();
     m_framebuffer->ReconstructIfNeeded({width, height, false, true, msaaVal});
 
-    m_renderTarget = MakeNewPtr<RenderTarget>(width, height, settings);
+    TexturePtr resolvedTex = nullptr;
+    if (m_renderTarget && msaaVal > 1)
+    {
+      resolvedTex = m_renderTarget->m_resolvedTexture;
+    }
+
+    m_renderTarget = MakeNewPtr<RenderTarget>(width, height, settings, "ViewportRT");
     m_renderTarget->Init();
+    m_renderTarget->m_resolvedTexture = resolvedTex;
     m_framebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_renderTarget);
   }
 

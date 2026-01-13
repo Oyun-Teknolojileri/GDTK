@@ -35,15 +35,19 @@ namespace ToolKit
 
    private:
     // Iteration Count + 1 number of textures & framebuffers
-    std::vector<RenderTargetPtr> m_tempTextures;
-    std::vector<FramebufferPtr> m_tempFrameBuffers;
+    RenderTargetPtrArray m_resampleRenderTargets;
+    FramebufferPtrArray m_resampleFrameBuffers;
     FullQuadPassPtr m_pass       = nullptr;
     ShaderPtr m_downsampleShader = nullptr;
     ShaderPtr m_upsampleShader   = nullptr;
 
     bool m_invalidRenderParams   = false;
-
     int m_currentIterationCount  = 0;
+
+    // Render target caches.
+    UVec2 m_cachedMainRes;
+    int m_cachedIterCount;
+    bool m_resourcesValid;
   };
 
   typedef std::shared_ptr<BloomPass> BloomPassPtr;

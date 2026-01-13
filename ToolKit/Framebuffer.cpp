@@ -55,7 +55,7 @@ namespace ToolKit
 
     if constexpr (GraphicSettings::disableMSAA)
     {
-      m_settings.multiSampleFrameBuffer = 0;
+      m_settings.msaaCount = 1;
     }
 
     // Create framebuffer object
@@ -77,10 +77,7 @@ namespace ToolKit
     if (m_settings.useDefaultDepth)
     {
       m_depthAtch = MakeNewPtr<DepthTexture>();
-      m_depthAtch->Init(m_settings.width,
-                        m_settings.height,
-                        m_settings.depthStencil,
-                        m_settings.multiSampleFrameBuffer);
+      m_depthAtch->Init(m_settings.width, m_settings.height, m_settings.depthStencil, m_settings.msaaCount);
 
       AttachDepthTexture(m_depthAtch);
     }
@@ -97,12 +94,7 @@ namespace ToolKit
 
     if (m_depthAtch != nullptr)
     {
-      if (m_depthAtch.use_count() == 1)
-      {
-        // Only uninit, if its not shared.
-        m_depthAtch->UnInit();
-      }
-
+      m_depthAtch->UnInit();
       m_depthAtch = nullptr;
     }
 
@@ -144,21 +136,33 @@ namespace ToolKit
     }
   }
 
+  bool Framebuffer::IsMultiSampled() { return m_settings.msaaCount > 1; }
+
   void Framebuffer::AttachDepthTexture(DepthTexturePtr dt)
   {
-    m_depthAtch = dt;
-
+    assert(dt != nullptr && "Depth texture can't be null.");
     RHI::SetFramebuffer(GL_FRAMEBUFFER, m_fboId);
 
     // Attach depth buffer to FBO
-    GLenum attachment = dt->m_stencil ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT;
+    m_depthAtch       = dt;
+    GLenum attachment = m_depthAtch->m_stencil ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT;
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, attachment, GL_RENDERBUFFER, m_depthAtch->m_textureId);
 
-    // Check if framebuffer is complete
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-    {
-      GetLogger()->Log("Error: Framebuffer incomplete!");
-    }
+    CheckFramebufferComplete();
+  }
+
+  DepthTexturePtr Framebuffer::DetachDepthTexture()
+  {
+    RHI::SetFramebuffer(GL_FRAMEBUFFER, m_fboId);
+
+    // Detach any renderbuffer attachments
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, 0);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, 0);
+
+    DepthTexturePtr dt = m_depthAtch;
+    m_depthAtch        = nullptr;
+
+    return dt;
   }
 
   DepthTexturePtr Framebuffer::GetDepthTexture() { return m_depthAtch; }
@@ -177,67 +181,53 @@ namespace ToolKit
       return nullptr;
     }
 
-    RenderTargetPtr oldRt = m_colorAtchs[(int) atc];
+    RHI::StoreFramebufferBindings();
 
+    RenderTargetPtr oldRt = m_colorAtchs[(int) atc];
     RHI::SetFramebuffer(GL_FRAMEBUFFER, m_fboId);
 
-    // Set attachment
-    if (face != CubemapFace::NONE)
+    // MSAA render buffer attachment
+    if (rt->Settings().msaaCount > 1)
     {
-      glFramebufferTexture2D(GL_FRAMEBUFFER,
-                             attachment,
-                             GL_TEXTURE_CUBE_MAP_POSITIVE_X + (int) face,
-                             rt->m_textureId,
-                             mip);
+      glFramebufferRenderbuffer(GL_FRAMEBUFFER, attachment, GL_RENDERBUFFER, rt->m_textureId);
     }
     else
     {
-      if (layer != -1)
+      // Normal texture attachment
+      if (face != CubemapFace::NONE)
+      {
+        glFramebufferTexture2D(GL_FRAMEBUFFER,
+                               attachment,
+                               GL_TEXTURE_CUBE_MAP_POSITIVE_X + (int) face,
+                               rt->m_textureId,
+                               mip);
+      }
+      else if (layer != -1)
       {
         assert(layer < rt->Settings().Layers);
         glFramebufferTextureLayer(GL_FRAMEBUFFER, attachment, rt->m_textureId, mip, layer);
       }
       else
       {
-        if (m_settings.multiSampleFrameBuffer > 0)
-        {
-          if (glFramebufferTexture2DMultisampleEXT != nullptr)
-          {
-            glFramebufferTexture2DMultisampleEXT(GL_FRAMEBUFFER,
-                                                 attachment,
-                                                 GL_TEXTURE_2D,
-                                                 rt->m_textureId,
-                                                 mip,
-                                                 m_settings.multiSampleFrameBuffer);
-          }
-          else
-          {
-            // Fall back to single sample frame buffer.
-            glFramebufferTexture2D(GL_FRAMEBUFFER, attachment, GL_TEXTURE_2D, rt->m_textureId, mip);
-            m_settings.multiSampleFrameBuffer = 0;
-          }
-        }
-        else
-        {
-          glFramebufferTexture2D(GL_FRAMEBUFFER, attachment, GL_TEXTURE_2D, rt->m_textureId, mip);
-        }
+        glFramebufferTexture2D(GL_FRAMEBUFFER, attachment, GL_TEXTURE_2D, rt->m_textureId, mip);
       }
     }
 
     m_colorAtchs[(int) atc] = rt;
-
     m_settings.width        = rt->m_width;
     m_settings.height       = rt->m_height;
 
     SetDrawBuffers();
     CheckFramebufferComplete();
 
+    RHI::RestoreFramebufferBindings();
+
     return oldRt;
   }
 
   RenderTargetPtr Framebuffer::GetColorAttachment(Attachment atc)
   {
-    if (atc < Attachment::DepthAttachment)
+    if (atc >= Attachment::ColorAttachment0 && atc <= Attachment::ColorAttachment7)
     {
       return m_colorAtchs[(int) atc];
     }
@@ -278,32 +268,28 @@ namespace ToolKit
 
   void Framebuffer::SetDrawBuffers()
   {
-    RHI::SetFramebuffer(GL_FRAMEBUFFER, m_fboId);
-
-    GLenum colorAttachments[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-    int count                  = 0;
+    GLenum colorAttachments[8] = {GL_NONE, GL_NONE, GL_NONE, GL_NONE, GL_NONE, GL_NONE, GL_NONE, GL_NONE};
+    int maxAttachment          = -1;
 
     for (int i = 0; i < m_maxColorAttachmentCount; i++)
     {
-      RenderTargetPtr attachment = m_colorAtchs[i];
-      if (attachment != nullptr && attachment->m_textureId != 0)
+      if (m_colorAtchs[i] != nullptr && m_colorAtchs[i]->m_textureId != 0)
       {
-        // All attachments must be the same size.
-        assert(attachment->m_width == m_settings.width);
-        assert(attachment->m_height == m_settings.height);
+        assert(m_colorAtchs[i]->m_width == m_settings.width && "Color attachment width mismatch");
+        assert(m_colorAtchs[i]->m_height == m_settings.height && "Color attachment height mismatch");
 
         colorAttachments[i] = GL_COLOR_ATTACHMENT0 + i;
-        count++;
+        maxAttachment       = i;
       }
     }
 
-    if (count == 0)
+    if (maxAttachment >= 0)
     {
-      glDrawBuffers(0, nullptr);
+      glDrawBuffers(maxAttachment + 1, colorAttachments);
     }
     else
     {
-      glDrawBuffers(count, colorAttachments);
+      glDrawBuffers(0, nullptr);
     }
   }
 
