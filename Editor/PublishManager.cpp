@@ -22,7 +22,7 @@ namespace ToolKit
   namespace Editor
   {
 
-    PublishManager::PublishManager() { m_buildManager = std::make_shared<AsyncBuildManager>(GetApp()); }
+    PublishManager::PublishManager(App* app) { m_buildManager = std::make_shared<AsyncBuildManager>(app); }
 
     PublishManager::~PublishManager() = default;
 

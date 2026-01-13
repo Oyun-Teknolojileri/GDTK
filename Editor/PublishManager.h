@@ -15,6 +15,7 @@ namespace ToolKit
   namespace Editor
   {
     // Forward declaration
+    class App;
     class AsyncBuildManager;
 
     enum class PublishConfig
@@ -119,7 +120,7 @@ namespace ToolKit
     class TK_EDITOR_API PublishManager
     {
      public:
-      PublishManager();
+      PublishManager(App* app);
       ~PublishManager();
 
       void Publish(PublishPlatform platform, PublishConfig publishConfig, bool isAsync = true);

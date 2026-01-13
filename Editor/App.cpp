@@ -19,6 +19,7 @@
 #include "PluginWindow.h"
 #include "PopupWindows.h"
 #include "PropInspectorWindow.h"
+#include "SDL.h"
 #include "StatsWindow.h"
 #include "StatusBar.h"
 
@@ -27,7 +28,6 @@
 #include <Mesh.h>
 #include <PluginManager.h>
 #include <Resource.h>
-#include "SDL.h"
 #include <Stats.h>
 #include <UIManager.h>
 
@@ -52,7 +52,7 @@ namespace ToolKit
       RenderSystem* rsys = GetRenderSystem();
       rsys->SetAppWindowSize((uint) windowWidth, (uint) windowHeight);
       SetStatusMsg(g_statusOk);
-      m_publishManager = new PublishManager();
+      m_publishManager = new PublishManager(this);
     }
 
     App::~App() {}
@@ -474,7 +474,7 @@ namespace ToolKit
 
       // Get the GDTK root directory
       // First try using current working directory structure (works on Windows when properly set up)
-      String gdtkRoot = GetCurrentParentPath();
+      String gdtkRoot     = GetCurrentParentPath();
       String templatePath = ConcatPaths({gdtkRoot, "Templates", "Game"});
 
       // If template doesn't exist, try reading from Path.txt (fallback for different launch configurations)
@@ -505,7 +505,7 @@ namespace ToolKit
       RecursiveCopyDirectory(templatePath, fullPath, {".filters", ".vcxproj", ".user", ".cxx"});
 
       // Update cmake.
-      String cmakePath   = ConcatPaths({fullPath, "Codes", "CMakeLists.txt"});
+      String cmakePath = ConcatPaths({fullPath, "Codes", "CMakeLists.txt"});
       TemplateUpdate(cmakePath, "__projectname__", name);
 
       // update vscode includes.
@@ -550,7 +550,7 @@ namespace ToolKit
 
       // Get the GDTK root directory
       // First try using current working directory structure (works on Windows when properly set up)
-      String gdtkRoot = GetCurrentParentPath();
+      String gdtkRoot     = GetCurrentParentPath();
       String templatePath = ConcatPaths({gdtkRoot, "Templates", "Plugin"});
 
       // If template doesn't exist, try reading from Path.txt (fallback for different launch configurations)
@@ -581,7 +581,7 @@ namespace ToolKit
       RecursiveCopyDirectory(templatePath, fullPath, {".filters", ".vcxproj", ".user", ".cxx"});
 
       // Update cmake.
-      String cmakePath   = ConcatPaths({fullPath, "Codes", "CMakeLists.txt"});
+      String cmakePath = ConcatPaths({fullPath, "Codes", "CMakeLists.txt"});
       TemplateUpdate(cmakePath, "__projectname__", name);
 
       String pluginSettingsPath = ConcatPaths({fullPath, "Config", "Plugin.settings"});
@@ -911,7 +911,11 @@ namespace ToolKit
       }
     }
 
-    int App::ExecSysCommand(StringView cmd, bool async, bool showConsole, SysCommandDoneCallback callback, bool captureOutput)
+    int App::ExecSysCommand(StringView cmd,
+                            bool async,
+                            bool showConsole,
+                            SysCommandDoneCallback callback,
+                            bool captureOutput)
     {
       if (m_sysComExecFn)
       {
