@@ -482,7 +482,7 @@ namespace ToolKit
     void UI::InitTheme()
     {
       ImGui::SetColorEditOptions(ImGuiColorEditFlags_PickerHueWheel | ImGuiColorEditFlags_NoOptions);
-      SetTheme(Theme::Dark);
+      SetTheme(Theme::Grey);
     }
 
     void UI::InitSettings()
