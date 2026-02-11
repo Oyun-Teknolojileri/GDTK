@@ -269,6 +269,11 @@ namespace ToolKit
     TK_API void GetRenderTime(float& cpu, float& gpu);
     TK_API void GetRenderTimeAvg(float& cpu, float& gpu);
 
+    // Per-Frame Counter API
+    TK_API void IncrementStat(FrameStatType type);
+    TK_API void AddStat(FrameStatType type, uint64 amount);
+    TK_API void SwapFrameStats();
+
     // Hierarchical Profiler API
     TK_API void BeginProfileScope(StringView name);
     TK_API void EndProfileScope();

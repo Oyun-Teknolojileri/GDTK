@@ -8,6 +8,7 @@
 #include "UniformBuffer.h"
 
 #include "RHI.h"
+#include "Stats.h"
 #include "TKOpenGL.h"
 
 #include "DebugNew.h"
@@ -51,10 +52,7 @@ namespace ToolKit
       return;
     }
 
-    if (TKStats* tkStats = GetTKStats())
-    {
-      tkStats->IncrementStat(FrameStatType::UboUpdates);
-    }
+    Stats::IncrementStat(FrameStatType::UboUpdates);
 
     glBindBuffer(GL_UNIFORM_BUFFER, m_id);
     glBufferSubData(GL_UNIFORM_BUFFER, 0, size, data);

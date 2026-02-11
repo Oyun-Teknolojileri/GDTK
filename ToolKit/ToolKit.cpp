@@ -252,10 +252,7 @@ namespace ToolKit
     // Begin profiler frame.
     Stats::BeginProfileFrame();
 
-    if (TKStats* stats = GetTKStats())
-    {
-      stats->SwapFrameStats();
-    }
+    Stats::SwapFrameStats();
 
     GetRenderSystem()->StartFrame();
   }

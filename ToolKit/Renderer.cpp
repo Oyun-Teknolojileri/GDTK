@@ -59,14 +59,11 @@ namespace ToolKit
   {
     SetAmbientOcclusionTexture(nullptr);
 
-    if (TKStats* stats = GetTKStats())
+    for (const auto& pair : m_drawnFrameBufferStats)
     {
-      for (const auto& pair : m_drawnFrameBufferStats)
+      if (pair.second > 0)
       {
-        if (pair.second > 0)
-        {
-          stats->IncrementStat(FrameStatType::RenderPass);
-        }
+        Stats::IncrementStat(FrameStatType::RenderPass);
       }
     }
   }
@@ -198,10 +195,7 @@ namespace ToolKit
       cameraGpuBuffer.Invalidate();
       cameraGpuBuffer.Map();
 
-      if (TKStats* stats = GetTKStats())
-      {
-        stats->IncrementStat(FrameStatType::CameraUpdate);
-      }
+      Stats::IncrementStat(FrameStatType::CameraUpdate);
     }
   }
 
@@ -308,10 +302,7 @@ namespace ToolKit
       drawCount++;
     }
 
-    if (TKStats* stats = GetTKStats())
-    {
-      stats->IncrementStat(FrameStatType::DrawCall);
-    }
+    Stats::IncrementStat(FrameStatType::DrawCall);
   }
 
   void Renderer::RenderWithProgramFromMaterial(const RenderJobArray& jobs)
@@ -971,18 +962,12 @@ namespace ToolKit
 
     if (pointCache.Map())
     {
-      if (TKStats* stats = GetTKStats())
-      {
-        stats->IncrementStat(FrameStatType::LightCacheInvalidation);
-      }
+      Stats::IncrementStat(FrameStatType::LightCacheInvalidation);
     }
 
     if (spotCache.Map())
     {
-      if (TKStats* stats = GetTKStats())
-      {
-        stats->IncrementStat(FrameStatType::LightCacheInvalidation);
-      }
+      Stats::IncrementStat(FrameStatType::LightCacheInvalidation);
     }
 
     // Look up indexes from cache.

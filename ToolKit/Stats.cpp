@@ -596,6 +596,30 @@ namespace ToolKit
       }
     }
 
+    void IncrementStat(FrameStatType type)
+    {
+      if (TKStats* tkStats = GetTKStats())
+      {
+        tkStats->IncrementStat(type);
+      }
+    }
+
+    void AddStat(FrameStatType type, uint64 amount)
+    {
+      if (TKStats* tkStats = GetTKStats())
+      {
+        tkStats->AddStat(type, amount);
+      }
+    }
+
+    void SwapFrameStats()
+    {
+      if (TKStats* tkStats = GetTKStats())
+      {
+        tkStats->SwapFrameStats();
+      }
+    }
+
     // Hierarchical Profiler API Implementation
     //////////////////////////////////////////
 
