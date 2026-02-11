@@ -249,6 +249,9 @@ namespace ToolKit
 
   void Main::FrameBegin()
   {
+    // Begin profiler frame.
+    Stats::BeginProfileFrame();
+
     if (TKStats* stats = GetTKStats())
     {
       stats->m_drawCallCountPrev                     = stats->m_drawCallCount;
@@ -303,15 +306,8 @@ namespace ToolKit
     m_timing.LastTime = m_timing.CurrentTime;
     GetRenderSystem()->EndFrame();
 
-    // Display stat times.
-    for (auto& timeStat : TKStatTimerMap)
-    {
-      TKStats::TimeArgs& args = timeStat.second;
-      if (args.enabled)
-      {
-        TK_LOG("%s avg t: %f -- t: %f", timeStat.first.data(), args.accumulatedTime / args.hitCount, args.elapsedTime);
-      }
-    }
+    // End profiler frame.
+    Stats::EndProfileFrame();
   }
 
   void Main::Frame(float deltaTime)

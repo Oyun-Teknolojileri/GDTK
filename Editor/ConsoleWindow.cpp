@@ -603,51 +603,6 @@ namespace ToolKit
       scene->RemoveEntity(selection, isDeep);
     }
 
-    void ShowProfileTimer(TagArgArray tagArgs)
-    {
-      if (tagArgs.empty())
-      {
-        return;
-      }
-
-      for (auto& arg : tagArgs)
-      {
-        if (arg.first == "all")
-        {
-          bool val = BoolCheck(tagArgs.front());
-          for (auto itr = TKStatTimerMap.begin(); itr != TKStatTimerMap.end(); itr++)
-          {
-            itr->second.enabled = val;
-          }
-
-          return;
-        }
-        else if (arg.first == "list")
-        {
-          for (auto itr = TKStatTimerMap.begin(); itr != TKStatTimerMap.end(); itr++)
-          {
-            TK_LOG("%s", itr->first.data());
-          }
-        }
-        else if (arg.first == "reset")
-        {
-          for (auto itr = TKStatTimerMap.begin(); itr != TKStatTimerMap.end(); itr++)
-          {
-            bool isEnabled      = itr->second.enabled;
-            itr->second         = {};
-            itr->second.enabled = isEnabled;
-          }
-        }
-        else
-        {
-          if (TKStatTimerMap.find(arg.first) != TKStatTimerMap.end())
-          {
-            TKStatTimerMap[arg.first].enabled = BoolCheck(arg);
-          }
-        }
-      }
-    }
-
     void SelectSimilar(TagArgArray tagArgs)
     {
       auto showUsage = []() { TK_WRN("call command with arg: --by <material, mesh>"); };
@@ -795,7 +750,6 @@ namespace ToolKit
       CreateCommand(g_showSceneBoundary, ShowSceneBoundary);
       CreateCommand(g_showBVHNodes, ShowBVHNodes);
       CreateCommand(g_deleteSelection, DeleteSelection);
-      CreateCommand(g_showProfileTimer, ShowProfileTimer);
       CreateCommand(g_selectSimilar, SelectSimilar);
     }
 

@@ -18,20 +18,351 @@
 namespace ToolKit
 {
 
-  void TKStats::BeginTimer(StringView name)
+  // TKProfiler Implementation
+  //////////////////////////////////////////
+
+  TKProfiler::TKProfiler() {}
+
+  TKProfiler::~TKProfiler()
   {
-    TimeArgs& args = m_profileTimerMap[name.data()];
-    args.beginTime = GetElapsedMilliSeconds();
+    for (ProfilerNode* root : m_rootNodes)
+    {
+      DeleteNodeRecursive(root);
+    }
+    m_rootNodes.clear();
+    m_nodeMap.clear();
   }
 
-  // Finalize a timer updates statistics.
-  void TKStats::EndTimer(StringView name)
+  void TKProfiler::BeginScope(StringView name)
   {
-    TimeArgs& args        = m_profileTimerMap[name.data()];
-    args.elapsedTime      = GetElapsedMilliSeconds() - args.beginTime;
-    args.accumulatedTime += args.elapsedTime;
-    args.hitCount++;
+    if (!m_enabled)
+    {
+      return;
+    }
+
+    // Build the full path for this scope.
+    m_scopeStack.push_back(String(name));
+
+    // Build path string for node lookup.
+    String fullPath;
+    for (size_t i = 0; i < m_scopeStack.size(); ++i)
+    {
+      if (i > 0)
+      {
+        fullPath += "/";
+      }
+      fullPath += m_scopeStack[i];
+    }
+
+    // Find or create the node.
+    ProfilerNode* node = nullptr;
+    auto it            = m_nodeMap.find(fullPath);
+    if (it != m_nodeMap.end())
+    {
+      node = it->second;
+    }
+    else
+    {
+      node        = new ProfilerNode();
+      node->name  = String(name);
+      node->depth = (uint) m_scopeStack.size() - 1;
+
+      if (m_currentNode == nullptr)
+      {
+        // This is a root node.
+        m_rootNodes.push_back(node);
+      }
+      else
+      {
+        // Add as child of current node.
+        node->parent = m_currentNode;
+        m_currentNode->children.push_back(node);
+      }
+
+      m_nodeMap[fullPath] = node;
+    }
+
+    node->beginTime = GetElapsedMilliSeconds();
+    m_currentNode   = node;
   }
+
+  void TKProfiler::EndScope()
+  {
+    if (!m_enabled || m_currentNode == nullptr || m_scopeStack.empty())
+    {
+      return;
+    }
+
+    float endTime                = GetElapsedMilliSeconds();
+    float elapsed                = endTime - m_currentNode->beginTime;
+
+    m_currentNode->inclusiveTime = elapsed;
+    m_currentNode->hitCount++;
+    m_currentNode->accumulatedIncl += elapsed;
+
+    // Calculate exclusive time (inclusive - sum of children's inclusive).
+    float childrenTime              = 0.0f;
+    for (ProfilerNode* child : m_currentNode->children)
+    {
+      childrenTime += child->inclusiveTime;
+    }
+    m_currentNode->exclusiveTime    = elapsed - childrenTime;
+    m_currentNode->accumulatedExcl += m_currentNode->exclusiveTime;
+
+    // Pop the scope stack.
+    m_scopeStack.pop_back();
+
+    // Move to parent.
+    m_currentNode = m_currentNode->parent;
+  }
+
+  void TKProfiler::BeginFrame()
+  {
+    if (!m_enabled)
+    {
+      return;
+    }
+
+    m_frameBeginTime = GetElapsedMilliSeconds();
+    // Don't reset here - we reset at EndFrame after swapping values
+  }
+
+  void TKProfiler::EndFrame()
+  {
+    if (!m_enabled)
+    {
+      return;
+    }
+
+    m_frameTime             = GetElapsedMilliSeconds() - m_frameBeginTime;
+    m_accumulatedFrameTime += m_frameTime;
+    m_frameCount++;
+
+    // Swap frame data for all nodes - this preserves values for UI display
+    // and resets current frame values for next frame
+    for (ProfilerNode* root : m_rootNodes)
+    {
+      SwapNodeFrameData(root);
+    }
+  }
+
+  void TKProfiler::Reset()
+  {
+    for (ProfilerNode* root : m_rootNodes)
+    {
+      DeleteNodeRecursive(root);
+    }
+    m_rootNodes.clear();
+    m_nodeMap.clear();
+    m_currentNode = nullptr;
+    m_scopeStack.clear();
+    m_frameTime            = 0.0f;
+    m_accumulatedFrameTime = 0.0f;
+    m_frameCount           = 0;
+  }
+
+  void TKProfiler::SetExpandAll(bool expand)
+  {
+    for (auto& pair : m_nodeMap)
+    {
+      pair.second->expanded = expand;
+    }
+  }
+
+  ProfilerNode* TKProfiler::FindOrCreateChild(ProfilerNode* parent, StringView name)
+  {
+    if (parent)
+    {
+      for (ProfilerNode* child : parent->children)
+      {
+        if (child->name == name)
+        {
+          return child;
+        }
+      }
+    }
+    return nullptr;
+  }
+
+  void TKProfiler::ResetNodeRecursive(ProfilerNode* node)
+  {
+    if (node == nullptr)
+    {
+      return;
+    }
+
+    node->ResetAll();
+
+    for (ProfilerNode* child : node->children)
+    {
+      ResetNodeRecursive(child);
+    }
+  }
+
+  void TKProfiler::DeleteNodeRecursive(ProfilerNode* node)
+  {
+    if (node == nullptr)
+    {
+      return;
+    }
+
+    for (ProfilerNode* child : node->children)
+    {
+      DeleteNodeRecursive(child);
+    }
+
+    delete node;
+  }
+
+  void TKProfiler::SwapNodeFrameData(ProfilerNode* node)
+  {
+    if (node == nullptr)
+    {
+      return;
+    }
+
+    node->SwapFrameData();
+
+    for (ProfilerNode* child : node->children)
+    {
+      SwapNodeFrameData(child);
+    }
+  }
+
+  String TKProfiler::GetProfileTreeString() const
+  {
+    if (m_rootNodes.empty())
+    {
+      return "No profiling data available.\n";
+    }
+
+    String output;
+
+    // Header.
+    output += "====================================================================================================\n";
+
+    // Column headers with fixed widths.
+    char header[256];
+    snprintf(header,
+             sizeof(header),
+             "%-40s | %10s | %10s | %8s | %8s | %6s\n",
+             "Scope Name",
+             "Incl (ms)",
+             "Excl (ms)",
+             "Incl %",
+             "Excl %",
+             "Hits");
+    output += header;
+
+    output += "----------------------------------------------------------------------------------------------------\n";
+
+    // Build tree for each root.
+    for (size_t i = 0; i < m_rootNodes.size(); ++i)
+    {
+      bool isLast = (i == m_rootNodes.size() - 1);
+      BuildTreeString(m_rootNodes[i], output, "", isLast);
+    }
+
+    output += "====================================================================================================\n";
+
+    // Summary.
+    char summary[256];
+    snprintf(summary,
+             sizeof(summary),
+             "Frame Time: %.3f ms | Avg Frame: %.3f ms | Frames: %u\n",
+             m_frameTime,
+             GetAverageFrameTime(),
+             m_frameCount);
+    output += summary;
+
+    return output;
+  }
+
+  void TKProfiler::BuildTreeString(const ProfilerNode* node, String& output, const String& prefix, bool isLast) const
+  {
+    if (node == nullptr)
+    {
+      return;
+    }
+
+    // Build the tree branch visualization.
+    String branch = prefix;
+    if (node->depth > 0)
+    {
+      branch += isLast ? "+-- " : "+-- ";
+    }
+
+    // Use previous frame values for display.
+    float inclTime     = node->inclusiveTimePrev;
+    float exclTime     = node->exclusiveTimePrev;
+    uint hitCount      = node->hitCountPrev;
+
+    // Calculate percentages relative to frame time.
+    float inclPercent  = m_frameTime > 0.0f ? (inclTime / m_frameTime) * 100.0f : 0.0f;
+    float exclPercent  = m_frameTime > 0.0f ? (exclTime / m_frameTime) * 100.0f : 0.0f;
+
+    // Truncate name if too long.
+    String displayName = branch + node->name;
+    if (displayName.length() > 38)
+    {
+      displayName = displayName.substr(0, 35) + "...";
+    }
+
+    char line[256];
+    snprintf(line,
+             sizeof(line),
+             "%-40s | %10.3f | %10.3f | %7.2f%% | %7.2f%% | %6u\n",
+             displayName.c_str(),
+             inclTime,
+             exclTime,
+             inclPercent,
+             exclPercent,
+             hitCount);
+    output             += line;
+
+    // Build prefix for children.
+    String childPrefix  = prefix;
+    if (node->depth > 0)
+    {
+      childPrefix += isLast ? "    " : "|   ";
+    }
+
+    // Recursively add children.
+    for (size_t i = 0; i < node->children.size(); ++i)
+    {
+      bool childIsLast = (i == node->children.size() - 1);
+      BuildTreeString(node->children[i], output, childPrefix, childIsLast);
+    }
+  }
+
+  // ProfileScope Implementation
+  //////////////////////////////////////////
+
+  ProfileScope::ProfileScope(StringView name)
+  {
+    if (TKStats* stats = GetTKStats())
+    {
+      if (stats->GetProfiler().IsEnabled())
+      {
+        stats->GetProfiler().BeginScope(name);
+        m_active = true;
+      }
+    }
+  }
+
+  ProfileScope::~ProfileScope()
+  {
+    if (m_active)
+    {
+      if (TKStats* stats = GetTKStats())
+      {
+        stats->GetProfiler().EndScope();
+      }
+    }
+  }
+
+  // TKStats Implementation
+  //////////////////////////////////////////
 
   void TKStats::RemoveVRAMUsageInBytes(uint64 bytes)
   {
@@ -126,22 +457,6 @@ namespace ToolKit
       if (glPopGroupMarkerEXT != nullptr)
       {
         glPopGroupMarkerEXT();
-      }
-    }
-
-    void BeginTimeScope(StringView name)
-    {
-      if (TKStats* tkStats = GetTKStats())
-      {
-        tkStats->BeginTimer(name);
-      }
-    }
-
-    void EndTimeScope(StringView name)
-    {
-      if (TKStats* tkStats = GetTKStats())
-      {
-        tkStats->EndTimer(name);
       }
     }
 
@@ -296,6 +611,84 @@ namespace ToolKit
         cpu = 1.0f;
         gpu = 1.0f;
       }
+    }
+
+    // Hierarchical Profiler API Implementation
+    //////////////////////////////////////////
+
+    void BeginProfileScope(StringView name)
+    {
+      if (TKStats* tkStats = GetTKStats())
+      {
+        tkStats->GetProfiler().BeginScope(name);
+      }
+    }
+
+    void EndProfileScope()
+    {
+      if (TKStats* tkStats = GetTKStats())
+      {
+        tkStats->GetProfiler().EndScope();
+      }
+    }
+
+    void BeginProfileFrame()
+    {
+      if (TKStats* tkStats = GetTKStats())
+      {
+        tkStats->GetProfiler().BeginFrame();
+      }
+    }
+
+    void EndProfileFrame()
+    {
+      if (TKStats* tkStats = GetTKStats())
+      {
+        tkStats->GetProfiler().EndFrame();
+      }
+    }
+
+    void ResetProfiler()
+    {
+      if (TKStats* tkStats = GetTKStats())
+      {
+        tkStats->GetProfiler().Reset();
+      }
+    }
+
+    TKProfiler* GetProfiler()
+    {
+      if (TKStats* tkStats = GetTKStats())
+      {
+        return &tkStats->GetProfiler();
+      }
+      return nullptr;
+    }
+
+    String GetProfileTreeString()
+    {
+      if (TKStats* tkStats = GetTKStats())
+      {
+        return tkStats->GetProfiler().GetProfileTreeString();
+      }
+      return "Profiler not available.\n";
+    }
+
+    void SetProfilerEnabled(bool enabled)
+    {
+      if (TKStats* tkStats = GetTKStats())
+      {
+        tkStats->GetProfiler().SetEnabled(enabled);
+      }
+    }
+
+    bool IsProfilerEnabled()
+    {
+      if (TKStats* tkStats = GetTKStats())
+      {
+        return tkStats->GetProfiler().IsEnabled();
+      }
+      return false;
     }
 
   } // namespace Stats
