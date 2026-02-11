@@ -53,7 +53,7 @@ namespace ToolKit
 
     if (TKStats* tkStats = GetTKStats())
     {
-      tkStats->m_uboUpdatesPerFrame++;
+      tkStats->IncrementStat(FrameStatType::UboUpdates);
     }
 
     glBindBuffer(GL_UNIFORM_BUFFER, m_id);

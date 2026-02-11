@@ -254,20 +254,7 @@ namespace ToolKit
 
     if (TKStats* stats = GetTKStats())
     {
-      stats->m_drawCallCountPrev                     = stats->m_drawCallCount;
-      stats->m_drawCallCount                         = 0;
-      stats->m_renderPassCountPrev                   = stats->m_renderPassCount;
-      stats->m_renderPassCount                       = 0;
-      stats->m_lightCacheInvalidationPerFramePrev    = stats->m_lightCacheInvalidationPerFrame;
-      stats->m_lightCacheInvalidationPerFrame        = 0;
-      stats->m_materialCacheInvalidationPerFramePrev = stats->m_materialCacheInvalidationPerFrame;
-      stats->m_materialCacheInvalidationPerFrame     = 0;
-      stats->m_uboUpdatesPerFramePrev                = stats->m_uboUpdatesPerFrame;
-      stats->m_uboUpdatesPerFrame                    = 0;
-      stats->m_cameraUpdatePerFramePrev              = stats->m_cameraUpdatePerFrame;
-      stats->m_cameraUpdatePerFrame                  = 0;
-      stats->m_directionalLightUpdatePerFramePrev    = stats->m_directionalLightUpdatePerFrame;
-      stats->m_directionalLightUpdatePerFrame        = 0;
+      stats->SwapFrameStats();
     }
 
     GetRenderSystem()->StartFrame();

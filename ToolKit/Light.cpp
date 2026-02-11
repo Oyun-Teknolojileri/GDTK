@@ -209,7 +209,7 @@ namespace ToolKit
 
     if (TKStats* stats = GetTKStats())
     {
-      stats->m_directionalLightUpdatePerFrame += 2; // Includes pvm updates.
+      stats->AddStat(FrameStatType::DirectionalLightUpdate, 2); // Includes pvm updates.
     }
   }
 

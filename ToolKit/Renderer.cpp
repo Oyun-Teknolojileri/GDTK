@@ -65,7 +65,7 @@ namespace ToolKit
       {
         if (pair.second > 0)
         {
-          stats->m_renderPassCount++;
+          stats->IncrementStat(FrameStatType::RenderPass);
         }
       }
     }
@@ -200,7 +200,7 @@ namespace ToolKit
 
       if (TKStats* stats = GetTKStats())
       {
-        stats->m_cameraUpdatePerFrame++;
+        stats->IncrementStat(FrameStatType::CameraUpdate);
       }
     }
   }
@@ -308,7 +308,10 @@ namespace ToolKit
       drawCount++;
     }
 
-    Stats::AddDrawCall();
+    if (TKStats* stats = GetTKStats())
+    {
+      stats->IncrementStat(FrameStatType::DrawCall);
+    }
   }
 
   void Renderer::RenderWithProgramFromMaterial(const RenderJobArray& jobs)
@@ -970,7 +973,7 @@ namespace ToolKit
     {
       if (TKStats* stats = GetTKStats())
       {
-        stats->m_lightCacheInvalidationPerFrame++;
+        stats->IncrementStat(FrameStatType::LightCacheInvalidation);
       }
     }
 
@@ -978,7 +981,7 @@ namespace ToolKit
     {
       if (TKStats* stats = GetTKStats())
       {
-        stats->m_lightCacheInvalidationPerFrame++;
+        stats->IncrementStat(FrameStatType::LightCacheInvalidation);
       }
     }
 

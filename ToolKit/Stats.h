@@ -145,7 +145,41 @@ namespace ToolKit
 #define TK_PROFILE_SCOPE(name) ToolKit::ProfileScope _tkProfileScope##__LINE__(name)
 #define TK_PROFILE_FUNCTION()  TK_PROFILE_SCOPE(__FUNCTION__)
 
-  // TKStats Class (Original + Profiler Integration)
+  // Per-Frame Counter
+  //////////////////////////////////////////
+
+  /** Indices for per-frame stat counters. */
+  enum class FrameStatType
+  {
+    LightCacheInvalidation,
+    MaterialCacheInvalidation,
+    UboUpdates,
+    CameraUpdate,
+    DirectionalLightUpdate,
+    DrawCall,
+    RenderPass,
+    Count
+  };
+
+  /** A single per-frame counter with automatic prev/current swap. */
+  struct FrameStat
+  {
+    uint64 current = 0; //!< Value being accumulated this frame.
+    uint64 prev    = 0; //!< Value from the previous frame (for display).
+
+    inline void Increment() { current++; }
+
+    inline void Add(uint64 amount) { current += amount; }
+
+    /** Swap current into prev and reset current for the next frame. */
+    inline void Swap()
+    {
+      prev    = current;
+      current = 0;
+    }
+  };
+
+  // TKStats Class
   //////////////////////////////////////////
 
   class TK_API TKStats
@@ -166,17 +200,26 @@ namespace ToolKit
 
     inline void ResetVRAMUsage() { m_totalVRAMUsageInBytes = 0; }
 
-    // Draw Call
+    // Per-Frame Counters
     //////////////////////////////////////////
 
-    inline void AddDrawCall() { m_drawCallCount++; }
+    /** Increment a frame stat counter. */
+    inline void IncrementStat(FrameStatType type) { m_frameStats[(int) type].Increment(); }
 
-    inline uint64 GetDrawCallCount() { return m_drawCallCountPrev; }
+    /** Add an amount to a frame stat counter. */
+    inline void AddStat(FrameStatType type, uint64 amount) { m_frameStats[(int) type].Add(amount); }
 
-    // Hardware Render Pass Counter
-    //////////////////////////////////////////
+    /** Get the previous frame's value for a stat (for display). */
+    inline uint64 GetStatPrev(FrameStatType type) const { return m_frameStats[(int) type].prev; }
 
-    inline uint64 GetRenderPassCount() { return m_renderPassCountPrev; }
+    /** Swap all frame stat counters (prev = current, current = 0). */
+    void SwapFrameStats()
+    {
+      for (int i = 0; i < (int) FrameStatType::Count; i++)
+      {
+        m_frameStats[i].Swap();
+      }
+    }
 
     /** Returns all measured per frame statistics as string. */
     String GetPerFrameStats();
@@ -189,38 +232,18 @@ namespace ToolKit
 
    public:
     /** Gpu Frame time for current frame. */
-    float m_elapsedGpuRenderTime                 = 0.0f;
+    float m_elapsedGpuRenderTime    = 0.0f;
     /** Gpu Frame time for average over 100 frames. */
-    float m_elapsedGpuRenderTimeAvg              = 0.0f;
+    float m_elapsedGpuRenderTimeAvg = 0.0f;
     /** Cpu Frame time for current frame. */
-    float m_elapsedCpuRenderTime                 = 0.0f;
+    float m_elapsedCpuRenderTime    = 0.0f;
     /** Cpu Frame time for average over 100 frames. */
-    float m_elapsedCpuRenderTimeAvg              = 0.0f;
-    /** Number of times the light cache invalidated for a frame */
-    uint m_lightCacheInvalidationPerFrame        = 0;
-    uint m_lightCacheInvalidationPerFramePrev    = 0;
-    /** Number of times the material cache invalidated for a frame */
-    uint m_materialCacheInvalidationPerFrame     = 0;
-    uint m_materialCacheInvalidationPerFramePrev = 0;
-    /** Number of times any ubo mapped for a frame. */
-    uint m_uboUpdatesPerFrame                    = 0;
-    uint m_uboUpdatesPerFramePrev                = 0;
-    /** Number of times camera ubo update for a frame. */
-    uint m_cameraUpdatePerFrame                  = 0;
-    uint m_cameraUpdatePerFramePrev              = 0;
-    /** Number of times directional light updated in a frame. */
-    uint m_directionalLightUpdatePerFrame        = 0;
-    uint m_directionalLightUpdatePerFramePrev    = 0;
+    float m_elapsedCpuRenderTimeAvg = 0.0f;
 
-    /** Number of draw calls in a frame. */
-    uint64 m_drawCallCount                       = 0;
-    uint64 m_drawCallCountPrev                   = 0;
+    /** Per-frame stat counters. */
+    FrameStat m_frameStats[(int) FrameStatType::Count];
 
-    /** Number of hardware render passes in a frame. */
-    uint64 m_renderPassCount                     = 0;
-    uint64 m_renderPassCountPrev                 = 0;
-
-    uint64 m_totalVRAMUsageInBytes               = 0;
+    uint64 m_totalVRAMUsageInBytes = 0;
 
    private:
     TKProfiler m_profiler;
@@ -241,7 +264,6 @@ namespace ToolKit
     TK_API void AddVRAMUsageInBytes(uint64 bytes);
     TK_API void RemoveVRAMUsageInBytes(uint64 bytes);
     TK_API void ResetVRAMUsage();
-    TK_API void AddDrawCall();
     TK_API uint64 GetDrawCallCount();
     TK_API uint64 GetRenderPassCount();
     TK_API void GetRenderTime(float& cpu, float& gpu);
@@ -257,7 +279,6 @@ namespace ToolKit
     TK_API String GetProfileTreeString();
     TK_API void SetProfilerEnabled(bool enabled);
     TK_API bool IsProfilerEnabled();
-
   }; // namespace Stats
 
 } // namespace ToolKit

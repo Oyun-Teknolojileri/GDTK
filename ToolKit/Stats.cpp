@@ -464,9 +464,8 @@ namespace ToolKit
     {
       if (TKStats* tkStats = GetTKStats())
       {
-        return tkStats->m_lightCacheInvalidationPerFramePrev;
+        return tkStats->GetStatPrev(FrameStatType::LightCacheInvalidation);
       }
-
       return 0;
     }
 
@@ -474,9 +473,8 @@ namespace ToolKit
     {
       if (TKStats* tkStats = GetTKStats())
       {
-        return tkStats->m_uboUpdatesPerFramePrev;
+        return tkStats->GetStatPrev(FrameStatType::UboUpdates);
       }
-
       return 0;
     }
 
@@ -484,17 +482,16 @@ namespace ToolKit
     {
       if (TKStats* tkStats = GetTKStats())
       {
-        return tkStats->m_cameraUpdatePerFramePrev;
+        return tkStats->GetStatPrev(FrameStatType::CameraUpdate);
       }
       return 0;
     }
 
     uint64 GetDirectionalLightUpdatesPerFrame()
     {
-
       if (TKStats* tkStats = GetTKStats())
       {
-        return tkStats->m_directionalLightUpdatePerFramePrev;
+        return tkStats->GetStatPrev(FrameStatType::DirectionalLightUpdate);
       }
       return 0;
     }
@@ -553,36 +550,22 @@ namespace ToolKit
       }
     }
 
-    void AddDrawCall()
-    {
-      if (TKStats* tkStats = GetTKStats())
-      {
-        tkStats->AddDrawCall();
-      }
-    }
-
     uint64 GetDrawCallCount()
     {
       if (TKStats* tkStats = GetTKStats())
       {
-        return tkStats->GetDrawCallCount();
+        return tkStats->GetStatPrev(FrameStatType::DrawCall);
       }
-      else
-      {
-        return 0;
-      }
+      return 0;
     }
 
     uint64 GetRenderPassCount()
     {
       if (TKStats* tkStats = GetTKStats())
       {
-        return tkStats->GetRenderPassCount();
+        return tkStats->GetStatPrev(FrameStatType::RenderPass);
       }
-      else
-      {
-        return 0;
-      }
+      return 0;
     }
 
     void GetRenderTime(float& cpu, float& gpu)
