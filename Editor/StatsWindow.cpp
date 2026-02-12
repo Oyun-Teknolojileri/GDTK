@@ -34,9 +34,9 @@ namespace ToolKit
       }
 
       // Use previous frame values for display (current frame may still be recording).
-      float inclTime = node->inclusiveTimePrev;
-      float exclTime = node->exclusiveTimePrev;
-      uint hitCount  = node->hitCountPrev;
+      float inclTime    = node->inclusiveTimePrev;
+      float exclTime    = node->exclusiveTimePrev;
+      uint hitCount     = node->hitCountPrev;
 
       // Calculate percentages.
       float inclPercent = frameTime > 0.0f ? (inclTime / frameTime) * 100.0f : 0.0f;
@@ -171,12 +171,12 @@ namespace ToolKit
         // Profiler section.
         if (profilerEnabled)
         {
-          TKProfiler& profiler                      = tkStats->GetProfiler();
-          const std::vector<ProfilerNode*>& roots   = profiler.GetRootNodes();
+          TKProfiler& profiler           = tkStats->GetProfiler();
+          const ProfilerNodeArray& roots = profiler.GetRootNodes();
 
-          float frameTime                           = profiler.GetFrameTime();
-          float avgFrameTime                        = profiler.GetAverageFrameTime();
-          uint frameCount                           = profiler.GetFrameCount();
+          float frameTime                = profiler.GetFrameTime();
+          float avgFrameTime             = profiler.GetAverageFrameTime();
+          uint frameCount                = profiler.GetFrameCount();
 
           // Profiler summary header.
           ImGui::Text("Profiler: Frame: %.3f ms | Avg: %.3f ms | Frames: %u", frameTime, avgFrameTime, frameCount);
@@ -197,9 +197,8 @@ namespace ToolKit
           // Profiler table.
           if (!roots.empty())
           {
-            ImGuiTableFlags tableFlags = ImGuiTableFlags_Resizable | ImGuiTableFlags_Borders |
-                                         ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
-                                         ImGuiTableFlags_SizingStretchProp;
+            ImGuiTableFlags tableFlags = ImGuiTableFlags_Resizable | ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+                                         ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingStretchProp;
 
             // Calculate available height for the table.
             float availableHeight = ImGui::GetContentRegionAvail().y;
