@@ -620,9 +620,13 @@ namespace ToolKit
       }
     }
 
-    // Hierarchical Profiler API Implementation
-    //////////////////////////////////////////
+  } // namespace Stats
 
+  // Hierarchical Profiler API Implementation
+  //////////////////////////////////////////
+
+  namespace Profiler
+  {
     void BeginProfileScope(StringView name)
     {
       if (TKStats* tkStats = GetTKStats())
@@ -698,6 +702,6 @@ namespace ToolKit
       return false;
     }
 
-  } // namespace Stats
+  } // namespace Profiler
 
 } // namespace ToolKit

@@ -250,7 +250,7 @@ namespace ToolKit
   void Main::FrameBegin()
   {
     // Begin profiler frame.
-    Stats::BeginProfileFrame();
+    Profiler::BeginProfileFrame();
 
     Stats::SwapFrameStats();
 
@@ -291,7 +291,7 @@ namespace ToolKit
     GetRenderSystem()->EndFrame();
 
     // End profiler frame.
-    Stats::EndProfileFrame();
+    Profiler::EndProfileFrame();
   }
 
   void Main::Frame(float deltaTime)

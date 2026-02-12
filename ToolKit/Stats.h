@@ -275,20 +275,20 @@ namespace ToolKit
     TK_API void IncrementStat(FrameStatType type);
     TK_API void AddStat(FrameStatType type, uint64 amount);
     TK_API void SwapFrameStats();
-
-    // Hierarchical Profiler API
-    namespace Profiler
-    {
-      TK_API void BeginProfileScope(StringView name);
-      TK_API void EndProfileScope();
-      TK_API void BeginProfileFrame();
-      TK_API void EndProfileFrame();
-      TK_API void ResetProfiler();
-      TK_API TKProfiler* GetProfiler();
-      TK_API String GetProfileTreeString();
-      TK_API void SetProfilerEnabled(bool enabled);
-      TK_API bool IsProfilerEnabled();
-    } // namespace Profiler
   }; // namespace Stats
+
+  // Hierarchical Profiler API
+  namespace Profiler
+  {
+    TK_API void BeginProfileScope(StringView name);
+    TK_API void EndProfileScope();
+    TK_API void BeginProfileFrame();
+    TK_API void EndProfileFrame();
+    TK_API void ResetProfiler();
+    TK_API TKProfiler* GetProfiler();
+    TK_API String GetProfileTreeString();
+    TK_API void SetProfilerEnabled(bool enabled);
+    TK_API bool IsProfilerEnabled();
+  } // namespace Profiler
 
 } // namespace ToolKit

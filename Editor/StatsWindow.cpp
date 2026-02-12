@@ -137,10 +137,10 @@ namespace ToolKit
         ImGui::SameLine();
 
         // Profiler enable checkbox.
-        bool profilerEnabled = Stats::IsProfilerEnabled();
+        bool profilerEnabled = Profiler::IsProfilerEnabled();
         if (ImGui::Checkbox("Enable Profiler##ProfilerOn", &profilerEnabled))
         {
-          Stats::SetProfilerEnabled(profilerEnabled);
+          Profiler::SetProfilerEnabled(profilerEnabled);
         }
         UI::AddTooltipToLastItem("Enable hierarchical CPU profiler.\nShows nested timing information.");
 
@@ -149,7 +149,7 @@ namespace ToolKit
         // Reset profiler button.
         if (ImGui::Button("Reset Profiler"))
         {
-          Stats::ResetProfiler();
+          Profiler::ResetProfiler();
         }
 
         ImGui::Separator();
