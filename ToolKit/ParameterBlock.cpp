@@ -10,6 +10,7 @@
 #include "Animation.h"
 #include "Material.h"
 #include "Mesh.h"
+#include "Prefab.h"
 #include "ToolKit.h"
 #include "Util.h"
 
@@ -122,6 +123,8 @@ namespace ToolKit
   ParameterVariant::ParameterVariant(const AnimRecordPtrMap& var) { *this = var; }
 
   ParameterVariant::ParameterVariant(const SkeletonPtr& var) { *this = var; }
+
+  ParameterVariant::ParameterVariant(const PrefabPtr& var) { *this = var; }
 
   ParameterVariant::ParameterVariant(const VariantCallback& var) { *this = var; }
 
@@ -279,6 +282,13 @@ namespace ToolKit
   ParameterVariant& ParameterVariant::operator=(const SkeletonPtr& var)
   {
     m_type = VariantType::SkeletonPtr;
+    AsignVal(var);
+    return *this;
+  }
+
+  ParameterVariant& ParameterVariant::operator=(const PrefabPtr& var)
+  {
+    m_type = VariantType::PrefabPtr;
     AsignVal(var);
     return *this;
   }
@@ -457,6 +467,18 @@ namespace ToolKit
         if (SkeletonPtr sklt = var->GetCVar<SkeletonPtr>())
         {
           sklt->SerializeRef(doc, node);
+        }
+      }
+      break;
+      case VariantType::PrefabPtr:
+      {
+        if (PrefabPtr prfb = var->GetCVar<PrefabPtr>())
+        {
+          String path = prfb->GetPrefabPathVal();
+          if (!path.empty())
+          {
+            WriteAttr(node, doc, XmlParamterValAttr.c_str(), path);
+          }
         }
       }
       break;
@@ -724,6 +746,23 @@ namespace ToolKit
         {
           file        = SkeletonPath(file);
           pVar->m_var = GetSkeletonManager()->Create<Skeleton>(file);
+        }
+      }
+      break;
+      case VariantType::PrefabPtr:
+      {
+        String file;
+        ReadAttr(parent, XmlParamterValAttr, file);
+        if (!file.empty())
+        {
+          PrefabPtr prefab = std::make_shared<Prefab>();
+          prefab->SetPrefabPathVal(file);
+          prefab->Load();
+          pVar->m_var = prefab;
+        }
+        else
+        {
+          pVar->m_var = PrefabPtr();
         }
       }
       break;

@@ -102,7 +102,8 @@ namespace ToolKit
                              VariantCallback,
                              struct MultiChoiceVariant,
                              TexturePtr,
-                             ShaderPtr>;
+                             ShaderPtr,
+                             PrefabPtr>;
 
   /**
    * Value change function callback. When the Variant value has changed, all the
@@ -214,7 +215,8 @@ namespace ToolKit
       VariantCallback,
       MultiChoice,
       TexturePtr,
-      ShaderPtr
+      ShaderPtr,
+      PrefabPtr
     };
 
     /**
@@ -347,6 +349,11 @@ namespace ToolKit
      * Constructs SkeletonPtr type variant.
      */
     explicit ParameterVariant(const SkeletonPtr& var);
+
+    /**
+     * Constructs PrefabPtr type variant.
+     */
+    explicit ParameterVariant(const PrefabPtr& var);
 
     /**
      * Constructs CallbackFn type variant.
@@ -529,6 +536,11 @@ namespace ToolKit
      * Assign a SkeletonPtr to the value of the variant.
      */
     ParameterVariant& operator=(const SkeletonPtr& var);
+
+    /**
+     * Assign a PrefabPtr to the value of the variant.
+     */
+    ParameterVariant& operator=(const PrefabPtr& var);
 
     /**
      * Assign a CallbackFn to the value of the variant.

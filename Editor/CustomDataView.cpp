@@ -738,6 +738,39 @@ namespace ToolKit
         ImGui::BeginDisabled(!var->m_editable);
       }
       break;
+      case ParameterVariant::VariantType::PrefabPtr:
+      {
+        PrefabPtr mref = var->GetVar<PrefabPtr>();
+        String file, id;
+        if (mref)
+        {
+          id   = std::to_string(mref->GetIdVal());
+          file = mref->GetPrefabPathVal();
+        }
+
+        ImGui::EndDisabled();
+        DropSubZone(
+            "Prefab##" + id,
+            UI::m_prefabIcn->m_textureId,
+            file,
+            [&var](const DirectoryEntry& entry) -> void
+            {
+              if (entry.m_ext == SCENE)
+              {
+                PrefabPtr prefab = std::make_shared<Prefab>();
+                prefab->SetPrefabPathVal(entry.GetFullPath());
+                prefab->Load();
+                *var = prefab;
+              }
+              else
+              {
+                TK_ERR("Only Scene (.scene) files are accepted.");
+              }
+            },
+            var->m_editable);
+        ImGui::BeginDisabled(!var->m_editable);
+      }
+      break;
       case ParameterVariant::VariantType::AnimRecordPtrMap:
       {
         ComponentView::ShowAnimControllerComponent(var, comp);
