@@ -153,6 +153,8 @@ namespace ToolKit
 
   void Renderer::SetCamera(CameraPtr camera, bool setLens)
   {
+    TK_PROFILE_FUNCTION();
+
     if (setLens)
     {
       if (camera->IsOrtographic())
@@ -201,6 +203,8 @@ namespace ToolKit
 
   void Renderer::Render(const RenderJob& job)
   {
+    TK_PROFILE_FUNCTION();
+
     // Skeleton Component is used by all meshes of an entity.
     const auto& updateAndBindSkinningTextures = [&]()
     {
@@ -307,6 +311,8 @@ namespace ToolKit
 
   void Renderer::RenderWithProgramFromMaterial(const RenderJobArray& jobs)
   {
+    TK_PROFILE_FUNCTION();
+
     for (int i = 0; i < jobs.size(); ++i)
     {
       RenderWithProgramFromMaterial(jobs[i]);
@@ -315,6 +321,8 @@ namespace ToolKit
 
   void Renderer::RenderWithProgramFromMaterial(const RenderJob& job)
   {
+    TK_PROFILE_FUNCTION();
+
     job.Material->Init();
     ShaderPtr vert        = job.Material->GetVertexShaderVal();
     ShaderPtr frag        = job.Material->GetFragmentShaderVal();
@@ -326,6 +334,8 @@ namespace ToolKit
 
   void Renderer::Render(const RenderJobArray& jobs)
   {
+    TK_PROFILE_FUNCTION();
+
     for (const RenderJob& job : jobs)
     {
       Render(job);
@@ -450,6 +460,8 @@ namespace ToolKit
                                 const Vec4& clearColor,
                                 GraphicFramebufferTypes frameBufferType)
   {
+    TK_PROFILE_FUNCTION();
+
     if (frameBuffer != nullptr)
     {
       RHI::SetFramebuffer((GLenum) frameBufferType, frameBuffer->GetFboId());
@@ -545,6 +557,8 @@ namespace ToolKit
 
   void Renderer::CopyFrameBuffer(FramebufferPtr src, FramebufferPtr dest, GraphicBitFields fields)
   {
+    TK_PROFILE_FUNCTION();
+
     FramebufferPtr lastFb = m_framebuffer;
 
     uint width            = m_windowSize.x;
@@ -600,6 +614,8 @@ namespace ToolKit
 
   void Renderer::ResolveFramebuffer(FramebufferPtr source, FramebufferPtr target, const IntArray& attachments)
   {
+    TK_PROFILE_FUNCTION();
+
     RHI::StoreFramebufferBindings();
     RHI::SetFramebuffer(GL_READ_FRAMEBUFFER, source->GetFboId());
     RHI::SetFramebuffer(GL_DRAW_FRAMEBUFFER, target->GetFboId());
@@ -667,6 +683,8 @@ namespace ToolKit
 
   void Renderer::DrawFullQuad(ShaderPtr fragmentShader)
   {
+    TK_PROFILE_FUNCTION();
+
     if (m_tempQuadMaterial == nullptr)
     {
       m_tempQuadMaterial = MakeNewPtr<Material>();
@@ -683,6 +701,8 @@ namespace ToolKit
 
   void Renderer::DrawFullQuad(MaterialPtr mat)
   {
+    TK_PROFILE_FUNCTION();
+
     if (m_tempQuad == nullptr)
     {
       m_tempQuad = MakeNewPtr<Quad>();
@@ -700,6 +720,8 @@ namespace ToolKit
 
   void Renderer::DrawCube(CameraPtr cam, MaterialPtr mat, const Mat4& transform)
   {
+    TK_PROFILE_FUNCTION();
+
     m_dummyDrawCube->m_node->SetTransform(transform);
     m_dummyDrawCube->GetMaterialComponent()->SetFirstMaterial(mat);
     SetCamera(cam, true);
@@ -715,6 +737,8 @@ namespace ToolKit
 
   void Renderer::CopyTexture(TexturePtr src, TexturePtr dst)
   {
+    TK_PROFILE_FUNCTION();
+
     Stats::BeginGpuScope("CopyTexture");
     RHI::StoreFramebufferBindings();
 
@@ -800,6 +824,8 @@ namespace ToolKit
 
   void Renderer::Apply7x1GaussianBlur(const TexturePtr src, RenderTargetPtr dst, const Vec3& axis, const float amount)
   {
+    TK_PROFILE_FUNCTION();
+
     m_oneColorAttachmentFramebuffer->ReconstructIfNeeded({dst->m_width, dst->m_height, false, false});
 
     if (m_gaussianBlurMaterial == nullptr)
@@ -825,6 +851,8 @@ namespace ToolKit
 
   void Renderer::ApplyAverageBlur(const TexturePtr src, RenderTargetPtr dst, const Vec3& axis, const float amount)
   {
+    TK_PROFILE_FUNCTION();
+
     m_oneColorAttachmentFramebuffer->ReconstructIfNeeded({dst->m_width, dst->m_height, false, false});
 
     if (m_averageBlurMaterial == nullptr)
@@ -911,6 +939,8 @@ namespace ToolKit
 
   void Renderer::SetMaterial(Material* mat)
   {
+    TK_PROFILE_FUNCTION();
+
     const MaterialCacheItem& cache = mat->GetCacheItem();
     if (cache.DiffuseTextureInUse())
     {
@@ -937,6 +967,8 @@ namespace ToolKit
 
   void Renderer::SetLights(const LightRawPtrArray& lights)
   {
+    TK_PROFILE_FUNCTION();
+
     SpotLightCache& spotCache   = m_globalGpuBuffers->spotLightBuffer;
     PointLightCache& pointCache = m_globalGpuBuffers->pointLighBuffer;
 
@@ -1003,6 +1035,8 @@ namespace ToolKit
 
   void Renderer::BindProgram(const GpuProgramPtr& program)
   {
+    TK_PROFILE_FUNCTION();
+
     if (m_currentProgram == nullptr || m_currentProgram->m_handle != program->m_handle)
     {
       m_currentProgram = program;
@@ -1026,6 +1060,8 @@ namespace ToolKit
 
   void Renderer::SetDataTextures(const RenderJob& job)
   {
+    TK_PROFILE_FUNCTION();
+
     // Cube map data.
     Material* mat = job.Material;
     if (mat && mat->m_cubeMap)
@@ -1088,6 +1124,8 @@ namespace ToolKit
 
   void Renderer::FeedUniforms(const GpuProgramPtr& program, const RenderJob& job)
   {
+    TK_PROFILE_FUNCTION();
+
     // Built-in shader uniforms.
     for (auto& uniform : program->m_defaultUniformLocation)
     {
@@ -1227,6 +1265,8 @@ namespace ToolKit
 
   void Renderer::FeedAnimationUniforms(const GpuProgramPtr& program, const RenderJob& job)
   {
+    TK_PROFILE_FUNCTION();
+
     // Send if its animated or not.
     int uniformLoc = program->GetDefaultUniformLocation(Uniform::IS_ANIMATED);
     if (uniformLoc != -1)
