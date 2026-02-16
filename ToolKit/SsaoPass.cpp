@@ -61,6 +61,8 @@ namespace ToolKit
 
   void SSAOPass::Render()
   {
+    TK_PROFILE_FUNCTION();
+
     Renderer* renderer = GetRenderer();
 
     // Generate SSAO texture
@@ -79,6 +81,8 @@ namespace ToolKit
 
   void SSAOPass::PreRender()
   {
+    TK_PROFILE_FUNCTION();
+
     Pass::PreRender();
 
     int width           = m_params.GNormalBuffer->m_width;
@@ -138,6 +142,8 @@ namespace ToolKit
 
   void SSAOPass::PostRender()
   {
+    TK_PROFILE_FUNCTION();
+
     m_currentKernelSize = m_params.KernelSize;
     Pass::PostRender();
   }

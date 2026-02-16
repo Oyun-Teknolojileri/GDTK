@@ -45,6 +45,8 @@ namespace ToolKit
 
   void ForwardSceneRenderPath::Render(Renderer* renderer)
   {
+    TK_PROFILE_FUNCTION();
+
     PreRender(renderer);
 
     m_passArray.clear();
@@ -101,6 +103,8 @@ namespace ToolKit
 
   void ForwardSceneRenderPath::PreRender(Renderer* renderer)
   {
+    TK_PROFILE_FUNCTION();
+
     RenderPath::PreRender(renderer);
 
     SetPassParams(renderer);
@@ -127,10 +131,17 @@ namespace ToolKit
     }
   }
 
-  void ForwardSceneRenderPath::PostRender(Renderer* renderer) { RenderPath::PostRender(renderer); }
+  void ForwardSceneRenderPath::PostRender(Renderer* renderer)
+  {
+    TK_PROFILE_FUNCTION();
+
+    RenderPath::PostRender(renderer);
+  }
 
   void ForwardSceneRenderPath::SetPassParams(Renderer* renderer)
   {
+    TK_PROFILE_FUNCTION();
+
     Frustum frustum            = ExtractFrustum(m_params.Cam->GetProjectViewMatrix(), false);
     EntityRawPtrArray entities = m_params.Scene->m_aabbTree.VolumeQuery(frustum);
 

@@ -10,6 +10,7 @@
 #include "ForwardPreProcessPass.h"
 
 #include "Shader.h"
+#include "Stats.h"
 
 #include "DebugNew.h"
 
@@ -69,6 +70,8 @@ namespace ToolKit
 
   void ForwardPreProcessPass::Render()
   {
+    TK_PROFILE_FUNCTION();
+
     // Currently transparent objects are not rendered to export screen space normals or linear depth
     // we want SSAO and DOF to effect on opaque objects only renderLinearDepthAndNormalFn(m_params.TranslucentJobs);
     RenderJobItr begin = m_params.renderData->GetForwardOpaqueBegin();
@@ -104,6 +107,8 @@ namespace ToolKit
 
   void ForwardPreProcessPass::PreRender()
   {
+    TK_PROFILE_FUNCTION();
+
     Pass::PreRender();
 
     Renderer* renderer = GetRenderer();
@@ -113,6 +118,8 @@ namespace ToolKit
 
   void ForwardPreProcessPass::PostRender()
   {
+    TK_PROFILE_FUNCTION();
+
     Pass::PostRender();
     // Don't clear / invalidate depth, its being used for upcoming passes. Render pass uses it for Z pre-pass.
     // Color channels are used for post process passes.
