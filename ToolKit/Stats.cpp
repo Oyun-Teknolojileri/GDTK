@@ -153,8 +153,16 @@ namespace ToolKit
       m_nodeMap[fullPath] = node;
     }
 
-    node->beginTime = GetElapsedMilliSeconds();
-    m_currentNode   = node;
+    // Snapshot children's current inclusive time sum before this scope runs.
+    float childrenSum = 0.0f;
+    for (ProfilerNode* child : node->children)
+    {
+      childrenSum += child->inclusiveTime;
+    }
+    node->childrenTimeAtBegin = childrenSum;
+
+    node->beginTime           = GetElapsedMilliSeconds();
+    m_currentNode             = node;
   }
 
   void TKProfiler::EndScope()
@@ -164,21 +172,24 @@ namespace ToolKit
       return;
     }
 
-    float endTime                = GetElapsedMilliSeconds();
-    float elapsed                = endTime - m_currentNode->beginTime;
+    float endTime                 = GetElapsedMilliSeconds();
+    float elapsed                 = endTime - m_currentNode->beginTime;
 
-    m_currentNode->inclusiveTime = elapsed;
+    m_currentNode->inclusiveTime += elapsed;
     m_currentNode->hitCount++;
     m_currentNode->accumulatedIncl += elapsed;
 
-    // Calculate exclusive time (inclusive - sum of children's inclusive).
-    float childrenTime              = 0.0f;
+    // Calculate exclusive time: elapsed minus only the children time accumulated during this scope call.
+    float childrenTimeNow           = 0.0f;
     for (ProfilerNode* child : m_currentNode->children)
     {
-      childrenTime += child->inclusiveTime;
+      childrenTimeNow += child->inclusiveTime;
     }
-    m_currentNode->exclusiveTime    = elapsed - childrenTime;
-    m_currentNode->accumulatedExcl += m_currentNode->exclusiveTime;
+    float childrenDelta             = childrenTimeNow - m_currentNode->childrenTimeAtBegin;
+
+    float exclusive                 = elapsed - childrenDelta;
+    m_currentNode->exclusiveTime   += exclusive;
+    m_currentNode->accumulatedExcl += exclusive;
 
     // Pop the scope stack.
     m_scopeStack.pop_back();

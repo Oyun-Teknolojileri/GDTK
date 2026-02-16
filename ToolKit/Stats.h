@@ -20,21 +20,22 @@ namespace ToolKit
   /** A single node in the profiler tree hierarchy. */
   struct TK_API ProfilerNode
   {
-    String name;                       //!< Name of this scope.
-    float beginTime         = 0.0f;    //!< Start time of current measurement.
-    float inclusiveTime     = 0.0f;    //!< Total time including children (ms) - current frame.
-    float exclusiveTime     = 0.0f;    //!< Time excluding children (ms) - current frame.
-    float inclusiveTimePrev = 0.0f;    //!< Previous frame inclusive time for display.
-    float exclusiveTimePrev = 0.0f;    //!< Previous frame exclusive time for display.
-    float accumulatedIncl   = 0.0f;    //!< Accumulated inclusive time over frames.
-    float accumulatedExcl   = 0.0f;    //!< Accumulated exclusive time over frames.
-    uint hitCount           = 0;       //!< Number of times this scope was hit.
-    uint hitCountPrev       = 0;       //!< Previous frame hit count for display.
-    uint depth              = 0;       //!< Depth in the tree (0 = root).
-    ProfilerNode* parent    = nullptr; //!< Parent node.
-    ProfilerNodeArray children;        //!< Child nodes.
-    bool expanded = false;             //!< UI expansion state.
-    bool enabled  = true;              //!< Whether to display this node.
+    String name;                         //!< Name of this scope.
+    float beginTime           = 0.0f;    //!< Start time of current measurement.
+    float inclusiveTime       = 0.0f;    //!< Total time including children (ms) - current frame.
+    float exclusiveTime       = 0.0f;    //!< Time excluding children (ms) - current frame.
+    float inclusiveTimePrev   = 0.0f;    //!< Previous frame inclusive time for display.
+    float exclusiveTimePrev   = 0.0f;    //!< Previous frame exclusive time for display.
+    float accumulatedIncl     = 0.0f;    //!< Accumulated inclusive time over frames.
+    float accumulatedExcl     = 0.0f;    //!< Accumulated exclusive time over frames.
+    float childrenTimeAtBegin = 0.0f;    //!< Snapshot of children's inclusiveTime sum at BeginScope.
+    uint hitCount             = 0;       //!< Number of times this scope was hit.
+    uint hitCountPrev         = 0;       //!< Previous frame hit count for display.
+    uint depth                = 0;       //!< Depth in the tree (0 = root).
+    ProfilerNode* parent      = nullptr; //!< Parent node.
+    ProfilerNodeArray children;          //!< Child nodes.
+    bool expanded = false;               //!< UI expansion state.
+    bool enabled  = true;                //!< Whether to display this node.
 
     /** Get average inclusive time. */
     float GetAverageInclusive() const { return hitCount > 0 ? accumulatedIncl / hitCount : 0.0f; }
@@ -45,25 +46,27 @@ namespace ToolKit
     /** Reset frame-specific data - called at end of frame to swap values. */
     void SwapFrameData()
     {
-      inclusiveTimePrev = inclusiveTime;
-      exclusiveTimePrev = exclusiveTime;
-      hitCountPrev      = hitCount;
-      inclusiveTime     = 0.0f;
-      exclusiveTime     = 0.0f;
-      hitCount          = 0;
+      inclusiveTimePrev   = inclusiveTime;
+      exclusiveTimePrev   = exclusiveTime;
+      hitCountPrev        = hitCount;
+      inclusiveTime       = 0.0f;
+      exclusiveTime       = 0.0f;
+      childrenTimeAtBegin = 0.0f;
+      hitCount            = 0;
     }
 
     /** Reset all accumulated data. */
     void ResetAll()
     {
-      inclusiveTime     = 0.0f;
-      exclusiveTime     = 0.0f;
-      inclusiveTimePrev = 0.0f;
-      exclusiveTimePrev = 0.0f;
-      accumulatedIncl   = 0.0f;
-      accumulatedExcl   = 0.0f;
-      hitCount          = 0;
-      hitCountPrev      = 0;
+      inclusiveTime       = 0.0f;
+      exclusiveTime       = 0.0f;
+      inclusiveTimePrev   = 0.0f;
+      exclusiveTimePrev   = 0.0f;
+      accumulatedIncl     = 0.0f;
+      accumulatedExcl     = 0.0f;
+      childrenTimeAtBegin = 0.0f;
+      hitCount            = 0;
+      hitCountPrev        = 0;
     }
   };
 
