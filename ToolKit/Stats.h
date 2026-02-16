@@ -163,119 +163,50 @@ namespace ToolKit
     Count
   };
 
-  /** A single per-frame counter with automatic prev/current swap. */
-  struct FrameStat
+  enum class MemoryUnit
   {
-    uint64 current = 0; //!< Value being accumulated this frame.
-    uint64 prev    = 0; //!< Value from the previous frame (for display).
-
-    inline void Increment() { current++; }
-
-    inline void Add(uint64 amount) { current += amount; }
-
-    /** Swap current into prev and reset current for the next frame. */
-    inline void Swap()
-    {
-      prev    = current;
-      current = 0;
-    }
+    Byte,
+    KB,
+    MB
   };
 
-  // TKStats Class
-  //////////////////////////////////////////
+  // TKStats - opaque, defined in Stats.cpp.
+  class TKStats;
 
-  class TK_API TKStats
-  {
-   public:
-    // Vram Usage
-    //////////////////////////////////////////
+  /** Creates a TKStats instance. Defined in Stats.cpp. */
+  TK_API TKStats* CreateTKStats();
 
-    inline uint64 GetTotalVRAMUsageInBytes() { return m_totalVRAMUsageInBytes; }
-
-    inline uint64 GetTotalVRAMUsageInKB() { return m_totalVRAMUsageInBytes / 1024; }
-
-    inline uint64 GetTotalVRAMUsageInMB() { return m_totalVRAMUsageInBytes / (1024 * 1024); }
-
-    inline void AddVRAMUsageInBytes(uint64 bytes) { m_totalVRAMUsageInBytes += bytes; }
-
-    void RemoveVRAMUsageInBytes(uint64 bytes);
-
-    inline void ResetVRAMUsage() { m_totalVRAMUsageInBytes = 0; }
-
-    // Per-Frame Counters
-    //////////////////////////////////////////
-
-    /** Increment a frame stat counter. */
-    inline void IncrementStat(FrameStatType type) { m_frameStats[(int) type].Increment(); }
-
-    /** Add an amount to a frame stat counter. */
-    inline void AddStat(FrameStatType type, uint64 amount) { m_frameStats[(int) type].Add(amount); }
-
-    /** Get the previous frame's value for a stat (for display). */
-    inline uint64 GetStatPrev(FrameStatType type) const { return m_frameStats[(int) type].prev; }
-
-    /** Swap all frame stat counters (prev = current, current = 0). */
-    void SwapFrameStats()
-    {
-      for (int i = 0; i < (int) FrameStatType::Count; i++)
-      {
-        m_frameStats[i].Swap();
-      }
-    }
-
-    /** Returns all measured per frame statistics as string. */
-    String GetPerFrameStats();
-
-    // Hierarchical Profiler
-    //////////////////////////////////////////
-
-    /** Get the hierarchical profiler instance. */
-    TKProfiler& GetProfiler() { return m_profiler; }
-
-   public:
-    /** Gpu Frame time for current frame. */
-    float m_elapsedGpuRenderTime    = 0.0f;
-    /** Gpu Frame time for average over 100 frames. */
-    float m_elapsedGpuRenderTimeAvg = 0.0f;
-    /** Cpu Frame time for current frame. */
-    float m_elapsedCpuRenderTime    = 0.0f;
-    /** Cpu Frame time for average over 100 frames. */
-    float m_elapsedCpuRenderTimeAvg = 0.0f;
-
-    /** Per-frame stat counters. */
-    FrameStat m_frameStats[(int) FrameStatType::Count];
-
-    uint64 m_totalVRAMUsageInBytes = 0;
-
-   private:
-    TKProfiler m_profiler;
-  };
+  /** Destroys a TKStats instance. Defined in Stats.cpp. */
+  TK_API void DestroyTKStats(TKStats* stats);
 
   namespace Stats
   {
+    // GPU Debug
     TK_API void SetGpuResourceLabel(StringView label, GpuResourceType resourceType, uint resourceId);
     TK_API void BeginGpuScope(StringView name);
     TK_API void EndGpuScope();
-    TK_API uint64 GetLightCacheInvalidationPerFrame();
-    TK_API uint64 GetUboUpdatesPerFrame();
-    TK_API uint64 GetCameraUpdatesPerFrame();
-    TK_API uint64 GetDirectionalLightUpdatesPerFrame();
-    TK_API uint64 GetTotalVRAMUsageInBytes();
-    TK_API uint64 GetTotalVRAMUsageInKB();
-    TK_API uint64 GetTotalVRAMUsageInMB();
-    TK_API void AddVRAMUsageInBytes(uint64 bytes);
-    TK_API void RemoveVRAMUsageInBytes(uint64 bytes);
-    TK_API void ResetVRAMUsage();
-    TK_API uint64 GetDrawCallCount();
-    TK_API uint64 GetRenderPassCount();
-    TK_API void GetRenderTime(float& cpu, float& gpu);
-    TK_API void GetRenderTimeAvg(float& cpu, float& gpu);
 
     // Per-Frame Counter API
     TK_API void IncrementStat(FrameStatType type);
     TK_API void AddStat(FrameStatType type, uint64 amount);
     TK_API void SwapFrameStats();
-  }; // namespace Stats
+    TK_API uint64 GetStatPrev(FrameStatType type);
+
+    // VRAM
+    TK_API uint64 GetVRAMUsage(MemoryUnit unit);
+    TK_API void AddVRAMUsageInBytes(uint64 bytes);
+    TK_API void RemoveVRAMUsageInBytes(uint64 bytes);
+    TK_API void ResetVRAMUsage();
+
+    // Render Time
+    TK_API void GetRenderTime(float& cpu, float& gpu);
+    TK_API void GetRenderTimeAvg(float& cpu, float& gpu);
+    TK_API void SetRenderTime(float cpu, float gpu);
+    TK_API void SetRenderTimeAvg(float cpu, float gpu);
+
+    // Formatted Stats
+    TK_API String GetPerFrameStats();
+  } // namespace Stats
 
   // Hierarchical Profiler API
   namespace Profiler

@@ -18,6 +18,77 @@
 namespace ToolKit
 {
 
+  // Per-Frame Counter (internal)
+  //////////////////////////////////////////
+
+  /** A single per-frame counter with automatic prev/current swap. */
+  struct FrameStat
+  {
+    uint64 current = 0;
+    uint64 prev    = 0;
+
+    inline void Increment() { current++; }
+
+    inline void Add(uint64 amount) { current += amount; }
+
+    inline void Swap()
+    {
+      prev    = current;
+      current = 0;
+    }
+  };
+
+  // TKStats Class (internal, opaque to header consumers)
+  //////////////////////////////////////////
+
+  class TKStats
+  {
+   public:
+    // Vram Usage
+    inline uint64 GetTotalVRAMUsageInBytes() { return m_totalVRAMUsageInBytes; }
+
+    inline uint64 GetTotalVRAMUsageInKB() { return m_totalVRAMUsageInBytes / 1024; }
+
+    inline uint64 GetTotalVRAMUsageInMB() { return m_totalVRAMUsageInBytes / (1024 * 1024); }
+
+    inline void AddVRAMUsageInBytes(uint64 bytes) { m_totalVRAMUsageInBytes += bytes; }
+
+    void RemoveVRAMUsageInBytes(uint64 bytes);
+
+    inline void ResetVRAMUsage() { m_totalVRAMUsageInBytes = 0; }
+
+    // Per-Frame Counters
+    inline void IncrementStat(FrameStatType type) { m_frameStats[(int) type].Increment(); }
+
+    inline void AddStat(FrameStatType type, uint64 amount) { m_frameStats[(int) type].Add(amount); }
+
+    inline uint64 GetStatPrev(FrameStatType type) const { return m_frameStats[(int) type].prev; }
+
+    void SwapFrameStats()
+    {
+      for (int i = 0; i < (int) FrameStatType::Count; i++)
+      {
+        m_frameStats[i].Swap();
+      }
+    }
+
+    String GetPerFrameStats();
+
+    // Hierarchical Profiler
+    TKProfiler& GetProfiler() { return m_profiler; }
+
+    // Render Time
+    float m_elapsedGpuRenderTime    = 0.0f;
+    float m_elapsedGpuRenderTimeAvg = 0.0f;
+    float m_elapsedCpuRenderTime    = 0.0f;
+    float m_elapsedCpuRenderTimeAvg = 0.0f;
+
+   private:
+    FrameStat m_frameStats[(int) FrameStatType::Count];
+    uint64 m_totalVRAMUsageInBytes = 0;
+    TKProfiler m_profiler;
+  };
+
   // TKProfiler Implementation
   //////////////////////////////////////////
 
@@ -361,6 +432,13 @@ namespace ToolKit
     }
   }
 
+  // TKStats Factory
+  //////////////////////////////////////////
+
+  TKStats* CreateTKStats() { return new TKStats(); }
+
+  void DestroyTKStats(TKStats* stats) { delete stats; }
+
   // TKStats Implementation
   //////////////////////////////////////////
 
@@ -403,31 +481,37 @@ namespace ToolKit
 
     stats += "----------\n";
 
-    snprintf(buffer, sizeof(buffer), "Total Draw Call: %llu\n", Stats::GetDrawCallCount());
+    snprintf(buffer, sizeof(buffer), "Total Draw Call: %llu\n", Stats::GetStatPrev(FrameStatType::DrawCall));
     stats += buffer;
 
-    snprintf(buffer, sizeof(buffer), "Total Hardware Render Pass: %llu\n", Stats::GetRenderPassCount());
+    snprintf(buffer,
+             sizeof(buffer),
+             "Total Hardware Render Pass: %llu\n",
+             Stats::GetStatPrev(FrameStatType::RenderPass));
     stats += buffer;
 
-    snprintf(buffer, sizeof(buffer), "Approximate Total VRAM Usage: %llu MB\n", Stats::GetTotalVRAMUsageInMB());
+    snprintf(buffer, sizeof(buffer), "Approximate Total VRAM Usage: %llu MB\n", Stats::GetVRAMUsage(MemoryUnit::MB));
     stats += buffer;
 
     snprintf(buffer,
              sizeof(buffer),
              "Light Cache Invalidation Per Frame: %llu\n",
-             Stats::GetLightCacheInvalidationPerFrame());
+             Stats::GetStatPrev(FrameStatType::LightCacheInvalidation));
     stats += buffer;
 
-    snprintf(buffer, sizeof(buffer), "Camera updates Per Frame: %llu\n", Stats::GetCameraUpdatesPerFrame());
+    snprintf(buffer,
+             sizeof(buffer),
+             "Camera updates Per Frame: %llu\n",
+             Stats::GetStatPrev(FrameStatType::CameraUpdate));
     stats += buffer;
 
     snprintf(buffer,
              sizeof(buffer),
              "Directional Light & PVM updates Per Frame: %llu\n",
-             Stats::GetDirectionalLightUpdatesPerFrame());
+             Stats::GetStatPrev(FrameStatType::DirectionalLightUpdate));
     stats += buffer;
 
-    snprintf(buffer, sizeof(buffer), "UBO updates Per Frame: %llu\n", Stats::GetUboUpdatesPerFrame());
+    snprintf(buffer, sizeof(buffer), "UBO updates Per Frame: %llu\n", Stats::GetStatPrev(FrameStatType::UboUpdates));
     stats += buffer;
 
     return stats;
@@ -460,69 +544,53 @@ namespace ToolKit
       }
     }
 
-    uint64 GetLightCacheInvalidationPerFrame()
+    void IncrementStat(FrameStatType type)
     {
       if (TKStats* tkStats = GetTKStats())
       {
-        return tkStats->GetStatPrev(FrameStatType::LightCacheInvalidation);
+        tkStats->IncrementStat(type);
+      }
+    }
+
+    void AddStat(FrameStatType type, uint64 amount)
+    {
+      if (TKStats* tkStats = GetTKStats())
+      {
+        tkStats->AddStat(type, amount);
+      }
+    }
+
+    void SwapFrameStats()
+    {
+      if (TKStats* tkStats = GetTKStats())
+      {
+        tkStats->SwapFrameStats();
+      }
+    }
+
+    uint64 GetStatPrev(FrameStatType type)
+    {
+      if (TKStats* tkStats = GetTKStats())
+      {
+        return tkStats->GetStatPrev(type);
       }
       return 0;
     }
 
-    uint64 GetUboUpdatesPerFrame()
+    uint64 GetVRAMUsage(MemoryUnit unit)
     {
       if (TKStats* tkStats = GetTKStats())
       {
-        return tkStats->GetStatPrev(FrameStatType::UboUpdates);
+        switch (unit)
+        {
+        case MemoryUnit::KB:
+          return tkStats->GetTotalVRAMUsageInKB();
+        case MemoryUnit::MB:
+          return tkStats->GetTotalVRAMUsageInMB();
+        default:
+          return tkStats->GetTotalVRAMUsageInBytes();
+        }
       }
-      return 0;
-    }
-
-    uint64 GetCameraUpdatesPerFrame()
-    {
-      if (TKStats* tkStats = GetTKStats())
-      {
-        return tkStats->GetStatPrev(FrameStatType::CameraUpdate);
-      }
-      return 0;
-    }
-
-    uint64 GetDirectionalLightUpdatesPerFrame()
-    {
-      if (TKStats* tkStats = GetTKStats())
-      {
-        return tkStats->GetStatPrev(FrameStatType::DirectionalLightUpdate);
-      }
-      return 0;
-    }
-
-    uint64 GetTotalVRAMUsageInBytes()
-    {
-      if (TKStats* tkStats = GetTKStats())
-      {
-        return tkStats->GetTotalVRAMUsageInBytes();
-      }
-
-      return 0;
-    }
-
-    uint64 GetTotalVRAMUsageInKB()
-    {
-      if (TKStats* tkStats = GetTKStats())
-      {
-        return tkStats->GetTotalVRAMUsageInKB();
-      }
-
-      return 0;
-    }
-
-    uint64 GetTotalVRAMUsageInMB()
-    {
-      if (TKStats* tkStats = GetTKStats())
-      {
-        return tkStats->GetTotalVRAMUsageInMB();
-      }
-
       return 0;
     }
 
@@ -548,24 +616,6 @@ namespace ToolKit
       {
         tkStats->ResetVRAMUsage();
       }
-    }
-
-    uint64 GetDrawCallCount()
-    {
-      if (TKStats* tkStats = GetTKStats())
-      {
-        return tkStats->GetStatPrev(FrameStatType::DrawCall);
-      }
-      return 0;
-    }
-
-    uint64 GetRenderPassCount()
-    {
-      if (TKStats* tkStats = GetTKStats())
-      {
-        return tkStats->GetStatPrev(FrameStatType::RenderPass);
-      }
-      return 0;
     }
 
     void GetRenderTime(float& cpu, float& gpu)
@@ -596,28 +646,31 @@ namespace ToolKit
       }
     }
 
-    void IncrementStat(FrameStatType type)
+    void SetRenderTime(float cpu, float gpu)
     {
       if (TKStats* tkStats = GetTKStats())
       {
-        tkStats->IncrementStat(type);
+        tkStats->m_elapsedCpuRenderTime = cpu;
+        tkStats->m_elapsedGpuRenderTime = gpu;
       }
     }
 
-    void AddStat(FrameStatType type, uint64 amount)
+    void SetRenderTimeAvg(float cpu, float gpu)
     {
       if (TKStats* tkStats = GetTKStats())
       {
-        tkStats->AddStat(type, amount);
+        tkStats->m_elapsedCpuRenderTimeAvg = cpu;
+        tkStats->m_elapsedGpuRenderTimeAvg = gpu;
       }
     }
 
-    void SwapFrameStats()
+    String GetPerFrameStats()
     {
       if (TKStats* tkStats = GetTKStats())
       {
-        tkStats->SwapFrameStats();
+        return tkStats->GetPerFrameStats();
       }
+      return "";
     }
 
   } // namespace Stats

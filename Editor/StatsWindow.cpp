@@ -115,12 +115,6 @@ namespace ToolKit
 
     void StatsWindow::Show()
     {
-      TKStats* tkStats = GetTKStats();
-      if (tkStats == nullptr)
-      {
-        return;
-      }
-
       ImGui::SetNextWindowSize(ImVec2(750, 450), ImGuiCond_Once);
       if (ImGui::Begin(m_name.c_str(), &m_visible))
       {
@@ -163,7 +157,7 @@ namespace ToolKit
         }
 
         // Basic stats.
-        String stats = tkStats->GetPerFrameStats();
+        String stats = Stats::GetPerFrameStats();
         ImGui::TextUnformatted(stats.c_str());
 
         ImGui::Separator();
@@ -171,63 +165,66 @@ namespace ToolKit
         // Profiler section.
         if (profilerEnabled)
         {
-          TKProfiler& profiler           = tkStats->GetProfiler();
-          const ProfilerNodeArray& roots = profiler.GetRootNodes();
-
-          float frameTime                = profiler.GetFrameTime();
-          float avgFrameTime             = profiler.GetAverageFrameTime();
-          uint frameCount                = profiler.GetFrameCount();
-
-          // Profiler summary header.
-          ImGui::Text("Profiler: Frame: %.3f ms | Avg: %.3f ms | Frames: %u", frameTime, avgFrameTime, frameCount);
-
-          // Expand/Collapse all buttons.
-          if (ImGui::Button("Expand All"))
+          TKProfiler* profiler = Profiler::GetProfiler();
+          if (profiler != nullptr)
           {
-            profiler.SetExpandAll(true);
-          }
-          ImGui::SameLine();
-          if (ImGui::Button("Collapse All"))
-          {
-            profiler.SetExpandAll(false);
-          }
+            const ProfilerNodeArray& roots = profiler->GetRootNodes();
 
-          ImGui::Separator();
+            float frameTime                = profiler->GetFrameTime();
+            float avgFrameTime             = profiler->GetAverageFrameTime();
+            uint frameCount                = profiler->GetFrameCount();
 
-          // Profiler table.
-          if (!roots.empty())
-          {
-            ImGuiTableFlags tableFlags = ImGuiTableFlags_Resizable | ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
-                                         ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingStretchProp;
+            // Profiler summary header.
+            ImGui::Text("Profiler: Frame: %.3f ms | Avg: %.3f ms | Frames: %u", frameTime, avgFrameTime, frameCount);
 
-            // Calculate available height for the table.
-            float availableHeight = ImGui::GetContentRegionAvail().y;
-
-            if (ImGui::BeginTable("ProfilerTable", 6, tableFlags, ImVec2(0.0f, availableHeight)))
+            // Expand/Collapse all buttons.
+            if (ImGui::Button("Expand All"))
             {
-              // Setup columns.
-              ImGui::TableSetupColumn("Scope Name", ImGuiTableColumnFlags_WidthStretch, 2.0f);
-              ImGui::TableSetupColumn("Incl (ms)", ImGuiTableColumnFlags_WidthFixed, 70.0f);
-              ImGui::TableSetupColumn("Excl (ms)", ImGuiTableColumnFlags_WidthFixed, 70.0f);
-              ImGui::TableSetupColumn("Incl %", ImGuiTableColumnFlags_WidthFixed, 60.0f);
-              ImGui::TableSetupColumn("Excl %", ImGuiTableColumnFlags_WidthFixed, 60.0f);
-              ImGui::TableSetupColumn("Hits", ImGuiTableColumnFlags_WidthFixed, 50.0f);
-              ImGui::TableSetupScrollFreeze(0, 1); // Freeze header row.
-              ImGui::TableHeadersRow();
-
-              // Draw all root nodes.
-              for (ProfilerNode* root : roots)
-              {
-                DrawProfilerNode(root, frameTime);
-              }
-
-              ImGui::EndTable();
+              profiler->SetExpandAll(true);
             }
-          }
-          else
-          {
-            ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f),
-                               "No profiling data. Use TK_PROFILE_SCOPE(\"name\") or Stats::BeginProfileScope().");
+            ImGui::SameLine();
+            if (ImGui::Button("Collapse All"))
+            {
+              profiler->SetExpandAll(false);
+            }
+
+            ImGui::Separator();
+
+            // Profiler table.
+            if (!roots.empty())
+            {
+              ImGuiTableFlags tableFlags = ImGuiTableFlags_Resizable | ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+                                           ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingStretchProp;
+
+              // Calculate available height for the table.
+              float availableHeight = ImGui::GetContentRegionAvail().y;
+
+              if (ImGui::BeginTable("ProfilerTable", 6, tableFlags, ImVec2(0.0f, availableHeight)))
+              {
+                // Setup columns.
+                ImGui::TableSetupColumn("Scope Name", ImGuiTableColumnFlags_WidthStretch, 2.0f);
+                ImGui::TableSetupColumn("Incl (ms)", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+                ImGui::TableSetupColumn("Excl (ms)", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+                ImGui::TableSetupColumn("Incl %", ImGuiTableColumnFlags_WidthFixed, 60.0f);
+                ImGui::TableSetupColumn("Excl %", ImGuiTableColumnFlags_WidthFixed, 60.0f);
+                ImGui::TableSetupColumn("Hits", ImGuiTableColumnFlags_WidthFixed, 50.0f);
+                ImGui::TableSetupScrollFreeze(0, 1); // Freeze header row.
+                ImGui::TableHeadersRow();
+
+                // Draw all root nodes.
+                for (ProfilerNode* root : roots)
+                {
+                  DrawProfilerNode(root, frameTime);
+                }
+
+                ImGui::EndTable();
+              }
+            }
+            else
+            {
+              ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f),
+                                 "No profiling data. Use TK_PROFILE_SCOPE(\"name\") or Stats::BeginProfileScope().");
+            }
           }
         }
         else

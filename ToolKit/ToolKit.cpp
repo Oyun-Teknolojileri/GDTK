@@ -80,8 +80,7 @@ namespace ToolKit
     m_logger = new Logger();
     m_logger->Log("Main Constructed");
 
-    m_tkStats = new TKStats();
-    m_tkStats->ResetVRAMUsage();
+    m_tkStats = CreateTKStats();
   }
 
   Main::~Main()
@@ -92,7 +91,8 @@ namespace ToolKit
     assert(m_initiated == false && "Uninitiate before destruct");
     m_proxy = nullptr;
 
-    SafeDel(m_tkStats);
+    DestroyTKStats(m_tkStats);
+    m_tkStats = nullptr;
 
     m_logger->Log("Main Destructed");
     SafeDel(m_logger);
