@@ -19,7 +19,7 @@ namespace ToolKit
 
   TKDefineClass(Prefab, Entity);
 
-  Prefab::Prefab() {}
+  Prefab::Prefab() { ParameterConstructor(); }
 
   Prefab::~Prefab() { UnInit(); }
 
@@ -44,8 +44,12 @@ namespace ToolKit
     }
 
     String prefabPath = GetPrefabPathVal();
-    prefabPath        = PrefabPath(prefabPath);
-    m_prefabScene     = GetSceneManager()->Create<Scene>(prefabPath);
+    if (!CheckFile(prefabPath))
+    {
+      prefabPath = PrefabPath(prefabPath);
+    }
+    
+    m_prefabScene = GetSceneManager()->Create<Scene>(prefabPath);
 
     if (m_prefabScene == nullptr)
     {

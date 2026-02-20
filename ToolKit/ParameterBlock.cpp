@@ -11,6 +11,7 @@
 #include "Material.h"
 #include "Mesh.h"
 #include "Prefab.h"
+#include "Scene.h"
 #include "ToolKit.h"
 #include "Util.h"
 
@@ -125,6 +126,8 @@ namespace ToolKit
   ParameterVariant::ParameterVariant(const SkeletonPtr& var) { *this = var; }
 
   ParameterVariant::ParameterVariant(const PrefabPtr& var) { *this = var; }
+
+  ParameterVariant::ParameterVariant(const ScenePtr& var) { *this = var; }
 
   ParameterVariant::ParameterVariant(const VariantCallback& var) { *this = var; }
 
@@ -289,6 +292,13 @@ namespace ToolKit
   ParameterVariant& ParameterVariant::operator=(const PrefabPtr& var)
   {
     m_type = VariantType::PrefabPtr;
+    AsignVal(var);
+    return *this;
+  }
+
+  ParameterVariant& ParameterVariant::operator=(const ScenePtr& var)
+  {
+    m_type = VariantType::ScenePtr;
     AsignVal(var);
     return *this;
   }
@@ -479,6 +489,16 @@ namespace ToolKit
           {
             WriteAttr(node, doc, XmlParamterValAttr.c_str(), path);
           }
+        }
+      }
+      break;
+      case VariantType::ScenePtr:
+      {
+        ScenePtr res = var->GetCVar<ScenePtr>();
+        if (res && !res->IsDynamic())
+        {
+          res->Save(true);
+          res->SerializeRef(doc, node);
         }
       }
       break;
@@ -755,6 +775,24 @@ namespace ToolKit
         ReadAttr(parent, XmlParamterValAttr, file);
         if (!file.empty())
         {
+          if (!CheckSystemFile(file))
+          {
+            String path = PrefabPath(file);
+            if (CheckSystemFile(path))
+            {
+              file = path;
+            }
+          }
+
+          if (CheckSystemFile(file))
+          {
+            String rel = GetRelativeResourcePath(file);
+            if (!rel.empty())
+            {
+              file = rel;
+            }
+          }
+
           PrefabPtr prefab = std::make_shared<Prefab>();
           prefab->SetPrefabPathVal(file);
           prefab->Load();
@@ -763,6 +801,20 @@ namespace ToolKit
         else
         {
           pVar->m_var = PrefabPtr();
+        }
+      }
+      break;
+      case VariantType::ScenePtr:
+      {
+        String file = Resource::DeserializeRef(parent);
+        if (file.empty())
+        {
+          pVar->m_var = ScenePtr();
+        }
+        else
+        {
+          String prefabFile = PrefabPath(file);
+          pVar->m_var       = GetSceneManager()->Create<Scene>(prefabFile);
         }
       }
       break;

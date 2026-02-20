@@ -740,7 +740,9 @@ namespace ToolKit
       break;
       case ParameterVariant::VariantType::PrefabPtr:
       {
-        PrefabPtr mref = var->GetVar<PrefabPtr>();
+        PrefabPtr* mrefPtr = var->GetVarPtr<PrefabPtr>();
+        PrefabPtr mref = mrefPtr ? *mrefPtr : nullptr;
+
         String file, id;
         if (mref)
         {
@@ -750,9 +752,9 @@ namespace ToolKit
 
         ImGui::EndDisabled();
         DropSubZone(
-            "Prefab##" + id,
+            var->m_name + "##" + id,
             UI::m_prefabIcn->m_textureId,
-            file,
+            file.empty() ? "##Empty" : file,
             [&var](const DirectoryEntry& entry) -> void
             {
               if (entry.m_ext == SCENE)
@@ -760,7 +762,50 @@ namespace ToolKit
                 PrefabPtr prefab = std::make_shared<Prefab>();
                 prefab->SetPrefabPathVal(entry.GetFullPath());
                 prefab->Load();
+                
+                // Generic validation using ValidatorCallback
+                if (var->m_validator)
+                {
+                   String msg;
+                   Value val = prefab;
+                   if (!var->m_validator(val, msg))
+                   {
+                      TK_ERR(msg.empty() ? "Invalid prefab." : msg.c_str());
+                      return;
+                   }
+                }
+
                 *var = prefab;
+              }
+              else
+              {
+                TK_ERR("Only Scene (.scene) files are accepted.");
+              }
+            },
+            var->m_editable);
+        ImGui::BeginDisabled(!var->m_editable);
+      }
+      break;
+      case ParameterVariant::VariantType::ScenePtr:
+      {
+        ScenePtr mref = var->GetVar<ScenePtr>();
+        String file, id;
+        if (mref)
+        {
+          id   = std::to_string(mref->GetIdVal());
+          file = mref->GetFile();
+        }
+
+        ImGui::EndDisabled();
+        DropSubZone(
+            var->m_name + "##" + id,
+            static_cast<uint>(UI::m_sceneIcon->m_textureId),
+            file.empty() ? "##Empty" : file,
+            [&var](const DirectoryEntry& entry) -> void
+            {
+              if (entry.m_ext == SCENE)
+              {
+                *var = GetSceneManager()->Create<Scene>(entry.GetFullPath());
               }
               else
               {

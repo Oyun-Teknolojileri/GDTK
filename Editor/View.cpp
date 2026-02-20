@@ -167,7 +167,14 @@ namespace ToolKit
       bool isOpen = ImGui::TreeNodeEx(title.c_str());
       if (isOpen)
       {
-        DropZone(fallbackIcon, file, dropAction, "", isEditable);
+        String name;
+        if (!file.empty())
+        {
+          String path, ext;
+          DecomposePath(file, &path, &name, &ext);
+          name += ext;
+        }
+        DropZone(fallbackIcon, file, dropAction, name, isEditable);
         ImGui::TreePop();
       }
     }
