@@ -38,6 +38,12 @@ namespace ToolKit
       float exclTime    = node->exclusiveTimePrev;
       uint hitCount     = node->hitCountPrev;
 
+      // Skip inactive nodes. If parent has 0 hits, children are guaranteed to have 0 hits too.
+      if (hitCount == 0)
+      {
+        return;
+      }
+
       // Calculate percentages.
       float inclPercent = frameTime > 0.0f ? (inclTime / frameTime) * 100.0f : 0.0f;
       float exclPercent = frameTime > 0.0f ? (exclTime / frameTime) * 100.0f : 0.0f;
