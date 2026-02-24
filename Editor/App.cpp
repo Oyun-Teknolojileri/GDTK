@@ -283,6 +283,7 @@ namespace ToolKit
         {
           GetRenderSystem()->AddRenderTask({[this, viewport, deltaTime](Renderer* renderer) -> void
                                             {
+                                              TK_PROFILE_SCOPE("Render " + viewport->m_name);
                                               viewport->m_editorRenderer->m_params.App      = g_app;
                                               viewport->m_editorRenderer->m_params.LitMode  = m_sceneLightingMode;
                                               viewport->m_editorRenderer->m_params.Viewport = viewport;
@@ -293,6 +294,7 @@ namespace ToolKit
 
       GetRenderSystem()->AddRenderTask({[](Renderer* renderer) -> void
                                         {
+                                          TK_PROFILE_SCOPE("Render Editor UI");
                                           Stats::BeginGpuScope("EditorUI");
                                           renderer->SetFramebuffer(nullptr, GraphicBitFields::None);
                                           UI::EndUI(); // Render UI.
