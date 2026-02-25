@@ -345,6 +345,8 @@ namespace ToolKit
 
     uint m_gpuTimerQuery                           = 0;
     float m_cpuTime                                = 0.0f;
+    float m_gpuTime                                = 1.0f;
+    bool m_timerQueryActive                        = false;
     bool m_blendStateOverrideEnable                = false;
 
     /** Frame buffer stats for each frame. */
