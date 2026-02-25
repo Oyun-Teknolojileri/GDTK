@@ -134,7 +134,6 @@ namespace ToolKit
     AnisotropicTextureFiltering_Define(anisotropicMcv, "GraphicSettings", 0, true, true);
 
     FPS_Define(60, "GraphicSettings", 0, 0, 0);
-    EnableGpuTimer_Define(false, "GraphicSettings", 0, 0, 0);
     HDRPipeline_Define(true, "GraphicSettings", 0, 0, 0);
     RenderResolutionScale_Define(1.0f, "GraphicSettings", 0, 0, 0);
     MultiThreaded_Define(true, "GraphicSettings", 0, 0, 0);

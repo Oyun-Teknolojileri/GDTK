@@ -143,9 +143,6 @@ namespace ToolKit
     /** Target fps for application. */
     TKDeclareParam(int, FPS);
 
-    /** Provides high precision gpu timers. Bad on cpu performance. Enable it only for profiling. */
-    TKDeclareParam(bool, EnableGpuTimer);
-
     /** Multi-sample count. 0 for non msaa render targets. */
     TKDeclareParam(MultiChoiceVariant, MSAA);
 

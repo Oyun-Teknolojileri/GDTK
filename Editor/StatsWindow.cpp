@@ -126,16 +126,6 @@ namespace ToolKit
       {
         HandleStates();
 
-        // GPU Timer checkbox.
-        bool gpuTimer = GetEngineSettings().m_graphics->GetEnableGpuTimerVal();
-        if (ImGui::Checkbox("Capture Gpu Time##GpuProfileOn", &gpuTimer))
-        {
-          GetEngineSettings().m_graphics->SetEnableGpuTimerVal(gpuTimer);
-        }
-        UI::AddTooltipToLastItem("Enable to see the gpu frame time.\nHave a negative impact on cpu performance.");
-
-        ImGui::SameLine();
-
         // Profiler enable checkbox.
         bool profilerEnabled = Profiler::IsProfilerEnabled();
         if (ImGui::Checkbox("Enable Profiler##ProfilerOn", &profilerEnabled))
