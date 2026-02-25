@@ -104,9 +104,6 @@ namespace ToolKit
     /** Get the number of frames recorded. */
     uint GetFrameCount() const { return m_frameCount; }
 
-    /** Generate a formatted string representation of the profile tree. */
-    String GetProfileTreeString() const;
-
     /** Enable or disable profiling. */
     void SetEnabled(bool enabled) { m_enabled = enabled; }
 
@@ -114,7 +111,6 @@ namespace ToolKit
     bool IsEnabled() const { return m_enabled; }
 
    private:
-    void BuildTreeString(const ProfilerNode* node, String& output, const String& prefix, bool isLast) const;
     void DeleteNodeRecursive(ProfilerNode* node);
     void SwapNodeFrameData(ProfilerNode* node);
 
@@ -213,7 +209,6 @@ namespace ToolKit
     TK_API void EndProfileFrame();
     TK_API void ResetProfiler();
     TK_API TKProfiler* GetProfiler();
-    TK_API String GetProfileTreeString();
     TK_API void SetProfilerEnabled(bool enabled);
     TK_API bool IsProfilerEnabled();
   } // namespace Profiler

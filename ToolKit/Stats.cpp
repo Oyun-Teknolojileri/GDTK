@@ -255,112 +255,6 @@ namespace ToolKit
     }
   }
 
-  String TKProfiler::GetProfileTreeString() const
-  {
-    if (m_rootNodes.empty())
-    {
-      return "No profiling data available.\n";
-    }
-
-    String output;
-
-    // Header.
-    output += "====================================================================================================\n";
-
-    // Column headers with fixed widths.
-    char header[256];
-    snprintf(header,
-             sizeof(header),
-             "%-40s | %10s | %10s | %8s | %8s | %6s\n",
-             "Scope Name",
-             "Incl (ms)",
-             "Excl (ms)",
-             "Incl %",
-             "Excl %",
-             "Hits");
-    output += header;
-
-    output += "----------------------------------------------------------------------------------------------------\n";
-
-    // Build tree for each root.
-    for (size_t i = 0; i < m_rootNodes.size(); ++i)
-    {
-      bool isLast = (i == m_rootNodes.size() - 1);
-      BuildTreeString(m_rootNodes[i], output, "", isLast);
-    }
-
-    output += "====================================================================================================\n";
-
-    // Summary.
-    char summary[256];
-    snprintf(summary,
-             sizeof(summary),
-             "Frame Time: %.3f ms | Avg Frame: %.3f ms | Frames: %u\n",
-             m_frameTime,
-             GetAverageFrameTime(),
-             m_frameCount);
-    output += summary;
-
-    return output;
-  }
-
-  void TKProfiler::BuildTreeString(const ProfilerNode* node, String& output, const String& prefix, bool isLast) const
-  {
-    if (node == nullptr)
-    {
-      return;
-    }
-
-    // Build the tree branch visualization.
-    String branch = prefix;
-    if (node->depth > 0)
-    {
-      branch += isLast ? "+-- " : "+-- ";
-    }
-
-    // Use previous frame values for display.
-    float inclTime     = node->inclusiveTimePrev;
-    float exclTime     = node->exclusiveTimePrev;
-    uint hitCount      = node->hitCountPrev;
-
-    // Calculate percentages relative to frame time.
-    float inclPercent  = m_frameTime > 0.0f ? (inclTime / m_frameTime) * 100.0f : 0.0f;
-    float exclPercent  = m_frameTime > 0.0f ? (exclTime / m_frameTime) * 100.0f : 0.0f;
-
-    // Truncate name if too long.
-    String displayName = branch + node->name;
-    if (displayName.length() > 38)
-    {
-      displayName = displayName.substr(0, 35) + "...";
-    }
-
-    char line[256];
-    snprintf(line,
-             sizeof(line),
-             "%-40s | %10.3f | %10.3f | %7.2f%% | %7.2f%% | %6u\n",
-             displayName.c_str(),
-             inclTime,
-             exclTime,
-             inclPercent,
-             exclPercent,
-             hitCount);
-    output             += line;
-
-    // Build prefix for children.
-    String childPrefix  = prefix;
-    if (node->depth > 0)
-    {
-      childPrefix += isLast ? "    " : "|   ";
-    }
-
-    // Recursively add children.
-    for (size_t i = 0; i < node->children.size(); ++i)
-    {
-      bool childIsLast = (i == node->children.size() - 1);
-      BuildTreeString(node->children[i], output, childPrefix, childIsLast);
-    }
-  }
-
   // ProfileScope Implementation
   //////////////////////////////////////////
 
@@ -441,11 +335,11 @@ namespace ToolKit
 
     snprintf(buffer,
              sizeof(buffer),
-             "Total Hardware Render Pass: %llu\n",
+             "Total Hardware Render Pass ~ %llu\n",
              Stats::GetStatPrev(FrameStatType::RenderPass));
     stats += buffer;
 
-    snprintf(buffer, sizeof(buffer), "Approximate Total VRAM Usage: %llu MB\n", Stats::GetVRAMUsage(MemoryUnit::MB));
+    snprintf(buffer, sizeof(buffer), "Total VRAM Usage ~ %llu MB\n", Stats::GetVRAMUsage(MemoryUnit::MB));
     stats += buffer;
 
     snprintf(buffer,
@@ -682,15 +576,6 @@ namespace ToolKit
         return &tkStats->GetProfiler();
       }
       return nullptr;
-    }
-
-    String GetProfileTreeString()
-    {
-      if (TKStats* tkStats = GetTKStats())
-      {
-        return tkStats->GetProfiler().GetProfileTreeString();
-      }
-      return "Profiler not available.\n";
     }
 
     void SetProfilerEnabled(bool enabled)
