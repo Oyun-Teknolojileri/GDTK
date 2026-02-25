@@ -100,8 +100,8 @@ namespace ToolKit
     {
       DeleteNodeRecursive(root);
     }
+
     m_rootNodes.clear();
-    m_nodeMap.clear();
   }
 
   void TKProfiler::BeginScope(StringView name)
@@ -111,63 +111,48 @@ namespace ToolKit
       return;
     }
 
-    // Build the full path for this scope.
-    m_scopeStack.push_back(String(name));
+    // 1. Search for the node in the current context's children
+    ProfilerNode* node                  = nullptr;
+    const ProfilerNodeArray& searchPool = (m_currentNode == nullptr) ? m_rootNodes : m_currentNode->children;
 
-    // Build path string for node lookup.
-    String fullPath;
-    for (size_t i = 0; i < m_scopeStack.size(); ++i)
+    for (ProfilerNode* child : searchPool)
     {
-      if (i > 0)
+      if (child->name == name)
       {
-        fullPath += "/";
+        node = child;
+        break;
       }
-      fullPath += m_scopeStack[i];
     }
 
-    // Find or create the node.
-    ProfilerNode* node = nullptr;
-    auto it            = m_nodeMap.find(fullPath);
-    if (it != m_nodeMap.end())
+    // 2. If not found, create a new node and link it to the tree
+    if (node == nullptr)
     {
-      node = it->second;
-    }
-    else
-    {
-      node        = new ProfilerNode();
-      node->name  = String(name);
-      node->depth = (uint) m_scopeStack.size() - 1;
+      node         = new ProfilerNode();
+      node->name   = String(name);
+      node->depth  = (m_currentNode == nullptr) ? 0 : m_currentNode->depth + 1;
+      node->parent = m_currentNode;
 
       if (m_currentNode == nullptr)
-      {
-        // This is a root node.
         m_rootNodes.push_back(node);
-      }
       else
-      {
-        // Add as child of current node.
-        node->parent = m_currentNode;
         m_currentNode->children.push_back(node);
-      }
-
-      m_nodeMap[fullPath] = node;
     }
 
-    // Snapshot children's current inclusive time sum before this scope runs.
+    // 3. Record start times and snapshot children's time
     float childrenSum = 0.0f;
     for (ProfilerNode* child : node->children)
-    {
       childrenSum += child->inclusiveTime;
-    }
-    node->childrenTimeAtBegin = childrenSum;
 
+    node->childrenTimeAtBegin = childrenSum;
     node->beginTime           = GetElapsedMilliSeconds();
+
+    // Update current context pointer
     m_currentNode             = node;
   }
 
   void TKProfiler::EndScope()
   {
-    if (!m_enabled || m_currentNode == nullptr || m_scopeStack.empty())
+    if (!m_enabled || m_currentNode == nullptr)
     {
       return;
     }
@@ -179,23 +164,21 @@ namespace ToolKit
     m_currentNode->hitCount++;
     m_currentNode->accumulatedIncl += elapsed;
 
-    // Calculate exclusive time: elapsed minus only the children time accumulated during this scope call.
+    // Calculate exclusive time by subtracting delta of children's inclusive time
     float childrenTimeNow           = 0.0f;
     for (ProfilerNode* child : m_currentNode->children)
     {
       childrenTimeNow += child->inclusiveTime;
     }
-    float childrenDelta             = childrenTimeNow - m_currentNode->childrenTimeAtBegin;
 
+    float childrenDelta             = childrenTimeNow - m_currentNode->childrenTimeAtBegin;
     float exclusive                 = elapsed - childrenDelta;
+
     m_currentNode->exclusiveTime   += exclusive;
     m_currentNode->accumulatedExcl += exclusive;
 
-    // Pop the scope stack.
-    m_scopeStack.pop_back();
-
-    // Move to parent.
-    m_currentNode = m_currentNode->parent;
+    // Move back to parent node without stack operations
+    m_currentNode                   = m_currentNode->parent;
   }
 
   void TKProfiler::BeginFrame()
@@ -234,51 +217,12 @@ namespace ToolKit
     {
       DeleteNodeRecursive(root);
     }
+
     m_rootNodes.clear();
-    m_nodeMap.clear();
-    m_currentNode = nullptr;
-    m_scopeStack.clear();
+    m_currentNode          = nullptr;
     m_frameTime            = 0.0f;
     m_accumulatedFrameTime = 0.0f;
     m_frameCount           = 0;
-  }
-
-  void TKProfiler::SetExpandAll(bool expand)
-  {
-    for (auto& pair : m_nodeMap)
-    {
-      pair.second->expanded = expand;
-    }
-  }
-
-  ProfilerNode* TKProfiler::FindOrCreateChild(ProfilerNode* parent, StringView name)
-  {
-    if (parent)
-    {
-      for (ProfilerNode* child : parent->children)
-      {
-        if (child->name == name)
-        {
-          return child;
-        }
-      }
-    }
-    return nullptr;
-  }
-
-  void TKProfiler::ResetNodeRecursive(ProfilerNode* node)
-  {
-    if (node == nullptr)
-    {
-      return;
-    }
-
-    node->ResetAll();
-
-    for (ProfilerNode* child : node->children)
-    {
-      ResetNodeRecursive(child);
-    }
   }
 
   void TKProfiler::DeleteNodeRecursive(ProfilerNode* node)

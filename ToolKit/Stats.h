@@ -113,26 +113,19 @@ namespace ToolKit
     /** Check if profiling is enabled. */
     bool IsEnabled() const { return m_enabled; }
 
-    /** Set whether to expand all nodes by default. */
-    void SetExpandAll(bool expand);
-
    private:
-    ProfilerNode* FindOrCreateChild(ProfilerNode* parent, StringView name);
     void BuildTreeString(const ProfilerNode* node, String& output, const String& prefix, bool isLast) const;
-    void ResetNodeRecursive(ProfilerNode* node);
     void DeleteNodeRecursive(ProfilerNode* node);
     void SwapNodeFrameData(ProfilerNode* node);
 
    private:
-    std::unordered_map<String, ProfilerNode*> m_nodeMap; //!< Fast lookup by full path.
-    ProfilerNodeArray m_rootNodes;                       //!< Root level nodes.
-    ProfilerNode* m_currentNode = nullptr;               //!< Currently active scope.
-    StringArray m_scopeStack;                            //!< Stack of active scope names for path building.
-    float m_frameBeginTime       = 0.0f;                 //!< Time when frame began.
-    float m_frameTime            = 0.0f;                 //!< Last frame's total time.
-    float m_accumulatedFrameTime = 0.0f;                 //!< Accumulated frame time.
-    uint m_frameCount            = 0;                    //!< Number of frames recorded.
-    bool m_enabled               = true;                 //!< Whether profiling is active.
+    ProfilerNodeArray m_rootNodes;          //!< Root level nodes.
+    ProfilerNode* m_currentNode  = nullptr; //!< Currently active scope.
+    float m_frameBeginTime       = 0.0f;    //!< Time when frame began.
+    float m_frameTime            = 0.0f;    //!< Last frame's total time.
+    float m_accumulatedFrameTime = 0.0f;    //!< Accumulated frame time.
+    uint m_frameCount            = 0;       //!< Number of frames recorded.
+    bool m_enabled               = true;    //!< Whether profiling is active.
   };
 
   /** RAII helper for automatic scope management. */

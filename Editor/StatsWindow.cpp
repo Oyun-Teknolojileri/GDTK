@@ -34,9 +34,9 @@ namespace ToolKit
       }
 
       // Use previous frame values for display (current frame may still be recording).
-      float inclTime    = node->inclusiveTimePrev;
-      float exclTime    = node->exclusiveTimePrev;
-      uint hitCount     = node->hitCountPrev;
+      float inclTime = node->inclusiveTimePrev;
+      float exclTime = node->exclusiveTimePrev;
+      uint hitCount  = node->hitCountPrev;
 
       // Skip inactive nodes. If parent has 0 hits, children are guaranteed to have 0 hits too.
       if (hitCount == 0)
@@ -182,17 +182,6 @@ namespace ToolKit
 
             // Profiler summary header.
             ImGui::Text("Profiler: Frame: %.3f ms | Avg: %.3f ms | Frames: %u", frameTime, avgFrameTime, frameCount);
-
-            // Expand/Collapse all buttons.
-            if (ImGui::Button("Expand All"))
-            {
-              profiler->SetExpandAll(true);
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("Collapse All"))
-            {
-              profiler->SetExpandAll(false);
-            }
 
             ImGui::Separator();
 
