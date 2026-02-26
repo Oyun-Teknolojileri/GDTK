@@ -77,12 +77,12 @@ namespace ToolKit
 
   void GameRenderer::Render(Renderer* renderer)
   {
-    PreRender(renderer);
-
     if (m_params.scene == nullptr || m_params.viewport == nullptr)
     {
       return;
     }
+
+    PreRender(renderer);
 
     // Scene renderer
     SceneRenderPathPtr sceneRenderer = m_sceneRenderPath;

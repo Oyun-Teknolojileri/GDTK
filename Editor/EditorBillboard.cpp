@@ -11,6 +11,8 @@
 
 #include <Mesh.h>
 
+#include "Material.h"
+
 namespace ToolKit
 {
   namespace Editor

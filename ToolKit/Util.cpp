@@ -610,11 +610,26 @@ namespace ToolKit
 
   String GetPluginExtention()
   {
+#if defined(TK_WIN)
     if constexpr (TKDebug)
     {
       return "d.dll";
     }
     return ".dll";
+#elif defined(TK_MAC)
+    if constexpr (TKDebug)
+    {
+      return "d.dylib";
+    }
+    return ".dylib";
+#else
+    // Linux
+    if constexpr (TKDebug)
+    {
+      return "d.so";
+    }
+    return ".so";
+#endif
   }
 
   // split a string into multiple sub strings, based on a separator string

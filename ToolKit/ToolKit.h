@@ -23,6 +23,8 @@
  */
 namespace ToolKit
 {
+  class MaterialManager;
+
   /**
    * Callback for registering to frame updates.
    * Use Main::RegisterPreUpdateFunction and Main::RegisterPostUpdateFunction for receiving updates.

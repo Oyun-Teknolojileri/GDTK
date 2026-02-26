@@ -10,8 +10,12 @@
 #include "Threads.h"
 #include "Types.h"
 
+// Forward declarations for early use in macros
 namespace ToolKit
 {
+  class Logger;
+  TK_API Logger* GetLogger();
+}
 
 #define TK_LOG(format, ...)     ToolKit::GetLogger()->WriteTKConsole(ToolKit::LogType::Memo, format, ##__VA_ARGS__)
 #define TK_SYSLOG(format, ...)  ToolKit::GetLogger()->WritePlatformConsole(ToolKit::LogType::Memo, format, ##__VA_ARGS__)
@@ -19,6 +23,9 @@ namespace ToolKit
 #define TK_ERR(format, ...)     ToolKit::GetLogger()->WriteTKConsole(ToolKit::LogType::Error, format, ##__VA_ARGS__)
 #define TK_SUCCESS(format, ...) ToolKit::GetLogger()->WriteTKConsole(ToolKit::LogType::Success, format, ##__VA_ARGS__)
 
+
+namespace ToolKit
+{
   enum class LogType
   {
     Memo,

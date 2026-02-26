@@ -141,7 +141,8 @@ namespace ToolKit
 
       ImGui::PushID((int) uiId);
       static char buff[1024];
-      strcpy_s(buff, sizeof(buff), var->m_name.c_str());
+      strncpy(buff, var->m_name.c_str(), sizeof(buff) - 1); // copy at most sizeof(buff)-1 characters
+      buff[sizeof(buff) - 1] = '\0';
 
       String pNameId = "##Name" + std::to_string(uiId);
       if (isListEditable)

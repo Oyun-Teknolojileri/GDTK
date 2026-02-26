@@ -21,7 +21,7 @@ namespace ToolKit
 
       StatsWindow();
       virtual ~StatsWindow();
-      virtual void Show();
+      virtual void Show() override;
     };
 
   } // namespace Editor

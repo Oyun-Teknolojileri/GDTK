@@ -38,10 +38,10 @@ namespace ToolKit
 
   int TK_GL_OES_texture_float_linear                                           = 0;
 
-  void LoadGlFunctions(void* glGetProcAddres)
+  void LoadGlFunctions(void* (*glGetProcAddress)(const char*) )
   {
 #ifdef TK_WIN
-    gladLoadGL((GLADloadfunc) glGetProcAddres);
+    gladLoadGLES2((GLADloadfunc) glGetProcAddress);
 
   #ifdef GL_EXT_multisampled_render_to_texture
     if (GLAD_GL_EXT_multisampled_render_to_texture == 1)
@@ -60,26 +60,21 @@ namespace ToolKit
   #endif
 
   #ifdef GL_EXT_debug_marker
-
     tk_glInsertEventMarkerEXT = glad_glInsertEventMarkerEXT;
     tk_glPopGroupMarkerEXT    = glad_glPopGroupMarkerEXT;
     tk_glPushGroupMarkerEXT   = glad_glPushGroupMarkerEXT;
-
   #endif
 
   #ifdef GL_EXT_debug_label
-
     tk_glLabelObjectEXT    = glad_glLabelObjectEXT;
     tk_glGetObjectLabelEXT = glad_glGetObjectLabelEXT;
-
   #endif
 
-#endif
+#endif // TK_WIN
 
 #ifdef TK_ANDROID
-
     typedef void* (*GL_PROC_ADDR)(const char*);
-    GL_PROC_ADDR glLoader = (GL_PROC_ADDR) glGetProcAddres;
+    GL_PROC_ADDR glLoader = glGetProcAddress;
 
     tk_glRenderbufferStorageMultisampleEXT =
         (TKGL_RenderbufferStorageMultisample) glLoader("glRenderbufferStorageMultisampleEXT");
@@ -92,10 +87,7 @@ namespace ToolKit
     tk_glLabelObjectEXT               = (TKGL_LabelObject) glLoader("glLabelObjectEXT");
     tk_glGetObjectLabelEXT            = (TKGL_GetObjectLabel) glLoader("glGetObjectLabelEXT");
 
-    // String Checks for Extensions.
-    PFNGLGETSTRINGPROC tk_glGetString = nullptr;
-    tk_glGetString                    = (PFNGLGETSTRINGPROC) glLoader("glGetString");
-
+    PFNGLGETSTRINGPROC tk_glGetString = (PFNGLGETSTRINGPROC) glLoader("glGetString");
     if (tk_glGetString)
     {
       const GLubyte* extensions = tk_glGetString(GL_EXTENSIONS);
@@ -106,19 +98,13 @@ namespace ToolKit
         TK_GL_EXT_texture_filter_anisotropic = extensionsStr.find("GL_EXT_texture_filter_anisotropic") != String::npos;
       }
     }
-
-#endif
+#endif // TK_ANDROID
 
 #ifdef TK_WEB
-
-    // Load WebGL extensions with emscripten for WebGL context
     tk_glRenderbufferStorageMultisampleEXT =
         (TKGL_RenderbufferStorageMultisample) emscripten_webgl_get_proc_address("glRenderbufferStorageMultisampleEXT");
-    TK_LOG("glRenderbufferStorageMultisampleEXT address = %p", (void*) tk_glRenderbufferStorageMultisampleEXT);
-
     tk_glFramebufferTexture2DMultisampleEXT = (TKGL_FramebufferTexture2DMultisample) emscripten_webgl_get_proc_address(
         "glFramebufferTexture2DMultisampleEXT");
-    TK_LOG("glFramebufferTexture2DMultisampleEXT address = %p", (void*) tk_glFramebufferTexture2DMultisampleEXT);
 
     tk_glInsertEventMarkerEXT = (TKGL_InsertEventMarker) emscripten_webgl_get_proc_address("glInsertEventMarkerEXT");
     tk_glPopGroupMarkerEXT    = (TKGL_PopGroupMarker) emscripten_webgl_get_proc_address("glPopGroupMarkerEXT");
@@ -126,13 +112,32 @@ namespace ToolKit
     tk_glLabelObjectEXT       = (TKGL_LabelObject) emscripten_webgl_get_proc_address("glLabelObjectEXT");
     tk_glGetObjectLabelEXT    = (TKGL_GetObjectLabel) emscripten_webgl_get_proc_address("glGetObjectLabelEXT");
 
-    // Check for extensions directly using WebGL's getExtension function
     auto extensionsStr        = std::string((const char*) glGetString(GL_EXTENSIONS));
-
     TK_GL_OES_texture_float_linear       = extensionsStr.find("GL_OES_texture_float_linear") != std::string::npos;
     TK_GL_EXT_texture_filter_anisotropic = extensionsStr.find("GL_EXT_texture_filter_anisotropic") != std::string::npos;
+#endif // TK_WEB
 
-#endif
+#ifdef TK_MAC
+    // macOS / iOS
+    gladLoadGLES2((GLADloadfunc) glGetProcAddress);
+
+    tk_glFramebufferTexture2DMultisampleEXT = nullptr;
+    tk_glRenderbufferStorageMultisampleEXT  = nullptr;
+
+  #ifdef GL_KHR_debug
+    tk_glInsertEventMarkerEXT = glInsertEventMarkerEXT;
+    tk_glPopGroupMarkerEXT    = glPopGroupMarkerEXT;
+    tk_glPushGroupMarkerEXT   = glPushGroupMarkerEXT;
+  #endif
+
+  #ifdef GL_EXT_texture_filter_anisotropic
+    TK_GL_EXT_texture_filter_anisotropic = 1;
+  #endif
+  #ifdef GL_OES_texture_float_linear
+    TK_GL_OES_texture_float_linear = 1;
+  #endif
+
+#endif // TK_MAC
   }
 
 } // namespace ToolKit

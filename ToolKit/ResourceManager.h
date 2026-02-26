@@ -13,6 +13,7 @@
 #include "ToolKit.h"
 #include "Types.h"
 #include "Util.h"
+#include <iostream>
 
 namespace ToolKit
 {

@@ -16,6 +16,9 @@
 #ifdef TK_ANDROID
   #include "Platform/android_main.h"
 #endif
+#ifdef TK_MAC
+  #include "Platform/macos_main.h"
+#endif
 
 #include "Common/SDLEventPool.h"
 #include "EngineSettings.h"
@@ -75,9 +78,17 @@ namespace ToolKit
       return;
     }
 
+#ifdef TK_MAC
+    // macOS doesn't support OpenGL ES, use desktop OpenGL Core Profile
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+#else
+    // Other platforms use OpenGL ES
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+#endif
 
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
@@ -133,7 +144,7 @@ namespace ToolKit
     TK_LOG("%s", error);
 
     // Init OpenGl.
-    g_proxy->m_renderSys->InitGl((void*) SDL_GL_GetProcAddress, [](const String& msg) { TK_LOG("%s", msg.c_str()); });
+    g_proxy->m_renderSys->InitGl(SDL_GL_GetProcAddress, [](const String& msg) { TK_LOG("%s", msg.c_str()); });
 
     // Set defaults
     if constexpr (TK_PLATFORM != PLATFORM::TKWeb)

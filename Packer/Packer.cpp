@@ -667,7 +667,11 @@ namespace ToolKit
     }
 
     // Compile game plugin.
+#if defined(_WIN32)
     String cmd     = "cmake -S . -B ./Intermediate/Plugin -A x64";
+#else
+    String cmd     = "cmake -S . -B ./Intermediate/Plugin";
+#endif
     int compileRes = std::system(cmd.c_str());
     if (compileRes != 0)
     {
@@ -821,7 +825,27 @@ namespace ToolKit
     // Set resource root to project's Resources folder
     g_proxy->m_resourceRoot   = ConcatPaths({workspacePath, activeProjectName, "Resources"});
 
-    String toolkitAppdata     = ConcatPaths({getenv("APPDATA"), "ToolKit", "Config", "Path.txt"});
+    // Determine base path for config files (cross-platform)
+    const char* rawAppData = nullptr;
+#if defined(_WIN32)
+    rawAppData = std::getenv("APPDATA");
+    if (!rawAppData)
+    {
+      // Fallback to HOME if APPDATA not set (unlikely on Windows)
+      rawAppData = std::getenv("HOME");
+    }
+#else
+    // macOS / Linux: use HOME directory
+    rawAppData = std::getenv("HOME");
+#endif
+
+    if (!rawAppData)
+    {
+      TK_ERR("Could not determine base directory for config files.");
+      return -1;
+    }
+
+    String toolkitAppdata     = ConcatPaths({String(rawAppData), "ToolKit", "Config", "Path.txt"});
     String toolkitPath        = GetFileManager()->ReadAllText(toolkitAppdata);
     NormalizePathInplace(toolkitPath);
     packer.m_toolkitPath            = toolkitPath;

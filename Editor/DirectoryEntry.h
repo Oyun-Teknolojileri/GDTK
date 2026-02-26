@@ -8,6 +8,7 @@
 #pragma once
 
 #include "EditorTypes.h"
+#include "ResourceManager.h"
 
 namespace ToolKit
 {

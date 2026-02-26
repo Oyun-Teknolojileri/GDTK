@@ -108,6 +108,6 @@ namespace ToolKit
   // GL Loader function
   //////////////////////////////////////////
 
-  extern void LoadGlFunctions(void* glGetProcAddres);
+extern void LoadGlFunctions(void* (*glGetProcAddress)(const char*));
 
 } // namespace ToolKit

@@ -495,12 +495,16 @@ namespace ToolKit
     // PBR material
     MaterialPtr material     = MakeNewPtr<Material>();
     ShaderManager* shaderMan = GetShaderManager();
-    ShaderPtr defVertex      = shaderMan->Create<Shader>(ShaderPath("defaultVertex.shader", true));
+    const std::string& shaderPath  = ShaderPath("defaultVertex.shader", true);
+    ShaderPtr defVertex      = shaderMan->Create<Shader>(shaderPath);
+
     material->SetVertexShaderVal(defVertex);
     material->SetFragmentShaderVal(shaderMan->GetPbrForwardShader());
 
     TextureManager* texMan = GetTextureManager();
-    material->SetDiffuseTextureVal(texMan->Create<Texture>(TexturePath(TKDefaultImage, true)));
+    const std::string& texturePath = TexturePath(TKDefaultImage, true);
+
+    material->SetDiffuseTextureVal(texMan->Create<Texture>(texturePath));
     material->Init();
     m_defaultMaterial                                 = material;
     m_storage[MaterialPath("default.material", true)] = material;

@@ -21,6 +21,8 @@
 #include <unzip.h>
 #include <zip.h>
 
+#include <filesystem>
+
 #include "DebugNew.h"
 
 namespace ToolKit
@@ -71,7 +73,8 @@ namespace ToolKit
 
   FileManager::FileDataType FileManager::GetFile(FileType fileType, ImageFileInfo& fileInfo)
   {
-    String pakPath      = ConcatPaths({ResourcePath(), "..", "MinResources.pak"});
+    std::filesystem::path p(ResourcePath());
+    String pakPath      = (p.parent_path() / "MinResources.pak").string();
 
     // Get relative path from Resources directory
     String relativePath = fileInfo.filePath;
@@ -164,7 +167,8 @@ namespace ToolKit
 
   int FileManager::PackResources()
   {
-    String zipFile = ConcatPaths({ResourcePath(), "..", "MinResources.pak"});
+    std::filesystem::path p(ResourcePath());
+    String zipFile = (p.parent_path() / "MinResources.pak").string();
 
     if (CheckSystemFile(zipFile.c_str()))
     {
@@ -206,8 +210,8 @@ namespace ToolKit
     }
 
     // Copy assets under android assets if exists
-    String androidAssetFolder = ConcatPaths({ResourcePath(), "..", "Android", "app", "src", "main", "assets"});
-    String minResourcesPath   = ConcatPaths({ResourcePath(), "..", "MinResources.pak"});
+    String androidAssetFolder = (p.parent_path() / "Android" / "app" / "src" / "main" / "assets").string();
+    String minResourcesPath   = (p.parent_path() / "MinResources.pak").string();
     if (CheckSystemFile(androidAssetFolder) && CheckSystemFile(minResourcesPath))
     {
       std::error_code ec;
@@ -807,7 +811,8 @@ namespace ToolKit
       return;
     }
 
-    String pakPath = ConcatPaths({ResourcePath(), "..", "MinResources.pak"});
+    std::filesystem::path p(ResourcePath());
+    String pakPath = (p.parent_path() / "MinResources.pak").string();
 
     if (!m_zfile)
     {

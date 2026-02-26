@@ -479,12 +479,61 @@ namespace ToolKit
                           g_workspaceFile + "'";
 
         NormalizePathInplace(path);
-        if (CheckFile(path) && IsDirectory(path))
+
+        // Check if path is absolute (starts with / on Unix or drive letter on Windows)
+        bool isAbsolutePath = false;
+        #ifdef TK_WIN
+          isAbsolutePath = (path.length() >= 2 && path[1] == ':');
+        #else
+          isAbsolutePath = (!path.empty() && path[0] == '/');
+        #endif
+
+        String workspacePath = path;
+
+        // If path is not absolute or invalid, create default workspace in user's home
+        if (!isAbsolutePath)
+        {
+          const char* homeDir = std::getenv("HOME");
+          if (!homeDir)
+          {
+            #ifdef TK_WIN
+              homeDir = std::getenv("USERPROFILE");
+            #endif
+          }
+
+          if (homeDir)
+          {
+            workspacePath = ConcatPaths({String(homeDir), "ToolKit", "Workspace"});
+            String warnMsg = "Path '" + path + "' is not an absolute path. Using default: " + workspacePath;
+            GetApp()->GetConsole()->AddLog(warnMsg, LogType::Warning);
+          }
+        }
+
+        // Try to create the directory if it doesn't exist
+        if (!CheckFile(workspacePath))
+        {
+          try
+          {
+            std::filesystem::create_directories(workspacePath);
+            String info = "Created workspace directory at: " + workspacePath;
+            GetApp()->GetConsole()->AddLog(info, LogType::Memo);
+          }
+          catch (const std::exception& e)
+          {
+            String err = "Failed to create workspace directory: " + workspacePath +
+                        "\nError: " + e.what() + "\n" + manUpMsg;
+            GetApp()->GetConsole()->AddLog(err, LogType::Error);
+            return;
+          }
+        }
+
+        // Verify it's a directory
+        if (CheckFile(workspacePath) && IsDirectory(workspacePath))
         {
           // Try updating Workspace.settings
-          if (GetApp()->m_workspace.SetDefaultWorkspace(path))
+          if (GetApp()->m_workspace.SetDefaultWorkspace(workspacePath))
           {
-            String info = "Your Workspace directry set to: " + path + "\n" + manUpMsg;
+            String info = "Your Workspace directory set to: " + workspacePath + "\n" + manUpMsg;
             GetApp()->GetConsole()->AddLog(info, LogType::Memo);
             return;
           }
@@ -763,7 +812,7 @@ namespace ToolKit
     {
       String lineNum   = std::to_string(++line);
       size_t numDigits = (size_t) std::log10(line);
-      lineNum.append(std::max(4ull, numDigits) - numDigits, ' ');
+      lineNum.append(std::max<size_t>(4, numDigits) - numDigits, ' ');
       return lineNum + ": ";
     }
 

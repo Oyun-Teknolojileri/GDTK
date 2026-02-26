@@ -60,25 +60,51 @@ endif()
 
 # Set lib names.
 set(toolkit "ToolKit$<$<CONFIG:Debug>:d>")
-set(minizip "minizip$<$<CONFIG:Debug>:d>")
-set(sdl2 "SDL2$<$<CONFIG:Debug>:d>")
-set(sdl2main "SDL2main$<$<CONFIG:Debug>:d>")
 
-if (NOT "${TK_PLATFORM}" STREQUAL "${TK_WINDOWS}")
-    set(zstd "zstd$<$<CONFIG:Debug>:d>")
+# On macOS native builds, dependencies don't have debug versions
+if ("${TK_PLATFORM}" STREQUAL "${TK_MAC}" AND NOT PLUGIN_BUILD)
+    set(minizip "minizip")
+    set(zstd "zstd")
+    set(sdl2 "SDL2")
+    set(sdl2main "SDL2main")
 else()
-    set(zstd "zstd_static$<$<CONFIG:Debug>:d>")
+    set(minizip "minizip$<$<CONFIG:Debug>:d>")
+
+    # SDL2 debug postfix only on Windows
+    if ("${TK_PLATFORM}" STREQUAL "${TK_WINDOWS}")
+        set(sdl2 "SDL2$<$<CONFIG:Debug>:d>")
+        set(sdl2main "SDL2main$<$<CONFIG:Debug>:d>")
+    else()
+        set(sdl2 "SDL2")
+        set(sdl2main "SDL2main")
+    endif()
+
+    if (NOT "${TK_PLATFORM}" STREQUAL "${TK_WINDOWS}")
+        set(zstd "zstd$<$<CONFIG:Debug>:d>")
+    else()
+        set(zstd "zstd_static$<$<CONFIG:Debug>:d>")
+    endif()
 endif()
 
 # Dependency library directories.
-set(TK_DEPENDECY_OUT_DIR "${TOOLKIT_DIR}/Dependency/Intermediate/${TK_PLATFORM}/${TK_BUILD_TYPE}")
-set(TK_OUT_DIR "${TOOLKIT_DIR}/Intermediate/${TK_PLATFORM}/ToolKit/ToolKit/${TK_BUILD_TYPE}")
+# On macOS native builds, dependencies are only built for Release, so always use Release folder
+if ("${TK_PLATFORM}" STREQUAL "${TK_MAC}" AND NOT PLUGIN_BUILD)
+    set(TK_DEPENDECY_OUT_DIR "${TOOLKIT_DIR}/Dependency/Intermediate/${TK_PLATFORM}/Release")
+else()
+    set(TK_DEPENDECY_OUT_DIR "${TOOLKIT_DIR}/Dependency/Intermediate/${TK_PLATFORM}/${TK_BUILD_TYPE}")
+endif()
+# On macOS/Linux with single-config generators, ToolKit is built without config subdirectory
+if(PLUGIN_BUILD AND NOT WIN32)
+    set(TK_OUT_DIR "${TOOLKIT_DIR}/Intermediate/${TK_PLATFORM}/ToolKit/ToolKit")
+else()
+    set(TK_OUT_DIR "${TOOLKIT_DIR}/Intermediate/${TK_PLATFORM}/ToolKit/ToolKit/${TK_BUILD_TYPE}")
+endif()
 
 message("Using dependency output directory: ${TK_DEPENDECY_OUT_DIR}")
 message("Using toolkit output directory: ${TK_OUT_DIR}")
 
 # Web build project.
-if ("${TK_PLATFORM}" STREQUAL "${TK_WEB}")
+if ("${TK_PLATFORM}" STREQUAL "${TK_WEB}" AND NOT PLUGIN_BUILD)
     set(CMAKE_EXECUTABLE_SUFFIX ".html")
     add_executable(${GAME_PROJECT_NAME} ${SOURCE} ${HEADERS})
 
@@ -100,7 +126,7 @@ if ("${TK_PLATFORM}" STREQUAL "${TK_WEB}")
 endif()
 
 # Android build project.
-if ("${TK_PLATFORM}" STREQUAL "${TK_ANDROID}")
+if ("${TK_PLATFORM}" STREQUAL "${TK_ANDROID}" AND NOT PLUGIN_BUILD)
     # Reset game project name to main if it is android build, sdl expect a libmain.so
     set(GAME_PROJECT_NAME "main")
     add_library(${GAME_PROJECT_NAME} SHARED ${SOURCE} ${HEADERS})
@@ -114,12 +140,54 @@ if ("${TK_PLATFORM}" STREQUAL "${TK_ANDROID}")
 endif()
 
 # Windows build project.
-if ("${TK_PLATFORM}" STREQUAL "${TK_WINDOWS}")
+if ("${TK_PLATFORM}" STREQUAL "${TK_WINDOWS}" AND NOT PLUGIN_BUILD)
     add_executable(${GAME_PROJECT_NAME} WIN32 ${SOURCE} ${HEADERS})
-    
+
     target_link_directories(${GAME_PROJECT_NAME} PRIVATE ${TK_DEPENDECY_OUT_DIR})
     target_link_directories(${GAME_PROJECT_NAME} PRIVATE ${TK_OUT_DIR})
     target_link_libraries(${GAME_PROJECT_NAME} PRIVATE OpenGL32 ${sdl2} ${sdl2main} ${minizip} ${zstd} ToolKit)
+endif()
+
+# macOS build project.
+message("DEBUG: TK_PLATFORM='${TK_PLATFORM}' TK_MAC='${TK_MAC}' PLUGIN_BUILD='${PLUGIN_BUILD}'")
+if ("${TK_PLATFORM}" STREQUAL "${TK_MAC}" AND NOT PLUGIN_BUILD)
+    message("Building macOS app bundle")
+    add_executable(${GAME_PROJECT_NAME} MACOSX_BUNDLE ${SOURCE} ${HEADERS})
+
+    target_link_directories(${GAME_PROJECT_NAME} PRIVATE ${TK_DEPENDECY_OUT_DIR})
+    target_link_directories(${GAME_PROJECT_NAME} PRIVATE ${TK_OUT_DIR})
+
+    # Find SDL2 in the dependency directory
+    find_library(SDL2_LIBRARY NAMES SDL2-2.0 SDL2 PATHS ${TK_DEPENDECY_OUT_DIR} NO_DEFAULT_PATH REQUIRED)
+    find_library(SDL2MAIN_LIBRARY NAMES SDL2main PATHS ${TK_DEPENDECY_OUT_DIR} NO_DEFAULT_PATH REQUIRED)
+
+    # Link required frameworks and libraries for macOS
+    find_library(COCOA_FRAMEWORK Cocoa REQUIRED)
+    find_library(IOKIT_FRAMEWORK IOKit REQUIRED)
+    find_library(COREVIDEO_FRAMEWORK CoreVideo REQUIRED)
+    find_library(CARBON_FRAMEWORK Carbon REQUIRED)
+    find_library(OPENGL_FRAMEWORK OpenGL REQUIRED)
+    find_library(COMPRESSION_FRAMEWORK Compression REQUIRED)
+    find_package(OpenSSL REQUIRED)
+
+    target_link_libraries(${GAME_PROJECT_NAME} PRIVATE
+        ${COCOA_FRAMEWORK}
+        ${IOKIT_FRAMEWORK}
+        ${COREVIDEO_FRAMEWORK}
+        ${CARBON_FRAMEWORK}
+        ${OPENGL_FRAMEWORK}
+        ${COMPRESSION_FRAMEWORK}
+        ${SDL2_LIBRARY}
+        ${SDL2MAIN_LIBRARY}
+        ${minizip}
+        ${zstd}
+        bz2
+        iconv
+        lzma
+        OpenSSL::Crypto
+        OpenSSL::SSL
+        ToolKit
+    )
 endif()
 
 # Plugin build for editor.
@@ -127,8 +195,35 @@ if (${PLUGIN_BUILD})
     set(CMAKE_DEBUG_POSTFIX d) # Only editor needs to know the postfix for loading correct version of the plugin.
     add_library(${GAME_PROJECT_NAME} SHARED ${SOURCE} ${HEADERS}) # Plugin must be a dll.
 
-    target_link_directories(${GAME_PROJECT_NAME} PRIVATE "${TOOLKIT_DIR}/Bin")
-    target_link_libraries(${GAME_PROJECT_NAME} PRIVATE ${toolkit})
+    # Remove 'lib' prefix on Unix platforms for consistency with Windows DLL naming
+    set_target_properties(${GAME_PROJECT_NAME} PROPERTIES PREFIX "")
+
+    # On Windows, ToolKit is in Bin directory. On other platforms, use TK_OUT_DIR.
+    if(WIN32)
+        target_link_directories(${GAME_PROJECT_NAME} PRIVATE "${TOOLKIT_DIR}/Bin")
+        target_link_libraries(${GAME_PROJECT_NAME} PRIVATE ${toolkit})
+    else()
+        target_link_directories(${GAME_PROJECT_NAME} PRIVATE ${TK_OUT_DIR})
+        target_link_directories(${GAME_PROJECT_NAME} PRIVATE ${TK_DEPENDECY_OUT_DIR})
+
+        # Link against ToolKit and its dependencies
+        target_link_libraries(${GAME_PROJECT_NAME} PRIVATE ${toolkit} ${minizip} ${zstd})
+
+        # Link against required system libraries on macOS
+        if(APPLE)
+            find_package(OpenSSL REQUIRED)
+            find_library(COMPRESSION_FRAMEWORK Compression REQUIRED)
+            target_link_libraries(${GAME_PROJECT_NAME} PRIVATE
+                ${COMPRESSION_FRAMEWORK}
+                bz2
+                iconv
+                lzma
+                OpenSSL::Crypto
+                OpenSSL::SSL
+            )
+        endif()
+    endif()
+
     target_compile_definitions(${GAME_PROJECT_NAME} PRIVATE TK_WITH_EDITOR TK_DLL_IMPORT)
 endif()
 
@@ -146,6 +241,7 @@ target_compile_definitions(${GAME_PROJECT_NAME} PRIVATE $<$<CONFIG:Debug>:TK_DEB
 # Packer picks them from here to create publishable packages.
 set_target_properties(${GAME_PROJECT_NAME} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${GAME_BIN_DIR}
+    LIBRARY_OUTPUT_DIRECTORY ${GAME_BIN_DIR}
     ARCHIVE_OUTPUT_DIRECTORY ${GAME_BIN_DIR}
 )
 
@@ -155,6 +251,7 @@ if(isMultiConfig)
         string(TOUPPER ${config} config_upper)
         set_target_properties(${GAME_PROJECT_NAME} PROPERTIES
             RUNTIME_OUTPUT_DIRECTORY_${config_upper} ${GAME_BIN_DIR}
+            LIBRARY_OUTPUT_DIRECTORY_${config_upper} ${GAME_BIN_DIR}
             ARCHIVE_OUTPUT_DIRECTORY_${config_upper} ${GAME_BIN_DIR}
             PDB_OUTPUT_DIRECTORY_${config_upper} ${GAME_BIN_DIR}
         )
@@ -169,7 +266,11 @@ endif()
 #For hot reload rename the previous output.
 if (${PLUGIN_BUILD})
     set(DLL $<SHELL_PATH:$<TARGET_FILE:${GAME_PROJECT_NAME}>>)
-    set(PDB $<SHELL_PATH:$<TARGET_PDB_FILE:${GAME_PROJECT_NAME}>>)
+    if(MSVC)
+        set(PDB $<SHELL_PATH:$<TARGET_PDB_FILE:${GAME_PROJECT_NAME}>>)
+    else()
+        set(PDB "")
+    endif()
 
     add_custom_command(TARGET ${GAME_PROJECT_NAME} PRE_BUILD COMMAND ${CMAKE_COMMAND} -Ddll=${DLL} -Dpdb=${PDB} -Dtmp="${GAME_BIN_DIR}/tmp" -P "${GAME_CODE_DIR}/CMakeHotReload.cmake")
 endif()

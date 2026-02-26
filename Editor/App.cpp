@@ -19,6 +19,7 @@
 #include "PluginWindow.h"
 #include "PopupWindows.h"
 #include "PropInspectorWindow.h"
+#include "SDL.h"
 #include "StatsWindow.h"
 #include "StatusBar.h"
 
@@ -27,7 +28,6 @@
 #include <Mesh.h>
 #include <PluginManager.h>
 #include <Resource.h>
-#include <SDL.h>
 #include <Stats.h>
 #include <UIManager.h>
 
@@ -52,7 +52,7 @@ namespace ToolKit
       RenderSystem* rsys = GetRenderSystem();
       rsys->SetAppWindowSize((uint) windowWidth, (uint) windowHeight);
       SetStatusMsg(g_statusOk);
-      m_publishManager = new PublishManager();
+      m_publishManager = new PublishManager(this);
     }
 
     App::~App() {}
@@ -474,20 +474,46 @@ namespace ToolKit
         return;
       }
 
+      // Get the GDTK root directory
+      // First try using current working directory structure (works on Windows when properly set up)
+      String gdtkRoot     = GetCurrentParentPath();
+      String templatePath = ConcatPaths({gdtkRoot, "Templates", "Game"});
+
+      // If template doesn't exist, try reading from Path.txt (fallback for different launch configurations)
+      if (!CheckSystemFile(templatePath))
+      {
+        String pathFile = ConcatPaths({ConfigPath(), "Path.txt"});
+        if (CheckSystemFile(pathFile))
+        {
+          std::ifstream file(pathFile);
+          if (file.is_open())
+          {
+            std::getline(file, gdtkRoot);
+            file.close();
+            templatePath = ConcatPaths({gdtkRoot, "Templates", "Game"});
+          }
+        }
+      }
+
+      // Final check before attempting copy
+      if (!CheckSystemFile(templatePath))
+      {
+        TK_ERR("Template directory not found: %s", templatePath.c_str());
+        m_statusMsg = g_statusFailed;
+        return;
+      }
+
       // copy template folder to new workspace
-      RecursiveCopyDirectory(ConcatPaths({"..", "Templates", "Game"}),
-                             fullPath,
-                             {".filters", ".vcxproj", ".user", ".cxx"});
+      RecursiveCopyDirectory(templatePath, fullPath, {".filters", ".vcxproj", ".user", ".cxx"});
 
       // Update cmake.
-      String currentPath = GetCurrentParentPath();
-      String cmakePath   = ConcatPaths({fullPath, "Codes", "CMakeLists.txt"});
+      String cmakePath = ConcatPaths({fullPath, "Codes", "CMakeLists.txt"});
       TemplateUpdate(cmakePath, "__projectname__", name);
 
       // update vscode includes.
       String cppPropertiesPath = ConcatPaths({fullPath, ".vscode", "c_cpp_properties.json"});
 
-      String tkRoot            = currentPath;
+      String tkRoot            = gdtkRoot;
       String tkPath            = ConcatPaths({tkRoot, "ToolKit"});
       String depPath           = ConcatPaths({tkRoot, "Dependency"});
       String glmPath           = ConcatPaths({tkRoot, "Dependency", "glm"});
@@ -524,14 +550,40 @@ namespace ToolKit
         return;
       }
 
+      // Get the GDTK root directory
+      // First try using current working directory structure (works on Windows when properly set up)
+      String gdtkRoot     = GetCurrentParentPath();
+      String templatePath = ConcatPaths({gdtkRoot, "Templates", "Plugin"});
+
+      // If template doesn't exist, try reading from Path.txt (fallback for different launch configurations)
+      if (!CheckSystemFile(templatePath))
+      {
+        String pathFile = ConcatPaths({ConfigPath(), "Path.txt"});
+        if (CheckSystemFile(pathFile))
+        {
+          std::ifstream file(pathFile);
+          if (file.is_open())
+          {
+            std::getline(file, gdtkRoot);
+            file.close();
+            templatePath = ConcatPaths({gdtkRoot, "Templates", "Plugin"});
+          }
+        }
+      }
+
+      // Final check before attempting copy
+      if (!CheckSystemFile(templatePath))
+      {
+        TK_ERR("Template directory not found: %s", templatePath.c_str());
+        m_statusMsg = g_statusFailed;
+        return;
+      }
+
       // Copy template folder to new project.
-      RecursiveCopyDirectory(ConcatPaths({"..", "Templates", "Plugin"}),
-                             fullPath,
-                             {".filters", ".vcxproj", ".user", ".cxx"});
+      RecursiveCopyDirectory(templatePath, fullPath, {".filters", ".vcxproj", ".user", ".cxx"});
 
       // Update cmake.
-      String currentPath = std::filesystem::current_path().parent_path().u8string();
-      String cmakePath   = ConcatPaths({fullPath, "Codes", "CMakeLists.txt"});
+      String cmakePath = ConcatPaths({fullPath, "Codes", "CMakeLists.txt"});
       TemplateUpdate(cmakePath, "__projectname__", name);
 
       String pluginSettingsPath = ConcatPaths({fullPath, "Config", "Plugin.settings"});
@@ -861,11 +913,15 @@ namespace ToolKit
       }
     }
 
-    int App::ExecSysCommand(StringView cmd, bool async, bool showConsole, SysCommandDoneCallback callback)
+    int App::ExecSysCommand(StringView cmd,
+                            bool async,
+                            bool showConsole,
+                            SysCommandDoneCallback callback,
+                            bool captureOutput)
     {
       if (m_sysComExecFn)
       {
-        return m_sysComExecFn(cmd, async, showConsole, callback);
+        return m_sysComExecFn(cmd, async, showConsole, callback, captureOutput);
       }
 
       return -1;

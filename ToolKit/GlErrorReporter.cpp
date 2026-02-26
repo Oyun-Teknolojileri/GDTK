@@ -22,7 +22,7 @@ namespace ToolKit
 
   void InitGLErrorReport(GlReportCallback callback)
   {
-#ifdef glDebugMessageCallback
+#ifdef TK_WIN
     if (glDebugMessageCallback != NULL)
     {
       glEnable(GL_DEBUG_OUTPUT);

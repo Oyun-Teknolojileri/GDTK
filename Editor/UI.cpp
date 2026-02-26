@@ -8,6 +8,9 @@
 #include "UI.h"
 
 #include "AndroidBuildWindow.h"
+#ifdef TK_MAC
+  #include "MacOSBuildWindow.h"
+#endif
 #include "App.h"
 #include "ConsoleWindow.h"
 #include "EditorViewport2d.h"
@@ -22,11 +25,11 @@
 #include <GradientSky.h>
 #include <MathUtil.h>
 #include <Prefab.h>
-#include <SDL.h>
+#include "SDL.h"
 #include <Sky.h>
 #include <TKOpenGL.h>
-#include <imgui/backends/imgui_impl_opengl3.h>
-#include <imgui/backends/imgui_impl_sdl2.h>
+#include "imgui/backends/imgui_impl_opengl3.h"
+#include "imgui/backends/imgui_impl_sdl2.h"
 
 namespace ToolKit
 {
@@ -143,20 +146,28 @@ namespace ToolKit
 
       io.Fonts->Clear();
       LiberationSans =
-          io.Fonts->AddFontFromFileTTF(FontPath("LiberationSans-Regular.ttf").c_str(), 14.0f, nullptr, utf8TR);
+          io.Fonts->AddFontFromFileTTF(FontPath("LiberationSans-Regular.ttf", true).c_str(), 14.0f, nullptr, utf8TR);
 
       static const ImWchar icons_ranges[] = {ICON_MIN_FA, ICON_MAX_FA, 0};
       ImFontConfig icons_config;
       icons_config.MergeMode = true;
       // icons_config.PixelSnapH = true;
       IconFont =
-          io.Fonts->AddFontFromFileTTF(FontPath(FONT_ICON_FILE_NAME_FA).c_str(), 14.0f, &icons_config, icons_ranges);
+          io.Fonts->AddFontFromFileTTF(FontPath(FONT_ICON_FILE_NAME_FA, true).c_str(), 14.0f, &icons_config, icons_ranges);
 
       LiberationSansBold =
-          io.Fonts->AddFontFromFileTTF(FontPath("LiberationSans-Bold.ttf").c_str(), 14.0f, nullptr, utf8TR);
+          io.Fonts->AddFontFromFileTTF(FontPath("LiberationSans-Bold.ttf", true).c_str(), 14.0f, nullptr, utf8TR);
 
       ImGui_ImplSDL2_InitForOpenGL(g_window, g_context);
+
+      // Set the appropriate GLSL version based on platform
+#if defined(TK_GL_ES_3_0) || defined(TK_WIN)
       ImGui_ImplOpenGL3_Init("#version 300 es");
+#elif defined(TK_MAC)
+      ImGui_ImplOpenGL3_Init("#version 150");  // OpenGL 3.3 Core on macOS
+#else
+      ImGui_ImplOpenGL3_Init("#version 130");  // OpenGL 3.0 on other desktop platforms
+#endif
 
       // Platform window create override.
       ImGuiPlatformIO& pio      = ImGui::GetPlatformIO();
@@ -847,6 +858,13 @@ namespace ToolKit
           AndroidBuildWindowPtr androidBuildWindow = MakeNewPtr<AndroidBuildWindow>();
           androidBuildWindow->OpenBuildWindow(publishType);
         }
+#ifdef TK_MAC
+        else if (publishPlatform == PublishPlatform::MacOS)
+        {
+          MacOSBuildWindowPtr macOSBuildWindow = MakeNewPtr<MacOSBuildWindow>();
+          macOSBuildWindow->OpenBuildWindow(publishType);
+        }
+#endif
         else
         {
           GetApp()->m_publishManager->Publish(publishPlatform, publishType);
@@ -905,6 +923,13 @@ namespace ToolKit
         {
           choosePublishPlatformFn(PublishPlatform::Windows);
         }
+
+#if defined(TK_MAC)
+        if (ImGui::BeginMenu("macOS"))
+        {
+          choosePublishPlatformFn(PublishPlatform::MacOS);
+        }
+#endif
 
         ImGui::EndMenu();
       }

@@ -87,18 +87,24 @@ namespace ToolKit
       }
       return;
     }
+    char messageBuffer[TKMessageBufferLength];
     va_list args;
     va_start(args, msg);
+    vsprintf(messageBuffer, msg, args);
+    va_end(args);
 
-    OutputUtil(m_writeConsoleFn, logType, msg, args);
+    strcat(messageBuffer, "\n");
+
+    if (m_writeConsoleFn)
+    {
+      m_writeConsoleFn(logType, String(messageBuffer));
+    }
 
     // Echo to platform console.
     if (m_platfromConsoleFn)
     {
-      OutputUtil(m_platfromConsoleFn, logType, msg, args);
+      m_platfromConsoleFn(logType, String(messageBuffer));
     }
-
-    va_end(args);
   }
 
   void Logger::WritePlatformConsole(LogType logType, const char* msg, ...)

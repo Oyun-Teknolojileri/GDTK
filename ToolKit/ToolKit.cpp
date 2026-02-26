@@ -217,7 +217,9 @@ namespace ToolKit
     SafeDel(m_workerManager);
   }
 
-  void Main::SetConfigPath(StringView cfgPath) { m_cfgPath = cfgPath; }
+  void Main::SetConfigPath(StringView cfgPath) { 
+    m_cfgPath = cfgPath;
+  }
 
   void Main::SetDefaultPath(StringView path) { m_defaultResourceRoot = path; }
 
@@ -438,16 +440,21 @@ namespace ToolKit
 
   String DefaultAbsolutePath()
   {
+    String& defaultRoot = Main::GetInstance()->m_defaultResourceRoot;
+    if (!defaultRoot.empty())
+    {
+      return defaultRoot;
+    }
     static String absolutePath;
     if (absolutePath.empty())
     {
-      StringArray splits;
       String currentPath = GetCurrentPath();
-      Split(currentPath, GetPathSeparatorAsStr(), splits);
-      splits.erase(splits.end() - 1);
-      splits.push_back("Resources");
-      splits.push_back("Engine");
-      absolutePath = ConcatPaths(splits);
+      std::filesystem::path current(currentPath);
+      std::filesystem::path parent = current.parent_path();
+      std::filesystem::path resourcePath = parent / "Resources" / "Engine";
+
+      absolutePath = std::filesystem::absolute(resourcePath).u8string();
+      NormalizePathInplace(absolutePath);
     }
 
     return absolutePath;
@@ -468,10 +475,10 @@ namespace ToolKit
 
   String DefaultPath()
   {
-    static const String defPath = Main::GetInstance()->m_defaultResourceRoot;
+    String defPath = Main::GetInstance()->m_defaultResourceRoot;
     if (defPath.empty())
     {
-      static const String res = ConcatPaths({"..", "Resources", "Engine"});
+      static const String res = ConcatPaths({"Resources", "Engine"});
       return res;
     }
 

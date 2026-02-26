@@ -14,43 +14,60 @@ namespace ToolKit
   {
     TKWindows,
     TKWeb,
-    TKAndroid
+    TKAndroid,
+    TKMac
   };
 
+// Debug flag.
 #ifdef TK_DEBUG
   static constexpr int TKDebug = 1;
 #else
   static constexpr int TKDebug = 0;
 #endif
 
-#ifdef _WIN32
+// Detect platform.
+#if defined(_WIN32) || defined(_WIN64)
   #define TK_PLATFORM PLATFORM::TKWindows
   #define TK_WIN
-#elif __ANDROID__
+#elif defined(__ANDROID__)
   #define TK_PLATFORM PLATFORM::TKAndroid
   #define TK_ANDROID
-#elif __EMSCRIPTEN__
+#elif defined(__EMSCRIPTEN__)
   #define TK_PLATFORM PLATFORM::TKWeb
   #define TK_WEB
+#elif defined(__APPLE__)
+  #include <TargetConditionals.h>
+  #define TK_PLATFORM PLATFORM::TKMac
+  #define TK_MAC
+#else
+  #error "Unknown platform!"
 #endif
 
-#ifdef TK_WIN // Windows.
+// Calling convention
+#if defined(TK_WIN)
   #define TK_STDCAL __stdcall
-  #ifdef TK_DLL_EXPORT // Dynamic binding.
-    #define TK_API __declspec(dllexport)
-  #elif defined(TK_DLL_IMPORT)
-    #define TK_API __declspec(dllimport)
-  #else // Static binding.
-    #define TK_API
-  #endif
 #else
-  #define TK_API __attribute__((visibility("default")))
   #define TK_STDCAL
 #endif
 
-#ifdef TK_WIN // Windows.
+// Export/import macros for main API
+#if defined(TK_WIN)
+  #if defined(TK_DLL_EXPORT)
+    #define TK_API __declspec(dllexport)
+  #elif defined(TK_DLL_IMPORT)
+    #define TK_API __declspec(dllimport)
+  #else
+    #define TK_API
+  #endif
+#else
+  // On macOS, Linux, Web, Android: no special attributes needed for static library
+  #define TK_API
+#endif
+
+// Plugin API
+#if defined(TK_WIN)
   #define TK_PLUGIN_API __declspec(dllexport)
-#else // Other OS.
+#else
   #define TK_PLUGIN_API
 #endif
 

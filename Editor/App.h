@@ -71,6 +71,7 @@ namespace ToolKit
        * @param showConsole states that the console that executes the cmd will
        * be shown or not.
        * @param callback function to call when the operation completed.
+       * @param captureOutput if true, redirects stdout/stderr to Editor console.
        * @return 0 if command can be started successfully.
        */
       int ExecSysCommand(StringView cmd,
@@ -80,7 +81,8 @@ namespace ToolKit
                           * Callback function upon completion of the system command.
                           * @param int is the return value of the cmd.
                           */
-                         SysCommandDoneCallback callback = nullptr);
+                         SysCommandDoneCallback callback = nullptr,
+                         bool captureOutput               = false);
 
       // UI.
       void ResetUI();

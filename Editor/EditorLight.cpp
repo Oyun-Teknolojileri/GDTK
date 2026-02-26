@@ -14,6 +14,7 @@
 #include <Light.h>
 #include <Material.h>
 #include <Texture.h>
+#include "Camera.h"
 
 namespace ToolKit
 {

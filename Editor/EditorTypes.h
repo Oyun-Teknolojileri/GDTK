@@ -18,6 +18,8 @@ extern void* g_context;
   #else
     #define TK_EDITOR_API __declspec(dllimport)
   #endif
+#else
+  #define TK_EDITOR_API
 #endif
 
 namespace ToolKit
@@ -26,6 +28,9 @@ namespace ToolKit
   {
 
     typedef std::shared_ptr<class AndroidBuildWindow> AndroidBuildWindowPtr;
+#ifdef TK_MAC
+    typedef std::shared_ptr<class MacOSBuildWindow> MacOSBuildWindowPtr;
+#endif
     typedef std::shared_ptr<class PreviewViewport> PreviewViewportPtr;
     typedef std::shared_ptr<class EditorViewport> EditorViewportPtr;
     typedef std::vector<EditorViewportPtr> EditorViewportPtrArray;
@@ -74,7 +79,7 @@ namespace ToolKit
     typedef std::shared_ptr<class EditorCanvas> EditorCanvasPtr;
 
     typedef std::function<void(int)> SysCommandDoneCallback;
-    typedef std::function<int(StringView, bool, bool, SysCommandDoneCallback)> SysCommandExecutionFn;
+    typedef std::function<int(StringView, bool, bool, SysCommandDoneCallback, bool)> SysCommandExecutionFn;
     typedef std::function<void(const StringView)> ShellOpenDirFn;
 
     // UI Strings
