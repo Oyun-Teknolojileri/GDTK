@@ -495,7 +495,7 @@ namespace ToolKit
     if constexpr (TK_PLATFORM == PLATFORM::TKWindows)
     {
       // Only start a new query if the previous one has been read
-      if (!m_timerQueryActive)
+      if (!m_timerQueryActive && !m_timerQueryWaiting)
       {
         glBeginQuery(GL_TIME_ELAPSED_EXT, m_gpuTimerQuery);
         m_timerQueryActive = true;
@@ -515,6 +515,23 @@ namespace ToolKit
       if (m_timerQueryActive)
       {
         glEndQuery(GL_TIME_ELAPSED_EXT);
+        m_timerQueryActive  = false;
+        m_timerQueryWaiting = true;
+      }
+
+      if (m_timerQueryWaiting)
+      {
+        GLuint available = 0;
+        glGetQueryObjectuiv(m_gpuTimerQuery, GL_QUERY_RESULT_AVAILABLE, &available);
+
+        if (available)
+        {
+          GLuint elapsedTime;
+          glGetQueryObjectuiv(m_gpuTimerQuery, GL_QUERY_RESULT, &elapsedTime);
+
+          m_gpuTime           = glm::max(1.0f, (float) (elapsedTime) / 1000000.0f);
+          m_timerQueryWaiting = false; // Query ready for next frame.
+        }
       }
     }
 #endif
@@ -524,23 +541,6 @@ namespace ToolKit
   {
     cpu = m_cpuTime;
     gpu = m_gpuTime;
-#ifdef GL_TIME_ELAPSED_EXT
-    if constexpr (TK_PLATFORM == PLATFORM::TKWindows)
-    {
-      GLuint available = 0;
-      glGetQueryObjectuiv(m_gpuTimerQuery, GL_QUERY_RESULT_AVAILABLE, &available);
-
-      if (available)
-      {
-        GLuint elapsedTime;
-        glGetQueryObjectuiv(m_gpuTimerQuery, GL_QUERY_RESULT, &elapsedTime);
-
-        m_gpuTime          = glm::max(1.0f, (float) (elapsedTime) / 1000000.0f);
-        gpu                = m_gpuTime;
-        m_timerQueryActive = false; // Query read, ready for next frame
-      }
-    }
-#endif
   }
 
   FramebufferPtr Renderer::GetFrameBuffer() { return m_framebuffer; }
