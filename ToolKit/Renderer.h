@@ -333,7 +333,7 @@ namespace ToolKit
     QuadPtr m_tempQuad                             = nullptr;
     MaterialPtr m_tempQuadMaterial                 = nullptr;
 
-    FramebufferPtr m_copyFrameBuffer                        = nullptr;
+    FramebufferPtr m_copyFrameBuffer               = nullptr;
     MaterialPtr m_copyMaterial                     = nullptr;
 
     int m_maxArrayTextureLayers                    = -1;
@@ -344,7 +344,10 @@ namespace ToolKit
     GpuProgramManager* m_gpuProgramManager         = nullptr;
 
     uint m_gpuTimerQuery                           = 0;
-    float m_cpuTime                                = 0.0f;
+    float m_cpuTime                                = 1.0f;
+    float m_gpuTime                                = 1.0f;
+    bool m_timerQueryActive                        = false;
+    bool m_timerQueryWaiting                       = false;
     bool m_blendStateOverrideEnable                = false;
 
     /** Frame buffer stats for each frame. */

@@ -20,6 +20,7 @@
 #include "Renderer.h"
 #include "Scene.h"
 #include "Shader.h"
+#include "Stats.h"
 #include "ToolKit.h"
 
 #include <DebugNew.h>
@@ -207,10 +208,7 @@ namespace ToolKit
     m_lightDataBuffer.Map(m_lightData, m_lightDataSize);
     m_pvms.Map(m_pvmData, m_pvmDataSize);
 
-    if (TKStats* stats = GetTKStats())
-    {
-      stats->m_directionalLightUpdatePerFrame += 2; // Includes pvm updates.
-    }
+    Stats::AddStat(FrameStatType::DirectionalLightUpdate, 2); // Includes pvm updates.
   }
 
   // DirectionalLight

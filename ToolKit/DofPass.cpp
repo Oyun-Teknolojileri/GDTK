@@ -8,6 +8,7 @@
 #include "DofPass.h"
 
 #include "Shader.h"
+#include "Stats.h"
 #include "ToolKit.h"
 
 #include <DebugNew.h>
@@ -25,6 +26,8 @@ namespace ToolKit
 
   void DoFPass::PreRender()
   {
+    TK_PROFILE_FUNCTION();
+
     Pass::PreRender();
     if (m_params.ColorRt == nullptr)
     {
@@ -68,6 +71,8 @@ namespace ToolKit
 
   void DoFPass::Render()
   {
+    TK_PROFILE_FUNCTION();
+
     Renderer* renderer = GetRenderer();
     if (m_params.ColorRt == nullptr)
     {
@@ -80,6 +85,11 @@ namespace ToolKit
     RenderSubPass(m_quadPass);
   }
 
-  void DoFPass::PostRender() { Pass::PostRender(); }
+  void DoFPass::PostRender()
+  {
+    TK_PROFILE_FUNCTION();
+
+    Pass::PostRender();
+  }
 
 } // namespace ToolKit

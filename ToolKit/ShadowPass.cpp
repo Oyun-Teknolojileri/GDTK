@@ -68,6 +68,8 @@ namespace ToolKit
 
   void ShadowPass::Render()
   {
+    TK_PROFILE_FUNCTION();
+
     if (m_lights.empty())
     {
       return;
@@ -103,6 +105,8 @@ namespace ToolKit
 
   void ShadowPass::PreRender()
   {
+    TK_PROFILE_FUNCTION();
+
     Pass::PreRender();
 
     ShadowSettingsPtr shadows = GetEngineSettings().m_graphics->m_shadows;
@@ -146,6 +150,8 @@ namespace ToolKit
 
   void ShadowPass::PostRender()
   {
+    TK_PROFILE_FUNCTION();
+
     Pass::PostRender();
 
     // Remap due to updated shadow matrices.
@@ -164,6 +170,8 @@ namespace ToolKit
 
   void ShadowPass::RenderShadowMaps(Light* light)
   {
+    TK_PROFILE_FUNCTION();
+
     Renderer* renderer        = GetRenderer();
     ShadowSettingsPtr shadows = GetEngineSettings().m_graphics->m_shadows;
 
@@ -234,6 +242,8 @@ namespace ToolKit
 
   void ShadowPass::RenderShadowMap(Light* light, CameraPtr shadowCamera, CameraPtr cullCamera)
   {
+    TK_PROFILE_FUNCTION();
+
     Renderer* renderer = GetRenderer();
 
     // Adjust light's camera.
@@ -398,6 +408,8 @@ namespace ToolKit
 
   void ShadowPass::InitShadowAtlas()
   {
+    TK_PROFILE_FUNCTION();
+
     // Check if the shadow atlas needs to be updated
     bool needChange           = false;
     ShadowSettingsPtr shadows = GetEngineSettings().m_graphics->m_shadows;
