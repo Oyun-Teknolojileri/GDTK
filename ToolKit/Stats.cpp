@@ -94,15 +94,7 @@ namespace ToolKit
 
   TKProfiler::TKProfiler() {}
 
-  TKProfiler::~TKProfiler()
-  {
-    for (ProfilerNode* root : m_rootNodes)
-    {
-      DeleteNodeRecursive(root);
-    }
-
-    m_rootNodes.clear();
-  }
+  TKProfiler::~TKProfiler() { Reset(); }
 
   void TKProfiler::BeginScope(StringView name)
   {

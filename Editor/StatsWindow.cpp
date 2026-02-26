@@ -132,15 +132,7 @@ namespace ToolKit
         {
           Profiler::SetProfilerEnabled(profilerEnabled);
         }
-        UI::AddTooltipToLastItem("Enable hierarchical CPU profiler.\nShows nested timing information.");
-
-        ImGui::SameLine();
-
-        // Reset profiler button.
-        if (ImGui::Button("Reset Profiler"))
-        {
-          Profiler::ResetProfiler();
-        }
+        UI::AddTooltipToLastItem("Enable CPU profiler.\nShows nested timing information.");
 
         ImGui::Separator();
 
