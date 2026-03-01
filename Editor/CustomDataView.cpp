@@ -738,54 +738,7 @@ namespace ToolKit
         ImGui::BeginDisabled(!var->m_editable);
       }
       break;
-      case ParameterVariant::VariantType::PrefabPtr:
-      {
-        PrefabPtr* mrefPtr = var->GetVarPtr<PrefabPtr>();
-        PrefabPtr mref = mrefPtr ? *mrefPtr : nullptr;
 
-        String file, id;
-        if (mref)
-        {
-          id   = std::to_string(mref->GetIdVal());
-          file = mref->GetPrefabPathVal();
-        }
-
-        ImGui::EndDisabled();
-        DropSubZone(
-            var->m_name + "##" + id,
-            UI::m_prefabIcn->m_textureId,
-            file.empty() ? "##Empty" : file,
-            [&var](const DirectoryEntry& entry) -> void
-            {
-              if (entry.m_ext == SCENE)
-              {
-                PrefabPtr prefab = std::make_shared<Prefab>();
-                prefab->SetPrefabPathVal(entry.GetFullPath());
-                prefab->Load();
-                
-                // Generic validation using ValidatorCallback
-                if (var->m_validator)
-                {
-                   String msg;
-                   Value val = prefab;
-                   if (!var->m_validator(val, msg))
-                   {
-                      TK_ERR(msg.empty() ? "Invalid prefab." : msg.c_str());
-                      return;
-                   }
-                }
-
-                *var = prefab;
-              }
-              else
-              {
-                TK_ERR("Only Scene (.scene) files are accepted.");
-              }
-            },
-            var->m_editable);
-        ImGui::BeginDisabled(!var->m_editable);
-      }
-      break;
       case ParameterVariant::VariantType::ScenePtr:
       {
         ScenePtr mref = var->GetVar<ScenePtr>();
