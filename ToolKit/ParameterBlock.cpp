@@ -125,8 +125,6 @@ namespace ToolKit
 
   ParameterVariant::ParameterVariant(const SkeletonPtr& var) { *this = var; }
 
-  ParameterVariant::ParameterVariant(const PrefabPtr& var) { *this = var; }
-
   ParameterVariant::ParameterVariant(const ScenePtr& var) { *this = var; }
 
   ParameterVariant::ParameterVariant(const VariantCallback& var) { *this = var; }
@@ -285,13 +283,6 @@ namespace ToolKit
   ParameterVariant& ParameterVariant::operator=(const SkeletonPtr& var)
   {
     m_type = VariantType::SkeletonPtr;
-    AsignVal(var);
-    return *this;
-  }
-
-  ParameterVariant& ParameterVariant::operator=(const PrefabPtr& var)
-  {
-    m_type = VariantType::PrefabPtr;
     AsignVal(var);
     return *this;
   }
@@ -477,18 +468,6 @@ namespace ToolKit
         if (SkeletonPtr sklt = var->GetCVar<SkeletonPtr>())
         {
           sklt->SerializeRef(doc, node);
-        }
-      }
-      break;
-      case VariantType::PrefabPtr:
-      {
-        if (PrefabPtr prfb = var->GetCVar<PrefabPtr>())
-        {
-          String path = prfb->GetPrefabPathVal();
-          if (!path.empty())
-          {
-            WriteAttr(node, doc, XmlParamterValAttr.c_str(), path);
-          }
         }
       }
       break;
@@ -769,7 +748,7 @@ namespace ToolKit
         }
       }
       break;
-      case VariantType::PrefabPtr:
+      case VariantType::PrefabPtr: // Legacy support
       {
         String file;
         ReadAttr(parent, XmlParamterValAttr, file);
@@ -793,15 +772,13 @@ namespace ToolKit
             }
           }
 
-          PrefabPtr prefab = std::make_shared<Prefab>();
-          prefab->SetPrefabPathVal(file);
-          prefab->Load();
-          pVar->m_var = prefab;
+          pVar->m_var = GetSceneManager()->Create<Scene>(file);
         }
         else
         {
-          pVar->m_var = PrefabPtr();
+          pVar->m_var = ScenePtr();
         }
+        pVar->m_type = VariantType::ScenePtr; // Upgrade type
       }
       break;
       case VariantType::ScenePtr:

@@ -103,7 +103,6 @@ namespace ToolKit
                              struct MultiChoiceVariant,
                              TexturePtr,
                              ShaderPtr,
-                             PrefabPtr,
                              ScenePtr>;
 
   /**
@@ -360,11 +359,6 @@ namespace ToolKit
     explicit ParameterVariant(const SkeletonPtr& var);
 
     /**
-     * Constructs PrefabPtr type variant.
-     */
-    explicit ParameterVariant(const PrefabPtr& var);
-
-    /**
      * Constructs ScenePtr type variant.
      */
     explicit ParameterVariant(const ScenePtr& var);
@@ -550,11 +544,6 @@ namespace ToolKit
      * Assign a SkeletonPtr to the value of the variant.
      */
     ParameterVariant& operator=(const SkeletonPtr& var);
-
-    /**
-     * Assign a PrefabPtr to the value of the variant.
-     */
-    ParameterVariant& operator=(const PrefabPtr& var);
 
     /**
      * Assign a ScenePtr to the value of the variant.
