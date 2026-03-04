@@ -18,20 +18,270 @@
 namespace ToolKit
 {
 
-  void TKStats::BeginTimer(StringView name)
+  // Per-Frame Counter (internal)
+  //////////////////////////////////////////
+
+  /** A single per-frame counter with automatic prev/current swap. */
+  struct FrameStat
   {
-    TimeArgs& args = m_profileTimerMap[name.data()];
-    args.beginTime = GetElapsedMilliSeconds();
+    uint64 current = 0;
+    uint64 prev    = 0;
+
+    inline void Increment() { current++; }
+
+    inline void Add(uint64 amount) { current += amount; }
+
+    inline void Swap()
+    {
+      prev    = current;
+      current = 0;
+    }
+  };
+
+  // TKStats Class (internal, opaque to header consumers)
+  //////////////////////////////////////////
+
+  class TKStats
+  {
+   public:
+    // Vram Usage
+    inline uint64 GetTotalVRAMUsageInBytes() { return m_totalVRAMUsageInBytes; }
+
+    inline uint64 GetTotalVRAMUsageInKB() { return m_totalVRAMUsageInBytes / 1024; }
+
+    inline uint64 GetTotalVRAMUsageInMB() { return m_totalVRAMUsageInBytes / (1024 * 1024); }
+
+    inline void AddVRAMUsageInBytes(uint64 bytes) { m_totalVRAMUsageInBytes += bytes; }
+
+    void RemoveVRAMUsageInBytes(uint64 bytes);
+
+    inline void ResetVRAMUsage() { m_totalVRAMUsageInBytes = 0; }
+
+    // Per-Frame Counters
+    inline void IncrementStat(FrameStatType type) { m_frameStats[(int) type].Increment(); }
+
+    inline void AddStat(FrameStatType type, uint64 amount) { m_frameStats[(int) type].Add(amount); }
+
+    inline uint64 GetStatPrev(FrameStatType type) const { return m_frameStats[(int) type].prev; }
+
+    void SwapFrameStats()
+    {
+      for (int i = 0; i < (int) FrameStatType::Count; i++)
+      {
+        m_frameStats[i].Swap();
+      }
+    }
+
+    String GetPerFrameStats();
+
+    // Hierarchical Profiler
+    TKProfiler& GetProfiler() { return m_profiler; }
+
+    // Render Time
+    float m_elapsedGpuRenderTime    = 0.0f;
+    float m_elapsedGpuRenderTimeAvg = 0.0f;
+    float m_elapsedCpuRenderTime    = 0.0f;
+    float m_elapsedCpuRenderTimeAvg = 0.0f;
+
+   private:
+    FrameStat m_frameStats[(int) FrameStatType::Count];
+    uint64 m_totalVRAMUsageInBytes = 0;
+    TKProfiler m_profiler;
+  };
+
+  // TKProfiler Implementation
+  //////////////////////////////////////////
+
+  TKProfiler::TKProfiler() {}
+
+  TKProfiler::~TKProfiler() { Reset(); }
+
+  void TKProfiler::BeginScope(StringView name)
+  {
+    if (!m_enabled)
+    {
+      return;
+    }
+
+    // 1. Search for the node in the current context's children
+    ProfilerNode* node                  = nullptr;
+    const ProfilerNodeArray& searchPool = (m_currentNode == nullptr) ? m_rootNodes : m_currentNode->children;
+
+    for (ProfilerNode* child : searchPool)
+    {
+      if (child->name == name)
+      {
+        node = child;
+        break;
+      }
+    }
+
+    // 2. If not found, create a new node and link it to the tree
+    if (node == nullptr)
+    {
+      node         = new ProfilerNode();
+      node->name   = String(name);
+      node->depth  = (m_currentNode == nullptr) ? 0 : m_currentNode->depth + 1;
+      node->parent = m_currentNode;
+
+      if (m_currentNode == nullptr)
+        m_rootNodes.push_back(node);
+      else
+        m_currentNode->children.push_back(node);
+    }
+
+    // 3. Record start times and snapshot children's time
+    float childrenSum = 0.0f;
+    for (ProfilerNode* child : node->children)
+      childrenSum += child->inclusiveTime;
+
+    node->childrenTimeAtBegin = childrenSum;
+    node->beginTime           = GetElapsedMilliSeconds();
+
+    // Update current context pointer
+    m_currentNode             = node;
   }
 
-  // Finalize a timer updates statistics.
-  void TKStats::EndTimer(StringView name)
+  void TKProfiler::EndScope()
   {
-    TimeArgs& args        = m_profileTimerMap[name.data()];
-    args.elapsedTime      = GetElapsedMilliSeconds() - args.beginTime;
-    args.accumulatedTime += args.elapsedTime;
-    args.hitCount++;
+    if (!m_enabled || m_currentNode == nullptr)
+    {
+      return;
+    }
+
+    float endTime                 = GetElapsedMilliSeconds();
+    float elapsed                 = endTime - m_currentNode->beginTime;
+
+    m_currentNode->inclusiveTime += elapsed;
+    m_currentNode->hitCount++;
+    m_currentNode->accumulatedIncl += elapsed;
+
+    // Calculate exclusive time by subtracting delta of children's inclusive time
+    float childrenTimeNow           = 0.0f;
+    for (ProfilerNode* child : m_currentNode->children)
+    {
+      childrenTimeNow += child->inclusiveTime;
+    }
+
+    float childrenDelta             = childrenTimeNow - m_currentNode->childrenTimeAtBegin;
+    float exclusive                 = elapsed - childrenDelta;
+
+    m_currentNode->exclusiveTime   += exclusive;
+    m_currentNode->accumulatedExcl += exclusive;
+
+    // Move back to parent node without stack operations
+    m_currentNode                   = m_currentNode->parent;
   }
+
+  void TKProfiler::BeginFrame()
+  {
+    if (!m_enabled)
+    {
+      return;
+    }
+
+    m_frameBeginTime = GetElapsedMilliSeconds();
+    // Don't reset here - we reset at EndFrame after swapping values
+  }
+
+  void TKProfiler::EndFrame()
+  {
+    if (!m_enabled)
+    {
+      return;
+    }
+
+    m_frameTime             = GetElapsedMilliSeconds() - m_frameBeginTime;
+    m_accumulatedFrameTime += m_frameTime;
+    m_frameCount++;
+
+    // Swap frame data for all nodes - this preserves values for UI display
+    // and resets current frame values for next frame
+    for (ProfilerNode* root : m_rootNodes)
+    {
+      SwapNodeFrameData(root);
+    }
+  }
+
+  void TKProfiler::Reset()
+  {
+    for (ProfilerNode* root : m_rootNodes)
+    {
+      DeleteNodeRecursive(root);
+    }
+
+    m_rootNodes.clear();
+    m_currentNode          = nullptr;
+    m_frameTime            = 0.0f;
+    m_accumulatedFrameTime = 0.0f;
+    m_frameCount           = 0;
+  }
+
+  void TKProfiler::DeleteNodeRecursive(ProfilerNode* node)
+  {
+    if (node == nullptr)
+    {
+      return;
+    }
+
+    for (ProfilerNode* child : node->children)
+    {
+      DeleteNodeRecursive(child);
+    }
+
+    delete node;
+  }
+
+  void TKProfiler::SwapNodeFrameData(ProfilerNode* node)
+  {
+    if (node == nullptr)
+    {
+      return;
+    }
+
+    node->SwapFrameData();
+
+    for (ProfilerNode* child : node->children)
+    {
+      SwapNodeFrameData(child);
+    }
+  }
+
+  // ProfileScope Implementation
+  //////////////////////////////////////////
+
+  ProfileScope::ProfileScope(StringView name)
+  {
+    if (TKStats* stats = GetTKStats())
+    {
+      if (stats->GetProfiler().IsEnabled())
+      {
+        stats->GetProfiler().BeginScope(name);
+        m_active = true;
+      }
+    }
+  }
+
+  ProfileScope::~ProfileScope()
+  {
+    if (m_active)
+    {
+      if (TKStats* stats = GetTKStats())
+      {
+        stats->GetProfiler().EndScope();
+      }
+    }
+  }
+
+  // TKStats Factory
+  //////////////////////////////////////////
+
+  TKStats* CreateTKStats() { return new TKStats(); }
+
+  void DestroyTKStats(TKStats* stats) { delete stats; }
+
+  // TKStats Implementation
+  //////////////////////////////////////////
 
   void TKStats::RemoveVRAMUsageInBytes(uint64 bytes)
   {
@@ -72,31 +322,37 @@ namespace ToolKit
 
     stats += "----------\n";
 
-    snprintf(buffer, sizeof(buffer), "Total Draw Call: %llu\n", Stats::GetDrawCallCount());
+    snprintf(buffer, sizeof(buffer), "Total Draw Call: %llu\n", Stats::GetStatPrev(FrameStatType::DrawCall));
     stats += buffer;
 
-    snprintf(buffer, sizeof(buffer), "Total Hardware Render Pass: %llu\n", Stats::GetRenderPassCount());
+    snprintf(buffer,
+             sizeof(buffer),
+             "Total Hardware Render Pass ~ %llu\n",
+             Stats::GetStatPrev(FrameStatType::RenderPass));
     stats += buffer;
 
-    snprintf(buffer, sizeof(buffer), "Approximate Total VRAM Usage: %llu MB\n", Stats::GetTotalVRAMUsageInMB());
+    snprintf(buffer, sizeof(buffer), "Total VRAM Usage ~ %llu MB\n", Stats::GetVRAMUsage(MemoryUnit::MB));
     stats += buffer;
 
     snprintf(buffer,
              sizeof(buffer),
              "Light Cache Invalidation Per Frame: %llu\n",
-             Stats::GetLightCacheInvalidationPerFrame());
+             Stats::GetStatPrev(FrameStatType::LightCacheInvalidation));
     stats += buffer;
 
-    snprintf(buffer, sizeof(buffer), "Camera updates Per Frame: %llu\n", Stats::GetCameraUpdatesPerFrame());
+    snprintf(buffer,
+             sizeof(buffer),
+             "Camera updates Per Frame: %llu\n",
+             Stats::GetStatPrev(FrameStatType::CameraUpdate));
     stats += buffer;
 
     snprintf(buffer,
              sizeof(buffer),
              "Directional Light & PVM updates Per Frame: %llu\n",
-             Stats::GetDirectionalLightUpdatesPerFrame());
+             Stats::GetStatPrev(FrameStatType::DirectionalLightUpdate));
     stats += buffer;
 
-    snprintf(buffer, sizeof(buffer), "UBO updates Per Frame: %llu\n", Stats::GetUboUpdatesPerFrame());
+    snprintf(buffer, sizeof(buffer), "UBO updates Per Frame: %llu\n", Stats::GetStatPrev(FrameStatType::UboUpdates));
     stats += buffer;
 
     return stats;
@@ -129,88 +385,53 @@ namespace ToolKit
       }
     }
 
-    void BeginTimeScope(StringView name)
+    void IncrementStat(FrameStatType type)
     {
       if (TKStats* tkStats = GetTKStats())
       {
-        tkStats->BeginTimer(name);
+        tkStats->IncrementStat(type);
       }
     }
 
-    void EndTimeScope(StringView name)
+    void AddStat(FrameStatType type, uint64 amount)
     {
       if (TKStats* tkStats = GetTKStats())
       {
-        tkStats->EndTimer(name);
+        tkStats->AddStat(type, amount);
       }
     }
 
-    uint64 GetLightCacheInvalidationPerFrame()
+    void SwapFrameStats()
     {
       if (TKStats* tkStats = GetTKStats())
       {
-        return tkStats->m_lightCacheInvalidationPerFramePrev;
+        tkStats->SwapFrameStats();
       }
-
-      return 0;
     }
 
-    uint64 GetUboUpdatesPerFrame()
+    uint64 GetStatPrev(FrameStatType type)
     {
       if (TKStats* tkStats = GetTKStats())
       {
-        return tkStats->m_uboUpdatesPerFramePrev;
-      }
-
-      return 0;
-    }
-
-    uint64 GetCameraUpdatesPerFrame()
-    {
-      if (TKStats* tkStats = GetTKStats())
-      {
-        return tkStats->m_cameraUpdatePerFramePrev;
+        return tkStats->GetStatPrev(type);
       }
       return 0;
     }
 
-    uint64 GetDirectionalLightUpdatesPerFrame()
-    {
-
-      if (TKStats* tkStats = GetTKStats())
-      {
-        return tkStats->m_directionalLightUpdatePerFramePrev;
-      }
-      return 0;
-    }
-
-    uint64 GetTotalVRAMUsageInBytes()
+    uint64 GetVRAMUsage(MemoryUnit unit)
     {
       if (TKStats* tkStats = GetTKStats())
       {
-        return tkStats->GetTotalVRAMUsageInBytes();
+        switch (unit)
+        {
+        case MemoryUnit::KB:
+          return tkStats->GetTotalVRAMUsageInKB();
+        case MemoryUnit::MB:
+          return tkStats->GetTotalVRAMUsageInMB();
+        default:
+          return tkStats->GetTotalVRAMUsageInBytes();
+        }
       }
-
-      return 0;
-    }
-
-    uint64 GetTotalVRAMUsageInKB()
-    {
-      if (TKStats* tkStats = GetTKStats())
-      {
-        return tkStats->GetTotalVRAMUsageInKB();
-      }
-
-      return 0;
-    }
-
-    uint64 GetTotalVRAMUsageInMB()
-    {
-      if (TKStats* tkStats = GetTKStats())
-      {
-        return tkStats->GetTotalVRAMUsageInMB();
-      }
-
       return 0;
     }
 
@@ -235,38 +456,6 @@ namespace ToolKit
       if (TKStats* tkStats = GetTKStats())
       {
         tkStats->ResetVRAMUsage();
-      }
-    }
-
-    void AddDrawCall()
-    {
-      if (TKStats* tkStats = GetTKStats())
-      {
-        tkStats->AddDrawCall();
-      }
-    }
-
-    uint64 GetDrawCallCount()
-    {
-      if (TKStats* tkStats = GetTKStats())
-      {
-        return tkStats->GetDrawCallCount();
-      }
-      else
-      {
-        return 0;
-      }
-    }
-
-    uint64 GetRenderPassCount()
-    {
-      if (TKStats* tkStats = GetTKStats())
-      {
-        return tkStats->GetRenderPassCount();
-      }
-      else
-      {
-        return 0;
       }
     }
 
@@ -298,6 +487,106 @@ namespace ToolKit
       }
     }
 
+    void SetRenderTime(float cpu, float gpu)
+    {
+      if (TKStats* tkStats = GetTKStats())
+      {
+        tkStats->m_elapsedCpuRenderTime = cpu;
+        tkStats->m_elapsedGpuRenderTime = gpu;
+      }
+    }
+
+    void SetRenderTimeAvg(float cpu, float gpu)
+    {
+      if (TKStats* tkStats = GetTKStats())
+      {
+        tkStats->m_elapsedCpuRenderTimeAvg = cpu;
+        tkStats->m_elapsedGpuRenderTimeAvg = gpu;
+      }
+    }
+
+    String GetPerFrameStats()
+    {
+      if (TKStats* tkStats = GetTKStats())
+      {
+        return tkStats->GetPerFrameStats();
+      }
+      return "";
+    }
+
   } // namespace Stats
+
+  // Hierarchical Profiler API Implementation
+  //////////////////////////////////////////
+
+  namespace Profiler
+  {
+    void BeginProfileScope(StringView name)
+    {
+      if (TKStats* tkStats = GetTKStats())
+      {
+        tkStats->GetProfiler().BeginScope(name);
+      }
+    }
+
+    void EndProfileScope()
+    {
+      if (TKStats* tkStats = GetTKStats())
+      {
+        tkStats->GetProfiler().EndScope();
+      }
+    }
+
+    void BeginProfileFrame()
+    {
+      if (TKStats* tkStats = GetTKStats())
+      {
+        tkStats->GetProfiler().BeginFrame();
+      }
+    }
+
+    void EndProfileFrame()
+    {
+      if (TKStats* tkStats = GetTKStats())
+      {
+        tkStats->GetProfiler().EndFrame();
+      }
+    }
+
+    void ResetProfiler()
+    {
+      if (TKStats* tkStats = GetTKStats())
+      {
+        tkStats->GetProfiler().Reset();
+      }
+    }
+
+    TKProfiler* GetProfiler()
+    {
+      if (TKStats* tkStats = GetTKStats())
+      {
+        return &tkStats->GetProfiler();
+      }
+      return nullptr;
+    }
+
+    void SetProfilerEnabled(bool enabled)
+    {
+      if (TKStats* tkStats = GetTKStats())
+      {
+        tkStats->GetProfiler().SetEnabled(enabled);
+      }
+    }
+
+    bool IsProfilerEnabled()
+    {
+      if (TKStats* tkStats = GetTKStats())
+      {
+        return tkStats->GetProfiler().IsEnabled();
+      }
+      return false;
+    }
+
+  } // namespace Profiler
 
 } // namespace ToolKit

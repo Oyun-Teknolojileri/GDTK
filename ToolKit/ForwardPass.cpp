@@ -12,6 +12,7 @@
 #include "Mesh.h"
 #include "Pass.h"
 #include "Shader.h"
+#include "Stats.h"
 #include "ToolKit.h"
 
 #include "DebugNew.h"
@@ -34,12 +35,16 @@ namespace ToolKit
 
   void ForwardRenderPass::Render()
   {
+    TK_PROFILE_FUNCTION();
+
     RenderOpaque(m_params.renderData);
     RenderTranslucent(m_params.renderData);
   }
 
   void ForwardRenderPass::PreRender()
   {
+    TK_PROFILE_FUNCTION();
+
     Pass::PreRender();
 
     // Set self data.
@@ -71,6 +76,8 @@ namespace ToolKit
 
   void ForwardRenderPass::PostRender()
   {
+    TK_PROFILE_FUNCTION();
+
     Pass::PostRender();
 
     // Set the default depth test.
@@ -88,6 +95,8 @@ namespace ToolKit
 
   void ForwardRenderPass::RenderOpaque(RenderData* renderData)
   {
+    TK_PROFILE_FUNCTION();
+
     // Adjust program configuration.
     ConfigureProgram();
 
@@ -113,6 +122,8 @@ namespace ToolKit
 
   void ForwardRenderPass::RenderTranslucent(RenderData* renderData)
   {
+    TK_PROFILE_FUNCTION();
+
     ConfigureProgram();
 
     ShaderPtr frag = m_programConfigMat->GetFragmentShaderVal();
@@ -169,6 +180,8 @@ namespace ToolKit
                                              RenderJobItr end,
                                              GpuProgramPtr defaultGpuProgram)
   {
+    TK_PROFILE_FUNCTION();
+
     Renderer* renderer = GetRenderer();
     renderer->SetAmbientOcclusionTexture(m_params.SsaoTexture);
 

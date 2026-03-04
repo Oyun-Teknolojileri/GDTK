@@ -8,6 +8,7 @@
 #include "GammaTonemapFxaaPass.h"
 
 #include "Material.h"
+#include "Stats.h"
 
 #include <DebugNew.h>
 
@@ -23,6 +24,8 @@ namespace ToolKit
 
   void GammaTonemapFxaaPass::PreRender()
   {
+    TK_PROFILE_FUNCTION();
+
     Pass::PreRender();
 
     Renderer* renderer         = GetRenderer();
@@ -48,7 +51,19 @@ namespace ToolKit
     m_quadPass->UpdateUniform(ShaderUniform("gamma", m_params.gamma));
   }
 
-  void GammaTonemapFxaaPass::Render() { RenderSubPass(m_quadPass); }
+  void GammaTonemapFxaaPass::Render()
+  {
+    TK_PROFILE_FUNCTION();
+
+    RenderSubPass(m_quadPass);
+  }
+
+  void GammaTonemapFxaaPass::PostRender()
+  {
+    TK_PROFILE_FUNCTION();
+
+    Pass::PostRender();
+  }
 
   bool GammaTonemapFxaaPass::IsEnabled()
   {

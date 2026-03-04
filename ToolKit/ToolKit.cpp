@@ -80,8 +80,7 @@ namespace ToolKit
     m_logger = new Logger();
     m_logger->Log("Main Constructed");
 
-    m_tkStats = new TKStats();
-    m_tkStats->ResetVRAMUsage();
+    m_tkStats = CreateTKStats();
   }
 
   Main::~Main()
@@ -92,7 +91,8 @@ namespace ToolKit
     assert(m_initiated == false && "Uninitiate before destruct");
     m_proxy = nullptr;
 
-    SafeDel(m_tkStats);
+    DestroyTKStats(m_tkStats);
+    m_tkStats = nullptr;
 
     m_logger->Log("Main Destructed");
     SafeDel(m_logger);
@@ -249,23 +249,10 @@ namespace ToolKit
 
   void Main::FrameBegin()
   {
-    if (TKStats* stats = GetTKStats())
-    {
-      stats->m_drawCallCountPrev                     = stats->m_drawCallCount;
-      stats->m_drawCallCount                         = 0;
-      stats->m_renderPassCountPrev                   = stats->m_renderPassCount;
-      stats->m_renderPassCount                       = 0;
-      stats->m_lightCacheInvalidationPerFramePrev    = stats->m_lightCacheInvalidationPerFrame;
-      stats->m_lightCacheInvalidationPerFrame        = 0;
-      stats->m_materialCacheInvalidationPerFramePrev = stats->m_materialCacheInvalidationPerFrame;
-      stats->m_materialCacheInvalidationPerFrame     = 0;
-      stats->m_uboUpdatesPerFramePrev                = stats->m_uboUpdatesPerFrame;
-      stats->m_uboUpdatesPerFrame                    = 0;
-      stats->m_cameraUpdatePerFramePrev              = stats->m_cameraUpdatePerFrame;
-      stats->m_cameraUpdatePerFrame                  = 0;
-      stats->m_directionalLightUpdatePerFramePrev    = stats->m_directionalLightUpdatePerFrame;
-      stats->m_directionalLightUpdatePerFrame        = 0;
-    }
+    // Begin profiler frame.
+    Profiler::BeginProfileFrame();
+
+    Stats::SwapFrameStats();
 
     GetRenderSystem()->StartFrame();
   }
@@ -303,15 +290,8 @@ namespace ToolKit
     m_timing.LastTime = m_timing.CurrentTime;
     GetRenderSystem()->EndFrame();
 
-    // Display stat times.
-    for (auto& timeStat : TKStatTimerMap)
-    {
-      TKStats::TimeArgs& args = timeStat.second;
-      if (args.enabled)
-      {
-        TK_LOG("%s avg t: %f -- t: %f", timeStat.first.data(), args.accumulatedTime / args.hitCount, args.elapsedTime);
-      }
-    }
+    // End profiler frame.
+    Profiler::EndProfileFrame();
   }
 
   void Main::Frame(float deltaTime)

@@ -30,6 +30,8 @@ namespace ToolKit
 
   void BloomPass::Render()
   {
+    TK_PROFILE_FUNCTION();
+
     RenderTargetPtr mainRt = m_params.FrameBuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
     mainRt                 = Cast<RenderTarget>(mainRt->GetResolvedTexture());
 
@@ -144,6 +146,8 @@ namespace ToolKit
 
   void BloomPass::PreRender()
   {
+    TK_PROFILE_FUNCTION();
+
     Pass::PreRender();
 
     RenderTargetPtr mainRt = m_params.FrameBuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
@@ -221,6 +225,11 @@ namespace ToolKit
     m_currentIterationCount = iterationCount;
   }
 
-  void BloomPass::PostRender() { Pass::PostRender(); }
+  void BloomPass::PostRender()
+  {
+    TK_PROFILE_FUNCTION();
+
+    Pass::PostRender();
+  }
 
 } // namespace ToolKit
