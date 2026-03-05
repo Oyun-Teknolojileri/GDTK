@@ -13,38 +13,6 @@ project (${GAME_PROJECT_NAME})
 string(TOLOWER ${CMAKE_CXX_COMPILER_ID} TK_COMPILER)
 message("Compiling ${GAME_PROJECT_NAME} with ${TK_COMPILER} for platform ${TK_PLATFORM} with configuration ${TK_BUILD_TYPE}")
 
-# Dynamically discover plugins
-set(PLUGIN_INCLUDES "")
-set(PLUGIN_BIN_DIRS "")
-set(PLUGIN_LIBRARIES "")
-
-file(GLOB POTENTIAL_PLUGINS LIST_DIRECTORIES true "${GAME_CODE_DIR}/../Plugins/*")
-foreach(PLUGIN_DIR ${POTENTIAL_PLUGINS})
-    if(IS_DIRECTORY "${PLUGIN_DIR}/Codes")
-        get_filename_component(PLUGIN_NAME "${PLUGIN_DIR}" NAME)
-        message(STATUS "Integrating Plugin: ${PLUGIN_NAME}")
-        
-        # Include paths
-        list(APPEND PLUGIN_INCLUDES "${PLUGIN_DIR}/Codes")
-        # Handle embedded dependencies dynamically
-        file(GLOB_RECURSE PLUGIN_SUBDIRS LIST_DIRECTORIES true "${PLUGIN_DIR}/Codes/*")
-        foreach(SUBDIR ${PLUGIN_SUBDIRS})
-            if(IS_DIRECTORY "${SUBDIR}")
-                # If directory is named 'include' or similar, we might want to add it.
-                if(SUBDIR MATCHES ".*/include$")
-                    list(APPEND PLUGIN_INCLUDES "${SUBDIR}")
-                endif()
-            endif()
-        endforeach()
-        
-        # Link paths
-        list(APPEND PLUGIN_BIN_DIRS "${PLUGIN_DIR}/Codes/Bin")
-        
-        # Library names
-        list(APPEND PLUGIN_LIBRARIES "${PLUGIN_NAME}$<$<CONFIG:Debug>:d>")
-    endif()
-endforeach()
-
 # Add include directories for ToolKit.
 include_directories(
     "${TOOLKIT_DIR}"
@@ -57,8 +25,7 @@ include_directories(
     "${TOOLKIT_DIR}/Dependency/stb"
     "${TOOLKIT_DIR}/Dependency/minizip-ng/dist/include"
     "${TOOLKIT_DIR}/Dependency/tkimgui"
-    "${GAME_CODE_DIR}"
-    ${PLUGIN_INCLUDES})
+    "${GAME_CODE_DIR}")
 
 ###############################
 # Project Source Files Begin. #
@@ -152,14 +119,8 @@ if ("${TK_PLATFORM}" STREQUAL "${TK_WINDOWS}")
     
     target_link_directories(${GAME_PROJECT_NAME} PRIVATE ${TK_DEPENDECY_OUT_DIR})
     target_link_directories(${GAME_PROJECT_NAME} PRIVATE ${TK_OUT_DIR})
-    if (PLUGIN_BIN_DIRS)
-        target_link_directories(${GAME_PROJECT_NAME} PRIVATE ${PLUGIN_BIN_DIRS})
-    endif()
 
     target_link_libraries(${GAME_PROJECT_NAME} PRIVATE OpenGL32 ${sdl2} ${sdl2main} ${minizip} ${zstd} ToolKit)
-    if (PLUGIN_LIBRARIES)
-        target_link_libraries(${GAME_PROJECT_NAME} PRIVATE ${PLUGIN_LIBRARIES})
-    endif()
 endif()
 
 # Plugin build for editor.
@@ -168,14 +129,8 @@ if (${PLUGIN_BUILD})
     add_library(${GAME_PROJECT_NAME} SHARED ${SOURCE} ${HEADERS}) # Plugin must be a dll.
 
     target_link_directories(${GAME_PROJECT_NAME} PRIVATE "${TOOLKIT_DIR}/Bin")
-    if (PLUGIN_BIN_DIRS)
-        target_link_directories(${GAME_PROJECT_NAME} PRIVATE ${PLUGIN_BIN_DIRS})
-    endif()
 
     target_link_libraries(${GAME_PROJECT_NAME} PRIVATE ${toolkit})
-    if (PLUGIN_LIBRARIES)
-        target_link_libraries(${GAME_PROJECT_NAME} PRIVATE ${PLUGIN_LIBRARIES})
-    endif()
     target_compile_definitions(${GAME_PROJECT_NAME} PRIVATE TK_WITH_EDITOR TK_DLL_IMPORT)
 endif()
 
