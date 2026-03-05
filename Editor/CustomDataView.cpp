@@ -738,6 +738,37 @@ namespace ToolKit
         ImGui::BeginDisabled(!var->m_editable);
       }
       break;
+
+      case ParameterVariant::VariantType::ScenePtr:
+      {
+        ScenePtr mref = var->GetVar<ScenePtr>();
+        String file, id;
+        if (mref)
+        {
+          id   = std::to_string(mref->GetIdVal());
+          file = mref->GetFile();
+        }
+
+        ImGui::EndDisabled();
+        DropSubZone(
+            var->m_name + "##" + id,
+            static_cast<uint>(UI::m_sceneIcon->m_textureId),
+            file.empty() ? "##Empty" : file,
+            [&var](const DirectoryEntry& entry) -> void
+            {
+              if (entry.m_ext == SCENE)
+              {
+                *var = GetSceneManager()->Create<Scene>(entry.GetFullPath());
+              }
+              else
+              {
+                TK_ERR("Only Scene (.scene) files are accepted.");
+              }
+            },
+            var->m_editable);
+        ImGui::BeginDisabled(!var->m_editable);
+      }
+      break;
       case ParameterVariant::VariantType::AnimRecordPtrMap:
       {
         ComponentView::ShowAnimControllerComponent(var, comp);

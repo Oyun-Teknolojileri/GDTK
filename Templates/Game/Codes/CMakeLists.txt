@@ -119,6 +119,7 @@ if ("${TK_PLATFORM}" STREQUAL "${TK_WINDOWS}")
     
     target_link_directories(${GAME_PROJECT_NAME} PRIVATE ${TK_DEPENDECY_OUT_DIR})
     target_link_directories(${GAME_PROJECT_NAME} PRIVATE ${TK_OUT_DIR})
+
     target_link_libraries(${GAME_PROJECT_NAME} PRIVATE OpenGL32 ${sdl2} ${sdl2main} ${minizip} ${zstd} ToolKit)
 endif()
 
@@ -128,6 +129,7 @@ if (${PLUGIN_BUILD})
     add_library(${GAME_PROJECT_NAME} SHARED ${SOURCE} ${HEADERS}) # Plugin must be a dll.
 
     target_link_directories(${GAME_PROJECT_NAME} PRIVATE "${TOOLKIT_DIR}/Bin")
+
     target_link_libraries(${GAME_PROJECT_NAME} PRIVATE ${toolkit})
     target_compile_definitions(${GAME_PROJECT_NAME} PRIVATE TK_WITH_EDITOR TK_DLL_IMPORT)
 endif()

@@ -44,6 +44,7 @@ namespace ToolKit
 
   // Setup.
   const char* g_appName                     = "ToolKit";
+
   const uint g_targetFps                    = 120;
 
   void ProcessEvent(const SDL_Event& e)
@@ -162,6 +163,7 @@ namespace ToolKit
 
       // Initiate splash screen drawing.
       static bool showSplashScreen                    = true;
+
       static float elapsedTime                        = 0.0f;
       static SplashScreenRenderPathPtr splashRenderer = nullptr;
 
@@ -247,6 +249,7 @@ namespace ToolKit
 
       g_sdlEventPool->ClearPool(); // Clear after consumption.
     };
+
     g_proxy->RegisterPostUpdateFunction(postUpdateFn);
   }
 
@@ -259,6 +262,7 @@ namespace ToolKit
     SafeDel(g_proxy);
 
     SafeDel(g_sdlEventPool);
+
     SDL_DestroyWindow(g_window);
     SDL_Quit();
 
@@ -278,6 +282,7 @@ namespace ToolKit
   int ToolKit_Main(int argc, char* argv[])
   {
     PreInit();
+
     Init();
 
     PlatformMainLoop(&g_running, TK_Loop);
