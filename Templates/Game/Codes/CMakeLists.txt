@@ -14,7 +14,7 @@ string(TOLOWER ${CMAKE_CXX_COMPILER_ID} TK_COMPILER)
 message("Compiling ${GAME_PROJECT_NAME} with ${TK_COMPILER} for platform ${TK_PLATFORM} with configuration ${TK_BUILD_TYPE}")
 
 set(TK_GAME_PLUGINS
-    ""
+    # "PluginFolderName"
 )
 
 # Resolve and include declared plugins.
