@@ -19,14 +19,16 @@ set(TK_GAME_PLUGINS
 
 # Resolve and include declared plugins.
 set(PLUGIN_LIBRARIES "")
+set(PLUGIN_INCLUDE_DIRS "")
 set(PLUGINS_DIR "${GAME_CODE_DIR}/../Plugins")
+get_filename_component(PLUGINS_DIR "${PLUGINS_DIR}" ABSOLUTE)
 
 foreach(PLUGIN_NAME ${TK_GAME_PLUGINS})
     set(PLUGIN_DIR "${PLUGINS_DIR}/${PLUGIN_NAME}")
     if(IS_DIRECTORY "${PLUGIN_DIR}/Codes")
         message(STATUS "Including Plugin: ${PLUGIN_NAME}")
-        add_subdirectory("${PLUGIN_DIR}/Codes" "${CMAKE_BINARY_DIR}/Plugins/${PLUGIN_NAME}")
-        list(APPEND PLUGIN_LIBRARIES "${PLUGIN_NAME}")
+        list(APPEND PLUGIN_INCLUDE_DIRS "${PLUGIN_DIR}/Codes")
+        list(APPEND PLUGIN_LIBRARIES "${PLUGIN_DIR}/Codes/Bin/${PLUGIN_NAME}$<$<CONFIG:Debug>:d>.lib")
     else()
         message(WARNING "Plugin '${PLUGIN_NAME}' not found at '${PLUGIN_DIR}/Codes'. Skipping.")
     endif()
@@ -44,7 +46,8 @@ include_directories(
     "${TOOLKIT_DIR}/Dependency/stb"
     "${TOOLKIT_DIR}/Dependency/minizip-ng/dist/include"
     "${TOOLKIT_DIR}/Dependency/tkimgui"
-    "${GAME_CODE_DIR}")
+    "${GAME_CODE_DIR}"
+    ${PLUGIN_INCLUDE_DIRS})
 
 ###############################
 # Project Source Files Begin. #
