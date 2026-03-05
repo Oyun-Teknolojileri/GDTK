@@ -27,17 +27,19 @@
 	void main()
 	{
 		v_texture = vTexture;
+		v_normal  = vNormal;
+		v_bitan   = vBiTan;
+
 		vec4 skinnedVPos = vec4(vPosition, 1.0);
-			
-		if(isSkinned > 0u){
+
+		if (isSkinned > 0u)
+		{
 			skin(skinnedVPos, skinnedVPos);
 		}
-	
-		v_pos = (camera.view * model * skinnedVPos) / camera.farPlane;
-		gl_Position = camera.projectionView * model * skinnedVPos;
-	
-		v_normal = vNormal;
-		v_bitan = vBiTan;
+
+		vec4 worldPos = model * skinnedVPos;
+		v_pos         = (camera.view * worldPos) / camera.farPlane;
+		gl_Position   = camera.projectionView * worldPos;
 	}
 	-->
 	</source>
