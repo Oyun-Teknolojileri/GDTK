@@ -625,9 +625,6 @@
     <None Include="..\Resources\Engine\Shaders\orthogonalDepthVert.shader">
       <Filter>Render\Shaders</Filter>
     </None>
-    <None Include="..\Resources\Engine\Shaders\orthogonalDepthViewFrag.shader">
-      <Filter>Render\Shaders</Filter>
-    </None>
     <None Include="..\Resources\Engine\Shaders\orthogonalDepthViewVert.shader">
       <Filter>Render\Shaders</Filter>
     </None>
@@ -638,9 +635,6 @@
       <Filter>Render\Shaders</Filter>
     </None>
     <None Include="..\Resources\Engine\Shaders\perspectiveDepthVert.shader">
-      <Filter>Render\Shaders</Filter>
-    </None>
-    <None Include="..\Resources\Engine\Shaders\perspectiveDepthViewFrag.shader">
       <Filter>Render\Shaders</Filter>
     </None>
     <None Include="..\Resources\Engine\Shaders\positionVert.shader">
