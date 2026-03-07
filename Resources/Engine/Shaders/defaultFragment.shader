@@ -4,6 +4,7 @@
 	<include name = "ibl.shader" />
 	<include name = "AO.shader" />
 	<include name = "cameraDataInc.shader" />
+	<include name = "materialCacheInc.shader" />
 	<include name = "drawDataInc.shader" />
 	<define name = "DrawAlphaMasked" val="0,1" />
 	<source>

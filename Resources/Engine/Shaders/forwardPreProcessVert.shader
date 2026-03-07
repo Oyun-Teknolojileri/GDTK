@@ -2,6 +2,7 @@
   <type name = "vertexShader" />
   <include name = "skinning.shader" />
 	<include name = "cameraDataInc.shader" />
+    <include name = "materialCacheInc.shader" />
 	<include name = "drawDataInc.shader" />
     <uniform name = "model" />
     <uniform name = "inverseTransposeModel" />

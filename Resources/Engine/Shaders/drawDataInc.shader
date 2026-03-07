@@ -1,6 +1,5 @@
 <shader>
 	<type name = "includeShader" />
-	<include name = "materialCacheInc.shader" />
 	<uniform name = "drawCommand" size = "2" />
 	<source>
 	<!--
