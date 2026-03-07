@@ -63,7 +63,7 @@ float PCFFilterShadow2D
     // Below is randomized sample which causes noise rather than banding.
     // Use di for sampling the disk to see the effect.
     // int di = int(127.0 * Random( vec4( gl_FragCoord.xyy, float(i) ) )) % 127;
-		vec2 offset = PoissonDisk[i].xy * radius;
+		vec2 offset = PoissonDisk[i % 16].xy * radius;
 
 		vec3 texCoord = uvLayer;
 		texCoord.xy = ClampTextureCoordinates(uvLayer.xy + offset, coordStart, coordEnd);
@@ -122,7 +122,7 @@ float PCFFilterOmni
     // Below is randomized sample which causes noise rather than banding.
     // Use di for sampling the disk to see the effect.
     // int di = int(127.0 * Random( vec4( gl_FragCoord.xyy, float(i) ) )) % 127;
-		vec3 offset = PoissonDisk[i] * radius;
+		vec3 offset = PoissonDisk[i % 16] * radius;
 
     // Adhoc coefficient 50.0
     // If offset applied to texCoord, wrong face may be sampled due to bleeding.

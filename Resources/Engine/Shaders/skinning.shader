@@ -38,190 +38,211 @@ uniform float blendKeyFrameCount;
 uniform sampler2D s_texture2; // Blend animation data texture
 uniform sampler2D s_texture3; // Animation data texture
 
-mat4 getMatrixFromTexture(sampler2D animDataTexture, float boneIndx, float keyframe, float stepX, vec2 centerOffset)
+// Precomputed texture lookup constants to avoid redundant math per bone.
+struct SkinLookup
 {
-  float matrixPos = boneIndx / numBones;
+  float stepX;
+  vec2 centerOffset;
+};
 
-  return mat4(texture(animDataTexture, vec2(matrixPos,              keyframe) + centerOffset),
-              texture(animDataTexture, vec2(matrixPos + stepX,      keyframe) + centerOffset),
-              texture(animDataTexture, vec2(matrixPos + stepX*2.0,  keyframe) + centerOffset),
-              texture(animDataTexture, vec2(matrixPos + stepX*3.0,  keyframe) + centerOffset));
+SkinLookup buildSkinLookup(float boneCount, float frameCount)
+{
+  SkinLookup lk;
+  lk.stepX = 1.0 / (boneCount * 4.0);
+  lk.centerOffset = vec2(lk.stepX * 0.5, 0.5 / frameCount);
+  return lk;
 }
 
-void skinCalc(in sampler2D animDataTexture, vec4 keyFramesData, in vec4 vertexPos, out vec4 skinnedPos)
+mat4 getMatrixFromTexture(sampler2D tex, float boneIdx, float keyframe, const SkinLookup lk)
 {
-  skinnedPos = vec4(0.0);
+  float u = boneIdx / numBones + lk.centerOffset.x;
+  float v = keyframe + lk.centerOffset.y;
+  float s = lk.stepX;
 
-  float stepX      = 1.0 / (numBones * 4.0);
-  vec2 centerOffset = vec2(stepX * 0.5, 1.0 / (keyFramesData.w * 2.0));
+  return mat4(
+    texture(tex, vec2(u,           v)),
+    texture(tex, vec2(u + s,       v)),
+    texture(tex, vec2(u + s + s,   v)),
+    texture(tex, vec2(u + s + s + s, v))
+  );
+}
+
+// Column-wise linear interpolation for mat4 (mix() does not support mat4 in GLSL ES).
+mat4 lerpMat4(mat4 a, mat4 b, float t)
+{
+  return mat4(
+    mix(a[0], b[0], t),
+    mix(a[1], b[1], t),
+    mix(a[2], b[2], t),
+    mix(a[3], b[3], t)
+  );
+}
+
+// -- Position-only skinning ------------------------------------------
+
+void skinCalc(in sampler2D tex, vec4 kd, in vec4 vtx, out vec4 dst)
+{
+  dst = vec4(0.0);
+  SkinLookup lk = buildSkinLookup(numBones, kd.w);
 
   if (isAnimated == 0u)
   {
     for (int i = 0; i < 4; i++)
     {
-      mat4 bindPoseMatrix = getMatrixFromTexture(animDataTexture, vBones[i], 0.5, stepX, centerOffset);
-      skinnedPos += bindPoseMatrix * vertexPos * vWeights[i];
+      float w = vWeights[i];
+      if (w < 0.001) continue; // Skip zero-weight bones — saves up to 4 texture fetches each
+      dst += getMatrixFromTexture(tex, vBones[i], 0.5, lk) * vtx * w;
     }
   }
   else
   {
     for (int i = 0; i < 4; i++)
     {
-      mat4 kf1Mat = getMatrixFromTexture(animDataTexture, vBones[i], keyFramesData.x, stepX, centerOffset);
-      mat4 kf2Mat = getMatrixFromTexture(animDataTexture, vBones[i], keyFramesData.y, stepX, centerOffset);
+      float w = vWeights[i];
+      if (w < 0.001) continue;
 
-      skinnedPos += (kf1Mat + (kf2Mat - kf1Mat) * keyFramesData.z) * vertexPos * vWeights[i];
+      dst += lerpMat4(
+        getMatrixFromTexture(tex, vBones[i], kd.x, lk),
+        getMatrixFromTexture(tex, vBones[i], kd.y, lk),
+        kd.z
+      ) * vtx * w;
     }
   }
 }
 
-void skinCalc
-(
-  in sampler2D animDataTexture,
-  vec4 keyFramesData,
-  in vec4 vertexPos,
-  in vec3 vertexNormal,
-  out vec4 skinnedPos,
-  out vec3 skinnedNormal
-)
-{
-  skinnedPos    = vec4(0.0);
-  skinnedNormal = vec3(0.0);
+// -- Position + Normal skinning --------------------------------------
 
-  float stepX       = 1.0 / (numBones * 4.0);
-  vec2 centerOffset = vec2(stepX * 0.5, 1.0 / (keyFramesData.w * 2.0));
+void skinCalc(in sampler2D tex, vec4 kd, in vec4 vtx, in vec3 nrm,
+              out vec4 dstPos, out vec3 dstNrm)
+{
+  dstPos = vec4(0.0);
+  dstNrm = vec3(0.0);
+  SkinLookup lk = buildSkinLookup(numBones, kd.w);
 
   if (isAnimated == 0u)
   {
     for (int i = 0; i < 4; i++)
     {
-      mat4 bindPoseMatrix  = getMatrixFromTexture(animDataTexture, vBones[i], 0.5, stepX, centerOffset);
-      float w              = vWeights[i];
-      skinnedPos          += bindPoseMatrix * vertexPos * w;
-      skinnedNormal       += mat3(bindPoseMatrix) * vertexNormal * w;
+      float w = vWeights[i];
+      if (w < 0.001) continue;
+
+      mat4 m = getMatrixFromTexture(tex, vBones[i], 0.5, lk);
+      dstPos += m * vtx * w;
+      dstNrm += mat3(m) * nrm * w;
     }
   }
   else
   {
     for (int i = 0; i < 4; i++)
     {
-      mat4 kf1Mat  = getMatrixFromTexture(animDataTexture, vBones[i], keyFramesData.x, stepX, centerOffset);
-      mat4 kf2Mat  = getMatrixFromTexture(animDataTexture, vBones[i], keyFramesData.y, stepX, centerOffset);
-      float w      = vWeights[i];
+      float w = vWeights[i];
+      if (w < 0.001) continue;
 
-      mat4 blendedMat  = kf1Mat + (kf2Mat - kf1Mat) * keyFramesData.z;
-      mat3 blendedMat3 = mat3(blendedMat);
-
-      skinnedPos    += blendedMat  * vertexPos    * w;
-      skinnedNormal += blendedMat3 * vertexNormal * w;
+      mat4 m = lerpMat4(
+        getMatrixFromTexture(tex, vBones[i], kd.x, lk),
+        getMatrixFromTexture(tex, vBones[i], kd.y, lk),
+        kd.z
+      );
+      dstPos += m * vtx * w;
+      dstNrm += mat3(m) * nrm * w;
     }
   }
-  skinnedNormal = normalize(skinnedNormal);
+  dstNrm = normalize(dstNrm);
 }
 
-void skinCalc
-(
-  in sampler2D animDataTexture,
-  vec4 keyFramesData,
-  in vec4 vertexPos,
-  in vec3 vertexNormal,
-  in vec3 vertexBiTangent,
-  out vec4 skinnedPos,
-  out vec3 skinnedNormal,
-  out vec3 skinnedBiTangent
-)
-{
-  skinnedPos       = vec4(0.0);
-  skinnedNormal    = vec3(0.0);
-  skinnedBiTangent = vec3(0.0);
+// -- Position + Normal + BiTangent skinning --------------------------
 
-  float stepX       = 1.0 / (numBones * 4.0);
-  vec2 centerOffset = vec2(stepX * 0.5, 1.0 / (keyFramesData.w * 2.0));
+void skinCalc(in sampler2D tex, vec4 kd, in vec4 vtx, in vec3 nrm, in vec3 biTan,
+              out vec4 dstPos, out vec3 dstNrm, out vec3 dstBiTan)
+{
+  dstPos   = vec4(0.0);
+  dstNrm   = vec3(0.0);
+  dstBiTan = vec3(0.0);
+  SkinLookup lk = buildSkinLookup(numBones, kd.w);
 
   if (isAnimated == 0u)
   {
     for (int i = 0; i < 4; i++)
     {
-      mat4 bindPoseMatrix   = getMatrixFromTexture(animDataTexture, vBones[i], 0.5, stepX, centerOffset);
-      mat3 bindPoseMatrix3  = mat3(bindPoseMatrix);
-      float w               = vWeights[i];
-      skinnedPos           += bindPoseMatrix  * vertexPos       * w;
-      skinnedNormal        += bindPoseMatrix3 * vertexNormal    * w;
-      skinnedBiTangent     += bindPoseMatrix3 * vertexBiTangent * w;
+      float w = vWeights[i];
+      if (w < 0.001) continue;
+
+      mat4 m  = getMatrixFromTexture(tex, vBones[i], 0.5, lk);
+      mat3 m3 = mat3(m);
+      dstPos   += m  * vtx   * w;
+      dstNrm   += m3 * nrm   * w;
+      dstBiTan += m3 * biTan * w;
     }
   }
   else
   {
     for (int i = 0; i < 4; i++)
     {
-      mat4 kf1Mat  = getMatrixFromTexture(animDataTexture, vBones[i], keyFramesData.x, stepX, centerOffset);
-      mat4 kf2Mat  = getMatrixFromTexture(animDataTexture, vBones[i], keyFramesData.y, stepX, centerOffset);
-      float w      = vWeights[i];
+      float w = vWeights[i];
+      if (w < 0.001) continue;
 
-      mat4 blendedMat  = kf1Mat + (kf2Mat - kf1Mat) * keyFramesData.z;
-      mat3 blendedMat3 = mat3(blendedMat);
-
-      skinnedPos       += blendedMat  * vertexPos       * w;
-      skinnedNormal    += blendedMat3 * vertexNormal     * w;
-      skinnedBiTangent += blendedMat3 * vertexBiTangent  * w;
+      mat4 m = lerpMat4(
+        getMatrixFromTexture(tex, vBones[i], kd.x, lk),
+        getMatrixFromTexture(tex, vBones[i], kd.y, lk),
+        kd.z
+      );
+      mat3 m3 = mat3(m);
+      dstPos   += m  * vtx   * w;
+      dstNrm   += m3 * nrm   * w;
+      dstBiTan += m3 * biTan * w;
     }
   }
-  skinnedNormal    = normalize(skinnedNormal);
-  skinnedBiTangent = normalize(skinnedBiTangent);
+  dstNrm   = normalize(dstNrm);
+  dstBiTan = normalize(dstBiTan);
 }
+
+// -- skin() entry points (unchanged signatures) ---------------------
 
 void skin(in vec4 vertexPos, out vec4 skinnedPos)
 {
-  skinCalc(s_texture3, vec4(keyFrame1, keyFrame2, keyFrameIntepolationTime, keyFrameCount), vertexPos, skinnedPos);
+  skinCalc(s_texture3, vec4(keyFrame1, keyFrame2, keyFrameIntepolationTime, keyFrameCount),
+           vertexPos, skinnedPos);
 
   if (blendAnimation != 0)
   {
-    vec4 blendingAnimSkinnedPos;
+    vec4 blendResult;
     skinCalc(s_texture2, vec4(blendKeyFrame1, blendKeyFrame2, blendKeyFrameIntepolationTime, blendKeyFrameCount),
-      vertexPos, blendingAnimSkinnedPos);
-    skinnedPos = mix(skinnedPos, blendingAnimSkinnedPos, blendFactor);
+             vertexPos, blendResult);
+    skinnedPos = mix(skinnedPos, blendResult, blendFactor);
   }
 }
 
 void skin(in vec4 vertexPos, in vec3 vertexNormal, out vec4 skinnedPos, out vec3 skinnedNormal)
 {
   skinCalc(s_texture3, vec4(keyFrame1, keyFrame2, keyFrameIntepolationTime, keyFrameCount),
-    vertexPos, vertexNormal, skinnedPos, skinnedNormal);
+           vertexPos, vertexNormal, skinnedPos, skinnedNormal);
 
   if (blendAnimation != 0)
   {
-    vec4 blendingAnimSkinnedPos;
-    vec3 blendingAnimNormal;
+    vec4 bPos;
+    vec3 bNrm;
     skinCalc(s_texture2, vec4(blendKeyFrame1, blendKeyFrame2, blendKeyFrameIntepolationTime, blendKeyFrameCount),
-      vertexPos, vertexNormal, blendingAnimSkinnedPos, blendingAnimNormal);
-    skinnedPos    = mix(skinnedPos, blendingAnimSkinnedPos, blendFactor);
-    skinnedNormal = normalize(mix(skinnedNormal, blendingAnimNormal, blendFactor));
+             vertexPos, vertexNormal, bPos, bNrm);
+    skinnedPos    = mix(skinnedPos, bPos, blendFactor);
+    skinnedNormal = normalize(mix(skinnedNormal, bNrm, blendFactor));
   }
 }
 
-void skin
-(
-  in vec4 vertexPos,
-  in vec3 vertexNormal,
-  in vec3 vertexBiTangent,
-  out vec4 skinnedPos,
-  out vec3 skinnedNormal,
-  out vec3 skinnedBiTangent
-)
+void skin(in vec4 vertexPos, in vec3 vertexNormal, in vec3 vertexBiTangent,
+          out vec4 skinnedPos, out vec3 skinnedNormal, out vec3 skinnedBiTangent)
 {
   skinCalc(s_texture3, vec4(keyFrame1, keyFrame2, keyFrameIntepolationTime, keyFrameCount),
-    vertexPos, vertexNormal, vertexBiTangent, skinnedPos, skinnedNormal, skinnedBiTangent);
+           vertexPos, vertexNormal, vertexBiTangent, skinnedPos, skinnedNormal, skinnedBiTangent);
 
   if (blendAnimation != 0)
   {
-    vec4 blendingAnimSkinnedPos;
-    vec3 blendingAnimNormal;
-    vec3 blendingBiTangent;
+    vec4 bPos;
+    vec3 bNrm, bBiTan;
     skinCalc(s_texture2, vec4(blendKeyFrame1, blendKeyFrame2, blendKeyFrameIntepolationTime, blendKeyFrameCount),
-      vertexPos, vertexNormal, vertexBiTangent, blendingAnimSkinnedPos, blendingAnimNormal, blendingBiTangent);
-    skinnedPos       = mix(skinnedPos, blendingAnimSkinnedPos, blendFactor);
-    skinnedNormal    = normalize(mix(skinnedNormal, blendingAnimNormal, blendFactor));
-    skinnedBiTangent = normalize(mix(skinnedBiTangent, blendingBiTangent, blendFactor));
+             vertexPos, vertexNormal, vertexBiTangent, bPos, bNrm, bBiTan);
+    skinnedPos       = mix(skinnedPos, bPos, blendFactor);
+    skinnedNormal    = normalize(mix(skinnedNormal, bNrm, blendFactor));
+    skinnedBiTangent = normalize(mix(skinnedBiTangent, bBiTan, blendFactor));
   }
 }
 

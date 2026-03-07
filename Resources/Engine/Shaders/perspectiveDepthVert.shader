@@ -17,29 +17,25 @@
 	layout (location = 3) in vec3 vBiTan;
 
 	out vec4 v_pos;
-	out vec3 v_normal;
 	out vec2 v_texture;
-	out vec3 v_bitan;
 
 	uniform mat4 model;
 	uniform float Far;
 
 	void main()
 	{
-		v_texture = vTexture;
-		v_normal  = vNormal;
-		v_bitan   = vBiTan;
+			v_texture = vTexture;
 
-		vec4 skinnedVPos = vec4(vPosition, 1.0);
+			vec4 skinnedVPos = vec4(vPosition, 1.0);
 
-		if (isSkinned > 0u)
-		{
-			skin(skinnedVPos, skinnedVPos);
-		}
+			if (isSkinned > 0u)
+			{
+					skin(skinnedVPos, skinnedVPos);
+			}
 
-		vec4 worldPos = model * skinnedVPos;
-		v_pos         = (camera.view * worldPos) / camera.farPlane;
-		gl_Position   = camera.projectionView * worldPos;
+			vec4 worldPos = model * skinnedVPos;
+			v_pos       = (camera.view * worldPos) * (1.0 / camera.farPlane);
+			gl_Position = camera.projectionView * worldPos;
 	}
 	-->
 	</source>
