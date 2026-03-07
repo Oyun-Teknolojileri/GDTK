@@ -25,7 +25,7 @@
       v_texture = vTexture;
       vec4 skinnedVPos = vec4(vPosition, 1.0);
 
-      if (isSkinned > 0u)
+      if (isSkinned)
       {
         skin(skinnedVPos, skinnedVPos);
       }

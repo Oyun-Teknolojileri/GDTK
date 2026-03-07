@@ -264,22 +264,26 @@ namespace ToolKit
 
     auto activateSkinning = [&](const Mesh* mesh)
     {
-      GLint isSkinnedLoc = m_currentProgram->GetDefaultUniformLocation(Uniform::IS_SKINNED);
-      bool isSkinned     = mesh->IsSkinned();
+      GLint skinParamsLoc = m_currentProgram->GetDefaultUniformLocation(Uniform::SKIN_PARAMS);
+      if (skinParamsLoc == -1)
+      {
+        return;
+      }
+
+      bool isSkinned = mesh->IsSkinned();
       if (isSkinned)
       {
         SkeletonPtr skel = static_cast<SkinMesh*>(job.Mesh)->m_skeleton;
         assert(skel != nullptr);
 
-        GLint numBonesLoc = m_currentProgram->GetDefaultUniformLocation(Uniform::NUM_BONES);
-        glUniform1ui(isSkinnedLoc, 1);
-
-        GLuint boneCount = (GLuint) skel->m_bones.size();
-        glUniform1f(numBonesLoc, (float) boneCount);
+        float boneCount   = (float) skel->m_bones.size();
+        float isAnimated  = (job.animData.currentAnimation != nullptr) ? 1.0f : 0.0f;
+        float hasBlend    = (job.animData.blendAnimation != nullptr) ? 1.0f : 0.0f;
+        glUniform4f(skinParamsLoc, boneCount, 1.0f, isAnimated, hasBlend);
       }
       else
       {
-        glUniform1ui(isSkinnedLoc, 0);
+        glUniform4f(skinParamsLoc, 0.0f, 0.0f, 0.0f, 0.0f);
       }
     };
 
@@ -1271,54 +1275,23 @@ namespace ToolKit
   {
     TK_PROFILE_FUNCTION();
 
-    // Send if its animated or not.
-    int uniformLoc = program->GetDefaultUniformLocation(Uniform::IS_ANIMATED);
-    if (uniformLoc != -1)
-    {
-      glUniform1ui(uniformLoc, job.animData.currentAnimation != nullptr);
-    }
-
     if (job.animData.currentAnimation == nullptr)
     {
-      // If not animated, just skip the rest.
       return;
     }
 
-    // Send key frames.
-    uniformLoc = program->GetDefaultUniformLocation(Uniform::KEY_FRAME_COUNT);
+    // Send keyFrameData: (kf1, kf2, interpTime, kfCount)
+    int uniformLoc = program->GetDefaultUniformLocation(Uniform::KEY_FRAME_DATA);
     if (uniformLoc != -1)
     {
-      glUniform1f(uniformLoc, job.animData.keyFrameCount);
-    }
-
-    if (job.animData.keyFrameCount > 0)
-    {
-      uniformLoc = program->GetDefaultUniformLocation(Uniform::KEY_FRAME_1);
-      if (uniformLoc != -1)
-      {
-        glUniform1f(uniformLoc, job.animData.firstKeyFrame);
-      }
-
-      uniformLoc = program->GetDefaultUniformLocation(Uniform::KEY_FRAME_2);
-      if (uniformLoc != -1)
-      {
-        glUniform1f(uniformLoc, job.animData.secondKeyFrame);
-      }
-
-      uniformLoc = program->GetDefaultUniformLocation(Uniform::KEY_FRAME_INT_TIME);
-      if (uniformLoc != -1)
-      {
-        glUniform1f(uniformLoc, job.animData.keyFrameInterpolationTime);
-      }
+      glUniform4f(uniformLoc,
+                  job.animData.firstKeyFrame,
+                  job.animData.secondKeyFrame,
+                  job.animData.keyFrameInterpolationTime,
+                  job.animData.keyFrameCount);
     }
 
     // Send blend data.
-    uniformLoc = program->GetDefaultUniformLocation(Uniform::BLEND_ANIMATION);
-    if (uniformLoc != -1)
-    {
-      glUniform1i(uniformLoc, job.animData.blendAnimation != nullptr);
-    }
-
     if (job.animData.blendAnimation != nullptr)
     {
       uniformLoc = program->GetDefaultUniformLocation(Uniform::BLEND_FACTOR);
@@ -1327,28 +1300,15 @@ namespace ToolKit
         glUniform1f(uniformLoc, job.animData.animationBlendFactor);
       }
 
-      uniformLoc = program->GetDefaultUniformLocation(Uniform::BLEND_KEY_FRAME_1);
+      // Send blendFrameData: (blendKf1, blendKf2, blendInterpTime, blendKfCount)
+      uniformLoc = program->GetDefaultUniformLocation(Uniform::BLEND_FRAME_DATA);
       if (uniformLoc != -1)
       {
-        glUniform1f(uniformLoc, job.animData.blendFirstKeyFrame);
-      }
-
-      uniformLoc = program->GetDefaultUniformLocation(Uniform::BLEND_KEY_FRAME_2);
-      if (uniformLoc != -1)
-      {
-        glUniform1f(uniformLoc, job.animData.blendSecondKeyFrame);
-      }
-
-      uniformLoc = program->GetDefaultUniformLocation(Uniform::BLEND_KEY_FRAME_INT_TIME);
-      if (uniformLoc != -1)
-      {
-        glUniform1f(uniformLoc, job.animData.blendKeyFrameInterpolationTime);
-      }
-
-      uniformLoc = program->GetDefaultUniformLocation(Uniform::BLEND_KEY_FRAME_COUNT);
-      if (uniformLoc != -1)
-      {
-        glUniform1f(uniformLoc, job.animData.blendKeyFrameCount);
+        glUniform4f(uniformLoc,
+                    job.animData.blendFirstKeyFrame,
+                    job.animData.blendSecondKeyFrame,
+                    job.animData.blendKeyFrameInterpolationTime,
+                    job.animData.blendKeyFrameCount);
       }
     }
   }

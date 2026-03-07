@@ -33,7 +33,7 @@
       vec3 B = vBiTan;
 
       // Skinning
-      if (isSkinned > 0u)
+      if (isSkinned)
       {
           if (normalMapInUse)
 		      {

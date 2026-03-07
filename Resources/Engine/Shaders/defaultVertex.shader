@@ -29,7 +29,7 @@
   void main()
   {
     gl_Position = vec4(vPosition, 1.0f);
-    if(isSkinned > 0u)
+    if(isSkinned)
     {
 	  if (normalMapInUse)
       {

@@ -40,19 +40,10 @@ namespace ToolKit
 
     // Animation & Skinning
     //////////////////////////////////////////
-    IS_SKINNED = 54,
-    NUM_BONES,
-    KEY_FRAME_1,
-    KEY_FRAME_2,
-    KEY_FRAME_INT_TIME,
-    KEY_FRAME_COUNT,
-    IS_ANIMATED,
-    BLEND_ANIMATION,
+    SKIN_PARAMS = 54,
+    KEY_FRAME_DATA,
+    BLEND_FRAME_DATA,
     BLEND_FACTOR,
-    BLEND_KEY_FRAME_1,
-    BLEND_KEY_FRAME_2,
-    BLEND_KEY_FRAME_INT_TIME,
-    BLEND_KEY_FRAME_COUNT,
 
     UNIFORM_MAX_INVALID
   };
