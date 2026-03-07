@@ -625,9 +625,6 @@
     <None Include="..\Resources\Engine\Shaders\orthogonalDepthVert.shader">
       <Filter>Render\Shaders</Filter>
     </None>
-    <None Include="..\Resources\Engine\Shaders\orthogonalDepthViewVert.shader">
-      <Filter>Render\Shaders</Filter>
-    </None>
     <None Include="..\Resources\Engine\Shaders\pbr.shader">
       <Filter>Render\Shaders</Filter>
     </None>
