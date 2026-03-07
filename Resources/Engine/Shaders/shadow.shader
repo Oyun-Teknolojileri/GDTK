@@ -57,20 +57,18 @@
 			vec2 occuluderAverage = vec2(0.0);
 		#endif
   
+		float layerZ = uvLayer.z;
+
 		for (int i = 0; i < samples; ++i)
 		{
-			// Below is randomized sample which causes noise rather than banding.
-			// Use di for sampling the disk to see the effect.
-			// int di = int(127.0 * Random( vec4( gl_FragCoord.xyy, float(i) ) )) % 127;
 			vec2 offset = PoissonDisk[i % 16].xy * radius;
 
-			vec3 texCoord = uvLayer;
-			texCoord.xy = ClampTextureCoordinates(uvLayer.xy + offset, coordStart, coordEnd);
-    
+			vec2 sampleXY = ClampTextureCoordinates(uvLayer.xy + offset, coordStart, coordEnd);
+
 			#if EVSM4
-				occuluderAverage += texture(shadowAtlas, texCoord);
+				occuluderAverage += texture(shadowAtlas, vec3(sampleXY, layerZ));
 			#else
-				occuluderAverage += texture(shadowAtlas, texCoord).xy;
+				occuluderAverage += texture(shadowAtlas, vec3(sampleXY, layerZ)).xy;
 			#endif
 		}
 
@@ -107,7 +105,8 @@
 		float shadowBias
 	)
 	{
-		vec2 halfPixel = vec2((1.0 / SHADOW_ATLAS_SIZE) * 0.5);
+		float halfPixel = (1.0 / SHADOW_ATLAS_SIZE) * 0.5;
+		float shadowMapSize = shadowAtlasResRatio * SHADOW_ATLAS_SIZE;
 
 		// Single pass average filter the shadow map.
 		#if EVSM4
@@ -120,7 +119,7 @@
 		{
 			// Below is randomized sample which causes noise rather than banding.
 			// Use di for sampling the disk to see the effect.
-			// int di = int(127.0 * Random( vec4( gl_FragCoord.xyy, float(i) ) )) % 127;
+			// int di = int(16.0 * Random( vec4( gl_FragCoord.xyy, float(i) ) )) % 16;
 			vec3 offset = PoissonDisk[i % 16] * radius;
 
 			// Adhoc coefficient 50.0
@@ -133,7 +132,6 @@
 
 			int layer = 0;
 			vec2 coord = vec2(0.0);
-			float shadowMapSize = shadowAtlasResRatio * SHADOW_ATLAS_SIZE;
 			ShadowAtlasLut(shadowMapSize, startCoord, face, layer, coord);
 			coord /= SHADOW_ATLAS_SIZE;
 

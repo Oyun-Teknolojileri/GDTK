@@ -44,10 +44,8 @@
       float maxExponent = 42.0f;
   #endif
 
-      vec2 lightSpaceExponents = vec2(positiveExponent, negativeExponent);
-
       // Clamp to maximum range of fp32/fp16 to prevent overflow/underflow
-      return min(lightSpaceExponents, maxExponent);
+      return min(vec2(positiveExponent, negativeExponent), maxExponent);
   }
 
   // Applies exponential warp to shadow map depth, input depth should be in [0, 1]
