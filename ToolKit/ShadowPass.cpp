@@ -174,6 +174,7 @@ namespace ToolKit
 
     Renderer* renderer        = GetRenderer();
     ShadowSettingsPtr shadows = GetEngineSettings().m_graphics->m_shadows;
+    uint resolution           = (uint) light->GetShadowResVal().GetValue<float>();
 
     if (light->GetLightType() == Light::LightType::Directional)
     {
@@ -187,7 +188,6 @@ namespace ToolKit
         renderer->ClearBuffer(GraphicBitFields::DepthBits, m_shadowClearColor);
 
         UVec2 coord     = dLight->m_shadowAtlasCoords[i];
-        uint resolution = (uint) light->GetShadowResVal().GetValue<float>();
         renderer->SetViewportSize(coord.x, coord.y, resolution, resolution);
 
         RenderShadowMap(light, dLight->m_cascadeShadowCameras[i], dLight->m_cascadeCullCameras[i]);
@@ -209,7 +209,6 @@ namespace ToolKit
         renderer->ClearBuffer(GraphicBitFields::DepthBits, m_shadowClearColor);
 
         UVec2 coord     = light->m_shadowAtlasCoords[i];
-        uint resolution = (uint) light->GetShadowResVal().GetValue<float>();
         renderer->SetViewportSize(coord.x, coord.y, resolution, resolution);
 
         RenderShadowMap(light, light->m_shadowCamera, light->m_shadowCamera);
@@ -230,7 +229,6 @@ namespace ToolKit
       renderer->ClearBuffer(GraphicBitFields::DepthBits, m_shadowClearColor);
 
       UVec2 coord     = light->m_shadowAtlasCoords[0];
-      uint resolution = (uint) light->GetShadowResVal().GetValue<float>();
 
       renderer->SetViewportSize(coord.x, coord.y, resolution, resolution);
       RenderShadowMap(light, light->m_shadowCamera, light->m_shadowCamera);
@@ -261,7 +259,7 @@ namespace ToolKit
       const BoundingBox& sceneBox = m_params.scene->GetSceneBoundary();
       Vec3 dir                    = cullCamera->Direction();
       Vec3 pos                    = cullCamera->Position(); // Backup pos.
-      Vec3 outerPoint             = pos - glm::normalize(dir) * glm::distance(sceneBox.min, sceneBox.max) * 0.5f;
+      Vec3 outerPoint             = pos - dir * glm::distance(sceneBox.min, sceneBox.max) * 0.5f;
 
       cullCamera->m_node->SetTranslation(outerPoint); // Set the camera position.
       cullCamera->SetNearClipVal(0.0f);
@@ -271,7 +269,6 @@ namespace ToolKit
     }
 
     // Create render jobs for shadow map generation.
-    RenderJobArray jobs;
     RenderData renderData;
 
     Frustum frustum            = ExtractFrustum(cullCamera->GetProjectViewMatrix(), false);
@@ -342,6 +339,7 @@ namespace ToolKit
     const int cascadeCount    = shadows->GetCascadeCountVal();
 
     IntArray resolutions;
+    resolutions.reserve(lightArray.size() * 6);
     for (size_t i = 0; i < lightArray.size(); i++)
     {
       Light* light   = lightArray[i];
