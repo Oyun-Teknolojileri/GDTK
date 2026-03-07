@@ -38,7 +38,11 @@
 
   vec2 GetEVSMExponents(in float positiveExponent, in float negativeExponent)
   {
-      float maxExponent = SMFormat16Bit == 1 ? 5.54f : 42.0f;
+  #if SMFormat16Bit
+      float maxExponent = 5.54f;
+  #else
+      float maxExponent = 42.0f;
+  #endif
 
       vec2 lightSpaceExponents = vec2(positiveExponent, negativeExponent);
 

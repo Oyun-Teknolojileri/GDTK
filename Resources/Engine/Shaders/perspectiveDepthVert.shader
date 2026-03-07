@@ -20,7 +20,6 @@
 	out vec2 v_texture;
 
 	uniform mat4 model;
-	uniform float Far;
 
 	void main()
 	{

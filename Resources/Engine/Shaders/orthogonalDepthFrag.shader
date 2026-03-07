@@ -44,7 +44,7 @@
 	#if EVSM4
 		fragColor = vec4(vsmDepth.xy, vsmDepth.xy * vsmDepth.xy);
 	#else
-		fragColor = vec4(vsmDepth.xy, vsmDepth.xy * vsmDepth.xy).xzxz;
+		fragColor = vec4(vsmDepth.x, vsmDepth.x * vsmDepth.x, vsmDepth.x, vsmDepth.x * vsmDepth.x);
 	#endif
 	}
 	-->
