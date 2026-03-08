@@ -218,6 +218,7 @@ namespace ToolKit
     void EnableDepthWrite(bool enable);
     void EnableDepthTest(bool enable);
     void SetDepthTestFunc(CompareFunctions func);
+    bool EnableDepthClamp(bool enable);
 
     // Giving nullptr as argument means no shadows
     void SetShadowAtlas(TexturePtr shadowAtlas);

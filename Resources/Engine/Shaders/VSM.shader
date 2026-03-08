@@ -34,19 +34,13 @@
   // Evsm from TheRealMJP shadow sample app.
   // https://github.com/TheRealMJP/Shadows
 
-  #define EvsmExponents GetEVSMExponents(40.0, 5.0)
-
-  vec2 GetEVSMExponents(in float positiveExponent, in float negativeExponent)
-  {
   #if SMFormat16Bit
-      float maxExponent = 5.54f;
+      const float VSM_MAX_EXPONENT = 5.54;
   #else
-      float maxExponent = 42.0f;
+      const float VSM_MAX_EXPONENT = 42.0;
   #endif
 
-      // Clamp to maximum range of fp32/fp16 to prevent overflow/underflow
-      return min(vec2(positiveExponent, negativeExponent), maxExponent);
-  }
+  const vec2 EvsmExponents = vec2(min(40.0, VSM_MAX_EXPONENT), min(5.0, VSM_MAX_EXPONENT));
 
   // Applies exponential warp to shadow map depth, input depth should be in [0, 1]
   vec2 WarpDepth(float depth, vec2 exponents)

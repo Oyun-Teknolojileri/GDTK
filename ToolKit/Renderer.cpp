@@ -276,9 +276,9 @@ namespace ToolKit
         SkeletonPtr skel = static_cast<SkinMesh*>(job.Mesh)->m_skeleton;
         assert(skel != nullptr);
 
-        float boneCount   = (float) skel->m_bones.size();
-        float isAnimated  = (job.animData.currentAnimation != nullptr) ? 1.0f : 0.0f;
-        float hasBlend    = (job.animData.blendAnimation != nullptr) ? 1.0f : 0.0f;
+        float boneCount  = (float) skel->m_bones.size();
+        float isAnimated = (job.animData.currentAnimation != nullptr) ? 1.0f : 0.0f;
+        float hasBlend   = (job.animData.blendAnimation != nullptr) ? 1.0f : 0.0f;
         glUniform4f(skinParamsLoc, boneCount, 1.0f, isAnimated, hasBlend);
       }
       else
@@ -428,7 +428,7 @@ namespace ToolKit
     if (m_renderState.lineWidth != state->lineWidth)
     {
       m_renderState.lineWidth = state->lineWidth;
-      glLineWidth(m_renderState.lineWidth);
+      // glLineWidth(m_renderState.lineWidth);
     }
   }
 
@@ -828,6 +828,25 @@ namespace ToolKit
       m_renderState.depthFunction = func;
       glDepthFunc((int) func);
     }
+  }
+
+  bool Renderer::EnableDepthClamp(bool enable)
+  {
+    if (TK_GL_EXT_depth_clamp)
+    {
+      if (enable)
+      {
+        glEnable(GL_DEPTH_CLAMP_EXT);
+      }
+      else
+      {
+        glDisable(GL_DEPTH_CLAMP_EXT);
+      }
+
+      return true;
+    }
+
+    return false;
   }
 
   void Renderer::Apply7x1GaussianBlur(const TexturePtr src, RenderTargetPtr dst, const Vec3& axis, const float amount)

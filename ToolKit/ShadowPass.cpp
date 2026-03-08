@@ -187,7 +187,7 @@ namespace ToolKit
 
         renderer->ClearBuffer(GraphicBitFields::DepthBits, m_shadowClearColor);
 
-        UVec2 coord     = dLight->m_shadowAtlasCoords[i];
+        UVec2 coord = dLight->m_shadowAtlasCoords[i];
         renderer->SetViewportSize(coord.x, coord.y, resolution, resolution);
 
         RenderShadowMap(light, dLight->m_cascadeShadowCameras[i], dLight->m_cascadeCullCameras[i]);
@@ -208,7 +208,7 @@ namespace ToolKit
 
         renderer->ClearBuffer(GraphicBitFields::DepthBits, m_shadowClearColor);
 
-        UVec2 coord     = light->m_shadowAtlasCoords[i];
+        UVec2 coord = light->m_shadowAtlasCoords[i];
         renderer->SetViewportSize(coord.x, coord.y, resolution, resolution);
 
         RenderShadowMap(light, light->m_shadowCamera, light->m_shadowCamera);
@@ -228,7 +228,7 @@ namespace ToolKit
 
       renderer->ClearBuffer(GraphicBitFields::DepthBits, m_shadowClearColor);
 
-      UVec2 coord     = light->m_shadowAtlasCoords[0];
+      UVec2 coord = light->m_shadowAtlasCoords[0];
 
       renderer->SetViewportSize(coord.x, coord.y, resolution, resolution);
       RenderShadowMap(light, light->m_shadowCamera, light->m_shadowCamera);
@@ -292,7 +292,8 @@ namespace ToolKit
     renderer->OverrideBlendState(true, BlendFunction::NONE); // Blending must be disabled for shadow map generation.
 
     // Set material and program.
-    MaterialPtr shadowMaterial = lightType == Light::LightType::Directional ? m_shadowMatOrtho : m_shadowMatPersp;
+    bool orthogonalShadowMap   = lightType == Light::LightType::Directional;
+    MaterialPtr shadowMaterial = orthogonalShadowMap ? m_shadowMatOrtho : m_shadowMatPersp;
     ShaderPtr frag             = shadowMaterial->GetFragmentShaderVal();
     frag->SetDefine("DrawAlphaMasked", "0");
     ShaderPtr vert                       = shadowMaterial->GetVertexShaderVal();
@@ -300,6 +301,21 @@ namespace ToolKit
     GpuProgramManager* gpuProgramManager = GetGpuProgramManager();
     m_program                            = gpuProgramManager->CreateProgram(vert, frag);
     renderer->BindProgram(m_program);
+
+    if (orthogonalShadowMap)
+    {
+      if (renderer->EnableDepthClamp(true))
+      {
+        vert->SetDefine("Pancake", "0");
+        frag->SetDefine("Pancake", "0");
+      }
+      else
+      {
+        // If depth clamp is not supported, fallback to pancake.
+        frag->SetDefine("Pancake", "1");
+        vert->SetDefine("Pancake", "1");
+      }
+    }
 
     // Draw opaque.
     RenderJobItr forwardBegin       = renderData.GetForwardOpaqueBegin();
@@ -318,6 +334,11 @@ namespace ToolKit
     for (RenderJobItr jobItr = forwardMaskedBegin; jobItr < translucentBegin; jobItr++)
     {
       renderer->Render(*jobItr);
+    }
+
+    if (orthogonalShadowMap)
+    {
+      renderer->EnableDepthClamp(false);
     }
 
     // Translucent shadow is not supported.

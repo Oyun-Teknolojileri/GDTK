@@ -2,7 +2,6 @@
 	<type name = "vertexShader" />
 	<include name = "skinning.shader" />
 	<include name = "cameraDataInc.shader" />
-	<include name = "drawDataInc.shader" />
 	<uniform name = "model" />
 	<source>
 	<!--
@@ -12,9 +11,7 @@
 
 	// Fixed Attributes.
 	layout (location = 0) in vec3 vPosition;
-	layout (location = 1) in vec3 vNormal;
 	layout (location = 2) in vec2 vTexture;
-	layout (location = 3) in vec3 vBiTan;
 
 	out vec4 v_pos;
 	out vec2 v_texture;
@@ -33,6 +30,8 @@
 			}
 
 			vec4 worldPos = model * skinnedVPos;
+
+			// Precompute inverse far plane on CPU if possible.
 			v_pos       = (camera.view * worldPos) * (1.0 / camera.farPlane);
 			gl_Position = camera.projectionView * worldPos;
 	}

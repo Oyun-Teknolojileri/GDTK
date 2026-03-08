@@ -105,6 +105,14 @@ namespace ToolKit
 
   extern int TK_GL_OES_texture_float_linear;
 
+  // GL_DEPTH_CLAMP_EXT
+  //////////////////////////////////////////
+
+  extern int TK_GL_EXT_depth_clamp;
+
+#undef GL_DEPTH_CLAMP_EXT
+#define GL_DEPTH_CLAMP_EXT 0x864F
+
   // GL Loader function
   //////////////////////////////////////////
 
