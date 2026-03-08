@@ -6,9 +6,9 @@
 	<uniform name = "model" />
 	<source>
 	<!--
-		#version 300 es
-		precision highp float;
-		precision lowp int;
+	#version 300 es
+	precision highp float;
+	precision lowp int;
 
     // Fixed Attributes.
     layout (location = 0) in vec3 vPosition;
@@ -30,10 +30,10 @@
 
       vec4 clipPos = camera.projectionView * model * skinnedVPos;
 
-      #if Pancake
+    #if Pancake
       z = clipPos.z / clipPos.w * 0.5 + 0.5;
       clipPos.z = 0.0;
-      #endif
+    #endif
 
       gl_Position = clipPos;
     }

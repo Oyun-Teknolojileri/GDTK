@@ -8,7 +8,7 @@
 	<source>
 	<!--
 	#version 300 es
-	precision mediump float;
+	precision highp float;
 	precision lowp int;
 
 	in vec2 v_texture;
@@ -42,10 +42,10 @@
 	#endif
 
 	#if Pancake
-		highp float depth = clamp(z, 0.0, 1.0);
+		float depth = clamp(z, 0.0, 1.0);
 		gl_FragDepth = depth;
 	#else
-		highp float depth = gl_FragCoord.z;
+		float depth = gl_FragCoord.z;
 	#endif
 
 		vec2 vsmDepth = WarpDepth(depth, EvsmExponents);
