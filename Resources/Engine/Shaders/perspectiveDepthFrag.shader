@@ -1,6 +1,6 @@
 <shader>
 	<type name = "fragmentShader" />
-	<include name = "VSM.shader" />
+	<include name = "VSMCommon.shader" />
 	<include name = "materialCacheInc.shader" />
 	<define name = "DrawAlphaMasked" val="0,1" />
 	<define name = "EVSM4" val="0,1" />
@@ -11,7 +11,11 @@
     precision lowp int;
 
     in vec4 v_pos;
+
+#if DrawAlphaMasked
     in vec2 v_texture;
+#endif
+
     out vec4 fragColor;
 
     uniform sampler2D s_texture0;

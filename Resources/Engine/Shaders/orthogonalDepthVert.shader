@@ -3,6 +3,7 @@
 	<include name = "skinning.shader" />
 	<include name = "cameraDataInc.shader" />
     <define name = "Pancake" val="0,1" />
+    <define name = "DrawAlphaMasked" val="0,1" />
 	<uniform name = "model" />
 	<source>
 	<!--
@@ -12,15 +13,24 @@
 
     // Fixed Attributes.
     layout (location = 0) in vec3 vPosition;
+    
+#if DrawAlphaMasked
     layout (location = 2) in vec2 vTexture;
+    out vec2 v_texture;
+#endif
+
+#if Pancake
+    out float z;
+#endif
 
     uniform mat4 model;
-    out vec2 v_texture;
-    out float z;
 
     void main()
     {
+    #if DrawAlphaMasked
       v_texture = vTexture;
+    #endif
+
       vec4 skinnedVPos = vec4(vPosition, 1.0);
 
       if (isSkinned)

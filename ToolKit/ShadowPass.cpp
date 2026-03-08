@@ -297,6 +297,7 @@ namespace ToolKit
     ShaderPtr frag             = shadowMaterial->GetFragmentShaderVal();
     frag->SetDefine("DrawAlphaMasked", "0");
     ShaderPtr vert                       = shadowMaterial->GetVertexShaderVal();
+    vert->SetDefine("DrawAlphaMasked", "0");
 
     GpuProgramManager* gpuProgramManager = GetGpuProgramManager();
     m_program                            = gpuProgramManager->CreateProgram(vert, frag);
@@ -327,6 +328,7 @@ namespace ToolKit
 
     // Draw alpha masked.
     frag->SetDefine("DrawAlphaMasked", "1");
+    vert->SetDefine("DrawAlphaMasked", "1");
     m_program = gpuProgramManager->CreateProgram(vert, frag);
     renderer->BindProgram(m_program);
 

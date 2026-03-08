@@ -1,6 +1,6 @@
 <shader>
 	<type name = "fragmentShader" />
-	<include name = "VSM.shader" />
+	<include name = "VSMCommon.shader" />
 	<include name = "materialCacheInc.shader" />
 	<define name = "DrawAlphaMasked" val="0,1" />
 	<define name = "EVSM4" val="0,1" />
@@ -11,13 +11,15 @@
 	precision highp float;
 	precision lowp int;
 
+#if DrawAlphaMasked
 	in vec2 v_texture;
+#endif
+
 #if Pancake
 	in float z;
 #endif
 
 	out vec4 fragColor;
-
 	uniform sampler2D s_texture0;
 
 	void main()

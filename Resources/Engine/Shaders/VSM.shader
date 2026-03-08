@@ -1,10 +1,11 @@
 <shader>
 	<type name = "includeShader" />
-  <define name = "SMFormat16Bit" val="0,1" />
+	<include name = "VSMCommon.shader" />
 	<source>
 	<!--
   #ifndef VSM_SHADER
   #define VSM_SHADER
+
   const vec3 PoissonDisk[16] = vec3[]
   (
     vec3(-0.308466, -0.140553, -0.393857),
@@ -31,27 +32,6 @@
 	  return fract(sin(dot_product) * 43758.5453);
   }
 
-  // Evsm from TheRealMJP shadow sample app.
-  // https://github.com/TheRealMJP/Shadows
-
-  #if SMFormat16Bit
-      const float VSM_MAX_EXPONENT = 5.54;
-  #else
-      const float VSM_MAX_EXPONENT = 42.0;
-  #endif
-
-  const vec2 EvsmExponents = vec2(min(40.0, VSM_MAX_EXPONENT), min(5.0, VSM_MAX_EXPONENT));
-
-  // Applies exponential warp to shadow map depth, input depth should be in [0, 1]
-  vec2 WarpDepth(float depth, vec2 exponents)
-  {
-      // Rescale depth into [-1, 1]
-      depth = 2.0 * depth - 1.0;
-      float pos =  exp( exponents.x * depth);
-      float neg = -exp(-exponents.y * depth);
-      return vec2(pos, neg);
-  }
-
   float saturate(float value) {
     return clamp(value, 0.0, 1.0);
   }
@@ -64,25 +44,22 @@
   // Reduces VSM light bleedning
   float ReduceLightBleeding(float pMax, float amount)
   {
-    // Remove the [0, amount] tail and linearly rescale (amount, 1].
       return Linstep(amount, 1.0f, pMax);
   }
 
   float ChebyshevUpperBound(vec2 moments, float mean, float minVariance, float lightBleedingReduction)
   {
-      // Compute variance
       float variance = moments.y - (moments.x * moments.x);
       variance = max(variance, minVariance);
 
-      // Compute probabilistic upper bound
       float d = mean - moments.x;
       float pMax = variance / (variance + (d * d));
 
       pMax = ReduceLightBleeding(pMax, lightBleedingReduction);
 
-      // One-tailed Chebyshev
       return (mean <= moments.x ? 1.0f : pMax);
   }
+
   #endif
 	-->
 	</source>

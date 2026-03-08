@@ -2,6 +2,7 @@
 	<type name = "vertexShader" />
 	<include name = "skinning.shader" />
 	<include name = "cameraDataInc.shader" />
+	<define name = "DrawAlphaMasked" val="0,1" />
 	<uniform name = "model" />
 	<source>
 	<!--
@@ -11,16 +12,21 @@
 
 	// Fixed Attributes.
 	layout (location = 0) in vec3 vPosition;
-	layout (location = 2) in vec2 vTexture;
 
 	out vec4 v_pos;
+
+#if DrawAlphaMasked
+	layout (location = 2) in vec2 vTexture;
 	out vec2 v_texture;
+#endif
 
 	uniform mat4 model;
 
 	void main()
 	{
+		#if DrawAlphaMasked
 			v_texture = vTexture;
+		#endif
 
 			vec4 skinnedVPos = vec4(vPosition, 1.0);
 
