@@ -1,6 +1,6 @@
 <shader>
 	<type name = "fragmentShader" />
-	<include name = "pbr.shader" />
+	<include name = "pbrPrecompute.shader" />
 	<source>
 	<!--
 		#version 300 es
@@ -41,7 +41,8 @@
 				if(NdotL > 0.0)
 				{
 					// Sample from the environment's mip level based on roughness/pdf
-					float D   = DistributionGGX(N, H, roughness);
+					float NdotH = max(dot(N, H), 0.0);
+					float D = DistributionGGX(NdotH, roughness);
 					float NdotH = max(dot(N, H), 0.0);
 					float HdotV = max(dot(H, V), 0.0);
 					float pdf = D * NdotH / (4.0 * HdotV) + 0.0001; 

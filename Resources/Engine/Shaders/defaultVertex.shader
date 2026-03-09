@@ -1,7 +1,7 @@
 <shader>
 	<type name = "vertexShader" />
     <include name = "skinning.shader" />
-	<include name = "cameraDataInc.shader" />
+	  <include name = "cameraDataInc.shader" />
     <uniform name = "model" />
     <uniform name = "inverseTransposeModel" />
     <uniform name = "normalMapInUse" />

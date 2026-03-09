@@ -1,6 +1,6 @@
 <shader>
 	<type name = "fragmentShader" />
-	<include name = "pbr.shader" />
+	<include name = "pbrPrecompute.shader" />
 	<source>
 	<!--
 		#version 300 es

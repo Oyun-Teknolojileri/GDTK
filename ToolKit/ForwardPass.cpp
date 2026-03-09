@@ -218,6 +218,16 @@ namespace ToolKit
 
     int shadowSample = shadows->GetShadowSamples();
     frag->SetDefine("ShadowSampleCount", std::to_string(shadowSample));
+
+    Renderer* renderer = GetRenderer();
+    if (renderer->m_renderOnlyLighting)
+    {
+      frag->SetDefine("LightingOnly", "1");
+    }
+    else
+    {
+      frag->SetDefine("LightingOnly", "0");
+    }
   }
 
 } // namespace ToolKit

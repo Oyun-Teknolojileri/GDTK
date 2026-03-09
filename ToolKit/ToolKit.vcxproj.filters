@@ -625,7 +625,7 @@
     <None Include="..\Resources\Engine\Shaders\orthogonalDepthVert.shader">
       <Filter>Render\Shaders</Filter>
     </None>
-    <None Include="..\Resources\Engine\Shaders\pbr.shader">
+    <None Include="..\Resources\Engine\Shaders\pbrPrecompute.shader">
       <Filter>Render\Shaders</Filter>
     </None>
     <None Include="..\Resources\Engine\Shaders\perspectiveDepthFrag.shader">

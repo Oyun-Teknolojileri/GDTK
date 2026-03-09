@@ -225,7 +225,7 @@
     <None Include="..\Resources\Engine\Shaders\normalFrag.shader" />
     <None Include="..\Resources\Engine\Shaders\orthogonalDepthFrag.shader" />
     <None Include="..\Resources\Engine\Shaders\orthogonalDepthVert.shader" />
-    <None Include="..\Resources\Engine\Shaders\pbr.shader" />
+    <None Include="..\Resources\Engine\Shaders\pbrPrecompute.shader" />
     <None Include="..\Resources\Engine\Shaders\perspectiveDepthFrag.shader" />
     <None Include="..\Resources\Engine\Shaders\perspectiveDepthVert.shader" />
     <None Include="..\Resources\Engine\Shaders\positionVert.shader" />

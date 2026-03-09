@@ -1179,13 +1179,15 @@ namespace ToolKit
         case Uniform::NORMAL_MAP_IN_USE:
           glUniform1i(loc, m_normalMapInUse);
           break;
+        case Uniform::VIEWPORT_SIZE:
+          glUniform2f(loc, (float) m_viewportSize.x, (float) m_viewportSize.y);
+          break;
         default:
           break;
         }
       }
     }
 
-    // Built-in array uniforms.
     // Built-in array uniforms.
     for (auto& arrayUniform : program->m_defaultArrayUniformLocations)
     {

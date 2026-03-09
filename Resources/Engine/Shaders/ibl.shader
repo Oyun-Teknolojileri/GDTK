@@ -1,6 +1,6 @@
 <shader>
 	<type name = "includeShader" />
-	<include name = "pbr.shader" />
+	<include name = "pbrCommon.shader" />
 	<include name = "drawDataInc.shader" />
 	<uniform name = "iblRotation" />
 	<source>

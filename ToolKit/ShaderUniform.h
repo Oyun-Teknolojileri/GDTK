@@ -37,6 +37,7 @@ namespace ToolKit
     NORMAL_MAP_IN_USE,
     MATERIAL_CACHE,
     DRAW_COMMAND,
+    VIEWPORT_SIZE,
 
     // Animation & Skinning
     //////////////////////////////////////////

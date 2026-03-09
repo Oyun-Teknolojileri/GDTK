@@ -1,12 +1,16 @@
-<shader>	
+<shader>
 	<type name = "fragmentShader" />
 	<include name = "lighting.shader" />
 	<include name = "ibl.shader" />
 	<include name = "AO.shader" />
 	<include name = "cameraDataInc.shader" />
 	<include name = "materialCacheInc.shader" />
-	<include name = "drawDataInc.shader" />
 	<define name = "DrawAlphaMasked" val="0,1" />
+	<define name = "EVSM4" val="0,1" />
+	<define name = "SMFormat16Bit" val="0,1" />
+	<define name = "ShadowSampleCount" val="1,5,9,16" />
+	<define name = "highlightCascades" val="0,1" />
+	<define name = "LightingOnly" val="0,1" />
 	<source>
 	<!--
 	#version 300 es
@@ -21,8 +25,6 @@
 	uniform sampler2D s_texture4; // metallic-roughness
 	uniform sampler2D s_texture9; // normal
 
-	uniform int LightingOnly;
-
 	in vec3 v_pos;
 	in vec3 v_normal;
 	in vec2 v_texture;
@@ -34,7 +36,7 @@
 	void main()
 	{
 		Material material = GetMaterial();
-	
+
 		vec4 color;
 		if(material.diffuseTextureInUse > 0)
 		{
@@ -54,7 +56,17 @@
 		{
 			emissive = material.emissiveColor;
 		}
-
+	
+		vec2 metallicRoughness;
+		if (material.metallicRoughnessTextureInUse > 0)
+		{
+			metallicRoughness = texture(s_texture4, v_texture).rg;
+		}
+		else
+		{
+			metallicRoughness = vec2(material.metallic, material.roughness);
+		}
+	
 	#if DrawAlphaMasked
 		if(color.a <= material.alphaMaskThreshold)
 		{
@@ -62,10 +74,9 @@
 		}
 	#endif
 
-		if (LightingOnly == 1)
-		{
-			color.xyz = vec3(1.0);
-		}
+	#if LightingOnly
+		color.xyz = vec3(1.0);
+	#endif
 
 		vec3 n;
 		if (material.normalMapInUse > 0)
@@ -81,22 +92,12 @@
 		}
 		vec3 e = normalize(camera.position - v_pos);
 
-		vec2 metallicRoughness;
-		if (material.metallicRoughnessTextureInUse > 0)
-		{
-			metallicRoughness = texture(s_texture4, v_texture).rg;
-		}
-		else
-		{
-			metallicRoughness = vec2(material.metallic, material.roughness);
-		}
-
 		vec3 irradiance = PBRLighting(v_pos, v_viewPosDepth, n, e, camera.position, color.xyz, metallicRoughness.x, metallicRoughness.y);
 
 		float ambientOcclusion = AmbientOcclusion();
 		irradiance += IBLPBR(n, e, color.xyz, metallicRoughness.x, metallicRoughness.y) * ambientOcclusion;
 
-		fragColor = vec4(irradiance, color.a) + vec4(emissive, 0.0f);
+		fragColor = vec4(irradiance, color.a) + vec4(emissive, 0.0);
 	}
 	-->
 	</source>

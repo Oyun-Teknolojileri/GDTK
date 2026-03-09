@@ -38,6 +38,8 @@ namespace ToolKit
       return "materialCache";
     case Uniform::DRAW_COMMAND:
       return "drawCommand";
+    case Uniform::VIEWPORT_SIZE:
+      return "viewportSize";
     case Uniform::SKIN_PARAMS:
       return "skinParams";
     case Uniform::KEY_FRAME_DATA:
