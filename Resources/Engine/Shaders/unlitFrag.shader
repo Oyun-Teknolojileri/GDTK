@@ -27,6 +27,7 @@
 			color = vec4(material.color, material.alpha);
 		}
 
+#if DrawAlphaMasked
 		if (material.useAlphaMask > 0)
 		{
 			if (color.a <= material.alphaMaskThreshold)
@@ -34,6 +35,7 @@
 				discard;
 			}
 		}
+#endif
 		
 		fragColor = color;
 	}
