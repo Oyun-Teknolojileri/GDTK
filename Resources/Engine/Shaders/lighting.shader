@@ -92,7 +92,6 @@ float CalculateSpotShadow
 	vec3 projCoord = fragPosForLight.xyz / fragPosForLight.w;
 	projCoord = projCoord * 0.5 + 0.5;
 
-	vec3 lightToFrag = pos - lightPos;
 	float currFragDepth = lightDistance / shadowCameraFar;
 
 	vec2 startCoord = shadowAtlasCoord;

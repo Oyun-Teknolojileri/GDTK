@@ -13,7 +13,7 @@ float AmbientOcclusion()
 {
 	if (IsAmbientOcculusionInUse())
 	{
-		vec2 coords = gl_FragCoord.xy * 1.0 / viewportSize;
+		vec2 coords = gl_FragCoord.xy / viewportSize;
 		return texture(s_texture5, coords).r;
 	}
 
