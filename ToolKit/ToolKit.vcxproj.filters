@@ -682,5 +682,11 @@
     <None Include="..\Resources\Engine\Shaders\drawDataInc.shader">
       <Filter>Render\Shaders</Filter>
     </None>
+    <None Include="..\Resources\Engine\Shaders\pbrCommon.shader">
+      <Filter>Render\Shaders</Filter>
+    </None>
+    <None Include="..\Resources\Engine\Shaders\VSMCommon.shader">
+      <Filter>Render\Shaders</Filter>
+    </None>
   </ItemGroup>
 </Project>
