@@ -26,47 +26,53 @@
   uniform mat4 inverseTransposeModel;
   uniform bool normalMapInUse;
 
-  void main()
-  {
-    gl_Position = vec4(vPosition, 1.0f);
-    if(isSkinned)
+    void main()
     {
-	  if (normalMapInUse)
+      vec4 localPos = vec4(vPosition, 1.0);
+      vec3 N = vNormal;
+      vec3 B = vBiTan;
+
+      if (isSkinned)
       {
-        vec3 B = normalize(vec3(model * vec4(vBiTan, 0.0)));
-        vec3 N = normalize(vec3(model * vec4(vNormal, 0.0)));
-
-        skin(gl_Position, N, B, gl_Position, N, B);
-
-        vec3 T = normalize(cross(B,N));
-        TBN = mat3(T,B,N);
+        // Skin in local space first, then transform to world space.
+        // Bone matrices operate in local space.
+        if (normalMapInUse)
+        {
+          skin(localPos, N, B, localPos, N, B);
+          N = normalize((inverseTransposeModel * vec4(N, 0.0)).xyz);
+          B = normalize((inverseTransposeModel * vec4(B, 0.0)).xyz);
+        }
+        else
+        {
+          skin(localPos, N, localPos, N);
+          N = normalize((inverseTransposeModel * vec4(N, 0.0)).xyz);
+        }
       }
       else
       {
-        v_normal = (inverseTransposeModel * vec4(vNormal, 1.0)).xyz;
-        skin(gl_Position, v_normal, gl_Position, v_normal);
+        N = normalize((inverseTransposeModel * vec4(N, 0.0)).xyz);
+        if (normalMapInUse)
+        {
+          B = normalize((inverseTransposeModel * vec4(B, 0.0)).xyz);
+        }
       }
-    }
-    else
-    {
-	  if (normalMapInUse)
+
+      if (normalMapInUse)
       {
-        vec3 B = normalize(vec3(model * vec4(vBiTan, 0.0)));
-        vec3 N = normalize(vec3(model * vec4(vNormal, 0.0)));
-        vec3 T = normalize(cross(B,N));
-        TBN = mat3(T,B,N);
+        vec3 T = normalize(cross(B, N));
+        TBN = mat3(T, B, N);
       }
       else
       {
-        v_normal = (inverseTransposeModel * vec4(vNormal, 1.0)).xyz;
+        v_normal = N;
       }
-    }
 
-    v_pos = (model * gl_Position).xyz;
-	v_viewPosDepth = (camera.view * model * gl_Position).z;
-    gl_Position = camera.projectionView * model * gl_Position;
-    v_texture = vTexture;
-  }
+      vec4 worldPos = model * localPos;
+      v_pos = worldPos.xyz;
+      v_viewPosDepth = (camera.view * worldPos).z;
+      gl_Position = camera.projectionView * worldPos;
+      v_texture = vTexture;
+    }
 	-->
 	</source>
 </shader>
