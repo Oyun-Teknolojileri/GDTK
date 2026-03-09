@@ -22,7 +22,7 @@ vec3 IBLDiffusePBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, flo
 	{
 		vec3 kS = fresnel;
 		vec3 kD = 1.0 - kS;
-		vec3 iblSamplerVec = (iblRotation * vec4(normal, 1.0)).xyz;
+		vec3 iblSamplerVec = (iblRotation * vec4(normal, 0.0)).xyz;
 		vec3 iblIrradiance = texture(s_texture7, iblSamplerVec).rgb;
 		vec3 diffuse    = iblIrradiance * albedo;
 		irradiance    = kD * diffuse;
@@ -37,7 +37,7 @@ vec3 IBLSpecularPBR(vec3 normal, vec3 fragToEye, float roughness, vec3 fresnel)
 	if (IsIBLInUse())
 	{
 		vec3 R = reflect(-fragToEye, normal);
-		vec3 iblSamplerVec = (iblRotation * vec4(R, 1.0)).xyz;
+		vec3 iblSamplerVec = (iblRotation * vec4(R, 0.0)).xyz;
 		float normalDotFragToEye = max(dot(normal, fragToEye), 0.0);
 
 		vec3 preFilteredColor = textureLod(s_texture15, iblSamplerVec, roughness * float(graphicConstants.iblMaxReflectionLod)).rgb;

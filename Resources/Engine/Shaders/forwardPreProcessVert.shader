@@ -47,16 +47,18 @@
       }
 
       // World-space normal / TBN
-      if (normalMapInUse)
-      {
-          N = normalize(mat3(model) * N);
-          B = normalize(mat3(model) * B);
-          TBN = mat3(normalize(cross(B, N)), B, N);
-      }
-      else
-      {
-          v_normal = normalize(mat3(inverseTransposeModel) * N);
-      }
+	    if (normalMapInUse)
+	    {
+		    vec3 worldNormal = normalize(mat3(inverseTransposeModel) * N);
+		    vec3 worldBiTan = normalize(mat3(inverseTransposeModel) * B);
+		    vec3 worldTan = normalize(cross(worldBiTan, worldNormal));
+        
+		    TBN = mat3(worldTan, worldBiTan, worldNormal);
+	    }
+	    else
+	    {
+		    v_normal = normalize(mat3(inverseTransposeModel) * N);
+	    }
 
       // Position
       vec4 worldPos = model * localPos;
