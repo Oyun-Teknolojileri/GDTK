@@ -75,16 +75,16 @@ namespace ToolKit
 
     if (TexturePtr tex = GetMetallicRoughnessTextureVal())
     {
-      if (tex->Settings().MinFilter != GraphicTypes::SampleNearest)
+      if (tex->Settings().MinFilter != GraphicTypes::SampleLinearMipmapLinear)
       {
         tex->UnInit();
         tex->Load();
 
         TextureSettings set;
         set.InternalFormat = GraphicTypes::FormatRGBA;
-        set.MinFilter      = GraphicTypes::SampleNearest;
-        set.Type           = GraphicTypes::TypeUnsignedByte;
-        set.GenerateMipMap = false;
+        set.MinFilter      = GraphicTypes::SampleLinearMipmapLinear;
+        set.Type           = GraphicTypes::FormatRGB16F;
+        set.GenerateMipMap = true;
         tex->Settings(set);
       }
 
@@ -93,16 +93,16 @@ namespace ToolKit
 
     if (TexturePtr tex = GetNormalTextureVal())
     {
-      if (tex->Settings().MinFilter != GraphicTypes::SampleNearest)
+      if (tex->Settings().MinFilter != GraphicTypes::SampleLinearMipmapLinear)
       {
         tex->UnInit();
         tex->Load();
 
         TextureSettings set;
         set.InternalFormat = GraphicTypes::FormatRGBA;
-        set.MinFilter      = GraphicTypes::SampleNearest;
-        set.Type           = GraphicTypes::TypeUnsignedByte;
-        set.GenerateMipMap = false;
+        set.MinFilter      = GraphicTypes::SampleLinearMipmapLinear;
+        set.Type           = GraphicTypes::FormatRGB16F;
+        set.GenerateMipMap = true;
         tex->Settings(set);
       }
 
