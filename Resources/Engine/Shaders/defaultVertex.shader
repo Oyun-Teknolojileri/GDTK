@@ -54,8 +54,8 @@
 
 		    vec3 wN = normalize(normalMatrix * N);
 		    vec3 wT = normalize(normalMatrix * T);
-		    // T = normalize(T - dot(T, N) * N); // Re orthogonalize.
-		    vec3 wB = cross(N, T);
+		    wT = normalize(wT - dot(wT, wN) * wN); // Re orthogonalize.
+		    vec3 wB = cross(wN, wT);
 		    TBN = mat3(wT, wB, wN);
 	    }
 	    else

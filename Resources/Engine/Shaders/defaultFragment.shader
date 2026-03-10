@@ -88,10 +88,10 @@
 		}
 		else
 		{
-			n = normalize(v_worldNormal);
+			n = v_worldNormal;
 		}
+	
 		vec3 e = normalize(camera.position - v_worldPos);
-
 		vec3 irradiance = PBRLighting(v_worldPos, v_viewDepth, n, e, camera.position, color.xyz, metallicRoughness.x, metallicRoughness.y);
 
 		float ambientOcclusion = AmbientOcclusion();
