@@ -630,7 +630,7 @@ namespace ToolKit
 
       if (mesh->HasTangentsAndBitangents())
       {
-        v.btan = Vec3(mesh->mBitangents[vIndex].x, mesh->mBitangents[vIndex].y, mesh->mBitangents[vIndex].z);
+        v.tan = Vec3(mesh->mTangents[vIndex].x, mesh->mTangents[vIndex].y, mesh->mTangents[vIndex].z);
       }
 
       if constexpr (std::is_same<convertType, SkinMeshPtr>::value)

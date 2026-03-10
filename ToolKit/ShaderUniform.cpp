@@ -32,8 +32,6 @@ namespace ToolKit
       return "activePointLightIndexes";
     case Uniform::ACTIVE_SPOT_LIGHT_INDEXES:
       return "activeSpotLightIndexes";
-    case Uniform::NORMAL_MAP_IN_USE:
-      return "normalMapInUse";
     case Uniform::MATERIAL_CACHE:
       return "materialCache";
     case Uniform::DRAW_COMMAND:

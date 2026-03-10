@@ -377,8 +377,8 @@ namespace ToolKit
     for (Vertex& v : m_clientSideVertices)
     {
       v.pos  = transform * Vec4(v.pos, 1.0f);
-      v.norm = glm::normalize(its * Vec4(v.norm, 1.0f));
-      v.btan = glm::normalize(its * Vec4(v.btan, 1.0f));
+      v.norm = glm::normalize(its * Vec4(v.norm, 0.0f));
+      v.tan  = glm::normalize(its * Vec4(v.tan, 0.0f));
     }
   }
 
@@ -543,7 +543,7 @@ namespace ToolKit
           ReadVec(v->first_node("p"), vd.pos);
           ReadVec(v->first_node("n"), vd.norm);
           ReadVec(v->first_node("t"), vd.tex);
-          ReadVec(v->first_node("bt"), vd.btan);
+          ReadVec(v->first_node("bt"), vd.tan);
 
           if constexpr (std::is_same<T, SkinMesh>())
           {

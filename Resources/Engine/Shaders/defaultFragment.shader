@@ -25,10 +25,10 @@
 	uniform sampler2D s_texture4; // metallic-roughness
 	uniform sampler2D s_texture9; // normal
 
-	in vec3 v_pos;
-	in vec3 v_normal;
+	in vec3 v_worldPos;
+	in vec3 v_worldNormal;
 	in vec2 v_texture;
-	in float v_viewPosDepth;
+	in float v_viewDepth;
 	in mat3 TBN;
 
 	layout (location = 0) out vec4 fragColor;
@@ -88,11 +88,11 @@
 		}
 		else
 		{
-			n = normalize(v_normal);
+			n = normalize(v_worldNormal);
 		}
-		vec3 e = normalize(camera.position - v_pos);
+		vec3 e = normalize(camera.position - v_worldPos);
 
-		vec3 irradiance = PBRLighting(v_pos, v_viewPosDepth, n, e, camera.position, color.xyz, metallicRoughness.x, metallicRoughness.y);
+		vec3 irradiance = PBRLighting(v_worldPos, v_viewDepth, n, e, camera.position, color.xyz, metallicRoughness.x, metallicRoughness.y);
 
 		float ambientOcclusion = AmbientOcclusion();
 		irradiance += IBLPBR(n, e, color.xyz, metallicRoughness.x, metallicRoughness.y) * ambientOcclusion;

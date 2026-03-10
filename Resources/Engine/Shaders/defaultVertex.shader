@@ -2,9 +2,10 @@
 	<type name = "vertexShader" />
     <include name = "skinning.shader" />
 	  <include name = "cameraDataInc.shader" />
+    <include name = "materialCacheInc.shader" />
+    <include name = "drawDataInc.shader" />
     <uniform name = "model" />
     <uniform name = "inverseTransposeModel" />
-    <uniform name = "normalMapInUse" />
 	<source>
 	<!--
   #version 300 es
@@ -14,64 +15,59 @@
   layout(location = 0) in vec3 vPosition;
   layout(location = 1) in vec3 vNormal;
   layout(location = 2) in vec2 vTexture;
-  layout(location = 3) in vec3 vBiTan;
+  layout(location = 3) in vec3 vTangent;
 
-  out vec3 v_pos;
-  out vec3 v_normal;
-  out vec2 v_texture;
-  out float v_viewPosDepth;
-  out mat3 TBN;
+  out vec3 v_worldPos;
+  out vec3 v_worldNormal;
+  out float v_viewDepth;
+  out mediump vec2 v_texture;
+  out mediump mat3 TBN;
 
   uniform mat4 model;
   uniform mat4 inverseTransposeModel;
-  uniform bool normalMapInUse;
 
     void main()
     {
+	    bool normalMapInUse = IsNormalMapInUse();
+  
       vec4 localPos = vec4(vPosition, 1.0);
       vec3 N = vNormal;
-      vec3 B = vBiTan;
+      vec3 T = vTangent;
 
+      // Skinning
       if (isSkinned)
       {
-        // Skin in local space first, then transform to world space.
-        // Bone matrices operate in local space.
-        if (normalMapInUse)
-        {
-          skin(localPos, N, B, localPos, N, B);
-          N = normalize((inverseTransposeModel * vec4(N, 0.0)).xyz);
-          B = normalize((inverseTransposeModel * vec4(B, 0.0)).xyz);
-        }
-        else
-        {
-          skin(localPos, N, localPos, N);
-          N = normalize((inverseTransposeModel * vec4(N, 0.0)).xyz);
-        }
-      }
-      else
-      {
-        N = normalize((inverseTransposeModel * vec4(N, 0.0)).xyz);
-        if (normalMapInUse)
-        {
-          B = normalize((inverseTransposeModel * vec4(B, 0.0)).xyz);
-        }
+          if (normalMapInUse)
+		      {
+			      skin(localPos, N, T, localPos, N, T);
+		      }    
+          else
+		      {
+            skin(localPos, N, localPos, N);
+		      }
       }
 
-      if (normalMapInUse)
-      {
-        vec3 T = normalize(cross(B, N));
-        TBN = mat3(T, B, N);
-      }
-      else
-      {
-        v_normal = N;
-      }
+      // World-space normal / TBN
+	    if (normalMapInUse)
+	    {
+		    mat3 normalMatrix = mat3(inverseTransposeModel);
+
+		    vec3 wN = normalize(normalMatrix * N);
+		    vec3 wT = normalize(normalMatrix * T);
+		    // T = normalize(T - dot(T, N) * N); // Re orthogonalize.
+		    vec3 wB = cross(N, T);
+		    TBN = mat3(wT, wB, wN);
+	    }
+	    else
+	    {
+		    v_worldNormal = normalize(mat3(inverseTransposeModel) * N);
+	    }
 
       vec4 worldPos = model * localPos;
-      v_pos = worldPos.xyz;
-      v_viewPosDepth = (camera.view * worldPos).z;
-      gl_Position = camera.projectionView * worldPos;
+      v_worldPos = worldPos.xyz;
+      v_viewDepth = (camera.view * worldPos).z;
       v_texture = vTexture;
+      gl_Position = camera.projectionView * worldPos;
     }
 	-->
 	</source>

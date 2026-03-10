@@ -2,10 +2,10 @@
   <type name = "vertexShader" />
   <include name = "skinning.shader" />
 	<include name = "cameraDataInc.shader" />
-    <include name = "materialCacheInc.shader" />
+  <include name = "materialCacheInc.shader" />
 	<include name = "drawDataInc.shader" />
-    <uniform name = "model" />
-    <uniform name = "inverseTransposeModel" />
+  <uniform name = "model" />
+  <uniform name = "inverseTransposeModel" />
   <source>
 	<!--
   #version 300 es
@@ -15,7 +15,7 @@
   layout(location = 0) in vec3 vPosition;
   layout(location = 1) in vec3 vNormal;
   layout(location = 2) in vec2 vTexture;
-  layout(location = 3) in vec3 vBiTan;
+  layout(location = 3) in vec3 vTangent;
 
   uniform mat4 model;
   uniform mat4 inverseTransposeModel;
@@ -27,18 +27,18 @@
 
   void main()
   {
-	    bool normalMapInUse = materialCache[3].y > 0.5; // GetMaterial().normalMapInUse
+	    bool normalMapInUse = IsNormalMapInUse();
 
       vec4 localPos = vec4(vPosition, 1.0);
       vec3 N = vNormal;
-      vec3 B = vBiTan;
+      vec3 T = vTangent;
 
       // Skinning
       if (isSkinned)
       {
           if (normalMapInUse)
 		      {
-			      skin(localPos, N, B, localPos, N, B);
+			      skin(localPos, N, T, localPos, N, T);
 		      }    
           else
 		      {
@@ -49,11 +49,13 @@
       // World-space normal / TBN
 	    if (normalMapInUse)
 	    {
-		    vec3 worldNormal = normalize(mat3(inverseTransposeModel) * N);
-		    vec3 worldBiTan = normalize(mat3(inverseTransposeModel) * B);
-		    vec3 worldTan = normalize(cross(worldBiTan, worldNormal));
-        
-		    TBN = mat3(worldTan, worldBiTan, worldNormal);
+		    mat3 normalMatrix = mat3(inverseTransposeModel);
+
+		    vec3 wN = normalize(normalMatrix * N);
+		    vec3 wT = normalize(normalMatrix * T);
+		    T = normalize(T - dot(T, N) * N);
+		    vec3 wB = cross(N, T);
+		    TBN = mat3(wT, wB, wN);
 	    }
 	    else
 	    {

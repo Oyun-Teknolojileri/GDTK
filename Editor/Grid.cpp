@@ -123,24 +123,24 @@ namespace ToolKit
         quadVertexBuffer[0].pos  = Vec3(0.0f, 1.0f, 0.0f);
         quadVertexBuffer[0].tex  = Vec2(0.0f, 0.0f);
         quadVertexBuffer[0].norm = Vec3(0.0f, 0.0f, 1.0f);
-        quadVertexBuffer[0].btan = Vec3(0.0f, 1.0f, 0.0f);
+        quadVertexBuffer[0].tan  = Vec3(1.0f, 0.0f, 0.0f);
 
         quadVertexBuffer[1].pos  = Vec3(0.0f, 0.0f, 0.0f);
         quadVertexBuffer[1].tex  = Vec2(0.0f, 1.0f);
         quadVertexBuffer[1].norm = Vec3(0.0f, 0.0f, 1.0f);
-        quadVertexBuffer[1].btan = Vec3(0.0f, 1.0f, 0.0f);
+        quadVertexBuffer[1].tan  = Vec3(1.0f, 0.0f, 0.0f);
 
         quadVertexBuffer[2].pos  = Vec3(1.0f, 0.0f, 0.0f);
         quadVertexBuffer[2].tex  = Vec2(1.0f, 1.0f);
         quadVertexBuffer[2].norm = Vec3(0.0f, 0.0f, 1.0f);
-        quadVertexBuffer[2].btan = Vec3(0.0f, 1.0f, 0.0f);
+        quadVertexBuffer[2].tan  = Vec3(1.0f, 0.0f, 0.0f);
 
         quadVertexBuffer[3]      = quadVertexBuffer[0];
         quadVertexBuffer[4]      = quadVertexBuffer[2];
         quadVertexBuffer[5].pos  = Vec3(1.0f, 1.0f, 0.0f);
         quadVertexBuffer[5].tex  = Vec2(1.0f, 0.0f);
         quadVertexBuffer[5].norm = Vec3(0.0f, 0.0f, 1.0f);
-        quadVertexBuffer[5].btan = Vec3(0.0f, 1.0f, 0.0f);
+        quadVertexBuffer[5].tan  = Vec3(1.0f, 0.0f, 0.0f);
       }
 
       for (UVec2 gridIndx(0); gridIndx.x < gridMeshCount.x; gridIndx.x++)

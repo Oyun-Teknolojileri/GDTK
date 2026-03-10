@@ -1182,9 +1182,6 @@ namespace ToolKit
         case Uniform::IBL_ROTATION:
           glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&m_iblRotation));
           break;
-        case Uniform::NORMAL_MAP_IN_USE:
-          glUniform1i(loc, m_normalMapInUse);
-          break;
         case Uniform::VIEWPORT_SIZE:
           glUniform2f(loc, (float) m_viewportSize.x, (float) m_viewportSize.y);
           break;

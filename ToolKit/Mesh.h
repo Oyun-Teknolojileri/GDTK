@@ -28,7 +28,7 @@ namespace ToolKit
     Vec3 pos;  //!< Position of the vertex in 3D space.
     Vec3 norm; //!< Normal vector of the vertex.
     Vec2 tex;  //!< Texture coordinates of the vertex.
-    Vec3 btan; //!< Binormal (bitangent) vector of the vertex.
+    Vec3 tan;  //!< Tangent vector of the vertex.
   };
 
   /**

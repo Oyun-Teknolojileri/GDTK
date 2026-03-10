@@ -206,22 +206,22 @@ namespace ToolKit
     vertices[0].pos            = Vec3(-0.5f, -0.5f, 0.0f);
     vertices[0].tex            = Vec2(0.0f, 0.0f);
     vertices[0].norm           = Vec3(0.0f, 0.0f, 1.0f);
-    vertices[0].btan           = Vec3(0.0f, 1.0f, 0.0f);
+    vertices[0].tan            = Vec3(0.0f, 1.0f, 0.0f);
 
     vertices[1].pos            = Vec3(0.5f, -0.5f, 0.0f);
     vertices[1].tex            = Vec2(1.0f, 0.0f);
     vertices[1].norm           = Vec3(0.0f, 0.0f, 1.0f);
-    vertices[1].btan           = Vec3(0.0f, 1.0f, 0.0f);
+    vertices[1].tan            = Vec3(0.0f, 1.0f, 0.0f);
 
     vertices[2].pos            = Vec3(0.5f, 0.5f, 0.0f);
     vertices[2].tex            = Vec2(1.0f, 1.0f);
     vertices[2].norm           = Vec3(0.0f, 0.0f, 1.0f);
-    vertices[2].btan           = Vec3(0.0f, 1.0f, 0.0f);
+    vertices[2].tan            = Vec3(0.0f, 1.0f, 0.0f);
 
     vertices[3].pos            = Vec3(-0.5f, 0.5f, 0.0f);
     vertices[3].tex            = Vec2(0.0f, 1.0f);
     vertices[3].norm           = Vec3(0.0f, 0.0f, 1.0f);
-    vertices[3].btan           = Vec3(0.0f, 1.0f, 0.0f);
+    vertices[3].tan            = Vec3(0.0f, 1.0f, 0.0f);
 
     MeshPtr mesh               = GetMeshComponent()->GetMeshVal();
     mesh->m_vertexCount        = (uint) vertices.size();
@@ -316,9 +316,9 @@ namespace ToolKit
 
         float r2, zenith, azimuth;
         ToSpherical(v.pos, r2, zenith, azimuth);
-        v.btan = Vec3(r * glm::cos(zenith) * glm::sin(azimuth),
-                      -r * glm::sin(zenith),
-                      r * glm::cos(zenith) * glm::cos(azimuth));
+        v.tan = Vec3(r * glm::cos(zenith) * glm::sin(azimuth),
+                     -r * glm::sin(zenith),
+                     r * glm::cos(zenith) * glm::cos(azimuth));
 
         vertices.push_back(v);
 
