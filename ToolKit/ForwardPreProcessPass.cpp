@@ -20,6 +20,7 @@ namespace ToolKit
   ForwardPreProcessPass::ForwardPreProcessPass() : Pass("ForwardPreProcessPass")
   {
     m_framebuffer          = MakeNewPtr<Framebuffer>("ForwardPreProcessFB");
+    m_resolveFramebuffer   = MakeNewPtr<Framebuffer>("ForwardPreProcessResolveFB");
 
     m_linearMaterial       = MakeNewPtr<Material>();
     ShaderPtr vertexShader = GetShaderManager()->Create<Shader>(ShaderPath("forwardPreProcessVert.shader", true));
@@ -51,8 +52,19 @@ namespace ToolKit
     {
       m_framebuffer->DetachDepthTexture();
       m_framebuffer->ReconstructIfNeeded({width, height, false, false, sampleCount});
-      m_normalRt->ReconstructIfNeeded(width, height);
-      m_linearDepthRt->ReconstructIfNeeded(width, height);
+
+      if (m_framebuffer->IsMultiSampled())
+      {
+        m_resolveFramebuffer->ReconstructIfNeeded({width, height, false, false, 1});
+      }
+
+      TextureSettings rtSettings = m_normalRt->Settings();
+      rtSettings.msaaCount       = sampleCount;
+      m_normalRt->ReconstructIfNeeded(width, height, &rtSettings);
+
+      rtSettings = m_linearDepthRt->Settings();
+      rtSettings.msaaCount = sampleCount;
+      m_linearDepthRt->ReconstructIfNeeded(width, height, &rtSettings);
 
       m_framebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_linearDepthRt);
       m_framebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment1, m_normalRt);
@@ -121,6 +133,15 @@ namespace ToolKit
     TK_PROFILE_FUNCTION();
 
     Pass::PostRender();
+
+    if (m_framebuffer->IsMultiSampled())
+    {
+      Renderer* renderer = GetRenderer();
+      renderer->ResolveFramebuffer(m_framebuffer,
+                                   m_resolveFramebuffer,
+                                   {(int) Framebuffer::Attachment::ColorAttachment0, (int) Framebuffer::Attachment::ColorAttachment1});
+    }
+
     // Don't clear / invalidate depth, its being used for upcoming passes. Render pass uses it for Z pre-pass.
     // Color channels are used for post process passes.
   }

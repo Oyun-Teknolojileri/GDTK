@@ -31,11 +31,12 @@ namespace ToolKit
 
    public:
     ForwardRenderPassParams m_params;
-    MaterialPtr m_linearMaterial    = nullptr;
-    FramebufferPtr m_framebuffer    = nullptr;
+    MaterialPtr m_linearMaterial        = nullptr;
+    FramebufferPtr m_framebuffer        = nullptr;
+    FramebufferPtr m_resolveFramebuffer = nullptr;
 
-    RenderTargetPtr m_normalRt      = nullptr;
-    RenderTargetPtr m_linearDepthRt = nullptr;
+    RenderTargetPtr m_normalRt          = nullptr;
+    RenderTargetPtr m_linearDepthRt     = nullptr;
   };
 
   typedef std::shared_ptr<ForwardPreProcessPass> ForwardPreProcessPassPtr;

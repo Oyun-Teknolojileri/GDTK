@@ -153,11 +153,15 @@ namespace ToolKit
 
   DepthTexturePtr Framebuffer::DetachDepthTexture()
   {
+    if (m_depthAtch == nullptr)
+    {
+      return nullptr;
+    }
+
     RHI::SetFramebuffer(GL_FRAMEBUFFER, m_fboId);
 
-    // Detach any renderbuffer attachments
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, 0);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, 0);
+    GLenum attachment = m_depthAtch->m_stencil ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT;
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, attachment, GL_RENDERBUFFER, 0);
 
     DepthTexturePtr dt = m_depthAtch;
     m_depthAtch        = nullptr;

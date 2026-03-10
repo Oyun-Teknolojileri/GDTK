@@ -240,7 +240,7 @@ namespace ToolKit
 
   TexturePtr Texture::GetResolvedTexture()
   {
-    return m_resolvedTexture != nullptr ? m_resolvedTexture : Self<Texture>();
+    return m_resolvedTexture != nullptr && IsMultiSampled() ? m_resolvedTexture : Self<Texture>();
   }
 
   void Texture::Clear()

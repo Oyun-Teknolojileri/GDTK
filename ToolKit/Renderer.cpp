@@ -631,6 +631,11 @@ namespace ToolKit
     assert(source->Initialized() && "Source framebuffer is not initialized.");
     assert(target->Initialized() && "Target framebuffer is not initialized.");
 
+    const int srcWidth  = source->GetSettings().width;
+    const int srcHeight = source->GetSettings().height;
+    const int dstWidth  = target->GetSettings().width;
+    const int dstHeight = target->GetSettings().height;
+
     for (int atc : attachments)
     {
       // Sanity check.
@@ -653,18 +658,19 @@ namespace ToolKit
       srcRt->m_resolvedTexture = targetRt;
 
       GLenum attachment        = GL_COLOR_ATTACHMENT0 + atc;
+
+      // Read from the specific source attachment.
       glReadBuffer(attachment);
-      glBlitFramebuffer(0,
-                        0,
-                        source->GetSettings().width,
-                        source->GetSettings().height,
-                        0,
-                        0,
-                        target->GetSettings().width,
-                        target->GetSettings().height,
-                        GL_COLOR_BUFFER_BIT,
-                        GL_NEAREST);
+
+      // Write only to the corresponding target attachment.
+      glDrawBuffers(1, &attachment);
+
+      glBlitFramebuffer(0, 0, srcWidth, srcHeight, 0, 0, dstWidth, dstHeight, GL_COLOR_BUFFER_BIT, GL_NEAREST);
     }
+
+    // Restore target framebuffer's original draw buffer configuration.
+    target->SetDrawBuffers();
+
     RHI::RestoreFramebufferBindings();
   }
 
