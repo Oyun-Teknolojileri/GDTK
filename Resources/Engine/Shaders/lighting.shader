@@ -150,7 +150,8 @@ vec3 PBRLighting
 	vec3 viewCamPos,
 	vec3 albedo,
 	float metallic,
-	float roughness
+	float roughness,
+	vec3 energyCompensation
 )
 {
 	vec3 irradiance = vec3(0.0);
@@ -162,7 +163,7 @@ vec3 PBRLighting
 		float resRatio = light.shadowResolution / graphicConstants.shadowAtlasSize;
 
 		vec3 lightDir = normalize(-light.direction);
-		vec3 Lo = PBR(normal, fragToEye, albedo, metallic, roughness, lightDir, light.color * light.intensity);
+		vec3 Lo = PBR(normal, fragToEye, albedo, metallic, roughness, lightDir, light.color * light.intensity, energyCompensation);
 
 		float shadow = 1.0;
 		vec3 cascadeMultiplier = vec3(1.0);
@@ -244,7 +245,7 @@ vec3 PBRLighting
 		float attenuation = Attenuation(lightDistance, light.radius);
 
 		vec3 lightDir = fragToLight / lightDistance;
-		vec3 Lo = PBR(normal, fragToEye, albedo, metallic, roughness, lightDir, light.color * light.intensity);
+		vec3 Lo = PBR(normal, fragToEye, albedo, metallic, roughness, lightDir, light.color * light.intensity, energyCompensation);
 
 		float shadow = 1.0;
 		if (light.castShadow == 1)
@@ -290,7 +291,7 @@ vec3 PBRLighting
 		float epsilon = light.outerAngle - light.innerAngle;
 		float intensity = clamp((theta - light.outerAngle) / epsilon, 0.0, 1.0);
 
-		vec3 Lo = PBR(normal, fragToEye, albedo, metallic, roughness, lightDirNorm, light.color * light.intensity);
+		vec3 Lo = PBR(normal, fragToEye, albedo, metallic, roughness, lightDirNorm, light.color * light.intensity, energyCompensation);
 
 		float shadow = 1.0;
 		if (light.castShadow == 1)

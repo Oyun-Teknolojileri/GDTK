@@ -42,6 +42,15 @@ vec3 BaseReflectivityPBR(vec3 F0, vec3 albedo, float metallic)
 	return mix(F0, albedo, metallic);
 }
 
+// Google Filament multiscattering energy compensation
+// https://google.github.io/filament/Filament.html#toc4.7.2
+// dfg is the BRDF LUT value (vec2), f0 is the base reflectivity
+// dfg.x + dfg.y is the total energy (white furnace integral)
+vec3 EnergyCompensation(vec2 dfg, vec3 f0)
+{
+	return 1.0 + f0 * (1.0 / (dfg.x + dfg.y) - 1.0);
+}
+
 struct PBRDots
 {
 	float NdotV;
@@ -58,7 +67,7 @@ vec3 CookTorranceBRDF(PBRDots dots, float roughness, vec3 F0, out vec3 fresnel)
 	return (D * V) * fresnel;
 }
 
-vec3 PBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float roughness, vec3 lightDir, vec3 lightColor)
+vec3 PBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float roughness, vec3 lightDir, vec3 lightColor, vec3 energyCompensation)
 {
 	vec3 F0 = BaseReflectivityPBR(vec3(0.04), albedo, metallic);
 
@@ -72,6 +81,8 @@ vec3 PBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float roughne
 
 	vec3 fresnel;
 	vec3 Fr = CookTorranceBRDF(dots, roughness, F0, fresnel);
+
+	Fr *= energyCompensation;
 
 	vec3 kS = fresnel;
 	vec3 kD = vec3(1.0) - kS;
