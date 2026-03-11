@@ -52,7 +52,7 @@ vec3 IBLPBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float roug
 {
 	// Base reflectivity
 	vec3 fresnel = BaseReflectivityPBR(vec3(0.04), albedo, metallic);
-	fresnel = FresnelSchlickRoughness(max(dot(normal, fragToEye), 0.0), fresnel, roughness); 
+	fresnel = F_SchlickRoughness(max(dot(normal, fragToEye), 0.0), fresnel, roughness); 
 
 	vec3 diffuse = IBLDiffusePBR(normal, fragToEye, albedo, metallic, roughness, fresnel);
 	vec3 specular = IBLSpecularPBR(normal, fragToEye, roughness, fresnel);

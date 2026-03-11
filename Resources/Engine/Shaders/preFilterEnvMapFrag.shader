@@ -42,7 +42,7 @@
 				{
 					// Sample from the environment's mip level based on roughness/pdf
 					float NdotH = max(dot(N, H), 0.0);
-					float D = DistributionGGX(NdotH, roughness);
+					float D = D_GGX(NdotH, roughness);
 					float HdotV = max(dot(H, V), 0.0);
 					float pdf = D * NdotH / (4.0 * HdotV) + 0.0001; 
 
