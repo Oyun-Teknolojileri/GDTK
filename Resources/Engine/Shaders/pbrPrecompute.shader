@@ -21,7 +21,7 @@ vec2 Hammersley(uint i, uint N)
 {
 	float x = float(i) / float(N);
 	float y = RadicalInverse_VdC(i);
-	y = clamp(y, 0.001, 0.999);
+	y = clamp(y, 0.0, 1.0);
 	return vec2(x, y);
 }
 

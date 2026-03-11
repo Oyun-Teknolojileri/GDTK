@@ -9,50 +9,55 @@
 		in vec2 v_texture;
 		out vec4 fragColor;
 
-		// https://learnopengl.com/PBR/IBL/Specular-IBL
-		vec2 IntegrateBRDF(float NdotV, float roughness)
+		// Google Filament's GGX visibility term for IBL
+		// https://google.github.io/filament/Filament.html
+		float GDFG(float NoV, float NoL, float a)
+		{
+			float a2 = a * a;
+			float GGXL = NoV * sqrt((-NoL * a2 + NoL) * NoL + a2);
+			float GGXV = NoL * sqrt((-NoV * a2 + NoV) * NoV + a2);
+			return (2.0 * NoL) / (GGXV + GGXL);
+		}
+
+		vec2 DFG(float NoV, float a)
 		{
 			const uint SAMPLE_COUNT = 1024u;
 
 			vec3 V;
-			V.x = sqrt(1.0 - NdotV*NdotV);
+			V.x = sqrt(1.0 - NoV * NoV);
 			V.y = 0.0;
-			V.z = NdotV;
+			V.z = NoV;
 
-			float A = 0.0;
-			float B = 0.0;
+			vec2 r = vec2(0.0);
 
 			vec3 N = vec3(0.0, 0.0, 1.0);
 
 			for(uint i = 0u; i < SAMPLE_COUNT; ++i)
 			{
 				vec2 Xi = Hammersley(i, SAMPLE_COUNT);
-				vec3 H  = ImportanceSampleGGX(Xi, N, roughness);
-				vec3 L  = normalize(2.0 * dot(V, H) * H - V);
+				vec3 H  = ImportanceSampleGGX(Xi, N, a);
+				vec3 L  = 2.0 * dot(V, H) * H - V;
 
-				float NdotL = max(L.z, 0.0);
-				float NdotH = max(H.z, 0.0);
-				float VdotH = max(dot(V, H), 0.0);
+				float VoH = clamp(dot(V, H), 0.0, 1.0);
+				float NoL = clamp(L.z, 0.0, 1.0);
+				float NoH = clamp(H.z, 0.0, 1.0);
 
-				if(NdotL > 0.0)
+				if(NoL > 0.0)
 				{
-					float G = GeometrySmithForIBL(N, V, L, roughness);
-					float G_Vis = (G * VdotH) / (NdotH * NdotV);
-					float Fc = pow(1.0 - VdotH, 5.0);
-
-					A += (1.0 - Fc) * G_Vis;
-					B += Fc * G_Vis;
+					float G = GDFG(NoV, NoL, a);
+					float Gv = G * VoH / NoH;
+					float Fc = pow(1.0 - VoH, 5.0);
+					r.x += Gv * (1.0 - Fc);
+					r.y += Gv * Fc;
 				}
 			}
 
-			A /= float(SAMPLE_COUNT);
-			B /= float(SAMPLE_COUNT);
-			return vec2(A, B);
+			return r * (1.0 / float(SAMPLE_COUNT));
 		}
 
 		void main() 
 		{
-			vec2 integratedBRDF = IntegrateBRDF(v_texture.x, 1.0 - v_texture.y);
+			vec2 integratedBRDF = DFG(v_texture.x, v_texture.y);
 			fragColor = vec4(integratedBRDF, 0.0, 0.0);
 		}
 	-->

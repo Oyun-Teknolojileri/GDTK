@@ -940,20 +940,11 @@ namespace ToolKit
 
       material->SetVertexShaderVal(vert);
       material->SetFragmentShaderVal(frag);
-
-      QuadPtr quad     = MakeNewPtr<Quad>();
-      MeshPtr mesh     = quad->GetMeshComponent()->GetMeshVal();
-      mesh->m_material = material;
-      mesh->Init();
+      material->Init();
 
       SetFramebuffer(utilFramebuffer, GraphicBitFields::AllBits);
 
-      CameraPtr camera = MakeNewPtr<Camera>();
-      SetCamera(camera, true);
-
-      RenderJobArray jobs;
-      RenderJobProcessor::CreateRenderJobs(jobs, quad);
-      RenderWithProgramFromMaterial(jobs);
+      DrawFullQuad(material);
 
       brdfLut->SetFile(TKBrdfLutTexture);
       GetTextureManager()->Manage(brdfLut);
