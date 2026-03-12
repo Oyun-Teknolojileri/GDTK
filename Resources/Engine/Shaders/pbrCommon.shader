@@ -48,7 +48,7 @@ vec3 BaseReflectivityPBR(vec3 F0, vec3 albedo, float metallic)
 // dfg.x + dfg.y is the total energy (white furnace integral)
 vec3 EnergyCompensation(vec2 dfg, vec3 f0)
 {
-	return 1.0 + f0 * (1.0 / (dfg.x + dfg.y) - 1.0);
+	return 1.0 + f0 * (1.0 / (f0 * dfg.x + dfg.y) - 1.0);
 }
 
 struct PBRDots
