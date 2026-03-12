@@ -21,7 +21,7 @@ namespace ToolKit
     static constexpr uint ShadowAtlasSlot                = 8;
     static constexpr uint SpecularIBLLods                = 7;
     static constexpr uint BrdfLutTextureSize             = 512;
-    static constexpr float ShadowBiasMultiplier          = 0.0001f;
+    static constexpr float ShadowBiasMultiplier          = 0.01f;
 
     /** Update shadow.shader MAX_CASCADE_COUNT accordingly. */
     static constexpr uint MaxCascadeCount                = 4;
