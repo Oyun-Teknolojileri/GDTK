@@ -23,13 +23,13 @@ namespace ToolKit
   ForwardRenderPass::ForwardRenderPass() : Pass("ForwardRenderPass")
   {
     ShadowSettingsPtr shadows = GetEngineSettings().m_graphics->m_shadows;
-    m_EVSM4                   = shadows->GetUseEVSM4Val();
+    m_shadowPCF               = shadows->GetShadowPCFVal().GetValue<int>();
     m_SMFormat16Bit           = !shadows->GetUse32BitShadowMapVal();
 
     m_programConfigMat        = GetMaterialManager()->GetCopyOfDefaultMaterial();
 
     ShaderPtr fragmentShader  = m_programConfigMat->GetFragmentShaderVal();
-    fragmentShader->SetDefine("EVSM4", std::to_string(m_EVSM4));
+    fragmentShader->SetDefine("ShadowPCF", std::to_string(m_shadowPCF));
     fragmentShader->SetDefine("SMFormat16Bit", std::to_string(m_SMFormat16Bit));
   }
 
@@ -203,10 +203,12 @@ namespace ToolKit
   {
     const ShadowSettingsPtr shadows = GetEngineSettings().m_graphics->m_shadows;
     ShaderPtr frag                  = m_programConfigMat->GetFragmentShaderVal();
-    if (shadows->GetUseEVSM4Val() != m_EVSM4)
+
+    int shadowPCF = shadows->GetShadowPCFVal().GetValue<int>();
+    if (shadowPCF != m_shadowPCF)
     {
-      m_EVSM4 = shadows->GetUseEVSM4Val();
-      frag->SetDefine("EVSM4", std::to_string(m_EVSM4));
+      m_shadowPCF = shadowPCF;
+      frag->SetDefine("ShadowPCF", std::to_string(m_shadowPCF));
     }
 
     bool is16Bit = !shadows->GetUse32BitShadowMapVal();
@@ -215,9 +217,6 @@ namespace ToolKit
       m_SMFormat16Bit = is16Bit;
       frag->SetDefine("SMFormat16Bit", std::to_string(is16Bit));
     }
-
-    int shadowSample = shadows->GetShadowSamples();
-    frag->SetDefine("ShadowSampleCount", std::to_string(shadowSample));
 
     Renderer* renderer = GetRenderer();
     if (renderer->m_renderOnlyLighting)

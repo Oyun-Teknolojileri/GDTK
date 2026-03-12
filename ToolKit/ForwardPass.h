@@ -50,7 +50,7 @@ namespace ToolKit
 
    private:
     bool m_SMFormat16Bit = false;
-    bool m_EVSM4         = false;
+    int m_shadowPCF      = 0;
 
     MaterialPtr m_programConfigMat;
   };

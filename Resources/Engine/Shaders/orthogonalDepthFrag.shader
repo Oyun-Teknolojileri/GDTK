@@ -3,7 +3,6 @@
 	<include name = "VSMCommon.shader" />
 	<include name = "materialCacheInc.shader" />
 	<define name = "DrawAlphaMasked" val="0,1" />
-	<define name = "EVSM4" val="0,1" />
 	<define name = "Pancake" val="0,1" />
 	<source>
 	<!--
@@ -52,11 +51,7 @@
 
 		vec2 vsmDepth = WarpDepth(depth, EvsmExponents);
 
-	#if EVSM4
-		fragColor = vec4(vsmDepth.xy, vsmDepth.xy * vsmDepth.xy);
-	#else
 		fragColor = vec4(vsmDepth.x, vsmDepth.x * vsmDepth.x, 0.0, 0.0);
-	#endif
 	}
 	-->
 	</source>

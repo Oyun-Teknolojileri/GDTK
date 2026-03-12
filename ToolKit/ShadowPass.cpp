@@ -440,12 +440,6 @@ namespace ToolKit
       needChange           = true;
     }
 
-    if (m_useEVSM4 != shadows->GetUseEVSM4Val())
-    {
-      m_useEVSM4 = shadows->GetUseEVSM4Val();
-      needChange = true;
-    }
-
     if (m_use32BitShadowMap != shadows->GetUse32BitShadowMapVal())
     {
       m_use32BitShadowMap = shadows->GetUse32BitShadowMapVal();
@@ -484,11 +478,9 @@ namespace ToolKit
     {
       // Update materials.
       ShaderPtr frag = m_shadowMatOrtho->GetFragmentShaderVal();
-      frag->SetDefine("EVSM4", std::to_string(m_useEVSM4));
       frag->SetDefine("SMFormat16Bit", std::to_string(!m_use32BitShadowMap));
 
       frag = m_shadowMatPersp->GetFragmentShaderVal();
-      frag->SetDefine("EVSM4", std::to_string(m_useEVSM4));
       frag->SetDefine("SMFormat16Bit", std::to_string(!m_use32BitShadowMap));
 
       // Update layers.
@@ -504,12 +496,12 @@ namespace ToolKit
         GetLogger()->Log("ERROR: Max array texture layer size is reached: " + std::to_string(maxLayers) + " !");
       }
 
-      GraphicTypes bufferComponents = m_useEVSM4 ? GraphicTypes::FormatRGBA : GraphicTypes::FormatRG;
-      GraphicTypes bufferFormat     = m_useEVSM4 ? GraphicTypes::FormatRGBA32F : GraphicTypes::FormatRG32F;
+      GraphicTypes bufferComponents = GraphicTypes::FormatRG;
+      GraphicTypes bufferFormat     = GraphicTypes::FormatRG32F;
 
       if (!m_use32BitShadowMap)
       {
-        bufferFormat = m_useEVSM4 ? GraphicTypes::FormatRGBA16F : GraphicTypes::FormatRG16F;
+        bufferFormat = GraphicTypes::FormatRG16F;
       }
 
       GraphicTypes sampler = GraphicTypes::SampleLinear;

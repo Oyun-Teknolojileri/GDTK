@@ -6,9 +6,8 @@
 	<include name = "cameraDataInc.shader" />
 	<include name = "materialCacheInc.shader" />
 	<define name = "DrawAlphaMasked" val="0,1" />
-	<define name = "EVSM4" val="0,1" />
 	<define name = "SMFormat16Bit" val="0,1" />
-	<define name = "ShadowSampleCount" val="1,5,9,16" />
+	<define name = "ShadowPCF" val="0,4,9,16" />
 	<define name = "highlightCascades" val="0,1" />
 	<define name = "LightingOnly" val="0,1" />
 	<source>

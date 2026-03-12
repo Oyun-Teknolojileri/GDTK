@@ -82,8 +82,8 @@
 	int castShadow;															\
 	float shadowBias;														\
 	float bleedingReduction;												\
-	float pcfRadius;														\
-	int pcfSamples;															\
+	float padx;																\
+	float pady;																\
 	vec2 shadowAtlasCoord;													\
 	float shadowResolution;													\
 	int shadowAtlasLayer;

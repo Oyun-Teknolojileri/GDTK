@@ -44,10 +44,6 @@ float SpotAngleAttenuation(float cosAngle, float cosInner, float cosOuter)
 	return attenuation * attenuation;
 }
 
-// Adhoc filter shrink. Each cascade further away from the camera should
-// reduce the filter size because each pixel coverage enlarges in distant cascades.
-float filterShrinkCoeff[4] = float[]( 1.0, 0.5, 0.25, 0.125 );
-
 float CalculateDirectionalShadow
 (
 	vec3 pos,
@@ -56,7 +52,6 @@ float CalculateDirectionalShadow
 	vec2 shadowAtlasCoord,
 	float shadowAtlasResRatio,
 	int shadowAtlasLayer,
-	float PCFRadius,
 	float lightBleedReduction,
 	float shadowBias
 )
@@ -70,13 +65,15 @@ float CalculateDirectionalShadow
 	vec2 uvInAtlas = startCoord + shadowAtlasResRatio * projCoord.xy;
 	vec3 sampleCoord = vec3(uvInAtlas, shadowAtlasLayer);
 
+	float texelSize = 1.0 / SHADOW_ATLAS_SIZE;
+
 	float shadow = PCFFilterShadow2D
 	(
 		s_texture8,
 		sampleCoord,
 		startCoord,
 		endCoord,
-		PCFRadius / SHADOW_ATLAS_SIZE,
+		texelSize,
 		projCoord.z,
 		lightBleedReduction,
 		shadowBias
@@ -102,10 +99,9 @@ float CalculateSpotShadow
 	vec2 shadowAtlasCoord,
 	float shadowAtlasResRatio,
 	int shadowAtlasLayer,
-	float PCFRadius,
 	float lightBleedReduction,
 	float shadowBias,
-  float lightDistance
+	float lightDistance
 )
 {
 	vec4 fragPosForLight = lightProjView * vec4(pos, 1.0);
@@ -117,13 +113,15 @@ float CalculateSpotShadow
 	vec2 startCoord = shadowAtlasCoord;
 	vec3 coord = vec3(startCoord + shadowAtlasResRatio * projCoord.xy, shadowAtlasLayer);
 
+	float texelSize = 1.0 / SHADOW_ATLAS_SIZE;
+
 	return PCFFilterShadow2D
 	(
 		s_texture8,
 		coord,
 		startCoord,
 		startCoord + shadowAtlasResRatio,
-		PCFRadius / SHADOW_ATLAS_SIZE,
+		texelSize,
 		currFragDepth,
 		lightBleedReduction,
 		shadowBias
@@ -138,7 +136,6 @@ float CalculatePointShadow
 	vec2 shadowAtlasCoord,
 	float shadowAtlasResRatio,
 	int shadowAtlasLayer,
-	float PCFRadius,
 	float lightBleedReduction,
 	float shadowBias,
 	float precomputedDist
@@ -147,6 +144,8 @@ float CalculatePointShadow
 	vec3 lightToFrag = pos - lightPos;
 	float currFragDepth = precomputedDist / shadowCameraFar;
 
+	float texelSize = 1.0 / SHADOW_ATLAS_SIZE;
+
 	return PCFFilterOmni
 	(
 		s_texture8,
@@ -154,7 +153,7 @@ float CalculatePointShadow
 		shadowAtlasResRatio,
 		shadowAtlasLayer,
 		lightToFrag,
-		PCFRadius / SHADOW_ATLAS_SIZE,
+		texelSize,
 		currFragDepth,
 		lightBleedReduction,
 		shadowBias
@@ -275,8 +274,6 @@ vec3 PBRLighting
 
 			layer += light.shadowAtlasLayer;
 
-			float rad = light.pcfRadius * filterShrinkCoeff[cascadeOfThisPixel];
-
 			shadow = CalculateDirectionalShadow
 			(
 				fragPos,
@@ -285,7 +282,6 @@ vec3 PBRLighting
 				coord / graphicConstants.shadowAtlasSize,
 				resRatio,
 				layer,
-				rad,
 				light.bleedingReduction,
 				light.shadowBias
 			);
@@ -330,7 +326,6 @@ vec3 PBRLighting
 				light.shadowAtlasCoord,
 				resRatio,
 				light.shadowAtlasLayer,
-				light.pcfRadius,
 				light.bleedingReduction,
 				light.shadowBias,
 				lightDistance
@@ -380,7 +375,6 @@ vec3 PBRLighting
 				light.shadowAtlasCoord / graphicConstants.shadowAtlasSize,
 				resRatio,
 				light.shadowAtlasLayer,
-				light.pcfRadius,
 				light.bleedingReduction,
 				light.shadowBias,
 				lightDistance

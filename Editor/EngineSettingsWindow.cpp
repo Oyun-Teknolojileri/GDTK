@@ -218,28 +218,19 @@ namespace ToolKit
       // Shadows Tab
       if (ImGui::BeginTabItem("Shadows"))
       {
-        bool evsm4 = shadows->GetUseEVSM4Val();
-        if (ImGui::RadioButton("Use EVSM2", !evsm4))
-        {
-          shadows->SetUseEVSM4Val(false);
-        }
-        UI::AddTooltipToLastItem("Exponential variance shadow mapping with positive component.");
-
-        ImGui::SameLine();
-
-        if (ImGui::RadioButton("Use EVSM4", evsm4))
-        {
-          shadows->SetUseEVSM4Val(true);
-        }
-        UI::AddTooltipToLastItem("Exponential variance shadow mapping with positive and negative component."
-                                 "\nRequires more shadow map memory, but yields softer shadows.");
-
         bool use32BitShadowMap = shadows->GetUse32BitShadowMapVal();
         if (ImGui::Checkbox("Use high precision shadow maps", &use32BitShadowMap))
         {
           shadows->SetUse32BitShadowMapVal(use32BitShadowMap);
         }
         UI::AddTooltipToLastItem("Uses 32 bits floating point textures for shadow map generation.");
+
+        CustomDataView::ShowVariant(&shadows->ParamShadowPCF(), nullptr);
+        UI::AddTooltipToLastItem("Shadow PCF filtering tap count.\n"
+                                 "Off: Single sample, no filtering.\n"
+                                 "4 tap: ~3x3 kernel.\n"
+                                 "9 tap: ~5x5 kernel.\n"
+                                 "16 tap: ~7x7 kernel.");
 
         // Cascade count combo.
         {
@@ -263,10 +254,6 @@ namespace ToolKit
             ImGui::EndCombo();
           }
         }
-
-        // Show shadow sample multi choice.
-        CustomDataView::ShowVariant(&shadows->ParamShadowSamples(), nullptr);
-        UI::AddTooltipToLastItem("Number of samples taken from shadow map to calculate shadow factor.");
 
         Vec4 data            = shadows->GetCascadeDistancesVal();
         int lastCascadeIndex = shadows->GetCascadeCountVal() - 1;
@@ -518,4 +505,4 @@ namespace ToolKit
     }
 
   } // namespace Editor
-} // namespace ToolKit
+} // namespace ToolKit} // namespace ToolKit
