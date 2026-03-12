@@ -6,6 +6,10 @@
   #ifndef VSM_SHADER
   #define VSM_SHADER
 
+  // ---------------------------------------------------------------------------
+  // Poisson Disk for PCF / blocker search
+  // ---------------------------------------------------------------------------
+
   const vec3 PoissonDisk[16] = vec3[]
   (
     vec3(-0.308466, -0.140553, -0.393857),
@@ -26,38 +30,41 @@
     vec3(0.366756, 0.323298, 0.0856197)
   );
 
-  float Random(vec4 seed)
-  {
-	  float dot_product = dot(seed, vec4(12.9898,78.233,45.164,94.673));
-	  return fract(sin(dot_product) * 43758.5453);
-  }
+  // ---------------------------------------------------------------------------
+  // Utility
+  // ---------------------------------------------------------------------------
 
-  float saturate(float value) {
+  float saturate(float value)
+  {
     return clamp(value, 0.0, 1.0);
   }
-    
-  float Linstep(float a, float b, float v)
-  {
-      return saturate((v - a) / (b - a));
-  }
 
-  // Reduces VSM light bleedning
-  float ReduceLightBleeding(float pMax, float amount)
-  {
-      return Linstep(amount, 1.0f, pMax);
-  }
+  // ---------------------------------------------------------------------------
+  // Chebyshev Upper Bound (Filament style)
+  // https://google.github.io/filament/Filament.html
+  // ---------------------------------------------------------------------------
 
   float ChebyshevUpperBound(vec2 moments, float mean, float minVariance, float lightBleedingReduction)
   {
+      // Fast path: receiver is fully in front of the caster
+      if (mean <= moments.x)
+      {
+          return 1.0;
+      }
+
+      // Variance with clamped minimum to reduce acne
       float variance = moments.y - (moments.x * moments.x);
       variance = max(variance, minVariance);
 
+      // Standard Chebyshev inequality
       float d = mean - moments.x;
-      float pMax = variance / (variance + (d * d));
+      float pMax = variance / (variance + d * d);
 
-      pMax = ReduceLightBleeding(pMax, lightBleedingReduction);
+      // Light Bleeding Reduction (Filament style)
+      // Remaps [lbr, 1] to [0, 1]
+      pMax = saturate((pMax - lightBleedingReduction) / (1.0 - lightBleedingReduction));
 
-      return (mean <= moments.x ? 1.0f : pMax);
+      return pMax;
   }
 
   #endif
