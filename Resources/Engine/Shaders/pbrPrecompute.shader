@@ -25,27 +25,6 @@ vec2 Hammersley(uint i, uint N)
 	return vec2(x, y);
 }
 
-float GeometrySchlickGGXForIBL(float NdotV, float roughness)
-{
-	float r = roughness;
-	float k = (r * r) / 2.0;
-
-	float nom = NdotV;
-	float denom = NdotV * (1.0 - k) + k;
-
-	return nom / denom;
-}
-
-float GeometrySmithForIBL(vec3 N, vec3 V, vec3 L, float roughness)
-{
-	float NdotV = max(dot(N, V), 0.0);
-	float NdotL = max(dot(N, L), 0.0);
-	float ggx2 = GeometrySchlickGGXForIBL(NdotV, roughness);
-	float ggx1 = GeometrySchlickGGXForIBL(NdotL, roughness);
-
-	return ggx1 * ggx2;
-}
-
 vec3 ImportanceSampleGGX(vec2 Xi, vec3 N, float roughness)
 {
 	float a = roughness * roughness;

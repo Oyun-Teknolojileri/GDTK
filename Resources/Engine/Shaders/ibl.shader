@@ -15,51 +15,92 @@ uniform sampler2D s_texture16;		// IBL BRDF Lut
 
 uniform mat4 iblRotation;
 
-vec3 IBLDiffusePBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float roughness, vec3 fresnel)
+// ---------------------------------------------------------------------------
+// Filament-style IBL helpers
+// ---------------------------------------------------------------------------
+
+// Quadratic fit for roughness-to-LOD mapping
+// Filament: perceptualRoughnessToLod
+float RoughnessToLod(float roughness, float maxLod)
+{
+	return maxLod * roughness * (2.0 - roughness);
+}
+
+// Specular dominant direction correction
+// Filament: getSpecularDominantDirection
+vec3 GetSpecularDominantDirection(vec3 n, vec3 r, float roughness)
+{
+	return mix(r, n, roughness * roughness);
+}
+
+// Filament-style specularDFG: pre-integrated environment BRDF
+// Uses the DFG LUT to compute the specular contribution factor
+// dfg.x = scale, dfg.y = bias → result = mix(dfg.xxx, dfg.yyy, f0)
+// which is equivalent to: f0 * dfg.x + dfg.y
+vec3 SpecularDFG(vec2 dfg, vec3 f0)
+{
+	return f0 * dfg.x + dfg.y;
+}
+
+// ---------------------------------------------------------------------------
+// IBL Diffuse
+// Filament approach: Fd = diffuseColor * irradiance * (1.0 - E)
+// where E = specularDFG(f0, dfg) is the total specular energy
+// ---------------------------------------------------------------------------
+
+vec3 IBLDiffusePBR(vec3 normal, vec3 albedo, float metallic, vec3 E)
 {
 	vec3 irradiance = vec3(0.0);
 	if (IsIBLInUse())
 	{
-		vec3 kS = fresnel;
-		vec3 kD = 1.0 - kS;
-		kD *= 1.0 - metallic;
+		vec3 diffuseColor = albedo * (1.0 - metallic);
 		vec3 iblSamplerVec = (iblRotation * vec4(normal, 0.0)).xyz;
 		vec3 iblIrradiance = texture(s_texture7, iblSamplerVec).rgb;
-		vec3 diffuse    = iblIrradiance * albedo;
-		irradiance    = kD * diffuse;
+		irradiance = diffuseColor * iblIrradiance * (1.0 - E);
 	}
 
 	return irradiance;
 }
 
-vec3 IBLSpecularPBR(vec3 normal, vec3 fragToEye, float roughness, vec3 fresnel, vec3 energyComp)
+// ---------------------------------------------------------------------------
+// IBL Specular
+// Filament approach: Fr = E * prefilteredRadiance * energyCompensation
+// Uses specular dominant direction and quadratic LOD mapping
+// ---------------------------------------------------------------------------
+
+vec3 IBLSpecularPBR(vec3 normal, vec3 fragToEye, float roughness, vec3 E, vec3 energyComp)
 {
 	vec3 specular = vec3(0.0);
 	if (IsIBLInUse())
 	{
 		vec3 R = reflect(-fragToEye, normal);
+		R = GetSpecularDominantDirection(normal, R, roughness);
 		vec3 iblSamplerVec = (iblRotation * vec4(R, 0.0)).xyz;
-		float normalDotFragToEye = max(dot(normal, fragToEye), 0.0);
 
-		vec3 preFilteredColor = textureLod(s_texture15, iblSamplerVec, roughness * float(graphicConstants.iblMaxReflectionLod)).rgb;
-		vec2 brdfFactor = texture(s_texture16, vec2(normalDotFragToEye, roughness)).rg;
-		specular = preFilteredColor * (fresnel * brdfFactor.x + brdfFactor.y);
+		float lod = RoughnessToLod(roughness, float(graphicConstants.iblMaxReflectionLod));
+		vec3 preFilteredColor = textureLod(s_texture15, iblSamplerVec, lod).rgb;
 
+		specular = E * preFilteredColor;
 		specular *= energyComp;
 	}
 
 	return specular;
 }
 
-vec3 IBLPBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float roughness, vec3 energyComp)
-{
-	// Base reflectivity
-	vec3 f0 = BaseReflectivityPBR(vec3(0.04), albedo, metallic);
-	vec3 fresnel = F_SchlickRoughness(max(dot(normal, fragToEye), 0.0), f0, roughness);
+// ---------------------------------------------------------------------------
+// Combined IBL evaluation
+// ---------------------------------------------------------------------------
 
-	vec3 diffuse = IBLDiffusePBR(normal, fragToEye, albedo, metallic, roughness, fresnel);
-	vec3 specular = IBLSpecularPBR(normal, fragToEye, roughness, fresnel, energyComp);
-	return (diffuse + specular) * GetIBLIntensity();
+vec3 IBLPBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float roughness, vec2 dfg, vec3 energyComp)
+{
+	vec3 f0 = BaseReflectivityPBR(vec3(0.04), albedo, metallic);
+
+	// Compute specular DFG term (Filament: specularDFG)
+	vec3 E = SpecularDFG(dfg, f0);
+
+	vec3 Fd = IBLDiffusePBR(normal, albedo, metallic, E);
+	vec3 Fr = IBLSpecularPBR(normal, fragToEye, roughness, E, energyComp);
+	return (Fd + Fr) * GetIBLIntensity();
 }
 
 #endif
