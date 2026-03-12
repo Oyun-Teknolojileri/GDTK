@@ -16,7 +16,6 @@
 
 		const float FLT_MAX = 3.402823466e+38;
 
-		// https://learnopengl.com/PBR/IBL/Specular-IBL
 		void main()
 		{		
 			const uint SAMPLE_COUNT = 1024u;
@@ -27,23 +26,26 @@
 			vec3 R = N;
 			vec3 V = R;
 
+			// Convert perceptual roughness to alpha for Filament's D_GGX
+			float alpha = roughness * roughness;
+
 			vec3 prefilteredColor = vec3(0.0);
 			float totalWeight = 0.0;
 
 			for(uint i = 0u; i < SAMPLE_COUNT; ++i)
 			{
-				// Generates a sample vector that's biased towards the preferred alignment direction (importance sampling).
 				vec2 Xi = Hammersley(i, SAMPLE_COUNT);
 				vec3 H = ImportanceSampleGGX(Xi, N, roughness);
-				vec3 L  = normalize(2.0 * dot(V, H) * H - V);
+				vec3 L = normalize(2.0 * dot(V, H) * H - V);
 
 				float NdotL = max(dot(N, L), 0.0);
 				if(NdotL > 0.0)
 				{
-					// Sample from the environment's mip level based on roughness/pdf
 					float NdotH = max(dot(N, H), 0.0);
-					float D = D_GGX(NdotH, roughness);
 					float HdotV = max(dot(H, V), 0.0);
+
+					// Use Filament-style D_GGX for PDF calculation
+					float D = distribution(alpha, NdotH, H);
 					float pdf = D * NdotH / (4.0 * HdotV) + 0.0001; 
 
 					float saTexel  = 4.0 * PI / (6.0 * resPerFace * resPerFace);
@@ -52,10 +54,10 @@
 					float mipLevel = roughness == 0.0 ? 0.0 : 0.5 * log2(saSample / saTexel); 
 					
 					vec3 texel = textureLod(s_texture6, L, mipLevel).rgb;
-					texel  = clamp(texel, vec3(0.0), vec3(FLT_MAX));
-					prefilteredColor +=  texel * NdotL;
+					texel = clamp(texel, vec3(0.0), vec3(FLT_MAX));
+					prefilteredColor += texel * NdotL;
 					
-					totalWeight      += NdotL;
+					totalWeight += NdotL;
 				}
 			}
 

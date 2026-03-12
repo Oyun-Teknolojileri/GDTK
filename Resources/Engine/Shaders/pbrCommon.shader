@@ -147,45 +147,6 @@ struct PBRDots
 	float HdotV;
 };
 
-vec3 CookTorranceBRDF(PBRDots dots, float roughness, vec3 F0, out vec3 kS)
-{
-	vec3 h = vec3(0.0); // dummy, not used in isotropic path without mobile cross-product trick
-	float D = distribution(roughness, dots.NdotH, h);
-	float V = visibility(roughness, dots.NdotV, dots.NdotL);
-	kS = fresnel(F0, dots.HdotV);
-	return (D * V) * kS;
-}
-
-// ---------------------------------------------------------------------------
-// Full PBR evaluation for a single light
-// ---------------------------------------------------------------------------
-
-vec3 PBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float roughness, vec3 lightDir, vec3 lightColor, vec3 energyCompensation)
-{
-	vec3 F0 = BaseReflectivityPBR(vec3(0.04), albedo, metallic);
-
-	vec3 halfway = normalize(lightDir + fragToEye);
-
-	PBRDots dots;
-	dots.NdotV = abs(dot(normal, fragToEye)) + 1e-5;
-	dots.NdotL = clamp(dot(normal, lightDir), 0.0, 1.0);
-	dots.NdotH = clamp(dot(normal, halfway), 0.0, 1.0);
-	dots.HdotV = clamp(dot(halfway, fragToEye), 0.0, 1.0);
-
-	vec3 kS;
-	vec3 Fr = CookTorranceBRDF(dots, roughness, F0, kS);
-
-	Fr *= energyCompensation;
-
-	vec3 kD = vec3(1.0) - kS;
-	kD *= 1.0 - metallic;
-
-	float LoH = dots.HdotV; // L·H == V·H for the halfway vector
-	vec3 Fd = kD * albedo * diffuse(roughness, dots.NdotV, dots.NdotL, LoH);
-
-	return (Fd + Fr) * lightColor * dots.NdotL;
-}
-
 #endif
 	-->
 	</source>

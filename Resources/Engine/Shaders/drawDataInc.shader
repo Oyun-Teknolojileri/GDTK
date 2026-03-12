@@ -133,8 +133,8 @@
 		vec3 direction;
 		float radius;
 
-		float innerAngle;
 		float outerAngle;
+		float innerAngle;
 	
 		mat4 projectionViewMatrix;
 	};

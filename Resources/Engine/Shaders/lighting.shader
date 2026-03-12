@@ -17,11 +17,31 @@ uniform int activeSpotLightIndexes[MAX_SPOT_LIGHT_PER_OBJECT];
 
 const float shadowFadeOutDistanceNorm = 0.9;
 
-float Attenuation(float distance, float radius)
+// ---------------------------------------------------------------------------
+// Filament-style attenuation
+// ---------------------------------------------------------------------------
+
+// Physically-based square falloff with smooth window function
+// Filament: getSquareFalloffAttenuation + getDistanceAttenuation
+float DistanceAttenuation(float distanceSq, float falloff)
 {
-	float attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * distance * distance);
-	attenuation *= 1.0 - smoothstep(0.0, radius, distance);
-	return attenuation;
+	// falloff = 1.0 / (radius * radius)
+	float factor = distanceSq * falloff;
+	float smoothFactor = clamp(1.0 - factor * factor, 0.0, 1.0);
+	// Smooth window: (1 - (d²/r²)²)²
+	// Divided by distanceSq for inverse-square law
+	// Clamp to avoid division by zero for very close lights
+	return (smoothFactor * smoothFactor) / max(distanceSq, 1e-4);
+}
+
+// Filament-style spot light angular attenuation
+// cosInner and cosOuter are pre-computed cosine values
+float SpotAngleAttenuation(float cosAngle, float cosInner, float cosOuter)
+{
+	float scale = 1.0 / max(cosInner - cosOuter, 1e-4);
+	float offset = -cosOuter * scale;
+	float attenuation = clamp(cosAngle * scale + offset, 0.0, 1.0);
+	return attenuation * attenuation;
 }
 
 // Adhoc filter shrink. Each cascade further away from the camera should
@@ -141,6 +161,53 @@ float CalculatePointShadow
 	);
 }
 
+// ---------------------------------------------------------------------------
+// Filament-style surface shading for a single light
+// Combines BRDF evaluation with light color, intensity, attenuation, NoL and shadow
+// ---------------------------------------------------------------------------
+
+vec3 SurfaceShading
+(
+	vec3 normal,
+	vec3 fragToEye,
+	vec3 albedo,
+	float metallic,
+	float roughness,
+	vec3 lightDir,
+	vec3 lightColor,
+	float lightIntensity,
+	float attenuation,
+	float shadow,
+	vec3 energyCompensation
+)
+{
+	vec3 F0 = BaseReflectivityPBR(vec3(0.04), albedo, metallic);
+	vec3 diffuseColor = albedo * (1.0 - metallic);
+
+	vec3 halfway = normalize(lightDir + fragToEye);
+
+	float NoV = abs(dot(normal, fragToEye)) + 1e-5;
+	float NoL = clamp(dot(normal, lightDir), 0.0, 1.0);
+	float NoH = clamp(dot(normal, halfway), 0.0, 1.0);
+	float LoH = clamp(dot(lightDir, halfway), 0.0, 1.0);
+
+	// Specular BRDF
+	vec3 h = halfway;
+	float D = distribution(roughness, NoH, h);
+	float V = visibility(roughness, NoV, NoL);
+	vec3 F = fresnel(F0, LoH);
+	vec3 Fr = (D * V) * F;
+
+	// Diffuse BRDF
+	vec3 Fd = diffuseColor * diffuse(roughness, NoV, NoL, LoH);
+
+	// Combine: Fd + Fr * energyCompensation (Filament style)
+	vec3 color = Fd + Fr * energyCompensation;
+
+	// Apply light contribution: color * lightColor * (intensity * attenuation * NoL * shadow)
+	return color * lightColor * (lightIntensity * attenuation * NoL * shadow);
+}
+
 vec3 PBRLighting
 (
 	vec3 fragPos,
@@ -156,6 +223,7 @@ vec3 PBRLighting
 {
 	vec3 irradiance = vec3(0.0);
 
+	// ----- Directional Lights -----
 	for (int i = 0; i < GetActiveDirectionalLightCount(); i++)
 	{
 		DirectionalLightData light = directionalLightArray[i];
@@ -163,7 +231,6 @@ vec3 PBRLighting
 		float resRatio = light.shadowResolution / graphicConstants.shadowAtlasSize;
 
 		vec3 lightDir = normalize(-light.direction);
-		vec3 Lo = PBR(normal, fragToEye, albedo, metallic, roughness, lightDir, light.color * light.intensity, energyCompensation);
 
 		float shadow = 1.0;
 		vec3 cascadeMultiplier = vec3(1.0);
@@ -224,9 +291,14 @@ vec3 PBRLighting
 			);
 		}
 
-		irradiance += Lo * shadow * cascadeMultiplier;
+		// Directional lights have no distance attenuation
+		vec3 Lo = SurfaceShading(normal, fragToEye, albedo, metallic, roughness,
+			lightDir, light.color, light.intensity, 1.0, shadow, energyCompensation);
+
+		irradiance += Lo * cascadeMultiplier;
 	}
 
+	// ----- Point Lights -----
 	for (int i = 0; i < GetActivePointLightCount(); i++)
 	{
 		int ii = activePointLightIndexes[i];
@@ -242,10 +314,10 @@ vec3 PBRLighting
 		}
 
 		float resRatio = light.shadowResolution / graphicConstants.shadowAtlasSize;
-		float attenuation = Attenuation(lightDistance, light.radius);
+		float falloff = 1.0 / (light.radius * light.radius);
+		float attenuation = DistanceAttenuation(lightDistanceSq, falloff);
 
 		vec3 lightDir = fragToLight / lightDistance;
-		vec3 Lo = PBR(normal, fragToEye, albedo, metallic, roughness, lightDir, light.color * light.intensity, energyCompensation);
 
 		float shadow = 1.0;
 		if (light.castShadow == 1)
@@ -265,9 +337,13 @@ vec3 PBRLighting
 			);
 		}
 
-		irradiance += Lo * shadow * attenuation;
+		vec3 Lo = SurfaceShading(normal, fragToEye, albedo, metallic, roughness,
+			lightDir, light.color, light.intensity, attenuation, shadow, energyCompensation);
+
+		irradiance += Lo;
 	}
 
+	// ----- Spot Lights -----
 	for (int i = 0; i < GetActiveSpotLightCount(); i++)
 	{
 		int ii = activeSpotLightIndexes[i];
@@ -283,15 +359,14 @@ vec3 PBRLighting
 		}
 
 		float resRatio = light.shadowResolution / graphicConstants.shadowAtlasSize;
-		float attenuation = Attenuation(lightDistance, light.radius);
+		float falloff = 1.0 / (light.radius * light.radius);
+		float attenuation = DistanceAttenuation(lightDistanceSq, falloff);
 
-		// Spotlight cone falloff
+		// Filament-style spot cone attenuation
 		vec3 lightDirNorm = fragToLight / lightDistance;
-		float theta = dot(-lightDirNorm, light.direction);
-		float epsilon = light.outerAngle - light.innerAngle;
-		float intensity = clamp((theta - light.outerAngle) / epsilon, 0.0, 1.0);
-
-		vec3 Lo = PBR(normal, fragToEye, albedo, metallic, roughness, lightDirNorm, light.color * light.intensity, energyCompensation);
+		float cosAngle = dot(-lightDirNorm, light.direction);
+		// light.innerAngle and light.outerAngle are pre-computed cosine values from CPU
+		attenuation *= SpotAngleAttenuation(cosAngle, light.innerAngle, light.outerAngle);
 
 		float shadow = 1.0;
 		if (light.castShadow == 1)
@@ -312,7 +387,10 @@ vec3 PBRLighting
 			);
 		}
 
-		irradiance += Lo * shadow * intensity * attenuation;
+		vec3 Lo = SurfaceShading(normal, fragToEye, albedo, metallic, roughness,
+			lightDirNorm, light.color, light.intensity, attenuation, shadow, energyCompensation);
+
+		irradiance += Lo;
 	}
 
 	return irradiance;
