@@ -60,7 +60,6 @@ void TrunckToFileName(string& fullPath)
 
 namespace ToolKit
 {
-
   vector<string> g_usedFiles;
   SkeletonPtr g_skeleton;
   bool isSkeletonEntityCreated = false;
@@ -556,7 +555,7 @@ namespace ToolKit
       aiColor3D emissiveColor;
       if (material->Get(AI_MATKEY_COLOR_EMISSIVE, emissiveColor) == aiReturn_SUCCESS)
       {
-        Vec3 emColor = Vec3(emissiveColor.r, emissiveColor.g, emissiveColor.b);
+        Vec3 emColor            = Vec3(emissiveColor.r, emissiveColor.g, emissiveColor.b);
 
         // Apply emissive intensity if available
         float emissiveIntensity = 1.0f;
@@ -614,7 +613,7 @@ namespace ToolKit
           tMaterial->GetRenderState()->blendFunction = BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA;
 
           // Read alpha/opacity for blend mode
-          float transparency = 1.0f;
+          float transparency                         = 1.0f;
           if (material->Get(AI_MATKEY_OPACITY, transparency) == aiReturn_SUCCESS)
           {
             tMaterial->SetAlphaVal(transparency);
@@ -624,7 +623,7 @@ namespace ToolKit
         {
           tMaterial->GetRenderState()->blendFunction = BlendFunction::ALPHA_MASK;
 
-          float alphaCutoff = 0.5f;
+          float alphaCutoff                          = 0.5f;
           material->Get(AI_MATKEY_GLTF_ALPHACUTOFF, alphaCutoff);
           tMaterial->GetRenderState()->alphaMaskTreshold = alphaCutoff;
         }
@@ -920,13 +919,13 @@ namespace ToolKit
       CameraPtr tkCam = MakeNewPtr<Camera>();
       tkCam->SetNameVal(cam->mName.C_Str());
 
-      // Horizontal to vertical fov.
       float aspect               = cam->mAspect > 0.0f ? cam->mAspect : 1.0f;
+
+      // Convert horizontal to vertical FOV.
       float tanHalfHorizontalFov = std::tan(cam->mHorizontalFOV * 0.5f);
       float fov                  = 2.0f * std::atan(tanHalfHorizontalFov / aspect);
 
       // Camera transform is handled by the scene node in TraverseScene.
-      // aiCamera::GetCameraMatrix returns a view matrix, not a world transform.
       // So we only set the lens parameters here.
       tkCam->SetLens(fov, aspect, cam->mClipPlaneNear, cam->mClipPlaneFar);
 
@@ -976,7 +975,6 @@ namespace ToolKit
       if (cam->GetNameVal() == node->mName.C_Str())
       {
         ntt = cam;
-        ntt->m_node->Rotate(glm::angleAxis(glm::pi<float>(), Y_AXIS)); // Align dir.
         break;
       }
     }
@@ -1022,9 +1020,9 @@ namespace ToolKit
       }
     }
 
-    ntt->m_node->Translate(t, TransformationSpace::TS_LOCAL);
-    ntt->m_node->Rotate(rt, TransformationSpace::TS_LOCAL);
-    ntt->m_node->Scale(s);
+    ntt->m_node->SetTranslation(t, TransformationSpace::TS_LOCAL);
+    ntt->m_node->SetOrientation(rt, TransformationSpace::TS_LOCAL);
+    ntt->m_node->SetScale(s);
 
     // Insert all meshes to the entity.
     for (uint meshIndx = 0; meshIndx < node->mNumMeshes; meshIndx++)
@@ -1262,6 +1260,8 @@ namespace ToolKit
         // Set bone node transformation
         {
           DynamicBoneMap::DynamicBone& dBone = g_skeleton->m_Tpose.m_boneMap[node->mName.C_Str()];
+
+          // Set translation directly
           Vec3 t, s;
           Quaternion r;
           DecomposeAssimpMatrix(node->mTransformation, &t, &r, &s);
