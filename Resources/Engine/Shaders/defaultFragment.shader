@@ -56,17 +56,22 @@
 			emissive = material.emissiveColor;
 		}
 	
-		vec2 metallicRoughness;
+		float metallic, roughness;
 		if (material.metallicRoughnessTextureInUse > 0)
 		{
-			metallicRoughness = texture(s_texture4, v_texture).rg;
+			// Texture Holds Occululsion Roughness Metallic values in rgb.
+			// Occulusion is not supported at the moment. ( No Value )
+			vec3 orm = texture(s_texture4, v_texture).rgb;
+			metallic = orm.b;
+			roughness = orm.g;
 		}
 		else
 		{
-			metallicRoughness = vec2(material.metallic, material.roughness);
+			metallic = material.metallic;
+			roughness = material.roughness;
 		}
-		metallicRoughness.r = clamp(metallicRoughness.r, 0.0, 1.0);
-		metallicRoughness.g = clamp(metallicRoughness.g, 0.045, 1.0);
+		metallic = clamp(metallic, 0.0, 1.0);
+		roughness = clamp(roughness, 0.045, 1.0);
 	
 	#if DrawAlphaMasked
 		if(color.a <= material.alphaMaskThreshold)
@@ -95,15 +100,15 @@
 		vec3 e = normalize(camera.position - v_worldPos);
 
 		// Compute energy compensation for multiscattering
-		vec3 f0 = BaseReflectivityPBR(vec3(0.04), color.xyz, metallicRoughness.x);
+		vec3 f0 = BaseReflectivityPBR(vec3(0.04), color.xyz, metallic);
 		float NdotV = max(dot(n, e), 0.0);
-		vec2 dfg = texture(s_texture16, vec2(NdotV, metallicRoughness.y)).rg;
+		vec2 dfg = texture(s_texture16, vec2(NdotV, roughness)).rg;
 		vec3 energyComp = EnergyCompensation(dfg, f0);
 
-		vec3 irradiance = PBRLighting(v_worldPos, v_viewDepth, n, e, camera.position, color.xyz, metallicRoughness.x, metallicRoughness.y, energyComp);
+		vec3 irradiance = PBRLighting(v_worldPos, v_viewDepth, n, e, camera.position, color.xyz, metallic, roughness, energyComp);
 
 		float ambientOcclusion = AmbientOcclusion();
-		irradiance += IBLPBR(n, e, color.xyz, metallicRoughness.x, metallicRoughness.y, dfg, energyComp) * ambientOcclusion;
+		irradiance += IBLPBR(n, e, color.xyz, metallic, roughness, dfg, energyComp) * ambientOcclusion;
 
 		fragColor = vec4(irradiance, color.a) + vec4(emissive, 0.0);
 	}

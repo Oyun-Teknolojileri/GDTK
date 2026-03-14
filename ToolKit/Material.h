@@ -120,6 +120,9 @@ namespace ToolKit
 
     TKDeclareParam(TexturePtr, DiffuseTexture);
     TKDeclareParam(TexturePtr, EmissiveTexture);
+
+    /** This texture is in the format of ORM (Occlusion Roughness Metalness). So RGB corresponds to ORM.
+     * Occulusion is not used at the moment. */
     TKDeclareParam(TexturePtr, MetallicRoughnessTexture);
     TKDeclareParam(TexturePtr, NormalTexture);
 
