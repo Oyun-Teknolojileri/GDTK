@@ -84,7 +84,8 @@ namespace ToolKit
         set.InternalFormat = GraphicTypes::FormatRGBA;
         set.MinFilter      = GraphicTypes::SampleLinearMipmapLinear;
         set.Type           = GraphicTypes::FormatRGB16F;
-        set.GenerateMipMap = true;
+        set.WarpS = set.WarpT = GraphicTypes::UVClampToEdge;
+        set.GenerateMipMap    = true;
         tex->Settings(set);
       }
 
@@ -102,7 +103,8 @@ namespace ToolKit
         set.InternalFormat = GraphicTypes::FormatRGBA;
         set.MinFilter      = GraphicTypes::SampleLinearMipmapLinear;
         set.Type           = GraphicTypes::FormatRGB16F;
-        set.GenerateMipMap = true;
+        set.WarpS = set.WarpT = GraphicTypes::UVClampToEdge;
+        set.GenerateMipMap    = true;
         tex->Settings(set);
       }
 

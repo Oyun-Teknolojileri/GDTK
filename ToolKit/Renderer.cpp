@@ -919,7 +919,10 @@ namespace ToolKit
       set.InternalFormat = GraphicTypes::FormatRG16F;
       set.Format         = GraphicTypes::FormatRG;
       set.Type           = GraphicTypes::TypeFloat;
-      set.GenerateMipMap = false;
+      set.MinFilter      = GraphicTypes::SampleLinear;
+      set.MagFilter      = GraphicTypes::SampleLinear;
+      set.WarpS = set.WarpT = GraphicTypes::UVClampToEdge;
+      set.GenerateMipMap    = false;
 
       RenderTargetPtr brdfLut =
           MakeNewPtr<RenderTarget>(RHIConstants::BrdfLutTextureSize, RHIConstants::BrdfLutTextureSize, set);

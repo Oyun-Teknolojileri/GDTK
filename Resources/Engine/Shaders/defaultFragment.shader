@@ -65,6 +65,8 @@
 		{
 			metallicRoughness = vec2(material.metallic, material.roughness);
 		}
+		metallicRoughness.r = clamp(metallicRoughness.r, 0.0, 1.0);
+		metallicRoughness.g = clamp(metallicRoughness.g, 0.045, 1.0);
 	
 	#if DrawAlphaMasked
 		if(color.a <= material.alphaMaskThreshold)
