@@ -206,22 +206,22 @@ namespace ToolKit
     vertices[0].pos            = Vec3(-0.5f, -0.5f, 0.0f);
     vertices[0].tex            = Vec2(0.0f, 0.0f);
     vertices[0].norm           = Vec3(0.0f, 0.0f, 1.0f);
-    vertices[0].tan            = Vec3(0.0f, 1.0f, 0.0f);
+    vertices[0].tan            = Vec4(0.0f, 1.0f, 0.0f, 1.0f);
 
     vertices[1].pos            = Vec3(0.5f, -0.5f, 0.0f);
     vertices[1].tex            = Vec2(1.0f, 0.0f);
     vertices[1].norm           = Vec3(0.0f, 0.0f, 1.0f);
-    vertices[1].tan            = Vec3(0.0f, 1.0f, 0.0f);
+    vertices[1].tan            = Vec4(0.0f, 1.0f, 0.0f, 1.0f);
 
     vertices[2].pos            = Vec3(0.5f, 0.5f, 0.0f);
     vertices[2].tex            = Vec2(1.0f, 1.0f);
     vertices[2].norm           = Vec3(0.0f, 0.0f, 1.0f);
-    vertices[2].tan            = Vec3(0.0f, 1.0f, 0.0f);
+    vertices[2].tan            = Vec4(0.0f, 1.0f, 0.0f, 1.0f);
 
     vertices[3].pos            = Vec3(-0.5f, 0.5f, 0.0f);
     vertices[3].tex            = Vec2(0.0f, 1.0f);
     vertices[3].norm           = Vec3(0.0f, 0.0f, 1.0f);
-    vertices[3].tan            = Vec3(0.0f, 1.0f, 0.0f);
+    vertices[3].tan            = Vec4(0.0f, 1.0f, 0.0f, 1.0f);
 
     MeshPtr mesh               = GetMeshComponent()->GetMeshVal();
     mesh->m_vertexCount        = (uint) vertices.size();
@@ -316,9 +316,10 @@ namespace ToolKit
 
         float r2, zenith, azimuth;
         ToSpherical(v.pos, r2, zenith, azimuth);
-        v.tan = Vec3(r * glm::cos(zenith) * glm::sin(azimuth),
+        v.tan = Vec4(r * glm::cos(zenith) * glm::sin(azimuth),
                      -r * glm::sin(zenith),
-                     r * glm::cos(zenith) * glm::cos(azimuth));
+                     r * glm::cos(zenith) * glm::cos(azimuth),
+                     1.0f);
 
         vertices.push_back(v);
 
@@ -390,7 +391,7 @@ namespace ToolKit
             p,
             glm::normalize(p),
             Vec2(j / (float) (nSegBase), i / (float) nSegHeight),
-            ZERO // btan missing.
+            Vec4(ZERO, 1.0f) // btan missing.
         };
 
         vertices.push_back(v);
@@ -416,7 +417,7 @@ namespace ToolKit
         ZERO,
         -Y_AXIS,
         Y_AXIS,
-        ZERO // btan missing.
+        Vec4(ZERO, 1.0f) // btan missing.
     };
     vertices.push_back(v);
 
@@ -430,7 +431,7 @@ namespace ToolKit
           Vec3(x0, 0.0f, z0),
           -Y_AXIS,
           Vec2(j / (float) nSegBase, 0.0f),
-          ZERO // btan missing.
+          Vec4(ZERO, 1.0f) // btan missing.
       };
       vertices.push_back(v);
 
@@ -650,7 +651,7 @@ namespace ToolKit
         Vec3(0.0f),
         Vec3(0.0f, 0.0f, -1.0f), // normal
         Vec2(0.5f, 0.5f),        // tex coord
-        Vec3(0.0f, 1.0f, 0.0f)   // btan
+        Vec4(0.0f, 1.0f, 0.0f, 1.0f)   // btan
     };
     mesh->m_boundingBox = BoundingBox(Vec3(-radius), Vec3(radius));
 
@@ -670,7 +671,7 @@ namespace ToolKit
           Vec3(c * radius, s * radius, 0.0f),
           Vec3(0.0f, 0.0f, -1.0f),                // normal
           Vec2(cnorm * strechS, snorm * strechC), // tex coord
-          Vec3(c, s, 0.0f)                        // btan
+          Vec4(c, s, 0.0f, 1.0f)                        // btan
       };
     }
 

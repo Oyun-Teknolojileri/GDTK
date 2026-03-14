@@ -714,7 +714,10 @@ namespace ToolKit
 
       if (mesh->HasTangentsAndBitangents())
       {
-        v.tan = Vec3(mesh->mTangents[vIndex].x, mesh->mTangents[vIndex].y, mesh->mTangents[vIndex].z);
+        Vec3 T     = Vec3(mesh->mTangents[vIndex].x, mesh->mTangents[vIndex].y, mesh->mTangents[vIndex].z);
+        Vec3 B     = Vec3(mesh->mBitangents[vIndex].x, mesh->mBitangents[vIndex].y, mesh->mBitangents[vIndex].z);
+        float sign = glm::dot(glm::cross(v.norm, T), B) < 0.0f ? -1.0f : 1.0f;
+        v.tan      = Vec4(T, sign);
       }
 
       if constexpr (std::is_same<convertType, SkinMeshPtr>::value)

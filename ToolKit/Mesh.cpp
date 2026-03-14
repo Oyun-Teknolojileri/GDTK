@@ -56,8 +56,8 @@ namespace ToolKit
       glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), BUFFER_OFFSET(offset));
       offset += 2 * sizeof(float);
 
-      glEnableVertexAttribArray(3); // BiTangent
-      glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), BUFFER_OFFSET(offset));
+      glEnableVertexAttribArray(3); // Tangent (vec4: xyz=tangent, w=bitangent sign)
+      glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), BUFFER_OFFSET(offset));
     }
 
     if (layout == VertexLayout::SkinMesh)
@@ -75,9 +75,9 @@ namespace ToolKit
       glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(SkinVertex), BUFFER_OFFSET(offset));
       offset += 2 * sizeof(float);
 
-      glEnableVertexAttribArray(3); // BiTangent
-      glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(SkinVertex), BUFFER_OFFSET(offset));
-      offset += 3 * sizeof(float);
+      glEnableVertexAttribArray(3); // Tangent (vec4: xyz=tangent, w=bitangent sign)
+      glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(SkinVertex), BUFFER_OFFSET(offset));
+      offset += 4 * sizeof(float);
 
       glEnableVertexAttribArray(4); // Bones
       glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(SkinVertex), BUFFER_OFFSET(offset));
@@ -376,9 +376,10 @@ namespace ToolKit
     Mat4 its = glm::inverseTranspose(transform);
     for (Vertex& v : m_clientSideVertices)
     {
-      v.pos  = transform * Vec4(v.pos, 1.0f);
-      v.norm = glm::normalize(its * Vec4(v.norm, 0.0f));
-      v.tan  = glm::normalize(its * Vec4(v.tan, 0.0f));
+      v.pos    = transform * Vec4(v.pos, 1.0f);
+      v.norm   = glm::normalize(its * Vec4(v.norm, 0.0f));
+      float tw = v.tan.w;
+      v.tan    = Vec4(Vec3(glm::normalize(its * Vec4(Vec3(v.tan), 0.0f))), tw);
     }
   }
 
