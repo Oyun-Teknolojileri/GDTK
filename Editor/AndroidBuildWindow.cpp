@@ -40,7 +40,7 @@ namespace ToolKit::Editor
     ImGui::SameLine();
 
     int iconId = m_icon ? m_icon->m_textureId : m_defaultIcon->m_textureId;
-    ImGui::ImageButton("##icon", ConvertUIntImGuiTexture(iconId), ImVec2(64, 64));
+    UI::ImageButton("##icon", ConvertUIntImGuiTexture(iconId), ImVec2(64, 64));
 
     if (ImGui::BeginDragDropTarget())
     {

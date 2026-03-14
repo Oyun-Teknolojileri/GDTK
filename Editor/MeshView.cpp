@@ -64,7 +64,7 @@ namespace ToolKit
         const ImVec2 iconSize = ImVec2(16.0f, 16.0f);
         const ImVec2 spacing  = ImGui::GetStyle().ItemSpacing;
 
-        if (UI::ImageButtonDecorless(UI::m_cameraIcon->m_textureId, iconSize, false))
+        if (UI::ImageButtonDecorless(UI::m_cameraIcon->m_textureId, iconSize))
         {
           ResetCamera();
         }
