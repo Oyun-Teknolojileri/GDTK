@@ -75,40 +75,12 @@ namespace ToolKit
 
     if (TexturePtr tex = GetMetallicRoughnessTextureVal())
     {
-      if (tex->Settings().MinFilter != GraphicTypes::SampleLinearMipmapLinear)
-      {
-        tex->UnInit();
-        tex->Load();
-
-        TextureSettings set;
-        set.InternalFormat = GraphicTypes::FormatRGBA;
-        set.MinFilter      = GraphicTypes::SampleLinearMipmapLinear;
-        set.Type           = GraphicTypes::FormatRGB16F;
-        set.WarpS = set.WarpT = GraphicTypes::UVClampToEdge;
-        set.GenerateMipMap    = true;
-        tex->Settings(set);
-      }
-
-      tex->Init(flushClientSideArray);
+      MakeSureItsDataTexture(tex);
     }
 
     if (TexturePtr tex = GetNormalTextureVal())
     {
-      if (tex->Settings().MinFilter != GraphicTypes::SampleLinearMipmapLinear)
-      {
-        tex->UnInit();
-        tex->Load();
-
-        TextureSettings set;
-        set.InternalFormat = GraphicTypes::FormatRGBA;
-        set.MinFilter      = GraphicTypes::SampleLinearMipmapLinear;
-        set.Type           = GraphicTypes::FormatRGB16F;
-        set.WarpS = set.WarpT = GraphicTypes::UVClampToEdge;
-        set.GenerateMipMap    = true;
-        tex->Settings(set);
-      }
-
-      tex->Init(flushClientSideArray);
+      MakeSureItsDataTexture(tex);
     }
 
     if (m_cubeMap)
@@ -368,7 +340,8 @@ namespace ToolKit
     ParamMetallicRoughnessTexture().m_onValueChangedFn.push_back(
         [this](Value& oldVal, Value& newVal) -> void
         {
-          TexturePtr tex                          = std::get<TexturePtr>(newVal);
+          TexturePtr tex = std::get<TexturePtr>(newVal);
+          MakeSureItsDataTexture(tex);
           m_materialCacheItem.data.textureFlags.z = tex != nullptr ? 1.0f : 0.0f;
           m_materialCacheItem.Invalidate();
           m_dirty = true;
@@ -377,7 +350,8 @@ namespace ToolKit
     ParamNormalTexture().m_onValueChangedFn.push_back(
         [this](Value& oldVal, Value& newVal) -> void
         {
-          TexturePtr tex                          = std::get<TexturePtr>(newVal);
+          TexturePtr tex = std::get<TexturePtr>(newVal);
+          MakeSureItsDataTexture(tex);
           m_materialCacheItem.data.textureFlags.y = tex != nullptr ? 1.0f : 0.0f;
           m_materialCacheItem.Invalidate();
           m_dirty = true;
@@ -442,6 +416,45 @@ namespace ToolKit
   {
     m_usingDefaultShaders = GetVertexShaderVal() == GetShaderManager()->GetDefaultVertexShader() &&
                             GetFragmentShaderVal() == GetShaderManager()->GetPbrForwardShader();
+  }
+
+  void Material::MakeSureItsDataTexture(TexturePtr texture)
+  {
+    if (texture == nullptr)
+    {
+      return;
+    }
+
+    TextureSettings dataSet;
+    dataSet.InternalFormat         = GraphicTypes::FormatRGB16F;
+    dataSet.Format                 = GraphicTypes::FormatRGBA;
+    dataSet.MinFilter              = GraphicTypes::SampleLinearMipmapLinear;
+    dataSet.WarpS                  = GraphicTypes::UVClampToEdge;
+    dataSet.WarpT                  = GraphicTypes::UVClampToEdge;
+    dataSet.GenerateMipMap         = true;
+
+    const TextureSettings& current = texture->Settings();
+    if (current.InternalFormat == dataSet.InternalFormat && current.MinFilter == dataSet.MinFilter &&
+        current.WarpS == dataSet.WarpS && current.WarpT == dataSet.WarpT &&
+        current.GenerateMipMap == dataSet.GenerateMipMap)
+    {
+      return;
+    }
+
+    // Store flush status.
+    bool flush = current.Type == GraphicTypes::TypeFloat ? texture->m_imagef == nullptr : texture->m_image == nullptr;
+
+    texture->UnInit();
+    if (flush)
+    {
+      // In case of flush, reload.
+      texture->m_loaded = false;
+      texture->Load();
+    }
+
+    dataSet.Type = current.Type; // Preserve the type (float or unsigned byte).
+    texture->Settings(dataSet);
+    texture->Init(flush);
   }
 
   void Material::UpdateProgramUniform(const String& uniformName, const UniformValue& val)

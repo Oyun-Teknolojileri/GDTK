@@ -109,6 +109,9 @@ namespace ToolKit
     /** Checks if the material is using default shaders and update m_usingDefaultShaders. */
     void CheckDefaultShaders();
 
+    /** Checks and reinit Normal & Occulusion Roughness Metalness textures as data textures. */
+    void MakeSureItsDataTexture(TexturePtr texture);
+
    private:
     void CopyTo(Resource* other) override;
 
