@@ -1457,7 +1457,7 @@ namespace ToolKit
         // Clear global materials for each scene to prevent wrong referencing
         tMaterials.clear();
 
-        int optFlags = aiProcess_FlipUVs | aiProcess_GlobalScale | aiProcess_Triangulate;
+        int optFlags = aiProcess_GlobalScale | aiProcess_Triangulate;
         if (optimizationLevel == 1)
         {
           optFlags |= aiProcessPreset_TargetRealtime_MaxQuality;

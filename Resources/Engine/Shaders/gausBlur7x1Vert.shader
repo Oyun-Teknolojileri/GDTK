@@ -18,7 +18,7 @@
 		  v_pos.xy = vPosition.xy * 2.0;
 		  v_pos.z = -1.0;
 		  v_texture = vec3(vTexture, 0.0);
-		  v_texture.y = 1.0 - v_texture.y;
+		  v_texture.y = v_texture.y;
 		  gl_Position = vec4(v_pos, 1.0);
 		}
 	-->
