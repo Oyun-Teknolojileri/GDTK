@@ -833,19 +833,32 @@ namespace ToolKit
     {
       LightPtr tkLight  = nullptr;
       aiLight* light    = g_scene->mLights[i];
-      float lightRadius = 1.0f;
+      float lightRadius = 10.0f;
       {
-        // radius for attenuation = 0.01
-        float treshold = 0.01f;
-        float a        = light->mAttenuationQuadratic * treshold;
-        float b        = light->mAttenuationLinear * treshold;
-        float c        = light->mAttenuationConstant * treshold - 1.0f;
-        float disc     = (b * b) - (4.0f * a * c);
-        if (disc >= 0.0f)
+        // Calculate a finite radius from attenuation values for our PBR distance attenuation using a threshold.
+        // Solving: a*d^2 + b*d + c = 1/threshold
+        float threshold = 0.01f;
+        float a         = light->mAttenuationQuadratic;
+        float b         = light->mAttenuationLinear;
+        float c         = light->mAttenuationConstant - (1.0f / threshold);
+
+        if (a > 0.000001f)
         {
-          float t1 = (-b - glm::sqrt(disc)) / (2.0f * a);
-          float t2 = (-b + glm::sqrt(disc)) / (2.0f * a);
-          float t  = glm::max(t1, t2);
+          float disc = (b * b) - (4.0f * a * c);
+          if (disc >= 0.0f)
+          {
+            float t1 = (-b - glm::sqrt(disc)) / (2.0f * a);
+            float t2 = (-b + glm::sqrt(disc)) / (2.0f * a);
+            float t  = glm::max(t1, t2);
+            if (t > 0.0f)
+            {
+              lightRadius = t;
+            }
+          }
+        }
+        else if (b > 0.000001f)
+        {
+          float t = -c / b;
           if (t > 0.0f)
           {
             lightRadius = t;
@@ -853,10 +866,11 @@ namespace ToolKit
         }
       }
 
-      // Extract intensity from color (use the max component as intensity, normalize color)
+      // Extract intensity from color using max component to preserve color ratios.
       Vec3 lightColor = Vec3(light->mColorDiffuse.r, light->mColorDiffuse.g, light->mColorDiffuse.b);
       float intensity = glm::max(lightColor.r, glm::max(lightColor.g, lightColor.b));
-      if (intensity > 0.0f)
+
+      if (intensity > 0.00001f)
       {
         lightColor /= intensity;
       }
@@ -866,12 +880,21 @@ namespace ToolKit
         lightColor = Vec3(1.0f);
       }
 
+      // glTF uses physical light units: candela for point/spot, lux for directional.
+      float luxNormalization     = 10.0f;
+      float candelaNormalization = 1.0f;
+      if ((g_currentExt == ".glb" || g_currentExt == ".gltf"))
+      {
+        luxNormalization     = 1.0f / 10000.0f; // Day light is around 10,000 lux.
+        candelaNormalization = 1.0f / 800.0f;   // A bright light bulb is around 800 candela.
+      }
+
       if (light->mType == aiLightSource_DIRECTIONAL)
       {
         DirectionalLightPtr dirLight = MakeNewPtr<DirectionalLight>();
         dirLight->SetNameVal(light->mName.C_Str());
         dirLight->SetColorVal(lightColor);
-        dirLight->SetIntensityVal(intensity);
+        dirLight->SetIntensityVal(intensity * luxNormalization);
         tkLight = dirLight;
       }
       else if (light->mType == aiLightSource_POINT)
@@ -879,7 +902,7 @@ namespace ToolKit
         PointLightLightPtr pointLight = MakeNewPtr<PointLight>();
         pointLight->SetNameVal(light->mName.C_Str());
         pointLight->SetColorVal(lightColor);
-        pointLight->SetIntensityVal(intensity);
+        pointLight->SetIntensityVal(intensity * candelaNormalization);
         pointLight->SetRadiusVal(lightRadius);
         tkLight = pointLight;
       }
@@ -888,7 +911,7 @@ namespace ToolKit
         SpotLightPtr spotLight = MakeNewPtr<SpotLight>();
         spotLight->SetNameVal(light->mName.C_Str());
         spotLight->SetColorVal(lightColor);
-        spotLight->SetIntensityVal(intensity);
+        spotLight->SetIntensityVal(intensity * candelaNormalization);
         spotLight->SetInnerAngleVal(glm::degrees(light->mAngleInnerCone));
         spotLight->SetOuterAngleVal(glm::degrees(light->mAngleOuterCone));
         spotLight->SetRadiusVal(lightRadius);

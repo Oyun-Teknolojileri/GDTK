@@ -327,8 +327,8 @@ namespace ToolKit
 
    public:
     TKDeclareParam(float, Radius);
-    TKDeclareParam(float, OuterAngle);
-    TKDeclareParam(float, InnerAngle);
+    TKDeclareParam(float, OuterAngle); //!< Outer angle in degrees.
+    TKDeclareParam(float, InnerAngle); //!< Inner angle in degrees.
 
     /** Spot frustum, updated after call to UpdateShadowCamera(). */
     Frustum m_frustumCache;
