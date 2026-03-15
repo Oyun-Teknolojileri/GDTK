@@ -157,8 +157,8 @@ namespace ToolKit
 
   bool Material::IsPBR()
   {
-    const String& file = GetFragmentShaderVal()->GetFile();
-    return file == GetShaderManager()->PbrForwardShaderFile();
+    // If using default shaders, its a pbr material.
+    return m_usingDefaultShaders;
   }
 
   bool Material::IsShaderMaterial() { return !m_usingDefaultShaders; }
@@ -429,8 +429,9 @@ namespace ToolKit
     dataSet.InternalFormat         = GraphicTypes::FormatRGB16F;
     dataSet.Format                 = GraphicTypes::FormatRGBA;
     dataSet.MinFilter              = GraphicTypes::SampleLinearMipmapLinear;
-    dataSet.WarpS                  = GraphicTypes::UVClampToEdge;
-    dataSet.WarpT                  = GraphicTypes::UVClampToEdge;
+    dataSet.MagFilter              = GraphicTypes::SampleLinear;
+    dataSet.WarpS                  = GraphicTypes::UVRepeat;
+    dataSet.WarpT                  = GraphicTypes::UVRepeat;
     dataSet.GenerateMipMap         = true;
 
     const TextureSettings& current = texture->Settings();
