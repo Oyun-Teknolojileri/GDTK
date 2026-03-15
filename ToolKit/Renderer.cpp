@@ -988,6 +988,11 @@ namespace ToolKit
     {
       SetTexture(9, mat->GetNormalTextureVal()->m_textureId);
     }
+
+    if (mat->IsPBR())
+    {
+      SetTexture(16, m_brdfLut->m_textureId);
+    }
   }
 
   void Renderer::SetLights(const LightRawPtrArray& lights)
