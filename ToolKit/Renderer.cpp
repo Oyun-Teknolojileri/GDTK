@@ -981,14 +981,12 @@ namespace ToolKit
 
     if (cache.MetallicRoughnessTextureInUse())
     {
-      SetTexture(2, mat->GetMetallicRoughnessTextureVal()->m_textureId);
+      SetTexture(4, mat->GetMetallicRoughnessTextureVal()->m_textureId);
     }
 
-    m_normalMapInUse = false;
     if (cache.NormalTextureInUse())
     {
       SetTexture(9, mat->GetNormalTextureVal()->m_textureId);
-      m_normalMapInUse = true;
     }
   }
 

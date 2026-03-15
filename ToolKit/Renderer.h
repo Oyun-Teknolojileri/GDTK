@@ -311,7 +311,6 @@ namespace ToolKit
     int m_activePointLightCount   = 0;
     int m_activeSpotLightCount    = 0;
     bool m_ambientOcculusionInUse = false;
-    bool m_normalMapInUse         = false;
 
     FramebufferPtr m_framebuffer  = nullptr;
     TexturePtr m_shadowAtlas      = nullptr;
