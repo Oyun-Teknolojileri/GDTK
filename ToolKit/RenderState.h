@@ -12,6 +12,16 @@
 namespace ToolKit
 {
 
+  enum class ShadingMode
+  {
+    None,
+    Lighting,
+    Albedo,
+    Normal,
+    Metallic,
+    Roughness
+  };
+
   enum class GraphicBitFields
   {
     None             = 0x00000000,

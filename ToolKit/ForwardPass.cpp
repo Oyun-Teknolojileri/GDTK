@@ -204,7 +204,7 @@ namespace ToolKit
     const ShadowSettingsPtr shadows = GetEngineSettings().m_graphics->m_shadows;
     ShaderPtr frag                  = m_programConfigMat->GetFragmentShaderVal();
 
-    int shadowPCF = shadows->GetShadowPCFVal().GetValue<int>();
+    int shadowPCF                   = shadows->GetShadowPCFVal().GetValue<int>();
     if (shadowPCF != m_shadowPCF)
     {
       m_shadowPCF = shadowPCF;
@@ -219,13 +219,27 @@ namespace ToolKit
     }
 
     Renderer* renderer = GetRenderer();
-    if (renderer->m_renderOnlyLighting)
+    switch (renderer->m_shadingMode)
     {
-      frag->SetDefine("LightingOnly", "1");
-    }
-    else
-    {
-      frag->SetDefine("LightingOnly", "0");
+    case ShadingMode::Lighting:
+      frag->SetDefine("ShadingMode", "1");
+      break;
+    case ShadingMode::Albedo:
+      frag->SetDefine("ShadingMode", "2");
+      break;
+    case ShadingMode::Normal:
+      frag->SetDefine("ShadingMode", "3");
+      break;
+    case ShadingMode::Metallic:
+      frag->SetDefine("ShadingMode", "4");
+      break;
+    case ShadingMode::Roughness:
+      frag->SetDefine("ShadingMode", "5");
+      break;
+    default:
+    case ShadingMode::None:
+      frag->SetDefine("ShadingMode", "0");
+      break;
     }
   }
 

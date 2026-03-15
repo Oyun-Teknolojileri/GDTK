@@ -285,7 +285,7 @@ namespace ToolKit
     CameraPtr m_uiCamera      = nullptr;
     SkyBasePtr m_sky          = nullptr;
 
-    bool m_renderOnlyLighting = false;
+    ShadingMode m_shadingMode = ShadingMode::None;
 
     /** Global gpu buffers for renderer. */
     GlobalGpuBuffers* m_globalGpuBuffers;

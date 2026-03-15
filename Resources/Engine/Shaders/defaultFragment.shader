@@ -9,7 +9,7 @@
 	<define name = "SMFormat16Bit" val="0,1" />
 	<define name = "ShadowPCF" val="0,4,9,16" />
 	<define name = "highlightCascades" val="0,1" />
-	<define name = "LightingOnly" val="0,1" />
+	<define name = "ShadingMode" val="0,1,2,3,4,5" />
 	<source>
 	<!--
 	#version 300 es
@@ -23,6 +23,12 @@
 	uniform sampler2D s_texture1; // emissive
 	uniform sampler2D s_texture4; // metallic-roughness
 	uniform sampler2D s_texture9; // normal
+
+	#define SHADE_LIGHTING_ONLY 1
+	#define SHADE_ALBEDO_ONLY 2
+	#define SHADE_NORMAL_ONLY 3
+	#define SHADE_METALLIC_ONLY 4
+	#define SHADE_ROUGHNESS_ONLY 5
 
 	in vec3 v_worldPos;
 	in vec3 v_worldNormal;
@@ -45,7 +51,7 @@
 		{
 			color = vec4(material.color, material.alpha);
 		}
-	
+
 		vec3 emissive;
 		if(material.emissiveTextureInUse > 0)
 		{
@@ -55,7 +61,7 @@
 		{
 			emissive = material.emissiveColor;
 		}
-	
+
 		float metallic, roughness;
 		if (material.metallicRoughnessTextureInUse > 0)
 		{
@@ -80,7 +86,22 @@
 		}
 	#endif
 
-	#if LightingOnly
+	#if ShadingMode == SHADE_ALBEDO_ONLY
+		fragColor = color;
+		return;
+	#endif
+
+	#if ShadingMode == SHADE_METALLIC_ONLY
+		fragColor = vec4(metallic, metallic, metallic, 1.0);
+		return;
+	#endif
+
+	#if ShadingMode == SHADE_ROUGHNESS_ONLY
+		fragColor = vec4(roughness, roughness, roughness, 1.0);
+		return;
+	#endif
+
+	#if ShadingMode == SHADE_LIGHTING_ONLY
 		color.xyz = vec3(1.0);
 	#endif
 
@@ -96,6 +117,11 @@
 		{
 			n = v_worldNormal;
 		}
+
+	#if ShadingMode == SHADE_NORMAL_ONLY
+		fragColor = vec4(n * 0.5 + 0.5, 1.0);
+		return;
+	#endif
 	
 		vec3 e = normalize(camera.position - v_worldPos);
 
