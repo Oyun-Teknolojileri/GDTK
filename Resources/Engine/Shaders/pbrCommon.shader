@@ -47,7 +47,7 @@ float V_SmithGGXCorrelated(float roughness, float NoV, float NoL)
 	float a2 = roughness * roughness;
 	float lambdaV = NoL * sqrt((NoV - a2 * NoV) * NoV + a2);
 	float lambdaL = NoV * sqrt((NoL - a2 * NoL) * NoL + a2);
-	return 0.5 / (lambdaV + lambdaL);
+	return 0.5 / max(lambdaV + lambdaL, 0.0000077);
 }
 
 // Hammon 2017, "PBR Diffuse Lighting for GGX+Smith Microsurfaces"
@@ -107,7 +107,45 @@ vec3 BaseReflectivityPBR(vec3 F0, vec3 albedo, float metallic)
 // https://google.github.io/filament/Filament.html#toc4.7.2
 vec3 EnergyCompensation(vec2 dfg, vec3 f0)
 {
-	return 1.0 + f0 * (1.0 / (f0 * dfg.x + dfg.y) - 1.0);
+	return 1.0 + f0 * (1.0 / max(f0 * dfg.x + dfg.y, 1e-3) - 1.0);
+}
+
+// ---------------------------------------------------------------------------
+// Roughness remapping (Google Filament)
+// ---------------------------------------------------------------------------
+
+float perceptualRoughnessToRoughness(float perceptualRoughness)
+{
+	return perceptualRoughness * perceptualRoughness;
+}
+
+float roughnessToPerceptualRoughness(float roughness)
+{
+	return sqrt(roughness);
+}
+
+// ---------------------------------------------------------------------------
+// Geometric Specular Anti-Aliasing
+// Kaplanyan 2016, "Stable Specular Highlights"
+// Tokuyoshi 2017, "Error Reduction and Simplification for Shading Anti-Aliasing"
+// Tokuyoshi and Kaplanyan 2019, "Improved Geometric Specular Antialiasing"
+// Google Filament implementation
+// ---------------------------------------------------------------------------
+
+const float SPECULAR_AA_VARIANCE  = 0.15;
+const float SPECULAR_AA_THRESHOLD = 0.25;
+
+float specularAntiAliasing(float perceptualRoughness, const vec3 worldNormal)
+{
+	vec3 du = dFdx(worldNormal);
+	vec3 dv = dFdy(worldNormal);
+
+	float variance = SPECULAR_AA_VARIANCE * (dot(du, du) + dot(dv, dv));
+	float roughness = perceptualRoughnessToRoughness(perceptualRoughness);
+	float kernelRoughness = min(2.0 * variance, SPECULAR_AA_THRESHOLD);
+	float squareRoughness = clamp(roughness * roughness + kernelRoughness, 0.0, 1.0);
+
+	return roughnessToPerceptualRoughness(sqrt(squareRoughness));
 }
 
 // ---------------------------------------------------------------------------
@@ -134,18 +172,6 @@ float diffuse(float roughness, float NoV, float NoL, float LoH)
 {
 	return Fd_Lambert();
 }
-
-// ---------------------------------------------------------------------------
-// Cook-Torrance specular BRDF
-// ---------------------------------------------------------------------------
-
-struct PBRDots
-{
-	float NdotV;
-	float NdotL;
-	float NdotH;
-	float HdotV;
-};
 
 #endif
 	-->

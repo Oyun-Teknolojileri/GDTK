@@ -31,7 +31,7 @@ float DistanceAttenuation(float distanceSq, float falloff)
 	// Smooth window: (1 - (d²/r²)²)²
 	// Divided by distanceSq for inverse-square law
 	// Clamp to avoid division by zero for very close lights
-	return (smoothFactor * smoothFactor) / max(distanceSq, 1e-4);
+	return (smoothFactor * smoothFactor) / max(distanceSq, 1e-2);
 }
 
 // Filament-style spot light angular attenuation

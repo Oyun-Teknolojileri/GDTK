@@ -68,16 +68,16 @@ vec3 IBLDiffusePBR(vec3 normal, vec3 albedo, float metallic, vec3 E)
 // Uses specular dominant direction and quadratic LOD mapping
 // ---------------------------------------------------------------------------
 
-vec3 IBLSpecularPBR(vec3 normal, vec3 fragToEye, float roughness, vec3 E, vec3 energyComp)
+vec3 IBLSpecularPBR(vec3 normal, vec3 fragToEye, float perceptualRoughness, vec3 E, vec3 energyComp)
 {
 	vec3 specular = vec3(0.0);
 	if (IsIBLInUse())
 	{
 		vec3 R = reflect(-fragToEye, normal);
-		R = GetSpecularDominantDirection(normal, R, roughness);
+		R = GetSpecularDominantDirection(normal, R, perceptualRoughness);
 		vec3 iblSamplerVec = (iblRotation * vec4(R, 0.0)).xyz;
 
-		float lod = RoughnessToLod(roughness, float(graphicConstants.iblMaxReflectionLod));
+		float lod = RoughnessToLod(perceptualRoughness, float(graphicConstants.iblMaxReflectionLod));
 		vec3 preFilteredColor = textureLod(s_texture15, iblSamplerVec, lod).rgb;
 
 		specular = E * preFilteredColor;
@@ -91,7 +91,7 @@ vec3 IBLSpecularPBR(vec3 normal, vec3 fragToEye, float roughness, vec3 E, vec3 e
 // Combined IBL evaluation
 // ---------------------------------------------------------------------------
 
-vec3 IBLPBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float roughness, vec2 dfg, vec3 energyComp)
+vec3 IBLPBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float perceptualRoughness, vec2 dfg, vec3 energyComp)
 {
 	vec3 f0 = BaseReflectivityPBR(vec3(0.04), albedo, metallic);
 
@@ -99,7 +99,7 @@ vec3 IBLPBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float roug
 	vec3 E = SpecularDFG(dfg, f0);
 
 	vec3 Fd = IBLDiffusePBR(normal, albedo, metallic, E);
-	vec3 Fr = IBLSpecularPBR(normal, fragToEye, roughness, E, energyComp);
+	vec3 Fr = IBLSpecularPBR(normal, fragToEye, perceptualRoughness, E, energyComp);
 	return (Fd + Fr) * GetIBLIntensity();
 }
 

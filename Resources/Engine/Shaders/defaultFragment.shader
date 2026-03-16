@@ -77,8 +77,8 @@
 			roughness = material.roughness;
 		}
 		metallic = clamp(metallic, 0.0, 1.0);
-		roughness = clamp(roughness, 0.045, 1.0);
-	
+		float perceptualRoughness = clamp(roughness, 0.045, 1.0);
+
 	#if DrawAlphaMasked
 		if(color.a <= material.alphaMaskThreshold)
 		{
@@ -97,7 +97,7 @@
 	#endif
 
 	#if ShadingMode == SHADE_ROUGHNESS_ONLY
-		fragColor = vec4(roughness, roughness, roughness, 1.0);
+		fragColor = vec4(perceptualRoughness, perceptualRoughness, perceptualRoughness, 1.0);
 		return;
 	#endif
 
@@ -122,19 +122,22 @@
 		fragColor = vec4(n * 0.5 + 0.5, 1.0);
 		return;
 	#endif
-	
+
+		perceptualRoughness = specularAntiAliasing(perceptualRoughness, n);
+		roughness = perceptualRoughnessToRoughness(perceptualRoughness);
+
 		vec3 e = normalize(camera.position - v_worldPos);
 
 		// Compute energy compensation for multiscattering
 		vec3 f0 = BaseReflectivityPBR(vec3(0.04), color.xyz, metallic);
 		float NdotV = max(dot(n, e), 0.0);
-		vec2 dfg = texture(s_texture16, vec2(NdotV, roughness)).rg;
+		vec2 dfg = texture(s_texture16, vec2(NdotV, perceptualRoughness)).rg;
 		vec3 energyComp = EnergyCompensation(dfg, f0);
 
 		vec3 irradiance = PBRLighting(v_worldPos, v_viewDepth, n, e, camera.position, color.xyz, metallic, roughness, energyComp);
 
 		float ambientOcclusion = AmbientOcclusion();
-		irradiance += IBLPBR(n, e, color.xyz, metallic, roughness, dfg, energyComp) * ambientOcclusion;
+		irradiance += IBLPBR(n, e, color.xyz, metallic, perceptualRoughness, dfg, energyComp) * ambientOcclusion;
 
 		fragColor = vec4(irradiance, color.a) + vec4(emissive, 0.0);
 	}
