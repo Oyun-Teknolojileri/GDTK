@@ -57,7 +57,12 @@ namespace ToolKit
     friend class Main;
 
    public:
-    using TextureIdSlotMap = std::unordered_map<GLenum, GLuint>;
+    struct TextureSlotState
+    {
+      GLuint textureID = 0;
+      GLenum target    = 0;
+    };
+    using TextureIdSlotMap = std::unordered_map<GLenum, TextureSlotState>;
 
     // Framebuffer helpers
     static void SetFramebuffer(GLenum target, GLuint framebufferID);
