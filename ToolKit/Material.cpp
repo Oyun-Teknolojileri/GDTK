@@ -439,7 +439,11 @@ namespace ToolKit
         current.WarpS == dataSet.WarpS && current.WarpT == dataSet.WarpT &&
         current.GenerateMipMap == dataSet.GenerateMipMap)
     {
-      return;
+      if (texture->m_initiated)
+      {
+        // If the texture is already initiated and has the correct settings, no need to reinit.
+        return;
+      }
     }
 
     // Store flush status.
