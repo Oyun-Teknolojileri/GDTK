@@ -185,8 +185,13 @@ vec3 SurfaceShading
 
 	vec3 halfway = normalize(lightDir + fragToEye);
 
-	float NoV = abs(dot(normal, fragToEye)) + 1e-5;
+	float NoV = clamp(dot(normal, fragToEye), 0.0, 1.0);
 	float NoL = clamp(dot(normal, lightDir), 0.0, 1.0);
+	if (NoV <= 0.0 || NoL <= 0.0)
+	{
+		return vec3(0.0);
+	}
+
 	float NoH = clamp(dot(normal, halfway), 0.0, 1.0);
 	float LoH = clamp(dot(lightDir, halfway), 0.0, 1.0);
 
@@ -204,7 +209,8 @@ vec3 SurfaceShading
 	vec3 color = Fd + Fr * energyCompensation;
 
 	// Apply light contribution: color * lightColor * (intensity * attenuation * NoL * shadow)
-	return color * lightColor * (lightIntensity * attenuation * NoL * shadow);
+	float horizonVis = smoothstep(0.0, 0.02, min(NoV, NoL));
+	return color * lightColor * (lightIntensity * attenuation * NoL * shadow * horizonVis);
 }
 
 vec3 PBRLighting

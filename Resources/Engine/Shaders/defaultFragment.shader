@@ -115,7 +115,7 @@
 		}
 		else
 		{
-			n = v_worldNormal;
+			n = normalize(v_worldNormal);
 		}
 
 	#if ShadingMode == SHADE_NORMAL_ONLY
