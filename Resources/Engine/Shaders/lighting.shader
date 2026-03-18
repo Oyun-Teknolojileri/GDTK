@@ -204,7 +204,7 @@ vec3 SurfaceShading
 	vec3 color = Fd + Fr * energyCompensation;
 
 	// Apply light contribution: color * lightColor * (intensity * attenuation * NoL * shadow)
-	float horizonVis = smoothstep(0.0, 0.02, min(NoV, NoL));
+	float horizonVis = smoothstep(0.0, 2.0, min(NoV, NoL));
 	return color * lightColor * (lightIntensity * attenuation * NoL * shadow * horizonVis);
 }
 
