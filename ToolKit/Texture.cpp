@@ -240,7 +240,10 @@ namespace ToolKit
 
   TexturePtr Texture::GetResolvedTexture()
   {
-    return m_resolvedTexture != nullptr && IsMultiSampled() ? m_resolvedTexture : Self<Texture>();
+    // TODO: Use appropriate texture instead of default ao texture. This is just a temporary solution to prevent
+    // undefined behaviour.
+    TexturePtr dt = GetTextureManager()->GetDefaultAOTexture();
+    return m_resolvedTexture != nullptr && IsMultiSampled() ? m_resolvedTexture : dt;
   }
 
   void Texture::Clear()
@@ -963,6 +966,19 @@ namespace ToolKit
       }
       else
       {
+        void* initialData = nullptr;
+        if (m_useInitialData)
+        {
+          if (m_settings.Type == GraphicTypes::TypeFloat)
+          {
+            initialData = (void*) m_imagef;
+          }
+          else
+          {
+            initialData = (void*) m_image;
+          }
+        }
+
         glTexImage2D(GL_TEXTURE_2D,
                      0,
                      (int) m_settings.InternalFormat,
@@ -971,7 +987,7 @@ namespace ToolKit
                      0,
                      (int) m_settings.Format,
                      (int) m_settings.Type,
-                     0);
+                     initialData);
       }
 
       ApplyTextureSettings(m_settings);
@@ -1041,7 +1057,42 @@ namespace ToolKit
   // TextureManager
   //////////////////////////////////////////
 
-  TextureManager::TextureManager() { m_baseType = Texture::StaticClass(); }
+  TextureManager::TextureManager()
+  {
+    m_baseType         = Texture::StaticClass();
+    m_defaultAOTexture = nullptr;
+  }
+
+  void TextureManager::Init()
+  {
+    ResourceManager::Init();
+
+    // 1x1 white AO texture.
+    TextureSettings settings;
+    settings.Target         = GraphicTypes::Target2D;
+    settings.MinFilter      = GraphicTypes::SampleNearest;
+    settings.MagFilter      = GraphicTypes::SampleNearest;
+    settings.WarpS          = GraphicTypes::UVClampToEdge;
+    settings.WarpT          = GraphicTypes::UVClampToEdge;
+    settings.InternalFormat = GraphicTypes::FormatR8;
+    settings.Format         = GraphicTypes::FormatRed;
+    settings.Type           = GraphicTypes::TypeUnsignedByte;
+    settings.GenerateMipMap = false;
+
+    ubyte* whitePixel       = new ubyte(255);
+    RenderTargetPtr aoTex   = MakeNewPtr<RenderTarget>();
+    aoTex->m_useInitialData = true;
+    aoTex->m_image          = whitePixel;
+    aoTex->m_label          = "DefaultAOTexture";
+    aoTex->m_name           = "DefaultAOTexture";
+    aoTex->m_width          = 1;
+    aoTex->m_height         = 1;
+    aoTex->Settings(settings);
+    aoTex->Init(true);
+    m_defaultAOTexture = aoTex;
+
+    Manage(aoTex);
+  }
 
   TextureManager::~TextureManager() {}
 
@@ -1066,4 +1117,6 @@ namespace ToolKit
       return TexturePath(TKDefaultImage, true);
     }
   }
+
+  TexturePtr TextureManager::GetDefaultAOTexture() const { return m_defaultAOTexture; }
 } // namespace ToolKit

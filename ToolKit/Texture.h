@@ -268,6 +268,9 @@ namespace ToolKit
     void Init(bool flushClientSideArray = false) override;
     void Reconstruct(int width, int height, const TextureSettings& settings);
     void ReconstructIfNeeded(int width, int height, const TextureSettings* settings = nullptr);
+
+   public:
+    bool m_useInitialData = false;
   };
 
   // TextureManager
@@ -278,8 +281,14 @@ namespace ToolKit
    public:
     TextureManager();
     virtual ~TextureManager();
+
+    void Init() override;
     bool CanStore(ClassMeta* Class) override;
     String GetDefaultResource(ClassMeta*) override;
+    TexturePtr GetDefaultAOTexture() const;
+
+   private:
+    TexturePtr m_defaultAOTexture;
   };
 
 } // namespace ToolKit
