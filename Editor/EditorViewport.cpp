@@ -277,7 +277,21 @@ namespace ToolKit
           if (m_framebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0) != nullptr)
           {
             RenderTargetPtr rt = m_framebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
-            texId              = rt->GetResolvedTexture()->m_textureId;
+
+            // Default to black texture if nothing valid can be used.
+            texId              = GetTextureManager()->GetBlackTexture()->m_textureId;
+            if (rt->IsMultiSampled())
+            {
+              TexturePtr resolved = rt->GetResolvedTexture();
+              if (resolved)
+              {
+                texId = resolved->m_textureId;
+              }
+            }
+            else
+            {
+              texId = rt->m_textureId;
+            }
           }
 
           // Imgui blends the alpha of the image ( in our case, render target for the scene ) with its window

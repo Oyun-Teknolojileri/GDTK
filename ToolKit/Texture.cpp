@@ -240,10 +240,7 @@ namespace ToolKit
 
   TexturePtr Texture::GetResolvedTexture()
   {
-    // TODO: Use appropriate texture instead of default ao texture. This is just a temporary solution to prevent
-    // undefined behaviour.
-    TexturePtr dt = GetTextureManager()->GetDefaultAOTexture();
-    return m_resolvedTexture != nullptr && IsMultiSampled() ? m_resolvedTexture : dt;
+    return m_resolvedTexture != nullptr && IsMultiSampled() ? m_resolvedTexture : nullptr;
   }
 
   void Texture::Clear()
@@ -966,17 +963,10 @@ namespace ToolKit
       }
       else
       {
-        void* initialData = nullptr;
-        if (m_useInitialData)
+        void* initialData = m_image;
+        if (m_settings.Type == GraphicTypes::TypeFloat)
         {
-          if (m_settings.Type == GraphicTypes::TypeFloat)
-          {
-            initialData = (void*) m_imagef;
-          }
-          else
-          {
-            initialData = (void*) m_image;
-          }
+          initialData = m_image;
         }
 
         glTexImage2D(GL_TEXTURE_2D,
@@ -1067,7 +1057,7 @@ namespace ToolKit
   {
     ResourceManager::Init();
 
-    // 1x1 white AO texture.
+    // AO texture.
     TextureSettings settings;
     settings.Target         = GraphicTypes::Target2D;
     settings.MinFilter      = GraphicTypes::SampleNearest;
@@ -1081,7 +1071,6 @@ namespace ToolKit
 
     ubyte* whitePixel       = new ubyte(255);
     RenderTargetPtr aoTex   = MakeNewPtr<RenderTarget>();
-    aoTex->m_useInitialData = true;
     aoTex->m_image          = whitePixel;
     aoTex->m_label          = "DefaultAOTexture";
     aoTex->m_name           = "DefaultAOTexture";
@@ -1092,6 +1081,20 @@ namespace ToolKit
     m_defaultAOTexture = aoTex;
 
     Manage(aoTex);
+
+    // Black texture.
+    ubyte* blackPixel       = new ubyte(0);
+    TexturePtr blackTexture = MakeNewPtr<Texture>();
+    blackTexture->m_image   = blackPixel;
+    blackTexture->m_label   = "DefaultBlackTexture";
+    blackTexture->m_name    = "DefaultBlackTexture";
+    blackTexture->m_width   = 1;
+    blackTexture->m_height  = 1;
+    blackTexture->Settings(settings);
+    blackTexture->Init(true);
+    m_blackTexture = blackTexture;
+
+    Manage(blackTexture);
   }
 
   TextureManager::~TextureManager() {}
@@ -1119,4 +1122,7 @@ namespace ToolKit
   }
 
   TexturePtr TextureManager::GetDefaultAOTexture() const { return m_defaultAOTexture; }
+
+  TexturePtr TextureManager::GetBlackTexture() const { return m_blackTexture; }
+
 } // namespace ToolKit
