@@ -185,7 +185,7 @@ vec3 SurfaceShading
 
 	vec3 halfway = normalize(lightDir + fragToEye);
 
-	float NoV = clamp(dot(normal, fragToEye), 1e-5, 1.0);
+	float NoV = clamp(dot(normal, fragToEye), 1e-4, 1.0);
 	float NoL = clamp(dot(normal, lightDir), 0.0, 1.0);
 	float NoH = clamp(dot(normal, halfway), 0.0, 1.0);
 	float LoH = clamp(dot(lightDir, halfway), 0.0, 1.0);

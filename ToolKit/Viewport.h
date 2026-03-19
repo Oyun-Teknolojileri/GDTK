@@ -190,6 +190,21 @@ namespace ToolKit
      */
     TextureSettings GetRenderTargetSettings();
 
+    /**
+     * Call from UI thread before accesing the last resolved texture.
+     * Picks up the resolved texture produced by last frame's render task.
+     */
+    void SwapResolvedTexture();
+
+    /**
+     * Call from render task after resolve completes.
+     * Stages the current resolved texture for next frame's UI thread pick-up.
+     */
+    void StageResolvedTexture();
+
+    /** Returns the last valid resolved texture for UI drawing. Falls back to black texture. */
+    TexturePtr GetLastResolvedTexture();
+
    protected:
     // Internal window handling.
 
@@ -227,6 +242,13 @@ namespace ToolKit
     // States.
     Vec2 m_wndContentAreaSize;
     IVec2 m_lastMousePosRelContentArea;
+
+   private:
+    /** Written by render task after resolve completes. Read by UI thread next frame. */
+    TexturePtr m_resolvedTextureFromRender = nullptr;
+
+    /** Cached last valid resolved texture used for UI drawing. Survives until UI render completes. */
+    TexturePtr m_lastResolvedTexture       = nullptr;
   };
 
 } // namespace ToolKit

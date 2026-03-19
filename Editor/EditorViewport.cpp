@@ -271,28 +271,21 @@ namespace ToolKit
           ResizeWindow((uint) wndSize.x, (uint) wndSize.y);
         }
 
+        SwapResolvedTexture();
+
         if (m_wndContentAreaSize.x > 0 && m_wndContentAreaSize.y > 0)
         {
-          uint texId = 0;
+          TexturePtr texture = GetLastResolvedTexture();
           if (m_framebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0) != nullptr)
           {
             RenderTargetPtr rt = m_framebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
-
-            // Default to black texture if nothing valid can be used.
-            texId              = GetTextureManager()->GetBlackTexture()->m_textureId;
-            if (rt->IsMultiSampled())
+            if (!rt->IsMultiSampled())
             {
-              TexturePtr resolved = rt->GetResolvedTexture();
-              if (resolved)
-              {
-                texId = resolved->m_textureId;
-              }
-            }
-            else
-            {
-              texId = rt->m_textureId;
+              texture = rt;
             }
           }
+
+          uint texId = texture->m_textureId;
 
           // Imgui blends the alpha of the image ( in our case, render target for the scene ) with its window
           // background, which causes glitches in the final render. This manual disable is needed.
