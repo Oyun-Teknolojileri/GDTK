@@ -77,8 +77,8 @@ namespace ToolKit
       ImGui::GetWindowDrawList()->AddImageRounded(Convert2ImGuiTexture(texture),
                                                   currentCursorPos,
                                                   currentCursorPos + imageSize,
-                                                  Vec2(0.0f, 0.0f),
-                                                  Vec2(1.0f, -1.0f),
+                                                  Vec2(0.0f, 1.0f),
+                                                  Vec2(1.0f, 0.0f),
                                                   ImGui::GetColorU32(Vec4(1, 1, 1, 1)),
                                                   5.0f);
     }

@@ -63,12 +63,19 @@ namespace ToolKit
   {
     TK_PROFILE_FUNCTION();
 
-    Renderer* renderer = GetRenderer();
+    Renderer* renderer      = GetRenderer();
+
+    // Use resolved textures if multisampled, otherwise use the original render targets.
+    TexturePtr normalBuffer = m_params.GNormalBuffer->IsMultiSampled() ? m_params.GNormalBuffer->GetResolvedTexture()
+                                                                       : m_params.GNormalBuffer;
+    TexturePtr linearDepthBuffer = m_params.GLinearDepthBuffer->IsMultiSampled()
+                                       ? m_params.GLinearDepthBuffer->GetResolvedTexture()
+                                       : m_params.GLinearDepthBuffer;
 
     // Generate SSAO texture
-    renderer->SetTexture(1, m_params.GNormalBuffer->m_textureId);
+    renderer->SetTexture(1, normalBuffer->m_textureId);
     renderer->SetTexture(2, m_noiseTexture->m_textureId);
-    renderer->SetTexture(3, m_params.GLinearDepthBuffer->m_textureId);
+    renderer->SetTexture(3, linearDepthBuffer->m_textureId);
 
     RenderSubPass(m_quadPass);
 
@@ -85,11 +92,15 @@ namespace ToolKit
 
     Pass::PreRender();
 
-    int width           = m_params.GNormalBuffer->m_width;
-    int height          = m_params.GNormalBuffer->m_height;
+    // Use resolved textures if multisampled to get correct dimensions.
+    TexturePtr normalBuffer = m_params.GNormalBuffer->IsMultiSampled() ? m_params.GNormalBuffer->GetResolvedTexture()
+                                                                       : m_params.GNormalBuffer;
+
+    int width               = normalBuffer->m_width;
+    int height              = normalBuffer->m_height;
 
     // Clamp kernel size
-    m_params.KernelSize = glm::clamp(m_params.KernelSize, m_minimumKernelSize, m_maximumKernelSize);
+    m_params.KernelSize     = glm::clamp(m_params.KernelSize, m_minimumKernelSize, m_maximumKernelSize);
 
     GenerateSSAONoise();
 

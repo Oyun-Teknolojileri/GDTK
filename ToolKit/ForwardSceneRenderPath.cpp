@@ -256,8 +256,8 @@ namespace ToolKit
 
     m_forwardPreProcessPass->m_params       = m_forwardRenderPass->m_params;
 
-    m_ssaoPass->m_params.GNormalBuffer      = m_forwardPreProcessPass->m_normalRt->GetResolvedTexture();
-    m_ssaoPass->m_params.GLinearDepthBuffer = m_forwardPreProcessPass->m_linearDepthRt->GetResolvedTexture();
+    m_ssaoPass->m_params.GNormalBuffer      = m_forwardPreProcessPass->m_normalRt;
+    m_ssaoPass->m_params.GLinearDepthBuffer = m_forwardPreProcessPass->m_linearDepthRt;
     m_ssaoPass->m_params.Cam                = m_params.Cam;
     m_ssaoPass->m_params.Radius             = pps->GetSSAORadiusVal();
     m_ssaoPass->m_params.spread             = pps->GetSSAOSpreadVal();
