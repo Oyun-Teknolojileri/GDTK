@@ -244,35 +244,4 @@ namespace ToolKit
 
   void Viewport::ReInitViewport() { ResetViewportImage(GetRenderTargetSettings()); }
 
-  void Viewport::SwapResolvedTexture()
-  {
-    if (m_resolvedTextureFromRender)
-    {
-      m_lastResolvedTexture       = m_resolvedTextureFromRender;
-      m_resolvedTextureFromRender = nullptr;
-    }
-  }
-
-  void Viewport::StageResolvedTexture()
-  {
-    if (m_renderTarget != nullptr && m_renderTarget->IsMultiSampled())
-    {
-      TexturePtr resolved = m_renderTarget->GetResolvedTexture();
-      if (resolved)
-      {
-        m_resolvedTextureFromRender = resolved;
-      }
-    }
-  }
-
-  TexturePtr Viewport::GetLastResolvedTexture()
-  {
-    if (m_lastResolvedTexture)
-    {
-      return m_lastResolvedTexture;
-    }
-
-    return GetTextureManager()->GetBlackTexture();
-  }
-
 } // namespace ToolKit

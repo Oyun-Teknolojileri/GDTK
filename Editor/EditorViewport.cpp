@@ -30,7 +30,41 @@ namespace ToolKit
   namespace Editor
   {
 
+    // EditorViewport
+    //////////////////////////////////////////
+
     TKDefineClass(EditorViewport, Window);
+
+    void EditorViewport::SwapResolvedTexture()
+    {
+      if (m_resolvedTextureFromRender)
+      {
+        m_lastResolvedTexture       = m_resolvedTextureFromRender;
+        m_resolvedTextureFromRender = nullptr;
+      }
+    }
+
+    void EditorViewport::StageResolvedTexture()
+    {
+      if (m_renderTarget != nullptr && m_renderTarget->IsMultiSampled())
+      {
+        TexturePtr resolved = m_renderTarget->GetResolvedTexture();
+        if (resolved)
+        {
+          m_resolvedTextureFromRender = resolved;
+        }
+      }
+    }
+
+    TexturePtr EditorViewport::GetLastResolvedTexture()
+    {
+      if (m_lastResolvedTexture)
+      {
+        return m_lastResolvedTexture;
+      }
+
+      return GetTextureManager()->GetBlackTexture();
+    }
 
     std::vector<OverlayUI*> EditorViewport::m_overlays = {nullptr, nullptr, nullptr, nullptr};
 
@@ -285,7 +319,7 @@ namespace ToolKit
             }
           }
 
-          uint texId = texture->m_textureId;
+          uint texId           = texture->m_textureId;
 
           // Imgui blends the alpha of the image ( in our case, render target for the scene ) with its window
           // background, which causes glitches in the final render. This manual disable is needed.
