@@ -67,7 +67,7 @@ namespace ToolKit
     /** Returns if the texture is multi sampled. */
     bool IsMultiSampled();
 
-    /** Returns resolved texture if exist, or the original texture. */
+    /** Returns resolved texture if multi sampled and resolved texture exists, otherwise nullptr. */
     TexturePtr GetResolvedTexture();
 
    protected:
