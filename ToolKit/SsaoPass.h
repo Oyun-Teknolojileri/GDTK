@@ -14,8 +14,7 @@ namespace ToolKit
 
   struct SSAOPassParams
   {
-    RenderTargetPtr GNormalBuffer      = nullptr;
-    RenderTargetPtr GLinearDepthBuffer = nullptr;
+    RenderTargetPtr GNormalDepthBuffer = nullptr;
     CameraPtr Cam                      = nullptr;
     /**
      * How far the samples will be taken from.

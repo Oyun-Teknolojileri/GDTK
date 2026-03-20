@@ -35,8 +35,7 @@ namespace ToolKit
     FramebufferPtr m_framebuffer        = nullptr;
     FramebufferPtr m_resolveFramebuffer = nullptr;
 
-    RenderTargetPtr m_normalRt          = nullptr;
-    RenderTargetPtr m_linearDepthRt     = nullptr;
+    RenderTargetPtr m_normalDepthRt     = nullptr;
   };
 
   typedef std::shared_ptr<ForwardPreProcessPass> ForwardPreProcessPassPtr;

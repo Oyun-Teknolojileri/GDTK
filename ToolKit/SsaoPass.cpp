@@ -65,23 +65,16 @@ namespace ToolKit
 
     Renderer* renderer      = GetRenderer();
 
-    // Use resolved textures if multisampled, otherwise use the original render targets.
-    TexturePtr normalBuffer = m_params.GNormalBuffer;
-    if (normalBuffer->IsMultiSampled())
+    // Use resolved texture if multisampled, otherwise use the original render target.
+    TexturePtr normalDepthBuffer = m_params.GNormalDepthBuffer;
+    if (normalDepthBuffer->IsMultiSampled())
     {
-      normalBuffer = m_params.GNormalBuffer->GetResolvedTexture();
-    }
-
-    TexturePtr linearDepthBuffer = m_params.GLinearDepthBuffer;
-    if (linearDepthBuffer->IsMultiSampled())
-    {
-      linearDepthBuffer = m_params.GLinearDepthBuffer->GetResolvedTexture();
+      normalDepthBuffer = m_params.GNormalDepthBuffer->GetResolvedTexture();
     }
 
     // Generate SSAO texture
-    renderer->SetTexture(1, normalBuffer->m_textureId);
+    renderer->SetTexture(1, normalDepthBuffer->m_textureId);
     renderer->SetTexture(2, m_noiseTexture->m_textureId);
-    renderer->SetTexture(3, linearDepthBuffer->m_textureId);
 
     RenderSubPass(m_quadPass);
 
@@ -98,12 +91,12 @@ namespace ToolKit
 
     Pass::PreRender();
 
-    // Use resolved textures if multisampled to get correct dimensions.
-    TexturePtr normalBuffer = m_params.GNormalBuffer->IsMultiSampled() ? m_params.GNormalBuffer->GetResolvedTexture()
-                                                                       : m_params.GNormalBuffer;
+    // Use resolved texture if multisampled to get correct dimensions.
+    TexturePtr normalDepthBuffer = m_params.GNormalDepthBuffer->IsMultiSampled() ? m_params.GNormalDepthBuffer->GetResolvedTexture()
+                                                                                 : m_params.GNormalDepthBuffer;
 
-    int width               = normalBuffer->m_width;
-    int height              = normalBuffer->m_height;
+    int width               = normalDepthBuffer->m_width;
+    int height              = normalDepthBuffer->m_height;
 
     // Clamp kernel size
     m_params.KernelSize     = glm::clamp(m_params.KernelSize, m_minimumKernelSize, m_maximumKernelSize);
@@ -152,6 +145,7 @@ namespace ToolKit
     m_quadPass->UpdateUniform(ShaderUniform("bias", m_params.Bias));
     m_quadPass->UpdateUniform(ShaderUniform("kernelSize", m_params.KernelSize));
     m_quadPass->UpdateUniform(ShaderUniform("projection", m_params.Cam->GetProjectionMatrix()));
+    m_quadPass->UpdateUniform(ShaderUniform("inverseProjection", glm::inverse(m_params.Cam->GetProjectionMatrix())));
     m_quadPass->UpdateUniform(ShaderUniform("viewMatrix", m_params.Cam->GetViewMatrix()));
     m_quadPass->UpdateUniform(ShaderUniform("radius", m_params.Radius));
     m_quadPass->UpdateUniform(ShaderUniform("bias", m_params.Bias));

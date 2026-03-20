@@ -30,17 +30,14 @@ namespace ToolKit
     m_linearMaterial->SetFragmentShaderVal(fragmentShader);
     m_linearMaterial->Init();
 
-    TextureSettings oneChannelSet = {};
-    oneChannelSet.WarpS           = GraphicTypes::UVClampToEdge;
-    oneChannelSet.WarpT           = GraphicTypes::UVClampToEdge;
-    oneChannelSet.InternalFormat  = GraphicTypes::FormatRGBA16F;
-    oneChannelSet.Format          = GraphicTypes::FormatRGBA;
-    oneChannelSet.Type            = GraphicTypes::TypeFloat;
-    oneChannelSet.GenerateMipMap  = false;
-    m_normalRt                    = MakeNewPtr<RenderTarget>(128, 128, oneChannelSet, "NormalRT");
-
-    oneChannelSet.InternalFormat  = GraphicTypes::FormatRGBA32F;
-    m_linearDepthRt               = MakeNewPtr<RenderTarget>(128, 128, oneChannelSet, "LinearDepthRT");
+    TextureSettings set   = {};
+    set.WarpS             = GraphicTypes::UVClampToEdge;
+    set.WarpT             = GraphicTypes::UVClampToEdge;
+    set.InternalFormat    = GraphicTypes::FormatRGBA16F;
+    set.Format            = GraphicTypes::FormatRGBA;
+    set.Type              = GraphicTypes::TypeFloat;
+    set.GenerateMipMap    = false;
+    m_normalDepthRt       = MakeNewPtr<RenderTarget>(128, 128, set, "NormalDepthRT");
   }
 
   void ForwardPreProcessPass::InitBuffers(int width, int height, MsaaSampleCount sampleCount)
@@ -58,16 +55,11 @@ namespace ToolKit
         m_resolveFramebuffer->ReconstructIfNeeded({width, height, false, false, MsaaSampleCount::x1});
       }
 
-      TextureSettings rtSettings = m_normalRt->Settings();
+      TextureSettings rtSettings = m_normalDepthRt->Settings();
       rtSettings.msaaCount       = sampleCount;
-      m_normalRt->ReconstructIfNeeded(width, height, &rtSettings);
+      m_normalDepthRt->ReconstructIfNeeded(width, height, &rtSettings);
 
-      rtSettings = m_linearDepthRt->Settings();
-      rtSettings.msaaCount = sampleCount;
-      m_linearDepthRt->ReconstructIfNeeded(width, height, &rtSettings);
-
-      m_framebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_linearDepthRt);
-      m_framebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment1, m_normalRt);
+      m_framebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_normalDepthRt);
     }
 
     // Pass incoming depth buffer to create z buffer for early z test.
@@ -139,7 +131,7 @@ namespace ToolKit
       Renderer* renderer = GetRenderer();
       renderer->ResolveFramebuffer(m_framebuffer,
                                    m_resolveFramebuffer,
-                                   {(int) Framebuffer::Attachment::ColorAttachment0, (int) Framebuffer::Attachment::ColorAttachment1});
+                                   {(int) Framebuffer::Attachment::ColorAttachment0});
     }
 
     // Don't clear / invalidate depth, its being used for upcoming passes. Render pass uses it for Z pre-pass.

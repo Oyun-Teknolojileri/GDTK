@@ -256,8 +256,7 @@ namespace ToolKit
 
     m_forwardPreProcessPass->m_params       = m_forwardRenderPass->m_params;
 
-    m_ssaoPass->m_params.GNormalBuffer      = m_forwardPreProcessPass->m_normalRt;
-    m_ssaoPass->m_params.GLinearDepthBuffer = m_forwardPreProcessPass->m_linearDepthRt;
+    m_ssaoPass->m_params.GNormalDepthBuffer = m_forwardPreProcessPass->m_normalDepthRt;
     m_ssaoPass->m_params.Cam                = m_params.Cam;
     m_ssaoPass->m_params.Radius             = pps->GetSSAORadiusVal();
     m_ssaoPass->m_params.spread             = pps->GetSSAOSpreadVal();
@@ -272,7 +271,7 @@ namespace ToolKit
     RenderTargetPtr atc = m_params.MainFramebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
     m_dofPass->m_params.ColorRt                            = atc;
 
-    m_dofPass->m_params.DepthRt                            = m_forwardPreProcessPass->m_linearDepthRt;
+    m_dofPass->m_params.DepthRt                            = m_forwardPreProcessPass->m_normalDepthRt;
     m_dofPass->m_params.focusPoint                         = pps->GetFocusPointVal();
     m_dofPass->m_params.focusScale                         = pps->GetFocusScaleVal();
     m_dofPass->m_params.blurQuality                        = pps->ParamDofBlurQuality().GetEnum<DoFQuality>();
