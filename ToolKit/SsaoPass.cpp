@@ -66,11 +66,17 @@ namespace ToolKit
     Renderer* renderer      = GetRenderer();
 
     // Use resolved textures if multisampled, otherwise use the original render targets.
-    TexturePtr normalBuffer = m_params.GNormalBuffer->IsMultiSampled() ? m_params.GNormalBuffer->GetResolvedTexture()
-                                                                       : m_params.GNormalBuffer;
-    TexturePtr linearDepthBuffer = m_params.GLinearDepthBuffer->IsMultiSampled()
-                                       ? m_params.GLinearDepthBuffer->GetResolvedTexture()
-                                       : m_params.GLinearDepthBuffer;
+    TexturePtr normalBuffer = m_params.GNormalBuffer;
+    if (normalBuffer->IsMultiSampled())
+    {
+      normalBuffer = m_params.GNormalBuffer->GetResolvedTexture();
+    }
+
+    TexturePtr linearDepthBuffer = m_params.GLinearDepthBuffer;
+    if (linearDepthBuffer->IsMultiSampled())
+    {
+      linearDepthBuffer = m_params.GLinearDepthBuffer->GetResolvedTexture();
+    }
 
     // Generate SSAO texture
     renderer->SetTexture(1, normalBuffer->m_textureId);
