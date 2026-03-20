@@ -25,9 +25,9 @@ namespace ToolKit
     GraphicTypes InternalFormat = GraphicTypes::FormatRGBA16F;
     GraphicTypes Format         = GraphicTypes::FormatRGBA;
     GraphicTypes Type           = GraphicTypes::TypeFloat;
-    int msaaCount               = 1;     //!< MSAA Render target is created if this is grater than 1.
-    int Layers                  = 0;     //!< Number of layers that this texture have if this is a texture array.
-    bool GenerateMipMap         = false; //!< Generates mipmaps for the texture automatically.
+    MsaaSampleCount msaaCount   = MsaaSampleCount::x1; //!< MSAA Render target is created if this is grater than x1.
+    int Layers                  = 0;                    //!< Number of layers that this texture have if this is a texture array.
+    bool GenerateMipMap         = false;                //!< Generates mipmaps for the texture automatically.
 
     bool operator==(const TextureSettings& other) const { return memcmp(this, &other, sizeof(TextureSettings)) == 0; }
 
@@ -109,7 +109,7 @@ namespace ToolKit
     DepthTexture();
 
     void Load() override;
-    void Init(int width, int height, bool stencil, int multiSample = 0);
+    void Init(int width, int height, bool stencil, MsaaSampleCount multiSample = MsaaSampleCount::x1);
     void UnInit() override;
 
     /** Returns depth buffer format in use. */

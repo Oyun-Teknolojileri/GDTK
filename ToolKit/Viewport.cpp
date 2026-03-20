@@ -116,8 +116,8 @@ namespace ToolKit
       texureSet.Type           = GraphicTypes::TypeUnsignedByte;
     }
 
-    int msaaCount = engineSettings.m_graphics->GetMSAAVal().GetValue<int>();
-    if (!engineSettings.m_graphics->disableMSAA && msaaCount > 1)
+    MsaaSampleCount msaaCount = engineSettings.m_graphics->GetMSAAVal().GetEnum<MsaaSampleCount>();
+    if (!engineSettings.m_graphics->disableMSAA && msaaCount > MsaaSampleCount::x1)
     {
       texureSet.msaaCount = msaaCount;
     }
@@ -133,11 +133,11 @@ namespace ToolKit
       m_framebuffer = MakeNewPtr<Framebuffer>("ViewportFB");
     }
 
-    float resScale = engineSettings.m_graphics->GetRenderResolutionScaleVal();
-    int width      = (int) glm::round(m_wndContentAreaSize.x * resScale);
-    int height     = (int) glm::round(m_wndContentAreaSize.y * resScale);
+    float resScale          = engineSettings.m_graphics->GetRenderResolutionScaleVal();
+    int width               = (int) glm::round(m_wndContentAreaSize.x * resScale);
+    int height              = (int) glm::round(m_wndContentAreaSize.y * resScale);
 
-    int msaaVal    = engineSettings.m_graphics->GetMSAAVal().GetValue<int>();
+    MsaaSampleCount msaaVal = engineSettings.m_graphics->GetMSAAVal().GetEnum<MsaaSampleCount>();
     m_framebuffer->ReconstructIfNeeded({width, height, false, true, msaaVal});
 
     m_renderTarget = MakeNewPtr<RenderTarget>(width, height, settings, "ViewportRT");

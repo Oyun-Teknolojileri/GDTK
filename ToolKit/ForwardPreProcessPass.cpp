@@ -43,7 +43,7 @@ namespace ToolKit
     m_linearDepthRt               = MakeNewPtr<RenderTarget>(128, 128, oneChannelSet, "LinearDepthRT");
   }
 
-  void ForwardPreProcessPass::InitBuffers(int width, int height, int sampleCount)
+  void ForwardPreProcessPass::InitBuffers(int width, int height, MsaaSampleCount sampleCount)
   {
     const FramebufferSettings& fbs = m_framebuffer->GetSettings();
     bool requiresReconstruct       = fbs.width != width || fbs.height != height || fbs.msaaCount != sampleCount;
@@ -55,7 +55,7 @@ namespace ToolKit
 
       if (m_framebuffer->IsMultiSampled())
       {
-        m_resolveFramebuffer->ReconstructIfNeeded({width, height, false, false, 1});
+        m_resolveFramebuffer->ReconstructIfNeeded({width, height, false, false, MsaaSampleCount::x1});
       }
 
       TextureSettings rtSettings = m_normalRt->Settings();

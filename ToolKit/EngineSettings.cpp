@@ -109,18 +109,19 @@ namespace ToolKit
 
   TKDefineClass(GraphicSettings, Object);
 
+  MultiChoiceVariant gDefaultMsaaMcv = {
+      {CreateMultiChoiceParameter("1x", (int) MsaaSampleCount::x1),
+       CreateMultiChoiceParameter("2x", (int) MsaaSampleCount::x2),
+       CreateMultiChoiceParameter("4x", (int) MsaaSampleCount::x4),
+       CreateMultiChoiceParameter("8x", (int) MsaaSampleCount::x8)},
+      1
+  };
+
   void GraphicSettings::ParameterConstructor()
   {
     Super::ParameterConstructor();
 
-    MultiChoiceVariant msaaMcv = {
-        {CreateMultiChoiceParameter("0", 0),
-         CreateMultiChoiceParameter("2", 2),
-         CreateMultiChoiceParameter("4", 4),
-         CreateMultiChoiceParameter("8", 8)},
-        1
-    };
-    MSAA_Define(msaaMcv, "GraphicSettings", 0, true, true);
+    MSAA_Define(gDefaultMsaaMcv, "GraphicSettings", 0, true, true);
 
     MultiChoiceVariant anisotropicMcv = {
         {CreateMultiChoiceParameter("0", 0),
@@ -146,6 +147,32 @@ namespace ToolKit
           bool multiThreaded              = std::get<bool>(newVal);
           Main::GetInstance()->m_threaded = multiThreaded;
         });
+  }
+
+  void GraphicSettings::PostDeSerializeImp(const SerializationFileInfo& info, XmlNode* parent)
+  {
+    Super::PostDeSerializeImp(info, parent);
+
+    // Try to set a meaningful value for old msaa settings.
+    if (m_version <= TKV049)
+    {
+      MsaaSampleCount msaaVal = GetMSAAVal().GetEnum<MsaaSampleCount>();
+
+      switch (msaaVal)
+      {
+      case MsaaSampleCount::x1:
+      case MsaaSampleCount::x2:
+      case MsaaSampleCount::x4:
+      case MsaaSampleCount::x8:
+        break;
+      default:
+        msaaVal = MsaaSampleCount::x1;
+      }
+
+      MultiChoiceVariant msaa = gDefaultMsaaMcv;
+      msaa.SetEnum(msaaVal);
+      SetMSAAVal(msaa);
+    }
   }
 
   // PostProcessingSettings

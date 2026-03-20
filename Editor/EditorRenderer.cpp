@@ -132,7 +132,7 @@ namespace ToolKit
       if (mainBuffer->IsMultiSampled())
       {
         FramebufferSettings settings = mainBuffer->GetSettings();
-        settings.msaaCount           = 1;
+        settings.msaaCount           = MsaaSampleCount::x1;
         m_resolvedFramebuffer->ReconstructIfNeeded(settings);
         renderer->ResolveFramebuffer(mainBuffer, m_resolvedFramebuffer, {0});
       }

@@ -649,7 +649,7 @@ namespace ToolKit
       if (targetRt == nullptr)
       {
         TextureSettings settings = srcRt->Settings();
-        settings.msaaCount       = 1;
+        settings.msaaCount       = MsaaSampleCount::x1;
         targetRt                 = MakeNewPtr<RenderTarget>();
         targetRt->ReconstructIfNeeded(srcRt->m_width, srcRt->m_height, &settings);
         target->SetColorAttachment(atcEnum, targetRt);
@@ -1377,7 +1377,8 @@ namespace ToolKit
                                  GraphicTypes::FormatRGBA16F,
                                  GraphicTypes::FormatRGBA,
                                  GraphicTypes::TypeFloat,
-                                 1,
+                                 MsaaSampleCount::x1,
+                                 0,
                                  false};
 
     RenderTargetPtr cubeMapRt = MakeNewPtr<RenderTarget>(size, size, set, "EquirectToCubeMapRT");
@@ -1527,7 +1528,7 @@ namespace ToolKit
                                  GraphicTypes::FormatRGBA16F,
                                  GraphicTypes::FormatRGBA,
                                  GraphicTypes::TypeFloat,
-                                 0,
+                                 MsaaSampleCount::x1,
                                  false};
 
     // Don't allow caches bigger than the actual image.
@@ -1599,7 +1600,7 @@ namespace ToolKit
                                  GraphicTypes::FormatRGBA16F,
                                  GraphicTypes::FormatRGBA,
                                  GraphicTypes::TypeFloat,
-                                 0,
+                                 MsaaSampleCount::x1,
                                  false};
 
     // Don't allow caches bigger than the actual image.

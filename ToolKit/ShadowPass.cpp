@@ -520,7 +520,7 @@ namespace ToolKit
                                    bufferFormat,
                                    bufferComponents,
                                    GraphicTypes::TypeFloat,
-                                   1,
+                                   MsaaSampleCount::x1,
                                    m_layerCount,
                                    false};
 
@@ -533,7 +533,7 @@ namespace ToolKit
                                         RHIConstants::ShadowAtlasTextureSize,
                                         false,
                                         true,
-                                        1};
+                                        MsaaSampleCount::x1};
 
       m_shadowFramebuffer->ReconstructIfNeeded(fbSettings);
       m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowAtlas, 0, 0);

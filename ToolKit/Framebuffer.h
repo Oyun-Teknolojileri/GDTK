@@ -16,15 +16,15 @@ namespace ToolKit
   struct FramebufferSettings
   {
     /**Height of the frame buffer. */
-    int width            = 128;
+    int width                    = 128;
     /** Width of the frame buffer. */
-    int height           = 128;
+    int height                   = 128;
     /** States whether the default depth has stencil or not. */
-    bool depthStencil    = false;
+    bool depthStencil            = false;
     /** Creates a default depth attachment. */
-    bool useDefaultDepth = true;
-    /** Creates multi sample frame buffers if greater than 1. Suggested values are 1, 2, 4, 8. */
-    int msaaCount        = 1;
+    bool useDefaultDepth         = true;
+    /** Creates multi sample frame buffers if greater than x1. Suggested values are x1, x2, x4, x8. */
+    MsaaSampleCount msaaCount    = MsaaSampleCount::x1;
 
     bool operator==(const FramebufferSettings& other) const
     {

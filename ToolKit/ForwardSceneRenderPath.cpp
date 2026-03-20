@@ -121,7 +121,7 @@ namespace ToolKit
     if (m_params.MainFramebuffer->IsMultiSampled())
     {
       FramebufferSettings settings = m_params.MainFramebuffer->GetSettings();
-      settings.msaaCount           = 1;
+      settings.msaaCount           = MsaaSampleCount::x1;
 
       m_resolvedFramebuffer->ReconstructIfNeeded(settings);
       m_forwardRenderPass->m_params.resolveFrameBuffer = m_resolvedFramebuffer;

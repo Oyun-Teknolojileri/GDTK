@@ -42,7 +42,7 @@ namespace ToolKit
                    GraphicTypes::FormatSRGB8_A8,
                    GraphicTypes::FormatRGBA,
                    GraphicTypes::TypeUnsignedByte,
-                   1,
+                   MsaaSampleCount::x1,
                    -1,
                    true};
 
@@ -186,11 +186,11 @@ namespace ToolKit
     uint64 pixelCount = (uint64) m_width * (uint64) m_height;
     if (m_settings.Target == GraphicTypes::Target2D)
     {
-      if (m_settings.msaaCount > 1)
+      if (m_settings.msaaCount > MsaaSampleCount::x1)
       {
         // There is no msaa render texture, so delete the renderbuffer.
         glDeleteRenderbuffers(1, &m_textureId);
-        Stats::RemoveVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat) * m_settings.msaaCount);
+        Stats::RemoveVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat) * (int) m_settings.msaaCount);
       }
       else
       {
@@ -236,7 +236,7 @@ namespace ToolKit
     glGenerateMipmap((GLenum) m_settings.Target);
   }
 
-  bool Texture::IsMultiSampled() { return m_settings.msaaCount > 1; }
+  bool Texture::IsMultiSampled() { return m_settings.msaaCount > MsaaSampleCount::x1; }
 
   TexturePtr Texture::GetResolvedTexture()
   {
@@ -287,15 +287,15 @@ namespace ToolKit
     int internalFormatSize = m_stencil ? 4 : 3;
 
     int sizeMultiplier     = 1;
-    if (m_settings.msaaCount > 1 && glRenderbufferStorageMultisampleEXT != nullptr)
+    if (m_settings.msaaCount > MsaaSampleCount::x1 && glRenderbufferStorageMultisampleEXT != nullptr)
     {
-      sizeMultiplier = m_settings.msaaCount;
+      sizeMultiplier = (int) m_settings.msaaCount;
     }
 
     return internalFormatSize * sizeMultiplier;
   }
 
-  void DepthTexture::Init(int width, int height, bool stencil, int multiSample)
+  void DepthTexture::Init(int width, int height, bool stencil, MsaaSampleCount multiSample)
   {
     if (m_initiated)
     {
@@ -310,7 +310,7 @@ namespace ToolKit
 
     if constexpr (GraphicSettings::disableMSAA)
     {
-      m_settings.msaaCount = 1;
+      m_settings.msaaCount = MsaaSampleCount::x1;
     }
 
     glGenRenderbuffers(1, &m_textureId);
@@ -319,15 +319,15 @@ namespace ToolKit
     Stats::SetGpuResourceLabel(m_label, GpuResourceType::RenderBuffer, m_textureId);
 
     int sizeMultiplier = 1;
-    if (m_settings.msaaCount > 1)
+    if (m_settings.msaaCount > MsaaSampleCount::x1)
     {
       glRenderbufferStorageMultisample(GL_RENDERBUFFER,
-                                       m_settings.msaaCount,
+                                       (int) m_settings.msaaCount,
                                        (GLenum) GetDepthFormat(),
                                        m_width,
                                        m_height);
 
-      sizeMultiplier = m_settings.msaaCount;
+      sizeMultiplier = (int) m_settings.msaaCount;
     }
     else
     {
@@ -935,7 +935,7 @@ namespace ToolKit
     // Create frame buffer color texture
     assert(m_textureId == 0 && "Texture already initialized.");
 
-    if (m_settings.msaaCount > 1)
+    if (m_settings.msaaCount > MsaaSampleCount::x1)
     {
       glGenRenderbuffers(1, &m_textureId);
       glBindRenderbuffer(GL_RENDERBUFFER, m_textureId);
@@ -951,12 +951,12 @@ namespace ToolKit
     uint64 pixelCount = (uint64) m_width * (uint64) m_height;
     if (m_settings.Target == GraphicTypes::Target2D)
     {
-      if (m_settings.msaaCount > 1)
+      if (m_settings.msaaCount > MsaaSampleCount::x1)
       {
         // Opengl 3.0 / es 3.0 does not support multisampled textures directly.
         // Render buffer is used.
         glRenderbufferStorageMultisample(GL_RENDERBUFFER,
-                                         m_settings.msaaCount,
+                                         (int) m_settings.msaaCount,
                                          (GLenum) m_settings.InternalFormat,
                                          m_width,
                                          m_height);
@@ -981,7 +981,7 @@ namespace ToolKit
       }
 
       ApplyTextureSettings(m_settings);
-      Stats::AddVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat) * m_settings.msaaCount);
+      Stats::AddVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat) * (int) m_settings.msaaCount);
     }
     else if (m_settings.Target == GraphicTypes::TargetCubeMap)
     {

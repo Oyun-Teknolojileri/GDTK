@@ -24,7 +24,7 @@ namespace ToolKit
    public:
     ForwardPreProcessPass();
 
-    void InitBuffers(int width, int height, int sampleCount);
+    void InitBuffers(int width, int height, MsaaSampleCount sampleCount);
     void Render() override;
     void PreRender() override;
     void PostRender() override;

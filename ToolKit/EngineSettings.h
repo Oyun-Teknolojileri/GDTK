@@ -132,12 +132,13 @@ namespace ToolKit
    protected:
     void ParameterConstructor() override;
     void ParameterEventConstructor() override;
+    void PostDeSerializeImp(const SerializationFileInfo& info, XmlNode* parent) override;
 
    public:
     /** Target fps for application. */
     TKDeclareParam(int, FPS);
 
-    /** Multi-sample count. 0 for non msaa render targets. */
+    /** Multi-sample count. MsaaSampleCount::x1 for non msaa render targets. */
     TKDeclareParam(MultiChoiceVariant, MSAA);
 
     /** Disable msaa fully. Some hardware especially android emulators requires non msaa targets. */
