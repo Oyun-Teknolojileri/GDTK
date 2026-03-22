@@ -307,4 +307,4 @@ namespace ToolKit
     }
 
   } // namespace Editor
-} // namespace ToolKit} // namespace ToolKit
+} // namespace ToolKit

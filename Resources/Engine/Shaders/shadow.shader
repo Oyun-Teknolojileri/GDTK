@@ -54,11 +54,11 @@ float EvaluateEVSM
 // ---------------------------------------------------------------------------
 // Bilinear PCF tap helpers
 // Each texture() with linear filtering already interpolates 2x2 texels.
-// By placing taps at sub-texel offsets we cover larger effective kernels.
+// By placing samles at sub-texel offsets we cover larger effective kernels.
 //
-//  4 taps -> ~3x3 kernel
-//  9 taps -> ~5x5 kernel
-// 16 taps -> ~7x7 kernel
+//  4 samles -> ~3x3 kernel
+//  9 samles -> ~5x5 kernel
+// 16 samles -> ~7x7 kernel
 // ---------------------------------------------------------------------------
 
 #if ShadowPCF >= 4
