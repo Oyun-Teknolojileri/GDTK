@@ -175,6 +175,12 @@ namespace ToolKit
   {
     TK_PROFILE_FUNCTION();
 
+    // Skip lights that didn't get valid atlas slots.
+    if (light->m_shadowResolution <= 0.0f)
+    {
+      return;
+    }
+
     Renderer* renderer        = GetRenderer();
     ShadowSettingsPtr shadows = GetEngineSettings().m_graphics->m_shadows;
     uint resolution           = (uint) light->m_shadowResolution;
@@ -186,6 +192,11 @@ namespace ToolKit
       for (int i = 0; i < cascadeCount; i++)
       {
         int layer = dLight->m_shadowAtlasLayers[i];
+        if (layer < 0)
+        {
+          continue;
+        }
+
         m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowAtlas, 0, layer);
 
         renderer->ClearBuffer(GraphicBitFields::DepthBits, m_shadowClearColor);
@@ -204,6 +215,11 @@ namespace ToolKit
       for (int i = 0; i < 6; i++)
       {
         int layer = light->m_shadowAtlasLayers[i];
+        if (layer < 0)
+        {
+          continue;
+        }
+
         m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowAtlas, 0, layer);
 
         light->m_shadowCamera->m_node->SetTranslation(light->m_node->GetTranslation());
@@ -224,10 +240,16 @@ namespace ToolKit
     {
       assert(light->GetLightType() == Light::LightType::Spot);
 
+      int layer = light->m_shadowAtlasLayers[0];
+      if (layer < 0)
+      {
+        return;
+      }
+
       m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0,
                                                m_shadowAtlas,
                                                0,
-                                               light->m_shadowAtlasLayers[0]);
+                                               layer);
 
       renderer->ClearBuffer(GraphicBitFields::DepthBits, m_shadowClearColor);
 
@@ -425,36 +447,36 @@ namespace ToolKit
 
       if (light->GetLightType() == Light::LightType::Directional)
       {
-        // Directional lights use Half slots (layer 0) for each cascade.
         for (int ii = 0; ii < cascadeCount; ii++)
         {
-          ShadowAtlas::SlotInfo slot = m_atlas.Allocate(ShadowAtlas::SlotSize::Half, atlasSize);
-          light->m_shadowAtlasCoords[ii] = slot.coordinate;
-          light->m_shadowAtlasLayers[ii] = slot.layer;
-          light->m_shadowResolution      = (float) slot.resolution;
+          ShadowAtlas::SlotInfo slot      = m_atlas.Allocate(ShadowAtlas::SlotSize::Half, atlasSize);
+          light->m_shadowAtlasCoords[ii]  = slot.coordinate;
+          light->m_shadowAtlasLayers[ii]  = slot.layer;
         }
+        light->m_shadowResolution = (float) ShadowAtlas::GetSlotResolution(ShadowAtlas::SlotSize::Half, atlasSize);
       }
       else if (light->GetLightType() == Light::LightType::Point)
       {
-        // Point lights use Quarter slots (layer 1) for 6 faces.
         for (int ii = 0; ii < 6; ii++)
         {
-          ShadowAtlas::SlotInfo slot = m_atlas.Allocate(ShadowAtlas::SlotSize::Quarter, atlasSize);
-          light->m_shadowAtlasCoords[ii] = slot.coordinate;
-          light->m_shadowAtlasLayers[ii] = slot.layer;
-          light->m_shadowResolution      = (float) slot.resolution;
+          ShadowAtlas::SlotInfo slot      = m_atlas.Allocate(ShadowAtlas::SlotSize::Quarter, atlasSize);
+          light->m_shadowAtlasCoords[ii]  = slot.coordinate;
+          light->m_shadowAtlasLayers[ii]  = slot.layer;
         }
+        light->m_shadowResolution = (float) ShadowAtlas::GetSlotResolution(ShadowAtlas::SlotSize::Quarter, atlasSize);
       }
       else
       {
         assert(light->GetLightType() == Light::LightType::Spot);
 
-        // Spot lights use Eighth slots (layer 1).
-        ShadowAtlas::SlotInfo slot = m_atlas.Allocate(ShadowAtlas::SlotSize::Eighth, atlasSize);
-        light->m_shadowAtlasCoords[0] = slot.coordinate;
-        light->m_shadowAtlasLayers[0] = slot.layer;
-        light->m_shadowResolution     = (float) slot.resolution;
+        ShadowAtlas::SlotInfo slot     = m_atlas.Allocate(ShadowAtlas::SlotSize::Eighth, atlasSize);
+        light->m_shadowAtlasCoords[0]  = slot.coordinate;
+        light->m_shadowAtlasLayers[0]  = slot.layer;
+        light->m_shadowResolution      = (float) ShadowAtlas::GetSlotResolution(ShadowAtlas::SlotSize::Eighth, atlasSize);
       }
+
+      // Always invalidate cache to ensure GPU gets correct atlas coordinates.
+      light->InvalidateCacheItem();
     }
   }
 
@@ -462,56 +484,36 @@ namespace ToolKit
   {
     TK_PROFILE_FUNCTION();
 
-    // Check if the shadow atlas needs to be updated
-    bool needChange           = false;
+    if (m_lights.empty())
+    {
+      return;
+    }
+
+    // Always place shadow maps each frame since light list can change.
+    PlaceShadowMapsToShadowAtlas(m_lights);
+
+    // Check if the shadow atlas texture needs to be reconstructed.
+    bool needReconstruct      = m_shadowAtlas->m_textureId == 0; // First time.
     ShadowSettingsPtr shadows = GetEngineSettings().m_graphics->m_shadows;
     if (m_activeCascadeCount != shadows->GetCascadeCountVal())
     {
       m_activeCascadeCount = shadows->GetCascadeCountVal();
-      needChange           = true;
+      needReconstruct      = true;
     }
 
     if (m_use32BitShadowMap != shadows->GetUse32BitShadowMapVal())
     {
       m_use32BitShadowMap = shadows->GetUse32BitShadowMapVal();
-      needChange          = true;
+      needReconstruct     = true;
     }
 
     if (m_use2KLayer != shadows->GetUse2KShadowAtlasLayerVal())
     {
-      m_use2KLayer = shadows->GetUse2KShadowAtlasLayerVal();
-      needChange   = true;
+      m_use2KLayer    = shadows->GetUse2KShadowAtlasLayerVal();
+      needReconstruct = true;
     }
 
-    // After this loop m_previousShadowCasters is set with lights with shadows
-    int nextId = 0;
-    for (int i = 0; i < m_lights.size(); ++i)
-    {
-      Light* light = m_lights[i];
-      if (light->m_shadowResolutionUpdated)
-      {
-        light->m_shadowResolutionUpdated = false;
-        needChange                       = true;
-      }
-
-      if (nextId >= m_previousShadowCasters.size())
-      {
-        needChange = true;
-        m_previousShadowCasters.push_back(light->GetIdVal());
-        nextId++;
-        continue;
-      }
-
-      if (m_previousShadowCasters[nextId] != light->GetIdVal())
-      {
-        needChange = true;
-      }
-
-      m_previousShadowCasters[nextId] = light->GetIdVal();
-      nextId++;
-    }
-
-    if (needChange && !m_lights.empty())
+    if (needReconstruct)
     {
       // Update materials.
       ShaderPtr frag = m_shadowMatOrtho->GetFragmentShaderVal();
@@ -519,12 +521,6 @@ namespace ToolKit
 
       frag = m_shadowMatPersp->GetFragmentShaderVal();
       frag->SetDefine("SMFormat16Bit", std::to_string(!m_use32BitShadowMap));
-
-      // Update layers.
-      m_previousShadowCasters.resize(nextId);
-
-      // Place shadow textures to atlas using fixed layout.
-      PlaceShadowMapsToShadowAtlas(m_lights);
 
       GraphicTypes bufferComponents = GraphicTypes::FormatRG;
       GraphicTypes bufferFormat     = GraphicTypes::FormatRG32F;
