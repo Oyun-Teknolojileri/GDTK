@@ -149,7 +149,7 @@ namespace ToolKit
     data->bleedingReduction = GetBleedingReductionVal();
     data->pad0              = 0.0f;
     data->pad1              = 0.0f;
-    data->shadowResolution  = GetShadowResVal().GetValue<float>();
+    data->shadowResolution  = m_shadowResolution;
     data->shadowAtlasLayer  = m_shadowAtlasLayers[0];
     data->shadowAtlasCoord  = m_shadowAtlasCoords[0];
   }
@@ -396,7 +396,7 @@ namespace ToolKit
     // Allow camera to only make texel size movements.
     // To do this, find the camera origin in projection space and calculate the offset that
     // puts the camera origin on to a texel, prevent sub pixel movements and shimmering in shadow map.
-    float shadowMapRes                     = GetShadowResVal().GetValue<float>();
+    float shadowMapRes                     = m_shadowResolution;
     Mat4 shadowMatrix                      = lightCamera->GetProjectViewMatrix();
     Vec4 shadowOrigin                      = Vec4(0.0f, 0.0f, 0.0f, 1.0f);
     shadowOrigin                           = shadowMatrix * shadowOrigin;

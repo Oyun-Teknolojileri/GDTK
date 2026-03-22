@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include "BinPack2D.h"
+#include "ShadowAtlas.h"
 #include "Pass.h"
 
 namespace ToolKit
@@ -41,12 +41,8 @@ namespace ToolKit
     /** Performs a single render that generates a single shadow map of a cascade, or a face of a cube etc...*/
     void RenderShadowMap(Light* light, CameraPtr shadowCamera, CameraPtr cullCamera);
 
-    /**
-     * Sets layer and coordinates of the shadow maps in shadow atlas.
-     * @param lights Light array that have shadows.
-     * @return number of layers needed.
-     */
-    int PlaceShadowMapsToShadowAtlas(const LightRawPtrArray& lights);
+    /** Assigns shadow atlas slots to all shadow casting lights using fixed layout. */
+    void PlaceShadowMapsToShadowAtlas(const LightRawPtrArray& lights);
 
     /** Creates a shadow atlas for m_params.Lights */
     void InitShadowAtlas();
@@ -65,14 +61,13 @@ namespace ToolKit
     FramebufferPtr m_shadowFramebuffer = nullptr;
     RenderTargetPtr m_shadowAtlas      = nullptr;
     RenderTargetPtr m_shadowBlurTempRT = nullptr;
-    int m_layerCount                   = 0; // Number of textures in array texture (shadow atlas)
     int m_activeCascadeCount           = 0;
     bool m_use32BitShadowMap           = true;
     bool m_use2KLayer                  = false;
     IDArray m_previousShadowCasters;
 
     Quaternion m_cubeMapRotations[6];
-    BinPack2D m_packer;
+    ShadowAtlas m_atlas;
 
     LightRawPtrArray m_lights; // Shadow casters in scene.
   };

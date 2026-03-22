@@ -90,6 +90,9 @@ namespace ToolKit
     bool m_shadowResolutionUpdated = false;
     MeshPtr m_volumeMesh           = nullptr;
 
+    /** Shadow resolution assigned by the shadow atlas layout. Set by ShadowPass. */
+    float m_shadowResolution       = 0.0f;
+
     IntArray m_shadowAtlasLayers;  //!< Layer index in the shadow atlas for each cascade.
     Vec2Array m_shadowAtlasCoords; //!< Coordinates for each cascade in the corresponding layer.
   };
