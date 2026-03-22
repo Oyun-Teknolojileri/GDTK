@@ -18,20 +18,16 @@ uniform int activeSpotLightIndexes[MAX_SPOT_LIGHT_PER_OBJECT];
 const float shadowFadeOutDistanceNorm = 0.9;
 
 // ---------------------------------------------------------------------------
-// Filament-style attenuation
+// Linear-style attenuation
 // ---------------------------------------------------------------------------
 
-// Physically-based square falloff with smooth window function
-// Filament: getSquareFalloffAttenuation + getDistanceAttenuation
+// Smooth falloff: (1 - d2/r2)2.
 float DistanceAttenuation(float distanceSq, float falloff)
 {
 	// falloff = 1.0 / (radius * radius)
-	float factor = distanceSq * falloff;
-	float smoothFactor = clamp(1.0 - factor * factor, 0.0, 1.0);
-	// Smooth window: (1 - (d²/r²)²)²
-	// Divided by distanceSq for inverse-square law
-	// Clamp to avoid division by zero for very close lights
-	return (smoothFactor * smoothFactor) / max(distanceSq, 1e-2);
+	float factor = clamp(distanceSq * falloff, 0.0, 1.0);
+	float f = 1.0 - factor;
+	return f * f;
 }
 
 // Filament-style spot light angular attenuation
