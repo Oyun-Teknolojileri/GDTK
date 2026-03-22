@@ -55,7 +55,7 @@ namespace ToolKit
 
     if constexpr (GraphicSettings::disableMSAA)
     {
-      m_settings.msaaCount = MsaaSampleCount::x1;
+      m_settings.msaaCount = MsaaSampleCount::x0;
     }
 
     // Create framebuffer object
@@ -136,7 +136,7 @@ namespace ToolKit
     }
   }
 
-  bool Framebuffer::IsMultiSampled() { return m_settings.msaaCount > MsaaSampleCount::x1; }
+  bool Framebuffer::IsMultiSampled() { return m_settings.msaaCount > MsaaSampleCount::x0; }
 
   void Framebuffer::AttachDepthTexture(DepthTexturePtr dt)
   {
@@ -191,7 +191,7 @@ namespace ToolKit
     RHI::SetFramebuffer(GL_FRAMEBUFFER, m_fboId);
 
     // MSAA render buffer attachment
-    if (rt->Settings().msaaCount > MsaaSampleCount::x1)
+    if (rt->Settings().msaaCount > MsaaSampleCount::x0)
     {
       glFramebufferRenderbuffer(GL_FRAMEBUFFER, attachment, GL_RENDERBUFFER, rt->m_textureId);
     }

@@ -152,7 +152,7 @@ namespace ToolKit
                                  GraphicTypes::FormatRGBA16F,
                                  GraphicTypes::FormatRGBA,
                                  GraphicTypes::TypeFloat,
-                                 MsaaSampleCount::x1,
+                                 MsaaSampleCount::x0,
                                  0,
                                  false};
 

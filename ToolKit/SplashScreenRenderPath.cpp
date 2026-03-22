@@ -52,7 +52,7 @@ namespace ToolKit
     if (m_viewport->m_framebuffer->IsMultiSampled())
     {
       FramebufferSettings settings = m_viewport->m_framebuffer->GetSettings();
-      settings.msaaCount           = MsaaSampleCount::x1;
+      settings.msaaCount           = MsaaSampleCount::x0;
 
       m_resolvedFramebuffer->ReconstructIfNeeded(settings);
       m_uiPass->m_params.resolveFrameBuffer = m_resolvedFramebuffer;

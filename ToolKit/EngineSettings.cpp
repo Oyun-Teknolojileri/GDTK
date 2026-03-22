@@ -45,9 +45,9 @@ namespace ToolKit
 
     MultiChoiceVariant pcfMcv = {
         {CreateMultiChoiceParameter("Off", 0),
-         CreateMultiChoiceParameter("4 tap", 4),
-         CreateMultiChoiceParameter("9 tap", 9),
-         CreateMultiChoiceParameter("16 tap", 16)},
+         CreateMultiChoiceParameter("4 sample", 4),
+         CreateMultiChoiceParameter("9 sample", 9),
+         CreateMultiChoiceParameter("16 sample", 16)},
         1
     };
 
@@ -60,6 +60,27 @@ namespace ToolKit
     ParallelSplitLambda_Define(0.5f, "ShadowSettings", 0, 0, 0);
     StableShadowMap_Define(false, "ShadowSettings", 0, 0, 0);
     Use32BitShadowMap_Define(false, "ShadowSettings", 0, 0, 0);
+
+    MultiChoiceVariant kernelMcv = {
+        {CreateMultiChoiceParameter("3x3", 3),
+         CreateMultiChoiceParameter("5x5", 5),
+         CreateMultiChoiceParameter("7x7", 7)},
+        1
+    };
+
+    VSMBlurKernelSize_Define(kernelMcv, "ShadowSettings", 0, true, true);
+
+    MultiChoiceVariant tapMcv = {
+        {CreateMultiChoiceParameter("Off", 0),
+         CreateMultiChoiceParameter("1 tap", 1),
+         CreateMultiChoiceParameter("2 tap", 2),
+         CreateMultiChoiceParameter("3 tap", 3),
+         CreateMultiChoiceParameter("4 tap", 4),
+         CreateMultiChoiceParameter("5 tap", 5)},
+        1
+    };
+
+    VSMBlurTapCount_Define(tapMcv, "ShadowSettings", 0, true, true);
   }
 
   void ShadowSettings::ParameterEventConstructor()
@@ -110,7 +131,7 @@ namespace ToolKit
   TKDefineClass(GraphicSettings, Object);
 
   MultiChoiceVariant gDefaultMsaaMcv = {
-      {CreateMultiChoiceParameter("1x", (int) MsaaSampleCount::x1),
+      {CreateMultiChoiceParameter("Off", (int) MsaaSampleCount::x0),
        CreateMultiChoiceParameter("2x", (int) MsaaSampleCount::x2),
        CreateMultiChoiceParameter("4x", (int) MsaaSampleCount::x4),
        CreateMultiChoiceParameter("8x", (int) MsaaSampleCount::x8)},
@@ -160,13 +181,13 @@ namespace ToolKit
 
       switch (msaaVal)
       {
-      case MsaaSampleCount::x1:
+      case MsaaSampleCount::x0:
       case MsaaSampleCount::x2:
       case MsaaSampleCount::x4:
       case MsaaSampleCount::x8:
         break;
       default:
-        msaaVal = MsaaSampleCount::x1;
+        msaaVal = MsaaSampleCount::x0;
       }
 
       MultiChoiceVariant msaa = gDefaultMsaaMcv;

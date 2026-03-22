@@ -117,7 +117,7 @@ namespace ToolKit
     }
 
     MsaaSampleCount msaaCount = engineSettings.m_graphics->GetMSAAVal().GetEnum<MsaaSampleCount>();
-    if (!engineSettings.m_graphics->disableMSAA && msaaCount > MsaaSampleCount::x1)
+    if (!engineSettings.m_graphics->disableMSAA && msaaCount > MsaaSampleCount::x0)
     {
       texureSet.msaaCount = msaaCount;
     }

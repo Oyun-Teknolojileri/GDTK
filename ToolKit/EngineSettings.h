@@ -101,11 +101,17 @@ namespace ToolKit
     TKDeclareParam(bool, Use32BitShadowMap);
 
     /**
-     * Shadow PCF filtering tap count. Controls shadow softness.
+     * Shadow PCF filtering sample count. Controls shadow softness.
      * 0: No filtering (single sample), 4: ~3x3 kernel, 9: ~5x5 kernel, 16: ~7x7 kernel.
      * This is a shader variant (compile-time define).
      */
     TKDeclareParam(MultiChoiceVariant, ShadowPCF);
+
+    /** VSM blur kernel size applied to shadow atlas layers. */
+    TKDeclareParam(MultiChoiceVariant, VSMBlurKernelSize);
+
+    /** VSM blur tap count (number of horizontal+vertical blur passes). */
+    TKDeclareParam(MultiChoiceVariant, VSMBlurTapCount);
   };
 
   typedef std::shared_ptr<ShadowSettings> ShadowSettingsPtr;

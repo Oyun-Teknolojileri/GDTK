@@ -42,7 +42,7 @@ namespace ToolKit
                    GraphicTypes::FormatSRGB8_A8,
                    GraphicTypes::FormatRGBA,
                    GraphicTypes::TypeUnsignedByte,
-                   MsaaSampleCount::x1,
+                   MsaaSampleCount::x0,
                    -1,
                    true};
 
@@ -186,11 +186,12 @@ namespace ToolKit
     uint64 pixelCount = (uint64) m_width * (uint64) m_height;
     if (m_settings.Target == GraphicTypes::Target2D)
     {
-      if (m_settings.msaaCount > MsaaSampleCount::x1)
+      if (m_settings.msaaCount > MsaaSampleCount::x0)
       {
         // There is no msaa render texture, so delete the renderbuffer.
         glDeleteRenderbuffers(1, &m_textureId);
-        Stats::RemoveVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat) * (int) m_settings.msaaCount);
+        Stats::RemoveVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat) *
+                                      (int) m_settings.msaaCount);
       }
       else
       {
@@ -236,7 +237,7 @@ namespace ToolKit
     glGenerateMipmap((GLenum) m_settings.Target);
   }
 
-  bool Texture::IsMultiSampled() { return m_settings.msaaCount > MsaaSampleCount::x1; }
+  bool Texture::IsMultiSampled() { return m_settings.msaaCount > MsaaSampleCount::x0; }
 
   TexturePtr Texture::GetResolvedTexture()
   {
@@ -287,7 +288,7 @@ namespace ToolKit
     int internalFormatSize = m_stencil ? 4 : 3;
 
     int sizeMultiplier     = 1;
-    if (m_settings.msaaCount > MsaaSampleCount::x1 && glRenderbufferStorageMultisampleEXT != nullptr)
+    if (m_settings.msaaCount > MsaaSampleCount::x0 && glRenderbufferStorageMultisampleEXT != nullptr)
     {
       sizeMultiplier = (int) m_settings.msaaCount;
     }
@@ -310,7 +311,7 @@ namespace ToolKit
 
     if constexpr (GraphicSettings::disableMSAA)
     {
-      m_settings.msaaCount = MsaaSampleCount::x1;
+      m_settings.msaaCount = MsaaSampleCount::x0;
     }
 
     glGenRenderbuffers(1, &m_textureId);
@@ -319,7 +320,7 @@ namespace ToolKit
     Stats::SetGpuResourceLabel(m_label, GpuResourceType::RenderBuffer, m_textureId);
 
     int sizeMultiplier = 1;
-    if (m_settings.msaaCount > MsaaSampleCount::x1)
+    if (m_settings.msaaCount > MsaaSampleCount::x0)
     {
       glRenderbufferStorageMultisample(GL_RENDERBUFFER,
                                        (int) m_settings.msaaCount,
@@ -935,7 +936,7 @@ namespace ToolKit
     // Create frame buffer color texture
     assert(m_textureId == 0 && "Texture already initialized.");
 
-    if (m_settings.msaaCount > MsaaSampleCount::x1)
+    if (m_settings.msaaCount > MsaaSampleCount::x0)
     {
       glGenRenderbuffers(1, &m_textureId);
       glBindRenderbuffer(GL_RENDERBUFFER, m_textureId);
@@ -951,7 +952,7 @@ namespace ToolKit
     uint64 pixelCount = (uint64) m_width * (uint64) m_height;
     if (m_settings.Target == GraphicTypes::Target2D)
     {
-      if (m_settings.msaaCount > MsaaSampleCount::x1)
+      if (m_settings.msaaCount > MsaaSampleCount::x0)
       {
         // Opengl 3.0 / es 3.0 does not support multisampled textures directly.
         // Render buffer is used.

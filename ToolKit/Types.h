@@ -384,7 +384,7 @@ namespace ToolKit
   /** MSAA sample count. Values represent actual sample counts used by the GPU. */
   enum class MsaaSampleCount : int
   {
-    x1 = 1, //!< No MSAA.
+    x0 = 1, //!< No MSAA.
     x2 = 2, //!< 2x MSAA.
     x4 = 4, //!< 4x MSAA.
     x8 = 8  //!< 8x MSAA.

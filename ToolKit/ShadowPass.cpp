@@ -100,6 +100,9 @@ namespace ToolKit
       RenderShadowMaps(light);
     }
 
+    // Apply blur to the shadow atlas.
+    BlurShadowAtlas();
+
     renderer->m_clearColor = lastClearColor;
   }
 
@@ -296,7 +299,7 @@ namespace ToolKit
     MaterialPtr shadowMaterial = orthogonalShadowMap ? m_shadowMatOrtho : m_shadowMatPersp;
     ShaderPtr frag             = shadowMaterial->GetFragmentShaderVal();
     frag->SetDefine("DrawAlphaMasked", "0");
-    ShaderPtr vert                       = shadowMaterial->GetVertexShaderVal();
+    ShaderPtr vert = shadowMaterial->GetVertexShaderVal();
     vert->SetDefine("DrawAlphaMasked", "0");
 
     GpuProgramManager* gpuProgramManager = GetGpuProgramManager();
@@ -346,6 +349,71 @@ namespace ToolKit
     // Translucent shadow is not supported.
 
     renderer->OverrideBlendState(false, BlendFunction::NONE);
+  }
+
+  void ShadowPass::BlurShadowAtlas()
+  {
+    TK_PROFILE_FUNCTION();
+
+    if (m_layerCount <= 0)
+    {
+      return;
+    }
+
+    Renderer* renderer = GetRenderer();
+
+    // Create temp RT for blur ping-pong if needed.
+    if (m_shadowBlurTempRT == nullptr)
+    {
+      m_shadowBlurTempRT = MakeNewPtr<RenderTarget>("ShadowBlurTempRT");
+    }
+
+    GraphicTypes bufferComponents = GraphicTypes::FormatRG;
+    GraphicTypes bufferFormat     = m_use32BitShadowMap ? GraphicTypes::FormatRG32F : GraphicTypes::FormatRG16F;
+
+    GraphicTypes sampler          = GraphicTypes::SampleLinear;
+    if (!TK_GL_OES_texture_float_linear)
+    {
+      sampler = GraphicTypes::SampleNearest;
+    }
+
+    const TextureSettings tempSet = {GraphicTypes::Target2D,
+                                     GraphicTypes::UVClampToEdge,
+                                     GraphicTypes::UVClampToEdge,
+                                     GraphicTypes::UVClampToEdge,
+                                     sampler,
+                                     sampler,
+                                     bufferFormat,
+                                     bufferComponents,
+                                     GraphicTypes::TypeFloat,
+                                     MsaaSampleCount::x0,
+                                     0,
+                                     false};
+
+    m_shadowBlurTempRT->ReconstructIfNeeded(RHIConstants::ShadowAtlasTextureSize,
+                                            RHIConstants::ShadowAtlasTextureSize,
+                                            &tempSet);
+
+    ShadowSettingsPtr shadows = GetEngineSettings().m_graphics->m_shadows;
+    const int kernelSize      = shadows->GetVSMBlurKernelSizeVal().GetValue<int>();
+    const int tapCount        = shadows->GetVSMBlurTapCountVal().GetValue<int>();
+    const float amount        = 1.0f;
+
+    if (tapCount <= 0)
+    {
+      return;
+    }
+
+    for (int i = 0; i < m_layerCount; i++)
+    {
+      renderer->ApplyGaussianBlurToArrayLayer(m_shadowAtlas,
+                                              m_shadowBlurTempRT,
+                                              m_shadowFramebuffer,
+                                              i,
+                                              kernelSize,
+                                              tapCount,
+                                              amount);
+    }
   }
 
   int ShadowPass::PlaceShadowMapsToShadowAtlas(const LightRawPtrArray& lights)
@@ -520,7 +588,7 @@ namespace ToolKit
                                    bufferFormat,
                                    bufferComponents,
                                    GraphicTypes::TypeFloat,
-                                   MsaaSampleCount::x1,
+                                   MsaaSampleCount::x0,
                                    m_layerCount,
                                    false};
 
@@ -533,7 +601,7 @@ namespace ToolKit
                                         RHIConstants::ShadowAtlasTextureSize,
                                         false,
                                         true,
-                                        MsaaSampleCount::x1};
+                                        MsaaSampleCount::x0};
 
       m_shadowFramebuffer->ReconstructIfNeeded(fbSettings);
       m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowAtlas, 0, 0);

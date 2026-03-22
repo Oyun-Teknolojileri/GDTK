@@ -649,7 +649,7 @@ namespace ToolKit
       if (targetRt == nullptr)
       {
         TextureSettings settings = srcRt->Settings();
-        settings.msaaCount       = MsaaSampleCount::x1;
+        settings.msaaCount       = MsaaSampleCount::x0;
         targetRt                 = MakeNewPtr<RenderTarget>();
         targetRt->ReconstructIfNeeded(srcRt->m_width, srcRt->m_height, &settings);
         target->SetColorAttachment(atcEnum, targetRt);
@@ -907,6 +907,85 @@ namespace ToolKit
 
     SetFramebuffer(m_oneColorAttachmentFramebuffer, GraphicBitFields::None);
     DrawFullQuad(m_averageBlurMaterial);
+  }
+
+  void Renderer::ApplyGaussianBlurToArrayLayer(RenderTargetPtr srcArray,
+                                               RenderTargetPtr tempRT,
+                                               FramebufferPtr framebuffer,
+                                               int layer,
+                                               int kernelSize,
+                                               int tapCount,
+                                               float amount)
+  {
+    TK_PROFILE_FUNCTION();
+
+    int texSize = srcArray->m_width;
+
+    // Create blur material if needed (uses shared shaders).
+    if (m_gaussianBlurMaterial == nullptr)
+    {
+      ShaderPtr vert         = GetShaderManager()->Create<Shader>(ShaderPath("gausBlur7x1Vert.shader", true));
+      ShaderPtr frag         = GetShaderManager()->Create<Shader>(ShaderPath("gausBlur7x1Frag.shader", true));
+
+      m_gaussianBlurMaterial = MakeNewPtr<Material>();
+      m_gaussianBlurMaterial->SetVertexShaderVal(vert);
+      m_gaussianBlurMaterial->SetFragmentShaderVal(frag);
+      m_gaussianBlurMaterial->SetDiffuseTextureVal(nullptr);
+      m_gaussianBlurMaterial->Init();
+    }
+
+    ShaderPtr frag   = m_gaussianBlurMaterial->GetFragmentShaderVal();
+    ShaderPtr vert   = m_gaussianBlurMaterial->GetVertexShaderVal();
+
+    String kernelStr = std::to_string(kernelSize);
+    float blurAmount = amount / (float) texSize;
+
+    for (int tap = 0; tap < tapCount; tap++)
+    {
+      // Horizontal pass: array texture layer -> temp 2D RT
+      {
+        // Set defines for array texture reading.
+        vert->SetDefine("TextureArray", "1");
+        frag->SetDefine("TextureArray", "1");
+        frag->SetDefine("KernelSize", kernelStr);
+
+        framebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, tempRT, 0, -1);
+        SetFramebuffer(framebuffer, GraphicBitFields::None);
+        SetViewportSize(0, 0, texSize, texSize);
+
+        m_gaussianBlurMaterial->UpdateProgramUniform("BlurScale", Vec3(blurAmount, 0.0f, 0.0f));
+        m_gaussianBlurMaterial->UpdateProgramUniform("BlurLayer", (float) layer);
+
+        // Bind program before texture so we know the right program is active.
+        BindProgramOfMaterial(m_gaussianBlurMaterial.get());
+
+        // Bind array texture to slot 1 with correct GL target (GL_TEXTURE_2D_ARRAY).
+        RHI::SetTexture(GL_TEXTURE_2D_ARRAY, srcArray->m_textureId, 1);
+
+        DrawFullQuad(m_gaussianBlurMaterial);
+      }
+
+      // Vertical pass: temp 2D RT -> array texture layer
+      {
+        // Set defines for regular 2D texture reading.
+        vert->SetDefine("TextureArray", "0");
+        frag->SetDefine("TextureArray", "0");
+        frag->SetDefine("KernelSize", kernelStr);
+
+        framebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, srcArray, 0, layer);
+        SetFramebuffer(framebuffer, GraphicBitFields::None);
+        SetViewportSize(0, 0, texSize, texSize);
+
+        m_gaussianBlurMaterial->SetDiffuseTextureVal(tempRT);
+        m_gaussianBlurMaterial->UpdateProgramUniform("BlurScale", Vec3(0.0f, blurAmount, 0.0f));
+
+        DrawFullQuad(m_gaussianBlurMaterial);
+      }
+    }
+
+    // Restore default define state.
+    vert->SetDefine("TextureArray", "0");
+    frag->SetDefine("TextureArray", "0");
   }
 
   void Renderer::GenerateBRDFLutTexture()
@@ -1377,7 +1456,7 @@ namespace ToolKit
                                  GraphicTypes::FormatRGBA16F,
                                  GraphicTypes::FormatRGBA,
                                  GraphicTypes::TypeFloat,
-                                 MsaaSampleCount::x1,
+                                 MsaaSampleCount::x0,
                                  0,
                                  false};
 
@@ -1528,7 +1607,7 @@ namespace ToolKit
                                  GraphicTypes::FormatRGBA16F,
                                  GraphicTypes::FormatRGBA,
                                  GraphicTypes::TypeFloat,
-                                 MsaaSampleCount::x1,
+                                 MsaaSampleCount::x0,
                                  false};
 
     // Don't allow caches bigger than the actual image.
@@ -1600,7 +1679,7 @@ namespace ToolKit
                                  GraphicTypes::FormatRGBA16F,
                                  GraphicTypes::FormatRGBA,
                                  GraphicTypes::TypeFloat,
-                                 MsaaSampleCount::x1,
+                                 MsaaSampleCount::x0,
                                  false};
 
     // Don't allow caches bigger than the actual image.

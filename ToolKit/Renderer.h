@@ -235,6 +235,24 @@ namespace ToolKit
     void ApplyAverageBlur(const TexturePtr src, RenderTargetPtr dst, const Vec3& axis, const float amount);
 
     /**
+     * Applies separable Gaussian blur on a specific layer of a 2D array texture.
+     * @param srcArray Source 2D array texture (e.g. shadow atlas).
+     * @param tempRT Temporary 2D render target for ping-pong (same width/height as srcArray).
+     * @param framebuffer Framebuffer to use for rendering.
+     * @param layer The array layer to blur.
+     * @param kernelSize Kernel size: 3, 5, or 7.
+     * @param tapCount Number of blur passes (horizontal + vertical per tap).
+     * @param amount Blur scale amount (texel size multiplier).
+     */
+    void ApplyGaussianBlurToArrayLayer(RenderTargetPtr srcArray,
+                                       RenderTargetPtr tempRT,
+                                       FramebufferPtr framebuffer,
+                                       int layer,
+                                       int kernelSize,
+                                       int tapCount,
+                                       float amount);
+
+    /**
      * Sets the camera to be used for rendering. Also calculates camera related parameters, such as view, transform,
      * viewTransform etc...
      * if setLense is true sets the lens to fit aspect ratio to frame buffer.

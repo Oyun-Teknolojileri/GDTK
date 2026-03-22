@@ -30,14 +30,14 @@ namespace ToolKit
     m_linearMaterial->SetFragmentShaderVal(fragmentShader);
     m_linearMaterial->Init();
 
-    TextureSettings set   = {};
-    set.WarpS             = GraphicTypes::UVClampToEdge;
-    set.WarpT             = GraphicTypes::UVClampToEdge;
-    set.InternalFormat    = GraphicTypes::FormatRGBA16F;
-    set.Format            = GraphicTypes::FormatRGBA;
-    set.Type              = GraphicTypes::TypeFloat;
-    set.GenerateMipMap    = false;
-    m_normalDepthRt       = MakeNewPtr<RenderTarget>(128, 128, set, "NormalDepthRT");
+    TextureSettings set = {};
+    set.WarpS           = GraphicTypes::UVClampToEdge;
+    set.WarpT           = GraphicTypes::UVClampToEdge;
+    set.InternalFormat  = GraphicTypes::FormatRGBA16F;
+    set.Format          = GraphicTypes::FormatRGBA;
+    set.Type            = GraphicTypes::TypeFloat;
+    set.GenerateMipMap  = false;
+    m_normalDepthRt     = MakeNewPtr<RenderTarget>(128, 128, set, "NormalDepthRT");
   }
 
   void ForwardPreProcessPass::InitBuffers(int width, int height, MsaaSampleCount sampleCount)
@@ -52,7 +52,7 @@ namespace ToolKit
 
       if (m_framebuffer->IsMultiSampled())
       {
-        m_resolveFramebuffer->ReconstructIfNeeded({width, height, false, false, MsaaSampleCount::x1});
+        m_resolveFramebuffer->ReconstructIfNeeded({width, height, false, false, MsaaSampleCount::x0});
       }
 
       TextureSettings rtSettings = m_normalDepthRt->Settings();
