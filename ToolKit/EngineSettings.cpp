@@ -60,6 +60,7 @@ namespace ToolKit
     ParallelSplitLambda_Define(0.5f, "ShadowSettings", 0, 0, 0);
     StableShadowMap_Define(false, "ShadowSettings", 0, 0, 0);
     Use32BitShadowMap_Define(false, "ShadowSettings", 0, 0, 0);
+    Use2KShadowAtlasLayer_Define(false, "ShadowSettings", 0, 0, 0);
 
     MultiChoiceVariant kernelMcv = {
         {CreateMultiChoiceParameter("3x3", 3),
@@ -102,6 +103,7 @@ namespace ToolKit
 
     ParamCascadeCount().m_onValueChangedFn.push_back(m_updateGraphicConstantsFn);
     ParamUseParallelSplitPartitioning().m_onValueChangedFn.push_back(m_updateGraphicConstantsFn);
+    ParamUse2KShadowAtlasLayer().m_onValueChangedFn.push_back(m_updateGraphicConstantsFn);
 
     // Try preventing costly gpu buffer map. This value is constantly being updated from shadow pass.
     ParamCascadeDistances().m_onValueChangedFn.push_back(

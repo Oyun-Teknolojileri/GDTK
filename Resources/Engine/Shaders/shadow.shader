@@ -15,7 +15,7 @@
 
 void ShadowAtlasLut(in float size, in vec2 startCoord, in int queriedMap, out int layer, out vec2 targetCoord)
 {
-	float mapsPerRow = floor(SHADOW_ATLAS_SIZE / size);
+	float mapsPerRow = floor(graphicConstants.shadowAtlasSize / size);
 	float mapsPerLayer = mapsPerRow * mapsPerRow;
 
 	float mapIndex = float( queriedMap );
@@ -152,8 +152,8 @@ float PCFFilterOmni
 	float shadowBias
 )
 {
-	float halfPixel = (1.0 / SHADOW_ATLAS_SIZE) * 0.5;
-	float shadowMapSize = shadowAtlasResRatio * SHADOW_ATLAS_SIZE;
+	float halfPixel = (1.0 / graphicConstants.shadowAtlasSize) * 0.5;
+	float shadowMapSize = shadowAtlasResRatio * graphicConstants.shadowAtlasSize;
 
 	vec3 texCoord = UVWToUVLayer(dir);
 	int face = int(texCoord.z);
@@ -161,7 +161,7 @@ float PCFFilterOmni
 	int layer = 0;
 	vec2 coord = vec2(0.0);
 	ShadowAtlasLut(shadowMapSize, startCoord, face, layer, coord);
-	coord /= SHADOW_ATLAS_SIZE;
+	coord /= graphicConstants.shadowAtlasSize;
 
 	layer += shadowAtlasLayer;
 

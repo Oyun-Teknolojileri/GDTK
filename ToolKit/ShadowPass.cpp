@@ -390,14 +390,14 @@ namespace ToolKit
                                      0,
                                      false};
 
-    m_shadowBlurTempRT->ReconstructIfNeeded(RHIConstants::ShadowAtlasTextureSize,
-                                            RHIConstants::ShadowAtlasTextureSize,
-                                            &tempSet);
+    ShadowSettingsPtr shadows     = GetEngineSettings().m_graphics->m_shadows;
+    const int shadowAtlasSize     = shadows->GetShadowAtlasResolution();
 
-    ShadowSettingsPtr shadows = GetEngineSettings().m_graphics->m_shadows;
-    const int kernelSize      = shadows->GetVSMBlurKernelSizeVal().GetValue<int>();
-    const int tapCount        = shadows->GetVSMBlurTapCountVal().GetValue<int>();
-    const float amount        = 1.0f;
+    m_shadowBlurTempRT->ReconstructIfNeeded(shadowAtlasSize, shadowAtlasSize, &tempSet);
+
+    const int kernelSize = shadows->GetVSMBlurKernelSizeVal().GetValue<int>();
+    const int tapCount   = shadows->GetVSMBlurTapCountVal().GetValue<int>();
+    const float amount   = 1.0f;
 
     if (tapCount <= 0)
     {
@@ -457,8 +457,10 @@ namespace ToolKit
       }
     }
 
+    const int shadowAtlasSize        = shadows->GetShadowAtlasResolution();
+
     int layerCount                   = 0;
-    BinPack2D::PackedRectArray rects = m_packer.Pack(resolutions, RHIConstants::ShadowAtlasTextureSize, &layerCount);
+    BinPack2D::PackedRectArray rects = m_packer.Pack(resolutions, shadowAtlasSize, &layerCount);
 
     int rectIndex                    = 0;
     for (int i = 0; i < lightArray.size(); i++)
@@ -466,7 +468,7 @@ namespace ToolKit
       Light* light = lightArray[i];
       if (light->GetLightType() == Light::LightType::Directional)
       {
-        for (int ii = 0; ii < cascadeCount; ii++)
+        for (int ii = 0; ii < shadows->GetCascadeCountVal(); ii++)
         {
           light->m_shadowAtlasCoords[ii] = rects[rectIndex].coordinate;
           light->m_shadowAtlasLayers[ii] = rects[rectIndex].layer;
@@ -512,6 +514,12 @@ namespace ToolKit
     {
       m_use32BitShadowMap = shadows->GetUse32BitShadowMapVal();
       needChange          = true;
+    }
+
+    if (m_use2KLayer != shadows->GetUse2KShadowAtlasLayerVal())
+    {
+      m_use2KLayer = shadows->GetUse2KShadowAtlasLayerVal();
+      needChange   = true;
     }
 
     // After this loop m_previousShadowCasters is set with lights with shadows
@@ -592,16 +600,12 @@ namespace ToolKit
                                    m_layerCount,
                                    false};
 
-      // m_shadowFramebuffer->DetachColorAttachment(Framebuffer::Attachment::ColorAttachment0);
-      m_shadowAtlas->ReconstructIfNeeded(RHIConstants::ShadowAtlasTextureSize,
-                                         RHIConstants::ShadowAtlasTextureSize,
-                                         &set);
+      const int shadowAtlasSize = shadows->GetShadowAtlasResolution();
 
-      FramebufferSettings fbSettings = {RHIConstants::ShadowAtlasTextureSize,
-                                        RHIConstants::ShadowAtlasTextureSize,
-                                        false,
-                                        true,
-                                        MsaaSampleCount::x0};
+      // m_shadowFramebuffer->DetachColorAttachment(Framebuffer::Attachment::ColorAttachment0);
+      m_shadowAtlas->ReconstructIfNeeded(shadowAtlasSize, shadowAtlasSize, &set);
+
+      FramebufferSettings fbSettings = {shadowAtlasSize, shadowAtlasSize, false, true, MsaaSampleCount::x0};
 
       m_shadowFramebuffer->ReconstructIfNeeded(fbSettings);
       m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowAtlas, 0, 0);

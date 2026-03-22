@@ -67,6 +67,9 @@ namespace ToolKit
       SetCascadeDistancesVal(dist);
     }
 
+    /** Returns shadow atlas resolution based on Use2KShadowAtlasLayer setting. */
+    int GetShadowAtlasResolution() const { return GetUse2KShadowAtlasLayerVal() ? 2048 : 1024; }
+
    protected:
     void ParameterConstructor() override;
     void ParameterEventConstructor() override;
@@ -99,6 +102,9 @@ namespace ToolKit
 
     /** Uses 32 bit shadow maps. */
     TKDeclareParam(bool, Use32BitShadowMap);
+
+    /** Uses 2K resolution for shadow atlas layers instead of 1K. */
+    TKDeclareParam(bool, Use2KShadowAtlasLayer);
 
     /**
      * Shadow PCF filtering sample count. Controls shadow softness.

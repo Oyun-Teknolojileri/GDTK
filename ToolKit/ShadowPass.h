@@ -68,6 +68,7 @@ namespace ToolKit
     int m_layerCount                   = 0; // Number of textures in array texture (shadow atlas)
     int m_activeCascadeCount           = 0;
     bool m_use32BitShadowMap           = true;
+    bool m_use2KLayer                  = false;
     IDArray m_previousShadowCasters;
 
     Quaternion m_cubeMapRotations[6];

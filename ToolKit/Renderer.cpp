@@ -75,7 +75,7 @@ namespace ToolKit
     GraphicConstantsGpuBuffer& graphicConstantsBuffer = m_globalGpuBuffers->graphicConstantBuffer;
     graphicConstantsBuffer.m_data.shadowDistance      = shadows->GetShadowMaxDistance();
     graphicConstantsBuffer.m_data.cascadeCount        = shadows->GetCascadeCountVal();
-    graphicConstantsBuffer.m_data.shadowAtlasSize     = RHIConstants::ShadowAtlasTextureSize;
+    graphicConstantsBuffer.m_data.shadowAtlasSize     = (float) shadows->GetShadowAtlasResolution();
     graphicConstantsBuffer.m_data.iblMaxReflectionLod = RHIConstants::SpecularIBLLods;
     graphicConstantsBuffer.m_data.cascadeDistances    = *((Vec4*) &shadows->GetCascadeDistancesVal());
     graphicConstantsBuffer.Invalidate();

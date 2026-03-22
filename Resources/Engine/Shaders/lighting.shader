@@ -61,7 +61,7 @@ float CalculateDirectionalShadow
 	vec2 uvInAtlas = startCoord + shadowAtlasResRatio * projCoord.xy;
 	vec3 sampleCoord = vec3(uvInAtlas, shadowAtlasLayer);
 
-	float texelSize = 1.0 / SHADOW_ATLAS_SIZE;
+	float texelSize = 1.0 / graphicConstants.shadowAtlasSize;
 
 	float shadow = PCFFilterShadow2D
 	(
@@ -109,7 +109,7 @@ float CalculateSpotShadow
 	vec2 startCoord = shadowAtlasCoord;
 	vec3 coord = vec3(startCoord + shadowAtlasResRatio * projCoord.xy, shadowAtlasLayer);
 
-	float texelSize = 1.0 / SHADOW_ATLAS_SIZE;
+	float texelSize = 1.0 / graphicConstants.shadowAtlasSize;
 
 	return PCFFilterShadow2D
 	(
@@ -140,7 +140,7 @@ float CalculatePointShadow
 	vec3 lightToFrag = pos - lightPos;
 	float currFragDepth = precomputedDist / shadowCameraFar;
 
-	float texelSize = 1.0 / SHADOW_ATLAS_SIZE;
+	float texelSize = 1.0 / graphicConstants.shadowAtlasSize;
 
 	return PCFFilterOmni
 	(

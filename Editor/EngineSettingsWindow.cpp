@@ -340,8 +340,6 @@ namespace ToolKit
         }
         UI::AddTooltipToLastItem("Linear blending ratio between linear split and parallel split distances.");
 
-        ImGui::SeparatorText("Other");
-
         float shadowDistance = shadows->GetShadowMaxDistance();
         if (ImGui::DragFloat("Shadow Distance", &shadowDistance, 10.0f, 0.0f, 10000.0f, "%.2f"))
         {
@@ -352,6 +350,15 @@ namespace ToolKit
         {
           ImGui::EndDisabled();
         }
+
+        ImGui::SeparatorText("Other");
+
+        bool use2KLayer = shadows->GetUse2KShadowAtlasLayerVal();
+        if (ImGui::Checkbox("Use 2K Shadow Atlas Layer", &use2KLayer))
+        {
+          shadows->SetUse2KShadowAtlasLayerVal(use2KLayer);
+        }
+        UI::AddTooltipToLastItem("Uses 2048x2048 layers for the shadow atlas instead of 1024x1024");
 
         bool use32BitShadowMap = shadows->GetUse32BitShadowMapVal();
         if (ImGui::Checkbox("Use high precision shadow maps", &use32BitShadowMap))
