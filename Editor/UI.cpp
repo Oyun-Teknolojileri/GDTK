@@ -1273,28 +1273,32 @@ namespace ToolKit
       }
     }
 
-    bool UI::ButtonDecorless(StringView text, const Vec2& size, bool flipImage)
+    bool UI::ButtonDecorless(StringView text, const Vec2& size)
     {
       ImGui::PushStyleColor(ImGuiCol_Button, Vec4());
       ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Vec4());
       ImGui::PushStyleColor(ImGuiCol_ButtonActive, Vec4());
-      ImVec2 texCoords = flipImage ? ImVec2(1.0f, -1.0f) : ImVec2(1.0f, 1.0f);
-      bool res         = ImGui::Button(text.data(), size);
+      bool res = ImGui::Button(text.data(), size);
       ImGui::PopStyleColor(3);
       return res;
     }
 
-    bool UI::ImageButtonDecorless(uint textureID, const Vec2& size, bool flipImage)
+    bool UI::ImageButton(const char* id, void* textureId, const ImVec2& size)
+    {
+      // Flip UV vertically to correct for OpenGL's bottom-left texture origin.
+      return ImGui::ImageButton(id, textureId, size, ImVec2(0.0f, 1.0f), ImVec2(1.0f, 0.0f));
+    }
+
+    bool UI::ImageButtonDecorless(uint textureID, const Vec2& size)
     {
       ImGui::PushStyleColor(ImGuiCol_Button, Vec4());
       ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Vec4());
       ImGui::PushStyleColor(ImGuiCol_ButtonActive, Vec4());
-      ImVec2 texCoords = flipImage ? ImVec2(1.0f, -1.0f) : ImVec2(1.0f, 1.0f);
 
       char id[16];
       snprintf(id, sizeof(id), "##%u", textureID);
 
-      bool res = ImGui::ImageButton(id, ConvertUIntImGuiTexture(textureID), size, ImVec2(0.0f, 0.0f), texCoords);
+      bool res = UI::ImageButton(id, ConvertUIntImGuiTexture(textureID), size);
       ImGui::PopStyleColor(3);
 
       return res;
@@ -1314,7 +1318,7 @@ namespace ToolKit
       bool newPushState = pushState;
       char id[16];
       snprintf(id, sizeof(id), "##%u", textureID);
-      if (ImGui::ImageButton(id, ConvertUIntImGuiTexture(textureID), size))
+      if (UI::ImageButton(id, ConvertUIntImGuiTexture(textureID), size))
       {
         newPushState = !pushState; // If pressed toggle.
       }
@@ -1445,7 +1449,7 @@ namespace ToolKit
         float cursorY = ImGui::GetCursorPosY();
         ImGui::SetCursorPosY(cursorY - 2.5f);
         ImGui::PushID((int) (ntt->GetIdVal()));
-        if (UI::ButtonDecorless(icon, ImVec2(18.0f, 15.0f), false))
+        if (UI::ButtonDecorless(icon, ImVec2(18.0f, 15.0f)))
         {
           ntt->SetVisibility(!ntt->GetVisibleVal(), true);
         }
@@ -1459,7 +1463,7 @@ namespace ToolKit
         float cursorY = ImGui::GetCursorPosY();
         ImGui::SetCursorPosY(cursorY - 2.5f);
         ImGui::PushID((int) (ntt->GetIdVal()));
-        if (UI::ButtonDecorless(icon, ImVec2(18.0f, 15.0f), false))
+        if (UI::ButtonDecorless(icon, ImVec2(18.0f, 15.0f)))
         {
           ntt->SetTransformLock(!ntt->GetTransformLockVal(), true);
         }

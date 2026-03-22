@@ -62,8 +62,7 @@ namespace ToolKit
     Color_Define(Vec3(1.0f), "Light", 0, true, true, {true});
     Intensity_Define(1.0f, "Light", 90, true, true, {false, true, 0.0f, 100000.0f, 0.1f});
     CastShadow_Define(false, "Light", 90, true, true);
-    PCFRadius_Define(1.0f, "Light", 90, true, true, {false, true, 0.0f, 10.0f, 0.1f});
-    ShadowBias_Define(0.1f, "Light", 90, true, true, {false, true, 0.0f, 20000.0f, 0.01f});
+    ShadowBias_Define(1.0f, "Light", 90, true, true, {false, true, 0.0f, 10.0f, 0.01f});
     BleedingReduction_Define(0.1f, "Light", 90, true, true, {false, true, 0.0f, 1.0f, 0.001f});
   }
 
@@ -89,9 +88,6 @@ namespace ToolKit
 
     ParamCastShadow().m_onValueChangedFn.push_back([this](Value& oldVal, Value& newVal) -> void
                                                    { InvalidateCacheItem(); });
-
-    ParamPCFRadius().m_onValueChangedFn.push_back([this](Value& oldVal, Value& newVal) -> void
-                                                  { InvalidateCacheItem(); });
 
     ParamShadowBias().m_onValueChangedFn.push_back([this](Value& oldVal, Value& newVal) -> void
                                                    { InvalidateCacheItem(); });
@@ -151,7 +147,8 @@ namespace ToolKit
     data->castShadow        = GetCastShadowVal();
     data->shadowBias        = GetShadowBiasVal() * RHIConstants::ShadowBiasMultiplier;
     data->bleedingReduction = GetBleedingReductionVal();
-    data->pcfRadius         = GetPCFRadiusVal();
+    data->pad0              = 0.0f;
+    data->pad1              = 0.0f;
     data->shadowResolution  = GetShadowResVal().GetValue<float>();
     data->shadowAtlasLayer  = m_shadowAtlasLayers[0];
     data->shadowAtlasCoord  = m_shadowAtlasCoords[0];
@@ -495,7 +492,6 @@ namespace ToolKit
   {
     Super::ParameterConstructor();
 
-    ParamPCFRadius().m_hint.increment = 0.02f;
     Radius_Define(3.0f, "Light", 90, true, true, {false, true, 0.1f, 100000.0f, 0.3f});
   }
 

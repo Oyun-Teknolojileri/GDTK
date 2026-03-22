@@ -54,20 +54,7 @@ namespace ToolKit
 
     EditorBillboardBase::BillboardType SkyBillboard::GetBillboardType() const { return BillboardType::Sky; }
 
-    void FlipNode(Node* node)
-    {
-      Vec3 scl = node->GetScale();
-      if (scl.y > 0.0f)
-      {
-        node->Scale(Vec3(1.0f, -1.0f, 1.0f));
-      }
-    }
-
-    void SkyBillboard::LookAt(CameraPtr cam, float scale)
-    {
-      Super::LookAt(cam, scale);
-      FlipNode(m_node);
-    }
+    void SkyBillboard::LookAt(CameraPtr cam, float scale) { Super::LookAt(cam, scale); }
 
     void SkyBillboard::Generate()
     {
@@ -83,11 +70,7 @@ namespace ToolKit
 
     EditorBillboardBase::BillboardType LightBillboard::GetBillboardType() const { return BillboardType::Light; }
 
-    void LightBillboard::LookAt(CameraPtr cam, float scale)
-    {
-      Super::LookAt(cam, scale);
-      FlipNode(m_node);
-    }
+    void LightBillboard::LookAt(CameraPtr cam, float scale) { Super::LookAt(cam, scale); }
 
     void LightBillboard::Generate()
     {

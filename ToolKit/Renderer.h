@@ -218,6 +218,7 @@ namespace ToolKit
     void EnableDepthWrite(bool enable);
     void EnableDepthTest(bool enable);
     void SetDepthTestFunc(CompareFunctions func);
+    bool EnableDepthClamp(bool enable);
 
     // Giving nullptr as argument means no shadows
     void SetShadowAtlas(TexturePtr shadowAtlas);
@@ -232,6 +233,24 @@ namespace ToolKit
     void Apply7x1GaussianBlur(const TexturePtr src, RenderTargetPtr dst, const Vec3& axis, const float amount);
     /** Apply one tap of average blur via setting a temporary frame buffer. Does not reset frame buffer back. */
     void ApplyAverageBlur(const TexturePtr src, RenderTargetPtr dst, const Vec3& axis, const float amount);
+
+    /**
+     * Applies separable Gaussian blur on a specific layer of a 2D array texture.
+     * @param srcArray Source 2D array texture (e.g. shadow atlas).
+     * @param tempRT Temporary 2D render target for ping-pong (same width/height as srcArray).
+     * @param framebuffer Framebuffer to use for rendering.
+     * @param layer The array layer to blur.
+     * @param kernelSize Kernel size: 3, 5, or 7.
+     * @param tapCount Number of blur passes (horizontal + vertical per tap).
+     * @param amount Blur scale amount (texel size multiplier).
+     */
+    void ApplyGaussianBlurToArrayLayer(RenderTargetPtr srcArray,
+                                       RenderTargetPtr tempRT,
+                                       FramebufferPtr framebuffer,
+                                       int layer,
+                                       int kernelSize,
+                                       int tapCount,
+                                       float amount);
 
     /**
      * Sets the camera to be used for rendering. Also calculates camera related parameters, such as view, transform,
@@ -284,7 +303,7 @@ namespace ToolKit
     CameraPtr m_uiCamera      = nullptr;
     SkyBasePtr m_sky          = nullptr;
 
-    bool m_renderOnlyLighting = false;
+    ShadingMode m_shadingMode = ShadingMode::None;
 
     /** Global gpu buffers for renderer. */
     GlobalGpuBuffers* m_globalGpuBuffers;
@@ -310,7 +329,6 @@ namespace ToolKit
     int m_activePointLightCount   = 0;
     int m_activeSpotLightCount    = 0;
     bool m_ambientOcculusionInUse = false;
-    bool m_normalMapInUse         = false;
 
     FramebufferPtr m_framebuffer  = nullptr;
     TexturePtr m_shadowAtlas      = nullptr;

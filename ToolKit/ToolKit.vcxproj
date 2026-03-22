@@ -225,12 +225,10 @@
     <None Include="..\Resources\Engine\Shaders\normalFrag.shader" />
     <None Include="..\Resources\Engine\Shaders\orthogonalDepthFrag.shader" />
     <None Include="..\Resources\Engine\Shaders\orthogonalDepthVert.shader" />
-    <None Include="..\Resources\Engine\Shaders\orthogonalDepthViewFrag.shader" />
-    <None Include="..\Resources\Engine\Shaders\orthogonalDepthViewVert.shader" />
-    <None Include="..\Resources\Engine\Shaders\pbr.shader" />
+    <None Include="..\Resources\Engine\Shaders\pbrCommon.shader" />
+    <None Include="..\Resources\Engine\Shaders\pbrPrecompute.shader" />
     <None Include="..\Resources\Engine\Shaders\perspectiveDepthFrag.shader" />
     <None Include="..\Resources\Engine\Shaders\perspectiveDepthVert.shader" />
-    <None Include="..\Resources\Engine\Shaders\perspectiveDepthViewFrag.shader" />
     <None Include="..\Resources\Engine\Shaders\positionVert.shader" />
     <None Include="..\Resources\Engine\Shaders\preFilterEnvMapFrag.shader" />
     <None Include="..\Resources\Engine\Shaders\shadow.shader" />
@@ -243,6 +241,7 @@
     <None Include="..\Resources\Engine\Shaders\tonemapFunctions.shader" />
     <None Include="..\Resources\Engine\Shaders\unlitFrag.shader" />
     <None Include="..\Resources\Engine\Shaders\VSM.shader" />
+    <None Include="..\Resources\Engine\Shaders\VSMCommon.shader" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>

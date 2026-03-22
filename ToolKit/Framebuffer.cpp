@@ -55,7 +55,7 @@ namespace ToolKit
 
     if constexpr (GraphicSettings::disableMSAA)
     {
-      m_settings.msaaCount = 1;
+      m_settings.msaaCount = MsaaSampleCount::x0;
     }
 
     // Create framebuffer object
@@ -136,7 +136,7 @@ namespace ToolKit
     }
   }
 
-  bool Framebuffer::IsMultiSampled() { return m_settings.msaaCount > 1; }
+  bool Framebuffer::IsMultiSampled() { return m_settings.msaaCount > MsaaSampleCount::x0; }
 
   void Framebuffer::AttachDepthTexture(DepthTexturePtr dt)
   {
@@ -153,11 +153,15 @@ namespace ToolKit
 
   DepthTexturePtr Framebuffer::DetachDepthTexture()
   {
+    if (m_depthAtch == nullptr)
+    {
+      return nullptr;
+    }
+
     RHI::SetFramebuffer(GL_FRAMEBUFFER, m_fboId);
 
-    // Detach any renderbuffer attachments
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, 0);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, 0);
+    GLenum attachment = m_depthAtch->m_stencil ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT;
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, attachment, GL_RENDERBUFFER, 0);
 
     DepthTexturePtr dt = m_depthAtch;
     m_depthAtch        = nullptr;
@@ -187,7 +191,7 @@ namespace ToolKit
     RHI::SetFramebuffer(GL_FRAMEBUFFER, m_fboId);
 
     // MSAA render buffer attachment
-    if (rt->Settings().msaaCount > 1)
+    if (rt->Settings().msaaCount > MsaaSampleCount::x0)
     {
       glFramebufferRenderbuffer(GL_FRAMEBUFFER, attachment, GL_RENDERBUFFER, rt->m_textureId);
     }

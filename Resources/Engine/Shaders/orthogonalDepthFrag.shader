@@ -1,27 +1,32 @@
 <shader>
 	<type name = "fragmentShader" />
-	<include name = "VSM.shader" />
-	<include name = "drawDataInc.shader" />
+	<include name = "VSMCommon.shader" />
+	<include name = "materialCacheInc.shader" />
 	<define name = "DrawAlphaMasked" val="0,1" />
-	<define name = "EVSM4" val="0,1" />
+	<define name = "Pancake" val="0,1" />
 	<source>
 	<!--
 	#version 300 es
 	precision highp float;
 	precision lowp int;
 
+#if DrawAlphaMasked
 	in vec2 v_texture;
-	in float z;
-	out vec4 fragColor;
+#endif
 
+#if Pancake
+	in float z;
+#endif
+
+	out vec4 fragColor;
 	uniform sampler2D s_texture0;
 
 	void main()
 	{
-		Material material = GetMaterial();
-	
 	#if DrawAlphaMasked
-		float alpha = 1.0;
+		Material material = GetMaterial();
+
+		float alpha;
 		if (material.diffuseTextureInUse == 1)
 		{
 			alpha = texture(s_texture0, v_texture).a;
@@ -37,15 +42,16 @@
 		}
 	#endif
 
-		gl_FragDepth = clamp(z, 0.0, 1.0);
-		vec2 exponents = EvsmExponents;
-		vec2 vsmDepth = WarpDepth(gl_FragDepth, exponents);
-
-	#if EVSM4
-		fragColor = vec4(vsmDepth.xy, vsmDepth.xy * vsmDepth.xy);
+	#if Pancake
+		float depth = clamp(z, 0.0, 1.0);
+		gl_FragDepth = depth;
 	#else
-		fragColor = vec4(vsmDepth.xy, vsmDepth.xy * vsmDepth.xy).xzxz;
+		float depth = gl_FragCoord.z;
 	#endif
+
+		vec2 vsmDepth = WarpDepth(depth, EvsmExponents);
+
+		fragColor = vec4(vsmDepth.x, vsmDepth.x * vsmDepth.x, 0.0, 0.0);
 	}
 	-->
 	</source>

@@ -51,6 +51,9 @@ namespace ToolKit
     /** Creates a shadow atlas for m_params.Lights */
     void InitShadowAtlas();
 
+    /** Applies Gaussian blur to all used layers of the shadow atlas. */
+    void BlurShadowAtlas();
+
    public:
     ShadowPassParams m_params;
 
@@ -61,9 +64,9 @@ namespace ToolKit
     const Vec4 m_shadowClearColor      = Vec4(1.0f);
     FramebufferPtr m_shadowFramebuffer = nullptr;
     RenderTargetPtr m_shadowAtlas      = nullptr;
+    RenderTargetPtr m_shadowBlurTempRT = nullptr;
     int m_layerCount                   = 0; // Number of textures in array texture (shadow atlas)
     int m_activeCascadeCount           = 0;
-    bool m_useEVSM4                    = false;
     bool m_use32BitShadowMap           = true;
     IDArray m_previousShadowCasters;
 

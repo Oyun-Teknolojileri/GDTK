@@ -109,6 +109,9 @@ namespace ToolKit
     /** Checks if the material is using default shaders and update m_usingDefaultShaders. */
     void CheckDefaultShaders();
 
+    /** Checks and reinit Normal & Occulusion Roughness Metalness textures as data textures. */
+    void MakeSureItsDataTexture(TexturePtr texture);
+
    private:
     void CopyTo(Resource* other) override;
 
@@ -120,6 +123,9 @@ namespace ToolKit
 
     TKDeclareParam(TexturePtr, DiffuseTexture);
     TKDeclareParam(TexturePtr, EmissiveTexture);
+
+    /** This texture is in the format of ORM (Occlusion Roughness Metalness). So RGB corresponds to ORM.
+     * Occulusion is not used at the moment. */
     TKDeclareParam(TexturePtr, MetallicRoughnessTexture);
     TKDeclareParam(TexturePtr, NormalTexture);
 

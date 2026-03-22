@@ -326,18 +326,31 @@ namespace ToolKit
 
   void Shader::HandleShaderIncludes(const String& file)
   {
+    size_t mergeLoc    = FindShaderMergeLocation(m_source);
+
     // Mark the file beginning of include file.
     String includeMark = "// @include begin:" + file + "\n";
-    size_t mergeLoc    = FindShaderMergeLocation(m_source);
     m_source.replace(mergeLoc, 0, includeMark);
     mergeLoc                += includeMark.length();
 
     // Perform the include.
     ShaderPtr includeShader  = GetShaderManager()->Create<Shader>(ShaderPath(file, true));
-    m_source.replace(mergeLoc, 0, includeShader->m_source);
+
+    // CLEANUP: We must strip #version and precision from the included file
+    // to prevent multiple definitions in the final output.
+    String includeContent    = includeShader->m_source;
+    includeContent           = std::regex_replace(includeContent, std::regex(R"(^\s*#version.*|^\s*precision.*)"), "");
+
+    // Ensure the included content ends with a newline to avoid "gluing" lines together
+    if (!includeContent.empty() && includeContent.back() != '\n')
+    {
+      includeContent += "\n";
+    }
+
+    m_source.replace(mergeLoc, 0, includeContent);
 
     // Mark the end of include file.
-    mergeLoc    += includeShader->m_source.length();
+    mergeLoc    += includeContent.length();
     includeMark  = "// @include end:" + file + "\n";
     m_source.replace(mergeLoc, 0, includeMark);
 
@@ -359,33 +372,41 @@ namespace ToolKit
     m_arrayUniforms.erase(std::unique(m_arrayUniforms.begin(), m_arrayUniforms.end()), m_arrayUniforms.end());
   }
 
-  uint Shader::FindShaderMergeLocation(const String& file)
+  uint Shader::FindShaderMergeLocation(const String& source)
   {
     // Put included file after precision and version defines
     size_t includeLoc = 0;
-    size_t versionLoc = m_source.find("#version");
-    for (size_t fileLoc = versionLoc; fileLoc < m_source.length(); fileLoc++)
+
+    // Find the end of #version line
+    size_t versionLoc = source.find("#version");
+    if (versionLoc != String::npos)
     {
-      if (m_source[fileLoc] == '\n')
+      size_t lineEnd = source.find('\n', versionLoc);
+      if (lineEnd != String::npos)
       {
-        includeLoc = std::max(includeLoc, fileLoc + 1);
-        break;
+        includeLoc = std::max(includeLoc, lineEnd + 1);
       }
     }
 
+    // Find the end of the last precision line
     size_t precisionLoc = 0;
-    while ((precisionLoc = m_source.find("precision", precisionLoc)) != String::npos)
+    while ((precisionLoc = source.find("precision", precisionLoc)) != String::npos)
     {
-      for (size_t fileLoc = precisionLoc; fileLoc < m_source.length(); fileLoc++)
+      size_t statementEnd = source.find(';', precisionLoc);
+      if (statementEnd != String::npos)
       {
-        if (m_source[fileLoc] == ';')
+        // Find the actual line end to avoid inserting in the middle of a line
+        size_t lineEnd = source.find('\n', statementEnd);
+        if (lineEnd != String::npos)
         {
-          includeLoc = std::max(includeLoc, fileLoc + 3);
-          break;
+          includeLoc = std::max(includeLoc, lineEnd + 1);
+        }
+        else
+        {
+          includeLoc = std::max(includeLoc, statementEnd + 1);
         }
       }
-
-      precisionLoc += 9;
+      precisionLoc += 9; // Move past current "precision"
     }
 
     return (uint) includeLoc;

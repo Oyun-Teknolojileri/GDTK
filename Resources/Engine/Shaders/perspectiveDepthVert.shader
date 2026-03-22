@@ -2,7 +2,7 @@
 	<type name = "vertexShader" />
 	<include name = "skinning.shader" />
 	<include name = "cameraDataInc.shader" />
-	<include name = "drawDataInc.shader" />
+	<define name = "DrawAlphaMasked" val="0,1" />
 	<uniform name = "model" />
 	<source>
 	<!--
@@ -12,32 +12,34 @@
 
 	// Fixed Attributes.
 	layout (location = 0) in vec3 vPosition;
-	layout (location = 1) in vec3 vNormal;
-	layout (location = 2) in vec2 vTexture;
-	layout (location = 3) in vec3 vBiTan;
 
 	out vec4 v_pos;
-	out vec3 v_normal;
+
+#if DrawAlphaMasked
+	layout (location = 2) in vec2 vTexture;
 	out vec2 v_texture;
-	out vec3 v_bitan;
+#endif
 
 	uniform mat4 model;
-	uniform float Far;
 
 	void main()
 	{
-		v_texture = vTexture;
-		vec4 skinnedVPos = vec4(vPosition, 1.0);
-			
-		if(isSkinned > 0u){
-			skin(skinnedVPos, skinnedVPos);
-		}
-	
-		v_pos = (camera.view * model * skinnedVPos) / camera.farPlane;
-		gl_Position = camera.projectionView * model * skinnedVPos;
-	
-		v_normal = vNormal;
-		v_bitan = vBiTan;
+		#if DrawAlphaMasked
+			v_texture = vTexture;
+		#endif
+
+			vec4 skinnedVPos = vec4(vPosition, 1.0);
+
+			if (isSkinned)
+			{
+					skin(skinnedVPos, skinnedVPos);
+			}
+
+			vec4 worldPos = model * skinnedVPos;
+
+			// Precompute inverse far plane on CPU if possible.
+			v_pos       = (camera.view * worldPos) * (1.0 / camera.farPlane);
+			gl_Position = camera.projectionView * worldPos;
 	}
 	-->
 	</source>

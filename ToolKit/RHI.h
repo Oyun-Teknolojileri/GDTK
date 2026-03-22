@@ -21,7 +21,7 @@ namespace ToolKit
     static constexpr uint ShadowAtlasSlot                = 8;
     static constexpr uint SpecularIBLLods                = 7;
     static constexpr uint BrdfLutTextureSize             = 512;
-    static constexpr float ShadowBiasMultiplier          = 0.0001f;
+    static constexpr float ShadowBiasMultiplier          = 0.01f;
 
     /** Update shadow.shader MAX_CASCADE_COUNT accordingly. */
     static constexpr uint MaxCascadeCount                = 4;
@@ -57,7 +57,12 @@ namespace ToolKit
     friend class Main;
 
    public:
-    using TextureIdSlotMap = std::unordered_map<GLenum, GLuint>;
+    struct TextureSlotState
+    {
+      GLuint textureID = 0;
+      GLenum target    = 0;
+    };
+    using TextureIdSlotMap = std::unordered_map<GLenum, TextureSlotState>;
 
     // Framebuffer helpers
     static void SetFramebuffer(GLenum target, GLuint framebufferID);

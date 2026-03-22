@@ -50,7 +50,7 @@ namespace ToolKit
           ImGui::PushID(i);
           // push red color for X
           ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.2f, 0.2f, 1.0f));
-          if (UI::ButtonDecorless(ICON_FA_TIMES, Vec2(15), false))
+          if (UI::ButtonDecorless(ICON_FA_TIMES, Vec2(15)))
           {
             removeMaterialIndx = i;
           }
@@ -194,19 +194,19 @@ namespace ToolKit
             // Alternate between Play - Pause buttons.
             if (activeRecord == it->second && activeRecord->m_state == AnimRecord::State::Play)
             {
-              if (UI::ImageButtonDecorless(UI::m_pauseIcon->m_textureId, Vec2(24, 24), false))
+              if (UI::ImageButtonDecorless(UI::m_pauseIcon->m_textureId, Vec2(24, 24)))
               {
                 animPlayerComp->Pause();
               }
             }
-            else if (UI::ImageButtonDecorless(UI::m_playIcon->m_textureId, Vec2(24, 24), false))
+            else if (UI::ImageButtonDecorless(UI::m_playIcon->m_textureId, Vec2(24, 24)))
             {
               animPlayerComp->Play(it->first.c_str());
             }
 
             // Draw stop button always.
             ImGui::SameLine();
-            if (UI::ImageButtonDecorless(UI::m_stopIcon->m_textureId, Vec2(24, 24), false))
+            if (UI::ImageButtonDecorless(UI::m_stopIcon->m_textureId, Vec2(24, 24)))
             {
               animPlayerComp->Stop();
             }
@@ -219,7 +219,7 @@ namespace ToolKit
             ImGui::TableSetColumnIndex(columnIndx++);
             ImGui::SetCursorPosY(ImGui::GetCursorPos().y + (ImGui::GetItemRectSize().y / 4.0f));
 
-            if (UI::ImageButtonDecorless(UI::m_closeIcon->m_textureId, Vec2(15, 15), false))
+            if (UI::ImageButtonDecorless(UI::m_closeIcon->m_textureId, Vec2(15, 15)))
             {
               removedSignalName = it->first;
             }
@@ -294,8 +294,7 @@ namespace ToolKit
           float offset = ImGui::GetContentRegionAvail().x - 30.0f;
           ImGui::SameLine(offset);
           if (UI::ButtonDecorless(ICON_FA_TIMES, // X
-                                  ImVec2(15.0f, 15.0f),
-                                  false) &&
+                                  ImVec2(15.0f, 15.0f)) &&
               !removeComp)
           {
             GetApp()->SetStatusMsg(headerName + " " + g_statusRemoved);

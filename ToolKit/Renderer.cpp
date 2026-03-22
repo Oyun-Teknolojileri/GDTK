@@ -264,22 +264,26 @@ namespace ToolKit
 
     auto activateSkinning = [&](const Mesh* mesh)
     {
-      GLint isSkinnedLoc = m_currentProgram->GetDefaultUniformLocation(Uniform::IS_SKINNED);
-      bool isSkinned     = mesh->IsSkinned();
+      GLint skinParamsLoc = m_currentProgram->GetDefaultUniformLocation(Uniform::SKIN_PARAMS);
+      if (skinParamsLoc == -1)
+      {
+        return;
+      }
+
+      bool isSkinned = mesh->IsSkinned();
       if (isSkinned)
       {
         SkeletonPtr skel = static_cast<SkinMesh*>(job.Mesh)->m_skeleton;
         assert(skel != nullptr);
 
-        GLint numBonesLoc = m_currentProgram->GetDefaultUniformLocation(Uniform::NUM_BONES);
-        glUniform1ui(isSkinnedLoc, 1);
-
-        GLuint boneCount = (GLuint) skel->m_bones.size();
-        glUniform1f(numBonesLoc, (float) boneCount);
+        float boneCount  = (float) skel->m_bones.size();
+        float isAnimated = (job.animData.currentAnimation != nullptr) ? 1.0f : 0.0f;
+        float hasBlend   = (job.animData.blendAnimation != nullptr) ? 1.0f : 0.0f;
+        glUniform4f(skinParamsLoc, boneCount, 1.0f, isAnimated, hasBlend);
       }
       else
       {
-        glUniform1ui(isSkinnedLoc, 0);
+        glUniform4f(skinParamsLoc, 0.0f, 0.0f, 0.0f, 0.0f);
       }
     };
 
@@ -424,7 +428,7 @@ namespace ToolKit
     if (m_renderState.lineWidth != state->lineWidth)
     {
       m_renderState.lineWidth = state->lineWidth;
-      glLineWidth(m_renderState.lineWidth);
+      // glLineWidth(m_renderState.lineWidth);
     }
   }
 
@@ -627,6 +631,11 @@ namespace ToolKit
     assert(source->Initialized() && "Source framebuffer is not initialized.");
     assert(target->Initialized() && "Target framebuffer is not initialized.");
 
+    const int srcWidth  = source->GetSettings().width;
+    const int srcHeight = source->GetSettings().height;
+    const int dstWidth  = target->GetSettings().width;
+    const int dstHeight = target->GetSettings().height;
+
     for (int atc : attachments)
     {
       // Sanity check.
@@ -640,7 +649,7 @@ namespace ToolKit
       if (targetRt == nullptr)
       {
         TextureSettings settings = srcRt->Settings();
-        settings.msaaCount       = 1;
+        settings.msaaCount       = MsaaSampleCount::x0;
         targetRt                 = MakeNewPtr<RenderTarget>();
         targetRt->ReconstructIfNeeded(srcRt->m_width, srcRt->m_height, &settings);
         target->SetColorAttachment(atcEnum, targetRt);
@@ -649,18 +658,19 @@ namespace ToolKit
       srcRt->m_resolvedTexture = targetRt;
 
       GLenum attachment        = GL_COLOR_ATTACHMENT0 + atc;
+
+      // Read from the specific source attachment.
       glReadBuffer(attachment);
-      glBlitFramebuffer(0,
-                        0,
-                        source->GetSettings().width,
-                        source->GetSettings().height,
-                        0,
-                        0,
-                        target->GetSettings().width,
-                        target->GetSettings().height,
-                        GL_COLOR_BUFFER_BIT,
-                        GL_NEAREST);
+
+      // Write only to the corresponding target attachment.
+      glDrawBuffers(1, &attachment);
+
+      glBlitFramebuffer(0, 0, srcWidth, srcHeight, 0, 0, dstWidth, dstHeight, GL_COLOR_BUFFER_BIT, GL_NEAREST);
     }
+
+    // Restore target framebuffer's original draw buffer configuration.
+    target->SetDrawBuffers();
+
     RHI::RestoreFramebufferBindings();
   }
 
@@ -826,6 +836,25 @@ namespace ToolKit
     }
   }
 
+  bool Renderer::EnableDepthClamp(bool enable)
+  {
+    if (TK_GL_EXT_depth_clamp)
+    {
+      if (enable)
+      {
+        glEnable(GL_DEPTH_CLAMP_EXT);
+      }
+      else
+      {
+        glDisable(GL_DEPTH_CLAMP_EXT);
+      }
+
+      return true;
+    }
+
+    return false;
+  }
+
   void Renderer::Apply7x1GaussianBlur(const TexturePtr src, RenderTargetPtr dst, const Vec3& axis, const float amount)
   {
     TK_PROFILE_FUNCTION();
@@ -880,6 +909,85 @@ namespace ToolKit
     DrawFullQuad(m_averageBlurMaterial);
   }
 
+  void Renderer::ApplyGaussianBlurToArrayLayer(RenderTargetPtr srcArray,
+                                               RenderTargetPtr tempRT,
+                                               FramebufferPtr framebuffer,
+                                               int layer,
+                                               int kernelSize,
+                                               int tapCount,
+                                               float amount)
+  {
+    TK_PROFILE_FUNCTION();
+
+    int texSize = srcArray->m_width;
+
+    // Create blur material if needed (uses shared shaders).
+    if (m_gaussianBlurMaterial == nullptr)
+    {
+      ShaderPtr vert         = GetShaderManager()->Create<Shader>(ShaderPath("gausBlur7x1Vert.shader", true));
+      ShaderPtr frag         = GetShaderManager()->Create<Shader>(ShaderPath("gausBlur7x1Frag.shader", true));
+
+      m_gaussianBlurMaterial = MakeNewPtr<Material>();
+      m_gaussianBlurMaterial->SetVertexShaderVal(vert);
+      m_gaussianBlurMaterial->SetFragmentShaderVal(frag);
+      m_gaussianBlurMaterial->SetDiffuseTextureVal(nullptr);
+      m_gaussianBlurMaterial->Init();
+    }
+
+    ShaderPtr frag   = m_gaussianBlurMaterial->GetFragmentShaderVal();
+    ShaderPtr vert   = m_gaussianBlurMaterial->GetVertexShaderVal();
+
+    String kernelStr = std::to_string(kernelSize);
+    float blurAmount = amount / (float) texSize;
+
+    for (int tap = 0; tap < tapCount; tap++)
+    {
+      // Horizontal pass: array texture layer -> temp 2D RT
+      {
+        // Set defines for array texture reading.
+        vert->SetDefine("TextureArray", "1");
+        frag->SetDefine("TextureArray", "1");
+        frag->SetDefine("KernelSize", kernelStr);
+
+        framebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, tempRT, 0, -1);
+        SetFramebuffer(framebuffer, GraphicBitFields::None);
+        SetViewportSize(0, 0, texSize, texSize);
+
+        m_gaussianBlurMaterial->UpdateProgramUniform("BlurScale", Vec3(blurAmount, 0.0f, 0.0f));
+        m_gaussianBlurMaterial->UpdateProgramUniform("BlurLayer", (float) layer);
+
+        // Bind program before texture so we know the right program is active.
+        BindProgramOfMaterial(m_gaussianBlurMaterial.get());
+
+        // Bind array texture to slot 1 with correct GL target (GL_TEXTURE_2D_ARRAY).
+        RHI::SetTexture(GL_TEXTURE_2D_ARRAY, srcArray->m_textureId, 1);
+
+        DrawFullQuad(m_gaussianBlurMaterial);
+      }
+
+      // Vertical pass: temp 2D RT -> array texture layer
+      {
+        // Set defines for regular 2D texture reading.
+        vert->SetDefine("TextureArray", "0");
+        frag->SetDefine("TextureArray", "0");
+        frag->SetDefine("KernelSize", kernelStr);
+
+        framebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, srcArray, 0, layer);
+        SetFramebuffer(framebuffer, GraphicBitFields::None);
+        SetViewportSize(0, 0, texSize, texSize);
+
+        m_gaussianBlurMaterial->SetDiffuseTextureVal(tempRT);
+        m_gaussianBlurMaterial->UpdateProgramUniform("BlurScale", Vec3(0.0f, blurAmount, 0.0f));
+
+        DrawFullQuad(m_gaussianBlurMaterial);
+      }
+    }
+
+    // Restore default define state.
+    vert->SetDefine("TextureArray", "0");
+    frag->SetDefine("TextureArray", "0");
+  }
+
   void Renderer::GenerateBRDFLutTexture()
   {
     if (!GetTextureManager()->Exist(TKBrdfLutTexture))
@@ -890,7 +998,10 @@ namespace ToolKit
       set.InternalFormat = GraphicTypes::FormatRG16F;
       set.Format         = GraphicTypes::FormatRG;
       set.Type           = GraphicTypes::TypeFloat;
-      set.GenerateMipMap = false;
+      set.MinFilter      = GraphicTypes::SampleLinear;
+      set.MagFilter      = GraphicTypes::SampleLinear;
+      set.WarpS = set.WarpT = GraphicTypes::UVClampToEdge;
+      set.GenerateMipMap    = false;
 
       RenderTargetPtr brdfLut =
           MakeNewPtr<RenderTarget>(RHIConstants::BrdfLutTextureSize, RHIConstants::BrdfLutTextureSize, set);
@@ -911,20 +1022,11 @@ namespace ToolKit
 
       material->SetVertexShaderVal(vert);
       material->SetFragmentShaderVal(frag);
-
-      QuadPtr quad     = MakeNewPtr<Quad>();
-      MeshPtr mesh     = quad->GetMeshComponent()->GetMeshVal();
-      mesh->m_material = material;
-      mesh->Init();
+      material->Init();
 
       SetFramebuffer(utilFramebuffer, GraphicBitFields::AllBits);
 
-      CameraPtr camera = MakeNewPtr<Camera>();
-      SetCamera(camera, true);
-
-      RenderJobArray jobs;
-      RenderJobProcessor::CreateRenderJobs(jobs, quad);
-      RenderWithProgramFromMaterial(jobs);
+      DrawFullQuad(material);
 
       brdfLut->SetFile(TKBrdfLutTexture);
       GetTextureManager()->Manage(brdfLut);
@@ -958,14 +1060,17 @@ namespace ToolKit
 
     if (cache.MetallicRoughnessTextureInUse())
     {
-      SetTexture(2, mat->GetMetallicRoughnessTextureVal()->m_textureId);
+      SetTexture(4, mat->GetMetallicRoughnessTextureVal()->m_textureId);
     }
 
-    m_normalMapInUse = false;
     if (cache.NormalTextureInUse())
     {
       SetTexture(9, mat->GetNormalTextureVal()->m_textureId);
-      m_normalMapInUse = true;
+    }
+
+    if (mat->IsPBR())
+    {
+      SetTexture(16, m_brdfLut->m_textureId);
     }
   }
 
@@ -1153,8 +1258,8 @@ namespace ToolKit
         case Uniform::IBL_ROTATION:
           glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&m_iblRotation));
           break;
-        case Uniform::NORMAL_MAP_IN_USE:
-          glUniform1i(loc, m_normalMapInUse);
+        case Uniform::VIEWPORT_SIZE:
+          glUniform2f(loc, (float) m_viewportSize.x, (float) m_viewportSize.y);
           break;
         default:
           break;
@@ -1162,7 +1267,6 @@ namespace ToolKit
       }
     }
 
-    // Built-in array uniforms.
     // Built-in array uniforms.
     for (auto& arrayUniform : program->m_defaultArrayUniformLocations)
     {
@@ -1271,54 +1375,23 @@ namespace ToolKit
   {
     TK_PROFILE_FUNCTION();
 
-    // Send if its animated or not.
-    int uniformLoc = program->GetDefaultUniformLocation(Uniform::IS_ANIMATED);
-    if (uniformLoc != -1)
-    {
-      glUniform1ui(uniformLoc, job.animData.currentAnimation != nullptr);
-    }
-
     if (job.animData.currentAnimation == nullptr)
     {
-      // If not animated, just skip the rest.
       return;
     }
 
-    // Send key frames.
-    uniformLoc = program->GetDefaultUniformLocation(Uniform::KEY_FRAME_COUNT);
+    // Send keyFrameData: (kf1, kf2, interpTime, kfCount)
+    int uniformLoc = program->GetDefaultUniformLocation(Uniform::KEY_FRAME_DATA);
     if (uniformLoc != -1)
     {
-      glUniform1f(uniformLoc, job.animData.keyFrameCount);
-    }
-
-    if (job.animData.keyFrameCount > 0)
-    {
-      uniformLoc = program->GetDefaultUniformLocation(Uniform::KEY_FRAME_1);
-      if (uniformLoc != -1)
-      {
-        glUniform1f(uniformLoc, job.animData.firstKeyFrame);
-      }
-
-      uniformLoc = program->GetDefaultUniformLocation(Uniform::KEY_FRAME_2);
-      if (uniformLoc != -1)
-      {
-        glUniform1f(uniformLoc, job.animData.secondKeyFrame);
-      }
-
-      uniformLoc = program->GetDefaultUniformLocation(Uniform::KEY_FRAME_INT_TIME);
-      if (uniformLoc != -1)
-      {
-        glUniform1f(uniformLoc, job.animData.keyFrameInterpolationTime);
-      }
+      glUniform4f(uniformLoc,
+                  job.animData.firstKeyFrame,
+                  job.animData.secondKeyFrame,
+                  job.animData.keyFrameInterpolationTime,
+                  job.animData.keyFrameCount);
     }
 
     // Send blend data.
-    uniformLoc = program->GetDefaultUniformLocation(Uniform::BLEND_ANIMATION);
-    if (uniformLoc != -1)
-    {
-      glUniform1i(uniformLoc, job.animData.blendAnimation != nullptr);
-    }
-
     if (job.animData.blendAnimation != nullptr)
     {
       uniformLoc = program->GetDefaultUniformLocation(Uniform::BLEND_FACTOR);
@@ -1327,28 +1400,15 @@ namespace ToolKit
         glUniform1f(uniformLoc, job.animData.animationBlendFactor);
       }
 
-      uniformLoc = program->GetDefaultUniformLocation(Uniform::BLEND_KEY_FRAME_1);
+      // Send blendFrameData: (blendKf1, blendKf2, blendInterpTime, blendKfCount)
+      uniformLoc = program->GetDefaultUniformLocation(Uniform::BLEND_FRAME_DATA);
       if (uniformLoc != -1)
       {
-        glUniform1f(uniformLoc, job.animData.blendFirstKeyFrame);
-      }
-
-      uniformLoc = program->GetDefaultUniformLocation(Uniform::BLEND_KEY_FRAME_2);
-      if (uniformLoc != -1)
-      {
-        glUniform1f(uniformLoc, job.animData.blendSecondKeyFrame);
-      }
-
-      uniformLoc = program->GetDefaultUniformLocation(Uniform::BLEND_KEY_FRAME_INT_TIME);
-      if (uniformLoc != -1)
-      {
-        glUniform1f(uniformLoc, job.animData.blendKeyFrameInterpolationTime);
-      }
-
-      uniformLoc = program->GetDefaultUniformLocation(Uniform::BLEND_KEY_FRAME_COUNT);
-      if (uniformLoc != -1)
-      {
-        glUniform1f(uniformLoc, job.animData.blendKeyFrameCount);
+        glUniform4f(uniformLoc,
+                    job.animData.blendFirstKeyFrame,
+                    job.animData.blendSecondKeyFrame,
+                    job.animData.blendKeyFrameInterpolationTime,
+                    job.animData.blendKeyFrameCount);
       }
     }
   }
@@ -1396,7 +1456,8 @@ namespace ToolKit
                                  GraphicTypes::FormatRGBA16F,
                                  GraphicTypes::FormatRGBA,
                                  GraphicTypes::TypeFloat,
-                                 1,
+                                 MsaaSampleCount::x0,
+                                 0,
                                  false};
 
     RenderTargetPtr cubeMapRt = MakeNewPtr<RenderTarget>(size, size, set, "EquirectToCubeMapRT");
@@ -1546,7 +1607,7 @@ namespace ToolKit
                                  GraphicTypes::FormatRGBA16F,
                                  GraphicTypes::FormatRGBA,
                                  GraphicTypes::TypeFloat,
-                                 0,
+                                 MsaaSampleCount::x0,
                                  false};
 
     // Don't allow caches bigger than the actual image.
@@ -1618,7 +1679,7 @@ namespace ToolKit
                                  GraphicTypes::FormatRGBA16F,
                                  GraphicTypes::FormatRGBA,
                                  GraphicTypes::TypeFloat,
-                                 0,
+                                 MsaaSampleCount::x0,
                                  false};
 
     // Don't allow caches bigger than the actual image.

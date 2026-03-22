@@ -100,6 +100,9 @@ namespace ToolKit
       RenderShadowMaps(light);
     }
 
+    // Apply blur to the shadow atlas.
+    BlurShadowAtlas();
+
     renderer->m_clearColor = lastClearColor;
   }
 
@@ -174,6 +177,7 @@ namespace ToolKit
 
     Renderer* renderer        = GetRenderer();
     ShadowSettingsPtr shadows = GetEngineSettings().m_graphics->m_shadows;
+    uint resolution           = (uint) light->GetShadowResVal().GetValue<float>();
 
     if (light->GetLightType() == Light::LightType::Directional)
     {
@@ -186,8 +190,7 @@ namespace ToolKit
 
         renderer->ClearBuffer(GraphicBitFields::DepthBits, m_shadowClearColor);
 
-        UVec2 coord     = dLight->m_shadowAtlasCoords[i];
-        uint resolution = (uint) light->GetShadowResVal().GetValue<float>();
+        UVec2 coord = dLight->m_shadowAtlasCoords[i];
         renderer->SetViewportSize(coord.x, coord.y, resolution, resolution);
 
         RenderShadowMap(light, dLight->m_cascadeShadowCameras[i], dLight->m_cascadeCullCameras[i]);
@@ -208,8 +211,7 @@ namespace ToolKit
 
         renderer->ClearBuffer(GraphicBitFields::DepthBits, m_shadowClearColor);
 
-        UVec2 coord     = light->m_shadowAtlasCoords[i];
-        uint resolution = (uint) light->GetShadowResVal().GetValue<float>();
+        UVec2 coord = light->m_shadowAtlasCoords[i];
         renderer->SetViewportSize(coord.x, coord.y, resolution, resolution);
 
         RenderShadowMap(light, light->m_shadowCamera, light->m_shadowCamera);
@@ -229,8 +231,7 @@ namespace ToolKit
 
       renderer->ClearBuffer(GraphicBitFields::DepthBits, m_shadowClearColor);
 
-      UVec2 coord     = light->m_shadowAtlasCoords[0];
-      uint resolution = (uint) light->GetShadowResVal().GetValue<float>();
+      UVec2 coord = light->m_shadowAtlasCoords[0];
 
       renderer->SetViewportSize(coord.x, coord.y, resolution, resolution);
       RenderShadowMap(light, light->m_shadowCamera, light->m_shadowCamera);
@@ -261,7 +262,7 @@ namespace ToolKit
       const BoundingBox& sceneBox = m_params.scene->GetSceneBoundary();
       Vec3 dir                    = cullCamera->Direction();
       Vec3 pos                    = cullCamera->Position(); // Backup pos.
-      Vec3 outerPoint             = pos - glm::normalize(dir) * glm::distance(sceneBox.min, sceneBox.max) * 0.5f;
+      Vec3 outerPoint             = pos - dir * glm::distance(sceneBox.min, sceneBox.max) * 0.5f;
 
       cullCamera->m_node->SetTranslation(outerPoint); // Set the camera position.
       cullCamera->SetNearClipVal(0.0f);
@@ -271,7 +272,6 @@ namespace ToolKit
     }
 
     // Create render jobs for shadow map generation.
-    RenderJobArray jobs;
     RenderData renderData;
 
     Frustum frustum            = ExtractFrustum(cullCamera->GetProjectViewMatrix(), false);
@@ -295,14 +295,31 @@ namespace ToolKit
     renderer->OverrideBlendState(true, BlendFunction::NONE); // Blending must be disabled for shadow map generation.
 
     // Set material and program.
-    MaterialPtr shadowMaterial = lightType == Light::LightType::Directional ? m_shadowMatOrtho : m_shadowMatPersp;
+    bool orthogonalShadowMap   = lightType == Light::LightType::Directional;
+    MaterialPtr shadowMaterial = orthogonalShadowMap ? m_shadowMatOrtho : m_shadowMatPersp;
     ShaderPtr frag             = shadowMaterial->GetFragmentShaderVal();
     frag->SetDefine("DrawAlphaMasked", "0");
-    ShaderPtr vert                       = shadowMaterial->GetVertexShaderVal();
+    ShaderPtr vert = shadowMaterial->GetVertexShaderVal();
+    vert->SetDefine("DrawAlphaMasked", "0");
 
     GpuProgramManager* gpuProgramManager = GetGpuProgramManager();
     m_program                            = gpuProgramManager->CreateProgram(vert, frag);
     renderer->BindProgram(m_program);
+
+    if (orthogonalShadowMap)
+    {
+      if (renderer->EnableDepthClamp(true))
+      {
+        vert->SetDefine("Pancake", "0");
+        frag->SetDefine("Pancake", "0");
+      }
+      else
+      {
+        // If depth clamp is not supported, fallback to pancake.
+        frag->SetDefine("Pancake", "1");
+        vert->SetDefine("Pancake", "1");
+      }
+    }
 
     // Draw opaque.
     RenderJobItr forwardBegin       = renderData.GetForwardOpaqueBegin();
@@ -314,6 +331,7 @@ namespace ToolKit
 
     // Draw alpha masked.
     frag->SetDefine("DrawAlphaMasked", "1");
+    vert->SetDefine("DrawAlphaMasked", "1");
     m_program = gpuProgramManager->CreateProgram(vert, frag);
     renderer->BindProgram(m_program);
 
@@ -323,9 +341,79 @@ namespace ToolKit
       renderer->Render(*jobItr);
     }
 
+    if (orthogonalShadowMap)
+    {
+      renderer->EnableDepthClamp(false);
+    }
+
     // Translucent shadow is not supported.
 
     renderer->OverrideBlendState(false, BlendFunction::NONE);
+  }
+
+  void ShadowPass::BlurShadowAtlas()
+  {
+    TK_PROFILE_FUNCTION();
+
+    if (m_layerCount <= 0)
+    {
+      return;
+    }
+
+    Renderer* renderer = GetRenderer();
+
+    // Create temp RT for blur ping-pong if needed.
+    if (m_shadowBlurTempRT == nullptr)
+    {
+      m_shadowBlurTempRT = MakeNewPtr<RenderTarget>("ShadowBlurTempRT");
+    }
+
+    GraphicTypes bufferComponents = GraphicTypes::FormatRG;
+    GraphicTypes bufferFormat     = m_use32BitShadowMap ? GraphicTypes::FormatRG32F : GraphicTypes::FormatRG16F;
+
+    GraphicTypes sampler          = GraphicTypes::SampleLinear;
+    if (!TK_GL_OES_texture_float_linear)
+    {
+      sampler = GraphicTypes::SampleNearest;
+    }
+
+    const TextureSettings tempSet = {GraphicTypes::Target2D,
+                                     GraphicTypes::UVClampToEdge,
+                                     GraphicTypes::UVClampToEdge,
+                                     GraphicTypes::UVClampToEdge,
+                                     sampler,
+                                     sampler,
+                                     bufferFormat,
+                                     bufferComponents,
+                                     GraphicTypes::TypeFloat,
+                                     MsaaSampleCount::x0,
+                                     0,
+                                     false};
+
+    m_shadowBlurTempRT->ReconstructIfNeeded(RHIConstants::ShadowAtlasTextureSize,
+                                            RHIConstants::ShadowAtlasTextureSize,
+                                            &tempSet);
+
+    ShadowSettingsPtr shadows = GetEngineSettings().m_graphics->m_shadows;
+    const int kernelSize      = shadows->GetVSMBlurKernelSizeVal().GetValue<int>();
+    const int tapCount        = shadows->GetVSMBlurTapCountVal().GetValue<int>();
+    const float amount        = 1.0f;
+
+    if (tapCount <= 0)
+    {
+      return;
+    }
+
+    for (int i = 0; i < m_layerCount; i++)
+    {
+      renderer->ApplyGaussianBlurToArrayLayer(m_shadowAtlas,
+                                              m_shadowBlurTempRT,
+                                              m_shadowFramebuffer,
+                                              i,
+                                              kernelSize,
+                                              tapCount,
+                                              amount);
+    }
   }
 
   int ShadowPass::PlaceShadowMapsToShadowAtlas(const LightRawPtrArray& lights)
@@ -342,6 +430,7 @@ namespace ToolKit
     const int cascadeCount    = shadows->GetCascadeCountVal();
 
     IntArray resolutions;
+    resolutions.reserve(lightArray.size() * 6);
     for (size_t i = 0; i < lightArray.size(); i++)
     {
       Light* light   = lightArray[i];
@@ -419,12 +508,6 @@ namespace ToolKit
       needChange           = true;
     }
 
-    if (m_useEVSM4 != shadows->GetUseEVSM4Val())
-    {
-      m_useEVSM4 = shadows->GetUseEVSM4Val();
-      needChange = true;
-    }
-
     if (m_use32BitShadowMap != shadows->GetUse32BitShadowMapVal())
     {
       m_use32BitShadowMap = shadows->GetUse32BitShadowMapVal();
@@ -463,11 +546,9 @@ namespace ToolKit
     {
       // Update materials.
       ShaderPtr frag = m_shadowMatOrtho->GetFragmentShaderVal();
-      frag->SetDefine("EVSM4", std::to_string(m_useEVSM4));
       frag->SetDefine("SMFormat16Bit", std::to_string(!m_use32BitShadowMap));
 
       frag = m_shadowMatPersp->GetFragmentShaderVal();
-      frag->SetDefine("EVSM4", std::to_string(m_useEVSM4));
       frag->SetDefine("SMFormat16Bit", std::to_string(!m_use32BitShadowMap));
 
       // Update layers.
@@ -483,12 +564,12 @@ namespace ToolKit
         GetLogger()->Log("ERROR: Max array texture layer size is reached: " + std::to_string(maxLayers) + " !");
       }
 
-      GraphicTypes bufferComponents = m_useEVSM4 ? GraphicTypes::FormatRGBA : GraphicTypes::FormatRG;
-      GraphicTypes bufferFormat     = m_useEVSM4 ? GraphicTypes::FormatRGBA32F : GraphicTypes::FormatRG32F;
+      GraphicTypes bufferComponents = GraphicTypes::FormatRG;
+      GraphicTypes bufferFormat     = GraphicTypes::FormatRG32F;
 
       if (!m_use32BitShadowMap)
       {
-        bufferFormat = m_useEVSM4 ? GraphicTypes::FormatRGBA16F : GraphicTypes::FormatRG16F;
+        bufferFormat = GraphicTypes::FormatRG16F;
       }
 
       GraphicTypes sampler = GraphicTypes::SampleLinear;
@@ -507,7 +588,7 @@ namespace ToolKit
                                    bufferFormat,
                                    bufferComponents,
                                    GraphicTypes::TypeFloat,
-                                   1,
+                                   MsaaSampleCount::x0,
                                    m_layerCount,
                                    false};
 
@@ -520,7 +601,7 @@ namespace ToolKit
                                         RHIConstants::ShadowAtlasTextureSize,
                                         false,
                                         true,
-                                        1};
+                                        MsaaSampleCount::x0};
 
       m_shadowFramebuffer->ReconstructIfNeeded(fbSettings);
       m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowAtlas, 0, 0);

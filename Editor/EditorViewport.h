@@ -27,6 +27,9 @@ namespace ToolKit
       User
     };
 
+    /**
+     * Editor viewport class. Inherits from Viewport and Window, and integrates editor-specific functionality.
+     */
     class TK_EDITOR_API EditorViewport : public Viewport, public Window
     {
      public:
@@ -51,6 +54,15 @@ namespace ToolKit
       void GetContentAreaScreenCoordinates(Vec2* min, Vec2* max) const;
       void SetCamera(CameraPtr cam) override;
       virtual void ResetCameraToDefault(); //!< Reset camera settings to default.
+
+      /** Picks up the resolved texture produced by last frame's render task. Call before recording ImGui draw commands. */
+      void SwapResolvedTexture();
+
+      /** Stages the current resolved texture for next frame's UI thread pick-up. Call from render task after resolve. */
+      void StageResolvedTexture();
+
+      /** Returns the last valid resolved texture for ImGui drawing. Falls back to black texture. */
+      TexturePtr GetLastResolvedTexture();
 
      protected:
       XmlNode* SerializeImp(XmlDocument* doc, XmlNode* parent) const override;
@@ -111,6 +123,10 @@ namespace ToolKit
      private:
       // States.
       bool m_relMouseModBegin = true;
+
+      // MSAA resolved texture double-buffering for ImGui deferred rendering.
+      TexturePtr m_resolvedTextureFromRender = nullptr;
+      TexturePtr m_lastResolvedTexture       = nullptr;
     };
 
   } // namespace Editor

@@ -381,6 +381,15 @@ namespace ToolKit
     Target2DArray              = 0x8C1A
   };
 
+  /** MSAA sample count. Values represent actual sample counts used by the GPU. */
+  enum class MsaaSampleCount : int
+  {
+    x0 = 1, //!< No MSAA.
+    x2 = 2, //!< 2x MSAA.
+    x4 = 4, //!< 4x MSAA.
+    x8 = 8  //!< 8x MSAA.
+  };
+
   enum class GpuResourceType
   {
     Texture      = 0x1702, // GL_TEXTURE

@@ -161,7 +161,7 @@ namespace ToolKit
               }
               ImGui::PopStyleColor();
             }
-            else if (ImGui::ImageButton(viewId, Convert2ImGuiTexture(view->m_viewIcn), sidebarIconSize))
+            else if (UI::ImageButton(viewId, Convert2ImGuiTexture(view->m_viewIcn), sidebarIconSize))
             {
               m_activeView = (ViewType) viewIndx;
             }

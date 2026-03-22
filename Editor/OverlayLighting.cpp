@@ -53,10 +53,11 @@ namespace ToolKit
         {
           ImGui::TableSetColumnIndex(nextItemIndex++);
           ImGui::PushItemWidth(160);
-          uint lightModeIndx     = (uint) GetApp()->m_sceneLightingMode;
-          StringView itemNames[] = {"Editor Lit", "Full Lit", "Lighting Only", "Game"};
+          uint lightModeIndx = (uint) GetApp()->m_sceneLightingMode;
+          StringView itemNames[] =
+              {"Editor Lit", "Full Lit", "Lighting Only", "Albedo", "Normal", "Metallic", "Roughness", "Game"};
 
-          uint itemCount         = sizeof(itemNames) / sizeof(itemNames[0]);
+          uint itemCount = sizeof(itemNames) / sizeof(itemNames[0]);
           if (ImGui::BeginCombo("", itemNames[lightModeIndx].data()))
           {
             for (uint itemIndx = 1; itemIndx < itemCount; itemIndx++)

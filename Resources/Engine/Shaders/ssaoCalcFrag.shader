@@ -1,5 +1,6 @@
 <shader>
 	<type name = "fragmentShader" />
+	<include name = "normalEncodingInc.shader" />
 	<source>
 	<!--
 #version 300 es
@@ -11,26 +12,39 @@ in vec3 v_pos;
 in vec3 v_normal;
 in vec2 v_texture;
 
-uniform sampler2D s_texture1; // normal (in world space)
+uniform sampler2D s_texture1; // packed normal (RG) + linear depth (B)
 uniform sampler2D s_texture2; // noise
-uniform sampler2D s_texture3; // linear depth
 
 uniform vec2 screenSize;
 uniform mat4 viewMatrix;
 uniform vec3 samples[128];
 uniform mat4 projection;
+uniform mat4 inverseProjection;
 uniform float radius;
 uniform float bias;
 uniform int kernelSize;
 
+vec3 reconstructViewPos(vec2 uv, float linearDepth)
+{
+	vec2 ndc = uv * 2.0 - 1.0;
+	vec4 clipPos = vec4(ndc, 0.0, 1.0);
+	vec4 viewPos = inverseProjection * clipPos;
+	vec3 viewDir = viewPos.xyz / viewPos.w;
+	// viewDir.z is negative in view space, linearDepth is positive
+	return viewDir * (linearDepth / -viewDir.z);
+}
+
 void main()
 {
 	vec2 texCoord = v_texture;
-	vec3 fragPos = texture(s_texture3, texCoord).xyz; // View pos.
+	vec4 normalDepthData = texture(s_texture1, texCoord);
+
+	vec3 normal = decodeNormal(normalDepthData.rg);
+	float linearDepth = normalDepthData.b;
+	vec3 fragPos = reconstructViewPos(texCoord, linearDepth);
 
 	// tile noise texture over screen based on screen dimensions divided by noise size
 	vec2 noiseScale = vec2(screenSize.x / 4.0, screenSize.y / 4.0); 
-	vec3 normal = texture(s_texture1, texCoord).rgb;
 	mat3 invTrsView = (transpose(inverse(mat3(viewMatrix))));
 	normal = normalize(invTrsView * normal); // World to View
 	vec3 randomVec = vec3(texture(s_texture2, texCoord * noiseScale).xy, 0.0);
@@ -55,7 +69,7 @@ void main()
 		offset.xyz = offset.xyz * 0.5 + 0.5; // transform to range 0.0 - 1.0
 				
 		// get sample depth
-		float sampleDepth = texture(s_texture3, offset.xy).z; // get depth value of kernel sample
+		float sampleDepth = -texture(s_texture1, offset.xy).b; // get linear depth and negate to match view space z
 				
 		// range check & accumulate
 		float rangeCheck = smoothstep(0.0, 1.0, radius / abs(fragPos.z - sampleDepth));

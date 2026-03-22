@@ -67,9 +67,6 @@ namespace ToolKit
       SetCascadeDistancesVal(dist);
     }
 
-    /** Helper function to access shadow sample count. */
-    int GetShadowSamples() const { return GetShadowSamplesVal().GetValue<int>(); }
-
    protected:
     void ParameterConstructor() override;
     void ParameterEventConstructor() override;
@@ -100,18 +97,21 @@ namespace ToolKit
     /** Prevents shimmering effects by preventing sub-pixel movement with the cost of wasted shadow map resolution. */
     TKDeclareParam(bool, StableShadowMap);
 
-    /** By default EVSM uses 2 component for shadow map generation. If this is true, it uses 4 component. */
-    TKDeclareParam(bool, UseEVSM4);
-
     /** Uses 32 bit shadow maps. */
     TKDeclareParam(bool, Use32BitShadowMap);
 
     /**
-     * Shadow sample taken from shadow map. Higher is smoother but more expensive.
-     * Indexes and sample counts {0: 1, 2: 9, 3: 25, 4: 49}
-     * Set the value by index.
+     * Shadow PCF filtering sample count. Controls shadow softness.
+     * 0: No filtering (single sample), 4: ~3x3 kernel, 9: ~5x5 kernel, 16: ~7x7 kernel.
+     * This is a shader variant (compile-time define).
      */
-    TKDeclareParam(MultiChoiceVariant, ShadowSamples);
+    TKDeclareParam(MultiChoiceVariant, ShadowPCF);
+
+    /** VSM blur kernel size applied to shadow atlas layers. */
+    TKDeclareParam(MultiChoiceVariant, VSMBlurKernelSize);
+
+    /** VSM blur tap count (number of horizontal+vertical blur passes). */
+    TKDeclareParam(MultiChoiceVariant, VSMBlurTapCount);
   };
 
   typedef std::shared_ptr<ShadowSettings> ShadowSettingsPtr;
@@ -138,12 +138,13 @@ namespace ToolKit
    protected:
     void ParameterConstructor() override;
     void ParameterEventConstructor() override;
+    void PostDeSerializeImp(const SerializationFileInfo& info, XmlNode* parent) override;
 
    public:
     /** Target fps for application. */
     TKDeclareParam(int, FPS);
 
-    /** Multi-sample count. 0 for non msaa render targets. */
+    /** Multi-sample count. MsaaSampleCount::x1 for non msaa render targets. */
     TKDeclareParam(MultiChoiceVariant, MSAA);
 
     /** Disable msaa fully. Some hardware especially android emulators requires non msaa targets. */

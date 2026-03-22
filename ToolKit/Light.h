@@ -25,8 +25,8 @@ namespace ToolKit
       int castShadow;          //!< States if the light casts shadow or not.
       float shadowBias;        //!< Bias for shadow map generation.
       float bleedingReduction; //!< Reduces shadow bleeding artifacts.
-      float pcfRadius;         //!< Radius for PCF shadow filtering.
-      int pcfSamples;          //!< Number of samples for PCF shadow filtering.
+      float pad0;              //!< Padding for alignment.
+      float pad1;              //!< Padding for alignment.
       Vec2 shadowAtlasCoord;   //!< Start coordinates of the shadow map in the texture.
       float shadowResolution;  //!< Shadow resolution in pixels.
       int shadowAtlasLayer;    //!< Shows which index the shadow texture is in.
@@ -82,7 +82,6 @@ namespace ToolKit
     TKDeclareParam(float, Intensity);
     TKDeclareParam(bool, CastShadow);
     TKDeclareParam(MultiChoiceVariant, ShadowRes);
-    TKDeclareParam(float, PCFRadius);
     TKDeclareParam(float, ShadowBias);
     TKDeclareParam(float, BleedingReduction);
 
@@ -328,8 +327,8 @@ namespace ToolKit
 
    public:
     TKDeclareParam(float, Radius);
-    TKDeclareParam(float, OuterAngle);
-    TKDeclareParam(float, InnerAngle);
+    TKDeclareParam(float, OuterAngle); //!< Outer angle in degrees.
+    TKDeclareParam(float, InnerAngle); //!< Inner angle in degrees.
 
     /** Spot frustum, updated after call to UpdateShadowCamera(). */
     Frustum m_frustumCache;

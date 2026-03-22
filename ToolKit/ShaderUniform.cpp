@@ -32,38 +32,20 @@ namespace ToolKit
       return "activePointLightIndexes";
     case Uniform::ACTIVE_SPOT_LIGHT_INDEXES:
       return "activeSpotLightIndexes";
-    case Uniform::NORMAL_MAP_IN_USE:
-      return "normalMapInUse";
     case Uniform::MATERIAL_CACHE:
       return "materialCache";
     case Uniform::DRAW_COMMAND:
       return "drawCommand";
-    case Uniform::IS_SKINNED:
-      return "isSkinned";
-    case Uniform::NUM_BONES:
-      return "numBones";
-    case Uniform::KEY_FRAME_1:
-      return "keyFrame1";
-    case Uniform::KEY_FRAME_2:
-      return "keyFrame2";
-    case Uniform::KEY_FRAME_INT_TIME:
-      return "keyFrameIntepolationTime";
-    case Uniform::KEY_FRAME_COUNT:
-      return "keyFrameCount";
-    case Uniform::IS_ANIMATED:
-      return "isAnimated";
-    case Uniform::BLEND_ANIMATION:
-      return "blendAnimation";
+    case Uniform::VIEWPORT_SIZE:
+      return "viewportSize";
+    case Uniform::SKIN_PARAMS:
+      return "skinParams";
+    case Uniform::KEY_FRAME_DATA:
+      return "keyFrameData";
+    case Uniform::BLEND_FRAME_DATA:
+      return "blendFrameData";
     case Uniform::BLEND_FACTOR:
       return "blendFactor";
-    case Uniform::BLEND_KEY_FRAME_1:
-      return "blendKeyFrame1";
-    case Uniform::BLEND_KEY_FRAME_2:
-      return "blendKeyFrame2";
-    case Uniform::BLEND_KEY_FRAME_INT_TIME:
-      return "blendKeyFrameIntepolationTime";
-    case Uniform::BLEND_KEY_FRAME_COUNT:
-      return "blendKeyFrameCount";
     case Uniform::UNIFORM_MAX_INVALID:
     default:
       return "";

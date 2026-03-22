@@ -25,7 +25,7 @@ namespace ToolKit
     GraphicTypes InternalFormat = GraphicTypes::FormatRGBA16F;
     GraphicTypes Format         = GraphicTypes::FormatRGBA;
     GraphicTypes Type           = GraphicTypes::TypeFloat;
-    int msaaCount               = 1;     //!< MSAA Render target is created if this is grater than 1.
+    MsaaSampleCount msaaCount   = MsaaSampleCount::x0; //!< MSAA Render target is created if this is grater than x0.
     int Layers                  = 0;     //!< Number of layers that this texture have if this is a texture array.
     bool GenerateMipMap         = false; //!< Generates mipmaps for the texture automatically.
 
@@ -67,7 +67,7 @@ namespace ToolKit
     /** Returns if the texture is multi sampled. */
     bool IsMultiSampled();
 
-    /** Returns resolved texture if exist, or the original texture. */
+    /** Returns resolved texture if multi sampled and resolved texture exists, otherwise nullptr. */
     TexturePtr GetResolvedTexture();
 
    protected:
@@ -109,7 +109,7 @@ namespace ToolKit
     DepthTexture();
 
     void Load() override;
-    void Init(int width, int height, bool stencil, int multiSample = 0);
+    void Init(int width, int height, bool stencil, MsaaSampleCount multiSample = MsaaSampleCount::x0);
     void UnInit() override;
 
     /** Returns depth buffer format in use. */
@@ -278,8 +278,16 @@ namespace ToolKit
    public:
     TextureManager();
     virtual ~TextureManager();
+
+    void Init() override;
     bool CanStore(ClassMeta* Class) override;
     String GetDefaultResource(ClassMeta*) override;
+    TexturePtr GetDefaultAOTexture() const;
+    TexturePtr GetBlackTexture() const;
+
+   private:
+    TexturePtr m_defaultAOTexture;
+    TexturePtr m_blackTexture;
   };
 
 } // namespace ToolKit

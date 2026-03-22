@@ -218,28 +218,24 @@ namespace ToolKit
       // Shadows Tab
       if (ImGui::BeginTabItem("Shadows"))
       {
-        bool evsm4 = shadows->GetUseEVSM4Val();
-        if (ImGui::RadioButton("Use EVSM2", !evsm4))
-        {
-          shadows->SetUseEVSM4Val(false);
-        }
-        UI::AddTooltipToLastItem("Exponential variance shadow mapping with positive component.");
+        // VSM Blur settings.
+        ImGui::SeparatorText("VSM Blur");
 
-        ImGui::SameLine();
+        CustomDataView::ShowVariant(&shadows->ParamShadowPCF(), nullptr);
+        UI::AddTooltipToLastItem("Shadow PCF filtering tap count.\n"
+                                 "Off: Single sample, no filtering.\n"
+                                 "4 sample: ~3x3 kernel.\n"
+                                 "9 sample: ~5x5 kernel.\n"
+                                 "16 sample: ~7x7 kernel.");
 
-        if (ImGui::RadioButton("Use EVSM4", evsm4))
-        {
-          shadows->SetUseEVSM4Val(true);
-        }
-        UI::AddTooltipToLastItem("Exponential variance shadow mapping with positive and negative component."
-                                 "\nRequires more shadow map memory, but yields softer shadows.");
+        CustomDataView::ShowVariant(&shadows->ParamVSMBlurKernelSize(), nullptr);
+        UI::AddTooltipToLastItem("Gaussian blur kernel size for VSM shadow map filtering.");
 
-        bool use32BitShadowMap = shadows->GetUse32BitShadowMapVal();
-        if (ImGui::Checkbox("Use high precision shadow maps", &use32BitShadowMap))
-        {
-          shadows->SetUse32BitShadowMapVal(use32BitShadowMap);
-        }
-        UI::AddTooltipToLastItem("Uses 32 bits floating point textures for shadow map generation.");
+        CustomDataView::ShowVariant(&shadows->ParamVSMBlurTapCount(), nullptr);
+        UI::AddTooltipToLastItem("Number of blur passes applied to shadow maps.\n"
+                                 "Off disables blur. Higher values produce softer shadows.");
+
+        ImGui::SeparatorText("Cascades");
 
         // Cascade count combo.
         {
@@ -263,10 +259,6 @@ namespace ToolKit
             ImGui::EndCombo();
           }
         }
-
-        // Show shadow sample multi choice.
-        CustomDataView::ShowVariant(&shadows->ParamShadowSamples(), nullptr);
-        UI::AddTooltipToLastItem("Number of samples taken from shadow map to calculate shadow factor.");
 
         Vec4 data            = shadows->GetCascadeDistancesVal();
         int lastCascadeIndex = shadows->GetCascadeCountVal() - 1;
@@ -346,8 +338,9 @@ namespace ToolKit
         {
           shadows->SetParallelSplitLambdaVal(parallelSplitLambda);
         }
-
         UI::AddTooltipToLastItem("Linear blending ratio between linear split and parallel split distances.");
+
+        ImGui::SeparatorText("Other");
 
         float shadowDistance = shadows->GetShadowMaxDistance();
         if (ImGui::DragFloat("Shadow Distance", &shadowDistance, 10.0f, 0.0f, 10000.0f, "%.2f"))
@@ -359,6 +352,13 @@ namespace ToolKit
         {
           ImGui::EndDisabled();
         }
+
+        bool use32BitShadowMap = shadows->GetUse32BitShadowMapVal();
+        if (ImGui::Checkbox("Use high precision shadow maps", &use32BitShadowMap))
+        {
+          shadows->SetUse32BitShadowMapVal(use32BitShadowMap);
+        }
+        UI::AddTooltipToLastItem("Uses 32 bits floating point textures for shadow map generation.");
 
         bool stableShadowMap = shadows->GetStableShadowMapVal();
         if (ImGui::Checkbox("Stabilize Shadows", &stableShadowMap))

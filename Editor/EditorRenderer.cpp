@@ -132,7 +132,7 @@ namespace ToolKit
       if (mainBuffer->IsMultiSampled())
       {
         FramebufferSettings settings = mainBuffer->GetSettings();
-        settings.msaaCount           = 1;
+        settings.msaaCount           = MsaaSampleCount::x0;
         m_resolvedFramebuffer->ReconstructIfNeeded(settings);
         renderer->ResolveFramebuffer(mainBuffer, m_resolvedFramebuffer, {0});
       }
@@ -345,10 +345,22 @@ namespace ToolKit
       case EditorLitMode::EditorLit:
       case EditorLitMode::FullyLit:
       case EditorLitMode::Game:
-        renderer->m_renderOnlyLighting = false;
+        renderer->m_shadingMode = ShadingMode::None;
         break;
-      case EditorLitMode::LightingOnly:
-        renderer->m_renderOnlyLighting = true;
+      case EditorLitMode::Lighing:
+        renderer->m_shadingMode = ShadingMode::Lighting;
+        break;
+      case EditorLitMode::Albedo:
+        renderer->m_shadingMode = ShadingMode::Albedo;
+        break;
+      case EditorLitMode::Normal:
+        renderer->m_shadingMode = ShadingMode::Normal;
+        break;
+      case EditorLitMode::Metallic:
+        renderer->m_shadingMode = ShadingMode::Metallic;
+        break;
+      case EditorLitMode::Roughness:
+        renderer->m_shadingMode = ShadingMode::Roughness;
         break;
       }
     }

@@ -625,22 +625,13 @@
     <None Include="..\Resources\Engine\Shaders\orthogonalDepthVert.shader">
       <Filter>Render\Shaders</Filter>
     </None>
-    <None Include="..\Resources\Engine\Shaders\orthogonalDepthViewFrag.shader">
-      <Filter>Render\Shaders</Filter>
-    </None>
-    <None Include="..\Resources\Engine\Shaders\orthogonalDepthViewVert.shader">
-      <Filter>Render\Shaders</Filter>
-    </None>
-    <None Include="..\Resources\Engine\Shaders\pbr.shader">
+    <None Include="..\Resources\Engine\Shaders\pbrPrecompute.shader">
       <Filter>Render\Shaders</Filter>
     </None>
     <None Include="..\Resources\Engine\Shaders\perspectiveDepthFrag.shader">
       <Filter>Render\Shaders</Filter>
     </None>
     <None Include="..\Resources\Engine\Shaders\perspectiveDepthVert.shader">
-      <Filter>Render\Shaders</Filter>
-    </None>
-    <None Include="..\Resources\Engine\Shaders\perspectiveDepthViewFrag.shader">
       <Filter>Render\Shaders</Filter>
     </None>
     <None Include="..\Resources\Engine\Shaders\positionVert.shader">
@@ -689,6 +680,12 @@
       <Filter>Render\Shaders</Filter>
     </None>
     <None Include="..\Resources\Engine\Shaders\drawDataInc.shader">
+      <Filter>Render\Shaders</Filter>
+    </None>
+    <None Include="..\Resources\Engine\Shaders\pbrCommon.shader">
+      <Filter>Render\Shaders</Filter>
+    </None>
+    <None Include="..\Resources\Engine\Shaders\VSMCommon.shader">
       <Filter>Render\Shaders</Filter>
     </None>
   </ItemGroup>

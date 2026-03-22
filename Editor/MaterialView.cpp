@@ -136,7 +136,7 @@ namespace ToolKit
         const Vec2 iconSize = Vec2(16.0f, 16.0f);
         const Vec2 spacing  = ImGui::GetStyle().ItemSpacing;
         UpdatePreviewScene();
-        if (UI::ImageButtonDecorless(UI::m_cameraIcon->m_textureId, iconSize, false))
+        if (UI::ImageButtonDecorless(UI::m_cameraIcon->m_textureId, iconSize))
         {
           ResetCamera();
         }
@@ -156,7 +156,7 @@ namespace ToolKit
           {
             char iconId[16];
             snprintf(iconId, sizeof(iconId), "##icon%d", id);
-            if (ImGui::ImageButton(iconId, Convert2ImGuiTexture(icon), iconSize))
+            if (UI::ImageButton(iconId, Convert2ImGuiTexture(icon), iconSize))
             {
               m_activeObjectIndx = id;
             }
@@ -260,7 +260,7 @@ namespace ToolKit
             ImGui::SameLine();
             String labelClose = String(label) + "#x";
             ImGui::PushID(labelClose.c_str());
-            if (UI::ImageButtonDecorless(UI::m_closeIcon->m_textureId, Vec2(16.0f, 16.0f), false))
+            if (UI::ImageButtonDecorless(UI::m_closeIcon->m_textureId, Vec2(16.0f, 16.0f)))
             {
               texVar = TexturePtr();
               updateThumbFn();

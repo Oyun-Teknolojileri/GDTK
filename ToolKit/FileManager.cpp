@@ -96,9 +96,7 @@ namespace ToolKit
       }
       else if (fileType == FileType::ImageFloat)
       {
-        ImageSetVerticalOnLoad(true);
         float* img = ReadHdriFileFromZip(m_zfile, relativePath, fileInfo);
-        ImageSetVerticalOnLoad(false);
         return img;
       }
       else if (fileType == FileType::Audio)
@@ -131,9 +129,7 @@ namespace ToolKit
       }
       else if (fileType == FileType::ImageFloat)
       {
-        ImageSetVerticalOnLoad(true);
         float* img = ImageLoadF(fileInfo.filePath.c_str(), fileInfo.x, fileInfo.y, fileInfo.comp, fileInfo.reqComp);
-        ImageSetVerticalOnLoad(false);
         return img;
       }
       else if (fileType == FileType::Audio)

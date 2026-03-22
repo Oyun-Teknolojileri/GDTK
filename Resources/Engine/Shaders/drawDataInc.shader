@@ -1,6 +1,5 @@
 <shader>
 	<type name = "includeShader" />
-	<include name = "materialCacheInc.shader" />
 	<uniform name = "drawCommand" size = "2" />
 	<source>
 	<!--
@@ -83,8 +82,8 @@
 	int castShadow;															\
 	float shadowBias;														\
 	float bleedingReduction;												\
-	float pcfRadius;														\
-	int pcfSamples;															\
+	float padx;																\
+	float pady;																\
 	vec2 shadowAtlasCoord;													\
 	float shadowResolution;													\
 	int shadowAtlasLayer;
@@ -134,8 +133,8 @@
 		vec3 direction;
 		float radius;
 
-		float innerAngle;
 		float outerAngle;
+		float innerAngle;
 	
 		mat4 projectionViewMatrix;
 	};

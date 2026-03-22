@@ -43,15 +43,15 @@ namespace ToolKit
   {
     Super::ParameterConstructor();
 
-    MultiChoiceVariant mcv = {
-        {CreateMultiChoiceParameter("1", 1),
-         CreateMultiChoiceParameter("9", 9),
-         CreateMultiChoiceParameter("25", 25),
-         CreateMultiChoiceParameter("49", 49)},
+    MultiChoiceVariant pcfMcv = {
+        {CreateMultiChoiceParameter("Off", 0),
+         CreateMultiChoiceParameter("4 sample", 4),
+         CreateMultiChoiceParameter("9 sample", 9),
+         CreateMultiChoiceParameter("16 sample", 16)},
         1
     };
 
-    ShadowSamples_Define(mcv, "ShadowSettings", 0, true, true);
+    ShadowPCF_Define(pcfMcv, "ShadowSettings", 0, true, true);
 
     CascadeCount_Define(4, "ShadowSettings", 0, 0, 0);
     CascadeDistances_Define(Vec4(10.0f, 20.0f, 50.0f, 100.0f), "ShadowSettings", 0, 0, 0);
@@ -59,8 +59,28 @@ namespace ToolKit
     UseParallelSplitPartitioning_Define(true, "ShadowSettings", 0, 0, 0);
     ParallelSplitLambda_Define(0.5f, "ShadowSettings", 0, 0, 0);
     StableShadowMap_Define(false, "ShadowSettings", 0, 0, 0);
-    UseEVSM4_Define(false, "ShadowSettings", 0, 0, 0);
     Use32BitShadowMap_Define(false, "ShadowSettings", 0, 0, 0);
+
+    MultiChoiceVariant kernelMcv = {
+        {CreateMultiChoiceParameter("3x3", 3),
+         CreateMultiChoiceParameter("5x5", 5),
+         CreateMultiChoiceParameter("7x7", 7)},
+        1
+    };
+
+    VSMBlurKernelSize_Define(kernelMcv, "ShadowSettings", 0, true, true);
+
+    MultiChoiceVariant tapMcv = {
+        {CreateMultiChoiceParameter("Off", 0),
+         CreateMultiChoiceParameter("1 tap", 1),
+         CreateMultiChoiceParameter("2 tap", 2),
+         CreateMultiChoiceParameter("3 tap", 3),
+         CreateMultiChoiceParameter("4 tap", 4),
+         CreateMultiChoiceParameter("5 tap", 5)},
+        1
+    };
+
+    VSMBlurTapCount_Define(tapMcv, "ShadowSettings", 0, true, true);
   }
 
   void ShadowSettings::ParameterEventConstructor()
@@ -110,18 +130,19 @@ namespace ToolKit
 
   TKDefineClass(GraphicSettings, Object);
 
+  MultiChoiceVariant gDefaultMsaaMcv = {
+      {CreateMultiChoiceParameter("Off", (int) MsaaSampleCount::x0),
+       CreateMultiChoiceParameter("2x", (int) MsaaSampleCount::x2),
+       CreateMultiChoiceParameter("4x", (int) MsaaSampleCount::x4),
+       CreateMultiChoiceParameter("8x", (int) MsaaSampleCount::x8)},
+      1
+  };
+
   void GraphicSettings::ParameterConstructor()
   {
     Super::ParameterConstructor();
 
-    MultiChoiceVariant msaaMcv = {
-        {CreateMultiChoiceParameter("0", 0),
-         CreateMultiChoiceParameter("2", 2),
-         CreateMultiChoiceParameter("4", 4),
-         CreateMultiChoiceParameter("8", 8)},
-        1
-    };
-    MSAA_Define(msaaMcv, "GraphicSettings", 0, true, true);
+    MSAA_Define(gDefaultMsaaMcv, "GraphicSettings", 0, true, true);
 
     MultiChoiceVariant anisotropicMcv = {
         {CreateMultiChoiceParameter("0", 0),
@@ -147,6 +168,32 @@ namespace ToolKit
           bool multiThreaded              = std::get<bool>(newVal);
           Main::GetInstance()->m_threaded = multiThreaded;
         });
+  }
+
+  void GraphicSettings::PostDeSerializeImp(const SerializationFileInfo& info, XmlNode* parent)
+  {
+    Super::PostDeSerializeImp(info, parent);
+
+    // Try to set a meaningful value for old msaa settings.
+    if (m_version <= TKV049)
+    {
+      MsaaSampleCount msaaVal = GetMSAAVal().GetEnum<MsaaSampleCount>();
+
+      switch (msaaVal)
+      {
+      case MsaaSampleCount::x0:
+      case MsaaSampleCount::x2:
+      case MsaaSampleCount::x4:
+      case MsaaSampleCount::x8:
+        break;
+      default:
+        msaaVal = MsaaSampleCount::x0;
+      }
+
+      MultiChoiceVariant msaa = gDefaultMsaaMcv;
+      msaa.SetEnum(msaaVal);
+      SetMSAAVal(msaa);
+    }
   }
 
   // PostProcessingSettings
@@ -429,7 +476,6 @@ namespace ToolKit
   void EngineSettings::SetShaderSettings()
   {
     // Default fragment shader defines.
-    // The defines below saves 2*4*2*2 combination.
     String file = ShaderPath("defaultFragment" + SHADER, true);
 
     ShaderDefine def;
@@ -437,16 +483,12 @@ namespace ToolKit
     def.variants = {"0"};
     m_shaderSettings->SetShaderDefine(file, def);
 
-    def.define   = "ShadowSampleCount";
-    def.variants = {std::to_string(m_graphics->m_shadows->GetShadowSamples())};
-    m_shaderSettings->SetShaderDefine(file, def);
-
-    def.define   = "EVSM4";
-    def.variants = {m_graphics->m_shadows->GetUseEVSM4Val() ? "1" : "0"};
-    m_shaderSettings->SetShaderDefine(file, def);
-
     def.define   = "SMFormat16Bit";
     def.variants = {m_graphics->m_shadows->GetUse32BitShadowMapVal() ? "0" : "1"};
+    m_shaderSettings->SetShaderDefine(file, def);
+
+    def.define   = "ShadowPCF";
+    def.variants = {std::to_string(m_graphics->m_shadows->GetShadowPCFVal().GetValue<int>())};
     m_shaderSettings->SetShaderDefine(file, def);
 
     // Gauss blur defines.
@@ -462,18 +504,12 @@ namespace ToolKit
 
     // Shadow defines.
     file         = ShaderPath("orthogonalDepthFrag" + SHADER, true);
-    def.define   = "EVSM4";
-    def.variants = {m_graphics->m_shadows->GetUseEVSM4Val() ? "1" : "0"};
-    m_shaderSettings->SetShaderDefine(file, def);
 
     def.define   = "SMFormat16Bit";
     def.variants = {m_graphics->m_shadows->GetUse32BitShadowMapVal() ? "0" : "1"};
     m_shaderSettings->SetShaderDefine(file, def);
 
     file         = ShaderPath("perspectiveDepthFrag" + SHADER, true);
-    def.define   = "EVSM4";
-    def.variants = {m_graphics->m_shadows->GetUseEVSM4Val() ? "1" : "0"};
-    m_shaderSettings->SetShaderDefine(file, def);
 
     def.define   = "SMFormat16Bit";
     def.variants = {m_graphics->m_shadows->GetUse32BitShadowMapVal() ? "0" : "1"};

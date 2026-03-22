@@ -30,7 +30,41 @@ namespace ToolKit
   namespace Editor
   {
 
+    // EditorViewport
+    //////////////////////////////////////////
+
     TKDefineClass(EditorViewport, Window);
+
+    void EditorViewport::SwapResolvedTexture()
+    {
+      if (m_resolvedTextureFromRender)
+      {
+        m_lastResolvedTexture       = m_resolvedTextureFromRender;
+        m_resolvedTextureFromRender = nullptr;
+      }
+    }
+
+    void EditorViewport::StageResolvedTexture()
+    {
+      if (m_renderTarget != nullptr && m_renderTarget->IsMultiSampled())
+      {
+        TexturePtr resolved = m_renderTarget->GetResolvedTexture();
+        if (resolved)
+        {
+          m_resolvedTextureFromRender = resolved;
+        }
+      }
+    }
+
+    TexturePtr EditorViewport::GetLastResolvedTexture()
+    {
+      if (m_lastResolvedTexture)
+      {
+        return m_lastResolvedTexture;
+      }
+
+      return GetTextureManager()->GetBlackTexture();
+    }
 
     std::vector<OverlayUI*> EditorViewport::m_overlays = {nullptr, nullptr, nullptr, nullptr};
 
@@ -271,14 +305,21 @@ namespace ToolKit
           ResizeWindow((uint) wndSize.x, (uint) wndSize.y);
         }
 
+        SwapResolvedTexture();
+
         if (m_wndContentAreaSize.x > 0 && m_wndContentAreaSize.y > 0)
         {
-          uint texId = 0;
+          TexturePtr texture = GetLastResolvedTexture();
           if (m_framebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0) != nullptr)
           {
             RenderTargetPtr rt = m_framebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
-            texId              = rt->GetResolvedTexture()->m_textureId;
+            if (!rt->IsMultiSampled())
+            {
+              texture = rt;
+            }
           }
+
+          uint texId           = texture->m_textureId;
 
           // Imgui blends the alpha of the image ( in our case, render target for the scene ) with its window
           // background, which causes glitches in the final render. This manual disable is needed.
@@ -287,7 +328,7 @@ namespace ToolKit
                                 { GetRenderSystem()->EnableBlending(false); },
                                 nullptr);
 
-          ImGui::Image(ConvertUIntImGuiTexture(texId), m_wndContentAreaSize, Vec2(0.0f, 0.0f), Vec2(1.0f, -1.0f));
+          ImGui::Image(ConvertUIntImGuiTexture(texId), m_wndContentAreaSize, Vec2(0.0f, 1.0f), Vec2(1.0f, 0.0f));
 
           drawList->AddCallback([](const ImDrawList* parentList, const ImDrawCmd* cmd)
                                 { GetRenderSystem()->EnableBlending(true); },
