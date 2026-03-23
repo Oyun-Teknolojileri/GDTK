@@ -353,12 +353,12 @@ namespace ToolKit
     {
       switch (state->cullMode)
       {
-      case CullingType::Front:
-        targetMode = CullingType::Back;
-        break;
-      case CullingType::Back:
-        targetMode = CullingType::Front;
-        break;
+        case CullingType::Front:
+          targetMode = CullingType::Back;
+          break;
+        case CullingType::Back:
+          targetMode = CullingType::Front;
+          break;
       }
     }
 
@@ -399,24 +399,24 @@ namespace ToolKit
       {
         switch (state->blendFunction)
         {
-        case BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA:
-        {
-          glEnable(GL_BLEND);
-          glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        }
-        break;
-        case BlendFunction::ONE_TO_ONE:
-        {
-          glEnable(GL_BLEND);
-          glBlendFunc(GL_ONE, GL_ONE);
-          glBlendEquation(GL_FUNC_ADD);
-        }
-        break;
-        default:
-        {
-          glDisable(GL_BLEND);
-        }
-        break;
+          case BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA:
+          {
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+          }
+          break;
+          case BlendFunction::ONE_TO_ONE:
+          {
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_ONE, GL_ONE);
+            glBlendEquation(GL_FUNC_ADD);
+          }
+          break;
+          default:
+          {
+            glDisable(GL_BLEND);
+          }
+          break;
         }
 
         m_renderState.blendFunction = state->blendFunction;
@@ -436,26 +436,26 @@ namespace ToolKit
   {
     switch (op)
     {
-    case StencilOperation::None:
-      glDisable(GL_STENCIL_TEST);
-      glStencilMask(0x00);
-      break;
-    case StencilOperation::AllowAllPixels:
-      glEnable(GL_STENCIL_TEST);
-      glStencilMask(0xFF);
-      glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
-      glStencilFunc(GL_ALWAYS, 0xFF, 0xFF);
-      break;
-    case StencilOperation::AllowPixelsPassingStencil:
-      glEnable(GL_STENCIL_TEST);
-      glStencilFunc(GL_EQUAL, 0xFF, 0xFF);
-      glStencilMask(0x00);
-      break;
-    case StencilOperation::AllowPixelsFailingStencil:
-      glEnable(GL_STENCIL_TEST);
-      glStencilFunc(GL_NOTEQUAL, 0xFF, 0xFF);
-      glStencilMask(0x00);
-      break;
+      case StencilOperation::None:
+        glDisable(GL_STENCIL_TEST);
+        glStencilMask(0x00);
+        break;
+      case StencilOperation::AllowAllPixels:
+        glEnable(GL_STENCIL_TEST);
+        glStencilMask(0xFF);
+        glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+        glStencilFunc(GL_ALWAYS, 0xFF, 0xFF);
+        break;
+      case StencilOperation::AllowPixelsPassingStencil:
+        glEnable(GL_STENCIL_TEST);
+        glStencilFunc(GL_EQUAL, 0xFF, 0xFF);
+        glStencilMask(0x00);
+        break;
+      case StencilOperation::AllowPixelsFailingStencil:
+        glEnable(GL_STENCIL_TEST);
+        glStencilFunc(GL_NOTEQUAL, 0xFF, 0xFF);
+        glStencilMask(0x00);
+        break;
     }
   }
 
@@ -988,6 +988,108 @@ namespace ToolKit
     frag->SetDefine("TextureArray", "0");
   }
 
+  void Renderer::ApplyGaussianBlurToArrayLayerSlot(RenderTargetPtr srcArray,
+                                                   RenderTargetPtr tempRT,
+                                                   FramebufferPtr framebuffer,
+                                                   int layer,
+                                                   int kernelSize,
+                                                   int tapCount,
+                                                   float amount,
+                                                   const Vec2& slotCoord,
+                                                   int slotSize)
+  {
+    TK_PROFILE_FUNCTION();
+
+    int texSize = srcArray->m_width;
+
+    // Create blur material if needed (uses shared shaders).
+    if (m_gaussianBlurMaterial == nullptr)
+    {
+      ShaderPtr vert         = GetShaderManager()->Create<Shader>(ShaderPath("gausBlur7x1Vert.shader", true));
+      ShaderPtr frag         = GetShaderManager()->Create<Shader>(ShaderPath("gausBlur7x1Frag.shader", true));
+
+      m_gaussianBlurMaterial = MakeNewPtr<Material>();
+      m_gaussianBlurMaterial->SetVertexShaderVal(vert);
+      m_gaussianBlurMaterial->SetFragmentShaderVal(frag);
+      m_gaussianBlurMaterial->SetDiffuseTextureVal(nullptr);
+      m_gaussianBlurMaterial->Init();
+    }
+
+    ShaderPtr frag   = m_gaussianBlurMaterial->GetFragmentShaderVal();
+    ShaderPtr vert   = m_gaussianBlurMaterial->GetVertexShaderVal();
+
+    String kernelStr = std::to_string(kernelSize);
+    float blurAmount = amount / (float) texSize;
+
+    // Compute normalized UV clamp bounds for this slot with half-pixel inset.
+    // This matches the half-pixel trick in shadow.shader (beginCoord + halfPixel, endCoord - halfPixel)
+    // to prevent bilinear filtering from sampling into adjacent slots.
+    float invSize    = 1.0f / (float) texSize;
+    float halfPixel  = invSize * 0.5f;
+    Vec2 clampMin    = slotCoord * invSize + halfPixel;
+    Vec2 clampMax    = (slotCoord + Vec2((float) slotSize)) * invSize - halfPixel;
+
+    // Scissor rect in pixels.
+    int sx           = (int) slotCoord.x;
+    int sy           = (int) slotCoord.y;
+
+    glEnable(GL_SCISSOR_TEST);
+
+    for (int tap = 0; tap < tapCount; tap++)
+    {
+      // Horizontal pass: array texture layer -> temp 2D RT
+      {
+        vert->SetDefine("TextureArray", "1");
+        frag->SetDefine("TextureArray", "1");
+        frag->SetDefine("KernelSize", kernelStr);
+        frag->SetDefine("BlurClampEnabled", "1");
+
+        framebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, tempRT, 0, -1);
+        SetFramebuffer(framebuffer, GraphicBitFields::None);
+        SetViewportSize(0, 0, texSize, texSize);
+        glScissor(sx, sy, slotSize, slotSize);
+
+        m_gaussianBlurMaterial->UpdateProgramUniform("BlurScale", Vec3(blurAmount, 0.0f, 0.0f));
+        m_gaussianBlurMaterial->UpdateProgramUniform("BlurLayer", (float) layer);
+        m_gaussianBlurMaterial->UpdateProgramUniform("BlurClampMin", clampMin);
+        m_gaussianBlurMaterial->UpdateProgramUniform("BlurClampMax", clampMax);
+
+        BindProgramOfMaterial(m_gaussianBlurMaterial.get());
+
+        RHI::SetTexture(GL_TEXTURE_2D_ARRAY, srcArray->m_textureId, 1);
+
+        DrawFullQuad(m_gaussianBlurMaterial);
+      }
+
+      // Vertical pass: temp 2D RT -> array texture layer
+      {
+        vert->SetDefine("TextureArray", "0");
+        frag->SetDefine("TextureArray", "0");
+        frag->SetDefine("KernelSize", kernelStr);
+        frag->SetDefine("BlurClampEnabled", "1");
+
+        framebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, srcArray, 0, layer);
+        SetFramebuffer(framebuffer, GraphicBitFields::None);
+        SetViewportSize(0, 0, texSize, texSize);
+        glScissor(sx, sy, slotSize, slotSize);
+
+        m_gaussianBlurMaterial->SetDiffuseTextureVal(tempRT);
+        m_gaussianBlurMaterial->UpdateProgramUniform("BlurScale", Vec3(0.0f, blurAmount, 0.0f));
+        m_gaussianBlurMaterial->UpdateProgramUniform("BlurClampMin", clampMin);
+        m_gaussianBlurMaterial->UpdateProgramUniform("BlurClampMax", clampMax);
+
+        DrawFullQuad(m_gaussianBlurMaterial);
+      }
+    }
+
+    glDisable(GL_SCISSOR_TEST);
+
+    // Restore default define state.
+    vert->SetDefine("TextureArray", "0");
+    frag->SetDefine("TextureArray", "0");
+    frag->SetDefine("BlurClampEnabled", "0");
+  }
+
   void Renderer::GenerateBRDFLutTexture()
   {
     if (!GetTextureManager()->Exist(TKBrdfLutTexture))
@@ -1243,26 +1345,26 @@ namespace ToolKit
       {
         switch (uniform.first)
         {
-        case Uniform::MODEL:
-          glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&m_model));
-          break;
-        case Uniform::MODEL_WITHOUT_TRANSLATE:
-          glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&m_modelWithoutTranslate));
-          break;
-        case Uniform::INVERSE_MODEL:
-          glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&m_inverseModel));
-          break;
-        case Uniform::INVERSE_TRANSPOSE_MODEL:
-          glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&m_inverseTransposeModel));
-          break;
-        case Uniform::IBL_ROTATION:
-          glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&m_iblRotation));
-          break;
-        case Uniform::VIEWPORT_SIZE:
-          glUniform2f(loc, (float) m_viewportSize.x, (float) m_viewportSize.y);
-          break;
-        default:
-          break;
+          case Uniform::MODEL:
+            glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&m_model));
+            break;
+          case Uniform::MODEL_WITHOUT_TRANSLATE:
+            glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&m_modelWithoutTranslate));
+            break;
+          case Uniform::INVERSE_MODEL:
+            glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&m_inverseModel));
+            break;
+          case Uniform::INVERSE_TRANSPOSE_MODEL:
+            glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&m_inverseTransposeModel));
+            break;
+          case Uniform::IBL_ROTATION:
+            glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&m_iblRotation));
+            break;
+          case Uniform::VIEWPORT_SIZE:
+            glUniform2f(loc, (float) m_viewportSize.x, (float) m_viewportSize.y);
+            break;
+          default:
+            break;
         }
       }
     }
@@ -1272,62 +1374,62 @@ namespace ToolKit
     {
       switch (arrayUniform.first)
       {
-      case Uniform::DRAW_COMMAND:
-      {
-        int loc = program->GetDefaultUniformLocation(Uniform::DRAW_COMMAND, 0);
-        if (loc != -1)
+        case Uniform::DRAW_COMMAND:
         {
-          glUniform4fv(loc, sizeof(DrawCommand) / sizeof(Vec4), (float*) &m_drawCommand);
-        }
-      }
-      break;
-      case Uniform::ACTIVE_POINT_LIGHT_INDEXES:
-      {
-        int loc = program->GetDefaultUniformLocation(Uniform::ACTIVE_POINT_LIGHT_INDEXES, 0);
-        if (loc != -1)
-        {
-          if (m_activePointLightCount > 0)
+          int loc = program->GetDefaultUniformLocation(Uniform::DRAW_COMMAND, 0);
+          if (loc != -1)
           {
-            glUniform1iv(loc, m_activePointLightCount, m_activePointLightIndices.data());
+            glUniform4fv(loc, sizeof(DrawCommand) / sizeof(Vec4), (float*) &m_drawCommand);
           }
         }
-      }
-      break;
-      case Uniform::ACTIVE_SPOT_LIGHT_INDEXES:
-      {
-        int loc = program->GetDefaultUniformLocation(Uniform::ACTIVE_SPOT_LIGHT_INDEXES, 0);
-        if (loc != -1)
+        break;
+        case Uniform::ACTIVE_POINT_LIGHT_INDEXES:
         {
-          if (m_activeSpotLightCount > 0)
+          int loc = program->GetDefaultUniformLocation(Uniform::ACTIVE_POINT_LIGHT_INDEXES, 0);
+          if (loc != -1)
           {
-            glUniform1iv(loc, m_activeSpotLightCount, m_activeSpotLightIndices.data());
-          }
-        }
-      }
-      break;
-      case Uniform::MATERIAL_CACHE:
-      {
-        int loc = program->GetDefaultUniformLocation(Uniform::MATERIAL_CACHE, 0);
-        if (loc != -1)
-        {
-          // Material data.
-          const MaterialCacheItem& cache = job.Material->GetCacheItem();
-          if (cache.id == program->m_cachedMaterial.id)
-          {
-            if (cache.version == program->m_cachedMaterial.version)
+            if (m_activePointLightCount > 0)
             {
-              // Material data is already set.
-              break;
+              glUniform1iv(loc, m_activePointLightCount, m_activePointLightIndices.data());
             }
           }
-
-          program->m_cachedMaterial = cache;
-          glUniform4fv(loc, sizeof(MaterialCacheItem::Data) / sizeof(Vec4), (float*) &cache.data);
         }
-      }
-      break;
-      default:
         break;
+        case Uniform::ACTIVE_SPOT_LIGHT_INDEXES:
+        {
+          int loc = program->GetDefaultUniformLocation(Uniform::ACTIVE_SPOT_LIGHT_INDEXES, 0);
+          if (loc != -1)
+          {
+            if (m_activeSpotLightCount > 0)
+            {
+              glUniform1iv(loc, m_activeSpotLightCount, m_activeSpotLightIndices.data());
+            }
+          }
+        }
+        break;
+        case Uniform::MATERIAL_CACHE:
+        {
+          int loc = program->GetDefaultUniformLocation(Uniform::MATERIAL_CACHE, 0);
+          if (loc != -1)
+          {
+            // Material data.
+            const MaterialCacheItem& cache = job.Material->GetCacheItem();
+            if (cache.id == program->m_cachedMaterial.id)
+            {
+              if (cache.version == program->m_cachedMaterial.version)
+              {
+                // Material data is already set.
+                break;
+              }
+            }
+
+            program->m_cachedMaterial = cache;
+            glUniform4fv(loc, sizeof(MaterialCacheItem::Data) / sizeof(Vec4), (float*) &cache.data);
+          }
+        }
+        break;
+        default:
+          break;
       }
     }
 
@@ -1337,36 +1439,36 @@ namespace ToolKit
       GLint loc = program->GetCustomUniformLocation(uniform.second);
       switch (uniform.second.GetType())
       {
-      case ShaderUniform::UniformType::Bool:
-        glUniform1ui(loc, uniform.second.GetVal<bool>());
-        break;
-      case ShaderUniform::UniformType::Float:
-        glUniform1f(loc, uniform.second.GetVal<float>());
-        break;
-      case ShaderUniform::UniformType::Int:
-        glUniform1i(loc, uniform.second.GetVal<int>());
-        break;
-      case ShaderUniform::UniformType::UInt:
-        glUniform1ui(loc, uniform.second.GetVal<uint>());
-        break;
-      case ShaderUniform::UniformType::Vec2:
-        glUniform2fv(loc, 1, reinterpret_cast<float*>(&uniform.second.GetVal<Vec2>()));
-        break;
-      case ShaderUniform::UniformType::Vec3:
-        glUniform3fv(loc, 1, reinterpret_cast<float*>(&uniform.second.GetVal<Vec3>()));
-        break;
-      case ShaderUniform::UniformType::Vec4:
-        glUniform4fv(loc, 1, reinterpret_cast<float*>(&uniform.second.GetVal<Vec4>()));
-        break;
-      case ShaderUniform::UniformType::Mat3:
-        glUniformMatrix3fv(loc, 1, false, reinterpret_cast<float*>(&uniform.second.GetVal<Mat3>()));
-        break;
-      case ShaderUniform::UniformType::Mat4:
-        glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&uniform.second.GetVal<Mat4>()));
-        break;
-      default:
-        assert(false && "Invalid type.");
-        break;
+        case ShaderUniform::UniformType::Bool:
+          glUniform1ui(loc, uniform.second.GetVal<bool>());
+          break;
+        case ShaderUniform::UniformType::Float:
+          glUniform1f(loc, uniform.second.GetVal<float>());
+          break;
+        case ShaderUniform::UniformType::Int:
+          glUniform1i(loc, uniform.second.GetVal<int>());
+          break;
+        case ShaderUniform::UniformType::UInt:
+          glUniform1ui(loc, uniform.second.GetVal<uint>());
+          break;
+        case ShaderUniform::UniformType::Vec2:
+          glUniform2fv(loc, 1, reinterpret_cast<float*>(&uniform.second.GetVal<Vec2>()));
+          break;
+        case ShaderUniform::UniformType::Vec3:
+          glUniform3fv(loc, 1, reinterpret_cast<float*>(&uniform.second.GetVal<Vec3>()));
+          break;
+        case ShaderUniform::UniformType::Vec4:
+          glUniform4fv(loc, 1, reinterpret_cast<float*>(&uniform.second.GetVal<Vec4>()));
+          break;
+        case ShaderUniform::UniformType::Mat3:
+          glUniformMatrix3fv(loc, 1, false, reinterpret_cast<float*>(&uniform.second.GetVal<Mat3>()));
+          break;
+        case ShaderUniform::UniformType::Mat4:
+          glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&uniform.second.GetVal<Mat4>()));
+          break;
+        default:
+          assert(false && "Invalid type.");
+          break;
       }
     }
   }

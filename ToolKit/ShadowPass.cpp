@@ -414,15 +414,52 @@ namespace ToolKit
       return;
     }
 
-    for (int i = 0; i < ShadowAtlas::LayerCount; i++)
+    const int cascadeCount = shadows->GetCascadeCountVal();
+
+    // Blur each light's shadow slots individually, clamped to slot bounds.
+    for (Light* light : m_lights)
     {
-      renderer->ApplyGaussianBlurToArrayLayer(m_shadowAtlas,
-                                              m_shadowBlurTempRT,
-                                              m_shadowFramebuffer,
-                                              i,
-                                              kernelSize,
-                                              tapCount,
-                                              amount);
+      if (!light->HasValidShadowSlot())
+      {
+        continue;
+      }
+
+      int slotCount  = 0;
+      int resolution = (int) light->m_shadowResolution;
+
+      switch (light->GetLightType())
+      {
+        case Light::LightType::Directional:
+          slotCount = cascadeCount;
+          break;
+        case Light::LightType::Point:
+          slotCount = 6;
+          break;
+        case Light::LightType::Spot:
+          slotCount = 1;
+          break;
+      }
+
+      for (int s = 0; s < slotCount; s++)
+      {
+        int layer = light->m_shadowAtlasLayers[s];
+        if (layer < 0)
+        {
+          continue;
+        }
+
+        Vec2 coord = light->m_shadowAtlasCoords[s];
+
+        renderer->ApplyGaussianBlurToArrayLayerSlot(m_shadowAtlas,
+                                                    m_shadowBlurTempRT,
+                                                    m_shadowFramebuffer,
+                                                    layer,
+                                                    kernelSize,
+                                                    tapCount,
+                                                    amount,
+                                                    coord,
+                                                    resolution);
+      }
     }
     Stats::EndGpuScope();
   }
