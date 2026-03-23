@@ -92,13 +92,27 @@ namespace ToolKit
     {
       light->UpdateShadowCamera();
 
-      if (light->GetLightType() == Light::LightType::Directional)
+      switch (light->GetLightType())
       {
-        DirectionalLight* dLight = static_cast<DirectionalLight*>(light);
-        dLight->UpdateShadowFrustum(m_params.viewCamera, m_params.scene);
+        case Light::LightType::Directional:
+        {
+          Stats::BeginGpuScope("Directioal Shadow Map");
+          DirectionalLight* dLight = static_cast<DirectionalLight*>(light);
+          dLight->UpdateShadowFrustum(m_params.viewCamera, m_params.scene);
+        }
+        break;
+        case Light::LightType::Point:
+          Stats::BeginGpuScope("Point Shadow Map");
+          break;
+        case Light::LightType::Spot:
+          Stats::BeginGpuScope("Spot Shadow Map");
+          break;
+        default:
+          break;
       }
 
       RenderShadowMaps(light);
+      Stats::EndGpuScope();
     }
 
     // Apply blur to the shadow atlas.
