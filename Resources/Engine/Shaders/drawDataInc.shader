@@ -84,7 +84,7 @@
 	float padx;																\
 	float pady;																\
 	vec2 shadowAtlasCoord;													\
-	float shadowResolution;													\
+	float shadowAtlasResRatio;												\
 	int shadowAtlasLayer;
 	
 	struct DirectionalLightData

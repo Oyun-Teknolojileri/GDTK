@@ -230,7 +230,7 @@ vec3 PBRLighting
 	{
 		DirectionalLightData light = directionalLightArray[i];
 
-		float resRatio = light.shadowResolution / graphicConstants.shadowAtlasSize;
+		float resRatio = light.shadowAtlasResRatio;
 
 		vec3 lightDir = normalize(-light.direction);
 
@@ -271,9 +271,10 @@ vec3 PBRLighting
 			}
 #endif
 
+			float shadowMapSize = resRatio * graphicConstants.shadowAtlasSize;
 			int layer = 0;
 			vec2 coord = vec2(0.0);
-			ShadowAtlasLut(light.shadowResolution, light.shadowAtlasCoord, cascadeOfThisPixel, layer, coord);
+			ShadowAtlasLut(shadowMapSize, light.shadowAtlasCoord, cascadeOfThisPixel, layer, coord);
 
 			layer += light.shadowAtlasLayer;
 
@@ -312,7 +313,7 @@ vec3 PBRLighting
 			continue;
 		}
 
-		float resRatio = light.shadowResolution / graphicConstants.shadowAtlasSize;
+		float resRatio = light.shadowAtlasResRatio;
 		float falloff = 1.0 / (light.radius * light.radius);
 		float attenuation = DistanceAttenuation(lightDistanceSq, falloff);
 
@@ -360,7 +361,7 @@ vec3 PBRLighting
 			continue;
 		}
 
-		float resRatio = light.shadowResolution / graphicConstants.shadowAtlasSize;
+		float resRatio = light.shadowAtlasResRatio;
 		float falloff = 1.0 / (light.radius * light.radius);
 		float attenuation = DistanceAttenuation(lightDistanceSq, falloff);
 

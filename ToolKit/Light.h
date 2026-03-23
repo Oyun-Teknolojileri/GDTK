@@ -19,17 +19,17 @@ namespace ToolKit
   {
     struct CommonData
     {
-      Vec3 color;              //!< Color of the light.
-      float intensity;         //!< Intensity of the light.
-      Vec3 position;           //!< World position for light.
-      int castShadow;          //!< States if the light casts shadow or not.
-      float shadowBias;        //!< Bias for shadow map generation.
-      float bleedingReduction; //!< Reduces shadow bleeding artifacts.
-      float pad0;              //!< Padding for alignment.
-      float pad1;              //!< Padding for alignment.
-      Vec2 shadowAtlasCoord;   //!< Start coordinates of the shadow map in the texture.
-      float shadowResolution;  //!< Shadow resolution in pixels.
-      int shadowAtlasLayer;    //!< Shows which index the shadow texture is in.
+      Vec3 color;                //!< Color of the light.
+      float intensity;           //!< Intensity of the light.
+      Vec3 position;             //!< World position for light.
+      int castShadow;            //!< States if the light casts shadow or not.
+      float shadowBias;          //!< Bias for shadow map generation.
+      float bleedingReduction;   //!< Reduces shadow bleeding artifacts.
+      float pad0;                //!< Padding for alignment.
+      float pad1;                //!< Padding for alignment.
+      Vec2 shadowAtlasCoord;     //!< Start coordinates of the shadow map in the texture.
+      float shadowAtlasResRatio; //!< Shadow resolution ratio (resolution / atlasSize).
+      int shadowAtlasLayer;      //!< Shows which index the shadow texture is in.
     };
   };
 
@@ -85,17 +85,15 @@ namespace ToolKit
     TKDeclareParam(Vec3, Color);
     TKDeclareParam(float, Intensity);
     TKDeclareParam(bool, CastShadow);
-    TKDeclareParam(MultiChoiceVariant, ShadowRes);
     TKDeclareParam(float, ShadowBias);
     TKDeclareParam(float, BleedingReduction);
 
     Mat4 m_shadowMapCameraProjectionViewMatrix;
-    CameraPtr m_shadowCamera       = nullptr;
-    bool m_shadowResolutionUpdated = false;
-    MeshPtr m_volumeMesh           = nullptr;
+    CameraPtr m_shadowCamera = nullptr;
+    MeshPtr m_volumeMesh     = nullptr;
 
     /** Shadow resolution assigned by the shadow atlas layout. Set by ShadowPass. */
-    float m_shadowResolution       = 0.0f;
+    float m_shadowResolution = 0.0f;
 
     IntArray m_shadowAtlasLayers;  //!< Layer index in the shadow atlas for each cascade.
     Vec2Array m_shadowAtlasCoords; //!< Coordinates for each cascade in the corresponding layer.
