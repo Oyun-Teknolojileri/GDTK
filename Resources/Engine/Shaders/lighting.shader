@@ -42,6 +42,16 @@ float SpotAngleAttenuation(float cosAngle, float cosInner, float cosOuter)
 	return attenuation * attenuation;
 }
 
+// Fades shadow towards 1.0 (no shadow) as distance approaches maxDist.
+// Fade starts at 90% of maxDist. Returns a value to blend with shadow.
+float ShadowDistanceFade(float distance, float maxDist)
+{
+	float fadeStart = maxDist * shadowFadeOutDistanceNorm;
+	float fade = (distance - fadeStart) / (maxDist - fadeStart);
+	fade = clamp(fade, 0.0, 1.0);
+	return fade * fade;
+}
+
 float CalculateDirectionalShadow
 (
 	vec3 pos,
@@ -77,14 +87,8 @@ float CalculateDirectionalShadow
 		shadowBias
 	);
 
-	// Fade shadow out after min shadow fade out distance
-	vec3 camToPos = pos - viewCamPos;
-	float camDist = dot(camToPos, camToPos);
-	float fadeDist = graphicConstants.shadowDistance * shadowFadeOutDistanceNorm;
-	float fadeRange = graphicConstants.shadowDistance * (1.0 - shadowFadeOutDistanceNorm);
-	float fade = (sqrt(camDist) - fadeDist) / fadeRange;
-	fade = clamp(fade, 0.0, 1.0);
-	fade = fade * fade;
+	float camDist = length(pos - viewCamPos);
+	float fade = ShadowDistanceFade(camDist, graphicConstants.shadowDistance);
 	return clamp(shadow + fade, 0.0, 1.0);
 }
 
@@ -329,6 +333,10 @@ vec3 PBRLighting
 				light.shadowBias,
 				lightDistance
 			);
+
+			float camDist = length(fragPos - viewCamPos);
+			float fade = ShadowDistanceFade(camDist, graphicConstants.shadowDistance);
+			shadow = clamp(shadow + fade, 0.0, 1.0);
 		}
 
 		vec3 Lo = SurfaceShading(normal, fragToEye, albedo, metallic, roughness,
@@ -378,6 +386,10 @@ vec3 PBRLighting
 				light.shadowBias,
 				lightDistance
 			);
+
+			float camDist = length(fragPos - viewCamPos);
+			float fade = ShadowDistanceFade(camDist, graphicConstants.shadowDistance);
+			shadow = clamp(shadow + fade, 0.0, 1.0);
 		}
 
 		vec3 Lo = SurfaceShading(normal, fragToEye, albedo, metallic, roughness,
