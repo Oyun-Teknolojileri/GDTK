@@ -85,6 +85,7 @@ namespace ToolKit
       m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowAtlas, 0, i);
       renderer->ClearBuffer(GraphicBitFields::ColorBits, m_shadowClearColor);
     }
+    renderer->ClearBuffer(GraphicBitFields::DepthBits);
 
     // Update shadow maps.
     for (Light* light : m_lights)
@@ -199,8 +200,6 @@ namespace ToolKit
 
         m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowAtlas, 0, layer);
 
-        renderer->ClearBuffer(GraphicBitFields::DepthBits, m_shadowClearColor);
-
         UVec2 coord = dLight->m_shadowAtlasCoords[i];
         renderer->SetViewportSize(coord.x, coord.y, resolution, resolution);
 
@@ -225,8 +224,6 @@ namespace ToolKit
         light->m_shadowCamera->m_node->SetTranslation(light->m_node->GetTranslation());
         light->m_shadowCamera->m_node->SetOrientation(m_cubeMapRotations[i]);
 
-        renderer->ClearBuffer(GraphicBitFields::DepthBits, m_shadowClearColor);
-
         UVec2 coord = light->m_shadowAtlasCoords[i];
         renderer->SetViewportSize(coord.x, coord.y, resolution, resolution);
 
@@ -247,8 +244,6 @@ namespace ToolKit
       }
 
       m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowAtlas, 0, layer);
-
-      renderer->ClearBuffer(GraphicBitFields::DepthBits, m_shadowClearColor);
 
       UVec2 coord = light->m_shadowAtlasCoords[0];
 
