@@ -147,7 +147,9 @@ namespace ToolKit
       for (int i = 0; i < QuarterSlotCount; i++)
       {
         if (!m_quarterSlots[i])
+        {
           free++;
+        }
       }
     }
     else if (size == SlotSize::Eighth)
@@ -155,7 +157,9 @@ namespace ToolKit
       for (int i = 0; i < EighthSlotCount; i++)
       {
         if (!m_eighthSlots[i])
+        {
           free++;
+        }
       }
     }
 

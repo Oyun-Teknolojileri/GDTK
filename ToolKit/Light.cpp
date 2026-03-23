@@ -104,12 +104,12 @@ namespace ToolKit
   {
     for (int shadowAtlasLayer : m_shadowAtlasLayers)
     {
-      if (shadowAtlasLayer < 0.0f)
+      if (shadowAtlasLayer >= 0)
       {
-        return false;
+        return true;
       }
     }
-    return true;
+    return false;
   }
 
   void Light::InvalidateShadowAtlasSlot()
