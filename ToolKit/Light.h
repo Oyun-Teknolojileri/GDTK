@@ -48,6 +48,7 @@ namespace ToolKit
 
     virtual void UpdateShadowCamera();
     virtual float AffectDistance();
+    bool HasValidShadowSlot() const;
 
     /**
      * Returns  0 to 3 number that helps to sort lights by type. DirectionalLight: 0, PointLight: 1, SpotLight: 3.

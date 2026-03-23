@@ -192,7 +192,7 @@ namespace ToolKit
     TK_PROFILE_FUNCTION();
 
     // Skip lights that didn't get valid atlas slots.
-    if (light->m_shadowResolution <= 0.0f)
+    if (!light->HasValidShadowSlot())
     {
       return;
     }
@@ -208,11 +208,6 @@ namespace ToolKit
       for (int i = 0; i < cascadeCount; i++)
       {
         int layer = dLight->m_shadowAtlasLayers[i];
-        if (layer < 0)
-        {
-          continue;
-        }
-
         m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowAtlas, 0, layer);
 
         UVec2 coord = dLight->m_shadowAtlasCoords[i];
@@ -229,11 +224,6 @@ namespace ToolKit
       for (int i = 0; i < 6; i++)
       {
         int layer = light->m_shadowAtlasLayers[i];
-        if (layer < 0)
-        {
-          continue;
-        }
-
         m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowAtlas, 0, layer);
 
         light->m_shadowCamera->m_node->SetTranslation(light->m_node->GetTranslation());
@@ -253,11 +243,6 @@ namespace ToolKit
       assert(light->GetLightType() == Light::LightType::Spot);
 
       int layer = light->m_shadowAtlasLayers[0];
-      if (layer < 0)
-      {
-        return;
-      }
-
       m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowAtlas, 0, layer);
 
       UVec2 coord = light->m_shadowAtlasCoords[0];

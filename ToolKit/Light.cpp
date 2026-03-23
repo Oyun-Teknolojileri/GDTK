@@ -100,6 +100,18 @@ namespace ToolKit
 
   float Light::AffectDistance() { return 1000.0f; }
 
+  bool Light::HasValidShadowSlot() const
+  {
+    for (int shadowAtlasLayer : m_shadowAtlasLayers)
+    {
+      if (shadowAtlasLayer < 0.0f)
+      {
+        return false;
+      }
+    }
+    return true;
+  }
+
   void Light::InvalidateSpatialCaches()
   {
     Super::InvalidateSpatialCaches();
