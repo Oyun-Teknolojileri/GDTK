@@ -7,8 +7,8 @@
 
 #pragma once
 
-#include "ShadowAtlas.h"
 #include "Pass.h"
+#include "ShadowAtlas.h"
 
 namespace ToolKit
 {
@@ -41,7 +41,7 @@ namespace ToolKit
     /** Performs a single render that generates a single shadow map of a cascade, or a face of a cube etc...*/
     void RenderShadowMap(Light* light, CameraPtr shadowCamera, CameraPtr cullCamera);
 
-    /** Assigns shadow atlas slots to all shadow casting lights using fixed layout. */
+    /** Assigns shadow atlas slots to shadow casting lights using priority-based dynamic packing. */
     void PlaceShadowMapsToShadowAtlas(const LightRawPtrArray& lights);
 
     /** Creates a shadow atlas for m_params.Lights */

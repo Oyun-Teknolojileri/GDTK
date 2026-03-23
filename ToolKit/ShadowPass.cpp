@@ -429,47 +429,280 @@ namespace ToolKit
 
   void ShadowPass::PlaceShadowMapsToShadowAtlas(const LightRawPtrArray& lights)
   {
+    TK_PROFILE_FUNCTION();
+
     ShadowSettingsPtr shadows = GetEngineSettings().m_graphics->m_shadows;
     const int cascadeCount    = shadows->GetCascadeCountVal();
     const int atlasSize       = shadows->GetShadowAtlasResolution();
 
     m_atlas.Reset();
 
-    for (size_t i = 0; i < lights.size(); i++)
+    // Invalidate all lights' atlas slots first.
+    for (Light* light : lights)
     {
-      Light* light = lights[i];
+      light->InvalidateShadowAtlasSlot();
+    }
 
+    // Step 1: Place directional lights into Layer 0 (Half slots). Always highest priority.
+    for (Light* light : lights)
+    {
+      if (light->GetLightType() != Light::LightType::Directional)
+      {
+        continue;
+      }
+
+      for (int ii = 0; ii < cascadeCount; ii++)
+      {
+        ShadowAtlas::SlotInfo slot     = m_atlas.Allocate(ShadowAtlas::SlotSize::Half, atlasSize);
+        light->m_shadowAtlasCoords[ii] = slot.coordinate;
+        light->m_shadowAtlasLayers[ii] = slot.layer;
+      }
+      light->m_shadowResolution = (float) ShadowAtlas::GetSlotResolution(ShadowAtlas::SlotSize::Half, atlasSize);
+    }
+
+    // Step 2: Collect non-directional shadow casters and compute priority scores.
+    Vec3 camPos = m_params.viewCamera->Position();
+
+    struct ShadowLightEntry
+    {
+      Light* light;
+      float score;
+      int slotCount;                                    // 6 for point, 1 for spot.
+      ShadowAtlas::SlotSize assignedTier;               // Tier assigned after packing.
+      bool placed;                                      // Whether successfully placed in atlas.
+    };
+
+    std::vector<ShadowLightEntry> entries;
+    entries.reserve(lights.size());
+
+    for (Light* light : lights)
+    {
       if (light->GetLightType() == Light::LightType::Directional)
       {
-        for (int ii = 0; ii < cascadeCount; ii++)
-        {
-          ShadowAtlas::SlotInfo slot     = m_atlas.Allocate(ShadowAtlas::SlotSize::Half, atlasSize);
-          light->m_shadowAtlasCoords[ii] = slot.coordinate;
-          light->m_shadowAtlasLayers[ii] = slot.layer;
-        }
-        light->m_shadowResolution = (float) ShadowAtlas::GetSlotResolution(ShadowAtlas::SlotSize::Half, atlasSize);
+        continue;
       }
-      else if (light->GetLightType() == Light::LightType::Point)
+
+      ShadowLightEntry entry;
+      entry.light        = light;
+      entry.placed       = false;
+      entry.assignedTier = ShadowAtlas::SlotSize::Eighth;
+
+      Vec3 lightPos      = light->m_node->GetTranslation(TransformationSpace::TS_WORLD);
+      float dist         = glm::distance(lightPos, camPos);
+      float radius       = light->AffectDistance();
+
+      // Score: higher = more important. Lights closer to camera with larger radius get priority.
+      // Clamp min distance to avoid division by near-zero.
+      dist               = glm::max(dist, 0.01f);
+      entry.score        = radius / dist;
+
+      if (light->GetLightType() == Light::LightType::Point)
       {
-        for (int ii = 0; ii < 6; ii++)
-        {
-          ShadowAtlas::SlotInfo slot     = m_atlas.Allocate(ShadowAtlas::SlotSize::Quarter, atlasSize);
-          light->m_shadowAtlasCoords[ii] = slot.coordinate;
-          light->m_shadowAtlasLayers[ii] = slot.layer;
-        }
-        light->m_shadowResolution = (float) ShadowAtlas::GetSlotResolution(ShadowAtlas::SlotSize::Quarter, atlasSize);
+        entry.slotCount = 6;
       }
       else
       {
-        assert(light->GetLightType() == Light::LightType::Spot);
-
-        ShadowAtlas::SlotInfo slot    = m_atlas.Allocate(ShadowAtlas::SlotSize::Eighth, atlasSize);
-        light->m_shadowAtlasCoords[0] = slot.coordinate;
-        light->m_shadowAtlasLayers[0] = slot.layer;
-        light->m_shadowResolution = (float) ShadowAtlas::GetSlotResolution(ShadowAtlas::SlotSize::Eighth, atlasSize);
+        entry.slotCount = 1;
       }
 
-      // Always invalidate cache to ensure GPU gets correct atlas coordinates.
+      entries.push_back(entry);
+    }
+
+    // Sort by score descending (highest priority first).
+    std::sort(entries.begin(), entries.end(),
+              [](const ShadowLightEntry& a, const ShadowLightEntry& b) { return a.score > b.score; });
+
+    // Step 3: Greedy packing - try Quarter first, fallback to Eighth.
+    // Track placed entries for potential eviction.
+    std::vector<int> placedIndices;
+    placedIndices.reserve(entries.size());
+
+    for (size_t i = 0; i < entries.size(); i++)
+    {
+      ShadowLightEntry& entry = entries[i];
+      Light* light            = entry.light;
+      int needed              = entry.slotCount;
+
+      // Try Quarter slots first (higher quality).
+      ShadowAtlas::SlotInfo slots[6];
+      if (m_atlas.AllocateN(ShadowAtlas::SlotSize::Quarter, needed, atlasSize, slots))
+      {
+        entry.assignedTier = ShadowAtlas::SlotSize::Quarter;
+        entry.placed       = true;
+
+        for (int s = 0; s < needed; s++)
+        {
+          light->m_shadowAtlasCoords[s] = slots[s].coordinate;
+          light->m_shadowAtlasLayers[s] = slots[s].layer;
+        }
+        light->m_shadowResolution = (float) ShadowAtlas::GetSlotResolution(ShadowAtlas::SlotSize::Quarter, atlasSize);
+        placedIndices.push_back((int) i);
+        continue;
+      }
+
+      // Try Eighth slots (lower quality fallback).
+      if (m_atlas.AllocateN(ShadowAtlas::SlotSize::Eighth, needed, atlasSize, slots))
+      {
+        entry.assignedTier = ShadowAtlas::SlotSize::Eighth;
+        entry.placed       = true;
+
+        for (int s = 0; s < needed; s++)
+        {
+          light->m_shadowAtlasCoords[s] = slots[s].coordinate;
+          light->m_shadowAtlasLayers[s] = slots[s].layer;
+        }
+        light->m_shadowResolution = (float) ShadowAtlas::GetSlotResolution(ShadowAtlas::SlotSize::Eighth, atlasSize);
+        placedIndices.push_back((int) i);
+        continue;
+      }
+
+      // Neither tier has enough free slots. Try eviction.
+      // Evict lowest-priority placed lights (from back of placedIndices) to free enough slots.
+      bool evicted = false;
+
+      // Try to free Quarter slots first by evicting placed lights that used Quarter tier.
+      {
+        int freed              = 0;
+        std::vector<int> toEvict;
+
+        for (int pi = (int) placedIndices.size() - 1; pi >= 0 && freed < needed; pi--)
+        {
+          int idx                  = placedIndices[pi];
+          ShadowLightEntry& victim = entries[idx];
+
+          // Only evict if victim has lower score than current entry.
+          if (victim.score >= entry.score)
+          {
+            break;
+          }
+
+          if (victim.assignedTier == ShadowAtlas::SlotSize::Quarter)
+          {
+            toEvict.push_back(pi);
+            freed += victim.slotCount;
+          }
+        }
+
+        if (freed >= needed)
+        {
+          // Evict victims.
+          for (int pi : toEvict)
+          {
+            int idx                  = placedIndices[pi];
+            ShadowLightEntry& victim = entries[idx];
+
+            // Free their Quarter slots.
+            for (int s = 0; s < victim.slotCount; s++)
+            {
+              int slotIdx = ShadowAtlas::FindQuarterSlotIndex(victim.light->m_shadowAtlasCoords[s], atlasSize);
+              if (slotIdx >= 0)
+              {
+                m_atlas.FreeQuarterSlot(slotIdx);
+              }
+            }
+
+            victim.light->InvalidateShadowAtlasSlot();
+            victim.placed = false;
+          }
+
+          // Remove evicted entries from placedIndices (erase from back to front).
+          std::sort(toEvict.begin(), toEvict.end(), std::greater<int>());
+          for (int pi : toEvict)
+          {
+            placedIndices.erase(placedIndices.begin() + pi);
+          }
+
+          // Now try to allocate again.
+          if (m_atlas.AllocateN(ShadowAtlas::SlotSize::Quarter, needed, atlasSize, slots))
+          {
+            entry.assignedTier = ShadowAtlas::SlotSize::Quarter;
+            entry.placed       = true;
+
+            for (int s = 0; s < needed; s++)
+            {
+              light->m_shadowAtlasCoords[s] = slots[s].coordinate;
+              light->m_shadowAtlasLayers[s] = slots[s].layer;
+            }
+            light->m_shadowResolution =
+                (float) ShadowAtlas::GetSlotResolution(ShadowAtlas::SlotSize::Quarter, atlasSize);
+            placedIndices.push_back((int) i);
+            evicted = true;
+          }
+        }
+      }
+
+      // If Quarter eviction didn't work, try Eighth eviction.
+      if (!evicted)
+      {
+        int freed              = 0;
+        std::vector<int> toEvict;
+
+        for (int pi = (int) placedIndices.size() - 1; pi >= 0 && freed < needed; pi--)
+        {
+          int idx                  = placedIndices[pi];
+          ShadowLightEntry& victim = entries[idx];
+
+          if (victim.score >= entry.score)
+          {
+            break;
+          }
+
+          if (victim.assignedTier == ShadowAtlas::SlotSize::Eighth)
+          {
+            toEvict.push_back(pi);
+            freed += victim.slotCount;
+          }
+        }
+
+        if (freed >= needed)
+        {
+          for (int pi : toEvict)
+          {
+            int idx                  = placedIndices[pi];
+            ShadowLightEntry& victim = entries[idx];
+
+            for (int s = 0; s < victim.slotCount; s++)
+            {
+              int slotIdx = ShadowAtlas::FindEighthSlotIndex(victim.light->m_shadowAtlasCoords[s], atlasSize);
+              if (slotIdx >= 0)
+              {
+                m_atlas.FreeEighthSlot(slotIdx);
+              }
+            }
+
+            victim.light->InvalidateShadowAtlasSlot();
+            victim.placed = false;
+          }
+
+          std::sort(toEvict.begin(), toEvict.end(), std::greater<int>());
+          for (int pi : toEvict)
+          {
+            placedIndices.erase(placedIndices.begin() + pi);
+          }
+
+          if (m_atlas.AllocateN(ShadowAtlas::SlotSize::Eighth, needed, atlasSize, slots))
+          {
+            entry.assignedTier = ShadowAtlas::SlotSize::Eighth;
+            entry.placed       = true;
+
+            for (int s = 0; s < needed; s++)
+            {
+              light->m_shadowAtlasCoords[s] = slots[s].coordinate;
+              light->m_shadowAtlasLayers[s] = slots[s].layer;
+            }
+            light->m_shadowResolution =
+                (float) ShadowAtlas::GetSlotResolution(ShadowAtlas::SlotSize::Eighth, atlasSize);
+            placedIndices.push_back((int) i);
+          }
+        }
+
+        // If still not placed, this light gets no shadow. Slots remain invalid (-1).
+      }
+    }
+
+    // Invalidate cache for all lights to ensure GPU gets correct atlas data.
+    for (Light* light : lights)
+    {
       light->InvalidateCacheItem();
     }
   }

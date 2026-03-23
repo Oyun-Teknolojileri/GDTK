@@ -50,6 +50,9 @@ namespace ToolKit
     virtual float AffectDistance();
     bool HasValidShadowSlot() const;
 
+    /** Marks all shadow atlas slots as invalid (-1). */
+    void InvalidateShadowAtlasSlot();
+
     /**
      * Returns  0 to 3 number that helps to sort lights by type. DirectionalLight: 0, PointLight: 1, SpotLight: 3.
      * Required for fast iterations. IsA still valid option to use but slower if it will be called 10k or more times.

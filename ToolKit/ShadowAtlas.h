@@ -40,11 +40,11 @@ namespace ToolKit
       int resolution  = 0;           //!< Slot resolution in pixels.
     };
 
-    static constexpr int LayerCount        = 2;
+    static constexpr int LayerCount       = 2;
 
-    static constexpr int HalfSlotCount     = 4;
-    static constexpr int QuarterSlotCount  = 12;
-    static constexpr int EighthSlotCount   = 16;
+    static constexpr int HalfSlotCount    = 4;
+    static constexpr int QuarterSlotCount = 12;
+    static constexpr int EighthSlotCount  = 16;
 
     /** Resets all slots to free state. Must be called each frame before allocation. */
     void Reset();
@@ -57,13 +57,48 @@ namespace ToolKit
      */
     SlotInfo Allocate(SlotSize size, int atlasSize);
 
+    /**
+     * Attempts to allocate count slots of the given size tier atomically.
+     * Either all slots are allocated or none are.
+     * @param size The slot size tier to allocate.
+     * @param count Number of slots to allocate.
+     * @param atlasSize The atlas resolution in pixels.
+     * @param outSlots Array to receive allocated slot info. Must have at least count elements.
+     * @return true if all slots were allocated, false otherwise (no slots consumed on failure).
+     */
+    bool AllocateN(SlotSize size, int count, int atlasSize, SlotInfo* outSlots);
+
+    /** Returns the number of free Quarter slots. */
+    int CountFreeQuarterSlots() const;
+
+    /** Returns the number of free Eighth slots. */
+    int CountFreeEighthSlots() const;
+
+    /** Frees a previously allocated Quarter slot by its index (0..QuarterSlotCount-1). */
+    void FreeQuarterSlot(int index);
+
+    /** Frees a previously allocated Eighth slot by its index (0..EighthSlotCount-1). */
+    void FreeEighthSlot(int index);
+
+    /**
+     * Finds the slot index for a Quarter slot given its coordinate and atlas size.
+     * @return Slot index (0..QuarterSlotCount-1) or -1 if not found.
+     */
+    static int FindQuarterSlotIndex(Vec2 coordinate, int atlasSize);
+
+    /**
+     * Finds the slot index for an Eighth slot given its coordinate and atlas size.
+     * @return Slot index (0..EighthSlotCount-1) or -1 if not found.
+     */
+    static int FindEighthSlotIndex(Vec2 coordinate, int atlasSize);
+
     /** Returns the resolution in pixels for a given slot size tier and atlas size. */
     static int GetSlotResolution(SlotSize size, int atlasSize);
 
    private:
     bool m_halfSlots[HalfSlotCount]       = {};
-    bool m_quarterSlots[QuarterSlotCount]  = {};
-    bool m_eighthSlots[EighthSlotCount]    = {};
+    bool m_quarterSlots[QuarterSlotCount] = {};
+    bool m_eighthSlots[EighthSlotCount]   = {};
   };
 
 } // namespace ToolKit

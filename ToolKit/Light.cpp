@@ -112,6 +112,16 @@ namespace ToolKit
     return true;
   }
 
+  void Light::InvalidateShadowAtlasSlot()
+  {
+    for (size_t i = 0; i < m_shadowAtlasLayers.size(); i++)
+    {
+      m_shadowAtlasLayers[i] = -1;
+      m_shadowAtlasCoords[i] = Vec2(-1.0f);
+    }
+    m_shadowResolution = 0.0f;
+  }
+
   void Light::InvalidateSpatialCaches()
   {
     Super::InvalidateSpatialCaches();
