@@ -108,6 +108,7 @@ namespace ToolKit
           Stats::BeginGpuScope("Spot Shadow Map");
           break;
         default:
+          Stats::BeginGpuScope("Undefined Shadow Map");
           break;
       }
 
