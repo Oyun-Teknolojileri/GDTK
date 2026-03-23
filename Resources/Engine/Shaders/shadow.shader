@@ -117,10 +117,14 @@ float PCFFilterShadow2D
 	float shadowBias
 )
 {
+	float halfPixel = (1.0 / graphicConstants.shadowAtlasSize) * 0.5;
+	vec2 clampMin = coordStart + halfPixel;
+	vec2 clampMax = coordEnd - halfPixel;
+
 #if ShadowPCF >= 4
-	vec2 moments = ShadowPCFFilter(shadowAtlas, uvLayer, coordStart, coordEnd, texelSize);
+	vec2 moments = ShadowPCFFilter(shadowAtlas, uvLayer, clampMin, clampMax, texelSize);
 #else
-	vec2 uv = clamp(uvLayer.xy, coordStart, coordEnd);
+	vec2 uv = clamp(uvLayer.xy, clampMin, clampMax);
 	vec2 moments = texture(shadowAtlas, vec3(uv, uvLayer.z)).xy;
 #endif
 
