@@ -67,26 +67,23 @@ namespace ToolKit
     }
     else if (size == SlotSize::Quarter)
     {
-      // Layer 1: 12 Quarter slots.
-      // Row 0-1 (quarter grid): full width = 8 slots.
-      // Row 2-3 left half: 4 slots.
+      // Layer 1: 12 Quarter slots in a regular 4x3 grid (rows 0-2).
       //
       // +----+----+----+----+
       // | Q0 | Q1 | Q2 | Q3 |
       // +----+----+----+----+
       // | Q4 | Q5 | Q6 | Q7 |
       // +----+----+----+----+
-      // | Q8 | Q9 | Eighth  |
-      // +----+----+  slots  |
-      // |Q10 |Q11 |         |
-      // +----+----+---------+
+      // | Q8 | Q9 |Q10 |Q11 |
+      // +----+----+----+----+
+      // |   Eighth slots    |
+      // +-------------------+
       int slotRes = atlasSize / 4;
 
       static const int coords[QuarterSlotCount][2] = {
           {0, 0}, {1, 0}, {2, 0}, {3, 0}, // row 0
           {0, 1}, {1, 1}, {2, 1}, {3, 1}, // row 1
-          {0, 2}, {1, 2},                 // row 2 left
-          {0, 3}, {1, 3}                  // row 3 left
+          {0, 2}, {1, 2}, {2, 2}, {3, 2}  // row 2
       };
 
       for (int i = 0; i < QuarterSlotCount; i++)
@@ -103,18 +100,14 @@ namespace ToolKit
     }
     else if (size == SlotSize::Eighth)
     {
-      // Layer 1: 16 Eighth slots in the bottom-right area.
-      // In eighth-grid: cols 4-7, rows 4-7.
+      // Layer 1: 16 Eighth slots in the bottom row (row 3 of quarter-grid = rows 6-7 of eighth-grid).
+      // 8 slots per eighth-row, 2 eighth-rows fit in one quarter-row.
       //
-      // +--+--+--+--+
-      // |E0|E1|E2|E3|
-      // +--+--+--+--+
-      // |E4|E5|E6|E7|
-      // +--+--+--+--+
-      // |E8|E9|EA|EB|
-      // +--+--+--+--+
-      // |EC|ED|EE|EF|
-      // +--+--+--+--+
+      // +--+--+--+--+--+--+--+--+
+      // |E0|E1|E2|E3|E4|E5|E6|E7|
+      // +--+--+--+--+--+--+--+--+
+      // |E8|E9|EA|EB|EC|ED|EE|EF|
+      // +--+--+--+--+--+--+--+--+
       int slotRes = atlasSize / 8;
 
       for (int i = 0; i < EighthSlotCount; i++)
@@ -122,8 +115,8 @@ namespace ToolKit
         if (!m_eighthSlots[i])
         {
           m_eighthSlots[i] = true;
-          int col           = 4 + (i % 4);
-          int row           = 4 + (i / 4);
+          int col           = i % 8;
+          int row           = 6 + (i / 8);
           info.coordinate   = Vec2((float) (col * slotRes), (float) (row * slotRes));
           info.layer        = 1;
           info.resolution   = slotRes;

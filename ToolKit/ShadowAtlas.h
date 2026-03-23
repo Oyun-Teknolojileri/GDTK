@@ -16,7 +16,8 @@ namespace ToolKit
    * Fixed-layout shadow atlas with 2 layers.
    *
    * Layer 0: 4 Half slots (atlas/2) for cascade shadow maps.
-   * Layer 1: 12 Quarter slots (atlas/4) + 16 Eighth slots (atlas/8) for point/spot lights.
+   * Layer 1: 12 Quarter slots (atlas/4) in a regular 4x3 grid (rows 0-2)
+   *          + 16 Eighth slots (atlas/8) in 2 rows at the bottom (row 3).
    *
    * Layout is ratio-based, independent of atlas size (1K or 2K).
    */

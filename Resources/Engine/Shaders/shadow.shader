@@ -158,9 +158,14 @@ float PCFFilterOmni
 	vec3 texCoord = UVWToUVLayer(dir);
 	int face = int(texCoord.z);
 
+	// Derive face 0's global slot index from its pixel coordinate,
+	// then look up the absolute atlas coordinate for (baseIndex + face).
+	float mapsPerRow = floor(graphicConstants.shadowAtlasSize / shadowMapSize);
+	int baseIndex = int(startCoord.y / shadowMapSize) * int(mapsPerRow) + int(startCoord.x / shadowMapSize);
+
 	int layer = 0;
 	vec2 coord = vec2(0.0);
-	ShadowAtlasLut(shadowMapSize, startCoord, face, layer, coord);
+	ShadowAtlasLut(shadowMapSize, vec2(0.0), baseIndex + face, layer, coord);
 	coord /= graphicConstants.shadowAtlasSize;
 
 	layer += shadowAtlasLayer;
