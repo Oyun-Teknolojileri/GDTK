@@ -2,6 +2,8 @@
 	<type name = "includeShader" />
 	<include name = "pbrCommon.shader" />
 	<include name = "shadow.shader" />
+	<uniform name = "activePointLightIndexes" size = "24" />
+	<uniform name = "activeSpotLightIndexes" size = "24" />
 	<define name = "highlightCascades" val="0,1" />
 	<source>
 	<!--
