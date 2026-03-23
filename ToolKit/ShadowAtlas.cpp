@@ -140,120 +140,37 @@ namespace ToolKit
 
   bool ShadowAtlas::AllocateN(SlotSize size, int count, int atlasSize, SlotInfo* outSlots)
   {
-    // Try to allocate all N slots. If any fails, rollback all.
+    // Quick check: enough free slots before attempting allocation.
+    int free = 0;
+    if (size == SlotSize::Quarter)
+    {
+      for (int i = 0; i < QuarterSlotCount; i++)
+      {
+        if (!m_quarterSlots[i])
+          free++;
+      }
+    }
+    else if (size == SlotSize::Eighth)
+    {
+      for (int i = 0; i < EighthSlotCount; i++)
+      {
+        if (!m_eighthSlots[i])
+          free++;
+      }
+    }
+
+    if (free < count)
+    {
+      return false;
+    }
+
+    // Pre-check passed, allocate all. Should not fail.
     for (int i = 0; i < count; i++)
     {
       outSlots[i] = Allocate(size, atlasSize);
-      if (outSlots[i].layer < 0)
-      {
-        // Rollback previously allocated slots in this batch.
-        for (int j = 0; j < i; j++)
-        {
-          if (size == SlotSize::Quarter)
-          {
-            int idx = FindQuarterSlotIndex(outSlots[j].coordinate, atlasSize);
-            if (idx >= 0)
-            {
-              FreeQuarterSlot(idx);
-            }
-          }
-          else if (size == SlotSize::Eighth)
-          {
-            int idx = FindEighthSlotIndex(outSlots[j].coordinate, atlasSize);
-            if (idx >= 0)
-            {
-              FreeEighthSlot(idx);
-            }
-          }
-          outSlots[j] = SlotInfo {};
-        }
-        return false;
-      }
+      assert(outSlots[i].layer >= 0);
     }
     return true;
-  }
-
-  int ShadowAtlas::CountFreeQuarterSlots() const
-  {
-    int count = 0;
-    for (int i = 0; i < QuarterSlotCount; i++)
-    {
-      if (!m_quarterSlots[i])
-      {
-        count++;
-      }
-    }
-    return count;
-  }
-
-  int ShadowAtlas::CountFreeEighthSlots() const
-  {
-    int count = 0;
-    for (int i = 0; i < EighthSlotCount; i++)
-    {
-      if (!m_eighthSlots[i])
-      {
-        count++;
-      }
-    }
-    return count;
-  }
-
-  void ShadowAtlas::FreeQuarterSlot(int index)
-  {
-    assert(index >= 0 && index < QuarterSlotCount);
-    m_quarterSlots[index] = false;
-  }
-
-  void ShadowAtlas::FreeEighthSlot(int index)
-  {
-    assert(index >= 0 && index < EighthSlotCount);
-    m_eighthSlots[index] = false;
-  }
-
-  int ShadowAtlas::FindQuarterSlotIndex(Vec2 coordinate, int atlasSize)
-  {
-    int slotRes                                  = atlasSize / 4;
-    static const int coords[QuarterSlotCount][2] = {
-        {0, 0},
-        {1, 0},
-        {2, 0},
-        {3, 0},
-        {0, 1},
-        {1, 1},
-        {2, 1},
-        {3, 1},
-        {0, 2},
-        {1, 2},
-        {2, 2},
-        {3, 2}
-    };
-
-    for (int i = 0; i < QuarterSlotCount; i++)
-    {
-      Vec2 slotCoord((float) (coords[i][0] * slotRes), (float) (coords[i][1] * slotRes));
-      if (glm::all(glm::epsilonEqual(coordinate, slotCoord, 0.5f)))
-      {
-        return i;
-      }
-    }
-    return -1;
-  }
-
-  int ShadowAtlas::FindEighthSlotIndex(Vec2 coordinate, int atlasSize)
-  {
-    int slotRes = atlasSize / 8;
-    for (int i = 0; i < EighthSlotCount; i++)
-    {
-      int col = i % 8;
-      int row = 6 + (i / 8);
-      Vec2 slotCoord((float) (col * slotRes), (float) (row * slotRes));
-      if (glm::all(glm::epsilonEqual(coordinate, slotCoord, 0.5f)))
-      {
-        return i;
-      }
-    }
-    return -1;
   }
 
 } // namespace ToolKit

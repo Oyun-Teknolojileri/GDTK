@@ -68,30 +68,6 @@ namespace ToolKit
      */
     bool AllocateN(SlotSize size, int count, int atlasSize, SlotInfo* outSlots);
 
-    /** Returns the number of free Quarter slots. */
-    int CountFreeQuarterSlots() const;
-
-    /** Returns the number of free Eighth slots. */
-    int CountFreeEighthSlots() const;
-
-    /** Frees a previously allocated Quarter slot by its index (0..QuarterSlotCount-1). */
-    void FreeQuarterSlot(int index);
-
-    /** Frees a previously allocated Eighth slot by its index (0..EighthSlotCount-1). */
-    void FreeEighthSlot(int index);
-
-    /**
-     * Finds the slot index for a Quarter slot given its coordinate and atlas size.
-     * @return Slot index (0..QuarterSlotCount-1) or -1 if not found.
-     */
-    static int FindQuarterSlotIndex(Vec2 coordinate, int atlasSize);
-
-    /**
-     * Finds the slot index for an Eighth slot given its coordinate and atlas size.
-     * @return Slot index (0..EighthSlotCount-1) or -1 if not found.
-     */
-    static int FindEighthSlotIndex(Vec2 coordinate, int atlasSize);
-
     /** Returns the resolution in pixels for a given slot size tier and atlas size. */
     static int GetSlotResolution(SlotSize size, int atlasSize);
 
