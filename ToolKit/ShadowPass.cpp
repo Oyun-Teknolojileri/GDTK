@@ -79,7 +79,7 @@ namespace ToolKit
     const Vec4 lastClearColor = renderer->m_clearColor;
 
     // Clear shadow atlas before any draw call
-    renderer->SetFramebuffer(m_shadowFramebuffer, GraphicBitFields::AllBits);
+    renderer->SetFramebuffer(m_shadowFramebuffer, GraphicBitFields::None);
     for (int i = 0; i < ShadowAtlas::LayerCount; i++)
     {
       m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowAtlas, 0, i);
@@ -246,10 +246,7 @@ namespace ToolKit
         return;
       }
 
-      m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0,
-                                               m_shadowAtlas,
-                                               0,
-                                               layer);
+      m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowAtlas, 0, layer);
 
       renderer->ClearBuffer(GraphicBitFields::DepthBits, m_shadowClearColor);
 
@@ -376,6 +373,7 @@ namespace ToolKit
   void ShadowPass::BlurShadowAtlas()
   {
     TK_PROFILE_FUNCTION();
+    Stats::BeginGpuScope("Shadow Blur");
 
     Renderer* renderer = GetRenderer();
 
@@ -424,13 +422,14 @@ namespace ToolKit
     for (int i = 0; i < ShadowAtlas::LayerCount; i++)
     {
       renderer->ApplyGaussianBlurToArrayLayer(m_shadowAtlas,
-                                               m_shadowBlurTempRT,
-                                               m_shadowFramebuffer,
-                                               i,
-                                               kernelSize,
-                                               tapCount,
-                                               amount);
+                                              m_shadowBlurTempRT,
+                                              m_shadowFramebuffer,
+                                              i,
+                                              kernelSize,
+                                              tapCount,
+                                              amount);
     }
+    Stats::EndGpuScope();
   }
 
   void ShadowPass::PlaceShadowMapsToShadowAtlas(const LightRawPtrArray& lights)
@@ -449,9 +448,9 @@ namespace ToolKit
       {
         for (int ii = 0; ii < cascadeCount; ii++)
         {
-          ShadowAtlas::SlotInfo slot      = m_atlas.Allocate(ShadowAtlas::SlotSize::Half, atlasSize);
-          light->m_shadowAtlasCoords[ii]  = slot.coordinate;
-          light->m_shadowAtlasLayers[ii]  = slot.layer;
+          ShadowAtlas::SlotInfo slot     = m_atlas.Allocate(ShadowAtlas::SlotSize::Half, atlasSize);
+          light->m_shadowAtlasCoords[ii] = slot.coordinate;
+          light->m_shadowAtlasLayers[ii] = slot.layer;
         }
         light->m_shadowResolution = (float) ShadowAtlas::GetSlotResolution(ShadowAtlas::SlotSize::Half, atlasSize);
       }
@@ -459,9 +458,9 @@ namespace ToolKit
       {
         for (int ii = 0; ii < 6; ii++)
         {
-          ShadowAtlas::SlotInfo slot      = m_atlas.Allocate(ShadowAtlas::SlotSize::Quarter, atlasSize);
-          light->m_shadowAtlasCoords[ii]  = slot.coordinate;
-          light->m_shadowAtlasLayers[ii]  = slot.layer;
+          ShadowAtlas::SlotInfo slot     = m_atlas.Allocate(ShadowAtlas::SlotSize::Quarter, atlasSize);
+          light->m_shadowAtlasCoords[ii] = slot.coordinate;
+          light->m_shadowAtlasLayers[ii] = slot.layer;
         }
         light->m_shadowResolution = (float) ShadowAtlas::GetSlotResolution(ShadowAtlas::SlotSize::Quarter, atlasSize);
       }
@@ -469,10 +468,10 @@ namespace ToolKit
       {
         assert(light->GetLightType() == Light::LightType::Spot);
 
-        ShadowAtlas::SlotInfo slot     = m_atlas.Allocate(ShadowAtlas::SlotSize::Eighth, atlasSize);
-        light->m_shadowAtlasCoords[0]  = slot.coordinate;
-        light->m_shadowAtlasLayers[0]  = slot.layer;
-        light->m_shadowResolution      = (float) ShadowAtlas::GetSlotResolution(ShadowAtlas::SlotSize::Eighth, atlasSize);
+        ShadowAtlas::SlotInfo slot    = m_atlas.Allocate(ShadowAtlas::SlotSize::Eighth, atlasSize);
+        light->m_shadowAtlasCoords[0] = slot.coordinate;
+        light->m_shadowAtlasLayers[0] = slot.layer;
+        light->m_shadowResolution = (float) ShadowAtlas::GetSlotResolution(ShadowAtlas::SlotSize::Eighth, atlasSize);
       }
 
       // Always invalidate cache to ensure GPU gets correct atlas coordinates.
