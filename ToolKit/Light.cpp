@@ -156,7 +156,7 @@ namespace ToolKit
     data->color             = GetColorVal();
     data->intensity         = GetIntensityVal();
     data->position          = m_node->GetTranslation(TransformationSpace::TS_WORLD);
-    data->castShadow        = GetCastShadowVal();
+    data->castShadow        = GetCastShadowVal() && HasValidShadowSlot();
     data->shadowBias        = GetShadowBiasVal() * RHIConstants::ShadowBiasMultiplier;
     data->bleedingReduction = GetBleedingReductionVal();
     data->pad0              = 0.0f;
