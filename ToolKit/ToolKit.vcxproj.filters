@@ -589,10 +589,10 @@
     <None Include="..\Resources\Engine\Shaders\gammaTonemapFxaa.shader">
       <Filter>Render\Shaders</Filter>
     </None>
-    <None Include="..\Resources\Engine\Shaders\gausBlur7x1Frag.shader">
+    <None Include="..\Resources\Engine\Shaders\gausBlurFrag.shader">
       <Filter>Render\Shaders</Filter>
     </None>
-    <None Include="..\Resources\Engine\Shaders\gausBlur7x1Vert.shader">
+    <None Include="..\Resources\Engine\Shaders\gausBlurVert.shader">
       <Filter>Render\Shaders</Filter>
     </None>
     <None Include="..\Resources\Engine\Shaders\gradientSkyboxFrag.shader">

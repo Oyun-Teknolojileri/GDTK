@@ -212,8 +212,8 @@
     <None Include="..\Resources\Engine\Shaders\fxaaFunctions.shader" />
     <None Include="..\Resources\Engine\Shaders\gammaFunctions.shader" />
     <None Include="..\Resources\Engine\Shaders\gammaTonemapFxaa.shader" />
-    <None Include="..\Resources\Engine\Shaders\gausBlur7x1Frag.shader" />
-    <None Include="..\Resources\Engine\Shaders\gausBlur7x1Vert.shader" />
+    <None Include="..\Resources\Engine\Shaders\gausBlurFrag.shader" />
+    <None Include="..\Resources\Engine\Shaders\gausBlurVert.shader" />
     <None Include="..\Resources\Engine\Shaders\gradientSkyboxFrag.shader" />
     <None Include="..\Resources\Engine\Shaders\gridFragment.shader" />
     <None Include="..\Resources\Engine\Shaders\gridVertex.shader" />

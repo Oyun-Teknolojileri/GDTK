@@ -879,7 +879,7 @@ namespace ToolKit
     return false;
   }
 
-  void Renderer::Apply7x1GaussianBlur(const TexturePtr src, RenderTargetPtr dst, const Vec3& axis, const float amount)
+  void Renderer::ApplyGaussianBlur(const TexturePtr src, RenderTargetPtr dst, const Vec3& axis, const float amount)
   {
     TK_PROFILE_FUNCTION();
 
@@ -887,8 +887,8 @@ namespace ToolKit
 
     if (m_gaussianBlurMaterial == nullptr)
     {
-      ShaderPtr vert         = GetShaderManager()->Create<Shader>(ShaderPath("gausBlur7x1Vert.shader", true));
-      ShaderPtr frag         = GetShaderManager()->Create<Shader>(ShaderPath("gausBlur7x1Frag.shader", true));
+      ShaderPtr vert         = GetShaderManager()->Create<Shader>(ShaderPath("gausBlurVert.shader", true));
+      ShaderPtr frag         = GetShaderManager()->Create<Shader>(ShaderPath("gausBlurFrag.shader", true));
 
       m_gaussianBlurMaterial = MakeNewPtr<Material>();
       m_gaussianBlurMaterial->SetVertexShaderVal(vert);
@@ -923,8 +923,8 @@ namespace ToolKit
     // Create blur material if needed (uses shared shaders).
     if (m_gaussianBlurMaterial == nullptr)
     {
-      ShaderPtr vert         = GetShaderManager()->Create<Shader>(ShaderPath("gausBlur7x1Vert.shader", true));
-      ShaderPtr frag         = GetShaderManager()->Create<Shader>(ShaderPath("gausBlur7x1Frag.shader", true));
+      ShaderPtr vert         = GetShaderManager()->Create<Shader>(ShaderPath("gausBlurVert.shader", true));
+      ShaderPtr frag         = GetShaderManager()->Create<Shader>(ShaderPath("gausBlurFrag.shader", true));
 
       m_gaussianBlurMaterial = MakeNewPtr<Material>();
       m_gaussianBlurMaterial->SetVertexShaderVal(vert);

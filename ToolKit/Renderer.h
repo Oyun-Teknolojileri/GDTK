@@ -230,7 +230,7 @@ namespace ToolKit
     void RenderWithProgramFromMaterial(const RenderJob& job);
 
     /** Apply one tap of gauss blur via setting a temporary frame buffer. Does not reset frame buffer back. */
-    void Apply7x1GaussianBlur(const TexturePtr src, RenderTargetPtr dst, const Vec3& axis, const float amount);
+    void ApplyGaussianBlur(const TexturePtr src, RenderTargetPtr dst, const Vec3& axis, const float amount);
 
     /**
      * Applies separable Gaussian blur on a sub-region (slot) of a specific layer of a 2D array texture.
