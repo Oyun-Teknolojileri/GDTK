@@ -43,7 +43,14 @@
         float depth = length(v_pos.xyz);
         float vsmDepth = WarpDepth(depth);
 
-        fragColor = vec2(vsmDepth, vsmDepth * vsmDepth);
+        // Analytic variance from depth gradient across the texel (Filament style)
+        float dzdx = dFdx(depth);
+        float dzdy = dFdy(depth);
+        float linearVariance = 0.25 * (dzdx * dzdx + dzdy * dzdy);
+        float analyticVariance = VsmExponent * VsmExponent * vsmDepth * vsmDepth * linearVariance;
+        float moment2 = min(vsmDepth * vsmDepth + analyticVariance, VsmMaxMoment);
+
+        fragColor = vec2(vsmDepth, moment2);
     }
 	-->
 	</source>

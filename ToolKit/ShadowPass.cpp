@@ -598,6 +598,11 @@ namespace ToolKit
 
     if (needReconstruct)
     {
+      // Update shadow clear color to match warped depth space.
+      const float vsmExponent = m_use32BitShadowMap ? 15.0f : 5.54f;
+      float warpedMax         = std::exp(vsmExponent);
+      m_shadowClearColor      = Vec4(warpedMax, warpedMax * warpedMax, 0.0f, 0.0f);
+
       // Update materials.
       ShaderPtr frag = m_shadowMatOrtho->GetFragmentShaderVal();
       frag->SetDefine("SMFormat16Bit", std::to_string(!m_use32BitShadowMap));

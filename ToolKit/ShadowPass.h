@@ -57,7 +57,7 @@ namespace ToolKit
     MaterialPtr m_shadowMatOrtho       = nullptr;
     MaterialPtr m_shadowMatPersp       = nullptr;
 
-    const Vec4 m_shadowClearColor      = Vec4(1.0f);
+    Vec4 m_shadowClearColor            = Vec4(1.0f);
     FramebufferPtr m_shadowFramebuffer = nullptr;
     RenderTargetPtr m_shadowAtlas      = nullptr;
     RenderTargetPtr m_shadowBlurTempRT = nullptr;

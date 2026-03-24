@@ -61,11 +61,12 @@ float EvaluateEVSM
 	float lightBleedReduction
 )
 {
-	const float EPSILON = 0.002;
+	// Filament-style EVSM evaluation (2-component, positive warp only)
+	// EPSILON_MULTIPLIER prevents numerical issues in variance computation
+	const float EPSILON_MULTIPLIER = 0.002;
 
 	float pw = positiveWarpedDepth;
-	float dpwdz = 2.0 * VsmExponent * pw;
-	float posMinVariance = EPSILON * (pw * pw) + shadowBias * shadowBias * (dpwdz * dpwdz);
+	float posMinVariance = EPSILON_MULTIPLIER * (pw * pw);
 	float posContrib = ChebyshevUpperBound(positiveMoments, pw, posMinVariance, lightBleedReduction);
 
 	return posContrib;
