@@ -85,11 +85,13 @@ namespace ToolKit
       m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowAtlas, 0, i);
       renderer->ClearBuffer(GraphicBitFields::ColorBits, m_shadowClearColor);
     }
-    renderer->ClearBuffer(GraphicBitFields::DepthBits);
 
     // Update shadow maps grouped by atlas layer.
     for (int layerIndex = 0; layerIndex < (int) m_atlasLayerSwitchIndices.size(); layerIndex++)
     {
+      // Depth is cleared once for each layer.
+      renderer->ClearBuffer(GraphicBitFields::DepthBits);
+
       int begin = m_atlasLayerSwitchIndices[layerIndex];
       int end   = (int) m_lights.size();
       if (layerIndex + 1 < (int) m_atlasLayerSwitchIndices.size())
@@ -102,16 +104,13 @@ namespace ToolKit
         m_lights[i]->UpdateShadowCamera();
         RenderShadowMaps(m_lights[i]);
       }
-
-      // Depth is cleared once for each layer.
-      renderer->ClearBuffer(GraphicBitFields::DepthBits);
     }
-
-    // Depth is not needed. Mark it as invalid to avoid unintended read/writes.
-    renderer->InvalidateFramebufferDepth(m_shadowFramebuffer);
 
     // Apply blur to the shadow atlas.
     BlurShadowAtlas();
+
+    // Depth is not needed. Mark it as invalid to avoid unintended read/writes.
+    renderer->InvalidateFramebufferDepth(m_shadowFramebuffer);
 
     renderer->m_clearColor = lastClearColor;
   }

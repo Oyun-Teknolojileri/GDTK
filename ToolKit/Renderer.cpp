@@ -977,7 +977,6 @@ namespace ToolKit
         RHI::SetTexture(GL_TEXTURE_2D_ARRAY, srcArray->m_textureId, 1);
 
         DrawFullQuad(m_gaussianBlurMaterial);
-        InvalidateFramebufferDepth(framebuffer);
       }
 
       // Vertical pass: temp 2D RT -> array texture layer
@@ -998,7 +997,6 @@ namespace ToolKit
         m_gaussianBlurMaterial->UpdateProgramUniform("BlurClampMax", clampMax);
 
         DrawFullQuad(m_gaussianBlurMaterial);
-        InvalidateFramebufferDepth(framebuffer);
       }
     }
 
