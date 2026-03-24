@@ -600,24 +600,42 @@ namespace ToolKit
   {
     constexpr GLenum invalidAttachments[1] = {GL_DEPTH_ATTACHMENT};
     RHI::SetFramebuffer(GL_READ_FRAMEBUFFER, frameBuffer->GetFboId());
-    // glInvalidateFramebuffer(GL_READ_FRAMEBUFFER, 1, invalidAttachments);
-    glClear(GL_DEPTH_BUFFER_BIT);
+#ifdef TK_GL_ES_3_0
+    glInvalidateFramebuffer(GL_READ_FRAMEBUFFER, 1, invalidAttachments);
+#else
+    if (glInvalidateFramebufferEXT != nullptr)
+    {
+      glInvalidateFramebufferEXT(GL_READ_FRAMEBUFFER, 1, invalidAttachments);
+    }
+#endif
   }
 
   void Renderer::InvalidateFramebufferStencil(FramebufferPtr frameBuffer)
   {
     constexpr GLenum invalidAttachments[1] = {GL_STENCIL_ATTACHMENT};
     RHI::SetFramebuffer(GL_READ_FRAMEBUFFER, frameBuffer->GetFboId());
-    // glInvalidateFramebuffer(GL_READ_FRAMEBUFFER, 1, invalidAttachments);
-    glClear(GL_STENCIL_BUFFER_BIT);
+#ifdef TK_GL_ES_3_0
+    glInvalidateFramebuffer(GL_READ_FRAMEBUFFER, 1, invalidAttachments);
+#else
+    if (glInvalidateFramebufferEXT != nullptr)
+    {
+      glInvalidateFramebufferEXT(GL_READ_FRAMEBUFFER, 1, invalidAttachments);
+    }
+#endif
   }
 
   void Renderer::InvalidateFramebufferDepthStencil(FramebufferPtr frameBuffer)
   {
     constexpr GLenum invalidAttachments[1] = {GL_DEPTH_STENCIL_ATTACHMENT};
     RHI::SetFramebuffer(GL_READ_FRAMEBUFFER, frameBuffer->GetFboId());
-    // glInvalidateFramebuffer(GL_READ_FRAMEBUFFER, 1, invalidAttachments);
-    glClear(GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+#ifdef TK_GL_ES_3_0
+    glInvalidateFramebuffer(GL_READ_FRAMEBUFFER, 1, invalidAttachments);
+#else
+    if (glInvalidateFramebufferEXT != nullptr)
+    {
+      glInvalidateFramebufferEXT(GL_READ_FRAMEBUFFER, 1, invalidAttachments);
+    }
+#endif
   }
 
   void Renderer::ResolveFramebuffer(FramebufferPtr source, FramebufferPtr target, const IntArray& attachments)
