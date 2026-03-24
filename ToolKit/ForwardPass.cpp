@@ -58,18 +58,6 @@ namespace ToolKit
       // Only the visible fragments will pass the test.
       renderer->SetDepthTestFunc(CompareFunctions::FuncLequal);
     }
-
-    if (DepthTexturePtr depthTexture = m_params.FrameBuffer->GetDepthTexture())
-    {
-      if (depthTexture->m_stencil)
-      {
-        renderer->InvalidateFramebufferDepth(m_params.FrameBuffer);
-      }
-      else
-      {
-        renderer->InvalidateFramebufferDepthStencil(m_params.FrameBuffer);
-      }
-    }
   }
 
   void ForwardRenderPass::PostRender()
@@ -88,6 +76,19 @@ namespace ToolKit
       renderer->ResolveFramebuffer(m_params.FrameBuffer,
                                    m_params.resolveFrameBuffer,
                                    {(int) Framebuffer::Attachment::ColorAttachment0});
+    }
+
+    // Depth is not needed after this pass.
+    if (DepthTexturePtr depthTexture = m_params.FrameBuffer->GetDepthTexture())
+    {
+      if (depthTexture->m_stencil)
+      {
+        renderer->InvalidateFramebufferDepth(m_params.FrameBuffer);
+      }
+      else
+      {
+        renderer->InvalidateFramebufferDepthStencil(m_params.FrameBuffer);
+      }
     }
   }
 
@@ -212,25 +213,25 @@ namespace ToolKit
     Renderer* renderer = GetRenderer();
     switch (renderer->m_shadingMode)
     {
-    case ShadingMode::Lighting:
-      frag->SetDefine("ShadingMode", "1");
-      break;
-    case ShadingMode::Albedo:
-      frag->SetDefine("ShadingMode", "2");
-      break;
-    case ShadingMode::Normal:
-      frag->SetDefine("ShadingMode", "3");
-      break;
-    case ShadingMode::Metallic:
-      frag->SetDefine("ShadingMode", "4");
-      break;
-    case ShadingMode::Roughness:
-      frag->SetDefine("ShadingMode", "5");
-      break;
-    default:
-    case ShadingMode::None:
-      frag->SetDefine("ShadingMode", "0");
-      break;
+      case ShadingMode::Lighting:
+        frag->SetDefine("ShadingMode", "1");
+        break;
+      case ShadingMode::Albedo:
+        frag->SetDefine("ShadingMode", "2");
+        break;
+      case ShadingMode::Normal:
+        frag->SetDefine("ShadingMode", "3");
+        break;
+      case ShadingMode::Metallic:
+        frag->SetDefine("ShadingMode", "4");
+        break;
+      case ShadingMode::Roughness:
+        frag->SetDefine("ShadingMode", "5");
+        break;
+      default:
+      case ShadingMode::None:
+        frag->SetDefine("ShadingMode", "0");
+        break;
     }
   }
 
