@@ -87,12 +87,28 @@ namespace ToolKit
     }
     renderer->ClearBuffer(GraphicBitFields::DepthBits);
 
-    // Update shadow maps.
-    for (Light* light : m_lights)
+    // Update shadow maps grouped by atlas layer.
+    for (int layerIndex = 0; layerIndex < (int) m_atlasLayerSwitchIndices.size(); layerIndex++)
     {
-      light->UpdateShadowCamera();
-      RenderShadowMaps(light);
+      int begin = m_atlasLayerSwitchIndices[layerIndex];
+      int end   = (int) m_lights.size();
+      if (layerIndex + 1 < (int) m_atlasLayerSwitchIndices.size())
+      {
+        end = m_atlasLayerSwitchIndices[layerIndex + 1];
+      }
+
+      for (int i = begin; i < end; i++)
+      {
+        m_lights[i]->UpdateShadowCamera();
+        RenderShadowMaps(m_lights[i]);
+      }
+
+      // Depth is cleared once for each layer.
+      renderer->ClearBuffer(GraphicBitFields::DepthBits);
     }
+
+    // Depth is not needed. Mark it as invalid to avoid unintended read/writes.
+    renderer->InvalidateFramebufferDepth(m_shadowFramebuffer);
 
     // Apply blur to the shadow atlas.
     BlurShadowAtlas();
@@ -144,16 +160,20 @@ namespace ToolKit
 
     InitShadowAtlas();
 
-    // Sort lights by their first shadow atlas layer to minimize layer switches
-    // during both shadow map rendering and blur passes.
-    std::sort(m_lights.begin(),
-              m_lights.end(),
-              [](Light* a, Light* b)
-              {
-                int layerA = a->HasValidShadowSlot() ? a->m_shadowAtlasLayers[0] : INT_MAX;
-                int layerB = b->HasValidShadowSlot() ? b->m_shadowAtlasLayers[0] : INT_MAX;
-                return layerA < layerB;
-              });
+    erase_if(m_lights, [](Light* light) -> bool { return !light->HasValidShadowSlot(); });
+
+    // Group lights by their first atlas layer and record layer switch indices.
+    m_atlasLayerSwitchIndices.clear();
+    auto it = m_lights.begin();
+    for (int layer = 0; layer < ShadowAtlas::LayerCount; layer++)
+    {
+      auto next = std::partition(it, m_lights.end(), [layer](Light* l) { return l->m_shadowAtlasLayers[0] == layer; });
+      if (next != it)
+      {
+        m_atlasLayerSwitchIndices.push_back((int) std::distance(m_lights.begin(), it));
+      }
+      it = next;
+    }
   }
 
   void ShadowPass::PostRender()
@@ -206,9 +226,6 @@ namespace ToolKit
         renderer->SetViewportSize(coord.x, coord.y, resolution, resolution);
 
         RenderShadowCasters(light, dLight->m_cascadeShadowCameras[i], dLight->m_cascadeCullCameras[i]);
-
-        // Depth is invalidated because, atlas has the shadow map.
-        renderer->InvalidateFramebufferDepth(m_shadowFramebuffer);
       }
 
       Stats::EndGpuScope();
@@ -228,9 +245,6 @@ namespace ToolKit
         renderer->SetViewportSize(coord.x, coord.y, resolution, resolution);
 
         RenderShadowCasters(light, light->m_shadowCamera, light->m_shadowCamera);
-
-        // Depth is invalidated because, atlas has the shadow map.
-        renderer->InvalidateFramebufferDepth(m_shadowFramebuffer);
       }
       Stats::EndGpuScope();
     }
@@ -246,9 +260,6 @@ namespace ToolKit
 
       renderer->SetViewportSize(coord.x, coord.y, resolution, resolution);
       RenderShadowCasters(light, light->m_shadowCamera, light->m_shadowCamera);
-
-      // Depth is invalidated because, atlas has the shadow map.
-      renderer->InvalidateFramebufferDepth(m_shadowFramebuffer);
       Stats::EndGpuScope();
     }
   }
