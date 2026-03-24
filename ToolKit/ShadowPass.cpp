@@ -425,63 +425,61 @@ namespace ToolKit
 
     const int cascadeCount = shadows->GetCascadeCountVal();
 
-    // Track last cleared layer across all lights to avoid redundant clears.
-    // Lights are sorted by layer in PreRender, so layer transitions are minimal.
-    int lastClearedLayer   = -1;
-
-    // Blur each light's shadow slots individually, clamped to slot bounds.
-    for (Light* light : m_lights)
+    // Blur each light's shadow slots grouped by atlas layer.
+    for (int layerIndex = 0; layerIndex < (int) m_atlasLayerSwitchIndices.size(); layerIndex++)
     {
-      if (!light->HasValidShadowSlot())
+      int begin = m_atlasLayerSwitchIndices[layerIndex];
+      int end   = (int) m_lights.size();
+      if (layerIndex + 1 < (int) m_atlasLayerSwitchIndices.size())
       {
-        continue;
+        end = m_atlasLayerSwitchIndices[layerIndex + 1];
       }
 
-      int slotCount  = 0;
-      int resolution = (int) light->m_shadowResolution;
+      // Clear temp RT once per layer group to prevent
+      // previous layer's data from bleeding into the vertical pass.
+      m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowBlurTempRT, 0, -1);
+      renderer->SetFramebuffer(m_shadowFramebuffer, GraphicBitFields::None);
+      renderer->ClearBuffer(GraphicBitFields::ColorBits, m_shadowClearColor);
 
-      switch (light->GetLightType())
+      for (int i = begin; i < end; i++)
       {
-        case Light::LightType::Directional:
-          slotCount = cascadeCount;
-          break;
-        case Light::LightType::Point:
-          slotCount = 6;
-          break;
-        case Light::LightType::Spot:
-          slotCount = 1;
-          break;
-      }
+        Light* light   = m_lights[i];
+        int slotCount  = 0;
+        int resolution = (int) light->m_shadowResolution;
 
-      for (int s = 0; s < slotCount; s++)
-      {
-        int layer = light->m_shadowAtlasLayers[s];
-        if (layer < 0)
+        switch (light->GetLightType())
         {
-          continue;
+          case Light::LightType::Directional:
+            slotCount = cascadeCount;
+            break;
+          case Light::LightType::Point:
+            slotCount = 6;
+            break;
+          case Light::LightType::Spot:
+            slotCount = 1;
+            break;
         }
 
-        // Clear temp RT when switching to a different layer to prevent
-        // previous layer's data from bleeding into the vertical pass.
-        if (layer != lastClearedLayer)
+        for (int s = 0; s < slotCount; s++)
         {
-          m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowBlurTempRT, 0, -1);
-          renderer->SetFramebuffer(m_shadowFramebuffer, GraphicBitFields::None);
-          renderer->ClearBuffer(GraphicBitFields::ColorBits, m_shadowClearColor);
-          lastClearedLayer = layer;
+          int layer = light->m_shadowAtlasLayers[s];
+          if (layer < 0)
+          {
+            continue;
+          }
+
+          Vec2 coord = light->m_shadowAtlasCoords[s];
+
+          renderer->ApplyGaussianBlurToArrayLayerSlot(m_shadowAtlas,
+                                                      m_shadowBlurTempRT,
+                                                      m_shadowFramebuffer,
+                                                      layer,
+                                                      kernelSize,
+                                                      tapCount,
+                                                      amount,
+                                                      coord,
+                                                      resolution);
         }
-
-        Vec2 coord = light->m_shadowAtlasCoords[s];
-
-        renderer->ApplyGaussianBlurToArrayLayerSlot(m_shadowAtlas,
-                                                    m_shadowBlurTempRT,
-                                                    m_shadowFramebuffer,
-                                                    layer,
-                                                    kernelSize,
-                                                    tapCount,
-                                                    amount,
-                                                    coord,
-                                                    resolution);
       }
     }
     Stats::EndGpuScope();
