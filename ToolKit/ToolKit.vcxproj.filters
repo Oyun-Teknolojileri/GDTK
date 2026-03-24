@@ -532,12 +532,6 @@
     <None Include="..\Resources\Engine\Shaders\AO.shader">
       <Filter>Render\Shaders</Filter>
     </None>
-    <None Include="..\Resources\Engine\Shaders\avgBlurFrag.shader">
-      <Filter>Render\Shaders</Filter>
-    </None>
-    <None Include="..\Resources\Engine\Shaders\avgBlurVert.shader">
-      <Filter>Render\Shaders</Filter>
-    </None>
     <None Include="..\Resources\Engine\Shaders\bloomDownsample.shader">
       <Filter>Render\Shaders</Filter>
     </None>

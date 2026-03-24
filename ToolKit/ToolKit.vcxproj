@@ -190,8 +190,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="..\Resources\Engine\Shaders\AO.shader" />
-    <None Include="..\Resources\Engine\Shaders\avgBlurFrag.shader" />
-    <None Include="..\Resources\Engine\Shaders\avgBlurVert.shader" />
     <None Include="..\Resources\Engine\Shaders\bloomDownsample.shader" />
     <None Include="..\Resources\Engine\Shaders\bloomUpsample.shader" />
     <None Include="..\Resources\Engine\Shaders\BRDFLutFrag.shader" />
