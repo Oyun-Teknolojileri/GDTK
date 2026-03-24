@@ -59,7 +59,6 @@ namespace ToolKit
     UseParallelSplitPartitioning_Define(true, "ShadowSettings", 0, 0, 0);
     ParallelSplitLambda_Define(0.5f, "ShadowSettings", 0, 0, 0);
     StableShadowMap_Define(false, "ShadowSettings", 0, 0, 0);
-    Use32BitShadowMap_Define(false, "ShadowSettings", 0, 0, 0);
     Use2KShadowAtlasLayer_Define(false, "ShadowSettings", 0, 0, 0);
 
     MultiChoiceVariant kernelMcv = {
@@ -485,10 +484,6 @@ namespace ToolKit
     def.variants = {"0"};
     m_shaderSettings->SetShaderDefine(file, def);
 
-    def.define   = "SMFormat16Bit";
-    def.variants = {m_graphics->m_shadows->GetUse32BitShadowMapVal() ? "0" : "1"};
-    m_shaderSettings->SetShaderDefine(file, def);
-
     def.define   = "ShadowPCF";
     def.variants = {std::to_string(m_graphics->m_shadows->GetShadowPCFVal().GetValue<int>())};
     m_shaderSettings->SetShaderDefine(file, def);
@@ -502,19 +497,6 @@ namespace ToolKit
 
     def.define   = "TextureArray";
     def.variants = {"0"};
-    m_shaderSettings->SetShaderDefine(file, def);
-
-    // Shadow defines.
-    file         = ShaderPath("orthogonalDepthFrag" + SHADER, true);
-
-    def.define   = "SMFormat16Bit";
-    def.variants = {m_graphics->m_shadows->GetUse32BitShadowMapVal() ? "0" : "1"};
-    m_shaderSettings->SetShaderDefine(file, def);
-
-    file         = ShaderPath("perspectiveDepthFrag" + SHADER, true);
-
-    def.define   = "SMFormat16Bit";
-    def.variants = {m_graphics->m_shadows->GetUse32BitShadowMapVal() ? "0" : "1"};
     m_shaderSettings->SetShaderDefine(file, def);
   }
 
