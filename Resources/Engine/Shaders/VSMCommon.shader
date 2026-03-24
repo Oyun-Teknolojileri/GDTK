@@ -15,7 +15,7 @@
       const float VsmExponent = 5.54;
       const float VsmMaxMoment = 65000.0;
   #else
-      const float VsmExponent = 15.0;
+      const float VsmExponent = 8.0;
       const float VsmMaxMoment = 3.4e+30;
   #endif
 

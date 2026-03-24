@@ -38,8 +38,8 @@ namespace ToolKit
     /** Perform all renderings to generate all shadow maps for the given light. */
     void RenderShadowMaps(Light* light);
 
-    /** Performs a single render that generates a single shadow map of a cascade, or a face of a cube etc...*/
-    void RenderShadowMap(Light* light, CameraPtr shadowCamera, CameraPtr cullCamera);
+    /** Renders all shadow casters to light's slot in the atlas. */
+    void RenderShadowCasters(Light* light, CameraPtr shadowCamera, CameraPtr cullCamera);
 
     /** Assigns shadow atlas slots to shadow casting lights using priority-based dynamic packing. */
     void PlaceShadowMapsToShadowAtlas(const LightRawPtrArray& lights);

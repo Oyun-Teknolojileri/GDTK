@@ -165,6 +165,17 @@ namespace ToolKit
     erase_if(m_lights, [](Light* light) -> bool { return !light->GetCastShadowVal(); });
 
     InitShadowAtlas();
+
+    // Sort lights by their first shadow atlas layer to minimize layer switches
+    // during both shadow map rendering and blur passes.
+    std::sort(m_lights.begin(),
+              m_lights.end(),
+              [](Light* a, Light* b)
+              {
+                int layerA = a->HasValidShadowSlot() ? a->m_shadowAtlasLayers[0] : INT_MAX;
+                int layerB = b->HasValidShadowSlot() ? b->m_shadowAtlasLayers[0] : INT_MAX;
+                return layerA < layerB;
+              });
   }
 
   void ShadowPass::PostRender()
@@ -213,7 +224,7 @@ namespace ToolKit
         UVec2 coord = dLight->m_shadowAtlasCoords[i];
         renderer->SetViewportSize(coord.x, coord.y, resolution, resolution);
 
-        RenderShadowMap(light, dLight->m_cascadeShadowCameras[i], dLight->m_cascadeCullCameras[i]);
+        RenderShadowCasters(light, dLight->m_cascadeShadowCameras[i], dLight->m_cascadeCullCameras[i]);
 
         // Depth is invalidated because, atlas has the shadow map.
         renderer->InvalidateFramebufferDepth(m_shadowFramebuffer);
@@ -232,7 +243,7 @@ namespace ToolKit
         UVec2 coord = light->m_shadowAtlasCoords[i];
         renderer->SetViewportSize(coord.x, coord.y, resolution, resolution);
 
-        RenderShadowMap(light, light->m_shadowCamera, light->m_shadowCamera);
+        RenderShadowCasters(light, light->m_shadowCamera, light->m_shadowCamera);
 
         // Depth is invalidated because, atlas has the shadow map.
         renderer->InvalidateFramebufferDepth(m_shadowFramebuffer);
@@ -248,14 +259,14 @@ namespace ToolKit
       UVec2 coord = light->m_shadowAtlasCoords[0];
 
       renderer->SetViewportSize(coord.x, coord.y, resolution, resolution);
-      RenderShadowMap(light, light->m_shadowCamera, light->m_shadowCamera);
+      RenderShadowCasters(light, light->m_shadowCamera, light->m_shadowCamera);
 
       // Depth is invalidated because, atlas has the shadow map.
       renderer->InvalidateFramebufferDepth(m_shadowFramebuffer);
     }
   }
 
-  void ShadowPass::RenderShadowMap(Light* light, CameraPtr shadowCamera, CameraPtr cullCamera)
+  void ShadowPass::RenderShadowCasters(Light* light, CameraPtr shadowCamera, CameraPtr cullCamera)
   {
     TK_PROFILE_FUNCTION();
 
@@ -416,6 +427,10 @@ namespace ToolKit
 
     const int cascadeCount = shadows->GetCascadeCountVal();
 
+    // Track last cleared layer across all lights to avoid redundant clears.
+    // Lights are sorted by layer in PreRender, so layer transitions are minimal.
+    int lastClearedLayer   = -1;
+
     // Blur each light's shadow slots individually, clamped to slot bounds.
     for (Light* light : m_lights)
     {
@@ -446,6 +461,16 @@ namespace ToolKit
         if (layer < 0)
         {
           continue;
+        }
+
+        // Clear temp RT when switching to a different layer to prevent
+        // previous layer's data from bleeding into the vertical pass.
+        if (layer != lastClearedLayer)
+        {
+          m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowBlurTempRT, 0, -1);
+          renderer->SetFramebuffer(m_shadowFramebuffer, GraphicBitFields::None);
+          renderer->ClearBuffer(GraphicBitFields::ColorBits, m_shadowClearColor);
+          lastClearedLayer = layer;
         }
 
         Vec2 coord = light->m_shadowAtlasCoords[s];
@@ -599,12 +624,12 @@ namespace ToolKit
     if (needReconstruct)
     {
       // Update shadow clear color to match warped depth space.
-      const float vsmExponent = m_use32BitShadowMap ? 15.0f : 5.54f;
+      const float vsmExponent = m_use32BitShadowMap ? 8.0f : 5.54f;
       float warpedMax         = std::exp(vsmExponent);
       m_shadowClearColor      = Vec4(warpedMax, warpedMax * warpedMax, 0.0f, 0.0f);
 
       // Update materials.
-      ShaderPtr frag = m_shadowMatOrtho->GetFragmentShaderVal();
+      ShaderPtr frag          = m_shadowMatOrtho->GetFragmentShaderVal();
       frag->SetDefine("SMFormat16Bit", std::to_string(!m_use32BitShadowMap));
 
       frag = m_shadowMatPersp->GetFragmentShaderVal();
