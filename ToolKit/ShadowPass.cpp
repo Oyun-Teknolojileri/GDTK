@@ -91,29 +91,7 @@ namespace ToolKit
     for (Light* light : m_lights)
     {
       light->UpdateShadowCamera();
-
-      switch (light->GetLightType())
-      {
-        case Light::LightType::Directional:
-        {
-          Stats::BeginGpuScope("Directioal Shadow Map");
-          DirectionalLight* dLight = static_cast<DirectionalLight*>(light);
-          dLight->UpdateShadowFrustum(m_params.viewCamera, m_params.scene);
-        }
-        break;
-        case Light::LightType::Point:
-          Stats::BeginGpuScope("Point Shadow Map");
-          break;
-        case Light::LightType::Spot:
-          Stats::BeginGpuScope("Spot Shadow Map");
-          break;
-        default:
-          Stats::BeginGpuScope("Undefined Shadow Map");
-          break;
-      }
-
       RenderShadowMaps(light);
-      Stats::EndGpuScope();
     }
 
     // Apply blur to the shadow atlas.
@@ -214,8 +192,11 @@ namespace ToolKit
 
     if (light->GetLightType() == Light::LightType::Directional)
     {
-      int cascadeCount         = shadows->GetCascadeCountVal();
+      Stats::BeginGpuScope("Directioal Shadow Map");
       DirectionalLight* dLight = static_cast<DirectionalLight*>(light);
+      dLight->UpdateShadowFrustum(m_params.viewCamera, m_params.scene);
+
+      int cascadeCount = shadows->GetCascadeCountVal();
       for (int i = 0; i < cascadeCount; i++)
       {
         int layer = dLight->m_shadowAtlasLayers[i];
@@ -229,9 +210,12 @@ namespace ToolKit
         // Depth is invalidated because, atlas has the shadow map.
         renderer->InvalidateFramebufferDepth(m_shadowFramebuffer);
       }
+
+      Stats::EndGpuScope();
     }
     else if (light->GetLightType() == Light::LightType::Point)
     {
+      Stats::BeginGpuScope("Point Shadow Map");
       for (int i = 0; i < 6; i++)
       {
         int layer = light->m_shadowAtlasLayers[i];
@@ -248,11 +232,13 @@ namespace ToolKit
         // Depth is invalidated because, atlas has the shadow map.
         renderer->InvalidateFramebufferDepth(m_shadowFramebuffer);
       }
+      Stats::EndGpuScope();
     }
     else
     {
       assert(light->GetLightType() == Light::LightType::Spot);
 
+      Stats::BeginGpuScope("Spot Shadow Map");
       int layer = light->m_shadowAtlasLayers[0];
       m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowAtlas, 0, layer);
 
@@ -263,6 +249,7 @@ namespace ToolKit
 
       // Depth is invalidated because, atlas has the shadow map.
       renderer->InvalidateFramebufferDepth(m_shadowFramebuffer);
+      Stats::EndGpuScope();
     }
   }
 

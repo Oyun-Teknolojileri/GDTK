@@ -65,10 +65,17 @@ namespace ToolKit
     bool m_use32BitShadowMap           = true;
     bool m_use2KLayer                  = false;
 
-    Quaternion m_cubeMapRotations[6];
+    /** At each index, a layer switch occurs in the shadow atlas. */
+    IntArray m_atlasLayerSwitchIndices;
+
+    /** Meta data used for storing all shadow map coordinates and layers. */
     ShadowAtlas m_atlas;
 
-    LightRawPtrArray m_lights; // Shadow casters in scene.
+    /** Cached list of shadow casting lights with valid atlas slots, sorted by first atlas layer. */
+    LightRawPtrArray m_lights;
+
+    /** Rotations for each face of a cubemap used for point light shadows. */
+    Quaternion m_cubeMapRotations[6];
   };
 
   typedef std::shared_ptr<ShadowPass> ShadowPassPtr;
