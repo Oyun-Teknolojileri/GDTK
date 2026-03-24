@@ -9,6 +9,26 @@
 #ifndef SHADOW_SHADER
 #define SHADOW_SHADER
 
+#define TWO_PI 6.283185
+
+// ---------------------------------------------------------------------------
+// Interleaved Gradient Noise (Jorge Jimenez, 2014)
+// Deterministic screen-space noise to break shadow banding.
+// ---------------------------------------------------------------------------
+
+float InterleavedGradientNoise(vec2 screenPos)
+{
+	vec3 magic = vec3(0.06711056, 0.00583715, 52.9829189);
+	return fract(magic.z * fract(dot(screenPos, magic.xy)));
+}
+
+vec2 ShadowDitherJitter(float texelSize)
+{
+	float noise = InterleavedGradientNoise(gl_FragCoord.xy);
+	float angle = noise * TWO_PI;
+	return vec2(cos(angle), sin(angle)) * texelSize * noise;
+}
+
 // ---------------------------------------------------------------------------
 // Shadow Atlas Lookup
 // ---------------------------------------------------------------------------
@@ -105,7 +125,7 @@ vec2 ShadowPCFFilter(sampler2DArray atlas, vec3 uvLayer, vec2 coordStart, vec2 c
 // 2D Shadow Sampling (Directional + Spot)
 // ---------------------------------------------------------------------------
 
-float PCFFilterShadow2D
+float SampleShadow2D
 (
 	sampler2DArray shadowAtlas,
 	vec3 uvLayer,
@@ -121,11 +141,13 @@ float PCFFilterShadow2D
 	vec2 clampMin = coordStart + halfPixel;
 	vec2 clampMax = coordEnd - halfPixel;
 
+	vec2 jitter = ShadowDitherJitter(texelSize);
+	vec3 jitteredUV = vec3(clamp(uvLayer.xy + jitter, clampMin, clampMax), uvLayer.z);
+
 #if ShadowPCF >= 4
-	vec2 moments = ShadowPCFFilter(shadowAtlas, uvLayer, clampMin, clampMax, texelSize);
+	vec2 moments = ShadowPCFFilter(shadowAtlas, jitteredUV, clampMin, clampMax, texelSize);
 #else
-	vec2 uv = clamp(uvLayer.xy, clampMin, clampMax);
-	vec2 moments = texture(shadowAtlas, vec3(uv, uvLayer.z)).xy;
+	vec2 moments = texture(shadowAtlas, jitteredUV).xy;
 #endif
 
 	vec2 warpedDepth = WarpDepth(currDepth, EvsmExponents);
@@ -143,7 +165,7 @@ float PCFFilterShadow2D
 // Omnidirectional Shadow Sampling (Point lights)
 // ---------------------------------------------------------------------------
 
-float PCFFilterOmni
+float SampleShadowOmni
 (
 	sampler2DArray shadowAtlas,
 	vec2 startCoord,
@@ -180,7 +202,10 @@ float PCFFilterOmni
 	texCoord.xy = beginCoord + (shadowAtlasResRatio * texCoord.xy);
 	texCoord.xy = clamp(texCoord.xy, beginCoord + halfPixel, endCoord - halfPixel);
 
-	vec3 sampleCoord = vec3(texCoord.xy, float(layer));
+	vec2 jitter = ShadowDitherJitter(texelSize);
+	vec2 jitteredXY = clamp(texCoord.xy + jitter, beginCoord + halfPixel, endCoord - halfPixel);
+
+	vec3 sampleCoord = vec3(jitteredXY, float(layer));
 
 #if ShadowPCF >= 4
 	vec2 moments = ShadowPCFFilter(shadowAtlas, sampleCoord, beginCoord + halfPixel, endCoord - halfPixel, texelSize);

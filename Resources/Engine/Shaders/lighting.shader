@@ -75,7 +75,7 @@ float CalculateDirectionalShadow
 
 	float texelSize = 1.0 / graphicConstants.shadowAtlasSize;
 
-	float shadow = PCFFilterShadow2D
+	float shadow = SampleShadow2D
 	(
 		s_texture8,
 		sampleCoord,
@@ -117,7 +117,7 @@ float CalculateSpotShadow
 
 	float texelSize = 1.0 / graphicConstants.shadowAtlasSize;
 
-	return PCFFilterShadow2D
+	return SampleShadow2D
 	(
 		s_texture8,
 		coord,
@@ -148,7 +148,7 @@ float CalculatePointShadow
 
 	float texelSize = 1.0 / graphicConstants.shadowAtlasSize;
 
-	return PCFFilterOmni
+	return SampleShadowOmni
 	(
 		s_texture8,
 		shadowAtlasCoord,
