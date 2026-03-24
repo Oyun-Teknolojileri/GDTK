@@ -150,12 +150,12 @@ float SampleShadow2D
 	vec2 moments = texture(shadowAtlas, jitteredUV).xy;
 #endif
 
-	vec2 warpedDepth = WarpDepth(currDepth, EvsmExponents);
+	float warpedDepth = WarpDepth(currDepth);
 
 	return EvaluateEVSM
 	(
 		moments.xy,
-		warpedDepth.x,
+		warpedDepth,
 		shadowBias,
 		LBR
 	);
@@ -213,12 +213,12 @@ float SampleShadowOmni
 	vec2 moments = texture(shadowAtlas, sampleCoord).xy;
 #endif
 
-	vec2 warpedDepth = WarpDepth(currDepth, EvsmExponents);
+	float warpedDepth = WarpDepth(currDepth);
 
 	return EvaluateEVSM
 	(
 		moments.xy,
-		warpedDepth.x,
+		warpedDepth,
 		shadowBias,
 		LBR
 	);

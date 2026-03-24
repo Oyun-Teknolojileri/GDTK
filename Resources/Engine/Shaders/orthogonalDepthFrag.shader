@@ -1,4 +1,4 @@
-<shader>
+﻿<shader>
 	<type name = "fragmentShader" />
 	<include name = "VSMCommon.shader" />
 	<include name = "materialCacheInc.shader" />
@@ -18,7 +18,7 @@
 	in float z;
 #endif
 
-	out vec4 fragColor;
+	out vec2 fragColor;
 	uniform sampler2D s_texture0;
 
 	void main()
@@ -49,9 +49,9 @@
 		float depth = gl_FragCoord.z;
 	#endif
 
-		vec2 vsmDepth = WarpDepth(depth, EvsmExponents);
+		float vsmDepth = WarpDepth(depth);
 
-		fragColor = vec4(vsmDepth.x, vsmDepth.x * vsmDepth.x, 0.0, 0.0);
+		fragColor = vec2(vsmDepth, vsmDepth * vsmDepth);
 	}
 	-->
 	</source>
