@@ -360,13 +360,6 @@ namespace ToolKit
         }
         UI::AddTooltipToLastItem("Uses 2048x2048 layers for the shadow atlas instead of 1024x1024");
 
-        bool use32BitShadowMap = shadows->GetUse32BitShadowMapVal();
-        if (ImGui::Checkbox("Use high precision shadow maps", &use32BitShadowMap))
-        {
-          shadows->SetUse32BitShadowMapVal(use32BitShadowMap);
-        }
-        UI::AddTooltipToLastItem("Uses 32 bits floating point textures for shadow map generation.");
-
         bool stableShadowMap = shadows->GetStableShadowMapVal();
         if (ImGui::Checkbox("Stabilize Shadows", &stableShadowMap))
         {

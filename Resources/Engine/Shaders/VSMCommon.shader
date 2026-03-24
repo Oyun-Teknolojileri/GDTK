@@ -1,6 +1,5 @@
 <shader>
 	<type name = "includeShader" />
-	<define name = "SMFormat16Bit" val="0,1" />
 	<source>
 	<!--
   #ifndef VSM_COMMON_SHADER
@@ -11,13 +10,8 @@
   // https://google.github.io/filament/Filament.html
   // ---------------------------------------------------------------------------
 
-  #if SMFormat16Bit
-      const float VsmExponent = 5.54;
-      const float VsmMaxMoment = 65000.0;
-  #else
-      const float VsmExponent = 8.0;
-      const float VsmMaxMoment = 3.4e+30;
-  #endif
+  const float VsmExponent = 5.54;
+  const float VsmMaxMoment = 65000.0;
 
   // ---------------------------------------------------------------------------
   // Depth warping (Filament: evaluateEVSM)

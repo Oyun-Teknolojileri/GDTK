@@ -388,7 +388,7 @@ namespace ToolKit
     }
 
     GraphicTypes bufferComponents = GraphicTypes::FormatRG;
-    GraphicTypes bufferFormat     = m_use32BitShadowMap ? GraphicTypes::FormatRG32F : GraphicTypes::FormatRG16F;
+    GraphicTypes bufferFormat     = GraphicTypes::FormatRG16F;
 
     GraphicTypes sampler          = GraphicTypes::SampleLinear;
     if (!TK_GL_OES_texture_float_linear)
@@ -605,12 +605,6 @@ namespace ToolKit
       needReconstruct      = true;
     }
 
-    if (m_use32BitShadowMap != shadows->GetUse32BitShadowMapVal())
-    {
-      m_use32BitShadowMap = shadows->GetUse32BitShadowMapVal();
-      needReconstruct     = true;
-    }
-
     if (m_use2KLayer != shadows->GetUse2KShadowAtlasLayerVal())
     {
       m_use2KLayer    = shadows->GetUse2KShadowAtlasLayerVal();
@@ -620,40 +614,18 @@ namespace ToolKit
     if (needReconstruct)
     {
       // Update shadow clear color to match warped depth space.
-      const float vsmExponent = m_use32BitShadowMap ? 8.0f : 5.54f;
-      float warpedMax         = std::exp(vsmExponent);
-      m_shadowClearColor      = Vec4(warpedMax, warpedMax * warpedMax, 0.0f, 0.0f);
-
-      // Update materials.
-      ShaderPtr frag          = m_shadowMatOrtho->GetFragmentShaderVal();
-      frag->SetDefine("SMFormat16Bit", std::to_string(!m_use32BitShadowMap));
-
-      frag = m_shadowMatPersp->GetFragmentShaderVal();
-      frag->SetDefine("SMFormat16Bit", std::to_string(!m_use32BitShadowMap));
-
-      GraphicTypes bufferComponents = GraphicTypes::FormatRG;
-      GraphicTypes bufferFormat     = GraphicTypes::FormatRG32F;
-
-      if (!m_use32BitShadowMap)
-      {
-        bufferFormat = GraphicTypes::FormatRG16F;
-      }
-
-      GraphicTypes sampler = GraphicTypes::SampleLinear;
-      if (!TK_GL_OES_texture_float_linear)
-      {
-        // Fall back to nearest sampling. 32 bit filterable textures are not available.
-        sampler = GraphicTypes::SampleNearest;
-      }
+      const float vsmExponent   = 5.54f;
+      float warpedMax           = std::exp(vsmExponent);
+      m_shadowClearColor        = Vec4(warpedMax, warpedMax * warpedMax, 0.0f, 0.0f);
 
       const TextureSettings set = {GraphicTypes::Target2DArray,
                                    GraphicTypes::UVClampToEdge,
                                    GraphicTypes::UVClampToEdge,
                                    GraphicTypes::UVClampToEdge,
-                                   sampler,
-                                   sampler,
-                                   bufferFormat,
-                                   bufferComponents,
+                                   GraphicTypes::SampleLinear,
+                                   GraphicTypes::SampleLinear,
+                                   GraphicTypes::FormatRG16F,
+                                   GraphicTypes::FormatRG,
                                    GraphicTypes::TypeFloat,
                                    MsaaSampleCount::x0,
                                    ShadowAtlas::LayerCount,

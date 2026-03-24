@@ -62,7 +62,6 @@ namespace ToolKit
     RenderTargetPtr m_shadowAtlas      = nullptr;
     RenderTargetPtr m_shadowBlurTempRT = nullptr;
     int m_activeCascadeCount           = 0;
-    bool m_use32BitShadowMap           = true;
     bool m_use2KLayer                  = false;
 
     /** At each index, a layer switch occurs in the shadow atlas. */

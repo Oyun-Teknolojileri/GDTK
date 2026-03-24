@@ -6,7 +6,6 @@
 	<include name = "cameraDataInc.shader" />
 	<include name = "materialCacheInc.shader" />
 	<define name = "DrawAlphaMasked" val="0,1" />
-	<define name = "SMFormat16Bit" val="0,1" />
 	<define name = "ShadowPCF" val="0,4,9,16" />
 	<define name = "highlightCascades" val="0,1" />
 	<define name = "ShadingMode" val="0,1,2,3,4,5" />
@@ -65,7 +64,7 @@
 		float metallic, roughness;
 		if (material.metallicRoughnessTextureInUse > 0)
 		{
-			// Texture Holds Occululsion Roughness Metallic values in rgb.
+			// Texture Holds Occulussion Roughness Metallic values in rgb.
 			// Occulusion is not supported at the moment. ( No Value )
 			vec3 orm = texture(s_texture4, v_texture).rgb;
 			metallic = orm.b;

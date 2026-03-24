@@ -24,13 +24,11 @@ namespace ToolKit
   {
     ShadowSettingsPtr shadows = GetEngineSettings().m_graphics->m_shadows;
     m_shadowPCF               = shadows->GetShadowPCFVal().GetValue<int>();
-    m_SMFormat16Bit           = !shadows->GetUse32BitShadowMapVal();
 
     m_programConfigMat        = GetMaterialManager()->GetCopyOfDefaultMaterial();
 
     ShaderPtr fragmentShader  = m_programConfigMat->GetFragmentShaderVal();
     fragmentShader->SetDefine("ShadowPCF", std::to_string(m_shadowPCF));
-    fragmentShader->SetDefine("SMFormat16Bit", std::to_string(m_SMFormat16Bit));
   }
 
   void ForwardRenderPass::Render()
@@ -209,13 +207,6 @@ namespace ToolKit
     {
       m_shadowPCF = shadowPCF;
       frag->SetDefine("ShadowPCF", std::to_string(m_shadowPCF));
-    }
-
-    bool is16Bit = !shadows->GetUse32BitShadowMapVal();
-    if (is16Bit != m_SMFormat16Bit)
-    {
-      m_SMFormat16Bit = is16Bit;
-      frag->SetDefine("SMFormat16Bit", std::to_string(is16Bit));
     }
 
     Renderer* renderer = GetRenderer();
