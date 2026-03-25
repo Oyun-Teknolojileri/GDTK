@@ -131,7 +131,8 @@ namespace ToolKit
       Renderer* renderer = GetRenderer();
       renderer->ResolveFramebuffer(m_framebuffer,
                                    m_resolveFramebuffer,
-                                   {(int) Framebuffer::Attachment::ColorAttachment0});
+                                   {(int) Framebuffer::Attachment::ColorAttachment0},
+                                   true);
 
       // We don't need msaa color buffer after resolve, but we want to keep depth for upcoming passes.
       renderer->InvalidateFramebuffer(GraphicBitFields::ColorBits, m_framebuffer);

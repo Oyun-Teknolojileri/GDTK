@@ -11,6 +11,7 @@
 #include "Material.h"
 #include "MathUtil.h"
 #include "Mesh.h"
+#include "RHI.h"
 #include "Shader.h"
 #include "Stats.h"
 #include "TKOpenGL.h"
@@ -63,7 +64,7 @@ namespace ToolKit
   {
     TK_PROFILE_FUNCTION();
 
-    Renderer* renderer      = GetRenderer();
+    Renderer* renderer           = GetRenderer();
 
     // Use resolved texture if multisampled, otherwise use the original render target.
     TexturePtr normalDepthBuffer = m_params.GNormalDepthBuffer;
@@ -92,14 +93,15 @@ namespace ToolKit
     Pass::PreRender();
 
     // Use resolved texture if multisampled to get correct dimensions.
-    TexturePtr normalDepthBuffer = m_params.GNormalDepthBuffer->IsMultiSampled() ? m_params.GNormalDepthBuffer->GetResolvedTexture()
-                                                                                 : m_params.GNormalDepthBuffer;
+    TexturePtr normalDepthBuffer = m_params.GNormalDepthBuffer->IsMultiSampled()
+                                       ? m_params.GNormalDepthBuffer->GetResolvedTexture()
+                                       : m_params.GNormalDepthBuffer;
 
-    int width               = normalDepthBuffer->m_width;
-    int height              = normalDepthBuffer->m_height;
+    int width                    = normalDepthBuffer->m_width;
+    int height                   = normalDepthBuffer->m_height;
 
     // Clamp kernel size
-    m_params.KernelSize     = glm::clamp(m_params.KernelSize, m_minimumKernelSize, m_maximumKernelSize);
+    m_params.KernelSize          = glm::clamp(m_params.KernelSize, m_minimumKernelSize, m_maximumKernelSize);
 
     GenerateSSAONoise();
 
@@ -119,7 +121,13 @@ namespace ToolKit
     m_ssaoTexture->Settings(oneChannelSet);
     m_ssaoTexture->ReconstructIfNeeded(width, height);
 
-    m_ssaoFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_ssaoTexture);
+    // Skip store/restore inside SetColorAttachment since subsequent passes will bind their own framebuffers.
+    m_ssaoFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0,
+                                          m_ssaoTexture,
+                                          0,
+                                          -1,
+                                          Framebuffer::CubemapFace::NONE,
+                                          true);
 
     // Init temporary blur render target
     m_tempBlurRt->Settings(oneChannelSet);

@@ -13,6 +13,7 @@
 #include "Drawable.h"
 #include "EngineSettings.h"
 #include "EnvironmentComponent.h"
+#include "Framebuffer.h"
 #include "GradientSky.h"
 #include "Logger.h"
 #include "Material.h"
@@ -633,11 +634,17 @@ namespace ToolKit
 #endif
   }
 
-  void Renderer::ResolveFramebuffer(FramebufferPtr source, FramebufferPtr target, const IntArray& attachments)
+  void Renderer::ResolveFramebuffer(FramebufferPtr source,
+                                    FramebufferPtr target,
+                                    const IntArray& attachments,
+                                    bool skipRestore)
   {
     TK_PROFILE_FUNCTION();
 
-    RHI::StoreFramebufferBindings();
+    if (!skipRestore)
+    {
+      RHI::StoreFramebufferBindings();
+    }
     RHI::SetFramebuffer(GL_READ_FRAMEBUFFER, source->GetFboId());
     RHI::SetFramebuffer(GL_DRAW_FRAMEBUFFER, target->GetFboId());
 
@@ -684,7 +691,10 @@ namespace ToolKit
     // Restore target framebuffer's original draw buffer configuration.
     target->SetDrawBuffers();
 
-    RHI::RestoreFramebufferBindings();
+    if (!skipRestore)
+    {
+      RHI::RestoreFramebufferBindings();
+    }
   }
 
   void Renderer::SetViewport(Viewport* viewport) { SetFramebuffer(viewport->m_framebuffer, GraphicBitFields::AllBits); }
@@ -899,7 +909,13 @@ namespace ToolKit
     m_gaussianBlurMaterial->SetDiffuseTextureVal(src);
     m_gaussianBlurMaterial->UpdateProgramUniform("BlurScale", axis * amount);
 
-    m_oneColorAttachmentFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, dst);
+    // Skip store/restore inside SetColorAttachment since SetFramebuffer will bind the correct FB right after.
+    m_oneColorAttachmentFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0,
+                                                        dst,
+                                                        0,
+                                                        -1,
+                                                        Framebuffer::CubemapFace::NONE,
+                                                        true);
 
     SetFramebuffer(m_oneColorAttachmentFramebuffer, GraphicBitFields::None);
     DrawFullQuad(m_gaussianBlurMaterial);

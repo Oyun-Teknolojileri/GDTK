@@ -76,7 +76,8 @@ namespace ToolKit
     {
       renderer->ResolveFramebuffer(m_params.FrameBuffer,
                                    m_params.resolveFrameBuffer,
-                                   {(int) Framebuffer::Attachment::ColorAttachment0});
+                                   {(int) Framebuffer::Attachment::ColorAttachment0},
+                                   true);
 
       // Msaa color buffer is not needed after resolve.
       invalidBits |= (int) GraphicBitFields::ColorBits;

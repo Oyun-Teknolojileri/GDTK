@@ -156,8 +156,9 @@ namespace ToolKit
     /**
      * Resolves source multi sample buffer to single sample target buffer.
      * Source attachment must exist, target attachment will be created if not existing.
+     * @param skipRestore If true, skips restoring the previous framebuffer bindings after resolve.
      */
-    void ResolveFramebuffer(FramebufferPtr source, FramebufferPtr target, const IntArray& attachments);
+    void ResolveFramebuffer(FramebufferPtr source, FramebufferPtr target, const IntArray& attachments, bool skipRestore = false);
 
     /**
      * Sets the src and dest frame buffers and copies the given fields.
