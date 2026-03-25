@@ -151,9 +151,7 @@ namespace ToolKit
                         const Vec4& clearColor                  = Vec4(0.0f),
                         GraphicFramebufferTypes frameBufferType = GraphicFramebufferTypes::Framebuffer);
 
-    void InvalidateFramebufferDepth(FramebufferPtr frameBuffer);
-    void InvalidateFramebufferStencil(FramebufferPtr frameBuffer);
-    void InvalidateFramebufferDepthStencil(FramebufferPtr frameBuffer);
+    void InvalidateFramebuffer(GraphicBitFields bits, FramebufferPtr frameBuffer);
 
     /**
      * Resolves source multi sample buffer to single sample target buffer.

@@ -71,24 +71,27 @@ namespace ToolKit
     renderer->SetDepthTestFunc(CompareFunctions::FuncLess);
 
     // Resolve render target if necessary.
+    int invalidBits = 0;
     if (m_params.FrameBuffer->IsMultiSampled() && m_params.resolveFrameBuffer != nullptr)
     {
       renderer->ResolveFramebuffer(m_params.FrameBuffer,
                                    m_params.resolveFrameBuffer,
                                    {(int) Framebuffer::Attachment::ColorAttachment0});
+
+      // Msaa color buffer is not needed after resolve.
+      invalidBits |= (int) GraphicBitFields::ColorBits;
     }
 
     // Depth is not needed after this pass.
     if (DepthTexturePtr depthTexture = m_params.FrameBuffer->GetDepthTexture())
     {
-      if (depthTexture->m_stencil)
-      {
-        renderer->InvalidateFramebufferDepth(m_params.FrameBuffer);
-      }
-      else
-      {
-        renderer->InvalidateFramebufferDepthStencil(m_params.FrameBuffer);
-      }
+      invalidBits |=
+          depthTexture->m_stencil ? (int) GraphicBitFields::DepthStencilBits : (int) GraphicBitFields::DepthBits;
+    }
+
+    if (invalidBits != 0)
+    {
+      renderer->InvalidateFramebuffer((GraphicBitFields) invalidBits, m_params.FrameBuffer);
     }
   }
 

@@ -596,50 +596,39 @@ namespace ToolKit
     SetFramebuffer(lastFb, GraphicBitFields::None);
   }
 
-  void Renderer::InvalidateFramebufferDepth(FramebufferPtr frameBuffer)
+  void Renderer::InvalidateFramebuffer(GraphicBitFields bits, FramebufferPtr frameBuffer)
   {
-#ifdef TK_GL_ES_3_0
-    constexpr GLenum invalidAttachments[1] = {GL_DEPTH_ATTACHMENT};
-    RHI::SetFramebuffer(GL_DRAW_FRAMEBUFFER, frameBuffer->GetFboId());
-    glInvalidateFramebuffer(GL_DRAW_FRAMEBUFFER, 1, invalidAttachments);
-#else
-    if (glInvalidateFramebufferEXT != nullptr)
-    {
-      constexpr GLenum invalidAttachments[1] = {GL_DEPTH_ATTACHMENT};
-      RHI::SetFramebuffer(GL_DRAW_FRAMEBUFFER, frameBuffer->GetFboId());
-      glInvalidateFramebufferEXT(GL_DRAW_FRAMEBUFFER, 1, invalidAttachments);
-    }
-#endif
-  }
+    GLenum attachments[3];
+    int count = 0;
 
-  void Renderer::InvalidateFramebufferStencil(FramebufferPtr frameBuffer)
-  {
-#ifdef TK_GL_ES_3_0
-    constexpr GLenum invalidAttachments[1] = {GL_STENCIL_ATTACHMENT};
-    RHI::SetFramebuffer(GL_DRAW_FRAMEBUFFER, frameBuffer->GetFboId());
-    glInvalidateFramebuffer(GL_DRAW_FRAMEBUFFER, 1, invalidAttachments);
-#else
-    if (glInvalidateFramebufferEXT != nullptr)
+    if ((int) bits & (int) GraphicBitFields::ColorBits)
     {
-      constexpr GLenum invalidAttachments[1] = {GL_STENCIL_ATTACHMENT};
-      RHI::SetFramebuffer(GL_DRAW_FRAMEBUFFER, frameBuffer->GetFboId());
-      glInvalidateFramebufferEXT(GL_DRAW_FRAMEBUFFER, 1, invalidAttachments);
+      attachments[count++] = GL_COLOR_ATTACHMENT0;
     }
-#endif
-  }
 
-  void Renderer::InvalidateFramebufferDepthStencil(FramebufferPtr frameBuffer)
-  {
+    if ((int) bits & (int) GraphicBitFields::DepthBits)
+    {
+      bool hasStencil      = (int) bits & (int) GraphicBitFields::StencilBits;
+      attachments[count++] = hasStencil ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT;
+    }
+    else if ((int) bits & (int) GraphicBitFields::StencilBits)
+    {
+      attachments[count++] = GL_STENCIL_ATTACHMENT;
+    }
+
+    if (count == 0)
+    {
+      return;
+    }
+
 #ifdef TK_GL_ES_3_0
-    constexpr GLenum invalidAttachments[1] = {GL_DEPTH_STENCIL_ATTACHMENT};
     RHI::SetFramebuffer(GL_DRAW_FRAMEBUFFER, frameBuffer->GetFboId());
-    glInvalidateFramebuffer(GL_DRAW_FRAMEBUFFER, 1, invalidAttachments);
+    glInvalidateFramebuffer(GL_DRAW_FRAMEBUFFER, count, attachments);
 #else
     if (glInvalidateFramebufferEXT != nullptr)
     {
-      constexpr GLenum invalidAttachments[1] = {GL_DEPTH_STENCIL_ATTACHMENT};
       RHI::SetFramebuffer(GL_DRAW_FRAMEBUFFER, frameBuffer->GetFboId());
-      glInvalidateFramebufferEXT(GL_DRAW_FRAMEBUFFER, 1, invalidAttachments);
+      glInvalidateFramebufferEXT(GL_DRAW_FRAMEBUFFER, count, attachments);
     }
 #endif
   }
@@ -750,10 +739,13 @@ namespace ToolKit
     RenderJobArray jobs;
     RenderJobProcessor::CreateRenderJobs(jobs, m_tempQuad);
 
+    bool prevDepthWriteState = m_renderState.depthWriteEnabled;
+    EnableDepthWrite(false);
     SetDepthTestFunc(CompareFunctions::FuncAlways);
     RenderWithProgramFromMaterial(jobs);
 
     SetDepthTestFunc(CompareFunctions::FuncLess);
+    EnableDepthWrite(prevDepthWriteState);
   }
 
   void Renderer::DrawCube(CameraPtr cam, MaterialPtr mat, const Mat4& transform)
@@ -833,7 +825,14 @@ namespace ToolKit
     }
   }
 
-  void Renderer::EnableDepthWrite(bool enable) { glDepthMask(enable); }
+  void Renderer::EnableDepthWrite(bool enable)
+  {
+    if (m_renderState.depthWriteEnabled != enable)
+    {
+      m_renderState.depthWriteEnabled = enable;
+      glDepthMask(enable);
+    }
+  }
 
   void Renderer::EnableDepthTest(bool enable)
   {

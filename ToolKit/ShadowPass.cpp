@@ -110,7 +110,7 @@ namespace ToolKit
     BlurShadowAtlas();
 
     // Depth is not needed. Mark it as invalid to avoid unintended read/writes.
-    renderer->InvalidateFramebufferDepth(m_shadowFramebuffer);
+    renderer->InvalidateFramebuffer(GraphicBitFields::DepthBits, m_shadowFramebuffer);
 
     renderer->m_clearColor = lastClearColor;
   }
@@ -379,6 +379,7 @@ namespace ToolKit
     Stats::BeginGpuScope("Shadow Blur");
 
     Renderer* renderer = GetRenderer();
+    renderer->EnableDepthWrite(false);
 
     // Create temp RT for blur ping-pong if needed.
     if (m_shadowBlurTempRT == nullptr)
@@ -419,6 +420,8 @@ namespace ToolKit
 
     if (tapCount <= 0)
     {
+      renderer->EnableDepthWrite(true);
+      Stats::EndGpuScope();
       return;
     }
 
@@ -481,6 +484,8 @@ namespace ToolKit
         }
       }
     }
+
+    renderer->EnableDepthWrite(true);
     Stats::EndGpuScope();
   }
 
