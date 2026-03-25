@@ -121,13 +121,7 @@ namespace ToolKit
     m_ssaoTexture->Settings(oneChannelSet);
     m_ssaoTexture->ReconstructIfNeeded(width, height);
 
-    // Skip store/restore inside SetColorAttachment since subsequent passes will bind their own framebuffers.
-    m_ssaoFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0,
-                                          m_ssaoTexture,
-                                          0,
-                                          -1,
-                                          Framebuffer::CubemapFace::NONE,
-                                          true);
+    m_ssaoFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_ssaoTexture);
 
     // Init temporary blur render target
     m_tempBlurRt->Settings(oneChannelSet);

@@ -82,7 +82,7 @@ namespace ToolKit
                                        RenderTargetPtr rt,
                                        int mip          = 0,
                                        int layer        = -1,
-                                       CubemapFace face = CubemapFace::NONE, bool skipRestore = false);
+                                       CubemapFace face = CubemapFace::NONE);
 
     RenderTargetPtr GetColorAttachment(Attachment atc);
     RenderTargetPtr DetachColorAttachment(Attachment atc);

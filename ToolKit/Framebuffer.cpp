@@ -175,8 +175,7 @@ namespace ToolKit
                                                   RenderTargetPtr rt,
                                                   int mip,
                                                   int layer,
-                                                  CubemapFace face,
-                                                  bool skipRestore)
+                                                  CubemapFace face)
   {
     GLenum attachment = GL_COLOR_ATTACHMENT0 + (int) atc;
 
@@ -184,11 +183,6 @@ namespace ToolKit
     {
       assert(false && "Render target can't be bind.");
       return nullptr;
-    }
-
-    if (!skipRestore)
-    {
-      RHI::StoreFramebufferBindings();
     }
 
     RenderTargetPtr oldRt = m_colorAtchs[(int) atc];
@@ -227,11 +221,6 @@ namespace ToolKit
 
     SetDrawBuffers();
     CheckFramebufferComplete();
-
-    if (!skipRestore)
-    {
-      RHI::RestoreFramebufferBindings();
-    }
 
     return oldRt;
   }
