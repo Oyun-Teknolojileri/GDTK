@@ -132,10 +132,10 @@ namespace ToolKit
       renderer->ResolveFramebuffer(m_framebuffer,
                                    m_resolveFramebuffer,
                                    {(int) Framebuffer::Attachment::ColorAttachment0});
-    }
 
-    // Don't clear / invalidate depth, its being used for upcoming passes. Render pass uses it for Z pre-pass.
-    // Color channels are used for post process passes.
+      // We don't need msaa color buffer after resolve, but we want to keep depth for upcoming passes.
+      renderer->InvalidateFramebuffer(GraphicBitFields::ColorBits, m_framebuffer);
+    }
   }
 
 } // namespace ToolKit
