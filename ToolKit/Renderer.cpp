@@ -768,7 +768,6 @@ namespace ToolKit
     TK_PROFILE_FUNCTION();
 
     Stats::BeginGpuScope("CopyTexture");
-    RHI::StoreFramebufferBindings();
 
     assert(src->m_initiated && dst->m_initiated && "Texture is not initialized.");
     assert(src->m_width == dst->m_width && src->m_height == dst->m_height && "Sizes of the textures are not the same.");
@@ -778,7 +777,7 @@ namespace ToolKit
 
     RenderTargetPtr rt = Cast<RenderTarget>(dst);
     m_copyFrameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, rt);
-    SetFramebuffer(m_copyFrameBuffer, GraphicBitFields::AllBits);
+    SetFramebuffer(m_copyFrameBuffer, GraphicBitFields::None);
 
     // Render to texture
     if (m_copyMaterial == nullptr)
@@ -795,7 +794,6 @@ namespace ToolKit
 
     DrawFullQuad(m_copyMaterial);
 
-    RHI::RestoreFramebufferBindings();
     Stats::EndGpuScope();
   }
 
