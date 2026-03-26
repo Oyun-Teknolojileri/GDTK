@@ -602,19 +602,29 @@ namespace ToolKit
     GLenum attachments[3];
     int count = 0;
 
-    if ((int) bits & (int) GraphicBitFields::ColorBits)
+    if (RenderTargetPtr colorAttachment = frameBuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0))
     {
-      attachments[count++] = GL_COLOR_ATTACHMENT0;
+      if ((int) bits & (int) GraphicBitFields::ColorBits)
+      {
+        attachments[count++] = GL_COLOR_ATTACHMENT0;
+      }
     }
 
-    if ((int) bits & (int) GraphicBitFields::DepthBits)
+    if (DepthTexturePtr depthTexture = frameBuffer->GetDepthTexture())
     {
-      bool hasStencil      = (int) bits & (int) GraphicBitFields::StencilBits;
-      attachments[count++] = hasStencil ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT;
-    }
-    else if ((int) bits & (int) GraphicBitFields::StencilBits)
-    {
-      attachments[count++] = GL_STENCIL_ATTACHMENT;
+      if ((int) bits & (int) GraphicBitFields::DepthBits)
+      {
+        bool hasStencil      = (int) bits & (int) GraphicBitFields::StencilBits;
+        hasStencil           = hasStencil && depthTexture->m_stencil;
+        attachments[count++] = hasStencil ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT;
+      }
+      else if ((int) bits & (int) GraphicBitFields::StencilBits)
+      {
+        if (depthTexture->m_stencil)
+        {
+          attachments[count++] = GL_STENCIL_ATTACHMENT;
+        }
+      }
     }
 
     if (count == 0)

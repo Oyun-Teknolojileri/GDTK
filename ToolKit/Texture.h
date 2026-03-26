@@ -118,6 +118,7 @@ namespace ToolKit
    protected:
     /** UnInit the texture. */
     void Clear() override;
+
     /** Returns unit data size for the current format. */
     int GetFormatSize();
 

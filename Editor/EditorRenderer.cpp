@@ -86,14 +86,8 @@ namespace ToolKit
 
         copyToMultiSampleBuffer(); // Resolved buffer may need to be drawn to msaa buffer.
 
-        if (!m_uiPass->m_params.renderData->jobs.empty())
+        if (!m_uiRenderData.jobs.empty())
         {
-          m_uiPass->m_params.resolveFrameBuffer = nullptr;
-          if (mainBuffer->IsMultiSampled() && sceneRenderer->m_resolvedFramebuffer)
-          {
-            m_uiPass->m_params.resolveFrameBuffer = sceneRenderer->m_resolvedFramebuffer;
-          }
-
           m_passArray.push_back(m_uiPass);
         }
 
@@ -117,13 +111,22 @@ namespace ToolKit
         m_passArray.clear();
 
         // Draw editor objects.
-        m_passArray.push_back(m_editorPass);
+        if (!m_renderData.jobs.empty())
+        {
+          m_passArray.push_back(m_editorPass);
+        }
 
-        // Clears depth buffer to draw remaining entities always on top.
-        m_passArray.push_back(m_gizmoPass);
+        if (!m_gizmoPass->m_params.GizmoArray.empty())
+        {
+          // Clears depth buffer to draw remaining entities always on top.
+          m_passArray.push_back(m_gizmoPass);
+        }
 
-        // Scene meshes can't block editor billboards. Desired for this case.
-        m_passArray.push_back(m_billboardPass);
+        if (!m_billboardPass->m_params.Billboards.empty())
+        {
+          // Scene meshes can't block editor billboards. Desired for this case.
+          m_passArray.push_back(m_billboardPass);
+        }
 
         RenderPath::Render(renderer);
       }
@@ -135,6 +138,9 @@ namespace ToolKit
         settings.msaaCount           = MsaaSampleCount::x0;
         m_resolvedFramebuffer->ReconstructIfNeeded(settings);
         renderer->ResolveFramebuffer(mainBuffer, m_resolvedFramebuffer, {0});
+
+        // We only need resolved color texture. Msaa color, depth and stencil buffers are not needed after resolve.
+        renderer->InvalidateFramebuffer(GraphicBitFields::AllBits, mainBuffer);
       }
 
       PostRender(renderer);
@@ -342,26 +348,26 @@ namespace ToolKit
     {
       switch (mode)
       {
-      case EditorLitMode::EditorLit:
-      case EditorLitMode::FullyLit:
-      case EditorLitMode::Game:
-        renderer->m_shadingMode = ShadingMode::None;
-        break;
-      case EditorLitMode::Lighing:
-        renderer->m_shadingMode = ShadingMode::Lighting;
-        break;
-      case EditorLitMode::Albedo:
-        renderer->m_shadingMode = ShadingMode::Albedo;
-        break;
-      case EditorLitMode::Normal:
-        renderer->m_shadingMode = ShadingMode::Normal;
-        break;
-      case EditorLitMode::Metallic:
-        renderer->m_shadingMode = ShadingMode::Metallic;
-        break;
-      case EditorLitMode::Roughness:
-        renderer->m_shadingMode = ShadingMode::Roughness;
-        break;
+        case EditorLitMode::EditorLit:
+        case EditorLitMode::FullyLit:
+        case EditorLitMode::Game:
+          renderer->m_shadingMode = ShadingMode::None;
+          break;
+        case EditorLitMode::Lighing:
+          renderer->m_shadingMode = ShadingMode::Lighting;
+          break;
+        case EditorLitMode::Albedo:
+          renderer->m_shadingMode = ShadingMode::Albedo;
+          break;
+        case EditorLitMode::Normal:
+          renderer->m_shadingMode = ShadingMode::Normal;
+          break;
+        case EditorLitMode::Metallic:
+          renderer->m_shadingMode = ShadingMode::Metallic;
+          break;
+        case EditorLitMode::Roughness:
+          renderer->m_shadingMode = ShadingMode::Roughness;
+          break;
       }
     }
 

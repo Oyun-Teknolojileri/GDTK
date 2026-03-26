@@ -151,6 +151,7 @@ namespace ToolKit
                         const Vec4& clearColor                  = Vec4(0.0f),
                         GraphicFramebufferTypes frameBufferType = GraphicFramebufferTypes::Framebuffer);
 
+    /** Tries to invalidate given bits of the framebuffer. Verifies if buffer actually has the specified attachments. */
     void InvalidateFramebuffer(GraphicBitFields bits, FramebufferPtr frameBuffer);
 
     /**
