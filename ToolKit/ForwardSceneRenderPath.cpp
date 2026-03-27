@@ -28,7 +28,7 @@ namespace ToolKit
     m_bloomPass             = MakeNewPtr<BloomPass>();
     m_dofPass               = MakeNewPtr<DoFPass>();
     m_gammaTonemapFxaaPass  = MakeNewPtr<GammaTonemapFxaaPass>();
-    m_resolvedFramebuffer   = MakeNewPtr<Framebuffer>();
+    m_resolvedFramebuffer   = MakeNewPtr<Framebuffer>("ForwardResolveFB");
   }
 
   ForwardSceneRenderPath::~ForwardSceneRenderPath()

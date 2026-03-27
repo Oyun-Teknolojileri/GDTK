@@ -648,9 +648,6 @@ namespace ToolKit
   {
     TK_PROFILE_FUNCTION();
 
-    RHI::SetFramebuffer(GL_READ_FRAMEBUFFER, source->GetFboId());
-    RHI::SetFramebuffer(GL_DRAW_FRAMEBUFFER, target->GetFboId());
-
     assert(source->Initialized() && "Source framebuffer is not initialized.");
     assert(target->Initialized() && "Target framebuffer is not initialized.");
 
@@ -679,6 +676,11 @@ namespace ToolKit
       }
 
       srcRt->m_resolvedTexture = targetRt;
+
+      // Bind read/draw after SetColorAttachment, which may have changed the
+      // framebuffer bindings via RHI::SetFramebuffer(GL_FRAMEBUFFER, ...).
+      RHI::SetFramebuffer(GL_READ_FRAMEBUFFER, source->GetFboId());
+      RHI::SetFramebuffer(GL_DRAW_FRAMEBUFFER, target->GetFboId());
 
       GLenum attachment        = GL_COLOR_ATTACHMENT0 + atc;
 
