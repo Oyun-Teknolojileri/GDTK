@@ -79,6 +79,10 @@ namespace ToolKit
 
       renderer->InvalidateFramebuffer(GraphicBitFields::AllBits, m_params.FrameBuffer);
     }
+    else
+    {
+      renderer->InvalidateFramebuffer(GraphicBitFields::DepthBits, m_params.FrameBuffer);
+    }
   }
 
   void ForwardRenderPass::RenderOpaque(RenderData* renderData)
