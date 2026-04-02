@@ -9,13 +9,33 @@
 #ifndef SHADOW_SHADER
 #define SHADOW_SHADER
 
+#define TWO_PI 6.283185
+
+// ---------------------------------------------------------------------------
+// Interleaved Gradient Noise (Jorge Jimenez, 2014)
+// Deterministic screen-space noise to break shadow banding.
+// ---------------------------------------------------------------------------
+
+float InterleavedGradientNoise(vec2 screenPos)
+{
+	vec3 magic = vec3(0.06711056, 0.00583715, 52.9829189);
+	return fract(magic.z * fract(dot(screenPos, magic.xy)));
+}
+
+vec2 ShadowDitherJitter(float texelSize)
+{
+	float noise = InterleavedGradientNoise(gl_FragCoord.xy);
+	float angle = noise * TWO_PI;
+	return vec2(cos(angle), sin(angle)) * texelSize * noise;
+}
+
 // ---------------------------------------------------------------------------
 // Shadow Atlas Lookup
 // ---------------------------------------------------------------------------
 
 void ShadowAtlasLut(in float size, in vec2 startCoord, in int queriedMap, out int layer, out vec2 targetCoord)
 {
-	float mapsPerRow = floor(SHADOW_ATLAS_SIZE / size);
+	float mapsPerRow = floor(graphicConstants.shadowAtlasSize / size);
 	float mapsPerLayer = mapsPerRow * mapsPerRow;
 
 	float mapIndex = float( queriedMap );
@@ -41,11 +61,9 @@ float EvaluateEVSM
 	float lightBleedReduction
 )
 {
-	const float EPSILON = 0.002;
-
+	// Filament-style EVSM evaluation (2-component, positive warp only)
 	float pw = positiveWarpedDepth;
-	float dpwdz = 2.0 * VsmExponent * pw;
-	float posMinVariance = EPSILON * (pw * pw) + shadowBias * shadowBias * (dpwdz * dpwdz);
+	float posMinVariance = shadowBias * (pw * pw);
 	float posContrib = ChebyshevUpperBound(positiveMoments, pw, posMinVariance, lightBleedReduction);
 
 	return posContrib;
@@ -105,7 +123,7 @@ vec2 ShadowPCFFilter(sampler2DArray atlas, vec3 uvLayer, vec2 coordStart, vec2 c
 // 2D Shadow Sampling (Directional + Spot)
 // ---------------------------------------------------------------------------
 
-float PCFFilterShadow2D
+float SampleShadow2D
 (
 	sampler2DArray shadowAtlas,
 	vec3 uvLayer,
@@ -117,19 +135,25 @@ float PCFFilterShadow2D
 	float shadowBias
 )
 {
+	float halfPixel = (1.0 / graphicConstants.shadowAtlasSize) * 0.5;
+	vec2 clampMin = coordStart + halfPixel;
+	vec2 clampMax = coordEnd - halfPixel;
+
+	vec2 jitter = ShadowDitherJitter(texelSize);
+	vec3 jitteredUV = vec3(clamp(uvLayer.xy + jitter, clampMin, clampMax), uvLayer.z);
+
 #if ShadowPCF >= 4
-	vec2 moments = ShadowPCFFilter(shadowAtlas, uvLayer, coordStart, coordEnd, texelSize);
+	vec2 moments = ShadowPCFFilter(shadowAtlas, jitteredUV, clampMin, clampMax, texelSize);
 #else
-	vec2 uv = clamp(uvLayer.xy, coordStart, coordEnd);
-	vec2 moments = texture(shadowAtlas, vec3(uv, uvLayer.z)).xy;
+	vec2 moments = texture(shadowAtlas, jitteredUV).xy;
 #endif
 
-	vec2 warpedDepth = WarpDepth(currDepth, EvsmExponents);
+	float warpedDepth = WarpDepth(currDepth);
 
 	return EvaluateEVSM
 	(
 		moments.xy,
-		warpedDepth.x,
+		warpedDepth,
 		shadowBias,
 		LBR
 	);
@@ -139,7 +163,7 @@ float PCFFilterShadow2D
 // Omnidirectional Shadow Sampling (Point lights)
 // ---------------------------------------------------------------------------
 
-float PCFFilterOmni
+float SampleShadowOmni
 (
 	sampler2DArray shadowAtlas,
 	vec2 startCoord,
@@ -152,16 +176,21 @@ float PCFFilterOmni
 	float shadowBias
 )
 {
-	float halfPixel = (1.0 / SHADOW_ATLAS_SIZE) * 0.5;
-	float shadowMapSize = shadowAtlasResRatio * SHADOW_ATLAS_SIZE;
+	float halfPixel = (1.0 / graphicConstants.shadowAtlasSize) * 0.5;
+	float shadowMapSize = shadowAtlasResRatio * graphicConstants.shadowAtlasSize;
 
 	vec3 texCoord = UVWToUVLayer(dir);
 	int face = int(texCoord.z);
 
+	// Derive face 0's global slot index from its pixel coordinate,
+	// then look up the absolute atlas coordinate for (baseIndex + face).
+	float mapsPerRow = floor(graphicConstants.shadowAtlasSize / shadowMapSize);
+	int baseIndex = int(startCoord.y / shadowMapSize) * int(mapsPerRow) + int(startCoord.x / shadowMapSize);
+
 	int layer = 0;
 	vec2 coord = vec2(0.0);
-	ShadowAtlasLut(shadowMapSize, startCoord, face, layer, coord);
-	coord /= SHADOW_ATLAS_SIZE;
+	ShadowAtlasLut(shadowMapSize, vec2(0.0), baseIndex + face, layer, coord);
+	coord /= graphicConstants.shadowAtlasSize;
 
 	layer += shadowAtlasLayer;
 
@@ -171,7 +200,10 @@ float PCFFilterOmni
 	texCoord.xy = beginCoord + (shadowAtlasResRatio * texCoord.xy);
 	texCoord.xy = clamp(texCoord.xy, beginCoord + halfPixel, endCoord - halfPixel);
 
-	vec3 sampleCoord = vec3(texCoord.xy, float(layer));
+	vec2 jitter = ShadowDitherJitter(texelSize);
+	vec2 jitteredXY = clamp(texCoord.xy + jitter, beginCoord + halfPixel, endCoord - halfPixel);
+
+	vec3 sampleCoord = vec3(jitteredXY, float(layer));
 
 #if ShadowPCF >= 4
 	vec2 moments = ShadowPCFFilter(shadowAtlas, sampleCoord, beginCoord + halfPixel, endCoord - halfPixel, texelSize);
@@ -179,12 +211,12 @@ float PCFFilterOmni
 	vec2 moments = texture(shadowAtlas, sampleCoord).xy;
 #endif
 
-	vec2 warpedDepth = WarpDepth(currDepth, EvsmExponents);
+	float warpedDepth = WarpDepth(currDepth);
 
 	return EvaluateEVSM
 	(
 		moments.xy,
-		warpedDepth.x,
+		warpedDepth,
 		shadowBias,
 		LBR
 	);

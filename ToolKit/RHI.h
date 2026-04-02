@@ -26,9 +26,6 @@ namespace ToolKit
     /** Update shadow.shader MAX_CASCADE_COUNT accordingly. */
     static constexpr uint MaxCascadeCount                = 4;
 
-    /** Update shadow.shader SHADOW_ATLAS_SIZE accordingly. */
-    static constexpr uint ShadowAtlasTextureSize         = 2048;
-
     /** Update drawDataInc.shader DIRECTIONAL_LIGHT_CACHE_ITEM_COUNT accordingly. */
     static constexpr uint DirectionalLightCacheItemCount = 12;
 
@@ -62,6 +59,7 @@ namespace ToolKit
       GLuint textureID = 0;
       GLenum target    = 0;
     };
+
     using TextureIdSlotMap = std::unordered_map<GLenum, TextureSlotState>;
 
     // Framebuffer helpers

@@ -2,6 +2,8 @@
 	<type name = "includeShader" />
 	<include name = "pbrCommon.shader" />
 	<include name = "shadow.shader" />
+	<uniform name = "activePointLightIndexes" size = "24" />
+	<uniform name = "activeSpotLightIndexes" size = "24" />
 	<define name = "highlightCascades" val="0,1" />
 	<source>
 	<!--
@@ -18,20 +20,16 @@ uniform int activeSpotLightIndexes[MAX_SPOT_LIGHT_PER_OBJECT];
 const float shadowFadeOutDistanceNorm = 0.9;
 
 // ---------------------------------------------------------------------------
-// Filament-style attenuation
+// Linear-style attenuation
 // ---------------------------------------------------------------------------
 
-// Physically-based square falloff with smooth window function
-// Filament: getSquareFalloffAttenuation + getDistanceAttenuation
+// Smooth falloff: (1 - d2/r2)2.
 float DistanceAttenuation(float distanceSq, float falloff)
 {
 	// falloff = 1.0 / (radius * radius)
-	float factor = distanceSq * falloff;
-	float smoothFactor = clamp(1.0 - factor * factor, 0.0, 1.0);
-	// Smooth window: (1 - (d²/r²)²)²
-	// Divided by distanceSq for inverse-square law
-	// Clamp to avoid division by zero for very close lights
-	return (smoothFactor * smoothFactor) / max(distanceSq, 1e-2);
+	float factor = clamp(distanceSq * falloff, 0.0, 1.0);
+	float f = 1.0 - factor;
+	return f * f;
 }
 
 // Filament-style spot light angular attenuation
@@ -42,6 +40,16 @@ float SpotAngleAttenuation(float cosAngle, float cosInner, float cosOuter)
 	float offset = -cosOuter * scale;
 	float attenuation = clamp(cosAngle * scale + offset, 0.0, 1.0);
 	return attenuation * attenuation;
+}
+
+// Fades shadow towards 1.0 (no shadow) as distance approaches maxDist.
+// Fade starts at 90% of maxDist. Returns a value to blend with shadow.
+float ShadowDistanceFade(float distance, float maxDist)
+{
+	float fadeStart = maxDist * shadowFadeOutDistanceNorm;
+	float fade = (distance - fadeStart) / (maxDist - fadeStart);
+	fade = clamp(fade, 0.0, 1.0);
+	return fade * fade;
 }
 
 float CalculateDirectionalShadow
@@ -65,9 +73,9 @@ float CalculateDirectionalShadow
 	vec2 uvInAtlas = startCoord + shadowAtlasResRatio * projCoord.xy;
 	vec3 sampleCoord = vec3(uvInAtlas, shadowAtlasLayer);
 
-	float texelSize = 1.0 / SHADOW_ATLAS_SIZE;
+	float texelSize = 1.0 / graphicConstants.shadowAtlasSize;
 
-	float shadow = PCFFilterShadow2D
+	float shadow = SampleShadow2D
 	(
 		s_texture8,
 		sampleCoord,
@@ -79,14 +87,8 @@ float CalculateDirectionalShadow
 		shadowBias
 	);
 
-	// Fade shadow out after min shadow fade out distance
-	vec3 camToPos = pos - viewCamPos;
-	float camDist = dot(camToPos, camToPos);
-	float fadeDist = graphicConstants.shadowDistance * shadowFadeOutDistanceNorm;
-	float fadeRange = graphicConstants.shadowDistance * (1.0 - shadowFadeOutDistanceNorm);
-	float fade = (sqrt(camDist) - fadeDist) / fadeRange;
-	fade = clamp(fade, 0.0, 1.0);
-	fade = fade * fade;
+	float camDist = length(pos - viewCamPos);
+	float fade = ShadowDistanceFade(camDist, graphicConstants.shadowDistance);
 	return clamp(shadow + fade, 0.0, 1.0);
 }
 
@@ -113,9 +115,9 @@ float CalculateSpotShadow
 	vec2 startCoord = shadowAtlasCoord;
 	vec3 coord = vec3(startCoord + shadowAtlasResRatio * projCoord.xy, shadowAtlasLayer);
 
-	float texelSize = 1.0 / SHADOW_ATLAS_SIZE;
+	float texelSize = 1.0 / graphicConstants.shadowAtlasSize;
 
-	return PCFFilterShadow2D
+	return SampleShadow2D
 	(
 		s_texture8,
 		coord,
@@ -144,9 +146,9 @@ float CalculatePointShadow
 	vec3 lightToFrag = pos - lightPos;
 	float currFragDepth = precomputedDist / shadowCameraFar;
 
-	float texelSize = 1.0 / SHADOW_ATLAS_SIZE;
+	float texelSize = 1.0 / graphicConstants.shadowAtlasSize;
 
-	return PCFFilterOmni
+	return SampleShadowOmni
 	(
 		s_texture8,
 		shadowAtlasCoord,
@@ -228,7 +230,7 @@ vec3 PBRLighting
 	{
 		DirectionalLightData light = directionalLightArray[i];
 
-		float resRatio = light.shadowResolution / graphicConstants.shadowAtlasSize;
+		float resRatio = light.shadowAtlasResRatio;
 
 		vec3 lightDir = normalize(-light.direction);
 
@@ -269,9 +271,10 @@ vec3 PBRLighting
 			}
 #endif
 
+			float shadowMapSize = resRatio * graphicConstants.shadowAtlasSize;
 			int layer = 0;
 			vec2 coord = vec2(0.0);
-			ShadowAtlasLut(light.shadowResolution, light.shadowAtlasCoord, cascadeOfThisPixel, layer, coord);
+			ShadowAtlasLut(shadowMapSize, light.shadowAtlasCoord, cascadeOfThisPixel, layer, coord);
 
 			layer += light.shadowAtlasLayer;
 
@@ -310,7 +313,7 @@ vec3 PBRLighting
 			continue;
 		}
 
-		float resRatio = light.shadowResolution / graphicConstants.shadowAtlasSize;
+		float resRatio = light.shadowAtlasResRatio;
 		float falloff = 1.0 / (light.radius * light.radius);
 		float attenuation = DistanceAttenuation(lightDistanceSq, falloff);
 
@@ -331,6 +334,10 @@ vec3 PBRLighting
 				light.shadowBias,
 				lightDistance
 			);
+
+			float camDist = length(fragPos - viewCamPos);
+			float fade = ShadowDistanceFade(camDist, graphicConstants.shadowDistance);
+			shadow = clamp(shadow + fade, 0.0, 1.0);
 		}
 
 		vec3 Lo = SurfaceShading(normal, fragToEye, albedo, metallic, roughness,
@@ -354,7 +361,7 @@ vec3 PBRLighting
 			continue;
 		}
 
-		float resRatio = light.shadowResolution / graphicConstants.shadowAtlasSize;
+		float resRatio = light.shadowAtlasResRatio;
 		float falloff = 1.0 / (light.radius * light.radius);
 		float attenuation = DistanceAttenuation(lightDistanceSq, falloff);
 
@@ -380,6 +387,10 @@ vec3 PBRLighting
 				light.shadowBias,
 				lightDistance
 			);
+
+			float camDist = length(fragPos - viewCamPos);
+			float fade = ShadowDistanceFade(camDist, graphicConstants.shadowDistance);
+			shadow = clamp(shadow + fade, 0.0, 1.0);
 		}
 
 		vec3 Lo = SurfaceShading(normal, fragToEye, albedo, metallic, roughness,

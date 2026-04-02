@@ -7,8 +7,8 @@
 
 #pragma once
 
-#include "BinPack2D.h"
 #include "Pass.h"
+#include "ShadowAtlas.h"
 
 namespace ToolKit
 {
@@ -38,15 +38,11 @@ namespace ToolKit
     /** Perform all renderings to generate all shadow maps for the given light. */
     void RenderShadowMaps(Light* light);
 
-    /** Performs a single render that generates a single shadow map of a cascade, or a face of a cube etc...*/
-    void RenderShadowMap(Light* light, CameraPtr shadowCamera, CameraPtr cullCamera);
+    /** Renders all shadow casters to light's slot in the atlas. */
+    void RenderShadowCasters(Light* light, CameraPtr shadowCamera, CameraPtr cullCamera);
 
-    /**
-     * Sets layer and coordinates of the shadow maps in shadow atlas.
-     * @param lights Light array that have shadows.
-     * @return number of layers needed.
-     */
-    int PlaceShadowMapsToShadowAtlas(const LightRawPtrArray& lights);
+    /** Assigns shadow atlas slots to shadow casting lights using priority-based dynamic packing. */
+    void PlaceShadowMapsToShadowAtlas(const LightRawPtrArray& lights);
 
     /** Creates a shadow atlas for m_params.Lights */
     void InitShadowAtlas();
@@ -61,19 +57,24 @@ namespace ToolKit
     MaterialPtr m_shadowMatOrtho       = nullptr;
     MaterialPtr m_shadowMatPersp       = nullptr;
 
-    const Vec4 m_shadowClearColor      = Vec4(1.0f);
+    Vec4 m_shadowClearColor            = Vec4(1.0f);
     FramebufferPtr m_shadowFramebuffer = nullptr;
     RenderTargetPtr m_shadowAtlas      = nullptr;
     RenderTargetPtr m_shadowBlurTempRT = nullptr;
-    int m_layerCount                   = 0; // Number of textures in array texture (shadow atlas)
     int m_activeCascadeCount           = 0;
-    bool m_use32BitShadowMap           = true;
-    IDArray m_previousShadowCasters;
+    bool m_use2KLayer                  = false;
 
+    /** At each index, a layer switch occurs in the shadow atlas. */
+    IntArray m_atlasLayerSwitchIndices;
+
+    /** Meta data used for storing all shadow map coordinates and layers. */
+    ShadowAtlas m_atlas;
+
+    /** Cached list of shadow casting lights with valid atlas slots, sorted by first atlas layer. */
+    LightRawPtrArray m_lights;
+
+    /** Rotations for each face of a cubemap used for point light shadows. */
     Quaternion m_cubeMapRotations[6];
-    BinPack2D m_packer;
-
-    LightRawPtrArray m_lights; // Shadow casters in scene.
   };
 
   typedef std::shared_ptr<ShadowPass> ShadowPassPtr;

@@ -34,6 +34,8 @@ namespace ToolKit
 
   TKGL_LabelObject tk_glLabelObjectEXT                                         = nullptr;
 
+  TKGL_InvalidateFramebuffer tk_glInvalidateFramebufferEXT                     = nullptr;
+
   int TK_GL_EXT_texture_filter_anisotropic                                     = 0;
 
   int TK_GL_OES_texture_float_linear                                           = 0;
@@ -78,6 +80,10 @@ namespace ToolKit
     tk_glLabelObjectEXT    = glad_glLabelObjectEXT;
     tk_glGetObjectLabelEXT = glad_glGetObjectLabelEXT;
 
+  #endif
+
+  #ifdef GL_ARB_invalidate_subdata
+    tk_glInvalidateFramebufferEXT = glad_glInvalidateFramebuffer;
   #endif
 
 #endif

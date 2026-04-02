@@ -11,6 +11,7 @@
 #include "Material.h"
 #include "MathUtil.h"
 #include "Mesh.h"
+#include "RHI.h"
 #include "Shader.h"
 #include "Stats.h"
 #include "TKOpenGL.h"
@@ -63,7 +64,7 @@ namespace ToolKit
   {
     TK_PROFILE_FUNCTION();
 
-    Renderer* renderer      = GetRenderer();
+    Renderer* renderer           = GetRenderer();
 
     // Use resolved texture if multisampled, otherwise use the original render target.
     TexturePtr normalDepthBuffer = m_params.GNormalDepthBuffer;
@@ -79,10 +80,10 @@ namespace ToolKit
     RenderSubPass(m_quadPass);
 
     // Horizontal blur
-    renderer->Apply7x1GaussianBlur(m_ssaoTexture, m_tempBlurRt, X_AXIS, 1.0f / m_ssaoTexture->m_width);
+    renderer->ApplyGaussianBlur(m_ssaoTexture, m_tempBlurRt, X_AXIS, 1.0f / m_ssaoTexture->m_width);
 
     // Vertical blur
-    renderer->Apply7x1GaussianBlur(m_tempBlurRt, m_ssaoTexture, Y_AXIS, 1.0f / m_ssaoTexture->m_height);
+    renderer->ApplyGaussianBlur(m_tempBlurRt, m_ssaoTexture, Y_AXIS, 1.0f / m_ssaoTexture->m_height);
   }
 
   void SSAOPass::PreRender()
@@ -92,14 +93,15 @@ namespace ToolKit
     Pass::PreRender();
 
     // Use resolved texture if multisampled to get correct dimensions.
-    TexturePtr normalDepthBuffer = m_params.GNormalDepthBuffer->IsMultiSampled() ? m_params.GNormalDepthBuffer->GetResolvedTexture()
-                                                                                 : m_params.GNormalDepthBuffer;
+    TexturePtr normalDepthBuffer = m_params.GNormalDepthBuffer->IsMultiSampled()
+                                       ? m_params.GNormalDepthBuffer->GetResolvedTexture()
+                                       : m_params.GNormalDepthBuffer;
 
-    int width               = normalDepthBuffer->m_width;
-    int height              = normalDepthBuffer->m_height;
+    int width                    = normalDepthBuffer->m_width;
+    int height                   = normalDepthBuffer->m_height;
 
     // Clamp kernel size
-    m_params.KernelSize     = glm::clamp(m_params.KernelSize, m_minimumKernelSize, m_maximumKernelSize);
+    m_params.KernelSize          = glm::clamp(m_params.KernelSize, m_minimumKernelSize, m_maximumKernelSize);
 
     GenerateSSAONoise();
 

@@ -129,6 +129,7 @@ namespace ToolKit
     // Passive state values.
     // Renderer changes or updates these values.
     bool depthTestEnabled          = true;
+    bool depthWriteEnabled         = true;
     CompareFunctions depthFunction = CompareFunctions::FuncLess;
   };
 

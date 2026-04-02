@@ -46,7 +46,6 @@
 	//////////////////////////////////////////
 	
 	#define MAX_CASCADE_COUNT 4
-	#define SHADOW_ATLAS_SIZE 2048.0
 
 	#define DIRECTIONAL_LIGHT_CACHE_ITEM_COUNT 12
 	#define MAX_DIRECTIONAL_LIGHT_PER_OBJECT 8
@@ -85,7 +84,7 @@
 	float padx;																\
 	float pady;																\
 	vec2 shadowAtlasCoord;													\
-	float shadowResolution;													\
+	float shadowAtlasResRatio;												\
 	int shadowAtlasLayer;
 	
 	struct DirectionalLightData

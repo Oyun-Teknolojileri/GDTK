@@ -55,7 +55,7 @@ namespace ToolKit
       renderer->SetTexture(0, mainRt->m_textureId);
       m_pass->m_params.frameBuffer      = m_resampleFrameBuffers[0];
       m_pass->m_params.blendFunc        = BlendFunction::NONE;
-      m_pass->m_params.clearFrameBuffer = GraphicBitFields::AllBits;
+      m_pass->m_params.clearFrameBuffer = GraphicBitFields::None;
 
       RenderSubPass(m_pass);
     }
@@ -88,7 +88,7 @@ namespace ToolKit
         renderer->SetTexture(0, prevRt->m_textureId);
 
         // Set pass parameters
-        m_pass->m_params.clearFrameBuffer = GraphicBitFields::AllBits;
+        m_pass->m_params.clearFrameBuffer = GraphicBitFields::None;
         m_pass->m_params.frameBuffer      = m_resampleFrameBuffers[i + 1];
         m_pass->m_params.blendFunc        = BlendFunction::NONE;
 

@@ -1,4 +1,4 @@
-<shader>
+﻿<shader>
 	<type name = "fragmentShader" />
 	<include name = "VSMCommon.shader" />
 	<include name = "materialCacheInc.shader" />
@@ -15,7 +15,7 @@
     in vec2 v_texture;
 #endif
 
-    out vec4 fragColor;
+    out vec2 fragColor;
 
     uniform sampler2D s_texture0;
 
@@ -41,9 +41,16 @@
     #endif
 
         float depth = length(v_pos.xyz);
-        vec2 vsmDepth = WarpDepth(depth, EvsmExponents);
+        float vsmDepth = WarpDepth(depth);
 
-        fragColor = vec4(vsmDepth.x, vsmDepth.x * vsmDepth.x, 0.0, 0.0);
+        // Analytic variance from depth gradient across the texel (Filament style)
+        float dzdx = dFdx(depth);
+        float dzdy = dFdy(depth);
+        float linearVariance = 0.25 * (dzdx * dzdx + dzdy * dzdy);
+        float analyticVariance = VsmExponent * VsmExponent * vsmDepth * vsmDepth * linearVariance;
+        float moment2 = min(vsmDepth * vsmDepth + analyticVariance, VsmMaxMoment);
+
+        fragColor = vec2(vsmDepth, moment2);
     }
 	-->
 	</source>
