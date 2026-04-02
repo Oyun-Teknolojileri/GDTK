@@ -10,7 +10,7 @@
 
 
 		uniform sampler2D s_texture0; //Image to be processed 
-		uniform sampler2D s_texture1; //Linear depth, where max value is far plane distance
+		uniform sampler2D s_texture1; //Packed normal+depth: B channel = linear depth
 
 		uniform vec2 uPixelSize; //The size of a pixel: vec2(1.0/width, 1.0/height) 
 		uniform float focusPoint;
@@ -33,7 +33,7 @@
 				return color;
 			}
 			
-			float centerDepth  = -texture(s_texture1, texCoord).z;
+			float centerDepth = texture(s_texture1, texCoord).b;
 
 			float centerSize = getBlurSize(centerDepth);
 			float tot = 1.0;
@@ -42,7 +42,7 @@
 			{
 				vec2 tc = texCoord + vec2(cos(ang), sin(ang)) * uPixelSize * radius;
 				vec3 sampleColor = texture(s_texture0, tc).rgb;
-				float sampleDepth = -texture(s_texture1, tc).z;
+				float sampleDepth = texture(s_texture1, tc).b;
 				float sampleSize = getBlurSize(sampleDepth);
 				if (sampleDepth > centerDepth)
 					sampleSize = clamp(sampleSize, 0.0, centerSize*2.0);

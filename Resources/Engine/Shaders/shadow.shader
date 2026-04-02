@@ -1,182 +1,228 @@
 <shader>
 	<type name = "includeShader" />
 	<include name = "VSM.shader" />
-	<include name ="drawDataInc.shader" />
-  <define name = "EVSM4" val="0,1" />
+	<include name = "textureUtil.shader" />
+	<include name = "drawDataInc.shader" />
+	<define name = "ShadowPCF" val="0,4,9,16" />
 	<source>
 	<!--
-
 #ifndef SHADOW_SHADER
 #define SHADOW_SHADER
 
-  /*
-  * Given a shadow map size and start coordinates, finds the queried shadow map's layer and start coordinates.
-  * Shadow maps for cascades and cube maps are placed sequentially to the atlas. So if you pass the directional
-  * light's start location and start layer and query the layer and start coordinate of 4'th cascade, this function
-  * will calculate it.
-  */
+#define TWO_PI 6.283185
+
+// ---------------------------------------------------------------------------
+// Interleaved Gradient Noise (Jorge Jimenez, 2014)
+// Deterministic screen-space noise to break shadow banding.
+// ---------------------------------------------------------------------------
+
+float InterleavedGradientNoise(vec2 screenPos)
+{
+	vec3 magic = vec3(0.06711056, 0.00583715, 52.9829189);
+	return fract(magic.z * fract(dot(screenPos, magic.xy)));
+}
+
+vec2 ShadowDitherJitter(float texelSize)
+{
+	float noise = InterleavedGradientNoise(gl_FragCoord.xy);
+	float angle = noise * TWO_PI;
+	return vec2(cos(angle), sin(angle)) * texelSize * noise;
+}
+
+// ---------------------------------------------------------------------------
+// Shadow Atlas Lookup
+// ---------------------------------------------------------------------------
+
 void ShadowAtlasLut(in float size, in vec2 startCoord, in int queriedMap, out int layer, out vec2 targetCoord)
 {
-	targetCoord = startCoord;
-	layer = 0;
-	
-	for (int i = 1; i <= queriedMap; i++)
-	{
-		targetCoord.x += size;
+	float mapsPerRow = floor(graphicConstants.shadowAtlasSize / size);
+	float mapsPerLayer = mapsPerRow * mapsPerRow;
 
-		if (targetCoord.x >= SHADOW_ATLAS_SIZE)
+	float mapIndex = float( queriedMap );
+
+	layer = int( floor( mapIndex / mapsPerLayer ) );
+	float indexInLayer = mapIndex - float(layer) * mapsPerLayer;
+
+	float row = floor(indexInLayer / mapsPerRow);
+	float col = indexInLayer - row * mapsPerRow;
+
+	targetCoord = startCoord + vec2(col, row) * size;
+}
+
+// ---------------------------------------------------------------------------
+// Filament-style EVSM evaluation
+// ---------------------------------------------------------------------------
+
+float EvaluateEVSM
+(
+	vec2 positiveMoments,
+	float positiveWarpedDepth,
+	float shadowBias,
+	float lightBleedReduction
+)
+{
+	// Filament-style EVSM evaluation (2-component, positive warp only)
+	float pw = positiveWarpedDepth;
+	float posMinVariance = shadowBias * (pw * pw);
+	float posContrib = ChebyshevUpperBound(positiveMoments, pw, posMinVariance, lightBleedReduction);
+
+	return posContrib;
+}
+
+// ---------------------------------------------------------------------------
+// Bilinear PCF tap helpers
+// Each texture() with linear filtering already interpolates 2x2 texels.
+// By placing samles at sub-texel offsets we cover larger effective kernels.
+//
+//  4 samles -> ~3x3 kernel
+//  9 samles -> ~5x5 kernel
+// 16 samles -> ~7x7 kernel
+// ---------------------------------------------------------------------------
+
+#if ShadowPCF >= 4
+vec2 ShadowPCFFilter(sampler2DArray atlas, vec3 uvLayer, vec2 coordStart, vec2 coordEnd, float texelSize)
+{
+	vec2 result = vec2(0.0);
+
+#if ShadowPCF == 4
+	vec2 offset = vec2(0.5) * texelSize;
+	result += texture(atlas, vec3(clamp(uvLayer.xy + vec2(-offset.x,  offset.y), coordStart, coordEnd), uvLayer.z)).xy;
+	result += texture(atlas, vec3(clamp(uvLayer.xy + vec2( offset.x,  offset.y), coordStart, coordEnd), uvLayer.z)).xy;
+	result += texture(atlas, vec3(clamp(uvLayer.xy + vec2(-offset.x, -offset.y), coordStart, coordEnd), uvLayer.z)).xy;
+	result += texture(atlas, vec3(clamp(uvLayer.xy + vec2( offset.x, -offset.y), coordStart, coordEnd), uvLayer.z)).xy;
+	result *= 0.25;
+
+#elif ShadowPCF == 9
+	for (int y = -1; y <= 1; y++)
+	{
+		for (int x = -1; x <= 1; x++)
 		{
-			targetCoord.x = 0.0;
-			targetCoord.y += size;
-			if (targetCoord.y >= SHADOW_ATLAS_SIZE)
-			{
-				layer += 1;
-				targetCoord.x = 0.0;
-				targetCoord.y = 0.0;
-			}
+			vec2 off = vec2(float(x), float(y)) * texelSize;
+			result += texture(atlas, vec3(clamp(uvLayer.xy + off, coordStart, coordEnd), uvLayer.z)).xy;
 		}
 	}
-}
+	result /= 9.0;
 
-float PCFFilterShadow2D
+#elif ShadowPCF == 16
+	for (int y = 0; y < 4; y++)
+	{
+		for (int x = 0; x < 4; x++)
+		{
+			vec2 off = (vec2(float(x), float(y)) - 1.5) * texelSize;
+			result += texture(atlas, vec3(clamp(uvLayer.xy + off, coordStart, coordEnd), uvLayer.z)).xy;
+		}
+	}
+	result *= (1.0 / 16.0);
+#endif
+
+	return result;
+}
+#endif
+
+// ---------------------------------------------------------------------------
+// 2D Shadow Sampling (Directional + Spot)
+// ---------------------------------------------------------------------------
+
+float SampleShadow2D
 (
-  sampler2DArray shadowAtlas,
-  vec3 uvLayer,
-  vec2 coordStart,
-  vec2 coordEnd,
-  int samples,
-  float radius,
-  float currDepth,
-  float LBR,
-  float shadowBias
+	sampler2DArray shadowAtlas,
+	vec3 uvLayer,
+	vec2 coordStart,
+	vec2 coordEnd,
+	float texelSize,
+	float currDepth,
+	float LBR,
+	float shadowBias
 )
 {
-  // Single pass average filter the shadow map.
-	#if EVSM4
-		vec4 occuluderAverage = vec4(0.0);
-	#else
-		vec2 occuluderAverage = vec2(0.0);
-	#endif
-  
-	for (int i = 0; i < samples; ++i)
-	{
-    // Below is randomized sample which causes noise rather than banding.
-    // Use di for sampling the disk to see the effect.
-    // int di = int(127.0 * Random( vec4( gl_FragCoord.xyy, float(i) ) )) % 127;
-		vec2 offset = PoissonDisk[i].xy * radius;
+	float halfPixel = (1.0 / graphicConstants.shadowAtlasSize) * 0.5;
+	vec2 clampMin = coordStart + halfPixel;
+	vec2 clampMax = coordEnd - halfPixel;
 
-		vec3 texCoord = uvLayer;
-		texCoord.xy = ClampTextureCoordinates(uvLayer.xy + offset, coordStart, coordEnd);
-    
-		#if EVSM4
-			occuluderAverage += texture(shadowAtlas, texCoord);
-		#else
-			occuluderAverage += texture(shadowAtlas, texCoord).xy;
-		#endif
-	}
+	vec2 jitter = ShadowDitherJitter(texelSize);
+	vec3 jitteredUV = vec3(clamp(uvLayer.xy + jitter, clampMin, clampMax), uvLayer.z);
 
-  // Filtered depth & depth^2
-	occuluderAverage = occuluderAverage / float(samples);
+#if ShadowPCF >= 4
+	vec2 moments = ShadowPCFFilter(shadowAtlas, jitteredUV, clampMin, clampMax, texelSize);
+#else
+	vec2 moments = texture(shadowAtlas, jitteredUV).xy;
+#endif
 
-	vec2 exponents = EvsmExponents;
-	vec2 warpedDepth = WarpDepth(currDepth, exponents);
+	float warpedDepth = WarpDepth(currDepth);
 
-  // Derivative of warping at depth
-	vec2 depthScale = 100.0 * shadowBias * exponents * warpedDepth;
-	vec2 minVariance = depthScale * depthScale;
-
-	#if EVSM4
-		float posContrib = ChebyshevUpperBound(occuluderAverage.xz, warpedDepth.x, minVariance.x, LBR);
-		float negContrib = ChebyshevUpperBound(occuluderAverage.yw, warpedDepth.y, minVariance.y, LBR);
-		return min(posContrib, negContrib);
-	#else	
-		return ChebyshevUpperBound(occuluderAverage, warpedDepth.x, minVariance.x, LBR);
-	#endif
+	return EvaluateEVSM
+	(
+		moments.xy,
+		warpedDepth,
+		shadowBias,
+		LBR
+	);
 }
 
-float PCFFilterOmni
+// ---------------------------------------------------------------------------
+// Omnidirectional Shadow Sampling (Point lights)
+// ---------------------------------------------------------------------------
+
+float SampleShadowOmni
 (
-  sampler2DArray shadowAtlas,
-  vec2 startCoord,
-  float shadowAtlasResRatio,
-  int shadowAtlasLayer,
-  vec3 dir,
-  int samples,
-  float radius,
-  float currDepth,
-  float LBR,
-  float shadowBias
+	sampler2DArray shadowAtlas,
+	vec2 startCoord,
+	float shadowAtlasResRatio,
+	int shadowAtlasLayer,
+	vec3 dir,
+	float texelSize,
+	float currDepth,
+	float LBR,
+	float shadowBias
 )
 {
-	vec2 halfPixel = vec2((1.0 / SHADOW_ATLAS_SIZE) * 0.5);
+	float halfPixel = (1.0 / graphicConstants.shadowAtlasSize) * 0.5;
+	float shadowMapSize = shadowAtlasResRatio * graphicConstants.shadowAtlasSize;
 
-  // Single pass average filter the shadow map.
-	#if EVSM4
-			vec4 occuluderAverage = vec4(0.0);
-	#else
-		vec2 occuluderAverage = vec2(0.0);
-	#endif
-	
-	for (int i = 0; i < samples; ++i)
-	{
-    // Below is randomized sample which causes noise rather than banding.
-    // Use di for sampling the disk to see the effect.
-    // int di = int(127.0 * Random( vec4( gl_FragCoord.xyy, float(i) ) )) % 127;
-		vec3 offset = PoissonDisk[i] * radius;
+	vec3 texCoord = UVWToUVLayer(dir);
+	int face = int(texCoord.z);
 
-    // Adhoc coefficient 50.0
-    // If offset applied to texCoord, wrong face may be sampled due to bleeding.
+	// Derive face 0's global slot index from its pixel coordinate,
+	// then look up the absolute atlas coordinate for (baseIndex + face).
+	float mapsPerRow = floor(graphicConstants.shadowAtlasSize / shadowMapSize);
+	int baseIndex = int(startCoord.y / shadowMapSize) * int(mapsPerRow) + int(startCoord.x / shadowMapSize);
 
-    // Cubemap sample
-		vec3 texCoord = UVWToUVLayer(dir + offset * 50.0);
+	int layer = 0;
+	vec2 coord = vec2(0.0);
+	ShadowAtlasLut(shadowMapSize, vec2(0.0), baseIndex + face, layer, coord);
+	coord /= graphicConstants.shadowAtlasSize;
 
-		int face = int(texCoord.z);
+	layer += shadowAtlasLayer;
 
-		int layer = 0;
-		vec2 coord = vec2(0.0);
-		float shadowMapSize = shadowAtlasResRatio * SHADOW_ATLAS_SIZE;
-		ShadowAtlasLut(shadowMapSize, startCoord, face, layer, coord);
-		coord /= SHADOW_ATLAS_SIZE;
+	vec2 beginCoord = coord;
+	vec2 endCoord = beginCoord + shadowAtlasResRatio;
 
-		layer += shadowAtlasLayer;
+	texCoord.xy = beginCoord + (shadowAtlasResRatio * texCoord.xy);
+	texCoord.xy = clamp(texCoord.xy, beginCoord + halfPixel, endCoord - halfPixel);
 
-		vec2 beginCoord = coord;
-		vec2 endCoord = beginCoord + shadowAtlasResRatio;
+	vec2 jitter = ShadowDitherJitter(texelSize);
+	vec2 jitteredXY = clamp(texCoord.xy + jitter, beginCoord + halfPixel, endCoord - halfPixel);
 
-		texCoord.xy = beginCoord + (shadowAtlasResRatio * texCoord.xy);
-		texCoord.z = float(layer);
+	vec3 sampleCoord = vec3(jitteredXY, float(layer));
 
-    // Keep the pixel always in the corresponding face, prevent bleeding.
-		texCoord.xy = clamp(texCoord.xy, beginCoord + halfPixel, endCoord - halfPixel);
+#if ShadowPCF >= 4
+	vec2 moments = ShadowPCFFilter(shadowAtlas, sampleCoord, beginCoord + halfPixel, endCoord - halfPixel, texelSize);
+#else
+	vec2 moments = texture(shadowAtlas, sampleCoord).xy;
+#endif
 
-		#if EVSM4
-			occuluderAverage += texture(shadowAtlas, texCoord);
-		#else
-			occuluderAverage += texture(shadowAtlas, texCoord).xy;
-		#endif
-	}
+	float warpedDepth = WarpDepth(currDepth);
 
-  // Filtered depth & depth^2
-	occuluderAverage = occuluderAverage / float(samples);
-
-	vec2 exponents = EvsmExponents;
-	vec2 warpedDepth = WarpDepth(currDepth, exponents);
-
-  // Derivative of warping at depth
-	vec2 depthScale = 100.0 * shadowBias * exponents * warpedDepth;
-	vec2 minVariance = depthScale * depthScale;
-
-	#if EVSM4
-		float posContrib = ChebyshevUpperBound(occuluderAverage.xz, warpedDepth.x, minVariance.x, LBR);
-		float negContrib = ChebyshevUpperBound(occuluderAverage.yw, warpedDepth.y, minVariance.y, LBR);
-		return min(posContrib, negContrib);
-	#else
-		return ChebyshevUpperBound(occuluderAverage, warpedDepth.x, minVariance.x, LBR);
-	#endif
+	return EvaluateEVSM
+	(
+		moments.xy,
+		warpedDepth,
+		shadowBias,
+		LBR
+	);
 }
 
 #endif
-
 	-->
 	</source>
 </shader>

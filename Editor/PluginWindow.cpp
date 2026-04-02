@@ -204,7 +204,7 @@ namespace ToolKit
 
             ImGui::TableSetColumnIndex(3);
             ImGui::AlignTextToFramePadding();
-            if (ImGui::ImageButton("##build", Convert2ImGuiTexture(UI::m_buildIcn), btnSize))
+            if (UI::ImageButton("##build", Convert2ImGuiTexture(UI::m_buildIcn), btnSize))
             {
               GetApp()->CompilePlugin(plugin.name, false);
             }
@@ -213,7 +213,7 @@ namespace ToolKit
 
             ImGui::TableSetColumnIndex(4);
             ImGui::AlignTextToFramePadding();
-            if (ImGui::ImageButton("##folder", Convert2ImGuiTexture(UI::m_folderIcon), btnSize))
+            if (UI::ImageButton("##folder", Convert2ImGuiTexture(UI::m_folderIcon), btnSize))
             {
               String pluginDir = GetApp()->m_workspace->GetPluginDirectory();
               String dir       = ConcatPaths({pluginDir, plugin.name, "Codes"});
@@ -223,13 +223,12 @@ namespace ToolKit
 
             ImGui::TableSetColumnIndex(5);
             ImGui::AlignTextToFramePadding();
-            if (ImGui::ImageButton("##code", Convert2ImGuiTexture(UI::m_codeIcon), btnSize))
+            if (UI::ImageButton("##code", Convert2ImGuiTexture(UI::m_codeIcon), btnSize))
             {
               PluginSettingsWindowPtr settingsWnd = MakeNewPtr<PluginSettingsWindow>();
               settingsWnd->SetPluginSettings(&plugin);
               settingsWnd->AddToUI();
             }
-            UI::AddTooltipToLastItem("Show plugin settings.");
 
             ImGui::PopID();
           }

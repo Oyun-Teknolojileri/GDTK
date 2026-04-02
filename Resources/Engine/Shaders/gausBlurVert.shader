@@ -1,5 +1,6 @@
 <shader>
 	<type name = "vertexShader" />
+	<define name = "TextureArray" val = "0,1" />
 	<source>
 	<!--
 		#version 300 es
@@ -10,6 +11,10 @@
 		layout (location = 1) in vec3 vNormal;
 		layout (location = 2) in vec2 vTexture;
 
+		#if TextureArray == 1
+		uniform float BlurLayer;
+		#endif
+
 		vec3 v_pos;
 		out vec3 v_texture;
 		
@@ -17,8 +22,14 @@
 		{
 		  v_pos.xy = vPosition.xy * 2.0;
 		  v_pos.z = -1.0;
+
+		#if TextureArray == 1
+		  v_texture = vec3(vTexture, BlurLayer);
+		#else
 		  v_texture = vec3(vTexture, 0.0);
-		  v_texture.y = 1.0 - v_texture.y;
+		#endif
+
+		  v_texture.y = v_texture.y;
 		  gl_Position = vec4(v_pos, 1.0);
 		}
 	-->

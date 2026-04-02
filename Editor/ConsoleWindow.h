@@ -98,9 +98,6 @@ namespace ToolKit
     const String g_deleteSelection("DeleteSelection");
     TK_EDITOR_API void DeleteSelection(TagArgArray tagArgs);
 
-    const String g_showProfileTimer("ShowProfileTimer");
-    TK_EDITOR_API void ShowProfileTimer(TagArgArray tagArgs);
-
     const String g_selectSimilar("SelectSimilar");
     TK_EDITOR_API void SelectSimilar(TagArgArray tagArgs);
 

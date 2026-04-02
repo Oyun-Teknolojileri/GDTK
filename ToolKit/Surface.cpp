@@ -264,14 +264,14 @@ namespace ToolKit
     vertices[1].pos            = Vec3(max.x, min.y, depth);
     vertices[1].tex            = Vec2(1.0f, 0.0f);
     vertices[2].pos            = Vec3(max.x, max.y, depth);
-    vertices[2].tex            = Vec2(1.0f, -1.0f);
+    vertices[2].tex            = Vec2(1.0f, 1.0f);
 
     vertices[3].pos            = min;
     vertices[3].tex            = Vec2(0.0f, 0.0f);
     vertices[4].pos            = Vec3(max.x, max.y, depth);
-    vertices[4].tex            = Vec2(1.0f, -1.0f);
+    vertices[4].tex            = Vec2(1.0f, 1.0f);
     vertices[5].pos            = Vec3(min.x, max.y, depth);
-    vertices[5].tex            = Vec2(0.0f, -1.0f);
+    vertices[5].tex            = Vec2(0.0f, 1.0f);
 
     MeshPtr mesh               = GetMeshComponent()->GetMeshVal();
     mesh->m_clientSideVertices = vertices;

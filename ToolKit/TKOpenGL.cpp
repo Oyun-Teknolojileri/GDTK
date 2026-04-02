@@ -34,9 +34,13 @@ namespace ToolKit
 
   TKGL_LabelObject tk_glLabelObjectEXT                                         = nullptr;
 
+  TKGL_InvalidateFramebuffer tk_glInvalidateFramebufferEXT                     = nullptr;
+
   int TK_GL_EXT_texture_filter_anisotropic                                     = 0;
 
   int TK_GL_OES_texture_float_linear                                           = 0;
+
+  int TK_GL_EXT_depth_clamp                                                    = 0;
 
   void LoadGlFunctions(void* glGetProcAddres)
   {
@@ -59,6 +63,10 @@ namespace ToolKit
     TK_GL_OES_texture_float_linear = GLAD_GL_OES_texture_float_linear;
   #endif
 
+  #ifdef GL_DEPTH_CLAMP
+    TK_GL_EXT_depth_clamp = 1;
+  #endif
+
   #ifdef GL_EXT_debug_marker
 
     tk_glInsertEventMarkerEXT = glad_glInsertEventMarkerEXT;
@@ -72,6 +80,10 @@ namespace ToolKit
     tk_glLabelObjectEXT    = glad_glLabelObjectEXT;
     tk_glGetObjectLabelEXT = glad_glGetObjectLabelEXT;
 
+  #endif
+
+  #ifdef GL_ARB_invalidate_subdata
+    tk_glInvalidateFramebufferEXT = glad_glInvalidateFramebuffer;
   #endif
 
 #endif
@@ -104,6 +116,7 @@ namespace ToolKit
         String extensionsStr((const char*) extensions);
         TK_GL_OES_texture_float_linear       = extensionsStr.find("GL_OES_texture_float_linear") != String::npos;
         TK_GL_EXT_texture_filter_anisotropic = extensionsStr.find("GL_EXT_texture_filter_anisotropic") != String::npos;
+        TK_GL_EXT_depth_clamp                = extensionsStr.find("GL_EXT_depth_clamp") != String::npos;
       }
     }
 
@@ -131,7 +144,7 @@ namespace ToolKit
 
     TK_GL_OES_texture_float_linear       = extensionsStr.find("GL_OES_texture_float_linear") != std::string::npos;
     TK_GL_EXT_texture_filter_anisotropic = extensionsStr.find("GL_EXT_texture_filter_anisotropic") != std::string::npos;
-
+    TK_GL_EXT_depth_clamp                = extensionsStr.find("GL_EXT_depth_clamp") != String::npos;
 #endif
   }
 

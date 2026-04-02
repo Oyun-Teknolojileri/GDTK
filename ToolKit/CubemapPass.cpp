@@ -9,6 +9,7 @@
 
 #include "Material.h"
 #include "Mesh.h"
+#include "Stats.h"
 #include "ToolKit.h"
 
 #include "DebugNew.h"
@@ -20,6 +21,8 @@ namespace ToolKit
 
   void CubeMapPass::Render()
   {
+    TK_PROFILE_FUNCTION();
+
     Renderer* renderer = GetRenderer();
     renderer->SetFramebuffer(m_params.FrameBuffer, m_params.clearBuffer);
 
@@ -31,6 +34,8 @@ namespace ToolKit
 
   void CubeMapPass::PreRender()
   {
+    TK_PROFILE_FUNCTION();
+
     Pass::PreRender();
 
     m_cube->m_node->SetTransform(m_params.Transform);
@@ -45,6 +50,8 @@ namespace ToolKit
 
   void CubeMapPass::PostRender()
   {
+    TK_PROFILE_FUNCTION();
+
     Pass::PostRender();
     GetRenderer()->SetDepthTestFunc(CompareFunctions::FuncLess);
   }

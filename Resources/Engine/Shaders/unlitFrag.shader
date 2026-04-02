@@ -1,5 +1,6 @@
 <shader>
 	<type name = "fragmentShader" />
+	<include name = "materialCacheInc.shader" />
 	<include name = "drawDataInc.shader" />
 	<define name = "DrawAlphaMasked" val="0,1" />
 	<source>
@@ -26,6 +27,7 @@
 			color = vec4(material.color, material.alpha);
 		}
 
+#if DrawAlphaMasked
 		if (material.useAlphaMask > 0)
 		{
 			if (color.a <= material.alphaMaskThreshold)
@@ -33,6 +35,7 @@
 				discard;
 			}
 		}
+#endif
 		
 		fragColor = color;
 	}

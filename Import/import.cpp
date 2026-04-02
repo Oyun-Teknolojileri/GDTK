@@ -60,7 +60,6 @@ void TrunckToFileName(string& fullPath)
 
 namespace ToolKit
 {
-
   vector<string> g_usedFiles;
   SkeletonPtr g_skeleton;
   bool isSkeletonEntityCreated = false;
@@ -507,30 +506,79 @@ namespace ToolKit
       string writePath      = filePath + name + MATERIAL;
       MaterialPtr tMaterial = MakeNewPtr<Material>();
 
+      // Diffuse / Base Color texture
       TexturePtr diffuse    = textureFindAndCreateFunc(aiTextureType_DIFFUSE, material);
+      if (!diffuse)
+      {
+        diffuse = textureFindAndCreateFunc(aiTextureType_BASE_COLOR, material);
+      }
       if (diffuse)
       {
         tMaterial->SetDiffuseTextureVal(diffuse);
       }
 
+      // Base color factor
+      aiColor4D baseColor;
+      if (material->Get(AI_MATKEY_BASE_COLOR, baseColor) == aiReturn_SUCCESS)
+      {
+        tMaterial->SetColorVal(Vec3(baseColor.r, baseColor.g, baseColor.b));
+        if (baseColor.a < 1.0f)
+        {
+          tMaterial->SetAlphaVal(baseColor.a);
+        }
+      }
+      else
+      {
+        aiColor4D diffuseColor;
+        if (material->Get(AI_MATKEY_COLOR_DIFFUSE, diffuseColor) == aiReturn_SUCCESS)
+        {
+          tMaterial->SetColorVal(Vec3(diffuseColor.r, diffuseColor.g, diffuseColor.b));
+          if (diffuseColor.a < 1.0f)
+          {
+            tMaterial->SetAlphaVal(diffuseColor.a);
+          }
+        }
+      }
+
+      // Emissive texture
       TexturePtr emissive = textureFindAndCreateFunc(aiTextureType_EMISSIVE, material);
+      if (!emissive)
+      {
+        emissive = textureFindAndCreateFunc(aiTextureType_EMISSION_COLOR, material);
+      }
       if (emissive)
       {
         tMaterial->SetEmissiveTextureVal(emissive);
       }
 
+      // Emissive color
       aiColor3D emissiveColor;
-      if (material->Get(AI_MATKEY_EMISSIVE_INTENSITY, emissiveColor) == aiReturn_SUCCESS)
+      if (material->Get(AI_MATKEY_COLOR_EMISSIVE, emissiveColor) == aiReturn_SUCCESS)
       {
-        tMaterial->SetEmissiveColorVal(convertAssimpColorToGlm<Vec3>(emissiveColor));
+        Vec3 emColor            = Vec3(emissiveColor.r, emissiveColor.g, emissiveColor.b);
+
+        // Apply emissive intensity if available
+        float emissiveIntensity = 1.0f;
+        if (material->Get(AI_MATKEY_EMISSIVE_INTENSITY, emissiveIntensity) == aiReturn_SUCCESS)
+        {
+          emColor *= emissiveIntensity;
+        }
+
+        tMaterial->SetEmissiveColorVal(emColor);
       }
 
+      // Metallic-Roughness texture
       TexturePtr metallicRoughness = textureFindAndCreateFunc(aiTextureType_UNKNOWN, material);
+      if (!metallicRoughness)
+      {
+        metallicRoughness = textureFindAndCreateFunc(aiTextureType_METALNESS, material);
+      }
       if (metallicRoughness)
       {
         tMaterial->SetMetallicRoughnessTextureVal(metallicRoughness);
       }
 
+      // Metallic and Roughness factors
       float metalness, roughness;
       if (material->Get(AI_MATKEY_METALLIC_FACTOR, metalness) == aiReturn_SUCCESS)
       {
@@ -541,42 +589,78 @@ namespace ToolKit
         tMaterial->SetRoughnessVal(roughness);
       }
 
+      // Normal texture
       TexturePtr normal = textureFindAndCreateFunc(aiTextureType_NORMALS, material);
       if (normal)
       {
         tMaterial->SetNormalTextureVal(normal);
       }
 
-      // There are various ways to get alpha value in Assimp, try each step
-      // until succeed
-      float transparency = 1.0f;
-      if (material->Get(AI_MATKEY_TRANSPARENCYFACTOR, transparency) != aiReturn_SUCCESS)
+      // Two-sided / Cull mode
+      int twoSided = 0;
+      if (material->Get(AI_MATKEY_TWOSIDED, twoSided) == aiReturn_SUCCESS && twoSided)
       {
-        if (material->Get(AI_MATKEY_OPACITY, transparency) != aiReturn_SUCCESS)
-        {
-          material->Get(AI_MATKEY_COLOR_TRANSPARENT, transparency);
-        }
+        tMaterial->GetRenderState()->cullMode = CullingType::TwoSided;
       }
-      tMaterial->SetAlphaVal(transparency);
 
-      aiBlendMode blendFunc = aiBlendMode_Default;
-      if (material->Get(AI_MATKEY_BLEND_FUNC, blendFunc) == aiReturn_SUCCESS)
+      // Alpha mode handling (glTF: OPAQUE, MASK, BLEND)
+      aiString alphaMode;
+      if (material->Get(AI_MATKEY_GLTF_ALPHAMODE, alphaMode) == aiReturn_SUCCESS)
       {
-        if (blendFunc == aiBlendMode_Default)
+        string mode = alphaMode.C_Str();
+        if (mode == "BLEND")
+        {
+          tMaterial->GetRenderState()->blendFunction = BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA;
+
+          // Read alpha/opacity for blend mode
+          float transparency                         = 1.0f;
+          if (material->Get(AI_MATKEY_OPACITY, transparency) == aiReturn_SUCCESS)
+          {
+            tMaterial->SetAlphaVal(transparency);
+          }
+        }
+        else if (mode == "MASK")
+        {
+          tMaterial->GetRenderState()->blendFunction = BlendFunction::ALPHA_MASK;
+
+          float alphaCutoff                          = 0.5f;
+          material->Get(AI_MATKEY_GLTF_ALPHACUTOFF, alphaCutoff);
+          tMaterial->GetRenderState()->alphaMaskTreshold = alphaCutoff;
+        }
+        // OPAQUE: default, no blending needed
+      }
+      else
+      {
+        // Non-glTF fallback: try various alpha retrieval methods
+        float transparency = 1.0f;
+        if (material->Get(AI_MATKEY_TRANSPARENCYFACTOR, transparency) != aiReturn_SUCCESS)
+        {
+          if (material->Get(AI_MATKEY_OPACITY, transparency) != aiReturn_SUCCESS)
+          {
+            material->Get(AI_MATKEY_COLOR_TRANSPARENT, transparency);
+          }
+        }
+        tMaterial->SetAlphaVal(transparency);
+
+        aiBlendMode blendFunc = aiBlendMode_Default;
+        if (material->Get(AI_MATKEY_BLEND_FUNC, blendFunc) == aiReturn_SUCCESS)
+        {
+          if (blendFunc == aiBlendMode_Default)
+          {
+            tMaterial->GetRenderState()->blendFunction = BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA;
+          }
+          else
+          {
+            tMaterial->GetRenderState()->blendFunction = BlendFunction::ONE_TO_ONE;
+          }
+        }
+        else if (transparency != 1.0f)
         {
           tMaterial->GetRenderState()->blendFunction = BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA;
         }
-        else
-        {
-          tMaterial->GetRenderState()->blendFunction = BlendFunction::ONE_TO_ONE;
-        }
-      }
-      else if (transparency != 1.0f)
-      {
-        tMaterial->GetRenderState()->blendFunction = BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA;
-      }
 
-      material->Get(AI_MATKEY_GLTF_ALPHACUTOFF, tMaterial->GetRenderState()->alphaMaskTreshold);
+        material->Get(AI_MATKEY_GLTF_ALPHACUTOFF, tMaterial->GetRenderState()->alphaMaskTreshold);
+      }
 
       tMaterial->SetFile(writePath);
       CreateFileAndSerializeObject(tMaterial.get(), writePath);
@@ -630,7 +714,10 @@ namespace ToolKit
 
       if (mesh->HasTangentsAndBitangents())
       {
-        v.btan = Vec3(mesh->mBitangents[vIndex].x, mesh->mBitangents[vIndex].y, mesh->mBitangents[vIndex].z);
+        Vec3 T     = Vec3(mesh->mTangents[vIndex].x, mesh->mTangents[vIndex].y, mesh->mTangents[vIndex].z);
+        Vec3 B     = Vec3(mesh->mBitangents[vIndex].x, mesh->mBitangents[vIndex].y, mesh->mBitangents[vIndex].z);
+        float sign = glm::dot(glm::cross(v.norm, T), B) < 0.0f ? -1.0f : 1.0f;
+        v.tan      = Vec4(T, sign);
       }
 
       if constexpr (std::is_same<convertType, SkinMeshPtr>::value)
@@ -749,42 +836,76 @@ namespace ToolKit
     {
       LightPtr tkLight  = nullptr;
       aiLight* light    = g_scene->mLights[i];
-      float lightRadius = 1.0f;
+      float lightRadius = 10.0f;
       {
-        // radius for attenuation = 0.01
-        float treshold = 0.01f;
-        float a        = light->mAttenuationQuadratic * treshold;
-        float b        = light->mAttenuationLinear * treshold;
-        float c        = light->mAttenuationConstant * treshold - 1.0f;
-        float disc     = (b * b) - (4.0f * a * c);
-        if (disc >= 0.0f)
+        // Calculate a finite radius from attenuation values for our PBR distance attenuation using a threshold.
+        // Solving: a*d^2 + b*d + c = 1/threshold
+        float threshold = 0.01f;
+        float a         = light->mAttenuationQuadratic;
+        float b         = light->mAttenuationLinear;
+        float c         = light->mAttenuationConstant - (1.0f / threshold);
+
+        if (a > 0.000001f)
         {
-          float t1 = (-b - glm::sqrt(disc)) / (2.0f * a);
-          float t2 = (-b + glm::sqrt(disc)) / (2.0f * a);
-          float t  = glm::max(t1, t2);
+          float disc = (b * b) - (4.0f * a * c);
+          if (disc >= 0.0f)
+          {
+            float t1 = (-b - glm::sqrt(disc)) / (2.0f * a);
+            float t2 = (-b + glm::sqrt(disc)) / (2.0f * a);
+            float t  = glm::max(t1, t2);
+            if (t > 0.0f)
+            {
+              lightRadius = t;
+            }
+          }
+        }
+        else if (b > 0.000001f)
+        {
+          float t = -c / b;
           if (t > 0.0f)
           {
             lightRadius = t;
           }
         }
       }
+
+      // Extract intensity from color using max component to preserve color ratios.
+      Vec3 lightColor = Vec3(light->mColorDiffuse.r, light->mColorDiffuse.g, light->mColorDiffuse.b);
+      float intensity = glm::max(lightColor.r, glm::max(lightColor.g, lightColor.b));
+
+      if (intensity > 0.00001f)
+      {
+        lightColor /= intensity;
+      }
+      else
+      {
+        intensity  = 1.0f;
+        lightColor = Vec3(1.0f);
+      }
+
+      // glTF uses physical light units: candela for point/spot, lux for directional.
+      float luxNormalization     = 10.0f;
+      float candelaNormalization = 1.0f;
+      if ((g_currentExt == ".glb" || g_currentExt == ".gltf"))
+      {
+        luxNormalization     = 1.0f / 10000.0f; // Day light is around 10,000 lux.
+        candelaNormalization = 1.0f / 800.0f;   // A bright light bulb is around 800 candela.
+      }
+
       if (light->mType == aiLightSource_DIRECTIONAL)
       {
         DirectionalLightPtr dirLight = MakeNewPtr<DirectionalLight>();
         dirLight->SetNameVal(light->mName.C_Str());
-        dirLight->m_node->SetTranslation(Vec3(light->mPosition.x, light->mPosition.y, light->mPosition.z));
-        dirLight->GetComponent<DirectionComponent>()->LookAt(
-            Vec3(light->mDirection.x, light->mDirection.y, light->mDirection.z));
-        dirLight->SetColorVal(Vec3(light->mColorDiffuse.r, light->mColorDiffuse.g, light->mColorDiffuse.b));
+        dirLight->SetColorVal(lightColor);
+        dirLight->SetIntensityVal(intensity * luxNormalization);
         tkLight = dirLight;
       }
       else if (light->mType == aiLightSource_POINT)
       {
         PointLightLightPtr pointLight = MakeNewPtr<PointLight>();
         pointLight->SetNameVal(light->mName.C_Str());
-        pointLight->m_node->SetTranslation(Vec3(light->mPosition.x, light->mPosition.y, light->mPosition.z));
-        pointLight->SetRadiusVal(light->mAttenuationConstant);
-        pointLight->SetColorVal(Vec3(light->mColorDiffuse.r, light->mColorDiffuse.g, light->mColorDiffuse.b));
+        pointLight->SetColorVal(lightColor);
+        pointLight->SetIntensityVal(intensity * candelaNormalization);
         pointLight->SetRadiusVal(lightRadius);
         tkLight = pointLight;
       }
@@ -792,11 +913,8 @@ namespace ToolKit
       {
         SpotLightPtr spotLight = MakeNewPtr<SpotLight>();
         spotLight->SetNameVal(light->mName.C_Str());
-        spotLight->m_node->SetTranslation(Vec3(light->mPosition.x, light->mPosition.y, light->mPosition.z));
-        spotLight->GetComponent<DirectionComponent>()->LookAt(
-            Vec3(light->mDirection.x, light->mDirection.y, light->mDirection.z));
-        spotLight->SetRadiusVal(light->mAttenuationConstant);
-        spotLight->SetColorVal(Vec3(light->mColorDiffuse.r, light->mColorDiffuse.g, light->mColorDiffuse.b));
+        spotLight->SetColorVal(lightColor);
+        spotLight->SetIntensityVal(intensity * candelaNormalization);
         spotLight->SetInnerAngleVal(glm::degrees(light->mAngleInnerCone));
         spotLight->SetOuterAngleVal(glm::degrees(light->mAngleOuterCone));
         spotLight->SetRadiusVal(lightRadius);
@@ -827,14 +945,14 @@ namespace ToolKit
       CameraPtr tkCam = MakeNewPtr<Camera>();
       tkCam->SetNameVal(cam->mName.C_Str());
 
-      // Horizontal to vertical fov.
       float aspect               = cam->mAspect > 0.0f ? cam->mAspect : 1.0f;
+
+      // Convert horizontal to vertical FOV.
       float tanHalfHorizontalFov = std::tan(cam->mHorizontalFOV * 0.5f);
       float fov                  = 2.0f * std::atan(tanHalfHorizontalFov / aspect);
 
-      aiMatrix4x4 transform;
-      cam->GetCameraMatrix(transform);
-      tkCam->m_node->SetTransform(toMat4(transform));
+      // Camera transform is handled by the scene node in TraverseScene.
+      // So we only set the lens parameters here.
       tkCam->SetLens(fov, aspect, cam->mClipPlaneNear, cam->mClipPlaneFar);
 
       sceneCameras.push_back(tkCam);
@@ -883,7 +1001,6 @@ namespace ToolKit
       if (cam->GetNameVal() == node->mName.C_Str())
       {
         ntt = cam;
-        ntt->m_node->Rotate(glm::angleAxis(glm::pi<float>(), Y_AXIS)); // Align dir.
         break;
       }
     }
@@ -929,9 +1046,9 @@ namespace ToolKit
       }
     }
 
-    ntt->m_node->Translate(t, TransformationSpace::TS_LOCAL);
-    ntt->m_node->Rotate(rt, TransformationSpace::TS_LOCAL);
-    ntt->m_node->Scale(s);
+    ntt->m_node->SetTranslation(t, TransformationSpace::TS_LOCAL);
+    ntt->m_node->SetOrientation(rt, TransformationSpace::TS_LOCAL);
+    ntt->m_node->SetScale(s);
 
     // Insert all meshes to the entity.
     for (uint meshIndx = 0; meshIndx < node->mNumMeshes; meshIndx++)
@@ -1169,6 +1286,8 @@ namespace ToolKit
         // Set bone node transformation
         {
           DynamicBoneMap::DynamicBone& dBone = g_skeleton->m_Tpose.m_boneMap[node->mName.C_Str()];
+
+          // Set translation directly
           Vec3 t, s;
           Quaternion r;
           DecomposeAssimpMatrix(node->mTransformation, &t, &r, &s);
@@ -1338,7 +1457,7 @@ namespace ToolKit
         // Clear global materials for each scene to prevent wrong referencing
         tMaterials.clear();
 
-        int optFlags = aiProcess_FlipUVs | aiProcess_GlobalScale | aiProcess_Triangulate;
+        int optFlags = aiProcess_GlobalScale | aiProcess_Triangulate;
         if (optimizationLevel == 1)
         {
           optFlags |= aiProcessPreset_TargetRealtime_MaxQuality;

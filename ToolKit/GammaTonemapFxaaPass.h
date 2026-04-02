@@ -36,6 +36,7 @@ namespace ToolKit
 
     void PreRender() override;
     void Render() override;
+    void PostRender() override;
 
     /** Returns true if any of the sub passes (Tonemap, Fxaa, Gamma) are required. */
     bool IsEnabled();

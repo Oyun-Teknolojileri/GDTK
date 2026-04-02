@@ -122,6 +122,9 @@ namespace ToolKit
     template <typename EnumT>
     const EnumT GetEnum() const;
 
+    template <typename EnumT>
+    void SetEnum(EnumT e);
+
     struct CurrentValue
     {
       /** Index showing current selection. */
@@ -394,14 +397,6 @@ namespace ToolKit
     T* GetVarPtr()
     {
       return &std::get<T>(m_var);
-    }
-
-    /** Helper function to set an enum. Value internally stored as int. */
-    template <typename EnumT>
-    void SetEnum(EnumT e)
-    {
-      static_assert(std::is_enum_v<EnumT>, "EnumT must be an enum type");
-      AsignVal(static_cast<int>(e));
     }
 
     /** Helper function to get an enum. Internally stored int casted to target EnumT. */
@@ -715,6 +710,25 @@ namespace ToolKit
   const EnumT MultiChoiceVariant::GetEnum() const
   {
     return (EnumT) Choices[CurrentVal.Index].GetCVar<int>();
+  }
+
+  /**
+   * Set the current selection by matching the enum value in the choices.
+   * Function is located here because it requires ParameterVariant to be declared before itself.
+   */
+  template <typename EnumT>
+  void MultiChoiceVariant::SetEnum(EnumT e)
+  {
+    static_assert(std::is_enum_v<EnumT>, "EnumT must be an enum type");
+    int val = static_cast<int>(e);
+    for (uint i = 0; i < (uint) Choices.size(); i++)
+    {
+      if (Choices[i].GetCVar<int>() == val)
+      {
+        CurrentVal.Index = i;
+        return;
+      }
+    }
   }
 
   /** Helper functrion to create a multichoice parameter. */

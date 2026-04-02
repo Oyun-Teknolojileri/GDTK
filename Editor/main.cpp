@@ -285,7 +285,7 @@ namespace ToolKit
       {
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2); // Intel Iris can't create 3.0 context.
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2); // OpenGL ES 3.0 features covered in Core 3.2.
 
         SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
         SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);

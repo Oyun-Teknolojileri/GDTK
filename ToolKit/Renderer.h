@@ -151,9 +151,8 @@ namespace ToolKit
                         const Vec4& clearColor                  = Vec4(0.0f),
                         GraphicFramebufferTypes frameBufferType = GraphicFramebufferTypes::Framebuffer);
 
-    void InvalidateFramebufferDepth(FramebufferPtr frameBuffer);
-    void InvalidateFramebufferStencil(FramebufferPtr frameBuffer);
-    void InvalidateFramebufferDepthStencil(FramebufferPtr frameBuffer);
+    /** Tries to invalidate given bits of the framebuffer. Verifies if buffer actually has the specified attachments. */
+    void InvalidateFramebuffer(GraphicBitFields bits, FramebufferPtr frameBuffer);
 
     /**
      * Resolves source multi sample buffer to single sample target buffer.
@@ -218,6 +217,7 @@ namespace ToolKit
     void EnableDepthWrite(bool enable);
     void EnableDepthTest(bool enable);
     void SetDepthTestFunc(CompareFunctions func);
+    bool EnableDepthClamp(bool enable);
 
     // Giving nullptr as argument means no shadows
     void SetShadowAtlas(TexturePtr shadowAtlas);
@@ -229,9 +229,30 @@ namespace ToolKit
     void RenderWithProgramFromMaterial(const RenderJob& job);
 
     /** Apply one tap of gauss blur via setting a temporary frame buffer. Does not reset frame buffer back. */
-    void Apply7x1GaussianBlur(const TexturePtr src, RenderTargetPtr dst, const Vec3& axis, const float amount);
-    /** Apply one tap of average blur via setting a temporary frame buffer. Does not reset frame buffer back. */
-    void ApplyAverageBlur(const TexturePtr src, RenderTargetPtr dst, const Vec3& axis, const float amount);
+    void ApplyGaussianBlur(const TexturePtr src, RenderTargetPtr dst, const Vec3& axis, const float amount);
+
+    /**
+     * Applies separable Gaussian blur on a sub-region (slot) of a specific layer of a 2D array texture.
+     * UV coordinates are clamped to [clampMin, clampMax] to prevent cross-slot bleeding.
+     * @param srcArray Source 2D array texture (e.g. shadow atlas).
+     * @param tempRT Temporary 2D render target for ping-pong (same width/height as srcArray).
+     * @param framebuffer Framebuffer to use for rendering.
+     * @param layer The array layer to blur.
+     * @param kernelSize Kernel size: 3, 5, or 7.
+     * @param tapCount Number of blur passes (horizontal + vertical per tap).
+     * @param amount Blur scale amount (texel size multiplier).
+     * @param slotCoord Top-left pixel coordinate of the slot in the atlas.
+     * @param slotSize Pixel size of the slot (width = height).
+     */
+    void ApplyGaussianBlurToArrayLayerSlot(RenderTargetPtr srcArray,
+                                           RenderTargetPtr tempRT,
+                                           FramebufferPtr framebuffer,
+                                           int layer,
+                                           int kernelSize,
+                                           int tapCount,
+                                           float amount,
+                                           const Vec2& slotCoord,
+                                           int slotSize);
 
     /**
      * Sets the camera to be used for rendering. Also calculates camera related parameters, such as view, transform,
@@ -284,7 +305,7 @@ namespace ToolKit
     CameraPtr m_uiCamera      = nullptr;
     SkyBasePtr m_sky          = nullptr;
 
-    bool m_renderOnlyLighting = false;
+    ShadingMode m_shadingMode = ShadingMode::None;
 
     /** Global gpu buffers for renderer. */
     GlobalGpuBuffers* m_globalGpuBuffers;
@@ -310,7 +331,6 @@ namespace ToolKit
     int m_activePointLightCount   = 0;
     int m_activeSpotLightCount    = 0;
     bool m_ambientOcculusionInUse = false;
-    bool m_normalMapInUse         = false;
 
     FramebufferPtr m_framebuffer  = nullptr;
     TexturePtr m_shadowAtlas      = nullptr;
@@ -333,7 +353,7 @@ namespace ToolKit
     QuadPtr m_tempQuad                             = nullptr;
     MaterialPtr m_tempQuadMaterial                 = nullptr;
 
-    FramebufferPtr m_copyFrameBuffer                        = nullptr;
+    FramebufferPtr m_copyFrameBuffer               = nullptr;
     MaterialPtr m_copyMaterial                     = nullptr;
 
     int m_maxArrayTextureLayers                    = -1;
@@ -344,7 +364,10 @@ namespace ToolKit
     GpuProgramManager* m_gpuProgramManager         = nullptr;
 
     uint m_gpuTimerQuery                           = 0;
-    float m_cpuTime                                = 0.0f;
+    float m_cpuTime                                = 1.0f;
+    float m_gpuTime                                = 1.0f;
+    bool m_timerQueryActive                        = false;
+    bool m_timerQueryWaiting                       = false;
     bool m_blendStateOverrideEnable                = false;
 
     /** Frame buffer stats for each frame. */

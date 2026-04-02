@@ -105,6 +105,26 @@ namespace ToolKit
 
   extern int TK_GL_OES_texture_float_linear;
 
+  // GL_DEPTH_CLAMP_EXT
+  //////////////////////////////////////////
+
+  extern int TK_GL_EXT_depth_clamp;
+
+#undef GL_DEPTH_CLAMP_EXT
+#define GL_DEPTH_CLAMP_EXT 0x864F
+
+  // GL_EXT_Invalidate_subdata
+  //////////////////////////////////////////
+
+  extern int TK_GL_EXT_Invalidate_subdata;
+
+  typedef void(TK_STDCAL* TKGL_InvalidateFramebuffer)(GLenum target, GLsizei numAttachments, const GLenum* attachments);
+
+  extern TKGL_InvalidateFramebuffer tk_glInvalidateFramebufferEXT;
+
+#undef glInvalidateFramebufferEXT
+#define glInvalidateFramebufferEXT tk_glInvalidateFramebufferEXT
+
   // GL Loader function
   //////////////////////////////////////////
 

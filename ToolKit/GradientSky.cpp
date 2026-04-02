@@ -152,7 +152,8 @@ namespace ToolKit
                                  GraphicTypes::FormatRGBA16F,
                                  GraphicTypes::FormatRGBA,
                                  GraphicTypes::TypeFloat,
-                                 1,
+                                 MsaaSampleCount::x0,
+                                 0,
                                  false};
 
     int size                  = m_skyMapSize;

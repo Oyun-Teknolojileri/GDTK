@@ -12,6 +12,16 @@
 namespace ToolKit
 {
 
+  enum class ShadingMode
+  {
+    None,
+    Lighting,
+    Albedo,
+    Normal,
+    Metallic,
+    Roughness
+  };
+
   enum class GraphicBitFields
   {
     None             = 0x00000000,
@@ -119,6 +129,7 @@ namespace ToolKit
     // Passive state values.
     // Renderer changes or updates these values.
     bool depthTestEnabled          = true;
+    bool depthWriteEnabled         = true;
     CompareFunctions depthFunction = CompareFunctions::FuncLess;
   };
 

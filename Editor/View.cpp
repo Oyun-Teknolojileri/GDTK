@@ -49,16 +49,11 @@ namespace ToolKit
       }
 
       uint iconId                        = fallbackIcon;
-      ImVec2 texCoords                   = ImVec2(1.0f, 1.0f);
-
       ThumbnailManager* thumbnailManager = GetThumbnailManager();
 
       if (dirEnt.m_ext.length())
       {
-        if (thumbnailManager->TryGetThumbnail(iconId, dirEnt))
-        {
-          texCoords = ImVec2(1.0f, -1.0f);
-        }
+        thumbnailManager->TryGetThumbnail(iconId, dirEnt);
       }
       else if (fileExist)
       {
@@ -71,11 +66,7 @@ namespace ToolKit
         ImGui::Text(dropName.c_str());
       }
 
-      ImGui::ImageButton(file.c_str(),
-                         ConvertUIntImGuiTexture(iconId),
-                         ImVec2(48.0f, 48.0f),
-                         ImVec2(0.0f, 0.0f),
-                         texCoords);
+      UI::ImageButton(file.c_str(), ConvertUIntImGuiTexture(iconId), ImVec2(48.0f, 48.0f));
 
       bool clicked  = ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
       clicked      &= ImGui::IsItemHovered();

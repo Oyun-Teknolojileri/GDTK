@@ -35,7 +35,11 @@ namespace ToolKit
       /** Uses lights in the scene with all rendering features enabled. */
       FullyLit,
       /** Shows lighting result with a white material assigned to all objects. */
-      LightingOnly,
+      Lighing,
+      Albedo,
+      Normal,
+      Metallic,
+      Roughness,
       /** Renders scene exactly as in game. */
       Game
     };

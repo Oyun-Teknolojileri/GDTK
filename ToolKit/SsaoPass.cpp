@@ -11,6 +11,7 @@
 #include "Material.h"
 #include "MathUtil.h"
 #include "Mesh.h"
+#include "RHI.h"
 #include "Shader.h"
 #include "Stats.h"
 #include "TKOpenGL.h"
@@ -61,31 +62,46 @@ namespace ToolKit
 
   void SSAOPass::Render()
   {
-    Renderer* renderer = GetRenderer();
+    TK_PROFILE_FUNCTION();
+
+    Renderer* renderer           = GetRenderer();
+
+    // Use resolved texture if multisampled, otherwise use the original render target.
+    TexturePtr normalDepthBuffer = m_params.GNormalDepthBuffer;
+    if (normalDepthBuffer->IsMultiSampled())
+    {
+      normalDepthBuffer = m_params.GNormalDepthBuffer->GetResolvedTexture();
+    }
 
     // Generate SSAO texture
-    renderer->SetTexture(1, m_params.GNormalBuffer->m_textureId);
+    renderer->SetTexture(1, normalDepthBuffer->m_textureId);
     renderer->SetTexture(2, m_noiseTexture->m_textureId);
-    renderer->SetTexture(3, m_params.GLinearDepthBuffer->m_textureId);
 
     RenderSubPass(m_quadPass);
 
     // Horizontal blur
-    renderer->Apply7x1GaussianBlur(m_ssaoTexture, m_tempBlurRt, X_AXIS, 1.0f / m_ssaoTexture->m_width);
+    renderer->ApplyGaussianBlur(m_ssaoTexture, m_tempBlurRt, X_AXIS, 1.0f / m_ssaoTexture->m_width);
 
     // Vertical blur
-    renderer->Apply7x1GaussianBlur(m_tempBlurRt, m_ssaoTexture, Y_AXIS, 1.0f / m_ssaoTexture->m_height);
+    renderer->ApplyGaussianBlur(m_tempBlurRt, m_ssaoTexture, Y_AXIS, 1.0f / m_ssaoTexture->m_height);
   }
 
   void SSAOPass::PreRender()
   {
+    TK_PROFILE_FUNCTION();
+
     Pass::PreRender();
 
-    int width           = m_params.GNormalBuffer->m_width;
-    int height          = m_params.GNormalBuffer->m_height;
+    // Use resolved texture if multisampled to get correct dimensions.
+    TexturePtr normalDepthBuffer = m_params.GNormalDepthBuffer->IsMultiSampled()
+                                       ? m_params.GNormalDepthBuffer->GetResolvedTexture()
+                                       : m_params.GNormalDepthBuffer;
+
+    int width                    = normalDepthBuffer->m_width;
+    int height                   = normalDepthBuffer->m_height;
 
     // Clamp kernel size
-    m_params.KernelSize = glm::clamp(m_params.KernelSize, m_minimumKernelSize, m_maximumKernelSize);
+    m_params.KernelSize          = glm::clamp(m_params.KernelSize, m_minimumKernelSize, m_maximumKernelSize);
 
     GenerateSSAONoise();
 
@@ -131,6 +147,7 @@ namespace ToolKit
     m_quadPass->UpdateUniform(ShaderUniform("bias", m_params.Bias));
     m_quadPass->UpdateUniform(ShaderUniform("kernelSize", m_params.KernelSize));
     m_quadPass->UpdateUniform(ShaderUniform("projection", m_params.Cam->GetProjectionMatrix()));
+    m_quadPass->UpdateUniform(ShaderUniform("inverseProjection", glm::inverse(m_params.Cam->GetProjectionMatrix())));
     m_quadPass->UpdateUniform(ShaderUniform("viewMatrix", m_params.Cam->GetViewMatrix()));
     m_quadPass->UpdateUniform(ShaderUniform("radius", m_params.Radius));
     m_quadPass->UpdateUniform(ShaderUniform("bias", m_params.Bias));
@@ -138,6 +155,8 @@ namespace ToolKit
 
   void SSAOPass::PostRender()
   {
+    TK_PROFILE_FUNCTION();
+
     m_currentKernelSize = m_params.KernelSize;
     Pass::PostRender();
   }

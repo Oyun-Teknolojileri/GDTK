@@ -60,6 +60,11 @@
 		return material;
 	}
 
+	bool IsNormalMapInUse()
+	{
+		return materialCache[3].y > 0.5;
+	}
+
 	#endif // MATERIAL_CACHE
 
 	-->

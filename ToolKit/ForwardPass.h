@@ -49,8 +49,7 @@ namespace ToolKit
     ForwardRenderPassParams m_params;
 
    private:
-    bool m_SMFormat16Bit = false;
-    bool m_EVSM4         = false;
+    int m_shadowPCF      = 0;
 
     MaterialPtr m_programConfigMat;
   };

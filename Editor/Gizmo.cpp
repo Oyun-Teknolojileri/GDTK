@@ -46,8 +46,7 @@ namespace ToolKit
       matPtr->SetDiffuseTextureVal(tex);
 
       RenderState* rState       = matPtr->GetRenderState();
-      rState->blendFunction     = BlendFunction::ALPHA_MASK;
-      rState->alphaMaskTreshold = 0.1f;
+      rState->blendFunction     = BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA;
       matPtr->Init();
       meshPtr->m_material = matPtr;
       meshPtr->Init();

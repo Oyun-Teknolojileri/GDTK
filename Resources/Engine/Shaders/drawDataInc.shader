@@ -1,6 +1,5 @@
 <shader>
 	<type name = "includeShader" />
-	<include name = "materialCacheInc.shader" />
 	<uniform name = "drawCommand" size = "2" />
 	<source>
 	<!--
@@ -47,7 +46,6 @@
 	//////////////////////////////////////////
 	
 	#define MAX_CASCADE_COUNT 4
-	#define SHADOW_ATLAS_SIZE 2048.0
 
 	#define DIRECTIONAL_LIGHT_CACHE_ITEM_COUNT 12
 	#define MAX_DIRECTIONAL_LIGHT_PER_OBJECT 8
@@ -83,10 +81,10 @@
 	int castShadow;															\
 	float shadowBias;														\
 	float bleedingReduction;												\
-	float pcfRadius;														\
-	int pcfSamples;															\
+	float padx;																\
+	float pady;																\
 	vec2 shadowAtlasCoord;													\
-	float shadowResolution;													\
+	float shadowAtlasResRatio;												\
 	int shadowAtlasLayer;
 	
 	struct DirectionalLightData
@@ -134,8 +132,8 @@
 		vec3 direction;
 		float radius;
 
-		float innerAngle;
 		float outerAngle;
+		float innerAngle;
 	
 		mat4 projectionViewMatrix;
 	};

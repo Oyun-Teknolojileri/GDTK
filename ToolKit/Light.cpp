@@ -20,6 +20,7 @@
 #include "Renderer.h"
 #include "Scene.h"
 #include "Shader.h"
+#include "Stats.h"
 #include "ToolKit.h"
 
 #include <DebugNew.h>
@@ -49,37 +50,16 @@ namespace ToolKit
   {
     Super::ParameterConstructor();
 
-    MultiChoiceVariant mcv = {
-        {CreateMultiChoiceParameter("512", 512.0f),
-         CreateMultiChoiceParameter("1024", 1024.0f),
-         CreateMultiChoiceParameter("2048", 2048.0f)},
-        1
-    };
-
-    ShadowRes_Define(mcv, "Light", 90, true, true);
-
     Color_Define(Vec3(1.0f), "Light", 0, true, true, {true});
     Intensity_Define(1.0f, "Light", 90, true, true, {false, true, 0.0f, 100000.0f, 0.1f});
     CastShadow_Define(false, "Light", 90, true, true);
-    PCFRadius_Define(1.0f, "Light", 90, true, true, {false, true, 0.0f, 10.0f, 0.1f});
-    ShadowBias_Define(0.1f, "Light", 90, true, true, {false, true, 0.0f, 20000.0f, 0.01f});
+    ShadowBias_Define(0.2f, "Light", 90, true, true, {false, true, 0.0f, 10.0f, 0.01f});
     BleedingReduction_Define(0.1f, "Light", 90, true, true, {false, true, 0.0f, 1.0f, 0.001f});
   }
 
   void Light::ParameterEventConstructor()
   {
     Super::ParameterEventConstructor();
-
-    ParamShadowRes().GetVar<MultiChoiceVariant>().CurrentVal.Callback = [&](Value& oldVal, Value& newVal)
-    {
-      InvalidateCacheItem();
-
-      if (GetCastShadowVal())
-      {
-        // Invalidates shadow atlas.
-        m_shadowResolutionUpdated = true;
-      }
-    };
 
     ParamColor().m_onValueChangedFn.push_back([this](Value& oldVal, Value& newVal) -> void { InvalidateCacheItem(); });
 
@@ -88,9 +68,6 @@ namespace ToolKit
 
     ParamCastShadow().m_onValueChangedFn.push_back([this](Value& oldVal, Value& newVal) -> void
                                                    { InvalidateCacheItem(); });
-
-    ParamPCFRadius().m_onValueChangedFn.push_back([this](Value& oldVal, Value& newVal) -> void
-                                                  { InvalidateCacheItem(); });
 
     ParamShadowBias().m_onValueChangedFn.push_back([this](Value& oldVal, Value& newVal) -> void
                                                    { InvalidateCacheItem(); });
@@ -102,6 +79,28 @@ namespace ToolKit
   void Light::UpdateShadowCamera() { m_shadowMapCameraProjectionViewMatrix = m_shadowCamera->GetProjectViewMatrix(); }
 
   float Light::AffectDistance() { return 1000.0f; }
+
+  bool Light::HasValidShadowSlot() const
+  {
+    for (int shadowAtlasLayer : m_shadowAtlasLayers)
+    {
+      if (shadowAtlasLayer >= 0)
+      {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void Light::InvalidateShadowAtlasSlot()
+  {
+    for (size_t i = 0; i < m_shadowAtlasLayers.size(); i++)
+    {
+      m_shadowAtlasLayers[i] = -1;
+      m_shadowAtlasCoords[i] = Vec2(-1.0f);
+    }
+    m_shadowResolution = 0.0f;
+  }
 
   void Light::InvalidateSpatialCaches()
   {
@@ -144,16 +143,18 @@ namespace ToolKit
 
   void Light::UpdateCommonLightData(LightCacheItem::CommonData* data)
   {
-    data->color             = GetColorVal();
-    data->intensity         = GetIntensityVal();
-    data->position          = m_node->GetTranslation(TransformationSpace::TS_WORLD);
-    data->castShadow        = GetCastShadowVal();
-    data->shadowBias        = GetShadowBiasVal() * RHIConstants::ShadowBiasMultiplier;
-    data->bleedingReduction = GetBleedingReductionVal();
-    data->pcfRadius         = GetPCFRadiusVal();
-    data->shadowResolution  = GetShadowResVal().GetValue<float>();
-    data->shadowAtlasLayer  = m_shadowAtlasLayers[0];
-    data->shadowAtlasCoord  = m_shadowAtlasCoords[0];
+    data->color               = GetColorVal();
+    data->intensity           = GetIntensityVal();
+    data->position            = m_node->GetTranslation(TransformationSpace::TS_WORLD);
+    data->castShadow          = GetCastShadowVal() && HasValidShadowSlot();
+    data->shadowBias          = GetShadowBiasVal() * RHIConstants::ShadowBiasMultiplier;
+    data->bleedingReduction   = GetBleedingReductionVal();
+    data->pad0                = 0.0f;
+    data->pad1                = 0.0f;
+    float atlasSize           = (float) GetEngineSettings().m_graphics->m_shadows->GetShadowAtlasResolution();
+    data->shadowAtlasResRatio = m_shadowResolution / atlasSize;
+    data->shadowAtlasLayer    = m_shadowAtlasLayers[0];
+    data->shadowAtlasCoord    = m_shadowAtlasCoords[0];
   }
 
   // DirectionalLightBuffer
@@ -207,10 +208,7 @@ namespace ToolKit
     m_lightDataBuffer.Map(m_lightData, m_lightDataSize);
     m_pvms.Map(m_pvmData, m_pvmDataSize);
 
-    if (TKStats* stats = GetTKStats())
-    {
-      stats->m_directionalLightUpdatePerFrame += 2; // Includes pvm updates.
-    }
+    Stats::AddStat(FrameStatType::DirectionalLightUpdate, 2); // Includes pvm updates.
   }
 
   // DirectionalLight
@@ -401,7 +399,7 @@ namespace ToolKit
     // Allow camera to only make texel size movements.
     // To do this, find the camera origin in projection space and calculate the offset that
     // puts the camera origin on to a texel, prevent sub pixel movements and shimmering in shadow map.
-    float shadowMapRes                     = GetShadowResVal().GetValue<float>();
+    float shadowMapRes                     = m_shadowResolution;
     Mat4 shadowMatrix                      = lightCamera->GetProjectViewMatrix();
     Vec4 shadowOrigin                      = Vec4(0.0f, 0.0f, 0.0f, 1.0f);
     shadowOrigin                           = shadowMatrix * shadowOrigin;
@@ -497,7 +495,6 @@ namespace ToolKit
   {
     Super::ParameterConstructor();
 
-    ParamPCFRadius().m_hint.increment = 0.02f;
     Radius_Define(3.0f, "Light", 90, true, true, {false, true, 0.1f, 100000.0f, 0.3f});
   }
 

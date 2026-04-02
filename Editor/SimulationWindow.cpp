@@ -189,7 +189,7 @@ namespace ToolKit
       {
         GreenTint();
         // Pause.
-        if (ImGui::ImageButton("##pause", Convert2ImGuiTexture(UI::m_pauseIcon), btnSize))
+        if (UI::ImageButton("##pause", Convert2ImGuiTexture(UI::m_pauseIcon), btnSize))
         {
           GetApp()->SetGameMod(GameMod::Paused);
         }
@@ -200,7 +200,7 @@ namespace ToolKit
       {
         GreenTint();
         // Play.
-        if (ImGui::ImageButton("##play", Convert2ImGuiTexture(UI::m_playIcon), btnSize) && !GetApp()->IsCompiling())
+        if (UI::ImageButton("##play", Convert2ImGuiTexture(UI::m_playIcon), btnSize) && !GetApp()->IsCompiling())
         {
           m_simulationModeDisabled = true;
           GetApp()->SetGameMod(GameMod::Playing);
@@ -212,7 +212,7 @@ namespace ToolKit
       ImGui::SameLine();
       RedTint();
 
-      if (ImGui::ImageButton("##stop", Convert2ImGuiTexture(UI::m_stopIcon), btnSize))
+      if (UI::ImageButton("##stop", Convert2ImGuiTexture(UI::m_stopIcon), btnSize))
       {
         if (GetApp()->m_gameMod != GameMod::Stop)
         {
@@ -225,7 +225,7 @@ namespace ToolKit
       ImGui::SameLine();
 
       // VS Code.
-      if (ImGui::ImageButton("##vscode", Convert2ImGuiTexture(UI::m_vsCodeIcon), btnSize))
+      if (UI::ImageButton("##vscode", Convert2ImGuiTexture(UI::m_vsCodeIcon), btnSize))
       {
         if (GetApp()->IsWorkspaceSane(true, true))
         {
@@ -249,7 +249,7 @@ namespace ToolKit
       // Build.
       ImGui::SameLine();
 
-      if (ImGui::ImageButton("##build", Convert2ImGuiTexture(UI::m_buildIcn), btnSize))
+      if (UI::ImageButton("##build", Convert2ImGuiTexture(UI::m_buildIcn), btnSize))
       {
         GetApp()->CompilePlugin("", true);
       }
@@ -371,7 +371,7 @@ namespace ToolKit
       ImGui::Text("Rotate");
       ImGui::SameLine();
 
-      if (ImGui::ImageButton("##rotate", Convert2ImGuiTexture(UI::m_phoneRotateIcon), ImVec2(20, 20)))
+      if (UI::ImageButton("##rotate", Convert2ImGuiTexture(UI::m_phoneRotateIcon), ImVec2(20, 20)))
       {
         m_settings->Landscape = !m_settings->Landscape;
         UpdateSimulationWndSize();
