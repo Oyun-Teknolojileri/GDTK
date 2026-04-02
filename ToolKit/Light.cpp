@@ -364,7 +364,8 @@ namespace ToolKit
         radius = glm::max(radius, glm::distance(center, frustum[i]));
       }
 
-      radius                = glm::ceil(radius * 16.0f) / 16.0f;
+      // Quantize radius to absorb floating point noise.
+      radius                = glm::ceil(radius * 2.0f) / 2.0f;
       tightShadowVolume.min = Vec3(-radius);
       tightShadowVolume.max = Vec3(radius);
     }
