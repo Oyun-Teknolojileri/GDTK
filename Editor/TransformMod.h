@@ -111,6 +111,7 @@ namespace ToolKit
       Quaternion m_initialRot;
       Vec3 m_initialRotAxis;
       float m_totalAngle = 0.0f;
+      Vec3 m_initialScale;
 
      private:
       IVec2 m_mouseInitialLoc;

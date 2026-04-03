@@ -271,29 +271,29 @@ namespace ToolKit
         ExtractAxes(m_gizmo->m_normalVectors, x, y, z);
         switch (m_gizmo->GetGrabbedAxis())
         {
-        case AxisLabel::X:
-          px = x;
-          break;
-        case AxisLabel::Y:
-          px = y;
-          break;
-        case AxisLabel::Z:
-          px = z;
-          break;
-        case AxisLabel::XY:
-          m_intersectionPlane = PlaneFrom(gizmOrg, z);
-          break;
-        case AxisLabel::YZ:
-          m_intersectionPlane = PlaneFrom(gizmOrg, x);
-          break;
-        case AxisLabel::ZX:
-          m_intersectionPlane = PlaneFrom(gizmOrg, y);
-          break;
-        case AxisLabel::XYZ:
-          m_intersectionPlane = PlaneFrom(gizmOrg, x);
-          break;
-        default:
-          assert(false);
+          case AxisLabel::X:
+            px = x;
+            break;
+          case AxisLabel::Y:
+            px = y;
+            break;
+          case AxisLabel::Z:
+            px = z;
+            break;
+          case AxisLabel::XY:
+            m_intersectionPlane = PlaneFrom(gizmOrg, z);
+            break;
+          case AxisLabel::YZ:
+            m_intersectionPlane = PlaneFrom(gizmOrg, x);
+            break;
+          case AxisLabel::ZX:
+            m_intersectionPlane = PlaneFrom(gizmOrg, y);
+            break;
+          case AxisLabel::XYZ:
+            m_intersectionPlane = PlaneFrom(gizmOrg, x);
+            break;
+          default:
+            assert(false);
         }
 
         if (m_gizmo->GetGrabbedAxis() <= AxisLabel::Z)
@@ -380,11 +380,12 @@ namespace ToolKit
         ActionManager::GetInstance()->GroupLastActions(actionEntityCount);
       }
 
-      m_delta      = ZERO;
-      m_deltaAccum = ZERO;
-      m_initialLoc = currScene->GetCurrentSelection()->m_node->GetTranslation();
-      m_initialRot = currScene->GetCurrentSelection()->m_node->GetOrientation(TransformationSpace::TS_WORLD);
-      m_totalAngle = 0.0f;
+      m_delta        = ZERO;
+      m_deltaAccum   = ZERO;
+      m_initialLoc   = currScene->GetCurrentSelection()->m_node->GetTranslation();
+      m_initialRot   = currScene->GetCurrentSelection()->m_node->GetOrientation(TransformationSpace::TS_WORLD);
+      m_initialScale = currScene->GetCurrentSelection()->m_node->GetScale();
+      m_totalAngle   = 0.0f;
 
       // Store the rotation axis at grab start so it doesn't change as the entity rotates.
       if (m_type == TransformType::Rotate)
@@ -602,7 +603,7 @@ namespace ToolKit
       // Snap for pos.
       if (GetApp()->m_snapsEnabled)
       {
-        float spacing         = GetApp()->m_moveDelta;
+        float spacing = GetApp()->m_moveDelta;
 
         if (GetApp()->m_transformSpace == TransformationSpace::TS_LOCAL)
         {
@@ -615,35 +616,35 @@ namespace ToolKit
           AxisLabel grabbedAxis = m_gizmo->GetGrabbedAxis();
           switch (grabbedAxis)
           {
-          case AxisLabel::X:
-          case AxisLabel::Y:
-          case AxisLabel::Z:
-          {
-            int ai          = int(grabbedAxis);
-            float projected = glm::dot(m_deltaAccum, localAxes[ai]);
-            float snapped   = glm::round(projected / spacing) * spacing;
-            snappedDelta    = snapped * localAxes[ai];
-            break;
-          }
-          case AxisLabel::YZ:
-          case AxisLabel::ZX:
-          case AxisLabel::XY:
-          {
-            for (int i = 0; i < 3; i++)
+            case AxisLabel::X:
+            case AxisLabel::Y:
+            case AxisLabel::Z:
             {
-              // Skip the axis that is excluded from the plane.
-              if (i == int(grabbedAxis) % 3)
-              {
-                continue;
-              }
-              float projected = glm::dot(m_deltaAccum, localAxes[i]);
+              int ai          = int(grabbedAxis);
+              float projected = glm::dot(m_deltaAccum, localAxes[ai]);
               float snapped   = glm::round(projected / spacing) * spacing;
-              snappedDelta   += snapped * localAxes[i];
+              snappedDelta    = snapped * localAxes[ai];
+              break;
             }
-            break;
-          }
-          default:
-            break;
+            case AxisLabel::YZ:
+            case AxisLabel::ZX:
+            case AxisLabel::XY:
+            {
+              for (int i = 0; i < 3; i++)
+              {
+                // Skip the axis that is excluded from the plane.
+                if (i == int(grabbedAxis) % 3)
+                {
+                  continue;
+                }
+                float projected  = glm::dot(m_deltaAccum, localAxes[i]);
+                float snapped    = glm::round(projected / spacing) * spacing;
+                snappedDelta    += snapped * localAxes[i];
+              }
+              break;
+            }
+            default:
+              break;
           }
 
           target = m_initialLoc + snappedDelta;
@@ -658,19 +659,19 @@ namespace ToolKit
           AxisLabel grabbedAxis = m_gizmo->GetGrabbedAxis();
           switch (grabbedAxis)
           {
-          case AxisLabel::X:
-          case AxisLabel::Y:
-          case AxisLabel::Z:
-            target[int(grabbedAxis)] = snapped[int(grabbedAxis)];
-            break;
-          case AxisLabel::YZ:
-          case AxisLabel::ZX:
-          case AxisLabel::XY:
-            snapped[int(grabbedAxis) % 3] = target[int(grabbedAxis) % 3];
-            target                        = snapped;
-            break;
-          default:
-            break;
+            case AxisLabel::X:
+            case AxisLabel::Y:
+            case AxisLabel::Z:
+              target[int(grabbedAxis)] = snapped[int(grabbedAxis)];
+              break;
+            case AxisLabel::YZ:
+            case AxisLabel::ZX:
+            case AxisLabel::XY:
+              snapped[int(grabbedAxis) % 3] = target[int(grabbedAxis) % 3];
+              target                        = snapped;
+              break;
+            default:
+              break;
           }
         }
       }
@@ -684,18 +685,18 @@ namespace ToolKit
 
     void StateTransformTo::Rotate(EntityPtr ntt)
     {
-      float delta     = m_delta.z;
-      m_totalAngle   += delta;
+      float delta    = m_delta.z;
+      m_totalAngle  += delta;
 
-      float angle     = m_totalAngle;
-      float spacing   = glm::radians(GetApp()->m_rotateDelta);
+      float angle    = m_totalAngle;
+      float spacing  = glm::radians(GetApp()->m_rotateDelta);
       if (GetApp()->m_snapsEnabled)
       {
         angle = glm::round(angle / spacing) * spacing;
       }
 
-      Quaternion rotation   = glm::angleAxis(angle, m_initialRotAxis);
-      Quaternion targetRot  = rotation * m_initialRot;
+      Quaternion rotation  = glm::angleAxis(angle, m_initialRotAxis);
+      Quaternion targetRot = rotation * m_initialRot;
 
       ntt->m_node->SetOrientation(targetRot, TransformationSpace::TS_WORLD);
     }
@@ -722,37 +723,8 @@ namespace ToolKit
       Vec3 delta                       = Vec3(glm::length(m_delta) / glm::length(aabbSize));
 
       delta                           *= glm::normalize(axis);
-      m_deltaAccum                    += delta;
 
-      float spacing                    = GetApp()->m_scaleDelta;
-      if (GetApp()->m_snapsEnabled)
-      {
-        if (IsPlaneMod())
-        { // Snapping on, 2 dimension grabbed
-          if (length(m_deltaAccum) < length(Vec3(spacing, spacing, 0)))
-          {
-            return;
-          }
-          delta        = m_deltaAccum;
-          m_deltaAccum = Vec3(0);
-        }
-        else
-        { // Snapping on, 1 dimension grabbed
-          if (length(m_deltaAccum) < spacing)
-          {
-            return;
-          }
-          delta        = m_deltaAccum;
-          m_deltaAccum = Vec3(0);
-        }
-      }
-      else
-      {
-        delta        = m_deltaAccum;
-        m_deltaAccum = Vec3(0);
-      }
-
-      // Transfer world space delta to local axis.
+      // Transfer world space delta to local axis direction.
       if (axisIndex <= (int) AxisLabel::Z)
       {
         Vec3 axisDir  = m_gizmo->m_normalVectors[axisIndex % 3];
@@ -778,19 +750,28 @@ namespace ToolKit
         delta *= mas;
       }
 
+      m_deltaAccum    += delta;
+
+      Vec3 totalDelta  = m_deltaAccum;
+      float spacing    = GetApp()->m_scaleDelta;
       if (GetApp()->m_snapsEnabled)
       {
         for (uint i = 0; i < 3; i++)
         {
-          delta[i] = glm::round(delta[i] / spacing) * spacing;
+          totalDelta[i] = glm::round(totalDelta[i] / spacing) * spacing;
         }
       }
 
-      Vec3 scale = Vec3(1.0f) + delta;
-      if (!VecAllEqual(delta, ZERO))
+      // Prevent scale from reaching zero.
+      Vec3 targetScale = m_initialScale * (Vec3(1.0f) + totalDelta);
+      for (int i = 0; i < 3; i++)
       {
-        ntt->m_node->Scale(scale);
+        if (glm::abs(targetScale[i]) < 0.001f)
+        {
+          targetScale[i] = (targetScale[i] >= 0.0f) ? 0.001f : -0.001f;
+        }
       }
+      ntt->m_node->SetScale(targetScale);
     }
 
     // StateTransformEnd
@@ -839,21 +820,21 @@ namespace ToolKit
       StateTransformBase* baseState = static_cast<StateTransformBase*>(state);
       switch (m_id)
       {
-      case ModId::Move:
-        m_gizmo           = MakeNewPtr<MoveGizmo>();
-        baseState->m_type = StateTransformBase::TransformType::Translate;
-        break;
-      case ModId::Rotate:
-        m_gizmo           = MakeNewPtr<PolarGizmo>();
-        baseState->m_type = StateTransformBase::TransformType::Rotate;
-        break;
-      case ModId::Scale:
-        m_gizmo           = MakeNewPtr<ScaleGizmo>();
-        baseState->m_type = StateTransformBase::TransformType::Scale;
-        break;
-      default:
-        assert(false);
-        return;
+        case ModId::Move:
+          m_gizmo           = MakeNewPtr<MoveGizmo>();
+          baseState->m_type = StateTransformBase::TransformType::Translate;
+          break;
+        case ModId::Rotate:
+          m_gizmo           = MakeNewPtr<PolarGizmo>();
+          baseState->m_type = StateTransformBase::TransformType::Rotate;
+          break;
+        case ModId::Scale:
+          m_gizmo           = MakeNewPtr<ScaleGizmo>();
+          baseState->m_type = StateTransformBase::TransformType::Scale;
+          break;
+        default:
+          assert(false);
+          return;
       }
 
       baseState->m_gizmo             = m_gizmo;
