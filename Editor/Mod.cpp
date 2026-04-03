@@ -73,33 +73,33 @@ namespace ToolKit
         BaseMod* nextMod = nullptr;
         switch (mod)
         {
-        case ModId::Select:
-          nextMod    = new SelectMod();
-          modNameDbg = "Mod: Select";
-          break;
-        case ModId::Cursor:
-          nextMod    = new CursorMod();
-          modNameDbg = "Mod: Cursor";
-          break;
-        case ModId::Move:
-          nextMod    = new TransformMod(mod);
-          modNameDbg = "Mod: Move";
-          break;
-        case ModId::Rotate:
-          nextMod    = new TransformMod(mod);
-          modNameDbg = "Mod: Rotate";
-          break;
-        case ModId::Scale:
-          nextMod    = new TransformMod(mod);
-          modNameDbg = "Mod: Scale";
-          break;
-        case ModId::Anchor:
-          nextMod    = new AnchorMod(mod);
-          modNameDbg = "Mod: Anchor";
-          break;
-        case ModId::Base:
-        default:
-          break;
+          case ModId::Select:
+            nextMod    = new SelectMod();
+            modNameDbg = "Mod: Select";
+            break;
+          case ModId::Cursor:
+            nextMod    = new CursorMod();
+            modNameDbg = "Mod: Cursor";
+            break;
+          case ModId::Move:
+            nextMod    = new TransformMod(mod);
+            modNameDbg = "Mod: Move";
+            break;
+          case ModId::Rotate:
+            nextMod    = new TransformMod(mod);
+            modNameDbg = "Mod: Rotate";
+            break;
+          case ModId::Scale:
+            nextMod    = new TransformMod(mod);
+            modNameDbg = "Mod: Scale";
+            break;
+          case ModId::Anchor:
+            nextMod    = new AnchorMod(mod);
+            modNameDbg = "Mod: Anchor";
+            break;
+          case ModId::Base:
+          default:
+            break;
         }
 
         assert(nextMod);
@@ -164,6 +164,7 @@ namespace ToolKit
     SignalId BaseMod::m_backToStart          = BaseMod::GetNextSignalId();
     SignalId BaseMod::m_delete               = BaseMod::GetNextSignalId();
     SignalId BaseMod::m_duplicate            = BaseMod::GetNextSignalId();
+    SignalId BaseMod::m_setCursorSgnl        = BaseMod::GetNextSignalId();
 
     BaseMod::BaseMod(ModId id)
     {
@@ -181,6 +182,18 @@ namespace ToolKit
 
     void BaseMod::Signal(SignalId signal)
     {
+      if (signal == m_setCursorSgnl)
+      {
+        if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
+        {
+          Ray ray                             = vp->RayFromMousePosition();
+          EditorScenePtr currScene            = GetApp()->GetCurrentScene();
+          EditorScene::PickData pd            = currScene->PickObject(ray);
+          GetApp()->m_cursor->m_worldLocation = pd.pickPos;
+        }
+        return;
+      }
+
       State* prevStateDbg = m_stateMachine->m_currentState;
 
       m_stateMachine->Signal(signal);
