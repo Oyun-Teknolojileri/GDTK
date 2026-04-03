@@ -108,6 +108,9 @@ namespace ToolKit
       Vec3 m_delta;
       Vec3 m_deltaAccum;
       Vec3 m_initialLoc;
+      Quaternion m_initialRot;
+      Vec3 m_initialRotAxis;
+      float m_totalAngle = 0.0f;
 
      private:
       IVec2 m_mouseInitialLoc;

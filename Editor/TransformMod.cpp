@@ -383,6 +383,16 @@ namespace ToolKit
       m_delta      = ZERO;
       m_deltaAccum = ZERO;
       m_initialLoc = currScene->GetCurrentSelection()->m_node->GetTranslation();
+      m_initialRot = currScene->GetCurrentSelection()->m_node->GetOrientation(TransformationSpace::TS_WORLD);
+      m_totalAngle = 0.0f;
+
+      // Store the rotation axis at grab start so it doesn't change as the entity rotates.
+      if (m_type == TransformType::Rotate)
+      {
+        int axisInd      = (int) (m_gizmo->GetGrabbedAxis());
+        m_initialRotAxis = m_gizmo->m_normalVectors[axisInd];
+      }
+
       SDL_GetGlobalMouseState(&m_mouseInitialLoc.x, &m_mouseInitialLoc.y);
     }
 
@@ -626,29 +636,19 @@ namespace ToolKit
     void StateTransformTo::Rotate(EntityPtr ntt)
     {
       float delta     = m_delta.z;
+      m_totalAngle   += delta;
 
-      m_deltaAccum.x += delta;
+      float angle     = m_totalAngle;
       float spacing   = glm::radians(GetApp()->m_rotateDelta);
       if (GetApp()->m_snapsEnabled)
       {
-        if (glm::abs(m_deltaAccum.x) < spacing)
-        {
-          return;
-        }
-
-        delta = glm::round(m_deltaAccum.x / spacing) * spacing;
+        angle = glm::round(angle / spacing) * spacing;
       }
 
-      m_deltaAccum.x = 0.0f;
+      Quaternion rotation   = glm::angleAxis(angle, m_initialRotAxis);
+      Quaternion targetRot  = rotation * m_initialRot;
 
-      if (glm::notEqual(delta, 0.0f))
-      {
-        PolarGizmo* pg      = static_cast<PolarGizmo*>(m_gizmo.get());
-        int axisInd         = (int) (m_gizmo->GetGrabbedAxis());
-
-        Quaternion rotation = glm::angleAxis(delta, m_gizmo->m_normalVectors[axisInd]);
-        ntt->m_node->Rotate(rotation, TransformationSpace::TS_WORLD);
-      }
+      ntt->m_node->SetOrientation(targetRot, TransformationSpace::TS_WORLD);
     }
 
     void StateTransformTo::Scale(EntityPtr ntt)
