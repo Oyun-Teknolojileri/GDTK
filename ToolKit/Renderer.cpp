@@ -426,16 +426,10 @@ namespace ToolKit
 
     m_renderState.alphaMaskTreshold = state->alphaMaskTreshold;
 
-    if (m_renderState.depthFunction != state->depthFunction)
-    {
-      m_renderState.depthFunction = state->depthFunction;
-      glDepthFunc((int) m_renderState.depthFunction);
-    }
-
     if (m_renderState.lineWidth != state->lineWidth)
     {
       m_renderState.lineWidth = state->lineWidth;
-      glLineWidth(m_renderState.lineWidth);
+      // glLineWidth(m_renderState.lineWidth);
     }
   }
 
@@ -688,7 +682,7 @@ namespace ToolKit
       RHI::SetFramebuffer(GL_READ_FRAMEBUFFER, source->GetFboId());
       RHI::SetFramebuffer(GL_DRAW_FRAMEBUFFER, target->GetFboId());
 
-      GLenum attachment = GL_COLOR_ATTACHMENT0 + atc;
+      GLenum attachment        = GL_COLOR_ATTACHMENT0 + atc;
 
       // Read from the specific source attachment.
       glReadBuffer(attachment);
