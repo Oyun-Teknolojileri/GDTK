@@ -51,7 +51,34 @@ namespace ToolKit
 
           jobs.clear();
           RenderJobProcessor::CreateRenderJobs(jobs, billboard);
-          renderer->RenderWithProgramFromMaterial(jobs);
+
+          Gizmo* gizmo = static_cast<Gizmo*>(billboard.get());
+          if (!gizmo->m_noDepthMeshes.empty())
+          {
+            RenderJobArray guideJobs;
+            RenderJobArray normalJobs;
+            for (const RenderJob& job : jobs)
+            {
+              if (contains(gizmo->m_noDepthMeshes, job.Mesh->GetIdVal()))
+              {
+                guideJobs.push_back(job);
+              }
+              else
+              {
+                normalJobs.push_back(job);
+              }
+            }
+
+            renderer->RenderWithProgramFromMaterial(normalJobs);
+
+            renderer->SetDepthTestFunc(CompareFunctions::FuncAlways);
+            renderer->RenderWithProgramFromMaterial(guideJobs);
+            renderer->SetDepthTestFunc(CompareFunctions::FuncLess);
+          }
+          else
+          {
+            renderer->RenderWithProgramFromMaterial(jobs);
+          }
         }
         else
         {
