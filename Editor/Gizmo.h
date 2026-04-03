@@ -66,6 +66,7 @@ namespace ToolKit
         // World space data.
         Vec3 worldLoc;
         Vec3 grabPnt;
+        Vec3 grabPntRaw;
         Vec3 initialPnt;
         Mat3 normals;
         // Billboard values.
@@ -145,7 +146,8 @@ namespace ToolKit
       void Consume();
 
      public:
-      Vec3 m_grabPoint;     //!< Grab location of the gizmo.
+      Vec3 m_grabPoint;     //!< Normalized grab direction on the gizmo.
+      Vec3 m_grabPointRaw;  //!< Actual grab point relative to gizmo center (non-normalized).
       Vec3 m_initialPoint;  //!< Gizmo's entities initial center before any movement.
       Mat3 m_normalVectors; //!< Gizmo's entities normal axes.
       AxisLabel m_lastHovered;

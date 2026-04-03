@@ -209,7 +209,8 @@ namespace ToolKit
       if (signal == BaseMod::m_leftMouseBtnUpSgnl)
       {
         m_gizmo->Grab(AxisLabel::None);
-        m_gizmo->m_grabPoint = ZERO;
+        m_gizmo->m_grabPoint    = ZERO;
+        m_gizmo->m_grabPointRaw = ZERO;
       }
 
       if (signal == BaseMod::m_leftMouseBtnDragSgnl)
@@ -319,8 +320,9 @@ namespace ToolKit
           m_gizmo->m_grabPoint = PointOnRay(ray, t);
           if (m_gizmo->IsA<PolarGizmo>())
           {
-            m_gizmo->m_grabPoint -= m_gizmo->m_worldLocation;
-            m_gizmo->m_grabPoint  = glm::normalize(m_gizmo->m_grabPoint);
+            m_gizmo->m_grabPoint    -= m_gizmo->m_worldLocation;
+            m_gizmo->m_grabPointRaw  = m_gizmo->m_grabPoint;
+            m_gizmo->m_grabPoint     = glm::normalize(m_gizmo->m_grabPoint);
           }
         }
       }
@@ -400,7 +402,8 @@ namespace ToolKit
     void StateTransformTo::TransitionOut(State* prevState)
     {
       StateTransformBase::TransitionOut(prevState);
-      m_gizmo->m_grabPoint = ZERO;
+      m_gizmo->m_grabPoint    = ZERO;
+      m_gizmo->m_grabPointRaw = ZERO;
 
       // Set the mouse position roughly.
       SDL_WarpMouseGlobal((int) (m_mouseData[1].x), (int) (m_mouseData[1].y));
@@ -480,9 +483,10 @@ namespace ToolKit
           Vec3 p1; // Point 1 on gizmo.
           if (RayPlaneIntersection(ray0, m_intersectionPlane, t))
           {
-            p1                   = PointOnRay(ray1, t);
-            p1                   = glm::normalize(p1 - gizmoCenter);
-            m_gizmo->m_grabPoint = p1;
+            Vec3 rawP1              = PointOnRay(ray1, t) - gizmoCenter;
+            p1                      = glm::normalize(rawP1);
+            m_gizmo->m_grabPoint    = p1;
+            m_gizmo->m_grabPointRaw = rawP1;
           }
 
           m_delta       = ZERO;
