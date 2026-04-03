@@ -113,11 +113,12 @@ namespace ToolKit
    public:
     // Active state values.
     // Changing these settings will modify the renderer's state.
-    CullingType cullMode        = CullingType::Back;
-    BlendFunction blendFunction = BlendFunction::NONE;
-    DrawType drawType           = DrawType::Triangle;
-    float alphaMaskTreshold     = 0.001f;
-    float lineWidth             = 1.0f;
+    CullingType cullMode           = CullingType::Back;
+    BlendFunction blendFunction    = BlendFunction::NONE;
+    DrawType drawType              = DrawType::Triangle;
+    float alphaMaskTreshold        = 0.001f;
+    float lineWidth                = 1.0f;
+    CompareFunctions depthFunction = CompareFunctions::FuncLess;
 
    protected:
     virtual XmlNode* SerializeImp(XmlDocument* doc, XmlNode* parent) const;
@@ -128,9 +129,8 @@ namespace ToolKit
 
     // Passive state values.
     // Renderer changes or updates these values.
-    bool depthTestEnabled          = true;
-    bool depthWriteEnabled         = true;
-    CompareFunctions depthFunction = CompareFunctions::FuncLess;
+    bool depthTestEnabled  = true;
+    bool depthWriteEnabled = true;
   };
 
 } // namespace ToolKit

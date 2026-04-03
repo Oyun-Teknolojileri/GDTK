@@ -19,6 +19,8 @@ namespace ToolKit
   namespace Editor
   {
 
+    constexpr float LineThicknessMultiplier = 0.75f;
+
     // Cursor
     //////////////////////////////////////////
 
@@ -142,7 +144,7 @@ namespace ToolKit
       m_mesh            = MakeNewPtr<Mesh>();
 
       LineBatchPtr line = MakeNewPtr<LineBatch>();
-      line->Generate(pnts, params.color, DrawType::Line, 2.0f);
+      line->Generate(pnts, params.color, DrawType::Line, 2.0f * LineThicknessMultiplier);
       MeshPtr lnMesh = line->GetComponent<MeshComponent>()->GetMeshVal();
       m_mesh->m_subMeshes.push_back(lnMesh);
 
@@ -201,8 +203,9 @@ namespace ToolKit
         Vec3Array pnts     = {axis * 999.0f, axis * -999.0f};
 
         LineBatchPtr guide = MakeNewPtr<LineBatch>();
-        guide->Generate(pnts, g_gizmoColor[axisInd % 3], DrawType::Line, 2.0f);
-        MeshPtr guideMesh = guide->GetComponent<MeshComponent>()->GetMeshVal();
+        guide->Generate(pnts, g_gizmoColor[axisInd % 3], DrawType::Line, 2.0f * LineThicknessMultiplier);
+        MeshPtr guideMesh                                      = guide->GetComponent<MeshComponent>()->GetMeshVal();
+        guideMesh->m_material->GetRenderState()->depthFunction = CompareFunctions::FuncAlways;
         m_mesh->m_subMeshes.push_back(guideMesh);
       }
     }
@@ -266,7 +269,7 @@ namespace ToolKit
       corners.push_back(corners.front());
 
       LineBatchPtr circle = MakeNewPtr<LineBatch>();
-      circle->Generate(corners, params.color, DrawType::LineStrip, 4.0f);
+      circle->Generate(corners, params.color, DrawType::LineStrip, 4.0f * LineThicknessMultiplier);
       MeshPtr circleMesh = circle->GetComponent<MeshComponent>()->GetMeshVal();
       m_mesh             = circleMesh;
 
@@ -282,9 +285,10 @@ namespace ToolKit
         int axisIndx       = (int) params.axis;
 
         LineBatchPtr guide = MakeNewPtr<LineBatch>();
-        guide->Generate({ZERO, grabLcl}, g_gizmoColor[axisIndx], DrawType::Line, 2.0f);
+        guide->Generate({ZERO, grabLcl}, g_gizmoColor[axisIndx], DrawType::Line, 2.0f * LineThicknessMultiplier);
 
-        MeshPtr guideMesh = guide->GetComponent<MeshComponent>()->GetMeshVal();
+        MeshPtr guideMesh                                      = guide->GetComponent<MeshComponent>()->GetMeshVal();
+        guideMesh->m_material->GetRenderState()->depthFunction = CompareFunctions::FuncAlways;
         m_mesh->m_subMeshes.push_back(guideMesh);
       }
     }
