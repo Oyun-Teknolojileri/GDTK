@@ -91,7 +91,8 @@ namespace ToolKit
      public:
       Vec3 m_tangentDir;
       Params m_params;
-      MeshPtr m_mesh = nullptr;
+      MeshPtr m_mesh           = nullptr;
+      ObjectId m_noDepthMeshId = 0;
     };
 
     // PolarHandle
@@ -152,6 +153,7 @@ namespace ToolKit
       Mat3 m_normalVectors; //!< Gizmo's entities normal axes.
       AxisLabel m_lastHovered;
       std::vector<GizmoHandle*> m_handles;
+      IDArray m_noDepthMeshes;
 
      protected:
       std::vector<AxisLabel> m_lockedAxis;

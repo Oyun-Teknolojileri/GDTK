@@ -135,6 +135,7 @@ namespace ToolKit
     void GizmoHandle::Generate(const Params& params)
     {
       m_params          = params;
+      m_noDepthMeshId   = 0;
 
       Vec3 dir          = AXIS[(int) params.axis % 3];
       Vec3Array pnts    = {dir * params.toeTip.x, dir * params.toeTip.y};
@@ -204,6 +205,7 @@ namespace ToolKit
         guide->Generate(pnts, g_gizmoColor[axisInd % 3], DrawType::Line, 2.0f);
         MeshPtr guideMesh = guide->GetComponent<MeshComponent>()->GetMeshVal();
         m_mesh->m_subMeshes.push_back(guideMesh);
+        m_noDepthMeshId = guideMesh->GetIdVal();
       }
     }
 
@@ -237,6 +239,7 @@ namespace ToolKit
     void PolarHandle::Generate(const Params& params)
     {
       m_params        = params;
+      m_noDepthMeshId = 0;
 
       int cornerCount = 60;
       Vec3Array corners;
@@ -286,6 +289,7 @@ namespace ToolKit
 
         MeshPtr guideMesh = guide->GetComponent<MeshComponent>()->GetMeshVal();
         m_mesh->m_subMeshes.push_back(guideMesh);
+        m_noDepthMeshId = guideMesh->GetIdVal();
       }
     }
 
@@ -538,6 +542,15 @@ namespace ToolKit
       root->Init(false);
       root->CalculateAABB();
       GetComponent<MeshComponent>()->SetMeshVal(root);
+
+      m_noDepthMeshes.clear();
+      for (int i = 0; i < (int) m_handles.size(); i++)
+      {
+        if (m_handles[i]->m_noDepthMeshId != 0)
+        {
+          m_noDepthMeshes.push_back(m_handles[i]->m_noDepthMeshId);
+        }
+      }
     }
 
     // LinearGizmo
