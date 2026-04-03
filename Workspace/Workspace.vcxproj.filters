@@ -5,4 +5,20 @@
       <UniqueIdentifier>{be7c4966-66be-4fc7-9ffc-bc767a6510ae}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Workspace.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="stdafx.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Workspace.h">
+      <Filter>Source</Filter>
+    </ClInclude>
+    <ClInclude Include="WorkspaceTypes.h">
+      <Filter>Source</Filter>
+    </ClInclude>
+  </ItemGroup>
 </Project>

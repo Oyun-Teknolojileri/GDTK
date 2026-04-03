@@ -69,9 +69,6 @@
     <ClCompile Include="EditorScene.cpp">
       <Filter>Source</Filter>
     </ClCompile>
-    <ClCompile Include="Workspace.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
     <ClCompile Include="EditorCamera.cpp">
       <Filter>Entities</Filter>
     </ClCompile>
@@ -230,9 +227,6 @@
     <ClInclude Include="EditorScene.h">
       <Filter>Source</Filter>
     </ClInclude>
-    <ClInclude Include="Workspace.h">
-      <Filter>Source</Filter>
-    </ClInclude>
     <ClInclude Include="EditorCamera.h">
       <Filter>Entities</Filter>
     </ClInclude>
@@ -367,9 +361,6 @@
     </ClInclude>
     <ClInclude Include="Launcher.h">
       <Filter>Launcher</Filter>
-    </ClInclude>
-    <ClInclude Include="WorkspaceTypes.h">
-      <Filter>Source</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
