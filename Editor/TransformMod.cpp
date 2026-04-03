@@ -602,27 +602,76 @@ namespace ToolKit
       // Snap for pos.
       if (GetApp()->m_snapsEnabled)
       {
-        target                = m_initialLoc + m_deltaAccum;
         float spacing         = GetApp()->m_moveDelta;
-        Vec3 snapped          = glm::round(target / spacing) * spacing;
 
-        // Apply axis lock.
-        AxisLabel grabbedAxis = m_gizmo->GetGrabbedAxis();
-        switch (grabbedAxis)
+        if (GetApp()->m_transformSpace == TransformationSpace::TS_LOCAL)
         {
-        case AxisLabel::X:
-        case AxisLabel::Y:
-        case AxisLabel::Z:
-          target[int(grabbedAxis)] = snapped[int(grabbedAxis)];
-          break;
-        case AxisLabel::YZ:
-        case AxisLabel::ZX:
-        case AxisLabel::XY:
-          snapped[int(grabbedAxis) % 3] = target[int(grabbedAxis) % 3];
-          target                        = snapped;
-          break;
-        default:
-          break;
+          // In local space, snap the delta distance along each local axis.
+          Vec3 localAxes[3];
+          ExtractAxes(m_gizmo->m_normalVectors, localAxes[0], localAxes[1], localAxes[2]);
+
+          // Project accumulated delta onto each local axis, snap, and reconstruct.
+          Vec3 snappedDelta     = ZERO;
+          AxisLabel grabbedAxis = m_gizmo->GetGrabbedAxis();
+          switch (grabbedAxis)
+          {
+          case AxisLabel::X:
+          case AxisLabel::Y:
+          case AxisLabel::Z:
+          {
+            int ai          = int(grabbedAxis);
+            float projected = glm::dot(m_deltaAccum, localAxes[ai]);
+            float snapped   = glm::round(projected / spacing) * spacing;
+            snappedDelta    = snapped * localAxes[ai];
+            break;
+          }
+          case AxisLabel::YZ:
+          case AxisLabel::ZX:
+          case AxisLabel::XY:
+          {
+            for (int i = 0; i < 3; i++)
+            {
+              // Skip the axis that is excluded from the plane.
+              if (i == int(grabbedAxis) % 3)
+              {
+                continue;
+              }
+              float projected = glm::dot(m_deltaAccum, localAxes[i]);
+              float snapped   = glm::round(projected / spacing) * spacing;
+              snappedDelta   += snapped * localAxes[i];
+            }
+            break;
+          }
+          default:
+            break;
+          }
+
+          target = m_initialLoc + snappedDelta;
+        }
+        else
+        {
+          // In world space, snap to the world grid.
+          target                = m_initialLoc + m_deltaAccum;
+          Vec3 snapped          = glm::round(target / spacing) * spacing;
+
+          // Apply axis lock.
+          AxisLabel grabbedAxis = m_gizmo->GetGrabbedAxis();
+          switch (grabbedAxis)
+          {
+          case AxisLabel::X:
+          case AxisLabel::Y:
+          case AxisLabel::Z:
+            target[int(grabbedAxis)] = snapped[int(grabbedAxis)];
+            break;
+          case AxisLabel::YZ:
+          case AxisLabel::ZX:
+          case AxisLabel::XY:
+            snapped[int(grabbedAxis) % 3] = target[int(grabbedAxis) % 3];
+            target                        = snapped;
+            break;
+          default:
+            break;
+          }
         }
       }
       else
