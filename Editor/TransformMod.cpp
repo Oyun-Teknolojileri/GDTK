@@ -209,8 +209,8 @@ namespace ToolKit
       if (signal == BaseMod::m_leftMouseBtnUpSgnl)
       {
         m_gizmo->Grab(AxisLabel::None);
-        m_gizmo->m_grabPoint    = ZERO;
-        m_gizmo->m_grabPointRaw = ZERO;
+        m_gizmo->m_grabDir = ZERO;
+        m_gizmo->m_grabPnt = ZERO;
       }
 
       if (signal == BaseMod::m_leftMouseBtnDragSgnl)
@@ -309,7 +309,7 @@ namespace ToolKit
     void StateTransformBegin::CalculateGrabPoint()
     {
       assert(m_gizmo->GetGrabbedAxis() != AxisLabel::None);
-      m_gizmo->m_grabPoint = ZERO;
+      m_gizmo->m_grabDir = ZERO;
 
       if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
       {
@@ -317,12 +317,12 @@ namespace ToolKit
         Ray ray = vp->RayFromMousePosition();
         if (RayPlaneIntersection(ray, m_intersectionPlane, t))
         {
-          m_gizmo->m_grabPoint = PointOnRay(ray, t);
+          m_gizmo->m_grabDir = PointOnRay(ray, t);
           if (m_gizmo->IsA<PolarGizmo>())
           {
-            m_gizmo->m_grabPoint    -= m_gizmo->m_worldLocation;
-            m_gizmo->m_grabPointRaw  = m_gizmo->m_grabPoint;
-            m_gizmo->m_grabPoint     = glm::normalize(m_gizmo->m_grabPoint);
+            m_gizmo->m_grabDir -= m_gizmo->m_worldLocation;
+            m_gizmo->m_grabPnt  = m_gizmo->m_grabDir;
+            m_gizmo->m_grabDir  = glm::normalize(m_gizmo->m_grabDir);
           }
         }
       }
@@ -402,8 +402,8 @@ namespace ToolKit
     void StateTransformTo::TransitionOut(State* prevState)
     {
       StateTransformBase::TransitionOut(prevState);
-      m_gizmo->m_grabPoint    = ZERO;
-      m_gizmo->m_grabPointRaw = ZERO;
+      m_gizmo->m_grabDir = ZERO;
+      m_gizmo->m_grabPnt = ZERO;
 
       // Set the mouse position roughly.
       SDL_WarpMouseGlobal((int) (m_mouseData[1].x), (int) (m_mouseData[1].y));
@@ -483,10 +483,10 @@ namespace ToolKit
           Vec3 p1; // Point 1 on gizmo.
           if (RayPlaneIntersection(ray0, m_intersectionPlane, t))
           {
-            Vec3 rawP1              = PointOnRay(ray1, t) - gizmoCenter;
-            p1                      = glm::normalize(rawP1);
-            m_gizmo->m_grabPoint    = p1;
-            m_gizmo->m_grabPointRaw = rawP1;
+            Vec3 rawP1         = PointOnRay(ray1, t) - gizmoCenter;
+            p1                 = glm::normalize(rawP1);
+            m_gizmo->m_grabDir = p1;
+            m_gizmo->m_grabPnt = rawP1;
           }
 
           m_delta       = ZERO;

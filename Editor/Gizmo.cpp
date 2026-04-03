@@ -194,7 +194,7 @@ namespace ToolKit
       mesh->Init();
 
       // Guide line.
-      if (!glm::isNull(params.grabPnt, glm::epsilon<float>()))
+      if (!glm::isNull(params.grabDir, glm::epsilon<float>()))
       {
         int axisInd        = (int) m_params.axis;
         Vec3 axis          = AXIS[axisInd];
@@ -271,12 +271,12 @@ namespace ToolKit
       m_mesh             = circleMesh;
 
       // Guide line.
-      if (!glm::isNull(params.grabPnt, glm::epsilon<float>()))
+      if (!glm::isNull(params.grabDir, glm::epsilon<float>()))
       {
-        // Bring the raw grab point to object space so the line reaches the mouse cursor.
-        // grabPntRaw is relative to worldLoc, but the gizmo is rendered at translate (billboard position).
+        // Transform grab point to object space so the line reaches the mouse cursor.
+        // grabPnt is relative to worldLoc, but the gizmo is rendered at translate (billboard position).
         // Compensate for that offset and undo billboard rotation + scale.
-        Vec3 worldOffset   = params.grabPntRaw + params.worldLoc - params.translate;
+        Vec3 worldOffset   = params.grabPnt + params.worldLoc - params.translate;
         Vec3 grabLcl       = glm::inverse(params.normals) * worldOffset / params.scale;
 
         int axisIndx       = (int) params.axis;
@@ -602,11 +602,11 @@ namespace ToolKit
         p.axis = axis;
         if (IsGrabbed(p.axis))
         {
-          p.grabPnt = m_grabPoint;
+          p.grabDir = m_grabDir;
         }
         else
         {
-          p.grabPnt = ZERO;
+          p.grabDir = ZERO;
         }
 
         handle->Generate(p);
@@ -753,13 +753,13 @@ namespace ToolKit
         p.axis = (AxisLabel) i;
         if (IsGrabbed(p.axis))
         {
-          p.grabPnt    = m_grabPoint;
-          p.grabPntRaw = m_grabPointRaw;
+          p.grabDir = m_grabDir;
+          p.grabPnt = m_grabPnt;
         }
         else
         {
-          p.grabPnt    = ZERO;
-          p.grabPntRaw = ZERO;
+          p.grabDir = ZERO;
+          p.grabPnt = ZERO;
         }
 
         m_handles[i]->Generate(p);
