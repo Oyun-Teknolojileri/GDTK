@@ -218,6 +218,7 @@
     <ClInclude Include="Mod.h" />
     <ClInclude Include="OverlayUI.h" />
     <ClInclude Include="EditorViewport.h" />
+    <ClInclude Include="WorkspaceTypes.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Editor.rc" />

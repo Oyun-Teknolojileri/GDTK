@@ -368,6 +368,9 @@
     <ClInclude Include="Launcher.h">
       <Filter>Launcher</Filter>
     </ClInclude>
+    <ClInclude Include="WorkspaceTypes.h">
+      <Filter>Source</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Editor.rc" />

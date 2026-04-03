@@ -91,6 +91,8 @@ namespace ToolKit
       m_simulatorSettings.Resolution = EmulatorResolution::Custom;
       m_thumbnailManager             = new ThumbnailManager();
       GetRenderSystem()->SetClearColor(g_wndBgColor);
+
+      m_initialized = true;
     }
 
     void App::DestroyEditorEntities()
@@ -209,6 +211,8 @@ namespace ToolKit
       SafeDel(m_thumbnailManager);
 
       UI::UnInit();
+
+      m_initialized = false;
     }
 
     void App::Frame(float deltaTime)
@@ -266,14 +270,14 @@ namespace ToolKit
         if (viewport->IsShown())
         {
           GetRenderSystem()->AddRenderTask({[this, viewport, deltaTime](Renderer* renderer) -> void
-                                             {
-                                               TK_PROFILE_SCOPE("Render " + viewport->m_name);
-                                               viewport->m_editorRenderer->m_params.App      = g_app;
-                                               viewport->m_editorRenderer->m_params.LitMode  = m_sceneLightingMode;
-                                               viewport->m_editorRenderer->m_params.Viewport = viewport;
-                                               viewport->m_editorRenderer->Render(renderer);
-                                               viewport->StageResolvedTexture();
-                                             }});
+                                            {
+                                              TK_PROFILE_SCOPE("Render " + viewport->m_name);
+                                              viewport->m_editorRenderer->m_params.App      = g_app;
+                                              viewport->m_editorRenderer->m_params.LitMode  = m_sceneLightingMode;
+                                              viewport->m_editorRenderer->m_params.Viewport = viewport;
+                                              viewport->m_editorRenderer->Render(renderer);
+                                              viewport->StageResolvedTexture();
+                                            }});
         }
       }
 
@@ -483,7 +487,7 @@ namespace ToolKit
 
       TemplateUpdate(cppPropertiesPath, "__tk_includes__", replacement);
 
-      bool result = OpenProject({ name, "" });
+      bool result = OpenProject({name, ""});
       return result;
     }
 
@@ -1357,7 +1361,7 @@ namespace ToolKit
       }
 
       PluginWindowPtr pluginWindow = GetWindow<PluginWindow>(g_pluginWindow);
-      if (pluginWindow == nullptr)
+      if (m_initialized && pluginWindow == nullptr)
       {
         SetStatusMsg(g_statusFailed);
         TK_ERR("Can not access project plugins. Plugin window is not available.");
@@ -1367,15 +1371,21 @@ namespace ToolKit
       ClearSession();
       GetPluginManager()->UnloadGamePlugin();
 
-      pluginWindow->UnloadProjectPlugins();
+      if (m_initialized)
+      {
+        pluginWindow->UnloadProjectPlugins();
+      }
 
       m_workspace->SetActiveProject(project);
       m_workspace->Serialize(nullptr, nullptr);
       CreateNewScene();
 
-      pluginWindow->LoadPluginSettings();
-      LoadGamePlugin();
-      LoadProjectPlugins();
+      if (m_initialized)
+      {
+        pluginWindow->LoadPluginSettings();
+        LoadGamePlugin();
+        LoadProjectPlugins();
+      }
 
       FolderWindowRawPtrArray browsers = GetAssetBrowsers();
       for (FolderWindow* browser : browsers)

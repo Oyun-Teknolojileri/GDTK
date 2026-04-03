@@ -7,61 +7,55 @@
 
 #pragma once
 
-#include "EditorTypes.h"
 #include "Serialize.h"
 #include "ToolKit.h"
+#include "Types.h"
+#include "WorkspaceTypes.h"
 
 namespace ToolKit
 {
-  namespace Editor
+  struct Project
   {
+    String name;
+    String scene;
+  };
 
-    struct TK_EDITOR_API Project
-    {
-      String name;
-      String scene;
-    };
+  class Workspace : public Serializable
+  {
+   public:
+    Workspace();
+    void Init();
 
-    class TK_EDITOR_API Workspace : public Serializable
-    {
-      friend class App;
+    // Defaults read / writes to installment directory.
+    XmlNode* GetDefaultWorkspaceNode(XmlDocBundle& bundle) const;
+    String GetDefaultWorkspace() const;
+    bool SetDefaultWorkspace(const String& path);
 
-     public:
-      Workspace();
-      void Init();
+    // Accessors to workspace
+    String GetCodeDirectory() const;   //!< Returns absolute path to the projects' code files.
+    String GetConfigDirectory() const; //!< Returns absolute path to project's config files.
+    String GetBinPath() const;         //!< Returns absolute path to the compiled binary file for the project.
+    String GetPluginDirectory() const; //!< Returns absolute path to projects' plugin directory.
+    String GetResourceRoot() const;    //!< Returns absolute path to projects' Resources directory.
+    String GetActiveWorkspace() const;
+    Project GetActiveProject() const;
+    void SetActiveProject(const Project& project);
+    void SetScene(const String& scene);
 
-      // Defaults read / writes to installment directory.
-      XmlNode* GetDefaultWorkspaceNode(XmlDocBundle& bundle) const;
-      String GetDefaultWorkspace() const;
-      bool SetDefaultWorkspace(const String& path);
+    void RefreshProjects();
 
-      // Accessors to workspace
-      String GetCodeDirectory() const;   //!< Returns absolute path to the projects' code files.
-      String GetConfigDirectory() const; //!< Returns absolute path to project's config files.
-      String GetBinPath() const;         //!< Returns absolute path to the compiled binary file for the project.
-      String GetPluginDirectory() const; //!< Returns absolute path to projects' plugin directory.
-      String GetResourceRoot() const;    //!< Returns absolute path to projects' Resources directory.
-      String GetActiveWorkspace() const;
-      Project GetActiveProject() const;
-      void SetActiveProject(const Project& project);
-      void SetScene(const String& scene);
+    void SerializeEngineSettings(const String& name = "") const;
+    void DeSerializeEngineSettings(const String& name = "");
 
-      void RefreshProjects();
+   protected:
+    XmlNode* SerializeImp(XmlDocument* doc, XmlNode* parent) const override;
+    XmlNode* DeSerializeImp(const SerializationFileInfo& info, XmlNode* parent) override;
 
-      void SerializeEngineSettings(const String& name = "") const;
-      void DeSerializeEngineSettings(const String& name = "");
+   public:
+    std::vector<Project> m_projects;
 
-     protected:
-      XmlNode* SerializeImp(XmlDocument* doc, XmlNode* parent) const override;
-      XmlNode* DeSerializeImp(const SerializationFileInfo& info, XmlNode* parent) override;
-
-     public:
-      std::vector<Project> m_projects;
-
-     private:
-      String m_activeWorkspace;
-      Project m_activeProject;
-    };
-
-  } // namespace Editor
+   private:
+    String m_activeWorkspace;
+    Project m_activeProject;
+  };
 } // namespace ToolKit

@@ -284,6 +284,7 @@ namespace ToolKit
       bool m_onQuit      = false;
       float m_deltaTime  = 0.0f;
       bool m_isCompiling = false;
+      bool m_initialized = false;
 
       mutable String m_statusMsg;
       Mutex m_statusMsgMutex;
