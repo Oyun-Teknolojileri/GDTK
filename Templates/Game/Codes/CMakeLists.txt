@@ -13,25 +13,6 @@ project (${GAME_PROJECT_NAME})
 string(TOLOWER ${CMAKE_CXX_COMPILER_ID} TK_COMPILER)
 message("Compiling ${GAME_PROJECT_NAME} with ${TK_COMPILER} for platform ${TK_PLATFORM} with configuration ${TK_BUILD_TYPE}")
 
-set(TK_GAME_PLUGINS
-    # "PluginFolderName"
-)
-
-# Resolve and include declared plugins.
-set(PLUGIN_LIBRARIES "")
-set(PLUGINS_DIR "${GAME_CODE_DIR}/../Plugins")
-
-foreach(PLUGIN_NAME ${TK_GAME_PLUGINS})
-    set(PLUGIN_DIR "${PLUGINS_DIR}/${PLUGIN_NAME}")
-    if(IS_DIRECTORY "${PLUGIN_DIR}/Codes")
-        message(STATUS "Including Plugin: ${PLUGIN_NAME}")
-        add_subdirectory("${PLUGIN_DIR}/Codes" "${CMAKE_BINARY_DIR}/Plugins/${PLUGIN_NAME}")
-        list(APPEND PLUGIN_LIBRARIES "${PLUGIN_NAME}")
-    else()
-        message(WARNING "Plugin '${PLUGIN_NAME}' not found at '${PLUGIN_DIR}/Codes'. Skipping.")
-    endif()
-endforeach()
-
 # Add include directories for ToolKit.
 include_directories(
     "${TOOLKIT_DIR}"
@@ -140,9 +121,6 @@ if ("${TK_PLATFORM}" STREQUAL "${TK_WINDOWS}")
     target_link_directories(${GAME_PROJECT_NAME} PRIVATE ${TK_OUT_DIR})
 
     target_link_libraries(${GAME_PROJECT_NAME} PRIVATE OpenGL32 ${sdl2} ${sdl2main} ${minizip} ${zstd} ToolKit)
-    if (PLUGIN_LIBRARIES)
-        target_link_libraries(${GAME_PROJECT_NAME} PRIVATE ${PLUGIN_LIBRARIES})
-    endif()
 endif()
 
 # Plugin build for editor.
@@ -153,9 +131,6 @@ if (${PLUGIN_BUILD})
     target_link_directories(${GAME_PROJECT_NAME} PRIVATE "${TOOLKIT_DIR}/Bin")
 
     target_link_libraries(${GAME_PROJECT_NAME} PRIVATE ${toolkit})
-    if (PLUGIN_LIBRARIES)
-        target_link_libraries(${GAME_PROJECT_NAME} PRIVATE ${PLUGIN_LIBRARIES})
-    endif()
     target_compile_definitions(${GAME_PROJECT_NAME} PRIVATE TK_WITH_EDITOR TK_DLL_IMPORT)
 endif()
 
