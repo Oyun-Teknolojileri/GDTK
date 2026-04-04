@@ -118,6 +118,12 @@ namespace ToolKit
 
     ConfigureProgram();
 
+    // Disable SSAO for translucent objects. The SSAO texture contains occlusion
+    // from opaque geometry only, applying it to translucent surfaces causes
+    // background AO to bleed onto transparent objects (e.g. glass).
+    Renderer* renderer = GetRenderer();
+    renderer->SetAmbientOcclusionTexture(nullptr);
+
     ShaderPtr frag = m_programConfigMat->GetFragmentShaderVal();
     frag->SetDefine("DrawAlphaMasked", "0");
 
@@ -125,7 +131,6 @@ namespace ToolKit
 
     GpuProgramPtr program = GetGpuProgramManager()->CreateProgram(vert, frag);
 
-    Renderer* renderer    = GetRenderer();
     renderer->BindProgram(program);
 
     RenderJobItr begin = renderData->GetForwardTranslucentBegin();

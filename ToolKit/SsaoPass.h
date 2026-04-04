@@ -31,7 +31,15 @@ namespace ToolKit
      */
     float spread                  = 1.0;
 
-    int KernelSize                = 64;
+    /**
+     * Number of samples per pixel. Must be 8, 16 or 32.
+     */
+    int KernelSize                = 16;
+
+    /**
+     * If true, SSAO is rendered at half resolution for better performance.
+     */
+    bool HalfResolution           = true;
   };
 
   class TK_API SSAOPass : public Pass
@@ -54,25 +62,25 @@ namespace ToolKit
 
    private:
     Vec3Array m_ssaoKernel;
-    Vec2Array m_ssaoNoise;
 
     FramebufferPtr m_ssaoFramebuffer = nullptr;
-    DataTexturePtr m_noiseTexture    = nullptr;
-    RenderTargetPtr m_tempBlurRt     = nullptr;
+    FramebufferPtr m_blurFramebuffer = nullptr;
+    RenderTargetPtr m_rawSsaoRt      = nullptr;
 
     FullQuadPassPtr m_quadPass       = nullptr;
+    FullQuadPassPtr m_blurPass       = nullptr;
     ShaderPtr m_ssaoShader           = nullptr;
+    ShaderPtr m_blurShader           = nullptr;
 
     int m_currentKernelSize          = 0;
 
-    const int m_minimumKernelSize    = 8;
-    const int m_maximumKernelSize    = 128;
+    static constexpr int m_maximumKernelSize = 32;
 
     // Used to detect if the spread has changed. If so, kernel updated.
     float m_prevSpread               = -1.0f;
 
     static StringArray m_ssaoSamplesStrCache;
-    static constexpr int m_ssaoSamplesStrCacheSize = 128;
+    static constexpr int m_ssaoSamplesStrCacheSize = 32;
   };
 
   typedef std::shared_ptr<SSAOPass> SSAOPassPtr;
