@@ -1265,7 +1265,7 @@ namespace ToolKit
             const BoundingBox& primaryBB = envCom->GetBoundingBox();
             m_drawCommand.SetPrimaryVolumeMin(primaryBB.min);
             m_drawCommand.SetPrimaryVolumeMax(primaryBB.max);
-            m_drawCommand.SetIblFadeDistance(envCom->GetFadeVal());
+            m_drawCommand.SetIblFadeDistance(glm::max(envCom->GetFadeVal(), 0.001f));
 
             if (const EntityPtr& secEnv = secEnvCom->OwnerEntity())
             {
