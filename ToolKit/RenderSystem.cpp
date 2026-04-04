@@ -8,6 +8,7 @@
 #include "RenderSystem.h"
 
 #include "GlErrorReporter.h"
+#include "Image.h"
 #include "Logger.h"
 #include "RHI.h"
 #include "Stats.h"
@@ -143,6 +144,9 @@ namespace ToolKit
 
   void RenderSystem::InitGl(void* glGetProcAddres, GlReportCallback callback)
   {
+    // Opengl texture origin is bottom left.
+    ImageSetVerticalOnLoad(true);
+
     // Initialize opengl functions.
     LoadGlFunctions(glGetProcAddres);
     InitGLErrorReport(callback);

@@ -6,79 +6,41 @@
 	#ifndef TEXTURE_UTIL_SHADER
 	#define TEXTURE_UTIL_SHADER
 
-// TODO there should be a better alogrithm for this
-// This shows artifacts in low resolutions (lower than 100x100)
-vec2 ClampTextureCoordinates(vec2 coord, vec2 mn, vec2 mx)
+// Returns uv coordinates and layer: vec3(u, v, layer)
+// Branch-free cubemap face lookup for shadow atlas.
+// Layer order must match ShadowPass.cpp cube map rotations:
+//   0: +X   1: -X   2: +Y   3: -Y   4: +Z   5: -Z
+vec3 UVWToUVLayer(vec3 v)
 {
-	return max(min(coord, mx - 0.00015), mn);
-}
+	vec3 a = abs(v);
 
-// Returns uv coordinates and layers such as: vec3(u,v,layer)
-// https://kosmonautblog.wordpress.com/2017/03/25/shadow-filtering-for-pointlights/
+	// Determine dominant axis: 0=X, 1=Y, 2=Z.
+	// step(a.yx, a.xy) = (a.x>=a.y, a.y>=a.x)
+	float isX = step(a.y, a.x) * step(a.z, a.x); // 1 if X dominant
+	float isY = (1.0 - isX) * step(a.z, a.y);     // 1 if Y dominant (and not X)
+	float isZ = 1.0 - isX - isY;                  // 1 if Z dominant
 
-// Can be improved:
-// https://stackoverflow.com/questions/53115467/how-to-implement-texturecube-using-6-sampler2d
-vec3 UVWToUVLayer(vec3 vec)
-{
-	/*
-		layer:
-			0       1       2       3       4       5
-		pos X   neg X   pos Y   neg Y   pos Z   neg Z
-	*/
-	float layer;
-	vec2 coord;
-	vec3 absVec = abs(vec);
+	// Dominant axis magnitude and sign.
+	float major = isX * a.x + isY * a.y + isZ * a.z;
+	float signVal = isX * v.x + isY * v.y + isZ * v.z;
+	float s = step(0.0, signVal) * 2.0 - 1.0; // +1 or -1
 
-	if (absVec.x >= absVec.y && absVec.x >= absVec.z)
-	{
-		if (vec.x > 0.0)
-		{
-			layer = 0.0;
-			vec /= vec.x;
-			coord = -vec.zy;
-		}
-		else
-		{
-			layer = 1.0;
-			vec.y = -vec.y;
-			vec /= vec.x;
-			coord = -vec.zy;
-		}
-	}
-	else if (absVec.y >= absVec.x && absVec.y >= absVec.z)
-	{
-		if (vec.y > 0.0)
-		{
-			layer = 2.0;
-			vec /= vec.y;
-			coord = vec.xz;
-		}
-		else
-		{
-			layer = 3.0;
-			vec.x = -vec.x;
-			vec /= vec.y;
-			coord = vec.xz;
-		}
-	}
-	else
-	{
-		if (vec.z > 0.0)
-		{
-			layer = 4.0;
-			vec.y = -vec.y;
-			vec /= -vec.z;
-			coord = -vec.xy;
-		}
-		else
-		{
-			layer = 5.0;
-			vec /= -vec.z;
-			coord = -vec.xy;
-		}
-	}
+	// Face index: base + (negative ? 1 : 0).
+	float layer = isX * 0.0 + isY * 2.0 + isZ * 4.0 + (1.0 - step(0.0, signVal));
 
-	coord = (coord + vec2(1.0)) * 0.5;
+	// Per-face UV mapping (matches the original convention exactly):
+	//   +X: (-z/x, -y/x)   -X: ( z/|x|, -y/|x|)
+	//   +Y: ( x/y,  z/y)   -Y: ( x/|y|, -z/|y|)
+	//   +Z: ( x/z, -y/z)   -Z: (-x/|z|, -y/|z|)
+	float inv = 1.0 / major;
+
+	vec2 uvX = vec2(-s * v.z, -v.y) * inv;
+	vec2 uvY = vec2(v.x, s * v.z) * inv;
+	vec2 uvZ = vec2(s * v.x, -v.y) * inv;
+
+	vec2 coord = isX * uvX + isY * uvY + isZ * uvZ;
+
+	coord = coord * 0.5 + 0.5;
 	return vec3(coord, layer);
 }
 

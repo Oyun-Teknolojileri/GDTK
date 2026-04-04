@@ -42,7 +42,7 @@ namespace ToolKit
                    GraphicTypes::FormatSRGB8_A8,
                    GraphicTypes::FormatRGBA,
                    GraphicTypes::TypeUnsignedByte,
-                   1,
+                   MsaaSampleCount::x0,
                    -1,
                    true};
 
@@ -186,11 +186,12 @@ namespace ToolKit
     uint64 pixelCount = (uint64) m_width * (uint64) m_height;
     if (m_settings.Target == GraphicTypes::Target2D)
     {
-      if (m_settings.msaaCount > 1)
+      if (m_settings.msaaCount > MsaaSampleCount::x0)
       {
         // There is no msaa render texture, so delete the renderbuffer.
         glDeleteRenderbuffers(1, &m_textureId);
-        Stats::RemoveVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat) * m_settings.msaaCount);
+        Stats::RemoveVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat) *
+                                      (int) m_settings.msaaCount);
       }
       else
       {
@@ -236,11 +237,11 @@ namespace ToolKit
     glGenerateMipmap((GLenum) m_settings.Target);
   }
 
-  bool Texture::IsMultiSampled() { return m_settings.msaaCount > 1; }
+  bool Texture::IsMultiSampled() { return m_settings.msaaCount > MsaaSampleCount::x0; }
 
   TexturePtr Texture::GetResolvedTexture()
   {
-    return m_resolvedTexture != nullptr ? m_resolvedTexture : Self<Texture>();
+    return m_resolvedTexture != nullptr && IsMultiSampled() ? m_resolvedTexture : nullptr;
   }
 
   void Texture::Clear()
@@ -287,15 +288,15 @@ namespace ToolKit
     int internalFormatSize = m_stencil ? 4 : 3;
 
     int sizeMultiplier     = 1;
-    if (m_settings.msaaCount > 1 && glRenderbufferStorageMultisampleEXT != nullptr)
+    if (m_settings.msaaCount > MsaaSampleCount::x0 && glRenderbufferStorageMultisampleEXT != nullptr)
     {
-      sizeMultiplier = m_settings.msaaCount;
+      sizeMultiplier = (int) m_settings.msaaCount;
     }
 
     return internalFormatSize * sizeMultiplier;
   }
 
-  void DepthTexture::Init(int width, int height, bool stencil, int multiSample)
+  void DepthTexture::Init(int width, int height, bool stencil, MsaaSampleCount multiSample)
   {
     if (m_initiated)
     {
@@ -310,7 +311,7 @@ namespace ToolKit
 
     if constexpr (GraphicSettings::disableMSAA)
     {
-      m_settings.msaaCount = 1;
+      m_settings.msaaCount = MsaaSampleCount::x0;
     }
 
     glGenRenderbuffers(1, &m_textureId);
@@ -319,15 +320,15 @@ namespace ToolKit
     Stats::SetGpuResourceLabel(m_label, GpuResourceType::RenderBuffer, m_textureId);
 
     int sizeMultiplier = 1;
-    if (m_settings.msaaCount > 1)
+    if (m_settings.msaaCount > MsaaSampleCount::x0)
     {
       glRenderbufferStorageMultisample(GL_RENDERBUFFER,
-                                       m_settings.msaaCount,
+                                       (int) m_settings.msaaCount,
                                        (GLenum) GetDepthFormat(),
                                        m_width,
                                        m_height);
 
-      sizeMultiplier = m_settings.msaaCount;
+      sizeMultiplier = (int) m_settings.msaaCount;
     }
     else
     {
@@ -935,7 +936,7 @@ namespace ToolKit
     // Create frame buffer color texture
     assert(m_textureId == 0 && "Texture already initialized.");
 
-    if (m_settings.msaaCount > 1)
+    if (m_settings.msaaCount > MsaaSampleCount::x0)
     {
       glGenRenderbuffers(1, &m_textureId);
       glBindRenderbuffer(GL_RENDERBUFFER, m_textureId);
@@ -951,18 +952,24 @@ namespace ToolKit
     uint64 pixelCount = (uint64) m_width * (uint64) m_height;
     if (m_settings.Target == GraphicTypes::Target2D)
     {
-      if (m_settings.msaaCount > 1)
+      if (m_settings.msaaCount > MsaaSampleCount::x0)
       {
         // Opengl 3.0 / es 3.0 does not support multisampled textures directly.
         // Render buffer is used.
         glRenderbufferStorageMultisample(GL_RENDERBUFFER,
-                                         m_settings.msaaCount,
+                                         (int) m_settings.msaaCount,
                                          (GLenum) m_settings.InternalFormat,
                                          m_width,
                                          m_height);
       }
       else
       {
+        void* initialData = m_image;
+        if (m_settings.Type == GraphicTypes::TypeFloat)
+        {
+          initialData = m_image;
+        }
+
         glTexImage2D(GL_TEXTURE_2D,
                      0,
                      (int) m_settings.InternalFormat,
@@ -971,11 +978,11 @@ namespace ToolKit
                      0,
                      (int) m_settings.Format,
                      (int) m_settings.Type,
-                     0);
+                     initialData);
       }
 
       ApplyTextureSettings(m_settings);
-      Stats::AddVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat) * m_settings.msaaCount);
+      Stats::AddVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat) * (int) m_settings.msaaCount);
     }
     else if (m_settings.Target == GraphicTypes::TargetCubeMap)
     {
@@ -1041,7 +1048,55 @@ namespace ToolKit
   // TextureManager
   //////////////////////////////////////////
 
-  TextureManager::TextureManager() { m_baseType = Texture::StaticClass(); }
+  TextureManager::TextureManager()
+  {
+    m_baseType         = Texture::StaticClass();
+    m_defaultAOTexture = nullptr;
+  }
+
+  void TextureManager::Init()
+  {
+    ResourceManager::Init();
+
+    // AO texture.
+    TextureSettings settings;
+    settings.Target         = GraphicTypes::Target2D;
+    settings.MinFilter      = GraphicTypes::SampleNearest;
+    settings.MagFilter      = GraphicTypes::SampleNearest;
+    settings.WarpS          = GraphicTypes::UVClampToEdge;
+    settings.WarpT          = GraphicTypes::UVClampToEdge;
+    settings.InternalFormat = GraphicTypes::FormatR8;
+    settings.Format         = GraphicTypes::FormatRed;
+    settings.Type           = GraphicTypes::TypeUnsignedByte;
+    settings.GenerateMipMap = false;
+
+    ubyte* whitePixel       = new ubyte(255);
+    RenderTargetPtr aoTex   = MakeNewPtr<RenderTarget>();
+    aoTex->m_image          = whitePixel;
+    aoTex->m_label          = "DefaultAOTexture";
+    aoTex->m_name           = "DefaultAOTexture";
+    aoTex->m_width          = 1;
+    aoTex->m_height         = 1;
+    aoTex->Settings(settings);
+    aoTex->Init(true);
+    m_defaultAOTexture = aoTex;
+
+    Manage(aoTex);
+
+    // Black texture.
+    ubyte* blackPixel       = new ubyte(0);
+    TexturePtr blackTexture = MakeNewPtr<Texture>();
+    blackTexture->m_image   = blackPixel;
+    blackTexture->m_label   = "DefaultBlackTexture";
+    blackTexture->m_name    = "DefaultBlackTexture";
+    blackTexture->m_width   = 1;
+    blackTexture->m_height  = 1;
+    blackTexture->Settings(settings);
+    blackTexture->Init(true);
+    m_blackTexture = blackTexture;
+
+    Manage(blackTexture);
+  }
 
   TextureManager::~TextureManager() {}
 
@@ -1066,4 +1121,9 @@ namespace ToolKit
       return TexturePath(TKDefaultImage, true);
     }
   }
+
+  TexturePtr TextureManager::GetDefaultAOTexture() const { return m_defaultAOTexture; }
+
+  TexturePtr TextureManager::GetBlackTexture() const { return m_blackTexture; }
+
 } // namespace ToolKit

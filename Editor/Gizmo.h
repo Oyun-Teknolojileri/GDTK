@@ -65,6 +65,7 @@ namespace ToolKit
       {
         // World space data.
         Vec3 worldLoc;
+        Vec3 grabDir;
         Vec3 grabPnt;
         Vec3 initialPnt;
         Mat3 normals;
@@ -90,7 +91,8 @@ namespace ToolKit
      public:
       Vec3 m_tangentDir;
       Params m_params;
-      MeshPtr m_mesh = nullptr;
+      MeshPtr m_mesh           = nullptr;
+      ObjectId m_noDepthMeshId = 0;
     };
 
     // PolarHandle
@@ -145,11 +147,13 @@ namespace ToolKit
       void Consume();
 
      public:
-      Vec3 m_grabPoint;     //!< Grab location of the gizmo.
+      Vec3 m_grabDir;       //!< Normalized grab direction on the gizmo.
+      Vec3 m_grabPnt;       //!< Grab point relative to gizmo center in world space.
       Vec3 m_initialPoint;  //!< Gizmo's entities initial center before any movement.
       Mat3 m_normalVectors; //!< Gizmo's entities normal axes.
       AxisLabel m_lastHovered;
       std::vector<GizmoHandle*> m_handles;
+      IDArray m_noDepthMeshes;
 
      protected:
       std::vector<AxisLabel> m_lockedAxis;

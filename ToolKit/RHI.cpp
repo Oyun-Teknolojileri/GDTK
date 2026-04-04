@@ -108,23 +108,25 @@ namespace ToolKit
   {
     assert(textureSlot >= 0 && textureSlot <= 31);
 
-    if (m_textureIdSlotMap[textureSlot] != textureID)
+    TextureSlotState& state = m_textureIdSlotMap[textureSlot];
+    if (state.textureID != textureID || state.target != target)
     {
       glActiveTexture(GL_TEXTURE0 + textureSlot);
       glBindTexture(target, textureID);
 
-      m_textureIdSlotMap[textureSlot] = textureID;
+      state.textureID = textureID;
+      state.target    = target;
     }
   }
 
   void RHI::DeleteTexture(GLuint textureID)
   {
-    // iterate over all slots and reset texture id if it matches given texture
     for (auto& it : m_textureIdSlotMap)
     {
-      if (it.second == textureID)
+      if (it.second.textureID == textureID)
       {
-        it.second = -1;
+        it.second.textureID = 0;
+        it.second.target    = 0;
       }
     }
 

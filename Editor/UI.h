@@ -59,13 +59,14 @@ namespace ToolKit
       static void ShowBlocker();
 
       // Custom widgets.
-      static bool ButtonDecorless(StringView text, const Vec2& size, bool flipImage);
-      static bool ImageButtonDecorless(uint textureID, const Vec2& size, bool flipImage);
+      static bool ButtonDecorless(StringView text, const Vec2& size);
+      static bool ImageButtonDecorless(uint textureID, const Vec2& size);
       static bool ToggleButton(uint textureID, const Vec2& size, bool pushState);
       static bool ToggleButton(const String& text, const Vec2& size, bool pushState);
       static bool BeginCenteredTextButton(const String& text, const String& id = "");
       static void EndCenteredTextButton();
       static void CenteredText(const String& text);
+      static bool ImageButton(const char* id, void* textureId, const ImVec2& size);
 
       /**
        * Takes an rgb color, gamma encode it and render the color picker. If color changed, returns an rgb color.

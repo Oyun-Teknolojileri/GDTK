@@ -79,26 +79,38 @@ namespace ToolKit
     const Vec4 lastClearColor = renderer->m_clearColor;
 
     // Clear shadow atlas before any draw call
-    renderer->SetFramebuffer(m_shadowFramebuffer, GraphicBitFields::AllBits);
-    for (int i = 0; i < m_layerCount; i++)
+    renderer->SetFramebuffer(m_shadowFramebuffer, GraphicBitFields::None);
+    for (int i = 0; i < ShadowAtlas::LayerCount; i++)
     {
       m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowAtlas, 0, i);
       renderer->ClearBuffer(GraphicBitFields::ColorBits, m_shadowClearColor);
     }
 
-    // Update shadow maps.
-    for (Light* light : m_lights)
+    // Update shadow maps grouped by atlas layer.
+    for (int layerIndex = 0; layerIndex < (int) m_atlasLayerSwitchIndices.size(); layerIndex++)
     {
-      light->UpdateShadowCamera();
+      // Depth is cleared once for each layer.
+      renderer->ClearBuffer(GraphicBitFields::DepthBits);
 
-      if (light->GetLightType() == Light::LightType::Directional)
+      int begin = m_atlasLayerSwitchIndices[layerIndex];
+      int end   = (int) m_lights.size();
+      if (layerIndex + 1 < (int) m_atlasLayerSwitchIndices.size())
       {
-        DirectionalLight* dLight = static_cast<DirectionalLight*>(light);
-        dLight->UpdateShadowFrustum(m_params.viewCamera, m_params.scene);
+        end = m_atlasLayerSwitchIndices[layerIndex + 1];
       }
 
-      RenderShadowMaps(light);
+      for (int i = begin; i < end; i++)
+      {
+        m_lights[i]->UpdateShadowCamera();
+        RenderShadowMaps(m_lights[i]);
+      }
     }
+
+    // Apply blur to the shadow atlas.
+    BlurShadowAtlas();
+
+    // Depth is not needed. Mark it as invalid to avoid unintended read/writes.
+    renderer->InvalidateFramebuffer(GraphicBitFields::DepthBits, m_shadowFramebuffer);
 
     renderer->m_clearColor = lastClearColor;
   }
@@ -146,6 +158,21 @@ namespace ToolKit
     erase_if(m_lights, [](Light* light) -> bool { return !light->GetCastShadowVal(); });
 
     InitShadowAtlas();
+
+    erase_if(m_lights, [](Light* light) -> bool { return !light->HasValidShadowSlot(); });
+
+    // Group lights by their first atlas layer and record layer switch indices.
+    m_atlasLayerSwitchIndices.clear();
+    auto it = m_lights.begin();
+    for (int layer = 0; layer < ShadowAtlas::LayerCount; layer++)
+    {
+      auto next = std::partition(it, m_lights.end(), [layer](Light* l) { return l->m_shadowAtlasLayers[0] == layer; });
+      if (next != it)
+      {
+        m_atlasLayerSwitchIndices.push_back((int) std::distance(m_lights.begin(), it));
+      }
+      it = next;
+    }
   }
 
   void ShadowPass::PostRender()
@@ -172,32 +199,39 @@ namespace ToolKit
   {
     TK_PROFILE_FUNCTION();
 
+    // Skip lights that didn't get valid atlas slots.
+    if (!light->HasValidShadowSlot())
+    {
+      return;
+    }
+
     Renderer* renderer        = GetRenderer();
     ShadowSettingsPtr shadows = GetEngineSettings().m_graphics->m_shadows;
+    uint resolution           = (uint) light->m_shadowResolution;
 
     if (light->GetLightType() == Light::LightType::Directional)
     {
-      int cascadeCount         = shadows->GetCascadeCountVal();
+      Stats::BeginGpuScope("Directioal Shadow Map");
       DirectionalLight* dLight = static_cast<DirectionalLight*>(light);
+      dLight->UpdateShadowFrustum(m_params.viewCamera, m_params.scene);
+
+      int cascadeCount = shadows->GetCascadeCountVal();
       for (int i = 0; i < cascadeCount; i++)
       {
         int layer = dLight->m_shadowAtlasLayers[i];
         m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowAtlas, 0, layer);
 
-        renderer->ClearBuffer(GraphicBitFields::DepthBits, m_shadowClearColor);
-
-        UVec2 coord     = dLight->m_shadowAtlasCoords[i];
-        uint resolution = (uint) light->GetShadowResVal().GetValue<float>();
+        UVec2 coord = dLight->m_shadowAtlasCoords[i];
         renderer->SetViewportSize(coord.x, coord.y, resolution, resolution);
 
-        RenderShadowMap(light, dLight->m_cascadeShadowCameras[i], dLight->m_cascadeCullCameras[i]);
-
-        // Depth is invalidated because, atlas has the shadow map.
-        renderer->InvalidateFramebufferDepth(m_shadowFramebuffer);
+        RenderShadowCasters(light, dLight->m_cascadeShadowCameras[i], dLight->m_cascadeCullCameras[i]);
       }
+
+      Stats::EndGpuScope();
     }
     else if (light->GetLightType() == Light::LightType::Point)
     {
+      Stats::BeginGpuScope("Point Shadow Map");
       for (int i = 0; i < 6; i++)
       {
         int layer = light->m_shadowAtlasLayers[i];
@@ -206,41 +240,30 @@ namespace ToolKit
         light->m_shadowCamera->m_node->SetTranslation(light->m_node->GetTranslation());
         light->m_shadowCamera->m_node->SetOrientation(m_cubeMapRotations[i]);
 
-        renderer->ClearBuffer(GraphicBitFields::DepthBits, m_shadowClearColor);
-
-        UVec2 coord     = light->m_shadowAtlasCoords[i];
-        uint resolution = (uint) light->GetShadowResVal().GetValue<float>();
+        UVec2 coord = light->m_shadowAtlasCoords[i];
         renderer->SetViewportSize(coord.x, coord.y, resolution, resolution);
 
-        RenderShadowMap(light, light->m_shadowCamera, light->m_shadowCamera);
-
-        // Depth is invalidated because, atlas has the shadow map.
-        renderer->InvalidateFramebufferDepth(m_shadowFramebuffer);
+        RenderShadowCasters(light, light->m_shadowCamera, light->m_shadowCamera);
       }
+      Stats::EndGpuScope();
     }
     else
     {
       assert(light->GetLightType() == Light::LightType::Spot);
 
-      m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0,
-                                              m_shadowAtlas,
-                                              0,
-                                              light->m_shadowAtlasLayers[0]);
+      Stats::BeginGpuScope("Spot Shadow Map");
+      int layer = light->m_shadowAtlasLayers[0];
+      m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowAtlas, 0, layer);
 
-      renderer->ClearBuffer(GraphicBitFields::DepthBits, m_shadowClearColor);
-
-      UVec2 coord     = light->m_shadowAtlasCoords[0];
-      uint resolution = (uint) light->GetShadowResVal().GetValue<float>();
+      UVec2 coord = light->m_shadowAtlasCoords[0];
 
       renderer->SetViewportSize(coord.x, coord.y, resolution, resolution);
-      RenderShadowMap(light, light->m_shadowCamera, light->m_shadowCamera);
-
-      // Depth is invalidated because, atlas has the shadow map.
-      renderer->InvalidateFramebufferDepth(m_shadowFramebuffer);
+      RenderShadowCasters(light, light->m_shadowCamera, light->m_shadowCamera);
+      Stats::EndGpuScope();
     }
   }
 
-  void ShadowPass::RenderShadowMap(Light* light, CameraPtr shadowCamera, CameraPtr cullCamera)
+  void ShadowPass::RenderShadowCasters(Light* light, CameraPtr shadowCamera, CameraPtr cullCamera)
   {
     TK_PROFILE_FUNCTION();
 
@@ -261,7 +284,7 @@ namespace ToolKit
       const BoundingBox& sceneBox = m_params.scene->GetSceneBoundary();
       Vec3 dir                    = cullCamera->Direction();
       Vec3 pos                    = cullCamera->Position(); // Backup pos.
-      Vec3 outerPoint             = pos - glm::normalize(dir) * glm::distance(sceneBox.min, sceneBox.max) * 0.5f;
+      Vec3 outerPoint             = pos - dir * glm::distance(sceneBox.min, sceneBox.max) * 0.5f;
 
       cullCamera->m_node->SetTranslation(outerPoint); // Set the camera position.
       cullCamera->SetNearClipVal(0.0f);
@@ -271,7 +294,6 @@ namespace ToolKit
     }
 
     // Create render jobs for shadow map generation.
-    RenderJobArray jobs;
     RenderData renderData;
 
     Frustum frustum            = ExtractFrustum(cullCamera->GetProjectViewMatrix(), false);
@@ -295,14 +317,31 @@ namespace ToolKit
     renderer->OverrideBlendState(true, BlendFunction::NONE); // Blending must be disabled for shadow map generation.
 
     // Set material and program.
-    MaterialPtr shadowMaterial = lightType == Light::LightType::Directional ? m_shadowMatOrtho : m_shadowMatPersp;
+    bool orthogonalShadowMap   = lightType == Light::LightType::Directional;
+    MaterialPtr shadowMaterial = orthogonalShadowMap ? m_shadowMatOrtho : m_shadowMatPersp;
     ShaderPtr frag             = shadowMaterial->GetFragmentShaderVal();
     frag->SetDefine("DrawAlphaMasked", "0");
-    ShaderPtr vert                       = shadowMaterial->GetVertexShaderVal();
+    ShaderPtr vert = shadowMaterial->GetVertexShaderVal();
+    vert->SetDefine("DrawAlphaMasked", "0");
 
     GpuProgramManager* gpuProgramManager = GetGpuProgramManager();
     m_program                            = gpuProgramManager->CreateProgram(vert, frag);
     renderer->BindProgram(m_program);
+
+    if (orthogonalShadowMap)
+    {
+      if (renderer->EnableDepthClamp(true))
+      {
+        vert->SetDefine("Pancake", "0");
+        frag->SetDefine("Pancake", "0");
+      }
+      else
+      {
+        // If depth clamp is not supported, fallback to pancake.
+        frag->SetDefine("Pancake", "1");
+        vert->SetDefine("Pancake", "1");
+      }
+    }
 
     // Draw opaque.
     RenderJobItr forwardBegin       = renderData.GetForwardOpaqueBegin();
@@ -314,6 +353,7 @@ namespace ToolKit
 
     // Draw alpha masked.
     frag->SetDefine("DrawAlphaMasked", "1");
+    vert->SetDefine("DrawAlphaMasked", "1");
     m_program = gpuProgramManager->CreateProgram(vert, frag);
     renderer->BindProgram(m_program);
 
@@ -323,204 +363,283 @@ namespace ToolKit
       renderer->Render(*jobItr);
     }
 
+    if (orthogonalShadowMap)
+    {
+      renderer->EnableDepthClamp(false);
+    }
+
     // Translucent shadow is not supported.
 
     renderer->OverrideBlendState(false, BlendFunction::NONE);
   }
 
-  int ShadowPass::PlaceShadowMapsToShadowAtlas(const LightRawPtrArray& lights)
+  void ShadowPass::BlurShadowAtlas()
   {
-    LightRawPtrArray lightArray = lights;
+    TK_PROFILE_FUNCTION();
+    Stats::BeginGpuScope("Shadow Blur");
 
-    // Sort all lights based on resolution.
-    std::sort(lightArray.begin(),
-              lightArray.end(),
-              [](Light* l1, Light* l2) -> bool
-              { return l1->GetShadowResVal().GetValue<float>() < l2->GetShadowResVal().GetValue<float>(); });
+    Renderer* renderer = GetRenderer();
+    renderer->EnableDepthWrite(false);
 
+    // Create temp RT for blur ping-pong if needed.
+    if (m_shadowBlurTempRT == nullptr)
+    {
+      m_shadowBlurTempRT = MakeNewPtr<RenderTarget>("ShadowBlurTempRT");
+    }
+
+    GraphicTypes bufferComponents = GraphicTypes::FormatRG;
+    GraphicTypes bufferFormat     = GraphicTypes::FormatRG16F;
+
+    GraphicTypes sampler          = GraphicTypes::SampleLinear;
+    if (!TK_GL_OES_texture_float_linear)
+    {
+      sampler = GraphicTypes::SampleNearest;
+    }
+
+    const TextureSettings tempSet = {GraphicTypes::Target2D,
+                                     GraphicTypes::UVClampToEdge,
+                                     GraphicTypes::UVClampToEdge,
+                                     GraphicTypes::UVClampToEdge,
+                                     sampler,
+                                     sampler,
+                                     bufferFormat,
+                                     bufferComponents,
+                                     GraphicTypes::TypeFloat,
+                                     MsaaSampleCount::x0,
+                                     0,
+                                     false};
+
+    ShadowSettingsPtr shadows     = GetEngineSettings().m_graphics->m_shadows;
+    const int shadowAtlasSize     = shadows->GetShadowAtlasResolution();
+
+    m_shadowBlurTempRT->ReconstructIfNeeded(shadowAtlasSize, shadowAtlasSize, &tempSet);
+
+    const int kernelSize = shadows->GetVSMBlurKernelSizeVal().GetValue<int>();
+    const int tapCount   = shadows->GetVSMBlurTapCountVal().GetValue<int>();
+    const float amount   = 1.0f;
+
+    if (tapCount <= 0)
+    {
+      renderer->EnableDepthWrite(true);
+      Stats::EndGpuScope();
+      return;
+    }
+
+    const int cascadeCount = shadows->GetCascadeCountVal();
+
+    // Blur each light's shadow slots grouped by atlas layer.
+    for (int layerIndex = 0; layerIndex < (int) m_atlasLayerSwitchIndices.size(); layerIndex++)
+    {
+      int begin = m_atlasLayerSwitchIndices[layerIndex];
+      int end   = (int) m_lights.size();
+      if (layerIndex + 1 < (int) m_atlasLayerSwitchIndices.size())
+      {
+        end = m_atlasLayerSwitchIndices[layerIndex + 1];
+      }
+
+      // Clear temp RT once per layer group to prevent
+      // previous layer's data from bleeding into the vertical pass.
+      m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowBlurTempRT, 0, -1);
+      renderer->SetFramebuffer(m_shadowFramebuffer, GraphicBitFields::None);
+      renderer->ClearBuffer(GraphicBitFields::ColorBits, m_shadowClearColor);
+
+      for (int i = begin; i < end; i++)
+      {
+        Light* light   = m_lights[i];
+        int slotCount  = 0;
+        int resolution = (int) light->m_shadowResolution;
+
+        switch (light->GetLightType())
+        {
+          case Light::LightType::Directional:
+            slotCount = cascadeCount;
+            break;
+          case Light::LightType::Point:
+            slotCount = 6;
+            break;
+          case Light::LightType::Spot:
+            slotCount = 1;
+            break;
+        }
+
+        for (int s = 0; s < slotCount; s++)
+        {
+          int layer = light->m_shadowAtlasLayers[s];
+          if (layer < 0)
+          {
+            continue;
+          }
+
+          Vec2 coord = light->m_shadowAtlasCoords[s];
+
+          renderer->ApplyGaussianBlurToArrayLayerSlot(m_shadowAtlas,
+                                                      m_shadowBlurTempRT,
+                                                      m_shadowFramebuffer,
+                                                      layer,
+                                                      kernelSize,
+                                                      tapCount,
+                                                      amount,
+                                                      coord,
+                                                      resolution);
+        }
+      }
+    }
+
+    renderer->EnableDepthWrite(true);
+    Stats::EndGpuScope();
+  }
+
+  void ShadowPass::PlaceShadowMapsToShadowAtlas(const LightRawPtrArray& lights)
+  {
     ShadowSettingsPtr shadows = GetEngineSettings().m_graphics->m_shadows;
     const int cascadeCount    = shadows->GetCascadeCountVal();
+    const int atlasSize       = shadows->GetShadowAtlasResolution();
 
-    IntArray resolutions;
-    for (size_t i = 0; i < lightArray.size(); i++)
+    m_atlas.Reset();
+
+    // Invalidate all lights' atlas slots first.
+    for (Light* light : lights)
     {
-      Light* light   = lightArray[i];
-      int resolution = (int) light->GetShadowResVal().GetValue<float>();
+      light->InvalidateShadowAtlasSlot();
+    }
 
-      if (light->GetLightType() == Light::Directional)
+    // Step 1: Place directional lights into Layer 0 (Half slots). Always highest priority.
+    for (Light* light : lights)
+    {
+      if (light->GetLightType() != Light::LightType::Directional)
       {
-        for (int ii = 0; ii < cascadeCount; ii++)
-        {
-          resolutions.push_back(resolution);
-        }
+        continue;
       }
-      else if (light->GetLightType() == Light::Point)
+
+      for (int ii = 0; ii < cascadeCount; ii++)
       {
-        for (int ii = 0; ii < 6; ii++)
-        {
-          resolutions.push_back(resolution);
-        }
+        ShadowAtlas::SlotInfo slot     = m_atlas.Allocate(ShadowAtlas::SlotSize::Half, atlasSize);
+        light->m_shadowAtlasCoords[ii] = slot.coordinate;
+        light->m_shadowAtlasLayers[ii] = slot.layer;
       }
-      else
+      light->m_shadowResolution = (float) ShadowAtlas::GetSlotResolution(ShadowAtlas::SlotSize::Half, atlasSize);
+    }
+
+    // Step 2: Collect non-directional shadow casters, sort by priority score.
+    Vec3 camPos = m_params.viewCamera->Position();
+
+    LightRawPtrArray localLights;
+    localLights.reserve(lights.size());
+
+    for (Light* light : lights)
+    {
+      if (light->GetLightType() != Light::LightType::Directional)
       {
-        assert(light->GetLightType() == Light::LightType::Spot);
-        resolutions.push_back(resolution);
+        localLights.push_back(light);
       }
     }
 
-    int layerCount                   = 0;
-    BinPack2D::PackedRectArray rects = m_packer.Pack(resolutions, RHIConstants::ShadowAtlasTextureSize, &layerCount);
+    std::sort(localLights.begin(),
+              localLights.end(),
+              [&camPos](Light* a, Light* b)
+              {
+                float distA =
+                    glm::max(glm::distance(a->m_node->GetTranslation(TransformationSpace::TS_WORLD), camPos), 0.01f);
+                float distB =
+                    glm::max(glm::distance(b->m_node->GetTranslation(TransformationSpace::TS_WORLD), camPos), 0.01f);
+                float scoreA = a->AffectDistance() / distA;
+                float scoreB = b->AffectDistance() / distB;
+                return scoreA > scoreB;
+              });
 
-    int rectIndex                    = 0;
-    for (int i = 0; i < lightArray.size(); i++)
+    // Step 3: Place sorted lights. Try Quarter first, fallback to Eighth.
+    for (Light* light : localLights)
     {
-      Light* light = lightArray[i];
-      if (light->GetLightType() == Light::LightType::Directional)
-      {
-        for (int ii = 0; ii < cascadeCount; ii++)
-        {
-          light->m_shadowAtlasCoords[ii] = rects[rectIndex].coordinate;
-          light->m_shadowAtlasLayers[ii] = rects[rectIndex].layer;
-          rectIndex++;
-        }
-      }
-      else if (light->GetLightType() == Light::LightType::Point)
-      {
-        for (int ii = 0; ii < 6; ii++)
-        {
-          light->m_shadowAtlasCoords[ii] = rects[rectIndex].coordinate;
-          light->m_shadowAtlasLayers[ii] = rects[rectIndex].layer;
-          rectIndex++;
-        }
-      }
-      else
-      {
-        assert(light->GetLightType() == Light::LightType::Spot);
+      int needed = (light->GetLightType() == Light::LightType::Point) ? 6 : 1;
 
-        light->m_shadowAtlasCoords[0] = rects[rectIndex].coordinate;
-        light->m_shadowAtlasLayers[0] = rects[rectIndex].layer;
-        rectIndex++;
+      ShadowAtlas::SlotInfo slots[6];
+
+      // Try Quarter (larger, higher quality).
+      if (m_atlas.AllocateN(ShadowAtlas::SlotSize::Quarter, needed, atlasSize, slots))
+      {
+        for (int s = 0; s < needed; s++)
+        {
+          light->m_shadowAtlasCoords[s] = slots[s].coordinate;
+          light->m_shadowAtlasLayers[s] = slots[s].layer;
+        }
+        light->m_shadowResolution = (float) ShadowAtlas::GetSlotResolution(ShadowAtlas::SlotSize::Quarter, atlasSize);
+        continue;
       }
+
+      // Fallback to Eighth (smaller).
+      if (m_atlas.AllocateN(ShadowAtlas::SlotSize::Eighth, needed, atlasSize, slots))
+      {
+        for (int s = 0; s < needed; s++)
+        {
+          light->m_shadowAtlasCoords[s] = slots[s].coordinate;
+          light->m_shadowAtlasLayers[s] = slots[s].layer;
+        }
+        light->m_shadowResolution = (float) ShadowAtlas::GetSlotResolution(ShadowAtlas::SlotSize::Eighth, atlasSize);
+        continue;
+      }
+
+      // No slots available. Light gets no shadow.
     }
 
-    return layerCount;
+    // Invalidate cache for all lights to ensure GPU gets correct atlas data.
+    for (Light* light : lights)
+    {
+      light->InvalidateCacheItem();
+    }
   }
 
   void ShadowPass::InitShadowAtlas()
   {
     TK_PROFILE_FUNCTION();
 
-    // Check if the shadow atlas needs to be updated
-    bool needChange           = false;
+    if (m_lights.empty())
+    {
+      return;
+    }
+
+    // Always place shadow maps each frame since light list can change.
+    PlaceShadowMapsToShadowAtlas(m_lights);
+
+    // Check if the shadow atlas texture needs to be reconstructed.
+    bool needReconstruct      = m_shadowAtlas->m_textureId == 0; // First time.
     ShadowSettingsPtr shadows = GetEngineSettings().m_graphics->m_shadows;
     if (m_activeCascadeCount != shadows->GetCascadeCountVal())
     {
       m_activeCascadeCount = shadows->GetCascadeCountVal();
-      needChange           = true;
+      needReconstruct      = true;
     }
 
-    if (m_useEVSM4 != shadows->GetUseEVSM4Val())
+    if (m_use2KLayer != shadows->GetUse2KShadowAtlasLayerVal())
     {
-      m_useEVSM4 = shadows->GetUseEVSM4Val();
-      needChange = true;
+      m_use2KLayer    = shadows->GetUse2KShadowAtlasLayerVal();
+      needReconstruct = true;
     }
 
-    if (m_use32BitShadowMap != shadows->GetUse32BitShadowMapVal())
+    if (needReconstruct)
     {
-      m_use32BitShadowMap = shadows->GetUse32BitShadowMapVal();
-      needChange          = true;
-    }
-
-    // After this loop m_previousShadowCasters is set with lights with shadows
-    int nextId = 0;
-    for (int i = 0; i < m_lights.size(); ++i)
-    {
-      Light* light = m_lights[i];
-      if (light->m_shadowResolutionUpdated)
-      {
-        light->m_shadowResolutionUpdated = false;
-        needChange                       = true;
-      }
-
-      if (nextId >= m_previousShadowCasters.size())
-      {
-        needChange = true;
-        m_previousShadowCasters.push_back(light->GetIdVal());
-        nextId++;
-        continue;
-      }
-
-      if (m_previousShadowCasters[nextId] != light->GetIdVal())
-      {
-        needChange = true;
-      }
-
-      m_previousShadowCasters[nextId] = light->GetIdVal();
-      nextId++;
-    }
-
-    if (needChange && !m_lights.empty())
-    {
-      // Update materials.
-      ShaderPtr frag = m_shadowMatOrtho->GetFragmentShaderVal();
-      frag->SetDefine("EVSM4", std::to_string(m_useEVSM4));
-      frag->SetDefine("SMFormat16Bit", std::to_string(!m_use32BitShadowMap));
-
-      frag = m_shadowMatPersp->GetFragmentShaderVal();
-      frag->SetDefine("EVSM4", std::to_string(m_useEVSM4));
-      frag->SetDefine("SMFormat16Bit", std::to_string(!m_use32BitShadowMap));
-
-      // Update layers.
-      m_previousShadowCasters.resize(nextId);
-
-      // Place shadow textures to atlas
-      m_layerCount        = PlaceShadowMapsToShadowAtlas(m_lights);
-
-      const int maxLayers = GetRenderer()->GetMaxArrayTextureLayers();
-      if (maxLayers < m_layerCount)
-      {
-        m_layerCount = maxLayers;
-        GetLogger()->Log("ERROR: Max array texture layer size is reached: " + std::to_string(maxLayers) + " !");
-      }
-
-      GraphicTypes bufferComponents = m_useEVSM4 ? GraphicTypes::FormatRGBA : GraphicTypes::FormatRG;
-      GraphicTypes bufferFormat     = m_useEVSM4 ? GraphicTypes::FormatRGBA32F : GraphicTypes::FormatRG32F;
-
-      if (!m_use32BitShadowMap)
-      {
-        bufferFormat = m_useEVSM4 ? GraphicTypes::FormatRGBA16F : GraphicTypes::FormatRG16F;
-      }
-
-      GraphicTypes sampler = GraphicTypes::SampleLinear;
-      if (!TK_GL_OES_texture_float_linear)
-      {
-        // Fall back to nearest sampling. 32 bit filterable textures are not available.
-        sampler = GraphicTypes::SampleNearest;
-      }
+      // Update shadow clear color to match warped depth space.
+      const float vsmExponent   = 5.54f;
+      float warpedMax           = std::exp(vsmExponent);
+      m_shadowClearColor        = Vec4(warpedMax, warpedMax * warpedMax, 0.0f, 0.0f);
 
       const TextureSettings set = {GraphicTypes::Target2DArray,
                                    GraphicTypes::UVClampToEdge,
                                    GraphicTypes::UVClampToEdge,
                                    GraphicTypes::UVClampToEdge,
-                                   sampler,
-                                   sampler,
-                                   bufferFormat,
-                                   bufferComponents,
+                                   GraphicTypes::SampleLinear,
+                                   GraphicTypes::SampleLinear,
+                                   GraphicTypes::FormatRG16F,
+                                   GraphicTypes::FormatRG,
                                    GraphicTypes::TypeFloat,
-                                   1,
-                                   m_layerCount,
+                                   MsaaSampleCount::x0,
+                                   ShadowAtlas::LayerCount,
                                    false};
 
-      // m_shadowFramebuffer->DetachColorAttachment(Framebuffer::Attachment::ColorAttachment0);
-      m_shadowAtlas->ReconstructIfNeeded(RHIConstants::ShadowAtlasTextureSize,
-                                         RHIConstants::ShadowAtlasTextureSize,
-                                         &set);
+      const int shadowAtlasSize = shadows->GetShadowAtlasResolution();
 
-      FramebufferSettings fbSettings = {RHIConstants::ShadowAtlasTextureSize,
-                                        RHIConstants::ShadowAtlasTextureSize,
-                                        false,
-                                        true,
-                                        1};
+      m_shadowAtlas->ReconstructIfNeeded(shadowAtlasSize, shadowAtlasSize, &set);
+
+      FramebufferSettings fbSettings = {shadowAtlasSize, shadowAtlasSize, false, true, MsaaSampleCount::x0};
 
       m_shadowFramebuffer->ReconstructIfNeeded(fbSettings);
       m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowAtlas, 0, 0);

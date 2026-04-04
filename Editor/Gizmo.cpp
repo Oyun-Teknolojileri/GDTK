@@ -45,9 +45,8 @@ namespace ToolKit
       TexturePtr tex = GetTextureManager()->Create<Texture>(TexturePath(ConcatPaths({"Icons", "cursor4k.png"}), true));
       matPtr->SetDiffuseTextureVal(tex);
 
-      RenderState* rState       = matPtr->GetRenderState();
-      rState->blendFunction     = BlendFunction::ALPHA_MASK;
-      rState->alphaMaskTreshold = 0.1f;
+      RenderState* rState   = matPtr->GetRenderState();
+      rState->blendFunction = BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA;
       matPtr->Init();
       meshPtr->m_material = matPtr;
       meshPtr->Init();
@@ -99,15 +98,15 @@ namespace ToolKit
         AxisLabel t;
         switch (i)
         {
-        case 0:
-          t = AxisLabel::X;
-          break;
-        case 1:
-          t = AxisLabel::Y;
-          break;
-        case 2:
-          t = AxisLabel::Z;
-          break;
+          case 0:
+            t = AxisLabel::X;
+            break;
+          case 1:
+            t = AxisLabel::Y;
+            break;
+          case 2:
+            t = AxisLabel::Z;
+            break;
         }
 
         Arrow2dPtr arrow = MakeNewPtr<Arrow2d>();
@@ -136,6 +135,7 @@ namespace ToolKit
     void GizmoHandle::Generate(const Params& params)
     {
       m_params          = params;
+      m_noDepthMeshId   = 0;
 
       Vec3 dir          = AXIS[(int) params.axis % 3];
       Vec3Array pnts    = {dir * params.toeTip.x, dir * params.toeTip.y};
@@ -181,21 +181,21 @@ namespace ToolKit
         v.pos.y += params.toeTip.y;
         switch (params.axis)
         {
-        case AxisLabel::X:
-          v.pos = Vec3(v.pos.y, v.pos.x, v.pos.z);
-          break;
-        case AxisLabel::Z:
-          v.pos = Vec3(v.pos.z, v.pos.x, v.pos.y);
-          break;
-        case AxisLabel::Y:
-        default:
-          break;
+          case AxisLabel::X:
+            v.pos = Vec3(v.pos.y, v.pos.x, v.pos.z);
+            break;
+          case AxisLabel::Z:
+            v.pos = Vec3(v.pos.z, v.pos.x, v.pos.y);
+            break;
+          case AxisLabel::Y:
+          default:
+            break;
         }
       }
       mesh->Init();
 
       // Guide line.
-      if (!glm::isNull(params.grabPnt, glm::epsilon<float>()))
+      if (!glm::isNull(params.grabDir, glm::epsilon<float>()))
       {
         int axisInd        = (int) m_params.axis;
         Vec3 axis          = AXIS[axisInd];
@@ -205,6 +205,7 @@ namespace ToolKit
         guide->Generate(pnts, g_gizmoColor[axisInd % 3], DrawType::Line, 2.0f);
         MeshPtr guideMesh = guide->GetComponent<MeshComponent>()->GetMeshVal();
         m_mesh->m_subMeshes.push_back(guideMesh);
+        m_noDepthMeshId = guideMesh->GetIdVal();
       }
     }
 
@@ -238,6 +239,7 @@ namespace ToolKit
     void PolarHandle::Generate(const Params& params)
     {
       m_params        = params;
+      m_noDepthMeshId = 0;
 
       int cornerCount = 60;
       Vec3Array corners;
@@ -251,17 +253,17 @@ namespace ToolKit
 
         switch (params.axis)
         {
-        case AxisLabel::X:
-          corners[i] = Vec3(corners[i].z, corners[i].y, corners[i].x);
-          break;
-        case AxisLabel::Y:
-          corners[i] = Vec3(corners[i].x, corners[i].z, corners[i].y);
-          break;
-        case AxisLabel::Z:
-          break;
-        default:
-          assert(false);
-          break;
+          case AxisLabel::X:
+            corners[i] = Vec3(corners[i].z, corners[i].y, corners[i].x);
+            break;
+          case AxisLabel::Y:
+            corners[i] = Vec3(corners[i].x, corners[i].z, corners[i].y);
+            break;
+          case AxisLabel::Z:
+            break;
+          default:
+            assert(false);
+            break;
         }
       }
       corners.push_back(corners.front());
@@ -272,11 +274,13 @@ namespace ToolKit
       m_mesh             = circleMesh;
 
       // Guide line.
-      if (!glm::isNull(params.grabPnt, glm::epsilon<float>()))
+      if (!glm::isNull(params.grabDir, glm::epsilon<float>()))
       {
-        // Bring the grab point to object space.
-        Vec3 grabLcl       = params.grabPnt;
-        grabLcl            = glm::inverse(params.normals) * grabLcl * 999.0f;
+        // Transform grab point to object space so the line reaches the mouse cursor.
+        // grabPnt is relative to worldLoc, but the gizmo is rendered at translate (billboard position).
+        // Compensate for that offset and undo billboard rotation + scale.
+        Vec3 worldOffset   = params.grabPnt + params.worldLoc - params.translate;
+        Vec3 grabLcl       = glm::inverse(params.normals) * worldOffset / params.scale;
 
         int axisIndx       = (int) params.axis;
 
@@ -285,6 +289,7 @@ namespace ToolKit
 
         MeshPtr guideMesh = guide->GetComponent<MeshComponent>()->GetMeshVal();
         m_mesh->m_subMeshes.push_back(guideMesh);
+        m_noDepthMeshId = guideMesh->GetIdVal();
       }
     }
 
@@ -366,23 +371,23 @@ namespace ToolKit
         v.pos.y += params.toeTip.y;
         switch (params.axis)
         {
-        case AxisLabel::XY:
-          v.pos   *= scale;
-          v.pos.x += 0.75f * scale;
-          v.pos   += Vec3(Vec2(offset * scale), 0.0f);
-          break;
-        case AxisLabel::YZ:
-          v.pos    = Vec3(v.pos.z, v.pos.y, v.pos.x) * scale;
-          v.pos.z += 0.75f * scale;
-          v.pos   += Vec3(0.0f, Vec2(offset * scale));
-          break;
-        case AxisLabel::ZX:
-          v.pos    = Vec3(v.pos.x, v.pos.z, v.pos.y) * scale;
-          v.pos.x += 0.75f * scale;
-          v.pos   += Vec3(offset * scale) * Vec3(1.0f, 0.0f, 1.0f);
-          break;
-        default:
-          break;
+          case AxisLabel::XY:
+            v.pos   *= scale;
+            v.pos.x += 0.75f * scale;
+            v.pos   += Vec3(Vec2(offset * scale), 0.0f);
+            break;
+          case AxisLabel::YZ:
+            v.pos    = Vec3(v.pos.z, v.pos.y, v.pos.x) * scale;
+            v.pos.z += 0.75f * scale;
+            v.pos   += Vec3(0.0f, Vec2(offset * scale));
+            break;
+          case AxisLabel::ZX:
+            v.pos    = Vec3(v.pos.x, v.pos.z, v.pos.y) * scale;
+            v.pos.x += 0.75f * scale;
+            v.pos   += Vec3(offset * scale) * Vec3(1.0f, 0.0f, 1.0f);
+            break;
+          default:
+            break;
         }
       }
       m_mesh->Init();
@@ -537,6 +542,15 @@ namespace ToolKit
       root->Init(false);
       root->CalculateAABB();
       GetComponent<MeshComponent>()->SetMeshVal(root);
+
+      m_noDepthMeshes.clear();
+      for (int i = 0; i < (int) m_handles.size(); i++)
+      {
+        if (m_handles[i]->m_noDepthMeshId != 0)
+        {
+          m_noDepthMeshes.push_back(m_handles[i]->m_noDepthMeshId);
+        }
+      }
     }
 
     // LinearGizmo
@@ -601,11 +615,11 @@ namespace ToolKit
         p.axis = axis;
         if (IsGrabbed(p.axis))
         {
-          p.grabPnt = m_grabPoint;
+          p.grabDir = m_grabDir;
         }
         else
         {
-          p.grabPnt = ZERO;
+          p.grabDir = ZERO;
         }
 
         handle->Generate(p);
@@ -752,10 +766,12 @@ namespace ToolKit
         p.axis = (AxisLabel) i;
         if (IsGrabbed(p.axis))
         {
-          p.grabPnt = m_grabPoint;
+          p.grabDir = m_grabDir;
+          p.grabPnt = m_grabPnt;
         }
         else
         {
+          p.grabDir = ZERO;
           p.grabPnt = ZERO;
         }
 

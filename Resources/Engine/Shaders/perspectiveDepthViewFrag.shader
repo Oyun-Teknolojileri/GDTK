@@ -1,6 +1,7 @@
 <shader>
 	<type name = "fragmentShader" />
 	<include name = "drawDataInc.shader" />
+	<define name = "DrawAlphaMasked" val="0,1" />
 	<source>
 	<!--
 	#version 300 es
@@ -20,6 +21,7 @@
 	{
 		Material material = GetMaterial();
 	
+	#if DrawAlphaMasked
 		float alpha = 1.0;
 		if (material.diffuseTextureInUse == 1)
 		{
@@ -30,10 +32,11 @@
 			alpha = material.alpha;
 		}
 
-		if (alpha < 0.1)
+		if (alpha <= material.alphaMaskThreshold)
 		{
 			discard;
 		}
+	#endif
 
 		float depth = length(lightPos - v_pos) / far;
 		fragColor = vec4(depth, depth, depth, 1.0);

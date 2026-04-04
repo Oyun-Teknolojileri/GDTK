@@ -59,5 +59,6 @@ namespace ToolKit
      private:
       std::vector<PluginSettings> m_pluginSettings;
     };
+
   } // namespace Editor
 } // namespace ToolKit

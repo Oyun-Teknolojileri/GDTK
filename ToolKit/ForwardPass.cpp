@@ -23,14 +23,12 @@ namespace ToolKit
   ForwardRenderPass::ForwardRenderPass() : Pass("ForwardRenderPass")
   {
     ShadowSettingsPtr shadows = GetEngineSettings().m_graphics->m_shadows;
-    m_EVSM4                   = shadows->GetUseEVSM4Val();
-    m_SMFormat16Bit           = !shadows->GetUse32BitShadowMapVal();
+    m_shadowPCF               = shadows->GetShadowPCFVal().GetValue<int>();
 
     m_programConfigMat        = GetMaterialManager()->GetCopyOfDefaultMaterial();
 
     ShaderPtr fragmentShader  = m_programConfigMat->GetFragmentShaderVal();
-    fragmentShader->SetDefine("EVSM4", std::to_string(m_EVSM4));
-    fragmentShader->SetDefine("SMFormat16Bit", std::to_string(m_SMFormat16Bit));
+    fragmentShader->SetDefine("ShadowPCF", std::to_string(m_shadowPCF));
   }
 
   void ForwardRenderPass::Render()
@@ -60,18 +58,6 @@ namespace ToolKit
       // Only the visible fragments will pass the test.
       renderer->SetDepthTestFunc(CompareFunctions::FuncLequal);
     }
-
-    if (DepthTexturePtr depthTexture = m_params.FrameBuffer->GetDepthTexture())
-    {
-      if (depthTexture->m_stencil)
-      {
-        renderer->InvalidateFramebufferDepth(m_params.FrameBuffer);
-      }
-      else
-      {
-        renderer->InvalidateFramebufferDepthStencil(m_params.FrameBuffer);
-      }
-    }
   }
 
   void ForwardRenderPass::PostRender()
@@ -90,6 +76,12 @@ namespace ToolKit
       renderer->ResolveFramebuffer(m_params.FrameBuffer,
                                    m_params.resolveFrameBuffer,
                                    {(int) Framebuffer::Attachment::ColorAttachment0});
+
+      renderer->InvalidateFramebuffer(GraphicBitFields::AllBits, m_params.FrameBuffer);
+    }
+    else
+    {
+      renderer->InvalidateFramebuffer(GraphicBitFields::DepthBits, m_params.FrameBuffer);
     }
   }
 
@@ -203,21 +195,37 @@ namespace ToolKit
   {
     const ShadowSettingsPtr shadows = GetEngineSettings().m_graphics->m_shadows;
     ShaderPtr frag                  = m_programConfigMat->GetFragmentShaderVal();
-    if (shadows->GetUseEVSM4Val() != m_EVSM4)
+
+    int shadowPCF                   = shadows->GetShadowPCFVal().GetValue<int>();
+    if (shadowPCF != m_shadowPCF)
     {
-      m_EVSM4 = shadows->GetUseEVSM4Val();
-      frag->SetDefine("EVSM4", std::to_string(m_EVSM4));
+      m_shadowPCF = shadowPCF;
+      frag->SetDefine("ShadowPCF", std::to_string(m_shadowPCF));
     }
 
-    bool is16Bit = !shadows->GetUse32BitShadowMapVal();
-    if (is16Bit != m_SMFormat16Bit)
+    Renderer* renderer = GetRenderer();
+    switch (renderer->m_shadingMode)
     {
-      m_SMFormat16Bit = is16Bit;
-      frag->SetDefine("SMFormat16Bit", std::to_string(is16Bit));
+      case ShadingMode::Lighting:
+        frag->SetDefine("ShadingMode", "1");
+        break;
+      case ShadingMode::Albedo:
+        frag->SetDefine("ShadingMode", "2");
+        break;
+      case ShadingMode::Normal:
+        frag->SetDefine("ShadingMode", "3");
+        break;
+      case ShadingMode::Metallic:
+        frag->SetDefine("ShadingMode", "4");
+        break;
+      case ShadingMode::Roughness:
+        frag->SetDefine("ShadingMode", "5");
+        break;
+      default:
+      case ShadingMode::None:
+        frag->SetDefine("ShadingMode", "0");
+        break;
     }
-
-    int shadowSample = shadows->GetShadowSamples();
-    frag->SetDefine("ShadowSampleCount", std::to_string(shadowSample));
   }
 
 } // namespace ToolKit

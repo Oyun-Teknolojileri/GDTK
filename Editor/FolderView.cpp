@@ -83,7 +83,7 @@ namespace ToolKit
 
       // Zoom toggle button
       ImGui::TableNextColumn();
-      if (ImGui::ImageButton("##zoom", Convert2ImGuiTexture(UI::m_viewZoomIcon), ImVec2(20.0f, 20.0f)))
+      if (UI::ImageButton("##zoom", Convert2ImGuiTexture(UI::m_viewZoomIcon), ImVec2(20.0f, 20.0f)))
       {
         // Toggle zoom
         if (thumbnailZoom == m_thumbnailMaxZoom)
@@ -106,7 +106,7 @@ namespace ToolKit
       UI::HelpMarker(TKLoc, "Ctrl + mouse scroll to adjust thumbnail size.");
 
       ImGui::TableNextColumn();
-      if (ImGui::ImageButton("##disk", Convert2ImGuiTexture(UI::m_diskDriveIcon), ImVec2(20.0f, 20.0f)))
+      if (UI::ImageButton("##disk", Convert2ImGuiTexture(UI::m_diskDriveIcon), ImVec2(20.0f, 20.0f)))
       {
         GetApp()->SaveAllResources();
       }
@@ -378,7 +378,6 @@ namespace ToolKit
 
           ImGui::PushID(i);
           ImGui::BeginGroup();
-          ImVec2 texCoords         = flipRenderTarget ? ImVec2(1.0f, -1.0f) : ImVec2(1.0f, 1.0f);
 
           DirectoryEntry* entryPtr = m_entries.data() + i;
 
@@ -389,7 +388,7 @@ namespace ToolKit
           // Draw Item Icon.
           char iconChId[16];
           snprintf(iconChId, sizeof(iconChId), "##%d", iconId);
-          if (ImGui::ImageButton(iconChId, ConvertUIntImGuiTexture(iconId), m_iconSize, ImVec2(0.0f, 0.0f), texCoords))
+          if (UI::ImageButton(iconChId, ConvertUIntImGuiTexture(iconId), m_iconSize))
           {
             anyButtonClicked |= true;
             bool shiftDown    = ImGui::IsKeyDown(ImGuiKey_LeftShift);
@@ -482,7 +481,7 @@ namespace ToolKit
 
               char iconChId[16];
               snprintf(iconChId, sizeof(iconChId), "##dragIcon%d", i);
-              ImGui::ImageButton(iconChId, ConvertUIntImGuiTexture(iconId), m_iconSize, ImVec2(0.0f, 0.0f), texCoords);
+              UI::ImageButton(iconChId, ConvertUIntImGuiTexture(iconId), m_iconSize);
               ImGui::EndDragDropSource();
             }
             ImGui::PopStyleColor();

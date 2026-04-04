@@ -18,7 +18,6 @@
       <OrderInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">101</OrderInUnityFile>
     </ClCompile>
     <ClCompile Include="BillboardPass.cpp" />
-    <ClCompile Include="BinPack2D.cpp" />
     <ClCompile Include="BloomPass.cpp" />
     <ClCompile Include="Canvas.cpp" />
     <ClCompile Include="Component.cpp" />
@@ -71,6 +70,7 @@
     <ClCompile Include="Scene.cpp" />
     <ClCompile Include="Shader.cpp" />
     <ClCompile Include="ShaderUniform.cpp" />
+    <ClCompile Include="ShadowAtlas.cpp" />
     <ClCompile Include="ShadowPass.cpp" />
     <ClCompile Include="Skeleton.cpp" />
     <ClCompile Include="SkeletonComponent.cpp" />
@@ -105,7 +105,6 @@
     <ClInclude Include="AnimationControllerComponent.h" />
     <ClInclude Include="Audio.h" />
     <ClInclude Include="BillboardPass.h" />
-    <ClInclude Include="BinPack2D.h" />
     <ClInclude Include="BloomPass.h" />
     <ClInclude Include="Canvas.h" />
     <ClInclude Include="Class.h" />
@@ -117,6 +116,7 @@
     <ClInclude Include="DofPass.h" />
     <ClInclude Include="Dpad.h" />
     <ClInclude Include="Drawable.h" />
+    <ClInclude Include="ShadowAtlas.h" />
     <ClInclude Include="TextureBuffer.h" />
     <ClInclude Include="EngineSettings.h" />
     <ClInclude Include="Entity.h" />
@@ -190,8 +190,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="..\Resources\Engine\Shaders\AO.shader" />
-    <None Include="..\Resources\Engine\Shaders\avgBlurFrag.shader" />
-    <None Include="..\Resources\Engine\Shaders\avgBlurVert.shader" />
     <None Include="..\Resources\Engine\Shaders\bloomDownsample.shader" />
     <None Include="..\Resources\Engine\Shaders\bloomUpsample.shader" />
     <None Include="..\Resources\Engine\Shaders\BRDFLutFrag.shader" />
@@ -212,8 +210,8 @@
     <None Include="..\Resources\Engine\Shaders\fxaaFunctions.shader" />
     <None Include="..\Resources\Engine\Shaders\gammaFunctions.shader" />
     <None Include="..\Resources\Engine\Shaders\gammaTonemapFxaa.shader" />
-    <None Include="..\Resources\Engine\Shaders\gausBlur7x1Frag.shader" />
-    <None Include="..\Resources\Engine\Shaders\gausBlur7x1Vert.shader" />
+    <None Include="..\Resources\Engine\Shaders\gausBlurFrag.shader" />
+    <None Include="..\Resources\Engine\Shaders\gausBlurVert.shader" />
     <None Include="..\Resources\Engine\Shaders\gradientSkyboxFrag.shader" />
     <None Include="..\Resources\Engine\Shaders\gridFragment.shader" />
     <None Include="..\Resources\Engine\Shaders\gridVertex.shader" />
@@ -225,12 +223,10 @@
     <None Include="..\Resources\Engine\Shaders\normalFrag.shader" />
     <None Include="..\Resources\Engine\Shaders\orthogonalDepthFrag.shader" />
     <None Include="..\Resources\Engine\Shaders\orthogonalDepthVert.shader" />
-    <None Include="..\Resources\Engine\Shaders\orthogonalDepthViewFrag.shader" />
-    <None Include="..\Resources\Engine\Shaders\orthogonalDepthViewVert.shader" />
-    <None Include="..\Resources\Engine\Shaders\pbr.shader" />
+    <None Include="..\Resources\Engine\Shaders\pbrCommon.shader" />
+    <None Include="..\Resources\Engine\Shaders\pbrPrecompute.shader" />
     <None Include="..\Resources\Engine\Shaders\perspectiveDepthFrag.shader" />
     <None Include="..\Resources\Engine\Shaders\perspectiveDepthVert.shader" />
-    <None Include="..\Resources\Engine\Shaders\perspectiveDepthViewFrag.shader" />
     <None Include="..\Resources\Engine\Shaders\positionVert.shader" />
     <None Include="..\Resources\Engine\Shaders\preFilterEnvMapFrag.shader" />
     <None Include="..\Resources\Engine\Shaders\shadow.shader" />
@@ -243,6 +239,7 @@
     <None Include="..\Resources\Engine\Shaders\tonemapFunctions.shader" />
     <None Include="..\Resources\Engine\Shaders\unlitFrag.shader" />
     <None Include="..\Resources\Engine\Shaders\VSM.shader" />
+    <None Include="..\Resources\Engine\Shaders\VSMCommon.shader" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>

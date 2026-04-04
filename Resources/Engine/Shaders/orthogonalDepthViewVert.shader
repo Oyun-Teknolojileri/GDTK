@@ -26,16 +26,22 @@
 
 	void main()
 	{
-		v_texture = vTexture;
-		vec4 skinnedVPos = vec4(vPosition, 1.0);
-			
-		if(isSkinned > 0u){
-			skin(skinnedVPos, skinnedVPos);
-		}
+			v_texture = vTexture;
+			vec4 skinnedVPos = vec4(vPosition, 1.0);
 
-		gl_Position = camera.projectionView * model * skinnedVPos;
-		v_depth = (LightView * model * skinnedVPos).z / LightFrustumHalfSize;
-		v_depth = v_depth * 0.5 + 0.5;
+			if (isSkinned)
+			{
+					skin(skinnedVPos, skinnedVPos);
+			}
+
+			// Compute world position once, reuse for both clip and depth.
+			vec4 worldPos = model * skinnedVPos;
+
+			gl_Position = camera.projectionView * worldPos;
+
+			// Full mat4*vec4 but compiler can DCE unused components.
+			// The real win is eliminating the redundant model*skinnedVPos multiplication.
+			v_depth = (LightView * worldPos).z / LightFrustumHalfSize * 0.5 + 0.5;
 	}
 	-->
 	</source>

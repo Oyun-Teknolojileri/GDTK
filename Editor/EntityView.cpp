@@ -63,9 +63,9 @@ namespace ToolKit
               char itemId[16];
               snprintf(itemId, sizeof(itemId), "##Preset%u", itemIndx);
 
-              if (ImGui::ImageButton(itemId,
-                                     Convert2ImGuiTexture(UI::m_anchorPresetIcons.m_presetImages[itemIndx]),
-                                     Vec2(32, 32)))
+              if (UI::ImageButton(itemId,
+                                  Convert2ImGuiTexture(UI::m_anchorPresetIcons.m_presetImages[itemIndx]),
+                                  Vec2(32, 32)))
               {
                 auto changeAnchor = [surface](uint anchorPreset)
                 {
