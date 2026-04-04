@@ -72,11 +72,13 @@ float EvaluateEVSM
 // ---------------------------------------------------------------------------
 // Bilinear PCF tap helpers
 // Each texture() with linear filtering already interpolates 2x2 texels.
-// By placing samles at sub-texel offsets we cover larger effective kernels.
+// By placing samples at sub-texel offsets we cover larger effective kernels.
 //
-//  4 samles -> ~3x3 kernel
-//  9 samles -> ~5x5 kernel
-// 16 samles -> ~7x7 kernel
+//  4 samples -> ~3x3 kernel  (4 bilinear taps at +-0.5 texel)
+//  9 samples -> ~5x5 kernel  (9 bilinear taps, center + 4 edges + 4 corners)
+// 16 samples -> ~7x7 kernel  (16 bilinear taps in a 4x4 grid)
+//
+// All loops are manually unrolled for GPU performance.
 // ---------------------------------------------------------------------------
 
 #if ShadowPCF >= 4
@@ -84,36 +86,56 @@ vec2 ShadowPCFFilter(sampler2DArray atlas, vec3 uvLayer, vec2 coordStart, vec2 c
 {
 	vec2 result = vec2(0.0);
 
+#define SHADOW_TAP(ox, oy) texture(atlas, vec3(clamp(uvLayer.xy + vec2(ox, oy) * texelSize, coordStart, coordEnd), uvLayer.z)).xy
+
 #if ShadowPCF == 4
-	vec2 offset = vec2(0.5) * texelSize;
-	result += texture(atlas, vec3(clamp(uvLayer.xy + vec2(-offset.x,  offset.y), coordStart, coordEnd), uvLayer.z)).xy;
-	result += texture(atlas, vec3(clamp(uvLayer.xy + vec2( offset.x,  offset.y), coordStart, coordEnd), uvLayer.z)).xy;
-	result += texture(atlas, vec3(clamp(uvLayer.xy + vec2(-offset.x, -offset.y), coordStart, coordEnd), uvLayer.z)).xy;
-	result += texture(atlas, vec3(clamp(uvLayer.xy + vec2( offset.x, -offset.y), coordStart, coordEnd), uvLayer.z)).xy;
+	// 4 bilinear taps at +-0.5 texel offsets -> effective ~3x3 kernel
+	result += SHADOW_TAP(-0.5, -0.5);
+	result += SHADOW_TAP( 0.5, -0.5);
+	result += SHADOW_TAP(-0.5,  0.5);
+	result += SHADOW_TAP( 0.5,  0.5);
 	result *= 0.25;
 
 #elif ShadowPCF == 9
-	for (int y = -1; y <= 1; y++)
-	{
-		for (int x = -1; x <= 1; x++)
-		{
-			vec2 off = vec2(float(x), float(y)) * texelSize;
-			result += texture(atlas, vec3(clamp(uvLayer.xy + off, coordStart, coordEnd), uvLayer.z)).xy;
-		}
-	}
-	result /= 9.0;
+	// 9 bilinear taps -> effective ~5x5 Gaussian approximation
+	// 4 corners at +-1.2 (weighted center of 2x2 blocks)
+	// 4 edges at +-1.2 on one axis, 0 on the other
+	// 1 center tap
+	// Weights: corners 25/256 each, edges 30/256 each, center 36/256
+	result += SHADOW_TAP(-1.2, -1.2) * 25.0;
+	result += SHADOW_TAP( 1.2, -1.2) * 25.0;
+	result += SHADOW_TAP(-1.2,  1.2) * 25.0;
+	result += SHADOW_TAP( 1.2,  1.2) * 25.0;
+	result += SHADOW_TAP( 0.0, -1.2) * 30.0;
+	result += SHADOW_TAP( 0.0,  1.2) * 30.0;
+	result += SHADOW_TAP(-1.2,  0.0) * 30.0;
+	result += SHADOW_TAP( 1.2,  0.0) * 30.0;
+	result += SHADOW_TAP( 0.0,  0.0) * 36.0;
+	result *= (1.0 / 256.0);
 
 #elif ShadowPCF == 16
-	for (int y = 0; y < 4; y++)
-	{
-		for (int x = 0; x < 4; x++)
-		{
-			vec2 off = (vec2(float(x), float(y)) - 1.5) * texelSize;
-			result += texture(atlas, vec3(clamp(uvLayer.xy + off, coordStart, coordEnd), uvLayer.z)).xy;
-		}
-	}
+	// 16 bilinear taps in a 4x4 grid -> effective ~7x7 kernel
+	// Sub-texel offsets at +-0.5 and +-1.5 texels
+	result += SHADOW_TAP(-1.5, -1.5);
+	result += SHADOW_TAP(-0.5, -1.5);
+	result += SHADOW_TAP( 0.5, -1.5);
+	result += SHADOW_TAP( 1.5, -1.5);
+	result += SHADOW_TAP(-1.5, -0.5);
+	result += SHADOW_TAP(-0.5, -0.5);
+	result += SHADOW_TAP( 0.5, -0.5);
+	result += SHADOW_TAP( 1.5, -0.5);
+	result += SHADOW_TAP(-1.5,  0.5);
+	result += SHADOW_TAP(-0.5,  0.5);
+	result += SHADOW_TAP( 0.5,  0.5);
+	result += SHADOW_TAP( 1.5,  0.5);
+	result += SHADOW_TAP(-1.5,  1.5);
+	result += SHADOW_TAP(-0.5,  1.5);
+	result += SHADOW_TAP( 0.5,  1.5);
+	result += SHADOW_TAP( 1.5,  1.5);
 	result *= (1.0 / 16.0);
 #endif
+
+#undef SHADOW_TAP
 
 	return result;
 }
