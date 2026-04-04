@@ -1,6 +1,6 @@
 <shader>
 	<type name = "includeShader" />
-	<uniform name = "drawCommand" size = "2" />
+	<uniform name = "drawCommand" size = "4" />
 	<source>
 	<!--
 	
@@ -10,7 +10,7 @@
 	// DrawCommand
 	//////////////////////////////////////////
 
-	uniform vec4 drawCommand[2];
+	uniform vec4 drawCommand[4];
 
 	float GetIBLIntensity()
 	{
@@ -27,6 +27,11 @@
 		return bool(drawCommand[0].z > 0.5);
 	}
 
+	float GetSecondaryIBLIntensity()
+	{
+		return drawCommand[0].w;
+	}
+
 	int GetActivePointLightCount()
 	{
 		return int(drawCommand[1].x);
@@ -40,6 +45,43 @@
 	int GetActiveDirectionalLightCount()
 	{
 		return int(drawCommand[1].z);
+	}
+
+	float GetIBLFadeDistance()
+	{
+		return drawCommand[1].w;
+	}
+
+	vec3 GetPrimaryVolumeMin()
+	{
+		return drawCommand[2].xyz;
+	}
+
+	vec3 GetPrimaryVolumeMax()
+	{
+		return drawCommand[3].xyz;
+	}
+
+	// Compute per-pixel IBL blend factor from fragment world position.
+	// Returns 1.0 at volume center (fully primary), 0.0 at volume edge (fully secondary).
+	float ComputeIBLBlendFactor(vec3 worldPos)
+	{
+		float fadeDist = GetIBLFadeDistance();
+		if (fadeDist <= 0.0)
+		{
+			return 1.0;
+		}
+
+		vec3 vMin = GetPrimaryVolumeMin();
+		vec3 vMax = GetPrimaryVolumeMax();
+
+		// Distance from each face of the AABB.
+		vec3 distToMin = worldPos - vMin;
+		vec3 distToMax = vMax - worldPos;
+		vec3 minDist = min(distToMin, distToMax);
+		float edgeDist = min(minDist.x, min(minDist.y, minDist.z));
+
+		return clamp(edgeDist / fadeDist, 0.0, 1.0);
 	}
 
 	// Defines

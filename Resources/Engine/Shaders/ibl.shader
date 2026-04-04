@@ -3,6 +3,7 @@
 	<include name = "pbrCommon.shader" />
 	<include name = "drawDataInc.shader" />
 	<uniform name = "iblRotation" />
+	<uniform name = "iblSecondaryRotation" />
 	<source>
 	<!--
 
@@ -13,7 +14,11 @@ uniform samplerCube s_texture7; 	// IBL Diffuse Map
 uniform samplerCube s_texture15; 	// IBL Pre-Filtered Specular Map
 uniform sampler2D s_texture10;		// IBL BRDF Lut
 
+uniform samplerCube s_texture11;	// Secondary IBL Diffuse Map
+uniform samplerCube s_texture12;	// Secondary IBL Pre-Filtered Specular Map
+
 uniform mat4 iblRotation;
+uniform mat4 iblSecondaryRotation;
 
 // ---------------------------------------------------------------------------
 // Filament-style IBL helpers
@@ -88,10 +93,36 @@ vec3 IBLSpecularPBR(vec3 normal, vec3 fragToEye, float perceptualRoughness, vec3
 }
 
 // ---------------------------------------------------------------------------
-// Combined IBL evaluation
+// Secondary IBL helpers (for volume blending)
 // ---------------------------------------------------------------------------
 
-vec3 IBLPBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float perceptualRoughness, vec2 dfg, vec3 energyComp)
+vec3 IBLDiffusePBRSecondary(vec3 normal, vec3 albedo, float metallic, vec3 E)
+{
+	vec3 diffuseColor = albedo * (1.0 - metallic);
+	vec3 iblSamplerVec = (iblSecondaryRotation * vec4(normal, 0.0)).xyz;
+	vec3 iblIrradiance = texture(s_texture11, iblSamplerVec).rgb;
+	return diffuseColor * iblIrradiance * (1.0 - E);
+}
+
+vec3 IBLSpecularPBRSecondary(vec3 normal, vec3 fragToEye, float perceptualRoughness, vec3 E, vec3 energyComp)
+{
+	vec3 R = reflect(-fragToEye, normal);
+	R = GetSpecularDominantDirection(normal, R, perceptualRoughness);
+	vec3 iblSamplerVec = (iblSecondaryRotation * vec4(R, 0.0)).xyz;
+
+	float lod = RoughnessToLod(perceptualRoughness, float(graphicConstants.iblMaxReflectionLod));
+	vec3 preFilteredColor = textureLod(s_texture12, iblSamplerVec, lod).rgb;
+
+	vec3 specular = E * preFilteredColor;
+	specular *= energyComp;
+	return specular;
+}
+
+// ---------------------------------------------------------------------------
+// Combined IBL evaluation with per-pixel volume blending
+// ---------------------------------------------------------------------------
+
+vec3 IBLPBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float perceptualRoughness, vec2 dfg, vec3 energyComp, vec3 worldPos)
 {
 	vec3 f0 = BaseReflectivityPBR(vec3(0.04), albedo, metallic);
 
@@ -100,7 +131,25 @@ vec3 IBLPBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float perc
 
 	vec3 Fd = IBLDiffusePBR(normal, albedo, metallic, E);
 	vec3 Fr = IBLSpecularPBR(normal, fragToEye, perceptualRoughness, E, energyComp);
-	return (Fd + Fr) * GetIBLIntensity();
+	vec3 primary = (Fd + Fr) * GetIBLIntensity();
+
+	float secIntensity = GetSecondaryIBLIntensity();
+
+	if (secIntensity > 0.0)
+	{
+		float blendFactor = ComputeIBLBlendFactor(worldPos);
+
+		if (blendFactor < 1.0)
+		{
+			vec3 secFd = IBLDiffusePBRSecondary(normal, albedo, metallic, E);
+			vec3 secFr = IBLSpecularPBRSecondary(normal, fragToEye, perceptualRoughness, E, energyComp);
+			vec3 secondary = (secFd + secFr) * secIntensity;
+
+			return mix(secondary, primary, blendFactor);
+		}
+	}
+
+	return primary;
 }
 
 #endif

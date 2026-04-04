@@ -26,11 +26,17 @@ namespace ToolKit
 
   struct DrawCommand
   {
-    /** x: iblIntensity, y: iblInUse, z: ambientOcclusionInUse, w: pad0 */
+    /** x: iblIntensity, y: iblInUse, z: ambientOcclusionInUse, w: secondaryIblIntensity */
     Vec4 data1;
 
-    /** x: activePointLightCount, y: activeSpotLightCount, z: activeDirectionalLightCount, w: pad1 */
+    /** x: activePointLightCount, y: activeSpotLightCount, z: activeDirectionalLightCount, w: iblFadeDistance */
     Vec4 data2;
+
+    /** xyz: primary volume min */
+    Vec4 data3;
+
+    /** xyz: primary volume max */
+    Vec4 data4;
 
     void SetIblIntensity(float intensity) { data1.x = intensity; }
 
@@ -38,11 +44,19 @@ namespace ToolKit
 
     void SetAmbientOcclusionInUse(bool inUse) { data1.z = inUse ? 1.0f : 0.0f; }
 
+    void SetSecondaryIblIntensity(float intensity) { data1.w = intensity; }
+
     void SetActivePointLightCount(int count) { data2.x = (float) count; }
 
     void SetActiveSpotLightCount(int count) { data2.y = (float) count; }
 
     void SetActiveDirectionalLightCount(int count) { data2.z = (float) count; }
+
+    void SetIblFadeDistance(float fade) { data2.w = fade; }
+
+    void SetPrimaryVolumeMin(const Vec3& minVal) { data3 = Vec4(minVal, 0.0f); }
+
+    void SetPrimaryVolumeMax(const Vec3& maxVal) { data4 = Vec4(maxVal, 0.0f); }
   };
 
   // GraphicConstantsGpuBuffer
@@ -322,6 +336,7 @@ namespace ToolKit
     Mat4 m_inverseTransposeModel;
     Mat4 m_modelWithoutTranslate;
     Mat4 m_iblRotation;
+    Mat4 m_secondaryIblRotation;
 
     // Draw data
     std::array<int, RHIConstants::MaxPointLightPerObject> m_activePointLightIndices;

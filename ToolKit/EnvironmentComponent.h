@@ -47,6 +47,7 @@ namespace ToolKit
     TKDeclareParam(Vec3, PositionOffset);
     TKDeclareParam(bool, Illuminate);
     TKDeclareParam(float, Intensity);
+    TKDeclareParam(float, Fade);
 
     bool m_spatialCachesInvalidated = true; //!< If true, bounding box caches are updated upon access.
 

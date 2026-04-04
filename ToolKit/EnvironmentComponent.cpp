@@ -79,6 +79,13 @@ namespace ToolKit
                      true,
                      {false, true, 0.0f, 100000.0f, 0.1f});
 
+    Fade_Define(1.0f,
+                EnvironmentComponentCategory.Name,
+                EnvironmentComponentCategory.Priority,
+                true,
+                true,
+                {false, true, 0.0f, 100000.0f, 0.1f});
+
     auto createParameterVariant = [](const String& name, int val)
     {
       ParameterVariant param {val};

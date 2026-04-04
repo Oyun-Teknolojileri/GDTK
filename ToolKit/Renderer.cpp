@@ -54,6 +54,8 @@ namespace ToolKit
     int constexpr NORMAL_MAP_TEXTURE_SLOT                    = 9;
     int constexpr IBL_SPECULAR_PRE_FILTERED_MAP_TEXTURE_SLOT = 15;
     int constexpr IBL_BRDF_LUT_TEXTURE_SLOT                  = 10;
+    int constexpr SECONDARY_IRRADIANCE_MAP_TEXTURE_SLOT      = 11;
+    int constexpr SECONDARY_IBL_SPECULAR_MAP_TEXTURE_SLOT    = 12;
   } // namespace DefaultTextureSlots
 
   Renderer::Renderer()
@@ -1223,7 +1225,9 @@ namespace ToolKit
 
     // Sky and Ibl data.
     m_drawCommand.SetIblInUse(false);
-    const EnvironmentComponent* envCom = job.EnvironmentVolume;
+    m_drawCommand.SetSecondaryIblIntensity(0.0f);
+    m_drawCommand.SetIblFadeDistance(0.0f);
+    EnvironmentComponent* envCom = job.EnvironmentVolume;
     if (envCom)
     {
       const HdriPtr& hdriPtr     = envCom->GetHdriVal();
@@ -1241,6 +1245,33 @@ namespace ToolKit
         if (const EntityPtr& env = envCom->OwnerEntity())
         {
           m_iblRotation = Mat4(env->m_node->GetOrientation());
+        }
+
+        // Secondary IBL for per-pixel blending.
+        EnvironmentComponent* secEnvCom = job.SecondaryEnvironmentVolume;
+        if (secEnvCom)
+        {
+          const HdriPtr& secHdri     = secEnvCom->GetHdriVal();
+          CubeMapPtr& secDiffuse     = secHdri->m_diffuseEnvMap;
+          CubeMapPtr& secSpecular    = secHdri->m_specularEnvMap;
+
+          if (secDiffuse && secSpecular)
+          {
+            SetTexture(DefaultTextureSlots::SECONDARY_IRRADIANCE_MAP_TEXTURE_SLOT, secDiffuse);
+            SetTexture(DefaultTextureSlots::SECONDARY_IBL_SPECULAR_MAP_TEXTURE_SLOT, secSpecular);
+            m_drawCommand.SetSecondaryIblIntensity(secEnvCom->GetIntensityVal());
+
+            // Pass primary volume AABB for per-pixel blend.
+            const BoundingBox& primaryBB = envCom->GetBoundingBox();
+            m_drawCommand.SetPrimaryVolumeMin(primaryBB.min);
+            m_drawCommand.SetPrimaryVolumeMax(primaryBB.max);
+            m_drawCommand.SetIblFadeDistance(envCom->GetFadeVal());
+
+            if (const EntityPtr& secEnv = secEnvCom->OwnerEntity())
+            {
+              m_secondaryIblRotation = Mat4(secEnv->m_node->GetOrientation());
+            }
+          }
         }
       }
     }
@@ -1300,6 +1331,9 @@ namespace ToolKit
             break;
           case Uniform::IBL_ROTATION:
             glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&m_iblRotation));
+            break;
+          case Uniform::IBL_SECONDARY_ROTATION:
+            glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&m_secondaryIblRotation));
             break;
           case Uniform::VIEWPORT_SIZE:
             glUniform2f(loc, (float) m_viewportSize.x, (float) m_viewportSize.y);
