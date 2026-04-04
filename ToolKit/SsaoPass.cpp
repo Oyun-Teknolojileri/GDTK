@@ -73,12 +73,12 @@ namespace ToolKit
     }
 
     // Generate SSAO texture
-    renderer->SetTexture(1, normalDepthBuffer->m_textureId);
+    renderer->SetTexture(1, normalDepthBuffer);
 
     RenderSubPass(m_quadPass);
 
     // Single-pass bilinear 5x5 blur (reads raw SSAO, writes to m_ssaoTexture)
-    renderer->SetTexture(0, m_rawSsaoRt->m_textureId);
+    renderer->SetTexture(0, m_rawSsaoRt);
 
     RenderSubPass(m_blurPass);
   }

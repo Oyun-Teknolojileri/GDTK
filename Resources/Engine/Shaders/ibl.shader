@@ -11,7 +11,7 @@
 
 uniform samplerCube s_texture7; 	// IBL Diffuse Map
 uniform samplerCube s_texture15; 	// IBL Pre-Filtered Specular Map
-uniform sampler2D s_texture16;		// IBL BRDF Lut
+uniform sampler2D s_texture10;		// IBL BRDF Lut
 
 uniform mat4 iblRotation;
 

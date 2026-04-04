@@ -34,7 +34,7 @@ namespace ToolKit
     RenderSubPass(m_stencilPass);
 
     // Use stencil output as input to the dilation.
-    GetRenderer()->SetTexture(0, m_stencilAsRt->m_textureId);
+    GetRenderer()->SetTexture(0, m_stencilAsRt);
 
     m_outlinePass->SetFragmentShader(m_dilateShader, GetRenderer());
     m_outlinePass->UpdateUniform(ShaderUniform("Color", m_params.OutlineColor));
