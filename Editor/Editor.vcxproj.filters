@@ -198,6 +198,8 @@
     <ClCompile Include="EditorCanvas.cpp">
       <Filter>Entities\UI</Filter>
     </ClCompile>
+    <ClCompile Include="BoxEditGizmo.cpp" />
+    <ClCompile Include="BoxEditMod.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Mod.h">
@@ -359,6 +361,8 @@
     <ClInclude Include="EditorMetaKeys.h">
       <Filter>Source</Filter>
     </ClInclude>
+    <ClInclude Include="BoxEditGizmo.h" />
+    <ClInclude Include="BoxEditMod.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Editor.rc" />

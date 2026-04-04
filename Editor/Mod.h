@@ -27,7 +27,8 @@ namespace ToolKit
       Move,
       Rotate,
       Scale,
-      Anchor
+      Anchor,
+      BoxEdit
     };
 
     class TK_EDITOR_API BaseMod
