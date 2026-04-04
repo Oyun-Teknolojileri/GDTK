@@ -213,7 +213,8 @@ namespace ToolKit
     TKDeclareParam(float, SSAORadius);
     TKDeclareParam(float, SSAOBias);
     TKDeclareParam(float, SSAOSpread);
-    TKDeclareParam(int, SSAOKernelSize);
+    TKDeclareParam(MultiChoiceVariant, SSAOKernelSize);
+    TKDeclareParam(bool, SSAOHalfResolution);
 
     // DOF
     /////////////////////
