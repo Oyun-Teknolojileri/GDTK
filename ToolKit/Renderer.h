@@ -32,11 +32,17 @@ namespace ToolKit
     /** x: activePointLightCount, y: activeSpotLightCount, z: activeDirectionalLightCount, w: iblFadeDistance */
     Vec4 data2;
 
-    /** xyz: primary volume min */
+    /** xyz: primary volume min (local space) */
     Vec4 data3;
 
-    /** xyz: primary volume max */
+    /** xyz: primary volume max (local space) */
     Vec4 data4;
+
+    /** Volume inverse world transform (rows 0-3) for OBB support. */
+    Vec4 data5;
+    Vec4 data6;
+    Vec4 data7;
+    Vec4 data8;
 
     void SetIblIntensity(float intensity) { data1.x = intensity; }
 
@@ -57,6 +63,14 @@ namespace ToolKit
     void SetPrimaryVolumeMin(const Vec3& minVal) { data3 = Vec4(minVal, 0.0f); }
 
     void SetPrimaryVolumeMax(const Vec3& maxVal) { data4 = Vec4(maxVal, 0.0f); }
+
+    void SetIblVolumeTransform(const Mat4& transform)
+    {
+      data5 = Vec4(transform[0]);
+      data6 = Vec4(transform[1]);
+      data7 = Vec4(transform[2]);
+      data8 = Vec4(transform[3]);
+    }
   };
 
   // GraphicConstantsGpuBuffer

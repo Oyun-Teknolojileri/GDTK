@@ -1,6 +1,6 @@
 <shader>
 	<type name = "includeShader" />
-	<uniform name = "drawCommand" size = "4" />
+	<uniform name = "drawCommand" size = "8" />
 	<source>
 	<!--
 	
@@ -10,7 +10,7 @@
 	// DrawCommand
 	//////////////////////////////////////////
 
-	uniform vec4 drawCommand[4];
+	uniform vec4 drawCommand[8];
 
 	float GetIBLIntensity()
 	{
@@ -62,8 +62,14 @@
 		return drawCommand[3].xyz;
 	}
 
+	mat4 GetIblVolumeTransform()
+	{
+		return mat4(drawCommand[4], drawCommand[5], drawCommand[6], drawCommand[7]);
+	}
+
 	// Compute per-pixel IBL blend factor from fragment world position.
 	// Returns 1.0 at volume center (fully primary), 0.0 at volume edge (fully secondary).
+	// Uses OBB: transforms worldPos to volume local space before distance check.
 	float ComputeIBLBlendFactor(vec3 worldPos)
 	{
 		float fadeDist = GetIBLFadeDistance();
@@ -72,12 +78,15 @@
 			return 1.0;
 		}
 
+		// Transform world position to volume local space.
+		vec3 localPos = (GetIblVolumeTransform() * vec4(worldPos, 1.0)).xyz;
+
 		vec3 vMin = GetPrimaryVolumeMin();
 		vec3 vMax = GetPrimaryVolumeMax();
 
-		// Distance from each face of the AABB.
-		vec3 distToMin = worldPos - vMin;
-		vec3 distToMax = vMax - worldPos;
+		// Distance from each face of the OBB (in local space).
+		vec3 distToMin = localPos - vMin;
+		vec3 distToMax = vMax - localPos;
 		vec3 minDist = min(distToMin, distToMax);
 		float edgeDist = min(minDist.x, min(minDist.y, minDist.z));
 

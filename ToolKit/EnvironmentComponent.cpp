@@ -201,14 +201,36 @@ namespace ToolKit
 
   void EnvironmentComponent::UpdateBoundingBoxCache()
   {
-    Vec3 pos;
+    Vec3 offset = GetPositionOffsetVal();
+    Vec3 half   = GetSizeVal() * 0.5f;
+
+    // Local-space BB corners.
+    BoundingBox localBB;
+    localBB.min = offset - half;
+    localBB.max = offset + half;
+
     if (EntityPtr owner = OwnerEntity())
     {
-      pos += owner->m_node->GetTranslation(TransformationSpace::TS_WORLD);
+      // Transform local BB corners by entity world transform to get world-space enclosing AABB.
+      Mat4 worldTransform = owner->m_node->GetTransform(TransformationSpace::TS_WORLD);
+
+      Vec3Array corners;
+      GetCorners(localBB, corners);
+
+      m_boundingBoxCache.min = Vec3(FLT_MAX);
+      m_boundingBoxCache.max = Vec3(-FLT_MAX);
+      for (const Vec3& corner : corners)
+      {
+        Vec3 worldCorner       = Vec3(worldTransform * Vec4(corner, 1.0f));
+        m_boundingBoxCache.min = glm::min(m_boundingBoxCache.min, worldCorner);
+        m_boundingBoxCache.max = glm::max(m_boundingBoxCache.max, worldCorner);
+      }
+    }
+    else
+    {
+      m_boundingBoxCache = localBB;
     }
 
-    m_boundingBoxCache.min     = GetPositionOffsetVal() + pos - GetSizeVal() * 0.5f;
-    m_boundingBoxCache.max     = GetPositionOffsetVal() + pos + GetSizeVal() * 0.5f;
     m_spatialCachesInvalidated = false;
   };
 
