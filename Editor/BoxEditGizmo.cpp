@@ -31,7 +31,7 @@ namespace ToolKit
       m_handles.resize(6);
       for (int i = 0; i < 6; i++)
       {
-        GizmoHandle* handle  = new GizmoHandle();
+        GizmoHandle* handle   = new GizmoHandle();
         handle->m_params.axis = static_cast<AxisLabel>(i);
         handle->m_params.type = GizmoHandle::SolidType::Cube;
         m_handles[i]          = handle;
@@ -70,23 +70,41 @@ namespace ToolKit
       return BoxFace::None;
     }
 
-    Vec3 BoxEditGizmo::GetFaceNormal(BoxFace face)
+    void BoxEditGizmo::SetWorldTransform(const Mat4& transform) { m_worldTransform = transform; }
+
+    const Mat4& BoxEditGizmo::GetWorldTransform() const { return m_worldTransform; }
+
+    Vec3 BoxEditGizmo::GetFaceNormalLocal(BoxFace face)
     {
       switch (face)
       {
-        case BoxFace::PosX: return Vec3(1.0f, 0.0f, 0.0f);
-        case BoxFace::NegX: return Vec3(-1.0f, 0.0f, 0.0f);
-        case BoxFace::PosY: return Vec3(0.0f, 1.0f, 0.0f);
-        case BoxFace::NegY: return Vec3(0.0f, -1.0f, 0.0f);
-        case BoxFace::PosZ: return Vec3(0.0f, 0.0f, 1.0f);
-        case BoxFace::NegZ: return Vec3(0.0f, 0.0f, -1.0f);
-        default: return ZERO;
+        case BoxFace::PosX:
+          return Vec3(1.0f, 0.0f, 0.0f);
+        case BoxFace::NegX:
+          return Vec3(-1.0f, 0.0f, 0.0f);
+        case BoxFace::PosY:
+          return Vec3(0.0f, 1.0f, 0.0f);
+        case BoxFace::NegY:
+          return Vec3(0.0f, -1.0f, 0.0f);
+        case BoxFace::PosZ:
+          return Vec3(0.0f, 0.0f, 1.0f);
+        case BoxFace::NegZ:
+          return Vec3(0.0f, 0.0f, -1.0f);
+        default:
+          return ZERO;
       }
+    }
+
+    Vec3 BoxEditGizmo::GetFaceNormalWorld(BoxFace face) const
+    {
+      Vec3 localNormal = GetFaceNormalLocal(face);
+      Vec3 worldNormal = Vec3(m_worldTransform * Vec4(localNormal, 0.0f));
+      return glm::normalize(worldNormal);
     }
 
     AxisLabel BoxEditGizmo::HitTest(const Ray& ray) const
     {
-      float closestT   = TK_FLT_MAX;
+      float closestT    = TK_FLT_MAX;
       AxisLabel closest = AxisLabel::None;
 
       for (int i = 0; i < 6; i++)
@@ -119,56 +137,62 @@ namespace ToolKit
       m_node->SetTransform(Mat4(1.0f));
     }
 
-    void BoxEditGizmo::Update(float deltaTime)
-    {
-      GenerateHandles();
-    }
+    void BoxEditGizmo::Update(float deltaTime) { GenerateHandles(); }
 
     void BoxEditGizmo::GenerateHandles()
     {
-      Vec3 boxCenter = m_targetBox.GetCenter();
-      Vec3 halfSize  = (m_targetBox.max - m_targetBox.min) * 0.5f;
+      Vec3 boxCenter   = m_targetBox.GetCenter();
+      Vec3 halfSize    = (m_targetBox.max - m_targetBox.min) * 0.5f;
+
+      // Transform box center to world space.
+      Vec3 worldCenter = Vec3(m_worldTransform * Vec4(boxCenter, 1.0f));
 
       // Compute handle size based on camera distance.
-      float handleDim = m_handleSize;
+      float handleDim  = m_handleSize;
       if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
       {
         CameraPtr cam = vp->GetCamera();
         if (cam)
         {
-          float dist = glm::length(cam->m_node->GetTranslation() - boxCenter);
+          float dist = glm::length(cam->m_node->GetTranslation() - worldCenter);
           handleDim  = dist * 0.015f;
           handleDim  = glm::clamp(handleDim, 0.05f, 0.5f);
         }
       }
 
-      // Face centers in world space.
-      Vec3 faceCenters[6] = {
-          boxCenter + Vec3(halfSize.x, 0.0f, 0.0f),  // +X
-          boxCenter - Vec3(halfSize.x, 0.0f, 0.0f),  // -X
-          boxCenter + Vec3(0.0f, halfSize.y, 0.0f),   // +Y
-          boxCenter - Vec3(0.0f, halfSize.y, 0.0f),   // -Y
-          boxCenter + Vec3(0.0f, 0.0f, halfSize.z),   // +Z
-          boxCenter - Vec3(0.0f, 0.0f, halfSize.z),   // -Z
+      // Local-space face center offsets from box center.
+      Vec3 localOffsets[6] = {
+          Vec3(halfSize.x, 0.0f, 0.0f),  // +X
+          Vec3(-halfSize.x, 0.0f, 0.0f), // -X
+          Vec3(0.0f, halfSize.y, 0.0f),  // +Y
+          Vec3(0.0f, -halfSize.y, 0.0f), // -Y
+          Vec3(0.0f, 0.0f, halfSize.z),  // +Z
+          Vec3(0.0f, 0.0f, -halfSize.z), // -Z
       };
 
       Vec3 faceColors[6] = {
-          g_gizmoColor[0], g_gizmoColor[0], // X faces = red
-          g_gizmoColor[1], g_gizmoColor[1], // Y faces = green
-          g_gizmoColor[2], g_gizmoColor[2], // Z faces = blue
+          g_gizmoColor[0],
+          g_gizmoColor[0], // X faces = red
+          g_gizmoColor[1],
+          g_gizmoColor[1], // Y faces = green
+          g_gizmoColor[2],
+          g_gizmoColor[2], // Z faces = blue
       };
 
       for (int i = 0; i < 6; i++)
       {
+        // Transform face center to world space.
+        Vec3 worldFaceCenter = Vec3(m_worldTransform * Vec4(boxCenter + localOffsets[i], 1.0f));
+
         GizmoHandle::Params p;
         p.axis      = static_cast<AxisLabel>(i);
         p.type      = GizmoHandle::SolidType::Cube;
         p.solidDim  = Vec3(handleDim);
-        p.translate = faceCenters[i];
+        p.translate = worldFaceCenter;
         p.scale     = Vec3(1.0f);
         p.normals   = Mat3(1.0f);
         p.toeTip    = Vec3(0.0f);
-        p.worldLoc  = faceCenters[i];
+        p.worldLoc  = worldFaceCenter;
         p.grabDir   = ZERO;
         p.grabPnt   = ZERO;
 
@@ -196,11 +220,15 @@ namespace ToolKit
         MeshPtr mesh     = solid->GetComponent<MeshComponent>()->GetMeshVal();
         mesh->m_material = material;
 
-        // Offset vertices to face center (world space) since entity node is at origin.
+        // Rotate and translate vertices to world space.
+        // Extract rotation from world transform (no scale, no translation).
+        Mat3 rotation    = Mat3(m_worldTransform);
         mesh->UnInit();
         for (Vertex& v : mesh->m_clientSideVertices)
         {
-          v.pos += faceCenters[i];
+          v.pos   = rotation * v.pos; // Rotate cube to match entity orientation.
+          v.pos  += worldFaceCenter;  // Translate to face center.
+          v.norm  = rotation * v.norm;
         }
         mesh->Init();
 

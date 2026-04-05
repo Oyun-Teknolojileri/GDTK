@@ -10,6 +10,7 @@
 #include "App.h"
 #include "EditorViewport.h"
 
+#include <AABBOverrideComponent.h>
 #include <DirectionComponent.h>
 #include <EnvironmentComponent.h>
 #include <MathUtil.h>
@@ -35,8 +36,8 @@ namespace ToolKit
       endPick->m_links[m_backToStart] = StateType::StateBeginPick;
       m_stateMachine->PushState(endPick);
 
-      State* del                     = new StateDeletePick();
-      del->m_links[m_backToStart]    = StateType::StateBeginPick;
+      State* del                  = new StateDeletePick();
+      del->m_links[m_backToStart] = StateType::StateBeginPick;
       m_stateMachine->PushState(del);
 
       m_gizmo = MakeNewPtr<BoxEditGizmo>();
@@ -130,6 +131,80 @@ namespace ToolKit
       BaseMod::Signal(signal);
     }
 
+    BoxEditContext BoxEditMod::BuildContextFromEntity(EntityPtr ntt)
+    {
+      BoxEditContext ctx;
+
+      // Priority 1: EnvironmentComponent.
+      if (EnvironmentComponentPtr envComp = ntt->GetComponent<EnvironmentComponent>())
+      {
+        ctx.GetBoundingBox    = [envComp]() { return envComp->GetBoundingBox(); };
+        ctx.GetWorldTransform = []() { return Mat4(1.0f); };
+        ctx.GetSize           = [envComp]() { return envComp->GetSizeVal(); };
+        ctx.GetPositionOffset = [envComp]() { return envComp->GetPositionOffsetVal(); };
+        ctx.SetSize           = [envComp](const Vec3& s) { envComp->SetSizeVal(s); };
+        ctx.SetPositionOffset = [envComp](const Vec3& o) { envComp->SetPositionOffsetVal(o); };
+        return ctx;
+      }
+
+      // Priority 2: AABBOverrideComponent.
+      if (AABBOverrideComponentPtr aabbComp = ntt->GetComponent<AABBOverrideComponent>())
+      {
+        ctx.GetBoundingBox    = [aabbComp]() { return aabbComp->GetBoundingBox(); };
+        ctx.GetWorldTransform = [ntt]() { return ntt->m_node->GetTransform(TransformationSpace::TS_WORLD); };
+        ctx.GetSize           = [aabbComp]() { return aabbComp->GetSizeVal(); };
+        ctx.GetPositionOffset = [aabbComp]() { return aabbComp->GetPositionOffsetVal(); };
+        ctx.SetSize           = [aabbComp](const Vec3& s) { aabbComp->SetSizeVal(s); };
+        ctx.SetPositionOffset = [aabbComp](const Vec3& o) { aabbComp->SetPositionOffsetVal(o); };
+        return ctx;
+      }
+
+      // Priority 3: Any entity with a bounding box — use local-axis scale + displacement.
+      // Scale grows both directions, so we compensate with a position offset to
+      // make it appear as single-face movement.
+      // GetSize/SetSize work in world-space extents (localBBSize * scale) so that
+      // delta from UpdateDrag (in world units) can be applied directly.
+      ctx.GetBoundingBox = [ntt]()
+      {
+        // Return scaled local BB so handles appear at the correct world-space extents.
+        BoundingBox localBB  = ntt->GetBoundingBox(false);
+        Vec3 scale           = ntt->m_node->GetScale();
+        localBB.min         *= scale;
+        localBB.max         *= scale;
+        return localBB;
+      };
+      ctx.GetWorldTransform = [ntt]()
+      {
+        // Return rotation + translation only (no scale) so handle positions stay correct.
+        Mat4 world = ntt->m_node->GetTransform(TransformationSpace::TS_WORLD);
+        Vec3 pos, scale;
+        Quaternion rot;
+        DecomposeMatrix(world, &pos, &rot, &scale);
+        return glm::translate(Mat4(1.0f), pos) * Mat4(glm::toMat3(rot));
+      };
+      ctx.GetSize = [ntt]()
+      {
+        // Return world-space extents: localBBSize * scale.
+        BoundingBox localBB = ntt->GetBoundingBox(false);
+        Vec3 localSize      = localBB.max - localBB.min;
+        Vec3 scale          = ntt->m_node->GetScale();
+        return localSize * scale;
+      };
+      ctx.GetPositionOffset = [ntt]() { return ntt->m_node->GetTranslation(TransformationSpace::TS_WORLD); };
+      ctx.SetSize           = [ntt](const Vec3& worldSize)
+      {
+        // Convert world-space extents back to scale.
+        BoundingBox localBB = ntt->GetBoundingBox(false);
+        Vec3 localSize      = localBB.max - localBB.min;
+        localSize           = glm::max(localSize, Vec3(0.0001f));
+        ntt->m_node->SetScale(worldSize / localSize);
+      };
+      ctx.SetPositionOffset = [ntt](const Vec3& o) { ntt->m_node->SetTranslation(o, TransformationSpace::TS_WORLD); };
+      ctx.worldSpaceOffset  = true;
+
+      return ctx;
+    }
+
     bool BoxEditMod::TryUpdateGizmoFromSelection()
     {
       EditorScenePtr scene = GetApp()->GetCurrentScene();
@@ -144,22 +219,23 @@ namespace ToolKit
         return false;
       }
 
-      EnvironmentComponentPtr envComp = ntt->GetComponent<EnvironmentComponent>();
-      if (envComp == nullptr)
+      BoxEditContext ctx = BuildContextFromEntity(ntt);
+      if (!ctx.IsValid())
       {
         return false;
       }
 
-      const BoundingBox& bb = envComp->GetBoundingBox();
+      BoundingBox bb = ctx.GetBoundingBox();
       m_gizmo->SetTargetBox(bb);
+      m_gizmo->SetWorldTransform(ctx.GetWorldTransform());
 
       return true;
     }
 
     void BoxEditMod::BeginDrag(const Vec2& mousePos)
     {
-      m_dragging  = true;
-      m_dragFace  = m_gizmo->GetGrabbedFace();
+      m_dragging = true;
+      m_dragFace = m_gizmo->GetGrabbedFace();
 
       if (m_dragFace == BoxFace::None)
       {
@@ -168,34 +244,35 @@ namespace ToolKit
       }
 
       EditorScenePtr scene = GetApp()->GetCurrentScene();
-      m_dragEntity         = scene->GetCurrentSelection();
-      if (m_dragEntity == nullptr)
+      EntityPtr ntt        = scene->GetCurrentSelection();
+      if (ntt == nullptr)
       {
         m_dragging = false;
         return;
       }
 
-      m_dragEnvComp = m_dragEntity->GetComponent<EnvironmentComponent>();
-      if (m_dragEnvComp == nullptr)
+      m_dragContext = BuildContextFromEntity(ntt);
+      if (!m_dragContext.IsValid())
       {
         m_dragging = false;
         return;
       }
 
-      m_dragStartSize   = m_dragEnvComp->GetSizeVal();
-      m_dragStartOffset = m_dragEnvComp->GetPositionOffsetVal();
+      m_dragStartSize       = m_dragContext.GetSize();
+      m_dragStartOffset     = m_dragContext.GetPositionOffset();
 
       // Build drag plane that contains the face normal direction but faces the camera.
-      // This avoids near-parallel ray-plane intersection failures.
-      Vec3 faceNormal       = BoxEditGizmo::GetFaceNormal(m_dragFace);
+      Vec3 faceNormal       = m_gizmo->GetFaceNormalWorld(m_dragFace);
       const BoundingBox& bb = m_gizmo->GetTargetBox();
-      Vec3 faceCenter       = bb.GetCenter();
+      Vec3 localCenter      = bb.GetCenter();
       Vec3 halfSize         = (bb.max - bb.min) * 0.5f;
-      faceCenter           += faceNormal * (halfSize.x * glm::abs(faceNormal.x) +
-                                            halfSize.y * glm::abs(faceNormal.y) +
-                                            halfSize.z * glm::abs(faceNormal.z));
+      Vec3 localFaceNormal  = BoxEditGizmo::GetFaceNormalLocal(m_dragFace);
+      Vec3 localFaceCenter  = localCenter + localFaceNormal * (halfSize.x * glm::abs(localFaceNormal.x) +
+                                                              halfSize.y * glm::abs(localFaceNormal.y) +
+                                                              halfSize.z * glm::abs(localFaceNormal.z));
+      Vec3 faceCenter       = Vec3(m_gizmo->GetWorldTransform() * Vec4(localFaceCenter, 1.0f));
 
-      EditorViewportPtr vp = GetApp()->GetActiveViewport();
+      EditorViewportPtr vp  = GetApp()->GetActiveViewport();
       if (vp == nullptr)
       {
         m_dragging = false;
@@ -203,33 +280,28 @@ namespace ToolKit
       }
 
       // Choose a plane that contains the drag axis (faceNormal) but is most visible to the camera.
-      // Get camera direction.
-      Vec3 camDir = vp->GetCamera()->GetComponent<DirectionComponent>()->GetDirection();
+      Vec3 camDir           = vp->GetCamera()->GetComponent<DirectionComponent>()->GetDirection();
 
-      // Find the best plane normal: perpendicular to faceNormal, and most aligned with camDir.
-      // Two candidate normals are the other two world axes.
-      Vec3 candidates[2];
-      int ci = 0;
-      for (int i = 0; i < 3; i++)
-      {
-        if (glm::abs(faceNormal[i]) < 0.5f)
-        {
-          Vec3 axis(0.0f);
-          axis[i]          = 1.0f;
-          candidates[ci++] = axis;
-          if (ci == 2) break;
-        }
-      }
+      // Get the two local axes perpendicular to the face normal, transform to world space.
+      int faceAxis          = static_cast<int>(m_dragFace) / 2;
+      int candAxis0         = (faceAxis + 1) % 3;
+      int candAxis1         = (faceAxis + 2) % 3;
+      Vec3 localCand0       = Vec3(0.0f);
+      localCand0[candAxis0] = 1.0f;
+      Vec3 localCand1       = Vec3(0.0f);
+      localCand1[candAxis1] = 1.0f;
+      Vec3 worldCand0       = glm::normalize(Vec3(m_gizmo->GetWorldTransform() * Vec4(localCand0, 0.0f)));
+      Vec3 worldCand1       = glm::normalize(Vec3(m_gizmo->GetWorldTransform() * Vec4(localCand1, 0.0f)));
 
       // Pick the candidate whose dot with camDir is largest in absolute value.
       Vec3 planeNormal;
-      if (glm::abs(glm::dot(candidates[0], camDir)) >= glm::abs(glm::dot(candidates[1], camDir)))
+      if (glm::abs(glm::dot(worldCand0, camDir)) >= glm::abs(glm::dot(worldCand1, camDir)))
       {
-        planeNormal = candidates[0];
+        planeNormal = worldCand0;
       }
       else
       {
-        planeNormal = candidates[1];
+        planeNormal = worldCand1;
       }
 
       // Make sure plane normal points towards camera.
@@ -242,7 +314,7 @@ namespace ToolKit
       m_dragPlane.d      = -glm::dot(planeNormal, faceCenter);
 
       // Find initial intersection point.
-      Ray ray = vp->RayFromMousePosition();
+      Ray ray            = vp->RayFromMousePosition();
       float t;
       if (RayPlaneIntersection(ray, m_dragPlane, t))
       {
@@ -256,7 +328,7 @@ namespace ToolKit
 
     void BoxEditMod::UpdateDrag(const Vec2& mousePos)
     {
-      if (!m_dragging || m_dragFace == BoxFace::None)
+      if (!m_dragging || m_dragFace == BoxFace::None || !m_dragContext.IsValid())
       {
         return;
       }
@@ -275,10 +347,10 @@ namespace ToolKit
       }
 
       Vec3 currentPoint = PointOnRay(ray, t);
-      Vec3 faceNormal   = BoxEditGizmo::GetFaceNormal(m_dragFace);
+      Vec3 faceNormal   = m_gizmo->GetFaceNormalWorld(m_dragFace);
 
       // Project delta onto face normal to get 1D movement.
-      float delta = glm::dot(currentPoint - m_dragStartPoint, faceNormal);
+      float delta       = glm::dot(currentPoint - m_dragStartPoint, faceNormal);
 
       // Snap.
       if (GetApp()->m_snapsEnabled)
@@ -288,30 +360,34 @@ namespace ToolKit
       }
 
       // Compute new Size and PositionOffset.
-      Vec3 newSize   = m_dragStartSize;
-      Vec3 newOffset = m_dragStartOffset;
+      Vec3 newSize         = m_dragStartSize;
+      Vec3 newOffset       = m_dragStartOffset;
 
-      int axisIndex  = static_cast<int>(m_dragFace) / 2; // 0=X, 1=Y, 2=Z
-      bool isPositiveFace = (static_cast<int>(m_dragFace) % 2) == 0;
+      int axisIndex        = static_cast<int>(m_dragFace) / 2; // 0=X, 1=Y, 2=Z
+      bool isPositiveFace  = (static_cast<int>(m_dragFace) % 2) == 0;
 
-      // Delta is always positive when dragging outward along the face normal.
-      // Size always grows with positive delta.
-      // Offset shifts in the direction of the face normal.
-      newSize[axisIndex] += delta;
-      if (isPositiveFace)
+      // Size delta is applied on the local axis.
+      newSize[axisIndex]  += delta;
+
+      // Position offset compensates so only the dragged face moves.
+      // faceNormal already points in the correct direction for both positive and negative faces.
+      if (m_dragContext.worldSpaceOffset)
       {
-        newOffset[axisIndex] += delta * 0.5f;
+        // World-space offset: displace along rotated face normal.
+        newOffset += faceNormal * (delta * 0.5f);
       }
       else
       {
-        newOffset[axisIndex] -= delta * 0.5f;
+        // Local-space offset: displace along local axis.
+        float sign            = isPositiveFace ? 0.5f : -0.5f;
+        newOffset[axisIndex] += delta * sign;
       }
 
       // Clamp size to minimum.
       newSize[axisIndex] = glm::max(newSize[axisIndex], 0.01f);
 
-      m_dragEnvComp->SetSizeVal(newSize);
-      m_dragEnvComp->SetPositionOffsetVal(newOffset);
+      m_dragContext.SetSize(newSize);
+      m_dragContext.SetPositionOffset(newOffset);
     }
 
     void BoxEditMod::EndDrag()
@@ -322,8 +398,7 @@ namespace ToolKit
       {
         m_gizmo->Grab(AxisLabel::None);
       }
-      m_dragEntity  = nullptr;
-      m_dragEnvComp = nullptr;
+      m_dragContext = BoxEditContext();
     }
 
   } // namespace Editor

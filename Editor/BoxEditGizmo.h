@@ -35,12 +35,11 @@ namespace ToolKit
     //////////////////////////////////////////
 
     /**
-     * A world-space gizmo that displays 6 cube handles at the face centers of an AABB.
+     * A world-space gizmo that displays 6 cube handles at the face centers of an OBB.
      * Dragging a handle moves that face along its outward normal, modifying the underlying
      * component's Size and PositionOffset.
      *
-     * This gizmo is generic: any component that provides a BoundingBox and Size/Offset
-     * parameters can be edited with it.
+     * Supports oriented bounding boxes via a world transform matrix.
      */
     class TK_EDITOR_API BoxEditGizmo : public Gizmo
     {
@@ -58,25 +57,34 @@ namespace ToolKit
       /** Returns the BoxFace corresponding to a grabbed AxisLabel, or BoxFace::None. */
       BoxFace GetGrabbedFace() const;
 
-      /** Returns the outward normal direction for the given face. */
-      static Vec3 GetFaceNormal(BoxFace face);
+      /** Returns the local-space outward normal for the given face. */
+      static Vec3 GetFaceNormalLocal(BoxFace face);
 
-      /** Sets the bounding box to display handles for. Call each frame before Update. */
+      /** Returns the world-space outward normal for the given face, rotated by the current orientation. */
+      Vec3 GetFaceNormalWorld(BoxFace face) const;
+
+      /** Sets the local-space bounding box to display handles for. */
       void SetTargetBox(const BoundingBox& box);
 
-      /** Returns the current target box. */
+      /** Returns the current local-space target box. */
       const BoundingBox& GetTargetBox() const;
+
+      /** Sets the world transform (translation + rotation) used to orient the OBB. No scale. */
+      void SetWorldTransform(const Mat4& transform);
+
+      /** Returns the current world transform. */
+      const Mat4& GetWorldTransform() const;
 
      private:
       void GenerateHandles();
 
      public:
-      /** Handle size in world units. Adjusts with camera distance. */
       float m_handleSize = 0.15f;
 
      private:
       BoundingBox m_targetBox;
-      bool m_handlesDirty = true;
+      Mat4 m_worldTransform = Mat4(1.0f);
+      bool m_handlesDirty   = true;
     };
 
     typedef std::shared_ptr<BoxEditGizmo> BoxEditGizmoPtr;
