@@ -138,8 +138,21 @@ namespace ToolKit
       // Priority 1: EnvironmentComponent.
       if (EnvironmentComponentPtr envComp = ntt->GetComponent<EnvironmentComponent>())
       {
-        ctx.GetBoundingBox    = [envComp]() { return envComp->GetBoundingBox(); };
-        ctx.GetWorldTransform = []() { return Mat4(1.0f); };
+        ctx.GetBoundingBox = [envComp]()
+        {
+          // Local-space BB: PositionOffset +/- Size*0.5, without entity world position.
+          Vec3 offset = envComp->GetPositionOffsetVal();
+          Vec3 half   = envComp->GetSizeVal() * 0.5f;
+          BoundingBox bb;
+          bb.min = offset - half;
+          bb.max = offset + half;
+          return bb;
+        };
+        ctx.GetWorldTransform = [ntt]()
+        {
+          // Entity rotation + translation so volume becomes oriented.
+          return ntt->m_node->GetTransform(TransformationSpace::TS_WORLD);
+        };
         ctx.GetSize           = [envComp]() { return envComp->GetSizeVal(); };
         ctx.GetPositionOffset = [envComp]() { return envComp->GetPositionOffsetVal(); };
         ctx.SetSize           = [envComp](const Vec3& s) { envComp->SetSizeVal(s); };
