@@ -7,14 +7,14 @@
 
 #include "Workspace.h"
 
-#include "FileManager.h"
-#include "Scene.h"
+#include <FileManager.h>
+#include <Scene.h>
 
 namespace ToolKit
 {
-  static const StringView XmlNodeWorkspace = "Workspace";
-  static const StringView XmlNodeProject   = "Project";
-  static const StringView XmlNodeScene     = "scene";
+  static constexpr StringView XmlNodeWorkspace = "Workspace";
+  static constexpr StringView XmlNodeProject   = "Project";
+  static constexpr StringView XmlNodeScene     = "scene";
 
   Workspace::Workspace() {}
 

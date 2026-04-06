@@ -7,10 +7,11 @@
 
 #pragma once
 
-#include "Serialize.h"
-#include "ToolKit.h"
-#include "Types.h"
 #include "WorkspaceTypes.h"
+
+#include <Serialize.h>
+#include <ToolKit.h>
+#include <Types.h>
 
 namespace ToolKit
 {
