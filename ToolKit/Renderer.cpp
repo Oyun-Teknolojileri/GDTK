@@ -1855,9 +1855,7 @@ namespace ToolKit
                                        const Vec3& position,
                                        float near,
                                        float far,
-                                       uint resolution,
-                                       CubeMapPtr& outDiffuseEnvMap,
-                                       CubeMapPtr& outSpecularEnvMap)
+                                       uint resolution)
   {
     TK_PROFILE_FUNCTION();
 
@@ -1952,12 +1950,6 @@ namespace ToolKit
     // Generate mip maps for the captured cubemap so that mipmap-filtered sampling
     // in irradiance generation shaders works correctly (incomplete mip chain causes black).
     cubemap->GenerateMipMaps();
-
-    // Generate irradiance caches.
-    outSpecularEnvMap = GenerateSpecularEnvMap(cubemap, cubemap->m_width, RHIConstants::SpecularIBLLods);
-
-    int diffuseSize   = glm::max(64, (int) resolution / 4);
-    outDiffuseEnvMap  = GenerateDiffuseEnvMap(cubemap, diffuseSize);
 
     Stats::EndGpuScope();
 

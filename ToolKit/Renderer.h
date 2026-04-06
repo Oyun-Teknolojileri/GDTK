@@ -238,21 +238,18 @@ namespace ToolKit
 
     /**
      * Renders the scene into a cubemap from the given position using the provided render path.
-     * Also generates irradiance and specular environment maps.
      * @param renderPath The render path to use for rendering each face.
      * @param position World position to render from.
      * @param near Near clip plane.
      * @param far Far clip plane.
      * @param resolution Resolution of each cubemap face.
-     * @return The generated cubemap with irradiance and specular caches via outDiffuseEnvMap and outSpecularEnvMap.
+     * @return The generated cubemap.
      */
     CubeMapPtr RenderToCubeMap(ForwardSceneRenderPath* renderPath,
                                const Vec3& position,
                                float near,
                                float far,
-                               uint resolution,
-                               CubeMapPtr& outDiffuseEnvMap,
-                               CubeMapPtr& outSpecularEnvMap);
+                               uint resolution);
 
     /**
      * Sets the blend state directly which causes by passing material system.

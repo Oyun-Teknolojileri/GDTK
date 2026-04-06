@@ -10,8 +10,8 @@
 #include "Entity.h"
 #include "ForwardSceneRenderPath.h"
 #include "MathUtil.h"
-#include "Renderer.h"
 #include "RenderSystem.h"
+#include "Renderer.h"
 #include "Scene.h"
 #include "Texture.h"
 #include "ToolKit.h"
@@ -125,41 +125,31 @@ namespace ToolKit
           float far     = GetCaptureFarVal();
           uint res      = (uint) GetCaptureResolutionVal();
 
-          // Capture a weak reference to this component's owner entity id for safety.
-          ObjectId ownerId = owner->GetIdVal();
+          GetRenderSystem()->AddRenderTask({[this, position, near, far, res](Renderer* renderer) -> void
+                                            {
+                                              // Disable self-illumination during capture to prevent this component's
+                                              // own HDRI from affecting the scene it is capturing.
+                                              bool wasIlluminating = GetIlluminateVal();
+                                              SetIlluminateVal(false);
 
-          GetRenderSystem()->AddRenderTask(
-              {[this, position, near, far, res, ownerId](Renderer* renderer) -> void
-               {
-                 // Disable self-illumination during capture to prevent this component's
-                 // own HDRI from affecting the scene it is capturing.
-                 bool wasIlluminating = GetIlluminateVal();
-                 SetIlluminateVal(false);
+                                              // Create a temporary render path for the capture.
+                                              ForwardSceneRenderPath capturePath;
+                                              capturePath.m_params.Scene = GetSceneManager()->GetCurrentScene();
 
-                 // Create a temporary render path for the capture.
-                 ForwardSceneRenderPath capturePath;
-                 capturePath.m_params.Scene = GetSceneManager()->GetCurrentScene();
+                                              CubeMapPtr cubemap =
+                                                  renderer->RenderToCubeMap(&capturePath, position, near, far, res);
 
-                 CubeMapPtr diffuseEnvMap;
-                 CubeMapPtr specularEnvMap;
-                 CubeMapPtr cubemap =
-                     renderer->RenderToCubeMap(&capturePath, position, near, far, res, diffuseEnvMap, specularEnvMap);
+                                              // Restore illuminate state.
+                                              SetIlluminateVal(wasIlluminating);
 
-                 // Restore illuminate state.
-                 SetIlluminateVal(wasIlluminating);
+                                              // Create a dynamic HDRI and assign the captured cubemap.
+                                              HdriPtr hdri    = MakeNewPtr<Hdri>();
+                                              hdri->m_cubemap = cubemap;
+                                              hdri->GenerateIrradianceCaches(renderer);
+                                              hdri->m_initiated = true;
 
-                 // Create a dynamic HDRI and assign the captured cubemap.
-                 HdriPtr hdri           = MakeNewPtr<Hdri>();
-                 hdri->m_cubemap        = cubemap;
-                 hdri->m_width          = res;
-                 hdri->m_height         = res;
-                 hdri->m_diffuseEnvMap  = diffuseEnvMap;
-                 hdri->m_specularEnvMap = specularEnvMap;
-                 hdri->m_initiated      = true;
-                 hdri->m_loaded         = true;
-
-                 SetHdriVal(hdri);
-               }});
+                                              SetHdriVal(hdri);
+                                            }});
         },
         EnvironmentComponentCategory.Name,
         EnvironmentComponentCategory.Priority,
