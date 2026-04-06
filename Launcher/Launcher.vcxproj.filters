@@ -2,19 +2,25 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Filter Include="Source">
-      <UniqueIdentifier>{be7c4966-66be-4fc7-9ffc-bc767a6510ae}</UniqueIdentifier>
+      <UniqueIdentifier>{2214a8a5-61c2-445a-9d0f-2bb995efe731}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Workspace.cpp">
+    <ClCompile Include="Launcher.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Editor\main.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="oldmain.cpp">
       <Filter>Source</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Workspace.h">
+    <ClInclude Include="Launcher.h">
       <Filter>Source</Filter>
     </ClInclude>
-    <ClInclude Include="WorkspaceTypes.h">
+    <ClInclude Include="LauncherTypes.h">
       <Filter>Source</Filter>
     </ClInclude>
   </ItemGroup>

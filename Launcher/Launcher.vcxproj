@@ -18,18 +18,11 @@
       <Platform>x64</Platform>
     </ProjectConfiguration>
   </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="Workspace.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="Workspace.h" />
-    <ClInclude Include="WorkspaceTypes.h" />
-  </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
-    <ProjectGuid>{354eed53-9994-4c7c-9857-e7107f0cdf3a}</ProjectGuid>
-    <RootNamespace>Workspace</RootNamespace>
+    <ProjectGuid>{f79709b6-de52-496c-97a3-e7d375448d00}</ProjectGuid>
+    <RootNamespace>Launcher</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -47,17 +40,17 @@
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
-    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v143</PlatformToolset>
-    <CharacterSet>Unicode</CharacterSet>
+    <CharacterSet>NotSet</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
-    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v143</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
-    <CharacterSet>Unicode</CharacterSet>
+    <CharacterSet>NotSet</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
@@ -78,15 +71,15 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <IncludePath>$(SolutionDir)ToolKit;$(IncludePath)$(ProjectDir);$(SolutionDir)Dependency;$(SolutionDir)Dependency\glm;$(SolutionDir)Dependency\RapidXml;$(SolutionDir)Dependency\SDL2\include;$(SolutionDir)Dependency\Stb;$(SolutionDir)Dependency\minizip-ng;$(SolutionDir)Dependency\minizip-ng\compat;$(SolutionDir)Dependency\poolSTL\include</IncludePath>
     <OutDir>..\Bin\</OutDir>
-    <LibraryPath>$(SolutionDir)Dependency\Intermediate\Windows\Debug;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(SolutionDir)Workspace;$(SolutionDir)ToolKit;$(IncludePath)$(ProjectDir);$(SolutionDir)Dependency;$(SolutionDir)Dependency\glm;$(SolutionDir)Dependency\RapidXml;$(SolutionDir)Dependency\SDL2\include;$(SolutionDir)Dependency\tkimgui\imgui;$(SolutionDir)Dependency\tkimgui;$(SolutionDir)Dependency\Stb;$(SolutionDir)Dependency\minizip-ng;$(SolutionDir)Dependency\minizip-ng\compat;$(SolutionDir)Dependency\poolSTL\include</IncludePath>
+    <LibraryPath>$(SolutionDir)Bin;$(SolutionDir)Dependency\Intermediate\Windows\Debug;$(LibraryPath)</LibraryPath>
     <TargetName>$(ProjectName)d</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <IncludePath>$(SolutionDir)ToolKit;$(IncludePath)$(ProjectDir);$(SolutionDir)Dependency;$(SolutionDir)Dependency\glm;$(SolutionDir)Dependency\RapidXml;$(SolutionDir)Dependency\SDL2\include;$(SolutionDir)Dependency\Stb;$(SolutionDir)Dependency\minizip-ng;$(SolutionDir)Dependency\minizip-ng\compat;$(SolutionDir)Dependency\poolSTL\include</IncludePath>
     <OutDir>..\Bin\</OutDir>
-    <LibraryPath>$(SolutionDir)Dependency\Intermediate\Windows\RelWithDebInfo;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(SolutionDir)Workspace;$(SolutionDir)ToolKit;$(IncludePath)$(ProjectDir);$(SolutionDir)Dependency;$(SolutionDir)Dependency\glm;$(SolutionDir)Dependency\RapidXml;$(SolutionDir)Dependency\SDL2\include;$(SolutionDir)Dependency\tkimgui\imgui;$(SolutionDir)Dependency\tkimgui;$(SolutionDir)Dependency\Stb;$(SolutionDir)Dependency\minizip-ng;$(SolutionDir)Dependency\minizip-ng\compat;$(SolutionDir)Dependency\poolSTL\include</IncludePath>
+    <LibraryPath>$(SolutionDir)Bin;$(SolutionDir)Dependency\Intermediate\Windows\RelWithDebInfo;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -121,12 +114,13 @@
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;TK_GL_3_0;TK_DEBUG;TK_DLL_IMPORT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeader>Use</PrecompiledHeader>
       <AdditionalOptions>/FI "stdafx.h" %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
-      <SubSystem>Console</SubSystem>
+      <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>SDL2maind.lib;SDL2d.lib;imguid.lib;ToolKitd.lib;Workspaced.lib;OpenGL32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -138,14 +132,27 @@
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;TK_GL_3_0;TK_DLL_IMPORT;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeader>Use</PrecompiledHeader>
       <AdditionalOptions>/FI "stdafx.h" %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
-      <SubSystem>Console</SubSystem>
+      <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>SDL2main.lib;SDL2.lib;imgui.lib;ToolKit.lib;Workspace.lib;OpenGL32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="Launcher.cpp" />
+    <ClCompile Include="main.cpp" />
+    <ClCompile Include="stdafx.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Launcher.h" />
+    <ClInclude Include="LauncherTypes.h" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

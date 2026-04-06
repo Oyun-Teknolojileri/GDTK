@@ -13,8 +13,8 @@ namespace ToolKit
 {
   namespace Launcher
   {
-
+    typedef std::function<void(int)> SysCommandDoneCallback;
+    typedef std::function<int(StringView, bool, bool, SysCommandDoneCallback)> SysCommandExecutionFn;
     typedef std::function<void(const String&, const String&)> CreateProjectShortcutOnDesktopFn;
-
   } // namespace Launcher
 } // namespace ToolKit

@@ -32,8 +32,10 @@ namespace ToolKit
       void UpdateThumbnailCache();
       void ShowWorkspacePopup();
       void ShowNewProjectPopup();
+      void OpenProject(const Project& project);
 
      public:
+      SysCommandExecutionFn m_sysComExecFn;
       CreateProjectShortcutOnDesktopFn m_createProjectShortcutOnDesktopFn;
 
      private:

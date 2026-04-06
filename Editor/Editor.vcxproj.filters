@@ -37,9 +37,6 @@
     <Filter Include="Entities\UI">
       <UniqueIdentifier>{1e18ef1a-b6b1-495b-be99-3e8e4f30295c}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Launcher">
-      <UniqueIdentifier>{23355e02-8572-4116-9a69-d56d6b948bd7}</UniqueIdentifier>
-    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -198,9 +195,6 @@
     <ClCompile Include="EditorCanvas.cpp">
       <Filter>Entities\UI</Filter>
     </ClCompile>
-    <ClCompile Include="Launcher.cpp">
-      <Filter>Launcher</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Mod.h">
@@ -358,12 +352,6 @@
     </ClInclude>
     <ClInclude Include="EditorMetaKeys.h">
       <Filter>Source</Filter>
-    </ClInclude>
-    <ClInclude Include="Launcher.h">
-      <Filter>Launcher</Filter>
-    </ClInclude>
-    <ClInclude Include="LauncherTypes.h">
-      <Filter>Launcher</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

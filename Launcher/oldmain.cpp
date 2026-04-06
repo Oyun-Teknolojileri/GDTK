@@ -20,7 +20,6 @@
 #include "SplashScreenRenderPath.h"
 #include "Stats.h"
 #include "UI.h"
-#include "Workspace.h"
 
 #include <Common/SDLEventPool.h>
 #include <Common/Win32Utils.h>
@@ -30,6 +29,7 @@
 #include <SDL.h>
 #include <TKOpenGL.h>
 #include <Types.h>
+#include <Workspace.h>
 #include <locale.h>
 
 #include <array>

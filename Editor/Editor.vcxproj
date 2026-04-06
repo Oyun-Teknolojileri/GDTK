@@ -45,7 +45,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <OutDir>..\Bin\</OutDir>
     <TargetName>$(ProjectName)d</TargetName>
-    <IncludePath>$(SolutionDir)Workspace;$(SolutionDir)ToolKit;$(SolutionDir)Dependency;$(SolutionDir)Dependency\glm;$(SolutionDir)Dependency\SDL2\include;$(SolutionDir)Dependency\RapidXml;$(SolutionDir)Dependency\tkimgui;$(SolutionDir)Dependency\tkimgui\imgui;$(SolutionDir)Dependency\poolSTL\include;$(VC_IncludePath);$(WindowsSDK_IncludePath);</IncludePath>
+    <IncludePath>$(SolutionDir)Workspace;$(SolutionDir)ToolKit;$(SolutionDir)Dependency;$(SolutionDir)Dependency\glm;$(SolutionDir)Dependency\SDL2\include;$(SolutionDir)Dependency\RapidXml;$(SolutionDir)Dependency\tkimgui;$(SolutionDir)Dependency\tkimgui\imgui;$(SolutionDir)Dependency\poolSTL\include;$(VC_IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
     <LibraryPath>$(SolutionDir)Bin;$(SolutionDir)Dependency\Intermediate\Windows\Debug;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -68,7 +68,7 @@
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
-      <AdditionalDependencies>SDL2maind.lib;SDL2d.lib;imguid.lib;ToolKitd.lib;Workspace.lib;OpenGL32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>SDL2maind.lib;SDL2d.lib;imguid.lib;ToolKitd.lib;Workspaced.lib;OpenGL32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -117,7 +117,6 @@
     <ClCompile Include="Gizmo.cpp" />
     <ClCompile Include="GizmoPass.cpp" />
     <ClCompile Include="Grid.cpp" />
-    <ClCompile Include="Launcher.cpp" />
     <ClCompile Include="LeftBar.cpp">
       <OrderInUnityFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">50</OrderInUnityFile>
     </ClCompile>
@@ -187,8 +186,6 @@
     <ClInclude Include="EditorTypes.h" />
     <ClInclude Include="Grid.h" />
     <ClInclude Include="IconsFontAwesome.h" />
-    <ClInclude Include="Launcher.h" />
-    <ClInclude Include="LauncherTypes.h" />
     <ClInclude Include="LeftBar.h" />
     <ClInclude Include="LightMeshGenerator.h" />
     <ClInclude Include="MaterialView.h" />

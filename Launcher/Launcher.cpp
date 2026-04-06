@@ -7,18 +7,15 @@
 
 #include "Launcher.h"
 
-#include "App.h"
-#include "EditorTypes.h"
-#include "PopupWindows.h"
-#include "UI.h"
-
-#include <Common/Win32Utils.h>
 #include <Texture.h>
 #include <Util.h>
 #include <WorkspaceTypes.h>
 
 #define IMGUI_USER_CONFIG "tk_imconfig.h"
 #include <imgui/imgui.h>
+#include <imgui/misc/cpp/imgui_stdlib.h>
+
+#define Convert2ImGuiTexture(TexturePtr) (void*) (intptr_t) (TexturePtr->m_textureId)
 
 extern bool g_running;
 extern bool g_launcherRunning;
@@ -72,6 +69,23 @@ namespace ToolKit
 
     LauncherApp::~LauncherApp() {}
 
+    void LauncherApp::OpenProject(const Project& project)
+    {
+      if (!m_sysComExecFn)
+      {
+        return;
+      }
+
+      m_workspace->SetActiveProject(project);
+      m_workspace->Serialize(nullptr, nullptr);
+
+      String workspacePath = m_workspace->GetActiveWorkspace();
+      String cmd = "Editor.exe --workspace \"" + workspacePath + "\" --project-name \"" + project.name + "\"";
+
+      m_sysComExecFn(cmd, true, false, nullptr);
+      g_running = false;
+    }
+
     void LauncherApp::UpdateThumbnailCache()
     {
       m_thumbnailCache.clear();
@@ -87,8 +101,6 @@ namespace ToolKit
 
     void LauncherApp::ShowLauncherWindow()
     {
-      Editor::UI::BeginUI();
-
       const float padding     = 1.0f;
 
       ImGuiViewport* viewport = ImGui::GetMainViewport();
@@ -113,6 +125,7 @@ namespace ToolKit
       ImU32 headerColor = ImGui::GetColorU32(ImGuiCol_TitleBg);
       drawList->AddRectFilled(windowPos, ImVec2(windowPos.x + headerSize.x, windowPos.y + headerSize.y), headerColor);
 
+      // Close button.
       float closeButtonSize    = 28.0f;
       float closeButtonPadding = 5.0f;
       ImVec2 closeButtonPos(windowSize.x - closeButtonSize - closeButtonPadding, closeButtonPadding);
@@ -128,6 +141,7 @@ namespace ToolKit
       }
       ImGui::PopStyleColor(3);
 
+      // Logo / title.
       float logoSize    = 32.0f;
       float logoPadding = 15.0f;
       ImVec2 logoPos(logoPadding, (headerSize.y - logoSize) * 0.5f);
@@ -151,26 +165,24 @@ namespace ToolKit
       }
 
       ImGui::SetCursorPos(ImVec2(logoPos.x + logoSize + 10.0f, (headerSize.y - ImGui::GetTextLineHeight()) * 0.5f));
-      ImGui::PushFont(nullptr);
       ImGui::Text("ToolKit Launcher");
-      ImGui::PopFont();
 
       ImGui::SetCursorPosY(headerSize.y);
       ImGui::Separator();
       ImGui::Spacing();
 
+      // Layout constants.
       float panelPadding = 15.0f;
       float panelSpacing = 10.0f;
       float panelWidth   = windowSize.x - panelPadding * 2;
 
       ImGui::SetCursorPosX(panelPadding);
 
-      float bottomPanelHeight    = 40.0f;
-      float bottomPadding        = 20.0f;
-      float spacingBetweenPanels = 10.0f;
-      float tabBarHeight         = ImGui::GetFrameHeight();
-      float listHeight = windowSize.y - headerSize.y - tabBarHeight - bottomPanelHeight - bottomPadding - panelPadding -
-                         spacingBetweenPanels;
+      float bottomPanelHeight = 40.0f;
+      float bottomPadding     = 20.0f;
+      float tabBarHeight      = ImGui::GetFrameHeight();
+      float listHeight =
+          windowSize.y - headerSize.y - tabBarHeight - bottomPanelHeight - bottomPadding - panelPadding - 10.0f;
 
       if (ImGui::BeginTabBar("##MainTabs"))
       {
@@ -192,17 +204,12 @@ namespace ToolKit
               UpdateThumbnailCache();
             }
 
+            // Search bar.
             ImGui::SetCursorPosX(panelPadding + 15.0f);
             ImGui::SetCursorPosY(listStartY + 10.0f);
             float searchBarWidth = glm::min(300.0f, projectsPanelWidth - 30.0f);
             ImGui::PushItemWidth(searchBarWidth);
-            ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
-            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6.0f, 3.0f));
-            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
-            ImGui::PushStyleColor(ImGuiCol_FrameBg, ImGui::GetColorU32(ImGuiCol_WindowBg));
             ImGui::InputTextWithHint("##searchProjects", "Search...", &m_searchFilter);
-            ImGui::PopStyleColor();
-            ImGui::PopStyleVar(3);
             ImGui::PopItemWidth();
 
             float searchBarHeight    = ImGui::GetItemRectSize().y;
@@ -219,6 +226,7 @@ namespace ToolKit
 
             ImGui::SetCursorPos(ImVec2(gridPadding, gridPadding));
 
+            // Filter projects.
             std::vector<size_t> filteredIndices;
             for (size_t i = 0; i < m_workspace->m_projects.size(); ++i)
             {
@@ -231,19 +239,15 @@ namespace ToolKit
               {
                 String projectNameLower = project.name;
                 String filterLower      = m_searchFilter;
-                for (size_t j = 0; j < projectNameLower.size(); ++j)
+                for (char& c : projectNameLower)
                 {
-                  if (projectNameLower[j] >= 'A' && projectNameLower[j] <= 'Z')
-                  {
-                    projectNameLower[j] = projectNameLower[j] - 'A' + 'a';
-                  }
+                  if (c >= 'A' && c <= 'Z')
+                    c = c - 'A' + 'a';
                 }
-                for (size_t j = 0; j < filterLower.size(); ++j)
+                for (char& c : filterLower)
                 {
-                  if (filterLower[j] >= 'A' && filterLower[j] <= 'Z')
-                  {
-                    filterLower[j] = filterLower[j] - 'A' + 'a';
-                  }
+                  if (c >= 'A' && c <= 'Z')
+                    c = c - 'A' + 'a';
                 }
                 if (projectNameLower.find(filterLower) != String::npos)
                 {
@@ -273,7 +277,6 @@ namespace ToolKit
 
               ImGui::PushID((int) i);
 
-              int row = (int) (filterIdx / actualItemsPerRow);
               int col = (int) (filterIdx % actualItemsPerRow);
 
               if (col == 0)
@@ -293,68 +296,47 @@ namespace ToolKit
               }
 
               bool isHovered            = ImGui::IsItemHovered();
-              bool isActive             = ImGui::IsItemActive();
-
               ImVec2 itemPos            = ImGui::GetItemRectMin();
               ImVec2 itemMax            = ImGui::GetItemRectMax();
-
               ImDrawList* childDrawList = ImGui::GetWindowDrawList();
-
               bool isSelected           = (m_selectedProjectIndex == (int) i);
 
               if (isHovered && ImGui::IsMouseDoubleClicked(0))
               {
                 m_selectedProjectIndex = (int) i;
-                // TODO if (m_app->OpenProject(project))
-                // TODO {
-                // TODO   g_launcherRunning = false;
-                // TODO }
+                OpenProject(project);
               }
 
+              // Hover / selection highlight.
               if (isHovered || isSelected)
               {
-                ImVec4 panelBgColor = ImGui::GetStyle().Colors[ImGuiCol_FrameBg];
-                ImVec4 hoverColor   = panelBgColor;
-
+                ImVec4 hoverColor = ImGui::GetStyle().Colors[ImGuiCol_FrameBg];
                 if (isHovered)
                 {
-                  hoverColor.x = (hoverColor.x + 0.02f > 1.0f) ? 1.0f : (hoverColor.x + 0.02f);
-                  hoverColor.y = (hoverColor.y + 0.02f > 1.0f) ? 1.0f : (hoverColor.y + 0.02f);
-                  hoverColor.z = (hoverColor.z + 0.02f > 1.0f) ? 1.0f : (hoverColor.z + 0.02f);
+                  hoverColor.x = glm::min(hoverColor.x + 0.02f, 1.0f);
+                  hoverColor.y = glm::min(hoverColor.y + 0.02f, 1.0f);
+                  hoverColor.z = glm::min(hoverColor.z + 0.02f, 1.0f);
                 }
-
-                ImU32 bgColor = ImGui::GetColorU32(hoverColor);
-                childDrawList->AddRectFilled(itemPos, itemMax, bgColor, 4.0f);
-
-                if (isHovered)
-                {
-                  float hoverBorderPadding = 2.0f;
-                  ImVec2 hoverBorderMin    = ImVec2(itemPos.x + hoverBorderPadding, itemPos.y + hoverBorderPadding);
-                  ImVec2 hoverBorderMax    = ImVec2(itemMax.x - hoverBorderPadding, itemMax.y - hoverBorderPadding);
-                  ImU32 borderColor        = ImGui::GetColorU32(ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
-                  childDrawList->AddRect(hoverBorderMin, hoverBorderMax, borderColor, 4.0f, 0, 1.0f);
-                }
+                childDrawList->AddRectFilled(itemPos, itemMax, ImGui::GetColorU32(hoverColor), 4.0f);
 
                 if (isSelected)
                 {
-                  float selectionBorderPadding = 1.0f;
-                  ImVec2 selectionBorderMin =
-                      ImVec2(itemPos.x - selectionBorderPadding, itemPos.y - selectionBorderPadding);
-                  ImVec2 selectionBorderMax =
-                      ImVec2(itemMax.x + selectionBorderPadding, itemMax.y + selectionBorderPadding);
                   ImU32 borderColor = ImGui::GetColorU32(ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
-                  childDrawList->AddRect(selectionBorderMin, selectionBorderMax, borderColor, 4.0f, 0, 2.0f);
+                  childDrawList->AddRect(ImVec2(itemPos.x - 1, itemPos.y - 1),
+                                         ImVec2(itemMax.x + 1, itemMax.y + 1),
+                                         borderColor,
+                                         4.0f,
+                                         0,
+                                         2.0f);
                 }
               }
 
+              // Thumbnail.
               const char* projectName = project.name.c_str();
               float textHeight        = ImGui::GetTextLineHeight();
-              float textWidth         = ImGui::CalcTextSize(projectName).x;
-
               float imagePadding      = 4.0f;
               float imageHeight       = cardSize - textHeight - 4.0f - imagePadding * 2;
-              float imageWidth        = cardSize - imagePadding * 2;
-              float displaySize       = glm::min(imageWidth, imageHeight);
+              float displaySize       = glm::min(cardSize - imagePadding * 2, imageHeight);
               float imageX            = itemPos.x + (cardSize - displaySize) * 0.5f;
               float imageY            = itemPos.y + imagePadding + (imageHeight - displaySize) * 0.5f;
               ImVec2 imagePos         = ImVec2(imageX, imageY);
@@ -362,6 +344,7 @@ namespace ToolKit
 
               const String thumbnailPath =
                   ConcatPaths({m_workspace->GetActiveWorkspace(), project.name, "thumbnail.png"});
+
               bool thumbnailExists = false;
               if (m_thumbnailCache.count(project.name) > 0)
               {
@@ -372,52 +355,41 @@ namespace ToolKit
                 thumbnailExists                = CheckSystemFile(thumbnailPath);
                 m_thumbnailCache[project.name] = thumbnailExists;
               }
-              TexturePtr projectThumbnail = GetTextureManager()->Create<Texture>(thumbnailPath);
-              if (projectThumbnail)
+
+              TexturePtr thumbTexture = nullptr;
+              if (thumbnailExists)
               {
-                projectThumbnail->Init();
+                thumbTexture = GetTextureManager()->Create<Texture>(thumbnailPath);
+                if (thumbTexture)
+                {
+                  thumbTexture->Init();
+                }
               }
-              TexturePtr thumbTexture = thumbnailExists ? projectThumbnail : m_defaultProjectThumbnail;
+
+              if (!thumbTexture)
+              {
+                thumbTexture = m_defaultProjectThumbnail;
+              }
+
               if (thumbTexture && thumbTexture->m_textureId != 0)
               {
-                ImVec2 uvMin(0, 0);
-                ImVec2 uvMax(1, 1);
-
-                if (thumbTexture->m_width > 0 && thumbTexture->m_height > 0)
-                {
-                  float texAspect = (float) thumbTexture->m_width / (float) thumbTexture->m_height;
-                  if (texAspect > 1.0f)
-                  {
-                    float uvWidth  = 1.0f / texAspect;
-                    float uvOffset = (1.0f - uvWidth) * 0.5f;
-                    uvMin.x        = uvOffset;
-                    uvMax.x        = uvOffset + uvWidth;
-                  }
-                  else if (texAspect < 1.0f)
-                  {
-                    float uvHeight = texAspect;
-                    float uvOffset = (1.0f - uvHeight) * 0.5f;
-                    uvMin.y        = uvOffset;
-                    uvMax.y        = uvOffset + uvHeight;
-                  }
-                }
-
                 childDrawList->AddImageRounded(Convert2ImGuiTexture(thumbTexture),
                                                imagePos,
                                                imageMax,
-                                               uvMin,
-                                               uvMax,
+                                               ImVec2(0, 0),
+                                               ImVec2(1, 1),
                                                ImGui::GetColorU32(ImVec4(1, 1, 1, 1)),
                                                4.0f);
               }
               else
               {
-                ImU32 iconBgColor = ImGui::GetColorU32(ImGuiCol_Button);
-                childDrawList->AddRectFilled(imagePos, imageMax, iconBgColor, 4.0f);
+                childDrawList->AddRectFilled(imagePos, imageMax, ImGui::GetColorU32(ImGuiCol_Button), 4.0f);
               }
 
-              float textY    = itemPos.y + imageHeight + 2.0f;
-              ImVec2 textPos = ImVec2(itemPos.x + (cardSize - textWidth) * 0.5f, textY);
+              // Project name text.
+              float textWidth = ImGui::CalcTextSize(projectName).x;
+              float textY     = itemPos.y + imageHeight + 2.0f;
+              ImVec2 textPos  = ImVec2(itemPos.x + (cardSize - textWidth) * 0.5f, textY);
               childDrawList->AddText(textPos, ImGui::GetColorU32(ImGuiCol_Text), projectName);
 
               ImGui::SameLine(0.0f, cardSpacing);
@@ -438,6 +410,7 @@ namespace ToolKit
             ImGui::PopStyleColor();
           }
 
+          // Tools panel.
           ImGui::SetCursorPos(ImVec2(panelPadding + projectsPanelWidth + panelSpacing, listStartY));
           ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetColorU32(ImGuiCol_WindowBg));
           ImGui::BeginChild("ToolsPanel", ImVec2(toolsPanelWidth, listHeight), true);
@@ -453,108 +426,51 @@ namespace ToolKit
 
             ImGui::BeginDisabled(!hasSelection);
 
-            auto drawToolButton = [&](const char* id, TexturePtr icon, const char* label, auto onClick)
+            ImGui::SetCursorPosX((toolsPanelWidth - buttonWidth) * 0.5f);
+            if (ImGui::Button("Launch", ImVec2(buttonWidth, buttonHeight)))
             {
-              ImVec2 cursorPos = ImGui::GetCursorScreenPos();
-              ImVec2 size(buttonWidth, buttonHeight);
-
-              ImGui::InvisibleButton(id, size);
-              bool pressed   = ImGui::IsItemClicked() && hasSelection;
-              bool hovered   = ImGui::IsItemHovered() && hasSelection;
-              bool held      = ImGui::IsItemActive() && hasSelection;
-
-              ImDrawList* dl = ImGui::GetWindowDrawList();
-              ImVec2 min     = cursorPos;
-              ImVec2 max     = ImVec2(cursorPos.x + size.x, cursorPos.y + size.y);
-
-              ImVec4 col     = ImGui::GetStyle().Colors[ImGuiCol_Button];
-              if (!hasSelection)
+              if (hasSelection)
               {
-                col.w *= 0.5f;
+                OpenProject(m_workspace->m_projects[m_selectedProjectIndex]);
               }
-              else if (held)
-              {
-                col = ImGui::GetStyle().Colors[ImGuiCol_ButtonActive];
-              }
-              else if (hovered)
-              {
-                col = ImGui::GetStyle().Colors[ImGuiCol_ButtonHovered];
-              }
-
-              dl->AddRectFilled(min, max, ImGui::GetColorU32(col), 4.0f);
-
-              float iconSize = buttonHeight - 8.0f;
-              ImVec2 iconMin = ImVec2(min.x + 6.0f, min.y + (size.y - iconSize) * 0.5f);
-              ImVec2 iconMax = ImVec2(iconMin.x + iconSize, iconMin.y + iconSize);
-
-              if (icon && icon->m_textureId != 0)
-              {
-                dl->AddImage(Convert2ImGuiTexture(icon), iconMin, iconMax);
-              }
-
-              ImVec2 textSize = ImGui::CalcTextSize(label);
-              float textX     = iconMax.x + 6.0f;
-              float textY     = min.y + (size.y - textSize.y) * 0.5f;
-              dl->AddText(ImVec2(textX, textY), ImGui::GetColorU32(ImGuiCol_Text), label);
-
-              if (pressed)
-              {
-                onClick();
-              }
-
-              ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().ItemSpacing.y * 0.5f));
-            };
+            }
 
             ImGui::SetCursorPosX((toolsPanelWidth - buttonWidth) * 0.5f);
-            drawToolButton("##tool_launch",
-                           m_launchIconTexture,
-                           "Launch",
-                           [&]()
-                           {
-                             const Project& selected = m_workspace->m_projects[m_selectedProjectIndex];
-                             // TODO if (m_app->OpenProject(selected))
-                             // TODO {
-                             // TODO   g_launcherRunning = false;
-                             // TODO }
-                           });
+            if (ImGui::Button("Open in Folder", ImVec2(buttonWidth, buttonHeight)))
+            {
+              if (hasSelection)
+              {
+                const Project& selected      = m_workspace->m_projects[m_selectedProjectIndex];
+                String projectFolder         = ConcatPaths({m_workspace->GetActiveWorkspace(), selected.name});
 
-            ImGui::SetCursorPosX((toolsPanelWidth - buttonWidth) * 0.5f);
-            drawToolButton("##tool_open_folder",
-                           m_folderIconTexture,
-                           "Open in Folder",
-                           [&]()
-                           {
-                             const Project& selected = m_workspace->m_projects[m_selectedProjectIndex];
-                             String projectFolder    = ConcatPaths({m_workspace->GetActiveWorkspace(), selected.name});
-
-                             ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
-                             if (platform_io.Platform_OpenInShellFn)
-                             {
-                               platform_io.Platform_OpenInShellFn(ImGui::GetCurrentContext(), projectFolder.c_str());
-                             }
-                           });
+                ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
+                if (platform_io.Platform_OpenInShellFn)
+                {
+                  platform_io.Platform_OpenInShellFn(ImGui::GetCurrentContext(), projectFolder.c_str());
+                }
+              }
+            }
 
             if (m_createProjectShortcutOnDesktopFn)
             {
               ImGui::SetCursorPosX((toolsPanelWidth - buttonWidth) * 0.5f);
-              drawToolButton("##tool_shortcut",
-                             m_shortcutIconTexture,
-                             "Create Shortcut",
-                             [&]()
-                             {
-                               const Project& selected = m_workspace->m_projects[m_selectedProjectIndex];
-                               String workspacePath    = m_workspace->GetActiveWorkspace();
-                               String projectName      = selected.name;
-                               String args =
-                                   "--workspace \"" + workspacePath + "\" --project-name \"" + projectName + "\"";
-                               m_createProjectShortcutOnDesktopFn(selected.name, args);
-                             });
+              if (ImGui::Button("Create Shortcut", ImVec2(buttonWidth, buttonHeight)))
+              {
+                if (hasSelection)
+                {
+                  const Project& selected = m_workspace->m_projects[m_selectedProjectIndex];
+                  String workspacePath    = m_workspace->GetActiveWorkspace();
+                  String args = "--workspace \"" + workspacePath + "\" --project-name \"" + selected.name + "\"";
+                  m_createProjectShortcutOnDesktopFn(selected.name, args);
+                }
+              }
             }
 
             ImGui::EndDisabled();
           }
           ImGui::EndChild();
 
+          // Bottom workspace panel.
           ImGui::SetCursorPosY(windowSize.y - bottomPanelHeight - bottomPadding);
 
           ImGui::SetCursorPosX(panelPadding);
@@ -571,22 +487,23 @@ namespace ToolKit
 
           ImGui::EndChild();
 
+          // New project button.
           if (m_workspace && m_workspace->IsWorkspaceSane(false, false))
           {
-            float buttonWidth  = 150.0f;
-            float buttonHeight = 35.0f;
+            float btnWidth  = 150.0f;
+            float btnHeight = 35.0f;
 
-            ImGui::SetCursorPosY(windowSize.y - buttonHeight - bottomPadding);
-            float buttonX = windowSize.x - buttonWidth - panelPadding;
-            ImGui::SetCursorPosX(buttonX);
+            ImGui::SetCursorPosY(windowSize.y - btnHeight - bottomPadding);
+            ImGui::SetCursorPosX(windowSize.x - btnWidth - panelPadding);
 
-            if (ImGui::Button("+ New Project", ImVec2(buttonWidth, buttonHeight)))
+            if (ImGui::Button("+ New Project", ImVec2(btnWidth, btnHeight)))
             {
               m_showNewProjectPopup = true;
             }
           }
+
+          ImGui::EndTabItem();
         }
-        ImGui::EndTabItem();
         ImGui::EndTabBar();
       }
 
@@ -596,8 +513,6 @@ namespace ToolKit
       ImGui::PopStyleVar(4);
 
       ImGui::End();
-
-      Editor::UI::EndUI();
     }
 
     void LauncherApp::HandleWorkspace()
@@ -633,7 +548,6 @@ namespace ToolKit
       {
         float editButtonWidth = 80.0f;
         float spacing         = ImGui::GetStyle().ItemSpacing.x;
-
         float textLabelWidth  = ImGui::CalcTextSize("Workspace:").x;
         float availableWidth =
             panelWidth - textLabelWidth - spacing - editButtonWidth - textPadding - buttonPadding - spacing;
@@ -643,12 +557,10 @@ namespace ToolKit
 
         if (pathWidth > availableWidth)
         {
-          displayPath = currentWorkspace;
           while (pathWidth > availableWidth && displayPath.length() > 0)
           {
             displayPath.pop_back();
-            String testPath = displayPath + "...";
-            pathWidth       = ImGui::CalcTextSize(testPath.c_str()).x;
+            pathWidth = ImGui::CalcTextSize((displayPath + "...").c_str()).x;
           }
           displayPath += "...";
         }
@@ -675,26 +587,15 @@ namespace ToolKit
       if (!m_showWorkspacePopup)
         return;
 
-      ImGuiViewport* viewport = ImGui::GetMainViewport();
-      ImVec2 center      = ImVec2(viewport->Pos.x + viewport->Size.x * 0.5f, viewport->Pos.y + viewport->Size.y * 0.5f);
+      ImGuiViewport* vp = ImGui::GetMainViewport();
+      ImVec2 center     = ImVec2(vp->Pos.x + vp->Size.x * 0.5f, vp->Pos.y + vp->Size.y * 0.5f);
 
-      float padding      = 20.0f;
-      float textHeight   = 20.0f;
-      float inputHeight  = 25.0f;
-      float buttonHeight = 25.0f;
-      float spacing      = 5.0f;
-
-      float minWidth     = 500.0f;
-      float minHeight    = padding + textHeight + spacing + inputHeight + 8.0f + buttonHeight + padding * 0.3f;
-
-      ImVec2 maxSize(viewport->Size.x * 0.9f, viewport->Size.y * 0.6f);
-
-      ImVec2 popupSize((minWidth < maxSize.x) ? minWidth : maxSize.x, (minHeight < maxSize.y) ? minHeight : maxSize.y);
+      float minWidth    = 500.0f;
+      float minHeight   = 130.0f;
 
       ImGui::OpenPopup("Set Workspace");
       ImGui::SetNextWindowPos(center, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-      ImGui::SetNextWindowSize(popupSize, ImGuiCond_Always);
-      ImGui::SetNextWindowSizeConstraints(ImVec2(minWidth, minHeight), maxSize);
+      ImGui::SetNextWindowSize(ImVec2(minWidth, minHeight), ImGuiCond_Always);
 
       if (ImGui::BeginPopupModal("Set Workspace",
                                  &m_showWorkspacePopup,
@@ -717,8 +618,7 @@ namespace ToolKit
         float buttonWidth   = 120.0f;
         float buttonSpacing = 15.0f;
         float totalWidth    = buttonWidth * 2 + buttonSpacing;
-        float currentWidth  = ImGui::GetWindowWidth();
-        float startX        = (currentWidth - totalWidth) * 0.5f;
+        float startX        = (ImGui::GetWindowWidth() - totalWidth) * 0.5f;
 
         ImGui::SetCursorPosX(startX);
 
@@ -750,39 +650,25 @@ namespace ToolKit
       if (!m_showNewProjectPopup)
         return;
 
-      ImGuiViewport* viewport = ImGui::GetMainViewport();
-      ImVec2 center      = ImVec2(viewport->Pos.x + viewport->Size.x * 0.5f, viewport->Pos.y + viewport->Size.y * 0.5f);
+      ImGuiViewport* vp = ImGui::GetMainViewport();
+      ImVec2 center     = ImVec2(vp->Pos.x + vp->Size.x * 0.5f, vp->Pos.y + vp->Size.y * 0.5f);
 
-      float padding      = 20.0f;
-      float tabHeight    = ImGui::GetFrameHeight();
-      float textHeight   = ImGui::GetTextLineHeight();
-      float inputHeight  = ImGui::GetFrameHeight();
-      float buttonHeight = ImGui::GetFrameHeight();
-      float spacing      = 8.0f;
-      float separatorHeight = 2.0f;
-
-      float minWidth        = 500.0f;
-      float minHeight       = padding * 2 + tabHeight + spacing + textHeight + spacing + inputHeight + spacing +
-                        separatorHeight + spacing + buttonHeight + padding;
-
-      ImVec2 popupSize(minWidth, minHeight);
+      float minWidth    = 500.0f;
+      float minHeight   = 200.0f;
 
       ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-      ImGui::SetNextWindowSize(popupSize, ImGuiCond_Appearing);
+      ImGui::SetNextWindowSize(ImVec2(minWidth, minHeight), ImGuiCond_Appearing);
       ImGui::OpenPopup("New Project");
 
       if (ImGui::BeginPopupModal("New Project",
                                  &m_showNewProjectPopup,
                                  ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove))
       {
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(20.0f, 15.0f));
-
-        float innerPad      = 15.0f;
-        float tabBarPadding = 15.0f;
+        float innerPad = 15.0f;
 
         ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 5.0f);
 
-        ImGui::SetCursorPosX(tabBarPadding);
+        ImGui::SetCursorPosX(innerPad);
         if (ImGui::BeginTabBar("##NewProjectTabs"))
         {
           if (ImGui::BeginTabItem("Local"))
@@ -807,8 +693,6 @@ namespace ToolKit
 
         bool enterPressed = false;
 
-        ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
-
         if (m_newProjectTabLocal)
         {
           ImGui::SetCursorPosX(innerPad);
@@ -830,7 +714,6 @@ namespace ToolKit
                 break;
               }
             }
-
             if (!projectNameExists)
             {
               projectNameInvalid = !IsValidCppLibraryName(m_newProjectName);
@@ -848,7 +731,7 @@ namespace ToolKit
           if (projectNameExists || projectNameInvalid)
           {
             ImGui::PopStyleVar();
-            ImGui::PopStyleColor(1);
+            ImGui::PopStyleColor();
 
             if (ImGui::IsItemHovered())
             {
@@ -856,7 +739,7 @@ namespace ToolKit
               {
                 ImGui::SetTooltip("There is already a project with this name!");
               }
-              else if (projectNameInvalid)
+              else
               {
                 ImGui::SetTooltip("%s", g_validLibraryNameRules.c_str());
               }
@@ -878,8 +761,6 @@ namespace ToolKit
           ImGui::PopItemWidth();
         }
 
-        ImGui::PopStyleVar();
-
         if (m_isCloning)
         {
           ImGui::EndDisabled();
@@ -891,17 +772,6 @@ namespace ToolKit
           ImGui::SetCursorPosX(innerPad);
           ImGui::Text("Cloning repository...");
         }
-        else
-        {
-          ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 5.0f);
-        }
-
-        float availableHeight  = ImGui::GetContentRegionAvail().y;
-        float buttonAreaHeight = ImGui::GetFrameHeight() + spacing * 2;
-        if (availableHeight > buttonAreaHeight)
-        {
-          ImGui::SetCursorPosY(ImGui::GetCursorPosY() + availableHeight - buttonAreaHeight);
-        }
 
         ImGui::Separator();
         ImGui::Spacing();
@@ -909,8 +779,7 @@ namespace ToolKit
         float buttonWidth   = 120.0f;
         float buttonSpacing = 15.0f;
         float totalWidth    = buttonWidth * 2 + buttonSpacing;
-        float currentWidth  = ImGui::GetWindowWidth();
-        float startX        = (currentWidth - totalWidth) * 0.5f;
+        float startX        = (ImGui::GetWindowWidth() - totalWidth) * 0.5f;
 
         ImGui::SetCursorPosX(startX);
 
@@ -926,23 +795,21 @@ namespace ToolKit
               break;
             }
           }
-
           if (!projectNameExists)
           {
             projectNameInvalid = !IsValidCppLibraryName(m_newProjectName);
           }
         }
 
-        bool wasCloning        = m_isCloning;
-        bool wasCreateDisabled = (m_isCloning || projectNameExists || projectNameInvalid);
-        if (wasCreateDisabled)
+        bool createDisabled = (m_isCloning || projectNameExists || projectNameInvalid);
+        if (createDisabled)
         {
           ImGui::BeginDisabled();
         }
 
         bool createClicked = ImGui::Button("Create", ImVec2(buttonWidth, 0));
 
-        if (wasCreateDisabled)
+        if (createDisabled)
         {
           ImGui::EndDisabled();
         }
@@ -987,32 +854,29 @@ namespace ToolKit
 
               String workspacePath = m_workspace->GetActiveWorkspace();
               String targetPath    = ConcatPaths({workspacePath, projectName});
-
               String gitCmd        = "git clone \"" + m_newProjectPathOrUrl + "\" \"" + targetPath + "\"";
 
-              PlatformHelpers::SysComExec(gitCmd,
-                                          true,
-                                          false,
-                                          [this, targetPath](int exitCode) -> void
-                                          {
-                                            m_isCloning = false;
-                                            if (exitCode == 0)
-                                            {
-                                              m_cloneProgress = "Clone completed successfully!";
-                                              m_workspace->RefreshProjects();
-                                              UpdateThumbnailCache();
-                                              m_showNewProjectPopup = false;
-                                              ImGui::CloseCurrentPopup();
-                                              m_newProjectName.clear();
-                                              m_newProjectPathOrUrl.clear();
-                                              m_cloneProgress.clear();
-                                            }
-                                            else
-                                            {
-                                              m_cloneProgress =
-                                                  "Git clone failed with exit code: " + std::to_string(exitCode);
-                                            }
-                                          });
+              m_sysComExecFn(gitCmd,
+                             true,
+                             false,
+                             [this](int exitCode) -> void
+                             {
+                               m_isCloning = false;
+                               if (exitCode == 0)
+                               {
+                                 m_cloneProgress = "Clone completed successfully!";
+                                 m_workspace->RefreshProjects();
+                                 UpdateThumbnailCache();
+                                 m_showNewProjectPopup = false;
+                                 m_newProjectName.clear();
+                                 m_newProjectPathOrUrl.clear();
+                                 m_cloneProgress.clear();
+                               }
+                               else
+                               {
+                                 m_cloneProgress = "Git clone failed with exit code: " + std::to_string(exitCode);
+                               }
+                             });
             }
             else
             {
@@ -1041,10 +905,9 @@ namespace ToolKit
           m_cloneProgress.clear();
         }
 
-        ImGui::PopStyleVar();
-
         ImGui::EndPopup();
       }
     }
+
   } // namespace Launcher
 } // namespace ToolKit
