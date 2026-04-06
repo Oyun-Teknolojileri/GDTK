@@ -96,7 +96,7 @@ namespace ToolKit
     graphicConstantsBuffer.m_data.shadowDistance      = shadows->GetShadowMaxDistance();
     graphicConstantsBuffer.m_data.cascadeCount        = shadows->GetCascadeCountVal();
     graphicConstantsBuffer.m_data.shadowAtlasSize     = (float) shadows->GetShadowAtlasResolution();
-    graphicConstantsBuffer.m_data.iblMaxReflectionLod = RHIConstants::SpecularIBLLods;
+    graphicConstantsBuffer.m_data.iblMaxReflectionLod = RHIConstants::SpecularIBLLods - 1;
     graphicConstantsBuffer.m_data.cascadeDistances    = *((Vec4*) &shadows->GetCascadeDistancesVal());
     graphicConstantsBuffer.Invalidate();
   }
@@ -1830,7 +1830,7 @@ namespace ToolKit
 
         SetFramebuffer(m_oneColorAttachmentFramebuffer, GraphicBitFields::None);
 
-        mat->UpdateProgramUniform("roughness", (float) mip / (float) mipMaps);
+        mat->UpdateProgramUniform("roughness", (float) mip / (float) (mipMaps - 1));
         mat->UpdateProgramUniform("resPerFace", (float) mipSize);
 
         RHI::SetTexture((GLenum) GraphicTypes::TargetCubeMap, cubemap->m_textureId, 0);
@@ -1844,6 +1844,10 @@ namespace ToolKit
     }
 
     SetFramebuffer(nullptr, GraphicBitFields::None);
+
+    // Clamp texture max mip level to the last bake level.
+    RHI::SetTexture(GL_TEXTURE_CUBE_MAP, cubemapRt->m_textureId);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAX_LEVEL, mipMaps - 1);
 
     CubeMapPtr newCubeMap = MakeNewPtr<CubeMap>();
     newCubeMap->Consume(cubemapRt);

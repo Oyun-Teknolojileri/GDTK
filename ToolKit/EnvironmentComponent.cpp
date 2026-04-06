@@ -127,8 +127,7 @@ namespace ToolKit
 
           GetRenderSystem()->AddRenderTask({[this, position, near, far, res](Renderer* renderer) -> void
                                             {
-                                              // Disable self-illumination during capture to prevent this component's
-                                              // own HDRI from affecting the scene it is capturing.
+                                              // Disable self-illumination during capture to prevent feedback loop.
                                               bool wasIlluminating = GetIlluminateVal();
                                               SetIlluminateVal(false);
 

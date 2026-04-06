@@ -806,6 +806,10 @@ namespace ToolKit
     m_specularEnvMap->AllocateMipMapStorage();
     m_specularEnvMap->GenerateMipMaps();
 
+    // Clamp max mip level to the last baked level.
+    RHI::SetTexture(GL_TEXTURE_CUBE_MAP, m_specularEnvMap->m_textureId);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAX_LEVEL, RHIConstants::SpecularIBLLods - 1);
+
     for (int i = 1; i < RHIConstants::SpecularIBLLods; i++)
     {
       String cacheFile = _specularBakeFile + std::to_string(i) + HDR;
