@@ -36,17 +36,17 @@
 #include <array>
 #include <chrono>
 
-SDL_Window* g_window                  = nullptr;
-SDL_GLContext g_context               = nullptr;
+SDL_Window* g_window                       = nullptr;
+SDL_GLContext g_context                    = nullptr;
 
 // Main loop signal handle.
-bool g_running                        = true;
-bool g_launcherRunning                = true;
+bool g_running                             = true;
+bool g_launcherRunning                     = true;
 
 // ToolKit Application main handle.
-ToolKit::Editor::App* g_app           = nullptr;
-ToolKit::Editor::Launcher* g_launcher = nullptr;
-ToolKit::Workspace* g_workspace       = nullptr;
+ToolKit::Editor::App* g_app                = nullptr;
+ToolKit::Launcher::LauncherApp* g_launcher = nullptr;
+ToolKit::Workspace* g_workspace            = nullptr;
 
 namespace ToolKit
 {
@@ -393,7 +393,7 @@ namespace ToolKit
             g_app->m_sysComExecFn                          = &ToolKit::PlatformHelpers::SysComExec;
             g_app->m_shellOpenDirFn                        = &ToolKit::PlatformHelpers::OpenExplorer;
 
-            g_launcher                                     = new Launcher(g_workspace, g_app);
+            g_launcher                                     = new Launcher::LauncherApp(g_workspace);
             g_launcher->m_createProjectShortcutOnDesktopFn = &PlatformHelpers::CreateProjectShortcutOnDesktop;
 
             HandleSkipLauncher(argv, argc);

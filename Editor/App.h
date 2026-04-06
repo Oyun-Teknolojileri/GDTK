@@ -104,11 +104,6 @@ namespace ToolKit
       void PackResources();
       void SaveAllResources();
 
-      /**
-       * Looks for a valid workspace and scene. Returns true if both exist.
-       * If checkProject is true, expect an active project.
-       * If reportError is true, reports a console error.
-       */
       bool IsWorkspaceSane(bool checkProject, bool reportError) const;
 
       /** Project and plugin names must be valid C++ library names. Performs the check.  */

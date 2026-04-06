@@ -48,6 +48,16 @@ namespace ToolKit
     void SerializeEngineSettings(const String& name = "") const;
     void DeSerializeEngineSettings(const String& name = "");
 
+    /**
+     * Looks for a valid workspace and scene. Returns true if both exist.
+     * If checkProject is true, expect an active project.
+     * If reportError is true, reports a console error.
+     */
+    bool IsWorkspaceSane(bool checkProject, bool reportError) const;
+
+    bool OnNewProject(const String& name);
+    bool OnNewPlugin(const String& name);
+
    protected:
     XmlNode* SerializeImp(XmlDocument* doc, XmlNode* parent) const override;
     XmlNode* DeSerializeImp(const SerializationFileInfo& info, XmlNode* parent) override;

@@ -11,8 +11,10 @@
 
 namespace ToolKit
 {
-  const String g_workspaceFile("Workspace.settings");
-  static const StringView XmlNodePath("path");
-  const String g_validLibraryNameRules(
-      "Alpha numeric characters and \"_\" are allowed. Do not start with digit. No white space.");
+  namespace Launcher
+  {
+
+    typedef std::function<void(const String&, const String&)> CreateProjectShortcutOnDesktopFn;
+
+  } // namespace Launcher
 } // namespace ToolKit

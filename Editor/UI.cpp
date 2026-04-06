@@ -25,6 +25,7 @@
 #include <SDL.h>
 #include <Sky.h>
 #include <TKOpenGL.h>
+#include <WorkspaceTypes.h>
 #include <imgui/backends/imgui_impl_opengl3.h>
 #include <imgui/backends/imgui_impl_sdl2.h>
 
@@ -149,8 +150,10 @@ namespace ToolKit
       ImFontConfig icons_config;
       icons_config.MergeMode = true;
       // icons_config.PixelSnapH = true;
-      IconFont =
-          io.Fonts->AddFontFromFileTTF(FontPath(FONT_ICON_FILE_NAME_FA, true).c_str(), 14.0f, &icons_config, icons_ranges);
+      IconFont               = io.Fonts->AddFontFromFileTTF(FontPath(FONT_ICON_FILE_NAME_FA, true).c_str(),
+                                              14.0f,
+                                              &icons_config,
+                                              icons_ranges);
 
       LiberationSansBold =
           io.Fonts->AddFontFromFileTTF(FontPath("LiberationSans-Bold.ttf", true).c_str(), 14.0f, nullptr, utf8TR);

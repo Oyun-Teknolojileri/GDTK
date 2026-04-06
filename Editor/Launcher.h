@@ -7,27 +7,29 @@
 
 #pragma once
 
-#include "Workspace.h"
+#include "LauncherTypes.h"
+
+#include <Workspace.h>
+
 #include <unordered_map>
 
 namespace ToolKit
 {
-  namespace Editor
+  namespace Launcher
   {
-    class App;
-
-    class Launcher
+    class LauncherApp
     {
      public:
-      Launcher(Workspace* workspace, App* app);
-      virtual ~Launcher();
+      LauncherApp(Workspace* workspace);
+      virtual ~LauncherApp();
 
       void ShowLauncherWindow();
 
      private:
-      Launcher() {}
+      LauncherApp() {}
 
       void HandleWorkspace();
+      void UpdateThumbnailCache();
       void ShowWorkspacePopup();
       void ShowNewProjectPopup();
 
@@ -35,8 +37,6 @@ namespace ToolKit
       CreateProjectShortcutOnDesktopFn m_createProjectShortcutOnDesktopFn;
 
      private:
-      App* m_app             = nullptr;
-
       float m_windowWidth    = 1024.0f;
       float m_windowHeight   = 768.0f;
 
@@ -65,7 +65,6 @@ namespace ToolKit
 
       std::unordered_map<String, bool> m_thumbnailCache;
       String m_searchFilter;
-      void UpdateThumbnailCache();
     };
-  } // namespace Editor
+  } // namespace Launcher
 } // namespace ToolKit

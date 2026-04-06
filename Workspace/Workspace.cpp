@@ -9,6 +9,9 @@
 
 #include <FileManager.h>
 #include <Scene.h>
+#include <Util.h>
+
+#include <sstream>
 
 namespace ToolKit
 {
@@ -328,4 +331,144 @@ namespace ToolKit
     DeSerializeEngineSettings();
     return nullptr;
   }
+
+  bool Workspace::IsWorkspaceSane(bool checkProject, bool reportError) const
+  {
+    if (GetActiveWorkspace().empty())
+    {
+      if (reportError)
+      {
+        TK_ERR("No workspace. Can not proceed with operation.");
+      }
+      return false;
+    }
+
+    if (checkProject)
+    {
+      if (GetActiveProject().name.empty())
+      {
+        if (reportError)
+        {
+          TK_ERR("No project. Can not proceed with operation.");
+        }
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  void AlterTextContent(std::fstream& fileEditStream, const String& filePath, const String content)
+  {
+    fileEditStream.open(filePath, std::ios::out | std::ios::trunc);
+    if (fileEditStream.is_open())
+    {
+      fileEditStream << content;
+      fileEditStream.close();
+    }
+  }
+
+  void TemplateUpdate(const String& file, const String& replaceSoruce, const String& replaceTarget)
+  {
+    std::fstream fileEditStream;
+    fileEditStream.open(file, std::ios::in);
+    if (fileEditStream.is_open())
+    {
+      std::stringstream buffer;
+      buffer << fileEditStream.rdbuf();
+      String content = buffer.str();
+      ReplaceFirstStringInPlace(content, replaceSoruce.data(), replaceTarget);
+      fileEditStream.close();
+
+      AlterTextContent(fileEditStream, file, content);
+    }
+  }
+
+  // note: only copy template folder
+  bool Workspace::OnNewProject(const String& name)
+  {
+    if (!IsWorkspaceSane(false, true))
+    {
+      return false;
+    }
+
+    if (!IsValidCppLibraryName(name))
+    {
+      TK_ERR("Invalid project name: %s.", name.c_str());
+      TK_LOG("%s", g_validLibraryNameRules.c_str());
+      return false;
+    }
+
+    String fullPath = ConcatPaths({GetActiveWorkspace(), name});
+    if (CheckFile(fullPath))
+    {
+      TK_ERR("Project already exist.");
+      return false;
+    }
+
+    // copy template folder to new workspace
+    RecursiveCopyDirectory(ConcatPaths({"..", "Templates", "Game"}),
+                           fullPath,
+                           {".filters", ".vcxproj", ".user", ".cxx"});
+
+    // Update cmake.
+    String currentPath = GetCurrentParentPath();
+    String cmakePath   = ConcatPaths({fullPath, "Codes", "CMakeLists.txt"});
+    TemplateUpdate(cmakePath, "__projectname__", name);
+
+    // update vscode includes.
+    String cppPropertiesPath = ConcatPaths({fullPath, ".vscode", "c_cpp_properties.json"});
+
+    String tkRoot            = currentPath;
+    String tkPath            = ConcatPaths({tkRoot, "ToolKit"});
+    String depPath           = ConcatPaths({tkRoot, "Dependency"});
+    String glmPath           = ConcatPaths({tkRoot, "Dependency", "glm"});
+    String imguiPath         = ConcatPaths({tkRoot, "Dependency", "tkimgui"});
+
+    String replacement = "\"" + tkRoot + "\",\n" + "\t\t\t\t\"" + tkPath + "\",\n" + "\t\t\t\t\"" + depPath + "\",\n" +
+                         "\t\t\t\t\"" + glmPath + "\",\n" + "\t\t\t\t\"" + imguiPath + "\"";
+
+    TemplateUpdate(cppPropertiesPath, "__tk_includes__", replacement);
+
+    return true;
+  }
+
+  bool Workspace::OnNewPlugin(const String& name)
+  {
+    if (!IsWorkspaceSane(true, true))
+    {
+      return false;
+    }
+
+    if (!IsValidCppLibraryName(name))
+    {
+      TK_ERR("Invalid plugin name: %s.", name.c_str());
+      TK_LOG("%s", g_validLibraryNameRules.c_str());
+      return false;
+    }
+
+    String fullPath = ConcatPaths({GetPluginDirectory(), name});
+    if (CheckSystemFile(fullPath))
+    {
+      TK_ERR("A plugin with the same name already exist in the project.");
+      return false;
+    }
+
+    // Copy template folder to new project.
+    RecursiveCopyDirectory(ConcatPaths({"..", "Templates", "Plugin"}),
+                           fullPath,
+                           {".filters", ".vcxproj", ".user", ".cxx"});
+
+    // Update cmake.
+    String currentPath = std::filesystem::current_path().parent_path().u8string();
+    String cmakePath   = ConcatPaths({fullPath, "Codes", "CMakeLists.txt"});
+    TemplateUpdate(cmakePath, "__projectname__", name);
+
+    String pluginSettingsPath = ConcatPaths({fullPath, "Config", "Plugin.settings"});
+    TemplateUpdate(pluginSettingsPath, "PluginTemplate", name);
+
+    TK_LOG("A new plugin has been created.");
+    return true;
+  }
+
 } // namespace ToolKit

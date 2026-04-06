@@ -76,7 +76,6 @@ namespace ToolKit
     typedef std::function<void(int)> SysCommandDoneCallback;
     typedef std::function<int(StringView, bool, bool, SysCommandDoneCallback)> SysCommandExecutionFn;
     typedef std::function<void(const StringView)> ShellOpenDirFn;
-    typedef std::function<void(const String&, const String&)> CreateProjectShortcutOnDesktopFn;
 
     // UI Strings
     const String g_consoleStr("Console");
@@ -131,8 +130,6 @@ namespace ToolKit
     const String g_statusInvalidCharater("Invalid character");
     const String g_statusPublishing("Publishing");
     const String g_statusPacking("Packing");
-    const String g_validLibraryNameRules(
-        "Alpha numeric characters and \"_\" are allowed. Do not start with digit. No white space.");
 
     // Colors and materials.
     // Reversed gamma correction for all colors

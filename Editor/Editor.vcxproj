@@ -188,6 +188,7 @@
     <ClInclude Include="Grid.h" />
     <ClInclude Include="IconsFontAwesome.h" />
     <ClInclude Include="Launcher.h" />
+    <ClInclude Include="LauncherTypes.h" />
     <ClInclude Include="LeftBar.h" />
     <ClInclude Include="LightMeshGenerator.h" />
     <ClInclude Include="MaterialView.h" />
