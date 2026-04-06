@@ -13,6 +13,7 @@
 #include "Drawable.h"
 #include "EngineSettings.h"
 #include "EnvironmentComponent.h"
+#include "ForwardSceneRenderPath.h"
 #include "Framebuffer.h"
 #include "GradientSky.h"
 #include "Logger.h"
@@ -1848,6 +1849,119 @@ namespace ToolKit
     newCubeMap->Consume(cubemapRt);
 
     return newCubeMap;
+  }
+
+  CubeMapPtr Renderer::RenderToCubeMap(ForwardSceneRenderPath* renderPath,
+                                       const Vec3& position,
+                                       float near,
+                                       float far,
+                                       uint resolution,
+                                       CubeMapPtr& outDiffuseEnvMap,
+                                       CubeMapPtr& outSpecularEnvMap)
+  {
+    TK_PROFILE_FUNCTION();
+
+    Stats::BeginGpuScope("RenderToCubeMap");
+
+    // Create cubemap render target.
+    const TextureSettings cubeMapSettings = {GraphicTypes::TargetCubeMap,
+                                             GraphicTypes::UVClampToEdge,
+                                             GraphicTypes::UVClampToEdge,
+                                             GraphicTypes::UVClampToEdge,
+                                             GraphicTypes::SampleLinearMipmapLinear,
+                                             GraphicTypes::SampleLinear,
+                                             GraphicTypes::FormatRGBA16F,
+                                             GraphicTypes::FormatRGBA,
+                                             GraphicTypes::TypeFloat,
+                                             MsaaSampleCount::x0,
+                                             0,
+                                             false};
+
+    RenderTargetPtr cubeMapRt = MakeNewPtr<RenderTarget>(resolution, resolution, cubeMapSettings, "RenderToCubeMapRT");
+    cubeMapRt->Init();
+
+    // Create framebuffer for rendering each face.
+    FramebufferPtr cubeFb = MakeNewPtr<Framebuffer>("RenderToCubeMapFB");
+    cubeFb->ReconstructIfNeeded({(int) resolution, (int) resolution, false, true});
+
+    // Create camera for cubemap capture.
+    CameraPtr cam = MakeNewPtr<Camera>();
+    cam->SetLens(glm::radians(90.0f), 1.0f, near, far);
+
+    // 6 cubemap face view matrices.
+    Mat4 views[]                   = {glm::lookAt(position, position + Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                                      glm::lookAt(position, position + Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                                      glm::lookAt(position, position + Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
+                                      glm::lookAt(position, position + Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
+                                      glm::lookAt(position, position + Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                                      glm::lookAt(position, position + Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
+
+    // Save original render path params.
+    CameraPtr origCam              = renderPath->m_params.Cam;
+    FramebufferPtr origFramebuffer = renderPath->m_params.MainFramebuffer;
+
+    // Disable all post-processing for cubemap capture.
+    // Post-process passes (gamma/tonemap/FXAA, bloom, DoF, SSAO) are incompatible
+    // with cubemap face render targets and would corrupt the output.
+    PostProcessingSettingsPtr origPPS    = renderPath->m_params.postProcessSettings;
+    PostProcessingSettingsPtr capturePPS = MakeNewPtr<PostProcessingSettings>();
+    capturePPS->SetTonemappingEnabledVal(false);
+    capturePPS->SetGammaCorrectionEnabledVal(false);
+    capturePPS->SetFXAAEnabledVal(false);
+    capturePPS->SetBloomEnabledVal(false);
+    capturePPS->SetSSAOEnabledVal(false);
+    capturePPS->SetDepthOfFieldEnabledVal(false);
+
+    renderPath->m_params.postProcessSettings = capturePPS;
+
+    for (int i = 0; i < 6; i++)
+    {
+      Vec3 pos;
+      Quaternion rot;
+      Vec3 sca;
+      DecomposeMatrix(views[i], &pos, &rot, &sca);
+
+      cam->m_node->SetTranslation(position, TransformationSpace::TS_WORLD);
+      cam->m_node->SetOrientation(rot, TransformationSpace::TS_WORLD);
+      cam->m_node->SetScale(sca);
+
+      // Set color attachment to the corresponding cubemap face.
+      cubeFb->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0,
+                                 cubeMapRt,
+                                 0,
+                                 -1,
+                                 (Framebuffer::CubemapFace) i);
+
+      // Override render path params for this face.
+      renderPath->m_params.Cam             = cam;
+      renderPath->m_params.MainFramebuffer = cubeFb;
+
+      // Render the scene for this face.
+      renderPath->Render(this);
+    }
+
+    // Restore original render path params.
+    renderPath->m_params.Cam                 = origCam;
+    renderPath->m_params.MainFramebuffer     = origFramebuffer;
+    renderPath->m_params.postProcessSettings = origPPS;
+
+    // Create the cubemap from the render target.
+    CubeMapPtr cubemap                       = MakeNewPtr<CubeMap>();
+    cubemap->Consume(cubeMapRt);
+
+    // Generate mip maps for the captured cubemap so that mipmap-filtered sampling
+    // in irradiance generation shaders works correctly (incomplete mip chain causes black).
+    cubemap->GenerateMipMaps();
+
+    // Generate irradiance caches.
+    outSpecularEnvMap = GenerateSpecularEnvMap(cubemap, cubemap->m_width, RHIConstants::SpecularIBLLods);
+
+    int diffuseSize   = glm::max(64, (int) resolution / 4);
+    outDiffuseEnvMap  = GenerateDiffuseEnvMap(cubemap, diffuseSize);
+
+    Stats::EndGpuScope();
+
+    return cubemap;
   }
 
   void Renderer::ValidateBackbufferSrgbEncoding()

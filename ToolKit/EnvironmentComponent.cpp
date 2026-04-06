@@ -8,9 +8,13 @@
 #include "EnvironmentComponent.h"
 
 #include "Entity.h"
+#include "ForwardSceneRenderPath.h"
 #include "MathUtil.h"
+#include "Renderer.h"
 #include "RenderSystem.h"
+#include "Scene.h"
 #include "Texture.h"
+#include "ToolKit.h"
 
 #include <DebugNew.h>
 
@@ -85,6 +89,82 @@ namespace ToolKit
                 true,
                 true,
                 {false, true, 0.0f, 100000.0f, 0.1f});
+
+    CaptureNear_Define(0.1f,
+                       EnvironmentComponentCategory.Name,
+                       EnvironmentComponentCategory.Priority,
+                       true,
+                       true,
+                       {false, true, 0.001f, 100000.0f, 0.1f});
+
+    CaptureFar_Define(1000.0f,
+                      EnvironmentComponentCategory.Name,
+                      EnvironmentComponentCategory.Priority,
+                      true,
+                      true,
+                      {false, true, 1.0f, 100000.0f, 1.0f});
+
+    CaptureResolution_Define(256,
+                             EnvironmentComponentCategory.Name,
+                             EnvironmentComponentCategory.Priority,
+                             true,
+                             true,
+                             {false, true, 32, 2048, 1});
+
+    Capture_Define(
+        [this]() -> void
+        {
+          EntityPtr owner = OwnerEntity();
+          if (owner == nullptr)
+          {
+            return;
+          }
+
+          Vec3 position = owner->m_node->GetTranslation(TransformationSpace::TS_WORLD);
+          float near    = GetCaptureNearVal();
+          float far     = GetCaptureFarVal();
+          uint res      = (uint) GetCaptureResolutionVal();
+
+          // Capture a weak reference to this component's owner entity id for safety.
+          ObjectId ownerId = owner->GetIdVal();
+
+          GetRenderSystem()->AddRenderTask(
+              {[this, position, near, far, res, ownerId](Renderer* renderer) -> void
+               {
+                 // Disable self-illumination during capture to prevent this component's
+                 // own HDRI from affecting the scene it is capturing.
+                 bool wasIlluminating = GetIlluminateVal();
+                 SetIlluminateVal(false);
+
+                 // Create a temporary render path for the capture.
+                 ForwardSceneRenderPath capturePath;
+                 capturePath.m_params.Scene = GetSceneManager()->GetCurrentScene();
+
+                 CubeMapPtr diffuseEnvMap;
+                 CubeMapPtr specularEnvMap;
+                 CubeMapPtr cubemap =
+                     renderer->RenderToCubeMap(&capturePath, position, near, far, res, diffuseEnvMap, specularEnvMap);
+
+                 // Restore illuminate state.
+                 SetIlluminateVal(wasIlluminating);
+
+                 // Create a dynamic HDRI and assign the captured cubemap.
+                 HdriPtr hdri           = MakeNewPtr<Hdri>();
+                 hdri->m_cubemap        = cubemap;
+                 hdri->m_width          = res;
+                 hdri->m_height         = res;
+                 hdri->m_diffuseEnvMap  = diffuseEnvMap;
+                 hdri->m_specularEnvMap = specularEnvMap;
+                 hdri->m_initiated      = true;
+                 hdri->m_loaded         = true;
+
+                 SetHdriVal(hdri);
+               }});
+        },
+        EnvironmentComponentCategory.Name,
+        EnvironmentComponentCategory.Priority,
+        true,
+        true);
 
     auto createParameterVariant = [](const String& name, int val)
     {
