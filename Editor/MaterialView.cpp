@@ -83,18 +83,18 @@ namespace ToolKit
     {
       switch (drawType)
       {
-      case DrawType::Triangle:
-        return 0;
-      case DrawType::Line:
-        return 1;
-      case DrawType::LineStrip:
-        return 2;
-      case DrawType::LineLoop:
-        return 3;
-      case DrawType::Point:
-        return 4;
-      default:
-        return -1;
+        case DrawType::Triangle:
+          return 0;
+        case DrawType::Line:
+          return 1;
+        case DrawType::LineStrip:
+          return 2;
+        case DrawType::LineLoop:
+          return 3;
+        case DrawType::Point:
+          return 4;
+        default:
+          return -1;
       }
     }
 
@@ -102,18 +102,18 @@ namespace ToolKit
     {
       switch (drawType)
       {
-      case 0:
-        return DrawType::Triangle;
-      case 1:
-        return DrawType::Line;
-      case 2:
-        return DrawType::LineStrip;
-      case 3:
-        return DrawType::LineLoop;
-      case 4:
-        return DrawType::Point;
-      default:
-        return DrawType::Triangle;
+        case 0:
+          return DrawType::Triangle;
+        case 1:
+          return DrawType::Line;
+        case 2:
+          return DrawType::LineStrip;
+        case 3:
+          return DrawType::LineLoop;
+        case 4:
+          return DrawType::Point;
+        default:
+          return DrawType::Triangle;
       }
     }
 

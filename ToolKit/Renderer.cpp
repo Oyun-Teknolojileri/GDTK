@@ -179,8 +179,8 @@ namespace ToolKit
     {
       if (camera->IsOrtographic())
       {
-        float width     = m_viewportSize.x * 0.5f;
-        float height    = m_viewportSize.y * 0.5f;
+        float width     = m_viewportRect.x * 0.5f;
+        float height    = m_viewportRect.y * 0.5f;
 
         float camWidth  = camera->Right();
         float camHeight = camera->Top();
@@ -192,7 +192,7 @@ namespace ToolKit
       }
       else
       {
-        float aspect    = (float) m_viewportSize.x / (float) m_viewportSize.y;
+        float aspect    = (float) m_viewportRect.x / (float) m_viewportRect.y;
         float camAspect = camera->Aspect();
         if (glm::notEqual(aspect, camAspect))
         {
@@ -495,13 +495,13 @@ namespace ToolKit
       }
 
       const FramebufferSettings& fbSet = frameBuffer->GetSettings();
-      SetViewportSize(fbSet.width, fbSet.height);
+      SetViewportRect(0, 0, fbSet.width, fbSet.height);
     }
     else
     {
       // Backbuffer
       RHI::SetFramebuffer((GLenum) frameBufferType, 0);
-      SetViewportSize(m_windowSize.x, m_windowSize.y);
+      SetViewportRect(0, 0, m_windowSize.x, m_windowSize.y);
     }
 
     if (attachmentsToClear != GraphicBitFields::None)
@@ -718,22 +718,14 @@ namespace ToolKit
 
   void Renderer::SetViewport(Viewport* viewport) { SetFramebuffer(viewport->m_framebuffer, GraphicBitFields::AllBits); }
 
-  void Renderer::SetViewportSize(uint width, uint height)
+  void Renderer::SetViewportRect(uint x, uint y, uint width, uint height)
   {
-    if (width == m_viewportSize.x && height == m_viewportSize.y)
+    if (width == m_viewportRect.x && height == m_viewportRect.y && m_viewportRect.z == x && m_viewportRect.w == y)
     {
       return;
     }
 
-    m_viewportSize.x = width;
-    m_viewportSize.y = height;
-    glViewport(0, 0, width, height);
-  }
-
-  void Renderer::SetViewportSize(uint x, uint y, uint width, uint height)
-  {
-    m_viewportSize.x = width;
-    m_viewportSize.y = height;
+    m_viewportRect = UVec4(width, height, x, y);
     glViewport(x, y, width, height);
   }
 
@@ -990,7 +982,7 @@ namespace ToolKit
 
         framebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, tempRT, 0, -1);
         SetFramebuffer(framebuffer, GraphicBitFields::None);
-        SetViewportSize(0, 0, texSize, texSize);
+        SetViewportRect(0, 0, texSize, texSize);
         glScissor(sx, sy, slotSize, slotSize);
 
         m_gaussianBlurMaterial->UpdateProgramUniform("BlurScale", Vec3(blurAmount, 0.0f, 0.0f));
@@ -1014,7 +1006,7 @@ namespace ToolKit
 
         framebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, srcArray, 0, layer);
         SetFramebuffer(framebuffer, GraphicBitFields::None);
-        SetViewportSize(0, 0, texSize, texSize);
+        SetViewportRect(0, 0, texSize, texSize);
         glScissor(sx, sy, slotSize, slotSize);
 
         m_gaussianBlurMaterial->SetDiffuseTextureVal(tempRT);
@@ -1358,7 +1350,7 @@ namespace ToolKit
             glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&m_secondaryIblRotation));
             break;
           case Uniform::VIEWPORT_SIZE:
-            glUniform2f(loc, (float) m_viewportSize.x, (float) m_viewportSize.y);
+            glUniform2f(loc, (float) m_viewportRect.x, (float) m_viewportRect.y);
             break;
           default:
             break;
@@ -1799,8 +1791,6 @@ namespace ToolKit
     mat->Init();
 
     m_oneColorAttachmentFramebuffer->ReconstructIfNeeded({size, size, false, false});
-
-    UVec2 lastViewportSize = m_viewportSize;
 
     assert(size >= 128 && "Due to RHIConstants::SpecularIBLLods, it can't be lower than this resolution.");
     for (int mip = 0; mip < mipMaps; mip++)

@@ -205,8 +205,7 @@ namespace ToolKit
     //////////////////////////////////////////
 
     void SetViewport(Viewport* viewport);
-    void SetViewportSize(uint width, uint height);
-    void SetViewportSize(uint x, uint y, uint width, uint height);
+    void SetViewportRect(uint x, uint y, uint width, uint height);
 
     void DrawFullQuad(ShaderPtr fragmentShader);
     void DrawFullQuad(MaterialPtr mat);
@@ -387,7 +386,8 @@ namespace ToolKit
 
     RenderState m_renderState;
 
-    UVec2 m_viewportSize; //!< Current viewport size.
+    /** Current viewport size (x,y) and position (z,w) */
+    UVec4 m_viewportRect;
 
     /*
      * This framebuffer can ONLY have 1 color attachment and no other attachments.
