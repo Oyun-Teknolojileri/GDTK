@@ -68,5 +68,7 @@ namespace ToolKit
       std::unordered_map<String, bool> m_thumbnailCache;
       String m_searchFilter;
     };
+
+    void DeserializeThemeSettings();
   } // namespace Launcher
 } // namespace ToolKit

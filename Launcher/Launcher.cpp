@@ -8,8 +8,12 @@
 #include "Launcher.h"
 
 #include <Texture.h>
+#include <ToolKit.h>
 #include <Util.h>
 #include <WorkspaceTypes.h>
+
+#include <cstdio>
+#include <fstream>
 
 #define IMGUI_USER_CONFIG "tk_imconfig.h"
 #include <imgui/imgui.h>
@@ -24,6 +28,104 @@ namespace ToolKit
 {
   namespace Launcher
   {
+    void DeserializeThemeSettings()
+    {
+      String path = ConcatPaths({ConfigPath(), "Theme.settings"});
+
+      std::ifstream file(path);
+      if (!file.is_open())
+      {
+        return;
+      }
+
+      ImVec4 colors[ImGuiCol_COUNT];
+      int count = 0;
+
+      String line;
+      while (std::getline(file, line) && count < ImGuiCol_COUNT)
+      {
+        if (line.empty())
+        {
+          continue;
+        }
+
+        ImVec4 col;
+        if (sscanf(line.c_str(), "%f,%f,%f,%f", &col.x, &col.y, &col.z, &col.w) == 4)
+        {
+          colors[count++] = col;
+        }
+      }
+
+      if (count < ImGuiCol_COUNT)
+      {
+        return;
+      }
+
+      ImGuiStyle& style                            = ImGui::GetStyle();
+      style.Colors[ImGuiCol_Text]                  = colors[0];
+      style.Colors[ImGuiCol_TextDisabled]          = colors[1];
+      style.Colors[ImGuiCol_WindowBg]              = colors[2];
+      style.Colors[ImGuiCol_ChildBg]               = colors[3];
+      style.Colors[ImGuiCol_PopupBg]               = colors[4];
+      style.Colors[ImGuiCol_Border]                = colors[5];
+      style.Colors[ImGuiCol_BorderShadow]          = colors[6];
+      style.Colors[ImGuiCol_FrameBg]               = colors[7];
+      style.Colors[ImGuiCol_FrameBgHovered]        = colors[8];
+      style.Colors[ImGuiCol_FrameBgActive]         = colors[9];
+      style.Colors[ImGuiCol_TitleBg]               = colors[10];
+      style.Colors[ImGuiCol_TitleBgActive]         = colors[11];
+      style.Colors[ImGuiCol_TitleBgCollapsed]      = colors[12];
+      style.Colors[ImGuiCol_MenuBarBg]             = colors[13];
+      style.Colors[ImGuiCol_ScrollbarBg]           = colors[14];
+      style.Colors[ImGuiCol_ScrollbarGrab]         = colors[15];
+      style.Colors[ImGuiCol_ScrollbarGrabHovered]  = colors[16];
+      style.Colors[ImGuiCol_ScrollbarGrabActive]   = colors[17];
+      style.Colors[ImGuiCol_CheckMark]             = colors[18];
+      style.Colors[ImGuiCol_SliderGrab]            = colors[19];
+      style.Colors[ImGuiCol_SliderGrabActive]      = colors[20];
+      style.Colors[ImGuiCol_Button]                = colors[21];
+      style.Colors[ImGuiCol_ButtonHovered]         = colors[22];
+      style.Colors[ImGuiCol_ButtonActive]          = colors[23];
+      style.Colors[ImGuiCol_Header]                = colors[24];
+      style.Colors[ImGuiCol_HeaderHovered]         = colors[25];
+      style.Colors[ImGuiCol_HeaderActive]          = colors[26];
+      style.Colors[ImGuiCol_Separator]             = colors[27];
+      style.Colors[ImGuiCol_SeparatorHovered]      = colors[28];
+      style.Colors[ImGuiCol_SeparatorActive]       = colors[29];
+      style.Colors[ImGuiCol_ResizeGrip]            = colors[30];
+      style.Colors[ImGuiCol_ResizeGripHovered]     = colors[31];
+      style.Colors[ImGuiCol_ResizeGripActive]      = colors[32];
+      style.Colors[ImGuiCol_InputTextCursor]       = colors[33];
+      style.Colors[ImGuiCol_TabHovered]            = colors[34];
+      style.Colors[ImGuiCol_Tab]                   = colors[35];
+      style.Colors[ImGuiCol_TabSelected]           = colors[36];
+      style.Colors[ImGuiCol_TabSelectedOverline]   = colors[37];
+      style.Colors[ImGuiCol_TabDimmed]             = colors[38];
+      style.Colors[ImGuiCol_TabDimmedSelected]     = colors[39];
+      style.Colors[ImGuiCol_TabDimmedSelectedOverline] = colors[40];
+      style.Colors[ImGuiCol_DockingPreview]        = colors[41];
+      style.Colors[ImGuiCol_DockingEmptyBg]        = colors[42];
+      style.Colors[ImGuiCol_PlotLines]             = colors[43];
+      style.Colors[ImGuiCol_PlotLinesHovered]      = colors[44];
+      style.Colors[ImGuiCol_PlotHistogram]         = colors[45];
+      style.Colors[ImGuiCol_PlotHistogramHovered]  = colors[46];
+      style.Colors[ImGuiCol_TableHeaderBg]         = colors[47];
+      style.Colors[ImGuiCol_TableBorderStrong]     = colors[48];
+      style.Colors[ImGuiCol_TableBorderLight]      = colors[49];
+      style.Colors[ImGuiCol_TableRowBg]            = colors[50];
+      style.Colors[ImGuiCol_TableRowBgAlt]         = colors[51];
+      style.Colors[ImGuiCol_TextLink]              = colors[52];
+      style.Colors[ImGuiCol_TextSelectedBg]        = colors[53];
+      style.Colors[ImGuiCol_TreeLines]             = colors[54];
+      style.Colors[ImGuiCol_DragDropTarget]        = colors[55];
+      style.Colors[ImGuiCol_DragDropTargetBg]      = colors[56];
+      style.Colors[ImGuiCol_UnsavedMarker]         = colors[57];
+      style.Colors[ImGuiCol_NavCursor]             = colors[58];
+      style.Colors[ImGuiCol_NavWindowingHighlight] = colors[59];
+      style.Colors[ImGuiCol_NavWindowingDimBg]     = colors[60];
+      style.Colors[ImGuiCol_ModalWindowDimBg]      = colors[61];
+    }
+
     LauncherApp::LauncherApp(Workspace* workspace) : m_workspace(workspace)
     {
       m_logoTexture = GetTextureManager()->Create<Texture>(TexturePath(m_logoPath.c_str(), true));

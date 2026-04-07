@@ -174,6 +174,8 @@ namespace ToolKit
       ImGui_ImplSDL2_InitForOpenGL(g_window, g_context);
       ImGui_ImplOpenGL3_Init("#version 300 es");
 
+      DeserializeThemeSettings();
+
       g_workspace = new Workspace();
       g_workspace->Init();
 

@@ -9,10 +9,10 @@
     <ClCompile Include="Launcher.cpp">
       <Filter>Source</Filter>
     </ClCompile>
-    <ClCompile Include="..\Editor\main.cpp">
+    <ClCompile Include="main.cpp">
       <Filter>Source</Filter>
     </ClCompile>
-    <ClCompile Include="oldmain.cpp">
+    <ClCompile Include="stdafx.cpp">
       <Filter>Source</Filter>
     </ClCompile>
   </ItemGroup>
