@@ -262,14 +262,24 @@ namespace ToolKit
     // - arguments   : Optional argument string passed to the executable.
     //
     // Returns true on success, false otherwise.
-    inline bool CreateProjectShortcutOnDesktop(const String& shortcutName, const String& arguments)
+    inline bool CreateProjectShortcutOnDesktop(const String& shortcutName,
+                                                const String& arguments,
+                                                const String& exePathOverride = "")
     {
-      // Resolve current executable path.
-      wchar_t exePathW[MAX_PATH] = {0};
-      DWORD len                  = ::GetModuleFileNameW(nullptr, exePathW, MAX_PATH);
-      if (len == 0 || len >= MAX_PATH)
+      std::wstring exePathW;
+      if (exePathOverride.empty())
       {
-        return false;
+        wchar_t buf[MAX_PATH] = {0};
+        DWORD len             = ::GetModuleFileNameW(nullptr, buf, MAX_PATH);
+        if (len == 0 || len >= MAX_PATH)
+        {
+          return false;
+        }
+        exePathW = buf;
+      }
+      else
+      {
+        exePathW = UTF8Util::ConvertUTF8ToUTF16(exePathOverride);
       }
 
       // Get desktop folder path using Windows API (handles Public/User desktop, etc.)
@@ -305,8 +315,7 @@ namespace ToolKit
         return false;
       }
 
-      // Set target executable path.
-      shellLink->SetPath(exePathW);
+      shellLink->SetPath(exePathW.c_str());
 
       // Optional arguments.
       if (!arguments.empty())

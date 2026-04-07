@@ -80,6 +80,7 @@ namespace ToolKit
       m_workspace->Serialize(nullptr, nullptr);
 
       String workspacePath = m_workspace->GetActiveWorkspace();
+      UnixifyPath(workspacePath);
       String cmd = "Editor.exe --workspace \"" + workspacePath + "\" --project-name \"" + project.name + "\"";
 
       m_sysComExecFn(cmd, true, false, nullptr);
@@ -460,6 +461,7 @@ namespace ToolKit
                 {
                   const Project& selected = m_workspace->m_projects[m_selectedProjectIndex];
                   String workspacePath    = m_workspace->GetActiveWorkspace();
+                  UnixifyPath(workspacePath);
                   String args = "--workspace \"" + workspacePath + "\" --project-name \"" + selected.name + "\"";
                   m_createProjectShortcutOnDesktopFn(selected.name, args);
                 }

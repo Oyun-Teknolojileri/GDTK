@@ -177,8 +177,14 @@ namespace ToolKit
       g_workspace = new Workspace();
       g_workspace->Init();
 
-      g_launcher                 = new LauncherApp(g_workspace);
-      g_launcher->m_sysComExecFn = &PlatformHelpers::SysComExec;
+      g_launcher                                     = new LauncherApp(g_workspace);
+      g_launcher->m_sysComExecFn                     = &PlatformHelpers::SysComExec;
+      g_launcher->m_createProjectShortcutOnDesktopFn = [](const String& name, const String& args)
+      {
+        String editorExe = std::filesystem::current_path().u8string() + "/Editor.exe";
+        UnixifyPath(editorExe);
+        PlatformHelpers::CreateProjectShortcutOnDesktop(name, args, editorExe);
+      };
 
       if (!g_proxy->m_renderSys->m_backbufferFormatIsSRGB)
       {

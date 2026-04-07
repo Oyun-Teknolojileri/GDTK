@@ -56,6 +56,61 @@ namespace ToolKit
     // External event pool that collect and convert system events to toolkit events.
     SDLEventPool<TK_PLATFORM>* g_sdlEventPool = nullptr;
 
+    void HandleArguments(char* argv[], int argc)
+    {
+      String workspacePath;
+      String projectName;
+      for (int i = 1; i < argc; ++i)
+      {
+        if (strcmp(argv[i], "--workspace") == 0 && i + 1 < argc)
+        {
+          workspacePath = argv[i + 1];
+          if (workspacePath.front() == '"' && workspacePath.back() == '"')
+          {
+            workspacePath = workspacePath.substr(1, workspacePath.length() - 2);
+          }
+          ++i;
+        }
+        else if (strcmp(argv[i], "--project-name") == 0 && i + 1 < argc)
+        {
+          projectName = argv[i + 1];
+          if (projectName.front() == '"' && projectName.back() == '"')
+          {
+            projectName = projectName.substr(1, projectName.length() - 2);
+          }
+          ++i;
+        }
+      }
+
+      if (!workspacePath.empty())
+      {
+        // Set workspace
+        g_workspace->SetDefaultWorkspace(workspacePath);
+        g_workspace->RefreshProjects();
+      }
+      if (!projectName.empty())
+      {
+        // set active project
+        Project targetProject;
+        targetProject.name = projectName;
+        bool found         = false;
+        for (const auto& proj : g_workspace->m_projects)
+        {
+          if (proj.name == projectName)
+          {
+            targetProject = proj;
+            found         = true;
+            break;
+          }
+        }
+
+        if (found)
+        {
+          g_workspace->SetActiveProject(targetProject);
+        }
+      }
+    }
+
     // Windows util function for creating ToolKit config files in AppData.
     void CreateAppData()
     {
@@ -327,6 +382,8 @@ namespace ToolKit
 
             g_workspace = new Workspace();
             g_workspace->Init();
+
+            HandleArguments(argv, argc);
 
             // Init app
             g_app = new App(settings.m_window->GetWidthVal(), settings.m_window->GetHeightVal(), g_workspace);
