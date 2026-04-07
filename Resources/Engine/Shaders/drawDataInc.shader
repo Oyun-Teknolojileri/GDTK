@@ -67,7 +67,7 @@
 		return drawCommand[3].xyz;
 	}
 
-	mat4 GetIblVolumeTransform()
+	mat4 GetIblInverseVolumeTransform()
 	{
 		return mat4(drawCommand[4], drawCommand[5], drawCommand[6], drawCommand[7]);
 	}
@@ -84,7 +84,7 @@
 		}
 
 		// Transform world position to volume local space.
-		vec3 localPos = (GetIblVolumeTransform() * vec4(worldPos, 1.0)).xyz;
+		vec3 localPos = (GetIblInverseVolumeTransform() * vec4(worldPos, 1.0)).xyz;
 
 		vec3 vMin = GetPrimaryVolumeMin();
 		vec3 vMax = GetPrimaryVolumeMax();

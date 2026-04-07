@@ -41,11 +41,12 @@ vec3 GetParallaxCorrectedReflection(vec3 R, vec3 worldPos, mat4 inverseVolTransf
 	// The ray distance is the closest of the furthest distances
 	float dist = min(min(tMaxPlane.x, tMaxPlane.y), tMaxPlane.z);
 
-	// Intersection point in local space (which is also the local direction since capture is at origin 0)
+	// Intersection point in local space
 	vec3 intersectLocal = localPos + localDir * dist;
 
-	// Convert local direction to world direction
-	vec3 correctedR = (inverse(inverseVolTransform) * vec4(intersectLocal, 0.0)).xyz;
+	// PCC direction is relative to the capture position (OBB center).
+	vec3 captureLocal = (volMin + volMax) * 0.5;
+	vec3 correctedR = (inverse(inverseVolTransform) * vec4(intersectLocal - captureLocal, 0.0)).xyz;
 
 	return normalize(correctedR);
 }
@@ -109,7 +110,7 @@ vec3 IBLSpecularPBR(vec3 normal, vec3 fragToEye, float perceptualRoughness, vec3
 		
 		if (IsParallaxCorrectedCubemapEnabled())
 		{
-			R = GetParallaxCorrectedReflection(R, worldPos, GetIblVolumeTransform(), GetPrimaryVolumeMin(), GetPrimaryVolumeMax());
+			R = GetParallaxCorrectedReflection(R, worldPos, GetIblInverseVolumeTransform(), GetPrimaryVolumeMin(), GetPrimaryVolumeMax());
 		}
 
 		vec3 iblSamplerVec = (iblRotation * vec4(R, 0.0)).xyz;

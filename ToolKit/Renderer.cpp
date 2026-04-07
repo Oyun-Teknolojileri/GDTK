@@ -1239,7 +1239,7 @@ namespace ToolKit
         // Pass primary volume local-space BB for OBB per-pixel blend and Parallax Corrected Cubemaps.
         Vec3 offset = envCom->GetPositionOffsetVal();
         Vec3 half   = envCom->GetSizeVal() * 0.5f;
-        bool isSky = false;
+        bool isSky  = false;
         if (const EntityPtr& env = envCom->OwnerEntity())
         {
           isSky = env->IsA<SkyBase>();
@@ -1256,13 +1256,13 @@ namespace ToolKit
           if (isSky)
           {
             m_iblRotation = Mat4(env->m_node->GetOrientation());
-            m_drawCommand.SetIblVolumeTransform(Mat4(1.0f));
+            m_drawCommand.SetIblInverseVolumeTransform(Mat4(1.0f));
           }
           else
           {
             m_iblRotation       = Mat4(1.0f);
             Mat4 worldTransform = env->m_node->GetTransform(TransformationSpace::TS_WORLD);
-            m_drawCommand.SetIblVolumeTransform(glm::inverse(worldTransform));
+            m_drawCommand.SetIblInverseVolumeTransform(glm::inverse(worldTransform));
           }
         }
 
@@ -1855,7 +1855,8 @@ namespace ToolKit
                                        const Vec3& position,
                                        float near,
                                        float far,
-                                       uint resolution)
+                                       uint resolution,
+                                       const float* perFaceClipDist)
   {
     TK_PROFILE_FUNCTION();
 
@@ -1929,6 +1930,12 @@ namespace ToolKit
                                  0,
                                  -1,
                                  (Framebuffer::CubemapFace) i);
+
+      // Set per-face far clip distance on the camera.
+      if (perFaceClipDist != nullptr)
+      {
+        cam->SetLens(glm::radians(90.0f), 1.0f, near, perFaceClipDist[i]);
+      }
 
       // Override render path params for this face.
       renderPath->m_params.Cam             = cam;

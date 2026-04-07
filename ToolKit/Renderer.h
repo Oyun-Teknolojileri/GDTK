@@ -62,16 +62,19 @@ namespace ToolKit
 
     void SetIblFadeDistance(float fade) { data2.w = fade; }
 
-    void SetPrimaryVolumeMin(const Vec3& minVal, bool pccEnabled = false) { data3 = Vec4(minVal, pccEnabled ? 1.0f : 0.0f); }
+    void SetPrimaryVolumeMin(const Vec3& minVal, bool pccEnabled = false)
+    {
+      data3 = Vec4(minVal, pccEnabled ? 1.0f : 0.0f);
+    }
 
     void SetPrimaryVolumeMax(const Vec3& maxVal) { data4 = Vec4(maxVal, 0.0f); }
 
-    void SetIblVolumeTransform(const Mat4& transform)
+    void SetIblInverseVolumeTransform(const Mat4& inverseTransform)
     {
-      data5 = Vec4(transform[0]);
-      data6 = Vec4(transform[1]);
-      data7 = Vec4(transform[2]);
-      data8 = Vec4(transform[3]);
+      data5 = Vec4(inverseTransform[0]);
+      data6 = Vec4(inverseTransform[1]);
+      data7 = Vec4(inverseTransform[2]);
+      data8 = Vec4(inverseTransform[3]);
     }
   };
 
@@ -248,7 +251,8 @@ namespace ToolKit
                                const Vec3& position,
                                float near,
                                float far,
-                               uint resolution);
+                               uint resolution,
+                               const float* perFaceClipDist = nullptr);
 
     /**
      * Sets the blend state directly which causes by passing material system.

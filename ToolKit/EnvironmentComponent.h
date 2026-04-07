@@ -48,7 +48,6 @@ namespace ToolKit
     TKDeclareParam(bool, Illuminate);
     TKDeclareParam(float, Intensity);
     TKDeclareParam(float, Fade);
-    TKDeclareParam(float, CaptureNear);
     TKDeclareParam(float, CaptureFar);
     TKDeclareParam(int, CaptureResolution);
     TKDeclareParam(VariantCallback, Capture);

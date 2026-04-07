@@ -90,19 +90,12 @@ namespace ToolKit
                 true,
                 {false, true, 0.0f, 100000.0f, 0.1f});
 
-    CaptureNear_Define(0.1f,
-                       EnvironmentComponentCategory.Name,
-                       EnvironmentComponentCategory.Priority,
-                       true,
-                       true,
-                       {false, true, 0.001f, 100000.0f, 0.1f});
-
-    CaptureFar_Define(1000.0f,
+    CaptureFar_Define(0.0f,
                       EnvironmentComponentCategory.Name,
                       EnvironmentComponentCategory.Priority,
                       true,
                       true,
-                      {false, true, 1.0f, 100000.0f, 1.0f});
+                      {false, true, 0.0f, 100000.0f, 1.0f});
 
     CaptureResolution_Define(256,
                              EnvironmentComponentCategory.Name,
@@ -120,35 +113,73 @@ namespace ToolKit
             return;
           }
 
-          Vec3 position = owner->m_node->GetTranslation(TransformationSpace::TS_WORLD);
-          float near    = GetCaptureNearVal();
-          float far     = GetCaptureFarVal();
-          uint res      = (uint) GetCaptureResolutionVal();
+          uint res    = (uint) GetCaptureResolutionVal();
 
-          GetRenderSystem()->AddRenderTask({[this, position, near, far, res](Renderer* renderer) -> void
-                                            {
-                                              // Disable self-illumination during capture to prevent feedback loop.
-                                              bool wasIlluminating = GetIlluminateVal();
-                                              SetIlluminateVal(false);
+          // Compute world-space AABB from OBB for per-face far clipping.
+          Vec3 offset = GetPositionOffsetVal();
+          Vec3 half   = GetSizeVal() * 0.5f;
 
-                                              // Create a temporary render path for the capture.
-                                              ForwardSceneRenderPath capturePath;
-                                              capturePath.m_params.Scene = GetSceneManager()->GetCurrentScene();
+          BoundingBox localBB;
+          localBB.min         = offset - half;
+          localBB.max         = offset + half;
 
-                                              CubeMapPtr cubemap =
-                                                  renderer->RenderToCubeMap(&capturePath, position, near, far, res);
+          Mat4 worldTransform = owner->m_node->GetTransform(TransformationSpace::TS_WORLD);
 
-                                              // Restore illuminate state.
-                                              SetIlluminateVal(wasIlluminating);
+          // Place capture camera at the OBB center in world space.
+          Vec3 position       = Vec3(worldTransform * Vec4(offset, 1.0f));
 
-                                              // Create a dynamic HDRI and assign the captured cubemap.
-                                              HdriPtr hdri    = MakeNewPtr<Hdri>();
-                                              hdri->m_cubemap = cubemap;
-                                              hdri->GenerateIrradianceCaches(renderer);
-                                              hdri->m_initiated = true;
+          Vec3Array corners;
+          GetCorners(localBB, corners);
 
-                                              SetHdriVal(hdri);
-                                            }});
+          float extraFar         = GetCaptureFarVal();
+
+          // Compute per-face OBB clip distances.
+          // Transform capture position into OBB local space, then compute
+          // perpendicular distance to each of the 6 box walls.
+          // Face order: +X(0), -X(1), -Y(2), +Y(3), +Z(4), -Z(5).
+          Mat4 invWorldTransform = glm::inverse(worldTransform);
+          Vec3 localPos          = Vec3(invWorldTransform * Vec4(position, 1.0f));
+
+          float perFaceClipDist[6];
+          perFaceClipDist[0] = localBB.max.x - localPos.x + extraFar; // +X
+          perFaceClipDist[1] = localPos.x - localBB.min.x + extraFar; // -X
+          perFaceClipDist[2] = localPos.y - localBB.min.y + extraFar; // -Y
+          perFaceClipDist[3] = localBB.max.y - localPos.y + extraFar; // +Y
+          perFaceClipDist[4] = localBB.max.z - localPos.z + extraFar; // +Z
+          perFaceClipDist[5] = localPos.z - localBB.min.z + extraFar; // -Z
+
+          // Clamp to a minimum positive value.
+          float minDist      = 0.01f;
+          for (int fi = 0; fi < 6; fi++)
+          {
+            perFaceClipDist[fi] = glm::max(perFaceClipDist[fi], minDist);
+          }
+
+          GetRenderSystem()->AddRenderTask(
+              {[this, position, minDist, res, perFaceClipDist](Renderer* renderer) -> void
+               {
+                 // Disable self-illumination during capture to prevent feedback loop.
+                 bool wasIlluminating = GetIlluminateVal();
+                 SetIlluminateVal(false);
+
+                 // Create a temporary render path for the capture.
+                 ForwardSceneRenderPath capturePath;
+                 capturePath.m_params.Scene = GetSceneManager()->GetCurrentScene();
+
+                 CubeMapPtr cubemap =
+                     renderer->RenderToCubeMap(&capturePath, position, minDist, 1000.0f, res, perFaceClipDist);
+
+                 // Restore illuminate state.
+                 SetIlluminateVal(wasIlluminating);
+
+                 // Create a dynamic HDRI and assign the captured cubemap.
+                 HdriPtr hdri    = MakeNewPtr<Hdri>();
+                 hdri->m_cubemap = cubemap;
+                 hdri->GenerateIrradianceCaches(renderer);
+                 hdri->m_initiated = true;
+
+                 SetHdriVal(hdri);
+               }});
         },
         EnvironmentComponentCategory.Name,
         EnvironmentComponentCategory.Priority,
