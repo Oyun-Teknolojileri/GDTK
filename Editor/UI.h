@@ -44,6 +44,7 @@ namespace ToolKit
       static void ShowDock();
       static void InitIcons();
       static void InitTheme();
+      static void DeserializeThemeSettings();
       static void InitSettings();
       static void ShowUI();
       static void BeginUI();

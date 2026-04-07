@@ -56,7 +56,7 @@ namespace ToolKit
         std::filesystem::create_directories(cfgPath);
       }
 
-      std::array<String, 2> configFiles = {"Workspace.settings", "Engine.settings"};
+      std::array<String, 3> configFiles = {"Workspace.settings", "Engine.settings", "Theme.settings"};
       for (const String& f : configFiles)
       {
         String target = ConcatPaths({cfgPath, f});
