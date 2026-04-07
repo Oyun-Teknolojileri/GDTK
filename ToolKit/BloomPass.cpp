@@ -52,7 +52,7 @@ namespace ToolKit
       m_pass->UpdateUniform(ShaderUniform("srcResolution", mainRes));
       m_pass->UpdateUniform(ShaderUniform("threshold", m_params.minThreshold));
 
-      renderer->SetTexture(0, mainRt->m_textureId);
+      renderer->SetTexture(0, mainRt);
       m_pass->m_params.frameBuffer      = m_resampleFrameBuffers[0];
       m_pass->m_params.blendFunc        = BlendFunction::NONE;
       m_pass->m_params.clearFrameBuffer = GraphicBitFields::None;
@@ -85,7 +85,7 @@ namespace ToolKit
         m_pass->UpdateUniform(ShaderUniform("passIndx", passIndx));
         m_pass->UpdateUniform(ShaderUniform("srcResolution", prevRes));
 
-        renderer->SetTexture(0, prevRt->m_textureId);
+        renderer->SetTexture(0, prevRt);
 
         // Set pass parameters
         m_pass->m_params.clearFrameBuffer = GraphicBitFields::None;
@@ -109,7 +109,7 @@ namespace ToolKit
 
         FramebufferPtr prevFramebuffer = m_resampleFrameBuffers[i];
         RenderTargetPtr prevRt         = prevFramebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
-        renderer->SetTexture(0, prevRt->m_textureId);
+        renderer->SetTexture(0, prevRt);
 
         m_pass->m_params.blendFunc        = BlendFunction::ONE_TO_ONE;
         m_pass->m_params.clearFrameBuffer = GraphicBitFields::None;
@@ -125,7 +125,7 @@ namespace ToolKit
 
       FramebufferPtr prevFramebuffer = m_resampleFrameBuffers[0];
       RenderTargetPtr prevRt         = prevFramebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
-      renderer->SetTexture(0, prevRt->m_textureId);
+      renderer->SetTexture(0, prevRt);
 
       m_pass->m_params.blendFunc        = BlendFunction::ONE_TO_ONE;
       m_pass->m_params.clearFrameBuffer = GraphicBitFields::None;

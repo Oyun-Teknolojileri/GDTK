@@ -226,7 +226,17 @@ namespace ToolKit
     SSAORadius_Define(1.0f, "PostProcessingSettings", 0, 0, 0);
     SSAOBias_Define(0.025f, "PostProcessingSettings", 0, 0, 0);
     SSAOSpread_Define(1.0f, "PostProcessingSettings", 0, 0, 0);
-    SSAOKernelSize_Define(8, "PostProcessingSettings", 0, 0, 0);
+
+    MultiChoiceVariant ssaoKernelMcv = {
+        {
+         CreateMultiChoiceParameter("8", 8),
+         CreateMultiChoiceParameter("16", 16),
+         CreateMultiChoiceParameter("32", 32),
+        },
+        1
+    };
+    SSAOKernelSize_Define(ssaoKernelMcv, "PostProcessingSettings", 0, true, true);
+    SSAOHalfResolution_Define(true, "PostProcessingSettings", 0, 0, 0);
     DepthOfFieldEnabled_Define(false, "PostProcessingSettings", 0, 0, 0);
     FocusPoint_Define(10.5f, "PostProcessingSettings", 0, 0, 0);
     FocusScale_Define(1.5f, "PostProcessingSettings", 0, 0, 0);

@@ -40,6 +40,22 @@
 namespace ToolKit
 {
 
+  namespace DefaultTextureSlots
+  {
+    int constexpr COLOR_TEXTURE_SLOT                         = 0;
+    int constexpr EMISSIVE_TEXTURE_SLOT                      = 1;
+    int constexpr BLEND_WEIGHT_TEXTURE_SLOT                  = 2;
+    int constexpr SKINNING_TEXTURE_SLOT                      = 3;
+    int constexpr METALLIC_ROUGHNESS_TEXTURE_SLOT            = 4;
+    int constexpr AO_TEXTURE_SLOT                            = 5;
+    int constexpr CUBEMAP_TEXTURE_SLOT                       = 6;
+    int constexpr IRRADIANCE_MAP_TEXTURE_SLOT                = 7;
+    int constexpr SHADOW_ATLAS_TEXTURE_SLOT                  = 8;
+    int constexpr NORMAL_MAP_TEXTURE_SLOT                    = 9;
+    int constexpr IBL_SPECULAR_PRE_FILTERED_MAP_TEXTURE_SLOT = 15;
+    int constexpr IBL_BRDF_LUT_TEXTURE_SLOT                  = 10;
+  } // namespace DefaultTextureSlots
+
   Renderer::Renderer()
   {
     m_textureSlots.fill(-1);
@@ -229,19 +245,19 @@ namespace ToolKit
 
         if (animTexture != nullptr)
         {
-          SetTexture(3, animTexture->m_textureId);
+          SetTexture(DefaultTextureSlots::SKINNING_TEXTURE_SLOT, animTexture);
         }
 
         // animation to blend.
         if (job.animData.blendAnimation != nullptr)
         {
           animTexture = animPlayer->GetAnimationDataTexture(skel->GetIdVal(), job.animData.blendAnimation->GetIdVal());
-          SetTexture(2, animTexture->m_textureId);
+          SetTexture(DefaultTextureSlots::BLEND_WEIGHT_TEXTURE_SLOT, animTexture);
         }
       }
       else
       {
-        SetTexture(3, skel->m_bindPoseTexture->m_textureId);
+        SetTexture(DefaultTextureSlots::SKINNING_TEXTURE_SLOT, skel->m_bindPoseTexture);
       }
     };
 
@@ -682,7 +698,7 @@ namespace ToolKit
       RHI::SetFramebuffer(GL_READ_FRAMEBUFFER, source->GetFboId());
       RHI::SetFramebuffer(GL_DRAW_FRAMEBUFFER, target->GetFboId());
 
-      GLenum attachment        = GL_COLOR_ATTACHMENT0 + atc;
+      GLenum attachment = GL_COLOR_ATTACHMENT0 + atc;
 
       // Read from the specific source attachment.
       glReadBuffer(attachment);
@@ -1077,27 +1093,27 @@ namespace ToolKit
     const MaterialCacheItem& cache = mat->GetCacheItem();
     if (cache.DiffuseTextureInUse())
     {
-      SetTexture(0, mat->GetDiffuseTextureVal()->m_textureId);
+      SetTexture(DefaultTextureSlots::COLOR_TEXTURE_SLOT, mat->GetDiffuseTextureVal());
     }
 
     if (cache.EmissiveTextureInUse())
     {
-      SetTexture(1, mat->GetEmissiveTextureVal()->m_textureId);
+      SetTexture(DefaultTextureSlots::EMISSIVE_TEXTURE_SLOT, mat->GetEmissiveTextureVal());
     }
 
     if (cache.MetallicRoughnessTextureInUse())
     {
-      SetTexture(4, mat->GetMetallicRoughnessTextureVal()->m_textureId);
+      SetTexture(DefaultTextureSlots::METALLIC_ROUGHNESS_TEXTURE_SLOT, mat->GetMetallicRoughnessTextureVal());
     }
 
     if (cache.NormalTextureInUse())
     {
-      SetTexture(9, mat->GetNormalTextureVal()->m_textureId);
+      SetTexture(DefaultTextureSlots::NORMAL_MAP_TEXTURE_SLOT, mat->GetNormalTextureVal());
     }
 
     if (mat->IsPBR())
     {
-      SetTexture(16, m_brdfLut->m_textureId);
+      SetTexture(DefaultTextureSlots::IBL_BRDF_LUT_TEXTURE_SLOT, m_brdfLut);
     }
   }
 
@@ -1182,9 +1198,9 @@ namespace ToolKit
 
   void Renderer::ResetUsedTextureSlots()
   {
-    for (int i = 0; i < 17; i++)
+    for (int i = 0; i < RHIConstants::TextureSlotCount; i++)
     {
-      SetTexture(i, 0);
+      SetTexture(i, nullptr);
     }
   }
 
@@ -1202,7 +1218,7 @@ namespace ToolKit
     Material* mat = job.Material;
     if (mat && mat->m_cubeMap)
     {
-      SetTexture(6, mat->m_cubeMap->m_textureId);
+      SetTexture(DefaultTextureSlots::CUBEMAP_TEXTURE_SLOT, mat->m_cubeMap);
     }
 
     // Sky and Ibl data.
@@ -1216,9 +1232,9 @@ namespace ToolKit
 
       if (diffuseEnvMap && specularEnvMap && m_brdfLut)
       {
-        SetTexture(7, diffuseEnvMap->m_textureId);
-        SetTexture(15, specularEnvMap->m_textureId);
-        SetTexture(16, m_brdfLut->m_textureId);
+        SetTexture(DefaultTextureSlots::IRRADIANCE_MAP_TEXTURE_SLOT, diffuseEnvMap);
+        SetTexture(DefaultTextureSlots::IBL_SPECULAR_PRE_FILTERED_MAP_TEXTURE_SLOT, specularEnvMap);
+        SetTexture(DefaultTextureSlots::IBL_BRDF_LUT_TEXTURE_SLOT, m_brdfLut);
 
         m_drawCommand.SetIblInUse(true);
         m_drawCommand.SetIblIntensity(envCom->GetIntensityVal());
@@ -1229,16 +1245,16 @@ namespace ToolKit
       }
     }
 
-    // ao texture.
+    // AO texture.
     if (m_ambientOcculusionInUse)
     {
-      SetTexture(5, m_aoTexture->m_textureId);
+      SetTexture(DefaultTextureSlots::AO_TEXTURE_SLOT, m_aoTexture);
     }
 
     // Bind shadow map if activated.
     if (m_shadowAtlas != nullptr)
     {
-      SetTexture(8, m_shadowAtlas->m_textureId);
+      SetTexture(DefaultTextureSlots::SHADOW_ATLAS_TEXTURE_SLOT, m_shadowAtlas);
     }
   }
 
@@ -1440,31 +1456,18 @@ namespace ToolKit
     }
   }
 
-  void Renderer::SetTexture(ubyte slotIndx, uint textureId)
+  void Renderer::SetTexture(ubyte slotIndx, TexturePtr texture)
   {
-    assert(slotIndx < 17 && "You exceed texture slot count");
+    assert(slotIndx < RHIConstants::TextureSlotCount && "You exceed texture slot count");
 
-    static const GLenum textureTypeLut[17] = {
-        GL_TEXTURE_2D,       // 0 -> Color Texture
-        GL_TEXTURE_2D,       // 1 -> Emissive Texture
-        GL_TEXTURE_2D,       // 2 -> EMPTY
-        GL_TEXTURE_2D,       // 3 -> Skinning informatison
-        GL_TEXTURE_2D,       // 4 -> Metallic Roughness Texture
-        GL_TEXTURE_2D,       // 5 -> AO Texture
-        GL_TEXTURE_CUBE_MAP, // 6 -> Cubemap
-        GL_TEXTURE_CUBE_MAP, // 7 -> Irradiance Map
-        GL_TEXTURE_2D_ARRAY, // 8 -> Shadow Atlas
-        GL_TEXTURE_2D,       // 9 -> Normal map, gbuffer position
-        GL_TEXTURE_2D,       // 10 -> gBuffer normal texture
-        GL_TEXTURE_2D,       // 11 -> gBuffer color texture
-        GL_TEXTURE_2D,       // 12 -> gBuffer emissive texture
-        GL_TEXTURE_2D,       // 13 -> EMPTY
-        GL_TEXTURE_2D,       // 14 -> gBuffer metallic roughness texture
-        GL_TEXTURE_CUBE_MAP, // 15 -> IBL Specular Pre-Filtered Map
-        GL_TEXTURE_2D        // 16 -> IBL BRDF Lut
-    };
-
-    RHI::SetTexture(textureTypeLut[slotIndx], textureId, slotIndx);
+    if (texture != nullptr)
+    {
+      RHI::SetTexture((GLenum) texture->Settings().Target, texture->m_textureId, slotIndx);
+    }
+    else
+    {
+      RHI::SetTexture(GL_TEXTURE_2D, 0, slotIndx);
+    }
   }
 
   void Renderer::SetShadowAtlas(TexturePtr shadowAtlas) { m_shadowAtlas = shadowAtlas; }

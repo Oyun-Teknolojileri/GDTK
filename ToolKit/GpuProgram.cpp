@@ -158,6 +158,8 @@ namespace ToolKit
       glUseProgram(program->m_handle);
       for (ubyte slotIndx = 0; slotIndx < RHIConstants::TextureSlotCount; slotIndx++)
       {
+        // Bind samplers to slots. This connects cpu texture bind to shader sampler.
+        // So if cpu binds a texture to slot 0, sampler with slot 0 will use that texture.
         GLint loc = glGetUniformLocation(program->m_handle, ("s_texture" + std::to_string(slotIndx)).c_str());
         if (loc != -1)
         {

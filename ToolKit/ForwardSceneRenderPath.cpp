@@ -261,7 +261,8 @@ namespace ToolKit
     m_ssaoPass->m_params.Radius             = pps->GetSSAORadiusVal();
     m_ssaoPass->m_params.spread             = pps->GetSSAOSpreadVal();
     m_ssaoPass->m_params.Bias               = pps->GetSSAOBiasVal();
-    m_ssaoPass->m_params.KernelSize         = pps->GetSSAOKernelSizeVal();
+    m_ssaoPass->m_params.KernelSize         = pps->GetSSAOKernelSizeVal().GetValue<int>();
+    m_ssaoPass->m_params.HalfResolution     = pps->GetSSAOHalfResolutionVal();
 
     m_bloomPass->m_params.FrameBuffer       = m_params.MainFramebuffer;
     m_bloomPass->m_params.intensity         = pps->GetBloomIntensityVal();

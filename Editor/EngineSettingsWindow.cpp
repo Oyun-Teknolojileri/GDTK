@@ -495,10 +495,12 @@ namespace ToolKit
             pps->SetSSAOBiasVal(ssaoBias);
           }
 
-          int ssaoKernelSize = pps->GetSSAOKernelSizeVal();
-          if (ImGui::DragInt("KernelSize", &ssaoKernelSize, 1, 8, 128))
+          CustomDataView::ShowVariant(&pps->ParamSSAOKernelSize(), nullptr);
+
+          bool ssaoHalfRes = pps->GetSSAOHalfResolutionVal();
+          if (ImGui::Checkbox("Half Resolution##ssao", &ssaoHalfRes))
           {
-            pps->SetSSAOKernelSizeVal(ssaoKernelSize);
+            pps->SetSSAOHalfResolutionVal(ssaoHalfRes);
           }
 
           ImGui::EndDisabled();

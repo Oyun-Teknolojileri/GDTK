@@ -55,6 +55,7 @@ namespace ToolKit
       static SignalId m_backToStart;
       static SignalId m_delete;
       static SignalId m_duplicate;
+      static SignalId m_setCursorSgnl;
     };
 
     // ModManager

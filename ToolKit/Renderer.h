@@ -182,7 +182,7 @@ namespace ToolKit
     void DrawFullQuad(MaterialPtr mat);
     void DrawCube(CameraPtr cam, MaterialPtr mat, const Mat4& transform = Mat4(1.0f));
 
-    void SetTexture(ubyte slotIndx, uint textureId);
+    void SetTexture(ubyte slotIndx, TexturePtr texture);
 
     /** Reads an equirectengular hdr image and creates a cube map from it. */
     CubeMapPtr GenerateCubemapFrom2DTexture(TexturePtr texture,

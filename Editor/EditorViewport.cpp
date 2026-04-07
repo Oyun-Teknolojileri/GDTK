@@ -77,18 +77,18 @@ namespace ToolKit
         {
           switch (i)
           {
-          case 0:
-            *overlay = new OverlayLeftBar(viewport);
-            break;
-          case 1:
-            *overlay = new OverlayTopBar(viewport);
-            break;
-          case 2:
-            *overlay = new StatusBar(viewport);
-            break;
-          case 3:
-            *overlay = new OverlayLighting(viewport);
-            break;
+            case 0:
+              *overlay = new OverlayLeftBar(viewport);
+              break;
+            case 1:
+              *overlay = new OverlayTopBar(viewport);
+              break;
+            case 2:
+              *overlay = new StatusBar(viewport);
+              break;
+            case 3:
+              *overlay = new OverlayLighting(viewport);
+              break;
           }
         }
       }
@@ -169,6 +169,11 @@ namespace ToolKit
       if (ImGui::IsMouseDragging(ImGuiMouseButton_Left))
       {
         ModManager::GetInstance()->DispatchSignal(BaseMod::m_leftMouseBtnDragSgnl);
+      }
+
+      if (ImGui::IsKeyDown(ImGuiMod_Ctrl) && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+      {
+        ModManager::GetInstance()->DispatchSignal(BaseMod::m_setCursorSgnl);
       }
 
       if (ImGui::IsKeyPressed(ImGuiKey_Delete, false))
