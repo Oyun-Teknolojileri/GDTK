@@ -279,6 +279,12 @@ namespace ToolKit
     m_settings.WarpT     = GraphicTypes::UVClampToEdge;
   }
 
+  DepthTexture::~DepthTexture()
+  {
+    UnInit();
+    Clear();
+  }
+
   void DepthTexture::Load() {}
 
   void DepthTexture::Clear() { UnInit(); }
@@ -487,21 +493,21 @@ namespace ToolKit
       String postfix = "px.png";
       switch (i)
       {
-      case 1:
-        postfix = "nx.png";
-        break;
-      case 2:
-        postfix = "py.png";
-        break;
-      case 3:
-        postfix = "ny.png";
-        break;
-      case 4:
-        postfix = "pz.png";
-        break;
-      case 5:
-        postfix = "nz.png";
-        break;
+        case 1:
+          postfix = "nx.png";
+          break;
+        case 2:
+          postfix = "py.png";
+          break;
+        case 3:
+          postfix = "ny.png";
+          break;
+        case 4:
+          postfix = "pz.png";
+          break;
+        case 5:
+          postfix = "nz.png";
+          break;
       }
 
       String name = file + postfix;
