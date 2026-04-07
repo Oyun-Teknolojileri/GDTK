@@ -149,7 +149,7 @@ namespace ToolKit
       ImGui::SetCursorPos(logoPos);
       if (m_logoTexture && m_logoTexture->m_textureId != 0)
       {
-        ImGui::Image(Convert2ImGuiTexture(m_logoTexture), ImVec2(logoSize, logoSize));
+        ImGui::Image(Convert2ImGuiTexture(m_logoTexture), ImVec2(logoSize, logoSize), ImVec2(0, 1), ImVec2(1, 0));
       }
       else
       {
@@ -376,8 +376,8 @@ namespace ToolKit
                 childDrawList->AddImageRounded(Convert2ImGuiTexture(thumbTexture),
                                                imagePos,
                                                imageMax,
-                                               ImVec2(0, 0),
-                                               ImVec2(1, 1),
+                                               ImVec2(0, 1),
+                                               ImVec2(1, 0),
                                                ImGui::GetColorU32(ImVec4(1, 1, 1, 1)),
                                                4.0f);
               }

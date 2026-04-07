@@ -120,6 +120,8 @@ namespace ToolKit
       SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
       SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
 
+      SDL_GL_SetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, 1);
+
       g_window = SDL_CreateWindow("ToolKit Launcher",
                                   SDL_WINDOWPOS_CENTERED,
                                   SDL_WINDOWPOS_CENTERED,
@@ -133,7 +135,11 @@ namespace ToolKit
         return;
       }
 
-      g_context = SDL_GL_CreateContext(g_window);
+      int srgbFlag = 0;
+      SDL_GL_GetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, &srgbFlag);
+      g_proxy->m_renderSys->m_backbufferFormatIsSRGB = (srgbFlag == 1);
+
+      g_context                                      = SDL_GL_CreateContext(g_window);
       if (g_context == nullptr)
       {
         g_running = false;
@@ -146,12 +152,14 @@ namespace ToolKit
                                    [](const std::string& msg)
                                    { GetLogger()->WritePlatformConsole(LogType::Error, msg.c_str()); });
 
+      g_proxy->Init();
+
       for (auto fn : GetRegisterFnList())
       {
         fn();
       }
 
-      g_proxy->Init();
+      
       GetFileManager()->m_ignorePakFile = true;
       SDL_GL_SetSwapInterval(0);
 
@@ -164,7 +172,7 @@ namespace ToolKit
       io.ConfigWindowsMoveFromTitleBarOnly  = true;
 
       ImGui_ImplSDL2_InitForOpenGL(g_window, g_context);
-      ImGui_ImplOpenGL3_Init("#version 150");
+      ImGui_ImplOpenGL3_Init("#version 300 es");
 
       g_workspace = new Workspace();
       g_workspace->Init();
@@ -172,7 +180,12 @@ namespace ToolKit
       g_launcher                 = new LauncherApp(g_workspace);
       g_launcher->m_sysComExecFn = &PlatformHelpers::SysComExec;
 
-      TKUpdateFn preUpdateFn     = [](float deltaTime)
+      if (!g_proxy->m_renderSys->m_backbufferFormatIsSRGB)
+      {
+        io.BackendFlags |= ImGuiBackendFlags_ToolKitGammaEncode;
+      }
+
+      TKUpdateFn preUpdateFn = [](float deltaTime)
       {
         SDL_Event sdlEvent;
         while (SDL_PollEvent(&sdlEvent))
