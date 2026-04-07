@@ -62,7 +62,7 @@ namespace ToolKit
 
     void SetIblFadeDistance(float fade) { data2.w = fade; }
 
-    void SetPrimaryVolumeMin(const Vec3& minVal) { data3 = Vec4(minVal, 0.0f); }
+    void SetPrimaryVolumeMin(const Vec3& minVal, bool pccEnabled = false) { data3 = Vec4(minVal, pccEnabled ? 1.0f : 0.0f); }
 
     void SetPrimaryVolumeMax(const Vec3& maxVal) { data4 = Vec4(maxVal, 0.0f); }
 

@@ -1236,11 +1236,24 @@ namespace ToolKit
         m_drawCommand.SetIblInUse(true);
         m_drawCommand.SetIblIntensity(envCom->GetIntensityVal());
 
+        // Pass primary volume local-space BB for OBB per-pixel blend and Parallax Corrected Cubemaps.
+        Vec3 offset = envCom->GetPositionOffsetVal();
+        Vec3 half   = envCom->GetSizeVal() * 0.5f;
+        bool isSky = false;
+        if (const EntityPtr& env = envCom->OwnerEntity())
+        {
+          isSky = env->IsA<SkyBase>();
+        }
+
+        m_drawCommand.SetPrimaryVolumeMin(offset - half, !isSky);
+        m_drawCommand.SetPrimaryVolumeMax(offset + half);
+        m_drawCommand.SetIblFadeDistance(glm::max(envCom->GetFadeVal(), 0.001f));
+
         // Sky: rotation applies to IBL image, no volume boundary.
         // Non-Sky: rotation applies to OBB volume, IBL image stays fixed.
         if (const EntityPtr& env = envCom->OwnerEntity())
         {
-          if (env->IsA<SkyBase>())
+          if (isSky)
           {
             m_iblRotation = Mat4(env->m_node->GetOrientation());
             m_drawCommand.SetIblVolumeTransform(Mat4(1.0f));
@@ -1266,13 +1279,6 @@ namespace ToolKit
             SetTexture(DefaultTextureSlots::SECONDARY_IRRADIANCE_MAP_TEXTURE_SLOT, secDiffuse);
             SetTexture(DefaultTextureSlots::SECONDARY_IBL_SPECULAR_MAP_TEXTURE_SLOT, secSpecular);
             m_drawCommand.SetSecondaryIblIntensity(secEnvCom->GetIntensityVal());
-
-            // Pass primary volume local-space BB for OBB per-pixel blend.
-            Vec3 offset = envCom->GetPositionOffsetVal();
-            Vec3 half   = envCom->GetSizeVal() * 0.5f;
-            m_drawCommand.SetPrimaryVolumeMin(offset - half);
-            m_drawCommand.SetPrimaryVolumeMax(offset + half);
-            m_drawCommand.SetIblFadeDistance(glm::max(envCom->GetFadeVal(), 0.001f));
 
             if (const EntityPtr& secEnv = secEnvCom->OwnerEntity())
             {

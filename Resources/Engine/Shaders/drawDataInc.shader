@@ -57,6 +57,11 @@
 		return drawCommand[2].xyz;
 	}
 
+	bool IsParallaxCorrectedCubemapEnabled()
+	{
+		return bool(drawCommand[2].w > 0.5);
+	}
+
 	vec3 GetPrimaryVolumeMax()
 	{
 		return drawCommand[3].xyz;

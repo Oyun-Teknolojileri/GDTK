@@ -24,6 +24,32 @@ uniform mat4 iblSecondaryRotation;
 // Filament-style IBL helpers
 // ---------------------------------------------------------------------------
 
+vec3 GetParallaxCorrectedReflection(vec3 R, vec3 worldPos, mat4 inverseVolTransform, vec3 volMin, vec3 volMax)
+{
+	// Convert frag pos and dir to local space of the OBB
+	vec3 localPos = (inverseVolTransform * vec4(worldPos, 1.0)).xyz;
+	vec3 localDir = (inverseVolTransform * vec4(R, 0.0)).xyz;
+
+	// Intersect ray with local AABB
+	vec3 invLocalDir = 1.0 / (localDir + 0.000001);
+	vec3 t0 = (volMin - localPos) * invLocalDir;
+	vec3 t1 = (volMax - localPos) * invLocalDir;
+
+	// Find the furthest intersection on each axis relative to ray
+	vec3 tMaxPlane = max(t0, t1);
+
+	// The ray distance is the closest of the furthest distances
+	float dist = min(min(tMaxPlane.x, tMaxPlane.y), tMaxPlane.z);
+
+	// Intersection point in local space (which is also the local direction since capture is at origin 0)
+	vec3 intersectLocal = localPos + localDir * dist;
+
+	// Convert local direction to world direction
+	vec3 correctedR = (inverse(inverseVolTransform) * vec4(intersectLocal, 0.0)).xyz;
+
+	return normalize(correctedR);
+}
+
 // Quadratic fit for roughness-to-LOD mapping
 // Filament: perceptualRoughnessToLod
 float RoughnessToLod(float roughness, float maxLod)
@@ -73,13 +99,19 @@ vec3 IBLDiffusePBR(vec3 normal, vec3 albedo, float metallic, vec3 E)
 // Uses specular dominant direction and quadratic LOD mapping
 // ---------------------------------------------------------------------------
 
-vec3 IBLSpecularPBR(vec3 normal, vec3 fragToEye, float perceptualRoughness, vec3 E, vec3 energyComp)
+vec3 IBLSpecularPBR(vec3 normal, vec3 fragToEye, float perceptualRoughness, vec3 E, vec3 energyComp, vec3 worldPos)
 {
 	vec3 specular = vec3(0.0);
 	if (IsIBLInUse())
 	{
 		vec3 R = reflect(-fragToEye, normal);
 		R = GetSpecularDominantDirection(normal, R, perceptualRoughness);
+		
+		if (IsParallaxCorrectedCubemapEnabled())
+		{
+			R = GetParallaxCorrectedReflection(R, worldPos, GetIblVolumeTransform(), GetPrimaryVolumeMin(), GetPrimaryVolumeMax());
+		}
+
 		vec3 iblSamplerVec = (iblRotation * vec4(R, 0.0)).xyz;
 
 		float lod = RoughnessToLod(perceptualRoughness, float(graphicConstants.iblMaxReflectionLod));
@@ -130,7 +162,7 @@ vec3 IBLPBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float perc
 	vec3 E = SpecularDFG(dfg, f0);
 
 	vec3 Fd = IBLDiffusePBR(normal, albedo, metallic, E);
-	vec3 Fr = IBLSpecularPBR(normal, fragToEye, perceptualRoughness, E, energyComp);
+	vec3 Fr = IBLSpecularPBR(normal, fragToEye, perceptualRoughness, E, energyComp, worldPos);
 	vec3 primary = (Fd + Fr) * GetIBLIntensity();
 
 	float secIntensity = GetSecondaryIBLIntensity();
