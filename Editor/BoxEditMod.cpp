@@ -181,7 +181,7 @@ namespace ToolKit
         return ctx;
       }
 
-      // Priority 3: Any entity with a bounding box — use local-axis scale + displacement.
+      // Priority 3: Any entity with a bounding box use local-axis scale + displacement.
       // Scale grows both directions, so we compensate with a position offset to
       // make it appear as single-face movement.
       // GetSize/SetSize work in world-space extents (localBBSize * scale) so that
