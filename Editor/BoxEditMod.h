@@ -37,8 +37,6 @@ namespace ToolKit
     // BoxEditMod
     //////////////////////////////////////////
 
-    class TK_EDITOR_API TransformAction;
-
     class TK_EDITOR_API BoxEditMod : public BaseMod
     {
      public:
@@ -77,7 +75,7 @@ namespace ToolKit
       Vec3 m_dragStartSize;
       Vec3 m_dragStartOffset;
       BoxEditContext m_dragContext;
-      TransformAction* m_dragAction = nullptr;
+      Action* m_dragAction = nullptr;
     };
 
   } // namespace Editor
