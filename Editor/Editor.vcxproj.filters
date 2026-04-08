@@ -37,6 +37,9 @@
     <Filter Include="Entities\UI">
       <UniqueIdentifier>{1e18ef1a-b6b1-495b-be99-3e8e4f30295c}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Components">
+      <UniqueIdentifier>{ab13346e-e65a-43d4-9f81-f6f39abb70fa}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -198,8 +201,15 @@
     <ClCompile Include="EditorCanvas.cpp">
       <Filter>Entities\UI</Filter>
     </ClCompile>
-    <ClCompile Include="BoxEditGizmo.cpp" />
-    <ClCompile Include="BoxEditMod.cpp" />
+    <ClCompile Include="BoxEditGizmo.cpp">
+      <Filter>Mods</Filter>
+    </ClCompile>
+    <ClCompile Include="BoxEditMod.cpp">
+      <Filter>Mods</Filter>
+    </ClCompile>
+    <ClCompile Include="EditorEnvironmentComponent.cpp">
+      <Filter>Components</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Mod.h">
@@ -361,8 +371,15 @@
     <ClInclude Include="EditorMetaKeys.h">
       <Filter>Source</Filter>
     </ClInclude>
-    <ClInclude Include="BoxEditGizmo.h" />
-    <ClInclude Include="BoxEditMod.h" />
+    <ClInclude Include="BoxEditMod.h">
+      <Filter>Mods</Filter>
+    </ClInclude>
+    <ClInclude Include="BoxEditGizmo.h">
+      <Filter>Mods</Filter>
+    </ClInclude>
+    <ClInclude Include="EditorEnvironmentComponent.h">
+      <Filter>Components</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Editor.rc" />
