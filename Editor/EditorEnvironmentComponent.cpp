@@ -1,6 +1,7 @@
 #include "EditorEnvironmentComponent.h"
 
 #include <RenderSystem.h>
+#include <Sky.h>
 #include <Threads.h>
 
 namespace ToolKit
@@ -17,6 +18,14 @@ namespace ToolKit
     void EditorEnvironmentComponent::InvalidateSpatialCaches()
     {
       Super::InvalidateSpatialCaches();
+
+      // Sky manages its own irradiance, never auto-capture for it.
+      EntityPtr owner = OwnerEntity();
+      if (owner != nullptr && owner->IsA<SkyBase>())
+      {
+        return;
+      }
+
       FireCaptureInvalidate();
     }
 
