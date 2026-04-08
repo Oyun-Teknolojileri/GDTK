@@ -1,5 +1,8 @@
 #include "EditorEnvironmentComponent.h"
 
+#include <RenderSystem.h>
+#include <Threads.h>
+
 namespace ToolKit
 {
   namespace Editor
@@ -10,6 +13,52 @@ namespace ToolKit
     EditorEnvironmentComponent::EditorEnvironmentComponent() {}
 
     EditorEnvironmentComponent::~EditorEnvironmentComponent() {}
+
+    void EditorEnvironmentComponent::InvalidateSpatialCaches()
+    {
+      Super::InvalidateSpatialCaches();
+      FireCaptureInvalidate();
+    }
+
+    void EditorEnvironmentComponent::FireCaptureInvalidate()
+    {
+      m_captureTimerStart = GetTiming()->CurrentTime;
+
+      if (m_captureTimerActive)
+      {
+        // Timer already running, just reset the start time (debounce restart).
+        return;
+      }
+
+      m_captureTimerActive = true;
+
+      // Schedule a polling task that re-enqueues itself each frame until the timer expires.
+      ScheduleCapturePollingTask();
+    }
+
+    void EditorEnvironmentComponent::ScheduleCapturePollingTask()
+    {
+      TKAsyncTask(WorkerManager::MainThread,
+                  [this]() -> void
+                  {
+                    if (!m_captureTimerActive)
+                    {
+                      return;
+                    }
+
+                    float elapsed = GetTiming()->CurrentTime - m_captureTimerStart;
+                    if (elapsed >= CaptureDebounceTime)
+                    {
+                      m_captureTimerActive = false;
+                      CaptureEnvironment();
+                    }
+                    else
+                    {
+                      // Not expired yet, re-enqueue for the next frame.
+                      ScheduleCapturePollingTask();
+                    }
+                  });
+    }
 
     ComponentPtr EditorEnvironmentComponent::Copy(EntityPtr ntt) { return Super::Copy(ntt); }
 

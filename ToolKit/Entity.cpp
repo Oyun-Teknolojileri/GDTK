@@ -130,7 +130,7 @@ namespace ToolKit
 
     if (EnvironmentComponent* envComp = GetComponentFast<EnvironmentComponent>())
     {
-      envComp->m_spatialCachesInvalidated = true;
+      envComp->InvalidateSpatialCaches();
     }
 
     if (m_aabbTreeNodeProxy != AABBTree::nullNode)
@@ -462,77 +462,77 @@ namespace ToolKit
     EntityPtr ntt = nullptr;
     switch (type)
     {
-    case EntityType::Entity_Base:
-      ntt = MakeNewPtr<Entity>();
-      break;
-    case EntityType::Entity_Node:
-      ntt = MakeNewPtr<EntityNode>();
-      break;
-    case EntityType::Entity_AudioSource:
-      ntt = MakeNewPtr<AudioSource>();
-      break;
-    case EntityType::Entity_Billboard:
-      ntt = MakeNewPtr<Billboard>();
-      break;
-    case EntityType::Entity_Cube:
-      ntt = MakeNewPtr<Cube>();
-      break;
-    case EntityType::Entity_Quad:
-      ntt = MakeNewPtr<Quad>();
-      break;
-    case EntityType::Entity_Sphere:
-      ntt = MakeNewPtr<Sphere>();
-      break;
-    case EntityType::Entity_Arrow:
-      ntt = MakeNewPtr<Arrow2d>();
-      break;
-    case EntityType::Entity_LineBatch:
-      ntt = MakeNewPtr<LineBatch>();
-      break;
-    case EntityType::Entity_Cone:
-      ntt = MakeNewPtr<Cone>();
-      break;
-    case EntityType::Entity_Drawable:
-      ntt = MakeNewPtr<Drawable>();
-      break;
-    case EntityType::Entity_Camera:
-      ntt = MakeNewPtr<Camera>();
-      break;
-    case EntityType::Entity_Surface:
-      ntt = MakeNewPtr<Surface>();
-      break;
-    case EntityType::Entity_Button:
-      ntt = MakeNewPtr<Button>();
-      break;
-    case EntityType::Entity_Light:
-      ntt = MakeNewPtr<Light>();
-      break;
-    case EntityType::Entity_DirectionalLight:
-      ntt = MakeNewPtr<DirectionalLight>();
-      break;
-    case EntityType::Entity_PointLight:
-      ntt = MakeNewPtr<PointLight>();
-      break;
-    case EntityType::Entity_SpotLight:
-      ntt = MakeNewPtr<SpotLight>();
-      break;
-    case EntityType::Entity_Sky:
-      ntt = MakeNewPtr<Sky>();
-      break;
-    case EntityType::Entity_GradientSky:
-      ntt = MakeNewPtr<GradientSky>();
-      break;
-    case EntityType::Entity_Canvas:
-      ntt = MakeNewPtr<Canvas>();
-      break;
-    case EntityType::Entity_Prefab:
-      ntt = MakeNewPtr<Prefab>();
-      break;
-    case EntityType::Entity_SpriteAnim:
-    case EntityType::UNUSEDSLOT_1:
-    default:
-      assert(false);
-      break;
+      case EntityType::Entity_Base:
+        ntt = MakeNewPtr<Entity>();
+        break;
+      case EntityType::Entity_Node:
+        ntt = MakeNewPtr<EntityNode>();
+        break;
+      case EntityType::Entity_AudioSource:
+        ntt = MakeNewPtr<AudioSource>();
+        break;
+      case EntityType::Entity_Billboard:
+        ntt = MakeNewPtr<Billboard>();
+        break;
+      case EntityType::Entity_Cube:
+        ntt = MakeNewPtr<Cube>();
+        break;
+      case EntityType::Entity_Quad:
+        ntt = MakeNewPtr<Quad>();
+        break;
+      case EntityType::Entity_Sphere:
+        ntt = MakeNewPtr<Sphere>();
+        break;
+      case EntityType::Entity_Arrow:
+        ntt = MakeNewPtr<Arrow2d>();
+        break;
+      case EntityType::Entity_LineBatch:
+        ntt = MakeNewPtr<LineBatch>();
+        break;
+      case EntityType::Entity_Cone:
+        ntt = MakeNewPtr<Cone>();
+        break;
+      case EntityType::Entity_Drawable:
+        ntt = MakeNewPtr<Drawable>();
+        break;
+      case EntityType::Entity_Camera:
+        ntt = MakeNewPtr<Camera>();
+        break;
+      case EntityType::Entity_Surface:
+        ntt = MakeNewPtr<Surface>();
+        break;
+      case EntityType::Entity_Button:
+        ntt = MakeNewPtr<Button>();
+        break;
+      case EntityType::Entity_Light:
+        ntt = MakeNewPtr<Light>();
+        break;
+      case EntityType::Entity_DirectionalLight:
+        ntt = MakeNewPtr<DirectionalLight>();
+        break;
+      case EntityType::Entity_PointLight:
+        ntt = MakeNewPtr<PointLight>();
+        break;
+      case EntityType::Entity_SpotLight:
+        ntt = MakeNewPtr<SpotLight>();
+        break;
+      case EntityType::Entity_Sky:
+        ntt = MakeNewPtr<Sky>();
+        break;
+      case EntityType::Entity_GradientSky:
+        ntt = MakeNewPtr<GradientSky>();
+        break;
+      case EntityType::Entity_Canvas:
+        ntt = MakeNewPtr<Canvas>();
+        break;
+      case EntityType::Entity_Prefab:
+        ntt = MakeNewPtr<Prefab>();
+        break;
+      case EntityType::Entity_SpriteAnim:
+      case EntityType::UNUSEDSLOT_1:
+      default:
+        assert(false);
+        break;
     }
 
     return ntt;

@@ -105,15 +105,17 @@ namespace ToolKit
                              {false, true, 32, 2048, 1});
   }
 
+  void EnvironmentComponent::InvalidateSpatialCaches() { m_spatialCachesInvalidated = true; }
+
   void EnvironmentComponent::ParameterEventConstructor()
   {
     Super::ParameterEventConstructor();
 
     ParamPositionOffset().m_onValueChangedFn.push_back([this](Value& oldVal, Value& newVal) -> void
-                                                       { m_spatialCachesInvalidated = true; });
+                                                       { InvalidateSpatialCaches(); });
 
     ParamSize().m_onValueChangedFn.push_back([this](Value& oldVal, Value& newVal) -> void
-                                             { m_spatialCachesInvalidated = true; });
+                                             { InvalidateSpatialCaches(); });
 
     ParamHdri().m_onValueChangedFn.push_back(
         [this](Value& oldVal, Value& newVal) -> void

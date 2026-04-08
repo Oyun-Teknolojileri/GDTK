@@ -32,6 +32,7 @@ namespace ToolKit
     void Init(bool flushClientSideArray);
     void UnInit();
     virtual void CaptureEnvironment();
+    virtual void InvalidateSpatialCaches();
 
    protected:
     XmlNode* DeSerializeImp(const SerializationFileInfo& info, XmlNode* parent) override;
