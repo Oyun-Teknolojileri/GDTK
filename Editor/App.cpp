@@ -1533,6 +1533,7 @@ namespace ToolKit
         WriteAttr(setNode, docPtr, "width", std::to_string(size.x));
         WriteAttr(setNode, docPtr, "height", std::to_string(size.y));
         WriteAttr(setNode, docPtr, "maximized", std::to_string(m_windowMaximized));
+        WriteAttr(setNode, docPtr, "theme", std::to_string(static_cast<int>(UI::GetCurrentTheme())));
 
         XmlNode* windowsNode = CreateXmlNode(docPtr, "Windows", app);
         for (WindowPtr wnd : m_windows)
@@ -1591,6 +1592,17 @@ namespace ToolKit
             if (width > 0 && height > 0)
             {
               OnResize(width, height);
+            }
+
+            int theme = -1;
+            ReadAttr(setNode, "theme", theme);
+            if (theme == -1)
+            {
+              UI::SetTheme(Theme::Dark); // default theme
+            }
+            else
+            {
+              UI::SetTheme(static_cast<Theme>(theme));
             }
           }
         }

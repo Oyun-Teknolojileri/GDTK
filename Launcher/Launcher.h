@@ -7,9 +7,12 @@
 
 #pragma once
 
+#include "../Editor/IconsFontAwesome.h"
 #include "LauncherTypes.h"
-
+#define IMGUI_USER_CONFIG "tk_imconfig.h"
 #include <Workspace.h>
+#include <imgui/imgui.h>
+#include <imgui/misc/cpp/imgui_stdlib.h>
 
 #include <unordered_map>
 

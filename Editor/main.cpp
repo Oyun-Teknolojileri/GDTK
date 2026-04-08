@@ -121,12 +121,16 @@ namespace ToolKit
         return;
       }
 
-      std::array<String, 6> files = {"Workspace.settings",
-                                     "Editor.settings",
-                                     "UILayout.ini",
-                                     "Engine.settings",
-                                     "GamePluginBuild.bat",
-                                     "Theme.settings"};
+      std::array<String, 8> files = {
+          "Workspace.settings",
+          "Editor.settings",
+          "UILayout.ini",
+          "Engine.settings",
+          "GamePluginBuild.bat",
+          "DarkTheme.settings",
+          "GreyTheme.settings",
+          "LightTheme.settings",
+      };
 
       String cfgPath              = ConcatPaths({String(appData), "ToolKit", "Config"});
 

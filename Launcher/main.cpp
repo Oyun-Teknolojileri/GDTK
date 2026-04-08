@@ -56,7 +56,11 @@ namespace ToolKit
         std::filesystem::create_directories(cfgPath);
       }
 
-      std::array<String, 3> configFiles = {"Workspace.settings", "Engine.settings", "Theme.settings"};
+      std::array<String, 5> configFiles = {"Workspace.settings",
+                                           "Engine.settings",
+                                           "DarkTheme.settings",
+                                           "GreyTheme.settings",
+                                           "LightTheme.settings"};
       for (const String& f : configFiles)
       {
         String target = ConcatPaths({cfgPath, f});
@@ -159,7 +163,6 @@ namespace ToolKit
         fn();
       }
 
-      
       GetFileManager()->m_ignorePakFile = true;
       SDL_GL_SetSwapInterval(0);
 
