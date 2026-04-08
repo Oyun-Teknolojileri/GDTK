@@ -7,19 +7,16 @@
 
 #pragma once
 
+#include "../Editor/EditorTypes.h"
 #include "../Editor/IconsFontAwesome.h"
-#include "LauncherTypes.h"
-#define IMGUI_USER_CONFIG "tk_imconfig.h"
-#include <Workspace.h>
-#include <imgui/imgui.h>
-#include <imgui/misc/cpp/imgui_stdlib.h>
-
-#include <unordered_map>
+#include "Workspace.h"
 
 namespace ToolKit
 {
   namespace Launcher
   {
+    typedef std::function<void(const String&, const String&)> CreateProjectShortcutOnDesktopFn;
+
     class LauncherApp
     {
      public:
@@ -29,7 +26,7 @@ namespace ToolKit
       void ShowLauncherWindow();
 
      private:
-      LauncherApp() {}
+      LauncherApp();
 
       void HandleWorkspace();
       void UpdateThumbnailCache();
@@ -38,15 +35,15 @@ namespace ToolKit
       void OpenProject(const Project& project);
 
      public:
-      SysCommandExecutionFn m_sysComExecFn;
+      Editor::SysCommandExecutionFn m_sysComExecFn;
       CreateProjectShortcutOnDesktopFn m_createProjectShortcutOnDesktopFn;
 
      private:
-      float m_windowWidth    = 1024.0f;
-      float m_windowHeight   = 768.0f;
+      // Launcher states.
+      float m_windowWidth        = 1024.0f;
+      float m_windowHeight       = 768.0f;
 
-      Workspace* m_workspace = nullptr;
-      String m_workspacePathOnUI;
+      Workspace* m_workspace     = nullptr;
       bool m_showWorkspacePopup  = false;
       bool m_showNewProjectPopup = false;
 
@@ -54,22 +51,29 @@ namespace ToolKit
       String m_newProjectPathOrUrl;
       bool m_isCloning = false;
       String m_cloneProgress;
-      bool m_newProjectTabLocal            = true;
-      int m_selectedProjectIndex           = -1;
-      TexturePtr m_logoTexture             = nullptr;
-      TexturePtr m_defaultProjectThumbnail = nullptr;
-      String m_logoPath                    = "/Icons/app_big.png";
-      String m_defaultThumbnailPath        = "/splash.png";
-      String m_thumbnailPath               = "../../thumbnail.png";
-      String m_launchIconPath              = "/Icons/play.png";
-      String m_folderIconPath              = "/Icons/folder.png";
-      String m_shortcutIconPath            = "/Icons/file.png";
+      bool m_newProjectTabLocal  = true;
+      int m_selectedProjectIndex = -1;
+
+      std::unordered_map<String, bool> m_thumbnailCache;
+      String m_searchFilter;
+
+      // Icon Paths.
+      String m_logoPath;
+      String m_defaultThumbnailPath;
+      String m_thumbnailPath;
+      String m_launchIconPath;
+      String m_folderIconPath;
+      String m_shortcutIconPath;
+      String m_workspacePathOnUI;
+
+      // Icon Textures.
       TexturePtr m_launchIconTexture       = nullptr;
       TexturePtr m_folderIconTexture       = nullptr;
       TexturePtr m_shortcutIconTexture     = nullptr;
 
-      std::unordered_map<String, bool> m_thumbnailCache;
-      String m_searchFilter;
+      // Textures.
+      TexturePtr m_logoTexture             = nullptr;
+      TexturePtr m_defaultProjectThumbnail = nullptr;
     };
 
     void DeserializeThemeSettings();
