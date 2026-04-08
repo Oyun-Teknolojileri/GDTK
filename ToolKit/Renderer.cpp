@@ -1888,16 +1888,15 @@ namespace ToolKit
     cam->SetLens(glm::radians(90.0f), 1.0f, near, far);
 
     // 6 cubemap face view matrices.
-    Mat4 views[]                   = {glm::lookAt(position, position + Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                                      glm::lookAt(position, position + Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                                      glm::lookAt(position, position + Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
-                                      glm::lookAt(position, position + Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
-                                      glm::lookAt(position, position + Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                                      glm::lookAt(position, position + Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
-
+    Mat4 views[]                         = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                                            glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                                            glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
+                                            glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
+                                            glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                                            glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
     // Save original render path params.
-    CameraPtr origCam              = renderPath->m_params.Cam;
-    FramebufferPtr origFramebuffer = renderPath->m_params.MainFramebuffer;
+    CameraPtr origCam                    = renderPath->m_params.Cam;
+    FramebufferPtr origFramebuffer       = renderPath->m_params.MainFramebuffer;
 
     // Disable all post-processing for cubemap capture.
     // Post-process passes (gamma/tonemap/FXAA, bloom, DoF, SSAO) are incompatible
@@ -1920,7 +1919,7 @@ namespace ToolKit
       Vec3 sca(1.0f);
       DecomposeMatrix(views[i], &pos, &rot, &sca);
 
-      cam->m_node->SetTranslation(pos);
+      cam->m_node->SetTranslation(position);
       cam->m_node->SetOrientation(rot);
       cam->m_node->SetScale(sca);
 

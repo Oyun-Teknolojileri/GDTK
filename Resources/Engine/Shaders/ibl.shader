@@ -44,9 +44,8 @@ vec3 GetParallaxCorrectedReflection(vec3 R, vec3 worldPos, mat4 inverseVolTransf
 	// Intersection point in local space
 	vec3 intersectLocal = localPos + localDir * dist;
 
-	// PCC direction is relative to the capture position (OBB center).
-	vec3 captureLocal = (volMin + volMax) * 0.5;
-	vec3 correctedR = (inverse(inverseVolTransform) * vec4(intersectLocal - captureLocal, 0.0)).xyz;
+	// PCC direction is relative to the capture position (entity local origin).
+	vec3 correctedR = (inverse(inverseVolTransform) * vec4(intersectLocal, 0.0)).xyz;
 
 	return normalize(correctedR);
 }
