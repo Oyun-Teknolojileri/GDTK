@@ -103,102 +103,6 @@ namespace ToolKit
                              true,
                              true,
                              {false, true, 32, 2048, 1});
-
-    Capture_Define(
-        [this]() -> void
-        {
-          EntityPtr owner = OwnerEntity();
-          if (owner == nullptr)
-          {
-            return;
-          }
-
-          uint res    = (uint) GetCaptureResolutionVal();
-
-          // Compute local aabb.
-          Vec3 offset = GetPositionOffsetVal();
-          Vec3 half   = GetSizeVal() * 0.5f;
-
-          BoundingBox localBB;
-          localBB.min    = offset - half;
-          localBB.max    = offset + half;
-
-          Vec3 position  = owner->m_node->GetTranslation();
-          float extraFar = GetCaptureFarVal();
-
-          // Compute distances to each face from camera position.
-          float minDist  = 0.01f;
-          float perFaceClipDist[6];
-          perFaceClipDist[0] = glm::max(localBB.max.x - offset.x + extraFar, minDist); // +X
-          perFaceClipDist[1] = glm::max(offset.x - localBB.min.x + extraFar, minDist); // -X
-          perFaceClipDist[2] = glm::max(offset.y - localBB.min.y + extraFar, minDist); // -Y
-          perFaceClipDist[3] = glm::max(localBB.max.y - offset.y + extraFar, minDist); // +Y
-          perFaceClipDist[4] = glm::max(localBB.max.z - offset.z + extraFar, minDist); // +Z
-          perFaceClipDist[5] = glm::max(offset.z - localBB.min.z + extraFar, minDist); // -Z
-
-          GetRenderSystem()->AddRenderTask(
-              {[this, position, minDist, res, perFaceClipDist](Renderer* renderer) -> void
-               {
-                 // Disable self-illumination during capture to prevent feedback loop.
-                 bool wasIlluminating = GetIlluminateVal();
-                 SetIlluminateVal(false);
-
-                 // Create a temporary render path for the capture.
-                 ForwardSceneRenderPath capturePath;
-                 capturePath.m_params.Scene = GetSceneManager()->GetCurrentScene();
-
-                 CubeMapPtr cubemap =
-                     renderer->RenderToCubeMap(&capturePath, position, minDist, 1000.0f, res, perFaceClipDist);
-
-                 // Restore illuminate state.
-                 SetIlluminateVal(wasIlluminating);
-
-                 // Create a dynamic HDRI and assign the captured cubemap.
-                 HdriPtr hdri    = MakeNewPtr<Hdri>();
-                 hdri->m_cubemap = cubemap;
-                 hdri->GenerateIrradianceCaches(renderer);
-                 hdri->m_initiated = true;
-
-                 SetHdriVal(hdri);
-               }});
-        },
-        EnvironmentComponentCategory.Name,
-        EnvironmentComponentCategory.Priority,
-        true,
-        true);
-
-    CenterToEnvironment_Define(
-        [this]() -> void
-        {
-          EntityPtr owner = OwnerEntity();
-          if (owner == nullptr)
-          {
-            return;
-          }
-
-          Vec3 offset = GetPositionOffsetVal();
-          if (offset == Vec3(0.0f))
-          {
-            return;
-          }
-
-          Mat4 worldTransform = owner->m_node->GetTransform(TransformationSpace::TS_WORLD);
-          Vec3 worldCenter    = Vec3(worldTransform * Vec4(offset, 1.0f));
-
-          owner->m_node->SetTranslation(worldCenter, TransformationSpace::TS_WORLD);
-          SetPositionOffsetVal(Vec3(0.0f));
-        },
-        EnvironmentComponentCategory.Name,
-        EnvironmentComponentCategory.Priority,
-        true,
-        true);
-
-    auto createParameterVariant = [](const String& name, int val)
-    {
-      ParameterVariant param {val};
-      param.m_name = name;
-      return param;
-    };
   }
 
   void EnvironmentComponent::ParameterEventConstructor()
@@ -304,6 +208,64 @@ namespace ToolKit
     }
 
     return m_boundingBoxCache;
+  }
+
+  void EnvironmentComponent::CaptureEnvironment()
+  {
+    EntityPtr owner = OwnerEntity();
+    if (owner == nullptr)
+    {
+      return;
+    }
+
+    uint res    = (uint) GetCaptureResolutionVal();
+
+    // Compute local aabb.
+    Vec3 offset = GetPositionOffsetVal();
+    Vec3 half   = GetSizeVal() * 0.5f;
+
+    BoundingBox localBB;
+    localBB.min    = offset - half;
+    localBB.max    = offset + half;
+
+    Vec3 position  = owner->m_node->GetTranslation();
+    float extraFar = GetCaptureFarVal();
+
+    // Compute distances to each face from camera position.
+    float minDist  = 0.01f;
+    float perFaceClipDist[6];
+    perFaceClipDist[0] = glm::max(localBB.max.x - offset.x + extraFar, minDist); // +X
+    perFaceClipDist[1] = glm::max(offset.x - localBB.min.x + extraFar, minDist); // -X
+    perFaceClipDist[2] = glm::max(offset.y - localBB.min.y + extraFar, minDist); // -Y
+    perFaceClipDist[3] = glm::max(localBB.max.y - offset.y + extraFar, minDist); // +Y
+    perFaceClipDist[4] = glm::max(localBB.max.z - offset.z + extraFar, minDist); // +Z
+    perFaceClipDist[5] = glm::max(offset.z - localBB.min.z + extraFar, minDist); // -Z
+
+    GetRenderSystem()->AddRenderTask(
+        {[this, position, minDist, res, perFaceClipDist](Renderer* renderer) -> void
+         {
+           // Disable self-illumination during capture to prevent feedback loop.
+           bool wasIlluminating = GetIlluminateVal();
+           SetIlluminateVal(false);
+
+           // Create a temporary render path for the capture.
+           ForwardSceneRenderPath capturePath;
+           capturePath.m_params.Scene = GetSceneManager()->GetCurrentScene();
+
+           CubeMapPtr cubemap =
+               renderer->RenderToCubeMap(&capturePath, position, minDist, 1000.0f, res, perFaceClipDist);
+
+           // Restore illuminate state.
+           SetIlluminateVal(wasIlluminating);
+
+           // Create a dynamic HDRI and assign the captured cubemap.
+           HdriPtr hdri    = MakeNewPtr<Hdri>();
+           hdri->m_cubemap = cubemap;
+           hdri->GenerateIrradianceCaches(renderer);
+           hdri->m_initiated = true;
+
+           SetHdriVal(hdri);
+         }});
   }
 
   void EnvironmentComponent::UpdateBoundingBoxCache()

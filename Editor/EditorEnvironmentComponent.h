@@ -22,6 +22,13 @@ namespace ToolKit
      protected:
       XmlNode* SerializeImp(XmlDocument* doc, XmlNode* parent) const override;
       XmlNode* DeSerializeImp(const SerializationFileInfo& info, XmlNode* parent) override;
+
+     private:
+      void ParameterConstructor() override;
+
+     public:
+      TKDeclareParam(VariantCallback, Capture);
+      TKDeclareParam(VariantCallback, CenterToEnvironment);
     };
 
     typedef std::shared_ptr<EditorEnvironmentComponent> EditorEnvironmentComponentPtr;
