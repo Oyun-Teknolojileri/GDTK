@@ -115,45 +115,26 @@ namespace ToolKit
 
           uint res    = (uint) GetCaptureResolutionVal();
 
-          // Compute world-space AABB from OBB for per-face far clipping.
+          // Compute local aabb.
           Vec3 offset = GetPositionOffsetVal();
           Vec3 half   = GetSizeVal() * 0.5f;
 
           BoundingBox localBB;
-          localBB.min         = offset - half;
-          localBB.max         = offset + half;
+          localBB.min    = offset - half;
+          localBB.max    = offset + half;
 
-          Mat4 worldTransform = owner->m_node->GetTransform(TransformationSpace::TS_WORLD);
+          Vec3 position  = owner->m_node->GetTranslation();
+          float extraFar = GetCaptureFarVal();
 
-          // Place capture camera at the OBB center in world space.
-          Vec3 position       = Vec3(worldTransform * Vec4(offset, 1.0f));
-
-          Vec3Array corners;
-          GetCorners(localBB, corners);
-
-          float extraFar         = GetCaptureFarVal();
-
-          // Compute per-face OBB clip distances.
-          // Transform capture position into OBB local space, then compute
-          // perpendicular distance to each of the 6 box walls.
-          // Face order: +X(0), -X(1), -Y(2), +Y(3), +Z(4), -Z(5).
-          Mat4 invWorldTransform = glm::inverse(worldTransform);
-          Vec3 localPos          = Vec3(invWorldTransform * Vec4(position, 1.0f));
-
+          // Compute distances to each face from camera position.
+          float minDist  = 0.01f;
           float perFaceClipDist[6];
-          perFaceClipDist[0] = localBB.max.x - localPos.x + extraFar; // +X
-          perFaceClipDist[1] = localPos.x - localBB.min.x + extraFar; // -X
-          perFaceClipDist[2] = localPos.y - localBB.min.y + extraFar; // -Y
-          perFaceClipDist[3] = localBB.max.y - localPos.y + extraFar; // +Y
-          perFaceClipDist[4] = localBB.max.z - localPos.z + extraFar; // +Z
-          perFaceClipDist[5] = localPos.z - localBB.min.z + extraFar; // -Z
-
-          // Clamp to a minimum positive value.
-          float minDist      = 0.01f;
-          for (int fi = 0; fi < 6; fi++)
-          {
-            perFaceClipDist[fi] = glm::max(perFaceClipDist[fi], minDist);
-          }
+          perFaceClipDist[0] = glm::max(localBB.max.x - offset.x + extraFar, minDist); // +X
+          perFaceClipDist[1] = glm::max(offset.x - localBB.min.x + extraFar, minDist); // -X
+          perFaceClipDist[2] = glm::max(offset.y - localBB.min.y + extraFar, minDist); // -Y
+          perFaceClipDist[3] = glm::max(localBB.max.y - offset.y + extraFar, minDist); // +Y
+          perFaceClipDist[4] = glm::max(localBB.max.z - offset.z + extraFar, minDist); // +Z
+          perFaceClipDist[5] = glm::max(offset.z - localBB.min.z + extraFar, minDist); // -Z
 
           GetRenderSystem()->AddRenderTask(
               {[this, position, minDist, res, perFaceClipDist](Renderer* renderer) -> void

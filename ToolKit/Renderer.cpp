@@ -1917,11 +1917,11 @@ namespace ToolKit
     {
       Vec3 pos;
       Quaternion rot;
-      Vec3 sca;
+      Vec3 sca(1.0f);
       DecomposeMatrix(views[i], &pos, &rot, &sca);
 
-      cam->m_node->SetTranslation(position, TransformationSpace::TS_WORLD);
-      cam->m_node->SetOrientation(rot, TransformationSpace::TS_WORLD);
+      cam->m_node->SetTranslation(pos);
+      cam->m_node->SetOrientation(rot);
       cam->m_node->SetScale(sca);
 
       // Set color attachment to the corresponding cubemap face.
