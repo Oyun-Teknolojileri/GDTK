@@ -503,7 +503,7 @@ namespace ToolKit
         }
 
         ImVec4 col;
-        if (sscanf(line.c_str(), "%f,%f,%f,%f", &col.x, &col.y, &col.z, &col.w) == 4)
+        if (sscanf(line.c_str(), "%*s %f,%f,%f,%f", &col.x, &col.y, &col.z, &col.w) == 4)
         {
           colors[count++] = col;
         }
