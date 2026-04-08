@@ -51,6 +51,7 @@ namespace ToolKit
     TKDeclareParam(float, CaptureFar);
     TKDeclareParam(int, CaptureResolution);
     TKDeclareParam(VariantCallback, Capture);
+    TKDeclareParam(VariantCallback, CenterToEnvironment);
 
     bool m_spatialCachesInvalidated = true; //!< If true, bounding box caches are updated upon access.
 

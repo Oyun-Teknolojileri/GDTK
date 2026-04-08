@@ -167,6 +167,32 @@ namespace ToolKit
         true,
         true);
 
+    CenterToEnvironment_Define(
+        [this]() -> void
+        {
+          EntityPtr owner = OwnerEntity();
+          if (owner == nullptr)
+          {
+            return;
+          }
+
+          Vec3 offset = GetPositionOffsetVal();
+          if (offset == Vec3(0.0f))
+          {
+            return;
+          }
+
+          Mat4 worldTransform = owner->m_node->GetTransform(TransformationSpace::TS_WORLD);
+          Vec3 worldCenter    = Vec3(worldTransform * Vec4(offset, 1.0f));
+
+          owner->m_node->SetTranslation(worldCenter, TransformationSpace::TS_WORLD);
+          SetPositionOffsetVal(Vec3(0.0f));
+        },
+        EnvironmentComponentCategory.Name,
+        EnvironmentComponentCategory.Priority,
+        true,
+        true);
+
     auto createParameterVariant = [](const String& name, int val)
     {
       ParameterVariant param {val};
