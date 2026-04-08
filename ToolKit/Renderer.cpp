@@ -78,6 +78,7 @@ namespace ToolKit
   void Renderer::EndRenderFrame()
   {
     SetAmbientOcclusionTexture(nullptr);
+    m_sky = nullptr;
 
     for (const auto& pair : m_drawnFrameBufferStats)
     {

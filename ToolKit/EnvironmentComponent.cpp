@@ -13,6 +13,7 @@
 #include "RenderSystem.h"
 #include "Renderer.h"
 #include "Scene.h"
+#include "Sky.h"
 #include "Texture.h"
 #include "ToolKit.h"
 
@@ -36,6 +37,22 @@ namespace ToolKit
 
     HdriPtr hdri = GetHdriVal();
     assert(hdri != nullptr && "Hdri on the environment component can't be null.");
+
+    if (hdri->IsDynamic() && !hdri->m_specularEnvMap && !hdri->m_diffuseEnvMap)
+    {
+      // Sky generates its own irradiance, never capture for it.
+      EntityPtr owner = OwnerEntity();
+      bool isSky      = owner != nullptr && owner->IsA<SkyBase>();
+
+      UpdateBoundingBoxCache();
+      m_initialized = true;
+
+      if (!isSky)
+      {
+        CaptureEnvironment();
+      }
+      return;
+    }
 
     if (!hdri->IsDynamic())
     {

@@ -52,12 +52,12 @@ namespace ToolKit
   {
     switch (task.Priority)
     {
-    case RenderTaskPriority::High:
-      m_highQueue.push_back(task);
-      break;
-    case RenderTaskPriority::Low:
-      m_lowQueue.push_back(task);
-      break;
+      case RenderTaskPriority::High:
+        m_highQueue.push_back(task);
+        break;
+      case RenderTaskPriority::Low:
+        m_lowQueue.push_back(task);
+        break;
     }
   }
 
@@ -111,8 +111,6 @@ namespace ToolKit
 
     flushTasksFn(m_highQueue);
     flushTasksFn(m_lowQueue);
-
-    m_renderer->m_sky = nullptr;
   }
 
   void RenderSystem::FlushGpuPrograms() { GetGpuProgramManager()->FlushPrograms(); }
