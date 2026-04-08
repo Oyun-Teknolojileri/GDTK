@@ -170,6 +170,8 @@ namespace ToolKit
       // Scene pass.
       m_sceneRenderPath->m_params.postProcessSettings = pps;
       m_sceneRenderPath->m_params.Cam                 = m_camera;
+      // Keep depth for subsequent editor passes.
+      m_sceneRenderPath->m_forwardRenderPass->m_params.invalidateDepthBuffer = false;
 
       m_sceneRenderPath->m_params.overrideLights.clear();
       if (m_params.LitMode == EditorLitMode::EditorLit)

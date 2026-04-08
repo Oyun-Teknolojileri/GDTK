@@ -77,11 +77,17 @@ namespace ToolKit
                                    m_params.resolveFrameBuffer,
                                    {(int) Framebuffer::Attachment::ColorAttachment0});
 
-      renderer->InvalidateFramebuffer(GraphicBitFields::AllBits, m_params.FrameBuffer);
+      if (m_params.invalidateDepthBuffer)
+      {
+        renderer->InvalidateFramebuffer(GraphicBitFields::AllBits, m_params.FrameBuffer);
+      }
     }
     else
     {
-      renderer->InvalidateFramebuffer(GraphicBitFields::DepthBits, m_params.FrameBuffer);
+      if (m_params.invalidateDepthBuffer)
+      {
+        renderer->InvalidateFramebuffer(GraphicBitFields::DepthBits, m_params.FrameBuffer);
+      }
     }
   }
 
