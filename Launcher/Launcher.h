@@ -20,14 +20,12 @@ namespace ToolKit
     class LauncherApp
     {
      public:
-      LauncherApp(Workspace* workspace);
+      LauncherApp();
       virtual ~LauncherApp();
 
       void ShowLauncherWindow();
 
      private:
-      LauncherApp();
-
       void HandleWorkspace();
       void UpdateThumbnailCache();
       void ShowWorkspacePopup();
@@ -43,7 +41,7 @@ namespace ToolKit
       float m_windowWidth        = 1024.0f;
       float m_windowHeight       = 768.0f;
 
-      Workspace* m_workspace     = nullptr;
+      WorkspacePtr m_workspace;
       bool m_showWorkspacePopup  = false;
       bool m_showNewProjectPopup = false;
 

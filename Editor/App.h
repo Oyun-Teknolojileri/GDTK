@@ -22,7 +22,7 @@ namespace ToolKit
     class App : Serializable
     {
      public:
-      App(int windowWidth, int windowHeight, Workspace* workspace);
+      App(int windowWidth, int windowHeight);
       virtual ~App();
 
       void Init();
@@ -258,7 +258,7 @@ namespace ToolKit
       ShellOpenDirFn m_shellOpenDirFn          = nullptr;
       EditorLitMode m_sceneLightingMode        = EditorLitMode::EditorLit;
       EditorViewportPtr m_lastActiveViewport   = nullptr;
-      Workspace* m_workspace                   = nullptr; // this is set at cosntructor
+      WorkspacePtr m_workspace;
 
       // Dynamic Entity Menus.
       StringArray m_customObjectMetaValues;    //!< Add menu shows this additional classes.

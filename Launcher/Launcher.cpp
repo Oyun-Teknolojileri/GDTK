@@ -148,9 +148,17 @@ namespace ToolKit
           io.Fonts->AddFontFromFileTTF(FontPath("LiberationSans-Bold.ttf", true).c_str(), 14.0f, nullptr, utf8TR);
     }
 
-    LauncherApp::LauncherApp(Workspace* workspace) : LauncherApp()
+    LauncherApp::LauncherApp()
     {
-      m_workspace   = workspace;
+      m_logoPath             = "/Icons/app_big.png";
+      m_defaultThumbnailPath = "/splash.png";
+      m_thumbnailPath        = "../../thumbnail.png";
+      m_launchIconPath       = "/Icons/play.png";
+      m_folderIconPath       = "/Icons/folder.png";
+      m_shortcutIconPath     = "/Icons/file.png";
+
+      m_workspace            = std::make_shared<Workspace>();
+      m_workspace->Init();
 
       m_logoTexture = GetTextureManager()->Create<Texture>(TexturePath(m_logoPath.c_str(), true));
       if (m_logoTexture)
@@ -645,16 +653,6 @@ namespace ToolKit
       ImGui::PopStyleVar(4);
 
       ImGui::End();
-    }
-
-    inline LauncherApp::LauncherApp()
-    {
-      m_logoPath             = "/Icons/app_big.png";
-      m_defaultThumbnailPath = "/splash.png";
-      m_thumbnailPath        = "../../thumbnail.png";
-      m_launchIconPath       = "/Icons/play.png";
-      m_folderIconPath       = "/Icons/folder.png";
-      m_shortcutIconPath     = "/Icons/file.png";
     }
 
     void LauncherApp::HandleWorkspace()

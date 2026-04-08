@@ -20,7 +20,6 @@
 #include "SplashScreenRenderPath.h"
 #include "Stats.h"
 #include "UI.h"
-#include "Workspace.h"
 
 #include <Common/SDLEventPool.h>
 #include <Common/Win32Utils.h>
@@ -35,15 +34,14 @@
 #include <array>
 #include <chrono>
 
-SDL_Window* g_window            = nullptr;
-SDL_GLContext g_context         = nullptr;
+SDL_Window* g_window        = nullptr;
+SDL_GLContext g_context     = nullptr;
 
 // Main loop signal handle.
-bool g_running                  = true;
+bool g_running              = true;
 
 // ToolKit Application main handle.
-ToolKit::Editor::App* g_app     = nullptr;
-ToolKit::Workspace* g_workspace = nullptr;
+ToolKit::Editor::App* g_app = nullptr;
 
 namespace ToolKit
 {
@@ -58,6 +56,10 @@ namespace ToolKit
 
     void HandleArguments(char* argv[], int argc)
     {
+      if (!g_app)
+      {
+        return;
+      }
       String workspacePath;
       String projectName;
       for (int i = 1; i < argc; ++i)
@@ -84,17 +86,15 @@ namespace ToolKit
 
       if (!workspacePath.empty())
       {
-        // Set workspace
-        g_workspace->SetDefaultWorkspace(workspacePath);
-        g_workspace->RefreshProjects();
+        g_app->m_workspace->SetDefaultWorkspace(workspacePath);
+        g_app->m_workspace->RefreshProjects();
       }
       if (!projectName.empty())
       {
-        // set active project
         Project targetProject;
         targetProject.name = projectName;
         bool found         = false;
-        for (const auto& proj : g_workspace->m_projects)
+        for (const auto& proj : g_app->m_workspace->m_projects)
         {
           if (proj.name == projectName)
           {
@@ -106,7 +106,7 @@ namespace ToolKit
 
         if (found)
         {
-          g_workspace->SetActiveProject(targetProject);
+          g_app->m_workspace->SetActiveProject(targetProject);
         }
       }
     }
@@ -385,13 +385,9 @@ namespace ToolKit
               TK_ERR("SDL_GetDisplayBounds Error: %s", SDL_GetError());
             }
 
-            g_workspace = new Workspace();
-            g_workspace->Init();
+            g_app = new App(settings.m_window->GetWidthVal(), settings.m_window->GetHeightVal());
 
             HandleArguments(argv, argc);
-
-            // Init app
-            g_app = new App(settings.m_window->GetWidthVal(), settings.m_window->GetHeightVal(), g_workspace);
             g_app->m_displayBounds  = UVec2(displayBounds.w, displayBounds.h);
             g_app->m_sysComExecFn   = &ToolKit::PlatformHelpers::SysComExec;
             g_app->m_shellOpenDirFn = &ToolKit::PlatformHelpers::OpenExplorer;
@@ -470,7 +466,6 @@ namespace ToolKit
 
       SafeDel(g_app);
       SafeDel(g_proxy);
-      SafeDel(g_workspace);
 
       SafeDel(g_sdlEventPool);
       SDL_DestroyWindow(g_window);

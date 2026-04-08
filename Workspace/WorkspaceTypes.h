@@ -15,4 +15,7 @@ namespace ToolKit
   static const StringView XmlNodePath("path");
   const String g_validLibraryNameRules(
       "Alpha numeric characters and \"_\" are allowed. Do not start with digit. No white space.");
+
+  class Workspace;
+  typedef std::shared_ptr<Workspace> WorkspacePtr;
 } // namespace ToolKit

@@ -16,7 +16,7 @@
 #include <SDL.h>
 #include <TKOpenGL.h>
 #include <Types.h>
-#include <Workspace.h>
+
 
 #define IMGUI_USER_CONFIG "tk_imconfig.h"
 #include <ImGui/backends/imgui_impl_opengl3.h>
@@ -39,7 +39,6 @@ namespace ToolKit
   {
     static Main* g_proxy                             = nullptr;
     static SDLEventPool<TK_PLATFORM>* g_sdlEventPool = nullptr;
-    static Workspace* g_workspace                    = nullptr;
     static LauncherApp* g_launcher                   = nullptr;
 
     void CreateAppData()
@@ -179,10 +178,7 @@ namespace ToolKit
 
       DeserializeThemeSettings();
 
-      g_workspace = new Workspace();
-      g_workspace->Init();
-
-      g_launcher                                     = new LauncherApp(g_workspace);
+      g_launcher                                     = new LauncherApp();
       g_launcher->m_sysComExecFn                     = &PlatformHelpers::SysComExec;
       g_launcher->m_createProjectShortcutOnDesktopFn = [](const String& name, const String& args)
       {
@@ -246,7 +242,6 @@ namespace ToolKit
       g_proxy->PostUninit();
 
       SafeDel(g_proxy);
-      SafeDel(g_workspace);
       SafeDel(g_sdlEventPool);
 
       SDL_DestroyWindow(g_window);

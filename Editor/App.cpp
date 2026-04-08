@@ -41,9 +41,10 @@ namespace ToolKit
   namespace Editor
   {
 
-    App::App(int windowWidth, int windowHeight, Workspace* workspace)
+    App::App(int windowWidth, int windowHeight)
     {
-      m_workspace = workspace;
+      m_workspace = std::make_shared<Workspace>();
+      m_workspace->Init();
 
       UI::Init();
 
