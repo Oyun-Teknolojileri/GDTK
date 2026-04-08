@@ -9,6 +9,8 @@
 
 #include "App.h"
 #include "EditorViewport.h"
+#include "Action.h"
+#include "TransformMod.h"
 
 #include <AABBOverrideComponent.h>
 #include <DirectionComponent.h>
@@ -23,7 +25,14 @@ namespace ToolKit
 
     BoxEditMod::BoxEditMod(ModId id) : BaseMod(id) {}
 
-    BoxEditMod::~BoxEditMod() { GetApp()->m_gizmo = nullptr; }
+    BoxEditMod::~BoxEditMod()
+    {
+      GetApp()->m_gizmo = nullptr;
+      if (m_dragAction != nullptr)
+      {
+        SafeDel(m_dragAction);
+      }
+    }
 
     void BoxEditMod::Init()
     {
@@ -274,6 +283,12 @@ namespace ToolKit
       m_dragStartSize       = m_dragContext.GetSize();
       m_dragStartOffset     = m_dragContext.GetPositionOffset();
 
+      if (m_dragAction != nullptr)
+      {
+        SafeDel(m_dragAction);
+      }
+      m_dragAction = new TransformAction(ntt);
+
       // Build drag plane that contains the face normal direction but faces the camera.
       Vec3 faceNormal       = m_gizmo->GetFaceNormalWorld(m_dragFace);
       const BoundingBox& bb = m_gizmo->GetTargetBox();
@@ -289,6 +304,7 @@ namespace ToolKit
       if (vp == nullptr)
       {
         m_dragging = false;
+        SafeDel(m_dragAction);
         return;
       }
 
@@ -336,6 +352,7 @@ namespace ToolKit
       else
       {
         m_dragging = false;
+        SafeDel(m_dragAction);
       }
     }
 
@@ -412,6 +429,12 @@ namespace ToolKit
         m_gizmo->Grab(AxisLabel::None);
       }
       m_dragContext = BoxEditContext();
+
+      if (m_dragAction != nullptr)
+      {
+        ActionManager::GetInstance()->AddAction(m_dragAction);
+        m_dragAction = nullptr;
+      }
     }
 
   } // namespace Editor
