@@ -250,15 +250,15 @@ namespace ToolKit
     Vec3 position  = owner->m_node->GetTranslation();
     float extraFar = GetCaptureFarVal();
 
-    // Compute distances to each face from camera position.
+    // Compute distances to each face from capture position (entity origin in local space).
     float minDist  = 0.01f;
     float perFaceClipDist[6];
-    perFaceClipDist[0] = glm::max(localBB.max.x - offset.x + extraFar, minDist); // +X
-    perFaceClipDist[1] = glm::max(offset.x - localBB.min.x + extraFar, minDist); // -X
-    perFaceClipDist[2] = glm::max(offset.y - localBB.min.y + extraFar, minDist); // -Y
-    perFaceClipDist[3] = glm::max(localBB.max.y - offset.y + extraFar, minDist); // +Y
-    perFaceClipDist[4] = glm::max(localBB.max.z - offset.z + extraFar, minDist); // +Z
-    perFaceClipDist[5] = glm::max(offset.z - localBB.min.z + extraFar, minDist); // -Z
+    perFaceClipDist[0] = glm::max(localBB.max.x + extraFar, minDist); // +X
+    perFaceClipDist[1] = glm::max(-localBB.min.x + extraFar, minDist); // -X
+    perFaceClipDist[2] = glm::max(-localBB.min.y + extraFar, minDist); // -Y
+    perFaceClipDist[3] = glm::max(localBB.max.y + extraFar, minDist); // +Y
+    perFaceClipDist[4] = glm::max(localBB.max.z + extraFar, minDist); // +Z
+    perFaceClipDist[5] = glm::max(-localBB.min.z + extraFar, minDist); // -Z
 
     GetRenderSystem()->AddRenderTask(
         {[this, position, minDist, res, perFaceClipDist](Renderer* renderer) -> void
