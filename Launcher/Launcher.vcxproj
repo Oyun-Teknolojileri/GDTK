@@ -152,6 +152,9 @@
   <ItemGroup>
     <ClInclude Include="Launcher.h" />
   </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="..\Editor\Editor.rc" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
