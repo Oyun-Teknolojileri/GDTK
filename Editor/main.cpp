@@ -11,6 +11,7 @@
 #include "ConsoleWindow.h"
 #include "EditorCamera.h"
 #include "EditorCanvas.h"
+#include "EditorEnvironmentComponent.h"
 #include "EditorViewport2d.h"
 #include "Gizmo.h"
 #include "Grid.h"
@@ -293,6 +294,7 @@ namespace ToolKit
             objFactory->Override<EditorScene, Scene>();
             objFactory->Override<EditorCamera, Camera>();
             objFactory->Override<EditorCanvas, Canvas>();
+            objFactory->Override<EditorEnvironmentComponent, EnvironmentComponent>();
 
             // Override SceneManager.
             SafeDel(g_proxy->m_sceneManager);

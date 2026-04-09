@@ -92,11 +92,7 @@ namespace ToolKit
       return;
     }
 
-    if (m_depthAtch != nullptr)
-    {
-      m_depthAtch->UnInit();
-      m_depthAtch = nullptr;
-    }
+    m_depthAtch = nullptr;
 
     for (int i = 0; i < m_maxColorAttachmentCount; i++)
     {

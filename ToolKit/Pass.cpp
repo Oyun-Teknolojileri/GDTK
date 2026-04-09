@@ -352,7 +352,10 @@ namespace ToolKit
   void RenderJobProcessor::AssignEnvironment(RenderJob& job, const EnvironmentComponentPtrArray& environments)
   {
     BoundingBox bestBox;
-    job.EnvironmentVolume = nullptr;
+    BoundingBox secondBestBox;
+    job.EnvironmentVolume          = nullptr;
+    job.SecondaryEnvironmentVolume = nullptr;
+
     for (const EnvironmentComponentPtr& volume : environments)
     {
       if (volume->GetIlluminateVal() == false)
@@ -360,14 +363,25 @@ namespace ToolKit
         continue;
       }
 
-      // Pick the smallest volume intersecting with job.
       const BoundingBox& vbb = volume->GetBoundingBox();
       if (BoxBoxIntersection(vbb, job.BoundingBox) != IntersectResult::Outside)
       {
-        if (bestBox.Volume() > vbb.Volume() || job.EnvironmentVolume == nullptr)
+        if (job.EnvironmentVolume == nullptr || vbb.Volume() < bestBox.Volume())
         {
+          // Current best becomes secondary.
+          if (job.EnvironmentVolume != nullptr)
+          {
+            secondBestBox                  = bestBox;
+            job.SecondaryEnvironmentVolume = job.EnvironmentVolume;
+          }
+
           bestBox               = vbb;
           job.EnvironmentVolume = volume.get();
+        }
+        else if (job.SecondaryEnvironmentVolume == nullptr || vbb.Volume() < secondBestBox.Volume())
+        {
+          secondBestBox                  = vbb;
+          job.SecondaryEnvironmentVolume = volume.get();
         }
       }
     }

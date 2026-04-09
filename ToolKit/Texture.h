@@ -107,6 +107,7 @@ namespace ToolKit
 
    public:
     DepthTexture();
+    ~DepthTexture() override;
 
     void Load() override;
     void Init(int width, int height, bool stencil, MsaaSampleCount multiSample = MsaaSampleCount::x0);

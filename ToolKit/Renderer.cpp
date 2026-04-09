@@ -13,6 +13,7 @@
 #include "Drawable.h"
 #include "EngineSettings.h"
 #include "EnvironmentComponent.h"
+#include "ForwardSceneRenderPath.h"
 #include "Framebuffer.h"
 #include "GradientSky.h"
 #include "Logger.h"
@@ -54,6 +55,8 @@ namespace ToolKit
     int constexpr NORMAL_MAP_TEXTURE_SLOT                    = 9;
     int constexpr IBL_SPECULAR_PRE_FILTERED_MAP_TEXTURE_SLOT = 15;
     int constexpr IBL_BRDF_LUT_TEXTURE_SLOT                  = 10;
+    int constexpr SECONDARY_IRRADIANCE_MAP_TEXTURE_SLOT      = 11;
+    int constexpr SECONDARY_IBL_SPECULAR_MAP_TEXTURE_SLOT    = 12;
   } // namespace DefaultTextureSlots
 
   Renderer::Renderer()
@@ -75,6 +78,7 @@ namespace ToolKit
   void Renderer::EndRenderFrame()
   {
     SetAmbientOcclusionTexture(nullptr);
+    m_sky = nullptr;
 
     for (const auto& pair : m_drawnFrameBufferStats)
     {
@@ -93,7 +97,7 @@ namespace ToolKit
     graphicConstantsBuffer.m_data.shadowDistance      = shadows->GetShadowMaxDistance();
     graphicConstantsBuffer.m_data.cascadeCount        = shadows->GetCascadeCountVal();
     graphicConstantsBuffer.m_data.shadowAtlasSize     = (float) shadows->GetShadowAtlasResolution();
-    graphicConstantsBuffer.m_data.iblMaxReflectionLod = RHIConstants::SpecularIBLLods;
+    graphicConstantsBuffer.m_data.iblMaxReflectionLod = RHIConstants::SpecularIBLLods - 1;
     graphicConstantsBuffer.m_data.cascadeDistances    = *((Vec4*) &shadows->GetCascadeDistancesVal());
     graphicConstantsBuffer.Invalidate();
   }
@@ -176,8 +180,8 @@ namespace ToolKit
     {
       if (camera->IsOrtographic())
       {
-        float width     = m_viewportSize.x * 0.5f;
-        float height    = m_viewportSize.y * 0.5f;
+        float width     = m_viewportRect.x * 0.5f;
+        float height    = m_viewportRect.y * 0.5f;
 
         float camWidth  = camera->Right();
         float camHeight = camera->Top();
@@ -189,7 +193,7 @@ namespace ToolKit
       }
       else
       {
-        float aspect    = (float) m_viewportSize.x / (float) m_viewportSize.y;
+        float aspect    = (float) m_viewportRect.x / (float) m_viewportRect.y;
         float camAspect = camera->Aspect();
         if (glm::notEqual(aspect, camAspect))
         {
@@ -492,13 +496,13 @@ namespace ToolKit
       }
 
       const FramebufferSettings& fbSet = frameBuffer->GetSettings();
-      SetViewportSize(fbSet.width, fbSet.height);
+      SetViewportRect(0, 0, fbSet.width, fbSet.height);
     }
     else
     {
       // Backbuffer
       RHI::SetFramebuffer((GLenum) frameBufferType, 0);
-      SetViewportSize(m_windowSize.x, m_windowSize.y);
+      SetViewportRect(0, 0, m_windowSize.x, m_windowSize.y);
     }
 
     if (attachmentsToClear != GraphicBitFields::None)
@@ -715,22 +719,14 @@ namespace ToolKit
 
   void Renderer::SetViewport(Viewport* viewport) { SetFramebuffer(viewport->m_framebuffer, GraphicBitFields::AllBits); }
 
-  void Renderer::SetViewportSize(uint width, uint height)
+  void Renderer::SetViewportRect(uint x, uint y, uint width, uint height)
   {
-    if (width == m_viewportSize.x && height == m_viewportSize.y)
+    if (width == m_viewportRect.x && height == m_viewportRect.y && m_viewportRect.z == x && m_viewportRect.w == y)
     {
       return;
     }
 
-    m_viewportSize.x = width;
-    m_viewportSize.y = height;
-    glViewport(0, 0, width, height);
-  }
-
-  void Renderer::SetViewportSize(uint x, uint y, uint width, uint height)
-  {
-    m_viewportSize.x = width;
-    m_viewportSize.y = height;
+    m_viewportRect = UVec4(width, height, x, y);
     glViewport(x, y, width, height);
   }
 
@@ -987,7 +983,7 @@ namespace ToolKit
 
         framebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, tempRT, 0, -1);
         SetFramebuffer(framebuffer, GraphicBitFields::None);
-        SetViewportSize(0, 0, texSize, texSize);
+        SetViewportRect(0, 0, texSize, texSize);
         glScissor(sx, sy, slotSize, slotSize);
 
         m_gaussianBlurMaterial->UpdateProgramUniform("BlurScale", Vec3(blurAmount, 0.0f, 0.0f));
@@ -1011,7 +1007,7 @@ namespace ToolKit
 
         framebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, srcArray, 0, layer);
         SetFramebuffer(framebuffer, GraphicBitFields::None);
-        SetViewportSize(0, 0, texSize, texSize);
+        SetViewportRect(0, 0, texSize, texSize);
         glScissor(sx, sy, slotSize, slotSize);
 
         m_gaussianBlurMaterial->SetDiffuseTextureVal(tempRT);
@@ -1223,7 +1219,9 @@ namespace ToolKit
 
     // Sky and Ibl data.
     m_drawCommand.SetIblInUse(false);
-    const EnvironmentComponent* envCom = job.EnvironmentVolume;
+    m_drawCommand.SetSecondaryIblIntensity(0.0f);
+    m_drawCommand.SetIblFadeDistance(0.0f);
+    EnvironmentComponent* envCom = job.EnvironmentVolume;
     if (envCom)
     {
       const HdriPtr& hdriPtr     = envCom->GetHdriVal();
@@ -1238,9 +1236,63 @@ namespace ToolKit
 
         m_drawCommand.SetIblInUse(true);
         m_drawCommand.SetIblIntensity(envCom->GetIntensityVal());
+
+        // Pass primary volume local-space BB for OBB per-pixel blend and Parallax Corrected Cubemaps.
+        Vec3 offset = envCom->GetPositionOffsetVal();
+        Vec3 half   = envCom->GetSizeVal() * 0.5f;
+        bool isSky  = false;
         if (const EntityPtr& env = envCom->OwnerEntity())
         {
-          m_iblRotation = Mat4(env->m_node->GetOrientation());
+          isSky = env->IsA<SkyBase>();
+        }
+
+        m_drawCommand.SetPrimaryVolumeMin(offset - half, !isSky);
+        m_drawCommand.SetPrimaryVolumeMax(offset + half);
+        m_drawCommand.SetIblFadeDistance(glm::max(envCom->GetFadeVal(), 0.001f));
+
+        // Sky: rotation applies to IBL image, no volume boundary.
+        // Non-Sky: rotation applies to OBB volume, IBL image stays fixed.
+        if (const EntityPtr& env = envCom->OwnerEntity())
+        {
+          if (isSky)
+          {
+            m_iblRotation = Mat4(env->m_node->GetOrientation());
+            m_drawCommand.SetIblInverseVolumeTransform(Mat4(1.0f));
+          }
+          else
+          {
+            m_iblRotation       = Mat4(1.0f);
+            Mat4 worldTransform = env->m_node->GetTransform(TransformationSpace::TS_WORLD);
+            m_drawCommand.SetIblInverseVolumeTransform(glm::inverse(worldTransform));
+          }
+        }
+
+        // Secondary IBL for per-pixel blending.
+        EnvironmentComponent* secEnvCom = job.SecondaryEnvironmentVolume;
+        if (secEnvCom)
+        {
+          const HdriPtr& secHdri  = secEnvCom->GetHdriVal();
+          CubeMapPtr& secDiffuse  = secHdri->m_diffuseEnvMap;
+          CubeMapPtr& secSpecular = secHdri->m_specularEnvMap;
+
+          if (secDiffuse && secSpecular)
+          {
+            SetTexture(DefaultTextureSlots::SECONDARY_IRRADIANCE_MAP_TEXTURE_SLOT, secDiffuse);
+            SetTexture(DefaultTextureSlots::SECONDARY_IBL_SPECULAR_MAP_TEXTURE_SLOT, secSpecular);
+            m_drawCommand.SetSecondaryIblIntensity(secEnvCom->GetIntensityVal());
+
+            if (const EntityPtr& secEnv = secEnvCom->OwnerEntity())
+            {
+              if (secEnv->IsA<SkyBase>())
+              {
+                m_secondaryIblRotation = Mat4(secEnv->m_node->GetOrientation());
+              }
+              else
+              {
+                m_secondaryIblRotation = Mat4(1.0f);
+              }
+            }
+          }
         }
       }
     }
@@ -1301,8 +1353,11 @@ namespace ToolKit
           case Uniform::IBL_ROTATION:
             glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&m_iblRotation));
             break;
+          case Uniform::IBL_SECONDARY_ROTATION:
+            glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&m_secondaryIblRotation));
+            break;
           case Uniform::VIEWPORT_SIZE:
-            glUniform2f(loc, (float) m_viewportSize.x, (float) m_viewportSize.y);
+            glUniform2f(loc, (float) m_viewportRect.x, (float) m_viewportRect.y);
             break;
           default:
             break;
@@ -1744,8 +1799,6 @@ namespace ToolKit
 
     m_oneColorAttachmentFramebuffer->ReconstructIfNeeded({size, size, false, false});
 
-    UVec2 lastViewportSize = m_viewportSize;
-
     assert(size >= 128 && "Due to RHIConstants::SpecularIBLLods, it can't be lower than this resolution.");
     for (int mip = 0; mip < mipMaps; mip++)
     {
@@ -1774,7 +1827,7 @@ namespace ToolKit
 
         SetFramebuffer(m_oneColorAttachmentFramebuffer, GraphicBitFields::None);
 
-        mat->UpdateProgramUniform("roughness", (float) mip / (float) mipMaps);
+        mat->UpdateProgramUniform("roughness", (float) mip / (float) (mipMaps - 1));
         mat->UpdateProgramUniform("resPerFace", (float) mipSize);
 
         RHI::SetTexture((GLenum) GraphicTypes::TargetCubeMap, cubemap->m_textureId, 0);
@@ -1789,10 +1842,125 @@ namespace ToolKit
 
     SetFramebuffer(nullptr, GraphicBitFields::None);
 
+    // Clamp texture max mip level to the last bake level.
+    RHI::SetTexture(GL_TEXTURE_CUBE_MAP, cubemapRt->m_textureId);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAX_LEVEL, mipMaps - 1);
+
     CubeMapPtr newCubeMap = MakeNewPtr<CubeMap>();
     newCubeMap->Consume(cubemapRt);
 
     return newCubeMap;
+  }
+
+  CubeMapPtr Renderer::RenderToCubeMap(ForwardSceneRenderPath* renderPath,
+                                       const Vec3& position,
+                                       float near,
+                                       float far,
+                                       uint resolution,
+                                       const float* perFaceClipDist)
+  {
+    TK_PROFILE_FUNCTION();
+
+    Stats::BeginGpuScope("RenderToCubeMap");
+
+    // Create cubemap render target.
+    const TextureSettings cubeMapSettings = {GraphicTypes::TargetCubeMap,
+                                             GraphicTypes::UVClampToEdge,
+                                             GraphicTypes::UVClampToEdge,
+                                             GraphicTypes::UVClampToEdge,
+                                             GraphicTypes::SampleLinearMipmapLinear,
+                                             GraphicTypes::SampleLinear,
+                                             GraphicTypes::FormatRGBA16F,
+                                             GraphicTypes::FormatRGBA,
+                                             GraphicTypes::TypeFloat,
+                                             MsaaSampleCount::x0,
+                                             0,
+                                             false};
+
+    RenderTargetPtr cubeMapRt = MakeNewPtr<RenderTarget>(resolution, resolution, cubeMapSettings, "RenderToCubeMapRT");
+    cubeMapRt->Init();
+
+    // Create framebuffer for rendering each face.
+    FramebufferPtr cubeFb = MakeNewPtr<Framebuffer>("RenderToCubeMapFB");
+    cubeFb->ReconstructIfNeeded({(int) resolution, (int) resolution, false, true});
+
+    // Create camera for cubemap capture.
+    CameraPtr cam = MakeNewPtr<Camera>();
+    cam->SetLens(glm::radians(90.0f), 1.0f, near, far);
+
+    // 6 cubemap face view matrices.
+    Mat4 views[]                         = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                                            glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                                            glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
+                                            glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
+                                            glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                                            glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
+    // Save original render path params.
+    CameraPtr origCam                    = renderPath->m_params.Cam;
+    FramebufferPtr origFramebuffer       = renderPath->m_params.MainFramebuffer;
+
+    // Disable all post-processing for cubemap capture.
+    // Post-process passes (gamma/tonemap/FXAA, bloom, DoF, SSAO) are incompatible
+    // with cubemap face render targets and would corrupt the output.
+    PostProcessingSettingsPtr origPPS    = renderPath->m_params.postProcessSettings;
+    PostProcessingSettingsPtr capturePPS = MakeNewPtr<PostProcessingSettings>();
+    capturePPS->SetTonemappingEnabledVal(false);
+    capturePPS->SetGammaCorrectionEnabledVal(false);
+    capturePPS->SetFXAAEnabledVal(false);
+    capturePPS->SetBloomEnabledVal(false);
+    capturePPS->SetSSAOEnabledVal(false);
+    capturePPS->SetDepthOfFieldEnabledVal(false);
+
+    renderPath->m_params.postProcessSettings = capturePPS;
+
+    for (int i = 0; i < 6; i++)
+    {
+      Vec3 pos;
+      Quaternion rot;
+      Vec3 sca(1.0f);
+      DecomposeMatrix(views[i], &pos, &rot, &sca);
+
+      cam->m_node->SetTranslation(position);
+      cam->m_node->SetOrientation(rot);
+      cam->m_node->SetScale(sca);
+
+      // Set color attachment to the corresponding cubemap face.
+      cubeFb->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0,
+                                 cubeMapRt,
+                                 0,
+                                 -1,
+                                 (Framebuffer::CubemapFace) i);
+
+      // Set per-face far clip distance on the camera.
+      if (perFaceClipDist != nullptr)
+      {
+        cam->SetLens(glm::radians(90.0f), 1.0f, near, perFaceClipDist[i]);
+      }
+
+      // Override render path params for this face.
+      renderPath->m_params.Cam             = cam;
+      renderPath->m_params.MainFramebuffer = cubeFb;
+
+      // Render the scene for this face.
+      renderPath->Render(this);
+    }
+
+    // Restore original render path params.
+    renderPath->m_params.Cam                 = origCam;
+    renderPath->m_params.MainFramebuffer     = origFramebuffer;
+    renderPath->m_params.postProcessSettings = origPPS;
+
+    // Create the cubemap from the render target.
+    CubeMapPtr cubemap                       = MakeNewPtr<CubeMap>();
+    cubemap->Consume(cubeMapRt);
+
+    // Generate mip maps for the captured cubemap so that mipmap-filtered sampling
+    // in irradiance generation shaders works correctly (incomplete mip chain causes black).
+    cubemap->GenerateMipMaps();
+
+    Stats::EndGpuScope();
+
+    return cubemap;
   }
 
   void Renderer::ValidateBackbufferSrgbEncoding()

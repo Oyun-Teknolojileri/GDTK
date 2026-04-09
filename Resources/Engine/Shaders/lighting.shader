@@ -202,12 +202,14 @@ vec3 SurfaceShading
 	// Diffuse BRDF
 	vec3 Fd = diffuseColor * diffuse(roughness, NoV, NoL, LoH);
 
+	// Thin surfaces produce flicker when the view angle is grazing. Fade out the contribution to hide the flickering.
+	float edgeFade = smoothstep(0.0, 1.0, NoV); 
+
 	// Combine: Fd + Fr * energyCompensation (Filament style)
-	vec3 color = Fd + Fr * energyCompensation;
+	vec3 color = Fd + Fr * energyCompensation * edgeFade;
 
 	// Apply light contribution: color * lightColor * (intensity * attenuation * NoL * shadow)
-	float horizonVis = smoothstep(0.0, 2.0, min(NoV, NoL));
-	return color * lightColor * (lightIntensity * attenuation * NoL * shadow * horizonVis);
+	return color * lightColor * (lightIntensity * attenuation * NoL * shadow);
 }
 
 vec3 PBRLighting

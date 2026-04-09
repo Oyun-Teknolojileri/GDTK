@@ -28,6 +28,8 @@ namespace ToolKit
       return "inverseTransposeModel";
     case Uniform::IBL_ROTATION:
       return "iblRotation";
+    case Uniform::IBL_SECONDARY_ROTATION:
+      return "iblSecondaryRotation";
     case Uniform::ACTIVE_POINT_LIGHT_INDEXES:
       return "activePointLightIndexes";
     case Uniform::ACTIVE_SPOT_LIGHT_INDEXES:
