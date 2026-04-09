@@ -87,6 +87,25 @@ namespace ToolKit
 
       ApplyProjectSettings(false);
 
+      if (!CheckFile(m_workspace->GetActiveWorkspace()))
+      {
+        StringInputWindowPtr wsDir = MakeNewPtr<StringInputWindow>("Set Workspace Directory##SetWsdir", false);
+        wsDir->m_hint              = "User/Documents/ToolKit";
+        wsDir->m_inputLabel        = "Workspace Directory";
+        wsDir->m_name              = "Set Workspace Directory";
+        wsDir->AddToUI();
+
+        wsDir->m_taskFn = [](const String& val) -> void
+        {
+          String cmd = "SetWorkspaceDir --path \"" + val + "\"";
+          g_app->GetConsole()->ExecCommand(cmd);
+        };
+      }
+      else
+      {
+        m_workspace->RefreshProjects();
+      }
+
       m_simulatorSettings.Resolution = EmulatorResolution::Custom;
       m_thumbnailManager             = new ThumbnailManager();
       GetRenderSystem()->SetClearColor(g_wndBgColor);
@@ -1218,7 +1237,7 @@ namespace ToolKit
 
     void App::ApplyProjectSettings(bool setDefaults)
     {
-      if (CheckFile(ConcatPaths({m_workspace->GetConfigDirectory(), g_editorSettingsFile})) && !setDefaults)
+      if (CheckFile(ConcatPaths({ConfigPath(), g_editorSettingsFile})) && !setDefaults)
       {
         DeSerialize(SerializationFileInfo(), nullptr);
         m_workspace->DeSerializeEngineSettings();
@@ -1534,7 +1553,7 @@ namespace ToolKit
         WriteAttr(setNode, docPtr, "width", std::to_string(size.x));
         WriteAttr(setNode, docPtr, "height", std::to_string(size.y));
         WriteAttr(setNode, docPtr, "maximized", std::to_string(m_windowMaximized));
-        WriteAttr(setNode, docPtr, "theme", std::to_string(static_cast<int>(UI::GetCurrentTheme())));
+        WriteAttr(setNode, docPtr, "theme", std::to_string((int) UI::GetCurrentTheme()));
 
         XmlNode* windowsNode = CreateXmlNode(docPtr, "Windows", app);
         for (WindowPtr wnd : m_windows)
