@@ -109,8 +109,6 @@ namespace ToolKit
       m_simulatorSettings.Resolution = EmulatorResolution::Custom;
       m_thumbnailManager             = new ThumbnailManager();
       GetRenderSystem()->SetClearColor(g_wndBgColor);
-
-      m_initialized = true;
     }
 
     void App::DestroyEditorEntities()
@@ -229,8 +227,6 @@ namespace ToolKit
       SafeDel(m_thumbnailManager);
 
       UI::UnInit();
-
-      m_initialized = false;
     }
 
     void App::Frame(float deltaTime)
@@ -1282,7 +1278,7 @@ namespace ToolKit
       }
 
       PluginWindowPtr pluginWindow = GetWindow<PluginWindow>(g_pluginWindow);
-      if (m_initialized && pluginWindow == nullptr)
+      if (pluginWindow == nullptr)
       {
         SetStatusMsg(g_statusFailed);
         TK_ERR("Can not access project plugins. Plugin window is not available.");
@@ -1292,21 +1288,15 @@ namespace ToolKit
       ClearSession();
       GetPluginManager()->UnloadGamePlugin();
 
-      if (m_initialized)
-      {
-        pluginWindow->UnloadProjectPlugins();
-      }
+      pluginWindow->UnloadProjectPlugins();
 
       m_workspace->SetActiveProject(project);
       m_workspace->Serialize(nullptr, nullptr);
       CreateNewScene();
 
-      if (m_initialized)
-      {
-        pluginWindow->LoadPluginSettings();
-        LoadGamePlugin();
-        LoadProjectPlugins();
-      }
+      pluginWindow->LoadPluginSettings();
+      LoadGamePlugin();
+      LoadProjectPlugins();
 
       FolderWindowRawPtrArray browsers = GetAssetBrowsers();
       for (FolderWindow* browser : browsers)
