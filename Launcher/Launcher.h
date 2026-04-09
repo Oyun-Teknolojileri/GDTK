@@ -38,8 +38,8 @@ namespace ToolKit
 
      private:
       // Launcher states.
-      float m_windowWidth        = 1024.0f;
-      float m_windowHeight       = 768.0f;
+      float m_windowWidth  = 1024.0f;
+      float m_windowHeight = 768.0f;
 
       WorkspacePtr m_workspace;
       bool m_showWorkspacePopup  = false;
@@ -52,7 +52,7 @@ namespace ToolKit
       bool m_newProjectTabLocal  = true;
       int m_selectedProjectIndex = -1;
 
-      std::unordered_map<String, bool> m_thumbnailCache;
+      StringBoolMap m_thumbnailCache;
       String m_searchFilter;
 
       // Icon Paths.

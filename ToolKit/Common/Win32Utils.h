@@ -194,7 +194,7 @@ namespace ToolKit
 
     // Fix working directory when launched from shortcut (shortcut's working dir is Desktop).
     // Set it to exe directory (Bin/) so Resources/Config relative paths work.
-    inline void FixWorkingDirectory()
+    inline void SetWorkingDirectoryToBinFolder()
     {
       wchar_t exePathW[MAX_PATH] = {0};
       DWORD len                  = ::GetModuleFileNameW(nullptr, exePathW, MAX_PATH);

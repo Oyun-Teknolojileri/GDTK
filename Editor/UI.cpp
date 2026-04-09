@@ -479,7 +479,7 @@ namespace ToolKit
       else
       {
         // unknown theme, do nothing
-        TK_ERR("Unknown theme selected: %d", static_cast<int>(theme));
+        TK_ERR("Unknown theme selected: %d", (int) theme);
         return;
       }
 

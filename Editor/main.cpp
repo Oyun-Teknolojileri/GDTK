@@ -250,9 +250,7 @@ namespace ToolKit
 
     void PreInit()
     {
-      // Fix working directory when launched from shortcut (shortcut's working dir is Desktop).
-      // Set it to project root (parent of Bin/) so Resources/Config relative paths work.
-      PlatformHelpers::FixWorkingDirectory();
+      PlatformHelpers::SetWorkingDirectoryToBinFolder();
 
       g_sdlEventPool = new SDLEventPool<TK_PLATFORM>();
 
