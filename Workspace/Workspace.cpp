@@ -11,6 +11,7 @@
 #include <Scene.h>
 #include <Util.h>
 
+#include <fstream>
 #include <sstream>
 
 namespace ToolKit
@@ -469,6 +470,36 @@ namespace ToolKit
 
     TK_LOG("A new plugin has been created.");
     return true;
+  }
+
+  bool Workspace::DeserializeThemeColors(const String& themeFileName, Vec4Array& outColors)
+  {
+    String path = ConcatPaths({ConfigPath(), themeFileName});
+
+    std::ifstream file(path);
+    if (!file.is_open())
+    {
+      return false;
+    }
+
+    outColors.clear();
+
+    String line;
+    while (std::getline(file, line))
+    {
+      if (line.empty())
+      {
+        continue;
+      }
+
+      Vec4 col;
+      if (sscanf(line.c_str(), "%*s %f,%f,%f,%f", &col.x, &col.y, &col.z, &col.w) == 4)
+      {
+        outColors.push_back(col);
+      }
+    }
+
+    return !outColors.empty();
   }
 
 } // namespace ToolKit

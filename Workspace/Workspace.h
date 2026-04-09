@@ -58,6 +58,8 @@ namespace ToolKit
     bool OnNewProject(const String& name);
     bool OnNewPlugin(const String& name);
 
+    static bool DeserializeThemeColors(const String& themeFileName, Vec4Array& outColors);
+
    protected:
     XmlNode* SerializeImp(XmlDocument* doc, XmlNode* parent) const override;
     XmlNode* DeSerializeImp(const SerializationFileInfo& info, XmlNode* parent) override;
