@@ -196,7 +196,11 @@ namespace ToolKit
 
       String workspacePath = m_workspace->GetActiveWorkspace();
       UnixifyPath(workspacePath);
+#ifdef TK_DEBUG
+      String cmd = "Editord.exe --workspace \"" + workspacePath + "\" --project-name \"" + project.name + "\"";
+#else
       String cmd = "Editor.exe --workspace \"" + workspacePath + "\" --project-name \"" + project.name + "\"";
+#endif
 
       m_sysComExecFn(cmd, true, false, nullptr);
       g_running = false;

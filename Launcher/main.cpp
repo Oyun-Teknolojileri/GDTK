@@ -195,7 +195,11 @@ namespace ToolKit
       g_launcher->m_sysComExecFn                     = &PlatformHelpers::SysComExec;
       g_launcher->m_createProjectShortcutOnDesktopFn = [](const String& name, const String& args)
       {
+#ifdef TK_DEBUG
+        String editorExe = std::filesystem::current_path().u8string() + "/Editord.exe";
+#else
         String editorExe = std::filesystem::current_path().u8string() + "/Editor.exe";
+#endif
         UnixifyPath(editorExe);
         PlatformHelpers::CreateProjectShortcutOnDesktop(name, args, editorExe);
       };
