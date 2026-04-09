@@ -513,6 +513,11 @@ namespace ToolKit
               ImGui::PopID();
             }
 
+            if (numProjects == 0)
+            {
+              ImGui::Dummy(ImVec2(0.0f, 0.0f));
+            }
+
             ImGui::EndChild();
           }
           else if (m_workspace)
