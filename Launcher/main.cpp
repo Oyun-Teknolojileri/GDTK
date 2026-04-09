@@ -11,6 +11,7 @@
 #include <Common/Win32Utils.h>
 #include <EngineSettings.h>
 #include <FileManager.h>
+#include <Image.h>
 #include <Object.h>
 #include <RenderSystem.h>
 #include <SDL.h>
@@ -26,6 +27,15 @@
 #include <array>
 #include <filesystem>
 #include <fstream>
+
+SDL_HitTestResult LauncherHitTest(SDL_Window* window, const SDL_Point* area, void* data)
+{
+  int w;
+  SDL_GetWindowSize(window, &w, nullptr);
+  if (area->y < 50 && area->x < w - 40)
+    return SDL_HITTEST_DRAGGABLE;
+  return SDL_HITTEST_NORMAL;
+}
 
 SDL_Window* g_window   = nullptr;
 void* g_context        = nullptr;
@@ -135,6 +145,21 @@ namespace ToolKit
       {
         g_running = false;
         return;
+      }
+
+      SDL_SetWindowHitTest(g_window, LauncherHitTest, nullptr);
+
+      {
+        int w, h, comp;
+        String iconPath = TexturePath("/Icons/app.png", true);
+        ubyte* pixels   = ImageLoad(iconPath, &w, &h, &comp, 4);
+        if (pixels)
+        {
+          SDL_Surface* icon = SDL_CreateRGBSurfaceFrom(pixels, w, h, 32, w * 4, 0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000);
+          SDL_SetWindowIcon(g_window, icon);
+          SDL_FreeSurface(icon);
+          ImageFree(pixels);
+        }
       }
 
       int srgbFlag = 0;
