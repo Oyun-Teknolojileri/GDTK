@@ -170,6 +170,8 @@ namespace ToolKit
       // Scene pass.
       m_sceneRenderPath->m_params.postProcessSettings = pps;
       m_sceneRenderPath->m_params.Cam                 = m_camera;
+      // Keep depth for subsequent editor passes.
+      m_sceneRenderPath->m_forwardRenderPass->m_params.invalidateDepthBuffer = false;
 
       m_sceneRenderPath->m_params.overrideLights.clear();
       if (m_params.LitMode == EditorLitMode::EditorLit)
@@ -220,8 +222,17 @@ namespace ToolKit
 
         if (envCom != nullptr && !ntt->IsA<Sky>())
         {
+          // Build local-space BB from PositionOffset +/- Size*0.5.
+          Vec3 offset = envCom->GetPositionOffsetVal();
+          Vec3 half   = envCom->GetSizeVal() * 0.5f;
+          BoundingBox localBB;
+          localBB.min         = offset - half;
+          localBB.max         = offset + half;
+
+          // Use entity's world transform so the box is oriented.
+          Mat4 worldTransform = ntt->m_node->GetTransform(TransformationSpace::TS_WORLD);
           app->m_perFrameDebugObjects.push_back(
-              CreateBoundingBoxDebugObject(envCom->GetBoundingBox(), g_environmentGizmoColor, 1.0f));
+              CreateBoundingBoxDebugObject(localBB, g_environmentGizmoColor, 1.0f, &worldTransform));
         }
 
         if (app->m_showSelectionBoundary && ntt->IsDrawable())

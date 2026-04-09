@@ -279,6 +279,12 @@ namespace ToolKit
     m_settings.WarpT     = GraphicTypes::UVClampToEdge;
   }
 
+  DepthTexture::~DepthTexture()
+  {
+    UnInit();
+    Clear();
+  }
+
   void DepthTexture::Load() {}
 
   void DepthTexture::Clear() { UnInit(); }
@@ -487,21 +493,21 @@ namespace ToolKit
       String postfix = "px.png";
       switch (i)
       {
-      case 1:
-        postfix = "nx.png";
-        break;
-      case 2:
-        postfix = "py.png";
-        break;
-      case 3:
-        postfix = "ny.png";
-        break;
-      case 4:
-        postfix = "pz.png";
-        break;
-      case 5:
-        postfix = "nz.png";
-        break;
+        case 1:
+          postfix = "nx.png";
+          break;
+        case 2:
+          postfix = "py.png";
+          break;
+        case 3:
+          postfix = "ny.png";
+          break;
+        case 4:
+          postfix = "pz.png";
+          break;
+        case 5:
+          postfix = "nz.png";
+          break;
       }
 
       String name = file + postfix;
@@ -805,6 +811,10 @@ namespace ToolKit
     // Try reading rest from disk.
     m_specularEnvMap->AllocateMipMapStorage();
     m_specularEnvMap->GenerateMipMaps();
+
+    // Clamp max mip level to the last baked level.
+    RHI::SetTexture(GL_TEXTURE_CUBE_MAP, m_specularEnvMap->m_textureId);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAX_LEVEL, RHIConstants::SpecularIBLLods - 1);
 
     for (int i = 1; i < RHIConstants::SpecularIBLLods; i++)
     {

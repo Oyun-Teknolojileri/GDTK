@@ -22,6 +22,7 @@ namespace ToolKit
     bool hasForwardPrePass            = false;
     uint activeDirectionalLightCount  = 0;
     FramebufferPtr resolveFrameBuffer = nullptr;
+    bool invalidateDepthBuffer        = true;
   };
 
   /** Renders given entities with given lights using forward rendering. */
@@ -49,7 +50,7 @@ namespace ToolKit
     ForwardRenderPassParams m_params;
 
    private:
-    int m_shadowPCF      = 0;
+    int m_shadowPCF = 0;
 
     MaterialPtr m_programConfigMat;
   };

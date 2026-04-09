@@ -136,7 +136,7 @@
 		vec3 irradiance = PBRLighting(v_worldPos, v_viewDepth, n, e, camera.position, color.xyz, metallic, roughness, energyComp);
 
 		float ambientOcclusion = AmbientOcclusion();
-		irradiance += IBLPBR(n, e, color.xyz, metallic, perceptualRoughness, dfg, energyComp) * ambientOcclusion;
+		irradiance += IBLPBR(n, e, color.xyz, metallic, perceptualRoughness, dfg, energyComp, v_worldPos) * ambientOcclusion;
 
 		fragColor = vec4(irradiance, color.a) + vec4(emissive, 0.0);
 	}

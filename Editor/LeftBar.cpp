@@ -71,6 +71,13 @@ namespace ToolKit
                                           ModId::Scale);
         UI::HelpMarker(TKLoc + m_owner->m_name, "Scale\nScale (resize) selected items.");
 
+        // Box Edit button.
+        isCurrentMod = ModManager::GetInstance()->m_modStack.back()->m_id == ModId::BoxEdit;
+        ModManager::GetInstance()->SetMod(
+            UI::ToggleButton(UI::m_cubeIcon->m_textureId, ImVec2(32, 32), isCurrentMod) && !isCurrentMod,
+            ModId::BoxEdit);
+        UI::HelpMarker(TKLoc + m_owner->m_name, "Box Edit\nEdit bounding volumes by dragging face handles.");
+
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::Spacing();

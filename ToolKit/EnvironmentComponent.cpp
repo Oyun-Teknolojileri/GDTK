@@ -8,9 +8,14 @@
 #include "EnvironmentComponent.h"
 
 #include "Entity.h"
+#include "ForwardSceneRenderPath.h"
 #include "MathUtil.h"
 #include "RenderSystem.h"
+#include "Renderer.h"
+#include "Scene.h"
+#include "Sky.h"
 #include "Texture.h"
+#include "ToolKit.h"
 
 #include <DebugNew.h>
 
@@ -32,6 +37,22 @@ namespace ToolKit
 
     HdriPtr hdri = GetHdriVal();
     assert(hdri != nullptr && "Hdri on the environment component can't be null.");
+
+    if (hdri->IsDynamic() && !hdri->m_specularEnvMap && !hdri->m_diffuseEnvMap)
+    {
+      // Sky generates its own irradiance, never capture for it.
+      EntityPtr owner = OwnerEntity();
+      bool isSky      = owner != nullptr && owner->IsA<SkyBase>();
+
+      UpdateBoundingBoxCache();
+      m_initialized = true;
+
+      if (!isSky)
+      {
+        CaptureEnvironment();
+      }
+      return;
+    }
 
     if (!hdri->IsDynamic())
     {
@@ -79,23 +100,39 @@ namespace ToolKit
                      true,
                      {false, true, 0.0f, 100000.0f, 0.1f});
 
-    auto createParameterVariant = [](const String& name, int val)
-    {
-      ParameterVariant param {val};
-      param.m_name = name;
-      return param;
-    };
+    Fade_Define(1.0f,
+                EnvironmentComponentCategory.Name,
+                EnvironmentComponentCategory.Priority,
+                true,
+                true,
+                {false, true, 0.0f, 100000.0f, 0.1f});
+
+    CaptureFar_Define(0.0f,
+                      EnvironmentComponentCategory.Name,
+                      EnvironmentComponentCategory.Priority,
+                      true,
+                      true,
+                      {false, true, 0.0f, 100000.0f, 1.0f});
+
+    CaptureResolution_Define(256,
+                             EnvironmentComponentCategory.Name,
+                             EnvironmentComponentCategory.Priority,
+                             true,
+                             true,
+                             {false, true, 32, 2048, 1});
   }
+
+  void EnvironmentComponent::InvalidateSpatialCaches() { m_spatialCachesInvalidated = true; }
 
   void EnvironmentComponent::ParameterEventConstructor()
   {
     Super::ParameterEventConstructor();
 
     ParamPositionOffset().m_onValueChangedFn.push_back([this](Value& oldVal, Value& newVal) -> void
-                                                       { m_spatialCachesInvalidated = true; });
+                                                       { InvalidateSpatialCaches(); });
 
     ParamSize().m_onValueChangedFn.push_back([this](Value& oldVal, Value& newVal) -> void
-                                             { m_spatialCachesInvalidated = true; });
+                                             { InvalidateSpatialCaches(); });
 
     ParamHdri().m_onValueChangedFn.push_back(
         [this](Value& oldVal, Value& newVal) -> void
@@ -192,16 +229,96 @@ namespace ToolKit
     return m_boundingBoxCache;
   }
 
-  void EnvironmentComponent::UpdateBoundingBoxCache()
+  void EnvironmentComponent::CaptureEnvironment()
   {
-    Vec3 pos;
-    if (EntityPtr owner = OwnerEntity())
+    EntityPtr owner = OwnerEntity();
+    if (owner == nullptr)
     {
-      pos += owner->m_node->GetTranslation(TransformationSpace::TS_WORLD);
+      return;
     }
 
-    m_boundingBoxCache.min     = GetPositionOffsetVal() + pos - GetSizeVal() * 0.5f;
-    m_boundingBoxCache.max     = GetPositionOffsetVal() + pos + GetSizeVal() * 0.5f;
+    uint res    = (uint) GetCaptureResolutionVal();
+
+    // Compute local aabb.
+    Vec3 offset = GetPositionOffsetVal();
+    Vec3 half   = GetSizeVal() * 0.5f;
+
+    BoundingBox localBB;
+    localBB.min    = offset - half;
+    localBB.max    = offset + half;
+
+    Vec3 position  = owner->m_node->GetTranslation();
+    float extraFar = GetCaptureFarVal();
+
+    // Compute distances to each face from capture position (entity origin in local space).
+    float minDist  = 0.01f;
+    float perFaceClipDist[6];
+    perFaceClipDist[0] = glm::max(localBB.max.x + extraFar, minDist); // +X
+    perFaceClipDist[1] = glm::max(-localBB.min.x + extraFar, minDist); // -X
+    perFaceClipDist[2] = glm::max(-localBB.min.y + extraFar, minDist); // -Y
+    perFaceClipDist[3] = glm::max(localBB.max.y + extraFar, minDist); // +Y
+    perFaceClipDist[4] = glm::max(localBB.max.z + extraFar, minDist); // +Z
+    perFaceClipDist[5] = glm::max(-localBB.min.z + extraFar, minDist); // -Z
+
+    GetRenderSystem()->AddRenderTask(
+        {[this, position, minDist, res, perFaceClipDist](Renderer* renderer) -> void
+         {
+           // Disable self-illumination during capture to prevent feedback loop.
+           bool wasIlluminating = GetIlluminateVal();
+           SetIlluminateVal(false);
+
+           // Create a temporary render path for the capture.
+           ForwardSceneRenderPath capturePath;
+           capturePath.m_params.Scene = GetSceneManager()->GetCurrentScene();
+
+           CubeMapPtr cubemap =
+               renderer->RenderToCubeMap(&capturePath, position, minDist, 1000.0f, res, perFaceClipDist);
+
+           // Restore illuminate state.
+           SetIlluminateVal(wasIlluminating);
+
+           // Create a dynamic HDRI and assign the captured cubemap.
+           HdriPtr hdri    = MakeNewPtr<Hdri>();
+           hdri->m_cubemap = cubemap;
+           hdri->GenerateIrradianceCaches(renderer);
+           hdri->m_initiated = true;
+
+           SetHdriVal(hdri);
+         }});
+  }
+
+  void EnvironmentComponent::UpdateBoundingBoxCache()
+  {
+    Vec3 offset = GetPositionOffsetVal();
+    Vec3 half   = GetSizeVal() * 0.5f;
+
+    // Local-space BB corners.
+    BoundingBox localBB;
+    localBB.min = offset - half;
+    localBB.max = offset + half;
+
+    if (EntityPtr owner = OwnerEntity())
+    {
+      // Transform local BB corners by entity world transform to get world-space enclosing AABB.
+      Mat4 worldTransform = owner->m_node->GetTransform(TransformationSpace::TS_WORLD);
+
+      Vec3Array corners;
+      GetCorners(localBB, corners);
+
+      m_boundingBoxCache.min = Vec3(FLT_MAX);
+      m_boundingBoxCache.max = Vec3(-FLT_MAX);
+      for (const Vec3& corner : corners)
+      {
+        Vec3 worldCorner       = Vec3(worldTransform * Vec4(corner, 1.0f));
+        m_boundingBoxCache.min = glm::min(m_boundingBoxCache.min, worldCorner);
+        m_boundingBoxCache.max = glm::max(m_boundingBoxCache.max, worldCorner);
+      }
+    }
+    else
+    {
+      m_boundingBoxCache = localBB;
+    }
+
     m_spatialCachesInvalidated = false;
   };
 

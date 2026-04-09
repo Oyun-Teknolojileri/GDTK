@@ -238,6 +238,11 @@ namespace ToolKit
         ModManager::GetInstance()->SetMod(true, ModId::Cursor);
       }
 
+      if (ImGui::IsKeyPressed(ImGuiKey_X, false) && !Exist(mask, ImGuiKey_X))
+      {
+        ModManager::GetInstance()->SetMod(true, ModId::BoxEdit);
+      }
+
       if (ImGui::IsKeyPressed(ImGuiKey_B, false) && !Exist(mask, ImGuiKey_B))
       {
         ModManager::GetInstance()->SetMod(true, ModId::Select);

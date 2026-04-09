@@ -21,16 +21,30 @@
 namespace ToolKit
 {
 
+  class ForwardSceneRenderPath;
+
   // DrawCommand
   //////////////////////////////////////////
 
   struct DrawCommand
   {
-    /** x: iblIntensity, y: iblInUse, z: ambientOcclusionInUse, w: pad0 */
+    /** x: iblIntensity, y: iblInUse, z: ambientOcclusionInUse, w: secondaryIblIntensity */
     Vec4 data1;
 
-    /** x: activePointLightCount, y: activeSpotLightCount, z: activeDirectionalLightCount, w: pad1 */
+    /** x: activePointLightCount, y: activeSpotLightCount, z: activeDirectionalLightCount, w: iblFadeDistance */
     Vec4 data2;
+
+    /** xyz: primary volume min (local space) */
+    Vec4 data3;
+
+    /** xyz: primary volume max (local space) */
+    Vec4 data4;
+
+    /** Volume inverse world transform (rows 0-3) for OBB support. */
+    Vec4 data5;
+    Vec4 data6;
+    Vec4 data7;
+    Vec4 data8;
 
     void SetIblIntensity(float intensity) { data1.x = intensity; }
 
@@ -38,11 +52,30 @@ namespace ToolKit
 
     void SetAmbientOcclusionInUse(bool inUse) { data1.z = inUse ? 1.0f : 0.0f; }
 
+    void SetSecondaryIblIntensity(float intensity) { data1.w = intensity; }
+
     void SetActivePointLightCount(int count) { data2.x = (float) count; }
 
     void SetActiveSpotLightCount(int count) { data2.y = (float) count; }
 
     void SetActiveDirectionalLightCount(int count) { data2.z = (float) count; }
+
+    void SetIblFadeDistance(float fade) { data2.w = fade; }
+
+    void SetPrimaryVolumeMin(const Vec3& minVal, bool pccEnabled = false)
+    {
+      data3 = Vec4(minVal, pccEnabled ? 1.0f : 0.0f);
+    }
+
+    void SetPrimaryVolumeMax(const Vec3& maxVal) { data4 = Vec4(maxVal, 0.0f); }
+
+    void SetIblInverseVolumeTransform(const Mat4& inverseTransform)
+    {
+      data5 = Vec4(inverseTransform[0]);
+      data6 = Vec4(inverseTransform[1]);
+      data7 = Vec4(inverseTransform[2]);
+      data8 = Vec4(inverseTransform[3]);
+    }
   };
 
   // GraphicConstantsGpuBuffer
@@ -175,8 +208,7 @@ namespace ToolKit
     //////////////////////////////////////////
 
     void SetViewport(Viewport* viewport);
-    void SetViewportSize(uint width, uint height);
-    void SetViewportSize(uint x, uint y, uint width, uint height);
+    void SetViewportRect(uint x, uint y, uint width, uint height);
 
     void DrawFullQuad(ShaderPtr fragmentShader);
     void DrawFullQuad(MaterialPtr mat);
@@ -205,6 +237,22 @@ namespace ToolKit
 
     /** Generates irradiance map. */
     CubeMapPtr GenerateDiffuseEnvMap(CubeMapPtr cubemap, int size);
+
+    /**
+     * Renders the scene into a cubemap from the given position using the provided render path.
+     * @param renderPath The render path to use for rendering each face.
+     * @param position World position to render from.
+     * @param near Near clip plane.
+     * @param far Far clip plane.
+     * @param resolution Resolution of each cubemap face.
+     * @return The generated cubemap.
+     */
+    CubeMapPtr RenderToCubeMap(ForwardSceneRenderPath* renderPath,
+                               const Vec3& position,
+                               float near,
+                               float far,
+                               uint resolution,
+                               const float* perFaceClipDist = nullptr);
 
     /**
      * Sets the blend state directly which causes by passing material system.
@@ -322,6 +370,7 @@ namespace ToolKit
     Mat4 m_inverseTransposeModel;
     Mat4 m_modelWithoutTranslate;
     Mat4 m_iblRotation;
+    Mat4 m_secondaryIblRotation;
 
     // Draw data
     std::array<int, RHIConstants::MaxPointLightPerObject> m_activePointLightIndices;
@@ -341,7 +390,8 @@ namespace ToolKit
 
     RenderState m_renderState;
 
-    UVec2 m_viewportSize; //!< Current viewport size.
+    /** Current viewport size (x,y) and position (z,w) */
+    UVec4 m_viewportRect;
 
     /*
      * This framebuffer can ONLY have 1 color attachment and no other attachments.

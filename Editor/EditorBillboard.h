@@ -28,6 +28,7 @@ namespace ToolKit
         Move,
         Rotate,
         Scale,
+        BoxEdit,
         Sky,
         Light,
         Anchor

@@ -9,6 +9,7 @@
 
 #include "AnchorMod.h"
 #include "App.h"
+#include "BoxEditMod.h"
 #include "ConsoleWindow.h"
 #include "EditorViewport2d.h"
 #include "Grid.h"
@@ -93,9 +94,13 @@ namespace ToolKit
             nextMod    = new TransformMod(mod);
             modNameDbg = "Mod: Scale";
             break;
-          case ModId::Anchor:
+        case ModId::Anchor:
             nextMod    = new AnchorMod(mod);
             modNameDbg = "Mod: Anchor";
+            break;
+          case ModId::BoxEdit:
+            nextMod    = new BoxEditMod(mod);
+            modNameDbg = "Mod: BoxEdit";
             break;
           case ModId::Base:
           default:

@@ -1,6 +1,6 @@
 <shader>
 	<type name = "includeShader" />
-	<uniform name = "drawCommand" size = "2" />
+	<uniform name = "drawCommand" size = "8" />
 	<source>
 	<!--
 	
@@ -10,7 +10,7 @@
 	// DrawCommand
 	//////////////////////////////////////////
 
-	uniform vec4 drawCommand[2];
+	uniform vec4 drawCommand[8];
 
 	float GetIBLIntensity()
 	{
@@ -27,6 +27,11 @@
 		return bool(drawCommand[0].z > 0.5);
 	}
 
+	float GetSecondaryIBLIntensity()
+	{
+		return drawCommand[0].w;
+	}
+
 	int GetActivePointLightCount()
 	{
 		return int(drawCommand[1].x);
@@ -40,6 +45,57 @@
 	int GetActiveDirectionalLightCount()
 	{
 		return int(drawCommand[1].z);
+	}
+
+	float GetIBLFadeDistance()
+	{
+		return drawCommand[1].w;
+	}
+
+	vec3 GetPrimaryVolumeMin()
+	{
+		return drawCommand[2].xyz;
+	}
+
+	bool IsParallaxCorrectedCubemapEnabled()
+	{
+		return bool(drawCommand[2].w > 0.5);
+	}
+
+	vec3 GetPrimaryVolumeMax()
+	{
+		return drawCommand[3].xyz;
+	}
+
+	mat4 GetIblInverseVolumeTransform()
+	{
+		return mat4(drawCommand[4], drawCommand[5], drawCommand[6], drawCommand[7]);
+	}
+
+	// Compute per-pixel IBL blend factor from fragment world position.
+	// Returns 1.0 at volume center (fully primary), 0.0 at volume edge (fully secondary).
+	// Uses OBB: transforms worldPos to volume local space before distance check.
+	float ComputeIBLBlendFactor(vec3 worldPos)
+	{
+		float fadeDist = GetIBLFadeDistance();
+		if (fadeDist <= 0.0)
+		{
+			return 1.0;
+		}
+
+		// Transform world position to volume local space.
+		vec3 localPos = (GetIblInverseVolumeTransform() * vec4(worldPos, 1.0)).xyz;
+
+		vec3 vMin = GetPrimaryVolumeMin();
+		vec3 vMax = GetPrimaryVolumeMax();
+
+		// Distance from each face of the OBB (in local space).
+		vec3 distToMin = localPos - vMin;
+		vec3 distToMax = vMax - localPos;
+		vec3 minDist = min(distToMin, distToMax);
+		float edgeDist = min(minDist.x, min(minDist.y, minDist.z));
+
+		return clamp(edgeDist / fadeDist, 0.0, 1.0);
 	}
 
 	// Defines

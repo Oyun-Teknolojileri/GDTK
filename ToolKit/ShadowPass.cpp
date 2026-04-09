@@ -222,7 +222,7 @@ namespace ToolKit
         m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowAtlas, 0, layer);
 
         UVec2 coord = dLight->m_shadowAtlasCoords[i];
-        renderer->SetViewportSize(coord.x, coord.y, resolution, resolution);
+        renderer->SetViewportRect(coord.x, coord.y, resolution, resolution);
 
         RenderShadowCasters(light, dLight->m_cascadeShadowCameras[i], dLight->m_cascadeCullCameras[i]);
       }
@@ -241,7 +241,7 @@ namespace ToolKit
         light->m_shadowCamera->m_node->SetOrientation(m_cubeMapRotations[i]);
 
         UVec2 coord = light->m_shadowAtlasCoords[i];
-        renderer->SetViewportSize(coord.x, coord.y, resolution, resolution);
+        renderer->SetViewportRect(coord.x, coord.y, resolution, resolution);
 
         RenderShadowCasters(light, light->m_shadowCamera, light->m_shadowCamera);
       }
@@ -257,7 +257,7 @@ namespace ToolKit
 
       UVec2 coord = light->m_shadowAtlasCoords[0];
 
-      renderer->SetViewportSize(coord.x, coord.y, resolution, resolution);
+      renderer->SetViewportRect(coord.x, coord.y, resolution, resolution);
       RenderShadowCasters(light, light->m_shadowCamera, light->m_shadowCamera);
       Stats::EndGpuScope();
     }

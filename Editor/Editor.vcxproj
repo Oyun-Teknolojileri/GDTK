@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|x64">
@@ -100,6 +100,8 @@
     <ClCompile Include="AnchorMod.cpp" />
     <ClCompile Include="AndroidBuildWindow.cpp" />
     <ClCompile Include="App.cpp" />
+    <ClCompile Include="BoxEditGizmo.cpp" />
+    <ClCompile Include="BoxEditMod.cpp" />
     <ClCompile Include="ComponentView.cpp" />
     <ClCompile Include="ConsoleWindow.cpp" />
     <ClCompile Include="CustomDataView.cpp" />
@@ -108,6 +110,7 @@
     <ClCompile Include="EditorBillboard.cpp" />
     <ClCompile Include="EditorCamera.cpp" />
     <ClCompile Include="EditorCanvas.cpp" />
+    <ClCompile Include="EditorEnvironmentComponent.cpp" />
     <ClCompile Include="EditorLight.cpp" />
     <ClCompile Include="EditorRenderer.cpp" />
     <ClCompile Include="EditorViewport2d.cpp" />
@@ -167,6 +170,8 @@
     <ClInclude Include="AnchorMod.h" />
     <ClInclude Include="AndroidBuildWindow.h" />
     <ClInclude Include="App.h" />
+    <ClInclude Include="BoxEditGizmo.h" />
+    <ClInclude Include="BoxEditMod.h" />
     <ClInclude Include="ComponentView.h" />
     <ClInclude Include="ConsoleWindow.h" />
     <ClInclude Include="CustomDataView.h" />
@@ -175,6 +180,7 @@
     <ClInclude Include="EditorBillboard.h" />
     <ClInclude Include="EditorCamera.h" />
     <ClInclude Include="EditorCanvas.h" />
+    <ClInclude Include="EditorEnvironmentComponent.h" />
     <ClInclude Include="EditorLight.h" />
     <ClInclude Include="EditorMetaKeys.h" />
     <ClInclude Include="EditorRenderer.h" />
