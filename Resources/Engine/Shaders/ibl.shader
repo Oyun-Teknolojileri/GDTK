@@ -24,7 +24,7 @@ uniform mat4 iblSecondaryRotation;
 // Filament-style IBL helpers
 // ---------------------------------------------------------------------------
 
-vec3 GetParallaxCorrectedReflection(vec3 R, vec3 worldPos, mat4 inverseVolTransform, vec3 volMin, vec3 volMax)
+vec3 GetParallaxCorrectedReflection(vec3 R, vec3 worldPos, mat4 inverseVolTransform, mat4 volTransform, vec3 volMin, vec3 volMax)
 {
 	// Convert frag pos and dir to local space of the OBB
 	vec3 localPos = (inverseVolTransform * vec4(worldPos, 1.0)).xyz;
@@ -45,7 +45,7 @@ vec3 GetParallaxCorrectedReflection(vec3 R, vec3 worldPos, mat4 inverseVolTransf
 	vec3 intersectLocal = localPos + localDir * dist;
 
 	// PCC direction is relative to the capture position (entity local origin).
-	vec3 correctedR = (inverse(inverseVolTransform) * vec4(intersectLocal, 0.0)).xyz;
+	vec3 correctedR = (volTransform * vec4(intersectLocal, 0.0)).xyz;
 
 	return normalize(correctedR);
 }
@@ -109,7 +109,7 @@ vec3 IBLSpecularPBR(vec3 normal, vec3 fragToEye, float perceptualRoughness, vec3
 		
 		if (IsParallaxCorrectedCubemapEnabled())
 		{
-			R = GetParallaxCorrectedReflection(R, worldPos, GetIblInverseVolumeTransform(), GetPrimaryVolumeMin(), GetPrimaryVolumeMax());
+			R = GetParallaxCorrectedReflection(R, worldPos, GetIblInverseVolumeTransform(), GetIblVolumeTransform(), GetPrimaryVolumeMin(), GetPrimaryVolumeMax());
 		}
 
 		vec3 iblSamplerVec = (iblRotation * vec4(R, 0.0)).xyz;

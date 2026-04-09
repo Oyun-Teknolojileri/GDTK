@@ -46,6 +46,12 @@ namespace ToolKit
     Vec4 data7;
     Vec4 data8;
 
+    /** Volume world transform (rows 0-3) for PCC without per-pixel inverse. */
+    Vec4 data9;
+    Vec4 data10;
+    Vec4 data11;
+    Vec4 data12;
+
     void SetIblIntensity(float intensity) { data1.x = intensity; }
 
     void SetIblInUse(bool inUse) { data1.y = inUse ? 1.0f : 0.0f; }
@@ -75,6 +81,14 @@ namespace ToolKit
       data6 = Vec4(inverseTransform[1]);
       data7 = Vec4(inverseTransform[2]);
       data8 = Vec4(inverseTransform[3]);
+    }
+
+    void SetIblVolumeTransform(const Mat4& transform)
+    {
+      data9  = Vec4(transform[0]);
+      data10 = Vec4(transform[1]);
+      data11 = Vec4(transform[2]);
+      data12 = Vec4(transform[3]);
     }
   };
 

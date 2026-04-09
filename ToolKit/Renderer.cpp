@@ -1258,12 +1258,14 @@ namespace ToolKit
           {
             m_iblRotation = Mat4(env->m_node->GetOrientation());
             m_drawCommand.SetIblInverseVolumeTransform(Mat4(1.0f));
+            m_drawCommand.SetIblVolumeTransform(Mat4(1.0f));
           }
           else
           {
             m_iblRotation       = Mat4(1.0f);
             Mat4 worldTransform = env->m_node->GetTransform(TransformationSpace::TS_WORLD);
             m_drawCommand.SetIblInverseVolumeTransform(glm::inverse(worldTransform));
+            m_drawCommand.SetIblVolumeTransform(worldTransform);
           }
         }
 

@@ -1,16 +1,16 @@
 <shader>
 	<type name = "includeShader" />
-	<uniform name = "drawCommand" size = "8" />
+	<uniform name = "drawCommand" size = "12" />
 	<source>
 	<!--
-	
+
 	#ifndef DRAW_DATA
 	#define DRAW_DATA
 
 	// DrawCommand
 	//////////////////////////////////////////
 
-	uniform vec4 drawCommand[8];
+	uniform vec4 drawCommand[12];
 
 	float GetIBLIntensity()
 	{
@@ -70,6 +70,11 @@
 	mat4 GetIblInverseVolumeTransform()
 	{
 		return mat4(drawCommand[4], drawCommand[5], drawCommand[6], drawCommand[7]);
+	}
+
+	mat4 GetIblVolumeTransform()
+	{
+		return mat4(drawCommand[8], drawCommand[9], drawCommand[10], drawCommand[11]);
 	}
 
 	// Compute per-pixel IBL blend factor from fragment world position.
