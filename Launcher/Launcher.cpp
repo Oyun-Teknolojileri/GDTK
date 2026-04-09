@@ -250,11 +250,13 @@ namespace ToolKit
       ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
       ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.8f, 0.2f, 0.2f, 0.8f));
       ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.9f, 0.1f, 0.1f, 1.0f));
+      ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.5f, 0.5f));
 
       if (ImGui::Button("x", ImVec2(closeButtonSize, closeButtonSize)))
       {
         g_running = false;
       }
+      ImGui::PopStyleVar();
       ImGui::PopStyleColor(3);
 
       // Logo / title.
