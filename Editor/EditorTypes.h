@@ -98,12 +98,10 @@ namespace ToolKit
     const String g_3dViewport("3D Viewport");
     const String g_IsoViewport("ISO Viewport");
     const String g_simulationViewStr("Simulation Viewport");
-    const String g_workspaceFile("Workspace.settings");
     const String g_uiLayoutFile("UILayout.ini");
     const String g_editorSettingsFile("Editor.settings");
     const String g_statusNoTerminate("#nte"); //!< Keep the status message with progress indicator.
     const String g_statusBar("Status Bar");
-    static const StringView XmlNodePath("path");
 
     // Status messages.
     const String g_statusOk("OK");
@@ -132,8 +130,6 @@ namespace ToolKit
     const String g_statusInvalidCharater("Invalid character");
     const String g_statusPublishing("Publishing");
     const String g_statusPacking("Packing");
-    const String g_validLibraryNameRules(
-        "Alpha numeric characters and \"_\" are allowed. Do not start with digit. No white space.");
 
     // Colors and materials.
     // Reversed gamma correction for all colors

@@ -31,8 +31,6 @@
 #include <Stats.h>
 #include <UIManager.h>
 
-#include <sstream>
-
 extern ToolKit::Editor::App* g_app; // Defined in main cpp to provide global handle for app.
 extern bool g_running;              // Defined in main cpp that controls the main loop's life time.
 
@@ -45,6 +43,9 @@ namespace ToolKit
 
     App::App(int windowWidth, int windowHeight)
     {
+      m_workspace = std::make_shared<Workspace>();
+      m_workspace->Init();
+
       UI::Init();
 
       m_displayBounds    = UVec2(windowWidth, windowHeight);
@@ -67,10 +68,8 @@ namespace ToolKit
       ModManager::GetInstance()->SetMod(true, ModId::Select);
       ActionManager::GetInstance()->Init();
 
-      m_workspace.Init();
-
       // Load the last scene or create a new scene.
-      String lastScene = m_workspace.GetActiveProject().scene;
+      String lastScene = m_workspace->GetActiveProject().scene;
       if (lastScene.empty())
       {
         CreateNewScene();
@@ -88,7 +87,7 @@ namespace ToolKit
 
       ApplyProjectSettings(false);
 
-      if (!CheckFile(m_workspace.GetActiveWorkspace()))
+      if (!CheckFile(m_workspace->GetActiveWorkspace()))
       {
         StringInputWindowPtr wsDir = MakeNewPtr<StringInputWindow>("Set Workspace Directory##SetWsdir", false);
         wsDir->m_hint              = "User/Documents/ToolKit";
@@ -104,7 +103,7 @@ namespace ToolKit
       }
       else
       {
-        m_workspace.RefreshProjects();
+        m_workspace->RefreshProjects();
       }
 
       m_simulatorSettings.Resolution = EmulatorResolution::Custom;
@@ -208,7 +207,10 @@ namespace ToolKit
 
       DestroyEditorEntities();
 
-      GetCurrentScene()->Destroy(false);
+      if (EditorScenePtr currentScene = GetCurrentScene())
+      {
+        currentScene->Destroy(false);
+      }
 
       GetAnimationPlayer()->Destroy();
 
@@ -282,14 +284,14 @@ namespace ToolKit
         if (viewport->IsShown())
         {
           GetRenderSystem()->AddRenderTask({[this, viewport, deltaTime](Renderer* renderer) -> void
-                                             {
-                                               TK_PROFILE_SCOPE("Render " + viewport->m_name);
-                                               viewport->m_editorRenderer->m_params.App      = g_app;
-                                               viewport->m_editorRenderer->m_params.LitMode  = m_sceneLightingMode;
-                                               viewport->m_editorRenderer->m_params.Viewport = viewport;
-                                               viewport->m_editorRenderer->Render(renderer);
-                                               viewport->StageResolvedTexture();
-                                             }});
+                                            {
+                                              TK_PROFILE_SCOPE("Render " + viewport->m_name);
+                                              viewport->m_editorRenderer->m_params.App      = g_app;
+                                              viewport->m_editorRenderer->m_params.LitMode  = m_sceneLightingMode;
+                                              viewport->m_editorRenderer->m_params.Viewport = viewport;
+                                              viewport->m_editorRenderer->Render(renderer);
+                                              viewport->StageResolvedTexture();
+                                            }});
         }
       }
 
@@ -425,126 +427,29 @@ namespace ToolKit
       }
     }
 
-    void AlterTextContent(std::fstream& fileEditStream, const String& filePath, const String content)
-    {
-      fileEditStream.open(filePath, std::ios::out | std::ios::trunc);
-      if (fileEditStream.is_open())
-      {
-        fileEditStream << content;
-        fileEditStream.close();
-      }
-    }
-
-    void TemplateUpdate(const String& file, const String& replaceSoruce, const String& replaceTarget)
-    {
-      std::fstream fileEditStream;
-      fileEditStream.open(file, std::ios::in);
-      if (fileEditStream.is_open())
-      {
-        std::stringstream buffer;
-        buffer << fileEditStream.rdbuf();
-        String content = buffer.str();
-        ReplaceFirstStringInPlace(content, replaceSoruce.data(), replaceTarget);
-        fileEditStream.close();
-
-        AlterTextContent(fileEditStream, file, content);
-      }
-    }
-
-    // note: only copy template folder
     void App::OnNewProject(const String& name)
     {
-      if (!IsWorkspaceSane(false, true))
+      if (m_workspace && m_workspace->OnNewProject(name))
       {
+        OpenProject({name, ""});
         return;
       }
-
-      if (!IsValidCppLibraryName(name))
-      {
-        TK_ERR("Invalid project name: %s.", name.c_str());
-        TK_LOG("%s", g_validLibraryNameRules.c_str());
-        m_statusMsg = g_statusFailed;
-        return;
-      }
-
-      String fullPath = ConcatPaths({m_workspace.GetActiveWorkspace(), name});
-      if (CheckFile(fullPath))
-      {
-        TK_ERR("Project already exist.");
-        m_statusMsg = g_statusFailed;
-        return;
-      }
-
-      // copy template folder to new workspace
-      RecursiveCopyDirectory(ConcatPaths({"..", "Templates", "Game"}),
-                             fullPath,
-                             {".filters", ".vcxproj", ".user", ".cxx"});
-
-      // Update cmake.
-      String currentPath = GetCurrentParentPath();
-      String cmakePath   = ConcatPaths({fullPath, "Codes", "CMakeLists.txt"});
-      TemplateUpdate(cmakePath, "__projectname__", name);
-
-      // update vscode includes.
-      String cppPropertiesPath = ConcatPaths({fullPath, ".vscode", "c_cpp_properties.json"});
-
-      String tkRoot            = currentPath;
-      String tkPath            = ConcatPaths({tkRoot, "ToolKit"});
-      String depPath           = ConcatPaths({tkRoot, "Dependency"});
-      String glmPath           = ConcatPaths({tkRoot, "Dependency", "glm"});
-      String imguiPath         = ConcatPaths({tkRoot, "Dependency", "tkimgui"});
-
-      String replacement       = "\"" + tkRoot + "\",\n" + "\t\t\t\t\"" + tkPath + "\",\n" + "\t\t\t\t\"" + depPath +
-                           "\",\n" + "\t\t\t\t\"" + glmPath + "\",\n" + "\t\t\t\t\"" + imguiPath + "\"";
-
-      TemplateUpdate(cppPropertiesPath, "__tk_includes__", replacement);
-
-      OpenProject({name, ""});
+      m_statusMsg = g_statusFailed;
     }
 
     void App::OnNewPlugin(const String& name)
     {
-      if (!IsWorkspaceSane(true, true))
+      if (m_workspace && m_workspace->OnNewPlugin(name))
       {
+        if (PluginWindowPtr wnd = GetWindow<PluginWindow>(g_pluginWindow))
+        {
+          wnd->LoadPluginSettings();
+        }
+        SetStatusMsg(g_statusSucceeded);
         return;
       }
 
-      if (!IsValidCppLibraryName(name))
-      {
-        TK_ERR("Invalid plugin name: %s.", name.c_str());
-        TK_LOG("%s", g_validLibraryNameRules.c_str());
-        m_statusMsg = g_statusFailed;
-        return;
-      }
-
-      String fullPath = ConcatPaths({m_workspace.GetPluginDirectory(), name});
-      if (CheckSystemFile(fullPath))
-      {
-        TK_ERR("A plugin with the same name already exist in the project.");
-        m_statusMsg = g_statusFailed;
-        return;
-      }
-
-      // Copy template folder to new project.
-      RecursiveCopyDirectory(ConcatPaths({"..", "Templates", "Plugin"}),
-                             fullPath,
-                             {".filters", ".vcxproj", ".user", ".cxx"});
-
-      // Update cmake.
-      String currentPath = std::filesystem::current_path().parent_path().u8string();
-      String cmakePath   = ConcatPaths({fullPath, "Codes", "CMakeLists.txt"});
-      TemplateUpdate(cmakePath, "__projectname__", name);
-
-      String pluginSettingsPath = ConcatPaths({fullPath, "Config", "Plugin.settings"});
-      TemplateUpdate(pluginSettingsPath, "PluginTemplate", name);
-
-      SetStatusMsg(g_statusSucceeded);
-      TK_LOG("A new plugin has been created.");
-
-      if (PluginWindowPtr wnd = GetWindow<PluginWindow>(g_pluginWindow))
-      {
-        wnd->LoadPluginSettings();
-      }
+      m_statusMsg = g_statusFailed;
     }
 
     void App::SetGameMod(const GameMod mod)
@@ -705,7 +610,7 @@ namespace ToolKit
       }
 
       PublishPlatform pluginType     = gamePlugin ? PublishPlatform::GamePlugin : PublishPlatform::EditorPlugin;
-      String pluginDir               = g_app->m_workspace.GetPluginDirectory();
+      String pluginDir               = g_app->m_workspace->GetPluginDirectory();
       m_publishManager->m_appName    = ConcatPaths({pluginDir, name, "Codes"});
       m_publishManager->m_pluginName = name;
 
@@ -729,7 +634,7 @@ namespace ToolKit
       // Load new code.
       if (PluginManager* pluginMan = GetPluginManager())
       {
-        String pluginPath = m_workspace.GetBinPath();
+        String pluginPath = m_workspace->GetBinPath();
         pluginMan->Load(pluginPath);
       }
 
@@ -751,8 +656,14 @@ namespace ToolKit
 
     EditorScenePtr App::GetCurrentScene()
     {
-      ScenePtr scene = GetSceneManager()->GetCurrentScene();
-      return Cast<EditorScene>(scene);
+      if (ScenePtr scene = GetSceneManager()->GetCurrentScene())
+      {
+        return Cast<EditorScene>(scene);
+      }
+      else
+      {
+        return nullptr;
+      }
     }
 
     void App::SetCurrentScene(const EditorScenePtr& scene)
@@ -877,18 +788,18 @@ namespace ToolKit
       DeleteWindows();
 
       String defaultEditorSettings = ConcatPaths({ConfigPath(), g_editorSettingsFile});
-      if (CheckFile(defaultEditorSettings) && CheckFile(m_workspace.GetActiveWorkspace()))
+      if (CheckFile(defaultEditorSettings) && CheckFile(m_workspace->GetActiveWorkspace()))
       {
         // Try reading defaults.
         SerializationFileInfo serializeInfo;
         serializeInfo.File = defaultEditorSettings;
 
         // Prevent loading last scene.
-        Project project    = m_workspace.GetActiveProject();
-        m_workspace.SetScene("");
+        Project project    = m_workspace->GetActiveProject();
+        m_workspace->SetScene("");
 
         DeSerialize(serializeInfo, nullptr);
-        m_workspace.SetScene(project.scene);
+        m_workspace->SetScene(project.scene);
 
         String settingsFile = ConcatPaths({ConfigPath(), g_uiLayoutFile});
         ImGui::LoadIniSettingsFromDisk(settingsFile.c_str());
@@ -1303,7 +1214,7 @@ namespace ToolKit
                           }
 
                           SetCurrentScene(nextScene);
-                          m_workspace.SetScene(nextScene->m_name);
+                          m_workspace->SetScene(nextScene->m_name);
                         },
                         nextScene);
                   });
@@ -1321,10 +1232,10 @@ namespace ToolKit
 
     void App::ApplyProjectSettings(bool setDefaults)
     {
-      if (CheckFile(ConcatPaths({m_workspace.GetConfigDirectory(), g_editorSettingsFile})) && !setDefaults)
+      if (CheckFile(ConcatPaths({ConfigPath(), g_editorSettingsFile})) && !setDefaults)
       {
         DeSerialize(SerializationFileInfo(), nullptr);
-        m_workspace.DeSerializeEngineSettings();
+        m_workspace->DeSerializeEngineSettings();
         UI::InitSettings();
       }
       else
@@ -1355,14 +1266,22 @@ namespace ToolKit
       }
     }
 
-    void App::OpenProject(const Project& project)
+    bool App::OpenProject(const Project& project)
     {
+      String projectPath = ConcatPaths({m_workspace->GetActiveWorkspace(), project.name});
+      if (!CheckSystemFile(projectPath))
+      {
+        SetStatusMsg("Project folder not found: " + projectPath);
+        TK_ERR("Project folder does not exist: %s", projectPath.c_str());
+        return false;
+      }
+
       PluginWindowPtr pluginWindow = GetWindow<PluginWindow>(g_pluginWindow);
       if (pluginWindow == nullptr)
       {
         SetStatusMsg(g_statusFailed);
         TK_ERR("Can not access project plugins. Plugin window is not available.");
-        return;
+        return false;
       }
 
       ClearSession();
@@ -1370,8 +1289,8 @@ namespace ToolKit
 
       pluginWindow->UnloadProjectPlugins();
 
-      m_workspace.SetActiveProject(project);
-      m_workspace.Serialize(nullptr, nullptr);
+      m_workspace->SetActiveProject(project);
+      m_workspace->Serialize(nullptr, nullptr);
       CreateNewScene();
 
       pluginWindow->LoadPluginSettings();
@@ -1383,6 +1302,8 @@ namespace ToolKit
       {
         browser->IterateFolders(true);
       }
+
+      return true;
     }
 
     void App::PackResources()
@@ -1421,55 +1342,12 @@ namespace ToolKit
 
     bool App::IsWorkspaceSane(bool checkProject, bool reportError) const
     {
-      if (m_workspace.GetActiveWorkspace().empty())
+      if (m_workspace && m_workspace->IsWorkspaceSane(checkProject, reportError))
       {
-        if (reportError)
-        {
-          TK_ERR("No workspace. Can not proceed with operation.");
-          m_statusMsg = g_statusFailed;
-        }
-        return false;
+        return true;
       }
-
-      if (checkProject)
-      {
-        if (m_workspace.GetActiveProject().name.empty())
-        {
-          if (reportError)
-          {
-            TK_ERR("No project. Can not proceed with operation.");
-            m_statusMsg = g_statusFailed;
-          }
-          return false;
-        }
-      }
-
-      return true;
-    }
-
-    bool App::IsValidCppLibraryName(const String& name)
-    {
-      if (name.empty())
-      {
-        return false;
-      }
-
-      for (ubyte c : name)
-      {
-        // Allow only alphanumeric characters and underscore
-        if (!std::isalnum((ubyte) c) && c != '_')
-        {
-          return false;
-        }
-      }
-
-      // Ensure it doesn't start with a digit.
-      if (std::isdigit((ubyte) name[0]))
-      {
-        return false;
-      }
-
-      return true;
+      m_statusMsg = g_statusFailed;
+      return false;
     }
 
     WindowPtr App::GetActiveWindow()
@@ -1634,10 +1512,10 @@ namespace ToolKit
         return nullptr;
       }
 
-      m_workspace.Serialize(nullptr, nullptr);
+      m_workspace->Serialize(nullptr, nullptr);
 
       std::ofstream file;
-      String cfgPath              = m_workspace.GetConfigDirectory();
+      String cfgPath              = m_workspace->GetConfigDirectory();
       String fileName             = ConcatPaths({cfgPath, g_editorSettingsFile});
 
       // File or Config folder is missing.
@@ -1664,6 +1542,7 @@ namespace ToolKit
         WriteAttr(setNode, docPtr, "width", std::to_string(size.x));
         WriteAttr(setNode, docPtr, "height", std::to_string(size.y));
         WriteAttr(setNode, docPtr, "maximized", std::to_string(m_windowMaximized));
+        WriteAttr(setNode, docPtr, "theme", std::to_string((int) UI::GetCurrentTheme()));
 
         XmlNode* windowsNode = CreateXmlNode(docPtr, "Windows", app);
         for (WindowPtr wnd : m_windows)
@@ -1687,7 +1566,7 @@ namespace ToolKit
       String settingsFile = info.File;
       if (settingsFile.empty())
       {
-        settingsFile = ConcatPaths({m_workspace.GetConfigDirectory(), g_editorSettingsFile});
+        settingsFile = ConcatPaths({m_workspace->GetConfigDirectory(), g_editorSettingsFile});
       }
 
       if (!CheckFile(settingsFile))
@@ -1723,13 +1602,24 @@ namespace ToolKit
             {
               OnResize(width, height);
             }
+
+            int theme = -1;
+            ReadAttr(setNode, "theme", theme);
+            if (theme == -1)
+            {
+              UI::SetTheme(Theme::Dark); // default theme
+            }
+            else
+            {
+              UI::SetTheme(static_cast<Theme>(theme));
+            }
           }
         }
 
         DeserializeWindows(root);
       }
 
-      Project activeProject = m_workspace.GetActiveProject();
+      Project activeProject = m_workspace->GetActiveProject();
       if (!activeProject.name.empty())
       {
         LoadGamePlugin();

@@ -1146,4 +1146,29 @@ namespace ToolKit
     return result;
   }
 
+  bool IsValidCppLibraryName(const String& name)
+  {
+    if (name.empty())
+    {
+      return false;
+    }
+
+    for (ubyte c : name)
+    {
+      // Allow only alphanumeric characters and underscore
+      if (!std::isalnum((ubyte) c) && c != '_')
+      {
+        return false;
+      }
+    }
+
+    // Ensure it doesn't start with a digit.
+    if (std::isdigit((ubyte) name[0]))
+    {
+      return false;
+    }
+
+    return true;
+  }
+
 } //  namespace ToolKit

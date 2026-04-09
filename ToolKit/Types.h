@@ -161,6 +161,7 @@ namespace ToolKit
   typedef std::vector<class Mesh*> MeshRawPtrArray;
   typedef std::shared_ptr<class AnimRecord> AnimRecordPtr;
   typedef std::unordered_map<String, AnimRecordPtr> AnimRecordPtrMap;
+  typedef std::unordered_map<String, bool> StringBoolMap;
   typedef class AnimRecord* AnimRecordRawPtr;
   typedef std::vector<AnimRecordRawPtr> AnimRecordRawPtrArray;
   typedef std::vector<AnimRecordPtr> AnimRecordPtrArray;
@@ -404,35 +405,35 @@ namespace ToolKit
   {
     switch (type)
     {
-    case GraphicTypes::FormatRed:
-    case GraphicTypes::FormatR8:
-      return 1;
-    case GraphicTypes::FormatRG:
-    case GraphicTypes::FormatRG8:
-    case GraphicTypes::FormatR16F:
-    case GraphicTypes::FormatR16SNorm:
-      return 2;
-    case GraphicTypes::FormatRGB:
-    case GraphicTypes::FormatRGB8:
-      return 3;
-    case GraphicTypes::FormatRGBA:
-    case GraphicTypes::FormatRGBA8:
-    case GraphicTypes::FormatR32F:
-    case GraphicTypes::FormatRG16F:
-    case GraphicTypes::FormatSRGB8_A8:
-      return 4;
-    case GraphicTypes::FormatRG32F:
-    case GraphicTypes::FormatRGBA16F:
-      return 8;
-    case GraphicTypes::FormatRGB16F:
-      return 6;
-    case GraphicTypes::FormatRGB32F:
-      return 12;
-    case GraphicTypes::FormatRGBA32F:
-      return 16;
-    default:
-      assert(false && "Unsupported pixel format");
-      return 1;
+      case GraphicTypes::FormatRed:
+      case GraphicTypes::FormatR8:
+        return 1;
+      case GraphicTypes::FormatRG:
+      case GraphicTypes::FormatRG8:
+      case GraphicTypes::FormatR16F:
+      case GraphicTypes::FormatR16SNorm:
+        return 2;
+      case GraphicTypes::FormatRGB:
+      case GraphicTypes::FormatRGB8:
+        return 3;
+      case GraphicTypes::FormatRGBA:
+      case GraphicTypes::FormatRGBA8:
+      case GraphicTypes::FormatR32F:
+      case GraphicTypes::FormatRG16F:
+      case GraphicTypes::FormatSRGB8_A8:
+        return 4;
+      case GraphicTypes::FormatRG32F:
+      case GraphicTypes::FormatRGBA16F:
+        return 8;
+      case GraphicTypes::FormatRGB16F:
+        return 6;
+      case GraphicTypes::FormatRGB32F:
+        return 12;
+      case GraphicTypes::FormatRGBA32F:
+        return 16;
+      default:
+        assert(false && "Unsupported pixel format");
+        return 1;
     }
   }
 

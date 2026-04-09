@@ -25,8 +25,11 @@
 #include <SDL.h>
 #include <Sky.h>
 #include <TKOpenGL.h>
+#include <Workspace.h>
 #include <imgui/backends/imgui_impl_opengl3.h>
 #include <imgui/backends/imgui_impl_sdl2.h>
+
+#include <fstream>
 
 namespace ToolKit
 {
@@ -42,6 +45,7 @@ namespace ToolKit
     bool UI::m_showNewSceneWindow    = false;
     float UI::m_hoverTimeForHelp     = 1.0f;
     bool UI::m_firstFrame            = true;
+    Theme UI::m_currentTheme         = Theme::Dark;
     UI::Blocker UI::BlockerData;
     UI::Import UI::ImportData;
     UI::SearchFile UI::SearchFileData;
@@ -143,17 +147,19 @@ namespace ToolKit
 
       io.Fonts->Clear();
       LiberationSans =
-          io.Fonts->AddFontFromFileTTF(FontPath("LiberationSans-Regular.ttf").c_str(), 14.0f, nullptr, utf8TR);
+          io.Fonts->AddFontFromFileTTF(FontPath("LiberationSans-Regular.ttf", true).c_str(), 14.0f, nullptr, utf8TR);
 
       static const ImWchar icons_ranges[] = {ICON_MIN_FA, ICON_MAX_FA, 0};
       ImFontConfig icons_config;
       icons_config.MergeMode = true;
       // icons_config.PixelSnapH = true;
-      IconFont =
-          io.Fonts->AddFontFromFileTTF(FontPath(FONT_ICON_FILE_NAME_FA).c_str(), 14.0f, &icons_config, icons_ranges);
+      IconFont               = io.Fonts->AddFontFromFileTTF(FontPath(FONT_ICON_FILE_NAME_FA, true).c_str(),
+                                              14.0f,
+                                              &icons_config,
+                                              icons_ranges);
 
       LiberationSansBold =
-          io.Fonts->AddFontFromFileTTF(FontPath("LiberationSans-Bold.ttf").c_str(), 14.0f, nullptr, utf8TR);
+          io.Fonts->AddFontFromFileTTF(FontPath("LiberationSans-Bold.ttf", true).c_str(), 14.0f, nullptr, utf8TR);
 
       ImGui_ImplSDL2_InitForOpenGL(g_window, g_context);
       ImGui_ImplOpenGL3_Init("#version 300 es");
@@ -164,7 +170,6 @@ namespace ToolKit
       pio.Platform_CreateWindow = &TK_Platform_CreateWindow;
 
       InitIcons();
-      InitTheme();
     }
 
     void UI::HeaderText(const char* text)
@@ -184,10 +189,6 @@ namespace ToolKit
       ImGui_ImplSDL2_Shutdown();
       ImGui::DestroyContext();
     }
-
-    void LightTheme();
-    void DarkTheme();
-    void GreyTheme();
 
     void UI::ShowDock()
     {
@@ -300,20 +301,12 @@ namespace ToolKit
       }
     }
 
-    void SetTheme(Theme theme)
+    void UI::SetTheme(Theme theme)
     {
-      if (theme == Theme::Dark)
-      {
-        DarkTheme();
-      }
-      else if (theme == Theme::Light)
-      {
-        LightTheme();
-      }
-      else
-      {
-        GreyTheme();
-      }
+      ImGui::SetColorEditOptions(ImGuiColorEditFlags_PickerHueWheel | ImGuiColorEditFlags_NoOptions);
+      DeserializeThemeSettings(theme);
+
+      m_currentTheme = theme;
 
       // Fix gamma correction
       /* if (!GetRenderSystem()->IsGammaCorrectionNeeded())
@@ -468,10 +461,101 @@ namespace ToolKit
 #endif
     }
 
-    void UI::InitTheme()
+    void UI::DeserializeThemeSettings(Theme theme)
     {
-      ImGui::SetColorEditOptions(ImGuiColorEditFlags_PickerHueWheel | ImGuiColorEditFlags_NoOptions);
-      SetTheme(Theme::Dark);
+      String themeFileName;
+      if (theme == Theme::Dark)
+      {
+        themeFileName = "DarkTheme.settings";
+      }
+      else if (theme == Theme::Light)
+      {
+        themeFileName = "LightTheme.settings";
+      }
+      else if (theme == Theme::Grey)
+      {
+        themeFileName = "GreyTheme.settings";
+      }
+      else
+      {
+        TK_ERR("Unknown theme selected: %d", (int) theme);
+        return;
+      }
+
+      Vec4Array colors;
+      if (!Workspace::DeserializeThemeColors(themeFileName, colors))
+      {
+        return;
+      }
+
+      if ((int) colors.size() < ImGuiCol_COUNT)
+      {
+        return;
+      }
+
+      ImGuiStyle& style                                = ImGui::GetStyle();
+      style.Colors[ImGuiCol_Text]                      = ImVec4(colors[0]);
+      style.Colors[ImGuiCol_TextDisabled]              = ImVec4(colors[1]);
+      style.Colors[ImGuiCol_WindowBg]                  = ImVec4(colors[2]);
+      style.Colors[ImGuiCol_ChildBg]                   = ImVec4(colors[3]);
+      style.Colors[ImGuiCol_PopupBg]                   = ImVec4(colors[4]);
+      style.Colors[ImGuiCol_Border]                    = ImVec4(colors[5]);
+      style.Colors[ImGuiCol_BorderShadow]              = ImVec4(colors[6]);
+      style.Colors[ImGuiCol_FrameBg]                   = ImVec4(colors[7]);
+      style.Colors[ImGuiCol_FrameBgHovered]            = ImVec4(colors[8]);
+      style.Colors[ImGuiCol_FrameBgActive]             = ImVec4(colors[9]);
+      style.Colors[ImGuiCol_TitleBg]                   = ImVec4(colors[10]);
+      style.Colors[ImGuiCol_TitleBgActive]             = ImVec4(colors[11]);
+      style.Colors[ImGuiCol_TitleBgCollapsed]          = ImVec4(colors[12]);
+      style.Colors[ImGuiCol_MenuBarBg]                 = ImVec4(colors[13]);
+      style.Colors[ImGuiCol_ScrollbarBg]               = ImVec4(colors[14]);
+      style.Colors[ImGuiCol_ScrollbarGrab]             = ImVec4(colors[15]);
+      style.Colors[ImGuiCol_ScrollbarGrabHovered]      = ImVec4(colors[16]);
+      style.Colors[ImGuiCol_ScrollbarGrabActive]       = ImVec4(colors[17]);
+      style.Colors[ImGuiCol_CheckMark]                 = ImVec4(colors[18]);
+      style.Colors[ImGuiCol_SliderGrab]                = ImVec4(colors[19]);
+      style.Colors[ImGuiCol_SliderGrabActive]          = ImVec4(colors[20]);
+      style.Colors[ImGuiCol_Button]                    = ImVec4(colors[21]);
+      style.Colors[ImGuiCol_ButtonHovered]             = ImVec4(colors[22]);
+      style.Colors[ImGuiCol_ButtonActive]              = ImVec4(colors[23]);
+      style.Colors[ImGuiCol_Header]                    = ImVec4(colors[24]);
+      style.Colors[ImGuiCol_HeaderHovered]             = ImVec4(colors[25]);
+      style.Colors[ImGuiCol_HeaderActive]              = ImVec4(colors[26]);
+      style.Colors[ImGuiCol_Separator]                 = ImVec4(colors[27]);
+      style.Colors[ImGuiCol_SeparatorHovered]          = ImVec4(colors[28]);
+      style.Colors[ImGuiCol_SeparatorActive]           = ImVec4(colors[29]);
+      style.Colors[ImGuiCol_ResizeGrip]                = ImVec4(colors[30]);
+      style.Colors[ImGuiCol_ResizeGripHovered]         = ImVec4(colors[31]);
+      style.Colors[ImGuiCol_ResizeGripActive]          = ImVec4(colors[32]);
+      style.Colors[ImGuiCol_InputTextCursor]           = ImVec4(colors[33]);
+      style.Colors[ImGuiCol_TabHovered]                = ImVec4(colors[34]);
+      style.Colors[ImGuiCol_Tab]                       = ImVec4(colors[35]);
+      style.Colors[ImGuiCol_TabSelected]               = ImVec4(colors[36]);
+      style.Colors[ImGuiCol_TabSelectedOverline]       = ImVec4(colors[37]);
+      style.Colors[ImGuiCol_TabDimmed]                 = ImVec4(colors[38]);
+      style.Colors[ImGuiCol_TabDimmedSelected]         = ImVec4(colors[39]);
+      style.Colors[ImGuiCol_TabDimmedSelectedOverline] = ImVec4(colors[40]);
+      style.Colors[ImGuiCol_DockingPreview]            = ImVec4(colors[41]);
+      style.Colors[ImGuiCol_DockingEmptyBg]            = ImVec4(colors[42]);
+      style.Colors[ImGuiCol_PlotLines]                 = ImVec4(colors[43]);
+      style.Colors[ImGuiCol_PlotLinesHovered]          = ImVec4(colors[44]);
+      style.Colors[ImGuiCol_PlotHistogram]             = ImVec4(colors[45]);
+      style.Colors[ImGuiCol_PlotHistogramHovered]      = ImVec4(colors[46]);
+      style.Colors[ImGuiCol_TableHeaderBg]             = ImVec4(colors[47]);
+      style.Colors[ImGuiCol_TableBorderStrong]         = ImVec4(colors[48]);
+      style.Colors[ImGuiCol_TableBorderLight]          = ImVec4(colors[49]);
+      style.Colors[ImGuiCol_TableRowBg]                = ImVec4(colors[50]);
+      style.Colors[ImGuiCol_TableRowBgAlt]             = ImVec4(colors[51]);
+      style.Colors[ImGuiCol_TextLink]                  = ImVec4(colors[52]);
+      style.Colors[ImGuiCol_TextSelectedBg]            = ImVec4(colors[53]);
+      style.Colors[ImGuiCol_TreeLines]                 = ImVec4(colors[54]);
+      style.Colors[ImGuiCol_DragDropTarget]            = ImVec4(colors[55]);
+      style.Colors[ImGuiCol_DragDropTargetBg]          = ImVec4(colors[56]);
+      style.Colors[ImGuiCol_UnsavedMarker]             = ImVec4(colors[57]);
+      style.Colors[ImGuiCol_NavCursor]                 = ImVec4(colors[58]);
+      style.Colors[ImGuiCol_NavWindowingHighlight]     = ImVec4(colors[59]);
+      style.Colors[ImGuiCol_NavWindowingDimBg]         = ImVec4(colors[60]);
+      style.Colors[ImGuiCol_ModalWindowDimBg]          = ImVec4(colors[61]);
     }
 
     void UI::InitSettings()
@@ -825,7 +909,7 @@ namespace ToolKit
 
       if (ImGui::BeginMenu("Open Project"))
       {
-        for (const Project& project : GetApp()->m_workspace.m_projects)
+        for (const Project& project : GetApp()->m_workspace->m_projects)
         {
           if (ImGui::MenuItem(project.name.c_str()))
           {

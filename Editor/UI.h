@@ -43,7 +43,11 @@ namespace ToolKit
       static void PopBoldFont();
       static void ShowDock();
       static void InitIcons();
-      static void InitTheme();
+      static void SetTheme(Theme theme);
+      static void DeserializeThemeSettings(Theme theme);
+
+      static inline Theme GetCurrentTheme() { return m_currentTheme; }
+
       static void InitSettings();
       static void ShowUI();
       static void BeginUI();
@@ -206,6 +210,7 @@ namespace ToolKit
 
      private:
       static bool m_firstFrame; //!< Used to perform one time initializations after first frame.
+      static Theme m_currentTheme;
     };
 
   } // namespace Editor

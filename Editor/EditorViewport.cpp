@@ -380,6 +380,22 @@ namespace ToolKit
         {
           ImGui::SetMouseCursor(ImGuiMouseCursor_None);
 
+          // Adjust camera speed with scroll wheel while right clicking
+          if (m_mouseOverContentArea)
+          {
+            ImGuiIO& io       = ImGui::GetIO();
+            float scrollDelta = io.MouseWheel;
+            if (glm::notEqual<float>(scrollDelta, 0.0f))
+            {
+              float& camSpeed        = GetApp()->m_camSpeed;
+              // Dynamic speed adjustment: larger values change faster, smaller values change slower
+              float speedMultiplier  = camSpeed * 0.1f;
+              speedMultiplier        = glm::max(speedMultiplier, 0.05f);
+              camSpeed              += scrollDelta * speedMultiplier;
+              camSpeed               = glm::clamp(camSpeed, 0.1f, 1000.0f);
+            }
+          }
+
           // Handle relative mouse hack.
           if (m_relMouseModBegin)
           {
@@ -471,10 +487,10 @@ namespace ToolKit
       CameraPtr cam = GetCamera();
       if (cam)
       {
-        // Adjust zoom always.
         ImGuiIO& io = ImGui::GetIO();
-        if (m_mouseOverContentArea)
+        if (m_mouseOverContentArea && !io.MouseDown[1])
         {
+          // Adjust zoom.
           float delta = io.MouseWheel;
           if (glm::notEqual<float>(delta, 0.0f))
           {

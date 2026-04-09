@@ -12,9 +12,12 @@
   #define WIN32_LEAN_AND_MEAN
   #include <Windows.h>
   #include <shellapi.h>
+  #include <shlobj.h>
   #include <strsafe.h>
 
   #include <chrono>
+  #include <filesystem>
+  #include <fstream>
   #include <thread>
 
 namespace ToolKit
@@ -189,6 +192,24 @@ namespace ToolKit
       ShowWindow(handle, SW_HIDE);
     }
 
+    // Fix working directory when launched from shortcut (shortcut's working dir is Desktop).
+    // Set it to exe directory (Bin/) so Resources/Config relative paths work.
+    void SetWorkingDirectoryToBinFolder()
+    {
+      wchar_t exePathW[MAX_PATH] = {0};
+      DWORD len                  = ::GetModuleFileNameW(nullptr, exePathW, MAX_PATH);
+      if (len > 0 && len < MAX_PATH)
+      {
+        std::filesystem::path exePath(exePathW);
+        std::filesystem::path exeDir = exePath.parent_path(); // .../Bin
+        std::wstring exeDirW         = exeDir.wstring();
+        if (!exeDirW.empty())
+        {
+          ::SetCurrentDirectoryW(exeDirW.c_str());
+        }
+      }
+    }
+
     String GetCreationTime(const String& fullPath)
     {
       std::wstring wFile = UTF8Util::ConvertUTF8ToUTF16(fullPath.c_str());
@@ -229,6 +250,106 @@ namespace ToolKit
           SendMessage(hwnd, WM_SETICON, ICON_SMALL, (LPARAM) icon);
         }
       }
+    }
+
+    // Create a desktop shortcut (.lnk) that launches the current editor executable
+    // with optional command-line arguments.
+    //
+    // - shortcutName: File name without extension (".bat" will be appended).
+    // - arguments   : Optional argument string passed to the executable.
+    //
+    // Returns true on success, false otherwise.
+    bool CreateProjectShortcutOnDesktop(const String& shortcutName,
+                                        const String& arguments,
+                                        const String& exePathOverride = "")
+    {
+      std::wstring exePathW;
+      if (exePathOverride.empty())
+      {
+        wchar_t buf[MAX_PATH] = {0};
+        DWORD len             = ::GetModuleFileNameW(nullptr, buf, MAX_PATH);
+        if (len == 0 || len >= MAX_PATH)
+        {
+          return false;
+        }
+        exePathW = buf;
+      }
+      else
+      {
+        exePathW = UTF8Util::ConvertUTF8ToUTF16(exePathOverride);
+      }
+
+      // Get desktop folder path using Windows API (handles Public/User desktop, etc.)
+      wchar_t desktopPathW[MAX_PATH] = {0};
+      HRESULT hr = SHGetFolderPathW(nullptr, CSIDL_DESKTOP, nullptr, SHGFP_TYPE_CURRENT, desktopPathW);
+      if (FAILED(hr) || desktopPathW[0] == L'\0')
+      {
+        return false;
+      }
+
+      // Convert to UTF-8 (for CheckSystemFile)
+      std::filesystem::path desktopPathFs(desktopPathW);
+      String desktopPath = desktopPathFs.u8string();
+
+      // Check if desktop directory exists, if not, fail.
+      if (!CheckSystemFile(desktopPath))
+      {
+        return false;
+      }
+
+      // Initialize COM for shell link creation.
+      hr                     = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+      bool needUninit        = SUCCEEDED(hr);
+
+      IShellLinkW* shellLink = nullptr;
+      hr = CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLinkW, (LPVOID*) &shellLink);
+      if (FAILED(hr) || shellLink == nullptr)
+      {
+        if (needUninit)
+        {
+          CoUninitialize();
+        }
+        return false;
+      }
+
+      shellLink->SetPath(exePathW.c_str());
+
+      // Optional arguments.
+      if (!arguments.empty())
+      {
+        std::wstring wArgs = UTF8Util::ConvertUTF8ToUTF16(arguments);
+        shellLink->SetArguments(wArgs.c_str());
+      }
+
+      // Resolve .lnk path on desktop.
+      String shortcutFileNameUtf8    = shortcutName + ".lnk";
+      std::wstring shortcutFileNameW = UTF8Util::ConvertUTF8ToUTF16(shortcutFileNameUtf8);
+      std::filesystem::path shortcutPathFs(desktopPathW);
+      shortcutPathFs            /= shortcutFileNameW;
+
+      IPersistFile* persistFile  = nullptr;
+      hr                         = shellLink->QueryInterface(IID_IPersistFile, (void**) &persistFile);
+      if (FAILED(hr) || persistFile == nullptr)
+      {
+        shellLink->Release();
+        if (needUninit)
+        {
+          CoUninitialize();
+        }
+        return false;
+      }
+
+      hr = persistFile->Save(shortcutPathFs.c_str(), TRUE);
+
+      persistFile->Release();
+      shellLink->Release();
+
+      if (needUninit)
+      {
+        CoUninitialize();
+      }
+
+      return SUCCEEDED(hr);
     }
 
   } // namespace PlatformHelpers

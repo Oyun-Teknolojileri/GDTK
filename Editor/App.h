@@ -100,15 +100,10 @@ namespace ToolKit
       void MergeScene(const String& fullPath);
       void LinkScene(const String& fullPath);
       void ApplyProjectSettings(bool setDefaults);
-      void OpenProject(const Project& project);
+      bool OpenProject(const Project& project);
       void PackResources();
       void SaveAllResources();
 
-      /**
-       * Looks for a valid workspace and scene. Returns true if both exist.
-       * If checkProject is true, expect an active project.
-       * If reportError is true, reports a console error.
-       */
       bool IsWorkspaceSane(bool checkProject, bool reportError) const;
 
       /** Project and plugin names must be valid C++ library names. Performs the check.  */
@@ -263,7 +258,7 @@ namespace ToolKit
       ShellOpenDirFn m_shellOpenDirFn          = nullptr;
       EditorLitMode m_sceneLightingMode        = EditorLitMode::EditorLit;
       EditorViewportPtr m_lastActiveViewport   = nullptr;
-      Workspace m_workspace;
+      WorkspacePtr m_workspace;
 
       // Dynamic Entity Menus.
       StringArray m_customObjectMetaValues;    //!< Add menu shows this additional classes.

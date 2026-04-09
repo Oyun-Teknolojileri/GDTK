@@ -55,6 +55,63 @@ namespace ToolKit
     // External event pool that collect and convert system events to toolkit events.
     SDLEventPool<TK_PLATFORM>* g_sdlEventPool = nullptr;
 
+    void HandleArguments(char* argv[], int argc)
+    {
+      if (!g_app)
+      {
+        return;
+      }
+      String workspacePath;
+      String projectName;
+      for (int i = 1; i < argc; ++i)
+      {
+        if (strcmp(argv[i], "--workspace") == 0 && i + 1 < argc)
+        {
+          workspacePath = argv[i + 1];
+          if (workspacePath.front() == '"' && workspacePath.back() == '"')
+          {
+            workspacePath = workspacePath.substr(1, workspacePath.length() - 2);
+          }
+          ++i;
+        }
+        else if (strcmp(argv[i], "--project-name") == 0 && i + 1 < argc)
+        {
+          projectName = argv[i + 1];
+          if (projectName.front() == '"' && projectName.back() == '"')
+          {
+            projectName = projectName.substr(1, projectName.length() - 2);
+          }
+          ++i;
+        }
+      }
+
+      if (!workspacePath.empty())
+      {
+        g_app->m_workspace->SetDefaultWorkspace(workspacePath);
+        g_app->m_workspace->RefreshProjects();
+      }
+      if (!projectName.empty())
+      {
+        Project targetProject;
+        targetProject.name = projectName;
+        bool found         = false;
+        for (const auto& proj : g_app->m_workspace->m_projects)
+        {
+          if (proj.name == projectName)
+          {
+            targetProject = proj;
+            found         = true;
+            break;
+          }
+        }
+
+        if (found)
+        {
+          g_app->m_workspace->SetActiveProject(targetProject);
+        }
+      }
+    }
+
     // Windows util function for creating ToolKit config files in AppData.
     void CreateAppData()
     {
@@ -65,11 +122,16 @@ namespace ToolKit
         return;
       }
 
-      std::array<String, 5> files = {"Workspace.settings",
-                                     "Editor.settings",
-                                     "UILayout.ini",
-                                     "Engine.settings",
-                                     "GamePluginBuild.bat"};
+      std::array<String, 8> files = {
+          "Workspace.settings",
+          "Editor.settings",
+          "UILayout.ini",
+          "Engine.settings",
+          "GamePluginBuild.bat",
+          "DarkTheme.settings",
+          "GreyTheme.settings",
+          "LightTheme.settings",
+      };
 
       String cfgPath              = ConcatPaths({String(appData), "ToolKit", "Config"});
 
@@ -189,6 +251,8 @@ namespace ToolKit
 
     void PreInit()
     {
+      PlatformHelpers::SetWorkingDirectoryToBinFolder();
+
       g_sdlEventPool = new SDLEventPool<TK_PLATFORM>();
 
       // PreInit Main
@@ -206,7 +270,7 @@ namespace ToolKit
                                         { ToolKit::PlatformHelpers::OutputLog((int) type, msg.c_str()); });
     }
 
-    void Init()
+    void Init(int argc, char* argv[])
     {
       EngineSettings& settings  = GetEngineSettings();
       const String settingsFile = EngineSettingsPath();
@@ -321,8 +385,9 @@ namespace ToolKit
               TK_ERR("SDL_GetDisplayBounds Error: %s", SDL_GetError());
             }
 
-            // Init app
-            g_app                   = new App(settings.m_window->GetWidthVal(), settings.m_window->GetHeightVal());
+            g_app = new App(settings.m_window->GetWidthVal(), settings.m_window->GetHeightVal());
+
+            HandleArguments(argv, argc);
             g_app->m_displayBounds  = UVec2(displayBounds.w, displayBounds.h);
             g_app->m_sysComExecFn   = &ToolKit::PlatformHelpers::SysComExec;
             g_app->m_shellOpenDirFn = &ToolKit::PlatformHelpers::OpenExplorer;
@@ -427,7 +492,7 @@ namespace ToolKit
     int ToolKit_Main(int argc, char* argv[])
     {
       PreInit();
-      Init();
+      Init(argc, argv);
 
       TK_Loop();
 

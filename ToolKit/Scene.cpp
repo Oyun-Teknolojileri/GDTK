@@ -929,7 +929,7 @@ namespace ToolKit
     ResourceManager::Uninit();
   }
 
-  bool SceneManager::CanStore(ClassMeta* Class) { return Class == Scene::StaticClass(); }
+  bool SceneManager::CanStore(ClassMeta* Class) { return Class->IsSublcassOf(Scene::StaticClass()); }
 
   String SceneManager::GetDefaultResource(ClassMeta* Class) { return ScenePath("Sample.scene", true); }
 

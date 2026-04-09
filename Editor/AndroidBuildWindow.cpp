@@ -102,7 +102,7 @@ namespace ToolKit::Editor
   {
     if (m_appName.empty())
     {
-      m_appName = GetApp()->m_workspace.GetActiveProject().name;
+      m_appName = GetApp()->m_workspace->GetActiveProject().name;
     }
 
     if (m_defaultIcon == nullptr)

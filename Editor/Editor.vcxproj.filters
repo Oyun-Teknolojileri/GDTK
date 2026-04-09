@@ -69,9 +69,6 @@
     <ClCompile Include="EditorScene.cpp">
       <Filter>Source</Filter>
     </ClCompile>
-    <ClCompile Include="Workspace.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
     <ClCompile Include="EditorCamera.cpp">
       <Filter>Entities</Filter>
     </ClCompile>
@@ -234,9 +231,6 @@
       <Filter>Mods</Filter>
     </ClInclude>
     <ClInclude Include="EditorScene.h">
-      <Filter>Source</Filter>
-    </ClInclude>
-    <ClInclude Include="Workspace.h">
       <Filter>Source</Filter>
     </ClInclude>
     <ClInclude Include="EditorCamera.h">
