@@ -27,7 +27,7 @@ namespace ToolKit
     namespace UTF8Util
     {
       // Function to convert UTF-8 to UTF-16
-      inline std::wstring ConvertUTF8ToUTF16(const std::string& utf8String)
+      std::wstring ConvertUTF8ToUTF16(const std::string& utf8String)
       {
         // Calculate the length of the UTF-16 string
         int utf16Length = MultiByteToWideChar(CP_UTF8, 0, utf8String.c_str(), -1, NULL, 0);
@@ -58,7 +58,7 @@ namespace ToolKit
     } // namespace UTF8Util
 
     // Win32 console command execution callback.
-    inline int SysComExec(StringView cmd, bool async, bool showConsole, std::function<void(int)> callback)
+    int SysComExec(StringView cmd, bool async, bool showConsole, std::function<void(int)> callback)
     {
       // https://learn.microsoft.com/en-us/windows/win32/procthread/creating-processes
       STARTUPINFOW si;
@@ -151,7 +151,7 @@ namespace ToolKit
       return 0;
     };
 
-    inline void OutputLog(int logType, const char* szFormat, ...)
+    void OutputLog(int logType, const char* szFormat, ...)
     {
       static const char* logNames[] = {"[Memo]", "[Error]", "[Warning]", "[Command]"};
 
@@ -170,7 +170,7 @@ namespace ToolKit
       OutputDebugStringW(wOutput.data());
     }
 
-    inline void OpenExplorer(const StringView utf8Path)
+    void OpenExplorer(const StringView utf8Path)
     {
       std::filesystem::path systemPath = utf8Path;
       String systemPathStr             = systemPath.lexically_normal().u8string(); // Windows style path normalization.
@@ -186,7 +186,7 @@ namespace ToolKit
       }
     }
 
-    inline void HideConsoleWindow()
+    void HideConsoleWindow()
     {
       HWND handle = GetConsoleWindow();
       ShowWindow(handle, SW_HIDE);
@@ -194,7 +194,7 @@ namespace ToolKit
 
     // Fix working directory when launched from shortcut (shortcut's working dir is Desktop).
     // Set it to exe directory (Bin/) so Resources/Config relative paths work.
-    inline void SetWorkingDirectoryToBinFolder()
+    void SetWorkingDirectoryToBinFolder()
     {
       wchar_t exePathW[MAX_PATH] = {0};
       DWORD len                  = ::GetModuleFileNameW(nullptr, exePathW, MAX_PATH);
@@ -210,7 +210,7 @@ namespace ToolKit
       }
     }
 
-    inline String GetCreationTime(const String& fullPath)
+    String GetCreationTime(const String& fullPath)
     {
       std::wstring wFile = UTF8Util::ConvertUTF8ToUTF16(fullPath.c_str());
 
@@ -223,7 +223,7 @@ namespace ToolKit
       return time;
     }
 
-    inline void* TKLoadModule(StringView fullPath)
+    void* TKLoadModule(StringView fullPath)
     {
       std::wstring wFile = UTF8Util::ConvertUTF8ToUTF16(fullPath.data());
       HMODULE module     = LoadLibraryW(wFile.data());
@@ -231,14 +231,11 @@ namespace ToolKit
       return (void*) module;
     }
 
-    inline void TKFreeModule(void* module) { FreeLibrary((HMODULE) module); }
+    void TKFreeModule(void* module) { FreeLibrary((HMODULE) module); }
 
-    inline void* TKGetFunction(void* module, StringView func)
-    {
-      return (void*) GetProcAddress((HMODULE) module, func.data());
-    }
+    void* TKGetFunction(void* module, StringView func) { return (void*) GetProcAddress((HMODULE) module, func.data()); }
 
-    inline void UpdateAppIcon()
+    void UpdateAppIcon()
     {
       HINSTANCE handle = ::GetModuleHandle(nullptr);
 
@@ -262,9 +259,9 @@ namespace ToolKit
     // - arguments   : Optional argument string passed to the executable.
     //
     // Returns true on success, false otherwise.
-    inline bool CreateProjectShortcutOnDesktop(const String& shortcutName,
-                                                const String& arguments,
-                                                const String& exePathOverride = "")
+    bool CreateProjectShortcutOnDesktop(const String& shortcutName,
+                                        const String& arguments,
+                                        const String& exePathOverride = "")
     {
       std::wstring exePathW;
       if (exePathOverride.empty())

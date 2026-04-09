@@ -17,7 +17,6 @@
 #include <TKOpenGL.h>
 #include <Types.h>
 
-
 #define IMGUI_USER_CONFIG "tk_imconfig.h"
 #include <ImGui/backends/imgui_impl_opengl3.h>
 #include <ImGui/backends/imgui_impl_sdl2.h>
@@ -93,7 +92,7 @@ namespace ToolKit
 
     void PreInit()
     {
-      PlatformHelpers::FixWorkingDirectory();
+      PlatformHelpers::SetWorkingDirectoryToBinFolder();
 
       g_sdlEventPool = new SDLEventPool<TK_PLATFORM>();
       g_proxy        = new Main();
