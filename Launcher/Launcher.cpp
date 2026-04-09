@@ -129,7 +129,7 @@ namespace ToolKit
 
     LauncherApp::LauncherApp()
     {
-      m_logoPath             = "/Icons/app_big.png";
+      m_logoPath             = "/Icons/app.png";
       m_defaultThumbnailPath = "/splash.png";
       m_thumbnailPath        = "../../thumbnail.png";
       m_launchIconPath       = "/Icons/play.png";

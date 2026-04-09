@@ -33,7 +33,7 @@ namespace ToolKit
       void OnSaveScene();
       void OnSaveAsScene();
       void OnQuit();
-      bool OnNewProject(const String& name);
+      void OnNewProject(const String& name);
       void OnNewPlugin(const String& name);
       void SetGameMod(const GameMod mod);
 

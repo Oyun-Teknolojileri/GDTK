@@ -427,15 +427,14 @@ namespace ToolKit
       }
     }
 
-    bool App::OnNewProject(const String& name)
+    void App::OnNewProject(const String& name)
     {
       if (m_workspace && m_workspace->OnNewProject(name))
       {
-        bool result = OpenProject({name, ""});
-        return result;
+        OpenProject({name, ""});
+        return;
       }
       m_statusMsg = g_statusFailed;
-      return false;
     }
 
     void App::OnNewPlugin(const String& name)
