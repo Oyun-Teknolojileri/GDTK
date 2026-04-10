@@ -1235,7 +1235,7 @@ namespace ToolKit
         bool parallaxCorrection = envCom->GetParallaxCorrectionVal();
 
         // iblMode: 0.0 = both, 1.0 = specular only, 2.0 = diffuse only.
-        float iblMode = 0.0f;
+        float iblMode           = 0.0f;
         if (!diffuseOn)
         {
           iblMode = 1.0f;
@@ -1268,7 +1268,7 @@ namespace ToolKit
         }
 
         // Compute secondary IBL mode for shader.
-        float secIblMode = 0.0f;
+        float secIblMode                = 0.0f;
         EnvironmentComponent* secEnvCom = job.SecondaryEnvironmentVolume;
         if (secEnvCom)
         {
@@ -1329,8 +1329,17 @@ namespace ToolKit
 
           if (secDiffuse && secSpecular)
           {
-            SetTexture(DefaultTextureSlots::SECONDARY_IRRADIANCE_MAP_TEXTURE_SLOT, secDiffuse);
-            SetTexture(DefaultTextureSlots::SECONDARY_IBL_SPECULAR_MAP_TEXTURE_SLOT, secSpecular);
+            bool secDiffuseOn  = secEnvCom->GetDiffuseIBLVal();
+            bool secSpecularOn = secEnvCom->GetSpecularIBLVal();
+
+            if (secDiffuseOn)
+            {
+              SetTexture(DefaultTextureSlots::SECONDARY_IRRADIANCE_MAP_TEXTURE_SLOT, secDiffuse);
+            }
+            if (secSpecularOn)
+            {
+              SetTexture(DefaultTextureSlots::SECONDARY_IBL_SPECULAR_MAP_TEXTURE_SLOT, secSpecular);
+            }
             m_drawCommand.SetSecondaryIblIntensity(secEnvCom->GetIntensityVal());
 
             if (const EntityPtr& secEnv = secEnvCom->OwnerEntity())
