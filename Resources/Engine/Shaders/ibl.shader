@@ -161,24 +161,41 @@ vec3 IBLPBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float perc
 	// Compute specular DFG term (Filament: specularDFG)
 	vec3 E = SpecularDFG(dfg, f0);
 
-	vec3 Fd = IBLDiffusePBR(normal, albedo, metallic, E);
-	vec3 Fr = IBLSpecularPBR(normal, fragToEye, perceptualRoughness, E, energyComp, worldPos);
+	vec3 Fd = vec3(0.0);
+	if (IsDiffuseIBLEnabled())
+	{
+		Fd = IBLDiffusePBR(normal, albedo, metallic, E);
+	}
+	vec3 Fr = vec3(0.0);
+	if (IsSpecularIBLEnabled())
+	{
+		Fr = IBLSpecularPBR(normal, fragToEye, perceptualRoughness, E, energyComp, worldPos);
+	}
 	vec3 primary = (Fd + Fr) * GetIBLIntensity();
+
+	float blendFactor = ComputeIBLBlendFactor(worldPos);
+
+	// Apply volume fade to primary: outside OBB → fades to zero.
+	primary *= blendFactor;
 
 	float secIntensity = GetSecondaryIBLIntensity();
 
-	if (secIntensity > 0.0)
+	if (secIntensity > 0.0 && blendFactor < 1.0)
 	{
-		float blendFactor = ComputeIBLBlendFactor(worldPos);
-
-		if (blendFactor < 1.0)
+		vec3 secFd = vec3(0.0);
+		if (IsSecondaryDiffuseIBLEnabled())
 		{
-			vec3 secFd = IBLDiffusePBRSecondary(normal, albedo, metallic, E);
-			vec3 secFr = IBLSpecularPBRSecondary(normal, fragToEye, perceptualRoughness, E, energyComp);
-			vec3 secondary = (secFd + secFr) * secIntensity;
-
-			return mix(secondary, primary, blendFactor);
+			secFd = IBLDiffusePBRSecondary(normal, albedo, metallic, E);
 		}
+		vec3 secFr = vec3(0.0);
+		if (IsSecondarySpecularIBLEnabled())
+		{
+			secFr = IBLSpecularPBRSecondary(normal, fragToEye, perceptualRoughness, E, energyComp);
+		}
+		vec3 secondary = (secFd + secFr) * secIntensity;
+
+		// Secondary fills in as primary fades out.
+		return primary + secondary * (1.0 - blendFactor);
 	}
 
 	return primary;

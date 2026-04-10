@@ -68,12 +68,17 @@ namespace ToolKit
 
     void SetIblFadeDistance(float fade) { data2.w = fade; }
 
-    void SetPrimaryVolumeMin(const Vec3& minVal, bool pccEnabled = false)
+    /** data3.w encodes pccEnabled + secondaryIblMode * 2.0 */
+    void SetPrimaryVolumeMin(const Vec3& minVal, bool pccEnabled = false, float secondaryIblMode = 0.0f)
     {
-      data3 = Vec4(minVal, pccEnabled ? 1.0f : 0.0f);
+      data3 = Vec4(minVal, (pccEnabled ? 1.0f : 0.0f) + secondaryIblMode * 2.0f);
     }
 
-    void SetPrimaryVolumeMax(const Vec3& maxVal) { data4 = Vec4(maxVal, 0.0f); }
+    /** iblMode: 0.0 = both, 1.0 = specular only, 2.0 = diffuse only */
+    void SetPrimaryVolumeMax(const Vec3& maxVal, float iblMode = 0.0f)
+    {
+      data4 = Vec4(maxVal, iblMode);
+    }
 
     void SetIblInverseVolumeTransform(const Mat4& inverseTransform)
     {

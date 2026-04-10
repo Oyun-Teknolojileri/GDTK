@@ -59,12 +59,47 @@
 
 	bool IsParallaxCorrectedCubemapEnabled()
 	{
-		return bool(drawCommand[2].w > 0.5);
+		return bool(mod(drawCommand[2].w, 2.0) > 0.5);
+	}
+
+	// Secondary IBL mode encoded in drawCommand[2].w: floor(val / 2.0)
+	// 0.0 = both, 1.0 = specular only, 2.0 = diffuse only.
+	float GetSecondaryIBLMode()
+	{
+		return floor(drawCommand[2].w / 2.0);
+	}
+
+	bool IsSecondaryDiffuseIBLEnabled()
+	{
+		float m = GetSecondaryIBLMode();
+		return (m < 0.5 || m > 1.5);
+	}
+
+	bool IsSecondarySpecularIBLEnabled()
+	{
+		return (GetSecondaryIBLMode() < 1.5);
 	}
 
 	vec3 GetPrimaryVolumeMax()
 	{
 		return drawCommand[3].xyz;
+	}
+
+	// IBL mode encoded in drawCommand[3].w: 0.0 = both, 1.0 = specular only, 2.0 = diffuse only.
+	float GetIBLMode()
+	{
+		return drawCommand[3].w;
+	}
+
+	bool IsDiffuseIBLEnabled()
+	{
+		float m = GetIBLMode();
+		return (m < 0.5 || m > 1.5); // 0.0 (both) or 2.0 (diffuse only)
+	}
+
+	bool IsSpecularIBLEnabled()
+	{
+		return (GetIBLMode() < 1.5); // 0.0 (both) or 1.0 (specular only)
 	}
 
 	mat4 GetIblInverseVolumeTransform()

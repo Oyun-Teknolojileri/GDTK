@@ -1230,8 +1230,29 @@ namespace ToolKit
 
       if (diffuseEnvMap && specularEnvMap && m_brdfLut)
       {
-        SetTexture(DefaultTextureSlots::IRRADIANCE_MAP_TEXTURE_SLOT, diffuseEnvMap);
-        SetTexture(DefaultTextureSlots::IBL_SPECULAR_PRE_FILTERED_MAP_TEXTURE_SLOT, specularEnvMap);
+        bool diffuseOn          = envCom->GetDiffuseIBLVal();
+        bool specularOn         = envCom->GetSpecularIBLVal();
+        bool parallaxCorrection = envCom->GetParallaxCorrectionVal();
+
+        // iblMode: 0.0 = both, 1.0 = specular only, 2.0 = diffuse only.
+        float iblMode = 0.0f;
+        if (!diffuseOn)
+        {
+          iblMode = 1.0f;
+        }
+        else if (!specularOn)
+        {
+          iblMode = 2.0f;
+        }
+
+        if (diffuseOn)
+        {
+          SetTexture(DefaultTextureSlots::IRRADIANCE_MAP_TEXTURE_SLOT, diffuseEnvMap);
+        }
+        if (specularOn)
+        {
+          SetTexture(DefaultTextureSlots::IBL_SPECULAR_PRE_FILTERED_MAP_TEXTURE_SLOT, specularEnvMap);
+        }
         SetTexture(DefaultTextureSlots::IBL_BRDF_LUT_TEXTURE_SLOT, m_brdfLut);
 
         m_drawCommand.SetIblInUse(true);
@@ -1246,9 +1267,36 @@ namespace ToolKit
           isSky = env->IsA<SkyBase>();
         }
 
-        m_drawCommand.SetPrimaryVolumeMin(offset - half, !isSky);
-        m_drawCommand.SetPrimaryVolumeMax(offset + half);
-        m_drawCommand.SetIblFadeDistance(glm::max(envCom->GetFadeVal(), 0.001f));
+        // Compute secondary IBL mode for shader.
+        float secIblMode = 0.0f;
+        EnvironmentComponent* secEnvCom = job.SecondaryEnvironmentVolume;
+        if (secEnvCom)
+        {
+          bool secDiffuseOn  = secEnvCom->GetDiffuseIBLVal();
+          bool secSpecularOn = secEnvCom->GetSpecularIBLVal();
+          if (!secDiffuseOn)
+          {
+            secIblMode = 1.0f;
+          }
+          else if (!secSpecularOn)
+          {
+            secIblMode = 2.0f;
+          }
+        }
+
+        bool pccEnabled = !isSky && parallaxCorrection;
+        m_drawCommand.SetPrimaryVolumeMin(offset - half, pccEnabled, secIblMode);
+        m_drawCommand.SetPrimaryVolumeMax(offset + half, iblMode);
+
+        // Sky is a boundless volume, fade must be 0 so blendFactor is always 1.
+        if (isSky)
+        {
+          m_drawCommand.SetIblFadeDistance(0.0f);
+        }
+        else
+        {
+          m_drawCommand.SetIblFadeDistance(glm::max(envCom->GetFadeVal(), 0.001f));
+        }
 
         // Sky: rotation applies to IBL image, no volume boundary.
         // Non-Sky: rotation applies to OBB volume, IBL image stays fixed.
@@ -1265,12 +1313,14 @@ namespace ToolKit
             m_iblRotation       = Mat4(1.0f);
             Mat4 worldTransform = env->m_node->GetTransform(TransformationSpace::TS_WORLD);
             m_drawCommand.SetIblInverseVolumeTransform(glm::inverse(worldTransform));
-            m_drawCommand.SetIblVolumeTransform(worldTransform);
+            if (pccEnabled)
+            {
+              m_drawCommand.SetIblVolumeTransform(worldTransform);
+            }
           }
         }
 
         // Secondary IBL for per-pixel blending.
-        EnvironmentComponent* secEnvCom = job.SecondaryEnvironmentVolume;
         if (secEnvCom)
         {
           const HdriPtr& secHdri  = secEnvCom->GetHdriVal();

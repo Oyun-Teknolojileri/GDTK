@@ -358,7 +358,7 @@ namespace ToolKit
 
     for (const EnvironmentComponentPtr& volume : environments)
     {
-      if (volume->GetIlluminateVal() == false)
+      if (volume->GetDiffuseIBLVal() == false && volume->GetSpecularIBLVal() == false)
       {
         continue;
       }
