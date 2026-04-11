@@ -122,12 +122,16 @@ namespace ToolKit
                       true,
                       {false, true, 0.0f, 100000.0f, 1.0f});
 
-    CaptureResolution_Define(256,
+    MultiChoiceVariant captureResMcv;
+    captureResMcv.Choices.push_back(CreateMultiChoiceParameter("128", 128));
+    captureResMcv.Choices.push_back(CreateMultiChoiceParameter("256", 256));
+    captureResMcv.Choices.push_back(CreateMultiChoiceParameter("512", 512));
+    captureResMcv.CurrentVal.Index = 1;
+    CaptureResolution_Define(captureResMcv,
                              EnvironmentComponentCategory.Name,
                              EnvironmentComponentCategory.Priority,
                              true,
-                             true,
-                             {false, true, 32, 2048, 1});
+                             true);
   }
 
   void EnvironmentComponent::InvalidateSpatialCaches() { m_spatialCachesInvalidated = true; }
@@ -231,7 +235,7 @@ namespace ToolKit
       return;
     }
 
-    uint res    = (uint) GetCaptureResolutionVal();
+    uint res    = (uint) GetCaptureResolutionVal().GetValue<int>();
 
     // Compute local aabb.
     Vec3 offset = GetPositionOffsetVal();

@@ -55,7 +55,7 @@ namespace ToolKit
     TKDeclareParam(float, Intensity);
     TKDeclareParam(float, Fade);
     TKDeclareParam(float, CaptureFar);
-    TKDeclareParam(int, CaptureResolution);
+    TKDeclareParam(MultiChoiceVariant, CaptureResolution);
 
     bool m_spatialCachesInvalidated = true; //!< If true, bounding box caches are updated upon access.
 
