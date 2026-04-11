@@ -756,6 +756,33 @@ namespace ToolKit
     Texture::UnInit();
   }
 
+  void Hdri::LoadOrGenerateIrradianceCaches()
+  {
+    String baseName = GenerateBakedEnvironmentFileBaseName();
+    TrySettingCacheFiles(baseName);
+
+    if (_diffuseBakeFile.empty())
+    {
+      RenderTask task = {[this](Renderer* renderer) -> void { GenerateIrradianceCaches(renderer); }};
+      GetRenderSystem()->AddRenderTask(task);
+    }
+    else
+    {
+      RenderTask task = {[this](Renderer* renderer) -> void
+                         {
+                           LoadIrradianceCaches(renderer);
+
+                           // Clear file path after initialization, otherwise init always loads from file.
+                           // This isn't desired, only after load we should read from file. Settings changes should
+                           // reflect during editor time or in game requests.
+                           _diffuseBakeFile.clear();
+                           _specularBakeFile.clear();
+                         }};
+
+      GetRenderSystem()->AddRenderTask(task);
+    }
+  }
+
   void Hdri::LoadIrradianceCaches(Renderer* renderer)
   {
     // Convert hdri image to cubemap images.

@@ -159,86 +159,86 @@ namespace ToolKit
       String pId = "##" + std::to_string(uiId);
       switch (var->GetType())
       {
-      case ParameterVariant::VariantType::String:
-      {
-        ImGui::InputText(pId.c_str(), var->GetVarPtr<String>());
-      }
-      break;
-      case ParameterVariant::VariantType::Bool:
-      {
-        bool val = var->GetVar<bool>();
-        if (ImGui::Checkbox(pId.c_str(), &val))
+        case ParameterVariant::VariantType::String:
         {
-          *var = val;
+          ImGui::InputText(pId.c_str(), var->GetVarPtr<String>());
         }
-      }
-      break;
-      case ParameterVariant::VariantType::Int:
-      {
-        ImGui::InputInt(pId.c_str(), var->GetVarPtr<int>());
-      }
-      break;
-      case ParameterVariant::VariantType::Float:
-      {
-        ImGui::DragFloat(pId.c_str(), var->GetVarPtr<float>(), 0.1f);
-      }
-      break;
-      case ParameterVariant::VariantType::Vec3:
-      {
-        ImGui::DragFloat3(pId.c_str(), &var->GetVar<Vec3>()[0], 0.1f);
-      }
-      break;
-      case ParameterVariant::VariantType::Vec4:
-      {
-        ImGui::DragFloat4(pId.c_str(), &var->GetVar<Vec4>()[0], 0.1f);
-      }
-      break;
-      case ParameterVariant::VariantType::Mat3:
-      {
-        Vec3 vec;
-        Mat3 val = var->GetVar<Mat3>();
-        for (int j = 0; j < 3; j++)
+        break;
+        case ParameterVariant::VariantType::Bool:
         {
-          pId += std::to_string(j);
-          vec  = glm::row(val, j);
-          ImGui::InputFloat3(pId.c_str(), &vec[0]);
-          val  = glm::row(val, j, vec);
-          *var = val;
-        }
-      }
-      break;
-      case ParameterVariant::VariantType::Mat4:
-      {
-        Vec4 vec;
-        Mat4 val = var->GetVar<Mat4>();
-        for (int j = 0; j < 4; j++)
-        {
-          pId += std::to_string(j);
-          vec  = glm::row(val, j);
-          ImGui::InputFloat4(pId.c_str(), &vec[0]);
-          val  = glm::row(val, j, vec);
-          *var = val;
-        }
-      }
-      break;
-      case ParameterVariant::VariantType::MultiChoice:
-      {
-        MultiChoiceVariant* mcv = var->GetVarPtr<MultiChoiceVariant>();
-        String name             = var->m_name + "##MultiChoiceVariant";
-        if (ImGui::BeginCombo(name.c_str(), mcv->Choices[mcv->CurrentVal.Index].m_name.c_str()))
-        {
-          for (uint i = 0; i < mcv->Choices.size(); i++)
+          bool val = var->GetVar<bool>();
+          if (ImGui::Checkbox(pId.c_str(), &val))
           {
-            bool isSelected = i == mcv->CurrentVal.Index;
-            if (ImGui::Selectable(mcv->Choices[i].m_name.c_str(), isSelected))
-            {
-              mcv->CurrentVal = {i};
-            }
+            *var = val;
           }
-          ImGui::EndCombo();
         }
-      }
-      break;
+        break;
+        case ParameterVariant::VariantType::Int:
+        {
+          ImGui::InputInt(pId.c_str(), var->GetVarPtr<int>());
+        }
+        break;
+        case ParameterVariant::VariantType::Float:
+        {
+          ImGui::DragFloat(pId.c_str(), var->GetVarPtr<float>(), 0.1f);
+        }
+        break;
+        case ParameterVariant::VariantType::Vec3:
+        {
+          ImGui::DragFloat3(pId.c_str(), &var->GetVar<Vec3>()[0], 0.1f);
+        }
+        break;
+        case ParameterVariant::VariantType::Vec4:
+        {
+          ImGui::DragFloat4(pId.c_str(), &var->GetVar<Vec4>()[0], 0.1f);
+        }
+        break;
+        case ParameterVariant::VariantType::Mat3:
+        {
+          Vec3 vec;
+          Mat3 val = var->GetVar<Mat3>();
+          for (int j = 0; j < 3; j++)
+          {
+            pId += std::to_string(j);
+            vec  = glm::row(val, j);
+            ImGui::InputFloat3(pId.c_str(), &vec[0]);
+            val  = glm::row(val, j, vec);
+            *var = val;
+          }
+        }
+        break;
+        case ParameterVariant::VariantType::Mat4:
+        {
+          Vec4 vec;
+          Mat4 val = var->GetVar<Mat4>();
+          for (int j = 0; j < 4; j++)
+          {
+            pId += std::to_string(j);
+            vec  = glm::row(val, j);
+            ImGui::InputFloat4(pId.c_str(), &vec[0]);
+            val  = glm::row(val, j, vec);
+            *var = val;
+          }
+        }
+        break;
+        case ParameterVariant::VariantType::MultiChoice:
+        {
+          MultiChoiceVariant* mcv = var->GetVarPtr<MultiChoiceVariant>();
+          String name             = var->m_name + "##MultiChoiceVariant";
+          if (ImGui::BeginCombo(name.c_str(), mcv->Choices[mcv->CurrentVal.Index].m_name.c_str()))
+          {
+            for (uint i = 0; i < mcv->Choices.size(); i++)
+            {
+              bool isSelected = i == mcv->CurrentVal.Index;
+              if (ImGui::Selectable(mcv->Choices[i].m_name.c_str(), isSelected))
+              {
+                mcv->CurrentVal = {i};
+              }
+            }
+            ImGui::EndCombo();
+          }
+        }
+        break;
       }
 
       ImGui::TableSetColumnIndex(2);
@@ -315,48 +315,48 @@ namespace ToolKit
           bool added           = true;
           switch (dataType)
           {
-          case 0:
-            added = false;
-            break;
-          case 1:
-            customVar = "";
-            break;
-          case 2:
-            customVar = false;
-            break;
-          case 3:
-            customVar = 0;
-            break;
-          case 4:
-            customVar = 0.0f;
-            break;
-          case 5:
-            customVar = Vec2(0.0f, 0.0f);
-          case 6:
-            customVar = ZERO;
-            break;
-          case 7:
-            customVar = Vec4();
-            break;
-          case 8:
-            customVar = Mat3();
-            break;
-          case 9:
-            customVar = Mat4();
-            break;
-          case 10:
-          {
-            MultiChoiceCraeteWindowPtr multiParamWnd = MakeNewPtr<MultiChoiceCraeteWindow>();
-            multiParamWnd->OpenCreateWindow(&entity->m_localData);
-            multiParamWnd->AddToUI();
+            case 0:
+              added = false;
+              break;
+            case 1:
+              customVar = "";
+              break;
+            case 2:
+              customVar = false;
+              break;
+            case 3:
+              customVar = 0;
+              break;
+            case 4:
+              customVar = 0.0f;
+              break;
+            case 5:
+              customVar = Vec2(0.0f, 0.0f);
+            case 6:
+              customVar = ZERO;
+              break;
+            case 7:
+              customVar = Vec4();
+              break;
+            case 8:
+              customVar = Mat3();
+              break;
+            case 9:
+              customVar = Mat4();
+              break;
+            case 10:
+            {
+              MultiChoiceCraeteWindowPtr multiParamWnd = MakeNewPtr<MultiChoiceCraeteWindow>();
+              multiParamWnd->OpenCreateWindow(&entity->m_localData);
+              multiParamWnd->AddToUI();
 
-            added       = false;
-            addInAction = false;
-          }
-          break;
-          default:
-            assert(false && "invalid data type");
+              added       = false;
+              addInAction = false;
+            }
             break;
+            default:
+              assert(false && "invalid data type");
+              break;
           }
 
           if (added)
@@ -395,391 +395,414 @@ namespace ToolKit
 
       switch (var->GetType())
       {
-      case ParameterVariant::VariantType::Bool:
-      {
-        bool val = var->GetVar<bool>();
-        if (ImGui::Checkbox(var->m_name.c_str(), &val))
+        case ParameterVariant::VariantType::Bool:
         {
-          *var = val;
-        }
-      }
-      break;
-      case ParameterVariant::VariantType::Float:
-      {
-        static float lastVal = 0.0f;
-        float val            = var->m_hint.waitForTheEndOfInput && lastValActive ? lastVal : var->GetVar<float>();
-
-        if (!var->m_hint.isRangeLimited)
-        {
-          if (ImGui::InputFloat(var->m_name.c_str(), &val))
+          bool val = var->GetVar<bool>();
+          if (ImGui::Checkbox(var->m_name.c_str(), &val))
           {
             *var = val;
           }
         }
-        else
+        break;
+        case ParameterVariant::VariantType::Float:
         {
-          bool dragged = false;
-          if (ImGui::DragFloat(var->m_name.c_str(),
-                               &val,
-                               var->m_hint.increment,
-                               var->m_hint.rangeMin,
-                               var->m_hint.rangeMax))
+          static float lastVal = 0.0f;
+          float val            = var->m_hint.waitForTheEndOfInput && lastValActive ? lastVal : var->GetVar<float>();
+
+          if (!var->m_hint.isRangeLimited)
           {
-            if (!var->m_hint.waitForTheEndOfInput)
+            if (ImGui::InputFloat(var->m_name.c_str(), &val))
             {
               *var = val;
-            }
-            else
-            {
-              lastVal       = val;
-              lastValActive = true;
-            }
-          }
-
-          if (var->m_hint.waitForTheEndOfInput && ImGui::IsItemDeactivatedAfterEdit())
-          {
-            *var          = lastVal;
-            lastValActive = false;
-          }
-        }
-      }
-      break;
-      case ParameterVariant::VariantType::Int:
-      {
-        static int lastVal = 0;
-        int val            = var->m_hint.waitForTheEndOfInput && lastValActive ? lastVal : var->GetVar<int>();
-
-        if (var->m_hint.isRangeLimited)
-        {
-          if (ImGui::DragInt(var->m_name.c_str(),
-                             &val,
-                             var->m_hint.increment,
-                             static_cast<int>(var->m_hint.rangeMin),
-                             static_cast<int>(var->m_hint.rangeMax)))
-          {
-            if (!var->m_hint.waitForTheEndOfInput)
-            {
-              *var = val;
-            }
-            else
-            {
-              lastVal       = val;
-              lastValActive = true;
-            }
-          }
-
-          if (var->m_hint.waitForTheEndOfInput && ImGui::IsItemDeactivatedAfterEdit())
-          {
-            *var          = lastVal;
-            lastValActive = false;
-          }
-        }
-        else
-        {
-          if (ImGui::InputInt(var->m_name.c_str(), &val))
-          {
-            *var = val;
-          }
-        }
-      }
-      break;
-      case ParameterVariant::VariantType::Vec2:
-      {
-        static Vec2 lastVal = Vec2(0.0f);
-        Vec2 val            = var->m_hint.waitForTheEndOfInput && lastValActive ? lastVal : var->GetVar<Vec2>();
-
-        if (var->m_hint.isRangeLimited)
-        {
-          if (ImGui::DragFloat2(var->m_name.c_str(),
-                                &val[0],
-                                var->m_hint.increment,
-                                var->m_hint.rangeMin,
-                                var->m_hint.rangeMax))
-          {
-            if (!var->m_hint.waitForTheEndOfInput)
-            {
-              *var = val;
-            }
-            else
-            {
-              lastVal       = val;
-              lastValActive = true;
-            }
-          }
-
-          if (var->m_hint.waitForTheEndOfInput && ImGui::IsItemDeactivatedAfterEdit())
-          {
-            *var          = lastVal;
-            lastValActive = false;
-          }
-        }
-        else
-        {
-          if (ImGui::DragFloat2(var->m_name.c_str(), &val[0], 0.1f))
-          {
-            *var = val;
-          }
-        }
-      }
-      break;
-      case ParameterVariant::VariantType::Vec3:
-      {
-        Vec3 val = var->GetVar<Vec3>();
-        if (var->m_hint.isColor)
-        {
-          if (ImGui::ColorEdit3(var->m_name.c_str(), &val[0], ImGuiColorEditFlags_NoLabel))
-          {
-            *var = val;
-          }
-        }
-        else if (var->m_hint.isRangeLimited)
-        {
-          static Vec3 lastVal = Vec3(0.0f);
-          val                 = var->m_hint.waitForTheEndOfInput && lastValActive ? lastVal : var->GetVar<Vec3>();
-
-          if (ImGui::DragFloat3(var->m_name.c_str(),
-                                &val[0],
-                                var->m_hint.increment,
-                                var->m_hint.rangeMin,
-                                var->m_hint.rangeMax))
-          {
-            if (!var->m_hint.waitForTheEndOfInput)
-            {
-              *var = val;
-            }
-            else
-            {
-              lastVal       = val;
-              lastValActive = true;
-            }
-          }
-
-          if (var->m_hint.waitForTheEndOfInput && ImGui::IsItemDeactivatedAfterEdit())
-          {
-            *var          = lastVal;
-            lastValActive = false;
-          }
-        }
-        else
-        {
-          if (ImGui::DragFloat3(var->m_name.c_str(), &val[0], 0.1f))
-          {
-            *var = val;
-          }
-        }
-      }
-      break;
-      case ParameterVariant::VariantType::Vec4:
-      {
-        Vec4 val = var->GetVar<Vec4>();
-        if (var->m_hint.isColor)
-        {
-          if (ImGui::ColorEdit4(var->m_name.c_str(), &val[0], ImGuiColorEditFlags_NoLabel))
-          {
-            *var = val;
-          }
-        }
-        else if (var->m_hint.isRangeLimited)
-        {
-          static Vec4 lastVal = Vec4(0.0f);
-          val                 = var->m_hint.waitForTheEndOfInput && lastValActive ? lastVal : var->GetVar<Vec4>();
-
-          if (ImGui::DragFloat4(var->m_name.c_str(),
-                                &val[0],
-                                var->m_hint.increment,
-                                var->m_hint.rangeMin,
-                                var->m_hint.rangeMax))
-          {
-            if (!var->m_hint.waitForTheEndOfInput)
-            {
-              *var = val;
-            }
-            else
-            {
-              lastVal       = val;
-              lastValActive = true;
-            }
-          }
-
-          if (var->m_hint.waitForTheEndOfInput && ImGui::IsItemDeactivatedAfterEdit())
-          {
-            *var          = lastVal;
-            lastValActive = false;
-          }
-        }
-        else
-        {
-          if (ImGui::DragFloat4(var->m_name.c_str(), &val[0], 0.1f))
-          {
-            *var = val;
-          }
-        }
-      }
-      break;
-      case ParameterVariant::VariantType::String:
-      {
-        String val = var->GetVar<String>();
-        if (ImGui::InputText(var->m_name.c_str(), &val) && IsTextInputFinalized())
-        {
-          *var = val;
-        }
-      }
-      break;
-      case ParameterVariant::VariantType::ObjectId:
-      {
-        ObjectId val = var->GetVar<ObjectId>();
-        if (ImGui::InputScalar(var->m_name.c_str(), ImGuiDataType_U64, var->GetVarPtr<ObjectId>()) &&
-            IsTextInputFinalized())
-        {
-          *var = val;
-        }
-      }
-      break;
-      case ParameterVariant::VariantType::MaterialPtr:
-      {
-        MaterialPtr& mref = var->GetVar<MaterialPtr>();
-        String file, id;
-        if (mref)
-        {
-          id   = std::to_string(mref->GetIdVal());
-          file = mref->GetFile();
-        }
-
-        String uniqueName = var->m_name + "##" + id;
-        ImGui::EndDisabled();
-        ShowMaterialVariant(uniqueName, file, var);
-        ImGui::BeginDisabled(!var->m_editable);
-      }
-      break;
-      case ParameterVariant::VariantType::MeshPtr:
-      {
-        MeshPtr mref = var->GetVar<MeshPtr>();
-        ImGui::EndDisabled();
-        DropSubZone(
-            "Mesh##" + std::to_string(mref->GetIdVal()),
-            static_cast<uint>(UI::m_meshIcon->m_textureId),
-            mref->GetFile(),
-            [&var](const DirectoryEntry& entry) -> void
-            {
-              if (GetResourceType(entry.m_ext) == Mesh::StaticClass())
-              {
-                *var = GetMeshManager()->Create<Mesh>(entry.GetFullPath());
-              }
-              else if (GetResourceType(entry.m_ext) == SkinMesh::StaticClass())
-              {
-                *var = GetMeshManager()->Create<SkinMesh>(entry.GetFullPath());
-              }
-              else
-              {
-                TK_ERR("Only Mesh is accepted.");
-              }
-            },
-            var->m_editable);
-        ImGui::BeginDisabled(!var->m_editable);
-      }
-      break;
-      case ParameterVariant::VariantType::HdriPtr:
-      {
-        HdriPtr mref = var->GetVar<HdriPtr>();
-        String file, id;
-        if (mref)
-        {
-          id   = std::to_string(mref->GetIdVal());
-          file = mref->GetFile();
-        }
-
-        ImGui::EndDisabled();
-        DropSubZone(
-            "Hdri##" + id,
-            UI::m_imageIcon->m_textureId,
-            file,
-            [&var](const DirectoryEntry& entry) -> void
-            {
-              if (GetResourceType(entry.m_ext) == Hdri::StaticClass())
-              {
-                *var = GetTextureManager()->Create<Hdri>(entry.GetFullPath());
-              }
-              else
-              {
-                TK_ERR("Only HDRI is accepted.");
-              }
-            },
-            var->m_editable);
-        ImGui::BeginDisabled(!var->m_editable);
-      }
-      break;
-      case ParameterVariant::VariantType::SkeletonPtr:
-      {
-        SkeletonPtr mref = var->GetVar<SkeletonPtr>();
-        String file, id;
-        if (mref)
-        {
-          id   = std::to_string(mref->GetIdVal());
-          file = mref->GetFile();
-        }
-
-        auto dropZoneFnc = [&var, &comp](const DirectoryEntry& entry) -> void
-        {
-          if (GetResourceType(entry.m_ext) == Skeleton::StaticClass())
-          {
-            *var = GetSkeletonManager()->Create<Skeleton>(entry.GetFullPath());
-            if (SkeletonComponent* scom = comp->As<SkeletonComponent>())
-            {
-              scom->Init();
             }
           }
           else
           {
-            TK_ERR("Only Skeleton is accepted.");
-          }
-        };
-        ImGui::EndDisabled();
-        DropSubZone("Skeleton##" + id, UI::m_boneIcon->m_textureId, file, dropZoneFnc, var->m_editable);
-        ImGui::BeginDisabled(!var->m_editable);
-      }
-      break;
-      case ParameterVariant::VariantType::AnimRecordPtrMap:
-      {
-        ComponentView::ShowAnimControllerComponent(var, comp);
-      }
-      break;
-      case ParameterVariant::VariantType::VariantCallback:
-      {
-        if (UI::BeginCenteredTextButton(var->m_name))
-        {
-          VariantCallback callback = var->GetVar<VariantCallback>();
-          callback();
-        }
-        UI::EndCenteredTextButton();
-      }
-      break;
-      case ParameterVariant::VariantType::MultiChoice:
-      {
-        MultiChoiceVariant* mcv = var->GetVarPtr<MultiChoiceVariant>();
-        String name             = var->m_name + "##MultiChoiceVariant";
-        if (ImGui::BeginCombo(name.c_str(), mcv->Choices[mcv->CurrentVal.Index].m_name.c_str()))
-        {
-          for (uint i = 0; i < mcv->Choices.size(); ++i)
-          {
-            bool isSelected = i == mcv->CurrentVal.Index;
-            if (ImGui::Selectable(mcv->Choices[i].m_name.c_str(), isSelected))
+            bool dragged = false;
+            if (ImGui::DragFloat(var->m_name.c_str(),
+                                 &val,
+                                 var->m_hint.increment,
+                                 var->m_hint.rangeMin,
+                                 var->m_hint.rangeMax))
             {
-              Value oldVal    = mcv->CurrentVal.Index;
-              Value newVal    = i;
-              mcv->CurrentVal = i;
-
-              if (callback)
+              if (!var->m_hint.waitForTheEndOfInput)
               {
-                callback(oldVal, newVal);
+                *var = val;
+              }
+              else
+              {
+                lastVal       = val;
+                lastValActive = true;
               }
             }
+
+            if (var->m_hint.waitForTheEndOfInput && ImGui::IsItemDeactivatedAfterEdit())
+            {
+              *var          = lastVal;
+              lastValActive = false;
+            }
           }
-          ImGui::EndCombo();
         }
-      }
-      break;
-      default:
         break;
+        case ParameterVariant::VariantType::Int:
+        {
+          static int lastVal = 0;
+          int val            = var->m_hint.waitForTheEndOfInput && lastValActive ? lastVal : var->GetVar<int>();
+
+          if (var->m_hint.isRangeLimited)
+          {
+            if (ImGui::DragInt(var->m_name.c_str(),
+                               &val,
+                               var->m_hint.increment,
+                               static_cast<int>(var->m_hint.rangeMin),
+                               static_cast<int>(var->m_hint.rangeMax)))
+            {
+              if (!var->m_hint.waitForTheEndOfInput)
+              {
+                *var = val;
+              }
+              else
+              {
+                lastVal       = val;
+                lastValActive = true;
+              }
+            }
+
+            if (var->m_hint.waitForTheEndOfInput && ImGui::IsItemDeactivatedAfterEdit())
+            {
+              *var          = lastVal;
+              lastValActive = false;
+            }
+          }
+          else
+          {
+            if (ImGui::InputInt(var->m_name.c_str(), &val))
+            {
+              *var = val;
+            }
+          }
+        }
+        break;
+        case ParameterVariant::VariantType::Vec2:
+        {
+          static Vec2 lastVal = Vec2(0.0f);
+          Vec2 val            = var->m_hint.waitForTheEndOfInput && lastValActive ? lastVal : var->GetVar<Vec2>();
+
+          if (var->m_hint.isRangeLimited)
+          {
+            if (ImGui::DragFloat2(var->m_name.c_str(),
+                                  &val[0],
+                                  var->m_hint.increment,
+                                  var->m_hint.rangeMin,
+                                  var->m_hint.rangeMax))
+            {
+              if (!var->m_hint.waitForTheEndOfInput)
+              {
+                *var = val;
+              }
+              else
+              {
+                lastVal       = val;
+                lastValActive = true;
+              }
+            }
+
+            if (var->m_hint.waitForTheEndOfInput && ImGui::IsItemDeactivatedAfterEdit())
+            {
+              *var          = lastVal;
+              lastValActive = false;
+            }
+          }
+          else
+          {
+            if (ImGui::DragFloat2(var->m_name.c_str(), &val[0], 0.1f))
+            {
+              *var = val;
+            }
+          }
+        }
+        break;
+        case ParameterVariant::VariantType::Vec3:
+        {
+          Vec3 val = var->GetVar<Vec3>();
+          if (var->m_hint.isColor)
+          {
+            if (ImGui::ColorEdit3(var->m_name.c_str(), &val[0], ImGuiColorEditFlags_NoLabel))
+            {
+              *var = val;
+            }
+          }
+          else if (var->m_hint.isRangeLimited)
+          {
+            static Vec3 lastVal = Vec3(0.0f);
+            val                 = var->m_hint.waitForTheEndOfInput && lastValActive ? lastVal : var->GetVar<Vec3>();
+
+            if (ImGui::DragFloat3(var->m_name.c_str(),
+                                  &val[0],
+                                  var->m_hint.increment,
+                                  var->m_hint.rangeMin,
+                                  var->m_hint.rangeMax))
+            {
+              if (!var->m_hint.waitForTheEndOfInput)
+              {
+                *var = val;
+              }
+              else
+              {
+                lastVal       = val;
+                lastValActive = true;
+              }
+            }
+
+            if (var->m_hint.waitForTheEndOfInput && ImGui::IsItemDeactivatedAfterEdit())
+            {
+              *var          = lastVal;
+              lastValActive = false;
+            }
+          }
+          else
+          {
+            if (ImGui::DragFloat3(var->m_name.c_str(), &val[0], 0.1f))
+            {
+              *var = val;
+            }
+          }
+        }
+        break;
+        case ParameterVariant::VariantType::Vec4:
+        {
+          Vec4 val = var->GetVar<Vec4>();
+          if (var->m_hint.isColor)
+          {
+            if (ImGui::ColorEdit4(var->m_name.c_str(), &val[0], ImGuiColorEditFlags_NoLabel))
+            {
+              *var = val;
+            }
+          }
+          else if (var->m_hint.isRangeLimited)
+          {
+            static Vec4 lastVal = Vec4(0.0f);
+            val                 = var->m_hint.waitForTheEndOfInput && lastValActive ? lastVal : var->GetVar<Vec4>();
+
+            if (ImGui::DragFloat4(var->m_name.c_str(),
+                                  &val[0],
+                                  var->m_hint.increment,
+                                  var->m_hint.rangeMin,
+                                  var->m_hint.rangeMax))
+            {
+              if (!var->m_hint.waitForTheEndOfInput)
+              {
+                *var = val;
+              }
+              else
+              {
+                lastVal       = val;
+                lastValActive = true;
+              }
+            }
+
+            if (var->m_hint.waitForTheEndOfInput && ImGui::IsItemDeactivatedAfterEdit())
+            {
+              *var          = lastVal;
+              lastValActive = false;
+            }
+          }
+          else
+          {
+            if (ImGui::DragFloat4(var->m_name.c_str(), &val[0], 0.1f))
+            {
+              *var = val;
+            }
+          }
+        }
+        break;
+        case ParameterVariant::VariantType::String:
+        {
+          String val = var->GetVar<String>();
+          if (ImGui::InputText(var->m_name.c_str(), &val) && IsTextInputFinalized())
+          {
+            *var = val;
+          }
+        }
+        break;
+        case ParameterVariant::VariantType::ObjectId:
+        {
+          ObjectId val = var->GetVar<ObjectId>();
+          if (ImGui::InputScalar(var->m_name.c_str(), ImGuiDataType_U64, var->GetVarPtr<ObjectId>()) &&
+              IsTextInputFinalized())
+          {
+            *var = val;
+          }
+        }
+        break;
+        case ParameterVariant::VariantType::MaterialPtr:
+        {
+          MaterialPtr& mref = var->GetVar<MaterialPtr>();
+          String file, id;
+          if (mref)
+          {
+            id   = std::to_string(mref->GetIdVal());
+            file = mref->GetFile();
+          }
+
+          String uniqueName = var->m_name + "##" + id;
+          ImGui::EndDisabled();
+          ShowMaterialVariant(uniqueName, file, var);
+          ImGui::BeginDisabled(!var->m_editable);
+        }
+        break;
+        case ParameterVariant::VariantType::MeshPtr:
+        {
+          MeshPtr mref = var->GetVar<MeshPtr>();
+          ImGui::EndDisabled();
+          DropSubZone(
+              "Mesh##" + std::to_string(mref->GetIdVal()),
+              static_cast<uint>(UI::m_meshIcon->m_textureId),
+              mref->GetFile(),
+              [&var](const DirectoryEntry& entry) -> void
+              {
+                if (GetResourceType(entry.m_ext) == Mesh::StaticClass())
+                {
+                  *var = GetMeshManager()->Create<Mesh>(entry.GetFullPath());
+                }
+                else if (GetResourceType(entry.m_ext) == SkinMesh::StaticClass())
+                {
+                  *var = GetMeshManager()->Create<SkinMesh>(entry.GetFullPath());
+                }
+                else
+                {
+                  TK_ERR("Only Mesh is accepted.");
+                }
+              },
+              var->m_editable);
+          ImGui::BeginDisabled(!var->m_editable);
+        }
+        break;
+        case ParameterVariant::VariantType::HdriPtr:
+        {
+          HdriPtr mref = var->GetVar<HdriPtr>();
+          String file  = GetPathSeparatorAsStr();
+          String id;
+          if (mref)
+          {
+            id           = std::to_string(mref->GetIdVal());
+            String mFile = mref->GetFile();
+            if (!mFile.empty())
+            {
+              file = mFile;
+            }
+          }
+
+          ImGui::EndDisabled();
+          DropZone(
+              UI::m_imageIcon->m_textureId,
+              file,
+              [&var](const DirectoryEntry& entry) -> void
+              {
+                if (GetResourceType(entry.m_ext) == Hdri::StaticClass())
+                {
+                  HdriPtr hdr = GetTextureManager()->Create<Hdri>(entry.GetFullPath());
+                  *var        = hdr;
+                  if (!hdr->m_specularEnvMap || !hdr->m_diffuseEnvMap)
+                  {
+                    hdr->LoadOrGenerateIrradianceCaches();
+                  }
+                }
+                else
+                {
+                  TK_ERR("Only HDRI is accepted.");
+                }
+              },
+              "Hdri",
+              var->m_editable);
+
+          if (mref && var->m_editable && !mref->IsDynamic())
+          {
+            ImGui::SameLine();
+            String clearLabel = "##ClearHdri" + id;
+            ImGui::PushID(clearLabel.c_str());
+            if (UI::ImageButtonDecorless(UI::m_closeIcon->m_textureId, Vec2(16.0f, 16.0f)))
+            {
+              *var = HdriPtr();
+            }
+            ImGui::PopID();
+          }
+
+          ImGui::BeginDisabled(!var->m_editable);
+        }
+        break;
+        case ParameterVariant::VariantType::SkeletonPtr:
+        {
+          SkeletonPtr mref = var->GetVar<SkeletonPtr>();
+          String file, id;
+          if (mref)
+          {
+            id   = std::to_string(mref->GetIdVal());
+            file = mref->GetFile();
+          }
+
+          auto dropZoneFnc = [&var, &comp](const DirectoryEntry& entry) -> void
+          {
+            if (GetResourceType(entry.m_ext) == Skeleton::StaticClass())
+            {
+              *var = GetSkeletonManager()->Create<Skeleton>(entry.GetFullPath());
+              if (SkeletonComponent* scom = comp->As<SkeletonComponent>())
+              {
+                scom->Init();
+              }
+            }
+            else
+            {
+              TK_ERR("Only Skeleton is accepted.");
+            }
+          };
+          ImGui::EndDisabled();
+          DropSubZone("Skeleton##" + id, UI::m_boneIcon->m_textureId, file, dropZoneFnc, var->m_editable);
+          ImGui::BeginDisabled(!var->m_editable);
+        }
+        break;
+        case ParameterVariant::VariantType::AnimRecordPtrMap:
+        {
+          ComponentView::ShowAnimControllerComponent(var, comp);
+        }
+        break;
+        case ParameterVariant::VariantType::VariantCallback:
+        {
+          if (UI::BeginCenteredTextButton(var->m_name))
+          {
+            VariantCallback callback = var->GetVar<VariantCallback>();
+            callback();
+          }
+          UI::EndCenteredTextButton();
+        }
+        break;
+        case ParameterVariant::VariantType::MultiChoice:
+        {
+          MultiChoiceVariant* mcv = var->GetVarPtr<MultiChoiceVariant>();
+          String name             = var->m_name + "##MultiChoiceVariant";
+          if (ImGui::BeginCombo(name.c_str(), mcv->Choices[mcv->CurrentVal.Index].m_name.c_str()))
+          {
+            for (uint i = 0; i < mcv->Choices.size(); ++i)
+            {
+              bool isSelected = i == mcv->CurrentVal.Index;
+              if (ImGui::Selectable(mcv->Choices[i].m_name.c_str(), isSelected))
+              {
+                Value oldVal    = mcv->CurrentVal.Index;
+                Value newVal    = i;
+                mcv->CurrentVal = i;
+
+                if (callback)
+                {
+                  callback(oldVal, newVal);
+                }
+              }
+            }
+            ImGui::EndCombo();
+          }
+        }
+        break;
+        default:
+          break;
       }
 
       if (callback)

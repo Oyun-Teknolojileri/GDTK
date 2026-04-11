@@ -384,6 +384,7 @@ namespace ToolKit
     {
       // ToolKit resource absolute path
       root  = std::filesystem::absolute(root).string();
+      root  = NormalizePath(root);
       exist = path.find(root, 0);
     }
 
