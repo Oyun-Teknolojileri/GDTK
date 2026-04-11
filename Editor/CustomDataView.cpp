@@ -703,10 +703,6 @@ namespace ToolKit
                 {
                   HdriPtr hdr = GetTextureManager()->Create<Hdri>(entry.GetFullPath());
                   *var        = hdr;
-                  if (!hdr->m_specularEnvMap || !hdr->m_diffuseEnvMap)
-                  {
-                    hdr->LoadOrGenerateIrradianceCaches();
-                  }
                 }
                 else
                 {

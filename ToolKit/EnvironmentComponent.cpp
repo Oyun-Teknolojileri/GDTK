@@ -95,7 +95,11 @@ namespace ToolKit
 
     SpecularIBL_Define(true, EnvironmentComponentCategory.Name, EnvironmentComponentCategory.Priority, true, true);
 
-    ParallaxCorrection_Define(false, EnvironmentComponentCategory.Name, EnvironmentComponentCategory.Priority, true, true);
+    ParallaxCorrection_Define(false,
+                              EnvironmentComponentCategory.Name,
+                              EnvironmentComponentCategory.Priority,
+                              true,
+                              true);
 
     Intensity_Define(1.0f,
                      EnvironmentComponentCategory.Name,
@@ -164,28 +168,14 @@ namespace ToolKit
             }
             else
             {
-              String baseName = hdri->GenerateBakedEnvironmentFileBaseName();
-              hdri->TrySettingCacheFiles(baseName);
-
-              // Loaded as image and missing irradiance caches.
               if (hdri->m_loaded && hdri->m_initiated)
               {
-                hdri->m_waitingForInit  = true;
-
-                RenderSystem* renderSys = GetRenderSystem();
-                if (!hdri->_diffuseBakeFile.empty() && !hdri->_specularBakeFile.empty())
-                {
-                  renderSys->AddRenderTask(
-                      {[hdri](Renderer* renderer) -> void { hdri->LoadIrradianceCaches(renderer); }});
-                }
-                else
-                {
-                  renderSys->AddRenderTask(
-                      {[hdri](Renderer* renderer) -> void { hdri->GenerateIrradianceCaches(renderer); }});
-                }
+                // Loaded as image and missing irradiance caches.
+                hdri->LoadOrGenerateIrradianceCaches();
               }
               else
               {
+                // Initialization is needed. Generate caches upon initialization.
                 hdri->m_generateIrradianceCaches = true;
                 hdri->Load();
                 hdri->Init();
@@ -257,11 +247,11 @@ namespace ToolKit
     // Compute distances to each face from capture position (entity origin in local space).
     float minDist  = 0.01f;
     float perFaceClipDist[6];
-    perFaceClipDist[0] = glm::max(localBB.max.x + extraFar, minDist); // +X
+    perFaceClipDist[0] = glm::max(localBB.max.x + extraFar, minDist);  // +X
     perFaceClipDist[1] = glm::max(-localBB.min.x + extraFar, minDist); // -X
     perFaceClipDist[2] = glm::max(-localBB.min.y + extraFar, minDist); // -Y
-    perFaceClipDist[3] = glm::max(localBB.max.y + extraFar, minDist); // +Y
-    perFaceClipDist[4] = glm::max(localBB.max.z + extraFar, minDist); // +Z
+    perFaceClipDist[3] = glm::max(localBB.max.y + extraFar, minDist);  // +Y
+    perFaceClipDist[4] = glm::max(localBB.max.z + extraFar, minDist);  // +Z
     perFaceClipDist[5] = glm::max(-localBB.min.z + extraFar, minDist); // -Z
 
     GetRenderSystem()->AddRenderTask(
