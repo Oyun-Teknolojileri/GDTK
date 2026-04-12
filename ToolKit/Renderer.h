@@ -28,72 +28,104 @@ namespace ToolKit
 
   struct DrawCommand
   {
-    /** x: iblIntensity, y: iblInUse, z: ambientOcclusionInUse, w: secondaryIblIntensity */
-    Vec4 data1;
+    // --- Global data (2 Vec4) ---
 
-    /** x: activePointLightCount, y: activeSpotLightCount, z: activeDirectionalLightCount, w: iblFadeDistance */
-    Vec4 data2;
+    /** x: iblInUse, y: ambientOcclusionInUse, z: unused, w: unused */
+    Vec4 global0;
 
-    /** xyz: primary volume min (local space) */
-    Vec4 data3;
+    /** x: activePointLightCount, y: activeSpotLightCount, z: activeDirectionalLightCount, w: unused */
+    Vec4 global1;
 
-    /** xyz: primary volume max (local space) */
-    Vec4 data4;
+    // --- Volume 0 / Primary (11 Vec4) ---
 
-    /** Volume inverse world transform (rows 0-3) for OBB support. */
-    Vec4 data5;
-    Vec4 data6;
-    Vec4 data7;
-    Vec4 data8;
+    /** x: intensity, y: fadeDistance, z: iblMode (0=both,1=specOnly,2=diffOnly), w: pccEnabled */
+    Vec4 vol0Params;
+    Vec4 vol0Min; /**< xyz: volume min (local space) */
+    Vec4 vol0Max; /**< xyz: volume max (local space) */
+    Vec4 vol0InvTransform0, vol0InvTransform1, vol0InvTransform2, vol0InvTransform3;
+    Vec4 vol0WorldTransform0, vol0WorldTransform1, vol0WorldTransform2, vol0WorldTransform3;
 
-    /** Volume world transform (rows 0-3) for PCC without per-pixel inverse. */
-    Vec4 data9;
-    Vec4 data10;
-    Vec4 data11;
-    Vec4 data12;
+    // --- Volume 1 / Secondary (11 Vec4) ---
 
-    void SetIblIntensity(float intensity) { data1.x = intensity; }
+    /** x: intensity, y: fadeDistance, z: iblMode (0=both,1=specOnly,2=diffOnly), w: pccEnabled */
+    Vec4 vol1Params;
+    Vec4 vol1Min; /**< xyz: volume min (local space) */
+    Vec4 vol1Max; /**< xyz: volume max (local space) */
+    Vec4 vol1InvTransform0, vol1InvTransform1, vol1InvTransform2, vol1InvTransform3;
+    Vec4 vol1WorldTransform0, vol1WorldTransform1, vol1WorldTransform2, vol1WorldTransform3;
 
-    void SetIblInUse(bool inUse) { data1.y = inUse ? 1.0f : 0.0f; }
+    // --- Global setters ---
 
-    void SetAmbientOcclusionInUse(bool inUse) { data1.z = inUse ? 1.0f : 0.0f; }
+    void SetIblInUse(bool inUse) { global0.x = inUse ? 1.0f : 0.0f; }
+    void SetAmbientOcclusionInUse(bool inUse) { global0.y = inUse ? 1.0f : 0.0f; }
 
-    void SetSecondaryIblIntensity(float intensity) { data1.w = intensity; }
+    void SetActivePointLightCount(int count) { global1.x = (float) count; }
+    void SetActiveSpotLightCount(int count) { global1.y = (float) count; }
+    void SetActiveDirectionalLightCount(int count) { global1.z = (float) count; }
 
-    void SetActivePointLightCount(int count) { data2.x = (float) count; }
+    // --- Per-volume setters ---
 
-    void SetActiveSpotLightCount(int count) { data2.y = (float) count; }
-
-    void SetActiveDirectionalLightCount(int count) { data2.z = (float) count; }
-
-    void SetIblFadeDistance(float fade) { data2.w = fade; }
-
-    /** data3.w encodes pccEnabled + secondaryIblMode * 2.0 */
-    void SetPrimaryVolumeMin(const Vec3& minVal, bool pccEnabled = false, float secondaryIblMode = 0.0f)
+    void SetVolumeIntensity(int vol, float intensity)
     {
-      data3 = Vec4(minVal, (pccEnabled ? 1.0f : 0.0f) + secondaryIblMode * 2.0f);
+      Params(vol).x = intensity;
     }
 
-    /** iblMode: 0.0 = both, 1.0 = specular only, 2.0 = diffuse only */
-    void SetPrimaryVolumeMax(const Vec3& maxVal, float iblMode = 0.0f)
+    void SetVolumeFadeDistance(int vol, float fade)
     {
-      data4 = Vec4(maxVal, iblMode);
+      Params(vol).y = fade;
     }
 
-    void SetIblInverseVolumeTransform(const Mat4& inverseTransform)
+    void SetVolumeIblMode(int vol, float mode)
     {
-      data5 = Vec4(inverseTransform[0]);
-      data6 = Vec4(inverseTransform[1]);
-      data7 = Vec4(inverseTransform[2]);
-      data8 = Vec4(inverseTransform[3]);
+      Params(vol).z = mode;
     }
 
-    void SetIblVolumeTransform(const Mat4& transform)
+    void SetVolumePccEnabled(int vol, bool enabled)
     {
-      data9  = Vec4(transform[0]);
-      data10 = Vec4(transform[1]);
-      data11 = Vec4(transform[2]);
-      data12 = Vec4(transform[3]);
+      Params(vol).w = enabled ? 1.0f : 0.0f;
+    }
+
+    void SetVolumeMin(int vol, const Vec3& minVal)
+    {
+      Min(vol) = Vec4(minVal, 0.0f);
+    }
+
+    void SetVolumeMax(int vol, const Vec3& maxVal)
+    {
+      Max(vol) = Vec4(maxVal, 0.0f);
+    }
+
+    void SetVolumeInverseTransform(int vol, const Mat4& m)
+    {
+      InvT(vol, 0) = Vec4(m[0]);
+      InvT(vol, 1) = Vec4(m[1]);
+      InvT(vol, 2) = Vec4(m[2]);
+      InvT(vol, 3) = Vec4(m[3]);
+    }
+
+    void SetVolumeWorldTransform(int vol, const Mat4& m)
+    {
+      WldT(vol, 0) = Vec4(m[0]);
+      WldT(vol, 1) = Vec4(m[1]);
+      WldT(vol, 2) = Vec4(m[2]);
+      WldT(vol, 3) = Vec4(m[3]);
+    }
+
+   private:
+    Vec4& Params(int vol) { return vol == 0 ? vol0Params : vol1Params; }
+    Vec4& Min(int vol)    { return vol == 0 ? vol0Min : vol1Min; }
+    Vec4& Max(int vol)    { return vol == 0 ? vol0Max : vol1Max; }
+
+    Vec4& InvT(int vol, int row)
+    {
+      Vec4* base = vol == 0 ? &vol0InvTransform0 : &vol1InvTransform0;
+      return base[row];
+    }
+
+    Vec4& WldT(int vol, int row)
+    {
+      Vec4* base = vol == 0 ? &vol0WorldTransform0 : &vol1WorldTransform0;
+      return base[row];
     }
   };
 

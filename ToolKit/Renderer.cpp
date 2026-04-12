@@ -1219,143 +1219,112 @@ namespace ToolKit
 
     // Sky and Ibl data.
     m_drawCommand.SetIblInUse(false);
-    m_drawCommand.SetSecondaryIblIntensity(0.0f);
-    m_drawCommand.SetIblFadeDistance(0.0f);
-    EnvironmentComponent* envCom = job.EnvironmentVolume;
-    if (envCom)
+    m_drawCommand.SetVolumeIntensity(0, 0.0f);
+    m_drawCommand.SetVolumeIntensity(1, 0.0f);
+
+    auto setupVolumeFn = [this](int volIdx, EnvironmentComponent* envCom,
+                                int diffSlot, int specSlot,
+                                Mat4& rotationOut) -> bool
     {
+      if (envCom == nullptr)
+      {
+        return false;
+      }
+
       const HdriPtr& hdriPtr     = envCom->GetHdriVal();
       CubeMapPtr& diffuseEnvMap  = hdriPtr->m_diffuseEnvMap;
       CubeMapPtr& specularEnvMap = hdriPtr->m_specularEnvMap;
 
-      if (diffuseEnvMap && specularEnvMap && m_brdfLut)
+      if (!diffuseEnvMap || !specularEnvMap || !m_brdfLut)
       {
-        bool diffuseOn          = envCom->GetDiffuseIBLVal();
-        bool specularOn         = envCom->GetSpecularIBLVal();
-        bool parallaxCorrection = envCom->GetParallaxCorrectionVal();
+        return false;
+      }
 
-        // iblMode: 0.0 = both, 1.0 = specular only, 2.0 = diffuse only.
-        float iblMode           = 0.0f;
-        if (!diffuseOn)
-        {
-          iblMode = 1.0f;
-        }
-        else if (!specularOn)
-        {
-          iblMode = 2.0f;
-        }
+      bool diffuseOn          = envCom->GetDiffuseIBLVal();
+      bool specularOn         = envCom->GetSpecularIBLVal();
+      bool parallaxCorrection = envCom->GetParallaxCorrectionVal();
 
-        if (diffuseOn)
-        {
-          SetTexture(DefaultTextureSlots::IRRADIANCE_MAP_TEXTURE_SLOT, diffuseEnvMap);
-        }
-        if (specularOn)
-        {
-          SetTexture(DefaultTextureSlots::IBL_SPECULAR_PRE_FILTERED_MAP_TEXTURE_SLOT, specularEnvMap);
-        }
-        SetTexture(DefaultTextureSlots::IBL_BRDF_LUT_TEXTURE_SLOT, m_brdfLut);
+      // iblMode: 0.0 = both, 1.0 = specular only, 2.0 = diffuse only.
+      float iblMode = 0.0f;
+      if (!diffuseOn)
+      {
+        iblMode = 1.0f;
+      }
+      else if (!specularOn)
+      {
+        iblMode = 2.0f;
+      }
 
-        m_drawCommand.SetIblInUse(true);
-        m_drawCommand.SetIblIntensity(envCom->GetIntensityVal());
+      if (diffuseOn)
+      {
+        SetTexture(diffSlot, diffuseEnvMap);
+      }
+      if (specularOn)
+      {
+        SetTexture(specSlot, specularEnvMap);
+      }
 
-        // Pass primary volume local-space BB for OBB per-pixel blend and Parallax Corrected Cubemaps.
-        Vec3 offset = envCom->GetPositionOffsetVal();
-        Vec3 half   = envCom->GetSizeVal() * 0.5f;
-        bool isSky  = false;
-        if (const EntityPtr& env = envCom->OwnerEntity())
-        {
-          isSky = env->IsA<SkyBase>();
-        }
+      m_drawCommand.SetVolumeIntensity(volIdx, envCom->GetIntensityVal());
+      m_drawCommand.SetVolumeIblMode(volIdx, iblMode);
 
-        // Compute secondary IBL mode for shader.
-        float secIblMode                = 0.0f;
-        EnvironmentComponent* secEnvCom = job.SecondaryEnvironmentVolume;
-        if (secEnvCom)
-        {
-          bool secDiffuseOn  = secEnvCom->GetDiffuseIBLVal();
-          bool secSpecularOn = secEnvCom->GetSpecularIBLVal();
-          if (!secDiffuseOn)
-          {
-            secIblMode = 1.0f;
-          }
-          else if (!secSpecularOn)
-          {
-            secIblMode = 2.0f;
-          }
-        }
+      Vec3 offset = envCom->GetPositionOffsetVal();
+      Vec3 half   = envCom->GetSizeVal() * 0.5f;
+      m_drawCommand.SetVolumeMin(volIdx, offset - half);
+      m_drawCommand.SetVolumeMax(volIdx, offset + half);
 
-        bool pccEnabled = !isSky && parallaxCorrection;
-        m_drawCommand.SetPrimaryVolumeMin(offset - half, pccEnabled, secIblMode);
-        m_drawCommand.SetPrimaryVolumeMax(offset + half, iblMode);
+      bool isSky = false;
+      if (const EntityPtr& env = envCom->OwnerEntity())
+      {
+        isSky = env->IsA<SkyBase>();
+      }
 
-        // Sky is a boundless volume, fade must be 0 so blendFactor is always 1.
+      bool pccEnabled = !isSky && parallaxCorrection;
+      m_drawCommand.SetVolumePccEnabled(volIdx, pccEnabled);
+
+      // Sky is a boundless volume, fade = 0 so blend factor is always 1.
+      if (isSky)
+      {
+        m_drawCommand.SetVolumeFadeDistance(volIdx, 0.0f);
+      }
+      else
+      {
+        m_drawCommand.SetVolumeFadeDistance(volIdx, glm::max(envCom->GetFadeVal(), 0.001f));
+      }
+
+      if (const EntityPtr& env = envCom->OwnerEntity())
+      {
         if (isSky)
         {
-          m_drawCommand.SetIblFadeDistance(0.0f);
+          rotationOut = Mat4(env->m_node->GetOrientation());
+          m_drawCommand.SetVolumeInverseTransform(volIdx, Mat4(1.0f));
+          m_drawCommand.SetVolumeWorldTransform(volIdx, Mat4(1.0f));
         }
         else
         {
-          m_drawCommand.SetIblFadeDistance(glm::max(envCom->GetFadeVal(), 0.001f));
-        }
-
-        // Sky: rotation applies to IBL image, no volume boundary.
-        // Non-Sky: rotation applies to OBB volume, IBL image stays fixed.
-        if (const EntityPtr& env = envCom->OwnerEntity())
-        {
-          if (isSky)
-          {
-            m_iblRotation = Mat4(env->m_node->GetOrientation());
-            m_drawCommand.SetIblInverseVolumeTransform(Mat4(1.0f));
-            m_drawCommand.SetIblVolumeTransform(Mat4(1.0f));
-          }
-          else
-          {
-            m_iblRotation       = Mat4(1.0f);
-            Mat4 worldTransform = env->m_node->GetTransform(TransformationSpace::TS_WORLD);
-            m_drawCommand.SetIblInverseVolumeTransform(glm::inverse(worldTransform));
-            if (pccEnabled)
-            {
-              m_drawCommand.SetIblVolumeTransform(worldTransform);
-            }
-          }
-        }
-
-        // Secondary IBL for per-pixel blending.
-        if (secEnvCom)
-        {
-          const HdriPtr& secHdri  = secEnvCom->GetHdriVal();
-          CubeMapPtr& secDiffuse  = secHdri->m_diffuseEnvMap;
-          CubeMapPtr& secSpecular = secHdri->m_specularEnvMap;
-
-          if (secDiffuse && secSpecular)
-          {
-            bool secDiffuseOn  = secEnvCom->GetDiffuseIBLVal();
-            bool secSpecularOn = secEnvCom->GetSpecularIBLVal();
-
-            if (secDiffuseOn)
-            {
-              SetTexture(DefaultTextureSlots::SECONDARY_IRRADIANCE_MAP_TEXTURE_SLOT, secDiffuse);
-            }
-            if (secSpecularOn)
-            {
-              SetTexture(DefaultTextureSlots::SECONDARY_IBL_SPECULAR_MAP_TEXTURE_SLOT, secSpecular);
-            }
-            m_drawCommand.SetSecondaryIblIntensity(secEnvCom->GetIntensityVal());
-
-            if (const EntityPtr& secEnv = secEnvCom->OwnerEntity())
-            {
-              if (secEnv->IsA<SkyBase>())
-              {
-                m_secondaryIblRotation = Mat4(secEnv->m_node->GetOrientation());
-              }
-              else
-              {
-                m_secondaryIblRotation = Mat4(1.0f);
-              }
-            }
-          }
+          rotationOut         = Mat4(1.0f);
+          Mat4 worldTransform = env->m_node->GetTransform(TransformationSpace::TS_WORLD);
+          m_drawCommand.SetVolumeInverseTransform(volIdx, glm::inverse(worldTransform));
+          m_drawCommand.SetVolumeWorldTransform(volIdx, worldTransform);
         }
       }
+
+      return true;
+    };
+
+    bool vol0Ok = setupVolumeFn(0, job.EnvironmentVolume,
+                                DefaultTextureSlots::IRRADIANCE_MAP_TEXTURE_SLOT,
+                                DefaultTextureSlots::IBL_SPECULAR_PRE_FILTERED_MAP_TEXTURE_SLOT,
+                                m_iblRotation);
+
+    bool vol1Ok = setupVolumeFn(1, job.SecondaryEnvironmentVolume,
+                                DefaultTextureSlots::SECONDARY_IRRADIANCE_MAP_TEXTURE_SLOT,
+                                DefaultTextureSlots::SECONDARY_IBL_SPECULAR_MAP_TEXTURE_SLOT,
+                                m_secondaryIblRotation);
+
+    if (vol0Ok || vol1Ok)
+    {
+      m_drawCommand.SetIblInUse(true);
+      SetTexture(DefaultTextureSlots::IBL_BRDF_LUT_TEXTURE_SLOT, m_brdfLut);
     }
 
     // AO texture.
