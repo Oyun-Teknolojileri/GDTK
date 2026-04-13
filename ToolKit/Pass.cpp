@@ -356,9 +356,17 @@ namespace ToolKit
     job.EnvironmentVolume          = nullptr;
     job.SecondaryEnvironmentVolume = nullptr;
 
+    // Assign the two smallest local (non-sky) volumes that intersect the object.
     for (const EnvironmentComponentPtr& volume : environments)
     {
       if (volume->GetDiffuseIBLVal() == false && volume->GetSpecularIBLVal() == false)
+      {
+        continue;
+      }
+
+      // Sky is handled globally as fallback, skip it here.
+      const EntityPtr& owner = volume->OwnerEntity();
+      if (owner != nullptr && owner->IsA<SkyBase>())
       {
         continue;
       }

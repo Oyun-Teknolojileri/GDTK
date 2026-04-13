@@ -24,6 +24,27 @@
 		return bool(drawCommand[0].y > 0.5);
 	}
 
+	float GetSkyIntensity()
+	{
+		return drawCommand[0].z;
+	}
+
+	float GetSkyIblMode()
+	{
+		return drawCommand[0].w;
+	}
+
+	bool IsSkyDiffuseEnabled()
+	{
+		float m = GetSkyIblMode();
+		return (m < 0.5 || m > 1.5);
+	}
+
+	bool IsSkySpecularEnabled()
+	{
+		return (GetSkyIblMode() < 1.5);
+	}
+
 	int GetActivePointLightCount()
 	{
 		return int(drawCommand[1].x);

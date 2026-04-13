@@ -59,6 +59,12 @@ namespace ToolKit
     void SetIblInUse(bool inUse) { global0.x = inUse ? 1.0f : 0.0f; }
     void SetAmbientOcclusionInUse(bool inUse) { global0.y = inUse ? 1.0f : 0.0f; }
 
+    /** Sky intensity (0 = no sky). */
+    void SetSkyIntensity(float intensity) { global0.z = intensity; }
+
+    /** Sky iblMode: 0=both, 1=specOnly, 2=diffOnly. */
+    void SetSkyIblMode(float mode) { global0.w = mode; }
+
     void SetActivePointLightCount(int count) { global1.x = (float) count; }
     void SetActiveSpotLightCount(int count) { global1.y = (float) count; }
     void SetActiveDirectionalLightCount(int count) { global1.z = (float) count; }
