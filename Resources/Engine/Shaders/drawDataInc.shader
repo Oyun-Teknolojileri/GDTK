@@ -121,16 +121,17 @@
 		return mat4(drawCommand[b], drawCommand[b+1], drawCommand[b+2], drawCommand[b+3]);
 	}
 
-	// Compute per-pixel blend factor for a given volume.
+	// Compute per-pixel blend factor for a local volume.
 	// Returns 1.0 inside, fades to 0.0 at the edge, 0.0 outside.
 	float ComputeVolumeBlendFactor(int vol, vec3 worldPos)
 	{
-		float fadeDist = GetVolumeFadeDistance(vol);
-		if (fadeDist <= 0.0)
+		float intensity = GetVolumeIntensity(vol);
+		if (intensity <= 0.0)
 		{
-			// Boundless volume (e.g. sky). Intensity > 0 means always active.
-			return (GetVolumeIntensity(vol) > 0.0) ? 1.0 : 0.0;
+			return 0.0;
 		}
+
+		float fadeDist = GetVolumeFadeDistance(vol);
 
 		vec3 localPos = (GetVolumeInverseTransform(vol) * vec4(worldPos, 1.0)).xyz;
 
