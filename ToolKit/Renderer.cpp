@@ -122,6 +122,10 @@ namespace ToolKit
     glEnable(GL_CULL_FACE);
     glEnable(GL_DEPTH_TEST);
 
+#ifdef GL_TEXTURE_CUBE_MAP_SEAMLESS
+    glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
+#endif
+
     // Validate sRGB automatic encoding on backbuffer if enabled.
     ValidateBackbufferSrgbEncoding();
 
@@ -1240,7 +1244,7 @@ namespace ToolKit
           bool skyDiffuseOn  = skyEnvCom->GetDiffuseIBLVal();
           bool skySpecularOn = skyEnvCom->GetSpecularIBLVal();
 
-          float skyIblMode = 0.0f;
+          float skyIblMode   = 0.0f;
           if (!skyDiffuseOn)
           {
             skyIblMode = 1.0f;
@@ -1268,9 +1272,8 @@ namespace ToolKit
     }
 
     // --- Local volumes (per-object) ---
-    auto setupLocalVolumeFn = [this](int volIdx, EnvironmentComponent* envCom,
-                                     int diffSlot, int specSlot,
-                                     Mat4& rotationOut) -> bool
+    auto setupLocalVolumeFn =
+        [this](int volIdx, EnvironmentComponent* envCom, int diffSlot, int specSlot, Mat4& rotationOut) -> bool
     {
       if (envCom == nullptr)
       {
@@ -1290,7 +1293,7 @@ namespace ToolKit
       bool specularOn         = envCom->GetSpecularIBLVal();
       bool parallaxCorrection = envCom->GetParallaxCorrectionVal();
 
-      float iblMode = 0.0f;
+      float iblMode           = 0.0f;
       if (!diffuseOn)
       {
         iblMode = 1.0f;
@@ -1331,17 +1334,19 @@ namespace ToolKit
       return true;
     };
 
-    bool vol0Ok = setupLocalVolumeFn(0, job.EnvironmentVolume,
+    bool vol0Ok = setupLocalVolumeFn(0,
+                                     job.EnvironmentVolume,
                                      DefaultTextureSlots::IRRADIANCE_MAP_TEXTURE_SLOT,
                                      DefaultTextureSlots::IBL_SPECULAR_PRE_FILTERED_MAP_TEXTURE_SLOT,
                                      m_secondaryIblRotation);
 
-    bool vol1Ok = setupLocalVolumeFn(1, job.SecondaryEnvironmentVolume,
+    bool vol1Ok = setupLocalVolumeFn(1,
+                                     job.SecondaryEnvironmentVolume,
                                      DefaultTextureSlots::SECONDARY_IRRADIANCE_MAP_TEXTURE_SLOT,
                                      DefaultTextureSlots::SECONDARY_IBL_SPECULAR_MAP_TEXTURE_SLOT,
                                      m_secondaryIblRotation);
 
-    anyIbl = anyIbl || vol0Ok || vol1Ok;
+    anyIbl      = anyIbl || vol0Ok || vol1Ok;
 
     if (anyIbl)
     {
@@ -1649,6 +1654,8 @@ namespace ToolKit
     CubeMapPtr cubeMap = MakeNewPtr<CubeMap>();
     cubeMap->Consume(cubeMapRt);
 
+    cubeMap->GenerateMipMaps();
+
     return cubeMap;
   }
 
@@ -1825,8 +1832,24 @@ namespace ToolKit
     RenderTargetPtr cubemapRt = MakeNewPtr<RenderTarget>(size, size, set);
     cubemapRt->Init();
 
-    // Intentionally creating space to fill later. ( mip maps will be calculated for specular ibl )
-    cubemapRt->GenerateMipMaps();
+    // Explicitly allocate storage for every mip level that will be rendered.
+    RHI::SetTexture(GL_TEXTURE_CUBE_MAP, cubemapRt->m_textureId);
+    for (int mip = 1; mip < mipMaps; mip++)
+    {
+      int mipSize = glm::max(1, size >> mip);
+      for (int face = 0; face < 6; face++)
+      {
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face,
+                     mip,
+                     (GLint) set.InternalFormat,
+                     mipSize,
+                     mipSize,
+                     0,
+                     (GLenum) set.Format,
+                     (GLenum) set.Type,
+                     nullptr);
+      }
+    }
 
     // Views for 6 different angles
     CameraPtr cam = MakeNewPtr<Camera>();
