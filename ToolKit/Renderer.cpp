@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2019-2025 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
@@ -1903,7 +1903,7 @@ namespace ToolKit
         SetFramebuffer(m_oneColorAttachmentFramebuffer, GraphicBitFields::None);
 
         mat->UpdateProgramUniform("roughness", (float) mip / (float) (mipMaps - 1));
-        mat->UpdateProgramUniform("resPerFace", (float) mipSize);
+        mat->UpdateProgramUniform("resPerFace", (float) cubemap->m_width);
 
         RHI::SetTexture((GLenum) GraphicTypes::TargetCubeMap, cubemap->m_textureId, 0);
 
