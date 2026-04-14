@@ -359,7 +359,7 @@ namespace ToolKit
     // Assign the two smallest local (non-sky) volumes that intersect the object.
     for (const EnvironmentComponentPtr& volume : environments)
     {
-      if (volume->GetDiffuseIBLVal() == false && volume->GetSpecularIBLVal() == false)
+      if (volume->GetIntensityVal() <= 0.0f)
       {
         continue;
       }

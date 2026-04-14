@@ -91,10 +91,6 @@ namespace ToolKit
                 true,
                 {false, true, 0.0f, 100000.0f, 0.5f});
 
-    DiffuseIBL_Define(true, EnvironmentComponentCategory.Name, EnvironmentComponentCategory.Priority, true, true);
-
-    SpecularIBL_Define(true, EnvironmentComponentCategory.Name, EnvironmentComponentCategory.Priority, true, true);
-
     ParallaxCorrection_Define(false,
                               EnvironmentComponentCategory.Name,
                               EnvironmentComponentCategory.Priority,
@@ -262,10 +258,8 @@ namespace ToolKit
         {[this, position, minDist, res, perFaceClipDist](Renderer* renderer) -> void
          {
            // Disable self-illumination during capture to prevent feedback loop.
-           bool wasDiffuse  = GetDiffuseIBLVal();
-           bool wasSpecular = GetSpecularIBLVal();
-           SetDiffuseIBLVal(false);
-           SetSpecularIBLVal(false);
+           float wasIntensity = GetIntensityVal();
+           SetIntensityVal(0.0f);
 
            // Create a temporary render path for the capture.
            ForwardSceneRenderPath capturePath;
@@ -275,8 +269,7 @@ namespace ToolKit
                renderer->RenderToCubeMap(&capturePath, position, minDist, 1000.0f, res, perFaceClipDist);
 
            // Restore illuminate state.
-           SetDiffuseIBLVal(wasDiffuse);
-           SetSpecularIBLVal(wasSpecular);
+           SetIntensityVal(wasIntensity);
 
            // Create a dynamic HDRI and assign the captured cubemap.
            HdriPtr hdri    = MakeNewPtr<Hdri>();

@@ -76,24 +76,19 @@ vec3 EvalSky(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float per
 
 	vec3 color = vec3(0.0);
 
-	if (IsSkyDiffuseEnabled())
-	{
-		vec3 diffuseColor = albedo * (1.0 - metallic);
-		vec3 iblSamplerVec = (iblRotation * vec4(normal, 0.0)).xyz;
-		vec3 irradiance = texture(s_texture16, iblSamplerVec).rgb;
-		color += diffuseColor * irradiance * (1.0 - E);
-	}
+	// Diffuse
+	vec3 diffuseColor = albedo * (1.0 - metallic);
+	vec3 iblDiffuseVec = (iblRotation * vec4(normal, 0.0)).xyz;
+	vec3 irradiance = texture(s_texture16, iblDiffuseVec).rgb;
+	color += diffuseColor * irradiance * (1.0 - E);
 
-	if (IsSkySpecularEnabled())
-	{
-		vec3 R = reflect(-fragToEye, normal);
-		R = GetSpecularDominantDirection(normal, R, perceptualRoughness);
-		vec3 iblSamplerVec = (iblRotation * vec4(R, 0.0)).xyz;
-		float lod = RoughnessToLod(perceptualRoughness, float(graphicConstants.iblMaxReflectionLod));
-		vec3 preFilteredColor = textureLod(s_texture17, iblSamplerVec, lod).rgb;
-		vec3 specular = E * preFilteredColor * energyComp;
-		color += specular;
-	}
+	// Specular
+	vec3 R = reflect(-fragToEye, normal);
+	R = GetSpecularDominantDirection(normal, R, perceptualRoughness);
+	vec3 iblSpecVec = (iblRotation * vec4(R, 0.0)).xyz;
+	float lod = RoughnessToLod(perceptualRoughness, float(graphicConstants.iblMaxReflectionLod));
+	vec3 preFilteredColor = textureLod(s_texture17, iblSpecVec, lod).rgb;
+	color += E * preFilteredColor * energyComp;
 
 	return color * skyIntensity;
 }
@@ -141,16 +136,8 @@ vec3 EvalVolumeSpecular(int vol, vec3 normal, vec3 fragToEye, float perceptualRo
 
 vec3 EvalVolume(int vol, vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float perceptualRoughness, vec3 E, vec3 energyComp, vec3 worldPos)
 {
-	vec3 Fd = vec3(0.0);
-	if (IsVolumeDiffuseEnabled(vol))
-	{
-		Fd = EvalVolumeDiffuse(vol, normal, albedo, metallic, E);
-	}
-	vec3 Fr = vec3(0.0);
-	if (IsVolumeSpecularEnabled(vol))
-	{
-		Fr = EvalVolumeSpecular(vol, normal, fragToEye, perceptualRoughness, E, energyComp, worldPos);
-	}
+	vec3 Fd = EvalVolumeDiffuse(vol, normal, albedo, metallic, E);
+	vec3 Fr = EvalVolumeSpecular(vol, normal, fragToEye, perceptualRoughness, E, energyComp, worldPos);
 	return (Fd + Fr) * GetVolumeIntensity(vol);
 }
 

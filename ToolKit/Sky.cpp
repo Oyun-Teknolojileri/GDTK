@@ -214,9 +214,9 @@ namespace ToolKit
         {
           if (IsInitialized())
           {
-            bool val = std::get<bool>(newVal);
-            GetComponent<EnvironmentComponent>()->SetDiffuseIBLVal(val);
-            GetComponent<EnvironmentComponent>()->SetSpecularIBLVal(val);
+            bool val                        = std::get<bool>(newVal);
+            EnvironmentComponentPtr envComp = GetComponent<EnvironmentComponent>();
+            envComp->SetIntensityVal(val ? GetIntensityVal() : 0.0f);
           }
         });
 

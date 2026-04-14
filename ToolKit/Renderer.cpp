@@ -1226,7 +1226,6 @@ namespace ToolKit
     // Sky and Ibl data.
     m_drawCommand.SetIblInUse(false);
     m_drawCommand.SetSkyIntensity(0.0f);
-    m_drawCommand.SetSkyIblMode(0.0f);
     m_drawCommand.SetVolumeIntensity(0, 0.0f);
     m_drawCommand.SetVolumeIntensity(1, 0.0f);
 
@@ -1241,30 +1240,10 @@ namespace ToolKit
         const HdriPtr& skyHdri = skyEnvCom->GetHdriVal();
         if (skyHdri != nullptr && skyHdri->m_diffuseEnvMap && skyHdri->m_specularEnvMap && m_brdfLut)
         {
-          bool skyDiffuseOn  = skyEnvCom->GetDiffuseIBLVal();
-          bool skySpecularOn = skyEnvCom->GetSpecularIBLVal();
-
-          float skyIblMode   = 0.0f;
-          if (!skyDiffuseOn)
-          {
-            skyIblMode = 1.0f;
-          }
-          else if (!skySpecularOn)
-          {
-            skyIblMode = 2.0f;
-          }
-
-          if (skyDiffuseOn)
-          {
-            SetTexture(DefaultTextureSlots::SKY_IRRADIANCE_MAP_TEXTURE_SLOT, skyHdri->m_diffuseEnvMap);
-          }
-          if (skySpecularOn)
-          {
-            SetTexture(DefaultTextureSlots::SKY_SPECULAR_MAP_TEXTURE_SLOT, skyHdri->m_specularEnvMap);
-          }
+          SetTexture(DefaultTextureSlots::SKY_IRRADIANCE_MAP_TEXTURE_SLOT, skyHdri->m_diffuseEnvMap);
+          SetTexture(DefaultTextureSlots::SKY_SPECULAR_MAP_TEXTURE_SLOT, skyHdri->m_specularEnvMap);
 
           m_drawCommand.SetSkyIntensity(skyEnvCom->GetIntensityVal());
-          m_drawCommand.SetSkyIblMode(skyIblMode);
           m_iblRotation = Mat4(m_sky->m_node->GetOrientation());
           anyIbl        = true;
         }
@@ -1289,31 +1268,12 @@ namespace ToolKit
         return false;
       }
 
-      bool diffuseOn          = envCom->GetDiffuseIBLVal();
-      bool specularOn         = envCom->GetSpecularIBLVal();
       bool parallaxCorrection = envCom->GetParallaxCorrectionVal();
 
-      float iblMode           = 0.0f;
-      if (!diffuseOn)
-      {
-        iblMode = 1.0f;
-      }
-      else if (!specularOn)
-      {
-        iblMode = 2.0f;
-      }
-
-      if (diffuseOn)
-      {
-        SetTexture(diffSlot, diffuseEnvMap);
-      }
-      if (specularOn)
-      {
-        SetTexture(specSlot, specularEnvMap);
-      }
+      SetTexture(diffSlot, diffuseEnvMap);
+      SetTexture(specSlot, specularEnvMap);
 
       m_drawCommand.SetVolumeIntensity(volIdx, envCom->GetIntensityVal());
-      m_drawCommand.SetVolumeIblMode(volIdx, iblMode);
 
       Vec3 offset = envCom->GetPositionOffsetVal();
       Vec3 half   = envCom->GetSizeVal() * 0.5f;

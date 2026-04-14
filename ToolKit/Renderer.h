@@ -38,7 +38,7 @@ namespace ToolKit
 
     // --- Volume 0 / Primary (11 Vec4) ---
 
-    /** x: intensity, y: fadeDistance, z: iblMode (0=both,1=specOnly,2=diffOnly), w: pccEnabled */
+    /** x: intensity, y: fadeDistance, z: unused, w: pccEnabled */
     Vec4 vol0Params;
     Vec4 vol0Min; /**< xyz: volume min (local space) */
     Vec4 vol0Max; /**< xyz: volume max (local space) */
@@ -47,7 +47,7 @@ namespace ToolKit
 
     // --- Volume 1 / Secondary (11 Vec4) ---
 
-    /** x: intensity, y: fadeDistance, z: iblMode (0=both,1=specOnly,2=diffOnly), w: pccEnabled */
+    /** x: intensity, y: fadeDistance, z: unused, w: pccEnabled */
     Vec4 vol1Params;
     Vec4 vol1Min; /**< xyz: volume min (local space) */
     Vec4 vol1Max; /**< xyz: volume max (local space) */
@@ -57,49 +57,29 @@ namespace ToolKit
     // --- Global setters ---
 
     void SetIblInUse(bool inUse) { global0.x = inUse ? 1.0f : 0.0f; }
+
     void SetAmbientOcclusionInUse(bool inUse) { global0.y = inUse ? 1.0f : 0.0f; }
 
     /** Sky intensity (0 = no sky). */
     void SetSkyIntensity(float intensity) { global0.z = intensity; }
 
-    /** Sky iblMode: 0=both, 1=specOnly, 2=diffOnly. */
-    void SetSkyIblMode(float mode) { global0.w = mode; }
-
     void SetActivePointLightCount(int count) { global1.x = (float) count; }
+
     void SetActiveSpotLightCount(int count) { global1.y = (float) count; }
+
     void SetActiveDirectionalLightCount(int count) { global1.z = (float) count; }
 
     // --- Per-volume setters ---
 
-    void SetVolumeIntensity(int vol, float intensity)
-    {
-      Params(vol).x = intensity;
-    }
+    void SetVolumeIntensity(int vol, float intensity) { Params(vol).x = intensity; }
 
-    void SetVolumeFadeDistance(int vol, float fade)
-    {
-      Params(vol).y = fade;
-    }
+    void SetVolumeFadeDistance(int vol, float fade) { Params(vol).y = fade; }
 
-    void SetVolumeIblMode(int vol, float mode)
-    {
-      Params(vol).z = mode;
-    }
+    void SetVolumePccEnabled(int vol, bool enabled) { Params(vol).w = enabled ? 1.0f : 0.0f; }
 
-    void SetVolumePccEnabled(int vol, bool enabled)
-    {
-      Params(vol).w = enabled ? 1.0f : 0.0f;
-    }
+    void SetVolumeMin(int vol, const Vec3& minVal) { Min(vol) = Vec4(minVal, 0.0f); }
 
-    void SetVolumeMin(int vol, const Vec3& minVal)
-    {
-      Min(vol) = Vec4(minVal, 0.0f);
-    }
-
-    void SetVolumeMax(int vol, const Vec3& maxVal)
-    {
-      Max(vol) = Vec4(maxVal, 0.0f);
-    }
+    void SetVolumeMax(int vol, const Vec3& maxVal) { Max(vol) = Vec4(maxVal, 0.0f); }
 
     void SetVolumeInverseTransform(int vol, const Mat4& m)
     {
@@ -119,8 +99,10 @@ namespace ToolKit
 
    private:
     Vec4& Params(int vol) { return vol == 0 ? vol0Params : vol1Params; }
-    Vec4& Min(int vol)    { return vol == 0 ? vol0Min : vol1Min; }
-    Vec4& Max(int vol)    { return vol == 0 ? vol0Max : vol1Max; }
+
+    Vec4& Min(int vol) { return vol == 0 ? vol0Min : vol1Min; }
+
+    Vec4& Max(int vol) { return vol == 0 ? vol0Max : vol1Max; }
 
     Vec4& InvT(int vol, int row)
     {

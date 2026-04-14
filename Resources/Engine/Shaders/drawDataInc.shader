@@ -29,22 +29,6 @@
 		return drawCommand[0].z;
 	}
 
-	float GetSkyIblMode()
-	{
-		return drawCommand[0].w;
-	}
-
-	bool IsSkyDiffuseEnabled()
-	{
-		float m = GetSkyIblMode();
-		return (m < 0.5 || m > 1.5);
-	}
-
-	bool IsSkySpecularEnabled()
-	{
-		return (GetSkyIblMode() < 1.5);
-	}
-
 	int GetActivePointLightCount()
 	{
 		return int(drawCommand[1].x);
@@ -78,25 +62,9 @@
 		return drawCommand[VolumeBase(vol)].y;
 	}
 
-	float GetVolumeIblMode(int vol)
-	{
-		return drawCommand[VolumeBase(vol)].z;
-	}
-
 	bool IsVolumePccEnabled(int vol)
 	{
 		return bool(drawCommand[VolumeBase(vol)].w > 0.5);
-	}
-
-	bool IsVolumeDiffuseEnabled(int vol)
-	{
-		float m = GetVolumeIblMode(vol);
-		return (m < 0.5 || m > 1.5);
-	}
-
-	bool IsVolumeSpecularEnabled(int vol)
-	{
-		return (GetVolumeIblMode(vol) < 1.5);
 	}
 
 	vec3 GetVolumeMin(int vol)

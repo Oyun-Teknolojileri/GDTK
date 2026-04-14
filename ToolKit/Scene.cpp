@@ -192,7 +192,7 @@ namespace ToolKit
       // Update volume caches.
       if (const EnvironmentComponentPtr& envComp = ntt->GetComponent<EnvironmentComponent>())
       {
-        if (envComp->GetHdriVal() != nullptr && (envComp->GetDiffuseIBLVal() || envComp->GetSpecularIBLVal()))
+        if (envComp->GetHdriVal() != nullptr && envComp->GetIntensityVal() > 0.0f)
         {
           envComp->Init(true);
           m_environmentVolumeCache.push_back(envComp);
@@ -661,7 +661,7 @@ namespace ToolKit
 
     if (const EnvironmentComponentPtr& envComp = ntt->GetComponent<EnvironmentComponent>())
     {
-      if (envComp->GetHdriVal() != nullptr && (envComp->GetDiffuseIBLVal() || envComp->GetSpecularIBLVal()))
+      if (envComp->GetHdriVal() != nullptr && envComp->GetIntensityVal() > 0.0f)
       {
         if (add)
         {
