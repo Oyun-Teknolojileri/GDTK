@@ -91,6 +91,8 @@ namespace ToolKit
                 true,
                 {false, true, 0.0f, 100000.0f, 0.5f});
 
+    Illuminate_Define(true, EnvironmentComponentCategory.Name, EnvironmentComponentCategory.Priority, true, true);
+
     ParallaxCorrection_Define(false,
                               EnvironmentComponentCategory.Name,
                               EnvironmentComponentCategory.Priority,
@@ -258,8 +260,8 @@ namespace ToolKit
         {[this, position, minDist, res, perFaceClipDist](Renderer* renderer) -> void
          {
            // Disable self-illumination during capture to prevent feedback loop.
-           float wasIntensity = GetIntensityVal();
-           SetIntensityVal(0.0f);
+           bool wasIlluminate = GetIlluminateVal();
+           SetIlluminateVal(false);
 
            // Create a temporary render path for the capture.
            ForwardSceneRenderPath capturePath;
@@ -269,7 +271,7 @@ namespace ToolKit
                renderer->RenderToCubeMap(&capturePath, position, minDist, 1000.0f, res, perFaceClipDist);
 
            // Restore illuminate state.
-           SetIntensityVal(wasIntensity);
+           SetIlluminateVal(wasIlluminate);
 
            // Create a dynamic HDRI and assign the captured cubemap.
            HdriPtr hdri    = MakeNewPtr<Hdri>();

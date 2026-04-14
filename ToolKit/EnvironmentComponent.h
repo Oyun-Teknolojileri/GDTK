@@ -49,6 +49,7 @@ namespace ToolKit
     TKDeclareParam(HdriPtr, Hdri);
     TKDeclareParam(Vec3, Size);
     TKDeclareParam(Vec3, PositionOffset);
+    TKDeclareParam(bool, Illuminate);
     TKDeclareParam(bool, ParallaxCorrection);
     TKDeclareParam(float, Intensity);
     TKDeclareParam(float, Fade);

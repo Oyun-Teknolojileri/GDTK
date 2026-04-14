@@ -1243,7 +1243,8 @@ namespace ToolKit
           SetTexture(DefaultTextureSlots::SKY_IRRADIANCE_MAP_TEXTURE_SLOT, skyHdri->m_diffuseEnvMap);
           SetTexture(DefaultTextureSlots::SKY_SPECULAR_MAP_TEXTURE_SLOT, skyHdri->m_specularEnvMap);
 
-          m_drawCommand.SetSkyIntensity(skyEnvCom->GetIntensityVal());
+          float skyIntensity = skyEnvCom->GetIlluminateVal() ? skyEnvCom->GetIntensityVal() : 0.0f;
+          m_drawCommand.SetSkyIntensity(skyIntensity);
           m_iblRotation = Mat4(m_sky->m_node->GetOrientation());
           anyIbl        = true;
         }
@@ -1273,7 +1274,8 @@ namespace ToolKit
       SetTexture(diffSlot, diffuseEnvMap);
       SetTexture(specSlot, specularEnvMap);
 
-      m_drawCommand.SetVolumeIntensity(volIdx, envCom->GetIntensityVal());
+      float intensity = envCom->GetIlluminateVal() ? envCom->GetIntensityVal() : 0.0f;
+      m_drawCommand.SetVolumeIntensity(volIdx, intensity);
 
       Vec3 offset = envCom->GetPositionOffsetVal();
       Vec3 half   = envCom->GetSizeVal() * 0.5f;
