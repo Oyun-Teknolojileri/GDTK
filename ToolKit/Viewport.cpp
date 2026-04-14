@@ -133,6 +133,7 @@ namespace ToolKit
       m_framebuffer = MakeNewPtr<Framebuffer>("ViewportFB");
     }
 
+    
     float resScale          = engineSettings.m_graphics->GetRenderResolutionScaleVal();
     int width               = (int) glm::round(m_wndContentAreaSize.x * resScale);
     int height              = (int) glm::round(m_wndContentAreaSize.y * resScale);

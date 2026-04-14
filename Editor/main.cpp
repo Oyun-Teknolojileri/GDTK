@@ -277,6 +277,8 @@ namespace ToolKit
       settings.Load(settingsFile);
 
       // Init SDL
+      SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS, "permonitorv2");
+      SDL_SetHint(SDL_HINT_WINDOWS_DPI_SCALING, "1");
       if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER) < 0)
       {
         g_running = false;
@@ -303,7 +305,7 @@ namespace ToolKit
                              SDL_WINDOWPOS_CENTERED,
                              512,
                              512,
-                             SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_BORDERLESS);
+                                    SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_BORDERLESS);
 
         if (g_window == nullptr)
         {
@@ -370,9 +372,10 @@ namespace ToolKit
             // Set defaults
             SDL_GL_SetSwapInterval(0);
 
-            // Get the display bounds for the primary display
+            // Get the display bounds for the current display
+            int displayIndex = SDL_GetWindowDisplayIndex(g_window);
             SDL_Rect displayBounds;
-            if (SDL_GetDisplayUsableBounds(0, &displayBounds) == 0)
+            if (SDL_GetDisplayUsableBounds(displayIndex, &displayBounds) == 0)
             {
               // Clamp the requested window size to the display bounds
               uint width  = settings.m_window->GetWidthVal();
@@ -384,6 +387,11 @@ namespace ToolKit
             {
               TK_ERR("SDL_GetDisplayBounds Error: %s", SDL_GetError());
             }
+
+            // Get the DPI scale for current display
+            float displayDpi;
+            SDL_GetDisplayDPI(displayIndex, &displayDpi, nullptr, nullptr);
+            settings.m_window->SetDpiScaleVal(displayDpi / 96.0f);
 
             g_app = new App(settings.m_window->GetWidthVal(), settings.m_window->GetHeightVal());
 

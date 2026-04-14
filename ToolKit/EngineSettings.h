@@ -38,6 +38,9 @@ namespace ToolKit
     /** Application window height for windowed mode. */
     TKDeclareParam(uint, Height);
 
+    /** UI scaling factor derived from display DPI (96 DPI = 1.0) */
+    TKDeclareParam(float, DpiScale);
+
     /** States if the application is full screen or windowed. */
     TKDeclareParam(bool, FullScreen);
   };

@@ -121,6 +121,8 @@ namespace ToolKit
       EngineSettings& settings = GetEngineSettings();
       settings.Load(EngineSettingsPath());
 
+      SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS, "permonitorv2");
+      SDL_SetHint(SDL_HINT_WINDOWS_DPI_SCALING, "1");
       if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) < 0)
       {
         g_running = false;
