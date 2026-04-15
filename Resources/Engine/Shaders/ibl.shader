@@ -138,12 +138,13 @@ vec3 EvalVolumeSpecular(int vol, vec3 normal, vec3 fragToEye, float perceptualRo
 // Premultiplied-alpha volume accumulation (Godot-style)
 //
 // Each volume contributes vec4(rgb * blend, blend) into an accumulator.
-// - Exterior volumes: at the fade region, probe color is mixed towards sky
-//   so that the probe smoothly reveals sky at its boundary.
-// - Interior volumes: no sky mix; inside the boundary the probe is fully
-//   opaque, fading only at the edge for volume-to-volume transitions.
-// After accumulation, dividing rgb by alpha yields the weighted average.
-// If total alpha < 1, sky fills the remainder automatically.
+// - Exterior volumes: probe color is mixed towards sky at the fade boundary
+//   so the probe reveals sky at its edges.
+// - Interior volumes: no sky mix; probe color is used as-is everywhere
+//   inside the boundary.
+// Both use blend as alpha. After accumulation, dividing rgb by alpha gives
+// the weighted average. If any volume contributed (accum.a > 0), the result
+// fully replaces sky — no partial sky leak.
 // ---------------------------------------------------------------------------
 
 void AccumulateVolume(int vol, vec3 normal, vec3 fragToEye, vec3 albedo, float metallic,
@@ -160,8 +161,7 @@ void AccumulateVolume(int vol, vec3 normal, vec3 fragToEye, vec3 albedo, float m
 	vec3 Fr = EvalVolumeSpecular(vol, normal, fragToEye, perceptualRoughness, E, energyComp, worldPos);
 	vec3 volumeColor = (Fd + Fr) * GetVolumeIntensity(vol);
 
-	// Exterior volumes blend towards sky at the boundary edges.
-	// Interior volumes keep their own color across the full boundary.
+	// Exterior: blend towards sky at edges.  Interior: no sky mix.
 	if (!IsVolumeInterior(vol))
 	{
 		volumeColor = mix(skyColor, volumeColor, blend);
@@ -192,20 +192,13 @@ vec3 IBLPBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float perc
 	AccumulateVolume(0, normal, fragToEye, albedo, metallic, perceptualRoughness, E, energyComp, worldPos, skyColor, accum);
 	AccumulateVolume(1, normal, fragToEye, albedo, metallic, perceptualRoughness, E, energyComp, worldPos, skyColor, accum);
 
-	// Final compositing: weighted average of volumes, sky fills the remainder.
-	vec3 color;
+	// If any volume contributed, its weighted average fully replaces sky.
 	if (accum.a > 0.0)
 	{
-		vec3 volumeContrib = accum.rgb / accum.a;
-		float volumeAlpha = min(accum.a, 1.0);
-		color = mix(skyColor, volumeContrib, volumeAlpha);
-	}
-	else
-	{
-		color = skyColor;
+		return accum.rgb / accum.a;
 	}
 
-	return color;
+	return skyColor;
 }
 
 #endif
