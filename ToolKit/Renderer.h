@@ -10,6 +10,7 @@
 #include "Camera.h"
 #include "GenericBuffers.h"
 #include "GpuProgram.h"
+#include "IGraphicsBackend.h"
 #include "Material.h"
 #include "Primative.h"
 #include "RHI.h"
@@ -426,6 +427,8 @@ namespace ToolKit
     CubePtr m_dummyDrawCube                        = nullptr;
 
     GpuProgramManager* m_gpuProgramManager         = nullptr;
+
+    IGraphicsBackend* m_backend                    = nullptr;
 
     uint m_gpuTimerQuery                           = 0;
     float m_cpuTime                                = 1.0f;

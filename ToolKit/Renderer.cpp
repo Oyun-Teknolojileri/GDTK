@@ -8,6 +8,7 @@
 #include "Renderer.h"
 
 #include "AABBOverrideComponent.h"
+#include "GLBackend.h"
 #include "Camera.h"
 #include "DirectionComponent.h"
 #include "Drawable.h"
@@ -126,10 +127,14 @@ namespace ToolKit
     SrgbAutoEncoding(GetRenderSystem()->m_backbufferFormatIsSRGB);
 
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+
+    m_backend = new GLBackend();
   }
 
   Renderer::~Renderer()
   {
+    SafeDel(m_backend);
+
     m_oneColorAttachmentFramebuffer = nullptr;
     m_gaussianBlurMaterial          = nullptr;
     m_averageBlurMaterial           = nullptr;
