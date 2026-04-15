@@ -1586,20 +1586,15 @@ namespace ToolKit
     // Views for 6 different angles
     CameraPtr cam = MakeNewPtr<Camera>();
     cam->SetLens(glm::radians(90.0f), 1.0f, 0.1f, 10.0f);
-    Mat4 views[] = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                    glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                    glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
-                    glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
-                    glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                    glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
+    Mat4 views[CubemapFaceCount];
+    GetCubemapViews(ZERO, views);
 
-    for (int i = 0; i < 6; i++)
+    for (int i = 0; i < CubemapFaceCount; i++)
     {
       Vec3 pos, sca;
       Quaternion rot;
 
-      Mat4 invView = glm::inverse(views[i]);
-      DecomposeMatrix(invView, &pos, &rot, &sca);
+      DecomposeMatrix(views[i], &pos, &rot, &sca);
 
       cam->m_node->SetTranslation(ZERO, TransformationSpace::TS_WORLD);
       cam->m_node->SetOrientation(rot, TransformationSpace::TS_WORLD);
@@ -1727,12 +1722,8 @@ namespace ToolKit
     // Views for 6 different angles
     CameraPtr cam = MakeNewPtr<Camera>();
     cam->SetLens(glm::radians(90.0f), 1.0f, 0.1f, 10.0f);
-    Mat4 views[]    = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                       glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
+    Mat4 views[CubemapFaceCount];
+    GetCubemapViews(ZERO, views);
 
     // Create material
     MaterialPtr mat = MakeNewPtr<Material>();
@@ -1747,13 +1738,12 @@ namespace ToolKit
 
     m_oneColorAttachmentFramebuffer->ReconstructIfNeeded({size, size, false, false});
 
-    for (int i = 0; i < 6; i++)
+    for (int i = 0; i < CubemapFaceCount; i++)
     {
       Vec3 pos;
       Quaternion rot;
       Vec3 sca;
-      Mat4 invView = glm::inverse(views[i]);
-      DecomposeMatrix(invView, &pos, &rot, &sca);
+      DecomposeMatrix(views[i], &pos, &rot, &sca);
 
       cam->m_node->SetTranslation(ZERO, TransformationSpace::TS_WORLD);
       cam->m_node->SetOrientation(rot, TransformationSpace::TS_WORLD);
@@ -1819,12 +1809,8 @@ namespace ToolKit
     // Views for 6 different angles
     CameraPtr cam = MakeNewPtr<Camera>();
     cam->SetLens(glm::radians(90.0f), 1.0f, 0.1f, 10.0f);
-    Mat4 views[]    = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                       glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
+    Mat4 views[CubemapFaceCount];
+    GetCubemapViews(ZERO, views);
 
     // Create material
     MaterialPtr mat = MakeNewPtr<Material>();
@@ -1848,13 +1834,12 @@ namespace ToolKit
       RenderTargetPtr mipCubeRt = MakeNewPtr<RenderTarget>(mipSize, mipSize, set);
       mipCubeRt->Init();
 
-      for (int i = 0; i < 6; ++i)
+      for (int i = 0; i < CubemapFaceCount; ++i)
       {
         Vec3 pos;
         Quaternion rot;
         Vec3 sca;
-        Mat4 invView = glm::inverse(views[i]);
-        DecomposeMatrix(invView, &pos, &rot, &sca);
+        DecomposeMatrix(views[i], &pos, &rot, &sca);
 
         cam->m_node->SetTranslation(ZERO, TransformationSpace::TS_WORLD);
         cam->m_node->SetOrientation(rot, TransformationSpace::TS_WORLD);
@@ -1931,11 +1916,8 @@ namespace ToolKit
     cam->SetLens(glm::radians(90.0f), 1.0f, near, far);
 
     // Cubemap face directions and up vectors in local space (OpenGL cubemap convention).
-    static const Vec3 faceNormals[6] =
-        {Vec3(1, 0, 0), Vec3(-1, 0, 0), Vec3(0, 1, 0), Vec3(0, -1, 0), Vec3(0, 0, 1), Vec3(0, 0, -1)};
-
-    static const Vec3 faceUp[6] =
-        {Vec3(0, -1, 0), Vec3(0, -1, 0), Vec3(0, 0, 1), Vec3(0, 0, -1), Vec3(0, -1, 0), Vec3(0, -1, 0)};
+    const Vec3* faceNormals              = GetCubemapFaceDirections();
+    const Vec3* faceUp                   = GetCubemapFaceUpVectors();
 
     // Save original render path params.
     CameraPtr origCam                    = renderPath->m_params.Cam;
@@ -1953,7 +1935,7 @@ namespace ToolKit
 
     renderPath->m_params.postProcessSettings = capturePPS;
 
-    for (int i = 0; i < 6; i++)
+    for (int i = 0; i < CubemapFaceCount; i++)
     {
       // Build local-space view matrix looking from originOffset along the face direction.
       Mat4 localView       = glm::lookAt(originOffset, originOffset + faceNormals[i], faceUp[i]);

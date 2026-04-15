@@ -170,23 +170,18 @@ namespace ToolKit
     CameraPtr cam = MakeNewPtr<Camera>();
     cam->SetLens(glm::radians(90.0f), 1.0f, 0.1f, 10.0f);
 
-    Mat4 views[]                  = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                                     glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                                     glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
-                                     glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
-                                     glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                                     glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
+    Mat4 views[CubemapFaceCount];
+    GetCubemapViews(ZERO, views);
 
     FramebufferPtr skyFrameBuffer = MakeNewPtr<Framebuffer>(FramebufferSettings {size, size, false, false}, "SkyFB");
     skyFrameBuffer->Init();
 
-    for (int i = 0; i < 6; ++i)
+    for (int i = 0; i < CubemapFaceCount; ++i)
     {
       Vec3 pos;
       Quaternion rot;
       Vec3 sca;
-      Mat4 invView = glm::inverse(views[i]);
-      DecomposeMatrix(invView, &pos, &rot, &sca);
+      DecomposeMatrix(views[i], &pos, &rot, &sca);
 
       cam->m_node->SetTranslation(ZERO, TransformationSpace::TS_WORLD);
       cam->m_node->SetOrientation(rot, TransformationSpace::TS_WORLD);
