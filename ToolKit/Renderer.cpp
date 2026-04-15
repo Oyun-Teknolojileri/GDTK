@@ -8,14 +8,15 @@
 #include "Renderer.h"
 
 #include "AABBOverrideComponent.h"
-#include "GLBackend.h"
 #include "Camera.h"
+#include "DebugNew.h"
 #include "DirectionComponent.h"
 #include "Drawable.h"
 #include "EngineSettings.h"
 #include "EnvironmentComponent.h"
 #include "ForwardSceneRenderPath.h"
 #include "Framebuffer.h"
+#include "GLBackend.h"
 #include "GradientSky.h"
 #include "Logger.h"
 #include "Material.h"
@@ -23,6 +24,7 @@
 #include "Mesh.h"
 #include "Node.h"
 #include "Pass.h"
+#include "PerDrawUniforms.h"
 #include "RHI.h"
 #include "RenderSystem.h"
 #include "Scene.h"
@@ -36,8 +38,6 @@
 #include "ToolKit.h"
 #include "UIManager.h"
 #include "Viewport.h"
-
-#include "DebugNew.h"
 
 namespace ToolKit
 {
@@ -1334,104 +1334,57 @@ namespace ToolKit
   {
     TK_PROFILE_FUNCTION();
 
-    // Built-in shader uniforms.
-    for (auto& uniform : program->m_defaultUniformLocation)
+    PerDrawUniforms pdu;
+    pdu.model                = m_model;
+    pdu.modelWithoutTranslate = m_modelWithoutTranslate;
+    pdu.inverseModel         = m_inverseModel;
+    pdu.inverseTransposeModel = m_inverseTransposeModel;
+    pdu.iblRotation          = m_iblRotation;
+    pdu.iblSecondaryRotation = m_secondaryIblRotation;
+    pdu.viewportSize         = Vec2((float) m_viewportRect.x, (float) m_viewportRect.y);
+    pdu.drawCommand          = m_drawCommand;
+    pdu.materialData         = job.Material->GetCacheItem().data;
+
+    std::copy(m_activePointLightIndices.begin(), m_activePointLightIndices.end(), pdu.activePointLightIndices);
+    std::copy(m_activeSpotLightIndices.begin(), m_activeSpotLightIndices.end(), pdu.activeSpotLightIndices);
+    pdu.activePointLightCount = m_activePointLightCount;
+    pdu.activeSpotLightCount  = m_activeSpotLightCount;
+
+    // Animation / Skinning
+    pdu.keyFrameData = Vec4(0.0f);
+    if (job.animData.currentAnimation != nullptr)
     {
-      int loc = program->GetDefaultUniformLocation(uniform.first);
-      if (loc != -1)
+      pdu.keyFrameData = Vec4(job.animData.firstKeyFrame,
+                              job.animData.secondKeyFrame,
+                              job.animData.keyFrameInterpolationTime,
+                              job.animData.keyFrameCount);
+    }
+
+    pdu.blendFrameData = Vec4(0.0f);
+    if (job.animData.blendAnimation != nullptr)
+    {
+      pdu.blendFrameData = Vec4(job.animData.blendFirstKeyFrame,
+                                job.animData.blendSecondKeyFrame,
+                                job.animData.blendKeyFrameInterpolationTime,
+                                job.animData.blendKeyFrameCount);
+    }
+
+    pdu.animationBlendFactor = job.animData.animationBlendFactor;
+
+    pdu.skinParams           = Vec4(0.0f);
+    if (job.Mesh->IsSkinned())
+    {
+      const SkeletonPtr& skel = static_cast<const SkinMesh*>(job.Mesh)->m_skeleton;
+      if (skel)
       {
-        switch (uniform.first)
-        {
-          case Uniform::MODEL:
-            glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&m_model));
-            break;
-          case Uniform::MODEL_WITHOUT_TRANSLATE:
-            glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&m_modelWithoutTranslate));
-            break;
-          case Uniform::INVERSE_MODEL:
-            glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&m_inverseModel));
-            break;
-          case Uniform::INVERSE_TRANSPOSE_MODEL:
-            glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&m_inverseTransposeModel));
-            break;
-          case Uniform::IBL_ROTATION:
-            glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&m_iblRotation));
-            break;
-          case Uniform::IBL_SECONDARY_ROTATION:
-            glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&m_secondaryIblRotation));
-            break;
-          case Uniform::VIEWPORT_SIZE:
-            glUniform2f(loc, (float) m_viewportRect.x, (float) m_viewportRect.y);
-            break;
-          default:
-            break;
-        }
+        float boneCount  = (float) skel->m_bones.size();
+        float isAnimated = (job.animData.currentAnimation != nullptr) ? 1.0f : 0.0f;
+        float hasBlend   = (job.animData.blendAnimation != nullptr) ? 1.0f : 0.0f;
+        pdu.skinParams   = Vec4(boneCount, 1.0f, isAnimated, hasBlend);
       }
     }
 
-    // Built-in array uniforms.
-    for (auto& arrayUniform : program->m_defaultArrayUniformLocations)
-    {
-      switch (arrayUniform.first)
-      {
-        case Uniform::DRAW_COMMAND:
-        {
-          int loc = program->GetDefaultUniformLocation(Uniform::DRAW_COMMAND, 0);
-          if (loc != -1)
-          {
-            glUniform4fv(loc, sizeof(DrawCommand) / sizeof(Vec4), (float*) &m_drawCommand);
-          }
-        }
-        break;
-        case Uniform::ACTIVE_POINT_LIGHT_INDEXES:
-        {
-          int loc = program->GetDefaultUniformLocation(Uniform::ACTIVE_POINT_LIGHT_INDEXES, 0);
-          if (loc != -1)
-          {
-            if (m_activePointLightCount > 0)
-            {
-              glUniform1iv(loc, m_activePointLightCount, m_activePointLightIndices.data());
-            }
-          }
-        }
-        break;
-        case Uniform::ACTIVE_SPOT_LIGHT_INDEXES:
-        {
-          int loc = program->GetDefaultUniformLocation(Uniform::ACTIVE_SPOT_LIGHT_INDEXES, 0);
-          if (loc != -1)
-          {
-            if (m_activeSpotLightCount > 0)
-            {
-              glUniform1iv(loc, m_activeSpotLightCount, m_activeSpotLightIndices.data());
-            }
-          }
-        }
-        break;
-        case Uniform::MATERIAL_CACHE:
-        {
-          int loc = program->GetDefaultUniformLocation(Uniform::MATERIAL_CACHE, 0);
-          if (loc != -1)
-          {
-            // Material data.
-            const MaterialCacheItem& cache = job.Material->GetCacheItem();
-            if (cache.id == program->m_cachedMaterial.id)
-            {
-              if (cache.version == program->m_cachedMaterial.version)
-              {
-                // Material data is already set.
-                break;
-              }
-            }
-
-            program->m_cachedMaterial = cache;
-            glUniform4fv(loc, sizeof(MaterialCacheItem::Data) / sizeof(Vec4), (float*) &cache.data);
-          }
-        }
-        break;
-        default:
-          break;
-      }
-    }
+    m_backend->SubmitPerDrawData(&pdu, sizeof(pdu));
 
     // Custom shader uniforms.
     for (auto& uniform : program->m_customUniforms)
@@ -1475,58 +1428,13 @@ namespace ToolKit
 
   void Renderer::FeedAnimationUniforms(const GpuProgramPtr& program, const RenderJob& job)
   {
-    TK_PROFILE_FUNCTION();
-
-    if (job.animData.currentAnimation == nullptr)
-    {
-      return;
-    }
-
-    // Send keyFrameData: (kf1, kf2, interpTime, kfCount)
-    int uniformLoc = program->GetDefaultUniformLocation(Uniform::KEY_FRAME_DATA);
-    if (uniformLoc != -1)
-    {
-      glUniform4f(uniformLoc,
-                  job.animData.firstKeyFrame,
-                  job.animData.secondKeyFrame,
-                  job.animData.keyFrameInterpolationTime,
-                  job.animData.keyFrameCount);
-    }
-
-    // Send blend data.
-    if (job.animData.blendAnimation != nullptr)
-    {
-      uniformLoc = program->GetDefaultUniformLocation(Uniform::BLEND_FACTOR);
-      if (uniformLoc != -1)
-      {
-        glUniform1f(uniformLoc, job.animData.animationBlendFactor);
-      }
-
-      // Send blendFrameData: (blendKf1, blendKf2, blendInterpTime, blendKfCount)
-      uniformLoc = program->GetDefaultUniformLocation(Uniform::BLEND_FRAME_DATA);
-      if (uniformLoc != -1)
-      {
-        glUniform4f(uniformLoc,
-                    job.animData.blendFirstKeyFrame,
-                    job.animData.blendSecondKeyFrame,
-                    job.animData.blendKeyFrameInterpolationTime,
-                    job.animData.blendKeyFrameCount);
-      }
-    }
+    // Now handled by FeedUniforms -> SubmitPerDrawData
   }
 
   void Renderer::SetTexture(ubyte slotIndx, TexturePtr texture)
   {
     assert(slotIndx < RHIConstants::TextureSlotCount && "You exceed texture slot count");
-
-    if (texture != nullptr)
-    {
-      RHI::SetTexture((GLenum) texture->Settings().Target, texture->m_textureId, slotIndx);
-    }
-    else
-    {
-      RHI::SetTexture(GL_TEXTURE_2D, 0, slotIndx);
-    }
+    m_backend->BindTexture(slotIndx, texture);
   }
 
   void Renderer::SetShadowAtlas(TexturePtr shadowAtlas) { m_shadowAtlas = shadowAtlas; }

@@ -10,8 +10,11 @@
 #include "Framebuffer.h"
 #include "GpuProgram.h"
 #include "Mesh.h"
+#include "PerDrawUniforms.h"
 #include "RHI.h"
+#include "ShaderUniform.h"
 #include "TKOpenGL.h"
+#include "Texture.h"
 #include "DebugNew.h"
 
 namespace ToolKit
@@ -77,9 +80,108 @@ namespace ToolKit
     }
   }
 
-  void GLBackend::SubmitPerDrawData(const void* data, size_t size) {}
+  void GLBackend::SubmitPerDrawData(const void* data, size_t size)
+  {
+    if (data == nullptr || size != sizeof(PerDrawUniforms))
+    {
+      return;
+    }
 
-  void GLBackend::BindTexture(ubyte slot, TexturePtr tex) {}
+    const PerDrawUniforms* pdu = reinterpret_cast<const PerDrawUniforms*>(data);
+    GLuint currentProgram;
+    glGetIntegerv(GL_CURRENT_PROGRAM, (GLint*) &currentProgram);
+    if (currentProgram == 0)
+    {
+      return;
+    }
+
+    // Built-in uniforms.
+    auto setMat4 = [&](Uniform u, const Mat4& m)
+    {
+      GLint loc = glGetUniformLocation(currentProgram, GetUniformName(u));
+      if (loc != -1)
+      {
+        glUniformMatrix4fv(loc, 1, false, reinterpret_cast<const float*>(&m));
+      }
+    };
+
+    setMat4(Uniform::MODEL, pdu->model);
+    setMat4(Uniform::MODEL_WITHOUT_TRANSLATE, pdu->modelWithoutTranslate);
+    setMat4(Uniform::INVERSE_MODEL, pdu->inverseModel);
+    setMat4(Uniform::INVERSE_TRANSPOSE_MODEL, pdu->inverseTransposeModel);
+    setMat4(Uniform::IBL_ROTATION, pdu->iblRotation);
+    setMat4(Uniform::IBL_SECONDARY_ROTATION, pdu->iblSecondaryRotation);
+
+    GLint vpLoc = glGetUniformLocation(currentProgram, GetUniformName(Uniform::VIEWPORT_SIZE));
+    if (vpLoc != -1)
+    {
+      glUniform2f(vpLoc, pdu->viewportSize.x, pdu->viewportSize.y);
+    }
+
+    // DrawCommand.
+    GLint dcLoc = glGetUniformLocation(currentProgram, GetUniformName(Uniform::DRAW_COMMAND));
+    if (dcLoc != -1)
+    {
+      glUniform4fv(dcLoc, sizeof(DrawCommand) / sizeof(Vec4), (const float*) &pdu->drawCommand);
+    }
+
+    // Light indices.
+    GLint plLoc = glGetUniformLocation(currentProgram, GetUniformName(Uniform::ACTIVE_POINT_LIGHT_INDEXES));
+    if (plLoc != -1 && pdu->activePointLightCount > 0)
+    {
+      glUniform1iv(plLoc, pdu->activePointLightCount, pdu->activePointLightIndices);
+    }
+
+    GLint slLoc = glGetUniformLocation(currentProgram, GetUniformName(Uniform::ACTIVE_SPOT_LIGHT_INDEXES));
+    if (slLoc != -1 && pdu->activeSpotLightCount > 0)
+    {
+      glUniform1iv(slLoc, pdu->activeSpotLightCount, pdu->activeSpotLightIndices);
+    }
+
+    // Material data.
+    GLint matLoc = glGetUniformLocation(currentProgram, GetUniformName(Uniform::MATERIAL_CACHE));
+    if (matLoc != -1)
+    {
+      glUniform4fv(matLoc, sizeof(MaterialCacheItem::Data) / sizeof(Vec4), (const float*) &pdu->materialData);
+    }
+
+    // Animation data.
+    GLint kfLoc = glGetUniformLocation(currentProgram, GetUniformName(Uniform::KEY_FRAME_DATA));
+    if (kfLoc != -1)
+    {
+      glUniform4fv(kfLoc, 1, (const float*) &pdu->keyFrameData);
+    }
+
+    GLint bkfLoc = glGetUniformLocation(currentProgram, GetUniformName(Uniform::BLEND_FRAME_DATA));
+    if (bkfLoc != -1)
+    {
+      glUniform4fv(bkfLoc, 1, (const float*) &pdu->blendFrameData);
+    }
+
+    GLint bfLoc = glGetUniformLocation(currentProgram, GetUniformName(Uniform::BLEND_FACTOR));
+    if (bfLoc != -1)
+    {
+      glUniform1f(bfLoc, pdu->animationBlendFactor);
+    }
+
+    GLint spLoc = glGetUniformLocation(currentProgram, GetUniformName(Uniform::SKIN_PARAMS));
+    if (spLoc != -1)
+    {
+      glUniform4fv(spLoc, 1, (const float*) &pdu->skinParams);
+    }
+  }
+
+  void GLBackend::BindTexture(ubyte slot, TexturePtr tex)
+  {
+    if (tex != nullptr)
+    {
+      RHI::SetTexture((GLenum) tex->Settings().Target, tex->m_textureId, slot);
+    }
+    else
+    {
+      RHI::SetTexture(GL_TEXTURE_2D, 0, slot);
+    }
+  }
 
   void GLBackend::Draw(const DrawDesc& desc)
   {
