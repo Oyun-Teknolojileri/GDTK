@@ -28,6 +28,9 @@ namespace ToolKit
     void SetViewport(uint x, uint y, uint w, uint h) override;
     void SetScissor(uint x, uint y, uint w, uint h) override;
 
+    void ClearBuffer(GraphicBitFields fields, const Vec4& color) override;
+    void ClearColorBuffer(const Vec4& color) override;
+
     void BindPipeline(const GpuProgramPtr& program,
                       const RenderState* state) override;
 

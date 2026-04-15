@@ -48,6 +48,10 @@ namespace ToolKit
     virtual void SetViewport(uint x, uint y, uint w, uint h)       = 0;
     virtual void SetScissor(uint x, uint y, uint w, uint h)        = 0;
 
+    // Clear
+    virtual void ClearBuffer(GraphicBitFields fields, const Vec4& color) = 0;
+    virtual void ClearColorBuffer(const Vec4& color)                     = 0;
+
     // Pipeline / program binding
     virtual void BindPipeline(const GpuProgramPtr& program,
                               const RenderState* state)             = 0;

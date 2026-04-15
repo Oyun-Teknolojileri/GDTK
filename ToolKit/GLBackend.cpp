@@ -7,6 +7,9 @@
 
 #include "GLBackend.h"
 
+#include "Framebuffer.h"
+#include "RHI.h"
+#include "TKOpenGL.h"
 #include "DebugNew.h"
 
 namespace ToolKit
@@ -22,13 +25,47 @@ namespace ToolKit
 
   void GLBackend::Present() {}
 
-  void GLBackend::BeginPass(const PassDesc& desc) {}
+  void GLBackend::BeginPass(const PassDesc& desc)
+  {
+    if (desc.target != nullptr)
+    {
+      RHI::SetFramebuffer(GL_FRAMEBUFFER, desc.target->GetFboId());
+      desc.target->SetDrawBuffers();
+    }
+    else
+    {
+      RHI::SetFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
+    if (desc.clearBits != GraphicBitFields::None)
+    {
+      ClearBuffer(desc.clearBits, desc.clearColor);
+    }
+  }
 
   void GLBackend::EndPass() {}
 
-  void GLBackend::SetViewport(uint x, uint y, uint w, uint h) {}
+  void GLBackend::SetViewport(uint x, uint y, uint w, uint h)
+  {
+    glViewport(x, y, w, h);
+  }
 
-  void GLBackend::SetScissor(uint x, uint y, uint w, uint h) {}
+  void GLBackend::SetScissor(uint x, uint y, uint w, uint h)
+  {
+    glScissor(x, y, w, h);
+  }
+
+  void GLBackend::ClearBuffer(GraphicBitFields fields, const Vec4& color)
+  {
+    glClearColor(color.x, color.y, color.z, color.w);
+    glClear((GLbitfield) fields);
+  }
+
+  void GLBackend::ClearColorBuffer(const Vec4& color)
+  {
+    glClearColor(color.x, color.y, color.z, color.w);
+    glClear((GLbitfield) GraphicBitFields::ColorBits);
+  }
 
   void GLBackend::BindPipeline(const GpuProgramPtr& program, const RenderState* state) {}
 

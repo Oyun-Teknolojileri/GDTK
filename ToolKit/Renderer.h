@@ -199,6 +199,8 @@ namespace ToolKit
                         const Vec4& clearColor                  = Vec4(0.0f),
                         GraphicFramebufferTypes frameBufferType = GraphicFramebufferTypes::Framebuffer);
 
+    void EndPass();
+
     /** Tries to invalidate given bits of the framebuffer. Verifies if buffer actually has the specified attachments. */
     void InvalidateFramebuffer(GraphicBitFields bits, FramebufferPtr frameBuffer);
 
@@ -224,6 +226,7 @@ namespace ToolKit
 
     void SetViewport(Viewport* viewport);
     void SetViewportRect(uint x, uint y, uint width, uint height);
+    void SetScissor(uint x, uint y, uint width, uint height);
 
     void DrawFullQuad(ShaderPtr fragmentShader);
     void DrawFullQuad(MaterialPtr mat);

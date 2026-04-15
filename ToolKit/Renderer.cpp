@@ -492,30 +492,28 @@ namespace ToolKit
   {
     TK_PROFILE_FUNCTION();
 
+    PassDesc desc;
+    desc.target     = frameBuffer;
+    desc.clearBits  = attachmentsToClear;
+    desc.clearColor = clearColor;
+    m_backend->BeginPass(desc);
+
     if (frameBuffer != nullptr)
     {
-      RHI::SetFramebuffer((GLenum) frameBufferType, frameBuffer->GetFboId());
-      if (m_framebuffer != frameBuffer)
-      {
-        frameBuffer->SetDrawBuffers();
-      }
-
       const FramebufferSettings& fbSet = frameBuffer->GetSettings();
       SetViewportRect(0, 0, fbSet.width, fbSet.height);
     }
     else
     {
-      // Backbuffer
-      RHI::SetFramebuffer((GLenum) frameBufferType, 0);
       SetViewportRect(0, 0, m_windowSize.x, m_windowSize.y);
     }
 
-    if (attachmentsToClear != GraphicBitFields::None)
-    {
-      ClearBuffer(attachmentsToClear, clearColor);
-    }
-
     m_framebuffer = frameBuffer;
+  }
+
+  void Renderer::EndPass()
+  {
+    m_backend->EndPass();
   }
 
   void Renderer::StartTimerQuery()
@@ -577,14 +575,12 @@ namespace ToolKit
 
   void Renderer::ClearColorBuffer(const Vec4& color)
   {
-    glClearColor(color.x, color.y, color.z, color.w);
-    glClear((GLbitfield) GraphicBitFields::ColorBits);
+    m_backend->ClearColorBuffer(color);
   }
 
   void Renderer::ClearBuffer(GraphicBitFields fields, const Vec4& value)
   {
-    glClearColor(value.x, value.y, value.z, value.w);
-    glClear((GLbitfield) fields);
+    m_backend->ClearBuffer(fields, value);
   }
 
   void Renderer::ColorMask(bool r, bool g, bool b, bool a) { glColorMask(r, g, b, a); }
@@ -732,7 +728,12 @@ namespace ToolKit
     }
 
     m_viewportRect = UVec4(width, height, x, y);
-    glViewport(x, y, width, height);
+    m_backend->SetViewport(x, y, width, height);
+  }
+
+  void Renderer::SetScissor(uint x, uint y, uint width, uint height)
+  {
+    m_backend->SetScissor(x, y, width, height);
   }
 
   void Renderer::DrawFullQuad(ShaderPtr fragmentShader)
@@ -989,7 +990,7 @@ namespace ToolKit
         framebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, tempRT, 0, -1);
         SetFramebuffer(framebuffer, GraphicBitFields::None);
         SetViewportRect(0, 0, texSize, texSize);
-        glScissor(sx, sy, slotSize, slotSize);
+        SetScissor(sx, sy, slotSize, slotSize);
 
         m_gaussianBlurMaterial->UpdateProgramUniform("BlurScale", Vec3(blurAmount, 0.0f, 0.0f));
         m_gaussianBlurMaterial->UpdateProgramUniform("BlurLayer", (float) layer);
@@ -1013,7 +1014,7 @@ namespace ToolKit
         framebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, srcArray, 0, layer);
         SetFramebuffer(framebuffer, GraphicBitFields::None);
         SetViewportRect(0, 0, texSize, texSize);
-        glScissor(sx, sy, slotSize, slotSize);
+        SetScissor(sx, sy, slotSize, slotSize);
 
         m_gaussianBlurMaterial->SetDiffuseTextureVal(tempRT);
         m_gaussianBlurMaterial->UpdateProgramUniform("BlurScale", Vec3(0.0f, blurAmount, 0.0f));
