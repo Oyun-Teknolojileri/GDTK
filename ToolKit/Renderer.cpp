@@ -1283,6 +1283,7 @@ namespace ToolKit
       m_drawCommand.SetVolumeMax(volIdx, offset + half);
 
       m_drawCommand.SetVolumePccEnabled(volIdx, parallaxCorrection);
+      m_drawCommand.SetVolumeInterior(volIdx, envCom->GetInteriorVal());
       m_drawCommand.SetVolumeFadeDistance(volIdx, glm::max(envCom->GetFadeVal(), 0.001f));
 
       if (const EntityPtr& env = envCom->OwnerEntity())

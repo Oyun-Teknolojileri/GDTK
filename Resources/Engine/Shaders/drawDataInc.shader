@@ -67,6 +67,11 @@
 		return bool(drawCommand[VolumeBase(vol)].w > 0.5);
 	}
 
+	bool IsVolumeInterior(int vol)
+	{
+		return bool(drawCommand[VolumeBase(vol)].z > 0.5);
+	}
+
 	vec3 GetVolumeMin(int vol)
 	{
 		return drawCommand[VolumeBase(vol) + 1].xyz;

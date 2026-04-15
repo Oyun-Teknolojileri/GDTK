@@ -99,6 +99,12 @@ namespace ToolKit
                               true,
                               true);
 
+    Interior_Define(false,
+                    EnvironmentComponentCategory.Name,
+                    EnvironmentComponentCategory.Priority,
+                    true,
+                    true);
+
     Intensity_Define(1.0f,
                      EnvironmentComponentCategory.Name,
                      EnvironmentComponentCategory.Priority,

@@ -143,6 +143,7 @@ vec3 EvalVolume(int vol, vec3 normal, vec3 fragToEye, vec3 albedo, float metalli
 
 // ---------------------------------------------------------------------------
 // Combined IBL: sky (global fallback) + up to 2 local volumes
+// Interior volumes: fade region blends with other volumes, not sky.
 // ---------------------------------------------------------------------------
 
 vec3 IBLPBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float perceptualRoughness, vec2 dfg, vec3 energyComp, vec3 worldPos)
@@ -155,32 +156,47 @@ vec3 IBLPBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float perc
 	vec3 f0 = BaseReflectivityPBR(vec3(0.04), albedo, metallic);
 	vec3 E = SpecularDFG(dfg, f0);
 
-	// Compute local volume weights.
+	// Compute raw local volume weights (0 outside, fades to 1 inside).
 	float w0 = ComputeVolumeBlendFactor(0, worldPos);
 	float w1 = ComputeVolumeBlendFactor(1, worldPos);
+	bool int0 = IsVolumeInterior(0);
+	bool int1 = IsVolumeInterior(1);
 
-	// Normalize local weights if they overlap (sum > 1).
-	float localSum = w0 + w1;
-	if (localSum > 1.0)
+	// Sky blocking: interior volumes block sky across their entire boundary,
+	// non-interior volumes only block sky proportional to their raw weight.
+	float skyBlock0 = int0 ? (w0 > 0.0 ? 1.0 : 0.0) : w0;
+	float skyBlock1 = int1 ? (w1 > 0.0 ? 1.0 : 0.0) : w1;
+	float totalBlock = skyBlock0 + skyBlock1;
+	if (totalBlock > 1.0)
 	{
-		w0 /= localSum;
-		w1 /= localSum;
-		localSum = 1.0;
+		skyBlock0 /= totalBlock;
+		skyBlock1 /= totalBlock;
+		totalBlock = 1.0;
 	}
+	float wSky = max(1.0 - totalBlock, 0.0);
 
-	// Sky fills whatever the local volumes don't cover.
-	float wSky = max(1.0 - localSum, 0.0);
+	// Distribute the non-sky portion between volumes using raw weights.
+	float volBudget = 1.0 - wSky;
+	float finalW0 = 0.0;
+	float finalW1 = 0.0;
+
+	float rawSum = w0 + w1;
+	if (rawSum > 0.0 && volBudget > 0.0)
+	{
+		finalW0 = (w0 / rawSum) * volBudget;
+		finalW1 = (w1 / rawSum) * volBudget;
+	}
 
 	vec3 color = vec3(0.0);
 
-	if (w0 > 0.0)
+	if (finalW0 > 0.0)
 	{
-		color += EvalVolume(0, normal, fragToEye, albedo, metallic, perceptualRoughness, E, energyComp, worldPos) * w0;
+		color += EvalVolume(0, normal, fragToEye, albedo, metallic, perceptualRoughness, E, energyComp, worldPos) * finalW0;
 	}
 
-	if (w1 > 0.0)
+	if (finalW1 > 0.0)
 	{
-		color += EvalVolume(1, normal, fragToEye, albedo, metallic, perceptualRoughness, E, energyComp, worldPos) * w1;
+		color += EvalVolume(1, normal, fragToEye, albedo, metallic, perceptualRoughness, E, energyComp, worldPos) * finalW1;
 	}
 
 	if (wSky > 0.0)

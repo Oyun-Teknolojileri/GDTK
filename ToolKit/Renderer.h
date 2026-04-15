@@ -38,7 +38,7 @@ namespace ToolKit
 
     // --- Volume 0 / Primary (11 Vec4) ---
 
-    /** x: intensity, y: fadeDistance, z: unused, w: pccEnabled */
+    /** x: intensity, y: fadeDistance, z: interior, w: pccEnabled */
     Vec4 vol0Params;
     Vec4 vol0Min; /**< xyz: volume min (local space) */
     Vec4 vol0Max; /**< xyz: volume max (local space) */
@@ -47,7 +47,7 @@ namespace ToolKit
 
     // --- Volume 1 / Secondary (11 Vec4) ---
 
-    /** x: intensity, y: fadeDistance, z: unused, w: pccEnabled */
+    /** x: intensity, y: fadeDistance, z: interior, w: pccEnabled */
     Vec4 vol1Params;
     Vec4 vol1Min; /**< xyz: volume min (local space) */
     Vec4 vol1Max; /**< xyz: volume max (local space) */
@@ -74,6 +74,8 @@ namespace ToolKit
     void SetVolumeIntensity(int vol, float intensity) { Params(vol).x = intensity; }
 
     void SetVolumeFadeDistance(int vol, float fade) { Params(vol).y = fade; }
+
+    void SetVolumeInterior(int vol, bool interior) { Params(vol).z = interior ? 1.0f : 0.0f; }
 
     void SetVolumePccEnabled(int vol, bool enabled) { Params(vol).w = enabled ? 1.0f : 0.0f; }
 

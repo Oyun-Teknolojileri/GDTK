@@ -51,6 +51,7 @@ namespace ToolKit
     TKDeclareParam(Vec3, PositionOffset);
     TKDeclareParam(bool, Illuminate);
     TKDeclareParam(bool, ParallaxCorrection);
+    TKDeclareParam(bool, Interior);
     TKDeclareParam(float, Intensity);
     TKDeclareParam(float, Fade);
     TKDeclareParam(float, CaptureFar);
