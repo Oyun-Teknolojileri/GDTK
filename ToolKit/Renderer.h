@@ -280,16 +280,22 @@ namespace ToolKit
     CubeMapPtr GenerateDiffuseEnvMap(CubeMapPtr cubemap, int size);
 
     /**
-     * Renders the scene into a cubemap from the given position using the provided render path.
+     * Renders the scene into a cubemap using the provided render path.
+     * Camera is placed at the entity origin (with originOffset applied in local space),
+     * oriented along the entity's world transform. Each cubemap face looks along a
+     * local-space axis rotated into world space by the entity transform.
      * @param renderPath The render path to use for rendering each face.
-     * @param position World position to render from.
+     * @param worldTransform World transform of the environment volume entity.
+     * @param originOffset Local-space offset from entity origin to capture position.
      * @param near Near clip plane.
      * @param far Far clip plane.
      * @param resolution Resolution of each cubemap face.
+     * @param perFaceClipDist Optional per-face far clip distances (6 floats, in local face order: +X,-X,+Y,-Y,+Z,-Z).
      * @return The generated cubemap.
      */
     CubeMapPtr RenderToCubeMap(ForwardSceneRenderPath* renderPath,
-                               const Vec3& position,
+                               const Mat4& worldTransform,
+                               const Vec3& originOffset,
                                float near,
                                float far,
                                uint resolution,

@@ -42,9 +42,9 @@ vec3 GetParallaxCorrectedReflection(vec3 R, vec3 worldPos, mat4 inverseVolTransf
 	float dist = min(min(tMaxPlane.x, tMaxPlane.y), tMaxPlane.z);
 
 	vec3 intersectLocal = localPos + localDir * dist;
-	vec3 correctedR = (volTransform * vec4(intersectLocal, 0.0)).xyz;
 
-	return normalize(correctedR);
+	// Return local-space direction. Cubemap is rendered aligned to the entity's local axes.
+	return normalize(intersectLocal);
 }
 
 float RoughnessToLod(float roughness, float maxLod)
@@ -100,7 +100,8 @@ vec3 EvalSky(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float per
 vec3 EvalVolumeDiffuse(int vol, vec3 normal, vec3 albedo, float metallic, vec3 E)
 {
 	vec3 diffuseColor = albedo * (1.0 - metallic);
-	vec3 iblSamplerVec = normal; // Local volumes have identity rotation.
+	// Cubemap is rendered aligned to entity local axes, rotate world normal to local space.
+	vec3 iblSamplerVec = (GetVolumeInverseTransform(vol) * vec4(normal, 0.0)).xyz;
 	vec3 irradiance;
 	if (vol == 0)
 		irradiance = texture(s_texture7, iblSamplerVec).rgb;
@@ -114,14 +115,20 @@ vec3 EvalVolumeSpecular(int vol, vec3 normal, vec3 fragToEye, float perceptualRo
 	vec3 R = reflect(-fragToEye, normal);
 	R = GetSpecularDominantDirection(normal, R, perceptualRoughness);
 
+	vec3 iblSamplerVec;
 	if (IsVolumePccEnabled(vol))
 	{
-		R = GetParallaxCorrectedReflection(R, worldPos,
+		// PCC returns a local-space direction.
+		iblSamplerVec = GetParallaxCorrectedReflection(R, worldPos,
 			GetVolumeInverseTransform(vol), GetVolumeWorldTransform(vol),
 			GetVolumeMin(vol), GetVolumeMax(vol));
 	}
+	else
+	{
+		// Cubemap is rendered aligned to entity local axes, rotate world R to local space.
+		iblSamplerVec = (GetVolumeInverseTransform(vol) * vec4(R, 0.0)).xyz;
+	}
 
-	vec3 iblSamplerVec = R; // Local volumes have identity rotation.
 	float lod = RoughnessToLod(perceptualRoughness, float(graphicConstants.iblMaxReflectionLod));
 	vec3 preFilteredColor;
 	if (vol == 0)

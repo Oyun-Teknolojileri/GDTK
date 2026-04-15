@@ -1891,7 +1891,8 @@ namespace ToolKit
   }
 
   CubeMapPtr Renderer::RenderToCubeMap(ForwardSceneRenderPath* renderPath,
-                                       const Vec3& position,
+                                       const Mat4& worldTransform,
+                                       const Vec3& originOffset,
                                        float near,
                                        float far,
                                        uint resolution,
@@ -1926,20 +1927,18 @@ namespace ToolKit
     CameraPtr cam = MakeNewPtr<Camera>();
     cam->SetLens(glm::radians(90.0f), 1.0f, near, far);
 
-    // 6 cubemap face view matrices.
-    Mat4 views[]                         = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                                            glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                                            glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
-                                            glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
-                                            glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                                            glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
+    // Cubemap face directions and up vectors in local space (OpenGL cubemap convention).
+    static const Vec3 faceNormals[6] =
+        {Vec3(1, 0, 0), Vec3(-1, 0, 0), Vec3(0, -1, 0), Vec3(0, 1, 0), Vec3(0, 0, 1), Vec3(0, 0, -1)};
+
+    static const Vec3 faceUp[6] =
+        {Vec3(0, -1, 0), Vec3(0, -1, 0), Vec3(0, 0, -1), Vec3(0, 0, 1), Vec3(0, -1, 0), Vec3(0, -1, 0)};
+
     // Save original render path params.
     CameraPtr origCam                    = renderPath->m_params.Cam;
     FramebufferPtr origFramebuffer       = renderPath->m_params.MainFramebuffer;
 
     // Disable all post-processing for cubemap capture.
-    // Post-process passes (gamma/tonemap/FXAA, bloom, DoF, SSAO) are incompatible
-    // with cubemap face render targets and would corrupt the output.
     PostProcessingSettingsPtr origPPS    = renderPath->m_params.postProcessSettings;
     PostProcessingSettingsPtr capturePPS = MakeNewPtr<PostProcessingSettings>();
     capturePPS->SetTonemappingEnabledVal(false);
@@ -1953,14 +1952,19 @@ namespace ToolKit
 
     for (int i = 0; i < 6; i++)
     {
-      Vec3 pos;
-      Quaternion rot;
-      Vec3 sca(1.0f);
-      DecomposeMatrix(views[i], &pos, &rot, &sca);
+      // Build local-space view matrix looking from originOffset along the face direction.
+      Mat4 localView       = glm::lookAt(originOffset, originOffset + faceNormals[i], faceUp[i]);
 
-      cam->m_node->SetTranslation(position);
-      cam->m_node->SetOrientation(rot);
-      cam->m_node->SetScale(sca);
+      // Compose with entity world transform to get the final camera transform.
+      Mat4 cameraTransform = worldTransform * glm::inverse(localView);
+
+      // Decompose into position and orientation for the camera node.
+      Vec3 camPos;
+      Quaternion camRot;
+      DecomposeMatrix(cameraTransform, &camPos, &camRot, nullptr);
+
+      cam->m_node->SetTranslation(camPos);
+      cam->m_node->SetOrientation(camRot);
 
       // Set color attachment to the corresponding cubemap face.
       cubeFb->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0,
