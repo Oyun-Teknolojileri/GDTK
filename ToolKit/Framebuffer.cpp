@@ -60,6 +60,7 @@ namespace ToolKit
 
     // Create framebuffer object
     glGenFramebuffers(1, &m_fboId);
+    m_glImpl.fboId = m_fboId;
     RHI::SetFramebuffer(GL_FRAMEBUFFER, m_fboId);
 
     Stats::SetGpuResourceLabel(m_label, GpuResourceType::FrameBuffer, m_fboId);
@@ -101,6 +102,7 @@ namespace ToolKit
 
     RHI::DeleteFramebuffers(1, &m_fboId);
     m_fboId     = 0;
+    m_glImpl.fboId = 0;
     m_initiated = false;
   }
 

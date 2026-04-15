@@ -34,7 +34,7 @@ namespace ToolKit
   {
     if (desc.target != nullptr)
     {
-      RHI::SetFramebuffer(GL_FRAMEBUFFER, desc.target->GetFboId());
+      RHI::SetFramebuffer(GL_FRAMEBUFFER, desc.target->m_glImpl.fboId);
       desc.target->SetDrawBuffers();
     }
     else
@@ -175,7 +175,7 @@ namespace ToolKit
   {
     if (tex != nullptr)
     {
-      RHI::SetTexture((GLenum) tex->Settings().Target, tex->m_textureId, slot);
+      RHI::SetTexture((GLenum) tex->Settings().Target, tex->m_glImpl.textureId, slot);
     }
     else
     {
@@ -190,7 +190,7 @@ namespace ToolKit
       return;
     }
 
-    RHI::BindVertexArray(desc.mesh->m_vaoId);
+    RHI::BindVertexArray(desc.mesh->m_glImpl.vaoId);
 
     if (desc.indexed)
     {

@@ -78,9 +78,15 @@ namespace ToolKit
     void ApplyTextureSettings(const TextureSettings& settings);
 
    public:
-    uint m_textureId  = 0;
-    int m_width       = 0;
-    int m_height      = 0;
+    struct TextureGLImpl
+    {
+      uint textureId = 0;
+    };
+
+    uint m_textureId = 0;
+    TextureGLImpl m_glImpl;
+    int m_width     = 0;
+    int m_height    = 0;
     uint8* m_image    = nullptr;
     float* m_imagef   = nullptr;
 

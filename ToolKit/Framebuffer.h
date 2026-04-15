@@ -107,8 +107,14 @@ namespace ToolKit
     void CheckFramebufferComplete();
 
    public:
+    struct FramebufferGLImpl
+    {
+      uint fboId = 0;
+    };
+
     static const int m_maxColorAttachmentCount = 8;
     StringView m_label; //!< Debug label which appears in the gpu debuggers.
+    FramebufferGLImpl m_glImpl;
 
    private:
     FramebufferSettings m_settings;

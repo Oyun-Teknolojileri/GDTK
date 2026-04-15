@@ -155,9 +155,12 @@ namespace ToolKit
       RHI::BindVertexArray(0); // Of the deleted vao is set, remove it from RHI cache
     }
     m_vboVertexId = 0;
+    m_glImpl.vboVertexId = 0;
     m_vboIndexId  = 0;
+    m_glImpl.vboIndexId = 0;
 
     m_vaoId       = 0;
+    m_glImpl.vaoId = 0;
 
     m_subMeshes.clear();
 
@@ -229,6 +232,10 @@ namespace ToolKit
 
       Stats::AddVRAMUsageInBytes(size);
     }
+
+    cpy->m_glImpl.vaoId       = cpy->m_vaoId;
+    cpy->m_glImpl.vboVertexId = cpy->m_vboVertexId;
+    cpy->m_glImpl.vboIndexId  = cpy->m_vboIndexId;
 
     cpy->m_material    = GetMaterialManager()->Copy<Material>(m_material);
     cpy->m_boundingBox = m_boundingBox;
@@ -644,6 +651,8 @@ namespace ToolKit
     }
 
     m_vertexCount = (uint) m_clientSideVertices.size();
+    m_glImpl.vboVertexId = m_vboVertexId;
+    m_glImpl.vaoId = m_vaoId;
     Stats::AddVRAMUsageInBytes(GetVertexSize() * (uint64) m_vertexCount);
 
     if (flush)
@@ -679,6 +688,7 @@ namespace ToolKit
     }
 
     m_indexCount = (uint) m_clientSideIndices.size();
+    m_glImpl.vboIndexId = m_vboIndexId;
     if (flush)
     {
       m_clientSideIndices.clear();
@@ -858,6 +868,8 @@ namespace ToolKit
                    m_clientSideVertices.data(),
                    GL_STATIC_DRAW);
       m_vertexCount = (uint) m_clientSideVertices.size();
+      m_glImpl.vboVertexId = m_vboVertexId;
+      m_glImpl.vaoId = m_vaoId;
 
       Stats::AddVRAMUsageInBytes(GetVertexSize() * (uint64) m_clientSideVertices.size());
     }

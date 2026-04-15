@@ -119,6 +119,7 @@ namespace ToolKit
 
     assert(m_textureId == 0 && "Texture already initialized.");
     glGenTextures(1, &m_textureId);
+    m_glImpl.textureId = m_textureId;
     RHI::SetTexture((GLenum) m_settings.Target, m_textureId);
 
     uint64 pixelCount = (uint64) m_width * (uint64) m_height;
@@ -216,6 +217,7 @@ namespace ToolKit
     }
 
     m_textureId = 0;
+    m_glImpl.textureId = 0;
     m_initiated = false;
   }
 
@@ -355,6 +357,7 @@ namespace ToolKit
     Stats::RemoveVRAMUsageInBytes((uint64) (m_width * m_height) * GetFormatSize());
 
     m_textureId = 0;
+    m_glImpl.textureId = 0;
     m_initiated = false;
     m_stencil   = false;
   }
@@ -380,6 +383,7 @@ namespace ToolKit
 
     assert(m_textureId == 0 && "Texture already initialized.");
     glGenTextures(1, &m_textureId);
+    m_glImpl.textureId = m_textureId;
     RHI::SetTexture((GLenum) m_settings.Target, m_textureId);
 
     glTexImage2D((GLenum) m_settings.Target,
@@ -462,6 +466,7 @@ namespace ToolKit
     assert(targetTextureSettings.Target == GraphicTypes::TargetCubeMap);
 
     m_textureId  = cubeMapTarget->m_textureId;
+    m_glImpl.textureId = m_textureId;
     m_width      = cubeMapTarget->m_width;
     m_height     = cubeMapTarget->m_height;
 
@@ -550,6 +555,7 @@ namespace ToolKit
 
     assert(m_textureId == 0 && "Texture already initialized.");
     glGenTextures(1, &m_textureId);
+    m_glImpl.textureId = m_textureId;
     RHI::SetTexture(GL_TEXTURE_CUBE_MAP, m_textureId);
 
     uint sides[6] = {GL_TEXTURE_CUBE_MAP_POSITIVE_X,
@@ -586,6 +592,7 @@ namespace ToolKit
     {
       m_consumedRT->m_initiated = false;
       m_consumedRT->m_textureId = 0;
+      m_consumedRT->m_glImpl.textureId = 0;
       m_consumedRT              = nullptr;
     }
 
@@ -1030,6 +1037,7 @@ namespace ToolKit
       Stats::AddVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat) * m_settings.Layers);
     }
 
+    m_glImpl.textureId = m_textureId;
     m_initiated = true;
   }
 
