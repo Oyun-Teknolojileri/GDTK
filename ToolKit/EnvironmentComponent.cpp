@@ -246,7 +246,7 @@ namespace ToolKit
 
     // Cubemap face normals in local space: +X, -X, +Y, -Y, +Z, -Z.
     static const Vec3 faceNormals[6] =
-        {Vec3(1, 0, 0), Vec3(-1, 0, 0), Vec3(0, -1, 0), Vec3(0, 1, 0), Vec3(0, 0, 1), Vec3(0, 0, -1)};
+        {Vec3(1, 0, 0), Vec3(-1, 0, 0), Vec3(0, 1, 0), Vec3(0, -1, 0), Vec3(0, 0, 1), Vec3(0, 0, -1)};
 
     // Compute per-face far clip distance in local space.
     // Distance from origin offset to the volume edge along each face normal.

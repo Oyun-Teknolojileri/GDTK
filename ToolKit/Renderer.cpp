@@ -1588,8 +1588,8 @@ namespace ToolKit
     cam->SetLens(glm::radians(90.0f), 1.0f, 0.1f, 10.0f);
     Mat4 views[] = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
                     glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                    glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
                     glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
                     glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
                     glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
 
@@ -1598,7 +1598,8 @@ namespace ToolKit
       Vec3 pos, sca;
       Quaternion rot;
 
-      DecomposeMatrix(views[i], &pos, &rot, &sca);
+      Mat4 invView = glm::inverse(views[i]);
+      DecomposeMatrix(invView, &pos, &rot, &sca);
 
       cam->m_node->SetTranslation(ZERO, TransformationSpace::TS_WORLD);
       cam->m_node->SetOrientation(rot, TransformationSpace::TS_WORLD);
@@ -1728,8 +1729,8 @@ namespace ToolKit
     cam->SetLens(glm::radians(90.0f), 1.0f, 0.1f, 10.0f);
     Mat4 views[]    = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
                        glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
                        glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
+                       glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
                        glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
                        glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
 
@@ -1751,7 +1752,8 @@ namespace ToolKit
       Vec3 pos;
       Quaternion rot;
       Vec3 sca;
-      DecomposeMatrix(views[i], &pos, &rot, &sca);
+      Mat4 invView = glm::inverse(views[i]);
+      DecomposeMatrix(invView, &pos, &rot, &sca);
 
       cam->m_node->SetTranslation(ZERO, TransformationSpace::TS_WORLD);
       cam->m_node->SetOrientation(rot, TransformationSpace::TS_WORLD);
@@ -1819,8 +1821,8 @@ namespace ToolKit
     cam->SetLens(glm::radians(90.0f), 1.0f, 0.1f, 10.0f);
     Mat4 views[]    = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
                        glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
                        glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
+                       glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
                        glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
                        glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
 
@@ -1851,7 +1853,8 @@ namespace ToolKit
         Vec3 pos;
         Quaternion rot;
         Vec3 sca;
-        DecomposeMatrix(views[i], &pos, &rot, &sca);
+        Mat4 invView = glm::inverse(views[i]);
+        DecomposeMatrix(invView, &pos, &rot, &sca);
 
         cam->m_node->SetTranslation(ZERO, TransformationSpace::TS_WORLD);
         cam->m_node->SetOrientation(rot, TransformationSpace::TS_WORLD);
@@ -1929,10 +1932,10 @@ namespace ToolKit
 
     // Cubemap face directions and up vectors in local space (OpenGL cubemap convention).
     static const Vec3 faceNormals[6] =
-        {Vec3(1, 0, 0), Vec3(-1, 0, 0), Vec3(0, -1, 0), Vec3(0, 1, 0), Vec3(0, 0, 1), Vec3(0, 0, -1)};
+        {Vec3(1, 0, 0), Vec3(-1, 0, 0), Vec3(0, 1, 0), Vec3(0, -1, 0), Vec3(0, 0, 1), Vec3(0, 0, -1)};
 
     static const Vec3 faceUp[6] =
-        {Vec3(0, -1, 0), Vec3(0, -1, 0), Vec3(0, 0, -1), Vec3(0, 0, 1), Vec3(0, -1, 0), Vec3(0, -1, 0)};
+        {Vec3(0, -1, 0), Vec3(0, -1, 0), Vec3(0, 0, 1), Vec3(0, 0, -1), Vec3(0, -1, 0), Vec3(0, -1, 0)};
 
     // Save original render path params.
     CameraPtr origCam                    = renderPath->m_params.Cam;

@@ -30,14 +30,15 @@ namespace ToolKit
     // Order must match with TextureUtil.shader::UVWToUVLayer
     Mat4 views[6] = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
                      glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                     glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
                      glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
+                     glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
                      glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
                      glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
 
     for (int i = 0; i < 6; i++)
     {
-      DecomposeMatrix(views[i], nullptr, &m_cubeMapRotations[i], nullptr);
+      Mat4 invView = glm::inverse(views[i]);
+      DecomposeMatrix(invView, nullptr, &m_cubeMapRotations[i], nullptr);
     }
 
     m_shadowAtlas               = MakeNewPtr<RenderTarget>("ShadowAtlassRT");

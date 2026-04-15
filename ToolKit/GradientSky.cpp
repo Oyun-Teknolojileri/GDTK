@@ -172,8 +172,8 @@ namespace ToolKit
 
     Mat4 views[]                  = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
                                      glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                                     glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
                                      glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
+                                     glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
                                      glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
                                      glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
 
@@ -185,7 +185,8 @@ namespace ToolKit
       Vec3 pos;
       Quaternion rot;
       Vec3 sca;
-      DecomposeMatrix(views[i], &pos, &rot, &sca);
+      Mat4 invView = glm::inverse(views[i]);
+      DecomposeMatrix(invView, &pos, &rot, &sca);
 
       cam->m_node->SetTranslation(ZERO, TransformationSpace::TS_WORLD);
       cam->m_node->SetOrientation(rot, TransformationSpace::TS_WORLD);
