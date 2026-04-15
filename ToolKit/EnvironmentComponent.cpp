@@ -8,12 +8,7 @@
 #include "EnvironmentComponent.h"
 
 #include "Entity.h"
-#include "ForwardSceneRenderPath.h"
 #include "MathUtil.h"
-#include "RenderSystem.h"
-#include "Renderer.h"
-#include "Scene.h"
-#include "Sky.h"
 #include "Texture.h"
 #include "ToolKit.h"
 
@@ -40,17 +35,8 @@ namespace ToolKit
 
     if (hdri->IsDynamic() && !hdri->m_specularEnvMap && !hdri->m_diffuseEnvMap)
     {
-      // Sky generates its own irradiance, never capture for it.
-      EntityPtr owner = OwnerEntity();
-      bool isSky      = owner != nullptr && owner->IsA<SkyBase>();
-
       UpdateBoundingBoxCache();
       m_initialized = true;
-
-      if (!isSky)
-      {
-        CaptureEnvironment();
-      }
       return;
     }
 
@@ -93,45 +79,12 @@ namespace ToolKit
 
     Illuminate_Define(true, EnvironmentComponentCategory.Name, EnvironmentComponentCategory.Priority, true, true);
 
-    ParallaxCorrection_Define(false,
-                              EnvironmentComponentCategory.Name,
-                              EnvironmentComponentCategory.Priority,
-                              true,
-                              true);
-
-    Interior_Define(false, EnvironmentComponentCategory.Name, EnvironmentComponentCategory.Priority, true, true);
-
     Intensity_Define(1.0f,
                      EnvironmentComponentCategory.Name,
                      EnvironmentComponentCategory.Priority,
                      true,
                      true,
                      {false, true, 0.0f, 100000.0f, 0.1f});
-
-    Fade_Define(1.0f,
-                EnvironmentComponentCategory.Name,
-                EnvironmentComponentCategory.Priority,
-                true,
-                true,
-                {false, true, 0.0f, 100000.0f, 0.1f});
-
-    CaptureFar_Define(0.0f,
-                      EnvironmentComponentCategory.Name,
-                      EnvironmentComponentCategory.Priority,
-                      true,
-                      true,
-                      {false, true, 0.0f, 100000.0f, 1.0f});
-
-    MultiChoiceVariant captureResMcv;
-    captureResMcv.Choices.push_back(CreateMultiChoiceParameter("128", 128));
-    captureResMcv.Choices.push_back(CreateMultiChoiceParameter("256", 256));
-    captureResMcv.Choices.push_back(CreateMultiChoiceParameter("512", 512));
-    captureResMcv.CurrentVal.Index = 1;
-    CaptureResolution_Define(captureResMcv,
-                             EnvironmentComponentCategory.Name,
-                             EnvironmentComponentCategory.Priority,
-                             true,
-                             true);
   }
 
   void EnvironmentComponent::InvalidateSpatialCaches() { m_spatialCachesInvalidated = true; }
@@ -225,65 +178,6 @@ namespace ToolKit
     }
 
     return m_boundingBoxCache;
-  }
-
-  void EnvironmentComponent::CaptureEnvironment()
-  {
-    EntityPtr owner = OwnerEntity();
-    if (owner == nullptr)
-    {
-      return;
-    }
-
-    uint res            = (uint) GetCaptureResolutionVal().GetValue<int>();
-
-    // Local-space volume parameters.
-    Vec3 offset         = GetPositionOffsetVal();
-    Vec3 half           = GetSizeVal() * 0.5f;
-
-    Mat4 worldTransform = owner->m_node->GetTransform(TransformationSpace::TS_WORLD);
-    float extraFar      = GetCaptureFarVal();
-
-    // Cubemap face normals in local space: +X, -X, +Y, -Y, +Z, -Z.
-    static const Vec3 faceNormals[6] =
-        {Vec3(1, 0, 0), Vec3(-1, 0, 0), Vec3(0, 1, 0), Vec3(0, -1, 0), Vec3(0, 0, 1), Vec3(0, 0, -1)};
-
-    // Compute per-face far clip distance in local space.
-    // Distance from origin offset to the volume edge along each face normal.
-    float minDist = 0.01f;
-    float perFaceClipDist[6];
-    for (int i = 0; i < 6; i++)
-    {
-      Vec3 edge          = faceNormals[i] * half;
-      float dist         = glm::abs(glm::dot(faceNormals[i], edge) - glm::dot(faceNormals[i], offset));
-      perFaceClipDist[i] = glm::max(dist + extraFar, minDist);
-    }
-
-    GetRenderSystem()->AddRenderTask(
-        {[this, worldTransform, offset, minDist, res, perFaceClipDist](Renderer* renderer) -> void
-         {
-           // Disable self-illumination during capture to prevent feedback loop.
-           bool wasIlluminate = GetIlluminateVal();
-           SetIlluminateVal(false);
-
-           // Create a temporary render path for the capture.
-           ForwardSceneRenderPath capturePath;
-           capturePath.m_params.Scene = GetSceneManager()->GetCurrentScene();
-
-           CubeMapPtr cubemap =
-               renderer->RenderToCubeMap(&capturePath, worldTransform, offset, minDist, 1000.0f, res, perFaceClipDist);
-
-           // Restore illuminate state.
-           SetIlluminateVal(wasIlluminate);
-
-           // Create a dynamic HDRI and assign the captured cubemap.
-           HdriPtr hdri    = MakeNewPtr<Hdri>();
-           hdri->m_cubemap = cubemap;
-           hdri->GenerateIrradianceCaches(renderer);
-           hdri->m_initiated = true;
-
-           SetHdriVal(hdri);
-         }});
   }
 
   void EnvironmentComponent::UpdateBoundingBoxCache()

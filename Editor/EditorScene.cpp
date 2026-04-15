@@ -13,6 +13,8 @@
 #include "OutlinerWindow.h"
 #include "Prefab.h"
 
+#include <ReflectionProbe.h>
+
 namespace ToolKit
 {
   namespace Editor
@@ -527,6 +529,14 @@ namespace ToolKit
         return;
       }
 
+      // Check reflection probe
+      if (entity->IsA<ReflectionProbe>())
+      {
+        ReflectionProbeBillboardPtr billboard = MakeNewPtr<ReflectionProbeBillboard>();
+        addBillboardFn(billboard);
+        return;
+      }
+
       // Check light
       if (entity->IsA<Light>())
       {
@@ -592,13 +602,17 @@ namespace ToolKit
       };
 
       // Check Sky billboard. Precedence over light billboard.
-      if (entity->GetComponent<EnvironmentComponent>())
+      if (entity->GetComponent<EnvironmentComponent>() && !entity->IsA<ReflectionProbe>())
       {
         sanitizeFn(EditorBillboardBase::BillboardType::Sky);
       }
       else if (entity->IsA<Sky>())
       {
         sanitizeFn(EditorBillboardBase::BillboardType::Sky);
+      }
+      else if (entity->IsA<ReflectionProbe>())
+      {
+        sanitizeFn(EditorBillboardBase::BillboardType::ReflectionProbe);
       }
       else if (entity->IsA<Light>())
       {

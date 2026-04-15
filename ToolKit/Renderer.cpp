@@ -23,6 +23,7 @@
 #include "Node.h"
 #include "Pass.h"
 #include "RHI.h"
+#include "ReflectionProbe.h"
 #include "RenderSystem.h"
 #include "Scene.h"
 #include "Shader.h"
@@ -1269,7 +1270,19 @@ namespace ToolKit
         return false;
       }
 
-      bool parallaxCorrection = envCom->GetParallaxCorrectionVal();
+      bool parallaxCorrection = false;
+      bool interior           = false;
+      float fade              = 1.0f;
+
+      if (const EntityPtr& env = envCom->OwnerEntity())
+      {
+        if (ReflectionProbe* probe = env->As<ReflectionProbe>())
+        {
+          parallaxCorrection = probe->GetParallaxCorrectionVal();
+          interior           = probe->GetInteriorVal();
+          fade               = probe->GetFadeVal();
+        }
+      }
 
       SetTexture(diffSlot, diffuseEnvMap);
       SetTexture(specSlot, specularEnvMap);
@@ -1283,8 +1296,8 @@ namespace ToolKit
       m_drawCommand.SetVolumeMax(volIdx, offset + half);
 
       m_drawCommand.SetVolumePccEnabled(volIdx, parallaxCorrection);
-      m_drawCommand.SetVolumeInterior(volIdx, envCom->GetInteriorVal());
-      m_drawCommand.SetVolumeFadeDistance(volIdx, glm::max(envCom->GetFadeVal(), 0.001f));
+      m_drawCommand.SetVolumeInterior(volIdx, interior);
+      m_drawCommand.SetVolumeFadeDistance(volIdx, glm::max(fade, 0.001f));
 
       if (const EntityPtr& env = envCom->OwnerEntity())
       {

@@ -31,7 +31,8 @@ namespace ToolKit
         BoxEdit,
         Sky,
         Light,
-        Anchor
+        Anchor,
+        ReflectionProbe
       };
 
      public:
@@ -82,6 +83,25 @@ namespace ToolKit
      private:
       void Generate() override;
     };
+
+    // ReflectionProbeBillboard
+    //////////////////////////////////////////
+
+    class TK_EDITOR_API ReflectionProbeBillboard : public EditorBillboardBase
+    {
+     public:
+      TKDeclareClass(ReflectionProbeBillboard, EditorBillboardBase);
+
+      ReflectionProbeBillboard();
+      virtual ~ReflectionProbeBillboard();
+      BillboardType GetBillboardType() const override;
+      void LookAt(CameraPtr cam, float scale) override;
+
+     private:
+      void Generate() override;
+    };
+
+    typedef std::shared_ptr<ReflectionProbeBillboard> ReflectionProbeBillboardPtr;
 
   } // namespace Editor
 } // namespace ToolKit

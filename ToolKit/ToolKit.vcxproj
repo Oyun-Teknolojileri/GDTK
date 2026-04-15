@@ -60,6 +60,7 @@
     </ClCompile>
     <ClCompile Include="Prefab.cpp" />
     <ClCompile Include="Primative.cpp" />
+    <ClCompile Include="ReflectionProbe.cpp" />
     <ClCompile Include="Renderer.cpp" />
     <ClCompile Include="RenderState.cpp" />
     <ClCompile Include="RenderSystem.cpp" />
@@ -116,6 +117,7 @@
     <ClInclude Include="DofPass.h" />
     <ClInclude Include="Dpad.h" />
     <ClInclude Include="Drawable.h" />
+    <ClInclude Include="ReflectionProbe.h" />
     <ClInclude Include="ShadowAtlas.h" />
     <ClInclude Include="TextureBuffer.h" />
     <ClInclude Include="EngineSettings.h" />

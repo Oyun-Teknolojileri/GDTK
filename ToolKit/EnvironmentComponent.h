@@ -31,7 +31,6 @@ namespace ToolKit
 
     void Init(bool flushClientSideArray);
     void UnInit();
-    virtual void CaptureEnvironment();
     virtual void InvalidateSpatialCaches();
 
    protected:
@@ -50,12 +49,7 @@ namespace ToolKit
     TKDeclareParam(Vec3, Size);
     TKDeclareParam(Vec3, PositionOffset);
     TKDeclareParam(bool, Illuminate);
-    TKDeclareParam(bool, ParallaxCorrection);
-    TKDeclareParam(bool, Interior);
     TKDeclareParam(float, Intensity);
-    TKDeclareParam(float, Fade);
-    TKDeclareParam(float, CaptureFar);
-    TKDeclareParam(MultiChoiceVariant, CaptureResolution);
 
     bool m_spatialCachesInvalidated = true; //!< If true, bounding box caches are updated upon access.
 

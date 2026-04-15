@@ -17,6 +17,7 @@
 #include <Drawable.h>
 #include <GradientSky.h>
 #include <Mesh.h>
+#include <ReflectionProbe.h>
 #include <Surface.h>
 
 namespace ToolKit
@@ -140,6 +141,13 @@ namespace ToolKit
         if (ImGui::MenuItem(ICON_FA_SKYATLAS " Gradient Sky"))
         {
           createdEntity = MakeNewPtr<GradientSky>();
+        }
+
+        if (ImGui::MenuItem(ICON_FA_CIRCLE " Reflection Probe"))
+        {
+          ReflectionProbePtr probe = MakeNewPtr<ReflectionProbe>();
+          probe->Init();
+          createdEntity = probe;
         }
 
         ImGui::EndMenu();

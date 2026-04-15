@@ -207,6 +207,7 @@
     <ClCompile Include="EditorEnvironmentComponent.cpp">
       <Filter>Components</Filter>
     </ClCompile>
+    <ClCompile Include="EditorReflectionProbe.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Mod.h">
@@ -374,6 +375,7 @@
     <ClInclude Include="EditorEnvironmentComponent.h">
       <Filter>Components</Filter>
     </ClInclude>
+    <ClInclude Include="EditorReflectionProbe.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Editor.rc" />

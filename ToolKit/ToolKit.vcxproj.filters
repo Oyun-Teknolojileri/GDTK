@@ -235,6 +235,7 @@
     <ClCompile Include="ShadowAtlas.cpp">
       <Filter>Render</Filter>
     </ClCompile>
+    <ClCompile Include="ReflectionProbe.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Camera.h">
@@ -498,6 +499,7 @@
     <ClInclude Include="ShadowAtlas.h">
       <Filter>Render</Filter>
     </ClInclude>
+    <ClInclude Include="ReflectionProbe.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Entities">

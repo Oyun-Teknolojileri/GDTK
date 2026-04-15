@@ -195,6 +195,8 @@ namespace ToolKit
   typedef std::weak_ptr<class Sky> SkyWeakPtr;
   typedef std::shared_ptr<class GradientSky> GradientSkyPtr;
   typedef std::weak_ptr<class GradientSky> GradientSkyWeakPtr;
+  typedef std::shared_ptr<class ReflectionProbe> ReflectionProbePtr;
+  typedef std::weak_ptr<class ReflectionProbe> ReflectionProbeWeakPtr;
   typedef std::shared_ptr<class Prefab> PrefabPtr;
   typedef std::vector<PrefabPtr> PrefabPtrArray;
   typedef std::vector<class Prefab*> PrefabRawPtrArray;

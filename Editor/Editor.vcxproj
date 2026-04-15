@@ -112,6 +112,7 @@
     <ClCompile Include="EditorCanvas.cpp" />
     <ClCompile Include="EditorEnvironmentComponent.cpp" />
     <ClCompile Include="EditorLight.cpp" />
+    <ClCompile Include="EditorReflectionProbe.cpp" />
     <ClCompile Include="EditorRenderer.cpp" />
     <ClCompile Include="EditorViewport2d.cpp" />
     <ClCompile Include="EntityView.cpp" />
@@ -183,6 +184,7 @@
     <ClInclude Include="EditorEnvironmentComponent.h" />
     <ClInclude Include="EditorLight.h" />
     <ClInclude Include="EditorMetaKeys.h" />
+    <ClInclude Include="EditorReflectionProbe.h" />
     <ClInclude Include="EditorRenderer.h" />
     <ClInclude Include="EditorViewport2d.h" />
     <ClInclude Include="EntityView.h" />

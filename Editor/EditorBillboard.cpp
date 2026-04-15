@@ -9,7 +9,9 @@
 
 #include "UI.h"
 
+#include <Material.h>
 #include <Mesh.h>
+#include <Primative.h>
 
 namespace ToolKit
 {
@@ -76,6 +78,35 @@ namespace ToolKit
     {
       m_iconImage = UI::m_lightIcon;
       EditorBillboardBase::Generate();
+    }
+
+    TKDefineClass(ReflectionProbeBillboard, EditorBillboardBase);
+
+    ReflectionProbeBillboard::ReflectionProbeBillboard() : EditorBillboardBase({true, 3.5f, 10.0f}) {}
+
+    ReflectionProbeBillboard::~ReflectionProbeBillboard() {}
+
+    EditorBillboardBase::BillboardType ReflectionProbeBillboard::GetBillboardType() const
+    {
+      return BillboardType::ReflectionProbe;
+    }
+
+    void ReflectionProbeBillboard::LookAt(CameraPtr cam, float scale) { Super::LookAt(cam, scale); }
+
+    void ReflectionProbeBillboard::Generate()
+    {
+      MeshComponentPtr mCom = GetComponent<MeshComponent>();
+
+      // Generate sphere mesh.
+      SpherePtr sphere           = MakeNewPtr<Sphere>();
+      MeshComponentPtr sphereMC  = sphere->GetMeshComponent();
+      MeshPtr sphereMesh         = sphereMC->GetMeshVal();
+
+      // Assign chrome material.
+      MaterialPtr chromeMat      = GetMaterialManager()->GetChromeMaterial();
+      sphereMesh->m_material     = chromeMat;
+
+      mCom->SetMeshVal(sphereMesh);
     }
 
   } // namespace Editor

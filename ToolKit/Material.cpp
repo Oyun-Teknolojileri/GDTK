@@ -571,4 +571,21 @@ namespace ToolKit
     return Copy<Material>(source, storeInMaterialManager);
   }
 
+  MaterialPtr MaterialManager::GetChromeMaterial()
+  {
+    if (m_chromeMaterial != nullptr)
+    {
+      return m_chromeMaterial;
+    }
+
+    m_chromeMaterial = GetCopyOfDefaultMaterial(false);
+    m_chromeMaterial->SetMetallicVal(1.0f);
+    m_chromeMaterial->SetRoughnessVal(0.0f);
+    m_chromeMaterial->SetDiffuseTextureVal(nullptr);
+    m_chromeMaterial->SetColorVal(Vec3(1.0f));
+    m_chromeMaterial->Init();
+
+    return m_chromeMaterial;
+  }
+
 } // namespace ToolKit

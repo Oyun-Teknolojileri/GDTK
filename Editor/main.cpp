@@ -12,6 +12,7 @@
 #include "EditorCamera.h"
 #include "EditorCanvas.h"
 #include "EditorEnvironmentComponent.h"
+#include "EditorReflectionProbe.h"
 #include "EditorViewport2d.h"
 #include "Gizmo.h"
 #include "Grid.h"
@@ -27,6 +28,7 @@
 #include <FileManager.h>
 #include <ImGui/backends/imgui_impl_sdl2.h>
 #include <PluginManager.h>
+#include <ReflectionProbe.h>
 #include <SDL.h>
 #include <TKOpenGL.h>
 #include <Types.h>
@@ -359,6 +361,7 @@ namespace ToolKit
             objFactory->Override<EditorCamera, Camera>();
             objFactory->Override<EditorCanvas, Canvas>();
             objFactory->Override<EditorEnvironmentComponent, EnvironmentComponent>();
+            objFactory->Override<EditorReflectionProbe, ReflectionProbe>();
 
             // Override SceneManager.
             SafeDel(g_proxy->m_sceneManager);
