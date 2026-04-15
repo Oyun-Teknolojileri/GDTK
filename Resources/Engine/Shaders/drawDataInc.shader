@@ -1,6 +1,6 @@
 <shader>
 	<type name = "includeShader" />
-	<uniform name = "drawCommand" size = "12" />
+	<uniform name = "drawCommand" size = "24" />
 	<source>
 	<!--
 
@@ -10,26 +10,23 @@
 	// DrawCommand
 	//////////////////////////////////////////
 
-	uniform vec4 drawCommand[12];
+	uniform vec4 drawCommand[24];
 
-	float GetIBLIntensity()
-	{
-		return drawCommand[0].x;
-	}
+	// --- Global accessors ---
 
 	bool IsIBLInUse()
 	{
-		return bool(drawCommand[0].y > 0.5);
+		return bool(drawCommand[0].x > 0.5);
 	}
 
 	bool IsAmbientOcculusionInUse()
 	{
-		return bool(drawCommand[0].z > 0.5);
+		return bool(drawCommand[0].y > 0.5);
 	}
 
-	float GetSecondaryIBLIntensity()
+	float GetSkyIntensity()
 	{
-		return drawCommand[0].w;
+		return drawCommand[0].z;
 	}
 
 	int GetActivePointLightCount()
@@ -47,54 +44,73 @@
 		return int(drawCommand[1].z);
 	}
 
-	float GetIBLFadeDistance()
+	// --- Per-volume accessors ---
+	// Volume 0 starts at index 2, volume 1 starts at index 13. Stride = 11.
+
+	int VolumeBase(int vol)
 	{
-		return drawCommand[1].w;
+		return 2 + vol * 11;
 	}
 
-	vec3 GetPrimaryVolumeMin()
+	float GetVolumeIntensity(int vol)
 	{
-		return drawCommand[2].xyz;
+		return drawCommand[VolumeBase(vol)].x;
 	}
 
-	bool IsParallaxCorrectedCubemapEnabled()
+	float GetVolumeFadeDistance(int vol)
 	{
-		return bool(drawCommand[2].w > 0.5);
+		return drawCommand[VolumeBase(vol)].y;
 	}
 
-	vec3 GetPrimaryVolumeMax()
+	bool IsVolumePccEnabled(int vol)
 	{
-		return drawCommand[3].xyz;
+		return bool(drawCommand[VolumeBase(vol)].w > 0.5);
 	}
 
-	mat4 GetIblInverseVolumeTransform()
+	bool IsVolumeInterior(int vol)
 	{
-		return mat4(drawCommand[4], drawCommand[5], drawCommand[6], drawCommand[7]);
+		return bool(drawCommand[VolumeBase(vol)].z > 0.5);
 	}
 
-	mat4 GetIblVolumeTransform()
+	vec3 GetVolumeMin(int vol)
 	{
-		return mat4(drawCommand[8], drawCommand[9], drawCommand[10], drawCommand[11]);
+		return drawCommand[VolumeBase(vol) + 1].xyz;
 	}
 
-	// Compute per-pixel IBL blend factor from fragment world position.
-	// Returns 1.0 at volume center (fully primary), 0.0 at volume edge (fully secondary).
-	// Uses OBB: transforms worldPos to volume local space before distance check.
-	float ComputeIBLBlendFactor(vec3 worldPos)
+	vec3 GetVolumeMax(int vol)
 	{
-		float fadeDist = GetIBLFadeDistance();
-		if (fadeDist <= 0.0)
+		return drawCommand[VolumeBase(vol) + 2].xyz;
+	}
+
+	mat4 GetVolumeInverseTransform(int vol)
+	{
+		int b = VolumeBase(vol) + 3;
+		return mat4(drawCommand[b], drawCommand[b+1], drawCommand[b+2], drawCommand[b+3]);
+	}
+
+	mat4 GetVolumeWorldTransform(int vol)
+	{
+		int b = VolumeBase(vol) + 7;
+		return mat4(drawCommand[b], drawCommand[b+1], drawCommand[b+2], drawCommand[b+3]);
+	}
+
+	// Compute per-pixel blend factor for a local volume.
+	// Returns 1.0 inside, fades to 0.0 at the edge, 0.0 outside.
+	float ComputeVolumeBlendFactor(int vol, vec3 worldPos)
+	{
+		float intensity = GetVolumeIntensity(vol);
+		if (intensity <= 0.0)
 		{
-			return 1.0;
+			return 0.0;
 		}
 
-		// Transform world position to volume local space.
-		vec3 localPos = (GetIblInverseVolumeTransform() * vec4(worldPos, 1.0)).xyz;
+		float fadeDist = GetVolumeFadeDistance(vol);
 
-		vec3 vMin = GetPrimaryVolumeMin();
-		vec3 vMax = GetPrimaryVolumeMax();
+		vec3 localPos = (GetVolumeInverseTransform(vol) * vec4(worldPos, 1.0)).xyz;
 
-		// Distance from each face of the OBB (in local space).
+		vec3 vMin = GetVolumeMin(vol);
+		vec3 vMax = GetVolumeMax(vol);
+
 		vec3 distToMin = localPos - vMin;
 		vec3 distToMax = vMax - localPos;
 		vec3 minDist = min(distToMin, distToMax);
@@ -105,7 +121,7 @@
 
 	// Defines
 	//////////////////////////////////////////
-	
+
 	#define MAX_CASCADE_COUNT 4
 
 	#define DIRECTIONAL_LIGHT_CACHE_ITEM_COUNT 12

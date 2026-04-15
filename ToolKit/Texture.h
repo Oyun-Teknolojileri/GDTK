@@ -218,6 +218,9 @@ namespace ToolKit
     void Init(bool flushClientSideArray = false) override;
     void UnInit() override;
 
+    /** Try to load or generate irradiance caches. Cubemap has to be loaded. */
+    void LoadOrGenerateIrradianceCaches();
+
     /** Loads baked irradiance caches. Make sure this called from render thread. Use render task. */
     void LoadIrradianceCaches(class Renderer* renderer);
 

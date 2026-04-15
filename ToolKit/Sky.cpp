@@ -214,7 +214,8 @@ namespace ToolKit
         {
           if (IsInitialized())
           {
-            GetComponent<EnvironmentComponent>()->SetIlluminateVal(std::get<bool>(newVal));
+            bool val = std::get<bool>(newVal);
+            GetComponent<EnvironmentComponent>()->SetIlluminateVal(val);
           }
         });
 

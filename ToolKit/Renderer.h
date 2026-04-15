@@ -28,67 +28,94 @@ namespace ToolKit
 
   struct DrawCommand
   {
-    /** x: iblIntensity, y: iblInUse, z: ambientOcclusionInUse, w: secondaryIblIntensity */
-    Vec4 data1;
+    // --- Global data (2 Vec4) ---
 
-    /** x: activePointLightCount, y: activeSpotLightCount, z: activeDirectionalLightCount, w: iblFadeDistance */
-    Vec4 data2;
+    /** x: iblInUse, y: ambientOcclusionInUse, z: unused, w: unused */
+    Vec4 global0;
 
-    /** xyz: primary volume min (local space) */
-    Vec4 data3;
+    /** x: activePointLightCount, y: activeSpotLightCount, z: activeDirectionalLightCount, w: unused */
+    Vec4 global1;
 
-    /** xyz: primary volume max (local space) */
-    Vec4 data4;
+    // --- Volume 0 / Primary (11 Vec4) ---
 
-    /** Volume inverse world transform (rows 0-3) for OBB support. */
-    Vec4 data5;
-    Vec4 data6;
-    Vec4 data7;
-    Vec4 data8;
+    /** x: intensity, y: fadeDistance, z: interior, w: pccEnabled */
+    Vec4 vol0Params;
+    Vec4 vol0Min; /**< xyz: volume min (local space) */
+    Vec4 vol0Max; /**< xyz: volume max (local space) */
+    Vec4 vol0InvTransform0, vol0InvTransform1, vol0InvTransform2, vol0InvTransform3;
+    Vec4 vol0WorldTransform0, vol0WorldTransform1, vol0WorldTransform2, vol0WorldTransform3;
 
-    /** Volume world transform (rows 0-3) for PCC without per-pixel inverse. */
-    Vec4 data9;
-    Vec4 data10;
-    Vec4 data11;
-    Vec4 data12;
+    // --- Volume 1 / Secondary (11 Vec4) ---
 
-    void SetIblIntensity(float intensity) { data1.x = intensity; }
+    /** x: intensity, y: fadeDistance, z: interior, w: pccEnabled */
+    Vec4 vol1Params;
+    Vec4 vol1Min; /**< xyz: volume min (local space) */
+    Vec4 vol1Max; /**< xyz: volume max (local space) */
+    Vec4 vol1InvTransform0, vol1InvTransform1, vol1InvTransform2, vol1InvTransform3;
+    Vec4 vol1WorldTransform0, vol1WorldTransform1, vol1WorldTransform2, vol1WorldTransform3;
 
-    void SetIblInUse(bool inUse) { data1.y = inUse ? 1.0f : 0.0f; }
+    // --- Global setters ---
 
-    void SetAmbientOcclusionInUse(bool inUse) { data1.z = inUse ? 1.0f : 0.0f; }
+    void SetIblInUse(bool inUse) { global0.x = inUse ? 1.0f : 0.0f; }
 
-    void SetSecondaryIblIntensity(float intensity) { data1.w = intensity; }
+    void SetAmbientOcclusionInUse(bool inUse) { global0.y = inUse ? 1.0f : 0.0f; }
 
-    void SetActivePointLightCount(int count) { data2.x = (float) count; }
+    /** Sky intensity (0 = no sky). */
+    void SetSkyIntensity(float intensity) { global0.z = intensity; }
 
-    void SetActiveSpotLightCount(int count) { data2.y = (float) count; }
+    void SetActivePointLightCount(int count) { global1.x = (float) count; }
 
-    void SetActiveDirectionalLightCount(int count) { data2.z = (float) count; }
+    void SetActiveSpotLightCount(int count) { global1.y = (float) count; }
 
-    void SetIblFadeDistance(float fade) { data2.w = fade; }
+    void SetActiveDirectionalLightCount(int count) { global1.z = (float) count; }
 
-    void SetPrimaryVolumeMin(const Vec3& minVal, bool pccEnabled = false)
+    // --- Per-volume setters ---
+
+    void SetVolumeIntensity(int vol, float intensity) { Params(vol).x = intensity; }
+
+    void SetVolumeFadeDistance(int vol, float fade) { Params(vol).y = fade; }
+
+    void SetVolumeInterior(int vol, bool interior) { Params(vol).z = interior ? 1.0f : 0.0f; }
+
+    void SetVolumePccEnabled(int vol, bool enabled) { Params(vol).w = enabled ? 1.0f : 0.0f; }
+
+    void SetVolumeMin(int vol, const Vec3& minVal) { Min(vol) = Vec4(minVal, 0.0f); }
+
+    void SetVolumeMax(int vol, const Vec3& maxVal) { Max(vol) = Vec4(maxVal, 0.0f); }
+
+    void SetVolumeInverseTransform(int vol, const Mat4& m)
     {
-      data3 = Vec4(minVal, pccEnabled ? 1.0f : 0.0f);
+      InvT(vol, 0) = Vec4(m[0]);
+      InvT(vol, 1) = Vec4(m[1]);
+      InvT(vol, 2) = Vec4(m[2]);
+      InvT(vol, 3) = Vec4(m[3]);
     }
 
-    void SetPrimaryVolumeMax(const Vec3& maxVal) { data4 = Vec4(maxVal, 0.0f); }
-
-    void SetIblInverseVolumeTransform(const Mat4& inverseTransform)
+    void SetVolumeWorldTransform(int vol, const Mat4& m)
     {
-      data5 = Vec4(inverseTransform[0]);
-      data6 = Vec4(inverseTransform[1]);
-      data7 = Vec4(inverseTransform[2]);
-      data8 = Vec4(inverseTransform[3]);
+      WldT(vol, 0) = Vec4(m[0]);
+      WldT(vol, 1) = Vec4(m[1]);
+      WldT(vol, 2) = Vec4(m[2]);
+      WldT(vol, 3) = Vec4(m[3]);
     }
 
-    void SetIblVolumeTransform(const Mat4& transform)
+   private:
+    Vec4& Params(int vol) { return vol == 0 ? vol0Params : vol1Params; }
+
+    Vec4& Min(int vol) { return vol == 0 ? vol0Min : vol1Min; }
+
+    Vec4& Max(int vol) { return vol == 0 ? vol0Max : vol1Max; }
+
+    Vec4& InvT(int vol, int row)
     {
-      data9  = Vec4(transform[0]);
-      data10 = Vec4(transform[1]);
-      data11 = Vec4(transform[2]);
-      data12 = Vec4(transform[3]);
+      Vec4* base = vol == 0 ? &vol0InvTransform0 : &vol1InvTransform0;
+      return base[row];
+    }
+
+    Vec4& WldT(int vol, int row)
+    {
+      Vec4* base = vol == 0 ? &vol0WorldTransform0 : &vol1WorldTransform0;
+      return base[row];
     }
   };
 
@@ -253,16 +280,22 @@ namespace ToolKit
     CubeMapPtr GenerateDiffuseEnvMap(CubeMapPtr cubemap, int size);
 
     /**
-     * Renders the scene into a cubemap from the given position using the provided render path.
+     * Renders the scene into a cubemap using the provided render path.
+     * Camera is placed at the entity origin (with originOffset applied in local space),
+     * oriented along the entity's world transform. Each cubemap face looks along a
+     * local-space axis rotated into world space by the entity transform.
      * @param renderPath The render path to use for rendering each face.
-     * @param position World position to render from.
+     * @param worldTransform World transform of the environment volume entity.
+     * @param originOffset Local-space offset from entity origin to capture position.
      * @param near Near clip plane.
      * @param far Far clip plane.
      * @param resolution Resolution of each cubemap face.
+     * @param perFaceClipDist Optional per-face far clip distances (6 floats, in local face order: +X,-X,+Y,-Y,+Z,-Z).
      * @return The generated cubemap.
      */
     CubeMapPtr RenderToCubeMap(ForwardSceneRenderPath* renderPath,
-                               const Vec3& position,
+                               const Mat4& worldTransform,
+                               const Vec3& originOffset,
                                float near,
                                float far,
                                uint resolution,

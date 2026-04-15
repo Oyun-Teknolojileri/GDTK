@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2019-2025 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
@@ -57,6 +57,8 @@ namespace ToolKit
     int constexpr IBL_BRDF_LUT_TEXTURE_SLOT                  = 10;
     int constexpr SECONDARY_IRRADIANCE_MAP_TEXTURE_SLOT      = 11;
     int constexpr SECONDARY_IBL_SPECULAR_MAP_TEXTURE_SLOT    = 12;
+    int constexpr SKY_IRRADIANCE_MAP_TEXTURE_SLOT            = 16;
+    int constexpr SKY_SPECULAR_MAP_TEXTURE_SLOT              = 17;
   } // namespace DefaultTextureSlots
 
   Renderer::Renderer()
@@ -119,6 +121,10 @@ namespace ToolKit
     // Default states.
     glEnable(GL_CULL_FACE);
     glEnable(GL_DEPTH_TEST);
+
+#ifdef GL_TEXTURE_CUBE_MAP_SEAMLESS
+    glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
+#endif
 
     // Validate sRGB automatic encoding on backbuffer if enabled.
     ValidateBackbufferSrgbEncoding();
@@ -1219,84 +1225,96 @@ namespace ToolKit
 
     // Sky and Ibl data.
     m_drawCommand.SetIblInUse(false);
-    m_drawCommand.SetSecondaryIblIntensity(0.0f);
-    m_drawCommand.SetIblFadeDistance(0.0f);
-    EnvironmentComponent* envCom = job.EnvironmentVolume;
-    if (envCom)
+    m_drawCommand.SetSkyIntensity(0.0f);
+    m_drawCommand.SetVolumeIntensity(0, 0.0f);
+    m_drawCommand.SetVolumeIntensity(1, 0.0f);
+
+    bool anyIbl = false;
+
+    // --- Sky (global fallback) ---
+    if (m_sky != nullptr)
     {
+      EnvironmentComponentPtr skyEnvCom = m_sky->GetComponent<EnvironmentComponent>();
+      if (skyEnvCom != nullptr)
+      {
+        const HdriPtr& skyHdri = skyEnvCom->GetHdriVal();
+        if (skyHdri != nullptr && skyHdri->m_diffuseEnvMap && skyHdri->m_specularEnvMap && m_brdfLut)
+        {
+          SetTexture(DefaultTextureSlots::SKY_IRRADIANCE_MAP_TEXTURE_SLOT, skyHdri->m_diffuseEnvMap);
+          SetTexture(DefaultTextureSlots::SKY_SPECULAR_MAP_TEXTURE_SLOT, skyHdri->m_specularEnvMap);
+
+          float skyIntensity = skyEnvCom->GetIlluminateVal() ? skyEnvCom->GetIntensityVal() : 0.0f;
+          m_drawCommand.SetSkyIntensity(skyIntensity);
+          m_iblRotation = Mat4(m_sky->m_node->GetOrientation());
+          anyIbl        = true;
+        }
+      }
+    }
+
+    // --- Local volumes (per-object) ---
+    auto setupLocalVolumeFn =
+        [this](int volIdx, EnvironmentComponent* envCom, int diffSlot, int specSlot, Mat4& rotationOut) -> bool
+    {
+      if (envCom == nullptr)
+      {
+        return false;
+      }
+
       const HdriPtr& hdriPtr     = envCom->GetHdriVal();
       CubeMapPtr& diffuseEnvMap  = hdriPtr->m_diffuseEnvMap;
       CubeMapPtr& specularEnvMap = hdriPtr->m_specularEnvMap;
 
-      if (diffuseEnvMap && specularEnvMap && m_brdfLut)
+      if (!diffuseEnvMap || !specularEnvMap)
       {
-        SetTexture(DefaultTextureSlots::IRRADIANCE_MAP_TEXTURE_SLOT, diffuseEnvMap);
-        SetTexture(DefaultTextureSlots::IBL_SPECULAR_PRE_FILTERED_MAP_TEXTURE_SLOT, specularEnvMap);
-        SetTexture(DefaultTextureSlots::IBL_BRDF_LUT_TEXTURE_SLOT, m_brdfLut);
-
-        m_drawCommand.SetIblInUse(true);
-        m_drawCommand.SetIblIntensity(envCom->GetIntensityVal());
-
-        // Pass primary volume local-space BB for OBB per-pixel blend and Parallax Corrected Cubemaps.
-        Vec3 offset = envCom->GetPositionOffsetVal();
-        Vec3 half   = envCom->GetSizeVal() * 0.5f;
-        bool isSky  = false;
-        if (const EntityPtr& env = envCom->OwnerEntity())
-        {
-          isSky = env->IsA<SkyBase>();
-        }
-
-        m_drawCommand.SetPrimaryVolumeMin(offset - half, !isSky);
-        m_drawCommand.SetPrimaryVolumeMax(offset + half);
-        m_drawCommand.SetIblFadeDistance(glm::max(envCom->GetFadeVal(), 0.001f));
-
-        // Sky: rotation applies to IBL image, no volume boundary.
-        // Non-Sky: rotation applies to OBB volume, IBL image stays fixed.
-        if (const EntityPtr& env = envCom->OwnerEntity())
-        {
-          if (isSky)
-          {
-            m_iblRotation = Mat4(env->m_node->GetOrientation());
-            m_drawCommand.SetIblInverseVolumeTransform(Mat4(1.0f));
-            m_drawCommand.SetIblVolumeTransform(Mat4(1.0f));
-          }
-          else
-          {
-            m_iblRotation       = Mat4(1.0f);
-            Mat4 worldTransform = env->m_node->GetTransform(TransformationSpace::TS_WORLD);
-            m_drawCommand.SetIblInverseVolumeTransform(glm::inverse(worldTransform));
-            m_drawCommand.SetIblVolumeTransform(worldTransform);
-          }
-        }
-
-        // Secondary IBL for per-pixel blending.
-        EnvironmentComponent* secEnvCom = job.SecondaryEnvironmentVolume;
-        if (secEnvCom)
-        {
-          const HdriPtr& secHdri  = secEnvCom->GetHdriVal();
-          CubeMapPtr& secDiffuse  = secHdri->m_diffuseEnvMap;
-          CubeMapPtr& secSpecular = secHdri->m_specularEnvMap;
-
-          if (secDiffuse && secSpecular)
-          {
-            SetTexture(DefaultTextureSlots::SECONDARY_IRRADIANCE_MAP_TEXTURE_SLOT, secDiffuse);
-            SetTexture(DefaultTextureSlots::SECONDARY_IBL_SPECULAR_MAP_TEXTURE_SLOT, secSpecular);
-            m_drawCommand.SetSecondaryIblIntensity(secEnvCom->GetIntensityVal());
-
-            if (const EntityPtr& secEnv = secEnvCom->OwnerEntity())
-            {
-              if (secEnv->IsA<SkyBase>())
-              {
-                m_secondaryIblRotation = Mat4(secEnv->m_node->GetOrientation());
-              }
-              else
-              {
-                m_secondaryIblRotation = Mat4(1.0f);
-              }
-            }
-          }
-        }
+        return false;
       }
+
+      bool parallaxCorrection = envCom->GetParallaxCorrectionVal();
+
+      SetTexture(diffSlot, diffuseEnvMap);
+      SetTexture(specSlot, specularEnvMap);
+
+      float intensity = envCom->GetIlluminateVal() ? envCom->GetIntensityVal() : 0.0f;
+      m_drawCommand.SetVolumeIntensity(volIdx, intensity);
+
+      Vec3 offset = envCom->GetPositionOffsetVal();
+      Vec3 half   = envCom->GetSizeVal() * 0.5f;
+      m_drawCommand.SetVolumeMin(volIdx, offset - half);
+      m_drawCommand.SetVolumeMax(volIdx, offset + half);
+
+      m_drawCommand.SetVolumePccEnabled(volIdx, parallaxCorrection);
+      m_drawCommand.SetVolumeInterior(volIdx, envCom->GetInteriorVal());
+      m_drawCommand.SetVolumeFadeDistance(volIdx, glm::max(envCom->GetFadeVal(), 0.001f));
+
+      if (const EntityPtr& env = envCom->OwnerEntity())
+      {
+        rotationOut         = Mat4(1.0f);
+        Mat4 worldTransform = env->m_node->GetTransform(TransformationSpace::TS_WORLD);
+        m_drawCommand.SetVolumeInverseTransform(volIdx, glm::inverse(worldTransform));
+        m_drawCommand.SetVolumeWorldTransform(volIdx, worldTransform);
+      }
+
+      return true;
+    };
+
+    bool vol0Ok = setupLocalVolumeFn(0,
+                                     job.EnvironmentVolume,
+                                     DefaultTextureSlots::IRRADIANCE_MAP_TEXTURE_SLOT,
+                                     DefaultTextureSlots::IBL_SPECULAR_PRE_FILTERED_MAP_TEXTURE_SLOT,
+                                     m_secondaryIblRotation);
+
+    bool vol1Ok = setupLocalVolumeFn(1,
+                                     job.SecondaryEnvironmentVolume,
+                                     DefaultTextureSlots::SECONDARY_IRRADIANCE_MAP_TEXTURE_SLOT,
+                                     DefaultTextureSlots::SECONDARY_IBL_SPECULAR_MAP_TEXTURE_SLOT,
+                                     m_secondaryIblRotation);
+
+    anyIbl      = anyIbl || vol0Ok || vol1Ok;
+
+    if (anyIbl)
+    {
+      m_drawCommand.SetIblInUse(true);
+      SetTexture(DefaultTextureSlots::IBL_BRDF_LUT_TEXTURE_SLOT, m_brdfLut);
     }
 
     // AO texture.
@@ -1568,14 +1586,10 @@ namespace ToolKit
     // Views for 6 different angles
     CameraPtr cam = MakeNewPtr<Camera>();
     cam->SetLens(glm::radians(90.0f), 1.0f, 0.1f, 10.0f);
-    Mat4 views[] = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                    glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                    glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
-                    glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
-                    glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                    glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
+    Mat4 views[CubemapFaceCount];
+    GetCubemapViews(ZERO, views);
 
-    for (int i = 0; i < 6; i++)
+    for (int i = 0; i < CubemapFaceCount; i++)
     {
       Vec3 pos, sca;
       Quaternion rot;
@@ -1598,6 +1612,8 @@ namespace ToolKit
 
     CubeMapPtr cubeMap = MakeNewPtr<CubeMap>();
     cubeMap->Consume(cubeMapRt);
+
+    cubeMap->GenerateMipMaps();
 
     return cubeMap;
   }
@@ -1706,12 +1722,8 @@ namespace ToolKit
     // Views for 6 different angles
     CameraPtr cam = MakeNewPtr<Camera>();
     cam->SetLens(glm::radians(90.0f), 1.0f, 0.1f, 10.0f);
-    Mat4 views[]    = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                       glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
+    Mat4 views[CubemapFaceCount];
+    GetCubemapViews(ZERO, views);
 
     // Create material
     MaterialPtr mat = MakeNewPtr<Material>();
@@ -1726,7 +1738,7 @@ namespace ToolKit
 
     m_oneColorAttachmentFramebuffer->ReconstructIfNeeded({size, size, false, false});
 
-    for (int i = 0; i < 6; i++)
+    for (int i = 0; i < CubemapFaceCount; i++)
     {
       Vec3 pos;
       Quaternion rot;
@@ -1775,18 +1787,30 @@ namespace ToolKit
     RenderTargetPtr cubemapRt = MakeNewPtr<RenderTarget>(size, size, set);
     cubemapRt->Init();
 
-    // Intentionally creating space to fill later. ( mip maps will be calculated for specular ibl )
-    cubemapRt->GenerateMipMaps();
+    // Explicitly allocate storage for every mip level that will be rendered.
+    RHI::SetTexture(GL_TEXTURE_CUBE_MAP, cubemapRt->m_textureId);
+    for (int mip = 1; mip < mipMaps; mip++)
+    {
+      int mipSize = glm::max(1, size >> mip);
+      for (int face = 0; face < 6; face++)
+      {
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face,
+                     mip,
+                     (GLint) set.InternalFormat,
+                     mipSize,
+                     mipSize,
+                     0,
+                     (GLenum) set.Format,
+                     (GLenum) set.Type,
+                     nullptr);
+      }
+    }
 
     // Views for 6 different angles
     CameraPtr cam = MakeNewPtr<Camera>();
     cam->SetLens(glm::radians(90.0f), 1.0f, 0.1f, 10.0f);
-    Mat4 views[]    = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                       glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
+    Mat4 views[CubemapFaceCount];
+    GetCubemapViews(ZERO, views);
 
     // Create material
     MaterialPtr mat = MakeNewPtr<Material>();
@@ -1810,7 +1834,7 @@ namespace ToolKit
       RenderTargetPtr mipCubeRt = MakeNewPtr<RenderTarget>(mipSize, mipSize, set);
       mipCubeRt->Init();
 
-      for (int i = 0; i < 6; ++i)
+      for (int i = 0; i < CubemapFaceCount; ++i)
       {
         Vec3 pos;
         Quaternion rot;
@@ -1830,7 +1854,7 @@ namespace ToolKit
         SetFramebuffer(m_oneColorAttachmentFramebuffer, GraphicBitFields::None);
 
         mat->UpdateProgramUniform("roughness", (float) mip / (float) (mipMaps - 1));
-        mat->UpdateProgramUniform("resPerFace", (float) mipSize);
+        mat->UpdateProgramUniform("resPerFace", (float) cubemap->m_width);
 
         RHI::SetTexture((GLenum) GraphicTypes::TargetCubeMap, cubemap->m_textureId, 0);
 
@@ -1855,7 +1879,8 @@ namespace ToolKit
   }
 
   CubeMapPtr Renderer::RenderToCubeMap(ForwardSceneRenderPath* renderPath,
-                                       const Vec3& position,
+                                       const Mat4& worldTransform,
+                                       const Vec3& originOffset,
                                        float near,
                                        float far,
                                        uint resolution,
@@ -1890,20 +1915,15 @@ namespace ToolKit
     CameraPtr cam = MakeNewPtr<Camera>();
     cam->SetLens(glm::radians(90.0f), 1.0f, near, far);
 
-    // 6 cubemap face view matrices.
-    Mat4 views[]                         = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                                            glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                                            glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
-                                            glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
-                                            glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                                            glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
+    // Cubemap face directions and up vectors in local space (OpenGL cubemap convention).
+    const Vec3* faceNormals              = GetCubemapFaceDirections();
+    const Vec3* faceUp                   = GetCubemapFaceUpVectors();
+
     // Save original render path params.
     CameraPtr origCam                    = renderPath->m_params.Cam;
     FramebufferPtr origFramebuffer       = renderPath->m_params.MainFramebuffer;
 
     // Disable all post-processing for cubemap capture.
-    // Post-process passes (gamma/tonemap/FXAA, bloom, DoF, SSAO) are incompatible
-    // with cubemap face render targets and would corrupt the output.
     PostProcessingSettingsPtr origPPS    = renderPath->m_params.postProcessSettings;
     PostProcessingSettingsPtr capturePPS = MakeNewPtr<PostProcessingSettings>();
     capturePPS->SetTonemappingEnabledVal(false);
@@ -1915,16 +1935,21 @@ namespace ToolKit
 
     renderPath->m_params.postProcessSettings = capturePPS;
 
-    for (int i = 0; i < 6; i++)
+    for (int i = 0; i < CubemapFaceCount; i++)
     {
-      Vec3 pos;
-      Quaternion rot;
-      Vec3 sca(1.0f);
-      DecomposeMatrix(views[i], &pos, &rot, &sca);
+      // Build local-space view matrix looking from originOffset along the face direction.
+      Mat4 localView       = glm::lookAt(originOffset, originOffset + faceNormals[i], faceUp[i]);
 
-      cam->m_node->SetTranslation(position);
-      cam->m_node->SetOrientation(rot);
-      cam->m_node->SetScale(sca);
+      // Compose with entity world transform to get the final camera transform.
+      Mat4 cameraTransform = worldTransform * glm::inverse(localView);
+
+      // Decompose into position and orientation for the camera node.
+      Vec3 camPos;
+      Quaternion camRot;
+      DecomposeMatrix(cameraTransform, &camPos, &camRot, nullptr);
+
+      cam->m_node->SetTranslation(camPos);
+      cam->m_node->SetOrientation(camRot);
 
       // Set color attachment to the corresponding cubemap face.
       cubeFb->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0,

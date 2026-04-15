@@ -93,6 +93,14 @@ namespace ToolKit
 
     Illuminate_Define(true, EnvironmentComponentCategory.Name, EnvironmentComponentCategory.Priority, true, true);
 
+    ParallaxCorrection_Define(false,
+                              EnvironmentComponentCategory.Name,
+                              EnvironmentComponentCategory.Priority,
+                              true,
+                              true);
+
+    Interior_Define(false, EnvironmentComponentCategory.Name, EnvironmentComponentCategory.Priority, true, true);
+
     Intensity_Define(1.0f,
                      EnvironmentComponentCategory.Name,
                      EnvironmentComponentCategory.Priority,
@@ -114,12 +122,16 @@ namespace ToolKit
                       true,
                       {false, true, 0.0f, 100000.0f, 1.0f});
 
-    CaptureResolution_Define(256,
+    MultiChoiceVariant captureResMcv;
+    captureResMcv.Choices.push_back(CreateMultiChoiceParameter("128", 128));
+    captureResMcv.Choices.push_back(CreateMultiChoiceParameter("256", 256));
+    captureResMcv.Choices.push_back(CreateMultiChoiceParameter("512", 512));
+    captureResMcv.CurrentVal.Index = 1;
+    CaptureResolution_Define(captureResMcv,
                              EnvironmentComponentCategory.Name,
                              EnvironmentComponentCategory.Priority,
                              true,
-                             true,
-                             {false, true, 32, 2048, 1});
+                             true);
   }
 
   void EnvironmentComponent::InvalidateSpatialCaches() { m_spatialCachesInvalidated = true; }
@@ -160,28 +172,14 @@ namespace ToolKit
             }
             else
             {
-              String baseName = hdri->GenerateBakedEnvironmentFileBaseName();
-              hdri->TrySettingCacheFiles(baseName);
-
-              // Loaded as image and missing irradiance caches.
               if (hdri->m_loaded && hdri->m_initiated)
               {
-                hdri->m_waitingForInit  = true;
-
-                RenderSystem* renderSys = GetRenderSystem();
-                if (!hdri->_diffuseBakeFile.empty() && !hdri->_specularBakeFile.empty())
-                {
-                  renderSys->AddRenderTask(
-                      {[hdri](Renderer* renderer) -> void { hdri->LoadIrradianceCaches(renderer); }});
-                }
-                else
-                {
-                  renderSys->AddRenderTask(
-                      {[hdri](Renderer* renderer) -> void { hdri->GenerateIrradianceCaches(renderer); }});
-                }
+                // Loaded as image and missing irradiance caches.
+                hdri->LoadOrGenerateIrradianceCaches();
               }
               else
               {
+                // Initialization is needed. Generate caches upon initialization.
                 hdri->m_generateIrradianceCaches = true;
                 hdri->Load();
                 hdri->Init();
@@ -237,34 +235,35 @@ namespace ToolKit
       return;
     }
 
-    uint res    = (uint) GetCaptureResolutionVal();
+    uint res            = (uint) GetCaptureResolutionVal().GetValue<int>();
 
-    // Compute local aabb.
-    Vec3 offset = GetPositionOffsetVal();
-    Vec3 half   = GetSizeVal() * 0.5f;
+    // Local-space volume parameters.
+    Vec3 offset         = GetPositionOffsetVal();
+    Vec3 half           = GetSizeVal() * 0.5f;
 
-    BoundingBox localBB;
-    localBB.min    = offset - half;
-    localBB.max    = offset + half;
+    Mat4 worldTransform = owner->m_node->GetTransform(TransformationSpace::TS_WORLD);
+    float extraFar      = GetCaptureFarVal();
 
-    Vec3 position  = owner->m_node->GetTranslation();
-    float extraFar = GetCaptureFarVal();
+    // Cubemap face normals in local space: +X, -X, +Y, -Y, +Z, -Z.
+    static const Vec3 faceNormals[6] =
+        {Vec3(1, 0, 0), Vec3(-1, 0, 0), Vec3(0, 1, 0), Vec3(0, -1, 0), Vec3(0, 0, 1), Vec3(0, 0, -1)};
 
-    // Compute distances to each face from capture position (entity origin in local space).
-    float minDist  = 0.01f;
+    // Compute per-face far clip distance in local space.
+    // Distance from origin offset to the volume edge along each face normal.
+    float minDist = 0.01f;
     float perFaceClipDist[6];
-    perFaceClipDist[0] = glm::max(localBB.max.x + extraFar, minDist); // +X
-    perFaceClipDist[1] = glm::max(-localBB.min.x + extraFar, minDist); // -X
-    perFaceClipDist[2] = glm::max(-localBB.min.y + extraFar, minDist); // -Y
-    perFaceClipDist[3] = glm::max(localBB.max.y + extraFar, minDist); // +Y
-    perFaceClipDist[4] = glm::max(localBB.max.z + extraFar, minDist); // +Z
-    perFaceClipDist[5] = glm::max(-localBB.min.z + extraFar, minDist); // -Z
+    for (int i = 0; i < 6; i++)
+    {
+      Vec3 edge          = faceNormals[i] * half;
+      float dist         = glm::abs(glm::dot(faceNormals[i], edge) - glm::dot(faceNormals[i], offset));
+      perFaceClipDist[i] = glm::max(dist + extraFar, minDist);
+    }
 
     GetRenderSystem()->AddRenderTask(
-        {[this, position, minDist, res, perFaceClipDist](Renderer* renderer) -> void
+        {[this, worldTransform, offset, minDist, res, perFaceClipDist](Renderer* renderer) -> void
          {
            // Disable self-illumination during capture to prevent feedback loop.
-           bool wasIlluminating = GetIlluminateVal();
+           bool wasIlluminate = GetIlluminateVal();
            SetIlluminateVal(false);
 
            // Create a temporary render path for the capture.
@@ -272,10 +271,10 @@ namespace ToolKit
            capturePath.m_params.Scene = GetSceneManager()->GetCurrentScene();
 
            CubeMapPtr cubemap =
-               renderer->RenderToCubeMap(&capturePath, position, minDist, 1000.0f, res, perFaceClipDist);
+               renderer->RenderToCubeMap(&capturePath, worldTransform, offset, minDist, 1000.0f, res, perFaceClipDist);
 
            // Restore illuminate state.
-           SetIlluminateVal(wasIlluminating);
+           SetIlluminateVal(wasIlluminate);
 
            // Create a dynamic HDRI and assign the captured cubemap.
            HdriPtr hdri    = MakeNewPtr<Hdri>();
