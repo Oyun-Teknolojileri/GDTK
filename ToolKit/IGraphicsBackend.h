@@ -24,10 +24,11 @@ namespace ToolKit
 
   struct DrawDesc
   {
-    Mesh* mesh          = nullptr;
+    const Mesh* mesh    = nullptr;
     bool indexed        = true;
     uint elementCount   = 0;
     uint instanceCount  = 1;
+    DrawType type       = DrawType::Triangle;
   };
 
   class TK_API IGraphicsBackend

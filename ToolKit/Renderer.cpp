@@ -319,16 +319,12 @@ namespace ToolKit
     FeedAnimationUniforms(m_currentProgram, job);
     FeedUniforms(m_currentProgram, job);
 
-    RHI::BindVertexArray(mesh->m_vaoId);
-
-    if (mesh->m_indexCount != 0)
-    {
-      glDrawElements((GLenum) renderState->drawType, mesh->m_indexCount, GL_UNSIGNED_INT, nullptr);
-    }
-    else
-    {
-      glDrawArrays((GLenum) renderState->drawType, 0, mesh->m_vertexCount);
-    }
+    DrawDesc desc;
+    desc.mesh         = mesh;
+    desc.indexed      = mesh->m_indexCount != 0;
+    desc.elementCount = desc.indexed ? mesh->m_indexCount : mesh->m_vertexCount;
+    desc.type         = renderState->drawType;
+    m_backend->Draw(desc);
 
     if (m_framebuffer)
     {
@@ -1194,7 +1190,7 @@ namespace ToolKit
     if (m_currentProgram == nullptr || m_currentProgram->m_handle != program->m_handle)
     {
       m_currentProgram = program;
-      glUseProgram(program->m_handle);
+      m_backend->BindPipeline(program, &m_renderState);
     }
   }
 

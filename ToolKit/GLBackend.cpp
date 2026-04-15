@@ -8,6 +8,8 @@
 #include "GLBackend.h"
 
 #include "Framebuffer.h"
+#include "GpuProgram.h"
+#include "Mesh.h"
 #include "RHI.h"
 #include "TKOpenGL.h"
 #include "DebugNew.h"
@@ -67,13 +69,37 @@ namespace ToolKit
     glClear((GLbitfield) GraphicBitFields::ColorBits);
   }
 
-  void GLBackend::BindPipeline(const GpuProgramPtr& program, const RenderState* state) {}
+  void GLBackend::BindPipeline(const GpuProgramPtr& program, const RenderState* state)
+  {
+    if (program)
+    {
+      glUseProgram(program->m_handle);
+    }
+  }
 
   void GLBackend::SubmitPerDrawData(const void* data, size_t size) {}
 
   void GLBackend::BindTexture(ubyte slot, TexturePtr tex) {}
 
-  void GLBackend::Draw(const DrawDesc& desc) {}
+  void GLBackend::Draw(const DrawDesc& desc)
+  {
+    if (desc.mesh == nullptr)
+    {
+      return;
+    }
+
+    RHI::BindVertexArray(desc.mesh->m_vaoId);
+
+    if (desc.indexed)
+    {
+      glDrawElements((GLenum) desc.type, desc.elementCount, GL_UNSIGNED_INT, nullptr);
+    }
+    else
+    {
+      glDrawArrays((GLenum) desc.type, 0, desc.elementCount);
+    }
+  }
+
 
   void GLBackend::ResolveFramebuffer(FramebufferPtr src, FramebufferPtr dst, const IntArray& attachments) {}
 
