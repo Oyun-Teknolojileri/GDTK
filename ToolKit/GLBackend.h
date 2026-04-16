@@ -55,6 +55,10 @@ namespace ToolKit
     void EndTimerQuery() override;
     void GetElapsedTime(float& cpu, float& gpu) override;
 
+    // Mesh resource management
+    void CreateMesh(Mesh* mesh) override;
+    void DestroyMesh(Mesh* mesh) override;
+
     // UniformBuffer resource management
     void CreateUniformBuffer(UniformBuffer* ub, uint64 size) override;
     void DestroyUniformBuffer(UniformBuffer* ub) override;

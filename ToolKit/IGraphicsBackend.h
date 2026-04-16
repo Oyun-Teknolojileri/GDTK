@@ -11,7 +11,7 @@
 #include "Types.h"
 
 // Forward declarations for resource types not pulled in via Types.h
-namespace ToolKit { class UniformBuffer; }
+namespace ToolKit { class UniformBuffer; class Mesh; }
 
 namespace ToolKit
 {
@@ -103,6 +103,15 @@ namespace ToolKit
     // CopyCubemapFaceFromFramebuffer: copies current read framebuffer to a cubemap face at a given mip.
     // Equivalent to glCopyTexSubImage2D on GL_TEXTURE_CUBE_MAP_POSITIVE_X + face.
     virtual void CopyCubemapFaceFromFramebuffer(Texture* cubemap, int face, int mip, int width, int height) = 0;
+
+    // Mesh resource management
+    virtual void CreateMesh(Mesh* mesh)          = 0;
+    // GL:  VAO + VBO(vertex) + glVertexAttribPointer + VBO(index)
+    // VK:  VkBuffer (vertex + index) + vkAllocateMemory + upload
+    // Destroys existing GPU resources first if already created (re-upload path).
+    virtual void DestroyMesh(Mesh* mesh)         = 0;
+    // GL:  glDeleteVertexArrays + glDeleteBuffers + BindVAO(0)
+    // VK:  vkDestroyBuffer + vkFreeMemory
 
     // UniformBuffer resource management
     virtual void CreateUniformBuffer(UniformBuffer* ub, uint64 size) = 0;

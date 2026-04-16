@@ -53,6 +53,8 @@ namespace ToolKit
    */
   class TK_API Mesh : public Resource
   {
+    friend class GLBackend;
+
    public:
     TKDeclareClass(Mesh, Resource);
 
