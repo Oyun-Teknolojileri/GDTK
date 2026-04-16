@@ -72,6 +72,12 @@ namespace ToolKit
         if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
         {
           m_gizmo->LookAt(vp->GetCamera(), vp->GetBillboardScale());
+
+          AxisLabel hit = m_gizmo->HitTest(vp->RayFromMousePosition());
+          if (hit != AxisLabel::None)
+          {
+            m_gizmo->m_lastHovered = hit;
+          }
         }
         m_gizmo->Update(deltaTime);
         GetApp()->m_gizmo = m_gizmo;
