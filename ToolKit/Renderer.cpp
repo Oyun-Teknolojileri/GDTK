@@ -1592,8 +1592,9 @@ namespace ToolKit
     }
 
     // Work on backbuffer
-    RHI::SetFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-    RHI::SetFramebuffer(GL_READ_FRAMEBUFFER, 0);
+    GLBackend* glBackend = static_cast<GLBackend*>(m_backend);
+    glBackend->BindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    glBackend->BindFramebuffer(GL_READ_FRAMEBUFFER, 0);
     glViewport(0, 0, (GLsizei) 100, (GLsizei) 100);
 
     // Clear with linear 0.5 gray

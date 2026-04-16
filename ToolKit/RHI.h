@@ -44,37 +44,4 @@ namespace ToolKit
     static constexpr uint MaxSpotLightPerObject          = 24;
   };
 
-  class TK_API RHI
-  {
-    friend class Renderer;
-    friend class Framebuffer;
-    friend class RenderSystem;
-    friend class Mesh;
-    friend class Main;
-
-   public:
-    // Framebuffer helpers
-    static void SetFramebuffer(uint target, uint framebufferID);
-    static void DeleteFramebuffers(int n, const uint* framebuffers);
-
-    static void StoreFramebufferBindings();
-    static void RestoreFramebufferBindings();
-
-    // Texture helpers
-    static void SetTexture(uint target, uint textureID, uint textureSlot = 0);
-    static void DeleteTexture(uint textureID);
-
-    // Vertex array helpers
-    static void BindVertexArray(uint VAO);
-
-   private:
-    static uint m_currentReadFramebufferID;
-    static uint m_currentDrawFramebufferID;
-    static uint m_currentVAO;
-
-    // Stacks to support nested Store/Restore calls
-    static IntArray m_storedReadFramebufferStack;
-    static IntArray m_storedDrawFramebufferStack;
-  };
-
 } // namespace ToolKit

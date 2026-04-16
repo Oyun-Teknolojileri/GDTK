@@ -9,9 +9,12 @@
 
 #include "Common/base64.h"
 #include "FileManager.h"
+#include "GLBackend.h"
 #include "Material.h"
 #include "MathUtil.h"
 #include "RHI.h"
+#include "RenderSystem.h"
+#include "Renderer.h"
 #include "ResourceManager.h"
 #include "Skeleton.h"
 #include "Stats.h"
@@ -30,6 +33,11 @@ namespace ToolKit
 {
 
 #define BUFFER_OFFSET(idx) (static_cast<char*>(0) + (idx))
+
+  static GLBackend* GetGLBackend()
+  {
+    return static_cast<GLBackend*>(GetRenderSystem()->GetRenderer()->GetBackend());
+  }
 
   void SetVertexLayout(VertexLayout layout)
   {
@@ -152,7 +160,7 @@ namespace ToolKit
       GLuint buffers[2] = {m_vboIndexId, m_vboVertexId};
       glDeleteBuffers(2, buffers);
       glDeleteVertexArrays(1, &m_vaoId);
-      RHI::BindVertexArray(0); // Of the deleted vao is set, remove it from RHI cache
+      GetGLBackend()->BindVAO(0); // Of the deleted vao is set, remove it from RHI cache
     }
     m_vboVertexId = 0;
     m_glImpl.vboVertexId = 0;
@@ -205,7 +213,7 @@ namespace ToolKit
     if (m_vertexCount > 0)
     {
       glGenVertexArrays(1, &cpy->m_vaoId);
-      RHI::BindVertexArray(cpy->m_vaoId);
+      GetGLBackend()->BindVAO(cpy->m_vaoId);
 
       glGenBuffers(1, &cpy->m_vboVertexId);
       glBindBuffer(GL_COPY_WRITE_BUFFER, cpy->m_vboVertexId);
@@ -221,7 +229,7 @@ namespace ToolKit
     {
       assert(m_vertexCount > 0 && "Mesh has no vertex but has indices.");
 
-      RHI::BindVertexArray(cpy->m_vaoId);
+      GetGLBackend()->BindVAO(cpy->m_vaoId);
 
       glGenBuffers(1, &cpy->m_vboIndexId);
       glBindBuffer(GL_COPY_WRITE_BUFFER, cpy->m_vboIndexId);
@@ -634,12 +642,12 @@ namespace ToolKit
 
     glDeleteBuffers(1, &m_vboVertexId);
     glDeleteVertexArrays(1, &m_vaoId);
-    RHI::BindVertexArray(0); // Of the deleted vao is set, remove it from RHI cache
+    GetGLBackend()->BindVAO(0); // Of the deleted vao is set, remove it from RHI cache
 
     if (!m_clientSideVertices.empty())
     {
       glGenVertexArrays(1, &m_vaoId);
-      RHI::BindVertexArray(m_vaoId);
+      GetGLBackend()->BindVAO(m_vaoId);
 
       glGenBuffers(1, &m_vboVertexId);
       glBindBuffer(GL_ARRAY_BUFFER, m_vboVertexId);
@@ -674,7 +682,7 @@ namespace ToolKit
     {
       assert(m_vaoId != 0 && "Mesh has not yet created vertex array object!");
 
-      RHI::BindVertexArray(m_vaoId);
+      GetGLBackend()->BindVAO(m_vaoId);
 
       glGenBuffers(1, &m_vboIndexId);
       glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_vboIndexId);
@@ -854,12 +862,12 @@ namespace ToolKit
   {
     glDeleteBuffers(1, &m_vboIndexId);
     glDeleteVertexArrays(1, &m_vaoId);
-    RHI::BindVertexArray(0); // Of the deleted vao is set, remove it from RHI cache
+    GetGLBackend()->BindVAO(0); // Of the deleted vao is set, remove it from RHI cache
 
     if (!m_clientSideVertices.empty())
     {
       glGenVertexArrays(1, &m_vaoId);
-      RHI::BindVertexArray(m_vaoId);
+      GetGLBackend()->BindVAO(m_vaoId);
 
       glGenBuffers(1, &m_vboVertexId);
       glBindBuffer(GL_ARRAY_BUFFER, m_vboVertexId);
