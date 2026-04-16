@@ -197,6 +197,9 @@ namespace ToolKit
       {
         // Return scaled local BB so handles appear at the correct world-space extents.
         BoundingBox localBB  = ntt->GetBoundingBox(false);
+        Vec3 localSize       = localBB.max - localBB.min;
+        localBB.max          = localBB.min + glm::max(localSize, Vec3(0.0001f));
+
         Vec3 scale           = ntt->m_node->GetScale();
         localBB.min         *= scale;
         localBB.max         *= scale;
@@ -216,6 +219,10 @@ namespace ToolKit
         // Return world-space extents: localBBSize * scale.
         BoundingBox localBB = ntt->GetBoundingBox(false);
         Vec3 localSize      = localBB.max - localBB.min;
+
+        // Prevent size from being exactly zero on any axis
+        localSize           = glm::max(localSize, Vec3(0.0001f));
+
         Vec3 scale          = ntt->m_node->GetScale();
         return localSize * scale;
       };
@@ -226,7 +233,9 @@ namespace ToolKit
         BoundingBox localBB = ntt->GetBoundingBox(false);
         Vec3 localSize      = localBB.max - localBB.min;
         localSize           = glm::max(localSize, Vec3(0.0001f));
-        ntt->m_node->SetScale(worldSize / localSize);
+
+        Vec3 newScale       = worldSize / localSize;
+        ntt->m_node->SetScale(newScale);
       };
       ctx.SetPositionOffset = [ntt](const Vec3& o) { ntt->m_node->SetTranslation(o, TransformationSpace::TS_WORLD); };
       ctx.worldSpaceOffset  = true;
