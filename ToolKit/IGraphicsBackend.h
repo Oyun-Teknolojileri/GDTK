@@ -103,7 +103,8 @@ namespace ToolKit
     virtual void AllocateCubemapMipStorage(Texture* tex)            = 0;
     // CopyCubemapFaceFromFramebuffer: copies current read framebuffer to a cubemap face at a given mip.
     // Equivalent to glCopyTexSubImage2D on GL_TEXTURE_CUBE_MAP_POSITIVE_X + face.
-    virtual void CopyCubemapFaceFromFramebuffer(Texture* cubemap, int face, int mip, int width, int height) = 0;
+    virtual void CopyCubemapFaceFromFramebuffer(Texture* cubemap, int face, int mip, int width, int height,
+                                                 Framebuffer* readFb, Framebuffer* writeFb) = 0;
 
     // Mesh resource management
     virtual void CreateMesh(Mesh* mesh)          = 0;

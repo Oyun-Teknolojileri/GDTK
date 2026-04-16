@@ -7,6 +7,7 @@
 
 #include "RenderSystem.h"
 
+#include "GLBackend.h"
 #include "GlErrorReporter.h"
 #include "Image.h"
 #include "Logger.h"
@@ -38,7 +39,11 @@ namespace ToolKit
 
   void RenderPath::PostRender(Renderer* renderer) { renderer->EndTimerQuery(); }
 
-  RenderSystem::RenderSystem() { m_renderer = new Renderer(); }
+  RenderSystem::RenderSystem()
+  {
+    m_renderer = new Renderer();
+    m_renderer->SetBackend(CreateBackend());
+  }
 
   RenderSystem::~RenderSystem() { SafeDel(m_renderer); }
 
@@ -47,6 +52,8 @@ namespace ToolKit
     m_renderer->Init();
     AddRenderTask({[](Renderer* renderer) -> void { renderer->GenerateBRDFLutTexture(); }});
   }
+
+  IGraphicsBackend* RenderSystem::CreateBackend() { return new GLBackend(); }
 
   void RenderSystem::AddRenderTask(RenderTask task)
   {

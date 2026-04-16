@@ -118,6 +118,9 @@ namespace ToolKit
     Renderer* GetRenderer() { return m_renderer; }
 
    private:
+    /** Creates the graphics backend (GL or Vulkan). */
+    IGraphicsBackend* CreateBackend();
+
     /** Implementation for executing render tasks. */
     void ExecuteTaskImp(RenderTask& task);
 

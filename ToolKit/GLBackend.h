@@ -80,7 +80,8 @@ namespace ToolKit
     void UpdateTextureRegion(Texture* tex, const void* data) override;
     void SetTextureMaxMipLevel(Texture* tex, int maxLevel) override;
     void AllocateCubemapMipStorage(Texture* tex) override;
-    void CopyCubemapFaceFromFramebuffer(Texture* cubemap, int face, int mip, int width, int height) override;
+    void CopyCubemapFaceFromFramebuffer(Texture* cubemap, int face, int mip, int width, int height,
+                                         Framebuffer* readFb, Framebuffer* writeFb) override;
 
     // Framebuffer resource management
     void CreateFramebuffer(Framebuffer* fb) override;

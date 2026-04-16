@@ -16,7 +16,6 @@
 #include "EnvironmentComponent.h"
 #include "ForwardSceneRenderPath.h"
 #include "Framebuffer.h"
-#include "GLBackend.h"
 #include "GradientSky.h"
 #include "Logger.h"
 #include "Material.h"
@@ -70,8 +69,6 @@ namespace ToolKit
 
     // Get global buffers.
     m_globalGpuBuffers = Main::GetInstance()->m_gpuBuffers;
-
-    m_backend          = new GLBackend();
   }
 
   void Renderer::BeginRenderFrame()
@@ -1249,10 +1246,8 @@ namespace ToolKit
                                      Framebuffer::CubemapFace(i));
 
       m_backend->StoreFboBindings();
-      static_cast<GLBackend*>(m_backend)->BindFramebuffer(GL_DRAW_FRAMEBUFFER, writeBuffer->m_glImpl.fboId);
-      static_cast<GLBackend*>(m_backend)->BindFramebuffer(GL_READ_FRAMEBUFFER, readBuffer->m_glImpl.fboId);
-
-      m_backend->CopyCubemapFaceFromFramebuffer(dst.get(), i, mipLevel, src->m_width, src->m_height);
+      m_backend->CopyCubemapFaceFromFramebuffer(dst.get(), i, mipLevel, src->m_width, src->m_height,
+                                                readBuffer.get(), writeBuffer.get());
       m_backend->RestoreFboBindings();
     }
   }
@@ -1414,7 +1409,7 @@ namespace ToolKit
         EndPass();
 
         // Copy color attachment to cubemap's correct mip level and face.
-        m_backend->CopyCubemapFaceFromFramebuffer(cubemapRt.get(), i, mip, mipSize, mipSize);
+        m_backend->CopyCubemapFaceFromFramebuffer(cubemapRt.get(), i, mip, mipSize, mipSize, nullptr, nullptr);
       }
     }
 

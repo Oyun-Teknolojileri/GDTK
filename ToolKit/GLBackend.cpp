@@ -1013,11 +1013,21 @@ namespace ToolKit
     }
   }
 
-  void GLBackend::CopyCubemapFaceFromFramebuffer(Texture* cubemap, int face, int mip, int width, int height)
+  void GLBackend::CopyCubemapFaceFromFramebuffer(Texture* cubemap, int face, int mip, int width, int height,
+                                                   Framebuffer* readFb, Framebuffer* writeFb)
   {
     if (cubemap == nullptr || cubemap->m_textureId == 0)
     {
       return;
+    }
+
+    if (readFb)
+    {
+      BindFramebuffer(GL_READ_FRAMEBUFFER, readFb->m_fboId);
+    }
+    if (writeFb)
+    {
+      BindFramebuffer(GL_DRAW_FRAMEBUFFER, writeFb->m_fboId);
     }
 
     BindTextureDirect(GL_TEXTURE_CUBE_MAP, cubemap->m_textureId, 0);

@@ -348,6 +348,9 @@ namespace ToolKit
       */
      void SetDirectionalLights(const LightRawPtrArray& lights);
 
+     /** Sets the graphics backend. Ownership is transferred to the Renderer. */
+     void SetBackend(IGraphicsBackend* backend) { m_backend = backend; }
+
      /** Returns current backend. */
      IGraphicsBackend* GetBackend() { return m_backend; }
 
