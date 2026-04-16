@@ -48,6 +48,7 @@ namespace ToolKit
                          FramebufferPtr dst,
                          GraphicBitFields fields) override;
     void BlitToScreen(FramebufferPtr src) override;
+    void InvalidateFramebuffer(FramebufferPtr fb, GraphicBitFields bits) override;
 
     void StartTimerQuery() override;
     void EndTimerQuery() override;
@@ -101,6 +102,13 @@ namespace ToolKit
 
     // VAO cache
     uint m_currentVAO = (uint) -1;
+
+    // Timer query
+    uint m_gpuTimerQuery     = 0;
+    float m_cpuTime          = 1.0f;
+    float m_gpuTime          = 1.0f;
+    bool m_timerQueryActive  = false;
+    bool m_timerQueryWaiting = false;
   };
 
 } // namespace ToolKit

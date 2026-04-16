@@ -436,12 +436,6 @@ namespace ToolKit
 
     IGraphicsBackend* m_backend                    = nullptr;
 
-    uint m_gpuTimerQuery                           = 0;
-    float m_cpuTime                                = 1.0f;
-    float m_gpuTime                                = 1.0f;
-    bool m_timerQueryActive                        = false;
-    bool m_timerQueryWaiting                       = false;
-
     /** Frame buffer stats for each frame. */
     std::map<uint, int> m_drawnFrameBufferStats;
   };

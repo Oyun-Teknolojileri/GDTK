@@ -17,14 +17,25 @@
 #include "TKOpenGL.h"
 #include "Texture.h"
 #include "ToolKit.h"
+#include "Util.h"
 #include "DebugNew.h"
 
 namespace ToolKit
 {
 
-  GLBackend::GLBackend()  {}
+  GLBackend::GLBackend()
+  {
+    glGenQueries(1, &m_gpuTimerQuery);
+  }
 
-  GLBackend::~GLBackend() {}
+  GLBackend::~GLBackend()
+  {
+    if (m_gpuTimerQuery)
+    {
+      glDeleteQueries(1, &m_gpuTimerQuery);
+      m_gpuTimerQuery = 0;
+    }
+  }
 
   void GLBackend::BeginFrame()
   {
@@ -800,17 +811,171 @@ namespace ToolKit
     assert(check == GL_FRAMEBUFFER_COMPLETE && "Framebuffer incomplete");
   }
 
-  void GLBackend::ResolveFramebuffer(FramebufferPtr src, FramebufferPtr dst, const IntArray& attachments) {}
+  void GLBackend::ResolveFramebuffer(FramebufferPtr src, FramebufferPtr dst, const IntArray& attachments)
+  {
+    const int srcWidth  = src->GetSettings().width;
+    const int srcHeight = src->GetSettings().height;
+    const int dstWidth  = dst->GetSettings().width;
+    const int dstHeight = dst->GetSettings().height;
 
-  void GLBackend::CopyFramebuffer(FramebufferPtr src, FramebufferPtr dst, GraphicBitFields fields) {}
+    for (int atc : attachments)
+    {
+      using Attachment   = Framebuffer::Attachment;
+      Attachment atcEnum = (Attachment) ((int) Attachment::ColorAttachment0 + atc);
+
+      RenderTargetPtr srcRt = src->GetColorAttachment(atcEnum);
+      assert(srcRt && "Trying to resolve a non existing attachment.");
+
+      RenderTargetPtr targetRt = dst->GetColorAttachment(atcEnum);
+      if (targetRt == nullptr)
+      {
+        TextureSettings settings = srcRt->Settings();
+        settings.msaaCount       = MsaaSampleCount::x0;
+        targetRt                 = MakeNewPtr<RenderTarget>();
+        targetRt->ReconstructIfNeeded(srcRt->m_width, srcRt->m_height, &settings);
+        dst->SetColorAttachment(atcEnum, targetRt);
+      }
+
+      srcRt->m_resolvedTexture = targetRt;
+
+      // Bind after SetColorAttachment, which may have changed framebuffer bindings.
+      BindFramebuffer(GL_READ_FRAMEBUFFER, src->GetFboId());
+      BindFramebuffer(GL_DRAW_FRAMEBUFFER, dst->GetFboId());
+
+      GLenum attachment = GL_COLOR_ATTACHMENT0 + atc;
+      glReadBuffer(attachment);
+      glDrawBuffers(1, &attachment);
+      glBlitFramebuffer(0, 0, srcWidth, srcHeight, 0, 0, dstWidth, dstHeight, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    }
+
+    // Restore target framebuffer's original draw buffer configuration.
+    dst->SetDrawBuffers();
+  }
+
+  void GLBackend::CopyFramebuffer(FramebufferPtr src, FramebufferPtr dst, GraphicBitFields fields)
+  {
+    uint width  = 0;
+    uint height = 0;
+    uint srcId  = 0;
+
+    if (src)
+    {
+      const FramebufferSettings& fbs = src->GetSettings();
+      width                          = fbs.width;
+      height                         = fbs.height;
+      srcId                          = src->GetFboId();
+    }
+
+    BindFramebuffer(GL_READ_FRAMEBUFFER, srcId);
+
+    uint destId = 0;
+    if (dst)
+    {
+      dst->ReconstructIfNeeded(width, height);
+      destId = dst->GetFboId();
+    }
+    BindFramebuffer(GL_DRAW_FRAMEBUFFER, destId);
+
+    glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, (GLbitfield) fields, GL_NEAREST);
+  }
 
   void GLBackend::BlitToScreen(FramebufferPtr src) {}
 
-  void GLBackend::StartTimerQuery() {}
+  void GLBackend::InvalidateFramebuffer(FramebufferPtr fb, GraphicBitFields bits)
+  {
+    GLenum attachments[3];
+    int count = 0;
 
-  void GLBackend::EndTimerQuery() {}
+    if (fb->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0))
+    {
+      if ((int) bits & (int) GraphicBitFields::ColorBits)
+      {
+        attachments[count++] = GL_COLOR_ATTACHMENT0;
+      }
+    }
 
-  void GLBackend::GetElapsedTime(float& cpu, float& gpu) {}
+    if (DepthTexturePtr dt = fb->GetDepthTexture())
+    {
+      if ((int) bits & (int) GraphicBitFields::DepthBits)
+      {
+        bool hasStencil      = ((int) bits & (int) GraphicBitFields::StencilBits) && dt->m_stencil;
+        attachments[count++] = hasStencil ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT;
+      }
+      else if (((int) bits & (int) GraphicBitFields::StencilBits) && dt->m_stencil)
+      {
+        attachments[count++] = GL_STENCIL_ATTACHMENT;
+      }
+    }
+
+    if (count == 0)
+    {
+      return;
+    }
+
+#ifdef TK_GL_ES_3_0
+    BindFramebuffer(GL_DRAW_FRAMEBUFFER, fb->GetFboId());
+    glInvalidateFramebuffer(GL_DRAW_FRAMEBUFFER, count, attachments);
+#else
+    if (glInvalidateFramebufferEXT != nullptr)
+    {
+      BindFramebuffer(GL_DRAW_FRAMEBUFFER, fb->GetFboId());
+      glInvalidateFramebufferEXT(GL_DRAW_FRAMEBUFFER, count, attachments);
+    }
+#endif
+  }
+
+  void GLBackend::StartTimerQuery()
+  {
+    m_cpuTime = GetElapsedMilliSeconds();
+#ifdef GL_TIME_ELAPSED_EXT
+    if constexpr (TK_PLATFORM == PLATFORM::TKWindows)
+    {
+      if (!m_timerQueryActive && !m_timerQueryWaiting)
+      {
+        glBeginQuery(GL_TIME_ELAPSED_EXT, m_gpuTimerQuery);
+        m_timerQueryActive = true;
+      }
+    }
+#endif
+  }
+
+  void GLBackend::EndTimerQuery()
+  {
+    float cpuTime = GetElapsedMilliSeconds();
+    m_cpuTime     = cpuTime - m_cpuTime;
+
+#ifdef GL_TIME_ELAPSED_EXT
+    if constexpr (TK_PLATFORM == PLATFORM::TKWindows)
+    {
+      if (m_timerQueryActive)
+      {
+        glEndQuery(GL_TIME_ELAPSED_EXT);
+        m_timerQueryActive  = false;
+        m_timerQueryWaiting = true;
+      }
+
+      if (m_timerQueryWaiting)
+      {
+        GLuint available = 0;
+        glGetQueryObjectuiv(m_gpuTimerQuery, GL_QUERY_RESULT_AVAILABLE, &available);
+
+        if (available)
+        {
+          GLuint elapsedTime;
+          glGetQueryObjectuiv(m_gpuTimerQuery, GL_QUERY_RESULT, &elapsedTime);
+          m_gpuTime           = glm::max(1.0f, (float) (elapsedTime) / 1000000.0f);
+          m_timerQueryWaiting = false;
+        }
+      }
+    }
+#endif
+  }
+
+  void GLBackend::GetElapsedTime(float& cpu, float& gpu)
+  {
+    cpu = m_cpuTime;
+    gpu = m_gpuTime;
+  }
 
   void GLBackend::InvalidateFboCache(uint id)
   {

@@ -74,6 +74,8 @@ namespace ToolKit
                                  FramebufferPtr dst,
                                  GraphicBitFields fields)           = 0;
     virtual void BlitToScreen(FramebufferPtr src)                   = 0;
+    virtual void InvalidateFramebuffer(FramebufferPtr fb,
+                                       GraphicBitFields bits)       = 0;
 
     // Timer queries
     virtual void StartTimerQuery()                                  = 0;

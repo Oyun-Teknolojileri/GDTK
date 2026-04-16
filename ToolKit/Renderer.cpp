@@ -127,8 +127,6 @@ namespace ToolKit
 
     m_gpuProgramManager             = GetGpuProgramManager();
 
-    glGenQueries(1, &m_gpuTimerQuery);
-
     const char* renderer = (const char*) glGetString(GL_RENDERER);
     GetLogger()->Log(String("Graphics Card ") + renderer);
 
@@ -431,60 +429,11 @@ namespace ToolKit
 
   void Renderer::EndPass() { m_backend->EndPass(); }
 
-  void Renderer::StartTimerQuery()
-  {
-    m_cpuTime = GetElapsedMilliSeconds();
-#ifdef GL_TIME_ELAPSED_EXT
-    if constexpr (TK_PLATFORM == PLATFORM::TKWindows)
-    {
-      // Only start a new query if the previous one has been read
-      if (!m_timerQueryActive && !m_timerQueryWaiting)
-      {
-        glBeginQuery(GL_TIME_ELAPSED_EXT, m_gpuTimerQuery);
-        m_timerQueryActive = true;
-      }
-    }
-#endif
-  }
+  void Renderer::StartTimerQuery() { m_backend->StartTimerQuery(); }
 
-  void Renderer::EndTimerQuery()
-  {
-    float cpuTime = GetElapsedMilliSeconds();
-    m_cpuTime     = cpuTime - m_cpuTime;
+  void Renderer::EndTimerQuery() { m_backend->EndTimerQuery(); }
 
-#ifdef GL_TIME_ELAPSED_EXT
-    if constexpr (TK_PLATFORM == PLATFORM::TKWindows)
-    {
-      if (m_timerQueryActive)
-      {
-        glEndQuery(GL_TIME_ELAPSED_EXT);
-        m_timerQueryActive  = false;
-        m_timerQueryWaiting = true;
-      }
-
-      if (m_timerQueryWaiting)
-      {
-        GLuint available = 0;
-        glGetQueryObjectuiv(m_gpuTimerQuery, GL_QUERY_RESULT_AVAILABLE, &available);
-
-        if (available)
-        {
-          GLuint elapsedTime;
-          glGetQueryObjectuiv(m_gpuTimerQuery, GL_QUERY_RESULT, &elapsedTime);
-
-          m_gpuTime           = glm::max(1.0f, (float) (elapsedTime) / 1000000.0f);
-          m_timerQueryWaiting = false; // Query ready for next frame.
-        }
-      }
-    }
-#endif
-  }
-
-  void Renderer::GetElapsedTime(float& cpu, float& gpu)
-  {
-    cpu = m_cpuTime;
-    gpu = m_gpuTime;
-  }
+  void Renderer::GetElapsedTime(float& cpu, float& gpu) { m_backend->GetElapsedTime(cpu, gpu); }
 
   FramebufferPtr Renderer::GetFrameBuffer() { return m_framebuffer; }
 
@@ -499,80 +448,13 @@ namespace ToolKit
     TK_PROFILE_FUNCTION();
 
     m_backend->StoreFboBindings();
-
-    uint width  = m_windowSize.x;
-    uint height = m_windowSize.y;
-
-    uint srcId  = 0;
-    if (src)
-    {
-      const FramebufferSettings& fbs = src->GetSettings();
-      width                          = fbs.width;
-      height                         = fbs.height;
-      srcId                          = src->GetFboId();
-    }
-
-    GLBackend* backend = static_cast<GLBackend*>(m_backend);
-    backend->BindFramebuffer(GL_READ_FRAMEBUFFER, srcId);
-
-    uint destId = 0;
-    if (dest)
-    {
-      dest->ReconstructIfNeeded(width, height);
-      destId = dest->GetFboId();
-    }
-    backend->BindFramebuffer(GL_DRAW_FRAMEBUFFER, destId);
-
-    glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, (GLbitfield) fields, GL_NEAREST);
-
+    m_backend->CopyFramebuffer(src, dest, fields);
     m_backend->RestoreFboBindings();
   }
 
   void Renderer::InvalidateFramebuffer(GraphicBitFields bits, FramebufferPtr frameBuffer)
   {
-    GLenum attachments[3];
-    int count = 0;
-
-    if (RenderTargetPtr colorAttachment = frameBuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0))
-    {
-      if ((int) bits & (int) GraphicBitFields::ColorBits)
-      {
-        attachments[count++] = GL_COLOR_ATTACHMENT0;
-      }
-    }
-
-    if (DepthTexturePtr depthTexture = frameBuffer->GetDepthTexture())
-    {
-      if ((int) bits & (int) GraphicBitFields::DepthBits)
-      {
-        bool hasStencil      = (int) bits & (int) GraphicBitFields::StencilBits;
-        hasStencil           = hasStencil && depthTexture->m_stencil;
-        attachments[count++] = hasStencil ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT;
-      }
-      else if ((int) bits & (int) GraphicBitFields::StencilBits)
-      {
-        if (depthTexture->m_stencil)
-        {
-          attachments[count++] = GL_STENCIL_ATTACHMENT;
-        }
-      }
-    }
-
-    if (count == 0)
-    {
-      return;
-    }
-
-#ifdef TK_GL_ES_3_0
-    RHI::SetFramebuffer(GL_DRAW_FRAMEBUFFER, frameBuffer->GetFboId());
-    glInvalidateFramebuffer(GL_DRAW_FRAMEBUFFER, count, attachments);
-#else
-    if (glInvalidateFramebufferEXT != nullptr)
-    {
-      RHI::SetFramebuffer(GL_DRAW_FRAMEBUFFER, frameBuffer->GetFboId());
-      glInvalidateFramebufferEXT(GL_DRAW_FRAMEBUFFER, count, attachments);
-    }
-#endif
+    m_backend->InvalidateFramebuffer(frameBuffer, bits);
   }
 
   void Renderer::ResolveFramebuffer(FramebufferPtr source, FramebufferPtr target, const IntArray& attachments)
@@ -582,51 +464,7 @@ namespace ToolKit
     assert(source->Initialized() && "Source framebuffer is not initialized.");
     assert(target->Initialized() && "Target framebuffer is not initialized.");
 
-    const int srcWidth  = source->GetSettings().width;
-    const int srcHeight = source->GetSettings().height;
-    const int dstWidth  = target->GetSettings().width;
-    const int dstHeight = target->GetSettings().height;
-
-    for (int atc : attachments)
-    {
-      // Sanity check.
-      using Attachment      = Framebuffer::Attachment;
-      Attachment atcEnum    = (Attachment) ((int) Attachment::ColorAttachment0 + atc);
-
-      RenderTargetPtr srcRt = source->GetColorAttachment(atcEnum);
-      assert(srcRt && "Trying to resolve a non existing attachment.");
-
-      RenderTargetPtr targetRt = target->GetColorAttachment(atcEnum);
-      if (targetRt == nullptr)
-      {
-        TextureSettings settings = srcRt->Settings();
-        settings.msaaCount       = MsaaSampleCount::x0;
-        targetRt                 = MakeNewPtr<RenderTarget>();
-        targetRt->ReconstructIfNeeded(srcRt->m_width, srcRt->m_height, &settings);
-        target->SetColorAttachment(atcEnum, targetRt);
-      }
-
-      srcRt->m_resolvedTexture = targetRt;
-
-      // Bind read/draw after SetColorAttachment, which may have changed the
-      // framebuffer bindings via SetFramebuffer(...).
-      GLBackend* backend       = static_cast<GLBackend*>(m_backend);
-      backend->BindFramebuffer(GL_READ_FRAMEBUFFER, source->GetFboId());
-      backend->BindFramebuffer(GL_DRAW_FRAMEBUFFER, target->GetFboId());
-
-      GLenum attachment = GL_COLOR_ATTACHMENT0 + atc;
-
-      // Read from the specific source attachment.
-      glReadBuffer(attachment);
-
-      // Write only to the corresponding target attachment.
-      glDrawBuffers(1, &attachment);
-
-      glBlitFramebuffer(0, 0, srcWidth, srcHeight, 0, 0, dstWidth, dstHeight, GL_COLOR_BUFFER_BIT, GL_NEAREST);
-    }
-
-    // Restore target framebuffer's original draw buffer configuration.
-    target->SetDrawBuffers();
+    m_backend->ResolveFramebuffer(source, target, attachments);
   }
 
   void Renderer::SetViewport(Viewport* viewport) { SetFramebuffer(viewport->m_framebuffer, GraphicBitFields::AllBits); }
