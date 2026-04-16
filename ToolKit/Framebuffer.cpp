@@ -8,7 +8,7 @@
 #include "Framebuffer.h"
 
 #include "EngineSettings.h"
-#include "GLBackend.h"
+#include "IGraphicsBackend.h"
 #include "Logger.h"
 #include "RenderSystem.h"
 #include "Renderer.h"
@@ -19,13 +19,13 @@
 
 namespace ToolKit
 {
-  static GLBackend* GetGLBackend()
+  static IGraphicsBackend* GetBackend()
   {
     if (RenderSystem* rs = GetRenderSystem())
     {
       if (Renderer* r = rs->GetRenderer())
       {
-        return static_cast<GLBackend*>(r->GetBackend());
+        return r->GetBackend();
       }
     }
     return nullptr;
@@ -81,8 +81,8 @@ namespace ToolKit
       m_settings.height = 1024;
     }
 
-    GLBackend* backend = GetGLBackend();
-    assert(backend && "GLBackend not available during Framebuffer::Init");
+    IGraphicsBackend* backend = GetBackend();
+    assert(backend && "Graphics backend not available during Framebuffer::Init");
 
     backend->CreateFramebuffer(this);
     Stats::SetGpuResourceLabel(m_label, GpuResourceType::FrameBuffer, m_fboId);
@@ -112,7 +112,7 @@ namespace ToolKit
       m_colorAtchs[i] = nullptr;
     }
 
-    if (GLBackend* backend = GetGLBackend())
+    if (IGraphicsBackend* backend = GetBackend())
     {
       backend->DestroyFramebuffer(this);
     }
@@ -154,7 +154,7 @@ namespace ToolKit
     assert(dt != nullptr && "Depth texture can't be null.");
     m_depthAtch = dt;
 
-    if (GLBackend* backend = GetGLBackend())
+    if (IGraphicsBackend* backend = GetBackend())
     {
       backend->AttachDepthTarget(this, dt);
       backend->CheckFramebufferComplete(this);
@@ -168,7 +168,7 @@ namespace ToolKit
       return nullptr;
     }
 
-    if (GLBackend* backend = GetGLBackend())
+    if (IGraphicsBackend* backend = GetBackend())
     {
       backend->DetachDepthTarget(this);
     }
@@ -197,7 +197,7 @@ namespace ToolKit
     m_settings.width        = rt->m_width;
     m_settings.height       = rt->m_height;
 
-    if (GLBackend* backend = GetGLBackend())
+    if (IGraphicsBackend* backend = GetBackend())
     {
       int faceIdx = (face != CubemapFace::NONE) ? (int) face : -1;
       backend->AttachColorTarget(this, rt, (int) atc, mip, layer, faceIdx);
@@ -228,7 +228,7 @@ namespace ToolKit
 
     m_colorAtchs[(int) atc] = nullptr;
 
-    if (GLBackend* backend = GetGLBackend())
+    if (IGraphicsBackend* backend = GetBackend())
     {
       backend->DetachColorTarget(this, (int) atc);
       backend->SetDrawBuffers(this);
@@ -243,7 +243,7 @@ namespace ToolKit
 
   void Framebuffer::CheckFramebufferComplete()
   {
-    if (GLBackend* backend = GetGLBackend())
+    if (IGraphicsBackend* backend = GetBackend())
     {
       backend->CheckFramebufferComplete(this);
     }
@@ -251,7 +251,7 @@ namespace ToolKit
 
   void Framebuffer::SetDrawBuffers()
   {
-    if (GLBackend* backend = GetGLBackend())
+    if (IGraphicsBackend* backend = GetBackend())
     {
       backend->SetDrawBuffers(this);
     }

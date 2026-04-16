@@ -11,7 +11,7 @@
 #include "EngineSettings.h"
 #include "FileManager.h"
 #include "FullQuadPass.h"
-#include "GLBackend.h"
+#include "IGraphicsBackend.h"
 #include "Image.h"
 #include "Logger.h"
 #include "Material.h"
@@ -26,13 +26,13 @@
 namespace ToolKit
 {
 
-  static GLBackend* GetGLBackend()
+  static IGraphicsBackend* GetBackend()
   {
     if (RenderSystem* rs = GetRenderSystem())
     {
       if (Renderer* r = rs->GetRenderer())
       {
-        return static_cast<GLBackend*>(r->GetBackend());
+        return r->GetBackend();
       }
     }
     return nullptr;
@@ -132,8 +132,8 @@ namespace ToolKit
     assert(m_textureId == 0 && "Texture already initialized.");
 
     uint64 pixelCount  = (uint64) m_width * (uint64) m_height;
-    GLBackend* backend = GetGLBackend();
-    assert(backend && "GLBackend not available during Texture::Init");
+    IGraphicsBackend* backend = GetBackend();
+    assert(backend && "Graphics backend not available during Texture::Init");
 
     backend->CreateTexture(this);
     backend->ApplyTextureSettings(this);
@@ -160,7 +160,7 @@ namespace ToolKit
     }
 
     uint64 pixelCount = (uint64) m_width * (uint64) m_height;
-    if (GLBackend* backend = GetGLBackend())
+    if (IGraphicsBackend* backend = GetBackend())
     {
       backend->DestroyTexture(this);
     }
@@ -198,7 +198,7 @@ namespace ToolKit
 
   void Texture::GenerateMipMaps()
   {
-    if (GLBackend* backend = GetGLBackend())
+    if (IGraphicsBackend* backend = GetBackend())
     {
       backend->GenerateMipmaps(this);
     }
@@ -226,10 +226,10 @@ namespace ToolKit
     m_settings = settings;
     if (m_initiated)
     {
-      if (GLBackend* backend = GetGLBackend())
-      {
-        backend->ApplyTextureSettings(this);
-      }
+      if (IGraphicsBackend* backend = GetBackend())
+        {
+          backend->ApplyTextureSettings(this);
+        }
     }
   }
 
@@ -287,8 +287,8 @@ namespace ToolKit
       m_settings.msaaCount = MsaaSampleCount::x0;
     }
 
-    GLBackend* backend = GetGLBackend();
-    assert(backend && "GLBackend not available during DepthTexture::Init");
+    IGraphicsBackend* backend = GetBackend();
+    assert(backend && "Graphics backend not available during DepthTexture::Init");
     backend->CreateTexture(this);
 
     Stats::SetGpuResourceLabel(m_label, GpuResourceType::RenderBuffer, m_textureId);
@@ -304,7 +304,7 @@ namespace ToolKit
 
     Stats::RemoveVRAMUsageInBytes((uint64) (m_width * m_height) * GetFormatSize());
 
-    if (GLBackend* backend = GetGLBackend())
+    if (IGraphicsBackend* backend = GetBackend())
     {
       backend->DestroyTexture(this);
     }
@@ -334,8 +334,8 @@ namespace ToolKit
 
     assert(m_textureId == 0 && "Texture already initialized.");
 
-    GLBackend* backend = GetGLBackend();
-    assert(backend && "GLBackend not available during DataTexture::Init");
+    IGraphicsBackend* backend = GetBackend();
+    assert(backend && "Graphics backend not available during DataTexture::Init");
 
     // Temporarily store data pointer in m_image so CreateTexture can upload it
     m_image = static_cast<uint8*>(data);
@@ -355,7 +355,7 @@ namespace ToolKit
       return;
     }
 
-    if (GLBackend* backend = GetGLBackend())
+    if (IGraphicsBackend* backend = GetBackend())
     {
       backend->UpdateTextureRegion(this, data);
     }
@@ -372,7 +372,7 @@ namespace ToolKit
 
     Stats::RemoveVRAMUsageInBytes((uint64) (m_width * m_height) * BytesOfFormat(m_settings.InternalFormat));
 
-    if (GLBackend* backend = GetGLBackend())
+    if (IGraphicsBackend* backend = GetBackend())
     {
       backend->DestroyTexture(this);
     }
@@ -497,8 +497,8 @@ namespace ToolKit
     assert(m_textureId == 0 && "Texture already initialized.");
 
     uint64 pixelCount  = (uint64) m_width * (uint64) m_height;
-    GLBackend* backend = GetGLBackend();
-    assert(backend && "GLBackend not available during CubeMap::Init");
+    IGraphicsBackend* backend = GetBackend();
+    assert(backend && "Graphics backend not available during CubeMap::Init");
 
     backend->CreateTexture(this);
     Stats::AddVRAMUsageInBytes(pixelCount * 4 * 6); // Component count * face count.
@@ -531,7 +531,7 @@ namespace ToolKit
 
   void CubeMap::AllocateMipMapStorage()
   {
-    if (GLBackend* backend = GetGLBackend())
+    if (IGraphicsBackend* backend = GetBackend())
     {
       backend->AllocateCubemapMipStorage(this);
     }
@@ -727,7 +727,7 @@ namespace ToolKit
     m_specularEnvMap->GenerateMipMaps();
 
     // Clamp max mip level to the last baked level.
-    if (GLBackend* backend = GetGLBackend())
+    if (IGraphicsBackend* backend = GetBackend())
     {
       backend->SetTextureMaxMipLevel(m_specularEnvMap.get(), RHIConstants::SpecularIBLLods - 1);
     }
@@ -861,8 +861,8 @@ namespace ToolKit
 
     assert(m_textureId == 0 && "Texture already initialized.");
 
-    GLBackend* backend = GetGLBackend();
-    assert(backend && "GLBackend not available during RenderTarget::Init");
+    IGraphicsBackend* backend = GetBackend();
+    assert(backend && "Graphics backend not available during RenderTarget::Init");
 
     backend->CreateTexture(this);
     Stats::SetGpuResourceLabel(m_label, GpuResourceType::Texture, m_textureId);
