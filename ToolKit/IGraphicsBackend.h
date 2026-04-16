@@ -199,6 +199,13 @@ namespace ToolKit
     // Uploads pixel data to a sub-region of a 2D texture.
     // GL: binds texture + glTexSubImage2D.  VK: staging buffer + vkCmdCopyBufferToImage with region offset.
     virtual void UpdateTextureSubRegion(Texture* tex, int x, int y, int w, int h, const void* data) = 0;
+
+    // Debug annotations.
+    // GL: glLabelObjectEXT / glPushGroupMarkerEXT / glPopGroupMarkerEXT
+    // VK: vkSetDebugUtilsObjectName / vkCmdBeginDebugUtilsLabel / vkCmdEndDebugUtilsLabel
+    virtual void SetGpuResourceLabel(GpuResourceType type, uint id, StringView label) = 0;
+    virtual void PushDebugGroup(StringView name) = 0;
+    virtual void PopDebugGroup() = 0;
   };
 
 } // namespace ToolKit

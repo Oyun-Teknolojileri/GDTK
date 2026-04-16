@@ -115,6 +115,9 @@ namespace ToolKit
     void ReadPixels(int x, int y, int w, int h,
                     GraphicTypes format, GraphicTypes type, void* data) override;
     void UpdateTextureSubRegion(Texture* tex, int x, int y, int w, int h, const void* data) override;
+    void SetGpuResourceLabel(GpuResourceType type, uint id, StringView label) override;
+    void PushDebugGroup(StringView name) override;
+    void PopDebugGroup() override;
 
    private:
     RenderState m_lastAppliedState;

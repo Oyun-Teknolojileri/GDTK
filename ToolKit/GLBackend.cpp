@@ -1526,4 +1526,29 @@ namespace ToolKit
     glTexSubImage2D((GLenum) s.Target, 0, x, y, w, h, (GLenum) s.Format, (GLenum) s.Type, data);
   }
 
+  void GLBackend::SetGpuResourceLabel(GpuResourceType type, uint id, StringView label)
+  {
+    if (glLabelObjectEXT != nullptr && label.size() > 0)
+    {
+      String labelId = String(label) + "_" + std::to_string(id);
+      glLabelObjectEXT((GLenum) type, (GLuint) id, 0, labelId.c_str());
+    }
+  }
+
+  void GLBackend::PushDebugGroup(StringView name)
+  {
+    if (glPushGroupMarkerEXT != nullptr)
+    {
+      glPushGroupMarkerEXT(-1, name.data());
+    }
+  }
+
+  void GLBackend::PopDebugGroup()
+  {
+    if (glPopGroupMarkerEXT != nullptr)
+    {
+      glPopGroupMarkerEXT();
+    }
+  }
+
 } // namespace ToolKit
