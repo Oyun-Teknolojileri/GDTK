@@ -24,6 +24,8 @@ namespace ToolKit
 
     void BeginPass(const PassDesc& desc) override;
     void EndPass() override;
+    void StoreFboBindings() override;
+    void RestoreFboBindings() override;
 
     void SetViewport(uint x, uint y, uint w, uint h) override;
     void SetScissor(uint x, uint y, uint w, uint h) override;
@@ -51,9 +53,34 @@ namespace ToolKit
     void EndTimerQuery() override;
     void GetElapsedTime(float& cpu, float& gpu) override;
 
+    // Cache management (Internal use by RHI)
+    void BindFramebuffer(uint target, uint id);
+    void BindTextureDirect(uint target, uint id, uint slot);
+    void BindVAO(uint vao);
+
+    void InvalidateFboCache(uint id);
+    void InvalidateTextureCache(uint id);
+
    private:
     RenderState m_lastAppliedState;
     bool m_firstBind = true;
+
+    // Framebuffer cache
+    uint m_currentReadFboId = (uint) -1;
+    uint m_currentDrawFboId = (uint) -1;
+    IntArray m_storedReadFboStack;
+    IntArray m_storedDrawFboStack;
+
+    // Texture slot cache
+    struct TextureSlotState
+    {
+      uint textureID = 0;
+      uint target    = 0;
+    };
+    TextureSlotState m_textureSlotCache[32];
+
+    // VAO cache
+    uint m_currentVAO = (uint) -1;
   };
 
 } // namespace ToolKit

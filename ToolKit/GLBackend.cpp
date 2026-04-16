@@ -37,12 +37,12 @@ namespace ToolKit
   {
     if (desc.target != nullptr)
     {
-      RHI::SetFramebuffer(GL_FRAMEBUFFER, desc.target->m_glImpl.fboId);
+      BindFramebuffer(GL_FRAMEBUFFER, desc.target->m_glImpl.fboId);
       desc.target->SetDrawBuffers();
     }
     else
     {
-      RHI::SetFramebuffer(GL_FRAMEBUFFER, 0);
+      BindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
     if (desc.clearBits != GraphicBitFields::None)
@@ -52,6 +52,27 @@ namespace ToolKit
   }
 
   void GLBackend::EndPass() {}
+
+  void GLBackend::StoreFboBindings()
+  {
+    m_storedReadFboStack.push_back(m_currentReadFboId);
+    m_storedDrawFboStack.push_back(m_currentDrawFboId);
+  }
+
+  void GLBackend::RestoreFboBindings()
+  {
+    if (!m_storedReadFboStack.empty())
+    {
+      BindFramebuffer(GL_READ_FRAMEBUFFER, m_storedReadFboStack.back());
+      m_storedReadFboStack.pop_back();
+    }
+
+    if (!m_storedDrawFboStack.empty())
+    {
+      BindFramebuffer(GL_DRAW_FRAMEBUFFER, m_storedDrawFboStack.back());
+      m_storedDrawFboStack.pop_back();
+    }
+  }
 
   void GLBackend::SetViewport(uint x, uint y, uint w, uint h)
   {
@@ -65,23 +86,25 @@ namespace ToolKit
 
   void GLBackend::ClearBuffer(GraphicBitFields fields, const Vec4& color)
   {
-    // OpenGL clears are affected by masks. Force them to true to ensure
-    // the clear operation succeeds regardless of current pipeline state.
-    // This matches Vulkan behavior where clears are independent of pipeline state.
+    // OpenGL clears are affected by masks and scissor test. 
+    // Force them to safe defaults to ensure the clear operation 
+    // succeeds regardless of current pipeline state.
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     glDepthMask(GL_TRUE);
     glStencilMask(0xFF);
+    glDisable(GL_SCISSOR_TEST);
 
     glClearColor(color.x, color.y, color.z, color.w);
     glClear((GLbitfield) fields);
 
-    // Invalidate state cache to force re-application of masks on next draw.
+    // Invalidate state cache to force re-application of masks and scissor on next draw.
     m_firstBind = true;
   }
 
   void GLBackend::ClearColorBuffer(const Vec4& color)
   {
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glDisable(GL_SCISSOR_TEST);
     glClearColor(color.x, color.y, color.z, color.w);
     glClear(GL_COLOR_BUFFER_BIT);
     m_firstBind = true;
@@ -320,11 +343,11 @@ namespace ToolKit
   {
     if (tex != nullptr)
     {
-      RHI::SetTexture((GLenum) tex->Settings().Target, tex->m_glImpl.textureId, slot);
+      BindTextureDirect((uint) tex->Settings().Target, tex->m_glImpl.textureId, slot);
     }
     else
     {
-      RHI::SetTexture(GL_TEXTURE_2D, 0, slot);
+      BindTextureDirect(GL_TEXTURE_2D, 0, slot);
     }
   }
 
@@ -335,7 +358,7 @@ namespace ToolKit
       return;
     }
 
-    RHI::BindVertexArray(desc.mesh->m_glImpl.vaoId);
+    BindVAO(desc.mesh->m_glImpl.vaoId);
 
     if (desc.indexed)
     {
@@ -346,7 +369,6 @@ namespace ToolKit
       glDrawArrays((GLenum) desc.type, 0, desc.elementCount);
     }
   }
-
 
   void GLBackend::ResolveFramebuffer(FramebufferPtr src, FramebufferPtr dst, const IntArray& attachments) {}
 
@@ -359,5 +381,80 @@ namespace ToolKit
   void GLBackend::EndTimerQuery() {}
 
   void GLBackend::GetElapsedTime(float& cpu, float& gpu) {}
+
+  void GLBackend::InvalidateFboCache(uint id)
+  {
+    if (m_currentReadFboId == id)
+    {
+      m_currentReadFboId = (uint) -1;
+    }
+    if (m_currentDrawFboId == id)
+    {
+      m_currentDrawFboId = (uint) -1;
+    }
+  }
+
+  void GLBackend::InvalidateTextureCache(uint id)
+  {
+    for (int i = 0; i < 32; i++)
+    {
+      if (m_textureSlotCache[i].textureID == id)
+      {
+        m_textureSlotCache[i].textureID = 0;
+        m_textureSlotCache[i].target    = 0;
+      }
+    }
+  }
+
+  void GLBackend::BindFramebuffer(uint target, uint id)
+  {
+    if (target == GL_FRAMEBUFFER)
+    {
+      if (m_currentReadFboId != id || m_currentDrawFboId != id)
+      {
+        glBindFramebuffer(GL_FRAMEBUFFER, id);
+        m_currentReadFboId = id;
+        m_currentDrawFboId = id;
+      }
+      return;
+    }
+
+    if (target == GL_READ_FRAMEBUFFER && m_currentReadFboId != id)
+    {
+      glBindFramebuffer(GL_READ_FRAMEBUFFER, id);
+      m_currentReadFboId = id;
+    }
+
+    if (target == GL_DRAW_FRAMEBUFFER && m_currentDrawFboId != id)
+    {
+      glBindFramebuffer(GL_DRAW_FRAMEBUFFER, id);
+      m_currentDrawFboId = id;
+    }
+  }
+
+  void GLBackend::BindTextureDirect(uint target, uint id, uint slot)
+  {
+    if (slot >= 32)
+    {
+      return;
+    }
+
+    if (m_textureSlotCache[slot].textureID != id || m_textureSlotCache[slot].target != target)
+    {
+      glActiveTexture(GL_TEXTURE0 + slot);
+      glBindTexture(target, id);
+      m_textureSlotCache[slot].textureID = id;
+      m_textureSlotCache[slot].target    = target;
+    }
+  }
+
+  void GLBackend::BindVAO(uint vao)
+  {
+    if (m_currentVAO != vao)
+    {
+      glBindVertexArray(vao);
+      m_currentVAO = vao;
+    }
+  }
 
 } // namespace ToolKit

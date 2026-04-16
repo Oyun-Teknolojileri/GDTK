@@ -44,6 +44,8 @@ namespace ToolKit
     // Pass boundary
     virtual void BeginPass(const PassDesc& desc)                    = 0;
     virtual void EndPass()                                          = 0;
+    virtual void StoreFboBindings()                                 = 0;
+    virtual void RestoreFboBindings()                               = 0;
 
     // Viewport / scissor
     virtual void SetViewport(uint x, uint y, uint w, uint h)       = 0;

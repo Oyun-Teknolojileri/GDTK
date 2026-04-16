@@ -148,9 +148,6 @@ namespace ToolKit
 
     m_logger->Log("Main Init");
 
-    m_gpuBuffers->InitGlobalGpuBuffers();
-    m_gpuProgramManager->SetGpuBuffers(m_gpuBuffers);
-
     m_workerManager->Init();
     m_animationMan->Init();
     m_textureMan->Init();
@@ -163,6 +160,9 @@ namespace ToolKit
     m_skeletonManager->Init();
     m_renderSys->Init();
     m_timing.Init(m_engineSettings->m_graphics->GetFPSVal());
+
+    m_gpuBuffers->InitGlobalGpuBuffers();
+    m_gpuProgramManager->SetGpuBuffers(m_gpuBuffers);
 
     m_initiated = true;
   }

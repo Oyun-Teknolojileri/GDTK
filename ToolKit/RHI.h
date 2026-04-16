@@ -8,7 +8,6 @@
 #pragma once
 
 #include "Stats.h"
-#include "TKOpenGL.h"
 #include "Types.h"
 
 namespace ToolKit
@@ -54,38 +53,28 @@ namespace ToolKit
     friend class Main;
 
    public:
-    struct TextureSlotState
-    {
-      GLuint textureID = 0;
-      GLenum target    = 0;
-    };
-
-    using TextureIdSlotMap = std::unordered_map<GLenum, TextureSlotState>;
-
     // Framebuffer helpers
-    static void SetFramebuffer(GLenum target, GLuint framebufferID);
-    static void DeleteFramebuffers(GLsizei n, const GLuint* framebuffers);
+    static void SetFramebuffer(uint target, uint framebufferID);
+    static void DeleteFramebuffers(int n, const uint* framebuffers);
 
     static void StoreFramebufferBindings();
     static void RestoreFramebufferBindings();
 
     // Texture helpers
-    static void SetTexture(GLenum target, GLuint textureID, GLenum textureSlot = 0);
-    static void DeleteTexture(GLuint textureID);
+    static void SetTexture(uint target, uint textureID, uint textureSlot = 0);
+    static void DeleteTexture(uint textureID);
 
     // Vertex array helpers
-    static void BindVertexArray(GLuint VAO);
+    static void BindVertexArray(uint VAO);
 
    private:
-    static GLuint m_currentReadFramebufferID;
-    static GLuint m_currentDrawFramebufferID;
-    static GLuint m_currentVAO;
+    static uint m_currentReadFramebufferID;
+    static uint m_currentDrawFramebufferID;
+    static uint m_currentVAO;
 
     // Stacks to support nested Store/Restore calls
     static IntArray m_storedReadFramebufferStack;
     static IntArray m_storedDrawFramebufferStack;
-
-    static TextureIdSlotMap m_textureIdSlotMap;
   };
 
 } // namespace ToolKit

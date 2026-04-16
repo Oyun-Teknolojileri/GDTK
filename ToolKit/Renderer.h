@@ -345,12 +345,16 @@ namespace ToolKit
     void SetLights(const LightRawPtrArray& lights);
 
     /**
-     * Sets directional lights to be used for render. Should be called once per pass because all objects effected from
-     * directional lights. No need to set it per object.
-     */
-    void SetDirectionalLights(const LightRawPtrArray& lights);
+     /** Sets directional lights to be used for render. Should be called once per pass because all objects effected from
+      * directional lights. No need to set it per object.
+      */
+     void SetDirectionalLights(const LightRawPtrArray& lights);
 
-   private:
+     /** Returns current backend. */
+     IGraphicsBackend* GetBackend() { return m_backend; }
+
+     private:
+
     /** Set textures to be used in render. SkyBox, Ibl, AmbientOcculution  */
     void SetDataTextures(const RenderJob& job);
 

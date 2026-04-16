@@ -9,7 +9,6 @@
 
 #include "AABBOverrideComponent.h"
 #include "Camera.h"
-#include "DebugNew.h"
 #include "DirectionComponent.h"
 #include "Drawable.h"
 #include "EngineSettings.h"
@@ -38,6 +37,8 @@
 #include "ToolKit.h"
 #include "UIManager.h"
 #include "Viewport.h"
+
+#include "DebugNew.h"
 
 namespace ToolKit
 {
@@ -68,6 +69,8 @@ namespace ToolKit
 
     // Get global buffers.
     m_globalGpuBuffers = Main::GetInstance()->m_gpuBuffers;
+
+    m_backend          = new GLBackend();
   }
 
   void Renderer::BeginRenderFrame()
@@ -135,8 +138,6 @@ namespace ToolKit
     SrgbAutoEncoding(GetRenderSystem()->m_backbufferFormatIsSRGB);
 
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-
-    m_backend = new GLBackend();
   }
 
   Renderer::~Renderer()
@@ -290,16 +291,16 @@ namespace ToolKit
     SetDataTextures(job);
     SetLights(job.lights);
 
-    m_model                  = job.WorldTransform;
+    m_model                    = job.WorldTransform;
 
     // Compose state.
-    RenderState composed = *job.Material->GetRenderState();
-    composed.depthTestEnabled   = m_renderState.depthTestEnabled;
-    composed.depthWriteEnabled  = m_renderState.depthWriteEnabled;
-    composed.depthFunction      = m_renderState.depthFunction;
-    composed.stencilOperation   = m_renderState.stencilOperation;
-    composed.colorMaskEnabled   = m_renderState.colorMaskEnabled;
-    composed.depthClampEnabled  = m_renderState.depthClampEnabled;
+    RenderState composed       = *job.Material->GetRenderState();
+    composed.depthTestEnabled  = m_renderState.depthTestEnabled;
+    composed.depthWriteEnabled = m_renderState.depthWriteEnabled;
+    composed.depthFunction     = m_renderState.depthFunction;
+    composed.stencilOperation  = m_renderState.stencilOperation;
+    composed.colorMaskEnabled  = m_renderState.colorMaskEnabled;
+    composed.depthClampEnabled = m_renderState.depthClampEnabled;
     if (m_renderState.blendOverride)
     {
       composed.blendFunction = m_renderState.blendOverrideFunc;
@@ -309,12 +310,12 @@ namespace ToolKit
     {
       switch (composed.cullMode)
       {
-      case CullingType::Front:
-        composed.cullMode = CullingType::Back;
-        break;
-      case CullingType::Back:
-        composed.cullMode = CullingType::Front;
-        break;
+        case CullingType::Front:
+          composed.cullMode = CullingType::Back;
+          break;
+        case CullingType::Back:
+          composed.cullMode = CullingType::Front;
+          break;
       }
     }
 
@@ -400,11 +401,7 @@ namespace ToolKit
     }
   }
 
-
-  void Renderer::SetStencilOperation(StencilOperation op)
-  {
-    m_renderState.stencilOperation = op;
-  }
+  void Renderer::SetStencilOperation(StencilOperation op) { m_renderState.stencilOperation = op; }
 
   void Renderer::SetFramebuffer(FramebufferPtr frameBuffer,
                                 GraphicBitFields attachmentsToClear,
@@ -432,10 +429,7 @@ namespace ToolKit
     m_framebuffer = frameBuffer;
   }
 
-  void Renderer::EndPass()
-  {
-    m_backend->EndPass();
-  }
+  void Renderer::EndPass() { m_backend->EndPass(); }
 
   void Renderer::StartTimerQuery()
   {
@@ -494,15 +488,9 @@ namespace ToolKit
 
   FramebufferPtr Renderer::GetFrameBuffer() { return m_framebuffer; }
 
-  void Renderer::ClearColorBuffer(const Vec4& color)
-  {
-    m_backend->ClearColorBuffer(color);
-  }
+  void Renderer::ClearColorBuffer(const Vec4& color) { m_backend->ClearColorBuffer(color); }
 
-  void Renderer::ClearBuffer(GraphicBitFields fields, const Vec4& value)
-  {
-    m_backend->ClearBuffer(fields, value);
-  }
+  void Renderer::ClearBuffer(GraphicBitFields fields, const Vec4& value) { m_backend->ClearBuffer(fields, value); }
 
   void Renderer::ColorMask(bool r, bool g, bool b, bool a) { m_renderState.colorMaskEnabled = r && g && b && a; }
 
@@ -510,12 +498,12 @@ namespace ToolKit
   {
     TK_PROFILE_FUNCTION();
 
-    FramebufferPtr lastFb = m_framebuffer;
+    m_backend->StoreFboBindings();
 
-    uint width            = m_windowSize.x;
-    uint height           = m_windowSize.y;
+    uint width  = m_windowSize.x;
+    uint height = m_windowSize.y;
 
-    uint srcId            = 0;
+    uint srcId  = 0;
     if (src)
     {
       const FramebufferSettings& fbs = src->GetSettings();
@@ -524,7 +512,8 @@ namespace ToolKit
       srcId                          = src->GetFboId();
     }
 
-    RHI::SetFramebuffer(GL_READ_FRAMEBUFFER, srcId);
+    GLBackend* backend = static_cast<GLBackend*>(m_backend);
+    backend->BindFramebuffer(GL_READ_FRAMEBUFFER, srcId);
 
     uint destId = 0;
     if (dest)
@@ -532,11 +521,11 @@ namespace ToolKit
       dest->ReconstructIfNeeded(width, height);
       destId = dest->GetFboId();
     }
-    RHI::SetFramebuffer(GL_DRAW_FRAMEBUFFER, destId);
+    backend->BindFramebuffer(GL_DRAW_FRAMEBUFFER, destId);
 
     glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, (GLbitfield) fields, GL_NEAREST);
 
-    SetFramebuffer(lastFb, GraphicBitFields::None);
+    m_backend->RestoreFboBindings();
   }
 
   void Renderer::InvalidateFramebuffer(GraphicBitFields bits, FramebufferPtr frameBuffer)
@@ -620,9 +609,10 @@ namespace ToolKit
       srcRt->m_resolvedTexture = targetRt;
 
       // Bind read/draw after SetColorAttachment, which may have changed the
-      // framebuffer bindings via RHI::SetFramebuffer(GL_FRAMEBUFFER, ...).
-      RHI::SetFramebuffer(GL_READ_FRAMEBUFFER, source->GetFboId());
-      RHI::SetFramebuffer(GL_DRAW_FRAMEBUFFER, target->GetFboId());
+      // framebuffer bindings via SetFramebuffer(...).
+      GLBackend* backend       = static_cast<GLBackend*>(m_backend);
+      backend->BindFramebuffer(GL_READ_FRAMEBUFFER, source->GetFboId());
+      backend->BindFramebuffer(GL_DRAW_FRAMEBUFFER, target->GetFboId());
 
       GLenum attachment = GL_COLOR_ATTACHMENT0 + atc;
 
@@ -652,10 +642,7 @@ namespace ToolKit
     m_backend->SetViewport(x, y, width, height);
   }
 
-  void Renderer::SetScissor(uint x, uint y, uint width, uint height)
-  {
-    m_backend->SetScissor(x, y, width, height);
-  }
+  void Renderer::SetScissor(uint x, uint y, uint width, uint height) { m_backend->SetScissor(x, y, width, height); }
 
   void Renderer::DrawFullQuad(ShaderPtr fragmentShader)
   {
@@ -767,20 +754,11 @@ namespace ToolKit
     }
   }
 
-  void Renderer::EnableDepthWrite(bool enable)
-  {
-    m_renderState.depthWriteEnabled = enable;
-  }
+  void Renderer::EnableDepthWrite(bool enable) { m_renderState.depthWriteEnabled = enable; }
 
-  void Renderer::EnableDepthTest(bool enable)
-  {
-    m_renderState.depthTestEnabled = enable;
-  }
+  void Renderer::EnableDepthTest(bool enable) { m_renderState.depthTestEnabled = enable; }
 
-  void Renderer::SetDepthTestFunc(CompareFunctions func)
-  {
-    m_renderState.depthFunction = func;
-  }
+  void Renderer::SetDepthTestFunc(CompareFunctions func) { m_renderState.depthFunction = func; }
 
   bool Renderer::EnableDepthClamp(bool enable)
   {
@@ -1223,15 +1201,15 @@ namespace ToolKit
     TK_PROFILE_FUNCTION();
 
     PerDrawUniforms pdu;
-    pdu.model                = m_model;
+    pdu.model                 = m_model;
     pdu.modelWithoutTranslate = m_modelWithoutTranslate;
-    pdu.inverseModel         = m_inverseModel;
+    pdu.inverseModel          = m_inverseModel;
     pdu.inverseTransposeModel = m_inverseTransposeModel;
-    pdu.iblRotation          = m_iblRotation;
-    pdu.iblSecondaryRotation = m_secondaryIblRotation;
-    pdu.viewportSize         = Vec2((float) m_viewportRect.x, (float) m_viewportRect.y);
-    pdu.drawCommand          = m_drawCommand;
-    pdu.materialData         = job.Material->GetCacheItem().data;
+    pdu.iblRotation           = m_iblRotation;
+    pdu.iblSecondaryRotation  = m_secondaryIblRotation;
+    pdu.viewportSize          = Vec2((float) m_viewportRect.x, (float) m_viewportRect.y);
+    pdu.drawCommand           = m_drawCommand;
+    pdu.materialData          = job.Material->GetCacheItem().data;
 
     std::copy(m_activePointLightIndices.begin(), m_activePointLightIndices.end(), pdu.activePointLightIndices);
     std::copy(m_activeSpotLightIndices.begin(), m_activeSpotLightIndices.end(), pdu.activeSpotLightIndices);
@@ -1239,7 +1217,7 @@ namespace ToolKit
     pdu.activeSpotLightCount  = m_activeSpotLightCount;
 
     // Animation / Skinning
-    pdu.keyFrameData = Vec4(0.0f);
+    pdu.keyFrameData          = Vec4(0.0f);
     if (job.animData.currentAnimation != nullptr)
     {
       pdu.keyFrameData = Vec4(job.animData.firstKeyFrame,

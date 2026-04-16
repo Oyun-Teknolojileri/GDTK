@@ -5,6 +5,8 @@
  * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
  */
 
+#pragma once
+
 #include "Platform.h"
 
 #ifdef TK_ANDROID

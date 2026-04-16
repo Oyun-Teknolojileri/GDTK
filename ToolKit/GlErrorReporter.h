@@ -20,17 +20,19 @@ namespace ToolKit
     static GlReportCallback Report;
   };
 
-  TK_API void GLDebugMessageCallback(GLenum source,
-                                     GLenum type,
-                                     GLuint id,
-                                     GLenum severity,
-                                     GLsizei length,
-                                     const GLchar* msg,
+  // Using standard types to avoid dependency on GL headers in this interface.
+  // These are binary compatible with GLenum, GLuint, GLsizei, GLchar.
+  TK_API void GLDebugMessageCallback(unsigned int source,
+                                     unsigned int type,
+                                     unsigned int id,
+                                     unsigned int severity,
+                                     int length,
+                                     const char* msg,
                                      const void* data);
 
   TK_API void InitGLErrorReport(GlReportCallback callback = nullptr);
 
-  TK_API GLenum glCheckError_(const char* file, int line);
+  TK_API unsigned int glCheckError_(const char* file, int line);
 
 #ifdef TK_DEBUG
   #define TKCheckGL() glCheckError_(__FILE__, __LINE__)

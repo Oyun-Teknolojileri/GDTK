@@ -114,6 +114,9 @@ namespace ToolKit
     /** Enables gamma encoding when back buffer is srgb. */
     void SrgbAutoEncoding(bool enable);
 
+    /** Returns current renderer. */
+    Renderer* GetRenderer() { return m_renderer; }
+
    private:
     /** Implementation for executing render tasks. */
     void ExecuteTaskImp(RenderTask& task);

@@ -7,139 +7,92 @@
 
 #include "RHI.h"
 
+#include "GLBackend.h"
+#include "RenderSystem.h"
+#include "Renderer.h"
+#include "TKOpenGL.h"
+
 #include "DebugNew.h"
 
 namespace ToolKit
 {
-  GLuint RHI::m_currentReadFramebufferID = -1;
-  GLuint RHI::m_currentDrawFramebufferID = -1;
-  GLuint RHI::m_currentVAO               = -1;
+  uint RHI::m_currentReadFramebufferID = -1;
+  uint RHI::m_currentDrawFramebufferID = -1;
+  uint RHI::m_currentVAO               = -1;
 
   IntArray RHI::m_storedReadFramebufferStack;
   IntArray RHI::m_storedDrawFramebufferStack;
 
-  RHI::TextureIdSlotMap RHI::m_textureIdSlotMap;
-
-  void RHI::SetFramebuffer(GLenum target, GLuint framebufferID)
+  // Helper to get the active backend.
+  static GLBackend* GetBackend()
   {
-    if (target == GL_READ_FRAMEBUFFER)
+    if (RenderSystem* rsys = GetRenderSystem())
     {
-      if (m_currentReadFramebufferID == framebufferID)
+      if (Renderer* renderer = rsys->GetRenderer())
       {
-        return;
-      }
-      else
-      {
-        m_currentReadFramebufferID = framebufferID;
+        return static_cast<GLBackend*>(renderer->GetBackend());
       }
     }
-    else if (target == GL_DRAW_FRAMEBUFFER)
-    {
-      if (m_currentDrawFramebufferID == framebufferID)
-      {
-        return;
-      }
-      else
-      {
-        m_currentDrawFramebufferID = framebufferID;
-      }
-    }
-    else
-    {
-      if (m_currentReadFramebufferID == framebufferID && m_currentDrawFramebufferID == framebufferID)
-      {
-        return;
-      }
-      else
-      {
-        m_currentReadFramebufferID = framebufferID;
-        m_currentDrawFramebufferID = framebufferID;
-      }
-    }
-
-    glBindFramebuffer(target, framebufferID);
+    return nullptr;
   }
 
-  void RHI::DeleteFramebuffers(GLsizei n, const GLuint* framebuffers)
+  void RHI::SetFramebuffer(uint target, uint framebufferID)
   {
-    glDeleteFramebuffers(n, framebuffers);
-
-    for (int i = 0; i < n; ++i)
+    if (GLBackend* backend = GetBackend())
     {
-      if (framebuffers[i] == m_currentReadFramebufferID)
-      {
-        m_currentReadFramebufferID = -1;
-      }
+      backend->BindFramebuffer(target, framebufferID);
+    }
+  }
 
-      if (framebuffers[i] == m_currentDrawFramebufferID)
+  void RHI::DeleteFramebuffers(int n, const uint* framebuffers)
+  {
+    if (GLBackend* backend = GetBackend())
+    {
+      for (int i = 0; i < n; ++i)
       {
-        m_currentDrawFramebufferID = -1;
+        backend->InvalidateFboCache(framebuffers[i]);
       }
     }
   }
 
   void RHI::StoreFramebufferBindings()
   {
-    m_storedReadFramebufferStack.push_back(m_currentReadFramebufferID);
-    m_storedDrawFramebufferStack.push_back(m_currentDrawFramebufferID);
+    if (GLBackend* backend = GetBackend())
+    {
+      backend->StoreFboBindings();
+    }
   }
 
   void RHI::RestoreFramebufferBindings()
   {
-    // Ensure there is a stored state to restore
-    if (m_storedReadFramebufferStack.empty() || m_storedDrawFramebufferStack.empty())
+    if (GLBackend* backend = GetBackend())
     {
-      // Nothing to restore.
-      assert(false && "RestoreFramebufferBindings called without a matching StoreFramebufferBindings.");
-      return;
-    }
-
-    GLuint readId = m_storedReadFramebufferStack.back();
-    GLuint drawId = m_storedDrawFramebufferStack.back();
-
-    m_storedReadFramebufferStack.pop_back();
-    m_storedDrawFramebufferStack.pop_back();
-
-    SetFramebuffer(GL_READ_FRAMEBUFFER, readId);
-    SetFramebuffer(GL_DRAW_FRAMEBUFFER, drawId);
-  }
-
-  void RHI::SetTexture(GLenum target, GLuint textureID, GLenum textureSlot)
-  {
-    assert(textureSlot >= 0 && textureSlot <= 31);
-
-    TextureSlotState& state = m_textureIdSlotMap[textureSlot];
-    if (state.textureID != textureID || state.target != target)
-    {
-      glActiveTexture(GL_TEXTURE0 + textureSlot);
-      glBindTexture(target, textureID);
-
-      state.textureID = textureID;
-      state.target    = target;
+      backend->RestoreFboBindings();
     }
   }
 
-  void RHI::DeleteTexture(GLuint textureID)
+  void RHI::SetTexture(uint target, uint textureID, uint textureSlot)
   {
-    for (auto& it : m_textureIdSlotMap)
+    if (GLBackend* backend = GetBackend())
     {
-      if (it.second.textureID == textureID)
-      {
-        it.second.textureID = 0;
-        it.second.target    = 0;
-      }
+      backend->BindTextureDirect(target, textureID, textureSlot);
     }
-
-    glDeleteTextures(1, &textureID);
   }
 
-  void RHI::BindVertexArray(GLuint VAO)
+  void RHI::DeleteTexture(uint textureID)
   {
-    if (m_currentVAO != VAO)
+    glDeleteTextures(1, (const GLuint*) &textureID);
+    if (GLBackend* backend = GetBackend())
     {
-      glBindVertexArray(VAO);
+      backend->InvalidateTextureCache(textureID);
+    }
+  }
 
-      m_currentVAO = VAO;
+  void RHI::BindVertexArray(uint VAO)
+  {
+    if (GLBackend* backend = GetBackend())
+    {
+      backend->BindVAO(VAO);
     }
   }
 
