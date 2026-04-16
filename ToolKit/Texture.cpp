@@ -11,20 +11,32 @@
 #include "EngineSettings.h"
 #include "FileManager.h"
 #include "FullQuadPass.h"
+#include "GLBackend.h"
 #include "Image.h"
 #include "Logger.h"
 #include "Material.h"
-#include "RHI.h"
 #include "RenderSystem.h"
+#include "Renderer.h"
 #include "Shader.h"
 #include "Stats.h"
-#include "TKOpenGL.h"
 #include "ToolKit.h"
 
 #include "DebugNew.h"
 
 namespace ToolKit
 {
+
+  static GLBackend* GetGLBackend()
+  {
+    if (RenderSystem* rs = GetRenderSystem())
+    {
+      if (Renderer* r = rs->GetRenderer())
+      {
+        return static_cast<GLBackend*>(r->GetBackend());
+      }
+    }
+    return nullptr;
+  }
 
   // Texture
   //////////////////////////////////////////
@@ -118,55 +130,18 @@ namespace ToolKit
     }
 
     assert(m_textureId == 0 && "Texture already initialized.");
-    glGenTextures(1, &m_textureId);
-    m_glImpl.textureId = m_textureId;
-    RHI::SetTexture((GLenum) m_settings.Target, m_textureId);
 
-    uint64 pixelCount = (uint64) m_width * (uint64) m_height;
-    if (m_settings.Type != GraphicTypes::TypeFloat)
-    {
-      glTexImage2D(GL_TEXTURE_2D,
-                   0,
-                   (GLint) m_settings.InternalFormat,
-                   m_width,
-                   m_height,
-                   0,
-                   (GLenum) m_settings.Format,
-                   (GLenum) m_settings.Type,
-                   m_image);
-    }
-    else
-    {
-      glTexImage2D(GL_TEXTURE_2D,
-                   0,
-                   (GLint) m_settings.InternalFormat,
-                   m_width,
-                   m_height,
-                   0,
-                   (GLenum) m_settings.Format,
-                   (GLenum) m_settings.Type,
-                   m_imagef);
-    }
+    uint64 pixelCount  = (uint64) m_width * (uint64) m_height;
+    GLBackend* backend = GetGLBackend();
+    assert(backend && "GLBackend not available during Texture::Init");
 
-    ApplyTextureSettings(m_settings);
+    backend->CreateTexture(this);
+    backend->ApplyTextureSettings(this);
     Stats::AddVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat));
-
-    if (TK_GL_EXT_texture_filter_anisotropic == 1)
-    {
-      float maxAniso = 1.0f;
-      glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &maxAniso);
-
-      EngineSettings& settings = GetEngineSettings();
-      int anisoVal             = settings.m_graphics->GetAnisotropicTextureFilteringVal().GetValue<int>();
-      float aniso              = glm::max(1.0f, float(anisoVal));
-      aniso                    = glm::min(maxAniso, aniso);
-
-      glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, aniso);
-    }
 
     if (m_settings.GenerateMipMap)
     {
-      glGenerateMipmap(GL_TEXTURE_2D);
+      backend->GenerateMipmaps(this);
     }
 
     if (flushClientSideArray)
@@ -185,39 +160,27 @@ namespace ToolKit
     }
 
     uint64 pixelCount = (uint64) m_width * (uint64) m_height;
+    if (GLBackend* backend = GetGLBackend())
+    {
+      backend->DestroyTexture(this);
+    }
+
+    // VRAM accounting
     if (m_settings.Target == GraphicTypes::Target2D)
     {
-      if (m_settings.msaaCount > MsaaSampleCount::x0)
-      {
-        // There is no msaa render texture, so delete the renderbuffer.
-        glDeleteRenderbuffers(1, &m_textureId);
-        Stats::RemoveVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat) *
-                                      (int) m_settings.msaaCount);
-      }
-      else
-      {
-        RHI::DeleteTexture(m_textureId);
-        Stats::RemoveVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat));
-      }
+      int msaaScale = m_settings.msaaCount > MsaaSampleCount::x0 ? (int) m_settings.msaaCount : 1;
+      Stats::RemoveVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat) * msaaScale);
     }
     else if (m_settings.Target == GraphicTypes::Target2DArray)
     {
       assert(m_settings.Layers > 0 && "Layer count must be greater than 0");
-      RHI::DeleteTexture(m_textureId);
       Stats::RemoveVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat) * m_settings.Layers);
     }
     else if (m_settings.Target == GraphicTypes::TargetCubeMap)
     {
-      RHI::DeleteTexture(m_textureId);
       Stats::RemoveVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat) * 6);
     }
-    else
-    {
-      assert(false);
-    }
 
-    m_textureId = 0;
-    m_glImpl.textureId = 0;
     m_initiated = false;
   }
 
@@ -235,8 +198,10 @@ namespace ToolKit
 
   void Texture::GenerateMipMaps()
   {
-    RHI::SetTexture((GLenum) m_settings.Target, m_textureId);
-    glGenerateMipmap((GLenum) m_settings.Target);
+    if (GLBackend* backend = GetGLBackend())
+    {
+      backend->GenerateMipmaps(this);
+    }
   }
 
   bool Texture::IsMultiSampled() { return m_settings.msaaCount > MsaaSampleCount::x0; }
@@ -257,14 +222,14 @@ namespace ToolKit
 
   void Texture::ApplyTextureSettings(const TextureSettings& settings)
   {
-    glTexParameteri((GLenum) settings.Target, GL_TEXTURE_MIN_FILTER, (GLint) settings.MinFilter);
-    glTexParameteri((GLenum) settings.Target, GL_TEXTURE_MAG_FILTER, (GLint) settings.MagFilter);
-    glTexParameteri((GLenum) settings.Target, GL_TEXTURE_WRAP_S, (GLint) settings.WarpS);
-    glTexParameteri((GLenum) settings.Target, GL_TEXTURE_WRAP_T, (GLint) settings.WarpT);
-
-    if (settings.Target == GraphicTypes::TargetCubeMap)
+    // Settings struct updated — re-apply via backend if already on GPU
+    m_settings = settings;
+    if (m_initiated)
     {
-      glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, (GLint) settings.WarpR);
+      if (GLBackend* backend = GetGLBackend())
+      {
+        backend->ApplyTextureSettings(this);
+      }
     }
   }
 
@@ -296,7 +261,7 @@ namespace ToolKit
     int internalFormatSize = m_stencil ? 4 : 3;
 
     int sizeMultiplier     = 1;
-    if (m_settings.msaaCount > MsaaSampleCount::x0 && glRenderbufferStorageMultisampleEXT != nullptr)
+    if (m_settings.msaaCount > MsaaSampleCount::x0)
     {
       sizeMultiplier = (int) m_settings.msaaCount;
     }
@@ -322,27 +287,11 @@ namespace ToolKit
       m_settings.msaaCount = MsaaSampleCount::x0;
     }
 
-    glGenRenderbuffers(1, &m_textureId);
-    glBindRenderbuffer(GL_RENDERBUFFER, m_textureId);
+    GLBackend* backend = GetGLBackend();
+    assert(backend && "GLBackend not available during DepthTexture::Init");
+    backend->CreateTexture(this);
 
     Stats::SetGpuResourceLabel(m_label, GpuResourceType::RenderBuffer, m_textureId);
-
-    int sizeMultiplier = 1;
-    if (m_settings.msaaCount > MsaaSampleCount::x0)
-    {
-      glRenderbufferStorageMultisample(GL_RENDERBUFFER,
-                                       (int) m_settings.msaaCount,
-                                       (GLenum) GetDepthFormat(),
-                                       m_width,
-                                       m_height);
-
-      sizeMultiplier = (int) m_settings.msaaCount;
-    }
-    else
-    {
-      glRenderbufferStorage(GL_RENDERBUFFER, (GLenum) GetDepthFormat(), m_width, m_height);
-    }
-
     Stats::AddVRAMUsageInBytes((uint64) (m_width * m_height) * GetFormatSize());
   }
 
@@ -353,11 +302,13 @@ namespace ToolKit
       return;
     }
 
-    glDeleteRenderbuffers(1, &m_textureId);
     Stats::RemoveVRAMUsageInBytes((uint64) (m_width * m_height) * GetFormatSize());
 
-    m_textureId = 0;
-    m_glImpl.textureId = 0;
+    if (GLBackend* backend = GetGLBackend())
+    {
+      backend->DestroyTexture(this);
+    }
+
     m_initiated = false;
     m_stencil   = false;
   }
@@ -382,21 +333,15 @@ namespace ToolKit
     }
 
     assert(m_textureId == 0 && "Texture already initialized.");
-    glGenTextures(1, &m_textureId);
-    m_glImpl.textureId = m_textureId;
-    RHI::SetTexture((GLenum) m_settings.Target, m_textureId);
 
-    glTexImage2D((GLenum) m_settings.Target,
-                 0,
-                 (GLint) m_settings.InternalFormat,
-                 m_width,
-                 m_height,
-                 0,
-                 (GLenum) m_settings.Format,
-                 (GLenum) m_settings.Type,
-                 data);
+    GLBackend* backend = GetGLBackend();
+    assert(backend && "GLBackend not available during DataTexture::Init");
 
-    ApplyTextureSettings(m_settings);
+    // Temporarily store data pointer in m_image so CreateTexture can upload it
+    m_image = static_cast<uint8*>(data);
+    backend->CreateTexture(this);
+    backend->ApplyTextureSettings(this);
+    m_image = nullptr; // DataTexture doesn't own the data
 
     m_loaded    = true;
     m_initiated = true;
@@ -410,17 +355,10 @@ namespace ToolKit
       return;
     }
 
-    RHI::SetTexture((GLenum) m_settings.Target, m_textureId);
-
-    glTexSubImage2D((GLenum) m_settings.Target,
-                    0,
-                    0,
-                    0,
-                    m_width,
-                    m_height,
-                    (GLenum) m_settings.Format,
-                    (GLenum) m_settings.Type,
-                    data);
+    if (GLBackend* backend = GetGLBackend())
+    {
+      backend->UpdateTextureRegion(this, data);
+    }
 
     Stats::AddVRAMUsageInBytes(size);
   }
@@ -432,10 +370,13 @@ namespace ToolKit
       return;
     }
 
-    RHI::DeleteTexture(m_textureId);
     Stats::RemoveVRAMUsageInBytes((uint64) (m_width * m_height) * BytesOfFormat(m_settings.InternalFormat));
 
-    m_textureId = 0;
+    if (GLBackend* backend = GetGLBackend())
+    {
+      backend->DestroyTexture(this);
+    }
+
     m_loaded    = false;
     m_initiated = false;
   };
@@ -554,27 +495,15 @@ namespace ToolKit
     m_settings.Target         = GraphicTypes::TargetCubeMap;
 
     assert(m_textureId == 0 && "Texture already initialized.");
-    glGenTextures(1, &m_textureId);
-    m_glImpl.textureId = m_textureId;
-    RHI::SetTexture(GL_TEXTURE_CUBE_MAP, m_textureId);
 
-    uint sides[6] = {GL_TEXTURE_CUBE_MAP_POSITIVE_X,
-                     GL_TEXTURE_CUBE_MAP_NEGATIVE_X,
-                     GL_TEXTURE_CUBE_MAP_POSITIVE_Y,
-                     GL_TEXTURE_CUBE_MAP_NEGATIVE_Y,
-                     GL_TEXTURE_CUBE_MAP_POSITIVE_Z,
-                     GL_TEXTURE_CUBE_MAP_NEGATIVE_Z};
+    uint64 pixelCount  = (uint64) m_width * (uint64) m_height;
+    GLBackend* backend = GetGLBackend();
+    assert(backend && "GLBackend not available during CubeMap::Init");
 
-    for (int i = 0; i < 6; i++)
-    {
-      glTexImage2D(sides[i], 0, GL_RGBA, m_width, m_width, 0, GL_RGBA, GL_UNSIGNED_BYTE, m_images[i]);
-    }
-
-    uint64 pixelCount = (uint64) m_width * (uint64) m_height;
-    Stats::AddVRAMUsageInBytes(pixelCount * 4 * 6); // Component count * times face count.
-
-    ApplyTextureSettings(m_settings);
-    glGenerateMipmap(GL_TEXTURE_CUBE_MAP);
+    backend->CreateTexture(this);
+    Stats::AddVRAMUsageInBytes(pixelCount * 4 * 6); // Component count * face count.
+    backend->ApplyTextureSettings(this);
+    backend->GenerateMipmaps(this);
 
     if (flushClientSideArray)
     {
@@ -602,31 +531,9 @@ namespace ToolKit
 
   void CubeMap::AllocateMipMapStorage()
   {
-    const int numMipLevels = CalculateMipmapLevels();
-
-    // Pre-allocate storage for all mip levels
-    for (int mip = 1; mip < numMipLevels; mip++)
+    if (GLBackend* backend = GetGLBackend())
     {
-      int mipWidth  = m_width >> mip;
-      int mipHeight = m_height >> mip;
-
-      // Ensure minimum size of 1x1
-      mipWidth      = glm::max(1, mipWidth);
-      mipHeight     = glm::max(1, mipHeight);
-
-      for (int face = 0; face < 6; face++)
-      {
-        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face,
-                     mip,
-                     (GLint) m_settings.InternalFormat,
-                     mipWidth,
-                     mipHeight,
-                     0,
-                     (GLenum) m_settings.Format,
-                     (GLenum) m_settings.Type,
-                     nullptr // No data yet, just allocating
-        );
-      }
+      backend->AllocateCubemapMipStorage(this);
     }
   }
 
@@ -820,8 +727,10 @@ namespace ToolKit
     m_specularEnvMap->GenerateMipMaps();
 
     // Clamp max mip level to the last baked level.
-    RHI::SetTexture(GL_TEXTURE_CUBE_MAP, m_specularEnvMap->m_textureId);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAX_LEVEL, RHIConstants::SpecularIBLLods - 1);
+    if (GLBackend* backend = GetGLBackend())
+    {
+      backend->SetTextureMaxMipLevel(m_specularEnvMap.get(), RHIConstants::SpecularIBLLods - 1);
+    }
 
     for (int i = 1; i < RHIConstants::SpecularIBLLods; i++)
     {
@@ -950,94 +859,36 @@ namespace ToolKit
     m_settings.Target         = m_settings.Target;
     m_settings.Layers         = m_settings.Layers;
 
-    // Create frame buffer color texture
     assert(m_textureId == 0 && "Texture already initialized.");
 
-    if (m_settings.msaaCount > MsaaSampleCount::x0)
-    {
-      glGenRenderbuffers(1, &m_textureId);
-      glBindRenderbuffer(GL_RENDERBUFFER, m_textureId);
-    }
-    else
-    {
-      glGenTextures(1, &m_textureId);
-      RHI::SetTexture((GLenum) m_settings.Target, m_textureId);
-    }
+    GLBackend* backend = GetGLBackend();
+    assert(backend && "GLBackend not available during RenderTarget::Init");
 
+    backend->CreateTexture(this);
     Stats::SetGpuResourceLabel(m_label, GpuResourceType::Texture, m_textureId);
 
     uint64 pixelCount = (uint64) m_width * (uint64) m_height;
     if (m_settings.Target == GraphicTypes::Target2D)
     {
-      if (m_settings.msaaCount > MsaaSampleCount::x0)
+      int msaaScale = m_settings.msaaCount > MsaaSampleCount::x0 ? (int) m_settings.msaaCount : 1;
+      if (m_settings.msaaCount == MsaaSampleCount::x0)
       {
-        // Opengl 3.0 / es 3.0 does not support multisampled textures directly.
-        // Render buffer is used.
-        glRenderbufferStorageMultisample(GL_RENDERBUFFER,
-                                         (int) m_settings.msaaCount,
-                                         (GLenum) m_settings.InternalFormat,
-                                         m_width,
-                                         m_height);
+        backend->ApplyTextureSettings(this);
       }
-      else
-      {
-        void* initialData = m_image;
-        if (m_settings.Type == GraphicTypes::TypeFloat)
-        {
-          initialData = m_image;
-        }
-
-        glTexImage2D(GL_TEXTURE_2D,
-                     0,
-                     (int) m_settings.InternalFormat,
-                     m_width,
-                     m_height,
-                     0,
-                     (int) m_settings.Format,
-                     (int) m_settings.Type,
-                     initialData);
-      }
-
-      ApplyTextureSettings(m_settings);
-      Stats::AddVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat) * (int) m_settings.msaaCount);
+      Stats::AddVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat) * msaaScale);
     }
     else if (m_settings.Target == GraphicTypes::TargetCubeMap)
     {
-      for (uint i = 0; i < 6; i++)
-      {
-        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
-                     0,
-                     (int) m_settings.InternalFormat,
-                     m_width,
-                     m_height,
-                     0,
-                     (int) m_settings.Format,
-                     (int) m_settings.Type,
-                     0);
-      }
-
-      ApplyTextureSettings(m_settings);
+      backend->ApplyTextureSettings(this);
       Stats::AddVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat) * 6);
     }
     else if (m_settings.Target == GraphicTypes::Target2DArray)
     {
       assert(m_settings.Layers > 0 && "Layer count must be at least 1");
-      glTexImage3D(GL_TEXTURE_2D_ARRAY,
-                   0,
-                   (int) m_settings.InternalFormat,
-                   m_width,
-                   m_height,
-                   m_settings.Layers,
-                   0,
-                   (int) m_settings.Format,
-                   (int) m_settings.Type,
-                   nullptr);
-
-      ApplyTextureSettings(m_settings);
+      backend->ApplyTextureSettings(this);
       Stats::AddVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat) * m_settings.Layers);
     }
 
-    m_glImpl.textureId = m_textureId;
     m_initiated = true;
   }
 

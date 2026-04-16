@@ -7,6 +7,7 @@
 
 #include "GLBackend.h"
 
+#include "EngineSettings.h"
 #include "Framebuffer.h"
 #include "GpuProgram.h"
 #include "Mesh.h"
@@ -15,6 +16,7 @@
 #include "ShaderUniform.h"
 #include "TKOpenGL.h"
 #include "Texture.h"
+#include "ToolKit.h"
 #include "DebugNew.h"
 
 namespace ToolKit
@@ -368,6 +370,434 @@ namespace ToolKit
     {
       glDrawArrays((GLenum) desc.type, 0, desc.elementCount);
     }
+  }
+
+  // -----------------------------------------------------------------------
+  // Texture resource management
+  // -----------------------------------------------------------------------
+
+  void GLBackend::CreateTexture(Texture* tex)
+  {
+    if (tex == nullptr)
+    {
+      return;
+    }
+
+    const TextureSettings& s = tex->Settings();
+
+    // DepthTexture — backed by a renderbuffer
+    if (DepthTexture* dt = tex->As<DepthTexture>())
+    {
+      glGenRenderbuffers(1, &tex->m_textureId);
+      glBindRenderbuffer(GL_RENDERBUFFER, tex->m_textureId);
+
+      GLenum fmt = (GLenum) dt->GetDepthFormat();
+      if (s.msaaCount > MsaaSampleCount::x0)
+      {
+        glRenderbufferStorageMultisample(GL_RENDERBUFFER, (int) s.msaaCount, fmt, tex->m_width, tex->m_height);
+      }
+      else
+      {
+        glRenderbufferStorage(GL_RENDERBUFFER, fmt, tex->m_width, tex->m_height);
+      }
+
+      tex->m_glImpl.textureId = tex->m_textureId;
+      return;
+    }
+
+    // RenderTarget MSAA — also a renderbuffer
+    if (s.msaaCount > MsaaSampleCount::x0 && s.Target == GraphicTypes::Target2D)
+    {
+      glGenRenderbuffers(1, &tex->m_textureId);
+      glBindRenderbuffer(GL_RENDERBUFFER, tex->m_textureId);
+      glRenderbufferStorageMultisample(GL_RENDERBUFFER,
+                                       (int) s.msaaCount,
+                                       (GLenum) s.InternalFormat,
+                                       tex->m_width,
+                                       tex->m_height);
+      tex->m_glImpl.textureId = tex->m_textureId;
+      return;
+    }
+
+    // All other textures — regular GL texture
+    glGenTextures(1, &tex->m_textureId);
+    tex->m_glImpl.textureId = tex->m_textureId;
+    BindTextureDirect((uint) s.Target, tex->m_textureId, 0);
+
+    if (s.Target == GraphicTypes::Target2D)
+    {
+      // Texture or RenderTarget (non-MSAA 2D)
+      void* data = tex->m_imagef ? (void*) tex->m_imagef : (void*) tex->m_image;
+      glTexImage2D(GL_TEXTURE_2D,
+                   0,
+                   (GLint) s.InternalFormat,
+                   tex->m_width,
+                   tex->m_height,
+                   0,
+                   (GLenum) s.Format,
+                   (GLenum) s.Type,
+                   data);
+    }
+    else if (s.Target == GraphicTypes::TargetCubeMap)
+    {
+      // CubeMap — check if it has 6 loaded images
+      if (CubeMap* cm = tex->As<CubeMap>())
+      {
+        const auto& images = cm->m_images;
+        if (images.size() == 6)
+        {
+          uint sides[6] = {GL_TEXTURE_CUBE_MAP_POSITIVE_X,
+                           GL_TEXTURE_CUBE_MAP_NEGATIVE_X,
+                           GL_TEXTURE_CUBE_MAP_POSITIVE_Y,
+                           GL_TEXTURE_CUBE_MAP_NEGATIVE_Y,
+                           GL_TEXTURE_CUBE_MAP_POSITIVE_Z,
+                           GL_TEXTURE_CUBE_MAP_NEGATIVE_Z};
+          for (int i = 0; i < 6; i++)
+          {
+            glTexImage2D(sides[i], 0, GL_RGBA, tex->m_width, tex->m_width, 0, GL_RGBA, GL_UNSIGNED_BYTE, images[i]);
+          }
+        }
+        else
+        {
+          // RenderTarget cube map — allocate empty faces
+          for (uint i = 0; i < 6; i++)
+          {
+            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
+                         0,
+                         (GLint) s.InternalFormat,
+                         tex->m_width,
+                         tex->m_height,
+                         0,
+                         (GLenum) s.Format,
+                         (GLenum) s.Type,
+                         nullptr);
+          }
+        }
+      }
+      else
+      {
+        // Generic cubemap (e.g. RenderTarget with TargetCubeMap)
+        for (uint i = 0; i < 6; i++)
+        {
+          glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
+                       0,
+                       (GLint) s.InternalFormat,
+                       tex->m_width,
+                       tex->m_height,
+                       0,
+                       (GLenum) s.Format,
+                       (GLenum) s.Type,
+                       nullptr);
+        }
+      }
+    }
+    else if (s.Target == GraphicTypes::Target2DArray)
+    {
+      assert(s.Layers > 0 && "Layer count must be at least 1");
+      glTexImage3D(GL_TEXTURE_2D_ARRAY,
+                   0,
+                   (GLint) s.InternalFormat,
+                   tex->m_width,
+                   tex->m_height,
+                   s.Layers,
+                   0,
+                   (GLenum) s.Format,
+                   (GLenum) s.Type,
+                   nullptr);
+    }
+  }
+
+  void GLBackend::DestroyTexture(Texture* tex)
+  {
+    if (tex == nullptr || tex->m_textureId == 0)
+    {
+      return;
+    }
+
+    const TextureSettings& s = tex->Settings();
+    bool isRenderbuffer      = false;
+
+    if (tex->IsA<DepthTexture>())
+    {
+      isRenderbuffer = true;
+    }
+    else if (s.msaaCount > MsaaSampleCount::x0 && s.Target == GraphicTypes::Target2D)
+    {
+      isRenderbuffer = true;
+    }
+
+    if (isRenderbuffer)
+    {
+      glDeleteRenderbuffers(1, &tex->m_textureId);
+    }
+    else
+    {
+      InvalidateTextureCache(tex->m_textureId);
+      glDeleteTextures(1, &tex->m_textureId);
+    }
+
+    tex->m_textureId        = 0;
+    tex->m_glImpl.textureId = 0;
+  }
+
+  void GLBackend::ApplyTextureSettings(Texture* tex)
+  {
+    if (tex == nullptr)
+    {
+      return;
+    }
+
+    const TextureSettings& s = tex->Settings();
+    GLenum target            = (GLenum) s.Target;
+
+    glTexParameteri(target, GL_TEXTURE_MIN_FILTER, (GLint) s.MinFilter);
+    glTexParameteri(target, GL_TEXTURE_MAG_FILTER, (GLint) s.MagFilter);
+    glTexParameteri(target, GL_TEXTURE_WRAP_S, (GLint) s.WarpS);
+    glTexParameteri(target, GL_TEXTURE_WRAP_T, (GLint) s.WarpT);
+
+    if (s.Target == GraphicTypes::TargetCubeMap)
+    {
+      glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, (GLint) s.WarpR);
+    }
+
+    // Anisotropic filtering for 2D textures
+    if (s.Target == GraphicTypes::Target2D && TK_GL_EXT_texture_filter_anisotropic == 1)
+    {
+      float maxAniso = 1.0f;
+      glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &maxAniso);
+
+      EngineSettings& engSettings = GetEngineSettings();
+      int anisoVal = engSettings.m_graphics->GetAnisotropicTextureFilteringVal().GetValue<int>();
+      float aniso  = glm::min(maxAniso, glm::max(1.0f, float(anisoVal)));
+      glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, aniso);
+    }
+  }
+
+  void GLBackend::GenerateMipmaps(Texture* tex)
+  {
+    if (tex == nullptr || tex->m_textureId == 0)
+    {
+      return;
+    }
+
+    BindTextureDirect((uint) tex->Settings().Target, tex->m_textureId, 0);
+    glGenerateMipmap((GLenum) tex->Settings().Target);
+  }
+
+  void GLBackend::UpdateTextureRegion(Texture* tex, const void* data)
+  {
+    if (tex == nullptr || tex->m_textureId == 0)
+    {
+      return;
+    }
+
+    const TextureSettings& s = tex->Settings();
+    BindTextureDirect((uint) s.Target, tex->m_textureId, 0);
+
+    glTexSubImage2D((GLenum) s.Target,
+                    0,
+                    0,
+                    0,
+                    tex->m_width,
+                    tex->m_height,
+                    (GLenum) s.Format,
+                    (GLenum) s.Type,
+                    data);
+  }
+
+  void GLBackend::SetTextureMaxMipLevel(Texture* tex, int maxLevel)
+  {
+    if (tex == nullptr || tex->m_textureId == 0)
+    {
+      return;
+    }
+
+    GLenum target = (GLenum) tex->Settings().Target;
+    BindTextureDirect(target, tex->m_textureId, 0);
+    glTexParameteri(target, GL_TEXTURE_MAX_LEVEL, maxLevel);
+  }
+
+  void GLBackend::AllocateCubemapMipStorage(Texture* tex)
+  {
+    if (tex == nullptr || tex->m_textureId == 0)
+    {
+      return;
+    }
+
+    const TextureSettings& s = tex->Settings();
+    BindTextureDirect(GL_TEXTURE_CUBE_MAP, tex->m_textureId, 0);
+
+    const int numMipLevels = tex->CalculateMipmapLevels();
+    for (int mip = 1; mip < numMipLevels; mip++)
+    {
+      int mipW = glm::max(1, tex->m_width >> mip);
+      int mipH = glm::max(1, tex->m_height >> mip);
+
+      for (int face = 0; face < 6; face++)
+      {
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face,
+                     mip,
+                     (GLint) s.InternalFormat,
+                     mipW,
+                     mipH,
+                     0,
+                     (GLenum) s.Format,
+                     (GLenum) s.Type,
+                     nullptr);
+      }
+    }
+  }
+
+  void GLBackend::CopyCubemapFaceFromFramebuffer(Texture* cubemap, int face, int mip, int width, int height)
+  {
+    if (cubemap == nullptr || cubemap->m_textureId == 0)
+    {
+      return;
+    }
+
+    BindTextureDirect(GL_TEXTURE_CUBE_MAP, cubemap->m_textureId, 0);
+    glCopyTexSubImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, mip, 0, 0, 0, 0, width, height);
+  }
+
+  // -----------------------------------------------------------------------
+  // Framebuffer resource management
+  // -----------------------------------------------------------------------
+
+  void GLBackend::CreateFramebuffer(Framebuffer* fb)
+  {
+    if (fb == nullptr)
+    {
+      return;
+    }
+
+    uint fboId = 0;
+    glGenFramebuffers(1, &fboId);
+    fb->m_fboId        = fboId;
+    fb->m_glImpl.fboId = fboId;
+    BindFramebuffer(GL_FRAMEBUFFER, fboId);
+  }
+
+  void GLBackend::DestroyFramebuffer(Framebuffer* fb)
+  {
+    if (fb == nullptr || fb->m_fboId == 0)
+    {
+      return;
+    }
+
+    uint id = fb->m_fboId;
+    InvalidateFboCache(id);
+    glDeleteFramebuffers(1, &id);
+    fb->m_fboId        = 0;
+    fb->m_glImpl.fboId = 0;
+  }
+
+  void GLBackend::AttachColorTarget(Framebuffer* fb, RenderTargetPtr rt, int attachment, int mip, int layer, int face)
+  {
+    if (fb == nullptr || rt == nullptr)
+    {
+      return;
+    }
+
+    BindFramebuffer(GL_FRAMEBUFFER, fb->m_fboId);
+    GLenum glAttachment = GL_COLOR_ATTACHMENT0 + attachment;
+
+    if (rt->Settings().msaaCount > MsaaSampleCount::x0)
+    {
+      glFramebufferRenderbuffer(GL_FRAMEBUFFER, glAttachment, GL_RENDERBUFFER, rt->m_textureId);
+    }
+    else if (face >= 0)
+    {
+      glFramebufferTexture2D(GL_FRAMEBUFFER, glAttachment, GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, rt->m_textureId, mip);
+    }
+    else if (layer >= 0)
+    {
+      glFramebufferTextureLayer(GL_FRAMEBUFFER, glAttachment, rt->m_textureId, mip, layer);
+    }
+    else
+    {
+      glFramebufferTexture2D(GL_FRAMEBUFFER, glAttachment, GL_TEXTURE_2D, rt->m_textureId, mip);
+    }
+  }
+
+  void GLBackend::DetachColorTarget(Framebuffer* fb, int attachment)
+  {
+    if (fb == nullptr || fb->m_fboId == 0)
+    {
+      return;
+    }
+
+    BindFramebuffer(GL_FRAMEBUFFER, fb->m_fboId);
+    GLenum glAttachment = GL_COLOR_ATTACHMENT0 + attachment;
+    glFramebufferTexture2D(GL_FRAMEBUFFER, glAttachment, GL_TEXTURE_2D, 0, 0);
+  }
+
+  void GLBackend::AttachDepthTarget(Framebuffer* fb, DepthTexturePtr dt)
+  {
+    if (fb == nullptr || dt == nullptr)
+    {
+      return;
+    }
+
+    BindFramebuffer(GL_FRAMEBUFFER, fb->m_fboId);
+    GLenum attachment = dt->m_stencil ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT;
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, attachment, GL_RENDERBUFFER, dt->m_textureId);
+  }
+
+  void GLBackend::DetachDepthTarget(Framebuffer* fb)
+  {
+    if (fb == nullptr || fb->m_fboId == 0)
+    {
+      return;
+    }
+
+    BindFramebuffer(GL_FRAMEBUFFER, fb->m_fboId);
+    // Detach both possible depth attachment types
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, 0);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, 0);
+  }
+
+  void GLBackend::SetDrawBuffers(Framebuffer* fb)
+  {
+    if (fb == nullptr || fb->m_fboId == 0)
+    {
+      return;
+    }
+
+    BindFramebuffer(GL_FRAMEBUFFER, fb->m_fboId);
+
+    GLenum colorAttachments[8] = {GL_NONE, GL_NONE, GL_NONE, GL_NONE, GL_NONE, GL_NONE, GL_NONE, GL_NONE};
+    int maxAttachment          = -1;
+
+    for (int i = 0; i < Framebuffer::m_maxColorAttachmentCount; i++)
+    {
+      RenderTargetPtr rt = fb->GetColorAttachment((Framebuffer::Attachment) i);
+      if (rt != nullptr && rt->m_textureId != 0)
+      {
+        colorAttachments[i] = GL_COLOR_ATTACHMENT0 + i;
+        maxAttachment       = i;
+      }
+    }
+
+    if (maxAttachment >= 0)
+    {
+      glDrawBuffers(maxAttachment + 1, colorAttachments);
+    }
+    else
+    {
+      glDrawBuffers(0, nullptr);
+    }
+  }
+
+  void GLBackend::CheckFramebufferComplete(Framebuffer* fb)
+  {
+    if (fb == nullptr || fb->m_fboId == 0)
+    {
+      return;
+    }
+
+    BindFramebuffer(GL_FRAMEBUFFER, fb->m_fboId);
+    GLenum check = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    assert(check == GL_FRAMEBUFFER_COMPLETE && "Framebuffer incomplete");
   }
 
   void GLBackend::ResolveFramebuffer(FramebufferPtr src, FramebufferPtr dst, const IntArray& attachments) {}

@@ -861,7 +861,7 @@ namespace ToolKit
 
         BindProgramOfMaterial(m_gaussianBlurMaterial.get());
 
-        RHI::SetTexture(GL_TEXTURE_2D_ARRAY, srcArray->m_textureId, 1);
+        m_backend->BindTexture(1, srcArray);
 
         DrawFullQuad(m_gaussianBlurMaterial);
       }
@@ -1436,8 +1436,6 @@ namespace ToolKit
     FramebufferPtr readBuffer = MakeNewPtr<Framebuffer>(fbs);
     readBuffer->Init();
 
-    RHI::SetTexture((GLenum) dst->Settings().Target, dst->m_textureId);
-
     for (int i = 0; i < 6; i++)
     {
       writeBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0,
@@ -1452,10 +1450,12 @@ namespace ToolKit
                                      -1,
                                      Framebuffer::CubemapFace(i));
 
-      RHI::SetFramebuffer(GL_DRAW_FRAMEBUFFER, writeBuffer->GetFboId());
-      RHI::SetFramebuffer(GL_READ_FRAMEBUFFER, readBuffer->GetFboId());
+      m_backend->StoreFboBindings();
+      static_cast<GLBackend*>(m_backend)->BindFramebuffer(GL_DRAW_FRAMEBUFFER, writeBuffer->m_glImpl.fboId);
+      static_cast<GLBackend*>(m_backend)->BindFramebuffer(GL_READ_FRAMEBUFFER, readBuffer->m_glImpl.fboId);
 
-      glCopyTexSubImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, mipLevel, 0, 0, 0, 0, src->m_width, src->m_height);
+      m_backend->CopyCubemapFaceFromFramebuffer(dst.get(), i, mipLevel, src->m_width, src->m_height);
+      m_backend->RestoreFboBindings();
     }
   }
 
@@ -1608,21 +1608,19 @@ namespace ToolKit
         mat->UpdateProgramUniform("roughness", (float) mip / (float) (mipMaps - 1));
         mat->UpdateProgramUniform("resPerFace", (float) mipSize);
 
-        RHI::SetTexture((GLenum) GraphicTypes::TargetCubeMap, cubemap->m_textureId, 0);
+        m_backend->BindTexture(0, cubemap);
 
         DrawCube(cam, mat);
 
         // Copy color attachment to cubemap's correct mip level and face.
-        RHI::SetTexture((GLenum) GraphicTypes::TargetCubeMap, cubemapRt->m_textureId, 0);
-        glCopyTexSubImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, mip, 0, 0, 0, 0, mipSize, mipSize);
+        m_backend->CopyCubemapFaceFromFramebuffer(cubemapRt.get(), i, mip, mipSize, mipSize);
       }
     }
 
     SetFramebuffer(nullptr, GraphicBitFields::None);
 
     // Clamp texture max mip level to the last bake level.
-    RHI::SetTexture(GL_TEXTURE_CUBE_MAP, cubemapRt->m_textureId);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAX_LEVEL, mipMaps - 1);
+    m_backend->SetTextureMaxMipLevel(cubemapRt.get(), mipMaps - 1);
 
     CubeMapPtr newCubeMap = MakeNewPtr<CubeMap>();
     newCubeMap->Consume(cubemapRt);

@@ -79,6 +79,41 @@ namespace ToolKit
     virtual void StartTimerQuery()                                  = 0;
     virtual void EndTimerQuery()                                    = 0;
     virtual void GetElapsedTime(float& cpu, float& gpu)             = 0;
+
+    // Texture resource management
+    // CreateTexture: allocates GPU storage (gen + texImage/renderbufferStorage). Reads all
+    // required info from tex->Settings(), tex->m_width/height, and pixel data pointers.
+    virtual void CreateTexture(Texture* tex)                        = 0;
+    virtual void DestroyTexture(Texture* tex)                       = 0;
+    // ApplyTextureSettings: sets sampler parameters (filter, wrap) for the currently bound texture.
+    // Must be called after CreateTexture while the texture is still bound.
+    virtual void ApplyTextureSettings(Texture* tex)                 = 0;
+    virtual void GenerateMipmaps(Texture* tex)                      = 0;
+    // UpdateTextureRegion: full-surface upload via glTexSubImage2D. Used by DataTexture::Map.
+    virtual void UpdateTextureRegion(Texture* tex, const void* data) = 0;
+    // SetTextureMaxMipLevel: sets GL_TEXTURE_MAX_LEVEL (or VK equivalent). Used by specular IBL maps.
+    virtual void SetTextureMaxMipLevel(Texture* tex, int maxLevel)  = 0;
+    // AllocateCubemapMipStorage: pre-allocates storage for all non-base mip levels of a cube map.
+    virtual void AllocateCubemapMipStorage(Texture* tex)            = 0;
+    // CopyCubemapFaceFromFramebuffer: copies current read framebuffer to a cubemap face at a given mip.
+    // Equivalent to glCopyTexSubImage2D on GL_TEXTURE_CUBE_MAP_POSITIVE_X + face.
+    virtual void CopyCubemapFaceFromFramebuffer(Texture* cubemap, int face, int mip, int width, int height) = 0;
+
+    // Framebuffer resource management
+    virtual void CreateFramebuffer(Framebuffer* fb)                 = 0;
+    virtual void DestroyFramebuffer(Framebuffer* fb)                = 0;
+    virtual void AttachColorTarget(Framebuffer* fb,
+                                   RenderTargetPtr rt,
+                                   int attachment,
+                                   int mip,
+                                   int layer,
+                                   int face)                        = 0;
+    virtual void DetachColorTarget(Framebuffer* fb, int attachment) = 0;
+    virtual void AttachDepthTarget(Framebuffer* fb,
+                                   DepthTexturePtr dt)              = 0;
+    virtual void DetachDepthTarget(Framebuffer* fb)                 = 0;
+    virtual void SetDrawBuffers(Framebuffer* fb)                    = 0;
+    virtual void CheckFramebufferComplete(Framebuffer* fb)          = 0;
   };
 
 } // namespace ToolKit

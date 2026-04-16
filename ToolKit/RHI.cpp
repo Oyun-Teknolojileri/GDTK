@@ -81,11 +81,14 @@ namespace ToolKit
 
   void RHI::DeleteTexture(uint textureID)
   {
-    glDeleteTextures(1, (const GLuint*) &textureID);
     if (GLBackend* backend = GetBackend())
     {
       backend->InvalidateTextureCache(textureID);
     }
+    // NOTE: actual glDeleteTextures is now called by GLBackend::DestroyTexture.
+    // This path is only reached from legacy call sites that still use raw IDs
+    // (e.g. Renderer utility methods). Those will be cleaned up in a later phase.
+    glDeleteTextures(1, (const GLuint*) &textureID);
   }
 
   void RHI::BindVertexArray(uint VAO)

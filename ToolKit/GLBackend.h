@@ -53,6 +53,26 @@ namespace ToolKit
     void EndTimerQuery() override;
     void GetElapsedTime(float& cpu, float& gpu) override;
 
+    // Texture resource management
+    void CreateTexture(Texture* tex) override;
+    void DestroyTexture(Texture* tex) override;
+    void ApplyTextureSettings(Texture* tex) override;
+    void GenerateMipmaps(Texture* tex) override;
+    void UpdateTextureRegion(Texture* tex, const void* data) override;
+    void SetTextureMaxMipLevel(Texture* tex, int maxLevel) override;
+    void AllocateCubemapMipStorage(Texture* tex) override;
+    void CopyCubemapFaceFromFramebuffer(Texture* cubemap, int face, int mip, int width, int height) override;
+
+    // Framebuffer resource management
+    void CreateFramebuffer(Framebuffer* fb) override;
+    void DestroyFramebuffer(Framebuffer* fb) override;
+    void AttachColorTarget(Framebuffer* fb, RenderTargetPtr rt, int attachment, int mip, int layer, int face) override;
+    void DetachColorTarget(Framebuffer* fb, int attachment) override;
+    void AttachDepthTarget(Framebuffer* fb, DepthTexturePtr dt) override;
+    void DetachDepthTarget(Framebuffer* fb) override;
+    void SetDrawBuffers(Framebuffer* fb) override;
+    void CheckFramebufferComplete(Framebuffer* fb) override;
+
     // Cache management (Internal use by RHI)
     void BindFramebuffer(uint target, uint id);
     void BindTextureDirect(uint target, uint id, uint slot);

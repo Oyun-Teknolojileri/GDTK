@@ -74,7 +74,8 @@ namespace ToolKit
     /** Removes image data. */
     virtual void Clear();
 
-    /** Used to set graphics api settings for texture creation.*/
+    /** Applies current m_settings to the GPU resource (filter, wrap modes).
+     *  If a new settings struct is passed the member is updated first. */
     void ApplyTextureSettings(const TextureSettings& settings);
 
    public:

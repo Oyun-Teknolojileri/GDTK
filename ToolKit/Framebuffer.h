@@ -36,6 +36,8 @@ namespace ToolKit
 
   class TK_API Framebuffer : public Resource
   {
+    friend class GLBackend;
+
    public:
     TKDeclareClass(Framebuffer, Resource);
 
