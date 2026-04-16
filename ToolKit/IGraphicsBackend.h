@@ -27,8 +27,9 @@ namespace ToolKit
 
   struct DrawDesc
   {
-    const Mesh* mesh    = nullptr;
-    bool indexed        = true;
+    const Mesh* mesh          = nullptr;
+    VertexLayout vertexLayout = VertexLayout::Mesh; // needed by Vulkan for pipeline key
+    bool indexed              = true;
     uint elementCount   = 0;
     uint instanceCount  = 1;
     DrawType type       = DrawType::Triangle;
@@ -121,6 +122,14 @@ namespace ToolKit
     virtual void UpdateUniformBuffer(UniformBuffer* ub,
                                      const void* data, uint64 size)  = 0;
     // glBufferSubData — called only when dirty (GpuBufferBase cache preserved)
+
+    // Shader resource management
+    virtual uint CreateShader(Shader* shader, const String& source) = 0;
+    // GL:  glCreateShader + glShaderSource + glCompileShader → returns GLuint handle (0 on fail)
+    // VK:  shaderc: GLSL→SPIR-V → vkCreateShaderModule → returns handle cast to uint
+    virtual void DestroyShader(uint handle)                         = 0;
+    // GL:  glDeleteShader(handle)
+    // VK:  vkDestroyShaderModule(handle)
 
     // GpuProgram resource management
     virtual void CreateGpuProgram(GpuProgram* program,

@@ -352,6 +352,7 @@ namespace ToolKit
 
     DrawDesc desc;
     desc.mesh         = mesh;
+    desc.vertexLayout = mesh->m_vertexLayout;
     desc.indexed      = mesh->m_indexCount != 0;
     desc.elementCount = desc.indexed ? mesh->m_indexCount : mesh->m_vertexCount;
     desc.type         = composed.drawType;

@@ -64,6 +64,10 @@ namespace ToolKit
     void DestroyUniformBuffer(UniformBuffer* ub) override;
     void UpdateUniformBuffer(UniformBuffer* ub, const void* data, uint64 size) override;
 
+    // Shader resource management
+    uint CreateShader(Shader* shader, const String& source) override;
+    void DestroyShader(uint handle) override;
+
     // GpuProgram resource management
     void CreateGpuProgram(GpuProgram* program, struct GlobalGpuBuffers* buffers) override;
     void DestroyGpuProgram(GpuProgram* program) override;

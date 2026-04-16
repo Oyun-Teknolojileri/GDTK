@@ -514,6 +514,73 @@ namespace ToolKit
   }
 
   // -----------------------------------------------------------------------
+  // Shader resource management
+  // -----------------------------------------------------------------------
+
+  uint GLBackend::CreateShader(Shader* shader, const String& source)
+  {
+    GLenum type = 0;
+    if (shader->m_shaderType == ShaderType::VertexShader)
+    {
+      type = (GLenum) GraphicTypes::VertexShader;
+    }
+    else if (shader->m_shaderType == ShaderType::FragmentShader)
+    {
+      type = (GLenum) GraphicTypes::FragmentShader;
+    }
+    else
+    {
+      TK_ERR("Include shader can't be compiled: %s", shader->GetFile().c_str());
+      return 0;
+    }
+
+    uint handle = glCreateShader(type);
+    if (handle == 0)
+    {
+      return 0;
+    }
+
+    String src         = source;
+    const char* str    = nullptr;
+    size_t loc         = src.find("#version");
+    if (loc != String::npos)
+    {
+      src = src.substr(loc);
+    }
+    str = src.c_str();
+
+    glShaderSource(handle, 1, &str, nullptr);
+    glCompileShader(handle);
+
+    GLint compiled;
+    glGetShaderiv(handle, GL_COMPILE_STATUS, &compiled);
+    if (!compiled)
+    {
+      GLint infoLen = 0;
+      glGetShaderiv(handle, GL_INFO_LOG_LENGTH, &infoLen);
+      if (infoLen > 1)
+      {
+        char* log = new char[infoLen];
+        glGetShaderInfoLog(handle, infoLen, nullptr, log);
+        TK_ERR(log);
+        SafeDelArray(log);
+      }
+      glDeleteShader(handle);
+      return 0;
+    }
+
+    return handle;
+  }
+
+  void GLBackend::DestroyShader(uint handle)
+  {
+    if (handle)
+    {
+      glDeleteShader(handle);
+    }
+  }
+
+  // -----------------------------------------------------------------------
   // GpuProgram resource management
   // -----------------------------------------------------------------------
 

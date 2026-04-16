@@ -11,8 +11,9 @@
 #include "FileManager.h"
 #include "GpuProgram.h"
 #include "Logger.h"
+#include "Renderer.h"
+#include "RenderSystem.h"
 #include "TKAssert.h"
-#include "TKOpenGL.h"
 #include "ToolKit.h"
 #include "Util.h"
 
@@ -24,6 +25,8 @@
 
 namespace ToolKit
 {
+
+  static IGraphicsBackend* GetBackend() { return GetRenderSystem()->GetRenderer()->GetBackend(); }
 
   // Duplicate Include Prune Utility
   //////////////////////////////////////////
@@ -141,8 +144,28 @@ namespace ToolKit
 
   void Shader::UnInit()
   {
-    glDeleteShader(m_shaderHandle);
-    m_initiated = false;
+    IGraphicsBackend* backend = GetBackend();
+
+    // Destroy all compiled variants.
+    bool handleInMap = false;
+    for (auto& [key, handle] : m_shaderVariantMap)
+    {
+      if (handle == m_shaderHandle)
+      {
+        handleInMap = true;
+      }
+      backend->DestroyShader(handle);
+    }
+    m_shaderVariantMap.clear();
+
+    // If m_shaderHandle was not part of a variant (base compile without defines), destroy it too.
+    if (!handleInMap)
+    {
+      backend->DestroyShader(m_shaderHandle);
+    }
+
+    m_shaderHandle = 0;
+    m_initiated    = false;
   }
 
   void Shader::Save(bool onlyIfDirty)
@@ -416,62 +439,7 @@ namespace ToolKit
   {
     TK_LOG("Shader in compile %s", GetFile().c_str());
 
-    GLenum type = 0;
-    if (m_shaderType == ShaderType::VertexShader)
-    {
-      type = (GLenum) GraphicTypes::VertexShader;
-    }
-    else if (m_shaderType == ShaderType::FragmentShader)
-    {
-      type = (GLenum) GraphicTypes::FragmentShader;
-    }
-    else
-    {
-      TK_ERR("Include shader can't be compiled: %s", GetFile().c_str());
-      return 0;
-    }
-
-    m_shaderHandle = glCreateShader(type);
-    if (m_shaderHandle == 0)
-    {
-      return 0;
-    }
-
-    // Start with #version
-    const char* str = nullptr;
-    size_t loc      = source.find("#version");
-    if (loc != String::npos)
-    {
-      source = source.substr(loc);
-      str    = source.c_str();
-    }
-    else
-    {
-      str = source.c_str();
-    }
-
-    glShaderSource(m_shaderHandle, 1, &str, nullptr);
-    glCompileShader(m_shaderHandle);
-
-    GLint compiled;
-    glGetShaderiv(m_shaderHandle, GL_COMPILE_STATUS, &compiled);
-    if (!compiled)
-    {
-      GLint infoLen = 0;
-      glGetShaderiv(m_shaderHandle, GL_INFO_LOG_LENGTH, &infoLen);
-      if (infoLen > 1)
-      {
-        char* log = new char[infoLen];
-        glGetShaderInfoLog(m_shaderHandle, infoLen, nullptr, log);
-
-        TK_ERR(log);
-        SafeDelArray(log);
-      }
-
-      glDeleteShader(m_shaderHandle);
-      return 0;
-    }
-
+    m_shaderHandle = GetBackend()->CreateShader(this, source);
     return m_shaderHandle;
   }
 
