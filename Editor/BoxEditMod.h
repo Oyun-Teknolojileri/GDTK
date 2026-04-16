@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include "Action.h"
 #include "BoxEditGizmo.h"
 #include "Mod.h"
 
@@ -52,9 +53,11 @@ namespace ToolKit
       /** Returns true if the current selection has a box-editable component. */
       bool TryUpdateGizmoFromSelection();
 
+     public:
       /** Tries to build a BoxEditContext from the entity's components or the entity itself. */
-      BoxEditContext BuildContextFromEntity(EntityPtr ntt);
+      static BoxEditContext BuildContextFromEntity(EntityPtr ntt);
 
+     private:
       /** Begins a drag operation on the gizmo. */
       void BeginDrag(const Vec2& mousePos);
 
@@ -76,6 +79,28 @@ namespace ToolKit
       Vec3 m_dragStartOffset;
       BoxEditContext m_dragContext;
       Action* m_dragAction = nullptr;
+    };
+
+    // BoxEditAction
+    //////////////////////////////////////////
+
+    class TK_EDITOR_API BoxEditAction : public Action
+    {
+     public:
+      explicit BoxEditAction(EntityPtr ntt);
+      virtual ~BoxEditAction();
+
+      void Undo() override;
+      void Redo() override;
+
+     private:
+      void Swap();
+
+     private:
+      EntityPtr m_entity;
+      Vec3 m_size;
+      Vec3 m_offset;
+      Mat4 m_transform;
     };
 
   } // namespace Editor

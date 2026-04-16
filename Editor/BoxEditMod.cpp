@@ -303,7 +303,7 @@ namespace ToolKit
       {
         SafeDel(m_dragAction);
       }
-      m_dragAction          = new TransformAction(ntt);
+      m_dragAction          = new BoxEditAction(ntt);
 
       // Build drag plane that contains the face normal direction but faces the camera.
       Vec3 faceNormal       = m_gizmo->GetFaceNormalWorld(m_dragFace);
@@ -451,6 +451,50 @@ namespace ToolKit
         ActionManager::GetInstance()->AddAction(m_dragAction);
         m_dragAction = nullptr;
       }
+    }
+
+    // BoxEditAction
+    //////////////////////////////////////////
+
+    BoxEditAction::BoxEditAction(EntityPtr ntt)
+    {
+      m_entity           = ntt;
+      m_transform        = ntt->m_node->GetTransform();
+
+      BoxEditContext ctx = BoxEditMod::BuildContextFromEntity(ntt);
+      if (ctx.IsValid())
+      {
+        m_size   = ctx.GetSize();
+        m_offset = ctx.GetPositionOffset();
+      }
+    }
+
+    BoxEditAction::~BoxEditAction() {}
+
+    void BoxEditAction::Undo() { Swap(); }
+
+    void BoxEditAction::Redo() { Swap(); }
+
+    void BoxEditAction::Swap()
+    {
+      Vec3 currentSize = m_size, currentOffset = m_offset;
+      Mat4 currentTransform = m_entity->m_node->GetTransform();
+
+      BoxEditContext ctx    = BoxEditMod::BuildContextFromEntity(m_entity);
+      if (ctx.IsValid())
+      {
+        currentSize   = ctx.GetSize();
+        currentOffset = ctx.GetPositionOffset();
+
+        ctx.SetSize(m_size);
+        ctx.SetPositionOffset(m_offset);
+      }
+
+      m_entity->m_node->SetTransform(m_transform);
+
+      m_transform = currentTransform;
+      m_size      = currentSize;
+      m_offset    = currentOffset;
     }
 
   } // namespace Editor
