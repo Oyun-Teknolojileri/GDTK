@@ -1496,4 +1496,22 @@ namespace ToolKit
     return matchR && matchG && matchB;
   }
 
+  void GLBackend::EnableScissorTest(bool enable)
+  {
+    if (enable)
+    {
+      glEnable(GL_SCISSOR_TEST);
+    }
+    else
+    {
+      glDisable(GL_SCISSOR_TEST);
+    }
+  }
+
+  void GLBackend::ReadPixels(int x, int y, int w, int h,
+                             GraphicTypes format, GraphicTypes type, void* data)
+  {
+    glReadPixels(x, y, w, h, (GLenum) format, (GLenum) type, data);
+  }
+
 } // namespace ToolKit

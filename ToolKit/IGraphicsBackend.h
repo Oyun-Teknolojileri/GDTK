@@ -188,6 +188,13 @@ namespace ToolKit
     // Validates whether the backbuffer actually performs sRGB encoding.
     // Returns false if the backbuffer does NOT do sRGB encoding.
     virtual bool ValidateBackbufferSrgbEncoding() = 0;
+
+    // Enables or disables scissor testing.
+    virtual void EnableScissorTest(bool enable) = 0;
+
+    // Reads pixels from the current read framebuffer.
+    virtual void ReadPixels(int x, int y, int w, int h,
+                            GraphicTypes format, GraphicTypes type, void* data) = 0;
   };
 
 } // namespace ToolKit

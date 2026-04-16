@@ -32,7 +32,6 @@
 #include "Stats.h"
 #include "Surface.h"
 #include "TKAssert.h"
-#include "TKOpenGL.h"
 #include "Texture.h"
 #include "ToolKit.h"
 #include "UIManager.h"
@@ -664,7 +663,7 @@ namespace ToolKit
     int sx           = (int) slotCoord.x;
     int sy           = (int) slotCoord.y;
 
-    glEnable(GL_SCISSOR_TEST);
+    m_backend->EnableScissorTest(true);
 
     for (int tap = 0; tap < tapCount; tap++)
     {
@@ -715,7 +714,7 @@ namespace ToolKit
       }
     }
 
-    glDisable(GL_SCISSOR_TEST);
+    m_backend->EnableScissorTest(false);
 
     // Restore default define state.
     vert->SetDefine("TextureArray", "0");
@@ -1206,7 +1205,7 @@ namespace ToolKit
     {
       uint64 requiredSize = mipWidth * mipHeight * 4 * sizeof(float);
       *pixels             = new float[requiredSize];
-      glReadPixels(0, 0, mipWidth, mipHeight, GL_RGBA, GL_FLOAT, *pixels);
+      m_backend->ReadPixels(0, 0, mipWidth, mipHeight, GraphicTypes::FormatRGBA, GraphicTypes::TypeFloat, *pixels);
     }
 
     SetFramebuffer(prevBuffer, GraphicBitFields::None);

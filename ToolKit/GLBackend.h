@@ -111,6 +111,9 @@ namespace ToolKit
     void Finish() override;
     void SetDefaultClearColor(const Vec4& color) override;
     bool ValidateBackbufferSrgbEncoding() override;
+    void EnableScissorTest(bool enable) override;
+    void ReadPixels(int x, int y, int w, int h,
+                    GraphicTypes format, GraphicTypes type, void* data) override;
 
    private:
     RenderState m_lastAppliedState;
