@@ -7,9 +7,9 @@
 
 #include "BoxEditMod.h"
 
+#include "Action.h"
 #include "App.h"
 #include "EditorViewport.h"
-#include "Action.h"
 #include "TransformMod.h"
 
 #include <AABBOverrideComponent.h>
@@ -49,7 +49,8 @@ namespace ToolKit
       del->m_links[m_backToStart] = StateType::StateBeginPick;
       m_stateMachine->PushState(del);
 
-      m_gizmo = MakeNewPtr<BoxEditGizmo>();
+      m_gizmo                      = MakeNewPtr<BoxEditGizmo>();
+      m_gizmo->m_preRenderCallback = [this]() { TryUpdateGizmoFromSelection(); };
     }
 
     void BoxEditMod::UnInit() {}
@@ -280,14 +281,14 @@ namespace ToolKit
         return;
       }
 
-      m_dragStartSize       = m_dragContext.GetSize();
-      m_dragStartOffset     = m_dragContext.GetPositionOffset();
+      m_dragStartSize   = m_dragContext.GetSize();
+      m_dragStartOffset = m_dragContext.GetPositionOffset();
 
       if (m_dragAction != nullptr)
       {
         SafeDel(m_dragAction);
       }
-      m_dragAction = new TransformAction(ntt);
+      m_dragAction          = new TransformAction(ntt);
 
       // Build drag plane that contains the face normal direction but faces the camera.
       Vec3 faceNormal       = m_gizmo->GetFaceNormalWorld(m_dragFace);

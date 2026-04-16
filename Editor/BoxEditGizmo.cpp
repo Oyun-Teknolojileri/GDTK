@@ -132,6 +132,17 @@ namespace ToolKit
 
     void BoxEditGizmo::LookAt(CameraPtr cam, float windowHeight)
     {
+      // Sync target box from the component before rendering so handles don't lag.
+      if (m_preRenderCallback)
+      {
+        m_preRenderCallback();
+      }
+
+      if (m_handlesDirty)
+      {
+        GenerateHandles();
+      }
+
       // No billboard behavior — gizmo is world-space.
       // Keep node at identity so world-space handle vertices render correctly.
       m_node->SetTransform(Mat4(1.0f));
