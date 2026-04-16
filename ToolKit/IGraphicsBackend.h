@@ -101,6 +101,18 @@ namespace ToolKit
     // Equivalent to glCopyTexSubImage2D on GL_TEXTURE_CUBE_MAP_POSITIVE_X + face.
     virtual void CopyCubemapFaceFromFramebuffer(Texture* cubemap, int face, int mip, int width, int height) = 0;
 
+    // GpuProgram resource management
+    virtual void CreateGpuProgram(GpuProgram* program,
+                                  struct GlobalGpuBuffers* buffers)      = 0;
+    // glCreateProgram + glAttachShader + glLinkProgram
+    // sampler slot binding, UBO block index + glBindBufferBase
+    // default + array uniform location caching
+    virtual void DestroyGpuProgram(GpuProgram* program)                  = 0;
+    // glDeleteProgram
+    virtual int  GetUniformLocation(uint programHandle, const char* name) = 0;
+    // glGetUniformLocation — used for lazy custom uniform lookup at draw time.
+    // Vulkan: returns -1 (push constants / descriptors handle this differently)
+
     // Framebuffer resource management
     virtual void CreateFramebuffer(Framebuffer* fb)                 = 0;
     virtual void DestroyFramebuffer(Framebuffer* fb)                = 0;

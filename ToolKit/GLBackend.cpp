@@ -10,6 +10,7 @@
 #include "EngineSettings.h"
 #include "Framebuffer.h"
 #include "GpuProgram.h"
+#include "Renderer.h"
 #include "Mesh.h"
 #include "PerDrawUniforms.h"
 #include "RHI.h"
@@ -23,10 +24,7 @@
 namespace ToolKit
 {
 
-  GLBackend::GLBackend()
-  {
-    glGenQueries(1, &m_gpuTimerQuery);
-  }
+  GLBackend::GLBackend()  {}
 
   GLBackend::~GLBackend()
   {
@@ -381,6 +379,108 @@ namespace ToolKit
     {
       glDrawArrays((GLenum) desc.type, 0, desc.elementCount);
     }
+  }
+
+  // -----------------------------------------------------------------------
+  // GpuProgram resource management
+  // -----------------------------------------------------------------------
+
+  void GLBackend::CreateGpuProgram(GpuProgram* program, GlobalGpuBuffers* buffers)
+  {
+    const ShaderPtr& vs = program->m_shaders[0];
+    const ShaderPtr& fs = program->m_shaders[1];
+
+    program->m_handle = glCreateProgram();
+
+    glAttachShader(program->m_handle, vs->m_shaderHandle);
+    glAttachShader(program->m_handle, fs->m_shaderHandle);
+    glLinkProgram(program->m_handle);
+
+    GLint linked = 0;
+    glGetProgramiv(program->m_handle, GL_LINK_STATUS, &linked);
+    if (!linked)
+    {
+      GLint infoLen = 0;
+      glGetProgramiv(program->m_handle, GL_INFO_LOG_LENGTH, &infoLen);
+      if (infoLen > 1)
+      {
+        char* log = new char[infoLen];
+        glGetProgramInfoLog(program->m_handle, infoLen, nullptr, log);
+        TK_ERR("Linking failed.\nVertex: %s\nFragment: %s\n%s",
+               vs->GetFile().c_str(),
+               fs->GetFile().c_str(),
+               log);
+        SafeDelArray(log);
+      }
+      glDeleteProgram(program->m_handle);
+      program->m_handle = 0;
+      return;
+    }
+
+    // Save and restore the currently bound program.
+    GLint currentProgram = 0;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &currentProgram);
+    glUseProgram(program->m_handle);
+
+    // Bind sampler slots so shader samplers map to texture bind slots.
+    for (ubyte slot = 0; slot < RHIConstants::TextureSlotCount; slot++)
+    {
+      GLint loc = glGetUniformLocation(program->m_handle, ("s_texture" + std::to_string(slot)).c_str());
+      if (loc != -1)
+      {
+        glUniform1i(loc, slot);
+      }
+    }
+
+    // Bind all known UBO blocks.
+    auto bindUBO = [&](const char* blockName, int bindingSlot, int bufferId)
+    {
+      int loc = glGetUniformBlockIndex(program->m_handle, blockName);
+      if (loc != GL_INVALID_INDEX)
+      {
+        glUniformBlockBinding(program->m_handle, loc, bindingSlot);
+        glBindBufferBase(GL_UNIFORM_BUFFER, bindingSlot, bufferId);
+      }
+    };
+
+    bindUBO("CameraData",              CameraGpuBuffer::Binding(),          buffers->cameraBufferId);
+    bindUBO("GraphicConstatsData",     GraphicConstantsGpuBuffer::Binding(), buffers->graphicConstantBufferId);
+    bindUBO("DirectionalLightBuffer",  DirectionalLightBuffer::BindingSlotForLight, buffers->directionalLightBufferId);
+    bindUBO("DirectionalLightPVMBuffer", DirectionalLightBuffer::BindingSlotForPVM, buffers->directionalLightPVMBufferId);
+    bindUBO("PointLightCache",         PointLightCache::BindingSlot,        buffers->pointLightBufferId);
+    bindUBO("SpotLightCache",          SpotLightCache::BindingSlot,         buffers->spotLightBufferId);
+
+    // Cache default and array uniform locations.
+    for (const ShaderPtr& shader : program->m_shaders)
+    {
+      for (const Uniform& uniform : shader->m_uniforms)
+      {
+        GLint loc                                  = glGetUniformLocation(program->m_handle, GetUniformName(uniform));
+        program->m_defaultUniformLocation[uniform] = loc;
+      }
+
+      for (Shader::ArrayUniform arrayUniform : shader->m_arrayUniforms)
+      {
+        GLint loc = glGetUniformLocation(program->m_handle, GetUniformName(arrayUniform.uniform));
+        program->m_defaultArrayUniformLocations[arrayUniform.uniform] = loc;
+      }
+    }
+
+    glUseProgram(currentProgram);
+  }
+
+  void GLBackend::DestroyGpuProgram(GpuProgram* program)
+  {
+    if (program->m_handle)
+    {
+      glDeleteProgram(program->m_handle);
+      program->m_handle = 0;
+    }
+  }
+
+  int GLBackend::GetUniformLocation(uint programHandle, const char* name)
+  {
+    return glGetUniformLocation(programHandle, name);
   }
 
   // -----------------------------------------------------------------------
@@ -932,6 +1032,10 @@ namespace ToolKit
     {
       if (!m_timerQueryActive && !m_timerQueryWaiting)
       {
+        if (!m_gpuTimerQuery)
+        {
+          glGenQueries(1, &m_gpuTimerQuery);
+        }
         glBeginQuery(GL_TIME_ELAPSED_EXT, m_gpuTimerQuery);
         m_timerQueryActive = true;
       }

@@ -18,6 +18,7 @@
 #include "ObjectFactory.h"
 #include "PluginManager.h"
 #include "RHI.h"
+#include "Renderer.h"
 #include "RenderSystem.h"
 #include "Scene.h"
 #include "Shader.h"
@@ -163,6 +164,7 @@ namespace ToolKit
 
     m_gpuBuffers->InitGlobalGpuBuffers();
     m_gpuProgramManager->SetGpuBuffers(m_gpuBuffers);
+    m_gpuProgramManager->SetBackend(GetRenderSystem()->GetRenderer()->GetBackend());
 
     m_initiated = true;
   }

@@ -54,6 +54,11 @@ namespace ToolKit
     void EndTimerQuery() override;
     void GetElapsedTime(float& cpu, float& gpu) override;
 
+    // GpuProgram resource management
+    void CreateGpuProgram(GpuProgram* program, struct GlobalGpuBuffers* buffers) override;
+    void DestroyGpuProgram(GpuProgram* program) override;
+    int  GetUniformLocation(uint programHandle, const char* name) override;
+
     // Texture resource management
     void CreateTexture(Texture* tex) override;
     void DestroyTexture(Texture* tex) override;

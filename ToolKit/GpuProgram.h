@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include "IGraphicsBackend.h"
 #include "Material.h"
 #include "Shader.h"
 #include "ShaderUniform.h"
@@ -23,6 +24,7 @@ namespace ToolKit
   {
     friend class GpuProgramManager;
     friend class Renderer;
+    friend class GLBackend;
 
    public:
     GpuProgram();
@@ -44,6 +46,8 @@ namespace ToolKit
     ShaderPtrArray m_shaders;
     MaterialCacheItem m_cachedMaterial; //!< Cached material data for the program.
 
+    IGraphicsBackend* m_backend = nullptr; //!< Set by GpuProgramManager on creation.
+
    private:
     std::unordered_map<Uniform, int> m_defaultUniformLocation;
     std::unordered_map<Uniform, int> m_defaultArrayUniformLocations;
@@ -61,6 +65,9 @@ namespace ToolKit
 
     /** Sets global gpu buffers used by toolkit. */
     void SetGpuBuffers(struct GlobalGpuBuffers* gpuBuffers) { m_globalGpuBuffers = gpuBuffers; }
+
+    /** Sets the graphics backend used for program creation / destruction. */
+    void SetBackend(IGraphicsBackend* backend) { m_backend = backend; }
 
    private:
     /**
@@ -108,6 +115,8 @@ namespace ToolKit
 
     /** Global gpu buffers used to set uniforms / buffers for each created program. */
     struct GlobalGpuBuffers* m_globalGpuBuffers = nullptr;
+
+    IGraphicsBackend* m_backend = nullptr;
   };
 
 } // namespace ToolKit
