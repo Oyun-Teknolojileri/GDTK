@@ -20,6 +20,8 @@ namespace ToolKit
    */
   class TK_API UniformBuffer
   {
+    friend class GLBackend;
+
    public:
     UniformBuffer();
     virtual ~UniformBuffer();
@@ -38,8 +40,8 @@ namespace ToolKit
     /** Handle of the uniform buffer object. */
     uint m_id;
 
-   protected:
-    uint64 m_size;
+   private:
+    uint64 m_size = 0;
   };
 
   /** Generic class to provide data layout for gpu buffer. */

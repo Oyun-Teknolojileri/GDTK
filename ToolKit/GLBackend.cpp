@@ -11,6 +11,7 @@
 #include "Framebuffer.h"
 #include "GpuProgram.h"
 #include "Renderer.h"
+#include "UniformBuffer.h"
 #include "Mesh.h"
 #include "PerDrawUniforms.h"
 #include "RHI.h"
@@ -379,6 +380,33 @@ namespace ToolKit
     {
       glDrawArrays((GLenum) desc.type, 0, desc.elementCount);
     }
+  }
+
+  // -----------------------------------------------------------------------
+  // UniformBuffer resource management
+  // -----------------------------------------------------------------------
+
+  void GLBackend::CreateUniformBuffer(UniformBuffer* ub, uint64 size)
+  {
+    ub->m_size = size;
+    glGenBuffers(1, &ub->m_id);
+    glBindBuffer(GL_UNIFORM_BUFFER, ub->m_id);
+    glBufferData(GL_UNIFORM_BUFFER, (GLsizeiptr) size, nullptr, GL_DYNAMIC_DRAW);
+  }
+
+  void GLBackend::DestroyUniformBuffer(UniformBuffer* ub)
+  {
+    if (ub->m_id)
+    {
+      glDeleteBuffers(1, &ub->m_id);
+      ub->m_id = 0;
+    }
+  }
+
+  void GLBackend::UpdateUniformBuffer(UniformBuffer* ub, const void* data, uint64 size)
+  {
+    glBindBuffer(GL_UNIFORM_BUFFER, ub->m_id);
+    glBufferSubData(GL_UNIFORM_BUFFER, 0, (GLsizeiptr) size, data);
   }
 
   // -----------------------------------------------------------------------

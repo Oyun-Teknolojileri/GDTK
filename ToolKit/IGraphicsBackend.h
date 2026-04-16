@@ -10,6 +10,9 @@
 #include "RenderState.h"
 #include "Types.h"
 
+// Forward declarations for resource types not pulled in via Types.h
+namespace ToolKit { class UniformBuffer; }
+
 namespace ToolKit
 {
 
@@ -100,6 +103,15 @@ namespace ToolKit
     // CopyCubemapFaceFromFramebuffer: copies current read framebuffer to a cubemap face at a given mip.
     // Equivalent to glCopyTexSubImage2D on GL_TEXTURE_CUBE_MAP_POSITIVE_X + face.
     virtual void CopyCubemapFaceFromFramebuffer(Texture* cubemap, int face, int mip, int width, int height) = 0;
+
+    // UniformBuffer resource management
+    virtual void CreateUniformBuffer(UniformBuffer* ub, uint64 size) = 0;
+    // glGenBuffers + glBindBuffer + glBufferData(DYNAMIC_DRAW)
+    virtual void DestroyUniformBuffer(UniformBuffer* ub)             = 0;
+    // glDeleteBuffers
+    virtual void UpdateUniformBuffer(UniformBuffer* ub,
+                                     const void* data, uint64 size)  = 0;
+    // glBufferSubData — called only when dirty (GpuBufferBase cache preserved)
 
     // GpuProgram resource management
     virtual void CreateGpuProgram(GpuProgram* program,

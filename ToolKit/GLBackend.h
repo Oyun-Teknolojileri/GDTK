@@ -8,6 +8,7 @@
 #pragma once
 
 #include "IGraphicsBackend.h"
+#include "UniformBuffer.h"
 
 namespace ToolKit
 {
@@ -53,6 +54,11 @@ namespace ToolKit
     void StartTimerQuery() override;
     void EndTimerQuery() override;
     void GetElapsedTime(float& cpu, float& gpu) override;
+
+    // UniformBuffer resource management
+    void CreateUniformBuffer(UniformBuffer* ub, uint64 size) override;
+    void DestroyUniformBuffer(UniformBuffer* ub) override;
+    void UpdateUniformBuffer(UniformBuffer* ub, const void* data, uint64 size) override;
 
     // GpuProgram resource management
     void CreateGpuProgram(GpuProgram* program, struct GlobalGpuBuffers* buffers) override;
