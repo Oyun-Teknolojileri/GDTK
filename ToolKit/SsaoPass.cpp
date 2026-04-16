@@ -14,7 +14,6 @@
 #include "RHI.h"
 #include "Shader.h"
 #include "Stats.h"
-#include "TKOpenGL.h"
 #include "ToolKit.h"
 
 #include "DebugNew.h"

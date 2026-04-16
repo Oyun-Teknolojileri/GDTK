@@ -18,7 +18,6 @@
 #include "RenderSystem.h"
 #include "Scene.h"
 #include "Stats.h"
-#include "TKOpenGL.h"
 #include "ToolKit.h"
 
 #include "DebugNew.h"
@@ -394,7 +393,7 @@ namespace ToolKit
     GraphicTypes bufferFormat     = GraphicTypes::FormatRG16F;
 
     GraphicTypes sampler          = GraphicTypes::SampleLinear;
-    if (!TK_GL_OES_texture_float_linear)
+    if (!renderer->GetBackend()->SupportsFloatTextureLinearFilter())
     {
       sampler = GraphicTypes::SampleNearest;
     }

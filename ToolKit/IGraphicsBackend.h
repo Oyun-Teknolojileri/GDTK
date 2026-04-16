@@ -206,6 +206,10 @@ namespace ToolKit
     virtual void SetGpuResourceLabel(GpuResourceType type, uint id, StringView label) = 0;
     virtual void PushDebugGroup(StringView name) = 0;
     virtual void PopDebugGroup() = 0;
+
+    // Capability queries.
+    // Returns true if the GPU supports linear filtering on float textures.
+    virtual bool SupportsFloatTextureLinearFilter() = 0;
   };
 
 } // namespace ToolKit

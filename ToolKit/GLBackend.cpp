@@ -1551,4 +1551,9 @@ namespace ToolKit
     }
   }
 
+  bool GLBackend::SupportsFloatTextureLinearFilter()
+  {
+    return TK_GL_OES_texture_float_linear != 0;
+  }
+
 } // namespace ToolKit

@@ -15,7 +15,6 @@
 #include "RenderSystem.h"
 #include "Shader.h"
 #include "Stats.h"
-#include "TKOpenGL.h"
 
 #include <DebugNew.h>
 

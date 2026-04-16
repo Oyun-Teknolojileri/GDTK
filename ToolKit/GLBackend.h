@@ -118,6 +118,7 @@ namespace ToolKit
     void SetGpuResourceLabel(GpuResourceType type, uint id, StringView label) override;
     void PushDebugGroup(StringView name) override;
     void PopDebugGroup() override;
+    bool SupportsFloatTextureLinearFilter() override;
 
    private:
     RenderState m_lastAppliedState;

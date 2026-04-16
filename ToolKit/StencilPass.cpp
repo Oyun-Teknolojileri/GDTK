@@ -10,7 +10,6 @@
 #include "Material.h"
 #include "Mesh.h"
 #include "Shader.h"
-#include "TKOpenGL.h"
 #include "ToolKit.h"
 
 #include "DebugNew.h"
