@@ -362,9 +362,6 @@ namespace ToolKit
     void FeedUniforms(const GpuProgramPtr& program, const RenderJob& job);
     void FeedAnimationUniforms(const GpuProgramPtr& program, const RenderJob& job);
 
-    /** Validates sRGB automatic encoding on backbuffer by clearing and reading a pixel back. */
-    void ValidateBackbufferSrgbEncoding();
-
    public:
     uint m_frameCount = 0;
     UVec2 m_windowSize; //!< Application window size.

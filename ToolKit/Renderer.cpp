@@ -1,4 +1,5 @@
 /*
+ /*
  * Copyright (c) 2019-2025 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
@@ -129,15 +130,21 @@ namespace ToolKit
 
     m_gpuProgramManager             = GetGpuProgramManager();
 
-    const char* renderer = (const char*) glGetString(GL_RENDERER);
+    String renderer = m_backend->GetBackendRendererString();
     GetLogger()->Log(String("Graphics Card ") + renderer);
 
     // Validate sRGB automatic encoding on backbuffer if enabled.
-    ValidateBackbufferSrgbEncoding();
+    RenderSystem* rsys = GetRenderSystem();
+    if (rsys && rsys->m_backbufferFormatIsSRGB)
+    {
+      if (!m_backend->ValidateBackbufferSrgbEncoding())
+      {
+        rsys->m_backbufferFormatIsSRGB = false;
+      }
+    }
 
-    SrgbAutoEncoding(GetRenderSystem()->m_backbufferFormatIsSRGB);
-
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    m_backend->SetSrgbAutoEncoding(GetRenderSystem()->m_backbufferFormatIsSRGB);
+    m_backend->SetDefaultClearColor(Vec4(0.0f, 0.0f, 0.0f, 1.0f));
   }
 
   Renderer::~Renderer()
@@ -156,32 +163,14 @@ namespace ToolKit
 
   void Renderer::SrgbAutoEncoding(bool enable)
   {
-#ifdef GL_FRAMEBUFFER_SRGB
-    const int glSrgbFlag = GL_FRAMEBUFFER_SRGB;
-#elif defined(GL_FRAMEBUFFER_SRGB_EXT)
-    const int glSrgbFlag = GL_FRAMEBUFFER_SRGB_EXT;
-#else
-    const int glSrgbFlag = 0;
-#endif
-
-    if constexpr (glSrgbFlag)
-    {
-      if (enable)
-      {
-        glEnable(glSrgbFlag);
-      }
-      else
-      {
-        glDisable(glSrgbFlag);
-      }
-    }
+    m_backend->SetSrgbAutoEncoding(enable);
   }
 
   int Renderer::GetMaxArrayTextureLayers()
   {
     if (m_maxArrayTextureLayers == -1)
     {
-      glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS, &m_maxArrayTextureLayers);
+      m_maxArrayTextureLayers = m_backend->GetMaxArrayTextureLayers();
     }
     return m_maxArrayTextureLayers;
   }
@@ -323,7 +312,7 @@ namespace ToolKit
 
     auto activateSkinning = [&](const Mesh* mesh)
     {
-      GLint skinParamsLoc = m_currentProgram->GetDefaultUniformLocation(Uniform::SKIN_PARAMS);
+      int skinParamsLoc = m_currentProgram->GetDefaultUniformLocation(Uniform::SKIN_PARAMS);
       if (skinParamsLoc == -1)
       {
         return;
@@ -338,11 +327,11 @@ namespace ToolKit
         float boneCount  = (float) skel->m_bones.size();
         float isAnimated = (job.animData.currentAnimation != nullptr) ? 1.0f : 0.0f;
         float hasBlend   = (job.animData.blendAnimation != nullptr) ? 1.0f : 0.0f;
-        glUniform4f(skinParamsLoc, boneCount, 1.0f, isAnimated, hasBlend);
+        m_backend->SetUniform4f(skinParamsLoc, Vec4(boneCount, 1.0f, isAnimated, hasBlend));
       }
       else
       {
-        glUniform4f(skinParamsLoc, 0.0f, 0.0f, 0.0f, 0.0f);
+        m_backend->SetUniform4f(skinParamsLoc, Vec4(0.0f));
       }
     };
 
@@ -1094,44 +1083,8 @@ namespace ToolKit
 
     m_backend->SubmitPerDrawData(&pdu, sizeof(pdu));
 
-    // Custom shader uniforms.
-    for (auto& uniform : program->m_customUniforms)
-    {
-      GLint loc = program->GetCustomUniformLocation(uniform.second);
-      switch (uniform.second.GetType())
-      {
-        case ShaderUniform::UniformType::Bool:
-          glUniform1ui(loc, uniform.second.GetVal<bool>());
-          break;
-        case ShaderUniform::UniformType::Float:
-          glUniform1f(loc, uniform.second.GetVal<float>());
-          break;
-        case ShaderUniform::UniformType::Int:
-          glUniform1i(loc, uniform.second.GetVal<int>());
-          break;
-        case ShaderUniform::UniformType::UInt:
-          glUniform1ui(loc, uniform.second.GetVal<uint>());
-          break;
-        case ShaderUniform::UniformType::Vec2:
-          glUniform2fv(loc, 1, reinterpret_cast<float*>(&uniform.second.GetVal<Vec2>()));
-          break;
-        case ShaderUniform::UniformType::Vec3:
-          glUniform3fv(loc, 1, reinterpret_cast<float*>(&uniform.second.GetVal<Vec3>()));
-          break;
-        case ShaderUniform::UniformType::Vec4:
-          glUniform4fv(loc, 1, reinterpret_cast<float*>(&uniform.second.GetVal<Vec4>()));
-          break;
-        case ShaderUniform::UniformType::Mat3:
-          glUniformMatrix3fv(loc, 1, false, reinterpret_cast<float*>(&uniform.second.GetVal<Mat3>()));
-          break;
-        case ShaderUniform::UniformType::Mat4:
-          glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&uniform.second.GetVal<Mat4>()));
-          break;
-        default:
-          assert(false && "Invalid type.");
-          break;
-      }
-    }
+    // Custom shader uniforms — dispatched through backend.
+    m_backend->SubmitCustomUniforms(program, program->m_customUniforms);
   }
 
   void Renderer::FeedAnimationUniforms(const GpuProgramPtr& program, const RenderJob& job)
@@ -1588,50 +1541,6 @@ namespace ToolKit
     return cubemap;
   }
 
-  void Renderer::ValidateBackbufferSrgbEncoding()
-  {
-    RenderSystem* rsys = GetRenderSystem();
-    if (!rsys)
-    {
-      return;
-    }
 
-    if (!rsys->m_backbufferFormatIsSRGB)
-    {
-      // Nothing to validate if backbuffer not sRGB.
-      return;
-    }
-
-    // Work on backbuffer
-    GLBackend* glBackend = static_cast<GLBackend*>(m_backend);
-    glBackend->BindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-    glBackend->BindFramebuffer(GL_READ_FRAMEBUFFER, 0);
-    glViewport(0, 0, (GLsizei) 100, (GLsizei) 100);
-
-    // Clear with linear 0.5 gray
-    const float testLinear = 0.5f;
-    glClearColor(testLinear, testLinear, testLinear, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-    glFinish(); // Make sure clear completed
-
-    // Read back a single pixel
-    ubyte rgba[4] = {0, 0, 0, 0};
-    glReadPixels(0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
-
-    // Expected sRGB encoding value
-    ubyte expected               = 188;
-
-    // Allow small tolerance due to driver rounding
-    int tolerance                = 2;
-    bool matchR                  = std::abs((int) rgba[0] - (int) expected) <= tolerance;
-    bool matchG                  = std::abs((int) rgba[1] - (int) expected) <= tolerance;
-    bool matchB                  = std::abs((int) rgba[2] - (int) expected) <= tolerance;
-
-    bool backbufferIsSrgbEncoded = matchR && matchG && matchB;
-    if (!backbufferIsSrgbEncoded)
-    {
-      rsys->m_backbufferFormatIsSRGB = false;
-    }
-  }
 
 } // namespace ToolKit

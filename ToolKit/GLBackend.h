@@ -100,6 +100,17 @@ namespace ToolKit
     void InvalidateFboCache(uint id);
     void InvalidateTextureCache(uint id);
 
+    // Phase 7a: Custom uniforms and renderer utility
+    void SubmitCustomUniforms(const GpuProgramPtr& program,
+                              std::unordered_map<String, ShaderUniform>& uniforms) override;
+    void SetUniform4f(int location, const Vec4& value) override;
+    String GetBackendRendererString() override;
+    int GetMaxArrayTextureLayers() override;
+    void SetSrgbAutoEncoding(bool enable) override;
+    void Finish() override;
+    void SetDefaultClearColor(const Vec4& color) override;
+    bool ValidateBackbufferSrgbEncoding() override;
+
    private:
     RenderState m_lastAppliedState;
     bool m_firstBind = true;

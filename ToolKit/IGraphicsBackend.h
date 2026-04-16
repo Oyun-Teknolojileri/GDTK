@@ -1,4 +1,5 @@
 /*
+ /*
  * Copyright (c) 2019-2025 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
@@ -8,6 +9,7 @@
 #pragma once
 
 #include "RenderState.h"
+#include "ShaderUniform.h"
 #include "Types.h"
 
 // Forward declarations for resource types not pulled in via Types.h
@@ -156,6 +158,35 @@ namespace ToolKit
     virtual void DetachDepthTarget(Framebuffer* fb)                 = 0;
     virtual void SetDrawBuffers(Framebuffer* fb)                    = 0;
     virtual void CheckFramebufferComplete(Framebuffer* fb)          = 0;
+
+    // Phase 7a: Custom uniforms and renderer utility
+    //////////////////////////////////////////
+
+    // Submits all custom uniforms for the currently bound program.
+    virtual void SubmitCustomUniforms(const GpuProgramPtr& program,
+                                      std::unordered_map<String, ShaderUniform>& uniforms) = 0;
+
+    // Sets a vec4 uniform at the given location in the currently bound program.
+    virtual void SetUniform4f(int location, const Vec4& value) = 0;
+
+    // Returns the GPU renderer/device name string.
+    virtual String GetBackendRendererString() = 0;
+
+    // Returns the maximum number of layers supported in a 2D array texture.
+    virtual int GetMaxArrayTextureLayers() = 0;
+
+    // Enables or disables automatic sRGB encoding on the default framebuffer.
+    virtual void SetSrgbAutoEncoding(bool enable) = 0;
+
+    // Blocks until all previously submitted GPU commands have completed.
+    virtual void Finish() = 0;
+
+    // Sets the default clear color for the GL/VK context.
+    virtual void SetDefaultClearColor(const Vec4& color) = 0;
+
+    // Validates whether the backbuffer actually performs sRGB encoding.
+    // Returns false if the backbuffer does NOT do sRGB encoding.
+    virtual bool ValidateBackbufferSrgbEncoding() = 0;
   };
 
 } // namespace ToolKit

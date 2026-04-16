@@ -1,4 +1,5 @@
 /*
+ /*
  * Copyright (c) 2019-2025 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
@@ -1364,6 +1365,125 @@ namespace ToolKit
       glBindVertexArray(vao);
       m_currentVAO = vao;
     }
+  }
+
+  // Phase 7a: Custom uniforms and renderer utility
+  //////////////////////////////////////////
+
+  void GLBackend::SubmitCustomUniforms(const GpuProgramPtr& program,
+                                       std::unordered_map<String, ShaderUniform>& uniforms)
+  {
+    for (auto& [name, uniform] : uniforms)
+    {
+      GLint loc = program->GetCustomUniformLocation(uniform);
+      switch (uniform.GetType())
+      {
+        case ShaderUniform::UniformType::Bool:
+          glUniform1ui(loc, uniform.GetVal<bool>());
+          break;
+        case ShaderUniform::UniformType::Float:
+          glUniform1f(loc, uniform.GetVal<float>());
+          break;
+        case ShaderUniform::UniformType::Int:
+          glUniform1i(loc, uniform.GetVal<int>());
+          break;
+        case ShaderUniform::UniformType::UInt:
+          glUniform1ui(loc, uniform.GetVal<uint>());
+          break;
+        case ShaderUniform::UniformType::Vec2:
+          glUniform2fv(loc, 1, reinterpret_cast<float*>(&uniform.GetVal<Vec2>()));
+          break;
+        case ShaderUniform::UniformType::Vec3:
+          glUniform3fv(loc, 1, reinterpret_cast<float*>(&uniform.GetVal<Vec3>()));
+          break;
+        case ShaderUniform::UniformType::Vec4:
+          glUniform4fv(loc, 1, reinterpret_cast<float*>(&uniform.GetVal<Vec4>()));
+          break;
+        case ShaderUniform::UniformType::Mat3:
+          glUniformMatrix3fv(loc, 1, false, reinterpret_cast<float*>(&uniform.GetVal<Mat3>()));
+          break;
+        case ShaderUniform::UniformType::Mat4:
+          glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&uniform.GetVal<Mat4>()));
+          break;
+        default:
+          assert(false && "Invalid uniform type.");
+          break;
+      }
+    }
+  }
+
+  void GLBackend::SetUniform4f(int location, const Vec4& value)
+  {
+    glUniform4f(location, value.x, value.y, value.z, value.w);
+  }
+
+  String GLBackend::GetBackendRendererString()
+  {
+    const char* renderer = (const char*) glGetString(GL_RENDERER);
+    return renderer ? String(renderer) : String("Unknown");
+  }
+
+  int GLBackend::GetMaxArrayTextureLayers()
+  {
+    GLint maxLayers = 0;
+    glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS, &maxLayers);
+    return (int) maxLayers;
+  }
+
+  void GLBackend::SetSrgbAutoEncoding(bool enable)
+  {
+#ifdef GL_FRAMEBUFFER_SRGB
+    const int glSrgbFlag = GL_FRAMEBUFFER_SRGB;
+#elif defined(GL_FRAMEBUFFER_SRGB_EXT)
+    const int glSrgbFlag = GL_FRAMEBUFFER_SRGB_EXT;
+#else
+    const int glSrgbFlag = 0;
+#endif
+
+    if constexpr (glSrgbFlag)
+    {
+      if (enable)
+      {
+        glEnable(glSrgbFlag);
+      }
+      else
+      {
+        glDisable(glSrgbFlag);
+      }
+    }
+  }
+
+  void GLBackend::Finish()
+  {
+    glFinish();
+  }
+
+  void GLBackend::SetDefaultClearColor(const Vec4& color)
+  {
+    glClearColor(color.x, color.y, color.z, color.w);
+  }
+
+  bool GLBackend::ValidateBackbufferSrgbEncoding()
+  {
+    BindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    BindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+    glViewport(0, 0, (GLsizei) 100, (GLsizei) 100);
+
+    const float testLinear = 0.5f;
+    glClearColor(testLinear, testLinear, testLinear, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glFinish();
+
+    ubyte rgba[4] = {0, 0, 0, 0};
+    glReadPixels(0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+
+    ubyte expected = 188;
+    int tolerance  = 2;
+    bool matchR    = std::abs((int) rgba[0] - (int) expected) <= tolerance;
+    bool matchG    = std::abs((int) rgba[1] - (int) expected) <= tolerance;
+    bool matchB    = std::abs((int) rgba[2] - (int) expected) <= tolerance;
+
+    return matchR && matchG && matchB;
   }
 
 } // namespace ToolKit
