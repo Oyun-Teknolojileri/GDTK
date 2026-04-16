@@ -373,14 +373,6 @@ namespace ToolKit
       return nullptr;
     }
 
-    void SetGpuResourceLabel(StringView label, GpuResourceType resourceType, uint resourceId)
-    {
-      if (IGraphicsBackend* backend = GetBackend())
-      {
-        backend->SetGpuResourceLabel(resourceType, resourceId, label);
-      }
-    }
-
     void BeginGpuScope(StringView name)
     {
       if (IGraphicsBackend* backend = GetBackend())

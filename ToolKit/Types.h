@@ -391,16 +391,6 @@ namespace ToolKit
     x8 = 8  //!< 8x MSAA.
   };
 
-  enum class GpuResourceType
-  {
-    Texture      = 0x1702, // GL_TEXTURE
-    Buffer       = 0x82E0, // GL_BUFFER
-    Shader       = 0x82E1, // GL_SHADER
-    Program      = 0x82E2, // GL_PROGRAM
-    FrameBuffer  = 0x8D40, // GL_FRAMEBUFFER
-    RenderBuffer = 0x8D41  // GL_RENDERBUFFER
-  };
-
   inline int BytesOfFormat(GraphicTypes type)
   {
     switch (type)

@@ -116,7 +116,8 @@ namespace ToolKit
     vertexShader->Init();
     fragmentShader->Init();
 
-    const auto& progIter = m_programs.find({vertexShader->m_shaderHandle, fragmentShader->m_shaderHandle});
+    const auto& progIter = m_programs.find({(ObjectId)(uintptr_t)vertexShader->m_gpuData.get(),
+                                            (ObjectId)(uintptr_t)fragmentShader->m_gpuData.get()});
     if (progIter == m_programs.end())
     {
       GpuProgramPtr program  = MakeNewPtr<GpuProgram>(vertexShader, fragmentShader);
@@ -124,8 +125,10 @@ namespace ToolKit
 
       m_backend->CreateGpuProgram(program.get(), m_globalGpuBuffers);
 
-      m_programs[{vertexShader->m_shaderHandle, fragmentShader->m_shaderHandle}] = program;
-      return m_programs[{vertexShader->m_shaderHandle, fragmentShader->m_shaderHandle}];
+      auto key = std::array<ObjectId, TKGpuPipelineStages>{(ObjectId)(uintptr_t)vertexShader->m_gpuData.get(),
+                                                            (ObjectId)(uintptr_t)fragmentShader->m_gpuData.get()};
+      m_programs[key] = program;
+      return m_programs[key];
     }
 
     return progIter->second;

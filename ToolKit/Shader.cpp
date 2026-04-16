@@ -148,23 +148,23 @@ namespace ToolKit
 
     // Destroy all compiled variants.
     bool handleInMap = false;
-    for (auto& [key, handle] : m_shaderVariantMap)
+    for (auto& [key, data] : m_shaderVariantMap)
     {
-      if (handle == m_shaderHandle)
+      if (data.get() == m_gpuData.get())
       {
         handleInMap = true;
       }
-      backend->DestroyShader(handle);
+      backend->DestroyShader(data.get());
     }
     m_shaderVariantMap.clear();
 
-    // If m_shaderHandle was not part of a variant (base compile without defines), destroy it too.
+    // If m_gpuData was not part of a variant (base compile without defines), destroy it too.
     if (!handleInMap)
     {
-      backend->DestroyShader(m_shaderHandle);
+      backend->DestroyShader(m_gpuData.get());
     }
 
-    m_shaderHandle = 0;
+    m_gpuData.reset();
     m_initiated    = false;
   }
 
@@ -236,14 +236,14 @@ namespace ToolKit
     auto handle = m_shaderVariantMap.find(key);
     if (handle != m_shaderVariantMap.end())
     {
-      m_shaderHandle = m_shaderVariantMap[key];
+      m_gpuData = m_shaderVariantMap[key];
     }
     else
     {
       TK_WRN("Compiling shader during runtime for a new variant. Define: %s for Variant: %s", name.data(), val.data());
       ShaderDefineCombinaton defineCombo;
       ComplieShaderCombinations(m_defineArray, 0, defineCombo);
-      m_shaderHandle = m_shaderVariantMap[key];
+      m_gpuData = m_shaderVariantMap[key];
     }
   }
 
@@ -439,8 +439,8 @@ namespace ToolKit
   {
     TK_LOG("Shader in compile %s", GetFile().c_str());
 
-    m_shaderHandle = GetBackend()->CreateShader(this, source);
-    return m_shaderHandle;
+    m_gpuData = GetBackend()->CreateShader(this, source);
+    return m_gpuData != nullptr ? 1 : 0;
   }
 
   void Shader::CompileWithDefines(String source, const ShaderDefineCombinaton& defineCombo)
@@ -474,7 +474,7 @@ namespace ToolKit
     if (Compile(source) != 0)
     {
       m_currentDefineValues   = defineCombo;
-      m_shaderVariantMap[key] = m_shaderHandle;
+      m_shaderVariantMap[key] = m_gpuData;
     }
   }
 

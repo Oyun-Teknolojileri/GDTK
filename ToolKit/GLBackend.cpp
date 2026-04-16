@@ -58,6 +58,11 @@ namespace ToolKit
     GLuint programId = 0;
   };
 
+  struct GLShaderData : GpuResourceData
+  {
+    GLuint shaderId = 0;
+  };
+
   // Helper accessors — safe static_cast from base.
   static GLTextureData* GetGLTextureData(Texture* tex)
   {
@@ -636,7 +641,7 @@ namespace ToolKit
   // Shader resource management
   // -----------------------------------------------------------------------
 
-  uint GLBackend::CreateShader(Shader* shader, const String& source)
+  GpuResourceDataPtr GLBackend::CreateShader(Shader* shader, const String& source)
   {
     GLenum type = 0;
     if (shader->m_shaderType == ShaderType::VertexShader)
@@ -650,13 +655,13 @@ namespace ToolKit
     else
     {
       TK_ERR("Include shader can't be compiled: %s", shader->GetFile().c_str());
-      return 0;
+      return nullptr;
     }
 
-    uint handle = glCreateShader(type);
+    GLuint handle = glCreateShader(type);
     if (handle == 0)
     {
-      return 0;
+      return nullptr;
     }
 
     String src         = source;
@@ -685,17 +690,23 @@ namespace ToolKit
         SafeDelArray(log);
       }
       glDeleteShader(handle);
-      return 0;
+      return nullptr;
     }
 
-    return handle;
+    auto data      = std::make_shared<GLShaderData>();
+    data->shaderId = handle;
+    return data;
   }
 
-  void GLBackend::DestroyShader(uint handle)
+  void GLBackend::DestroyShader(GpuResourceData* shaderData)
   {
-    if (handle)
+    if (auto* gl = static_cast<GLShaderData*>(shaderData))
     {
-      glDeleteShader(handle);
+      if (gl->shaderId)
+      {
+        glDeleteShader(gl->shaderId);
+        gl->shaderId = 0;
+      }
     }
   }
 
@@ -712,8 +723,8 @@ namespace ToolKit
     glData->programId = glCreateProgram();
     GLuint pid        = glData->programId;
 
-    glAttachShader(pid, vs->m_shaderHandle);
-    glAttachShader(pid, fs->m_shaderHandle);
+    glAttachShader(pid, static_cast<GLShaderData*>(vs->m_gpuData.get())->shaderId);
+    glAttachShader(pid, static_cast<GLShaderData*>(fs->m_gpuData.get())->shaderId);
     glLinkProgram(pid);
 
     GLint linked = 0;
@@ -1589,15 +1600,6 @@ namespace ToolKit
     const TextureSettings& s = tex->Settings();
     BindTextureDirect((uint) s.Target, gl->textureId, 0);
     glTexSubImage2D((GLenum) s.Target, 0, x, y, w, h, (GLenum) s.Format, (GLenum) s.Type, data);
-  }
-
-  void GLBackend::SetGpuResourceLabel(GpuResourceType type, uint id, StringView label)
-  {
-    if (glLabelObjectEXT != nullptr && label.size() > 0)
-    {
-      String labelId = String(label) + "_" + std::to_string(id);
-      glLabelObjectEXT((GLenum) type, (GLuint) id, 0, labelId.c_str());
-    }
   }
 
   void GLBackend::PushDebugGroup(StringView name)

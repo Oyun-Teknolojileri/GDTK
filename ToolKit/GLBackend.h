@@ -64,8 +64,8 @@ namespace ToolKit
     void UpdateUniformBuffer(UniformBuffer* ub, const void* data, uint64 size) override;
 
     // Shader resource management
-    uint CreateShader(Shader* shader, const String& source) override;
-    void DestroyShader(uint handle) override;
+    GpuResourceDataPtr CreateShader(Shader* shader, const String& source) override;
+    void DestroyShader(GpuResourceData* shaderData) override;
 
     // GpuProgram resource management
     void CreateGpuProgram(GpuProgram* program, struct GlobalGpuBuffers* buffers) override;
@@ -115,7 +115,6 @@ namespace ToolKit
     void ReadPixels(int x, int y, int w, int h,
                     GraphicTypes format, GraphicTypes type, void* data) override;
     void UpdateTextureSubRegion(Texture* tex, int x, int y, int w, int h, const void* data) override;
-    void SetGpuResourceLabel(GpuResourceType type, uint id, StringView label) override;
     void PushDebugGroup(StringView name) override;
     void PopDebugGroup() override;
     bool SupportsFloatTextureLinearFilter() override;

@@ -137,12 +137,12 @@ namespace ToolKit
     // glBufferSubData — called only when dirty (GpuBufferBase cache preserved)
 
     // Shader resource management
-    virtual uint CreateShader(Shader* shader, const String& source) = 0;
-    // GL:  glCreateShader + glShaderSource + glCompileShader → returns GLuint handle (0 on fail)
-    // VK:  shaderc: GLSL→SPIR-V → vkCreateShaderModule → returns handle cast to uint
-    virtual void DestroyShader(uint handle)                         = 0;
-    // GL:  glDeleteShader(handle)
-    // VK:  vkDestroyShaderModule(handle)
+    virtual GpuResourceDataPtr CreateShader(Shader* shader, const String& source) = 0;
+    // GL:  glCreateShader + glShaderSource + glCompileShader → returns GLShaderData
+    // VK:  shaderc: GLSL→SPIR-V → vkCreateShaderModule → returns VkShaderData
+    virtual void DestroyShader(GpuResourceData* shaderData)                       = 0;
+    // GL:  glDeleteShader
+    // VK:  vkDestroyShaderModule
 
     // GpuProgram resource management
     virtual void CreateGpuProgram(GpuProgram* program,
@@ -213,9 +213,8 @@ namespace ToolKit
     virtual void UpdateTextureSubRegion(Texture* tex, int x, int y, int w, int h, const void* data) = 0;
 
     // Debug annotations.
-    // GL: glLabelObjectEXT / glPushGroupMarkerEXT / glPopGroupMarkerEXT
-    // VK: vkSetDebugUtilsObjectName / vkCmdBeginDebugUtilsLabel / vkCmdEndDebugUtilsLabel
-    virtual void SetGpuResourceLabel(GpuResourceType type, uint id, StringView label) = 0;
+    // GL: glPushGroupMarkerEXT / glPopGroupMarkerEXT
+    // VK: vkCmdBeginDebugUtilsLabel / vkCmdEndDebugUtilsLabel
     virtual void PushDebugGroup(StringView name) = 0;
     virtual void PopDebugGroup() = 0;
 
