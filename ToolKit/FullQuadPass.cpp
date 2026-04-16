@@ -57,7 +57,9 @@ namespace ToolKit
   void FullQuadPass::PostRender()
   {
     Pass::PostRender();
-    GetRenderer()->EnableDepthTest(true);
+    Renderer* renderer = GetRenderer();
+    renderer->EnableDepthTest(true);
+    renderer->EndPass();
   }
 
   void FullQuadPass::SetFragmentShader(ShaderPtr fragmentShader, Renderer* renderer)

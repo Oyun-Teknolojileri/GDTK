@@ -79,6 +79,10 @@ namespace ToolKit
     renderer->SetCamera(m_params.Camera, true);
   }
 
-  void StencilRenderPass::PostRender() { Pass::PostRender(); }
+  void StencilRenderPass::PostRender()
+  {
+    Pass::PostRender();
+    GetRenderer()->EndPass();
+  }
 
 } // namespace ToolKit

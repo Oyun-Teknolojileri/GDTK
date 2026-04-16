@@ -199,6 +199,7 @@ namespace ToolKit
 
       renderer->SetFramebuffer(skyFrameBuffer, GraphicBitFields::None);
       renderer->DrawCube(cam, m_skyboxMaterial);
+      renderer->EndPass();
     }
 
     CubeMapPtr newCubemap = MakeNewPtr<CubeMap>();

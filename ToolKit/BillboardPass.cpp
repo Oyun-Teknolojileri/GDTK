@@ -27,7 +27,7 @@ namespace ToolKit
 
     GpuProgramManager* gpuProgramManager = GetGpuProgramManager();
 
-    auto renderBillboardsFn              = [this, cam, renderer, gpuProgramManager](EntityPtrArray& billboards) -> void
+    auto renderBillboardsFn = [this, cam, renderer, gpuProgramManager](EntityPtrArray& billboards) -> void
     {
       m_renderData.jobs.clear();
 
@@ -66,6 +66,12 @@ namespace ToolKit
                   // Return separation condition.
                   return cbb->m_settings.bypassDepthTest;
                 });
+  }
+
+  void BillboardPass::PostRender()
+  {
+    Pass::PostRender();
+    GetRenderer()->EndPass();
   }
 
 } // namespace ToolKit

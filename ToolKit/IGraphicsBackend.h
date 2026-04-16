@@ -19,10 +19,11 @@ namespace ToolKit
   struct PassDesc
   {
     FramebufferPtr target;
-    GraphicBitFields clearBits = GraphicBitFields::None;
-    Vec4 clearColor            = Vec4(0.0f);
-    bool loadColor             = false;
-    bool loadDepth             = false;
+    GraphicBitFields clearBits   = GraphicBitFields::None;
+    GraphicBitFields discardBits = GraphicBitFields::None; // GL: glInvalidateFramebuffer in EndPass; VK: storeOp=DONT_CARE
+    Vec4 clearColor              = Vec4(0.0f);
+    bool loadColor               = false;
+    bool loadDepth               = false;
   };
 
   struct DrawDesc
@@ -46,8 +47,8 @@ namespace ToolKit
     virtual void Present()     = 0;
 
     // Pass boundary
-    virtual void BeginPass(const PassDesc& desc)                    = 0;
-    virtual void EndPass()                                          = 0;
+    virtual void BeginPass(const PassDesc& desc)                                    = 0;
+    virtual void EndPass() = 0;
     virtual void StoreFboBindings()                                 = 0;
     virtual void RestoreFboBindings()                               = 0;
 
@@ -78,9 +79,6 @@ namespace ToolKit
                                  FramebufferPtr dst,
                                  GraphicBitFields fields)           = 0;
     virtual void BlitToScreen(FramebufferPtr src)                   = 0;
-    virtual void InvalidateFramebuffer(FramebufferPtr fb,
-                                       GraphicBitFields bits)       = 0;
-
     // Timer queries
     virtual void StartTimerQuery()                                  = 0;
     virtual void EndTimerQuery()                                    = 0;

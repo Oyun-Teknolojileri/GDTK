@@ -103,6 +103,8 @@ namespace ToolKit
         Stats::IncrementStat(FrameStatType::RenderPass);
       }
     }
+
+    EndPass();
   }
 
   void Renderer::InvalidateGraphicsConstants()
@@ -405,14 +407,16 @@ namespace ToolKit
   void Renderer::SetFramebuffer(FramebufferPtr frameBuffer,
                                 GraphicBitFields attachmentsToClear,
                                 const Vec4& clearColor,
-                                GraphicFramebufferTypes frameBufferType)
+                                GraphicFramebufferTypes frameBufferType,
+                                GraphicBitFields discardBits)
   {
     TK_PROFILE_FUNCTION();
 
     PassDesc desc;
-    desc.target     = frameBuffer;
-    desc.clearBits  = attachmentsToClear;
-    desc.clearColor = clearColor;
+    desc.target      = frameBuffer;
+    desc.clearBits   = attachmentsToClear;
+    desc.clearColor  = clearColor;
+    desc.discardBits = discardBits;
     m_backend->BeginPass(desc);
 
     if (frameBuffer != nullptr)
@@ -451,11 +455,6 @@ namespace ToolKit
     m_backend->StoreFboBindings();
     m_backend->CopyFramebuffer(src, dest, fields);
     m_backend->RestoreFboBindings();
-  }
-
-  void Renderer::InvalidateFramebuffer(GraphicBitFields bits, FramebufferPtr frameBuffer)
-  {
-    m_backend->InvalidateFramebuffer(frameBuffer, bits);
   }
 
   void Renderer::ResolveFramebuffer(FramebufferPtr source, FramebufferPtr target, const IntArray& attachments)
@@ -570,6 +569,7 @@ namespace ToolKit
     m_copyMaterial->Init();
 
     DrawFullQuad(m_copyMaterial);
+    EndPass();
 
     Stats::EndGpuScope();
   }
@@ -630,6 +630,7 @@ namespace ToolKit
 
     SetFramebuffer(m_oneColorAttachmentFramebuffer, GraphicBitFields::None);
     DrawFullQuad(m_gaussianBlurMaterial);
+    EndPass();
   }
 
   void Renderer::ApplyGaussianBlurToArrayLayerSlot(RenderTargetPtr srcArray,
@@ -703,6 +704,7 @@ namespace ToolKit
         m_backend->BindTexture(1, srcArray);
 
         DrawFullQuad(m_gaussianBlurMaterial);
+        EndPass();
       }
 
       // Vertical pass: temp 2D RT -> array texture layer
@@ -723,6 +725,7 @@ namespace ToolKit
         m_gaussianBlurMaterial->UpdateProgramUniform("BlurClampMax", clampMax);
 
         DrawFullQuad(m_gaussianBlurMaterial);
+        EndPass();
       }
     }
 
@@ -771,8 +774,8 @@ namespace ToolKit
       material->Init();
 
       SetFramebuffer(utilFramebuffer, GraphicBitFields::AllBits);
-
       DrawFullQuad(material);
+      EndPass();
 
       brdfLut->SetFile(TKBrdfLutTexture);
       GetTextureManager()->Manage(brdfLut);
@@ -1209,6 +1212,7 @@ namespace ToolKit
 
       SetFramebuffer(m_oneColorAttachmentFramebuffer, GraphicBitFields::None);
       DrawCube(cam, mat);
+      EndPass();
     }
 
     CubeMapPtr cubeMap = MakeNewPtr<CubeMap>();
@@ -1246,6 +1250,7 @@ namespace ToolKit
     cubeToEquiRect->UpdateProgramUniform("Exposure", exposure);
 
     DrawFullQuad(cubeToEquiRect);
+    EndPass();
 
     if (pixels != nullptr)
     {
@@ -1255,6 +1260,7 @@ namespace ToolKit
     }
 
     SetFramebuffer(prevBuffer, GraphicBitFields::None);
+    EndPass();
 
     return euqiRectTexture;
   }
@@ -1360,9 +1366,11 @@ namespace ToolKit
 
       SetFramebuffer(m_oneColorAttachmentFramebuffer, GraphicBitFields::None);
       DrawCube(cam, mat);
+      EndPass();
     }
 
     SetFramebuffer(nullptr, GraphicBitFields::None);
+    EndPass();
 
     CubeMapPtr newCubeMap = MakeNewPtr<CubeMap>();
     newCubeMap->Consume(cubeMapRt);
@@ -1450,6 +1458,7 @@ namespace ToolKit
         m_backend->BindTexture(0, cubemap);
 
         DrawCube(cam, mat);
+        EndPass();
 
         // Copy color attachment to cubemap's correct mip level and face.
         m_backend->CopyCubemapFaceFromFramebuffer(cubemapRt.get(), i, mip, mipSize, mipSize);
@@ -1457,6 +1466,7 @@ namespace ToolKit
     }
 
     SetFramebuffer(nullptr, GraphicBitFields::None);
+    EndPass();
 
     // Clamp texture max mip level to the last bake level.
     m_backend->SetTextureMaxMipLevel(cubemapRt.get(), mipMaps - 1);

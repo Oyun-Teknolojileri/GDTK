@@ -80,7 +80,7 @@ namespace ToolKit
     const Vec4 lastClearColor = renderer->m_clearColor;
 
     // Clear shadow atlas before any draw call
-    renderer->SetFramebuffer(m_shadowFramebuffer, GraphicBitFields::None);
+    renderer->SetFramebuffer(m_shadowFramebuffer, GraphicBitFields::None, Vec4(0.0f), GraphicFramebufferTypes::Framebuffer, GraphicBitFields::DepthBits);
     for (int i = 0; i < ShadowAtlas::LayerCount; i++)
     {
       m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowAtlas, 0, i);
@@ -111,7 +111,7 @@ namespace ToolKit
     BlurShadowAtlas();
 
     // Depth is not needed. Mark it as invalid to avoid unintended read/writes.
-    renderer->InvalidateFramebuffer(GraphicBitFields::DepthBits, m_shadowFramebuffer);
+    renderer->EndPass();
 
     renderer->m_clearColor = lastClearColor;
   }
@@ -191,7 +191,9 @@ namespace ToolKit
         dlights.push_back(l);
       }
     }
-    GetRenderer()->SetDirectionalLights(dlights);
+    Renderer* renderer = GetRenderer();
+    renderer->SetDirectionalLights(dlights);
+    renderer->EndPass();
   }
 
   RenderTargetPtr ShadowPass::GetShadowAtlas() { return m_shadowAtlas; }

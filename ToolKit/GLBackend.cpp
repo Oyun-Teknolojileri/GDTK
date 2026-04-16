@@ -48,6 +48,8 @@ namespace ToolKit
 
   void GLBackend::BeginPass(const PassDesc& desc)
   {
+    m_activePassDesc = desc;
+
     if (desc.target != nullptr)
     {
       BindFramebuffer(GL_FRAMEBUFFER, desc.target->m_glImpl.fboId);
@@ -64,7 +66,59 @@ namespace ToolKit
     }
   }
 
-  void GLBackend::EndPass() {}
+  void GLBackend::EndPass()
+  {
+    GraphicBitFields bits = m_activePassDesc.discardBits;
+
+    if (m_activePassDesc.target == nullptr || bits == GraphicBitFields::None)
+    {
+      return;
+    }
+
+    FramebufferPtr fb = m_activePassDesc.target;
+
+    BindFramebuffer(GL_DRAW_FRAMEBUFFER, fb->m_glImpl.fboId);
+
+    GLenum attachments[3];
+    int count = 0;
+
+    if (fb->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0))
+    {
+      if ((int) bits & (int) GraphicBitFields::ColorBits)
+      {
+        attachments[count++] = GL_COLOR_ATTACHMENT0;
+      }
+    }
+
+    if (DepthTexturePtr dt = fb->GetDepthTexture())
+    {
+      if ((int) bits & (int) GraphicBitFields::DepthBits)
+      {
+        bool hasStencil      = ((int) bits & (int) GraphicBitFields::StencilBits) && dt->m_stencil;
+        attachments[count++] = hasStencil ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT;
+      }
+      else if (((int) bits & (int) GraphicBitFields::StencilBits) && dt->m_stencil)
+      {
+        attachments[count++] = GL_STENCIL_ATTACHMENT;
+      }
+    }
+
+    if (count == 0)
+    {
+      return;
+    }
+
+#ifdef TK_GL_ES_3_0
+    glInvalidateFramebuffer(GL_DRAW_FRAMEBUFFER, count, attachments);
+#else
+    if (glInvalidateFramebufferEXT != nullptr)
+    {
+      glInvalidateFramebufferEXT(GL_DRAW_FRAMEBUFFER, count, attachments);
+    }
+#endif
+
+    m_activePassDesc.discardBits = GraphicBitFields::None;
+  }
 
   void GLBackend::StoreFboBindings()
   {
@@ -1179,49 +1233,6 @@ namespace ToolKit
   }
 
   void GLBackend::BlitToScreen(FramebufferPtr src) {}
-
-  void GLBackend::InvalidateFramebuffer(FramebufferPtr fb, GraphicBitFields bits)
-  {
-    GLenum attachments[3];
-    int count = 0;
-
-    if (fb->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0))
-    {
-      if ((int) bits & (int) GraphicBitFields::ColorBits)
-      {
-        attachments[count++] = GL_COLOR_ATTACHMENT0;
-      }
-    }
-
-    if (DepthTexturePtr dt = fb->GetDepthTexture())
-    {
-      if ((int) bits & (int) GraphicBitFields::DepthBits)
-      {
-        bool hasStencil      = ((int) bits & (int) GraphicBitFields::StencilBits) && dt->m_stencil;
-        attachments[count++] = hasStencil ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT;
-      }
-      else if (((int) bits & (int) GraphicBitFields::StencilBits) && dt->m_stencil)
-      {
-        attachments[count++] = GL_STENCIL_ATTACHMENT;
-      }
-    }
-
-    if (count == 0)
-    {
-      return;
-    }
-
-#ifdef TK_GL_ES_3_0
-    BindFramebuffer(GL_DRAW_FRAMEBUFFER, fb->GetFboId());
-    glInvalidateFramebuffer(GL_DRAW_FRAMEBUFFER, count, attachments);
-#else
-    if (glInvalidateFramebufferEXT != nullptr)
-    {
-      BindFramebuffer(GL_DRAW_FRAMEBUFFER, fb->GetFboId());
-      glInvalidateFramebufferEXT(GL_DRAW_FRAMEBUFFER, count, attachments);
-    }
-#endif
-  }
 
   void GLBackend::StartTimerQuery()
   {

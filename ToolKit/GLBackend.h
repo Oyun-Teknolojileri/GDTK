@@ -49,7 +49,6 @@ namespace ToolKit
                          FramebufferPtr dst,
                          GraphicBitFields fields) override;
     void BlitToScreen(FramebufferPtr src) override;
-    void InvalidateFramebuffer(FramebufferPtr fb, GraphicBitFields bits) override;
 
     void StartTimerQuery() override;
     void EndTimerQuery() override;
@@ -104,6 +103,7 @@ namespace ToolKit
    private:
     RenderState m_lastAppliedState;
     bool m_firstBind = true;
+    PassDesc m_activePassDesc;
 
     // Framebuffer cache
     uint m_currentReadFboId = (uint) -1;

@@ -48,7 +48,20 @@ namespace ToolKit
     // Set self data.
     Renderer* renderer = GetRenderer();
 
-    renderer->SetFramebuffer(m_params.FrameBuffer, m_params.clearBuffer);
+    GraphicBitFields discardBits = GraphicBitFields::None;
+    if (m_params.invalidateDepthBuffer)
+    {
+      if (m_params.FrameBuffer->IsMultiSampled() && m_params.resolveFrameBuffer != nullptr)
+      {
+        discardBits = GraphicBitFields::AllBits;
+      }
+      else
+      {
+        discardBits = GraphicBitFields::DepthBits;
+      }
+    }
+
+    renderer->SetFramebuffer(m_params.FrameBuffer, m_params.clearBuffer, Vec4(0.0f), GraphicFramebufferTypes::Framebuffer, discardBits);
     renderer->SetCamera(m_params.Cam, true);
 
     // Adjust the depth test considering z-pre pass.
@@ -76,19 +89,9 @@ namespace ToolKit
       renderer->ResolveFramebuffer(m_params.FrameBuffer,
                                    m_params.resolveFrameBuffer,
                                    {(int) Framebuffer::Attachment::ColorAttachment0});
+    }
 
-      if (m_params.invalidateDepthBuffer)
-      {
-        renderer->InvalidateFramebuffer(GraphicBitFields::AllBits, m_params.FrameBuffer);
-      }
-    }
-    else
-    {
-      if (m_params.invalidateDepthBuffer)
-      {
-        renderer->InvalidateFramebuffer(GraphicBitFields::DepthBits, m_params.FrameBuffer);
-      }
-    }
+    renderer->EndPass();
   }
 
   void ForwardRenderPass::RenderOpaque(RenderData* renderData)

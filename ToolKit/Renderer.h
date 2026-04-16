@@ -196,12 +196,10 @@ namespace ToolKit
     void SetFramebuffer(FramebufferPtr frameBuffer,
                         GraphicBitFields attachmentsToClear,
                         const Vec4& clearColor                  = Vec4(0.0f),
-                        GraphicFramebufferTypes frameBufferType = GraphicFramebufferTypes::Framebuffer);
+                        GraphicFramebufferTypes frameBufferType = GraphicFramebufferTypes::Framebuffer,
+                        GraphicBitFields discardBits            = GraphicBitFields::None);
 
     void EndPass();
-
-    /** Tries to invalidate given bits of the framebuffer. Verifies if buffer actually has the specified attachments. */
-    void InvalidateFramebuffer(GraphicBitFields bits, FramebufferPtr frameBuffer);
 
     /**
      * Resolves source multi sample buffer to single sample target buffer.
