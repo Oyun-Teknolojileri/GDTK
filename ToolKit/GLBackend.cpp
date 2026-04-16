@@ -24,7 +24,10 @@ namespace ToolKit
 
   GLBackend::~GLBackend() {}
 
-  void GLBackend::BeginFrame() {}
+  void GLBackend::BeginFrame()
+  {
+    m_firstBind = true;
+  }
 
   void GLBackend::EndFrame() {}
 
@@ -62,14 +65,26 @@ namespace ToolKit
 
   void GLBackend::ClearBuffer(GraphicBitFields fields, const Vec4& color)
   {
+    // OpenGL clears are affected by masks. Force them to true to ensure
+    // the clear operation succeeds regardless of current pipeline state.
+    // This matches Vulkan behavior where clears are independent of pipeline state.
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glDepthMask(GL_TRUE);
+    glStencilMask(0xFF);
+
     glClearColor(color.x, color.y, color.z, color.w);
     glClear((GLbitfield) fields);
+
+    // Invalidate state cache to force re-application of masks on next draw.
+    m_firstBind = true;
   }
 
   void GLBackend::ClearColorBuffer(const Vec4& color)
   {
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     glClearColor(color.x, color.y, color.z, color.w);
-    glClear((GLbitfield) GraphicBitFields::ColorBits);
+    glClear(GL_COLOR_BUFFER_BIT);
+    m_firstBind = true;
   }
 
   void GLBackend::BindPipeline(const GpuProgramPtr& program, const RenderState* state)
@@ -78,6 +93,136 @@ namespace ToolKit
     {
       glUseProgram(program->m_handle);
     }
+
+    if (state == nullptr)
+    {
+      return;
+    }
+
+    // Culling
+    if (m_firstBind || m_lastAppliedState.cullMode != state->cullMode)
+    {
+      if (state->cullMode == CullingType::TwoSided)
+      {
+        glDisable(GL_CULL_FACE);
+      }
+      else
+      {
+        glEnable(GL_CULL_FACE);
+        glCullFace(state->cullMode == CullingType::Front ? GL_FRONT : GL_BACK);
+      }
+      m_lastAppliedState.cullMode = state->cullMode;
+    }
+
+    // Depth Test
+    if (m_firstBind || m_lastAppliedState.depthTestEnabled != state->depthTestEnabled)
+    {
+      if (state->depthTestEnabled)
+      {
+        glEnable(GL_DEPTH_TEST);
+      }
+      else
+      {
+        glDisable(GL_DEPTH_TEST);
+      }
+      m_lastAppliedState.depthTestEnabled = state->depthTestEnabled;
+    }
+
+    if (state->depthTestEnabled && (m_firstBind || m_lastAppliedState.depthFunction != state->depthFunction))
+    {
+      glDepthFunc((GLenum) state->depthFunction);
+      m_lastAppliedState.depthFunction = state->depthFunction;
+    }
+
+    // Depth Write
+    if (m_firstBind || m_lastAppliedState.depthWriteEnabled != state->depthWriteEnabled)
+    {
+      glDepthMask(state->depthWriteEnabled ? GL_TRUE : GL_FALSE);
+      m_lastAppliedState.depthWriteEnabled = state->depthWriteEnabled;
+    }
+
+    // Depth Clamp
+    if (m_firstBind || m_lastAppliedState.depthClampEnabled != state->depthClampEnabled)
+    {
+      if (TK_GL_EXT_depth_clamp)
+      {
+        if (state->depthClampEnabled)
+        {
+          glEnable(GL_DEPTH_CLAMP_EXT);
+        }
+        else
+        {
+          glDisable(GL_DEPTH_CLAMP_EXT);
+        }
+      }
+      m_lastAppliedState.depthClampEnabled = state->depthClampEnabled;
+    }
+
+    // Blending
+    if (m_firstBind || m_lastAppliedState.blendFunction != state->blendFunction)
+    {
+      if (state->blendFunction == BlendFunction::NONE)
+      {
+        glDisable(GL_BLEND);
+      }
+      else
+      {
+        glEnable(GL_BLEND);
+        switch (state->blendFunction)
+        {
+          case BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA:
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            break;
+          case BlendFunction::ONE_TO_ONE:
+            glBlendFunc(GL_ONE, GL_ONE);
+            glBlendEquation(GL_FUNC_ADD);
+            break;
+          default:
+            glDisable(GL_BLEND);
+            break;
+        }
+      }
+      m_lastAppliedState.blendFunction = state->blendFunction;
+    }
+
+    // Stencil
+    if (m_firstBind || m_lastAppliedState.stencilOperation != state->stencilOperation)
+    {
+      switch (state->stencilOperation)
+      {
+        case StencilOperation::None:
+          glDisable(GL_STENCIL_TEST);
+          glStencilMask(0x00);
+          break;
+        case StencilOperation::AllowAllPixels:
+          glEnable(GL_STENCIL_TEST);
+          glStencilMask(0xFF);
+          glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+          glStencilFunc(GL_ALWAYS, 0xFF, 0xFF);
+          break;
+        case StencilOperation::AllowPixelsPassingStencil:
+          glEnable(GL_STENCIL_TEST);
+          glStencilFunc(GL_EQUAL, 0xFF, 0xFF);
+          glStencilMask(0x00);
+          break;
+        case StencilOperation::AllowPixelsFailingStencil:
+          glEnable(GL_STENCIL_TEST);
+          glStencilFunc(GL_NOTEQUAL, 0xFF, 0xFF);
+          glStencilMask(0x00);
+          break;
+      }
+      m_lastAppliedState.stencilOperation = state->stencilOperation;
+    }
+
+    // Color Mask
+    if (m_firstBind || m_lastAppliedState.colorMaskEnabled != state->colorMaskEnabled)
+    {
+      GLboolean m = state->colorMaskEnabled ? GL_TRUE : GL_FALSE;
+      glColorMask(m, m, m, m);
+      m_lastAppliedState.colorMaskEnabled = state->colorMaskEnabled;
+    }
+
+    m_firstBind = false;
   }
 
   void GLBackend::SubmitPerDrawData(const void* data, size_t size)

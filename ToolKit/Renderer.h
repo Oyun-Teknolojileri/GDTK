@@ -175,7 +175,6 @@ namespace ToolKit
     void InvalidateGraphicsConstants();
 
     void Init();
-    void SetRenderState(const RenderState* const state, bool cullFlip = false);
 
     void SetStencilOperation(StencilOperation op);
 
@@ -438,7 +437,6 @@ namespace ToolKit
     float m_gpuTime                                = 1.0f;
     bool m_timerQueryActive                        = false;
     bool m_timerQueryWaiting                       = false;
-    bool m_blendStateOverrideEnable                = false;
 
     /** Frame buffer stats for each frame. */
     std::map<uint, int> m_drawnFrameBufferStats;

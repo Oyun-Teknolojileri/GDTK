@@ -74,6 +74,18 @@ namespace ToolKit
   {
     m_globalGpuBuffers->graphicConstantBuffer.Map();
     m_drawnFrameBufferStats.clear();
+
+    // Reset volatile state to defaults for each frame.
+    // This prevents state leaks from passes that don't clean up (e.g. StencilPass, ShadowPass).
+    m_renderState.colorMaskEnabled  = true;
+    m_renderState.depthTestEnabled  = true;
+    m_renderState.depthWriteEnabled = true;
+    m_renderState.depthFunction     = CompareFunctions::FuncLess;
+    m_renderState.stencilOperation  = StencilOperation::None;
+    m_renderState.depthClampEnabled = false;
+    m_renderState.blendOverride     = false;
+
+    m_backend->BeginFrame();
   }
 
   void Renderer::EndRenderFrame()
@@ -116,10 +128,6 @@ namespace ToolKit
 
     const char* renderer = (const char*) glGetString(GL_RENDERER);
     GetLogger()->Log(String("Graphics Card ") + renderer);
-
-    // Default states.
-    glEnable(GL_CULL_FACE);
-    glEnable(GL_DEPTH_TEST);
 
     // Validate sRGB automatic encoding on backbuffer if enabled.
     ValidateBackbufferSrgbEncoding();
@@ -284,9 +292,33 @@ namespace ToolKit
 
     m_model                  = job.WorldTransform;
 
-    // Set state.
-    RenderState* renderState = job.Material->GetRenderState();
-    SetRenderState(renderState, job.requireCullFlip);
+    // Compose state.
+    RenderState composed = *job.Material->GetRenderState();
+    composed.depthTestEnabled   = m_renderState.depthTestEnabled;
+    composed.depthWriteEnabled  = m_renderState.depthWriteEnabled;
+    composed.depthFunction      = m_renderState.depthFunction;
+    composed.stencilOperation   = m_renderState.stencilOperation;
+    composed.colorMaskEnabled   = m_renderState.colorMaskEnabled;
+    composed.depthClampEnabled  = m_renderState.depthClampEnabled;
+    if (m_renderState.blendOverride)
+    {
+      composed.blendFunction = m_renderState.blendOverrideFunc;
+    }
+
+    if (job.requireCullFlip)
+    {
+      switch (composed.cullMode)
+      {
+      case CullingType::Front:
+        composed.cullMode = CullingType::Back;
+        break;
+      case CullingType::Back:
+        composed.cullMode = CullingType::Front;
+        break;
+      }
+    }
+
+    m_backend->BindPipeline(m_currentProgram, &composed);
 
     auto activateSkinning = [&](const Mesh* mesh)
     {
@@ -323,7 +355,7 @@ namespace ToolKit
     desc.mesh         = mesh;
     desc.indexed      = mesh->m_indexCount != 0;
     desc.elementCount = desc.indexed ? mesh->m_indexCount : mesh->m_vertexCount;
-    desc.type         = renderState->drawType;
+    desc.type         = composed.drawType;
     m_backend->Draw(desc);
 
     if (m_framebuffer)
@@ -368,117 +400,10 @@ namespace ToolKit
     }
   }
 
-  void Renderer::SetRenderState(const RenderState* const state, bool cullFlip)
-  {
-    CullingType targetMode = state->cullMode;
-    if (cullFlip)
-    {
-      switch (state->cullMode)
-      {
-        case CullingType::Front:
-          targetMode = CullingType::Back;
-          break;
-        case CullingType::Back:
-          targetMode = CullingType::Front;
-          break;
-      }
-    }
-
-    if (m_renderState.cullMode != targetMode)
-    {
-      if (targetMode == CullingType::TwoSided)
-      {
-        glDisable(GL_CULL_FACE);
-      }
-
-      if (targetMode == CullingType::Front)
-      {
-        if (m_renderState.cullMode == CullingType::TwoSided)
-        {
-          glEnable(GL_CULL_FACE);
-        }
-
-        glCullFace(GL_FRONT);
-      }
-
-      if (targetMode == CullingType::Back)
-      {
-        if (m_renderState.cullMode == CullingType::TwoSided)
-        {
-          glEnable(GL_CULL_FACE);
-        }
-
-        glCullFace(GL_BACK);
-      }
-
-      m_renderState.cullMode = targetMode;
-    }
-
-    if (m_renderState.blendFunction != state->blendFunction)
-    {
-      // Only update blend state, if blend state is not overridden.
-      if (!m_blendStateOverrideEnable)
-      {
-        switch (state->blendFunction)
-        {
-          case BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA:
-          {
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-          }
-          break;
-          case BlendFunction::ONE_TO_ONE:
-          {
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_ONE, GL_ONE);
-            glBlendEquation(GL_FUNC_ADD);
-          }
-          break;
-          default:
-          {
-            glDisable(GL_BLEND);
-          }
-          break;
-        }
-
-        m_renderState.blendFunction = state->blendFunction;
-      }
-    }
-
-    m_renderState.alphaMaskTreshold = state->alphaMaskTreshold;
-
-    if (m_renderState.lineWidth != state->lineWidth)
-    {
-      m_renderState.lineWidth = state->lineWidth;
-      // glLineWidth(m_renderState.lineWidth);
-    }
-  }
 
   void Renderer::SetStencilOperation(StencilOperation op)
   {
-    switch (op)
-    {
-      case StencilOperation::None:
-        glDisable(GL_STENCIL_TEST);
-        glStencilMask(0x00);
-        break;
-      case StencilOperation::AllowAllPixels:
-        glEnable(GL_STENCIL_TEST);
-        glStencilMask(0xFF);
-        glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
-        glStencilFunc(GL_ALWAYS, 0xFF, 0xFF);
-        break;
-      case StencilOperation::AllowPixelsPassingStencil:
-        glEnable(GL_STENCIL_TEST);
-        glStencilFunc(GL_EQUAL, 0xFF, 0xFF);
-        glStencilMask(0x00);
-        break;
-      case StencilOperation::AllowPixelsFailingStencil:
-        glEnable(GL_STENCIL_TEST);
-        glStencilFunc(GL_NOTEQUAL, 0xFF, 0xFF);
-        glStencilMask(0x00);
-        break;
-    }
+    m_renderState.stencilOperation = op;
   }
 
   void Renderer::SetFramebuffer(FramebufferPtr frameBuffer,
@@ -579,7 +504,7 @@ namespace ToolKit
     m_backend->ClearBuffer(fields, value);
   }
 
-  void Renderer::ColorMask(bool r, bool g, bool b, bool a) { glColorMask(r, g, b, a); }
+  void Renderer::ColorMask(bool r, bool g, bool b, bool a) { m_renderState.colorMaskEnabled = r && g && b && a; }
 
   void Renderer::CopyFrameBuffer(FramebufferPtr src, FramebufferPtr dest, GraphicBitFields fields)
   {
@@ -825,79 +750,42 @@ namespace ToolKit
 
   void Renderer::OverrideBlendState(bool enableOverride, BlendFunction func)
   {
-    RenderState stateCpy       = m_renderState;
-    stateCpy.blendFunction     = func;
-
-    m_blendStateOverrideEnable = false;
-
-    SetRenderState(&stateCpy);
-
-    m_blendStateOverrideEnable = enableOverride;
+    m_renderState.blendOverride     = enableOverride;
+    m_renderState.blendOverrideFunc = func;
   }
 
   void Renderer::EnableBlending(bool enable)
   {
     if (enable)
     {
-      glEnable(GL_BLEND);
+      m_renderState.blendOverride = false;
     }
     else
     {
-      glDisable(GL_BLEND);
+      m_renderState.blendOverride     = true;
+      m_renderState.blendOverrideFunc = BlendFunction::NONE;
     }
   }
 
   void Renderer::EnableDepthWrite(bool enable)
   {
-    if (m_renderState.depthWriteEnabled != enable)
-    {
-      m_renderState.depthWriteEnabled = enable;
-      glDepthMask(enable);
-    }
+    m_renderState.depthWriteEnabled = enable;
   }
 
   void Renderer::EnableDepthTest(bool enable)
   {
-    if (m_renderState.depthTestEnabled != enable)
-    {
-      if (enable)
-      {
-        glEnable(GL_DEPTH_TEST);
-      }
-      else
-      {
-        glDisable(GL_DEPTH_TEST);
-      }
-      m_renderState.depthTestEnabled = enable;
-    }
+    m_renderState.depthTestEnabled = enable;
   }
 
   void Renderer::SetDepthTestFunc(CompareFunctions func)
   {
-    if (m_renderState.depthFunction != func)
-    {
-      m_renderState.depthFunction = func;
-      glDepthFunc((int) func);
-    }
+    m_renderState.depthFunction = func;
   }
 
   bool Renderer::EnableDepthClamp(bool enable)
   {
-    if (TK_GL_EXT_depth_clamp)
-    {
-      if (enable)
-      {
-        glEnable(GL_DEPTH_CLAMP_EXT);
-      }
-      else
-      {
-        glDisable(GL_DEPTH_CLAMP_EXT);
-      }
-
-      return true;
-    }
-
-    return false;
+    m_renderState.depthClampEnabled = enable;
+    return true;
   }
 
   void Renderer::ApplyGaussianBlur(const TexturePtr src, RenderTargetPtr dst, const Vec3& axis, const float amount)

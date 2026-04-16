@@ -119,18 +119,20 @@ namespace ToolKit
     float alphaMaskTreshold     = 0.001f;
     float lineWidth             = 1.0f;
 
+    // Passive state values.
+    // Renderer changes or updates these values.
+    bool depthTestEnabled             = true;
+    bool depthWriteEnabled            = true;
+    CompareFunctions depthFunction    = CompareFunctions::FuncLess;
+    StencilOperation stencilOperation = StencilOperation::None;
+    bool colorMaskEnabled             = true;
+    bool depthClampEnabled            = false;
+    bool blendOverride                = false;
+    BlendFunction blendOverrideFunc   = BlendFunction::NONE;
+
    protected:
     virtual XmlNode* SerializeImp(XmlDocument* doc, XmlNode* parent) const;
     virtual XmlNode* DeSerializeImp(const SerializationFileInfo& info, XmlNode* parent);
-
-   private:
-    friend class Renderer;
-
-    // Passive state values.
-    // Renderer changes or updates these values.
-    bool depthTestEnabled          = true;
-    bool depthWriteEnabled         = true;
-    CompareFunctions depthFunction = CompareFunctions::FuncLess;
   };
 
 } // namespace ToolKit

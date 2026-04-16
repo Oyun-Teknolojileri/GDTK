@@ -50,6 +50,10 @@ namespace ToolKit
     void StartTimerQuery() override;
     void EndTimerQuery() override;
     void GetElapsedTime(float& cpu, float& gpu) override;
+
+   private:
+    RenderState m_lastAppliedState;
+    bool m_firstBind = true;
   };
 
 } // namespace ToolKit
