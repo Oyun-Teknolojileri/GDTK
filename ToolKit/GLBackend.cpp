@@ -1514,4 +1514,16 @@ namespace ToolKit
     glReadPixels(x, y, w, h, (GLenum) format, (GLenum) type, data);
   }
 
+  void GLBackend::UpdateTextureSubRegion(Texture* tex, int x, int y, int w, int h, const void* data)
+  {
+    if (tex == nullptr || tex->m_textureId == 0)
+    {
+      return;
+    }
+
+    const TextureSettings& s = tex->Settings();
+    BindTextureDirect((uint) s.Target, tex->m_textureId, 0);
+    glTexSubImage2D((GLenum) s.Target, 0, x, y, w, h, (GLenum) s.Format, (GLenum) s.Type, data);
+  }
+
 } // namespace ToolKit

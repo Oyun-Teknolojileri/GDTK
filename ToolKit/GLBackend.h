@@ -114,6 +114,7 @@ namespace ToolKit
     void EnableScissorTest(bool enable) override;
     void ReadPixels(int x, int y, int w, int h,
                     GraphicTypes format, GraphicTypes type, void* data) override;
+    void UpdateTextureSubRegion(Texture* tex, int x, int y, int w, int h, const void* data) override;
 
    private:
     RenderState m_lastAppliedState;

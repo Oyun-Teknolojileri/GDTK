@@ -195,6 +195,10 @@ namespace ToolKit
     // Reads pixels from the current read framebuffer.
     virtual void ReadPixels(int x, int y, int w, int h,
                             GraphicTypes format, GraphicTypes type, void* data) = 0;
+
+    // Uploads pixel data to a sub-region of a 2D texture.
+    // GL: binds texture + glTexSubImage2D.  VK: staging buffer + vkCmdCopyBufferToImage with region offset.
+    virtual void UpdateTextureSubRegion(Texture* tex, int x, int y, int w, int h, const void* data) = 0;
   };
 
 } // namespace ToolKit

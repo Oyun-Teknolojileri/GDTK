@@ -15,7 +15,6 @@
 #include "RenderSystem.h"
 #include "Renderer.h"
 #include "Stats.h"
-#include "TKOpenGL.h"
 #include "Texture.h"
 #include "ToolKit.h"
 #include "Util.h"
@@ -61,8 +60,7 @@ namespace ToolKit
 
   void uploadBoneMatrix(Mat4 mat, TexturePtr& ptr, uint boneIndx)
   {
-    GetBackend()->BindTexture(0, ptr);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, boneIndx * 4, 0, 4, 1, GL_RGBA, GL_FLOAT, &mat);
+    GetBackend()->UpdateTextureSubRegion(ptr.get(), boneIndx * 4, 0, 4, 1, &mat);
   };
 
   // DynamicBoneMap
