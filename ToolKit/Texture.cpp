@@ -57,8 +57,6 @@ namespace ToolKit
                    MsaaSampleCount::x0,
                    -1,
                    true};
-
-    m_textureId = 0;
   }
 
   Texture::Texture(const String& file) : Texture() { SetFile(file); }
@@ -129,7 +127,7 @@ namespace ToolKit
       return;
     }
 
-    assert(m_textureId == 0 && "Texture already initialized.");
+    assert(m_gpuData == nullptr && "Texture already initialized.");
 
     uint64 pixelCount  = (uint64) m_width * (uint64) m_height;
     IGraphicsBackend* backend = GetBackend();
@@ -154,7 +152,7 @@ namespace ToolKit
 
   void Texture::UnInit()
   {
-    if (m_textureId == 0 || !m_initiated)
+    if (m_gpuData == nullptr || !m_initiated)
     {
       return;
     }
@@ -291,13 +289,12 @@ namespace ToolKit
     assert(backend && "Graphics backend not available during DepthTexture::Init");
     backend->CreateTexture(this);
 
-    Stats::SetGpuResourceLabel(m_label, GpuResourceType::RenderBuffer, m_textureId);
     Stats::AddVRAMUsageInBytes((uint64) (m_width * m_height) * GetFormatSize());
   }
 
   void DepthTexture::UnInit()
   {
-    if (m_textureId == 0 || !m_initiated)
+    if (m_gpuData == nullptr || !m_initiated)
     {
       return;
     }
@@ -332,7 +329,7 @@ namespace ToolKit
       return;
     }
 
-    assert(m_textureId == 0 && "Texture already initialized.");
+    assert(m_gpuData == nullptr && "Texture already initialized.");
 
     IGraphicsBackend* backend = GetBackend();
     assert(backend && "Graphics backend not available during DataTexture::Init");
@@ -365,7 +362,7 @@ namespace ToolKit
 
   void DataTexture::UnInit()
   {
-    if (m_textureId == 0 || !m_initiated)
+    if (m_gpuData == nullptr || !m_initiated)
     {
       return;
     }
@@ -406,8 +403,7 @@ namespace ToolKit
 
     assert(targetTextureSettings.Target == GraphicTypes::TargetCubeMap);
 
-    m_textureId  = cubeMapTarget->m_textureId;
-    m_glImpl.textureId = m_textureId;
+    m_gpuData    = cubeMapTarget->m_gpuData; // Shared — both CubeMap and consumedRT use same GPU resource.
     m_width      = cubeMapTarget->m_width;
     m_height     = cubeMapTarget->m_height;
 
@@ -494,7 +490,7 @@ namespace ToolKit
     m_settings.InternalFormat = GraphicTypes::FormatRGBA;
     m_settings.Target         = GraphicTypes::TargetCubeMap;
 
-    assert(m_textureId == 0 && "Texture already initialized.");
+    assert(m_gpuData == nullptr && "Texture already initialized.");
 
     uint64 pixelCount  = (uint64) m_width * (uint64) m_height;
     IGraphicsBackend* backend = GetBackend();
@@ -520,8 +516,7 @@ namespace ToolKit
     if (m_consumedRT)
     {
       m_consumedRT->m_initiated = false;
-      m_consumedRT->m_textureId = 0;
-      m_consumedRT->m_glImpl.textureId = 0;
+      m_consumedRT->m_gpuData.reset();
       m_consumedRT              = nullptr;
     }
 
@@ -859,13 +854,12 @@ namespace ToolKit
     m_settings.Target         = m_settings.Target;
     m_settings.Layers         = m_settings.Layers;
 
-    assert(m_textureId == 0 && "Texture already initialized.");
+    assert(m_gpuData == nullptr && "Texture already initialized.");
 
     IGraphicsBackend* backend = GetBackend();
     assert(backend && "Graphics backend not available during RenderTarget::Init");
 
     backend->CreateTexture(this);
-    Stats::SetGpuResourceLabel(m_label, GpuResourceType::Texture, m_textureId);
 
     uint64 pixelCount = (uint64) m_width * (uint64) m_height;
     if (m_settings.Target == GraphicTypes::Target2D)

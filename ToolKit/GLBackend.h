@@ -70,7 +70,7 @@ namespace ToolKit
     // GpuProgram resource management
     void CreateGpuProgram(GpuProgram* program, struct GlobalGpuBuffers* buffers) override;
     void DestroyGpuProgram(GpuProgram* program) override;
-    int  GetUniformLocation(uint programHandle, const char* name) override;
+    int  GetUniformLocation(GpuProgram* program, const char* name) override;
 
     // Texture resource management
     void CreateTexture(Texture* tex) override;
@@ -119,6 +119,7 @@ namespace ToolKit
     void PushDebugGroup(StringView name) override;
     void PopDebugGroup() override;
     bool SupportsFloatTextureLinearFilter() override;
+    void* GetImGuiTextureId(Texture* tex) override;
 
    private:
     RenderState m_lastAppliedState;

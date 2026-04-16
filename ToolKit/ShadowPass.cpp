@@ -603,7 +603,7 @@ namespace ToolKit
     PlaceShadowMapsToShadowAtlas(m_lights);
 
     // Check if the shadow atlas texture needs to be reconstructed.
-    bool needReconstruct      = m_shadowAtlas->m_textureId == 0; // First time.
+    bool needReconstruct      = m_shadowAtlas->m_gpuData == nullptr; // First time.
     ShadowSettingsPtr shadows = GetEngineSettings().m_graphics->m_shadows;
     if (m_activeCascadeCount != shadows->GetCascadeCountVal())
     {

@@ -347,7 +347,7 @@ namespace ToolKit
 
     if (m_framebuffer)
     {
-      int& drawCount = m_drawnFrameBufferStats[m_framebuffer->GetFboId()];
+      int& drawCount = m_drawnFrameBufferStats[reinterpret_cast<uintptr_t>(m_framebuffer.get())];
       drawCount++;
     }
 
@@ -432,6 +432,12 @@ namespace ToolKit
   void Renderer::ClearBuffer(GraphicBitFields fields, const Vec4& value) { m_backend->ClearBuffer(fields, value); }
 
   void Renderer::ColorMask(bool r, bool g, bool b, bool a) { m_renderState.colorMaskEnabled = r && g && b && a; }
+
+  uint Renderer::GetImGuiTexId(const TexturePtr& tex)
+  {
+    void* id = GetRenderSystem()->GetRenderer()->GetBackend()->GetImGuiTextureId(tex.get());
+    return static_cast<uint>(reinterpret_cast<intptr_t>(id));
+  }
 
   void Renderer::CopyFrameBuffer(FramebufferPtr src, FramebufferPtr dest, GraphicBitFields fields)
   {
@@ -880,7 +886,7 @@ namespace ToolKit
   {
     TK_PROFILE_FUNCTION();
 
-    if (m_currentProgram == nullptr || m_currentProgram->m_handle != program->m_handle)
+    if (m_currentProgram == nullptr || m_currentProgram->m_gpuData.get() != program->m_gpuData.get())
     {
       m_currentProgram = program;
       m_backend->BindPipeline(program, &m_renderState);

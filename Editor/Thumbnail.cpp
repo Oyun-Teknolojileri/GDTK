@@ -224,10 +224,10 @@ namespace ToolKit
     bool ThumbnailManager::TryGetThumbnail(uint& iconId, const DirectoryEntry& dirEnt)
     {
       RenderTargetPtr thumb = GetThumbnail(dirEnt);
-      bool valid            = thumb->m_textureId != 0 && !IsDefaultThumbnail(thumb);
+      bool valid            = Renderer::GetImGuiTexId(thumb) != 0 && !IsDefaultThumbnail(thumb);
       if (valid)
       {
-        iconId = thumb->m_textureId;
+        iconId = Renderer::GetImGuiTexId(thumb);
       }
       return valid;
     }

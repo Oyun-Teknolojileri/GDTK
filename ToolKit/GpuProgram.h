@@ -42,7 +42,7 @@ namespace ToolKit
     void UpdateCustomUniform(const ShaderUniform& uniform);
 
    public:
-    uint m_handle = 0;
+    GpuResourceDataPtr m_gpuData;
     ShaderPtrArray m_shaders;
     MaterialCacheItem m_cachedMaterial; //!< Cached material data for the program.
 

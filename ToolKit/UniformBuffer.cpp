@@ -24,14 +24,13 @@ namespace ToolKit
 
   UniformBuffer::UniformBuffer()
   {
-    m_id   = 0;
     m_slot = -1;
     m_size = 0;
   }
 
   UniformBuffer::~UniformBuffer()
   {
-    if (m_id)
+    if (m_gpuData)
     {
       GetBackend()->DestroyUniformBuffer(this);
     }
@@ -44,7 +43,7 @@ namespace ToolKit
 
   void UniformBuffer::Map(const void* data, uint64 size)
   {
-    if (m_id == NullHandle || m_slot == InvalidHandle)
+    if (m_gpuData == nullptr || m_slot == InvalidHandle)
     {
       TK_ERR("Uniform buffer is not initialized properly.");
       return;

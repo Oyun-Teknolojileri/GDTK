@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include "IGraphicsBackend.h"
 #include "Types.h"
 
 namespace ToolKit
@@ -37,8 +38,8 @@ namespace ToolKit
    public:
     /** Slot corresponds the buffer's binding location. */
     int m_slot;
-    /** Handle of the uniform buffer object. */
-    uint m_id;
+    /** Backend-owned GPU resource data. */
+    GpuResourceDataPtr m_gpuData;
 
    private:
     uint64 m_size = 0;
@@ -65,7 +66,8 @@ namespace ToolKit
     bool IsValid() const { return !m_invalid; }
 
     /** Returns gpu object id. */
-    int Id() { return m_buffer.m_id; }
+    /** Returns gpu buffer for external use (e.g., UBO binding by GlobalGpuBuffers). */
+    UniformBuffer& GetBuffer() { return m_buffer; }
 
     /** Maps data to gpu buffer. */
     void Map()

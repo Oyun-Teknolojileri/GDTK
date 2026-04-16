@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include "IGraphicsBackend.h"
 #include "Resource.h"
 #include "ResourceManager.h"
 #include "Types.h"
@@ -79,13 +80,7 @@ namespace ToolKit
     void ApplyTextureSettings(const TextureSettings& settings);
 
    public:
-    struct TextureGLImpl
-    {
-      uint textureId = 0;
-    };
-
-    uint m_textureId = 0;
-    TextureGLImpl m_glImpl;
+    GpuResourceDataPtr m_gpuData;
     int m_width     = 0;
     int m_height    = 0;
     uint8* m_image    = nullptr;

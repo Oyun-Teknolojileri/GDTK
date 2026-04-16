@@ -91,13 +91,9 @@ namespace ToolKit
   {
     if (m_initiated)
     {
-      if (m_vboVertexId)
+      if (m_gpuData)
       {
         Stats::RemoveVRAMUsageInBytes(GetVertexSize() * m_vertexCount);
-      }
-
-      if (m_vboIndexId)
-      {
         Stats::RemoveVRAMUsageInBytes(sizeof(uint) * m_indexCount);
       }
 
@@ -545,7 +541,7 @@ namespace ToolKit
 
   void Mesh::InitVertices(bool flush)
   {
-    if (m_vboVertexId != 0)
+    if (m_gpuData != nullptr)
     {
       Stats::RemoveVRAMUsageInBytes(GetVertexSize() * m_vertexCount);
     }
@@ -563,7 +559,7 @@ namespace ToolKit
 
   void Mesh::InitIndices(bool flush)
   {
-    if (m_vboIndexId != 0)
+    if (m_gpuData != nullptr)
     {
       Stats::RemoveVRAMUsageInBytes(sizeof(uint) * m_indexCount);
     }

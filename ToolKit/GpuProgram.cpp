@@ -28,7 +28,7 @@ namespace ToolKit
 
   GpuProgram::~GpuProgram()
   {
-    if (m_backend && m_handle)
+    if (m_backend && m_gpuData)
     {
       m_backend->DestroyGpuProgram(this);
     }
@@ -63,7 +63,7 @@ namespace ToolKit
     {
       shaderUniform.m_thisUniformIsSearchedInGPUProgram = true;
 
-      int loc = m_backend ? m_backend->GetUniformLocation(m_handle, shaderUniform.m_name.c_str()) : -1;
+      int loc = m_backend ? m_backend->GetUniformLocation(this, shaderUniform.m_name.c_str()) : -1;
       if (loc == -1)
       {
         TK_WRN("Uniform: \"%s\" does not exist in program!", shaderUniform.m_name.c_str());

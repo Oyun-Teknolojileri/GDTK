@@ -28,7 +28,7 @@ namespace ToolKit
     {
       DropSubZone(
           uniqueName,
-          static_cast<uint>(UI::m_materialIcon->m_textureId),
+          static_cast<uint>(Renderer::GetImGuiTexId(UI::m_materialIcon)),
           file,
           [&var](const DirectoryEntry& entry) -> void
           {
@@ -48,7 +48,7 @@ namespace ToolKit
     {
       DropSubZone(
           uniqueName,
-          static_cast<uint>(UI::m_materialIcon->m_textureId),
+          static_cast<uint>(Renderer::GetImGuiTexId(UI::m_materialIcon)),
           file,
           [&var](const DirectoryEntry& entry) -> void
           {
@@ -657,7 +657,7 @@ namespace ToolKit
         ImGui::EndDisabled();
         DropSubZone(
             "Mesh##" + std::to_string(mref->GetIdVal()),
-            static_cast<uint>(UI::m_meshIcon->m_textureId),
+            static_cast<uint>(Renderer::GetImGuiTexId(UI::m_meshIcon)),
             mref->GetFile(),
             [&var](const DirectoryEntry& entry) -> void
             {
@@ -691,7 +691,7 @@ namespace ToolKit
         ImGui::EndDisabled();
         DropSubZone(
             "Hdri##" + id,
-            UI::m_imageIcon->m_textureId,
+            Renderer::GetImGuiTexId(UI::m_imageIcon),
             file,
             [&var](const DirectoryEntry& entry) -> void
             {
@@ -734,7 +734,7 @@ namespace ToolKit
           }
         };
         ImGui::EndDisabled();
-        DropSubZone("Skeleton##" + id, UI::m_boneIcon->m_textureId, file, dropZoneFnc, var->m_editable);
+        DropSubZone("Skeleton##" + id, Renderer::GetImGuiTexId(UI::m_boneIcon), file, dropZoneFnc, var->m_editable);
         ImGui::BeginDisabled(!var->m_editable);
       }
       break;

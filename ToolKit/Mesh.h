@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include "IGraphicsBackend.h"
 #include "RenderState.h"
 #include "Resource.h"
 #include "ResourceManager.h"
@@ -237,19 +238,9 @@ namespace ToolKit
     void CopyTo(Resource* other) override;
 
    public:
-    struct MeshGLImpl
-    {
-      uint vaoId       = 0;
-      uint vboVertexId = 0;
-      uint vboIndexId  = 0;
-    };
-
     VertexArray m_clientSideVertices; //!< Array of vertices stored on the client side.
     UIntArray m_clientSideIndices;    //!< Array of indices stored on the client side.
-    uint m_vboVertexId = 0;           //!< ID of the vertex buffer object.
-    uint m_vboIndexId  = 0;           //!< ID of the index buffer object.
-    uint m_vaoId       = 0;           //!< ID of the vertex array object.
-    MeshGLImpl m_glImpl;              //!< OpenGL implementation data.
+    GpuResourceDataPtr m_gpuData;     //!< Backend-owned GPU resource data.
     uint m_vertexCount = 0;           //!< Count of vertices.
     uint m_indexCount  = 0;           //!< Count of indices.
     MaterialPtr m_material;           //!< Pointer to the material used by the mesh.

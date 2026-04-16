@@ -114,42 +114,26 @@ namespace ToolKit
   {
     /** Uniform buffer for camera data. */
     CameraGpuBuffer cameraGpuBuffer;
-    int cameraBufferId = 0;
 
     /** Uniform buffer for graphic constants. */
     GraphicConstantsGpuBuffer graphicConstantBuffer;
-    int graphicConstantBufferId = 0;
 
     /** Active directional lights in gpu. */
     DirectionalLightBuffer directionalLightBuffer;
-    int directionalLightBufferId    = 0;
-    int directionalLightPVMBufferId = 0;
 
     /** Cached point lights in gpu. */
     PointLightCache pointLighBuffer;
-    int pointLightBufferId = 0;
 
     /** Cached spot lights in gpu. */
     SpotLightCache spotLightBuffer;
-    int spotLightBufferId = 0;
 
     void InitGlobalGpuBuffers()
     {
       graphicConstantBuffer.Init();
-      graphicConstantBufferId = graphicConstantBuffer.Id();
-
       cameraGpuBuffer.Init();
-      cameraBufferId = cameraGpuBuffer.Id();
-
       directionalLightBuffer.Init();
-      directionalLightBufferId    = directionalLightBuffer.m_lightDataBuffer.m_id;
-      directionalLightPVMBufferId = directionalLightBuffer.m_pvms.m_id;
-
       pointLighBuffer.Init();
-      pointLightBufferId = pointLighBuffer.m_gpuBuffer.m_id;
-
       spotLightBuffer.Init();
-      spotLightBufferId = spotLightBuffer.m_gpuBuffer.m_id;
     }
   };
 
@@ -187,6 +171,9 @@ namespace ToolKit
     void ClearColorBuffer(const Vec4& color);
     void ClearBuffer(GraphicBitFields fields, const Vec4& value = Vec4(0.0f));
     void ColorMask(bool r, bool g, bool b, bool a);
+
+    /** Returns a uint texture ID suitable for ImGui, obtained from the backend. */
+    static uint GetImGuiTexId(const TexturePtr& tex);
 
     // FrameBuffer Operations
     //////////////////////////////////////////
@@ -435,7 +422,7 @@ namespace ToolKit
     IGraphicsBackend* m_backend                    = nullptr;
 
     /** Frame buffer stats for each frame. */
-    std::map<uint, int> m_drawnFrameBufferStats;
+    std::map<uintptr_t, int> m_drawnFrameBufferStats;
   };
 
 } // namespace ToolKit

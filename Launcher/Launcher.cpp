@@ -9,6 +9,8 @@
 
 #include <Texture.h>
 #include <ToolKit.h>
+#include <RenderSystem.h>
+#include <Renderer.h>
 #include <Util.h>
 #include <WorkspaceTypes.h>
 
@@ -18,7 +20,8 @@
 
 #include <cstdio>
 
-#define Convert2ImGuiTexture(TexturePtr) (void*) (intptr_t) (TexturePtr->m_textureId)
+#include <RenderSystem.h>
+#include <Renderer.h>
 
 extern bool g_running;
 extern bool g_launcherRunning;
@@ -271,7 +274,7 @@ namespace ToolKit
       ImVec2 logoPos(logoPadding, (headerSize.y - logoSize) * 0.5f);
 
       ImGui::SetCursorPos(logoPos);
-      if (m_logoTexture && m_logoTexture->m_textureId != 0)
+      if (m_logoTexture && Renderer::GetImGuiTexId(m_logoTexture) != 0)
       {
         ImGui::Image(Convert2ImGuiTexture(m_logoTexture), ImVec2(logoSize, logoSize), ImVec2(0, 1), ImVec2(1, 0));
       }
@@ -495,7 +498,7 @@ namespace ToolKit
                 thumbTexture = m_defaultProjectThumbnail;
               }
 
-              if (thumbTexture && thumbTexture->m_textureId != 0)
+              if (thumbTexture && Renderer::GetImGuiTexId(thumbTexture) != 0)
               {
                 childDrawList->AddImageRounded(Convert2ImGuiTexture(thumbTexture),
                                                imagePos,

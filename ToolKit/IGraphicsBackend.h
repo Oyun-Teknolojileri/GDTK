@@ -12,11 +12,23 @@
 #include "ShaderUniform.h"
 #include "Types.h"
 
+#include <memory>
+
 // Forward declarations for resource types not pulled in via Types.h
 namespace ToolKit { class UniformBuffer; class Mesh; }
 
 namespace ToolKit
 {
+
+  /** Base class for backend-specific GPU resource data.
+   *  Each backend (GL, Vulkan) derives its own struct per resource type.
+   *  Owned by the resource via unique_ptr — automatically destroyed via virtual dtor. */
+  struct GpuResourceData
+  {
+    virtual ~GpuResourceData() = default;
+  };
+
+  using GpuResourceDataPtr = std::shared_ptr<GpuResourceData>;
 
   struct PassDesc
   {
@@ -140,7 +152,7 @@ namespace ToolKit
     // default + array uniform location caching
     virtual void DestroyGpuProgram(GpuProgram* program)                  = 0;
     // glDeleteProgram
-    virtual int  GetUniformLocation(uint programHandle, const char* name) = 0;
+    virtual int  GetUniformLocation(GpuProgram* program, const char* name) = 0;
     // glGetUniformLocation — used for lazy custom uniform lookup at draw time.
     // Vulkan: returns -1 (push constants / descriptors handle this differently)
 
@@ -210,6 +222,10 @@ namespace ToolKit
     // Capability queries.
     // Returns true if the GPU supports linear filtering on float textures.
     virtual bool SupportsFloatTextureLinearFilter() = 0;
+
+    // Returns an opaque ImGui-compatible texture ID for the given texture.
+    // GL: (void*)(intptr_t)glTextureId.  VK: (void*)VkDescriptorSet.
+    virtual void* GetImGuiTextureId(Texture* tex) = 0;
   };
 
 } // namespace ToolKit

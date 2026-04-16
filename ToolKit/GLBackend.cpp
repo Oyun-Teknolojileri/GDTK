@@ -27,6 +27,64 @@
 namespace ToolKit
 {
 
+  // GL-specific GPU resource data structs.
+  // These are allocated by GLBackend and stored in resource m_gpuData.
+
+  struct GLTextureData : GpuResourceData
+  {
+    GLuint textureId     = 0;
+    bool isRenderbuffer  = false;
+  };
+
+  struct GLFramebufferData : GpuResourceData
+  {
+    GLuint fboId = 0;
+  };
+
+  struct GLMeshData : GpuResourceData
+  {
+    GLuint vaoId       = 0;
+    GLuint vboVertexId = 0;
+    GLuint vboIndexId  = 0;
+  };
+
+  struct GLUniformBufferData : GpuResourceData
+  {
+    GLuint uboId = 0;
+  };
+
+  struct GLProgramData : GpuResourceData
+  {
+    GLuint programId = 0;
+  };
+
+  // Helper accessors — safe static_cast from base.
+  static GLTextureData* GetGLTextureData(Texture* tex)
+  {
+    return static_cast<GLTextureData*>(tex->m_gpuData.get());
+  }
+
+  static GLFramebufferData* GetGLFramebufferData(Framebuffer* fb)
+  {
+    return static_cast<GLFramebufferData*>(fb->m_gpuData.get());
+  }
+
+  static GLMeshData* GetGLMeshData(const Mesh* mesh)
+  {
+    return static_cast<GLMeshData*>(mesh->m_gpuData.get());
+  }
+
+  static GLProgramData* GetGLProgramData(GpuProgram* program)
+  {
+    return static_cast<GLProgramData*>(program->m_gpuData.get());
+  }
+
+  static GLuint GetGLProgramId(GpuProgram* program)
+  {
+    GLProgramData* gl = GetGLProgramData(program);
+    return gl ? gl->programId : 0;
+  }
+
   GLBackend::GLBackend()  {}
 
   GLBackend::~GLBackend()
@@ -53,7 +111,7 @@ namespace ToolKit
 
     if (desc.target != nullptr)
     {
-      BindFramebuffer(GL_FRAMEBUFFER, desc.target->m_glImpl.fboId);
+      BindFramebuffer(GL_FRAMEBUFFER, GetGLFramebufferData(desc.target.get())->fboId);
       desc.target->SetDrawBuffers();
     }
     else
@@ -78,7 +136,7 @@ namespace ToolKit
 
     FramebufferPtr fb = m_activePassDesc.target;
 
-    BindFramebuffer(GL_DRAW_FRAMEBUFFER, fb->m_glImpl.fboId);
+    BindFramebuffer(GL_DRAW_FRAMEBUFFER, GetGLFramebufferData(fb.get())->fboId);
 
     GLenum attachments[3];
     int count = 0;
@@ -182,7 +240,7 @@ namespace ToolKit
   {
     if (program)
     {
-      glUseProgram(program->m_handle);
+      glUseProgram(GetGLProgramId(program.get()));
     }
 
     if (state == nullptr)
@@ -411,7 +469,8 @@ namespace ToolKit
   {
     if (tex != nullptr)
     {
-      BindTextureDirect((uint) tex->Settings().Target, tex->m_glImpl.textureId, slot);
+      GLTextureData* gl = GetGLTextureData(tex.get());
+      if (gl) BindTextureDirect((uint) tex->Settings().Target, gl->textureId, slot);
     }
     else
     {
@@ -426,7 +485,8 @@ namespace ToolKit
       return;
     }
 
-    BindVAO(desc.mesh->m_glImpl.vaoId);
+    GLMeshData* meshGl = GetGLMeshData(desc.mesh);
+    BindVAO(meshGl->vaoId);
 
     if (desc.indexed)
     {
@@ -452,12 +512,14 @@ namespace ToolKit
       return;
     }
 
-    // --- Vertex buffer ---
-    glGenVertexArrays(1, &mesh->m_vaoId);
-    BindVAO(mesh->m_vaoId);
+    auto glData = std::make_shared<GLMeshData>();
 
-    glGenBuffers(1, &mesh->m_vboVertexId);
-    glBindBuffer(GL_ARRAY_BUFFER, mesh->m_vboVertexId);
+    // --- Vertex buffer ---
+    glGenVertexArrays(1, &glData->vaoId);
+    BindVAO(glData->vaoId);
+
+    glGenBuffers(1, &glData->vboVertexId);
+    glBindBuffer(GL_ARRAY_BUFFER, glData->vboVertexId);
     glBufferData(GL_ARRAY_BUFFER,
                  mesh->GetVertexSize() * mesh->m_clientSideVertices.size(),
                  mesh->m_clientSideVertices.data(),
@@ -504,8 +566,8 @@ namespace ToolKit
     // --- Index buffer ---
     if (!mesh->m_clientSideIndices.empty())
     {
-      glGenBuffers(1, &mesh->m_vboIndexId);
-      glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->m_vboIndexId);
+      glGenBuffers(1, &glData->vboIndexId);
+      glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, glData->vboIndexId);
       glBufferData(GL_ELEMENT_ARRAY_BUFFER,
                    sizeof(uint) * mesh->m_clientSideIndices.size(),
                    mesh->m_clientSideIndices.data(),
@@ -513,32 +575,31 @@ namespace ToolKit
       mesh->m_indexCount = (uint) mesh->m_clientSideIndices.size();
     }
 
-    mesh->m_vertexCount        = (uint) mesh->m_clientSideVertices.size();
-    mesh->m_glImpl.vaoId       = mesh->m_vaoId;
-    mesh->m_glImpl.vboVertexId = mesh->m_vboVertexId;
-    mesh->m_glImpl.vboIndexId  = mesh->m_vboIndexId;
+    mesh->m_vertexCount = (uint) mesh->m_clientSideVertices.size();
+    mesh->m_gpuData     = std::move(glData);
   }
 
   void GLBackend::DestroyMesh(Mesh* mesh)
   {
-    if (mesh->m_vboVertexId || mesh->m_vboIndexId)
+    GLMeshData* gl = mesh ? GetGLMeshData(mesh) : nullptr;
+    if (gl == nullptr)
     {
-      GLuint buffers[2] = {mesh->m_vboIndexId, mesh->m_vboVertexId};
+      return;
+    }
+
+    if (gl->vboVertexId || gl->vboIndexId)
+    {
+      GLuint buffers[2] = {gl->vboIndexId, gl->vboVertexId};
       glDeleteBuffers(2, buffers);
     }
 
-    if (mesh->m_vaoId)
+    if (gl->vaoId)
     {
-      glDeleteVertexArrays(1, &mesh->m_vaoId);
+      glDeleteVertexArrays(1, &gl->vaoId);
       BindVAO(0);
     }
 
-    mesh->m_vaoId              = 0;
-    mesh->m_vboVertexId        = 0;
-    mesh->m_vboIndexId         = 0;
-    mesh->m_glImpl.vaoId       = 0;
-    mesh->m_glImpl.vboVertexId = 0;
-    mesh->m_glImpl.vboIndexId  = 0;
+    mesh->m_gpuData.reset();
   }
 
   // -----------------------------------------------------------------------
@@ -548,23 +609,26 @@ namespace ToolKit
   void GLBackend::CreateUniformBuffer(UniformBuffer* ub, uint64 size)
   {
     ub->m_size = size;
-    glGenBuffers(1, &ub->m_id);
-    glBindBuffer(GL_UNIFORM_BUFFER, ub->m_id);
+    auto glData = std::make_shared<GLUniformBufferData>();
+    glGenBuffers(1, &glData->uboId);
+    glBindBuffer(GL_UNIFORM_BUFFER, glData->uboId);
     glBufferData(GL_UNIFORM_BUFFER, (GLsizeiptr) size, nullptr, GL_DYNAMIC_DRAW);
+    ub->m_gpuData = std::move(glData);
   }
 
   void GLBackend::DestroyUniformBuffer(UniformBuffer* ub)
   {
-    if (ub->m_id)
+    if (auto* gl = static_cast<GLUniformBufferData*>(ub->m_gpuData.get()))
     {
-      glDeleteBuffers(1, &ub->m_id);
-      ub->m_id = 0;
+      glDeleteBuffers(1, &gl->uboId);
     }
+    ub->m_gpuData.reset();
   }
 
   void GLBackend::UpdateUniformBuffer(UniformBuffer* ub, const void* data, uint64 size)
   {
-    glBindBuffer(GL_UNIFORM_BUFFER, ub->m_id);
+    auto* gl = static_cast<GLUniformBufferData*>(ub->m_gpuData.get());
+    glBindBuffer(GL_UNIFORM_BUFFER, gl->uboId);
     glBufferSubData(GL_UNIFORM_BUFFER, 0, (GLsizeiptr) size, data);
   }
 
@@ -644,42 +708,45 @@ namespace ToolKit
     const ShaderPtr& vs = program->m_shaders[0];
     const ShaderPtr& fs = program->m_shaders[1];
 
-    program->m_handle = glCreateProgram();
+    auto glData = std::make_shared<GLProgramData>();
+    glData->programId = glCreateProgram();
+    GLuint pid        = glData->programId;
 
-    glAttachShader(program->m_handle, vs->m_shaderHandle);
-    glAttachShader(program->m_handle, fs->m_shaderHandle);
-    glLinkProgram(program->m_handle);
+    glAttachShader(pid, vs->m_shaderHandle);
+    glAttachShader(pid, fs->m_shaderHandle);
+    glLinkProgram(pid);
 
     GLint linked = 0;
-    glGetProgramiv(program->m_handle, GL_LINK_STATUS, &linked);
+    glGetProgramiv(pid, GL_LINK_STATUS, &linked);
     if (!linked)
     {
       GLint infoLen = 0;
-      glGetProgramiv(program->m_handle, GL_INFO_LOG_LENGTH, &infoLen);
+      glGetProgramiv(pid, GL_INFO_LOG_LENGTH, &infoLen);
       if (infoLen > 1)
       {
         char* log = new char[infoLen];
-        glGetProgramInfoLog(program->m_handle, infoLen, nullptr, log);
+        glGetProgramInfoLog(pid, infoLen, nullptr, log);
         TK_ERR("Linking failed.\nVertex: %s\nFragment: %s\n%s",
                vs->GetFile().c_str(),
                fs->GetFile().c_str(),
                log);
         SafeDelArray(log);
       }
-      glDeleteProgram(program->m_handle);
-      program->m_handle = 0;
+      glDeleteProgram(pid);
       return;
     }
+
+    program->m_gpuData = std::move(glData);
 
     // Save and restore the currently bound program.
     GLint currentProgram = 0;
     glGetIntegerv(GL_CURRENT_PROGRAM, &currentProgram);
-    glUseProgram(program->m_handle);
+    glUseProgram(pid);
 
     // Bind sampler slots so shader samplers map to texture bind slots.
     for (ubyte slot = 0; slot < RHIConstants::TextureSlotCount; slot++)
     {
-      GLint loc = glGetUniformLocation(program->m_handle, ("s_texture" + std::to_string(slot)).c_str());
+      GLint loc = glGetUniformLocation(pid, ("s_texture" + std::to_string(slot)).c_str());
       if (loc != -1)
       {
         glUniform1i(loc, slot);
@@ -687,35 +754,36 @@ namespace ToolKit
     }
 
     // Bind all known UBO blocks.
-    auto bindUBO = [&](const char* blockName, int bindingSlot, int bufferId)
+    auto bindUBO = [&](const char* blockName, int bindingSlot, UniformBuffer* ub)
     {
-      int loc = glGetUniformBlockIndex(program->m_handle, blockName);
+      int loc = glGetUniformBlockIndex(pid, blockName);
       if (loc != GL_INVALID_INDEX)
       {
-        glUniformBlockBinding(program->m_handle, loc, bindingSlot);
-        glBindBufferBase(GL_UNIFORM_BUFFER, bindingSlot, bufferId);
+        GLuint uboId = static_cast<GLUniformBufferData*>(ub->m_gpuData.get())->uboId;
+        glUniformBlockBinding(pid, loc, bindingSlot);
+        glBindBufferBase(GL_UNIFORM_BUFFER, bindingSlot, uboId);
       }
     };
 
-    bindUBO("CameraData",              CameraGpuBuffer::Binding(),          buffers->cameraBufferId);
-    bindUBO("GraphicConstatsData",     GraphicConstantsGpuBuffer::Binding(), buffers->graphicConstantBufferId);
-    bindUBO("DirectionalLightBuffer",  DirectionalLightBuffer::BindingSlotForLight, buffers->directionalLightBufferId);
-    bindUBO("DirectionalLightPVMBuffer", DirectionalLightBuffer::BindingSlotForPVM, buffers->directionalLightPVMBufferId);
-    bindUBO("PointLightCache",         PointLightCache::BindingSlot,        buffers->pointLightBufferId);
-    bindUBO("SpotLightCache",          SpotLightCache::BindingSlot,         buffers->spotLightBufferId);
+    bindUBO("CameraData",              CameraGpuBuffer::Binding(),          &buffers->cameraGpuBuffer.GetBuffer());
+    bindUBO("GraphicConstatsData",     GraphicConstantsGpuBuffer::Binding(), &buffers->graphicConstantBuffer.GetBuffer());
+    bindUBO("DirectionalLightBuffer",  DirectionalLightBuffer::BindingSlotForLight, &buffers->directionalLightBuffer.m_lightDataBuffer);
+    bindUBO("DirectionalLightPVMBuffer", DirectionalLightBuffer::BindingSlotForPVM, &buffers->directionalLightBuffer.m_pvms);
+    bindUBO("PointLightCache",         PointLightCache::BindingSlot,        &buffers->pointLighBuffer.m_gpuBuffer);
+    bindUBO("SpotLightCache",          SpotLightCache::BindingSlot,         &buffers->spotLightBuffer.m_gpuBuffer);
 
     // Cache default and array uniform locations.
     for (const ShaderPtr& shader : program->m_shaders)
     {
       for (const Uniform& uniform : shader->m_uniforms)
       {
-        GLint loc                                  = glGetUniformLocation(program->m_handle, GetUniformName(uniform));
+        GLint loc                                  = glGetUniformLocation(pid, GetUniformName(uniform));
         program->m_defaultUniformLocation[uniform] = loc;
       }
 
       for (Shader::ArrayUniform arrayUniform : shader->m_arrayUniforms)
       {
-        GLint loc = glGetUniformLocation(program->m_handle, GetUniformName(arrayUniform.uniform));
+        GLint loc = glGetUniformLocation(pid, GetUniformName(arrayUniform.uniform));
         program->m_defaultArrayUniformLocations[arrayUniform.uniform] = loc;
       }
     }
@@ -725,16 +793,16 @@ namespace ToolKit
 
   void GLBackend::DestroyGpuProgram(GpuProgram* program)
   {
-    if (program->m_handle)
+    if (GLProgramData* gl = GetGLProgramData(program))
     {
-      glDeleteProgram(program->m_handle);
-      program->m_handle = 0;
+      glDeleteProgram(gl->programId);
     }
+    program->m_gpuData.reset();
   }
 
-  int GLBackend::GetUniformLocation(uint programHandle, const char* name)
+  int GLBackend::GetUniformLocation(GpuProgram* program, const char* name)
   {
-    return glGetUniformLocation(programHandle, name);
+    return glGetUniformLocation(GetGLProgramId(program), name);
   }
 
   // -----------------------------------------------------------------------
@@ -748,13 +816,14 @@ namespace ToolKit
       return;
     }
 
+    auto glData              = std::make_shared<GLTextureData>();
     const TextureSettings& s = tex->Settings();
 
     // DepthTexture — backed by a renderbuffer
     if (DepthTexture* dt = tex->As<DepthTexture>())
     {
-      glGenRenderbuffers(1, &tex->m_textureId);
-      glBindRenderbuffer(GL_RENDERBUFFER, tex->m_textureId);
+      glGenRenderbuffers(1, &glData->textureId);
+      glBindRenderbuffer(GL_RENDERBUFFER, glData->textureId);
 
       GLenum fmt = (GLenum) dt->GetDepthFormat();
       if (s.msaaCount > MsaaSampleCount::x0)
@@ -766,28 +835,29 @@ namespace ToolKit
         glRenderbufferStorage(GL_RENDERBUFFER, fmt, tex->m_width, tex->m_height);
       }
 
-      tex->m_glImpl.textureId = tex->m_textureId;
+      glData->isRenderbuffer = true;
+      tex->m_gpuData         = std::move(glData);
       return;
     }
 
     // RenderTarget MSAA — also a renderbuffer
     if (s.msaaCount > MsaaSampleCount::x0 && s.Target == GraphicTypes::Target2D)
     {
-      glGenRenderbuffers(1, &tex->m_textureId);
-      glBindRenderbuffer(GL_RENDERBUFFER, tex->m_textureId);
+      glGenRenderbuffers(1, &glData->textureId);
+      glBindRenderbuffer(GL_RENDERBUFFER, glData->textureId);
       glRenderbufferStorageMultisample(GL_RENDERBUFFER,
                                        (int) s.msaaCount,
                                        (GLenum) s.InternalFormat,
                                        tex->m_width,
                                        tex->m_height);
-      tex->m_glImpl.textureId = tex->m_textureId;
+      glData->isRenderbuffer = true;
+      tex->m_gpuData         = std::move(glData);
       return;
     }
 
     // All other textures — regular GL texture
-    glGenTextures(1, &tex->m_textureId);
-    tex->m_glImpl.textureId = tex->m_textureId;
-    BindTextureDirect((uint) s.Target, tex->m_textureId, 0);
+    glGenTextures(1, &glData->textureId);
+    BindTextureDirect((uint) s.Target, glData->textureId, 0);
 
     if (s.Target == GraphicTypes::Target2D)
     {
@@ -870,41 +940,30 @@ namespace ToolKit
                    (GLenum) s.Type,
                    nullptr);
     }
+
+    tex->m_gpuData = std::move(glData);
   }
 
   void GLBackend::DestroyTexture(Texture* tex)
   {
-    if (tex == nullptr || tex->m_textureId == 0)
+    GLTextureData* gl = tex ? GetGLTextureData(tex) : nullptr;
+    if (gl == nullptr || gl->textureId == 0)
     {
       return;
     }
 
-    const TextureSettings& s = tex->Settings();
-    bool isRenderbuffer      = false;
-
-    if (tex->IsA<DepthTexture>())
+    if (gl->isRenderbuffer)
     {
-      isRenderbuffer = true;
-    }
-    else if (s.msaaCount > MsaaSampleCount::x0 && s.Target == GraphicTypes::Target2D)
-    {
-      isRenderbuffer = true;
-    }
-
-    if (isRenderbuffer)
-    {
-      glDeleteRenderbuffers(1, &tex->m_textureId);
+      glDeleteRenderbuffers(1, &gl->textureId);
     }
     else
     {
-      InvalidateTextureCache(tex->m_textureId);
-      glDeleteTextures(1, &tex->m_textureId);
+      InvalidateTextureCache(gl->textureId);
+      glDeleteTextures(1, &gl->textureId);
     }
 
-    tex->m_textureId        = 0;
-    tex->m_glImpl.textureId = 0;
+    tex->m_gpuData.reset();
   }
-
   void GLBackend::ApplyTextureSettings(Texture* tex)
   {
     if (tex == nullptr)
@@ -940,24 +999,26 @@ namespace ToolKit
 
   void GLBackend::GenerateMipmaps(Texture* tex)
   {
-    if (tex == nullptr || tex->m_textureId == 0)
+    GLTextureData* gl = tex ? GetGLTextureData(tex) : nullptr;
+    if (gl == nullptr || gl->textureId == 0)
     {
       return;
     }
 
-    BindTextureDirect((uint) tex->Settings().Target, tex->m_textureId, 0);
+    BindTextureDirect((uint) tex->Settings().Target, gl->textureId, 0);
     glGenerateMipmap((GLenum) tex->Settings().Target);
   }
 
   void GLBackend::UpdateTextureRegion(Texture* tex, const void* data)
   {
-    if (tex == nullptr || tex->m_textureId == 0)
+    GLTextureData* gl = tex ? GetGLTextureData(tex) : nullptr;
+    if (gl == nullptr || gl->textureId == 0)
     {
       return;
     }
 
     const TextureSettings& s = tex->Settings();
-    BindTextureDirect((uint) s.Target, tex->m_textureId, 0);
+    BindTextureDirect((uint) s.Target, gl->textureId, 0);
 
     glTexSubImage2D((GLenum) s.Target,
                     0,
@@ -972,25 +1033,27 @@ namespace ToolKit
 
   void GLBackend::SetTextureMaxMipLevel(Texture* tex, int maxLevel)
   {
-    if (tex == nullptr || tex->m_textureId == 0)
+    GLTextureData* gl = tex ? GetGLTextureData(tex) : nullptr;
+    if (gl == nullptr || gl->textureId == 0)
     {
       return;
     }
 
     GLenum target = (GLenum) tex->Settings().Target;
-    BindTextureDirect(target, tex->m_textureId, 0);
+    BindTextureDirect(target, gl->textureId, 0);
     glTexParameteri(target, GL_TEXTURE_MAX_LEVEL, maxLevel);
   }
 
   void GLBackend::AllocateCubemapMipStorage(Texture* tex)
   {
-    if (tex == nullptr || tex->m_textureId == 0)
+    GLTextureData* gl = tex ? GetGLTextureData(tex) : nullptr;
+    if (gl == nullptr || gl->textureId == 0)
     {
       return;
     }
 
     const TextureSettings& s = tex->Settings();
-    BindTextureDirect(GL_TEXTURE_CUBE_MAP, tex->m_textureId, 0);
+    BindTextureDirect(GL_TEXTURE_CUBE_MAP, gl->textureId, 0);
 
     const int numMipLevels = tex->CalculateMipmapLevels();
     for (int mip = 1; mip < numMipLevels; mip++)
@@ -1016,21 +1079,22 @@ namespace ToolKit
   void GLBackend::CopyCubemapFaceFromFramebuffer(Texture* cubemap, int face, int mip, int width, int height,
                                                    Framebuffer* readFb, Framebuffer* writeFb)
   {
-    if (cubemap == nullptr || cubemap->m_textureId == 0)
+    GLTextureData* gl = cubemap ? GetGLTextureData(cubemap) : nullptr;
+    if (gl == nullptr || gl->textureId == 0)
     {
       return;
     }
 
     if (readFb)
     {
-      BindFramebuffer(GL_READ_FRAMEBUFFER, readFb->m_fboId);
+      BindFramebuffer(GL_READ_FRAMEBUFFER, GetGLFramebufferData(readFb)->fboId);
     }
     if (writeFb)
     {
-      BindFramebuffer(GL_DRAW_FRAMEBUFFER, writeFb->m_fboId);
+      BindFramebuffer(GL_DRAW_FRAMEBUFFER, GetGLFramebufferData(writeFb)->fboId);
     }
 
-    BindTextureDirect(GL_TEXTURE_CUBE_MAP, cubemap->m_textureId, 0);
+    BindTextureDirect(GL_TEXTURE_CUBE_MAP, gl->textureId, 0);
     glCopyTexSubImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, mip, 0, 0, 0, 0, width, height);
   }
 
@@ -1045,25 +1109,24 @@ namespace ToolKit
       return;
     }
 
-    uint fboId = 0;
-    glGenFramebuffers(1, &fboId);
-    fb->m_fboId        = fboId;
-    fb->m_glImpl.fboId = fboId;
-    BindFramebuffer(GL_FRAMEBUFFER, fboId);
+    auto glData = std::make_shared<GLFramebufferData>();
+    glGenFramebuffers(1, &glData->fboId);
+    BindFramebuffer(GL_FRAMEBUFFER, glData->fboId);
+    fb->m_gpuData = std::move(glData);
   }
 
   void GLBackend::DestroyFramebuffer(Framebuffer* fb)
   {
-    if (fb == nullptr || fb->m_fboId == 0)
+    GLFramebufferData* gl = fb ? GetGLFramebufferData(fb) : nullptr;
+    if (gl == nullptr || gl->fboId == 0)
     {
       return;
     }
 
-    uint id = fb->m_fboId;
-    InvalidateFboCache(id);
+    InvalidateFboCache(gl->fboId);
+    GLuint id = gl->fboId;
     glDeleteFramebuffers(1, &id);
-    fb->m_fboId        = 0;
-    fb->m_glImpl.fboId = 0;
+    fb->m_gpuData.reset();
   }
 
   void GLBackend::AttachColorTarget(Framebuffer* fb, RenderTargetPtr rt, int attachment, int mip, int layer, int face)
@@ -1073,35 +1136,36 @@ namespace ToolKit
       return;
     }
 
-    BindFramebuffer(GL_FRAMEBUFFER, fb->m_fboId);
+    BindFramebuffer(GL_FRAMEBUFFER, GetGLFramebufferData(fb)->fboId);
     GLenum glAttachment = GL_COLOR_ATTACHMENT0 + attachment;
+    GLuint texId        = GetGLTextureData(rt.get())->textureId;
 
     if (rt->Settings().msaaCount > MsaaSampleCount::x0)
     {
-      glFramebufferRenderbuffer(GL_FRAMEBUFFER, glAttachment, GL_RENDERBUFFER, rt->m_textureId);
+      glFramebufferRenderbuffer(GL_FRAMEBUFFER, glAttachment, GL_RENDERBUFFER, texId);
     }
     else if (face >= 0)
     {
-      glFramebufferTexture2D(GL_FRAMEBUFFER, glAttachment, GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, rt->m_textureId, mip);
+      glFramebufferTexture2D(GL_FRAMEBUFFER, glAttachment, GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, texId, mip);
     }
     else if (layer >= 0)
     {
-      glFramebufferTextureLayer(GL_FRAMEBUFFER, glAttachment, rt->m_textureId, mip, layer);
+      glFramebufferTextureLayer(GL_FRAMEBUFFER, glAttachment, texId, mip, layer);
     }
     else
     {
-      glFramebufferTexture2D(GL_FRAMEBUFFER, glAttachment, GL_TEXTURE_2D, rt->m_textureId, mip);
+      glFramebufferTexture2D(GL_FRAMEBUFFER, glAttachment, GL_TEXTURE_2D, texId, mip);
     }
   }
 
   void GLBackend::DetachColorTarget(Framebuffer* fb, int attachment)
   {
-    if (fb == nullptr || fb->m_fboId == 0)
+    if (fb == nullptr || GetGLFramebufferData(fb)->fboId == 0)
     {
       return;
     }
 
-    BindFramebuffer(GL_FRAMEBUFFER, fb->m_fboId);
+    BindFramebuffer(GL_FRAMEBUFFER, GetGLFramebufferData(fb)->fboId);
     GLenum glAttachment = GL_COLOR_ATTACHMENT0 + attachment;
     glFramebufferTexture2D(GL_FRAMEBUFFER, glAttachment, GL_TEXTURE_2D, 0, 0);
   }
@@ -1113,19 +1177,19 @@ namespace ToolKit
       return;
     }
 
-    BindFramebuffer(GL_FRAMEBUFFER, fb->m_fboId);
+    BindFramebuffer(GL_FRAMEBUFFER, GetGLFramebufferData(fb)->fboId);
     GLenum attachment = dt->m_stencil ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT;
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, attachment, GL_RENDERBUFFER, dt->m_textureId);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, attachment, GL_RENDERBUFFER, GetGLTextureData(dt.get())->textureId);
   }
 
   void GLBackend::DetachDepthTarget(Framebuffer* fb)
   {
-    if (fb == nullptr || fb->m_fboId == 0)
+    if (fb == nullptr || GetGLFramebufferData(fb)->fboId == 0)
     {
       return;
     }
 
-    BindFramebuffer(GL_FRAMEBUFFER, fb->m_fboId);
+    BindFramebuffer(GL_FRAMEBUFFER, GetGLFramebufferData(fb)->fboId);
     // Detach both possible depth attachment types
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, 0);
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, 0);
@@ -1133,12 +1197,12 @@ namespace ToolKit
 
   void GLBackend::SetDrawBuffers(Framebuffer* fb)
   {
-    if (fb == nullptr || fb->m_fboId == 0)
+    if (fb == nullptr || GetGLFramebufferData(fb)->fboId == 0)
     {
       return;
     }
 
-    BindFramebuffer(GL_FRAMEBUFFER, fb->m_fboId);
+    BindFramebuffer(GL_FRAMEBUFFER, GetGLFramebufferData(fb)->fboId);
 
     GLenum colorAttachments[8] = {GL_NONE, GL_NONE, GL_NONE, GL_NONE, GL_NONE, GL_NONE, GL_NONE, GL_NONE};
     int maxAttachment          = -1;
@@ -1146,7 +1210,7 @@ namespace ToolKit
     for (int i = 0; i < Framebuffer::m_maxColorAttachmentCount; i++)
     {
       RenderTargetPtr rt = fb->GetColorAttachment((Framebuffer::Attachment) i);
-      if (rt != nullptr && rt->m_textureId != 0)
+      if (rt != nullptr && rt->m_gpuData != nullptr)
       {
         colorAttachments[i] = GL_COLOR_ATTACHMENT0 + i;
         maxAttachment       = i;
@@ -1165,12 +1229,12 @@ namespace ToolKit
 
   void GLBackend::CheckFramebufferComplete(Framebuffer* fb)
   {
-    if (fb == nullptr || fb->m_fboId == 0)
+    if (fb == nullptr || GetGLFramebufferData(fb)->fboId == 0)
     {
       return;
     }
 
-    BindFramebuffer(GL_FRAMEBUFFER, fb->m_fboId);
+    BindFramebuffer(GL_FRAMEBUFFER, GetGLFramebufferData(fb)->fboId);
     GLenum check = glCheckFramebufferStatus(GL_FRAMEBUFFER);
     assert(check == GL_FRAMEBUFFER_COMPLETE && "Framebuffer incomplete");
   }
@@ -1203,8 +1267,8 @@ namespace ToolKit
       srcRt->m_resolvedTexture = targetRt;
 
       // Bind after SetColorAttachment, which may have changed framebuffer bindings.
-      BindFramebuffer(GL_READ_FRAMEBUFFER, src->GetFboId());
-      BindFramebuffer(GL_DRAW_FRAMEBUFFER, dst->GetFboId());
+      BindFramebuffer(GL_READ_FRAMEBUFFER, GetGLFramebufferData(src.get())->fboId);
+      BindFramebuffer(GL_DRAW_FRAMEBUFFER, GetGLFramebufferData(dst.get())->fboId);
 
       GLenum attachment = GL_COLOR_ATTACHMENT0 + atc;
       glReadBuffer(attachment);
@@ -1227,7 +1291,7 @@ namespace ToolKit
       const FramebufferSettings& fbs = src->GetSettings();
       width                          = fbs.width;
       height                         = fbs.height;
-      srcId                          = src->GetFboId();
+      srcId                          = GetGLFramebufferData(src.get())->fboId;
     }
 
     BindFramebuffer(GL_READ_FRAMEBUFFER, srcId);
@@ -1236,7 +1300,7 @@ namespace ToolKit
     if (dst)
     {
       dst->ReconstructIfNeeded(width, height);
-      destId = dst->GetFboId();
+      destId = GetGLFramebufferData(dst.get())->fboId;
     }
     BindFramebuffer(GL_DRAW_FRAMEBUFFER, destId);
 
@@ -1516,13 +1580,14 @@ namespace ToolKit
 
   void GLBackend::UpdateTextureSubRegion(Texture* tex, int x, int y, int w, int h, const void* data)
   {
-    if (tex == nullptr || tex->m_textureId == 0)
+    GLTextureData* gl = tex ? GetGLTextureData(tex) : nullptr;
+    if (gl == nullptr || gl->textureId == 0)
     {
       return;
     }
 
     const TextureSettings& s = tex->Settings();
-    BindTextureDirect((uint) s.Target, tex->m_textureId, 0);
+    BindTextureDirect((uint) s.Target, gl->textureId, 0);
     glTexSubImage2D((GLenum) s.Target, 0, x, y, w, h, (GLenum) s.Format, (GLenum) s.Type, data);
   }
 
@@ -1554,6 +1619,12 @@ namespace ToolKit
   bool GLBackend::SupportsFloatTextureLinearFilter()
   {
     return TK_GL_OES_texture_float_linear != 0;
+  }
+
+  void* GLBackend::GetImGuiTextureId(Texture* tex)
+  {
+    GLTextureData* gl = tex ? GetGLTextureData(tex) : nullptr;
+    return gl ? (void*) (intptr_t) gl->textureId : nullptr;
   }
 
 } // namespace ToolKit

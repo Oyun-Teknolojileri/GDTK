@@ -85,7 +85,6 @@ namespace ToolKit
     assert(backend && "Graphics backend not available during Framebuffer::Init");
 
     backend->CreateFramebuffer(this);
-    Stats::SetGpuResourceLabel(m_label, GpuResourceType::FrameBuffer, m_fboId);
 
     if (m_settings.useDefaultDepth)
     {
@@ -186,7 +185,7 @@ namespace ToolKit
                                                   int layer,
                                                   CubemapFace face)
   {
-    if (rt->m_width <= 0 || rt->m_height <= 0 || rt->m_textureId == 0)
+    if (rt->m_width <= 0 || rt->m_height <= 0 || rt->m_gpuData == nullptr)
     {
       assert(false && "Render target can't be bind.");
       return nullptr;
@@ -237,7 +236,7 @@ namespace ToolKit
     return rt;
   }
 
-  uint Framebuffer::GetFboId() { return m_fboId; }
+  uint Framebuffer::GetFboId() { return 0; } // Deprecated: GPU handle is now opaque.
 
   const FramebufferSettings& Framebuffer::GetSettings() { return m_settings; }
 

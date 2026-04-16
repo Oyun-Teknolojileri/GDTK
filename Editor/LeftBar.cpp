@@ -38,21 +38,21 @@ namespace ToolKit
         // Select button.
         bool isCurrentMod = ModManager::GetInstance()->m_modStack.back()->m_id == ModId::Select;
         ModManager::GetInstance()->SetMod(
-            UI::ToggleButton(UI::m_selectIcn->m_textureId, ImVec2(32, 32), isCurrentMod) && !isCurrentMod,
+            UI::ToggleButton(Renderer::GetImGuiTexId(UI::m_selectIcn), ImVec2(32, 32), isCurrentMod) && !isCurrentMod,
             ModId::Select);
         UI::HelpMarker(TKLoc + m_owner->m_name, "Select Box\nSelect items using box selection.");
 
         // Cursor button.
         isCurrentMod = ModManager::GetInstance()->m_modStack.back()->m_id == ModId::Cursor;
         ModManager::GetInstance()->SetMod(
-            UI::ToggleButton(UI::m_cursorIcn->m_textureId, ImVec2(32, 32), isCurrentMod) && !isCurrentMod,
+            UI::ToggleButton(Renderer::GetImGuiTexId(UI::m_cursorIcn), ImVec2(32, 32), isCurrentMod) && !isCurrentMod,
             ModId::Cursor);
         UI::HelpMarker(TKLoc + m_owner->m_name, "Cursor\nSet the cursor location.");
         ImGui::Separator();
 
         // Move button.
         isCurrentMod = ModManager::GetInstance()->m_modStack.back()->m_id == ModId::Move;
-        ModManager::GetInstance()->SetMod(UI::ToggleButton(UI::m_moveIcn->m_textureId, ImVec2(32, 32), isCurrentMod) &&
+        ModManager::GetInstance()->SetMod(UI::ToggleButton(Renderer::GetImGuiTexId(UI::m_moveIcn), ImVec2(32, 32), isCurrentMod) &&
                                               !isCurrentMod,
                                           ModId::Move);
         UI::HelpMarker(TKLoc + m_owner->m_name, "Move\nMove selected items.");
@@ -60,13 +60,13 @@ namespace ToolKit
         // Rotate button.
         isCurrentMod = ModManager::GetInstance()->m_modStack.back()->m_id == ModId::Rotate;
         ModManager::GetInstance()->SetMod(
-            UI::ToggleButton(UI::m_rotateIcn->m_textureId, ImVec2(32, 32), isCurrentMod) && !isCurrentMod,
+            UI::ToggleButton(Renderer::GetImGuiTexId(UI::m_rotateIcn), ImVec2(32, 32), isCurrentMod) && !isCurrentMod,
             ModId::Rotate);
         UI::HelpMarker(TKLoc + m_owner->m_name, "Rotate\nRotate selected items.");
 
         // Scale button.
         isCurrentMod = ModManager::GetInstance()->m_modStack.back()->m_id == ModId::Scale;
-        ModManager::GetInstance()->SetMod(UI::ToggleButton(UI::m_scaleIcn->m_textureId, ImVec2(32, 32), isCurrentMod) &&
+        ModManager::GetInstance()->SetMod(UI::ToggleButton(Renderer::GetImGuiTexId(UI::m_scaleIcn), ImVec2(32, 32), isCurrentMod) &&
                                               !isCurrentMod,
                                           ModId::Scale);
         UI::HelpMarker(TKLoc + m_owner->m_name, "Scale\nScale (resize) selected items.");
@@ -74,7 +74,7 @@ namespace ToolKit
         // Box Edit button.
         isCurrentMod = ModManager::GetInstance()->m_modStack.back()->m_id == ModId::BoxEdit;
         ModManager::GetInstance()->SetMod(
-            UI::ToggleButton(UI::m_cubeIcon->m_textureId, ImVec2(32, 32), isCurrentMod) && !isCurrentMod,
+            UI::ToggleButton(Renderer::GetImGuiTexId(UI::m_cubeIcon), ImVec2(32, 32), isCurrentMod) && !isCurrentMod,
             ModId::BoxEdit);
         UI::HelpMarker(TKLoc + m_owner->m_name, "Box Edit\nEdit bounding volumes by dragging face handles.");
 

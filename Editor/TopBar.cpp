@@ -345,7 +345,7 @@ namespace ToolKit
       }
 
       ImGui::TableSetColumnIndex(nextItemIndex++);
-      GetApp()->m_snapsEnabled = UI::ToggleButton(UI::m_snapIcon->m_textureId, Vec2(16.0), GetApp()->m_snapsEnabled);
+      GetApp()->m_snapsEnabled = UI::ToggleButton(Renderer::GetImGuiTexId(UI::m_snapIcon), Vec2(16.0), GetApp()->m_snapsEnabled);
       UI::HelpMarker(TKLoc + m_owner->m_name, "Grid snaping\nRight click for options");
 
       if (ImGui::BeginPopupContextItem("##SnapMenu"))

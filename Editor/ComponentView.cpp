@@ -135,7 +135,7 @@ namespace ToolKit
         {
           ImGui::TableSetColumnIndex(columnIndx++);
           ImGui::SetCursorPosX(tableWdth / 25.0f);
-          DropZone(static_cast<uint>(UI::m_clipIcon->m_textureId),
+          DropZone(static_cast<uint>(Renderer::GetImGuiTexId(UI::m_clipIcon)),
                    file,
                    [&pair](const DirectoryEntry& entry) -> void
                    {
@@ -194,19 +194,19 @@ namespace ToolKit
             // Alternate between Play - Pause buttons.
             if (activeRecord == it->second && activeRecord->m_state == AnimRecord::State::Play)
             {
-              if (UI::ImageButtonDecorless(UI::m_pauseIcon->m_textureId, Vec2(24, 24)))
+              if (UI::ImageButtonDecorless(Renderer::GetImGuiTexId(UI::m_pauseIcon), Vec2(24, 24)))
               {
                 animPlayerComp->Pause();
               }
             }
-            else if (UI::ImageButtonDecorless(UI::m_playIcon->m_textureId, Vec2(24, 24)))
+            else if (UI::ImageButtonDecorless(Renderer::GetImGuiTexId(UI::m_playIcon), Vec2(24, 24)))
             {
               animPlayerComp->Play(it->first.c_str());
             }
 
             // Draw stop button always.
             ImGui::SameLine();
-            if (UI::ImageButtonDecorless(UI::m_stopIcon->m_textureId, Vec2(24, 24)))
+            if (UI::ImageButtonDecorless(Renderer::GetImGuiTexId(UI::m_stopIcon), Vec2(24, 24)))
             {
               animPlayerComp->Stop();
             }
@@ -219,7 +219,7 @@ namespace ToolKit
             ImGui::TableSetColumnIndex(columnIndx++);
             ImGui::SetCursorPosY(ImGui::GetCursorPos().y + (ImGui::GetItemRectSize().y / 4.0f));
 
-            if (UI::ImageButtonDecorless(UI::m_closeIcon->m_textureId, Vec2(15, 15)))
+            if (UI::ImageButtonDecorless(Renderer::GetImGuiTexId(UI::m_closeIcon), Vec2(15, 15)))
             {
               removedSignalName = it->first;
             }
