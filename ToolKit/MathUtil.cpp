@@ -924,6 +924,30 @@ namespace ToolKit
             point.z >= min.z);
   }
 
+  const Vec3* GetCubemapFaceDirections()
+  {
+    static const Vec3 directions[CubemapFaceCount] =
+        {Vec3(1, 0, 0), Vec3(-1, 0, 0), Vec3(0, 1, 0), Vec3(0, -1, 0), Vec3(0, 0, 1), Vec3(0, 0, -1)};
+    return directions;
+  }
+
+  const Vec3* GetCubemapFaceUpVectors()
+  {
+    static const Vec3 upVectors[CubemapFaceCount] =
+        {Vec3(0, -1, 0), Vec3(0, -1, 0), Vec3(0, 0, 1), Vec3(0, 0, -1), Vec3(0, -1, 0), Vec3(0, -1, 0)};
+    return upVectors;
+  }
+
+  void GetCubemapViews(const Vec3& origin, Mat4 inverseViews[CubemapFaceCount])
+  {
+    const Vec3* directions = GetCubemapFaceDirections();
+    const Vec3* upVectors  = GetCubemapFaceUpVectors();
+    for (int i = 0; i < CubemapFaceCount; i++)
+    {
+      inverseViews[i] = glm::inverse(glm::lookAt(origin, origin + directions[i], upVectors[i]));
+    }
+  }
+
   Vec3Array GenerateRandomSamplesOnHemisphere(int numSamples, float bias)
   {
     Vec3Array points;

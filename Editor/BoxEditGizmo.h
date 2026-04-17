@@ -11,6 +11,8 @@
 
 #include <EnvironmentComponent.h>
 
+#include <functional>
+
 namespace ToolKit
 {
   namespace Editor
@@ -80,6 +82,7 @@ namespace ToolKit
 
      public:
       float m_handleSize = 0.15f;
+      std::function<void()> m_preRenderCallback; //!< Called in LookAt before rendering to sync target box.
 
      private:
       BoundingBox m_targetBox;

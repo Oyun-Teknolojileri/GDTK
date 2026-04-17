@@ -665,6 +665,45 @@ namespace ToolKit
     Texture::UnInit();
   }
 
+  void Hdri::LoadOrGenerateIrradianceCaches()
+  {
+    if (m_waitingForInit)
+    {
+      // Guard for multiple generation requests.
+      return;
+    }
+
+    String baseName = GenerateBakedEnvironmentFileBaseName();
+    TrySettingCacheFiles(baseName);
+    m_waitingForInit = true;
+
+    if (_diffuseBakeFile.empty())
+    {
+      RenderTask task = {[this](Renderer* renderer) -> void
+                         {
+                           GenerateIrradianceCaches(renderer);
+                           m_waitingForInit = false;
+                         }};
+      GetRenderSystem()->AddRenderTask(task);
+    }
+    else
+    {
+      RenderTask task = {[this](Renderer* renderer) -> void
+                         {
+                           LoadIrradianceCaches(renderer);
+                           m_waitingForInit = false;
+
+                           // Clear file path after initialization, otherwise init always loads from file.
+                           // This isn't desired, only after load we should read from file. Settings changes should
+                           // reflect during editor time or in game requests.
+                           _diffuseBakeFile.clear();
+                           _specularBakeFile.clear();
+                         }};
+
+      GetRenderSystem()->AddRenderTask(task);
+    }
+  }
+
   void Hdri::LoadIrradianceCaches(Renderer* renderer)
   {
     // Convert hdri image to cubemap images.

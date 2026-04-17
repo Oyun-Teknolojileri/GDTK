@@ -66,6 +66,7 @@ namespace ToolKit
     Cube();
     void NativeConstruct() override;
     static void Generate(MeshComponentPtr meshComp, const Vec3& dimention);
+    void InvalidateSpatialCaches() override;
 
    protected:
     void Generate();
@@ -77,6 +78,7 @@ namespace ToolKit
 
    public:
     TKDeclareParam(Vec3, CubeScale);
+    TKDeclareParam(bool, TileTexture);
 
    private:
     bool m_generated = false;
@@ -91,11 +93,17 @@ namespace ToolKit
 
     Quad();
     void NativeConstruct() override;
+    void InvalidateSpatialCaches() override;
 
    protected:
     Entity* CopyTo(Entity* copyTo) const override;
+    void ParameterConstructor() override;
+    void ParameterEventConstructor() override;
     XmlNode* SerializeImp(XmlDocument* doc, XmlNode* parent) const override;
     XmlNode* DeSerializeImp(const SerializationFileInfo& info, XmlNode* parent) override;
+
+   public:
+    TKDeclareParam(bool, TileTexture);
 
    private:
     void Generate();

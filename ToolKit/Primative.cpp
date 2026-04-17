@@ -117,7 +117,23 @@ namespace ToolKit
 
   Cube::Cube() {}
 
-  Entity* Cube::CopyTo(Entity* copyTo) const { return Super::CopyTo(copyTo); }
+  Entity* Cube::CopyTo(Entity* copyTo) const
+  {
+    Entity* ntt              = Super::CopyTo(copyTo);
+
+    MeshComponentPtr meshCmp = ntt->GetComponent<MeshComponent>();
+    if (meshCmp && meshCmp->GetMeshVal())
+    {
+      MaterialPtr prevMat = meshCmp->GetMeshVal()->m_material;
+      MeshPtr newMesh     = MakeNewPtr<Mesh>();
+      newMesh->m_material = prevMat;
+      meshCmp->SetMeshVal(newMesh);
+    }
+
+    ntt->As<Cube>()->Generate();
+
+    return ntt;
+  }
 
   void Cube::NativeConstruct()
   {
@@ -129,17 +145,65 @@ namespace ToolKit
     Generate();
   }
 
+  void Cube::InvalidateSpatialCaches()
+  {
+    Super::InvalidateSpatialCaches();
+    Generate();
+  }
+
   void Cube::Generate()
   {
     MeshComponentPtr meshCmp = GetMeshComponent();
+    MeshPtr mesh             = meshCmp->GetMeshVal();
+    MaterialPtr prevMat      = mesh->m_material;
+
     Vec3 scl                 = GetCubeScaleVal();
-    MeshGenerator::GenerateCube(meshCmp->GetMeshVal(), scl);
+    MeshGenerator::GenerateCube(mesh, scl);
+
+    if (prevMat)
+    {
+      mesh->m_material = prevMat;
+    }
+
+    if (GetTileTextureVal())
+    {
+      Vec3 nodeScl  = m_node->GetScale();
+      Vec3 totalScl = scl * nodeScl;
+
+      for (size_t i = 0; i < mesh->m_clientSideVertices.size(); i += 6)
+      {
+        Vertex* faceVertices = &mesh->m_clientSideVertices[i];
+        Vec3 norm            = glm::abs(faceVertices[0].norm);
+
+        Vec2 tileScl(1.0f);
+        if (norm.x > 0.5f)
+        {
+          tileScl = Vec2(totalScl.z, totalScl.y);
+        }
+        else if (norm.y > 0.5f)
+        {
+          tileScl = Vec2(totalScl.x, totalScl.z);
+        }
+        else if (norm.z > 0.5f)
+        {
+          tileScl = Vec2(totalScl.x, totalScl.y);
+        }
+
+        for (int j = 0; j < 6; j++)
+        {
+          // Base UV is preserved because GenerateCube creates 0-1 UVs cleanly.
+          faceVertices[j].tex.x *= tileScl.x;
+          faceVertices[j].tex.y *= tileScl.y;
+        }
+      }
+    }
   }
 
   void Cube::ParameterConstructor()
   {
     Super::ParameterConstructor();
     CubeScale_Define(Vec3(1.0f), "Geometry", 90, true, true);
+    TileTexture_Define(false, "Geometry", 90, true, true);
   }
 
   void Cube::ParameterEventConstructor()
@@ -148,6 +212,7 @@ namespace ToolKit
 
     ValueUpdateFn upVal = [this](Value& old, Value& val) -> void { Generate(); };
     ParamCubeScale().m_onValueChangedFn.push_back(upVal);
+    ParamTileTexture().m_onValueChangedFn.push_back(upVal);
   }
 
   XmlNode* Cube::DeSerializeImp(const SerializationFileInfo& info, XmlNode* parent)
@@ -180,7 +245,43 @@ namespace ToolKit
     Generate();
   }
 
-  Entity* Quad::CopyTo(Entity* copyTo) const { return Super::CopyTo(copyTo); }
+  void Quad::InvalidateSpatialCaches()
+  {
+    Super::InvalidateSpatialCaches();
+    Generate();
+  }
+
+  Entity* Quad::CopyTo(Entity* copyTo) const
+  {
+    Entity* ntt              = Super::CopyTo(copyTo);
+
+    MeshComponentPtr meshCmp = ntt->GetComponent<MeshComponent>();
+    if (meshCmp && meshCmp->GetMeshVal())
+    {
+      MaterialPtr prevMat = meshCmp->GetMeshVal()->m_material;
+      MeshPtr newMesh     = MakeNewPtr<Mesh>();
+      newMesh->m_material = prevMat;
+      meshCmp->SetMeshVal(newMesh);
+    }
+
+    ntt->As<Quad>()->Generate();
+
+    return ntt;
+  }
+
+  void Quad::ParameterConstructor()
+  {
+    Super::ParameterConstructor();
+    TileTexture_Define(false, "Geometry", 90, true, true);
+  }
+
+  void Quad::ParameterEventConstructor()
+  {
+    Super::ParameterEventConstructor();
+
+    ValueUpdateFn upVal = [this](Value& old, Value& val) -> void { Generate(); };
+    ParamTileTexture().m_onValueChangedFn.push_back(upVal);
+  }
 
   XmlNode* Quad::SerializeImp(XmlDocument* doc, XmlNode* parent) const
   {
@@ -203,32 +304,46 @@ namespace ToolKit
     VertexArray vertices;
     vertices.resize(4);
 
-    vertices[0].pos            = Vec3(-0.5f, -0.5f, 0.0f);
-    vertices[0].tex            = Vec2(0.0f, 0.0f);
-    vertices[0].norm           = Vec3(0.0f, 0.0f, 1.0f);
-    vertices[0].tan            = Vec4(0.0f, 1.0f, 0.0f, 1.0f);
+    MeshPtr mesh        = GetMeshComponent()->GetMeshVal();
+    MaterialPtr prevMat = mesh->m_material;
 
-    vertices[1].pos            = Vec3(0.5f, -0.5f, 0.0f);
-    vertices[1].tex            = Vec2(1.0f, 0.0f);
-    vertices[1].norm           = Vec3(0.0f, 0.0f, 1.0f);
-    vertices[1].tan            = Vec4(0.0f, 1.0f, 0.0f, 1.0f);
+    mesh->UnInit();
 
-    vertices[2].pos            = Vec3(0.5f, 0.5f, 0.0f);
-    vertices[2].tex            = Vec2(1.0f, 1.0f);
-    vertices[2].norm           = Vec3(0.0f, 0.0f, 1.0f);
-    vertices[2].tan            = Vec4(0.0f, 1.0f, 0.0f, 1.0f);
+    vertices[0].pos  = Vec3(-0.5f, -0.5f, 0.0f);
+    vertices[0].tex  = Vec2(0.0f, 0.0f);
+    vertices[0].norm = Vec3(0.0f, 0.0f, 1.0f);
+    vertices[0].tan  = Vec4(0.0f, 1.0f, 0.0f, 1.0f);
 
-    vertices[3].pos            = Vec3(-0.5f, 0.5f, 0.0f);
-    vertices[3].tex            = Vec2(0.0f, 1.0f);
-    vertices[3].norm           = Vec3(0.0f, 0.0f, 1.0f);
-    vertices[3].tan            = Vec4(0.0f, 1.0f, 0.0f, 1.0f);
+    vertices[1].pos  = Vec3(0.5f, -0.5f, 0.0f);
+    vertices[1].tex  = Vec2(1.0f, 0.0f);
+    vertices[1].norm = Vec3(0.0f, 0.0f, 1.0f);
+    vertices[1].tan  = Vec4(0.0f, 1.0f, 0.0f, 1.0f);
 
-    MeshPtr mesh               = GetMeshComponent()->GetMeshVal();
+    vertices[2].pos  = Vec3(0.5f, 0.5f, 0.0f);
+    vertices[2].tex  = Vec2(1.0f, 1.0f);
+    vertices[2].norm = Vec3(0.0f, 0.0f, 1.0f);
+    vertices[2].tan  = Vec4(0.0f, 1.0f, 0.0f, 1.0f);
+
+    vertices[3].pos  = Vec3(-0.5f, 0.5f, 0.0f);
+    vertices[3].tex  = Vec2(0.0f, 1.0f);
+    vertices[3].norm = Vec3(0.0f, 0.0f, 1.0f);
+    vertices[3].tan  = Vec4(0.0f, 1.0f, 0.0f, 1.0f);
+
+    if (GetTileTextureVal())
+    {
+      Vec3 scl = m_node->GetScale();
+      for (int i = 0; i < 4; i++)
+      {
+        vertices[i].tex.x *= scl.x;
+        vertices[i].tex.y *= scl.y;
+      }
+    }
+
     mesh->m_vertexCount        = (uint) vertices.size();
     mesh->m_clientSideVertices = vertices;
     mesh->m_indexCount         = 6;
     mesh->m_clientSideIndices  = {0, 1, 2, 0, 2, 3};
-    mesh->m_material           = GetMaterialManager()->GetCopyOfDefaultMaterial(false);
+    mesh->m_material           = prevMat ? prevMat : GetMaterialManager()->GetCopyOfDefaultMaterial(false);
 
     mesh->CalculateAABB();
     mesh->ConstructFaces();
@@ -649,9 +764,9 @@ namespace ToolKit
     mesh->m_clientSideVertices[0] = {
         // center point
         Vec3(0.0f),
-        Vec3(0.0f, 0.0f, -1.0f), // normal
-        Vec2(0.5f, 0.5f),        // tex coord
-        Vec4(0.0f, 1.0f, 0.0f, 1.0f)   // btan
+        Vec3(0.0f, 0.0f, -1.0f),     // normal
+        Vec2(0.5f, 0.5f),            // tex coord
+        Vec4(0.0f, 1.0f, 0.0f, 1.0f) // btan
     };
     mesh->m_boundingBox = BoundingBox(Vec3(-radius), Vec3(radius));
 
@@ -671,7 +786,7 @@ namespace ToolKit
           Vec3(c * radius, s * radius, 0.0f),
           Vec3(0.0f, 0.0f, -1.0f),                // normal
           Vec2(cnorm * strechS, snorm * strechC), // tex coord
-          Vec4(c, s, 0.0f, 1.0f)                        // btan
+          Vec4(c, s, 0.0f, 1.0f)                  // btan
       };
     }
 

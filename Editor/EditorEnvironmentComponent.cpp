@@ -26,7 +26,14 @@ namespace ToolKit
         return;
       }
 
-      FireCaptureInvalidate();
+      if (HdriPtr hdr = GetHdriVal())
+      {
+        // Only trigger capture for dynamic resources.
+        if (hdr->IsDynamic())
+        {
+          FireCaptureInvalidate();
+        }
+      }
     }
 
     void EditorEnvironmentComponent::FireCaptureInvalidate()

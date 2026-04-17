@@ -751,7 +751,7 @@ namespace ToolKit
     String projectName      = activeProjectName;
     String publishDirectory = ConcatPaths({ResourcePath(), "..", "Publish", "Web"});
     String firstPart        = ConcatPaths({ResourcePath(), "..", "Codes", "Bin", projectName}) + ".";
-    String files[]          = {firstPart + "data", firstPart + "html", firstPart + "js", firstPart + "wasm"};
+    String files[]          = {firstPart + "data", firstPart + "html", firstPart + "js", firstPart + "wasm", firstPart + "worker.js"};
 
     std::filesystem::create_directories(publishDirectory, m_errorCode);
     if (CheckErrorReturn("Create directories " + publishDirectory))

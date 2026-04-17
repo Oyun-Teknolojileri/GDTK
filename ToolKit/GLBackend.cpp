@@ -181,6 +181,14 @@ namespace ToolKit
   {
     LoadGlFunctions(params.getProcAddress);
     InitGLErrorReport(params.errorCallback);
+
+    // Default states.
+    glEnable(GL_CULL_FACE);
+    glEnable(GL_DEPTH_TEST);
+
+#ifdef GL_TEXTURE_CUBE_MAP_SEAMLESS
+    glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
+#endif
   }
 
   void GLBackend::BeginFrame()
