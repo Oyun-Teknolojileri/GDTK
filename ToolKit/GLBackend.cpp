@@ -1073,6 +1073,13 @@ namespace ToolKit
     const TextureSettings& s = tex->Settings();
     GLenum target            = ToGLGraphicType(s.Target);
 
+    GLTextureData* gl = GetGLTextureData(tex);
+    if (gl == nullptr || gl->textureId == 0)
+    {
+      return;
+    }
+    BindTextureDirect(target, gl->textureId, 0);
+
     glTexParameteri(target, GL_TEXTURE_MIN_FILTER, (GLint) ToGLGraphicType(s.MinFilter));
     glTexParameteri(target, GL_TEXTURE_MAG_FILTER, (GLint) ToGLGraphicType(s.MagFilter));
     glTexParameteri(target, GL_TEXTURE_WRAP_S, (GLint) ToGLGraphicType(s.WarpS));
