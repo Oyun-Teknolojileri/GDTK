@@ -236,8 +236,6 @@ namespace ToolKit
     return rt;
   }
 
-  uint Framebuffer::GetFboId() { return 0; } // Deprecated: GPU handle is now opaque.
-
   const FramebufferSettings& Framebuffer::GetSettings() { return m_settings; }
 
   void Framebuffer::CheckFramebufferComplete()

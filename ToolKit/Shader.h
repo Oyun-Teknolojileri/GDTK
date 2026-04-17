@@ -83,9 +83,9 @@ namespace ToolKit
 
     /**
      * Compiles the given source string.
-     * @return shader handle for compiled shader.
+     * @return true if compilation succeeded.
      */
-    uint Compile(String source);
+    bool Compile(String source);
 
     /** Internally used structure to point to a define variant. */
     struct ShaderDefineIndex

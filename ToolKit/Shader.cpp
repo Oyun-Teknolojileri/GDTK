@@ -435,12 +435,12 @@ namespace ToolKit
     return (uint) includeLoc;
   }
 
-  uint Shader::Compile(String source)
+  bool Shader::Compile(String source)
   {
     TK_LOG("Shader in compile %s", GetFile().c_str());
 
     m_gpuData = GetBackend()->CreateShader(this, source);
-    return m_gpuData != nullptr ? 1 : 0;
+    return m_gpuData != nullptr;
   }
 
   void Shader::CompileWithDefines(String source, const ShaderDefineCombinaton& defineCombo)
@@ -471,7 +471,7 @@ namespace ToolKit
 
     TK_LOG("Compiling shader with defines: %s", key.c_str());
 
-    if (Compile(source) != 0)
+    if (Compile(source))
     {
       m_currentDefineValues   = defineCombo;
       m_shaderVariantMap[key] = m_gpuData;

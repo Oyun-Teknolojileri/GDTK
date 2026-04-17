@@ -92,7 +92,6 @@ namespace ToolKit
     void AttachDepthTexture(DepthTexturePtr rt);
     DepthTexturePtr DetachDepthTexture();
 
-    uint GetFboId();
     const FramebufferSettings& GetSettings();
     void ReconstructIfNeeded(int width, int height);
     void ReconstructIfNeeded(const FramebufferSettings& settings);
