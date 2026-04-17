@@ -34,13 +34,6 @@ namespace ToolKit
     AllBits          = ColorBits | DepthBits | StencilBits
   };
 
-  enum class GraphicFramebufferTypes
-  {
-    ReadFramebuffer,
-    DrawFramebuffer,
-    Framebuffer
-  };
-
   enum class CompareFunctions
   {
     FuncNever,

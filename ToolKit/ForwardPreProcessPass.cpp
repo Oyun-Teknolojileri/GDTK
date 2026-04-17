@@ -123,7 +123,7 @@ namespace ToolKit
       discardBits = GraphicBitFields::ColorBits;
     }
 
-    renderer->SetFramebuffer(m_framebuffer, GraphicBitFields::AllBits, Vec4(0.0f), GraphicFramebufferTypes::Framebuffer, discardBits);
+    renderer->SetFramebuffer(m_framebuffer, GraphicBitFields::AllBits, Vec4(0.0f), discardBits);
     renderer->SetCamera(m_params.Cam, true);
   }
 

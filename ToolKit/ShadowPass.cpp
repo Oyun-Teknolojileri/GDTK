@@ -79,7 +79,7 @@ namespace ToolKit
     const Vec4 lastClearColor = renderer->m_clearColor;
 
     // Clear shadow atlas before any draw call
-    renderer->SetFramebuffer(m_shadowFramebuffer, GraphicBitFields::None, Vec4(0.0f), GraphicFramebufferTypes::Framebuffer, GraphicBitFields::DepthBits);
+    renderer->SetFramebuffer(m_shadowFramebuffer, GraphicBitFields::None, Vec4(0.0f), GraphicBitFields::DepthBits);
     for (int i = 0; i < ShadowAtlas::LayerCount; i++)
     {
       m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowAtlas, 0, i);

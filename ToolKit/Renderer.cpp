@@ -392,7 +392,6 @@ namespace ToolKit
   void Renderer::SetFramebuffer(FramebufferPtr frameBuffer,
                                 GraphicBitFields attachmentsToClear,
                                 const Vec4& clearColor,
-                                GraphicFramebufferTypes frameBufferType,
                                 GraphicBitFields discardBits)
   {
     TK_PROFILE_FUNCTION();

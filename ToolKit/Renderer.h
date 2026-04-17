@@ -182,9 +182,8 @@ namespace ToolKit
 
     void SetFramebuffer(FramebufferPtr frameBuffer,
                         GraphicBitFields attachmentsToClear,
-                        const Vec4& clearColor                  = Vec4(0.0f),
-                        GraphicFramebufferTypes frameBufferType = GraphicFramebufferTypes::Framebuffer,
-                        GraphicBitFields discardBits            = GraphicBitFields::None);
+                        const Vec4& clearColor       = Vec4(0.0f),
+                        GraphicBitFields discardBits = GraphicBitFields::None);
 
     void EndPass();
 

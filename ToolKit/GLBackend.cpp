@@ -88,12 +88,6 @@ namespace ToolKit
     return bits;
   }
 
-  static GLenum ToGLFramebufferType(GraphicFramebufferTypes t)
-  {
-    static constexpr GLenum table[] = { GL_READ_FRAMEBUFFER, GL_DRAW_FRAMEBUFFER, GL_FRAMEBUFFER };
-    return table[(int) t];
-  }
-
   static GLenum ToGLCompareFunc(CompareFunctions f)
   {
     static constexpr GLenum table[] =
