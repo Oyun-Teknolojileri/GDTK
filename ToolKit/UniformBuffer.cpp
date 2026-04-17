@@ -7,7 +7,6 @@
 
 #include "UniformBuffer.h"
 
-#include "GLBackend.h"
 #include "Renderer.h"
 #include "RenderSystem.h"
 #include "Stats.h"
