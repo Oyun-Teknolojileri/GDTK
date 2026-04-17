@@ -205,7 +205,7 @@ namespace ToolKit
     if (desc.target != nullptr)
     {
       BindFramebuffer(GL_FRAMEBUFFER, GetGLFramebufferData(desc.target.get())->fboId);
-      desc.target->SetDrawBuffers();
+      SetDrawBuffers(desc.target.get());
     }
     else
     {
@@ -1178,9 +1178,12 @@ namespace ToolKit
   void GLBackend::CopyCubemapFaceFromFramebuffer(Texture* cubemap, int face, int mip, int width, int height,
                                                    Framebuffer* readFb, Framebuffer* writeFb)
   {
+    StoreFboBindings();
+
     GLTextureData* gl = cubemap ? GetGLTextureData(cubemap) : nullptr;
     if (gl == nullptr || gl->textureId == 0)
     {
+      RestoreFboBindings();
       return;
     }
 
@@ -1195,6 +1198,8 @@ namespace ToolKit
 
     BindTextureDirect(GL_TEXTURE_CUBE_MAP, gl->textureId, 0);
     glCopyTexSubImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, mip, 0, 0, 0, 0, width, height);
+
+    RestoreFboBindings();
   }
 
   // -----------------------------------------------------------------------
@@ -1255,6 +1260,9 @@ namespace ToolKit
     {
       glFramebufferTexture2D(GL_FRAMEBUFFER, glAttachment, GL_TEXTURE_2D, texId, mip);
     }
+
+    SetDrawBuffers(fb);
+    CheckFramebufferComplete(fb);
   }
 
   void GLBackend::DetachColorTarget(Framebuffer* fb, int attachment)
@@ -1267,6 +1275,7 @@ namespace ToolKit
     BindFramebuffer(GL_FRAMEBUFFER, GetGLFramebufferData(fb)->fboId);
     GLenum glAttachment = GL_COLOR_ATTACHMENT0 + attachment;
     glFramebufferTexture2D(GL_FRAMEBUFFER, glAttachment, GL_TEXTURE_2D, 0, 0);
+    SetDrawBuffers(fb);
   }
 
   void GLBackend::AttachDepthTarget(Framebuffer* fb, DepthTexturePtr dt)
@@ -1279,6 +1288,7 @@ namespace ToolKit
     BindFramebuffer(GL_FRAMEBUFFER, GetGLFramebufferData(fb)->fboId);
     GLenum attachment = dt->m_stencil ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT;
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, attachment, GL_RENDERBUFFER, GetGLTextureData(dt.get())->textureId);
+    CheckFramebufferComplete(fb);
   }
 
   void GLBackend::DetachDepthTarget(Framebuffer* fb)
@@ -1376,11 +1386,13 @@ namespace ToolKit
     }
 
     // Restore target framebuffer's original draw buffer configuration.
-    dst->SetDrawBuffers();
+    SetDrawBuffers(dst.get());
   }
 
   void GLBackend::CopyFramebuffer(FramebufferPtr src, FramebufferPtr dst, GraphicBitFields fields)
   {
+    StoreFboBindings();
+
     uint width  = 0;
     uint height = 0;
     uint srcId  = 0;
@@ -1404,6 +1416,8 @@ namespace ToolKit
     BindFramebuffer(GL_DRAW_FRAMEBUFFER, destId);
 
     glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, ToGLBitfield(fields), GL_NEAREST);
+
+    RestoreFboBindings();
   }
 
   void GLBackend::BlitToScreen(FramebufferPtr src) {}

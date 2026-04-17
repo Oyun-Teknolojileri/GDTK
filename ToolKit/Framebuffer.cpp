@@ -156,7 +156,6 @@ namespace ToolKit
     if (IGraphicsBackend* backend = GetBackend())
     {
       backend->AttachDepthTarget(this, dt);
-      backend->CheckFramebufferComplete(this);
     }
   }
 
@@ -200,8 +199,6 @@ namespace ToolKit
     {
       int faceIdx = (face != CubemapFace::NONE) ? (int) face : -1;
       backend->AttachColorTarget(this, rt, (int) atc, mip, layer, faceIdx);
-      backend->SetDrawBuffers(this);
-      backend->CheckFramebufferComplete(this);
     }
 
     return oldRt;
@@ -230,29 +227,12 @@ namespace ToolKit
     if (IGraphicsBackend* backend = GetBackend())
     {
       backend->DetachColorTarget(this, (int) atc);
-      backend->SetDrawBuffers(this);
     }
 
     return rt;
   }
 
   const FramebufferSettings& Framebuffer::GetSettings() { return m_settings; }
-
-  void Framebuffer::CheckFramebufferComplete()
-  {
-    if (IGraphicsBackend* backend = GetBackend())
-    {
-      backend->CheckFramebufferComplete(this);
-    }
-  }
-
-  void Framebuffer::SetDrawBuffers()
-  {
-    if (IGraphicsBackend* backend = GetBackend())
-    {
-      backend->SetDrawBuffers(this);
-    }
-  }
 
   bool Framebuffer::IsColorAttachment(Attachment atc)
   {

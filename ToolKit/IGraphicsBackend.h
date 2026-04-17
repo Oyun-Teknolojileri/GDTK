@@ -68,8 +68,6 @@ namespace ToolKit
     // Pass boundary
     virtual void BeginPass(const PassDesc& desc)                                    = 0;
     virtual void EndPass() = 0;
-    virtual void StoreFboBindings()                                 = 0;
-    virtual void RestoreFboBindings()                               = 0;
 
     // Viewport / scissor
     virtual void SetViewport(uint x, uint y, uint w, uint h)       = 0;
@@ -174,8 +172,6 @@ namespace ToolKit
     virtual void AttachDepthTarget(Framebuffer* fb,
                                    DepthTexturePtr dt)              = 0;
     virtual void DetachDepthTarget(Framebuffer* fb)                 = 0;
-    virtual void SetDrawBuffers(Framebuffer* fb)                    = 0;
-    virtual void CheckFramebufferComplete(Framebuffer* fb)          = 0;
 
     // Phase 7a: Custom uniforms and renderer utility
     //////////////////////////////////////////

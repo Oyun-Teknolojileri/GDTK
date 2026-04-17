@@ -99,12 +99,8 @@ namespace ToolKit
     /** Returns if the framebuffer is multi sampled. */
     bool IsMultiSampled();
 
-    /** Sets attachments as draw buffers. Must be called when the frame buffer set as current. */
-    void SetDrawBuffers();
-
    private:
     bool IsColorAttachment(Attachment atc);
-    void CheckFramebufferComplete();
 
    public:
     static const int m_maxColorAttachmentCount = 8;

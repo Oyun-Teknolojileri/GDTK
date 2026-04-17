@@ -443,9 +443,7 @@ namespace ToolKit
   {
     TK_PROFILE_FUNCTION();
 
-    m_backend->StoreFboBindings();
     m_backend->CopyFramebuffer(src, dest, fields);
-    m_backend->RestoreFboBindings();
   }
 
   void Renderer::ResolveFramebuffer(FramebufferPtr source, FramebufferPtr target, const IntArray& attachments)
@@ -1250,10 +1248,8 @@ namespace ToolKit
                                      -1,
                                      Framebuffer::CubemapFace(i));
 
-      m_backend->StoreFboBindings();
       m_backend->CopyCubemapFaceFromFramebuffer(dst.get(), i, mipLevel, src->m_width, src->m_height,
-                                                readBuffer.get(), writeBuffer.get());
-      m_backend->RestoreFboBindings();
+                                                 readBuffer.get(), writeBuffer.get());
     }
   }
 

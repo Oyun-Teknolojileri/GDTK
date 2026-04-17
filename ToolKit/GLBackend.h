@@ -26,8 +26,6 @@ namespace ToolKit
 
     void BeginPass(const PassDesc& desc) override;
     void EndPass() override;
-    void StoreFboBindings() override;
-    void RestoreFboBindings() override;
 
     void SetViewport(uint x, uint y, uint w, uint h) override;
     void SetScissor(uint x, uint y, uint w, uint h) override;
@@ -91,8 +89,6 @@ namespace ToolKit
     void DetachColorTarget(Framebuffer* fb, int attachment) override;
     void AttachDepthTarget(Framebuffer* fb, DepthTexturePtr dt) override;
     void DetachDepthTarget(Framebuffer* fb) override;
-    void SetDrawBuffers(Framebuffer* fb) override;
-    void CheckFramebufferComplete(Framebuffer* fb) override;
 
     // Cache management (Internal use by RHI)
     void BindFramebuffer(uint target, uint id);
@@ -122,6 +118,11 @@ namespace ToolKit
     void* GetImGuiTextureId(Texture* tex) override;
 
    private:
+    void StoreFboBindings();
+    void RestoreFboBindings();
+    void SetDrawBuffers(Framebuffer* fb);
+    void CheckFramebufferComplete(Framebuffer* fb);
+
     RenderState m_lastAppliedState;
     bool m_firstBind = true;
     PassDesc m_activePassDesc;
