@@ -199,7 +199,6 @@ namespace ToolKit
 
     SafeDel(m_gpuBuffers);
     SafeDel(m_gpuProgramManager);
-    SafeDel(m_renderSys);
     SafeDel(m_pluginManager);
     SafeDel(m_animationMan);
     SafeDel(m_animationPlayer);
@@ -216,6 +215,10 @@ namespace ToolKit
     SafeDel(m_objectFactory);
     SafeDel(m_engineSettings);
     SafeDel(m_workerManager);
+
+    // RenderSystem (and backend) must be destroyed last,
+    // after all resource managers whose destructors call backend.
+    SafeDel(m_renderSys);
   }
 
   void Main::SetConfigPath(StringView cfgPath) { m_cfgPath = cfgPath; }

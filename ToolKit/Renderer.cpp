@@ -126,7 +126,7 @@ namespace ToolKit
 
     m_gpuProgramManager             = GetGpuProgramManager();
 
-    String renderer = m_backend->GetBackendRendererString();
+    String renderer                 = m_backend->GetBackendRendererString();
     GetLogger()->Log(String("Graphics Card ") + renderer);
 
     // Validate sRGB automatic encoding on backbuffer if enabled.
@@ -145,22 +145,27 @@ namespace ToolKit
 
   Renderer::~Renderer()
   {
-    SafeDel(m_backend);
-
+    // Release all GPU resource references before destroying backend.
     m_oneColorAttachmentFramebuffer = nullptr;
     m_gaussianBlurMaterial          = nullptr;
     m_averageBlurMaterial           = nullptr;
     m_copyFrameBuffer               = nullptr;
     m_copyMaterial                  = nullptr;
-
     m_framebuffer                   = nullptr;
     m_shadowAtlas                   = nullptr;
+    m_brdfLut                       = nullptr;
+    m_aoTexture                     = nullptr;
+    m_tempQuad                      = nullptr;
+    m_tempQuadMaterial              = nullptr;
+    m_dummyDrawCube                 = nullptr;
+    m_uiCamera                      = nullptr;
+    m_sky                           = nullptr;
+    m_currentProgram                = nullptr;
+
+    SafeDel(m_backend);
   }
 
-  void Renderer::SrgbAutoEncoding(bool enable)
-  {
-    m_backend->SetSrgbAutoEncoding(enable);
-  }
+  void Renderer::SrgbAutoEncoding(bool enable) { m_backend->SetSrgbAutoEncoding(enable); }
 
   int Renderer::GetMaxArrayTextureLayers()
   {
@@ -1247,8 +1252,13 @@ namespace ToolKit
                                      -1,
                                      Framebuffer::CubemapFace(i));
 
-      m_backend->CopyCubemapFaceFromFramebuffer(dst.get(), i, mipLevel, src->m_width, src->m_height,
-                                                 readBuffer.get(), writeBuffer.get());
+      m_backend->CopyCubemapFaceFromFramebuffer(dst.get(),
+                                                i,
+                                                mipLevel,
+                                                src->m_width,
+                                                src->m_height,
+                                                readBuffer.get(),
+                                                writeBuffer.get());
     }
   }
 
@@ -1535,7 +1545,5 @@ namespace ToolKit
 
     return cubemap;
   }
-
-
 
 } // namespace ToolKit

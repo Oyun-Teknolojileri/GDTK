@@ -185,6 +185,62 @@ namespace ToolKit
 
     void UI::UnInit()
     {
+      // Release static icon textures before engine shutdown.
+      m_selectIcn             = nullptr;
+      m_cursorIcn             = nullptr;
+      m_moveIcn               = nullptr;
+      m_rotateIcn             = nullptr;
+      m_scaleIcn              = nullptr;
+      m_appIcon               = nullptr;
+      m_snapIcon              = nullptr;
+      m_audioIcon             = nullptr;
+      m_cameraIcon            = nullptr;
+      m_clipIcon              = nullptr;
+      m_fileIcon              = nullptr;
+      m_folderIcon            = nullptr;
+      m_imageIcon             = nullptr;
+      m_lightIcon             = nullptr;
+      m_materialIcon          = nullptr;
+      m_meshIcon              = nullptr;
+      m_armatureIcon          = nullptr;
+      m_codeIcon              = nullptr;
+      m_boneIcon              = nullptr;
+      m_worldIcon             = nullptr;
+      m_axisIcon              = nullptr;
+      m_playIcon              = nullptr;
+      m_pauseIcon             = nullptr;
+      m_stopIcon              = nullptr;
+      m_vsCodeIcon            = nullptr;
+      m_collectionIcon        = nullptr;
+      m_arrowsIcon            = nullptr;
+      m_lockIcon              = nullptr;
+      m_visibleIcon           = nullptr;
+      m_invisibleIcon         = nullptr;
+      m_lockedIcon            = nullptr;
+      m_unlockedIcon          = nullptr;
+      m_viewZoomIcon          = nullptr;
+      m_gridIcon              = nullptr;
+      m_skyIcon               = nullptr;
+      m_closeIcon             = nullptr;
+      m_phoneRotateIcon       = nullptr;
+      m_studioLightsToggleIcon = nullptr;
+      m_anchorIcn             = nullptr;
+      m_prefabIcn             = nullptr;
+      m_buildIcn              = nullptr;
+      m_addIcon               = nullptr;
+      m_sphereIcon            = nullptr;
+      m_cubeIcon              = nullptr;
+      m_shaderBallIcon        = nullptr;
+      m_diskDriveIcon         = nullptr;
+      m_packageIcon           = nullptr;
+      m_objectDataIcon        = nullptr;
+      m_sceneIcon             = nullptr;
+
+      for (uint i = 0; i < AnchorPresetImages::presetCount; i++)
+      {
+        m_anchorPresetIcons.m_presetImages[i] = nullptr;
+      }
+
       ImGui_ImplOpenGL3_Shutdown();
       ImGui_ImplSDL2_Shutdown();
       ImGui::DestroyContext();
