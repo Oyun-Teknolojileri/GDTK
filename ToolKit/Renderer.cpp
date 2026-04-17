@@ -57,6 +57,8 @@ namespace ToolKit
     int constexpr IBL_BRDF_LUT_TEXTURE_SLOT                  = 10;
     int constexpr SECONDARY_IRRADIANCE_MAP_TEXTURE_SLOT      = 11;
     int constexpr SECONDARY_IBL_SPECULAR_MAP_TEXTURE_SLOT    = 12;
+    int constexpr SKY_IRRADIANCE_MAP_TEXTURE_SLOT            = 16;
+    int constexpr SKY_SPECULAR_MAP_TEXTURE_SLOT              = 17;
   } // namespace DefaultTextureSlots
 
   Renderer::Renderer()
@@ -921,8 +923,34 @@ namespace ToolKit
 
     // Sky and Ibl data.
     m_drawCommand.SetIblInUse(false);
+    m_drawCommand.SetSkyIntensity(0.0f);
+    m_drawCommand.SetVolumeIntensity(0, 0.0f);
     m_drawCommand.SetVolumeIntensity(1, 0.0f);
     m_drawCommand.SetVolumeFadeDistance(0, 0.0f);
+
+    bool anyIbl = false;
+
+    // --- Sky (global fallback) ---
+    if (m_sky != nullptr)
+    {
+      EnvironmentComponentPtr skyEnvCom = m_sky->GetComponent<EnvironmentComponent>();
+      if (skyEnvCom != nullptr)
+      {
+        const HdriPtr& skyHdri = skyEnvCom->GetHdriVal();
+        if (skyHdri != nullptr && skyHdri->m_diffuseEnvMap && skyHdri->m_specularEnvMap && m_brdfLut)
+        {
+          SetTexture(DefaultTextureSlots::SKY_IRRADIANCE_MAP_TEXTURE_SLOT, skyHdri->m_diffuseEnvMap);
+          SetTexture(DefaultTextureSlots::SKY_SPECULAR_MAP_TEXTURE_SLOT, skyHdri->m_specularEnvMap);
+
+          float skyIntensity = skyEnvCom->GetIlluminateVal() ? skyEnvCom->GetIntensityVal() : 0.0f;
+          m_drawCommand.SetSkyIntensity(skyIntensity);
+          m_iblRotation = Mat4(m_sky->m_node->GetOrientation());
+          anyIbl        = true;
+        }
+      }
+    }
+
+    // --- Local volumes (per-object) ---
     EnvironmentComponent* envCom = job.EnvironmentVolume;
     if (envCom)
     {
@@ -934,9 +962,8 @@ namespace ToolKit
       {
         SetTexture(DefaultTextureSlots::IRRADIANCE_MAP_TEXTURE_SLOT, diffuseEnvMap);
         SetTexture(DefaultTextureSlots::IBL_SPECULAR_PRE_FILTERED_MAP_TEXTURE_SLOT, specularEnvMap);
-        SetTexture(DefaultTextureSlots::IBL_BRDF_LUT_TEXTURE_SLOT, m_brdfLut);
 
-        m_drawCommand.SetIblInUse(true);
+        anyIbl = true;
         m_drawCommand.SetVolumeIntensity(0, envCom->GetIntensityVal());
 
         // Pass primary volume local-space BB for OBB per-pixel blend and Parallax Corrected Cubemaps.
@@ -1000,6 +1027,13 @@ namespace ToolKit
           }
         }
       }
+    }
+
+    // Mark IBL in use if sky or any local volume contributed.
+    if (anyIbl)
+    {
+      m_drawCommand.SetIblInUse(true);
+      SetTexture(DefaultTextureSlots::IBL_BRDF_LUT_TEXTURE_SLOT, m_brdfLut);
     }
 
     // AO texture.
@@ -1145,8 +1179,8 @@ namespace ToolKit
     cam->SetLens(glm::radians(90.0f), 1.0f, 0.1f, 10.0f);
     Mat4 views[] = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
                     glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                    glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
                     glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
                     glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
                     glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
 
@@ -1155,7 +1189,8 @@ namespace ToolKit
       Vec3 pos, sca;
       Quaternion rot;
 
-      DecomposeMatrix(views[i], &pos, &rot, &sca);
+      Mat4 invView = glm::inverse(views[i]);
+      DecomposeMatrix(invView, &pos, &rot, &sca);
 
       cam->m_node->SetTranslation(ZERO, TransformationSpace::TS_WORLD);
       cam->m_node->SetOrientation(rot, TransformationSpace::TS_WORLD);
@@ -1287,8 +1322,8 @@ namespace ToolKit
     cam->SetLens(glm::radians(90.0f), 1.0f, 0.1f, 10.0f);
     Mat4 views[]    = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
                        glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
                        glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
+                       glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
                        glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
                        glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
 
@@ -1310,7 +1345,8 @@ namespace ToolKit
       Vec3 pos;
       Quaternion rot;
       Vec3 sca;
-      DecomposeMatrix(views[i], &pos, &rot, &sca);
+      Mat4 invView = glm::inverse(views[i]);
+      DecomposeMatrix(invView, &pos, &rot, &sca);
 
       cam->m_node->SetTranslation(ZERO, TransformationSpace::TS_WORLD);
       cam->m_node->SetOrientation(rot, TransformationSpace::TS_WORLD);
@@ -1364,8 +1400,8 @@ namespace ToolKit
     cam->SetLens(glm::radians(90.0f), 1.0f, 0.1f, 10.0f);
     Mat4 views[]    = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
                        glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
                        glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
+                       glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
                        glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
                        glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
 
@@ -1396,7 +1432,8 @@ namespace ToolKit
         Vec3 pos;
         Quaternion rot;
         Vec3 sca;
-        DecomposeMatrix(views[i], &pos, &rot, &sca);
+        Mat4 invView = glm::inverse(views[i]);
+        DecomposeMatrix(invView, &pos, &rot, &sca);
 
         cam->m_node->SetTranslation(ZERO, TransformationSpace::TS_WORLD);
         cam->m_node->SetOrientation(rot, TransformationSpace::TS_WORLD);
@@ -1475,8 +1512,8 @@ namespace ToolKit
     // 6 cubemap face view matrices.
     Mat4 views[]                         = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
                                             glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                                            glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
                                             glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
+                                            glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
                                             glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
                                             glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
     // Save original render path params.
@@ -1502,7 +1539,8 @@ namespace ToolKit
       Vec3 pos;
       Quaternion rot;
       Vec3 sca(1.0f);
-      DecomposeMatrix(views[i], &pos, &rot, &sca);
+      Mat4 invView = glm::inverse(views[i]);
+      DecomposeMatrix(invView, &pos, &rot, &sca);
 
       Vec3 capturePos = Vec3(worldTransform * Vec4(originOffset, 1.0f));
       cam->m_node->SetTranslation(capturePos);
