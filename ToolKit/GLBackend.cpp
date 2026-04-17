@@ -28,6 +28,87 @@
 namespace ToolKit
 {
 
+  // -----------------------------------------------------------------------
+  // GL enum mapping tables
+  // -----------------------------------------------------------------------
+
+  static GLenum ToGLGraphicType(GraphicTypes t)
+  {
+    // clang-format off
+    static constexpr GLenum table[] =
+    {
+      GL_VERTEX_SHADER,           // VertexShader
+      GL_FRAGMENT_SHADER,         // FragmentShader
+      GL_REPEAT,                  // UVRepeat
+      GL_CLAMP_TO_EDGE,           // UVClampToEdge
+      0x812D,                     // UVClampToBorder (GL_CLAMP_TO_BORDER)
+      GL_NEAREST,                 // SampleNearest
+      GL_LINEAR,                  // SampleLinear
+      GL_NEAREST_MIPMAP_NEAREST,  // SampleNearestMipmapNearest
+      GL_LINEAR_MIPMAP_LINEAR,    // SampleLinearMipmapLinear
+      GL_LINEAR_MIPMAP_NEAREST,   // SampleLinearMipmapNearest
+      GL_RED,                     // FormatRed
+      GL_R8,                      // FormatR8
+      GL_RG,                      // FormatRG
+      GL_RG8,                     // FormatRG8
+      GL_RGB,                     // FormatRGB
+      GL_RGB8,                    // FormatRGB8
+      GL_RGBA8,                   // FormatRGBA8
+      GL_RGBA,                    // FormatRGBA
+      GL_R16F,                    // FormatR16F
+      GL_R32F,                    // FormatR32F
+      GL_RG16F,                   // FormatRG16F
+      GL_RG32F,                   // FormatRG32F
+      GL_RGB16F,                  // FormatRGB16F
+      GL_RGBA16F,                 // FormatRGBA16F
+      GL_RGB32F,                  // FormatRGB32F
+      GL_RGBA32F,                 // FormatRGBA32F
+      0x8F98,                     // FormatR16SNorm (GL_R16_SNORM)
+      GL_SRGB8_ALPHA8,            // FormatSRGB8_A8
+      GL_DEPTH_COMPONENT24,       // FormatDepth24
+      GL_DEPTH24_STENCIL8,        // FormatDepth24Stencil8
+      GL_COLOR_ATTACHMENT0,       // ColorAttachment0
+      GL_DEPTH_ATTACHMENT,        // DepthAttachment
+      GL_FLOAT,                   // TypeFloat
+      GL_UNSIGNED_BYTE,           // TypeUnsignedByte
+      GL_TEXTURE_2D,              // Target2D
+      GL_TEXTURE_CUBE_MAP,        // TargetCubeMap
+      GL_TEXTURE_2D_ARRAY         // Target2DArray
+    };
+    // clang-format on
+    return table[(int) t];
+  }
+
+  static GLbitfield ToGLBitfield(GraphicBitFields f)
+  {
+    GLbitfield bits = 0;
+    if ((int) f & (int) GraphicBitFields::ColorBits)   bits |= GL_COLOR_BUFFER_BIT;
+    if ((int) f & (int) GraphicBitFields::DepthBits)    bits |= GL_DEPTH_BUFFER_BIT;
+    if ((int) f & (int) GraphicBitFields::StencilBits)  bits |= GL_STENCIL_BUFFER_BIT;
+    return bits;
+  }
+
+  static GLenum ToGLFramebufferType(GraphicFramebufferTypes t)
+  {
+    static constexpr GLenum table[] = { GL_READ_FRAMEBUFFER, GL_DRAW_FRAMEBUFFER, GL_FRAMEBUFFER };
+    return table[(int) t];
+  }
+
+  static GLenum ToGLCompareFunc(CompareFunctions f)
+  {
+    static constexpr GLenum table[] =
+    {
+      GL_NEVER, GL_LESS, GL_EQUAL, GL_LEQUAL, GL_GREATER, GL_NOTEQUAL, GL_GEQUAL, GL_ALWAYS
+    };
+    return table[(int) f];
+  }
+
+  static GLenum ToGLDrawType(DrawType t)
+  {
+    static constexpr GLenum table[] = { GL_POINTS, GL_LINES, GL_LINE_LOOP, GL_LINE_STRIP, GL_TRIANGLES };
+    return table[(int) t];
+  }
+
   // GL-specific GPU resource data structs.
   // These are allocated by GLBackend and stored in resource m_gpuData.
 
@@ -233,7 +314,7 @@ namespace ToolKit
     glDisable(GL_SCISSOR_TEST);
 
     glClearColor(color.x, color.y, color.z, color.w);
-    glClear((GLbitfield) fields);
+    glClear(ToGLBitfield(fields));
 
     // Invalidate state cache to force re-application of masks and scissor on next draw.
     m_firstBind = true;
@@ -291,7 +372,7 @@ namespace ToolKit
 
     if (state->depthTestEnabled && (m_firstBind || m_lastAppliedState.depthFunction != state->depthFunction))
     {
-      glDepthFunc((GLenum) state->depthFunction);
+      glDepthFunc(ToGLCompareFunc(state->depthFunction));
       m_lastAppliedState.depthFunction = state->depthFunction;
     }
 
@@ -482,7 +563,7 @@ namespace ToolKit
     if (tex != nullptr)
     {
       GLTextureData* gl = GetGLTextureData(tex.get());
-      if (gl) BindTextureDirect((uint) tex->Settings().Target, gl->textureId, slot);
+      if (gl) BindTextureDirect(ToGLGraphicType(tex->Settings().Target), gl->textureId, slot);
     }
     else
     {
@@ -502,11 +583,11 @@ namespace ToolKit
 
     if (desc.indexed)
     {
-      glDrawElements((GLenum) desc.type, desc.elementCount, GL_UNSIGNED_INT, nullptr);
+      glDrawElements(ToGLDrawType(desc.type), desc.elementCount, GL_UNSIGNED_INT, nullptr);
     }
     else
     {
-      glDrawArrays((GLenum) desc.type, 0, desc.elementCount);
+      glDrawArrays(ToGLDrawType(desc.type), 0, desc.elementCount);
     }
   }
 
@@ -653,11 +734,11 @@ namespace ToolKit
     GLenum type = 0;
     if (shader->m_shaderType == ShaderType::VertexShader)
     {
-      type = (GLenum) GraphicTypes::VertexShader;
+      type = ToGLGraphicType(GraphicTypes::VertexShader);
     }
     else if (shader->m_shaderType == ShaderType::FragmentShader)
     {
-      type = (GLenum) GraphicTypes::FragmentShader;
+      type = ToGLGraphicType(GraphicTypes::FragmentShader);
     }
     else
     {
@@ -843,7 +924,7 @@ namespace ToolKit
       glGenRenderbuffers(1, &glData->textureId);
       glBindRenderbuffer(GL_RENDERBUFFER, glData->textureId);
 
-      GLenum fmt = (GLenum) dt->GetDepthFormat();
+      GLenum fmt = ToGLGraphicType(dt->GetDepthFormat());
       if (s.msaaCount > MsaaSampleCount::x0)
       {
         glRenderbufferStorageMultisample(GL_RENDERBUFFER, (int) s.msaaCount, fmt, tex->m_width, tex->m_height);
@@ -865,7 +946,7 @@ namespace ToolKit
       glBindRenderbuffer(GL_RENDERBUFFER, glData->textureId);
       glRenderbufferStorageMultisample(GL_RENDERBUFFER,
                                        (int) s.msaaCount,
-                                       (GLenum) s.InternalFormat,
+                                       ToGLGraphicType(s.InternalFormat),
                                        tex->m_width,
                                        tex->m_height);
       glData->isRenderbuffer = true;
@@ -875,7 +956,7 @@ namespace ToolKit
 
     // All other textures — regular GL texture
     glGenTextures(1, &glData->textureId);
-    BindTextureDirect((uint) s.Target, glData->textureId, 0);
+    BindTextureDirect(ToGLGraphicType(s.Target), glData->textureId, 0);
 
     if (s.Target == GraphicTypes::Target2D)
     {
@@ -883,12 +964,12 @@ namespace ToolKit
       void* data = tex->m_imagef ? (void*) tex->m_imagef : (void*) tex->m_image;
       glTexImage2D(GL_TEXTURE_2D,
                    0,
-                   (GLint) s.InternalFormat,
+                   (GLint) ToGLGraphicType(s.InternalFormat),
                    tex->m_width,
                    tex->m_height,
                    0,
-                   (GLenum) s.Format,
-                   (GLenum) s.Type,
+                   ToGLGraphicType(s.Format),
+                   ToGLGraphicType(s.Type),
                    data);
     }
     else if (s.Target == GraphicTypes::TargetCubeMap)
@@ -917,12 +998,12 @@ namespace ToolKit
           {
             glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
                          0,
-                         (GLint) s.InternalFormat,
+                         (GLint) ToGLGraphicType(s.InternalFormat),
                          tex->m_width,
                          tex->m_height,
                          0,
-                         (GLenum) s.Format,
-                         (GLenum) s.Type,
+                         ToGLGraphicType(s.Format),
+                         ToGLGraphicType(s.Type),
                          nullptr);
           }
         }
@@ -934,12 +1015,12 @@ namespace ToolKit
         {
           glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
                        0,
-                       (GLint) s.InternalFormat,
+                       (GLint) ToGLGraphicType(s.InternalFormat),
                        tex->m_width,
                        tex->m_height,
                        0,
-                       (GLenum) s.Format,
-                       (GLenum) s.Type,
+                       ToGLGraphicType(s.Format),
+                       ToGLGraphicType(s.Type),
                        nullptr);
         }
       }
@@ -949,13 +1030,13 @@ namespace ToolKit
       assert(s.Layers > 0 && "Layer count must be at least 1");
       glTexImage3D(GL_TEXTURE_2D_ARRAY,
                    0,
-                   (GLint) s.InternalFormat,
+                   (GLint) ToGLGraphicType(s.InternalFormat),
                    tex->m_width,
                    tex->m_height,
                    s.Layers,
                    0,
-                   (GLenum) s.Format,
-                   (GLenum) s.Type,
+                   ToGLGraphicType(s.Format),
+                   ToGLGraphicType(s.Type),
                    nullptr);
     }
 
@@ -990,16 +1071,16 @@ namespace ToolKit
     }
 
     const TextureSettings& s = tex->Settings();
-    GLenum target            = (GLenum) s.Target;
+    GLenum target            = ToGLGraphicType(s.Target);
 
-    glTexParameteri(target, GL_TEXTURE_MIN_FILTER, (GLint) s.MinFilter);
-    glTexParameteri(target, GL_TEXTURE_MAG_FILTER, (GLint) s.MagFilter);
-    glTexParameteri(target, GL_TEXTURE_WRAP_S, (GLint) s.WarpS);
-    glTexParameteri(target, GL_TEXTURE_WRAP_T, (GLint) s.WarpT);
+    glTexParameteri(target, GL_TEXTURE_MIN_FILTER, (GLint) ToGLGraphicType(s.MinFilter));
+    glTexParameteri(target, GL_TEXTURE_MAG_FILTER, (GLint) ToGLGraphicType(s.MagFilter));
+    glTexParameteri(target, GL_TEXTURE_WRAP_S, (GLint) ToGLGraphicType(s.WarpS));
+    glTexParameteri(target, GL_TEXTURE_WRAP_T, (GLint) ToGLGraphicType(s.WarpT));
 
     if (s.Target == GraphicTypes::TargetCubeMap)
     {
-      glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, (GLint) s.WarpR);
+      glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, (GLint) ToGLGraphicType(s.WarpR));
     }
 
     // Anisotropic filtering for 2D textures
@@ -1023,8 +1104,8 @@ namespace ToolKit
       return;
     }
 
-    BindTextureDirect((uint) tex->Settings().Target, gl->textureId, 0);
-    glGenerateMipmap((GLenum) tex->Settings().Target);
+    BindTextureDirect(ToGLGraphicType(tex->Settings().Target), gl->textureId, 0);
+    glGenerateMipmap(ToGLGraphicType(tex->Settings().Target));
   }
 
   void GLBackend::UpdateTextureRegion(Texture* tex, const void* data)
@@ -1036,16 +1117,16 @@ namespace ToolKit
     }
 
     const TextureSettings& s = tex->Settings();
-    BindTextureDirect((uint) s.Target, gl->textureId, 0);
+    BindTextureDirect(ToGLGraphicType(s.Target), gl->textureId, 0);
 
-    glTexSubImage2D((GLenum) s.Target,
+    glTexSubImage2D(ToGLGraphicType(s.Target),
                     0,
                     0,
                     0,
                     tex->m_width,
                     tex->m_height,
-                    (GLenum) s.Format,
-                    (GLenum) s.Type,
+                    ToGLGraphicType(s.Format),
+                    ToGLGraphicType(s.Type),
                     data);
   }
 
@@ -1057,7 +1138,7 @@ namespace ToolKit
       return;
     }
 
-    GLenum target = (GLenum) tex->Settings().Target;
+    GLenum target = ToGLGraphicType(tex->Settings().Target);
     BindTextureDirect(target, gl->textureId, 0);
     glTexParameteri(target, GL_TEXTURE_MAX_LEVEL, maxLevel);
   }
@@ -1083,12 +1164,12 @@ namespace ToolKit
       {
         glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face,
                      mip,
-                     (GLint) s.InternalFormat,
+                     (GLint) ToGLGraphicType(s.InternalFormat),
                      mipW,
                      mipH,
                      0,
-                     (GLenum) s.Format,
-                     (GLenum) s.Type,
+                     ToGLGraphicType(s.Format),
+                     ToGLGraphicType(s.Type),
                      nullptr);
       }
     }
@@ -1322,7 +1403,7 @@ namespace ToolKit
     }
     BindFramebuffer(GL_DRAW_FRAMEBUFFER, destId);
 
-    glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, (GLbitfield) fields, GL_NEAREST);
+    glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, ToGLBitfield(fields), GL_NEAREST);
   }
 
   void GLBackend::BlitToScreen(FramebufferPtr src) {}
@@ -1593,7 +1674,7 @@ namespace ToolKit
   void GLBackend::ReadPixels(int x, int y, int w, int h,
                              GraphicTypes format, GraphicTypes type, void* data)
   {
-    glReadPixels(x, y, w, h, (GLenum) format, (GLenum) type, data);
+    glReadPixels(x, y, w, h, ToGLGraphicType(format), ToGLGraphicType(type), data);
   }
 
   void GLBackend::UpdateTextureSubRegion(Texture* tex, int x, int y, int w, int h, const void* data)
@@ -1605,8 +1686,8 @@ namespace ToolKit
     }
 
     const TextureSettings& s = tex->Settings();
-    BindTextureDirect((uint) s.Target, gl->textureId, 0);
-    glTexSubImage2D((GLenum) s.Target, 0, x, y, w, h, (GLenum) s.Format, (GLenum) s.Type, data);
+    BindTextureDirect(ToGLGraphicType(s.Target), gl->textureId, 0);
+    glTexSubImage2D(ToGLGraphicType(s.Target), 0, x, y, w, h, ToGLGraphicType(s.Format), ToGLGraphicType(s.Type), data);
   }
 
   void GLBackend::PushDebugGroup(StringView name)

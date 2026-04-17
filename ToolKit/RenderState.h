@@ -24,10 +24,10 @@ namespace ToolKit
 
   enum class GraphicBitFields
   {
-    None             = 0x00000000,
-    ColorBits        = 0x00004000,
-    DepthBits        = 0x00000100,
-    StencilBits      = 0x00000400,
+    None             = 0x00,
+    ColorBits        = 0x01,
+    DepthBits        = 0x02,
+    StencilBits      = 0x04,
     ColorDepthBits   = ColorBits | DepthBits,
     ColorStencilBits = ColorBits | StencilBits,
     DepthStencilBits = DepthBits | StencilBits,
@@ -36,21 +36,21 @@ namespace ToolKit
 
   enum class GraphicFramebufferTypes
   {
-    ReadFramebuffer = 0x8CA8,
-    DrawFramebuffer = 0x8CA9,
-    Framebuffer     = 0x8D40
+    ReadFramebuffer,
+    DrawFramebuffer,
+    Framebuffer
   };
 
   enum class CompareFunctions
   {
-    FuncNever   = 0x0200,
-    FuncLess    = 0x0201,
-    FuncEqual   = 0x0202,
-    FuncLequal  = 0x0203,
-    FuncGreater = 0x0204,
-    FuncNEqual  = 0x0205,
-    FuncGEqual  = 0x0206,
-    FuncAlways  = 0x0207
+    FuncNever,
+    FuncLess,
+    FuncEqual,
+    FuncLequal,
+    FuncGreater,
+    FuncNEqual,
+    FuncGEqual,
+    FuncAlways
   };
 
   enum class BlendFunction
@@ -63,11 +63,11 @@ namespace ToolKit
 
   enum class DrawType
   {
-    Point     = 0x0000,
-    Line      = 0x0001,
-    LineLoop  = 0x0002,
-    LineStrip = 0x0003,
-    Triangle  = 0x0004
+    Point,
+    Line,
+    LineLoop,
+    LineStrip,
+    Triangle
   };
 
   enum class CullingType
