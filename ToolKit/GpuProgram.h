@@ -24,7 +24,6 @@ namespace ToolKit
   {
     friend class GpuProgramManager;
     friend class Renderer;
-    friend class GLBackend;
 
    public:
     GpuProgram();
@@ -48,7 +47,7 @@ namespace ToolKit
 
     IGraphicsBackend* m_backend = nullptr; //!< Set by GpuProgramManager on creation.
 
-   private:
+   public:
     std::unordered_map<Uniform, int> m_defaultUniformLocation;
     std::unordered_map<Uniform, int> m_defaultArrayUniformLocations;
     std::unordered_map<String, ShaderUniform> m_customUniforms;

@@ -21,8 +21,6 @@ namespace ToolKit
    */
   class TK_API UniformBuffer
   {
-    friend class GLBackend;
-
    public:
     UniformBuffer();
     virtual ~UniformBuffer();
@@ -41,7 +39,7 @@ namespace ToolKit
     /** Backend-owned GPU resource data. */
     GpuResourceDataPtr m_gpuData;
 
-   private:
+   public:
     uint64 m_size = 0;
   };
 
