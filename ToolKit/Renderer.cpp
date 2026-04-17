@@ -1,5 +1,4 @@
 /*
- /*
  * Copyright (c) 2019-2025 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
@@ -922,8 +921,8 @@ namespace ToolKit
 
     // Sky and Ibl data.
     m_drawCommand.SetIblInUse(false);
-    m_drawCommand.SetSecondaryIblIntensity(0.0f);
-    m_drawCommand.SetIblFadeDistance(0.0f);
+    m_drawCommand.SetVolumeIntensity(1, 0.0f);
+    m_drawCommand.SetVolumeFadeDistance(0, 0.0f);
     EnvironmentComponent* envCom = job.EnvironmentVolume;
     if (envCom)
     {
@@ -938,7 +937,7 @@ namespace ToolKit
         SetTexture(DefaultTextureSlots::IBL_BRDF_LUT_TEXTURE_SLOT, m_brdfLut);
 
         m_drawCommand.SetIblInUse(true);
-        m_drawCommand.SetIblIntensity(envCom->GetIntensityVal());
+        m_drawCommand.SetVolumeIntensity(0, envCom->GetIntensityVal());
 
         // Pass primary volume local-space BB for OBB per-pixel blend and Parallax Corrected Cubemaps.
         Vec3 offset = envCom->GetPositionOffsetVal();
@@ -949,9 +948,10 @@ namespace ToolKit
           isSky = env->IsA<SkyBase>();
         }
 
-        m_drawCommand.SetPrimaryVolumeMin(offset - half, !isSky);
-        m_drawCommand.SetPrimaryVolumeMax(offset + half);
-        m_drawCommand.SetIblFadeDistance(glm::max(envCom->GetFadeVal(), 0.001f));
+        m_drawCommand.SetVolumeMin(0, offset - half);
+        m_drawCommand.SetVolumeMax(0, offset + half);
+        m_drawCommand.SetVolumeInterior(0, !isSky);
+        m_drawCommand.SetVolumeFadeDistance(0, glm::max(envCom->GetFadeVal(), 0.001f));
 
         // Sky: rotation applies to IBL image, no volume boundary.
         // Non-Sky: rotation applies to OBB volume, IBL image stays fixed.
@@ -960,15 +960,15 @@ namespace ToolKit
           if (isSky)
           {
             m_iblRotation = Mat4(env->m_node->GetOrientation());
-            m_drawCommand.SetIblInverseVolumeTransform(Mat4(1.0f));
-            m_drawCommand.SetIblVolumeTransform(Mat4(1.0f));
+            m_drawCommand.SetVolumeInverseTransform(0, Mat4(1.0f));
+            m_drawCommand.SetVolumeWorldTransform(0, Mat4(1.0f));
           }
           else
           {
             m_iblRotation       = Mat4(1.0f);
             Mat4 worldTransform = env->m_node->GetTransform(TransformationSpace::TS_WORLD);
-            m_drawCommand.SetIblInverseVolumeTransform(glm::inverse(worldTransform));
-            m_drawCommand.SetIblVolumeTransform(worldTransform);
+            m_drawCommand.SetVolumeInverseTransform(0, glm::inverse(worldTransform));
+            m_drawCommand.SetVolumeWorldTransform(0, worldTransform);
           }
         }
 
@@ -984,7 +984,7 @@ namespace ToolKit
           {
             SetTexture(DefaultTextureSlots::SECONDARY_IRRADIANCE_MAP_TEXTURE_SLOT, secDiffuse);
             SetTexture(DefaultTextureSlots::SECONDARY_IBL_SPECULAR_MAP_TEXTURE_SLOT, secSpecular);
-            m_drawCommand.SetSecondaryIblIntensity(secEnvCom->GetIntensityVal());
+            m_drawCommand.SetVolumeIntensity(1, secEnvCom->GetIntensityVal());
 
             if (const EntityPtr& secEnv = secEnvCom->OwnerEntity())
             {
@@ -1436,7 +1436,8 @@ namespace ToolKit
   }
 
   CubeMapPtr Renderer::RenderToCubeMap(ForwardSceneRenderPath* renderPath,
-                                       const Vec3& position,
+                                       const Mat4& worldTransform,
+                                       const Vec3& originOffset,
                                        float near,
                                        float far,
                                        uint resolution,
@@ -1503,7 +1504,8 @@ namespace ToolKit
       Vec3 sca(1.0f);
       DecomposeMatrix(views[i], &pos, &rot, &sca);
 
-      cam->m_node->SetTranslation(position);
+      Vec3 capturePos = Vec3(worldTransform * Vec4(originOffset, 1.0f));
+      cam->m_node->SetTranslation(capturePos);
       cam->m_node->SetOrientation(rot);
       cam->m_node->SetScale(sca);
 
