@@ -145,13 +145,13 @@ namespace ToolKit
 
   void RenderSystem::SkipSceneFrames(int numFrames) { m_skipFrames = numFrames; }
 
-  void RenderSystem::InitGraphics(void* getProcAddress, GpuErrorCallback errorCallback)
+  void RenderSystem::InitGraphics(const IGraphicsBackend::BackendInitParams& params)
   {
     // Texture origin is bottom-left for OpenGL-style APIs.
     ImageSetVerticalOnLoad(true);
 
     // Delegate to the active backend.
-    m_renderer->GetBackend()->InitBackend(getProcAddress, errorCallback);
+    m_renderer->GetBackend()->InitBackend(params);
   }
 
   void RenderSystem::ExecuteTaskImp(RenderTask& task)

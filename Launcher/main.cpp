@@ -164,9 +164,11 @@ namespace ToolKit
 
       SDL_GL_MakeCurrent(g_window, g_context);
 
-      g_proxy->m_renderSys->InitGraphics(SDL_GL_GetProcAddress,
-                                   [](const std::string& msg)
-                                   { GetLogger()->WritePlatformConsole(LogType::Error, msg.c_str()); });
+      ToolKit::IGraphicsBackend::BackendInitParams initParams;
+      initParams.getProcAddress = (void*) SDL_GL_GetProcAddress;
+      initParams.errorCallback  = [](const std::string& msg)
+      { GetLogger()->WritePlatformConsole(LogType::Error, msg.c_str()); };
+      g_proxy->m_renderSys->InitGraphics(initParams);
 
       g_proxy->Init();
 

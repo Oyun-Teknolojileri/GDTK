@@ -8,6 +8,7 @@
 #pragma once
 
 #include "GpuProgram.h"
+#include "IGraphicsBackend.h"
 #include "Pass.h"
 
 namespace ToolKit
@@ -95,12 +96,11 @@ namespace ToolKit
     void SkipSceneFrames(int numFrames);
 
     /**
-     * Host application must provide graphics API function loader address.
-     * This initializes the active backend's GPU functions and error reporting.
-     * @param getProcAddress is the address of the function loader (e.g. SDL_GL_GetProcAddress).
-     * @param errorCallback optional error callback for GPU debug messages.
+     * Initializes the active graphics backend.
+     * Host application fills BackendInitParams with the data the backend needs.
+     * @param params backend initialization parameters.
      */
-    void InitGraphics(void* getProcAddress, GpuErrorCallback errorCallback = nullptr);
+    void InitGraphics(const IGraphicsBackend::BackendInitParams& params);
 
     /** This function should be called at the start of the frame. */
     void StartFrame();

@@ -140,7 +140,10 @@ namespace ToolKit
     TK_LOG("%s", error);
 
     // Init OpenGl.
-    g_proxy->m_renderSys->InitGraphics((void*) SDL_GL_GetProcAddress, [](const String& msg) { TK_LOG("%s", msg.c_str()); });
+    ToolKit::IGraphicsBackend::BackendInitParams initParams;
+    initParams.getProcAddress = (void*) SDL_GL_GetProcAddress;
+    initParams.errorCallback  = [](const String& msg) { TK_LOG("%s", msg.c_str()); };
+    g_proxy->m_renderSys->InitGraphics(initParams);
 
     // Set defaults
     if constexpr (TK_PLATFORM != PLATFORM::TKWeb)

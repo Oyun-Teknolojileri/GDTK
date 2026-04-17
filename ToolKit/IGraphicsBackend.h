@@ -55,10 +55,17 @@ namespace ToolKit
    public:
     virtual ~IGraphicsBackend() = default;
 
+    // Backend initialization params. Each backend uses the fields it needs.
+    struct BackendInitParams
+    {
+      void* getProcAddress = nullptr; // GL: function loader (e.g. SDL_GL_GetProcAddress). VK: ignored.
+      GpuErrorCallback errorCallback; // Optional GPU debug message callback.
+    };
+
     // Backend initialization
     // GL: loads GL function pointers (glad) + sets up error reporting
     // VK: creates instance, device, queues, etc.
-    virtual void InitBackend(void* getProcAddress, GpuErrorCallback errorCallback) = 0;
+    virtual void InitBackend(const BackendInitParams& params) = 0;
 
     // Frame lifecycle
     virtual void BeginFrame()  = 0;

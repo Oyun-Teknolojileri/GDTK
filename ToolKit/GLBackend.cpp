@@ -177,10 +177,10 @@ namespace ToolKit
     }
   }
 
-  void GLBackend::InitBackend(void* getProcAddress, GpuErrorCallback errorCallback)
+  void GLBackend::InitBackend(const BackendInitParams& params)
   {
-    LoadGlFunctions(getProcAddress);
-    InitGLErrorReport(errorCallback);
+    LoadGlFunctions(params.getProcAddress);
+    InitGLErrorReport(params.errorCallback);
   }
 
   void GLBackend::BeginFrame()

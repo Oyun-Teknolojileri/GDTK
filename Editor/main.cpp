@@ -326,22 +326,24 @@ namespace ToolKit
           {
             SDL_GL_MakeCurrent(g_window, g_context);
 
-            // Init OpenGl.
-            g_proxy->m_renderSys->InitGraphics(SDL_GL_GetProcAddress,
-                                         [](const std::string& msg) -> void
-                                         {
-                                           if (g_app == nullptr)
-                                           {
-                                             return;
-                                           }
+            // Init graphics backend.
+            ToolKit::IGraphicsBackend::BackendInitParams initParams;
+            initParams.getProcAddress = (void*) SDL_GL_GetProcAddress;
+            initParams.errorCallback  = [](const std::string& msg) -> void
+            {
+              if (g_app == nullptr)
+              {
+                return;
+              }
 
-                                           if (g_app->m_showGraphicsApiErrors)
-                                           {
-                                             TK_ERR(msg.c_str());
-                                           }
+              if (g_app->m_showGraphicsApiErrors)
+              {
+                TK_ERR(msg.c_str());
+              }
 
-                                           GetLogger()->WritePlatformConsole(LogType::Error, msg.c_str());
-                                         });
+              GetLogger()->WritePlatformConsole(LogType::Error, msg.c_str());
+            };
+            g_proxy->m_renderSys->InitGraphics(initParams);
 
             // Init Main.
             // Register app specific classes to toolkit.
