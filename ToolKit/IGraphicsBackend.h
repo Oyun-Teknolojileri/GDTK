@@ -230,9 +230,9 @@ namespace ToolKit
     // Returns true if the GPU supports linear filtering on float textures.
     virtual bool SupportsFloatTextureLinearFilter() = 0;
 
-    // Returns an opaque ImGui-compatible texture ID for the given texture.
+    // Returns an opaque native texture handle for external use (e.g. UI libraries).
     // GL: (void*)(intptr_t)glTextureId.  VK: (void*)VkDescriptorSet.
-    virtual void* GetImGuiTextureId(Texture* tex) = 0;
+    virtual void* GetNativeTextureHandle(Texture* tex) = 0;
   };
 
 } // namespace ToolKit

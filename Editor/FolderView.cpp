@@ -336,17 +336,17 @@ namespace ToolKit
           }
 
           bool flipRenderTarget = false;
-          uint iconId           = Renderer::GetImGuiTexId(UI::m_fileIcon);
+          uint iconId           = Renderer::GetNativeTextureHandle(UI::m_fileIcon);
 
           std::unordered_map<String, uint> extensionIconMap {
-              {SCENE,    Renderer::GetImGuiTexId(UI::m_worldIcon)},
-              {LAYER,    Renderer::GetImGuiTexId(UI::m_worldIcon)},
-              {ANIM,     Renderer::GetImGuiTexId(UI::m_clipIcon) },
-              {WAW,      Renderer::GetImGuiTexId(UI::m_audioIcon)},
-              {MP3,      Renderer::GetImGuiTexId(UI::m_audioIcon)},
-              {SHADER,   Renderer::GetImGuiTexId(UI::m_codeIcon) },
-              {LAYER,    Renderer::GetImGuiTexId(UI::m_worldIcon)},
-              {SKELETON, Renderer::GetImGuiTexId(UI::m_boneIcon) }
+              {SCENE,    Renderer::GetNativeTextureHandle(UI::m_worldIcon)},
+              {LAYER,    Renderer::GetNativeTextureHandle(UI::m_worldIcon)},
+              {ANIM,     Renderer::GetNativeTextureHandle(UI::m_clipIcon) },
+              {WAW,      Renderer::GetNativeTextureHandle(UI::m_audioIcon)},
+              {MP3,      Renderer::GetNativeTextureHandle(UI::m_audioIcon)},
+              {SHADER,   Renderer::GetNativeTextureHandle(UI::m_codeIcon) },
+              {LAYER,    Renderer::GetNativeTextureHandle(UI::m_worldIcon)},
+              {SKELETON, Renderer::GetNativeTextureHandle(UI::m_boneIcon) }
           };
 
           static std::unordered_set<String>
@@ -354,7 +354,7 @@ namespace ToolKit
 
           if (dirEnt.m_isDirectory)
           {
-            iconId = Renderer::GetImGuiTexId(UI::m_folderIcon);
+            iconId = Renderer::GetNativeTextureHandle(UI::m_folderIcon);
           }
           else if (extensionIconMap.count(dirEnt.m_ext) > 0)
           {
@@ -368,7 +368,7 @@ namespace ToolKit
             }
             else
             {
-              iconId = Renderer::GetImGuiTexId(UI::m_imageIcon);
+              iconId = Renderer::GetNativeTextureHandle(UI::m_imageIcon);
             }
           }
           else if (m_onlyNativeTypes)

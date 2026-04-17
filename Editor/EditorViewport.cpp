@@ -324,7 +324,7 @@ namespace ToolKit
             }
           }
 
-          uint texId           = Renderer::GetImGuiTexId(texture);
+          uint texId           = Renderer::GetNativeTextureHandle(texture);
 
           // Imgui blends the alpha of the image ( in our case, render target for the scene ) with its window
           // background, which causes glitches in the final render. This manual disable is needed.

@@ -274,7 +274,7 @@ namespace ToolKit
       ImVec2 logoPos(logoPadding, (headerSize.y - logoSize) * 0.5f);
 
       ImGui::SetCursorPos(logoPos);
-      if (m_logoTexture && Renderer::GetImGuiTexId(m_logoTexture) != 0)
+      if (m_logoTexture && Renderer::GetNativeTextureHandle(m_logoTexture) != 0)
       {
         ImGui::Image(Convert2ImGuiTexture(m_logoTexture), ImVec2(logoSize, logoSize), ImVec2(0, 1), ImVec2(1, 0));
       }
@@ -498,7 +498,7 @@ namespace ToolKit
                 thumbTexture = m_defaultProjectThumbnail;
               }
 
-              if (thumbTexture && Renderer::GetImGuiTexId(thumbTexture) != 0)
+              if (thumbTexture && Renderer::GetNativeTextureHandle(thumbTexture) != 0)
               {
                 childDrawList->AddImageRounded(Convert2ImGuiTexture(thumbTexture),
                                                imagePos,

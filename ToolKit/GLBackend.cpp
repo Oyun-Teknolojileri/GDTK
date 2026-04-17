@@ -1726,7 +1726,7 @@ namespace ToolKit
     return TK_GL_OES_texture_float_linear != 0;
   }
 
-  void* GLBackend::GetImGuiTextureId(Texture* tex)
+  void* GLBackend::GetNativeTextureHandle(Texture* tex)
   {
     GLTextureData* gl = tex ? GetGLTextureData(tex) : nullptr;
     return gl ? (void*) (intptr_t) gl->textureId : nullptr;

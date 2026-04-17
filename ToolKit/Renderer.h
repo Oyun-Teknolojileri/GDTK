@@ -172,8 +172,8 @@ namespace ToolKit
     void ClearBuffer(GraphicBitFields fields, const Vec4& value = Vec4(0.0f));
     void ColorMask(bool r, bool g, bool b, bool a);
 
-    /** Returns a uint texture ID suitable for ImGui, obtained from the backend. */
-    static uint GetImGuiTexId(const TexturePtr& tex);
+    /** Returns an opaque native texture handle as uint, obtained from the backend. */
+    static uint GetNativeTextureHandle(const TexturePtr& tex);
 
     // FrameBuffer Operations
     //////////////////////////////////////////

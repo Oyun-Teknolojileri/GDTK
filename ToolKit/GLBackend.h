@@ -115,7 +115,7 @@ namespace ToolKit
     void PushDebugGroup(StringView name) override;
     void PopDebugGroup() override;
     bool SupportsFloatTextureLinearFilter() override;
-    void* GetImGuiTextureId(Texture* tex) override;
+    void* GetNativeTextureHandle(Texture* tex) override;
 
    private:
     void StoreFboBindings();

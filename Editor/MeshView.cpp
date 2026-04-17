@@ -64,7 +64,7 @@ namespace ToolKit
         const ImVec2 iconSize = ImVec2(16.0f, 16.0f);
         const ImVec2 spacing  = ImGui::GetStyle().ItemSpacing;
 
-        if (UI::ImageButtonDecorless(Renderer::GetImGuiTexId(UI::m_cameraIcon), iconSize))
+        if (UI::ImageButtonDecorless(Renderer::GetNativeTextureHandle(UI::m_cameraIcon), iconSize))
         {
           ResetCamera();
         }
@@ -91,7 +91,7 @@ namespace ToolKit
                       i,
                       submesh->m_vertexCount,
                       submesh->m_indexCount);
-          DropZone(Renderer::GetImGuiTexId(UI::m_materialIcon),
+          DropZone(Renderer::GetNativeTextureHandle(UI::m_materialIcon),
                    submesh->m_material->GetFile(),
                    [this](const DirectoryEntry& entry)
                    {

@@ -432,9 +432,9 @@ namespace ToolKit
 
   void Renderer::ColorMask(bool r, bool g, bool b, bool a) { m_renderState.colorMaskEnabled = r && g && b && a; }
 
-  uint Renderer::GetImGuiTexId(const TexturePtr& tex)
+  uint Renderer::GetNativeTextureHandle(const TexturePtr& tex)
   {
-    void* id = GetRenderSystem()->GetRenderer()->GetBackend()->GetImGuiTextureId(tex.get());
+    void* id = GetRenderSystem()->GetRenderer()->GetBackend()->GetNativeTextureHandle(tex.get());
     return static_cast<uint>(reinterpret_cast<intptr_t>(id));
   }
 
