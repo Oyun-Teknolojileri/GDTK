@@ -848,6 +848,7 @@ namespace ToolKit
     ToolKit::IGraphicsBackend::BackendInitParams initParams;
     initParams.getProcAddress = (void*) SDL_GL_GetProcAddress;
     g_proxy->m_renderSys->InitGraphics(initParams);
+    g_proxy->m_renderSys->SetPresentCallback([]() { /* headless, no swap */ });
     g_proxy->Init();
 
     int result = packer.Publish();

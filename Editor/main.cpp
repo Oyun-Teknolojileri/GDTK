@@ -344,6 +344,7 @@ namespace ToolKit
               GetLogger()->WritePlatformConsole(LogType::Error, msg.c_str());
             };
             g_proxy->m_renderSys->InitGraphics(initParams);
+            g_proxy->m_renderSys->SetPresentCallback([]() { SDL_GL_SwapWindow(g_window); });
 
             // Init Main.
             // Register app specific classes to toolkit.
@@ -445,7 +446,7 @@ namespace ToolKit
 
             TKUpdateFn postUpdateFn = [](float deltaTime)
             {
-              SDL_GL_SwapWindow(g_window);
+              g_proxy->m_renderSys->Present();
               g_sdlEventPool->ClearPool(); // Clear after consumption.
             };
 

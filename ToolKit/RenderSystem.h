@@ -117,6 +117,12 @@ namespace ToolKit
     /** Returns current renderer. */
     Renderer* GetRenderer() { return m_renderer; }
 
+    /** Sets the callback used by Present() to swap buffers. Host app provides this. */
+    void SetPresentCallback(std::function<void()> callback) { m_presentCallback = std::move(callback); }
+
+    /** Presents the frame. Calls the host-provided swap callback, or backend Present() if no callback. */
+    void Present();
+
    private:
     /** Creates the graphics backend (GL or Vulkan). */
     IGraphicsBackend* CreateBackend();
@@ -143,6 +149,9 @@ namespace ToolKit
 
     /** Number of elapsed frames since the engine start. */
     uint m_frameCount    = 0;
+
+    /** Host-provided swap/present callback. */
+    std::function<void()> m_presentCallback;
   };
 
 } // namespace ToolKit

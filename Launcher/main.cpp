@@ -169,6 +169,7 @@ namespace ToolKit
       initParams.errorCallback  = [](const std::string& msg)
       { GetLogger()->WritePlatformConsole(LogType::Error, msg.c_str()); };
       g_proxy->m_renderSys->InitGraphics(initParams);
+      g_proxy->m_renderSys->SetPresentCallback([]() { SDL_GL_SwapWindow(g_window); });
 
       g_proxy->Init();
 
@@ -239,7 +240,7 @@ namespace ToolKit
 
       TKUpdateFn postUpdateFn = [](float deltaTime)
       {
-        SDL_GL_SwapWindow(g_window);
+        g_proxy->m_renderSys->Present();
         g_sdlEventPool->ClearPool();
       };
 

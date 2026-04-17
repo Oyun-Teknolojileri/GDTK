@@ -154,6 +154,18 @@ namespace ToolKit
     m_renderer->GetBackend()->InitBackend(params);
   }
 
+  void RenderSystem::Present()
+  {
+    if (m_presentCallback)
+    {
+      m_presentCallback();
+    }
+    else
+    {
+      m_renderer->GetBackend()->Present();
+    }
+  }
+
   void RenderSystem::ExecuteTaskImp(RenderTask& task)
   {
     if (task.Task != nullptr)

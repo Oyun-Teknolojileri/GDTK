@@ -144,6 +144,7 @@ namespace ToolKit
     initParams.getProcAddress = (void*) SDL_GL_GetProcAddress;
     initParams.errorCallback  = [](const String& msg) { TK_LOG("%s", msg.c_str()); };
     g_proxy->m_renderSys->InitGraphics(initParams);
+    g_proxy->m_renderSys->SetPresentCallback([]() { SDL_GL_SwapWindow(g_window); });
 
     // Set defaults
     if constexpr (TK_PLATFORM != PLATFORM::TKWeb)
@@ -200,7 +201,7 @@ namespace ToolKit
           rsys->AddRenderTask({[](Renderer* renderer) -> void
                                {
                                  renderer->SetFramebuffer(nullptr, GraphicBitFields::AllBits);
-                                 SDL_GL_SwapWindow(g_window);
+                                 g_proxy->m_renderSys->Present();
                                }});
           rsys->FlushRenderTasks();
 
@@ -253,7 +254,7 @@ namespace ToolKit
     TKUpdateFn postUpdateFn = [](float deltaTime)
     {
       SDL_GL_MakeCurrent(g_window, g_context);
-      SDL_GL_SwapWindow(g_window);
+      g_proxy->m_renderSys->Present();
 
       g_sdlEventPool->ClearPool(); // Clear after consumption.
     };
