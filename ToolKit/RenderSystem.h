@@ -95,12 +95,12 @@ namespace ToolKit
     void SkipSceneFrames(int numFrames);
 
     /**
-     * Host application must provide opengl function addresses. This function
-     * initialize opengl functions.
-     * @param glGetProcAddress is the address of opengl function getter.
-     * @param callback is error callback function for opengl.
+     * Host application must provide graphics API function loader address.
+     * This initializes the active backend's GPU functions and error reporting.
+     * @param getProcAddress is the address of the function loader (e.g. SDL_GL_GetProcAddress).
+     * @param errorCallback optional error callback for GPU debug messages.
      */
-    void InitGl(void* glGetProcAddres, GlReportCallback callback = nullptr);
+    void InitGraphics(void* getProcAddress, GpuErrorCallback errorCallback = nullptr);
 
     /** This function should be called at the start of the frame. */
     void StartFrame();

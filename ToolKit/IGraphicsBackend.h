@@ -55,6 +55,11 @@ namespace ToolKit
    public:
     virtual ~IGraphicsBackend() = default;
 
+    // Backend initialization
+    // GL: loads GL function pointers (glad) + sets up error reporting
+    // VK: creates instance, device, queues, etc.
+    virtual void InitBackend(void* getProcAddress, GpuErrorCallback errorCallback) = 0;
+
     // Frame lifecycle
     virtual void BeginFrame()  = 0;
     virtual void EndFrame()    = 0;

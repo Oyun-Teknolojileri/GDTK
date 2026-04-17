@@ -19,6 +19,7 @@ namespace ToolKit
     GLBackend();
     ~GLBackend() override;
 
+    void InitBackend(void* getProcAddress, GpuErrorCallback errorCallback) override;
     void BeginFrame() override;
     void EndFrame() override;
     void Present() override;

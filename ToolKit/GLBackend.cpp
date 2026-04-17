@@ -10,6 +10,7 @@
 
 #include "EngineSettings.h"
 #include "Framebuffer.h"
+#include "GlErrorReporter.h"
 #include "GpuProgram.h"
 #include "Renderer.h"
 #include "Mesh.h"
@@ -99,6 +100,12 @@ namespace ToolKit
       glDeleteQueries(1, &m_gpuTimerQuery);
       m_gpuTimerQuery = 0;
     }
+  }
+
+  void GLBackend::InitBackend(void* getProcAddress, GpuErrorCallback errorCallback)
+  {
+    LoadGlFunctions(getProcAddress);
+    InitGLErrorReport(errorCallback);
   }
 
   void GLBackend::BeginFrame()

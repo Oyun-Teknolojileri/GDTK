@@ -1447,7 +1447,7 @@ namespace ToolKit
                                               SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
       SDL_GLContext g_context = SDL_GL_CreateContext(g_window);
 
-      g_proxy->m_renderSys->InitGl(SDL_GL_GetProcAddress, nullptr);
+      g_proxy->m_renderSys->InitGraphics(SDL_GL_GetProcAddress, nullptr);
 
       g_proxy->Init();
 

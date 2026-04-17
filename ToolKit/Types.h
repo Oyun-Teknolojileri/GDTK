@@ -230,7 +230,7 @@ namespace ToolKit
 
   // Callbacks.
   typedef std::function<void(class Event*, EntityPtr)> SurfaceEventCallback;
-  typedef std::function<void(const String&)> GlReportCallback;
+  typedef std::function<void(const String&)> GpuErrorCallback;
 
   // Math Vector decelerations.
   static const Vec3 ZERO    = Vec3(0.0f);

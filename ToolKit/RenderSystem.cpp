@@ -8,12 +8,10 @@
 #include "RenderSystem.h"
 
 #include "GLBackend.h"
-#include "GlErrorReporter.h"
 #include "Image.h"
 #include "Logger.h"
 #include "RHI.h"
 #include "Stats.h"
-#include "TKOpenGL.h"
 #include "ToolKit.h"
 
 #include "DebugNew.h"
@@ -147,14 +145,13 @@ namespace ToolKit
 
   void RenderSystem::SkipSceneFrames(int numFrames) { m_skipFrames = numFrames; }
 
-  void RenderSystem::InitGl(void* glGetProcAddres, GlReportCallback callback)
+  void RenderSystem::InitGraphics(void* getProcAddress, GpuErrorCallback errorCallback)
   {
-    // Opengl texture origin is bottom left.
+    // Texture origin is bottom-left for OpenGL-style APIs.
     ImageSetVerticalOnLoad(true);
 
-    // Initialize opengl functions.
-    LoadGlFunctions(glGetProcAddres);
-    InitGLErrorReport(callback);
+    // Delegate to the active backend.
+    m_renderer->GetBackend()->InitBackend(getProcAddress, errorCallback);
   }
 
   void RenderSystem::ExecuteTaskImp(RenderTask& task)

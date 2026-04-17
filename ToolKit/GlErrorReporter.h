@@ -17,7 +17,7 @@ namespace ToolKit
    public:
     // Override it as you see fit. This lambda will be called with the opengl
     // error message.
-    static GlReportCallback Report;
+    static GpuErrorCallback Report;
   };
 
   // Using standard types to avoid dependency on GL headers in this interface.
@@ -30,7 +30,7 @@ namespace ToolKit
                                      const char* msg,
                                      const void* data);
 
-  TK_API void InitGLErrorReport(GlReportCallback callback = nullptr);
+  TK_API void InitGLErrorReport(GpuErrorCallback callback = nullptr);
 
   TK_API unsigned int glCheckError_(const char* file, int line);
 

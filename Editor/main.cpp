@@ -327,7 +327,7 @@ namespace ToolKit
             SDL_GL_MakeCurrent(g_window, g_context);
 
             // Init OpenGl.
-            g_proxy->m_renderSys->InitGl(SDL_GL_GetProcAddress,
+            g_proxy->m_renderSys->InitGraphics(SDL_GL_GetProcAddress,
                                          [](const std::string& msg) -> void
                                          {
                                            if (g_app == nullptr)

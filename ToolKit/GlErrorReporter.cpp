@@ -18,9 +18,9 @@
 
 namespace ToolKit
 {
-  GlReportCallback GlErrorReporter::Report = [](const String& msg) -> void { GetLogger()->Log(msg); };
+  GpuErrorCallback GlErrorReporter::Report = [](const String& msg) -> void { GetLogger()->Log(msg); };
 
-  void InitGLErrorReport(GlReportCallback callback)
+  void InitGLErrorReport(GpuErrorCallback callback)
   {
 #ifdef TK_WIN
     if (glDebugMessageCallback != NULL)
@@ -90,7 +90,7 @@ namespace ToolKit
                               const char* msg,
                               const void* data)
   {
-    GlReportCallback report = GlErrorReporter::Report;
+    GpuErrorCallback report = GlErrorReporter::Report;
     if (report)
     {
       report(msg);
