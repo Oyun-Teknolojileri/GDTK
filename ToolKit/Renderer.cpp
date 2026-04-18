@@ -977,6 +977,7 @@ namespace ToolKit
 
         m_drawCommand.SetVolumeMin(0, offset - half);
         m_drawCommand.SetVolumeMax(0, offset + half);
+        m_drawCommand.SetVolumePccEnabled(0, envCom->GetParallaxCorrectionVal());
         m_drawCommand.SetVolumeInterior(0, !isSky);
         m_drawCommand.SetVolumeFadeDistance(0, glm::max(envCom->GetFadeVal(), 0.001f));
 
@@ -1013,16 +1014,20 @@ namespace ToolKit
             SetTexture(DefaultTextureSlots::SECONDARY_IBL_SPECULAR_MAP_TEXTURE_SLOT, secSpecular);
             m_drawCommand.SetVolumeIntensity(1, secEnvCom->GetIntensityVal());
 
+            Vec3 secOffset = secEnvCom->GetPositionOffsetVal();
+            Vec3 secHalf   = secEnvCom->GetSizeVal() * 0.5f;
+            m_drawCommand.SetVolumeMin(1, secOffset - secHalf);
+            m_drawCommand.SetVolumeMax(1, secOffset + secHalf);
+            m_drawCommand.SetVolumePccEnabled(1, secEnvCom->GetParallaxCorrectionVal());
+            m_drawCommand.SetVolumeInterior(1, secEnvCom->GetInteriorVal());
+            m_drawCommand.SetVolumeFadeDistance(1, glm::max(secEnvCom->GetFadeVal(), 0.001f));
+
             if (const EntityPtr& secEnv = secEnvCom->OwnerEntity())
             {
-              if (secEnv->IsA<SkyBase>())
-              {
-                m_secondaryIblRotation = Mat4(secEnv->m_node->GetOrientation());
-              }
-              else
-              {
-                m_secondaryIblRotation = Mat4(1.0f);
-              }
+              m_secondaryIblRotation       = Mat4(1.0f);
+              Mat4 secWorldTransform        = secEnv->m_node->GetTransform(TransformationSpace::TS_WORLD);
+              m_drawCommand.SetVolumeInverseTransform(1, glm::inverse(secWorldTransform));
+              m_drawCommand.SetVolumeWorldTransform(1, secWorldTransform);
             }
           }
         }
