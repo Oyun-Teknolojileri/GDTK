@@ -141,7 +141,7 @@ namespace ToolKit
    public:
     void Load() override;
     void Init(void* data);
-    void Map(void* data, uint64 size);
+    void Map(void* data);
     void UnInit() override;
   };
 

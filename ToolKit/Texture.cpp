@@ -340,11 +340,13 @@ namespace ToolKit
     backend->ApplyTextureSettings(this);
     m_image = nullptr; // DataTexture doesn't own the data
 
+    Stats::AddVRAMUsageInBytes((uint64) (m_width * m_height) * BytesOfFormat(m_settings.InternalFormat));
+
     m_loaded    = true;
     m_initiated = true;
   };
 
-  void DataTexture::Map(void* data, uint64 size)
+  void DataTexture::Map(void* data)
   {
     if (!m_initiated)
     {
@@ -356,8 +358,6 @@ namespace ToolKit
     {
       backend->UpdateTextureRegion(this, data);
     }
-
-    Stats::AddVRAMUsageInBytes(size);
   }
 
   void DataTexture::UnInit()

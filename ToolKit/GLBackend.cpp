@@ -678,6 +678,11 @@ namespace ToolKit
 
       mesh->m_vertexCount = (uint) vertexCount;
     }
+    else
+    {
+      mesh->m_vertexCount = 0;
+      mesh->m_indexCount  = 0;
+    }
 
     mesh->m_gpuData = std::move(glData);
   }
