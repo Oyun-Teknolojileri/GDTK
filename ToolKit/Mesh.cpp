@@ -67,7 +67,7 @@ namespace ToolKit
 
     if (flushClientSideArray)
     {
-      m_clientSideVertices.clear();
+      ClearClientVertexData();
       m_clientSideIndices.clear();
     }
     else
@@ -162,6 +162,12 @@ namespace ToolKit
   }
 
   int Mesh::GetVertexSize() const { return sizeof(Vertex); }
+
+  const void* Mesh::GetClientVertexData() const { return m_clientSideVertices.empty() ? nullptr : m_clientSideVertices.data(); }
+
+  size_t Mesh::GetClientVertexCount() const { return m_clientSideVertices.size(); }
+
+  void Mesh::ClearClientVertexData() { m_clientSideVertices.clear(); }
 
   uint Mesh::GetVertexCount() const { return (uint) m_clientSideVertices.size(); }
 
@@ -553,7 +559,7 @@ namespace ToolKit
 
     if (flush)
     {
-      m_clientSideVertices.clear();
+      ClearClientVertexData();
     }
   }
 
@@ -727,6 +733,12 @@ namespace ToolKit
   uint SkinMesh::GetVertexCount() const { return (uint) m_clientSideVertices.size(); }
 
   int SkinMesh::GetVertexSize() const { return sizeof(SkinVertex); }
+
+  const void* SkinMesh::GetClientVertexData() const { return m_clientSideVertices.empty() ? nullptr : m_clientSideVertices.data(); }
+
+  size_t SkinMesh::GetClientVertexCount() const { return m_clientSideVertices.size(); }
+
+  void SkinMesh::ClearClientVertexData() { m_clientSideVertices.clear(); }
 
   bool SkinMesh::IsSkinned() const { return true; }
 

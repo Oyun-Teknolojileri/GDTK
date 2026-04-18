@@ -581,6 +581,12 @@ namespace ToolKit
     }
 
     GLMeshData* meshGl = GetGLMeshData(desc.mesh);
+    assert(meshGl != nullptr && "Mesh has no GPU data. Was CreateMesh called?");
+    if (meshGl == nullptr || meshGl->vaoId == 0)
+    {
+      return;
+    }
+
     BindVAO(meshGl->vaoId);
 
     if (desc.indexed)
@@ -602,76 +608,78 @@ namespace ToolKit
     // Destroy existing GPU resources (re-upload path).
     DestroyMesh(mesh);
 
-    if (mesh->m_clientSideVertices.empty())
-    {
-      return;
-    }
-
     auto glData = std::make_shared<GLMeshData>();
 
-    // --- Vertex buffer ---
-    glGenVertexArrays(1, &glData->vaoId);
-    BindVAO(glData->vaoId);
+    const void* vertexData   = mesh->GetClientVertexData();
+    size_t vertexCount       = mesh->GetClientVertexCount();
 
-    glGenBuffers(1, &glData->vboVertexId);
-    glBindBuffer(GL_ARRAY_BUFFER, glData->vboVertexId);
-    glBufferData(GL_ARRAY_BUFFER,
-                 mesh->GetVertexSize() * mesh->m_clientSideVertices.size(),
-                 mesh->m_clientSideVertices.data(),
-                 GL_STATIC_DRAW);
+    if (vertexData != nullptr && vertexCount > 0)
+    {
+      // --- Vertex buffer ---
+      glGenVertexArrays(1, &glData->vaoId);
+      BindVAO(glData->vaoId);
 
-    // --- Vertex attribute layout (baked into VAO) ---
-    if (mesh->m_vertexLayout == VertexLayout::SkinMesh)
-    {
-      GLuint offset = 0;
-      glEnableVertexAttribArray(0);
-      glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(SkinVertex), (void*) (uintptr_t) offset);
-      offset += 3 * sizeof(float);
-      glEnableVertexAttribArray(1);
-      glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(SkinVertex), (void*) (uintptr_t) offset);
-      offset += 3 * sizeof(float);
-      glEnableVertexAttribArray(2);
-      glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(SkinVertex), (void*) (uintptr_t) offset);
-      offset += 2 * sizeof(float);
-      glEnableVertexAttribArray(3);
-      glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(SkinVertex), (void*) (uintptr_t) offset);
-      offset += 4 * sizeof(float);
-      glEnableVertexAttribArray(4);
-      glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(SkinVertex), (void*) (uintptr_t) offset);
-      offset += 4 * sizeof(float);
-      glEnableVertexAttribArray(5);
-      glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, sizeof(SkinVertex), (void*) (uintptr_t) offset);
-    }
-    else // VertexLayout::Mesh (default)
-    {
-      GLuint offset = 0;
-      glEnableVertexAttribArray(0);
-      glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*) (uintptr_t) offset);
-      offset += 3 * sizeof(float);
-      glEnableVertexAttribArray(1);
-      glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*) (uintptr_t) offset);
-      offset += 3 * sizeof(float);
-      glEnableVertexAttribArray(2);
-      glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*) (uintptr_t) offset);
-      offset += 2 * sizeof(float);
-      glEnableVertexAttribArray(3);
-      glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*) (uintptr_t) offset);
-    }
-
-    // --- Index buffer ---
-    if (!mesh->m_clientSideIndices.empty())
-    {
-      glGenBuffers(1, &glData->vboIndexId);
-      glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, glData->vboIndexId);
-      glBufferData(GL_ELEMENT_ARRAY_BUFFER,
-                   sizeof(uint) * mesh->m_clientSideIndices.size(),
-                   mesh->m_clientSideIndices.data(),
+      glGenBuffers(1, &glData->vboVertexId);
+      glBindBuffer(GL_ARRAY_BUFFER, glData->vboVertexId);
+      glBufferData(GL_ARRAY_BUFFER,
+                   mesh->GetVertexSize() * vertexCount,
+                   vertexData,
                    GL_STATIC_DRAW);
-      mesh->m_indexCount = (uint) mesh->m_clientSideIndices.size();
+
+      // --- Vertex attribute layout (baked into VAO) ---
+      if (mesh->m_vertexLayout == VertexLayout::SkinMesh)
+      {
+        GLuint offset = 0;
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(SkinVertex), (void*) (uintptr_t) offset);
+        offset += 3 * sizeof(float);
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(SkinVertex), (void*) (uintptr_t) offset);
+        offset += 3 * sizeof(float);
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(SkinVertex), (void*) (uintptr_t) offset);
+        offset += 2 * sizeof(float);
+        glEnableVertexAttribArray(3);
+        glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(SkinVertex), (void*) (uintptr_t) offset);
+        offset += 4 * sizeof(float);
+        glEnableVertexAttribArray(4);
+        glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(SkinVertex), (void*) (uintptr_t) offset);
+        offset += 4 * sizeof(float);
+        glEnableVertexAttribArray(5);
+        glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, sizeof(SkinVertex), (void*) (uintptr_t) offset);
+      }
+      else // VertexLayout::Mesh (default)
+      {
+        GLuint offset = 0;
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*) (uintptr_t) offset);
+        offset += 3 * sizeof(float);
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*) (uintptr_t) offset);
+        offset += 3 * sizeof(float);
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*) (uintptr_t) offset);
+        offset += 2 * sizeof(float);
+        glEnableVertexAttribArray(3);
+        glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*) (uintptr_t) offset);
+      }
+
+      // --- Index buffer ---
+      if (!mesh->m_clientSideIndices.empty())
+      {
+        glGenBuffers(1, &glData->vboIndexId);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, glData->vboIndexId);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+                     sizeof(uint) * mesh->m_clientSideIndices.size(),
+                     mesh->m_clientSideIndices.data(),
+                     GL_STATIC_DRAW);
+        mesh->m_indexCount = (uint) mesh->m_clientSideIndices.size();
+      }
+
+      mesh->m_vertexCount = (uint) vertexCount;
     }
 
-    mesh->m_vertexCount = (uint) mesh->m_clientSideVertices.size();
-    mesh->m_gpuData     = std::move(glData);
+    mesh->m_gpuData = std::move(glData);
   }
 
   void GLBackend::DestroyMesh(Mesh* mesh)

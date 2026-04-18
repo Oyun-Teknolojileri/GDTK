@@ -116,6 +116,9 @@ namespace ToolKit
      * @return The size of a single vertex in bytes.
      */
     virtual int GetVertexSize() const;
+    virtual const void* GetClientVertexData() const;
+    virtual size_t GetClientVertexCount() const;
+    virtual void ClearClientVertexData();
 
     /**
      * @brief Retrieves the total number of vertices in the mesh.
@@ -344,6 +347,9 @@ namespace ToolKit
      * @return The size of a single skinned vertex in bytes.
      */
     int GetVertexSize() const override;
+    const void* GetClientVertexData() const override;
+    size_t GetClientVertexCount() const override;
+    void ClearClientVertexData() override;
 
     /**
      * @brief Determines if the mesh is a skin mesh.
