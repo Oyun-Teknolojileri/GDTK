@@ -42,6 +42,7 @@ namespace ToolKit
     // Draw outline to the viewport.
     m_outlinePass->m_params.frameBuffer      = m_params.FrameBuffer;
     m_outlinePass->m_params.clearFrameBuffer = GraphicBitFields::None;
+    m_outlinePass->m_params.blendFunc        = BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA;
 
     RenderSubPass(m_outlinePass);
   }
