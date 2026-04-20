@@ -43,31 +43,22 @@ namespace ToolKit
     uint64 m_size = 0;
   };
 
-  /** Generic class to provide data layout for gpu buffer. */
   template <typename DataLayout, int Slot>
   class TK_API GpuBufferBase
   {
    public:
     static constexpr int Binding() { return Slot; }
 
-    /** Create gpu resources. */
     void Init()
     {
       m_buffer.Init(sizeof(DataLayout));
       m_buffer.m_slot = Binding();
     }
 
-    /** Invalidates and cause a remap during next call to map.  */
     void Invalidate() { m_invalid = true; }
-
-    /** Returns true if buffer is up to date. */
     bool IsValid() const { return !m_invalid; }
-
-    /** Returns gpu object id. */
-    /** Returns gpu buffer for external use (e.g., UBO binding by GlobalGpuBuffers). */
     UniformBuffer& GetBuffer() { return m_buffer; }
 
-    /** Maps data to gpu buffer. */
     void Map()
     {
       if (m_invalid)

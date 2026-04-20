@@ -71,28 +71,20 @@ namespace ToolKit
      */
     void SetAppWindowSize(uint width, uint height);
 
-    /** Application window size. */
     UVec2 GetAppWindowSize();
 
-    /** Sets default clear color for render targets. */
     void SetClearColor(const Vec4& clearColor);
 
-    /** Internally used. Enables blending. This should not be used directly. */
     void EnableBlending(bool enable);
 
-    /** Returns elapsed frame count. */
     uint GetFrameCount();
 
-    /** Set elapsed frame count to zero. */
     void ResetFrameCount();
 
-    /** Internally used to decrement skip count. */
     void DecrementSkipFrame();
 
-    /** States if this state is skipped. */
     bool IsSkipFrame() const;
 
-    /** Sets number of frames to skip. */
     void SkipSceneFrames(int numFrames);
 
     /**
@@ -102,55 +94,35 @@ namespace ToolKit
      */
     void InitGraphics(const IGraphicsBackend::BackendInitParams& params);
 
-    /** This function should be called at the start of the frame. */
     void StartFrame();
 
-    /** This function should be called at the end of the frame. */
     void EndFrame();
 
-    /** Returns true if back buffer is not srgb. */
     bool IsGammaCorrectionNeeded();
 
-    /** Enables gamma encoding when back buffer is srgb. */
     void SrgbAutoEncoding(bool enable);
 
-    /** Returns current renderer. */
     Renderer* GetRenderer() { return m_renderer; }
 
-    /** Sets the callback used by Present() to swap buffers. Host app provides this. */
     void SetPresentCallback(std::function<void()> callback) { m_presentCallback = std::move(callback); }
 
-    /** Presents the frame. Calls the host-provided swap callback, or backend Present() if no callback. */
     void Present();
 
    private:
-    /** Creates the graphics backend (GL or Vulkan). */
     IGraphicsBackend* CreateBackend();
 
-    /** Implementation for executing render tasks. */
     void ExecuteTaskImp(RenderTask& task);
 
    public:
-    /** States if the back buffer is srgb. */
     bool m_backbufferFormatIsSRGB = false;
 
    private:
-    /** High priority render queue. Tasks in this queue always finished. */
     RenderTaskArray m_highQueue;
-
-    /** Low priority render queue. Consume tasks for a given time span and left others for next frame. */
     RenderTaskArray m_lowQueue;
 
-    /** Current Renderer. */
     Renderer* m_renderer = nullptr;
-
-    /** Holds number of frames to skip. If its greater than zero renderer skip given frames. */
     int m_skipFrames     = 0;
-
-    /** Number of elapsed frames since the engine start. */
     uint m_frameCount    = 0;
-
-    /** Host-provided swap/present callback. */
     std::function<void()> m_presentCallback;
   };
 

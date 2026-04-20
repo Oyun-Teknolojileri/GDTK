@@ -14,15 +14,12 @@
 
 #include <memory>
 
-// Forward declarations for resource types not pulled in via Types.h
 namespace ToolKit { class UniformBuffer; class Mesh; }
 
 namespace ToolKit
 {
 
-  /** Base class for backend-specific GPU resource data.
-   *  Each backend (GL, Vulkan) derives its own struct per resource type.
-   *  Owned by the resource via unique_ptr — automatically destroyed via virtual dtor. */
+  /** Base class for backend-specific GPU resource data. */
   struct GpuResourceData
   {
     virtual ~GpuResourceData() = default;
@@ -34,7 +31,7 @@ namespace ToolKit
   {
     FramebufferPtr target;
     GraphicBitFields clearBits   = GraphicBitFields::None;
-    GraphicBitFields discardBits = GraphicBitFields::None; // GL: glInvalidateFramebuffer in EndPass; VK: storeOp=DONT_CARE
+    GraphicBitFields discardBits = GraphicBitFields::None;
     Vec4 clearColor              = Vec4(0.0f);
     bool loadColor               = false;
     bool loadDepth               = false;
@@ -43,7 +40,7 @@ namespace ToolKit
   struct DrawDesc
   {
     const Mesh* mesh          = nullptr;
-    VertexLayout vertexLayout = VertexLayout::Mesh; // needed by Vulkan for pipeline key
+    VertexLayout vertexLayout = VertexLayout::Mesh;
     bool indexed              = true;
     uint elementCount   = 0;
     uint instanceCount  = 1;
@@ -55,47 +52,35 @@ namespace ToolKit
    public:
     virtual ~IGraphicsBackend() = default;
 
-    // Backend initialization params. Each backend uses the fields it needs.
     struct BackendInitParams
     {
-      void* getProcAddress = nullptr; // GL: function loader (e.g. SDL_GL_GetProcAddress). VK: ignored.
-      GpuErrorCallback errorCallback; // Optional GPU debug message callback.
+      void* getProcAddress = nullptr;
+      GpuErrorCallback errorCallback;
     };
 
-    // Backend initialization
-    // GL: loads GL function pointers (glad) + sets up error reporting
-    // VK: creates instance, device, queues, etc.
     virtual void InitBackend(const BackendInitParams& params) = 0;
 
-    // Frame lifecycle
     virtual void BeginFrame()  = 0;
     virtual void EndFrame()    = 0;
     virtual void Present()     = 0;
 
-    // Pass boundary
     virtual void BeginPass(const PassDesc& desc)                                    = 0;
     virtual void EndPass() = 0;
 
-    // Viewport / scissor
     virtual void SetViewport(uint x, uint y, uint w, uint h)       = 0;
     virtual void SetScissor(uint x, uint y, uint w, uint h)        = 0;
 
-    // Clear
     virtual void ClearBuffer(GraphicBitFields fields, const Vec4& color) = 0;
     virtual void ClearColorBuffer(const Vec4& color)                     = 0;
 
-    // Pipeline / program binding
     virtual void BindPipeline(const GpuProgramPtr& program,
                               const RenderState* state)             = 0;
 
-    // Per-draw resource binding
     virtual void SubmitPerDrawData(const void* data, size_t size)   = 0;
     virtual void BindTexture(ubyte slot, TexturePtr tex)            = 0;
 
-    // Geometry draw
     virtual void Draw(const DrawDesc& desc)                         = 0;
 
-    // Utility / blit
     virtual void ResolveFramebuffer(FramebufferPtr src,
                                     FramebufferPtr dst,
                                     const IntArray& attachments)    = 0;
@@ -103,70 +88,36 @@ namespace ToolKit
                                  FramebufferPtr dst,
                                  GraphicBitFields fields)           = 0;
     virtual void BlitToScreen(FramebufferPtr src)                   = 0;
-    // Timer queries
     virtual void StartTimerQuery()                                  = 0;
     virtual void EndTimerQuery()                                    = 0;
     virtual void GetElapsedTime(float& cpu, float& gpu)             = 0;
 
-    // Texture resource management
-    // CreateTexture: allocates GPU storage (gen + texImage/renderbufferStorage). Reads all
-    // required info from tex->Settings(), tex->m_width/height, and pixel data pointers.
     virtual void CreateTexture(Texture* tex)                        = 0;
     virtual void DestroyTexture(Texture* tex)                       = 0;
-    // ApplyTextureSettings: sets sampler parameters (filter, wrap) for the currently bound texture.
-    // Must be called after CreateTexture while the texture is still bound.
     virtual void ApplyTextureSettings(Texture* tex)                 = 0;
     virtual void GenerateMipmaps(Texture* tex)                      = 0;
-    // UpdateTextureRegion: full-surface upload via glTexSubImage2D. Used by DataTexture::Map.
     virtual void UpdateTextureRegion(Texture* tex, const void* data) = 0;
-    // SetTextureMaxMipLevel: sets GL_TEXTURE_MAX_LEVEL (or VK equivalent). Used by specular IBL maps.
     virtual void SetTextureMaxMipLevel(Texture* tex, int maxLevel)  = 0;
-    // AllocateCubemapMipStorage: pre-allocates storage for all non-base mip levels of a cube map.
     virtual void AllocateCubemapMipStorage(Texture* tex)            = 0;
-    // CopyCubemapFaceFromFramebuffer: copies current read framebuffer to a cubemap face at a given mip.
-    // Equivalent to glCopyTexSubImage2D on GL_TEXTURE_CUBE_MAP_POSITIVE_X + face.
     virtual void CopyCubemapFaceFromFramebuffer(Texture* cubemap, int face, int mip, int width, int height,
                                                  Framebuffer* readFb, Framebuffer* writeFb) = 0;
 
-    // Mesh resource management
     virtual void CreateMesh(Mesh* mesh)          = 0;
-    // GL:  VAO + VBO(vertex) + glVertexAttribPointer + VBO(index)
-    // VK:  VkBuffer (vertex + index) + vkAllocateMemory + upload
-    // Destroys existing GPU resources first if already created (re-upload path).
     virtual void DestroyMesh(Mesh* mesh)         = 0;
-    // GL:  glDeleteVertexArrays + glDeleteBuffers + BindVAO(0)
-    // VK:  vkDestroyBuffer + vkFreeMemory
 
-    // UniformBuffer resource management
     virtual void CreateUniformBuffer(UniformBuffer* ub, uint64 size) = 0;
-    // glGenBuffers + glBindBuffer + glBufferData(DYNAMIC_DRAW)
     virtual void DestroyUniformBuffer(UniformBuffer* ub)             = 0;
-    // glDeleteBuffers
     virtual void UpdateUniformBuffer(UniformBuffer* ub,
                                      const void* data, uint64 size)  = 0;
-    // glBufferSubData — called only when dirty (GpuBufferBase cache preserved)
 
-    // Shader resource management
     virtual GpuResourceDataPtr CreateShader(Shader* shader, const String& source) = 0;
-    // GL:  glCreateShader + glShaderSource + glCompileShader → returns GLShaderData
-    // VK:  shaderc: GLSL→SPIR-V → vkCreateShaderModule → returns VkShaderData
     virtual void DestroyShader(GpuResourceData* shaderData)                       = 0;
-    // GL:  glDeleteShader
-    // VK:  vkDestroyShaderModule
 
-    // GpuProgram resource management
     virtual void CreateGpuProgram(GpuProgram* program,
                                   struct GlobalGpuBuffers* buffers)      = 0;
-    // glCreateProgram + glAttachShader + glLinkProgram
-    // sampler slot binding, UBO block index + glBindBufferBase
-    // default + array uniform location caching
     virtual void DestroyGpuProgram(GpuProgram* program)                  = 0;
-    // glDeleteProgram
     virtual int  GetUniformLocation(GpuProgram* program, const char* name) = 0;
-    // glGetUniformLocation — used for lazy custom uniform lookup at draw time.
-    // Vulkan: returns -1 (push constants / descriptors handle this differently)
 
-    // Framebuffer resource management
     virtual void CreateFramebuffer(Framebuffer* fb)                 = 0;
     virtual void DestroyFramebuffer(Framebuffer* fb)                = 0;
     virtual void AttachColorTarget(Framebuffer* fb,
@@ -180,58 +131,35 @@ namespace ToolKit
                                    DepthTexturePtr dt)              = 0;
     virtual void DetachDepthTarget(Framebuffer* fb)                 = 0;
 
-    // Phase 7a: Custom uniforms and renderer utility
-    //////////////////////////////////////////
-
-    // Submits all custom uniforms for the currently bound program.
     virtual void SubmitCustomUniforms(const GpuProgramPtr& program,
                                       std::unordered_map<String, ShaderUniform>& uniforms) = 0;
 
-    // Sets a vec4 uniform at the given location in the currently bound program.
     virtual void SetUniform4f(int location, const Vec4& value) = 0;
 
-    // Returns the GPU renderer/device name string.
     virtual String GetBackendRendererString() = 0;
 
-    // Returns the maximum number of layers supported in a 2D array texture.
     virtual int GetMaxArrayTextureLayers() = 0;
 
-    // Enables or disables automatic sRGB encoding on the default framebuffer.
     virtual void SetSrgbAutoEncoding(bool enable) = 0;
 
-    // Blocks until all previously submitted GPU commands have completed.
     virtual void Finish() = 0;
 
-    // Sets the default clear color for the GL/VK context.
     virtual void SetDefaultClearColor(const Vec4& color) = 0;
 
-    // Validates whether the backbuffer actually performs sRGB encoding.
-    // Returns false if the backbuffer does NOT do sRGB encoding.
     virtual bool ValidateBackbufferSrgbEncoding() = 0;
 
-    // Enables or disables scissor testing.
     virtual void EnableScissorTest(bool enable) = 0;
 
-    // Reads pixels from the current read framebuffer.
     virtual void ReadPixels(int x, int y, int w, int h,
                             GraphicTypes format, GraphicTypes type, void* data) = 0;
 
-    // Uploads pixel data to a sub-region of a 2D texture.
-    // GL: binds texture + glTexSubImage2D.  VK: staging buffer + vkCmdCopyBufferToImage with region offset.
     virtual void UpdateTextureSubRegion(Texture* tex, int x, int y, int w, int h, const void* data) = 0;
 
-    // Debug annotations.
-    // GL: glPushGroupMarkerEXT / glPopGroupMarkerEXT
-    // VK: vkCmdBeginDebugUtilsLabel / vkCmdEndDebugUtilsLabel
     virtual void PushDebugGroup(StringView name) = 0;
     virtual void PopDebugGroup() = 0;
 
-    // Capability queries.
-    // Returns true if the GPU supports linear filtering on float textures.
     virtual bool SupportsFloatTextureLinearFilter() = 0;
 
-    // Returns an opaque native texture handle for external use (e.g. UI libraries).
-    // GL: (void*)(intptr_t)glTextureId.  VK: (void*)VkDescriptorSet.
     virtual void* GetNativeTextureHandle(Texture* tex) = 0;
   };
 

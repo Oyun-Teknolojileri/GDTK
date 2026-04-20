@@ -14,7 +14,6 @@ namespace ToolKit
   namespace Editor
   {
 
-    /** Graphics API abstraction for Editor ImGui rendering. */
     namespace EditorGPU
     {
       void InitImGui(SDL_Window* window, void* context);
