@@ -249,7 +249,7 @@ namespace ToolKit
       }
     }
 
-    return GetMax(0, pNodeAnim->mNumPositionKeys - 2);
+    return GetMax(0, pNodeAnim->mNumRotationKeys - 2);
   }
 
   uint FindScaling(float AnimationTime, const aiNodeAnim* pNodeAnim)
@@ -264,7 +264,7 @@ namespace ToolKit
       }
     }
 
-    return GetMax(0, pNodeAnim->mNumPositionKeys - 2);
+    return GetMax(0, pNodeAnim->mNumScalingKeys - 2);
   }
 
   void CalcInterpolatedPosition(aiVector3D& Out, float AnimationTime, const aiNodeAnim* pNodeAnim)
@@ -364,53 +364,103 @@ namespace ToolKit
       double duration    = anim->mDuration / fps;
       uint frameCount    = (uint) ceil(duration * g_desiredFps);
 
-      // Used to normalize animation start time.
-      int cr, ct, cs, cmax;
-      cr = ct = cs = cmax = 0;
-
       for (uint chIndx = 0; chIndx < anim->mNumChannels; chIndx++)
       {
         KeyArray keys;
         aiNodeAnim* nodeAnim = anim->mChannels[chIndx];
-        for (uint frame = 1; frame < frameCount; frame++)
+
+        // Determine the first tick where all channels have data.
+        float firstPosTick = (nodeAnim->mNumPositionKeys > 0) ? (float) nodeAnim->mPositionKeys[0].mTime : 0.0f;
+        float firstRotTick = (nodeAnim->mNumRotationKeys > 0) ? (float) nodeAnim->mRotationKeys[0].mTime : 0.0f;
+        float firstSclTick = (nodeAnim->mNumScalingKeys > 0) ? (float) nodeAnim->mScalingKeys[0].mTime : 0.0f;
+
+        // Get the initial values for each channel (first key or defaults).
+        aiVector3D initPos   = (nodeAnim->mNumPositionKeys > 0) ? nodeAnim->mPositionKeys[0].mValue : aiVector3D(0, 0, 0);
+        aiQuaternion initRot = (nodeAnim->mNumRotationKeys > 0) ? nodeAnim->mRotationKeys[0].mValue : aiQuaternion(1, 0, 0, 0);
+        aiVector3D initScl   = (nodeAnim->mNumScalingKeys > 0) ? nodeAnim->mScalingKeys[0].mValue : aiVector3D(1, 1, 1);
+
+        // Find the earliest tick among all channels for this bone.
+        float earliestTick   = glm::min(firstPosTick, glm::min(firstRotTick, firstSclTick));
+
+        // Convert earliest tick to frame number.
+        uint earliestFrame   = 0;
+        if (earliestTick > g_animEps && fps > 0.0)
         {
-          float timeInTicks = (frame / g_desiredFps) * (float) anim->mTicksPerSecond;
+          earliestFrame = (uint) glm::round((earliestTick / (float) fps) * g_desiredFps);
+        }
+
+        // If the animation doesn't start at frame 0, insert a hold key at frame 0 and at the frame
+        // just before the animation starts, so there is no blend from T-pose.
+        if (earliestFrame > 0)
+        {
+          Key holdKey;
+          holdKey.m_frame    = 0;
+          holdKey.m_position = Vec3(initPos.x, initPos.y, initPos.z);
+          holdKey.m_rotation = Quaternion(initRot.x, initRot.y, initRot.z, initRot.w);
+          holdKey.m_scale    = Vec3(initScl.x, initScl.y, initScl.z);
+          keys.push_back(holdKey);
+
+          if (earliestFrame > 1)
+          {
+            holdKey.m_frame = earliestFrame - 1;
+            keys.push_back(holdKey);
+          }
+        }
+
+        // Bake every frame: sample all three channels at every frame.
+        for (uint frame = earliestFrame; frame <= frameCount; frame++)
+        {
+          float timeInTicks = (frame / g_desiredFps) * (float) fps;
 
           aiVector3D t;
-          if (
-              // Timer is not yet reach the animation begin. Skip frames.
-              // Happens when there aren't keys at the beginning of the
-              // animation.
-              EpsilonLessEqual(timeInTicks, (float) nodeAnim->mPositionKeys[0].mTime, g_animEps))
+          if (nodeAnim->mNumPositionKeys > 0)
           {
-            continue;
+            if (timeInTicks <= firstPosTick)
+            {
+              t = initPos;
+            }
+            else
+            {
+              CalcInterpolatedPosition(t, timeInTicks, nodeAnim);
+            }
           }
           else
           {
-            CalcInterpolatedPosition(t, timeInTicks, nodeAnim);
-            ct++;
+            t = initPos;
           }
 
           aiQuaternion r;
-          if (EpsilonLessEqual(timeInTicks, (float) (nodeAnim->mRotationKeys[0].mTime), g_animEps))
+          if (nodeAnim->mNumRotationKeys > 0)
           {
-            continue;
+            if (timeInTicks <= firstRotTick)
+            {
+              r = initRot;
+            }
+            else
+            {
+              CalcInterpolatedRotation(r, timeInTicks, nodeAnim);
+            }
           }
           else
           {
-            CalcInterpolatedRotation(r, timeInTicks, nodeAnim);
-            cr++;
+            r = initRot;
           }
 
           aiVector3D s;
-          if (EpsilonLessEqual(timeInTicks, (float) (nodeAnim->mScalingKeys[0].mTime), g_animEps))
+          if (nodeAnim->mNumScalingKeys > 0)
           {
-            continue;
+            if (timeInTicks <= firstSclTick)
+            {
+              s = initScl;
+            }
+            else
+            {
+              CalcInterpolatedScaling(s, timeInTicks, nodeAnim);
+            }
           }
           else
           {
-            CalcInterpolatedScaling(s, timeInTicks, nodeAnim);
-            cs++;
+            s = initScl;
           }
 
           Key tKey;
@@ -421,14 +471,41 @@ namespace ToolKit
           keys.push_back(tKey);
         }
 
-        cmax = GetMax(cr, ct, cs);
-        cr = ct = cs = 0;
         tAnim->m_keys.insert(std::make_pair(nodeAnim->mNodeName.C_Str(), keys));
       }
 
-      // Recalculate duration. May be misleading due to shifted animations.
-      tAnim->m_duration = (float) (cmax / g_desiredFps);
-      tAnim->m_fps      = (float) (g_desiredFps);
+      // For skeleton bones that have no animation channel, write their T-pose transform
+      // to every frame so the runtime doesn't reset them to origin.
+      if (!g_skeletonMap.empty())
+      {
+        for (auto& skelEntry : g_skeletonMap)
+        {
+          const string& boneName = skelEntry.first;
+          if (tAnim->m_keys.find(boneName) == tAnim->m_keys.end())
+          {
+            // Get T-pose local transform from the scene node.
+            aiNode* boneNode = skelEntry.second.boneNode;
+            Vec3 t, s;
+            Quaternion r;
+            DecomposeAssimpMatrix(boneNode->mTransformation, &t, &r, &s);
+
+            KeyArray keys;
+            for (uint frame = 0; frame <= frameCount; frame++)
+            {
+              Key tKey;
+              tKey.m_frame    = frame;
+              tKey.m_position = t;
+              tKey.m_rotation = r;
+              tKey.m_scale    = s;
+              keys.push_back(tKey);
+            }
+            tAnim->m_keys.insert(std::make_pair(boneName, keys));
+          }
+        }
+      }
+
+      tAnim->m_duration = (float) duration;
+      tAnim->m_fps      = (float) g_desiredFps;
 
       CreateFileAndSerializeObject(tAnim.get(), animFilePath);
     }
@@ -1480,8 +1557,6 @@ namespace ToolKit
         string destFile = dest + fileName;
         // DON'T BREAK THE CALLING ORDER!
 
-        ImportAnimation(dest);
-
         // Create Textures to reference in Materials
         ImportTextures(dest);
 
@@ -1490,6 +1565,9 @@ namespace ToolKit
 
         // Create a Skeleton to reference in Meshes
         ImportSkeleton(destFile);
+
+        // Import animations after skeleton so g_skeletonMap is available.
+        ImportAnimation(dest);
 
         // Add Meshes.
         ImportMeshes(destFile);
