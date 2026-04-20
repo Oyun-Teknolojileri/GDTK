@@ -12,7 +12,6 @@
 #include <Material.h>
 #include <RenderSystem.h>
 #include <SDL.h>
-#include <TKOpenGL.h>
 #include <Texture.h>
 #include <ToolKit.h>
 #include <Types.h>
@@ -173,20 +172,20 @@ namespace ToolKit
 
     switch (m_platform)
     {
-    case PublishPlatform::Web:
-      return WebPublish();
-      break;
-    case PublishPlatform::Windows:
-      return WindowsPublish();
-      break;
-    case PublishPlatform::Android:
-      return AndroidPublish();
-    case PublishPlatform::EditorPlugin:
-    case PublishPlatform::GamePlugin:
-      return PluginPublish();
-    default:
-      TK_ERR("Unknown publish platform: %i\n", (int) m_platform);
-      return -1;
+      case PublishPlatform::Web:
+        return WebPublish();
+        break;
+      case PublishPlatform::Windows:
+        return WindowsPublish();
+        break;
+      case PublishPlatform::Android:
+        return AndroidPublish();
+      case PublishPlatform::EditorPlugin:
+      case PublishPlatform::GamePlugin:
+        return PluginPublish();
+      default:
+        TK_ERR("Unknown publish platform: %i\n", (int) m_platform);
+        return -1;
     }
   }
 
@@ -751,7 +750,11 @@ namespace ToolKit
     String projectName      = activeProjectName;
     String publishDirectory = ConcatPaths({ResourcePath(), "..", "Publish", "Web"});
     String firstPart        = ConcatPaths({ResourcePath(), "..", "Codes", "Bin", projectName}) + ".";
-    String files[]          = {firstPart + "data", firstPart + "html", firstPart + "js", firstPart + "wasm", firstPart + "worker.js"};
+    String files[]          = {firstPart + "data",
+                               firstPart + "html",
+                               firstPart + "js",
+                               firstPart + "wasm",
+                               firstPart + "worker.js"};
 
     std::filesystem::create_directories(publishDirectory, m_errorCode);
     if (CheckErrorReturn("Create directories " + publishDirectory))

@@ -6,6 +6,7 @@
  */
 
 #include "Launcher.h"
+#include "LauncherGPU.h"
 
 #include <Common/SDLEventPool.h>
 #include <Common/Win32Utils.h>
@@ -15,11 +16,9 @@
 #include <Object.h>
 #include <RenderSystem.h>
 #include <SDL.h>
-#include <TKOpenGL.h>
 #include <Types.h>
 
 #define IMGUI_USER_CONFIG "tk_imconfig.h"
-#include <ImGui/backends/imgui_impl_opengl3.h>
 #include <ImGui/backends/imgui_impl_sdl2.h>
 #include <imgui/imgui.h>
 #include <locale.h>
@@ -189,8 +188,7 @@ namespace ToolKit
       io.ConfigFlags                       |= ImGuiConfigFlags_DockingEnable;
       io.ConfigWindowsMoveFromTitleBarOnly  = true;
 
-      ImGui_ImplSDL2_InitForOpenGL(g_window, g_context);
-      ImGui_ImplOpenGL3_Init("#version 300 es");
+      Launcher::LauncherGPU::InitImGui(g_window, g_context);
 
       DeserializeThemeSettings();
 
@@ -225,14 +223,14 @@ namespace ToolKit
           ImGui_ImplSDL2_ProcessEvent(&sdlEvent);
         }
 
-        ImGui_ImplOpenGL3_NewFrame();
+        Launcher::LauncherGPU::ImGuiNewFrame();
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
 
         g_launcher->ShowLauncherWindow();
 
         ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        Launcher::LauncherGPU::ImGuiRenderDrawData();
         ImGui::EndFrame();
       };
 
@@ -253,7 +251,7 @@ namespace ToolKit
     {
       SafeDel(g_launcher);
 
-      ImGui_ImplOpenGL3_Shutdown();
+      Launcher::LauncherGPU::ShutdownImGui();
       ImGui_ImplSDL2_Shutdown();
       ImGui::DestroyContext();
 

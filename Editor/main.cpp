@@ -28,7 +28,6 @@
 #include <ImGui/backends/imgui_impl_sdl2.h>
 #include <PluginManager.h>
 #include <SDL.h>
-#include <TKOpenGL.h>
 #include <Types.h>
 #include <locale.h>
 

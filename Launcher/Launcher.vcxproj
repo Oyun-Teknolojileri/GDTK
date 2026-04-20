@@ -143,6 +143,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Launcher.cpp" />
+    <ClCompile Include="LauncherGPU.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
@@ -151,6 +152,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Launcher.h" />
+    <ClInclude Include="LauncherGPU.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\Editor\Editor.rc" />
