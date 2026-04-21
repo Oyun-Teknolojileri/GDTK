@@ -75,8 +75,6 @@ namespace ToolKit
 
     void SetClearColor(const Vec4& clearColor);
 
-    void EnableBlending(bool enable);
-
     uint GetFrameCount();
 
     void ResetFrameCount();

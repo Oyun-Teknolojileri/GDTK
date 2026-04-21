@@ -574,19 +574,6 @@ namespace ToolKit
     m_renderState.blendOverrideFunc = func;
   }
 
-  void Renderer::EnableBlending(bool enable)
-  {
-    if (enable)
-    {
-      m_renderState.blendOverride = false;
-    }
-    else
-    {
-      m_renderState.blendOverride     = true;
-      m_renderState.blendOverrideFunc = BlendFunction::NONE;
-    }
-  }
-
   void Renderer::EnableDepthWrite(bool enable) { m_renderState.depthWriteEnabled = enable; }
 
   void Renderer::EnableDepthTest(bool enable) { m_renderState.depthTestEnabled = enable; }
