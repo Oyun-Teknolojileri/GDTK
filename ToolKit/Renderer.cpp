@@ -1071,7 +1071,8 @@ namespace ToolKit
     pdu.inverseTransposeModel = m_inverseTransposeModel;
     pdu.iblRotation           = m_iblRotation;
     pdu.iblSecondaryRotation  = m_secondaryIblRotation;
-    pdu.viewportSize          = Vec2((float) m_viewportRect.x, (float) m_viewportRect.y);
+    pdu.viewportSize.x        = (float) m_viewportRect.x;
+    pdu.viewportSize.y        = (float) m_viewportRect.y;
     pdu.drawCommand           = m_drawCommand;
     pdu.materialData          = job.Material->GetCacheItem().data;
 
