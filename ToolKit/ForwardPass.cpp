@@ -46,7 +46,7 @@ namespace ToolKit
     Pass::PreRender();
 
     // Set self data.
-    Renderer* renderer = GetRenderer();
+    Renderer* renderer           = GetRenderer();
 
     GraphicBitFields discardBits = GraphicBitFields::None;
     if (m_params.invalidateDepthBuffer)

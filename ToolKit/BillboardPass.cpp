@@ -27,7 +27,7 @@ namespace ToolKit
 
     GpuProgramManager* gpuProgramManager = GetGpuProgramManager();
 
-    auto renderBillboardsFn = [this, cam, renderer, gpuProgramManager](EntityPtrArray& billboards) -> void
+    auto renderBillboardsFn              = [this, cam, renderer, gpuProgramManager](EntityPtrArray& billboards) -> void
     {
       m_renderData.jobs.clear();
 
