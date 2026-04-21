@@ -120,6 +120,8 @@ namespace ToolKit
 
   void RenderSystem::FlushGpuPrograms() { m_renderer->GetGpuProgramManager()->FlushPrograms(); }
 
+  GpuProgramManager* RenderSystem::GetGpuProgramManager() { return m_renderer->GetGpuProgramManager(); }
+
   void RenderSystem::SetAppWindowSize(uint width, uint height) { m_renderer->m_windowSize = UVec2(width, height); }
 
   UVec2 RenderSystem::GetAppWindowSize() { return m_renderer->m_windowSize; }
