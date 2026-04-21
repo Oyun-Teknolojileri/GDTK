@@ -321,7 +321,13 @@ namespace ToolKit
   {
     if (program)
     {
-      glUseProgram(GetGLProgramId(program.get()));
+      GLuint pid = GetGLProgramId(program.get());
+      if (pid != m_currentProgramId)
+      {
+        glUseProgram(pid);
+        m_currentProgramId = pid;
+      }
+      m_currentProgram = program.get();
     }
 
     if (state == nullptr)
@@ -457,93 +463,73 @@ namespace ToolKit
 
   void GLBackend::SubmitPerDrawData(const void* data, size_t size)
   {
-    if (data == nullptr || size != sizeof(PerDrawUniforms))
+    if (data == nullptr || size != sizeof(PerDrawUniforms) || m_currentProgram == nullptr)
     {
       return;
     }
 
     const PerDrawUniforms* pdu = reinterpret_cast<const PerDrawUniforms*>(data);
-    GLuint currentProgram;
-    glGetIntegerv(GL_CURRENT_PROGRAM, (GLint*) &currentProgram);
-    if (currentProgram == 0)
+    const auto& locs           = m_currentProgram->m_defaultUniformLocation;
+    const auto  locsEnd        = locs.end();
+
+    // Inline cached-location lookup — one hash-map find per uniform, zero GL roundtrips.
+    #define TK_GL_LOC(uniform) \
+      ([&]() -> GLint { auto it = locs.find(uniform); return it != locsEnd ? it->second : -1; })()
+
+    GLint loc;
+
+    loc = TK_GL_LOC(Uniform::MODEL);
+    if (loc != -1) glUniformMatrix4fv(loc, 1, false, reinterpret_cast<const float*>(&pdu->model));
+
+    loc = TK_GL_LOC(Uniform::MODEL_WITHOUT_TRANSLATE);
+    if (loc != -1) glUniformMatrix4fv(loc, 1, false, reinterpret_cast<const float*>(&pdu->modelWithoutTranslate));
+
+    loc = TK_GL_LOC(Uniform::INVERSE_MODEL);
+    if (loc != -1) glUniformMatrix4fv(loc, 1, false, reinterpret_cast<const float*>(&pdu->inverseModel));
+
+    loc = TK_GL_LOC(Uniform::INVERSE_TRANSPOSE_MODEL);
+    if (loc != -1) glUniformMatrix4fv(loc, 1, false, reinterpret_cast<const float*>(&pdu->inverseTransposeModel));
+
+    loc = TK_GL_LOC(Uniform::IBL_ROTATION);
+    if (loc != -1) glUniformMatrix4fv(loc, 1, false, reinterpret_cast<const float*>(&pdu->iblRotation));
+
+    loc = TK_GL_LOC(Uniform::IBL_SECONDARY_ROTATION);
+    if (loc != -1) glUniformMatrix4fv(loc, 1, false, reinterpret_cast<const float*>(&pdu->iblSecondaryRotation));
+
+    loc = TK_GL_LOC(Uniform::VIEWPORT_SIZE);
+    if (loc != -1) glUniform2f(loc, pdu->viewportSize.x, pdu->viewportSize.y);
+
+    loc = TK_GL_LOC(Uniform::DRAW_COMMAND);
+    if (loc != -1) glUniform4fv(loc, sizeof(DrawCommand) / sizeof(Vec4), (const float*) &pdu->drawCommand);
+
+    if (pdu->activePointLightCount > 0)
     {
-      return;
+      loc = TK_GL_LOC(Uniform::ACTIVE_POINT_LIGHT_INDEXES);
+      if (loc != -1) glUniform1iv(loc, pdu->activePointLightCount, pdu->activePointLightIndices);
     }
 
-    // Built-in uniforms.
-    auto setMat4 = [&](Uniform u, const Mat4& m)
+    if (pdu->activeSpotLightCount > 0)
     {
-      GLint loc = glGetUniformLocation(currentProgram, GetUniformName(u));
-      if (loc != -1)
-      {
-        glUniformMatrix4fv(loc, 1, false, reinterpret_cast<const float*>(&m));
-      }
-    };
-
-    setMat4(Uniform::MODEL, pdu->model);
-    setMat4(Uniform::MODEL_WITHOUT_TRANSLATE, pdu->modelWithoutTranslate);
-    setMat4(Uniform::INVERSE_MODEL, pdu->inverseModel);
-    setMat4(Uniform::INVERSE_TRANSPOSE_MODEL, pdu->inverseTransposeModel);
-    setMat4(Uniform::IBL_ROTATION, pdu->iblRotation);
-    setMat4(Uniform::IBL_SECONDARY_ROTATION, pdu->iblSecondaryRotation);
-
-    GLint vpLoc = glGetUniformLocation(currentProgram, GetUniformName(Uniform::VIEWPORT_SIZE));
-    if (vpLoc != -1)
-    {
-      glUniform2f(vpLoc, pdu->viewportSize.x, pdu->viewportSize.y);
+      loc = TK_GL_LOC(Uniform::ACTIVE_SPOT_LIGHT_INDEXES);
+      if (loc != -1) glUniform1iv(loc, pdu->activeSpotLightCount, pdu->activeSpotLightIndices);
     }
 
-    // DrawCommand.
-    GLint dcLoc = glGetUniformLocation(currentProgram, GetUniformName(Uniform::DRAW_COMMAND));
-    if (dcLoc != -1)
-    {
-      glUniform4fv(dcLoc, sizeof(DrawCommand) / sizeof(Vec4), (const float*) &pdu->drawCommand);
-    }
+    loc = TK_GL_LOC(Uniform::MATERIAL_CACHE);
+    if (loc != -1) glUniform4fv(loc, sizeof(MaterialCacheItem::Data) / sizeof(Vec4), (const float*) &pdu->materialData);
 
-    // Light indices.
-    GLint plLoc = glGetUniformLocation(currentProgram, GetUniformName(Uniform::ACTIVE_POINT_LIGHT_INDEXES));
-    if (plLoc != -1 && pdu->activePointLightCount > 0)
-    {
-      glUniform1iv(plLoc, pdu->activePointLightCount, pdu->activePointLightIndices);
-    }
+    loc = TK_GL_LOC(Uniform::KEY_FRAME_DATA);
+    if (loc != -1) glUniform4fv(loc, 1, (const float*) &pdu->keyFrameData);
 
-    GLint slLoc = glGetUniformLocation(currentProgram, GetUniformName(Uniform::ACTIVE_SPOT_LIGHT_INDEXES));
-    if (slLoc != -1 && pdu->activeSpotLightCount > 0)
-    {
-      glUniform1iv(slLoc, pdu->activeSpotLightCount, pdu->activeSpotLightIndices);
-    }
+    loc = TK_GL_LOC(Uniform::BLEND_FRAME_DATA);
+    if (loc != -1) glUniform4fv(loc, 1, (const float*) &pdu->blendFrameData);
 
-    // Material data.
-    GLint matLoc = glGetUniformLocation(currentProgram, GetUniformName(Uniform::MATERIAL_CACHE));
-    if (matLoc != -1)
-    {
-      glUniform4fv(matLoc, sizeof(MaterialCacheItem::Data) / sizeof(Vec4), (const float*) &pdu->materialData);
-    }
+    loc = TK_GL_LOC(Uniform::BLEND_FACTOR);
+    if (loc != -1) glUniform1f(loc, pdu->animationBlendFactor);
 
-    // Animation data.
-    GLint kfLoc = glGetUniformLocation(currentProgram, GetUniformName(Uniform::KEY_FRAME_DATA));
-    if (kfLoc != -1)
-    {
-      glUniform4fv(kfLoc, 1, (const float*) &pdu->keyFrameData);
-    }
+    loc = TK_GL_LOC(Uniform::SKIN_PARAMS);
+    if (loc != -1) glUniform4fv(loc, 1, (const float*) &pdu->skinParams);
 
-    GLint bkfLoc = glGetUniformLocation(currentProgram, GetUniformName(Uniform::BLEND_FRAME_DATA));
-    if (bkfLoc != -1)
-    {
-      glUniform4fv(bkfLoc, 1, (const float*) &pdu->blendFrameData);
-    }
-
-    GLint bfLoc = glGetUniformLocation(currentProgram, GetUniformName(Uniform::BLEND_FACTOR));
-    if (bfLoc != -1)
-    {
-      glUniform1f(bfLoc, pdu->animationBlendFactor);
-    }
-
-    GLint spLoc = glGetUniformLocation(currentProgram, GetUniformName(Uniform::SKIN_PARAMS));
-    if (spLoc != -1)
-    {
-      glUniform4fv(spLoc, 1, (const float*) &pdu->skinParams);
-    }
+    #undef TK_GL_LOC
   }
 
   void GLBackend::BindTexture(ubyte slot, TexturePtr tex)
@@ -833,10 +819,11 @@ namespace ToolKit
 
     program->m_gpuData   = std::move(glData);
 
-    // Save and restore the currently bound program.
-    GLint currentProgram = 0;
-    glGetIntegerv(GL_CURRENT_PROGRAM, &currentProgram);
+    // Bind newly created program to set up samplers / UBO bindings.
+    // No save/restore: we track current program internally, so just update the cache.
     glUseProgram(pid);
+    m_currentProgramId = pid;
+    m_currentProgram   = program;
 
     // Bind sampler slots so shader samplers map to texture bind slots.
     for (ubyte slot = 0; slot < RHIConstants::TextureSlotCount; slot++)
@@ -887,13 +874,43 @@ namespace ToolKit
       }
     }
 
-    glUseProgram(currentProgram);
+    // Force-cache all uniforms SubmitPerDrawData touches — shader def may not list them,
+    // but the GLSL source can still define them (driver query is authoritative).
+    static constexpr Uniform kPerDrawUniforms[] = {
+      Uniform::MODEL,
+      Uniform::MODEL_WITHOUT_TRANSLATE,
+      Uniform::INVERSE_MODEL,
+      Uniform::INVERSE_TRANSPOSE_MODEL,
+      Uniform::IBL_ROTATION,
+      Uniform::IBL_SECONDARY_ROTATION,
+      Uniform::VIEWPORT_SIZE,
+      Uniform::DRAW_COMMAND,
+      Uniform::ACTIVE_POINT_LIGHT_INDEXES,
+      Uniform::ACTIVE_SPOT_LIGHT_INDEXES,
+      Uniform::MATERIAL_CACHE,
+      Uniform::KEY_FRAME_DATA,
+      Uniform::BLEND_FRAME_DATA,
+      Uniform::BLEND_FACTOR,
+      Uniform::SKIN_PARAMS,
+    };
+    for (Uniform u : kPerDrawUniforms)
+    {
+      if (program->m_defaultUniformLocation.find(u) == program->m_defaultUniformLocation.end())
+      {
+        program->m_defaultUniformLocation[u] = glGetUniformLocation(pid, GetUniformName(u));
+      }
+    }
   }
 
   void GLBackend::DestroyGpuProgram(GpuProgram* program)
   {
     if (GLProgramData* gl = GetGLProgramData(program))
     {
+      if (gl->programId == m_currentProgramId)
+      {
+        m_currentProgramId = 0;
+        m_currentProgram   = nullptr;
+      }
       glDeleteProgram(gl->programId);
     }
     program->m_gpuData.reset();

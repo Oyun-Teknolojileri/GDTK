@@ -127,6 +127,10 @@ namespace ToolKit
     bool m_firstBind = true;
     PassDesc m_activePassDesc;
 
+    // Program cache — avoids glUseProgram no-ops and glGetIntegerv(GL_CURRENT_PROGRAM) roundtrips.
+    uint        m_currentProgramId = 0;
+    GpuProgram* m_currentProgram   = nullptr;
+
     // Framebuffer cache
     uint m_currentReadFboId = (uint) -1;
     uint m_currentDrawFboId = (uint) -1;
