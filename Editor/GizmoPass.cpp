@@ -32,7 +32,7 @@ namespace ToolKit
     void GizmoPass::Render()
     {
       Renderer* renderer                   = GetRenderer();
-      GpuProgramManager* gpuProgramManager = GetGpuProgramManager();
+      GpuProgramManager* gpuProgramManager = renderer->GetGpuProgramManager();
 
       for (EditorBillboardPtr billboard : m_params.GizmoArray)
       {

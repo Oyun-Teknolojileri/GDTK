@@ -322,7 +322,7 @@ namespace ToolKit
     ShaderPtr vert = shadowMaterial->GetVertexShaderVal();
     vert->SetDefine("DrawAlphaMasked", "0");
 
-    GpuProgramManager* gpuProgramManager = GetGpuProgramManager();
+    GpuProgramManager* gpuProgramManager = renderer->GetGpuProgramManager();
     m_program                            = gpuProgramManager->CreateProgram(vert, frag);
     renderer->BindProgram(m_program);
 

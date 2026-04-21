@@ -98,6 +98,8 @@ namespace ToolKit
   {
     TK_PROFILE_FUNCTION();
 
+    Renderer* renderer = GetRenderer();
+
     // Adjust program configuration.
     ConfigureProgram();
 
@@ -106,7 +108,7 @@ namespace ToolKit
     frag->SetDefine("DrawAlphaMasked", "0");
 
     ShaderPtr vert           = m_programConfigMat->GetVertexShaderVal();
-    GpuProgramPtr gpuProgram = GetGpuProgramManager()->CreateProgram(vert, frag);
+    GpuProgramPtr gpuProgram = renderer->GetGpuProgramManager()->CreateProgram(vert, frag);
 
     RenderJobItr begin       = renderData->GetForwardOpaqueBegin();
     RenderJobItr end         = renderData->GetForwardAlphaMaskedBegin();
@@ -114,7 +116,7 @@ namespace ToolKit
 
     // Render alpha masked.
     frag->SetDefine("DrawAlphaMasked", "1");
-    gpuProgram = GetGpuProgramManager()->CreateProgram(vert, frag);
+    gpuProgram = renderer->GetGpuProgramManager()->CreateProgram(vert, frag);
 
     begin      = renderData->GetForwardAlphaMaskedBegin();
     end        = renderData->GetForwardTranslucentBegin();
@@ -138,7 +140,7 @@ namespace ToolKit
 
     ShaderPtr vert        = m_programConfigMat->GetVertexShaderVal();
 
-    GpuProgramPtr program = GetGpuProgramManager()->CreateProgram(vert, frag);
+    GpuProgramPtr program = renderer->GetGpuProgramManager()->CreateProgram(vert, frag);
 
     renderer->BindProgram(program);
 

@@ -85,10 +85,10 @@ namespace ToolKit
     frag->SetDefine("DrawAlphaMasked", "0");
 
     ShaderPtr vert                       = m_linearMaterial->GetVertexShaderVal();
-    GpuProgramManager* gpuProgramManager = GetGpuProgramManager();
+    Renderer* renderer                   = GetRenderer();
+    GpuProgramManager* gpuProgramManager = renderer->GetGpuProgramManager();
     m_program                            = gpuProgramManager->CreateProgram(vert, frag);
 
-    Renderer* renderer                   = GetRenderer();
     renderer->BindProgram(m_program);
 
     for (RenderJobItr job = begin; job != end; job++)

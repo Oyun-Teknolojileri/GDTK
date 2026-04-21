@@ -25,7 +25,7 @@ namespace ToolKit
     CameraPtr cam = vp->GetCamera();
     renderer->SetCamera(cam, true);
 
-    GpuProgramManager* gpuProgramManager = GetGpuProgramManager();
+    GpuProgramManager* gpuProgramManager = renderer->GetGpuProgramManager();
 
     auto renderBillboardsFn              = [this, cam, renderer, gpuProgramManager](EntityPtrArray& billboards) -> void
     {

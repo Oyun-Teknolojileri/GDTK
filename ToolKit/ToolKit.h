@@ -247,7 +247,6 @@ namespace ToolKit
   TK_API class ObjectFactory* GetObjectFactory();
   TK_API class TKStats* GetTKStats();
   TK_API class WorkerManager* GetWorkerManager();
-  TK_API class GpuProgramManager* GetGpuProgramManager();
   TK_API Timing* GetTiming();
 
   // Path.

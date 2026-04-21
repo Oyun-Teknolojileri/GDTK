@@ -55,7 +55,7 @@ namespace ToolKit
     Pass::PreRender();
     Renderer* renderer                   = GetRenderer();
 
-    GpuProgramManager* gpuProgramManager = GetGpuProgramManager();
+    GpuProgramManager* gpuProgramManager = renderer->GetGpuProgramManager();
     ShaderPtr vert                       = m_solidOverrideMaterial->GetVertexShaderVal();
     ShaderPtr frag                       = m_solidOverrideMaterial->GetFragmentShaderVal();
     m_program                            = gpuProgramManager->CreateProgram(vert, frag);

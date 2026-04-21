@@ -430,8 +430,6 @@ namespace ToolKit
 
   WorkerManager* GetWorkerManager() { return Main::GetInstance()->m_workerManager; }
 
-  GpuProgramManager* GetGpuProgramManager() { return GetRenderSystem()->GetRenderer()->GetGpuProgramManager(); }
-
   Timing* GetTiming() { return &Main::GetInstance()->m_timing; }
 
   EngineSettings& GetEngineSettings() { return *Main::GetInstance()->m_engineSettings; }

@@ -118,7 +118,7 @@ namespace ToolKit
     flushTasksFn(m_lowQueue);
   }
 
-  void RenderSystem::FlushGpuPrograms() { GetGpuProgramManager()->FlushPrograms(); }
+  void RenderSystem::FlushGpuPrograms() { m_renderer->GetGpuProgramManager()->FlushPrograms(); }
 
   void RenderSystem::SetAppWindowSize(uint width, uint height) { m_renderer->m_windowSize = UVec2(width, height); }
 
