@@ -48,8 +48,9 @@ namespace ToolKit
     IGraphicsBackend* m_backend = nullptr; //!< Set by GpuProgramManager on creation.
 
    public:
-    std::unordered_map<Uniform, int> m_defaultUniformLocation;
-    std::unordered_map<Uniform, int> m_defaultArrayUniformLocations;
+    // Flat arrays indexed by Uniform enum value. -1 means "not present".
+    std::array<int, static_cast<size_t>(Uniform::UNIFORM_MAX_INVALID)> m_defaultUniformLocation;
+    std::array<int, static_cast<size_t>(Uniform::UNIFORM_MAX_INVALID)> m_defaultArrayUniformLocations;
     std::unordered_map<String, ShaderUniform> m_customUniforms;
   };
 

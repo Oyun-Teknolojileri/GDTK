@@ -469,67 +469,61 @@ namespace ToolKit
     }
 
     const PerDrawUniforms* pdu = reinterpret_cast<const PerDrawUniforms*>(data);
-    const auto& locs           = m_currentProgram->m_defaultUniformLocation;
-    const auto  locsEnd        = locs.end();
+    const int* locs            = m_currentProgram->m_defaultUniformLocation.data();
 
-    // Inline cached-location lookup — one hash-map find per uniform, zero GL roundtrips.
-    #define TK_GL_LOC(uniform) \
-      ([&]() -> GLint { auto it = locs.find(uniform); return it != locsEnd ? it->second : -1; })()
-
+    // Direct O(1) array lookup — no hash, no find.
     GLint loc;
 
-    loc = TK_GL_LOC(Uniform::MODEL);
+    loc = locs[(int) Uniform::MODEL];
     if (loc != -1) glUniformMatrix4fv(loc, 1, false, reinterpret_cast<const float*>(&pdu->model));
 
-    loc = TK_GL_LOC(Uniform::MODEL_WITHOUT_TRANSLATE);
+    loc = locs[(int) Uniform::MODEL_WITHOUT_TRANSLATE];
     if (loc != -1) glUniformMatrix4fv(loc, 1, false, reinterpret_cast<const float*>(&pdu->modelWithoutTranslate));
 
-    loc = TK_GL_LOC(Uniform::INVERSE_MODEL);
+    loc = locs[(int) Uniform::INVERSE_MODEL];
     if (loc != -1) glUniformMatrix4fv(loc, 1, false, reinterpret_cast<const float*>(&pdu->inverseModel));
 
-    loc = TK_GL_LOC(Uniform::INVERSE_TRANSPOSE_MODEL);
+    loc = locs[(int) Uniform::INVERSE_TRANSPOSE_MODEL];
     if (loc != -1) glUniformMatrix4fv(loc, 1, false, reinterpret_cast<const float*>(&pdu->inverseTransposeModel));
 
-    loc = TK_GL_LOC(Uniform::IBL_ROTATION);
+    loc = locs[(int) Uniform::IBL_ROTATION];
     if (loc != -1) glUniformMatrix4fv(loc, 1, false, reinterpret_cast<const float*>(&pdu->iblRotation));
 
-    loc = TK_GL_LOC(Uniform::IBL_SECONDARY_ROTATION);
+    loc = locs[(int) Uniform::IBL_SECONDARY_ROTATION];
     if (loc != -1) glUniformMatrix4fv(loc, 1, false, reinterpret_cast<const float*>(&pdu->iblSecondaryRotation));
 
-    loc = TK_GL_LOC(Uniform::VIEWPORT_SIZE);
+    loc = locs[(int) Uniform::VIEWPORT_SIZE];
     if (loc != -1) glUniform2f(loc, pdu->viewportSize.x, pdu->viewportSize.y);
 
-    loc = TK_GL_LOC(Uniform::DRAW_COMMAND);
+    loc = locs[(int) Uniform::DRAW_COMMAND];
     if (loc != -1) glUniform4fv(loc, sizeof(DrawCommand) / sizeof(Vec4), (const float*) &pdu->drawCommand);
 
     if (pdu->activePointLightCount > 0)
     {
-      loc = TK_GL_LOC(Uniform::ACTIVE_POINT_LIGHT_INDEXES);
+      loc = locs[(int) Uniform::ACTIVE_POINT_LIGHT_INDEXES];
       if (loc != -1) glUniform1iv(loc, pdu->activePointLightCount, pdu->activePointLightIndices);
     }
 
     if (pdu->activeSpotLightCount > 0)
     {
-      loc = TK_GL_LOC(Uniform::ACTIVE_SPOT_LIGHT_INDEXES);
+      loc = locs[(int) Uniform::ACTIVE_SPOT_LIGHT_INDEXES];
       if (loc != -1) glUniform1iv(loc, pdu->activeSpotLightCount, pdu->activeSpotLightIndices);
     }
 
-    loc = TK_GL_LOC(Uniform::MATERIAL_CACHE);
+    loc = locs[(int) Uniform::MATERIAL_CACHE];
     if (loc != -1) glUniform4fv(loc, sizeof(MaterialCacheItem::Data) / sizeof(Vec4), (const float*) &pdu->materialData);
 
-    loc = TK_GL_LOC(Uniform::KEY_FRAME_DATA);
+    loc = locs[(int) Uniform::KEY_FRAME_DATA];
     if (loc != -1) glUniform4fv(loc, 1, (const float*) &pdu->keyFrameData);
 
-    loc = TK_GL_LOC(Uniform::BLEND_FRAME_DATA);
+    loc = locs[(int) Uniform::BLEND_FRAME_DATA];
     if (loc != -1) glUniform4fv(loc, 1, (const float*) &pdu->blendFrameData);
 
-    loc = TK_GL_LOC(Uniform::BLEND_FACTOR);
+    loc = locs[(int) Uniform::BLEND_FACTOR];
     if (loc != -1) glUniform1f(loc, pdu->animationBlendFactor);
 
-    loc = TK_GL_LOC(Uniform::SKIN_PARAMS);
+    loc = locs[(int) Uniform::SKIN_PARAMS];
     if (loc != -1) glUniform4fv(loc, 1, (const float*) &pdu->skinParams);
-
-    #undef TK_GL_LOC
   }
 
   void GLBackend::BindTexture(ubyte slot, TexturePtr tex)
@@ -863,14 +857,14 @@ namespace ToolKit
     {
       for (const Uniform& uniform : shader->m_uniforms)
       {
-        GLint loc                                  = glGetUniformLocation(pid, GetUniformName(uniform));
-        program->m_defaultUniformLocation[uniform] = loc;
+        GLint loc = glGetUniformLocation(pid, GetUniformName(uniform));
+        program->m_defaultUniformLocation[(int) uniform] = loc;
       }
 
       for (Shader::ArrayUniform arrayUniform : shader->m_arrayUniforms)
       {
         GLint loc = glGetUniformLocation(pid, GetUniformName(arrayUniform.uniform));
-        program->m_defaultArrayUniformLocations[arrayUniform.uniform] = loc;
+        program->m_defaultArrayUniformLocations[(int) arrayUniform.uniform] = loc;
       }
     }
 
@@ -895,9 +889,10 @@ namespace ToolKit
     };
     for (Uniform u : kPerDrawUniforms)
     {
-      if (program->m_defaultUniformLocation.find(u) == program->m_defaultUniformLocation.end())
+      int idx = (int) u;
+      if (program->m_defaultUniformLocation[idx] == -1)
       {
-        program->m_defaultUniformLocation[u] = glGetUniformLocation(pid, GetUniformName(u));
+        program->m_defaultUniformLocation[idx] = glGetUniformLocation(pid, GetUniformName(u));
       }
     }
   }

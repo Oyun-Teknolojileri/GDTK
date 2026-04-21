@@ -18,10 +18,16 @@ namespace ToolKit
   // GpuProgram
   //////////////////////////////////////////
 
-  GpuProgram::GpuProgram() {}
+  GpuProgram::GpuProgram()
+  {
+    m_defaultUniformLocation.fill(-1);
+    m_defaultArrayUniformLocations.fill(-1);
+  }
 
   GpuProgram::GpuProgram(ShaderPtr vertex, ShaderPtr fragment)
   {
+    m_defaultUniformLocation.fill(-1);
+    m_defaultArrayUniformLocations.fill(-1);
     m_shaders.push_back(vertex);
     m_shaders.push_back(fragment);
   }
@@ -36,25 +42,12 @@ namespace ToolKit
 
   int GpuProgram::GetDefaultUniformLocation(Uniform uniform, int index)
   {
-    if (index == -1)
+    const size_t i = static_cast<size_t>(uniform);
+    if (i >= static_cast<size_t>(Uniform::UNIFORM_MAX_INVALID))
     {
-      const auto& itr = m_defaultUniformLocation.find(uniform);
-      if (itr != m_defaultUniformLocation.end())
-      {
-        return itr->second;
-      }
+      return -1;
     }
-    else
-    {
-      // Uniform is an array
-      const auto& itr = m_defaultArrayUniformLocations.find(uniform);
-      if (itr != m_defaultArrayUniformLocations.end())
-      {
-        return itr->second;
-      }
-    }
-
-    return -1;
+    return index == -1 ? m_defaultUniformLocation[i] : m_defaultArrayUniformLocations[i];
   }
 
   int GpuProgram::GetCustomUniformLocation(ShaderUniform& shaderUniform)
