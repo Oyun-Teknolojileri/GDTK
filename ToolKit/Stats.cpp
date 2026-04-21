@@ -361,21 +361,9 @@ namespace ToolKit
 
   namespace Stats
   {
-    static IGraphicsBackend* GetBackend()
-    {
-      if (RenderSystem* rs = GetRenderSystem())
-      {
-        if (Renderer* r = rs->GetRenderer())
-        {
-          return r->GetBackend();
-        }
-      }
-      return nullptr;
-    }
-
     void BeginGpuScope(StringView name)
     {
-      if (IGraphicsBackend* backend = GetBackend())
+      if (IGraphicsBackend* backend = GetRenderSystem()->GetBackend())
       {
         backend->PushDebugGroup(name);
       }
@@ -383,7 +371,7 @@ namespace ToolKit
 
     void EndGpuScope()
     {
-      if (IGraphicsBackend* backend = GetBackend())
+      if (IGraphicsBackend* backend = GetRenderSystem()->GetBackend())
       {
         backend->PopDebugGroup();
       }

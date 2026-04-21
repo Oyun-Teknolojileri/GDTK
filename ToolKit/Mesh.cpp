@@ -56,7 +56,7 @@ namespace ToolKit
 
     TK_ASSERT_ONCE(!m_clientSideVertices.empty() || m_vertexLayout == VertexLayout::SkinMesh);
 
-    IGraphicsBackend* backend = GetRenderSystem()->GetRenderer()->GetBackend();
+    IGraphicsBackend* backend = GetRenderSystem()->GetBackend();
     backend->CreateMesh(this);
 
     Stats::AddVRAMUsageInBytes(GetVertexSize() * (uint64) m_vertexCount);
@@ -97,7 +97,7 @@ namespace ToolKit
         Stats::RemoveVRAMUsageInBytes(sizeof(uint) * m_indexCount);
       }
 
-      GetRenderSystem()->GetRenderer()->GetBackend()->DestroyMesh(this);
+      GetRenderSystem()->GetBackend()->DestroyMesh(this);
     }
 
     m_subMeshes.clear();
@@ -141,7 +141,7 @@ namespace ToolKit
     // Upload copy's client-side data (already copied above) to GPU.
     if (m_vertexCount > 0)
     {
-      IGraphicsBackend* backend = GetRenderSystem()->GetRenderer()->GetBackend();
+      IGraphicsBackend* backend = GetRenderSystem()->GetBackend();
       backend->CreateMesh(cpy);
 
       Stats::AddVRAMUsageInBytes((uint64) GetVertexSize() * cpy->m_vertexCount);
@@ -552,7 +552,7 @@ namespace ToolKit
       Stats::RemoveVRAMUsageInBytes(GetVertexSize() * m_vertexCount);
     }
 
-    IGraphicsBackend* backend = GetRenderSystem()->GetRenderer()->GetBackend();
+    IGraphicsBackend* backend = GetRenderSystem()->GetBackend();
     backend->CreateMesh(this);
 
     Stats::AddVRAMUsageInBytes(GetVertexSize() * (uint64) m_vertexCount);
@@ -570,7 +570,7 @@ namespace ToolKit
       Stats::RemoveVRAMUsageInBytes(sizeof(uint) * m_indexCount);
     }
 
-    IGraphicsBackend* backend = GetRenderSystem()->GetRenderer()->GetBackend();
+    IGraphicsBackend* backend = GetRenderSystem()->GetBackend();
     backend->CreateMesh(this);
 
     Stats::AddVRAMUsageInBytes(sizeof(uint) * (uint64) m_indexCount);

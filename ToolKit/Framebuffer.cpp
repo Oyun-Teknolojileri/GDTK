@@ -19,18 +19,6 @@
 
 namespace ToolKit
 {
-  static IGraphicsBackend* GetBackend()
-  {
-    if (RenderSystem* rs = GetRenderSystem())
-    {
-      if (Renderer* r = rs->GetRenderer())
-      {
-        return r->GetBackend();
-      }
-    }
-    return nullptr;
-  }
-
   TKDefineClass(Framebuffer, Resource);
 
   Framebuffer::Framebuffer()
@@ -80,7 +68,7 @@ namespace ToolKit
       m_settings.height = 1024;
     }
 
-    IGraphicsBackend* backend = GetBackend();
+    IGraphicsBackend* backend = GetRenderSystem()->GetBackend();
     assert(backend && "Graphics backend not available during Framebuffer::Init");
 
     backend->CreateFramebuffer(this);
@@ -110,7 +98,7 @@ namespace ToolKit
       m_colorAtchs[i] = nullptr;
     }
 
-    if (IGraphicsBackend* backend = GetBackend())
+    if (IGraphicsBackend* backend = GetRenderSystem()->GetBackend())
     {
       backend->DestroyFramebuffer(this);
     }
@@ -152,7 +140,7 @@ namespace ToolKit
     assert(dt != nullptr && "Depth texture can't be null.");
     m_depthAtch = dt;
 
-    if (IGraphicsBackend* backend = GetBackend())
+    if (IGraphicsBackend* backend = GetRenderSystem()->GetBackend())
     {
       backend->AttachDepthTarget(this, dt);
     }
@@ -165,7 +153,7 @@ namespace ToolKit
       return nullptr;
     }
 
-    if (IGraphicsBackend* backend = GetBackend())
+    if (IGraphicsBackend* backend = GetRenderSystem()->GetBackend())
     {
       backend->DetachDepthTarget(this);
     }
@@ -194,7 +182,7 @@ namespace ToolKit
     m_settings.width        = rt->m_width;
     m_settings.height       = rt->m_height;
 
-    if (IGraphicsBackend* backend = GetBackend())
+    if (IGraphicsBackend* backend = GetRenderSystem()->GetBackend())
     {
       int faceIdx = (face != CubemapFace::NONE) ? (int) face : -1;
       backend->AttachColorTarget(this, rt, (int) atc, mip, layer, faceIdx);
@@ -223,7 +211,7 @@ namespace ToolKit
 
     m_colorAtchs[(int) atc] = nullptr;
 
-    if (IGraphicsBackend* backend = GetBackend())
+    if (IGraphicsBackend* backend = GetRenderSystem()->GetBackend())
     {
       backend->DetachColorTarget(this, (int) atc);
     }

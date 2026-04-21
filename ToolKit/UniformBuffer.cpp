@@ -16,8 +16,6 @@
 namespace ToolKit
 {
 
-  static IGraphicsBackend* GetBackend() { return GetRenderSystem()->GetRenderer()->GetBackend(); }
-
   UniformBuffer::UniformBuffer()
   {
     m_slot = -1;
@@ -28,11 +26,11 @@ namespace ToolKit
   {
     if (m_gpuData)
     {
-      GetBackend()->DestroyUniformBuffer(this);
+      GetRenderSystem()->GetBackend()->DestroyUniformBuffer(this);
     }
   }
 
-  void UniformBuffer::Init(uint64 size) { GetBackend()->CreateUniformBuffer(this, size); }
+  void UniformBuffer::Init(uint64 size) { GetRenderSystem()->GetBackend()->CreateUniformBuffer(this, size); }
 
   void UniformBuffer::Map(const void* data, uint64 size)
   {
@@ -55,7 +53,7 @@ namespace ToolKit
 
     Stats::IncrementStat(FrameStatType::UboUpdates);
 
-    GetBackend()->UpdateUniformBuffer(this, data, size);
+    GetRenderSystem()->GetBackend()->UpdateUniformBuffer(this, data, size);
   }
 
 } // namespace ToolKit

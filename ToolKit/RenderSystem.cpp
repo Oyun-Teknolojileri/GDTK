@@ -122,6 +122,8 @@ namespace ToolKit
 
   GpuProgramManager* RenderSystem::GetGpuProgramManager() { return m_renderer->GetGpuProgramManager(); }
 
+  IGraphicsBackend* RenderSystem::GetBackend() { return m_renderer->GetBackend(); }
+
   void RenderSystem::SetAppWindowSize(uint width, uint height) { m_renderer->m_windowSize = UVec2(width, height); }
 
   UVec2 RenderSystem::GetAppWindowSize() { return m_renderer->m_windowSize; }

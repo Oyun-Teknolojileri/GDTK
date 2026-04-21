@@ -102,6 +102,7 @@ namespace ToolKit
 
     Renderer* GetRenderer() { return m_renderer; }
     GpuProgramManager* GetGpuProgramManager();
+    IGraphicsBackend* GetBackend();
 
     void SetPresentCallback(std::function<void()> callback) { m_presentCallback = std::move(callback); }
 

@@ -129,7 +129,7 @@ namespace ToolKit
     m_gpuProgramManager->SetBackend(m_backend);
     m_gpuProgramManager->SetGpuBuffers(m_globalGpuBuffers);
 
-    String renderer                 = m_backend->GetBackendRendererString();
+    String renderer = m_backend->GetBackendRendererString();
     GetLogger()->Log(String("Graphics Card ") + renderer);
 
     // Validate sRGB automatic encoding on backbuffer if enabled.
@@ -443,7 +443,7 @@ namespace ToolKit
 
   uint Renderer::GetNativeTextureHandle(const TexturePtr& tex)
   {
-    void* id = GetRenderSystem()->GetRenderer()->GetBackend()->GetNativeTextureHandle(tex.get());
+    void* id = GetRenderSystem()->GetBackend()->GetNativeTextureHandle(tex.get());
     return static_cast<uint>(reinterpret_cast<intptr_t>(id));
   }
 

@@ -24,11 +24,6 @@
 namespace ToolKit
 {
 
-  static IGraphicsBackend* GetBackend()
-  {
-    return GetRenderSystem()->GetRenderer()->GetBackend();
-  }
-
   StaticBone::StaticBone(const String& name) { m_name = name; }
 
   StaticBone::~StaticBone() {}
@@ -47,7 +42,7 @@ namespace ToolKit
     ptr->Settings(set);
     ptr->m_name = skeleton->m_name + " BindPoseTexture";
 
-    IGraphicsBackend* backend = GetRenderSystem()->GetRenderer()->GetBackend();
+    IGraphicsBackend* backend = GetRenderSystem()->GetBackend();
     backend->CreateTexture(ptr.get());
     backend->ApplyTextureSettings(ptr.get());
 
@@ -60,7 +55,7 @@ namespace ToolKit
 
   void uploadBoneMatrix(Mat4 mat, TexturePtr& ptr, uint boneIndx)
   {
-    GetBackend()->UpdateTextureSubRegion(ptr.get(), boneIndx * 4, 0, 4, 1, &mat);
+    GetRenderSystem()->GetBackend()->UpdateTextureSubRegion(ptr.get(), boneIndx * 4, 0, 4, 1, &mat);
   };
 
   // DynamicBoneMap

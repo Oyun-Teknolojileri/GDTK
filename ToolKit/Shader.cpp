@@ -26,8 +26,6 @@
 namespace ToolKit
 {
 
-  static IGraphicsBackend* GetBackend() { return GetRenderSystem()->GetRenderer()->GetBackend(); }
-
   // Duplicate Include Prune Utility
   //////////////////////////////////////////
 
@@ -144,7 +142,7 @@ namespace ToolKit
 
   void Shader::UnInit()
   {
-    IGraphicsBackend* backend = GetBackend();
+    IGraphicsBackend* backend = GetRenderSystem()->GetBackend();
 
     // Destroy all compiled variants.
     bool handleInMap = false;
@@ -439,7 +437,7 @@ namespace ToolKit
   {
     TK_LOG("Shader in compile %s", GetFile().c_str());
 
-    m_gpuData = GetBackend()->CreateShader(this, source);
+    m_gpuData = GetRenderSystem()->GetBackend()->CreateShader(this, source);
     return m_gpuData != nullptr;
   }
 
