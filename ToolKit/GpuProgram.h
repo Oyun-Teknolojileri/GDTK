@@ -115,7 +115,7 @@ namespace ToolKit
     /** Global gpu buffers used to set uniforms / buffers for each created program. */
     struct GlobalGpuBuffers* m_globalGpuBuffers = nullptr;
 
-    IGraphicsBackend* m_backend = nullptr;
+    IGraphicsBackend* m_backend                 = nullptr;
   };
 
 } // namespace ToolKit

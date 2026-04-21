@@ -1011,8 +1011,8 @@ namespace ToolKit
 
             if (const EntityPtr& secEnv = secEnvCom->OwnerEntity())
             {
-              m_secondaryIblRotation       = Mat4(1.0f);
-              Mat4 secWorldTransform        = secEnv->m_node->GetTransform(TransformationSpace::TS_WORLD);
+              m_secondaryIblRotation = Mat4(1.0f);
+              Mat4 secWorldTransform = secEnv->m_node->GetTransform(TransformationSpace::TS_WORLD);
               m_drawCommand.SetVolumeInverseTransform(1, glm::inverse(secWorldTransform));
               m_drawCommand.SetVolumeWorldTransform(1, secWorldTransform);
             }

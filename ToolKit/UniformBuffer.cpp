@@ -7,8 +7,8 @@
 
 #include "UniformBuffer.h"
 
-#include "Renderer.h"
 #include "RenderSystem.h"
+#include "Renderer.h"
 #include "Stats.h"
 
 #include "DebugNew.h"
@@ -16,10 +16,7 @@
 namespace ToolKit
 {
 
-  static IGraphicsBackend* GetBackend()
-  {
-    return GetRenderSystem()->GetRenderer()->GetBackend();
-  }
+  static IGraphicsBackend* GetBackend() { return GetRenderSystem()->GetRenderer()->GetBackend(); }
 
   UniformBuffer::UniformBuffer()
   {
@@ -35,10 +32,7 @@ namespace ToolKit
     }
   }
 
-  void UniformBuffer::Init(uint64 size)
-  {
-    GetBackend()->CreateUniformBuffer(this, size);
-  }
+  void UniformBuffer::Init(uint64 size) { GetBackend()->CreateUniformBuffer(this, size); }
 
   void UniformBuffer::Map(const void* data, uint64 size)
   {

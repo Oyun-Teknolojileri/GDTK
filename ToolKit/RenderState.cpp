@@ -47,13 +47,13 @@ namespace ToolKit
       {
         switch (ct)
         {
-        case CullingType::TwoSided:
-        case CullingType::Front:
-        case CullingType::Back:
-          break;
-        default:
-          ct = CullingType::Back;
-          break;
+          case CullingType::TwoSided:
+          case CullingType::Front:
+          case CullingType::Back:
+            break;
+          default:
+            ct = CullingType::Back;
+            break;
         }
       };
       validateCullFn(cullMode);
@@ -64,17 +64,17 @@ namespace ToolKit
       {
         switch (val)
         {
-        case CompareFunctions::FuncNever:
-        case CompareFunctions::FuncLess:
-        case CompareFunctions::FuncEqual:
-        case CompareFunctions::FuncLequal:
-        case CompareFunctions::FuncGreater:
-        case CompareFunctions::FuncNEqual:
-        case CompareFunctions::FuncGEqual:
-        case CompareFunctions::FuncAlways:
-          break;
-        default:
-          val = CompareFunctions::FuncLess;
+          case CompareFunctions::FuncNever:
+          case CompareFunctions::FuncLess:
+          case CompareFunctions::FuncEqual:
+          case CompareFunctions::FuncLequal:
+          case CompareFunctions::FuncGreater:
+          case CompareFunctions::FuncNEqual:
+          case CompareFunctions::FuncGEqual:
+          case CompareFunctions::FuncAlways:
+            break;
+          default:
+            val = CompareFunctions::FuncLess;
         }
       };
       validateCmpFn(depthFunction);
@@ -84,13 +84,13 @@ namespace ToolKit
       {
         switch (bf)
         {
-        case BlendFunction::NONE:
-        case BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA:
-        case BlendFunction::ALPHA_MASK:
-        case BlendFunction::ONE_TO_ONE:
-          break;
-        default:
-          bf = BlendFunction::NONE;
+          case BlendFunction::NONE:
+          case BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA:
+          case BlendFunction::ALPHA_MASK:
+          case BlendFunction::ONE_TO_ONE:
+            break;
+          default:
+            bf = BlendFunction::NONE;
         }
       };
       validateBlendFn(blendFunction);
@@ -101,14 +101,14 @@ namespace ToolKit
       {
         switch (dt)
         {
-        case DrawType::Triangle:
-        case DrawType::Line:
-        case DrawType::LineStrip:
-        case DrawType::LineLoop:
-        case DrawType::Point:
-          break;
-        default:
-          dt = DrawType::Triangle;
+          case DrawType::Triangle:
+          case DrawType::Line:
+          case DrawType::LineStrip:
+          case DrawType::LineLoop:
+          case DrawType::Point:
+            break;
+          default:
+            dt = DrawType::Triangle;
         }
       };
       validateDrawFn(drawType);

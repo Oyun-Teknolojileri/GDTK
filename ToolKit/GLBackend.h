@@ -33,20 +33,15 @@ namespace ToolKit
     void ClearBuffer(GraphicBitFields fields, const Vec4& color) override;
     void ClearColorBuffer(const Vec4& color) override;
 
-    void BindPipeline(const GpuProgramPtr& program,
-                      const RenderState* state) override;
+    void BindPipeline(const GpuProgramPtr& program, const RenderState* state) override;
 
     void SubmitPerDrawData(const void* data, size_t size) override;
     void BindTexture(ubyte slot, TexturePtr tex) override;
 
     void Draw(const DrawDesc& desc) override;
 
-    void ResolveFramebuffer(FramebufferPtr src,
-                            FramebufferPtr dst,
-                            const IntArray& attachments) override;
-    void CopyFramebuffer(FramebufferPtr src,
-                         FramebufferPtr dst,
-                         GraphicBitFields fields) override;
+    void ResolveFramebuffer(FramebufferPtr src, FramebufferPtr dst, const IntArray& attachments) override;
+    void CopyFramebuffer(FramebufferPtr src, FramebufferPtr dst, GraphicBitFields fields) override;
     void BlitToScreen(FramebufferPtr src) override;
 
     void StartTimerQuery() override;
@@ -69,7 +64,7 @@ namespace ToolKit
     // GpuProgram resource management
     void CreateGpuProgram(GpuProgram* program, struct GlobalGpuBuffers* buffers) override;
     void DestroyGpuProgram(GpuProgram* program) override;
-    int  GetUniformLocation(GpuProgram* program, const char* name) override;
+    int GetUniformLocation(GpuProgram* program, const char* name) override;
 
     // Texture resource management
     void CreateTexture(Texture* tex) override;
@@ -80,8 +75,13 @@ namespace ToolKit
     void UpdateTextureRegion(Texture* tex, const void* data) override;
     void SetTextureMaxMipLevel(Texture* tex, int maxLevel) override;
     void AllocateCubemapMipStorage(Texture* tex) override;
-    void CopyCubemapFaceFromFramebuffer(Texture* cubemap, int face, int mip, int width, int height,
-                                         Framebuffer* readFb, Framebuffer* writeFb) override;
+    void CopyCubemapFaceFromFramebuffer(Texture* cubemap,
+                                        int face,
+                                        int mip,
+                                        int width,
+                                        int height,
+                                        Framebuffer* readFb,
+                                        Framebuffer* writeFb) override;
 
     // Framebuffer resource management
     void CreateFramebuffer(Framebuffer* fb) override;
@@ -110,8 +110,7 @@ namespace ToolKit
     void SetDefaultClearColor(const Vec4& color) override;
     bool ValidateBackbufferSrgbEncoding() override;
     void EnableScissorTest(bool enable) override;
-    void ReadPixels(int x, int y, int w, int h,
-                    GraphicTypes format, GraphicTypes type, void* data) override;
+    void ReadPixels(int x, int y, int w, int h, GraphicTypes format, GraphicTypes type, void* data) override;
     void UpdateTextureSubRegion(Texture* tex, int x, int y, int w, int h, const void* data) override;
     void PushDebugGroup(StringView name) override;
     void PopDebugGroup() override;
@@ -140,10 +139,11 @@ namespace ToolKit
       uint textureID = 0;
       uint target    = 0;
     };
+
     TextureSlotState m_textureSlotCache[32];
 
     // VAO cache
-    uint m_currentVAO = (uint) -1;
+    uint m_currentVAO        = (uint) -1;
 
     // Timer query
     uint m_gpuTimerQuery     = 0;

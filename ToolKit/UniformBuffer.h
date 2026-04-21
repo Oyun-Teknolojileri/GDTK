@@ -56,7 +56,9 @@ namespace ToolKit
     }
 
     void Invalidate() { m_invalid = true; }
+
     bool IsValid() const { return !m_invalid; }
+
     UniformBuffer& GetBuffer() { return m_buffer; }
 
     void Map()

@@ -31,7 +31,6 @@ namespace ToolKit
     return nullptr;
   }
 
-
   TKDefineClass(Framebuffer, Resource);
 
   Framebuffer::Framebuffer()

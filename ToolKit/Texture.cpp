@@ -45,18 +45,18 @@ namespace ToolKit
 
   Texture::Texture()
   {
-    m_settings  = {GraphicTypes::Target2D,
-                   GraphicTypes::UVRepeat,
-                   GraphicTypes::UVRepeat,
-                   GraphicTypes::UVRepeat,
-                   GraphicTypes::SampleLinearMipmapLinear,
-                   GraphicTypes::SampleLinear,
-                   GraphicTypes::FormatSRGB8_A8,
-                   GraphicTypes::FormatRGBA,
-                   GraphicTypes::TypeUnsignedByte,
-                   MsaaSampleCount::x0,
-                   -1,
-                   true};
+    m_settings = {GraphicTypes::Target2D,
+                  GraphicTypes::UVRepeat,
+                  GraphicTypes::UVRepeat,
+                  GraphicTypes::UVRepeat,
+                  GraphicTypes::SampleLinearMipmapLinear,
+                  GraphicTypes::SampleLinear,
+                  GraphicTypes::FormatSRGB8_A8,
+                  GraphicTypes::FormatRGBA,
+                  GraphicTypes::TypeUnsignedByte,
+                  MsaaSampleCount::x0,
+                  -1,
+                  true};
   }
 
   Texture::Texture(const String& file) : Texture() { SetFile(file); }
@@ -129,7 +129,7 @@ namespace ToolKit
 
     assert(m_gpuData == nullptr && "Texture already initialized.");
 
-    uint64 pixelCount  = (uint64) m_width * (uint64) m_height;
+    uint64 pixelCount         = (uint64) m_width * (uint64) m_height;
     IGraphicsBackend* backend = GetBackend();
     assert(backend && "Graphics backend not available during Texture::Init");
 
@@ -225,9 +225,9 @@ namespace ToolKit
     if (m_initiated)
     {
       if (IGraphicsBackend* backend = GetBackend())
-        {
-          backend->ApplyTextureSettings(this);
-        }
+      {
+        backend->ApplyTextureSettings(this);
+      }
     }
   }
 
@@ -492,7 +492,7 @@ namespace ToolKit
 
     assert(m_gpuData == nullptr && "Texture already initialized.");
 
-    uint64 pixelCount  = (uint64) m_width * (uint64) m_height;
+    uint64 pixelCount         = (uint64) m_width * (uint64) m_height;
     IGraphicsBackend* backend = GetBackend();
     assert(backend && "Graphics backend not available during CubeMap::Init");
 
@@ -517,7 +517,7 @@ namespace ToolKit
     {
       m_consumedRT->m_initiated = false;
       m_consumedRT->m_gpuData.reset();
-      m_consumedRT              = nullptr;
+      m_consumedRT = nullptr;
     }
 
     Clear();

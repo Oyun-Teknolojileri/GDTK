@@ -106,11 +106,11 @@ namespace ToolKit
    public:
     // Active state values.
     // Changing these settings will modify the renderer's state.
-    CullingType cullMode        = CullingType::Back;
-    BlendFunction blendFunction = BlendFunction::NONE;
-    DrawType drawType           = DrawType::Triangle;
-    float alphaMaskTreshold     = 0.001f;
-    float lineWidth             = 1.0f;
+    CullingType cullMode              = CullingType::Back;
+    BlendFunction blendFunction       = BlendFunction::NONE;
+    DrawType drawType                 = DrawType::Triangle;
+    float alphaMaskTreshold           = 0.001f;
+    float lineWidth                   = 1.0f;
 
     // Passive state values.
     // Renderer changes or updates these values.

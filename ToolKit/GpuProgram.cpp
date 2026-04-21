@@ -116,17 +116,17 @@ namespace ToolKit
     vertexShader->Init();
     fragmentShader->Init();
 
-    const auto& progIter = m_programs.find({(ObjectId)(uintptr_t)vertexShader->m_gpuData.get(),
-                                            (ObjectId)(uintptr_t)fragmentShader->m_gpuData.get()});
+    const auto& progIter = m_programs.find(
+        {(ObjectId) (uintptr_t) vertexShader->m_gpuData.get(), (ObjectId) (uintptr_t) fragmentShader->m_gpuData.get()});
     if (progIter == m_programs.end())
     {
-      GpuProgramPtr program  = MakeNewPtr<GpuProgram>(vertexShader, fragmentShader);
-      program->m_backend     = m_backend;
+      GpuProgramPtr program = MakeNewPtr<GpuProgram>(vertexShader, fragmentShader);
+      program->m_backend    = m_backend;
 
       m_backend->CreateGpuProgram(program.get(), m_globalGpuBuffers);
 
-      auto key = std::array<ObjectId, TKGpuPipelineStages>{(ObjectId)(uintptr_t)vertexShader->m_gpuData.get(),
-                                                            (ObjectId)(uintptr_t)fragmentShader->m_gpuData.get()};
+      auto key        = std::array<ObjectId, TKGpuPipelineStages> {(ObjectId) (uintptr_t) vertexShader->m_gpuData.get(),
+                                                                   (ObjectId) (uintptr_t) fragmentShader->m_gpuData.get()};
       m_programs[key] = program;
       return m_programs[key];
     }
