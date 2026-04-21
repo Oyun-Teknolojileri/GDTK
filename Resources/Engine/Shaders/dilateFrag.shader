@@ -14,7 +14,6 @@
   vec2 g_textureSize;
 
   #define R 4
-  #define SMOOTHING 3.0
 
   float sampleTexture(vec2 uv) {
       return texture(u_texture, uv).r;
@@ -47,9 +46,7 @@
       }
     
       if (minDistance < float(R)) {
-          // Create smooth falloff based on distance
-          float alpha = 1.0 - smoothstep(0.0, SMOOTHING, minDistance);
-          o_fragColor = vec4(Color.rgb, alpha);
+          o_fragColor = vec4(Color.rgb, 1.0);
       } else {
           discard;
       }
