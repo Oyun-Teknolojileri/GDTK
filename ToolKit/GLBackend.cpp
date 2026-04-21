@@ -1120,7 +1120,7 @@ namespace ToolKit
     }
   }
 
-  void GLBackend::SetTextureSwizzleAlpha(Texture* tex, bool swizzleToOne)
+  void GLBackend::SetTextureSwizzleAlpha(Texture* tex, bool swizzleToOne, bool setLastBindBack)
   {
     if (!tex)
     {
@@ -1134,16 +1134,25 @@ namespace ToolKit
     }
 
     GLenum target = ToGLGraphicType(tex->Settings().Target);
-    GLenum bindingTarget = GL_TEXTURE_BINDING_2D;
-    if (target == GL_TEXTURE_CUBE_MAP) bindingTarget = GL_TEXTURE_BINDING_CUBE_MAP;
-    if (target == GL_TEXTURE_2D_ARRAY) bindingTarget = GL_TEXTURE_BINDING_2D_ARRAY;
 
-    GLint currentBinding = 0;
-    glGetIntegerv(bindingTarget, &currentBinding);
+    if (setLastBindBack)
+    {
+      GLenum bindingTarget = GL_TEXTURE_BINDING_2D;
+      if (target == GL_TEXTURE_CUBE_MAP) bindingTarget = GL_TEXTURE_BINDING_CUBE_MAP;
+      if (target == GL_TEXTURE_2D_ARRAY) bindingTarget = GL_TEXTURE_BINDING_2D_ARRAY;
 
-    glBindTexture(target, gl->textureId);
-    glTexParameteri(target, GL_TEXTURE_SWIZZLE_A, swizzleToOne ? GL_ONE : GL_ALPHA);
-    glBindTexture(target, currentBinding);
+      GLint currentBinding = 0;
+      glGetIntegerv(bindingTarget, &currentBinding);
+
+      glBindTexture(target, gl->textureId);
+      glTexParameteri(target, GL_TEXTURE_SWIZZLE_A, swizzleToOne ? GL_ONE : GL_ALPHA);
+      glBindTexture(target, currentBinding);
+    }
+    else
+    {
+      BindTextureDirect(target, gl->textureId, 0);
+      glTexParameteri(target, GL_TEXTURE_SWIZZLE_A, swizzleToOne ? GL_ONE : GL_ALPHA);
+    }
   }
 
   void GLBackend::GenerateMipmaps(Texture* tex)

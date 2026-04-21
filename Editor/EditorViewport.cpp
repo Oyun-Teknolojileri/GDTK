@@ -330,7 +330,7 @@ namespace ToolKit
           drawList->AddCallback([](const ImDrawList* parentList, const ImDrawCmd* cmd)
                                 { 
                                   Texture* t = (Texture*)cmd->UserCallbackData;
-                                  GetRenderSystem()->GetRenderer()->GetBackend()->SetTextureSwizzleAlpha(t, true);
+                                  GetRenderSystem()->GetRenderer()->GetBackend()->SetTextureSwizzleAlpha(t, true, true);
                                 },
                                 texture.get());
 
@@ -339,7 +339,7 @@ namespace ToolKit
           drawList->AddCallback([](const ImDrawList* parentList, const ImDrawCmd* cmd)
                                 { 
                                   Texture* t = (Texture*)cmd->UserCallbackData;
-                                  GetRenderSystem()->GetRenderer()->GetBackend()->SetTextureSwizzleAlpha(t, false); 
+                                  GetRenderSystem()->GetRenderer()->GetBackend()->SetTextureSwizzleAlpha(t, false, true); 
                                 },
                                 texture.get());
 
