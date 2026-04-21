@@ -1606,9 +1606,6 @@ namespace ToolKit
     }
   }
 
-  // Phase 7a: Custom uniforms and renderer utility
-  //////////////////////////////////////////
-
   void GLBackend::SubmitCustomUniforms(const GpuProgramPtr& program,
                                        std::unordered_map<String, ShaderUniform>& uniforms)
   {
