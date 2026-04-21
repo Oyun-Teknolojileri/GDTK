@@ -125,7 +125,9 @@ namespace ToolKit
     m_copyFrameBuffer               = MakeNewPtr<Framebuffer>("RendererCopyFB");
     m_dummyDrawCube                 = MakeNewPtr<Cube>();
 
-    m_gpuProgramManager             = GetGpuProgramManager();
+    m_gpuProgramManager             = new GpuProgramManager();
+    m_gpuProgramManager->SetBackend(m_backend);
+    m_gpuProgramManager->SetGpuBuffers(m_globalGpuBuffers);
 
     String renderer                 = m_backend->GetBackendRendererString();
     GetLogger()->Log(String("Graphics Card ") + renderer);
@@ -163,6 +165,7 @@ namespace ToolKit
     m_sky                           = nullptr;
     m_currentProgram                = nullptr;
 
+    SafeDel(m_gpuProgramManager);
     SafeDel(m_backend);
   }
 

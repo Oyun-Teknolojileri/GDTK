@@ -118,7 +118,6 @@ namespace ToolKit
     m_engineSettings    = new EngineSettings();
 
     m_renderSys         = new RenderSystem();
-    m_gpuProgramManager = new GpuProgramManager();
     m_pluginManager     = new PluginManager();
     m_animationMan      = new AnimationManager();
     m_animationPlayer   = new AnimationPlayer();
@@ -162,8 +161,6 @@ namespace ToolKit
     m_timing.Init(m_engineSettings->m_graphics->GetFPSVal());
 
     m_gpuBuffers->InitGlobalGpuBuffers();
-    m_gpuProgramManager->SetGpuBuffers(m_gpuBuffers);
-    m_gpuProgramManager->SetBackend(GetRenderSystem()->GetRenderer()->GetBackend());
 
     m_initiated = true;
   }
@@ -198,7 +195,6 @@ namespace ToolKit
     m_pluginManager->UnInit();
 
     SafeDel(m_gpuBuffers);
-    SafeDel(m_gpuProgramManager);
     SafeDel(m_pluginManager);
     SafeDel(m_animationMan);
     SafeDel(m_animationPlayer);
@@ -434,7 +430,7 @@ namespace ToolKit
 
   WorkerManager* GetWorkerManager() { return Main::GetInstance()->m_workerManager; }
 
-  GpuProgramManager* GetGpuProgramManager() { return Main::GetInstance()->m_gpuProgramManager; }
+  GpuProgramManager* GetGpuProgramManager() { return GetRenderSystem()->GetRenderer()->GetGpuProgramManager(); }
 
   Timing* GetTiming() { return &Main::GetInstance()->m_timing; }
 

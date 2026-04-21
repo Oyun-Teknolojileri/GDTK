@@ -372,6 +372,8 @@ namespace ToolKit
     /** Returns current backend. */
     IGraphicsBackend* GetBackend() { return m_backend; }
 
+    GpuProgramManager* GetGpuProgramManager() { return m_gpuProgramManager; }
+
    private:
     /** Set textures to be used in render. SkyBox, Ibl, AmbientOcculution  */
     void SetDataTextures(const RenderJob& job);

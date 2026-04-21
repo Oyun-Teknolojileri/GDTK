@@ -208,7 +208,6 @@ namespace ToolKit
     class EngineSettings* m_engineSettings       = nullptr;
     class TKStats* m_tkStats                     = nullptr;
     class WorkerManager* m_workerManager         = nullptr;
-    class GpuProgramManager* m_gpuProgramManager = nullptr;
     struct GlobalGpuBuffers* m_gpuBuffers        = nullptr;
     HandleManager m_handleManager;
 
