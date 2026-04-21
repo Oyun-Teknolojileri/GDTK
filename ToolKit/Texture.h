@@ -29,6 +29,7 @@ namespace ToolKit
     MsaaSampleCount msaaCount   = MsaaSampleCount::x0; //!< MSAA Render target is created if this is grater than x0.
     int Layers                  = 0;     //!< Number of layers that this texture have if this is a texture array.
     bool GenerateMipMap         = false; //!< Generates mipmaps for the texture automatically.
+    bool SwizzleAlphaToOne      = false; //!< Sets the alpha channel to 1.0 when sampled from the texture.
 
     bool operator==(const TextureSettings& other) const { return memcmp(this, &other, sizeof(TextureSettings)) == 0; }
 

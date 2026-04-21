@@ -1100,6 +1100,8 @@ namespace ToolKit
     glTexParameteri(target, GL_TEXTURE_WRAP_S, (GLint) ToGLGraphicType(s.WarpS));
     glTexParameteri(target, GL_TEXTURE_WRAP_T, (GLint) ToGLGraphicType(s.WarpT));
 
+    glTexParameteri(target, GL_TEXTURE_SWIZZLE_A, s.SwizzleAlphaToOne ? GL_ONE : GL_ALPHA);
+
     if (s.Target == GraphicTypes::TargetCubeMap)
     {
       glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, (GLint) ToGLGraphicType(s.WarpR));
@@ -1116,6 +1118,32 @@ namespace ToolKit
       float aniso  = glm::min(maxAniso, glm::max(1.0f, float(anisoVal)));
       glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, aniso);
     }
+  }
+
+  void GLBackend::SetTextureSwizzleAlpha(Texture* tex, bool swizzleToOne)
+  {
+    if (!tex)
+    {
+      return;
+    }
+
+    GLTextureData* gl = GetGLTextureData(tex);
+    if (!gl)
+    {
+      return;
+    }
+
+    GLenum target = ToGLGraphicType(tex->Settings().Target);
+    GLenum bindingTarget = GL_TEXTURE_BINDING_2D;
+    if (target == GL_TEXTURE_CUBE_MAP) bindingTarget = GL_TEXTURE_BINDING_CUBE_MAP;
+    if (target == GL_TEXTURE_2D_ARRAY) bindingTarget = GL_TEXTURE_BINDING_2D_ARRAY;
+
+    GLint currentBinding = 0;
+    glGetIntegerv(bindingTarget, &currentBinding);
+
+    glBindTexture(target, gl->textureId);
+    glTexParameteri(target, GL_TEXTURE_SWIZZLE_A, swizzleToOne ? GL_ONE : GL_ALPHA);
+    glBindTexture(target, currentBinding);
   }
 
   void GLBackend::GenerateMipmaps(Texture* tex)
