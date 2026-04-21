@@ -100,7 +100,6 @@ namespace ToolKit
 
     void SrgbAutoEncoding(bool enable);
 
-    Renderer* GetRenderer() { return m_renderer; }
     GpuProgramManager* GetGpuProgramManager();
     IGraphicsBackend* GetBackend();
 
