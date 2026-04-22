@@ -355,8 +355,7 @@ namespace ToolKit
 
     if (m_framebuffer)
     {
-      int& drawCount = m_drawnFrameBufferStats[m_framebuffer];
-      drawCount++;
+      m_drawnFrameBufferStats[m_framebuffer->GetIdVal()]++;
     }
 
     Stats::IncrementStat(FrameStatType::DrawCall);
@@ -1116,7 +1115,7 @@ namespace ToolKit
 
     m_backend->SubmitPerDrawData(&pdu, sizeof(pdu));
 
-    // Custom shader uniforms — dispatched through backend.
+    // Custom shader uniforms ï¿½ dispatched through backend.
     m_backend->SubmitCustomUniforms(program, program->m_customUniforms);
   }
 
