@@ -5,7 +5,7 @@
  * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
  */
 
-#include "LauncherGPU.h"
+#include "LauncherBackendBindings.h"
 
 #include <SDL.h>
 #include <imgui/backends/imgui_impl_opengl3.h>
@@ -16,7 +16,7 @@ namespace ToolKit
 {
   namespace Launcher
   {
-    namespace LauncherGPU
+    namespace LauncherBackendBindings
     {
 
       void InitImGui(SDL_Window* window, void* context)
@@ -31,6 +31,6 @@ namespace ToolKit
 
       void ImGuiRenderDrawData() { ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData()); }
 
-    } // namespace LauncherGPU
+    } // namespace LauncherBackendBindings
   }   // namespace Launcher
 } // namespace ToolKit

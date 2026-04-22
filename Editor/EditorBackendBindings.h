@@ -11,16 +11,17 @@ struct SDL_Window;
 
 namespace ToolKit
 {
-  namespace Launcher
+  namespace Editor
   {
 
-    namespace LauncherGPU
+    namespace EditorBackendBindings
     {
       void InitImGui(SDL_Window* window, void* context);
       void ShutdownImGui();
       void ImGuiNewFrame();
       void ImGuiRenderDrawData();
-    } // namespace LauncherGPU
+      void MakeContextCurrent(SDL_Window* window, void* context);
+    } // namespace EditorBackendBindings
 
-  } // namespace Launcher
+  } // namespace Editor
 } // namespace ToolKit

@@ -6,7 +6,7 @@
  */
 
 #include "Launcher.h"
-#include "LauncherGPU.h"
+#include "LauncherBackendBindings.h"
 
 #include <Common/SDLEventPool.h>
 #include <Common/Win32Utils.h>
@@ -188,7 +188,7 @@ namespace ToolKit
       io.ConfigFlags                       |= ImGuiConfigFlags_DockingEnable;
       io.ConfigWindowsMoveFromTitleBarOnly  = true;
 
-      Launcher::LauncherGPU::InitImGui(g_window, g_context);
+      Launcher::LauncherBackendBindings::InitImGui(g_window, g_context);
 
       DeserializeThemeSettings();
 
@@ -223,14 +223,14 @@ namespace ToolKit
           ImGui_ImplSDL2_ProcessEvent(&sdlEvent);
         }
 
-        Launcher::LauncherGPU::ImGuiNewFrame();
+        Launcher::LauncherBackendBindings::ImGuiNewFrame();
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
 
         g_launcher->ShowLauncherWindow();
 
         ImGui::Render();
-        Launcher::LauncherGPU::ImGuiRenderDrawData();
+        Launcher::LauncherBackendBindings::ImGuiRenderDrawData();
         ImGui::EndFrame();
       };
 
@@ -251,7 +251,7 @@ namespace ToolKit
     {
       SafeDel(g_launcher);
 
-      Launcher::LauncherGPU::ShutdownImGui();
+      Launcher::LauncherBackendBindings::ShutdownImGui();
       ImGui_ImplSDL2_Shutdown();
       ImGui::DestroyContext();
 

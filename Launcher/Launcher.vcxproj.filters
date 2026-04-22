@@ -15,7 +15,7 @@
     <ClCompile Include="stdafx.cpp">
       <Filter>Source</Filter>
     </ClCompile>
-    <ClCompile Include="LauncherGPU.cpp">
+    <ClCompile Include="LauncherBackendBindings.cpp">
       <Filter>Source</Filter>
     </ClCompile>
   </ItemGroup>
@@ -23,7 +23,7 @@
     <ClInclude Include="Launcher.h">
       <Filter>Source</Filter>
     </ClInclude>
-    <ClInclude Include="LauncherGPU.h">
+    <ClInclude Include="LauncherBackendBindings.h">
       <Filter>Source</Filter>
     </ClInclude>
   </ItemGroup>

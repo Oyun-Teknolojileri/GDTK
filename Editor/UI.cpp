@@ -10,7 +10,7 @@
 #include "AndroidBuildWindow.h"
 #include "App.h"
 #include "ConsoleWindow.h"
-#include "EditorGPU.h"
+#include "EditorBackendBindings.h"
 #include "EditorViewport2d.h"
 #include "EngineSettingsWindow.h"
 #include "OutlinerWindow.h"
@@ -161,7 +161,7 @@ namespace ToolKit
       LiberationSansBold =
           io.Fonts->AddFontFromFileTTF(FontPath("LiberationSans-Bold.ttf", true).c_str(), 14.0f, nullptr, utf8TR);
 
-      EditorGPU::InitImGui(g_window, g_context);
+      EditorBackendBindings::InitImGui(g_window, g_context);
 
       // Platform window create override.
       ImGuiPlatformIO& pio      = ImGui::GetPlatformIO();
@@ -240,7 +240,7 @@ namespace ToolKit
         m_anchorPresetIcons.m_presetImages[i] = nullptr;
       }
 
-      EditorGPU::ShutdownImGui();
+      EditorBackendBindings::ShutdownImGui();
       ImGui_ImplSDL2_Shutdown();
       ImGui::DestroyContext();
     }
@@ -692,7 +692,7 @@ namespace ToolKit
 
     void UI::BeginUI()
     {
-      EditorGPU::ImGuiNewFrame();
+      EditorBackendBindings::ImGuiNewFrame();
       ImGui_ImplSDL2_NewFrame();
       ImGui::NewFrame();
     }
@@ -700,7 +700,7 @@ namespace ToolKit
     void UI::EndUI()
     {
       ImGui::Render();
-      EditorGPU::ImGuiRenderDrawData();
+      EditorBackendBindings::ImGuiRenderDrawData();
       ImGui::EndFrame();
 
       if (m_firstFrame)
@@ -717,7 +717,7 @@ namespace ToolKit
 
       ImGui::UpdatePlatformWindows();
       ImGui::RenderPlatformWindowsDefault();
-      EditorGPU::MakeContextCurrent(g_window, g_context);
+      EditorBackendBindings::MakeContextCurrent(g_window, g_context);
     }
 
     void UI::ShowAppMainMenuBar()

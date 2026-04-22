@@ -5,7 +5,7 @@
  * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
  */
 
-#include "EditorGPU.h"
+#include "EditorBackendBindings.h"
 
 #include <SDL.h>
 #include <imgui/backends/imgui_impl_opengl3.h>
@@ -16,7 +16,7 @@ namespace ToolKit
 {
   namespace Editor
   {
-    namespace EditorGPU
+    namespace EditorBackendBindings
     {
 
       void InitImGui(SDL_Window* window, void* context)
@@ -33,6 +33,6 @@ namespace ToolKit
 
       void MakeContextCurrent(SDL_Window* window, void* context) { SDL_GL_MakeCurrent(window, context); }
 
-    } // namespace EditorGPU
+    } // namespace EditorBackendBindings
   }   // namespace Editor
 } // namespace ToolKit

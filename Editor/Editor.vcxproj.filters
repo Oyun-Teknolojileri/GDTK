@@ -207,7 +207,7 @@
     <ClCompile Include="EditorEnvironmentComponent.cpp">
       <Filter>Components</Filter>
     </ClCompile>
-    <ClCompile Include="EditorGPU.cpp">
+    <ClCompile Include="EditorBackendBindings.cpp">
       <Filter>UI</Filter>
     </ClCompile>
   </ItemGroup>
@@ -377,7 +377,7 @@
     <ClInclude Include="EditorEnvironmentComponent.h">
       <Filter>Components</Filter>
     </ClInclude>
-    <ClInclude Include="EditorGPU.h">
+    <ClInclude Include="EditorBackendBindings.h">
       <Filter>UI</Filter>
     </ClInclude>
   </ItemGroup>
