@@ -382,7 +382,6 @@ namespace ToolKit
     void SetTransforms(const Mat4& model);
 
     void FeedUniforms(const GpuProgramPtr& program, const RenderJob& job);
-    void FeedAnimationUniforms(const GpuProgramPtr& program, const RenderJob& job);
 
    public:
     uint m_frameCount = 0;

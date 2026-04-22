@@ -507,6 +507,7 @@
     <ClInclude Include="ShadowAtlas.h">
       <Filter>Render</Filter>
     </ClInclude>
+    <ClInclude Include="PerDrawUniforms.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Entities">

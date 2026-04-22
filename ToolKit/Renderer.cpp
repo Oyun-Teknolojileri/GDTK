@@ -343,7 +343,6 @@ namespace ToolKit
     const Mesh* mesh = job.Mesh;
     activateSkinning(mesh);
 
-    FeedAnimationUniforms(m_currentProgram, job);
     FeedUniforms(m_currentProgram, job);
 
     DrawDesc desc;
@@ -1119,11 +1118,6 @@ namespace ToolKit
 
     // Custom shader uniforms — dispatched through backend.
     m_backend->SubmitCustomUniforms(program, program->m_customUniforms);
-  }
-
-  void Renderer::FeedAnimationUniforms(const GpuProgramPtr& program, const RenderJob& job)
-  {
-    // Now handled by FeedUniforms -> SubmitPerDrawData
   }
 
   void Renderer::SetTexture(ubyte slotIndx, TexturePtr texture)
