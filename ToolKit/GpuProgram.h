@@ -49,8 +49,8 @@ namespace ToolKit
 
    public:
     // Flat arrays indexed by Uniform enum value. -1 means "not present".
-    std::array<int, static_cast<size_t>(Uniform::UNIFORM_MAX_INVALID)> m_defaultUniformLocation;
-    std::array<int, static_cast<size_t>(Uniform::UNIFORM_MAX_INVALID)> m_defaultArrayUniformLocations;
+    std::array<int, static_cast<uint>(Uniform::UNIFORM_MAX_INVALID)> m_defaultUniformLocation;
+    std::array<int, static_cast<uint>(Uniform::UNIFORM_MAX_INVALID)> m_defaultArrayUniformLocations;
     std::unordered_map<String, ShaderUniform> m_customUniforms;
   };
 
