@@ -114,6 +114,8 @@ namespace ToolKit
     void UpdateTextureSubRegion(Texture* tex, int x, int y, int w, int h, const void* data) override;
     void PushDebugGroup(StringView name) override;
     void PopDebugGroup() override;
+    void SetDebugLabel(Texture* tex) override;
+    void SetDebugLabel(Framebuffer* fb) override;
     bool SupportsFloatTextureLinearFilter() override;
     void* GetNativeTextureHandle(Texture* tex) override;
 

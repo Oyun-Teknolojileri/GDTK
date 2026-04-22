@@ -159,6 +159,17 @@ namespace ToolKit
     virtual void PushDebugGroup(StringView name)                                                            = 0;
     virtual void PopDebugGroup()                                                                            = 0;
 
+    /**
+     * Tags a GPU resource with its client-side m_label so it shows up named in graphics debuggers
+     * (RenderDoc, Nsight, PIX). Each backend inspects its own native handle:
+     *   - GL:     glObjectLabel on textureId / fboId (KHR_debug, core in 4.3 / GLES 3.2).
+     *   - Vulkan: vkSetDebugUtilsObjectNameEXT on VkImage / VkFramebuffer.
+     * No-op when the label is empty, the native handle is 0, or the debug extension is unavailable.
+     * Safe to call multiple times; the latest label wins.
+     */
+    virtual void SetDebugLabel(Texture* tex)                                                                = 0;
+    virtual void SetDebugLabel(Framebuffer* fb)                                                             = 0;
+
     virtual bool SupportsFloatTextureLinearFilter()                                                         = 0;
 
     virtual void* GetNativeTextureHandle(Texture* tex)                                                      = 0;

@@ -475,55 +475,70 @@ namespace ToolKit
     GLint loc;
 
     loc = locs[(int) Uniform::MODEL];
-    if (loc != -1) glUniformMatrix4fv(loc, 1, false, reinterpret_cast<const float*>(&pdu->model));
+    if (loc != -1)
+      glUniformMatrix4fv(loc, 1, false, reinterpret_cast<const float*>(&pdu->model));
 
     loc = locs[(int) Uniform::MODEL_WITHOUT_TRANSLATE];
-    if (loc != -1) glUniformMatrix4fv(loc, 1, false, reinterpret_cast<const float*>(&pdu->modelWithoutTranslate));
+    if (loc != -1)
+      glUniformMatrix4fv(loc, 1, false, reinterpret_cast<const float*>(&pdu->modelWithoutTranslate));
 
     loc = locs[(int) Uniform::INVERSE_MODEL];
-    if (loc != -1) glUniformMatrix4fv(loc, 1, false, reinterpret_cast<const float*>(&pdu->inverseModel));
+    if (loc != -1)
+      glUniformMatrix4fv(loc, 1, false, reinterpret_cast<const float*>(&pdu->inverseModel));
 
     loc = locs[(int) Uniform::INVERSE_TRANSPOSE_MODEL];
-    if (loc != -1) glUniformMatrix4fv(loc, 1, false, reinterpret_cast<const float*>(&pdu->inverseTransposeModel));
+    if (loc != -1)
+      glUniformMatrix4fv(loc, 1, false, reinterpret_cast<const float*>(&pdu->inverseTransposeModel));
 
     loc = locs[(int) Uniform::IBL_ROTATION];
-    if (loc != -1) glUniformMatrix4fv(loc, 1, false, reinterpret_cast<const float*>(&pdu->iblRotation));
+    if (loc != -1)
+      glUniformMatrix4fv(loc, 1, false, reinterpret_cast<const float*>(&pdu->iblRotation));
 
     loc = locs[(int) Uniform::IBL_SECONDARY_ROTATION];
-    if (loc != -1) glUniformMatrix4fv(loc, 1, false, reinterpret_cast<const float*>(&pdu->iblSecondaryRotation));
+    if (loc != -1)
+      glUniformMatrix4fv(loc, 1, false, reinterpret_cast<const float*>(&pdu->iblSecondaryRotation));
 
     loc = locs[(int) Uniform::VIEWPORT_SIZE];
-    if (loc != -1) glUniform2f(loc, pdu->viewportSize.x, pdu->viewportSize.y);
+    if (loc != -1)
+      glUniform2f(loc, pdu->viewportSize.x, pdu->viewportSize.y);
 
     loc = locs[(int) Uniform::DRAW_COMMAND];
-    if (loc != -1) glUniform4fv(loc, sizeof(DrawCommand) / sizeof(Vec4), (const float*) &pdu->drawCommand);
+    if (loc != -1)
+      glUniform4fv(loc, sizeof(DrawCommand) / sizeof(Vec4), (const float*) &pdu->drawCommand);
 
     if (pdu->activePointLightCount > 0)
     {
       loc = locs[(int) Uniform::ACTIVE_POINT_LIGHT_INDEXES];
-      if (loc != -1) glUniform1iv(loc, pdu->activePointLightCount, pdu->activePointLightIndices);
+      if (loc != -1)
+        glUniform1iv(loc, pdu->activePointLightCount, pdu->activePointLightIndices);
     }
 
     if (pdu->activeSpotLightCount > 0)
     {
       loc = locs[(int) Uniform::ACTIVE_SPOT_LIGHT_INDEXES];
-      if (loc != -1) glUniform1iv(loc, pdu->activeSpotLightCount, pdu->activeSpotLightIndices);
+      if (loc != -1)
+        glUniform1iv(loc, pdu->activeSpotLightCount, pdu->activeSpotLightIndices);
     }
 
     loc = locs[(int) Uniform::MATERIAL_CACHE];
-    if (loc != -1) glUniform4fv(loc, sizeof(MaterialCacheItem::Data) / sizeof(Vec4), (const float*) &pdu->materialData);
+    if (loc != -1)
+      glUniform4fv(loc, sizeof(MaterialCacheItem::Data) / sizeof(Vec4), (const float*) &pdu->materialData);
 
     loc = locs[(int) Uniform::KEY_FRAME_DATA];
-    if (loc != -1) glUniform4fv(loc, 1, (const float*) &pdu->keyFrameData);
+    if (loc != -1)
+      glUniform4fv(loc, 1, (const float*) &pdu->keyFrameData);
 
     loc = locs[(int) Uniform::BLEND_FRAME_DATA];
-    if (loc != -1) glUniform4fv(loc, 1, (const float*) &pdu->blendFrameData);
+    if (loc != -1)
+      glUniform4fv(loc, 1, (const float*) &pdu->blendFrameData);
 
     loc = locs[(int) Uniform::BLEND_FACTOR];
-    if (loc != -1) glUniform1f(loc, pdu->animationBlendFactor);
+    if (loc != -1)
+      glUniform1f(loc, pdu->animationBlendFactor);
 
     loc = locs[(int) Uniform::SKIN_PARAMS];
-    if (loc != -1) glUniform4fv(loc, 1, (const float*) &pdu->skinParams);
+    if (loc != -1)
+      glUniform4fv(loc, 1, (const float*) &pdu->skinParams);
   }
 
   void GLBackend::BindTexture(ubyte slot, TexturePtr tex)
@@ -811,7 +826,7 @@ namespace ToolKit
       return;
     }
 
-    program->m_gpuData   = std::move(glData);
+    program->m_gpuData = std::move(glData);
 
     // Bind newly created program to set up samplers / UBO bindings.
     // No save/restore: we track current program internally, so just update the cache.
@@ -857,7 +872,7 @@ namespace ToolKit
     {
       for (const Uniform& uniform : shader->m_uniforms)
       {
-        GLint loc = glGetUniformLocation(pid, GetUniformName(uniform));
+        GLint loc                                        = glGetUniformLocation(pid, GetUniformName(uniform));
         program->m_defaultUniformLocation[(int) uniform] = loc;
       }
 
@@ -871,21 +886,21 @@ namespace ToolKit
     // Force-cache all uniforms SubmitPerDrawData touches — shader def may not list them,
     // but the GLSL source can still define them (driver query is authoritative).
     static constexpr Uniform kPerDrawUniforms[] = {
-      Uniform::MODEL,
-      Uniform::MODEL_WITHOUT_TRANSLATE,
-      Uniform::INVERSE_MODEL,
-      Uniform::INVERSE_TRANSPOSE_MODEL,
-      Uniform::IBL_ROTATION,
-      Uniform::IBL_SECONDARY_ROTATION,
-      Uniform::VIEWPORT_SIZE,
-      Uniform::DRAW_COMMAND,
-      Uniform::ACTIVE_POINT_LIGHT_INDEXES,
-      Uniform::ACTIVE_SPOT_LIGHT_INDEXES,
-      Uniform::MATERIAL_CACHE,
-      Uniform::KEY_FRAME_DATA,
-      Uniform::BLEND_FRAME_DATA,
-      Uniform::BLEND_FACTOR,
-      Uniform::SKIN_PARAMS,
+        Uniform::MODEL,
+        Uniform::MODEL_WITHOUT_TRANSLATE,
+        Uniform::INVERSE_MODEL,
+        Uniform::INVERSE_TRANSPOSE_MODEL,
+        Uniform::IBL_ROTATION,
+        Uniform::IBL_SECONDARY_ROTATION,
+        Uniform::VIEWPORT_SIZE,
+        Uniform::DRAW_COMMAND,
+        Uniform::ACTIVE_POINT_LIGHT_INDEXES,
+        Uniform::ACTIVE_SPOT_LIGHT_INDEXES,
+        Uniform::MATERIAL_CACHE,
+        Uniform::KEY_FRAME_DATA,
+        Uniform::BLEND_FRAME_DATA,
+        Uniform::BLEND_FACTOR,
+        Uniform::SKIN_PARAMS,
     };
     for (Uniform u : kPerDrawUniforms)
     {
@@ -948,6 +963,7 @@ namespace ToolKit
 
       glData->isRenderbuffer = true;
       tex->m_gpuData         = std::move(glData);
+      SetDebugLabel(tex);
       return;
     }
 
@@ -963,6 +979,7 @@ namespace ToolKit
                                        tex->m_height);
       glData->isRenderbuffer = true;
       tex->m_gpuData         = std::move(glData);
+      SetDebugLabel(tex);
       return;
     }
 
@@ -1053,6 +1070,7 @@ namespace ToolKit
     }
 
     tex->m_gpuData = std::move(glData);
+    SetDebugLabel(tex);
   }
 
   void GLBackend::DestroyTexture(Texture* tex)
@@ -1281,6 +1299,7 @@ namespace ToolKit
     glGenFramebuffers(1, &glData->fboId);
     BindFramebuffer(GL_FRAMEBUFFER, glData->fboId);
     fb->m_gpuData = std::move(glData);
+    SetDebugLabel(fb);
   }
 
   void GLBackend::DestroyFramebuffer(Framebuffer* fb)
@@ -1772,6 +1791,35 @@ namespace ToolKit
     {
       glPopGroupMarkerEXT();
     }
+  }
+
+  void GLBackend::SetDebugLabel(Texture* tex)
+  {
+    if (glObjectLabel == nullptr || tex == nullptr || tex->m_label.empty())
+    {
+      return;
+    }
+    GLTextureData* gl = GetGLTextureData(tex);
+    if (gl == nullptr || gl->textureId == 0)
+    {
+      return;
+    }
+    const GLenum identifier = gl->isRenderbuffer ? GL_RENDERBUFFER : GL_TEXTURE;
+    glObjectLabel(identifier, gl->textureId, (GLsizei) tex->m_label.size(), tex->m_label.data());
+  }
+
+  void GLBackend::SetDebugLabel(Framebuffer* fb)
+  {
+    if (glObjectLabel == nullptr || fb == nullptr || fb->m_label.empty())
+    {
+      return;
+    }
+    GLFramebufferData* gl = GetGLFramebufferData(fb);
+    if (gl == nullptr || gl->fboId == 0)
+    {
+      return;
+    }
+    glObjectLabel(GL_FRAMEBUFFER, gl->fboId, (GLsizei) fb->m_label.size(), fb->m_label.data());
   }
 
   bool GLBackend::SupportsFloatTextureLinearFilter() { return TK_GL_OES_texture_float_linear != 0; }
