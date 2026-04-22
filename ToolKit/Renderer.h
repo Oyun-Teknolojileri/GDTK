@@ -453,7 +453,7 @@ namespace ToolKit
     IGraphicsBackend* m_backend                    = nullptr;
 
     /** Frame buffer stats for each frame. */
-    std::map<uintptr_t, int> m_drawnFrameBufferStats;
+    std::map<FramebufferPtr, int> m_drawnFrameBufferStats;
   };
 
 } // namespace ToolKit

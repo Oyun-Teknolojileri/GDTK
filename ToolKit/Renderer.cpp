@@ -355,7 +355,7 @@ namespace ToolKit
 
     if (m_framebuffer)
     {
-      int& drawCount = m_drawnFrameBufferStats[reinterpret_cast<uintptr_t>(m_framebuffer.get())];
+      int& drawCount = m_drawnFrameBufferStats[m_framebuffer];
       drawCount++;
     }
 
