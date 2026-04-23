@@ -325,7 +325,7 @@ namespace ToolKit
             }
           }
 
-          uint texId           = Renderer::GetNativeTextureHandle(texture);
+          uint64 texId         = EditorImGuiTextureCache::Acquire(texture);
 
           ImDrawList* drawList = ImGui::GetWindowDrawList();
           drawList->AddCallback(

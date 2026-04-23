@@ -39,7 +39,7 @@ namespace ToolKit::Editor
     ImGui::Text("Icon");
     ImGui::SameLine();
 
-    int iconId = m_icon ? Renderer::GetNativeTextureHandle(m_icon) : Renderer::GetNativeTextureHandle(m_defaultIcon);
+    uint64 iconId = m_icon ? EditorImGuiTextureCache::Acquire(m_icon) : EditorImGuiTextureCache::Acquire(m_defaultIcon);
     UI::ImageButton("##icon", ConvertUIntImGuiTexture(iconId), ImVec2(64, 64));
 
     if (ImGui::BeginDragDropTarget())

@@ -439,10 +439,14 @@ namespace ToolKit
 
   void Renderer::ColorMask(bool r, bool g, bool b, bool a) { m_renderState.colorMaskEnabled = r && g && b && a; }
 
-  uint Renderer::GetNativeTextureHandle(const TexturePtr& tex)
+  uint64 Renderer::GetNativeTextureHandle(const TexturePtr& tex)
   {
+    if (tex == nullptr)
+    {
+      return 0;
+    }
     void* id = GetRenderSystem()->GetBackend()->GetNativeTextureHandle(tex.get());
-    return static_cast<uint>(reinterpret_cast<intptr_t>(id));
+    return static_cast<uint64>(reinterpret_cast<uintptr_t>(id));
   }
 
   void Renderer::CopyFrameBuffer(FramebufferPtr src, FramebufferPtr dest, GraphicBitFields fields)

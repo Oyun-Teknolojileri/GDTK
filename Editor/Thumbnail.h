@@ -62,7 +62,7 @@ namespace ToolKit
        * @param dirEnt DirectoryEntry that will be used to create a thumbnail.
        * @return true if requested thumbnail is valid
        */
-      bool TryGetThumbnail(uint& iconId, const DirectoryEntry& dirEnt);
+      bool TryGetThumbnail(uint64& iconId, const DirectoryEntry& dirEnt);
 
       /**
        * Checks if a thumbnail exist for given file.

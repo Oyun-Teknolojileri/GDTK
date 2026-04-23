@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include "EditorImGuiTextureCache.h"
+
 #include <Types.h>
 
 extern struct SDL_Window* g_window;
@@ -177,9 +179,18 @@ namespace ToolKit
     const size_t g_maxUndoCount                = 50;
     const UVec2 g_max2dGridSize(100 * 100 * 2);
 
-#define Convert2ImGuiTexture(TexturePtr) (void*) (intptr_t) Renderer::GetNativeTextureHandle(TexturePtr)
+// In the Vulkan build the editor wraps every texture handed to ImGui in a cached descriptor set,
+// so Convert2ImGuiTexture defers to the editor-side cache instead of the raw GL handle. The
+// uint-overload assumes the caller already converted the texture via the cache (or Acquire) and
+// just casts the opaque uint64 to ImTextureID.
+#ifdef TK_VULKAN
+  #define Convert2ImGuiTexture(TexturePtr)                                                                              \
+    (void*) (uintptr_t) ::ToolKit::Editor::EditorImGuiTextureCache::Acquire(TexturePtr)
+#else
+  #define Convert2ImGuiTexture(TexturePtr) (void*) (uintptr_t) Renderer::GetNativeTextureHandle(TexturePtr)
+#endif
 
-#define ConvertUIntImGuiTexture(uint)    (void*) (intptr_t) (uint)
+#define ConvertUIntImGuiTexture(uint)    (void*) (uintptr_t) (uint)
 
   } // namespace Editor
 } // namespace ToolKit

@@ -23,12 +23,64 @@ namespace ToolKit
   VulkanBackend::VulkanBackend()
       : m_context(std::make_unique<VulkanContext>()), m_swapchain(std::make_unique<VulkanSwapchain>())
   {
+    // One bucket per frame-in-flight. Sized once at construction so DeferDelete can run before
+    // InitBackend (e.g., during early resource churn) without bounds checks.
+    m_pendingDeleters.resize(VulkanSwapchain::FRAMES_IN_FLIGHT);
   }
 
   VulkanBackend::~VulkanBackend()
   {
+    // Block until every queued submission completes, then run every pending deleter while the
+    // device is still alive. Do this BEFORE swapchain.reset()/context.reset() so the lambdas can
+    // call vkDestroy* / shared_ptr dtors safely.
+    if (m_context && m_context->GetDevice() != VK_NULL_HANDLE)
+    {
+      vkDeviceWaitIdle(m_context->GetDevice());
+    }
+    DrainAllDeleters();
     m_swapchain.reset();
     m_context.reset();
+  }
+
+  void VulkanBackend::DeferDelete(std::function<void()> fn)
+  {
+    if (!fn || m_pendingDeleters.empty())
+    {
+      // Backend not yet constructed (impossible — vector is sized in ctor) or no-op lambda.
+      return;
+    }
+    const uint slot = m_deleterSlot < m_pendingDeleters.size() ? m_deleterSlot : 0;
+    m_pendingDeleters[slot].emplace_back(std::move(fn));
+  }
+
+  void VulkanBackend::DrainDeleterBucket(uint slot)
+  {
+    if (slot >= m_pendingDeleters.size())
+    {
+      return;
+    }
+    auto& bucket = m_pendingDeleters[slot];
+    if (bucket.empty())
+    {
+      return;
+    }
+    // Move out so a deleter that itself calls DeferDelete (queueing into the same slot) doesn't
+    // invalidate iteration. Anything appended during drain lands in the now-empty bucket and
+    // will be drained on the next cycle.
+    std::vector<std::function<void()>> local;
+    local.swap(bucket);
+    for (auto& fn : local)
+    {
+      fn();
+    }
+  }
+
+  void VulkanBackend::DrainAllDeleters()
+  {
+    for (uint i = 0; i < (uint) m_pendingDeleters.size(); ++i)
+    {
+      DrainDeleterBucket(i);
+    }
   }
 
   void VulkanBackend::InitBackend(const BackendInitParams& params)
@@ -56,7 +108,13 @@ namespace ToolKit
     {
       // Swapchain out-of-date or minimized — flag for recreate and skip.
       m_needsRecreate = true;
+      return;
     }
+    // VulkanSwapchain::BeginFrame waited on m_inFlight[currentFrame] just now → every cmd
+    // buffer that recorded into this slot last cycle is fully retired on the GPU. Reap that
+    // bucket before any new work this frame can touch the same slot.
+    m_deleterSlot = m_swapchain->GetCurrentFrameIndex();
+    DrainDeleterBucket(m_deleterSlot);
   }
 
   void VulkanBackend::EndFrame()
@@ -91,10 +149,21 @@ namespace ToolKit
     (void) desc;
     VkDevice device = m_context->GetDevice();
 
-    // 1f.5'e kadar ge\u00e7ici: eski RP+FB'yi destroy etmeyiz \u2014 cmd buffer hala onlara referans
-    // veriyor olabilir. Sadece overwrite ediyoruz; backend dtor'da vkDeviceWaitIdle sonras\u0131
-    // VulkanFramebuffer dtor temizler. K\u00fc\u00e7\u00fck bir leak (recreate ba\u015f\u0131na 1 RP + 1 FB) \u2014 deferred
-    // deletion queue (1f.5) bunu d\u00fczeltir.
+    // Old RP+FB may still be referenced by the in-flight command buffer of an earlier frame --
+    // queue them for deletion N frames out instead of destroying eagerly. The new ones below
+    // overwrite the slots after the lambdas have captured the handles.
+    if (fbData->renderPass != VK_NULL_HANDLE)
+    {
+      VkRenderPass oldRp = fbData->renderPass;
+      DeferDelete([device, oldRp]() { vkDestroyRenderPass(device, oldRp, nullptr); });
+      fbData->renderPass = VK_NULL_HANDLE;
+    }
+    if (fbData->framebuffer != VK_NULL_HANDLE)
+    {
+      VkFramebuffer oldFb = fbData->framebuffer;
+      DeferDelete([device, oldFb]() { vkDestroyFramebuffer(device, oldFb, nullptr); });
+      fbData->framebuffer = VK_NULL_HANDLE;
+    }
 
     std::vector<VkAttachmentDescription> atts;
     std::vector<VkAttachmentReference> colorRefs;
@@ -436,10 +505,21 @@ namespace ToolKit
         return;
     }
 
-    VkFormat vkFormat = ToVkFormat(settings.InternalFormat);
+    // DepthTexture leaves its TextureSettings::InternalFormat at the Texture default (a color
+    // format) — its real depth format lives on the subclass via GetDepthFormat() (mirrors what
+    // GLBackend does with dt->As<DepthTexture>()). Without this branch we'd allocate a color
+    // image and then bind it to a depth attachment slot → vkCreateRenderPass / vkCreateFramebuffer
+    // validation errors and an unrenderable framebuffer.
+    GraphicTypes effectiveFormat = settings.InternalFormat;
+    if (DepthTexture* dt = tex->As<DepthTexture>())
+    {
+      effectiveFormat = dt->GetDepthFormat();
+    }
+
+    VkFormat vkFormat = ToVkFormat(effectiveFormat);
     if (vkFormat == VK_FORMAT_UNDEFINED)
     {
-      TK_ERR("VulkanBackend::CreateTexture - unsupported format (%d)", (int) settings.InternalFormat);
+      TK_ERR("VulkanBackend::CreateTexture - unsupported format (%d)", (int) effectiveFormat);
       return;
     }
 
@@ -567,18 +647,16 @@ namespace ToolKit
     {
       return;
     }
-    // VulkanTexture dtor releases image/view/sampler via VulkanContext.
-    // ImGui descriptor (if any) is released here since we need the ImGui header.
-    if (auto* data = static_cast<VulkanTexture*>(tex->m_gpuData.get()))
+    // Hand the gpu data to the deletion queue: the lambda holds the only remaining shared_ptr
+    // ref, so the VulkanTexture dtor (which calls vkDestroyImage/View/Sampler) only fires once
+    // the deleter bucket is drained — i.e., after the GPU has finished any cmd buffer that may
+    // still reference these handles. Editor-side ImGui descriptor cache observes the same
+    // shared_ptr via weak_ptr and sweeps expired entries on the next frame.
+    if (auto data = tex->m_gpuData)
     {
-      if (data->imguiDescriptor != nullptr)
-      {
-        // NOTE: ImGui binding is handled in Stage 1f.3 — descriptor is nullptr until then.
-        // When enabled, call ImGui_ImplVulkan_RemoveTexture here.
-        data->imguiDescriptor = nullptr;
-      }
+      tex->m_gpuData = nullptr;
+      DeferDelete([data]() mutable { data.reset(); });
     }
-    tex->m_gpuData = nullptr;
   }
 
   void VulkanBackend::ApplyTextureSettings(Texture* tex)
@@ -697,9 +775,15 @@ namespace ToolKit
     {
       return;
     }
-    // VulkanFramebuffer dtor releases VkRenderPass + VkFramebuffer via VulkanContext.
-    // Attached texture pointers are non-owning — they live on their RenderTarget/DepthTexture.
-    fb->m_gpuData = nullptr;
+    // Same pattern as DestroyTexture: defer the shared_ptr release so the VulkanFramebuffer
+    // dtor (which destroys the cached VkRenderPass + VkFramebuffer + any owned attachment views)
+    // runs after the in-flight cmd buffer has retired. Attached texture pointers are non-owning;
+    // their lifetime is governed by their owning RenderTarget/DepthTexture.
+    if (auto data = fb->m_gpuData)
+    {
+      fb->m_gpuData = nullptr;
+      DeferDelete([data]() mutable { data.reset(); });
+    }
   }
 
   void VulkanBackend::AttachColorTarget(Framebuffer* fb,
@@ -715,10 +799,13 @@ namespace ToolKit
 
     auto& slot = fbData->colorAttachments[attachment];
 
-    // Release previously owned view if we're about to replace it.
+    // Defer the previously owned view — the in-flight cmd buffer's RP+FB still references it
+    // until the next BuildOffscreenRenderPass swaps them out (which itself defers the old RP+FB).
     if (slot.ownsView && slot.view != VK_NULL_HANDLE)
     {
-      vkDestroyImageView(m_context->GetDevice(), slot.view, nullptr);
+      VkDevice device  = m_context->GetDevice();
+      VkImageView old  = slot.view;
+      DeferDelete([device, old]() { vkDestroyImageView(device, old, nullptr); });
     }
     slot      = {};
     slot.tex  = static_cast<VulkanTexture*>(rt->m_gpuData.get());
@@ -780,7 +867,8 @@ namespace ToolKit
       slot.ownsView = false;
     }
 
-    fbData->ReleaseLazyObjects();
+    // Don't eager-destroy the cached RP+FB — BuildOffscreenRenderPass will defer them on the
+    // next BeginPass. Eager destroy here would invalidate the in-flight cmd buffer.
     fbData->dirty = true;
   }
 
@@ -796,11 +884,12 @@ namespace ToolKit
     auto& slot = fbData->colorAttachments[attachment];
     if (slot.ownsView && slot.view != VK_NULL_HANDLE)
     {
-      vkDestroyImageView(m_context->GetDevice(), slot.view, nullptr);
+      VkDevice device  = m_context->GetDevice();
+      VkImageView old  = slot.view;
+      DeferDelete([device, old]() { vkDestroyImageView(device, old, nullptr); });
     }
     slot = {};
 
-    fbData->ReleaseLazyObjects();
     fbData->dirty = true;
   }
 
@@ -812,14 +901,15 @@ namespace ToolKit
     auto& slot = fbData->depthAttachment;
     if (slot.ownsView && slot.view != VK_NULL_HANDLE)
     {
-      vkDestroyImageView(m_context->GetDevice(), slot.view, nullptr);
+      VkDevice device  = m_context->GetDevice();
+      VkImageView old  = slot.view;
+      DeferDelete([device, old]() { vkDestroyImageView(device, old, nullptr); });
     }
     slot      = {};
     slot.tex  = static_cast<VulkanTexture*>(dt->m_gpuData.get());
     slot.view = slot.tex ? slot.tex->view : VK_NULL_HANDLE;
     // Depth attachments currently always use the texture's primary view (no face/layer selection).
 
-    fbData->ReleaseLazyObjects();
     fbData->dirty = true;
   }
 
@@ -833,11 +923,12 @@ namespace ToolKit
     auto& slot = fbData->depthAttachment;
     if (slot.ownsView && slot.view != VK_NULL_HANDLE)
     {
-      vkDestroyImageView(m_context->GetDevice(), slot.view, nullptr);
+      VkDevice device  = m_context->GetDevice();
+      VkImageView old  = slot.view;
+      DeferDelete([device, old]() { vkDestroyImageView(device, old, nullptr); });
     }
     slot = {};
 
-    fbData->ReleaseLazyObjects();
     fbData->dirty = true;
   }
 
@@ -918,8 +1009,10 @@ namespace ToolKit
 
   void* VulkanBackend::GetNativeTextureHandle(Texture* tex)
   {
-    // TODO: Return (void*)VkDescriptorSet for ImGui integration.
-    return nullptr;
+    // Return the raw VulkanTexture* so UI layers (editor, etc.) can pull out sampler/view and
+    // register them with their own texture systems (ImGui descriptor cache, debug viewers, ...).
+    // Keeping the backend UI-framework agnostic means zero ImGui / SDL includes inside ToolKit.
+    return tex != nullptr ? tex->m_gpuData.get() : nullptr;
   }
 
   void VulkanBackend::SetDebugLabel(Texture* tex)

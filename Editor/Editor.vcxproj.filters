@@ -210,6 +210,9 @@
     <ClCompile Include="EditorBackendBindings.cpp">
       <Filter>UI</Filter>
     </ClCompile>
+    <ClCompile Include="EditorImGuiTextureCache.cpp">
+      <Filter>UI</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Mod.h">
@@ -378,6 +381,9 @@
       <Filter>Components</Filter>
     </ClInclude>
     <ClInclude Include="EditorBackendBindings.h">
+      <Filter>UI</Filter>
+    </ClInclude>
+    <ClInclude Include="EditorImGuiTextureCache.h">
       <Filter>UI</Filter>
     </ClInclude>
   </ItemGroup>

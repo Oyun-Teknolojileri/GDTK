@@ -336,17 +336,17 @@ namespace ToolKit
           }
 
           bool flipRenderTarget = false;
-          uint iconId           = Renderer::GetNativeTextureHandle(UI::m_fileIcon);
+          uint64 iconId         = EditorImGuiTextureCache::Acquire(UI::m_fileIcon);
 
-          std::unordered_map<String, uint> extensionIconMap {
-              {SCENE,    Renderer::GetNativeTextureHandle(UI::m_worldIcon)},
-              {LAYER,    Renderer::GetNativeTextureHandle(UI::m_worldIcon)},
-              {ANIM,     Renderer::GetNativeTextureHandle(UI::m_clipIcon) },
-              {WAW,      Renderer::GetNativeTextureHandle(UI::m_audioIcon)},
-              {MP3,      Renderer::GetNativeTextureHandle(UI::m_audioIcon)},
-              {SHADER,   Renderer::GetNativeTextureHandle(UI::m_codeIcon) },
-              {LAYER,    Renderer::GetNativeTextureHandle(UI::m_worldIcon)},
-              {SKELETON, Renderer::GetNativeTextureHandle(UI::m_boneIcon) }
+          std::unordered_map<String, uint64> extensionIconMap {
+              {SCENE,    EditorImGuiTextureCache::Acquire(UI::m_worldIcon)},
+              {LAYER,    EditorImGuiTextureCache::Acquire(UI::m_worldIcon)},
+              {ANIM,     EditorImGuiTextureCache::Acquire(UI::m_clipIcon) },
+              {WAW,      EditorImGuiTextureCache::Acquire(UI::m_audioIcon)},
+              {MP3,      EditorImGuiTextureCache::Acquire(UI::m_audioIcon)},
+              {SHADER,   EditorImGuiTextureCache::Acquire(UI::m_codeIcon) },
+              {LAYER,    EditorImGuiTextureCache::Acquire(UI::m_worldIcon)},
+              {SKELETON, EditorImGuiTextureCache::Acquire(UI::m_boneIcon) }
           };
 
           static std::unordered_set<String>
@@ -354,7 +354,7 @@ namespace ToolKit
 
           if (dirEnt.m_isDirectory)
           {
-            iconId = Renderer::GetNativeTextureHandle(UI::m_folderIcon);
+            iconId = EditorImGuiTextureCache::Acquire(UI::m_folderIcon);
           }
           else if (extensionIconMap.count(dirEnt.m_ext) > 0)
           {
@@ -368,7 +368,7 @@ namespace ToolKit
             }
             else
             {
-              iconId = Renderer::GetNativeTextureHandle(UI::m_imageIcon);
+              iconId = EditorImGuiTextureCache::Acquire(UI::m_imageIcon);
             }
           }
           else if (m_onlyNativeTypes)
@@ -386,8 +386,8 @@ namespace ToolKit
           DetermineAndSetBackgroundColor(isSelected, i);
 
           // Draw Item Icon.
-          char iconChId[16];
-          snprintf(iconChId, sizeof(iconChId), "##%d", iconId);
+          char iconChId[32];
+          snprintf(iconChId, sizeof(iconChId), "##%llu", (unsigned long long) iconId);
           if (UI::ImageButton(iconChId, ConvertUIntImGuiTexture(iconId), m_iconSize))
           {
             anyButtonClicked |= true;

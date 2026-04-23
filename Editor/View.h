@@ -40,7 +40,7 @@ namespace ToolKit
        * perform when an entry is dropped (drop action).
        * DropZone can be disabled by setting isEditable to false.
        */
-      static void DropZone(uint fallbackIcon,
+      static void DropZone(uint64 fallbackIcon,
                            const String& file,
                            std::function<void(DirectoryEntry& entry)> dropAction,
                            const String& dropName = "",
@@ -48,7 +48,7 @@ namespace ToolKit
 
       /** A drop zone which can be placed inside a tree node. */
       static void DropSubZone(const String& title,
-                              uint fallbackIcon,
+                              uint64 fallbackIcon,
                               const String& file,
                               std::function<void(const DirectoryEntry& entry)> dropAction,
                               bool isEditable = true);

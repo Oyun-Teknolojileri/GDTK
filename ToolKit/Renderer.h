@@ -200,7 +200,9 @@ namespace ToolKit
     void ColorMask(bool r, bool g, bool b, bool a);
 
     /** Returns an opaque native texture handle as uint, obtained from the backend. */
-    static uint GetNativeTextureHandle(const TexturePtr& tex);
+    /** Returns an opaque native texture handle as uint64. GL backend returns a GLuint zero-extended
+     *  to 64 bits; Vulkan backend returns a `VulkanTexture*` (pointer), cast to uint64. */
+    static uint64 GetNativeTextureHandle(const TexturePtr& tex);
 
     // FrameBuffer Operations
     //////////////////////////////////////////

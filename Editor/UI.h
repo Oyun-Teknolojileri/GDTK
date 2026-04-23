@@ -64,8 +64,8 @@ namespace ToolKit
 
       // Custom widgets.
       static bool ButtonDecorless(StringView text, const Vec2& size);
-      static bool ImageButtonDecorless(uint textureID, const Vec2& size);
-      static bool ToggleButton(uint textureID, const Vec2& size, bool pushState);
+      static bool ImageButtonDecorless(uint64 textureID, const Vec2& size);
+      static bool ToggleButton(uint64 textureID, const Vec2& size, bool pushState);
       static bool ToggleButton(const String& text, const Vec2& size, bool pushState);
       static bool BeginCenteredTextButton(const String& text, const String& id = "");
       static void EndCenteredTextButton();

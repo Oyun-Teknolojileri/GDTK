@@ -10,7 +10,9 @@
 
 #include "../IGraphicsBackend.h"
 
+#include <functional>
 #include <memory>
+#include <vector>
 
 // Forward declare so we don't drag vulkan.h into every translation unit that includes this header.
 typedef struct VkCommandBuffer_T* VkCommandBuffer;
@@ -136,6 +138,18 @@ namespace ToolKit
     void SetDebugLabel(Texture* tex) override;
     void SetDebugLabel(Framebuffer* fb) override;
 
+    /**
+     * Defers a destruction lambda until the GPU has finished with whatever the lambda releases.
+     * The lambda is captured into the current frame's bucket and fired on the next BeginFrame
+     * after that bucket's fence has been waited on (i.e., GPU is guaranteed done with the cmd
+     * buffer that may still reference the resource). Used to retire VkRenderPass/Framebuffer/
+     * ImageView/Sampler/Image instances that get replaced or destroyed mid-frame.
+     *
+     * Capture by value anything the lambda needs (device handle, allocator, shared_ptr to a
+     * GpuResourceData, etc.) — the lambda outlives the original resource owner.
+     */
+    void DeferDelete(std::function<void()> fn);
+
    private:
     std::unique_ptr<VulkanContext> m_context;
     std::unique_ptr<VulkanSwapchain> m_swapchain;
@@ -147,6 +161,23 @@ namespace ToolKit
         nullptr when either no pass is active or the swapchain pass is the active one (the
         swapchain tracks its own pass-active flag). */
     struct VulkanFramebuffer* m_activePassFb = nullptr;
+
+    /**
+     * Per-frame-in-flight deletion buckets. Sized to VulkanSwapchain::FRAMES_IN_FLIGHT in the
+     * constructor. Bucket index N is appended to during frame N (and between frames before the
+     * next BeginFrame), and drained at the start of frame N + FRAMES_IN_FLIGHT — at which point
+     * the corresponding fence has been waited on, so any cmd-buffer reference held over from
+     * that earlier frame is guaranteed retired.
+     */
+    std::vector<std::vector<std::function<void()>>> m_pendingDeleters;
+    /** Slot in @ref m_pendingDeleters that DeferDelete writes to. Always points at the swapchain
+        slot of the current (or next pending) frame. */
+    uint m_deleterSlot = 0;
+
+    /** Run + clear all deleters in a single bucket. Safe to call with an out-of-range index. */
+    void DrainDeleterBucket(uint slot);
+    /** Run + clear every bucket. Used on shutdown after vkDeviceWaitIdle. */
+    void DrainAllDeleters();
 
     /** Lazy-builds (or rebuilds when @p fbData->dirty) the VkRenderPass + VkFramebuffer for an
         offscreen target sized from fbData->width/height with the current attachment views.

@@ -24,7 +24,7 @@ namespace ToolKit
 
   /**
    * Maps ToolKit GraphicTypes format enum to a concrete VkFormat. Returns VK_FORMAT_UNDEFINED for
-   * formats not yet supported by the Vulkan backend — caller should assert/skip.
+   * formats not yet supported by the Vulkan backend ï¿½ caller should assert/skip.
    */
   VkFormat ToVkFormat(GraphicTypes format);
 
@@ -58,10 +58,6 @@ namespace ToolKit
         initialLayout selection. */
     VkImageLayout currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-    /** Cached ImGui Vulkan backend descriptor set (VkDescriptorSet) — lazy, populated on first
-        GetNativeTextureHandle call. Stored as void* to avoid dragging imgui into resources. */
-    void* imguiDescriptor = nullptr;
-
     ~VulkanTexture() override;
   };
 
@@ -76,7 +72,7 @@ namespace ToolKit
   {
     VulkanContext* context = nullptr;
 
-    /** Attachment slot — records the source texture and the specific view used by this slot.
+    /** Attachment slot ï¿½ records the source texture and the specific view used by this slot.
         @ref view may differ from @ref tex->view when a face/mip/layer selector is active
         (e.g., cubemap face-as-color-attachment). When we create a transient view for this slot
         we own it and release it on detach / destroy. */

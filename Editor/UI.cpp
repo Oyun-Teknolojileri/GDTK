@@ -1429,14 +1429,14 @@ namespace ToolKit
       return ImGui::ImageButton(id, textureId, size, ImVec2(0.0f, 1.0f), ImVec2(1.0f, 0.0f));
     }
 
-    bool UI::ImageButtonDecorless(uint textureID, const Vec2& size)
+    bool UI::ImageButtonDecorless(uint64 textureID, const Vec2& size)
     {
       ImGui::PushStyleColor(ImGuiCol_Button, Vec4());
       ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Vec4());
       ImGui::PushStyleColor(ImGuiCol_ButtonActive, Vec4());
 
-      char id[16];
-      snprintf(id, sizeof(id), "##%u", textureID);
+      char id[32];
+      snprintf(id, sizeof(id), "##%llu", (unsigned long long) textureID);
 
       bool res = UI::ImageButton(id, ConvertUIntImGuiTexture(textureID), size);
       ImGui::PopStyleColor(3);
@@ -1444,7 +1444,7 @@ namespace ToolKit
       return res;
     }
 
-    bool UI::ToggleButton(uint textureID, const Vec2& size, bool pushState)
+    bool UI::ToggleButton(uint64 textureID, const Vec2& size, bool pushState)
     {
       ImGuiStyle& style = ImGui::GetStyle();
       if (pushState)
@@ -1456,8 +1456,8 @@ namespace ToolKit
       }
 
       bool newPushState = pushState;
-      char id[16];
-      snprintf(id, sizeof(id), "##%u", textureID);
+      char id[32];
+      snprintf(id, sizeof(id), "##%llu", (unsigned long long) textureID);
       if (UI::ImageButton(id, ConvertUIntImGuiTexture(textureID), size))
       {
         newPushState = !pushState; // If pressed toggle.

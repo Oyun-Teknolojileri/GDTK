@@ -12,6 +12,8 @@
 #include <imgui/imgui.h>
 
 #ifdef TK_VULKAN
+  #include "EditorImGuiTextureCache.h"
+
   #include <RenderSystem.h>
   #include <ToolKit.h>
   #include <Vulkan/VulkanBackend.h>
@@ -226,6 +228,9 @@ namespace ToolKit
             }
           }
         }
+        // Drop every cached descriptor before the ImGui Vulkan backend tears down its pool —
+        // RemoveTexture must run while the pool is still alive.
+        EditorImGuiTextureCache::Clear();
         ImGui_ImplVulkan_Shutdown();
 #else
         ImGui_ImplOpenGL3_Shutdown();
@@ -235,6 +240,9 @@ namespace ToolKit
       void ImGuiNewFrame()
       {
 #ifdef TK_VULKAN
+        // Reap descriptors whose textures were destroyed during the previous frame so we don't
+        // hand a dangling VulkanTexture* back from the cache on the next Acquire call.
+        EditorImGuiTextureCache::Sweep();
         ImGui_ImplVulkan_NewFrame();
 #else
         ImGui_ImplOpenGL3_NewFrame();

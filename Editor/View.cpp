@@ -30,7 +30,7 @@ namespace ToolKit
               ImGui::IsKeyPressed(ImGuiKey_Tab));
     }
 
-    void View::DropZone(uint fallbackIcon,
+    void View::DropZone(uint64 fallbackIcon,
                         const String& file,
                         std::function<void(DirectoryEntry& entry)> dropAction,
                         const String& dropName,
@@ -48,7 +48,7 @@ namespace ToolKit
         }
       }
 
-      uint iconId                        = fallbackIcon;
+      uint64 iconId                      = fallbackIcon;
       ThumbnailManager* thumbnailManager = GetThumbnailManager();
 
       if (dirEnt.m_ext.length())
@@ -150,7 +150,7 @@ namespace ToolKit
     }
 
     void View::DropSubZone(const String& title,
-                           uint fallbackIcon,
+                           uint64 fallbackIcon,
                            const String& file,
                            std::function<void(const DirectoryEntry& entry)> dropAction,
                            bool isEditable)
