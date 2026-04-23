@@ -7,10 +7,14 @@
 
 #include "VulkanBackend.h"
 
+#include "../Framebuffer.h"
 #include "../Logger.h"
+#include "../Texture.h"
 #include "VulkanContext.h"
+#include "VulkanResources.h"
 #include "VulkanSwapchain.h"
 
+#include <vma/vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
 
 namespace ToolKit
@@ -166,17 +170,161 @@ namespace ToolKit
 
   void VulkanBackend::CreateTexture(Texture* tex)
   {
-    // TODO: vkCreateImage + vkAllocateMemory + vkCreateImageView.
+    assert(tex && "CreateTexture: null texture");
+    assert(tex->m_gpuData == nullptr && "CreateTexture: texture already has gpu data");
+
+    if (m_context == nullptr || m_context->GetAllocator() == nullptr)
+    {
+      TK_ERR("VulkanBackend::CreateTexture called before VulkanContext was initialized — "
+             "check InitGraphics ordering / VulkanContext::Init failure logs");
+      return;
+    }
+
+    if (tex->m_width <= 0 || tex->m_height <= 0)
+    {
+      TK_ERR("VulkanBackend::CreateTexture - invalid dimensions (%d x %d)", tex->m_width, tex->m_height);
+      return;
+    }
+
+    const TextureSettings& settings = tex->Settings();
+
+    uint32_t arrayLayers = 1;
+    bool isCubemap       = false;
+    VkImageViewType viewType = VK_IMAGE_VIEW_TYPE_2D;
+    VkImageCreateFlags imageFlags = 0;
+
+    switch (settings.Target)
+    {
+      case GraphicTypes::Target2D:
+        arrayLayers = 1;
+        viewType    = VK_IMAGE_VIEW_TYPE_2D;
+        break;
+      case GraphicTypes::TargetCubeMap:
+        arrayLayers = 6;
+        viewType    = VK_IMAGE_VIEW_TYPE_CUBE;
+        imageFlags  = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+        isCubemap   = true;
+        break;
+      case GraphicTypes::Target2DArray:
+        arrayLayers = (uint32_t) std::max(1, settings.Layers);
+        viewType    = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+        break;
+      default:
+        TK_ERR("VulkanBackend::CreateTexture - unsupported target (%d)", (int) settings.Target);
+        return;
+    }
+
+    VkFormat vkFormat = ToVkFormat(settings.InternalFormat);
+    if (vkFormat == VK_FORMAT_UNDEFINED)
+    {
+      TK_ERR("VulkanBackend::CreateTexture - unsupported format (%d)", (int) settings.InternalFormat);
+      return;
+    }
+
+    const bool isDepth = IsDepthFormat(vkFormat);
+
+    auto data          = std::make_shared<VulkanTexture>();
+    data->context      = m_context.get();
+    data->format       = vkFormat;
+    data->aspect       = isDepth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+    data->extent       = {(uint32_t) tex->m_width, (uint32_t) tex->m_height};
+    data->arrayLayers  = arrayLayers;
+    data->mipLevels    = 1; // Mip generation lands in Stage 4+.
+    data->isCubemap    = isCubemap;
+    data->currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+    VkImageUsageFlags usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                              VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    usage |= isDepth ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+    VkImageCreateInfo imageInfo = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+    imageInfo.flags             = imageFlags;
+    imageInfo.imageType         = VK_IMAGE_TYPE_2D;
+    imageInfo.format            = vkFormat;
+    imageInfo.extent            = {data->extent.width, data->extent.height, 1};
+    imageInfo.mipLevels         = data->mipLevels;
+    imageInfo.arrayLayers       = data->arrayLayers;
+    imageInfo.samples           = VK_SAMPLE_COUNT_1_BIT; // MSAA Stage 6.
+    imageInfo.tiling            = VK_IMAGE_TILING_OPTIMAL;
+    imageInfo.usage             = usage;
+    imageInfo.sharingMode       = VK_SHARING_MODE_EXCLUSIVE;
+    imageInfo.initialLayout     = VK_IMAGE_LAYOUT_UNDEFINED;
+
+    VmaAllocationCreateInfo allocInfo = {};
+    allocInfo.usage                   = VMA_MEMORY_USAGE_GPU_ONLY;
+
+    if (vmaCreateImage(m_context->GetAllocator(),
+                       &imageInfo,
+                       &allocInfo,
+                       &data->image,
+                       &data->allocation,
+                       nullptr) != VK_SUCCESS)
+    {
+      TK_ERR("VulkanBackend::CreateTexture - vmaCreateImage failed");
+      return;
+    }
+
+    VkImageViewCreateInfo viewInfo       = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+    viewInfo.image                       = data->image;
+    viewInfo.viewType                    = viewType;
+    viewInfo.format                      = vkFormat;
+    viewInfo.subresourceRange.aspectMask = data->aspect;
+    viewInfo.subresourceRange.levelCount = data->mipLevels;
+    viewInfo.subresourceRange.layerCount = data->arrayLayers;
+    if (vkCreateImageView(m_context->GetDevice(), &viewInfo, nullptr, &data->view) != VK_SUCCESS)
+    {
+      TK_ERR("VulkanBackend::CreateTexture - vkCreateImageView failed");
+      vmaDestroyImage(m_context->GetAllocator(), data->image, data->allocation);
+      data->image      = VK_NULL_HANDLE;
+      data->allocation = VK_NULL_HANDLE;
+      return;
+    }
+
+    // Default sampler — color targets are sampled by ImGui / future post passes.
+    // Depth targets get sampler lazily via ApplyTextureSettings when needed.
+    if (!isDepth)
+    {
+      VkSamplerCreateInfo samplerInfo = {VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+      samplerInfo.magFilter           = VK_FILTER_LINEAR;
+      samplerInfo.minFilter           = VK_FILTER_LINEAR;
+      samplerInfo.addressModeU        = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+      samplerInfo.addressModeV        = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+      samplerInfo.addressModeW        = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+      samplerInfo.mipmapMode          = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+      samplerInfo.minLod              = 0.0f;
+      samplerInfo.maxLod              = 0.0f;
+      vkCreateSampler(m_context->GetDevice(), &samplerInfo, nullptr, &data->sampler);
+    }
+
+    tex->m_gpuData = data;
   }
 
   void VulkanBackend::DestroyTexture(Texture* tex)
   {
-    // TODO: vkDestroyImageView + vkDestroyImage + vkFreeMemory.
+    if (tex == nullptr)
+    {
+      return;
+    }
+    // VulkanTexture dtor releases image/view/sampler via VulkanContext.
+    // ImGui descriptor (if any) is released here since we need the ImGui header.
+    if (auto* data = static_cast<VulkanTexture*>(tex->m_gpuData.get()))
+    {
+      if (data->imguiDescriptor != nullptr)
+      {
+        // NOTE: ImGui binding is handled in Stage 1f.3 — descriptor is nullptr until then.
+        // When enabled, call ImGui_ImplVulkan_RemoveTexture here.
+        data->imguiDescriptor = nullptr;
+      }
+    }
+    tex->m_gpuData = nullptr;
   }
 
   void VulkanBackend::ApplyTextureSettings(Texture* tex)
   {
-    // TODO: Create/update VkSampler based on TextureSettings.
+    // Sampler is created once in CreateTexture with sensible defaults for Stage 1f.
+    // Re-creating on every ApplyTextureSettings call is wasteful and breaks the cached ImGui
+    // descriptor. Stage 7 will add proper sampler-cache keyed on TextureSettings.
+    (void) tex;
   }
 
   void VulkanBackend::SetTextureSwizzleAlpha(Texture* tex, bool swizzleToOne, bool setLastBindBack)
@@ -270,12 +418,26 @@ namespace ToolKit
 
   void VulkanBackend::CreateFramebuffer(Framebuffer* fb)
   {
-    // TODO: Create VkImageViews for attachments (dynamic rendering  no VkFramebuffer object needed).
+    assert(fb && "CreateFramebuffer: null framebuffer");
+    assert(fb->m_gpuData == nullptr && "CreateFramebuffer: framebuffer already has gpu data");
+
+    auto data     = std::make_shared<VulkanFramebuffer>();
+    data->context = m_context.get();
+    data->width   = (uint32_t) fb->GetSettings().width;
+    data->height  = (uint32_t) fb->GetSettings().height;
+    data->dirty   = true;
+    fb->m_gpuData = data;
   }
 
   void VulkanBackend::DestroyFramebuffer(Framebuffer* fb)
   {
-    // TODO: Destroy associated image views if any.
+    if (fb == nullptr)
+    {
+      return;
+    }
+    // VulkanFramebuffer dtor releases VkRenderPass + VkFramebuffer via VulkanContext.
+    // Attached texture pointers are non-owning — they live on their RenderTarget/DepthTexture.
+    fb->m_gpuData = nullptr;
   }
 
   void VulkanBackend::AttachColorTarget(Framebuffer* fb,
@@ -285,22 +447,127 @@ namespace ToolKit
                                         int layer,
                                         int face)
   {
-    // TODO: Record attachment info for dynamic rendering.
+    auto* fbData = static_cast<VulkanFramebuffer*>(fb->m_gpuData.get());
+    assert(fbData && "AttachColorTarget: framebuffer has no gpu data");
+    assert(attachment >= 0 && attachment < VulkanFramebuffer::kMaxColorAttachments);
+
+    auto& slot = fbData->colorAttachments[attachment];
+
+    // Release previously owned view if we're about to replace it.
+    if (slot.ownsView && slot.view != VK_NULL_HANDLE)
+    {
+      vkDestroyImageView(m_context->GetDevice(), slot.view, nullptr);
+    }
+    slot      = {};
+    slot.tex  = static_cast<VulkanTexture*>(rt->m_gpuData.get());
+
+    const bool needsSubresourceView =
+        slot.tex != nullptr && (face >= 0 || layer >= 0 || (mip > 0 && slot.tex->mipLevels > 1));
+
+    if (slot.tex == nullptr)
+    {
+      // Attach with a null texture — caller error; leave slot cleared.
+    }
+    else if (needsSubresourceView)
+    {
+      uint32_t baseArrayLayer = 0;
+      uint32_t layerCount     = 1;
+      if (face >= 0)
+      {
+        // Cubemap face as 2D render target.
+        baseArrayLayer = (uint32_t) face;
+        layerCount     = 1;
+      }
+      else if (layer >= 0)
+      {
+        baseArrayLayer = (uint32_t) layer;
+        layerCount     = 1;
+      }
+
+      VkImageViewCreateInfo viewInfo       = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+      viewInfo.image                       = slot.tex->image;
+      viewInfo.viewType                    = VK_IMAGE_VIEW_TYPE_2D;
+      viewInfo.format                      = slot.tex->format;
+      viewInfo.subresourceRange.aspectMask = slot.tex->aspect;
+      viewInfo.subresourceRange.baseMipLevel   = (uint32_t) std::max(0, mip);
+      viewInfo.subresourceRange.levelCount     = 1;
+      viewInfo.subresourceRange.baseArrayLayer = baseArrayLayer;
+      viewInfo.subresourceRange.layerCount     = layerCount;
+      if (vkCreateImageView(m_context->GetDevice(), &viewInfo, nullptr, &slot.view) != VK_SUCCESS)
+      {
+        TK_ERR("AttachColorTarget: vkCreateImageView failed for face/layer/mip view");
+        slot.view = VK_NULL_HANDLE;
+      }
+      else
+      {
+        slot.ownsView = true;
+      }
+    }
+    else
+    {
+      slot.view     = slot.tex->view;
+      slot.ownsView = false;
+    }
+
+    fbData->ReleaseLazyObjects();
+    fbData->dirty = true;
   }
 
   void VulkanBackend::DetachColorTarget(Framebuffer* fb, int attachment)
   {
-    // TODO: Remove attachment info.
+    auto* fbData = static_cast<VulkanFramebuffer*>(fb->m_gpuData.get());
+    if (fbData == nullptr)
+    {
+      return;
+    }
+    assert(attachment >= 0 && attachment < VulkanFramebuffer::kMaxColorAttachments);
+
+    auto& slot = fbData->colorAttachments[attachment];
+    if (slot.ownsView && slot.view != VK_NULL_HANDLE)
+    {
+      vkDestroyImageView(m_context->GetDevice(), slot.view, nullptr);
+    }
+    slot = {};
+
+    fbData->ReleaseLazyObjects();
+    fbData->dirty = true;
   }
 
   void VulkanBackend::AttachDepthTarget(Framebuffer* fb, DepthTexturePtr dt)
   {
-    // TODO: Record depth attachment info.
+    auto* fbData = static_cast<VulkanFramebuffer*>(fb->m_gpuData.get());
+    assert(fbData && "AttachDepthTarget: framebuffer has no gpu data");
+
+    auto& slot = fbData->depthAttachment;
+    if (slot.ownsView && slot.view != VK_NULL_HANDLE)
+    {
+      vkDestroyImageView(m_context->GetDevice(), slot.view, nullptr);
+    }
+    slot      = {};
+    slot.tex  = static_cast<VulkanTexture*>(dt->m_gpuData.get());
+    slot.view = slot.tex ? slot.tex->view : VK_NULL_HANDLE;
+    // Depth attachments currently always use the texture's primary view (no face/layer selection).
+
+    fbData->ReleaseLazyObjects();
+    fbData->dirty = true;
   }
 
   void VulkanBackend::DetachDepthTarget(Framebuffer* fb)
   {
-    // TODO: Remove depth attachment info.
+    auto* fbData = static_cast<VulkanFramebuffer*>(fb->m_gpuData.get());
+    if (fbData == nullptr)
+    {
+      return;
+    }
+    auto& slot = fbData->depthAttachment;
+    if (slot.ownsView && slot.view != VK_NULL_HANDLE)
+    {
+      vkDestroyImageView(m_context->GetDevice(), slot.view, nullptr);
+    }
+    slot = {};
+
+    fbData->ReleaseLazyObjects();
+    fbData->dirty = true;
   }
 
   void VulkanBackend::SubmitCustomUniforms(const GpuProgramPtr& program,

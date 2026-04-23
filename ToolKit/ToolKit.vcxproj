@@ -103,6 +103,7 @@
     <ClCompile Include="Vulkan\TestRenderPath.cpp" />
     <ClCompile Include="Vulkan\VulkanBackend.cpp" />
     <ClCompile Include="Vulkan\VulkanContext.cpp" />
+    <ClCompile Include="Vulkan\VulkanResources.cpp" />
     <ClCompile Include="Vulkan\VulkanSwapchain.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -200,6 +201,7 @@
     <ClInclude Include="Vulkan\TestRenderPath.h" />
     <ClInclude Include="Vulkan\VulkanBackend.h" />
     <ClInclude Include="Vulkan\VulkanContext.h" />
+    <ClInclude Include="Vulkan\VulkanResources.h" />
     <ClInclude Include="Vulkan\VulkanSwapchain.h" />
   </ItemGroup>
   <ItemGroup>
