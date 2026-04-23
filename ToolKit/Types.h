@@ -230,7 +230,7 @@ namespace ToolKit
 
   // Callbacks.
   typedef std::function<void(class Event*, EntityPtr)> SurfaceEventCallback;
-  typedef std::function<void(const String&)> GlReportCallback;
+  typedef std::function<void(const String&)> GpuErrorCallback;
 
   // Math Vector decelerations.
   static const Vec3 ZERO    = Vec3(0.0f);
@@ -343,43 +343,43 @@ namespace ToolKit
   // Graphics Api Type Overrides.
   enum class GraphicTypes
   {
-    VertexShader               = 0x8B31,
-    FragmentShader             = 0x8B30,
-    UVRepeat                   = 0x2901,
-    UVClampToEdge              = 0x812F,
-    UVClampToBorder            = 0x812D,
-    SampleNearest              = 0x2600,
-    SampleLinear               = 0x2601,
-    SampleNearestMipmapNearest = 0x2700,
-    SampleLinearMipmapLinear   = 0x2703,
-    SampleLinearMipmapNearest  = 0x2701,
-    FormatRed                  = 0x1903,
-    FormatR8                   = 0x8229,
-    FormatRG                   = 0x8227,
-    FormatRG8                  = 0x822B,
-    FormatRGB                  = 0x1907,
-    FormatRGB8                 = 0x8051,
-    FormatRGBA8                = 0x8058,
-    FormatRGBA                 = 0x1908,
-    FormatR16F                 = 0x822A,
-    FormatR32F                 = 0x822E,
-    FormatRG16F                = 0x822F,
-    FormatRG32F                = 0x8230,
-    FormatRGB16F               = 0x881B,
-    FormatRGBA16F              = 0x881A,
-    FormatRGB32F               = 0x8815,
-    FormatRGBA32F              = 0x8814,
-    FormatR16SNorm             = 0x8F98,
-    FormatSRGB8_A8             = 0x8C43,
-    FormatDepth24              = 0x81A6,
-    FormatDepth24Stencil8      = 0x88F0,
-    ColorAttachment0           = 0x8CE0,
-    DepthAttachment            = 0x8D00,
-    TypeFloat                  = 0x1406,
-    TypeUnsignedByte           = 0x1401,
-    Target2D                   = 0x0DE1,
-    TargetCubeMap              = 0x8513,
-    Target2DArray              = 0x8C1A
+    VertexShader,
+    FragmentShader,
+    UVRepeat,
+    UVClampToEdge,
+    UVClampToBorder,
+    SampleNearest,
+    SampleLinear,
+    SampleNearestMipmapNearest,
+    SampleLinearMipmapLinear,
+    SampleLinearMipmapNearest,
+    FormatRed,
+    FormatR8,
+    FormatRG,
+    FormatRG8,
+    FormatRGB,
+    FormatRGB8,
+    FormatRGBA8,
+    FormatRGBA,
+    FormatR16F,
+    FormatR32F,
+    FormatRG16F,
+    FormatRG32F,
+    FormatRGB16F,
+    FormatRGBA16F,
+    FormatRGB32F,
+    FormatRGBA32F,
+    FormatR16SNorm,
+    FormatSRGB8_A8,
+    FormatDepth24,
+    FormatDepth24Stencil8,
+    ColorAttachment0,
+    DepthAttachment,
+    TypeFloat,
+    TypeUnsignedByte,
+    Target2D,
+    TargetCubeMap,
+    Target2DArray
   };
 
   /** MSAA sample count. Values represent actual sample counts used by the GPU. */
@@ -389,16 +389,6 @@ namespace ToolKit
     x2 = 2, //!< 2x MSAA.
     x4 = 4, //!< 4x MSAA.
     x8 = 8  //!< 8x MSAA.
-  };
-
-  enum class GpuResourceType
-  {
-    Texture      = 0x1702, // GL_TEXTURE
-    Buffer       = 0x82E0, // GL_BUFFER
-    Shader       = 0x82E1, // GL_SHADER
-    Program      = 0x82E2, // GL_PROGRAM
-    FrameBuffer  = 0x8D40, // GL_FRAMEBUFFER
-    RenderBuffer = 0x8D41  // GL_RENDERBUFFER
   };
 
   inline int BytesOfFormat(GraphicTypes type)

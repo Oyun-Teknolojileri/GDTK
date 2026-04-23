@@ -15,7 +15,6 @@
 #include "RenderSystem.h"
 #include "Shader.h"
 #include "Stats.h"
-#include "TKOpenGL.h"
 
 #include <DebugNew.h>
 
@@ -195,6 +194,7 @@ namespace ToolKit
 
       renderer->SetFramebuffer(skyFrameBuffer, GraphicBitFields::None);
       renderer->DrawCube(cam, m_skyboxMaterial);
+      renderer->EndPass();
     }
 
     CubeMapPtr newCubemap = MakeNewPtr<CubeMap>();

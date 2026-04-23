@@ -6,6 +6,7 @@
  */
 
 #include "Launcher.h"
+#include "LauncherBackendBindings.h"
 
 #include <Common/SDLEventPool.h>
 #include <Common/Win32Utils.h>
@@ -15,11 +16,9 @@
 #include <Object.h>
 #include <RenderSystem.h>
 #include <SDL.h>
-#include <TKOpenGL.h>
 #include <Types.h>
 
 #define IMGUI_USER_CONFIG "tk_imconfig.h"
-#include <ImGui/backends/imgui_impl_opengl3.h>
 #include <ImGui/backends/imgui_impl_sdl2.h>
 #include <imgui/imgui.h>
 #include <locale.h>
@@ -164,9 +163,12 @@ namespace ToolKit
 
       SDL_GL_MakeCurrent(g_window, g_context);
 
-      g_proxy->m_renderSys->InitGl(SDL_GL_GetProcAddress,
-                                   [](const std::string& msg)
-                                   { GetLogger()->WritePlatformConsole(LogType::Error, msg.c_str()); });
+      ToolKit::IGraphicsBackend::BackendInitParams initParams;
+      initParams.getProcAddress = (void*) SDL_GL_GetProcAddress;
+      initParams.errorCallback  = [](const std::string& msg)
+      { GetLogger()->WritePlatformConsole(LogType::Error, msg.c_str()); };
+      g_proxy->m_renderSys->InitGraphics(initParams);
+      g_proxy->m_renderSys->SetPresentCallback([]() { SDL_GL_SwapWindow(g_window); });
 
       g_proxy->Init();
 
@@ -186,8 +188,7 @@ namespace ToolKit
       io.ConfigFlags                       |= ImGuiConfigFlags_DockingEnable;
       io.ConfigWindowsMoveFromTitleBarOnly  = true;
 
-      ImGui_ImplSDL2_InitForOpenGL(g_window, g_context);
-      ImGui_ImplOpenGL3_Init("#version 300 es");
+      Launcher::LauncherBackendBindings::InitImGui(g_window, g_context);
 
       DeserializeThemeSettings();
 
@@ -222,14 +223,14 @@ namespace ToolKit
           ImGui_ImplSDL2_ProcessEvent(&sdlEvent);
         }
 
-        ImGui_ImplOpenGL3_NewFrame();
+        Launcher::LauncherBackendBindings::ImGuiNewFrame();
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
 
         g_launcher->ShowLauncherWindow();
 
         ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        Launcher::LauncherBackendBindings::ImGuiRenderDrawData();
         ImGui::EndFrame();
       };
 
@@ -237,7 +238,7 @@ namespace ToolKit
 
       TKUpdateFn postUpdateFn = [](float deltaTime)
       {
-        SDL_GL_SwapWindow(g_window);
+        g_proxy->m_renderSys->Present();
         g_sdlEventPool->ClearPool();
       };
 
@@ -250,7 +251,7 @@ namespace ToolKit
     {
       SafeDel(g_launcher);
 
-      ImGui_ImplOpenGL3_Shutdown();
+      Launcher::LauncherBackendBindings::ShutdownImGui();
       ImGui_ImplSDL2_Shutdown();
       ImGui::DestroyContext();
 

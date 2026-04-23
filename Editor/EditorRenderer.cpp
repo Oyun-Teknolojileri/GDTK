@@ -140,11 +140,11 @@ namespace ToolKit
         renderer->ResolveFramebuffer(mainBuffer, m_resolvedFramebuffer, {0});
 
         // We only need resolved color texture. Msaa color, depth and stencil buffers are not needed after resolve.
-        renderer->InvalidateFramebuffer(GraphicBitFields::AllBits, mainBuffer);
+        renderer->EndPass();
       }
       else
       {
-        renderer->InvalidateFramebuffer(GraphicBitFields::DepthBits, mainBuffer);
+        renderer->EndPass();
       }
 
       PostRender(renderer);

@@ -298,9 +298,9 @@ namespace ToolKit
         {
           GetRenderSystem()->AddRenderTask({[self](Renderer* renderer) -> void
                                             {
-                                              if (SkyPtr sky = self.lock())
+                                               if (SkyPtr sky = self.lock())
                                               {
-                                                if (HdriPtr hdr = sky->GetHdriVal())
+                                                if (HdriPtr hdr = sky->GetHdri())
                                                 {
                                                   hdr->GenerateIrradianceCaches(renderer);
                                                 }

@@ -19,27 +19,27 @@ namespace ToolKit
     /**
      * How far the samples will be taken from.
      */
-    float Radius                  = 0.5f;
+    float Radius                       = 0.5f;
 
     /**
      * Base offset from the sample location.
      */
-    float Bias                    = 0.025f;
+    float Bias                         = 0.025f;
 
     /**
      * 0-1 value defining how diverse the samples from the normal.
      */
-    float spread                  = 1.0;
+    float spread                       = 1.0;
 
     /**
      * Number of samples per pixel. Must be 8, 16 or 32.
      */
-    int KernelSize                = 16;
+    int KernelSize                     = 16;
 
     /**
      * If true, SSAO is rendered at half resolution for better performance.
      */
-    bool HalfResolution           = true;
+    bool HalfResolution                = true;
   };
 
   class TK_API SSAOPass : public Pass
@@ -63,21 +63,21 @@ namespace ToolKit
    private:
     Vec3Array m_ssaoKernel;
 
-    FramebufferPtr m_ssaoFramebuffer = nullptr;
-    FramebufferPtr m_blurFramebuffer = nullptr;
-    RenderTargetPtr m_rawSsaoRt      = nullptr;
+    FramebufferPtr m_ssaoFramebuffer         = nullptr;
+    FramebufferPtr m_blurFramebuffer         = nullptr;
+    RenderTargetPtr m_rawSsaoRt              = nullptr;
 
-    FullQuadPassPtr m_quadPass       = nullptr;
-    FullQuadPassPtr m_blurPass       = nullptr;
-    ShaderPtr m_ssaoShader           = nullptr;
-    ShaderPtr m_blurShader           = nullptr;
+    FullQuadPassPtr m_quadPass               = nullptr;
+    FullQuadPassPtr m_blurPass               = nullptr;
+    ShaderPtr m_ssaoShader                   = nullptr;
+    ShaderPtr m_blurShader                   = nullptr;
 
-    int m_currentKernelSize          = 0;
+    int m_currentKernelSize                  = 0;
 
     static constexpr int m_maximumKernelSize = 32;
 
     // Used to detect if the spread has changed. If so, kernel updated.
-    float m_prevSpread               = -1.0f;
+    float m_prevSpread                       = -1.0f;
 
     static StringArray m_ssaoSamplesStrCache;
     static constexpr int m_ssaoSamplesStrCacheSize = 32;

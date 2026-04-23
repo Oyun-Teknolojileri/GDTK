@@ -208,7 +208,6 @@ namespace ToolKit
     class EngineSettings* m_engineSettings       = nullptr;
     class TKStats* m_tkStats                     = nullptr;
     class WorkerManager* m_workerManager         = nullptr;
-    class GpuProgramManager* m_gpuProgramManager = nullptr;
     struct GlobalGpuBuffers* m_gpuBuffers        = nullptr;
     HandleManager m_handleManager;
 
@@ -248,7 +247,6 @@ namespace ToolKit
   TK_API class ObjectFactory* GetObjectFactory();
   TK_API class TKStats* GetTKStats();
   TK_API class WorkerManager* GetWorkerManager();
-  TK_API class GpuProgramManager* GetGpuProgramManager();
   TK_API Timing* GetTiming();
 
   // Path.

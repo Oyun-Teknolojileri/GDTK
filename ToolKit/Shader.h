@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include "IGraphicsBackend.h"
 #include "ParameterBlock.h"
 #include "Resource.h"
 #include "ResourceManager.h"
@@ -82,9 +83,9 @@ namespace ToolKit
 
     /**
      * Compiles the given source string.
-     * @return shader handle for compiled shader.
+     * @return true if compilation succeeded.
      */
-    uint Compile(String source);
+    bool Compile(String source);
 
     /** Internally used structure to point to a define variant. */
     struct ShaderDefineIndex
@@ -124,7 +125,7 @@ namespace ToolKit
     ShaderType m_shaderType = ShaderType::VertexShader;
 
     /** Internal Id that is being used by graphics API. */
-    uint m_shaderHandle     = 0;
+    GpuResourceDataPtr m_gpuData;
 
     /** Include files that this shader needs. */
     StringArray m_includeFiles;
@@ -143,7 +144,7 @@ namespace ToolKit
      * points to the version of the compiled shader for the given combination. The look up table is used to find the
      * program for a given define combination in the string. Key format: DefineName:Value|DefineName:Value ...
      */
-    std::unordered_map<String, uint> m_shaderVariantMap;
+    std::unordered_map<String, GpuResourceDataPtr> m_shaderVariantMap;
 
     /** Current define value pairs in an array. */
     ShaderDefineCombinaton m_currentDefineValues;

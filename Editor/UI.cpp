@@ -10,6 +10,7 @@
 #include "AndroidBuildWindow.h"
 #include "App.h"
 #include "ConsoleWindow.h"
+#include "EditorBackendBindings.h"
 #include "EditorViewport2d.h"
 #include "EngineSettingsWindow.h"
 #include "OutlinerWindow.h"
@@ -26,7 +27,6 @@
 #include <Sky.h>
 #include <TKOpenGL.h>
 #include <Workspace.h>
-#include <imgui/backends/imgui_impl_opengl3.h>
 #include <imgui/backends/imgui_impl_sdl2.h>
 
 #include <fstream>
@@ -161,8 +161,7 @@ namespace ToolKit
       LiberationSansBold =
           io.Fonts->AddFontFromFileTTF(FontPath("LiberationSans-Bold.ttf", true).c_str(), 14.0f, nullptr, utf8TR);
 
-      ImGui_ImplSDL2_InitForOpenGL(g_window, g_context);
-      ImGui_ImplOpenGL3_Init("#version 300 es");
+      EditorBackendBindings::InitImGui(g_window, g_context);
 
       // Platform window create override.
       ImGuiPlatformIO& pio      = ImGui::GetPlatformIO();
@@ -185,7 +184,63 @@ namespace ToolKit
 
     void UI::UnInit()
     {
-      ImGui_ImplOpenGL3_Shutdown();
+      // Release static icon textures before engine shutdown.
+      m_selectIcn              = nullptr;
+      m_cursorIcn              = nullptr;
+      m_moveIcn                = nullptr;
+      m_rotateIcn              = nullptr;
+      m_scaleIcn               = nullptr;
+      m_appIcon                = nullptr;
+      m_snapIcon               = nullptr;
+      m_audioIcon              = nullptr;
+      m_cameraIcon             = nullptr;
+      m_clipIcon               = nullptr;
+      m_fileIcon               = nullptr;
+      m_folderIcon             = nullptr;
+      m_imageIcon              = nullptr;
+      m_lightIcon              = nullptr;
+      m_materialIcon           = nullptr;
+      m_meshIcon               = nullptr;
+      m_armatureIcon           = nullptr;
+      m_codeIcon               = nullptr;
+      m_boneIcon               = nullptr;
+      m_worldIcon              = nullptr;
+      m_axisIcon               = nullptr;
+      m_playIcon               = nullptr;
+      m_pauseIcon              = nullptr;
+      m_stopIcon               = nullptr;
+      m_vsCodeIcon             = nullptr;
+      m_collectionIcon         = nullptr;
+      m_arrowsIcon             = nullptr;
+      m_lockIcon               = nullptr;
+      m_visibleIcon            = nullptr;
+      m_invisibleIcon          = nullptr;
+      m_lockedIcon             = nullptr;
+      m_unlockedIcon           = nullptr;
+      m_viewZoomIcon           = nullptr;
+      m_gridIcon               = nullptr;
+      m_skyIcon                = nullptr;
+      m_closeIcon              = nullptr;
+      m_phoneRotateIcon        = nullptr;
+      m_studioLightsToggleIcon = nullptr;
+      m_anchorIcn              = nullptr;
+      m_prefabIcn              = nullptr;
+      m_buildIcn               = nullptr;
+      m_addIcon                = nullptr;
+      m_sphereIcon             = nullptr;
+      m_cubeIcon               = nullptr;
+      m_shaderBallIcon         = nullptr;
+      m_diskDriveIcon          = nullptr;
+      m_packageIcon            = nullptr;
+      m_objectDataIcon         = nullptr;
+      m_sceneIcon              = nullptr;
+
+      for (uint i = 0; i < AnchorPresetImages::presetCount; i++)
+      {
+        m_anchorPresetIcons.m_presetImages[i] = nullptr;
+      }
+
+      EditorBackendBindings::ShutdownImGui();
       ImGui_ImplSDL2_Shutdown();
       ImGui::DestroyContext();
     }
@@ -637,7 +692,7 @@ namespace ToolKit
 
     void UI::BeginUI()
     {
-      ImGui_ImplOpenGL3_NewFrame();
+      EditorBackendBindings::ImGuiNewFrame();
       ImGui_ImplSDL2_NewFrame();
       ImGui::NewFrame();
     }
@@ -645,7 +700,7 @@ namespace ToolKit
     void UI::EndUI()
     {
       ImGui::Render();
-      ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+      EditorBackendBindings::ImGuiRenderDrawData();
       ImGui::EndFrame();
 
       if (m_firstFrame)
@@ -662,7 +717,7 @@ namespace ToolKit
 
       ImGui::UpdatePlatformWindows();
       ImGui::RenderPlatformWindowsDefault();
-      SDL_GL_MakeCurrent(g_window, g_context);
+      EditorBackendBindings::MakeContextCurrent(g_window, g_context);
     }
 
     void UI::ShowAppMainMenuBar()

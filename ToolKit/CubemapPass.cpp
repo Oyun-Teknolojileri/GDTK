@@ -53,7 +53,9 @@ namespace ToolKit
     TK_PROFILE_FUNCTION();
 
     Pass::PostRender();
-    GetRenderer()->SetDepthTestFunc(CompareFunctions::FuncLess);
+    Renderer* renderer = GetRenderer();
+    renderer->SetDepthTestFunc(CompareFunctions::FuncLess);
+    renderer->EndPass();
   }
 
 } // namespace ToolKit

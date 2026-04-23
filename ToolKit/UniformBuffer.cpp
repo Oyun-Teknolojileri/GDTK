@@ -7,9 +7,9 @@
 
 #include "UniformBuffer.h"
 
-#include "RHI.h"
+#include "RenderSystem.h"
+#include "Renderer.h"
 #include "Stats.h"
-#include "TKOpenGL.h"
 
 #include "DebugNew.h"
 
@@ -18,24 +18,23 @@ namespace ToolKit
 
   UniformBuffer::UniformBuffer()
   {
-    m_id   = 0;
     m_slot = -1;
+    m_size = 0;
   }
 
-  UniformBuffer::~UniformBuffer() { glDeleteBuffers(1, &m_id); }
-
-  void UniformBuffer::Init(uint64 size)
+  UniformBuffer::~UniformBuffer()
   {
-    m_size = size;
-    glGenBuffers(1, &m_id);
-    glBindBuffer(GL_UNIFORM_BUFFER, m_id);
-    glBufferData(GL_UNIFORM_BUFFER, m_size, nullptr, GL_DYNAMIC_DRAW);
+    if (m_gpuData)
+    {
+      GetRenderSystem()->GetBackend()->DestroyUniformBuffer(this);
+    }
   }
+
+  void UniformBuffer::Init(uint64 size) { GetRenderSystem()->GetBackend()->CreateUniformBuffer(this, size); }
 
   void UniformBuffer::Map(const void* data, uint64 size)
   {
-    // Sanitize buffer.
-    if (m_id == NullHandle || m_slot == InvalidHandle)
+    if (m_gpuData == nullptr || m_slot == InvalidHandle)
     {
       TK_ERR("Uniform buffer is not initialized properly.");
       return;
@@ -54,8 +53,7 @@ namespace ToolKit
 
     Stats::IncrementStat(FrameStatType::UboUpdates);
 
-    glBindBuffer(GL_UNIFORM_BUFFER, m_id);
-    glBufferSubData(GL_UNIFORM_BUFFER, 0, size, data);
+    GetRenderSystem()->GetBackend()->UpdateUniformBuffer(this, data, size);
   }
 
 } // namespace ToolKit

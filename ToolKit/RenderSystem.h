@@ -8,6 +8,7 @@
 #pragma once
 
 #include "GpuProgram.h"
+#include "IGraphicsBackend.h"
 #include "Pass.h"
 
 namespace ToolKit
@@ -70,73 +71,58 @@ namespace ToolKit
      */
     void SetAppWindowSize(uint width, uint height);
 
-    /** Application window size. */
     UVec2 GetAppWindowSize();
 
-    /** Sets default clear color for render targets. */
     void SetClearColor(const Vec4& clearColor);
 
-    /** Internally used. Enables blending. This should not be used directly. */
-    void EnableBlending(bool enable);
-
-    /** Returns elapsed frame count. */
     uint GetFrameCount();
 
-    /** Set elapsed frame count to zero. */
     void ResetFrameCount();
 
-    /** Internally used to decrement skip count. */
     void DecrementSkipFrame();
 
-    /** States if this state is skipped. */
     bool IsSkipFrame() const;
 
-    /** Sets number of frames to skip. */
     void SkipSceneFrames(int numFrames);
 
     /**
-     * Host application must provide opengl function addresses. This function
-     * initialize opengl functions.
-     * @param glGetProcAddress is the address of opengl function getter.
-     * @param callback is error callback function for opengl.
+     * Initializes the active graphics backend.
+     * Host application fills BackendInitParams with the data the backend needs.
+     * @param params backend initialization parameters.
      */
-    void InitGl(void* glGetProcAddres, GlReportCallback callback = nullptr);
+    void InitGraphics(const IGraphicsBackend::BackendInitParams& params);
 
-    /** This function should be called at the start of the frame. */
     void StartFrame();
 
-    /** This function should be called at the end of the frame. */
     void EndFrame();
 
-    /** Returns true if back buffer is not srgb. */
     bool IsGammaCorrectionNeeded();
 
-    /** Enables gamma encoding when back buffer is srgb. */
     void SrgbAutoEncoding(bool enable);
 
+    GpuProgramManager* GetGpuProgramManager();
+    IGraphicsBackend* GetBackend();
+
+    void SetPresentCallback(std::function<void()> callback) { m_presentCallback = std::move(callback); }
+
+    void Present();
+
    private:
-    /** Implementation for executing render tasks. */
+    IGraphicsBackend* CreateBackend();
+
     void ExecuteTaskImp(RenderTask& task);
 
    public:
-    /** States if the back buffer is srgb. */
     bool m_backbufferFormatIsSRGB = false;
 
    private:
-    /** High priority render queue. Tasks in this queue always finished. */
     RenderTaskArray m_highQueue;
-
-    /** Low priority render queue. Consume tasks for a given time span and left others for next frame. */
     RenderTaskArray m_lowQueue;
 
-    /** Current Renderer. */
     Renderer* m_renderer = nullptr;
-
-    /** Holds number of frames to skip. If its greater than zero renderer skip given frames. */
     int m_skipFrames     = 0;
-
-    /** Number of elapsed frames since the engine start. */
     uint m_frameCount    = 0;
+    std::function<void()> m_presentCallback;
   };
 
 } // namespace ToolKit

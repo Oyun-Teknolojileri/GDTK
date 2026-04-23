@@ -28,7 +28,6 @@
 #include <ImGui/backends/imgui_impl_sdl2.h>
 #include <PluginManager.h>
 #include <SDL.h>
-#include <TKOpenGL.h>
 #include <Types.h>
 #include <locale.h>
 
@@ -326,22 +325,25 @@ namespace ToolKit
           {
             SDL_GL_MakeCurrent(g_window, g_context);
 
-            // Init OpenGl.
-            g_proxy->m_renderSys->InitGl(SDL_GL_GetProcAddress,
-                                         [](const std::string& msg) -> void
-                                         {
-                                           if (g_app == nullptr)
-                                           {
-                                             return;
-                                           }
+            // Init graphics backend.
+            ToolKit::IGraphicsBackend::BackendInitParams initParams;
+            initParams.getProcAddress = (void*) SDL_GL_GetProcAddress;
+            initParams.errorCallback  = [](const std::string& msg) -> void
+            {
+              if (g_app == nullptr)
+              {
+                return;
+              }
 
-                                           if (g_app->m_showGraphicsApiErrors)
-                                           {
-                                             TK_ERR(msg.c_str());
-                                           }
+              if (g_app->m_showGraphicsApiErrors)
+              {
+                TK_ERR(msg.c_str());
+              }
 
-                                           GetLogger()->WritePlatformConsole(LogType::Error, msg.c_str());
-                                         });
+              GetLogger()->WritePlatformConsole(LogType::Error, msg.c_str());
+            };
+            g_proxy->m_renderSys->InitGraphics(initParams);
+            g_proxy->m_renderSys->SetPresentCallback([]() { SDL_GL_SwapWindow(g_window); });
 
             // Init Main.
             // Register app specific classes to toolkit.
@@ -443,7 +445,7 @@ namespace ToolKit
 
             TKUpdateFn postUpdateFn = [](float deltaTime)
             {
-              SDL_GL_SwapWindow(g_window);
+              g_proxy->m_renderSys->Present();
               g_sdlEventPool->ClearPool(); // Clear after consumption.
             };
 

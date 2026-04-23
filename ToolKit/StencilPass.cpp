@@ -10,7 +10,6 @@
 #include "Material.h"
 #include "Mesh.h"
 #include "Shader.h"
-#include "TKOpenGL.h"
 #include "ToolKit.h"
 
 #include "DebugNew.h"
@@ -56,7 +55,7 @@ namespace ToolKit
     Pass::PreRender();
     Renderer* renderer                   = GetRenderer();
 
-    GpuProgramManager* gpuProgramManager = GetGpuProgramManager();
+    GpuProgramManager* gpuProgramManager = renderer->GetGpuProgramManager();
     ShaderPtr vert                       = m_solidOverrideMaterial->GetVertexShaderVal();
     ShaderPtr frag                       = m_solidOverrideMaterial->GetFragmentShaderVal();
     m_program                            = gpuProgramManager->CreateProgram(vert, frag);
@@ -79,6 +78,10 @@ namespace ToolKit
     renderer->SetCamera(m_params.Camera, true);
   }
 
-  void StencilRenderPass::PostRender() { Pass::PostRender(); }
+  void StencilRenderPass::PostRender()
+  {
+    Pass::PostRender();
+    GetRenderer()->EndPass();
+  }
 
 } // namespace ToolKit

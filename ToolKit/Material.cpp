@@ -466,7 +466,7 @@ namespace ToolKit
   {
     Init();
 
-    GpuProgramManager* gpuProgramManager = GetGpuProgramManager();
+    GpuProgramManager* gpuProgramManager = GetRenderSystem()->GetGpuProgramManager();
     GpuProgramPtr gpuProgram = gpuProgramManager->CreateProgram(GetVertexShaderVal(), GetFragmentShaderVal());
 
     gpuProgram->UpdateCustomUniform(uniformName, val);

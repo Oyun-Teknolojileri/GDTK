@@ -14,7 +14,6 @@
 #include "RHI.h"
 #include "Shader.h"
 #include "Stats.h"
-#include "TKOpenGL.h"
 #include "ToolKit.h"
 
 #include "DebugNew.h"
@@ -138,9 +137,9 @@ namespace ToolKit
     m_ssaoFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_rawSsaoRt);
 
     // Init blurred output render target (consumed by forward pass)
-    TextureSettings blurOutSet   = oneChannelSet;
-    blurOutSet.MinFilter         = GraphicTypes::SampleNearest;
-    blurOutSet.MagFilter         = GraphicTypes::SampleNearest;
+    TextureSettings blurOutSet = oneChannelSet;
+    blurOutSet.MinFilter       = GraphicTypes::SampleNearest;
+    blurOutSet.MagFilter       = GraphicTypes::SampleNearest;
     m_ssaoTexture->Settings(blurOutSet);
     m_ssaoTexture->ReconstructIfNeeded(renderWidth, renderHeight);
 

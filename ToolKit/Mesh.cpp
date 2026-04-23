@@ -9,14 +9,16 @@
 
 #include "Common/base64.h"
 #include "FileManager.h"
+#include "IGraphicsBackend.h"
 #include "Material.h"
 #include "MathUtil.h"
 #include "RHI.h"
+#include "RenderSystem.h"
+#include "Renderer.h"
 #include "ResourceManager.h"
 #include "Skeleton.h"
 #include "Stats.h"
 #include "TKAssert.h"
-#include "TKOpenGL.h"
 #include "Texture.h"
 #include "Threads.h"
 #include "ToolKit.h"
@@ -29,64 +31,6 @@ static constexpr bool SERIALIZE_MESH_AS_BINARY = true;
 namespace ToolKit
 {
 
-#define BUFFER_OFFSET(idx) (static_cast<char*>(0) + (idx))
-
-  void SetVertexLayout(VertexLayout layout)
-  {
-    if (layout == VertexLayout::None)
-    {
-      for (int i = 0; i < 6; i++)
-      {
-        glDisableVertexAttribArray(i);
-      }
-    }
-
-    if (layout == VertexLayout::Mesh)
-    {
-      GLuint offset = 0;
-      glEnableVertexAttribArray(0); // Vertex
-      glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), 0);
-      offset += 3 * sizeof(float);
-
-      glEnableVertexAttribArray(1); // Normal
-      glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), BUFFER_OFFSET(offset));
-      offset += 3 * sizeof(float);
-
-      glEnableVertexAttribArray(2); // Texture
-      glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), BUFFER_OFFSET(offset));
-      offset += 2 * sizeof(float);
-
-      glEnableVertexAttribArray(3); // Tangent (vec4: xyz=tangent, w=bitangent sign)
-      glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), BUFFER_OFFSET(offset));
-    }
-
-    if (layout == VertexLayout::SkinMesh)
-    {
-      GLuint offset = 0;
-      glEnableVertexAttribArray(0); // Vertex
-      glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(SkinVertex), 0);
-      offset += 3 * sizeof(float);
-
-      glEnableVertexAttribArray(1); // Normal
-      glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(SkinVertex), BUFFER_OFFSET(offset));
-      offset += 3 * sizeof(float);
-
-      glEnableVertexAttribArray(2); // Texture
-      glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(SkinVertex), BUFFER_OFFSET(offset));
-      offset += 2 * sizeof(float);
-
-      glEnableVertexAttribArray(3); // Tangent (vec4: xyz=tangent, w=bitangent sign)
-      glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(SkinVertex), BUFFER_OFFSET(offset));
-      offset += 4 * sizeof(float);
-
-      glEnableVertexAttribArray(4); // Bones
-      glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(SkinVertex), BUFFER_OFFSET(offset));
-      offset += 4 * sizeof(float);
-
-      glEnableVertexAttribArray(5); // Weights
-      glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, sizeof(SkinVertex), BUFFER_OFFSET(offset));
-    }
-  }
 
   // Mesh
   //////////////////////////////////////////
@@ -112,11 +56,21 @@ namespace ToolKit
 
     TK_ASSERT_ONCE(!m_clientSideVertices.empty() || m_vertexLayout == VertexLayout::SkinMesh);
 
-    InitVertices(flushClientSideArray);
-    SetVertexLayout(m_vertexLayout);
-    InitIndices(flushClientSideArray);
+    IGraphicsBackend* backend = GetRenderSystem()->GetBackend();
+    backend->CreateMesh(this);
 
-    if (!flushClientSideArray)
+    Stats::AddVRAMUsageInBytes(GetVertexSize() * (uint64) m_vertexCount);
+    if (m_indexCount > 0)
+    {
+      Stats::AddVRAMUsageInBytes(sizeof(uint) * (uint64) m_indexCount);
+    }
+
+    if (flushClientSideArray)
+    {
+      ClearClientVertexData();
+      m_clientSideIndices.clear();
+    }
+    else
     {
       ConstructFaces();
     }
@@ -135,32 +89,18 @@ namespace ToolKit
 
   void Mesh::UnInit()
   {
-    // If mesh class is only used to serialize/deserialize (nothing GPU related)
-    //  then GPU buffers may not be initialized, so don't need to call these
     if (m_initiated)
     {
-      if (m_vboVertexId)
+      if (m_gpuData)
       {
         Stats::RemoveVRAMUsageInBytes(GetVertexSize() * m_vertexCount);
-      }
-
-      if (m_vboIndexId)
-      {
         Stats::RemoveVRAMUsageInBytes(sizeof(uint) * m_indexCount);
       }
 
-      GLuint buffers[2] = {m_vboIndexId, m_vboVertexId};
-      glDeleteBuffers(2, buffers);
-      glDeleteVertexArrays(1, &m_vaoId);
-      RHI::BindVertexArray(0); // Of the deleted vao is set, remove it from RHI cache
+      GetRenderSystem()->GetBackend()->DestroyMesh(this);
     }
-    m_vboVertexId = 0;
-    m_vboIndexId  = 0;
-
-    m_vaoId       = 0;
 
     m_subMeshes.clear();
-
     m_initiated = false;
   }
 
@@ -198,36 +138,17 @@ namespace ToolKit
     cpy->m_indexCount         = m_indexCount;
     cpy->m_faces              = m_faces;
 
-    // Copy video memory.
+    // Upload copy's client-side data (already copied above) to GPU.
     if (m_vertexCount > 0)
     {
-      glGenVertexArrays(1, &cpy->m_vaoId);
-      RHI::BindVertexArray(cpy->m_vaoId);
+      IGraphicsBackend* backend = GetRenderSystem()->GetBackend();
+      backend->CreateMesh(cpy);
 
-      glGenBuffers(1, &cpy->m_vboVertexId);
-      glBindBuffer(GL_COPY_WRITE_BUFFER, cpy->m_vboVertexId);
-      glBindBuffer(GL_COPY_READ_BUFFER, m_vboVertexId);
-      uint64 size = (uint64) GetVertexSize() * m_vertexCount;
-      glBufferData(GL_COPY_WRITE_BUFFER, size, nullptr, GL_STATIC_DRAW);
-      glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, 0, 0, size);
-
-      Stats::AddVRAMUsageInBytes(size);
-    }
-
-    if (m_indexCount > 0)
-    {
-      assert(m_vertexCount > 0 && "Mesh has no vertex but has indices.");
-
-      RHI::BindVertexArray(cpy->m_vaoId);
-
-      glGenBuffers(1, &cpy->m_vboIndexId);
-      glBindBuffer(GL_COPY_WRITE_BUFFER, cpy->m_vboIndexId);
-      glBindBuffer(GL_COPY_READ_BUFFER, m_vboIndexId);
-      uint64 size = sizeof(uint) * (uint64) m_indexCount;
-      glBufferData(GL_COPY_WRITE_BUFFER, size, nullptr, GL_STATIC_DRAW);
-      glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, 0, 0, size);
-
-      Stats::AddVRAMUsageInBytes(size);
+      Stats::AddVRAMUsageInBytes((uint64) GetVertexSize() * cpy->m_vertexCount);
+      if (cpy->m_indexCount > 0)
+      {
+        Stats::AddVRAMUsageInBytes(sizeof(uint) * (uint64) cpy->m_indexCount);
+      }
     }
 
     cpy->m_material    = GetMaterialManager()->Copy<Material>(m_material);
@@ -241,6 +162,12 @@ namespace ToolKit
   }
 
   int Mesh::GetVertexSize() const { return sizeof(Vertex); }
+
+  const void* Mesh::GetClientVertexData() const { return m_clientSideVertices.empty() ? nullptr : m_clientSideVertices.data(); }
+
+  size_t Mesh::GetClientVertexCount() const { return m_clientSideVertices.size(); }
+
+  void Mesh::ClearClientVertexData() { m_clientSideVertices.clear(); }
 
   uint Mesh::GetVertexCount() const { return (uint) m_clientSideVertices.size(); }
 
@@ -620,65 +547,34 @@ namespace ToolKit
 
   void Mesh::InitVertices(bool flush)
   {
-    if (m_vboVertexId != 0)
+    if (m_gpuData != nullptr)
     {
       Stats::RemoveVRAMUsageInBytes(GetVertexSize() * m_vertexCount);
     }
 
-    glDeleteBuffers(1, &m_vboVertexId);
-    glDeleteVertexArrays(1, &m_vaoId);
-    RHI::BindVertexArray(0); // Of the deleted vao is set, remove it from RHI cache
+    IGraphicsBackend* backend = GetRenderSystem()->GetBackend();
+    backend->CreateMesh(this);
 
-    if (!m_clientSideVertices.empty())
-    {
-      glGenVertexArrays(1, &m_vaoId);
-      RHI::BindVertexArray(m_vaoId);
-
-      glGenBuffers(1, &m_vboVertexId);
-      glBindBuffer(GL_ARRAY_BUFFER, m_vboVertexId);
-
-      glBufferData(GL_ARRAY_BUFFER,
-                   GetVertexSize() * m_clientSideVertices.size(),
-                   m_clientSideVertices.data(),
-                   GL_STATIC_DRAW);
-    }
-
-    m_vertexCount = (uint) m_clientSideVertices.size();
     Stats::AddVRAMUsageInBytes(GetVertexSize() * (uint64) m_vertexCount);
 
     if (flush)
     {
-      m_clientSideVertices.clear();
+      ClearClientVertexData();
     }
   }
 
   void Mesh::InitIndices(bool flush)
   {
-    if (m_vboIndexId != 0)
+    if (m_gpuData != nullptr)
     {
       Stats::RemoveVRAMUsageInBytes(sizeof(uint) * m_indexCount);
     }
 
-    glDeleteBuffers(1, &m_vboIndexId);
+    IGraphicsBackend* backend = GetRenderSystem()->GetBackend();
+    backend->CreateMesh(this);
 
-    if (!m_clientSideIndices.empty())
-    {
-      assert(m_vaoId != 0 && "Mesh has not yet created vertex array object!");
+    Stats::AddVRAMUsageInBytes(sizeof(uint) * (uint64) m_indexCount);
 
-      RHI::BindVertexArray(m_vaoId);
-
-      glGenBuffers(1, &m_vboIndexId);
-      glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_vboIndexId);
-      glBufferData(GL_ELEMENT_ARRAY_BUFFER,
-                   sizeof(uint) * m_clientSideIndices.size(),
-                   m_clientSideIndices.data(),
-                   GL_STATIC_DRAW);
-      m_indexCount = (uint) m_clientSideIndices.size();
-
-      Stats::AddVRAMUsageInBytes(sizeof(uint) * (uint64) m_clientSideIndices.size());
-    }
-
-    m_indexCount = (uint) m_clientSideIndices.size();
     if (flush)
     {
       m_clientSideIndices.clear();
@@ -838,34 +734,17 @@ namespace ToolKit
 
   int SkinMesh::GetVertexSize() const { return sizeof(SkinVertex); }
 
+  const void* SkinMesh::GetClientVertexData() const { return m_clientSideVertices.empty() ? nullptr : m_clientSideVertices.data(); }
+
+  size_t SkinMesh::GetClientVertexCount() const { return m_clientSideVertices.size(); }
+
+  void SkinMesh::ClearClientVertexData() { m_clientSideVertices.clear(); }
+
   bool SkinMesh::IsSkinned() const { return true; }
 
   void SkinMesh::InitVertices(bool flush)
   {
-    glDeleteBuffers(1, &m_vboIndexId);
-    glDeleteVertexArrays(1, &m_vaoId);
-    RHI::BindVertexArray(0); // Of the deleted vao is set, remove it from RHI cache
-
-    if (!m_clientSideVertices.empty())
-    {
-      glGenVertexArrays(1, &m_vaoId);
-      RHI::BindVertexArray(m_vaoId);
-
-      glGenBuffers(1, &m_vboVertexId);
-      glBindBuffer(GL_ARRAY_BUFFER, m_vboVertexId);
-      glBufferData(GL_ARRAY_BUFFER,
-                   GetVertexSize() * m_clientSideVertices.size(),
-                   m_clientSideVertices.data(),
-                   GL_STATIC_DRAW);
-      m_vertexCount = (uint) m_clientSideVertices.size();
-
-      Stats::AddVRAMUsageInBytes(GetVertexSize() * (uint64) m_clientSideVertices.size());
-    }
-
-    if (flush)
-    {
-      m_clientSideVertices.clear();
-    }
+    Mesh::InitVertices(flush);
   }
 
   void SkinMesh::CopyTo(Resource* other)

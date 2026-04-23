@@ -18,39 +18,39 @@ namespace ToolKit
   {
     switch (u)
     {
-    case Uniform::MODEL:
-      return "model";
-    case Uniform::MODEL_WITHOUT_TRANSLATE:
-      return "modelWithoutTranslate";
-    case Uniform::INVERSE_MODEL:
-      return "inverseModel";
-    case Uniform::INVERSE_TRANSPOSE_MODEL:
-      return "inverseTransposeModel";
-    case Uniform::IBL_ROTATION:
-      return "iblRotation";
-    case Uniform::IBL_SECONDARY_ROTATION:
-      return "iblSecondaryRotation";
-    case Uniform::ACTIVE_POINT_LIGHT_INDEXES:
-      return "activePointLightIndexes";
-    case Uniform::ACTIVE_SPOT_LIGHT_INDEXES:
-      return "activeSpotLightIndexes";
-    case Uniform::MATERIAL_CACHE:
-      return "materialCache";
-    case Uniform::DRAW_COMMAND:
-      return "drawCommand";
-    case Uniform::VIEWPORT_SIZE:
-      return "viewportSize";
-    case Uniform::SKIN_PARAMS:
-      return "skinParams";
-    case Uniform::KEY_FRAME_DATA:
-      return "keyFrameData";
-    case Uniform::BLEND_FRAME_DATA:
-      return "blendFrameData";
-    case Uniform::BLEND_FACTOR:
-      return "blendFactor";
-    case Uniform::UNIFORM_MAX_INVALID:
-    default:
-      return "";
+      case Uniform::MODEL:
+        return "model";
+      case Uniform::MODEL_WITHOUT_TRANSLATE:
+        return "modelWithoutTranslate";
+      case Uniform::INVERSE_MODEL:
+        return "inverseModel";
+      case Uniform::INVERSE_TRANSPOSE_MODEL:
+        return "inverseTransposeModel";
+      case Uniform::IBL_ROTATION:
+        return "iblRotation";
+      case Uniform::IBL_SECONDARY_ROTATION:
+        return "iblSecondaryRotation";
+      case Uniform::ACTIVE_POINT_LIGHT_INDEXES:
+        return "activePointLightIndexes";
+      case Uniform::ACTIVE_SPOT_LIGHT_INDEXES:
+        return "activeSpotLightIndexes";
+      case Uniform::MATERIAL_CACHE:
+        return "materialCache";
+      case Uniform::DRAW_COMMAND:
+        return "drawCommand";
+      case Uniform::VIEWPORT_SIZE:
+        return "viewportSize";
+      case Uniform::SKIN_PARAMS:
+        return "skinParams";
+      case Uniform::KEY_FRAME_DATA:
+        return "keyFrameData";
+      case Uniform::BLEND_FRAME_DATA:
+        return "blendFrameData";
+      case Uniform::BLEND_FACTOR:
+        return "blendFactor";
+      case Uniform::UNIFORM_MAX_INVALID:
+      default:
+        return "";
     }
   }
 
@@ -117,27 +117,27 @@ namespace ToolKit
 
     switch (m_value.index())
     {
-    case 0: // bool
-      return std::get<bool>(m_value) == std::get<bool>(other);
-    case 1: // float
-      return std::get<float>(m_value) == std::get<float>(other);
-    case 2: // int
-      return std::get<int>(m_value) == std::get<int>(other);
-    case 3: // uint
-      return std::get<uint>(m_value) == std::get<uint>(other);
-    case 4: // glm::vec2
-      return glm::all(glm::equal(std::get<glm::vec2>(m_value), std::get<glm::vec2>(other)));
-    case 5: // glm::vec3
-      return glm::all(glm::equal(std::get<glm::vec3>(m_value), std::get<glm::vec3>(other)));
-    case 6: // glm::vec4
-      return glm::all(glm::equal(std::get<glm::vec4>(m_value), std::get<glm::vec4>(other)));
-    case 7: // glm::mat3
-      return glm::all(glm::equal(std::get<glm::mat3>(m_value), std::get<glm::mat3>(other)));
-    case 8: // glm::mat4
-      return glm::all(glm::equal(std::get<glm::mat4>(m_value), std::get<glm::mat4>(other)));
-    default:
-      // Unsupported type, not equal
-      return false;
+      case 0: // bool
+        return std::get<bool>(m_value) == std::get<bool>(other);
+      case 1: // float
+        return std::get<float>(m_value) == std::get<float>(other);
+      case 2: // int
+        return std::get<int>(m_value) == std::get<int>(other);
+      case 3: // uint
+        return std::get<uint>(m_value) == std::get<uint>(other);
+      case 4: // glm::vec2
+        return glm::all(glm::equal(std::get<glm::vec2>(m_value), std::get<glm::vec2>(other)));
+      case 5: // glm::vec3
+        return glm::all(glm::equal(std::get<glm::vec3>(m_value), std::get<glm::vec3>(other)));
+      case 6: // glm::vec4
+        return glm::all(glm::equal(std::get<glm::vec4>(m_value), std::get<glm::vec4>(other)));
+      case 7: // glm::mat3
+        return glm::all(glm::equal(std::get<glm::mat3>(m_value), std::get<glm::mat3>(other)));
+      case 8: // glm::mat4
+        return glm::all(glm::equal(std::get<glm::mat4>(m_value), std::get<glm::mat4>(other)));
+      default:
+        // Unsupported type, not equal
+        return false;
     }
   }
 

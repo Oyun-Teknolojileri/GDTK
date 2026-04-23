@@ -10,9 +10,11 @@
 #include "FileManager.h"
 #include "MathUtil.h"
 #include "Node.h"
+#include "IGraphicsBackend.h"
 #include "RHI.h"
+#include "RenderSystem.h"
+#include "Renderer.h"
 #include "Stats.h"
-#include "TKOpenGL.h"
 #include "Texture.h"
 #include "ToolKit.h"
 #include "Util.h"
@@ -40,13 +42,9 @@ namespace ToolKit
     ptr->Settings(set);
     ptr->m_name = skeleton->m_name + " BindPoseTexture";
 
-    assert(ptr->m_textureId == 0 && "Texture already initialized.");
-    glGenTextures(1, &ptr->m_textureId);
-    RHI::SetTexture(GL_TEXTURE_2D, ptr->m_textureId);
-
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, ptr->m_width, ptr->m_height, 0, GL_RGBA, GL_FLOAT, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    IGraphicsBackend* backend = GetRenderSystem()->GetBackend();
+    backend->CreateTexture(ptr.get());
+    backend->ApplyTextureSettings(ptr.get());
 
     Stats::AddVRAMUsageInBytes((uint64) ptr->m_width * (uint64) ptr->m_height * 16);
 
@@ -57,8 +55,7 @@ namespace ToolKit
 
   void uploadBoneMatrix(Mat4 mat, TexturePtr& ptr, uint boneIndx)
   {
-    RHI::SetTexture(GL_TEXTURE_2D, ptr->m_textureId);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, boneIndx * 4, 0, 4, 1, GL_RGBA, GL_FLOAT, &mat);
+    GetRenderSystem()->GetBackend()->UpdateTextureSubRegion(ptr.get(), boneIndx * 4, 0, 4, 1, &mat);
   };
 
   // DynamicBoneMap

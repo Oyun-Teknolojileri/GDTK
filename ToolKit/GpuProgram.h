@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include "IGraphicsBackend.h"
 #include "Material.h"
 #include "Shader.h"
 #include "ShaderUniform.h"
@@ -40,13 +41,16 @@ namespace ToolKit
     void UpdateCustomUniform(const ShaderUniform& uniform);
 
    public:
-    uint m_handle = 0;
+    GpuResourceDataPtr m_gpuData;
     ShaderPtrArray m_shaders;
     MaterialCacheItem m_cachedMaterial; //!< Cached material data for the program.
 
-   private:
-    std::unordered_map<Uniform, int> m_defaultUniformLocation;
-    std::unordered_map<Uniform, int> m_defaultArrayUniformLocations;
+    IGraphicsBackend* m_backend = nullptr; //!< Set by GpuProgramManager on creation.
+
+   public:
+    // Flat arrays indexed by Uniform enum value. -1 means "not present".
+    std::array<int, (uint) Uniform::UNIFORM_MAX_INVALID> m_defaultUniformLocation;
+    std::array<int, (uint) Uniform::UNIFORM_MAX_INVALID> m_defaultArrayUniformLocations;
     std::unordered_map<String, ShaderUniform> m_customUniforms;
   };
 
@@ -61,6 +65,9 @@ namespace ToolKit
 
     /** Sets global gpu buffers used by toolkit. */
     void SetGpuBuffers(struct GlobalGpuBuffers* gpuBuffers) { m_globalGpuBuffers = gpuBuffers; }
+
+    /** Sets the graphics backend used for program creation / destruction. */
+    void SetBackend(IGraphicsBackend* backend) { m_backend = backend; }
 
    private:
     /**
@@ -108,6 +115,8 @@ namespace ToolKit
 
     /** Global gpu buffers used to set uniforms / buffers for each created program. */
     struct GlobalGpuBuffers* m_globalGpuBuffers = nullptr;
+
+    IGraphicsBackend* m_backend                 = nullptr;
   };
 
 } // namespace ToolKit

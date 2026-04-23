@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2019-2025 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
@@ -22,6 +22,7 @@
 #include "Mesh.h"
 #include "Node.h"
 #include "Pass.h"
+#include "PerDrawUniforms.h"
 #include "RHI.h"
 #include "RenderSystem.h"
 #include "Scene.h"
@@ -30,7 +31,6 @@
 #include "Stats.h"
 #include "Surface.h"
 #include "TKAssert.h"
-#include "TKOpenGL.h"
 #include "Texture.h"
 #include "ToolKit.h"
 #include "UIManager.h"
@@ -75,6 +75,18 @@ namespace ToolKit
   {
     m_globalGpuBuffers->graphicConstantBuffer.Map();
     m_drawnFrameBufferStats.clear();
+
+    // Reset volatile state to defaults for each frame.
+    // This prevents state leaks from passes that don't clean up (e.g. StencilPass, ShadowPass).
+    m_renderState.colorMaskEnabled  = true;
+    m_renderState.depthTestEnabled  = true;
+    m_renderState.depthWriteEnabled = true;
+    m_renderState.depthFunction     = CompareFunctions::FuncLess;
+    m_renderState.stencilOperation  = StencilOperation::None;
+    m_renderState.depthClampEnabled = false;
+    m_renderState.blendOverride     = false;
+
+    m_backend->BeginFrame();
   }
 
   void Renderer::EndRenderFrame()
@@ -89,6 +101,8 @@ namespace ToolKit
         Stats::IncrementStat(FrameStatType::RenderPass);
       }
     }
+
+    EndPass();
   }
 
   void Renderer::InvalidateGraphicsConstants()
@@ -111,69 +125,57 @@ namespace ToolKit
     m_copyFrameBuffer               = MakeNewPtr<Framebuffer>("RendererCopyFB");
     m_dummyDrawCube                 = MakeNewPtr<Cube>();
 
-    m_gpuProgramManager             = GetGpuProgramManager();
+    m_gpuProgramManager             = new GpuProgramManager();
+    m_gpuProgramManager->SetBackend(m_backend);
+    m_gpuProgramManager->SetGpuBuffers(m_globalGpuBuffers);
 
-    glGenQueries(1, &m_gpuTimerQuery);
-
-    const char* renderer = (const char*) glGetString(GL_RENDERER);
+    String renderer = m_backend->GetBackendRendererString();
     GetLogger()->Log(String("Graphics Card ") + renderer);
 
-    // Default states.
-    glEnable(GL_CULL_FACE);
-    glEnable(GL_DEPTH_TEST);
-
-#ifdef GL_TEXTURE_CUBE_MAP_SEAMLESS
-    glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
-#endif
-
     // Validate sRGB automatic encoding on backbuffer if enabled.
-    ValidateBackbufferSrgbEncoding();
+    RenderSystem* rsys = GetRenderSystem();
+    if (rsys && rsys->m_backbufferFormatIsSRGB)
+    {
+      if (!m_backend->ValidateBackbufferSrgbEncoding())
+      {
+        rsys->m_backbufferFormatIsSRGB = false;
+      }
+    }
 
-    SrgbAutoEncoding(GetRenderSystem()->m_backbufferFormatIsSRGB);
-
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    m_backend->SetSrgbAutoEncoding(GetRenderSystem()->m_backbufferFormatIsSRGB);
+    m_backend->SetDefaultClearColor(Vec4(0.0f, 0.0f, 0.0f, 1.0f));
   }
 
   Renderer::~Renderer()
   {
+    // Release all GPU resource references before destroying backend.
     m_oneColorAttachmentFramebuffer = nullptr;
     m_gaussianBlurMaterial          = nullptr;
     m_averageBlurMaterial           = nullptr;
     m_copyFrameBuffer               = nullptr;
     m_copyMaterial                  = nullptr;
-
     m_framebuffer                   = nullptr;
     m_shadowAtlas                   = nullptr;
+    m_brdfLut                       = nullptr;
+    m_aoTexture                     = nullptr;
+    m_tempQuad                      = nullptr;
+    m_tempQuadMaterial              = nullptr;
+    m_dummyDrawCube                 = nullptr;
+    m_uiCamera                      = nullptr;
+    m_sky                           = nullptr;
+    m_currentProgram                = nullptr;
+
+    SafeDel(m_gpuProgramManager);
+    SafeDel(m_backend);
   }
 
-  void Renderer::SrgbAutoEncoding(bool enable)
-  {
-#ifdef GL_FRAMEBUFFER_SRGB
-    const int glSrgbFlag = GL_FRAMEBUFFER_SRGB;
-#elif defined(GL_FRAMEBUFFER_SRGB_EXT)
-    const int glSrgbFlag = GL_FRAMEBUFFER_SRGB_EXT;
-#else
-    const int glSrgbFlag = 0;
-#endif
-
-    if constexpr (glSrgbFlag)
-    {
-      if (enable)
-      {
-        glEnable(glSrgbFlag);
-      }
-      else
-      {
-        glDisable(glSrgbFlag);
-      }
-    }
-  }
+  void Renderer::SrgbAutoEncoding(bool enable) { m_backend->SetSrgbAutoEncoding(enable); }
 
   int Renderer::GetMaxArrayTextureLayers()
   {
     if (m_maxArrayTextureLayers == -1)
     {
-      glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS, &m_maxArrayTextureLayers);
+      m_maxArrayTextureLayers = m_backend->GetMaxArrayTextureLayers();
     }
     return m_maxArrayTextureLayers;
   }
@@ -283,15 +285,39 @@ namespace ToolKit
     SetDataTextures(job);
     SetLights(job.lights);
 
-    m_model                  = job.WorldTransform;
+    m_model                    = job.WorldTransform;
 
-    // Set state.
-    RenderState* renderState = job.Material->GetRenderState();
-    SetRenderState(renderState, job.requireCullFlip);
+    // Compose state.
+    RenderState composed       = *job.Material->GetRenderState();
+    composed.depthTestEnabled  = m_renderState.depthTestEnabled;
+    composed.depthWriteEnabled = m_renderState.depthWriteEnabled;
+    composed.depthFunction     = m_renderState.depthFunction;
+    composed.stencilOperation  = m_renderState.stencilOperation;
+    composed.colorMaskEnabled  = m_renderState.colorMaskEnabled;
+    composed.depthClampEnabled = m_renderState.depthClampEnabled;
+    if (m_renderState.blendOverride)
+    {
+      composed.blendFunction = m_renderState.blendOverrideFunc;
+    }
+
+    if (job.requireCullFlip)
+    {
+      switch (composed.cullMode)
+      {
+        case CullingType::Front:
+          composed.cullMode = CullingType::Back;
+          break;
+        case CullingType::Back:
+          composed.cullMode = CullingType::Front;
+          break;
+      }
+    }
+
+    m_backend->BindPipeline(m_currentProgram, &composed);
 
     auto activateSkinning = [&](const Mesh* mesh)
     {
-      GLint skinParamsLoc = m_currentProgram->GetDefaultUniformLocation(Uniform::SKIN_PARAMS);
+      int skinParamsLoc = m_currentProgram->GetDefaultUniformLocation(Uniform::SKIN_PARAMS);
       if (skinParamsLoc == -1)
       {
         return;
@@ -306,35 +332,30 @@ namespace ToolKit
         float boneCount  = (float) skel->m_bones.size();
         float isAnimated = (job.animData.currentAnimation != nullptr) ? 1.0f : 0.0f;
         float hasBlend   = (job.animData.blendAnimation != nullptr) ? 1.0f : 0.0f;
-        glUniform4f(skinParamsLoc, boneCount, 1.0f, isAnimated, hasBlend);
+        m_backend->SetUniform4f(skinParamsLoc, Vec4(boneCount, 1.0f, isAnimated, hasBlend));
       }
       else
       {
-        glUniform4f(skinParamsLoc, 0.0f, 0.0f, 0.0f, 0.0f);
+        m_backend->SetUniform4f(skinParamsLoc, Vec4(0.0f));
       }
     };
 
     const Mesh* mesh = job.Mesh;
     activateSkinning(mesh);
 
-    FeedAnimationUniforms(m_currentProgram, job);
     FeedUniforms(m_currentProgram, job);
 
-    RHI::BindVertexArray(mesh->m_vaoId);
-
-    if (mesh->m_indexCount != 0)
-    {
-      glDrawElements((GLenum) renderState->drawType, mesh->m_indexCount, GL_UNSIGNED_INT, nullptr);
-    }
-    else
-    {
-      glDrawArrays((GLenum) renderState->drawType, 0, mesh->m_vertexCount);
-    }
+    DrawDesc desc;
+    desc.mesh         = mesh;
+    desc.vertexLayout = mesh->m_vertexLayout;
+    desc.indexed      = mesh->m_indexCount != 0;
+    desc.elementCount = desc.indexed ? mesh->m_indexCount : mesh->m_vertexCount;
+    desc.type         = composed.drawType;
+    m_backend->Draw(desc);
 
     if (m_framebuffer)
     {
-      int& drawCount = m_drawnFrameBufferStats[m_framebuffer->GetFboId()];
-      drawCount++;
+      m_drawnFrameBufferStats[m_framebuffer->GetIdVal()]++;
     }
 
     Stats::IncrementStat(FrameStatType::DrawCall);
@@ -373,301 +394,62 @@ namespace ToolKit
     }
   }
 
-  void Renderer::SetRenderState(const RenderState* const state, bool cullFlip)
-  {
-    CullingType targetMode = state->cullMode;
-    if (cullFlip)
-    {
-      switch (state->cullMode)
-      {
-        case CullingType::Front:
-          targetMode = CullingType::Back;
-          break;
-        case CullingType::Back:
-          targetMode = CullingType::Front;
-          break;
-      }
-    }
-
-    if (m_renderState.cullMode != targetMode)
-    {
-      if (targetMode == CullingType::TwoSided)
-      {
-        glDisable(GL_CULL_FACE);
-      }
-
-      if (targetMode == CullingType::Front)
-      {
-        if (m_renderState.cullMode == CullingType::TwoSided)
-        {
-          glEnable(GL_CULL_FACE);
-        }
-
-        glCullFace(GL_FRONT);
-      }
-
-      if (targetMode == CullingType::Back)
-      {
-        if (m_renderState.cullMode == CullingType::TwoSided)
-        {
-          glEnable(GL_CULL_FACE);
-        }
-
-        glCullFace(GL_BACK);
-      }
-
-      m_renderState.cullMode = targetMode;
-    }
-
-    if (m_renderState.blendFunction != state->blendFunction)
-    {
-      // Only update blend state, if blend state is not overridden.
-      if (!m_blendStateOverrideEnable)
-      {
-        switch (state->blendFunction)
-        {
-          case BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA:
-          {
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-          }
-          break;
-          case BlendFunction::ONE_TO_ONE:
-          {
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_ONE, GL_ONE);
-            glBlendEquation(GL_FUNC_ADD);
-          }
-          break;
-          default:
-          {
-            glDisable(GL_BLEND);
-          }
-          break;
-        }
-
-        m_renderState.blendFunction = state->blendFunction;
-      }
-    }
-
-    m_renderState.alphaMaskTreshold = state->alphaMaskTreshold;
-
-    if (m_renderState.lineWidth != state->lineWidth)
-    {
-      m_renderState.lineWidth = state->lineWidth;
-      // glLineWidth(m_renderState.lineWidth);
-    }
-  }
-
-  void Renderer::SetStencilOperation(StencilOperation op)
-  {
-    switch (op)
-    {
-      case StencilOperation::None:
-        glDisable(GL_STENCIL_TEST);
-        glStencilMask(0x00);
-        break;
-      case StencilOperation::AllowAllPixels:
-        glEnable(GL_STENCIL_TEST);
-        glStencilMask(0xFF);
-        glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
-        glStencilFunc(GL_ALWAYS, 0xFF, 0xFF);
-        break;
-      case StencilOperation::AllowPixelsPassingStencil:
-        glEnable(GL_STENCIL_TEST);
-        glStencilFunc(GL_EQUAL, 0xFF, 0xFF);
-        glStencilMask(0x00);
-        break;
-      case StencilOperation::AllowPixelsFailingStencil:
-        glEnable(GL_STENCIL_TEST);
-        glStencilFunc(GL_NOTEQUAL, 0xFF, 0xFF);
-        glStencilMask(0x00);
-        break;
-    }
-  }
+  void Renderer::SetStencilOperation(StencilOperation op) { m_renderState.stencilOperation = op; }
 
   void Renderer::SetFramebuffer(FramebufferPtr frameBuffer,
                                 GraphicBitFields attachmentsToClear,
                                 const Vec4& clearColor,
-                                GraphicFramebufferTypes frameBufferType)
+                                GraphicBitFields discardBits)
   {
     TK_PROFILE_FUNCTION();
 
+    PassDesc desc;
+    desc.target      = frameBuffer;
+    desc.clearBits   = attachmentsToClear;
+    desc.clearColor  = clearColor;
+    desc.discardBits = discardBits;
+    m_backend->BeginPass(desc);
+
     if (frameBuffer != nullptr)
     {
-      RHI::SetFramebuffer((GLenum) frameBufferType, frameBuffer->GetFboId());
-      if (m_framebuffer != frameBuffer)
-      {
-        frameBuffer->SetDrawBuffers();
-      }
-
       const FramebufferSettings& fbSet = frameBuffer->GetSettings();
       SetViewportRect(0, 0, fbSet.width, fbSet.height);
     }
     else
     {
-      // Backbuffer
-      RHI::SetFramebuffer((GLenum) frameBufferType, 0);
       SetViewportRect(0, 0, m_windowSize.x, m_windowSize.y);
-    }
-
-    if (attachmentsToClear != GraphicBitFields::None)
-    {
-      ClearBuffer(attachmentsToClear, clearColor);
     }
 
     m_framebuffer = frameBuffer;
   }
 
-  void Renderer::StartTimerQuery()
-  {
-    m_cpuTime = GetElapsedMilliSeconds();
-#ifdef GL_TIME_ELAPSED_EXT
-    if constexpr (TK_PLATFORM == PLATFORM::TKWindows)
-    {
-      // Only start a new query if the previous one has been read
-      if (!m_timerQueryActive && !m_timerQueryWaiting)
-      {
-        glBeginQuery(GL_TIME_ELAPSED_EXT, m_gpuTimerQuery);
-        m_timerQueryActive = true;
-      }
-    }
-#endif
-  }
+  void Renderer::EndPass() { m_backend->EndPass(); }
 
-  void Renderer::EndTimerQuery()
-  {
-    float cpuTime = GetElapsedMilliSeconds();
-    m_cpuTime     = cpuTime - m_cpuTime;
+  void Renderer::StartTimerQuery() { m_backend->StartTimerQuery(); }
 
-#ifdef GL_TIME_ELAPSED_EXT
-    if constexpr (TK_PLATFORM == PLATFORM::TKWindows)
-    {
-      if (m_timerQueryActive)
-      {
-        glEndQuery(GL_TIME_ELAPSED_EXT);
-        m_timerQueryActive  = false;
-        m_timerQueryWaiting = true;
-      }
+  void Renderer::EndTimerQuery() { m_backend->EndTimerQuery(); }
 
-      if (m_timerQueryWaiting)
-      {
-        GLuint available = 0;
-        glGetQueryObjectuiv(m_gpuTimerQuery, GL_QUERY_RESULT_AVAILABLE, &available);
-
-        if (available)
-        {
-          GLuint elapsedTime;
-          glGetQueryObjectuiv(m_gpuTimerQuery, GL_QUERY_RESULT, &elapsedTime);
-
-          m_gpuTime           = glm::max(1.0f, (float) (elapsedTime) / 1000000.0f);
-          m_timerQueryWaiting = false; // Query ready for next frame.
-        }
-      }
-    }
-#endif
-  }
-
-  void Renderer::GetElapsedTime(float& cpu, float& gpu)
-  {
-    cpu = m_cpuTime;
-    gpu = m_gpuTime;
-  }
+  void Renderer::GetElapsedTime(float& cpu, float& gpu) { m_backend->GetElapsedTime(cpu, gpu); }
 
   FramebufferPtr Renderer::GetFrameBuffer() { return m_framebuffer; }
 
-  void Renderer::ClearColorBuffer(const Vec4& color)
-  {
-    glClearColor(color.x, color.y, color.z, color.w);
-    glClear((GLbitfield) GraphicBitFields::ColorBits);
-  }
+  void Renderer::ClearColorBuffer(const Vec4& color) { m_backend->ClearColorBuffer(color); }
 
-  void Renderer::ClearBuffer(GraphicBitFields fields, const Vec4& value)
-  {
-    glClearColor(value.x, value.y, value.z, value.w);
-    glClear((GLbitfield) fields);
-  }
+  void Renderer::ClearBuffer(GraphicBitFields fields, const Vec4& value) { m_backend->ClearBuffer(fields, value); }
 
-  void Renderer::ColorMask(bool r, bool g, bool b, bool a) { glColorMask(r, g, b, a); }
+  void Renderer::ColorMask(bool r, bool g, bool b, bool a) { m_renderState.colorMaskEnabled = r && g && b && a; }
+
+  uint Renderer::GetNativeTextureHandle(const TexturePtr& tex)
+  {
+    void* id = GetRenderSystem()->GetBackend()->GetNativeTextureHandle(tex.get());
+    return static_cast<uint>(reinterpret_cast<intptr_t>(id));
+  }
 
   void Renderer::CopyFrameBuffer(FramebufferPtr src, FramebufferPtr dest, GraphicBitFields fields)
   {
     TK_PROFILE_FUNCTION();
 
-    FramebufferPtr lastFb = m_framebuffer;
-
-    uint width            = m_windowSize.x;
-    uint height           = m_windowSize.y;
-
-    uint srcId            = 0;
-    if (src)
-    {
-      const FramebufferSettings& fbs = src->GetSettings();
-      width                          = fbs.width;
-      height                         = fbs.height;
-      srcId                          = src->GetFboId();
-    }
-
-    RHI::SetFramebuffer(GL_READ_FRAMEBUFFER, srcId);
-
-    uint destId = 0;
-    if (dest)
-    {
-      dest->ReconstructIfNeeded(width, height);
-      destId = dest->GetFboId();
-    }
-    RHI::SetFramebuffer(GL_DRAW_FRAMEBUFFER, destId);
-
-    glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, (GLbitfield) fields, GL_NEAREST);
-
-    SetFramebuffer(lastFb, GraphicBitFields::None);
-  }
-
-  void Renderer::InvalidateFramebuffer(GraphicBitFields bits, FramebufferPtr frameBuffer)
-  {
-    GLenum attachments[3];
-    int count = 0;
-
-    if (RenderTargetPtr colorAttachment = frameBuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0))
-    {
-      if ((int) bits & (int) GraphicBitFields::ColorBits)
-      {
-        attachments[count++] = GL_COLOR_ATTACHMENT0;
-      }
-    }
-
-    if (DepthTexturePtr depthTexture = frameBuffer->GetDepthTexture())
-    {
-      if ((int) bits & (int) GraphicBitFields::DepthBits)
-      {
-        bool hasStencil      = (int) bits & (int) GraphicBitFields::StencilBits;
-        hasStencil           = hasStencil && depthTexture->m_stencil;
-        attachments[count++] = hasStencil ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT;
-      }
-      else if ((int) bits & (int) GraphicBitFields::StencilBits)
-      {
-        if (depthTexture->m_stencil)
-        {
-          attachments[count++] = GL_STENCIL_ATTACHMENT;
-        }
-      }
-    }
-
-    if (count == 0)
-    {
-      return;
-    }
-
-#ifdef TK_GL_ES_3_0
-    RHI::SetFramebuffer(GL_DRAW_FRAMEBUFFER, frameBuffer->GetFboId());
-    glInvalidateFramebuffer(GL_DRAW_FRAMEBUFFER, count, attachments);
-#else
-    if (glInvalidateFramebufferEXT != nullptr)
-    {
-      RHI::SetFramebuffer(GL_DRAW_FRAMEBUFFER, frameBuffer->GetFboId());
-      glInvalidateFramebufferEXT(GL_DRAW_FRAMEBUFFER, count, attachments);
-    }
-#endif
+    m_backend->CopyFramebuffer(src, dest, fields);
   }
 
   void Renderer::ResolveFramebuffer(FramebufferPtr source, FramebufferPtr target, const IntArray& attachments)
@@ -677,50 +459,7 @@ namespace ToolKit
     assert(source->Initialized() && "Source framebuffer is not initialized.");
     assert(target->Initialized() && "Target framebuffer is not initialized.");
 
-    const int srcWidth  = source->GetSettings().width;
-    const int srcHeight = source->GetSettings().height;
-    const int dstWidth  = target->GetSettings().width;
-    const int dstHeight = target->GetSettings().height;
-
-    for (int atc : attachments)
-    {
-      // Sanity check.
-      using Attachment      = Framebuffer::Attachment;
-      Attachment atcEnum    = (Attachment) ((int) Attachment::ColorAttachment0 + atc);
-
-      RenderTargetPtr srcRt = source->GetColorAttachment(atcEnum);
-      assert(srcRt && "Trying to resolve a non existing attachment.");
-
-      RenderTargetPtr targetRt = target->GetColorAttachment(atcEnum);
-      if (targetRt == nullptr)
-      {
-        TextureSettings settings = srcRt->Settings();
-        settings.msaaCount       = MsaaSampleCount::x0;
-        targetRt                 = MakeNewPtr<RenderTarget>();
-        targetRt->ReconstructIfNeeded(srcRt->m_width, srcRt->m_height, &settings);
-        target->SetColorAttachment(atcEnum, targetRt);
-      }
-
-      srcRt->m_resolvedTexture = targetRt;
-
-      // Bind read/draw after SetColorAttachment, which may have changed the
-      // framebuffer bindings via RHI::SetFramebuffer(GL_FRAMEBUFFER, ...).
-      RHI::SetFramebuffer(GL_READ_FRAMEBUFFER, source->GetFboId());
-      RHI::SetFramebuffer(GL_DRAW_FRAMEBUFFER, target->GetFboId());
-
-      GLenum attachment = GL_COLOR_ATTACHMENT0 + atc;
-
-      // Read from the specific source attachment.
-      glReadBuffer(attachment);
-
-      // Write only to the corresponding target attachment.
-      glDrawBuffers(1, &attachment);
-
-      glBlitFramebuffer(0, 0, srcWidth, srcHeight, 0, 0, dstWidth, dstHeight, GL_COLOR_BUFFER_BIT, GL_NEAREST);
-    }
-
-    // Restore target framebuffer's original draw buffer configuration.
-    target->SetDrawBuffers();
+    m_backend->ResolveFramebuffer(source, target, attachments);
   }
 
   void Renderer::SetViewport(Viewport* viewport) { SetFramebuffer(viewport->m_framebuffer, GraphicBitFields::AllBits); }
@@ -733,8 +472,10 @@ namespace ToolKit
     }
 
     m_viewportRect = UVec4(width, height, x, y);
-    glViewport(x, y, width, height);
+    m_backend->SetViewport(x, y, width, height);
   }
+
+  void Renderer::SetScissor(uint x, uint y, uint width, uint height) { m_backend->SetScissor(x, y, width, height); }
 
   void Renderer::DrawFullQuad(ShaderPtr fragmentShader)
   {
@@ -823,85 +564,27 @@ namespace ToolKit
     m_copyMaterial->Init();
 
     DrawFullQuad(m_copyMaterial);
+    EndPass();
 
     Stats::EndGpuScope();
   }
 
   void Renderer::OverrideBlendState(bool enableOverride, BlendFunction func)
   {
-    RenderState stateCpy       = m_renderState;
-    stateCpy.blendFunction     = func;
-
-    m_blendStateOverrideEnable = false;
-
-    SetRenderState(&stateCpy);
-
-    m_blendStateOverrideEnable = enableOverride;
+    m_renderState.blendOverride     = enableOverride;
+    m_renderState.blendOverrideFunc = func;
   }
 
-  void Renderer::EnableBlending(bool enable)
-  {
-    if (enable)
-    {
-      glEnable(GL_BLEND);
-    }
-    else
-    {
-      glDisable(GL_BLEND);
-    }
-  }
+  void Renderer::EnableDepthWrite(bool enable) { m_renderState.depthWriteEnabled = enable; }
 
-  void Renderer::EnableDepthWrite(bool enable)
-  {
-    if (m_renderState.depthWriteEnabled != enable)
-    {
-      m_renderState.depthWriteEnabled = enable;
-      glDepthMask(enable);
-    }
-  }
+  void Renderer::EnableDepthTest(bool enable) { m_renderState.depthTestEnabled = enable; }
 
-  void Renderer::EnableDepthTest(bool enable)
-  {
-    if (m_renderState.depthTestEnabled != enable)
-    {
-      if (enable)
-      {
-        glEnable(GL_DEPTH_TEST);
-      }
-      else
-      {
-        glDisable(GL_DEPTH_TEST);
-      }
-      m_renderState.depthTestEnabled = enable;
-    }
-  }
-
-  void Renderer::SetDepthTestFunc(CompareFunctions func)
-  {
-    if (m_renderState.depthFunction != func)
-    {
-      m_renderState.depthFunction = func;
-      glDepthFunc((int) func);
-    }
-  }
+  void Renderer::SetDepthTestFunc(CompareFunctions func) { m_renderState.depthFunction = func; }
 
   bool Renderer::EnableDepthClamp(bool enable)
   {
-    if (TK_GL_EXT_depth_clamp)
-    {
-      if (enable)
-      {
-        glEnable(GL_DEPTH_CLAMP_EXT);
-      }
-      else
-      {
-        glDisable(GL_DEPTH_CLAMP_EXT);
-      }
-
-      return true;
-    }
-
-    return false;
+    m_renderState.depthClampEnabled = enable;
+    return true;
   }
 
   void Renderer::ApplyGaussianBlur(const TexturePtr src, RenderTargetPtr dst, const Vec3& axis, const float amount)
@@ -929,6 +612,7 @@ namespace ToolKit
 
     SetFramebuffer(m_oneColorAttachmentFramebuffer, GraphicBitFields::None);
     DrawFullQuad(m_gaussianBlurMaterial);
+    EndPass();
   }
 
   void Renderer::ApplyGaussianBlurToArrayLayerSlot(RenderTargetPtr srcArray,
@@ -976,7 +660,7 @@ namespace ToolKit
     int sx           = (int) slotCoord.x;
     int sy           = (int) slotCoord.y;
 
-    glEnable(GL_SCISSOR_TEST);
+    m_backend->EnableScissorTest(true);
 
     for (int tap = 0; tap < tapCount; tap++)
     {
@@ -990,7 +674,7 @@ namespace ToolKit
         framebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, tempRT, 0, -1);
         SetFramebuffer(framebuffer, GraphicBitFields::None);
         SetViewportRect(0, 0, texSize, texSize);
-        glScissor(sx, sy, slotSize, slotSize);
+        SetScissor(sx, sy, slotSize, slotSize);
 
         m_gaussianBlurMaterial->UpdateProgramUniform("BlurScale", Vec3(blurAmount, 0.0f, 0.0f));
         m_gaussianBlurMaterial->UpdateProgramUniform("BlurLayer", (float) layer);
@@ -999,9 +683,10 @@ namespace ToolKit
 
         BindProgramOfMaterial(m_gaussianBlurMaterial.get());
 
-        RHI::SetTexture(GL_TEXTURE_2D_ARRAY, srcArray->m_textureId, 1);
+        m_backend->BindTexture(1, srcArray);
 
         DrawFullQuad(m_gaussianBlurMaterial);
+        EndPass();
       }
 
       // Vertical pass: temp 2D RT -> array texture layer
@@ -1014,7 +699,7 @@ namespace ToolKit
         framebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, srcArray, 0, layer);
         SetFramebuffer(framebuffer, GraphicBitFields::None);
         SetViewportRect(0, 0, texSize, texSize);
-        glScissor(sx, sy, slotSize, slotSize);
+        SetScissor(sx, sy, slotSize, slotSize);
 
         m_gaussianBlurMaterial->SetDiffuseTextureVal(tempRT);
         m_gaussianBlurMaterial->UpdateProgramUniform("BlurScale", Vec3(0.0f, blurAmount, 0.0f));
@@ -1022,10 +707,11 @@ namespace ToolKit
         m_gaussianBlurMaterial->UpdateProgramUniform("BlurClampMax", clampMax);
 
         DrawFullQuad(m_gaussianBlurMaterial);
+        EndPass();
       }
     }
 
-    glDisable(GL_SCISSOR_TEST);
+    m_backend->EnableScissorTest(false);
 
     // Restore default define state.
     vert->SetDefine("TextureArray", "0");
@@ -1070,8 +756,8 @@ namespace ToolKit
       material->Init();
 
       SetFramebuffer(utilFramebuffer, GraphicBitFields::AllBits);
-
       DrawFullQuad(material);
+      EndPass();
 
       brdfLut->SetFile(TKBrdfLutTexture);
       GetTextureManager()->Manage(brdfLut);
@@ -1191,10 +877,10 @@ namespace ToolKit
   {
     TK_PROFILE_FUNCTION();
 
-    if (m_currentProgram == nullptr || m_currentProgram->m_handle != program->m_handle)
+    if (m_currentProgram == nullptr || m_currentProgram->m_gpuData.get() != program->m_gpuData.get())
     {
       m_currentProgram = program;
-      glUseProgram(program->m_handle);
+      m_backend->BindPipeline(program, &m_renderState);
     }
   }
 
@@ -1228,6 +914,7 @@ namespace ToolKit
     m_drawCommand.SetSkyIntensity(0.0f);
     m_drawCommand.SetVolumeIntensity(0, 0.0f);
     m_drawCommand.SetVolumeIntensity(1, 0.0f);
+    m_drawCommand.SetVolumeFadeDistance(0, 0.0f);
 
     bool anyIbl = false;
 
@@ -1252,65 +939,90 @@ namespace ToolKit
     }
 
     // --- Local volumes (per-object) ---
-    auto setupLocalVolumeFn =
-        [this](int volIdx, EnvironmentComponent* envCom, int diffSlot, int specSlot, Mat4& rotationOut) -> bool
+    EnvironmentComponent* envCom = job.EnvironmentVolume;
+    if (envCom)
     {
-      if (envCom == nullptr)
-      {
-        return false;
-      }
-
       const HdriPtr& hdriPtr     = envCom->GetHdriVal();
       CubeMapPtr& diffuseEnvMap  = hdriPtr->m_diffuseEnvMap;
       CubeMapPtr& specularEnvMap = hdriPtr->m_specularEnvMap;
 
-      if (!diffuseEnvMap || !specularEnvMap)
+      if (diffuseEnvMap && specularEnvMap && m_brdfLut)
       {
-        return false;
+        SetTexture(DefaultTextureSlots::IRRADIANCE_MAP_TEXTURE_SLOT, diffuseEnvMap);
+        SetTexture(DefaultTextureSlots::IBL_SPECULAR_PRE_FILTERED_MAP_TEXTURE_SLOT, specularEnvMap);
+
+        anyIbl = true;
+        m_drawCommand.SetVolumeIntensity(0, envCom->GetIntensityVal());
+
+        // Pass primary volume local-space BB for OBB per-pixel blend and Parallax Corrected Cubemaps.
+        Vec3 offset = envCom->GetPositionOffsetVal();
+        Vec3 half   = envCom->GetSizeVal() * 0.5f;
+        bool isSky  = false;
+        if (const EntityPtr& env = envCom->OwnerEntity())
+        {
+          isSky = env->IsA<SkyBase>();
+        }
+
+        m_drawCommand.SetVolumeMin(0, offset - half);
+        m_drawCommand.SetVolumeMax(0, offset + half);
+        m_drawCommand.SetVolumePccEnabled(0, envCom->GetParallaxCorrectionVal());
+        m_drawCommand.SetVolumeInterior(0, !isSky);
+        m_drawCommand.SetVolumeFadeDistance(0, glm::max(envCom->GetFadeVal(), 0.001f));
+
+        // Sky: rotation applies to IBL image, no volume boundary.
+        // Non-Sky: rotation applies to OBB volume, IBL image stays fixed.
+        if (const EntityPtr& env = envCom->OwnerEntity())
+        {
+          if (isSky)
+          {
+            m_iblRotation = Mat4(env->m_node->GetOrientation());
+            m_drawCommand.SetVolumeInverseTransform(0, Mat4(1.0f));
+            m_drawCommand.SetVolumeWorldTransform(0, Mat4(1.0f));
+          }
+          else
+          {
+            m_iblRotation       = Mat4(1.0f);
+            Mat4 worldTransform = env->m_node->GetTransform(TransformationSpace::TS_WORLD);
+            m_drawCommand.SetVolumeInverseTransform(0, glm::inverse(worldTransform));
+            m_drawCommand.SetVolumeWorldTransform(0, worldTransform);
+          }
+        }
+
+        // Secondary IBL for per-pixel blending.
+        EnvironmentComponent* secEnvCom = job.SecondaryEnvironmentVolume;
+        if (secEnvCom)
+        {
+          const HdriPtr& secHdri  = secEnvCom->GetHdriVal();
+          CubeMapPtr& secDiffuse  = secHdri->m_diffuseEnvMap;
+          CubeMapPtr& secSpecular = secHdri->m_specularEnvMap;
+
+          if (secDiffuse && secSpecular)
+          {
+            SetTexture(DefaultTextureSlots::SECONDARY_IRRADIANCE_MAP_TEXTURE_SLOT, secDiffuse);
+            SetTexture(DefaultTextureSlots::SECONDARY_IBL_SPECULAR_MAP_TEXTURE_SLOT, secSpecular);
+            m_drawCommand.SetVolumeIntensity(1, secEnvCom->GetIntensityVal());
+
+            Vec3 secOffset = secEnvCom->GetPositionOffsetVal();
+            Vec3 secHalf   = secEnvCom->GetSizeVal() * 0.5f;
+            m_drawCommand.SetVolumeMin(1, secOffset - secHalf);
+            m_drawCommand.SetVolumeMax(1, secOffset + secHalf);
+            m_drawCommand.SetVolumePccEnabled(1, secEnvCom->GetParallaxCorrectionVal());
+            m_drawCommand.SetVolumeInterior(1, secEnvCom->GetInteriorVal());
+            m_drawCommand.SetVolumeFadeDistance(1, glm::max(secEnvCom->GetFadeVal(), 0.001f));
+
+            if (const EntityPtr& secEnv = secEnvCom->OwnerEntity())
+            {
+              m_secondaryIblRotation = Mat4(1.0f);
+              Mat4 secWorldTransform = secEnv->m_node->GetTransform(TransformationSpace::TS_WORLD);
+              m_drawCommand.SetVolumeInverseTransform(1, glm::inverse(secWorldTransform));
+              m_drawCommand.SetVolumeWorldTransform(1, secWorldTransform);
+            }
+          }
+        }
       }
+    }
 
-      bool parallaxCorrection = envCom->GetParallaxCorrectionVal();
-
-      SetTexture(diffSlot, diffuseEnvMap);
-      SetTexture(specSlot, specularEnvMap);
-
-      float intensity = envCom->GetIlluminateVal() ? envCom->GetIntensityVal() : 0.0f;
-      m_drawCommand.SetVolumeIntensity(volIdx, intensity);
-
-      Vec3 offset = envCom->GetPositionOffsetVal();
-      Vec3 half   = envCom->GetSizeVal() * 0.5f;
-      m_drawCommand.SetVolumeMin(volIdx, offset - half);
-      m_drawCommand.SetVolumeMax(volIdx, offset + half);
-
-      m_drawCommand.SetVolumePccEnabled(volIdx, parallaxCorrection);
-      m_drawCommand.SetVolumeInterior(volIdx, envCom->GetInteriorVal());
-      m_drawCommand.SetVolumeFadeDistance(volIdx, glm::max(envCom->GetFadeVal(), 0.001f));
-
-      if (const EntityPtr& env = envCom->OwnerEntity())
-      {
-        rotationOut         = Mat4(1.0f);
-        Mat4 worldTransform = env->m_node->GetTransform(TransformationSpace::TS_WORLD);
-        m_drawCommand.SetVolumeInverseTransform(volIdx, glm::inverse(worldTransform));
-        m_drawCommand.SetVolumeWorldTransform(volIdx, worldTransform);
-      }
-
-      return true;
-    };
-
-    bool vol0Ok = setupLocalVolumeFn(0,
-                                     job.EnvironmentVolume,
-                                     DefaultTextureSlots::IRRADIANCE_MAP_TEXTURE_SLOT,
-                                     DefaultTextureSlots::IBL_SPECULAR_PRE_FILTERED_MAP_TEXTURE_SLOT,
-                                     m_secondaryIblRotation);
-
-    bool vol1Ok = setupLocalVolumeFn(1,
-                                     job.SecondaryEnvironmentVolume,
-                                     DefaultTextureSlots::SECONDARY_IRRADIANCE_MAP_TEXTURE_SLOT,
-                                     DefaultTextureSlots::SECONDARY_IBL_SPECULAR_MAP_TEXTURE_SLOT,
-                                     m_secondaryIblRotation);
-
-    anyIbl      = anyIbl || vol0Ok || vol1Ok;
-
+    // Mark IBL in use if sky or any local volume contributed.
     if (anyIbl)
     {
       m_drawCommand.SetIblInUse(true);
@@ -1350,199 +1062,67 @@ namespace ToolKit
   {
     TK_PROFILE_FUNCTION();
 
-    // Built-in shader uniforms.
-    for (auto& uniform : program->m_defaultUniformLocation)
+    PerDrawUniforms pdu;
+    pdu.model                 = m_model;
+    pdu.modelWithoutTranslate = m_modelWithoutTranslate;
+    pdu.inverseModel          = m_inverseModel;
+    pdu.inverseTransposeModel = m_inverseTransposeModel;
+    pdu.iblRotation           = m_iblRotation;
+    pdu.iblSecondaryRotation  = m_secondaryIblRotation;
+    pdu.viewportSize.x        = (float) m_viewportRect.x;
+    pdu.viewportSize.y        = (float) m_viewportRect.y;
+    pdu.drawCommand           = m_drawCommand;
+    pdu.materialData          = job.Material->GetCacheItem().data;
+
+    std::copy(m_activePointLightIndices.begin(), m_activePointLightIndices.end(), pdu.activePointLightIndices);
+    std::copy(m_activeSpotLightIndices.begin(), m_activeSpotLightIndices.end(), pdu.activeSpotLightIndices);
+    pdu.activePointLightCount = m_activePointLightCount;
+    pdu.activeSpotLightCount  = m_activeSpotLightCount;
+
+    // Animation / Skinning
+    pdu.keyFrameData          = Vec4(0.0f);
+    if (job.animData.currentAnimation != nullptr)
     {
-      int loc = program->GetDefaultUniformLocation(uniform.first);
-      if (loc != -1)
-      {
-        switch (uniform.first)
-        {
-          case Uniform::MODEL:
-            glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&m_model));
-            break;
-          case Uniform::MODEL_WITHOUT_TRANSLATE:
-            glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&m_modelWithoutTranslate));
-            break;
-          case Uniform::INVERSE_MODEL:
-            glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&m_inverseModel));
-            break;
-          case Uniform::INVERSE_TRANSPOSE_MODEL:
-            glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&m_inverseTransposeModel));
-            break;
-          case Uniform::IBL_ROTATION:
-            glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&m_iblRotation));
-            break;
-          case Uniform::IBL_SECONDARY_ROTATION:
-            glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&m_secondaryIblRotation));
-            break;
-          case Uniform::VIEWPORT_SIZE:
-            glUniform2f(loc, (float) m_viewportRect.x, (float) m_viewportRect.y);
-            break;
-          default:
-            break;
-        }
-      }
+      pdu.keyFrameData = Vec4(job.animData.firstKeyFrame,
+                              job.animData.secondKeyFrame,
+                              job.animData.keyFrameInterpolationTime,
+                              job.animData.keyFrameCount);
     }
 
-    // Built-in array uniforms.
-    for (auto& arrayUniform : program->m_defaultArrayUniformLocations)
-    {
-      switch (arrayUniform.first)
-      {
-        case Uniform::DRAW_COMMAND:
-        {
-          int loc = program->GetDefaultUniformLocation(Uniform::DRAW_COMMAND, 0);
-          if (loc != -1)
-          {
-            glUniform4fv(loc, sizeof(DrawCommand) / sizeof(Vec4), (float*) &m_drawCommand);
-          }
-        }
-        break;
-        case Uniform::ACTIVE_POINT_LIGHT_INDEXES:
-        {
-          int loc = program->GetDefaultUniformLocation(Uniform::ACTIVE_POINT_LIGHT_INDEXES, 0);
-          if (loc != -1)
-          {
-            if (m_activePointLightCount > 0)
-            {
-              glUniform1iv(loc, m_activePointLightCount, m_activePointLightIndices.data());
-            }
-          }
-        }
-        break;
-        case Uniform::ACTIVE_SPOT_LIGHT_INDEXES:
-        {
-          int loc = program->GetDefaultUniformLocation(Uniform::ACTIVE_SPOT_LIGHT_INDEXES, 0);
-          if (loc != -1)
-          {
-            if (m_activeSpotLightCount > 0)
-            {
-              glUniform1iv(loc, m_activeSpotLightCount, m_activeSpotLightIndices.data());
-            }
-          }
-        }
-        break;
-        case Uniform::MATERIAL_CACHE:
-        {
-          int loc = program->GetDefaultUniformLocation(Uniform::MATERIAL_CACHE, 0);
-          if (loc != -1)
-          {
-            // Material data.
-            const MaterialCacheItem& cache = job.Material->GetCacheItem();
-            if (cache.id == program->m_cachedMaterial.id)
-            {
-              if (cache.version == program->m_cachedMaterial.version)
-              {
-                // Material data is already set.
-                break;
-              }
-            }
-
-            program->m_cachedMaterial = cache;
-            glUniform4fv(loc, sizeof(MaterialCacheItem::Data) / sizeof(Vec4), (float*) &cache.data);
-          }
-        }
-        break;
-        default:
-          break;
-      }
-    }
-
-    // Custom shader uniforms.
-    for (auto& uniform : program->m_customUniforms)
-    {
-      GLint loc = program->GetCustomUniformLocation(uniform.second);
-      switch (uniform.second.GetType())
-      {
-        case ShaderUniform::UniformType::Bool:
-          glUniform1ui(loc, uniform.second.GetVal<bool>());
-          break;
-        case ShaderUniform::UniformType::Float:
-          glUniform1f(loc, uniform.second.GetVal<float>());
-          break;
-        case ShaderUniform::UniformType::Int:
-          glUniform1i(loc, uniform.second.GetVal<int>());
-          break;
-        case ShaderUniform::UniformType::UInt:
-          glUniform1ui(loc, uniform.second.GetVal<uint>());
-          break;
-        case ShaderUniform::UniformType::Vec2:
-          glUniform2fv(loc, 1, reinterpret_cast<float*>(&uniform.second.GetVal<Vec2>()));
-          break;
-        case ShaderUniform::UniformType::Vec3:
-          glUniform3fv(loc, 1, reinterpret_cast<float*>(&uniform.second.GetVal<Vec3>()));
-          break;
-        case ShaderUniform::UniformType::Vec4:
-          glUniform4fv(loc, 1, reinterpret_cast<float*>(&uniform.second.GetVal<Vec4>()));
-          break;
-        case ShaderUniform::UniformType::Mat3:
-          glUniformMatrix3fv(loc, 1, false, reinterpret_cast<float*>(&uniform.second.GetVal<Mat3>()));
-          break;
-        case ShaderUniform::UniformType::Mat4:
-          glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&uniform.second.GetVal<Mat4>()));
-          break;
-        default:
-          assert(false && "Invalid type.");
-          break;
-      }
-    }
-  }
-
-  void Renderer::FeedAnimationUniforms(const GpuProgramPtr& program, const RenderJob& job)
-  {
-    TK_PROFILE_FUNCTION();
-
-    if (job.animData.currentAnimation == nullptr)
-    {
-      return;
-    }
-
-    // Send keyFrameData: (kf1, kf2, interpTime, kfCount)
-    int uniformLoc = program->GetDefaultUniformLocation(Uniform::KEY_FRAME_DATA);
-    if (uniformLoc != -1)
-    {
-      glUniform4f(uniformLoc,
-                  job.animData.firstKeyFrame,
-                  job.animData.secondKeyFrame,
-                  job.animData.keyFrameInterpolationTime,
-                  job.animData.keyFrameCount);
-    }
-
-    // Send blend data.
+    pdu.blendFrameData = Vec4(0.0f);
     if (job.animData.blendAnimation != nullptr)
     {
-      uniformLoc = program->GetDefaultUniformLocation(Uniform::BLEND_FACTOR);
-      if (uniformLoc != -1)
-      {
-        glUniform1f(uniformLoc, job.animData.animationBlendFactor);
-      }
+      pdu.blendFrameData = Vec4(job.animData.blendFirstKeyFrame,
+                                job.animData.blendSecondKeyFrame,
+                                job.animData.blendKeyFrameInterpolationTime,
+                                job.animData.blendKeyFrameCount);
+    }
 
-      // Send blendFrameData: (blendKf1, blendKf2, blendInterpTime, blendKfCount)
-      uniformLoc = program->GetDefaultUniformLocation(Uniform::BLEND_FRAME_DATA);
-      if (uniformLoc != -1)
+    pdu.animationBlendFactor = job.animData.animationBlendFactor;
+
+    pdu.skinParams           = Vec4(0.0f);
+    if (job.Mesh->IsSkinned())
+    {
+      const SkeletonPtr& skel = static_cast<const SkinMesh*>(job.Mesh)->m_skeleton;
+      if (skel)
       {
-        glUniform4f(uniformLoc,
-                    job.animData.blendFirstKeyFrame,
-                    job.animData.blendSecondKeyFrame,
-                    job.animData.blendKeyFrameInterpolationTime,
-                    job.animData.blendKeyFrameCount);
+        float boneCount  = (float) skel->m_bones.size();
+        float isAnimated = (job.animData.currentAnimation != nullptr) ? 1.0f : 0.0f;
+        float hasBlend   = (job.animData.blendAnimation != nullptr) ? 1.0f : 0.0f;
+        pdu.skinParams   = Vec4(boneCount, 1.0f, isAnimated, hasBlend);
       }
     }
+
+    m_backend->SubmitPerDrawData(&pdu, sizeof(pdu));
+
+    // Custom shader uniforms � dispatched through backend.
+    m_backend->SubmitCustomUniforms(program, program->m_customUniforms);
   }
 
   void Renderer::SetTexture(ubyte slotIndx, TexturePtr texture)
   {
     assert(slotIndx < RHIConstants::TextureSlotCount && "You exceed texture slot count");
-
-    if (texture != nullptr)
-    {
-      RHI::SetTexture((GLenum) texture->Settings().Target, texture->m_textureId, slotIndx);
-    }
-    else
-    {
-      RHI::SetTexture(GL_TEXTURE_2D, 0, slotIndx);
-    }
+    m_backend->BindTexture(slotIndx, texture);
   }
 
   void Renderer::SetShadowAtlas(TexturePtr shadowAtlas) { m_shadowAtlas = shadowAtlas; }
@@ -1586,15 +1166,20 @@ namespace ToolKit
     // Views for 6 different angles
     CameraPtr cam = MakeNewPtr<Camera>();
     cam->SetLens(glm::radians(90.0f), 1.0f, 0.1f, 10.0f);
-    Mat4 views[CubemapFaceCount];
-    GetCubemapViews(ZERO, views);
+    Mat4 views[] = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
 
-    for (int i = 0; i < CubemapFaceCount; i++)
+    for (int i = 0; i < 6; i++)
     {
       Vec3 pos, sca;
       Quaternion rot;
 
-      DecomposeMatrix(views[i], &pos, &rot, &sca);
+      Mat4 invView = glm::inverse(views[i]);
+      DecomposeMatrix(invView, &pos, &rot, &sca);
 
       cam->m_node->SetTranslation(ZERO, TransformationSpace::TS_WORLD);
       cam->m_node->SetOrientation(rot, TransformationSpace::TS_WORLD);
@@ -1608,12 +1193,11 @@ namespace ToolKit
 
       SetFramebuffer(m_oneColorAttachmentFramebuffer, GraphicBitFields::None);
       DrawCube(cam, mat);
+      EndPass();
     }
 
     CubeMapPtr cubeMap = MakeNewPtr<CubeMap>();
     cubeMap->Consume(cubeMapRt);
-
-    cubeMap->GenerateMipMaps();
 
     return cubeMap;
   }
@@ -1647,15 +1231,17 @@ namespace ToolKit
     cubeToEquiRect->UpdateProgramUniform("Exposure", exposure);
 
     DrawFullQuad(cubeToEquiRect);
+    EndPass();
 
     if (pixels != nullptr)
     {
       uint64 requiredSize = mipWidth * mipHeight * 4 * sizeof(float);
       *pixels             = new float[requiredSize];
-      glReadPixels(0, 0, mipWidth, mipHeight, GL_RGBA, GL_FLOAT, *pixels);
+      m_backend->ReadPixels(0, 0, mipWidth, mipHeight, GraphicTypes::FormatRGBA, GraphicTypes::TypeFloat, *pixels);
     }
 
     SetFramebuffer(prevBuffer, GraphicBitFields::None);
+    EndPass();
 
     return euqiRectTexture;
   }
@@ -1676,8 +1262,6 @@ namespace ToolKit
     FramebufferPtr readBuffer = MakeNewPtr<Framebuffer>(fbs);
     readBuffer->Init();
 
-    RHI::SetTexture((GLenum) dst->Settings().Target, dst->m_textureId);
-
     for (int i = 0; i < 6; i++)
     {
       writeBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0,
@@ -1692,10 +1276,13 @@ namespace ToolKit
                                      -1,
                                      Framebuffer::CubemapFace(i));
 
-      RHI::SetFramebuffer(GL_DRAW_FRAMEBUFFER, writeBuffer->GetFboId());
-      RHI::SetFramebuffer(GL_READ_FRAMEBUFFER, readBuffer->GetFboId());
-
-      glCopyTexSubImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, mipLevel, 0, 0, 0, 0, src->m_width, src->m_height);
+      m_backend->CopyCubemapFaceFromFramebuffer(dst.get(),
+                                                i,
+                                                mipLevel,
+                                                src->m_width,
+                                                src->m_height,
+                                                readBuffer.get(),
+                                                writeBuffer.get());
     }
   }
 
@@ -1722,8 +1309,12 @@ namespace ToolKit
     // Views for 6 different angles
     CameraPtr cam = MakeNewPtr<Camera>();
     cam->SetLens(glm::radians(90.0f), 1.0f, 0.1f, 10.0f);
-    Mat4 views[CubemapFaceCount];
-    GetCubemapViews(ZERO, views);
+    Mat4 views[]    = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                       glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                       glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
+                       glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
+                       glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                       glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
 
     // Create material
     MaterialPtr mat = MakeNewPtr<Material>();
@@ -1738,12 +1329,13 @@ namespace ToolKit
 
     m_oneColorAttachmentFramebuffer->ReconstructIfNeeded({size, size, false, false});
 
-    for (int i = 0; i < CubemapFaceCount; i++)
+    for (int i = 0; i < 6; i++)
     {
       Vec3 pos;
       Quaternion rot;
       Vec3 sca;
-      DecomposeMatrix(views[i], &pos, &rot, &sca);
+      Mat4 invView = glm::inverse(views[i]);
+      DecomposeMatrix(invView, &pos, &rot, &sca);
 
       cam->m_node->SetTranslation(ZERO, TransformationSpace::TS_WORLD);
       cam->m_node->SetOrientation(rot, TransformationSpace::TS_WORLD);
@@ -1757,9 +1349,11 @@ namespace ToolKit
 
       SetFramebuffer(m_oneColorAttachmentFramebuffer, GraphicBitFields::None);
       DrawCube(cam, mat);
+      EndPass();
     }
 
     SetFramebuffer(nullptr, GraphicBitFields::None);
+    EndPass();
 
     CubeMapPtr newCubeMap = MakeNewPtr<CubeMap>();
     newCubeMap->Consume(cubeMapRt);
@@ -1787,30 +1381,18 @@ namespace ToolKit
     RenderTargetPtr cubemapRt = MakeNewPtr<RenderTarget>(size, size, set);
     cubemapRt->Init();
 
-    // Explicitly allocate storage for every mip level that will be rendered.
-    RHI::SetTexture(GL_TEXTURE_CUBE_MAP, cubemapRt->m_textureId);
-    for (int mip = 1; mip < mipMaps; mip++)
-    {
-      int mipSize = glm::max(1, size >> mip);
-      for (int face = 0; face < 6; face++)
-      {
-        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face,
-                     mip,
-                     (GLint) set.InternalFormat,
-                     mipSize,
-                     mipSize,
-                     0,
-                     (GLenum) set.Format,
-                     (GLenum) set.Type,
-                     nullptr);
-      }
-    }
+    // Intentionally creating space to fill later. ( mip maps will be calculated for specular ibl )
+    cubemapRt->GenerateMipMaps();
 
     // Views for 6 different angles
     CameraPtr cam = MakeNewPtr<Camera>();
     cam->SetLens(glm::radians(90.0f), 1.0f, 0.1f, 10.0f);
-    Mat4 views[CubemapFaceCount];
-    GetCubemapViews(ZERO, views);
+    Mat4 views[]    = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                       glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                       glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
+                       glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
+                       glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                       glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
 
     // Create material
     MaterialPtr mat = MakeNewPtr<Material>();
@@ -1834,12 +1416,13 @@ namespace ToolKit
       RenderTargetPtr mipCubeRt = MakeNewPtr<RenderTarget>(mipSize, mipSize, set);
       mipCubeRt->Init();
 
-      for (int i = 0; i < CubemapFaceCount; ++i)
+      for (int i = 0; i < 6; ++i)
       {
         Vec3 pos;
         Quaternion rot;
         Vec3 sca;
-        DecomposeMatrix(views[i], &pos, &rot, &sca);
+        Mat4 invView = glm::inverse(views[i]);
+        DecomposeMatrix(invView, &pos, &rot, &sca);
 
         cam->m_node->SetTranslation(ZERO, TransformationSpace::TS_WORLD);
         cam->m_node->SetOrientation(rot, TransformationSpace::TS_WORLD);
@@ -1854,23 +1437,23 @@ namespace ToolKit
         SetFramebuffer(m_oneColorAttachmentFramebuffer, GraphicBitFields::None);
 
         mat->UpdateProgramUniform("roughness", (float) mip / (float) (mipMaps - 1));
-        mat->UpdateProgramUniform("resPerFace", (float) cubemap->m_width);
+        mat->UpdateProgramUniform("resPerFace", (float) mipSize);
 
-        RHI::SetTexture((GLenum) GraphicTypes::TargetCubeMap, cubemap->m_textureId, 0);
+        m_backend->BindTexture(0, cubemap);
 
         DrawCube(cam, mat);
+        EndPass();
 
         // Copy color attachment to cubemap's correct mip level and face.
-        RHI::SetTexture((GLenum) GraphicTypes::TargetCubeMap, cubemapRt->m_textureId, 0);
-        glCopyTexSubImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, mip, 0, 0, 0, 0, mipSize, mipSize);
+        m_backend->CopyCubemapFaceFromFramebuffer(cubemapRt.get(), i, mip, mipSize, mipSize, nullptr, nullptr);
       }
     }
 
     SetFramebuffer(nullptr, GraphicBitFields::None);
+    EndPass();
 
     // Clamp texture max mip level to the last bake level.
-    RHI::SetTexture(GL_TEXTURE_CUBE_MAP, cubemapRt->m_textureId);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAX_LEVEL, mipMaps - 1);
+    m_backend->SetTextureMaxMipLevel(cubemapRt.get(), mipMaps - 1);
 
     CubeMapPtr newCubeMap = MakeNewPtr<CubeMap>();
     newCubeMap->Consume(cubemapRt);
@@ -1915,15 +1498,20 @@ namespace ToolKit
     CameraPtr cam = MakeNewPtr<Camera>();
     cam->SetLens(glm::radians(90.0f), 1.0f, near, far);
 
-    // Cubemap face directions and up vectors in local space (OpenGL cubemap convention).
-    const Vec3* faceNormals              = GetCubemapFaceDirections();
-    const Vec3* faceUp                   = GetCubemapFaceUpVectors();
-
+    // 6 cubemap face view matrices.
+    Mat4 views[]                         = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                                            glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                                            glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
+                                            glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
+                                            glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                                            glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
     // Save original render path params.
     CameraPtr origCam                    = renderPath->m_params.Cam;
     FramebufferPtr origFramebuffer       = renderPath->m_params.MainFramebuffer;
 
     // Disable all post-processing for cubemap capture.
+    // Post-process passes (gamma/tonemap/FXAA, bloom, DoF, SSAO) are incompatible
+    // with cubemap face render targets and would corrupt the output.
     PostProcessingSettingsPtr origPPS    = renderPath->m_params.postProcessSettings;
     PostProcessingSettingsPtr capturePPS = MakeNewPtr<PostProcessingSettings>();
     capturePPS->SetTonemappingEnabledVal(false);
@@ -1935,21 +1523,18 @@ namespace ToolKit
 
     renderPath->m_params.postProcessSettings = capturePPS;
 
-    for (int i = 0; i < CubemapFaceCount; i++)
+    for (int i = 0; i < 6; i++)
     {
-      // Build local-space view matrix looking from originOffset along the face direction.
-      Mat4 localView       = glm::lookAt(originOffset, originOffset + faceNormals[i], faceUp[i]);
+      Vec3 pos;
+      Quaternion rot;
+      Vec3 sca(1.0f);
+      Mat4 invView = glm::inverse(views[i]);
+      DecomposeMatrix(invView, &pos, &rot, &sca);
 
-      // Compose with entity world transform to get the final camera transform.
-      Mat4 cameraTransform = worldTransform * glm::inverse(localView);
-
-      // Decompose into position and orientation for the camera node.
-      Vec3 camPos;
-      Quaternion camRot;
-      DecomposeMatrix(cameraTransform, &camPos, &camRot, nullptr);
-
-      cam->m_node->SetTranslation(camPos);
-      cam->m_node->SetOrientation(camRot);
+      Vec3 capturePos = Vec3(worldTransform * Vec4(originOffset, 1.0f));
+      cam->m_node->SetTranslation(capturePos);
+      cam->m_node->SetOrientation(rot);
+      cam->m_node->SetScale(sca);
 
       // Set color attachment to the corresponding cubemap face.
       cubeFb->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0,
@@ -1988,51 +1573,6 @@ namespace ToolKit
     Stats::EndGpuScope();
 
     return cubemap;
-  }
-
-  void Renderer::ValidateBackbufferSrgbEncoding()
-  {
-    RenderSystem* rsys = GetRenderSystem();
-    if (!rsys)
-    {
-      return;
-    }
-
-    if (!rsys->m_backbufferFormatIsSRGB)
-    {
-      // Nothing to validate if backbuffer not sRGB.
-      return;
-    }
-
-    // Work on backbuffer
-    RHI::SetFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-    RHI::SetFramebuffer(GL_READ_FRAMEBUFFER, 0);
-    glViewport(0, 0, (GLsizei) 100, (GLsizei) 100);
-
-    // Clear with linear 0.5 gray
-    const float testLinear = 0.5f;
-    glClearColor(testLinear, testLinear, testLinear, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-    glFinish(); // Make sure clear completed
-
-    // Read back a single pixel
-    ubyte rgba[4] = {0, 0, 0, 0};
-    glReadPixels(0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
-
-    // Expected sRGB encoding value
-    ubyte expected               = 188;
-
-    // Allow small tolerance due to driver rounding
-    int tolerance                = 2;
-    bool matchR                  = std::abs((int) rgba[0] - (int) expected) <= tolerance;
-    bool matchG                  = std::abs((int) rgba[1] - (int) expected) <= tolerance;
-    bool matchB                  = std::abs((int) rgba[2] - (int) expected) <= tolerance;
-
-    bool backbufferIsSrgbEncoded = matchR && matchG && matchB;
-    if (!backbufferIsSrgbEncoded)
-    {
-      rsys->m_backbufferFormatIsSRGB = false;
-    }
   }
 
 } // namespace ToolKit

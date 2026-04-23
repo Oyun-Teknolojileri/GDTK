@@ -10,6 +10,7 @@
 #include "Camera.h"
 #include "GenericBuffers.h"
 #include "GpuProgram.h"
+#include "IGraphicsBackend.h"
 #include "Material.h"
 #include "Primative.h"
 #include "RHI.h"
@@ -140,42 +141,26 @@ namespace ToolKit
   {
     /** Uniform buffer for camera data. */
     CameraGpuBuffer cameraGpuBuffer;
-    int cameraBufferId = 0;
 
     /** Uniform buffer for graphic constants. */
     GraphicConstantsGpuBuffer graphicConstantBuffer;
-    int graphicConstantBufferId = 0;
 
     /** Active directional lights in gpu. */
     DirectionalLightBuffer directionalLightBuffer;
-    int directionalLightBufferId    = 0;
-    int directionalLightPVMBufferId = 0;
 
     /** Cached point lights in gpu. */
     PointLightCache pointLighBuffer;
-    int pointLightBufferId = 0;
 
     /** Cached spot lights in gpu. */
     SpotLightCache spotLightBuffer;
-    int spotLightBufferId = 0;
 
     void InitGlobalGpuBuffers()
     {
       graphicConstantBuffer.Init();
-      graphicConstantBufferId = graphicConstantBuffer.Id();
-
       cameraGpuBuffer.Init();
-      cameraBufferId = cameraGpuBuffer.Id();
-
       directionalLightBuffer.Init();
-      directionalLightBufferId    = directionalLightBuffer.m_lightDataBuffer.m_id;
-      directionalLightPVMBufferId = directionalLightBuffer.m_pvms.m_id;
-
       pointLighBuffer.Init();
-      pointLightBufferId = pointLighBuffer.m_gpuBuffer.m_id;
-
       spotLightBuffer.Init();
-      spotLightBufferId = spotLightBuffer.m_gpuBuffer.m_id;
     }
   };
 
@@ -201,7 +186,6 @@ namespace ToolKit
     void InvalidateGraphicsConstants();
 
     void Init();
-    void SetRenderState(const RenderState* const state, bool cullFlip = false);
 
     void SetStencilOperation(StencilOperation op);
 
@@ -215,6 +199,9 @@ namespace ToolKit
     void ClearBuffer(GraphicBitFields fields, const Vec4& value = Vec4(0.0f));
     void ColorMask(bool r, bool g, bool b, bool a);
 
+    /** Returns an opaque native texture handle as uint, obtained from the backend. */
+    static uint GetNativeTextureHandle(const TexturePtr& tex);
+
     // FrameBuffer Operations
     //////////////////////////////////////////
 
@@ -222,11 +209,10 @@ namespace ToolKit
 
     void SetFramebuffer(FramebufferPtr frameBuffer,
                         GraphicBitFields attachmentsToClear,
-                        const Vec4& clearColor                  = Vec4(0.0f),
-                        GraphicFramebufferTypes frameBufferType = GraphicFramebufferTypes::Framebuffer);
+                        const Vec4& clearColor       = Vec4(0.0f),
+                        GraphicBitFields discardBits = GraphicBitFields::None);
 
-    /** Tries to invalidate given bits of the framebuffer. Verifies if buffer actually has the specified attachments. */
-    void InvalidateFramebuffer(GraphicBitFields bits, FramebufferPtr frameBuffer);
+    void EndPass();
 
     /**
      * Resolves source multi sample buffer to single sample target buffer.
@@ -250,6 +236,7 @@ namespace ToolKit
 
     void SetViewport(Viewport* viewport);
     void SetViewportRect(uint x, uint y, uint width, uint height);
+    void SetScissor(uint x, uint y, uint width, uint height);
 
     void DrawFullQuad(ShaderPtr fragmentShader);
     void DrawFullQuad(MaterialPtr mat);
@@ -308,7 +295,6 @@ namespace ToolKit
      */
     void OverrideBlendState(bool enableOverride, BlendFunction func);
 
-    void EnableBlending(bool enable);
     void EnableDepthWrite(bool enable);
     void EnableDepthTest(bool enable);
     void SetDepthTestFunc(CompareFunctions func);
@@ -375,10 +361,18 @@ namespace ToolKit
     void SetLights(const LightRawPtrArray& lights);
 
     /**
-     * Sets directional lights to be used for render. Should be called once per pass because all objects effected from
-     * directional lights. No need to set it per object.
-     */
+     /** Sets directional lights to be used for render. Should be called once per pass because all objects effected from
+      * directional lights. No need to set it per object.
+      */
     void SetDirectionalLights(const LightRawPtrArray& lights);
+
+    /** Sets the graphics backend. Ownership is transferred to the Renderer. */
+    void SetBackend(IGraphicsBackend* backend) { m_backend = backend; }
+
+    /** Returns current backend. */
+    IGraphicsBackend* GetBackend() { return m_backend; }
+
+    GpuProgramManager* GetGpuProgramManager() { return m_gpuProgramManager; }
 
    private:
     /** Set textures to be used in render. SkyBox, Ibl, AmbientOcculution  */
@@ -388,10 +382,6 @@ namespace ToolKit
     void SetTransforms(const Mat4& model);
 
     void FeedUniforms(const GpuProgramPtr& program, const RenderJob& job);
-    void FeedAnimationUniforms(const GpuProgramPtr& program, const RenderJob& job);
-
-    /** Validates sRGB automatic encoding on backbuffer by clearing and reading a pixel back. */
-    void ValidateBackbufferSrgbEncoding();
 
    public:
     uint m_frameCount = 0;
@@ -460,15 +450,10 @@ namespace ToolKit
 
     GpuProgramManager* m_gpuProgramManager         = nullptr;
 
-    uint m_gpuTimerQuery                           = 0;
-    float m_cpuTime                                = 1.0f;
-    float m_gpuTime                                = 1.0f;
-    bool m_timerQueryActive                        = false;
-    bool m_timerQueryWaiting                       = false;
-    bool m_blendStateOverrideEnable                = false;
+    IGraphicsBackend* m_backend                    = nullptr;
 
-    /** Frame buffer stats for each frame. */
-    std::map<uint, int> m_drawnFrameBufferStats;
+    /** Per-frame draw counters keyed by framebuffer ObjectId. */
+    std::unordered_map<ObjectId, int> m_drawnFrameBufferStats;
   };
 
 } // namespace ToolKit

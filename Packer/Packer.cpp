@@ -12,7 +12,6 @@
 #include <Material.h>
 #include <RenderSystem.h>
 #include <SDL.h>
-#include <TKOpenGL.h>
 #include <Texture.h>
 #include <ToolKit.h>
 #include <Types.h>
@@ -173,20 +172,20 @@ namespace ToolKit
 
     switch (m_platform)
     {
-    case PublishPlatform::Web:
-      return WebPublish();
-      break;
-    case PublishPlatform::Windows:
-      return WindowsPublish();
-      break;
-    case PublishPlatform::Android:
-      return AndroidPublish();
-    case PublishPlatform::EditorPlugin:
-    case PublishPlatform::GamePlugin:
-      return PluginPublish();
-    default:
-      TK_ERR("Unknown publish platform: %i\n", (int) m_platform);
-      return -1;
+      case PublishPlatform::Web:
+        return WebPublish();
+        break;
+      case PublishPlatform::Windows:
+        return WindowsPublish();
+        break;
+      case PublishPlatform::Android:
+        return AndroidPublish();
+      case PublishPlatform::EditorPlugin:
+      case PublishPlatform::GamePlugin:
+        return PluginPublish();
+      default:
+        TK_ERR("Unknown publish platform: %i\n", (int) m_platform);
+        return -1;
     }
   }
 
@@ -751,7 +750,11 @@ namespace ToolKit
     String projectName      = activeProjectName;
     String publishDirectory = ConcatPaths({ResourcePath(), "..", "Publish", "Web"});
     String firstPart        = ConcatPaths({ResourcePath(), "..", "Codes", "Bin", projectName}) + ".";
-    String files[]          = {firstPart + "data", firstPart + "html", firstPart + "js", firstPart + "wasm", firstPart + "worker.js"};
+    String files[]          = {firstPart + "data",
+                               firstPart + "html",
+                               firstPart + "js",
+                               firstPart + "wasm",
+                               firstPart + "worker.js"};
 
     std::filesystem::create_directories(publishDirectory, m_errorCode);
     if (CheckErrorReturn("Create directories " + publishDirectory))
@@ -845,7 +848,10 @@ namespace ToolKit
                                             SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
     SDL_GLContext g_context = SDL_GL_CreateContext(g_window);
 
-    g_proxy->m_renderSys->InitGl(SDL_GL_GetProcAddress, nullptr);
+    ToolKit::IGraphicsBackend::BackendInitParams initParams;
+    initParams.getProcAddress = (void*) SDL_GL_GetProcAddress;
+    g_proxy->m_renderSys->InitGraphics(initParams);
+    g_proxy->m_renderSys->SetPresentCallback([]() { /* headless, no swap */ });
     g_proxy->Init();
 
     int result = packer.Publish();

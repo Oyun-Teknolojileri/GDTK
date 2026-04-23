@@ -136,7 +136,7 @@ namespace ToolKit
         const Vec2 iconSize = Vec2(16.0f, 16.0f);
         const Vec2 spacing  = ImGui::GetStyle().ItemSpacing;
         UpdatePreviewScene();
-        if (UI::ImageButtonDecorless(UI::m_cameraIcon->m_textureId, iconSize))
+        if (UI::ImageButtonDecorless(Renderer::GetNativeTextureHandle(UI::m_cameraIcon), iconSize))
         {
           ResetCamera();
         }
@@ -186,7 +186,7 @@ namespace ToolKit
         DecomposePath(vert->GetFile(), nullptr, &vertName, nullptr);
 
         ImGui::LabelText("##vertex shader: %s", vertName.c_str());
-        DropZone(UI::m_codeIcon->m_textureId,
+        DropZone(Renderer::GetNativeTextureHandle(UI::m_codeIcon),
                  vert->GetFile(),
                  [this, mat, &updateThumbFn](const DirectoryEntry& dirEnt) -> void
                  {
@@ -216,7 +216,7 @@ namespace ToolKit
         DecomposePath(frag->GetFile(), nullptr, &fragName, nullptr);
 
         ImGui::LabelText("##fragShader fragment shader: %s", fragName.c_str());
-        DropZone(UI::m_codeIcon->m_textureId,
+        DropZone(Renderer::GetNativeTextureHandle(UI::m_codeIcon),
                  frag->GetFile(),
                  [this, mat, &updateThumbFn](const DirectoryEntry& dirEnt) -> void
                  {
@@ -245,7 +245,7 @@ namespace ToolKit
           ImGui::PushID(label.data());
 
           DropZone(
-              UI::m_imageIcon->m_textureId,
+              Renderer::GetNativeTextureHandle(UI::m_imageIcon),
               target,
               [&texVar, &updateThumbFn](const DirectoryEntry& dirEnt) -> void
               {
@@ -260,7 +260,7 @@ namespace ToolKit
             ImGui::SameLine();
             String labelClose = String(label) + "#x";
             ImGui::PushID(labelClose.c_str());
-            if (UI::ImageButtonDecorless(UI::m_closeIcon->m_textureId, Vec2(16.0f, 16.0f)))
+            if (UI::ImageButtonDecorless(Renderer::GetNativeTextureHandle(UI::m_closeIcon), Vec2(16.0f, 16.0f)))
             {
               texVar = TexturePtr();
               updateThumbFn();

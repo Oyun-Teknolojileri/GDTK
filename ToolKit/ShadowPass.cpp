@@ -75,7 +75,7 @@ namespace ToolKit
     const Vec4 lastClearColor = renderer->m_clearColor;
 
     // Clear shadow atlas before any draw call
-    renderer->SetFramebuffer(m_shadowFramebuffer, GraphicBitFields::None);
+    renderer->SetFramebuffer(m_shadowFramebuffer, GraphicBitFields::None, Vec4(0.0f), GraphicBitFields::DepthBits);
     for (int i = 0; i < ShadowAtlas::LayerCount; i++)
     {
       m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowAtlas, 0, i);
@@ -106,7 +106,7 @@ namespace ToolKit
     BlurShadowAtlas();
 
     // Depth is not needed. Mark it as invalid to avoid unintended read/writes.
-    renderer->InvalidateFramebuffer(GraphicBitFields::DepthBits, m_shadowFramebuffer);
+    renderer->EndPass();
 
     renderer->m_clearColor = lastClearColor;
   }
@@ -186,7 +186,9 @@ namespace ToolKit
         dlights.push_back(l);
       }
     }
-    GetRenderer()->SetDirectionalLights(dlights);
+    Renderer* renderer = GetRenderer();
+    renderer->SetDirectionalLights(dlights);
+    renderer->EndPass();
   }
 
   RenderTargetPtr ShadowPass::GetShadowAtlas() { return m_shadowAtlas; }
@@ -320,7 +322,7 @@ namespace ToolKit
     ShaderPtr vert = shadowMaterial->GetVertexShaderVal();
     vert->SetDefine("DrawAlphaMasked", "0");
 
-    GpuProgramManager* gpuProgramManager = GetGpuProgramManager();
+    GpuProgramManager* gpuProgramManager = renderer->GetGpuProgramManager();
     m_program                            = gpuProgramManager->CreateProgram(vert, frag);
     renderer->BindProgram(m_program);
 
@@ -387,7 +389,7 @@ namespace ToolKit
     GraphicTypes bufferFormat     = GraphicTypes::FormatRG16F;
 
     GraphicTypes sampler          = GraphicTypes::SampleLinear;
-    if (!TK_GL_OES_texture_float_linear)
+    if (!renderer->GetBackend()->SupportsFloatTextureLinearFilter())
     {
       sampler = GraphicTypes::SampleNearest;
     }
@@ -597,7 +599,7 @@ namespace ToolKit
     PlaceShadowMapsToShadowAtlas(m_lights);
 
     // Check if the shadow atlas texture needs to be reconstructed.
-    bool needReconstruct      = m_shadowAtlas->m_textureId == 0; // First time.
+    bool needReconstruct      = m_shadowAtlas->m_gpuData == nullptr; // First time.
     ShadowSettingsPtr shadows = GetEngineSettings().m_graphics->m_shadows;
     if (m_activeCascadeCount != shadows->GetCascadeCountVal())
     {

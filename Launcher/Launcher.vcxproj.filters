@@ -15,9 +15,15 @@
     <ClCompile Include="stdafx.cpp">
       <Filter>Source</Filter>
     </ClCompile>
+    <ClCompile Include="LauncherBackendBindings.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Launcher.h">
+      <Filter>Source</Filter>
+    </ClInclude>
+    <ClInclude Include="LauncherBackendBindings.h">
       <Filter>Source</Filter>
     </ClInclude>
   </ItemGroup>

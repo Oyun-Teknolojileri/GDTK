@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2019-2025 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
@@ -39,7 +39,7 @@ namespace ToolKit::Editor
     ImGui::Text("Icon");
     ImGui::SameLine();
 
-    int iconId = m_icon ? m_icon->m_textureId : m_defaultIcon->m_textureId;
+    int iconId = m_icon ? Renderer::GetNativeTextureHandle(m_icon) : Renderer::GetNativeTextureHandle(m_defaultIcon);
     UI::ImageButton("##icon", ConvertUIntImGuiTexture(iconId), ImVec2(64, 64));
 
     if (ImGui::BeginDragDropTarget())

@@ -324,20 +324,24 @@ namespace ToolKit
             }
           }
 
-          uint texId           = texture->m_textureId;
+          uint texId           = Renderer::GetNativeTextureHandle(texture);
 
-          // Imgui blends the alpha of the image ( in our case, render target for the scene ) with its window
-          // background, which causes glitches in the final render. This manual disable is needed.
           ImDrawList* drawList = ImGui::GetWindowDrawList();
           drawList->AddCallback([](const ImDrawList* parentList, const ImDrawCmd* cmd)
-                                { GetRenderSystem()->EnableBlending(false); },
-                                nullptr);
+                                { 
+                                  Texture* t = (Texture*)cmd->UserCallbackData;
+                                  GetRenderSystem()->GetBackend()->SetTextureSwizzleAlpha(t, true, true);
+                                },
+                                texture.get());
 
           ImGui::Image(ConvertUIntImGuiTexture(texId), m_wndContentAreaSize, Vec2(0.0f, 1.0f), Vec2(1.0f, 0.0f));
 
           drawList->AddCallback([](const ImDrawList* parentList, const ImDrawCmd* cmd)
-                                { GetRenderSystem()->EnableBlending(true); },
-                                nullptr);
+                                { 
+                                  Texture* t = (Texture*)cmd->UserCallbackData;
+                                  GetRenderSystem()->GetBackend()->SetTextureSwizzleAlpha(t, false, true); 
+                                },
+                                texture.get());
 
           if (IsActive())
           {
