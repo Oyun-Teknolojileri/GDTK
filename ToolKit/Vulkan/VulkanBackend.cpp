@@ -229,7 +229,12 @@ namespace ToolKit
     data->aspect       = isDepth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
     data->extent       = {(uint32_t) tex->m_width, (uint32_t) tex->m_height};
     data->arrayLayers  = arrayLayers;
-    data->mipLevels    = 1; // Mip generation lands in Stage 4+.
+    // Allocate the full mip chain when either the texture opted in (GenerateMipMap) or this is a
+    // cubemap — the IBL prefilter pipeline always writes to every mip of the environment cubemap
+    // regardless of the flag, so we must back it with real mip storage. Depth targets don't need
+    // mip chains.
+    const bool wantsMipChain = !isDepth && (settings.GenerateMipMap || isCubemap);
+    data->mipLevels    = wantsMipChain ? (uint32_t) tex->CalculateMipmapLevels() : 1u;
     data->isCubemap    = isCubemap;
     data->currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
@@ -292,7 +297,8 @@ namespace ToolKit
       samplerInfo.addressModeW        = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
       samplerInfo.mipmapMode          = VK_SAMPLER_MIPMAP_MODE_LINEAR;
       samplerInfo.minLod              = 0.0f;
-      samplerInfo.maxLod              = 0.0f;
+      // Expose the full mip chain to sampling. Values above the actual mip count clamp safely.
+      samplerInfo.maxLod              = (float) data->mipLevels;
       vkCreateSampler(m_context->GetDevice(), &samplerInfo, nullptr, &data->sampler);
     }
 
@@ -489,7 +495,16 @@ namespace ToolKit
       viewInfo.viewType                    = VK_IMAGE_VIEW_TYPE_2D;
       viewInfo.format                      = slot.tex->format;
       viewInfo.subresourceRange.aspectMask = slot.tex->aspect;
-      viewInfo.subresourceRange.baseMipLevel   = (uint32_t) std::max(0, mip);
+      uint32_t baseMip = (uint32_t) std::max(0, mip);
+      if (baseMip >= slot.tex->mipLevels)
+      {
+        TK_WRN("AttachColorTarget: mip %u >= image mipLevels %u — clamping to %u",
+               baseMip,
+               slot.tex->mipLevels,
+               slot.tex->mipLevels - 1);
+        baseMip = slot.tex->mipLevels - 1;
+      }
+      viewInfo.subresourceRange.baseMipLevel   = baseMip;
       viewInfo.subresourceRange.levelCount     = 1;
       viewInfo.subresourceRange.baseArrayLayer = baseArrayLayer;
       viewInfo.subresourceRange.layerCount     = layerCount;
