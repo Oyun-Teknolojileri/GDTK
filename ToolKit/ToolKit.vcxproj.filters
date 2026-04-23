@@ -247,6 +247,12 @@
     <ClCompile Include="Vulkan\VulkanBackend.cpp">
       <Filter>Render\Vulkan</Filter>
     </ClCompile>
+    <ClCompile Include="Vulkan\VulkanContext.cpp">
+      <Filter>Render\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="Vulkan\VulkanSwapchain.cpp">
+      <Filter>Render\Vulkan</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Camera.h">
@@ -524,6 +530,12 @@
       <Filter>Render\Vulkan</Filter>
     </ClInclude>
     <ClInclude Include="Vulkan\VulkanBackend.h">
+      <Filter>Render\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="Vulkan\VulkanContext.h">
+      <Filter>Render\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="Vulkan\VulkanSwapchain.h">
       <Filter>Render\Vulkan</Filter>
     </ClInclude>
   </ItemGroup>

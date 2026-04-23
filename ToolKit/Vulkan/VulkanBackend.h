@@ -10,14 +10,28 @@
 
 #include "../IGraphicsBackend.h"
 
+#include <memory>
+
+// Forward declare so we don't drag vulkan.h into every translation unit that includes this header.
+typedef struct VkCommandBuffer_T* VkCommandBuffer;
+
 namespace ToolKit
 {
+
+  class VulkanContext;
+  class VulkanSwapchain;
 
   class TK_API VulkanBackend : public IGraphicsBackend
   {
    public:
     VulkanBackend();
     ~VulkanBackend() override;
+
+    VulkanContext* GetContext() { return m_context.get(); }
+    VulkanSwapchain* GetSwapchain() { return m_swapchain.get(); }
+
+    /** The command buffer being recorded this frame, or VK_NULL_HANDLE between frames. */
+    VkCommandBuffer GetCurrentCommandBuffer() const;
 
     // Backend initialization
     void InitBackend(const BackendInitParams& params) override;
@@ -121,6 +135,13 @@ namespace ToolKit
     void* GetNativeTextureHandle(Texture* tex) override;
     void SetDebugLabel(Texture* tex) override;
     void SetDebugLabel(Framebuffer* fb) override;
+
+   private:
+    std::unique_ptr<VulkanContext> m_context;
+    std::unique_ptr<VulkanSwapchain> m_swapchain;
+    bool m_frameStarted  = false;
+    bool m_needsRecreate = false;
+    Vec4 m_clearColor    = Vec4(0.4f, 0.0f, 0.4f, 1.0f); // Purple — easy to spot in stage 1e tests.
   };
 
   /** Factory function called by RenderSystem::CreateBackend(). */

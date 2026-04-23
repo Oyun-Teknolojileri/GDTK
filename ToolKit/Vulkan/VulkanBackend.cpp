@@ -8,33 +8,78 @@
 #include "VulkanBackend.h"
 
 #include "../Logger.h"
+#include "VulkanContext.h"
+#include "VulkanSwapchain.h"
+
+#include <vulkan/vulkan.h>
 
 namespace ToolKit
 {
 
-  VulkanBackend::VulkanBackend() {}
+  VulkanBackend::VulkanBackend()
+      : m_context(std::make_unique<VulkanContext>()), m_swapchain(std::make_unique<VulkanSwapchain>())
+  {
+  }
 
-  VulkanBackend::~VulkanBackend() {}
+  VulkanBackend::~VulkanBackend()
+  {
+    m_swapchain.reset();
+    m_context.reset();
+  }
 
   void VulkanBackend::InitBackend(const BackendInitParams& params)
   {
-    TK_LOG("VulkanBackend: InitBackend stub");
-    // TODO: Create VkInstance, pick physical device, create logical device, queues, command pool, etc.
+    if (!m_context->Init(params.vkInstanceExtensions, params.vkCreateSurface))
+    {
+      TK_ERR("VulkanBackend: VulkanContext init failed");
+      return;
+    }
+    if (!m_swapchain->Init(m_context.get()))
+    {
+      TK_ERR("VulkanBackend: VulkanSwapchain init failed");
+    }
   }
 
   void VulkanBackend::BeginFrame()
   {
-    // TODO: Acquire swapchain image, begin command buffer.
+    if (m_needsRecreate)
+    {
+      m_swapchain->Recreate();
+      m_needsRecreate = false;
+    }
+    m_frameStarted = m_swapchain->BeginFrame(m_clearColor);
+    if (!m_frameStarted)
+    {
+      // Swapchain out-of-date or minimized — flag for recreate and skip.
+      m_needsRecreate = true;
+    }
   }
 
   void VulkanBackend::EndFrame()
   {
-    // TODO: End command buffer, submit to queue.
+    // Present() handles the end-of-frame submit. Kept as no-op to match IGraphicsBackend contract.
   }
 
   void VulkanBackend::Present()
   {
-    // TODO: vkQueuePresentKHR.
+    if (!m_frameStarted)
+    {
+      return;
+    }
+    if (!m_swapchain->EndFrame())
+    {
+      m_needsRecreate = true;
+    }
+    m_frameStarted = false;
+  }
+
+  VkCommandBuffer VulkanBackend::GetCurrentCommandBuffer() const
+  {
+    if (!m_frameStarted || m_swapchain == nullptr)
+    {
+      return VK_NULL_HANDLE;
+    }
+    return m_swapchain->GetCurrentCommandBuffer();
   }
 
   void VulkanBackend::BeginPass(const PassDesc& desc)

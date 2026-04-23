@@ -58,8 +58,17 @@ namespace ToolKit
 
     struct BackendInitParams
     {
-      void* getProcAddress = nullptr;
+      void* getProcAddress = nullptr; //!< GL: SDL_GL_GetProcAddress. VK: unused.
+      void* windowHandle   = nullptr; //!< VK: SDL_Window* (opaque, used by swapchain for extent queries). GL: unused.
       GpuErrorCallback errorCallback;
+
+      //!< VK: instance-level extension names the platform requires (VK_KHR_surface + platform surface ext).
+      //!< Filled by the editor via SDL_Vulkan_GetInstanceExtensions so ToolKit stays SDL-free.
+      std::vector<const char*> vkInstanceExtensions;
+
+      //!< VK: given a VkInstance (as void*), returns the platform VkSurfaceKHR (as uint64_t). 0 on failure.
+      //!< Implemented in the editor via SDL_Vulkan_CreateSurface.
+      std::function<uint64 (void*)> vkCreateSurface;
     };
 
     virtual void InitBackend(const BackendInitParams& params)                                               = 0;

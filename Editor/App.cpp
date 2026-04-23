@@ -9,6 +9,7 @@
 
 #include "AndroidBuildWindow.h"
 #include "ConsoleWindow.h"
+#include "EditorBackendBindings.h"
 #include "EditorCamera.h"
 #include "EditorMetaKeys.h"
 #include "EditorViewport2d.h"
@@ -869,7 +870,6 @@ namespace ToolKit
         SafeDel(EditorViewport::m_overlays[i]);
       }
 
-      m_simulationViewport = nullptr;
       m_lastActiveViewport = nullptr;
       m_simulationViewport = nullptr;
 
@@ -1249,7 +1249,7 @@ namespace ToolKit
       rsys->AddRenderTask({[](Renderer* renderer) -> void
                            {
                              renderer->SetFramebuffer(nullptr, GraphicBitFields::AllBits);
-                             SDL_GL_SwapWindow(g_window);
+                             EditorBackendBindings::PresentBackbuffer(g_window);
                            }});
 
       rsys->FlushRenderTasks();

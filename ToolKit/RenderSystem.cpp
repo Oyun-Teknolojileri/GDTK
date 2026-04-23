@@ -13,6 +13,9 @@
 #include "RHI.h"
 #include "Stats.h"
 #include "ToolKit.h"
+#ifdef TK_VULKAN
+  #include "Vulkan/VulkanBackend.h"
+#endif
 
 #include "DebugNew.h"
 
@@ -48,10 +51,17 @@ namespace ToolKit
   void RenderSystem::Init()
   {
     m_renderer->Init();
-    AddRenderTask({[](Renderer* renderer) -> void { renderer->GenerateBRDFLutTexture(); }});
+    AddRenderTask({[](Renderer* renderer) -> void { /*TODO renderer->GenerateBRDFLutTexture();*/ }});
   }
 
-  IGraphicsBackend* RenderSystem::CreateBackend() { return new GLBackend(); }
+  IGraphicsBackend* RenderSystem::CreateBackend()
+  {
+#ifdef TK_VULKAN
+    return new VulkanBackend();
+#else
+    return new GLBackend();
+#endif
+  }
 
   void RenderSystem::AddRenderTask(RenderTask task)
   {

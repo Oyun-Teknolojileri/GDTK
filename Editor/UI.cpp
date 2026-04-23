@@ -669,9 +669,10 @@ namespace ToolKit
       }
       closedWindows.clear();
 
-      if (GetApp()->m_simulationViewport->IsVisible())
+      EditorViewportPtr simWindow = GetApp()->m_simulationViewport;
+      if (simWindow && simWindow->IsVisible())
       {
-        GetApp()->m_simulationViewport->Show();
+        simWindow->Show();
       }
 
       if (m_imguiSampleWindow)

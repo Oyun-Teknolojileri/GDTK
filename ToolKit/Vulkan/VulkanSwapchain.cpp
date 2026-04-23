@@ -1,0 +1,515 @@
+/*
+ * Copyright (c) 2019-2025 OtSoftware
+ * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
+ * For more information, including options for a more permissive commercial license,
+ * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ */
+
+#include "VulkanSwapchain.h"
+
+#include "../Logger.h"
+#include "VulkanContext.h"
+
+#include <algorithm>
+
+namespace ToolKit
+{
+
+  VulkanSwapchain::VulkanSwapchain() {}
+
+  VulkanSwapchain::~VulkanSwapchain() { Destroy(); }
+
+  bool VulkanSwapchain::Init(VulkanContext* ctx)
+  {
+    m_ctx = ctx;
+    if (!CreateRenderPass())
+    {
+      return false;
+    }
+    if (!CreateSyncObjects())
+    {
+      return false;
+    }
+    if (!CreateCommandObjects())
+    {
+      return false;
+    }
+    if (!CreateSwapchainObjects())
+    {
+      return false;
+    }
+    return true;
+  }
+
+  void VulkanSwapchain::Destroy()
+  {
+    if (m_ctx == nullptr || m_ctx->GetDevice() == VK_NULL_HANDLE)
+    {
+      return;
+    }
+    VkDevice device = m_ctx->GetDevice();
+    vkDeviceWaitIdle(device);
+
+    DestroySwapchainObjects();
+
+    for (uint i = 0; i < FRAMES_IN_FLIGHT; ++i)
+    {
+      if (m_imageAvailable[i] != VK_NULL_HANDLE)
+      {
+        vkDestroySemaphore(device, m_imageAvailable[i], nullptr);
+        m_imageAvailable[i] = VK_NULL_HANDLE;
+      }
+      if (m_renderFinished[i] != VK_NULL_HANDLE)
+      {
+        vkDestroySemaphore(device, m_renderFinished[i], nullptr);
+        m_renderFinished[i] = VK_NULL_HANDLE;
+      }
+      if (m_inFlight[i] != VK_NULL_HANDLE)
+      {
+        vkDestroyFence(device, m_inFlight[i], nullptr);
+        m_inFlight[i] = VK_NULL_HANDLE;
+      }
+    }
+
+    if (m_cmdPool != VK_NULL_HANDLE)
+    {
+      vkDestroyCommandPool(device, m_cmdPool, nullptr);
+      m_cmdPool = VK_NULL_HANDLE;
+    }
+
+    if (m_renderPass != VK_NULL_HANDLE)
+    {
+      vkDestroyRenderPass(device, m_renderPass, nullptr);
+      m_renderPass = VK_NULL_HANDLE;
+    }
+
+    m_ctx = nullptr;
+  }
+
+  static VkSurfaceFormatKHR PickSurfaceFormat(VkPhysicalDevice phys, VkSurfaceKHR surface)
+  {
+    uint32_t count = 0;
+    vkGetPhysicalDeviceSurfaceFormatsKHR(phys, surface, &count, nullptr);
+    std::vector<VkSurfaceFormatKHR> formats(count);
+    vkGetPhysicalDeviceSurfaceFormatsKHR(phys, surface, &count, formats.data());
+
+    for (const auto& f : formats)
+    {
+      if (f.format == VK_FORMAT_B8G8R8A8_SRGB && f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+      {
+        return f;
+      }
+    }
+    return formats.empty() ? VkSurfaceFormatKHR{VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR} : formats[0];
+  }
+
+  static VkPresentModeKHR PickPresentMode(VkPhysicalDevice phys, VkSurfaceKHR surface)
+  {
+    uint32_t count = 0;
+    vkGetPhysicalDeviceSurfacePresentModesKHR(phys, surface, &count, nullptr);
+    std::vector<VkPresentModeKHR> modes(count);
+    vkGetPhysicalDeviceSurfacePresentModesKHR(phys, surface, &count, modes.data());
+
+    for (VkPresentModeKHR m : modes)
+    {
+      if (m == VK_PRESENT_MODE_MAILBOX_KHR)
+      {
+        return m;
+      }
+    }
+    return VK_PRESENT_MODE_FIFO_KHR; // guaranteed
+  }
+
+  bool VulkanSwapchain::CreateSwapchainObjects()
+  {
+    VkDevice device          = m_ctx->GetDevice();
+    VkPhysicalDevice phys    = m_ctx->GetPhysicalDevice();
+    VkSurfaceKHR surface     = m_ctx->GetSurface();
+
+    VkSurfaceCapabilitiesKHR caps;
+    if (VkResult r = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(phys, surface, &caps); r != VK_SUCCESS)
+    {
+      TK_ERR("vkGetPhysicalDeviceSurfaceCapabilitiesKHR failed: %d", r);
+      return false;
+    }
+
+    VkExtent2D extent = caps.currentExtent;
+    if (extent.width == UINT32_MAX)
+    {
+      extent = {1280, 720};
+    }
+    extent.width  = std::clamp(extent.width, caps.minImageExtent.width, caps.maxImageExtent.width);
+    extent.height = std::clamp(extent.height, caps.minImageExtent.height, caps.maxImageExtent.height);
+    if (extent.width == 0 || extent.height == 0)
+    {
+      // Window minimized — skip creation, caller will retry next frame.
+      m_extent = extent;
+      return true;
+    }
+
+    VkSurfaceFormatKHR surfaceFormat = PickSurfaceFormat(phys, surface);
+    m_format                         = surfaceFormat.format;
+    m_colorSpace                     = surfaceFormat.colorSpace;
+    m_presentMode                    = PickPresentMode(phys, surface);
+
+    uint32_t imageCount              = caps.minImageCount + 1;
+    if (caps.maxImageCount > 0 && imageCount > caps.maxImageCount)
+    {
+      imageCount = caps.maxImageCount;
+    }
+    m_minImageCount = caps.minImageCount;
+
+    VkSwapchainCreateInfoKHR ci{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
+    ci.surface          = surface;
+    ci.minImageCount    = imageCount;
+    ci.imageFormat      = m_format;
+    ci.imageColorSpace  = m_colorSpace;
+    ci.imageExtent      = extent;
+    ci.imageArrayLayers = 1;
+    ci.imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    ci.preTransform     = caps.currentTransform;
+    ci.compositeAlpha   = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    ci.presentMode      = m_presentMode;
+    ci.clipped          = VK_TRUE;
+    ci.oldSwapchain     = VK_NULL_HANDLE;
+
+    const uint graphicsFamily = m_ctx->GetGraphicsQueueFamily();
+    const uint presentFamily  = m_ctx->GetPresentQueueFamily();
+    uint32_t indices[]        = {graphicsFamily, presentFamily};
+    if (graphicsFamily != presentFamily)
+    {
+      ci.imageSharingMode      = VK_SHARING_MODE_CONCURRENT;
+      ci.queueFamilyIndexCount = 2;
+      ci.pQueueFamilyIndices   = indices;
+    }
+    else
+    {
+      ci.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    }
+
+    if (VkResult r = vkCreateSwapchainKHR(device, &ci, nullptr, &m_swapchain); r != VK_SUCCESS)
+    {
+      TK_ERR("vkCreateSwapchainKHR failed: %d", r);
+      return false;
+    }
+    m_extent = extent;
+
+    uint32_t actualCount = 0;
+    vkGetSwapchainImagesKHR(device, m_swapchain, &actualCount, nullptr);
+    m_images.resize(actualCount);
+    vkGetSwapchainImagesKHR(device, m_swapchain, &actualCount, m_images.data());
+
+    m_imageViews.resize(actualCount);
+    for (uint i = 0; i < actualCount; ++i)
+    {
+      VkImageViewCreateInfo ivci{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+      ivci.image                           = m_images[i];
+      ivci.viewType                        = VK_IMAGE_VIEW_TYPE_2D;
+      ivci.format                          = m_format;
+      ivci.components                      = {VK_COMPONENT_SWIZZLE_IDENTITY,
+                                               VK_COMPONENT_SWIZZLE_IDENTITY,
+                                               VK_COMPONENT_SWIZZLE_IDENTITY,
+                                               VK_COMPONENT_SWIZZLE_IDENTITY};
+      ivci.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+      ivci.subresourceRange.baseMipLevel   = 0;
+      ivci.subresourceRange.levelCount     = 1;
+      ivci.subresourceRange.baseArrayLayer = 0;
+      ivci.subresourceRange.layerCount     = 1;
+      if (VkResult r = vkCreateImageView(device, &ivci, nullptr, &m_imageViews[i]); r != VK_SUCCESS)
+      {
+        TK_ERR("vkCreateImageView (swapchain %u) failed: %d", i, r);
+        return false;
+      }
+    }
+
+    m_framebuffers.resize(actualCount);
+    for (uint i = 0; i < actualCount; ++i)
+    {
+      VkFramebufferCreateInfo fbci{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
+      fbci.renderPass      = m_renderPass;
+      fbci.attachmentCount = 1;
+      fbci.pAttachments    = &m_imageViews[i];
+      fbci.width           = extent.width;
+      fbci.height          = extent.height;
+      fbci.layers          = 1;
+      if (VkResult r = vkCreateFramebuffer(device, &fbci, nullptr, &m_framebuffers[i]); r != VK_SUCCESS)
+      {
+        TK_ERR("vkCreateFramebuffer (swapchain %u) failed: %d", i, r);
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  bool VulkanSwapchain::CreateRenderPass()
+  {
+    VkDevice device = m_ctx->GetDevice();
+
+    // Format needs to match the swapchain's; query it once up front.
+    VkSurfaceFormatKHR surfaceFormat = PickSurfaceFormat(m_ctx->GetPhysicalDevice(), m_ctx->GetSurface());
+    m_format                         = surfaceFormat.format;
+    m_colorSpace                     = surfaceFormat.colorSpace;
+
+    VkAttachmentDescription color{};
+    color.format         = m_format;
+    color.samples        = VK_SAMPLE_COUNT_1_BIT;
+    color.loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    color.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
+    color.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    color.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    color.initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
+    color.finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+    VkAttachmentReference colorRef{};
+    colorRef.attachment = 0;
+    colorRef.layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkSubpassDescription subpass{};
+    subpass.pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments    = &colorRef;
+
+    VkSubpassDependency dep{};
+    dep.srcSubpass    = VK_SUBPASS_EXTERNAL;
+    dep.dstSubpass    = 0;
+    dep.srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dep.srcAccessMask = 0;
+    dep.dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dep.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+    VkRenderPassCreateInfo rpci{VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
+    rpci.attachmentCount = 1;
+    rpci.pAttachments    = &color;
+    rpci.subpassCount    = 1;
+    rpci.pSubpasses      = &subpass;
+    rpci.dependencyCount = 1;
+    rpci.pDependencies   = &dep;
+
+    if (VkResult r = vkCreateRenderPass(device, &rpci, nullptr, &m_renderPass); r != VK_SUCCESS)
+    {
+      TK_ERR("vkCreateRenderPass failed: %d", r);
+      return false;
+    }
+    return true;
+  }
+
+  bool VulkanSwapchain::CreateSyncObjects()
+  {
+    VkDevice device = m_ctx->GetDevice();
+
+    VkSemaphoreCreateInfo sci{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+    VkFenceCreateInfo fci{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+    fci.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+    for (uint i = 0; i < FRAMES_IN_FLIGHT; ++i)
+    {
+      if (vkCreateSemaphore(device, &sci, nullptr, &m_imageAvailable[i]) != VK_SUCCESS ||
+          vkCreateSemaphore(device, &sci, nullptr, &m_renderFinished[i]) != VK_SUCCESS ||
+          vkCreateFence(device, &fci, nullptr, &m_inFlight[i]) != VK_SUCCESS)
+      {
+        TK_ERR("VulkanSwapchain: sync object creation failed for frame %u", i);
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool VulkanSwapchain::CreateCommandObjects()
+  {
+    VkDevice device = m_ctx->GetDevice();
+
+    VkCommandPoolCreateInfo pci{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
+    pci.flags            = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    pci.queueFamilyIndex = m_ctx->GetGraphicsQueueFamily();
+    if (VkResult r = vkCreateCommandPool(device, &pci, nullptr, &m_cmdPool); r != VK_SUCCESS)
+    {
+      TK_ERR("vkCreateCommandPool failed: %d", r);
+      return false;
+    }
+
+    VkCommandBufferAllocateInfo ai{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+    ai.commandPool        = m_cmdPool;
+    ai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    ai.commandBufferCount = FRAMES_IN_FLIGHT;
+    if (VkResult r = vkAllocateCommandBuffers(device, &ai, m_cmdBuffers.data()); r != VK_SUCCESS)
+    {
+      TK_ERR("vkAllocateCommandBuffers failed: %d", r);
+      return false;
+    }
+    return true;
+  }
+
+  void VulkanSwapchain::DestroySwapchainObjects()
+  {
+    VkDevice device = m_ctx->GetDevice();
+    for (VkFramebuffer fb : m_framebuffers)
+    {
+      if (fb != VK_NULL_HANDLE)
+      {
+        vkDestroyFramebuffer(device, fb, nullptr);
+      }
+    }
+    m_framebuffers.clear();
+
+    for (VkImageView v : m_imageViews)
+    {
+      if (v != VK_NULL_HANDLE)
+      {
+        vkDestroyImageView(device, v, nullptr);
+      }
+    }
+    m_imageViews.clear();
+    m_images.clear();
+
+    if (m_swapchain != VK_NULL_HANDLE)
+    {
+      vkDestroySwapchainKHR(device, m_swapchain, nullptr);
+      m_swapchain = VK_NULL_HANDLE;
+    }
+  }
+
+  bool VulkanSwapchain::Recreate()
+  {
+    if (m_ctx == nullptr || m_ctx->GetDevice() == VK_NULL_HANDLE)
+    {
+      return false;
+    }
+    vkDeviceWaitIdle(m_ctx->GetDevice());
+    DestroySwapchainObjects();
+    return CreateSwapchainObjects();
+  }
+
+  bool VulkanSwapchain::BeginFrame(const Vec4& clearColor)
+  {
+    if (m_swapchain == VK_NULL_HANDLE || m_extent.width == 0 || m_extent.height == 0)
+    {
+      // Window minimized or swapchain not yet created — nothing to render.
+      return false;
+    }
+
+    VkDevice device = m_ctx->GetDevice();
+    vkWaitForFences(device, 1, &m_inFlight[m_currentFrame], VK_TRUE, UINT64_MAX);
+
+    uint32_t imageIndex = 0;
+    VkResult r          = vkAcquireNextImageKHR(device,
+                                       m_swapchain,
+                                       UINT64_MAX,
+                                       m_imageAvailable[m_currentFrame],
+                                       VK_NULL_HANDLE,
+                                       &imageIndex);
+    if (r == VK_ERROR_OUT_OF_DATE_KHR)
+    {
+      return false;
+    }
+    if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR)
+    {
+      TK_ERR("vkAcquireNextImageKHR failed: %d", r);
+      return false;
+    }
+    m_currentImage = imageIndex;
+
+    // Only reset the fence once we know we're submitting this frame.
+    vkResetFences(device, 1, &m_inFlight[m_currentFrame]);
+
+    VkCommandBuffer cb = m_cmdBuffers[m_currentFrame];
+    vkResetCommandBuffer(cb, 0);
+
+    VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    if (VkResult br = vkBeginCommandBuffer(cb, &bi); br != VK_SUCCESS)
+    {
+      TK_ERR("vkBeginCommandBuffer failed: %d", br);
+      return false;
+    }
+
+    VkClearValue clear{};
+    clear.color = {{clearColor.r, clearColor.g, clearColor.b, clearColor.a}};
+
+    VkRenderPassBeginInfo rpbi{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
+    rpbi.renderPass        = m_renderPass;
+    rpbi.framebuffer       = m_framebuffers[m_currentImage];
+    rpbi.renderArea.offset = {0, 0};
+    rpbi.renderArea.extent = m_extent;
+    rpbi.clearValueCount   = 1;
+    rpbi.pClearValues      = &clear;
+    vkCmdBeginRenderPass(cb, &rpbi, VK_SUBPASS_CONTENTS_INLINE);
+
+    VkViewport vp{};
+    vp.x        = 0.0f;
+    vp.y        = 0.0f;
+    vp.width    = (float) m_extent.width;
+    vp.height   = (float) m_extent.height;
+    vp.minDepth = 0.0f;
+    vp.maxDepth = 1.0f;
+    vkCmdSetViewport(cb, 0, 1, &vp);
+
+    VkRect2D scissor{};
+    scissor.offset = {0, 0};
+    scissor.extent = m_extent;
+    vkCmdSetScissor(cb, 0, 1, &scissor);
+
+    m_frameActive = true;
+    return true;
+  }
+
+  bool VulkanSwapchain::EndFrame()
+  {
+    if (!m_frameActive)
+    {
+      return false;
+    }
+
+    VkCommandBuffer cb = m_cmdBuffers[m_currentFrame];
+    vkCmdEndRenderPass(cb);
+    if (VkResult r = vkEndCommandBuffer(cb); r != VK_SUCCESS)
+    {
+      TK_ERR("vkEndCommandBuffer failed: %d", r);
+      m_frameActive = false;
+      return false;
+    }
+
+    VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+
+    VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    si.waitSemaphoreCount   = 1;
+    si.pWaitSemaphores      = &m_imageAvailable[m_currentFrame];
+    si.pWaitDstStageMask    = &waitStage;
+    si.commandBufferCount   = 1;
+    si.pCommandBuffers      = &cb;
+    si.signalSemaphoreCount = 1;
+    si.pSignalSemaphores    = &m_renderFinished[m_currentFrame];
+
+    if (VkResult r = vkQueueSubmit(m_ctx->GetGraphicsQueue(), 1, &si, m_inFlight[m_currentFrame]); r != VK_SUCCESS)
+    {
+      TK_ERR("vkQueueSubmit failed: %d", r);
+      m_frameActive = false;
+      return false;
+    }
+
+    VkPresentInfoKHR pi{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
+    pi.waitSemaphoreCount = 1;
+    pi.pWaitSemaphores    = &m_renderFinished[m_currentFrame];
+    pi.swapchainCount     = 1;
+    pi.pSwapchains        = &m_swapchain;
+    pi.pImageIndices      = &m_currentImage;
+
+    VkResult pr           = vkQueuePresentKHR(m_ctx->GetPresentQueue(), &pi);
+    m_frameActive         = false;
+    m_currentFrame        = (m_currentFrame + 1) % FRAMES_IN_FLIGHT;
+
+    if (pr == VK_ERROR_OUT_OF_DATE_KHR || pr == VK_SUBOPTIMAL_KHR)
+    {
+      return false;
+    }
+    if (pr != VK_SUCCESS)
+    {
+      TK_ERR("vkQueuePresentKHR failed: %d", pr);
+      return false;
+    }
+    return true;
+  }
+
+  VkCommandBuffer VulkanSwapchain::GetCurrentCommandBuffer() const { return m_cmdBuffers[m_currentFrame]; }
+
+} // namespace ToolKit

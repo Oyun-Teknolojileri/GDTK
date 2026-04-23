@@ -102,6 +102,8 @@
     <ClCompile Include="Vulkan\TestRenderPass.cpp" />
     <ClCompile Include="Vulkan\TestRenderPath.cpp" />
     <ClCompile Include="Vulkan\VulkanBackend.cpp" />
+    <ClCompile Include="Vulkan\VulkanContext.cpp" />
+    <ClCompile Include="Vulkan\VulkanSwapchain.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="AABBTree.h" />
@@ -197,6 +199,8 @@
     <ClInclude Include="Vulkan\TestRenderPass.h" />
     <ClInclude Include="Vulkan\TestRenderPath.h" />
     <ClInclude Include="Vulkan\VulkanBackend.h" />
+    <ClInclude Include="Vulkan\VulkanContext.h" />
+    <ClInclude Include="Vulkan\VulkanSwapchain.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\Resources\Engine\Shaders\AO.shader" />
