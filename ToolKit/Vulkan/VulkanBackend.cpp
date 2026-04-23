@@ -51,7 +51,7 @@ namespace ToolKit
       m_swapchain->Recreate();
       m_needsRecreate = false;
     }
-    m_frameStarted = m_swapchain->BeginFrame(m_clearColor);
+    m_frameStarted = m_swapchain->BeginFrame();
     if (!m_frameStarted)
     {
       // Swapchain out-of-date or minimized — flag for recreate and skip.
@@ -88,12 +88,31 @@ namespace ToolKit
 
   void VulkanBackend::BeginPass(const PassDesc& desc)
   {
-    // TODO: Begin dynamic rendering / render pass.
+    if (!m_frameStarted)
+    {
+      return;
+    }
+
+    if (desc.target == nullptr)
+    {
+      // Backbuffer pass — drive the swapchain's render pass with the caller's clear color.
+      m_swapchain->BeginSwapchainPass(desc.clearColor);
+      return;
+    }
+
+    // TODO (1f.3 next mini-step): build/lookup VkRenderPass + VkFramebuffer for the offscreen
+    // target and vkCmdBeginRenderPass on it.
   }
 
   void VulkanBackend::EndPass()
   {
-    // TODO: End dynamic rendering / render pass.
+    if (!m_frameStarted)
+    {
+      return;
+    }
+    // TODO (1f.3 next mini-step): if an offscreen pass is active, end it; otherwise close
+    // the swapchain pass.
+    m_swapchain->EndSwapchainPass();
   }
 
   void VulkanBackend::SetViewport(uint x, uint y, uint w, uint h)
@@ -301,6 +320,40 @@ namespace ToolKit
       samplerInfo.maxLod              = (float) data->mipLevels;
       vkCreateSampler(m_context->GetDevice(), &samplerInfo, nullptr, &data->sampler);
     }
+
+    // Transition the freshly-created image out of UNDEFINED to a sensible sampling-ready layout.
+    // Without this, any code path that samples the texture before a render pass has written to it
+    // (ImGui showing a default/black target, thumbnail previews, the backing RT of an uninitialized
+    // viewport, etc.) hits a layout-mismatch validation error. Render passes are free to perform
+    // their own transitions from this state onward.
+    const VkImageLayout targetLayout = isDepth ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+                                               : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    m_context->SubmitOneShot(
+        [&](VkCommandBuffer cb)
+        {
+          VkImageMemoryBarrier b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+          b.oldLayout                   = VK_IMAGE_LAYOUT_UNDEFINED;
+          b.newLayout                   = targetLayout;
+          b.srcQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
+          b.dstQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
+          b.image                       = data->image;
+          b.subresourceRange.aspectMask = data->aspect;
+          b.subresourceRange.levelCount = data->mipLevels;
+          b.subresourceRange.layerCount = data->arrayLayers;
+          b.srcAccessMask               = 0;
+          b.dstAccessMask               = VK_ACCESS_SHADER_READ_BIT;
+          vkCmdPipelineBarrier(cb,
+                               VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                               0,
+                               0,
+                               nullptr,
+                               0,
+                               nullptr,
+                               1,
+                               &b);
+        });
+    data->currentLayout = targetLayout;
 
     tex->m_gpuData = data;
   }

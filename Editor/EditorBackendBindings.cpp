@@ -250,10 +250,22 @@ namespace ToolKit
           return;
         }
         VkCommandBuffer cb = backend->GetCurrentCommandBuffer();
-        if (cb != VK_NULL_HANDLE)
+        if (cb == VK_NULL_HANDLE)
         {
-          ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cb);
+          return;
         }
+
+        // Open the swapchain render pass via the backend's PassDesc API. ImGui records into
+        // whatever pass is currently active on the command buffer, so we must begin one ourselves.
+        PassDesc desc;
+        desc.target     = nullptr;
+        desc.clearBits  = GraphicBitFields::AllBits;
+        desc.clearColor = Vec4(0.4f, 0.0f, 0.4f, 1.0f);
+        backend->BeginPass(desc);
+
+        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cb);
+
+        backend->EndPass();
 #else
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 #endif

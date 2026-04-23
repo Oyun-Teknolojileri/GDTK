@@ -380,7 +380,7 @@ namespace ToolKit
     return CreateSwapchainObjects();
   }
 
-  bool VulkanSwapchain::BeginFrame(const Vec4& clearColor)
+  bool VulkanSwapchain::BeginFrame()
   {
     if (m_swapchain == VK_NULL_HANDLE || m_extent.width == 0 || m_extent.height == 0)
     {
@@ -423,6 +423,20 @@ namespace ToolKit
       return false;
     }
 
+    m_swapchainPassActive = false;
+    m_frameActive         = true;
+    return true;
+  }
+
+  void VulkanSwapchain::BeginSwapchainPass(const Vec4& clearColor)
+  {
+    if (!m_frameActive || m_swapchainPassActive)
+    {
+      return;
+    }
+
+    VkCommandBuffer cb = m_cmdBuffers[m_currentFrame];
+
     VkClearValue clear{};
     clear.color = {{clearColor.r, clearColor.g, clearColor.b, clearColor.a}};
 
@@ -449,8 +463,18 @@ namespace ToolKit
     scissor.extent = m_extent;
     vkCmdSetScissor(cb, 0, 1, &scissor);
 
-    m_frameActive = true;
-    return true;
+    m_swapchainPassActive = true;
+  }
+
+  void VulkanSwapchain::EndSwapchainPass()
+  {
+    if (!m_swapchainPassActive)
+    {
+      return;
+    }
+    VkCommandBuffer cb = m_cmdBuffers[m_currentFrame];
+    vkCmdEndRenderPass(cb);
+    m_swapchainPassActive = false;
   }
 
   bool VulkanSwapchain::EndFrame()
@@ -461,7 +485,13 @@ namespace ToolKit
     }
 
     VkCommandBuffer cb = m_cmdBuffers[m_currentFrame];
-    vkCmdEndRenderPass(cb);
+    // Defensive: close the swapchain pass if the caller forgot to — keeps validation clean if
+    // a frame shutdown happens mid-draw.
+    if (m_swapchainPassActive)
+    {
+      vkCmdEndRenderPass(cb);
+      m_swapchainPassActive = false;
+    }
     if (VkResult r = vkEndCommandBuffer(cb); r != VK_SUCCESS)
     {
       TK_ERR("vkEndCommandBuffer failed: %d", r);

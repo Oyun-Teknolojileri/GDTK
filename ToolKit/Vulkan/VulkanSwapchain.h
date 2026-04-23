@@ -37,16 +37,26 @@ namespace ToolKit
     void Destroy();
 
     /**
-     * Acquires the next swapchain image, waits for the in-flight fence, begins the command buffer
-     * and the main render pass with the requested clear color. After this returns true, the caller
-     * can record draw commands into GetCurrentCommandBuffer().
-     * Returns false when the swapchain is out-of-date; the caller should call Recreate() and skip
-     * this frame.
+     * Acquires the next swapchain image, waits for the in-flight fence and begins the command
+     * buffer. Does **not** begin the render pass — the caller drives pass boundaries through
+     * BeginSwapchainPass / EndSwapchainPass so offscreen passes can be interleaved on the same
+     * command buffer.
+     * Returns false when the swapchain is out-of-date; caller should Recreate() and skip frame.
      */
-    bool BeginFrame(const Vec4& clearColor);
+    bool BeginFrame();
 
-    /** Ends the render pass, ends the command buffer, submits to the graphics queue and presents. */
+    /** Ends any still-active swapchain pass (defensive), closes the command buffer, submits and
+     *  presents. */
     bool EndFrame();
+
+    /** Begins the swapchain's main render pass with @p clearColor as loadOp value. No-op if a
+     *  swapchain pass is already active or no frame is in flight. */
+    void BeginSwapchainPass(const Vec4& clearColor);
+
+    /** Ends the swapchain render pass opened by BeginSwapchainPass. No-op if not active. */
+    void EndSwapchainPass();
+
+    bool IsSwapchainPassActive() const { return m_swapchainPassActive; }
 
     /** Tears down swapchain-dependent objects and rebuilds them from the current surface extent. */
     bool Recreate();
@@ -57,6 +67,7 @@ namespace ToolKit
     uint GetMinImageCount() const { return m_minImageCount; }
     VkExtent2D GetExtent() const { return m_extent; }
     VkFormat GetFormat() const { return m_format; }
+    uint GetCurrentFrameIndex() const { return m_currentFrame; }
 
    private:
     bool CreateSwapchainObjects();
@@ -91,6 +102,7 @@ namespace ToolKit
     uint m_currentFrame = 0;
     uint m_currentImage = 0;
     bool m_frameActive  = false;
+    bool m_swapchainPassActive = false;
   };
 
 } // namespace ToolKit

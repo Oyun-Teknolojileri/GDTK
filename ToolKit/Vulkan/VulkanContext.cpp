@@ -107,6 +107,10 @@ namespace ToolKit
     {
       return false;
     }
+    if (!CreateOneShotPool())
+    {
+      return false;
+    }
 
     VkPhysicalDeviceProperties props;
     vkGetPhysicalDeviceProperties(m_physicalDevice, &props);
@@ -123,6 +127,12 @@ namespace ToolKit
     if (m_device != VK_NULL_HANDLE)
     {
       vkDeviceWaitIdle(m_device);
+    }
+
+    if (m_oneShotPool != VK_NULL_HANDLE)
+    {
+      vkDestroyCommandPool(m_device, m_oneShotPool, nullptr);
+      m_oneShotPool = VK_NULL_HANDLE;
     }
 
     if (m_descriptorPool != VK_NULL_HANDLE)
@@ -423,6 +433,54 @@ namespace ToolKit
       return false;
     }
     return true;
+  }
+
+  bool VulkanContext::CreateOneShotPool()
+  {
+    VkCommandPoolCreateInfo ci{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
+    ci.flags            = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+    ci.queueFamilyIndex = m_graphicsQueueFamily;
+    VkResult r          = vkCreateCommandPool(m_device, &ci, nullptr, &m_oneShotPool);
+    if (r != VK_SUCCESS)
+    {
+      TK_ERR("CreateOneShotPool: vkCreateCommandPool failed: %d", r);
+      return false;
+    }
+    return true;
+  }
+
+  void VulkanContext::SubmitOneShot(const std::function<void(VkCommandBuffer)>& recorder)
+  {
+    if (!recorder || m_device == VK_NULL_HANDLE || m_oneShotPool == VK_NULL_HANDLE)
+    {
+      return;
+    }
+
+    VkCommandBufferAllocateInfo ai{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+    ai.commandPool        = m_oneShotPool;
+    ai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    ai.commandBufferCount = 1;
+
+    VkCommandBuffer cb = VK_NULL_HANDLE;
+    if (vkAllocateCommandBuffers(m_device, &ai, &cb) != VK_SUCCESS)
+    {
+      TK_ERR("SubmitOneShot: vkAllocateCommandBuffers failed");
+      return;
+    }
+
+    VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(cb, &bi);
+    recorder(cb);
+    vkEndCommandBuffer(cb);
+
+    VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    si.commandBufferCount = 1;
+    si.pCommandBuffers    = &cb;
+    vkQueueSubmit(m_graphicsQueue, 1, &si, VK_NULL_HANDLE);
+    vkQueueWaitIdle(m_graphicsQueue);
+
+    vkFreeCommandBuffers(m_device, m_oneShotPool, 1, &cb);
   }
 
 } // namespace ToolKit

@@ -59,6 +59,14 @@ namespace ToolKit
     VmaAllocator GetAllocator() const { return m_allocator; }
     VkDescriptorPool GetSharedDescriptorPool() const { return m_descriptorPool; }
 
+    /**
+     * Executes @p recorder on a throwaway primary command buffer allocated from an internal
+     * transient pool, submits it to the graphics queue and waits for completion. Serialized and
+     * blocking — use only for one-time setup work (image layout transitions during Create,
+     * texture uploads, etc.) and never inside the per-frame render loop.
+     */
+    void SubmitOneShot(const std::function<void(VkCommandBuffer)>& recorder);
+
    private:
     bool CreateInstance(const std::vector<const char*>& requiredExtensions);
     bool CreateDebugMessenger();
@@ -67,6 +75,7 @@ namespace ToolKit
     bool CreateLogicalDevice();
     bool CreateAllocator();
     bool CreateDescriptorPool();
+    bool CreateOneShotPool();
 
    private:
     VkInstance m_instance                       = VK_NULL_HANDLE;
@@ -82,6 +91,7 @@ namespace ToolKit
 
     VmaAllocator m_allocator                    = nullptr;
     VkDescriptorPool m_descriptorPool           = VK_NULL_HANDLE;
+    VkCommandPool m_oneShotPool                 = VK_NULL_HANDLE;
 
     bool m_validationEnabled                    = false;
   };
