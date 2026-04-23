@@ -45,12 +45,12 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <OutDir>..\Bin\</OutDir>
     <TargetName>$(ProjectName)d</TargetName>
-    <IncludePath>$(SolutionDir)Workspace;$(SolutionDir)ToolKit;$(SolutionDir)Dependency;$(SolutionDir)Dependency\glm;$(SolutionDir)Dependency\SDL2\include;$(SolutionDir)Dependency\RapidXml;$(SolutionDir)Dependency\tkimgui;$(SolutionDir)Dependency\tkimgui\imgui;$(SolutionDir)Dependency\poolSTL\include;$(VC_IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
+    <IncludePath>$(VULKAN_SDK)\Include;$(SolutionDir)Workspace;$(SolutionDir)ToolKit;$(SolutionDir)Dependency;$(SolutionDir)Dependency\glm;$(SolutionDir)Dependency\SDL2\include;$(SolutionDir)Dependency\RapidXml;$(SolutionDir)Dependency\tkimgui;$(SolutionDir)Dependency\tkimgui\imgui;$(SolutionDir)Dependency\poolSTL\include;$(VC_IncludePath);$(WindowsSDK_IncludePath);</IncludePath>
     <LibraryPath>$(SolutionDir)Bin;$(SolutionDir)Dependency\Intermediate\Windows\Debug;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <OutDir>..\Bin\</OutDir>
-    <IncludePath>$(SolutionDir)Workspace;$(SolutionDir)ToolKit;$(SolutionDir)Dependency;$(SolutionDir)Dependency\glm;$(SolutionDir)Dependency\SDL2\include;$(SolutionDir)Dependency\RapidXml;$(SolutionDir)Dependency\tkimgui;$(SolutionDir)Dependency\tkimgui\imgui;$(SolutionDir)Dependency\poolSTL\include;$(VC_IncludePath);$(WindowsSDK_IncludePath);$(IncludePath)</IncludePath>
+    <IncludePath>$(VULKAN_SDK)\Include;$(SolutionDir)Workspace;$(SolutionDir)ToolKit;$(SolutionDir)Dependency;$(SolutionDir)Dependency\glm;$(SolutionDir)Dependency\SDL2\include;$(SolutionDir)Dependency\RapidXml;$(SolutionDir)Dependency\tkimgui;$(SolutionDir)Dependency\tkimgui\imgui;$(SolutionDir)Dependency\poolSTL\include;$(VC_IncludePath);$(WindowsSDK_IncludePath);$(IncludePath)</IncludePath>
     <LibraryPath>$(SolutionDir)Bin;$(SolutionDir)Dependency\Intermediate\Windows\RelWithDebInfo;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">

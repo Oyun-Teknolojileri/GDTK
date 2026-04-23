@@ -100,6 +100,7 @@ namespace ToolKit
       Init({640.0f, 480.0f});
 
       m_editorRenderer = MakeNewPtr<EditorRenderer>();
+      m_testRenderPath = MakeNewPtr<TestRenderPath>();
     }
 
     EditorViewport::~EditorViewport() {}
@@ -327,21 +328,23 @@ namespace ToolKit
           uint texId           = Renderer::GetNativeTextureHandle(texture);
 
           ImDrawList* drawList = ImGui::GetWindowDrawList();
-          drawList->AddCallback([](const ImDrawList* parentList, const ImDrawCmd* cmd)
-                                { 
-                                  Texture* t = (Texture*)cmd->UserCallbackData;
-                                  GetRenderSystem()->GetBackend()->SetTextureSwizzleAlpha(t, true, true);
-                                },
-                                texture.get());
+          drawList->AddCallback(
+              [](const ImDrawList* parentList, const ImDrawCmd* cmd)
+              {
+                Texture* t = (Texture*) cmd->UserCallbackData;
+                GetRenderSystem()->GetBackend()->SetTextureSwizzleAlpha(t, true, true);
+              },
+              texture.get());
 
           ImGui::Image(ConvertUIntImGuiTexture(texId), m_wndContentAreaSize, Vec2(0.0f, 1.0f), Vec2(1.0f, 0.0f));
 
-          drawList->AddCallback([](const ImDrawList* parentList, const ImDrawCmd* cmd)
-                                { 
-                                  Texture* t = (Texture*)cmd->UserCallbackData;
-                                  GetRenderSystem()->GetBackend()->SetTextureSwizzleAlpha(t, false, true); 
-                                },
-                                texture.get());
+          drawList->AddCallback(
+              [](const ImDrawList* parentList, const ImDrawCmd* cmd)
+              {
+                Texture* t = (Texture*) cmd->UserCallbackData;
+                GetRenderSystem()->GetBackend()->SetTextureSwizzleAlpha(t, false, true);
+              },
+              texture.get());
 
           if (IsActive())
           {

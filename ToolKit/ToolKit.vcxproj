@@ -99,6 +99,9 @@
     <ClCompile Include="UniformBuffer.cpp" />
     <ClCompile Include="Util.cpp" />
     <ClCompile Include="Viewport.cpp" />
+    <ClCompile Include="Vulkan\TestRenderPass.cpp" />
+    <ClCompile Include="Vulkan\TestRenderPath.cpp" />
+    <ClCompile Include="Vulkan\VulkanBackend.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="AABBTree.h" />
@@ -191,6 +194,9 @@
     <ClInclude Include="UniformBuffer.h" />
     <ClInclude Include="Util.h" />
     <ClInclude Include="Viewport.h" />
+    <ClInclude Include="Vulkan\TestRenderPass.h" />
+    <ClInclude Include="Vulkan\TestRenderPath.h" />
+    <ClInclude Include="Vulkan\VulkanBackend.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\Resources\Engine\Shaders\AO.shader" />
@@ -279,14 +285,14 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <OutDir>..\Bin\</OutDir>
-    <IncludePath>$(ProjectDir);$(SolutionDir)Dependency;$(SolutionDir)Dependency\glm;$(SolutionDir)Dependency\RapidXml;$(SolutionDir)Dependency\SDL2\include;$(SolutionDir)Dependency\Stb;$(SolutionDir)Dependency\minizip-ng;$(SolutionDir)Dependency\minizip-ng\compat;$(SolutionDir)Dependency\poolSTL\include</IncludePath>
-    <LibraryPath>$(SolutionDir)Dependency\Intermediate\Windows\Debug;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(VULKAN_SDK)\Include;$(ProjectDir);$(SolutionDir)Dependency;$(SolutionDir)Dependency\glm;$(SolutionDir)Dependency\RapidXml;$(SolutionDir)Dependency\SDL2\include;$(SolutionDir)Dependency\Stb;$(SolutionDir)Dependency\minizip-ng;$(SolutionDir)Dependency\minizip-ng\compat;$(SolutionDir)Dependency\poolSTL\include</IncludePath>
+    <LibraryPath>$(VULKAN_SDK)\Lib;$(SolutionDir)Dependency\Intermediate\Windows\Debug;$(LibraryPath)</LibraryPath>
     <TargetName>$(ProjectName)d</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <OutDir>..\Bin\</OutDir>
-    <IncludePath>$(ProjectDir);$(SolutionDir)Dependency;$(SolutionDir)Dependency\glm;$(SolutionDir)Dependency\RapidXml;$(SolutionDir)Dependency\SDL2\include;$(SolutionDir)Dependency\Stb;$(SolutionDir)Dependency\minizip-ng;$(SolutionDir)Dependency\minizip-ng\compat;$(SolutionDir)Dependency\poolSTL\include</IncludePath>
-    <LibraryPath>$(SolutionDir)Dependency\Intermediate\Windows\RelWithDebInfo;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(VULKAN_SDK)\Include;$(ProjectDir);$(SolutionDir)Dependency;$(SolutionDir)Dependency\glm;$(SolutionDir)Dependency\RapidXml;$(SolutionDir)Dependency\SDL2\include;$(SolutionDir)Dependency\Stb;$(SolutionDir)Dependency\minizip-ng;$(SolutionDir)Dependency\minizip-ng\compat;$(SolutionDir)Dependency\poolSTL\include</IncludePath>
+    <LibraryPath>$(VULKAN_SDK)\Lib;$(SolutionDir)Dependency\Intermediate\Windows\RelWithDebInfo;$(LibraryPath)</LibraryPath>
     <TargetName>$(ProjectName)</TargetName>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -295,7 +301,7 @@
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
-      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;TK_GL_3_0;TK_DEBUG;TK_DLL_EXPORT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>TK_VULKAN;_CRT_SECURE_NO_WARNINGS;TK_GL_3_0;TK_DEBUG;TK_DLL_EXPORT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <IncludeInUnityFile>true</IncludeInUnityFile>
       <LanguageStandard>stdcpp17</LanguageStandard>
@@ -304,7 +310,7 @@
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
-      <AdditionalDependencies>OpenGL32.lib;zstd_staticd.lib;minizipd.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>vulkan-1.lib;OpenGL32.lib;zstd_staticd.lib;minizipd.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PreBuildEvent />
     <PostBuildEvent />
@@ -320,7 +326,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
-      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;TK_GL_3_0;NDEBUG;TK_DLL_EXPORT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>TK_VULKAN;_CRT_SECURE_NO_WARNINGS;TK_GL_3_0;NDEBUG;TK_DLL_EXPORT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <AdditionalOptions>/FI "stdafx.h" %(AdditionalOptions)</AdditionalOptions>
@@ -332,7 +338,7 @@
       <SubSystem>Console</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalDependencies>OpenGL32.lib;zstd_static.lib;minizip.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>vulkan-1.lib;OpenGL32.lib;zstd_static.lib;minizip.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <Lib />
     <PostBuildEvent />

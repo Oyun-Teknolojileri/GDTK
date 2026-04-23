@@ -12,6 +12,7 @@
 #include "Window.h"
 
 #include <Viewport.h>
+#include <Vulkan/TestRenderPath.h>
 
 namespace ToolKit
 {
@@ -114,6 +115,7 @@ namespace ToolKit
       std::vector<std::function<void(ImDrawList*)>> m_drawCommands;
 
       EditorRendererPtr m_editorRenderer;
+      std::shared_ptr<TestRenderPath> m_testRenderPath;
 
      protected:
       Vec2 m_contentAreaMin;

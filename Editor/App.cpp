@@ -286,10 +286,11 @@ namespace ToolKit
           GetRenderSystem()->AddRenderTask({[this, viewport, deltaTime](Renderer* renderer) -> void
                                             {
                                               TK_PROFILE_SCOPE("Render " + viewport->m_name);
-                                              viewport->m_editorRenderer->m_params.App      = g_app;
-                                              viewport->m_editorRenderer->m_params.LitMode  = m_sceneLightingMode;
-                                              viewport->m_editorRenderer->m_params.Viewport = viewport;
-                                              viewport->m_editorRenderer->Render(renderer);
+
+                                              // TODO
+                                              viewport->m_testRenderPath->m_framebuffer = viewport->m_framebuffer;
+                                              viewport->m_testRenderPath->Render(renderer);
+
                                               viewport->StageResolvedTexture();
                                             }});
         }
