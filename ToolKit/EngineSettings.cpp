@@ -31,6 +31,7 @@ namespace ToolKit
     Name_Define("ToolKit", "WindowSettings", 0, 0, 0);
     Width_Define(1280u, "WindowSettings", 0, 0, 0);
     Height_Define(720u, "WindowSettings", 0, 0, 0);
+    DpiScale_Define(1.0f, "WindowSettings", 0, 0, 0);
     FullScreen_Define(false, "WindowSettings", 0, 0, 0);
   }
 

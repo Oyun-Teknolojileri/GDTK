@@ -17,9 +17,12 @@ namespace ToolKit
 
   void SplashScreenRenderPath::Init(UVec2 screenSize)
   {
+    EngineSettings& settings = GetEngineSettings();
+    float dpiScale           = settings.m_window->GetDpiScaleVal();
+
     m_uiPass              = MakeNewPtr<ForwardRenderPass>();
     m_gammaPass           = MakeNewPtr<GammaTonemapFxaaPass>();
-    m_viewport            = MakeNewPtr<GameViewport>((float) screenSize.x, (float) screenSize.y);
+    m_viewport            = MakeNewPtr<GameViewport>((float) screenSize.x * dpiScale, (float) screenSize.y * dpiScale);
     m_splashScreen        = MakeNewPtr<UILayer>(LayerPath("ToolKit/splash-screen.layer"));
     m_resolvedFramebuffer = MakeNewPtr<Framebuffer>();
 
@@ -33,7 +36,7 @@ namespace ToolKit
     m_gammaPass->m_params.enableGammaCorrection = GetRenderSystem()->IsGammaCorrectionNeeded();
     m_gammaPass->m_params.enableTonemapping     = false;
     m_gammaPass->m_params.enableFxaa            = false;
-    m_gammaPass->m_params.screenSize            = Vec2((float) screenSize.x, (float) screenSize.y);
+    m_gammaPass->m_params.screenSize            = Vec2((float) screenSize.x, (float) screenSize.y) * dpiScale;
     m_gammaPass->m_params.frameBuffer           = m_viewport->m_framebuffer;
   }
 
