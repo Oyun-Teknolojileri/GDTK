@@ -86,12 +86,140 @@ namespace ToolKit
     return m_swapchain->GetCurrentCommandBuffer();
   }
 
+  bool VulkanBackend::BuildOffscreenRenderPass(const PassDesc& desc, VulkanFramebuffer* fbData)
+  {
+    (void) desc;
+    VkDevice device = m_context->GetDevice();
+
+    // 1f.5'e kadar ge\u00e7ici: eski RP+FB'yi destroy etmeyiz \u2014 cmd buffer hala onlara referans
+    // veriyor olabilir. Sadece overwrite ediyoruz; backend dtor'da vkDeviceWaitIdle sonras\u0131
+    // VulkanFramebuffer dtor temizler. K\u00fc\u00e7\u00fck bir leak (recreate ba\u015f\u0131na 1 RP + 1 FB) \u2014 deferred
+    // deletion queue (1f.5) bunu d\u00fczeltir.
+
+    std::vector<VkAttachmentDescription> atts;
+    std::vector<VkAttachmentReference> colorRefs;
+    std::vector<VkImageView> views;
+    atts.reserve(VulkanFramebuffer::kMaxColorAttachments + 1);
+    colorRefs.reserve(VulkanFramebuffer::kMaxColorAttachments);
+    views.reserve(VulkanFramebuffer::kMaxColorAttachments + 1);
+
+    for (int i = 0; i < VulkanFramebuffer::kMaxColorAttachments; ++i)
+    {
+      auto& slot = fbData->colorAttachments[i];
+      if (slot.tex == nullptr || slot.view == VK_NULL_HANDLE)
+      {
+        continue;
+      }
+      VkAttachmentDescription a{};
+      a.format         = slot.tex->format;
+      a.samples        = VK_SAMPLE_COUNT_1_BIT;
+      a.loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
+      a.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
+      a.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+      a.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+      a.initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
+      a.finalLayout    = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+      VkAttachmentReference ref{};
+      ref.attachment = (uint32_t) atts.size();
+      ref.layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+      colorRefs.push_back(ref);
+      atts.push_back(a);
+      views.push_back(slot.view);
+    }
+
+    VkAttachmentReference depthRef{};
+    bool hasDepth = fbData->depthAttachment.view != VK_NULL_HANDLE;
+    if (hasDepth)
+    {
+      VkAttachmentDescription a{};
+      a.format         = fbData->depthAttachment.tex->format;
+      a.samples        = VK_SAMPLE_COUNT_1_BIT;
+      a.loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
+      a.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
+      a.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+      a.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+      a.initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
+      a.finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+
+      depthRef.attachment = (uint32_t) atts.size();
+      depthRef.layout     = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+      atts.push_back(a);
+      views.push_back(fbData->depthAttachment.view);
+    }
+
+    VkSubpassDescription subpass{};
+    subpass.pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.colorAttachmentCount    = (uint32_t) colorRefs.size();
+    subpass.pColorAttachments       = colorRefs.empty() ? nullptr : colorRefs.data();
+    subpass.pDepthStencilAttachment = hasDepth ? &depthRef : nullptr;
+
+    // Basit dependency: external read \u2192 attachment write, attachment write \u2192 external sample.
+    // ImGui sonraki frame'de bu RT'yi sample edecek.
+    VkSubpassDependency deps[2]{};
+    deps[0].srcSubpass    = VK_SUBPASS_EXTERNAL;
+    deps[0].dstSubpass    = 0;
+    deps[0].srcStageMask  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    deps[0].dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+                           VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    deps[0].srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    deps[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+                           VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    deps[1].srcSubpass    = 0;
+    deps[1].dstSubpass    = VK_SUBPASS_EXTERNAL;
+    deps[1].srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+                           VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+    deps[1].dstStageMask  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    deps[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+                           VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    deps[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+    VkRenderPassCreateInfo rpci{VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
+    rpci.attachmentCount = (uint32_t) atts.size();
+    rpci.pAttachments    = atts.empty() ? nullptr : atts.data();
+    rpci.subpassCount    = 1;
+    rpci.pSubpasses      = &subpass;
+    rpci.dependencyCount = 2;
+    rpci.pDependencies   = deps;
+
+    VkRenderPass newRp = VK_NULL_HANDLE;
+    if (vkCreateRenderPass(device, &rpci, nullptr, &newRp) != VK_SUCCESS)
+    {
+      TK_ERR("BuildOffscreenRenderPass: vkCreateRenderPass failed");
+      return false;
+    }
+
+    VkFramebufferCreateInfo fbci{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
+    fbci.renderPass      = newRp;
+    fbci.attachmentCount = (uint32_t) views.size();
+    fbci.pAttachments    = views.empty() ? nullptr : views.data();
+    fbci.width           = fbData->width;
+    fbci.height          = fbData->height;
+    fbci.layers          = 1;
+
+    VkFramebuffer newFb = VK_NULL_HANDLE;
+    if (vkCreateFramebuffer(device, &fbci, nullptr, &newFb) != VK_SUCCESS)
+    {
+      TK_ERR("BuildOffscreenRenderPass: vkCreateFramebuffer failed");
+      vkDestroyRenderPass(device, newRp, nullptr);
+      return false;
+    }
+
+    fbData->renderPass  = newRp;
+    fbData->framebuffer = newFb;
+    fbData->dirty       = false;
+    return true;
+  }
+
   void VulkanBackend::BeginPass(const PassDesc& desc)
   {
     if (!m_frameStarted)
     {
       return;
     }
+
+    // Hiçbir pass nest edilmez — önce hangisi açıksa onu kapat.
+    EndPass();
 
     if (desc.target == nullptr)
     {
@@ -100,8 +228,66 @@ namespace ToolKit
       return;
     }
 
-    // TODO (1f.3 next mini-step): build/lookup VkRenderPass + VkFramebuffer for the offscreen
-    // target and vkCmdBeginRenderPass on it.
+    auto* fbData = static_cast<VulkanFramebuffer*>(desc.target->m_gpuData.get());
+    if (fbData == nullptr)
+    {
+      TK_ERR("BeginPass: target framebuffer has no gpu data");
+      return;
+    }
+
+    if (fbData->dirty || fbData->renderPass == VK_NULL_HANDLE || fbData->framebuffer == VK_NULL_HANDLE)
+    {
+      if (!BuildOffscreenRenderPass(desc, fbData))
+      {
+        return;
+      }
+    }
+
+    // Clear value array — color attachments sırasında, sonra (varsa) depth.
+    std::vector<VkClearValue> clears;
+    clears.reserve(VulkanFramebuffer::kMaxColorAttachments + 1);
+    for (int i = 0; i < VulkanFramebuffer::kMaxColorAttachments; ++i)
+    {
+      if (fbData->colorAttachments[i].view != VK_NULL_HANDLE)
+      {
+        VkClearValue cv{};
+        cv.color = {{desc.clearColor.r, desc.clearColor.g, desc.clearColor.b, desc.clearColor.a}};
+        clears.push_back(cv);
+      }
+    }
+    if (fbData->depthAttachment.view != VK_NULL_HANDLE)
+    {
+      VkClearValue cv{};
+      cv.depthStencil = {1.0f, 0};
+      clears.push_back(cv);
+    }
+
+    VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer();
+
+    VkRenderPassBeginInfo rpbi{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
+    rpbi.renderPass        = fbData->renderPass;
+    rpbi.framebuffer       = fbData->framebuffer;
+    rpbi.renderArea.offset = {0, 0};
+    rpbi.renderArea.extent = {fbData->width, fbData->height};
+    rpbi.clearValueCount   = (uint32_t) clears.size();
+    rpbi.pClearValues      = clears.empty() ? nullptr : clears.data();
+    vkCmdBeginRenderPass(cb, &rpbi, VK_SUBPASS_CONTENTS_INLINE);
+
+    VkViewport vp{};
+    vp.x        = 0.0f;
+    vp.y        = 0.0f;
+    vp.width    = (float) fbData->width;
+    vp.height   = (float) fbData->height;
+    vp.minDepth = 0.0f;
+    vp.maxDepth = 1.0f;
+    vkCmdSetViewport(cb, 0, 1, &vp);
+
+    VkRect2D sc{};
+    sc.offset = {0, 0};
+    sc.extent = {fbData->width, fbData->height};
+    vkCmdSetScissor(cb, 0, 1, &sc);
+
+    m_activePassFb = fbData;
   }
 
   void VulkanBackend::EndPass()
@@ -110,8 +296,25 @@ namespace ToolKit
     {
       return;
     }
-    // TODO (1f.3 next mini-step): if an offscreen pass is active, end it; otherwise close
-    // the swapchain pass.
+    if (m_activePassFb != nullptr)
+    {
+      VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer();
+      vkCmdEndRenderPass(cb);
+      // RP final layout'larını cache'ledikleri texture'lara yansıt.
+      for (int i = 0; i < VulkanFramebuffer::kMaxColorAttachments; ++i)
+      {
+        if (auto* tex = m_activePassFb->colorAttachments[i].tex)
+        {
+          tex->currentLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        }
+      }
+      if (auto* tex = m_activePassFb->depthAttachment.tex)
+      {
+        tex->currentLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+      }
+      m_activePassFb = nullptr;
+      return;
+    }
     m_swapchain->EndSwapchainPass();
   }
 

@@ -142,6 +142,16 @@ namespace ToolKit
     bool m_frameStarted  = false;
     bool m_needsRecreate = false;
     Vec4 m_clearColor    = Vec4(0.4f, 0.0f, 0.4f, 1.0f); // Purple — easy to spot in stage 1e tests.
+
+    /** Non-null while an offscreen render pass is recording on the current command buffer.
+        nullptr when either no pass is active or the swapchain pass is the active one (the
+        swapchain tracks its own pass-active flag). */
+    struct VulkanFramebuffer* m_activePassFb = nullptr;
+
+    /** Lazy-builds (or rebuilds when @p fbData->dirty) the VkRenderPass + VkFramebuffer for an
+        offscreen target sized from fbData->width/height with the current attachment views.
+        Returns true on success; on failure leaves both handles VK_NULL_HANDLE. */
+    bool BuildOffscreenRenderPass(const struct PassDesc& desc, struct VulkanFramebuffer* fbData);
   };
 
   /** Factory function called by RenderSystem::CreateBackend(). */
