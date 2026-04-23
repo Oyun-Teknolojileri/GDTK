@@ -15,9 +15,10 @@ set(SOURCES
     imgui/imgui_draw.cpp 
     imgui/imgui_demo.cpp 
     imgui/imgui.cpp 
-    imgui/misc/cpp/imgui_stdlib.cpp 
-    imgui/backends/imgui_impl_opengl3.cpp 
+		imgui/misc/cpp/imgui_stdlib.cpp 
+		imgui/backends/imgui_impl_opengl3.cpp 
 	imgui/backends/imgui_impl_sdl2.cpp
+	imgui/backends/imgui_impl_vulkan.cpp
 )
 
 # add library target
@@ -41,11 +42,16 @@ find_library(SDL2main SDL2main)
 
 target_link_libraries(imgui PRIVATE SDL2 SDL2main)
 
+# link vulkan loader for imgui_impl_vulkan
+find_package(Vulkan REQUIRED)
+target_link_libraries(imgui PRIVATE Vulkan::Vulkan)
+
 # include subdirectories as additional source files
 target_include_directories(imgui PRIVATE
 	${CMAKE_CURRENT_LIST_DIR}
 	${CMAKE_CURRENT_LIST_DIR}/../SDL2/include
 	${CMAKE_CURRENT_LIST_DIR}/imgui
-    ${CMAKE_CURRENT_LIST_DIR}/imgui/misc/cpp
-    ${CMAKE_CURRENT_LIST_DIR}/imgui/backends
+		${CMAKE_CURRENT_LIST_DIR}/imgui/misc/cpp
+		${CMAKE_CURRENT_LIST_DIR}/imgui/backends
+		$ENV{VULKAN_SDK}/Include
 )
