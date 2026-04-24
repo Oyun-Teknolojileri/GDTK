@@ -36,6 +36,12 @@ namespace ToolKit
     namespace EditorBackendBindings
     {
 
+#ifdef TK_VULKAN
+      // Tracks the last MinImageCount handed to ImGui. Seeded at InitImGui so the first frame
+      // doesn't trigger a redundant SetMinImageCount (which would re-run pipeline creation).
+      static uint s_lastMinImageCount = 0;
+#endif
+
       uint32_t GetSDLWindowFlags()
       {
 #ifdef TK_VULKAN
@@ -193,6 +199,7 @@ namespace ToolKit
         info.DescriptorPool                  = ctx->GetSharedDescriptorPool();
         info.MinImageCount                   = swap->GetMinImageCount();
         info.ImageCount                      = swap->GetImageCount();
+        s_lastMinImageCount                  = info.MinImageCount;
         info.PipelineInfoMain.RenderPass     = swap->GetRenderPass();
         info.PipelineInfoMain.Subpass        = 0;
         info.PipelineInfoMain.MSAASamples    = VK_SAMPLE_COUNT_1_BIT;
@@ -243,6 +250,25 @@ namespace ToolKit
         // Reap descriptors whose textures were destroyed during the previous frame so we don't
         // hand a dangling VulkanTexture* back from the cache on the next Acquire call.
         EditorImGuiTextureCache::Sweep();
+
+        // Swapchain recreate (e.g. window resize) can change min/image count; ImGui needs to be
+        // told before NewFrame or its per-image structures will be sized for the old count.
+        if (auto* rsys = GetRenderSystem())
+        {
+          if (auto* backend = static_cast<VulkanBackend*>(rsys->GetBackend()))
+          {
+            if (auto* swap = backend->GetSwapchain())
+            {
+              uint cur = swap->GetMinImageCount();
+              if (cur != 0 && cur != s_lastMinImageCount)
+              {
+                ImGui_ImplVulkan_SetMinImageCount(cur);
+                s_lastMinImageCount = cur;
+              }
+            }
+          }
+        }
+
         ImGui_ImplVulkan_NewFrame();
 #else
         ImGui_ImplOpenGL3_NewFrame();
