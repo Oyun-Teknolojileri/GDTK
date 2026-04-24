@@ -38,7 +38,7 @@ namespace ToolKit
 
     /**
      * Acquires the next swapchain image, waits for the in-flight fence and begins the command
-     * buffer. Does **not** begin the render pass — the caller drives pass boundaries through
+     * buffer. Does **not** begin the render pass ï¿½ the caller drives pass boundaries through
      * BeginSwapchainPass / EndSwapchainPass so offscreen passes can be interleaved on the same
      * command buffer.
      * Returns false when the swapchain is out-of-date; caller should Recreate() and skip frame.
@@ -95,9 +95,14 @@ namespace ToolKit
     VkCommandPool m_cmdPool   = VK_NULL_HANDLE;
     std::array<VkCommandBuffer, FRAMES_IN_FLIGHT> m_cmdBuffers {};
 
+    // imageAvailable + inFlight are per-frame-in-flight (submission side).
+    // renderFinished is per-swapchain-image: the present queue may keep waiting on this semaphore
+    // until the image is reacquired, which can outlive the FRAMES_IN_FLIGHT slot recycle. Sharing
+    // the per-frame slot would let us re-submit a still-pending semaphore. See:
+    // https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html
     std::array<VkSemaphore, FRAMES_IN_FLIGHT> m_imageAvailable {};
-    std::array<VkSemaphore, FRAMES_IN_FLIGHT> m_renderFinished {};
     std::array<VkFence, FRAMES_IN_FLIGHT> m_inFlight {};
+    std::vector<VkSemaphore> m_renderFinished;
 
     uint m_currentFrame = 0;
     uint m_currentImage = 0;

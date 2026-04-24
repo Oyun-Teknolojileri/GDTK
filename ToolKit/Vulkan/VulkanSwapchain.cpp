@@ -50,6 +50,8 @@ namespace ToolKit
     VkDevice device = m_ctx->GetDevice();
     vkDeviceWaitIdle(device);
 
+    // m_renderFinished is per-image and lives with the swapchain — DestroySwapchainObjects
+    // already tore it down. Only per-frame submission sync remains here.
     DestroySwapchainObjects();
 
     for (uint i = 0; i < FRAMES_IN_FLIGHT; ++i)
@@ -58,11 +60,6 @@ namespace ToolKit
       {
         vkDestroySemaphore(device, m_imageAvailable[i], nullptr);
         m_imageAvailable[i] = VK_NULL_HANDLE;
-      }
-      if (m_renderFinished[i] != VK_NULL_HANDLE)
-      {
-        vkDestroySemaphore(device, m_renderFinished[i], nullptr);
-        m_renderFinished[i] = VK_NULL_HANDLE;
       }
       if (m_inFlight[i] != VK_NULL_HANDLE)
       {
@@ -239,6 +236,20 @@ namespace ToolKit
       }
     }
 
+    // Per-image renderFinished semaphores live with the swapchain — image count can change on
+    // Recreate(), and the present queue may keep waiting on the semaphore after we've moved past
+    // the FRAMES_IN_FLIGHT slot that signaled it.
+    VkSemaphoreCreateInfo sci{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+    m_renderFinished.resize(actualCount, VK_NULL_HANDLE);
+    for (uint i = 0; i < actualCount; ++i)
+    {
+      if (VkResult r = vkCreateSemaphore(device, &sci, nullptr, &m_renderFinished[i]); r != VK_SUCCESS)
+      {
+        TK_ERR("vkCreateSemaphore (renderFinished %u) failed: %d", i, r);
+        return false;
+      }
+    }
+
     return true;
   }
 
@@ -302,10 +313,11 @@ namespace ToolKit
     VkFenceCreateInfo fci{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
     fci.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
+    // Per-frame submission-side sync only. renderFinished is per-image and lives in
+    // CreateSwapchainObjects (sized to actual image count, recreated on resize).
     for (uint i = 0; i < FRAMES_IN_FLIGHT; ++i)
     {
       if (vkCreateSemaphore(device, &sci, nullptr, &m_imageAvailable[i]) != VK_SUCCESS ||
-          vkCreateSemaphore(device, &sci, nullptr, &m_renderFinished[i]) != VK_SUCCESS ||
           vkCreateFence(device, &fci, nullptr, &m_inFlight[i]) != VK_SUCCESS)
       {
         TK_ERR("VulkanSwapchain: sync object creation failed for frame %u", i);
@@ -361,6 +373,15 @@ namespace ToolKit
     }
     m_imageViews.clear();
     m_images.clear();
+
+    for (VkSemaphore s : m_renderFinished)
+    {
+      if (s != VK_NULL_HANDLE)
+      {
+        vkDestroySemaphore(device, s, nullptr);
+      }
+    }
+    m_renderFinished.clear();
 
     if (m_swapchain != VK_NULL_HANDLE)
     {
@@ -501,6 +522,9 @@ namespace ToolKit
 
     VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 
+    // imageAvailable + inFlight are indexed by frame slot (submission side).
+    // renderFinished is indexed by image — must outlive the frame slot since the present queue
+    // may keep waiting on it past the FRAMES_IN_FLIGHT recycle boundary.
     VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
     si.waitSemaphoreCount   = 1;
     si.pWaitSemaphores      = &m_imageAvailable[m_currentFrame];
@@ -508,7 +532,7 @@ namespace ToolKit
     si.commandBufferCount   = 1;
     si.pCommandBuffers      = &cb;
     si.signalSemaphoreCount = 1;
-    si.pSignalSemaphores    = &m_renderFinished[m_currentFrame];
+    si.pSignalSemaphores    = &m_renderFinished[m_currentImage];
 
     if (VkResult r = vkQueueSubmit(m_ctx->GetGraphicsQueue(), 1, &si, m_inFlight[m_currentFrame]); r != VK_SUCCESS)
     {
@@ -519,7 +543,7 @@ namespace ToolKit
 
     VkPresentInfoKHR pi{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
     pi.waitSemaphoreCount = 1;
-    pi.pWaitSemaphores    = &m_renderFinished[m_currentFrame];
+    pi.pWaitSemaphores    = &m_renderFinished[m_currentImage];
     pi.swapchainCount     = 1;
     pi.pSwapchains        = &m_swapchain;
     pi.pImageIndices      = &m_currentImage;
