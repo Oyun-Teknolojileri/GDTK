@@ -9,7 +9,11 @@
 
 #include "../Logger.h"
 #include "VulkanContext.h"
+#include "VulkanImage.h"
+#include "VulkanResources.h"
 #include "VulkanShader.h"
+
+#include <array>
 
 namespace ToolKit
 {
@@ -85,6 +89,30 @@ namespace ToolKit
       return false;
     }
 
+    // 4x4 RGBA8 checkerboard — magenta + black. Verifies upload + layout transitions; not yet
+    // sampled (Stage 4b wires descriptor set + shader read).
+    constexpr uint32_t kTexSize        = 4;
+    std::array<uint8_t, kTexSize * kTexSize * 4> pixels{};
+    for (uint32_t y = 0; y < kTexSize; ++y)
+    {
+      for (uint32_t x = 0; x < kTexSize; ++x)
+      {
+        const bool on    = ((x ^ y) & 1) != 0;
+        const size_t idx = (y * kTexSize + x) * 4;
+        pixels[idx + 0]  = on ? 255 : 0;
+        pixels[idx + 1]  = 0;
+        pixels[idx + 2]  = on ? 255 : 0;
+        pixels[idx + 3]  = 255;
+      }
+    }
+    m_testTexture =
+        VulkanImage::CreateSampled2DFromData(ctx, VK_FORMAT_R8G8B8A8_UNORM, kTexSize, kTexSize, pixels.data(), pixels.size());
+    if (m_testTexture == nullptr)
+    {
+      TK_ERR("VulkanTestPipeline::Init: test texture create failed");
+      return false;
+    }
+
     return true;
   }
 
@@ -95,6 +123,8 @@ namespace ToolKit
       return;
     }
     VkDevice device = m_ctx->GetDevice();
+    // Drop while m_ctx is still alive — ~VulkanTexture needs context->GetDevice/GetAllocator.
+    m_testTexture.reset();
     VulkanBuffer::Destroy(m_ctx, m_indexBuffer);
     VulkanBuffer::Destroy(m_ctx, m_vertexBuffer);
     if (m_pipeline != VK_NULL_HANDLE)

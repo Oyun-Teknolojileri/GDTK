@@ -13,11 +13,13 @@
 #include <vulkan/vulkan.h>
 
 #include <functional>
+#include <memory>
 
 namespace ToolKit
 {
 
   class VulkanContext;
+  struct VulkanTexture;
 
   /**
    * Stage 2b scaffold: a single fullscreen-triangle pipeline (no vertex input, no descriptors,
@@ -66,6 +68,11 @@ namespace ToolKit
     // Index type: UINT16 (4 verts, 6 indices = 2 triangles).
     VulkanBuffer::Buffer m_vertexBuffer{};
     VulkanBuffer::Buffer m_indexBuffer{};
+
+    // Stage 4a: 4x4 RGBA8 checkerboard. Created in Init via VulkanImage::CreateSampled2DFromData;
+    // not yet sampled (Stage 4b adds the descriptor set + shader binding). shared_ptr ownership
+    // mirrors how engine textures live on Texture::m_gpuData — the dtor frees image/view/sampler.
+    std::shared_ptr<VulkanTexture> m_testTexture;
   };
 
 } // namespace ToolKit
