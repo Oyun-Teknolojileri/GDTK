@@ -77,6 +77,11 @@ namespace ToolKit
     std::shared_ptr<VulkanTexture> m_testTexture;
     VkDescriptorSetLayout m_descriptorLayout = VK_NULL_HANDLE;
     VkDescriptorSet m_descriptorSet          = VK_NULL_HANDLE;
+
+    // Stage 5b: persistently-mapped host-visible UBO carrying (view, proj). Written once at
+    // Init time with a static look-at camera; Stage 5c will add a push-constant model matrix
+    // that animates the quad each frame.
+    VulkanBuffer::Buffer m_cameraUbo{};
   };
 
 } // namespace ToolKit

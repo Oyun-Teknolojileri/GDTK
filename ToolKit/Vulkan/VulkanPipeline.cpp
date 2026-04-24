@@ -46,8 +46,12 @@ namespace ToolKit
       "layout(location = 2) in vec2 inUV;\n"
       "layout(location = 0) out vec3 vColor;\n"
       "layout(location = 1) out vec2 vUV;\n"
+      "layout(set = 0, binding = 1) uniform Camera {\n"
+      "  mat4 view;\n"
+      "  mat4 proj;\n"
+      "} uCamera;\n"
       "void main() {\n"
-      "  gl_Position = vec4(inPos, 1.0);\n"
+      "  gl_Position = uCamera.proj * uCamera.view * vec4(inPos, 1.0);\n"
       "  vColor = inColor;\n"
       "  vUV = inUV;\n"
       "}\n";
@@ -78,9 +82,9 @@ namespace ToolKit
       return false;
     }
 
-    // Single-binding combined image sampler set layout — wired through the pipeline layout so
-    // the frag shader's `layout(set=0, binding=0) uniform sampler2D` resolves at draw time.
-    m_descriptorLayout = VulkanDescriptor::CreateLayoutSingleSampler(device, VK_SHADER_STAGE_FRAGMENT_BIT);
+    // Two-binding layout: binding 0 = checkerboard sampler (frag), binding 1 = camera UBO (vert).
+    m_descriptorLayout = VulkanDescriptor::CreateLayoutSamplerAndUbo(
+        device, VK_SHADER_STAGE_FRAGMENT_BIT, VK_SHADER_STAGE_VERTEX_BIT);
     if (m_descriptorLayout == VK_NULL_HANDLE)
     {
       TK_ERR("VulkanTestPipeline::Init: descriptor set layout create failed");
@@ -148,6 +152,35 @@ namespace ToolKit
     VulkanDescriptor::WriteCombinedImageSampler(
         device, m_descriptorSet, 0, m_testTexture->view, m_testTexture->sampler);
 
+    // Camera UBO — persistently-mapped host-visible buffer holding (view, proj). We fill it once
+    // here with a simple look-at camera so the quad is rendered with a real 3D transform.
+    // Stage 5c adds a push-constant model matrix that rotates it each frame.
+    struct CameraUBO
+    {
+      Mat4 view;
+      Mat4 proj;
+    };
+    m_cameraUbo = VulkanBuffer::CreateHostVisibleMapped(
+        ctx, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, sizeof(CameraUBO));
+    if (m_cameraUbo.handle == VK_NULL_HANDLE)
+    {
+      TK_ERR("VulkanTestPipeline::Init: camera UBO create failed");
+      return false;
+    }
+
+    CameraUBO cam{};
+    // Diagonal camera (right + up + back) looking at origin — makes the quad's 3D orientation
+    // visible. Stage 5c will animate a model matrix on top of this.
+    cam.view = glm::lookAtRH(Vec3(1.5f, 1.5f, 2.0f), Vec3(0.0f, 0.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f));
+    // perspectiveRH_ZO: right-handed, depth clip [0, 1] — matches Vulkan's NDC depth range.
+    // Flip Y afterwards because Vulkan's viewport Y is down (GLM assumes OpenGL-style up).
+    cam.proj       = glm::perspectiveRH_ZO(glm::radians(60.0f), 1.0f, 0.1f, 100.0f);
+    cam.proj[1][1] *= -1.0f;
+    std::memcpy(m_cameraUbo.mapped, &cam, sizeof(cam));
+
+    VulkanDescriptor::WriteUniformBuffer(
+        device, m_descriptorSet, 1, m_cameraUbo.handle, 0, sizeof(CameraUBO));
+
     return true;
   }
 
@@ -172,6 +205,7 @@ namespace ToolKit
     }
     // Drop while m_ctx is still alive — ~VulkanTexture needs context->GetDevice/GetAllocator.
     m_testTexture.reset();
+    VulkanBuffer::Destroy(m_ctx, m_cameraUbo);
     VulkanBuffer::Destroy(m_ctx, m_indexBuffer);
     VulkanBuffer::Destroy(m_ctx, m_vertexBuffer);
     if (m_pipeline != VK_NULL_HANDLE)
