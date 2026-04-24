@@ -79,9 +79,13 @@ namespace ToolKit
     VkDescriptorSet m_descriptorSet          = VK_NULL_HANDLE;
 
     // Stage 5b: persistently-mapped host-visible UBO carrying (view, proj). Written once at
-    // Init time with a static look-at camera; Stage 5c will add a push-constant model matrix
-    // that animates the quad each frame.
+    // Init time with a static look-at camera; Stage 5c pushes a per-draw rotating model matrix
+    // as a push constant so the quad visibly spins.
     VulkanBuffer::Buffer m_cameraUbo{};
+
+    // Stage 5c: accumulator for the quad's rotation. Advanced each Draw — frame-rate dependent
+    // but fine for a demo; the engine-owned time source lands with the real Mesh path (Stage 7+).
+    float m_rotAngle = 0.0f;
   };
 
 } // namespace ToolKit

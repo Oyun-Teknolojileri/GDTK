@@ -50,8 +50,11 @@ namespace ToolKit
       "  mat4 view;\n"
       "  mat4 proj;\n"
       "} uCamera;\n"
+      "layout(push_constant) uniform PC {\n"
+      "  mat4 model;\n"
+      "} pc;\n"
       "void main() {\n"
-      "  gl_Position = uCamera.proj * uCamera.view * vec4(inPos, 1.0);\n"
+      "  gl_Position = uCamera.proj * uCamera.view * pc.model * vec4(inPos, 1.0);\n"
       "  vColor = inColor;\n"
       "  vUV = inUV;\n"
       "}\n";
@@ -94,6 +97,13 @@ namespace ToolKit
     VkPipelineLayoutCreateInfo plci{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
     plci.setLayoutCount = 1;
     plci.pSetLayouts    = &m_descriptorLayout;
+    // Model matrix via push constant — 64 bytes sits well within the 128-byte minimum guarantee.
+    VkPushConstantRange pcRange{};
+    pcRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    pcRange.offset     = 0;
+    pcRange.size       = sizeof(Mat4);
+    plci.pushConstantRangeCount = 1;
+    plci.pPushConstantRanges    = &pcRange;
     if (VkResult r = vkCreatePipelineLayout(device, &plci, nullptr, &m_layout); r != VK_SUCCESS)
     {
       TK_ERR("vkCreatePipelineLayout failed: %d", r);
@@ -365,6 +375,10 @@ namespace ToolKit
       vkCmdBindDescriptorSets(
           cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_layout, 0, 1, &m_descriptorSet, 0, nullptr);
     }
+    // Stage 5c: rotate around Y (up) — makes the quad's 3D nature obvious.
+    m_rotAngle += 0.01f;
+    Mat4 model = glm::rotate(Mat4(1.0f), m_rotAngle, Vec3(0.0f, 1.0f, 0.0f));
+    vkCmdPushConstants(cb, m_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Mat4), &model);
     VkBuffer vb       = m_vertexBuffer.handle;
     VkDeviceSize zero = 0;
     vkCmdBindVertexBuffers(cb, 0, 1, &vb, &zero);
