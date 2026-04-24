@@ -14,14 +14,28 @@
 namespace ToolKit
 {
 
-  // gl_VertexIndex 0,1,2 → covers the screen with one oversized triangle in NDC.
+  // 3 vertices forming a centered triangle in NDC, each carrying its own color.
+  // Sourced from a device-local vertex buffer (Stage 3a) — no more gl_VertexIndex hack.
+  struct TestVertex
+  {
+    float pos[3];
+    float color[3];
+  };
+
+  static const TestVertex kTriangleVertices[3] = {
+      {{-0.6f,  0.6f, 0.0f}, {1.0f, 0.0f, 0.0f}},
+      {{ 0.6f,  0.6f, 0.0f}, {0.0f, 1.0f, 0.0f}},
+      {{ 0.0f, -0.6f, 0.0f}, {0.0f, 0.0f, 1.0f}},
+  };
+
   static constexpr const char* kTestVert =
       "#version 450\n"
+      "layout(location = 0) in vec3 inPos;\n"
+      "layout(location = 1) in vec3 inColor;\n"
       "layout(location = 0) out vec3 vColor;\n"
       "void main() {\n"
-      "  vec2 p = vec2((gl_VertexIndex == 2) ? 3.0 : -1.0, (gl_VertexIndex == 1) ? 3.0 : -1.0);\n"
-      "  gl_Position = vec4(p, 0.0, 1.0);\n"
-      "  vColor = vec3(p * 0.5 + 0.5, 1.0);\n"
+      "  gl_Position = vec4(inPos, 1.0);\n"
+      "  vColor = inColor;\n"
       "}\n";
 
   static constexpr const char* kTestFrag =
@@ -52,6 +66,14 @@ namespace ToolKit
       return false;
     }
 
+    m_vertexBuffer =
+        VulkanBuffer::UploadDeviceLocal(ctx, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, kTriangleVertices, sizeof(kTriangleVertices));
+    if (m_vertexBuffer.handle == VK_NULL_HANDLE)
+    {
+      TK_ERR("VulkanTestPipeline::Init: vertex buffer upload failed");
+      return false;
+    }
+
     return true;
   }
 
@@ -62,6 +84,7 @@ namespace ToolKit
       return;
     }
     VkDevice device = m_ctx->GetDevice();
+    VulkanBuffer::Destroy(m_ctx, m_vertexBuffer);
     if (m_pipeline != VK_NULL_HANDLE)
     {
       vkDestroyPipeline(device, m_pipeline, nullptr);
@@ -100,7 +123,26 @@ namespace ToolKit
     stages[1].module = m_frag;
     stages[1].pName  = "main";
 
+    VkVertexInputBindingDescription binding{};
+    binding.binding   = 0;
+    binding.stride    = sizeof(TestVertex);
+    binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+    VkVertexInputAttributeDescription attribs[2]{};
+    attribs[0].location = 0;
+    attribs[0].binding  = 0;
+    attribs[0].format   = VK_FORMAT_R32G32B32_SFLOAT;
+    attribs[0].offset   = offsetof(TestVertex, pos);
+    attribs[1].location = 1;
+    attribs[1].binding  = 0;
+    attribs[1].format   = VK_FORMAT_R32G32B32_SFLOAT;
+    attribs[1].offset   = offsetof(TestVertex, color);
+
     VkPipelineVertexInputStateCreateInfo vi{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+    vi.vertexBindingDescriptionCount   = 1;
+    vi.pVertexBindingDescriptions      = &binding;
+    vi.vertexAttributeDescriptionCount = 2;
+    vi.pVertexAttributeDescriptions    = attribs;
 
     VkPipelineInputAssemblyStateCreateInfo ia{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
     ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
@@ -191,6 +233,9 @@ namespace ToolKit
     }
 
     vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
+    VkBuffer vb       = m_vertexBuffer.handle;
+    VkDeviceSize zero = 0;
+    vkCmdBindVertexBuffers(cb, 0, 1, &vb, &zero);
     vkCmdDraw(cb, 3, 1, 0, 0);
   }
 

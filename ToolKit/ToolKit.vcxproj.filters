@@ -247,6 +247,9 @@
     <ClCompile Include="Vulkan\VulkanBackend.cpp">
       <Filter>Render\Vulkan</Filter>
     </ClCompile>
+    <ClCompile Include="Vulkan\VulkanBuffer.cpp">
+      <Filter>Render\Vulkan</Filter>
+    </ClCompile>
     <ClCompile Include="Vulkan\VulkanContext.cpp">
       <Filter>Render\Vulkan</Filter>
     </ClCompile>
@@ -539,6 +542,9 @@
       <Filter>Render\Vulkan</Filter>
     </ClInclude>
     <ClInclude Include="Vulkan\VulkanBackend.h">
+      <Filter>Render\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="Vulkan\VulkanBuffer.h">
       <Filter>Render\Vulkan</Filter>
     </ClInclude>
     <ClInclude Include="Vulkan\VulkanContext.h">

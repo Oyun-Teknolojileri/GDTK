@@ -102,6 +102,7 @@
     <ClCompile Include="Vulkan\TestRenderPass.cpp" />
     <ClCompile Include="Vulkan\TestRenderPath.cpp" />
     <ClCompile Include="Vulkan\VulkanBackend.cpp" />
+    <ClCompile Include="Vulkan\VulkanBuffer.cpp" />
     <ClCompile Include="Vulkan\VulkanContext.cpp" />
     <ClCompile Include="Vulkan\VulkanPipeline.cpp" />
     <ClCompile Include="Vulkan\VulkanResources.cpp" />
@@ -202,6 +203,7 @@
     <ClInclude Include="Vulkan\TestRenderPass.h" />
     <ClInclude Include="Vulkan\TestRenderPath.h" />
     <ClInclude Include="Vulkan\VulkanBackend.h" />
+    <ClInclude Include="Vulkan\VulkanBuffer.h" />
     <ClInclude Include="Vulkan\VulkanContext.h" />
     <ClInclude Include="Vulkan\VulkanPipeline.h" />
     <ClInclude Include="Vulkan\VulkanResources.h" />

@@ -8,6 +8,7 @@
 #pragma once
 
 #include "../Types.h"
+#include "VulkanBuffer.h"
 
 #include <vulkan/vulkan.h>
 
@@ -59,6 +60,10 @@ namespace ToolKit
     VkRenderPass m_builtFor   = VK_NULL_HANDLE;
     VkShaderModule m_vert     = VK_NULL_HANDLE;
     VkShaderModule m_frag     = VK_NULL_HANDLE;
+
+    // Stage 3a: hardcoded test geometry uploaded to a device-local vertex buffer.
+    // Layout: struct { vec3 pos; vec3 color; } — stride 24, attribs 0/1.
+    VulkanBuffer::Buffer m_vertexBuffer{};
   };
 
 } // namespace ToolKit
