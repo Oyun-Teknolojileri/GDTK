@@ -253,6 +253,9 @@
     <ClCompile Include="Vulkan\VulkanContext.cpp">
       <Filter>Render\Vulkan</Filter>
     </ClCompile>
+    <ClCompile Include="Vulkan\VulkanDescriptor.cpp">
+      <Filter>Render\Vulkan</Filter>
+    </ClCompile>
     <ClCompile Include="Vulkan\VulkanImage.cpp">
       <Filter>Render\Vulkan</Filter>
     </ClCompile>
@@ -551,6 +554,9 @@
       <Filter>Render\Vulkan</Filter>
     </ClInclude>
     <ClInclude Include="Vulkan\VulkanContext.h">
+      <Filter>Render\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="Vulkan\VulkanDescriptor.h">
       <Filter>Render\Vulkan</Filter>
     </ClInclude>
     <ClInclude Include="Vulkan\VulkanImage.h">

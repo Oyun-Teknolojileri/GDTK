@@ -64,15 +64,19 @@ namespace ToolKit
     VkShaderModule m_frag     = VK_NULL_HANDLE;
 
     // Stage 3a/b: hardcoded quad geometry uploaded to device-local vertex + index buffers.
-    // Vertex layout: struct { vec3 pos; vec3 color; } — stride 24, attribs 0/1.
+    // Vertex layout: struct { vec3 pos; vec3 color; vec2 uv; } — stride 32, attribs 0/1/2.
     // Index type: UINT16 (4 verts, 6 indices = 2 triangles).
     VulkanBuffer::Buffer m_vertexBuffer{};
     VulkanBuffer::Buffer m_indexBuffer{};
 
-    // Stage 4a: 4x4 RGBA8 checkerboard. Created in Init via VulkanImage::CreateSampled2DFromData;
-    // not yet sampled (Stage 4b adds the descriptor set + shader binding). shared_ptr ownership
-    // mirrors how engine textures live on Texture::m_gpuData — the dtor frees image/view/sampler.
+    // Stage 4a/b: 4x4 RGBA8 checkerboard, sampled in the fragment shader via a single-binding
+    // combined image-sampler descriptor set. shared_ptr ownership mirrors how engine textures
+    // live on Texture::m_gpuData — the dtor frees image/view/sampler. The descriptor set is
+    // allocated from VulkanContext's shared pool (FREE_DESCRIPTOR_SET_BIT) so we free it
+    // explicitly in Destroy.
     std::shared_ptr<VulkanTexture> m_testTexture;
+    VkDescriptorSetLayout m_descriptorLayout = VK_NULL_HANDLE;
+    VkDescriptorSet m_descriptorSet          = VK_NULL_HANDLE;
   };
 
 } // namespace ToolKit

@@ -9,6 +9,7 @@
 
 #include "../Logger.h"
 #include "VulkanContext.h"
+#include "VulkanDescriptor.h"
 #include "VulkanImage.h"
 #include "VulkanResources.h"
 #include "VulkanShader.h"
@@ -20,17 +21,20 @@ namespace ToolKit
 
   // 4 quad corners + 6 indices (2 triangles) — Stage 3b switches from drawn triangle to
   // index-sourced quad, exercising vkCmdBindIndexBuffer + vkCmdDrawIndexed.
+  // Stage 4b adds a per-vertex UV used to sample the checkerboard test texture in the frag
+  // shader; vertex colour still modulates the sample so the gradient stays visible.
   struct TestVertex
   {
     float pos[3];
     float color[3];
+    float uv[2];
   };
 
   static const TestVertex kQuadVertices[4] = {
-      {{-0.6f, -0.6f, 0.0f}, {1.0f, 0.0f, 0.0f}}, // 0: bottom-left  red
-      {{ 0.6f, -0.6f, 0.0f}, {0.0f, 1.0f, 0.0f}}, // 1: bottom-right green
-      {{ 0.6f,  0.6f, 0.0f}, {0.0f, 0.0f, 1.0f}}, // 2: top-right    blue
-      {{-0.6f,  0.6f, 0.0f}, {1.0f, 1.0f, 0.0f}}, // 3: top-left     yellow
+      {{-0.6f, -0.6f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}}, // 0: bottom-left  red
+      {{ 0.6f, -0.6f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}}, // 1: bottom-right green
+      {{ 0.6f,  0.6f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}}, // 2: top-right    blue
+      {{-0.6f,  0.6f, 0.0f}, {1.0f, 1.0f, 0.0f}, {0.0f, 1.0f}}, // 3: top-left     yellow
   };
 
   static const uint16_t kQuadIndices[6] = {0, 1, 2, 0, 2, 3};
@@ -39,17 +43,25 @@ namespace ToolKit
       "#version 450\n"
       "layout(location = 0) in vec3 inPos;\n"
       "layout(location = 1) in vec3 inColor;\n"
+      "layout(location = 2) in vec2 inUV;\n"
       "layout(location = 0) out vec3 vColor;\n"
+      "layout(location = 1) out vec2 vUV;\n"
       "void main() {\n"
       "  gl_Position = vec4(inPos, 1.0);\n"
       "  vColor = inColor;\n"
+      "  vUV = inUV;\n"
       "}\n";
 
   static constexpr const char* kTestFrag =
       "#version 450\n"
       "layout(location = 0) in vec3 vColor;\n"
+      "layout(location = 1) in vec2 vUV;\n"
       "layout(location = 0) out vec4 oColor;\n"
-      "void main() { oColor = vec4(vColor, 1.0); }\n";
+      "layout(set = 0, binding = 0) uniform sampler2D uTex;\n"
+      "void main() {\n"
+      "  vec4 tex = texture(uTex, vUV);\n"
+      "  oColor = tex * vec4(vColor, 1.0);\n"
+      "}\n";
 
   bool VulkanTestPipeline::Init(VulkanContext* ctx)
   {
@@ -66,7 +78,18 @@ namespace ToolKit
       return false;
     }
 
+    // Single-binding combined image sampler set layout — wired through the pipeline layout so
+    // the frag shader's `layout(set=0, binding=0) uniform sampler2D` resolves at draw time.
+    m_descriptorLayout = VulkanDescriptor::CreateLayoutSingleSampler(device, VK_SHADER_STAGE_FRAGMENT_BIT);
+    if (m_descriptorLayout == VK_NULL_HANDLE)
+    {
+      TK_ERR("VulkanTestPipeline::Init: descriptor set layout create failed");
+      return false;
+    }
+
     VkPipelineLayoutCreateInfo plci{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+    plci.setLayoutCount = 1;
+    plci.pSetLayouts    = &m_descriptorLayout;
     if (VkResult r = vkCreatePipelineLayout(device, &plci, nullptr, &m_layout); r != VK_SUCCESS)
     {
       TK_ERR("vkCreatePipelineLayout failed: %d", r);
@@ -113,6 +136,18 @@ namespace ToolKit
       return false;
     }
 
+    // Descriptor set for the checkerboard sampler. Pool is shared across the engine; we rely
+    // on VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT to release this set in Destroy.
+    m_descriptorSet =
+        VulkanDescriptor::AllocateSet(device, ctx->GetSharedDescriptorPool(), m_descriptorLayout);
+    if (m_descriptorSet == VK_NULL_HANDLE)
+    {
+      TK_ERR("VulkanTestPipeline::Init: descriptor set allocation failed");
+      return false;
+    }
+    VulkanDescriptor::WriteCombinedImageSampler(
+        device, m_descriptorSet, 0, m_testTexture->view, m_testTexture->sampler);
+
     return true;
   }
 
@@ -123,6 +158,18 @@ namespace ToolKit
       return;
     }
     VkDevice device = m_ctx->GetDevice();
+    // Free the descriptor set before the pool lives on in VulkanContext — it was allocated from
+    // the shared pool with FREE_DESCRIPTOR_SET_BIT.
+    if (m_descriptorSet != VK_NULL_HANDLE)
+    {
+      vkFreeDescriptorSets(device, m_ctx->GetSharedDescriptorPool(), 1, &m_descriptorSet);
+      m_descriptorSet = VK_NULL_HANDLE;
+    }
+    if (m_descriptorLayout != VK_NULL_HANDLE)
+    {
+      vkDestroyDescriptorSetLayout(device, m_descriptorLayout, nullptr);
+      m_descriptorLayout = VK_NULL_HANDLE;
+    }
     // Drop while m_ctx is still alive — ~VulkanTexture needs context->GetDevice/GetAllocator.
     m_testTexture.reset();
     VulkanBuffer::Destroy(m_ctx, m_indexBuffer);
@@ -170,7 +217,7 @@ namespace ToolKit
     binding.stride    = sizeof(TestVertex);
     binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
-    VkVertexInputAttributeDescription attribs[2]{};
+    VkVertexInputAttributeDescription attribs[3]{};
     attribs[0].location = 0;
     attribs[0].binding  = 0;
     attribs[0].format   = VK_FORMAT_R32G32B32_SFLOAT;
@@ -179,11 +226,15 @@ namespace ToolKit
     attribs[1].binding  = 0;
     attribs[1].format   = VK_FORMAT_R32G32B32_SFLOAT;
     attribs[1].offset   = offsetof(TestVertex, color);
+    attribs[2].location = 2;
+    attribs[2].binding  = 0;
+    attribs[2].format   = VK_FORMAT_R32G32_SFLOAT;
+    attribs[2].offset   = offsetof(TestVertex, uv);
 
     VkPipelineVertexInputStateCreateInfo vi{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
     vi.vertexBindingDescriptionCount   = 1;
     vi.pVertexBindingDescriptions      = &binding;
-    vi.vertexAttributeDescriptionCount = 2;
+    vi.vertexAttributeDescriptionCount = 3;
     vi.pVertexAttributeDescriptions    = attribs;
 
     VkPipelineInputAssemblyStateCreateInfo ia{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
@@ -275,6 +326,11 @@ namespace ToolKit
     }
 
     vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
+    if (m_descriptorSet != VK_NULL_HANDLE)
+    {
+      vkCmdBindDescriptorSets(
+          cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_layout, 0, 1, &m_descriptorSet, 0, nullptr);
+    }
     VkBuffer vb       = m_vertexBuffer.handle;
     VkDeviceSize zero = 0;
     vkCmdBindVertexBuffers(cb, 0, 1, &vb, &zero);

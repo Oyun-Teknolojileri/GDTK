@@ -104,6 +104,7 @@
     <ClCompile Include="Vulkan\VulkanBackend.cpp" />
     <ClCompile Include="Vulkan\VulkanBuffer.cpp" />
     <ClCompile Include="Vulkan\VulkanContext.cpp" />
+    <ClCompile Include="Vulkan\VulkanDescriptor.cpp" />
     <ClCompile Include="Vulkan\VulkanImage.cpp" />
     <ClCompile Include="Vulkan\VulkanPipeline.cpp" />
     <ClCompile Include="Vulkan\VulkanResources.cpp" />
@@ -206,6 +207,7 @@
     <ClInclude Include="Vulkan\VulkanBackend.h" />
     <ClInclude Include="Vulkan\VulkanBuffer.h" />
     <ClInclude Include="Vulkan\VulkanContext.h" />
+    <ClInclude Include="Vulkan\VulkanDescriptor.h" />
     <ClInclude Include="Vulkan\VulkanImage.h" />
     <ClInclude Include="Vulkan\VulkanPipeline.h" />
     <ClInclude Include="Vulkan\VulkanResources.h" />
