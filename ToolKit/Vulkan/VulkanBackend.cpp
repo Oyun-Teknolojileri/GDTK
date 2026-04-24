@@ -12,6 +12,7 @@
 #include "../Texture.h"
 #include "VulkanContext.h"
 #include "VulkanResources.h"
+#include "VulkanShader.h"
 #include "VulkanSwapchain.h"
 
 #include <vma/vk_mem_alloc.h>
@@ -93,6 +94,40 @@ namespace ToolKit
     if (!m_swapchain->Init(m_context.get()))
     {
       TK_ERR("VulkanBackend: VulkanSwapchain init failed");
+    }
+
+    // Stage 2a smoke test — verifies shaderc links + GLSL→SPIR-V round-trip + module create.
+    // Removed in Stage 2b once VulkanPipeline owns shader compilation/lifetimes.
+    {
+      static constexpr const char* kVert =
+          "#version 450\n"
+          "layout(location = 0) out vec3 vColor;\n"
+          "void main() {\n"
+          "  vec2 p = vec2((gl_VertexIndex == 2) ? 3.0 : -1.0, (gl_VertexIndex == 1) ? 3.0 : -1.0);\n"
+          "  gl_Position = vec4(p, 0.0, 1.0);\n"
+          "  vColor = vec3(p * 0.5 + 0.5, 1.0);\n"
+          "}\n";
+      static constexpr const char* kFrag =
+          "#version 450\n"
+          "layout(location = 0) in vec3 vColor;\n"
+          "layout(location = 0) out vec4 oColor;\n"
+          "void main() { oColor = vec4(vColor, 1.0); }\n";
+
+      VkDevice device = m_context->GetDevice();
+      auto vSpv = VulkanShader::CompileGlslToSpirv(VulkanShader::Stage::Vertex, kVert, "smoketest.vert");
+      auto fSpv = VulkanShader::CompileGlslToSpirv(VulkanShader::Stage::Fragment, kFrag, "smoketest.frag");
+      VkShaderModule vMod = VulkanShader::CreateShaderModule(device, vSpv);
+      VkShaderModule fMod = VulkanShader::CreateShaderModule(device, fSpv);
+      if (vMod != VK_NULL_HANDLE && fMod != VK_NULL_HANDLE)
+      {
+        TK_LOG("Vulkan shader smoke test OK (vert=%zu words, frag=%zu words)", vSpv.size(), fSpv.size());
+      }
+      else
+      {
+        TK_ERR("Vulkan shader smoke test FAILED");
+      }
+      if (vMod != VK_NULL_HANDLE) vkDestroyShaderModule(device, vMod, nullptr);
+      if (fMod != VK_NULL_HANDLE) vkDestroyShaderModule(device, fMod, nullptr);
     }
   }
 
