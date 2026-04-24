@@ -61,9 +61,11 @@ namespace ToolKit
     VkShaderModule m_vert     = VK_NULL_HANDLE;
     VkShaderModule m_frag     = VK_NULL_HANDLE;
 
-    // Stage 3a: hardcoded test geometry uploaded to a device-local vertex buffer.
-    // Layout: struct { vec3 pos; vec3 color; } — stride 24, attribs 0/1.
+    // Stage 3a/b: hardcoded quad geometry uploaded to device-local vertex + index buffers.
+    // Vertex layout: struct { vec3 pos; vec3 color; } — stride 24, attribs 0/1.
+    // Index type: UINT16 (4 verts, 6 indices = 2 triangles).
     VulkanBuffer::Buffer m_vertexBuffer{};
+    VulkanBuffer::Buffer m_indexBuffer{};
   };
 
 } // namespace ToolKit

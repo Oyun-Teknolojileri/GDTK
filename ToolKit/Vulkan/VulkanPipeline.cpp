@@ -14,19 +14,22 @@
 namespace ToolKit
 {
 
-  // 3 vertices forming a centered triangle in NDC, each carrying its own color.
-  // Sourced from a device-local vertex buffer (Stage 3a) — no more gl_VertexIndex hack.
+  // 4 quad corners + 6 indices (2 triangles) — Stage 3b switches from drawn triangle to
+  // index-sourced quad, exercising vkCmdBindIndexBuffer + vkCmdDrawIndexed.
   struct TestVertex
   {
     float pos[3];
     float color[3];
   };
 
-  static const TestVertex kTriangleVertices[3] = {
-      {{-0.6f,  0.6f, 0.0f}, {1.0f, 0.0f, 0.0f}},
-      {{ 0.6f,  0.6f, 0.0f}, {0.0f, 1.0f, 0.0f}},
-      {{ 0.0f, -0.6f, 0.0f}, {0.0f, 0.0f, 1.0f}},
+  static const TestVertex kQuadVertices[4] = {
+      {{-0.6f, -0.6f, 0.0f}, {1.0f, 0.0f, 0.0f}}, // 0: bottom-left  red
+      {{ 0.6f, -0.6f, 0.0f}, {0.0f, 1.0f, 0.0f}}, // 1: bottom-right green
+      {{ 0.6f,  0.6f, 0.0f}, {0.0f, 0.0f, 1.0f}}, // 2: top-right    blue
+      {{-0.6f,  0.6f, 0.0f}, {1.0f, 1.0f, 0.0f}}, // 3: top-left     yellow
   };
+
+  static const uint16_t kQuadIndices[6] = {0, 1, 2, 0, 2, 3};
 
   static constexpr const char* kTestVert =
       "#version 450\n"
@@ -67,10 +70,18 @@ namespace ToolKit
     }
 
     m_vertexBuffer =
-        VulkanBuffer::UploadDeviceLocal(ctx, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, kTriangleVertices, sizeof(kTriangleVertices));
+        VulkanBuffer::UploadDeviceLocal(ctx, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, kQuadVertices, sizeof(kQuadVertices));
     if (m_vertexBuffer.handle == VK_NULL_HANDLE)
     {
       TK_ERR("VulkanTestPipeline::Init: vertex buffer upload failed");
+      return false;
+    }
+
+    m_indexBuffer =
+        VulkanBuffer::UploadDeviceLocal(ctx, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, kQuadIndices, sizeof(kQuadIndices));
+    if (m_indexBuffer.handle == VK_NULL_HANDLE)
+    {
+      TK_ERR("VulkanTestPipeline::Init: index buffer upload failed");
       return false;
     }
 
@@ -84,6 +95,7 @@ namespace ToolKit
       return;
     }
     VkDevice device = m_ctx->GetDevice();
+    VulkanBuffer::Destroy(m_ctx, m_indexBuffer);
     VulkanBuffer::Destroy(m_ctx, m_vertexBuffer);
     if (m_pipeline != VK_NULL_HANDLE)
     {
@@ -236,7 +248,8 @@ namespace ToolKit
     VkBuffer vb       = m_vertexBuffer.handle;
     VkDeviceSize zero = 0;
     vkCmdBindVertexBuffers(cb, 0, 1, &vb, &zero);
-    vkCmdDraw(cb, 3, 1, 0, 0);
+    vkCmdBindIndexBuffer(cb, m_indexBuffer.handle, 0, VK_INDEX_TYPE_UINT16);
+    vkCmdDrawIndexed(cb, 6, 1, 0, 0, 0);
   }
 
 } // namespace ToolKit
