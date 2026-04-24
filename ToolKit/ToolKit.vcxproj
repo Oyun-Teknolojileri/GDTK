@@ -103,6 +103,7 @@
     <ClCompile Include="Vulkan\TestRenderPath.cpp" />
     <ClCompile Include="Vulkan\VulkanBackend.cpp" />
     <ClCompile Include="Vulkan\VulkanContext.cpp" />
+    <ClCompile Include="Vulkan\VulkanPipeline.cpp" />
     <ClCompile Include="Vulkan\VulkanResources.cpp" />
     <ClCompile Include="Vulkan\VulkanShader.cpp" />
     <ClCompile Include="Vulkan\VulkanSwapchain.cpp" />
@@ -202,6 +203,7 @@
     <ClInclude Include="Vulkan\TestRenderPath.h" />
     <ClInclude Include="Vulkan\VulkanBackend.h" />
     <ClInclude Include="Vulkan\VulkanContext.h" />
+    <ClInclude Include="Vulkan\VulkanPipeline.h" />
     <ClInclude Include="Vulkan\VulkanResources.h" />
     <ClInclude Include="Vulkan\VulkanShader.h" />
     <ClInclude Include="Vulkan\VulkanSwapchain.h" />
@@ -319,6 +321,8 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <AdditionalDependencies>vulkan-1.lib;shaderc_combinedd.lib;OpenGL32.lib;zstd_staticd.lib;minizipd.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <!-- Vulkan SDK'da shaderc'in PDB'leri shipping yok; LNK4099 sadece debug-info uyarısı, hata değil. -->
+      <AdditionalOptions>/ignore:4099 %(AdditionalOptions)</AdditionalOptions>
     </Link>
     <PreBuildEvent />
     <PostBuildEvent />

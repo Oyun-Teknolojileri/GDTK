@@ -22,6 +22,7 @@ namespace ToolKit
 
   class VulkanContext;
   class VulkanSwapchain;
+  class VulkanTestPipeline;
 
   class TK_API VulkanBackend : public IGraphicsBackend
   {
@@ -139,6 +140,12 @@ namespace ToolKit
     void SetDebugLabel(Framebuffer* fb) override;
 
     /**
+     * Stage 2b scaffold: emits the fullscreen test triangle into the currently-active offscreen
+     * pass. No-op if no offscreen pass is recording. Removed once real meshes (Stage 3) replace it.
+     */
+    void DrawTestTriangle();
+
+    /**
      * Defers a destruction lambda until the GPU has finished with whatever the lambda releases.
      * The lambda is captured into the current frame's bucket and fired on the next BeginFrame
      * after that bucket's fence has been waited on (i.e., GPU is guaranteed done with the cmd
@@ -153,6 +160,7 @@ namespace ToolKit
    private:
     std::unique_ptr<VulkanContext> m_context;
     std::unique_ptr<VulkanSwapchain> m_swapchain;
+    std::unique_ptr<VulkanTestPipeline> m_testPipeline; // Stage 2b scaffold; removed in Stage 3.
     bool m_frameStarted  = false;
     bool m_needsRecreate = false;
     Vec4 m_clearColor    = Vec4(0.4f, 0.0f, 0.4f, 1.0f); // Purple — easy to spot in stage 1e tests.

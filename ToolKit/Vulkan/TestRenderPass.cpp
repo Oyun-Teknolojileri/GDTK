@@ -10,6 +10,10 @@
 #include "Renderer.h"
 #include "Stats.h"
 
+#ifdef TK_VULKAN
+  #include "VulkanBackend.h"
+#endif
+
 #include "DebugNew.h"
 
 namespace ToolKit
@@ -19,7 +23,14 @@ namespace ToolKit
 
   void TestRenderPass::Render()
   {
-    // Nothing to draw yet, the pass just clears the framebuffer.
+#ifdef TK_VULKAN
+    // Stage 2b scaffold: emit the fullscreen test triangle into the active offscreen pass that
+    // PreRender opened. Removed in Stage 3 once mesh draws replace it.
+    if (auto* backend = static_cast<VulkanBackend*>(GetRenderer()->GetBackend()))
+    {
+      backend->DrawTestTriangle();
+    }
+#endif
   }
 
   void TestRenderPass::PreRender()

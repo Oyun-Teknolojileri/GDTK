@@ -11,8 +11,8 @@
 #include "../Logger.h"
 #include "../Texture.h"
 #include "VulkanContext.h"
+#include "VulkanPipeline.h"
 #include "VulkanResources.h"
-#include "VulkanShader.h"
 #include "VulkanSwapchain.h"
 
 #include <vma/vk_mem_alloc.h>
@@ -22,7 +22,9 @@ namespace ToolKit
 {
 
   VulkanBackend::VulkanBackend()
-      : m_context(std::make_unique<VulkanContext>()), m_swapchain(std::make_unique<VulkanSwapchain>())
+      : m_context(std::make_unique<VulkanContext>()),
+        m_swapchain(std::make_unique<VulkanSwapchain>()),
+        m_testPipeline(std::make_unique<VulkanTestPipeline>())
   {
     // One bucket per frame-in-flight. Sized once at construction so DeferDelete can run before
     // InitBackend (e.g., during early resource churn) without bounds checks.
@@ -39,6 +41,11 @@ namespace ToolKit
       vkDeviceWaitIdle(m_context->GetDevice());
     }
     DrainAllDeleters();
+    if (m_testPipeline)
+    {
+      m_testPipeline->Destroy();
+    }
+    m_testPipeline.reset();
     m_swapchain.reset();
     m_context.reset();
   }
@@ -95,40 +102,28 @@ namespace ToolKit
     {
       TK_ERR("VulkanBackend: VulkanSwapchain init failed");
     }
-
-    // Stage 2a smoke test — verifies shaderc links + GLSL→SPIR-V round-trip + module create.
-    // Removed in Stage 2b once VulkanPipeline owns shader compilation/lifetimes.
+    if (!m_testPipeline->Init(m_context.get()))
     {
-      static constexpr const char* kVert =
-          "#version 450\n"
-          "layout(location = 0) out vec3 vColor;\n"
-          "void main() {\n"
-          "  vec2 p = vec2((gl_VertexIndex == 2) ? 3.0 : -1.0, (gl_VertexIndex == 1) ? 3.0 : -1.0);\n"
-          "  gl_Position = vec4(p, 0.0, 1.0);\n"
-          "  vColor = vec3(p * 0.5 + 0.5, 1.0);\n"
-          "}\n";
-      static constexpr const char* kFrag =
-          "#version 450\n"
-          "layout(location = 0) in vec3 vColor;\n"
-          "layout(location = 0) out vec4 oColor;\n"
-          "void main() { oColor = vec4(vColor, 1.0); }\n";
-
-      VkDevice device = m_context->GetDevice();
-      auto vSpv = VulkanShader::CompileGlslToSpirv(VulkanShader::Stage::Vertex, kVert, "smoketest.vert");
-      auto fSpv = VulkanShader::CompileGlslToSpirv(VulkanShader::Stage::Fragment, kFrag, "smoketest.frag");
-      VkShaderModule vMod = VulkanShader::CreateShaderModule(device, vSpv);
-      VkShaderModule fMod = VulkanShader::CreateShaderModule(device, fSpv);
-      if (vMod != VK_NULL_HANDLE && fMod != VK_NULL_HANDLE)
-      {
-        TK_LOG("Vulkan shader smoke test OK (vert=%zu words, frag=%zu words)", vSpv.size(), fSpv.size());
-      }
-      else
-      {
-        TK_ERR("Vulkan shader smoke test FAILED");
-      }
-      if (vMod != VK_NULL_HANDLE) vkDestroyShaderModule(device, vMod, nullptr);
-      if (fMod != VK_NULL_HANDLE) vkDestroyShaderModule(device, fMod, nullptr);
+      TK_ERR("VulkanBackend: VulkanTestPipeline init failed");
     }
+  }
+
+  void VulkanBackend::DrawTestTriangle()
+  {
+    if (!m_frameStarted || m_activePassFb == nullptr || m_testPipeline == nullptr)
+    {
+      // Only valid inside an offscreen pass — swapchain pass is reserved for ImGui.
+      return;
+    }
+    VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer();
+    VkRenderPass rp    = m_activePassFb->renderPass;
+    VkDevice device    = m_context->GetDevice();
+    m_testPipeline->Draw(cb,
+                         rp,
+                         [this, device](VkPipeline old)
+                         {
+                           DeferDelete([device, old]() { vkDestroyPipeline(device, old, nullptr); });
+                         });
   }
 
   void VulkanBackend::BeginFrame()
