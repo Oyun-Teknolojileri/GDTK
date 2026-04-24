@@ -32,6 +32,9 @@ namespace ToolKit
       VkBuffer handle     = VK_NULL_HANDLE;
       VmaAllocation alloc = VK_NULL_HANDLE;
       VkDeviceSize size   = 0;
+      /** Non-null only for buffers created via CreateHostVisibleMapped — the memory is
+       *  persistently mapped by VMA for the lifetime of the allocation. memcpy directly. */
+      void* mapped        = nullptr;
     };
 
     /**
@@ -41,6 +44,14 @@ namespace ToolKit
      * Returns a Buffer with handle == VK_NULL_HANDLE on failure.
      */
     Buffer Create(VulkanContext* ctx, VkBufferUsageFlags usage, VkDeviceSize size, int vmaUsageFlag);
+
+    /**
+     * Allocates a HOST_VISIBLE + HOST_COHERENT buffer with VMA persistent mapping. The returned
+     * Buffer has `mapped != nullptr`; caller writes via memcpy and does not need to flush.
+     * Intended for per-frame uniform buffers updated from the CPU. Returns handle == VK_NULL_HANDLE
+     * on failure.
+     */
+    Buffer CreateHostVisibleMapped(VulkanContext* ctx, VkBufferUsageFlags usage, VkDeviceSize size);
 
     /** Frees the VkBuffer + VMA allocation. Safe to call on a default-constructed Buffer. */
     void Destroy(VulkanContext* ctx, Buffer& buf);

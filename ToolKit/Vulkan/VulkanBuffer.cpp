@@ -57,6 +57,45 @@ namespace ToolKit
       buf = Buffer{};
     }
 
+    Buffer CreateHostVisibleMapped(VulkanContext* ctx, VkBufferUsageFlags usage, VkDeviceSize size)
+    {
+      Buffer out{};
+      if (ctx == nullptr || ctx->GetAllocator() == nullptr || size == 0)
+      {
+        return out;
+      }
+
+      VkBufferCreateInfo bci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+      bci.size        = size;
+      bci.usage       = usage;
+      bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+      // CPU_TO_GPU + MAPPED_BIT ? VMA picks HOST_VISIBLE+HOST_COHERENT memory and keeps it
+      // persistently mapped for the lifetime of the allocation. We don't need vkFlushMappedMemoryRanges
+      // because the memory is host-coherent.
+      VmaAllocationCreateInfo aci{};
+      aci.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
+      aci.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+      VmaAllocationInfo info{};
+      if (VkResult r = vmaCreateBuffer(ctx->GetAllocator(), &bci, &aci, &out.handle, &out.alloc, &info);
+          r != VK_SUCCESS)
+      {
+        TK_ERR("VulkanBuffer::CreateHostVisibleMapped vmaCreateBuffer failed: %d", r);
+        out = Buffer{};
+        return out;
+      }
+      out.size   = size;
+      out.mapped = info.pMappedData;
+      if (out.mapped == nullptr)
+      {
+        TK_ERR("VulkanBuffer::CreateHostVisibleMapped: MAPPED_BIT requested but pMappedData null");
+        vmaDestroyBuffer(ctx->GetAllocator(), out.handle, out.alloc);
+        out = Buffer{};
+      }
+      return out;
+    }
+
     Buffer UploadDeviceLocal(VulkanContext* ctx, VkBufferUsageFlags usage, const void* data, VkDeviceSize size)
     {
       Buffer out{};
