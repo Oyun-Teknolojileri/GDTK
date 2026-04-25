@@ -10,42 +10,39 @@
 #include "../Logger.h"
 #include "VulkanContext.h"
 
-#include <cstring>
-
 namespace ToolKit
 {
 
   bool VulkanPipelineDesc::operator==(const VulkanPipelineDesc& o) const
   {
-    if (renderPass != o.renderPass || vert != o.vert || frag != o.frag)
+    // Compare scalar/POD fields in one shot. The attributes tail (slots beyond attributeCount)
+    // is uninitialized garbage on either side, so it must not enter the comparison — we walk
+    // only the live prefix.
+    const bool scalarsEqual =
+        renderPass == o.renderPass && vert == o.vert && frag == o.frag &&
+        vertexStride == o.vertexStride && attributeCount == o.attributeCount &&
+        topology == o.topology && cullMode == o.cullMode && frontFace == o.frontFace &&
+        depthTestEnable == o.depthTestEnable && depthWriteEnable == o.depthWriteEnable &&
+        depthCompareOp == o.depthCompareOp && blendEnable == o.blendEnable &&
+        srcColorBlendFactor == o.srcColorBlendFactor && dstColorBlendFactor == o.dstColorBlendFactor &&
+        colorBlendOp == o.colorBlendOp && srcAlphaBlendFactor == o.srcAlphaBlendFactor &&
+        dstAlphaBlendFactor == o.dstAlphaBlendFactor && alphaBlendOp == o.alphaBlendOp &&
+        colorAttachmentCount == o.colorAttachmentCount;
+
+    if (!scalarsEqual)
     {
       return false;
     }
-    if (vertexStride != o.vertexStride || attributeCount != o.attributeCount)
+
+    for (uint i = 0; i < attributeCount; ++i)
     {
-      return false;
-    }
-    for (uint32_t i = 0; i < attributeCount; ++i)
-    {
-      const auto& a = attributes[i];
-      const auto& b = o.attributes[i];
-      if (a.location != b.location || a.binding != b.binding || a.format != b.format || a.offset != b.offset)
+      const VkVertexInputAttributeDescription& a = attributes[i];
+      const VkVertexInputAttributeDescription& b = o.attributes[i];
+      if (a.location != b.location || a.binding != b.binding || a.format != b.format ||
+          a.offset != b.offset)
       {
         return false;
       }
-    }
-    if (topology != o.topology || cullMode != o.cullMode || frontFace != o.frontFace)
-    {
-      return false;
-    }
-    if (depthTestEnable != o.depthTestEnable || depthWriteEnable != o.depthWriteEnable ||
-        depthCompareOp != o.depthCompareOp)
-    {
-      return false;
-    }
-    if (blendEnable != o.blendEnable || colorAttachmentCount != o.colorAttachmentCount)
-    {
-      return false;
     }
     return true;
   }
@@ -65,7 +62,7 @@ namespace ToolKit
     h = MixBits(h, reinterpret_cast<std::uintptr_t>(d.frag));
     h = MixBits(h, d.vertexStride);
     h = MixBits(h, d.attributeCount);
-    for (uint32_t i = 0; i < d.attributeCount; ++i)
+    for (uint i = 0; i < d.attributeCount; ++i)
     {
       const auto& a = d.attributes[i];
       h = MixBits(h, a.location);
@@ -80,6 +77,12 @@ namespace ToolKit
     h = MixBits(h, (std::size_t) d.depthWriteEnable);
     h = MixBits(h, (std::size_t) d.depthCompareOp);
     h = MixBits(h, (std::size_t) d.blendEnable);
+    h = MixBits(h, (std::size_t) d.srcColorBlendFactor);
+    h = MixBits(h, (std::size_t) d.dstColorBlendFactor);
+    h = MixBits(h, (std::size_t) d.colorBlendOp);
+    h = MixBits(h, (std::size_t) d.srcAlphaBlendFactor);
+    h = MixBits(h, (std::size_t) d.dstAlphaBlendFactor);
+    h = MixBits(h, (std::size_t) d.alphaBlendOp);
     h = MixBits(h, d.colorAttachmentCount);
     return h;
   }
@@ -147,24 +150,24 @@ namespace ToolKit
     ds.depthWriteEnable = desc.depthWriteEnable;
     ds.depthCompareOp   = desc.depthCompareOp;
 
+    // No build-time branching on blend mode — desc carries the full recipe. When blendEnable is
+    // VK_FALSE the factor/op fields are ignored by the driver, so we can assign them
+    // unconditionally and keep the cache key stable for the disabled-blend case.
     VkPipelineColorBlendAttachmentState att{};
-    att.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-                        VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-    att.blendEnable = desc.blendEnable;
-    if (desc.blendEnable)
-    {
-      att.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-      att.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-      att.colorBlendOp        = VK_BLEND_OP_ADD;
-      att.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-      att.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-      att.alphaBlendOp        = VK_BLEND_OP_ADD;
-    }
+    att.colorWriteMask      = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                              VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    att.blendEnable         = desc.blendEnable;
+    att.srcColorBlendFactor = desc.srcColorBlendFactor;
+    att.dstColorBlendFactor = desc.dstColorBlendFactor;
+    att.colorBlendOp        = desc.colorBlendOp;
+    att.srcAlphaBlendFactor = desc.srcAlphaBlendFactor;
+    att.dstAlphaBlendFactor = desc.dstAlphaBlendFactor;
+    att.alphaBlendOp        = desc.alphaBlendOp;
 
     // One attachment state replicated across all color attachments — fine for the current test
     // path. Stage 7's MRT passes will need per-attachment state.
     std::array<VkPipelineColorBlendAttachmentState, 8> attStates{};
-    for (uint32_t i = 0; i < desc.colorAttachmentCount && i < attStates.size(); ++i)
+    for (uint i = 0; i < desc.colorAttachmentCount && i < attStates.size(); ++i)
     {
       attStates[i] = att;
     }

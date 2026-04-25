@@ -40,8 +40,8 @@ namespace ToolKit
     VkShaderModule frag        = VK_NULL_HANDLE;
 
     // Vertex input (single binding for now).
-    uint32_t vertexStride      = 0;
-    uint32_t attributeCount    = 0;
+    uint vertexStride      = 0;
+    uint attributeCount    = 0;
     std::array<VkVertexInputAttributeDescription, kMaxAttribs> attributes{};
 
     // Raster + primitive.
@@ -54,9 +54,17 @@ namespace ToolKit
     VkBool32 depthWriteEnable = VK_FALSE;
     VkCompareOp depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
 
-    // Color blend (single attachment, opaque or straight alpha).
-    VkBool32 blendEnable         = VK_FALSE;
-    uint32_t colorAttachmentCount = 1;
+    // Color blend (single attachment state replicated across colorAttachmentCount). Factors
+    // and ops live in the desc so the cache builder has zero branching ? callers spell out the
+    // exact blend recipe they want and equal recipes hash equal.
+    VkBool32 blendEnable           = VK_FALSE;
+    VkBlendFactor srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+    VkBlendFactor dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+    VkBlendOp colorBlendOp            = VK_BLEND_OP_ADD;
+    VkBlendFactor srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+    VkBlendFactor dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+    VkBlendOp alphaBlendOp            = VK_BLEND_OP_ADD;
+    uint colorAttachmentCount         = 1;
 
     bool operator==(const VulkanPipelineDesc& o) const;
   };
