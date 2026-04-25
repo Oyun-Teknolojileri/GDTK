@@ -40,26 +40,21 @@ namespace ToolKit
      *  VkPipeline is built lazily in Draw(). */
     bool Init(VulkanContext* ctx);
 
-    /** Immediate teardown of layout, modules, and the cached pipeline. Caller must already have
-     *  vkDeviceWaitIdle'd. */
+    /** Immediate teardown of layout + modules + buffers + descriptor. The cached VkPipelines
+     *  themselves live in VulkanPipelineCache and are destroyed by the backend after this runs.
+     *  Caller must already have vkDeviceWaitIdle'd. */
     void Destroy();
 
     /**
-     * Binds (building if needed against @p rp) and emits vkCmdDraw(3,1,0,0).
-     * @param deferDestroyPipeline - called with the previous VkPipeline when @p rp changes.
-     *        Caller is expected to push it onto VulkanBackend's frame-safe deletion queue.
+     * Issues the test-quad draws on @p cb inside the pass owning @p rp. Pipelines are fetched
+     * from @p cache — same desc → same VkPipeline. Stage 6c swapped the old build-on-change
+     * path for this cache-driven one in preparation for real material-driven pipelines.
      */
-    void Draw(VkCommandBuffer cb,
-              VkRenderPass rp,
-              const std::function<void(VkPipeline)>& deferDestroyPipeline);
+    void Draw(VkCommandBuffer cb, VkRenderPass rp, class VulkanPipelineCache* cache);
 
    private:
-    bool BuildPipeline(VkRenderPass rp);
-
     VulkanContext* m_ctx      = nullptr;
     VkPipelineLayout m_layout = VK_NULL_HANDLE;
-    VkPipeline m_pipeline     = VK_NULL_HANDLE;
-    VkRenderPass m_builtFor   = VK_NULL_HANDLE;
     VkShaderModule m_vert     = VK_NULL_HANDLE;
     VkShaderModule m_frag     = VK_NULL_HANDLE;
 

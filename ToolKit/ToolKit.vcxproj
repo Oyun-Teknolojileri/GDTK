@@ -107,6 +107,7 @@
     <ClCompile Include="Vulkan\VulkanDescriptor.cpp" />
     <ClCompile Include="Vulkan\VulkanImage.cpp" />
     <ClCompile Include="Vulkan\VulkanPipeline.cpp" />
+    <ClCompile Include="Vulkan\VulkanPipelineCache.cpp" />
     <ClCompile Include="Vulkan\VulkanResources.cpp" />
     <ClCompile Include="Vulkan\VulkanShader.cpp" />
     <ClCompile Include="Vulkan\VulkanSwapchain.cpp" />
@@ -210,6 +211,7 @@
     <ClInclude Include="Vulkan\VulkanDescriptor.h" />
     <ClInclude Include="Vulkan\VulkanImage.h" />
     <ClInclude Include="Vulkan\VulkanPipeline.h" />
+    <ClInclude Include="Vulkan\VulkanPipelineCache.h" />
     <ClInclude Include="Vulkan\VulkanResources.h" />
     <ClInclude Include="Vulkan\VulkanShader.h" />
     <ClInclude Include="Vulkan\VulkanSwapchain.h" />

@@ -12,6 +12,7 @@
 #include "../Texture.h"
 #include "VulkanContext.h"
 #include "VulkanPipeline.h"
+#include "VulkanPipelineCache.h"
 #include "VulkanResources.h"
 #include "VulkanSwapchain.h"
 
@@ -24,6 +25,7 @@ namespace ToolKit
   VulkanBackend::VulkanBackend()
       : m_context(std::make_unique<VulkanContext>()),
         m_swapchain(std::make_unique<VulkanSwapchain>()),
+        m_pipelineCache(std::make_unique<VulkanPipelineCache>()),
         m_testPipeline(std::make_unique<VulkanTestPipeline>())
   {
     // One bucket per frame-in-flight. Sized once at construction so DeferDelete can run before
@@ -46,6 +48,15 @@ namespace ToolKit
       m_testPipeline->Destroy();
     }
     m_testPipeline.reset();
+    // Pipeline cache AFTER the test pipeline — the test pipeline no longer owns any cached
+    // VkPipeline directly, but it may hold VkShaderModule / VkPipelineLayout that some cache
+    // entries reference. Destroying the cache first keeps destruction order clean when Stage 7
+    // starts mixing engine shaders + test scaffolds.
+    if (m_pipelineCache && m_context && m_context->GetDevice() != VK_NULL_HANDLE)
+    {
+      m_pipelineCache->Destroy(m_context->GetDevice());
+    }
+    m_pipelineCache.reset();
     m_swapchain.reset();
     m_context.reset();
   }
@@ -117,13 +128,7 @@ namespace ToolKit
     }
     VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer();
     VkRenderPass rp    = m_activePassFb->renderPass;
-    VkDevice device    = m_context->GetDevice();
-    m_testPipeline->Draw(cb,
-                         rp,
-                         [this, device](VkPipeline old)
-                         {
-                           DeferDelete([device, old]() { vkDestroyPipeline(device, old, nullptr); });
-                         });
+    m_testPipeline->Draw(cb, rp, m_pipelineCache.get());
   }
 
   void VulkanBackend::BeginFrame()

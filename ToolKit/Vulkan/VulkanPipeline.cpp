@@ -11,10 +11,12 @@
 #include "VulkanContext.h"
 #include "VulkanDescriptor.h"
 #include "VulkanImage.h"
+#include "VulkanPipelineCache.h"
 #include "VulkanResources.h"
 #include "VulkanShader.h"
 
 #include <array>
+#include <cstring>
 
 namespace ToolKit
 {
@@ -218,11 +220,7 @@ namespace ToolKit
     VulkanBuffer::Destroy(m_ctx, m_cameraUbo);
     VulkanBuffer::Destroy(m_ctx, m_indexBuffer);
     VulkanBuffer::Destroy(m_ctx, m_vertexBuffer);
-    if (m_pipeline != VK_NULL_HANDLE)
-    {
-      vkDestroyPipeline(device, m_pipeline, nullptr);
-      m_pipeline = VK_NULL_HANDLE;
-    }
+    // VkPipelines are owned by VulkanPipelineCache and destroyed by the backend.
     if (m_layout != VK_NULL_HANDLE)
     {
       vkDestroyPipelineLayout(device, m_layout, nullptr);
@@ -238,151 +236,69 @@ namespace ToolKit
       vkDestroyShaderModule(device, m_frag, nullptr);
       m_frag = VK_NULL_HANDLE;
     }
-    m_builtFor = VK_NULL_HANDLE;
     m_ctx      = nullptr;
   }
 
-  bool VulkanTestPipeline::BuildPipeline(VkRenderPass rp)
+  void VulkanTestPipeline::Draw(VkCommandBuffer cb, VkRenderPass rp, VulkanPipelineCache* cache)
   {
-    VkDevice device = m_ctx->GetDevice();
-
-    VkPipelineShaderStageCreateInfo stages[2]{};
-    stages[0].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    stages[0].stage  = VK_SHADER_STAGE_VERTEX_BIT;
-    stages[0].module = m_vert;
-    stages[0].pName  = "main";
-    stages[1].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    stages[1].stage  = VK_SHADER_STAGE_FRAGMENT_BIT;
-    stages[1].module = m_frag;
-    stages[1].pName  = "main";
-
-    VkVertexInputBindingDescription binding{};
-    binding.binding   = 0;
-    binding.stride    = sizeof(TestVertex);
-    binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
-    VkVertexInputAttributeDescription attribs[3]{};
-    attribs[0].location = 0;
-    attribs[0].binding  = 0;
-    attribs[0].format   = VK_FORMAT_R32G32B32_SFLOAT;
-    attribs[0].offset   = offsetof(TestVertex, pos);
-    attribs[1].location = 1;
-    attribs[1].binding  = 0;
-    attribs[1].format   = VK_FORMAT_R32G32B32_SFLOAT;
-    attribs[1].offset   = offsetof(TestVertex, color);
-    attribs[2].location = 2;
-    attribs[2].binding  = 0;
-    attribs[2].format   = VK_FORMAT_R32G32_SFLOAT;
-    attribs[2].offset   = offsetof(TestVertex, uv);
-
-    VkPipelineVertexInputStateCreateInfo vi{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
-    vi.vertexBindingDescriptionCount   = 1;
-    vi.pVertexBindingDescriptions      = &binding;
-    vi.vertexAttributeDescriptionCount = 3;
-    vi.pVertexAttributeDescriptions    = attribs;
-
-    VkPipelineInputAssemblyStateCreateInfo ia{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
-    ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-
-    // Viewport + scissor are set by VulkanBackend::BeginPass — we just declare 1 each via dynamic state.
-    VkPipelineViewportStateCreateInfo vp{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
-    vp.viewportCount = 1;
-    vp.scissorCount  = 1;
-
-    VkPipelineRasterizationStateCreateInfo rs{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
-    rs.polygonMode = VK_POLYGON_MODE_FILL;
-    rs.cullMode    = VK_CULL_MODE_NONE;
-    rs.frontFace   = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-    rs.lineWidth   = 1.0f;
-
-    VkPipelineMultisampleStateCreateInfo ms{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
-    ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
-
-    // Depth attached on viewport FB but we don't care about it for the test triangle.
-    // Disabling test+write keeps the pipeline compatible with depth-bearing render passes.
-    VkPipelineDepthStencilStateCreateInfo ds{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
-    ds.depthTestEnable  = VK_FALSE;
-    ds.depthWriteEnable = VK_FALSE;
-
-    VkPipelineColorBlendAttachmentState att{};
-    att.colorWriteMask =
-        VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-    att.blendEnable    = VK_FALSE;
-
-    VkPipelineColorBlendStateCreateInfo cb{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
-    cb.attachmentCount = 1;
-    cb.pAttachments    = &att;
-
-    VkDynamicState dynStates[]{VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
-    VkPipelineDynamicStateCreateInfo dyn{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
-    dyn.dynamicStateCount = 2;
-    dyn.pDynamicStates    = dynStates;
-
-    VkGraphicsPipelineCreateInfo pci{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
-    pci.stageCount          = 2;
-    pci.pStages             = stages;
-    pci.pVertexInputState   = &vi;
-    pci.pInputAssemblyState = &ia;
-    pci.pViewportState      = &vp;
-    pci.pRasterizationState = &rs;
-    pci.pMultisampleState   = &ms;
-    pci.pDepthStencilState  = &ds;
-    pci.pColorBlendState    = &cb;
-    pci.pDynamicState       = &dyn;
-    pci.layout              = m_layout;
-    pci.renderPass          = rp;
-    pci.subpass             = 0;
-
-    VkPipeline newPipe = VK_NULL_HANDLE;
-    if (VkResult r = vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pci, nullptr, &newPipe); r != VK_SUCCESS)
-    {
-      TK_ERR("vkCreateGraphicsPipelines (test triangle) failed: %d", r);
-      return false;
-    }
-
-    m_pipeline = newPipe;
-    m_builtFor = rp;
-    return true;
-  }
-
-  void VulkanTestPipeline::Draw(VkCommandBuffer cb,
-                                VkRenderPass rp,
-                                const std::function<void(VkPipeline)>& deferDestroyPipeline)
-  {
-    if (cb == VK_NULL_HANDLE || rp == VK_NULL_HANDLE || m_layout == VK_NULL_HANDLE)
+    if (cb == VK_NULL_HANDLE || rp == VK_NULL_HANDLE || m_layout == VK_NULL_HANDLE ||
+        cache == nullptr || m_ctx == nullptr)
     {
       return;
     }
 
-    if (m_pipeline == VK_NULL_HANDLE || rp != m_builtFor)
+    // Build the pipeline desc once per call — desc matches by value so the cache returns the
+    // same VkPipeline for every frame targeting the same render pass.
+    VulkanPipelineDesc desc{};
+    desc.renderPass      = rp;
+    desc.vert            = m_vert;
+    desc.frag            = m_frag;
+    desc.vertexStride    = sizeof(TestVertex);
+    desc.attributeCount  = 3;
+    desc.attributes[0]   = {0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(TestVertex, pos)};
+    desc.attributes[1]   = {1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(TestVertex, color)};
+    desc.attributes[2]   = {2, 0, VK_FORMAT_R32G32_SFLOAT,    offsetof(TestVertex, uv)};
+    desc.topology        = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    desc.cullMode        = VK_CULL_MODE_NONE;
+    desc.frontFace       = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    desc.depthTestEnable  = VK_TRUE;
+    desc.depthWriteEnable = VK_TRUE;
+    desc.depthCompareOp  = VK_COMPARE_OP_LESS_OR_EQUAL;
+    desc.blendEnable     = VK_FALSE;
+    desc.colorAttachmentCount = 1;
+
+    VkPipeline pipe = cache->GetOrCreate(m_ctx, m_layout, desc);
+    if (pipe == VK_NULL_HANDLE)
     {
-      VkPipeline old = m_pipeline;
-      if (!BuildPipeline(rp))
-      {
-        return;
-      }
-      // Old pipeline may still be referenced by an in-flight cmd buffer — defer its destruction.
-      // BuildPipeline already overwrote m_pipeline, so handing off the captured `old` is safe.
-      if (old != VK_NULL_HANDLE && deferDestroyPipeline)
-      {
-        deferDestroyPipeline(old);
-      }
+      return;
     }
 
-    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
+    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe);
     if (m_descriptorSet != VK_NULL_HANDLE)
     {
       vkCmdBindDescriptorSets(
           cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_layout, 0, 1, &m_descriptorSet, 0, nullptr);
     }
-    // Stage 5c: rotate around Y (up) — makes the quad's 3D nature obvious.
-    m_rotAngle += 0.01f;
-    Mat4 model = glm::rotate(Mat4(1.0f), m_rotAngle, Vec3(0.0f, 1.0f, 0.0f));
-    vkCmdPushConstants(cb, m_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Mat4), &model);
     VkBuffer vb       = m_vertexBuffer.handle;
     VkDeviceSize zero = 0;
     vkCmdBindVertexBuffers(cb, 0, 1, &vb, &zero);
     vkCmdBindIndexBuffer(cb, m_indexBuffer.handle, 0, VK_INDEX_TYPE_UINT16);
+
+    // Stage 5c/6b: two quads rotating in opposite directions at different Z's. Draw order is
+    // deliberately near-first → far-second: only a working depth test keeps the far quad from
+    // painting over the near one where they overlap.
+    m_rotAngle += 0.01f;
+
+    // Quad A — near the camera, rotates around Y.
+    Mat4 nearModel = glm::translate(Mat4(1.0f), Vec3(-0.1f, 0.0f, 0.3f));
+    nearModel      = glm::rotate(nearModel, m_rotAngle, Vec3(0.0f, 1.0f, 0.0f));
+    vkCmdPushConstants(cb, m_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Mat4), &nearModel);
+    vkCmdDrawIndexed(cb, 6, 1, 0, 0, 0);
+
+    // Quad B — further from the camera, rotates the other way so they interpenetrate visibly.
+    Mat4 farModel = glm::translate(Mat4(1.0f), Vec3(0.1f, 0.0f, -0.3f));
+    farModel      = glm::rotate(farModel, -m_rotAngle * 1.3f, Vec3(0.0f, 1.0f, 0.0f));
+    vkCmdPushConstants(cb, m_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Mat4), &farModel);
     vkCmdDrawIndexed(cb, 6, 1, 0, 0, 0);
   }
 

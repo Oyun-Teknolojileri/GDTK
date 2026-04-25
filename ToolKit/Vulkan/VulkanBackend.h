@@ -32,6 +32,7 @@ namespace ToolKit
 
     VulkanContext* GetContext() { return m_context.get(); }
     VulkanSwapchain* GetSwapchain() { return m_swapchain.get(); }
+    class VulkanPipelineCache* GetPipelineCache() { return m_pipelineCache.get(); }
 
     /** The command buffer being recorded this frame, or VK_NULL_HANDLE between frames. */
     VkCommandBuffer GetCurrentCommandBuffer() const;
@@ -160,6 +161,7 @@ namespace ToolKit
    private:
     std::unique_ptr<VulkanContext> m_context;
     std::unique_ptr<VulkanSwapchain> m_swapchain;
+    std::unique_ptr<class VulkanPipelineCache> m_pipelineCache;
     std::unique_ptr<VulkanTestPipeline> m_testPipeline; // Stage 2b scaffold; removed in Stage 3.
     bool m_frameStarted  = false;
     bool m_needsRecreate = false;
