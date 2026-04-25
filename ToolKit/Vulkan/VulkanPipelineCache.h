@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include "../RenderState.h"
 #include "../Types.h"
 
 #include <vulkan/vulkan.h>
@@ -98,5 +99,14 @@ namespace ToolKit
    private:
     std::unordered_map<VulkanPipelineDesc, VkPipeline, VulkanPipelineDescHash> m_pipelines;
   };
+
+  /**
+   * Maps ToolKit's @ref RenderState onto the corresponding fields of @p out. Render-pass /
+   * shader / vertex input fields are left untouched — the caller fills those in based on the
+   * active pass + bound program. Single conversion path, branchless: every RenderState field
+   * resolves through a small switch table, no per-state if chains, so identical RenderStates
+   * always produce identical (hashable) descs.
+   */
+  void RenderStateToPipelineDesc(const RenderState& state, VulkanPipelineDesc& out);
 
 } // namespace ToolKit

@@ -104,4 +104,23 @@ namespace ToolKit
     void ReleaseOwnedViews();
   };
 
+  /**
+   * Backend GPU data for a UniformBuffer. Stored on UniformBuffer::m_gpuData.
+   *
+   * HOST_VISIBLE + HOST_COHERENT + persistently-mapped via VMA so updates are a plain memcpy
+   * with no flush. Sized once at Create; subsequent Update calls assume the size matches
+   * (UniformBuffer::Map enforces this on the engine side).
+   */
+  struct VulkanUniformBuffer : public GpuResourceData
+  {
+    VulkanContext* context = nullptr;
+
+    VkBuffer buffer        = VK_NULL_HANDLE;
+    VmaAllocation alloc    = VK_NULL_HANDLE;
+    void* mapped           = nullptr;
+    VkDeviceSize size      = 0;
+
+    ~VulkanUniformBuffer() override;
+  };
+
 } // namespace ToolKit

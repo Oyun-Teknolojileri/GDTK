@@ -218,4 +218,120 @@ namespace ToolKit
     m_pipelines.clear();
   }
 
+  // -------- RenderState ? VulkanPipelineDesc -----------------------------------------------
+  // Single switch-table conversion; no branching beyond the four enum maps. Same RenderState
+  // always produces the same desc bytes ? same cache hit.
+
+  static VkCullModeFlags ToVkCullMode(CullingType c)
+  {
+    switch (c)
+    {
+      case CullingType::Front: return VK_CULL_MODE_FRONT_BIT;
+      case CullingType::Back:  return VK_CULL_MODE_BACK_BIT;
+      case CullingType::TwoSided:
+      default:                 return VK_CULL_MODE_NONE;
+    }
+  }
+
+  static VkCompareOp ToVkCompareOp(CompareFunctions f)
+  {
+    switch (f)
+    {
+      case CompareFunctions::FuncNever:   return VK_COMPARE_OP_NEVER;
+      case CompareFunctions::FuncLess:    return VK_COMPARE_OP_LESS;
+      case CompareFunctions::FuncEqual:   return VK_COMPARE_OP_EQUAL;
+      case CompareFunctions::FuncLequal:  return VK_COMPARE_OP_LESS_OR_EQUAL;
+      case CompareFunctions::FuncGreater: return VK_COMPARE_OP_GREATER;
+      case CompareFunctions::FuncNEqual:  return VK_COMPARE_OP_NOT_EQUAL;
+      case CompareFunctions::FuncGEqual:  return VK_COMPARE_OP_GREATER_OR_EQUAL;
+      case CompareFunctions::FuncAlways:
+      default:                            return VK_COMPARE_OP_ALWAYS;
+    }
+  }
+
+  static VkPrimitiveTopology ToVkTopology(DrawType d)
+  {
+    switch (d)
+    {
+      case DrawType::Point:      return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
+      case DrawType::Line:       return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+      case DrawType::LineStrip:  return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
+      case DrawType::LineLoop:   // Vulkan has no line-loop primitive; closest match is LINE_STRIP.
+                                 return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
+      case DrawType::Triangle:
+      default:                   return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    }
+  }
+
+  // (blendEnable, srcColor, dstColor, colorOp, srcAlpha, dstAlpha, alphaOp).
+  struct BlendRecipe
+  {
+    VkBool32 enable;
+    VkBlendFactor srcColor;
+    VkBlendFactor dstColor;
+    VkBlendOp colorOp;
+    VkBlendFactor srcAlpha;
+    VkBlendFactor dstAlpha;
+    VkBlendOp alphaOp;
+  };
+
+  static BlendRecipe ToBlendRecipe(BlendFunction f)
+  {
+    // ALPHA_MASK is a fragment-shader feature (discard-on-threshold) — no blend-state difference
+    // from opaque, so it falls through to the default opaque recipe.
+    switch (f)
+    {
+      case BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA:
+        return {VK_TRUE,
+                VK_BLEND_FACTOR_SRC_ALPHA,
+                VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+                VK_BLEND_OP_ADD,
+                VK_BLEND_FACTOR_ONE,
+                VK_BLEND_FACTOR_ZERO,
+                VK_BLEND_OP_ADD};
+      case BlendFunction::ONE_TO_ONE: // Additive.
+        return {VK_TRUE,
+                VK_BLEND_FACTOR_ONE,
+                VK_BLEND_FACTOR_ONE,
+                VK_BLEND_OP_ADD,
+                VK_BLEND_FACTOR_ONE,
+                VK_BLEND_FACTOR_ONE,
+                VK_BLEND_OP_ADD};
+      case BlendFunction::NONE:
+      case BlendFunction::ALPHA_MASK:
+      default:
+        return {VK_FALSE,
+                VK_BLEND_FACTOR_ONE,
+                VK_BLEND_FACTOR_ZERO,
+                VK_BLEND_OP_ADD,
+                VK_BLEND_FACTOR_ONE,
+                VK_BLEND_FACTOR_ZERO,
+                VK_BLEND_OP_ADD};
+    }
+  }
+
+  void RenderStateToPipelineDesc(const RenderState& state, VulkanPipelineDesc& out)
+  {
+    // RenderState carries a `blendOverride` flag that tells the renderer to ignore the material's
+    // declared blend mode for this draw — honored here by selecting the override function when set.
+    const BlendFunction blend = state.blendOverride ? state.blendOverrideFunc : state.blendFunction;
+    const BlendRecipe r       = ToBlendRecipe(blend);
+
+    out.topology            = ToVkTopology(state.drawType);
+    out.cullMode            = ToVkCullMode(state.cullMode);
+    out.frontFace           = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+
+    out.depthTestEnable     = state.depthTestEnabled ? VK_TRUE : VK_FALSE;
+    out.depthWriteEnable    = state.depthWriteEnabled ? VK_TRUE : VK_FALSE;
+    out.depthCompareOp      = ToVkCompareOp(state.depthFunction);
+
+    out.blendEnable         = r.enable;
+    out.srcColorBlendFactor = r.srcColor;
+    out.dstColorBlendFactor = r.dstColor;
+    out.colorBlendOp        = r.colorOp;
+    out.srcAlphaBlendFactor = r.srcAlpha;
+    out.dstAlphaBlendFactor = r.dstAlpha;
+    out.alphaBlendOp        = r.alphaOp;
+  }
+
 } // namespace ToolKit

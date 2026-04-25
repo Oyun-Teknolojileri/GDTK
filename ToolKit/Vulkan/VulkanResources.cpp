@@ -136,4 +136,17 @@ namespace ToolKit
     ReleaseLazyObjects();
   }
 
+  VulkanUniformBuffer::~VulkanUniformBuffer()
+  {
+    if (context == nullptr || buffer == VK_NULL_HANDLE)
+    {
+      return;
+    }
+    VmaAllocator allocator = context->GetAllocator();
+    vmaDestroyBuffer(allocator, buffer, alloc);
+    buffer  = VK_NULL_HANDLE;
+    alloc   = VK_NULL_HANDLE;
+    mapped  = nullptr;
+  }
+
 } // namespace ToolKit
