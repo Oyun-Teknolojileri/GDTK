@@ -435,22 +435,66 @@ namespace ToolKit
 
   void VulkanBackend::SetViewport(uint x, uint y, uint w, uint h)
   {
-    // TODO: vkCmdSetViewport.
+    // Dynamic state — every cached pipeline is built with VK_DYNAMIC_STATE_VIEWPORT (see
+    // VulkanPipelineCache::GetOrCreate), so this can be called any time during cmd recording.
+    // Bail when no frame is active to avoid recording into a non-recording cmd buffer.
+    if (m_swapchain == nullptr || !m_swapchain->IsFrameActive())
+    {
+      return;
+    }
+    VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer();
+    if (cb == VK_NULL_HANDLE)
+    {
+      return;
+    }
+    // Vulkan's framebuffer Y axis matches GL's after a flip; ToolKit's viewport coords are
+    // already in the "Y goes down" convention (top-left origin), so we map x/y directly.
+    VkViewport vp{};
+    vp.x        = (float) x;
+    vp.y        = (float) y;
+    vp.width    = (float) w;
+    vp.height   = (float) h;
+    vp.minDepth = 0.0f;
+    vp.maxDepth = 1.0f;
+    vkCmdSetViewport(cb, 0, 1, &vp);
   }
 
   void VulkanBackend::SetScissor(uint x, uint y, uint w, uint h)
   {
-    // TODO: vkCmdSetScissor.
+    if (m_swapchain == nullptr || !m_swapchain->IsFrameActive())
+    {
+      return;
+    }
+    VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer();
+    if (cb == VK_NULL_HANDLE)
+    {
+      return;
+    }
+    VkRect2D sc{};
+    sc.offset.x      = (int32_t) x;
+    sc.offset.y      = (int32_t) y;
+    sc.extent.width  = w;
+    sc.extent.height = h;
+    vkCmdSetScissor(cb, 0, 1, &sc);
   }
 
   void VulkanBackend::ClearBuffer(GraphicBitFields fields, const Vec4& color)
   {
-    // TODO: Record clear attachment commands.
+    // Engine pass code clears via PassDesc::clearBits + clearColor at BeginPass time, which is
+    // mapped to VkRenderPass loadOp=CLEAR — the GPU clear happens implicitly at pass start. A
+    // mid-pass ClearBuffer is rare; if a pass actually needs it, vkCmdClearAttachments inside
+    // the active render pass is the right call. Until a concrete pass needs that path we keep
+    // this a no-op so accidental engine-side calls don't generate validation noise.
+    // TODO(stage 11): wire vkCmdClearAttachments when an engine pass demands mid-pass clear.
+    (void) fields;
+    (void) color;
   }
 
   void VulkanBackend::ClearColorBuffer(const Vec4& color)
   {
-    // TODO: Record clear color attachment command.
+    // See ClearBuffer note. ColorOnly variant maps to the same eventual vkCmdClearAttachments
+    // call with the color aspect, again deferred until needed.
+    (void) color;
   }
 
   void VulkanBackend::BindPipeline(const GpuProgramPtr& program, const RenderState* state)
