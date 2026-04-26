@@ -10,6 +10,8 @@
 
 #include "../IGraphicsBackend.h"
 
+#include <vulkan/vulkan.h>
+
 #include <functional>
 #include <memory>
 #include <vector>
@@ -183,6 +185,21 @@ namespace ToolKit
         when every required field is known. */
     struct VulkanGpuProgram* m_boundProgram = nullptr;
     RenderState m_boundState{};
+
+    /** Active per-draw descriptor set (Stage 7d-4). Lazily allocated from the per-frame pool on
+        the first BindTexture / SubmitPerDrawData call following a BindPipeline; reused by every
+        write within the same draw cycle so multiple BindTexture calls fold into a single set.
+        Draw binds it via vkCmdBindDescriptorSets and then null-flips it so the next draw starts
+        a fresh allocation \u2014 Vulkan forbids modifying a set that may still be referenced by an
+        earlier vkCmdDraw. */
+    VkDescriptorSet m_currentDescriptorSet = VK_NULL_HANDLE;
+
+    /** Per-draw UBO ring offset for the next Draw's vkCmdBindDescriptorSets dynamicOffsets[0]
+        (Stage 7d-4b). SubmitPerDrawData stores the slot offset here; if no SubmitPerDrawData
+        runs before a Draw, this stays at 0 and the shader simply reads whatever is at the start
+        of the ring \u2014 stub shaders don't, so it's a safe no-op. Reset by BeginFrame and
+        BindPipeline. */
+    uint32_t m_currentDynamicOffset        = 0;
 
     /**
      * Per-frame-in-flight deletion buckets. Sized to VulkanSwapchain::FRAMES_IN_FLIGHT in the

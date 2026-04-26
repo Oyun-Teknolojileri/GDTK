@@ -57,6 +57,17 @@ namespace ToolKit
                             VkDeviceSize offset,
                             VkDeviceSize range);
 
+    /** Same as @ref WriteUniformBuffer but emits a UNIFORM_BUFFER_DYNAMIC descriptor. The
+     *  buffer + offset + range here are the static base; the per-draw byte offset travels
+     *  through vkCmdBindDescriptorSets' pDynamicOffsets parameter and is added on top of the
+     *  static offset by the driver at access time. */
+    void WriteUniformBufferDynamic(VkDevice device,
+                                   VkDescriptorSet set,
+                                   uint32_t binding,
+                                   VkBuffer buffer,
+                                   VkDeviceSize offset,
+                                   VkDeviceSize range);
+
   } // namespace VulkanDescriptor
 
 } // namespace ToolKit

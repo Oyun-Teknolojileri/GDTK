@@ -125,5 +125,28 @@ namespace ToolKit
       vkUpdateDescriptorSets(device, 1, &w, 0, nullptr);
     }
 
+    void WriteUniformBufferDynamic(VkDevice device,
+                                   VkDescriptorSet set,
+                                   uint32_t binding,
+                                   VkBuffer buffer,
+                                   VkDeviceSize offset,
+                                   VkDeviceSize range)
+    {
+      VkDescriptorBufferInfo info{};
+      info.buffer = buffer;
+      info.offset = offset;
+      info.range  = range;
+
+      VkWriteDescriptorSet w{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+      w.dstSet          = set;
+      w.dstBinding      = binding;
+      w.dstArrayElement = 0;
+      w.descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+      w.descriptorCount = 1;
+      w.pBufferInfo     = &info;
+
+      vkUpdateDescriptorSets(device, 1, &w, 0, nullptr);
+    }
+
   } // namespace VulkanDescriptor
 } // namespace ToolKit

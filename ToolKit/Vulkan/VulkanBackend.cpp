@@ -12,8 +12,10 @@
 #include "../Mesh.h"
 #include "../Texture.h"
 #include "../UniformBuffer.h"
+#include "VulkanBindings.h"
 #include "VulkanBuffer.h"
 #include "VulkanContext.h"
+#include "VulkanDescriptor.h"
 #include "VulkanPipeline.h"
 #include "VulkanPipelineCache.h"
 #include "VulkanResources.h"
@@ -159,6 +161,17 @@ namespace ToolKit
     // bucket before any new work this frame can touch the same slot.
     m_deleterSlot = m_swapchain->GetCurrentFrameIndex();
     DrainDeleterBucket(m_deleterSlot);
+
+    // Same fence guarantee covers descriptor sets allocated last cycle from this slot's pool —
+    // resetting it releases every set in one call, ready for fresh BindTexture/SubmitPerDrawData
+    // allocations during this frame's recording (Stage 7d-4).
+    m_context->ResetFrameDescriptorPool(m_deleterSlot);
+    m_currentDescriptorSet = VK_NULL_HANDLE;
+
+    // The per-draw UBO ring is shared across frames; head=0 reset is also fence-safe because the
+    // ring's contents are only read from inside cmd buffers that have now retired (Stage 7d-4b).
+    m_context->ResetPerDrawUboRing();
+    m_currentDynamicOffset = 0;
   }
 
   void VulkanBackend::EndFrame()
@@ -521,41 +534,119 @@ namespace ToolKit
     m_boundProgram  = gp;
     m_boundState    = *state;
     m_pipelineBound = true;
+
+    // Drop any in-progress descriptor set; the next BindTexture / SubmitPerDrawData kicks off
+    // a fresh allocation. Keeping a stale set across BindPipeline boundaries is unsafe \u2014 we
+    // can't tell whether the new pipeline expects different bindings.
+    m_currentDescriptorSet = VK_NULL_HANDLE;
+    m_currentDynamicOffset = 0;
   }
 
   void VulkanBackend::SubmitPerDrawData(const void* data, size_t size)
   {
-    // TODO(stage 7d): per-draw UBO ring buffer.
-    //
-    // Real implementation needs:
-    //   1. A persistent-mapped UBO ring (VulkanContext-owned, sized for one frame's worth of
-    //      PerDrawUniforms structs aligned to minUniformBufferOffsetAlignment).
-    //   2. memcpy @p data into the ring at the current head, advance head.
-    //   3. vkCmdBindDescriptorSets with VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC + the head
-    //      offset for set=2 (per-draw set, per the descriptor strategy decision).
-    //
-    // Currently a no-op because stub shaders read no UBOs and Stage 7b-1's pipeline layout has
-    // zero descriptor sets. Engine pass code calls this every Draw; silently dropping is fine
-    // — the data is non-essential for the stub render output.
-    (void) data;
-    (void) size;
+    // Stage 7d-4b. Append @p data to the per-frame UBO ring, write a UNIFORM_BUFFER_DYNAMIC
+    // descriptor pointing at the ring base, and stash the slot offset for Draw's bind call.
+    if (m_swapchain == nullptr || !m_swapchain->IsFrameActive())
+    {
+      return;
+    }
+    if (m_boundProgram == nullptr || m_boundProgram->pipelineLayout == VK_NULL_HANDLE)
+    {
+      return;
+    }
+    if (data == nullptr || size == 0)
+    {
+      return;
+    }
+
+    VkDeviceSize offset = 0;
+    void* mapped        = nullptr;
+    if (!m_context->AllocatePerDrawSlot(size, offset, mapped))
+    {
+      // Ring full — already logged once. Skip this draw's per-draw payload; shader ends up
+      // reading the previous slot's contents which is wrong, but no crash. A bigger ring fixes.
+      return;
+    }
+    std::memcpy(mapped, data, size);
+
+    if (m_currentDescriptorSet == VK_NULL_HANDLE)
+    {
+      const uint frame = m_swapchain->GetCurrentFrameIndex();
+      m_currentDescriptorSet =
+          m_context->AllocateFrameDescriptorSet(frame, m_context->GetGlobalDescriptorSetLayout());
+      if (m_currentDescriptorSet == VK_NULL_HANDLE)
+      {
+        return; // pool exhaustion already logged.
+      }
+    }
+
+    // Static descriptor write points at the ring base; the per-draw shift travels via the
+    // dynamic offset on bind. Range = size (the actual payload) so the shader sees only its
+    // own block via std140 access; the ring's leftover bytes are out-of-range on read.
+    VulkanDescriptor::WriteUniformBufferDynamic(
+        m_context->GetDevice(),
+        m_currentDescriptorSet,
+        VulkanBindings::kPerDrawUboBinding,
+        m_context->GetPerDrawUboBuffer(),
+        0,
+        size);
+
+    m_currentDynamicOffset = (uint32_t) offset;
   }
 
   void VulkanBackend::BindTexture(ubyte slot, TexturePtr tex)
   {
-    // TODO(stage 7d): per-material descriptor set updates.
-    //
-    // Real implementation needs:
-    //   1. Frame-scoped descriptor pool that allocates a set per (program, material) pair.
-    //   2. Mapping ToolKit's GL slot index → Vulkan binding number (depends on the chosen
-    //      descriptor strategy: single-set superset / shaderc remap / multi-set rewrite).
-    //   3. WriteCombinedImageSampler(set, binding, view, sampler).
-    //   4. vkCmdBindDescriptorSets at the next Draw (or batched on first Draw after BindPipeline).
-    //
-    // Currently a no-op: Stage 7b-1 GpuProgram has no descriptor set layouts so there's nothing
-    // to bind to. Stub shaders sample nothing.
-    (void) slot;
-    (void) tex;
+    // Stage 7d-4. Writes a COMBINED_IMAGE_SAMPLER into the per-draw descriptor set at
+    // binding=slot (texture slots are NOT shaderc-remapped, so GL slot index = Vulkan binding).
+    // Multiple BindTexture calls between BindPipeline / Draw fold into the same set since we
+    // only allocate when m_currentDescriptorSet is null \u2014 the actual bind happens later in Draw.
+    if (m_swapchain == nullptr || !m_swapchain->IsFrameActive())
+    {
+      return;
+    }
+    if (m_boundProgram == nullptr || m_boundProgram->pipelineLayout == VK_NULL_HANDLE)
+    {
+      // No pipeline bound \u2192 nowhere to attach the descriptor. Engine pass code that calls
+      // BindTexture before BindPipeline (uncommon but possible) silently drops the binding.
+      return;
+    }
+    if (slot >= VulkanBindings::kTextureBindingCount)
+    {
+      TK_ERR("BindTexture: slot %u beyond reserved texture binding range (%u)",
+             (unsigned) slot,
+             (unsigned) VulkanBindings::kTextureBindingCount);
+      return;
+    }
+    if (tex == nullptr)
+    {
+      // Engine occasionally clears a slot by binding nullptr; we model that as "no write" \u2014
+      // descriptor set keeps whatever previous binding it had (or nothing). A real "unbind"
+      // pattern can be added if engine code starts depending on it.
+      return;
+    }
+    auto* vt = static_cast<VulkanTexture*>(tex->m_gpuData.get());
+    if (vt == nullptr || vt->view == VK_NULL_HANDLE || vt->sampler == VK_NULL_HANDLE)
+    {
+      return;
+    }
+
+    if (m_currentDescriptorSet == VK_NULL_HANDLE)
+    {
+      const uint frame = m_swapchain->GetCurrentFrameIndex();
+      m_currentDescriptorSet =
+          m_context->AllocateFrameDescriptorSet(frame, m_context->GetGlobalDescriptorSetLayout());
+      if (m_currentDescriptorSet == VK_NULL_HANDLE)
+      {
+        return; // pool exhaustion already logged.
+      }
+    }
+
+    VulkanDescriptor::WriteCombinedImageSampler(
+        m_context->GetDevice(),
+        m_currentDescriptorSet,
+        VulkanBindings::kTextureBindingBase + (uint) slot,
+        vt->view,
+        vt->sampler);
   }
 
   // Fills the vertex-input portion of @p out (vertexStride + attributes + attributeCount) for
@@ -661,6 +752,27 @@ namespace ToolKit
       return;
     }
     vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe);
+
+    // ---- Bind descriptor set (Stage 7d-4) ---------------------------------------------------
+    // The global layout includes one UNIFORM_BUFFER_DYNAMIC binding (kPerDrawUboBinding), so
+    // every vkCmdBindDescriptorSets call that touches this layout MUST supply exactly one
+    // dynamic offset. If SubmitPerDrawData ran this draw cycle, m_currentDynamicOffset points
+    // at the freshly-written ring slot; otherwise it stays 0 (shaders that don't read the
+    // per-draw UBO are unaffected; ones that do would see stale data \u2014 acceptable until real
+    // engine shaders land).
+    if (m_currentDescriptorSet != VK_NULL_HANDLE)
+    {
+      const uint32_t dyn = m_currentDynamicOffset;
+      vkCmdBindDescriptorSets(cb,
+                              VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              m_boundProgram->pipelineLayout,
+                              0,
+                              1,
+                              &m_currentDescriptorSet,
+                              1,
+                              &dyn);
+      m_currentDescriptorSet = VK_NULL_HANDLE;
+    }
 
     // ---- Bind geometry + draw ---------------------------------------------------------------
     const VkBuffer vbuf      = meshGpu->vertex.handle;
@@ -1099,20 +1211,27 @@ namespace ToolKit
       return nullptr;
     }
 
+    const bool isVertex             = (shader->m_shaderType == ShaderType::VertexShader);
+    const VulkanShader::Stage stage = isVertex ? VulkanShader::Stage::Vertex : VulkanShader::Stage::Fragment;
+
     // -------------------------------------------------------------------------------------------
-    // TODO(stage 7c): compile the real shader source.
+    // Stage 7d-2a (current): always emit a pass-through stub for engine shaders.
     //
-    // The engine's GLSL is written for the GL backend (uses #include, gl_* builtins outside
-    // Vulkan's allowed subset, GL-style binding conventions, etc.) and shaderc rejects it as-is.
-    // Until Stage 7c settles the binding strategy + shader-side adaptation, we ignore @p source
-    // and substitute a minimal pass-through shader so CreateGpuProgram has valid VkShaderModules
-    // to build a pipeline layout from. Draw() is still gated by m_pipelineBound, so nothing
-    // actually renders from these stubs � they exist only to keep the engine's resource graph
-    // alive without crashing.
+    // ToolKit's GL shaders use bare uniforms (`uniform mat4 model;`, `uniform vec4 drawCommand[24];`)
+    // which Vulkan/SPIR-V forbids \u2014 they MUST sit inside a UBO or push constant block. shaderc
+    // therefore rejects every non-trivial engine shader and the failure logs flood the console
+    // (one diagnostic per shader \u00d7 dozens of shaders loaded at boot).
     //
-    // Optimization: shaderc compile is expensive (~tens of ms per call). The engine loads dozens
-    // of shaders during init, so we compile the stub SPIR-V exactly once per stage and cache it;
-    // every subsequent CreateShader just calls vkCreateShaderModule (microseconds).
+    // Until Stage 7d-2b adapts the engine GLSL to be Vulkan-clean, we don't even try the real
+    // source: skip straight to the stub. CreateGpuProgram still gets a valid VkShaderModule, the
+    // pipeline layout still builds, Draw is still gated by m_pipelineBound + descriptor sets, and
+    // engine pass code that uses these programs simply produces no visible output.
+    //
+    // To re-enable real compile (e.g. while testing a single fixed shader), call CompileGlslToSpirv
+    // before falling through to the stub block below \u2014 the cache + module-creation path is the
+    // same. Hand-written Vulkan shaders (TestRenderPipeline, future Stage 12 native passes) bypass
+    // this function entirely and call VulkanShader::CompileGlslToSpirv directly, so they're
+    // unaffected by this gate.
     // -------------------------------------------------------------------------------------------
     static const char* kStubVert = R"(#version 450
         void main() { gl_Position = vec4(0.0, 0.0, 0.0, 1.0); }
@@ -1125,17 +1244,14 @@ namespace ToolKit
     static std::vector<uint32_t> s_stubVertSpirv;
     static std::vector<uint32_t> s_stubFragSpirv;
 
-    const bool isVertex             = (shader->m_shaderType == ShaderType::VertexShader);
     std::vector<uint32_t>& cacheRef = isVertex ? s_stubVertSpirv : s_stubFragSpirv;
-
     if (cacheRef.empty())
     {
-      const VulkanShader::Stage stage = isVertex ? VulkanShader::Stage::Vertex : VulkanShader::Stage::Fragment;
-      const std::string stubSource    = isVertex ? kStubVert : kStubFrag;
-      cacheRef                        = VulkanShader::CompileGlslToSpirv(stage, stubSource, "stub");
+      const std::string stubSource = isVertex ? kStubVert : kStubFrag;
+      cacheRef                     = VulkanShader::CompileGlslToSpirv(stage, stubSource, "stub");
       if (cacheRef.empty())
       {
-        TK_ERR("CreateShader: stub shader compile failed (shaderc misconfigured?)");
+        TK_ERR("CreateShader: stub compile failed (shaderc misconfigured?)");
         return nullptr;
       }
     }
@@ -1149,6 +1265,9 @@ namespace ToolKit
     auto data     = std::make_shared<VulkanShaderModule>();
     data->context = m_context.get();
     data->module  = module;
+
+    // Suppress 'unused' warning for @p source until 7d-2b actually consumes it.
+    (void) source;
     return data;
   }
 

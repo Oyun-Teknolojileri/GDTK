@@ -112,6 +112,14 @@ namespace ToolKit
     {
       return false;
     }
+    if (!CreateFrameDescriptorPools())
+    {
+      return false;
+    }
+    if (!CreatePerDrawUboRing())
+    {
+      return false;
+    }
     if (!CreateOneShotPool())
     {
       return false;
@@ -144,6 +152,21 @@ namespace ToolKit
     {
       vkDestroyDescriptorPool(m_device, m_descriptorPool, nullptr);
       m_descriptorPool = VK_NULL_HANDLE;
+    }
+
+    for (VkDescriptorPool& p : m_perFrameDescriptorPools)
+    {
+      if (p != VK_NULL_HANDLE)
+      {
+        vkDestroyDescriptorPool(m_device, p, nullptr);
+        p = VK_NULL_HANDLE;
+      }
+    }
+
+    // Per-draw UBO ring — destroy before the allocator goes away (VulkanBuffer::Destroy uses VMA).
+    if (m_perDrawUboRing.handle != VK_NULL_HANDLE)
+    {
+      VulkanBuffer::Destroy(this, m_perDrawUboRing);
     }
 
     if (m_globalDescriptorSetLayout != VK_NULL_HANDLE)
@@ -481,6 +504,9 @@ namespace ToolKit
     {
       pushBinding(UboBindingFor(glSlot), VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
     }
+    // Per-draw dynamic UBO. Backing buffer is VulkanContext::m_perDrawUboRing; SubmitPerDrawData
+    // bumps the dynamic offset each draw, so a single descriptor write covers every per-draw
+    // payload during a frame.
     pushBinding(kPerDrawUboBinding, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
 
     VkDescriptorSetLayoutCreateInfo ci{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
@@ -493,6 +519,148 @@ namespace ToolKit
       TK_ERR("vkCreateDescriptorSetLayout (global) failed: %d", r);
       return false;
     }
+    return true;
+  }
+
+  bool VulkanContext::CreateFrameDescriptorPools()
+  {
+    // Stage 7d-4. One pool per frame-in-flight slot. Each pool reserves enough for ~256 sets
+    // (current backend allocates one descriptor set per draw worst-case; a frame with 256 unique
+    // BindPipeline sites is far above any expected sub-system load). Sized for the global
+    // descriptor set layout's bindings: 8 sampled images + 6 UBOs + 1 dynamic UBO per set,
+    // multiplied by max sets to give descriptor count budgets.
+    const uint32_t kMaxSetsPerFrame = 256;
+    VkDescriptorPoolSize sizes[]    = {
+        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, kMaxSetsPerFrame * 8},
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         kMaxSetsPerFrame * 6},
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, kMaxSetsPerFrame * 1},
+    };
+
+    VkDescriptorPoolCreateInfo ci{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+    // No FREE_DESCRIPTOR_SET_BIT — the only release path is vkResetDescriptorPool at frame begin.
+    ci.flags         = 0;
+    ci.maxSets       = kMaxSetsPerFrame;
+    ci.poolSizeCount = (uint32_t) (sizeof(sizes) / sizeof(sizes[0]));
+    ci.pPoolSizes    = sizes;
+
+    for (size_t i = 0; i < m_perFrameDescriptorPools.size(); ++i)
+    {
+      VkResult r = vkCreateDescriptorPool(m_device, &ci, nullptr, &m_perFrameDescriptorPools[i]);
+      if (r != VK_SUCCESS)
+      {
+        TK_ERR("vkCreateDescriptorPool (frame %zu) failed: %d", i, r);
+        return false;
+      }
+    }
+    return true;
+  }
+
+  VkDescriptorPool VulkanContext::GetFrameDescriptorPool(uint frameIndex) const
+  {
+    if (frameIndex >= m_perFrameDescriptorPools.size())
+    {
+      return VK_NULL_HANDLE;
+    }
+    return m_perFrameDescriptorPools[frameIndex];
+  }
+
+  void VulkanContext::ResetFrameDescriptorPool(uint frameIndex)
+  {
+    if (frameIndex >= m_perFrameDescriptorPools.size())
+    {
+      return;
+    }
+    if (m_perFrameDescriptorPools[frameIndex] != VK_NULL_HANDLE)
+    {
+      vkResetDescriptorPool(m_device, m_perFrameDescriptorPools[frameIndex], 0);
+    }
+  }
+
+  VkDescriptorSet VulkanContext::AllocateFrameDescriptorSet(uint frameIndex, VkDescriptorSetLayout layout)
+  {
+    if (frameIndex >= m_perFrameDescriptorPools.size() || layout == VK_NULL_HANDLE)
+    {
+      return VK_NULL_HANDLE;
+    }
+    VkDescriptorPool pool = m_perFrameDescriptorPools[frameIndex];
+    if (pool == VK_NULL_HANDLE)
+    {
+      return VK_NULL_HANDLE;
+    }
+
+    VkDescriptorSetAllocateInfo ai{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+    ai.descriptorPool     = pool;
+    ai.descriptorSetCount = 1;
+    ai.pSetLayouts        = &layout;
+
+    VkDescriptorSet set = VK_NULL_HANDLE;
+    if (VkResult r = vkAllocateDescriptorSets(m_device, &ai, &set); r != VK_SUCCESS)
+    {
+      // Out-of-pool errors (FRAGMENTED_POOL / OUT_OF_POOL_MEMORY) here mean a frame allocated
+      // more sets than kMaxSetsPerFrame. Increase the cap if it ever happens in real workloads.
+      TK_ERR("VulkanContext::AllocateFrameDescriptorSet failed: %d (pool exhausted?)", r);
+      return VK_NULL_HANDLE;
+    }
+    return set;
+  }
+
+  bool VulkanContext::CreatePerDrawUboRing()
+  {
+    // Stage 7d-4b. Single host-visible buffer reused for every per-draw uniform payload across
+    // FRAMES_IN_FLIGHT. Sized 1 MiB \u2014 with sizeof(PerDrawUniforms) ~600 bytes that's room for
+    // ~1700 draws per frame at the highest alignment (256 B). If a real workload pushes past
+    // this we'll see the AllocatePerDrawSlot warning once and bump the cap.
+    constexpr VkDeviceSize kRingBytes = 1u << 20;
+
+    // Cache the alignment requirement so we don't query it on every Submit.
+    VkPhysicalDeviceProperties props{};
+    vkGetPhysicalDeviceProperties(m_physicalDevice, &props);
+    m_minUniformBufferAlignment = props.limits.minUniformBufferOffsetAlignment;
+    if (m_minUniformBufferAlignment == 0)
+    {
+      m_minUniformBufferAlignment = 1; // Spec allows 0 meaning "no requirement"; treat as 1.
+    }
+
+    m_perDrawUboRing = VulkanBuffer::CreateHostVisibleMapped(this, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, kRingBytes);
+    if (m_perDrawUboRing.handle == VK_NULL_HANDLE)
+    {
+      TK_ERR("VulkanContext::CreatePerDrawUboRing: ring allocation failed");
+      return false;
+    }
+    m_perDrawUboHead           = 0;
+    m_perDrawUboOverflowLogged = false;
+    return true;
+  }
+
+  bool VulkanContext::AllocatePerDrawSlot(VkDeviceSize size, VkDeviceSize& outOffset, void*& outMappedPtr)
+  {
+    outOffset    = 0;
+    outMappedPtr = nullptr;
+    if (size == 0 || m_perDrawUboRing.handle == VK_NULL_HANDLE || m_perDrawUboRing.mapped == nullptr)
+    {
+      return false;
+    }
+
+    // Round size up to the alignment so successive slots stay aligned and the next AllocateSlot
+    // can land directly at head without a separate align step. Same effect as aligning head
+    // before the bump.
+    const VkDeviceSize aligned =
+        (size + m_minUniformBufferAlignment - 1) & ~(m_minUniformBufferAlignment - 1);
+    if (m_perDrawUboHead + aligned > m_perDrawUboRing.size)
+    {
+      if (!m_perDrawUboOverflowLogged)
+      {
+        TK_ERR("VulkanContext::AllocatePerDrawSlot: ring full (%llu/%llu B). Increase ring size.",
+               (unsigned long long) m_perDrawUboHead,
+               (unsigned long long) m_perDrawUboRing.size);
+        m_perDrawUboOverflowLogged = true;
+      }
+      return false;
+    }
+
+    outOffset    = m_perDrawUboHead;
+    outMappedPtr = static_cast<uint8_t*>(m_perDrawUboRing.mapped) + m_perDrawUboHead;
+    m_perDrawUboHead += aligned;
     return true;
   }
 
