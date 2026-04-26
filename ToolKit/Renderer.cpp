@@ -170,6 +170,9 @@ namespace ToolKit
     m_gaussianBlurBuffer.Destroy();
     m_gaussianBlurBufferInitialized = false;
 
+    m_cubemapEquirectBuffer.Destroy();
+    m_cubemapEquirectBufferInitialized = false;
+
     SafeDel(m_gpuProgramManager);
 
     SafeDel(m_backend);
@@ -1192,7 +1195,15 @@ namespace ToolKit
     mat->GetRenderState()->cullMode = CullingType::TwoSided;
     mat->Init();
 
-    mat->UpdateProgramUniform("Exposure", exposure);
+    if (!m_cubemapEquirectBufferInitialized)
+    {
+      m_cubemapEquirectBuffer.Init();
+      m_cubemapEquirectBufferInitialized = true;
+    }
+    m_cubemapEquirectBuffer.m_data.exposureAndPad = Vec4(exposure, 0.0f, 0.0f, 0.0f);
+    m_cubemapEquirectBuffer.m_data.lodLevelAndPad = IVec4(0);
+    m_cubemapEquirectBuffer.Invalidate();
+    m_cubemapEquirectBuffer.Map();
 
     m_oneColorAttachmentFramebuffer->ReconstructIfNeeded({(int) size, (int) size, false, false});
 
@@ -1260,8 +1271,15 @@ namespace ToolKit
     cubeToEquiRect->m_cubeMap = cubemap;
     cubeToEquiRect->Init();
 
-    cubeToEquiRect->UpdateProgramUniform("lodLevel", level);
-    cubeToEquiRect->UpdateProgramUniform("Exposure", exposure);
+    if (!m_cubemapEquirectBufferInitialized)
+    {
+      m_cubemapEquirectBuffer.Init();
+      m_cubemapEquirectBufferInitialized = true;
+    }
+    m_cubemapEquirectBuffer.m_data.exposureAndPad = Vec4(exposure, 0.0f, 0.0f, 0.0f);
+    m_cubemapEquirectBuffer.m_data.lodLevelAndPad = IVec4(level, 0, 0, 0);
+    m_cubemapEquirectBuffer.Invalidate();
+    m_cubemapEquirectBuffer.Map();
 
     DrawFullQuad(cubeToEquiRect);
     EndPass();

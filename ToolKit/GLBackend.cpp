@@ -822,6 +822,7 @@ namespace ToolKit
     bindUBOBlockOnly("GammaTonemapFxaaPassData", GammaTonemapFxaaPassDataBuffer::Binding());
     bindUBOBlockOnly("BloomPassData", BloomPassDataBuffer::Binding());
     bindUBOBlockOnly("GaussBlurPassData", GaussBlurPassDataBuffer::Binding());
+    bindUBOBlockOnly("CubemapEquirectPassData", CubemapEquirectPassDataBuffer::Binding());
 
     // Cache default and array uniform locations.
     for (const ShaderPtr& shader : program->m_shaders)

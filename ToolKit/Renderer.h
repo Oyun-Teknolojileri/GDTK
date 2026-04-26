@@ -242,6 +242,14 @@ namespace ToolKit
 
   typedef GpuBufferBase<GaussBlurPassDataLayout, 5> GaussBlurPassDataBuffer;
 
+  struct CubemapEquirectPassDataLayout
+  {
+    Vec4 exposureAndPad;
+    IVec4 lodLevelAndPad;
+  };
+
+  typedef GpuBufferBase<CubemapEquirectPassDataLayout, 5> CubemapEquirectPassDataBuffer;
+
   // GlobalGpuBuffers
   //////////////////////////////////////////
 
@@ -555,6 +563,9 @@ namespace ToolKit
         ApplyGaussianBlur* call together with the material itself. */
     GaussBlurPassDataBuffer m_gaussianBlurBuffer;
     bool m_gaussianBlurBufferInitialized           = false;
+    /** Shared by GenerateCubemapFrom2DTexture / GenerateEquiRectengularProjection paths. */
+    CubemapEquirectPassDataBuffer m_cubemapEquirectBuffer;
+    bool m_cubemapEquirectBufferInitialized        = false;
     MaterialPtr m_averageBlurMaterial              = nullptr;
     QuadPtr m_tempQuad                             = nullptr;
     MaterialPtr m_tempQuadMaterial                 = nullptr;
