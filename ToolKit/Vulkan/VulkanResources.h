@@ -166,14 +166,14 @@ namespace ToolKit
    * Backend GPU data for a GpuProgram (vertex + fragment shader pair).
    * Stored on GpuProgram::m_gpuData via CreateGpuProgram.
    *
-   * Owns the VkPipelineLayout + VkDescriptorSetLayout(s) that every VkPipeline built off this
-   * program shares. Shader modules are NOT owned here � they live on the individual Shader's
-   * VulkanShaderModule (Shader's lifetime governs them). VulkanGpuProgram caches raw module
-   * handles for cheap pipeline rebuild but does not destroy them.
+   * Owns its VkPipelineLayout. The descriptor set layout it references is shared across every
+   * program (VulkanContext::GetGlobalDescriptorSetLayout) � context owns that, programs only
+   * point at it. Shader modules are NOT owned here; they live on the source Shader's
+   * VulkanShaderModule. This struct caches raw module handles for cheap pipeline rebuild.
    *
-   * Stage 7b-1 scaffold: descriptor set layouts are empty; CreateGpuProgram builds a layout with
-   * zero sets. Stage 7b-2 will introduce the actual binding strategy (single set 0 with all
-   * ToolKit slot bindings, or shaderc binding remap � decided then).
+   * Stage 7d-3: pipeline layout uses the global descriptor set layout (single set, kitchen-sink
+   * binding reservation \u2014 see VulkanBindings.h). Stage 7d-4 adds descriptor set allocation +
+   * BindTexture / SubmitPerDrawData wiring on top.
    */
   struct VulkanGpuProgram : public GpuResourceData
   {
@@ -183,8 +183,8 @@ namespace ToolKit
     VkShaderModule vert    = VK_NULL_HANDLE;
     VkShaderModule frag    = VK_NULL_HANDLE;
 
-    // Empty in 7b-1; populated in 7b-2.
-    std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
+    /** Per-program pipeline layout. Built off the context-owned global descriptor set layout, so
+        ~VulkanGpuProgram destroys only this handle (not the set layout itself). */
     VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
 
     ~VulkanGpuProgram() override;

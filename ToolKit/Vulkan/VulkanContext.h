@@ -59,6 +59,13 @@ namespace ToolKit
     VmaAllocator GetAllocator() const { return m_allocator; }
     VkDescriptorPool GetSharedDescriptorPool() const { return m_descriptorPool; }
 
+    /** Single descriptor set layout shared by every VulkanGpuProgram (Stage 7d-3). Reserves
+        every binding the binding-map convention allows: textures 0..7, fixed UBOs at the
+        post-remap positions for GL slots 3/4/7..10, and the per-draw dynamic UBO. Programs
+        whose shaders only touch a subset of these bindings work fine — unused entries are
+        ignored at descriptor write time, no runtime cost. */
+    VkDescriptorSetLayout GetGlobalDescriptorSetLayout() const { return m_globalDescriptorSetLayout; }
+
     /**
      * Executes @p recorder on a throwaway primary command buffer allocated from an internal
      * transient pool, submits it to the graphics queue and waits for completion. Serialized and
@@ -75,6 +82,7 @@ namespace ToolKit
     bool CreateLogicalDevice();
     bool CreateAllocator();
     bool CreateDescriptorPool();
+    bool CreateGlobalDescriptorSetLayout();
     bool CreateOneShotPool();
 
    private:
@@ -91,6 +99,7 @@ namespace ToolKit
 
     VmaAllocator m_allocator                    = nullptr;
     VkDescriptorPool m_descriptorPool           = VK_NULL_HANDLE;
+    VkDescriptorSetLayout m_globalDescriptorSetLayout = VK_NULL_HANDLE;
     VkCommandPool m_oneShotPool                 = VK_NULL_HANDLE;
 
     bool m_validationEnabled                    = false;

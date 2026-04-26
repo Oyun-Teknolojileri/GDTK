@@ -11,6 +11,7 @@
 #include "VulkanContext.h"
 
 #include "../Logger.h"
+#include "VulkanBindings.h"
 
 #include <algorithm>
 #include <cstring>
@@ -107,6 +108,10 @@ namespace ToolKit
     {
       return false;
     }
+    if (!CreateGlobalDescriptorSetLayout())
+    {
+      return false;
+    }
     if (!CreateOneShotPool())
     {
       return false;
@@ -139,6 +144,12 @@ namespace ToolKit
     {
       vkDestroyDescriptorPool(m_device, m_descriptorPool, nullptr);
       m_descriptorPool = VK_NULL_HANDLE;
+    }
+
+    if (m_globalDescriptorSetLayout != VK_NULL_HANDLE)
+    {
+      vkDestroyDescriptorSetLayout(m_device, m_globalDescriptorSetLayout, nullptr);
+      m_globalDescriptorSetLayout = VK_NULL_HANDLE;
     }
 
     if (m_allocator != nullptr)
@@ -430,6 +441,56 @@ namespace ToolKit
     if (r != VK_SUCCESS)
     {
       TK_ERR("vkCreateDescriptorPool failed: %d", r);
+      return false;
+    }
+    return true;
+  }
+
+  bool VulkanContext::CreateGlobalDescriptorSetLayout()
+  {
+    // Stage 7d-3 — kitchen-sink layout shared by every VulkanGpuProgram. Reserves every binding
+    // the binding-map convention exposes (see VulkanBindings.h). Reasoning:
+    //   - Combined image samplers at 0..7 cover the GL texture slot range as-is (no remap).
+    //   - Fixed UBOs sit at the post-remap positions of the GL UBO slots ToolKit actually uses
+    //     (camera/graphic constants/lights).
+    //   - The per-draw dynamic UBO lives at @ref kPerDrawUboBinding so vkCmdBindDescriptorSets'
+    //     dynamicOffset advances it without rewriting the descriptor.
+    //   - All bindings flagged ALL_GRAPHICS so any shader stage can reference any binding without
+    //     us tracking which is used where; unused bindings are ignored at descriptor write time.
+    using namespace VulkanBindings;
+
+    std::vector<VkDescriptorSetLayoutBinding> bindings;
+    bindings.reserve(kTextureBindingCount + 7);
+
+    auto pushBinding = [&](uint binding, VkDescriptorType type)
+    {
+      VkDescriptorSetLayoutBinding b{};
+      b.binding         = binding;
+      b.descriptorType  = type;
+      b.descriptorCount = 1;
+      b.stageFlags      = VK_SHADER_STAGE_ALL_GRAPHICS;
+      bindings.push_back(b);
+    };
+
+    for (uint i = 0; i < kTextureBindingCount; ++i)
+    {
+      pushBinding(kTextureBindingBase + i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+    }
+    // GL UBO slots ToolKit currently uses — see VulkanBindings.h header table.
+    for (uint glSlot : {3u, 4u, 7u, 8u, 9u, 10u})
+    {
+      pushBinding(UboBindingFor(glSlot), VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+    }
+    pushBinding(kPerDrawUboBinding, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
+
+    VkDescriptorSetLayoutCreateInfo ci{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+    ci.bindingCount = (uint32_t) bindings.size();
+    ci.pBindings    = bindings.data();
+
+    VkResult r = vkCreateDescriptorSetLayout(m_device, &ci, nullptr, &m_globalDescriptorSetLayout);
+    if (r != VK_SUCCESS)
+    {
+      TK_ERR("vkCreateDescriptorSetLayout (global) failed: %d", r);
       return false;
     }
     return true;

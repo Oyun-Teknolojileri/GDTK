@@ -174,14 +174,7 @@ namespace ToolKit
       vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
       pipelineLayout = VK_NULL_HANDLE;
     }
-    for (VkDescriptorSetLayout l : descriptorSetLayouts)
-    {
-      if (l != VK_NULL_HANDLE)
-      {
-        vkDestroyDescriptorSetLayout(device, l, nullptr);
-      }
-    }
-    descriptorSetLayouts.clear();
+    // Descriptor set layout is owned by VulkanContext (single shared instance) — do not destroy.
   }
 
 } // namespace ToolKit

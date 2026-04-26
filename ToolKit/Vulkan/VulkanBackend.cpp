@@ -1193,13 +1193,20 @@ namespace ToolKit
     data->vert    = vertSm->module;
     data->frag    = fragSm->module;
 
-    // Stage 7b-1: empty descriptor set layout list. The pipeline layout below is built with zero
-    // sets and zero push constants — sufficient for shaders that read no resources, and for the
-    // existing test scaffolds. Stage 7b-2 will populate descriptorSetLayouts based on the chosen
-    // binding strategy (single set 0 with all ToolKit slots, or shaderc-remapped multi-set).
+    // Stage 7d-3: every program references the context's shared kitchen-sink descriptor set
+    // layout. Programs whose shaders touch only a subset of bindings still work — unused entries
+    // are simply not written to. Push constants stay at zero (per-draw data routes through the
+    // dynamic UBO at VulkanBindings::kPerDrawUboBinding instead).
+    VkDescriptorSetLayout globalSet = m_context->GetGlobalDescriptorSetLayout();
+    if (globalSet == VK_NULL_HANDLE)
+    {
+      TK_ERR("CreateGpuProgram: global descriptor set layout missing (context not initialized?)");
+      return;
+    }
+
     VkPipelineLayoutCreateInfo plci{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
-    plci.setLayoutCount         = 0;
-    plci.pSetLayouts            = nullptr;
+    plci.setLayoutCount         = 1;
+    plci.pSetLayouts            = &globalSet;
     plci.pushConstantRangeCount = 0;
     plci.pPushConstantRanges    = nullptr;
 

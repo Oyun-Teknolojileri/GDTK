@@ -58,14 +58,15 @@ namespace ToolKit
     /** Resolves a GL UBO slot to its Vulkan binding (after shaderc remap). */
     constexpr uint UboBindingFor(uint glSlot) { return glSlot + kUboBindingBase; }
 
-    /** Dedicated binding for the per-draw dynamic UBO (PerDrawUniforms ring buffer). Picked at
-        the high end of the UBO range so it can never clash with a future GL slot. Used as a
-        UNIFORM_BUFFER_DYNAMIC descriptor; the value is bound via vkCmdBindDescriptorSets'
-        dynamic offset rather than a re-write per draw. */
-    constexpr uint kPerDrawUboBinding   = 31;
+    /** Dedicated binding for the per-draw dynamic UBO (PerDrawUniforms ring buffer). Mapped via
+        UboBindingFor(6) so it lines up with shaderc's UBO remap; GL UBO slot 6 is unused, so
+        no shader will ever generate the same binding. The value is bound as
+        UNIFORM_BUFFER_DYNAMIC; the per-draw offset is supplied via vkCmdBindDescriptorSets'
+        dynamicOffset rather than rewriting the descriptor. */
+    constexpr uint kPerDrawUboBinding   = UboBindingFor(6); // = 14
 
-    /** Total binding count for sizing arrays / asserting layout completeness. Bindings beyond
-        this fall outside our reservation and indicate a shader using an unknown UBO slot. */
+    /** Total binding count the global descriptor set layout reserves. Fits every entry in the
+        binding table above with headroom; bindings beyond this should never appear in shaders. */
     constexpr uint kMaxBindings         = 32;
 
   } // namespace VulkanBindings
