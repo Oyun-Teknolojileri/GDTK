@@ -2,8 +2,7 @@
 	<type name = "vertexShader" />
 	<include name = "cameraDataInc.shader" />
 	<include name = "drawDataInc.shader" />
-	<uniform name = "model" />
-	<uniform name = "inverseTransposeModel" />
+	<include name = "perDrawDataInc.shader" />
 	<source>
 	<!--
 		#version 300 es
@@ -24,28 +23,26 @@
 		};
 
 		uniform _GridData GridData;
-		uniform mat4 model;
-		uniform mat4 inverseTransposeModel;
 
 		out vec2 o_gridPos;
 		out vec2 o_cameraGridPos;
 		out vec3 o_viewDir;
 		out vec3 v_pos;
-		
+
 		void main()
 		{
 			o_gridPos = vec2(vPosition.x, vPosition.y);
 
-			vec3 cameraGridPos = (inverseTransposeModel * vec4(camera.position, 1.0)).xyz;
+			vec3 cameraGridPos = (perDraw._inverseTransposeModel * vec4(camera.position, 1.0)).xyz;
 			o_cameraGridPos = cameraGridPos.xz;
 
 			vec4 v = vec4(o_gridPos.x, 0, o_gridPos.y, 1);
 			v.y -= cameraGridPos.y;
-			v = model * v;
+			v = perDraw._model * v;
 			o_viewDir = -v.xyz;
-			
-		  v_pos = (model * vec4(vPosition, 1.0)).xyz;
-			gl_Position = camera.projectionView * model * vec4(vPosition, 1.0);
+
+		  v_pos = (perDraw._model * vec4(vPosition, 1.0)).xyz;
+			gl_Position = camera.projectionView * perDraw._model * vec4(vPosition, 1.0);
 		}
 	-->
 	</source>

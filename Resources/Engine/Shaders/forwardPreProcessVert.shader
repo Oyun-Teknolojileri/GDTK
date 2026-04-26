@@ -4,8 +4,7 @@
   <include name = "cameraDataInc.shader" />
   <include name = "materialCacheInc.shader" />
   <include name = "drawDataInc.shader" />
-  <uniform name = "model" />
-  <uniform name = "inverseTransposeModel" />
+  <include name = "perDrawDataInc.shader" />
   <source>
   <!--
   #version 300 es
@@ -16,9 +15,6 @@
   layout(location = 1) in vec3 vNormal;
   layout(location = 2) in vec2 vTexture;
   layout(location = 3) in vec4 vTangent;
-
-  uniform mat4 model;
-  uniform mat4 inverseTransposeModel;
 
   out float v_linearDepth;
   out vec3 v_normal;
@@ -50,7 +46,7 @@
       // World-space normal / TBN
       if (normalMapInUse)
       {
-          mat3 normalMatrix = mat3(inverseTransposeModel);
+          mat3 normalMatrix = mat3(perDraw._inverseTransposeModel);
 
           vec3 wN = normalize(normalMatrix * N);
           vec3 wT = normalize(normalMatrix * T);
@@ -60,11 +56,11 @@
       }
       else
       {
-          v_normal = normalize(mat3(inverseTransposeModel) * N);
+          v_normal = normalize(mat3(perDraw._inverseTransposeModel) * N);
       }
 
       // Position
-      vec4 worldPos = model * localPos;
+      vec4 worldPos = perDraw._model * localPos;
       v_linearDepth = -(camera.view * worldPos).z;
       v_texture     = vTexture;
       gl_Position   = camera.projectionView * worldPos;
