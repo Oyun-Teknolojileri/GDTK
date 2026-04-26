@@ -177,6 +177,13 @@ namespace ToolKit
         the cmd buffer (validation: "no pipeline bound"). Reset on EndPass / new BeginPass. */
     bool m_pipelineBound = false;
 
+    /** Cached by BindPipeline, consumed by Draw. The pipeline can't be built at BindPipeline
+        time because VulkanPipelineDesc requires the vertex layout, which only arrives with
+        DrawDesc. So we stash the program + state and build/lookup the pipeline at Draw time
+        when every required field is known. */
+    struct VulkanGpuProgram* m_boundProgram = nullptr;
+    RenderState m_boundState{};
+
     /**
      * Per-frame-in-flight deletion buckets. Sized to VulkanSwapchain::FRAMES_IN_FLIGHT in the
      * constructor. Bucket index N is appended to during frame N (and between frames before the

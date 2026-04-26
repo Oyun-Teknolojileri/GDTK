@@ -411,6 +411,7 @@ namespace ToolKit
     }
     // Pipeline binding is per-pass: a fresh BindPipeline is required after every EndPass.
     m_pipelineBound = false;
+    m_boundProgram  = nullptr;
     if (m_activePassFb != nullptr)
     {
       VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer();
@@ -499,7 +500,27 @@ namespace ToolKit
 
   void VulkanBackend::BindPipeline(const GpuProgramPtr& program, const RenderState* state)
   {
-    // TODO: Build PipelineKey from program + state, lookup/create VkPipeline, vkCmdBindPipeline.
+    if (program == nullptr || state == nullptr)
+    {
+      m_pipelineBound = false;
+      m_boundProgram  = nullptr;
+      return;
+    }
+    auto* gp = static_cast<VulkanGpuProgram*>(program->m_gpuData.get());
+    if (gp == nullptr || gp->pipelineLayout == VK_NULL_HANDLE)
+    {
+      // CreateGpuProgram never ran or failed for this program.
+      m_pipelineBound = false;
+      m_boundProgram  = nullptr;
+      return;
+    }
+    // Cache program + state. The actual VkPipeline is built lazily inside Draw() because the
+    // pipeline desc requires the vertex layout (Mesh vs SkinMesh), which only arrives with
+    // DrawDesc. Caching avoids allocating per-draw and lets a single BindPipeline serve N
+    // consecutive draws with different meshes.
+    m_boundProgram  = gp;
+    m_boundState    = *state;
+    m_pipelineBound = true;
   }
 
   void VulkanBackend::SubmitPerDrawData(const void* data, size_t size)
@@ -510,6 +531,36 @@ namespace ToolKit
   void VulkanBackend::BindTexture(ubyte slot, TexturePtr tex)
   {
     // TODO: Update descriptor set with texture's VkImageView + VkSampler.
+  }
+
+  // Fills the vertex-input portion of @p out (vertexStride + attributes + attributeCount) for
+  // the given ToolKit VertexLayout. Pipeline cache hits depend on these fields being identical
+  // for matching layouts, so the offsets are spelled out as constants matching ToolKit's
+  // Vertex / SkinVertex struct layouts in Mesh.h.
+  static void FillVertexInput(VertexLayout layout, VulkanPipelineDesc& out)
+  {
+    // Locations match the GL backend's hardcoded glVertexAttribPointer indices:
+    //   0 pos(vec3) | 1 norm(vec3) | 2 tex(vec2) | 3 tan(vec4)  [+ SkinMesh: 4 bones(vec4) | 5 weights(vec4)]
+    if (layout == VertexLayout::SkinMesh)
+    {
+      out.vertexStride   = sizeof(SkinVertex);
+      out.attributeCount = 6;
+      out.attributes[0]  = {0, 0, VK_FORMAT_R32G32B32_SFLOAT,    0};
+      out.attributes[1]  = {1, 0, VK_FORMAT_R32G32B32_SFLOAT,    12};
+      out.attributes[2]  = {2, 0, VK_FORMAT_R32G32_SFLOAT,       24};
+      out.attributes[3]  = {3, 0, VK_FORMAT_R32G32B32A32_SFLOAT, 32};
+      out.attributes[4]  = {4, 0, VK_FORMAT_R32G32B32A32_SFLOAT, 48};
+      out.attributes[5]  = {5, 0, VK_FORMAT_R32G32B32A32_SFLOAT, 64};
+    }
+    else // VertexLayout::Mesh (default) and VertexLayout::None fall back to plain Vertex.
+    {
+      out.vertexStride   = sizeof(Vertex);
+      out.attributeCount = 4;
+      out.attributes[0]  = {0, 0, VK_FORMAT_R32G32B32_SFLOAT,    0};
+      out.attributes[1]  = {1, 0, VK_FORMAT_R32G32B32_SFLOAT,    12};
+      out.attributes[2]  = {2, 0, VK_FORMAT_R32G32_SFLOAT,       24};
+      out.attributes[3]  = {3, 0, VK_FORMAT_R32G32B32A32_SFLOAT, 32};
+    }
   }
 
   void VulkanBackend::Draw(const DrawDesc& desc)
@@ -527,10 +578,8 @@ namespace ToolKit
     {
       return;
     }
-    // Gate 3: a pipeline must be bound. Until BindPipeline (Stage 7c) lands this stays false
-    // and Draw silently no-ops; once 7c flips it true on every BeginPipeline, the gate becomes
-    // a guard against accidentally drawing without a fresh pipeline after EndPass.
-    if (!m_pipelineBound)
+    // Gate 3: a pipeline must have been bound (BindPipeline cached program + state).
+    if (!m_pipelineBound || m_boundProgram == nullptr)
     {
       return;
     }
@@ -550,8 +599,45 @@ namespace ToolKit
       return;
     }
 
-    // Topology + raster state come from the bound pipeline, not from desc.type. Stage 7c's
-    // BindPipeline path resolves DrawType through RenderStateToPipelineDesc.
+    // ---- Lazy pipeline build ----------------------------------------------------------------
+    // Assemble the full VulkanPipelineDesc from cached program + state plus per-draw fields
+    // (vertex layout). Same RenderState + program + layout + render pass hits the cache; one
+    // VkPipeline is shared across every draw with that combination.
+    VulkanPipelineDesc pdesc{};
+    pdesc.vert = m_boundProgram->vert;
+    pdesc.frag = m_boundProgram->frag;
+    FillVertexInput(desc.vertexLayout, pdesc);
+    RenderStateToPipelineDesc(m_boundState, pdesc);
+
+    // Render pass + color attachment count come from the active pass.
+    if (m_activePassFb != nullptr)
+    {
+      pdesc.renderPass = m_activePassFb->renderPass;
+      uint colorCount  = 0;
+      for (int i = 0; i < VulkanFramebuffer::kMaxColorAttachments; ++i)
+      {
+        if (m_activePassFb->colorAttachments[i].tex != nullptr)
+        {
+          ++colorCount;
+        }
+      }
+      pdesc.colorAttachmentCount = colorCount > 0 ? colorCount : 1;
+    }
+    else
+    {
+      pdesc.renderPass           = m_swapchain->GetRenderPass();
+      pdesc.colorAttachmentCount = 1;
+    }
+
+    VkPipeline pipe = m_pipelineCache->GetOrCreate(m_context.get(), m_boundProgram->pipelineLayout, pdesc);
+    if (pipe == VK_NULL_HANDLE)
+    {
+      // Pipeline build failure already logged inside GetOrCreate.
+      return;
+    }
+    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe);
+
+    // ---- Bind geometry + draw ---------------------------------------------------------------
     const VkBuffer vbuf      = meshGpu->vertex.handle;
     const VkDeviceSize voff  = 0;
     vkCmdBindVertexBuffers(cb, 0, 1, &vbuf, &voff);
