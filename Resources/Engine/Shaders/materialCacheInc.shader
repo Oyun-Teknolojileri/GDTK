@@ -1,16 +1,15 @@
 <shader>
 	<type name = "includeShader" />
-	<uniform name = "materialCache" size = "4" />
+	<include name = "perDrawDataInc.shader" />
 	<source>
 	<!--
-	
 	#ifndef MATERIAL_CACHE
 	#define MATERIAL_CACHE
 
-	// Material Cache
+	// Material accessors — backing storage is now `perDraw._materialData` (PerDrawData UBO,
+	// slot 6). `MaterialDataLayout` in perDrawDataInc.shader matches MaterialCacheItem::Data
+	// in Material.h byte-for-byte.
 	//////////////////////////////////////////
-
-	uniform vec4 materialCache[4];
 
 	struct Material
 	{
@@ -37,10 +36,10 @@
 	{
 		Material material;
 
-		vec4 colorAlpha         = materialCache[0];
-		vec4 emissiveThreshold  = materialCache[1];
-		vec4 metallicRoughness  = materialCache[2];
-		vec4 textureFlags       = materialCache[3];
+		vec4 colorAlpha         = perDraw._materialData.colorAlpha;
+		vec4 emissiveThreshold  = perDraw._materialData.emissiveThreshold;
+		vec4 metallicRoughness  = perDraw._materialData.metallicRoughness;
+		vec4 textureFlags       = perDraw._materialData.textureFlags;
 
 		material.color = colorAlpha.rgb;
 		material.alpha = colorAlpha.a;
@@ -62,7 +61,7 @@
 
 	bool IsNormalMapInUse()
 	{
-		return materialCache[3].y > 0.5;
+		return perDraw._materialData.textureFlags.y > 0.5;
 	}
 
 	#endif // MATERIAL_CACHE
