@@ -9,6 +9,7 @@
 
 #include "../IGraphicsBackend.h"
 #include "../Types.h"
+#include "VulkanBuffer.h"
 
 #include <vulkan/vulkan.h>
 
@@ -105,20 +106,22 @@ namespace ToolKit
   };
 
   /**
-   * Backend GPU data for a UniformBuffer. Stored on UniformBuffer::m_gpuData.
+   * Backend GPU data for a UniformBuffer.
+   * Stored on UniformBuffer::m_gpuData.
    *
-   * HOST_VISIBLE + HOST_COHERENT + persistently-mapped via VMA so updates are a plain memcpy
-   * with no flush. Sized once at Create; subsequent Update calls assume the size matches
-   * (UniformBuffer::Map enforces this on the engine side).
+   * Uses a HOST_VISIBLE + HOST_COHERENT buffer with VMA persistent mapping � the CPU writes
+   * directly through @ref buffer.mapped on every UpdateUniformBuffer call. Coherent memory means
+   * no explicit flush; the next vkQueueSubmit observes the write thanks to the host-write
+   * implicit memory dependency.
+   *
+   * One UBO per ToolKit `UniformBuffer` instance � small, fixed-size, infrequently-resized.
+   * Per-draw uniforms (PerDrawUniforms) will use a dedicated dynamic UBO ring buffer in Stage 7c,
+   * not this struct.
    */
   struct VulkanUniformBuffer : public GpuResourceData
   {
     VulkanContext* context = nullptr;
-
-    VkBuffer buffer        = VK_NULL_HANDLE;
-    VmaAllocation alloc    = VK_NULL_HANDLE;
-    void* mapped           = nullptr;
-    VkDeviceSize size      = 0;
+    VulkanBuffer::Buffer buffer;
 
     ~VulkanUniformBuffer() override;
   };

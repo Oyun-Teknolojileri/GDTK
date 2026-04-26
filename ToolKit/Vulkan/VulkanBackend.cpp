@@ -10,8 +10,6 @@
 #include "../Framebuffer.h"
 #include "../Logger.h"
 #include "../Texture.h"
-#include "../UniformBuffer.h"
-#include "VulkanBuffer.h"
 #include "VulkanContext.h"
 #include "VulkanPipeline.h"
 #include "VulkanPipelineCache.h"
@@ -20,6 +18,8 @@
 
 #include <vma/vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
+
+#include <cstring>
 
 namespace ToolKit
 {
@@ -753,69 +753,63 @@ namespace ToolKit
 
   void VulkanBackend::CreateUniformBuffer(UniformBuffer* ub, uint64 size)
   {
-    if (ub == nullptr || size == 0 || m_context == nullptr)
-    {
-      return;
-    }
+    assert(ub != nullptr && "CreateUniformBuffer: null UniformBuffer");
+    assert(ub->m_gpuData == nullptr && "CreateUniformBuffer: already has gpu data");
 
-    // Drop any prior allocation through the deletion queue so an in-flight cmd buffer that
-    // still references the old VkBuffer can finish before the dtor fires.
-    if (auto prev = ub->m_gpuData)
+    if (size == 0)
     {
-      ub->m_gpuData = nullptr;
-      DeferDelete([prev]() mutable { prev.reset(); });
-    }
-
-    VulkanBuffer::Buffer buf =
-        VulkanBuffer::CreateHostVisibleMapped(m_context.get(), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, size);
-    if (buf.handle == VK_NULL_HANDLE)
-    {
-      TK_ERR("VulkanBackend::CreateUniformBuffer: VulkanBuffer::CreateHostVisibleMapped failed (%llu bytes)", size);
+      // ToolKit allows constructing a UniformBuffer with size 0 and binding it later via
+      // GpuBufferBase::Init(); mirror that by creating no GPU resource yet. The next Init
+      // call comes back here with the real size.
       return;
     }
 
     auto data     = std::make_shared<VulkanUniformBuffer>();
     data->context = m_context.get();
-    data->buffer  = buf.handle;
-    data->alloc   = buf.alloc;
-    data->mapped  = buf.mapped;
-    data->size    = buf.size;
+    data->buffer  = VulkanBuffer::CreateHostVisibleMapped(m_context.get(),
+                                                          VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                                                          (VkDeviceSize) size);
+    if (data->buffer.handle == VK_NULL_HANDLE)
+    {
+      TK_ERR("VulkanBackend::CreateUniformBuffer: failed to allocate %llu byte UBO",
+             (unsigned long long) size);
+      return;
+    }
+
     ub->m_gpuData = data;
+    ub->m_size    = size;
   }
 
   void VulkanBackend::DestroyUniformBuffer(UniformBuffer* ub)
   {
-    if (ub == nullptr)
+    if (ub == nullptr || ub->m_gpuData == nullptr)
     {
       return;
     }
-    // Mirrors DestroyTexture: the lambda becomes the last shared_ptr owner, so the
-    // ~VulkanUniformBuffer (vmaDestroyBuffer) only runs after the deletion bucket drains, i.e.
-    // after any cmd buffer that may still reference this VkBuffer has finished on the GPU.
-    if (auto data = ub->m_gpuData)
-    {
-      ub->m_gpuData = nullptr;
-      DeferDelete([data]() mutable { data.reset(); });
-    }
+    // Defer the shared_ptr release so the underlying VkBuffer + VMA allocation outlive any
+    // in-flight command buffer that might still reference this UBO via a descriptor set.
+    auto data     = ub->m_gpuData;
+    ub->m_gpuData = nullptr;
+    DeferDelete([data]() mutable { data.reset(); });
   }
 
   void VulkanBackend::UpdateUniformBuffer(UniformBuffer* ub, const void* data, uint64 size)
   {
-    if (ub == nullptr || data == nullptr || size == 0 || ub->m_gpuData == nullptr)
+    if (ub == nullptr || data == nullptr || size == 0)
     {
       return;
     }
     auto* gpu = static_cast<VulkanUniformBuffer*>(ub->m_gpuData.get());
-    if (gpu->mapped == nullptr || size > gpu->size)
+    if (gpu == nullptr || gpu->buffer.mapped == nullptr || size > gpu->buffer.size)
     {
       TK_ERR("VulkanBackend::UpdateUniformBuffer: invalid mapped ptr or oversized write (%llu > %llu)",
-             size,
-             (uint64) gpu->size);
+             (uint64) size,
+             (uint64) (gpu != nullptr ? gpu->buffer.size : 0));
       return;
     }
-    // HOST_COHERENT memory: no vmaFlushAllocation needed. Writes become visible to the GPU
-    // by the next vkQueueSubmit barrier.
-    std::memcpy(gpu->mapped, data, size);
+    // HOST_COHERENT memory — write becomes visible to the device on the next vkQueueSubmit
+    // without an explicit vkFlushMappedMemoryRanges call.
+    std::memcpy(gpu->buffer.mapped, data, (size_t) size);
   }
 
   GpuResourceDataPtr VulkanBackend::CreateShader(Shader* shader, const String& source)

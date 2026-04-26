@@ -138,15 +138,10 @@ namespace ToolKit
 
   VulkanUniformBuffer::~VulkanUniformBuffer()
   {
-    if (context == nullptr || buffer == VK_NULL_HANDLE)
+    if (context != nullptr && buffer.handle != VK_NULL_HANDLE)
     {
-      return;
+      VulkanBuffer::Destroy(context, buffer);
     }
-    VmaAllocator allocator = context->GetAllocator();
-    vmaDestroyBuffer(allocator, buffer, alloc);
-    buffer  = VK_NULL_HANDLE;
-    alloc   = VK_NULL_HANDLE;
-    mapped  = nullptr;
   }
 
 } // namespace ToolKit
