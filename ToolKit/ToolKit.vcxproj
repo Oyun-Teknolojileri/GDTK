@@ -206,6 +206,7 @@
     <ClInclude Include="Vulkan\TestRenderPass.h" />
     <ClInclude Include="Vulkan\TestRenderPath.h" />
     <ClInclude Include="Vulkan\VulkanBackend.h" />
+    <ClInclude Include="Vulkan\VulkanBindings.h" />
     <ClInclude Include="Vulkan\VulkanBuffer.h" />
     <ClInclude Include="Vulkan\VulkanContext.h" />
     <ClInclude Include="Vulkan\VulkanDescriptor.h" />

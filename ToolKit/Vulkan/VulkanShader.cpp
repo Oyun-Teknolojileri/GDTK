@@ -8,6 +8,7 @@
 #include "VulkanShader.h"
 
 #include "../Logger.h"
+#include "VulkanBindings.h"
 
 #include <shaderc/shaderc.hpp>
 
@@ -32,6 +33,12 @@ namespace ToolKit
       shaderc::CompileOptions options;
       options.SetTargetEnvironment(shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_3);
       options.SetSourceLanguage(shaderc_source_language_glsl);
+
+      // Stage 7d-1 binding remap: shift every UBO binding up by kUboBindingBase so GL UBO slots
+      // (3, 4, 7, ...) land outside the texture binding range (0..7). Textures are not shifted.
+      // See VulkanBindings.h for the full convention + concrete layout.
+      options.SetBindingBase(shaderc_uniform_kind_buffer, VulkanBindings::kUboBindingBase);
+
 #ifdef TK_DEBUG
       options.SetGenerateDebugInfo();
       options.SetOptimizationLevel(shaderc_optimization_level_zero);

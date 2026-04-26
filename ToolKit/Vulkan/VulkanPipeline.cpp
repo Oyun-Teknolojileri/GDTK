@@ -8,6 +8,7 @@
 #include "VulkanPipeline.h"
 
 #include "../Logger.h"
+#include "VulkanBindings.h"
 #include "VulkanContext.h"
 #include "VulkanDescriptor.h"
 #include "VulkanImage.h"
@@ -87,9 +88,18 @@ namespace ToolKit
       return false;
     }
 
-    // Two-binding layout: binding 0 = checkerboard sampler (frag), binding 1 = camera UBO (vert).
-    m_descriptorLayout = VulkanDescriptor::CreateLayoutSamplerAndUbo(
-        device, VK_SHADER_STAGE_FRAGMENT_BIT, VK_SHADER_STAGE_VERTEX_BIT);
+    // Two-binding layout: sampler at binding 0 (textures aren't shaderc-remapped), camera UBO
+    // at the post-remap binding number that lines up with what the shader writes — the shader
+    // uses `binding=1` but VulkanShader's compile remap shifts UBOs by VulkanBindings::kUboBindingBase,
+    // so the real binding seen by the descriptor set layout is UboBindingFor(1).
+    constexpr uint kSamplerBinding = 0;
+    const uint kCameraUboBinding   = VulkanBindings::UboBindingFor(1);
+    m_descriptorLayout             = VulkanDescriptor::CreateLayoutSamplerAndUbo(
+        device,
+        kSamplerBinding,
+        VK_SHADER_STAGE_FRAGMENT_BIT,
+        kCameraUboBinding,
+        VK_SHADER_STAGE_VERTEX_BIT);
     if (m_descriptorLayout == VK_NULL_HANDLE)
     {
       TK_ERR("VulkanTestPipeline::Init: descriptor set layout create failed");
@@ -162,7 +172,7 @@ namespace ToolKit
       return false;
     }
     VulkanDescriptor::WriteCombinedImageSampler(
-        device, m_descriptorSet, 0, m_testTexture->view, m_testTexture->sampler);
+        device, m_descriptorSet, kSamplerBinding, m_testTexture->view, m_testTexture->sampler);
 
     // Camera UBO — persistently-mapped host-visible buffer holding (view, proj). We fill it once
     // here with a simple look-at camera so the quad is rendered with a real 3D transform.
@@ -191,7 +201,7 @@ namespace ToolKit
     std::memcpy(m_cameraUbo.mapped, &cam, sizeof(cam));
 
     VulkanDescriptor::WriteUniformBuffer(
-        device, m_descriptorSet, 1, m_cameraUbo.handle, 0, sizeof(CameraUBO));
+        device, m_descriptorSet, kCameraUboBinding, m_cameraUbo.handle, 0, sizeof(CameraUBO));
 
     return true;
   }

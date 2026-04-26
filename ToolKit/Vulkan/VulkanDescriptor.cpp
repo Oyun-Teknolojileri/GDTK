@@ -36,15 +36,17 @@ namespace ToolKit
     }
 
     VkDescriptorSetLayout CreateLayoutSamplerAndUbo(VkDevice device,
+                                                    uint samplerBinding,
                                                     VkShaderStageFlags samplerStages,
+                                                    uint uboBinding,
                                                     VkShaderStageFlags uboStages)
     {
       VkDescriptorSetLayoutBinding bindings[2]{};
-      bindings[0].binding         = 0;
+      bindings[0].binding         = samplerBinding;
       bindings[0].descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
       bindings[0].descriptorCount = 1;
       bindings[0].stageFlags      = samplerStages;
-      bindings[1].binding         = 1;
+      bindings[1].binding         = uboBinding;
       bindings[1].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
       bindings[1].descriptorCount = 1;
       bindings[1].stageFlags      = uboStages;

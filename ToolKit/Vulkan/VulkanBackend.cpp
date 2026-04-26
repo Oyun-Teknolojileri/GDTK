@@ -525,12 +525,37 @@ namespace ToolKit
 
   void VulkanBackend::SubmitPerDrawData(const void* data, size_t size)
   {
-    // TODO: Push constants or dynamic UBO update.
+    // TODO(stage 7d): per-draw UBO ring buffer.
+    //
+    // Real implementation needs:
+    //   1. A persistent-mapped UBO ring (VulkanContext-owned, sized for one frame's worth of
+    //      PerDrawUniforms structs aligned to minUniformBufferOffsetAlignment).
+    //   2. memcpy @p data into the ring at the current head, advance head.
+    //   3. vkCmdBindDescriptorSets with VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC + the head
+    //      offset for set=2 (per-draw set, per the descriptor strategy decision).
+    //
+    // Currently a no-op because stub shaders read no UBOs and Stage 7b-1's pipeline layout has
+    // zero descriptor sets. Engine pass code calls this every Draw; silently dropping is fine
+    // — the data is non-essential for the stub render output.
+    (void) data;
+    (void) size;
   }
 
   void VulkanBackend::BindTexture(ubyte slot, TexturePtr tex)
   {
-    // TODO: Update descriptor set with texture's VkImageView + VkSampler.
+    // TODO(stage 7d): per-material descriptor set updates.
+    //
+    // Real implementation needs:
+    //   1. Frame-scoped descriptor pool that allocates a set per (program, material) pair.
+    //   2. Mapping ToolKit's GL slot index → Vulkan binding number (depends on the chosen
+    //      descriptor strategy: single-set superset / shaderc remap / multi-set rewrite).
+    //   3. WriteCombinedImageSampler(set, binding, view, sampler).
+    //   4. vkCmdBindDescriptorSets at the next Draw (or batched on first Draw after BindPipeline).
+    //
+    // Currently a no-op: Stage 7b-1 GpuProgram has no descriptor set layouts so there's nothing
+    // to bind to. Stub shaders sample nothing.
+    (void) slot;
+    (void) tex;
   }
 
   // Fills the vertex-input portion of @p out (vertexStride + attributes + attributeCount) for
@@ -1386,12 +1411,23 @@ namespace ToolKit
   void VulkanBackend::SubmitCustomUniforms(const GpuProgramPtr& program,
                                            std::unordered_map<String, ShaderUniform>& uniforms)
   {
-    // TODO: Write uniforms into push constant range or material UBO.
+    // TODO(stage 7d+): per-material custom uniform UBO.
+    //
+    // GL backend writes these into individual glUniform* slots. Vulkan equivalent will batch
+    // them into a per-material UBO (set=1, binding=0 per the descriptor strategy). Until real
+    // shaders + descriptor sets land, this is a no-op.
+    (void) program;
+    (void) uniforms;
   }
 
   void VulkanBackend::SetUniform4f(int location, const Vec4& value)
   {
-    // TODO: Push constant update (or no-op  Vulkan doesn't use locations).
+    // No-op. Vulkan has no glUniform-style "location" addressing; the GL backend uses this for
+    // ad-hoc per-program uniforms but the Vulkan path will route equivalent data through the
+    // per-material UBO once descriptor sets land. GetUniformLocation already returns -1 here,
+    // so well-behaved engine code shouldn't reach this with a real location anyway.
+    (void) location;
+    (void) value;
   }
 
   String VulkanBackend::GetBackendRendererString()

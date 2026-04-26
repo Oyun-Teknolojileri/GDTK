@@ -26,11 +26,13 @@ namespace ToolKit
     /** binding=0, type=COMBINED_IMAGE_SAMPLER, descriptorCount=1, shader stage = @p stages. */
     VkDescriptorSetLayout CreateLayoutSingleSampler(VkDevice device, VkShaderStageFlags stages);
 
-    /** Two-binding layout: binding=0 COMBINED_IMAGE_SAMPLER (@p samplerStages), binding=1
-     *  UNIFORM_BUFFER (@p uboStages). Used by the Stage 5 test pipeline for the
-     *  camera UBO + checkerboard sampler combo. */
+    /** Two-binding layout for the Stage 5 test pipeline: a COMBINED_IMAGE_SAMPLER at
+     *  @p samplerBinding (e.g. 0) and a UNIFORM_BUFFER at @p uboBinding (e.g.
+     *  VulkanBindings::UboBindingFor(N) so it lines up with shaderc's UBO remap base). */
     VkDescriptorSetLayout CreateLayoutSamplerAndUbo(VkDevice device,
+                                                    uint samplerBinding,
                                                     VkShaderStageFlags samplerStages,
+                                                    uint uboBinding,
                                                     VkShaderStageFlags uboStages);
 
     /** Allocates a single descriptor set of @p layout from @p pool. Returns VK_NULL_HANDLE on

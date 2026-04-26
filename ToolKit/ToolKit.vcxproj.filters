@@ -580,6 +580,7 @@
     <ClInclude Include="Vulkan\VulkanSwapchain.h">
       <Filter>Render\Vulkan</Filter>
     </ClInclude>
+    <ClInclude Include="Vulkan\VulkanBindings.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Entities">
