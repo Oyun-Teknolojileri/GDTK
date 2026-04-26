@@ -22,7 +22,6 @@
 #include "Mesh.h"
 #include "Node.h"
 #include "Pass.h"
-#include "PerDrawUniforms.h"
 #include "RHI.h"
 #include "RenderSystem.h"
 #include "Scene.h"
@@ -1068,45 +1067,47 @@ namespace ToolKit
   {
     TK_PROFILE_FUNCTION();
 
-    PerDrawUniforms pdu;
-    pdu.model                 = m_model;
-    pdu.modelWithoutTranslate = m_modelWithoutTranslate;
-    pdu.inverseModel          = m_inverseModel;
-    pdu.inverseTransposeModel = m_inverseTransposeModel;
-    pdu.iblRotation           = m_iblRotation;
-    pdu.iblSecondaryRotation  = m_secondaryIblRotation;
-    pdu.viewportSize.x        = (float) m_viewportRect.x;
-    pdu.viewportSize.y        = (float) m_viewportRect.y;
-    pdu.drawCommand           = m_drawCommand;
-    pdu.materialData          = job.Material->GetCacheItem().data;
+    static_assert(RHIConstants::MaxPointLightPerObject == 24, "PerDrawUboLayout assumes 24 point indices");
+    static_assert(RHIConstants::MaxSpotLightPerObject == 24, "PerDrawUboLayout assumes 24 spot indices");
 
-    std::copy(m_activePointLightIndices.begin(), m_activePointLightIndices.end(), pdu.activePointLightIndices);
-    std::copy(m_activeSpotLightIndices.begin(), m_activeSpotLightIndices.end(), pdu.activeSpotLightIndices);
-    pdu.activePointLightCount = m_activePointLightCount;
-    pdu.activeSpotLightCount  = m_activeSpotLightCount;
+    PerDrawUboLayout& ubo       = m_globalGpuBuffers->perDrawBuffer.m_data;
+    ubo.model                   = m_model;
+    ubo.modelWithoutTranslate   = m_modelWithoutTranslate;
+    ubo.inverseModel            = m_inverseModel;
+    ubo.inverseTransposeModel   = m_inverseTransposeModel;
+    ubo.iblRotation             = m_iblRotation;
+    ubo.iblSecondaryRotation    = m_secondaryIblRotation;
+    ubo.viewportSizeAndPad      = Vec4((float) m_viewportRect.x, (float) m_viewportRect.y, 0.0f, 0.0f);
+    ubo.drawCommand             = m_drawCommand;
+    ubo.materialData            = job.Material->GetCacheItem().data;
 
-    // Animation / Skinning
-    pdu.keyFrameData          = Vec4(0.0f);
+    // Pack the 24 ints into 6 ivec4. std140 would otherwise grow each int to 16 bytes.
+    std::memcpy(ubo.activePointLightIndices, m_activePointLightIndices.data(), sizeof(int) * 24);
+    std::memcpy(ubo.activeSpotLightIndices, m_activeSpotLightIndices.data(), sizeof(int) * 24);
+    ubo.lightCounts             = IVec4(m_activePointLightCount, m_activeSpotLightCount, 0, 0);
+
+    // Animation / skinning
+    Vec4 keyFrameData = Vec4(0.0f);
     if (job.animData.currentAnimation != nullptr)
     {
-      pdu.keyFrameData = Vec4(job.animData.firstKeyFrame,
-                              job.animData.secondKeyFrame,
-                              job.animData.keyFrameInterpolationTime,
-                              job.animData.keyFrameCount);
+      keyFrameData = Vec4(job.animData.firstKeyFrame,
+                          job.animData.secondKeyFrame,
+                          job.animData.keyFrameInterpolationTime,
+                          job.animData.keyFrameCount);
     }
+    ubo.keyFrameData = keyFrameData;
 
-    pdu.blendFrameData = Vec4(0.0f);
+    Vec4 blendFrameData = Vec4(0.0f);
     if (job.animData.blendAnimation != nullptr)
     {
-      pdu.blendFrameData = Vec4(job.animData.blendFirstKeyFrame,
-                                job.animData.blendSecondKeyFrame,
-                                job.animData.blendKeyFrameInterpolationTime,
-                                job.animData.blendKeyFrameCount);
+      blendFrameData = Vec4(job.animData.blendFirstKeyFrame,
+                            job.animData.blendSecondKeyFrame,
+                            job.animData.blendKeyFrameInterpolationTime,
+                            job.animData.blendKeyFrameCount);
     }
+    ubo.blendFrameData = blendFrameData;
 
-    pdu.animationBlendFactor = job.animData.animationBlendFactor;
-
-    pdu.skinParams           = Vec4(0.0f);
+    Vec4 skinParams = Vec4(0.0f);
     if (job.Mesh->IsSkinned())
     {
       const SkeletonPtr& skel = static_cast<const SkinMesh*>(job.Mesh)->m_skeleton;
@@ -1115,43 +1116,20 @@ namespace ToolKit
         float boneCount  = (float) skel->m_bones.size();
         float isAnimated = (job.animData.currentAnimation != nullptr) ? 1.0f : 0.0f;
         float hasBlend   = (job.animData.blendAnimation != nullptr) ? 1.0f : 0.0f;
-        pdu.skinParams   = Vec4(boneCount, 1.0f, isAnimated, hasBlend);
+        skinParams = Vec4(boneCount, 1.0f, isAnimated, hasBlend);
       }
     }
-
-    m_backend->SubmitPerDrawData(&pdu, sizeof(pdu));
-
-    // Mirror the same per-draw payload into the std140 UBO at slot 6. Shaders that have been
-    // migrated off bare uniforms read out of `layout(std140) uniform PerDrawData {...}` instead
-    // of the scatter glUniform* path above. Until every shader is migrated both paths run in
-    // parallel; the cost is one ~1.1 KB UBO map per draw, which is negligible.
-    PerDrawUboLayout& ubo       = m_globalGpuBuffers->perDrawBuffer.m_data;
-    ubo.model                   = pdu.model;
-    ubo.modelWithoutTranslate   = pdu.modelWithoutTranslate;
-    ubo.inverseModel            = pdu.inverseModel;
-    ubo.inverseTransposeModel   = pdu.inverseTransposeModel;
-    ubo.iblRotation             = pdu.iblRotation;
-    ubo.iblSecondaryRotation    = pdu.iblSecondaryRotation;
-    ubo.viewportSizeAndPad      = Vec4(pdu.viewportSize, 0.0f, 0.0f);
-    ubo.drawCommand             = pdu.drawCommand;
-    ubo.materialData            = pdu.materialData;
-
-    // Pack the 24 ints into 6 ivec4. std140 would otherwise grow each int to 16 bytes.
-    static_assert(RHIConstants::MaxPointLightPerObject == 24, "PerDrawUboLayout assumes 24 point indices");
-    static_assert(RHIConstants::MaxSpotLightPerObject == 24, "PerDrawUboLayout assumes 24 spot indices");
-    std::memcpy(ubo.activePointLightIndices, pdu.activePointLightIndices, sizeof(pdu.activePointLightIndices));
-    std::memcpy(ubo.activeSpotLightIndices, pdu.activeSpotLightIndices, sizeof(pdu.activeSpotLightIndices));
-    ubo.lightCounts             = IVec4(pdu.activePointLightCount, pdu.activeSpotLightCount, 0, 0);
-
-    ubo.keyFrameData            = pdu.keyFrameData;
-    ubo.blendFrameData          = pdu.blendFrameData;
-    ubo.skinParams              = pdu.skinParams;
-    ubo.animBlendFactorAndPad   = Vec4(pdu.animationBlendFactor, 0.0f, 0.0f, 0.0f);
+    ubo.skinParams              = skinParams;
+    ubo.animBlendFactorAndPad   = Vec4(job.animData.animationBlendFactor, 0.0f, 0.0f, 0.0f);
 
     m_globalGpuBuffers->perDrawBuffer.Invalidate();
     m_globalGpuBuffers->perDrawBuffer.Map();
 
-    // Custom shader uniforms � dispatched through backend.
+    // Hand the same blob to the backend. GL is a no-op (UBO is already bound + mapped); Vulkan
+    // copies it into the per-frame dynamic-offset ring slot the descriptor set points at.
+    m_backend->SubmitPerDrawData(&ubo, sizeof(ubo));
+
+    // Custom shader uniforms (legacy plugin path) dispatched through backend.
     m_backend->SubmitCustomUniforms(program, program->m_customUniforms);
   }
 

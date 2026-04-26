@@ -13,7 +13,6 @@
 #include "GlErrorReporter.h"
 #include "GpuProgram.h"
 #include "Mesh.h"
-#include "PerDrawUniforms.h"
 #include "RHI.h"
 #include "Renderer.h"
 #include "ShaderUniform.h"
@@ -463,82 +462,13 @@ namespace ToolKit
 
   void GLBackend::SubmitPerDrawData(const void* data, size_t size)
   {
-    if (data == nullptr || size != sizeof(PerDrawUniforms) || m_currentProgram == nullptr)
-    {
-      return;
-    }
-
-    const PerDrawUniforms* pdu = reinterpret_cast<const PerDrawUniforms*>(data);
-    const int* locs            = m_currentProgram->m_defaultUniformLocation.data();
-
-    // Direct O(1) array lookup — no hash, no find.
-    GLint loc;
-
-    loc = locs[(int) Uniform::MODEL];
-    if (loc != -1)
-      glUniformMatrix4fv(loc, 1, false, reinterpret_cast<const float*>(&pdu->model));
-
-    loc = locs[(int) Uniform::MODEL_WITHOUT_TRANSLATE];
-    if (loc != -1)
-      glUniformMatrix4fv(loc, 1, false, reinterpret_cast<const float*>(&pdu->modelWithoutTranslate));
-
-    loc = locs[(int) Uniform::INVERSE_MODEL];
-    if (loc != -1)
-      glUniformMatrix4fv(loc, 1, false, reinterpret_cast<const float*>(&pdu->inverseModel));
-
-    loc = locs[(int) Uniform::INVERSE_TRANSPOSE_MODEL];
-    if (loc != -1)
-      glUniformMatrix4fv(loc, 1, false, reinterpret_cast<const float*>(&pdu->inverseTransposeModel));
-
-    loc = locs[(int) Uniform::IBL_ROTATION];
-    if (loc != -1)
-      glUniformMatrix4fv(loc, 1, false, reinterpret_cast<const float*>(&pdu->iblRotation));
-
-    loc = locs[(int) Uniform::IBL_SECONDARY_ROTATION];
-    if (loc != -1)
-      glUniformMatrix4fv(loc, 1, false, reinterpret_cast<const float*>(&pdu->iblSecondaryRotation));
-
-    loc = locs[(int) Uniform::VIEWPORT_SIZE];
-    if (loc != -1)
-      glUniform2f(loc, pdu->viewportSize.x, pdu->viewportSize.y);
-
-    loc = locs[(int) Uniform::DRAW_COMMAND];
-    if (loc != -1)
-      glUniform4fv(loc, sizeof(DrawCommand) / sizeof(Vec4), (const float*) &pdu->drawCommand);
-
-    if (pdu->activePointLightCount > 0)
-    {
-      loc = locs[(int) Uniform::ACTIVE_POINT_LIGHT_INDEXES];
-      if (loc != -1)
-        glUniform1iv(loc, pdu->activePointLightCount, pdu->activePointLightIndices);
-    }
-
-    if (pdu->activeSpotLightCount > 0)
-    {
-      loc = locs[(int) Uniform::ACTIVE_SPOT_LIGHT_INDEXES];
-      if (loc != -1)
-        glUniform1iv(loc, pdu->activeSpotLightCount, pdu->activeSpotLightIndices);
-    }
-
-    loc = locs[(int) Uniform::MATERIAL_CACHE];
-    if (loc != -1)
-      glUniform4fv(loc, sizeof(MaterialCacheItem::Data) / sizeof(Vec4), (const float*) &pdu->materialData);
-
-    loc = locs[(int) Uniform::KEY_FRAME_DATA];
-    if (loc != -1)
-      glUniform4fv(loc, 1, (const float*) &pdu->keyFrameData);
-
-    loc = locs[(int) Uniform::BLEND_FRAME_DATA];
-    if (loc != -1)
-      glUniform4fv(loc, 1, (const float*) &pdu->blendFrameData);
-
-    loc = locs[(int) Uniform::BLEND_FACTOR];
-    if (loc != -1)
-      glUniform1f(loc, pdu->animationBlendFactor);
-
-    loc = locs[(int) Uniform::SKIN_PARAMS];
-    if (loc != -1)
-      glUniform4fv(loc, 1, (const float*) &pdu->skinParams);
+    // No-op on GL: every per-draw payload now lives in `GlobalGpuBuffers::perDrawBuffer`
+    // (slot 6, `PerDrawData` UBO). Renderer::FeedUniforms updates that buffer + calls
+    // glBindBufferBase via the GpuProgram path, so by the time the next Draw fires the
+    // shader sees fresh data straight from the UBO. Vulkan still uses this entry point to
+    // copy the same blob into its per-frame dynamic-offset ring.
+    (void) data;
+    (void) size;
   }
 
   void GLBackend::BindTexture(ubyte slot, TexturePtr tex)
@@ -884,33 +814,6 @@ namespace ToolKit
       }
     }
 
-    // Force-cache all uniforms SubmitPerDrawData touches — shader def may not list them,
-    // but the GLSL source can still define them (driver query is authoritative).
-    static constexpr Uniform kPerDrawUniforms[] = {
-        Uniform::MODEL,
-        Uniform::MODEL_WITHOUT_TRANSLATE,
-        Uniform::INVERSE_MODEL,
-        Uniform::INVERSE_TRANSPOSE_MODEL,
-        Uniform::IBL_ROTATION,
-        Uniform::IBL_SECONDARY_ROTATION,
-        Uniform::VIEWPORT_SIZE,
-        Uniform::DRAW_COMMAND,
-        Uniform::ACTIVE_POINT_LIGHT_INDEXES,
-        Uniform::ACTIVE_SPOT_LIGHT_INDEXES,
-        Uniform::MATERIAL_CACHE,
-        Uniform::KEY_FRAME_DATA,
-        Uniform::BLEND_FRAME_DATA,
-        Uniform::BLEND_FACTOR,
-        Uniform::SKIN_PARAMS,
-    };
-    for (Uniform u : kPerDrawUniforms)
-    {
-      int idx = (int) u;
-      if (program->m_defaultUniformLocation[idx] == -1)
-      {
-        program->m_defaultUniformLocation[idx] = glGetUniformLocation(pid, GetUniformName(u));
-      }
-    }
   }
 
   void GLBackend::DestroyGpuProgram(GpuProgram* program)
