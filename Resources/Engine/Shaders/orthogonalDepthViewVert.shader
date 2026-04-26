@@ -3,7 +3,7 @@
 	<include name = "skinning.shader" />
 	<include name = "cameraDataInc.shader" />
 	<include name = "drawDataInc.shader" />
-	<uniform name = "model" />
+	<include name = "perDrawDataInc.shader" />
 	<source>
 	<!--
 	#version 300 es
@@ -19,7 +19,6 @@
 	uniform mat4 LightView;
 	uniform float LightFrustumHalfSize;
 	uniform vec3 LightDir; // Should be normalized
-	uniform mat4 model;
 
 	out float v_depth;
 	out vec2 v_texture;
@@ -35,7 +34,7 @@
 			}
 
 			// Compute world position once, reuse for both clip and depth.
-			vec4 worldPos = model * skinnedVPos;
+			vec4 worldPos = perDraw._model * skinnedVPos;
 
 			gl_Position = camera.projectionView * worldPos;
 

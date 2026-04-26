@@ -3,7 +3,7 @@
 	<include name = "skinning.shader" />
 	<include name = "cameraDataInc.shader" />
 	<define name = "DrawAlphaMasked" val="0,1" />
-	<uniform name = "model" />
+	<include name = "perDrawDataInc.shader" />
 	<source>
 	<!--
 	#version 300 es
@@ -20,8 +20,6 @@
 	out vec2 v_texture;
 #endif
 
-	uniform mat4 model;
-
 	void main()
 	{
 		#if DrawAlphaMasked
@@ -35,7 +33,7 @@
 					skin(skinnedVPos, skinnedVPos);
 			}
 
-			vec4 worldPos = model * skinnedVPos;
+			vec4 worldPos = perDraw._model * skinnedVPos;
 
 			// Precompute inverse far plane on CPU if possible.
 			v_pos       = (camera.view * worldPos) * (1.0 / camera.farPlane);

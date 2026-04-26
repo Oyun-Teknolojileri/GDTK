@@ -2,7 +2,7 @@
 	<type name = "vertexShader" />
 	<include name = "cameraDataInc.shader" />
 	<include name = "drawDataInc.shader" />
-	<uniform name = "model" />
+	<include name = "perDrawDataInc.shader" />
 	<source>
 	<!--
 		#version 300 es
@@ -12,13 +12,12 @@
 		layout (location = 1) in vec3 vNormal;
 		layout (location = 2) in vec2 vTexture;
 
-		uniform mat4 model;
 		out vec3 v_pos;
 
 		void main()
 		{
-		    v_pos = vPosition;  
-		    gl_Position =  camera.projectionView * model * vec4(v_pos, 1.0);
+		    v_pos = vPosition;
+		    gl_Position =  camera.projectionView * perDraw._model * vec4(v_pos, 1.0);
 		}
 	-->
 	</source>
