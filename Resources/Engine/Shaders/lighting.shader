@@ -2,8 +2,7 @@
 	<type name = "includeShader" />
 	<include name = "pbrCommon.shader" />
 	<include name = "shadow.shader" />
-	<uniform name = "activePointLightIndexes" size = "24" />
-	<uniform name = "activeSpotLightIndexes" size = "24" />
+	<include name = "perDrawDataInc.shader" />
 	<define name = "highlightCascades" val="0,1" />
 	<source>
 	<!--
@@ -14,8 +13,6 @@ uniform sampler2DArray s_texture8; // Shadow atlas
 
 /// Deferred rendering uniforms
 uniform sampler2D s_texture13; // Light data
-uniform int activePointLightIndexes[MAX_POINT_LIGHT_PER_OBJECT];
-uniform int activeSpotLightIndexes[MAX_SPOT_LIGHT_PER_OBJECT];
 
 const float shadowFadeOutDistanceNorm = 0.9;
 
@@ -303,7 +300,7 @@ vec3 PBRLighting
 	// ----- Point Lights -----
 	for (int i = 0; i < GetActivePointLightCount(); i++)
 	{
-		int ii = activePointLightIndexes[i];
+		int ii = perDraw._activePointLightIndices[i >> 2][i & 3];
 		PointLightData light = pointLightArray[ii];
 
 		vec3 fragToLight = light.position - fragPos;
@@ -351,7 +348,7 @@ vec3 PBRLighting
 	// ----- Spot Lights -----
 	for (int i = 0; i < GetActiveSpotLightCount(); i++)
 	{
-		int ii = activeSpotLightIndexes[i];
+		int ii = perDraw._activeSpotLightIndices[i >> 2][i & 3];
 		SpotLightData light = spotLightArray[ii];
 
 		vec3 fragToLight = light.position - fragPos;
