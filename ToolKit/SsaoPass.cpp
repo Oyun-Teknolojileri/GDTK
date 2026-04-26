@@ -24,8 +24,6 @@ namespace ToolKit
   // SSAOPass
   //////////////////////////////////////////
 
-  StringArray SSAOPass::m_ssaoSamplesStrCache;
-
   SSAOPass::SSAOPass() : Pass("SSAOPass")
   {
     m_ssaoFramebuffer = MakeNewPtr<Framebuffer>("SSAOPassFB");
@@ -35,14 +33,8 @@ namespace ToolKit
     m_quadPass        = MakeNewPtr<FullQuadPass>();
     m_blurPass        = MakeNewPtr<FullQuadPass>();
 
-    m_ssaoSamplesStrCache.reserve(m_ssaoSamplesStrCacheSize);
-    for (int i = 0; i < m_ssaoSamplesStrCacheSize; ++i)
-    {
-      m_ssaoSamplesStrCache.push_back("samples[" + std::to_string(i) + "]");
-    }
-
-    m_ssaoShader = GetShaderManager()->Create<Shader>(ShaderPath("ssaoCalcFrag.shader", true));
-    m_blurShader = GetShaderManager()->Create<Shader>(ShaderPath("ssaoBlurFrag.shader", true));
+    m_ssaoShader      = GetShaderManager()->Create<Shader>(ShaderPath("ssaoCalcFrag.shader", true));
+    m_blurShader      = GetShaderManager()->Create<Shader>(ShaderPath("ssaoBlurFrag.shader", true));
   }
 
   SSAOPass::SSAOPass(const SSAOPassParams& params) : SSAOPass() { m_params = params; }
@@ -71,14 +63,19 @@ namespace ToolKit
       normalDepthBuffer = m_params.GNormalDepthBuffer->GetResolvedTexture();
     }
 
-    // Generate SSAO texture
+    // Generate SSAO texture. calc + blur share GL slot 5 (pass-specific UBO convention) —
+    // Map each one immediately before its draw so the slot has the right buffer at consume time.
     renderer->SetTexture(1, normalDepthBuffer);
 
+    m_calcPassDataBuffer.Invalidate();
+    m_calcPassDataBuffer.Map();
     RenderSubPass(m_quadPass);
 
     // Single-pass bilinear 5x5 blur (reads raw SSAO, writes to m_ssaoTexture)
     renderer->SetTexture(0, m_rawSsaoRt);
 
+    m_blurPassDataBuffer.Invalidate();
+    m_blurPassDataBuffer.Map();
     RenderSubPass(m_blurPass);
   }
 
@@ -157,31 +154,32 @@ namespace ToolKit
 
     m_quadPass->SetFragmentShader(m_ssaoShader, GetRenderer());
 
+    if (!m_calcPassDataBufferInitialized)
+    {
+      m_calcPassDataBuffer.Init();
+      m_calcPassDataBufferInitialized = true;
+    }
+
     if (m_params.KernelSize != m_currentKernelSize || m_prevSpread != m_params.spread)
     {
-      // Update kernel
       for (int i = 0; i < m_params.KernelSize; i++)
       {
-        m_quadPass->UpdateUniform(ShaderUniform(m_ssaoSamplesStrCache[i], m_ssaoKernel[i]));
+        m_calcPassDataBuffer.m_data.samples[i] = Vec4(m_ssaoKernel[i], 0.0f);
       }
-
       m_prevSpread = m_params.spread;
     }
 
-    const Mat4& proj = m_params.Cam->GetProjectionMatrix();
-    m_quadPass->UpdateUniform(ShaderUniform("inverseProjection", glm::inverse(proj)));
+    const Mat4& proj                            = m_params.Cam->GetProjectionMatrix();
+    m_calcPassDataBuffer.m_data.inverseProjection = glm::inverse(proj);
 
     // Precompute projection params.
     // projParams = (P00, P11, P20, P21)
     // clip.x = P00*x_view + P20*z_view, clip.y = P11*y_view + P21*z_view, w_clip = -z_view
-    Vec4 projParams = Vec4(proj[0][0], proj[1][1], proj[2][0], proj[2][1]);
-    m_quadPass->UpdateUniform(ShaderUniform("projParams", projParams));
+    m_calcPassDataBuffer.m_data.projParams      = Vec4(proj[0][0], proj[1][1], proj[2][0], proj[2][1]);
 
-    // Precompute normalToView matrix.
-    Mat3 normalToView = Mat3(m_params.Cam->GetViewMatrix());
-    m_quadPass->UpdateUniform(ShaderUniform("normalToView", normalToView));
-    m_quadPass->UpdateUniform(ShaderUniform("radius", m_params.Radius));
-    m_quadPass->UpdateUniform(ShaderUniform("bias", m_params.Bias));
+    // Stored as Mat4 (std140 mat3 padding would be 48 bytes anyway); shader extracts mat3().
+    m_calcPassDataBuffer.m_data.normalToView    = Mat4(Mat3(m_params.Cam->GetViewMatrix()));
+    m_calcPassDataBuffer.m_data.radiusBiasAndPad = Vec4(m_params.Radius, m_params.Bias, 0.0f, 0.0f);
 
     // Setup blur pass
     m_blurPass->m_params.frameBuffer      = m_blurFramebuffer;
@@ -195,8 +193,6 @@ namespace ToolKit
       m_blurPassDataBufferInitialized = true;
     }
     m_blurPassDataBuffer.m_data.texelSizeAndPad = Vec4(1.0f / renderWidth, 1.0f / renderHeight, 0.0f, 0.0f);
-    m_blurPassDataBuffer.Invalidate();
-    m_blurPassDataBuffer.Map();
   }
 
   void SSAOPass::PostRender()

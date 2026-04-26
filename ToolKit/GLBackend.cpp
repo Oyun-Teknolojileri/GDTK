@@ -826,6 +826,7 @@ namespace ToolKit
     bindUBOBlockOnly("PreFilterEnvMapPassData", PreFilterEnvMapPassDataBuffer::Binding());
     bindUBOBlockOnly("GridPassData", GridPassDataBuffer::Binding());
     bindUBOBlockOnly("SsaoBlurPassData", SsaoBlurPassDataBuffer::Binding());
+    bindUBOBlockOnly("SsaoCalcPassData", SsaoCalcPassDataBuffer::Binding());
 
     // Cache default and array uniform locations.
     for (const ShaderPtr& shader : program->m_shaders)
