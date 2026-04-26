@@ -4,8 +4,7 @@
 	  <include name = "cameraDataInc.shader" />
     <include name = "materialCacheInc.shader" />
     <include name = "drawDataInc.shader" />
-    <uniform name = "model" />
-    <uniform name = "inverseTransposeModel" />
+    <include name = "perDrawDataInc.shader" />
 	<source>
 	<!--
   #version 300 es
@@ -22,9 +21,6 @@
   out float v_viewDepth;
   out mediump vec2 v_texture;
   out mediump mat3 TBN;
-
-  uniform mat4 model;
-  uniform mat4 inverseTransposeModel;
 
     void main()
     {
@@ -51,7 +47,7 @@
 	  // World-space normal / TBN
 		if (normalMapInUse)
 		{
-			mat3 normalMatrix = mat3(inverseTransposeModel);
+			mat3 normalMatrix = mat3(perDraw._inverseTransposeModel);
 
 			vec3 wN = normalize(normalMatrix * N);
 			vec3 wT = normalize(normalMatrix * T);
@@ -61,10 +57,10 @@
 		}
 	    else
 	    {
-		    v_worldNormal = normalize(mat3(inverseTransposeModel) * N);
+		    v_worldNormal = normalize(mat3(perDraw._inverseTransposeModel) * N);
 	    }
 
-      vec4 worldPos = model * localPos;
+      vec4 worldPos = perDraw._model * localPos;
       v_worldPos = worldPos.xyz;
       v_viewDepth = (camera.view * worldPos).z;
       v_texture = vTexture;
