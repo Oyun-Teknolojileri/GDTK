@@ -250,6 +250,14 @@ namespace ToolKit
 
   typedef GpuBufferBase<CubemapEquirectPassDataLayout, 5> CubemapEquirectPassDataBuffer;
 
+  struct PreFilterEnvMapPassDataLayout
+  {
+    /** .x = resPerFace, .y = roughness. */
+    Vec4 params;
+  };
+
+  typedef GpuBufferBase<PreFilterEnvMapPassDataLayout, 5> PreFilterEnvMapPassDataBuffer;
+
   // GlobalGpuBuffers
   //////////////////////////////////////////
 
@@ -566,6 +574,8 @@ namespace ToolKit
     /** Shared by GenerateCubemapFrom2DTexture / GenerateEquiRectengularProjection paths. */
     CubemapEquirectPassDataBuffer m_cubemapEquirectBuffer;
     bool m_cubemapEquirectBufferInitialized        = false;
+    PreFilterEnvMapPassDataBuffer m_preFilterEnvMapBuffer;
+    bool m_preFilterEnvMapBufferInitialized        = false;
     MaterialPtr m_averageBlurMaterial              = nullptr;
     QuadPtr m_tempQuad                             = nullptr;
     MaterialPtr m_tempQuadMaterial                 = nullptr;

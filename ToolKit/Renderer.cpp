@@ -172,6 +172,8 @@ namespace ToolKit
 
     m_cubemapEquirectBuffer.Destroy();
     m_cubemapEquirectBufferInitialized = false;
+    m_preFilterEnvMapBuffer.Destroy();
+    m_preFilterEnvMapBufferInitialized = false;
 
     SafeDel(m_gpuProgramManager);
 
@@ -1487,8 +1489,14 @@ namespace ToolKit
 
         SetFramebuffer(m_oneColorAttachmentFramebuffer, GraphicBitFields::None);
 
-        mat->UpdateProgramUniform("roughness", (float) mip / (float) (mipMaps - 1));
-        mat->UpdateProgramUniform("resPerFace", (float) mipSize);
+        if (!m_preFilterEnvMapBufferInitialized)
+        {
+          m_preFilterEnvMapBuffer.Init();
+          m_preFilterEnvMapBufferInitialized = true;
+        }
+        m_preFilterEnvMapBuffer.m_data.params = Vec4((float) mipSize, (float) mip / (float) (mipMaps - 1), 0.0f, 0.0f);
+        m_preFilterEnvMapBuffer.Invalidate();
+        m_preFilterEnvMapBuffer.Map();
 
         m_backend->BindTexture(0, cubemap);
 
