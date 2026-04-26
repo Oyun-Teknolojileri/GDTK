@@ -51,7 +51,7 @@ namespace ToolKit
   void RenderSystem::Init()
   {
     m_renderer->Init();
-    AddRenderTask({[](Renderer* renderer) -> void { /*TODO renderer->GenerateBRDFLutTexture();*/ }});
+    AddRenderTask({[](Renderer* renderer) -> void { renderer->GenerateBRDFLutTexture(); }});
   }
 
   IGraphicsBackend* RenderSystem::CreateBackend()
