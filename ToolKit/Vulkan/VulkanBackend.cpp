@@ -17,7 +17,11 @@
 #include "VulkanPipeline.h"
 #include "VulkanPipelineCache.h"
 #include "VulkanResources.h"
+#include "VulkanShader.h"
 #include "VulkanSwapchain.h"
+
+#include "../GpuProgram.h"
+#include "../Shader.h"
 
 #include <vma/vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
@@ -928,23 +932,143 @@ namespace ToolKit
 
   GpuResourceDataPtr VulkanBackend::CreateShader(Shader* shader, const String& source)
   {
-    // TODO: Compile GLSL to SPIR-V (glslang/shaderc), vkCreateShaderModule.
-    return nullptr;
+    if (shader == nullptr)
+    {
+      return nullptr;
+    }
+    if (shader->m_shaderType == ShaderType::IncludeShader)
+    {
+      // Include shaders are textually inlined by the engine before reaching here in the GL path;
+      // no compilation target. Return null as GLBackend does.
+      TK_ERR("Include shader can't be compiled: %s", shader->GetFile().c_str());
+      return nullptr;
+    }
+
+    // -------------------------------------------------------------------------------------------
+    // TODO(stage 7c): compile the real shader source.
+    //
+    // The engine's GLSL is written for the GL backend (uses #include, gl_* builtins outside
+    // Vulkan's allowed subset, GL-style binding conventions, etc.) and shaderc rejects it as-is.
+    // Until Stage 7c settles the binding strategy + shader-side adaptation, we ignore @p source
+    // and substitute a minimal pass-through shader so CreateGpuProgram has valid VkShaderModules
+    // to build a pipeline layout from. Draw() is still gated by m_pipelineBound, so nothing
+    // actually renders from these stubs � they exist only to keep the engine's resource graph
+    // alive without crashing.
+    //
+    // Optimization: shaderc compile is expensive (~tens of ms per call). The engine loads dozens
+    // of shaders during init, so we compile the stub SPIR-V exactly once per stage and cache it;
+    // every subsequent CreateShader just calls vkCreateShaderModule (microseconds).
+    // -------------------------------------------------------------------------------------------
+    static const char* kStubVert = R"(#version 450
+        void main() { gl_Position = vec4(0.0, 0.0, 0.0, 1.0); }
+    )";
+    static const char* kStubFrag = R"(#version 450
+        layout(location = 0) out vec4 outColor;
+        void main() { outColor = vec4(0.0); }
+    )";
+
+    static std::vector<uint32_t> s_stubVertSpirv;
+    static std::vector<uint32_t> s_stubFragSpirv;
+
+    const bool isVertex             = (shader->m_shaderType == ShaderType::VertexShader);
+    std::vector<uint32_t>& cacheRef = isVertex ? s_stubVertSpirv : s_stubFragSpirv;
+
+    if (cacheRef.empty())
+    {
+      const VulkanShader::Stage stage = isVertex ? VulkanShader::Stage::Vertex : VulkanShader::Stage::Fragment;
+      const std::string stubSource    = isVertex ? kStubVert : kStubFrag;
+      cacheRef                        = VulkanShader::CompileGlslToSpirv(stage, stubSource, "stub");
+      if (cacheRef.empty())
+      {
+        TK_ERR("CreateShader: stub shader compile failed (shaderc misconfigured?)");
+        return nullptr;
+      }
+    }
+
+    VkShaderModule module = VulkanShader::CreateShaderModule(m_context->GetDevice(), cacheRef);
+    if (module == VK_NULL_HANDLE)
+    {
+      return nullptr;
+    }
+
+    auto data     = std::make_shared<VulkanShaderModule>();
+    data->context = m_context.get();
+    data->module  = module;
+    return data;
   }
 
   void VulkanBackend::DestroyShader(GpuResourceData* shaderData)
   {
-    // TODO: vkDestroyShaderModule.
+    // GpuResourceData* arrives as a raw pointer here (matching GLBackend's signature). The
+    // owning shared_ptr is held by the Shader instance — we cannot defer-delete via a captured
+    // shared_ptr because we don't have one. Eager destroy is acceptable: by the time the engine
+    // calls DestroyShader, the program(s) referencing the module have already been torn down
+    // (vkDeviceWaitIdle on shutdown, or explicit DestroyGpuProgram in hot-reload paths).
+    auto* sm = static_cast<VulkanShaderModule*>(shaderData);
+    if (sm == nullptr || sm->context == nullptr || sm->module == VK_NULL_HANDLE)
+    {
+      return;
+    }
+    vkDestroyShaderModule(sm->context->GetDevice(), sm->module, nullptr);
+    sm->module = VK_NULL_HANDLE;
   }
 
   void VulkanBackend::CreateGpuProgram(GpuProgram* program, GlobalGpuBuffers* buffers)
   {
-    // TODO: Create pipeline layout, descriptor set layouts. Actual VkPipeline created lazily in BindPipeline.
+    assert(program != nullptr && "CreateGpuProgram: null program");
+    assert(program->m_gpuData == nullptr && "CreateGpuProgram: program already has gpu data");
+
+    if (program->m_shaders.size() < 2)
+    {
+      TK_ERR("CreateGpuProgram: program needs at least vertex+fragment shaders");
+      return;
+    }
+
+    auto* vertSm = static_cast<VulkanShaderModule*>(program->m_shaders[0]->m_gpuData.get());
+    auto* fragSm = static_cast<VulkanShaderModule*>(program->m_shaders[1]->m_gpuData.get());
+    if (vertSm == nullptr || fragSm == nullptr || vertSm->module == VK_NULL_HANDLE ||
+        fragSm->module == VK_NULL_HANDLE)
+    {
+      TK_ERR("CreateGpuProgram: missing compiled shader module(s)");
+      return;
+    }
+
+    auto data     = std::make_shared<VulkanGpuProgram>();
+    data->context = m_context.get();
+    data->vert    = vertSm->module;
+    data->frag    = fragSm->module;
+
+    // Stage 7b-1: empty descriptor set layout list. The pipeline layout below is built with zero
+    // sets and zero push constants — sufficient for shaders that read no resources, and for the
+    // existing test scaffolds. Stage 7b-2 will populate descriptorSetLayouts based on the chosen
+    // binding strategy (single set 0 with all ToolKit slots, or shaderc-remapped multi-set).
+    VkPipelineLayoutCreateInfo plci{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+    plci.setLayoutCount         = 0;
+    plci.pSetLayouts            = nullptr;
+    plci.pushConstantRangeCount = 0;
+    plci.pPushConstantRanges    = nullptr;
+
+    if (VkResult r = vkCreatePipelineLayout(m_context->GetDevice(), &plci, nullptr, &data->pipelineLayout);
+        r != VK_SUCCESS)
+    {
+      TK_ERR("CreateGpuProgram: vkCreatePipelineLayout failed: %d", r);
+      return;
+    }
+
+    program->m_gpuData = data;
   }
 
   void VulkanBackend::DestroyGpuProgram(GpuProgram* program)
   {
-    // TODO: Destroy pipeline layout, cached pipelines, descriptor set layouts.
+    if (program == nullptr || program->m_gpuData == nullptr)
+    {
+      return;
+    }
+    // Defer the shared_ptr release: in-flight cmd buffers may have bound a VkPipeline built off
+    // this program's layout. ~VulkanGpuProgram destroys the layout once the deleter runs.
+    auto data          = program->m_gpuData;
+    program->m_gpuData = nullptr;
+    DeferDelete([data]() mutable { data.reset(); });
   }
 
   int VulkanBackend::GetUniformLocation(GpuProgram* program, const char* name)

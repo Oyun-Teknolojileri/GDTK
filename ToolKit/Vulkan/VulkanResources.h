@@ -13,6 +13,8 @@
 
 #include <vulkan/vulkan.h>
 
+#include <vector>
+
 struct VmaAllocation_T;
 typedef struct VmaAllocation_T* VmaAllocation;
 
@@ -142,6 +144,50 @@ namespace ToolKit
     VulkanBuffer::Buffer index;
 
     ~VulkanMesh() override;
+  };
+
+  /**
+   * Backend GPU data for a Shader.
+   * Stored on Shader::m_gpuData via CreateShader.
+   *
+   * Holds a single VkShaderModule built from the shader's GLSL source compiled to SPIR-V. The
+   * shaderc spirv binary is not retained � once vkCreateShaderModule consumed it, only the
+   * driver-side module is needed.
+   */
+  struct VulkanShaderModule : public GpuResourceData
+  {
+    VulkanContext* context = nullptr;
+    VkShaderModule module  = VK_NULL_HANDLE;
+
+    ~VulkanShaderModule() override;
+  };
+
+  /**
+   * Backend GPU data for a GpuProgram (vertex + fragment shader pair).
+   * Stored on GpuProgram::m_gpuData via CreateGpuProgram.
+   *
+   * Owns the VkPipelineLayout + VkDescriptorSetLayout(s) that every VkPipeline built off this
+   * program shares. Shader modules are NOT owned here � they live on the individual Shader's
+   * VulkanShaderModule (Shader's lifetime governs them). VulkanGpuProgram caches raw module
+   * handles for cheap pipeline rebuild but does not destroy them.
+   *
+   * Stage 7b-1 scaffold: descriptor set layouts are empty; CreateGpuProgram builds a layout with
+   * zero sets. Stage 7b-2 will introduce the actual binding strategy (single set 0 with all
+   * ToolKit slot bindings, or shaderc binding remap � decided then).
+   */
+  struct VulkanGpuProgram : public GpuResourceData
+  {
+    VulkanContext* context = nullptr;
+
+    // Cached references; modules are owned by the source Shader's VulkanShaderModule.
+    VkShaderModule vert    = VK_NULL_HANDLE;
+    VkShaderModule frag    = VK_NULL_HANDLE;
+
+    // Empty in 7b-1; populated in 7b-2.
+    std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
+    VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+
+    ~VulkanGpuProgram() override;
   };
 
 } // namespace ToolKit

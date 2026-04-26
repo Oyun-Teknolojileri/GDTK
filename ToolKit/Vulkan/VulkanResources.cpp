@@ -153,4 +153,35 @@ namespace ToolKit
     }
   }
 
+  VulkanShaderModule::~VulkanShaderModule()
+  {
+    if (context != nullptr && module != VK_NULL_HANDLE)
+    {
+      vkDestroyShaderModule(context->GetDevice(), module, nullptr);
+      module = VK_NULL_HANDLE;
+    }
+  }
+
+  VulkanGpuProgram::~VulkanGpuProgram()
+  {
+    if (context == nullptr)
+    {
+      return;
+    }
+    VkDevice device = context->GetDevice();
+    if (pipelineLayout != VK_NULL_HANDLE)
+    {
+      vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+      pipelineLayout = VK_NULL_HANDLE;
+    }
+    for (VkDescriptorSetLayout l : descriptorSetLayouts)
+    {
+      if (l != VK_NULL_HANDLE)
+      {
+        vkDestroyDescriptorSetLayout(device, l, nullptr);
+      }
+    }
+    descriptorSetLayouts.clear();
+  }
+
 } // namespace ToolKit
