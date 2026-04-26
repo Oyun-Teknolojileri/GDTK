@@ -1,19 +1,18 @@
 <shader>
 	<type name = "includeShader" />
-	<uniform name = "viewportSize" />
+	<include name = "perDrawDataInc.shader" />
 	<source>
 	<!--
 #ifndef AO_SHADER
 #define AO_SHADER
 
 uniform sampler2D s_texture5; // ambient occlusion.
-uniform vec2 viewportSize;
 
 float AmbientOcclusion()
 {
 	if (IsAmbientOcculusionInUse())
 	{
-		vec2 coords = gl_FragCoord.xy / viewportSize;
+		vec2 coords = gl_FragCoord.xy / perDraw._viewportSizeAndPad.xy;
 		return texture(s_texture5, coords).r;
 	}
 

@@ -2,8 +2,7 @@
 	<type name = "includeShader" />
 	<include name = "pbrCommon.shader" />
 	<include name = "drawDataInc.shader" />
-	<uniform name = "iblRotation" />
-	<uniform name = "iblSecondaryRotation" />
+	<include name = "perDrawDataInc.shader" />
 	<source>
 	<!--
 
@@ -23,8 +22,9 @@ uniform samplerCube s_texture12;	// Pre-Filtered Specular Map
 uniform samplerCube s_texture16;	// Sky Diffuse Map
 uniform samplerCube s_texture17;	// Sky Pre-Filtered Specular Map
 
-uniform mat4 iblRotation;            // Sky rotation
-uniform mat4 iblSecondaryRotation;   // Unused placeholder for local volume rotations (local = identity)
+// Sky rotation backed by perDraw._iblRotation (PerDrawData UBO, slot 6).
+// `iblSecondaryRotation` is reserved for local-volume rotations but currently identity-only —
+// reads come straight off `perDraw._iblSecondaryRotation` if/when needed.
 
 // ---------------------------------------------------------------------------
 // Filament-style IBL helpers
@@ -78,14 +78,14 @@ vec3 EvalSky(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float per
 
 	// Diffuse
 	vec3 diffuseColor = albedo * (1.0 - metallic);
-	vec3 iblDiffuseVec = (iblRotation * vec4(normal, 0.0)).xyz;
+	vec3 iblDiffuseVec = (perDraw._iblRotation * vec4(normal, 0.0)).xyz;
 	vec3 irradiance = texture(s_texture16, iblDiffuseVec).rgb;
 	color += diffuseColor * irradiance * (1.0 - E);
 
 	// Specular
 	vec3 R = reflect(-fragToEye, normal);
 	R = GetSpecularDominantDirection(normal, R, perceptualRoughness);
-	vec3 iblSpecVec = (iblRotation * vec4(R, 0.0)).xyz;
+	vec3 iblSpecVec = (perDraw._iblRotation * vec4(R, 0.0)).xyz;
 	float lod = RoughnessToLod(perceptualRoughness, float(graphicConstants.iblMaxReflectionLod));
 	vec3 preFilteredColor = textureLod(s_texture17, iblSpecVec, lod).rgb;
 	color += E * preFilteredColor * energyComp;
