@@ -9,6 +9,8 @@
 
 #include "Pass.h"
 
+#include <functional>
+
 namespace ToolKit
 {
 
@@ -19,6 +21,11 @@ namespace ToolKit
     MaterialPtr Material         = nullptr;
     GraphicBitFields clearBuffer = GraphicBitFields::AllBits;
     Mat4 Transform;
+
+    /** Invoked at the end of PreRender (after shadow/preProcess/ssao have run). Lets a sky owner
+        Map its slot-5 UBO so the sky cubemap draw reads its own data instead of whatever pass
+        last touched slot 5 (typically gauss blur from ShadowPass). Used by GradientSky. */
+    std::function<void()> onPreRender;
   };
 
   class TK_API CubeMapPass : public Pass

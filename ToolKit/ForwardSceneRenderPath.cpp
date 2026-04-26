@@ -7,6 +7,7 @@
 
 #include "ForwardSceneRenderPath.h"
 
+#include "GradientSky.h"
 #include "Material.h"
 #include "MathUtil.h"
 #include "Scene.h"
@@ -212,6 +213,25 @@ namespace ToolKit
           m_skyPass->m_params.Cam         = m_params.Cam;
           m_skyPass->m_params.Transform   = m_sky->m_node->GetTransform();
           m_skyPass->m_params.Material    = m_sky->GetSkyboxMaterial();
+
+          if (m_sky->IsA<GradientSky>())
+          {
+            GradientSky* gSky = static_cast<GradientSky*>(m_sky.get());
+            m_skyPass->m_params.onPreRender = [renderer, gSky]()
+            {
+              if (!renderer->m_gradientSkyboxBufferInitialized)
+              {
+                renderer->m_gradientSkyboxBuffer.Init();
+                renderer->m_gradientSkyboxBufferInitialized = true;
+              }
+              renderer->m_gradientSkyboxBuffer.m_data.topColor       = Vec4(gSky->GetTopColorVal(), 1.0f);
+              renderer->m_gradientSkyboxBuffer.m_data.middleColor    = Vec4(gSky->GetMiddleColorVal(), 1.0f);
+              renderer->m_gradientSkyboxBuffer.m_data.bottomColor    = Vec4(gSky->GetBottomColorVal(), 1.0f);
+              renderer->m_gradientSkyboxBuffer.m_data.exponentAndPad = Vec4(gSky->GetGradientExponentVal(), 0.0f, 0.0f, 0.0f);
+              renderer->m_gradientSkyboxBuffer.Invalidate();
+              renderer->m_gradientSkyboxBuffer.Map();
+            };
+          }
         }
         else
         {

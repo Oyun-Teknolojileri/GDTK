@@ -175,6 +175,9 @@ namespace ToolKit
     m_preFilterEnvMapBuffer.Destroy();
     m_preFilterEnvMapBufferInitialized = false;
 
+    m_gradientSkyboxBuffer.Destroy();
+    m_gradientSkyboxBufferInitialized  = false;
+
     SafeDel(m_gpuProgramManager);
 
     SafeDel(m_backend);
@@ -326,34 +329,7 @@ namespace ToolKit
 
     m_backend->BindPipeline(m_currentProgram, &composed);
 
-    auto activateSkinning = [&](const Mesh* mesh)
-    {
-      int skinParamsLoc = m_currentProgram->GetDefaultUniformLocation(Uniform::SKIN_PARAMS);
-      if (skinParamsLoc == -1)
-      {
-        return;
-      }
-
-      bool isSkinned = mesh->IsSkinned();
-      if (isSkinned)
-      {
-        SkeletonPtr skel = static_cast<SkinMesh*>(job.Mesh)->m_skeleton;
-        assert(skel != nullptr);
-
-        float boneCount  = (float) skel->m_bones.size();
-        float isAnimated = (job.animData.currentAnimation != nullptr) ? 1.0f : 0.0f;
-        float hasBlend   = (job.animData.blendAnimation != nullptr) ? 1.0f : 0.0f;
-        m_backend->SetUniform4f(skinParamsLoc, Vec4(boneCount, 1.0f, isAnimated, hasBlend));
-      }
-      else
-      {
-        m_backend->SetUniform4f(skinParamsLoc, Vec4(0.0f));
-      }
-    };
-
     const Mesh* mesh = job.Mesh;
-    activateSkinning(mesh);
-
     FeedUniforms(m_currentProgram, job);
 
     DrawDesc desc;

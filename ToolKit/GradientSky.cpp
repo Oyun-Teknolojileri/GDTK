@@ -90,12 +90,6 @@ namespace ToolKit
   MaterialPtr GradientSky::GetSkyboxMaterial()
   {
     Init();
-
-    m_skyboxMaterial->UpdateProgramUniform("topColor", GetTopColorVal());
-    m_skyboxMaterial->UpdateProgramUniform("middleColor", GetMiddleColorVal());
-    m_skyboxMaterial->UpdateProgramUniform("bottomColor", GetBottomColorVal());
-    m_skyboxMaterial->UpdateProgramUniform("exponent", GetGradientExponentVal());
-
     return m_skyboxMaterial;
   }
 
@@ -160,10 +154,17 @@ namespace ToolKit
     cubemap->Init();
 
     // Create material
-    m_skyboxMaterial->UpdateProgramUniform("topColor", GetTopColorVal());
-    m_skyboxMaterial->UpdateProgramUniform("middleColor", GetMiddleColorVal());
-    m_skyboxMaterial->UpdateProgramUniform("bottomColor", GetBottomColorVal());
-    m_skyboxMaterial->UpdateProgramUniform("exponent", GetGradientExponentVal());
+    if (!renderer->m_gradientSkyboxBufferInitialized)
+    {
+      renderer->m_gradientSkyboxBuffer.Init();
+      renderer->m_gradientSkyboxBufferInitialized = true;
+    }
+    renderer->m_gradientSkyboxBuffer.m_data.topColor        = Vec4(GetTopColorVal(), 1.0f);
+    renderer->m_gradientSkyboxBuffer.m_data.middleColor     = Vec4(GetMiddleColorVal(), 1.0f);
+    renderer->m_gradientSkyboxBuffer.m_data.bottomColor     = Vec4(GetBottomColorVal(), 1.0f);
+    renderer->m_gradientSkyboxBuffer.m_data.exponentAndPad  = Vec4(GetGradientExponentVal(), 0.0f, 0.0f, 0.0f);
+    renderer->m_gradientSkyboxBuffer.Invalidate();
+    renderer->m_gradientSkyboxBuffer.Map();
 
     // Views for 6 different angles
     CameraPtr cam = MakeNewPtr<Camera>();

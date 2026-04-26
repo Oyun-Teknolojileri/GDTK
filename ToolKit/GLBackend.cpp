@@ -828,6 +828,7 @@ namespace ToolKit
     bindUBOBlockOnly("SsaoBlurPassData", SsaoBlurPassDataBuffer::Binding());
     bindUBOBlockOnly("SsaoCalcPassData", SsaoCalcPassDataBuffer::Binding());
     bindUBOBlockOnly("DofPassData", DofPassDataBuffer::Binding());
+    bindUBOBlockOnly("GradientSkyboxPassData", GradientSkyboxPassDataBuffer::Binding());
 
     // Cache default and array uniform locations.
     for (const ShaderPtr& shader : program->m_shaders)

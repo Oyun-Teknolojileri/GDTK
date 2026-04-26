@@ -46,6 +46,11 @@ namespace ToolKit
     Renderer* renderer = GetRenderer();
     renderer->SetDepthTestFunc(CompareFunctions::FuncLequal);
     renderer->SetCamera(m_params.Cam, false);
+
+    if (m_params.onPreRender)
+    {
+      m_params.onPreRender();
+    }
   }
 
   void CubeMapPass::PostRender()

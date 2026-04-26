@@ -294,6 +294,22 @@ namespace ToolKit
 
   typedef GpuBufferBase<DofPassDataLayout, 5> DofPassDataBuffer;
 
+  /** GradientSky cubemap fragment UBO (`gradientSkyboxFrag.shader`). 3 vec3 colors + 1 float
+      exponent — packed into 4 vec4s. */
+  struct GradientSkyboxPassDataLayout
+  {
+    /** .xyz = top color, .w = unused. */
+    Vec4 topColor;
+    /** .xyz = middle color, .w = unused. */
+    Vec4 middleColor;
+    /** .xyz = bottom color, .w = unused. */
+    Vec4 bottomColor;
+    /** .x = exponent. */
+    Vec4 exponentAndPad;
+  };
+
+  typedef GpuBufferBase<GradientSkyboxPassDataLayout, 5> GradientSkyboxPassDataBuffer;
+
   /** SSAO calc pass UBO (`ssaoCalcFrag.shader`). Aggregates the 6 bare uniforms the SSAO calc
       shader used to read scatter-style. Sized for the maximum kernel (32 samples) so the same
       buffer works across the 8/16/32 KERNEL_SIZE define variants — the shader's loop iterates up
@@ -586,6 +602,9 @@ namespace ToolKit
 
     /** Global gpu buffers for renderer. */
     GlobalGpuBuffers* m_globalGpuBuffers;
+
+    GradientSkyboxPassDataBuffer m_gradientSkyboxBuffer;
+    bool m_gradientSkyboxBufferInitialized         = false;
 
    private:
     GpuProgramPtr m_currentProgram = nullptr;
