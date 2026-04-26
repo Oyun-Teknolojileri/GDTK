@@ -8,6 +8,7 @@
 #pragma once
 
 #include "FullQuadPass.h"
+#include "Renderer.h"
 
 namespace ToolKit
 {
@@ -71,6 +72,10 @@ namespace ToolKit
     FullQuadPassPtr m_blurPass               = nullptr;
     ShaderPtr m_ssaoShader                   = nullptr;
     ShaderPtr m_blurShader                   = nullptr;
+
+    /** Slot-5 UBO for `ssaoBlurFrag.shader`. Lazy-init on first PreRender. */
+    SsaoBlurPassDataBuffer m_blurPassDataBuffer;
+    bool m_blurPassDataBufferInitialized     = false;
 
     int m_currentKernelSize                  = 0;
 

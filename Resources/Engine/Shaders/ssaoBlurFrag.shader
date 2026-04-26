@@ -1,5 +1,6 @@
 <shader>
 	<type name = "fragmentShader" />
+	<include name = "ssaoBlurPassDataInc.shader" />
 	<source>
 	<!--
 #version 300 es
@@ -10,7 +11,6 @@ out vec4 fragColor;
 in vec2 v_texture;
 
 uniform sampler2D s_texture0; // SSAO texture (must have bilinear filtering)
-uniform vec2 texelSize;       // 1.0 / textureSize
 
 void main()
 {
@@ -39,16 +39,16 @@ void main()
 	vec2 uv = v_texture;
 
 	// 4 corner samples (each approximates a 2x2 block)
-	float tl = texture(s_texture0, uv + texelSize * vec2(-o, -o)).r;
-	float tr = texture(s_texture0, uv + texelSize * vec2( o, -o)).r;
-	float bl = texture(s_texture0, uv + texelSize * vec2(-o,  o)).r;
-	float br = texture(s_texture0, uv + texelSize * vec2( o,  o)).r;
+	float tl = texture(s_texture0, uv + ssaoBlur.texelSizeAndPad.xy * vec2(-o, -o)).r;
+	float tr = texture(s_texture0, uv + ssaoBlur.texelSizeAndPad.xy * vec2( o, -o)).r;
+	float bl = texture(s_texture0, uv + ssaoBlur.texelSizeAndPad.xy * vec2(-o,  o)).r;
+	float br = texture(s_texture0, uv + ssaoBlur.texelSizeAndPad.xy * vec2( o,  o)).r;
 
 	// 4 edge samples (each approximates a 2x1 block)
-	float t  = texture(s_texture0, uv + texelSize * vec2( 0.0, -e)).r;
-	float b  = texture(s_texture0, uv + texelSize * vec2( 0.0,  e)).r;
-	float l  = texture(s_texture0, uv + texelSize * vec2(-e,  0.0)).r;
-	float r  = texture(s_texture0, uv + texelSize * vec2( e,  0.0)).r;
+	float t  = texture(s_texture0, uv + ssaoBlur.texelSizeAndPad.xy * vec2( 0.0, -e)).r;
+	float b  = texture(s_texture0, uv + ssaoBlur.texelSizeAndPad.xy * vec2( 0.0,  e)).r;
+	float l  = texture(s_texture0, uv + ssaoBlur.texelSizeAndPad.xy * vec2(-e,  0.0)).r;
+	float r  = texture(s_texture0, uv + ssaoBlur.texelSizeAndPad.xy * vec2( e,  0.0)).r;
 
 	// Center sample
 	float c  = texture(s_texture0, uv).r;

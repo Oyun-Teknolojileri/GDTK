@@ -272,6 +272,16 @@ namespace ToolKit
 
   typedef GpuBufferBase<GridPassDataLayout, 5> GridPassDataBuffer;
 
+  /** SSAO bilinear 5x5 blur pass UBO (`ssaoBlurFrag.shader`). Single vec2 texel size, padded to
+      a vec4 so the std140 layout sits on a 16-byte boundary. */
+  struct SsaoBlurPassDataLayout
+  {
+    /** .xy = 1.0 / textureSize (pixel size in UV). */
+    Vec4 texelSizeAndPad;
+  };
+
+  typedef GpuBufferBase<SsaoBlurPassDataLayout, 5> SsaoBlurPassDataBuffer;
+
   // GlobalGpuBuffers
   //////////////////////////////////////////
 

@@ -188,7 +188,15 @@ namespace ToolKit
     m_blurPass->m_params.clearFrameBuffer = GraphicBitFields::None;
 
     m_blurPass->SetFragmentShader(m_blurShader, GetRenderer());
-    m_blurPass->UpdateUniform(ShaderUniform("texelSize", Vec2(1.0f / renderWidth, 1.0f / renderHeight)));
+
+    if (!m_blurPassDataBufferInitialized)
+    {
+      m_blurPassDataBuffer.Init();
+      m_blurPassDataBufferInitialized = true;
+    }
+    m_blurPassDataBuffer.m_data.texelSizeAndPad = Vec4(1.0f / renderWidth, 1.0f / renderHeight, 0.0f, 0.0f);
+    m_blurPassDataBuffer.Invalidate();
+    m_blurPassDataBuffer.Map();
   }
 
   void SSAOPass::PostRender()
