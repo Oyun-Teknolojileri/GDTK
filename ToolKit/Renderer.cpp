@@ -36,6 +36,8 @@
 #include "UIManager.h"
 #include "Viewport.h"
 
+#include <cstring>
+
 #include "DebugNew.h"
 
 namespace ToolKit
@@ -1118,6 +1120,36 @@ namespace ToolKit
     }
 
     m_backend->SubmitPerDrawData(&pdu, sizeof(pdu));
+
+    // Mirror the same per-draw payload into the std140 UBO at slot 6. Shaders that have been
+    // migrated off bare uniforms read out of `layout(std140) uniform PerDrawData {...}` instead
+    // of the scatter glUniform* path above. Until every shader is migrated both paths run in
+    // parallel; the cost is one ~1.1 KB UBO map per draw, which is negligible.
+    PerDrawUboLayout& ubo       = m_globalGpuBuffers->perDrawBuffer.m_data;
+    ubo.model                   = pdu.model;
+    ubo.modelWithoutTranslate   = pdu.modelWithoutTranslate;
+    ubo.inverseModel            = pdu.inverseModel;
+    ubo.inverseTransposeModel   = pdu.inverseTransposeModel;
+    ubo.iblRotation             = pdu.iblRotation;
+    ubo.iblSecondaryRotation    = pdu.iblSecondaryRotation;
+    ubo.viewportSizeAndPad      = Vec4(pdu.viewportSize, 0.0f, 0.0f);
+    ubo.drawCommand             = pdu.drawCommand;
+    ubo.materialData            = pdu.materialData;
+
+    // Pack the 24 ints into 6 ivec4. std140 would otherwise grow each int to 16 bytes.
+    static_assert(RHIConstants::MaxPointLightPerObject == 24, "PerDrawUboLayout assumes 24 point indices");
+    static_assert(RHIConstants::MaxSpotLightPerObject == 24, "PerDrawUboLayout assumes 24 spot indices");
+    std::memcpy(ubo.activePointLightIndices, pdu.activePointLightIndices, sizeof(pdu.activePointLightIndices));
+    std::memcpy(ubo.activeSpotLightIndices, pdu.activeSpotLightIndices, sizeof(pdu.activeSpotLightIndices));
+    ubo.lightCounts             = IVec4(pdu.activePointLightCount, pdu.activeSpotLightCount, 0, 0);
+
+    ubo.keyFrameData            = pdu.keyFrameData;
+    ubo.blendFrameData          = pdu.blendFrameData;
+    ubo.skinParams              = pdu.skinParams;
+    ubo.animBlendFactorAndPad   = Vec4(pdu.animationBlendFactor, 0.0f, 0.0f, 0.0f);
+
+    m_globalGpuBuffers->perDrawBuffer.Invalidate();
+    m_globalGpuBuffers->perDrawBuffer.Map();
 
     // Custom shader uniforms � dispatched through backend.
     m_backend->SubmitCustomUniforms(program, program->m_customUniforms);
