@@ -150,6 +150,7 @@ namespace ToolKit
   Renderer::~Renderer()
   {
     // Release all GPU resource references before destroying backend.
+
     m_oneColorAttachmentFramebuffer = nullptr;
     m_gaussianBlurMaterial          = nullptr;
     m_averageBlurMaterial           = nullptr;
@@ -166,7 +167,11 @@ namespace ToolKit
     m_sky                           = nullptr;
     m_currentProgram                = nullptr;
 
+    m_gaussianBlurBuffer.Destroy();
+    m_gaussianBlurBufferInitialized = false;
+
     SafeDel(m_gpuProgramManager);
+
     SafeDel(m_backend);
   }
 
@@ -609,9 +614,17 @@ namespace ToolKit
       m_gaussianBlurMaterial->SetDiffuseTextureVal(nullptr);
       m_gaussianBlurMaterial->Init();
     }
+    if (!m_gaussianBlurBufferInitialized)
+    {
+      m_gaussianBlurBuffer.Init();
+      m_gaussianBlurBufferInitialized = true;
+    }
 
     m_gaussianBlurMaterial->SetDiffuseTextureVal(src);
-    m_gaussianBlurMaterial->UpdateProgramUniform("BlurScale", axis * amount);
+    m_gaussianBlurBuffer.m_data.blurScaleAndLayer = Vec4(axis * amount, 0.0f);
+    m_gaussianBlurBuffer.m_data.blurClampMinMax   = Vec4(0.0f);
+    m_gaussianBlurBuffer.Invalidate();
+    m_gaussianBlurBuffer.Map();
 
     m_oneColorAttachmentFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, dst);
 
@@ -645,6 +658,11 @@ namespace ToolKit
       m_gaussianBlurMaterial->SetFragmentShaderVal(frag);
       m_gaussianBlurMaterial->SetDiffuseTextureVal(nullptr);
       m_gaussianBlurMaterial->Init();
+    }
+    if (!m_gaussianBlurBufferInitialized)
+    {
+      m_gaussianBlurBuffer.Init();
+      m_gaussianBlurBufferInitialized = true;
     }
 
     ShaderPtr frag   = m_gaussianBlurMaterial->GetFragmentShaderVal();
@@ -681,10 +699,10 @@ namespace ToolKit
         SetViewportRect(0, 0, texSize, texSize);
         SetScissor(sx, sy, slotSize, slotSize);
 
-        m_gaussianBlurMaterial->UpdateProgramUniform("BlurScale", Vec3(blurAmount, 0.0f, 0.0f));
-        m_gaussianBlurMaterial->UpdateProgramUniform("BlurLayer", (float) layer);
-        m_gaussianBlurMaterial->UpdateProgramUniform("BlurClampMin", clampMin);
-        m_gaussianBlurMaterial->UpdateProgramUniform("BlurClampMax", clampMax);
+        m_gaussianBlurBuffer.m_data.blurScaleAndLayer = Vec4(blurAmount, 0.0f, 0.0f, (float) layer);
+        m_gaussianBlurBuffer.m_data.blurClampMinMax   = Vec4(clampMin, clampMax);
+        m_gaussianBlurBuffer.Invalidate();
+        m_gaussianBlurBuffer.Map();
 
         BindProgramOfMaterial(m_gaussianBlurMaterial.get());
 
@@ -707,9 +725,10 @@ namespace ToolKit
         SetScissor(sx, sy, slotSize, slotSize);
 
         m_gaussianBlurMaterial->SetDiffuseTextureVal(tempRT);
-        m_gaussianBlurMaterial->UpdateProgramUniform("BlurScale", Vec3(0.0f, blurAmount, 0.0f));
-        m_gaussianBlurMaterial->UpdateProgramUniform("BlurClampMin", clampMin);
-        m_gaussianBlurMaterial->UpdateProgramUniform("BlurClampMax", clampMax);
+        m_gaussianBlurBuffer.m_data.blurScaleAndLayer = Vec4(0.0f, blurAmount, 0.0f, 0.0f);
+        m_gaussianBlurBuffer.m_data.blurClampMinMax   = Vec4(clampMin, clampMax);
+        m_gaussianBlurBuffer.Invalidate();
+        m_gaussianBlurBuffer.Map();
 
         DrawFullQuad(m_gaussianBlurMaterial);
         EndPass();

@@ -463,9 +463,10 @@ namespace ToolKit
 
       g_proxy->PreUninit();
       g_proxy->Uninit();
-      g_proxy->PostUninit();
 
       SafeDel(g_app);
+
+      g_proxy->PostUninit();
       SafeDel(g_proxy);
 
       SafeDel(g_sdlEventPool);

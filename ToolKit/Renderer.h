@@ -228,6 +228,20 @@ namespace ToolKit
 
   typedef GpuBufferBase<BloomPassDataLayout, 5> BloomPassDataBuffer;
 
+  /** Gaussian blur shader UBO. Used by `Renderer::ApplyGaussianBlur*` family with the shared
+      `gausBlurVert/Frag.shader` pair. Compact: just the per-tap scale + optional layer + UV
+      clamp window. The shader uses `#if` guards on TextureArray / BlurClampEnabled defines to
+      ignore unused fields, so the same UBO works across all blur variants. */
+  struct GaussBlurPassDataLayout
+  {
+    /** .xyz = BlurScale, .w = BlurLayer (used only when TextureArray==1). */
+    Vec4 blurScaleAndLayer;
+    /** .xy = BlurClampMin, .zw = BlurClampMax (used only when BlurClampEnabled==1). */
+    Vec4 blurClampMinMax;
+  };
+
+  typedef GpuBufferBase<GaussBlurPassDataLayout, 5> GaussBlurPassDataBuffer;
+
   // GlobalGpuBuffers
   //////////////////////////////////////////
 
@@ -537,6 +551,10 @@ namespace ToolKit
      */
     FramebufferPtr m_oneColorAttachmentFramebuffer = nullptr;
     MaterialPtr m_gaussianBlurMaterial             = nullptr;
+    /** Pass UBO (slot 5) shared with the gaussian blur material. Lazy-init on first
+        ApplyGaussianBlur* call together with the material itself. */
+    GaussBlurPassDataBuffer m_gaussianBlurBuffer;
+    bool m_gaussianBlurBufferInitialized           = false;
     MaterialPtr m_averageBlurMaterial              = nullptr;
     QuadPtr m_tempQuad                             = nullptr;
     MaterialPtr m_tempQuadMaterial                 = nullptr;

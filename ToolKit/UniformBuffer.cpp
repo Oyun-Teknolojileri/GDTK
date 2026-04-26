@@ -30,6 +30,17 @@ namespace ToolKit
     }
   }
 
+  void UniformBuffer::Destroy()
+  {
+    if (m_gpuData)
+    {
+      GetRenderSystem()->GetBackend()->DestroyUniformBuffer(this);
+      m_gpuData.reset();
+    }
+    m_slot = -1;
+    m_size = 0;
+  }
+
   void UniformBuffer::Init(uint64 size) { GetRenderSystem()->GetBackend()->CreateUniformBuffer(this, size); }
 
   void UniformBuffer::Map(const void* data, uint64 size)
