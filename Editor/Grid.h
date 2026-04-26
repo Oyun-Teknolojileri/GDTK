@@ -10,6 +10,7 @@
 #include "EditorTypes.h"
 
 #include <Entity.h>
+#include <Renderer.h>
 #include <Shader.h>
 
 namespace ToolKit
@@ -58,6 +59,8 @@ namespace ToolKit
       float m_maxLinePixelCount = 2.0f;
       bool m_initiated          = false;
       MaterialPtr m_material    = nullptr;
+      GridPassDataBuffer m_dataBuffer;
+      bool m_dataBufferInitialized = false;
     };
 
   } //  namespace Editor

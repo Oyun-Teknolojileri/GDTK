@@ -81,7 +81,8 @@ namespace ToolKit
       else if (m_params.LitMode == EditorLitMode::Game)
       {
         m_params.App->HideGizmos();
-        sceneRenderer->m_params.grid = nullptr;
+        sceneRenderer->m_params.grid                              = nullptr;
+        sceneRenderer->m_forwardRenderPass->m_params.onPreRender  = nullptr;
         sceneRenderer->Render(renderer);
 
         copyToMultiSampleBuffer(); // Resolved buffer may need to be drawn to msaa buffer.
@@ -268,10 +269,14 @@ namespace ToolKit
       m_billboardPass->m_params.Billboards.push_back(app->m_cursor);
       m_billboardPass->m_params.Viewport = m_params.Viewport;
 
-      // Grid.
+      // Grid. UpdateShaderParams (which Map()s GridPassData into slot 5) must happen AFTER the
+      // shadow/ssao/sky passes that share slot 5 — earlier passes (e.g. ShadowPass via gauss blur)
+      // would otherwise displace the grid buffer before the forward pass draws the grid. Hook it
+      // into ForwardRenderPass::PreRender so the timing is right regardless of which earlier
+      // passes are active in this frame.
       GridPtr grid                       = m_params.Viewport->IsA<EditorViewport2d>() ? app->m_2dGrid : app->m_grid;
-      grid->UpdateShaderParams();
       m_sceneRenderPath->m_params.grid = grid;
+      m_sceneRenderPath->m_forwardRenderPass->m_params.onPreRender = [grid]() { grid->UpdateShaderParams(); };
 
       // Light gizmos.
       for (Light* light : scene->GetLights())

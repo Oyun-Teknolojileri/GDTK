@@ -824,6 +824,7 @@ namespace ToolKit
     bindUBOBlockOnly("GaussBlurPassData", GaussBlurPassDataBuffer::Binding());
     bindUBOBlockOnly("CubemapEquirectPassData", CubemapEquirectPassDataBuffer::Binding());
     bindUBOBlockOnly("PreFilterEnvMapPassData", PreFilterEnvMapPassDataBuffer::Binding());
+    bindUBOBlockOnly("GridPassData", GridPassDataBuffer::Binding());
 
     // Cache default and array uniform locations.
     for (const ShaderPtr& shader : program->m_shaders)

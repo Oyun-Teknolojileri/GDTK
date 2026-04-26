@@ -71,6 +71,11 @@ namespace ToolKit
       // Only the visible fragments will pass the test.
       renderer->SetDepthTestFunc(CompareFunctions::FuncLequal);
     }
+
+    if (m_params.onPreRender)
+    {
+      m_params.onPreRender();
+    }
   }
 
   void ForwardRenderPass::PostRender()

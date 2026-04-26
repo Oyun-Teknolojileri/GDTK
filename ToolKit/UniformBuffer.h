@@ -46,7 +46,7 @@ namespace ToolKit
   };
 
   template <typename DataLayout, int Slot>
-  class TK_API GpuBufferBase
+  class GpuBufferBase
   {
    public:
     static constexpr int Binding() { return Slot; }

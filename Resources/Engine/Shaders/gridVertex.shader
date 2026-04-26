@@ -3,6 +3,7 @@
 	<include name = "cameraDataInc.shader" />
 	<include name = "drawDataInc.shader" />
 	<include name = "perDrawDataInc.shader" />
+<include name = "gridPassDataInc.shader" />
 	<source>
 	<!--
 		#version 300 es
@@ -11,18 +12,6 @@
 
 		// Fixed Attributes.
 		layout (location = 0) in vec3 vPosition;
-
-		struct _GridData
-		{
-			float cellSize;
-			float lineMaxPixelCount;
-			vec3 horizontalAxisColor;
-			vec3 verticalAxisColor;
-			uint is2DViewport;
-			float cullDistance;
-		};
-
-		uniform _GridData GridData;
 
 		out vec2 o_gridPos;
 		out vec2 o_cameraGridPos;

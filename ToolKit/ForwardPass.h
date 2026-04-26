@@ -9,6 +9,8 @@
 
 #include "Pass.h"
 
+#include <functional>
+
 namespace ToolKit
 {
 
@@ -23,6 +25,13 @@ namespace ToolKit
     uint activeDirectionalLightCount  = 0;
     FramebufferPtr resolveFrameBuffer = nullptr;
     bool invalidateDepthBuffer        = true;
+
+    /** Invoked at the end of PreRender, after shadow/ssao/sky passes have run. Pass-specific UBOs
+        (slot 5) may have been re-bound by those earlier passes (e.g. ShadowPass uses gauss blur);
+        any draw inside this forward pass that owns its own slot-5 UBO must Map() it here so the
+        slot is restored before the actual draw. Currently the editor grid uses this to refresh
+        its GridPassData buffer right before the forward render pass renders the grid entity. */
+    std::function<void()> onPreRender;
   };
 
   /** Renders given entities with given lights using forward rendering. */

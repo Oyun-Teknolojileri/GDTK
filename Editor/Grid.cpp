@@ -231,11 +231,17 @@ namespace ToolKit
 
     void Grid::UpdateShaderParams()
     {
-      m_material->UpdateProgramUniform("GridData.cellSize", m_gridCellSize);
-      m_material->UpdateProgramUniform("GridData.lineMaxPixelCount", m_maxLinePixelCount);
-      m_material->UpdateProgramUniform("GridData.horizontalAxisColor", m_horizontalAxisColor);
-      m_material->UpdateProgramUniform("GridData.verticalAxisColor", m_verticalAxisColor);
-      m_material->UpdateProgramUniform("GridData.is2DViewport", m_is2d);
+      if (!m_dataBufferInitialized)
+      {
+        m_dataBuffer.Init();
+        m_dataBufferInitialized = true;
+      }
+      m_dataBuffer.m_data.cellAndLine          = Vec4(m_gridCellSize, m_maxLinePixelCount, 0.0f, 0.0f);
+      m_dataBuffer.m_data.horizontalAxisColor  = Vec4(m_horizontalAxisColor, 0.0f);
+      m_dataBuffer.m_data.verticalAxisColor    = Vec4(m_verticalAxisColor, 0.0f);
+      m_dataBuffer.m_data.is2DAndPad           = IVec4(m_is2d ? 1 : 0, 0, 0, 0);
+      m_dataBuffer.Invalidate();
+      m_dataBuffer.Map();
     }
 
   } //  namespace Editor
