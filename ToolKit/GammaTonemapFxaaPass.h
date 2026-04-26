@@ -8,6 +8,7 @@
 #pragma once
 
 #include "FullQuadPass.h"
+#include "Renderer.h"
 
 namespace ToolKit
 {
@@ -53,6 +54,12 @@ namespace ToolKit
 
     /** Full quad that applies this shader to frame buffer. */
     FullQuadPassPtr m_quadPass    = nullptr;
+
+    /** Pass-specific UBO (slot 5) holding enable flags + screenSize + tonemap/gamma params.
+        Lazily initialized on the first PreRender so the renderer backend is alive when
+        CreateUniformBuffer runs. */
+    GammaTonemapFxaaPassDataBuffer m_passDataBuffer;
+    bool m_passDataBufferInitialized = false;
   };
 
 } // namespace ToolKit

@@ -42,13 +42,25 @@ namespace ToolKit
     m_quadPass->m_params.frameBuffer      = m_params.frameBuffer;
     m_quadPass->m_params.clearFrameBuffer = GraphicBitFields::AllBits;
 
-    m_quadPass->UpdateUniform(ShaderUniform("enableFxaa", (int) m_params.enableFxaa));
-    m_quadPass->UpdateUniform(ShaderUniform("enableGammaCorrection", (int) m_params.enableGammaCorrection));
-    m_quadPass->UpdateUniform(ShaderUniform("enableTonemapping", (int) m_params.enableTonemapping));
-
-    m_quadPass->UpdateUniform(ShaderUniform("screenSize", m_params.screenSize));
-    m_quadPass->UpdateUniform(ShaderUniform("useAcesTonemapper", (uint) m_params.tonemapMethod));
-    m_quadPass->UpdateUniform(ShaderUniform("gamma", m_params.gamma));
+    // Push parameters through the pass-specific UBO. Lazy-init the buffer on the first PreRender
+    // — the renderer/backend may not be live in the constructor.
+    if (!m_passDataBufferInitialized)
+    {
+      m_passDataBuffer.Init();
+      m_passDataBufferInitialized = true;
+    }
+    GammaTonemapFxaaPassDataLayout& ubo = m_passDataBuffer.m_data;
+    ubo.enableFlags                     = IVec4((int) m_params.enableFxaa,
+                                                (int) m_params.enableTonemapping,
+                                                (int) m_params.enableGammaCorrection,
+                                                0);
+    ubo.screenSizeAndPad                = Vec4(m_params.screenSize, 0.0f, 0.0f);
+    ubo.tonemapParams                   = Vec4((float) (uint) m_params.tonemapMethod,
+                                                m_params.gamma,
+                                                0.0f,
+                                                0.0f);
+    m_passDataBuffer.Invalidate();
+    m_passDataBuffer.Map();
   }
 
   void GammaTonemapFxaaPass::Render()

@@ -197,6 +197,21 @@ namespace ToolKit
 
   typedef GpuBufferBase<DilatePassDataLayout, 5> DilatePassDataBuffer;
 
+  /** GammaTonemapFxaaPass UBO. Aggregates the six bare uniforms the master shader and its
+      gamma/tonemap/fxaa includes used to read scatter-style. Fields are packed into 16-byte
+      vectors so std140 layout matches the C++ memcpy byte-for-byte. */
+  struct GammaTonemapFxaaPassDataLayout
+  {
+    /** .x = enableFxaa, .y = enableTonemapping, .z = enableGammaCorrection (each 0/1). */
+    IVec4 enableFlags;
+    /** .xy = screenSize (in pixels). */
+    Vec4 screenSizeAndPad;
+    /** .x = useAcesTonemapper (0 = Reinhard, 1 = ACES). .y = gamma value. */
+    Vec4 tonemapParams;
+  };
+
+  typedef GpuBufferBase<GammaTonemapFxaaPassDataLayout, 5> GammaTonemapFxaaPassDataBuffer;
+
   // GlobalGpuBuffers
   //////////////////////////////////////////
 

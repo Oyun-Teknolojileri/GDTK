@@ -819,6 +819,7 @@ namespace ToolKit
     };
 
     bindUBOBlockOnly("DilatePassData", DilatePassDataBuffer::Binding());
+    bindUBOBlockOnly("GammaTonemapFxaaPassData", GammaTonemapFxaaPassDataBuffer::Binding());
 
     // Cache default and array uniform locations.
     for (const ShaderPtr& shader : program->m_shaders)

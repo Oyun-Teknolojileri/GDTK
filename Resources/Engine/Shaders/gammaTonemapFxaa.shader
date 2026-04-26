@@ -1,17 +1,13 @@
 <shader>
 	<type name = "fragmentShader" />
-  <include name = "fxaaFunctions.shader" />
-  <include name = "tonemapFunctions.shader" />
-  <inlcude name = "fxaaFunctions.shader" />
-  <include name = "gammaFunctions.shader" />
+	<include name = "gammaTonemapFxaaPassDataInc.shader" />
+	<include name = "fxaaFunctions.shader" />
+	<include name = "tonemapFunctions.shader" />
+	<include name = "gammaFunctions.shader" />
 	<source>
 	<!--
 		#version 300 es
 		precision highp float;
-		
-    uniform int enableFxaa;
-    uniform int enableTonemapping;
-    uniform int enableGammaCorrection;
 
 		uniform sampler2D s_texture0;
 		in vec2 v_texture;
@@ -20,26 +16,26 @@
 
 		void main()
 		{
-	    vec2 uv = v_texture;
+			vec2 uv = v_texture;
 
-      if (enableFxaa != 0)
-      {
-        fragColor = Fxaa(uv, s_texture0);
-      }
-      else
-      {
-        fragColor = texture(s_texture0, uv);
-      }
+			if (gtf.enableFlags.x != 0)
+			{
+				fragColor = Fxaa(uv, s_texture0);
+			}
+			else
+			{
+				fragColor = texture(s_texture0, uv);
+			}
 
-      if (enableTonemapping != 0)
-      {
-        fragColor.rgb = Tonemap(fragColor.rgb);
-      }
+			if (gtf.enableFlags.y != 0)
+			{
+				fragColor.rgb = Tonemap(fragColor.rgb);
+			}
 
-      if (enableGammaCorrection != 0)
-      {
-        fragColor.rgb = Gamma(fragColor.rgb);
-      }
+			if (gtf.enableFlags.z != 0)
+			{
+				fragColor.rgb = Gamma(fragColor.rgb);
+			}
 		}
 	-->
 	</source>

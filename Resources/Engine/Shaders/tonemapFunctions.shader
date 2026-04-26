@@ -1,12 +1,11 @@
 <shader>
 	<type name = "includeShader" />
+	<include name = "gammaTonemapFxaaPassDataInc.shader" />
 	<source>
 	<!--
 
 	#ifndef TONE_MAP_SHADER
 	#define TONE_MAP_SHADER
-
-uniform uint useAcesTonemapper;
 
 vec3 ACESFilm(vec3 x)
 {
@@ -20,8 +19,8 @@ vec3 ACESFilm(vec3 x)
 
 vec3 Tonemap(vec3 color) 
 {
-	if(useAcesTonemapper > 0u)
-  {
+	if(gtf.tonemapParams.x > 0.5)
+	{
 		return ACESFilm(color);
 	}
 	else{
