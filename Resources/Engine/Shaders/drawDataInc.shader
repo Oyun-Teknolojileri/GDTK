@@ -1,97 +1,111 @@
 <shader>
 	<type name = "includeShader" />
-	<uniform name = "drawCommand" size = "24" />
+	<include name = "perDrawDataInc.shader" />
 	<source>
 	<!--
 
 	#ifndef DRAW_DATA
 	#define DRAW_DATA
 
-	// DrawCommand
+	// DrawCommand accessors — back-end is now `perDraw._drawCommand` (PerDrawData UBO, slot 6).
+	// Function signatures kept identical so every call site (lighting/ibl/AO) stays untouched.
+	// Volume index branches with a ternary; the GLSL compiler folds it when `vol` is constant.
 	//////////////////////////////////////////
-
-	uniform vec4 drawCommand[24];
 
 	// --- Global accessors ---
 
 	bool IsIBLInUse()
 	{
-		return bool(drawCommand[0].x > 0.5);
+		return perDraw._drawCommand.global0.x > 0.5;
 	}
 
 	bool IsAmbientOcculusionInUse()
 	{
-		return bool(drawCommand[0].y > 0.5);
+		return perDraw._drawCommand.global0.y > 0.5;
 	}
 
 	float GetSkyIntensity()
 	{
-		return drawCommand[0].z;
+		return perDraw._drawCommand.global0.z;
 	}
 
 	int GetActivePointLightCount()
 	{
-		return int(drawCommand[1].x);
+		return int(perDraw._drawCommand.global1.x);
 	}
 
 	int GetActiveSpotLightCount()
 	{
-		return int(drawCommand[1].y);
+		return int(perDraw._drawCommand.global1.y);
 	}
 
 	int GetActiveDirectionalLightCount()
 	{
-		return int(drawCommand[1].z);
+		return int(perDraw._drawCommand.global1.z);
 	}
 
 	// --- Per-volume accessors ---
-	// Volume 0 starts at index 2, volume 1 starts at index 13. Stride = 11.
-
-	int VolumeBase(int vol)
-	{
-		return 2 + vol * 11;
-	}
 
 	float GetVolumeIntensity(int vol)
 	{
-		return drawCommand[VolumeBase(vol)].x;
+		return vol == 0 ? perDraw._drawCommand.vol0Params.x : perDraw._drawCommand.vol1Params.x;
 	}
 
 	float GetVolumeFadeDistance(int vol)
 	{
-		return drawCommand[VolumeBase(vol)].y;
+		return vol == 0 ? perDraw._drawCommand.vol0Params.y : perDraw._drawCommand.vol1Params.y;
 	}
 
 	bool IsVolumePccEnabled(int vol)
 	{
-		return bool(drawCommand[VolumeBase(vol)].w > 0.5);
+		float v = vol == 0 ? perDraw._drawCommand.vol0Params.w : perDraw._drawCommand.vol1Params.w;
+		return v > 0.5;
 	}
 
 	bool IsVolumeInterior(int vol)
 	{
-		return bool(drawCommand[VolumeBase(vol)].z > 0.5);
+		float v = vol == 0 ? perDraw._drawCommand.vol0Params.z : perDraw._drawCommand.vol1Params.z;
+		return v > 0.5;
 	}
 
 	vec3 GetVolumeMin(int vol)
 	{
-		return drawCommand[VolumeBase(vol) + 1].xyz;
+		return (vol == 0 ? perDraw._drawCommand.vol0Min : perDraw._drawCommand.vol1Min).xyz;
 	}
 
 	vec3 GetVolumeMax(int vol)
 	{
-		return drawCommand[VolumeBase(vol) + 2].xyz;
+		return (vol == 0 ? perDraw._drawCommand.vol0Max : perDraw._drawCommand.vol1Max).xyz;
 	}
 
 	mat4 GetVolumeInverseTransform(int vol)
 	{
-		int b = VolumeBase(vol) + 3;
-		return mat4(drawCommand[b], drawCommand[b+1], drawCommand[b+2], drawCommand[b+3]);
+		if (vol == 0)
+		{
+			return mat4(perDraw._drawCommand.vol0InvT0,
+			            perDraw._drawCommand.vol0InvT1,
+			            perDraw._drawCommand.vol0InvT2,
+			            perDraw._drawCommand.vol0InvT3);
+		}
+		return mat4(perDraw._drawCommand.vol1InvT0,
+		            perDraw._drawCommand.vol1InvT1,
+		            perDraw._drawCommand.vol1InvT2,
+		            perDraw._drawCommand.vol1InvT3);
 	}
 
 	mat4 GetVolumeWorldTransform(int vol)
 	{
-		int b = VolumeBase(vol) + 7;
-		return mat4(drawCommand[b], drawCommand[b+1], drawCommand[b+2], drawCommand[b+3]);
+		if (vol == 0)
+		{
+			return mat4(perDraw._drawCommand.vol0WldT0,
+			            perDraw._drawCommand.vol0WldT1,
+			            perDraw._drawCommand.vol0WldT2,
+			            perDraw._drawCommand.vol0WldT3);
+		}
+		return mat4(perDraw._drawCommand.vol1WldT0,
+		            perDraw._drawCommand.vol1WldT1,
+		            perDraw._drawCommand.vol1WldT2,
+		            perDraw._drawCommand.vol1WldT3);
 	}
 
 	// Compute per-pixel blend factor for a local volume.
@@ -163,11 +177,11 @@
 	vec2 shadowAtlasCoord;													\
 	float shadowAtlasResRatio;												\
 	int shadowAtlasLayer;
-	
+
 	struct DirectionalLightData
 	{
 		COMMON_LIGHT_DATA
-    
+
 		// Directional light specific fields
 		vec3 direction;
 		float pad0;
@@ -211,7 +225,7 @@
 
 		float outerAngle;
 		float innerAngle;
-	
+
 		mat4 projectionViewMatrix;
 	};
 
