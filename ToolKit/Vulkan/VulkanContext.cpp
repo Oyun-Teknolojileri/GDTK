@@ -499,8 +499,10 @@ namespace ToolKit
     {
       pushBinding(kTextureBindingBase + i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
     }
-    // GL UBO slots ToolKit currently uses — see VulkanBindings.h header table.
-    for (uint glSlot : {3u, 4u, 7u, 8u, 9u, 10u})
+    // GL UBO slots ToolKit currently uses — see VulkanBindings.h header table. Slot 5 is the
+    // shared "pass-specific" slot: each engine pass (OutlinePass/DilatePassData, future
+    // SsaoCalc/Bloom/etc.) owns its own buffer instance and rebinds this slot at render time.
+    for (uint glSlot : {3u, 4u, 5u, 7u, 8u, 9u, 10u})
     {
       pushBinding(UboBindingFor(glSlot), VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
     }

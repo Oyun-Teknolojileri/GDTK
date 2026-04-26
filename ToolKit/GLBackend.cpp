@@ -647,6 +647,15 @@ namespace ToolKit
     auto* gl = static_cast<GLUniformBufferData*>(ub->m_gpuData.get());
     glBindBuffer(GL_UNIFORM_BUFFER, gl->uboId);
     glBufferSubData(GL_UNIFORM_BUFFER, 0, (GLsizeiptr) size, data);
+    // Also rebind to the buffer's UBO slot so Map() works as "upload + slot bind". Pass-specific
+    // UBOs (slot 5) need this because CreateGpuProgram only writes their block binding — the
+    // runtime per-program slot bind is owned by the pass via Map(). Global UBOs already get
+    // their slot bind in CreateGpuProgram; the extra glBindBufferBase here is harmless
+    // (idempotent) and keeps the code path uniform.
+    if (ub->m_slot != InvalidHandle)
+    {
+      glBindBufferBase(GL_UNIFORM_BUFFER, (GLuint) ub->m_slot, gl->uboId);
+    }
   }
 
   // -----------------------------------------------------------------------
@@ -797,6 +806,19 @@ namespace ToolKit
     bindUBO("PointLightCache", PointLightCache::BindingSlot, &buffers->pointLighBuffer.m_gpuBuffer);
     bindUBO("SpotLightCache", SpotLightCache::BindingSlot, &buffers->spotLightBuffer.m_gpuBuffer);
     bindUBO("PerDrawData", PerDrawUboBuffer::Binding(), &buffers->perDrawBuffer.GetBuffer());
+
+    // Pass-specific UBOs (slot 5) only need the block-binding wired here — the actual buffer
+    // bound to slot 5 changes per pass at runtime via UniformBuffer::Map (see UpdateUniformBuffer).
+    auto bindUBOBlockOnly = [&](const char* blockName, int bindingSlot)
+    {
+      int loc = glGetUniformBlockIndex(pid, blockName);
+      if (loc != GL_INVALID_INDEX)
+      {
+        glUniformBlockBinding(pid, loc, bindingSlot);
+      }
+    };
+
+    bindUBOBlockOnly("DilatePassData", DilatePassDataBuffer::Binding());
 
     // Cache default and array uniform locations.
     for (const ShaderPtr& shader : program->m_shaders)

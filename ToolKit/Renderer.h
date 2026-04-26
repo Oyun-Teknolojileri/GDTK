@@ -181,6 +181,22 @@ namespace ToolKit
 
   typedef GpuBufferBase<PerDrawUboLayout, 6> PerDrawUboBuffer;
 
+  // Pass-specific UBOs (slot 5)
+  //////////////////////////////////////////
+  //
+  // Pass-specific UBOs all share GL slot 5 (Vulkan binding 13 after shaderc remap). Each pass
+  // owns its own buffer instance; no two passes are active simultaneously so the slot can be
+  // re-bound by whichever pass is rendering. Each layout is intentionally tiny — only the
+  // values one pass writes per frame.
+
+  /** Single vec4 outline color, consumed by `dilateFrag.shader`. */
+  struct DilatePassDataLayout
+  {
+    Vec4 color;
+  };
+
+  typedef GpuBufferBase<DilatePassDataLayout, 5> DilatePassDataBuffer;
+
   // GlobalGpuBuffers
   //////////////////////////////////////////
 

@@ -8,6 +8,7 @@
 #pragma once
 
 #include "Pass.h"
+#include "Renderer.h"
 #include "StencilPass.h"
 
 namespace ToolKit
@@ -42,6 +43,11 @@ namespace ToolKit
     FullQuadPassPtr m_outlinePass      = nullptr;
     ShaderPtr m_dilateShader           = nullptr;
     RenderTargetPtr m_stencilAsRt      = nullptr;
+
+    /** Pass-specific UBO holding the outline color (slot 5). Lazily initialized on first
+        render so the GL backend has a live context when CreateUniformBuffer runs. */
+    DilatePassDataBuffer m_dilateBuffer;
+    bool m_dilateBufferInitialized     = false;
   };
 
   typedef std::shared_ptr<OutlinePass> OutlinePassPtr;

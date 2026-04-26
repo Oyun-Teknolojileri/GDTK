@@ -32,6 +32,7 @@ namespace ToolKit
    * Concrete UBO layout for ToolKit's known buffers (resolved via @ref UboBindingFor):
    *   GL slot 3  CameraGpuBuffer              \u2192 Vulkan binding 11
    *   GL slot 4  GraphicConstantsGpuBuffer    \u2192 Vulkan binding 12
+   *   GL slot 5  Pass-specific UBO (shared)   \u2192 Vulkan binding 13
    *   GL slot 7  DirectionalLightBuffer.light \u2192 Vulkan binding 15
    *   GL slot 8  PointLightCache              \u2192 Vulkan binding 16
    *   GL slot 9  SpotLightCache               \u2192 Vulkan binding 17
