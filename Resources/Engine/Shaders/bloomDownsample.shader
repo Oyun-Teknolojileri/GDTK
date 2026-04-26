@@ -1,5 +1,6 @@
 <shader>
 	<type name = "fragmentShader" />
+	<include name = "bloomPassDataInc.shader" />
 	<source>
 	<!--
 		#version 300 es
@@ -18,18 +19,14 @@
 		// Remember to use a floating-point texture format (for HDR)!
 		// Remember to use edge clamping for this texture!
 		uniform sampler2D s_texture0;
-		uniform vec2 srcResolution;
 
 		in vec2 v_texture;
 		layout (location = 0) out vec3 downsample;
-
-		// O = Prefilter, 1 = First downsample
-		uniform int passIndx;
-		uniform float threshold;
+		// bloom.passIndxAndPad.x, bloom.downsampleParams.z come from BloomPassData UBO (bloomPassDataInc.shader).
 
 		vec3 Prefilter (vec3 c) {
 			float brightness = max(c.r, max(c.g, c.b));
-			float contribution = max(0.0f, brightness - threshold);
+			float contribution = max(0.0f, brightness - bloom.downsampleParams.z);
 			contribution /= max(brightness, 0.00001);
 			return c * contribution;
 		}
@@ -56,7 +53,7 @@
 
 		void main()
 		{
-				vec2 srcTexelSize = 1.0 / srcResolution;
+				vec2 srcTexelSize = 1.0 / bloom.downsampleParams.xy;
 				float x = srcTexelSize.x;
 				float y = srcTexelSize.y;
 
@@ -85,7 +82,7 @@
 				vec3 m = texture(s_texture0, vec2(v_texture.x + x, v_texture.y - y)).rgb;
 
 				vec3 groups[5];
-				switch (passIndx)
+				switch (bloom.passIndxAndPad.x)
 				{
 					case 0:
 					downsample = Prefilter(e);

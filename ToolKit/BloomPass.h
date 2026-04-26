@@ -9,6 +9,7 @@
 
 #include "FullQuadPass.h"
 #include "Pass.h"
+#include "Renderer.h"
 
 namespace ToolKit
 {
@@ -48,6 +49,11 @@ namespace ToolKit
     UVec2 m_cachedMainRes;
     int m_cachedIterCount;
     bool m_resourcesValid;
+
+    /** Pass-specific UBO (slot 5). Holds both the downsample and upsample parameter halves;
+        each iteration writes the relevant fields and re-Map()s. */
+    BloomPassDataBuffer m_passDataBuffer;
+    bool m_passDataBufferInitialized = false;
   };
 
   typedef std::shared_ptr<BloomPass> BloomPassPtr;

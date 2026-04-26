@@ -1,5 +1,6 @@
 <shader>
 	<type name = "fragmentShader" />
+	<include name = "bloomPassDataInc.shader" />
 	<source>
 	<!--
 		#version 300 es
@@ -16,8 +17,6 @@
 		// Remember to use a floating-point texture format (for HDR)!
 		// Remember to use edge clamping for this texture!
 		uniform sampler2D s_texture0;
-		uniform float filterRadius;
-		uniform float intensity;
 
 		in vec2 v_texture;
 		layout (location = 0) out vec3 upsample;
@@ -26,8 +25,8 @@
 		{
 				// The filter kernel is applied with a radius, specified in texture
 				// coordinates, so that the radius will vary across mip resolutions.
-				float x = filterRadius;
-				float y = filterRadius;
+				float x = bloom.upsampleParams.x;
+				float y = bloom.upsampleParams.x;
 
 				// Take 9 samples around current texel:
 				// a - b - c
@@ -54,7 +53,7 @@
 				upsample += (b+d+f+h)*2.0;
 				upsample += (a+c+g+i);
 				upsample *= 1.0 / 16.0;
-				upsample *= intensity;
+				upsample *= bloom.upsampleParams.y;
 		}
 	-->
 	</source>
