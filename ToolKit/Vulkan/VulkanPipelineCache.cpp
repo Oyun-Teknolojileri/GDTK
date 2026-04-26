@@ -18,7 +18,7 @@ namespace ToolKit
   bool VulkanPipelineDesc::operator==(const VulkanPipelineDesc& o) const
   {
     // Compare scalar/POD fields in one shot. The attributes tail (slots beyond attributeCount)
-    // is uninitialized garbage on either side, so it must not enter the comparison — we walk
+    // is uninitialized garbage on either side, so it must not enter the comparison ï¿½ we walk
     // only the live prefix.
     const bool scalarsEqual =
         renderPass == o.renderPass && vert == o.vert && frag == o.frag &&
@@ -29,7 +29,8 @@ namespace ToolKit
         srcColorBlendFactor == o.srcColorBlendFactor && dstColorBlendFactor == o.dstColorBlendFactor &&
         colorBlendOp == o.colorBlendOp && srcAlphaBlendFactor == o.srcAlphaBlendFactor &&
         dstAlphaBlendFactor == o.dstAlphaBlendFactor && alphaBlendOp == o.alphaBlendOp &&
-        colorAttachmentCount == o.colorAttachmentCount;
+        colorAttachmentCount == o.colorAttachmentCount &&
+        rasterizationSamples == o.rasterizationSamples;
 
     if (!scalarsEqual)
     {
@@ -49,7 +50,7 @@ namespace ToolKit
     return true;
   }
 
-  // 64-bit splitmix / xxHash-style mixer — deterministic and reasonably distributing for the
+  // 64-bit splitmix / xxHash-style mixer ï¿½ deterministic and reasonably distributing for the
   // handfuls of fields we combine here.
   static inline std::size_t MixBits(std::size_t seed, std::size_t v)
   {
@@ -86,6 +87,7 @@ namespace ToolKit
     h = MixBits(h, (std::size_t) d.dstAlphaBlendFactor);
     h = MixBits(h, (std::size_t) d.alphaBlendOp);
     h = MixBits(h, d.colorAttachmentCount);
+    h = MixBits(h, (std::size_t) d.rasterizationSamples);
     return h;
   }
 
@@ -145,14 +147,17 @@ namespace ToolKit
     rs.lineWidth   = 1.0f;
 
     VkPipelineMultisampleStateCreateInfo ms{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
-    ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    // Stage 10. Pipeline rasterizationSamples must equal the active subpass's per-attachment
+    // sampleCount; the desc carries it through from VulkanFramebuffer::subpassSamples.
+    ms.rasterizationSamples = desc.rasterizationSamples != 0 ? desc.rasterizationSamples
+                                                             : VK_SAMPLE_COUNT_1_BIT;
 
     VkPipelineDepthStencilStateCreateInfo ds{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
     ds.depthTestEnable  = desc.depthTestEnable;
     ds.depthWriteEnable = desc.depthWriteEnable;
     ds.depthCompareOp   = desc.depthCompareOp;
 
-    // No build-time branching on blend mode — desc carries the full recipe. When blendEnable is
+    // No build-time branching on blend mode ï¿½ desc carries the full recipe. When blendEnable is
     // VK_FALSE the factor/op fields are ignored by the driver, so we can assign them
     // unconditionally and keep the cache key stable for the disabled-blend case.
     VkPipelineColorBlendAttachmentState att{};
@@ -166,7 +171,7 @@ namespace ToolKit
     att.dstAlphaBlendFactor = desc.dstAlphaBlendFactor;
     att.alphaBlendOp        = desc.alphaBlendOp;
 
-    // One attachment state replicated across all color attachments — fine for the current test
+    // One attachment state replicated across all color attachments ï¿½ fine for the current test
     // path. Stage 7's MRT passes will need per-attachment state.
     std::array<VkPipelineColorBlendAttachmentState, 8> attStates{};
     for (uint i = 0; i < desc.colorAttachmentCount && i < attStates.size(); ++i)
@@ -279,7 +284,7 @@ namespace ToolKit
 
   static BlendRecipe ToBlendRecipe(BlendFunction f)
   {
-    // ALPHA_MASK is a fragment-shader feature (discard-on-threshold) — no blend-state difference
+    // ALPHA_MASK is a fragment-shader feature (discard-on-threshold) ï¿½ no blend-state difference
     // from opaque, so it falls through to the default opaque recipe.
     switch (f)
     {
@@ -315,7 +320,7 @@ namespace ToolKit
   void RenderStateToPipelineDesc(const RenderState& state, VulkanPipelineDesc& out)
   {
     // RenderState carries a `blendOverride` flag that tells the renderer to ignore the material's
-    // declared blend mode for this draw — honored here by selecting the override function when set.
+    // declared blend mode for this draw ï¿½ honored here by selecting the override function when set.
     const BlendFunction blend = state.blendOverride ? state.blendOverrideFunc : state.blendFunction;
     const BlendRecipe r       = ToBlendRecipe(blend);
 

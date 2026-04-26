@@ -55,6 +55,11 @@ namespace ToolKit
     VkExtent2D extent       = {0, 0};
     uint32_t arrayLayers    = 1; //!< 6 for cubemaps, >1 for 2D arrays.
     uint32_t mipLevels      = 1;
+    /** Sample count this image was created with (Stage 10). VK_SAMPLE_COUNT_1_BIT for the
+        non-MSAA path; >1 means the image is a multi-sampled render target — driving the
+        render pass attachment sampleCount, the pipeline's rasterizationSamples, and the
+        ResolveFramebuffer branch that swaps vkCmdBlitImage for vkCmdResolveImage. */
+    VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
     bool isCubemap          = false;
 
     /** Last layout we transitioned the image to. Drives pipeline barriers + render pass
@@ -92,6 +97,11 @@ namespace ToolKit
 
     uint32_t width  = 0;
     uint32_t height = 0;
+
+    /** Sample count adopted by the most recent BuildOffscreenRenderPass — every attachment in
+        the pass shares the same VkSampleCountFlagBits value. Pipelines drawn into this FB
+        must use this as their rasterizationSamples (Stage 10). */
+    VkSampleCountFlagBits subpassSamples = VK_SAMPLE_COUNT_1_BIT;
 
     VkRenderPass renderPass = VK_NULL_HANDLE;
     VkFramebuffer framebuffer = VK_NULL_HANDLE;

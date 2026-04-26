@@ -229,6 +229,31 @@ namespace ToolKit
     colorRefs.reserve(VulkanFramebuffer::kMaxColorAttachments);
     views.reserve(VulkanFramebuffer::kMaxColorAttachments + 1);
 
+    // Stage 10. Each attachment carries the sample count it was created with (CreateTexture
+    // mirrors TextureSettings::msaaCount onto VulkanTexture::samples). Vulkan requires every
+    // attachment in a subpass to share the same sampleCount, so we sanity-check each color
+    // attachment against the first one (or the depth attachment when there are no color
+    // slots). Mismatched MSAA framebuffers are an engine-side bug — log so the caller sees
+    // the broken combo and fix the source-side TextureSettings.
+    VkSampleCountFlagBits subpassSamples = VK_SAMPLE_COUNT_1_BIT;
+    bool subpassSamplesSet               = false;
+
+    auto adoptSamples = [&](VkSampleCountFlagBits s, const char* label)
+    {
+      if (!subpassSamplesSet)
+      {
+        subpassSamples     = s;
+        subpassSamplesSet  = true;
+      }
+      else if (subpassSamples != s)
+      {
+        TK_ERR("BuildOffscreenRenderPass: attachment '%s' sampleCount %u mismatches subpass %u",
+               label,
+               (unsigned) s,
+               (unsigned) subpassSamples);
+      }
+    };
+
     for (int i = 0; i < VulkanFramebuffer::kMaxColorAttachments; ++i)
     {
       auto& slot = fbData->colorAttachments[i];
@@ -236,14 +261,20 @@ namespace ToolKit
       {
         continue;
       }
+      adoptSamples(slot.tex->samples, "color");
+
       VkAttachmentDescription a{};
       a.format         = slot.tex->format;
-      a.samples        = VK_SAMPLE_COUNT_1_BIT;
+      a.samples        = slot.tex->samples;
       a.loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
       a.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
       a.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
       a.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
       a.initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
+      // MSAA color attachments aren't sampled directly (engine resolves through
+      // ResolveFramebuffer first). The "shader read only" finalLayout is harmless for them
+      // either way — vkCmdResolveImage transitions the image to TRANSFER_SRC_OPTIMAL itself
+      // before reading, and the engine never binds an MSAA target as a sampled texture.
       a.finalLayout    = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
       VkAttachmentReference ref{};
@@ -258,9 +289,11 @@ namespace ToolKit
     bool hasDepth = fbData->depthAttachment.view != VK_NULL_HANDLE;
     if (hasDepth)
     {
+      adoptSamples(fbData->depthAttachment.tex->samples, "depth");
+
       VkAttachmentDescription a{};
       a.format         = fbData->depthAttachment.tex->format;
-      a.samples        = VK_SAMPLE_COUNT_1_BIT;
+      a.samples        = fbData->depthAttachment.tex->samples;
       a.loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
       a.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
       a.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -273,6 +306,7 @@ namespace ToolKit
       atts.push_back(a);
       views.push_back(fbData->depthAttachment.view);
     }
+    fbData->subpassSamples = subpassSamples;
 
     VkSubpassDescription subpass{};
     subpass.pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -725,7 +759,13 @@ namespace ToolKit
     FillVertexInput(desc.vertexLayout, pdesc);
     RenderStateToPipelineDesc(m_boundState, pdesc);
 
-    // Render pass + color attachment count come from the active pass.
+    // Render pass + color attachment count come from the active pass. Spec requires the
+    // pipeline's color blend attachmentCount to match the subpass's color attachment count,
+    // including the depth-only case (Stage 9 shadow map pass writes only to a depth attachment
+    // and expects pipeline.colorAttachmentCount == 0). The previous "max(count, 1)" fallback
+    // forced a phantom blend attachment that validation rejected against a depth-only RP.
+    // Sample count (Stage 10) likewise propagates from the FB's adopted subpassSamples so MSAA
+    // and non-MSAA copies of the same recipe end up in distinct cache slots.
     if (m_activePassFb != nullptr)
     {
       pdesc.renderPass = m_activePassFb->renderPass;
@@ -737,12 +777,14 @@ namespace ToolKit
           ++colorCount;
         }
       }
-      pdesc.colorAttachmentCount = colorCount > 0 ? colorCount : 1;
+      pdesc.colorAttachmentCount  = colorCount;
+      pdesc.rasterizationSamples  = m_activePassFb->subpassSamples;
     }
     else
     {
-      pdesc.renderPass           = m_swapchain->GetRenderPass();
-      pdesc.colorAttachmentCount = 1;
+      pdesc.renderPass            = m_swapchain->GetRenderPass();
+      pdesc.colorAttachmentCount  = 1;
+      pdesc.rasterizationSamples  = VK_SAMPLE_COUNT_1_BIT; // Swapchain images are non-MSAA.
     }
 
     VkPipeline pipe = m_pipelineCache->GetOrCreate(m_context.get(), m_boundProgram->pipelineLayout, pdesc);
@@ -791,19 +833,298 @@ namespace ToolKit
     }
   }
 
+  // Wraps the source + destination color attachments in pre + post layout barriers — both end
+  // up back at SHADER_READ_ONLY_OPTIMAL afterward. The transfer call between the barriers is
+  // chosen by the caller (vkCmdBlitImage for size-mismatched non-MSAA copies, vkCmdResolveImage
+  // for an MSAA → single-sample resolve). Caller must guarantee no render pass is active on
+  // @p cb (both transfer ops are outside-RP-only).
+  static void TransitionForColorTransfer(VkCommandBuffer cb, VulkanTexture* srcTex, VulkanTexture* dstTex)
+  {
+    VkImageMemoryBarrier pre[2]{};
+    pre[0].sType                       = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    pre[0].oldLayout                   = srcTex->currentLayout;
+    pre[0].newLayout                   = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    pre[0].srcAccessMask               = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    pre[0].dstAccessMask               = VK_ACCESS_TRANSFER_READ_BIT;
+    pre[0].srcQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
+    pre[0].dstQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
+    pre[0].image                       = srcTex->image;
+    pre[0].subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    pre[0].subresourceRange.levelCount = srcTex->mipLevels;
+    pre[0].subresourceRange.layerCount = srcTex->arrayLayers;
+
+    pre[1]                             = pre[0];
+    pre[1].oldLayout                   = dstTex->currentLayout;
+    pre[1].newLayout                   = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    pre[1].srcAccessMask               = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    pre[1].dstAccessMask               = VK_ACCESS_TRANSFER_WRITE_BIT;
+    pre[1].image                       = dstTex->image;
+    pre[1].subresourceRange.levelCount = dstTex->mipLevels;
+    pre[1].subresourceRange.layerCount = dstTex->arrayLayers;
+
+    vkCmdPipelineBarrier(cb,
+                         VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         0,
+                         0,
+                         nullptr,
+                         0,
+                         nullptr,
+                         2,
+                         pre);
+  }
+
+  static void TransitionAfterColorTransfer(VkCommandBuffer cb, VulkanTexture* srcTex, VulkanTexture* dstTex)
+  {
+    VkImageMemoryBarrier post[2]{};
+    post[0].sType                       = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    post[0].oldLayout                   = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    post[0].newLayout                   = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    post[0].srcAccessMask               = VK_ACCESS_TRANSFER_READ_BIT;
+    post[0].dstAccessMask               = VK_ACCESS_SHADER_READ_BIT;
+    post[0].srcQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
+    post[0].dstQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
+    post[0].image                       = srcTex->image;
+    post[0].subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    post[0].subresourceRange.levelCount = srcTex->mipLevels;
+    post[0].subresourceRange.layerCount = srcTex->arrayLayers;
+
+    post[1]                             = post[0];
+    post[1].oldLayout                   = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    post[1].srcAccessMask               = VK_ACCESS_TRANSFER_WRITE_BIT;
+    post[1].image                       = dstTex->image;
+    post[1].subresourceRange.levelCount = dstTex->mipLevels;
+    post[1].subresourceRange.layerCount = dstTex->arrayLayers;
+
+    vkCmdPipelineBarrier(cb,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                         0,
+                         0,
+                         nullptr,
+                         0,
+                         nullptr,
+                         2,
+                         post);
+
+    srcTex->currentLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    dstTex->currentLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+  }
+
+  // Resolves an MSAA color attachment into its single-sample destination via vkCmdResolveImage.
+  // Both src/dst extents must match (resolve has no scaling). Caller already checked
+  // src->samples > 1.
+  static void ResolveColorAttachment(VkCommandBuffer cb, VulkanTexture* srcTex, VulkanTexture* dstTex)
+  {
+    TransitionForColorTransfer(cb, srcTex, dstTex);
+
+    VkImageResolve region{};
+    region.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.srcSubresource.layerCount = 1;
+    region.srcOffset                 = {0, 0, 0};
+    region.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.dstSubresource.layerCount = 1;
+    region.dstOffset                 = {0, 0, 0};
+    region.extent                    = {srcTex->extent.width, srcTex->extent.height, 1};
+
+    vkCmdResolveImage(cb,
+                      srcTex->image,
+                      VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                      dstTex->image,
+                      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                      1,
+                      &region);
+
+    TransitionAfterColorTransfer(cb, srcTex, dstTex);
+  }
+
+  // Blits @p src's full extent into @p dst's full extent (LINEAR filter, COLOR aspect). The
+  // textures' currentLayout fields drive the pre-transition source layout and the
+  // post-transition restore target — both end up back at SHADER_READ_ONLY_OPTIMAL, the
+  // engine's resting state for color render targets. Caller must guarantee no render pass is
+  // active on @p cb (vkCmdBlitImage is outside-RP-only) and that src is not multi-sampled
+  // (vkCmdBlitImage rejects multi-sample sources — use ResolveColorAttachment instead).
+  static void BlitColorAttachment(VkCommandBuffer cb, VulkanTexture* srcTex, VulkanTexture* dstTex)
+  {
+    TransitionForColorTransfer(cb, srcTex, dstTex);
+
+    VkImageBlit region{};
+    region.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.srcSubresource.layerCount = 1;
+    region.srcOffsets[0]             = {0, 0, 0};
+    region.srcOffsets[1]             = {(int32_t) srcTex->extent.width, (int32_t) srcTex->extent.height, 1};
+    region.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.dstSubresource.layerCount = 1;
+    region.dstOffsets[0]             = {0, 0, 0};
+    region.dstOffsets[1]             = {(int32_t) dstTex->extent.width, (int32_t) dstTex->extent.height, 1};
+
+    vkCmdBlitImage(cb,
+                   srcTex->image,
+                   VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                   dstTex->image,
+                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                   1,
+                   &region,
+                   VK_FILTER_LINEAR);
+
+    TransitionAfterColorTransfer(cb, srcTex, dstTex);
+  }
+
   void VulkanBackend::ResolveFramebuffer(FramebufferPtr src, FramebufferPtr dst, const IntArray& attachments)
   {
-    // TODO: vkCmdResolveImage.
+    // Stage 10. Per requested attachment index: vkCmdResolveImage if source is multi-sampled,
+    // vkCmdBlitImage otherwise. Engine pass code (ForwardPass / ForwardPreProcessPass) calls
+    // this gated on `framebuffer->IsMultiSampled()`, so the resolve path is the common one;
+    // the blit fallback exists only as a safe behavior when an engine site happens to call
+    // ResolveFramebuffer on a single-sample source.
+    if (m_swapchain == nullptr || !m_swapchain->IsFrameActive())
+    {
+      return;
+    }
+    if (m_activePassFb != nullptr || m_swapchain->IsSwapchainPassActive())
+    {
+      // Spec forbids vkCmdBlitImage / vkCmdResolveImage inside a render pass instance. Engine
+      // code calls this between passes (after EndPass) so this guard is purely defensive —
+      // log so a misuse surfaces during development.
+      TK_ERR("ResolveFramebuffer called inside an active render pass — skipped");
+      return;
+    }
+    if (src == nullptr || dst == nullptr)
+    {
+      return;
+    }
+
+    auto* srcFb = static_cast<VulkanFramebuffer*>(src->m_gpuData.get());
+    auto* dstFb = static_cast<VulkanFramebuffer*>(dst->m_gpuData.get());
+    if (srcFb == nullptr || dstFb == nullptr)
+    {
+      return;
+    }
+
+    VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer();
+    if (cb == VK_NULL_HANDLE)
+    {
+      return;
+    }
+
+    for (int idx : attachments)
+    {
+      if (idx < 0 || idx >= VulkanFramebuffer::kMaxColorAttachments)
+      {
+        continue;
+      }
+      auto* srcTex = srcFb->colorAttachments[idx].tex;
+      auto* dstTex = dstFb->colorAttachments[idx].tex;
+      if (srcTex == nullptr || dstTex == nullptr)
+      {
+        continue;
+      }
+      if (srcTex->samples != VK_SAMPLE_COUNT_1_BIT)
+      {
+        if (dstTex->samples != VK_SAMPLE_COUNT_1_BIT)
+        {
+          TK_ERR("ResolveFramebuffer: dst attachment %d is multi-sampled — resolve target must "
+                 "be single-sample. Skipped.",
+                 idx);
+          continue;
+        }
+        ResolveColorAttachment(cb, srcTex, dstTex);
+      }
+      else
+      {
+        BlitColorAttachment(cb, srcTex, dstTex);
+      }
+    }
   }
 
   void VulkanBackend::CopyFramebuffer(FramebufferPtr src, FramebufferPtr dst, GraphicBitFields fields)
   {
-    // TODO: vkCmdCopyImage / vkCmdBlitImage.
+    // Stage 8. Color-only blit between two framebuffers — used by post-process chains and other
+    // intermediate-target copies. Each color slot present in both source and destination is
+    // blit'd in turn (vkCmdBlitImage handles size mismatch by linear-filtering, matching GL's
+    // glBlitFramebuffer semantics).
+    //
+    // Bilinçli ertelemeler:
+    //   - dst == nullptr (GL'in "default framebuffer = ekran" yolu): Vulkan'da viewport
+    //     texture'ı ImGui'ye `ImGui_ImplVulkan_AddTexture` ile veriliyor; "ekrana blit" yolu
+    //     Stage 11'de gerçek engine pass'leri Vulkan üzerinden bağlandığında değerlendirilir.
+    //   - DepthBits / StencilBits: vkCmdBlitImage'in depth-aspect blit'i NEAREST + format-eş
+    //     gerektirir, stencil ise vkCmdCopyImage'le kopyalanır. Mevcut çağrı yerleri hep
+    //     ColorBits geçiyor (GameRenderer, SplashScreenRenderPath, post-process zinciri),
+    //     bu yüzden depth/stencil yolları Stage 11'e bırakıldı.
+    if (m_swapchain == nullptr || !m_swapchain->IsFrameActive())
+    {
+      return;
+    }
+    if (m_activePassFb != nullptr || m_swapchain->IsSwapchainPassActive())
+    {
+      TK_ERR("CopyFramebuffer called inside an active render pass — skipped");
+      return;
+    }
+    if (src == nullptr)
+    {
+      return;
+    }
+
+    const uint mask = (uint) fields;
+    if ((mask & (uint) GraphicBitFields::ColorBits) == 0)
+    {
+      // Nothing to do for the color path; depth/stencil paths aren't wired yet.
+      static bool s_warnedDepthOnly = false;
+      if (!s_warnedDepthOnly && (mask & ((uint) GraphicBitFields::DepthBits | (uint) GraphicBitFields::StencilBits)) != 0)
+      {
+        TK_WRN("CopyFramebuffer: depth/stencil-only copy not implemented yet (Stage 11 follow-up)");
+        s_warnedDepthOnly = true;
+      }
+      return;
+    }
+
+    if (dst == nullptr)
+    {
+      // See note above — Vulkan path doesn't need this until Stage 11. Logged once to keep an
+      // unexpected runtime call visible without spamming.
+      static bool s_warnedNullDst = false;
+      if (!s_warnedNullDst)
+      {
+        TK_WRN("CopyFramebuffer(dst=nullptr) deferred to Stage 11 — call ignored");
+        s_warnedNullDst = true;
+      }
+      return;
+    }
+
+    auto* srcFb = static_cast<VulkanFramebuffer*>(src->m_gpuData.get());
+    auto* dstFb = static_cast<VulkanFramebuffer*>(dst->m_gpuData.get());
+    if (srcFb == nullptr || dstFb == nullptr)
+    {
+      return;
+    }
+
+    VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer();
+    if (cb == VK_NULL_HANDLE)
+    {
+      return;
+    }
+
+    for (int i = 0; i < VulkanFramebuffer::kMaxColorAttachments; ++i)
+    {
+      auto* srcTex = srcFb->colorAttachments[i].tex;
+      auto* dstTex = dstFb->colorAttachments[i].tex;
+      if (srcTex == nullptr || dstTex == nullptr)
+      {
+        continue;
+      }
+      BlitColorAttachment(cb, srcTex, dstTex);
+    }
   }
 
   void VulkanBackend::BlitToScreen(FramebufferPtr src)
   {
-    // TODO: Blit to swapchain image.
+    // Intentional no-op (matches GLBackend::BlitToScreen, which is also empty). The IGraphicsBackend
+    // entry exists for legacy GL paths; ToolKit's actual "blit to screen" flow is
+    // CopyFramebuffer(src, nullptr, ColorBits), which is the call site engine code already uses.
+    // Vulkan currently routes viewport pixels through ImGui's image binding instead — no blit
+    // needed at this layer.
+    (void) src;
   }
 
   void VulkanBackend::StartTimerQuery()
@@ -904,6 +1225,27 @@ namespace ToolKit
     data->isCubemap    = isCubemap;
     data->currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
+    // Stage 10. MSAA sample count comes from TextureSettings::msaaCount. The enum's integer
+    // values (1/2/4/8) are deliberately VK_SAMPLE_COUNT_*_BIT-compatible, so we cast directly.
+    // Vulkan spec forbids samples > 1 with mipLevels > 1; the same is forbidden for some
+    // image types (cubemaps practically never go MSAA). Demote to 1 when geometry of the
+    // image would make MSAA invalid — engine rarely asks for those combos but the guard keeps
+    // a misconfigured asset from blowing up validation.
+    VkSampleCountFlagBits requestedSamples = (VkSampleCountFlagBits) (uint32_t) settings.msaaCount;
+    if (requestedSamples == 0)
+    {
+      requestedSamples = VK_SAMPLE_COUNT_1_BIT;
+    }
+    if (requestedSamples != VK_SAMPLE_COUNT_1_BIT && (data->mipLevels > 1 || isCubemap))
+    {
+      TK_WRN("CreateTexture: MSAA sampleCount %u demoted to 1 — incompatible with mipLevels=%u "
+             "or cubemap target",
+             (unsigned) requestedSamples,
+             (unsigned) data->mipLevels);
+      requestedSamples = VK_SAMPLE_COUNT_1_BIT;
+    }
+    data->samples       = requestedSamples;
+
     VkImageUsageFlags usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
                               VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     usage |= isDepth ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
@@ -915,7 +1257,7 @@ namespace ToolKit
     imageInfo.extent            = {data->extent.width, data->extent.height, 1};
     imageInfo.mipLevels         = data->mipLevels;
     imageInfo.arrayLayers       = data->arrayLayers;
-    imageInfo.samples           = VK_SAMPLE_COUNT_1_BIT; // MSAA Stage 6.
+    imageInfo.samples           = data->samples;
     imageInfo.tiling            = VK_IMAGE_TILING_OPTIMAL;
     imageInfo.usage             = usage;
     imageInfo.sharingMode       = VK_SHARING_MODE_EXCLUSIVE;
@@ -1537,11 +1879,15 @@ namespace ToolKit
   void VulkanBackend::SubmitCustomUniforms(const GpuProgramPtr& program,
                                            std::unordered_map<String, ShaderUniform>& uniforms)
   {
-    // TODO(stage 7d+): per-material custom uniform UBO.
-    //
-    // GL backend writes these into individual glUniform* slots. Vulkan equivalent will batch
-    // them into a per-material UBO (set=1, binding=0 per the descriptor strategy). Until real
-    // shaders + descriptor sets land, this is a no-op.
+    // Stage 7d-4c. Intentional no-op. ToolKit's standard render passes route per-frame /
+    // per-camera / per-light data through the fixed UBO bindings the global descriptor set
+    // layout already exposes (Camera/Graphic/Lights at the post-remap UBO slots) plus the
+    // per-draw dynamic UBO from SubmitPerDrawData. Custom uniforms here are material-level
+    // ad-hoc data that GL pokes into individual glUniform* slots — the Vulkan equivalent is a
+    // separate per-material UBO (binding 15 was reserved for this in VulkanBindings.h) and is
+    // deferred to Stage 11 once real engine shaders that actually read custom uniforms compile
+    // through 7d-2b. No-op until then keeps render-system call sites compiling without forcing
+    // a half-implemented path that no shader consumes yet.
     (void) program;
     (void) uniforms;
   }
@@ -1558,29 +1904,51 @@ namespace ToolKit
 
   String VulkanBackend::GetBackendRendererString()
   {
-    // TODO: Return VkPhysicalDeviceProperties::deviceName.
-    return "Vulkan (stub)";
+    if (m_context == nullptr || m_context->GetPhysicalDevice() == VK_NULL_HANDLE)
+    {
+      return "Vulkan";
+    }
+    VkPhysicalDeviceProperties props{};
+    vkGetPhysicalDeviceProperties(m_context->GetPhysicalDevice(), &props);
+    return String("Vulkan: ") + props.deviceName;
   }
 
   int VulkanBackend::GetMaxArrayTextureLayers()
   {
-    // TODO: Return VkPhysicalDeviceLimits::maxImageArrayLayers.
-    return 256;
+    if (m_context == nullptr || m_context->GetPhysicalDevice() == VK_NULL_HANDLE)
+    {
+      return 256;
+    }
+    VkPhysicalDeviceProperties props{};
+    vkGetPhysicalDeviceProperties(m_context->GetPhysicalDevice(), &props);
+    return (int) props.limits.maxImageArrayLayers;
   }
 
   void VulkanBackend::SetSrgbAutoEncoding(bool enable)
   {
     // Vulkan handles sRGB via swapchain format  likely no-op.
+    (void) enable;
   }
 
   void VulkanBackend::Finish()
   {
-    // TODO: vkDeviceWaitIdle.
+    // GL's glFinish equivalent — flush + wait until every queued GPU op is retired. Engine
+    // calls this at shutdown / context teardown / certain readback paths. vkDeviceWaitIdle
+    // covers all queues this device owns, which matches the GL semantics on a single-context
+    // setup.
+    if (m_context != nullptr && m_context->GetDevice() != VK_NULL_HANDLE)
+    {
+      vkDeviceWaitIdle(m_context->GetDevice());
+    }
   }
 
   void VulkanBackend::SetDefaultClearColor(const Vec4& color)
   {
-    // TODO: Store default clear color for render passes.
+    // Stored on the backend so ClearColorBuffer / ClearBuffer paths and any future implicit
+    // backbuffer clear can pick it up. BeginPass takes its clear color from PassDesc directly,
+    // so this is currently informational; engine uses it for "set once, expect all subsequent
+    // passes to use this when they didn't override".
+    m_clearColor = color;
   }
 
   bool VulkanBackend::ValidateBackbufferSrgbEncoding()
@@ -1616,8 +1984,19 @@ namespace ToolKit
 
   bool VulkanBackend::SupportsFloatTextureLinearFilter()
   {
-    // TODO: Query VkFormatProperties for VK_FORMAT_R32G32B32A32_SFLOAT.
-    return true;
+    // Engine uses this to decide between linear-sampled HDR targets and a NEAREST fallback for
+    // older GPUs. On Vulkan we query format properties for the canonical 32-bit float color
+    // format; if linear filter is missing on that, the rest of the float chain is unlikely to
+    // support it either.
+    if (m_context == nullptr || m_context->GetPhysicalDevice() == VK_NULL_HANDLE)
+    {
+      return true;
+    }
+    VkFormatProperties fp{};
+    vkGetPhysicalDeviceFormatProperties(m_context->GetPhysicalDevice(),
+                                        VK_FORMAT_R32G32B32A32_SFLOAT,
+                                        &fp);
+    return (fp.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT) != 0;
   }
 
   void* VulkanBackend::GetNativeTextureHandle(Texture* tex)

@@ -22,12 +22,12 @@ namespace ToolKit
   class VulkanContext;
 
   /**
-   * Full pipeline state needed to build a VkPipeline — serves both as the cache key (hashed +
+   * Full pipeline state needed to build a VkPipeline ï¿½ serves both as the cache key (hashed +
    * compared field-by-field) and as the creation record handed to vkCreateGraphicsPipelines.
    * Deliberately flat + POD-ish so hashing is cheap. Aggregate {}-init zeroes everything
    * including the attribute tail slots; callers only touch the fields they use.
    *
-   * Stage 6c scaffold — carries the state the test pipeline needs today (depth, cull, blend on/off,
+   * Stage 6c scaffold ï¿½ carries the state the test pipeline needs today (depth, cull, blend on/off,
    * topology, one vertex binding with N<=8 attribs, optional single descriptor set layout + one
    * push constant range). Stage 7 grows this when real materials / multiple descriptor sets / MRT
    * come online.
@@ -66,6 +66,12 @@ namespace ToolKit
     VkBlendFactor dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
     VkBlendOp alphaBlendOp            = VK_BLEND_OP_ADD;
     uint colorAttachmentCount         = 1;
+
+    /** Subpass sample count this pipeline targets (Stage 10). Must equal the active render
+        pass's per-attachment sampleCount. Drives `pMultisampleState.rasterizationSamples`;
+        also part of the cache key so a non-MSAA + an MSAA copy of the "same" recipe end up
+        in different slots. */
+    VkSampleCountFlagBits rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
     bool operator==(const VulkanPipelineDesc& o) const;
   };
@@ -115,7 +121,7 @@ namespace ToolKit
 
   /**
    * Maps ToolKit's @ref RenderState onto the corresponding fields of @p out. Render-pass /
-   * shader / vertex input fields are left untouched — the caller fills those in based on the
+   * shader / vertex input fields are left untouched ï¿½ the caller fills those in based on the
    * active pass + bound program. Single conversion path, branchless: every RenderState field
    * resolves through a small switch table, no per-state if chains, so identical RenderStates
    * always produce identical (hashable) descs.
