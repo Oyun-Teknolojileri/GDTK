@@ -1,9 +1,6 @@
 <shader>
 	<type name = "includeShader" />
-  <uniform name = "skinParams" />
-  <uniform name = "keyFrameData" />
-  <uniform name = "blendFrameData" />
-  <uniform name = "blendFactor" />
+  <include name = "perDrawDataInc.shader" />
 	<source>
 	<!--
   #ifndef SKIN_SHADER
@@ -12,19 +9,19 @@
   layout(location = 4) in vec4 vBones;
   layout(location = 5) in vec4 vWeights;
 
-  // Packed uniforms: 13 scalar → 4 vec4
-  uniform vec4 skinParams;      // (numBones, isSkinned, isAnimated, blendAnimation)
-  uniform vec4 keyFrameData;    // (kf1, kf2, interpTime, kfCount)
-  uniform vec4 blendFrameData;  // (blendKf1, blendKf2, blendInterpTime, blendKfCount)
-  uniform float blendFactor;
+  // Skin / animation uniforms now live in PerDrawData UBO (slot 6). Backing fields:
+  //   perDraw._skinParams           (numBones, isSkinned, isAnimated, blendAnimation)
+  //   perDraw._keyFrameData         (kf1, kf2, interpTime, kfCount)
+  //   perDraw._blendFrameData       (blendKf1, blendKf2, blendInterpTime, blendKfCount)
+  //   perDraw._animBlendFactorAndPad.x  // animationBlendFactor
 
   uniform sampler2D s_texture2; // Blend animation texture
   uniform sampler2D s_texture3; // Animation data texture
 
-  #define numBones        skinParams.x
-  #define isSkinned       (skinParams.y > 0.5)
-  #define isAnimated      (skinParams.z > 0.5)
-  #define blendAnimation  (skinParams.w > 0.5)
+  #define numBones        perDraw._skinParams.x
+  #define isSkinned       (perDraw._skinParams.y > 0.5)
+  #define isAnimated      (perDraw._skinParams.z > 0.5)
+  #define blendAnimation  (perDraw._skinParams.w > 0.5)
 
   struct SkinLookup
   {
@@ -160,35 +157,35 @@
 
   void skin(in vec4 vertexPos, out vec4 skinnedPos)
   {
-    skinCalc(s_texture3, keyFrameData, vertexPos, skinnedPos);
+    skinCalc(s_texture3, perDraw._keyFrameData, vertexPos, skinnedPos);
 
     if (blendAnimation)
     {
       vec4 blendResult;
-      skinCalc(s_texture2, blendFrameData, vertexPos, blendResult);
-      skinnedPos = mix(skinnedPos, blendResult, blendFactor);
+      skinCalc(s_texture2, perDraw._blendFrameData, vertexPos, blendResult);
+      skinnedPos = mix(skinnedPos, blendResult, perDraw._animBlendFactorAndPad.x);
     }
   }
 
   void skin(in vec4 vertexPos, in vec3 vertexNormal,
             out vec4 skinnedPos, out vec3 skinnedNormal)
   {
-    skinCalc(s_texture3, keyFrameData, vertexPos, vertexNormal, skinnedPos, skinnedNormal);
+    skinCalc(s_texture3, perDraw._keyFrameData, vertexPos, vertexNormal, skinnedPos, skinnedNormal);
 
     if (blendAnimation)
     {
       vec4 bPos;
       vec3 bNrm;
-      skinCalc(s_texture2, blendFrameData, vertexPos, vertexNormal, bPos, bNrm);
-      skinnedPos    = mix(skinnedPos, bPos, blendFactor);
-      skinnedNormal = normalize(mix(skinnedNormal, bNrm, blendFactor));
+      skinCalc(s_texture2, perDraw._blendFrameData, vertexPos, vertexNormal, bPos, bNrm);
+      skinnedPos    = mix(skinnedPos, bPos, perDraw._animBlendFactorAndPad.x);
+      skinnedNormal = normalize(mix(skinnedNormal, bNrm, perDraw._animBlendFactorAndPad.x));
     }
   }
 
   void skin(in vec4 vertexPos, in vec3 vertexNormal, in vec3 vertexBiTangent,
             out vec4 skinnedPos, out vec3 skinnedNormal, out vec3 skinnedBiTangent)
   {
-    skinCalc(s_texture3, keyFrameData,
+    skinCalc(s_texture3, perDraw._keyFrameData,
              vertexPos, vertexNormal, vertexBiTangent,
              skinnedPos, skinnedNormal, skinnedBiTangent);
 
@@ -196,12 +193,12 @@
     {
       vec4 bPos;
       vec3 bNrm, bBiTan;
-      skinCalc(s_texture2, blendFrameData,
+      skinCalc(s_texture2, perDraw._blendFrameData,
                vertexPos, vertexNormal, vertexBiTangent,
                bPos, bNrm, bBiTan);
-      skinnedPos       = mix(skinnedPos, bPos, blendFactor);
-      skinnedNormal    = normalize(mix(skinnedNormal, bNrm, blendFactor));
-      skinnedBiTangent = normalize(mix(skinnedBiTangent, bBiTan, blendFactor));
+      skinnedPos       = mix(skinnedPos, bPos, perDraw._animBlendFactorAndPad.x);
+      skinnedNormal    = normalize(mix(skinnedNormal, bNrm, perDraw._animBlendFactorAndPad.x));
+      skinnedBiTangent = normalize(mix(skinnedBiTangent, bBiTan, perDraw._animBlendFactorAndPad.x));
     }
   }
   #endif
