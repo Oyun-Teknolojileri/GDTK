@@ -866,6 +866,7 @@ namespace ToolKit
             &buffers->directionalLightBuffer.m_pvms);
     bindUBO("PointLightCache", PointLightCache::BindingSlot, &buffers->pointLighBuffer.m_gpuBuffer);
     bindUBO("SpotLightCache", SpotLightCache::BindingSlot, &buffers->spotLightBuffer.m_gpuBuffer);
+    bindUBO("PerDrawData", PerDrawUboBuffer::Binding(), &buffers->perDrawBuffer.GetBuffer());
 
     // Cache default and array uniform locations.
     for (const ShaderPtr& shader : program->m_shaders)

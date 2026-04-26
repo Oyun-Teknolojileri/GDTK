@@ -134,6 +134,53 @@ namespace ToolKit
 
   typedef GpuBufferBase<GraphicConstatsDataLayout, 4> GraphicConstantsGpuBuffer;
 
+  // PerDrawGpuBuffer (slot 6)
+  //////////////////////////////////////////
+
+  /**
+   * std140-packed CPU mirror for the PerDrawData UBO. Holds every per-draw uniform that today
+   * is fed scatter-style via glUniform*; once a shader is migrated, it reads these fields out
+   * of `layout(std140) uniform PerDrawData { ... }` instead. Layout intentionally pads to 16-byte
+   * lines so the GPU view matches the C++ memcpy byte-for-byte.
+   *
+   * Shader-side mirror lives in `Resources/Engine/Shaders/perDrawDataInc.shader`. Any field added
+   * here must be added to that file in the same order or the layouts drift.
+   */
+  struct PerDrawUboLayout
+  {
+    // Transform matrices — 6×64 = 384 bytes
+    Mat4 model;
+    Mat4 modelWithoutTranslate;
+    Mat4 inverseModel;
+    Mat4 inverseTransposeModel;
+    Mat4 iblRotation;
+    Mat4 iblSecondaryRotation;
+
+    /** .xy = viewportSize, .zw = pad. Bundled into a vec4 so the next struct lands on a
+        16-byte boundary without an implicit gap. */
+    Vec4 viewportSizeAndPad;
+
+    /** 24 vec4 — already std140-clean. */
+    DrawCommand drawCommand;
+
+    /** 4 vec4 — MaterialCacheItem::Data is documented std140 layout. */
+    MaterialCacheItem::Data materialData;
+
+    /** 24 ints packed as 6 ivec4 — std140 would otherwise waste 12 bytes per int. */
+    IVec4 activePointLightIndices[6];
+    IVec4 activeSpotLightIndices[6];
+    /** .x = activePointLightCount, .y = activeSpotLightCount. */
+    IVec4 lightCounts;
+
+    Vec4 keyFrameData;
+    Vec4 blendFrameData;
+    Vec4 skinParams;
+    /** .x = animationBlendFactor. Padded to vec4 for std140 alignment. */
+    Vec4 animBlendFactorAndPad;
+  };
+
+  typedef GpuBufferBase<PerDrawUboLayout, 6> PerDrawUboBuffer;
+
   // GlobalGpuBuffers
   //////////////////////////////////////////
 
@@ -154,6 +201,10 @@ namespace ToolKit
     /** Cached spot lights in gpu. */
     SpotLightCache spotLightBuffer;
 
+    /** Per-draw UBO — fed each draw via SubmitPerDrawData. Bound at slot 6 alongside the other
+        global UBOs. Empty until shaders migrate off bare uniforms; harmless to bind early. */
+    PerDrawUboBuffer perDrawBuffer;
+
     void InitGlobalGpuBuffers()
     {
       graphicConstantBuffer.Init();
@@ -161,6 +212,7 @@ namespace ToolKit
       directionalLightBuffer.Init();
       pointLighBuffer.Init();
       spotLightBuffer.Init();
+      perDrawBuffer.Init();
     }
   };
 
