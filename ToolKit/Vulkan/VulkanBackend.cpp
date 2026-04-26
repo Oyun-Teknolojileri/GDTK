@@ -9,7 +9,10 @@
 
 #include "../Framebuffer.h"
 #include "../Logger.h"
+#include "../Mesh.h"
 #include "../Texture.h"
+#include "../UniformBuffer.h"
+#include "VulkanBuffer.h"
 #include "VulkanContext.h"
 #include "VulkanPipeline.h"
 #include "VulkanPipelineCache.h"
@@ -402,6 +405,8 @@ namespace ToolKit
     {
       return;
     }
+    // Pipeline binding is per-pass: a fresh BindPipeline is required after every EndPass.
+    m_pipelineBound = false;
     if (m_activePassFb != nullptr)
     {
       VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer();
@@ -461,7 +466,58 @@ namespace ToolKit
 
   void VulkanBackend::Draw(const DrawDesc& desc)
   {
-    // TODO: vkCmdBindVertexBuffers + vkCmdBindIndexBuffer + vkCmdDrawIndexed / vkCmdDraw.
+    // Gate 1: command buffer must be in recording state. If nothing called BeginFrame yet
+    // (engine init, hot-reload, off-frame Draw probes), recording vkCmd* corrupts the buffer
+    // and the next vkBeginCommandBuffer fails.
+    if (m_swapchain == nullptr || !m_swapchain->IsFrameActive())
+    {
+      return;
+    }
+    // Gate 2: a render pass instance must be active. vkCmdDrawIndexed outside a render pass
+    // is a validation error.
+    if (m_activePassFb == nullptr && !m_swapchain->IsSwapchainPassActive())
+    {
+      return;
+    }
+    // Gate 3: a pipeline must be bound. Until BindPipeline (Stage 7c) lands this stays false
+    // and Draw silently no-ops; once 7c flips it true on every BeginPipeline, the gate becomes
+    // a guard against accidentally drawing without a fresh pipeline after EndPass.
+    if (!m_pipelineBound)
+    {
+      return;
+    }
+    if (desc.mesh == nullptr || desc.elementCount == 0)
+    {
+      return;
+    }
+    auto* meshGpu = static_cast<VulkanMesh*>(desc.mesh->m_gpuData.get());
+    if (meshGpu == nullptr || meshGpu->vertex.handle == VK_NULL_HANDLE)
+    {
+      return;
+    }
+
+    VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer();
+    if (cb == VK_NULL_HANDLE)
+    {
+      return;
+    }
+
+    // Topology + raster state come from the bound pipeline, not from desc.type. Stage 7c's
+    // BindPipeline path resolves DrawType through RenderStateToPipelineDesc.
+    const VkBuffer vbuf      = meshGpu->vertex.handle;
+    const VkDeviceSize voff  = 0;
+    vkCmdBindVertexBuffers(cb, 0, 1, &vbuf, &voff);
+
+    if (desc.indexed)
+    {
+      assert(meshGpu->index.handle != VK_NULL_HANDLE && "Draw: indexed=true but mesh has no index buffer");
+      vkCmdBindIndexBuffer(cb, meshGpu->index.handle, 0, VK_INDEX_TYPE_UINT32);
+      vkCmdDrawIndexed(cb, desc.elementCount, desc.instanceCount, 0, 0, 0);
+    }
+    else
+    {
+      vkCmdDraw(cb, desc.elementCount, desc.instanceCount, 0, 0);
+    }
   }
 
   void VulkanBackend::ResolveFramebuffer(FramebufferPtr src, FramebufferPtr dst, const IntArray& attachments)
@@ -743,12 +799,70 @@ namespace ToolKit
 
   void VulkanBackend::CreateMesh(Mesh* mesh)
   {
-    // TODO: VkBuffer (vertex + index) + VMA allocation + staging upload.
+    assert(mesh != nullptr && "CreateMesh: null Mesh");
+
+    // Re-upload path: drop any existing GPU data first (matches GLBackend behavior).
+    DestroyMesh(mesh);
+
+    const void* vertexData    = mesh->GetClientVertexData();
+    const size_t vertexCount  = mesh->GetClientVertexCount();
+    const int vertexStride    = mesh->GetVertexSize();
+
+    if (vertexData == nullptr || vertexCount == 0 || vertexStride <= 0)
+    {
+      // Empty mesh — nothing to upload. Leave m_gpuData null; Draw() guards against this.
+      mesh->m_vertexCount = 0;
+      mesh->m_indexCount  = 0;
+      return;
+    }
+
+    auto data     = std::make_shared<VulkanMesh>();
+    data->context = m_context.get();
+
+    const VkDeviceSize vertexBytes = (VkDeviceSize) vertexStride * (VkDeviceSize) vertexCount;
+    data->vertex                   = VulkanBuffer::UploadDeviceLocal(m_context.get(),
+                                                                     VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                                                                     vertexData,
+                                                                     vertexBytes);
+    if (data->vertex.handle == VK_NULL_HANDLE)
+    {
+      TK_ERR("VulkanBackend::CreateMesh: vertex upload failed (%llu bytes)", (unsigned long long) vertexBytes);
+      return;
+    }
+    mesh->m_vertexCount = (uint) vertexCount;
+
+    if (!mesh->m_clientSideIndices.empty())
+    {
+      const VkDeviceSize indexBytes = sizeof(uint) * (VkDeviceSize) mesh->m_clientSideIndices.size();
+      data->index                   = VulkanBuffer::UploadDeviceLocal(m_context.get(),
+                                                                      VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                                                                      mesh->m_clientSideIndices.data(),
+                                                                      indexBytes);
+      if (data->index.handle == VK_NULL_HANDLE)
+      {
+        TK_ERR("VulkanBackend::CreateMesh: index upload failed (%llu bytes)",
+               (unsigned long long) indexBytes);
+        // Vertex buffer already alive — drop the half-built mesh; shared_ptr dtor cleans up.
+        return;
+      }
+      mesh->m_indexCount = (uint) mesh->m_clientSideIndices.size();
+    }
+
+    mesh->m_gpuData = data;
   }
 
   void VulkanBackend::DestroyMesh(Mesh* mesh)
   {
-    // TODO: vkDestroyBuffer + VMA free.
+    if (mesh == nullptr || mesh->m_gpuData == nullptr)
+    {
+      return;
+    }
+    // Defer the shared_ptr release: the in-flight cmd buffer may still reference these vertex /
+    // index buffers. Once the frame slot's fence retires, DrainDeleterBucket runs the lambda and
+    // ~VulkanMesh frees the VMA allocations.
+    auto data       = mesh->m_gpuData;
+    mesh->m_gpuData = nullptr;
+    DeferDelete([data]() mutable { data.reset(); });
   }
 
   void VulkanBackend::CreateUniformBuffer(UniformBuffer* ub, uint64 size)

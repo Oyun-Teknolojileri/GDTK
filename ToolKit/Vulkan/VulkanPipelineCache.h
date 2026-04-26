@@ -76,6 +76,19 @@ namespace ToolKit
   };
 
   /**
+   * Single conversion point from ToolKit's flat RenderState POD to the raster / depth / blend
+   * fields of VulkanPipelineDesc. Branch-free: every enum maps through a small switch table; no
+   * if-chains. The remaining desc fields (renderPass, shaders, vertex input, color attachment
+   * count) are caller responsibility ? they're orthogonal to RenderState.
+   *
+   * Postconditions:
+   *  - out.cullMode, frontFace, topology, depthTestEnable, depthWriteEnable, depthCompareOp,
+   *    blendEnable + 6 blend factor/op fields are written.
+   *  - All other fields of @p out are left untouched.
+   */
+  void RenderStateToPipelineDesc(const RenderState& state, VulkanPipelineDesc& out);
+
+  /**
    * Tiny VkPipeline cache keyed on VulkanPipelineDesc. Two callers can request the "same"
    * pipeline (same shaders + state + render pass) and get the same VkPipeline back, which is
    * the precondition for Stage 7's state-sorted rendering.

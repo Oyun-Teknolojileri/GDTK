@@ -13,6 +13,8 @@
 namespace ToolKit
 {
 
+  // -- VulkanPipelineDesc equality + hash --------------------------------------------------------
+
   bool VulkanPipelineDesc::operator==(const VulkanPipelineDesc& o) const
   {
     // Compare scalar/POD fields in one shot. The attributes tail (slots beyond attributeCount)

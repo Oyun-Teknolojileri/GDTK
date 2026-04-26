@@ -58,6 +58,11 @@ namespace ToolKit
 
     bool IsSwapchainPassActive() const { return m_swapchainPassActive; }
 
+    /** True between BeginFrame() success and EndFrame() return � the cmd buffer is in
+        recording state during this window. Used by the backend to gate Draw / Bind* calls
+        that may fire before any frame has begun (engine init, hot-reload, etc.). */
+    bool IsFrameActive() const { return m_frameActive; }
+
     /** Tears down swapchain-dependent objects and rebuilds them from the current surface extent. */
     bool Recreate();
 

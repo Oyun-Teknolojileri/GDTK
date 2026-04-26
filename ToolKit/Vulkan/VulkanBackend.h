@@ -172,6 +172,11 @@ namespace ToolKit
         swapchain tracks its own pass-active flag). */
     struct VulkanFramebuffer* m_activePassFb = nullptr;
 
+    /** True between BindPipeline() success and the next EndPass(). Draw() bails when false so
+        that Stage 7a can land before BindPipeline (Stage 7c) without recording bare draws into
+        the cmd buffer (validation: "no pipeline bound"). Reset on EndPass / new BeginPass. */
+    bool m_pipelineBound = false;
+
     /**
      * Per-frame-in-flight deletion buckets. Sized to VulkanSwapchain::FRAMES_IN_FLIGHT in the
      * constructor. Bucket index N is appended to during frame N (and between frames before the

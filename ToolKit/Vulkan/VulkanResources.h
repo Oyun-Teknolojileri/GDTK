@@ -126,4 +126,22 @@ namespace ToolKit
     ~VulkanUniformBuffer() override;
   };
 
+  /**
+   * Backend GPU data for a Mesh.
+   * Stored on Mesh::m_gpuData.
+   *
+   * Vertex + index buffers are uploaded once (DEVICE_LOCAL via staging) at CreateMesh time and
+   * reused for every Draw. Index size is fixed at 32-bit because ToolKit's UIntArray uses uint
+   * indices � VK_INDEX_TYPE_UINT32 in Vulkan terms. SkinMesh uses the same struct; the per-vertex
+   * stride and vertex attribute layout are baked into the pipeline (selected via DrawDesc.vertexLayout).
+   */
+  struct VulkanMesh : public GpuResourceData
+  {
+    VulkanContext* context = nullptr;
+    VulkanBuffer::Buffer vertex;
+    VulkanBuffer::Buffer index;
+
+    ~VulkanMesh() override;
+  };
+
 } // namespace ToolKit

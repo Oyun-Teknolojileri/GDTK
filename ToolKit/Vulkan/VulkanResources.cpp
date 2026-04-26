@@ -144,4 +144,13 @@ namespace ToolKit
     }
   }
 
+  VulkanMesh::~VulkanMesh()
+  {
+    if (context != nullptr)
+    {
+      VulkanBuffer::Destroy(context, vertex);
+      VulkanBuffer::Destroy(context, index);
+    }
+  }
+
 } // namespace ToolKit
