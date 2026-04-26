@@ -282,6 +282,18 @@ namespace ToolKit
 
   typedef GpuBufferBase<SsaoBlurPassDataLayout, 5> SsaoBlurPassDataBuffer;
 
+  /** Depth-of-field pass UBO (`depthOfFieldFrag.shader`). 4 floats + 1 vec2 packed into 32 bytes
+      across two vec4s. */
+  struct DofPassDataLayout
+  {
+    /** .xy = uPixelSize (1/width, 1/height). */
+    Vec4 pixelSizeAndPad;
+    /** .x = focusPoint, .y = focusScale, .z = blurSize, .w = radiusScale. */
+    Vec4 focusAndBlur;
+  };
+
+  typedef GpuBufferBase<DofPassDataLayout, 5> DofPassDataBuffer;
+
   /** SSAO calc pass UBO (`ssaoCalcFrag.shader`). Aggregates the 6 bare uniforms the SSAO calc
       shader used to read scatter-style. Sized for the maximum kernel (32 samples) so the same
       buffer works across the 8/16/32 KERNEL_SIZE define variants — the shader's loop iterates up

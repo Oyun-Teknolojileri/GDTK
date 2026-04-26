@@ -8,6 +8,7 @@
 #pragma once
 
 #include "FullQuadPass.h"
+#include "Renderer.h"
 
 namespace ToolKit
 {
@@ -45,6 +46,10 @@ namespace ToolKit
     FullQuadPassPtr m_quadPass    = nullptr;
     ShaderPtr m_dofShader         = nullptr;
     RenderTargetPtr m_copyTexture = nullptr;
+
+    /** Slot-5 UBO for `depthOfFieldFrag.shader`. Lazy-init on first PreRender. */
+    DofPassDataBuffer m_passDataBuffer;
+    bool m_passDataBufferInitialized = false;
   };
 
   typedef std::shared_ptr<DoFPass> DoFPassPtr;
