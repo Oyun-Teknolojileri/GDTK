@@ -11,6 +11,7 @@
 #include "../Logger.h"
 #include "../Mesh.h"
 #include "../Texture.h"
+#include "../Types.h"
 #include "../UniformBuffer.h"
 #include "VulkanBindings.h"
 #include "VulkanBuffer.h"
@@ -24,6 +25,86 @@
 
 #include "../GpuProgram.h"
 #include "../Shader.h"
+
+namespace
+{
+  // Uploads @p pixels (byteCount bytes) to VulkanTexture @p vt at (layer, mip) via a
+  // single-use staging buffer. Transitions the sub-resource from its current layout to
+  // TRANSFER_DST, performs the copy, then transitions back to SHADER_READ_ONLY_OPTIMAL.
+  // Blocks until the GPU copy completes (SubmitOneShot waits for queue idle).
+  static void UploadTexelData(ToolKit::VulkanContext* ctx,
+                              ToolKit::VulkanTexture* vt,
+                              const void* pixels,
+                              VkDeviceSize byteCount,
+                              uint32_t layer,
+                              uint32_t mip)
+  {
+    using namespace ToolKit;
+    if (!pixels || byteCount == 0 || !vt || vt->image == VK_NULL_HANDLE)
+      return;
+
+    // Staging buffer — CPU-visible, written once and discarded after copy.
+    VulkanBuffer::Buffer staging =
+        VulkanBuffer::CreateHostVisibleMapped(ctx, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, byteCount);
+    if (staging.handle == VK_NULL_HANDLE)
+    {
+      TK_ERR("UploadTexelData: staging buffer alloc failed (%llu bytes)", (unsigned long long) byteCount);
+      return;
+    }
+    std::memcpy(staging.mapped, pixels, static_cast<size_t>(byteCount));
+
+    const VkImageLayout srcLayout = vt->currentLayout;
+    uint32_t w = std::max(1u, vt->extent.width  >> mip);
+    uint32_t h = std::max(1u, vt->extent.height >> mip);
+
+    ctx->SubmitOneShot(
+        [&](VkCommandBuffer cb)
+        {
+          // Transition: currentLayout → TRANSFER_DST_OPTIMAL
+          VkImageMemoryBarrier toTransfer{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+          toTransfer.oldLayout                       = srcLayout;
+          toTransfer.newLayout                       = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+          toTransfer.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+          toTransfer.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+          toTransfer.image                           = vt->image;
+          toTransfer.subresourceRange.aspectMask     = vt->aspect;
+          toTransfer.subresourceRange.baseMipLevel   = mip;
+          toTransfer.subresourceRange.levelCount     = 1;
+          toTransfer.subresourceRange.baseArrayLayer = layer;
+          toTransfer.subresourceRange.layerCount     = 1;
+          toTransfer.srcAccessMask                   = VK_ACCESS_SHADER_READ_BIT;
+          toTransfer.dstAccessMask                   = VK_ACCESS_TRANSFER_WRITE_BIT;
+          vkCmdPipelineBarrier(cb,
+                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                               VK_PIPELINE_STAGE_TRANSFER_BIT,
+                               0, 0, nullptr, 0, nullptr, 1, &toTransfer);
+
+          // Copy staging → image
+          VkBufferImageCopy region{};
+          region.imageSubresource.aspectMask     = vt->aspect;
+          region.imageSubresource.mipLevel       = mip;
+          region.imageSubresource.baseArrayLayer = layer;
+          region.imageSubresource.layerCount     = 1;
+          region.imageExtent                     = {w, h, 1};
+          vkCmdCopyBufferToImage(cb, staging.handle, vt->image,
+                                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+          // Transition: TRANSFER_DST_OPTIMAL → SHADER_READ_ONLY_OPTIMAL
+          VkImageMemoryBarrier toRead = toTransfer;
+          toRead.oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+          toRead.newLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+          toRead.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+          toRead.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+          vkCmdPipelineBarrier(cb,
+                               VK_PIPELINE_STAGE_TRANSFER_BIT,
+                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                               0, 0, nullptr, 0, nullptr, 1, &toRead);
+        });
+
+    vt->currentLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    VulkanBuffer::Destroy(ctx, staging);
+  }
+} // anonymous namespace
 
 #include <vma/vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
@@ -1317,36 +1398,62 @@ namespace ToolKit
     // (ImGui showing a default/black target, thumbnail previews, the backing RT of an uninitialized
     // viewport, etc.) hits a layout-mismatch validation error. Render passes are free to perform
     // their own transitions from this state onward.
-    const VkImageLayout targetLayout = isDepth ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
-                                               : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    m_context->SubmitOneShot(
-        [&](VkCommandBuffer cb)
-        {
-          VkImageMemoryBarrier b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
-          b.oldLayout                   = VK_IMAGE_LAYOUT_UNDEFINED;
-          b.newLayout                   = targetLayout;
-          b.srcQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
-          b.dstQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
-          b.image                       = data->image;
-          b.subresourceRange.aspectMask = data->aspect;
-          b.subresourceRange.levelCount = data->mipLevels;
-          b.subresourceRange.layerCount = data->arrayLayers;
-          b.srcAccessMask               = 0;
-          b.dstAccessMask               = VK_ACCESS_SHADER_READ_BIT;
-          vkCmdPipelineBarrier(cb,
-                               VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                               0,
-                               0,
-                               nullptr,
-                               0,
-                               nullptr,
-                               1,
-                               &b);
-        });
-    data->currentLayout = targetLayout;
+    // Upload pixel data if the texture was loaded from CPU memory.
+    // has data → UNDEFINED→SHADER_READ_ONLY then SHADER_READ_ONLY→TRANSFER_DST→copy→SHADER_READ_ONLY
+    // no data  → UNDEFINED→SHADER_READ_ONLY  (render target / will be filled by a render pass)
+    tex->m_gpuData = data;  // set before helpers so they can access context via VulkanTexture
 
-    tex->m_gpuData = data;
+    const bool hasData2D      = !isDepth && (tex->m_image != nullptr || tex->m_imagef != nullptr);
+    CubeMap* cubeMapTex       = tex->As<CubeMap>();
+    const bool hasCubemapData = cubeMapTex != nullptr
+                                && cubeMapTex->m_images.size() == 6
+                                && cubeMapTex->m_images[0] != nullptr;
+
+    // All paths start with an UNDEFINED→SHADER_READ_ONLY barrier for the whole image so that
+    // UploadTexelData can safely transition individual sub-resources from SHADER_READ_ONLY.
+    {
+      const VkImageLayout targetLayout = isDepth ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+                                                 : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+      m_context->SubmitOneShot(
+          [&](VkCommandBuffer cb)
+          {
+            VkImageMemoryBarrier b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+            b.oldLayout                   = VK_IMAGE_LAYOUT_UNDEFINED;
+            b.newLayout                   = targetLayout;
+            b.srcQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
+            b.dstQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
+            b.image                       = data->image;
+            b.subresourceRange.aspectMask = data->aspect;
+            b.subresourceRange.levelCount = data->mipLevels;
+            b.subresourceRange.layerCount = data->arrayLayers;
+            b.srcAccessMask               = 0;
+            b.dstAccessMask               = VK_ACCESS_SHADER_READ_BIT;
+            vkCmdPipelineBarrier(cb,
+                                 VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                                 VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                                 0, 0, nullptr, 0, nullptr, 1, &b);
+          });
+      data->currentLayout = targetLayout;
+    }
+
+    if (hasData2D)
+    {
+      const void* pixels      = tex->m_imagef ? (const void*) tex->m_imagef
+                                              : (const void*) tex->m_image;
+      const int bpp           = BytesOfFormat(tex->Settings().InternalFormat);
+      const VkDeviceSize bytes = (VkDeviceSize) tex->m_width * tex->m_height * bpp;
+      UploadTexelData(m_context.get(), data.get(), pixels, bytes, 0, 0);
+    }
+    else if (hasCubemapData)
+    {
+      // CubeMap::Load always produces RGBA8 (4 bytes/pixel) via stb_image.
+      const VkDeviceSize faceBytes = (VkDeviceSize) tex->m_width * tex->m_height * 4;
+      for (int face = 0; face < 6; ++face)
+      {
+        UploadTexelData(m_context.get(), data.get(),
+                        cubeMapTex->m_images[face], faceBytes, (uint32_t) face, 0);
+      }
+    }
   }
 
   void VulkanBackend::DestroyTexture(Texture* tex)
@@ -1383,12 +1490,99 @@ namespace ToolKit
 
   void VulkanBackend::GenerateMipmaps(Texture* tex)
   {
-    // TODO: vkCmdBlitImage chain for mip generation.
+    if (tex == nullptr)
+      return;
+    auto* vt = static_cast<VulkanTexture*>(tex->m_gpuData.get());
+    if (vt == nullptr || vt->image == VK_NULL_HANDLE || vt->mipLevels <= 1)
+      return;
+
+    m_context->SubmitOneShot(
+        [&](VkCommandBuffer cb)
+        {
+          for (uint32_t mip = 1; mip < vt->mipLevels; ++mip)
+          {
+            // Transition mip-1 (all layers): SHADER_READ_ONLY → TRANSFER_SRC
+            VkImageMemoryBarrier toSrc{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+            toSrc.oldLayout                       = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            toSrc.newLayout                       = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+            toSrc.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+            toSrc.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+            toSrc.image                           = vt->image;
+            toSrc.subresourceRange.aspectMask     = vt->aspect;
+            toSrc.subresourceRange.baseMipLevel   = mip - 1;
+            toSrc.subresourceRange.levelCount     = 1;
+            toSrc.subresourceRange.layerCount     = vt->arrayLayers;
+            toSrc.srcAccessMask                   = VK_ACCESS_SHADER_READ_BIT;
+            toSrc.dstAccessMask                   = VK_ACCESS_TRANSFER_READ_BIT;
+            vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                                 VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &toSrc);
+
+            // Transition mip (all layers): SHADER_READ_ONLY → TRANSFER_DST
+            VkImageMemoryBarrier toDst = toSrc;
+            toDst.oldLayout             = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            toDst.newLayout             = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            toDst.subresourceRange.baseMipLevel = mip;
+            toDst.srcAccessMask         = VK_ACCESS_SHADER_READ_BIT;
+            toDst.dstAccessMask         = VK_ACCESS_TRANSFER_WRITE_BIT;
+            vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                                 VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &toDst);
+
+            // Blit mip-1 → mip for all layers
+            int32_t srcW = std::max(1, (int32_t)(vt->extent.width  >> (mip - 1)));
+            int32_t srcH = std::max(1, (int32_t)(vt->extent.height >> (mip - 1)));
+            int32_t dstW = std::max(1, (int32_t)(vt->extent.width  >> mip));
+            int32_t dstH = std::max(1, (int32_t)(vt->extent.height >> mip));
+
+            VkImageBlit blit{};
+            blit.srcSubresource.aspectMask     = vt->aspect;
+            blit.srcSubresource.mipLevel       = mip - 1;
+            blit.srcSubresource.baseArrayLayer = 0;
+            blit.srcSubresource.layerCount     = vt->arrayLayers;
+            blit.srcOffsets[1]                 = {srcW, srcH, 1};
+            blit.dstSubresource               = blit.srcSubresource;
+            blit.dstSubresource.mipLevel       = mip;
+            blit.dstOffsets[1]                 = {dstW, dstH, 1};
+            vkCmdBlitImage(cb,
+                           vt->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                           vt->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                           1, &blit, VK_FILTER_LINEAR);
+
+            // Transition mip-1 back: TRANSFER_SRC → SHADER_READ_ONLY
+            VkImageMemoryBarrier backToRead = toSrc;
+            backToRead.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+            backToRead.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            backToRead.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+            backToRead.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                 VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                                 0, 0, nullptr, 0, nullptr, 1, &backToRead);
+
+            // Transition current mip: TRANSFER_DST → SHADER_READ_ONLY (always, not just last).
+            // This keeps every mip in SHADER_READ_ONLY so the next iteration's
+            // SHADER_READ_ONLY→TRANSFER_SRC barrier always sees the correct old layout.
+            VkImageMemoryBarrier dstToRead = toDst;
+            dstToRead.oldLayout    = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            dstToRead.newLayout    = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            dstToRead.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            dstToRead.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                 VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                                 0, 0, nullptr, 0, nullptr, 1, &dstToRead);
+          }
+        });
+    vt->currentLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
   }
 
   void VulkanBackend::UpdateTextureRegion(Texture* tex, const void* data)
   {
-    // TODO: Staging buffer + vkCmdCopyBufferToImage.
+    if (tex == nullptr || data == nullptr)
+      return;
+    auto* vt = static_cast<VulkanTexture*>(tex->m_gpuData.get());
+    if (vt == nullptr || vt->image == VK_NULL_HANDLE)
+      return;
+    const int bpp            = BytesOfFormat(tex->Settings().InternalFormat);
+    const VkDeviceSize bytes = (VkDeviceSize) tex->m_width * tex->m_height * bpp;
+    UploadTexelData(m_context.get(), vt, data, bytes, 0, 0);
   }
 
   void VulkanBackend::SetTextureMaxMipLevel(Texture* tex, int maxLevel)
@@ -1409,7 +1603,89 @@ namespace ToolKit
                                                      Framebuffer* readFb,
                                                      Framebuffer* writeFb)
   {
-    // TODO: vkCmdCopyImage from framebuffer attachment to cubemap face+mip.
+    if (cubemap == nullptr || readFb == nullptr)
+      return;
+    auto* vDst = static_cast<VulkanTexture*>(cubemap->m_gpuData.get());
+    if (vDst == nullptr || vDst->image == VK_NULL_HANDLE)
+      return;
+
+    // Source is color attachment 0 of readFb — a 2D render target, layer 0.
+    auto* vFb = static_cast<VulkanFramebuffer*>(readFb->m_gpuData.get());
+    if (vFb == nullptr || vFb->colorAttachments[0].tex == nullptr)
+      return;
+    VulkanTexture* vSrc = vFb->colorAttachments[0].tex;
+    if (vSrc->image == VK_NULL_HANDLE)
+      return;
+
+    m_context->SubmitOneShot(
+        [&](VkCommandBuffer cb)
+        {
+          // Transition source: SHADER_READ_ONLY → TRANSFER_SRC
+          VkImageMemoryBarrier srcBarrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+          srcBarrier.oldLayout                       = vSrc->currentLayout;
+          srcBarrier.newLayout                       = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+          srcBarrier.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+          srcBarrier.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+          srcBarrier.image                           = vSrc->image;
+          srcBarrier.subresourceRange.aspectMask     = vSrc->aspect;
+          srcBarrier.subresourceRange.levelCount     = 1;
+          srcBarrier.subresourceRange.layerCount     = 1;
+          srcBarrier.srcAccessMask                   = VK_ACCESS_SHADER_READ_BIT;
+          srcBarrier.dstAccessMask                   = VK_ACCESS_TRANSFER_READ_BIT;
+          vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                               VK_PIPELINE_STAGE_TRANSFER_BIT,
+                               0, 0, nullptr, 0, nullptr, 1, &srcBarrier);
+
+          // Transition dst face+mip: SHADER_READ_ONLY → TRANSFER_DST
+          VkImageMemoryBarrier dstBarrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+          dstBarrier.oldLayout                       = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+          dstBarrier.newLayout                       = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+          dstBarrier.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+          dstBarrier.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+          dstBarrier.image                           = vDst->image;
+          dstBarrier.subresourceRange.aspectMask     = vDst->aspect;
+          dstBarrier.subresourceRange.baseMipLevel   = (uint32_t) mip;
+          dstBarrier.subresourceRange.levelCount     = 1;
+          dstBarrier.subresourceRange.baseArrayLayer = (uint32_t) face;
+          dstBarrier.subresourceRange.layerCount     = 1;
+          dstBarrier.srcAccessMask                   = VK_ACCESS_SHADER_READ_BIT;
+          dstBarrier.dstAccessMask                   = VK_ACCESS_TRANSFER_WRITE_BIT;
+          vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                               VK_PIPELINE_STAGE_TRANSFER_BIT,
+                               0, 0, nullptr, 0, nullptr, 1, &dstBarrier);
+
+          // Copy
+          VkImageCopy region{};
+          region.srcSubresource.aspectMask     = vSrc->aspect;
+          region.srcSubresource.layerCount     = 1;
+          region.dstSubresource.aspectMask     = vDst->aspect;
+          region.dstSubresource.mipLevel       = (uint32_t) mip;
+          region.dstSubresource.baseArrayLayer = (uint32_t) face;
+          region.dstSubresource.layerCount     = 1;
+          region.extent                        = {(uint32_t) width, (uint32_t) height, 1};
+          vkCmdCopyImage(cb,
+                         vSrc->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                         vDst->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                         1, &region);
+
+          // Transition source back
+          srcBarrier.oldLayout    = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+          srcBarrier.newLayout    = vSrc->currentLayout;
+          srcBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+          srcBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+          vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                               0, 0, nullptr, 0, nullptr, 1, &srcBarrier);
+
+          // Transition dst back: TRANSFER_DST → SHADER_READ_ONLY
+          dstBarrier.oldLayout    = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+          dstBarrier.newLayout    = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+          dstBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+          dstBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+          vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                               0, 0, nullptr, 0, nullptr, 1, &dstBarrier);
+        });
   }
 
   void VulkanBackend::CreateMesh(Mesh* mesh)
