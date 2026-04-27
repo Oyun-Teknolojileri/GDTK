@@ -1,5 +1,6 @@
 <shader>
 	<type name = "fragmentShader" />
+	<include name = "vulkanCompatInc.shader" />
 	<include name = "bloomPassDataInc.shader" />
 	<source>
 	<!--
@@ -18,7 +19,7 @@
 		// Remember to add bilinear minification filter for this texture!
 		// Remember to use a floating-point texture format (for HDR)!
 		// Remember to use edge clamping for this texture!
-		uniform sampler2D s_texture0;
+		TK_SAMPLER_BINDING(0) uniform sampler2D s_texture0;
 
 		in vec2 v_texture;
 		layout (location = 0) out vec3 downsample;

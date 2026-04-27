@@ -1,5 +1,6 @@
 <shader>
 	<type name = "includeShader" />
+	<include name = "vulkanCompatInc.shader" />
 	<include name = "pbrCommon.shader" />
 	<include name = "shadow.shader" />
 	<include name = "perDrawDataInc.shader" />
@@ -9,10 +10,10 @@
 #ifndef LIGHTING_SHADER
 #define LIGHTING_SHADER
 
-uniform sampler2DArray s_texture8; // Shadow atlas
+TK_SAMPLER_BINDING(8)  uniform sampler2DArray s_texture8; // Shadow atlas
 
 /// Deferred rendering uniforms
-uniform sampler2D s_texture13; // Light data
+TK_SAMPLER_BINDING(13) uniform sampler2D s_texture13; // Light data
 
 const float shadowFadeOutDistanceNorm = 0.9;
 

@@ -1,5 +1,6 @@
 <shader>
 	<type name = "fragmentShader" />
+	<include name = "vulkanCompatInc.shader" />
 	<include name = "gammaTonemapFxaaPassDataInc.shader" />
 	<include name = "fxaaFunctions.shader" />
 	<include name = "tonemapFunctions.shader" />
@@ -9,7 +10,7 @@
 		#version 300 es
 		precision highp float;
 
-		uniform sampler2D s_texture0;
+		TK_SAMPLER_BINDING(0) uniform sampler2D s_texture0;
 		in vec2 v_texture;
 
 		out vec4 fragColor;

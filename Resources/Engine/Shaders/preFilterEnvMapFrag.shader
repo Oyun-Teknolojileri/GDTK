@@ -1,5 +1,6 @@
 <shader>
 	<type name = "fragmentShader" />
+	<include name = "vulkanCompatInc.shader" />
 	<include name = "pbrPrecompute.shader" />
 	<include name = "preFilterEnvMapPassDataInc.shader" />
 	<source>
@@ -7,7 +8,7 @@
 		#version 300 es
 		precision highp float;
 
-		uniform samplerCube s_texture6;
+		TK_SAMPLER_BINDING(6) uniform samplerCube s_texture6;
 
 		in vec3 v_pos;
 		out vec4 fragColor;

@@ -1,6 +1,7 @@
 <shader>
 	<type name = "includeShader" />
-  <include name = "perDrawDataInc.shader" />
+	<include name = "vulkanCompatInc.shader" />
+	<include name = "perDrawDataInc.shader" />
 	<source>
 	<!--
   #ifndef SKIN_SHADER
@@ -15,8 +16,8 @@
   //   perDraw._blendFrameData       (blendKf1, blendKf2, blendInterpTime, blendKfCount)
   //   perDraw._animBlendFactorAndPad.x  // animationBlendFactor
 
-  uniform sampler2D s_texture2; // Blend animation texture
-  uniform sampler2D s_texture3; // Animation data texture
+  TK_SAMPLER_BINDING(2) uniform sampler2D s_texture2; // Blend animation texture
+  TK_SAMPLER_BINDING(3) uniform sampler2D s_texture3; // Animation data texture
 
   #define numBones        perDraw._skinParams.x
   #define isSkinned       (perDraw._skinParams.y > 0.5)

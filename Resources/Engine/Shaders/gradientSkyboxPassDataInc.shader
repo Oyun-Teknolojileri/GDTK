@@ -1,12 +1,13 @@
 <shader>
   <type name = "includeShader" />
+  <include name = "vulkanCompatInc.shader" />
   <source>
   <!--
 
 #ifndef GRADIENT_SKYBOX_PASS_DATA
 #define GRADIENT_SKYBOX_PASS_DATA
 
-layout(std140) uniform GradientSkyboxPassData
+TK_UBO_BINDING(5) uniform GradientSkyboxPassData
 {
   vec4 topColor;        // .xyz
   vec4 middleColor;     // .xyz

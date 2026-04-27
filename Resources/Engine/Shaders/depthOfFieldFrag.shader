@@ -1,5 +1,6 @@
 <shader>
 	<type name = "fragmentShader" />
+	<include name = "vulkanCompatInc.shader" />
 	<include name = "dofPassDataInc.shader" />
 	<source>
 	<!--
@@ -10,8 +11,8 @@
 		out vec4 fragColor;
 
 
-		uniform sampler2D s_texture0; //Image to be processed
-		uniform sampler2D s_texture1; //Packed normal+depth: B channel = linear depth
+		TK_SAMPLER_BINDING(0) uniform sampler2D s_texture0; //Image to be processed
+		TK_SAMPLER_BINDING(1) uniform sampler2D s_texture1; //Packed normal+depth: B channel = linear depth
 
 		const float GOLDEN_ANGLE = 2.39996323;
 

@@ -1,12 +1,13 @@
 <shader>
 	<type name = "includeShader" />
+	<include name = "vulkanCompatInc.shader" />
 	<include name = "perDrawDataInc.shader" />
 	<source>
 	<!--
 #ifndef AO_SHADER
 #define AO_SHADER
 
-uniform sampler2D s_texture5; // ambient occlusion.
+TK_SAMPLER_BINDING(5) uniform sampler2D s_texture5; // ambient occlusion.
 
 float AmbientOcclusion()
 {

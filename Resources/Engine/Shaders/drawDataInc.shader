@@ -1,5 +1,6 @@
 <shader>
 	<type name = "includeShader" />
+	<include name = "vulkanCompatInc.shader" />
 	<include name = "perDrawDataInc.shader" />
 	<source>
 	<!--
@@ -157,7 +158,7 @@
 		vec4 cascadeDistances;
 	};
 
-	layout(std140) uniform GraphicConstatsData
+	TK_UBO_BINDING(4) uniform GraphicConstatsData
 	{
 		GraphicConstatsDataLayout graphicConstants;
 	};
@@ -187,7 +188,7 @@
 		float pad0;
 	};
 
-	layout(std140) uniform DirectionalLightBuffer
+	TK_UBO_BINDING(7) uniform DirectionalLightBuffer
 	{
 		DirectionalLightData directionalLightArray[DIRECTIONAL_LIGHT_CACHE_ITEM_COUNT];
 	};
@@ -197,7 +198,7 @@
 		mat4 projectionViewMatrices[MAX_CASCADE_COUNT];
 	};
 
-	layout(std140) uniform DirectionalLightPVMBuffer
+	TK_UBO_BINDING(10) uniform DirectionalLightPVMBuffer
 	{
 		DirectionalLightPVMData directionalLightPVMArray[DIRECTIONAL_LIGHT_CACHE_ITEM_COUNT];
 	};
@@ -210,7 +211,7 @@
 		float radius;
 	};
 
-	layout(std140) uniform PointLightCache
+	TK_UBO_BINDING(8) uniform PointLightCache
 	{
 		PointLightData pointLightArray[POINT_LIGHT_CACHE_ITEM_COUNT];
 	};
@@ -229,7 +230,7 @@
 		mat4 projectionViewMatrix;
 	};
 
-	layout(std140) uniform SpotLightCache
+	TK_UBO_BINDING(9) uniform SpotLightCache
 	{
 		SpotLightData spotLightArray[SPOT_LIGHT_CACHE_ITEM_COUNT];
 	};

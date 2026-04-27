@@ -1,5 +1,6 @@
 <shader>
 	<type name = "fragmentShader" />
+	<include name = "vulkanCompatInc.shader" />
 	<define name = "TextureArray" val = "0,1" />
 	<define name = "KernelSize" val = "7,3,5" />
 	<define name = "BlurClampEnabled" val = "0,1" />
@@ -9,8 +10,8 @@
 		#version 300 es
 		precision highp float;
 		precision highp sampler2DArray;
-		uniform sampler2D s_texture0;
-		uniform sampler2DArray s_texture1;
+		TK_SAMPLER_BINDING(0) uniform sampler2D s_texture0;
+		TK_SAMPLER_BINDING(1) uniform sampler2DArray s_texture1;
 
 
 		in vec3 v_texture;

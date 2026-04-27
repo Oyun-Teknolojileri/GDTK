@@ -1,5 +1,6 @@
 <shader>
 	<type name = "fragmentShader" />
+	<include name = "vulkanCompatInc.shader" />
 	<include name = "lighting.shader" />
 	<include name = "ibl.shader" />
 	<include name = "AO.shader" />
@@ -18,10 +19,10 @@
 	precision mediump samplerCube;
 	precision highp sampler2DArray;
 
-	uniform sampler2D s_texture0; // color
-	uniform sampler2D s_texture1; // emissive
-	uniform sampler2D s_texture4; // metallic-roughness
-	uniform sampler2D s_texture9; // normal
+	TK_SAMPLER_BINDING(0) uniform sampler2D s_texture0; // color
+	TK_SAMPLER_BINDING(1) uniform sampler2D s_texture1; // emissive
+	TK_SAMPLER_BINDING(4) uniform sampler2D s_texture4; // metallic-roughness
+	TK_SAMPLER_BINDING(9) uniform sampler2D s_texture9; // normal
 
 	#define SHADE_LIGHTING_ONLY 1
 	#define SHADE_ALBEDO_ONLY 2

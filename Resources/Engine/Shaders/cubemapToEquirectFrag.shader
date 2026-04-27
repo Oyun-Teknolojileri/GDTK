@@ -1,12 +1,13 @@
 <shader>
 	<type name = "fragmentShader" />
-  <include name = "cubemapEquirectPassDataInc.shader" />
-  <source>
+	<include name = "vulkanCompatInc.shader" />
+	<include name = "cubemapEquirectPassDataInc.shader" />
+	<source>
 	<!--
   #version 300 es
   precision highp float;
 
-  uniform samplerCube s_texture6;
+  TK_SAMPLER_BINDING(6) uniform samplerCube s_texture6;
   in vec2 v_texture;
   out vec4 fragColor;
 

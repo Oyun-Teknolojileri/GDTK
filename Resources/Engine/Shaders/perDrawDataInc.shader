@@ -1,5 +1,6 @@
 <shader>
 	<type name = "includeShader" />
+	<include name = "vulkanCompatInc.shader" />
 	<source>
 	<!--
 #ifndef PER_DRAW_DATA
@@ -57,7 +58,7 @@ struct MaterialDataLayout
 	vec4 textureFlags;      // x=emissiveInUse, y=normalInUse, z=metallicRoughInUse, w=pad
 };
 
-layout(std140) uniform PerDrawData
+TK_UBO_BINDING(6) uniform PerDrawData
 {
 	mat4 _model;
 	mat4 _modelWithoutTranslate;

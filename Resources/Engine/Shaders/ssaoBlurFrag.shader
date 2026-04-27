@@ -1,5 +1,6 @@
 <shader>
 	<type name = "fragmentShader" />
+	<include name = "vulkanCompatInc.shader" />
 	<include name = "ssaoBlurPassDataInc.shader" />
 	<source>
 	<!--
@@ -10,7 +11,7 @@ out vec4 fragColor;
 
 in vec2 v_texture;
 
-uniform sampler2D s_texture0; // SSAO texture (must have bilinear filtering)
+TK_SAMPLER_BINDING(0) uniform sampler2D s_texture0; // SSAO texture (must have bilinear filtering)
 
 void main()
 {

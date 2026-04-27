@@ -1,5 +1,6 @@
 <shader>
   <type name = "includeShader" />
+  <include name = "vulkanCompatInc.shader" />
   <source>
   <!--
 
@@ -9,7 +10,7 @@
 // Sized for max kernel (32). Calling shader's loop iterates 0..KERNEL_SIZE-1 so unused tail
 // entries are harmless. Mat4 normalToView decoded via mat3() in the shader (std140 mat3 padding
 // would otherwise cost the same 48 bytes with worse ergonomics).
-layout(std140) uniform SsaoCalcPassData
+TK_UBO_BINDING(5) uniform SsaoCalcPassData
 {
   mat4 normalToView;
   vec4 samples[32];          // .xyz = hemisphere sample dir, .w = unused

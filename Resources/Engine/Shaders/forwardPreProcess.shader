@@ -1,5 +1,6 @@
 <shader>
 	<type name = "fragmentShader" />
+	<include name = "vulkanCompatInc.shader" />
 	<include name = "materialCacheInc.shader" />
 	<include name = "drawDataInc.shader" />
 	<include name = "normalEncodingInc.shader" />
@@ -17,8 +18,8 @@
 
 	layout (location = 0) out vec4 fragNormalDepth;
 
-	uniform sampler2D s_texture0; // color
-	uniform sampler2D s_texture9; // normal
+	TK_SAMPLER_BINDING(0) uniform sampler2D s_texture0; // color
+	TK_SAMPLER_BINDING(9) uniform sampler2D s_texture9; // normal
 
 	void main()
 	{

@@ -1,5 +1,6 @@
 <shader>
   <type name = "includeShader" />
+  <include name = "vulkanCompatInc.shader" />
   <source>
   <!--
 
@@ -16,7 +17,7 @@
 //   screenSizeAndPad.xy : screenSize (px)
 //   tonemapParams.x : useAcesTonemapper (0 = Reinhard, 1 = ACES)
 //   tonemapParams.y : gamma value
-layout(std140) uniform GammaTonemapFxaaPassData
+TK_UBO_BINDING(5) uniform GammaTonemapFxaaPassData
 {
   ivec4 enableFlags;
   vec4  screenSizeAndPad;

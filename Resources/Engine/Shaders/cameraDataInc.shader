@@ -1,5 +1,6 @@
 <shader>
 	<type name = "includeShader" />
+	<include name = "vulkanCompatInc.shader" />
 	<source>
 	<!--
 #ifndef CAMERA_DATA
@@ -15,14 +16,14 @@ struct Camera
 
 	vec3 direction;
 	float pad0;
-		
+
 	mat4 projection;
 	mat4 view;
 	mat4 projectionView;
 	mat4 projectionViewNoTranslate;
 };
 
-layout(std140) uniform CameraData
+TK_UBO_BINDING(3) uniform CameraData
 {
 	Camera camera;
 };

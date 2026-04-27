@@ -1,5 +1,6 @@
 <shader>
 	<type name = "includeShader" />
+	<include name = "vulkanCompatInc.shader" />
 	<include name = "pbrCommon.shader" />
 	<include name = "drawDataInc.shader" />
 	<include name = "perDrawDataInc.shader" />
@@ -10,17 +11,17 @@
 #define IBL_SHADER
 
 // Local volume 0
-uniform samplerCube s_texture7; 	// Diffuse Map
-uniform samplerCube s_texture15; 	// Pre-Filtered Specular Map
-uniform sampler2D s_texture10;		// IBL BRDF Lut
+TK_SAMPLER_BINDING(7)  uniform samplerCube s_texture7; 	// Diffuse Map
+TK_SAMPLER_BINDING(15) uniform samplerCube s_texture15; 	// Pre-Filtered Specular Map
+TK_SAMPLER_BINDING(10) uniform sampler2D s_texture10;		// IBL BRDF Lut
 
 // Local volume 1
-uniform samplerCube s_texture11;	// Diffuse Map
-uniform samplerCube s_texture12;	// Pre-Filtered Specular Map
+TK_SAMPLER_BINDING(11) uniform samplerCube s_texture11;	// Diffuse Map
+TK_SAMPLER_BINDING(12) uniform samplerCube s_texture12;	// Pre-Filtered Specular Map
 
 // Sky (global fallback)
-uniform samplerCube s_texture16;	// Sky Diffuse Map
-uniform samplerCube s_texture17;	// Sky Pre-Filtered Specular Map
+TK_SAMPLER_BINDING(16) uniform samplerCube s_texture16;	// Sky Diffuse Map
+TK_SAMPLER_BINDING(17) uniform samplerCube s_texture17;	// Sky Pre-Filtered Specular Map
 
 // Sky rotation backed by perDraw._iblRotation (PerDrawData UBO, slot 6).
 // `iblSecondaryRotation` is reserved for local-volume rotations but currently identity-only —

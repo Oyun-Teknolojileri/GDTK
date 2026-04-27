@@ -1,12 +1,13 @@
 <shader>
   <type name = "includeShader" />
+  <include name = "vulkanCompatInc.shader" />
   <source>
   <!--
 
 #ifndef CUBEMAP_EQUIRECT_PASS_DATA
 #define CUBEMAP_EQUIRECT_PASS_DATA
 
-layout(std140) uniform CubemapEquirectPassData
+TK_UBO_BINDING(5) uniform CubemapEquirectPassData
 {
   vec4  exposureAndPad;
   ivec4 lodLevelAndPad;

@@ -1,5 +1,6 @@
 <shader>
 	<type name = "fragmentShader" />
+	<include name = "vulkanCompatInc.shader" />
 	<include name = "normalEncodingInc.shader" />
 	<include name = "ssaoCalcPassDataInc.shader" />
 	<define name = "KERNEL_SIZE" val = "16,8,32" />
@@ -14,7 +15,7 @@ in vec3 v_pos;
 in vec3 v_normal;
 in vec2 v_texture;
 
-uniform sampler2D s_texture1; // packed normal (RG) + linear depth (B)
+TK_SAMPLER_BINDING(1) uniform sampler2D s_texture1; // packed normal (RG) + linear depth (B)
 
 vec3 reconstructViewPos(vec2 uv, float linearDepth)
 {

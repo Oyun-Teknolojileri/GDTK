@@ -1,5 +1,6 @@
 <shader>
 	<type name = "fragmentShader" />
+	<include name = "vulkanCompatInc.shader" />
 	<include name = "materialCacheInc.shader" />
 	<include name = "drawDataInc.shader" />
 	<define name = "DrawAlphaMasked" val="0,1" />
@@ -11,7 +12,7 @@
 
 	in vec2 v_texture;
 	out vec4 fragColor;
-	uniform sampler2D s_texture0;
+	TK_SAMPLER_BINDING(0) uniform sampler2D s_texture0;
 
 	void main()
 	{
