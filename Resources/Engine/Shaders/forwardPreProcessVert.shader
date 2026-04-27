@@ -5,7 +5,8 @@
   <include name = "materialCacheInc.shader" />
   <include name = "drawDataInc.shader" />
   <include name = "perDrawDataInc.shader" />
-  <source>
+  <include name="vulkanCompatInc.shader" />
+	<source>
   <!--
   #version 300 es
   precision highp float;
@@ -16,10 +17,10 @@
   layout(location = 2) in vec2 vTexture;
   layout(location = 3) in vec4 vTangent;
 
-  out float v_linearDepth;
-  out vec3 v_normal;
-  out mediump vec2 v_texture;
-  out mediump mat3 TBN;
+  TK_LOC(0) out float v_linearDepth;
+  TK_LOC(1) out vec3 v_normal;
+  TK_LOC(2) out mediump vec2 v_texture;
+  TK_LOC(3) out mediump mat3 TBN;
 
   void main()
   {

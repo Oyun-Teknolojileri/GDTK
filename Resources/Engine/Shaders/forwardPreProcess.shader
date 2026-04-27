@@ -11,10 +11,10 @@
 	precision highp float;
 	precision lowp int;
 
-	in float v_linearDepth;
-	in vec3 v_normal;
-	in vec2 v_texture;
-	in mat3 TBN;
+	TK_LOC(0) in float v_linearDepth;
+	TK_LOC(1) in vec3 v_normal;
+	TK_LOC(2) in vec2 v_texture;
+	TK_LOC(3) in mat3 TBN;
 
 	layout (location = 0) out vec4 fragNormalDepth;
 

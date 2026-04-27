@@ -1,12 +1,13 @@
 <shader>
 	<type name = "fragmentShader" />
 	<include name = "pbrPrecompute.shader" />
+	<include name="vulkanCompatInc.shader" />
 	<source>
 	<!--
 		#version 300 es
 		precision highp float;
 
-		in vec2 v_texture;
+		TK_LOC(2) in vec2 v_texture;
 		out vec4 fragColor;
 
 		// Google Filament's GGX visibility term for IBL

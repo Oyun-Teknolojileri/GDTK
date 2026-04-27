@@ -30,11 +30,11 @@
 	#define SHADE_METALLIC_ONLY 4
 	#define SHADE_ROUGHNESS_ONLY 5
 
-	in vec3 v_worldPos;
-	in vec3 v_worldNormal;
-	in vec2 v_texture;
-	in float v_viewDepth;
-	in mat3 TBN;
+	TK_LOC(0) in vec3 v_worldPos;
+	TK_LOC(1) in vec3 v_worldNormal;
+	TK_LOC(2) in vec2 v_texture;
+	TK_LOC(3) in float v_viewDepth;
+	TK_LOC(4) in mat3 TBN;
 
 	layout (location = 0) out vec4 fragColor;
 

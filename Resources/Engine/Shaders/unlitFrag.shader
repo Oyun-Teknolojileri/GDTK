@@ -10,8 +10,8 @@
 	precision highp float;
 	precision lowp int;
 
-	in vec2 v_texture;
-	out vec4 fragColor;
+	TK_LOC(2) in vec2 v_texture;
+	layout(location = 0) out vec4 fragColor;
 	TK_SAMPLER_BINDING(0) uniform sampler2D s_texture0;
 
 	void main()

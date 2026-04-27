@@ -1,12 +1,13 @@
 <shader>
 	<type name = "fragmentShader" />
 	<include name = "lighting.shader" />
+	<include name="vulkanCompatInc.shader" />
 	<source>
 	<!--
 		#version 300 es
 		precision mediump float;
 
-		in vec3 v_pos;
+		TK_LOC(0) in vec3 v_pos;
 
 		out vec4 fragColor;
 

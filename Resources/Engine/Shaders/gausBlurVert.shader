@@ -2,6 +2,7 @@
 	<type name = "vertexShader" />
 	<define name = "TextureArray" val = "0,1" />
 	<include name = "gaussBlurPassDataInc.shader" />
+	<include name="vulkanCompatInc.shader" />
 	<source>
 	<!--
 		#version 300 es
@@ -13,7 +14,7 @@
 		layout (location = 2) in vec2 vTexture;
 
 		vec3 v_pos;
-		out vec3 v_texture;
+	TK_LOC(2) out vec3 v_texture;
 		
 		void main()
 		{

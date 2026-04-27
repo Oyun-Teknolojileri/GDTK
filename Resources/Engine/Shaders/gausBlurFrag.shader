@@ -12,9 +12,7 @@
 		precision highp sampler2DArray;
 		TK_SAMPLER_BINDING(0) uniform sampler2D s_texture0;
 		TK_SAMPLER_BINDING(1) uniform sampler2DArray s_texture1;
-
-
-		in vec3 v_texture;
+	TK_LOC(2) in vec3 v_texture;
 		out vec4 fragColor;
 
 #if BlurClampEnabled == 1

@@ -30,9 +30,11 @@
 #ifdef VULKAN
   #define TK_UBO_BINDING(n)     layout(std140, binding = n)
   #define TK_SAMPLER_BINDING(n) layout(binding = n)
+  #define TK_LOC(n)             layout(location = n)
 #else
   #define TK_UBO_BINDING(n)     layout(std140)
   #define TK_SAMPLER_BINDING(n)
+  #define TK_LOC(n)
 #endif
 
 #endif // TK_VULKAN_COMPAT

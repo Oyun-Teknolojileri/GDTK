@@ -3,6 +3,7 @@
 	<include name = "cameraDataInc.shader" />
 	<include name = "drawDataInc.shader" />
 	<include name = "perDrawDataInc.shader" />
+	<include name="vulkanCompatInc.shader" />
 	<source>
 	<!--
 		#version 300 es
@@ -12,7 +13,7 @@
 		layout (location = 1) in vec3 vNormal;
 		layout (location = 2) in vec2 vTexture;
 
-		out vec3 v_pos;
+		TK_LOC(0) out vec3 v_pos;
 
 		void main()
 		{

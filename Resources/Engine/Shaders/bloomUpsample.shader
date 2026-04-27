@@ -18,8 +18,7 @@
 		// Remember to use a floating-point texture format (for HDR)!
 		// Remember to use edge clamping for this texture!
 		TK_SAMPLER_BINDING(0) uniform sampler2D s_texture0;
-
-		in vec2 v_texture;
+TK_LOC(2) in vec2 v_texture;
 		layout (location = 0) out vec3 upsample;
 
 		void main()

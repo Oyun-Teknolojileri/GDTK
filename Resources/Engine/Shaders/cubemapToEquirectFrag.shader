@@ -8,7 +8,7 @@
   precision highp float;
 
   TK_SAMPLER_BINDING(6) uniform samplerCube s_texture6;
-  in vec2 v_texture;
+  TK_LOC(2) in vec2 v_texture;
   out vec4 fragColor;
 
   const float PI = 3.1415926535897932384626433832795;

@@ -16,11 +16,11 @@
   layout(location = 2) in vec2 vTexture;
   layout(location = 3) in vec4 vTangent;
 
-  out vec3 v_worldPos;
-  out vec3 v_worldNormal;
-  out float v_viewDepth;
-  out mediump vec2 v_texture;
-  out mediump mat3 TBN;
+  TK_LOC(0) out vec3 v_worldPos;
+  TK_LOC(1) out vec3 v_worldNormal;
+  TK_LOC(3) out float v_viewDepth;
+  TK_LOC(2) out mediump vec2 v_texture;
+  TK_LOC(4) out mediump mat3 TBN;
 
     void main()
     {

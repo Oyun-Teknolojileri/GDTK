@@ -14,7 +14,7 @@
 
 	TK_SAMPLER_BINDING(0) uniform sampler2D u_texture;
 
-	in vec2 v_texture;
+	TK_LOC(2) in vec2 v_texture;
 	out vec4 o_fragColor;
 
 	vec2 g_textureSize;
