@@ -889,11 +889,19 @@ namespace ToolKit
     else // VertexLayout::Mesh (default) and VertexLayout::None fall back to plain Vertex.
     {
       out.vertexStride   = sizeof(Vertex);
-      out.attributeCount = 4;
+      out.attributeCount = 6;
       out.attributes[0]  = {0, 0, VK_FORMAT_R32G32B32_SFLOAT,    0};
       out.attributes[1]  = {1, 0, VK_FORMAT_R32G32B32_SFLOAT,    12};
       out.attributes[2]  = {2, 0, VK_FORMAT_R32G32_SFLOAT,       24};
       out.attributes[3]  = {3, 0, VK_FORMAT_R32G32B32A32_SFLOAT, 32};
+
+      // Vulkan Strictness Hack:
+      // skinning.shader defines layout(location = 4) and layout(location = 5) unconditionally.
+      // If we only provide 4 attributes, Vulkan throws VUID-VkGraphicsPipelineCreateInfo-Input-07904
+      // even if the shader branch (isSkinned=false) never reads them. We provide dummy mappings 
+      // pointing safely at offset 0 (pos) to bypass the validation error.
+      out.attributes[4]  = {4, 0, VK_FORMAT_R32G32B32A32_SFLOAT, 0};
+      out.attributes[5]  = {5, 0, VK_FORMAT_R32G32B32A32_SFLOAT, 0};
     }
   }
 
