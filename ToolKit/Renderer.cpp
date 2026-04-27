@@ -287,21 +287,16 @@ namespace ToolKit
       }
     };
 
-    updateAndBindSkinningTextures();
-
     // Make sure render data is initialized.
     job.Mesh->Init();
     job.Material->Init();
 
-    // Set render data.
+    // CPU-side state — no backend calls here, all read later by FeedUniforms.
     SetTransforms(job.WorldTransform);
-    SetMaterial(job.Material);
-    SetDataTextures(job);
     SetLights(job.lights);
+    m_model = job.WorldTransform;
 
-    m_model                    = job.WorldTransform;
-
-    // Compose state.
+    // Compose pipeline state.
     RenderState composed       = *job.Material->GetRenderState();
     composed.depthTestEnabled  = m_renderState.depthTestEnabled;
     composed.depthWriteEnabled = m_renderState.depthWriteEnabled;
@@ -329,9 +324,16 @@ namespace ToolKit
 
     m_backend->BindPipeline(m_currentProgram, &composed);
 
-    const Mesh* mesh = job.Mesh;
+    // Bind textures AFTER BindPipeline. On Vulkan, BindPipeline resets the per-draw descriptor
+    // set, so texture writes before it would be lost. On GL the order is irrelevant (driver slots
+    // are independent of the program binding), so this order is safe for both backends.
+    updateAndBindSkinningTextures();
+    SetMaterial(job.Material);
+    SetDataTextures(job);
+
     FeedUniforms(m_currentProgram, job);
 
+    const Mesh* mesh  = job.Mesh;
     DrawDesc desc;
     desc.mesh         = mesh;
     desc.vertexLayout = mesh->m_vertexLayout;

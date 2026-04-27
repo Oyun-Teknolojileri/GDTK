@@ -612,9 +612,10 @@ namespace ToolKit
       {
         return; // pool exhaustion already logged.
       }
+      WriteGlobalUbosToSet(m_currentDescriptorSet);
     }
 
-    // Static descriptor write points at the ring base; the per-draw shift travels via the
+    // Static descriptor write points at the ring base
     // dynamic offset on bind. Range = size (the actual payload) so the shader sees only its
     // own block via std140 access; the ring's leftover bytes are out-of-range on read.
     VulkanDescriptor::WriteUniformBufferDynamic(
@@ -673,6 +674,7 @@ namespace ToolKit
       {
         return; // pool exhaustion already logged.
       }
+      WriteGlobalUbosToSet(m_currentDescriptorSet);
     }
 
     VulkanDescriptor::WriteCombinedImageSampler(
@@ -1537,6 +1539,30 @@ namespace ToolKit
     // HOST_COHERENT memory â€” write becomes visible to the device on the next vkQueueSubmit
     // without an explicit vkFlushMappedMemoryRanges call.
     std::memcpy(gpu->buffer.mapped, data, (size_t) size);
+
+    // Register non-perDraw UBOs for global descriptor write.
+    // Slot 6 = per-draw dynamic UBO (ring buffer path); all other slots are static global UBOs
+    // (Camera, GraphicConsts, DirectionalLight, etc.) that must be written into every new set.
+    const int slot = ub->m_slot;
+    if (slot >= 0 && slot != 6)
+    {
+      m_globalUboRegistry[slot] = {gpu->buffer.handle, gpu->buffer.size};
+    }
+  }
+
+  void VulkanBackend::WriteGlobalUbosToSet(VkDescriptorSet set)
+  {
+    for (auto& [slot, entry] : m_globalUboRegistry)
+    {
+      if (entry.handle == VK_NULL_HANDLE)
+        continue;
+      VulkanDescriptor::WriteUniformBuffer(m_context->GetDevice(),
+                                           set,
+                                           VulkanBindings::UboBindingFor((uint) slot),
+                                           entry.handle,
+                                           0,
+                                           entry.size);
+    }
   }
 
   GpuResourceDataPtr VulkanBackend::CreateShader(Shader* shader, const String& source)

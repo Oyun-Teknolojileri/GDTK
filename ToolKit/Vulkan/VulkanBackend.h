@@ -14,6 +14,7 @@
 
 #include <functional>
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 // Forward declare so we don't drag vulkan.h into every translation unit that includes this header.
@@ -191,6 +192,16 @@ namespace ToolKit
         a fresh allocation \u2014 Vulkan forbids modifying a set that may still be referenced by an
         earlier vkCmdDraw. */
     VkDescriptorSet m_currentDescriptorSet = VK_NULL_HANDLE;
+
+    /** Registry of global (non-per-draw) UBO VkBuffer handles, keyed by GL slot.
+        Populated by UpdateUniformBuffer for every slot != 6 (the per-draw dynamic slot).
+        When a fresh descriptor set is allocated, WriteGlobalUbosToSet writes every registered
+        entry so the shader always has valid descriptors for Camera, GraphicConsts, lights, etc. */
+    struct GlobalUboEntry { VkBuffer handle = VK_NULL_HANDLE; uint64_t size = 0; };
+    std::unordered_map<int, GlobalUboEntry> m_globalUboRegistry; // GL slot -> entry
+
+    /** Writes all registered global UBOs into @p set immediately after allocation. */
+    void WriteGlobalUbosToSet(VkDescriptorSet set);
 
     /** Per-draw UBO ring offset for the next Draw's vkCmdBindDescriptorSets dynamicOffsets[0]
         (Stage 7d-4b). SubmitPerDrawData stores the slot offset here; if no SubmitPerDrawData
