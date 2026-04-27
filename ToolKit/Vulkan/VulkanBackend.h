@@ -203,6 +203,10 @@ namespace ToolKit
     /** Writes all registered global UBOs into @p set immediately after allocation. */
     void WriteGlobalUbosToSet(VkDescriptorSet set);
 
+    /** Dummy texture initialized in InitBackend to fill unused texture slots in descriptor sets. */
+    std::shared_ptr<struct VulkanTexture> m_dummyTexture;
+    void CreateDummyTexture();
+
     /** Per-draw UBO ring offset for the next Draw's vkCmdBindDescriptorSets dynamicOffsets[0]
         (Stage 7d-4b). SubmitPerDrawData stores the slot offset here; if no SubmitPerDrawData
         runs before a Draw, this stays at 0 and the shader simply reads whatever is at the start

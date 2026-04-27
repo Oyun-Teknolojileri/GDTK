@@ -134,6 +134,12 @@ namespace ToolKit
     {
       vkDeviceWaitIdle(m_context->GetDevice());
     }
+
+    // Explicitly reset dummy texture while context allocator is valid
+    if (m_dummyTexture)
+    {
+      m_dummyTexture.reset();
+    }
     DrainAllDeleters();
     if (m_testPipeline)
     {
@@ -194,6 +200,76 @@ namespace ToolKit
     }
   }
 
+  void VulkanBackend::CreateDummyTexture()
+  {
+    m_dummyTexture = std::make_shared<VulkanTexture>();
+
+    VkFormat vkFormat = VK_FORMAT_R8G8B8A8_UNORM;
+    m_dummyTexture->context = m_context.get();
+    m_dummyTexture->format = vkFormat;
+    m_dummyTexture->aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+    m_dummyTexture->extent = {1, 1};
+    m_dummyTexture->arrayLayers = 1;
+    m_dummyTexture->mipLevels = 1;
+    m_dummyTexture->isCubemap = false;
+    m_dummyTexture->currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    m_dummyTexture->samples = VK_SAMPLE_COUNT_1_BIT;
+
+    VkImageCreateInfo ci{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+    ci.imageType = VK_IMAGE_TYPE_2D;
+    ci.format = vkFormat;
+    ci.extent = {1, 1, 1};
+    ci.mipLevels = 1;
+    ci.arrayLayers = 1;
+    ci.samples = VK_SAMPLE_COUNT_1_BIT;
+    ci.tiling = VK_IMAGE_TILING_OPTIMAL;
+    ci.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    ci.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+    VmaAllocationCreateInfo aci{};
+    aci.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+
+    vmaCreateImage(m_context->GetAllocator(), &ci, &aci, &m_dummyTexture->image, &m_dummyTexture->allocation, nullptr);
+
+    VkImageViewCreateInfo vci{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+    vci.image = m_dummyTexture->image;
+    vci.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    vci.format = vkFormat;
+    vci.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    vci.subresourceRange.levelCount = 1;
+    vci.subresourceRange.layerCount = 1;
+    vkCreateImageView(m_context->GetDevice(), &vci, nullptr, &m_dummyTexture->view);
+
+    VkSamplerCreateInfo sci{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+    sci.magFilter = VK_FILTER_NEAREST;
+    sci.minFilter = VK_FILTER_NEAREST;
+    sci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+    sci.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    sci.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    sci.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    sci.maxLod = 1.0f;
+    vkCreateSampler(m_context->GetDevice(), &sci, nullptr, &m_dummyTexture->sampler);
+
+    m_context->SubmitOneShot([&](VkCommandBuffer cb) {
+      VkImageMemoryBarrier b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+      b.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+      b.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+      b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+      b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+      b.image = m_dummyTexture->image;
+      b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+      b.subresourceRange.levelCount = 1;
+      b.subresourceRange.layerCount = 1;
+      b.srcAccessMask = 0;
+      b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+      vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &b);
+    });
+    m_dummyTexture->currentLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+    const uint32_t whitePixels = 0xFFFFFFFF;
+    UploadTexelData(m_context.get(), m_dummyTexture.get(), &whitePixels, 4, 0, 0);
+  }
+
   void VulkanBackend::InitBackend(const BackendInitParams& params)
   {
     if (!m_context->Init(params.vkInstanceExtensions, params.vkCreateSurface))
@@ -205,6 +281,7 @@ namespace ToolKit
     {
       TK_ERR("VulkanBackend: VulkanSwapchain init failed");
     }
+    CreateDummyTexture();
     if (!m_testPipeline->Init(m_context.get()))
     {
       TK_ERR("VulkanBackend: VulkanTestPipeline init failed");
@@ -1862,6 +1939,33 @@ namespace ToolKit
                                            entry.handle,
                                            0,
                                            entry.size);
+    }
+
+    // Fill all image sampler slots with a default 1x1 white texture.
+    // This satisfies Vulkan's requirement that every active COMBINED_IMAGE_SAMPLER in the
+    // descriptor layout is populated with a valid image view/sampler, even if the shader
+    // has dynamic branches that never access them. Subsequent BindTexture calls overwrite
+    // these defaults with the real textures.
+    if (m_dummyTexture && m_dummyTexture->view != VK_NULL_HANDLE)
+    {
+      VkDescriptorImageInfo imageInfos[VulkanBindings::kTextureBindingCount];
+      for (uint32_t i = 0; i < VulkanBindings::kTextureBindingCount; ++i)
+      {
+        imageInfos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        imageInfos[i].imageView   = m_dummyTexture->view;
+        imageInfos[i].sampler     = m_dummyTexture->sampler;
+      }
+
+      VkWriteDescriptorSet write{};
+      write.sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+      write.dstSet           = set;
+      write.dstBinding       = VulkanBindings::kTextureBindingBase;
+      write.dstArrayElement  = 0;
+      write.descriptorCount  = VulkanBindings::kTextureBindingCount;
+      write.descriptorType   = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+      write.pImageInfo       = imageInfos;
+
+      vkUpdateDescriptorSets(m_context->GetDevice(), 1, &write, 0, nullptr);
     }
   }
 
