@@ -118,6 +118,10 @@ namespace ToolKit
      */
     void SubmitOneShot(const std::function<void(VkCommandBuffer)>& recorder);
 
+    // -- Debug Utils Extension ------------------------------------------------------------------
+    PFN_vkCmdBeginDebugUtilsLabelEXT m_vkCmdBeginDebugUtilsLabelEXT = nullptr;
+    PFN_vkCmdEndDebugUtilsLabelEXT m_vkCmdEndDebugUtilsLabelEXT     = nullptr;
+
    private:
     bool CreateInstance(const std::vector<const char*>& requiredExtensions);
     bool CreateDebugMessenger();

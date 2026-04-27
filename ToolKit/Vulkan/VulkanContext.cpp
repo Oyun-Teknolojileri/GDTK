@@ -125,6 +125,11 @@ namespace ToolKit
       return false;
     }
 
+    m_vkCmdBeginDebugUtilsLabelEXT =
+        (PFN_vkCmdBeginDebugUtilsLabelEXT) vkGetInstanceProcAddr(m_instance, "vkCmdBeginDebugUtilsLabelEXT");
+    m_vkCmdEndDebugUtilsLabelEXT =
+        (PFN_vkCmdEndDebugUtilsLabelEXT) vkGetInstanceProcAddr(m_instance, "vkCmdEndDebugUtilsLabelEXT");
+
     VkPhysicalDeviceProperties props;
     vkGetPhysicalDeviceProperties(m_physicalDevice, &props);
     TK_LOG("VulkanContext ready — GPU: %s (driver %u, api %u.%u)",

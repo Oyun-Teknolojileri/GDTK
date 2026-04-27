@@ -2228,12 +2228,36 @@ namespace ToolKit
 
   void VulkanBackend::PushDebugGroup(StringView name)
   {
-    // TODO: vkCmdBeginDebugUtilsLabelEXT.
+    if (m_swapchain == nullptr || !m_swapchain->IsFrameActive())
+    {
+      return;
+    }
+
+    if (m_context->m_vkCmdBeginDebugUtilsLabelEXT != nullptr)
+    {
+      VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer();
+      VkDebugUtilsLabelEXT label{VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT};
+      label.pLabelName = name.data();
+      label.color[0]   = 1.0f;
+      label.color[1]   = 1.0f;
+      label.color[2]   = 1.0f;
+      label.color[3]   = 1.0f;
+      m_context->m_vkCmdBeginDebugUtilsLabelEXT(cb, &label);
+    }
   }
 
   void VulkanBackend::PopDebugGroup()
   {
-    // TODO: vkCmdEndDebugUtilsLabelEXT.
+    if (m_swapchain == nullptr || !m_swapchain->IsFrameActive())
+    {
+      return;
+    }
+
+    if (m_context->m_vkCmdEndDebugUtilsLabelEXT != nullptr)
+    {
+      VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer();
+      m_context->m_vkCmdEndDebugUtilsLabelEXT(cb);
+    }
   }
 
   bool VulkanBackend::SupportsFloatTextureLinearFilter()
