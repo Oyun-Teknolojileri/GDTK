@@ -6,6 +6,7 @@
 		#version 300 es
 		precision highp float;
 
+		in vec3 v_pos;
 		in vec2 v_texture;
 
 		TK_SAMPLER_BINDING(0) uniform sampler2D s_texture0;

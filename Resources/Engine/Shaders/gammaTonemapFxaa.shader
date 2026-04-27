@@ -11,6 +11,8 @@
 		precision highp float;
 
 		TK_SAMPLER_BINDING(0) uniform sampler2D s_texture0;
+		in vec3 v_pos;
+		in vec3 v_normal;
 		in vec2 v_texture;
 
 		out vec4 fragColor;

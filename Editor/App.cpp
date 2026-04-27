@@ -288,15 +288,13 @@ namespace ToolKit
                                             {
                                               TK_PROFILE_SCOPE("Render " + viewport->m_name);
 
-                                              // TODO
-                                              viewport->m_testRenderPath->m_framebuffer = viewport->m_framebuffer;
-                                              viewport->m_testRenderPath->Render(renderer);
-
-                                              // TODO
-                                              //viewport->m_editorRenderer->m_params.App      = g_app;
-                                              //viewport->m_editorRenderer->m_params.LitMode  = m_sceneLightingMode;
-                                              //viewport->m_editorRenderer->m_params.Viewport = viewport;
-                                              //viewport->m_editorRenderer->Render(renderer);
+                                              // Stage 11: switch from TestRenderPath to EditorRenderer.
+                                              // The engine passes (ForwardPass, ShadowPass, etc.) now go
+                                              // through VulkanBackend via the IGraphicsBackend interface.
+                                              viewport->m_editorRenderer->m_params.App      = g_app;
+                                              viewport->m_editorRenderer->m_params.LitMode  = m_sceneLightingMode;
+                                              viewport->m_editorRenderer->m_params.Viewport = viewport;
+                                              viewport->m_editorRenderer->Render(renderer);
 
                                               viewport->StageResolvedTexture();
                                             }});
