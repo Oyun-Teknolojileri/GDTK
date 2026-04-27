@@ -78,6 +78,8 @@ namespace ToolKit
     /** Sets alpha mask threshold. */
     void SetAlphaMaskThreshold(float val);
 
+    void SetDepthTest(bool enable);
+
     /**
      * States if the material is using PBR shaders.
      * @returns True if the fragment shader is default PBR shader.

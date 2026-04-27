@@ -155,6 +155,13 @@ namespace ToolKit
     m_dirty = true;
   }
 
+  void Material::SetDepthTest(bool enable)
+  {
+    m_renderState.depthTestEnabled = enable;
+    m_materialCacheItem.Invalidate();
+    m_dirty = true;
+  }
+
   bool Material::IsPBR()
   {
     // If using default shaders, its a pbr material.
