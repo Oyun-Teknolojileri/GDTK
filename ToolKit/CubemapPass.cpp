@@ -29,6 +29,13 @@ namespace ToolKit
     RenderJobArray jobs;
     RenderJobProcessor::CreateRenderJobs(jobs, m_cube);
 
+    // Skybox uses Lequal so the cube's far-plane fragments survive the depth test against
+    // the cleared depth buffer.
+    for (RenderJob& job : jobs)
+    {
+      job.State.depthFunction = CompareFunctions::FuncLequal;
+    }
+
     renderer->RenderWithProgramFromMaterial(jobs);
   }
 
@@ -44,7 +51,6 @@ namespace ToolKit
     matCom->SetFirstMaterial(m_params.Material);
 
     Renderer* renderer = GetRenderer();
-    renderer->SetDepthTestFunc(CompareFunctions::FuncLequal);
     renderer->SetCamera(m_params.Cam, false);
 
     if (m_params.onPreRender)
@@ -58,9 +64,7 @@ namespace ToolKit
     TK_PROFILE_FUNCTION();
 
     Pass::PostRender();
-    Renderer* renderer = GetRenderer();
-    renderer->SetDepthTestFunc(CompareFunctions::FuncLess);
-    renderer->EndPass();
+    GetRenderer()->EndPass();
   }
 
 } // namespace ToolKit

@@ -34,6 +34,10 @@ namespace ToolKit
 
     RenderJobArray jobs;
     RenderJobProcessor::CreateRenderJobs(jobs, m_quad);
+    for (RenderJob& job : jobs)
+    {
+      job.State.depthTestEnabled = false;
+    }
     renderer->Render(jobs);
   }
 
@@ -42,8 +46,7 @@ namespace ToolKit
     // Gpu Program should be bound before calling FulQuadPass Render
 
     Pass::PreRender();
-    Renderer* renderer = GetRenderer();
-    renderer->EnableDepthTest(false);
+    Renderer* renderer  = GetRenderer();
 
     MeshComponentPtr mc = m_quad->GetMeshComponent();
     MeshPtr mesh        = mc->GetMeshVal();
@@ -58,7 +61,6 @@ namespace ToolKit
   {
     Pass::PostRender();
     Renderer* renderer = GetRenderer();
-    renderer->EnableDepthTest(true);
     renderer->EndPass();
   }
 

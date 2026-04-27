@@ -284,8 +284,16 @@ namespace ToolKit
 
   bool VulkanBackend::BuildOffscreenRenderPass(const PassDesc& desc, VulkanFramebuffer* fbData)
   {
-    (void) desc;
     VkDevice device = m_context->GetDevice();
+
+    // Decode caller-requested clears. Color/depth attachment loadOp is baked into the
+    // VkRenderPass and cached; if the engine asks for a different clear pattern next pass we
+    // rebuild via the cachedClearBits dirty check in BeginPass.
+    const auto bitsToUInt          = [](GraphicBitFields b) { return (uint32_t) b; };
+    const uint32_t bits            = bitsToUInt(desc.clearBits);
+    const bool clearColorBit       = (bits & bitsToUInt(GraphicBitFields::ColorBits))   != 0;
+    const bool clearDepthBit       = (bits & bitsToUInt(GraphicBitFields::DepthBits))   != 0;
+    const bool clearStencilBit     = (bits & bitsToUInt(GraphicBitFields::StencilBits)) != 0;
 
     // Old RP+FB may still be referenced by the in-flight command buffer of an earlier frame --
     // queue them for deletion N frames out instead of destroying eagerly. The new ones below
@@ -347,11 +355,15 @@ namespace ToolKit
       VkAttachmentDescription a{};
       a.format         = slot.tex->format;
       a.samples        = slot.tex->samples;
-      a.loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
+      a.loadOp         = clearColorBit ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
       a.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
       a.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
       a.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-      a.initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
+      // initialLayout: with LOAD we must declare the actual current layout so the previous
+      // contents are preserved. With CLEAR/DONT_CARE the contents are tossed → UNDEFINED is the
+      // cheapest start. EndPass parks every attachment at SHADER_READ_ONLY_OPTIMAL.
+      a.initialLayout  = clearColorBit ? VK_IMAGE_LAYOUT_UNDEFINED
+                                       : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
       // MSAA color attachments aren't sampled directly (engine resolves through
       // ResolveFramebuffer first). The "shader read only" finalLayout is harmless for them
       // either way â€” vkCmdResolveImage transitions the image to TRANSFER_SRC_OPTIMAL itself
@@ -375,11 +387,15 @@ namespace ToolKit
       VkAttachmentDescription a{};
       a.format         = fbData->depthAttachment.tex->format;
       a.samples        = fbData->depthAttachment.tex->samples;
-      a.loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
+      a.loadOp         = clearDepthBit   ? VK_ATTACHMENT_LOAD_OP_CLEAR
+                                         : VK_ATTACHMENT_LOAD_OP_LOAD;
       a.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
-      a.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+      a.stencilLoadOp  = clearStencilBit ? VK_ATTACHMENT_LOAD_OP_CLEAR
+                                         : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
       a.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-      a.initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
+      a.initialLayout  = (clearDepthBit && clearStencilBit)
+                             ? VK_IMAGE_LAYOUT_UNDEFINED
+                             : VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
       a.finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 
       depthRef.attachment = (uint32_t) atts.size();
@@ -446,9 +462,10 @@ namespace ToolKit
       return false;
     }
 
-    fbData->renderPass  = newRp;
-    fbData->framebuffer = newFb;
-    fbData->dirty       = false;
+    fbData->renderPass      = newRp;
+    fbData->framebuffer     = newFb;
+    fbData->cachedClearBits = desc.clearBits;
+    fbData->dirty           = false;
     return true;
   }
 
@@ -476,7 +493,10 @@ namespace ToolKit
       return;
     }
 
-    if (fbData->dirty || fbData->renderPass == VK_NULL_HANDLE || fbData->framebuffer == VK_NULL_HANDLE)
+    if (fbData->dirty
+        || fbData->renderPass == VK_NULL_HANDLE
+        || fbData->framebuffer == VK_NULL_HANDLE
+        || fbData->cachedClearBits != desc.clearBits)
     {
       if (!BuildOffscreenRenderPass(desc, fbData))
       {
@@ -514,11 +534,14 @@ namespace ToolKit
     rpbi.pClearValues      = clears.empty() ? nullptr : clears.data();
     vkCmdBeginRenderPass(cb, &rpbi, VK_SUBPASS_CONTENTS_INLINE);
 
+    // Negative viewport height flips the Y axis so screen-space matches GL: clip-space Y up
+    // maps to framebuffer Y up. Without this, geometry appears Y-flipped AND back-face culling
+    // rejects every triangle (CCW front-face becomes CW in screen space). Vulkan 1.1+ core.
     VkViewport vp{};
     vp.x        = 0.0f;
-    vp.y        = 0.0f;
+    vp.y        = (float) fbData->height;
     vp.width    = (float) fbData->width;
-    vp.height   = (float) fbData->height;
+    vp.height   = -(float) fbData->height;
     vp.minDepth = 0.0f;
     vp.maxDepth = 1.0f;
     vkCmdSetViewport(cb, 0, 1, &vp);
@@ -576,13 +599,14 @@ namespace ToolKit
     {
       return;
     }
-    // Vulkan's framebuffer Y axis matches GL's after a flip; ToolKit's viewport coords are
-    // already in the "Y goes down" convention (top-left origin), so we map x/y directly.
+    // Negative viewport height flips Y axis so screen-space matches GL conventions — see the
+    // matching code in BeginPass for the rationale. ToolKit's engine code passes (x,y,w,h) in
+    // a top-left origin; after this flip the actual rasterisation matches GL's bottom-left.
     VkViewport vp{};
     vp.x        = (float) x;
-    vp.y        = (float) y;
+    vp.y        = (float) (y + h);
     vp.width    = (float) w;
-    vp.height   = (float) h;
+    vp.height   = -(float) h;
     vp.minDepth = 0.0f;
     vp.maxDepth = 1.0f;
     vkCmdSetViewport(cb, 0, 1, &vp);

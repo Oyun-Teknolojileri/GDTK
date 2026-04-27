@@ -27,7 +27,8 @@ namespace ToolKit
 
     GpuProgramManager* gpuProgramManager = renderer->GetGpuProgramManager();
 
-    auto renderBillboardsFn              = [this, cam, renderer, gpuProgramManager](EntityPtrArray& billboards) -> void
+    auto renderBillboardsFn = [this, cam, renderer, gpuProgramManager](EntityPtrArray& billboards,
+                                                                       bool depthTest) -> void
     {
       m_renderData.jobs.clear();
 
@@ -35,14 +36,16 @@ namespace ToolKit
       RenderJobProcessor::CreateRenderJobs(m_renderData.jobs, rawBillboards);
       RenderJobProcessor::SeperateRenderData(m_renderData, true);
 
+      for (RenderJob& job : m_renderData.jobs)
+      {
+        job.State.depthTestEnabled = depthTest;
+      }
+
       renderer->RenderWithProgramFromMaterial(m_renderData.jobs);
     };
 
-    renderer->EnableDepthTest(false);
-    renderBillboardsFn(m_noDepthBillboards);
-
-    renderer->EnableDepthTest(true);
-    renderBillboardsFn(m_params.Billboards);
+    renderBillboardsFn(m_noDepthBillboards, false);
+    renderBillboardsFn(m_params.Billboards, true);
   }
 
   void BillboardPass::PreRender()

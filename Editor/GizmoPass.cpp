@@ -41,13 +41,14 @@ namespace ToolKit
           Mat4 ts = billboard->m_node->GetTransform();
           m_depthMaskSphere->m_node->SetTransform(ts, TransformationSpace::TS_WORLD);
 
-          renderer->ColorMask(false, false, false, false);
-
+          // Depth-mask sphere: write only depth, no color.
           RenderJobArray jobs;
           RenderJobProcessor::CreateRenderJobs(jobs, m_depthMaskSphere);
+          for (RenderJob& job : jobs)
+          {
+            job.State.colorMaskEnabled = false;
+          }
           renderer->RenderWithProgramFromMaterial(jobs);
-
-          renderer->ColorMask(true, true, true, true);
 
           jobs.clear();
           RenderJobProcessor::CreateRenderJobs(jobs, billboard);
@@ -71,9 +72,12 @@ namespace ToolKit
 
             renderer->RenderWithProgramFromMaterial(normalJobs);
 
-            renderer->SetDepthTestFunc(CompareFunctions::FuncAlways);
+            // Guide meshes draw on top regardless of depth.
+            for (RenderJob& job : guideJobs)
+            {
+              job.State.depthFunction = CompareFunctions::FuncAlways;
+            }
             renderer->RenderWithProgramFromMaterial(guideJobs);
-            renderer->SetDepthTestFunc(CompareFunctions::FuncLess);
           }
           else
           {

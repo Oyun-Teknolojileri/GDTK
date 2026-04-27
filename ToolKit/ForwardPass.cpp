@@ -64,12 +64,16 @@ namespace ToolKit
     renderer->SetFramebuffer(m_params.FrameBuffer, m_params.clearBuffer, Vec4(0.0f), discardBits);
     renderer->SetCamera(m_params.Cam, true);
 
-    // Adjust the depth test considering z-pre pass.
-    if (m_params.hasForwardPrePass)
+    // Adjust the depth test considering z-pre pass. With a filled depth buffer Lequal lets
+    // exactly the visible fragments survive; without it we keep the default Less.
+    if (m_params.hasForwardPrePass && m_params.renderData != nullptr)
     {
-      // This is the optimal flag if the depth buffer is filled.
-      // Only the visible fragments will pass the test.
-      renderer->SetDepthTestFunc(CompareFunctions::FuncLequal);
+      RenderJobItr begin = m_params.renderData->GetForwardOpaqueBegin();
+      RenderJobItr end   = m_params.renderData->jobs.end();
+      for (RenderJobItr job = begin; job != end; ++job)
+      {
+        job->State.depthFunction = CompareFunctions::FuncLequal;
+      }
     }
 
     if (m_params.onPreRender)
@@ -84,9 +88,7 @@ namespace ToolKit
 
     Pass::PostRender();
 
-    // Set the default depth test.
     Renderer* renderer = GetRenderer();
-    renderer->SetDepthTestFunc(CompareFunctions::FuncLess);
 
     // Resolve render target if necessary.
     if (m_params.FrameBuffer->IsMultiSampled() && m_params.resolveFrameBuffer != nullptr)
@@ -155,10 +157,13 @@ namespace ToolKit
 
     if (begin != end)
     {
-      renderer->SetDepthTestFunc(CompareFunctions::FuncLess);
-      renderer->EnableDepthWrite(false);
+      // Translucent draws: keep depth test (default Less, even when PreRender bumped opaque
+      // jobs to Lequal for z-prepass), no depth write so back-to-front draws don't self-occlude.
       for (RenderJobArray::iterator job = begin; job != end; job++)
       {
+        job->State.depthFunction     = CompareFunctions::FuncLess;
+        job->State.depthWriteEnabled = false;
+
         if (job->Material->IsShaderMaterial())
         {
           renderer->RenderWithProgramFromMaterial(*job);
@@ -167,16 +172,15 @@ namespace ToolKit
         {
           renderer->BindProgram(program);
 
-          Material* mat = job->Material;
-          if (mat->GetRenderState()->cullMode == CullingType::TwoSided)
+          if (job->State.cullMode == CullingType::TwoSided)
           {
-            mat->GetRenderState()->cullMode = CullingType::Front;
+            // Two-sided translucent: draw back faces first then front, both via the per-job
+            // state so the shared material asset stays untouched.
+            job->State.cullMode = CullingType::Front;
             renderer->Render(*job);
 
-            mat->GetRenderState()->cullMode = CullingType::Back;
+            job->State.cullMode = CullingType::Back;
             renderer->Render(*job);
-
-            mat->GetRenderState()->cullMode = CullingType::TwoSided;
           }
           else
           {
@@ -184,7 +188,6 @@ namespace ToolKit
           }
         }
       }
-      renderer->EnableDepthWrite(true);
     }
   }
 

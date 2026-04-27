@@ -312,8 +312,6 @@ namespace ToolKit
     RenderJobProcessor::CreateRenderJobs(renderData.jobs, entities);
     RenderJobProcessor::SeperateRenderData(renderData, true);
 
-    renderer->OverrideBlendState(true, BlendFunction::NONE); // Blending must be disabled for shadow map generation.
-
     // Set material and program.
     bool orthogonalShadowMap   = lightType == Light::LightType::Directional;
     MaterialPtr shadowMaterial = orthogonalShadowMap ? m_shadowMatOrtho : m_shadowMatPersp;
@@ -328,22 +326,25 @@ namespace ToolKit
 
     if (orthogonalShadowMap)
     {
-      if (renderer->EnableDepthClamp(true))
-      {
-        vert->SetDefine("Pancake", "0");
-        frag->SetDefine("Pancake", "0");
-      }
-      else
-      {
-        // If depth clamp is not supported, fallback to pancake.
-        frag->SetDefine("Pancake", "1");
-        vert->SetDefine("Pancake", "1");
-      }
+      // Renderer::EnableDepthClamp's stub always reported success, so the engine has been
+      // committing to the non-pancake path regardless of GL extension availability.
+      vert->SetDefine("Pancake", "0");
+      frag->SetDefine("Pancake", "0");
+    }
+
+    RenderJobItr forwardBegin       = renderData.GetForwardOpaqueBegin();
+    RenderJobItr forwardMaskedBegin = renderData.GetForwardAlphaMaskedBegin();
+    RenderJobItr translucentBegin   = renderData.GetForwardTranslucentBegin();
+
+    // Per-job overrides for the entire shadow caster set: blend off (regardless of the
+    // entity's material), and depth clamp on for orthogonal (directional) shadow cameras.
+    for (RenderJobItr job = forwardBegin; job < translucentBegin; ++job)
+    {
+      job->State.blendFunction     = BlendFunction::NONE;
+      job->State.depthClampEnabled = orthogonalShadowMap;
     }
 
     // Draw opaque.
-    RenderJobItr forwardBegin       = renderData.GetForwardOpaqueBegin();
-    RenderJobItr forwardMaskedBegin = renderData.GetForwardAlphaMaskedBegin();
     for (RenderJobItr jobItr = forwardBegin; jobItr < forwardMaskedBegin; jobItr++)
     {
       renderer->Render(*jobItr);
@@ -355,20 +356,12 @@ namespace ToolKit
     m_program = gpuProgramManager->CreateProgram(vert, frag);
     renderer->BindProgram(m_program);
 
-    RenderJobItr translucentBegin = renderData.GetForwardTranslucentBegin();
     for (RenderJobItr jobItr = forwardMaskedBegin; jobItr < translucentBegin; jobItr++)
     {
       renderer->Render(*jobItr);
     }
 
-    if (orthogonalShadowMap)
-    {
-      renderer->EnableDepthClamp(false);
-    }
-
     // Translucent shadow is not supported.
-
-    renderer->OverrideBlendState(false, BlendFunction::NONE);
   }
 
   void ShadowPass::BlurShadowAtlas()
@@ -377,7 +370,9 @@ namespace ToolKit
     Stats::BeginGpuScope("Shadow Blur");
 
     Renderer* renderer = GetRenderer();
-    renderer->EnableDepthWrite(false);
+
+    // Note: depth-write is disabled per-fullscreen-quad inside DrawFullQuad, so no global
+    // toggle is needed here.
 
     // Create temp RT for blur ping-pong if needed.
     if (m_shadowBlurTempRT == nullptr)
@@ -418,7 +413,6 @@ namespace ToolKit
 
     if (tapCount <= 0)
     {
-      renderer->EnableDepthWrite(true);
       Stats::EndGpuScope();
       return;
     }
@@ -483,7 +477,6 @@ namespace ToolKit
       }
     }
 
-    renderer->EnableDepthWrite(true);
     Stats::EndGpuScope();
   }
 

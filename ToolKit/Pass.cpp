@@ -152,6 +152,11 @@ namespace ToolKit
                       job.WorldTransform  = ntt->m_node->GetTransform();
                       job.BoundingBox     = ntt->GetBoundingBox(true);
 
+                      // Pipeline state baseline copied from the material. Passes mutate this
+                      // (job.State.depthTestEnabled = false, etc.) for pass-level overrides;
+                      // the shared material asset is never touched.
+                      job.State           = *material->GetRenderState();
+
                       // Assign skeletal animations.
                       if (SkeletonComponent* skComp = ntt->GetComponentFast<SkeletonComponent>())
                       {

@@ -393,8 +393,6 @@ namespace ToolKit
 
     void Init();
 
-    void SetStencilOperation(StencilOperation op);
-
     void StartTimerQuery();
     void EndTimerQuery();
 
@@ -403,7 +401,6 @@ namespace ToolKit
 
     void ClearColorBuffer(const Vec4& color);
     void ClearBuffer(GraphicBitFields fields, const Vec4& value = Vec4(0.0f));
-    void ColorMask(bool r, bool g, bool b, bool a);
 
     /** Returns an opaque native texture handle as uint, obtained from the backend. */
     /** Returns an opaque native texture handle as uint64. GL backend returns a GLuint zero-extended
@@ -495,18 +492,6 @@ namespace ToolKit
                                float far,
                                uint resolution,
                                const float* perFaceClipDist = nullptr);
-
-    /**
-     * Sets the blend state directly which causes by passing material system.
-     * @param enableOverride when set true, disables the material system setting blend state per material.
-     * @param func is the BlendFunction to use.
-     */
-    void OverrideBlendState(bool enableOverride, BlendFunction func);
-
-    void EnableDepthWrite(bool enable);
-    void EnableDepthTest(bool enable);
-    void SetDepthTestFunc(CompareFunctions func);
-    bool EnableDepthClamp(bool enable);
 
     // Giving nullptr as argument means no shadows
     void SetShadowAtlas(TexturePtr shadowAtlas);
@@ -635,8 +620,6 @@ namespace ToolKit
     TexturePtr m_aoTexture        = nullptr;
 
     std::array<int, RHIConstants::TextureSlotCount> m_textureSlots;
-
-    RenderState m_renderState;
 
     /** Current viewport size (x,y) and position (z,w) */
     UVec4 m_viewportRect;

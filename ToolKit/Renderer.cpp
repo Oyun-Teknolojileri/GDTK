@@ -77,16 +77,6 @@ namespace ToolKit
     m_globalGpuBuffers->graphicConstantBuffer.Map();
     m_drawnFrameBufferStats.clear();
 
-    // Reset volatile state to defaults for each frame.
-    // This prevents state leaks from passes that don't clean up (e.g. StencilPass, ShadowPass).
-    m_renderState.colorMaskEnabled  = true;
-    m_renderState.depthTestEnabled  = true;
-    m_renderState.depthWriteEnabled = true;
-    m_renderState.depthFunction     = CompareFunctions::FuncLess;
-    m_renderState.stencilOperation  = StencilOperation::None;
-    m_renderState.depthClampEnabled = false;
-    m_renderState.blendOverride     = false;
-
     m_backend->BeginFrame();
   }
 
@@ -291,38 +281,29 @@ namespace ToolKit
     job.Mesh->Init();
     job.Material->Init();
 
-    // CPU-side state � no backend calls here, all read later by FeedUniforms.
+    // CPU-side state � no backend calls here, all read later by FeedUniforms.
     SetTransforms(job.WorldTransform);
     SetLights(job.lights);
     m_model = job.WorldTransform;
 
-    // Compose pipeline state.
-    RenderState composed       = *job.Material->GetRenderState();
-    composed.depthTestEnabled  = m_renderState.depthTestEnabled;
-    composed.depthWriteEnabled = m_renderState.depthWriteEnabled;
-    composed.depthFunction     = m_renderState.depthFunction;
-    composed.stencilOperation  = m_renderState.stencilOperation;
-    composed.colorMaskEnabled  = m_renderState.colorMaskEnabled;
-    composed.depthClampEnabled = m_renderState.depthClampEnabled;
-    if (m_renderState.blendOverride)
-    {
-      composed.blendFunction = m_renderState.blendOverrideFunc;
-    }
-
+    // Pipeline state is owned by the job (initialized from material at job creation; passes
+    // mutate it for pass-level overrides). Local copy lets us apply cullFlip without touching
+    // the persistent job.State.
+    RenderState state = job.State;
     if (job.requireCullFlip)
     {
-      switch (composed.cullMode)
+      switch (state.cullMode)
       {
         case CullingType::Front:
-          composed.cullMode = CullingType::Back;
+          state.cullMode = CullingType::Back;
           break;
         case CullingType::Back:
-          composed.cullMode = CullingType::Front;
+          state.cullMode = CullingType::Front;
           break;
       }
     }
 
-    m_backend->BindPipeline(m_currentProgram, &composed);
+    m_backend->BindPipeline(m_currentProgram, &state);
 
     // Bind textures AFTER BindPipeline. On Vulkan, BindPipeline resets the per-draw descriptor
     // set, so texture writes before it would be lost. On GL the order is irrelevant (driver slots
@@ -339,7 +320,7 @@ namespace ToolKit
     desc.vertexLayout = mesh->m_vertexLayout;
     desc.indexed      = mesh->m_indexCount != 0;
     desc.elementCount = desc.indexed ? mesh->m_indexCount : mesh->m_vertexCount;
-    desc.type         = composed.drawType;
+    desc.type         = state.drawType;
     m_backend->Draw(desc);
 
     if (m_framebuffer)
@@ -383,8 +364,6 @@ namespace ToolKit
     }
   }
 
-  void Renderer::SetStencilOperation(StencilOperation op) { m_renderState.stencilOperation = op; }
-
   void Renderer::SetFramebuffer(FramebufferPtr frameBuffer,
                                 GraphicBitFields attachmentsToClear,
                                 const Vec4& clearColor,
@@ -425,8 +404,6 @@ namespace ToolKit
   void Renderer::ClearColorBuffer(const Vec4& color) { m_backend->ClearColorBuffer(color); }
 
   void Renderer::ClearBuffer(GraphicBitFields fields, const Vec4& value) { m_backend->ClearBuffer(fields, value); }
-
-  void Renderer::ColorMask(bool r, bool g, bool b, bool a) { m_renderState.colorMaskEnabled = r && g && b && a; }
 
   uint64 Renderer::GetNativeTextureHandle(const TexturePtr& tex)
   {
@@ -501,13 +478,15 @@ namespace ToolKit
     RenderJobArray jobs;
     RenderJobProcessor::CreateRenderJobs(jobs, m_tempQuad);
 
-    bool prevDepthWriteState = m_renderState.depthWriteEnabled;
-    EnableDepthWrite(false);
-    SetDepthTestFunc(CompareFunctions::FuncAlways);
-    RenderWithProgramFromMaterial(jobs);
+    // Fullscreen quad: write nothing to depth, accept every fragment regardless of depth.
+    for (RenderJob& job : jobs)
+    {
+      job.State.depthTestEnabled  = false;
+      job.State.depthWriteEnabled = false;
+      job.State.depthFunction     = CompareFunctions::FuncAlways;
+    }
 
-    SetDepthTestFunc(CompareFunctions::FuncLess);
-    EnableDepthWrite(prevDepthWriteState);
+    RenderWithProgramFromMaterial(jobs);
   }
 
   void Renderer::DrawCube(CameraPtr cam, MaterialPtr mat, const Mat4& transform)
@@ -521,10 +500,13 @@ namespace ToolKit
     RenderJobArray jobs;
     RenderJobProcessor::CreateRenderJobs(jobs, m_dummyDrawCube);
 
-    SetDepthTestFunc(CompareFunctions::FuncAlways);
-    RenderWithProgramFromMaterial(jobs);
+    // Used for cubemap convolution / equirect baking — accept every fragment.
+    for (RenderJob& job : jobs)
+    {
+      job.State.depthFunction = CompareFunctions::FuncAlways;
+    }
 
-    SetDepthTestFunc(CompareFunctions::FuncLess);
+    RenderWithProgramFromMaterial(jobs);
   }
 
   void Renderer::CopyTexture(TexturePtr src, TexturePtr dst)
@@ -560,24 +542,6 @@ namespace ToolKit
     EndPass();
 
     Stats::EndGpuScope();
-  }
-
-  void Renderer::OverrideBlendState(bool enableOverride, BlendFunction func)
-  {
-    m_renderState.blendOverride     = enableOverride;
-    m_renderState.blendOverrideFunc = func;
-  }
-
-  void Renderer::EnableDepthWrite(bool enable) { m_renderState.depthWriteEnabled = enable; }
-
-  void Renderer::EnableDepthTest(bool enable) { m_renderState.depthTestEnabled = enable; }
-
-  void Renderer::SetDepthTestFunc(CompareFunctions func) { m_renderState.depthFunction = func; }
-
-  bool Renderer::EnableDepthClamp(bool enable)
-  {
-    m_renderState.depthClampEnabled = enable;
-    return true;
   }
 
   void Renderer::ApplyGaussianBlur(const TexturePtr src, RenderTargetPtr dst, const Vec3& axis, const float amount)
@@ -884,11 +848,10 @@ namespace ToolKit
   {
     TK_PROFILE_FUNCTION();
 
-    if (m_currentProgram == nullptr || m_currentProgram->m_gpuData.get() != program->m_gpuData.get())
-    {
-      m_currentProgram = program;
-      m_backend->BindPipeline(program, &m_renderState);
-    }
+    // BindProgram only stages the program — the actual VkPipeline / GL pipeline binding
+    // happens inside Render(job) where the per-job RenderState is known. Standalone draws
+    // (e.g. DrawFullQuad) all go through Render(job) too.
+    m_currentProgram = program;
   }
 
   void Renderer::ResetUsedTextureSlots()

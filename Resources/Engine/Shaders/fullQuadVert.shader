@@ -16,11 +16,12 @@
 		
 		void main()
 		{
-		  v_texture = vTexture;
-		  v_normal = vNormal;
-		  v_pos.xy = vPosition.xy * 2.0;
-		  v_pos.z = -1.0;
-		  gl_Position = vec4(v_pos, 1.0);
+			v_texture = vTexture;
+			v_texture.y = 1.0 - v_texture.y; // Flip Y for Vulkan
+			v_normal = vNormal;
+			v_pos.xy = vPosition.xy * 2.0;
+			v_pos.z = 0.0; // Vulkan NDC near plane (GL is -1, Vulkan is 0)
+			gl_Position = vec4(v_pos, 1.0);
 		}
 	-->
 	</source>

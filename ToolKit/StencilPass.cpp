@@ -33,21 +33,23 @@ namespace ToolKit
 
     Renderer* renderer = GetRenderer();
 
-    // Stencil pass.
-    renderer->SetStencilOperation(StencilOperation::AllowAllPixels);
-    renderer->ColorMask(false, false, false, false);
+    // Stencil pass: write 1 to stencil, suppress color writes.
+    for (RenderJob& job : *m_params.RenderJobs)
+    {
+      job.State.stencilOperation = StencilOperation::AllowAllPixels;
+      job.State.colorMaskEnabled = false;
+    }
 
     renderer->Render(*m_params.RenderJobs);
 
-    // Copy pass.
-    renderer->ColorMask(true, true, true, true);
-    renderer->SetStencilOperation(StencilOperation::AllowPixelsFailingStencil);
-
+    // Copy pass: draw a fullscreen quad where stencil != 1. The stencil-op is set on the
+    // subpass material so it propagates into the quad job's State at job-creation time
+    // (FullQuadPass::Render copies material's RenderState into job.State).
     m_copyStencilSubPass->SetFragmentShader(m_unlitFragShader, renderer);
+    m_copyStencilSubPass->m_material->GetRenderState()->stencilOperation =
+        StencilOperation::AllowPixelsFailingStencil;
 
     RenderSubPass(m_copyStencilSubPass);
-
-    renderer->SetStencilOperation(StencilOperation::None);
   }
 
   void StencilRenderPass::PreRender()
@@ -72,8 +74,6 @@ namespace ToolKit
     m_copyStencilSubPass->m_params.frameBuffer      = m_frameBuffer;
     m_copyStencilSubPass->m_params.clearFrameBuffer = GraphicBitFields::None;
 
-    // Allow writing on to stencil before clear operation.
-    renderer->SetStencilOperation(StencilOperation::AllowAllPixels);
     renderer->SetFramebuffer(m_frameBuffer, GraphicBitFields::AllBits);
     renderer->SetCamera(m_params.Camera, true);
   }

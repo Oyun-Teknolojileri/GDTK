@@ -106,6 +106,11 @@ namespace ToolKit
     VkRenderPass renderPass = VK_NULL_HANDLE;
     VkFramebuffer framebuffer = VK_NULL_HANDLE;
 
+    /** Cached clear bits used for the most recent BuildOffscreenRenderPass — drives per-attachment
+        VkAttachmentLoadOp. If a later BeginPass arrives with different clearBits we must rebuild
+        the render pass (loadOps are baked into VkRenderPass). */
+    GraphicBitFields cachedClearBits = GraphicBitFields::None;
+
     bool dirty = true;
 
     ~VulkanFramebuffer() override;
