@@ -31,8 +31,26 @@ namespace ToolKit
     {
       shaderc::Compiler compiler;
       shaderc::CompileOptions options;
-      options.SetTargetEnvironment(shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_3);
+      options.SetTargetEnvironment(shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_2);
       options.SetSourceLanguage(shaderc_source_language_glsl);
+
+      // Engine GLSL source files use `#version 300 es` for the GL ES 3.00 path. Vulkan/SPIR-V
+      // requires 450 core (layout qualifiers, etc.). SetForcedVersionProfile makes shaderc
+      // ignore the in-source #version directive and treat the source as 450 core instead.
+      options.SetForcedVersionProfile(450, shaderc_profile_core);
+
+      // Activates the VULKAN preprocessor macro. Engine shader sources use:
+      //   TK_UBO_BINDING(n)     -> layout(std140, binding = n)   (Vulkan)
+      //   TK_SAMPLER_BINDING(n) -> layout(binding = n)            (Vulkan)
+      // defined in vulkanCompatInc.shader via `#ifdef VULKAN`.
+      // NOTE: shaderc automatically predefines VULKAN (= Vulkan version, e.g. 100) when
+      // SetTargetEnvironment is Vulkan, so we must NOT call AddMacroDefinition("VULKAN")
+      // here — that would redefine it with a different value and cause a compile error.
+
+      // Engine GLSL declares inter-stage varyings without explicit layout(location=N)
+      // (GLSL ES 3.00 style matched by name). SPIR-V requires explicit locations; shaderc
+      // auto-assigns them using name-based matching between vertex outputs and fragment inputs.
+      options.SetAutoMapLocations(true);
 
       // Stage 7d-1 binding remap: shift every UBO binding up by kUboBindingBase so GL UBO slots
       // (3, 4, 7, ...) land outside the texture binding range (0..7). Textures are not shifted.

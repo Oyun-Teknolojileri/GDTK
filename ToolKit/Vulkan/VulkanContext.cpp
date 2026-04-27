@@ -529,12 +529,13 @@ namespace ToolKit
     // Stage 7d-4. One pool per frame-in-flight slot. Each pool reserves enough for ~256 sets
     // (current backend allocates one descriptor set per draw worst-case; a frame with 256 unique
     // BindPipeline sites is far above any expected sub-system load). Sized for the global
-    // descriptor set layout's bindings: 8 sampled images + 6 UBOs + 1 dynamic UBO per set,
-    // multiplied by max sets to give descriptor count budgets.
+    // descriptor set layout's bindings: kTextureBindingCount sampled images + 7 UBOs (slots
+    // 3,4,5,7,8,9,10) + 1 dynamic UBO (perDraw) per set, multiplied by max sets to give
+    // descriptor count budgets.
     const uint32_t kMaxSetsPerFrame = 256;
     VkDescriptorPoolSize sizes[]    = {
-        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, kMaxSetsPerFrame * 8},
-        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         kMaxSetsPerFrame * 6},
+        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, kMaxSetsPerFrame * VulkanBindings::kTextureBindingCount},
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         kMaxSetsPerFrame * 7},
         {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, kMaxSetsPerFrame * 1},
     };
 

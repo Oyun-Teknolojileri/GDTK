@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2019-2025 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
@@ -59,7 +59,7 @@ namespace ToolKit
       m_testPipeline->Destroy();
     }
     m_testPipeline.reset();
-    // Pipeline cache AFTER the test pipeline — the test pipeline no longer owns any cached
+    // Pipeline cache AFTER the test pipeline â€” the test pipeline no longer owns any cached
     // VkPipeline directly, but it may hold VkShaderModule / VkPipelineLayout that some cache
     // entries reference. Destroying the cache first keeps destruction order clean when Stage 7
     // starts mixing engine shaders + test scaffolds.
@@ -76,7 +76,7 @@ namespace ToolKit
   {
     if (!fn || m_pendingDeleters.empty())
     {
-      // Backend not yet constructed (impossible — vector is sized in ctor) or no-op lambda.
+      // Backend not yet constructed (impossible â€” vector is sized in ctor) or no-op lambda.
       return;
     }
     const uint slot = m_deleterSlot < m_pendingDeleters.size() ? m_deleterSlot : 0;
@@ -134,7 +134,7 @@ namespace ToolKit
   {
     if (!m_frameStarted || m_activePassFb == nullptr || m_testPipeline == nullptr)
     {
-      // Only valid inside an offscreen pass — swapchain pass is reserved for ImGui.
+      // Only valid inside an offscreen pass â€” swapchain pass is reserved for ImGui.
       return;
     }
     VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer();
@@ -152,17 +152,17 @@ namespace ToolKit
     m_frameStarted = m_swapchain->BeginFrame();
     if (!m_frameStarted)
     {
-      // Swapchain out-of-date or minimized — flag for recreate and skip.
+      // Swapchain out-of-date or minimized â€” flag for recreate and skip.
       m_needsRecreate = true;
       return;
     }
-    // VulkanSwapchain::BeginFrame waited on m_inFlight[currentFrame] just now → every cmd
+    // VulkanSwapchain::BeginFrame waited on m_inFlight[currentFrame] just now â†’ every cmd
     // buffer that recorded into this slot last cycle is fully retired on the GPU. Reap that
     // bucket before any new work this frame can touch the same slot.
     m_deleterSlot = m_swapchain->GetCurrentFrameIndex();
     DrainDeleterBucket(m_deleterSlot);
 
-    // Same fence guarantee covers descriptor sets allocated last cycle from this slot's pool —
+    // Same fence guarantee covers descriptor sets allocated last cycle from this slot's pool â€”
     // resetting it releases every set in one call, ready for fresh BindTexture/SubmitPerDrawData
     // allocations during this frame's recording (Stage 7d-4).
     m_context->ResetFrameDescriptorPool(m_deleterSlot);
@@ -233,7 +233,7 @@ namespace ToolKit
     // mirrors TextureSettings::msaaCount onto VulkanTexture::samples). Vulkan requires every
     // attachment in a subpass to share the same sampleCount, so we sanity-check each color
     // attachment against the first one (or the depth attachment when there are no color
-    // slots). Mismatched MSAA framebuffers are an engine-side bug — log so the caller sees
+    // slots). Mismatched MSAA framebuffers are an engine-side bug â€” log so the caller sees
     // the broken combo and fix the source-side TextureSettings.
     VkSampleCountFlagBits subpassSamples = VK_SAMPLE_COUNT_1_BIT;
     bool subpassSamplesSet               = false;
@@ -273,7 +273,7 @@ namespace ToolKit
       a.initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
       // MSAA color attachments aren't sampled directly (engine resolves through
       // ResolveFramebuffer first). The "shader read only" finalLayout is harmless for them
-      // either way — vkCmdResolveImage transitions the image to TRANSFER_SRC_OPTIMAL itself
+      // either way â€” vkCmdResolveImage transitions the image to TRANSFER_SRC_OPTIMAL itself
       // before reading, and the engine never binds an MSAA target as a sampled texture.
       a.finalLayout    = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
@@ -378,12 +378,12 @@ namespace ToolKit
       return;
     }
 
-    // Hiçbir pass nest edilmez — önce hangisi açıksa onu kapat.
+    // HiÃ§bir pass nest edilmez â€” Ã¶nce hangisi aÃ§Ä±ksa onu kapat.
     EndPass();
 
     if (desc.target == nullptr)
     {
-      // Backbuffer pass — drive the swapchain's render pass with the caller's clear color.
+      // Backbuffer pass â€” drive the swapchain's render pass with the caller's clear color.
       m_swapchain->BeginSwapchainPass(desc.clearColor);
       return;
     }
@@ -403,7 +403,7 @@ namespace ToolKit
       }
     }
 
-    // Clear value array — color attachments sırasında, sonra (varsa) depth.
+    // Clear value array â€” color attachments sÄ±rasÄ±nda, sonra (varsa) depth.
     std::vector<VkClearValue> clears;
     clears.reserve(VulkanFramebuffer::kMaxColorAttachments + 1);
     for (int i = 0; i < VulkanFramebuffer::kMaxColorAttachments; ++i)
@@ -463,7 +463,7 @@ namespace ToolKit
     {
       VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer();
       vkCmdEndRenderPass(cb);
-      // RP final layout'larını cache'ledikleri texture'lara yansıt.
+      // RP final layout'larÄ±nÄ± cache'ledikleri texture'lara yansÄ±t.
       for (int i = 0; i < VulkanFramebuffer::kMaxColorAttachments; ++i)
       {
         if (auto* tex = m_activePassFb->colorAttachments[i].tex)
@@ -483,7 +483,7 @@ namespace ToolKit
 
   void VulkanBackend::SetViewport(uint x, uint y, uint w, uint h)
   {
-    // Dynamic state — every cached pipeline is built with VK_DYNAMIC_STATE_VIEWPORT (see
+    // Dynamic state â€” every cached pipeline is built with VK_DYNAMIC_STATE_VIEWPORT (see
     // VulkanPipelineCache::GetOrCreate), so this can be called any time during cmd recording.
     // Bail when no frame is active to avoid recording into a non-recording cmd buffer.
     if (m_swapchain == nullptr || !m_swapchain->IsFrameActive())
@@ -529,7 +529,7 @@ namespace ToolKit
   void VulkanBackend::ClearBuffer(GraphicBitFields fields, const Vec4& color)
   {
     // Engine pass code clears via PassDesc::clearBits + clearColor at BeginPass time, which is
-    // mapped to VkRenderPass loadOp=CLEAR — the GPU clear happens implicitly at pass start. A
+    // mapped to VkRenderPass loadOp=CLEAR â€” the GPU clear happens implicitly at pass start. A
     // mid-pass ClearBuffer is rare; if a pass actually needs it, vkCmdClearAttachments inside
     // the active render pass is the right call. Until a concrete pass needs that path we keep
     // this a no-op so accidental engine-side calls don't generate validation noise.
@@ -597,7 +597,7 @@ namespace ToolKit
     void* mapped        = nullptr;
     if (!m_context->AllocatePerDrawSlot(size, offset, mapped))
     {
-      // Ring full — already logged once. Skip this draw's per-draw payload; shader ends up
+      // Ring full â€” already logged once. Skip this draw's per-draw payload; shader ends up
       // reading the previous slot's contents which is wrong, but no crash. A bigger ring fixes.
       return;
     }
@@ -833,10 +833,10 @@ namespace ToolKit
     }
   }
 
-  // Wraps the source + destination color attachments in pre + post layout barriers — both end
+  // Wraps the source + destination color attachments in pre + post layout barriers â€” both end
   // up back at SHADER_READ_ONLY_OPTIMAL afterward. The transfer call between the barriers is
   // chosen by the caller (vkCmdBlitImage for size-mismatched non-MSAA copies, vkCmdResolveImage
-  // for an MSAA → single-sample resolve). Caller must guarantee no render pass is active on
+  // for an MSAA â†’ single-sample resolve). Caller must guarantee no render pass is active on
   // @p cb (both transfer ops are outside-RP-only).
   static void TransitionForColorTransfer(VkCommandBuffer cb, VulkanTexture* srcTex, VulkanTexture* dstTex)
   {
@@ -940,10 +940,10 @@ namespace ToolKit
 
   // Blits @p src's full extent into @p dst's full extent (LINEAR filter, COLOR aspect). The
   // textures' currentLayout fields drive the pre-transition source layout and the
-  // post-transition restore target — both end up back at SHADER_READ_ONLY_OPTIMAL, the
+  // post-transition restore target â€” both end up back at SHADER_READ_ONLY_OPTIMAL, the
   // engine's resting state for color render targets. Caller must guarantee no render pass is
   // active on @p cb (vkCmdBlitImage is outside-RP-only) and that src is not multi-sampled
-  // (vkCmdBlitImage rejects multi-sample sources — use ResolveColorAttachment instead).
+  // (vkCmdBlitImage rejects multi-sample sources â€” use ResolveColorAttachment instead).
   static void BlitColorAttachment(VkCommandBuffer cb, VulkanTexture* srcTex, VulkanTexture* dstTex)
   {
     TransitionForColorTransfer(cb, srcTex, dstTex);
@@ -984,9 +984,9 @@ namespace ToolKit
     if (m_activePassFb != nullptr || m_swapchain->IsSwapchainPassActive())
     {
       // Spec forbids vkCmdBlitImage / vkCmdResolveImage inside a render pass instance. Engine
-      // code calls this between passes (after EndPass) so this guard is purely defensive —
+      // code calls this between passes (after EndPass) so this guard is purely defensive â€”
       // log so a misuse surfaces during development.
-      TK_ERR("ResolveFramebuffer called inside an active render pass — skipped");
+      TK_ERR("ResolveFramebuffer called inside an active render pass â€” skipped");
       return;
     }
     if (src == nullptr || dst == nullptr)
@@ -1023,7 +1023,7 @@ namespace ToolKit
       {
         if (dstTex->samples != VK_SAMPLE_COUNT_1_BIT)
         {
-          TK_ERR("ResolveFramebuffer: dst attachment %d is multi-sampled — resolve target must "
+          TK_ERR("ResolveFramebuffer: dst attachment %d is multi-sampled â€” resolve target must "
                  "be single-sample. Skipped.",
                  idx);
           continue;
@@ -1039,26 +1039,26 @@ namespace ToolKit
 
   void VulkanBackend::CopyFramebuffer(FramebufferPtr src, FramebufferPtr dst, GraphicBitFields fields)
   {
-    // Stage 8. Color-only blit between two framebuffers — used by post-process chains and other
+    // Stage 8. Color-only blit between two framebuffers â€” used by post-process chains and other
     // intermediate-target copies. Each color slot present in both source and destination is
     // blit'd in turn (vkCmdBlitImage handles size mismatch by linear-filtering, matching GL's
     // glBlitFramebuffer semantics).
     //
-    // Bilinçli ertelemeler:
+    // BilinÃ§li ertelemeler:
     //   - dst == nullptr (GL'in "default framebuffer = ekran" yolu): Vulkan'da viewport
-    //     texture'ı ImGui'ye `ImGui_ImplVulkan_AddTexture` ile veriliyor; "ekrana blit" yolu
-    //     Stage 11'de gerçek engine pass'leri Vulkan üzerinden bağlandığında değerlendirilir.
-    //   - DepthBits / StencilBits: vkCmdBlitImage'in depth-aspect blit'i NEAREST + format-eş
-    //     gerektirir, stencil ise vkCmdCopyImage'le kopyalanır. Mevcut çağrı yerleri hep
-    //     ColorBits geçiyor (GameRenderer, SplashScreenRenderPath, post-process zinciri),
-    //     bu yüzden depth/stencil yolları Stage 11'e bırakıldı.
+    //     texture'Ä± ImGui'ye `ImGui_ImplVulkan_AddTexture` ile veriliyor; "ekrana blit" yolu
+    //     Stage 11'de gerÃ§ek engine pass'leri Vulkan Ã¼zerinden baÄŸlandÄ±ÄŸÄ±nda deÄŸerlendirilir.
+    //   - DepthBits / StencilBits: vkCmdBlitImage'in depth-aspect blit'i NEAREST + format-eÅŸ
+    //     gerektirir, stencil ise vkCmdCopyImage'le kopyalanÄ±r. Mevcut Ã§aÄŸrÄ± yerleri hep
+    //     ColorBits geÃ§iyor (GameRenderer, SplashScreenRenderPath, post-process zinciri),
+    //     bu yÃ¼zden depth/stencil yollarÄ± Stage 11'e bÄ±rakÄ±ldÄ±.
     if (m_swapchain == nullptr || !m_swapchain->IsFrameActive())
     {
       return;
     }
     if (m_activePassFb != nullptr || m_swapchain->IsSwapchainPassActive())
     {
-      TK_ERR("CopyFramebuffer called inside an active render pass — skipped");
+      TK_ERR("CopyFramebuffer called inside an active render pass â€” skipped");
       return;
     }
     if (src == nullptr)
@@ -1081,12 +1081,12 @@ namespace ToolKit
 
     if (dst == nullptr)
     {
-      // See note above — Vulkan path doesn't need this until Stage 11. Logged once to keep an
+      // See note above â€” Vulkan path doesn't need this until Stage 11. Logged once to keep an
       // unexpected runtime call visible without spamming.
       static bool s_warnedNullDst = false;
       if (!s_warnedNullDst)
       {
-        TK_WRN("CopyFramebuffer(dst=nullptr) deferred to Stage 11 — call ignored");
+        TK_WRN("CopyFramebuffer(dst=nullptr) deferred to Stage 11 â€” call ignored");
         s_warnedNullDst = true;
       }
       return;
@@ -1122,7 +1122,7 @@ namespace ToolKit
     // Intentional no-op (matches GLBackend::BlitToScreen, which is also empty). The IGraphicsBackend
     // entry exists for legacy GL paths; ToolKit's actual "blit to screen" flow is
     // CopyFramebuffer(src, nullptr, ColorBits), which is the call site engine code already uses.
-    // Vulkan currently routes viewport pixels through ImGui's image binding instead — no blit
+    // Vulkan currently routes viewport pixels through ImGui's image binding instead â€” no blit
     // needed at this layer.
     (void) src;
   }
@@ -1151,7 +1151,7 @@ namespace ToolKit
 
     if (m_context == nullptr || m_context->GetAllocator() == nullptr)
     {
-      TK_ERR("VulkanBackend::CreateTexture called before VulkanContext was initialized — "
+      TK_ERR("VulkanBackend::CreateTexture called before VulkanContext was initialized â€” "
              "check InitGraphics ordering / VulkanContext::Init failure logs");
       return;
     }
@@ -1191,9 +1191,9 @@ namespace ToolKit
     }
 
     // DepthTexture leaves its TextureSettings::InternalFormat at the Texture default (a color
-    // format) — its real depth format lives on the subclass via GetDepthFormat() (mirrors what
+    // format) â€” its real depth format lives on the subclass via GetDepthFormat() (mirrors what
     // GLBackend does with dt->As<DepthTexture>()). Without this branch we'd allocate a color
-    // image and then bind it to a depth attachment slot → vkCreateRenderPass / vkCreateFramebuffer
+    // image and then bind it to a depth attachment slot â†’ vkCreateRenderPass / vkCreateFramebuffer
     // validation errors and an unrenderable framebuffer.
     GraphicTypes effectiveFormat = settings.InternalFormat;
     if (DepthTexture* dt = tex->As<DepthTexture>())
@@ -1217,7 +1217,7 @@ namespace ToolKit
     data->extent       = {(uint32_t) tex->m_width, (uint32_t) tex->m_height};
     data->arrayLayers  = arrayLayers;
     // Allocate the full mip chain when either the texture opted in (GenerateMipMap) or this is a
-    // cubemap — the IBL prefilter pipeline always writes to every mip of the environment cubemap
+    // cubemap â€” the IBL prefilter pipeline always writes to every mip of the environment cubemap
     // regardless of the flag, so we must back it with real mip storage. Depth targets don't need
     // mip chains.
     const bool wantsMipChain = !isDepth && (settings.GenerateMipMap || isCubemap);
@@ -1229,7 +1229,7 @@ namespace ToolKit
     // values (1/2/4/8) are deliberately VK_SAMPLE_COUNT_*_BIT-compatible, so we cast directly.
     // Vulkan spec forbids samples > 1 with mipLevels > 1; the same is forbidden for some
     // image types (cubemaps practically never go MSAA). Demote to 1 when geometry of the
-    // image would make MSAA invalid — engine rarely asks for those combos but the guard keeps
+    // image would make MSAA invalid â€” engine rarely asks for those combos but the guard keeps
     // a misconfigured asset from blowing up validation.
     VkSampleCountFlagBits requestedSamples = (VkSampleCountFlagBits) (uint32_t) settings.msaaCount;
     if (requestedSamples == 0)
@@ -1238,7 +1238,7 @@ namespace ToolKit
     }
     if (requestedSamples != VK_SAMPLE_COUNT_1_BIT && (data->mipLevels > 1 || isCubemap))
     {
-      TK_WRN("CreateTexture: MSAA sampleCount %u demoted to 1 — incompatible with mipLevels=%u "
+      TK_WRN("CreateTexture: MSAA sampleCount %u demoted to 1 â€” incompatible with mipLevels=%u "
              "or cubemap target",
              (unsigned) requestedSamples,
              (unsigned) data->mipLevels);
@@ -1293,7 +1293,7 @@ namespace ToolKit
       return;
     }
 
-    // Default sampler — color targets are sampled by ImGui / future post passes.
+    // Default sampler â€” color targets are sampled by ImGui / future post passes.
     // Depth targets get sampler lazily via ApplyTextureSettings when needed.
     if (!isDepth)
     {
@@ -1355,7 +1355,7 @@ namespace ToolKit
     }
     // Hand the gpu data to the deletion queue: the lambda holds the only remaining shared_ptr
     // ref, so the VulkanTexture dtor (which calls vkDestroyImage/View/Sampler) only fires once
-    // the deleter bucket is drained — i.e., after the GPU has finished any cmd buffer that may
+    // the deleter bucket is drained â€” i.e., after the GPU has finished any cmd buffer that may
     // still reference these handles. Editor-side ImGui descriptor cache observes the same
     // shared_ptr via weak_ptr and sweeps expired entries on the next frame.
     if (auto data = tex->m_gpuData)
@@ -1423,7 +1423,7 @@ namespace ToolKit
 
     if (vertexData == nullptr || vertexCount == 0 || vertexStride <= 0)
     {
-      // Empty mesh — nothing to upload. Leave m_gpuData null; Draw() guards against this.
+      // Empty mesh â€” nothing to upload. Leave m_gpuData null; Draw() guards against this.
       mesh->m_vertexCount = 0;
       mesh->m_indexCount  = 0;
       return;
@@ -1455,7 +1455,7 @@ namespace ToolKit
       {
         TK_ERR("VulkanBackend::CreateMesh: index upload failed (%llu bytes)",
                (unsigned long long) indexBytes);
-        // Vertex buffer already alive — drop the half-built mesh; shared_ptr dtor cleans up.
+        // Vertex buffer already alive â€” drop the half-built mesh; shared_ptr dtor cleans up.
         return;
       }
       mesh->m_indexCount = (uint) mesh->m_clientSideIndices.size();
@@ -1534,7 +1534,7 @@ namespace ToolKit
              (uint64) (gpu != nullptr ? gpu->buffer.size : 0));
       return;
     }
-    // HOST_COHERENT memory — write becomes visible to the device on the next vkQueueSubmit
+    // HOST_COHERENT memory â€” write becomes visible to the device on the next vkQueueSubmit
     // without an explicit vkFlushMappedMemoryRanges call.
     std::memcpy(gpu->buffer.mapped, data, (size_t) size);
   }
@@ -1556,49 +1556,20 @@ namespace ToolKit
     const bool isVertex             = (shader->m_shaderType == ShaderType::VertexShader);
     const VulkanShader::Stage stage = isVertex ? VulkanShader::Stage::Vertex : VulkanShader::Stage::Fragment;
 
-    // -------------------------------------------------------------------------------------------
-    // Stage 7d-2a (current): always emit a pass-through stub for engine shaders.
-    //
-    // ToolKit's GL shaders use bare uniforms (`uniform mat4 model;`, `uniform vec4 drawCommand[24];`)
-    // which Vulkan/SPIR-V forbids \u2014 they MUST sit inside a UBO or push constant block. shaderc
-    // therefore rejects every non-trivial engine shader and the failure logs flood the console
-    // (one diagnostic per shader \u00d7 dozens of shaders loaded at boot).
-    //
-    // Until Stage 7d-2b adapts the engine GLSL to be Vulkan-clean, we don't even try the real
-    // source: skip straight to the stub. CreateGpuProgram still gets a valid VkShaderModule, the
-    // pipeline layout still builds, Draw is still gated by m_pipelineBound + descriptor sets, and
-    // engine pass code that uses these programs simply produces no visible output.
-    //
-    // To re-enable real compile (e.g. while testing a single fixed shader), call CompileGlslToSpirv
-    // before falling through to the stub block below \u2014 the cache + module-creation path is the
-    // same. Hand-written Vulkan shaders (TestRenderPipeline, future Stage 12 native passes) bypass
-    // this function entirely and call VulkanShader::CompileGlslToSpirv directly, so they're
-    // unaffected by this gate.
-    // -------------------------------------------------------------------------------------------
-    static const char* kStubVert = R"(#version 450
-        void main() { gl_Position = vec4(0.0, 0.0, 0.0, 1.0); }
-    )";
-    static const char* kStubFrag = R"(#version 450
-        layout(location = 0) out vec4 outColor;
-        void main() { outColor = vec4(0.0); }
-    )";
-
-    static std::vector<uint32_t> s_stubVertSpirv;
-    static std::vector<uint32_t> s_stubFragSpirv;
-
-    std::vector<uint32_t>& cacheRef = isVertex ? s_stubVertSpirv : s_stubFragSpirv;
-    if (cacheRef.empty())
+    // Phase C (Step 5): real compile path.
+    // Engine GLSL is now Vulkan-clean: bare uniforms removed, TK_UBO_BINDING / TK_SAMPLER_BINDING
+    // macros inject binding qualifiers when VULKAN is defined (vulkanCompatInc.shader).
+    // CompileGlslToSpirv applies SetForcedVersionProfile(450,core) + VULKAN macro +
+    // SetAutoMapLocations â€” source is passed as-is, no runtime string manipulation.
+    std::vector<uint32_t> spirv = VulkanShader::CompileGlslToSpirv(stage, source, shader->GetFile());
+    if (spirv.empty())
     {
-      const std::string stubSource = isVertex ? kStubVert : kStubFrag;
-      cacheRef                     = VulkanShader::CompileGlslToSpirv(stage, stubSource, "stub");
-      if (cacheRef.empty())
-      {
-        TK_ERR("CreateShader: stub compile failed (shaderc misconfigured?)");
-        return nullptr;
-      }
+      TK_WRN("CreateShader: compile failed for '%s' â€” shader will produce no output",
+             shader->GetFile().c_str());
+      return nullptr;
     }
 
-    VkShaderModule module = VulkanShader::CreateShaderModule(m_context->GetDevice(), cacheRef);
+    VkShaderModule module = VulkanShader::CreateShaderModule(m_context->GetDevice(), spirv);
     if (module == VK_NULL_HANDLE)
     {
       return nullptr;
@@ -1607,16 +1578,13 @@ namespace ToolKit
     auto data     = std::make_shared<VulkanShaderModule>();
     data->context = m_context.get();
     data->module  = module;
-
-    // Suppress 'unused' warning for @p source until 7d-2b actually consumes it.
-    (void) source;
     return data;
   }
 
   void VulkanBackend::DestroyShader(GpuResourceData* shaderData)
   {
     // GpuResourceData* arrives as a raw pointer here (matching GLBackend's signature). The
-    // owning shared_ptr is held by the Shader instance — we cannot defer-delete via a captured
+    // owning shared_ptr is held by the Shader instance â€” we cannot defer-delete via a captured
     // shared_ptr because we don't have one. Eager destroy is acceptable: by the time the engine
     // calls DestroyShader, the program(s) referencing the module have already been torn down
     // (vkDeviceWaitIdle on shutdown, or explicit DestroyGpuProgram in hot-reload paths).
@@ -1655,7 +1623,7 @@ namespace ToolKit
     data->frag    = fragSm->module;
 
     // Stage 7d-3: every program references the context's shared kitchen-sink descriptor set
-    // layout. Programs whose shaders touch only a subset of bindings still work — unused entries
+    // layout. Programs whose shaders touch only a subset of bindings still work â€” unused entries
     // are simply not written to. Push constants stay at zero (per-draw data routes through the
     // dynamic UBO at VulkanBindings::kPerDrawUboBinding instead).
     VkDescriptorSetLayout globalSet = m_context->GetGlobalDescriptorSetLayout();
@@ -1743,7 +1711,7 @@ namespace ToolKit
 
     auto& slot = fbData->colorAttachments[attachment];
 
-    // Defer the previously owned view — the in-flight cmd buffer's RP+FB still references it
+    // Defer the previously owned view â€” the in-flight cmd buffer's RP+FB still references it
     // until the next BuildOffscreenRenderPass swaps them out (which itself defers the old RP+FB).
     if (slot.ownsView && slot.view != VK_NULL_HANDLE)
     {
@@ -1759,7 +1727,7 @@ namespace ToolKit
 
     if (slot.tex == nullptr)
     {
-      // Attach with a null texture — caller error; leave slot cleared.
+      // Attach with a null texture â€” caller error; leave slot cleared.
     }
     else if (needsSubresourceView)
     {
@@ -1785,7 +1753,7 @@ namespace ToolKit
       uint32_t baseMip = (uint32_t) std::max(0, mip);
       if (baseMip >= slot.tex->mipLevels)
       {
-        TK_WRN("AttachColorTarget: mip %u >= image mipLevels %u — clamping to %u",
+        TK_WRN("AttachColorTarget: mip %u >= image mipLevels %u â€” clamping to %u",
                baseMip,
                slot.tex->mipLevels,
                slot.tex->mipLevels - 1);
@@ -1811,7 +1779,7 @@ namespace ToolKit
       slot.ownsView = false;
     }
 
-    // Don't eager-destroy the cached RP+FB — BuildOffscreenRenderPass will defer them on the
+    // Don't eager-destroy the cached RP+FB â€” BuildOffscreenRenderPass will defer them on the
     // next BeginPass. Eager destroy here would invalidate the in-flight cmd buffer.
     fbData->dirty = true;
   }
@@ -1916,7 +1884,7 @@ namespace ToolKit
 
   void VulkanBackend::Finish()
   {
-    // GL's glFinish equivalent — flush + wait until every queued GPU op is retired. Engine
+    // GL's glFinish equivalent â€” flush + wait until every queued GPU op is retired. Engine
     // calls this at shutdown / context teardown / certain readback paths. vkDeviceWaitIdle
     // covers all queues this device owns, which matches the GL semantics on a single-context
     // setup.
