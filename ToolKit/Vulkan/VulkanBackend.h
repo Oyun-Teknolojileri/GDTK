@@ -123,8 +123,6 @@ namespace ToolKit
     void DetachDepthTarget(Framebuffer* fb) override;
 
     // Custom uniforms and renderer utility
-    void SubmitCustomUniforms(const GpuProgramPtr& program,
-                              std::unordered_map<String, ShaderUniform>& uniforms) override;
     void SetUniform4f(int location, const Vec4& value) override;
     String GetBackendRendererString() override;
     int GetMaxArrayTextureLayers() override;

@@ -70,7 +70,6 @@
     <ClCompile Include="RHI.cpp" />
     <ClCompile Include="Scene.cpp" />
     <ClCompile Include="Shader.cpp" />
-    <ClCompile Include="ShaderUniform.cpp" />
     <ClCompile Include="ShadowAtlas.cpp" />
     <ClCompile Include="ShadowPass.cpp" />
     <ClCompile Include="Skeleton.cpp" />
@@ -177,7 +176,6 @@
     <ClInclude Include="Scene.h" />
     <ClInclude Include="Serialize.h" />
     <ClInclude Include="Shader.h" />
-    <ClInclude Include="ShaderUniform.h" />
     <ClInclude Include="ShadowPass.h" />
     <ClInclude Include="Skeleton.h" />
     <ClInclude Include="SkeletonComponent.h" />

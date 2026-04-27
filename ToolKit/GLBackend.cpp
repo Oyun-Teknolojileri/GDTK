@@ -15,7 +15,6 @@
 #include "Mesh.h"
 #include "RHI.h"
 #include "Renderer.h"
-#include "ShaderUniform.h"
 #include "TKOpenGL.h"
 #include "Texture.h"
 #include "ToolKit.h"
@@ -829,23 +828,6 @@ namespace ToolKit
     bindUBOBlockOnly("SsaoCalcPassData", SsaoCalcPassDataBuffer::Binding());
     bindUBOBlockOnly("DofPassData", DofPassDataBuffer::Binding());
     bindUBOBlockOnly("GradientSkyboxPassData", GradientSkyboxPassDataBuffer::Binding());
-
-    // Cache default and array uniform locations.
-    for (const ShaderPtr& shader : program->m_shaders)
-    {
-      for (const Uniform& uniform : shader->m_uniforms)
-      {
-        GLint loc                                        = glGetUniformLocation(pid, GetUniformName(uniform));
-        program->m_defaultUniformLocation[(int) uniform] = loc;
-      }
-
-      for (Shader::ArrayUniform arrayUniform : shader->m_arrayUniforms)
-      {
-        GLint loc = glGetUniformLocation(pid, GetUniformName(arrayUniform.uniform));
-        program->m_defaultArrayUniformLocations[(int) arrayUniform.uniform] = loc;
-      }
-    }
-
   }
 
   void GLBackend::DestroyGpuProgram(GpuProgram* program)
@@ -1570,48 +1552,6 @@ namespace ToolKit
     {
       glBindVertexArray(vao);
       m_currentVAO = vao;
-    }
-  }
-
-  void GLBackend::SubmitCustomUniforms(const GpuProgramPtr& program,
-                                       std::unordered_map<String, ShaderUniform>& uniforms)
-  {
-    for (auto& [name, uniform] : uniforms)
-    {
-      GLint loc = program->GetCustomUniformLocation(uniform);
-      switch (uniform.GetType())
-      {
-        case ShaderUniform::UniformType::Bool:
-          glUniform1ui(loc, uniform.GetVal<bool>());
-          break;
-        case ShaderUniform::UniformType::Float:
-          glUniform1f(loc, uniform.GetVal<float>());
-          break;
-        case ShaderUniform::UniformType::Int:
-          glUniform1i(loc, uniform.GetVal<int>());
-          break;
-        case ShaderUniform::UniformType::UInt:
-          glUniform1ui(loc, uniform.GetVal<uint>());
-          break;
-        case ShaderUniform::UniformType::Vec2:
-          glUniform2fv(loc, 1, reinterpret_cast<float*>(&uniform.GetVal<Vec2>()));
-          break;
-        case ShaderUniform::UniformType::Vec3:
-          glUniform3fv(loc, 1, reinterpret_cast<float*>(&uniform.GetVal<Vec3>()));
-          break;
-        case ShaderUniform::UniformType::Vec4:
-          glUniform4fv(loc, 1, reinterpret_cast<float*>(&uniform.GetVal<Vec4>()));
-          break;
-        case ShaderUniform::UniformType::Mat3:
-          glUniformMatrix3fv(loc, 1, false, reinterpret_cast<float*>(&uniform.GetVal<Mat3>()));
-          break;
-        case ShaderUniform::UniformType::Mat4:
-          glUniformMatrix4fv(loc, 1, false, reinterpret_cast<float*>(&uniform.GetVal<Mat4>()));
-          break;
-        default:
-          assert(false && "Invalid uniform type.");
-          break;
-      }
     }
   }
 

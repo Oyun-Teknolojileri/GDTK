@@ -9,7 +9,6 @@
 #pragma once
 
 #include "RenderState.h"
-#include "ShaderUniform.h"
 #include "Types.h"
 
 #include <memory>
@@ -141,9 +140,6 @@ namespace ToolKit
     virtual void DetachColorTarget(Framebuffer* fb, int attachment)                                         = 0;
     virtual void AttachDepthTarget(Framebuffer* fb, DepthTexturePtr dt)                                     = 0;
     virtual void DetachDepthTarget(Framebuffer* fb)                                                         = 0;
-
-    virtual void SubmitCustomUniforms(const GpuProgramPtr& program,
-                                      std::unordered_map<String, ShaderUniform>& uniforms)                  = 0;
 
     virtual void SetUniform4f(int location, const Vec4& value)                                              = 0;
 

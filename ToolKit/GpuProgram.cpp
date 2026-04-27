@@ -18,16 +18,10 @@ namespace ToolKit
   // GpuProgram
   //////////////////////////////////////////
 
-  GpuProgram::GpuProgram()
-  {
-    m_defaultUniformLocation.fill(-1);
-    m_defaultArrayUniformLocations.fill(-1);
-  }
+  GpuProgram::GpuProgram() {}
 
   GpuProgram::GpuProgram(ShaderPtr vertex, ShaderPtr fragment)
   {
-    m_defaultUniformLocation.fill(-1);
-    m_defaultArrayUniformLocations.fill(-1);
     m_shaders.push_back(vertex);
     m_shaders.push_back(fragment);
   }
@@ -37,60 +31,6 @@ namespace ToolKit
     if (m_backend && m_gpuData)
     {
       m_backend->DestroyGpuProgram(this);
-    }
-  }
-
-  int GpuProgram::GetDefaultUniformLocation(Uniform uniform, int index)
-  {
-    const size_t i = static_cast<size_t>(uniform);
-    if (i >= static_cast<size_t>(Uniform::UNIFORM_MAX_INVALID))
-    {
-      return -1;
-    }
-    return index == -1 ? m_defaultUniformLocation[i] : m_defaultArrayUniformLocations[i];
-  }
-
-  int GpuProgram::GetCustomUniformLocation(ShaderUniform& shaderUniform)
-  {
-    if (!shaderUniform.m_thisUniformIsSearchedInGPUProgram)
-    {
-      shaderUniform.m_thisUniformIsSearchedInGPUProgram = true;
-
-      int loc = m_backend ? m_backend->GetUniformLocation(this, shaderUniform.m_name.c_str()) : -1;
-      if (loc == -1)
-      {
-        TK_WRN("Uniform: \"%s\" does not exist in program!", shaderUniform.m_name.c_str());
-      }
-
-      shaderUniform.m_locInGPUProgram = loc;
-    }
-
-    return shaderUniform.m_locInGPUProgram;
-  }
-
-  void GpuProgram::UpdateCustomUniform(const String& uniformName, const UniformValue& val)
-  {
-    auto paramItr = m_customUniforms.find(uniformName);
-    if (paramItr == m_customUniforms.end())
-    {
-      m_customUniforms[uniformName] = ShaderUniform(uniformName, val);
-    }
-    else
-    {
-      paramItr->second = val;
-    }
-  }
-
-  void GpuProgram::UpdateCustomUniform(const ShaderUniform& uniform)
-  {
-    auto paramItr = m_customUniforms.find(uniform.m_name);
-    if (paramItr == m_customUniforms.end())
-    {
-      m_customUniforms[uniform.m_name] = uniform;
-    }
-    else
-    {
-      paramItr->second = uniform.m_value;
     }
   }
 

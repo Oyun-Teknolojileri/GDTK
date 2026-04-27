@@ -11,7 +11,6 @@
 #include "ParameterBlock.h"
 #include "Resource.h"
 #include "ResourceManager.h"
-#include "ShaderUniform.h"
 
 namespace ToolKit
 {
@@ -105,22 +104,6 @@ namespace ToolKit
                                    ShaderDefineCombinaton& currentCombination);
 
    public:
-    struct ArrayUniform
-    {
-      Uniform uniform;
-      int size;
-
-      bool operator==(const ArrayUniform& other) const { return uniform == other.uniform && size == other.size; }
-
-      bool operator<(const ArrayUniform& other) const { return uniform < other.uniform; }
-    };
-
-    /** Built-in Uniform's that are required for the shader. */
-    std::vector<Uniform> m_uniforms;
-
-    /** Built-in Uniform's that are arrays and required for the shader. */
-    std::vector<ArrayUniform> m_arrayUniforms;
-
     /** Type of the shader. */
     ShaderType m_shaderType = ShaderType::VertexShader;
 

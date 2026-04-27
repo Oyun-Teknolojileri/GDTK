@@ -1876,22 +1876,6 @@ namespace ToolKit
     fbData->dirty = true;
   }
 
-  void VulkanBackend::SubmitCustomUniforms(const GpuProgramPtr& program,
-                                           std::unordered_map<String, ShaderUniform>& uniforms)
-  {
-    // Stage 7d-4c. Intentional no-op. ToolKit's standard render passes route per-frame /
-    // per-camera / per-light data through the fixed UBO bindings the global descriptor set
-    // layout already exposes (Camera/Graphic/Lights at the post-remap UBO slots) plus the
-    // per-draw dynamic UBO from SubmitPerDrawData. Custom uniforms here are material-level
-    // ad-hoc data that GL pokes into individual glUniform* slots — the Vulkan equivalent is a
-    // separate per-material UBO (binding 15 was reserved for this in VulkanBindings.h) and is
-    // deferred to Stage 11 once real engine shaders that actually read custom uniforms compile
-    // through 7d-2b. No-op until then keeps render-system call sites compiling without forcing
-    // a half-implemented path that no shader consumes yet.
-    (void) program;
-    (void) uniforms;
-  }
-
   void VulkanBackend::SetUniform4f(int location, const Vec4& value)
   {
     // No-op. Vulkan has no glUniform-style "location" addressing; the GL backend uses this for

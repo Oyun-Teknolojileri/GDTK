@@ -1128,9 +1128,6 @@ namespace ToolKit
     // Hand the same blob to the backend. GL is a no-op (UBO is already bound + mapped); Vulkan
     // copies it into the per-frame dynamic-offset ring slot the descriptor set points at.
     m_backend->SubmitPerDrawData(&ubo, sizeof(ubo));
-
-    // Custom shader uniforms (legacy plugin path) dispatched through backend.
-    m_backend->SubmitCustomUniforms(program, program->m_customUniforms);
   }
 
   void Renderer::SetTexture(ubyte slotIndx, TexturePtr texture)

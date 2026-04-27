@@ -31,9 +31,6 @@ namespace ToolKit
     Renderer* GetRenderer();
     void SetRenderer(Renderer* renderer);
 
-    /** This function is used to pass custom uniforms to this pass. */
-    void UpdateUniform(const ShaderUniform& shaderUniform);
-
     /** Label that appears in the gpu profile / debug applications(RenderDoc etc...). */
     void SetName(StringView name) { m_name = name; }
 

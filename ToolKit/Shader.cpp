@@ -280,40 +280,6 @@ namespace ToolKit
         m_includeFiles.push_back(node->first_attribute("name")->value());
       }
 
-      if (strcmp("uniform", node->name()) == 0)
-      {
-        XmlAttribute* nameAttr = node->first_attribute("name");
-        XmlAttribute* sizeAttr = node->first_attribute("size");
-
-        bool isUniformFound    = false;
-        for (uint i = 0; i < (uint) Uniform::UNIFORM_MAX_INVALID; i++)
-        {
-          // Find uniform from name
-          if (strcmp(GetUniformName((Uniform) i), nameAttr->value()) == 0)
-          {
-            isUniformFound = true;
-
-            if (sizeAttr != nullptr)
-            {
-              // Uniform is array
-              int size = std::atoi(sizeAttr->value());
-              m_arrayUniforms.push_back({(Uniform) i, size});
-            }
-            else
-            {
-              m_uniforms.push_back((Uniform) i);
-            }
-
-            break;
-          }
-        }
-
-        if (!isUniformFound)
-        {
-          TK_ERR("Unrecognized uniform: %s", nameAttr->value());
-        }
-      }
-
       if (strcmp("define", node->name()) == 0)
       {
         ShaderDefine def;
@@ -379,18 +345,6 @@ namespace ToolKit
     m_defineArray.insert(m_defineArray.end(), includeShader->m_defineArray.begin(), includeShader->m_defineArray.end());
     std::sort(m_defineArray.begin(), m_defineArray.end());
     m_defineArray.erase(std::unique(m_defineArray.begin(), m_defineArray.end()), m_defineArray.end());
-
-    // Handle m_uniforms
-    m_uniforms.insert(m_uniforms.end(), includeShader->m_uniforms.begin(), includeShader->m_uniforms.end());
-    std::sort(m_uniforms.begin(), m_uniforms.end());
-    m_uniforms.erase(std::unique(m_uniforms.begin(), m_uniforms.end()), m_uniforms.end());
-
-    // Handle m_arrayUniforms
-    m_arrayUniforms.insert(m_arrayUniforms.end(),
-                           includeShader->m_arrayUniforms.begin(),
-                           includeShader->m_arrayUniforms.end());
-    std::sort(m_arrayUniforms.begin(), m_arrayUniforms.end());
-    m_arrayUniforms.erase(std::unique(m_arrayUniforms.begin(), m_arrayUniforms.end()), m_arrayUniforms.end());
   }
 
   uint Shader::FindShaderMergeLocation(const String& source)

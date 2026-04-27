@@ -462,16 +462,6 @@ namespace ToolKit
     texture->Init(flush);
   }
 
-  void Material::UpdateProgramUniform(const String& uniformName, const UniformValue& val)
-  {
-    Init();
-
-    GpuProgramManager* gpuProgramManager = GetRenderSystem()->GetGpuProgramManager();
-    GpuProgramPtr gpuProgram = gpuProgramManager->CreateProgram(GetVertexShaderVal(), GetFragmentShaderVal());
-
-    gpuProgram->UpdateCustomUniform(uniformName, val);
-  }
-
   const MaterialCacheItem& Material::GetCacheItem()
   {
     if (m_materialCacheItem.isValid)

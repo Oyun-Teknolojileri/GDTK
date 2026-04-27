@@ -45,14 +45,6 @@ namespace ToolKit
 
   void Pass::SetRenderer(Renderer* renderer) { m_renderer = renderer; }
 
-  void Pass::UpdateUniform(const ShaderUniform& shaderUniform)
-  {
-    if (m_program != nullptr)
-    {
-      m_program->UpdateCustomUniform(shaderUniform);
-    }
-  }
-
   void RenderJobProcessor::CreateRenderJobs(RenderJobArray& jobArray,
                                             EntityRawPtrArray& entities,
                                             bool ignoreVisibility,

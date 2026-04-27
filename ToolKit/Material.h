@@ -11,7 +11,6 @@
 #include "RenderState.h"
 #include "Resource.h"
 #include "ResourceManager.h"
-#include "ShaderUniform.h"
 #include "Texture.h"
 #include "UniformBuffer.h"
 
@@ -87,9 +86,6 @@ namespace ToolKit
 
     /** Returns true if not using default shaders. */
     bool IsShaderMaterial();
-
-    /** Shader materials can update their uniforms via this function. */
-    void UpdateProgramUniform(const String& uniformName, const UniformValue& val);
 
     const MaterialCacheItem& GetCacheItem() override;
 
