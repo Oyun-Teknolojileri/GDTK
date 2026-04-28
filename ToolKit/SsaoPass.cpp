@@ -146,6 +146,7 @@ namespace ToolKit
     // Set shader define for kernel size when it changes.
     if (m_params.KernelSize != m_currentKernelSize)
     {
+      m_ssaoShader->Init();
       m_ssaoShader->SetDefine("KERNEL_SIZE", std::to_string(m_params.KernelSize));
     }
 
