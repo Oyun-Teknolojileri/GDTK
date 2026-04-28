@@ -867,6 +867,15 @@ namespace ToolKit
         vt->sampler);
   }
 
+  void VulkanBackend::BindUniformBuffer(const String& name, UniformBuffer* ub)
+  {
+    // Phase 1 stub. The full implementation lands in Phase 2 (ShadowState) + Phase 3
+    // (FlushDescriptorState), where the binding is recorded into the shadow state and the
+    // descriptor write is deferred until Draw.
+    (void) name;
+    (void) ub;
+  }
+
   // Fills the vertex-input portion of @p out (vertexStride + attributes + attributeCount) for
   // the given ToolKit VertexLayout. Pipeline cache hits depend on these fields being identical
   // for matching layouts, so the offsets are spelled out as constants matching ToolKit's

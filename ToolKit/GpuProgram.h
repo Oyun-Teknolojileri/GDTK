@@ -34,6 +34,9 @@ namespace ToolKit
     ShaderPtrArray m_shaders;
     MaterialCacheItem m_cachedMaterial; //!< Cached material data for the program.
 
+    /** Aggregated resource declarations from all stage shaders, deduplicated by (type, slot, name). */
+    ShaderResourceArray m_resources;
+
     IGraphicsBackend* m_backend = nullptr; //!< Set by GpuProgramManager on creation.
   };
 

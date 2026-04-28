@@ -484,6 +484,15 @@ namespace ToolKit
     }
   }
 
+  void GLBackend::BindUniformBuffer(const String& name, UniformBuffer* ub)
+  {
+    // Phase 1 stub. GL backend currently binds UBOs by slot (see UniformBuffer::m_slot) inside
+    // existing per-frame / per-draw flush paths; named binding is introduced for the Vulkan
+    // shadow-state path and is intentionally a no-op here until the shared resource model lands.
+    (void) name;
+    (void) ub;
+  }
+
   void GLBackend::Draw(const DrawDesc& desc)
   {
     if (desc.mesh == nullptr)

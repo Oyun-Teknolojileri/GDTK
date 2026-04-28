@@ -250,6 +250,7 @@ namespace ToolKit
   XmlNode* Shader::DeSerializeImp(const SerializationFileInfo& info, XmlNode* parent)
   {
     m_includeFiles.clear();
+    m_resources.clear();
 
     XmlNode* rootNode = parent;
     for (XmlNode* node = rootNode->first_node(); node; node = node->next_sibling())
@@ -289,6 +290,40 @@ namespace ToolKit
         Split(val, ",", def.variants);
 
         m_defineArray.push_back(def);
+      }
+
+      if (strcmp("texture", node->name()) == 0)
+      {
+        ShaderResource res;
+        res.type = ShaderResource::Type::Texture;
+
+        if (XmlAttribute* slotAttr = node->first_attribute("slot"))
+        {
+          res.slot = std::atoi(slotAttr->value());
+        }
+        if (XmlAttribute* nameAttr = node->first_attribute("name"))
+        {
+          res.name = nameAttr->value();
+        }
+
+        m_resources.push_back(res);
+      }
+
+      if (strcmp("uniform", node->name()) == 0)
+      {
+        ShaderResource res;
+        res.type = ShaderResource::Type::UniformBuffer;
+
+        if (XmlAttribute* slotAttr = node->first_attribute("slot"))
+        {
+          res.slot = std::atoi(slotAttr->value());
+        }
+        if (XmlAttribute* nameAttr = node->first_attribute("name"))
+        {
+          res.name = nameAttr->value();
+        }
+
+        m_resources.push_back(res);
       }
 
       if (strcmp("source", node->name()) == 0)
@@ -345,6 +380,18 @@ namespace ToolKit
     m_defineArray.insert(m_defineArray.end(), includeShader->m_defineArray.begin(), includeShader->m_defineArray.end());
     std::sort(m_defineArray.begin(), m_defineArray.end());
     m_defineArray.erase(std::unique(m_defineArray.begin(), m_defineArray.end()), m_defineArray.end());
+
+    // Inherit resource declarations from the included shader, deduplicated by (type, slot, name).
+    for (const ShaderResource& incRes : includeShader->m_resources)
+    {
+      auto same = [&incRes](const ShaderResource& r)
+      { return r.type == incRes.type && r.slot == incRes.slot && r.name == incRes.name; };
+
+      if (std::find_if(m_resources.begin(), m_resources.end(), same) == m_resources.end())
+      {
+        m_resources.push_back(incRes);
+      }
+    }
   }
 
   uint Shader::FindShaderMergeLocation(const String& source)

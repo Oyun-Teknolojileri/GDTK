@@ -23,6 +23,22 @@ namespace ToolKit
     IncludeShader   //!< Shader file to be included other shader files.
   };
 
+  /** Resource binding declaration parsed from shader XML metadata. */
+  struct ShaderResource
+  {
+    enum class Type
+    {
+      Texture,      //!< Sampler / texture binding.
+      UniformBuffer //!< Uniform buffer (UBO) binding.
+    };
+
+    Type type = Type::Texture;
+    int slot  = -1; //!< Binding slot index. -1 means unspecified (name-based lookup).
+    String name;    //!< Identifier as it appears in the shader source.
+  };
+
+  typedef std::vector<ShaderResource> ShaderResourceArray;
+
   /** Struct that holds shader definitions and its variants. */
   struct ShaderDefine
   {
@@ -118,6 +134,9 @@ namespace ToolKit
 
     /** Shader defines are stored in this array. */
     ShaderDefineArray m_defineArray;
+
+    /** Resource bindings (textures + UBOs) declared in the shader XML metadata. */
+    ShaderResourceArray m_resources;
 
    private:
     /**

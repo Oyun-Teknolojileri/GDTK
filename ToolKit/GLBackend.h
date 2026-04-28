@@ -37,6 +37,7 @@ namespace ToolKit
 
     void SubmitPerDrawData(const void* data, size_t size) override;
     void BindTexture(ubyte slot, TexturePtr tex) override;
+    void BindUniformBuffer(const String& name, UniformBuffer* ub) override;
 
     void Draw(const DrawDesc& desc) override;
 

@@ -89,6 +89,7 @@ namespace ToolKit
 
     virtual void SubmitPerDrawData(const void* data, size_t size)                                           = 0;
     virtual void BindTexture(ubyte slot, TexturePtr tex)                                                    = 0;
+    virtual void BindUniformBuffer(const String& name, UniformBuffer* ub)                                   = 0;
 
     virtual void Draw(const DrawDesc& desc)                                                                 = 0;
 

@@ -24,6 +24,29 @@ namespace ToolKit
   {
     m_shaders.push_back(vertex);
     m_shaders.push_back(fragment);
+
+    // Aggregate resource declarations from all stages, deduplicated by (type, slot, name).
+    auto mergeResources = [this](const ShaderPtr& shader)
+    {
+      if (!shader)
+      {
+        return;
+      }
+
+      for (const ShaderResource& res : shader->m_resources)
+      {
+        auto same = [&res](const ShaderResource& r)
+        { return r.type == res.type && r.slot == res.slot && r.name == res.name; };
+
+        if (std::find_if(m_resources.begin(), m_resources.end(), same) == m_resources.end())
+        {
+          m_resources.push_back(res);
+        }
+      }
+    };
+
+    mergeResources(vertex);
+    mergeResources(fragment);
   }
 
   GpuProgram::~GpuProgram()
