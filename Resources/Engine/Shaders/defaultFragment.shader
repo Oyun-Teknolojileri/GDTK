@@ -10,6 +10,10 @@
 	<define name = "ShadowPCF" val="0,4,9,16" />
 	<define name = "highlightCascades" val="0,1" />
 	<define name = "ShadingMode" val="0,1,2,3,4,5" />
+	<texture slot = "0" name = "s_texture0" />
+	<texture slot = "1" name = "s_texture1" />
+	<texture slot = "4" name = "s_texture4" />
+	<texture slot = "9" name = "s_texture9" />
 	<source>
 	<!--
 	#version 300 es

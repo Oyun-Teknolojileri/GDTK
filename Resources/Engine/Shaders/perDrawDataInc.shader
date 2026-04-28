@@ -1,6 +1,7 @@
 <shader>
 	<type name = "includeShader" />
 	<include name = "vulkanCompatInc.shader" />
+	<uniform slot = "6" name = "PerDrawData" />
 	<source>
 	<!--
 #ifndef PER_DRAW_DATA

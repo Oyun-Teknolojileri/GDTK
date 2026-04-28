@@ -2,6 +2,11 @@
 	<type name = "includeShader" />
 	<include name = "vulkanCompatInc.shader" />
 	<include name = "perDrawDataInc.shader" />
+	<uniform slot = "4" name = "GraphicConstatsData" />
+	<uniform slot = "7" name = "DirectionalLightBuffer" />
+	<uniform slot = "8" name = "PointLightCache" />
+	<uniform slot = "9" name = "SpotLightCache" />
+	<uniform slot = "10" name = "DirectionalLightPVMBuffer" />
 	<source>
 	<!--
 

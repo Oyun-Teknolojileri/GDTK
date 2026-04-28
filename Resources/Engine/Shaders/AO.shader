@@ -2,6 +2,7 @@
 	<type name = "includeShader" />
 	<include name = "vulkanCompatInc.shader" />
 	<include name = "perDrawDataInc.shader" />
+	<texture slot = "5" name = "s_texture5" />
 	<source>
 	<!--
 #ifndef AO_SHADER

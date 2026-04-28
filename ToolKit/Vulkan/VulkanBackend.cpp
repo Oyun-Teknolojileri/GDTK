@@ -324,7 +324,13 @@ namespace ToolKit
     // resetting it releases every set in one call, ready for fresh BindTexture/SubmitPerDrawData
     // allocations during this frame's recording (Stage 7d-4).
     m_context->ResetFrameDescriptorPool(m_deleterSlot);
-    m_currentDescriptorSet = VK_NULL_HANDLE;
+
+    // Phase 3: ResetFrameDescriptorPool just released every set in this frame's pool, so the
+    // cache entries that point at those sets are now stale. Drop them before any draw can read.
+    if (m_deleterSlot < m_descriptorCache.size())
+    {
+      m_descriptorCache[m_deleterSlot].clear();
+    }
 
     // The per-draw UBO ring is shared across frames; head=0 reset is also fence-safe because the
     // ring's contents are only read from inside cmd buffers that have now retired (Stage 7d-4b).
@@ -640,6 +646,7 @@ namespace ToolKit
     // Pipeline binding is per-pass: a fresh BindPipeline is required after every EndPass.
     m_pipelineBound = false;
     m_boundProgram  = nullptr;
+    m_shadow.Reset();
     if (m_activePassFb != nullptr)
     {
       VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer();
@@ -751,11 +758,11 @@ namespace ToolKit
     m_boundState    = *state;
     m_pipelineBound = true;
 
-    // Drop any in-progress descriptor set; the next BindTexture / SubmitPerDrawData kicks off
-    // a fresh allocation. Keeping a stale set across BindPipeline boundaries is unsafe \u2014 we
-    // can't tell whether the new pipeline expects different bindings.
-    m_currentDescriptorSet = VK_NULL_HANDLE;
+    // Pending shadow bindings + dynamic offset belong to the previous pipeline. Wipe so the
+    // next draw starts from an empty slate; engine pass code re-issues BindTexture /
+    // BindUniformBuffer for the new pipeline.
     m_currentDynamicOffset = 0;
+    m_shadow.Reset();
   }
 
   void VulkanBackend::SubmitPerDrawData(const void* data, size_t size)
@@ -785,48 +792,20 @@ namespace ToolKit
     }
     std::memcpy(mapped, data, size);
 
-    if (m_currentDescriptorSet == VK_NULL_HANDLE)
-    {
-      const uint frame = m_swapchain->GetCurrentFrameIndex();
-      m_currentDescriptorSet =
-          m_context->AllocateFrameDescriptorSet(frame, m_context->GetGlobalDescriptorSetLayout());
-      if (m_currentDescriptorSet == VK_NULL_HANDLE)
-      {
-        return; // pool exhaustion already logged.
-      }
-      WriteGlobalUbosToSet(m_currentDescriptorSet);
-    }
-
-    // Static descriptor write points at the ring base
-    // dynamic offset on bind. Range = size (the actual payload) so the shader sees only its
-    // own block via std140 access; the ring's leftover bytes are out-of-range on read.
-    VulkanDescriptor::WriteUniformBufferDynamic(
-        m_context->GetDevice(),
-        m_currentDescriptorSet,
-        VulkanBindings::kPerDrawUboBinding,
-        m_context->GetPerDrawUboBuffer(),
-        0,
-        size);
-
-    m_currentDynamicOffset = (uint32_t) offset;
+    // Phase 2: descriptor write deferred to FlushDescriptorState. Just record offset + size in
+    // shadow state so the upcoming Draw can issue a UNIFORM_BUFFER_DYNAMIC write with the right
+    // range and bind dynamicOffsets[0] = m_currentDynamicOffset.
+    m_currentDynamicOffset    = (uint32_t) offset;
+    m_shadow.perDrawSubmitted = true;
+    m_shadow.perDrawSize      = (uint64_t) size;
+    m_shadow.dirty            = true;
   }
 
   void VulkanBackend::BindTexture(ubyte slot, TexturePtr tex)
   {
-    // Stage 7d-4. Writes a COMBINED_IMAGE_SAMPLER into the per-draw descriptor set at
-    // binding=slot (texture slots are NOT shaderc-remapped, so GL slot index = Vulkan binding).
-    // Multiple BindTexture calls between BindPipeline / Draw fold into the same set since we
-    // only allocate when m_currentDescriptorSet is null \u2014 the actual bind happens later in Draw.
-    if (m_swapchain == nullptr || !m_swapchain->IsFrameActive())
-    {
-      return;
-    }
-    if (m_boundProgram == nullptr || m_boundProgram->pipelineLayout == VK_NULL_HANDLE)
-    {
-      // No pipeline bound \u2192 nowhere to attach the descriptor. Engine pass code that calls
-      // BindTexture before BindPipeline (uncommon but possible) silently drops the binding.
-      return;
-    }
+    // Phase 2: only updates the shadow state. Actual descriptor write happens in
+    // FlushDescriptorState (Draw), which folds N BindTexture calls into one allocation and
+    // reuses a previously cached set when the same handle combination repeats.
     if (slot >= VulkanBindings::kTextureBindingCount)
     {
       TK_ERR("BindTexture: slot %u beyond reserved texture binding range (%u)",
@@ -834,46 +813,23 @@ namespace ToolKit
              (unsigned) VulkanBindings::kTextureBindingCount);
       return;
     }
-    if (tex == nullptr)
-    {
-      // Engine occasionally clears a slot by binding nullptr; we model that as "no write" \u2014
-      // descriptor set keeps whatever previous binding it had (or nothing). A real "unbind"
-      // pattern can be added if engine code starts depending on it.
-      return;
-    }
-    auto* vt = static_cast<VulkanTexture*>(tex->m_gpuData.get());
-    if (vt == nullptr || vt->view == VK_NULL_HANDLE || vt->sampler == VK_NULL_HANDLE)
-    {
-      return;
-    }
-
-    if (m_currentDescriptorSet == VK_NULL_HANDLE)
-    {
-      const uint frame = m_swapchain->GetCurrentFrameIndex();
-      m_currentDescriptorSet =
-          m_context->AllocateFrameDescriptorSet(frame, m_context->GetGlobalDescriptorSetLayout());
-      if (m_currentDescriptorSet == VK_NULL_HANDLE)
-      {
-        return; // pool exhaustion already logged.
-      }
-      WriteGlobalUbosToSet(m_currentDescriptorSet);
-    }
-
-    VulkanDescriptor::WriteCombinedImageSampler(
-        m_context->GetDevice(),
-        m_currentDescriptorSet,
-        VulkanBindings::kTextureBindingBase + (uint) slot,
-        vt->view,
-        vt->sampler);
+    m_shadow.boundTextures[slot] = tex;
+    m_shadow.dirty               = true;
   }
 
   void VulkanBackend::BindUniformBuffer(const String& name, UniformBuffer* ub)
   {
-    // Phase 1 stub. The full implementation lands in Phase 2 (ShadowState) + Phase 3
-    // (FlushDescriptorState), where the binding is recorded into the shadow state and the
-    // descriptor write is deferred until Draw.
+    // Phase 2: shadow-state only. Indexed by slot since the shared descriptor layout is
+    // slot-keyed (UBO binding = slot + kUboBindingBase). The name parameter is accepted for
+    // future named lookups but unused here; engine code can still rely on the slot path
+    // populated by UpdateUniformBuffer / m_globalUboRegistry as a fallback in flush.
     (void) name;
-    (void) ub;
+    if (ub == nullptr || ub->m_slot < 0)
+    {
+      return;
+    }
+    m_shadow.boundUniforms[ub->m_slot] = ub;
+    m_shadow.dirty                     = true;
   }
 
   // Fills the vertex-input portion of @p out (vertexStride + attributes + attributeCount) for
@@ -996,14 +952,12 @@ namespace ToolKit
     }
     vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe);
 
-    // ---- Bind descriptor set (Stage 7d-4) ---------------------------------------------------
-    // The global layout includes one UNIFORM_BUFFER_DYNAMIC binding (kPerDrawUboBinding), so
-    // every vkCmdBindDescriptorSets call that touches this layout MUST supply exactly one
-    // dynamic offset. If SubmitPerDrawData ran this draw cycle, m_currentDynamicOffset points
-    // at the freshly-written ring slot; otherwise it stays 0 (shaders that don't read the
-    // per-draw UBO are unaffected; ones that do would see stale data \u2014 acceptable until real
-    // engine shaders land).
-    if (m_currentDescriptorSet != VK_NULL_HANDLE)
+    // ---- Resolve + bind descriptor set (Phase 3) --------------------------------------------
+    // FlushDescriptorState reads m_shadow + m_globalUboRegistry against the bound program's
+    // declared resources, hashes the active handles, and either reuses a cached set or
+    // allocates + writes a fresh one. The dynamic offset still travels via dynamicOffsets[0].
+    VkDescriptorSet flushedSet = FlushDescriptorState();
+    if (flushedSet != VK_NULL_HANDLE)
     {
       const uint32_t dyn = m_currentDynamicOffset;
       vkCmdBindDescriptorSets(cb,
@@ -1011,10 +965,9 @@ namespace ToolKit
                               m_boundProgram->pipelineLayout,
                               0,
                               1,
-                              &m_currentDescriptorSet,
+                              &flushedSet,
                               1,
                               &dyn);
-      m_currentDescriptorSet = VK_NULL_HANDLE;
     }
 
     // ---- Bind geometry + draw ---------------------------------------------------------------
@@ -1944,46 +1897,192 @@ namespace ToolKit
     }
   }
 
-  void VulkanBackend::WriteGlobalUbosToSet(VkDescriptorSet set)
+  // Phase 3: data-driven descriptor flush. Walks the bound program's declared resources,
+  // resolves each to a native handle from m_shadow / m_globalUboRegistry, hashes the result,
+  // and either reuses a cached set or allocates + writes a fresh one.
+  //
+  // Caching policy: the cache is per-frame-in-flight. BeginFrame resets the entire descriptor
+  // pool for that slot (releasing every set), so we also clear the cache there. Within a frame
+  // identical (program, handle-set) tuples reuse the same VkDescriptorSet — multiple draws of
+  // the same material no longer trigger fresh allocations.
+  VkDescriptorSet VulkanBackend::FlushDescriptorState()
   {
-    for (auto& [slot, entry] : m_globalUboRegistry)
+    if (m_swapchain == nullptr || !m_swapchain->IsFrameActive())
     {
-      if (entry.handle == VK_NULL_HANDLE)
-        continue;
-      VulkanDescriptor::WriteUniformBuffer(m_context->GetDevice(),
-                                           set,
-                                           VulkanBindings::UboBindingFor((uint) slot),
-                                           entry.handle,
-                                           0,
-                                           entry.size);
+      return VK_NULL_HANDLE;
+    }
+    if (m_boundProgram == nullptr || m_boundProgram->pipelineLayout == VK_NULL_HANDLE)
+    {
+      return VK_NULL_HANDLE;
     }
 
-    // Fill all image sampler slots with a default 1x1 white texture.
-    // This satisfies Vulkan's requirement that every active COMBINED_IMAGE_SAMPLER in the
-    // descriptor layout is populated with a valid image view/sampler, even if the shader
-    // has dynamic branches that never access them. Subsequent BindTexture calls overwrite
-    // these defaults with the real textures.
-    if (m_dummyTexture && m_dummyTexture->view != VK_NULL_HANDLE)
+    // ---- 1. Resolve declared resources to native handles ------------------------------------
+    struct Resolved
     {
-      VkDescriptorImageInfo imageInfos[VulkanBindings::kTextureBindingCount];
-      for (uint32_t i = 0; i < VulkanBindings::kTextureBindingCount; ++i)
+      uint32_t binding             = 0;
+      ShaderResource::Type type    = ShaderResource::Type::Texture;
+      VkImageView view             = VK_NULL_HANDLE;
+      VkSampler sampler            = VK_NULL_HANDLE;
+      VkBuffer buffer              = VK_NULL_HANDLE;
+      VkDeviceSize bufferSize      = 0;
+      bool isPerDrawDynamic        = false;
+    };
+    std::vector<Resolved> resolved;
+    resolved.reserve(m_boundProgram->resources.size());
+
+    for (const ShaderResource& res : m_boundProgram->resources)
+    {
+      Resolved r{};
+      r.type = res.type;
+
+      if (res.type == ShaderResource::Type::Texture)
       {
-        imageInfos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        imageInfos[i].imageView   = m_dummyTexture->view;
-        imageInfos[i].sampler     = m_dummyTexture->sampler;
+        if (res.slot < 0 || res.slot >= (int) VulkanBindings::kTextureBindingCount)
+        {
+          continue;
+        }
+        r.binding = VulkanBindings::kTextureBindingBase + (uint32_t) res.slot;
+
+        const TexturePtr& tex = m_shadow.boundTextures[res.slot];
+        if (tex && tex->m_gpuData)
+        {
+          auto* vt = static_cast<VulkanTexture*>(tex->m_gpuData.get());
+          if (vt != nullptr && vt->view != VK_NULL_HANDLE && vt->sampler != VK_NULL_HANDLE)
+          {
+            r.view    = vt->view;
+            r.sampler = vt->sampler;
+          }
+        }
+        // Fallback: declared-but-unbound texture slots get the dummy so a shader access into
+        // a slot the engine forgot to bind doesn't trip validation.
+        if (r.view == VK_NULL_HANDLE && m_dummyTexture && m_dummyTexture->view != VK_NULL_HANDLE)
+        {
+          r.view    = m_dummyTexture->view;
+          r.sampler = m_dummyTexture->sampler;
+        }
+        if (r.view == VK_NULL_HANDLE)
+        {
+          continue; // No way to satisfy this binding; skip rather than write garbage.
+        }
       }
+      else // UniformBuffer
+      {
+        if (res.slot == 6) // per-draw dynamic UBO
+        {
+          r.binding             = VulkanBindings::kPerDrawUboBinding;
+          r.isPerDrawDynamic    = true;
+          r.buffer              = m_context->GetPerDrawUboBuffer();
+          r.bufferSize          = m_shadow.perDrawSize;
+          if (r.buffer == VK_NULL_HANDLE || r.bufferSize == 0)
+          {
+            continue; // No payload submitted this draw; safe only if shader doesn't read it.
+          }
+        }
+        else
+        {
+          if (res.slot < 0)
+          {
+            continue;
+          }
+          r.binding = VulkanBindings::UboBindingFor((uint32_t) res.slot);
 
-      VkWriteDescriptorSet write{};
-      write.sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-      write.dstSet           = set;
-      write.dstBinding       = VulkanBindings::kTextureBindingBase;
-      write.dstArrayElement  = 0;
-      write.descriptorCount  = VulkanBindings::kTextureBindingCount;
-      write.descriptorType   = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-      write.pImageInfo       = imageInfos;
-
-      vkUpdateDescriptorSets(m_context->GetDevice(), 1, &write, 0, nullptr);
+          // BindUniformBuffer override wins over the global registry.
+          auto it = m_shadow.boundUniforms.find(res.slot);
+          if (it != m_shadow.boundUniforms.end() && it->second != nullptr && it->second->m_gpuData != nullptr)
+          {
+            auto* gpu = static_cast<VulkanUniformBuffer*>(it->second->m_gpuData.get());
+            if (gpu != nullptr)
+            {
+              r.buffer     = gpu->buffer.handle;
+              r.bufferSize = gpu->buffer.size;
+            }
+          }
+          if (r.buffer == VK_NULL_HANDLE)
+          {
+            auto git = m_globalUboRegistry.find(res.slot);
+            if (git != m_globalUboRegistry.end())
+            {
+              r.buffer     = git->second.handle;
+              r.bufferSize = git->second.size;
+            }
+          }
+          if (r.buffer == VK_NULL_HANDLE)
+          {
+            continue; // No backing buffer; skip the binding.
+          }
+        }
+      }
+      resolved.push_back(r);
     }
+
+    // ---- 2. Hash native handles -------------------------------------------------------------
+    // Mix in the bound program pointer too so unrelated programs that happen to share handles
+    // get distinct cache entries; the resource declaration order is stable per program so the
+    // walk order alone is enough to disambiguate.
+    auto mix = [](uint64_t h, uint64_t v)
+    {
+      v ^= v >> 33;
+      v *= 0xff51afd7ed558ccdULL;
+      v ^= v >> 33;
+      v *= 0xc4ceb9fe1a85ec53ULL;
+      v ^= v >> 33;
+      return h ^ (v + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2));
+    };
+
+    uint64_t hash = mix(0, (uint64_t) (uintptr_t) m_boundProgram);
+    for (const Resolved& r : resolved)
+    {
+      hash = mix(hash, (uint64_t) r.binding);
+      hash = mix(hash, (uint64_t) r.type);
+      hash = mix(hash, (uint64_t) (uintptr_t) r.view);
+      hash = mix(hash, (uint64_t) (uintptr_t) r.sampler);
+      hash = mix(hash, (uint64_t) (uintptr_t) r.buffer);
+      hash = mix(hash, (uint64_t) r.bufferSize);
+      hash = mix(hash, r.isPerDrawDynamic ? 1ULL : 0ULL);
+    }
+
+    // ---- 3. Cache lookup --------------------------------------------------------------------
+    const uint frame = m_swapchain->GetCurrentFrameIndex();
+    if (frame >= m_descriptorCache.size())
+    {
+      return VK_NULL_HANDLE; // shouldn't happen with FRAMES_IN_FLIGHT = 2.
+    }
+    auto& cache = m_descriptorCache[frame];
+    for (const DescriptorCacheEntry& e : cache)
+    {
+      if (e.hash == hash)
+      {
+        return e.set;
+      }
+    }
+
+    // ---- 4. Allocate + write a fresh set ----------------------------------------------------
+    VkDescriptorSet set = m_context->AllocateFrameDescriptorSet(frame, m_context->GetGlobalDescriptorSetLayout());
+    if (set == VK_NULL_HANDLE)
+    {
+      return VK_NULL_HANDLE; // pool exhaustion already logged.
+    }
+
+    for (const Resolved& r : resolved)
+    {
+      if (r.type == ShaderResource::Type::Texture)
+      {
+        VulkanDescriptor::WriteCombinedImageSampler(m_context->GetDevice(), set, r.binding, r.view, r.sampler);
+      }
+      else if (r.isPerDrawDynamic)
+      {
+        VulkanDescriptor::WriteUniformBufferDynamic(
+            m_context->GetDevice(), set, r.binding, r.buffer, 0, r.bufferSize);
+      }
+      else
+      {
+        VulkanDescriptor::WriteUniformBuffer(
+            m_context->GetDevice(), set, r.binding, r.buffer, 0, r.bufferSize);
+      }
+    }
+
+    cache.push_back({hash, set});
+    return set;
   }
 
   GpuResourceDataPtr VulkanBackend::CreateShader(Shader* shader, const String& source)
@@ -2064,10 +2163,11 @@ namespace ToolKit
       return;
     }
 
-    auto data     = std::make_shared<VulkanGpuProgram>();
-    data->context = m_context.get();
-    data->vert    = vertSm->module;
-    data->frag    = fragSm->module;
+    auto data       = std::make_shared<VulkanGpuProgram>();
+    data->context   = m_context.get();
+    data->vert      = vertSm->module;
+    data->frag      = fragSm->module;
+    data->resources = program->m_resources;
 
     // Stage 7d-3: every program references the context's shared kitchen-sink descriptor set
     // layout. Programs whose shaders touch only a subset of bindings still work â€” unused entries

@@ -1,6 +1,7 @@
 <shader>
   <type name = "includeShader" />
   <include name = "vulkanCompatInc.shader" />
+  <uniform slot = "5" name = "CubemapEquirectPassData" />
   <source>
   <!--
 

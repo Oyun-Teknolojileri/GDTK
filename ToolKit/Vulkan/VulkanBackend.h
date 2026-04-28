@@ -9,9 +9,12 @@
 #pragma once
 
 #include "../IGraphicsBackend.h"
+#include "../Shader.h"
+#include "VulkanBindings.h"
 
 #include <vulkan/vulkan.h>
 
+#include <array>
 #include <functional>
 #include <memory>
 #include <unordered_map>
@@ -186,23 +189,66 @@ namespace ToolKit
     struct VulkanGpuProgram* m_boundProgram = nullptr;
     RenderState m_boundState{};
 
-    /** Active per-draw descriptor set (Stage 7d-4). Lazily allocated from the per-frame pool on
-        the first BindTexture / SubmitPerDrawData call following a BindPipeline; reused by every
-        write within the same draw cycle so multiple BindTexture calls fold into a single set.
-        Draw binds it via vkCmdBindDescriptorSets and then null-flips it so the next draw starts
-        a fresh allocation \u2014 Vulkan forbids modifying a set that may still be referenced by an
-        earlier vkCmdDraw. */
-    VkDescriptorSet m_currentDescriptorSet = VK_NULL_HANDLE;
+    /** Pending descriptor bindings recorded by engine-side BindTexture / BindUniformBuffer /
+        SubmitPerDrawData calls between BindPipeline and Draw. FlushDescriptorState (called from
+        Draw) consumes this to allocate-or-reuse a descriptor set via the cache. Reset on
+        BindPipeline so each pipeline binding starts from a clean slate. */
+    struct ShadowState
+    {
+      /** TexturePtr per binding slot. nullptr = unbound (filled with dummy at flush time). */
+      std::array<TexturePtr, VulkanBindings::kTextureBindingCount> boundTextures{};
+
+      /** UBO bindings keyed by GL slot. Engine code currently routes UBOs through
+          UpdateUniformBuffer (slot-keyed), so we mirror that key for now; named binding via
+          BindUniformBuffer overrides whatever the slot map holds. */
+      std::unordered_map<int, UniformBuffer*> boundUniforms;
+
+      /** True after SubmitPerDrawData has appended to the per-draw ring this draw cycle. */
+      bool perDrawSubmitted = false;
+
+      /** Payload size of the most recent SubmitPerDrawData call. Drives the descriptor write's
+          range field for the per-draw dynamic UBO. */
+      uint64_t perDrawSize  = 0;
+
+      /** Set whenever any binding changes. Cleared by FlushDescriptorState after consume. */
+      bool dirty            = false;
+
+      void Reset()
+      {
+        for (auto& t : boundTextures)
+        {
+          t.reset();
+        }
+        boundUniforms.clear();
+        perDrawSubmitted = false;
+        perDrawSize      = 0;
+        dirty            = false;
+      }
+    };
+    ShadowState m_shadow;
+
+    /** Per-frame descriptor set cache. Key = state hash (active binding handles); value =
+        the VkDescriptorSet allocated and written for that exact state. Cleared at BeginFrame
+        when ResetFrameDescriptorPool releases all sets allocated last cycle. */
+    struct DescriptorCacheEntry
+    {
+      uint64_t hash    = 0;
+      VkDescriptorSet set = VK_NULL_HANDLE;
+    };
+    std::array<std::vector<DescriptorCacheEntry>, 2> m_descriptorCache{}; // sized to FRAMES_IN_FLIGHT
+
+    /** Resolves the bound program's resource declarations against m_shadow / m_globalUboRegistry,
+        hashes the active handles, and returns the cached (or freshly allocated + written)
+        descriptor set for the current frame. Returns VK_NULL_HANDLE if no descriptor work is
+        possible (no pipeline / no swapchain / pool exhausted). */
+    VkDescriptorSet FlushDescriptorState();
 
     /** Registry of global (non-per-draw) UBO VkBuffer handles, keyed by GL slot.
         Populated by UpdateUniformBuffer for every slot != 6 (the per-draw dynamic slot).
-        When a fresh descriptor set is allocated, WriteGlobalUbosToSet writes every registered
-        entry so the shader always has valid descriptors for Camera, GraphicConsts, lights, etc. */
+        FlushDescriptorState reads this as the fallback UBO source when the shader's declared
+        UBO slot is not overridden by an explicit BindUniformBuffer call. */
     struct GlobalUboEntry { VkBuffer handle = VK_NULL_HANDLE; uint64_t size = 0; };
     std::unordered_map<int, GlobalUboEntry> m_globalUboRegistry; // GL slot -> entry
-
-    /** Writes all registered global UBOs into @p set immediately after allocation. */
-    void WriteGlobalUbosToSet(VkDescriptorSet set);
 
     /** Dummy texture initialized in InitBackend to fill unused texture slots in descriptor sets. */
     std::shared_ptr<struct VulkanTexture> m_dummyTexture;

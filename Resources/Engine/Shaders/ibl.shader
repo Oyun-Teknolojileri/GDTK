@@ -4,6 +4,13 @@
 	<include name = "pbrCommon.shader" />
 	<include name = "drawDataInc.shader" />
 	<include name = "perDrawDataInc.shader" />
+	<texture slot = "7" name = "s_texture7" />
+	<texture slot = "10" name = "s_texture10" />
+	<texture slot = "11" name = "s_texture11" />
+	<texture slot = "12" name = "s_texture12" />
+	<texture slot = "15" name = "s_texture15" />
+	<texture slot = "16" name = "s_texture16" />
+	<texture slot = "17" name = "s_texture17" />
 	<source>
 	<!--
 

@@ -2,6 +2,8 @@
 	<type name = "includeShader" />
 	<include name = "vulkanCompatInc.shader" />
 	<include name = "perDrawDataInc.shader" />
+	<texture slot = "2" name = "s_texture2" />
+	<texture slot = "3" name = "s_texture3" />
 	<source>
 	<!--
   #ifndef SKIN_SHADER

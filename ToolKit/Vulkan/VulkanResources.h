@@ -8,6 +8,7 @@
 #pragma once
 
 #include "../IGraphicsBackend.h"
+#include "../Shader.h"
 #include "../Types.h"
 #include "VulkanBuffer.h"
 
@@ -201,6 +202,11 @@ namespace ToolKit
     /** Per-program pipeline layout. Built off the context-owned global descriptor set layout, so
         ~VulkanGpuProgram destroys only this handle (not the set layout itself). */
     VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+
+    /** Snapshot of the engine GpuProgram's aggregated resource declarations (textures + UBOs).
+        Cached at CreateGpuProgram time so descriptor flush logic in Draw can iterate required
+        bindings without dereferencing the engine-side GpuProgram. */
+    ShaderResourceArray resources;
 
     ~VulkanGpuProgram() override;
   };
