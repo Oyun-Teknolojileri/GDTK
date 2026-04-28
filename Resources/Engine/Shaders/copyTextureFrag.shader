@@ -1,6 +1,7 @@
 <shader>
 	<type name = "fragmentShader" />
 	<include name = "vulkanCompatInc.shader" />
+	<texture slot = "0" name = "s_texture0" />
 	<source>
 	<!--
 		#version 300 es

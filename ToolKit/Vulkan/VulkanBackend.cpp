@@ -135,10 +135,18 @@ namespace ToolKit
       vkDeviceWaitIdle(m_context->GetDevice());
     }
 
-    // Explicitly reset dummy texture while context allocator is valid
+    // Explicitly reset dummy textures while context allocator is valid
     if (m_dummyTexture)
     {
       m_dummyTexture.reset();
+    }
+    if (m_dummyCubeTexture)
+    {
+      m_dummyCubeTexture.reset();
+    }
+    if (m_dummy2DArrayTexture)
+    {
+      m_dummy2DArrayTexture.reset();
     }
     DrainAllDeleters();
     if (m_testPipeline)
@@ -268,6 +276,90 @@ namespace ToolKit
 
     const uint32_t whitePixels = 0xFFFFFFFF;
     UploadTexelData(m_context.get(), m_dummyTexture.get(), &whitePixels, 4, 0, 0);
+
+    // Cube dummy
+    m_dummyCubeTexture = std::make_shared<VulkanTexture>();
+    m_dummyCubeTexture->context = m_context.get();
+    m_dummyCubeTexture->format = vkFormat;
+    m_dummyCubeTexture->aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+    m_dummyCubeTexture->extent = {1, 1};
+    m_dummyCubeTexture->arrayLayers = 6;
+    m_dummyCubeTexture->mipLevels = 1;
+    m_dummyCubeTexture->isCubemap = true;
+    m_dummyCubeTexture->currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    m_dummyCubeTexture->samples = VK_SAMPLE_COUNT_1_BIT;
+
+    ci.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+    ci.arrayLayers = 6;
+    vmaCreateImage(m_context->GetAllocator(), &ci, &aci, &m_dummyCubeTexture->image, &m_dummyCubeTexture->allocation, nullptr);
+
+    vci.image = m_dummyCubeTexture->image;
+    vci.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
+    vci.subresourceRange.layerCount = 6;
+    vkCreateImageView(m_context->GetDevice(), &vci, nullptr, &m_dummyCubeTexture->view);
+
+    vkCreateSampler(m_context->GetDevice(), &sci, nullptr, &m_dummyCubeTexture->sampler);
+
+    m_context->SubmitOneShot([&](VkCommandBuffer cb) {
+      VkImageMemoryBarrier b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+      b.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+      b.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+      b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+      b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+      b.image = m_dummyCubeTexture->image;
+      b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+      b.subresourceRange.levelCount = 1;
+      b.subresourceRange.layerCount = 6;
+      b.srcAccessMask = 0;
+      b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+      vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &b);
+    });
+    m_dummyCubeTexture->currentLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+    for (int i = 0; i < 6; i++)
+    {
+      UploadTexelData(m_context.get(), m_dummyCubeTexture.get(), &whitePixels, 4, i, 0);
+    }
+
+    // 2D Array dummy
+    m_dummy2DArrayTexture = std::make_shared<VulkanTexture>();
+    m_dummy2DArrayTexture->context = m_context.get();
+    m_dummy2DArrayTexture->format = vkFormat;
+    m_dummy2DArrayTexture->aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+    m_dummy2DArrayTexture->extent = {1, 1};
+    m_dummy2DArrayTexture->arrayLayers = 1;
+    m_dummy2DArrayTexture->mipLevels = 1;
+    m_dummy2DArrayTexture->isCubemap = false;
+    m_dummy2DArrayTexture->currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    m_dummy2DArrayTexture->samples = VK_SAMPLE_COUNT_1_BIT;
+
+    ci.flags = 0;
+    ci.arrayLayers = 1;
+    vmaCreateImage(m_context->GetAllocator(), &ci, &aci, &m_dummy2DArrayTexture->image, &m_dummy2DArrayTexture->allocation, nullptr);
+
+    vci.image = m_dummy2DArrayTexture->image;
+    vci.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+    vci.subresourceRange.layerCount = 1;
+    vkCreateImageView(m_context->GetDevice(), &vci, nullptr, &m_dummy2DArrayTexture->view);
+
+    vkCreateSampler(m_context->GetDevice(), &sci, nullptr, &m_dummy2DArrayTexture->sampler);
+
+    m_context->SubmitOneShot([&](VkCommandBuffer cb) {
+      VkImageMemoryBarrier b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+      b.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+      b.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+      b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+      b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+      b.image = m_dummy2DArrayTexture->image;
+      b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+      b.subresourceRange.levelCount = 1;
+      b.subresourceRange.layerCount = 1;
+      b.srcAccessMask = 0;
+      b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+      vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &b);
+    });
+    m_dummy2DArrayTexture->currentLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    UploadTexelData(m_context.get(), m_dummy2DArrayTexture.get(), &whitePixels, 4, 0, 0);
   }
 
   void VulkanBackend::InitBackend(const BackendInitParams& params)
@@ -1363,11 +1455,16 @@ namespace ToolKit
     }
 
     const bool isDepth = IsDepthFormat(vkFormat);
+    const bool isStencil = IsStencilFormat(vkFormat);
 
     auto data          = std::make_shared<VulkanTexture>();
     data->context      = m_context.get();
     data->format       = vkFormat;
-    data->aspect       = isDepth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+    data->aspect       = 0;
+    if (isDepth) data->aspect |= VK_IMAGE_ASPECT_DEPTH_BIT;
+    if (isStencil) data->aspect |= VK_IMAGE_ASPECT_STENCIL_BIT;
+    if (!isDepth && !isStencil) data->aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+
     data->extent       = {(uint32_t) tex->m_width, (uint32_t) tex->m_height};
     data->arrayLayers  = arrayLayers;
     // Allocate the full mip chain when either the texture opted in (GenerateMipMap) or this is a
@@ -1955,10 +2052,26 @@ namespace ToolKit
         }
         // Fallback: declared-but-unbound texture slots get the dummy so a shader access into
         // a slot the engine forgot to bind doesn't trip validation.
-        if (r.view == VK_NULL_HANDLE && m_dummyTexture && m_dummyTexture->view != VK_NULL_HANDLE)
+        if (r.view == VK_NULL_HANDLE)
         {
-          r.view    = m_dummyTexture->view;
-          r.sampler = m_dummyTexture->sampler;
+          bool isCube = (res.name.find("s_texture") == 0 && (res.slot == 6 || res.slot == 7 || res.slot == 11 || res.slot == 12 || res.slot == 15 || res.slot == 16 || res.slot == 17));
+          bool is2DArray = (res.name.find("s_texture") == 0 && (res.slot == 8 || res.slot == 10));
+
+          if (isCube && m_dummyCubeTexture && m_dummyCubeTexture->view != VK_NULL_HANDLE)
+          {
+            r.view    = m_dummyCubeTexture->view;
+            r.sampler = m_dummyCubeTexture->sampler;
+          }
+          else if (is2DArray && m_dummy2DArrayTexture && m_dummy2DArrayTexture->view != VK_NULL_HANDLE)
+          {
+            r.view    = m_dummy2DArrayTexture->view;
+            r.sampler = m_dummy2DArrayTexture->sampler;
+          }
+          else if (m_dummyTexture && m_dummyTexture->view != VK_NULL_HANDLE)
+          {
+            r.view    = m_dummyTexture->view;
+            r.sampler = m_dummyTexture->sampler;
+          }
         }
         if (r.view == VK_NULL_HANDLE)
         {

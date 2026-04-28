@@ -2,6 +2,8 @@
 	<type name = "fragmentShader" />
 	<include name = "vulkanCompatInc.shader" />
 	<include name = "dofPassDataInc.shader" />
+	<texture slot = "0" name = "s_texture0" />
+	<texture slot = "1" name = "s_texture1" />
 	<source>
 	<!--
 		#version 300 es

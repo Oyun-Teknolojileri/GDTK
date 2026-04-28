@@ -252,6 +252,8 @@ namespace ToolKit
 
     /** Dummy texture initialized in InitBackend to fill unused texture slots in descriptor sets. */
     std::shared_ptr<struct VulkanTexture> m_dummyTexture;
+    std::shared_ptr<struct VulkanTexture> m_dummyCubeTexture;
+    std::shared_ptr<struct VulkanTexture> m_dummy2DArrayTexture;
     void CreateDummyTexture();
 
     /** Per-draw UBO ring offset for the next Draw's vkCmdBindDescriptorSets dynamicOffsets[0]

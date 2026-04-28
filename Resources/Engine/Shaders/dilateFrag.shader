@@ -1,6 +1,8 @@
 <shader>
 	<type name = "fragmentShader" />
 	<include name = "vulkanCompatInc.shader" />
+	<uniform slot = "5" name = "DilatePassData" />
+	<texture slot = "0" name = "u_texture" />
 	<source>
 	<!--
 	#version 300 es

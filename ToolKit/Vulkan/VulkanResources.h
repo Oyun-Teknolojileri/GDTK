@@ -35,6 +35,9 @@ namespace ToolKit
   /** Returns true for depth or depth-stencil formats. */
   bool IsDepthFormat(VkFormat format);
 
+  /** Returns true for stencil or depth-stencil formats. */
+  bool IsStencilFormat(VkFormat format);
+
   /**
    * Backend GPU data for a Texture / RenderTarget / DepthTexture.
    * Stored on Texture::m_gpuData as GpuResourceDataPtr (shared_ptr<GpuResourceData>).

@@ -57,6 +57,20 @@ namespace ToolKit
     }
   }
 
+  bool IsStencilFormat(VkFormat format)
+  {
+    switch (format)
+    {
+      case VK_FORMAT_S8_UINT:
+      case VK_FORMAT_D16_UNORM_S8_UINT:
+      case VK_FORMAT_D24_UNORM_S8_UINT:
+      case VK_FORMAT_D32_SFLOAT_S8_UINT:
+        return true;
+      default:
+        return false;
+    }
+  }
+
   VulkanTexture::~VulkanTexture()
   {
     if (context == nullptr)
@@ -174,7 +188,7 @@ namespace ToolKit
       vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
       pipelineLayout = VK_NULL_HANDLE;
     }
-    // Descriptor set layout is owned by VulkanContext (single shared instance) — do not destroy.
+    // Descriptor set layout is owned by VulkanContext (single shared instance) ï¿½ do not destroy.
   }
 
 } // namespace ToolKit

@@ -3,6 +3,7 @@
 	<include name = "vulkanCompatInc.shader" />
 	<include name = "pbrPrecompute.shader" />
 	<include name = "preFilterEnvMapPassDataInc.shader" />
+	<texture slot = "6" name = "s_texture6" />
 	<source>
 	<!--
 		#version 300 es

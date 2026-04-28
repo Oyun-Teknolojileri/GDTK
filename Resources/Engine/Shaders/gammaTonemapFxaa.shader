@@ -5,6 +5,7 @@
 	<include name = "fxaaFunctions.shader" />
 	<include name = "tonemapFunctions.shader" />
 	<include name = "gammaFunctions.shader" />
+	<texture slot = "0" name = "s_texture0" />
 	<source>
 	<!--
 		#version 300 es

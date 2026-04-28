@@ -5,6 +5,8 @@
 	<define name = "KernelSize" val = "7,3,5" />
 	<define name = "BlurClampEnabled" val = "0,1" />
 	<include name = "gaussBlurPassDataInc.shader" />
+	<texture slot = "0" name = "s_texture0" />
+	<texture slot = "1" name = "s_texture1" />
 	<source>
 	<!--
 		#version 300 es

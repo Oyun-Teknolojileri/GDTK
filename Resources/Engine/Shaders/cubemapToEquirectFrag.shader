@@ -2,6 +2,7 @@
 	<type name = "fragmentShader" />
 	<include name = "vulkanCompatInc.shader" />
 	<include name = "cubemapEquirectPassDataInc.shader" />
+	<texture slot = "6" name = "s_texture6" />
 	<source>
 	<!--
   #version 300 es

@@ -3,6 +3,7 @@
 	<include name = "vulkanCompatInc.shader" />
 	<include name = "normalEncodingInc.shader" />
 	<include name = "ssaoCalcPassDataInc.shader" />
+	<texture slot = "1" name = "s_texture1" />
 	<define name = "KERNEL_SIZE" val = "16,8,32" />
 	<source>
 	<!--

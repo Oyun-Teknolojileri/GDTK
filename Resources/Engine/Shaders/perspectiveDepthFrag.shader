@@ -4,6 +4,7 @@
 	<include name = "VSMCommon.shader" />
 	<include name = "materialCacheInc.shader" />
 	<define name = "DrawAlphaMasked" val="0,1" />
+	<texture slot = "0" name = "s_texture0" />
 	<source>
 	<!--
     #version 300 es
