@@ -1396,12 +1396,12 @@ namespace ToolKit
     mat->GetRenderState()->cullMode = CullingType::TwoSided;
     mat->Init();
 
-    m_oneColorAttachmentFramebuffer->ReconstructIfNeeded({size, size, false, false});
-
     assert(size >= 128 && "Due to RHIConstants::SpecularIBLLods, it can't be lower than this resolution.");
     for (int mip = 0; mip < mipMaps; mip++)
     {
       int mipSize               = (int) (size * std::powf(0.5f, (float) mip));
+
+      m_oneColorAttachmentFramebuffer->ReconstructIfNeeded({mipSize, mipSize, false, false});
 
       // Create a temporary cubemap for each mipmap level
       RenderTargetPtr mipCubeRt = MakeNewPtr<RenderTarget>(mipSize, mipSize, set);
