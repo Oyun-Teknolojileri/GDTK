@@ -1292,6 +1292,8 @@ namespace ToolKit
 
   CubeMapPtr Renderer::GenerateDiffuseEnvMap(CubeMapPtr cubemap, int size)
   {
+    Stats::BeginGpuScope("GenerateDiffuseEnvMap");
+
     const TextureSettings set = {GraphicTypes::TargetCubeMap,
                                  GraphicTypes::UVClampToEdge,
                                  GraphicTypes::UVClampToEdge,
@@ -1362,11 +1364,15 @@ namespace ToolKit
     CubeMapPtr newCubeMap = MakeNewPtr<CubeMap>();
     newCubeMap->Consume(cubeMapRt);
 
+    Stats::EndGpuScope();
+
     return newCubeMap;
   }
 
   CubeMapPtr Renderer::GenerateSpecularEnvMap(CubeMapPtr cubemap, int size, int mipMaps)
   {
+    Stats::BeginGpuScope("GenerateSpecularEnvMap");
+
     const TextureSettings set = {GraphicTypes::TargetCubeMap,
                                  GraphicTypes::UVClampToEdge,
                                  GraphicTypes::UVClampToEdge,
@@ -1412,6 +1418,8 @@ namespace ToolKit
     assert(size >= 128 && "Due to RHIConstants::SpecularIBLLods, it can't be lower than this resolution.");
     for (int mip = 0; mip < mipMaps; mip++)
     {
+      Stats::BeginGpuScope("SpecularEnvMapMip" + std::to_string(mip));
+
       int mipSize               = (int) (size * std::powf(0.5f, (float) mip));
 
       m_oneColorAttachmentFramebuffer->ReconstructIfNeeded({mipSize, mipSize, false, false});
@@ -1457,6 +1465,8 @@ namespace ToolKit
         // Copy color attachment to cubemap's correct mip level and face.
         m_backend->CopyCubemapFaceFromFramebuffer(cubemapRt.get(), i, mip, mipSize, mipSize, nullptr, nullptr);
       }
+
+      Stats::EndGpuScope();
     }
 
     SetFramebuffer(nullptr, GraphicBitFields::None);
@@ -1467,6 +1477,8 @@ namespace ToolKit
 
     CubeMapPtr newCubeMap = MakeNewPtr<CubeMap>();
     newCubeMap->Consume(cubemapRt);
+
+    Stats::EndGpuScope();
 
     return newCubeMap;
   }
