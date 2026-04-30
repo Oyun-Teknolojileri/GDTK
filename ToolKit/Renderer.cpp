@@ -1388,7 +1388,9 @@ namespace ToolKit
     // Don't allow caches bigger than the actual image.
     size                      = glm::min(size, cubemap->m_width);
 
-    RenderTargetPtr cubemapRt = MakeNewPtr<RenderTarget>(size, size, set);
+    TextureSettings cubemapSet = set;
+    cubemapSet.GenerateMipMap  = true;
+    RenderTargetPtr cubemapRt  = MakeNewPtr<RenderTarget>(size, size, cubemapSet);
     cubemapRt->Init();
 
     // Intentionally creating space to fill later. ( mip maps will be calculated for specular ibl )
@@ -1397,12 +1399,21 @@ namespace ToolKit
     // Views for 6 different angles
     CameraPtr cam = MakeNewPtr<Camera>();
     cam->SetLens(glm::radians(90.0f), 1.0f, 0.1f, 10.0f);
+#if TK_VULKAN
+    Mat4 views[] = {glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, 1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, 1.0f, 0.0f))};
+#else
     Mat4 views[]    = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
                        glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
                        glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
                        glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
                        glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
                        glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
+#endif
 
     // Create material
     MaterialPtr mat = MakeNewPtr<Material>();
@@ -1463,7 +1474,13 @@ namespace ToolKit
         EndPass();
 
         // Copy color attachment to cubemap's correct mip level and face.
-        m_backend->CopyCubemapFaceFromFramebuffer(cubemapRt.get(), i, mip, mipSize, mipSize, nullptr, nullptr);
+        m_backend->CopyCubemapFaceFromFramebuffer(cubemapRt.get(),
+                                                  i,
+                                                  mip,
+                                                  mipSize,
+                                                  mipSize,
+                                                  m_oneColorAttachmentFramebuffer.get(),
+                                                  nullptr);
       }
 
       Stats::EndGpuScope();

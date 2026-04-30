@@ -1771,89 +1771,128 @@ namespace ToolKit
                                                      Framebuffer* readFb,
                                                      Framebuffer* writeFb)
   {
-    if (cubemap == nullptr || readFb == nullptr)
+    VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer();
+
+    if (cubemap == nullptr || readFb == nullptr || cb == VK_NULL_HANDLE)
       return;
+
     auto* vDst = static_cast<VulkanTexture*>(cubemap->m_gpuData.get());
     if (vDst == nullptr || vDst->image == VK_NULL_HANDLE)
       return;
 
-    // Source is color attachment 0 of readFb — a 2D render target, layer 0.
     auto* vFb = static_cast<VulkanFramebuffer*>(readFb->m_gpuData.get());
     if (vFb == nullptr || vFb->colorAttachments[0].tex == nullptr)
       return;
+
     VulkanTexture* vSrc = vFb->colorAttachments[0].tex;
     if (vSrc->image == VK_NULL_HANDLE)
       return;
 
-    m_context->SubmitOneShot(
-        [&](VkCommandBuffer cb)
-        {
-          // Transition source: SHADER_READ_ONLY → TRANSFER_SRC
-          VkImageMemoryBarrier srcBarrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
-          srcBarrier.oldLayout                       = vSrc->currentLayout;
-          srcBarrier.newLayout                       = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-          srcBarrier.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-          srcBarrier.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-          srcBarrier.image                           = vSrc->image;
-          srcBarrier.subresourceRange.aspectMask     = vSrc->aspect;
-          srcBarrier.subresourceRange.levelCount     = 1;
-          srcBarrier.subresourceRange.layerCount     = 1;
-          srcBarrier.srcAccessMask                   = VK_ACCESS_SHADER_READ_BIT;
-          srcBarrier.dstAccessMask                   = VK_ACCESS_TRANSFER_READ_BIT;
-          vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                               VK_PIPELINE_STAGE_TRANSFER_BIT,
-                               0, 0, nullptr, 0, nullptr, 1, &srcBarrier);
+    // 1. Kaynak (Source) İmajı Transfer'e Geçir
+    VkImageMemoryBarrier srcBarrier {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+    srcBarrier.oldLayout           = vSrc->currentLayout; // Render'dan çıktığı için genelde SHADER_READ_ONLY olur
+    srcBarrier.newLayout           = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    srcBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    srcBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    srcBarrier.image               = vSrc->image;
+    srcBarrier.subresourceRange.aspectMask     = vSrc->aspect;
+    srcBarrier.subresourceRange.baseMipLevel   = 0;
+    srcBarrier.subresourceRange.levelCount     = 1;
+    srcBarrier.subresourceRange.baseArrayLayer = 0;
+    srcBarrier.subresourceRange.layerCount     = 1;
+    srcBarrier.srcAccessMask                   = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
+    srcBarrier.dstAccessMask                   = VK_ACCESS_TRANSFER_READ_BIT;
 
-          // Transition dst face+mip: SHADER_READ_ONLY → TRANSFER_DST
-          VkImageMemoryBarrier dstBarrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
-          dstBarrier.oldLayout                       = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-          dstBarrier.newLayout                       = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-          dstBarrier.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-          dstBarrier.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-          dstBarrier.image                           = vDst->image;
-          dstBarrier.subresourceRange.aspectMask     = vDst->aspect;
-          dstBarrier.subresourceRange.baseMipLevel   = (uint32_t) mip;
-          dstBarrier.subresourceRange.levelCount     = 1;
-          dstBarrier.subresourceRange.baseArrayLayer = (uint32_t) face;
-          dstBarrier.subresourceRange.layerCount     = 1;
-          dstBarrier.srcAccessMask                   = VK_ACCESS_SHADER_READ_BIT;
-          dstBarrier.dstAccessMask                   = VK_ACCESS_TRANSFER_WRITE_BIT;
-          vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                               VK_PIPELINE_STAGE_TRANSFER_BIT,
-                               0, 0, nullptr, 0, nullptr, 1, &dstBarrier);
+    vkCmdPipelineBarrier(cb,
+                         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         0,
+                         0,
+                         nullptr,
+                         0,
+                         nullptr,
+                         1,
+                         &srcBarrier);
 
-          // Copy
-          VkImageCopy region{};
-          region.srcSubresource.aspectMask     = vSrc->aspect;
-          region.srcSubresource.layerCount     = 1;
-          region.dstSubresource.aspectMask     = vDst->aspect;
-          region.dstSubresource.mipLevel       = (uint32_t) mip;
-          region.dstSubresource.baseArrayLayer = (uint32_t) face;
-          region.dstSubresource.layerCount     = 1;
-          region.extent                        = {(uint32_t) width, (uint32_t) height, 1};
-          vkCmdCopyImage(cb,
-                         vSrc->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                         vDst->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                         1, &region);
+    // 2. Hedef (Dest) Küp Yüzeyini Transfer'e Geçir
+    VkImageMemoryBarrier dstBarrier {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+    dstBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED; // Üzerine komple yazacağımız için eski verinin önemi yok
+    dstBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    dstBarrier.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+    dstBarrier.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+    dstBarrier.image                           = vDst->image;
+    dstBarrier.subresourceRange.aspectMask     = vDst->aspect;
+    dstBarrier.subresourceRange.baseMipLevel   = (uint32_t) mip;
+    dstBarrier.subresourceRange.levelCount     = 1;
+    dstBarrier.subresourceRange.baseArrayLayer = (uint32_t) face;
+    dstBarrier.subresourceRange.layerCount     = 1;
+    dstBarrier.srcAccessMask                   = 0;
+    dstBarrier.dstAccessMask                   = VK_ACCESS_TRANSFER_WRITE_BIT;
 
-          // Transition source back
-          srcBarrier.oldLayout    = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-          srcBarrier.newLayout    = vSrc->currentLayout;
-          srcBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-          srcBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-          vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                               0, 0, nullptr, 0, nullptr, 1, &srcBarrier);
+    vkCmdPipelineBarrier(cb,
+                         VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         0,
+                         0,
+                         nullptr,
+                         0,
+                         nullptr,
+                         1,
+                         &dstBarrier);
 
-          // Transition dst back: TRANSFER_DST → SHADER_READ_ONLY
-          dstBarrier.oldLayout    = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-          dstBarrier.newLayout    = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-          dstBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-          dstBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-          vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                               0, 0, nullptr, 0, nullptr, 1, &dstBarrier);
-        });
+    // 3. Kopyalama İşlemi
+    VkImageCopy region {};
+    region.srcSubresource.aspectMask     = vSrc->aspect;
+    region.srcSubresource.mipLevel       = 0;
+    region.srcSubresource.baseArrayLayer = (uint32_t) face;
+    region.srcSubresource.layerCount     = 1;
+    region.dstSubresource.aspectMask     = vDst->aspect;
+    region.dstSubresource.mipLevel       = (uint32_t) mip;
+    region.dstSubresource.baseArrayLayer = (uint32_t) face;
+    region.dstSubresource.layerCount     = 1;
+    region.extent                        = {(uint32_t) width, (uint32_t) height, 1};
+
+    vkCmdCopyImage(cb,
+                   vSrc->image,
+                   VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                   vDst->image,
+                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                   1,
+                   &region);
+
+    // 4. Kaynağı Eski Haline (Veya Okunabilir Hale) Geri Döndür
+    srcBarrier.oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    srcBarrier.newLayout     = vSrc->currentLayout; // Veya VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+    srcBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    srcBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+    vkCmdPipelineBarrier(cb,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                         0,
+                         0,
+                         nullptr,
+                         0,
+                         nullptr,
+                         1,
+                         &srcBarrier);
+
+    // 5. Hedefi (Küp Yüzeyini) Shader'da Okunacak Hale Getir
+    dstBarrier.oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    dstBarrier.newLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    dstBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    dstBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+    vkCmdPipelineBarrier(cb,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                         0,
+                         0,
+                         nullptr,
+                         0,
+                         nullptr,
+                         1,
+                         &dstBarrier);
   }
 
   void VulkanBackend::CreateMesh(Mesh* mesh)

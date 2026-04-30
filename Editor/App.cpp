@@ -635,7 +635,7 @@ namespace ToolKit
       }
 
       // Clear all dependencies to old game.
-      ClearSession();
+      ClearSession(false);
 
       // Load new code.
       if (PluginManager* pluginMan = GetPluginManager())
@@ -709,12 +709,15 @@ namespace ToolKit
       }
     }
 
-    void App::ClearSession()
+    void App::ClearSession(bool flushRenderTasks)
     {
       // Clear queued render tasks.
-      GetRenderSystem()->FlushRenderTasks();
-      GetRenderSystem()->FlushGpuPrograms();
-      GetWorkerManager()->Flush();
+      if (flushRenderTasks)
+      {
+        GetRenderSystem()->FlushRenderTasks();
+        GetRenderSystem()->FlushGpuPrograms();
+        GetWorkerManager()->Flush();
+      }
 
       // Clear all the object references from the scene about to be destroyed.
       if (OutlinerWindowPtr wnd = GetOutliner())
@@ -1247,16 +1250,6 @@ namespace ToolKit
       {
         ResetUI();
       }
-
-      // Clear window before restoring the window.
-      RenderSystem* rsys = GetRenderSystem();
-      rsys->AddRenderTask({[](Renderer* renderer) -> void
-                           {
-                             renderer->SetFramebuffer(nullptr, GraphicBitFields::AllBits);
-                             EditorBackendBindings::PresentBackbuffer(g_window);
-                           }});
-
-      rsys->FlushRenderTasks();
 
       // Restore app window.
       UVec2 size = GetRenderSystem()->GetAppWindowSize();

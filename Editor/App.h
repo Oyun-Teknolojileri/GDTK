@@ -57,7 +57,7 @@ namespace ToolKit
        * Clears all the data cached for current project / scene. Required to clear
        * all referenced objects before switching projects or stopping the play session.
        */
-      void ClearSession();
+      void ClearSession(bool flushRenderTasks = true);
 
       /**
        * Clears all the objects created in PIE session.
