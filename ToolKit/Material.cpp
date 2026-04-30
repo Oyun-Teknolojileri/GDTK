@@ -427,44 +427,40 @@ namespace ToolKit
 
   void Material::MakeSureItsDataTexture(TexturePtr texture)
   {
+    // TODO this function should be gone! every texture should be loaded & created as it should be!
+    return;
+
     if (texture == nullptr)
     {
       return;
     }
 
-    TextureSettings dataSet;
-    dataSet.InternalFormat         = GraphicTypes::FormatRGB16F;
-    dataSet.Format                 = GraphicTypes::FormatRGBA;
+    const TextureSettings& current = texture->Settings();
+    TextureSettings dataSet        = current;
     dataSet.MinFilter              = GraphicTypes::SampleLinearMipmapLinear;
     dataSet.MagFilter              = GraphicTypes::SampleLinear;
     dataSet.WarpS                  = GraphicTypes::UVRepeat;
     dataSet.WarpT                  = GraphicTypes::UVRepeat;
     dataSet.GenerateMipMap         = true;
 
-    const TextureSettings& current = texture->Settings();
-    if (current.InternalFormat == dataSet.InternalFormat && current.MinFilter == dataSet.MinFilter &&
-        current.WarpS == dataSet.WarpS && current.WarpT == dataSet.WarpT &&
-        current.GenerateMipMap == dataSet.GenerateMipMap)
+    if (current.MinFilter == dataSet.MinFilter && current.WarpS == dataSet.WarpS &&
+        current.WarpT == dataSet.WarpT && current.GenerateMipMap == dataSet.GenerateMipMap)
     {
       if (texture->m_initiated)
       {
-        // If the texture is already initiated and has the correct settings, no need to reinit.
         return;
       }
     }
 
-    // Store flush status.
     bool flush = current.Type == GraphicTypes::TypeFloat ? texture->m_imagef == nullptr : texture->m_image == nullptr;
 
     texture->UnInit();
     if (flush)
     {
-      // In case of flush, reload.
       texture->m_loaded = false;
       texture->Load();
     }
 
-    dataSet.Type = current.Type; // Preserve the type (float or unsigned byte).
     texture->Settings(dataSet);
     texture->Init(flush);
   }

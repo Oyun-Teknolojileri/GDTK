@@ -177,7 +177,9 @@ namespace ToolKit
     // Sanity checks.
     if (!m_initiated)
     {
-      TK_ERR("Initialize the shader before setting a value for a define.");
+      //TK_ERR("Initialize the shader before setting a value for a define.");
+      TK_ERR("Initialize the shader before setting a value for a define. (%s)", GetFile().c_str());
+
       return;
     }
 
