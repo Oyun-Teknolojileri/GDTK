@@ -427,9 +427,6 @@ namespace ToolKit
 
   void Material::MakeSureItsDataTexture(TexturePtr texture)
   {
-    // TODO this function should be gone! every texture should be loaded & created as it should be!
-    return;
-
     if (texture == nullptr)
     {
       return;
