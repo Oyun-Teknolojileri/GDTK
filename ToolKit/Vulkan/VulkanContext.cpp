@@ -24,21 +24,33 @@ namespace ToolKit
   static const char* kValidationLayerName = "VK_LAYER_KHRONOS_validation";
 
   static VKAPI_ATTR VkBool32 VKAPI_CALL DebugMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
-                                                               VkDebugUtilsMessageTypeFlagsEXT,
+                                                               VkDebugUtilsMessageTypeFlagsEXT type,
                                                                const VkDebugUtilsMessengerCallbackDataEXT* data,
                                                                void*)
   {
+    const char* typeStr = "GENERAL";
+    if (type & VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT)
+    {
+      typeStr = "VALIDATION";
+    }
+    else if (type & VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT)
+    {
+      typeStr = "PERFORMANCE";
+    }
+
+    const char* idName = data->pMessageIdName ? data->pMessageIdName : "None";
+
     if (severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
     {
-      TK_ERR("[VK] %s", data->pMessage);
+      TK_ERR("[VK-%s] %s: %s", typeStr, idName, data->pMessage);
     }
     else if (severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
     {
-      TK_WRN("[VK] %s", data->pMessage);
+      TK_WRN("[VK-%s] %s: %s", typeStr, idName, data->pMessage);
     }
     else
     {
-      TK_LOG("[VK] %s", data->pMessage);
+      TK_LOG("[VK-%s] %s: %s", typeStr, idName, data->pMessage);
     }
     return VK_FALSE;
   }
@@ -52,6 +64,22 @@ namespace ToolKit
     for (const auto& l : layers)
     {
       if (strcmp(l.layerName, kValidationLayerName) == 0)
+      {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static bool InstanceExtensionAvailable(const char* name)
+  {
+    uint32_t count = 0;
+    vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr);
+    std::vector<VkExtensionProperties> extensions(count);
+    vkEnumerateInstanceExtensionProperties(nullptr, &count, extensions.data());
+    for (const auto& e : extensions)
+    {
+      if (strcmp(e.extensionName, name) == 0)
       {
         return true;
       }
@@ -226,9 +254,15 @@ namespace ToolKit
     app.apiVersion         = VK_API_VERSION_1_3;
 
     std::vector<const char*> extensions = requiredExtensions;
+    bool validationFeaturesSupported   = false;
     if (m_validationEnabled)
     {
       extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+      if (InstanceExtensionAvailable(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME))
+      {
+        extensions.push_back(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME);
+        validationFeaturesSupported = true;
+      }
     }
 
     VkInstanceCreateInfo ci{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
@@ -241,6 +275,34 @@ namespace ToolKit
     {
       ci.enabledLayerCount   = 1;
       ci.ppEnabledLayerNames = layers;
+    }
+
+    // pNext chain for validation features and early debug messenger
+    VkValidationFeaturesEXT validationFeatures{VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT};
+    VkValidationFeatureEnableEXT enabledFeatures[] = {
+        VK_VALIDATION_FEATURE_ENABLE_BEST_PRACTICES_EXT,
+        VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT};
+
+    VkDebugUtilsMessengerCreateInfoEXT debugCi{VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
+
+    if (m_validationEnabled)
+    {
+      debugCi.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+      debugCi.messageType     = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+                            VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+      debugCi.pfnUserCallback = DebugMessengerCallback;
+
+      if (validationFeaturesSupported)
+      {
+        validationFeatures.enabledValidationFeatureCount = 2;
+        validationFeatures.pEnabledValidationFeatures    = enabledFeatures;
+        validationFeatures.pNext                         = &debugCi;
+        ci.pNext                                         = &validationFeatures;
+      }
+      else
+      {
+        ci.pNext = &debugCi;
+      }
     }
 
     VkResult r = vkCreateInstance(&ci, nullptr, &m_instance);
@@ -263,7 +325,9 @@ namespace ToolKit
     }
 
     VkDebugUtilsMessengerCreateInfoEXT ci{VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
-    ci.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+    ci.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
+                         VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
+                         VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
                          VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
     ci.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
                      VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;

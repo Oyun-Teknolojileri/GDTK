@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2019-2025 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
@@ -1471,7 +1471,7 @@ namespace ToolKit
     // cubemap â€” the IBL prefilter pipeline always writes to every mip of the environment cubemap
     // regardless of the flag, so we must back it with real mip storage. Depth targets don't need
     // mip chains.
-    const bool wantsMipChain = !isDepth && (settings.GenerateMipMap || isCubemap);
+    const bool wantsMipChain = !isDepth && settings.GenerateMipMap;
     data->mipLevels    = wantsMipChain ? (uint32_t) tex->CalculateMipmapLevels() : 1u;
     data->isCubemap    = isCubemap;
     data->currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -1940,7 +1940,7 @@ namespace ToolKit
     auto data     = std::make_shared<VulkanUniformBuffer>();
     data->context = m_context.get();
     data->buffer  = VulkanBuffer::CreateHostVisibleMapped(m_context.get(),
-                                                          VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                                                          VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                                                           (VkDeviceSize) size);
     if (data->buffer.handle == VK_NULL_HANDLE)
     {
@@ -1982,7 +1982,39 @@ namespace ToolKit
     }
     // HOST_COHERENT memory â€” write becomes visible to the device on the next vkQueueSubmit
     // without an explicit vkFlushMappedMemoryRanges call.
-    std::memcpy(gpu->buffer.mapped, data, (size_t) size);
+    // Check if we are actively recording a frame.
+    VkCommandBuffer cb = VK_NULL_HANDLE;
+    if (m_swapchain && m_swapchain->IsFrameActive())
+    {
+      cb = m_swapchain->GetCurrentCommandBuffer();
+    }
+
+    if (cb != VK_NULL_HANDLE)
+    {
+      // Synchronize the UBO update to the draw calls currently in flight in this command buffer.
+      // Barrier 1: Ensure previous shader reads of this UBO finish before the update overwrites it.
+      VkMemoryBarrier preBarrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+      preBarrier.srcAccessMask = VK_ACCESS_UNIFORM_READ_BIT;
+      preBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+      vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 1, &preBarrier, 0, nullptr, 0, nullptr);
+
+      // Perform the update inline in the command buffer. This handles multiple updates to the same UBO in one frame gracefully.
+      vkCmdUpdateBuffer(cb, gpu->buffer.handle, 0, size, data);
+
+      // Barrier 2: Ensure the transfer finishes before any subsequent draw call reads from this UBO.
+      VkMemoryBarrier postBarrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+      postBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+      postBarrier.dstAccessMask = VK_ACCESS_UNIFORM_READ_BIT;
+      vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 1, &postBarrier, 0, nullptr, 0, nullptr);
+
+      // Also keep the mapped memory up to date just in case it is read back or used when frame is inactive.
+      std::memcpy(gpu->buffer.mapped, data, (size_t) size);
+    }
+    else
+    {
+      // Not recording: just write directly to the mapped host memory.
+      std::memcpy(gpu->buffer.mapped, data, (size_t) size);
+    }
 
     // Register non-perDraw UBOs for global descriptor write.
     // Slot 6 = per-draw dynamic UBO (ring buffer path); all other slots are static global UBOs
