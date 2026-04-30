@@ -537,7 +537,6 @@
     <ClInclude Include="ShadowAtlas.h">
       <Filter>Render</Filter>
     </ClInclude>
-    <ClInclude Include="PerDrawUniforms.h" />
     <ClInclude Include="Vulkan\TestRenderPass.h">
       <Filter>Render\Vulkan</Filter>
     </ClInclude>
@@ -574,7 +573,12 @@
     <ClInclude Include="Vulkan\VulkanSwapchain.h">
       <Filter>Render\Vulkan</Filter>
     </ClInclude>
-    <ClInclude Include="Vulkan\VulkanBindings.h" />
+    <ClInclude Include="PerDrawUniforms.h">
+      <Filter>Render</Filter>
+    </ClInclude>
+    <ClInclude Include="Vulkan\VulkanBindings.h">
+      <Filter>Render\Vulkan</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Entities">
