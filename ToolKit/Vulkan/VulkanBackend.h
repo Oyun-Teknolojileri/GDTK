@@ -172,10 +172,17 @@ namespace ToolKit
     bool m_needsRecreate = false;
     Vec4 m_clearColor    = Vec4(0.4f, 0.0f, 0.4f, 1.0f); // Purple — easy to spot in stage 1e tests.
 
-    /** Non-null while an offscreen render pass is recording on the current command buffer.
-        nullptr when either no pass is active or the swapchain pass is the active one (the
-        swapchain tracks its own pass-active flag). */
+    /** Non-null between StartPass and FinishPass when an offscreen framebuffer is the active
+        pass target. nullptr when no pass is configured or the swapchain pass is pending. */
     struct VulkanFramebuffer* m_activePassFb = nullptr;
+
+    /** Stores the last PassDesc supplied to StartPass; consumed by Draw (offscreen path) to
+        reconstruct the VkRenderPassBeginInfo for the per-draw render pass instance. */
+    PassDesc m_pendingPassDesc{};
+
+    /** True only while an offscreen render pass instance is actively recording inside a Draw
+        call. Used to guard operations that are illegal inside a render pass (resolve, blit). */
+    bool m_rpActive = false;
 
     /** True between BindPipeline() success and the next FinishPass(). Draw() bails when false so
         that Stage 7a can land before BindPipeline (Stage 7c) without recording bare draws into

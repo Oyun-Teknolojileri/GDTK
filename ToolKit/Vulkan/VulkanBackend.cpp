@@ -657,6 +657,9 @@ namespace ToolKit
     if (desc.target == nullptr)
     {
       // Backbuffer pass â€” drive the swapchain's render pass with the caller's clear color.
+      // Backbuffer pass — open the swapchain render pass immediately so external callers
+      // (e.g. ImGui_ImplVulkan_RenderDrawData) can record commands without going through Draw.
+      m_pendingPassDesc = desc;
       m_swapchain->BeginSwapchainPass(desc.clearColor);
       return;
     }
@@ -679,54 +682,9 @@ namespace ToolKit
       }
     }
 
-    // Clear value array â€” color attachments sÄ±rasÄ±nda, sonra (varsa) depth.
-    std::vector<VkClearValue> clears;
-    clears.reserve(VulkanFramebuffer::kMaxColorAttachments + 1);
-    for (int i = 0; i < VulkanFramebuffer::kMaxColorAttachments; ++i)
-    {
-      if (fbData->colorAttachments[i].view != VK_NULL_HANDLE)
-      {
-        VkClearValue cv{};
-        cv.color = {{desc.clearColor.r, desc.clearColor.g, desc.clearColor.b, desc.clearColor.a}};
-        clears.push_back(cv);
-      }
-    }
-    if (fbData->depthAttachment.view != VK_NULL_HANDLE)
-    {
-      VkClearValue cv{};
-      cv.depthStencil = {1.0f, 0};
-      clears.push_back(cv);
-    }
-
-    VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer();
-
-    VkRenderPassBeginInfo rpbi{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-    rpbi.renderPass        = fbData->renderPass;
-    rpbi.framebuffer       = fbData->framebuffer;
-    rpbi.renderArea.offset = {0, 0};
-    rpbi.renderArea.extent = {fbData->width, fbData->height};
-    rpbi.clearValueCount   = (uint32_t) clears.size();
-    rpbi.pClearValues      = clears.empty() ? nullptr : clears.data();
-    vkCmdBeginRenderPass(cb, &rpbi, VK_SUBPASS_CONTENTS_INLINE);
-
-    // Negative viewport height flips the Y axis so screen-space matches GL: clip-space Y up
-    // maps to framebuffer Y up. Without this, geometry appears Y-flipped AND back-face culling
-    // rejects every triangle (CCW front-face becomes CW in screen space). Vulkan 1.1+ core.
-    VkViewport vp{};
-    vp.x        = 0.0f;
-    vp.y        = (float) fbData->height;
-    vp.width    = (float) fbData->width;
-    vp.height   = -(float) fbData->height;
-    vp.minDepth = 0.0f;
-    vp.maxDepth = 1.0f;
-    vkCmdSetViewport(cb, 0, 1, &vp);
-
-    VkRect2D sc{};
-    sc.offset = {0, 0};
-    sc.extent = {fbData->width, fbData->height};
-    vkCmdSetScissor(cb, 0, 1, &sc);
-
-    m_activePassFb = fbData;
+    // Store pass description so Draw can open a render pass instance before each draw call.
+    m_pendingPassDesc = desc;
+    m_activePassFb    = fbData;
   }
 
   void VulkanBackend::FinishPass()
@@ -738,26 +696,15 @@ namespace ToolKit
     // Pipeline binding is per-pass: a fresh BindPipeline is required after every FinishPass.
     m_pipelineBound = false;
     m_boundProgram  = nullptr;
+    m_rpActive      = false;
     m_shadow.Reset();
     if (m_activePassFb != nullptr)
     {
-      VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer();
-      vkCmdEndRenderPass(cb);
-      // RP final layout'larÄ±nÄ± cache'ledikleri texture'lara yansÄ±t.
-      for (int i = 0; i < VulkanFramebuffer::kMaxColorAttachments; ++i)
-      {
-        if (auto* tex = m_activePassFb->colorAttachments[i].tex)
-        {
-          tex->currentLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        }
-      }
-      if (auto* tex = m_activePassFb->depthAttachment.tex)
-      {
-        tex->currentLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-      }
+      // Offscreen RP instances are closed per-Draw; here we only reset pass tracking state.
       m_activePassFb = nullptr;
       return;
     }
+    // Swapchain pass was opened in StartPass and must be explicitly closed here.
     m_swapchain->EndSwapchainPass();
   }
 
@@ -971,8 +918,8 @@ namespace ToolKit
     {
       return;
     }
-    // Gate 2: a render pass instance must be active. vkCmdDrawIndexed outside a render pass
-    // is a validation error.
+    // Gate 2: a pass must have been configured via StartPass. The render pass instance itself
+    // is opened below, just before vkCmdBindPipeline.
     if (m_activePassFb == nullptr && !m_swapchain->IsSwapchainPassActive())
     {
       return;
@@ -1042,6 +989,60 @@ namespace ToolKit
       // Pipeline build failure already logged inside GetOrCreate.
       return;
     }
+
+    // ---- Begin render pass instance (offscreen only) -------------------------------------
+    // For offscreen passes the RP instance is opened here and closed after the draw call so
+    // begin/end tightly bracket each set of draw commands. The swapchain pass is opened in
+    // StartPass (so ImGui can record directly) and closed in FinishPass.
+    if (m_activePassFb != nullptr)
+    {
+      std::vector<VkClearValue> clears;
+      clears.reserve(VulkanFramebuffer::kMaxColorAttachments + 1);
+      for (int i = 0; i < VulkanFramebuffer::kMaxColorAttachments; ++i)
+      {
+        if (m_activePassFb->colorAttachments[i].view != VK_NULL_HANDLE)
+        {
+          VkClearValue cv{};
+          cv.color = {{m_pendingPassDesc.clearColor.r,
+                       m_pendingPassDesc.clearColor.g,
+                       m_pendingPassDesc.clearColor.b,
+                       m_pendingPassDesc.clearColor.a}};
+          clears.push_back(cv);
+        }
+      }
+      if (m_activePassFb->depthAttachment.view != VK_NULL_HANDLE)
+      {
+        VkClearValue cv{};
+        cv.depthStencil = {1.0f, 0};
+        clears.push_back(cv);
+      }
+
+      VkRenderPassBeginInfo rpbi{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
+      rpbi.renderPass        = m_activePassFb->renderPass;
+      rpbi.framebuffer       = m_activePassFb->framebuffer;
+      rpbi.renderArea.offset = {0, 0};
+      rpbi.renderArea.extent = {m_activePassFb->width, m_activePassFb->height};
+      rpbi.clearValueCount   = (uint32_t) clears.size();
+      rpbi.pClearValues      = clears.empty() ? nullptr : clears.data();
+      vkCmdBeginRenderPass(cb, &rpbi, VK_SUBPASS_CONTENTS_INLINE);
+
+      // Negative viewport height flips Y so screen-space matches GL conventions.
+      VkViewport vp{};
+      vp.x        = 0.0f;
+      vp.y        = (float) m_activePassFb->height;
+      vp.width    = (float) m_activePassFb->width;
+      vp.height   = -(float) m_activePassFb->height;
+      vp.minDepth = 0.0f;
+      vp.maxDepth = 1.0f;
+      vkCmdSetViewport(cb, 0, 1, &vp);
+
+      VkRect2D sc{};
+      sc.offset = {0, 0};
+      sc.extent = {m_activePassFb->width, m_activePassFb->height};
+      vkCmdSetScissor(cb, 0, 1, &sc);
+      m_rpActive = true;
+    }
+
     vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe);
 
     // ---- Resolve + bind descriptor set (Phase 3) --------------------------------------------
@@ -1076,6 +1077,25 @@ namespace ToolKit
     else
     {
       vkCmdDraw(cb, desc.elementCount, desc.instanceCount, 0, 0);
+    }
+
+    // ---- End render pass instance (offscreen only) ----------------------------------------
+    if (m_activePassFb != nullptr)
+    {
+      vkCmdEndRenderPass(cb);
+      // Update cached image layouts to match the render pass's final layout declarations.
+      for (int i = 0; i < VulkanFramebuffer::kMaxColorAttachments; ++i)
+      {
+        if (auto* tex = m_activePassFb->colorAttachments[i].tex)
+        {
+          tex->currentLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        }
+      }
+      if (auto* tex = m_activePassFb->depthAttachment.tex)
+      {
+        tex->currentLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+      }
+      m_rpActive = false;
     }
   }
 
@@ -1227,10 +1247,10 @@ namespace ToolKit
     {
       return;
     }
-    if (m_activePassFb != nullptr || m_swapchain->IsSwapchainPassActive())
+    if (m_rpActive)
     {
       // Spec forbids vkCmdBlitImage / vkCmdResolveImage inside a render pass instance. Engine
-      // code calls this between passes (after FinishPass) so this guard is purely defensive â€”
+      // code calls this between passes (after FinishPass) so this guard is purely defensive
       // log so a misuse surfaces during development.
       TK_ERR("ResolveFramebuffer called inside an active render pass â€” skipped");
       return;
@@ -1302,9 +1322,9 @@ namespace ToolKit
     {
       return;
     }
-    if (m_activePassFb != nullptr || m_swapchain->IsSwapchainPassActive())
+    if (m_rpActive)
     {
-      TK_ERR("CopyFramebuffer called inside an active render pass â€” skipped");
+      TK_ERR("CopyFramebuffer called inside an active render pass — skipped");
       return;
     }
     if (src == nullptr)
@@ -2028,7 +2048,13 @@ namespace ToolKit
       cb = m_swapchain->GetCurrentCommandBuffer();
     }
 
-    if (cb != VK_NULL_HANDLE)
+    // vkCmdUpdateBuffer and vkCmdPipelineBarrier (without self-dependency) are illegal inside
+    // a render pass instance. If any pass is currently recording, fall through to the memcpy
+    // path — HOST_COHERENT mapped memory is visible to the GPU on the next queue submission
+    // without any explicit flush, so the data is guaranteed to arrive before the draw.
+    const bool insideRenderPass = m_rpActive || (m_swapchain && m_swapchain->IsSwapchainPassActive());
+
+    if (cb != VK_NULL_HANDLE && !insideRenderPass)
     {
       // Synchronize the UBO update to the draw calls currently in flight in this command buffer.
       // Barrier 1: Ensure previous shader reads of this UBO finish before the update overwrites it.
