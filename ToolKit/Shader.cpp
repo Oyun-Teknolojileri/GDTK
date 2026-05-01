@@ -307,6 +307,12 @@ namespace ToolKit
         {
           res.name = nameAttr->value();
         }
+        if (XmlAttribute* vtAttr = node->first_attribute("viewType"))
+        {
+          StringView vt = vtAttr->value();
+          if (vt == "2darray") res.viewType = ShaderResource::ViewType::Tex2DArray;
+          else if (vt == "cube") res.viewType = ShaderResource::ViewType::TexCube;
+        }
 
         m_resources.push_back(res);
       }

@@ -5,7 +5,7 @@
 	<include name = "shadow.shader" />
 	<include name = "perDrawDataInc.shader" />
 	<define name = "highlightCascades" val="0,1" />
-	<texture slot = "8" name = "s_texture8" />
+	<texture slot = "8" name = "s_texture8" viewType = "2darray" />
 	<texture slot = "13" name = "s_texture13" />
 	<source>
 	<!--

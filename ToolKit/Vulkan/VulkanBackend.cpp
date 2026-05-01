@@ -756,22 +756,132 @@ namespace ToolKit
 
   void VulkanBackend::ClearBuffer(GraphicBitFields fields, const Vec4& color)
   {
-    // Engine pass code clears via PassDesc::clearBits + clearColor at StartPass time, which is
-    // mapped to VkRenderPass loadOp=CLEAR â€” the GPU clear happens implicitly at pass start. A
-    // mid-pass ClearBuffer is rare; if a pass actually needs it, vkCmdClearAttachments inside
-    // the active render pass is the right call. Until a concrete pass needs that path we keep
-    // this a no-op so accidental engine-side calls don't generate validation noise.
-    // TODO(stage 11): wire vkCmdClearAttachments when an engine pass demands mid-pass clear.
-    (void) fields;
-    (void) color;
+    // vkCmdClearColorImage / vkCmdClearDepthStencilImage are only legal outside a render pass.
+    // In our per-draw RP architecture RPs are only open inside Draw(), so this is always safe.
+    if (!m_frameStarted || m_activePassFb == nullptr || m_rpActive)
+    {
+      return;
+    }
+    VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer();
+    if (cb == VK_NULL_HANDLE)
+    {
+      return;
+    }
+
+    const uint32_t fieldBits = (uint32_t) fields;
+    const bool clearColor    = (fieldBits & (uint32_t) GraphicBitFields::ColorBits)   != 0;
+    const bool clearDepth    = (fieldBits & (uint32_t) GraphicBitFields::DepthBits)   != 0;
+    const bool clearStencil  = (fieldBits & (uint32_t) GraphicBitFields::StencilBits) != 0;
+
+    // ---- Color attachments ------------------------------------------------------------------
+    if (clearColor)
+    {
+      VkClearColorValue cv{};
+      cv.float32[0] = color.r;
+      cv.float32[1] = color.g;
+      cv.float32[2] = color.b;
+      cv.float32[3] = color.a;
+
+      for (int i = 0; i < VulkanFramebuffer::kMaxColorAttachments; ++i)
+      {
+        auto& slot = m_activePassFb->colorAttachments[i];
+        if (slot.tex == nullptr || slot.tex->image == VK_NULL_HANDLE)
+        {
+          continue;
+        }
+
+        VkImageSubresourceRange range{};
+        range.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        range.baseMipLevel   = slot.baseMipLevel;
+        range.levelCount     = 1;
+        range.baseArrayLayer = slot.baseArrayLayer;
+        range.layerCount     = slot.layerCount;
+
+        const bool isUndef = slot.tex->currentLayout == VK_IMAGE_LAYOUT_UNDEFINED;
+
+        VkImageMemoryBarrier b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+        b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        b.image               = slot.tex->image;
+        b.subresourceRange    = range;
+        b.oldLayout           = slot.tex->currentLayout;
+        b.newLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        b.srcAccessMask       = isUndef ? 0 : (VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
+        b.dstAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+        vkCmdPipelineBarrier(cb,
+                             isUndef ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT
+                                     : (VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT),
+                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &b);
+
+        vkCmdClearColorImage(cb, slot.tex->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &cv, 1, &range);
+
+        b.oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        b.newLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        b.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                             0, 0, nullptr, 0, nullptr, 1, &b);
+
+        slot.tex->currentLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+      }
+    }
+
+    // ---- Depth/stencil attachment -----------------------------------------------------------
+    if ((clearDepth || clearStencil) && m_activePassFb->depthAttachment.tex != nullptr)
+    {
+      auto& slot = m_activePassFb->depthAttachment;
+      if (slot.tex->image == VK_NULL_HANDLE)
+      {
+        return;
+      }
+
+      VkImageAspectFlags aspect = 0;
+      if (clearDepth   && (slot.tex->aspect & VK_IMAGE_ASPECT_DEPTH_BIT))   aspect |= VK_IMAGE_ASPECT_DEPTH_BIT;
+      if (clearStencil && (slot.tex->aspect & VK_IMAGE_ASPECT_STENCIL_BIT)) aspect |= VK_IMAGE_ASPECT_STENCIL_BIT;
+      if (aspect == 0)
+      {
+        return;
+      }
+
+      VkImageSubresourceRange range{};
+      range.aspectMask     = aspect;
+      range.baseMipLevel   = 0;
+      range.levelCount     = 1;
+      range.baseArrayLayer = 0;
+      range.layerCount     = slot.tex->arrayLayers;
+
+      const bool isUndef = slot.tex->currentLayout == VK_IMAGE_LAYOUT_UNDEFINED;
+
+      VkImageMemoryBarrier b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+      b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+      b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+      b.image               = slot.tex->image;
+      b.subresourceRange    = range;
+      b.oldLayout           = slot.tex->currentLayout;
+      b.newLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+      b.srcAccessMask       = isUndef ? 0 : (VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
+      b.dstAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+      vkCmdPipelineBarrier(cb,
+                           isUndef ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT
+                                   : (VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT),
+                           VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &b);
+
+      VkClearDepthStencilValue dsv{1.0f, 0};
+      vkCmdClearDepthStencilImage(cb, slot.tex->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &dsv, 1, &range);
+
+      b.oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+      b.newLayout     = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+      b.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+      b.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+      vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                           0, 0, nullptr, 0, nullptr, 1, &b);
+
+      slot.tex->currentLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+    }
   }
 
-  void VulkanBackend::ClearColorBuffer(const Vec4& color)
-  {
-    // See ClearBuffer note. ColorOnly variant maps to the same eventual vkCmdClearAttachments
-    // call with the color aspect, again deferred until needed.
-    (void) color;
-  }
+  void VulkanBackend::ClearColorBuffer(const Vec4& color) { ClearBuffer(GraphicBitFields::ColorBits, color); }
 
   void VulkanBackend::BindPipeline(const GpuProgramPtr& program, const RenderState* state)
   {
@@ -2151,8 +2261,8 @@ namespace ToolKit
         // a slot the engine forgot to bind doesn't trip validation.
         if (r.view == VK_NULL_HANDLE)
         {
-          bool isCube = (res.name.find("s_texture") == 0 && (res.slot == 6 || res.slot == 7 || res.slot == 11 || res.slot == 12 || res.slot == 15 || res.slot == 16 || res.slot == 17));
-          bool is2DArray = (res.name.find("s_texture") == 0 && (res.slot == 8 || res.slot == 10));
+          bool isCube    = (res.viewType == ShaderResource::ViewType::TexCube);
+          bool is2DArray = (res.viewType == ShaderResource::ViewType::Tex2DArray);
 
           if (isCube && m_dummyCubeTexture && m_dummyCubeTexture->view != VK_NULL_HANDLE)
           {
@@ -2527,13 +2637,19 @@ namespace ToolKit
       }
       else
       {
-        slot.ownsView = true;
+        slot.ownsView        = true;
+        slot.baseArrayLayer  = baseArrayLayer;
+        slot.layerCount      = layerCount;
+        slot.baseMipLevel    = baseMip;
       }
     }
     else
     {
-      slot.view     = slot.tex->view;
-      slot.ownsView = false;
+      slot.view           = slot.tex->view;
+      slot.ownsView       = false;
+      slot.baseArrayLayer = 0;
+      slot.layerCount     = slot.tex->arrayLayers;
+      slot.baseMipLevel   = 0;
     }
 
     // Don't eager-destroy the cached RP+FB â€” BuildOffscreenRenderPass will defer them on the

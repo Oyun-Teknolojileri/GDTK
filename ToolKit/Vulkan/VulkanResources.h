@@ -90,9 +90,14 @@ namespace ToolKit
         we own it and release it on detach / destroy. */
     struct Slot
     {
-      VulkanTexture* tex   = nullptr;
-      VkImageView view     = VK_NULL_HANDLE;
-      bool ownsView        = false;
+      VulkanTexture* tex       = nullptr;
+      VkImageView view         = VK_NULL_HANDLE;
+      bool ownsView            = false;
+      /** Subresource range covered by @ref view. Used by ClearBuffer to target the right
+          layer/mip when clearing a per-layer or per-face attachment. */
+      uint32_t baseArrayLayer  = 0;
+      uint32_t layerCount      = 1;
+      uint32_t baseMipLevel    = 0;
     };
 
     static constexpr int kMaxColorAttachments = 8;

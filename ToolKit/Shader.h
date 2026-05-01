@@ -32,9 +32,19 @@ namespace ToolKit
       UniformBuffer //!< Uniform buffer (UBO) binding.
     };
 
-    Type type = Type::Texture;
-    int slot  = -1; //!< Binding slot index. -1 means unspecified (name-based lookup).
-    String name;    //!< Identifier as it appears in the shader source.
+    /** The image view type required by the SPIR-V OpTypeImage for this sampler. Used by the
+        Vulkan backend to select the correct dummy texture when a slot is left unbound. */
+    enum class ViewType
+    {
+      Tex2D,      //!< sampler2D  — default.
+      Tex2DArray, //!< sampler2DArray
+      TexCube,    //!< samplerCube
+    };
+
+    Type type         = Type::Texture;
+    ViewType viewType = ViewType::Tex2D;
+    int slot          = -1; //!< Binding slot index. -1 means unspecified (name-based lookup).
+    String name;            //!< Identifier as it appears in the shader source.
   };
 
   typedef std::vector<ShaderResource> ShaderResourceArray;
