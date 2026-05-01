@@ -52,10 +52,6 @@ namespace ToolKit
                               near,
                               far);
 
-#ifdef TK_VULKAN
-    m_projection[1][1] *= -1.0f; // Vulkan için Y eksenini ters çevir!
-#endif
-
     m_left        = left;
     m_right       = right;
     m_top         = top;

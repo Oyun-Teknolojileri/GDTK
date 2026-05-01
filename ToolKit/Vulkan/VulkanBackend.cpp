@@ -683,8 +683,29 @@ namespace ToolKit
     }
 
     // Store pass description so Draw can open a render pass instance before each draw call.
+    // Also set a default full-framebuffer viewport + scissor here (outside the RP) so that
+    // a later SetViewportRect call can override it for passes like shadow map rendering that
+    // need per-slot viewports. Draw() must NOT reset the viewport, otherwise the per-slot
+    // viewport set between StartPass and Draw would be silently overridden.
     m_pendingPassDesc = desc;
     m_activePassFb    = fbData;
+
+    if (VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer(); cb != VK_NULL_HANDLE)
+    {
+      VkViewport vp{};
+      vp.x        = 0.0f;
+      vp.y        = (float) fbData->height; // negative-height trick: NDC Y+1 → top of framebuffer
+      vp.width    = (float) fbData->width;
+      vp.height   = -(float) fbData->height;
+      vp.minDepth = 0.0f;
+      vp.maxDepth = 1.0f;
+      vkCmdSetViewport(cb, 0, 1, &vp);
+
+      VkRect2D sc{};
+      sc.offset = {0, 0};
+      sc.extent = {fbData->width, fbData->height};
+      vkCmdSetScissor(cb, 0, 1, &sc);
+    }
   }
 
   void VulkanBackend::FinishPass()
@@ -1136,20 +1157,9 @@ namespace ToolKit
       rpbi.pClearValues      = clears.empty() ? nullptr : clears.data();
       vkCmdBeginRenderPass(cb, &rpbi, VK_SUBPASS_CONTENTS_INLINE);
 
-      // Negative viewport height flips Y so screen-space matches GL conventions.
-      VkViewport vp{};
-      vp.x        = 0.0f;
-      vp.y        = (float) m_activePassFb->height;
-      vp.width    = (float) m_activePassFb->width;
-      vp.height   = -(float) m_activePassFb->height;
-      vp.minDepth = 0.0f;
-      vp.maxDepth = 1.0f;
-      vkCmdSetViewport(cb, 0, 1, &vp);
-
-      VkRect2D sc{};
-      sc.offset = {0, 0};
-      sc.extent = {m_activePassFb->width, m_activePassFb->height};
-      vkCmdSetScissor(cb, 0, 1, &sc);
+      // Viewport and scissor were set in StartPass (default: full framebuffer) and may have
+      // been overridden by SetViewportRect before this Draw (e.g. shadow slot viewport).
+      // Do NOT reset them here — that would silently undo per-slot viewports.
       m_rpActive = true;
     }
 

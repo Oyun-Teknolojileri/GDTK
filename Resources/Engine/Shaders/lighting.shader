@@ -66,6 +66,13 @@ float CalculateDirectionalShadow
 {
 	vec4 fragPosForLight = lightProjView * vec4(pos, 1.0);
 	vec3 projCoord = fragPosForLight.xyz * 0.5 + 0.5;
+#ifdef VULKAN
+	// Vulkan textures: UV.y=0 is top (opposite of OpenGL's bottom-origin convention).
+	// Negate to match where the shadow atlas was rendered with the negative-viewport trick.
+	projCoord.y = 1.0 - projCoord.y;
+	// GLM_FORCE_DEPTH_ZERO_TO_ONE: ortho clip Z is already [0,1]; no * 0.5 + 0.5 needed.
+	projCoord.z = fragPosForLight.z;
+#endif
 
 	vec2 startCoord = shadowAtlasCoord;
 	vec2 endCoord = shadowAtlasCoord + shadowAtlasResRatio;
@@ -109,6 +116,10 @@ float CalculateSpotShadow
 	vec4 fragPosForLight = lightProjView * vec4(pos, 1.0);
 	vec3 projCoord = fragPosForLight.xyz / fragPosForLight.w;
 	projCoord = projCoord * 0.5 + 0.5;
+#ifdef VULKAN
+	// Same UV.y origin correction as directional shadow.
+	projCoord.y = 1.0 - projCoord.y;
+#endif
 
 	float currFragDepth = lightDistance / shadowCameraFar;
 
