@@ -1818,7 +1818,7 @@ namespace ToolKit
     srcBarrier.subresourceRange.aspectMask     = vSrc->aspect;
     srcBarrier.subresourceRange.baseMipLevel   = 0;
     srcBarrier.subresourceRange.levelCount     = 1;
-    srcBarrier.subresourceRange.baseArrayLayer = 0;
+    srcBarrier.subresourceRange.baseArrayLayer = (uint32_t) face;
     srcBarrier.subresourceRange.layerCount     = 1;
     srcBarrier.srcAccessMask                   = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
     srcBarrier.dstAccessMask                   = VK_ACCESS_TRANSFER_READ_BIT;
