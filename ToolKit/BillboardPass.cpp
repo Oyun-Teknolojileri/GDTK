@@ -74,7 +74,7 @@ namespace ToolKit
   void BillboardPass::PostRender()
   {
     Pass::PostRender();
-    GetRenderer()->EndPass();
+    GetRenderer()->FinishPass();
   }
 
 } // namespace ToolKit

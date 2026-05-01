@@ -24,8 +24,8 @@ namespace ToolKit
     void EndFrame() override;
     void Present() override;
 
-    void BeginPass(const PassDesc& desc) override;
-    void EndPass() override;
+    void StartPass(const PassDesc& desc) override;
+    void FinishPass() override;
 
     void SetViewport(uint x, uint y, uint w, uint h) override;
     void SetScissor(uint x, uint y, uint w, uint h) override;

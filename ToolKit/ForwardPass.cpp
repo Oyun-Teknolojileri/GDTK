@@ -98,7 +98,7 @@ namespace ToolKit
                                    {(int) Framebuffer::Attachment::ColorAttachment0});
     }
 
-    renderer->EndPass();
+    renderer->FinishPass();
   }
 
   void ForwardRenderPass::RenderOpaque(RenderData* renderData)

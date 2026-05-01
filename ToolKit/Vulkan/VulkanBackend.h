@@ -52,8 +52,8 @@ namespace ToolKit
     void Present() override;
 
     // Pass boundary
-    void BeginPass(const PassDesc& desc) override;
-    void EndPass() override;
+    void StartPass(const PassDesc& desc) override;
+    void FinishPass() override;
 
     // Viewport / scissor
     void SetViewport(uint x, uint y, uint w, uint h) override;
@@ -177,9 +177,9 @@ namespace ToolKit
         swapchain tracks its own pass-active flag). */
     struct VulkanFramebuffer* m_activePassFb = nullptr;
 
-    /** True between BindPipeline() success and the next EndPass(). Draw() bails when false so
+    /** True between BindPipeline() success and the next FinishPass(). Draw() bails when false so
         that Stage 7a can land before BindPipeline (Stage 7c) without recording bare draws into
-        the cmd buffer (validation: "no pipeline bound"). Reset on EndPass / new BeginPass. */
+        the cmd buffer (validation: "no pipeline bound"). Reset on FinishPass / new StartPass. */
     bool m_pipelineBound = false;
 
     /** Cached by BindPipeline, consumed by Draw. The pipeline can't be built at BindPipeline

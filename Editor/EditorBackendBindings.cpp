@@ -295,11 +295,11 @@ namespace ToolKit
         desc.target     = nullptr;
         desc.clearBits  = GraphicBitFields::AllBits;
         desc.clearColor = Vec4(0.4f, 0.0f, 0.4f, 1.0f);
-        backend->BeginPass(desc);
+        backend->StartPass(desc);
 
         ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cb);
 
-        backend->EndPass();
+        backend->FinishPass();
 #else
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 #endif

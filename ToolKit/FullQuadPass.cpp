@@ -61,7 +61,7 @@ namespace ToolKit
   {
     Pass::PostRender();
     Renderer* renderer = GetRenderer();
-    renderer->EndPass();
+    renderer->FinishPass();
   }
 
   void FullQuadPass::SetFragmentShader(ShaderPtr fragmentShader, Renderer* renderer)

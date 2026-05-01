@@ -140,7 +140,7 @@ namespace ToolKit
                                    m_resolveFramebuffer,
                                    {(int) Framebuffer::Attachment::ColorAttachment0});
     }
-    GetRenderer()->EndPass();
+    GetRenderer()->FinishPass();
   }
 
 } // namespace ToolKit

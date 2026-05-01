@@ -46,6 +46,6 @@ namespace ToolKit
     Pass::PostRender();
 
     Renderer* renderer = GetRenderer();
-    renderer->EndPass();
+    renderer->FinishPass();
   }
 } // namespace ToolKit

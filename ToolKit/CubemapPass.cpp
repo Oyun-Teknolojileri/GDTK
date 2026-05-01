@@ -64,7 +64,7 @@ namespace ToolKit
     TK_PROFILE_FUNCTION();
 
     Pass::PostRender();
-    GetRenderer()->EndPass();
+    GetRenderer()->FinishPass();
   }
 
 } // namespace ToolKit

@@ -76,8 +76,8 @@ namespace ToolKit
     virtual void EndFrame()                                                                                 = 0;
     virtual void Present()                                                                                  = 0;
 
-    virtual void BeginPass(const PassDesc& desc)                                                            = 0;
-    virtual void EndPass()                                                                                  = 0;
+    virtual void StartPass(const PassDesc& desc)                                                            = 0;
+    virtual void FinishPass()                                                                                  = 0;
 
     virtual void SetViewport(uint x, uint y, uint w, uint h)                                                = 0;
     virtual void SetScissor(uint x, uint y, uint w, uint h)                                                 = 0;

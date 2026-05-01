@@ -190,7 +190,7 @@ namespace ToolKit
 
   void GLBackend::Present() {}
 
-  void GLBackend::BeginPass(const PassDesc& desc)
+  void GLBackend::StartPass(const PassDesc& desc)
   {
     m_activePassDesc = desc;
 
@@ -210,7 +210,7 @@ namespace ToolKit
     }
   }
 
-  void GLBackend::EndPass()
+  void GLBackend::FinishPass()
   {
     GraphicBitFields bits = m_activePassDesc.discardBits;
 

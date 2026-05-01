@@ -77,8 +77,8 @@ namespace ToolKit
    * Backend GPU data for a Framebuffer.
    * Stored on Framebuffer::m_gpuData.
    *
-   * The VkRenderPass + VkFramebuffer are built lazily on first BeginPass after the attachment
-   * set / size stabilizes. Any Attach/Detach call flips @ref dirty so the next BeginPass rebuilds.
+   * The VkRenderPass + VkFramebuffer are built lazily on first StartPass after the attachment
+   * set / size stabilizes. Any Attach/Detach call flips @ref dirty so the next StartPass rebuilds.
    */
   struct VulkanFramebuffer : public GpuResourceData
   {
@@ -111,7 +111,7 @@ namespace ToolKit
     VkFramebuffer framebuffer = VK_NULL_HANDLE;
 
     /** Cached clear bits used for the most recent BuildOffscreenRenderPass — drives per-attachment
-        VkAttachmentLoadOp. If a later BeginPass arrives with different clearBits we must rebuild
+        VkAttachmentLoadOp. If a later StartPass arrives with different clearBits we must rebuild
         the render pass (loadOps are baked into VkRenderPass). */
     GraphicBitFields cachedClearBits = GraphicBitFields::None;
 

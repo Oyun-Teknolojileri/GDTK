@@ -81,7 +81,7 @@ namespace ToolKit
   void StencilRenderPass::PostRender()
   {
     Pass::PostRender();
-    GetRenderer()->EndPass();
+    GetRenderer()->FinishPass();
   }
 
 } // namespace ToolKit

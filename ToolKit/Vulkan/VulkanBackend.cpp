@@ -463,7 +463,7 @@ namespace ToolKit
 
     // Decode caller-requested clears. Color/depth attachment loadOp is baked into the
     // VkRenderPass and cached; if the engine asks for a different clear pattern next pass we
-    // rebuild via the cachedClearBits dirty check in BeginPass.
+    // rebuild via the cachedClearBits dirty check in StartPass.
     const auto bitsToUInt          = [](GraphicBitFields b) { return (uint32_t) b; };
     const uint32_t bits            = bitsToUInt(desc.clearBits);
     const bool clearColorBit       = (bits & bitsToUInt(GraphicBitFields::ColorBits))   != 0;
@@ -536,7 +536,7 @@ namespace ToolKit
       a.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
       // initialLayout: with LOAD we must declare the actual current layout so the previous
       // contents are preserved. With CLEAR/DONT_CARE the contents are tossed → UNDEFINED is the
-      // cheapest start. EndPass parks every attachment at SHADER_READ_ONLY_OPTIMAL.
+      // cheapest start. FinishPass parks every attachment at SHADER_READ_ONLY_OPTIMAL.
       a.initialLayout  = clearColorBit ? VK_IMAGE_LAYOUT_UNDEFINED
                                        : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
       // MSAA color attachments aren't sampled directly (engine resolves through
@@ -644,7 +644,7 @@ namespace ToolKit
     return true;
   }
 
-  void VulkanBackend::BeginPass(const PassDesc& desc)
+  void VulkanBackend::StartPass(const PassDesc& desc)
   {
     if (!m_frameStarted)
     {
@@ -652,7 +652,7 @@ namespace ToolKit
     }
 
     // HiÃ§bir pass nest edilmez â€” Ã¶nce hangisi aÃ§Ä±ksa onu kapat.
-    EndPass();
+    FinishPass();
 
     if (desc.target == nullptr)
     {
@@ -664,7 +664,7 @@ namespace ToolKit
     auto* fbData = static_cast<VulkanFramebuffer*>(desc.target->m_gpuData.get());
     if (fbData == nullptr)
     {
-      TK_ERR("BeginPass: target framebuffer has no gpu data");
+      TK_ERR("StartPass: target framebuffer has no gpu data");
       return;
     }
 
@@ -729,13 +729,13 @@ namespace ToolKit
     m_activePassFb = fbData;
   }
 
-  void VulkanBackend::EndPass()
+  void VulkanBackend::FinishPass()
   {
     if (!m_frameStarted)
     {
       return;
     }
-    // Pipeline binding is per-pass: a fresh BindPipeline is required after every EndPass.
+    // Pipeline binding is per-pass: a fresh BindPipeline is required after every FinishPass.
     m_pipelineBound = false;
     m_boundProgram  = nullptr;
     m_shadow.Reset();
@@ -776,7 +776,7 @@ namespace ToolKit
       return;
     }
     // Negative viewport height flips Y axis so screen-space matches GL conventions — see the
-    // matching code in BeginPass for the rationale. ToolKit's engine code passes (x,y,w,h) in
+    // matching code in StartPass for the rationale. ToolKit's engine code passes (x,y,w,h) in
     // a top-left origin; after this flip the actual rasterisation matches GL's bottom-left.
     VkViewport vp{};
     vp.x        = (float) x;
@@ -809,7 +809,7 @@ namespace ToolKit
 
   void VulkanBackend::ClearBuffer(GraphicBitFields fields, const Vec4& color)
   {
-    // Engine pass code clears via PassDesc::clearBits + clearColor at BeginPass time, which is
+    // Engine pass code clears via PassDesc::clearBits + clearColor at StartPass time, which is
     // mapped to VkRenderPass loadOp=CLEAR â€” the GPU clear happens implicitly at pass start. A
     // mid-pass ClearBuffer is rare; if a pass actually needs it, vkCmdClearAttachments inside
     // the active render pass is the right call. Until a concrete pass needs that path we keep
@@ -1230,7 +1230,7 @@ namespace ToolKit
     if (m_activePassFb != nullptr || m_swapchain->IsSwapchainPassActive())
     {
       // Spec forbids vkCmdBlitImage / vkCmdResolveImage inside a render pass instance. Engine
-      // code calls this between passes (after EndPass) so this guard is purely defensive â€”
+      // code calls this between passes (after FinishPass) so this guard is purely defensive â€”
       // log so a misuse surfaces during development.
       TK_ERR("ResolveFramebuffer called inside an active render pass â€” skipped");
       return;
@@ -2511,7 +2511,7 @@ namespace ToolKit
     }
 
     // Don't eager-destroy the cached RP+FB â€” BuildOffscreenRenderPass will defer them on the
-    // next BeginPass. Eager destroy here would invalidate the in-flight cmd buffer.
+    // next StartPass. Eager destroy here would invalidate the in-flight cmd buffer.
     fbData->dirty = true;
   }
 
@@ -2628,7 +2628,7 @@ namespace ToolKit
   void VulkanBackend::SetDefaultClearColor(const Vec4& color)
   {
     // Stored on the backend so ClearColorBuffer / ClearBuffer paths and any future implicit
-    // backbuffer clear can pick it up. BeginPass takes its clear color from PassDesc directly,
+    // backbuffer clear can pick it up. StartPass takes its clear color from PassDesc directly,
     // so this is currently informational; engine uses it for "set once, expect all subsequent
     // passes to use this when they didn't override".
     m_clearColor = color;

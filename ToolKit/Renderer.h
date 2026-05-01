@@ -417,7 +417,7 @@ namespace ToolKit
                         const Vec4& clearColor       = Vec4(0.0f),
                         GraphicBitFields discardBits = GraphicBitFields::None);
 
-    void EndPass();
+    void FinishPass();
 
     /**
      * Resolves source multi sample buffer to single sample target buffer.

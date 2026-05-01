@@ -40,7 +40,7 @@ namespace ToolKit
       settings.msaaCount           = MsaaSampleCount::x0;
       m_resolveFramebuffer->ReconstructIfNeeded(settings);
       renderer->ResolveFramebuffer(m_framebuffer, m_resolveFramebuffer, {0});
-      renderer->EndPass();
+      renderer->FinishPass();
     }
 
     PostRender(renderer);

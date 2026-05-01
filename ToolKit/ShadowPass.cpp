@@ -106,7 +106,7 @@ namespace ToolKit
     BlurShadowAtlas();
 
     // Depth is not needed. Mark it as invalid to avoid unintended read/writes.
-    renderer->EndPass();
+    renderer->FinishPass();
 
     renderer->m_clearColor = lastClearColor;
   }
@@ -188,7 +188,7 @@ namespace ToolKit
     }
     Renderer* renderer = GetRenderer();
     renderer->SetDirectionalLights(dlights);
-    renderer->EndPass();
+    renderer->FinishPass();
   }
 
   RenderTargetPtr ShadowPass::GetShadowAtlas() { return m_shadowAtlas; }
