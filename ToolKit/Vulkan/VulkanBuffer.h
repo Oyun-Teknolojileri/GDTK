@@ -57,9 +57,12 @@ namespace ToolKit
     void Destroy(VulkanContext* ctx, Buffer& buf);
 
     /**
-     * Allocates a DEVICE_LOCAL buffer of @p size with @p usage | TRANSFER_DST, uploads @p data
-     * through a temporary staging buffer (CPU_TO_GPU) using VulkanContext::SubmitOneShot, and
-     * destroys the staging buffer before returning. Blocking; use only at resource creation time.
+     * Allocates a DEVICE_LOCAL buffer of @p size with @p usage | TRANSFER_DST and queues an upload
+     * of @p data through a temporary staging buffer (CPU_TO_GPU) via VulkanContext::EnqueueGpuWork.
+     * The recorded copy runs on the swapchain command buffer at the next BeginFrame; the staging
+     * buffer is destroyed by the engine's frame-fenced deletion queue once the GPU has retired
+     * the recorded work. Returns the destination Buffer immediately; its handle is valid for
+     * binding right away, but contents are only visible to the GPU after the upload runs.
      * Returns a Buffer with handle == VK_NULL_HANDLE on failure.
      */
     Buffer UploadDeviceLocal(VulkanContext* ctx, VkBufferUsageFlags usage, const void* data, VkDeviceSize size);

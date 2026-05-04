@@ -111,12 +111,53 @@ namespace ToolKit
     bool AllocatePerDrawSlot(VkDeviceSize size, VkDeviceSize& outOffset, void*& outMappedPtr);
 
     /**
-     * Executes @p recorder on a throwaway primary command buffer allocated from an internal
-     * transient pool, submits it to the graphics queue and waits for completion. Serialized and
-     * blocking — use only for one-time setup work (image layout transitions during Create,
-     * texture uploads, etc.) and never inside the per-frame render loop.
+     * Records @p recorder into the engine's current swapchain command buffer.
+     *
+     *   - If a frame is active and no render pass is currently open, recorder fires inline
+     *     against the current command buffer. @p postFlushCleanup is handed to the deferred-
+     *     delete sink so it runs after the cb retires on the GPU. Use this path for mid-frame
+     *     resource creation that's about to be used later in the same frame (e.g.
+     *     ReconstructIfNeeded on a texture that the next draw will sample / render to).
+     *   - If a frame is active but a render pass is currently open (vkCmdPipelineBarrier and
+     *     vkCmdCopy* are illegal inside a render pass without self-dependency), the entry is
+     *     parked in a "during-render-pass" queue and replayed into the same cb the moment the
+     *     active render pass closes (post-vkCmdEndRenderPass).
+     *   - If no frame is active (engine init, between Present and BeginFrame), the entry is
+     *     queued and replayed into the swapchain cb at the next BeginFrame, before any pass
+     *     starts. The cleanup runs after that frame's cb retires.
      */
-    void SubmitOneShot(const std::function<void(VkCommandBuffer)>& recorder);
+    void EnqueueGpuWork(std::function<void(VkCommandBuffer)> recorder,
+                        std::function<void()> postFlushCleanup = {});
+
+    /**
+     * Replays every recorder queued while no frame was active into @p cb, clearing the queue.
+     * Returns the corresponding postFlushCleanup callbacks so the caller can route them through
+     * its frame-fenced deletion queue. Called by VulkanBackend::BeginFrame once the swapchain
+     * command buffer is open. Inline (frame-active) entries do NOT travel through here — they
+     * already executed against the current cb at enqueue time.
+     */
+    std::vector<std::function<void()>> FlushPendingGpuWork(VkCommandBuffer cb);
+
+    /**
+     * Replays every recorder parked in the during-render-pass queue into @p cb, clearing the
+     * queue. Called by VulkanBackend immediately after closing a render pass (offscreen Draw's
+     * vkCmdEndRenderPass and the swapchain pass close in FinishPass) so that uploads or
+     * barriers that arrived mid-pass land in the cb before the next draw needs them. Returns
+     * the cleanup callbacks for routing through frame-fenced deferred-delete.
+     */
+    std::vector<std::function<void()>> FlushDuringRenderPassWork(VkCommandBuffer cb);
+
+    /**
+     * Backend tells the context which cb is the "current frame cb" between BeginFrame and
+     * Present and how to query whether a render pass is currently open. While the cb is set,
+     * EnqueueGpuWork records inline (no RP) or parks in the during-RP queue (RP open) instead
+     * of queueing for next frame. @p inlineCleanupSink receives the postFlushCleanup callback
+     * for any inline-recorded work (typically wired to VulkanBackend::DeferDelete). Pass
+     * VK_NULL_HANDLE + {} + {} to clear at frame end.
+     */
+    void SetCurrentRecordingCb(VkCommandBuffer cb,
+                               std::function<void(std::function<void()>)> inlineCleanupSink,
+                               std::function<bool()> renderPassActiveQuery);
 
     // -- Debug Utils Extension ------------------------------------------------------------------
     PFN_vkCmdBeginDebugUtilsLabelEXT m_vkCmdBeginDebugUtilsLabelEXT = nullptr;
@@ -133,7 +174,6 @@ namespace ToolKit
     bool CreateGlobalDescriptorSetLayout();
     bool CreateFrameDescriptorPools();
     bool CreatePerDrawUboRing();
-    bool CreateOneShotPool();
 
    private:
     VkInstance m_instance                       = VK_NULL_HANDLE;
@@ -164,7 +204,32 @@ namespace ToolKit
     /** Once-per-session log gate for ring overflow so a runaway frame doesn't spam the console. */
     bool m_perDrawUboOverflowLogged            = false;
 
-    VkCommandPool m_oneShotPool                 = VK_NULL_HANDLE;
+    /** GPU work queued by EnqueueGpuWork while no frame was active. Replayed into the
+        swapchain command buffer by VulkanBackend at the next BeginFrame. */
+    struct PendingGpuWork
+    {
+      std::function<void(VkCommandBuffer)> recorder;
+      std::function<void()> postFlushCleanup;
+    };
+    std::vector<PendingGpuWork> m_pendingGpuWork;
+
+    /** Mid-frame entries that arrived while a render pass was open. Flushed by VulkanBackend
+        right after the active RP closes (per-Draw EndRenderPass for offscreen, EndSwapchainPass
+        for the swapchain pass) — never carried across frames. Cleanups still ride
+        m_inlineCleanupSink so they're frame-fenced through DeferDelete. */
+    std::vector<PendingGpuWork> m_pendingDuringRpWork;
+
+    /** Set by VulkanBackend between BeginFrame and Present so EnqueueGpuWork records inline
+        instead of queueing. VK_NULL_HANDLE outside a frame. */
+    VkCommandBuffer m_currentRecordingCb = VK_NULL_HANDLE;
+    /** Set alongside m_currentRecordingCb. EnqueueGpuWork forwards postFlushCleanup callbacks
+        to this sink (typically VulkanBackend::DeferDelete) when running inline. */
+    std::function<void(std::function<void()>)> m_inlineCleanupSink;
+    /** Set alongside m_currentRecordingCb. Returns true when an offscreen or swapchain render
+        pass is currently open on the recording cb — EnqueueGpuWork uses this to decide between
+        inline recording and the during-RP queue (vkCmdPipelineBarrier / vkCmdCopy* without
+        self-dependency are illegal inside a render pass). */
+    std::function<bool()> m_renderPassActiveQuery;
 
     bool m_validationEnabled                    = false;
   };

@@ -281,6 +281,15 @@ namespace ToolKit
     /** Slot in @ref m_pendingDeleters that DeferDelete writes to. Always points at the swapchain
         slot of the current (or next pending) frame. */
     uint m_deleterSlot = 0;
+    /** Tracks whether BeginFrame has run at least once. The first BeginFrame must skip
+        DrainDeleterBucket: at that point the slot's fence has never gated a real submission, so
+        anything DeferDelete'd during init (e.g. textures created and immediately destroyed by
+        loader code) sits in the slot waiting to be drained. Draining it before
+        FlushPendingGpuWork would vkDestroyImage handles that the pending init barriers/copies
+        are about to use. By skipping the first drain, those entries stay in the slot until the
+        next time it becomes current (frame N + FRAMES_IN_FLIGHT), by which point this frame's
+        cb has retired and it is genuinely safe to drain. */
+    bool m_firstFrame  = true;
 
     /** Run + clear all deleters in a single bucket. Safe to call with an out-of-range index. */
     void DrainDeleterBucket(uint slot);

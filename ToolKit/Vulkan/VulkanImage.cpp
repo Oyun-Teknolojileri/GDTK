@@ -109,8 +109,12 @@ namespace ToolKit
       std::memcpy(mapped, pixels, (size_t) byteCount);
       vmaUnmapMemory(ctx->GetAllocator(), staging.alloc);
 
-      ctx->SubmitOneShot(
-          [&](VkCommandBuffer cb)
+      ctx->EnqueueGpuWork(
+          [img    = tex->image,
+           aspect = tex->aspect,
+           staging,
+           width,
+           height](VkCommandBuffer cb)
           {
             // UNDEFINED → TRANSFER_DST
             VkImageMemoryBarrier toDst{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
@@ -118,8 +122,8 @@ namespace ToolKit
             toDst.newLayout                       = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
             toDst.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
             toDst.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-            toDst.image                           = tex->image;
-            toDst.subresourceRange.aspectMask     = tex->aspect;
+            toDst.image                           = img;
+            toDst.subresourceRange.aspectMask     = aspect;
             toDst.subresourceRange.levelCount     = 1;
             toDst.subresourceRange.layerCount     = 1;
             toDst.srcAccessMask                   = 0;
@@ -130,10 +134,10 @@ namespace ToolKit
                                  0, 0, nullptr, 0, nullptr, 1, &toDst);
 
             VkBufferImageCopy region{};
-            region.imageSubresource.aspectMask = tex->aspect;
+            region.imageSubresource.aspectMask = aspect;
             region.imageSubresource.layerCount = 1;
             region.imageExtent                 = {width, height, 1};
-            vkCmdCopyBufferToImage(cb, staging.handle, tex->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+            vkCmdCopyBufferToImage(cb, staging.handle, img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 
             // TRANSFER_DST → SHADER_READ_ONLY
             VkImageMemoryBarrier toShader{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
@@ -141,8 +145,8 @@ namespace ToolKit
             toShader.newLayout                       = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             toShader.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
             toShader.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-            toShader.image                           = tex->image;
-            toShader.subresourceRange.aspectMask     = tex->aspect;
+            toShader.image                           = img;
+            toShader.subresourceRange.aspectMask     = aspect;
             toShader.subresourceRange.levelCount     = 1;
             toShader.subresourceRange.layerCount     = 1;
             toShader.srcAccessMask                   = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -151,9 +155,9 @@ namespace ToolKit
                                  VK_PIPELINE_STAGE_TRANSFER_BIT,
                                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
                                  0, 0, nullptr, 0, nullptr, 1, &toShader);
-          });
+          },
+          [ctx, staging]() mutable { VulkanBuffer::Destroy(ctx, staging); });
 
-      VulkanBuffer::Destroy(ctx, staging);
       tex->currentLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
       return tex;
     }

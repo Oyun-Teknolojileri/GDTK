@@ -31,7 +31,9 @@ namespace
   // Uploads @p pixels (byteCount bytes) to VulkanTexture @p vt at (layer, mip) via a
   // single-use staging buffer. Transitions the sub-resource from its current layout to
   // TRANSFER_DST, performs the copy, then transitions back to SHADER_READ_ONLY_OPTIMAL.
-  // Blocks until the GPU copy completes (SubmitOneShot waits for queue idle).
+  // The actual GPU work runs on the swapchain command buffer at the next BeginFrame; the
+  // staging buffer's lifetime is extended via DeferDelete so it survives until the GPU has
+  // retired the recorded copy.
   static void UploadTexelData(ToolKit::VulkanContext* ctx,
                               ToolKit::VulkanTexture* vt,
                               const void* pixels,
@@ -43,7 +45,7 @@ namespace
     if (!pixels || byteCount == 0 || !vt || vt->image == VK_NULL_HANDLE)
       return;
 
-    // Staging buffer — CPU-visible, written once and discarded after copy.
+    // Staging buffer — CPU-visible, written once and discarded after the GPU consumes the copy.
     VulkanBuffer::Buffer staging =
         VulkanBuffer::CreateHostVisibleMapped(ctx, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, byteCount);
     if (staging.handle == VK_NULL_HANDLE)
@@ -57,8 +59,8 @@ namespace
     uint32_t w = std::max(1u, vt->extent.width  >> mip);
     uint32_t h = std::max(1u, vt->extent.height >> mip);
 
-    ctx->SubmitOneShot(
-        [&](VkCommandBuffer cb)
+    ctx->EnqueueGpuWork(
+        [staging, vt, srcLayout, layer, mip, w, h](VkCommandBuffer cb)
         {
           // Transition: currentLayout → TRANSFER_DST_OPTIMAL
           VkImageMemoryBarrier toTransfer{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
@@ -99,10 +101,10 @@ namespace
                                VK_PIPELINE_STAGE_TRANSFER_BIT,
                                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
                                0, 0, nullptr, 0, nullptr, 1, &toRead);
-        });
+        },
+        [ctx, staging]() mutable { VulkanBuffer::Destroy(ctx, staging); });
 
     vt->currentLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    VulkanBuffer::Destroy(ctx, staging);
   }
 } // anonymous namespace
 
@@ -258,13 +260,13 @@ namespace ToolKit
     sci.maxLod = 1.0f;
     vkCreateSampler(m_context->GetDevice(), &sci, nullptr, &m_dummyTexture->sampler);
 
-    m_context->SubmitOneShot([&](VkCommandBuffer cb) {
+    m_context->EnqueueGpuWork([img = m_dummyTexture->image](VkCommandBuffer cb) {
       VkImageMemoryBarrier b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
       b.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
       b.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
       b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
       b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-      b.image = m_dummyTexture->image;
+      b.image = img;
       b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
       b.subresourceRange.levelCount = 1;
       b.subresourceRange.layerCount = 1;
@@ -300,13 +302,13 @@ namespace ToolKit
 
     vkCreateSampler(m_context->GetDevice(), &sci, nullptr, &m_dummyCubeTexture->sampler);
 
-    m_context->SubmitOneShot([&](VkCommandBuffer cb) {
+    m_context->EnqueueGpuWork([img = m_dummyCubeTexture->image](VkCommandBuffer cb) {
       VkImageMemoryBarrier b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
       b.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
       b.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
       b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
       b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-      b.image = m_dummyCubeTexture->image;
+      b.image = img;
       b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
       b.subresourceRange.levelCount = 1;
       b.subresourceRange.layerCount = 6;
@@ -344,13 +346,13 @@ namespace ToolKit
 
     vkCreateSampler(m_context->GetDevice(), &sci, nullptr, &m_dummy2DArrayTexture->sampler);
 
-    m_context->SubmitOneShot([&](VkCommandBuffer cb) {
+    m_context->EnqueueGpuWork([img = m_dummy2DArrayTexture->image](VkCommandBuffer cb) {
       VkImageMemoryBarrier b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
       b.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
       b.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
       b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
       b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-      b.image = m_dummy2DArrayTexture->image;
+      b.image = img;
       b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
       b.subresourceRange.levelCount = 1;
       b.subresourceRange.layerCount = 1;
@@ -409,8 +411,20 @@ namespace ToolKit
     // VulkanSwapchain::BeginFrame waited on m_inFlight[currentFrame] just now â†’ every cmd
     // buffer that recorded into this slot last cycle is fully retired on the GPU. Reap that
     // bucket before any new work this frame can touch the same slot.
+    //
+    // The very first BeginFrame is special: the slot's fence has never gated a real submission,
+    // so anything DeferDelete'd during init (loader code, dummy texture churn) is sitting in
+    // this slot but has NOT been consumed by any cb yet. Draining it now would destroy
+    // resources that FlushPendingGpuWork below is about to record barriers/copies against.
+    // Skip the drain on the first frame; those entries stay queued until the slot rolls around
+    // again (frame N + FRAMES_IN_FLIGHT), by which point this frame's cb has retired and the
+    // standard fence guarantee holds.
     m_deleterSlot = m_swapchain->GetCurrentFrameIndex();
-    DrainDeleterBucket(m_deleterSlot);
+    if (!m_firstFrame)
+    {
+      DrainDeleterBucket(m_deleterSlot);
+    }
+    m_firstFrame = false;
 
     // Same fence guarantee covers descriptor sets allocated last cycle from this slot's pool â€”
     // resetting it releases every set in one call, ready for fresh BindTexture/SubmitPerDrawData
@@ -428,6 +442,27 @@ namespace ToolKit
     // ring's contents are only read from inside cmd buffers that have now retired (Stage 7d-4b).
     m_context->ResetPerDrawUboRing();
     m_currentDynamicOffset = 0;
+
+    // Drain any GPU work queued via EnqueueGpuWork while no frame was active (init-time texture
+    // uploads, layout transitions, mip generation) into this frame's command buffer. The
+    // cleanup callbacks (e.g. staging buffer destroys) ride DeferDelete so they only fire once
+    // the recorded GPU work has retired on the GPU.
+    VkCommandBuffer cb              = m_swapchain->GetCurrentCommandBuffer();
+    std::vector<std::function<void()>> pendingCleanups = m_context->FlushPendingGpuWork(cb);
+    for (std::function<void()>& cleanup : pendingCleanups)
+    {
+      DeferDelete(std::move(cleanup));
+    }
+
+    // From this point on EnqueueGpuWork records inline into cb when no render pass is open, or
+    // parks into the during-RP queue when one is (vkCmdPipelineBarrier mid-pass without
+    // self-dependency is illegal — VUID-vkCmdPipelineBarrier-None-07889). VulkanBackend flushes
+    // the during-RP queue immediately after every render pass closes (per-Draw EndRenderPass
+    // for offscreen, EndSwapchainPass for the swapchain pass). Cleared in Present.
+    m_context->SetCurrentRecordingCb(
+        cb,
+        [this](std::function<void()> fn) { DeferDelete(std::move(fn)); },
+        [this]() { return m_rpActive || (m_swapchain != nullptr && m_swapchain->IsSwapchainPassActive()); });
   }
 
   void VulkanBackend::EndFrame()
@@ -441,6 +476,10 @@ namespace ToolKit
     {
       return;
     }
+    // Stop routing EnqueueGpuWork inline before the cb is submitted: any work enqueued past
+    // this point (e.g. resource churn between Present and the next BeginFrame) goes back into
+    // the pending queue and replays into the next frame's cb.
+    m_context->SetCurrentRecordingCb(VK_NULL_HANDLE, {}, {});
     if (!m_swapchain->EndFrame())
     {
       m_needsRecreate = true;
@@ -721,6 +760,22 @@ namespace ToolKit
     }
     // Swapchain pass was opened in StartPass and must be explicitly closed here.
     m_swapchain->EndSwapchainPass();
+
+    // Same rationale as the offscreen path above: anything EnqueueGpuWork parked while the
+    // swapchain pass was open (e.g. ImGui texture cache uploads from the editor) is now safe
+    // to record into the cb before the next pass starts.
+    if (m_swapchain && m_swapchain->IsFrameActive())
+    {
+      VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer();
+      if (cb != VK_NULL_HANDLE)
+      {
+        auto rpCleanups = m_context->FlushDuringRenderPassWork(cb);
+        for (std::function<void()>& cleanup : rpCleanups)
+        {
+          DeferDelete(std::move(cleanup));
+        }
+      }
+    }
   }
 
   void VulkanBackend::SetViewport(uint x, uint y, uint w, uint h)
@@ -1258,6 +1313,15 @@ namespace ToolKit
         tex->currentLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
       }
       m_rpActive = false;
+
+      // Drain anything EnqueueGpuWork parked while this RP was open (lazy uploads triggered
+      // during FlushDescriptorState etc.). Now that we're past vkCmdEndRenderPass it's legal
+      // to record their barriers + copies into the same cb, ahead of the next Draw.
+      auto rpCleanups = m_context->FlushDuringRenderPassWork(cb);
+      for (std::function<void()>& cleanup : rpCleanups)
+      {
+        DeferDelete(std::move(cleanup));
+      }
     }
   }
 
@@ -1764,18 +1828,22 @@ namespace ToolKit
     {
       const VkImageLayout targetLayout = isDepth ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
                                                  : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-      m_context->SubmitOneShot(
-          [&](VkCommandBuffer cb)
+      m_context->EnqueueGpuWork(
+          [img        = data->image,
+           aspect     = data->aspect,
+           mipLevels  = data->mipLevels,
+           layerCount = data->arrayLayers,
+           targetLayout](VkCommandBuffer cb)
           {
             VkImageMemoryBarrier b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
             b.oldLayout                   = VK_IMAGE_LAYOUT_UNDEFINED;
             b.newLayout                   = targetLayout;
             b.srcQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
             b.dstQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
-            b.image                       = data->image;
-            b.subresourceRange.aspectMask = data->aspect;
-            b.subresourceRange.levelCount = data->mipLevels;
-            b.subresourceRange.layerCount = data->arrayLayers;
+            b.image                       = img;
+            b.subresourceRange.aspectMask = aspect;
+            b.subresourceRange.levelCount = mipLevels;
+            b.subresourceRange.layerCount = layerCount;
             b.srcAccessMask               = 0;
             b.dstAccessMask               = VK_ACCESS_SHADER_READ_BIT;
             vkCmdPipelineBarrier(cb,
@@ -1846,10 +1914,14 @@ namespace ToolKit
     if (vt == nullptr || vt->image == VK_NULL_HANDLE || vt->mipLevels <= 1)
       return;
 
-    m_context->SubmitOneShot(
-        [&](VkCommandBuffer cb)
+    m_context->EnqueueGpuWork(
+        [img         = vt->image,
+         aspect      = vt->aspect,
+         arrayLayers = vt->arrayLayers,
+         mipLevels   = vt->mipLevels,
+         extent      = vt->extent](VkCommandBuffer cb)
         {
-          for (uint32_t mip = 1; mip < vt->mipLevels; ++mip)
+          for (uint32_t mip = 1; mip < mipLevels; ++mip)
           {
             // Transition mip-1 (all layers): SHADER_READ_ONLY → TRANSFER_SRC
             VkImageMemoryBarrier toSrc{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
@@ -1857,11 +1929,11 @@ namespace ToolKit
             toSrc.newLayout                       = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
             toSrc.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
             toSrc.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-            toSrc.image                           = vt->image;
-            toSrc.subresourceRange.aspectMask     = vt->aspect;
+            toSrc.image                           = img;
+            toSrc.subresourceRange.aspectMask     = aspect;
             toSrc.subresourceRange.baseMipLevel   = mip - 1;
             toSrc.subresourceRange.levelCount     = 1;
-            toSrc.subresourceRange.layerCount     = vt->arrayLayers;
+            toSrc.subresourceRange.layerCount     = arrayLayers;
             toSrc.srcAccessMask                   = VK_ACCESS_SHADER_READ_BIT;
             toSrc.dstAccessMask                   = VK_ACCESS_TRANSFER_READ_BIT;
             vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
@@ -1878,23 +1950,23 @@ namespace ToolKit
                                  VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &toDst);
 
             // Blit mip-1 → mip for all layers
-            int32_t srcW = std::max(1, (int32_t)(vt->extent.width  >> (mip - 1)));
-            int32_t srcH = std::max(1, (int32_t)(vt->extent.height >> (mip - 1)));
-            int32_t dstW = std::max(1, (int32_t)(vt->extent.width  >> mip));
-            int32_t dstH = std::max(1, (int32_t)(vt->extent.height >> mip));
+            int32_t srcW = std::max(1, (int32_t)(extent.width  >> (mip - 1)));
+            int32_t srcH = std::max(1, (int32_t)(extent.height >> (mip - 1)));
+            int32_t dstW = std::max(1, (int32_t)(extent.width  >> mip));
+            int32_t dstH = std::max(1, (int32_t)(extent.height >> mip));
 
             VkImageBlit blit{};
-            blit.srcSubresource.aspectMask     = vt->aspect;
+            blit.srcSubresource.aspectMask     = aspect;
             blit.srcSubresource.mipLevel       = mip - 1;
             blit.srcSubresource.baseArrayLayer = 0;
-            blit.srcSubresource.layerCount     = vt->arrayLayers;
+            blit.srcSubresource.layerCount     = arrayLayers;
             blit.srcOffsets[1]                 = {srcW, srcH, 1};
             blit.dstSubresource               = blit.srcSubresource;
             blit.dstSubresource.mipLevel       = mip;
             blit.dstOffsets[1]                 = {dstW, dstH, 1};
             vkCmdBlitImage(cb,
-                           vt->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                           vt->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                           img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                           img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                            1, &blit, VK_FILTER_LINEAR);
 
             // Transition mip-1 back: TRANSFER_SRC → SHADER_READ_ONLY

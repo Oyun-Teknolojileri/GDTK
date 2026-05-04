@@ -148,10 +148,6 @@ namespace ToolKit
     {
       return false;
     }
-    if (!CreateOneShotPool())
-    {
-      return false;
-    }
 
     m_vkCmdBeginDebugUtilsLabelEXT =
         (PFN_vkCmdBeginDebugUtilsLabelEXT) vkGetInstanceProcAddr(m_instance, "vkCmdBeginDebugUtilsLabelEXT");
@@ -175,11 +171,27 @@ namespace ToolKit
       vkDeviceWaitIdle(m_device);
     }
 
-    if (m_oneShotPool != VK_NULL_HANDLE)
+    // Drop any GPU work that was queued but never flushed (no frame ever started, or shutdown
+    // landed mid-frame with a render pass open). The cb-side recorders are no-ops if not
+    // replayed; the cleanup callbacks still need to run to release any staging resources
+    // captured in their closures.
+    for (PendingGpuWork& w : m_pendingGpuWork)
     {
-      vkDestroyCommandPool(m_device, m_oneShotPool, nullptr);
-      m_oneShotPool = VK_NULL_HANDLE;
+      if (w.postFlushCleanup)
+      {
+        w.postFlushCleanup();
+      }
     }
+    m_pendingGpuWork.clear();
+
+    for (PendingGpuWork& w : m_pendingDuringRpWork)
+    {
+      if (w.postFlushCleanup)
+      {
+        w.postFlushCleanup();
+      }
+    }
+    m_pendingDuringRpWork.clear();
 
     if (m_descriptorPool != VK_NULL_HANDLE)
     {
@@ -736,52 +748,89 @@ namespace ToolKit
     return true;
   }
 
-  bool VulkanContext::CreateOneShotPool()
+  void VulkanContext::EnqueueGpuWork(std::function<void(VkCommandBuffer)> recorder,
+                                     std::function<void()> postFlushCleanup)
   {
-    VkCommandPoolCreateInfo ci{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
-    ci.flags            = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
-    ci.queueFamilyIndex = m_graphicsQueueFamily;
-    VkResult r          = vkCreateCommandPool(m_device, &ci, nullptr, &m_oneShotPool);
-    if (r != VK_SUCCESS)
+    if (!recorder)
     {
-      TK_ERR("CreateOneShotPool: vkCreateCommandPool failed: %d", r);
-      return false;
+      return;
     }
-    return true;
+
+    // Frame active path. Inline recording is only legal *outside* a render pass —
+    // vkCmdPipelineBarrier and vkCmdCopy* in our render passes lack self-dependency, so
+    // running them mid-pass trips VUID-vkCmdPipelineBarrier-None-07889. When a pass is open
+    // we park the work and let VulkanBackend flush it the moment it closes the pass — same cb,
+    // same submission, just on the safe side of vkCmdEndRenderPass.
+    if (m_currentRecordingCb != VK_NULL_HANDLE)
+    {
+      const bool rpActive = m_renderPassActiveQuery && m_renderPassActiveQuery();
+      if (!rpActive)
+      {
+        recorder(m_currentRecordingCb);
+        if (postFlushCleanup && m_inlineCleanupSink)
+        {
+          m_inlineCleanupSink(std::move(postFlushCleanup));
+        }
+        return;
+      }
+
+      m_pendingDuringRpWork.push_back({std::move(recorder), std::move(postFlushCleanup)});
+      return;
+    }
+
+    // No frame active: queue for the next BeginFrame to replay.
+    m_pendingGpuWork.push_back({std::move(recorder), std::move(postFlushCleanup)});
   }
 
-  void VulkanContext::SubmitOneShot(const std::function<void(VkCommandBuffer)>& recorder)
+  std::vector<std::function<void()>> VulkanContext::FlushPendingGpuWork(VkCommandBuffer cb)
   {
-    if (!recorder || m_device == VK_NULL_HANDLE || m_oneShotPool == VK_NULL_HANDLE)
+    std::vector<std::function<void()>> cleanups;
+    if (cb == VK_NULL_HANDLE || m_pendingGpuWork.empty())
     {
-      return;
+      return cleanups;
     }
 
-    VkCommandBufferAllocateInfo ai{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
-    ai.commandPool        = m_oneShotPool;
-    ai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    ai.commandBufferCount = 1;
-
-    VkCommandBuffer cb = VK_NULL_HANDLE;
-    if (vkAllocateCommandBuffers(m_device, &ai, &cb) != VK_SUCCESS)
+    cleanups.reserve(m_pendingGpuWork.size());
+    for (PendingGpuWork& w : m_pendingGpuWork)
     {
-      TK_ERR("SubmitOneShot: vkAllocateCommandBuffers failed");
-      return;
+      w.recorder(cb);
+      if (w.postFlushCleanup)
+      {
+        cleanups.emplace_back(std::move(w.postFlushCleanup));
+      }
+    }
+    m_pendingGpuWork.clear();
+    return cleanups;
+  }
+
+  std::vector<std::function<void()>> VulkanContext::FlushDuringRenderPassWork(VkCommandBuffer cb)
+  {
+    std::vector<std::function<void()>> cleanups;
+    if (cb == VK_NULL_HANDLE || m_pendingDuringRpWork.empty())
+    {
+      return cleanups;
     }
 
-    VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-    bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(cb, &bi);
-    recorder(cb);
-    vkEndCommandBuffer(cb);
+    cleanups.reserve(m_pendingDuringRpWork.size());
+    for (PendingGpuWork& w : m_pendingDuringRpWork)
+    {
+      w.recorder(cb);
+      if (w.postFlushCleanup)
+      {
+        cleanups.emplace_back(std::move(w.postFlushCleanup));
+      }
+    }
+    m_pendingDuringRpWork.clear();
+    return cleanups;
+  }
 
-    VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
-    si.commandBufferCount = 1;
-    si.pCommandBuffers    = &cb;
-    vkQueueSubmit(m_graphicsQueue, 1, &si, VK_NULL_HANDLE);
-    vkQueueWaitIdle(m_graphicsQueue);
-
-    vkFreeCommandBuffers(m_device, m_oneShotPool, 1, &cb);
+  void VulkanContext::SetCurrentRecordingCb(VkCommandBuffer cb,
+                                            std::function<void(std::function<void()>)> inlineCleanupSink,
+                                            std::function<bool()> renderPassActiveQuery)
+  {
+    m_currentRecordingCb     = cb;
+    m_inlineCleanupSink      = std::move(inlineCleanupSink);
+    m_renderPassActiveQuery  = std::move(renderPassActiveQuery);
   }
 
 } // namespace ToolKit

@@ -129,15 +129,14 @@ namespace ToolKit
         return out;
       }
 
-      ctx->SubmitOneShot(
-          [&staging, &out, size](VkCommandBuffer cb)
+      ctx->EnqueueGpuWork(
+          [staging, out, size](VkCommandBuffer cb)
           {
             VkBufferCopy region{};
             region.size = size;
             vkCmdCopyBuffer(cb, staging.handle, out.handle, 1, &region);
-          });
-
-      Destroy(ctx, staging);
+          },
+          [ctx, staging]() mutable { Destroy(ctx, staging); });
       return out;
     }
 
