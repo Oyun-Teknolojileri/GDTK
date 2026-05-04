@@ -461,14 +461,9 @@ namespace ToolKit
   {
     VkDevice device = m_context->GetDevice();
 
-    // Decode caller-requested clears. Color/depth attachment loadOp is baked into the
-    // VkRenderPass and cached; if the engine asks for a different clear pattern next pass we
-    // rebuild via the cachedClearBits dirty check in StartPass.
-    const auto bitsToUInt          = [](GraphicBitFields b) { return (uint32_t) b; };
-    const uint32_t bits            = bitsToUInt(desc.clearBits);
-    const bool clearColorBit       = (bits & bitsToUInt(GraphicBitFields::ColorBits))   != 0;
-    const bool clearDepthBit       = (bits & bitsToUInt(GraphicBitFields::DepthBits))   != 0;
-    const bool clearStencilBit     = (bits & bitsToUInt(GraphicBitFields::StencilBits)) != 0;
+    // Clearing is done via vkCmdClear* outside the render pass in StartPass.
+    // The render pass always uses loadOp=LOAD so multiple Draw() calls within the
+    // same pass accumulate rather than each one clearing the attachments.
 
     // Old RP+FB may still be referenced by the in-flight command buffer of an earlier frame --
     // queue them for deletion N frames out instead of destroying eagerly. The new ones below
@@ -530,15 +525,15 @@ namespace ToolKit
       VkAttachmentDescription a{};
       a.format         = slot.tex->format;
       a.samples        = slot.tex->samples;
-      a.loadOp         = clearColorBit ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
+      a.loadOp         = VK_ATTACHMENT_LOAD_OP_LOAD;
       a.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
       a.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
       a.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
       // initialLayout: with LOAD we must declare the actual current layout so the previous
       // contents are preserved. With CLEAR/DONT_CARE the contents are tossed → UNDEFINED is the
       // cheapest start. FinishPass parks every attachment at SHADER_READ_ONLY_OPTIMAL.
-      a.initialLayout  = clearColorBit ? VK_IMAGE_LAYOUT_UNDEFINED
-                                       : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+      // ClearBuffer in StartPass leaves color in SHADER_READ_ONLY_OPTIMAL.
+      a.initialLayout  = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
       // MSAA color attachments aren't sampled directly (engine resolves through
       // ResolveFramebuffer first). The "shader read only" finalLayout is harmless for them
       // either way â€” vkCmdResolveImage transitions the image to TRANSFER_SRC_OPTIMAL itself
@@ -562,15 +557,12 @@ namespace ToolKit
       VkAttachmentDescription a{};
       a.format         = fbData->depthAttachment.tex->format;
       a.samples        = fbData->depthAttachment.tex->samples;
-      a.loadOp         = clearDepthBit   ? VK_ATTACHMENT_LOAD_OP_CLEAR
-                                         : VK_ATTACHMENT_LOAD_OP_LOAD;
+      a.loadOp         = VK_ATTACHMENT_LOAD_OP_LOAD;
       a.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
-      a.stencilLoadOp  = clearStencilBit ? VK_ATTACHMENT_LOAD_OP_CLEAR
-                                         : VK_ATTACHMENT_LOAD_OP_LOAD;
+      a.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_LOAD;
       a.stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
-      a.initialLayout  = (clearDepthBit && clearStencilBit)
-                             ? VK_IMAGE_LAYOUT_UNDEFINED
-                             : VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+      // ClearBuffer in StartPass leaves depth-stencil in DEPTH_STENCIL_READ_ONLY_OPTIMAL.
+      a.initialLayout  = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
       a.finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 
       depthRef.attachment = (uint32_t) atts.size();
@@ -639,7 +631,7 @@ namespace ToolKit
 
     fbData->renderPass      = newRp;
     fbData->framebuffer     = newFb;
-    fbData->cachedClearBits = desc.clearBits;
+      // (cachedClearBits removed: render pass no longer depends on clearBits)
     fbData->dirty           = false;
     return true;
   }
@@ -673,8 +665,7 @@ namespace ToolKit
 
     if (fbData->dirty
         || fbData->renderPass == VK_NULL_HANDLE
-        || fbData->framebuffer == VK_NULL_HANDLE
-        || fbData->cachedClearBits != desc.clearBits)
+        || fbData->framebuffer == VK_NULL_HANDLE)
     {
       if (!BuildOffscreenRenderPass(desc, fbData))
       {
@@ -682,13 +673,16 @@ namespace ToolKit
       }
     }
 
-    // Store pass description so Draw can open a render pass instance before each draw call.
-    // Also set a default full-framebuffer viewport + scissor here (outside the RP) so that
-    // a later SetViewportRect call can override it for passes like shadow map rendering that
-    // need per-slot viewports. Draw() must NOT reset the viewport, otherwise the per-slot
-    // viewport set between StartPass and Draw would be silently overridden.
     m_pendingPassDesc = desc;
     m_activePassFb    = fbData;
+
+    // Perform the requested clear ONCE here, outside any render pass, via vkCmdClear*Image.
+    // The render pass always uses loadOp=LOAD so multiple Draw() calls within the same pass
+    // accumulate rather than each one wiping the attachments.
+    if (desc.clearBits != GraphicBitFields::None)
+    {
+      ClearBuffer(desc.clearBits, desc.clearColor);
+    }
 
     if (VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer(); cb != VK_NULL_HANDLE)
     {

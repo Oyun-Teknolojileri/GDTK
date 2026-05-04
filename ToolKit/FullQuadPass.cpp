@@ -42,6 +42,11 @@ namespace ToolKit
     for (RenderJob& job : jobs)
     {
       ApplyPassState(job, m_passState);
+      // stencilOperation is material-driven for FullQuadPass. ApplyPassState copies
+      // m_passState.stencilOperation (None by default) and overwrites what CreateRenderJobs
+      // copied from the material. Restore it so callers like StencilPass can set a stencil
+      // test on the copy sub-pass via the material without it being silently discarded.
+      job.State.stencilOperation = m_material->GetRenderState()->stencilOperation;
     }
     renderer->Render(jobs);
   }

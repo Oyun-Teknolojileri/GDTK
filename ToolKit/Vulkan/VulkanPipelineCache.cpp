@@ -37,6 +37,7 @@ namespace ToolKit
         colorBlendOp == o.colorBlendOp && srcAlphaBlendFactor == o.srcAlphaBlendFactor &&
         dstAlphaBlendFactor == o.dstAlphaBlendFactor && alphaBlendOp == o.alphaBlendOp &&
         colorAttachmentCount == o.colorAttachmentCount &&
+        colorWriteMask == o.colorWriteMask &&
         rasterizationSamples == o.rasterizationSamples;
 
     if (!scalarsEqual)
@@ -103,6 +104,7 @@ namespace ToolKit
     h = MixBits(h, (std::size_t) d.dstAlphaBlendFactor);
     h = MixBits(h, (std::size_t) d.alphaBlendOp);
     h = MixBits(h, d.colorAttachmentCount);
+    h = MixBits(h, (std::size_t) d.colorWriteMask);
     h = MixBits(h, (std::size_t) d.rasterizationSamples);
     return h;
   }
@@ -191,8 +193,7 @@ namespace ToolKit
     // VK_FALSE the factor/op fields are ignored by the driver, so we can assign them
     // unconditionally and keep the cache key stable for the disabled-blend case.
     VkPipelineColorBlendAttachmentState att{};
-    att.colorWriteMask      = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-                              VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    att.colorWriteMask      = desc.colorWriteMask;
     att.blendEnable         = desc.blendEnable;
     att.srcColorBlendFactor = desc.srcColorBlendFactor;
     att.dstColorBlendFactor = desc.dstColorBlendFactor;
@@ -406,6 +407,11 @@ namespace ToolKit
     out.srcAlphaBlendFactor = r.srcAlpha;
     out.dstAlphaBlendFactor = r.dstAlpha;
     out.alphaBlendOp        = r.alphaOp;
+
+    out.colorWriteMask = state.colorMaskEnabled
+                             ? (VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                                VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT)
+                             : 0;
   }
 
 } // namespace ToolKit

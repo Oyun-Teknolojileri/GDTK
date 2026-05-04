@@ -76,6 +76,10 @@ namespace ToolKit
     VkBlendOp alphaBlendOp            = VK_BLEND_OP_ADD;
     uint colorAttachmentCount         = 1;
 
+    /** 0 = all channels masked (colorMaskEnabled=false). Full mask = RGBA bits set. */
+    VkColorComponentFlags colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                                           VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+
     /** Subpass sample count this pipeline targets (Stage 10). Must equal the active render
         pass's per-attachment sampleCount. Drives `pMultisampleState.rasterizationSamples`;
         also part of the cache key so a non-MSAA + an MSAA copy of the "same" recipe end up
