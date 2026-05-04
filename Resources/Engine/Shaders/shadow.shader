@@ -202,6 +202,12 @@ float SampleShadowOmni
 	float shadowMapSize = shadowAtlasResRatio * graphicConstants.shadowAtlasSize;
 
 	vec3 texCoord = UVWToUVLayer(dir);
+#ifdef VULKAN
+	// Vulkan textures are stored with V=0 at the top (negative viewport height trick flips
+	// the rendered image relative to OpenGL where V=0 is the bottom). UVWToUVLayer produces
+	// UVs in OpenGL convention, so the V axis must be flipped to match the stored texels.
+	texCoord.y = 1.0 - texCoord.y;
+#endif
 	int face = int(texCoord.z);
 
 	// Derive face 0's global slot index from its pixel coordinate,
