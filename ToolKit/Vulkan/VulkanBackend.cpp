@@ -1127,6 +1127,54 @@ namespace ToolKit
     // StartPass (so ImGui can record directly) and closed in FinishPass.
     if (m_activePassFb != nullptr)
     {
+      // If SetColorAttachment was called after StartPass (e.g. shadow atlas layer switch),
+      // the attachment view changed but the VkFramebuffer still points to the old layer.
+      // Rebuild only the VkFramebuffer — the VkRenderPass is format-stable so the pipeline
+      // cache key (pdesc.renderPass) stays valid and no pipeline thrash occurs.
+      if (m_activePassFb->dirty && m_activePassFb->renderPass != VK_NULL_HANDLE)
+      {
+        VkDevice device = m_context->GetDevice();
+
+        if (m_activePassFb->framebuffer != VK_NULL_HANDLE)
+        {
+          VkFramebuffer old = m_activePassFb->framebuffer;
+          DeferDelete([device, old]() { vkDestroyFramebuffer(device, old, nullptr); });
+          m_activePassFb->framebuffer = VK_NULL_HANDLE;
+        }
+
+        std::vector<VkImageView> fbViews;
+        fbViews.reserve(VulkanFramebuffer::kMaxColorAttachments + 1);
+        for (int i = 0; i < VulkanFramebuffer::kMaxColorAttachments; ++i)
+        {
+          if (m_activePassFb->colorAttachments[i].view != VK_NULL_HANDLE)
+          {
+            fbViews.push_back(m_activePassFb->colorAttachments[i].view);
+          }
+        }
+        if (m_activePassFb->depthAttachment.view != VK_NULL_HANDLE)
+        {
+          fbViews.push_back(m_activePassFb->depthAttachment.view);
+        }
+
+        VkFramebufferCreateInfo fbci{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
+        fbci.renderPass      = m_activePassFb->renderPass;
+        fbci.attachmentCount = (uint32_t) fbViews.size();
+        fbci.pAttachments    = fbViews.data();
+        fbci.width           = m_activePassFb->width;
+        fbci.height          = m_activePassFb->height;
+        fbci.layers          = 1;
+
+        VkFramebuffer newFb = VK_NULL_HANDLE;
+        if (vkCreateFramebuffer(device, &fbci, nullptr, &newFb) != VK_SUCCESS)
+        {
+          TK_ERR("Draw: vkCreateFramebuffer rebuild failed (dirty attachment)");
+          return;
+        }
+
+        m_activePassFb->framebuffer = newFb;
+        m_activePassFb->dirty       = false;
+      }
+
       std::vector<VkClearValue> clears;
       clears.reserve(VulkanFramebuffer::kMaxColorAttachments + 1);
       for (int i = 0; i < VulkanFramebuffer::kMaxColorAttachments; ++i)
