@@ -325,26 +325,28 @@ namespace ToolKit
             }
           }
 
+#ifndef TK_VULKAN
           uint64 texId         = EditorImGuiTextureCache::Acquire(texture, true);
-
           ImDrawList* drawList = ImGui::GetWindowDrawList();
           drawList->AddCallback(
               [](const ImDrawList* parentList, const ImDrawCmd* cmd)
               {
-                // TODO Texture* t = (Texture*) cmd->UserCallbackData;
-                // TODO GetRenderSystem()->GetBackend()->SetTextureSwizzleAlpha(t, true, true);
+                Texture* t = (Texture*) cmd->UserCallbackData;
+                GetRenderSystem()->GetBackend()->SetTextureSwizzleAlpha(t, true, true);
               },
               texture.get());
-
+#endif
           ImGui::Image(ConvertUIntImGuiTexture(texId), m_wndContentAreaSize, Vec2(0.0f, 0.0f), Vec2(1.0f, 1.0f));
 
+#ifndef TK_VULKAN
           drawList->AddCallback(
               [](const ImDrawList* parentList, const ImDrawCmd* cmd)
               {
-                // TODO Texture* t = (Texture*) cmd->UserCallbackData;
-                // TODO GetRenderSystem()->GetBackend()->SetTextureSwizzleAlpha(t, false, true);
+                Texture* t = (Texture*) cmd->UserCallbackData;
+                GetRenderSystem()->GetBackend()->SetTextureSwizzleAlpha(t, false, true);
               },
               texture.get());
+#endif
 
           if (IsActive())
           {
