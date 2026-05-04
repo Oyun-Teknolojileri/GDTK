@@ -566,8 +566,8 @@ namespace ToolKit
                                          : VK_ATTACHMENT_LOAD_OP_LOAD;
       a.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
       a.stencilLoadOp  = clearStencilBit ? VK_ATTACHMENT_LOAD_OP_CLEAR
-                                         : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-      a.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+                                         : VK_ATTACHMENT_LOAD_OP_LOAD;
+      a.stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
       a.initialLayout  = (clearDepthBit && clearStencilBit)
                              ? VK_IMAGE_LAYOUT_UNDEFINED
                              : VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;

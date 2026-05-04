@@ -25,7 +25,14 @@ namespace ToolKit
         vertexStride == o.vertexStride && attributeCount == o.attributeCount &&
         topology == o.topology && cullMode == o.cullMode && frontFace == o.frontFace &&
         depthTestEnable == o.depthTestEnable && depthWriteEnable == o.depthWriteEnable &&
-        depthCompareOp == o.depthCompareOp && blendEnable == o.blendEnable &&
+        depthCompareOp == o.depthCompareOp &&
+        stencilTestEnable == o.stencilTestEnable &&
+        (!stencilTestEnable || (stencilFailOp == o.stencilFailOp &&
+                                stencilPassOp == o.stencilPassOp &&
+                                stencilDepthFailOp == o.stencilDepthFailOp &&
+                                stencilCompareOp == o.stencilCompareOp &&
+                                stencilReference == o.stencilReference)) &&
+        blendEnable == o.blendEnable &&
         srcColorBlendFactor == o.srcColorBlendFactor && dstColorBlendFactor == o.dstColorBlendFactor &&
         colorBlendOp == o.colorBlendOp && srcAlphaBlendFactor == o.srcAlphaBlendFactor &&
         dstAlphaBlendFactor == o.dstAlphaBlendFactor && alphaBlendOp == o.alphaBlendOp &&
@@ -79,6 +86,15 @@ namespace ToolKit
     h = MixBits(h, (std::size_t) d.depthTestEnable);
     h = MixBits(h, (std::size_t) d.depthWriteEnable);
     h = MixBits(h, (std::size_t) d.depthCompareOp);
+    h = MixBits(h, (std::size_t) d.stencilTestEnable);
+    if (d.stencilTestEnable)
+    {
+      h = MixBits(h, (std::size_t) d.stencilFailOp);
+      h = MixBits(h, (std::size_t) d.stencilPassOp);
+      h = MixBits(h, (std::size_t) d.stencilDepthFailOp);
+      h = MixBits(h, (std::size_t) d.stencilCompareOp);
+      h = MixBits(h, (std::size_t) d.stencilReference);
+    }
     h = MixBits(h, (std::size_t) d.blendEnable);
     h = MixBits(h, (std::size_t) d.srcColorBlendFactor);
     h = MixBits(h, (std::size_t) d.dstColorBlendFactor);
@@ -153,9 +169,23 @@ namespace ToolKit
                                                              : VK_SAMPLE_COUNT_1_BIT;
 
     VkPipelineDepthStencilStateCreateInfo ds{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
-    ds.depthTestEnable  = desc.depthTestEnable;
-    ds.depthWriteEnable = desc.depthWriteEnable;
-    ds.depthCompareOp   = desc.depthCompareOp;
+    ds.depthTestEnable       = desc.depthTestEnable;
+    ds.depthWriteEnable      = desc.depthWriteEnable;
+    ds.depthCompareOp        = desc.depthCompareOp;
+    ds.stencilTestEnable     = desc.stencilTestEnable;
+    if (desc.stencilTestEnable)
+    {
+      VkStencilOpState sop{};
+      sop.failOp      = desc.stencilFailOp;
+      sop.passOp      = desc.stencilPassOp;
+      sop.depthFailOp = desc.stencilDepthFailOp;
+      sop.compareOp   = desc.stencilCompareOp;
+      sop.compareMask = 0xFF;
+      sop.writeMask   = 0xFF;
+      sop.reference   = desc.stencilReference;
+      ds.front = sop;
+      ds.back  = sop;
+    }
 
     // No build-time branching on blend mode � desc carries the full recipe. When blendEnable is
     // VK_FALSE the factor/op fields are ignored by the driver, so we can assign them
@@ -331,6 +361,43 @@ namespace ToolKit
     out.depthTestEnable     = state.depthTestEnabled ? VK_TRUE : VK_FALSE;
     out.depthWriteEnable    = state.depthWriteEnabled ? VK_TRUE : VK_FALSE;
     out.depthCompareOp      = ToVkCompareOp(state.depthFunction);
+
+    // Translate StencilOperation to Vulkan stencil front/back state.
+    // compareMask, writeMask, and reference are fixed constants: the engine's simple binary
+    // stencil model always uses reference=1 and full masks.
+    switch (state.stencilOperation)
+    {
+      case StencilOperation::None:
+        out.stencilTestEnable  = VK_FALSE;
+        break;
+      case StencilOperation::AllowAllPixels:
+        // Write 1 to stencil for every fragment that survives depth test.
+        out.stencilTestEnable  = VK_TRUE;
+        out.stencilCompareOp   = VK_COMPARE_OP_ALWAYS;
+        out.stencilPassOp      = VK_STENCIL_OP_REPLACE;
+        out.stencilFailOp      = VK_STENCIL_OP_KEEP;
+        out.stencilDepthFailOp = VK_STENCIL_OP_KEEP;
+        out.stencilReference   = 1;
+        break;
+      case StencilOperation::AllowPixelsPassingStencil:
+        // Only draw where stencil == 1.
+        out.stencilTestEnable  = VK_TRUE;
+        out.stencilCompareOp   = VK_COMPARE_OP_EQUAL;
+        out.stencilPassOp      = VK_STENCIL_OP_KEEP;
+        out.stencilFailOp      = VK_STENCIL_OP_KEEP;
+        out.stencilDepthFailOp = VK_STENCIL_OP_KEEP;
+        out.stencilReference   = 1;
+        break;
+      case StencilOperation::AllowPixelsFailingStencil:
+        // Only draw where stencil == 0.
+        out.stencilTestEnable  = VK_TRUE;
+        out.stencilCompareOp   = VK_COMPARE_OP_NOT_EQUAL;
+        out.stencilPassOp      = VK_STENCIL_OP_KEEP;
+        out.stencilFailOp      = VK_STENCIL_OP_KEEP;
+        out.stencilDepthFailOp = VK_STENCIL_OP_KEEP;
+        out.stencilReference   = 1;
+        break;
+    }
 
     out.blendEnable         = r.enable;
     out.srcColorBlendFactor = r.srcColor;

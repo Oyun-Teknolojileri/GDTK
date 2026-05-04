@@ -51,9 +51,18 @@ namespace ToolKit
     VkFrontFace frontFace        = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 
     // Depth / stencil.
-    VkBool32 depthTestEnable  = VK_FALSE;
-    VkBool32 depthWriteEnable = VK_FALSE;
+    VkBool32 depthTestEnable   = VK_FALSE;
+    VkBool32 depthWriteEnable  = VK_FALSE;
     VkCompareOp depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+
+    // Stencil. stencilTestEnable=false means the three op fields are ignored by the driver
+    // and do not need to participate in cache key equality when stencil is off.
+    VkBool32     stencilTestEnable = VK_FALSE;
+    VkStencilOp  stencilFailOp     = VK_STENCIL_OP_KEEP;   // fragment fails stencil test
+    VkStencilOp  stencilPassOp     = VK_STENCIL_OP_KEEP;   // fragment passes both tests
+    VkStencilOp  stencilDepthFailOp= VK_STENCIL_OP_KEEP;   // passes stencil, fails depth
+    VkCompareOp  stencilCompareOp  = VK_COMPARE_OP_ALWAYS;
+    uint32_t     stencilReference  = 1;
 
     // Color blend (single attachment state replicated across colorAttachmentCount). Factors
     // and ops live in the desc so the cache builder has zero branching ? callers spell out the
