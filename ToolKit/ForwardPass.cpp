@@ -64,18 +64,6 @@ namespace ToolKit
     renderer->SetFramebuffer(m_params.FrameBuffer, m_params.clearBuffer, Vec4(0.0f), discardBits);
     renderer->SetCamera(m_params.Cam, true);
 
-    // Adjust the depth test considering z-pre pass. With a filled depth buffer Lequal lets
-    // exactly the visible fragments survive; without it we keep the default Less.
-    if (m_params.hasForwardPrePass && m_params.renderData != nullptr)
-    {
-      RenderJobItr begin = m_params.renderData->GetForwardOpaqueBegin();
-      RenderJobItr end   = m_params.renderData->jobs.end();
-      for (RenderJobItr job = begin; job != end; ++job)
-      {
-        job->State.depthFunction = CompareFunctions::FuncLequal;
-      }
-    }
-
     if (m_params.onPreRender)
     {
       m_params.onPreRender();
@@ -161,8 +149,9 @@ namespace ToolKit
       // jobs to Lequal for z-prepass), no depth write so back-to-front draws don't self-occlude.
       for (RenderJobArray::iterator job = begin; job != end; job++)
       {
-        job->State.depthFunction     = CompareFunctions::FuncLess;
+        job->State.depthFunction     = CompareFunctions::FuncLequal;
         job->State.depthWriteEnabled = false;
+        job->State.depthTestEnabled  = true;
 
         if (job->Material->IsShaderMaterial())
         {
@@ -203,6 +192,10 @@ namespace ToolKit
 
     for (RenderJobItr job = begin; job != end; job++)
     {
+      job->State.depthFunction = CompareFunctions::FuncLequal;
+      job->State.depthWriteEnabled = true;
+      job->State.depthTestEnabled  = true;
+
       if (job->Material->IsShaderMaterial())
       {
         renderer->RenderWithProgramFromMaterial(*job);
