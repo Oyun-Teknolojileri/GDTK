@@ -33,8 +33,8 @@ namespace ToolKit
     // Generate stencil binary image.
     RenderSubPass(m_stencilPass);
 
-    // Use stencil output as input to the dilation.
-    GetRenderer()->SetTexture(0, m_stencilAsRt);
+    // Feed the stencil image into slot 0 as the dilate shader's input.
+    m_outlinePass->m_material->SetDiffuseTextureVal(m_stencilAsRt);
 
     m_outlinePass->SetFragmentShader(m_dilateShader, GetRenderer());
 
