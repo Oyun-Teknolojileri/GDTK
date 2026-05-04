@@ -341,6 +341,8 @@ namespace ToolKit
     for (RenderJobItr job = forwardBegin; job < translucentBegin; ++job)
     {
       job->State.blendFunction     = BlendFunction::NONE;
+      job->State.depthTestEnabled  = true;
+      job->State.depthWriteEnabled = true;
       job->State.depthClampEnabled = orthogonalShadowMap;
     }
 

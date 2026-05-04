@@ -37,7 +37,7 @@ namespace ToolKit
        *
        * Returns 0 if the texture is null or has no GPU data yet.
        */
-      uint64 Acquire(const TexturePtr& tex);
+      uint64 Acquire(const TexturePtr& tex, bool swizzleAlphaOne = false);
 
       /**
        * Frame-start sweep: removes cache entries whose backing GpuResourceData has expired
