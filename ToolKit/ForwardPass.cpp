@@ -29,6 +29,19 @@ namespace ToolKit
 
     ShaderPtr fragmentShader  = m_programConfigMat->GetFragmentShaderVal();
     fragmentShader->SetDefine("ShadowPCF", std::to_string(m_shadowPCF));
+
+    // Opaque + alpha-masked passive defaults. Lequal so a z-prepassed depth buffer keeps
+    // exactly the visible fragments; depth write on so non-prepassed scenes still build
+    // a correct z buffer.
+    m_opaquePassState.depthFunction     = CompareFunctions::FuncLequal;
+    m_opaquePassState.depthWriteEnabled = true;
+    m_opaquePassState.depthTestEnabled  = true;
+
+    // Translucent passive defaults. Lequal matches the opaque path; depth write off so
+    // back-to-front draws don't self-occlude.
+    m_translucentPassState.depthFunction     = CompareFunctions::FuncLequal;
+    m_translucentPassState.depthWriteEnabled = false;
+    m_translucentPassState.depthTestEnabled  = true;
   }
 
   void ForwardRenderPass::Render()
@@ -145,13 +158,12 @@ namespace ToolKit
 
     if (begin != end)
     {
-      // Translucent draws: keep depth test (default Less, even when PreRender bumped opaque
-      // jobs to Lequal for z-prepass), no depth write so back-to-front draws don't self-occlude.
+      // Translucent draws: pass-owned passive state copies depthFunc=Lequal, depthWrite=off,
+      // depthTest=on onto each job. Active fields (cullMode, blendFunction) stay material-owned,
+      // except for the TwoSided draw-twice algorithm below which is not a state override.
       for (RenderJobArray::iterator job = begin; job != end; job++)
       {
-        job->State.depthFunction     = CompareFunctions::FuncLequal;
-        job->State.depthWriteEnabled = false;
-        job->State.depthTestEnabled  = true;
+        ApplyPassState(*job, m_translucentPassState);
 
         if (job->Material->IsShaderMaterial())
         {
@@ -192,9 +204,7 @@ namespace ToolKit
 
     for (RenderJobItr job = begin; job != end; job++)
     {
-      job->State.depthFunction = CompareFunctions::FuncLequal;
-      job->State.depthWriteEnabled = true;
-      job->State.depthTestEnabled  = true;
+      ApplyPassState(*job, m_opaquePassState);
 
       if (job->Material->IsShaderMaterial())
       {

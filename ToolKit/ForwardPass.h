@@ -62,6 +62,12 @@ namespace ToolKit
     int m_shadowPCF = 0;
 
     MaterialPtr m_programConfigMat;
+
+    /** Pass-owned passive RenderState for the opaque + alpha-masked path. */
+    RenderState m_opaquePassState;
+
+    /** Pass-owned passive RenderState for the translucent path. */
+    RenderState m_translucentPassState;
   };
 
   typedef std::shared_ptr<ForwardRenderPass> ForwardRenderPassPtr;

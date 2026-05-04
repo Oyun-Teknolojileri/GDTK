@@ -75,6 +75,10 @@ namespace ToolKit
 
     /** Rotations for each face of a cubemap used for point light shadows. */
     Quaternion m_cubeMapRotations[6];
+
+    /** Pass-owned passive RenderState. Only passive fields (depth*, stencilOp, colorMask,
+     *  depthClamp) are read by ApplyPassState. Active fields are ignored. */
+    RenderState m_passState;
   };
 
   typedef std::shared_ptr<ShadowPass> ShadowPassPtr;

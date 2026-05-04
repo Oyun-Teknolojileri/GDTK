@@ -42,6 +42,10 @@ namespace ToolKit
 
    private:
     CubePtr m_cube = nullptr;
+
+    /** Pass-owned passive RenderState. Forces FuncLequal so the skybox cube's far-plane
+     *  fragments survive the depth test against the cleared depth buffer. */
+    RenderState m_passState;
   };
 
   typedef std::shared_ptr<CubeMapPass> CubeMapPassPtr;

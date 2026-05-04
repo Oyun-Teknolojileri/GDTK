@@ -33,6 +33,10 @@ namespace ToolKit
 
    private:
     RenderData m_renderData;
+
+    /** Pass-owned passive RenderState. depthTestEnabled is refreshed before each draw to
+     *  match the param-driven depth-tested vs bypass-depth-test billboard groups. */
+    RenderState m_passState;
   };
 
   typedef std::shared_ptr<BillboardPass> BillboardPassPtr;

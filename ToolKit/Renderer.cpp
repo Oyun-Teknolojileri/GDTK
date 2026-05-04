@@ -478,12 +478,20 @@ namespace ToolKit
     RenderJobArray jobs;
     RenderJobProcessor::CreateRenderJobs(jobs, m_tempQuad);
 
-    // Fullscreen quad: write nothing to depth, accept every fragment regardless of depth.
+    // Renderer is not a Pass, but uses the same passive-state pattern via a function-local
+    // static. Initialized once on first call: write nothing to depth, accept every fragment.
+    static const RenderState fullQuadPassState = []
+    {
+      RenderState s;
+      s.depthTestEnabled  = false;
+      s.depthWriteEnabled = false;
+      s.depthFunction     = CompareFunctions::FuncAlways;
+      return s;
+    }();
+
     for (RenderJob& job : jobs)
     {
-      job.State.depthTestEnabled  = false;
-      job.State.depthWriteEnabled = false;
-      job.State.depthFunction     = CompareFunctions::FuncAlways;
+      ApplyPassState(job, fullQuadPassState);
     }
 
     RenderWithProgramFromMaterial(jobs);
@@ -500,10 +508,17 @@ namespace ToolKit
     RenderJobArray jobs;
     RenderJobProcessor::CreateRenderJobs(jobs, m_dummyDrawCube);
 
-    // Used for cubemap convolution / equirect baking — accept every fragment.
+    // Used for cubemap convolution / equirect baking: accept every fragment.
+    static const RenderState drawCubePassState = []
+    {
+      RenderState s;
+      s.depthFunction = CompareFunctions::FuncAlways;
+      return s;
+    }();
+
     for (RenderJob& job : jobs)
     {
-      job.State.depthFunction = CompareFunctions::FuncAlways;
+      ApplyPassState(job, drawCubePassState);
     }
 
     RenderWithProgramFromMaterial(jobs);

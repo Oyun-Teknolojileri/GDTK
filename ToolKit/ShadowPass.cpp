@@ -56,6 +56,11 @@ namespace ToolKit
 
     m_shadowMatOrtho = createShadowMaterialFn("orthogonalDepthVert.shader", "orthogonalDepthFrag.shader");
     m_shadowMatPersp = createShadowMaterialFn("perspectiveDepthVert.shader", "perspectiveDepthFrag.shader");
+
+    // Pass-owned passive defaults. depthClampEnabled is refreshed per camera type before the
+    // caster loop in RenderShadowCasters (true for directional, false otherwise).
+    m_passState.depthTestEnabled  = true;
+    m_passState.depthWriteEnabled = true;
   }
 
   ShadowPass::ShadowPass(const ShadowPassParams& params) : ShadowPass() { m_params = params; }
@@ -336,14 +341,17 @@ namespace ToolKit
     RenderJobItr forwardMaskedBegin = renderData.GetForwardAlphaMaskedBegin();
     RenderJobItr translucentBegin   = renderData.GetForwardTranslucentBegin();
 
-    // Per-job overrides for the entire shadow caster set: blend off (regardless of the
-    // entity's material), and depth clamp on for orthogonal (directional) shadow cameras.
+    // Refresh the param-dependent passive field on the pass-owned state before the loop:
+    // depth clamp is on only for orthogonal (directional) shadow cameras.
+    m_passState.depthClampEnabled = orthogonalShadowMap;
+
+    // Per-job overrides for the entire shadow caster set. Passive fields come from the
+    // pass-owned RenderState. blendFunction is an active field, but shadow casters never
+    // blend regardless of the material's choice, so it stays as a direct assignment here.
     for (RenderJobItr job = forwardBegin; job < translucentBegin; ++job)
     {
-      job->State.blendFunction     = BlendFunction::NONE;
-      job->State.depthTestEnabled  = true;
-      job->State.depthWriteEnabled = true;
-      job->State.depthClampEnabled = orthogonalShadowMap;
+      ApplyPassState(*job, m_passState);
+      job->State.blendFunction = BlendFunction::NONE;
     }
 
     // Draw opaque.

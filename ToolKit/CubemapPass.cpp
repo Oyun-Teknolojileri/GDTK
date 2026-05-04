@@ -17,7 +17,14 @@
 namespace ToolKit
 {
 
-  CubeMapPass::CubeMapPass() : Pass("CubeMapPass") { m_cube = MakeNewPtr<Cube>(); }
+  CubeMapPass::CubeMapPass() : Pass("CubeMapPass")
+  {
+    m_cube                        = MakeNewPtr<Cube>();
+
+    // Skybox passive default. Defaults for depthTest (on) and depthWrite (on) are fine; the
+    // cube renders before any other geometry so writing the far plane is harmless.
+    m_passState.depthFunction     = CompareFunctions::FuncLequal;
+  }
 
   void CubeMapPass::Render()
   {
@@ -29,11 +36,9 @@ namespace ToolKit
     RenderJobArray jobs;
     RenderJobProcessor::CreateRenderJobs(jobs, m_cube);
 
-    // Skybox uses Lequal so the cube's far-plane fragments survive the depth test against
-    // the cleared depth buffer.
     for (RenderJob& job : jobs)
     {
-      job.State.depthFunction = CompareFunctions::FuncLequal;
+      ApplyPassState(job, m_passState);
     }
 
     renderer->RenderWithProgramFromMaterial(jobs);

@@ -25,6 +25,12 @@ namespace ToolKit
     m_frameBuffer           = MakeNewPtr<Framebuffer>("StencilPassFB");
 
     m_solidOverrideMaterial = GetMaterialManager()->GetCopyOfUnlitColorMaterial();
+
+    // Stencil-write passive defaults. Defaults for depthTest/depthWrite/depthFunction are
+    // correct here. colorMaskEnabled is unimplemented in the Vulkan backend; the OpenGL path
+    // takes the masked write, Vulkan keeps current behavior. Tracked separately.
+    m_writePassState.stencilOperation = StencilOperation::AllowAllPixels;
+    m_writePassState.colorMaskEnabled = false;
   }
 
   void StencilRenderPass::Render()
@@ -36,8 +42,7 @@ namespace ToolKit
     // Stencil pass: write 1 to stencil, suppress color writes.
     for (RenderJob& job : *m_params.RenderJobs)
     {
-      job.State.stencilOperation = StencilOperation::AllowAllPixels;
-      job.State.colorMaskEnabled = false;
+      ApplyPassState(job, m_writePassState);
     }
 
     renderer->Render(*m_params.RenderJobs);

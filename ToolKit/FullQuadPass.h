@@ -43,6 +43,10 @@ namespace ToolKit
 
    private:
     QuadPtr m_quad;
+
+    /** Pass-owned passive RenderState. Disables depth test/write and uses FuncAlways so the
+     *  fullscreen quad always covers the framebuffer regardless of the depth buffer state. */
+    RenderState m_passState;
   };
 
   typedef std::shared_ptr<FullQuadPass> FullQuadPassPtr;

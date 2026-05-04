@@ -25,6 +25,11 @@ namespace ToolKit
     m_material       = MakeNewPtr<Material>();
     ShaderPtr shader = GetShaderManager()->Create<Shader>(ShaderPath("fullQuadVert.shader", true));
     m_material->SetVertexShaderVal(shader);
+
+    // Fullscreen quad passive defaults: write nothing to depth, accept every fragment.
+    m_passState.depthTestEnabled  = false;
+    m_passState.depthWriteEnabled = false;
+    m_passState.depthFunction     = CompareFunctions::FuncAlways;
   }
 
   void FullQuadPass::Render()
@@ -36,7 +41,7 @@ namespace ToolKit
     RenderJobProcessor::CreateRenderJobs(jobs, m_quad);
     for (RenderJob& job : jobs)
     {
-      job.State.depthTestEnabled = false;
+      ApplyPassState(job, m_passState);
     }
     renderer->Render(jobs);
   }
