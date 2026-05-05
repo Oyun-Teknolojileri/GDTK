@@ -2929,7 +2929,77 @@ namespace ToolKit
 
   void VulkanBackend::UpdateTextureSubRegion(Texture* tex, int x, int y, int w, int h, const void* data)
   {
-    // TODO: Staging buffer + vkCmdCopyBufferToImage with offset region.
+    if (tex == nullptr || data == nullptr || w <= 0 || h <= 0)
+      return;
+    auto* vt = static_cast<VulkanTexture*>(tex->m_gpuData.get());
+    if (vt == nullptr || vt->image == VK_NULL_HANDLE)
+      return;
+
+    const int bpp            = BytesOfFormat(tex->Settings().InternalFormat);
+    const VkDeviceSize bytes = (VkDeviceSize) w * (VkDeviceSize) h * (VkDeviceSize) bpp;
+    if (bytes == 0)
+      return;
+
+    VulkanBuffer::Buffer staging =
+        VulkanBuffer::CreateHostVisibleMapped(m_context.get(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, bytes);
+    if (staging.handle == VK_NULL_HANDLE)
+    {
+      TK_ERR("VulkanBackend::UpdateTextureSubRegion - staging buffer alloc failed (%llu bytes)",
+             (unsigned long long) bytes);
+      return;
+    }
+    std::memcpy(staging.mapped, data, static_cast<size_t>(bytes));
+
+    const VkImageLayout srcLayout = vt->currentLayout;
+    const int32_t  ox = x;
+    const int32_t  oy = y;
+    const uint32_t ew = (uint32_t) w;
+    const uint32_t eh = (uint32_t) h;
+
+    m_context->EnqueueGpuWork(
+        [staging, vt, srcLayout, ox, oy, ew, eh](VkCommandBuffer cb)
+        {
+          VkImageMemoryBarrier toTransfer{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+          toTransfer.oldLayout                       = srcLayout;
+          toTransfer.newLayout                       = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+          toTransfer.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+          toTransfer.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
+          toTransfer.image                           = vt->image;
+          toTransfer.subresourceRange.aspectMask     = vt->aspect;
+          toTransfer.subresourceRange.baseMipLevel   = 0;
+          toTransfer.subresourceRange.levelCount     = 1;
+          toTransfer.subresourceRange.baseArrayLayer = 0;
+          toTransfer.subresourceRange.layerCount     = 1;
+          toTransfer.srcAccessMask                   = VK_ACCESS_SHADER_READ_BIT;
+          toTransfer.dstAccessMask                   = VK_ACCESS_TRANSFER_WRITE_BIT;
+          vkCmdPipelineBarrier(cb,
+                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                               VK_PIPELINE_STAGE_TRANSFER_BIT,
+                               0, 0, nullptr, 0, nullptr, 1, &toTransfer);
+
+          VkBufferImageCopy region{};
+          region.imageSubresource.aspectMask     = vt->aspect;
+          region.imageSubresource.mipLevel       = 0;
+          region.imageSubresource.baseArrayLayer = 0;
+          region.imageSubresource.layerCount     = 1;
+          region.imageOffset                     = {ox, oy, 0};
+          region.imageExtent                     = {ew, eh, 1};
+          vkCmdCopyBufferToImage(cb, staging.handle, vt->image,
+                                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+          VkImageMemoryBarrier toRead = toTransfer;
+          toRead.oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+          toRead.newLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+          toRead.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+          toRead.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+          vkCmdPipelineBarrier(cb,
+                               VK_PIPELINE_STAGE_TRANSFER_BIT,
+                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                               0, 0, nullptr, 0, nullptr, 1, &toRead);
+        },
+        [ctx = m_context.get(), staging]() mutable { VulkanBuffer::Destroy(ctx, staging); });
+
+    vt->currentLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
   }
 
   void VulkanBackend::PushDebugGroup(StringView name)

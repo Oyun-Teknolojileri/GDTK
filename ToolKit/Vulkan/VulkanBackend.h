@@ -84,7 +84,7 @@ namespace ToolKit
     void EndTimerQuery() override;
     void GetElapsedTime(float& cpu, float& gpu) override;
 
-    // Texture resource management
+    // Texture resource management 
     void CreateTexture(Texture* tex) override;
     void DestroyTexture(Texture* tex) override;
     void ApplyTextureSettings(Texture* tex) override;
