@@ -7,10 +7,12 @@
 
 #include "VulkanBackend.h"
 
+#include "../EngineSettings.h"
 #include "../Framebuffer.h"
 #include "../Logger.h"
 #include "../Mesh.h"
 #include "../Texture.h"
+#include "../ToolKit.h"
 #include "../Types.h"
 #include "../UniformBuffer.h"
 #include "VulkanBindings.h"
@@ -1647,6 +1649,38 @@ namespace ToolKit
     }
   }
 
+  static VkFilter ToVkFilter(GraphicTypes f)
+  {
+    switch (f)
+    {
+    case GraphicTypes::SampleNearest:
+    case GraphicTypes::SampleNearestMipmapNearest:
+      return VK_FILTER_NEAREST;
+    case GraphicTypes::SampleLinear:
+    case GraphicTypes::SampleLinearMipmapLinear:
+    case GraphicTypes::SampleLinearMipmapNearest:
+      return VK_FILTER_LINEAR;
+    default:
+      return VK_FILTER_LINEAR;
+    }
+  }
+
+  static VkSamplerMipmapMode ToVkMipmapMode(GraphicTypes f)
+  {
+    switch (f)
+    {
+    case GraphicTypes::SampleNearest:
+    case GraphicTypes::SampleNearestMipmapNearest:
+    case GraphicTypes::SampleLinearMipmapNearest:
+      return VK_SAMPLER_MIPMAP_MODE_NEAREST;
+    case GraphicTypes::SampleLinear:
+    case GraphicTypes::SampleLinearMipmapLinear:
+      return VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    default:
+      return VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    }
+  }
+
   void VulkanBackend::CreateTexture(Texture* tex)
   {
     assert(tex && "CreateTexture: null texture");
@@ -1905,10 +1939,62 @@ namespace ToolKit
 
   void VulkanBackend::ApplyTextureSettings(Texture* tex)
   {
-    // Sampler is created once in CreateTexture with sensible defaults for Stage 1f.
-    // Re-creating on every ApplyTextureSettings call is wasteful and breaks the cached ImGui
-    // descriptor. Stage 7 will add proper sampler-cache keyed on TextureSettings.
-    (void) tex;
+    if (tex == nullptr)
+      return;
+    auto* vt = static_cast<VulkanTexture*>(tex->m_gpuData.get());
+    if (vt == nullptr || vt->image == VK_NULL_HANDLE)
+      return;
+
+    const TextureSettings& s = tex->Settings();
+    const bool isDepth       = IsDepthFormat(vt->format);
+
+    VkSamplerCreateInfo info{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+    info.magFilter    = ToVkFilter(s.MagFilter);
+    info.minFilter    = ToVkFilter(s.MinFilter);
+    info.mipmapMode   = ToVkMipmapMode(s.MinFilter);
+    info.addressModeU = ToVkAddressMode(s.WarpS);
+    info.addressModeV = ToVkAddressMode(s.WarpT);
+    info.addressModeW = ToVkAddressMode(s.WarpR);
+    info.minLod       = 0.0f;
+    info.maxLod       = (float) vt->mipLevels;
+
+    // Anisotropy: only meaningful for sampled color 2D textures. Depth samplers and special
+    // 1D-style targets (e.g., bone transform texture) skip it. Engine setting clamped to the
+    // physical device's maxSamplerAnisotropy limit.
+    if (!isDepth && s.Target == GraphicTypes::Target2D)
+    {
+      EngineSettings& engSettings = GetEngineSettings();
+      int anisoVal = engSettings.m_graphics->GetAnisotropicTextureFilteringVal().GetValue<int>();
+      if (anisoVal > 1)
+      {
+        VkPhysicalDeviceProperties props{};
+        vkGetPhysicalDeviceProperties(m_context->GetPhysicalDevice(), &props);
+        float maxAniso       = props.limits.maxSamplerAnisotropy;
+        info.anisotropyEnable = VK_TRUE;
+        info.maxAnisotropy    = std::min(maxAniso, (float) anisoVal);
+      }
+    }
+
+    VkSampler newSampler = VK_NULL_HANDLE;
+    if (vkCreateSampler(m_context->GetDevice(), &info, nullptr, &newSampler) != VK_SUCCESS)
+    {
+      TK_ERR("VulkanBackend::ApplyTextureSettings - vkCreateSampler failed");
+      return;
+    }
+
+    // DeferDelete the previous sampler — in-flight cmd buffers may still reference it via
+    // their bound descriptor sets. ImGui's (view, sampler) descriptor cache observes the change
+    // through GetNativeTextureHandle's shared_ptr indirection on the next frame.
+    if (vt->sampler != VK_NULL_HANDLE)
+    {
+      VkDevice device = m_context->GetDevice();
+      VkSampler old   = vt->sampler;
+      DeferDelete([device, old]() { vkDestroySampler(device, old, nullptr); });
+    }
+    vt->sampler = newSampler;
+
+    // Note: SwizzleAlphaToOne would require recreating VkImageView with VK_COMPONENT_SWIZZLE_ONE
+    // on the alpha channel — handled by the dedicated SetTextureSwizzleAlpha() entry point.
   }
 
   void VulkanBackend::SetTextureSwizzleAlpha(Texture* tex, bool swizzleToOne, bool setLastBindBack)
