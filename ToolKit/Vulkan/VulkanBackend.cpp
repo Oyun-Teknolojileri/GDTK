@@ -1636,6 +1636,17 @@ namespace ToolKit
     // TODO: Read timestamp query results.
   }
 
+  static VkSamplerAddressMode ToVkAddressMode(GraphicTypes wrap)
+  {
+    switch (wrap)
+    {
+    case GraphicTypes::UVRepeat:        return VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    case GraphicTypes::UVClampToEdge:   return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    case GraphicTypes::UVClampToBorder: return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+    default:                            return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    }
+  }
+
   void VulkanBackend::CreateTexture(Texture* tex)
   {
     assert(tex && "CreateTexture: null texture");
@@ -1797,9 +1808,9 @@ namespace ToolKit
       VkSamplerCreateInfo samplerInfo = {VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
       samplerInfo.magFilter           = VK_FILTER_LINEAR;
       samplerInfo.minFilter           = VK_FILTER_LINEAR;
-      samplerInfo.addressModeU        = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-      samplerInfo.addressModeV        = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-      samplerInfo.addressModeW        = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+      samplerInfo.addressModeU        = ToVkAddressMode(settings.WarpS);
+      samplerInfo.addressModeV        = ToVkAddressMode(settings.WarpT);
+      samplerInfo.addressModeW        = ToVkAddressMode(settings.WarpR);
       samplerInfo.mipmapMode          = VK_SAMPLER_MIPMAP_MODE_LINEAR;
       samplerInfo.minLod              = 0.0f;
       // Expose the full mip chain to sampling. Values above the actual mip count clamp safely.
