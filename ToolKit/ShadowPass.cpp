@@ -344,13 +344,11 @@ namespace ToolKit
     // Refresh the param-dependent passive field on the pass-owned state before the loop:
     // depth clamp is on only for orthogonal (directional) shadow cameras.
     m_passState.depthClampEnabled = orthogonalShadowMap;
+    renderer->SetPassState(m_passState);
 
-    // Per-job overrides for the entire shadow caster set. Passive fields come from the
-    // pass-owned RenderState. blendFunction is an active field, but shadow casters never
-    // blend regardless of the material's choice, so it stays as a direct assignment here.
+    // Shadow casters never blend regardless of the material's choice.
     for (RenderJobItr job = forwardBegin; job < translucentBegin; ++job)
     {
-      ApplyPassState(*job, m_passState);
       job->State.blendFunction = BlendFunction::NONE;
     }
 

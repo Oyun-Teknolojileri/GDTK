@@ -66,19 +66,6 @@ namespace ToolKit
     RenderState State;
   };
 
-  /** Copies the passive fields of a pass-owned RenderState onto a job's State. Active fields
-   *  (cullMode, blendFunction, drawType, alphaMaskTreshold, lineWidth) are owned by the
-   *  user/material and are intentionally not touched here. */
-  inline void ApplyPassState(RenderJob& job, const RenderState& pass)
-  {
-    job.State.depthTestEnabled  = pass.depthTestEnabled;
-    job.State.depthWriteEnabled = pass.depthWriteEnabled;
-    job.State.depthFunction     = pass.depthFunction;
-    job.State.stencilOperation  = pass.stencilOperation;
-    job.State.colorMaskEnabled  = pass.colorMaskEnabled;
-    job.State.depthClampEnabled = pass.depthClampEnabled;
-  }
-
   typedef RenderJobArray::iterator RenderJobItr;
 
   /**

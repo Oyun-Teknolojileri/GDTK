@@ -38,10 +38,7 @@ namespace ToolKit
 
       // depthTestEnabled is the only passive field that varies per billboard group.
       m_passState.depthTestEnabled = depthTest;
-      for (RenderJob& job : m_renderData.jobs)
-      {
-        ApplyPassState(job, m_passState);
-      }
+      renderer->SetPassState(m_passState);
 
       renderer->RenderWithProgramFromMaterial(m_renderData.jobs);
     };

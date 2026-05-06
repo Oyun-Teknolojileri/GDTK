@@ -158,13 +158,10 @@ namespace ToolKit
 
     if (begin != end)
     {
-      // Translucent draws: pass-owned passive state copies depthFunc=Lequal, depthWrite=off,
-      // depthTest=on onto each job. Active fields (cullMode, blendFunction) stay material-owned,
-      // except for the TwoSided draw-twice algorithm below which is not a state override.
+      renderer->SetPassState(m_translucentPassState);
+
       for (RenderJobArray::iterator job = begin; job != end; job++)
       {
-        ApplyPassState(*job, m_translucentPassState);
-
         if (job->Material->IsShaderMaterial())
         {
           renderer->RenderWithProgramFromMaterial(*job);
@@ -202,10 +199,10 @@ namespace ToolKit
     Renderer* renderer = GetRenderer();
     renderer->SetAmbientOcclusionTexture(m_params.SsaoTexture);
 
+    renderer->SetPassState(m_opaquePassState);
+
     for (RenderJobItr job = begin; job != end; job++)
     {
-      ApplyPassState(*job, m_opaquePassState);
-
       if (job->Material->IsShaderMaterial())
       {
         renderer->RenderWithProgramFromMaterial(*job);

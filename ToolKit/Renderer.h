@@ -537,6 +537,13 @@ namespace ToolKit
     void SetCamera(CameraPtr camera, bool setLens);
 
     int GetMaxArrayTextureLayers();
+
+    /** Sets the passive pipeline state (depth test/write, depth func, stencil, color mask,
+     *  depth clamp) that will be merged with each render job's active material state at draw time.
+     *  Active fields (cullMode, blendFunction, drawType, alphaMaskTreshold, lineWidth) are
+     *  ignored; they always come from the job's material. */
+    void SetPassState(const RenderState& state);
+
     void BindProgramOfMaterial(Material* material);
     void BindProgram(const GpuProgramPtr& program);
     void ResetUsedTextureSlots();
@@ -645,6 +652,10 @@ namespace ToolKit
 
     FramebufferPtr m_copyFrameBuffer               = nullptr;
     MaterialPtr m_copyMaterial                     = nullptr;
+
+    /** Passive pipeline state merged with each job's active state in Render(). Set by passes
+     *  once per pass (or per group) instead of looping over every job. */
+    RenderState m_passiveState;
 
     int m_maxArrayTextureLayers                    = -1;
 

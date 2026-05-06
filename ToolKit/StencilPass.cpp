@@ -40,11 +40,7 @@ namespace ToolKit
     Renderer* renderer = GetRenderer();
 
     // Stencil pass: write 1 to stencil, suppress color writes.
-    for (RenderJob& job : *m_params.RenderJobs)
-    {
-      ApplyPassState(job, m_writePassState);
-    }
-
+    renderer->SetPassState(m_writePassState);
     renderer->Render(*m_params.RenderJobs);
 
     // Copy pass: draw a fullscreen quad where stencil != 1. The stencil-op is set on the

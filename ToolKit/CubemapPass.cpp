@@ -36,11 +36,7 @@ namespace ToolKit
     RenderJobArray jobs;
     RenderJobProcessor::CreateRenderJobs(jobs, m_cube);
 
-    for (RenderJob& job : jobs)
-    {
-      ApplyPassState(job, m_passState);
-    }
-
+    renderer->SetPassState(m_passState);
     renderer->RenderWithProgramFromMaterial(jobs);
   }
 

@@ -95,11 +95,11 @@ namespace ToolKit
     GpuProgramManager* gpuProgramManager = renderer->GetGpuProgramManager();
     m_program                            = gpuProgramManager->CreateProgram(vert, frag);
 
+    renderer->SetPassState(m_passState);
     renderer->BindProgram(m_program);
 
     for (RenderJobItr job = begin; job != end; job++)
     {
-      ApplyPassState(*job, m_passState);
       renderer->Render(*job);
     }
 
@@ -112,7 +112,6 @@ namespace ToolKit
 
     for (RenderJobItr job = begin; job != end; job++)
     {
-      ApplyPassState(*job, m_passState);
       renderer->Render(*job);
     }
   }

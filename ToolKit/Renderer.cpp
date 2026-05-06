@@ -184,6 +184,17 @@ namespace ToolKit
     return m_maxArrayTextureLayers;
   }
 
+  void Renderer::SetPassState(const RenderState& state)
+  {
+    // Copy only passive fields; active fields remain owned by the material/job.
+    m_passiveState.depthTestEnabled  = state.depthTestEnabled;
+    m_passiveState.depthWriteEnabled = state.depthWriteEnabled;
+    m_passiveState.depthFunction     = state.depthFunction;
+    m_passiveState.stencilOperation  = state.stencilOperation;
+    m_passiveState.colorMaskEnabled  = state.colorMaskEnabled;
+    m_passiveState.depthClampEnabled = state.depthClampEnabled;
+  }
+
   void Renderer::SetCamera(CameraPtr camera, bool setLens)
   {
     TK_PROFILE_FUNCTION();
@@ -286,10 +297,17 @@ namespace ToolKit
     SetLights(job.lights);
     m_model = job.WorldTransform;
 
-    // Pipeline state is owned by the job (initialized from material at job creation; passes
-    // mutate it for pass-level overrides). Local copy lets us apply cullFlip without touching
-    // the persistent job.State.
+    // Pipeline state is owned by the job (initialized from material at job creation).
+    // Passive fields (depth/stencil/etc.) are overridden from the renderer's per-pass state
+    // so passes no longer need to loop over every job to apply them.
     RenderState state = job.State;
+    state.depthTestEnabled  = m_passiveState.depthTestEnabled;
+    state.depthWriteEnabled = m_passiveState.depthWriteEnabled;
+    state.depthFunction     = m_passiveState.depthFunction;
+    state.stencilOperation  = m_passiveState.stencilOperation;
+    state.colorMaskEnabled  = m_passiveState.colorMaskEnabled;
+    state.depthClampEnabled = m_passiveState.depthClampEnabled;
+
     if (job.requireCullFlip)
     {
       switch (state.cullMode)
@@ -489,11 +507,7 @@ namespace ToolKit
       return s;
     }();
 
-    for (RenderJob& job : jobs)
-    {
-      ApplyPassState(job, fullQuadPassState);
-    }
-
+    SetPassState(fullQuadPassState);
     RenderWithProgramFromMaterial(jobs);
   }
 
@@ -516,11 +530,7 @@ namespace ToolKit
       return s;
     }();
 
-    for (RenderJob& job : jobs)
-    {
-      ApplyPassState(job, drawCubePassState);
-    }
-
+    SetPassState(drawCubePassState);
     RenderWithProgramFromMaterial(jobs);
   }
 
