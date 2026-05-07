@@ -295,8 +295,6 @@ namespace ToolKit
                                               viewport->m_editorRenderer->m_params.LitMode  = m_sceneLightingMode;
                                               viewport->m_editorRenderer->m_params.Viewport = viewport;
                                               viewport->m_editorRenderer->Render(renderer);
-
-                                              viewport->StageResolvedTexture();
                                             }});
         }
       }

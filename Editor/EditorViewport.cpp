@@ -35,37 +35,6 @@ namespace ToolKit
 
     TKDefineClass(EditorViewport, Window);
 
-    void EditorViewport::SwapResolvedTexture()
-    {
-      if (m_resolvedTextureFromRender)
-      {
-        m_lastResolvedTexture       = m_resolvedTextureFromRender;
-        m_resolvedTextureFromRender = nullptr;
-      }
-    }
-
-    void EditorViewport::StageResolvedTexture()
-    {
-      if (m_renderTarget != nullptr && m_renderTarget->IsMultiSampled())
-      {
-        TexturePtr resolved = m_renderTarget->GetResolvedTexture();
-        if (resolved)
-        {
-          m_resolvedTextureFromRender = resolved;
-        }
-      }
-    }
-
-    TexturePtr EditorViewport::GetLastResolvedTexture()
-    {
-      if (m_lastResolvedTexture)
-      {
-        return m_lastResolvedTexture;
-      }
-
-      return GetTextureManager()->GetBlackTexture();
-    }
-
     std::vector<OverlayUI*> EditorViewport::m_overlays = {nullptr, nullptr, nullptr, nullptr};
 
     void InitOverlays(EditorViewport* viewport)
@@ -311,18 +280,24 @@ namespace ToolKit
           ResizeWindow((uint) wndSize.x, (uint) wndSize.y);
         }
 
-        SwapResolvedTexture();
-
         if (m_wndContentAreaSize.x > 0 && m_wndContentAreaSize.y > 0)
         {
-          TexturePtr texture = GetLastResolvedTexture();
-          if (m_framebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0) != nullptr)
+          // ImGui samples m_renderTarget within the same cb after the render task's FinishPass —
+          // within-cb subpass deps handle the layout / write→read transition. Cross-cb hazards
+          // are eliminated by FRAMES_IN_FLIGHT=1 in the swapchain.
+          TexturePtr texture = m_renderTarget;
+          if (texture != nullptr && texture->IsMultiSampled())
           {
-            RenderTargetPtr rt = m_framebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
-            if (!rt->IsMultiSampled())
+            // MSAA: ImGui can only sample the resolved (single-sample) attachment.
+            TexturePtr resolved = m_renderTarget->GetResolvedTexture();
+            if (resolved)
             {
-              texture = rt;
+              texture = resolved;
             }
+          }
+          if (texture == nullptr)
+          {
+            texture = GetTextureManager()->GetBlackTexture();
           }
 
           // In Vulkan the swizzle is baked into the VkImageView created by Acquire(tex, true),

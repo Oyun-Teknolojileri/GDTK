@@ -28,7 +28,15 @@ namespace ToolKit
   class TK_API VulkanSwapchain
   {
    public:
-    static constexpr uint FRAMES_IN_FLIGHT = 2;
+    // Set to 1 to fully serialize CPU recording and GPU execution per frame: each BeginFrame
+    // waits on the in-flight fence so no two cb's ever execute concurrently on the queue.
+    // Eliminates cross-cb GPU hazards that subpass-EXTERNAL deps don't reliably bridge across
+    // submissions on this driver/architecture (observed: editor viewport intermittently shows
+    // intermediate offscreen-pass content with FRAMES_IN_FLIGHT=2, even with ping-pong'd RTs
+    // and tightened RP deps). Cost is minimal in the editor: GPU is the bottleneck and CPU
+    // pipelining doesn't hide much there. Swapchain image double/triple-buffering for tear-free
+    // presentation is independent of this and continues to operate.
+    static constexpr uint FRAMES_IN_FLIGHT = 1;
 
     VulkanSwapchain();
     ~VulkanSwapchain();

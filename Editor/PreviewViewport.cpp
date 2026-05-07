@@ -43,13 +43,10 @@ namespace ToolKit
       HandleStates();
       DrawCommands();
 
-      SwapResolvedTexture();
-
       m_previewRenderer->m_params.MainFramebuffer = m_framebuffer;
       GetRenderSystem()->AddRenderTask({[this](Renderer* renderer) -> void
       {
         m_previewRenderer->Render(renderer);
-        StageResolvedTexture();
       }});
 
       // Render color attachment as rounded image
@@ -68,10 +65,18 @@ namespace ToolKit
 
       ImGui::Dummy(imageSize);
 
-      TexturePtr texture = GetLastResolvedTexture();
-      if (m_renderTarget != nullptr && !m_renderTarget->IsMultiSampled())
+      TexturePtr texture = m_renderTarget;
+      if (texture != nullptr && texture->IsMultiSampled())
       {
-        texture = m_renderTarget;
+        TexturePtr resolved = m_renderTarget->GetResolvedTexture();
+        if (resolved)
+        {
+          texture = resolved;
+        }
+      }
+      if (texture == nullptr)
+      {
+        texture = GetTextureManager()->GetBlackTexture();
       }
 
       ImGui::GetWindowDrawList()->AddImageRounded(Convert2ImGuiTexture(texture),

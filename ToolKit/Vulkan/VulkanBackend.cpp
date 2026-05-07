@@ -619,25 +619,43 @@ namespace ToolKit
     subpass.pColorAttachments       = colorRefs.empty() ? nullptr : colorRefs.data();
     subpass.pDepthStencilAttachment = hasDepth ? &depthRef : nullptr;
 
-    // Basit dependency: external read \u2192 attachment write, attachment write \u2192 external sample.
-    // ImGui sonraki frame'de bu RT'yi sample edecek.
+    // External subpass dependencies. The engine opens a fresh render pass instance per Draw on
+    // the same framebuffer (intermediate buffers like bloom chains, m_resolvedFramebuffer, the
+    // shadow atlas etc. are written by many such instances back-to-back), and FRAMES_IN_FLIGHT>1
+    // pipelines two cb's on the queue. Both srcStageMask and srcAccessMask therefore have to
+    // cover *every* prior access type \u2014 read AND write, depth AND color \u2014 so the implicit
+    // queue-order memory dependency hands off cleanly to this pass:
+    //   - prior FRAGMENT_SHADER + SHADER_READ (sampling in earlier passes)
+    //   - prior COLOR_ATTACHMENT_OUTPUT + COLOR_ATTACHMENT_WRITE (write-after-write on the same
+    //     image, intra-cb between back-to-back Draw RPs and inter-cb across frames-in-flight)
+    //   - prior LATE_FRAGMENT_TESTS + DEPTH_STENCIL_ATTACHMENT_WRITE (depth write-after-write)
+    // dep[1] mirrors that with the post-pass scope so subsequent samplers (e.g. ImGui in the
+    // swapchain pass, or the next Draw's color/depth read) observe this pass's writes.
     VkSubpassDependency deps[2]{};
     deps[0].srcSubpass    = VK_SUBPASS_EXTERNAL;
     deps[0].dstSubpass    = 0;
-    deps[0].srcStageMask  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    deps[0].srcStageMask  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+                           VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+                           VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
     deps[0].dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
                            VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-    deps[0].srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    deps[0].srcAccessMask = VK_ACCESS_SHADER_READ_BIT |
+                           VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+                           VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
     deps[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
                            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
     deps[1].srcSubpass    = 0;
     deps[1].dstSubpass    = VK_SUBPASS_EXTERNAL;
     deps[1].srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
                            VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-    deps[1].dstStageMask  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    deps[1].dstStageMask  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+                           VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+                           VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
     deps[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
                            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-    deps[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    deps[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT |
+                           VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+                           VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
     VkRenderPassCreateInfo rpci{VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
     rpci.attachmentCount = (uint32_t) atts.size();
