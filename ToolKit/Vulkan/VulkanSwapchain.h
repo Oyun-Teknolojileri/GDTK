@@ -57,6 +57,15 @@ namespace ToolKit
      *  presents. */
     bool EndFrame();
 
+    /** Mid-frame command buffer flush. Closes the current cmd buffer (without semaphores or
+     *  the in-flight fence — those belong to EndFrame's terminal submission), submits it,
+     *  waits for the graphics queue to go idle, then resets and re-begins the same cmd buffer
+     *  so the rest of the frame can keep recording. Used by the backend to recover from
+     *  per-draw ring overflow without growing the ring: drain queued GPU work, then reset the
+     *  ring head from a known-empty state. Caller is responsible for ending any open render
+     *  pass before calling and for restoring dynamic state (viewport/scissor) afterwards. */
+    bool FlushCommandBuffer();
+
     /** Begins the swapchain's main render pass with @p clearColor as loadOp value. No-op if a
      *  swapchain pass is already active or no frame is in flight. */
     void BeginSwapchainPass(const Vec4& clearColor);

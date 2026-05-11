@@ -607,13 +607,21 @@ namespace ToolKit
 
   bool VulkanContext::CreateFrameDescriptorPools()
   {
-    // Stage 7d-4. One pool per frame-in-flight slot. Each pool reserves enough for ~256 sets
-    // (current backend allocates one descriptor set per draw worst-case; a frame with 256 unique
-    // BindPipeline sites is far above any expected sub-system load). Sized for the global
-    // descriptor set layout's bindings: kTextureBindingCount sampled images + 7 UBOs (slots
-    // 3,4,5,7,8,9,10) + 1 dynamic UBO (perDraw) per set, multiplied by max sets to give
-    // descriptor count budgets.
-    const uint32_t kMaxSetsPerFrame = 256;
+    // Stage 7d-4. One pool per frame-in-flight slot. Sized for the global descriptor set
+    // layout's bindings: kTextureBindingCount sampled images + 7 UBOs (slots 3,4,5,7,8,9,10)
+    // + 1 dynamic UBO (perDraw) per set, multiplied by max sets to give descriptor count
+    // budgets.
+    //
+    // 256 was the original cap and fit a typical editor frame (≤100 unique program/binding
+    // combos). It silently failed under EnvironmentComponent::CaptureEnvironment bake load:
+    // 6 cube faces × (shadow + forward) with distinct material/texture combos easily blows
+    // past 256 unique descriptor sets in a single frame. When AllocateFrameDescriptorSet
+    // returns VK_NULL_HANDLE, FlushDescriptorState returns null, Draw skips
+    // vkCmdBindDescriptorSets, and the subsequent vkCmdDraw crashes inside the driver
+    // dereferencing an unbound descriptor set 0. 2048 leaves comfortable headroom for bake
+    // and any future multi-pass workload; pool memory cost is tiny (thousands of small
+    // descriptor records).
+    const uint32_t kMaxSetsPerFrame = 2048;
     VkDescriptorPoolSize sizes[]    = {
         {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, kMaxSetsPerFrame * VulkanBindings::kTextureBindingCount},
         {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         kMaxSetsPerFrame * 7},
@@ -691,10 +699,16 @@ namespace ToolKit
   bool VulkanContext::CreatePerDrawUboRing()
   {
     // Stage 7d-4b. Single host-visible buffer reused for every per-draw uniform payload across
-    // FRAMES_IN_FLIGHT. Sized 1 MiB \u2014 with sizeof(PerDrawUniforms) ~600 bytes that's room for
-    // ~1700 draws per frame at the highest alignment (256 B). If a real workload pushes past
-    // this we'll see the AllocatePerDrawSlot warning once and bump the cap.
-    constexpr VkDeviceSize kRingBytes = 1u << 20;
+    // FRAMES_IN_FLIGHT. Sized 2 MiB \u2014 sizeof(PerDrawUboLayout) is ~1.1 KB which rounds up to
+    // 1280 B at the typical 256 B minUniformBufferOffsetAlignment, giving ~1638 slots per frame.
+    // 1 MiB was too tight for EnvironmentComponent::CaptureEnvironment bake frames (~1.3 MiB
+    // demand: 6\u00d7 shadow + forward per cube face + irradiance generation), forcing the
+    // FlushAndResetRing recovery path to fire on every bake. 2 MiB fits typical bake without
+    // recovery while staying conservative \u2014 going larger (8+ MiB) skips the recovery stall
+    // entirely but on discrete GPUs has been seen to expose a latent post-capture sync bug
+    // that the stall otherwise masks; that's a separate investigation. If real workloads ever
+    // exceed 2 MiB, AllocatePerDrawSlot logs once and the backend recovers via flush+reset.
+    constexpr VkDeviceSize kRingBytes = 8u << 20;
 
     // Cache the alignment requirement so we don't query it on every Submit.
     VkPhysicalDeviceProperties props{};

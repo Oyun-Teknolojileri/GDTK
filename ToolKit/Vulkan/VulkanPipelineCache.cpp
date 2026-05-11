@@ -122,7 +122,7 @@ namespace ToolKit
     auto it = m_pipelines.find(desc);
     if (it != m_pipelines.end())
     {
-      return it->second;
+      return it->second.pipeline;
     }
 
     VkDevice device = ctx->GetDevice();
@@ -240,17 +240,65 @@ namespace ToolKit
       return VK_NULL_HANDLE;
     }
 
-    m_pipelines.emplace(desc, newPipe);
+    m_pipelines.emplace(desc, Entry{newPipe, layout});
     return newPipe;
+  }
+
+  void VulkanPipelineCache::InvalidateForRenderPass(VkRenderPass rp,
+                                                    const std::function<void(VkPipeline)>& deferDelete)
+  {
+    if (rp == VK_NULL_HANDLE)
+    {
+      return;
+    }
+    for (auto it = m_pipelines.begin(); it != m_pipelines.end(); )
+    {
+      if (it->first.renderPass == rp)
+      {
+        if (it->second.pipeline != VK_NULL_HANDLE && deferDelete)
+        {
+          deferDelete(it->second.pipeline);
+        }
+        it = m_pipelines.erase(it);
+      }
+      else
+      {
+        ++it;
+      }
+    }
+  }
+
+  void VulkanPipelineCache::InvalidateForPipelineLayout(VkPipelineLayout layout,
+                                                        const std::function<void(VkPipeline)>& deferDelete)
+  {
+    if (layout == VK_NULL_HANDLE)
+    {
+      return;
+    }
+    for (auto it = m_pipelines.begin(); it != m_pipelines.end(); )
+    {
+      if (it->second.layout == layout)
+      {
+        if (it->second.pipeline != VK_NULL_HANDLE && deferDelete)
+        {
+          deferDelete(it->second.pipeline);
+        }
+        it = m_pipelines.erase(it);
+      }
+      else
+      {
+        ++it;
+      }
+    }
   }
 
   void VulkanPipelineCache::Destroy(VkDevice device)
   {
     for (auto& kv : m_pipelines)
     {
-      if (kv.second != VK_NULL_HANDLE)
+      if (kv.second.pipeline != VK_NULL_HANDLE)
       {
-        vkDestroyPipeline(device, kv.second, nullptr);
+        vkDestroyPipeline(device, kv.second.pipeline, nullptr);
       }
     }
     m_pipelines.clear();

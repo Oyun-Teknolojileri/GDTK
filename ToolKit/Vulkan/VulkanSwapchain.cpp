@@ -564,6 +564,57 @@ namespace ToolKit
     return true;
   }
 
+  bool VulkanSwapchain::FlushCommandBuffer()
+  {
+    if (!m_frameActive)
+    {
+      return false;
+    }
+
+    VkCommandBuffer cb = m_cmdBuffers[m_currentFrame];
+
+    if (VkResult r = vkEndCommandBuffer(cb); r != VK_SUCCESS)
+    {
+      TK_ERR("VulkanSwapchain::FlushCommandBuffer: vkEndCommandBuffer failed: %d", r);
+      return false;
+    }
+
+    // No semaphores: the imageAvailable wait + renderFinished signal belong to the terminal
+    // EndFrame submission. The in-flight fence likewise tracks the EndFrame submission so the
+    // BeginFrame fence wait next cycle gates the whole frame's GPU work, including this one.
+    VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    si.commandBufferCount = 1;
+    si.pCommandBuffers    = &cb;
+    if (VkResult r = vkQueueSubmit(m_ctx->GetGraphicsQueue(), 1, &si, VK_NULL_HANDLE); r != VK_SUCCESS)
+    {
+      TK_ERR("VulkanSwapchain::FlushCommandBuffer: vkQueueSubmit failed: %d", r);
+      return false;
+    }
+
+    // Heavy stall — only acceptable because this is a recovery path, not the steady-state.
+    if (VkResult r = vkQueueWaitIdle(m_ctx->GetGraphicsQueue()); r != VK_SUCCESS)
+    {
+      TK_ERR("VulkanSwapchain::FlushCommandBuffer: vkQueueWaitIdle failed: %d", r);
+      return false;
+    }
+
+    if (VkResult r = vkResetCommandBuffer(cb, 0); r != VK_SUCCESS)
+    {
+      TK_ERR("VulkanSwapchain::FlushCommandBuffer: vkResetCommandBuffer failed: %d", r);
+      return false;
+    }
+
+    VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    if (VkResult r = vkBeginCommandBuffer(cb, &bi); r != VK_SUCCESS)
+    {
+      TK_ERR("VulkanSwapchain::FlushCommandBuffer: vkBeginCommandBuffer failed: %d", r);
+      return false;
+    }
+
+    return true;
+  }
+
   VkCommandBuffer VulkanSwapchain::GetCurrentCommandBuffer() const { return m_cmdBuffers[m_currentFrame]; }
 
 } // namespace ToolKit

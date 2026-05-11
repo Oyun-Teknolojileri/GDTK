@@ -135,6 +135,39 @@ namespace ToolKit
             VkBufferCopy region{};
             region.size = size;
             vkCmdCopyBuffer(cb, staging.handle, out.handle, 1, &region);
+
+            // Memory dependency: the destination buffer is about to be read as
+            // vertex/index/uniform input by draws later in this same command buffer
+            // (or in subsequent submissions on the same queue, which the implicit
+            // submission-order dependency does NOT cover for memory visibility).
+            // Without this barrier, NVIDIA's Vulkan ICD has been observed to
+            // dereference an unwritten region during vertex fetch -- crash manifests
+            // as Access violation @ 0x0 inside nvoglv64.dll mid-vkCmdDraw, only
+            // when the upload lands in the same cb as the draw (no FlushAndResetRing
+            // waitIdle in between to drain the transfer). dstStage/dstAccess cover
+            // the three usages a HOST -> DEVICE_LOCAL upload through this helper can
+            // land on: vertex attribute fetch, index fetch, and shader UBO read.
+            VkBufferMemoryBarrier barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+            barrier.srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+            barrier.dstAccessMask       = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT |
+                                          VK_ACCESS_INDEX_READ_BIT |
+                                          VK_ACCESS_UNIFORM_READ_BIT |
+                                          VK_ACCESS_SHADER_READ_BIT;
+            barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.buffer              = out.handle;
+            barrier.offset              = 0;
+            barrier.size                = size;
+
+            vkCmdPipelineBarrier(cb,
+                                 VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                 VK_PIPELINE_STAGE_VERTEX_INPUT_BIT |
+                                     VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
+                                     VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                                 0,
+                                 0, nullptr,
+                                 1, &barrier,
+                                 0, nullptr);
           },
           [ctx, staging]() mutable { Destroy(ctx, staging); });
       return out;

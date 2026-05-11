@@ -270,6 +270,26 @@ namespace ToolKit
         BindPipeline. */
     uint32_t m_currentDynamicOffset        = 0;
 
+    /** Cached dynamic viewport/scissor state, refreshed by SetViewport / SetScissor and
+        re-issued onto the new command buffer by FlushAndResetRing. Vulkan dynamic state lives
+        on the VkCommandBuffer; mid-frame cmd buffer resets lose it, so we keep the latest
+        values here to restore after a flush+reset cycle. */
+    struct CachedRect2D
+    {
+      uint32_t x = 0, y = 0, w = 0, h = 0;
+      bool valid = false;
+    };
+    CachedRect2D m_cachedViewport{};
+    CachedRect2D m_cachedScissor{};
+
+    /** Recovery path for per-draw ring overflow. Submits the in-progress cmd buffer, waits for
+        the GPU to drain, resets the descriptor pool / descriptor cache / ring head, and
+        re-issues cached dynamic state onto the freshly begun cmd buffer. CPU-side shadow
+        state (bound textures/UBOs/program) is left intact so the upcoming Draw rebuilds its
+        descriptor set from current bindings. Called from SubmitPerDrawData when
+        AllocatePerDrawSlot fails. */
+    void FlushAndResetRing();
+
     /**
      * Per-frame-in-flight deletion buckets. Sized to VulkanSwapchain::FRAMES_IN_FLIGHT in the
      * constructor. Bucket index N is appended to during frame N (and between frames before the

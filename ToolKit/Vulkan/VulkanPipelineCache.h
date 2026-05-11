@@ -14,6 +14,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <unordered_map>
 
 namespace ToolKit
@@ -125,11 +126,33 @@ namespace ToolKit
      *  VK_NULL_HANDLE if vkCreateGraphicsPipelines fails (logged). */
     VkPipeline GetOrCreate(VulkanContext* ctx, VkPipelineLayout layout, const VulkanPipelineDesc& desc);
 
+    /** Evicts every cached pipeline whose desc.renderPass == @p rp and forwards the freed
+        VkPipeline handles to @p deferDelete (which should route through VulkanBackend::DeferDelete
+        so the destroy fires after the in-flight cb retires). Must be called BEFORE the caller
+        defer-deletes the VkRenderPass itself - otherwise a subsequent cache lookup with a
+        recycled-handle RP could return a pipeline that still references the destroyed RP, which
+        NVIDIA's ICD has been observed to NULL-deref inside vkCmdDraw. */
+    void InvalidateForRenderPass(VkRenderPass rp, const std::function<void(VkPipeline)>& deferDelete);
+
+    /** Same contract as InvalidateForRenderPass but matches by the VkPipelineLayout the pipeline
+        was built against. ~VulkanGpuProgram destroys the program's pipelineLayout; any cached
+        pipeline that was created with that layout is now orphaned and using it inside vkCmdDraw
+        produces a NULL/small-offset deref inside nvoglv64.dll. Must be called from
+        DestroyGpuProgram BEFORE the program's shared_ptr is queued into DeferDelete, so the
+        pipeline destroys and the layout destroy land in the same deleter bucket and fire in
+        push order (pipeline first, layout second). */
+    void InvalidateForPipelineLayout(VkPipelineLayout layout, const std::function<void(VkPipeline)>& deferDelete);
+
     /** Destroys every cached VkPipeline. Caller must have vkDeviceWaitIdle'd. */
     void Destroy(VkDevice device);
 
    private:
-    std::unordered_map<VulkanPipelineDesc, VkPipeline, VulkanPipelineDescHash> m_pipelines;
+    struct Entry
+    {
+      VkPipeline pipeline       = VK_NULL_HANDLE;
+      VkPipelineLayout layout   = VK_NULL_HANDLE;
+    };
+    std::unordered_map<VulkanPipelineDesc, Entry, VulkanPipelineDescHash> m_pipelines;
   };
 
   /**

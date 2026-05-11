@@ -472,6 +472,86 @@ namespace ToolKit
     // Present() handles the end-of-frame submit. Kept as no-op to match IGraphicsBackend contract.
   }
 
+  void VulkanBackend::FlushAndResetRing()
+  {
+    if (m_swapchain == nullptr || !m_swapchain->IsFrameActive())
+    {
+      return;
+    }
+
+    VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer();
+    if (cb == VK_NULL_HANDLE)
+    {
+      return;
+    }
+
+    // SubmitPerDrawData is invoked from FeedUniforms which runs between BindPipeline and Draw.
+    // Offscreen render passes are opened/closed inside Draw() itself so m_rpActive is normally
+    // false at this point; defensively close one if the engine ever reorders that.
+    if (m_rpActive)
+    {
+      vkCmdEndRenderPass(cb);
+      m_rpActive = false;
+    }
+    // If the swapchain pass is currently open we can't safely flush: the swapchain render pass
+    // declares VK_ATTACHMENT_LOAD_OP_CLEAR, so closing and reopening it would clear the image
+    // and discard everything drawn so far this frame. Bail with a log; the draw that triggered
+    // overflow will hit the validation error, but no rendered content is lost. Realistic
+    // overflow today comes from EnvironmentComponent::CaptureEnvironment which renders
+    // exclusively to offscreen FBs, so this branch should not fire in practice.
+    if (m_swapchain->IsSwapchainPassActive())
+    {
+      TK_ERR("VulkanBackend::FlushAndResetRing: per-draw ring overflowed inside the swapchain "
+             "render pass — flush skipped to avoid losing draw content. The triggering draw "
+             "will fail descriptor validation; consider reducing per-frame draw count.");
+      return;
+    }
+
+    if (!m_swapchain->FlushCommandBuffer())
+    {
+      // FlushCommandBuffer logged the failure; nothing more we can do here.
+      return;
+    }
+
+    // Every descriptor set in the current frame's pool was just consumed by the submission we
+    // waited on, so it's safe to release them all and clear the cache that pointed at them.
+    const uint frameIdx = m_swapchain->GetCurrentFrameIndex();
+    m_context->ResetFrameDescriptorPool(frameIdx);
+    if (frameIdx < m_descriptorCache.size())
+    {
+      m_descriptorCache[frameIdx].clear();
+    }
+
+    // Ring drained; reuse from the start.
+    m_context->ResetPerDrawUboRing();
+    m_currentDynamicOffset = 0;
+
+    // Re-issue dynamic state on the new cmd buffer. CPU shadow state (bound textures/UBOs/
+    // program) stays valid — FlushDescriptorState will allocate fresh sets from it on the next
+    // Draw. The next Draw also re-records vkCmdBindPipeline + vkCmdBindDescriptorSets +
+    // vkCmdBindVertexBuffers / vkCmdBindIndexBuffer, so those don't need preservation here.
+    if (m_cachedViewport.valid)
+    {
+      VkViewport vp{};
+      vp.x        = (float) m_cachedViewport.x;
+      vp.y        = (float) (m_cachedViewport.y + m_cachedViewport.h);
+      vp.width    = (float) m_cachedViewport.w;
+      vp.height   = -(float) m_cachedViewport.h;
+      vp.minDepth = 0.0f;
+      vp.maxDepth = 1.0f;
+      vkCmdSetViewport(cb, 0, 1, &vp);
+    }
+    if (m_cachedScissor.valid)
+    {
+      VkRect2D sc{};
+      sc.offset.x      = (int32_t) m_cachedScissor.x;
+      sc.offset.y      = (int32_t) m_cachedScissor.y;
+      sc.extent.width  = m_cachedScissor.w;
+      sc.extent.height = m_cachedScissor.h;
+      vkCmdSetScissor(cb, 0, 1, &sc);
+    }
+  }
+
   void VulkanBackend::Present()
   {
     if (!m_frameStarted)
@@ -512,6 +592,20 @@ namespace ToolKit
     if (fbData->renderPass != VK_NULL_HANDLE)
     {
       VkRenderPass oldRp = fbData->renderPass;
+      // Evict every pipeline cache entry keyed by this VkRenderPass BEFORE deferring its destroy.
+      // The cache key embeds the raw VkRenderPass handle (uintptr_t) and NVIDIA's ICD recycles
+      // handle values after destroy -- without this eviction, a freshly-created VkRenderPass that
+      // happens to land on the same handle value as a destroyed one will cache-hit a stale
+      // VkPipeline whose internal state still references the dead RP, which manifests as a NULL
+      // (or tiny-offset, e.g. 0x105) deref inside nvoglv64.dll mid-vkCmdDraw. Pipeline destroy
+      // itself is also deferred (same in-flight cb may still reference it).
+      if (m_pipelineCache)
+      {
+        m_pipelineCache->InvalidateForRenderPass(oldRp,
+            [this, device](VkPipeline pipe) {
+              DeferDelete([device, pipe]() { vkDestroyPipeline(device, pipe, nullptr); });
+            });
+      }
       DeferDelete([device, oldRp]() { vkDestroyRenderPass(device, oldRp, nullptr); });
       fbData->renderPass = VK_NULL_HANDLE;
     }
@@ -758,6 +852,13 @@ namespace ToolKit
       sc.offset = {0, 0};
       sc.extent = {fbData->width, fbData->height};
       vkCmdSetScissor(cb, 0, 1, &sc);
+
+      // Mirror the implicit viewport/scissor into the dynamic-state cache so FlushAndResetRing
+      // can restore them onto a freshly begun cmd buffer if a mid-pass per-draw ring overflow
+      // forces a flush. SetViewport / SetScissor populate the cache themselves for engine-level
+      // overrides (shadow slot viewports etc.); this branch covers the pass-default values.
+      m_cachedViewport = {0, 0, fbData->width, fbData->height, true};
+      m_cachedScissor  = {0, 0, fbData->width, fbData->height, true};
     }
   }
 
@@ -802,7 +903,9 @@ namespace ToolKit
   {
     // Dynamic state â€” every cached pipeline is built with VK_DYNAMIC_STATE_VIEWPORT (see
     // VulkanPipelineCache::GetOrCreate), so this can be called any time during cmd recording.
-    // Bail when no frame is active to avoid recording into a non-recording cmd buffer.
+    // Cache the latest values regardless of frame-active so FlushAndResetRing can restore them
+    // onto the freshly begun cmd buffer after a mid-frame flush.
+    m_cachedViewport = {(uint32_t) x, (uint32_t) y, (uint32_t) w, (uint32_t) h, true};
     if (m_swapchain == nullptr || !m_swapchain->IsFrameActive())
     {
       return;
@@ -827,6 +930,7 @@ namespace ToolKit
 
   void VulkanBackend::SetScissor(uint x, uint y, uint w, uint h)
   {
+    m_cachedScissor = {(uint32_t) x, (uint32_t) y, (uint32_t) w, (uint32_t) h, true};
     if (m_swapchain == nullptr || !m_swapchain->IsFrameActive())
     {
       return;
@@ -1025,9 +1129,18 @@ namespace ToolKit
     void* mapped        = nullptr;
     if (!m_context->AllocatePerDrawSlot(size, offset, mapped))
     {
-      // Ring full â€” already logged once. Skip this draw's per-draw payload; shader ends up
-      // reading the previous slot's contents which is wrong, but no crash. A bigger ring fixes.
-      return;
+      // Ring full. Drain queued GPU work so it's safe to reuse the ring from offset 0, then
+      // retry. AllocatePerDrawSlot already logged the overflow once; if the retry still fails
+      // the payload itself is bigger than the ring, which is unrecoverable here.
+      FlushAndResetRing();
+      if (!m_context->AllocatePerDrawSlot(size, offset, mapped))
+      {
+        TK_ERR("VulkanBackend::SubmitPerDrawData: AllocatePerDrawSlot failed even after flush "
+               "(payload %llu B > ring %llu B?)",
+               (unsigned long long) size,
+               (unsigned long long) m_context->GetPerDrawUboCapacity());
+        return;
+      }
     }
     std::memcpy(mapped, data, size);
 
@@ -1287,18 +1400,30 @@ namespace ToolKit
     // declared resources, hashes the active handles, and either reuses a cached set or
     // allocates + writes a fresh one. The dynamic offset still travels via dynamicOffsets[0].
     VkDescriptorSet flushedSet = FlushDescriptorState();
-    if (flushedSet != VK_NULL_HANDLE)
+    if (flushedSet == VK_NULL_HANDLE)
     {
-      const uint32_t dyn = m_currentDynamicOffset;
-      vkCmdBindDescriptorSets(cb,
-                              VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              m_boundProgram->pipelineLayout,
-                              0,
-                              1,
-                              &flushedSet,
-                              1,
-                              &dyn);
+      // Descriptor allocation failed (pool exhausted, or no shadow state was bindable). The
+      // pipeline is already bound and the RP already opened; issuing vkCmdDraw without a
+      // descriptor set 0 leaves the driver dereferencing an unbound binding and crashes
+      // (observed as a NULL access violation inside nvoglv64.dll mid-vkCmdDraw). Close the
+      // RP cleanly and bail — the draw is dropped, but the cmd buffer remains valid for
+      // subsequent passes. Pool exhaustion already logged inside AllocateFrameDescriptorSet.
+      if (m_activePassFb != nullptr)
+      {
+        vkCmdEndRenderPass(cb);
+        m_rpActive = false;
+      }
+      return;
     }
+    const uint32_t dyn = m_currentDynamicOffset;
+    vkCmdBindDescriptorSets(cb,
+                            VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            m_boundProgram->pipelineLayout,
+                            0,
+                            1,
+                            &flushedSet,
+                            1,
+                            &dyn);
 
     // ---- Bind geometry + draw ---------------------------------------------------------------
     const VkBuffer vbuf      = meshGpu->vertex.handle;
@@ -2534,7 +2659,19 @@ namespace ToolKit
           r.bufferSize          = m_shadow.perDrawSize;
           if (r.buffer == VK_NULL_HANDLE || r.bufferSize == 0)
           {
-            continue; // No payload submitted this draw; safe only if shader doesn't read it.
+            // Contract enforcement: a program that declares the per-draw UBO (GL slot 6)
+            // MUST receive a SubmitPerDrawData call between BindPipeline and Draw. Reaching
+            // here means a Draw landed without one — the freshly allocated set would leave
+            // binding 38 unwritten and the shader would read an unbound dynamic UBO. The
+            // NVIDIA Vulkan ICD has been observed to NULL-deref inside vkCmdDraw in exactly
+            // this scenario (Access violation @ 0x0 in nvoglv64.dll). Bail with a diagnostic
+            // so the offending pass surfaces in the log instead of producing the crash.
+            TK_ERR("FlushDescriptorState: program %p declares per-draw UBO (binding %u) but "
+                   "no SubmitPerDrawData was issued for this draw (perDrawSize=0). "
+                   "Dropping draw — fix the engine path to call SubmitPerDrawData first.",
+                   (void*) m_boundProgram,
+                   (unsigned) VulkanBindings::kPerDrawUboBinding);
+            return VK_NULL_HANDLE;
           }
         }
         else
@@ -2765,6 +2902,25 @@ namespace ToolKit
     // this program's layout. ~VulkanGpuProgram destroys the layout once the deleter runs.
     auto data          = program->m_gpuData;
     program->m_gpuData = nullptr;
+
+    // Evict every cached pipeline that was built using this program's pipelineLayout BEFORE the
+    // dtor destroys the layout. ~VulkanGpuProgram (line VulkanResources.cpp:179) calls
+    // vkDestroyPipelineLayout unconditionally; any cached pipeline still referencing that layout
+    // becomes a spec violation (Vulkan: VkPipeline must be destroyed before its VkPipelineLayout)
+    // and the next vkCmdDraw that picks up the orphaned pipeline NULL-derefs inside nvoglv64.dll
+    // at a small struct offset (0x104/0x105). Pipeline destroys go through DeferDelete so they
+    // share the same deleter bucket as the program shared_ptr release; bucket drains in push
+    // order, so pipelines retire before the layout dtor fires.
+    auto* progData = static_cast<VulkanGpuProgram*>(data.get());
+    if (progData != nullptr && progData->pipelineLayout != VK_NULL_HANDLE && m_pipelineCache)
+    {
+      VkDevice device = m_context->GetDevice();
+      m_pipelineCache->InvalidateForPipelineLayout(progData->pipelineLayout,
+          [this, device](VkPipeline pipe) {
+            DeferDelete([device, pipe]() { vkDestroyPipeline(device, pipe, nullptr); });
+          });
+    }
+
     DeferDelete([data]() mutable { data.reset(); });
   }
 
@@ -2799,6 +2955,19 @@ namespace ToolKit
     // their lifetime is governed by their owning RenderTarget/DepthTexture.
     if (auto data = fb->m_gpuData)
     {
+      // Evict pipeline cache entries keyed by this framebuffer's VkRenderPass before letting
+      // the dtor destroy it -- same handle-reuse hazard as BuildOffscreenRenderPass. Pipelines
+      // go through DeferDelete so they retire on the in-flight cb before the RP itself
+      // (within the same deleter bucket, dispatched in push order).
+      auto* fbData = static_cast<VulkanFramebuffer*>(data.get());
+      if (fbData != nullptr && fbData->renderPass != VK_NULL_HANDLE && m_pipelineCache)
+      {
+        VkDevice device = m_context->GetDevice();
+        m_pipelineCache->InvalidateForRenderPass(fbData->renderPass,
+            [this, device](VkPipeline pipe) {
+              DeferDelete([device, pipe]() { vkDestroyPipeline(device, pipe, nullptr); });
+            });
+      }
       fb->m_gpuData = nullptr;
       DeferDelete([data]() mutable { data.reset(); });
     }

@@ -101,8 +101,13 @@ namespace ToolKit
 
     /** Resets the ring head to 0 — caller must guarantee no in-flight cmd buffer still reads
         from the ring (typically: this runs at BeginFrame, after the slot's fence has been
-        waited on). */
-    void ResetPerDrawUboRing() { m_perDrawUboHead = 0; }
+        waited on, or mid-frame after VulkanSwapchain::FlushCommandBuffer drained the queue).
+        Also re-arms the overflow log so the next ring exhaustion in this frame is diagnosable. */
+    void ResetPerDrawUboRing()
+    {
+      m_perDrawUboHead           = 0;
+      m_perDrawUboOverflowLogged = false;
+    }
 
     /**
      * Reserves @p size bytes in the ring (rounded up to minUniformBufferOffsetAlignment) and
