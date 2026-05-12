@@ -7,9 +7,10 @@
 
 #include "Stats.h"
 
+#include "IGraphicsBackend.h"
 #include "RenderSystem.h"
+#include "Renderer.h"
 #include "TKAssert.h"
-#include "TKOpenGL.h"
 #include "ToolKit.h"
 #include "Util.h"
 
@@ -360,28 +361,19 @@ namespace ToolKit
 
   namespace Stats
   {
-    void SetGpuResourceLabel(StringView label, GpuResourceType resourceType, uint resourceId)
-    {
-      if (glLabelObjectEXT != nullptr && label.size() > 0)
-      {
-        String labelId = String(label) + "_" + std::to_string(resourceId);
-        glLabelObjectEXT((GLenum) resourceType, (GLuint) resourceId, 0, labelId.c_str());
-      }
-    }
-
     void BeginGpuScope(StringView name)
     {
-      if (glPushGroupMarkerEXT != nullptr)
+      if (IGraphicsBackend* backend = GetRenderSystem()->GetBackend())
       {
-        glPushGroupMarkerEXT(-1, name.data());
+        backend->PushDebugGroup(name);
       }
     }
 
     void EndGpuScope()
     {
-      if (glPopGroupMarkerEXT != nullptr)
+      if (IGraphicsBackend* backend = GetRenderSystem()->GetBackend())
       {
-        glPopGroupMarkerEXT();
+        backend->PopDebugGroup();
       }
     }
 

@@ -215,7 +215,7 @@ namespace ToolKit
             ImGui::AlignTextToFramePadding();
             if (UI::ImageButton("##folder", Convert2ImGuiTexture(UI::m_folderIcon), btnSize))
             {
-              String pluginDir = GetApp()->m_workspace.GetPluginDirectory();
+              String pluginDir = GetApp()->m_workspace->GetPluginDirectory();
               String dir       = ConcatPaths({pluginDir, plugin.name, "Codes"});
               GetApp()->m_shellOpenDirFn(dir);
             }
@@ -248,7 +248,7 @@ namespace ToolKit
     void PluginWindow::LoadPluginSettings()
     {
       m_pluginSettings.clear();
-      String pluginDir = GetApp()->m_workspace.GetPluginDirectory();
+      String pluginDir = GetApp()->m_workspace->GetPluginDirectory();
 
       if (CheckSystemFile(pluginDir) && IsDirectory(pluginDir))
       {

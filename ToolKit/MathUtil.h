@@ -174,6 +174,22 @@ namespace ToolKit
     return glm::all(glm::equal<T>(a, b));
   }
 
+  // Cubemap Utilities
+  //////////////////////////////////////////
+
+  /** Number of faces in a cubemap. */
+  constexpr int CubemapFaceCount = 6;
+
+  /** Returns a pointer to 6 direction vectors for cubemap faces (OpenGL convention). */
+  TK_API const Vec3* GetCubemapFaceDirections();
+
+  /** Returns a pointer to 6 up vectors for cubemap faces (OpenGL convention). */
+  TK_API const Vec3* GetCubemapFaceUpVectors();
+
+  /** Fills the provided array with 6 inverse view (camera transform) matrices for cubemap face rendering from the given
+   * origin. */
+  TK_API void GetCubemapViews(const Vec3& origin, Mat4 inverseViews[CubemapFaceCount]);
+
   // Random Generators
   //////////////////////////////////////////
 

@@ -48,15 +48,15 @@ namespace ToolKit
     float blurRadiusScale = 0.5f;
     switch (m_params.blurQuality)
     {
-    case DoFQuality::Low:
-      blurRadiusScale = 2.0f;
-      break;
-    case DoFQuality::Normal:
-      blurRadiusScale = 0.7f;
-      break;
-    case DoFQuality::High:
-      blurRadiusScale = 0.2f;
-      break;
+      case DoFQuality::Low:
+        blurRadiusScale = 2.0f;
+        break;
+      case DoFQuality::Normal:
+        blurRadiusScale = 0.7f;
+        break;
+      case DoFQuality::High:
+        blurRadiusScale = 0.2f;
+        break;
     }
     m_quadPass->UpdateUniform(ShaderUniform("radiusScale", blurRadiusScale));
 
@@ -79,8 +79,8 @@ namespace ToolKit
       return;
     }
 
-    renderer->SetTexture(0, m_copyTexture->m_textureId);
-    renderer->SetTexture(1, m_params.DepthRt->m_textureId);
+    renderer->SetTexture(0, m_copyTexture);
+    renderer->SetTexture(1, m_params.DepthRt);
 
     RenderSubPass(m_quadPass);
   }

@@ -211,6 +211,9 @@
     <ClCompile Include="GameRenderer.cpp">
       <Filter>Render</Filter>
     </ClCompile>
+    <ClCompile Include="GLBackend.cpp">
+      <Filter>Render</Filter>
+    </ClCompile>
     <ClCompile Include="GameViewport.cpp">
       <Filter>Source</Filter>
     </ClCompile>
@@ -474,6 +477,12 @@
     <ClInclude Include="GameRenderer.h">
       <Filter>Render</Filter>
     </ClInclude>
+    <ClInclude Include="GLBackend.h">
+      <Filter>Render</Filter>
+    </ClInclude>
+    <ClInclude Include="IGraphicsBackend.h">
+      <Filter>Render</Filter>
+    </ClInclude>
     <ClInclude Include="GameViewport.h">
       <Filter>Source</Filter>
     </ClInclude>
@@ -498,6 +507,7 @@
     <ClInclude Include="ShadowAtlas.h">
       <Filter>Render</Filter>
     </ClInclude>
+    <ClInclude Include="PerDrawUniforms.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Entities">

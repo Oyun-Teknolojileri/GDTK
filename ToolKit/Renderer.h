@@ -10,6 +10,7 @@
 #include "Camera.h"
 #include "GenericBuffers.h"
 #include "GpuProgram.h"
+#include "IGraphicsBackend.h"
 #include "Material.h"
 #include "Primative.h"
 #include "RHI.h"
@@ -21,28 +22,102 @@
 namespace ToolKit
 {
 
+  class ForwardSceneRenderPath;
+
   // DrawCommand
   //////////////////////////////////////////
 
   struct DrawCommand
   {
-    /** x: iblIntensity, y: iblInUse, z: ambientOcclusionInUse, w: pad0 */
-    Vec4 data1;
+    // --- Global data (2 Vec4) ---
 
-    /** x: activePointLightCount, y: activeSpotLightCount, z: activeDirectionalLightCount, w: pad1 */
-    Vec4 data2;
+    /** x: iblInUse, y: ambientOcclusionInUse, z: unused, w: unused */
+    Vec4 global0;
 
-    void SetIblIntensity(float intensity) { data1.x = intensity; }
+    /** x: activePointLightCount, y: activeSpotLightCount, z: activeDirectionalLightCount, w: unused */
+    Vec4 global1;
 
-    void SetIblInUse(bool inUse) { data1.y = inUse ? 1.0f : 0.0f; }
+    // --- Volume 0 / Primary (11 Vec4) ---
 
-    void SetAmbientOcclusionInUse(bool inUse) { data1.z = inUse ? 1.0f : 0.0f; }
+    /** x: intensity, y: fadeDistance, z: interior, w: pccEnabled */
+    Vec4 vol0Params;
+    Vec4 vol0Min; /**< xyz: volume min (local space) */
+    Vec4 vol0Max; /**< xyz: volume max (local space) */
+    Vec4 vol0InvTransform0, vol0InvTransform1, vol0InvTransform2, vol0InvTransform3;
+    Vec4 vol0WorldTransform0, vol0WorldTransform1, vol0WorldTransform2, vol0WorldTransform3;
 
-    void SetActivePointLightCount(int count) { data2.x = (float) count; }
+    // --- Volume 1 / Secondary (11 Vec4) ---
 
-    void SetActiveSpotLightCount(int count) { data2.y = (float) count; }
+    /** x: intensity, y: fadeDistance, z: interior, w: pccEnabled */
+    Vec4 vol1Params;
+    Vec4 vol1Min; /**< xyz: volume min (local space) */
+    Vec4 vol1Max; /**< xyz: volume max (local space) */
+    Vec4 vol1InvTransform0, vol1InvTransform1, vol1InvTransform2, vol1InvTransform3;
+    Vec4 vol1WorldTransform0, vol1WorldTransform1, vol1WorldTransform2, vol1WorldTransform3;
 
-    void SetActiveDirectionalLightCount(int count) { data2.z = (float) count; }
+    // --- Global setters ---
+
+    void SetIblInUse(bool inUse) { global0.x = inUse ? 1.0f : 0.0f; }
+
+    void SetAmbientOcclusionInUse(bool inUse) { global0.y = inUse ? 1.0f : 0.0f; }
+
+    /** Sky intensity (0 = no sky). */
+    void SetSkyIntensity(float intensity) { global0.z = intensity; }
+
+    void SetActivePointLightCount(int count) { global1.x = (float) count; }
+
+    void SetActiveSpotLightCount(int count) { global1.y = (float) count; }
+
+    void SetActiveDirectionalLightCount(int count) { global1.z = (float) count; }
+
+    // --- Per-volume setters ---
+
+    void SetVolumeIntensity(int vol, float intensity) { Params(vol).x = intensity; }
+
+    void SetVolumeFadeDistance(int vol, float fade) { Params(vol).y = fade; }
+
+    void SetVolumeInterior(int vol, bool interior) { Params(vol).z = interior ? 1.0f : 0.0f; }
+
+    void SetVolumePccEnabled(int vol, bool enabled) { Params(vol).w = enabled ? 1.0f : 0.0f; }
+
+    void SetVolumeMin(int vol, const Vec3& minVal) { Min(vol) = Vec4(minVal, 0.0f); }
+
+    void SetVolumeMax(int vol, const Vec3& maxVal) { Max(vol) = Vec4(maxVal, 0.0f); }
+
+    void SetVolumeInverseTransform(int vol, const Mat4& m)
+    {
+      InvT(vol, 0) = Vec4(m[0]);
+      InvT(vol, 1) = Vec4(m[1]);
+      InvT(vol, 2) = Vec4(m[2]);
+      InvT(vol, 3) = Vec4(m[3]);
+    }
+
+    void SetVolumeWorldTransform(int vol, const Mat4& m)
+    {
+      WldT(vol, 0) = Vec4(m[0]);
+      WldT(vol, 1) = Vec4(m[1]);
+      WldT(vol, 2) = Vec4(m[2]);
+      WldT(vol, 3) = Vec4(m[3]);
+    }
+
+   private:
+    Vec4& Params(int vol) { return vol == 0 ? vol0Params : vol1Params; }
+
+    Vec4& Min(int vol) { return vol == 0 ? vol0Min : vol1Min; }
+
+    Vec4& Max(int vol) { return vol == 0 ? vol0Max : vol1Max; }
+
+    Vec4& InvT(int vol, int row)
+    {
+      Vec4* base = vol == 0 ? &vol0InvTransform0 : &vol1InvTransform0;
+      return base[row];
+    }
+
+    Vec4& WldT(int vol, int row)
+    {
+      Vec4* base = vol == 0 ? &vol0WorldTransform0 : &vol1WorldTransform0;
+      return base[row];
+    }
   };
 
   // GraphicConstantsGpuBuffer
@@ -66,42 +141,26 @@ namespace ToolKit
   {
     /** Uniform buffer for camera data. */
     CameraGpuBuffer cameraGpuBuffer;
-    int cameraBufferId = 0;
 
     /** Uniform buffer for graphic constants. */
     GraphicConstantsGpuBuffer graphicConstantBuffer;
-    int graphicConstantBufferId = 0;
 
     /** Active directional lights in gpu. */
     DirectionalLightBuffer directionalLightBuffer;
-    int directionalLightBufferId    = 0;
-    int directionalLightPVMBufferId = 0;
 
     /** Cached point lights in gpu. */
     PointLightCache pointLighBuffer;
-    int pointLightBufferId = 0;
 
     /** Cached spot lights in gpu. */
     SpotLightCache spotLightBuffer;
-    int spotLightBufferId = 0;
 
     void InitGlobalGpuBuffers()
     {
       graphicConstantBuffer.Init();
-      graphicConstantBufferId = graphicConstantBuffer.Id();
-
       cameraGpuBuffer.Init();
-      cameraBufferId = cameraGpuBuffer.Id();
-
       directionalLightBuffer.Init();
-      directionalLightBufferId    = directionalLightBuffer.m_lightDataBuffer.m_id;
-      directionalLightPVMBufferId = directionalLightBuffer.m_pvms.m_id;
-
       pointLighBuffer.Init();
-      pointLightBufferId = pointLighBuffer.m_gpuBuffer.m_id;
-
       spotLightBuffer.Init();
-      spotLightBufferId = spotLightBuffer.m_gpuBuffer.m_id;
     }
   };
 
@@ -127,7 +186,6 @@ namespace ToolKit
     void InvalidateGraphicsConstants();
 
     void Init();
-    void SetRenderState(const RenderState* const state, bool cullFlip = false);
 
     void SetStencilOperation(StencilOperation op);
 
@@ -141,6 +199,9 @@ namespace ToolKit
     void ClearBuffer(GraphicBitFields fields, const Vec4& value = Vec4(0.0f));
     void ColorMask(bool r, bool g, bool b, bool a);
 
+    /** Returns an opaque native texture handle as uint, obtained from the backend. */
+    static uint GetNativeTextureHandle(const TexturePtr& tex);
+
     // FrameBuffer Operations
     //////////////////////////////////////////
 
@@ -148,11 +209,10 @@ namespace ToolKit
 
     void SetFramebuffer(FramebufferPtr frameBuffer,
                         GraphicBitFields attachmentsToClear,
-                        const Vec4& clearColor                  = Vec4(0.0f),
-                        GraphicFramebufferTypes frameBufferType = GraphicFramebufferTypes::Framebuffer);
+                        const Vec4& clearColor       = Vec4(0.0f),
+                        GraphicBitFields discardBits = GraphicBitFields::None);
 
-    /** Tries to invalidate given bits of the framebuffer. Verifies if buffer actually has the specified attachments. */
-    void InvalidateFramebuffer(GraphicBitFields bits, FramebufferPtr frameBuffer);
+    void EndPass();
 
     /**
      * Resolves source multi sample buffer to single sample target buffer.
@@ -175,14 +235,14 @@ namespace ToolKit
     //////////////////////////////////////////
 
     void SetViewport(Viewport* viewport);
-    void SetViewportSize(uint width, uint height);
-    void SetViewportSize(uint x, uint y, uint width, uint height);
+    void SetViewportRect(uint x, uint y, uint width, uint height);
+    void SetScissor(uint x, uint y, uint width, uint height);
 
     void DrawFullQuad(ShaderPtr fragmentShader);
     void DrawFullQuad(MaterialPtr mat);
     void DrawCube(CameraPtr cam, MaterialPtr mat, const Mat4& transform = Mat4(1.0f));
 
-    void SetTexture(ubyte slotIndx, uint textureId);
+    void SetTexture(ubyte slotIndx, TexturePtr texture);
 
     /** Reads an equirectengular hdr image and creates a cube map from it. */
     CubeMapPtr GenerateCubemapFrom2DTexture(TexturePtr texture,
@@ -207,13 +267,34 @@ namespace ToolKit
     CubeMapPtr GenerateDiffuseEnvMap(CubeMapPtr cubemap, int size);
 
     /**
+     * Renders the scene into a cubemap using the provided render path.
+     * Camera is placed at the entity origin (with originOffset applied in local space),
+     * oriented along the entity's world transform. Each cubemap face looks along a
+     * local-space axis rotated into world space by the entity transform.
+     * @param renderPath The render path to use for rendering each face.
+     * @param worldTransform World transform of the environment volume entity.
+     * @param originOffset Local-space offset from entity origin to capture position.
+     * @param near Near clip plane.
+     * @param far Far clip plane.
+     * @param resolution Resolution of each cubemap face.
+     * @param perFaceClipDist Optional per-face far clip distances (6 floats, in local face order: +X,-X,+Y,-Y,+Z,-Z).
+     * @return The generated cubemap.
+     */
+    CubeMapPtr RenderToCubeMap(ForwardSceneRenderPath* renderPath,
+                               const Mat4& worldTransform,
+                               const Vec3& originOffset,
+                               float near,
+                               float far,
+                               uint resolution,
+                               const float* perFaceClipDist = nullptr);
+
+    /**
      * Sets the blend state directly which causes by passing material system.
      * @param enableOverride when set true, disables the material system setting blend state per material.
      * @param func is the BlendFunction to use.
      */
     void OverrideBlendState(bool enableOverride, BlendFunction func);
 
-    void EnableBlending(bool enable);
     void EnableDepthWrite(bool enable);
     void EnableDepthTest(bool enable);
     void SetDepthTestFunc(CompareFunctions func);
@@ -280,10 +361,18 @@ namespace ToolKit
     void SetLights(const LightRawPtrArray& lights);
 
     /**
-     * Sets directional lights to be used for render. Should be called once per pass because all objects effected from
-     * directional lights. No need to set it per object.
-     */
+     /** Sets directional lights to be used for render. Should be called once per pass because all objects effected from
+      * directional lights. No need to set it per object.
+      */
     void SetDirectionalLights(const LightRawPtrArray& lights);
+
+    /** Sets the graphics backend. Ownership is transferred to the Renderer. */
+    void SetBackend(IGraphicsBackend* backend) { m_backend = backend; }
+
+    /** Returns current backend. */
+    IGraphicsBackend* GetBackend() { return m_backend; }
+
+    GpuProgramManager* GetGpuProgramManager() { return m_gpuProgramManager; }
 
    private:
     /** Set textures to be used in render. SkyBox, Ibl, AmbientOcculution  */
@@ -293,10 +382,6 @@ namespace ToolKit
     void SetTransforms(const Mat4& model);
 
     void FeedUniforms(const GpuProgramPtr& program, const RenderJob& job);
-    void FeedAnimationUniforms(const GpuProgramPtr& program, const RenderJob& job);
-
-    /** Validates sRGB automatic encoding on backbuffer by clearing and reading a pixel back. */
-    void ValidateBackbufferSrgbEncoding();
 
    public:
     uint m_frameCount = 0;
@@ -322,6 +407,7 @@ namespace ToolKit
     Mat4 m_inverseTransposeModel;
     Mat4 m_modelWithoutTranslate;
     Mat4 m_iblRotation;
+    Mat4 m_secondaryIblRotation;
 
     // Draw data
     std::array<int, RHIConstants::MaxPointLightPerObject> m_activePointLightIndices;
@@ -341,7 +427,8 @@ namespace ToolKit
 
     RenderState m_renderState;
 
-    UVec2 m_viewportSize; //!< Current viewport size.
+    /** Current viewport size (x,y) and position (z,w) */
+    UVec4 m_viewportRect;
 
     /*
      * This framebuffer can ONLY have 1 color attachment and no other attachments.
@@ -363,15 +450,10 @@ namespace ToolKit
 
     GpuProgramManager* m_gpuProgramManager         = nullptr;
 
-    uint m_gpuTimerQuery                           = 0;
-    float m_cpuTime                                = 1.0f;
-    float m_gpuTime                                = 1.0f;
-    bool m_timerQueryActive                        = false;
-    bool m_timerQueryWaiting                       = false;
-    bool m_blendStateOverrideEnable                = false;
+    IGraphicsBackend* m_backend                    = nullptr;
 
-    /** Frame buffer stats for each frame. */
-    std::map<uint, int> m_drawnFrameBufferStats;
+    /** Per-frame draw counters keyed by framebuffer ObjectId. */
+    std::unordered_map<ObjectId, int> m_drawnFrameBufferStats;
   };
 
 } // namespace ToolKit

@@ -87,7 +87,7 @@ namespace ToolKit
 
           auto afterCompile = [=]() -> void
           {
-            String fullPath = GetApp()->m_workspace.GetBinPath();
+            String fullPath = GetApp()->m_workspace->GetBinPath();
             if (platform == PublishPlatform::EditorPlugin)
             {
               fullPath = ConcatPaths({m_appName, "Bin", m_pluginName});
@@ -164,13 +164,13 @@ namespace ToolKit
     String PublishManager::ConstructPublishArgs(PublishPlatform platform, PublishConfig publishConfig, bool packOnly)
     {
       // Project name for publishing.
-      String publishArguments  = GetApp()->m_workspace.GetActiveProject().name + '\n';
+      String publishArguments  = GetApp()->m_workspace->GetActiveProject().name + '\n';
 
       // Workspace for publishing resources.
-      publishArguments        += GetApp()->m_workspace.GetActiveWorkspace() + '\n';
+      publishArguments        += GetApp()->m_workspace->GetActiveWorkspace() + '\n';
 
       // App name for publishing.
-      publishArguments += m_appName.empty() ? GetApp()->m_workspace.GetActiveProject().name + '\n' : m_appName + '\n';
+      publishArguments += m_appName.empty() ? GetApp()->m_workspace->GetActiveProject().name + '\n' : m_appName + '\n';
 
       // Try deploying the app after publishing. Try running the app.
       publishArguments += std::to_string((int) m_deployAfterBuild) + '\n';

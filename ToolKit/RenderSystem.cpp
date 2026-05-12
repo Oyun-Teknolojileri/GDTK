@@ -7,12 +7,11 @@
 
 #include "RenderSystem.h"
 
-#include "GlErrorReporter.h"
+#include "GLBackend.h"
 #include "Image.h"
 #include "Logger.h"
 #include "RHI.h"
 #include "Stats.h"
-#include "TKOpenGL.h"
 #include "ToolKit.h"
 
 #include "DebugNew.h"
@@ -38,7 +37,11 @@ namespace ToolKit
 
   void RenderPath::PostRender(Renderer* renderer) { renderer->EndTimerQuery(); }
 
-  RenderSystem::RenderSystem() { m_renderer = new Renderer(); }
+  RenderSystem::RenderSystem()
+  {
+    m_renderer = new Renderer();
+    m_renderer->SetBackend(CreateBackend());
+  }
 
   RenderSystem::~RenderSystem() { SafeDel(m_renderer); }
 
@@ -48,16 +51,18 @@ namespace ToolKit
     AddRenderTask({[](Renderer* renderer) -> void { renderer->GenerateBRDFLutTexture(); }});
   }
 
+  IGraphicsBackend* RenderSystem::CreateBackend() { return new GLBackend(); }
+
   void RenderSystem::AddRenderTask(RenderTask task)
   {
     switch (task.Priority)
     {
-    case RenderTaskPriority::High:
-      m_highQueue.push_back(task);
-      break;
-    case RenderTaskPriority::Low:
-      m_lowQueue.push_back(task);
-      break;
+      case RenderTaskPriority::High:
+        m_highQueue.push_back(task);
+        break;
+      case RenderTaskPriority::Low:
+        m_lowQueue.push_back(task);
+        break;
     }
   }
 
@@ -111,19 +116,19 @@ namespace ToolKit
 
     flushTasksFn(m_highQueue);
     flushTasksFn(m_lowQueue);
-
-    m_renderer->m_sky = nullptr;
   }
 
-  void RenderSystem::FlushGpuPrograms() { GetGpuProgramManager()->FlushPrograms(); }
+  void RenderSystem::FlushGpuPrograms() { m_renderer->GetGpuProgramManager()->FlushPrograms(); }
+
+  GpuProgramManager* RenderSystem::GetGpuProgramManager() { return m_renderer->GetGpuProgramManager(); }
+
+  IGraphicsBackend* RenderSystem::GetBackend() { return m_renderer->GetBackend(); }
 
   void RenderSystem::SetAppWindowSize(uint width, uint height) { m_renderer->m_windowSize = UVec2(width, height); }
 
   UVec2 RenderSystem::GetAppWindowSize() { return m_renderer->m_windowSize; }
 
   void RenderSystem::SetClearColor(const Vec4& clearColor) { m_renderer->m_clearColor = clearColor; }
-
-  void RenderSystem::EnableBlending(bool enable) { m_renderer->EnableBlending(enable); }
 
   void RenderSystem::DecrementSkipFrame()
   {
@@ -142,14 +147,25 @@ namespace ToolKit
 
   void RenderSystem::SkipSceneFrames(int numFrames) { m_skipFrames = numFrames; }
 
-  void RenderSystem::InitGl(void* glGetProcAddres, GlReportCallback callback)
+  void RenderSystem::InitGraphics(const IGraphicsBackend::BackendInitParams& params)
   {
-    // Opengl texture origin is bottom left.
+    // Texture origin is bottom-left for OpenGL-style APIs.
     ImageSetVerticalOnLoad(true);
 
-    // Initialize opengl functions.
-    LoadGlFunctions(glGetProcAddres);
-    InitGLErrorReport(callback);
+    // Delegate to the active backend.
+    m_renderer->GetBackend()->InitBackend(params);
+  }
+
+  void RenderSystem::Present()
+  {
+    if (m_presentCallback)
+    {
+      m_presentCallback();
+    }
+    else
+    {
+      m_renderer->GetBackend()->Present();
+    }
   }
 
   void RenderSystem::ExecuteTaskImp(RenderTask& task)

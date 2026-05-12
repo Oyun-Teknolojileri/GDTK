@@ -384,6 +384,7 @@ namespace ToolKit
     {
       // ToolKit resource absolute path
       root  = std::filesystem::absolute(root).string();
+      root  = NormalizePath(root);
       exist = path.find(root, 0);
     }
 
@@ -621,7 +622,6 @@ namespace ToolKit
   // for example, if separator="::",
   // s = "abc::def xy::st:" -> "abc", "def xy" and "st:",
   // https://stackoverflow.com/questions/53849/how-do-i-tokenize-a-string-in-c?page=2&tab=votes#tab-top
-  // // NOLINT
   void Split(const String& s, const String& sep, StringArray& v)
   {
     typedef String::const_iterator iter;
@@ -1144,6 +1144,31 @@ namespace ToolKit
     s[0]           = ((s0 << 55) | (s0 >> 9)) ^ s1 ^ (s1 << 14);
     s[1]           = (s1 << 36) | (s1 >> 28);
     return result;
+  }
+
+  bool IsValidCppLibraryName(const String& name)
+  {
+    if (name.empty())
+    {
+      return false;
+    }
+
+    for (ubyte c : name)
+    {
+      // Allow only alphanumeric characters and underscore
+      if (!std::isalnum((ubyte) c) && c != '_')
+      {
+        return false;
+      }
+    }
+
+    // Ensure it doesn't start with a digit.
+    if (std::isdigit((ubyte) name[0]))
+    {
+      return false;
+    }
+
+    return true;
   }
 
 } //  namespace ToolKit

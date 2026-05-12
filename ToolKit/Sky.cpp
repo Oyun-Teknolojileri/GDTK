@@ -214,7 +214,8 @@ namespace ToolKit
         {
           if (IsInitialized())
           {
-            GetComponent<EnvironmentComponent>()->SetIlluminateVal(std::get<bool>(newVal));
+            bool val = std::get<bool>(newVal);
+            GetComponent<EnvironmentComponent>()->SetIlluminateVal(val);
           }
         });
 
@@ -297,9 +298,9 @@ namespace ToolKit
         {
           GetRenderSystem()->AddRenderTask({[self](Renderer* renderer) -> void
                                             {
-                                              if (SkyPtr sky = self.lock())
+                                               if (SkyPtr sky = self.lock())
                                               {
-                                                if (HdriPtr hdr = sky->GetHdriVal())
+                                                if (HdriPtr hdr = sky->GetHdri())
                                                 {
                                                   hdr->GenerateIrradianceCaches(renderer);
                                                 }

@@ -385,4 +385,6 @@ namespace ToolKit
 
   TK_API uint64 Xoroshiro128Plus(uint64 s[2]);
 
+  TK_API bool IsValidCppLibraryName(const String& name);
+
 } // namespace ToolKit

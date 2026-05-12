@@ -340,8 +340,8 @@ namespace ToolKit
       {
         HandleStates();
 
-        if (!GetApp()->m_workspace.GetActiveWorkspace().empty() &&
-            GetApp()->m_workspace.GetActiveProject().name.empty())
+        if (!GetApp()->m_workspace->GetActiveWorkspace().empty() &&
+            GetApp()->m_workspace->GetActiveProject().name.empty())
         {
           ImGui::Text("Load a project.");
           ImGui::End();

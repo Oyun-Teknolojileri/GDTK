@@ -130,13 +130,13 @@
 		// Compute energy compensation for multiscattering
 		vec3 f0 = BaseReflectivityPBR(vec3(0.04), color.xyz, metallic);
 		float NdotV = max(dot(n, e), 0.0);
-		vec2 dfg = texture(s_texture16, vec2(NdotV, perceptualRoughness)).rg;
+		vec2 dfg = texture(s_texture10, vec2(NdotV, perceptualRoughness)).rg;
 		vec3 energyComp = EnergyCompensation(dfg, f0);
 
 		vec3 irradiance = PBRLighting(v_worldPos, v_viewDepth, n, e, camera.position, color.xyz, metallic, roughness, energyComp);
 
 		float ambientOcclusion = AmbientOcclusion();
-		irradiance += IBLPBR(n, e, color.xyz, metallic, perceptualRoughness, dfg, energyComp) * ambientOcclusion;
+		irradiance += IBLPBR(n, e, color.xyz, metallic, perceptualRoughness, dfg, energyComp, v_worldPos) * ambientOcclusion;
 
 		fragColor = vec4(irradiance, color.a) + vec4(emissive, 0.0);
 	}

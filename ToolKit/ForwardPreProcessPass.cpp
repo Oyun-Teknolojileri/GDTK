@@ -85,10 +85,10 @@ namespace ToolKit
     frag->SetDefine("DrawAlphaMasked", "0");
 
     ShaderPtr vert                       = m_linearMaterial->GetVertexShaderVal();
-    GpuProgramManager* gpuProgramManager = GetGpuProgramManager();
+    Renderer* renderer                   = GetRenderer();
+    GpuProgramManager* gpuProgramManager = renderer->GetGpuProgramManager();
     m_program                            = gpuProgramManager->CreateProgram(vert, frag);
 
-    Renderer* renderer                   = GetRenderer();
     renderer->BindProgram(m_program);
 
     for (RenderJobItr job = begin; job != end; job++)
@@ -115,8 +115,15 @@ namespace ToolKit
 
     Pass::PreRender();
 
-    Renderer* renderer = GetRenderer();
-    renderer->SetFramebuffer(m_framebuffer, GraphicBitFields::AllBits);
+    Renderer* renderer           = GetRenderer();
+
+    GraphicBitFields discardBits = GraphicBitFields::None;
+    if (m_framebuffer->IsMultiSampled())
+    {
+      discardBits = GraphicBitFields::ColorBits;
+    }
+
+    renderer->SetFramebuffer(m_framebuffer, GraphicBitFields::AllBits, Vec4(0.0f), discardBits);
     renderer->SetCamera(m_params.Cam, true);
   }
 
@@ -132,10 +139,8 @@ namespace ToolKit
       renderer->ResolveFramebuffer(m_framebuffer,
                                    m_resolveFramebuffer,
                                    {(int) Framebuffer::Attachment::ColorAttachment0});
-
-      // We don't need msaa color buffer after resolve, but we want to keep depth for upcoming passes.
-      renderer->InvalidateFramebuffer(GraphicBitFields::ColorBits, m_framebuffer);
     }
+    GetRenderer()->EndPass();
   }
 
 } // namespace ToolKit

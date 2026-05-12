@@ -46,9 +46,22 @@ namespace ToolKit
     Pass::PreRender();
 
     // Set self data.
-    Renderer* renderer = GetRenderer();
+    Renderer* renderer           = GetRenderer();
 
-    renderer->SetFramebuffer(m_params.FrameBuffer, m_params.clearBuffer);
+    GraphicBitFields discardBits = GraphicBitFields::None;
+    if (m_params.invalidateDepthBuffer)
+    {
+      if (m_params.FrameBuffer->IsMultiSampled() && m_params.resolveFrameBuffer != nullptr)
+      {
+        discardBits = GraphicBitFields::AllBits;
+      }
+      else
+      {
+        discardBits = GraphicBitFields::DepthBits;
+      }
+    }
+
+    renderer->SetFramebuffer(m_params.FrameBuffer, m_params.clearBuffer, Vec4(0.0f), discardBits);
     renderer->SetCamera(m_params.Cam, true);
 
     // Adjust the depth test considering z-pre pass.
@@ -77,15 +90,15 @@ namespace ToolKit
                                    m_params.resolveFrameBuffer,
                                    {(int) Framebuffer::Attachment::ColorAttachment0});
     }
-    else
-    {
-      renderer->InvalidateFramebuffer(GraphicBitFields::DepthBits, m_params.FrameBuffer);
-    }
+
+    renderer->EndPass();
   }
 
   void ForwardRenderPass::RenderOpaque(RenderData* renderData)
   {
     TK_PROFILE_FUNCTION();
+
+    Renderer* renderer = GetRenderer();
 
     // Adjust program configuration.
     ConfigureProgram();
@@ -95,7 +108,7 @@ namespace ToolKit
     frag->SetDefine("DrawAlphaMasked", "0");
 
     ShaderPtr vert           = m_programConfigMat->GetVertexShaderVal();
-    GpuProgramPtr gpuProgram = GetGpuProgramManager()->CreateProgram(vert, frag);
+    GpuProgramPtr gpuProgram = renderer->GetGpuProgramManager()->CreateProgram(vert, frag);
 
     RenderJobItr begin       = renderData->GetForwardOpaqueBegin();
     RenderJobItr end         = renderData->GetForwardAlphaMaskedBegin();
@@ -103,7 +116,7 @@ namespace ToolKit
 
     // Render alpha masked.
     frag->SetDefine("DrawAlphaMasked", "1");
-    gpuProgram = GetGpuProgramManager()->CreateProgram(vert, frag);
+    gpuProgram = renderer->GetGpuProgramManager()->CreateProgram(vert, frag);
 
     begin      = renderData->GetForwardAlphaMaskedBegin();
     end        = renderData->GetForwardTranslucentBegin();
@@ -116,14 +129,19 @@ namespace ToolKit
 
     ConfigureProgram();
 
+    // Disable SSAO for translucent objects. The SSAO texture contains occlusion
+    // from opaque geometry only, applying it to translucent surfaces causes
+    // background AO to bleed onto transparent objects (e.g. glass).
+    Renderer* renderer = GetRenderer();
+    renderer->SetAmbientOcclusionTexture(nullptr);
+
     ShaderPtr frag = m_programConfigMat->GetFragmentShaderVal();
     frag->SetDefine("DrawAlphaMasked", "0");
 
     ShaderPtr vert        = m_programConfigMat->GetVertexShaderVal();
 
-    GpuProgramPtr program = GetGpuProgramManager()->CreateProgram(vert, frag);
+    GpuProgramPtr program = renderer->GetGpuProgramManager()->CreateProgram(vert, frag);
 
-    Renderer* renderer    = GetRenderer();
     renderer->BindProgram(program);
 
     RenderJobItr begin = renderData->GetForwardTranslucentBegin();

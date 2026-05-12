@@ -16,6 +16,7 @@
 #include "MathUtil.h"
 #include "Mesh.h"
 #include "Prefab.h"
+#include "RenderSystem.h"
 #include "ToolKit.h"
 #include "Util.h"
 
@@ -118,14 +119,11 @@ namespace ToolKit
     }
 
     PrefabRawPtrArray prefabs;
+    EnvironmentComponentPtrArray envCompsToInit;
     const EntityPtrArray& ntties = GetEntities();
     for (EntityPtr ntt : ntties)
     {
-      if (SkyBase* sky = ntt->As<SkyBase>())
-      {
-        sky->Init();
-      }
-      else if (Prefab* prefab = ntt->As<Prefab>())
+      if (Prefab* prefab = ntt->As<Prefab>())
       {
         prefab->Init(Self<Scene>());
         prefabs.push_back(prefab);
@@ -153,11 +151,17 @@ namespace ToolKit
             aabbOverride->SetBoundingBox(ntt->GetBoundingBox());
           }
         }
+      }
 
-        // Environment component.
-        if (EnvironmentComponentPtr envCom = ntt->GetComponent<EnvironmentComponent>())
+      if (EnvironmentComponentPtr envCom = ntt->GetComponent<EnvironmentComponent>())
+      {
+        if (SkyBase* sky = ntt->As<SkyBase>())
         {
-          envCom->Init(true);
+          sky->Init();
+        }
+        else
+        {
+          envCompsToInit.push_back(envCom);
         }
       }
     }
@@ -166,6 +170,12 @@ namespace ToolKit
     for (Prefab* prefab : prefabs)
     {
       prefab->Link();
+    }
+
+    // Initialize environment components in order (sky first, then the rest)
+    for (EnvironmentComponentPtr& envCom : envCompsToInit)
+    {
+      envCom->Init(true);
     }
 
     m_initiated = true;
@@ -182,7 +192,7 @@ namespace ToolKit
       // Update volume caches.
       if (const EnvironmentComponentPtr& envComp = ntt->GetComponent<EnvironmentComponent>())
       {
-        if (envComp->GetHdriVal() != nullptr && envComp->GetIlluminateVal())
+        if (envComp->GetHdriVal() != nullptr)
         {
           envComp->Init(true);
           m_environmentVolumeCache.push_back(envComp);
@@ -652,7 +662,7 @@ namespace ToolKit
 
     if (const EnvironmentComponentPtr& envComp = ntt->GetComponent<EnvironmentComponent>())
     {
-      if (envComp->GetHdriVal() != nullptr && envComp->GetIlluminateVal())
+      if (envComp->GetHdriVal() != nullptr)
       {
         if (add)
         {
@@ -920,7 +930,7 @@ namespace ToolKit
     ResourceManager::Uninit();
   }
 
-  bool SceneManager::CanStore(ClassMeta* Class) { return Class == Scene::StaticClass(); }
+  bool SceneManager::CanStore(ClassMeta* Class) { return Class->IsSublcassOf(Scene::StaticClass()); }
 
   String SceneManager::GetDefaultResource(ClassMeta* Class) { return ScenePath("Sample.scene", true); }
 

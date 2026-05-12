@@ -57,7 +57,9 @@ namespace ToolKit
   void FullQuadPass::PostRender()
   {
     Pass::PostRender();
-    GetRenderer()->EnableDepthTest(true);
+    Renderer* renderer = GetRenderer();
+    renderer->EnableDepthTest(true);
+    renderer->EndPass();
   }
 
   void FullQuadPass::SetFragmentShader(ShaderPtr fragmentShader, Renderer* renderer)
@@ -71,7 +73,7 @@ namespace ToolKit
 
     ShaderPtr vert = m_material->GetVertexShaderVal();
 
-    m_program      = GetGpuProgramManager()->CreateProgram(vert, frag);
+    m_program      = renderer->GetGpuProgramManager()->CreateProgram(vert, frag);
     renderer->BindProgram(m_program);
   }
 

@@ -37,6 +37,9 @@
     <Filter Include="Entities\UI">
       <UniqueIdentifier>{1e18ef1a-b6b1-495b-be99-3e8e4f30295c}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Components">
+      <UniqueIdentifier>{ab13346e-e65a-43d4-9f81-f6f39abb70fa}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -64,9 +67,6 @@
       <Filter>Mods</Filter>
     </ClCompile>
     <ClCompile Include="EditorScene.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="Workspace.cpp">
       <Filter>Source</Filter>
     </ClCompile>
     <ClCompile Include="EditorCamera.cpp">
@@ -198,6 +198,18 @@
     <ClCompile Include="EditorCanvas.cpp">
       <Filter>Entities\UI</Filter>
     </ClCompile>
+    <ClCompile Include="BoxEditGizmo.cpp">
+      <Filter>Mods</Filter>
+    </ClCompile>
+    <ClCompile Include="BoxEditMod.cpp">
+      <Filter>Mods</Filter>
+    </ClCompile>
+    <ClCompile Include="EditorEnvironmentComponent.cpp">
+      <Filter>Components</Filter>
+    </ClCompile>
+    <ClCompile Include="EditorBackendBindings.cpp">
+      <Filter>UI</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Mod.h">
@@ -222,9 +234,6 @@
       <Filter>Mods</Filter>
     </ClInclude>
     <ClInclude Include="EditorScene.h">
-      <Filter>Source</Filter>
-    </ClInclude>
-    <ClInclude Include="Workspace.h">
       <Filter>Source</Filter>
     </ClInclude>
     <ClInclude Include="EditorCamera.h">
@@ -358,6 +367,18 @@
     </ClInclude>
     <ClInclude Include="EditorMetaKeys.h">
       <Filter>Source</Filter>
+    </ClInclude>
+    <ClInclude Include="BoxEditMod.h">
+      <Filter>Mods</Filter>
+    </ClInclude>
+    <ClInclude Include="BoxEditGizmo.h">
+      <Filter>Mods</Filter>
+    </ClInclude>
+    <ClInclude Include="EditorEnvironmentComponent.h">
+      <Filter>Components</Filter>
+    </ClInclude>
+    <ClInclude Include="EditorBackendBindings.h">
+      <Filter>UI</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

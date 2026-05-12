@@ -11,8 +11,9 @@
 #include "FileManager.h"
 #include "GpuProgram.h"
 #include "Logger.h"
+#include "Renderer.h"
+#include "RenderSystem.h"
 #include "TKAssert.h"
-#include "TKOpenGL.h"
 #include "ToolKit.h"
 #include "Util.h"
 
@@ -141,8 +142,28 @@ namespace ToolKit
 
   void Shader::UnInit()
   {
-    glDeleteShader(m_shaderHandle);
-    m_initiated = false;
+    IGraphicsBackend* backend = GetRenderSystem()->GetBackend();
+
+    // Destroy all compiled variants.
+    bool handleInMap = false;
+    for (auto& [key, data] : m_shaderVariantMap)
+    {
+      if (data.get() == m_gpuData.get())
+      {
+        handleInMap = true;
+      }
+      backend->DestroyShader(data.get());
+    }
+    m_shaderVariantMap.clear();
+
+    // If m_gpuData was not part of a variant (base compile without defines), destroy it too.
+    if (!handleInMap)
+    {
+      backend->DestroyShader(m_gpuData.get());
+    }
+
+    m_gpuData.reset();
+    m_initiated    = false;
   }
 
   void Shader::Save(bool onlyIfDirty)
@@ -213,14 +234,14 @@ namespace ToolKit
     auto handle = m_shaderVariantMap.find(key);
     if (handle != m_shaderVariantMap.end())
     {
-      m_shaderHandle = m_shaderVariantMap[key];
+      m_gpuData = m_shaderVariantMap[key];
     }
     else
     {
       TK_WRN("Compiling shader during runtime for a new variant. Define: %s for Variant: %s", name.data(), val.data());
       ShaderDefineCombinaton defineCombo;
       ComplieShaderCombinations(m_defineArray, 0, defineCombo);
-      m_shaderHandle = m_shaderVariantMap[key];
+      m_gpuData = m_shaderVariantMap[key];
     }
   }
 
@@ -412,67 +433,12 @@ namespace ToolKit
     return (uint) includeLoc;
   }
 
-  uint Shader::Compile(String source)
+  bool Shader::Compile(String source)
   {
     TK_LOG("Shader in compile %s", GetFile().c_str());
 
-    GLenum type = 0;
-    if (m_shaderType == ShaderType::VertexShader)
-    {
-      type = (GLenum) GraphicTypes::VertexShader;
-    }
-    else if (m_shaderType == ShaderType::FragmentShader)
-    {
-      type = (GLenum) GraphicTypes::FragmentShader;
-    }
-    else
-    {
-      TK_ERR("Include shader can't be compiled: %s", GetFile().c_str());
-      return 0;
-    }
-
-    m_shaderHandle = glCreateShader(type);
-    if (m_shaderHandle == 0)
-    {
-      return 0;
-    }
-
-    // Start with #version
-    const char* str = nullptr;
-    size_t loc      = source.find("#version");
-    if (loc != String::npos)
-    {
-      source = source.substr(loc);
-      str    = source.c_str();
-    }
-    else
-    {
-      str = source.c_str();
-    }
-
-    glShaderSource(m_shaderHandle, 1, &str, nullptr);
-    glCompileShader(m_shaderHandle);
-
-    GLint compiled;
-    glGetShaderiv(m_shaderHandle, GL_COMPILE_STATUS, &compiled);
-    if (!compiled)
-    {
-      GLint infoLen = 0;
-      glGetShaderiv(m_shaderHandle, GL_INFO_LOG_LENGTH, &infoLen);
-      if (infoLen > 1)
-      {
-        char* log = new char[infoLen];
-        glGetShaderInfoLog(m_shaderHandle, infoLen, nullptr, log);
-
-        TK_ERR(log);
-        SafeDelArray(log);
-      }
-
-      glDeleteShader(m_shaderHandle);
-      return 0;
-    }
-
-    return m_shaderHandle;
+    m_gpuData = GetRenderSystem()->GetBackend()->CreateShader(this, source);
+    return m_gpuData != nullptr;
   }
 
   void Shader::CompileWithDefines(String source, const ShaderDefineCombinaton& defineCombo)
@@ -503,10 +469,10 @@ namespace ToolKit
 
     TK_LOG("Compiling shader with defines: %s", key.c_str());
 
-    if (Compile(source) != 0)
+    if (Compile(source))
     {
       m_currentDefineValues   = defineCombo;
-      m_shaderVariantMap[key] = m_shaderHandle;
+      m_shaderVariantMap[key] = m_gpuData;
     }
   }
 

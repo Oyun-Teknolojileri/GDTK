@@ -78,7 +78,7 @@ namespace ToolKit
 
         if (ImGui::Button("Save Settings"))
         {
-          GetApp()->m_workspace.SerializeEngineSettings();
+          GetApp()->m_workspace->SerializeEngineSettings();
         }
         ImGui::SameLine();
         if (ImGui::Button("Save Settings As"))
@@ -87,7 +87,7 @@ namespace ToolKit
           saveAsWindow->m_inputLabel        = "Name";
           saveAsWindow->m_hint              = "Enter settings name";
           saveAsWindow->m_taskFn            = [](const String& val)
-          { GetApp()->m_workspace.SerializeEngineSettings(val + ".settings"); };
+          { GetApp()->m_workspace->SerializeEngineSettings(val + ".settings"); };
           saveAsWindow->AddToUI();
         }
         ImGui::SameLine();
@@ -102,7 +102,7 @@ namespace ToolKit
           static String selectedFile;
           if (settingsFiles.empty())
           {
-            String path = GetApp()->m_workspace.GetConfigDirectory();
+            String path = GetApp()->m_workspace->GetConfigDirectory();
             for (const auto& entry : std::filesystem::directory_iterator(path))
             {
               if (entry.is_regular_file() && entry.path().extension() == ".settings")
@@ -139,7 +139,7 @@ namespace ToolKit
             ImGui::Dummy(ImVec2(0.0f, ImGui::GetFrameHeight()));
             if (ImGui::Button("Ok"))
             {
-              GetApp()->m_workspace.DeSerializeEngineSettings(selectedFile);
+              GetApp()->m_workspace->DeSerializeEngineSettings(selectedFile);
               m_showLoadWindow = false;
               settingsFiles.clear();
             }
@@ -495,10 +495,12 @@ namespace ToolKit
             pps->SetSSAOBiasVal(ssaoBias);
           }
 
-          int ssaoKernelSize = pps->GetSSAOKernelSizeVal();
-          if (ImGui::DragInt("KernelSize", &ssaoKernelSize, 1, 8, 128))
+          CustomDataView::ShowVariant(&pps->ParamSSAOKernelSize(), nullptr);
+
+          bool ssaoHalfRes = pps->GetSSAOHalfResolutionVal();
+          if (ImGui::Checkbox("Half Resolution##ssao", &ssaoHalfRes))
           {
-            pps->SetSSAOKernelSizeVal(ssaoKernelSize);
+            pps->SetSSAOHalfResolutionVal(ssaoHalfRes);
           }
 
           ImGui::EndDisabled();

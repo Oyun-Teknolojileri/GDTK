@@ -324,20 +324,24 @@ namespace ToolKit
             }
           }
 
-          uint texId           = texture->m_textureId;
+          uint texId           = Renderer::GetNativeTextureHandle(texture);
 
-          // Imgui blends the alpha of the image ( in our case, render target for the scene ) with its window
-          // background, which causes glitches in the final render. This manual disable is needed.
           ImDrawList* drawList = ImGui::GetWindowDrawList();
           drawList->AddCallback([](const ImDrawList* parentList, const ImDrawCmd* cmd)
-                                { GetRenderSystem()->EnableBlending(false); },
-                                nullptr);
+                                { 
+                                  Texture* t = (Texture*)cmd->UserCallbackData;
+                                  GetRenderSystem()->GetBackend()->SetTextureSwizzleAlpha(t, true, true);
+                                },
+                                texture.get());
 
           ImGui::Image(ConvertUIntImGuiTexture(texId), m_wndContentAreaSize, Vec2(0.0f, 1.0f), Vec2(1.0f, 0.0f));
 
           drawList->AddCallback([](const ImDrawList* parentList, const ImDrawCmd* cmd)
-                                { GetRenderSystem()->EnableBlending(true); },
-                                nullptr);
+                                { 
+                                  Texture* t = (Texture*)cmd->UserCallbackData;
+                                  GetRenderSystem()->GetBackend()->SetTextureSwizzleAlpha(t, false, true); 
+                                },
+                                texture.get());
 
           if (IsActive())
           {
@@ -379,6 +383,22 @@ namespace ToolKit
         if (ImGui::IsMouseDown(ImGuiMouseButton_Right))
         {
           ImGui::SetMouseCursor(ImGuiMouseCursor_None);
+
+          // Adjust camera speed with scroll wheel while right clicking
+          if (m_mouseOverContentArea)
+          {
+            ImGuiIO& io       = ImGui::GetIO();
+            float scrollDelta = io.MouseWheel;
+            if (glm::notEqual<float>(scrollDelta, 0.0f))
+            {
+              float& camSpeed        = GetApp()->m_camSpeed;
+              // Dynamic speed adjustment: larger values change faster, smaller values change slower
+              float speedMultiplier  = camSpeed * 0.1f;
+              speedMultiplier        = glm::max(speedMultiplier, 0.05f);
+              camSpeed              += scrollDelta * speedMultiplier;
+              camSpeed               = glm::clamp(camSpeed, 0.1f, 1000.0f);
+            }
+          }
 
           // Handle relative mouse hack.
           if (m_relMouseModBegin)
@@ -471,10 +491,10 @@ namespace ToolKit
       CameraPtr cam = GetCamera();
       if (cam)
       {
-        // Adjust zoom always.
         ImGuiIO& io = ImGui::GetIO();
-        if (m_mouseOverContentArea)
+        if (m_mouseOverContentArea && !io.MouseDown[1])
         {
+          // Adjust zoom.
           float delta = io.MouseWheel;
           if (glm::notEqual<float>(delta, 0.0f))
           {

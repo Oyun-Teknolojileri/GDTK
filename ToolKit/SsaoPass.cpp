@@ -14,7 +14,6 @@
 #include "RHI.h"
 #include "Shader.h"
 #include "Stats.h"
-#include "TKOpenGL.h"
 #include "ToolKit.h"
 
 #include "DebugNew.h"
@@ -30,23 +29,20 @@ namespace ToolKit
   SSAOPass::SSAOPass() : Pass("SSAOPass")
   {
     m_ssaoFramebuffer = MakeNewPtr<Framebuffer>("SSAOPassFB");
+    m_blurFramebuffer = MakeNewPtr<Framebuffer>("SSAOBlurFB");
+    m_rawSsaoRt       = MakeNewPtr<RenderTarget>("SSAORawRT");
     m_ssaoTexture     = MakeNewPtr<RenderTarget>("SSAORT");
-    m_tempBlurRt      = MakeNewPtr<RenderTarget>("SSAOBlurrRT");
+    m_quadPass        = MakeNewPtr<FullQuadPass>();
+    m_blurPass        = MakeNewPtr<FullQuadPass>();
 
-    TextureSettings noiseSet;
-    noiseSet.InternalFormat = GraphicTypes::FormatRG32F;
-    noiseSet.Format         = GraphicTypes::FormatRG;
-    noiseSet.Type           = GraphicTypes::TypeFloat;
-    m_noiseTexture          = MakeNewPtr<DataTexture>(4, 4, noiseSet);
-    m_quadPass              = MakeNewPtr<FullQuadPass>();
-
-    m_ssaoSamplesStrCache.reserve(128);
+    m_ssaoSamplesStrCache.reserve(m_ssaoSamplesStrCacheSize);
     for (int i = 0; i < m_ssaoSamplesStrCacheSize; ++i)
     {
       m_ssaoSamplesStrCache.push_back("samples[" + std::to_string(i) + "]");
     }
 
     m_ssaoShader = GetShaderManager()->Create<Shader>(ShaderPath("ssaoCalcFrag.shader", true));
+    m_blurShader = GetShaderManager()->Create<Shader>(ShaderPath("ssaoBlurFrag.shader", true));
   }
 
   SSAOPass::SSAOPass(const SSAOPassParams& params) : SSAOPass() { m_params = params; }
@@ -54,10 +50,12 @@ namespace ToolKit
   SSAOPass::~SSAOPass()
   {
     m_ssaoFramebuffer = nullptr;
-    m_noiseTexture    = nullptr;
-    m_tempBlurRt      = nullptr;
+    m_blurFramebuffer = nullptr;
+    m_rawSsaoRt       = nullptr;
     m_quadPass        = nullptr;
+    m_blurPass        = nullptr;
     m_ssaoShader      = nullptr;
+    m_blurShader      = nullptr;
   }
 
   void SSAOPass::Render()
@@ -74,16 +72,14 @@ namespace ToolKit
     }
 
     // Generate SSAO texture
-    renderer->SetTexture(1, normalDepthBuffer->m_textureId);
-    renderer->SetTexture(2, m_noiseTexture->m_textureId);
+    renderer->SetTexture(1, normalDepthBuffer);
 
     RenderSubPass(m_quadPass);
 
-    // Horizontal blur
-    renderer->ApplyGaussianBlur(m_ssaoTexture, m_tempBlurRt, X_AXIS, 1.0f / m_ssaoTexture->m_width);
+    // Single-pass bilinear 5x5 blur (reads raw SSAO, writes to m_ssaoTexture)
+    renderer->SetTexture(0, m_rawSsaoRt);
 
-    // Vertical blur
-    renderer->ApplyGaussianBlur(m_tempBlurRt, m_ssaoTexture, Y_AXIS, 1.0f / m_ssaoTexture->m_height);
+    RenderSubPass(m_blurPass);
   }
 
   void SSAOPass::PreRender()
@@ -97,35 +93,64 @@ namespace ToolKit
                                        ? m_params.GNormalDepthBuffer->GetResolvedTexture()
                                        : m_params.GNormalDepthBuffer;
 
-    int width                    = normalDepthBuffer->m_width;
-    int height                   = normalDepthBuffer->m_height;
+    int fullWidth                = normalDepthBuffer->m_width;
+    int fullHeight               = normalDepthBuffer->m_height;
 
-    // Clamp kernel size
-    m_params.KernelSize          = glm::clamp(m_params.KernelSize, m_minimumKernelSize, m_maximumKernelSize);
+    // Optionally render SSAO at half resolution for performance.
+    int renderWidth              = m_params.HalfResolution ? glm::max(1, fullWidth / 2) : fullWidth;
+    int renderHeight             = m_params.HalfResolution ? glm::max(1, fullHeight / 2) : fullHeight;
+
+    // Clamp kernel size to valid values (8, 16 or 32).
+    if (m_params.KernelSize <= 8)
+    {
+      m_params.KernelSize = 8;
+    }
+    else if (m_params.KernelSize <= 16)
+    {
+      m_params.KernelSize = 16;
+    }
+    else
+    {
+      m_params.KernelSize = 32;
+    }
 
     GenerateSSAONoise();
 
     // No need destroy and re init framebuffer when size is changed, because
     // the only render target is already being resized.
-    m_ssaoFramebuffer->ReconstructIfNeeded({width, height, false, false});
+    m_ssaoFramebuffer->ReconstructIfNeeded({renderWidth, renderHeight, false, false});
 
     TextureSettings oneChannelSet;
     oneChannelSet.WarpS          = GraphicTypes::UVClampToEdge;
     oneChannelSet.WarpT          = GraphicTypes::UVClampToEdge;
-    oneChannelSet.InternalFormat = GraphicTypes::FormatR32F;
+    oneChannelSet.InternalFormat = GraphicTypes::FormatR8;
     oneChannelSet.Format         = GraphicTypes::FormatRed;
-    oneChannelSet.Type           = GraphicTypes::TypeFloat;
+    oneChannelSet.Type           = GraphicTypes::TypeUnsignedByte;
+    oneChannelSet.MinFilter      = GraphicTypes::SampleLinear;
+    oneChannelSet.MagFilter      = GraphicTypes::SampleLinear;
     oneChannelSet.GenerateMipMap = false;
 
-    // Init ssao texture
-    m_ssaoTexture->Settings(oneChannelSet);
-    m_ssaoTexture->ReconstructIfNeeded(width, height);
+    // Init raw SSAO texture (bilinear filtering required for blur pass)
+    m_rawSsaoRt->Settings(oneChannelSet);
+    m_rawSsaoRt->ReconstructIfNeeded(renderWidth, renderHeight);
 
-    m_ssaoFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_ssaoTexture);
+    m_ssaoFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_rawSsaoRt);
 
-    // Init temporary blur render target
-    m_tempBlurRt->Settings(oneChannelSet);
-    m_tempBlurRt->ReconstructIfNeeded((uint) width, (uint) height);
+    // Init blurred output render target (consumed by forward pass)
+    TextureSettings blurOutSet = oneChannelSet;
+    blurOutSet.MinFilter       = GraphicTypes::SampleNearest;
+    blurOutSet.MagFilter       = GraphicTypes::SampleNearest;
+    m_ssaoTexture->Settings(blurOutSet);
+    m_ssaoTexture->ReconstructIfNeeded(renderWidth, renderHeight);
+
+    m_blurFramebuffer->ReconstructIfNeeded({renderWidth, renderHeight, false, false});
+    m_blurFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_ssaoTexture);
+
+    // Set shader define for kernel size when it changes.
+    if (m_params.KernelSize != m_currentKernelSize)
+    {
+      m_ssaoShader->SetDefine("KERNEL_SIZE", std::to_string(m_params.KernelSize));
+    }
 
     m_quadPass->m_params.frameBuffer      = m_ssaoFramebuffer;
     m_quadPass->m_params.clearFrameBuffer = GraphicBitFields::None;
@@ -143,14 +168,27 @@ namespace ToolKit
       m_prevSpread = m_params.spread;
     }
 
-    m_quadPass->UpdateUniform(ShaderUniform("screenSize", Vec2(width, height)));
-    m_quadPass->UpdateUniform(ShaderUniform("bias", m_params.Bias));
-    m_quadPass->UpdateUniform(ShaderUniform("kernelSize", m_params.KernelSize));
-    m_quadPass->UpdateUniform(ShaderUniform("projection", m_params.Cam->GetProjectionMatrix()));
-    m_quadPass->UpdateUniform(ShaderUniform("inverseProjection", glm::inverse(m_params.Cam->GetProjectionMatrix())));
-    m_quadPass->UpdateUniform(ShaderUniform("viewMatrix", m_params.Cam->GetViewMatrix()));
+    const Mat4& proj = m_params.Cam->GetProjectionMatrix();
+    m_quadPass->UpdateUniform(ShaderUniform("inverseProjection", glm::inverse(proj)));
+
+    // Precompute projection params.
+    // projParams = (P00, P11, P20, P21)
+    // clip.x = P00*x_view + P20*z_view, clip.y = P11*y_view + P21*z_view, w_clip = -z_view
+    Vec4 projParams = Vec4(proj[0][0], proj[1][1], proj[2][0], proj[2][1]);
+    m_quadPass->UpdateUniform(ShaderUniform("projParams", projParams));
+
+    // Precompute normalToView matrix.
+    Mat3 normalToView = Mat3(m_params.Cam->GetViewMatrix());
+    m_quadPass->UpdateUniform(ShaderUniform("normalToView", normalToView));
     m_quadPass->UpdateUniform(ShaderUniform("radius", m_params.Radius));
     m_quadPass->UpdateUniform(ShaderUniform("bias", m_params.Bias));
+
+    // Setup blur pass
+    m_blurPass->m_params.frameBuffer      = m_blurFramebuffer;
+    m_blurPass->m_params.clearFrameBuffer = GraphicBitFields::None;
+
+    m_blurPass->SetFragmentShader(m_blurShader, GetRenderer());
+    m_blurPass->UpdateUniform(ShaderUniform("texelSize", Vec2(1.0f / renderWidth, 1.0f / renderHeight)));
   }
 
   void SSAOPass::PostRender()
@@ -166,23 +204,6 @@ namespace ToolKit
     if (m_prevSpread != m_params.spread)
     {
       GenerateRandomSamplesInHemisphere(m_maximumKernelSize, m_params.spread, m_ssaoKernel);
-    }
-
-    if (m_ssaoNoise.size() == 0)
-    {
-      // generates random floats between 0.0 and 1.0
-      std::uniform_real_distribution<float> randomFloats(0.0f, 1.0f);
-      std::default_random_engine generator;
-
-      for (uint i = 0; i < 16; i++)
-      {
-        Vec2 noise(randomFloats(generator) * 2.0f - 1.0f, randomFloats(generator) * 2.0f - 1.0f);
-        m_ssaoNoise.push_back(noise);
-      }
-
-      // Init noise texture.
-      m_noiseTexture->UnInit();
-      m_noiseTexture->Init(m_ssaoNoise.data());
     }
   }
 

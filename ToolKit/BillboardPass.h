@@ -25,6 +25,7 @@ namespace ToolKit
 
     void Render() override;
     void PreRender() override;
+    void PostRender() override;
 
    public:
     BillboardPassParams m_params;

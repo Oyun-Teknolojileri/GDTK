@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include "IGraphicsBackend.h"
 #include "Resource.h"
 #include "Texture.h"
 
@@ -91,7 +92,6 @@ namespace ToolKit
     void AttachDepthTexture(DepthTexturePtr rt);
     DepthTexturePtr DetachDepthTexture();
 
-    uint GetFboId();
     const FramebufferSettings& GetSettings();
     void ReconstructIfNeeded(int width, int height);
     void ReconstructIfNeeded(const FramebufferSettings& settings);
@@ -99,21 +99,17 @@ namespace ToolKit
     /** Returns if the framebuffer is multi sampled. */
     bool IsMultiSampled();
 
-    /** Sets attachments as draw buffers. Must be called when the frame buffer set as current. */
-    void SetDrawBuffers();
-
    private:
     bool IsColorAttachment(Attachment atc);
-    void CheckFramebufferComplete();
 
    public:
     static const int m_maxColorAttachmentCount = 8;
     StringView m_label; //!< Debug label which appears in the gpu debuggers.
+    GpuResourceDataPtr m_gpuData;
 
    private:
     FramebufferSettings m_settings;
 
-    uint m_fboId = 0;
     RenderTargetPtr m_colorAtchs[m_maxColorAttachmentCount];
     DepthTexturePtr m_depthAtch = nullptr;
   };

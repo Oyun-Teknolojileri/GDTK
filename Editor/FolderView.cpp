@@ -336,17 +336,17 @@ namespace ToolKit
           }
 
           bool flipRenderTarget = false;
-          uint iconId           = UI::m_fileIcon->m_textureId;
+          uint iconId           = Renderer::GetNativeTextureHandle(UI::m_fileIcon);
 
           std::unordered_map<String, uint> extensionIconMap {
-              {SCENE,    UI::m_worldIcon->m_textureId},
-              {LAYER,    UI::m_worldIcon->m_textureId},
-              {ANIM,     UI::m_clipIcon->m_textureId },
-              {WAW,      UI::m_audioIcon->m_textureId},
-              {MP3,      UI::m_audioIcon->m_textureId},
-              {SHADER,   UI::m_codeIcon->m_textureId },
-              {LAYER,    UI::m_worldIcon->m_textureId},
-              {SKELETON, UI::m_boneIcon->m_textureId }
+              {SCENE,    Renderer::GetNativeTextureHandle(UI::m_worldIcon)},
+              {LAYER,    Renderer::GetNativeTextureHandle(UI::m_worldIcon)},
+              {ANIM,     Renderer::GetNativeTextureHandle(UI::m_clipIcon) },
+              {WAW,      Renderer::GetNativeTextureHandle(UI::m_audioIcon)},
+              {MP3,      Renderer::GetNativeTextureHandle(UI::m_audioIcon)},
+              {SHADER,   Renderer::GetNativeTextureHandle(UI::m_codeIcon) },
+              {LAYER,    Renderer::GetNativeTextureHandle(UI::m_worldIcon)},
+              {SKELETON, Renderer::GetNativeTextureHandle(UI::m_boneIcon) }
           };
 
           static std::unordered_set<String>
@@ -354,7 +354,7 @@ namespace ToolKit
 
           if (dirEnt.m_isDirectory)
           {
-            iconId = UI::m_folderIcon->m_textureId;
+            iconId = Renderer::GetNativeTextureHandle(UI::m_folderIcon);
           }
           else if (extensionIconMap.count(dirEnt.m_ext) > 0)
           {
@@ -368,7 +368,7 @@ namespace ToolKit
             }
             else
             {
-              iconId = UI::m_imageIcon->m_textureId;
+              iconId = Renderer::GetNativeTextureHandle(UI::m_imageIcon);
             }
           }
           else if (m_onlyNativeTypes)

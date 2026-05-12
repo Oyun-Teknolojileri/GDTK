@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include "IGraphicsBackend.h"
 #include "RenderState.h"
 #include "Resource.h"
 #include "ResourceManager.h"
@@ -28,7 +29,7 @@ namespace ToolKit
     Vec3 pos;  //!< Position of the vertex in 3D space.
     Vec3 norm; //!< Normal vector of the vertex.
     Vec2 tex;  //!< Texture coordinates of the vertex.
-    Vec4 tan;  //!< Tangent vector of the vertex (xyz = tangent, w = bitangent sign ±1).
+    Vec4 tan;  //!< Tangent vector of the vertex (xyz = tangent, w = bitangent sign +/-1).
   };
 
   /**
@@ -115,6 +116,9 @@ namespace ToolKit
      * @return The size of a single vertex in bytes.
      */
     virtual int GetVertexSize() const;
+    virtual const void* GetClientVertexData() const;
+    virtual size_t GetClientVertexCount() const;
+    virtual void ClearClientVertexData();
 
     /**
      * @brief Retrieves the total number of vertices in the mesh.
@@ -237,9 +241,7 @@ namespace ToolKit
    public:
     VertexArray m_clientSideVertices; //!< Array of vertices stored on the client side.
     UIntArray m_clientSideIndices;    //!< Array of indices stored on the client side.
-    uint m_vboVertexId = 0;           //!< ID of the vertex buffer object.
-    uint m_vboIndexId  = 0;           //!< ID of the index buffer object.
-    uint m_vaoId       = 0;           //!< ID of the vertex array object.
+    GpuResourceDataPtr m_gpuData;     //!< Backend-owned GPU resource data.
     uint m_vertexCount = 0;           //!< Count of vertices.
     uint m_indexCount  = 0;           //!< Count of indices.
     MaterialPtr m_material;           //!< Pointer to the material used by the mesh.
@@ -345,6 +347,9 @@ namespace ToolKit
      * @return The size of a single skinned vertex in bytes.
      */
     int GetVertexSize() const override;
+    const void* GetClientVertexData() const override;
+    size_t GetClientVertexCount() const override;
+    void ClearClientVertexData() override;
 
     /**
      * @brief Determines if the mesh is a skin mesh.

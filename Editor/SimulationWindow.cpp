@@ -278,7 +278,7 @@ namespace ToolKit
       {
         if (GetApp()->IsWorkspaceSane(true, true))
         {
-          String codePath = ConcatPaths({GetApp()->m_workspace.GetCodeDirectory(), "..", "."});
+          String codePath = ConcatPaths({GetApp()->m_workspace->GetCodeDirectory(), "..", "."});
           if (CheckFile(codePath))
           {
             String cmd = "code \"" + codePath + "\"";

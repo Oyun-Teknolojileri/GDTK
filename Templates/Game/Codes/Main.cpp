@@ -140,7 +140,7 @@ namespace ToolKit
       g_proxy->m_engineSettings->Load(settingsFile);
       g_engineSettings = g_proxy->m_engineSettings;
 
-      g_proxy->Init();
+      g_proxy->Init(false);
       g_proxy->PostInit();
       if (!LoadBootSceneIfRequested())
       {
@@ -164,16 +164,23 @@ namespace ToolKit
         return;
       }
 
-      SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
-      SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-      SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+      if constexpr (TK_PLATFORM == PLATFORM::TKWindows)
+      {
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
+        SDL_GL_SetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, 1);
+      }
+      else
+      {
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+      }
 
       SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
       SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
       SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
-
-      // GLES 3.0 fails to create sRGB backbuffer on some platforms.
-      // SDL_GL_SetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, 1);
 
       SDL_DisplayMode DM;
       SDL_GetCurrentDisplayMode(0, &DM);
@@ -222,7 +229,11 @@ namespace ToolKit
       TK_LOG("%s", error);
 
       // Init OpenGl.
-      g_proxy->m_renderSys->InitGl((void*) SDL_GL_GetProcAddress, [](const String& msg) { TK_LOG("%s", msg.c_str()); });
+      ToolKit::IGraphicsBackend::BackendInitParams initParams;
+      initParams.getProcAddress = (void*) SDL_GL_GetProcAddress;
+      initParams.errorCallback  = [](const String& msg) { TK_LOG("%s", msg.c_str()); };
+      g_proxy->m_renderSys->InitGraphics(initParams);
+      g_proxy->m_renderSys->SetPresentCallback([]() { SDL_GL_SwapWindow(g_window); });
 
       // Set defaults
       if constexpr (TK_PLATFORM != PLATFORM::TKWeb)
@@ -295,7 +306,7 @@ namespace ToolKit
           rsys->AddRenderTask({[](Renderer* renderer) -> void
                                {
                                  renderer->SetFramebuffer(nullptr, GraphicBitFields::AllBits);
-                                 SDL_GL_SwapWindow(g_window);
+                                 g_proxy->m_renderSys->Present();
                                }});
           rsys->FlushRenderTasks();
 
@@ -353,7 +364,7 @@ namespace ToolKit
       if (!g_headless)
       {
         SDL_GL_MakeCurrent(g_window, g_context);
-        SDL_GL_SwapWindow(g_window);
+        g_proxy->m_renderSys->Present();
       }
 
       g_sdlEventPool->ClearPool(); // Clear after consumption.

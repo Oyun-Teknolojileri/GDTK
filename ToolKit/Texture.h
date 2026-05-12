@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include "IGraphicsBackend.h"
 #include "Resource.h"
 #include "ResourceManager.h"
 #include "Types.h"
@@ -28,6 +29,7 @@ namespace ToolKit
     MsaaSampleCount msaaCount   = MsaaSampleCount::x0; //!< MSAA Render target is created if this is grater than x0.
     int Layers                  = 0;     //!< Number of layers that this texture have if this is a texture array.
     bool GenerateMipMap         = false; //!< Generates mipmaps for the texture automatically.
+    bool SwizzleAlphaToOne      = false; //!< Sets the alpha channel to 1.0 when sampled from the texture.
 
     bool operator==(const TextureSettings& other) const { return memcmp(this, &other, sizeof(TextureSettings)) == 0; }
 
@@ -74,13 +76,14 @@ namespace ToolKit
     /** Removes image data. */
     virtual void Clear();
 
-    /** Used to set graphics api settings for texture creation.*/
+    /** Applies current m_settings to the GPU resource (filter, wrap modes).
+     *  If a new settings struct is passed the member is updated first. */
     void ApplyTextureSettings(const TextureSettings& settings);
 
    public:
-    uint m_textureId  = 0;
-    int m_width       = 0;
-    int m_height      = 0;
+    GpuResourceDataPtr m_gpuData;
+    int m_width     = 0;
+    int m_height    = 0;
     uint8* m_image    = nullptr;
     float* m_imagef   = nullptr;
 
@@ -107,6 +110,7 @@ namespace ToolKit
 
    public:
     DepthTexture();
+    ~DepthTexture() override;
 
     void Load() override;
     void Init(int width, int height, bool stencil, MsaaSampleCount multiSample = MsaaSampleCount::x0);
@@ -138,7 +142,7 @@ namespace ToolKit
    public:
     void Load() override;
     void Init(void* data);
-    void Map(void* data, uint64 size);
+    void Map(void* data);
     void UnInit() override;
   };
 
@@ -216,6 +220,9 @@ namespace ToolKit
     void Load() override;
     void Init(bool flushClientSideArray = false) override;
     void UnInit() override;
+
+    /** Try to load or generate irradiance caches. Cubemap has to be loaded. */
+    void LoadOrGenerateIrradianceCaches();
 
     /** Loads baked irradiance caches. Make sure this called from render thread. Use render task. */
     void LoadIrradianceCaches(class Renderer* renderer);
