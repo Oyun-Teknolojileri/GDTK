@@ -92,6 +92,7 @@ namespace ToolKit
 
     virtual void PreInit(); //!< Creates all the managers and systems for the engine.
     virtual void Init();    //!< Initialize all the managers and systems. Engine fully functions at this point.
+    void Init(bool initGraphics);
 
     /**
      * Systems that requires engine will be initialized at this stage.
@@ -214,6 +215,7 @@ namespace ToolKit
 
     bool m_preInitiated = false;
     bool m_initiated    = false;
+    bool m_graphicsInitiated = false;
     bool m_threaded     = true;
     String m_resourceRoot;
     String m_defaultResourceRoot;

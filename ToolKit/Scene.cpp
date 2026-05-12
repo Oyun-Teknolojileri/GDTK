@@ -929,7 +929,10 @@ namespace ToolKit
   void SceneManager::SetCurrentScene(const ScenePtr& scene)
   {
     m_currentScene = scene;
-    m_currentScene->Init();
+    if (Main::GetInstance()->m_graphicsInitiated)
+    {
+      m_currentScene->Init();
+    }
 
     // Apply scene post processing effects.
     GetEngineSettings().m_postProcessing = m_currentScene->m_postProcessSettings;
