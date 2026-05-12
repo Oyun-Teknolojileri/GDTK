@@ -279,9 +279,11 @@ namespace ToolKit
     }
 
     String sdlName                      = buildConfig == "Debug" ? "SDL2d.dll" : "SDL2.dll";
+    String toolkitDllName               = buildConfig == "Debug" ? "ToolKitd.dll" : "ToolKit.dll";
     const String exeFile                = ConcatPaths({binDir, projectName + ".exe"});
     const String pakFile                = ConcatPaths({projectDirStr, "MinResources.pak"});
     const String sdlDllPath             = ConcatPaths({m_toolkitPath, "Bin", sdlName});
+    const String toolkitDllPath         = ConcatPaths({m_toolkitPath, "Bin", toolkitDllName});
     const String engineSettingsPath     = ConcatPaths({projectDirStr, "Config", "Windows", "Engine.settings"});
     const String destEngineSettingsPath = ConcatPaths({publishConfigDir, "Engine.settings"});
 
@@ -299,6 +301,48 @@ namespace ToolKit
     if (CheckErrorReturn("Copy sdl.dll to " + publishBinDir))
     {
       return -1;
+    }
+
+    // Copy ToolKit runtime dll from ToolKit bin folder to publish bin folder
+    std::filesystem::copy(toolkitDllPath, publishBinDir, std::filesystem::copy_options::overwrite_existing, m_errorCode);
+    if (CheckErrorReturn("Copy toolkit.dll to " + publishBinDir))
+    {
+      return -1;
+    }
+
+    // Copy game plugin runtime dlls to publish bin folder.
+    const Path pluginsRoot = ConcatPaths({projectDirStr, "Plugins"});
+    if (std::filesystem::exists(pluginsRoot))
+    {
+      for (const auto& pluginEntry : std::filesystem::directory_iterator(pluginsRoot))
+      {
+        if (!pluginEntry.is_directory())
+        {
+          continue;
+        }
+
+        const Path pluginBinDir = pluginEntry.path() / "Codes" / "Bin";
+        if (!std::filesystem::exists(pluginBinDir))
+        {
+          continue;
+        }
+
+        const String pluginDllName = pluginEntry.path().filename().string() + (buildConfig == "Debug" ? "d.dll" : ".dll");
+        const Path pluginDllPath = pluginBinDir / pluginDllName;
+        if (!std::filesystem::exists(pluginDllPath))
+        {
+          continue;
+        }
+
+        std::filesystem::copy(pluginDllPath,
+                              publishBinDir,
+                              std::filesystem::copy_options::overwrite_existing,
+                              m_errorCode);
+        if (CheckErrorReturn("Copy plugin dll to " + publishBinDir))
+        {
+          return -1;
+        }
+      }
     }
 
     // Copy pak
