@@ -330,6 +330,14 @@ namespace ToolKit
     SetMaterial(job.Material);
     SetDataTextures(job);
 
+    // Apply post-pipeline explicit binding for utility passes (see m_postPipelineSlot1Texture).
+    // Must happen AFTER the SetMaterial / SetDataTextures sweep above so it can't be overwritten
+    // by a stray material binding, but BEFORE Draw() where FlushDescriptorState reads the state.
+    if (m_postPipelineSlot1Texture != nullptr)
+    {
+      SetTexture(1, m_postPipelineSlot1Texture);
+    }
+
     FeedUniforms(m_currentProgram, job);
 
     const Mesh* mesh  = job.Mesh;
@@ -678,10 +686,17 @@ namespace ToolKit
 
         BindProgramOfMaterial(m_gaussianBlurMaterial.get());
 
-        m_backend->BindTexture(1, srcArray);
+        // Bind via the post-pipeline override. A direct m_backend->BindTexture(1, srcArray) here
+        // would be wiped by m_shadow.Reset() inside VulkanBackend::BindPipeline (called from
+        // Render(job) underneath DrawFullQuad), leaving slot 1 to fall back to the dummy 2DArray
+        // texture — i.e. the blur would read the dummy instead of the atlas and overwrite the
+        // slot with garbage. Render(job) re-applies this AFTER BindPipeline so it survives.
+        m_postPipelineSlot1Texture = srcArray;
 
         DrawFullQuad(m_gaussianBlurMaterial);
         FinishPass();
+
+        m_postPipelineSlot1Texture = nullptr;
       }
 
       // Vertical pass: temp 2D RT -> array texture layer

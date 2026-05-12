@@ -19,7 +19,7 @@
 		void main()
 		{
 		  v_pos.xy = vPosition.xy * 2.0;
-		  v_pos.z = -1.0;
+		  v_pos.z = 0.0; // Vulkan NDC near plane (GL is -1, Vulkan is 0)
 
 		#if TextureArray == 1
 		  v_texture = vec3(vTexture, gauss.blurScaleAndLayer.w);
@@ -27,7 +27,7 @@
 		  v_texture = vec3(vTexture, 0.0);
 		#endif
 
-		  v_texture.y = v_texture.y;
+		  v_texture.y = 1.0 - v_texture.y; // Flip Y for Vulkan
 		  gl_Position = vec4(v_pos, 1.0);
 		}
 	-->

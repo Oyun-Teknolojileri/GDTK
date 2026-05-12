@@ -626,6 +626,13 @@ namespace ToolKit
     RenderTargetPtr m_brdfLut     = nullptr;
     TexturePtr m_aoTexture        = nullptr;
 
+    /** Texture explicitly bound to slot 1 by Render(job) *after* BindPipeline so it survives
+     * the Vulkan descriptor wipe in VulkanBackend::BindPipeline. Used by utility passes
+     * (currently the shadow blur's horizontal sub-pass) that sample a 2DArray view from a
+     * slot the standard material / SetDataTextures flow does not bind. nullptr in normal
+     * draws. The owning pass must clear it back to nullptr when done. */
+    TexturePtr m_postPipelineSlot1Texture = nullptr;
+
     std::array<int, RHIConstants::TextureSlotCount> m_textureSlots;
 
     /** Current viewport size (x,y) and position (z,w) */
