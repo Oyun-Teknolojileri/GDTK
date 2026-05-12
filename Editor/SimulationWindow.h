@@ -41,6 +41,13 @@ namespace ToolKit
       Count
     };
 
+    enum class NetworkPlayTopology
+    {
+      ListenServer,
+      DedicatedServer,
+      ClientAttach
+    };
+
     struct TK_EDITOR_API SimulationSettings
     {
       bool Windowed                 = false;
@@ -49,6 +56,17 @@ namespace ToolKit
       float Height                  = 500.0f;
       float Scale                   = 1.0f;
       EmulatorResolution Resolution = EmulatorResolution::Custom;
+    };
+
+    struct TK_EDITOR_API NetworkPlaySettings
+    {
+      bool Enabled                      = false;
+      int PlayerCount                   = 2;
+      bool RunDedicatedServerHeadless   = true;
+      bool AutoStopChildren             = true;
+      uint BasePort                     = 7777;
+      bool AutoAllocatePorts            = true;
+      NetworkPlayTopology Topology      = NetworkPlayTopology::ListenServer;
     };
 
     class TK_EDITOR_API SimulationWindow : public Window
@@ -70,7 +88,9 @@ namespace ToolKit
       void ShowHeader();
       void ShowActionButtons();
       void ShowSettings();
+      void ShowNetworkPlaySettings();
       String EmuResToString(EmulatorResolution emuRes);
+      String TopologyToString(NetworkPlayTopology topology);
       void UpdateCanvas(uint width, uint heigth);
 
       void AddResolutionName(const String& name);
@@ -114,6 +134,7 @@ namespace ToolKit
 
      private:
       SimulationSettings* m_settings         = nullptr;
+      NetworkPlaySettings* m_networkPlaySettings = nullptr;
       bool m_simulationModeDisabled          = false;
       bool m_resolutionSettingsWindowEnabled = false;
       const int m_numDefaultResNames;

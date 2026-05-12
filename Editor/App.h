@@ -226,6 +226,7 @@ namespace ToolKit
       // Simulator settings.
       EditorViewportPtr m_simulationViewport;
       SimulationSettings m_simulatorSettings;
+      NetworkPlaySettings m_networkPlaySettings;
       UVec2 m_displayBounds; //!< Maximum primary display size. Other windows may be different.
 
       // Publisher.

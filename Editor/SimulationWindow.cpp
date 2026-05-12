@@ -24,6 +24,7 @@ namespace ToolKit
     {
       m_name     = "Simulation";
       m_settings = &GetApp()->m_simulatorSettings;
+      m_networkPlaySettings = &GetApp()->m_networkPlaySettings;
     }
 
     SimulationWindow::~SimulationWindow() {}
@@ -93,6 +94,25 @@ namespace ToolKit
         WriteAttr(resNode, doc, "sizeY", std::to_string(m_screenResolutions[index].y));
       }
 
+      if (m_networkPlaySettings)
+      {
+        XmlNode* networkPlayNode = CreateXmlNode(doc, "NetworkPlay", simNode);
+        WriteAttr(networkPlayNode, doc, "enabled",
+                  std::to_string(m_networkPlaySettings->Enabled));
+        WriteAttr(networkPlayNode, doc, "playerCount",
+                  std::to_string(m_networkPlaySettings->PlayerCount));
+        WriteAttr(networkPlayNode, doc, "runDedicatedServerHeadless",
+                  std::to_string(m_networkPlaySettings->RunDedicatedServerHeadless));
+        WriteAttr(networkPlayNode, doc, "autoStopChildren",
+                  std::to_string(m_networkPlaySettings->AutoStopChildren));
+        WriteAttr(networkPlayNode, doc, "basePort",
+                  std::to_string(m_networkPlaySettings->BasePort));
+        WriteAttr(networkPlayNode, doc, "autoAllocatePorts",
+                  std::to_string(m_networkPlaySettings->AutoAllocatePorts));
+        WriteAttr(networkPlayNode, doc, "topology",
+                  std::to_string(static_cast<int>(m_networkPlaySettings->Topology)));
+      }
+
       return simNode;
     }
 
@@ -122,6 +142,35 @@ namespace ToolKit
         m_screenResolutions.push_back(res);
         m_emulatorResolutionNames.push_back(name);
         resNode = resNode->next_sibling();
+      }
+
+      if (m_networkPlaySettings)
+      {
+        if (XmlNode* networkPlayNode = simNode->first_node("NetworkPlay"))
+        {
+          int topology = static_cast<int>(m_networkPlaySettings->Topology);
+          ReadAttr(networkPlayNode, "enabled", m_networkPlaySettings->Enabled);
+          ReadAttr(networkPlayNode, "playerCount", m_networkPlaySettings->PlayerCount);
+          ReadAttr(networkPlayNode,
+                   "runDedicatedServerHeadless",
+                   m_networkPlaySettings->RunDedicatedServerHeadless);
+          ReadAttr(networkPlayNode, "autoStopChildren",
+                   m_networkPlaySettings->AutoStopChildren);
+          ReadAttr(networkPlayNode, "basePort", m_networkPlaySettings->BasePort);
+          ReadAttr(networkPlayNode, "autoAllocatePorts",
+                   m_networkPlaySettings->AutoAllocatePorts);
+          ReadAttr(networkPlayNode, "topology", topology);
+
+          topology = glm::clamp(topology,
+                                0,
+                                static_cast<int>(NetworkPlayTopology::ClientAttach));
+          m_networkPlaySettings->Topology =
+              static_cast<NetworkPlayTopology>(topology);
+          m_networkPlaySettings->PlayerCount =
+              glm::max(1, m_networkPlaySettings->PlayerCount);
+          m_networkPlaySettings->BasePort =
+              glm::max(1u, m_networkPlaySettings->BasePort);
+        }
       }
 
       return simNode;
@@ -263,10 +312,26 @@ namespace ToolKit
       return m_emulatorResolutionNames[(uint) emuRes];
     }
 
+    String SimulationWindow::TopologyToString(NetworkPlayTopology topology)
+    {
+      switch (topology)
+      {
+      case NetworkPlayTopology::ListenServer:
+        return "Listen Server";
+      case NetworkPlayTopology::DedicatedServer:
+        return "Dedicated Server";
+      case NetworkPlayTopology::ClientAttach:
+        return "Client Attach";
+      default:
+        return "Listen Server";
+      }
+    }
+
     void SimulationWindow::ShowSettings()
     {
       if (!m_settings->Windowed)
       {
+        ShowNetworkPlaySettings();
         return;
       }
 
@@ -375,6 +440,73 @@ namespace ToolKit
       {
         m_settings->Landscape = !m_settings->Landscape;
         UpdateSimulationWndSize();
+      }
+
+      ShowNetworkPlaySettings();
+    }
+
+    void SimulationWindow::ShowNetworkPlaySettings()
+    {
+      if (m_networkPlaySettings == nullptr)
+      {
+        return;
+      }
+
+      ImGui::Separator();
+      ImGui::Text("Network Play");
+      ImGui::Checkbox("Enable##NetworkPlay", &m_networkPlaySettings->Enabled);
+      UI::HelpMarker(TKLoc,
+                     "Experimental multi-instance editor networking workflow.\n"
+                     "V1 is intended for direct-address local testing.");
+
+      if (!m_networkPlaySettings->Enabled)
+      {
+        return;
+      }
+
+      static const char* topologyNames[] = {"Listen Server",
+                                            "Dedicated Server",
+                                            "Client Attach"};
+      int topology = static_cast<int>(m_networkPlaySettings->Topology);
+      if (ImGui::Combo("Topology##NetworkPlay",
+                       &topology,
+                       topologyNames,
+                       IM_ARRAYSIZE(topologyNames)))
+      {
+        topology = glm::clamp(topology,
+                              0,
+                              static_cast<int>(NetworkPlayTopology::ClientAttach));
+        m_networkPlaySettings->Topology =
+            static_cast<NetworkPlayTopology>(topology);
+      }
+
+      ImGui::SetNextItemWidth(120.0f);
+      if (ImGui::InputInt("Players##NetworkPlay",
+                          &m_networkPlaySettings->PlayerCount))
+      {
+        m_networkPlaySettings->PlayerCount =
+            glm::max(1, m_networkPlaySettings->PlayerCount);
+      }
+
+      ImGui::Checkbox("Auto Allocate Ports##NetworkPlay",
+                      &m_networkPlaySettings->AutoAllocatePorts);
+      ImGui::BeginDisabled(m_networkPlaySettings->AutoAllocatePorts);
+      ImGui::SetNextItemWidth(120.0f);
+      int basePort = static_cast<int>(m_networkPlaySettings->BasePort);
+      if (ImGui::InputInt("Base Port##NetworkPlay", &basePort))
+      {
+        basePort = glm::clamp(basePort, 1, 65535);
+        m_networkPlaySettings->BasePort = static_cast<uint>(basePort);
+      }
+      ImGui::EndDisabled();
+
+      ImGui::Checkbox("Auto Stop Children##NetworkPlay",
+                      &m_networkPlaySettings->AutoStopChildren);
+      if (m_networkPlaySettings->Topology ==
+          NetworkPlayTopology::DedicatedServer)
+      {
+        ImGui::Checkbox("Headless Dedicated Server##NetworkPlay",
+                        &m_networkPlaySettings->RunDedicatedServerHeadless);
       }
     }
 
