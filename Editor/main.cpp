@@ -303,8 +303,6 @@ namespace ToolKit
         }
         else
         {
-          g_proxy->m_renderSys->m_backbufferFormatIsSRGB = EditorBackendBindings::IsBackbufferSrgb();
-
           g_context                                      = EditorBackendBindings::CreateGraphicsContext(g_window);
 
 #ifndef TK_VULKAN
@@ -333,6 +331,13 @@ namespace ToolKit
               GetLogger()->WritePlatformConsole(LogType::Error, msg.c_str());
             };
             g_proxy->m_renderSys->InitGraphics(initParams);
+
+            // Backend (GL context or Vulkan swapchain) now exists, so the backbuffer's actual sRGB
+            // status can be queried. On GL this reads the SRGB_CAPABLE attribute the driver
+            // settled on; on Vulkan it inspects the picked swapchain format. Must run *before*
+            // anything that reads m_backbufferFormatIsSRGB (e.g. UI::Init's gamma-encode flag).
+            g_proxy->m_renderSys->m_backbufferFormatIsSRGB = EditorBackendBindings::IsBackbufferSrgb();
+
             g_proxy->m_renderSys->SetPresentCallback([]() { EditorBackendBindings::PresentBackbuffer(g_window); });
 
             // Init Main.

@@ -90,13 +90,36 @@ namespace ToolKit
     std::vector<VkSurfaceFormatKHR> formats(count);
     vkGetPhysicalDeviceSurfaceFormatsKHR(phys, surface, &count, formats.data());
 
-    for (const auto& f : formats)
+    // Prefer an sRGB format so the swapchain image view does the linear→sRGB encode for us
+    // on store; that lets shaders write linear colors and skips the in-shader gamma path.
+    // Iterate in preference order: R8G8B8A8 first (matches our internal RT default), B8G8R8A8
+    // second (common on Windows surfaces).
+    const VkFormat srgbPrefs[] = {VK_FORMAT_R8G8B8A8_SRGB, VK_FORMAT_B8G8R8A8_SRGB};
+    for (VkFormat pref : srgbPrefs)
     {
-      if (f.format == VK_FORMAT_B8G8R8A8_SRGB && f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+      for (const auto& f : formats)
       {
-        return f;
+        if (f.format == pref && f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+        {
+          return f;
+        }
       }
     }
+
+    // No sRGB pair offered (surface/driver limitation) — fall back to UNORM. The engine will
+    // see m_backbufferFormatIsSRGB=false and gamma-encode in shader / via ImGui's encode flag.
+    const VkFormat unormPrefs[] = {VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_B8G8R8A8_UNORM};
+    for (VkFormat pref : unormPrefs)
+    {
+      for (const auto& f : formats)
+      {
+        if (f.format == pref && f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+        {
+          return f;
+        }
+      }
+    }
+
     return formats.empty() ? VkSurfaceFormatKHR{VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR} : formats[0];
   }
 

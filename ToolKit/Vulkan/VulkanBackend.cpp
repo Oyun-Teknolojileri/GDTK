@@ -3186,8 +3186,27 @@ namespace ToolKit
 
   bool VulkanBackend::ValidateBackbufferSrgbEncoding()
   {
-    // Vulkan swapchain format explicitly defines sRGB  always valid if configured correctly.
-    return true;
+    // Unlike GL — where the SRGB-capable bit is a request the driver may silently ignore, forcing
+    // us to clear+readback to verify — on Vulkan we picked the swapchain format ourselves in
+    // VulkanSwapchain::PickSurfaceFormat. The "validation" is just reporting whether that pick
+    // resolved to an *_SRGB format (HW does the encode automatically) vs a UNORM one (we must
+    // gamma-encode in-shader / signal ImGui to do so).
+    if (m_swapchain == nullptr)
+    {
+      return false;
+    }
+
+    switch (m_swapchain->GetFormat())
+    {
+    case VK_FORMAT_R8G8B8_SRGB:
+    case VK_FORMAT_R8G8B8A8_SRGB:
+    case VK_FORMAT_B8G8R8_SRGB:
+    case VK_FORMAT_B8G8R8A8_SRGB:
+    case VK_FORMAT_A8B8G8R8_SRGB_PACK32:
+      return true;
+    default:
+      return false;
+    }
   }
 
   void VulkanBackend::EnableScissorTest(bool enable)

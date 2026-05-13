@@ -137,8 +137,17 @@ namespace ToolKit
       bool IsBackbufferSrgb()
       {
 #ifdef TK_VULKAN
-        // Swapchain will be created with an sRGB format in Stage 1c — report true up-front.
-        return true;
+        // Must be called *after* InitGraphics — VulkanSwapchain::PickSurfaceFormat picks the
+        // backbuffer format from whatever the surface/device actually offered (sRGB if available,
+        // UNORM as the documented fallback when no sRGB pair matches our preference list).
+        // So this isn't a request flag like GL's SRGB_CAPABLE — it's the post-pick truth.
+        auto* rsys = GetRenderSystem();
+        if (rsys == nullptr || rsys->GetBackend() == nullptr)
+        {
+          TK_ERR("IsBackbufferSrgb called before InitGraphics — Vulkan needs the swapchain");
+          return false;
+        }
+        return rsys->GetBackend()->ValidateBackbufferSrgbEncoding();
 #else
         int flag = 0;
         SDL_GL_GetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, &flag);
