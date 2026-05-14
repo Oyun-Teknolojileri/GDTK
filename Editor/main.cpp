@@ -305,7 +305,7 @@ namespace ToolKit
         {
           g_context                                      = EditorBackendBindings::CreateGraphicsContext(g_window);
 
-#ifndef TK_VULKAN
+#ifndef TK_VULKAN // vulkan does not have a context like this
           if (g_context == nullptr)
           {
             g_running = false;
@@ -389,15 +389,6 @@ namespace ToolKit
             g_app->m_sysComExecFn   = &ToolKit::PlatformHelpers::SysComExec;
             g_app->m_shellOpenDirFn = &ToolKit::PlatformHelpers::OpenExplorer;
 
-            // TODO splash screen is disabled so we do this here. remove here.
-            {
-              SDL_ShowWindow(g_window);
-              g_app->Init();
-              SDL_SetWindowBordered(g_window, SDL_TRUE);
-              SDL_SetWindowResizable(g_window, SDL_TRUE);
-              PlatformHelpers::UpdateAppIcon();
-            }
-
             // Register update functions
             TKUpdateFn preUpdateFn = [](float deltaTime)
             {
@@ -408,7 +399,7 @@ namespace ToolKit
                 ProcessEvent(sdlEvent);
               }
 
-              static bool showSplashScreen                    = false; // TODO
+              static bool showSplashScreen                    = true;
               static float elapsedTime                        = 0.0f;
               static SplashScreenRenderPathPtr splashRenderer = nullptr;
 

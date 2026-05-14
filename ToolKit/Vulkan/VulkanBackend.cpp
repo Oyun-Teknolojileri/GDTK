@@ -1791,14 +1791,130 @@ namespace ToolKit
 
     if (dst == nullptr)
     {
-      // See note above â€” Vulkan path doesn't need this until Stage 11. Logged once to keep an
-      // unexpected runtime call visible without spamming.
-      static bool s_warnedNullDst = false;
-      if (!s_warnedNullDst)
+      // GL equivalent: glBlitFramebuffer into FBO 0 (the default framebuffer = swapchain).
+      // Used by SplashScreenRenderPath::PostRender and GameRenderer to push the final composed
+      // image straight to the backbuffer when no ImGui pass runs afterward to do it for us.
+      if (m_swapchain->IsSwapchainPassActive())
       {
-        TK_WRN("CopyFramebuffer(dst=nullptr) deferred to Stage 11 â€” call ignored");
-        s_warnedNullDst = true;
+        TK_ERR("CopyFramebuffer(dst=nullptr) called while swapchain render pass is active");
+        return;
       }
+
+      auto* srcFb = static_cast<VulkanFramebuffer*>(src->m_gpuData.get());
+      if (srcFb == nullptr)
+      {
+        return;
+      }
+
+      VulkanTexture* srcTex = srcFb->colorAttachments[0].tex;
+      if (srcTex == nullptr)
+      {
+        return;
+      }
+      if (srcTex->samples != VK_SAMPLE_COUNT_1_BIT)
+      {
+        TK_ERR("CopyFramebuffer(dst=nullptr): MSAA source requires a resolve pass before blit");
+        return;
+      }
+
+      VkImage swapImage = m_swapchain->GetCurrentImage();
+      if (swapImage == VK_NULL_HANDLE)
+      {
+        return;
+      }
+
+      VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer();
+      if (cb == VK_NULL_HANDLE)
+      {
+        return;
+      }
+
+      VkExtent2D swapExtent = m_swapchain->GetExtent();
+
+      // Pre-blit barriers. src goes to TRANSFER_SRC; swapchain image goes UNDEFINED→TRANSFER_DST
+      // (we discard whatever the previous frame left there — the blit covers the full extent).
+      VkImageMemoryBarrier pre[2]{};
+      pre[0].sType                       = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+      pre[0].oldLayout                   = srcTex->currentLayout;
+      pre[0].newLayout                   = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+      pre[0].srcAccessMask               = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+      pre[0].dstAccessMask               = VK_ACCESS_TRANSFER_READ_BIT;
+      pre[0].srcQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
+      pre[0].dstQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
+      pre[0].image                       = srcTex->image;
+      pre[0].subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+      pre[0].subresourceRange.levelCount = srcTex->mipLevels;
+      pre[0].subresourceRange.layerCount = srcTex->arrayLayers;
+
+      pre[1].sType                       = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+      pre[1].oldLayout                   = VK_IMAGE_LAYOUT_UNDEFINED;
+      pre[1].newLayout                   = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+      pre[1].srcAccessMask               = 0;
+      pre[1].dstAccessMask               = VK_ACCESS_TRANSFER_WRITE_BIT;
+      pre[1].srcQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
+      pre[1].dstQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
+      pre[1].image                       = swapImage;
+      pre[1].subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+      pre[1].subresourceRange.levelCount = 1;
+      pre[1].subresourceRange.layerCount = 1;
+
+      vkCmdPipelineBarrier(cb,
+                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           0,
+                           0,
+                           nullptr,
+                           0,
+                           nullptr,
+                           2,
+                           pre);
+
+      VkImageBlit region{};
+      region.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+      region.srcSubresource.layerCount = 1;
+      region.srcOffsets[0]             = {0, 0, 0};
+      region.srcOffsets[1]             = {(int32_t) srcTex->extent.width, (int32_t) srcTex->extent.height, 1};
+      region.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+      region.dstSubresource.layerCount = 1;
+      region.dstOffsets[0]             = {0, 0, 0};
+      region.dstOffsets[1]             = {(int32_t) swapExtent.width, (int32_t) swapExtent.height, 1};
+
+      vkCmdBlitImage(cb,
+                     srcTex->image,
+                     VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                     swapImage,
+                     VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                     1,
+                     &region,
+                     VK_FILTER_LINEAR);
+
+      // Post-blit barriers. src returns to SHADER_READ_ONLY (engine's resting layout for color
+      // RTs). Swapchain goes to PRESENT_SRC_KHR so vkQueuePresentKHR doesn't trip the validator.
+      VkImageMemoryBarrier post[2]{};
+      post[0]                             = pre[0];
+      post[0].oldLayout                   = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+      post[0].newLayout                   = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+      post[0].srcAccessMask               = VK_ACCESS_TRANSFER_READ_BIT;
+      post[0].dstAccessMask               = VK_ACCESS_SHADER_READ_BIT;
+
+      post[1]                             = pre[1];
+      post[1].oldLayout                   = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+      post[1].newLayout                   = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+      post[1].srcAccessMask               = VK_ACCESS_TRANSFER_WRITE_BIT;
+      post[1].dstAccessMask               = 0;
+
+      vkCmdPipelineBarrier(cb,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                           0,
+                           0,
+                           nullptr,
+                           0,
+                           nullptr,
+                           2,
+                           post);
+
+      srcTex->currentLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
       return;
     }
 

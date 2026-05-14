@@ -85,6 +85,14 @@ namespace ToolKit
 
     VkCommandBuffer GetCurrentCommandBuffer() const;
     VkRenderPass GetRenderPass() const { return m_renderPass; }
+    /** Image acquired by the most recent BeginFrame. VK_NULL_HANDLE if no frame is in flight.
+     *  Exposed so the backend can blit into the backbuffer outside the swapchain render pass
+     *  (engine path: `CopyFramebuffer(src, nullptr, ColorBits)` — splash screen, post-process
+     *  composite). */
+    VkImage GetCurrentImage() const
+    {
+      return (m_currentImage < m_images.size()) ? m_images[m_currentImage] : VK_NULL_HANDLE;
+    }
     uint GetImageCount() const { return (uint) m_images.size(); }
     uint GetMinImageCount() const { return m_minImageCount; }
     VkExtent2D GetExtent() const { return m_extent; }
