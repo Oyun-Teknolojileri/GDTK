@@ -59,7 +59,7 @@ TK_LOC(2) in vec2 v_texture;
 
 		void main()
 		{
-			vec2 uv = vec2(v_texture.x, 1.0 - v_texture.y);
+			vec2 uv = vec2(v_texture.x, v_texture.y);
 			fragColor = vec4(depthOfField(uv), 1.0f);
 		}
 	-->
