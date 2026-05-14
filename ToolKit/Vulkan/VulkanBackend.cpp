@@ -1650,6 +1650,34 @@ namespace ToolKit
       {
         continue;
       }
+
+      using Attachment    = Framebuffer::Attachment;
+      Attachment atcEnum  = (Attachment) ((int) Attachment::ColorAttachment0 + idx);
+
+      // Engine-side lazy creation + m_resolvedTexture wiring. Mirrors GLBackend::ResolveFramebuffer:
+      // the destination FB is often a freshly-reconstructed bag with no attachments yet (see
+      // ForwardSceneRenderPath::PreRender constructing m_resolvedFramebuffer with no attachments);
+      // the resolve site is where we materialize the single-sample target RT and link it back to
+      // the source via m_resolvedTexture so GetResolvedTexture() (SsaoPass / EditorViewport /
+      // PreviewViewport) finds the resolved twin.
+      RenderTargetPtr srcRt = src->GetColorAttachment(atcEnum);
+      if (srcRt == nullptr)
+      {
+        continue;
+      }
+      RenderTargetPtr targetRt = dst->GetColorAttachment(atcEnum);
+      if (targetRt == nullptr)
+      {
+        TextureSettings settings = srcRt->Settings();
+        settings.msaaCount       = MsaaSampleCount::x0;
+        targetRt                 = MakeNewPtr<RenderTarget>();
+        targetRt->ReconstructIfNeeded(srcRt->m_width, srcRt->m_height, &settings);
+        dst->SetColorAttachment(atcEnum, targetRt);
+      }
+      srcRt->m_resolvedTexture = targetRt;
+
+      // Re-read the slot — SetColorAttachment routes through AttachColorTarget which populates
+      // dstFb->colorAttachments[idx].tex with the freshly-created VulkanTexture pointer.
       auto* srcTex = srcFb->colorAttachments[idx].tex;
       auto* dstTex = dstFb->colorAttachments[idx].tex;
       if (srcTex == nullptr || dstTex == nullptr)
@@ -1929,11 +1957,57 @@ namespace ToolKit
              (unsigned) data->mipLevels);
       requestedSamples = VK_SAMPLE_COUNT_1_BIT;
     }
-    data->samples       = requestedSamples;
 
     VkImageUsageFlags usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
                               VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     usage |= isDepth ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+    // Per-format MSAA support varies. Some formats (FormatRGBA32F on many GPUs, depth+stencil
+    // combos on tilers, etc.) advertise only VK_SAMPLE_COUNT_1_BIT for the OPTIMAL tiling /
+    // usage / flags combination we're requesting. Asking for an unsupported sample count makes
+    // vmaCreateImage fail with VK_ERROR_FORMAT_NOT_SUPPORTED; instead query the supported
+    // sampleCounts mask now and demote to the largest supported bit that is <= requested.
+    if (requestedSamples != VK_SAMPLE_COUNT_1_BIT)
+    {
+      VkImageFormatProperties props{};
+      VkResult fpRes = vkGetPhysicalDeviceImageFormatProperties(m_context->GetPhysicalDevice(),
+                                                                vkFormat,
+                                                                VK_IMAGE_TYPE_2D,
+                                                                VK_IMAGE_TILING_OPTIMAL,
+                                                                usage,
+                                                                imageFlags,
+                                                                &props);
+      if (fpRes != VK_SUCCESS)
+      {
+        TK_WRN("CreateTexture: vkGetPhysicalDeviceImageFormatProperties failed (%d) for format %d "
+               "â€” demoting MSAA to 1",
+               (int) fpRes,
+               (int) vkFormat);
+        requestedSamples = VK_SAMPLE_COUNT_1_BIT;
+      }
+      else if ((props.sampleCounts & requestedSamples) == 0)
+      {
+        VkSampleCountFlagBits demoted = VK_SAMPLE_COUNT_1_BIT;
+        for (VkSampleCountFlagBits cand : {VK_SAMPLE_COUNT_8_BIT,
+                                           VK_SAMPLE_COUNT_4_BIT,
+                                           VK_SAMPLE_COUNT_2_BIT,
+                                           VK_SAMPLE_COUNT_1_BIT})
+        {
+          if (cand <= requestedSamples && (props.sampleCounts & cand) != 0)
+          {
+            demoted = cand;
+            break;
+          }
+        }
+        TK_WRN("CreateTexture: format %d does not support MSAA x%u (supported mask=0x%x); demoted to x%u",
+               (int) vkFormat,
+               (unsigned) requestedSamples,
+               (unsigned) props.sampleCounts,
+               (unsigned) demoted);
+        requestedSamples = demoted;
+      }
+    }
+    data->samples       = requestedSamples;
 
     VkImageCreateInfo imageInfo = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
     imageInfo.flags             = imageFlags;
