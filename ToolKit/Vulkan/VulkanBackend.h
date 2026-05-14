@@ -141,6 +141,7 @@ namespace ToolKit
     void PushDebugGroup(StringView name) override;
     void PopDebugGroup() override;
     bool SupportsFloatTextureLinearFilter() override;
+    bool IsDepthClampSupported() override;
     void* GetNativeTextureHandle(Texture* tex) override;
     void SetDebugLabel(Texture* tex) override;
     void SetDebugLabel(Framebuffer* fb) override;

@@ -116,6 +116,7 @@ namespace ToolKit
     void SetDebugLabel(Texture* tex) override;
     void SetDebugLabel(Framebuffer* fb) override;
     bool SupportsFloatTextureLinearFilter() override;
+    bool IsDepthClampSupported() override;
     void* GetNativeTextureHandle(Texture* tex) override;
 
    private:

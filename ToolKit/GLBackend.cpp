@@ -1709,6 +1709,8 @@ namespace ToolKit
 
   bool GLBackend::SupportsFloatTextureLinearFilter() { return TK_GL_OES_texture_float_linear != 0; }
 
+  bool GLBackend::IsDepthClampSupported() { return TK_GL_EXT_depth_clamp != 0; }
+
   void* GLBackend::GetNativeTextureHandle(Texture* tex)
   {
     GLTextureData* gl = tex ? GetGLTextureData(tex) : nullptr;

@@ -481,8 +481,18 @@ namespace ToolKit
 
     const char* deviceExts[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 
+    VkPhysicalDeviceFeatures supported{};
+    vkGetPhysicalDeviceFeatures(m_physicalDevice, &supported);
+
     VkPhysicalDeviceFeatures features{};
-    features.samplerAnisotropy = VK_TRUE;
+    features.samplerAnisotropy = supported.samplerAnisotropy;
+    // Required by ortho/directional shadow passes which set rs.depthClampEnable=VK_TRUE so geometry
+    // behind the light's near plane still writes depth instead of being clipped away.
+    features.depthClamp        = supported.depthClamp;
+    if (!supported.depthClamp)
+    {
+      TK_WRN("Vulkan device does not support depthClamp — shadow passes that rely on it will clip.");
+    }
 
     VkDeviceCreateInfo ci{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
     ci.queueCreateInfoCount    = (uint32_t) queueInfos.size();

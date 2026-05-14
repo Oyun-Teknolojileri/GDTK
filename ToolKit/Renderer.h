@@ -572,6 +572,10 @@ namespace ToolKit
     /** Returns current backend. */
     IGraphicsBackend* GetBackend() { return m_backend; }
 
+    /** Convenience wrapper around backend depth-clamp capability query. Callers (e.g. ShadowPass)
+     *  use this to skip the pancake shader path when the rasterizer can clamp natively. */
+    bool IsDepthClampSupported() { return m_backend != nullptr && m_backend->IsDepthClampSupported(); }
+
     GpuProgramManager* GetGpuProgramManager() { return m_gpuProgramManager; }
 
    private:

@@ -24,6 +24,7 @@ namespace ToolKit
         renderPass == o.renderPass && vert == o.vert && frag == o.frag &&
         vertexStride == o.vertexStride && attributeCount == o.attributeCount &&
         topology == o.topology && cullMode == o.cullMode && frontFace == o.frontFace &&
+        depthClampEnable == o.depthClampEnable &&
         depthTestEnable == o.depthTestEnable && depthWriteEnable == o.depthWriteEnable &&
         depthCompareOp == o.depthCompareOp &&
         stencilTestEnable == o.stencilTestEnable &&
@@ -84,6 +85,7 @@ namespace ToolKit
     h = MixBits(h, (std::size_t) d.topology);
     h = MixBits(h, (std::size_t) d.cullMode);
     h = MixBits(h, (std::size_t) d.frontFace);
+    h = MixBits(h, (std::size_t) d.depthClampEnable);
     h = MixBits(h, (std::size_t) d.depthTestEnable);
     h = MixBits(h, (std::size_t) d.depthWriteEnable);
     h = MixBits(h, (std::size_t) d.depthCompareOp);
@@ -159,10 +161,13 @@ namespace ToolKit
     vp.scissorCount  = 1;
 
     VkPipelineRasterizationStateCreateInfo rs{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
-    rs.polygonMode = VK_POLYGON_MODE_FILL;
-    rs.cullMode    = desc.cullMode;
-    rs.frontFace   = desc.frontFace;
-    rs.lineWidth   = 1.0f;
+    rs.polygonMode      = VK_POLYGON_MODE_FILL;
+    rs.cullMode         = desc.cullMode;
+    rs.frontFace        = desc.frontFace;
+    rs.lineWidth        = 1.0f;
+    // Shadow passes (ortho directional lights) flip this on so geometry behind the near plane
+    // still writes depth instead of getting clipped — required for the engine's shadow map setup.
+    rs.depthClampEnable = desc.depthClampEnable;
 
     VkPipelineMultisampleStateCreateInfo ms{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
     // Stage 10. Pipeline rasterizationSamples must equal the active subpass's per-attachment
@@ -406,6 +411,7 @@ namespace ToolKit
     out.topology            = ToVkTopology(state.drawType);
     out.cullMode            = ToVkCullMode(state.cullMode);
     out.frontFace           = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    out.depthClampEnable    = state.depthClampEnabled ? VK_TRUE : VK_FALSE;
 
     out.depthTestEnable     = state.depthTestEnabled ? VK_TRUE : VK_FALSE;
     out.depthWriteEnable    = state.depthWriteEnabled ? VK_TRUE : VK_FALSE;

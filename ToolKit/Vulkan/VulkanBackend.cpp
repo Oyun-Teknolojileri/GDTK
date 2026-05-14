@@ -3464,6 +3464,20 @@ namespace ToolKit
     return (fp.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT) != 0;
   }
 
+  bool VulkanBackend::IsDepthClampSupported()
+  {
+    // VulkanContext::CreateLogicalDevice only enables depthClamp when the device advertises it
+    // (see the supported/features split there), so querying the physical device here gives the
+    // same answer as "did we actually turn the feature on?".
+    if (m_context == nullptr || m_context->GetPhysicalDevice() == VK_NULL_HANDLE)
+    {
+      return false;
+    }
+    VkPhysicalDeviceFeatures supported{};
+    vkGetPhysicalDeviceFeatures(m_context->GetPhysicalDevice(), &supported);
+    return supported.depthClamp == VK_TRUE;
+  }
+
   void* VulkanBackend::GetNativeTextureHandle(Texture* tex)
   {
     // Return the raw VulkanTexture* so UI layers (editor, etc.) can pull out sampler/view and

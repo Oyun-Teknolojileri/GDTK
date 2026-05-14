@@ -178,6 +178,11 @@ namespace ToolKit
 
     virtual bool SupportsFloatTextureLinearFilter()                                                         = 0;
 
+    /** Whether the pipeline's rasterizer can clamp depth instead of clipping (used by ortho
+     *  directional shadow passes to avoid the pancake hack). GL: GL_EXT_depth_clamp extension.
+     *  VK: VkPhysicalDeviceFeatures::depthClamp (also requested at device-create time). */
+    virtual bool IsDepthClampSupported()                                                                    = 0;
+
     virtual void* GetNativeTextureHandle(Texture* tex)                                                      = 0;
   };
 

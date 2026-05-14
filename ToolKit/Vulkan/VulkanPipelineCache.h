@@ -50,6 +50,7 @@ namespace ToolKit
     VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     VkCullModeFlags cullMode     = VK_CULL_MODE_NONE;
     VkFrontFace frontFace        = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    VkBool32 depthClampEnable    = VK_FALSE;
 
     // Depth / stencil.
     VkBool32 depthTestEnable   = VK_FALSE;

@@ -331,10 +331,16 @@ namespace ToolKit
 
     if (orthogonalShadowMap)
     {
-      // Renderer::EnableDepthClamp's stub always reported success, so the engine has been
-      // committing to the non-pancake path regardless of GL extension availability.
-      vert->SetDefine("Pancake", "0");
-      frag->SetDefine("Pancake", "0");
+      if (renderer->IsDepthClampSupported())
+      {
+        vert->SetDefine("Pancake", "0");
+        frag->SetDefine("Pancake", "0");
+      }
+      else
+      {
+        vert->SetDefine("Pancake", "1");
+        frag->SetDefine("Pancake", "1");
+      }
     }
 
     RenderJobItr forwardBegin       = renderData.GetForwardOpaqueBegin();
