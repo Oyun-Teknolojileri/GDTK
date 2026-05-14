@@ -21,6 +21,12 @@ TK_SAMPLER_BINDING(1) uniform sampler2D s_texture1; // packed normal (RG) + line
 vec3 reconstructViewPos(vec2 uv, float linearDepth)
 {
 	vec2 ndc = uv * 2.0 - 1.0;
+#ifdef VULKAN
+	// fullQuadVert flips v_texture.y for Vulkan's top-down tex coords, but the projection
+	// matrix is GL-style (positive y_view → positive NDC.y), so map the flipped UV back to
+	// the projection's NDC convention before inverse-projecting.
+	ndc.y = -ndc.y;
+#endif
 	vec4 clipPos = vec4(ndc, 0.0, 1.0);
 	vec4 viewPos = ssaoCalc.inverseProjection * clipPos;
 	vec3 viewDir = viewPos.xyz / viewPos.w;
@@ -71,6 +77,12 @@ void main()
 		float invW = -1.0 / samplePos.z;
 		vec2 sampleUV = vec2(ssaoCalc.projParams.x * samplePos.x + ssaoCalc.projParams.z * samplePos.z,
 		                     ssaoCalc.projParams.y * samplePos.y + ssaoCalc.projParams.w * samplePos.z) * invW * 0.5 + 0.5;
+#ifdef VULKAN
+		// Mirror of the reconstruction flip: NDC.y → tex-space UV.y must invert to match the
+		// flipped v_texture used to sample s_texture1 (top-of-screen geometry was rendered to
+		// memory v=0 under Vulkan's tex coord convention).
+		sampleUV.y = 1.0 - sampleUV.y;
+#endif
 
 		// get sample depth
 		float sampleDepth = -texture(s_texture1, sampleUV).b; // get linear depth and negate to match view space z
