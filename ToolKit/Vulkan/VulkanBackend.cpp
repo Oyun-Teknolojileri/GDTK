@@ -139,6 +139,21 @@ namespace ToolKit
       vkDeviceWaitIdle(m_context->GetDevice());
     }
 
+    // Drop shadow bindings while the device + VMA allocator are still alive. The shadow holds
+    // TexturePtr (shared_ptr) refs that are sticky across passes/frames by design (BindPipeline
+    // / FinishPass intentionally do not wipe them). At shutdown those refs are the last owners
+    // of engine-side Texture / CubeMap objects; if we let them release during the implicit
+    // member-destruction phase that runs after m_context.reset(), VulkanTexture::~VulkanTexture
+    // would issue vkDestroySampler / vkDestroyImageView on a dead device and vmaDestroyImage
+    // on a destroyed allocator (the VMA_ASSERT_LEAK fires here because VMA sees outstanding
+    // allocations when its allocator is freed).
+    m_shadow.Reset();
+    m_globalUboRegistry.clear();
+    for (auto& bucket : m_descriptorCache)
+    {
+      bucket.clear();
+    }
+
     // Explicitly reset dummy textures while context allocator is valid
     if (m_dummyTexture)
     {
@@ -168,6 +183,11 @@ namespace ToolKit
     }
     m_pipelineCache.reset();
     m_swapchain.reset();
+
+    // Final drain: m_pipelineCache->Destroy / m_swapchain.reset may DeferDelete more lambdas
+    // (with shared_ptr captures). Drain them before m_context.reset() takes the device down so
+    // they can still issue valid vk* calls and release VMA-backed resources.
+    DrainAllDeleters();
     m_context.reset();
   }
 
@@ -444,6 +464,13 @@ namespace ToolKit
     // ring's contents are only read from inside cmd buffers that have now retired (Stage 7d-4b).
     m_context->ResetPerDrawUboRing();
     m_currentDynamicOffset = 0;
+
+    // Cross-frame hygiene: drop every shadow binding so stale TexturePtr / UniformBuffer* refs
+    // from last frame don't keep destroyed engine resources alive (e.g. viewport resize releases
+    // old RTs, but a sticky boundTextures slot would prolong their lifetime until the next
+    // SetTexture overwrites the slot). BindPipeline / FinishPass deliberately only reset per-draw
+    // state; the full sweep belongs here.
+    m_shadow.Reset();
 
     // Drain any GPU work queued via EnqueueGpuWork while no frame was active (init-time texture
     // uploads, layout transitions, mip generation) into this frame's command buffer. The
@@ -872,7 +899,16 @@ namespace ToolKit
     m_pipelineBound = false;
     m_boundProgram  = nullptr;
     m_rpActive      = false;
-    m_shadow.Reset();
+    // Per-draw state (perDraw UBO + dynamic offset) is consumed at draw time; reset so the next
+    // pipeline binding starts clean. Texture / UBO slot bindings are NOT touched: engine code
+    // (BloomPass / DoFPass) stages SetTexture *before* the next SetFramebuffer, and StartPass
+    // calls FinishPass unconditionally to close any previously-open pass — wiping the slots
+    // here used to drop those just-staged bindings and FlushDescriptorState fell back to the
+    // dummy texture. BeginFrame issues the full Reset so cross-frame leaks can't accumulate.
+    m_currentDynamicOffset    = 0;
+    m_shadow.perDrawSubmitted = false;
+    m_shadow.perDrawSize      = 0;
+    m_shadow.dirty            = true;
     if (m_activePassFb != nullptr)
     {
       // Offscreen RP instances are closed per-Draw; here we only reset pass tracking state.
@@ -1101,11 +1137,20 @@ namespace ToolKit
     m_boundState    = *state;
     m_pipelineBound = true;
 
-    // Pending shadow bindings + dynamic offset belong to the previous pipeline. Wipe so the
-    // next draw starts from an empty slate; engine pass code re-issues BindTexture /
-    // BindUniformBuffer for the new pipeline.
-    m_currentDynamicOffset = 0;
-    m_shadow.Reset();
+    // Per-draw dynamic UBO contract (binding 6 → vulkan binding 38): perDrawSize is consumed by
+    // FlushDescriptorState and must be re-submitted before the next Draw. Resetting it here
+    // mirrors the GL backend's per-pipeline-bind invariant for the per-draw UBO and lets the
+    // FlushDescriptorState perDrawSize==0 check catch a missing SubmitPerDrawData. Texture /
+    // UBO bindings are NOT reset: GL keeps texture state sticky across program changes and
+    // engine code (BloomPass / DoFPass) stages SetTexture *before* the RenderSubPass that
+    // triggers BindPipeline internally. A blanket reset here used to drop those slots silently
+    // — FlushDescriptorState then fell back to the dummy texture (BloomPass ping-pong looked
+    // black/dummy). BeginFrame / FinishPass still issue a full Reset so cross-pass leaks can't
+    // accumulate.
+    m_currentDynamicOffset    = 0;
+    m_shadow.perDrawSubmitted = false;
+    m_shadow.perDrawSize      = 0;
+    m_shadow.dirty            = true;
   }
 
   void VulkanBackend::SubmitPerDrawData(const void* data, size_t size)
