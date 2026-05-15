@@ -69,7 +69,6 @@ namespace ToolKit
       Init({640.0f, 480.0f});
 
       m_editorRenderer = MakeNewPtr<EditorRenderer>();
-      m_testRenderPath = MakeNewPtr<TestRenderPath>();
     }
 
     EditorViewport::~EditorViewport() {}

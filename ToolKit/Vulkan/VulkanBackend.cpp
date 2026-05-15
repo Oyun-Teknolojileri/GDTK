@@ -19,7 +19,6 @@
 #include "VulkanBuffer.h"
 #include "VulkanContext.h"
 #include "VulkanDescriptor.h"
-#include "VulkanPipeline.h"
 #include "VulkanPipelineCache.h"
 #include "VulkanResources.h"
 #include "VulkanShader.h"
@@ -122,8 +121,7 @@ namespace ToolKit
   VulkanBackend::VulkanBackend()
       : m_context(std::make_unique<VulkanContext>()),
         m_swapchain(std::make_unique<VulkanSwapchain>()),
-        m_pipelineCache(std::make_unique<VulkanPipelineCache>()),
-        m_testPipeline(std::make_unique<VulkanTestPipeline>())
+        m_pipelineCache(std::make_unique<VulkanPipelineCache>())
   {
     // One bucket per frame-in-flight. Sized once at construction so DeferDelete can run before
     // InitBackend (e.g., during early resource churn) without bounds checks.
@@ -174,15 +172,6 @@ namespace ToolKit
       vkDestroyQueryPool(m_context->GetDevice(), m_timestampPool, nullptr);
       m_timestampPool = VK_NULL_HANDLE;
     }
-    if (m_testPipeline)
-    {
-      m_testPipeline->Destroy();
-    }
-    m_testPipeline.reset();
-    // Pipeline cache AFTER the test pipeline â€” the test pipeline no longer owns any cached
-    // VkPipeline directly, but it may hold VkShaderModule / VkPipelineLayout that some cache
-    // entries reference. Destroying the cache first keeps destruction order clean when Stage 7
-    // starts mixing engine shaders + test scaffolds.
     if (m_pipelineCache && m_context && m_context->GetDevice() != VK_NULL_HANDLE)
     {
       m_pipelineCache->Destroy(m_context->GetDevice());
@@ -404,10 +393,6 @@ namespace ToolKit
       TK_ERR("VulkanBackend: VulkanSwapchain init failed");
     }
     CreateDummyTexture();
-    if (!m_testPipeline->Init(m_context.get()))
-    {
-      TK_ERR("VulkanBackend: VulkanTestPipeline init failed");
-    }
 
     // Timer query infra. Skip the whole feature if the device can't time graphics work — leave
     // m_cpuTimeMs/m_gpuTimeMs at their default 1.0 so the Stats window doesn't show inf.
@@ -443,18 +428,6 @@ namespace ToolKit
         TK_WRN("VulkanBackend: device timestamps unsupported on graphics queue — render time stats disabled");
       }
     }
-  }
-
-  void VulkanBackend::DrawTestTriangle()
-  {
-    if (!m_frameStarted || m_activePassFb == nullptr || m_testPipeline == nullptr)
-    {
-      // Only valid inside an offscreen pass â€” swapchain pass is reserved for ImGui.
-      return;
-    }
-    VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer();
-    VkRenderPass rp    = m_activePassFb->renderPass;
-    m_testPipeline->Draw(cb, rp, m_pipelineCache.get());
   }
 
   void VulkanBackend::BeginFrame()

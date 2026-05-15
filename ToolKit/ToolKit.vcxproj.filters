@@ -235,12 +235,6 @@
     <ClCompile Include="ShadowAtlas.cpp">
       <Filter>Render</Filter>
     </ClCompile>
-    <ClCompile Include="Vulkan\TestRenderPass.cpp">
-      <Filter>Render\Vulkan</Filter>
-    </ClCompile>
-    <ClCompile Include="Vulkan\TestRenderPath.cpp">
-      <Filter>Render\Vulkan</Filter>
-    </ClCompile>
     <ClCompile Include="Vulkan\VulkanBackend.cpp">
       <Filter>Render\Vulkan</Filter>
     </ClCompile>
@@ -251,12 +245,6 @@
       <Filter>Render\Vulkan</Filter>
     </ClCompile>
     <ClCompile Include="Vulkan\VulkanDescriptor.cpp">
-      <Filter>Render\Vulkan</Filter>
-    </ClCompile>
-    <ClCompile Include="Vulkan\VulkanImage.cpp">
-      <Filter>Render\Vulkan</Filter>
-    </ClCompile>
-    <ClCompile Include="Vulkan\VulkanPipeline.cpp">
       <Filter>Render\Vulkan</Filter>
     </ClCompile>
     <ClCompile Include="Vulkan\VulkanPipelineCache.cpp">
@@ -537,12 +525,6 @@
     <ClInclude Include="ShadowAtlas.h">
       <Filter>Render</Filter>
     </ClInclude>
-    <ClInclude Include="Vulkan\TestRenderPass.h">
-      <Filter>Render\Vulkan</Filter>
-    </ClInclude>
-    <ClInclude Include="Vulkan\TestRenderPath.h">
-      <Filter>Render\Vulkan</Filter>
-    </ClInclude>
     <ClInclude Include="Vulkan\VulkanBackend.h">
       <Filter>Render\Vulkan</Filter>
     </ClInclude>
@@ -553,12 +535,6 @@
       <Filter>Render\Vulkan</Filter>
     </ClInclude>
     <ClInclude Include="Vulkan\VulkanDescriptor.h">
-      <Filter>Render\Vulkan</Filter>
-    </ClInclude>
-    <ClInclude Include="Vulkan\VulkanImage.h">
-      <Filter>Render\Vulkan</Filter>
-    </ClInclude>
-    <ClInclude Include="Vulkan\VulkanPipeline.h">
       <Filter>Render\Vulkan</Filter>
     </ClInclude>
     <ClInclude Include="Vulkan\VulkanPipelineCache.h">
