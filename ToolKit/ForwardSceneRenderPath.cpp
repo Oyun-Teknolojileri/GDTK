@@ -289,8 +289,14 @@ namespace ToolKit
     m_bloomPass->m_params.minThreshold      = pps->GetBloomThresholdVal();
     m_bloomPass->m_params.iterationCount    = pps->GetBloomIterationCountVal();
 
-    RenderTargetPtr atc = m_params.MainFramebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
-    m_dofPass->m_params.ColorRt                            = atc;
+    // DoF runs after the forward pass's MSAA resolve, sitting on the same single-sample chain
+    // as Bloom and GammaTonemap. Feeding it the MSAA color RT directly would (a) trip
+    // VUID-RuntimeSpirv-samples-08725 (sampler2D fed an MSAA image) and (b) leave its output on
+    // the MSAA surface while subsequent passes read from the resolved one — i.e. DoF's effect
+    // would silently drop on the floor.
+    FramebufferPtr dofSourceFb = m_params.MainFramebuffer->IsMultiSampled() ? m_resolvedFramebuffer
+                                                                            : m_params.MainFramebuffer;
+    m_dofPass->m_params.ColorRt = dofSourceFb->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
 
     m_dofPass->m_params.DepthRt                            = m_forwardPreProcessPass->m_normalDepthRt;
     m_dofPass->m_params.focusPoint                         = pps->GetFocusPointVal();

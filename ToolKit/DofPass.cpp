@@ -34,8 +34,12 @@ namespace ToolKit
       return;
     }
 
-    const TextureSettings& colorRTSet = m_params.ColorRt->Settings();
-    m_copyTexture->ReconstructIfNeeded(m_params.ColorRt->m_width, m_params.ColorRt->m_height, &colorRTSet);
+    // Always sample from a single-sample copy. ColorRt should already be single-sample (engine
+    // wires DoF to the resolved chain when MSAA is on), but force the copy's msaaCount to x0
+    // defensively so a future caller can't introduce the MSAA-bound-to-sampler2D crash again.
+    TextureSettings copySet = m_params.ColorRt->Settings();
+    copySet.msaaCount       = MsaaSampleCount::x0;
+    m_copyTexture->ReconstructIfNeeded(m_params.ColorRt->m_width, m_params.ColorRt->m_height, &copySet);
 
     GetRenderer()->CopyTexture(m_params.ColorRt, m_copyTexture);
 
@@ -83,7 +87,15 @@ namespace ToolKit
     }
 
     renderer->SetTexture(0, m_copyTexture);
-    renderer->SetTexture(1, m_params.DepthRt);
+
+    // Depth source — gbuffer normal+depth is MSAA when the scene runs MSAA, and our depth-sampling
+    // shader is sampler2D (single-sample). Use the resolved twin in that case, matching SSAOPass.
+    TexturePtr depthTex = m_params.DepthRt;
+    if (depthTex != nullptr && depthTex->IsMultiSampled())
+    {
+      depthTex = m_params.DepthRt->GetResolvedTexture();
+    }
+    renderer->SetTexture(1, depthTex);
 
     // Map UBO into slot 5 immediately before draw — earlier passes (bloom etc.) may have left
     // a different buffer there. Pattern matches BloomPass / SSAOPass / GaussBlur.
