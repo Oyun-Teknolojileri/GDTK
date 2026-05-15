@@ -459,17 +459,35 @@ namespace ToolKit
 
   void VulkanBackend::BeginFrame()
   {
+    // Try to recreate the swapchain only when the surface actually has a presentable extent.
+    // Calling Recreate while the window is minimized would just fail (extent 0) every tick — we
+    // wait until the window has size again, then rebuild. Until then we keep running frames in
+    // "no-present" mode so engine state (uploads, offscreen passes, simulation) keeps advancing.
     if (m_needsRecreate)
     {
-      m_swapchain->Recreate();
-      m_needsRecreate = false;
+      VkSurfaceCapabilitiesKHR caps{};
+      if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_context->GetPhysicalDevice(),
+                                                    m_context->GetSurface(),
+                                                    &caps) == VK_SUCCESS &&
+          caps.currentExtent.width != 0 && caps.currentExtent.height != 0 &&
+          caps.currentExtent.width != UINT32_MAX)
+      {
+        m_swapchain->Recreate();
+        m_needsRecreate = false;
+      }
     }
+
     m_frameStarted = m_swapchain->BeginFrame();
     if (!m_frameStarted)
     {
-      // Swapchain out-of-date or minimized â€” flag for recreate and skip.
-      m_needsRecreate = true;
+      // Hard failure (device lost, etc.). Nothing else to do this tick.
       return;
+    }
+    if (!m_swapchain->IsPresentable())
+    {
+      // We have a cb but no swapchain image. Flag for recreate so the next frame retries acquire
+      // (which will succeed once the window is restored).
+      m_needsRecreate = true;
     }
     // VulkanSwapchain::BeginFrame waited on m_inFlight[currentFrame] just now â†’ every cmd
     // buffer that recorded into this slot last cycle is fully retired on the GPU. Reap that
@@ -869,9 +887,13 @@ namespace ToolKit
 
     if (desc.target == nullptr)
     {
-      // Backbuffer pass â€” drive the swapchain's render pass with the caller's clear color.
-      // Backbuffer pass — open the swapchain render pass immediately so external callers
-      // (e.g. ImGui_ImplVulkan_RenderDrawData) can record commands without going through Draw.
+      // Backbuffer pass — silently no-op when the swapchain isn't presentable (minimize). Caller
+      // is free to record nothing this frame; the engine's frame loop keeps spinning so uploads
+      // and offscreen work still flow through DeferDelete / FlushPendingGpuWork normally.
+      if (!m_swapchain->IsPresentable())
+      {
+        return;
+      }
       m_pendingPassDesc = desc;
       m_swapchain->BeginSwapchainPass(desc.clearColor);
       return;
@@ -1835,6 +1857,12 @@ namespace ToolKit
       // GL equivalent: glBlitFramebuffer into FBO 0 (the default framebuffer = swapchain).
       // Used by SplashScreenRenderPath::PostRender and GameRenderer to push the final composed
       // image straight to the backbuffer when no ImGui pass runs afterward to do it for us.
+      if (!m_swapchain->IsPresentable())
+      {
+        // No swapchain image acquired this frame (minimize) — nothing to blit to. The engine's
+        // upstream work already ran; just skip the final present step.
+        return;
+      }
       if (m_swapchain->IsSwapchainPassActive())
       {
         TK_ERR("CopyFramebuffer(dst=nullptr) called while swapchain render pass is active");

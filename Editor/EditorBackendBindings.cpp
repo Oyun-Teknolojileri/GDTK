@@ -315,6 +315,16 @@ namespace ToolKit
           return;
         }
 
+        // Skip ImGui composition when the swapchain has no presentable image this frame (window
+        // minimized). The backend's frame loop still runs — uploads + offscreen passes flow as
+        // usual — but there's nowhere to draw the UI, and StartPass(nullptr) would no-op,
+        // leaving the cb with no active render pass for ImGui to record into.
+        VulkanSwapchain* swap = backend->GetSwapchain();
+        if (swap == nullptr || !swap->IsPresentable())
+        {
+          return;
+        }
+
         // Open the swapchain render pass via the backend's PassDesc API. ImGui records into
         // whatever pass is currently active on the command buffer, so we must begin one ourselves.
         PassDesc desc;

@@ -802,7 +802,10 @@ namespace ToolKit
       return;
     }
 
-    // No frame active: queue for the next BeginFrame to replay.
+    // No frame active: queue for the next BeginFrame to replay. Safe because the backend's
+    // frame loop now runs every tick (only present is gated by swapchain presentability), so
+    // m_pendingGpuWork never accumulates beyond a single frame — there's no window during which
+    // an owning resource can die between enqueue and flush.
     m_pendingGpuWork.push_back({std::move(recorder), std::move(postFlushCleanup)});
   }
 

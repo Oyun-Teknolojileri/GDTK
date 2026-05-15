@@ -45,16 +45,25 @@ namespace ToolKit
     void Destroy();
 
     /**
-     * Acquires the next swapchain image, waits for the in-flight fence and begins the command
-     * buffer. Does **not** begin the render pass � the caller drives pass boundaries through
-     * BeginSwapchainPass / EndSwapchainPass so offscreen passes can be interleaved on the same
-     * command buffer.
-     * Returns false when the swapchain is out-of-date; caller should Recreate() and skip frame.
+     * Waits for the in-flight fence, resets and begins this frame's command buffer, and tries to
+     * acquire the next swapchain image. The command buffer is opened **even when the acquire
+     * fails** (window minimized, swapchain out-of-date) so the engine can keep recording GPU work
+     * — uploads, offscreen passes, etc. — while the window isn't presentable. Caller queries
+     * IsPresentable() to decide whether to drive the swapchain render pass / final blit.
+     * Returns false only when the swapchain object itself is unusable (pre-init or device lost).
      */
     bool BeginFrame();
 
-    /** Ends any still-active swapchain pass (defensive), closes the command buffer, submits and
-     *  presents. */
+    /** True when this frame successfully acquired a swapchain image and is safe to drive the
+     *  swapchain render pass + final present. False during minimize / between out-of-date and the
+     *  next Recreate() — backend should still record cb and EndFrame() will submit it, but the
+     *  swapchain-specific work must be skipped. Valid only between BeginFrame() and EndFrame(). */
+    bool IsPresentable() const { return m_presentable; }
+
+    /** Closes the command buffer and submits it (fence-only submission when not presentable, so
+     *  fences stay in lockstep with frame count and DeferDelete keeps draining each frame). When
+     *  IsPresentable(), additionally waits on the image-available semaphore, signals the
+     *  per-image renderFinished semaphore, and calls vkQueuePresentKHR. */
     bool EndFrame();
 
     /** Mid-frame command buffer flush. Closes the current cmd buffer (without semaphores or
@@ -138,6 +147,10 @@ namespace ToolKit
     uint m_currentImage = 0;
     bool m_frameActive  = false;
     bool m_swapchainPassActive = false;
+
+    /** True when the current frame acquired a swapchain image; false during minimize / between
+     *  out-of-date and recreate. EndFrame's present path keys on this. */
+    bool m_presentable  = false;
   };
 
 } // namespace ToolKit

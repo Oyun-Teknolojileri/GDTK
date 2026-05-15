@@ -426,36 +426,25 @@ namespace ToolKit
 
   bool VulkanSwapchain::BeginFrame()
   {
-    if (m_swapchain == VK_NULL_HANDLE || m_extent.width == 0 || m_extent.height == 0)
+    if (m_ctx == nullptr || m_ctx->GetDevice() == VK_NULL_HANDLE)
     {
-      // Window minimized or swapchain not yet created — nothing to render.
+      // Device gone — caller can't recover here, skip the frame entirely.
       return false;
     }
 
-    VkDevice device = m_ctx->GetDevice();
+    VkDevice device  = m_ctx->GetDevice();
+    m_presentable    = false;
+
+    // Always wait on this slot's fence — even when not presentable, EndFrame submits a
+    // fence-only cb so the fence stays in the same signaled/unsignaled cadence as frame count.
+    // That keeps DeferDelete's slot-fence guarantee honest (drain at BeginFrame still implies
+    // "last submission for this slot has retired").
     vkWaitForFences(device, 1, &m_inFlight[m_currentFrame], VK_TRUE, UINT64_MAX);
-
-    uint32_t imageIndex = 0;
-    VkResult r          = vkAcquireNextImageKHR(device,
-                                       m_swapchain,
-                                       UINT64_MAX,
-                                       m_imageAvailable[m_currentFrame],
-                                       VK_NULL_HANDLE,
-                                       &imageIndex);
-    if (r == VK_ERROR_OUT_OF_DATE_KHR)
-    {
-      return false;
-    }
-    if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR)
-    {
-      TK_ERR("vkAcquireNextImageKHR failed: %d", r);
-      return false;
-    }
-    m_currentImage = imageIndex;
-
-    // Only reset the fence once we know we're submitting this frame.
     vkResetFences(device, 1, &m_inFlight[m_currentFrame]);
 
+    // Reset + begin the command buffer regardless of swapchain state. This is the central change
+    // vs. the prior design: the engine can keep recording uploads/offscreen passes during minimize
+    // (window has no presentable surface) instead of stalling all GPU work.
     VkCommandBuffer cb = m_cmdBuffers[m_currentFrame];
     vkResetCommandBuffer(cb, 0);
 
@@ -466,9 +455,30 @@ namespace ToolKit
       TK_ERR("vkBeginCommandBuffer failed: %d", br);
       return false;
     }
-
     m_swapchainPassActive = false;
     m_frameActive         = true;
+
+    // Try to acquire the swapchain image. Failure (extent 0, out-of-date, suboptimal-as-error) is
+    // non-fatal — the frame proceeds in "no-present" mode and the backend recreates next frame.
+    if (m_swapchain != VK_NULL_HANDLE && m_extent.width != 0 && m_extent.height != 0)
+    {
+      uint32_t imageIndex = 0;
+      VkResult r          = vkAcquireNextImageKHR(device,
+                                                  m_swapchain,
+                                                  UINT64_MAX,
+                                                  m_imageAvailable[m_currentFrame],
+                                                  VK_NULL_HANDLE,
+                                                  &imageIndex);
+      if (r == VK_SUCCESS || r == VK_SUBOPTIMAL_KHR)
+      {
+        m_currentImage = imageIndex;
+        m_presentable  = true;
+      }
+      else if (r != VK_ERROR_OUT_OF_DATE_KHR)
+      {
+        TK_ERR("vkAcquireNextImageKHR failed: %d", r);
+      }
+    }
     return true;
   }
 
@@ -529,10 +539,9 @@ namespace ToolKit
     }
 
     VkCommandBuffer cb = m_cmdBuffers[m_currentFrame];
-    // Defensive: close the swapchain pass if the caller forgot to — keeps validation clean if
-    // a frame shutdown happens mid-draw.
     if (m_swapchainPassActive)
     {
+      // Defensive: close the swapchain pass if the caller forgot to.
       vkCmdEndRenderPass(cb);
       m_swapchainPassActive = false;
     }
@@ -540,51 +549,63 @@ namespace ToolKit
     {
       TK_ERR("vkEndCommandBuffer failed: %d", r);
       m_frameActive = false;
+      m_presentable = false;
       return false;
     }
 
     VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 
-    // imageAvailable + inFlight are indexed by frame slot (submission side).
-    // renderFinished is indexed by image — must outlive the frame slot since the present queue
-    // may keep waiting on it past the FRAMES_IN_FLIGHT recycle boundary.
     VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
-    si.waitSemaphoreCount   = 1;
-    si.pWaitSemaphores      = &m_imageAvailable[m_currentFrame];
-    si.pWaitDstStageMask    = &waitStage;
     si.commandBufferCount   = 1;
     si.pCommandBuffers      = &cb;
-    si.signalSemaphoreCount = 1;
-    si.pSignalSemaphores    = &m_renderFinished[m_currentImage];
+    if (m_presentable)
+    {
+      // Normal path: wait on the image-available semaphore signaled by vkAcquireNextImageKHR and
+      // signal the per-image renderFinished semaphore that vkQueuePresentKHR will wait on.
+      si.waitSemaphoreCount   = 1;
+      si.pWaitSemaphores      = &m_imageAvailable[m_currentFrame];
+      si.pWaitDstStageMask    = &waitStage;
+      si.signalSemaphoreCount = 1;
+      si.pSignalSemaphores    = &m_renderFinished[m_currentImage];
+    }
+    // Else: no acquire happened this frame → no image semaphore to wait on, nothing to present.
+    // We still submit so the in-flight fence gets signaled — DeferDelete's slot-fence guarantee
+    // keeps tracking frame count even while the window is minimized.
 
     if (VkResult r = vkQueueSubmit(m_ctx->GetGraphicsQueue(), 1, &si, m_inFlight[m_currentFrame]); r != VK_SUCCESS)
     {
       TK_ERR("vkQueueSubmit failed: %d", r);
       m_frameActive = false;
+      m_presentable = false;
       return false;
     }
 
-    VkPresentInfoKHR pi{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
-    pi.waitSemaphoreCount = 1;
-    pi.pWaitSemaphores    = &m_renderFinished[m_currentImage];
-    pi.swapchainCount     = 1;
-    pi.pSwapchains        = &m_swapchain;
-    pi.pImageIndices      = &m_currentImage;
-
-    VkResult pr           = vkQueuePresentKHR(m_ctx->GetPresentQueue(), &pi);
-    m_frameActive         = false;
-    m_currentFrame        = (m_currentFrame + 1) % FRAMES_IN_FLIGHT;
-
-    if (pr == VK_ERROR_OUT_OF_DATE_KHR || pr == VK_SUBOPTIMAL_KHR)
+    bool result = true;
+    if (m_presentable)
     {
-      return false;
+      VkPresentInfoKHR pi{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
+      pi.waitSemaphoreCount = 1;
+      pi.pWaitSemaphores    = &m_renderFinished[m_currentImage];
+      pi.swapchainCount     = 1;
+      pi.pSwapchains        = &m_swapchain;
+      pi.pImageIndices      = &m_currentImage;
+
+      VkResult pr           = vkQueuePresentKHR(m_ctx->GetPresentQueue(), &pi);
+      if (pr == VK_ERROR_OUT_OF_DATE_KHR || pr == VK_SUBOPTIMAL_KHR)
+      {
+        result = false; // Backend will recreate next frame.
+      }
+      else if (pr != VK_SUCCESS)
+      {
+        TK_ERR("vkQueuePresentKHR failed: %d", pr);
+        result = false;
+      }
     }
-    if (pr != VK_SUCCESS)
-    {
-      TK_ERR("vkQueuePresentKHR failed: %d", pr);
-      return false;
-    }
-    return true;
+
+    m_frameActive  = false;
+    m_presentable  = false;
+    m_currentFrame = (m_currentFrame + 1) % FRAMES_IN_FLIGHT;
+    return result;
   }
 
   bool VulkanSwapchain::FlushCommandBuffer()
