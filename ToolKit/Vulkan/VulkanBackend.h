@@ -245,6 +245,20 @@ namespace ToolKit
     };
     std::array<std::vector<DescriptorCacheEntry>, 2> m_descriptorCache{}; // sized to FRAMES_IN_FLIGHT
 
+    // Timer query state. Mirrors GLBackend's single-cycle gating: one in-flight query at a time.
+    // The pool holds 2 timestamps (start, end); a fresh cycle resets the pool and writes start at
+    // PreRender of the first render path, then end at PostRender. The result is polled in
+    // EndTimerQuery via non-blocking GetQueryPoolResults, so multiple frames may pass before the
+    // next cycle begins — matches GL's m_timerQueryWaiting behavior.
+    VkQueryPool m_timestampPool   = VK_NULL_HANDLE;
+    bool m_timerSupported         = false;
+    bool m_timerQueryActive       = false;
+    bool m_timerQueryWaiting      = false;
+    float m_timestampPeriodNs     = 1.0f; //!< vkPhysicalDeviceLimits::timestampPeriod, cached.
+    float m_cpuStartMs            = 0.0f;
+    float m_cpuTimeMs             = 1.0f; //!< Defaults to 1.0 so Stats' `1000/x` FPS calc doesn't divide by zero.
+    float m_gpuTimeMs             = 1.0f;
+
     /** Resolves the bound program's resource declarations against m_shadow / m_globalUboRegistry,
         hashes the active handles, and returns the cached (or freshly allocated + written)
         descriptor set for the current frame. Returns VK_NULL_HANDLE if no descriptor work is

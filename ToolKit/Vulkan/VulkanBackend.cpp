@@ -27,6 +27,7 @@
 
 #include "../GpuProgram.h"
 #include "../Shader.h"
+#include "../Util.h"
 
 namespace
 {
@@ -168,6 +169,11 @@ namespace ToolKit
       m_dummy2DArrayTexture.reset();
     }
     DrainAllDeleters();
+    if (m_timestampPool != VK_NULL_HANDLE && m_context && m_context->GetDevice() != VK_NULL_HANDLE)
+    {
+      vkDestroyQueryPool(m_context->GetDevice(), m_timestampPool, nullptr);
+      m_timestampPool = VK_NULL_HANDLE;
+    }
     if (m_testPipeline)
     {
       m_testPipeline->Destroy();
@@ -401,6 +407,41 @@ namespace ToolKit
     if (!m_testPipeline->Init(m_context.get()))
     {
       TK_ERR("VulkanBackend: VulkanTestPipeline init failed");
+    }
+
+    // Timer query infra. Skip the whole feature if the device can't time graphics work — leave
+    // m_cpuTimeMs/m_gpuTimeMs at their default 1.0 so the Stats window doesn't show inf.
+    {
+      VkPhysicalDeviceProperties props{};
+      vkGetPhysicalDeviceProperties(m_context->GetPhysicalDevice(), &props);
+      m_timestampPeriodNs = props.limits.timestampPeriod;
+
+      uint32_t qfCount = 0;
+      vkGetPhysicalDeviceQueueFamilyProperties(m_context->GetPhysicalDevice(), &qfCount, nullptr);
+      std::vector<VkQueueFamilyProperties> qfProps(qfCount);
+      vkGetPhysicalDeviceQueueFamilyProperties(m_context->GetPhysicalDevice(), &qfCount, qfProps.data());
+      uint32_t validBits = (m_context->GetGraphicsQueueFamily() < qfCount)
+                               ? qfProps[m_context->GetGraphicsQueueFamily()].timestampValidBits
+                               : 0;
+
+      if (m_timestampPeriodNs > 0.0f && validBits > 0)
+      {
+        VkQueryPoolCreateInfo qci{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
+        qci.queryType  = VK_QUERY_TYPE_TIMESTAMP;
+        qci.queryCount = 2;
+        if (vkCreateQueryPool(m_context->GetDevice(), &qci, nullptr, &m_timestampPool) == VK_SUCCESS)
+        {
+          m_timerSupported = true;
+        }
+        else
+        {
+          TK_WRN("VulkanBackend: vkCreateQueryPool (timestamp) failed — render time stats disabled");
+        }
+      }
+      else
+      {
+        TK_WRN("VulkanBackend: device timestamps unsupported on graphics queue — render time stats disabled");
+      }
     }
   }
 
@@ -1955,19 +1996,78 @@ namespace ToolKit
 
   void VulkanBackend::StartTimerQuery()
   {
-    // TODO: vkCmdWriteTimestamp.
+    m_cpuStartMs = GetElapsedMilliSeconds();
+    if (!m_timerSupported || m_swapchain == nullptr || !m_swapchain->IsFrameActive())
+    {
+      return;
+    }
+    if (m_timerQueryActive || m_timerQueryWaiting)
+    {
+      // GL parity: gate new cycles until the previous result has been consumed.
+      return;
+    }
+    VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer();
+    if (cb == VK_NULL_HANDLE)
+    {
+      return;
+    }
+    // Reset the pool ahead of the new cycle (must be outside a render pass). RenderPath::PreRender
+    // runs before any StartPass for the path, so we're guaranteed to be RP-free here.
+    vkCmdResetQueryPool(cb, m_timestampPool, 0, 2);
+    vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, m_timestampPool, 0);
+    m_timerQueryActive = true;
   }
 
   void VulkanBackend::EndTimerQuery()
   {
-    // TODO: vkCmdWriteTimestamp + read back.
+    float now   = GetElapsedMilliSeconds();
+    m_cpuTimeMs = now - m_cpuStartMs;
+
+    if (!m_timerSupported || m_swapchain == nullptr)
+    {
+      return;
+    }
+
+    if (m_timerQueryActive)
+    {
+      VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer();
+      if (cb != VK_NULL_HANDLE)
+      {
+        vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, m_timestampPool, 1);
+        m_timerQueryActive  = false;
+        m_timerQueryWaiting = true;
+      }
+    }
+
+    if (m_timerQueryWaiting)
+    {
+      // Non-blocking poll. The GPU usually needs at least one frame to finish; until then we keep
+      // returning the previous m_gpuTimeMs (default 1.0 on first cycle), matching GL.
+      uint64_t results[2] = {0, 0};
+      VkResult r          = vkGetQueryPoolResults(m_context->GetDevice(),
+                                                  m_timestampPool,
+                                                  0,
+                                                  2,
+                                                  sizeof(results),
+                                                  results,
+                                                  sizeof(uint64_t),
+                                                  VK_QUERY_RESULT_64_BIT);
+      if (r == VK_SUCCESS)
+      {
+        // timestampPeriod is ns/tick. Result delta * period → ns → /1e6 → ms. Clamp to 1ms so
+        // the FPS column stays finite even when the GPU reports a near-zero frame.
+        double deltaTicks = (double) (results[1] - results[0]);
+        double deltaMs    = (deltaTicks * (double) m_timestampPeriodNs) / 1.0e6;
+        m_gpuTimeMs       = (float) std::max(1.0, deltaMs);
+        m_timerQueryWaiting = false;
+      }
+    }
   }
 
   void VulkanBackend::GetElapsedTime(float& cpu, float& gpu)
   {
-    cpu = 0.0f;
-    gpu = 0.0f;
-    // TODO: Read timestamp query results.
+    cpu = m_cpuTimeMs;
+    gpu = m_gpuTimeMs;
   }
 
   static VkSamplerAddressMode ToVkAddressMode(GraphicTypes wrap)
