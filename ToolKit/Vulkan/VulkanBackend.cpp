@@ -524,6 +524,46 @@ namespace ToolKit
     m_context->ResetPerDrawUboRing();
     m_currentDynamicOffset = 0;
 
+    // Timer-query pump. The slot fence we just waited on guarantees the previous cycle's cb (the
+    // one that recorded the BEGIN/END timestamps) has retired — its query results are now host-
+    // readable. Two responsibilities here:
+    //   1. If a cycle is waiting on result, drain it (validator-safe because queries are now in
+    //      "available" state on host).
+    //   2. If no cycle is in flight, record vkCmdResetQueryPool BEFORE any pass opens on this
+    //      frame's cb. vkCmdResetQueryPool is illegal inside a render pass, and RenderPath
+    //      PreRender (which fires StartTimerQuery → vkCmdWriteTimestamp) can land inside an
+    //      offscreen pass left open by a sibling path — doing the reset here sidesteps that.
+    if (m_timerSupported)
+    {
+      if (m_timerQueryWaiting)
+      {
+        uint64_t results[2] = {0, 0};
+        VkResult r          = vkGetQueryPoolResults(m_context->GetDevice(),
+                                                    m_timestampPool,
+                                                    0,
+                                                    2,
+                                                    sizeof(results),
+                                                    results,
+                                                    sizeof(uint64_t),
+                                                    VK_QUERY_RESULT_64_BIT);
+        if (r == VK_SUCCESS)
+        {
+          double deltaTicks   = (double) (results[1] - results[0]);
+          double deltaMs      = (deltaTicks * (double) m_timestampPeriodNs) / 1.0e6;
+          m_gpuTimeMs         = (float) std::max(1.0, deltaMs);
+          m_timerQueryWaiting = false;
+        }
+      }
+      if (!m_timerQueryActive && !m_timerQueryWaiting)
+      {
+        VkCommandBuffer timerCb = m_swapchain->GetCurrentCommandBuffer();
+        if (timerCb != VK_NULL_HANDLE)
+        {
+          vkCmdResetQueryPool(timerCb, m_timestampPool, 0, 2);
+        }
+      }
+    }
+
     // Cross-frame hygiene: drop every shadow binding so stale TexturePtr / UniformBuffer* refs
     // from last frame don't keep destroyed engine resources alive (e.g. viewport resize releases
     // old RTs, but a sticky boundTextures slot would prolong their lifetime until the next
@@ -2039,9 +2079,9 @@ namespace ToolKit
     {
       return;
     }
-    // Reset the pool ahead of the new cycle (must be outside a render pass). RenderPath::PreRender
-    // runs before any StartPass for the path, so we're guaranteed to be RP-free here.
-    vkCmdResetQueryPool(cb, m_timestampPool, 0, 2);
+    // Pool reset is recorded in BeginFrame (outside any RP). Here we only write the BEGIN
+    // timestamp — vkCmdWriteTimestamp is legal inside or outside a render pass, so it doesn't
+    // care which RenderPath fires this.
     vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, m_timestampPool, 0);
     m_timerQueryActive = true;
   }
@@ -2066,30 +2106,10 @@ namespace ToolKit
         m_timerQueryWaiting = true;
       }
     }
-
-    if (m_timerQueryWaiting)
-    {
-      // Non-blocking poll. The GPU usually needs at least one frame to finish; until then we keep
-      // returning the previous m_gpuTimeMs (default 1.0 on first cycle), matching GL.
-      uint64_t results[2] = {0, 0};
-      VkResult r          = vkGetQueryPoolResults(m_context->GetDevice(),
-                                                  m_timestampPool,
-                                                  0,
-                                                  2,
-                                                  sizeof(results),
-                                                  results,
-                                                  sizeof(uint64_t),
-                                                  VK_QUERY_RESULT_64_BIT);
-      if (r == VK_SUCCESS)
-      {
-        // timestampPeriod is ns/tick. Result delta * period → ns → /1e6 → ms. Clamp to 1ms so
-        // the FPS column stays finite even when the GPU reports a near-zero frame.
-        double deltaTicks = (double) (results[1] - results[0]);
-        double deltaMs    = (deltaTicks * (double) m_timestampPeriodNs) / 1.0e6;
-        m_gpuTimeMs       = (float) std::max(1.0, deltaMs);
-        m_timerQueryWaiting = false;
-      }
-    }
+    // Result read happens in the next BeginFrame, after the in-flight fence guarantees the cb
+    // (which holds the reset + the two writes) has retired. Reading here would race the cb
+    // submission and trip VUID-vkGetQueryPoolResults-None-09401 (queries still uninitialized
+    // from the validator's POV).
   }
 
   void VulkanBackend::GetElapsedTime(float& cpu, float& gpu)
@@ -3122,22 +3142,61 @@ namespace ToolKit
       return VK_NULL_HANDLE; // pool exhaustion already logged.
     }
 
+    // Batch every binding into a single vkUpdateDescriptorSets. Per-binding helpers
+    // (VulkanDescriptor::Write*) each issue their own driver call — a full PBR forward draw
+    // declares ~21 resources, so per-miss they used to fire ~21 host-side API calls. The image
+    // / buffer info vectors must outlive the update call (pImageInfo / pBufferInfo are pointers
+    // into them); reserve up front so push_back can't reallocate and invalidate those pointers.
+    std::vector<VkWriteDescriptorSet>   writes;
+    std::vector<VkDescriptorImageInfo>  imageInfos;
+    std::vector<VkDescriptorBufferInfo> bufferInfos;
+    // we must reserve beforehand since if an allocation happens while push_back to vector, the pointer of the array will
+    // change place and we give the pointer of the array to vkUpdateDescriptorSets call.
+    writes.reserve(resolved.size());
+    imageInfos.reserve(resolved.size());
+    bufferInfos.reserve(resolved.size());
+
     for (const Resolved& r : resolved)
     {
+      VkWriteDescriptorSet w{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+      w.dstSet          = set;
+      w.dstBinding      = r.binding;
+      w.dstArrayElement = 0;
+      w.descriptorCount = 1;
+
       if (r.type == ShaderResource::Type::Texture)
       {
-        VulkanDescriptor::WriteCombinedImageSampler(m_context->GetDevice(), set, r.binding, r.view, r.sampler);
-      }
-      else if (r.isPerDrawDynamic)
-      {
-        VulkanDescriptor::WriteUniformBufferDynamic(
-            m_context->GetDevice(), set, r.binding, r.buffer, 0, r.bufferSize);
+        VkDescriptorImageInfo info{};
+        info.sampler     = r.sampler;
+        info.imageView   = r.view;
+        info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        imageInfos.push_back(info);
+
+        w.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        w.pImageInfo     = &imageInfos.back();
       }
       else
       {
-        VulkanDescriptor::WriteUniformBuffer(
-            m_context->GetDevice(), set, r.binding, r.buffer, 0, r.bufferSize);
+        VkDescriptorBufferInfo info{};
+        info.buffer = r.buffer;
+        info.offset = 0;
+        info.range  = r.bufferSize;
+        bufferInfos.push_back(info);
+
+        w.descriptorType = r.isPerDrawDynamic ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC
+                                              : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        w.pBufferInfo    = &bufferInfos.back();
       }
+      writes.push_back(w);
+    }
+
+    if (!writes.empty())
+    {
+      vkUpdateDescriptorSets(m_context->GetDevice(),
+                             (uint32_t) writes.size(),
+                             writes.data(),
+                             0,
+                             nullptr);
     }
 
     cache.push_back({hash, set});

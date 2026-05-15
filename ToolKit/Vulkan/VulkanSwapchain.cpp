@@ -186,7 +186,11 @@ namespace ToolKit
     ci.imageColorSpace  = m_colorSpace;
     ci.imageExtent      = extent;
     ci.imageArrayLayers = 1;
-    ci.imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    // TRANSFER_DST_BIT is required so VulkanBackend::CopyFramebuffer(dst=nullptr) can blit the
+    // engine's final composite into the backbuffer (splash screen / game path that never opens an
+    // ImGui swapchain RP). Spec guarantees TRANSFER_DST is among supportedUsageFlags on every
+    // implementation, so no caps gate needed.
+    ci.imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     ci.preTransform     = caps.currentTransform;
     ci.compositeAlpha   = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     ci.presentMode      = m_presentMode;
