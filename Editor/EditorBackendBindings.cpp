@@ -40,6 +40,11 @@ namespace ToolKit
       // Tracks the last MinImageCount handed to ImGui. Seeded at InitImGui so the first frame
       // doesn't trigger a redundant SetMinImageCount (which would re-run pipeline creation).
       static uint s_lastMinImageCount = 0;
+
+      // Stable storage referenced by ImGui_ImplVulkan_InitInfo::PipelineInfoForViewports —
+      // ImGui's secondary-viewport surface format selection walks `pColorAttachmentFormats`, so
+      // the pointer must outlive any out-of-window drag that triggers swapchain creation.
+      static VkFormat s_viewportColorFormat = VK_FORMAT_UNDEFINED;
 #endif
 
       uint32_t GetSDLWindowFlags()
@@ -212,6 +217,18 @@ namespace ToolKit
         info.PipelineInfoMain.RenderPass     = swap->GetRenderPass();
         info.PipelineInfoMain.Subpass        = 0;
         info.PipelineInfoMain.MSAASamples    = VK_SAMPLE_COUNT_1_BIT;
+
+        // Secondary (detached) viewports: ImGui's default request list is UNORM-only
+        // (imgui_impl_vulkan.cpp's `defaultFormats[]`), so dragged-out windows land on a linear
+        // swapchain while the main window is sRGB → ImGui draws end up gamma-uncompensated.
+        // Prepending our main swapchain's format here makes `ImGui_ImplVulkanH_SelectSurfaceFormat`
+        // pick the same sRGB format the loop in CreateWindow seeds from this struct.
+        s_viewportColorFormat                                                  = swap->GetFormat();
+        info.PipelineInfoForViewports.Subpass                                  = 0;
+        info.PipelineInfoForViewports.MSAASamples                              = VK_SAMPLE_COUNT_1_BIT;
+        info.PipelineInfoForViewports.PipelineRenderingCreateInfo.sType        = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+        info.PipelineInfoForViewports.PipelineRenderingCreateInfo.colorAttachmentCount = 1;
+        info.PipelineInfoForViewports.PipelineRenderingCreateInfo.pColorAttachmentFormats = &s_viewportColorFormat;
         info.CheckVkResultFn                 = [](VkResult r)
         {
           if (r != VK_SUCCESS)
