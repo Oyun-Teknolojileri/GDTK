@@ -4,7 +4,7 @@
 	<include name = "perDrawDataInc.shader" />
 	<source>
 	<!--
-		#version 300 es
+		
 		precision highp float;
 
 		in vec3 v_normal;

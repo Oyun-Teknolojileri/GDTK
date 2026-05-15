@@ -6,7 +6,7 @@
 	<texture slot = "1" name = "s_texture1" />
 	<source>
 	<!--
-		#version 300 es
+		
 		precision highp float;
 TK_LOC(2) in vec2 v_texture;
 		out vec4 fragColor;

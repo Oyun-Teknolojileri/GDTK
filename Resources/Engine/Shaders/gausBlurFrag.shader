@@ -9,7 +9,7 @@
 	<texture slot = "1" name = "s_texture1" viewType = "2darray" />
 	<source>
 	<!--
-		#version 300 es
+		
 		precision highp float;
 		precision highp sampler2DArray;
 		TK_SAMPLER_BINDING(0) uniform sampler2D s_texture0;

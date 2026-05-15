@@ -5,7 +5,7 @@
 	<include name = "perDrawDataInc.shader" />
 	<source>
 	<!--
-		#version 300 es
+		
 		precision highp float;
 
 		// Fixed Attributes.

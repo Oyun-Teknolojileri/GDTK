@@ -5,7 +5,7 @@
 	<texture slot = "0" name = "s_texture0" />
 	<source>
 	<!--
-		#version 300 es
+		
 		precision mediump float;
 		precision lowp sampler2D;
 		precision lowp int;

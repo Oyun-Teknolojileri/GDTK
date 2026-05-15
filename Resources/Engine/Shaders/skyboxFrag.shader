@@ -4,7 +4,7 @@
 	<texture slot = "6" name = "s_texture6" viewType = "cube" />
 	<source>
 	<!--
-		#version 300 es
+		
 		precision lowp float;
 		precision lowp sampler2D;
 

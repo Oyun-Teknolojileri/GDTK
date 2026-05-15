@@ -4,7 +4,7 @@
 	<texture slot = "0" name = "s_texture0" />
 	<source>
 	<!--
-		#version 300 es
+		
 		precision highp float;
 
 		TK_LOC(0) in vec3 v_pos;

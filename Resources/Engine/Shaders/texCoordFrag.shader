@@ -3,7 +3,7 @@
 	<include name="vulkanCompatInc.shader" />
 	<source>
 	<!--
-		#version 300 es
+		
 		precision mediump float;
 TK_LOC(2) in vec2 v_texture;		
 		out vec4 v_fragColor;

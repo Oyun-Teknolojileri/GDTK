@@ -349,6 +349,21 @@ namespace ToolKit
     if (m_shaderType != ShaderType::IncludeShader)
     {
       PruneDuplicateIncludes(m_source);
+
+      // Inject the version directive. .shader sources no longer carry their own #version line —
+      // one source must compile on both backends, so the right line is picked here based on the
+      // active backend. Goes to the very top because GLSL requires #version as the first
+      // statement (anything before it is a compile error). HandleShaderIncludes already strips
+      // any stray #version/precision from included files, so prepending here can't double up.
+      // Note: VulkanShader.cpp additionally forces shaderc to 450 core via SetForcedVersionProfile,
+      // so even older shaders with a leftover #version would still compile on the VK path; we
+      // still emit the matching line here for consistency and so SPIR-V disasm shows the right
+      // header.
+#ifdef TK_VULKAN
+      m_source.insert(0, "#version 450 core\n");
+#else
+      m_source.insert(0, "#version 300 es\n");
+#endif
     }
 
     return nullptr;

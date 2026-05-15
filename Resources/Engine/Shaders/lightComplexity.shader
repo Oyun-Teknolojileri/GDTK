@@ -4,7 +4,7 @@
 	<include name="vulkanCompatInc.shader" />
 	<source>
 	<!--
-		#version 300 es
+		
 		precision mediump float;
 
 		TK_LOC(0) in vec3 v_pos;

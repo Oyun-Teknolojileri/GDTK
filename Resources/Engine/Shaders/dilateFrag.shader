@@ -5,7 +5,7 @@
 	<texture slot = "0" name = "u_texture" />
 	<source>
 	<!--
-	#version 300 es
+	
 	precision mediump float;
 
 	// Pass-specific UBO (slot 5). Mirrors `DilatePassDataLayout` in Renderer.h byte-for-byte.

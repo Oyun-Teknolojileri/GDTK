@@ -4,7 +4,7 @@
 	<texture slot = "6" name = "s_texture6" viewType = "cube" />
 	<source>
 	<!--
-		#version 300 es
+		
 		precision highp float;
 
 		TK_SAMPLER_BINDING(6) uniform samplerCube s_texture6;

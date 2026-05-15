@@ -5,7 +5,7 @@
 	<texture slot = "0" name = "s_texture0" />
 	<source>
 	<!--
-		#version 300 es
+		
 		precision highp float;
 		TK_SAMPLER_BINDING(0) uniform sampler2D s_texture0;
 

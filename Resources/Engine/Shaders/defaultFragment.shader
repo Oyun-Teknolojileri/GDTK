@@ -16,7 +16,7 @@
 	<texture slot = "9" name = "s_texture9" />
 	<source>
 	<!--
-	#version 300 es
+	
 	precision highp float;
 	precision lowp int;
 	precision mediump sampler2D;

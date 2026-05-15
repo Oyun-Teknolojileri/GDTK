@@ -6,7 +6,7 @@
 <include name = "gridPassDataInc.shader" />
 	<source>
 	<!--
-		#version 300 es
+		
 		precision highp float;
 		precision mediump int;
 
