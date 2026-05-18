@@ -112,11 +112,17 @@ namespace ToolKit
       vkDestroyFramebuffer(device, framebuffer, nullptr);
       framebuffer = VK_NULL_HANDLE;
     }
-    if (renderPass != VK_NULL_HANDLE)
+    for (RpVariant& v : rpVariants)
     {
-      vkDestroyRenderPass(device, renderPass, nullptr);
-      renderPass = VK_NULL_HANDLE;
+      if (v.valid && v.rp != VK_NULL_HANDLE)
+      {
+        vkDestroyRenderPass(device, v.rp, nullptr);
+      }
+      v.rp        = VK_NULL_HANDLE;
+      v.clearBits = GraphicBitFields::None;
+      v.valid     = false;
     }
+    renderPass = VK_NULL_HANDLE;
   }
 
   void VulkanFramebuffer::ReleaseOwnedViews()

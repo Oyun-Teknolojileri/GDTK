@@ -107,18 +107,30 @@ namespace ToolKit
     uint32_t width  = 0;
     uint32_t height = 0;
 
-    /** Sample count adopted by the most recent BuildOffscreenRenderPass — every attachment in
+    /** Sample count adopted by the most recent BuildRpVariant — every attachment in
         the pass shares the same VkSampleCountFlagBits value. Pipelines drawn into this FB
         must use this as their rasterizationSamples (Stage 10). */
     VkSampleCountFlagBits subpassSamples = VK_SAMPLE_COUNT_1_BIT;
 
+    /** Per-clearBits VkRenderPass variants. loadOp is baked into VkRenderPass, so the same
+        framebuffer needs a separate RP per (clearColor, clearDepth, clearStencil) combination —
+        the engine cycles between "first use clears, later uses load" patterns on the same target
+        (m_oneColorAttachmentFramebuffer, shadow atlas across cascades, etc.). All variants share
+        the same VkFramebuffer because Vulkan considers RPs with identical attachment counts /
+        formats / samples "compatible" regardless of loadOp. */
+    struct RpVariant
+    {
+      VkRenderPass rp            = VK_NULL_HANDLE;
+      GraphicBitFields clearBits = GraphicBitFields::None;
+      bool valid                 = false;
+    };
+    static constexpr int kMaxRpVariants = 4;
+    RpVariant rpVariants[kMaxRpVariants] = {};
+
+    /** Currently-active VkRenderPass. Equals rpVariants[i].rp for the entry whose clearBits
+        matches the most recent StartPass desc. Set by EnsureRpForClearBits. */
     VkRenderPass renderPass = VK_NULL_HANDLE;
     VkFramebuffer framebuffer = VK_NULL_HANDLE;
-
-    /** Cached clear bits used for the most recent BuildOffscreenRenderPass — drives per-attachment
-        VkAttachmentLoadOp. If a later StartPass arrives with different clearBits we must rebuild
-        the render pass (loadOps are baked into VkRenderPass). */
-    GraphicBitFields cachedClearBits = GraphicBitFields::None;
 
     bool dirty = true;
 

@@ -323,10 +323,25 @@ namespace ToolKit
     /** Run + clear every bucket. Used on shutdown after vkDeviceWaitIdle. */
     void DrainAllDeleters();
 
-    /** Lazy-builds (or rebuilds when @p fbData->dirty) the VkRenderPass + VkFramebuffer for an
-        offscreen target sized from fbData->width/height with the current attachment views.
-        Returns true on success; on failure leaves both handles VK_NULL_HANDLE. */
-    bool BuildOffscreenRenderPass(const struct PassDesc& desc, struct VulkanFramebuffer* fbData);
+    /** Drops every cached RP variant + the VkFramebuffer for @p fbData. Used when attachments
+        change (fbData->dirty) — old handles get deferred-deleted and their pipelines evicted
+        from the pipeline cache. Leaves fbData->renderPass / framebuffer at VK_NULL_HANDLE. */
+    void EvictFramebufferCache(struct VulkanFramebuffer* fbData);
+
+    /** Builds a single VkRenderPass variant for @p clearBits and stores it in the next free
+        slot of fbData->rpVariants. Sets fbData->renderPass to the new RP. Does NOT touch
+        fbData->framebuffer. Returns false on allocation / vkCreateRenderPass failure. */
+    bool BuildRpVariant(struct VulkanFramebuffer* fbData, GraphicBitFields clearBits);
+
+    /** Builds fbData->framebuffer using fbData->renderPass + the current attachment views.
+        Caller guarantees fbData->renderPass is valid. Returns false on vkCreateFramebuffer
+        failure. */
+    bool BuildOffscreenFramebuffer(struct VulkanFramebuffer* fbData);
+
+    /** Looks up the RP variant matching @p clearBits in fbData->rpVariants; on miss, builds
+        a new variant. Sets fbData->renderPass to the matching/new RP. Returns false if a
+        build was needed and failed. */
+    bool EnsureRpForClearBits(struct VulkanFramebuffer* fbData, GraphicBitFields clearBits);
   };
 
   /** Factory function called by RenderSystem::CreateBackend(). */

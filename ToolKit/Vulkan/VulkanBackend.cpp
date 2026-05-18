@@ -677,36 +677,33 @@ namespace ToolKit
     return m_swapchain->GetCurrentCommandBuffer();
   }
 
-  bool VulkanBackend::BuildOffscreenRenderPass(const PassDesc& desc, VulkanFramebuffer* fbData)
+  void VulkanBackend::EvictFramebufferCache(VulkanFramebuffer* fbData)
   {
     VkDevice device = m_context->GetDevice();
 
-    // Clearing is done via vkCmdClear* outside the render pass in StartPass.
-    // The render pass always uses loadOp=LOAD so multiple Draw() calls within the
-    // same pass accumulate rather than each one clearing the attachments.
-
-    // Old RP+FB may still be referenced by the in-flight command buffer of an earlier frame --
-    // queue them for deletion N frames out instead of destroying eagerly. The new ones below
-    // overwrite the slots after the lambdas have captured the handles.
-    if (fbData->renderPass != VK_NULL_HANDLE)
+    // Each cached VkRenderPass may still be referenced by an in-flight cb and by pipelines that
+    // were keyed on its handle in the pipeline cache. Invalidate the pipeline cache entries
+    // first, then defer-delete the RP so the destroy fires after the cb retires. NVIDIA's ICD
+    // recycles freed VkRenderPass handle values; skipping the pipeline-cache eviction would let
+    // a fresh RP that lands on the same handle silently cache-hit a stale pipeline (NULL deref
+    // inside vkCmdDraw).
+    for (VulkanFramebuffer::RpVariant& v : fbData->rpVariants)
     {
-      VkRenderPass oldRp = fbData->renderPass;
-      // Evict every pipeline cache entry keyed by this VkRenderPass BEFORE deferring its destroy.
-      // The cache key embeds the raw VkRenderPass handle (uintptr_t) and NVIDIA's ICD recycles
-      // handle values after destroy -- without this eviction, a freshly-created VkRenderPass that
-      // happens to land on the same handle value as a destroyed one will cache-hit a stale
-      // VkPipeline whose internal state still references the dead RP, which manifests as a NULL
-      // (or tiny-offset, e.g. 0x105) deref inside nvoglv64.dll mid-vkCmdDraw. Pipeline destroy
-      // itself is also deferred (same in-flight cb may still reference it).
-      if (m_pipelineCache)
+      if (v.valid && v.rp != VK_NULL_HANDLE)
       {
-        m_pipelineCache->InvalidateForRenderPass(oldRp,
-            [this, device](VkPipeline pipe) {
-              DeferDelete([device, pipe]() { vkDestroyPipeline(device, pipe, nullptr); });
-            });
+        VkRenderPass oldRp = v.rp;
+        if (m_pipelineCache)
+        {
+          m_pipelineCache->InvalidateForRenderPass(oldRp,
+              [this, device](VkPipeline pipe) {
+                DeferDelete([device, pipe]() { vkDestroyPipeline(device, pipe, nullptr); });
+              });
+        }
+        DeferDelete([device, oldRp]() { vkDestroyRenderPass(device, oldRp, nullptr); });
       }
-      DeferDelete([device, oldRp]() { vkDestroyRenderPass(device, oldRp, nullptr); });
-      fbData->renderPass = VK_NULL_HANDLE;
+      v.rp        = VK_NULL_HANDLE;
+      v.clearBits = GraphicBitFields::None;
+      v.valid     = false;
     }
     if (fbData->framebuffer != VK_NULL_HANDLE)
     {
@@ -714,13 +711,79 @@ namespace ToolKit
       DeferDelete([device, oldFb]() { vkDestroyFramebuffer(device, oldFb, nullptr); });
       fbData->framebuffer = VK_NULL_HANDLE;
     }
+    fbData->renderPass = VK_NULL_HANDLE;
+  }
+
+  bool VulkanBackend::BuildOffscreenFramebuffer(VulkanFramebuffer* fbData)
+  {
+    VkDevice device = m_context->GetDevice();
+    if (fbData->renderPass == VK_NULL_HANDLE)
+    {
+      TK_ERR("BuildOffscreenFramebuffer: no active render pass — call EnsureRpForClearBits first");
+      return false;
+    }
+
+    std::vector<VkImageView> views;
+    views.reserve(VulkanFramebuffer::kMaxColorAttachments + 1);
+    for (int i = 0; i < VulkanFramebuffer::kMaxColorAttachments; ++i)
+    {
+      auto& slot = fbData->colorAttachments[i];
+      if (slot.tex == nullptr || slot.view == VK_NULL_HANDLE)
+      {
+        continue;
+      }
+      views.push_back(slot.view);
+    }
+    if (fbData->depthAttachment.view != VK_NULL_HANDLE)
+    {
+      views.push_back(fbData->depthAttachment.view);
+    }
+
+    VkFramebufferCreateInfo fbci{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
+    fbci.renderPass      = fbData->renderPass;
+    fbci.attachmentCount = (uint32_t) views.size();
+    fbci.pAttachments    = views.empty() ? nullptr : views.data();
+    fbci.width           = fbData->width;
+    fbci.height          = fbData->height;
+    fbci.layers          = 1;
+
+    VkFramebuffer newFb = VK_NULL_HANDLE;
+    if (vkCreateFramebuffer(device, &fbci, nullptr, &newFb) != VK_SUCCESS)
+    {
+      TK_ERR("BuildOffscreenFramebuffer: vkCreateFramebuffer failed");
+      return false;
+    }
+    fbData->framebuffer = newFb;
+    return true;
+  }
+
+  bool VulkanBackend::EnsureRpForClearBits(VulkanFramebuffer* fbData, GraphicBitFields clearBits)
+  {
+    for (VulkanFramebuffer::RpVariant& v : fbData->rpVariants)
+    {
+      if (v.valid && v.clearBits == clearBits)
+      {
+        fbData->renderPass = v.rp;
+        return true;
+      }
+    }
+    return BuildRpVariant(fbData, clearBits);
+  }
+
+  bool VulkanBackend::BuildRpVariant(VulkanFramebuffer* fbData, GraphicBitFields clearBits)
+  {
+    VkDevice device       = m_context->GetDevice();
+    const bool clearColor =
+        (((int) clearBits) & ((int) GraphicBitFields::ColorBits)) != 0;
+    const bool clearDepth =
+        (((int) clearBits) & ((int) GraphicBitFields::DepthBits)) != 0;
+    const bool clearStencil =
+        (((int) clearBits) & ((int) GraphicBitFields::StencilBits)) != 0;
 
     std::vector<VkAttachmentDescription> atts;
     std::vector<VkAttachmentReference> colorRefs;
-    std::vector<VkImageView> views;
     atts.reserve(VulkanFramebuffer::kMaxColorAttachments + 1);
     colorRefs.reserve(VulkanFramebuffer::kMaxColorAttachments);
-    views.reserve(VulkanFramebuffer::kMaxColorAttachments + 1);
 
     // Stage 10. Each attachment carries the sample count it was created with (CreateTexture
     // mirrors TextureSettings::msaaCount onto VulkanTexture::samples). Vulkan requires every
@@ -740,7 +803,7 @@ namespace ToolKit
       }
       else if (subpassSamples != s)
       {
-        TK_ERR("BuildOffscreenRenderPass: attachment '%s' sampleCount %u mismatches subpass %u",
+        TK_ERR("BuildRpVariant: attachment '%s' sampleCount %u mismatches subpass %u",
                label,
                (unsigned) s,
                (unsigned) subpassSamples);
@@ -759,14 +822,19 @@ namespace ToolKit
       VkAttachmentDescription a{};
       a.format         = slot.tex->format;
       a.samples        = slot.tex->samples;
-      a.loadOp         = VK_ATTACHMENT_LOAD_OP_LOAD;
+      // loadOp is the whole point of this refactor — drives whether the GPU clears the
+      // attachment at RP entry (often free with HiZ/HiS or tile-attachment compression) or
+      // preserves previous contents. Driven by the caller's clearBits.
+      a.loadOp         = clearColor ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
       a.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
       a.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
       a.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-      // initialLayout: with LOAD we must declare the actual current layout so the previous
-      // contents are preserved. With CLEAR/DONT_CARE the contents are tossed → UNDEFINED is the
-      // cheapest start. FinishPass parks every attachment at SHADER_READ_ONLY_OPTIMAL.
-      // ClearBuffer in StartPass leaves color in SHADER_READ_ONLY_OPTIMAL.
+      // FinishPass / RP finalLayout parks every attachment at SHADER_READ_ONLY_OPTIMAL, so
+      // that's also the initialLayout for the next pass. With LOAD_OP_CLEAR the previous
+      // contents don't matter but the declared initialLayout still has to match the image's
+      // actual layout (Vulkan validation rule). UNDEFINED would be a touch cheaper for the
+      // clear case on tiler GPUs but only safely so on the very first use of an image —
+      // SHADER_READ_ONLY is correct for the steady state on second and later uses.
       a.initialLayout  = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
       // MSAA color attachments aren't sampled directly (engine resolves through
       // ResolveFramebuffer first). The "shader read only" finalLayout is harmless for them
@@ -779,7 +847,6 @@ namespace ToolKit
       ref.layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
       colorRefs.push_back(ref);
       atts.push_back(a);
-      views.push_back(slot.view);
     }
 
     VkAttachmentReference depthRef{};
@@ -791,18 +858,16 @@ namespace ToolKit
       VkAttachmentDescription a{};
       a.format         = fbData->depthAttachment.tex->format;
       a.samples        = fbData->depthAttachment.tex->samples;
-      a.loadOp         = VK_ATTACHMENT_LOAD_OP_LOAD;
+      a.loadOp         = clearDepth ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
       a.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
-      a.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_LOAD;
+      a.stencilLoadOp  = clearStencil ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
       a.stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
-      // ClearBuffer in StartPass leaves depth-stencil in DEPTH_STENCIL_READ_ONLY_OPTIMAL.
       a.initialLayout  = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
       a.finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 
       depthRef.attachment = (uint32_t) atts.size();
       depthRef.layout     = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
       atts.push_back(a);
-      views.push_back(fbData->depthAttachment.view);
     }
     fbData->subpassSamples = subpassSamples;
 
@@ -861,30 +926,43 @@ namespace ToolKit
     VkRenderPass newRp = VK_NULL_HANDLE;
     if (vkCreateRenderPass(device, &rpci, nullptr, &newRp) != VK_SUCCESS)
     {
-      TK_ERR("BuildOffscreenRenderPass: vkCreateRenderPass failed");
+      TK_ERR("BuildRpVariant: vkCreateRenderPass failed (clearBits=%u)", (unsigned) clearBits);
       return false;
     }
 
-    VkFramebufferCreateInfo fbci{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
-    fbci.renderPass      = newRp;
-    fbci.attachmentCount = (uint32_t) views.size();
-    fbci.pAttachments    = views.empty() ? nullptr : views.data();
-    fbci.width           = fbData->width;
-    fbci.height          = fbData->height;
-    fbci.layers          = 1;
-
-    VkFramebuffer newFb = VK_NULL_HANDLE;
-    if (vkCreateFramebuffer(device, &fbci, nullptr, &newFb) != VK_SUCCESS)
+    // Find a free slot. If the cache is full, evict slot 0 — this only triggers if the engine
+    // cycles through more than kMaxRpVariants distinct clearBits patterns on the same
+    // framebuffer, which no current pass does. Promote to a proper LRU if that changes.
+    int slot = -1;
+    for (int i = 0; i < VulkanFramebuffer::kMaxRpVariants; ++i)
     {
-      TK_ERR("BuildOffscreenRenderPass: vkCreateFramebuffer failed");
-      vkDestroyRenderPass(device, newRp, nullptr);
-      return false;
+      if (!fbData->rpVariants[i].valid)
+      {
+        slot = i;
+        break;
+      }
+    }
+    if (slot < 0)
+    {
+      slot               = 0;
+      VkRenderPass oldRp = fbData->rpVariants[0].rp;
+      if (m_pipelineCache && oldRp != VK_NULL_HANDLE)
+      {
+        m_pipelineCache->InvalidateForRenderPass(oldRp,
+            [this, device](VkPipeline pipe) {
+              DeferDelete([device, pipe]() { vkDestroyPipeline(device, pipe, nullptr); });
+            });
+      }
+      if (oldRp != VK_NULL_HANDLE)
+      {
+        DeferDelete([device, oldRp]() { vkDestroyRenderPass(device, oldRp, nullptr); });
+      }
     }
 
-    fbData->renderPass      = newRp;
-    fbData->framebuffer     = newFb;
-      // (cachedClearBits removed: render pass no longer depends on clearBits)
-    fbData->dirty           = false;
+    fbData->rpVariants[slot].rp        = newRp;
+    fbData->rpVariants[slot].clearBits = clearBits;
+    fbData->rpVariants[slot].valid     = true;
+    fbData->renderPass                 = newRp;
     return true;
   }
 
@@ -919,11 +997,33 @@ namespace ToolKit
       return;
     }
 
-    if (fbData->dirty
-        || fbData->renderPass == VK_NULL_HANDLE
-        || fbData->framebuffer == VK_NULL_HANDLE)
+    // Attachment view swapped (e.g. shadow atlas layer change). The new view is format-stable
+    // so cached RPs remain valid — only the VkFramebuffer needs to point at the new view. Drop
+    // the old FB and rebuild below. (If attachment *format* ever changes, an explicit cache
+    // eviction would be needed; no current pass does that.)
+    if (fbData->dirty)
     {
-      if (!BuildOffscreenRenderPass(desc, fbData))
+      if (fbData->framebuffer != VK_NULL_HANDLE)
+      {
+        VkDevice device     = m_context->GetDevice();
+        VkFramebuffer oldFb = fbData->framebuffer;
+        DeferDelete([device, oldFb]() { vkDestroyFramebuffer(device, oldFb, nullptr); });
+        fbData->framebuffer = VK_NULL_HANDLE;
+      }
+      fbData->dirty = false;
+    }
+
+    // Find/build a VkRenderPass whose attachment loadOps match this pass's clearBits. Same fb
+    // can host multiple variants (cleared / loaded) — they share the VkFramebuffer because RP
+    // compatibility excludes loadOp.
+    if (!EnsureRpForClearBits(fbData, desc.clearBits))
+    {
+      return;
+    }
+
+    if (fbData->framebuffer == VK_NULL_HANDLE)
+    {
+      if (!BuildOffscreenFramebuffer(fbData))
       {
         return;
       }
@@ -932,13 +1032,8 @@ namespace ToolKit
     m_pendingPassDesc = desc;
     m_activePassFb    = fbData;
 
-    // Perform the requested clear ONCE here, outside any render pass, via vkCmdClear*Image.
-    // The render pass always uses loadOp=LOAD so multiple Draw() calls within the same pass
-    // accumulate rather than each one wiping the attachments.
-    if (desc.clearBits != GraphicBitFields::None)
-    {
-      ClearBuffer(desc.clearBits, desc.clearColor);
-    }
+    // No explicit clear here. The render pass's LOAD_OP_CLEAR + pClearValues at
+    // vkCmdBeginRenderPass do the work — that's the entire reason for the variant cache.
 
     if (VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer(); cb != VK_NULL_HANDLE)
     {
@@ -3350,18 +3445,25 @@ namespace ToolKit
     // their lifetime is governed by their owning RenderTarget/DepthTexture.
     if (auto data = fb->m_gpuData)
     {
-      // Evict pipeline cache entries keyed by this framebuffer's VkRenderPass before letting
-      // the dtor destroy it -- same handle-reuse hazard as BuildOffscreenRenderPass. Pipelines
-      // go through DeferDelete so they retire on the in-flight cb before the RP itself
-      // (within the same deleter bucket, dispatched in push order).
+      // Evict pipeline cache entries keyed by every cached VkRenderPass variant before letting
+      // the dtor destroy them. Pipelines go through DeferDelete so they retire on the in-flight
+      // cb before the RP itself (within the same deleter bucket, dispatched in push order).
+      // Same handle-reuse hazard as in BuildRpVariant: NVIDIA's ICD recycles freed VkRenderPass
+      // handle values, and skipping eviction would let a future RP cache-hit a stale pipeline.
       auto* fbData = static_cast<VulkanFramebuffer*>(data.get());
-      if (fbData != nullptr && fbData->renderPass != VK_NULL_HANDLE && m_pipelineCache)
+      if (fbData != nullptr && m_pipelineCache)
       {
         VkDevice device = m_context->GetDevice();
-        m_pipelineCache->InvalidateForRenderPass(fbData->renderPass,
-            [this, device](VkPipeline pipe) {
-              DeferDelete([device, pipe]() { vkDestroyPipeline(device, pipe, nullptr); });
-            });
+        for (VulkanFramebuffer::RpVariant& v : fbData->rpVariants)
+        {
+          if (v.valid && v.rp != VK_NULL_HANDLE)
+          {
+            m_pipelineCache->InvalidateForRenderPass(v.rp,
+                [this, device](VkPipeline pipe) {
+                  DeferDelete([device, pipe]() { vkDestroyPipeline(device, pipe, nullptr); });
+                });
+          }
+        }
       }
       fb->m_gpuData = nullptr;
       DeferDelete([data]() mutable { data.reset(); });
@@ -3381,8 +3483,8 @@ namespace ToolKit
 
     auto& slot = fbData->colorAttachments[attachment];
 
-    // Defer the previously owned view â€” the in-flight cmd buffer's RP+FB still references it
-    // until the next BuildOffscreenRenderPass swaps them out (which itself defers the old RP+FB).
+    // Defer the previously owned view — the in-flight cmd buffer's RP+FB still references it
+    // until the next StartPass triggers EvictFramebufferCache (which itself defers the old RP+FB).
     if (slot.ownsView && slot.view != VK_NULL_HANDLE)
     {
       VkDevice device  = m_context->GetDevice();
@@ -3455,8 +3557,9 @@ namespace ToolKit
       slot.baseMipLevel   = 0;
     }
 
-    // Don't eager-destroy the cached RP+FB â€” BuildOffscreenRenderPass will defer them on the
-    // next StartPass. Eager destroy here would invalidate the in-flight cmd buffer.
+    // Don't eager-destroy the cached RP+FB — StartPass's EvictFramebufferCache will defer them
+    // on the next pass start (triggered by dirty=true). Eager destroy here would invalidate the
+    // in-flight cmd buffer.
     fbData->dirty = true;
   }
 
