@@ -206,10 +206,15 @@ namespace ToolKit
         MaterialPtr unlitMaterial  = GetMaterialManager()->GetCopyOfUnlitMaterial();
 
         MaterialPtr shaderMaterial = MakeNewPtr<Material>();
-        shaderMaterial->SetRenderState(unlitMaterial->GetRenderState());
+        // Inherit the active rasterizer state from the unlit template, then override blend/cull.
+        shaderMaterial->cullMode          = unlitMaterial->cullMode;
+        shaderMaterial->blendFunction     = unlitMaterial->blendFunction;
+        shaderMaterial->drawType          = unlitMaterial->drawType;
+        shaderMaterial->alphaMaskTreshold = unlitMaterial->alphaMaskTreshold;
+        shaderMaterial->lineWidth         = unlitMaterial->lineWidth;
 
-        shaderMaterial->GetRenderState()->blendFunction = BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA;
-        shaderMaterial->GetRenderState()->cullMode      = CullingType::TwoSided;
+        shaderMaterial->blendFunction     = BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA;
+        shaderMaterial->cullMode          = CullingType::TwoSided;
         ShaderPtr vert = GetShaderManager()->Create<Shader>(ShaderPath("gridVertex.shader", true));
         shaderMaterial->SetVertexShaderVal(vert);
 

@@ -21,10 +21,15 @@ namespace ToolKit
       m_depthMaskSphere = MakeNewPtr<Sphere>();
       m_depthMaskSphere->SetRadiusVal(0.95f);
 
-      MeshComponentPtr mc = m_depthMaskSphere->GetMeshComponent();
-      MeshPtr mesh        = mc->GetMeshVal();
-      RenderState* rs     = mesh->m_material->GetRenderState();
-      rs->cullMode        = CullingType::Front;
+      MeshComponentPtr mc          = m_depthMaskSphere->GetMeshComponent();
+      MeshPtr mesh                 = mc->GetMeshVal();
+      mesh->m_material->cullMode   = CullingType::Front;
+
+      // Passive overrides used by the two non-default sub-draws (depth-mask sphere, guide meshes).
+      // Both inherit the rest from the default RenderState construction; only the highlighted
+      // field is the meaningful change in each case.
+      m_depthMaskPassState.colorMaskEnabled = false;
+      m_guideMeshPassState.depthFunction    = CompareFunctions::FuncAlways;
     }
 
     GizmoPass::GizmoPass(const GizmoPassParams& params) : GizmoPass() { m_params = params; }
@@ -44,10 +49,7 @@ namespace ToolKit
           // Depth-mask sphere: write only depth, no color.
           RenderJobArray jobs;
           RenderJobProcessor::CreateRenderJobs(jobs, m_depthMaskSphere);
-          for (RenderJob& job : jobs)
-          {
-            job.State.colorMaskEnabled = false;
-          }
+          renderer->SetPassState(m_depthMaskPassState);
           renderer->RenderWithProgramFromMaterial(jobs);
 
           jobs.clear();
@@ -70,17 +72,18 @@ namespace ToolKit
               }
             }
 
+            // Reset passive state to defaults before drawing the normal jobs — the depth-mask
+            // pass left colorMaskEnabled=false in m_passiveState.
+            renderer->SetPassState(m_defaultPassState);
             renderer->RenderWithProgramFromMaterial(normalJobs);
 
             // Guide meshes draw on top regardless of depth.
-            for (RenderJob& job : guideJobs)
-            {
-              job.State.depthFunction = CompareFunctions::FuncAlways;
-            }
+            renderer->SetPassState(m_guideMeshPassState);
             renderer->RenderWithProgramFromMaterial(guideJobs);
           }
           else
           {
+            renderer->SetPassState(m_defaultPassState);
             renderer->RenderWithProgramFromMaterial(jobs);
           }
         }
@@ -88,6 +91,7 @@ namespace ToolKit
         {
           RenderJobArray jobs;
           RenderJobProcessor::CreateRenderJobs(jobs, billboard);
+          renderer->SetPassState(m_defaultPassState);
           renderer->RenderWithProgramFromMaterial(jobs);
         }
       }

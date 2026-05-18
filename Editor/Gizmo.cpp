@@ -45,8 +45,7 @@ namespace ToolKit
       TexturePtr tex = GetTextureManager()->Create<Texture>(TexturePath(ConcatPaths({"Icons", "cursor4k.png"}), true));
       matPtr->SetDiffuseTextureVal(tex);
 
-      RenderState* rState   = matPtr->GetRenderState();
-      rState->blendFunction = BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA;
+      matPtr->blendFunction = BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA;
       matPtr->Init();
       meshPtr->m_material = matPtr;
       meshPtr->Init();
@@ -70,7 +69,7 @@ namespace ToolKit
 
       MaterialPtr newMaterial = GetMaterialManager()->GetCopyOfUnlitColorMaterial();
       newMaterial->SetColorVal(Vec3(0.1f, 0.1f, 0.1f));
-      newMaterial->GetRenderState()->drawType = DrawType::Line;
+      newMaterial->drawType = DrawType::Line;
 
       parentMesh->m_clientSideVertices        = vertices;
       parentMesh->m_material                  = newMaterial;
@@ -356,7 +355,7 @@ namespace ToolKit
       QuadPtr solid        = MakeNewPtr<Quad>();
       MaterialPtr material = GetMaterialManager()->GetCopyOfUnlitColorMaterial(false);
       material->SetColorVal(params.color);
-      material->GetRenderState()->cullMode = CullingType::TwoSided;
+      material->cullMode = CullingType::TwoSided;
 
       MeshPtr mesh                         = solid->GetMeshComponent()->GetMeshVal();
       mesh->m_material                     = material;

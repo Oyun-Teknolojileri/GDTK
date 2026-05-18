@@ -364,7 +364,7 @@ namespace ToolKit
       MaterialPtr matPtr = GetMaterialManager()->GetCopyOfUnlitColorMaterial();
       matPtr->UnInit();
       matPtr->SetColorVal(params.color);
-      matPtr->GetRenderState()->blendFunction = BlendFunction::ONE_TO_ONE;
+      matPtr->blendFunction = BlendFunction::ONE_TO_ONE;
       matPtr->Init();
       m_mesh->m_material = matPtr;
     }

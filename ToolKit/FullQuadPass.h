@@ -8,6 +8,7 @@
 #pragma once
 
 #include "Pass.h"
+#include "RenderState.h"
 
 namespace ToolKit
 {
@@ -17,6 +18,9 @@ namespace ToolKit
     FramebufferPtr frameBuffer        = nullptr;
     BlendFunction blendFunc           = BlendFunction::NONE;
     GraphicBitFields clearFrameBuffer = GraphicBitFields::AllBits;
+    /** Stencil op applied to the pass's passive state. Caller-controlled now that material no
+     *  longer carries stencil state. */
+    StencilOperation stencilOp        = StencilOperation::None;
   };
 
   /**

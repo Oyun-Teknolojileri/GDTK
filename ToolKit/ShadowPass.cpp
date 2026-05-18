@@ -48,7 +48,7 @@ namespace ToolKit
       MaterialPtr material = MakeNewPtr<Material>();
       material->SetFragmentShaderVal(frag);
       material->SetVertexShaderVal(vert);
-      material->GetRenderState()->blendFunction = BlendFunction::NONE;
+      material->blendFunction = BlendFunction::NONE;
       material->Init();
 
       return material;
@@ -61,6 +61,11 @@ namespace ToolKit
     // caster loop in RenderShadowCasters (true for directional, false otherwise).
     m_passState.depthTestEnabled  = true;
     m_passState.depthWriteEnabled = true;
+
+    // Shadow casters always render with blending off, regardless of what the material declares.
+    // Pass-level override is the clean replacement for the old per-job blendFunction mutation.
+    m_passState.blendOverride     = true;
+    m_passState.blendOverrideFunc = BlendFunction::NONE;
   }
 
   ShadowPass::ShadowPass(const ShadowPassParams& params) : ShadowPass() { m_params = params; }
@@ -351,12 +356,6 @@ namespace ToolKit
     // depth clamp is on only for orthogonal (directional) shadow cameras.
     m_passState.depthClampEnabled = orthogonalShadowMap;
     renderer->SetPassState(m_passState);
-
-    // Shadow casters never blend regardless of the material's choice.
-    for (RenderJobItr job = forwardBegin; job < translucentBegin; ++job)
-    {
-      job->State.blendFunction = BlendFunction::NONE;
-    }
 
     // Draw opaque.
     for (RenderJobItr jobItr = forwardBegin; jobItr < forwardMaskedBegin; jobItr++)

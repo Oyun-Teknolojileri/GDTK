@@ -678,8 +678,8 @@ namespace ToolKit
     vertices[6].pos                    = Vec3(1.0f, 0.0f, 0.0f);
     vertices[7].pos                    = Vec3(0.8f, -0.2f, 0.0f);
 
-    MaterialPtr newMat                 = GetMaterialManager()->GetCopyOfUnlitColorMaterial();
-    newMat->GetRenderState()->drawType = DrawType::Line;
+    MaterialPtr newMat = GetMaterialManager()->GetCopyOfUnlitColorMaterial();
+    newMat->drawType   = DrawType::Line;
     newMat->SetColorVal(Vec3(0.89f, 0.239f, 0.341f));
 
     Quaternion rotation;
@@ -738,8 +738,7 @@ namespace ToolKit
     mesh->UnInit();
     mesh->m_material         = GetMaterialManager()->GetCopyOfUnlitColorMaterial(false);
 
-    RenderState* renderState = mesh->m_material->GetRenderState();
-    renderState->drawType    = t;
+    mesh->m_material->drawType = t;
 
     for (size_t i = 0; i < linePnts.size(); i++)
     {
@@ -749,7 +748,7 @@ namespace ToolKit
     mesh->m_vertexCount        = (uint) vertices.size();
     mesh->m_clientSideVertices = vertices;
     mesh->m_material->SetColorVal(color);
-    renderState->lineWidth = lineWidth;
+    mesh->m_material->lineWidth = lineWidth;
 
     mesh->CalculateAABB();
   }

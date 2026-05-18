@@ -43,12 +43,10 @@ namespace ToolKit
     renderer->SetPassState(m_writePassState);
     renderer->Render(*m_params.RenderJobs);
 
-    // Copy pass: draw a fullscreen quad where stencil != 1. The stencil-op is set on the
-    // subpass material so it propagates into the quad job's State at job-creation time
-    // (FullQuadPass::Render copies material's RenderState into job.State).
+    // Copy pass: draw a fullscreen quad where stencil != 1. The stencil-op is now an explicit
+    // FullQuadPass parameter rather than smuggled through the subpass material.
     m_copyStencilSubPass->SetFragmentShader(m_unlitFragShader, renderer);
-    m_copyStencilSubPass->m_material->GetRenderState()->stencilOperation =
-        StencilOperation::AllowPixelsFailingStencil;
+    m_copyStencilSubPass->m_params.stencilOp = StencilOperation::AllowPixelsFailingStencil;
 
     RenderSubPass(m_copyStencilSubPass);
   }

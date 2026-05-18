@@ -288,8 +288,6 @@ namespace ToolKit
         ImGui::Columns(1); // End columns
       }
 
-      RenderState* renderState = mat->GetRenderState();
-
       if (ImGui::CollapsingHeader("Render States", ImGuiTreeNodeFlags_DefaultOpen))
       {
         if (mat->GetDiffuseTextureVal() == nullptr)
@@ -340,31 +338,31 @@ namespace ToolKit
           }
         }
 
-        int cullMode = (int) renderState->cullMode;
+        int cullMode = (int) mat->cullMode;
         if (ImGui::Combo("Cull mode", &cullMode, "Two Sided\0Front\0Back"))
         {
-          renderState->cullMode = (CullingType) cullMode;
+          mat->cullMode = (CullingType) cullMode;
           updateThumbFn();
         }
 
-        int blendMode = (int) renderState->blendFunction;
+        int blendMode = (int) mat->blendFunction;
         if (ImGui::Combo("Blend mode", &blendMode, "None\0Alpha Blending\0Alpha Mask"))
         {
           mat->SetBlendState((BlendFunction) blendMode);
           updateThumbFn();
         }
 
-        int drawType = DrawTypeToInt(mat->GetRenderState()->drawType);
+        int drawType = DrawTypeToInt(mat->drawType);
 
         if (ImGui::Combo("Draw mode", &drawType, "Triangle\0Line\0Line Strip\0Line Loop\0Point"))
         {
-          renderState->drawType = IntToDrawType(drawType);
+          mat->drawType = IntToDrawType(drawType);
           updateThumbFn();
         }
 
         if (mat->IsAlphaMasked())
         {
-          float alphaMaskTreshold = renderState->alphaMaskTreshold;
+          float alphaMaskTreshold = mat->alphaMaskTreshold;
           if (ImGui::DragFloat("Alpha Mask Threshold", &alphaMaskTreshold, 0.001f, 0.0f, 1.0f, "%.3f"))
           {
             mat->SetAlphaMaskThreshold(alphaMaskTreshold);

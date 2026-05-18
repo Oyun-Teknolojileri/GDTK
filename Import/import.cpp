@@ -677,7 +677,7 @@ namespace ToolKit
       int twoSided = 0;
       if (material->Get(AI_MATKEY_TWOSIDED, twoSided) == aiReturn_SUCCESS && twoSided)
       {
-        tMaterial->GetRenderState()->cullMode = CullingType::TwoSided;
+        tMaterial->cullMode = CullingType::TwoSided;
       }
 
       // Alpha mode handling (glTF: OPAQUE, MASK, BLEND)
@@ -687,10 +687,10 @@ namespace ToolKit
         string mode = alphaMode.C_Str();
         if (mode == "BLEND")
         {
-          tMaterial->GetRenderState()->blendFunction = BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA;
+          tMaterial->blendFunction = BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA;
 
           // Read alpha/opacity for blend mode
-          float transparency                         = 1.0f;
+          float transparency       = 1.0f;
           if (material->Get(AI_MATKEY_OPACITY, transparency) == aiReturn_SUCCESS)
           {
             tMaterial->SetAlphaVal(transparency);
@@ -698,11 +698,11 @@ namespace ToolKit
         }
         else if (mode == "MASK")
         {
-          tMaterial->GetRenderState()->blendFunction = BlendFunction::ALPHA_MASK;
+          tMaterial->blendFunction     = BlendFunction::ALPHA_MASK;
 
-          float alphaCutoff                          = 0.5f;
+          float alphaCutoff            = 0.5f;
           material->Get(AI_MATKEY_GLTF_ALPHACUTOFF, alphaCutoff);
-          tMaterial->GetRenderState()->alphaMaskTreshold = alphaCutoff;
+          tMaterial->alphaMaskTreshold = alphaCutoff;
         }
         // OPAQUE: default, no blending needed
       }
@@ -724,19 +724,19 @@ namespace ToolKit
         {
           if (blendFunc == aiBlendMode_Default)
           {
-            tMaterial->GetRenderState()->blendFunction = BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA;
+            tMaterial->blendFunction = BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA;
           }
           else
           {
-            tMaterial->GetRenderState()->blendFunction = BlendFunction::ONE_TO_ONE;
+            tMaterial->blendFunction = BlendFunction::ONE_TO_ONE;
           }
         }
         else if (transparency != 1.0f)
         {
-          tMaterial->GetRenderState()->blendFunction = BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA;
+          tMaterial->blendFunction = BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA;
         }
 
-        material->Get(AI_MATKEY_GLTF_ALPHACUTOFF, tMaterial->GetRenderState()->alphaMaskTreshold);
+        material->Get(AI_MATKEY_GLTF_ALPHACUTOFF, tMaterial->alphaMaskTreshold);
       }
 
       tMaterial->SetFile(writePath);

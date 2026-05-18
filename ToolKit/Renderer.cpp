@@ -186,13 +186,17 @@ namespace ToolKit
 
   void Renderer::SetPassState(const RenderState& state)
   {
-    // Copy only passive fields; active fields remain owned by the material/job.
+    // Copy only passive fields; active fields are sourced from the material at draw time.
     m_passiveState.depthTestEnabled  = state.depthTestEnabled;
     m_passiveState.depthWriteEnabled = state.depthWriteEnabled;
     m_passiveState.depthFunction     = state.depthFunction;
     m_passiveState.stencilOperation  = state.stencilOperation;
     m_passiveState.colorMaskEnabled  = state.colorMaskEnabled;
     m_passiveState.depthClampEnabled = state.depthClampEnabled;
+    m_passiveState.blendOverride     = state.blendOverride;
+    m_passiveState.blendOverrideFunc = state.blendOverrideFunc;
+    m_passiveState.cullOverride      = state.cullOverride;
+    m_passiveState.cullOverrideMode  = state.cullOverrideMode;
   }
 
   void Renderer::SetCamera(CameraPtr camera, bool setLens)
@@ -297,16 +301,26 @@ namespace ToolKit
     SetLights(job.lights);
     m_model = job.WorldTransform;
 
-    // Pipeline state is owned by the job (initialized from material at job creation).
-    // Passive fields (depth/stencil/etc.) are overridden from the renderer's per-pass state
-    // so passes no longer need to loop over every job to apply them.
-    RenderState state = job.State;
-    state.depthTestEnabled  = m_passiveState.depthTestEnabled;
-    state.depthWriteEnabled = m_passiveState.depthWriteEnabled;
-    state.depthFunction     = m_passiveState.depthFunction;
-    state.stencilOperation  = m_passiveState.stencilOperation;
-    state.colorMaskEnabled  = m_passiveState.colorMaskEnabled;
-    state.depthClampEnabled = m_passiveState.depthClampEnabled;
+    // Compose the draw-time rasterizer state: passive bits come from the per-pass state set via
+    // SetPassState, active bits come from the material itself. RenderState is no longer stored
+    // on the material — it's transient pipeline data assembled here.
+    RenderState state       = m_passiveState;
+    state.cullMode          = job.Material->cullMode;
+    state.blendFunction     = job.Material->blendFunction;
+    state.drawType          = job.Material->drawType;
+    state.alphaMaskTreshold = job.Material->alphaMaskTreshold;
+    state.lineWidth         = job.Material->lineWidth;
+
+    // Pass-level overrides win over the material's active fields. Used by shadow casters
+    // (force blend=NONE) and two-sided translucent two-pass draws (force cull=Front then Back).
+    if (m_passiveState.blendOverride)
+    {
+      state.blendFunction = m_passiveState.blendOverrideFunc;
+    }
+    if (m_passiveState.cullOverride)
+    {
+      state.cullMode = m_passiveState.cullOverrideMode;
+    }
 
     if (job.requireCullFlip)
     {
@@ -1174,7 +1188,7 @@ namespace ToolKit
     mat->SetDiffuseTextureVal(texture);
     mat->SetVertexShaderVal(vert);
     mat->SetFragmentShaderVal(frag);
-    mat->GetRenderState()->cullMode = CullingType::TwoSided;
+    mat->cullMode = CullingType::TwoSided;
     mat->Init();
 
     if (!m_cubemapEquirectBufferInitialized)
@@ -1379,7 +1393,7 @@ namespace ToolKit
     mat->m_cubeMap  = cubemap;
     mat->SetFragmentShaderVal(frag);
     mat->SetVertexShaderVal(vert);
-    mat->GetRenderState()->cullMode = CullingType::TwoSided;
+    mat->cullMode = CullingType::TwoSided;
     mat->Init();
 
     m_oneColorAttachmentFramebuffer->ReconstructIfNeeded({size, size, false, false});
@@ -1472,7 +1486,7 @@ namespace ToolKit
     mat->m_cubeMap  = cubemap;
     mat->SetFragmentShaderVal(frag);
     mat->SetVertexShaderVal(vert);
-    mat->GetRenderState()->cullMode = CullingType::TwoSided;
+    mat->cullMode = CullingType::TwoSided;
     mat->Init();
 
     assert(size >= 128 && "Due to RHIConstants::SpecularIBLLods, it can't be lower than this resolution.");

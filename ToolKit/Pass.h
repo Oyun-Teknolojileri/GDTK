@@ -59,11 +59,6 @@ namespace ToolKit
     AnimData animData;       //!< Animation data of render job.
 
     LightRawPtrArray lights;
-
-    /** Pipeline state for this draw. Initialized from Material->GetRenderState() at job creation
-     *  in RenderJobProcessor::CreateRenderJobs; passes mutate this in place to apply pass-level
-     *  overrides (depth/stencil/blend/cull) without touching the shared material asset. */
-    RenderState State;
   };
 
   typedef RenderJobArray::iterator RenderJobItr;

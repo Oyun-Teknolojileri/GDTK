@@ -101,21 +101,18 @@ namespace ToolKit
     Super::CopyTo(other);
     Material* cpy              = static_cast<Material*>(other);
     cpy->m_cubeMap             = m_cubeMap;
-    cpy->m_renderState         = m_renderState;
+    cpy->cullMode              = cullMode;
+    cpy->blendFunction         = blendFunction;
+    cpy->drawType              = drawType;
+    cpy->alphaMaskTreshold     = alphaMaskTreshold;
+    cpy->lineWidth             = lineWidth;
     cpy->m_usingDefaultShaders = m_usingDefaultShaders;
     cpy->m_dirty               = true;
   }
 
-  RenderState* Material::GetRenderState() { return &m_renderState; }
-
-  void Material::SetRenderState(RenderState* state)
-  {
-    m_renderState = *state; // Copy
-  }
-
   bool Material::IsTranslucent()
   {
-    switch (m_renderState.blendFunction)
+    switch (blendFunction)
     {
     case BlendFunction::NONE:
     case BlendFunction::ALPHA_MASK:
@@ -128,16 +125,16 @@ namespace ToolKit
     }
   }
 
-  bool Material::IsAlphaMasked() { return m_renderState.blendFunction == BlendFunction::ALPHA_MASK; }
+  bool Material::IsAlphaMasked() { return blendFunction == BlendFunction::ALPHA_MASK; }
 
   void Material::SetBlendState(BlendFunction blendState)
   {
-    if (m_renderState.blendFunction == blendState)
+    if (blendFunction == blendState)
     {
       return;
     }
 
-    m_renderState.blendFunction = blendState;
+    blendFunction = blendState;
 
     if (blendState == BlendFunction::NONE)
     {
@@ -150,14 +147,7 @@ namespace ToolKit
 
   void Material::SetAlphaMaskThreshold(float val)
   {
-    m_renderState.alphaMaskTreshold = val;
-    m_materialCacheItem.Invalidate();
-    m_dirty = true;
-  }
-
-  void Material::SetDepthTest(bool enable)
-  {
-    m_renderState.depthTestEnabled = enable;
+    alphaMaskTreshold = val;
     m_materialCacheItem.Invalidate();
     m_dirty = true;
   }
@@ -175,7 +165,15 @@ namespace ToolKit
     parent             = Super::SerializeImp(doc, parent);
 
     XmlNode* container = CreateXmlNode(doc, Material::StaticClass()->Name, parent);
-    m_renderState.Serialize(doc, container);
+
+    // Active rasterizer state. Asset format keeps the <renderState> wrapper for backwards
+    // compatibility with existing material files; in memory the fields live directly on Material.
+    XmlNode* renderStateNode = doc->allocate_node(rapidxml::node_type::node_element, "renderState");
+    container->append_node(renderStateNode);
+    WriteAttr(renderStateNode, doc, "cullMode", std::to_string(int(cullMode)));
+    WriteAttr(renderStateNode, doc, "blendFunction", std::to_string(int(blendFunction)));
+    WriteAttr(renderStateNode, doc, "drawType", std::to_string(int(drawType)));
+    WriteAttr(renderStateNode, doc, "alphaMaskTreshold", std::to_string((float) alphaMaskTreshold));
 
     return container;
   }
@@ -250,7 +248,7 @@ namespace ToolKit
       }
       else if (strcmp("renderState", node->name()) == 0)
       {
-        m_renderState.DeSerialize(info, parent);
+        ReadRenderStateXml(node);
       }
       else
       {
@@ -275,13 +273,66 @@ namespace ToolKit
     {
       if (strcmp("renderState", node->name()) == 0)
       {
-        m_renderState.DeSerialize(info, rootNode);
+        ReadRenderStateXml(node);
       }
       else
       {
         TK_WRN("Unknown material param: %s", node->name());
       }
     }
+  }
+
+  void Material::ReadRenderStateXml(XmlNode* renderStateNode)
+  {
+    // Reads the active rasterizer fields from a <renderState ... /> attribute block. Legacy passive
+    // attributes (depthTest, depthFunc) that may exist on old assets are intentionally ignored —
+    // passive state is now owned by the pass, not the material.
+    int cullModeInt = (int) cullMode;
+    ReadAttr(renderStateNode, "cullMode", cullModeInt);
+    switch ((CullingType) cullModeInt)
+    {
+    case CullingType::TwoSided:
+    case CullingType::Front:
+    case CullingType::Back:
+      cullMode = (CullingType) cullModeInt;
+      break;
+    default:
+      cullMode = CullingType::Back;
+      break;
+    }
+
+    int blendInt = (int) blendFunction;
+    ReadAttr(renderStateNode, "blendFunction", blendInt);
+    switch ((BlendFunction) blendInt)
+    {
+    case BlendFunction::NONE:
+    case BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA:
+    case BlendFunction::ALPHA_MASK:
+    case BlendFunction::ONE_TO_ONE:
+      blendFunction = (BlendFunction) blendInt;
+      break;
+    default:
+      blendFunction = BlendFunction::NONE;
+      break;
+    }
+
+    int drawInt = (int) drawType;
+    ReadAttr(renderStateNode, "drawType", drawInt);
+    switch ((DrawType) drawInt)
+    {
+    case DrawType::Triangle:
+    case DrawType::Line:
+    case DrawType::LineStrip:
+    case DrawType::LineLoop:
+    case DrawType::Point:
+      drawType = (DrawType) drawInt;
+      break;
+    default:
+      drawType = DrawType::Triangle;
+      break;
+    }
+
+    ReadAttr(renderStateNode, "alphaMaskTreshold", alphaMaskTreshold);
   }
 
   void Material::ParameterConstructor()
@@ -372,9 +423,9 @@ namespace ToolKit
           newVal           = val;
 
           bool translucent = val < 0.999f;
-          if (translucent && m_renderState.blendFunction != BlendFunction::ALPHA_MASK)
+          if (translucent && blendFunction != BlendFunction::ALPHA_MASK)
           {
-            m_renderState.blendFunction = BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA;
+            blendFunction = BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA;
           }
 
           m_materialCacheItem.data.colorAlpha.a = val;
@@ -413,7 +464,7 @@ namespace ToolKit
         [this](Value& oldVal, Value& newVal) -> void
         {
           Vec3 val                                   = std::get<Vec3>(newVal);
-          m_materialCacheItem.data.emissiveThreshold = Vec4(val, m_renderState.alphaMaskTreshold);
+          m_materialCacheItem.data.emissiveThreshold = Vec4(val, alphaMaskTreshold);
           m_materialCacheItem.Invalidate();
           m_dirty = true;
         });
@@ -472,12 +523,12 @@ namespace ToolKit
     // Update the cache fields
     m_materialCacheItem.id                     = GetIdVal();
     m_materialCacheItem.data.colorAlpha        = Vec4(GetColorVal(), GetAlphaVal());
-    m_materialCacheItem.data.emissiveThreshold = Vec4(GetEmissiveColorVal(), m_renderState.alphaMaskTreshold);
+    m_materialCacheItem.data.emissiveThreshold = Vec4(GetEmissiveColorVal(), alphaMaskTreshold);
 
     m_materialCacheItem.data.metallicRoughness =
         Vec4(GetMetallicVal(),
              GetRoughnessVal(),
-             (m_renderState.blendFunction == BlendFunction::ALPHA_MASK) ? 1.0f : 0.0f,
+             (blendFunction == BlendFunction::ALPHA_MASK) ? 1.0f : 0.0f,
              (GetDiffuseTextureVal() != nullptr) ? 1.0f : 0.0f);
 
     m_materialCacheItem.data.textureFlags = Vec4((GetEmissiveTextureVal() != nullptr) ? 1.0f : 0.0f,
@@ -541,7 +592,7 @@ namespace ToolKit
   MaterialPtr MaterialManager::GetCopyOfUIMaterial(bool storeInMaterialManager)
   {
     MaterialPtr material                      = GetMaterialManager()->GetCopyOfUnlitMaterial(storeInMaterialManager);
-    material->GetRenderState()->blendFunction = BlendFunction::ALPHA_MASK;
+    material->blendFunction = BlendFunction::ALPHA_MASK;
 
     return material;
   }

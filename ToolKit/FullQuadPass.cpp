@@ -40,9 +40,8 @@ namespace ToolKit
     RenderJobArray jobs;
     RenderJobProcessor::CreateRenderJobs(jobs, m_quad);
 
-    // stencilOperation is material-driven for FullQuadPass. Copy it into the pass-owned
-    // passive state so the renderer merges the correct value at draw time.
-    m_passState.stencilOperation = m_material->GetRenderState()->stencilOperation;
+    // Stencil op is now a pass parameter rather than smuggled through the material.
+    m_passState.stencilOperation = m_params.stencilOp;
     renderer->SetPassState(m_passState);
 
     renderer->Render(jobs);
@@ -60,7 +59,7 @@ namespace ToolKit
     mesh->m_material    = m_material;
     mesh->Init();
 
-    m_material->GetRenderState()->blendFunction = m_params.blendFunc;
+    m_material->blendFunction = m_params.blendFunc;
     SetFragmentShader(m_material->GetFragmentShaderVal(), renderer);
   }
 

@@ -403,10 +403,9 @@ namespace ToolKit
 
   void RenderStateToPipelineDesc(const RenderState& state, VulkanPipelineDesc& out)
   {
-    // RenderState carries a `blendOverride` flag that tells the renderer to ignore the material's
-    // declared blend mode for this draw � honored here by selecting the override function when set.
-    const BlendFunction blend = state.blendOverride ? state.blendOverrideFunc : state.blendFunction;
-    const BlendRecipe r       = ToBlendRecipe(blend);
+    // blendFunction / cullMode arrive already resolved by Renderer::Render — any blendOverride /
+    // cullOverride flags on the pass state have been applied upstream.
+    const BlendRecipe r = ToBlendRecipe(state.blendFunction);
 
     out.topology            = ToVkTopology(state.drawType);
     out.cullMode            = ToVkCullMode(state.cullMode);

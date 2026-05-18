@@ -160,6 +160,9 @@ namespace ToolKit
     {
       renderer->SetPassState(m_translucentPassState);
 
+      RenderState twoSidedState = m_translucentPassState;
+      twoSidedState.cullOverride = true;
+
       for (RenderJobArray::iterator job = begin; job != end; job++)
       {
         if (job->Material->IsShaderMaterial())
@@ -170,15 +173,20 @@ namespace ToolKit
         {
           renderer->BindProgram(program);
 
-          if (job->State.cullMode == CullingType::TwoSided)
+          if (job->Material->cullMode == CullingType::TwoSided)
           {
-            // Two-sided translucent: draw back faces first then front, both via the per-job
-            // state so the shared material asset stays untouched.
-            job->State.cullMode = CullingType::Front;
+            // Two-sided translucent: draw back faces first then front. cullOverride forces the
+            // cull mode without touching the shared material — the pass state restores itself at
+            // the end of the iteration so the next job sees the standard translucent state.
+            twoSidedState.cullOverrideMode = CullingType::Front;
+            renderer->SetPassState(twoSidedState);
             renderer->Render(*job);
 
-            job->State.cullMode = CullingType::Back;
+            twoSidedState.cullOverrideMode = CullingType::Back;
+            renderer->SetPassState(twoSidedState);
             renderer->Render(*job);
+
+            renderer->SetPassState(m_translucentPassState);
           }
           else
           {

@@ -96,7 +96,7 @@ namespace ToolKit
       subMesh->m_material           = GetMaterialManager()->GetCopyOfUnlitColorMaterial();
       subMesh->m_material->SetColorVal(ZERO);
       subMesh->m_material->SetColorVal(ZERO);
-      subMesh->m_material->GetRenderState()->cullMode = CullingType::TwoSided;
+      subMesh->m_material->cullMode = CullingType::TwoSided;
       subMesh->ConstructFaces();
 
       camMeshComp->GetMeshVal()->m_subMeshes.push_back(subMesh);

@@ -60,8 +60,6 @@ namespace ToolKit
     void Save(bool onlyIfDirty) override;
     void Init(bool flushClientSideArray = false) override;
     void UnInit() override;
-    RenderState* GetRenderState();
-    void SetRenderState(RenderState* state);
 
     /**
      * States if the material has transparency.
@@ -77,8 +75,6 @@ namespace ToolKit
 
     /** Sets alpha mask threshold. */
     void SetAlphaMaskThreshold(float val);
-
-    void SetDepthTest(bool enable);
 
     /**
      * States if the material is using PBR shaders.
@@ -100,6 +96,10 @@ namespace ToolKit
 
     /** Deserialize files with version v0.4.9 */
     void DeSerializeImpV049(const SerializationFileInfo& info, XmlNode* parent);
+
+    /** Reads the active rasterizer fields from a <renderState> XML element. Used by both the
+     *  current and legacy v0.4.9 deserializers; legacy passive attributes are ignored. */
+    void ReadRenderStateXml(XmlNode* renderStateNode);
 
     void ParameterConstructor() override;
     void ParameterEventConstructor() override;
@@ -133,9 +133,16 @@ namespace ToolKit
     TKDeclareParam(Vec3, Color);
     TKDeclareParam(Vec3, EmissiveColor);
 
-   private:
-    RenderState m_renderState;
+    // Active rasterizer state. These are read by the renderer at draw time and combined with the
+    // pass-level passive state. Exposed to the editor with the same names as before; the material
+    // is now the canonical owner instead of a nested RenderState.
+    CullingType cullMode        = CullingType::Back;
+    BlendFunction blendFunction = BlendFunction::NONE;
+    DrawType drawType           = DrawType::Triangle;
+    float alphaMaskTreshold     = 0.001f;
+    float lineWidth             = 1.0f;
 
+   private:
     /** Gpu representation of the material. */
     MaterialCacheItem m_materialCacheItem;
 
