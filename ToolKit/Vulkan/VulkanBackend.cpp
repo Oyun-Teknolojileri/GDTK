@@ -1190,132 +1190,110 @@ namespace ToolKit
 
   void VulkanBackend::ClearBuffer(GraphicBitFields fields, const Vec4& color)
   {
-    // vkCmdClearColorImage / vkCmdClearDepthStencilImage are only legal outside a render pass.
-    // The pass-scoped RP introduced in Stage 1 means the engine may call ClearBuffer mid-pass
-    // (ShadowPass clears depth between layer groups). Close the open RP first; the next Draw
-    // reopens with the LOAD variant so the just-cleared content isn't wiped again.
+    // Mid-pass clear via empty render pass: open the RP variant whose loadOps clear the
+    // requested fields, then immediately close. The GPU performs the clear at RP entry
+    // (free with HiZ/HiS / attachment compression on most desktop drivers) and leaves the
+    // attachment in its declared finalLayout. No barriers, no vkCmdClear*Image — replaces
+    // the legacy TRANSFER_DST dance which cost 2 barriers per attachment + a transfer-stage
+    // stall per call.
     if (!m_frameStarted || m_activePassFb == nullptr)
     {
       return;
     }
+    if (fields == GraphicBitFields::None)
+    {
+      return;
+    }
+
     VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer();
     if (cb == VK_NULL_HANDLE)
     {
       return;
     }
+
+    // Any previously-open RP must close before we open a different (CLEAR) variant — RPs
+    // can't be nested, and switching loadOps means switching VkRenderPass instances.
     CloseOffscreenRenderPassIfOpen(cb);
 
-    const uint32_t fieldBits = (uint32_t) fields;
-    const bool clearColor    = (fieldBits & (uint32_t) GraphicBitFields::ColorBits)   != 0;
-    const bool clearDepth    = (fieldBits & (uint32_t) GraphicBitFields::DepthBits)   != 0;
-    const bool clearStencil  = (fieldBits & (uint32_t) GraphicBitFields::StencilBits) != 0;
-
-    // ---- Color attachments ------------------------------------------------------------------
-    if (clearColor)
+    // Attachment view swap pending (SetColorAttachment / shadow atlas slot switch) — rebuild
+    // the VkFramebuffer with the latest views before opening any RP against it.
+    if (m_activePassFb->dirty)
     {
-      VkClearColorValue cv{};
-      cv.float32[0] = color.r;
-      cv.float32[1] = color.g;
-      cv.float32[2] = color.b;
-      cv.float32[3] = color.a;
-
-      for (int i = 0; i < VulkanFramebuffer::kMaxColorAttachments; ++i)
+      VkDevice device = m_context->GetDevice();
+      if (m_activePassFb->framebuffer != VK_NULL_HANDLE)
       {
-        auto& slot = m_activePassFb->colorAttachments[i];
-        if (slot.tex == nullptr || slot.tex->image == VK_NULL_HANDLE)
-        {
-          continue;
-        }
-
-        VkImageSubresourceRange range{};
-        range.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-        range.baseMipLevel   = slot.baseMipLevel;
-        range.levelCount     = 1;
-        range.baseArrayLayer = slot.baseArrayLayer;
-        range.layerCount     = slot.layerCount;
-
-        const bool isUndef = slot.tex->currentLayout == VK_IMAGE_LAYOUT_UNDEFINED;
-
-        VkImageMemoryBarrier b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
-        b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        b.image               = slot.tex->image;
-        b.subresourceRange    = range;
-        b.oldLayout           = slot.tex->currentLayout;
-        b.newLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-        b.srcAccessMask       = isUndef ? 0 : (VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
-        b.dstAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
-        vkCmdPipelineBarrier(cb,
-                             isUndef ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT
-                                     : (VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT),
-                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &b);
-
-        vkCmdClearColorImage(cb, slot.tex->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &cv, 1, &range);
-
-        b.oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-        b.newLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        b.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-        b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-        vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                             0, 0, nullptr, 0, nullptr, 1, &b);
-
-        slot.tex->currentLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        VkFramebuffer oldFb = m_activePassFb->framebuffer;
+        DeferDelete([device, oldFb]() { vkDestroyFramebuffer(device, oldFb, nullptr); });
+        m_activePassFb->framebuffer = VK_NULL_HANDLE;
       }
+      m_activePassFb->dirty = false;
     }
 
-    // ---- Depth/stencil attachment -----------------------------------------------------------
-    if ((clearDepth || clearStencil) && m_activePassFb->depthAttachment.tex != nullptr)
+    if (!EnsureRpForClearBits(m_activePassFb, fields))
     {
-      auto& slot = m_activePassFb->depthAttachment;
-      if (slot.tex->image == VK_NULL_HANDLE)
+      return;
+    }
+    if (m_activePassFb->framebuffer == VK_NULL_HANDLE)
+    {
+      if (!BuildOffscreenFramebuffer(m_activePassFb))
       {
         return;
       }
-
-      VkImageAspectFlags aspect = 0;
-      if (clearDepth   && (slot.tex->aspect & VK_IMAGE_ASPECT_DEPTH_BIT))   aspect |= VK_IMAGE_ASPECT_DEPTH_BIT;
-      if (clearStencil && (slot.tex->aspect & VK_IMAGE_ASPECT_STENCIL_BIT)) aspect |= VK_IMAGE_ASPECT_STENCIL_BIT;
-      if (aspect == 0)
-      {
-        return;
-      }
-
-      VkImageSubresourceRange range{};
-      range.aspectMask     = aspect;
-      range.baseMipLevel   = 0;
-      range.levelCount     = 1;
-      range.baseArrayLayer = 0;
-      range.layerCount     = slot.tex->arrayLayers;
-
-      const bool isUndef = slot.tex->currentLayout == VK_IMAGE_LAYOUT_UNDEFINED;
-
-      VkImageMemoryBarrier b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
-      b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-      b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-      b.image               = slot.tex->image;
-      b.subresourceRange    = range;
-      b.oldLayout           = slot.tex->currentLayout;
-      b.newLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-      b.srcAccessMask       = isUndef ? 0 : (VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
-      b.dstAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
-      vkCmdPipelineBarrier(cb,
-                           isUndef ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT
-                                   : (VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT),
-                           VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &b);
-
-      VkClearDepthStencilValue dsv{1.0f, 0};
-      vkCmdClearDepthStencilImage(cb, slot.tex->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &dsv, 1, &range);
-
-      b.oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-      b.newLayout     = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-      b.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-      b.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-      vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                           VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-                           0, 0, nullptr, 0, nullptr, 1, &b);
-
-      slot.tex->currentLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
     }
+
+    // clearValues are indexed by attachment order (color slots first, then depth) — same
+    // order as BuildRpVariant emits attachments. Vulkan ignores entries for LOAD attachments
+    // but the array length must cover the highest CLEAR'd attachment index.
+    std::vector<VkClearValue> clears;
+    clears.reserve(VulkanFramebuffer::kMaxColorAttachments + 1);
+    for (int i = 0; i < VulkanFramebuffer::kMaxColorAttachments; ++i)
+    {
+      if (m_activePassFb->colorAttachments[i].view != VK_NULL_HANDLE)
+      {
+        VkClearValue cv{};
+        cv.color = {{color.r, color.g, color.b, color.a}};
+        clears.push_back(cv);
+      }
+    }
+    if (m_activePassFb->depthAttachment.view != VK_NULL_HANDLE)
+    {
+      VkClearValue cv{};
+      cv.depthStencil = {1.0f, 0};
+      clears.push_back(cv);
+    }
+
+    VkRenderPassBeginInfo rpbi{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
+    rpbi.renderPass        = m_activePassFb->renderPass;
+    rpbi.framebuffer       = m_activePassFb->framebuffer;
+    rpbi.renderArea.offset = {0, 0};
+    rpbi.renderArea.extent = {m_activePassFb->width, m_activePassFb->height};
+    rpbi.clearValueCount   = (uint32_t) clears.size();
+    rpbi.pClearValues      = clears.empty() ? nullptr : clears.data();
+    vkCmdBeginRenderPass(cb, &rpbi, VK_SUBPASS_CONTENTS_INLINE);
+    // Empty subpass: no draws. The clear is the only work; it happens implicitly as the GPU
+    // transitions the attachment into COLOR_ATTACHMENT_OPTIMAL / DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+    // at RP entry (loadOp=CLEAR).
+    vkCmdEndRenderPass(cb);
+
+    // RP's finalLayout declarations parked every attachment back in its resting layout —
+    // mirror that on the tracked currentLayout fields so subsequent users see consistency.
+    for (int i = 0; i < VulkanFramebuffer::kMaxColorAttachments; ++i)
+    {
+      if (auto* tex = m_activePassFb->colorAttachments[i].tex)
+      {
+        tex->currentLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+      }
+    }
+    if (auto* tex = m_activePassFb->depthAttachment.tex)
+    {
+      tex->currentLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+    }
+
+    // Mask the just-cleared bits off any pending StartPass-driven clear so the next Draw's
+    // lazy-open doesn't redundantly clear what we just wrote. e.g. StartPass(AllBits) +
+    // ClearBuffer(ColorBits) → next Draw still clears Depth, doesn't reclear Color.
+    m_pendingPassDesc.clearBits =
+        (GraphicBitFields) ((int) m_pendingPassDesc.clearBits & ~(int) fields);
   }
 
   void VulkanBackend::ClearColorBuffer(const Vec4& color) { ClearBuffer(GraphicBitFields::ColorBits, color); }
