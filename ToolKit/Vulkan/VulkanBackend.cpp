@@ -585,13 +585,10 @@ namespace ToolKit
     }
 
     // SubmitPerDrawData is invoked from FeedUniforms which runs between BindPipeline and Draw.
-    // Offscreen render passes are opened/closed inside Draw() itself so m_rpActive is normally
-    // false at this point; defensively close one if the engine ever reorders that.
-    if (m_rpActive)
-    {
-      vkCmdEndRenderPass(cb);
-      m_rpActive = false;
-    }
+    // Under the lazy-open RP architecture an offscreen RP may already be active (FlushDescriptor
+    // is called with the RP open). Close it cleanly through the shared helper — the next Draw
+    // reopens with the LOAD variant so already-rendered content isn't lost.
+    CloseOffscreenRenderPassIfOpen(cb);
     // If the swapchain pass is currently open we can't safely flush: the swapchain render pass
     // declares VK_ATTACHMENT_LOAD_OP_CLEAR, so closing and reopening it would clear the image
     // and discard everything drawn so far this frame. Bail with a log; the draw that triggered
@@ -768,6 +765,39 @@ namespace ToolKit
       }
     }
     return BuildRpVariant(fbData, clearBits);
+  }
+
+  void VulkanBackend::CloseOffscreenRenderPassIfOpen(VkCommandBuffer cb)
+  {
+    if (!m_rpActive || m_activePassFb == nullptr || cb == VK_NULL_HANDLE)
+    {
+      return;
+    }
+    vkCmdEndRenderPass(cb);
+    // Layouts now match the RP's finalLayout declarations (SHADER_READ_ONLY for color,
+    // DEPTH_STENCIL_READ_ONLY for depth). This is the engine's "resting state" used as
+    // initialLayout for the next RP open.
+    for (int i = 0; i < VulkanFramebuffer::kMaxColorAttachments; ++i)
+    {
+      if (auto* tex = m_activePassFb->colorAttachments[i].tex)
+      {
+        tex->currentLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+      }
+    }
+    if (auto* tex = m_activePassFb->depthAttachment.tex)
+    {
+      tex->currentLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+    }
+    m_rpActive = false;
+
+    // Drain anything EnqueueGpuWork parked while the RP was open (lazy uploads triggered
+    // during FlushDescriptorState etc.). Now that we're past vkCmdEndRenderPass it's legal
+    // to record their barriers + copies into the same cb.
+    auto rpCleanups = m_context->FlushDuringRenderPassWork(cb);
+    for (std::function<void()>& cleanup : rpCleanups)
+    {
+      DeferDelete(std::move(cleanup));
+    }
   }
 
   bool VulkanBackend::BuildRpVariant(VulkanFramebuffer* fbData, GraphicBitFields clearBits)
@@ -1069,7 +1099,6 @@ namespace ToolKit
     // Pipeline binding is per-pass: a fresh BindPipeline is required after every FinishPass.
     m_pipelineBound = false;
     m_boundProgram  = nullptr;
-    m_rpActive      = false;
     // Per-draw state (perDraw UBO + dynamic offset) is consumed at draw time; reset so the next
     // pipeline binding starts clean. Texture / UBO slot bindings are NOT touched: engine code
     // (BloomPass / DoFPass) stages SetTexture *before* the next SetFramebuffer, and StartPass
@@ -1082,10 +1111,14 @@ namespace ToolKit
     m_shadow.dirty            = true;
     if (m_activePassFb != nullptr)
     {
-      // Offscreen RP instances are closed per-Draw; here we only reset pass tracking state.
+      // The offscreen RP now spans the entire pass (lazy-opened by the first Draw). Close +
+      // update layouts + drain via the shared helper.
+      VkCommandBuffer cb = m_swapchain ? m_swapchain->GetCurrentCommandBuffer() : VK_NULL_HANDLE;
+      CloseOffscreenRenderPassIfOpen(cb);
       m_activePassFb = nullptr;
       return;
     }
+    m_rpActive = false;
     // Swapchain pass was opened in StartPass and must be explicitly closed here.
     m_swapchain->EndSwapchainPass();
 
@@ -1158,8 +1191,10 @@ namespace ToolKit
   void VulkanBackend::ClearBuffer(GraphicBitFields fields, const Vec4& color)
   {
     // vkCmdClearColorImage / vkCmdClearDepthStencilImage are only legal outside a render pass.
-    // In our per-draw RP architecture RPs are only open inside Draw(), so this is always safe.
-    if (!m_frameStarted || m_activePassFb == nullptr || m_rpActive)
+    // The pass-scoped RP introduced in Stage 1 means the engine may call ClearBuffer mid-pass
+    // (ShadowPass clears depth between layer groups). Close the open RP first; the next Draw
+    // reopens with the LOAD variant so the just-cleared content isn't wiped again.
+    if (!m_frameStarted || m_activePassFb == nullptr)
     {
       return;
     }
@@ -1168,6 +1203,7 @@ namespace ToolKit
     {
       return;
     }
+    CloseOffscreenRenderPassIfOpen(cb);
 
     const uint32_t fieldBits = (uint32_t) fields;
     const bool clearColor    = (fieldBits & (uint32_t) GraphicBitFields::ColorBits)   != 0;
@@ -1519,59 +1555,52 @@ namespace ToolKit
       return;
     }
 
-    // ---- Begin render pass instance (offscreen only) -------------------------------------
-    // For offscreen passes the RP instance is opened here and closed after the draw call so
-    // begin/end tightly bracket each set of draw commands. The swapchain pass is opened in
-    // StartPass (so ImGui can record directly) and closed in FinishPass.
-    if (m_activePassFb != nullptr)
+    // ---- Lazy open of the offscreen render pass --------------------------------------------
+    // Modern engine pattern: one BeginRenderPass per logical pass, not per draw. StartPass
+    // prepares state but doesn't issue BeginRenderPass — first Draw inside the pass opens it,
+    // subsequent Draws reuse the open RP, and FinishPass closes it. Mid-pass operations that
+    // need the RP closed (ClearBuffer, attachment swaps that bump dirty, FlushAndResetRing)
+    // close it defensively; the next Draw reopens via this same path. After the first open
+    // clearBits is consumed → reopened RPs use the LOAD variant so already-rendered content
+    // isn't wiped.
+
+    // Attachment swap mid-pass (SetColorAttachment → dirty=true). VkFramebuffer is bound to
+    // the RP instance at BeginRenderPass time and can't be swapped while open — close first,
+    // the lazy-open block below rebuilds the FB and reopens with the LOAD variant.
+    if (m_activePassFb != nullptr && m_activePassFb->dirty && m_rpActive)
     {
-      // If SetColorAttachment was called after StartPass (e.g. shadow atlas layer switch),
-      // the attachment view changed but the VkFramebuffer still points to the old layer.
-      // Rebuild only the VkFramebuffer — the VkRenderPass is format-stable so the pipeline
-      // cache key (pdesc.renderPass) stays valid and no pipeline thrash occurs.
-      if (m_activePassFb->dirty && m_activePassFb->renderPass != VK_NULL_HANDLE)
+      CloseOffscreenRenderPassIfOpen(cb);
+    }
+    if (m_activePassFb != nullptr && !m_rpActive)
+    {
+      // Attachment view swap (e.g. shadow atlas layer switch) bumped dirty. The format-stable
+      // case: rebuild only the VkFramebuffer; the cached RP variants stay valid.
+      if (m_activePassFb->dirty)
       {
         VkDevice device = m_context->GetDevice();
-
         if (m_activePassFb->framebuffer != VK_NULL_HANDLE)
         {
           VkFramebuffer old = m_activePassFb->framebuffer;
           DeferDelete([device, old]() { vkDestroyFramebuffer(device, old, nullptr); });
           m_activePassFb->framebuffer = VK_NULL_HANDLE;
         }
-
-        std::vector<VkImageView> fbViews;
-        fbViews.reserve(VulkanFramebuffer::kMaxColorAttachments + 1);
-        for (int i = 0; i < VulkanFramebuffer::kMaxColorAttachments; ++i)
+        if (!BuildOffscreenFramebuffer(m_activePassFb))
         {
-          if (m_activePassFb->colorAttachments[i].view != VK_NULL_HANDLE)
-          {
-            fbViews.push_back(m_activePassFb->colorAttachments[i].view);
-          }
-        }
-        if (m_activePassFb->depthAttachment.view != VK_NULL_HANDLE)
-        {
-          fbViews.push_back(m_activePassFb->depthAttachment.view);
-        }
-
-        VkFramebufferCreateInfo fbci{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
-        fbci.renderPass      = m_activePassFb->renderPass;
-        fbci.attachmentCount = (uint32_t) fbViews.size();
-        fbci.pAttachments    = fbViews.data();
-        fbci.width           = m_activePassFb->width;
-        fbci.height          = m_activePassFb->height;
-        fbci.layers          = 1;
-
-        VkFramebuffer newFb = VK_NULL_HANDLE;
-        if (vkCreateFramebuffer(device, &fbci, nullptr, &newFb) != VK_SUCCESS)
-        {
-          TK_ERR("Draw: vkCreateFramebuffer rebuild failed (dirty attachment)");
           return;
         }
-
-        m_activePassFb->framebuffer = newFb;
-        m_activePassFb->dirty       = false;
+        m_activePassFb->dirty = false;
       }
+
+      // Pick the RP variant matching the pass's current clearBits. After the first open this
+      // is None (set below), so reopens use LOAD_OP_LOAD across the board.
+      if (!EnsureRpForClearBits(m_activePassFb, m_pendingPassDesc.clearBits))
+      {
+        return;
+      }
+      // Pipeline cache key embeds the active VkRenderPass — refresh it now that we know which
+      // variant we're opening. Identical recipes still hit the cache because clearBits-driven
+      // variants share format/sample-count compatibility with previously cached pipelines.
+      pdesc.renderPass = m_activePassFb->renderPass;
 
       std::vector<VkClearValue> clears;
       clears.reserve(VulkanFramebuffer::kMaxColorAttachments + 1);
@@ -1602,11 +1631,19 @@ namespace ToolKit
       rpbi.clearValueCount   = (uint32_t) clears.size();
       rpbi.pClearValues      = clears.empty() ? nullptr : clears.data();
       vkCmdBeginRenderPass(cb, &rpbi, VK_SUBPASS_CONTENTS_INLINE);
-
-      // Viewport and scissor were set in StartPass (default: full framebuffer) and may have
-      // been overridden by SetViewportRect before this Draw (e.g. shadow slot viewport).
-      // Do NOT reset them here — that would silently undo per-slot viewports.
       m_rpActive = true;
+
+      // First open consumed any clear. Subsequent reopens within this pass must preserve
+      // already-drawn content — switch to the LOAD variant.
+      m_pendingPassDesc.clearBits = GraphicBitFields::None;
+
+      // Re-pick the pipeline using the now-current renderPass handle. This is a near-certain
+      // cache hit (compatibility group is unchanged), the lookup is cheap.
+      pipe = m_pipelineCache->GetOrCreate(m_context.get(), m_boundProgram->pipelineLayout, pdesc);
+      if (pipe == VK_NULL_HANDLE)
+      {
+        return;
+      }
     }
 
     vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe);
@@ -1619,16 +1656,11 @@ namespace ToolKit
     if (flushedSet == VK_NULL_HANDLE)
     {
       // Descriptor allocation failed (pool exhausted, or no shadow state was bindable). The
-      // pipeline is already bound and the RP already opened; issuing vkCmdDraw without a
-      // descriptor set 0 leaves the driver dereferencing an unbound binding and crashes
-      // (observed as a NULL access violation inside nvoglv64.dll mid-vkCmdDraw). Close the
-      // RP cleanly and bail — the draw is dropped, but the cmd buffer remains valid for
-      // subsequent passes. Pool exhaustion already logged inside AllocateFrameDescriptorSet.
-      if (m_activePassFb != nullptr)
-      {
-        vkCmdEndRenderPass(cb);
-        m_rpActive = false;
-      }
+      // pipeline is already bound and the RP is open; issuing vkCmdDraw without a descriptor
+      // set 0 leaves the driver dereferencing an unbound binding and crashes (observed as a
+      // NULL access violation inside nvoglv64.dll mid-vkCmdDraw). Drop the draw — FinishPass
+      // will close the RP cleanly. Pool exhaustion is already logged inside
+      // AllocateFrameDescriptorSet.
       return;
     }
     const uint32_t dyn = m_currentDynamicOffset;
@@ -1657,33 +1689,8 @@ namespace ToolKit
       vkCmdDraw(cb, desc.elementCount, desc.instanceCount, 0, 0);
     }
 
-    // ---- End render pass instance (offscreen only) ----------------------------------------
-    if (m_activePassFb != nullptr)
-    {
-      vkCmdEndRenderPass(cb);
-      // Update cached image layouts to match the render pass's final layout declarations.
-      for (int i = 0; i < VulkanFramebuffer::kMaxColorAttachments; ++i)
-      {
-        if (auto* tex = m_activePassFb->colorAttachments[i].tex)
-        {
-          tex->currentLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        }
-      }
-      if (auto* tex = m_activePassFb->depthAttachment.tex)
-      {
-        tex->currentLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-      }
-      m_rpActive = false;
-
-      // Drain anything EnqueueGpuWork parked while this RP was open (lazy uploads triggered
-      // during FlushDescriptorState etc.). Now that we're past vkCmdEndRenderPass it's legal
-      // to record their barriers + copies into the same cb, ahead of the next Draw.
-      auto rpCleanups = m_context->FlushDuringRenderPassWork(cb);
-      for (std::function<void()>& cleanup : rpCleanups)
-      {
-        DeferDelete(std::move(cleanup));
-      }
-    }
+    // RP stays open across multiple Draws inside the same pass — the close + layout-update +
+    // during-RP-work drain now happen in FinishPass.
   }
 
   // Wraps the source + destination color attachments in pre + post layout barriers â€” both end
@@ -1834,13 +1841,13 @@ namespace ToolKit
     {
       return;
     }
-    if (m_rpActive)
+    // Spec forbids vkCmdBlitImage / vkCmdResolveImage inside a render pass instance. Under the
+    // pass-scoped RP model the engine calls ResolveFramebuffer mid-pass (e.g. ForwardPass
+    // PostRender resolves MSAA before FinishPass closes the pass). Close the RP first; the
+    // pass has no more draws, so no LOAD-variant reopen happens — FinishPass picks up.
+    if (VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer(); cb != VK_NULL_HANDLE)
     {
-      // Spec forbids vkCmdBlitImage / vkCmdResolveImage inside a render pass instance. Engine
-      // code calls this between passes (after FinishPass) so this guard is purely defensive
-      // log so a misuse surfaces during development.
-      TK_ERR("ResolveFramebuffer called inside an active render pass â€” skipped");
-      return;
+      CloseOffscreenRenderPassIfOpen(cb);
     }
     if (src == nullptr || dst == nullptr)
     {
@@ -1937,10 +1944,9 @@ namespace ToolKit
     {
       return;
     }
-    if (m_rpActive)
+    if (VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer(); cb != VK_NULL_HANDLE)
     {
-      TK_ERR("CopyFramebuffer called inside an active render pass — skipped");
-      return;
+      CloseOffscreenRenderPassIfOpen(cb);
     }
     if (src == nullptr)
     {
@@ -2964,7 +2970,19 @@ namespace ToolKit
              (uint64) (gpu != nullptr ? gpu->buffer.size : 0));
       return;
     }
-    // HOST_COHERENT memory â€” write becomes visible to the device on the next vkQueueSubmit
+
+    // Slot 6 (per-draw UBO) is delivered via the ring-buffer + dynamic-offset path inside
+    // SubmitPerDrawData — the descriptor set points at the ring buffer, not at this UBO's
+    // VkBuffer. Renderer::FeedUniforms still calls perDrawBuffer.Map() to keep GL happy (GL
+    // reads the static UBO), but on Vulkan this would otherwise emit one vkCmdUpdateBuffer +
+    // 2 barriers per draw call into a buffer that no shader ever reads. Early-out here, then
+    // SubmitPerDrawData (just below in the Renderer call sequence) handles the real upload.
+    if (ub->m_slot == 6)
+    {
+      return;
+    }
+
+    // HOST_COHERENT memory — write becomes visible to the device on the next vkQueueSubmit
     // without an explicit vkFlushMappedMemoryRanges call.
     // Check if we are actively recording a frame.
     VkCommandBuffer cb = VK_NULL_HANDLE;
@@ -2974,10 +2992,16 @@ namespace ToolKit
     }
 
     // vkCmdUpdateBuffer and vkCmdPipelineBarrier (without self-dependency) are illegal inside
-    // a render pass instance. If any pass is currently recording, fall through to the memcpy
-    // path — HOST_COHERENT mapped memory is visible to the GPU on the next queue submission
-    // without any explicit flush, so the data is guaranteed to arrive before the draw.
-    const bool insideRenderPass = m_rpActive || (m_swapchain && m_swapchain->IsSwapchainPassActive());
+    // a render pass instance. For offscreen RPs (pass-scoped lazy-open), close the RP cleanly
+    // through the shared helper — the next Draw reopens with the LOAD variant so already-
+    // rendered content is preserved. For the swapchain pass (LOAD_OP_CLEAR-based) we can't
+    // safely close+reopen, fall back to memcpy-only and accept the rare multi-update hazard
+    // (no current swapchain-pass code does multi-update of the same UBO).
+    if (cb != VK_NULL_HANDLE && m_activePassFb != nullptr && m_rpActive)
+    {
+      CloseOffscreenRenderPassIfOpen(cb);
+    }
+    const bool insideRenderPass = m_swapchain && m_swapchain->IsSwapchainPassActive();
 
     if (cb != VK_NULL_HANDLE && !insideRenderPass)
     {

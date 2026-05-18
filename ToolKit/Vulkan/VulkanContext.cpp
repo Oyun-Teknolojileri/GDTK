@@ -267,9 +267,20 @@ namespace ToolKit
 
     std::vector<const char*> extensions = requiredExtensions;
     bool validationFeaturesSupported   = false;
-    if (m_validationEnabled)
+
+    // VK_EXT_debug_utils is enabled unconditionally when available. It provides
+    // vkCmdBegin/EndDebugUtilsLabelEXT for command-buffer markers — RenderDoc / NSight / PIX
+    // surface these as named scopes regardless of build mode. The extension is essentially
+    // free at runtime when no capture tool is attached; the cost lives entirely in the capture
+    // path. Previously this was gated on m_validationEnabled, so release builds had no markers
+    // in profilers — fixed now.
+    if (InstanceExtensionAvailable(VK_EXT_DEBUG_UTILS_EXTENSION_NAME))
     {
       extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    }
+
+    if (m_validationEnabled)
+    {
       if (InstanceExtensionAvailable(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME))
       {
         extensions.push_back(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME);

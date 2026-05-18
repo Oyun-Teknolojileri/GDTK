@@ -342,6 +342,13 @@ namespace ToolKit
         a new variant. Sets fbData->renderPass to the matching/new RP. Returns false if a
         build was needed and failed. */
     bool EnsureRpForClearBits(struct VulkanFramebuffer* fbData, GraphicBitFields clearBits);
+
+    /** If an offscreen render pass is currently open, issues vkCmdEndRenderPass on @p cb,
+        updates tracked attachment layouts to match the RP's finalLayout declarations, and
+        drains any EnqueueGpuWork parked while the RP was open. Used by FinishPass, Draw
+        (mid-pass attachment swap), ClearBuffer (out-of-RP clear), and FlushAndResetRing
+        (per-draw ring overflow flush) to break out of the lazy-opened RP cleanly. */
+    void CloseOffscreenRenderPassIfOpen(VkCommandBuffer cb);
   };
 
   /** Factory function called by RenderSystem::CreateBackend(). */
