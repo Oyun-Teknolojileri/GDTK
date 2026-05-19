@@ -237,6 +237,15 @@ namespace ToolKit
     };
     std::array<std::vector<DescriptorCacheEntry>, 2> m_descriptorCache{}; // sized to FRAMES_IN_FLIGHT
 
+    /** Single-slot MRU shortcut for FlushDescriptorState. Material-sorted scenes draw N
+        consecutive jobs that share the same material + lights + IBL → same resolved binding
+        tuple → same descriptor set. The cache walk + hash + resource resolution are all dead
+        work for those draws. Skipping them when m_shadow.dirty is false and the program hasn't
+        changed turns the inner loop into a single pointer return. Invalidated at frame/pass
+        boundaries and whenever any genuine binding change touches m_shadow. */
+    VkDescriptorSet m_lastFlushedSet         = VK_NULL_HANDLE;
+    struct VulkanGpuProgram* m_lastFlushedProgram = nullptr;
+
     // Timer query state. Mirrors GLBackend's single-cycle gating: one in-flight query at a time.
     // The pool holds 2 timestamps (start, end); a fresh cycle resets the pool and writes start at
     // PreRender of the first render path, then end at PostRender. The result is polled in

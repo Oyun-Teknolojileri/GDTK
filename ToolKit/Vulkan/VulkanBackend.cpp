@@ -543,6 +543,10 @@ namespace ToolKit
     // SetTexture overwrites the slot). BindPipeline / FinishPass deliberately only reset per-draw
     // state; the full sweep belongs here.
     m_shadow.Reset();
+    // Per-frame descriptor pool was just reset (or about to be); the last-flushed handle from
+    // last frame is now invalid. Clear so the fast path doesn't return a dangling set.
+    m_lastFlushedSet     = VK_NULL_HANDLE;
+    m_lastFlushedProgram = nullptr;
 
     // Drain any GPU work queued via EnqueueGpuWork while no frame was active (init-time texture
     // uploads, layout transitions, mip generation) into this frame's command buffer. The
@@ -617,6 +621,11 @@ namespace ToolKit
     {
       m_descriptorCache[frameIdx].clear();
     }
+    // The last-flushed shortcut points at a set we just released — invalidate so the next Draw
+    // takes the slow path and produces a fresh allocation.
+    m_lastFlushedSet     = VK_NULL_HANDLE;
+    m_lastFlushedProgram = nullptr;
+    m_shadow.dirty       = true;
 
     // Ring drained; reuse from the start.
     m_context->ResetPerDrawUboRing();
@@ -1109,6 +1118,10 @@ namespace ToolKit
     m_shadow.perDrawSubmitted = false;
     m_shadow.perDrawSize      = 0;
     m_shadow.dirty            = true;
+    // Pass boundary — next pass may use a different program, different render pass, different
+    // attachments. Drop the MRU shortcut so the next Draw's FlushDescriptorState resolves fresh.
+    m_lastFlushedSet          = VK_NULL_HANDLE;
+    m_lastFlushedProgram      = nullptr;
     if (m_activePassFb != nullptr)
     {
       // The offscreen RP now spans the entire pass (lazy-opened by the first Draw). Close +
@@ -1318,24 +1331,27 @@ namespace ToolKit
     // pipeline desc requires the vertex layout (Mesh vs SkinMesh), which only arrives with
     // DrawDesc. Caching avoids allocating per-draw and lets a single BindPipeline serve N
     // consecutive draws with different meshes.
+    const bool programChanged = (m_boundProgram != gp);
     m_boundProgram  = gp;
     m_boundState    = *state;
     m_pipelineBound = true;
 
-    // Per-draw dynamic UBO contract (binding 6 → vulkan binding 38): perDrawSize is consumed by
-    // FlushDescriptorState and must be re-submitted before the next Draw. Resetting it here
-    // mirrors the GL backend's per-pipeline-bind invariant for the per-draw UBO and lets the
-    // FlushDescriptorState perDrawSize==0 check catch a missing SubmitPerDrawData. Texture /
-    // UBO bindings are NOT reset: GL keeps texture state sticky across program changes and
-    // engine code (BloomPass / DoFPass) stages SetTexture *before* the RenderSubPass that
-    // triggers BindPipeline internally. A blanket reset here used to drop those slots silently
-    // — FlushDescriptorState then fell back to the dummy texture (BloomPass ping-pong looked
-    // black/dummy). BeginFrame / FinishPass still issue a full Reset so cross-pass leaks can't
-    // accumulate.
+    // Per-draw dynamic UBO contract: SubmitPerDrawData supplies the offset for each draw. The
+    // perDrawSize used in the descriptor write is constant per shader (sizeof(PerDrawUboLayout))
+    // so we don't need to clear it here — keeping it stable lets the FlushDescriptorState fast
+    // path hit across consecutive same-pipeline draws. perDrawSubmitted is still cleared so the
+    // contract "every Draw must be preceded by a SubmitPerDrawData" stays enforceable.
     m_currentDynamicOffset    = 0;
     m_shadow.perDrawSubmitted = false;
-    m_shadow.perDrawSize      = 0;
-    m_shadow.dirty            = true;
+
+    // Only invalidate the descriptor-set cache when the *program* changed. Same program +
+    // unchanged textures/UBOs = same resolved descriptor set → reuse without re-resolution.
+    if (programChanged)
+    {
+      m_shadow.dirty       = true;
+      m_lastFlushedSet     = VK_NULL_HANDLE;
+      m_lastFlushedProgram = nullptr;
+    }
   }
 
   void VulkanBackend::SubmitPerDrawData(const void* data, size_t size)
@@ -1377,10 +1393,19 @@ namespace ToolKit
     // Phase 2: descriptor write deferred to FlushDescriptorState. Just record offset + size in
     // shadow state so the upcoming Draw can issue a UNIFORM_BUFFER_DYNAMIC write with the right
     // range and bind dynamicOffsets[0] = m_currentDynamicOffset.
+    //
+    // The dynamic offset travels through vkCmdBindDescriptorSets at draw time, NOT through the
+    // descriptor write — so the descriptor set itself only changes when the *range* field
+    // (perDrawSize) changes. Same shader → same PerDrawUboLayout size → no descriptor change,
+    // keep the fast-path eligible.
+    const uint64_t newSize = (uint64_t) size;
+    if (m_shadow.perDrawSize != newSize)
+    {
+      m_shadow.perDrawSize = newSize;
+      m_shadow.dirty       = true;
+    }
     m_currentDynamicOffset    = (uint32_t) offset;
     m_shadow.perDrawSubmitted = true;
-    m_shadow.perDrawSize      = (uint64_t) size;
-    m_shadow.dirty            = true;
   }
 
   void VulkanBackend::BindTexture(ubyte slot, TexturePtr tex)
@@ -1395,8 +1420,14 @@ namespace ToolKit
              (unsigned) VulkanBindings::kTextureBindingCount);
       return;
     }
-    m_shadow.boundTextures[slot] = tex;
-    m_shadow.dirty               = true;
+    // Only dirty if the bound value actually changed — material-sorted scenes call BindTexture
+    // with the same TexturePtr repeatedly; redundant dirty kills the FlushDescriptorState fast
+    // path. shared_ptr comparison is a control-block pointer check, cheap.
+    if (m_shadow.boundTextures[slot] != tex)
+    {
+      m_shadow.boundTextures[slot] = tex;
+      m_shadow.dirty               = true;
+    }
   }
 
   void VulkanBackend::BindUniformBuffer(const String& name, UniformBuffer* ub)
@@ -1410,8 +1441,12 @@ namespace ToolKit
     {
       return;
     }
-    m_shadow.boundUniforms[ub->m_slot] = ub;
-    m_shadow.dirty                     = true;
+    auto it = m_shadow.boundUniforms.find(ub->m_slot);
+    if (it == m_shadow.boundUniforms.end() || it->second != ub)
+    {
+      m_shadow.boundUniforms[ub->m_slot] = ub;
+      m_shadow.dirty                     = true;
+    }
   }
 
   // Fills the vertex-input portion of @p out (vertexStride + attributes + attributeCount) for
@@ -3037,6 +3072,20 @@ namespace ToolKit
       return VK_NULL_HANDLE;
     }
 
+    // ---- 0. Same-state fast path ------------------------------------------------------------
+    // BindPipeline + BindTexture + BindUniformBuffer + SubmitPerDrawData only dirty the shadow
+    // when a *value* changed; material-sorted scenes hand us N consecutive draws with the same
+    // program, same material textures, same UBO handles, same perDrawSize. For those the
+    // resolved descriptor set is identical — return the previous one without re-walking
+    // resources, recomputing the hash, or touching the cache. The dynamic offset for the
+    // per-draw UBO travels through vkCmdBindDescriptorSets at the call site, so reusing the
+    // set is safe even though m_currentDynamicOffset changes per draw.
+    if (!m_shadow.dirty && m_lastFlushedSet != VK_NULL_HANDLE &&
+        m_lastFlushedProgram == m_boundProgram)
+    {
+      return m_lastFlushedSet;
+    }
+
     // ---- 1. Resolve declared resources to native handles ------------------------------------
     struct Resolved
     {
@@ -3201,6 +3250,9 @@ namespace ToolKit
     {
       if (e.hash == hash)
       {
+        m_shadow.dirty       = false;
+        m_lastFlushedSet     = e.set;
+        m_lastFlushedProgram = m_boundProgram;
         return e.set;
       }
     }
@@ -3270,6 +3322,9 @@ namespace ToolKit
     }
 
     cache.push_back({hash, set});
+    m_shadow.dirty       = false;
+    m_lastFlushedSet     = set;
+    m_lastFlushedProgram = m_boundProgram;
     return set;
   }
 
