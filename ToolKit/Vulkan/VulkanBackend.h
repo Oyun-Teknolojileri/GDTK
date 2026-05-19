@@ -193,15 +193,20 @@ namespace ToolKit
         SubmitPerDrawData calls between BindPipeline and Draw. FlushDescriptorState (called from
         Draw) consumes this to allocate-or-reuse a descriptor set via the cache. Reset on
         BindPipeline so each pipeline binding starts from a clean slate. */
+    /** UBO slot count for fixed-array indexing. GL UBO slots span 3..10; 16 covers them with
+        headroom and keeps the per-Draw walk in tight cache-friendly fixed-size memory instead of
+        std::unordered_map node chasing. */
+    static constexpr int kMaxUboSlots = 16;
+
     struct ShadowState
     {
       /** TexturePtr per binding slot. nullptr = unbound (filled with dummy at flush time). */
       std::array<TexturePtr, VulkanBindings::kTextureBindingCount> boundTextures{};
 
-      /** UBO bindings keyed by GL slot. Engine code currently routes UBOs through
-          UpdateUniformBuffer (slot-keyed), so we mirror that key for now; named binding via
-          BindUniformBuffer overrides whatever the slot map holds. */
-      std::unordered_map<int, UniformBuffer*> boundUniforms;
+      /** UBO bindings indexed by GL slot. Replaces an unordered_map<int, UniformBuffer*> that
+          showed up hot in profiles — Draw walks the shader's declared UBO resources and looks
+          them up by slot, and a flat array kills the hash + node chase entirely. */
+      std::array<UniformBuffer*, kMaxUboSlots> boundUniforms{};
 
       /** True after SubmitPerDrawData has appended to the per-draw ring this draw cycle. */
       bool perDrawSubmitted = false;
@@ -219,7 +224,10 @@ namespace ToolKit
         {
           t.reset();
         }
-        boundUniforms.clear();
+        for (UniformBuffer*& u : boundUniforms)
+        {
+          u = nullptr;
+        }
         perDrawSubmitted = false;
         perDrawSize      = 0;
         dirty            = false;
@@ -266,12 +274,14 @@ namespace ToolKit
         possible (no pipeline / no swapchain / pool exhausted). */
     VkDescriptorSet FlushDescriptorState();
 
-    /** Registry of global (non-per-draw) UBO VkBuffer handles, keyed by GL slot.
-        Populated by UpdateUniformBuffer for every slot != 6 (the per-draw dynamic slot).
-        FlushDescriptorState reads this as the fallback UBO source when the shader's declared
-        UBO slot is not overridden by an explicit BindUniformBuffer call. */
+    /** Registry of global (non-per-draw) UBO VkBuffer handles, indexed by GL slot. Populated by
+        UpdateUniformBuffer for every slot != 6 (the per-draw dynamic slot). FlushDescriptorState
+        reads this as the fallback UBO source when the shader's declared UBO slot is not
+        overridden by an explicit BindUniformBuffer call. Flat array (was unordered_map) — same
+        rationale as boundUniforms above: hot in the per-Draw walk, hash + node chase is dead
+        weight when slot is already a small integer. handle == VK_NULL_HANDLE means "unregistered". */
     struct GlobalUboEntry { VkBuffer handle = VK_NULL_HANDLE; uint64_t size = 0; };
-    std::unordered_map<int, GlobalUboEntry> m_globalUboRegistry; // GL slot -> entry
+    std::array<GlobalUboEntry, kMaxUboSlots> m_globalUboRegistry{};
 
     /** Dummy texture initialized in InitBackend to fill unused texture slots in descriptor sets. */
     std::shared_ptr<struct VulkanTexture> m_dummyTexture;

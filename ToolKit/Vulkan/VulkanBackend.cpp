@@ -147,7 +147,10 @@ namespace ToolKit
     // on a destroyed allocator (the VMA_ASSERT_LEAK fires here because VMA sees outstanding
     // allocations when its allocator is freed).
     m_shadow.Reset();
-    m_globalUboRegistry.clear();
+    for (auto& entry : m_globalUboRegistry)
+    {
+      entry = {};
+    }
     for (auto& bucket : m_descriptorCache)
     {
       bucket.clear();
@@ -1437,15 +1440,15 @@ namespace ToolKit
     // future named lookups but unused here; engine code can still rely on the slot path
     // populated by UpdateUniformBuffer / m_globalUboRegistry as a fallback in flush.
     (void) name;
-    if (ub == nullptr || ub->m_slot < 0)
+    if (ub == nullptr || ub->m_slot < 0 || ub->m_slot >= kMaxUboSlots)
     {
       return;
     }
-    auto it = m_shadow.boundUniforms.find(ub->m_slot);
-    if (it == m_shadow.boundUniforms.end() || it->second != ub)
+    UniformBuffer*& slot = m_shadow.boundUniforms[ub->m_slot];
+    if (slot != ub)
     {
-      m_shadow.boundUniforms[ub->m_slot] = ub;
-      m_shadow.dirty                     = true;
+      slot           = ub;
+      m_shadow.dirty = true;
     }
   }
 
@@ -3047,9 +3050,18 @@ namespace ToolKit
     // Slot 6 = per-draw dynamic UBO (ring buffer path); all other slots are static global UBOs
     // (Camera, GraphicConsts, DirectionalLight, etc.) that must be written into every new set.
     const int slot = ub->m_slot;
-    if (slot >= 0 && slot != 6)
+    if (slot >= 0 && slot != 6 && slot < kMaxUboSlots)
     {
-      m_globalUboRegistry[slot] = {gpu->buffer.handle, gpu->buffer.size};
+      GlobalUboEntry& entry = m_globalUboRegistry[slot];
+      // Same-handle assignment is a no-op for the descriptor set state; only mark dirty when
+      // the handle actually changed so the FlushDescriptorState fast path keeps hitting across
+      // multi-frame static-buffer updates.
+      if (entry.handle != gpu->buffer.handle || entry.size != gpu->buffer.size)
+      {
+        entry.handle   = gpu->buffer.handle;
+        entry.size     = gpu->buffer.size;
+        m_shadow.dirty = true;
+      }
     }
   }
 
@@ -3063,14 +3075,10 @@ namespace ToolKit
   // the same material no longer trigger fresh allocations.
   VkDescriptorSet VulkanBackend::FlushDescriptorState()
   {
-    if (m_swapchain == nullptr || !m_swapchain->IsFrameActive())
-    {
-      return VK_NULL_HANDLE;
-    }
-    if (m_boundProgram == nullptr || m_boundProgram->pipelineLayout == VK_NULL_HANDLE)
-    {
-      return VK_NULL_HANDLE;
-    }
+    // Sole caller is Draw, which already gated on m_swapchain + IsFrameActive + m_pipelineBound +
+    // m_boundProgram. CreateGpuProgram guarantees pipelineLayout != VK_NULL_HANDLE whenever
+    // m_boundProgram is non-null. Skipping the re-checks here removes ~4 cache-miss branches per
+    // Draw on the hot path.
 
     // ---- 0. Same-state fast path ------------------------------------------------------------
     // BindPipeline + BindTexture + BindUniformBuffer + SubmitPerDrawData only dirty the shadow
@@ -3113,42 +3121,27 @@ namespace ToolKit
         }
         r.binding = VulkanBindings::kTextureBindingBase + (uint32_t) res.slot;
 
+        // Texture path. CreateTexture invariant: if tex->m_gpuData is non-null its view +
+        // sampler are valid. The double-checks on vt/view/sampler were defensive duplication.
         const TexturePtr& tex = m_shadow.boundTextures[res.slot];
         if (tex && tex->m_gpuData)
         {
-          auto* vt = static_cast<VulkanTexture*>(tex->m_gpuData.get());
-          if (vt != nullptr && vt->view != VK_NULL_HANDLE && vt->sampler != VK_NULL_HANDLE)
-          {
-            r.view    = vt->view;
-            r.sampler = vt->sampler;
-          }
+          auto* vt  = static_cast<VulkanTexture*>(tex->m_gpuData.get());
+          r.view    = vt->view;
+          r.sampler = vt->sampler;
         }
-        // Fallback: declared-but-unbound texture slots get the dummy so a shader access into
-        // a slot the engine forgot to bind doesn't trip validation.
-        if (r.view == VK_NULL_HANDLE)
+        else
         {
-          bool isCube    = (res.viewType == ShaderResource::ViewType::TexCube);
-          bool is2DArray = (res.viewType == ShaderResource::ViewType::Tex2DArray);
-
-          if (isCube && m_dummyCubeTexture && m_dummyCubeTexture->view != VK_NULL_HANDLE)
-          {
-            r.view    = m_dummyCubeTexture->view;
-            r.sampler = m_dummyCubeTexture->sampler;
-          }
-          else if (is2DArray && m_dummy2DArrayTexture && m_dummy2DArrayTexture->view != VK_NULL_HANDLE)
-          {
-            r.view    = m_dummy2DArrayTexture->view;
-            r.sampler = m_dummy2DArrayTexture->sampler;
-          }
-          else if (m_dummyTexture && m_dummyTexture->view != VK_NULL_HANDLE)
-          {
-            r.view    = m_dummyTexture->view;
-            r.sampler = m_dummyTexture->sampler;
-          }
-        }
-        if (r.view == VK_NULL_HANDLE)
-        {
-          continue; // No way to satisfy this binding; skip rather than write garbage.
+          // Declared-but-unbound slot — dummy fallback. m_dummyTexture / m_dummyCubeTexture /
+          // m_dummy2DArrayTexture are created at InitBackend and live until backend dtor; their
+          // view/sampler are valid by construction. Just pick the one matching the shader's
+          // declared ViewType.
+          const VulkanTexture* dummy =
+              (res.viewType == ShaderResource::ViewType::TexCube)    ? m_dummyCubeTexture.get() :
+              (res.viewType == ShaderResource::ViewType::Tex2DArray) ? m_dummy2DArrayTexture.get() :
+                                                                       m_dummyTexture.get();
+          r.view    = dummy->view;
+          r.sampler = dummy->sampler;
         }
       }
       else // UniformBuffer
@@ -3178,17 +3171,17 @@ namespace ToolKit
         }
         else
         {
-          if (res.slot < 0)
+          if (res.slot < 0 || res.slot >= kMaxUboSlots)
           {
             continue;
           }
           r.binding = VulkanBindings::UboBindingFor((uint32_t) res.slot);
 
-          // BindUniformBuffer override wins over the global registry.
-          auto it = m_shadow.boundUniforms.find(res.slot);
-          if (it != m_shadow.boundUniforms.end() && it->second != nullptr && it->second->m_gpuData != nullptr)
+          // BindUniformBuffer override wins over the global registry. Array access — no hash,
+          // no node chase. Slot range was bounds-checked above.
+          if (UniformBuffer* override = m_shadow.boundUniforms[res.slot])
           {
-            auto* gpu = static_cast<VulkanUniformBuffer*>(it->second->m_gpuData.get());
+            auto* gpu = static_cast<VulkanUniformBuffer*>(override->m_gpuData.get());
             if (gpu != nullptr)
             {
               r.buffer     = gpu->buffer.handle;
@@ -3197,11 +3190,11 @@ namespace ToolKit
           }
           if (r.buffer == VK_NULL_HANDLE)
           {
-            auto git = m_globalUboRegistry.find(res.slot);
-            if (git != m_globalUboRegistry.end())
+            const GlobalUboEntry& entry = m_globalUboRegistry[res.slot];
+            if (entry.handle != VK_NULL_HANDLE)
             {
-              r.buffer     = git->second.handle;
-              r.bufferSize = git->second.size;
+              r.buffer     = entry.handle;
+              r.bufferSize = entry.size;
             }
           }
           if (r.buffer == VK_NULL_HANDLE)
