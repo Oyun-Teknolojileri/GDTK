@@ -107,11 +107,20 @@ namespace ToolKit
     }
 
     VkDevice device = context->GetDevice();
-    if (framebuffer != VK_NULL_HANDLE)
+    // VkFramebuffer cache — destroy each unique handle. The active `framebuffer` field is just
+    // an alias into the cache; the cache owns the lifetime.
+    for (FbCacheEntry& e : fbCache)
     {
-      vkDestroyFramebuffer(device, framebuffer, nullptr);
-      framebuffer = VK_NULL_HANDLE;
+      if (e.valid && e.fb != VK_NULL_HANDLE)
+      {
+        vkDestroyFramebuffer(device, e.fb, nullptr);
+      }
+      e.fb        = VK_NULL_HANDLE;
+      e.viewCount = 0;
+      e.valid     = false;
     }
+    framebuffer = VK_NULL_HANDLE;
+
     for (RpVariant& v : rpVariants)
     {
       if (v.valid && v.rp != VK_NULL_HANDLE)

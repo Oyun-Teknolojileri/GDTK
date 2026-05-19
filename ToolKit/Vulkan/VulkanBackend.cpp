@@ -714,13 +714,21 @@ namespace ToolKit
       v.clearBits = GraphicBitFields::None;
       v.valid     = false;
     }
-    if (fbData->framebuffer != VK_NULL_HANDLE)
+    // VkFramebuffer cache — defer-delete each unique entry. The active alias points into the
+    // cache; clearing it without destroying would leak (we're tearing the fbData down).
+    for (VulkanFramebuffer::FbCacheEntry& e : fbData->fbCache)
     {
-      VkFramebuffer oldFb = fbData->framebuffer;
-      DeferDelete([device, oldFb]() { vkDestroyFramebuffer(device, oldFb, nullptr); });
-      fbData->framebuffer = VK_NULL_HANDLE;
+      if (e.valid && e.fb != VK_NULL_HANDLE)
+      {
+        VkFramebuffer oldFb = e.fb;
+        DeferDelete([device, oldFb]() { vkDestroyFramebuffer(device, oldFb, nullptr); });
+      }
+      e.fb        = VK_NULL_HANDLE;
+      e.viewCount = 0;
+      e.valid     = false;
     }
-    fbData->renderPass = VK_NULL_HANDLE;
+    fbData->framebuffer = VK_NULL_HANDLE;
+    fbData->renderPass  = VK_NULL_HANDLE;
   }
 
   bool VulkanBackend::BuildOffscreenFramebuffer(VulkanFramebuffer* fbData)
@@ -732,8 +740,9 @@ namespace ToolKit
       return false;
     }
 
-    std::vector<VkImageView> views;
-    views.reserve(VulkanFramebuffer::kMaxColorAttachments + 1);
+    // Compute the current view tuple — colors first (in declared order), then depth.
+    std::array<VkImageView, VulkanFramebuffer::kMaxColorAttachments + 1> views{};
+    uint32_t viewCount = 0;
     for (int i = 0; i < VulkanFramebuffer::kMaxColorAttachments; ++i)
     {
       auto& slot = fbData->colorAttachments[i];
@@ -741,17 +750,43 @@ namespace ToolKit
       {
         continue;
       }
-      views.push_back(slot.view);
+      views[viewCount++] = slot.view;
     }
     if (fbData->depthAttachment.view != VK_NULL_HANDLE)
     {
-      views.push_back(fbData->depthAttachment.view);
+      views[viewCount++] = fbData->depthAttachment.view;
     }
 
+    // Cache lookup — recurring view tuples (shadow atlas layer iteration, blur ping-pong) hit
+    // here and skip the vkCreate/vkDestroy churn. Linear scan over kMaxFbCacheEntries (=8) is
+    // cheap; AAA atlas patterns fit in ≤6 unique tuples in practice.
+    for (auto& entry : fbData->fbCache)
+    {
+      if (!entry.valid || entry.viewCount != viewCount)
+      {
+        continue;
+      }
+      bool match = true;
+      for (uint32_t i = 0; i < viewCount; ++i)
+      {
+        if (entry.views[i] != views[i])
+        {
+          match = false;
+          break;
+        }
+      }
+      if (match)
+      {
+        fbData->framebuffer = entry.fb;
+        return true;
+      }
+    }
+
+    // Miss — create a new VkFramebuffer.
     VkFramebufferCreateInfo fbci{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
     fbci.renderPass      = fbData->renderPass;
-    fbci.attachmentCount = (uint32_t) views.size();
-    fbci.pAttachments    = views.empty() ? nullptr : views.data();
+    fbci.attachmentCount = viewCount;
+    fbci.pAttachments    = viewCount > 0 ? views.data() : nullptr;
     fbci.width           = fbData->width;
     fbci.height          = fbData->height;
     fbci.layers          = 1;
@@ -762,7 +797,35 @@ namespace ToolKit
       TK_ERR("BuildOffscreenFramebuffer: vkCreateFramebuffer failed");
       return false;
     }
-    fbData->framebuffer = newFb;
+
+    // Find a free slot or evict LRU. Cache full only happens if the engine cycles through more
+    // than kMaxFbCacheEntries distinct view tuples on the same fbData — shadow atlas patterns
+    // stay under this, so eviction is rare in steady state.
+    int slot = -1;
+    for (int i = 0; i < VulkanFramebuffer::kMaxFbCacheEntries; ++i)
+    {
+      if (!fbData->fbCache[i].valid)
+      {
+        slot = i;
+        break;
+      }
+    }
+    if (slot < 0)
+    {
+      // LRU-lite: evict slot 0. defer-delete the old FB so any in-flight cb that referenced it
+      // sees the destroy after retirement.
+      slot              = 0;
+      VkFramebuffer old = fbData->fbCache[0].fb;
+      if (old != VK_NULL_HANDLE)
+      {
+        DeferDelete([device, old]() { vkDestroyFramebuffer(device, old, nullptr); });
+      }
+    }
+    fbData->fbCache[slot].fb        = newFb;
+    fbData->fbCache[slot].views     = views;
+    fbData->fbCache[slot].viewCount = viewCount;
+    fbData->fbCache[slot].valid     = true;
+    fbData->framebuffer             = newFb;
     return true;
   }
 
@@ -1040,19 +1103,13 @@ namespace ToolKit
     }
 
     // Attachment view swapped (e.g. shadow atlas layer change). The new view is format-stable
-    // so cached RPs remain valid — only the VkFramebuffer needs to point at the new view. Drop
-    // the old FB and rebuild below. (If attachment *format* ever changes, an explicit cache
-    // eviction would be needed; no current pass does that.)
+    // so cached RPs remain valid. fbCache holds VkFramebuffer per view tuple — drop the active
+    // alias, BuildOffscreenFramebuffer below either hits the cache or appends a new entry. No
+    // defer-delete here; cache owns lifetime.
     if (fbData->dirty)
     {
-      if (fbData->framebuffer != VK_NULL_HANDLE)
-      {
-        VkDevice device     = m_context->GetDevice();
-        VkFramebuffer oldFb = fbData->framebuffer;
-        DeferDelete([device, oldFb]() { vkDestroyFramebuffer(device, oldFb, nullptr); });
-        fbData->framebuffer = VK_NULL_HANDLE;
-      }
-      fbData->dirty = false;
+      fbData->framebuffer = VK_NULL_HANDLE;
+      fbData->dirty       = false;
     }
 
     // Find/build a VkRenderPass whose attachment loadOps match this pass's clearBits. Same fb
@@ -1231,18 +1288,13 @@ namespace ToolKit
     // can't be nested, and switching loadOps means switching VkRenderPass instances.
     CloseOffscreenRenderPassIfOpen(cb);
 
-    // Attachment view swap pending (SetColorAttachment / shadow atlas slot switch) — rebuild
-    // the VkFramebuffer with the latest views before opening any RP against it.
+    // Attachment view swap pending (SetColorAttachment / shadow atlas slot switch). fbCache is
+    // keyed on view tuple — drop the active alias so BuildOffscreenFramebuffer below picks the
+    // matching cached FB or appends a new entry. No defer-delete (cache owns lifetime).
     if (m_activePassFb->dirty)
     {
-      VkDevice device = m_context->GetDevice();
-      if (m_activePassFb->framebuffer != VK_NULL_HANDLE)
-      {
-        VkFramebuffer oldFb = m_activePassFb->framebuffer;
-        DeferDelete([device, oldFb]() { vkDestroyFramebuffer(device, oldFb, nullptr); });
-        m_activePassFb->framebuffer = VK_NULL_HANDLE;
-      }
-      m_activePassFb->dirty = false;
+      m_activePassFb->framebuffer = VK_NULL_HANDLE;
+      m_activePassFb->dirty       = false;
     }
 
     if (!EnsureRpForClearBits(m_activePassFb, fields))
@@ -1589,17 +1641,12 @@ namespace ToolKit
     }
     if (m_activePassFb != nullptr && !m_rpActive)
     {
-      // Attachment view swap (e.g. shadow atlas layer switch) bumped dirty. The format-stable
-      // case: rebuild only the VkFramebuffer; the cached RP variants stay valid.
+      // Attachment view swap (e.g. shadow atlas layer switch) bumped dirty. fbCache is keyed on
+      // view tuple — drop the active alias and let BuildOffscreenFramebuffer either hit cache or
+      // create + insert a fresh entry. No defer-delete (cache owns lifetime).
       if (m_activePassFb->dirty)
       {
-        VkDevice device = m_context->GetDevice();
-        if (m_activePassFb->framebuffer != VK_NULL_HANDLE)
-        {
-          VkFramebuffer old = m_activePassFb->framebuffer;
-          DeferDelete([device, old]() { vkDestroyFramebuffer(device, old, nullptr); });
-          m_activePassFb->framebuffer = VK_NULL_HANDLE;
-        }
+        m_activePassFb->framebuffer = VK_NULL_HANDLE;
         if (!BuildOffscreenFramebuffer(m_activePassFb))
         {
           return;

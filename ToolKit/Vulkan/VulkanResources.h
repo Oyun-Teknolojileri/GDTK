@@ -127,9 +127,30 @@ namespace ToolKit
     static constexpr int kMaxRpVariants = 4;
     RpVariant rpVariants[kMaxRpVariants] = {};
 
+    /** VkFramebuffer cache keyed on (view tuple). VkFramebuffer is immutable in Vulkan — every
+        attachment view change requires a fresh handle, and the old one used to defer-delete +
+        recreate. ShadowPass cycles through 4 atlas-layer views + blur ping-pong views; without
+        this cache that's ~100 vkCreate/Destroy pairs per frame piling up in the deferred-delete
+        queue, causing frame-time hitches when the queue drains. With cache: 4-8 stable FBs live
+        the texture's lifetime, AttachColorTarget just flips the active pointer. */
+    struct FbCacheEntry
+    {
+      VkFramebuffer fb     = VK_NULL_HANDLE;
+      /** Same indexing as a Vulkan framebuffer attachment list: colors in declared order,
+          followed by depth (if any). All slots beyond viewCount are unused/VK_NULL_HANDLE. */
+      std::array<VkImageView, kMaxColorAttachments + 1> views{};
+      uint32_t viewCount   = 0;
+      bool valid           = false;
+    };
+    static constexpr int kMaxFbCacheEntries = 8;
+    std::array<FbCacheEntry, kMaxFbCacheEntries> fbCache{};
+
     /** Currently-active VkRenderPass. Equals rpVariants[i].rp for the entry whose clearBits
         matches the most recent StartPass desc. Set by EnsureRpForClearBits. */
     VkRenderPass renderPass = VK_NULL_HANDLE;
+    /** Currently-active VkFramebuffer — a pointer into fbCache[].fb. Owned by the cache; never
+        defer-deleted in isolation. Eviction (cache full / fbData teardown) is the only path that
+        destroys these handles. */
     VkFramebuffer framebuffer = VK_NULL_HANDLE;
 
     bool dirty = true;
