@@ -83,7 +83,6 @@ namespace
                                VK_PIPELINE_STAGE_TRANSFER_BIT,
                                0, 0, nullptr, 0, nullptr, 1, &toTransfer);
 
-          // Copy staging → image
           VkBufferImageCopy region{};
           region.imageSubresource.aspectMask     = vt->aspect;
           region.imageSubresource.mipLevel       = mip;
@@ -3580,14 +3579,10 @@ namespace ToolKit
 
     auto& slot = fbData->colorAttachments[attachment];
 
-    // Defer the previously owned view — the in-flight cmd buffer's RP+FB still references it
-    // until the next StartPass triggers EvictFramebufferCache (which itself defers the old RP+FB).
-    if (slot.ownsView && slot.view != VK_NULL_HANDLE)
-    {
-      VkDevice device  = m_context->GetDevice();
-      VkImageView old  = slot.view;
-      DeferDelete([device, old]() { vkDestroyImageView(device, old, nullptr); });
-    }
+    // No defer-delete of the previous view. Subresource views are owned by VulkanTexture's
+    // subresourceViews cache; FB slot just borrows a handle. Atlas-layer iteration used to
+    // pile up one vkCreateImageView + one defer-deleted view per slot swap per frame — gone.
+
     slot      = {};
     slot.tex  = static_cast<VulkanTexture*>(rt->m_gpuData.get());
 
@@ -3596,7 +3591,7 @@ namespace ToolKit
 
     if (slot.tex == nullptr)
     {
-      // Attach with a null texture â€” caller error; leave slot cleared.
+      // Attach with a null texture — caller error; leave slot cleared.
     }
     else if (needsSubresourceView)
     {
@@ -3604,7 +3599,6 @@ namespace ToolKit
       uint32_t layerCount     = 1;
       if (face >= 0)
       {
-        // Cubemap face as 2D render target.
         baseArrayLayer = (uint32_t) face;
         layerCount     = 1;
       }
@@ -3613,37 +3607,57 @@ namespace ToolKit
         baseArrayLayer = (uint32_t) layer;
         layerCount     = 1;
       }
-
-      VkImageViewCreateInfo viewInfo       = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
-      viewInfo.image                       = slot.tex->image;
-      viewInfo.viewType                    = VK_IMAGE_VIEW_TYPE_2D;
-      viewInfo.format                      = slot.tex->format;
-      viewInfo.subresourceRange.aspectMask = slot.tex->aspect;
       uint32_t baseMip = (uint32_t) std::max(0, mip);
       if (baseMip >= slot.tex->mipLevels)
       {
-        TK_WRN("AttachColorTarget: mip %u >= image mipLevels %u â€” clamping to %u",
+        TK_WRN("AttachColorTarget: mip %u >= image mipLevels %u — clamping to %u",
                baseMip,
                slot.tex->mipLevels,
                slot.tex->mipLevels - 1);
         baseMip = slot.tex->mipLevels - 1;
       }
-      viewInfo.subresourceRange.baseMipLevel   = baseMip;
-      viewInfo.subresourceRange.levelCount     = 1;
-      viewInfo.subresourceRange.baseArrayLayer = baseArrayLayer;
-      viewInfo.subresourceRange.layerCount     = layerCount;
-      if (vkCreateImageView(m_context->GetDevice(), &viewInfo, nullptr, &slot.view) != VK_SUCCESS)
+
+      // Cache lookup. (mip, layer) uniquely identifies the slice; cubemap face is just layer.
+      VkImageView resolvedView = VK_NULL_HANDLE;
+      for (const auto& e : slot.tex->subresourceViews)
       {
-        TK_ERR("AttachColorTarget: vkCreateImageView failed for face/layer/mip view");
-        slot.view = VK_NULL_HANDLE;
+        if (e.valid && e.mip == baseMip && e.layer == baseArrayLayer)
+        {
+          resolvedView = e.view;
+          break;
+        }
       }
-      else
+
+      if (resolvedView == VK_NULL_HANDLE)
       {
-        slot.ownsView        = true;
-        slot.baseArrayLayer  = baseArrayLayer;
-        slot.layerCount      = layerCount;
-        slot.baseMipLevel    = baseMip;
+        VkImageViewCreateInfo viewInfo       = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+        viewInfo.image                       = slot.tex->image;
+        viewInfo.viewType                    = VK_IMAGE_VIEW_TYPE_2D;
+        viewInfo.format                      = slot.tex->format;
+        viewInfo.subresourceRange.aspectMask = slot.tex->aspect;
+        viewInfo.subresourceRange.baseMipLevel   = baseMip;
+        viewInfo.subresourceRange.levelCount     = 1;
+        viewInfo.subresourceRange.baseArrayLayer = baseArrayLayer;
+        viewInfo.subresourceRange.layerCount     = layerCount;
+        if (vkCreateImageView(m_context->GetDevice(), &viewInfo, nullptr, &resolvedView) != VK_SUCCESS)
+        {
+          TK_ERR("AttachColorTarget: vkCreateImageView failed for face/layer/mip view");
+          slot.view = VK_NULL_HANDLE;
+          return;
+        }
+        VulkanTexture::SubresourceViewEntry entry;
+        entry.mip   = baseMip;
+        entry.layer = baseArrayLayer;
+        entry.view  = resolvedView;
+        entry.valid = true;
+        slot.tex->subresourceViews.push_back(entry);
       }
+
+      slot.view           = resolvedView;
+      slot.ownsView       = false; // owned by the texture's view cache, not the slot
+      slot.baseArrayLayer = baseArrayLayer;
+      slot.layerCount     = layerCount;
+      slot.baseMipLevel   = baseMip;
     }
     else
     {

@@ -91,6 +91,16 @@ namespace ToolKit
       vkDestroyImageView(device, view, nullptr);
       view = VK_NULL_HANDLE;
     }
+    for (SubresourceViewEntry& e : subresourceViews)
+    {
+      if (e.valid && e.view != VK_NULL_HANDLE)
+      {
+        vkDestroyImageView(device, e.view, nullptr);
+      }
+      e.view  = VK_NULL_HANDLE;
+      e.valid = false;
+    }
+    subresourceViews.clear();
     if (image != VK_NULL_HANDLE && allocation != VK_NULL_HANDLE)
     {
       vmaDestroyImage(allocator, image, allocation);

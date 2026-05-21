@@ -214,6 +214,7 @@ namespace ToolKit
       VulkanBuffer::Destroy(this, m_perDrawUboRing);
     }
 
+
     if (m_globalDescriptorSetLayout != VK_NULL_HANDLE)
     {
       vkDestroyDescriptorSetLayout(m_device, m_globalDescriptorSetLayout, nullptr);

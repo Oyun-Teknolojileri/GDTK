@@ -70,6 +70,21 @@ namespace ToolKit
         initialLayout selection. */
     VkImageLayout currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
+    /** Subresource view cache. AttachColorTarget builds layer/face/mip-specific VkImageViews
+        when an FB attachment selects a slice of this texture; without caching, atlas-layer
+        iteration churned out one vkCreateImageView + one defer-delete *per atlas slot per
+        frame*. Cached entries are owned by the texture and destroyed in ~VulkanTexture, so
+        FB swaps never trigger view destroys. Linear scan; entry counts are tiny in practice
+        (ShadowAtlas: 2 layers × shadow maps, env capture: 6 faces × 1 mip). */
+    struct SubresourceViewEntry
+    {
+      uint32_t mip   = 0;
+      uint32_t layer = 0; //!< baseArrayLayer
+      VkImageView view = VK_NULL_HANDLE;
+      bool valid     = false;
+    };
+    std::vector<SubresourceViewEntry> subresourceViews;
+
     ~VulkanTexture() override;
   };
 

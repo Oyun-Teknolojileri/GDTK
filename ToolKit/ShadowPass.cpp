@@ -84,39 +84,45 @@ namespace ToolKit
     Renderer* renderer        = GetRenderer();
     const Vec4 lastClearColor = renderer->m_clearColor;
 
-    // Clear shadow atlas before any draw call
-    renderer->SetFramebuffer(m_shadowFramebuffer, GraphicBitFields::None, Vec4(0.0f), GraphicBitFields::DepthBits);
-    for (int i = 0; i < ShadowAtlas::LayerCount; i++)
+    // Clear every atlas layer to the VSM neutral value. Per-layer FB + LOAD_OP_CLEAR variant
+    // — each iteration opens an empty render pass for that layer's view, the GPU clears at RP
+    // entry (free with HiZ/HiS), no SetColorAttachment churn.
+    for (int layer = 0; layer < ShadowAtlas::LayerCount; ++layer)
     {
-      m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowAtlas, 0, i);
-      renderer->ClearBuffer(GraphicBitFields::ColorBits, m_shadowClearColor);
+      renderer->SetFramebuffer(m_shadowFramebuffers[layer], GraphicBitFields::ColorBits, m_shadowClearColor);
+      renderer->FinishPass();
     }
 
-    // Update shadow maps grouped by atlas layer.
+    // Main render loop, grouped by the first atlas layer each light occupies.
     for (int layerIndex = 0; layerIndex < (int) m_atlasLayerSwitchIndices.size(); layerIndex++)
     {
-      // Depth is cleared once for each layer.
-      renderer->ClearBuffer(GraphicBitFields::DepthBits);
-
-      int begin = m_atlasLayerSwitchIndices[layerIndex];
-      int end   = (int) m_lights.size();
+      int begin           = m_atlasLayerSwitchIndices[layerIndex];
+      int end             = (int) m_lights.size();
       if (layerIndex + 1 < (int) m_atlasLayerSwitchIndices.size())
       {
         end = m_atlasLayerSwitchIndices[layerIndex + 1];
       }
+
+      // Open the pass at the first cascade's layer + clear the shared depth via LOAD_OP_CLEAR.
+      // Subsequent cascades that live in a different layer trigger a pass switch inside
+      // RenderShadowMaps (depth is preserved across switches via LOAD_OP_LOAD since the same
+      // depth attachment is shared by every per-layer FB).
+      const int firstLayer = m_lights[begin]->m_shadowAtlasLayers[0];
+      renderer->SetFramebuffer(m_shadowFramebuffers[firstLayer], GraphicBitFields::DepthBits);
+      m_currentRenderLayer = firstLayer;
 
       for (int i = begin; i < end; i++)
       {
         m_lights[i]->UpdateShadowCamera();
         RenderShadowMaps(m_lights[i]);
       }
+
+      renderer->FinishPass();
+      m_currentRenderLayer = -1;
     }
 
     // Apply blur to the shadow atlas.
     BlurShadowAtlas();
-
-    // Depth is not needed. Mark it as invalid to avoid unintended read/writes.
-    renderer->FinishPass();
 
     renderer->m_clearColor = lastClearColor;
   }
@@ -217,6 +223,20 @@ namespace ToolKit
     ShadowSettingsPtr shadows = GetEngineSettings().m_graphics->m_shadows;
     uint resolution           = (uint) light->m_shadowResolution;
 
+    // Switches the active pass to the per-layer framebuffer matching @p targetLayer if it isn't
+    // already current. Depth attachment is shared across all per-layer FBs, so closing and
+    // reopening preserves the in-progress depth content (LOAD_OP_LOAD).
+    auto switchToLayer = [&](int targetLayer)
+    {
+      if (targetLayer == m_currentRenderLayer)
+      {
+        return;
+      }
+      renderer->FinishPass();
+      renderer->SetFramebuffer(m_shadowFramebuffers[targetLayer], GraphicBitFields::None);
+      m_currentRenderLayer = targetLayer;
+    };
+
     if (light->GetLightType() == Light::LightType::Directional)
     {
       Stats::BeginGpuScope("Directioal Shadow Map");
@@ -226,8 +246,7 @@ namespace ToolKit
       int cascadeCount = shadows->GetCascadeCountVal();
       for (int i = 0; i < cascadeCount; i++)
       {
-        int layer = dLight->m_shadowAtlasLayers[i];
-        m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowAtlas, 0, layer);
+        switchToLayer(dLight->m_shadowAtlasLayers[i]);
 
         UVec2 coord = dLight->m_shadowAtlasCoords[i];
         renderer->SetViewportRect(coord.x, coord.y, resolution, resolution);
@@ -242,8 +261,7 @@ namespace ToolKit
       Stats::BeginGpuScope("Point Shadow Map");
       for (int i = 0; i < 6; i++)
       {
-        int layer = light->m_shadowAtlasLayers[i];
-        m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowAtlas, 0, layer);
+        switchToLayer(light->m_shadowAtlasLayers[i]);
 
         light->m_shadowCamera->m_node->SetTranslation(light->m_node->GetTranslation());
         light->m_shadowCamera->m_node->SetOrientation(m_cubeMapRotations[i]);
@@ -260,8 +278,7 @@ namespace ToolKit
       assert(light->GetLightType() == Light::LightType::Spot);
 
       Stats::BeginGpuScope("Spot Shadow Map");
-      int layer = light->m_shadowAtlasLayers[0];
-      m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowAtlas, 0, layer);
+      switchToLayer(light->m_shadowAtlasLayers[0]);
 
       UVec2 coord = light->m_shadowAtlasCoords[0];
 
@@ -643,10 +660,32 @@ namespace ToolKit
 
       m_shadowAtlas->ReconstructIfNeeded(shadowAtlasSize, shadowAtlasSize, &set);
 
-      FramebufferSettings fbSettings = {shadowAtlasSize, shadowAtlasSize, false, true, MsaaSampleCount::x0};
-
-      m_shadowFramebuffer->ReconstructIfNeeded(fbSettings);
+      // Scratch FB used only by BlurShadowAtlas — keeps the old "one FB + SetColorAttachment"
+      // pattern intact for the blur path (backend FB cache absorbs that churn).
+      FramebufferSettings scratchSettings = {shadowAtlasSize, shadowAtlasSize, false, true, MsaaSampleCount::x0};
+      m_shadowFramebuffer->ReconstructIfNeeded(scratchSettings);
       m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowAtlas, 0, 0);
+
+      // Per-layer FBs for the main render path. Share one depth attachment across all layers —
+      // the original design relied on a single shared depth (cleared once per layer group, then
+      // partitioned by viewport across cascades). We extract it from m_shadowFramebuffer and
+      // attach the same DepthTexturePtr to every per-layer FB.
+      DepthTexturePtr sharedDepth = m_shadowFramebuffer->GetDepthTexture();
+      FramebufferSettings perLayerSettings = {shadowAtlasSize, shadowAtlasSize, false, false, MsaaSampleCount::x0};
+      for (int layer = 0; layer < ShadowAtlas::LayerCount; ++layer)
+      {
+        FramebufferPtr& fb = m_shadowFramebuffers[layer];
+        if (fb == nullptr)
+        {
+          fb = MakeNewPtr<Framebuffer>(perLayerSettings, "ShadowFB_L" + std::to_string(layer));
+        }
+        fb->ReconstructIfNeeded(perLayerSettings);
+        fb->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowAtlas, 0, layer);
+        if (sharedDepth != nullptr)
+        {
+          fb->AttachDepthTexture(sharedDepth);
+        }
+      }
     }
   }
 

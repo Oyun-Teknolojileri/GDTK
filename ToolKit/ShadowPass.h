@@ -58,11 +58,28 @@ namespace ToolKit
     MaterialPtr m_shadowMatPersp       = nullptr;
 
     Vec4 m_shadowClearColor            = Vec4(1.0f);
-    FramebufferPtr m_shadowFramebuffer = nullptr;
-    RenderTargetPtr m_shadowAtlas      = nullptr;
-    RenderTargetPtr m_shadowBlurTempRT = nullptr;
-    int m_activeCascadeCount           = 0;
-    bool m_use2KLayer                  = false;
+
+    /** Per-layer framebuffers for the main atlas render path. Each pinned to one atlas layer +
+     *  the shared depth attachment. Replaces the old "one framebuffer + repeated
+     *  SetColorAttachment" pattern that churned VkFramebuffer handles every cascade switch on
+     *  Vulkan. Built once in InitShadowAtlas, alive for the atlas's lifetime. */
+    std::array<FramebufferPtr, ShadowAtlas::LayerCount> m_shadowFramebuffers;
+
+    /** Scratch framebuffer used by the blur path only — BlurShadowAtlas / ApplyGaussianBlur*
+     *  swap its color attachment between the temp RT and an atlas layer per slot. Backend FB
+     *  cache absorbs the churn; not worth restructuring blur for now. */
+    FramebufferPtr m_shadowFramebuffer  = nullptr;
+
+    RenderTargetPtr m_shadowAtlas       = nullptr;
+    RenderTargetPtr m_shadowBlurTempRT  = nullptr;
+    int m_activeCascadeCount            = 0;
+    bool m_use2KLayer                   = false;
+
+    /** Tracks which per-layer framebuffer is currently the active pass target inside the main
+     *  render loop. Cascades may scatter across atlas layers within one light-group; this lets
+     *  RenderShadowMaps detect layer transitions and switch passes without bouncing the same
+     *  layer back-to-back. -1 = no pass active. */
+    int m_currentRenderLayer            = -1;
 
     /** At each index, a layer switch occurs in the shadow atlas. */
     IntArray m_atlasLayerSwitchIndices;
