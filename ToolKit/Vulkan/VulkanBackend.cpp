@@ -512,22 +512,28 @@ namespace ToolKit
     {
       if (m_timerQueryWaiting)
       {
-        uint64_t results[2] = {0, 0};
-        VkResult r          = vkGetQueryPoolResults(m_context->GetDevice(),
-                                                    m_timestampPool,
-                                                    0,
-                                                    2,
-                                                    sizeof(results),
-                                                    results,
-                                                    sizeof(uint64_t),
-                                                    VK_QUERY_RESULT_64_BIT);
-        if (r == VK_SUCCESS)
+        // Explicit non-blocking poll — mirrors the GL backend's GL_QUERY_RESULT_AVAILABLE
+        // pattern. WITH_AVAILABILITY_BIT appends a uint64 "ready" flag after each timestamp
+        // value (stride doubles to 16B). Without WAIT_BIT the call returns immediately even
+        // when neither flag has flipped, and we only consume the result if BOTH availability
+        // dwords are non-zero. This guarantees a true poll.
+        uint64_t results[4] = {0, 0, 0, 0}; // [0]=t0, [1]=avail0, [2]=t1, [3]=avail1
+        vkGetQueryPoolResults(m_context->GetDevice(),
+                              m_timestampPool,
+                              0,
+                              2,
+                              sizeof(results),
+                              results,
+                              sizeof(uint64_t) * 2,
+                              VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
+        if (results[1] != 0 && results[3] != 0)
         {
-          double deltaTicks   = (double) (results[1] - results[0]);
+          double deltaTicks   = (double) (results[2] - results[0]);
           double deltaMs      = (deltaTicks * (double) m_timestampPeriodNs) / 1.0e6;
           m_gpuTimeMs         = (float) std::max(1.0, deltaMs);
           m_timerQueryWaiting = false;
         }
+        // else: not ready yet, leave m_timerQueryWaiting true → retry next frame, no stall.
       }
       if (!m_timerQueryActive && !m_timerQueryWaiting)
       {
