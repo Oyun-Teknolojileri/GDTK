@@ -494,9 +494,11 @@ namespace ToolKit
       m_descriptorCache[m_deleterSlot].clear();
     }
 
-    // The per-draw UBO ring is shared across frames; head=0 reset is also fence-safe because the
-    // ring's contents are only read from inside cmd buffers that have now retired (Stage 7d-4b).
-    m_context->ResetPerDrawUboRing();
+    // Per-draw UBO ring is partitioned per frame-in-flight slot; reset re-bases this slot's head
+    // to its region base. Fence-safe because the slot's fence we just waited on guarantees every
+    // cb that read from this region has retired. The other slot's region stays untouched while
+    // its cb is still in flight (Stage 7d-4b).
+    m_context->ResetPerDrawUboRing(m_deleterSlot);
     m_currentDynamicOffset = 0;
 
     // Timer-query pump. The slot fence we just waited on guarantees the previous cycle's cb (the
@@ -635,8 +637,9 @@ namespace ToolKit
     m_lastFlushedProgram = nullptr;
     m_shadow.dirty       = true;
 
-    // Ring drained; reuse from the start.
-    m_context->ResetPerDrawUboRing();
+    // Ring drained by FlushCommandBuffer above (queue idle), so it's safe to re-base this slot's
+    // head — the other slot's region is irrelevant here since the queue has no in-flight cb.
+    m_context->ResetPerDrawUboRing(frameIdx);
     m_currentDynamicOffset = 0;
 
     // Re-issue dynamic state on the new cmd buffer. CPU shadow state (bound textures/UBOs/

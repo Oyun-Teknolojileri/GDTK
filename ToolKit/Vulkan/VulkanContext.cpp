@@ -12,6 +12,7 @@
 
 #include "../Logger.h"
 #include "VulkanBindings.h"
+#include "VulkanSwapchain.h"
 
 #include <algorithm>
 #include <cstring>
@@ -720,17 +721,14 @@ namespace ToolKit
 
   bool VulkanContext::CreatePerDrawUboRing()
   {
-    // Stage 7d-4b. Single host-visible buffer reused for every per-draw uniform payload across
-    // FRAMES_IN_FLIGHT. Sized 2 MiB \u2014 sizeof(PerDrawUboLayout) is ~1.1 KB which rounds up to
-    // 1280 B at the typical 256 B minUniformBufferOffsetAlignment, giving ~1638 slots per frame.
-    // 1 MiB was too tight for EnvironmentComponent::CaptureEnvironment bake frames (~1.3 MiB
-    // demand: 6\u00d7 shadow + forward per cube face + irradiance generation), forcing the
-    // FlushAndResetRing recovery path to fire on every bake. 2 MiB fits typical bake without
-    // recovery while staying conservative \u2014 going larger (8+ MiB) skips the recovery stall
-    // entirely but on discrete GPUs has been seen to expose a latent post-capture sync bug
-    // that the stall otherwise masks; that's a separate investigation. If real workloads ever
-    // exceed 2 MiB, AllocatePerDrawSlot logs once and the backend recovers via flush+reset.
-    constexpr VkDeviceSize kRingBytes = 8u << 20;
+    // Stage 7d-4b. Host-visible ring partitioned into FRAMES_IN_FLIGHT equal regions; each frame
+    // slot writes only to its own region so the other slot's still-in-flight UBO content can't
+    // be stomped. 32 MiB total \u2192 16 MiB per slot at FIF=2, enough for post-process-heavy frames
+    // (the previous single-buffer 8 MiB was overflowing once post-process was enabled). The
+    // "latent post-capture sync bug" the old single-ring comment warned about was actually this
+    // cross-slot stomp \u2014 partitioning removes the root cause, so the recovery stall in
+    // FlushAndResetRing is now a true safety net rather than a masking band-aid.
+    constexpr VkDeviceSize kRingBytes = 32ull << 20;
 
     // Cache the alignment requirement so we don't query it on every Submit.
     VkPhysicalDeviceProperties props{};
@@ -747,7 +745,12 @@ namespace ToolKit
       TK_ERR("VulkanContext::CreatePerDrawUboRing: ring allocation failed");
       return false;
     }
-    m_perDrawUboHead           = 0;
+    m_perDrawUboRegionSize     = kRingBytes / VulkanSwapchain::FRAMES_IN_FLIGHT;
+    for (uint i = 0; i < VulkanSwapchain::FRAMES_IN_FLIGHT; ++i)
+    {
+      m_perDrawUboHeads[i] = (VkDeviceSize) i * m_perDrawUboRegionSize;
+    }
+    m_currentRingSlot          = 0;
     m_perDrawUboOverflowLogged = false;
     return true;
   }
@@ -766,21 +769,26 @@ namespace ToolKit
     // before the bump.
     const VkDeviceSize aligned =
         (size + m_minUniformBufferAlignment - 1) & ~(m_minUniformBufferAlignment - 1);
-    if (m_perDrawUboHead + aligned > m_perDrawUboRing.size)
+    VkDeviceSize& head             = m_perDrawUboHeads[m_currentRingSlot];
+    const VkDeviceSize regionEnd   = (VkDeviceSize) (m_currentRingSlot + 1) * m_perDrawUboRegionSize;
+    if (head + aligned > regionEnd)
     {
       if (!m_perDrawUboOverflowLogged)
       {
-        TK_ERR("VulkanContext::AllocatePerDrawSlot: ring full (%llu/%llu B). Increase ring size.",
-               (unsigned long long) m_perDrawUboHead,
-               (unsigned long long) m_perDrawUboRing.size);
+        const VkDeviceSize regionBase = (VkDeviceSize) m_currentRingSlot * m_perDrawUboRegionSize;
+        TK_ERR("VulkanContext::AllocatePerDrawSlot: ring region full (slot %u: %llu/%llu B). "
+               "Increase ring size.",
+               m_currentRingSlot,
+               (unsigned long long) (head - regionBase),
+               (unsigned long long) m_perDrawUboRegionSize);
         m_perDrawUboOverflowLogged = true;
       }
       return false;
     }
 
-    outOffset    = m_perDrawUboHead;
-    outMappedPtr = static_cast<uint8_t*>(m_perDrawUboRing.mapped) + m_perDrawUboHead;
-    m_perDrawUboHead += aligned;
+    outOffset    = head;
+    outMappedPtr = static_cast<uint8_t*>(m_perDrawUboRing.mapped) + head;
+    head += aligned;
     return true;
   }
 

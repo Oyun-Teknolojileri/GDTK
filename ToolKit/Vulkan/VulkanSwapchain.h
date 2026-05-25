@@ -36,7 +36,7 @@ namespace ToolKit
     // and tightened RP deps). Cost is minimal in the editor: GPU is the bottleneck and CPU
     // pipelining doesn't hide much there. Swapchain image double/triple-buffering for tear-free
     // presentation is independent of this and continues to operate.
-    static constexpr uint FRAMES_IN_FLIGHT = 1;
+    static constexpr uint FRAMES_IN_FLIGHT = 2;
 
     VulkanSwapchain();
     ~VulkanSwapchain();

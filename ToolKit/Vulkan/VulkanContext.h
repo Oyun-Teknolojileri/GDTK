@@ -99,13 +99,18 @@ namespace ToolKit
     /** Total ring capacity in bytes (set at Init). */
     VkDeviceSize GetPerDrawUboCapacity() const { return m_perDrawUboRing.size; }
 
-    /** Resets the ring head to 0 — caller must guarantee no in-flight cmd buffer still reads
-        from the ring (typically: this runs at BeginFrame, after the slot's fence has been
-        waited on, or mid-frame after VulkanSwapchain::FlushCommandBuffer drained the queue).
-        Also re-arms the overflow log so the next ring exhaustion in this frame is diagnosable. */
-    void ResetPerDrawUboRing()
+    /** Resets the ring head for the given frame-in-flight slot back to that slot's region base.
+        The ring is partitioned into FRAMES_IN_FLIGHT contiguous regions so cross-frame UBO
+        stomp can't happen: slot S only ever writes to [S*regionSize, (S+1)*regionSize) and the
+        other slot's region is untouched while its cb is still in flight. Caller must guarantee
+        no in-flight cb still reads from slot S's region (typical sites: BeginFrame after the
+        slot's fence has been waited on, or mid-frame FlushAndResetRing after the queue drained).
+        Also latches @p slot as the current ring slot used by AllocatePerDrawSlot, and re-arms
+        the overflow log. */
+    void ResetPerDrawUboRing(uint slot)
     {
-      m_perDrawUboHead           = 0;
+      m_currentRingSlot          = slot;
+      m_perDrawUboHeads[slot]    = (VkDeviceSize) slot * m_perDrawUboRegionSize;
       m_perDrawUboOverflowLogged = false;
     }
 
@@ -199,10 +204,15 @@ namespace ToolKit
         independently from the shared pool. */
     std::array<VkDescriptorPool, 2> m_perFrameDescriptorPools = {VK_NULL_HANDLE, VK_NULL_HANDLE};
 
-    /** Per-draw UBO ring (Stage 7d-4b). Persistent-mapped HOST_VISIBLE; head bumps on each
-        AllocatePerDrawSlot, resets on ResetPerDrawUboRing at frame begin. */
+    /** Per-draw UBO ring (Stage 7d-4b). Persistent-mapped HOST_VISIBLE buffer partitioned into
+        FRAMES_IN_FLIGHT equal regions. Each frame slot owns one region; AllocatePerDrawSlot
+        bumps m_perDrawUboHeads[m_currentRingSlot] and bounds it against that region's end so
+        the other slot's still-in-flight data is never overwritten. ResetPerDrawUboRing(slot)
+        re-bases the head to slot*regionSize and latches the slot for subsequent Allocate calls. */
     VulkanBuffer::Buffer m_perDrawUboRing{};
-    VkDeviceSize m_perDrawUboHead              = 0;
+    std::array<VkDeviceSize, 2> m_perDrawUboHeads = {0, 0};
+    VkDeviceSize m_perDrawUboRegionSize        = 0;
+    uint m_currentRingSlot                     = 0;
     /** Cached vkGetPhysicalDeviceProperties::limits.minUniformBufferOffsetAlignment. Every
         per-draw slot offset is rounded up to this multiple so the dynamic offset is valid. */
     VkDeviceSize m_minUniformBufferAlignment   = 256;
