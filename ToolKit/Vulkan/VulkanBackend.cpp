@@ -558,11 +558,12 @@ namespace ToolKit
     m_lastFlushedSet     = VK_NULL_HANDLE;
     m_lastFlushedProgram = nullptr;
 
+    VkCommandBuffer cb              = m_swapchain->GetCurrentCommandBuffer();
+
     // Drain any GPU work queued via EnqueueGpuWork while no frame was active (init-time texture
     // uploads, layout transitions, mip generation) into this frame's command buffer. The
     // cleanup callbacks (e.g. staging buffer destroys) ride DeferDelete so they only fire once
     // the recorded GPU work has retired on the GPU.
-    VkCommandBuffer cb              = m_swapchain->GetCurrentCommandBuffer();
     std::vector<std::function<void()>> pendingCleanups = m_context->FlushPendingGpuWork(cb);
     for (std::function<void()>& cleanup : pendingCleanups)
     {
@@ -3092,8 +3093,15 @@ namespace ToolKit
       postBarrier.dstAccessMask = VK_ACCESS_UNIFORM_READ_BIT;
       vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 1, &postBarrier, 0, nullptr, 0, nullptr);
 
-      // Also keep the mapped memory up to date just in case it is read back or used when frame is inactive.
-      std::memcpy(gpu->buffer.mapped, data, (size_t) size);
+      // No host memcpy here. The previous frame's cb may still be reading this same VkBuffer
+      // on the GPU; a parallel host write to HOST_COHERENT mapped memory becomes visible to the
+      // device immediately and corrupts those in-flight reads (observed: shadow pass POV
+      // bleeding into the main camera viewport at FIF=2). vkCmdUpdateBuffer above writes the new
+      // data into the buffer at this cb's GPU execution time, which is gated by the cross-cb
+      // BOTTOM_OF_PIPE→TOP_OF_PIPE barrier in BeginFrame — so the previous cb finishes reading
+      // before this cb's update writes. HOST_COHERENT semantics still make the new contents
+      // observable on the host AFTER this cb retires, so any inter-frame mapped-memory readers
+      // see correct values.
     }
     else
     {
