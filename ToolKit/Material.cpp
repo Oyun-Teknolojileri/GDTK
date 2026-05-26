@@ -490,9 +490,22 @@ namespace ToolKit
     dataSet.WarpS                  = GraphicTypes::UVRepeat;
     dataSet.WarpT                  = GraphicTypes::UVRepeat;
     dataSet.GenerateMipMap         = true;
+    // Normal map / metallic-roughness textures hold numeric data, not perceptual color: sample
+    // values must reach the shader in linear space. The default texture pipeline tags everything
+    // as FormatSRGB8_A8, which makes the GPU apply an sRGB→linear curve on sample and warps
+    // both the (x,y,z) of the normal and the metallic/roughness scalars — observed as bogus
+    // specular highlights on imported PBR models (worse on Vulkan because its sampler applies
+    // the curve in hardware strictly; some GL drivers were forgiving). Force linear RGBA8 here.
+    // This is a one-shot re-init triggered by Material::Init, mirroring the GL main-branch
+    // behavior the user described.
+    if (dataSet.InternalFormat == GraphicTypes::FormatSRGB8_A8)
+    {
+      dataSet.InternalFormat = GraphicTypes::FormatRGBA8;
+    }
 
     if (current.MinFilter == dataSet.MinFilter && current.WarpS == dataSet.WarpS &&
-        current.WarpT == dataSet.WarpT && current.GenerateMipMap == dataSet.GenerateMipMap)
+        current.WarpT == dataSet.WarpT && current.GenerateMipMap == dataSet.GenerateMipMap &&
+        current.InternalFormat == dataSet.InternalFormat)
     {
       if (texture->m_initiated)
       {
