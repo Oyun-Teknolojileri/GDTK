@@ -17,9 +17,7 @@ namespace ToolKit
 
   bool VulkanPipelineDesc::operator==(const VulkanPipelineDesc& o) const
   {
-    // Compare scalar/POD fields in one shot. The attributes tail (slots beyond attributeCount)
-    // is uninitialized garbage on either side, so it must not enter the comparison � we walk
-    // only the live prefix.
+    // Attribute tail (beyond attributeCount) is uninitialized — compare only the live prefix.
     const bool scalarsEqual =
         renderPass == o.renderPass && vert == o.vert && frag == o.frag &&
         vertexStride == o.vertexStride && attributeCount == o.attributeCount &&
@@ -59,8 +57,6 @@ namespace ToolKit
     return true;
   }
 
-  // 64-bit splitmix / xxHash-style mixer � deterministic and reasonably distributing for the
-  // handfuls of fields we combine here.
   static inline std::size_t MixBits(std::size_t seed, std::size_t v)
   {
     return seed ^ (v + 0x9e3779b97f4a7c15ull + (seed << 6) + (seed >> 2));
@@ -165,13 +161,10 @@ namespace ToolKit
     rs.cullMode         = desc.cullMode;
     rs.frontFace        = desc.frontFace;
     rs.lineWidth        = 1.0f;
-    // Shadow passes (ortho directional lights) flip this on so geometry behind the near plane
-    // still writes depth instead of getting clipped — required for the engine's shadow map setup.
+    // Shadow passes flip this on so geometry behind the light's near plane still writes depth.
     rs.depthClampEnable = desc.depthClampEnable;
 
     VkPipelineMultisampleStateCreateInfo ms{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
-    // Stage 10. Pipeline rasterizationSamples must equal the active subpass's per-attachment
-    // sampleCount; the desc carries it through from VulkanFramebuffer::subpassSamples.
     ms.rasterizationSamples = desc.rasterizationSamples != 0 ? desc.rasterizationSamples
                                                              : VK_SAMPLE_COUNT_1_BIT;
 
@@ -194,9 +187,7 @@ namespace ToolKit
       ds.back  = sop;
     }
 
-    // No build-time branching on blend mode � desc carries the full recipe. When blendEnable is
-    // VK_FALSE the factor/op fields are ignored by the driver, so we can assign them
-    // unconditionally and keep the cache key stable for the disabled-blend case.
+    // Desc carries the full blend recipe; factor/op fields are ignored when blendEnable=FALSE.
     VkPipelineColorBlendAttachmentState att{};
     att.colorWriteMask      = desc.colorWriteMask;
     att.blendEnable         = desc.blendEnable;
@@ -207,8 +198,7 @@ namespace ToolKit
     att.dstAlphaBlendFactor = desc.dstAlphaBlendFactor;
     att.alphaBlendOp        = desc.alphaBlendOp;
 
-    // One attachment state replicated across all color attachments � fine for the current test
-    // path. Stage 7's MRT passes will need per-attachment state.
+    // Single blend state replicated across all attachments. MRT with per-target blend is TBD.
     std::array<VkPipelineColorBlendAttachmentState, 8> attStates{};
     for (uint i = 0; i < desc.colorAttachmentCount && i < attStates.size(); ++i)
     {
@@ -309,9 +299,8 @@ namespace ToolKit
     m_pipelines.clear();
   }
 
-  // -------- RenderState ? VulkanPipelineDesc -----------------------------------------------
-  // Single switch-table conversion; no branching beyond the four enum maps. Same RenderState
-  // always produces the same desc bytes ? same cache hit.
+  // -- RenderState → VulkanPipelineDesc translation --
+  // Switch-table conversion; same RenderState produces the same desc bytes → same cache hit.
 
   static VkCullModeFlags ToVkCullMode(CullingType c)
   {
@@ -347,14 +336,13 @@ namespace ToolKit
       case DrawType::Point:      return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
       case DrawType::Line:       return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
       case DrawType::LineStrip:  return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
-      case DrawType::LineLoop:   // Vulkan has no line-loop primitive; closest match is LINE_STRIP.
+      case DrawType::LineLoop:   // No native line-loop in Vulkan; closest is LINE_STRIP.
                                  return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
       case DrawType::Triangle:
       default:                   return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     }
   }
 
-  // (blendEnable, srcColor, dstColor, colorOp, srcAlpha, dstAlpha, alphaOp).
   struct BlendRecipe
   {
     VkBool32 enable;
@@ -368,8 +356,7 @@ namespace ToolKit
 
   static BlendRecipe ToBlendRecipe(BlendFunction f)
   {
-    // ALPHA_MASK is a fragment-shader feature (discard-on-threshold) � no blend-state difference
-    // from opaque, so it falls through to the default opaque recipe.
+    // ALPHA_MASK is shader-side discard; blend state matches opaque.
     switch (f)
     {
       case BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA:
@@ -403,8 +390,7 @@ namespace ToolKit
 
   void RenderStateToPipelineDesc(const RenderState& state, VulkanPipelineDesc& out)
   {
-    // blendFunction / cullMode arrive already resolved by Renderer::Render — any blendOverride /
-    // cullOverride flags on the pass state have been applied upstream.
+    // blendFunction / cullMode arrive pre-resolved by Renderer::Render.
     const BlendRecipe r = ToBlendRecipe(state.blendFunction);
 
     out.topology            = ToVkTopology(state.drawType);
@@ -416,16 +402,14 @@ namespace ToolKit
     out.depthWriteEnable    = state.depthWriteEnabled ? VK_TRUE : VK_FALSE;
     out.depthCompareOp      = ToVkCompareOp(state.depthFunction);
 
-    // Translate StencilOperation to Vulkan stencil front/back state.
-    // compareMask, writeMask, and reference are fixed constants: the engine's simple binary
-    // stencil model always uses reference=1 and full masks.
+    // Engine uses a binary stencil model: reference=1, full masks.
     switch (state.stencilOperation)
     {
       case StencilOperation::None:
         out.stencilTestEnable  = VK_FALSE;
         break;
       case StencilOperation::AllowAllPixels:
-        // Write 1 to stencil for every fragment that survives depth test.
+        // Write 1 for every fragment that survives depth test.
         out.stencilTestEnable  = VK_TRUE;
         out.stencilCompareOp   = VK_COMPARE_OP_ALWAYS;
         out.stencilPassOp      = VK_STENCIL_OP_REPLACE;
@@ -434,7 +418,7 @@ namespace ToolKit
         out.stencilReference   = 1;
         break;
       case StencilOperation::AllowPixelsPassingStencil:
-        // Only draw where stencil == 1.
+        // Draw where stencil == 1.
         out.stencilTestEnable  = VK_TRUE;
         out.stencilCompareOp   = VK_COMPARE_OP_EQUAL;
         out.stencilPassOp      = VK_STENCIL_OP_KEEP;
@@ -443,7 +427,7 @@ namespace ToolKit
         out.stencilReference   = 1;
         break;
       case StencilOperation::AllowPixelsFailingStencil:
-        // Only draw where stencil == 0.
+        // Draw where stencil == 0.
         out.stencilTestEnable  = VK_TRUE;
         out.stencilCompareOp   = VK_COMPARE_OP_NOT_EQUAL;
         out.stencilPassOp      = VK_STENCIL_OP_KEEP;

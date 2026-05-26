@@ -70,9 +70,7 @@ namespace ToolKit
       bci.usage       = usage;
       bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-      // CPU_TO_GPU + MAPPED_BIT ? VMA picks HOST_VISIBLE+HOST_COHERENT memory and keeps it
-      // persistently mapped for the lifetime of the allocation. We don't need vkFlushMappedMemoryRanges
-      // because the memory is host-coherent.
+      // CPU_TO_GPU + MAPPED_BIT → HOST_VISIBLE+HOST_COHERENT, persistently mapped.
       VmaAllocationCreateInfo aci{};
       aci.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
       aci.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
@@ -104,7 +102,6 @@ namespace ToolKit
         return out;
       }
 
-      // Staging buffer: CPU-visible, sized to the payload, used as transfer source.
       Buffer staging = Create(ctx, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, size, VMA_MEMORY_USAGE_CPU_TO_GPU);
       if (staging.handle == VK_NULL_HANDLE)
       {
@@ -121,7 +118,7 @@ namespace ToolKit
       std::memcpy(mapped, data, (size_t) size);
       vmaUnmapMemory(ctx->GetAllocator(), staging.alloc);
 
-      // Destination: device-local, with caller's usage + TRANSFER_DST so the copy can land in it.
+      // Device-local destination + caller's usage + TRANSFER_DST.
       out = Create(ctx, usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT, size, VMA_MEMORY_USAGE_GPU_ONLY);
       if (out.handle == VK_NULL_HANDLE)
       {
@@ -136,17 +133,9 @@ namespace ToolKit
             region.size = size;
             vkCmdCopyBuffer(cb, staging.handle, out.handle, 1, &region);
 
-            // Memory dependency: the destination buffer is about to be read as
-            // vertex/index/uniform input by draws later in this same command buffer
-            // (or in subsequent submissions on the same queue, which the implicit
-            // submission-order dependency does NOT cover for memory visibility).
-            // Without this barrier, NVIDIA's Vulkan ICD has been observed to
-            // dereference an unwritten region during vertex fetch -- crash manifests
-            // as Access violation @ 0x0 inside nvoglv64.dll mid-vkCmdDraw, only
-            // when the upload lands in the same cb as the draw (no FlushAndResetRing
-            // waitIdle in between to drain the transfer). dstStage/dstAccess cover
-            // the three usages a HOST -> DEVICE_LOCAL upload through this helper can
-            // land on: vertex attribute fetch, index fetch, and shader UBO read.
+            // Required so draws later in the same cb see the upload — submission-order alone
+            // doesn't guarantee memory visibility across stages. Covers vertex/index fetch and
+            // shader UBO read (the three usages this helper feeds).
             VkBufferMemoryBarrier barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
             barrier.srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
             barrier.dstAccessMask       = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT |

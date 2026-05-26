@@ -23,15 +23,9 @@ namespace ToolKit
   class VulkanContext;
 
   /**
-   * Full pipeline state needed to build a VkPipeline � serves both as the cache key (hashed +
-   * compared field-by-field) and as the creation record handed to vkCreateGraphicsPipelines.
-   * Deliberately flat + POD-ish so hashing is cheap. Aggregate {}-init zeroes everything
-   * including the attribute tail slots; callers only touch the fields they use.
-   *
-   * Stage 6c scaffold � carries the state the test pipeline needs today (depth, cull, blend on/off,
-   * topology, one vertex binding with N<=8 attribs, optional single descriptor set layout + one
-   * push constant range). Stage 7 grows this when real materials / multiple descriptor sets / MRT
-   * come online.
+   * Full pipeline state needed to build a VkPipeline — also the cache key (hashed + compared
+   * field-by-field). Flat POD-ish layout for cheap hashing; aggregate init zeroes attribute tail
+   * slots so callers only touch what they use.
    */
   struct VulkanPipelineDesc
   {
@@ -41,7 +35,7 @@ namespace ToolKit
     VkShaderModule vert        = VK_NULL_HANDLE;
     VkShaderModule frag        = VK_NULL_HANDLE;
 
-    // Vertex input (single binding for now).
+    // Vertex input (single binding).
     uint vertexStride      = 0;
     uint attributeCount    = 0;
     std::array<VkVertexInputAttributeDescription, kMaxAttribs> attributes{};
@@ -52,23 +46,20 @@ namespace ToolKit
     VkFrontFace frontFace        = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     VkBool32 depthClampEnable    = VK_FALSE;
 
-    // Depth / stencil.
+    // Depth.
     VkBool32 depthTestEnable   = VK_FALSE;
     VkBool32 depthWriteEnable  = VK_FALSE;
     VkCompareOp depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
 
-    // Stencil. stencilTestEnable=false means the three op fields are ignored by the driver
-    // and do not need to participate in cache key equality when stencil is off.
+    // Stencil. When stencilTestEnable is false the op fields are ignored by the driver.
     VkBool32     stencilTestEnable = VK_FALSE;
-    VkStencilOp  stencilFailOp     = VK_STENCIL_OP_KEEP;   // fragment fails stencil test
-    VkStencilOp  stencilPassOp     = VK_STENCIL_OP_KEEP;   // fragment passes both tests
-    VkStencilOp  stencilDepthFailOp= VK_STENCIL_OP_KEEP;   // passes stencil, fails depth
+    VkStencilOp  stencilFailOp     = VK_STENCIL_OP_KEEP;
+    VkStencilOp  stencilPassOp     = VK_STENCIL_OP_KEEP;
+    VkStencilOp  stencilDepthFailOp= VK_STENCIL_OP_KEEP;
     VkCompareOp  stencilCompareOp  = VK_COMPARE_OP_ALWAYS;
     uint32_t     stencilReference  = 1;
 
-    // Color blend (single attachment state replicated across colorAttachmentCount). Factors
-    // and ops live in the desc so the cache builder has zero branching ? callers spell out the
-    // exact blend recipe they want and equal recipes hash equal.
+    // Color blend (single attachment state replicated across colorAttachmentCount).
     VkBool32 blendEnable           = VK_FALSE;
     VkBlendFactor srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
     VkBlendFactor dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
@@ -78,14 +69,12 @@ namespace ToolKit
     VkBlendOp alphaBlendOp            = VK_BLEND_OP_ADD;
     uint colorAttachmentCount         = 1;
 
-    /** 0 = all channels masked (colorMaskEnabled=false). Full mask = RGBA bits set. */
+    /** 0 = all channels masked. */
     VkColorComponentFlags colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
                                            VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 
-    /** Subpass sample count this pipeline targets (Stage 10). Must equal the active render
-        pass's per-attachment sampleCount. Drives `pMultisampleState.rasterizationSamples`;
-        also part of the cache key so a non-MSAA + an MSAA copy of the "same" recipe end up
-        in different slots. */
+    /** Subpass sample count. Drives pMultisampleState.rasterizationSamples and participates in
+        the cache key so MSAA / non-MSAA copies of the same recipe land in distinct slots. */
     VkSampleCountFlagBits rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
     bool operator==(const VulkanPipelineDesc& o) const;
@@ -96,55 +85,32 @@ namespace ToolKit
     std::size_t operator()(const VulkanPipelineDesc& d) const noexcept;
   };
 
-  /**
-   * Single conversion point from ToolKit's flat RenderState POD to the raster / depth / blend
-   * fields of VulkanPipelineDesc. Branch-free: every enum maps through a small switch table; no
-   * if-chains. The remaining desc fields (renderPass, shaders, vertex input, color attachment
-   * count) are caller responsibility ? they're orthogonal to RenderState.
-   *
-   * Postconditions:
-   *  - out.cullMode, frontFace, topology, depthTestEnable, depthWriteEnable, depthCompareOp,
-   *    blendEnable + 6 blend factor/op fields are written.
-   *  - All other fields of @p out are left untouched.
-   */
+  /** Translates RenderState onto raster/depth/blend fields of @p out. RP / shaders / vertex
+      input are caller responsibility. Branchless — identical states always hash identically. */
   void RenderStateToPipelineDesc(const RenderState& state, VulkanPipelineDesc& out);
 
-  /**
-   * Tiny VkPipeline cache keyed on VulkanPipelineDesc. Two callers can request the "same"
-   * pipeline (same shaders + state + render pass) and get the same VkPipeline back, which is
-   * the precondition for Stage 7's state-sorted rendering.
-   *
-   * Lifetime: owned by VulkanBackend; drained in backend dtor after vkDeviceWaitIdle so every
-   * cached VkPipeline is safely destroyed while the device is still alive.
-   */
+  /** VkPipeline cache keyed by VulkanPipelineDesc. Owned by VulkanBackend; drained in dtor
+      after vkDeviceWaitIdle. */
   class TK_API VulkanPipelineCache
   {
    public:
     VulkanPipelineCache()  = default;
     ~VulkanPipelineCache() = default;
 
-    /** Looks up (or builds on miss) a VkPipeline matching @p desc + @p layout. Returns
-     *  VK_NULL_HANDLE if vkCreateGraphicsPipelines fails (logged). */
+    /** Lookup with build-on-miss. VK_NULL_HANDLE on build failure (logged). */
     VkPipeline GetOrCreate(VulkanContext* ctx, VkPipelineLayout layout, const VulkanPipelineDesc& desc);
 
-    /** Evicts every cached pipeline whose desc.renderPass == @p rp and forwards the freed
-        VkPipeline handles to @p deferDelete (which should route through VulkanBackend::DeferDelete
-        so the destroy fires after the in-flight cb retires). Must be called BEFORE the caller
-        defer-deletes the VkRenderPass itself - otherwise a subsequent cache lookup with a
-        recycled-handle RP could return a pipeline that still references the destroyed RP, which
-        NVIDIA's ICD has been observed to NULL-deref inside vkCmdDraw. */
+    /** Evicts every cached pipeline tied to @p rp and forwards handles to @p deferDelete.
+        Must run BEFORE the caller defer-deletes the RP — driver handle recycling otherwise
+        lets a recycled-handle RP cache-hit a stale pipeline (NVIDIA NULL-derefs vkCmdDraw). */
     void InvalidateForRenderPass(VkRenderPass rp, const std::function<void(VkPipeline)>& deferDelete);
 
-    /** Same contract as InvalidateForRenderPass but matches by the VkPipelineLayout the pipeline
-        was built against. ~VulkanGpuProgram destroys the program's pipelineLayout; any cached
-        pipeline that was created with that layout is now orphaned and using it inside vkCmdDraw
-        produces a NULL/small-offset deref inside nvoglv64.dll. Must be called from
-        DestroyGpuProgram BEFORE the program's shared_ptr is queued into DeferDelete, so the
-        pipeline destroys and the layout destroy land in the same deleter bucket and fire in
-        push order (pipeline first, layout second). */
+    /** Same contract as InvalidateForRenderPass but keyed on VkPipelineLayout. Must run from
+        DestroyGpuProgram BEFORE the program's shared_ptr is queued, so pipelines and the
+        layout land in the same deleter bucket in push order. */
     void InvalidateForPipelineLayout(VkPipelineLayout layout, const std::function<void(VkPipeline)>& deferDelete);
 
-    /** Destroys every cached VkPipeline. Caller must have vkDeviceWaitIdle'd. */
+    /** Destroys every cached pipeline. Caller must have vkDeviceWaitIdle'd. */
     void Destroy(VkDevice device);
 
    private:
@@ -155,14 +121,5 @@ namespace ToolKit
     };
     std::unordered_map<VulkanPipelineDesc, Entry, VulkanPipelineDescHash> m_pipelines;
   };
-
-  /**
-   * Maps ToolKit's @ref RenderState onto the corresponding fields of @p out. Render-pass /
-   * shader / vertex input fields are left untouched � the caller fills those in based on the
-   * active pass + bound program. Single conversion path, branchless: every RenderState field
-   * resolves through a small switch table, no per-state if chains, so identical RenderStates
-   * always produce identical (hashable) descs.
-   */
-  void RenderStateToPipelineDesc(const RenderState& state, VulkanPipelineDesc& out);
 
 } // namespace ToolKit

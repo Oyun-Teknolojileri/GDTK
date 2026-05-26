@@ -30,11 +30,8 @@ namespace ToolKit
       return shaderc_glsl_vertex_shader;
     }
 
-    // SPIR-V disk cache helpers.
-    // Key  = FNV-1a 64-bit hash of source bytes + stage (0=vert, 1=frag).
-    // Path = <ConfigPath>/SpirVCache/<hex>_v.spv  or  _f.spv
-    // GL drivers have a built-in shader cache; shaderc is a pure CPU library with no cache, so
-    // without this every variant is re-compiled from scratch on each launch.
+    // SPIR-V disk cache. Key = FNV-1a hash of (source + stage). Without this every variant
+    // re-compiles on each launch since shaderc has no built-in cache.
 
     static uint64_t SpvCacheHash(const std::string& src, Stage stage)
     {
@@ -79,7 +76,6 @@ namespace ToolKit
 
     std::vector<uint32_t> CompileGlslToSpirv(Stage stage, const std::string& source, const std::string& debugName)
     {
-      // Cache lookup — skip shaderc if we already have SPIR-V for this exact source.
       const uint64_t hash      = SpvCacheHash(source, stage);
       const std::string cached = SpvCachePath(hash, stage);
       if (auto spv = LoadSpv(cached); !spv.empty())
@@ -90,27 +86,17 @@ namespace ToolKit
       options.SetTargetEnvironment(shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_2);
       options.SetSourceLanguage(shaderc_source_language_glsl);
 
-      // Engine GLSL source files use `#version 300 es` for the GL ES 3.00 path. Vulkan/SPIR-V
-      // requires 450 core (layout qualifiers, etc.). SetForcedVersionProfile makes shaderc
-      // ignore the in-source #version directive and treat the source as 450 core instead.
+      // Engine GLSL uses `#version 300 es` for GL ES; force 450 core for Vulkan/SPIR-V.
       options.SetForcedVersionProfile(450, shaderc_profile_core);
 
-      // Activates the VULKAN preprocessor macro. Engine shader sources use:
-      //   TK_UBO_BINDING(n)     -> layout(std140, binding = n)   (Vulkan)
-      //   TK_SAMPLER_BINDING(n) -> layout(binding = n)            (Vulkan)
-      // defined in vulkanCompatInc.shader via `#ifdef VULKAN`.
-      // NOTE: shaderc automatically predefines VULKAN (= Vulkan version, e.g. 100) when
-      // SetTargetEnvironment is Vulkan, so we must NOT call AddMacroDefinition("VULKAN")
-      // here — that would redefine it with a different value and cause a compile error.
+      // shaderc predefines VULKAN macro when target env is Vulkan â€” don't redefine it here.
+      // Engine GLSL uses TK_UBO_BINDING / TK_SAMPLER_BINDING macros gated on VULKAN.
 
-      // Engine GLSL declares inter-stage varyings without explicit layout(location=N)
-      // (GLSL ES 3.00 style matched by name). SPIR-V requires explicit locations; shaderc
-      // auto-assigns them using name-based matching between vertex outputs and fragment inputs.
+      // Engine GLSL declares inter-stage varyings without layout(location=N); shaderc
+      // auto-assigns by name-based vertexâ†”fragment matching.
       options.SetAutoMapLocations(true);
 
-      // Stage 7d-1 binding remap: shift every UBO binding up by kUboBindingBase so GL UBO slots
-      // (3, 4, 7, ...) land outside the texture binding range (0..7). Textures are not shifted.
-      // See VulkanBindings.h for the full convention + concrete layout.
+      // Shift UBO bindings up by kUboBindingBase so GL UBO slots land outside texture range.
       options.SetBindingBase(shaderc_uniform_kind_buffer, VulkanBindings::kUboBindingBase);
 
 #ifdef TK_DEBUG

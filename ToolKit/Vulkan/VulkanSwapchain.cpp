@@ -50,8 +50,7 @@ namespace ToolKit
     VkDevice device = m_ctx->GetDevice();
     vkDeviceWaitIdle(device);
 
-    // m_renderFinished is per-image and lives with the swapchain — DestroySwapchainObjects
-    // already tore it down. Only per-frame submission sync remains here.
+    // m_renderFinished is per-image; DestroySwapchainObjects handles it.
     DestroySwapchainObjects();
 
     for (uint i = 0; i < FRAMES_IN_FLIGHT; ++i)
@@ -90,10 +89,7 @@ namespace ToolKit
     std::vector<VkSurfaceFormatKHR> formats(count);
     vkGetPhysicalDeviceSurfaceFormatsKHR(phys, surface, &count, formats.data());
 
-    // Prefer an sRGB format so the swapchain image view does the linear→sRGB encode for us
-    // on store; that lets shaders write linear colors and skips the in-shader gamma path.
-    // Iterate in preference order: R8G8B8A8 first (matches our internal RT default), B8G8R8A8
-    // second (common on Windows surfaces).
+    // Prefer sRGB so the swapchain view applies linear→sRGB on store and shaders write linear.
     const VkFormat srgbPrefs[] = {VK_FORMAT_R8G8B8A8_SRGB, VK_FORMAT_B8G8R8A8_SRGB};
     for (VkFormat pref : srgbPrefs)
     {
@@ -106,8 +102,7 @@ namespace ToolKit
       }
     }
 
-    // No sRGB pair offered (surface/driver limitation) — fall back to UNORM. The engine will
-    // see m_backbufferFormatIsSRGB=false and gamma-encode in shader / via ImGui's encode flag.
+    // Fallback to UNORM — engine sees m_backbufferFormatIsSRGB=false and gamma-encodes in shader.
     const VkFormat unormPrefs[] = {VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_B8G8R8A8_UNORM};
     for (VkFormat pref : unormPrefs)
     {
@@ -162,7 +157,7 @@ namespace ToolKit
     extent.height = std::clamp(extent.height, caps.minImageExtent.height, caps.maxImageExtent.height);
     if (extent.width == 0 || extent.height == 0)
     {
-      // Window minimized — skip creation, caller will retry next frame.
+      // Minimized — retry next frame.
       m_extent = extent;
       return true;
     }
@@ -186,10 +181,7 @@ namespace ToolKit
     ci.imageColorSpace  = m_colorSpace;
     ci.imageExtent      = extent;
     ci.imageArrayLayers = 1;
-    // TRANSFER_DST_BIT is required so VulkanBackend::CopyFramebuffer(dst=nullptr) can blit the
-    // engine's final composite into the backbuffer (splash screen / game path that never opens an
-    // ImGui swapchain RP). Spec guarantees TRANSFER_DST is among supportedUsageFlags on every
-    // implementation, so no caps gate needed.
+    // TRANSFER_DST so CopyFramebuffer(dst=nullptr) can blit into the backbuffer.
     ci.imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     ci.preTransform     = caps.currentTransform;
     ci.compositeAlpha   = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
@@ -263,9 +255,7 @@ namespace ToolKit
       }
     }
 
-    // Per-image renderFinished semaphores live with the swapchain — image count can change on
-    // Recreate(), and the present queue may keep waiting on the semaphore after we've moved past
-    // the FRAMES_IN_FLIGHT slot that signaled it.
+    // renderFinished is per-image (image count can change on Recreate).
     VkSemaphoreCreateInfo sci{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
     m_renderFinished.resize(actualCount, VK_NULL_HANDLE);
     for (uint i = 0; i < actualCount; ++i)
@@ -284,7 +274,6 @@ namespace ToolKit
   {
     VkDevice device = m_ctx->GetDevice();
 
-    // Format needs to match the swapchain's; query it once up front.
     VkSurfaceFormatKHR surfaceFormat = PickSurfaceFormat(m_ctx->GetPhysicalDevice(), m_ctx->GetSurface());
     m_format                         = surfaceFormat.format;
     m_colorSpace                     = surfaceFormat.colorSpace;
@@ -340,8 +329,6 @@ namespace ToolKit
     VkFenceCreateInfo fci{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
     fci.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
-    // Per-frame submission-side sync only. renderFinished is per-image and lives in
-    // CreateSwapchainObjects (sized to actual image count, recreated on resize).
     for (uint i = 0; i < FRAMES_IN_FLIGHT; ++i)
     {
       if (vkCreateSemaphore(device, &sci, nullptr, &m_imageAvailable[i]) != VK_SUCCESS ||
@@ -432,23 +419,19 @@ namespace ToolKit
   {
     if (m_ctx == nullptr || m_ctx->GetDevice() == VK_NULL_HANDLE)
     {
-      // Device gone — caller can't recover here, skip the frame entirely.
       return false;
     }
 
     VkDevice device  = m_ctx->GetDevice();
     m_presentable    = false;
 
-    // Always wait on this slot's fence — even when not presentable, EndFrame submits a
-    // fence-only cb so the fence stays in the same signaled/unsignaled cadence as frame count.
-    // That keeps DeferDelete's slot-fence guarantee honest (drain at BeginFrame still implies
-    // "last submission for this slot has retired").
+    // Always wait the slot fence (EndFrame submits a fence-only cb when not presentable so the
+    // fence cadence stays in lockstep with frame count; DeferDelete relies on this).
     vkWaitForFences(device, 1, &m_inFlight[m_currentFrame], VK_TRUE, UINT64_MAX);
     vkResetFences(device, 1, &m_inFlight[m_currentFrame]);
 
-    // Reset + begin the command buffer regardless of swapchain state. This is the central change
-    // vs. the prior design: the engine can keep recording uploads/offscreen passes during minimize
-    // (window has no presentable surface) instead of stalling all GPU work.
+    // Reset + begin cb regardless of swapchain state so the engine can keep recording uploads
+    // and offscreen passes while the window is minimized.
     VkCommandBuffer cb = m_cmdBuffers[m_currentFrame];
     vkResetCommandBuffer(cb, 0);
 
@@ -462,8 +445,7 @@ namespace ToolKit
     m_swapchainPassActive = false;
     m_frameActive         = true;
 
-    // Try to acquire the swapchain image. Failure (extent 0, out-of-date, suboptimal-as-error) is
-    // non-fatal — the frame proceeds in "no-present" mode and the backend recreates next frame.
+    // Acquire is best-effort — backend recreates on failure.
     if (m_swapchain != VK_NULL_HANDLE && m_extent.width != 0 && m_extent.height != 0)
     {
       uint32_t imageIndex = 0;
@@ -545,7 +527,6 @@ namespace ToolKit
     VkCommandBuffer cb = m_cmdBuffers[m_currentFrame];
     if (m_swapchainPassActive)
     {
-      // Defensive: close the swapchain pass if the caller forgot to.
       vkCmdEndRenderPass(cb);
       m_swapchainPassActive = false;
     }
@@ -564,17 +545,14 @@ namespace ToolKit
     si.pCommandBuffers      = &cb;
     if (m_presentable)
     {
-      // Normal path: wait on the image-available semaphore signaled by vkAcquireNextImageKHR and
-      // signal the per-image renderFinished semaphore that vkQueuePresentKHR will wait on.
       si.waitSemaphoreCount   = 1;
       si.pWaitSemaphores      = &m_imageAvailable[m_currentFrame];
       si.pWaitDstStageMask    = &waitStage;
       si.signalSemaphoreCount = 1;
       si.pSignalSemaphores    = &m_renderFinished[m_currentImage];
     }
-    // Else: no acquire happened this frame → no image semaphore to wait on, nothing to present.
-    // We still submit so the in-flight fence gets signaled — DeferDelete's slot-fence guarantee
-    // keeps tracking frame count even while the window is minimized.
+    // Else: no acquire — still submit a fence-only cb so the in-flight fence stays in cadence
+    // with frame count (DeferDelete keeps tracking even while minimized).
 
     if (VkResult r = vkQueueSubmit(m_ctx->GetGraphicsQueue(), 1, &si, m_inFlight[m_currentFrame]); r != VK_SUCCESS)
     {
@@ -597,7 +575,7 @@ namespace ToolKit
       VkResult pr           = vkQueuePresentKHR(m_ctx->GetPresentQueue(), &pi);
       if (pr == VK_ERROR_OUT_OF_DATE_KHR || pr == VK_SUBOPTIMAL_KHR)
       {
-        result = false; // Backend will recreate next frame.
+        result = false;
       }
       else if (pr != VK_SUCCESS)
       {
@@ -627,9 +605,7 @@ namespace ToolKit
       return false;
     }
 
-    // No semaphores: the imageAvailable wait + renderFinished signal belong to the terminal
-    // EndFrame submission. The in-flight fence likewise tracks the EndFrame submission so the
-    // BeginFrame fence wait next cycle gates the whole frame's GPU work, including this one.
+    // No semaphores/fence — those belong to the terminal EndFrame submission.
     VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
     si.commandBufferCount = 1;
     si.pCommandBuffers    = &cb;
@@ -639,7 +615,7 @@ namespace ToolKit
       return false;
     }
 
-    // Heavy stall — only acceptable because this is a recovery path, not the steady-state.
+    // Heavy stall — only acceptable on the recovery path.
     if (VkResult r = vkQueueWaitIdle(m_ctx->GetGraphicsQueue()); r != VK_SUCCESS)
     {
       TK_ERR("VulkanSwapchain::FlushCommandBuffer: vkQueueWaitIdle failed: %d", r);

@@ -33,8 +33,7 @@ namespace ToolKit
       case GraphicTypes::FormatRGB32F:            return VK_FORMAT_R32G32B32_SFLOAT;
       case GraphicTypes::FormatRGBA32F:           return VK_FORMAT_R32G32B32A32_SFLOAT;
       case GraphicTypes::FormatR16SNorm:          return VK_FORMAT_R16_SNORM;
-      // VK_FORMAT_X8_D24_UNORM_PACK32 is rarely supported as a depth attachment; fall back to
-      // D32_SFLOAT which every desktop GPU supports and gives better precision.
+      // D32_SFLOAT — wider support + better precision than X8_D24_UNORM_PACK32.
       case GraphicTypes::FormatDepth24:           return VK_FORMAT_D32_SFLOAT;
       case GraphicTypes::FormatDepth24Stencil8:   return VK_FORMAT_D24_UNORM_S8_UINT;
       default:                                    return VK_FORMAT_UNDEFINED;
@@ -117,8 +116,6 @@ namespace ToolKit
     }
 
     VkDevice device = context->GetDevice();
-    // VkFramebuffer cache — destroy each unique handle. The active `framebuffer` field is just
-    // an alias into the cache; the cache owns the lifetime.
     for (FbCacheEntry& e : fbCache)
     {
       if (e.valid && e.fb != VK_NULL_HANDLE)
@@ -213,7 +210,7 @@ namespace ToolKit
       vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
       pipelineLayout = VK_NULL_HANDLE;
     }
-    // Descriptor set layout is owned by VulkanContext (single shared instance) � do not destroy.
+    // Descriptor set layout is owned by VulkanContext — do not destroy here.
   }
 
 } // namespace ToolKit

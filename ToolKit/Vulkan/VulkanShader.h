@@ -17,11 +17,7 @@
 namespace ToolKit
 {
 
-  /**
-   * GLSL → SPIR-V compilation + VkShaderModule creation helpers.
-   * Stateless: callers own the returned SPIR-V buffer and shader module and are responsible for
-   * destroying the module. (Stage 2b will introduce a pipeline cache that owns module lifetimes.)
-   */
+  /** GLSL → SPIR-V + VkShaderModule helpers. Caller owns lifetimes. */
   namespace VulkanShader
   {
 
@@ -31,15 +27,10 @@ namespace ToolKit
       Fragment
     };
 
-    /**
-     * Compiles GLSL source to SPIR-V. Logs and returns empty vector on failure.
-     * @param stage     - shader stage (drives shaderc kind).
-     * @param source    - GLSL source text (must contain `#version` directive).
-     * @param debugName - free-form name used only in shaderc diagnostics + log messages.
-     */
+    /** Compiles GLSL to SPIR-V; empty on failure (logged). @p debugName feeds shaderc diagnostics. */
     std::vector<uint32_t> CompileGlslToSpirv(Stage stage, const std::string& source, const std::string& debugName);
 
-    /** Creates a VkShaderModule from a SPIR-V word buffer. Returns VK_NULL_HANDLE on failure. */
+    /** VK_NULL_HANDLE on failure. */
     VkShaderModule CreateShaderModule(VkDevice device, const std::vector<uint32_t>& spirv);
 
   } // namespace VulkanShader

@@ -30,12 +30,9 @@
 
 namespace
 {
-  // Uploads @p pixels (byteCount bytes) to VulkanTexture @p vt at (layer, mip) via a
-  // single-use staging buffer. Transitions the sub-resource from its current layout to
-  // TRANSFER_DST, performs the copy, then transitions back to SHADER_READ_ONLY_OPTIMAL.
-  // The actual GPU work runs on the swapchain command buffer at the next BeginFrame; the
-  // staging buffer's lifetime is extended via DeferDelete so it survives until the GPU has
-  // retired the recorded copy.
+  // Uploads pixels to a VulkanTexture sub-resource via a single-use staging buffer.
+  // Layout: current -> TRANSFER_DST -> SHADER_READ_ONLY_OPTIMAL. Recording deferred to the
+  // active cb; staging buffer destroyed after the cb retires via DeferDelete.
   static void UploadTexelData(ToolKit::VulkanContext* ctx,
                               ToolKit::VulkanTexture* vt,
                               const void* pixels,
@@ -47,7 +44,6 @@ namespace
     if (!pixels || byteCount == 0 || !vt || vt->image == VK_NULL_HANDLE)
       return;
 
-    // Staging buffer — CPU-visible, written once and discarded after the GPU consumes the copy.
     VulkanBuffer::Buffer staging =
         VulkanBuffer::CreateHostVisibleMapped(ctx, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, byteCount);
     if (staging.handle == VK_NULL_HANDLE)
@@ -64,7 +60,6 @@ namespace
     ctx->EnqueueGpuWork(
         [staging, vt, srcLayout, layer, mip, w, h](VkCommandBuffer cb)
         {
-          // Transition: currentLayout → TRANSFER_DST_OPTIMAL
           VkImageMemoryBarrier toTransfer{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
           toTransfer.oldLayout                       = srcLayout;
           toTransfer.newLayout                       = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
@@ -92,7 +87,6 @@ namespace
           vkCmdCopyBufferToImage(cb, staging.handle, vt->image,
                                  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 
-          // Transition: TRANSFER_DST_OPTIMAL → SHADER_READ_ONLY_OPTIMAL
           VkImageMemoryBarrier toRead = toTransfer;
           toRead.oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
           toRead.newLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -122,29 +116,20 @@ namespace ToolKit
         m_swapchain(std::make_unique<VulkanSwapchain>()),
         m_pipelineCache(std::make_unique<VulkanPipelineCache>())
   {
-    // One bucket per frame-in-flight. Sized once at construction so DeferDelete can run before
-    // InitBackend (e.g., during early resource churn) without bounds checks.
+    // One bucket per frame-in-flight.
     m_pendingDeleters.resize(VulkanSwapchain::FRAMES_IN_FLIGHT);
   }
 
   VulkanBackend::~VulkanBackend()
   {
-    // Block until every queued submission completes, then run every pending deleter while the
-    // device is still alive. Do this BEFORE swapchain.reset()/context.reset() so the lambdas can
-    // call vkDestroy* / shared_ptr dtors safely.
     if (m_context && m_context->GetDevice() != VK_NULL_HANDLE)
     {
       vkDeviceWaitIdle(m_context->GetDevice());
     }
 
-    // Drop shadow bindings while the device + VMA allocator are still alive. The shadow holds
-    // TexturePtr (shared_ptr) refs that are sticky across passes/frames by design (BindPipeline
-    // / FinishPass intentionally do not wipe them). At shutdown those refs are the last owners
-    // of engine-side Texture / CubeMap objects; if we let them release during the implicit
-    // member-destruction phase that runs after m_context.reset(), VulkanTexture::~VulkanTexture
-    // would issue vkDestroySampler / vkDestroyImageView on a dead device and vmaDestroyImage
-    // on a destroyed allocator (the VMA_ASSERT_LEAK fires here because VMA sees outstanding
-    // allocations when its allocator is freed).
+    // Release sticky bindings while the device + allocator are still alive. The shadow holds
+    // TexturePtr refs intentionally kept across passes; letting them release during member
+    // destruction would call vkDestroy* on a dead device.
     m_shadow.Reset();
     for (auto& entry : m_globalUboRegistry)
     {
@@ -155,7 +140,6 @@ namespace ToolKit
       bucket.clear();
     }
 
-    // Explicitly reset dummy textures while context allocator is valid
     if (m_dummyTexture)
     {
       m_dummyTexture.reset();
@@ -181,9 +165,7 @@ namespace ToolKit
     m_pipelineCache.reset();
     m_swapchain.reset();
 
-    // Final drain: m_pipelineCache->Destroy / m_swapchain.reset may DeferDelete more lambdas
-    // (with shared_ptr captures). Drain them before m_context.reset() takes the device down so
-    // they can still issue valid vk* calls and release VMA-backed resources.
+    // Final drain catches deleters queued by m_pipelineCache->Destroy / m_swapchain.reset.
     DrainAllDeleters();
     m_context.reset();
   }
@@ -192,7 +174,6 @@ namespace ToolKit
   {
     if (!fn || m_pendingDeleters.empty())
     {
-      // Backend not yet constructed (impossible â€” vector is sized in ctor) or no-op lambda.
       return;
     }
     const uint slot = m_deleterSlot < m_pendingDeleters.size() ? m_deleterSlot : 0;
@@ -210,9 +191,7 @@ namespace ToolKit
     {
       return;
     }
-    // Move out so a deleter that itself calls DeferDelete (queueing into the same slot) doesn't
-    // invalidate iteration. Anything appended during drain lands in the now-empty bucket and
-    // will be drained on the next cycle.
+    // Move out so a deleter that itself calls DeferDelete doesn't invalidate iteration.
     std::vector<std::function<void()>> local;
     local.swap(bucket);
     for (auto& fn : local)
@@ -396,8 +375,7 @@ namespace ToolKit
     }
     CreateDummyTexture();
 
-    // Timer query infra. Skip the whole feature if the device can't time graphics work — leave
-    // m_cpuTimeMs/m_gpuTimeMs at their default 1.0 so the Stats window doesn't show inf.
+    // Timer query infra. Disabled if the device can't time graphics work.
     {
       VkPhysicalDeviceProperties props{};
       vkGetPhysicalDeviceProperties(m_context->GetPhysicalDevice(), &props);
@@ -434,10 +412,8 @@ namespace ToolKit
 
   void VulkanBackend::BeginFrame()
   {
-    // Try to recreate the swapchain only when the surface actually has a presentable extent.
-    // Calling Recreate while the window is minimized would just fail (extent 0) every tick — we
-    // wait until the window has size again, then rebuild. Until then we keep running frames in
-    // "no-present" mode so engine state (uploads, offscreen passes, simulation) keeps advancing.
+    // Skip Recreate while the surface has no presentable extent (window minimized); keep running
+    // no-present frames so engine state (uploads, offscreen passes) keeps advancing.
     if (m_needsRecreate)
     {
       VkSurfaceCapabilitiesKHR caps{};
@@ -460,21 +436,12 @@ namespace ToolKit
     }
     if (!m_swapchain->IsPresentable())
     {
-      // We have a cb but no swapchain image. Flag for recreate so the next frame retries acquire
-      // (which will succeed once the window is restored).
       m_needsRecreate = true;
     }
-    // VulkanSwapchain::BeginFrame waited on m_inFlight[currentFrame] just now â†’ every cmd
-    // buffer that recorded into this slot last cycle is fully retired on the GPU. Reap that
-    // bucket before any new work this frame can touch the same slot.
-    //
-    // The very first BeginFrame is special: the slot's fence has never gated a real submission,
-    // so anything DeferDelete'd during init (loader code, dummy texture churn) is sitting in
-    // this slot but has NOT been consumed by any cb yet. Draining it now would destroy
-    // resources that FlushPendingGpuWork below is about to record barriers/copies against.
-    // Skip the drain on the first frame; those entries stay queued until the slot rolls around
-    // again (frame N + FRAMES_IN_FLIGHT), by which point this frame's cb has retired and the
-    // standard fence guarantee holds.
+    // BeginFrame waited on this slot's fence; previous cb has retired. Reap its deleter bucket.
+    // First frame skips the drain: init-time DeferDelete'd entries live here but have never been
+    // consumed by a cb yet — draining now would destroy resources FlushPendingGpuWork is about
+    // to touch.
     m_deleterSlot = m_swapchain->GetCurrentFrameIndex();
     if (!m_firstFrame)
     {
@@ -482,44 +449,28 @@ namespace ToolKit
     }
     m_firstFrame = false;
 
-    // Same fence guarantee covers descriptor sets allocated last cycle from this slot's pool â€”
-    // resetting it releases every set in one call, ready for fresh BindTexture/SubmitPerDrawData
-    // allocations during this frame's recording (Stage 7d-4).
     m_context->ResetFrameDescriptorPool(m_deleterSlot);
 
-    // Phase 3: ResetFrameDescriptorPool just released every set in this frame's pool, so the
-    // cache entries that point at those sets are now stale. Drop them before any draw can read.
+    // Cache rows point at the sets we just released — drop them.
     if (m_deleterSlot < m_descriptorCache.size())
     {
       m_descriptorCache[m_deleterSlot].clear();
     }
 
-    // Per-draw UBO ring is partitioned per frame-in-flight slot; reset re-bases this slot's head
-    // to its region base. Fence-safe because the slot's fence we just waited on guarantees every
-    // cb that read from this region has retired. The other slot's region stays untouched while
-    // its cb is still in flight (Stage 7d-4b).
+    // Per-draw UBO ring is partitioned per FIF slot; reset re-bases this slot's head to its
+    // region base. The other slot's region stays untouched while its cb is still in flight.
     m_context->ResetPerDrawUboRing(m_deleterSlot);
     m_currentDynamicOffset = 0;
 
-    // Timer-query pump. The slot fence we just waited on guarantees the previous cycle's cb (the
-    // one that recorded the BEGIN/END timestamps) has retired — its query results are now host-
-    // readable. Two responsibilities here:
-    //   1. If a cycle is waiting on result, drain it (validator-safe because queries are now in
-    //      "available" state on host).
-    //   2. If no cycle is in flight, record vkCmdResetQueryPool BEFORE any pass opens on this
-    //      frame's cb. vkCmdResetQueryPool is illegal inside a render pass, and RenderPath
-    //      PreRender (which fires StartTimerQuery → vkCmdWriteTimestamp) can land inside an
-    //      offscreen pass left open by a sibling path — doing the reset here sidesteps that.
+    // Timer query pump. Slot fence above guarantees the previous cycle's BEGIN/END timestamps
+    // are host-readable. If a cycle is in flight, poll; otherwise reset the pool here (illegal
+    // inside a render pass) so the BEGIN can fire from any RenderPath later.
     if (m_timerSupported)
     {
       if (m_timerQueryWaiting)
       {
-        // Explicit non-blocking poll — mirrors the GL backend's GL_QUERY_RESULT_AVAILABLE
-        // pattern. WITH_AVAILABILITY_BIT appends a uint64 "ready" flag after each timestamp
-        // value (stride doubles to 16B). Without WAIT_BIT the call returns immediately even
-        // when neither flag has flipped, and we only consume the result if BOTH availability
-        // dwords are non-zero. This guarantees a true poll.
-        uint64_t results[4] = {0, 0, 0, 0}; // [0]=t0, [1]=avail0, [2]=t1, [3]=avail1
+        // Non-blocking poll with WITH_AVAILABILITY_BIT (16B stride: t0, avail0, t1, avail1).
+        uint64_t results[4] = {0, 0, 0, 0};
         vkGetQueryPoolResults(m_context->GetDevice(),
                               m_timestampPool,
                               0,
@@ -535,7 +486,6 @@ namespace ToolKit
           m_gpuTimeMs         = (float) std::max(1.0, deltaMs);
           m_timerQueryWaiting = false;
         }
-        // else: not ready yet, leave m_timerQueryWaiting true → retry next frame, no stall.
       }
       if (!m_timerQueryActive && !m_timerQueryWaiting)
       {
@@ -547,34 +497,25 @@ namespace ToolKit
       }
     }
 
-    // Cross-frame hygiene: drop every shadow binding so stale TexturePtr / UniformBuffer* refs
-    // from last frame don't keep destroyed engine resources alive (e.g. viewport resize releases
-    // old RTs, but a sticky boundTextures slot would prolong their lifetime until the next
-    // SetTexture overwrites the slot). BindPipeline / FinishPass deliberately only reset per-draw
-    // state; the full sweep belongs here.
+    // Drop sticky shadow bindings — stale TexturePtr/UniformBuffer* would otherwise outlive their
+    // engine-side owners (e.g. viewport resize). Per-draw resets happen elsewhere; the full sweep
+    // belongs at frame boundary.
     m_shadow.Reset();
-    // Per-frame descriptor pool was just reset (or about to be); the last-flushed handle from
-    // last frame is now invalid. Clear so the fast path doesn't return a dangling set.
     m_lastFlushedSet     = VK_NULL_HANDLE;
     m_lastFlushedProgram = nullptr;
 
-    VkCommandBuffer cb              = m_swapchain->GetCurrentCommandBuffer();
+    VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer();
 
-    // Drain any GPU work queued via EnqueueGpuWork while no frame was active (init-time texture
-    // uploads, layout transitions, mip generation) into this frame's command buffer. The
-    // cleanup callbacks (e.g. staging buffer destroys) ride DeferDelete so they only fire once
-    // the recorded GPU work has retired on the GPU.
+    // Flush GPU work queued while no frame was active (init-time uploads, transitions). Cleanups
+    // ride DeferDelete so staging buffers outlive the cb.
     std::vector<std::function<void()>> pendingCleanups = m_context->FlushPendingGpuWork(cb);
     for (std::function<void()>& cleanup : pendingCleanups)
     {
       DeferDelete(std::move(cleanup));
     }
 
-    // From this point on EnqueueGpuWork records inline into cb when no render pass is open, or
-    // parks into the during-RP queue when one is (vkCmdPipelineBarrier mid-pass without
-    // self-dependency is illegal — VUID-vkCmdPipelineBarrier-None-07889). VulkanBackend flushes
-    // the during-RP queue immediately after every render pass closes (per-Draw EndRenderPass
-    // for offscreen, EndSwapchainPass for the swapchain pass). Cleared in Present.
+    // Route subsequent EnqueueGpuWork into this cb (inline when no RP active, parked when one
+    // is — vkCmdPipelineBarrier is illegal mid-RP). Cleared in Present.
     m_context->SetCurrentRecordingCb(
         cb,
         [this](std::function<void()> fn) { DeferDelete(std::move(fn)); },
@@ -583,7 +524,7 @@ namespace ToolKit
 
   void VulkanBackend::EndFrame()
   {
-    // Present() handles the end-of-frame submit. Kept as no-op to match IGraphicsBackend contract.
+    // No-op. Present() does the submit.
   }
 
   void VulkanBackend::FlushAndResetRing()
@@ -599,54 +540,38 @@ namespace ToolKit
       return;
     }
 
-    // SubmitPerDrawData is invoked from FeedUniforms which runs between BindPipeline and Draw.
-    // Under the lazy-open RP architecture an offscreen RP may already be active (FlushDescriptor
-    // is called with the RP open). Close it cleanly through the shared helper — the next Draw
-    // reopens with the LOAD variant so already-rendered content isn't lost.
+    // Offscreen RP may be open (FlushDescriptor can fire mid-pass). Close it; the next Draw
+    // reopens with LOAD to keep prior content.
     CloseOffscreenRenderPassIfOpen(cb);
-    // If the swapchain pass is currently open we can't safely flush: the swapchain render pass
-    // declares VK_ATTACHMENT_LOAD_OP_CLEAR, so closing and reopening it would clear the image
-    // and discard everything drawn so far this frame. Bail with a log; the draw that triggered
-    // overflow will hit the validation error, but no rendered content is lost. Realistic
-    // overflow today comes from EnvironmentComponent::CaptureEnvironment which renders
-    // exclusively to offscreen FBs, so this branch should not fire in practice.
+    // Swapchain RP uses LOAD_OP_CLEAR, so we can't safely close+reopen — would lose draws.
     if (m_swapchain->IsSwapchainPassActive())
     {
-      TK_ERR("VulkanBackend::FlushAndResetRing: per-draw ring overflowed inside the swapchain "
-             "render pass — flush skipped to avoid losing draw content. The triggering draw "
-             "will fail descriptor validation; consider reducing per-frame draw count.");
+      TK_ERR("VulkanBackend::FlushAndResetRing: per-draw ring overflowed inside swapchain RP — "
+             "flush skipped, triggering draw will fail descriptor validation");
       return;
     }
 
     if (!m_swapchain->FlushCommandBuffer())
     {
-      // FlushCommandBuffer logged the failure; nothing more we can do here.
       return;
     }
 
-    // Every descriptor set in the current frame's pool was just consumed by the submission we
-    // waited on, so it's safe to release them all and clear the cache that pointed at them.
     const uint frameIdx = m_swapchain->GetCurrentFrameIndex();
     m_context->ResetFrameDescriptorPool(frameIdx);
     if (frameIdx < m_descriptorCache.size())
     {
       m_descriptorCache[frameIdx].clear();
     }
-    // The last-flushed shortcut points at a set we just released — invalidate so the next Draw
-    // takes the slow path and produces a fresh allocation.
     m_lastFlushedSet     = VK_NULL_HANDLE;
     m_lastFlushedProgram = nullptr;
     m_shadow.dirty       = true;
 
-    // Ring drained by FlushCommandBuffer above (queue idle), so it's safe to re-base this slot's
-    // head — the other slot's region is irrelevant here since the queue has no in-flight cb.
+    // Queue is idle after FlushCommandBuffer — safe to re-base this slot's ring head.
     m_context->ResetPerDrawUboRing(frameIdx);
     m_currentDynamicOffset = 0;
 
-    // Re-issue dynamic state on the new cmd buffer. CPU shadow state (bound textures/UBOs/
-    // program) stays valid — FlushDescriptorState will allocate fresh sets from it on the next
-    // Draw. The next Draw also re-records vkCmdBindPipeline + vkCmdBindDescriptorSets +
-    // vkCmdBindVertexBuffers / vkCmdBindIndexBuffer, so those don't need preservation here.
+    // Re-issue dynamic state on the new cmd buffer. CPU shadow state is preserved; the next Draw
+    // re-records pipeline + descriptor + vertex/index binds.
     if (m_cachedViewport.valid)
     {
       VkViewport vp{};
@@ -675,9 +600,8 @@ namespace ToolKit
     {
       return;
     }
-    // Stop routing EnqueueGpuWork inline before the cb is submitted: any work enqueued past
-    // this point (e.g. resource churn between Present and the next BeginFrame) goes back into
-    // the pending queue and replays into the next frame's cb.
+    // Stop routing EnqueueGpuWork into this cb; anything queued past this point lands in the
+    // pending queue and replays into the next frame's cb.
     m_context->SetCurrentRecordingCb(VK_NULL_HANDLE, {}, {});
     if (!m_swapchain->EndFrame())
     {
@@ -699,12 +623,9 @@ namespace ToolKit
   {
     VkDevice device = m_context->GetDevice();
 
-    // Each cached VkRenderPass may still be referenced by an in-flight cb and by pipelines that
-    // were keyed on its handle in the pipeline cache. Invalidate the pipeline cache entries
-    // first, then defer-delete the RP so the destroy fires after the cb retires. NVIDIA's ICD
-    // recycles freed VkRenderPass handle values; skipping the pipeline-cache eviction would let
-    // a fresh RP that lands on the same handle silently cache-hit a stale pipeline (NULL deref
-    // inside vkCmdDraw).
+    // NVIDIA's ICD recycles VkRenderPass handles; the pipeline cache must be invalidated by
+    // handle BEFORE the RP is destroyed, otherwise a fresh RP landing on the same handle would
+    // silently cache-hit a stale pipeline.
     for (VulkanFramebuffer::RpVariant& v : fbData->rpVariants)
     {
       if (v.valid && v.rp != VK_NULL_HANDLE)
@@ -723,8 +644,6 @@ namespace ToolKit
       v.clearBits = GraphicBitFields::None;
       v.valid     = false;
     }
-    // VkFramebuffer cache — defer-delete each unique entry. The active alias points into the
-    // cache; clearing it without destroying would leak (we're tearing the fbData down).
     for (VulkanFramebuffer::FbCacheEntry& e : fbData->fbCache)
     {
       if (e.valid && e.fb != VK_NULL_HANDLE)
@@ -766,9 +685,8 @@ namespace ToolKit
       views[viewCount++] = fbData->depthAttachment.view;
     }
 
-    // Cache lookup — recurring view tuples (shadow atlas layer iteration, blur ping-pong) hit
-    // here and skip the vkCreate/vkDestroy churn. Linear scan over kMaxFbCacheEntries (=8) is
-    // cheap; AAA atlas patterns fit in ≤6 unique tuples in practice.
+    // Cache lookup over kMaxFbCacheEntries — recurring view tuples (shadow layer iteration,
+    // blur ping-pong) hit here and skip vkCreate/vkDestroy churn.
     for (auto& entry : fbData->fbCache)
     {
       if (!entry.valid || entry.viewCount != viewCount)
@@ -791,7 +709,6 @@ namespace ToolKit
       }
     }
 
-    // Miss — create a new VkFramebuffer.
     VkFramebufferCreateInfo fbci{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
     fbci.renderPass      = fbData->renderPass;
     fbci.attachmentCount = viewCount;
@@ -807,9 +724,6 @@ namespace ToolKit
       return false;
     }
 
-    // Find a free slot or evict LRU. Cache full only happens if the engine cycles through more
-    // than kMaxFbCacheEntries distinct view tuples on the same fbData — shadow atlas patterns
-    // stay under this, so eviction is rare in steady state.
     int slot = -1;
     for (int i = 0; i < VulkanFramebuffer::kMaxFbCacheEntries; ++i)
     {
@@ -821,8 +735,7 @@ namespace ToolKit
     }
     if (slot < 0)
     {
-      // LRU-lite: evict slot 0. defer-delete the old FB so any in-flight cb that referenced it
-      // sees the destroy after retirement.
+      // LRU-lite: evict slot 0 (defer-delete since in-flight cbs may still reference it).
       slot              = 0;
       VkFramebuffer old = fbData->fbCache[0].fb;
       if (old != VK_NULL_HANDLE)
@@ -858,9 +771,8 @@ namespace ToolKit
       return;
     }
     vkCmdEndRenderPass(cb);
-    // Layouts now match the RP's finalLayout declarations (SHADER_READ_ONLY for color,
-    // DEPTH_STENCIL_READ_ONLY for depth). This is the engine's "resting state" used as
-    // initialLayout for the next RP open.
+    // Mirror the RP's finalLayout into engine state — the "resting" layout used as the next
+    // RP's initialLayout.
     for (int i = 0; i < VulkanFramebuffer::kMaxColorAttachments; ++i)
     {
       if (auto* tex = m_activePassFb->colorAttachments[i].tex)
@@ -874,9 +786,7 @@ namespace ToolKit
     }
     m_rpActive = false;
 
-    // Drain anything EnqueueGpuWork parked while the RP was open (lazy uploads triggered
-    // during FlushDescriptorState etc.). Now that we're past vkCmdEndRenderPass it's legal
-    // to record their barriers + copies into the same cb.
+    // Drain GPU work parked while the RP was open — now legal to record barriers + copies.
     auto rpCleanups = m_context->FlushDuringRenderPassWork(cb);
     for (std::function<void()>& cleanup : rpCleanups)
     {
@@ -899,12 +809,7 @@ namespace ToolKit
     atts.reserve(VulkanFramebuffer::kMaxColorAttachments + 1);
     colorRefs.reserve(VulkanFramebuffer::kMaxColorAttachments);
 
-    // Stage 10. Each attachment carries the sample count it was created with (CreateTexture
-    // mirrors TextureSettings::msaaCount onto VulkanTexture::samples). Vulkan requires every
-    // attachment in a subpass to share the same sampleCount, so we sanity-check each color
-    // attachment against the first one (or the depth attachment when there are no color
-    // slots). Mismatched MSAA framebuffers are an engine-side bug â€” log so the caller sees
-    // the broken combo and fix the source-side TextureSettings.
+    // Vulkan requires every attachment in a subpass to share the same sampleCount.
     VkSampleCountFlagBits subpassSamples = VK_SAMPLE_COUNT_1_BIT;
     bool subpassSamplesSet               = false;
 
@@ -936,24 +841,12 @@ namespace ToolKit
       VkAttachmentDescription a{};
       a.format         = slot.tex->format;
       a.samples        = slot.tex->samples;
-      // loadOp is the whole point of this refactor — drives whether the GPU clears the
-      // attachment at RP entry (often free with HiZ/HiS or tile-attachment compression) or
-      // preserves previous contents. Driven by the caller's clearBits.
       a.loadOp         = clearColor ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
       a.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
       a.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
       a.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-      // FinishPass / RP finalLayout parks every attachment at SHADER_READ_ONLY_OPTIMAL, so
-      // that's also the initialLayout for the next pass. With LOAD_OP_CLEAR the previous
-      // contents don't matter but the declared initialLayout still has to match the image's
-      // actual layout (Vulkan validation rule). UNDEFINED would be a touch cheaper for the
-      // clear case on tiler GPUs but only safely so on the very first use of an image —
-      // SHADER_READ_ONLY is correct for the steady state on second and later uses.
+      // Steady-state resting layout for color attachments (matches finalLayout below).
       a.initialLayout  = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-      // MSAA color attachments aren't sampled directly (engine resolves through
-      // ResolveFramebuffer first). The "shader read only" finalLayout is harmless for them
-      // either way â€” vkCmdResolveImage transitions the image to TRANSFER_SRC_OPTIMAL itself
-      // before reading, and the engine never binds an MSAA target as a sampled texture.
       a.finalLayout    = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
       VkAttachmentReference ref{};
@@ -991,18 +884,10 @@ namespace ToolKit
     subpass.pColorAttachments       = colorRefs.empty() ? nullptr : colorRefs.data();
     subpass.pDepthStencilAttachment = hasDepth ? &depthRef : nullptr;
 
-    // External subpass dependencies. The engine opens a fresh render pass instance per Draw on
-    // the same framebuffer (intermediate buffers like bloom chains, m_resolvedFramebuffer, the
-    // shadow atlas etc. are written by many such instances back-to-back), and FRAMES_IN_FLIGHT>1
-    // pipelines two cb's on the queue. Both srcStageMask and srcAccessMask therefore have to
-    // cover *every* prior access type \u2014 read AND write, depth AND color \u2014 so the implicit
-    // queue-order memory dependency hands off cleanly to this pass:
-    //   - prior FRAGMENT_SHADER + SHADER_READ (sampling in earlier passes)
-    //   - prior COLOR_ATTACHMENT_OUTPUT + COLOR_ATTACHMENT_WRITE (write-after-write on the same
-    //     image, intra-cb between back-to-back Draw RPs and inter-cb across frames-in-flight)
-    //   - prior LATE_FRAGMENT_TESTS + DEPTH_STENCIL_ATTACHMENT_WRITE (depth write-after-write)
-    // dep[1] mirrors that with the post-pass scope so subsequent samplers (e.g. ImGui in the
-    // swapchain pass, or the next Draw's color/depth read) observe this pass's writes.
+    // External subpass deps must cover every prior access type so the implicit queue-order
+    // memory dependency hands off cleanly. Engine opens fresh RP instances back-to-back on the
+    // same fb (bloom chains, shadow atlas, etc.) and runs FIF>1 cb's on the queue, so the
+    // src* masks pull in sampling, color writes, and depth writes from any prior pass.
     VkSubpassDependency deps[2]{};
     deps[0].srcSubpass    = VK_SUBPASS_EXTERNAL;
     deps[0].dstSubpass    = 0;
@@ -1044,9 +929,6 @@ namespace ToolKit
       return false;
     }
 
-    // Find a free slot. If the cache is full, evict slot 0 — this only triggers if the engine
-    // cycles through more than kMaxRpVariants distinct clearBits patterns on the same
-    // framebuffer, which no current pass does. Promote to a proper LRU if that changes.
     int slot = -1;
     for (int i = 0; i < VulkanFramebuffer::kMaxRpVariants; ++i)
     {
@@ -1058,6 +940,8 @@ namespace ToolKit
     }
     if (slot < 0)
     {
+      // Cache full → evict slot 0. Pipeline cache must be invalidated by handle before RP
+      // destroy (driver may recycle handles into fresh RPs).
       slot               = 0;
       VkRenderPass oldRp = fbData->rpVariants[0].rp;
       if (m_pipelineCache && oldRp != VK_NULL_HANDLE)
@@ -1087,14 +971,12 @@ namespace ToolKit
       return;
     }
 
-    // HiÃ§bir pass nest edilmez â€” Ã¶nce hangisi aÃ§Ä±ksa onu kapat.
+    // No pass nesting.
     FinishPass();
 
     if (desc.target == nullptr)
     {
-      // Backbuffer pass — silently no-op when the swapchain isn't presentable (minimize). Caller
-      // is free to record nothing this frame; the engine's frame loop keeps spinning so uploads
-      // and offscreen work still flow through DeferDelete / FlushPendingGpuWork normally.
+      // Backbuffer pass. No-op when minimized; offscreen + upload work still flows.
       if (!m_swapchain->IsPresentable())
       {
         return;
@@ -1111,19 +993,17 @@ namespace ToolKit
       return;
     }
 
-    // Attachment view swapped (e.g. shadow atlas layer change). The new view is format-stable
-    // so cached RPs remain valid. fbCache holds VkFramebuffer per view tuple — drop the active
-    // alias, BuildOffscreenFramebuffer below either hits the cache or appends a new entry. No
-    // defer-delete here; cache owns lifetime.
+    // Attachment view swapped (e.g. shadow atlas layer). Drop the active VkFramebuffer alias;
+    // fbCache lookup below either hits an existing entry or appends a new one. Cache owns
+    // lifetime — no defer-delete here.
     if (fbData->dirty)
     {
       fbData->framebuffer = VK_NULL_HANDLE;
       fbData->dirty       = false;
     }
 
-    // Find/build a VkRenderPass whose attachment loadOps match this pass's clearBits. Same fb
-    // can host multiple variants (cleared / loaded) — they share the VkFramebuffer because RP
-    // compatibility excludes loadOp.
+    // Same fb can host multiple loadOp variants — they share the VkFramebuffer (RP compatibility
+    // ignores loadOp).
     if (!EnsureRpForClearBits(fbData, desc.clearBits))
     {
       return;
@@ -1140,14 +1020,12 @@ namespace ToolKit
     m_pendingPassDesc = desc;
     m_activePassFb    = fbData;
 
-    // No explicit clear here. The render pass's LOAD_OP_CLEAR + pClearValues at
-    // vkCmdBeginRenderPass do the work — that's the entire reason for the variant cache.
-
     if (VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer(); cb != VK_NULL_HANDLE)
     {
+      // Negative-height viewport: NDC Y+1 maps to top of framebuffer (matches GL convention).
       VkViewport vp{};
       vp.x        = 0.0f;
-      vp.y        = (float) fbData->height; // negative-height trick: NDC Y+1 → top of framebuffer
+      vp.y        = (float) fbData->height;
       vp.width    = (float) fbData->width;
       vp.height   = -(float) fbData->height;
       vp.minDepth = 0.0f;
@@ -1174,39 +1052,29 @@ namespace ToolKit
     {
       return;
     }
-    // Pipeline binding is per-pass: a fresh BindPipeline is required after every FinishPass.
+    // Pipeline binding is per-pass.
     m_pipelineBound = false;
     m_boundProgram  = nullptr;
-    // Per-draw state (perDraw UBO + dynamic offset) is consumed at draw time; reset so the next
-    // pipeline binding starts clean. Texture / UBO slot bindings are NOT touched: engine code
-    // (BloomPass / DoFPass) stages SetTexture *before* the next SetFramebuffer, and StartPass
-    // calls FinishPass unconditionally to close any previously-open pass — wiping the slots
-    // here used to drop those just-staged bindings and FlushDescriptorState fell back to the
-    // dummy texture. BeginFrame issues the full Reset so cross-frame leaks can't accumulate.
+    // Reset per-draw state. Texture / UBO slot bindings are intentionally preserved: engine
+    // code (BloomPass / DoFPass) stages SetTexture before the next SetFramebuffer; wiping
+    // slots here would lose those bindings. BeginFrame does the cross-frame sweep.
     m_currentDynamicOffset    = 0;
     m_shadow.perDrawSubmitted = false;
     m_shadow.perDrawSize      = 0;
     m_shadow.dirty            = true;
-    // Pass boundary — next pass may use a different program, different render pass, different
-    // attachments. Drop the MRU shortcut so the next Draw's FlushDescriptorState resolves fresh.
     m_lastFlushedSet          = VK_NULL_HANDLE;
     m_lastFlushedProgram      = nullptr;
     if (m_activePassFb != nullptr)
     {
-      // The offscreen RP now spans the entire pass (lazy-opened by the first Draw). Close +
-      // update layouts + drain via the shared helper.
       VkCommandBuffer cb = m_swapchain ? m_swapchain->GetCurrentCommandBuffer() : VK_NULL_HANDLE;
       CloseOffscreenRenderPassIfOpen(cb);
       m_activePassFb = nullptr;
       return;
     }
     m_rpActive = false;
-    // Swapchain pass was opened in StartPass and must be explicitly closed here.
     m_swapchain->EndSwapchainPass();
 
-    // Same rationale as the offscreen path above: anything EnqueueGpuWork parked while the
-    // swapchain pass was open (e.g. ImGui texture cache uploads from the editor) is now safe
-    // to record into the cb before the next pass starts.
+    // Drain GPU work parked while the swapchain pass was open (e.g. editor ImGui uploads).
     if (m_swapchain && m_swapchain->IsFrameActive())
     {
       VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer();
@@ -1223,10 +1091,7 @@ namespace ToolKit
 
   void VulkanBackend::SetViewport(uint x, uint y, uint w, uint h)
   {
-    // Dynamic state â€” every cached pipeline is built with VK_DYNAMIC_STATE_VIEWPORT (see
-    // VulkanPipelineCache::GetOrCreate), so this can be called any time during cmd recording.
-    // Cache the latest values regardless of frame-active so FlushAndResetRing can restore them
-    // onto the freshly begun cmd buffer after a mid-frame flush.
+    // Cached so FlushAndResetRing can restore onto the new cb after a mid-frame flush.
     m_cachedViewport = {(uint32_t) x, (uint32_t) y, (uint32_t) w, (uint32_t) h, true};
     if (m_swapchain == nullptr || !m_swapchain->IsFrameActive())
     {
@@ -1237,9 +1102,7 @@ namespace ToolKit
     {
       return;
     }
-    // Negative viewport height flips Y axis so screen-space matches GL conventions — see the
-    // matching code in StartPass for the rationale. ToolKit's engine code passes (x,y,w,h) in
-    // a top-left origin; after this flip the actual rasterisation matches GL's bottom-left.
+    // Negative height flips Y to match GL screen-space (engine passes top-left origin).
     VkViewport vp{};
     vp.x        = (float) x;
     vp.y        = (float) (y + h);
@@ -1272,12 +1135,8 @@ namespace ToolKit
 
   void VulkanBackend::ClearBuffer(GraphicBitFields fields, const Vec4& color)
   {
-    // Mid-pass clear via empty render pass: open the RP variant whose loadOps clear the
-    // requested fields, then immediately close. The GPU performs the clear at RP entry
-    // (free with HiZ/HiS / attachment compression on most desktop drivers) and leaves the
-    // attachment in its declared finalLayout. No barriers, no vkCmdClear*Image — replaces
-    // the legacy TRANSFER_DST dance which cost 2 barriers per attachment + a transfer-stage
-    // stall per call.
+    // Empty RP with loadOp=CLEAR: GPU clears at RP entry (often free via HiZ/attachment
+    // compression). Avoids vkCmdClear*Image + manual barriers.
     if (!m_frameStarted || m_activePassFb == nullptr)
     {
       return;
@@ -1293,13 +1152,9 @@ namespace ToolKit
       return;
     }
 
-    // Any previously-open RP must close before we open a different (CLEAR) variant — RPs
-    // can't be nested, and switching loadOps means switching VkRenderPass instances.
+    // RPs can't nest; switching loadOps means switching VkRenderPass instances.
     CloseOffscreenRenderPassIfOpen(cb);
 
-    // Attachment view swap pending (SetColorAttachment / shadow atlas slot switch). fbCache is
-    // keyed on view tuple — drop the active alias so BuildOffscreenFramebuffer below picks the
-    // matching cached FB or appends a new entry. No defer-delete (cache owns lifetime).
     if (m_activePassFb->dirty)
     {
       m_activePassFb->framebuffer = VK_NULL_HANDLE;
@@ -1318,9 +1173,7 @@ namespace ToolKit
       }
     }
 
-    // clearValues are indexed by attachment order (color slots first, then depth) — same
-    // order as BuildRpVariant emits attachments. Vulkan ignores entries for LOAD attachments
-    // but the array length must cover the highest CLEAR'd attachment index.
+    // Attachment order: colors first, then depth — matches BuildRpVariant.
     std::vector<VkClearValue> clears;
     clears.reserve(VulkanFramebuffer::kMaxColorAttachments + 1);
     for (int i = 0; i < VulkanFramebuffer::kMaxColorAttachments; ++i)
@@ -1347,13 +1200,10 @@ namespace ToolKit
     rpbi.clearValueCount   = (uint32_t) clears.size();
     rpbi.pClearValues      = clears.empty() ? nullptr : clears.data();
     vkCmdBeginRenderPass(cb, &rpbi, VK_SUBPASS_CONTENTS_INLINE);
-    // Empty subpass: no draws. The clear is the only work; it happens implicitly as the GPU
-    // transitions the attachment into COLOR_ATTACHMENT_OPTIMAL / DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-    // at RP entry (loadOp=CLEAR).
+    // Empty subpass — the loadOp=CLEAR is the entire work.
     vkCmdEndRenderPass(cb);
 
-    // RP's finalLayout declarations parked every attachment back in its resting layout —
-    // mirror that on the tracked currentLayout fields so subsequent users see consistency.
+    // Mirror RP finalLayout onto tracked currentLayout fields.
     for (int i = 0; i < VulkanFramebuffer::kMaxColorAttachments; ++i)
     {
       if (auto* tex = m_activePassFb->colorAttachments[i].tex)
@@ -1366,9 +1216,7 @@ namespace ToolKit
       tex->currentLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
     }
 
-    // Mask the just-cleared bits off any pending StartPass-driven clear so the next Draw's
-    // lazy-open doesn't redundantly clear what we just wrote. e.g. StartPass(AllBits) +
-    // ClearBuffer(ColorBits) → next Draw still clears Depth, doesn't reclear Color.
+    // Mask just-cleared bits off pending StartPass clear so next Draw's lazy-open doesn't reclear.
     m_pendingPassDesc.clearBits =
         (GraphicBitFields) ((int) m_pendingPassDesc.clearBits & ~(int) fields);
   }
@@ -1386,30 +1234,20 @@ namespace ToolKit
     auto* gp = static_cast<VulkanGpuProgram*>(program->m_gpuData.get());
     if (gp == nullptr || gp->pipelineLayout == VK_NULL_HANDLE)
     {
-      // CreateGpuProgram never ran or failed for this program.
       m_pipelineBound = false;
       m_boundProgram  = nullptr;
       return;
     }
-    // Cache program + state. The actual VkPipeline is built lazily inside Draw() because the
-    // pipeline desc requires the vertex layout (Mesh vs SkinMesh), which only arrives with
-    // DrawDesc. Caching avoids allocating per-draw and lets a single BindPipeline serve N
-    // consecutive draws with different meshes.
+    // VkPipeline is built lazily in Draw() (needs DrawDesc.vertexLayout).
     const bool programChanged = (m_boundProgram != gp);
     m_boundProgram  = gp;
     m_boundState    = *state;
     m_pipelineBound = true;
 
-    // Per-draw dynamic UBO contract: SubmitPerDrawData supplies the offset for each draw. The
-    // perDrawSize used in the descriptor write is constant per shader (sizeof(PerDrawUboLayout))
-    // so we don't need to clear it here — keeping it stable lets the FlushDescriptorState fast
-    // path hit across consecutive same-pipeline draws. perDrawSubmitted is still cleared so the
-    // contract "every Draw must be preceded by a SubmitPerDrawData" stays enforceable.
+    // perDrawSize stays cached across same-pipeline draws to keep the descriptor cache fast path.
     m_currentDynamicOffset    = 0;
     m_shadow.perDrawSubmitted = false;
 
-    // Only invalidate the descriptor-set cache when the *program* changed. Same program +
-    // unchanged textures/UBOs = same resolved descriptor set → reuse without re-resolution.
     if (programChanged)
     {
       m_shadow.dirty       = true;
@@ -1420,8 +1258,7 @@ namespace ToolKit
 
   void VulkanBackend::SubmitPerDrawData(const void* data, size_t size)
   {
-    // Stage 7d-4b. Append @p data to the per-frame UBO ring, write a UNIFORM_BUFFER_DYNAMIC
-    // descriptor pointing at the ring base, and stash the slot offset for Draw's bind call.
+    // Append data to the per-frame UBO ring; offset travels through pDynamicOffsets in Draw.
     if (m_swapchain == nullptr || !m_swapchain->IsFrameActive())
     {
       return;
@@ -1439,9 +1276,7 @@ namespace ToolKit
     void* mapped        = nullptr;
     if (!m_context->AllocatePerDrawSlot(size, offset, mapped))
     {
-      // Ring full. Drain queued GPU work so it's safe to reuse the ring from offset 0, then
-      // retry. AllocatePerDrawSlot already logged the overflow once; if the retry still fails
-      // the payload itself is bigger than the ring, which is unrecoverable here.
+      // Ring full → drain queue + reset region, then retry. Second failure means payload > ring.
       FlushAndResetRing();
       if (!m_context->AllocatePerDrawSlot(size, offset, mapped))
       {
@@ -1454,14 +1289,8 @@ namespace ToolKit
     }
     std::memcpy(mapped, data, size);
 
-    // Phase 2: descriptor write deferred to FlushDescriptorState. Just record offset + size in
-    // shadow state so the upcoming Draw can issue a UNIFORM_BUFFER_DYNAMIC write with the right
-    // range and bind dynamicOffsets[0] = m_currentDynamicOffset.
-    //
-    // The dynamic offset travels through vkCmdBindDescriptorSets at draw time, NOT through the
-    // descriptor write — so the descriptor set itself only changes when the *range* field
-    // (perDrawSize) changes. Same shader → same PerDrawUboLayout size → no descriptor change,
-    // keep the fast-path eligible.
+    // Descriptor set only changes when the range (perDrawSize) changes — dynamicOffsets[0]
+    // carries m_currentDynamicOffset at vkCmdBindDescriptorSets time, keeping cache fast path hot.
     const uint64_t newSize = (uint64_t) size;
     if (m_shadow.perDrawSize != newSize)
     {
@@ -1474,9 +1303,7 @@ namespace ToolKit
 
   void VulkanBackend::BindTexture(ubyte slot, TexturePtr tex)
   {
-    // Phase 2: only updates the shadow state. Actual descriptor write happens in
-    // FlushDescriptorState (Draw), which folds N BindTexture calls into one allocation and
-    // reuses a previously cached set when the same handle combination repeats.
+    // Shadow state only — FlushDescriptorState folds N BindTextures into one set alloc.
     if (slot >= VulkanBindings::kTextureBindingCount)
     {
       TK_ERR("BindTexture: slot %u beyond reserved texture binding range (%u)",
@@ -1484,9 +1311,8 @@ namespace ToolKit
              (unsigned) VulkanBindings::kTextureBindingCount);
       return;
     }
-    // Only dirty if the bound value actually changed — material-sorted scenes call BindTexture
-    // with the same TexturePtr repeatedly; redundant dirty kills the FlushDescriptorState fast
-    // path. shared_ptr comparison is a control-block pointer check, cheap.
+    // Only dirty if changed — material-sorted scenes rebind the same TexturePtr; redundant
+    // dirty kills the descriptor cache fast path.
     if (m_shadow.boundTextures[slot] != tex)
     {
       m_shadow.boundTextures[slot] = tex;
@@ -1496,10 +1322,8 @@ namespace ToolKit
 
   void VulkanBackend::BindUniformBuffer(const String& name, UniformBuffer* ub)
   {
-    // Phase 2: shadow-state only. Indexed by slot since the shared descriptor layout is
-    // slot-keyed (UBO binding = slot + kUboBindingBase). The name parameter is accepted for
-    // future named lookups but unused here; engine code can still rely on the slot path
-    // populated by UpdateUniformBuffer / m_globalUboRegistry as a fallback in flush.
+    // Shadow state only. Slot-keyed; name reserved for future lookups, m_globalUboRegistry
+    // fills the fallback path on flush.
     (void) name;
     if (ub == nullptr || ub->m_slot < 0 || ub->m_slot >= kMaxUboSlots)
     {
@@ -1513,14 +1337,10 @@ namespace ToolKit
     }
   }
 
-  // Fills the vertex-input portion of @p out (vertexStride + attributes + attributeCount) for
-  // the given ToolKit VertexLayout. Pipeline cache hits depend on these fields being identical
-  // for matching layouts, so the offsets are spelled out as constants matching ToolKit's
-  // Vertex / SkinVertex struct layouts in Mesh.h.
+  // Fills the vertex-input portion of @p out for ToolKit's VertexLayout.
+  // Locations: 0=pos(vec3) 1=norm(vec3) 2=tex(vec2) 3=tan(vec4) [SkinMesh: +4=bones, 5=weights]
   static void FillVertexInput(VertexLayout layout, VulkanPipelineDesc& out)
   {
-    // Locations match the GL backend's hardcoded glVertexAttribPointer indices:
-    //   0 pos(vec3) | 1 norm(vec3) | 2 tex(vec2) | 3 tan(vec4)  [+ SkinMesh: 4 bones(vec4) | 5 weights(vec4)]
     if (layout == VertexLayout::SkinMesh)
     {
       out.vertexStride   = sizeof(SkinVertex);
@@ -1553,20 +1373,14 @@ namespace ToolKit
 
   void VulkanBackend::Draw(const DrawDesc& desc)
   {
-    // Gate 1: command buffer must be in recording state. If nothing called BeginFrame yet
-    // (engine init, hot-reload, off-frame Draw probes), recording vkCmd* corrupts the buffer
-    // and the next vkBeginCommandBuffer fails.
     if (m_swapchain == nullptr || !m_swapchain->IsFrameActive())
     {
       return;
     }
-    // Gate 2: a pass must have been configured via StartPass. The render pass instance itself
-    // is opened below, just before vkCmdBindPipeline.
     if (m_activePassFb == nullptr && !m_swapchain->IsSwapchainPassActive())
     {
       return;
     }
-    // Gate 3: a pipeline must have been bound (BindPipeline cached program + state).
     if (!m_pipelineBound || m_boundProgram == nullptr)
     {
       return;
@@ -1587,23 +1401,16 @@ namespace ToolKit
       return;
     }
 
-    // ---- Lazy pipeline build ----------------------------------------------------------------
-    // Assemble the full VulkanPipelineDesc from cached program + state plus per-draw fields
-    // (vertex layout). Same RenderState + program + layout + render pass hits the cache; one
-    // VkPipeline is shared across every draw with that combination.
+    // Lazy pipeline build. Same RenderState + program + layout + RP hits the cache.
     VulkanPipelineDesc pdesc{};
     pdesc.vert = m_boundProgram->vert;
     pdesc.frag = m_boundProgram->frag;
     FillVertexInput(desc.vertexLayout, pdesc);
     RenderStateToPipelineDesc(m_boundState, pdesc);
 
-    // Render pass + color attachment count come from the active pass. Spec requires the
-    // pipeline's color blend attachmentCount to match the subpass's color attachment count,
-    // including the depth-only case (Stage 9 shadow map pass writes only to a depth attachment
-    // and expects pipeline.colorAttachmentCount == 0). The previous "max(count, 1)" fallback
-    // forced a phantom blend attachment that validation rejected against a depth-only RP.
-    // Sample count (Stage 10) likewise propagates from the FB's adopted subpassSamples so MSAA
-    // and non-MSAA copies of the same recipe end up in distinct cache slots.
+    // Pipeline's colorAttachmentCount must match subpass (depth-only passes need 0, not 1).
+    // Sample count propagates from fb's adopted subpassSamples so MSAA / non-MSAA recipes
+    // land in distinct cache slots.
     if (m_activePassFb != nullptr)
     {
       pdesc.renderPass = m_activePassFb->renderPass;
@@ -1622,37 +1429,27 @@ namespace ToolKit
     {
       pdesc.renderPass            = m_swapchain->GetRenderPass();
       pdesc.colorAttachmentCount  = 1;
-      pdesc.rasterizationSamples  = VK_SAMPLE_COUNT_1_BIT; // Swapchain images are non-MSAA.
+      pdesc.rasterizationSamples  = VK_SAMPLE_COUNT_1_BIT;
     }
 
     VkPipeline pipe = m_pipelineCache->GetOrCreate(m_context.get(), m_boundProgram->pipelineLayout, pdesc);
     if (pipe == VK_NULL_HANDLE)
     {
-      // Pipeline build failure already logged inside GetOrCreate.
       return;
     }
 
-    // ---- Lazy open of the offscreen render pass --------------------------------------------
-    // Modern engine pattern: one BeginRenderPass per logical pass, not per draw. StartPass
-    // prepares state but doesn't issue BeginRenderPass — first Draw inside the pass opens it,
-    // subsequent Draws reuse the open RP, and FinishPass closes it. Mid-pass operations that
-    // need the RP closed (ClearBuffer, attachment swaps that bump dirty, FlushAndResetRing)
-    // close it defensively; the next Draw reopens via this same path. After the first open
-    // clearBits is consumed → reopened RPs use the LOAD variant so already-rendered content
-    // isn't wiped.
-
-    // Attachment swap mid-pass (SetColorAttachment → dirty=true). VkFramebuffer is bound to
-    // the RP instance at BeginRenderPass time and can't be swapped while open — close first,
-    // the lazy-open block below rebuilds the FB and reopens with the LOAD variant.
+    // Lazy open of offscreen RP: one BeginRenderPass per logical pass. First Draw opens it,
+    // subsequent Draws reuse, FinishPass closes. Mid-pass close (ClearBuffer, attachment swap,
+    // FlushAndResetRing) means the next Draw reopens — clearBits consumed on first open, reopens
+    // use LOAD so prior content survives.
     if (m_activePassFb != nullptr && m_activePassFb->dirty && m_rpActive)
     {
+      // Attachment swap mid-pass — VkFramebuffer is bound at BeginRenderPass and can't be
+      // swapped while open. Close, reopen with LOAD below.
       CloseOffscreenRenderPassIfOpen(cb);
     }
     if (m_activePassFb != nullptr && !m_rpActive)
     {
-      // Attachment view swap (e.g. shadow atlas layer switch) bumped dirty. fbCache is keyed on
-      // view tuple — drop the active alias and let BuildOffscreenFramebuffer either hit cache or
-      // create + insert a fresh entry. No defer-delete (cache owns lifetime).
       if (m_activePassFb->dirty)
       {
         m_activePassFb->framebuffer = VK_NULL_HANDLE;
@@ -1663,15 +1460,10 @@ namespace ToolKit
         m_activePassFb->dirty = false;
       }
 
-      // Pick the RP variant matching the pass's current clearBits. After the first open this
-      // is None (set below), so reopens use LOAD_OP_LOAD across the board.
       if (!EnsureRpForClearBits(m_activePassFb, m_pendingPassDesc.clearBits))
       {
         return;
       }
-      // Pipeline cache key embeds the active VkRenderPass — refresh it now that we know which
-      // variant we're opening. Identical recipes still hit the cache because clearBits-driven
-      // variants share format/sample-count compatibility with previously cached pipelines.
       pdesc.renderPass = m_activePassFb->renderPass;
 
       std::vector<VkClearValue> clears;
@@ -1705,12 +1497,10 @@ namespace ToolKit
       vkCmdBeginRenderPass(cb, &rpbi, VK_SUBPASS_CONTENTS_INLINE);
       m_rpActive = true;
 
-      // First open consumed any clear. Subsequent reopens within this pass must preserve
-      // already-drawn content — switch to the LOAD variant.
+      // First open consumed the clear; reopens use LOAD.
       m_pendingPassDesc.clearBits = GraphicBitFields::None;
 
-      // Re-pick the pipeline using the now-current renderPass handle. This is a near-certain
-      // cache hit (compatibility group is unchanged), the lookup is cheap.
+      // Re-pick pipeline against the now-current renderPass (likely cache hit).
       pipe = m_pipelineCache->GetOrCreate(m_context.get(), m_boundProgram->pipelineLayout, pdesc);
       if (pipe == VK_NULL_HANDLE)
       {
@@ -1720,19 +1510,10 @@ namespace ToolKit
 
     vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe);
 
-    // ---- Resolve + bind descriptor set (Phase 3) --------------------------------------------
-    // FlushDescriptorState reads m_shadow + m_globalUboRegistry against the bound program's
-    // declared resources, hashes the active handles, and either reuses a cached set or
-    // allocates + writes a fresh one. The dynamic offset still travels via dynamicOffsets[0].
     VkDescriptorSet flushedSet = FlushDescriptorState();
     if (flushedSet == VK_NULL_HANDLE)
     {
-      // Descriptor allocation failed (pool exhausted, or no shadow state was bindable). The
-      // pipeline is already bound and the RP is open; issuing vkCmdDraw without a descriptor
-      // set 0 leaves the driver dereferencing an unbound binding and crashes (observed as a
-      // NULL access violation inside nvoglv64.dll mid-vkCmdDraw). Drop the draw — FinishPass
-      // will close the RP cleanly. Pool exhaustion is already logged inside
-      // AllocateFrameDescriptorSet.
+      // Drop the draw rather than issue vkCmdDraw with an unbound set 0 (driver crashes).
       return;
     }
     const uint32_t dyn = m_currentDynamicOffset;
@@ -1761,15 +1542,10 @@ namespace ToolKit
       vkCmdDraw(cb, desc.elementCount, desc.instanceCount, 0, 0);
     }
 
-    // RP stays open across multiple Draws inside the same pass — the close + layout-update +
-    // during-RP-work drain now happen in FinishPass.
   }
 
-  // Wraps the source + destination color attachments in pre + post layout barriers â€” both end
-  // up back at SHADER_READ_ONLY_OPTIMAL afterward. The transfer call between the barriers is
-  // chosen by the caller (vkCmdBlitImage for size-mismatched non-MSAA copies, vkCmdResolveImage
-  // for an MSAA â†’ single-sample resolve). Caller must guarantee no render pass is active on
-  // @p cb (both transfer ops are outside-RP-only).
+  // Pre-transition wrapper for color blit/resolve transfers. Caller must close any open RP.
+  // Post-transition restores both images to SHADER_READ_ONLY_OPTIMAL.
   static void TransitionForColorTransfer(VkCommandBuffer cb, VulkanTexture* srcTex, VulkanTexture* dstTex)
   {
     VkImageMemoryBarrier pre[2]{};
@@ -1843,9 +1619,7 @@ namespace ToolKit
     dstTex->currentLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
   }
 
-  // Resolves an MSAA color attachment into its single-sample destination via vkCmdResolveImage.
-  // Both src/dst extents must match (resolve has no scaling). Caller already checked
-  // src->samples > 1.
+  // MSAA color → single-sample resolve. Extents must match (no scaling).
   static void ResolveColorAttachment(VkCommandBuffer cb, VulkanTexture* srcTex, VulkanTexture* dstTex)
   {
     TransitionForColorTransfer(cb, srcTex, dstTex);
@@ -1870,12 +1644,8 @@ namespace ToolKit
     TransitionAfterColorTransfer(cb, srcTex, dstTex);
   }
 
-  // Blits @p src's full extent into @p dst's full extent (LINEAR filter, COLOR aspect). The
-  // textures' currentLayout fields drive the pre-transition source layout and the
-  // post-transition restore target â€” both end up back at SHADER_READ_ONLY_OPTIMAL, the
-  // engine's resting state for color render targets. Caller must guarantee no render pass is
-  // active on @p cb (vkCmdBlitImage is outside-RP-only) and that src is not multi-sampled
-  // (vkCmdBlitImage rejects multi-sample sources â€” use ResolveColorAttachment instead).
+  // Full-extent LINEAR color blit. Caller must close any open RP. src must be single-sample
+  // (use ResolveColorAttachment for MSAA).
   static void BlitColorAttachment(VkCommandBuffer cb, VulkanTexture* srcTex, VulkanTexture* dstTex)
   {
     TransitionForColorTransfer(cb, srcTex, dstTex);
@@ -1904,19 +1674,12 @@ namespace ToolKit
 
   void VulkanBackend::ResolveFramebuffer(FramebufferPtr src, FramebufferPtr dst, const IntArray& attachments)
   {
-    // Stage 10. Per requested attachment index: vkCmdResolveImage if source is multi-sampled,
-    // vkCmdBlitImage otherwise. Engine pass code (ForwardPass / ForwardPreProcessPass) calls
-    // this gated on `framebuffer->IsMultiSampled()`, so the resolve path is the common one;
-    // the blit fallback exists only as a safe behavior when an engine site happens to call
-    // ResolveFramebuffer on a single-sample source.
+    // Per requested attachment: vkCmdResolveImage if MSAA src, vkCmdBlitImage otherwise.
     if (m_swapchain == nullptr || !m_swapchain->IsFrameActive())
     {
       return;
     }
-    // Spec forbids vkCmdBlitImage / vkCmdResolveImage inside a render pass instance. Under the
-    // pass-scoped RP model the engine calls ResolveFramebuffer mid-pass (e.g. ForwardPass
-    // PostRender resolves MSAA before FinishPass closes the pass). Close the RP first; the
-    // pass has no more draws, so no LOAD-variant reopen happens — FinishPass picks up.
+    // Resolve/blit are illegal inside RP — close the active one (engine calls this mid-pass).
     if (VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer(); cb != VK_NULL_HANDLE)
     {
       CloseOffscreenRenderPassIfOpen(cb);
@@ -1949,12 +1712,8 @@ namespace ToolKit
       using Attachment    = Framebuffer::Attachment;
       Attachment atcEnum  = (Attachment) ((int) Attachment::ColorAttachment0 + idx);
 
-      // Engine-side lazy creation + m_resolvedTexture wiring. Mirrors GLBackend::ResolveFramebuffer:
-      // the destination FB is often a freshly-reconstructed bag with no attachments yet (see
-      // ForwardSceneRenderPath::PreRender constructing m_resolvedFramebuffer with no attachments);
-      // the resolve site is where we materialize the single-sample target RT and link it back to
-      // the source via m_resolvedTexture so GetResolvedTexture() (SsaoPass / EditorViewport /
-      // PreviewViewport) finds the resolved twin.
+      // Lazy create + m_resolvedTexture wiring (mirrors GLBackend). Destination FB is often
+      // empty until this call materializes the resolved twin (used by SSAO / EditorViewport).
       RenderTargetPtr srcRt = src->GetColorAttachment(atcEnum);
       if (srcRt == nullptr)
       {
@@ -1971,8 +1730,7 @@ namespace ToolKit
       }
       srcRt->m_resolvedTexture = targetRt;
 
-      // Re-read the slot — SetColorAttachment routes through AttachColorTarget which populates
-      // dstFb->colorAttachments[idx].tex with the freshly-created VulkanTexture pointer.
+      // SetColorAttachment above populated dstFb's slot via AttachColorTarget — re-read.
       auto* srcTex = srcFb->colorAttachments[idx].tex;
       auto* dstTex = dstFb->colorAttachments[idx].tex;
       if (srcTex == nullptr || dstTex == nullptr)
@@ -1999,19 +1757,9 @@ namespace ToolKit
 
   void VulkanBackend::CopyFramebuffer(FramebufferPtr src, FramebufferPtr dst, GraphicBitFields fields)
   {
-    // Stage 8. Color-only blit between two framebuffers â€” used by post-process chains and other
-    // intermediate-target copies. Each color slot present in both source and destination is
-    // blit'd in turn (vkCmdBlitImage handles size mismatch by linear-filtering, matching GL's
-    // glBlitFramebuffer semantics).
-    //
-    // BilinÃ§li ertelemeler:
-    //   - dst == nullptr (GL'in "default framebuffer = ekran" yolu): Vulkan'da viewport
-    //     texture'Ä± ImGui'ye `ImGui_ImplVulkan_AddTexture` ile veriliyor; "ekrana blit" yolu
-    //     Stage 11'de gerÃ§ek engine pass'leri Vulkan Ã¼zerinden baÄŸlandÄ±ÄŸÄ±nda deÄŸerlendirilir.
-    //   - DepthBits / StencilBits: vkCmdBlitImage'in depth-aspect blit'i NEAREST + format-eÅŸ
-    //     gerektirir, stencil ise vkCmdCopyImage'le kopyalanÄ±r. Mevcut Ã§aÄŸrÄ± yerleri hep
-    //     ColorBits geÃ§iyor (GameRenderer, SplashScreenRenderPath, post-process zinciri),
-    //     bu yÃ¼zden depth/stencil yollarÄ± Stage 11'e bÄ±rakÄ±ldÄ±.
+    // Color-only blit between two FBs (post-process chains, intermediate copies). Mirrors
+    // glBlitFramebuffer semantics. Depth/stencil paths not implemented (engine doesn't use yet).
+    // dst == nullptr maps to "blit to swapchain image" (GL default framebuffer equivalent).
     if (m_swapchain == nullptr || !m_swapchain->IsFrameActive())
     {
       return;
@@ -2028,11 +1776,10 @@ namespace ToolKit
     const uint mask = (uint) fields;
     if ((mask & (uint) GraphicBitFields::ColorBits) == 0)
     {
-      // Nothing to do for the color path; depth/stencil paths aren't wired yet.
       static bool s_warnedDepthOnly = false;
       if (!s_warnedDepthOnly && (mask & ((uint) GraphicBitFields::DepthBits | (uint) GraphicBitFields::StencilBits)) != 0)
       {
-        TK_WRN("CopyFramebuffer: depth/stencil-only copy not implemented yet (Stage 11 follow-up)");
+        TK_WRN("CopyFramebuffer: depth/stencil-only copy not implemented yet");
         s_warnedDepthOnly = true;
       }
       return;
@@ -2040,13 +1787,10 @@ namespace ToolKit
 
     if (dst == nullptr)
     {
-      // GL equivalent: glBlitFramebuffer into FBO 0 (the default framebuffer = swapchain).
-      // Used by SplashScreenRenderPath::PostRender and GameRenderer to push the final composed
-      // image straight to the backbuffer when no ImGui pass runs afterward to do it for us.
+      // Blit to swapchain (used by SplashScreenRenderPath / GameRenderer when no ImGui pass
+      // follows). Skip if minimized — no acquired image.
       if (!m_swapchain->IsPresentable())
       {
-        // No swapchain image acquired this frame (minimize) — nothing to blit to. The engine's
-        // upstream work already ran; just skip the final present step.
         return;
       }
       if (m_swapchain->IsSwapchainPassActive())
@@ -2086,8 +1830,7 @@ namespace ToolKit
 
       VkExtent2D swapExtent = m_swapchain->GetExtent();
 
-      // Pre-blit barriers. src goes to TRANSFER_SRC; swapchain image goes UNDEFINED→TRANSFER_DST
-      // (we discard whatever the previous frame left there — the blit covers the full extent).
+      // Swapchain image: UNDEFINED → TRANSFER_DST (full-extent blit overwrites prior content).
       VkImageMemoryBarrier pre[2]{};
       pre[0].sType                       = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
       pre[0].oldLayout                   = srcTex->currentLayout;
@@ -2143,8 +1886,7 @@ namespace ToolKit
                      &region,
                      VK_FILTER_LINEAR);
 
-      // Post-blit barriers. src returns to SHADER_READ_ONLY (engine's resting layout for color
-      // RTs). Swapchain goes to PRESENT_SRC_KHR so vkQueuePresentKHR doesn't trip the validator.
+      // src → SHADER_READ_ONLY (resting); swapchain → PRESENT_SRC_KHR for vkQueuePresentKHR.
       VkImageMemoryBarrier post[2]{};
       post[0]                             = pre[0];
       post[0].oldLayout                   = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
@@ -2200,11 +1942,8 @@ namespace ToolKit
 
   void VulkanBackend::BlitToScreen(FramebufferPtr src)
   {
-    // Intentional no-op (matches GLBackend::BlitToScreen, which is also empty). The IGraphicsBackend
-    // entry exists for legacy GL paths; ToolKit's actual "blit to screen" flow is
-    // CopyFramebuffer(src, nullptr, ColorBits), which is the call site engine code already uses.
-    // Vulkan currently routes viewport pixels through ImGui's image binding instead â€” no blit
-    // needed at this layer.
+    // No-op (Vulkan routes viewport pixels through ImGui). Engine uses CopyFramebuffer with
+    // dst=nullptr for actual blit-to-screen.
     (void) src;
   }
 
@@ -2217,7 +1956,7 @@ namespace ToolKit
     }
     if (m_timerQueryActive || m_timerQueryWaiting)
     {
-      // GL parity: gate new cycles until the previous result has been consumed.
+      // Gate new cycles until the previous result is consumed.
       return;
     }
     VkCommandBuffer cb = m_swapchain->GetCurrentCommandBuffer();
@@ -2225,9 +1964,7 @@ namespace ToolKit
     {
       return;
     }
-    // Pool reset is recorded in BeginFrame (outside any RP). Here we only write the BEGIN
-    // timestamp — vkCmdWriteTimestamp is legal inside or outside a render pass, so it doesn't
-    // care which RenderPath fires this.
+    // Pool reset is recorded in BeginFrame; here we only write the BEGIN timestamp.
     vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, m_timestampPool, 0);
     m_timerQueryActive = true;
   }
@@ -2252,10 +1989,7 @@ namespace ToolKit
         m_timerQueryWaiting = true;
       }
     }
-    // Result read happens in the next BeginFrame, after the in-flight fence guarantees the cb
-    // (which holds the reset + the two writes) has retired. Reading here would race the cb
-    // submission and trip VUID-vkGetQueryPoolResults-None-09401 (queries still uninitialized
-    // from the validator's POV).
+    // Result polled next BeginFrame after fence retirement.
   }
 
   void VulkanBackend::GetElapsedTime(float& cpu, float& gpu)
@@ -2314,8 +2048,7 @@ namespace ToolKit
 
     if (m_context == nullptr || m_context->GetAllocator() == nullptr)
     {
-      TK_ERR("VulkanBackend::CreateTexture called before VulkanContext was initialized â€” "
-             "check InitGraphics ordering / VulkanContext::Init failure logs");
+      TK_ERR("VulkanBackend::CreateTexture called before VulkanContext init");
       return;
     }
 
@@ -2353,11 +2086,7 @@ namespace ToolKit
         return;
     }
 
-    // DepthTexture leaves its TextureSettings::InternalFormat at the Texture default (a color
-    // format) â€” its real depth format lives on the subclass via GetDepthFormat() (mirrors what
-    // GLBackend does with dt->As<DepthTexture>()). Without this branch we'd allocate a color
-    // image and then bind it to a depth attachment slot â†’ vkCreateRenderPass / vkCreateFramebuffer
-    // validation errors and an unrenderable framebuffer.
+    // DepthTexture overrides the (color-default) settings format via GetDepthFormat().
     GraphicTypes effectiveFormat = settings.InternalFormat;
     if (DepthTexture* dt = tex->As<DepthTexture>())
     {
@@ -2384,21 +2113,12 @@ namespace ToolKit
 
     data->extent       = {(uint32_t) tex->m_width, (uint32_t) tex->m_height};
     data->arrayLayers  = arrayLayers;
-    // Allocate the full mip chain when either the texture opted in (GenerateMipMap) or this is a
-    // cubemap â€” the IBL prefilter pipeline always writes to every mip of the environment cubemap
-    // regardless of the flag, so we must back it with real mip storage. Depth targets don't need
-    // mip chains.
     const bool wantsMipChain = !isDepth && settings.GenerateMipMap;
     data->mipLevels    = wantsMipChain ? (uint32_t) tex->CalculateMipmapLevels() : 1u;
     data->isCubemap    = isCubemap;
     data->currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-    // Stage 10. MSAA sample count comes from TextureSettings::msaaCount. The enum's integer
-    // values (1/2/4/8) are deliberately VK_SAMPLE_COUNT_*_BIT-compatible, so we cast directly.
-    // Vulkan spec forbids samples > 1 with mipLevels > 1; the same is forbidden for some
-    // image types (cubemaps practically never go MSAA). Demote to 1 when geometry of the
-    // image would make MSAA invalid â€” engine rarely asks for those combos but the guard keeps
-    // a misconfigured asset from blowing up validation.
+    // MsaaSampleCount enum integer values match VK_SAMPLE_COUNT_*_BIT.
     VkSampleCountFlagBits requestedSamples = (VkSampleCountFlagBits) (uint32_t) settings.msaaCount;
     if (requestedSamples == 0)
     {
@@ -2406,8 +2126,7 @@ namespace ToolKit
     }
     if (requestedSamples != VK_SAMPLE_COUNT_1_BIT && (data->mipLevels > 1 || isCubemap))
     {
-      TK_WRN("CreateTexture: MSAA sampleCount %u demoted to 1 â€” incompatible with mipLevels=%u "
-             "or cubemap target",
+      TK_WRN("CreateTexture: MSAA sampleCount %u demoted (mipLevels=%u or cubemap)",
              (unsigned) requestedSamples,
              (unsigned) data->mipLevels);
       requestedSamples = VK_SAMPLE_COUNT_1_BIT;
@@ -2418,10 +2137,8 @@ namespace ToolKit
     usage |= isDepth ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
     // Per-format MSAA support varies. Some formats (FormatRGBA32F on many GPUs, depth+stencil
-    // combos on tilers, etc.) advertise only VK_SAMPLE_COUNT_1_BIT for the OPTIMAL tiling /
-    // usage / flags combination we're requesting. Asking for an unsupported sample count makes
-    // vmaCreateImage fail with VK_ERROR_FORMAT_NOT_SUPPORTED; instead query the supported
-    // sampleCounts mask now and demote to the largest supported bit that is <= requested.
+    // Per-format MSAA support varies — query device caps and demote to the largest supported
+    // sample count <= requested.
     if (requestedSamples != VK_SAMPLE_COUNT_1_BIT)
     {
       VkImageFormatProperties props{};
@@ -2434,8 +2151,7 @@ namespace ToolKit
                                                                 &props);
       if (fpRes != VK_SUCCESS)
       {
-        TK_WRN("CreateTexture: vkGetPhysicalDeviceImageFormatProperties failed (%d) for format %d "
-               "â€” demoting MSAA to 1",
+        TK_WRN("CreateTexture: format props query failed (%d) for format %d — demoted to x1",
                (int) fpRes,
                (int) vkFormat);
         requestedSamples = VK_SAMPLE_COUNT_1_BIT;
@@ -2507,8 +2223,7 @@ namespace ToolKit
       return;
     }
 
-    // Default sampler â€” color targets are sampled by ImGui / future post passes.
-    // Depth targets get sampler lazily via ApplyTextureSettings when needed.
+    // Default sampler for color. Depth targets get one lazily via ApplyTextureSettings.
     if (!isDepth)
     {
       VkSamplerCreateInfo samplerInfo = {VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
@@ -2519,20 +2234,13 @@ namespace ToolKit
       samplerInfo.addressModeW        = ToVkAddressMode(settings.WarpR);
       samplerInfo.mipmapMode          = VK_SAMPLER_MIPMAP_MODE_LINEAR;
       samplerInfo.minLod              = 0.0f;
-      // Expose the full mip chain to sampling. Values above the actual mip count clamp safely.
       samplerInfo.maxLod              = (float) data->mipLevels;
       vkCreateSampler(m_context->GetDevice(), &samplerInfo, nullptr, &data->sampler);
     }
 
-    // Transition the freshly-created image out of UNDEFINED to a sensible sampling-ready layout.
-    // Without this, any code path that samples the texture before a render pass has written to it
-    // (ImGui showing a default/black target, thumbnail previews, the backing RT of an uninitialized
-    // viewport, etc.) hits a layout-mismatch validation error. Render passes are free to perform
-    // their own transitions from this state onward.
-    // Upload pixel data if the texture was loaded from CPU memory.
-    // has data → UNDEFINED→SHADER_READ_ONLY then SHADER_READ_ONLY→TRANSFER_DST→copy→SHADER_READ_ONLY
-    // no data  → UNDEFINED→SHADER_READ_ONLY  (render target / will be filled by a render pass)
-    tex->m_gpuData = data;  // set before helpers so they can access context via VulkanTexture
+    // Transition out of UNDEFINED to the resting sampling layout before any code path can
+    // sample the texture (ImGui showing an empty viewport, thumbnail previews, etc.).
+    tex->m_gpuData = data;
 
     const bool hasData2D      = !isDepth && (tex->m_image != nullptr || tex->m_imagef != nullptr);
     CubeMap* cubeMapTex       = tex->As<CubeMap>();
@@ -2540,8 +2248,6 @@ namespace ToolKit
                                 && cubeMapTex->m_images.size() == 6
                                 && cubeMapTex->m_images[0] != nullptr;
 
-    // All paths start with an UNDEFINED→SHADER_READ_ONLY barrier for the whole image so that
-    // UploadTexelData can safely transition individual sub-resources from SHADER_READ_ONLY.
     {
       const VkImageLayout targetLayout = isDepth ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
                                                  : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -2581,7 +2287,6 @@ namespace ToolKit
     }
     else if (hasCubemapData)
     {
-      // CubeMap::Load always produces RGBA8 (4 bytes/pixel) via stb_image.
       const VkDeviceSize faceBytes = (VkDeviceSize) tex->m_width * tex->m_height * 4;
       for (int face = 0; face < 6; ++face)
       {
@@ -2597,11 +2302,8 @@ namespace ToolKit
     {
       return;
     }
-    // Hand the gpu data to the deletion queue: the lambda holds the only remaining shared_ptr
-    // ref, so the VulkanTexture dtor (which calls vkDestroyImage/View/Sampler) only fires once
-    // the deleter bucket is drained â€” i.e., after the GPU has finished any cmd buffer that may
-    // still reference these handles. Editor-side ImGui descriptor cache observes the same
-    // shared_ptr via weak_ptr and sweeps expired entries on the next frame.
+    // Defer the shared_ptr drop so the VulkanTexture dtor (vkDestroyImage/View/Sampler) fires
+    // only after the in-flight cb has retired.
     if (auto data = tex->m_gpuData)
     {
       tex->m_gpuData = nullptr;
@@ -2630,9 +2332,7 @@ namespace ToolKit
     info.minLod       = 0.0f;
     info.maxLod       = (float) vt->mipLevels;
 
-    // Anisotropy: only meaningful for sampled color 2D textures. Depth samplers and special
-    // 1D-style targets (e.g., bone transform texture) skip it. Engine setting clamped to the
-    // physical device's maxSamplerAnisotropy limit.
+    // Anisotropy only applies to sampled color 2D. Clamped to maxSamplerAnisotropy limit.
     if (!isDepth && s.Target == GraphicTypes::Target2D)
     {
       EngineSettings& engSettings = GetEngineSettings();
@@ -2654,9 +2354,7 @@ namespace ToolKit
       return;
     }
 
-    // DeferDelete the previous sampler — in-flight cmd buffers may still reference it via
-    // their bound descriptor sets. ImGui's (view, sampler) descriptor cache observes the change
-    // through GetNativeTextureHandle's shared_ptr indirection on the next frame.
+    // Defer old sampler — in-flight cb's may still reference it via bound descriptor sets.
     if (vt->sampler != VK_NULL_HANDLE)
     {
       VkDevice device = m_context->GetDevice();
@@ -2664,15 +2362,11 @@ namespace ToolKit
       DeferDelete([device, old]() { vkDestroySampler(device, old, nullptr); });
     }
     vt->sampler = newSampler;
-
-    // Note: SwizzleAlphaToOne would require recreating VkImageView with VK_COMPONENT_SWIZZLE_ONE
-    // on the alpha channel — handled by the dedicated SetTextureSwizzleAlpha() entry point.
   }
 
   void VulkanBackend::SetTextureSwizzleAlpha(Texture* tex, bool swizzleToOne, bool setLastBindBack)
   {
-    // TODO change the view of the texture to swizzle alpha to 1.0 if swizzleToOne is true, or to the original alpha
-    // channel if false.
+    // TODO: recreate VkImageView with VK_COMPONENT_SWIZZLE_ONE on alpha.
   }
 
   void VulkanBackend::GenerateMipmaps(Texture* tex)
@@ -2690,9 +2384,10 @@ namespace ToolKit
          mipLevels   = vt->mipLevels,
          extent      = vt->extent](VkCommandBuffer cb)
         {
+          // Generates each mip from mip-1 via vkCmdBlitImage. Keeps every mip in
+          // SHADER_READ_ONLY between iterations so the next read-back barrier is consistent.
           for (uint32_t mip = 1; mip < mipLevels; ++mip)
           {
-            // Transition mip-1 (all layers): SHADER_READ_ONLY → TRANSFER_SRC
             VkImageMemoryBarrier toSrc{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
             toSrc.oldLayout                       = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             toSrc.newLayout                       = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
@@ -2708,7 +2403,6 @@ namespace ToolKit
             vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
                                  VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &toSrc);
 
-            // Transition mip (all layers): SHADER_READ_ONLY → TRANSFER_DST
             VkImageMemoryBarrier toDst = toSrc;
             toDst.oldLayout             = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             toDst.newLayout             = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
@@ -2718,7 +2412,6 @@ namespace ToolKit
             vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
                                  VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &toDst);
 
-            // Blit mip-1 → mip for all layers
             int32_t srcW = std::max(1, (int32_t)(extent.width  >> (mip - 1)));
             int32_t srcH = std::max(1, (int32_t)(extent.height >> (mip - 1)));
             int32_t dstW = std::max(1, (int32_t)(extent.width  >> mip));
@@ -2738,7 +2431,6 @@ namespace ToolKit
                            img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                            1, &blit, VK_FILTER_LINEAR);
 
-            // Transition mip-1 back: TRANSFER_SRC → SHADER_READ_ONLY
             VkImageMemoryBarrier backToRead = toSrc;
             backToRead.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
             backToRead.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -2748,9 +2440,6 @@ namespace ToolKit
                                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
                                  0, 0, nullptr, 0, nullptr, 1, &backToRead);
 
-            // Transition current mip: TRANSFER_DST → SHADER_READ_ONLY (always, not just last).
-            // This keeps every mip in SHADER_READ_ONLY so the next iteration's
-            // SHADER_READ_ONLY→TRANSFER_SRC barrier always sees the correct old layout.
             VkImageMemoryBarrier dstToRead = toDst;
             dstToRead.oldLayout    = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
             dstToRead.newLayout    = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -2778,12 +2467,12 @@ namespace ToolKit
 
   void VulkanBackend::SetTextureMaxMipLevel(Texture* tex, int maxLevel)
   {
-    // TODO: Recreate VkImageView with limited mip range, or no-op if handled at creation.
+    // TODO: recreate VkImageView with limited mip range.
   }
 
   void VulkanBackend::AllocateCubemapMipStorage(Texture* tex)
   {
-    // TODO: Vulkan allocates all mips at image creation time likely no-op.
+    // No-op: Vulkan allocates all mips at image creation.
   }
 
   void VulkanBackend::CopyCubemapFaceFromFramebuffer(Texture* cubemap,
@@ -2811,9 +2500,9 @@ namespace ToolKit
     if (vSrc->image == VK_NULL_HANDLE)
       return;
 
-    // 1. Kaynak (Source) İmajı Transfer'e Geçir
+    // Source → TRANSFER_SRC.
     VkImageMemoryBarrier srcBarrier {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
-    srcBarrier.oldLayout           = vSrc->currentLayout; // Render'dan çıktığı için genelde SHADER_READ_ONLY olur
+    srcBarrier.oldLayout           = vSrc->currentLayout;
     srcBarrier.newLayout           = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
     srcBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     srcBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -2863,7 +2552,6 @@ namespace ToolKit
                          1,
                          &dstBarrier);
 
-    // 3. Kopyalama İşlemi
     VkImageCopy region {};
     region.srcSubresource.aspectMask     = vSrc->aspect;
     region.srcSubresource.mipLevel       = 0;
@@ -2883,9 +2571,9 @@ namespace ToolKit
                    1,
                    &region);
 
-    // 4. Kaynağı Eski Haline (Veya Okunabilir Hale) Geri Döndür
+    // Restore source layout.
     srcBarrier.oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-    srcBarrier.newLayout     = vSrc->currentLayout; // Veya VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+    srcBarrier.newLayout     = vSrc->currentLayout;
     srcBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
     srcBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
@@ -2900,7 +2588,7 @@ namespace ToolKit
                          1,
                          &srcBarrier);
 
-    // 5. Hedefi (Küp Yüzeyini) Shader'da Okunacak Hale Getir
+    // Cube face → SHADER_READ_ONLY.
     dstBarrier.oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
     dstBarrier.newLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     dstBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -2922,7 +2610,6 @@ namespace ToolKit
   {
     assert(mesh != nullptr && "CreateMesh: null Mesh");
 
-    // Re-upload path: drop any existing GPU data first (matches GLBackend behavior).
     DestroyMesh(mesh);
 
     const void* vertexData    = mesh->GetClientVertexData();
@@ -2931,7 +2618,6 @@ namespace ToolKit
 
     if (vertexData == nullptr || vertexCount == 0 || vertexStride <= 0)
     {
-      // Empty mesh â€” nothing to upload. Leave m_gpuData null; Draw() guards against this.
       mesh->m_vertexCount = 0;
       mesh->m_indexCount  = 0;
       return;
@@ -2963,7 +2649,6 @@ namespace ToolKit
       {
         TK_ERR("VulkanBackend::CreateMesh: index upload failed (%llu bytes)",
                (unsigned long long) indexBytes);
-        // Vertex buffer already alive â€” drop the half-built mesh; shared_ptr dtor cleans up.
         return;
       }
       mesh->m_indexCount = (uint) mesh->m_clientSideIndices.size();
@@ -2978,9 +2663,7 @@ namespace ToolKit
     {
       return;
     }
-    // Defer the shared_ptr release: the in-flight cmd buffer may still reference these vertex /
-    // index buffers. Once the frame slot's fence retires, DrainDeleterBucket runs the lambda and
-    // ~VulkanMesh frees the VMA allocations.
+    // Defer until the in-flight cb releases vertex/index buffers.
     auto data       = mesh->m_gpuData;
     mesh->m_gpuData = nullptr;
     DeferDelete([data]() mutable { data.reset(); });
@@ -2993,9 +2676,7 @@ namespace ToolKit
 
     if (size == 0)
     {
-      // ToolKit allows constructing a UniformBuffer with size 0 and binding it later via
-      // GpuBufferBase::Init(); mirror that by creating no GPU resource yet. The next Init
-      // call comes back here with the real size.
+      // ToolKit allows size-0 UBOs at construction; the real Init comes later.
       return;
     }
 
@@ -3021,8 +2702,6 @@ namespace ToolKit
     {
       return;
     }
-    // Defer the shared_ptr release so the underlying VkBuffer + VMA allocation outlive any
-    // in-flight command buffer that might still reference this UBO via a descriptor set.
     auto data     = ub->m_gpuData;
     ub->m_gpuData = nullptr;
     DeferDelete([data]() mutable { data.reset(); });
@@ -3043,32 +2722,21 @@ namespace ToolKit
       return;
     }
 
-    // Slot 6 (per-draw UBO) is delivered via the ring-buffer + dynamic-offset path inside
-    // SubmitPerDrawData — the descriptor set points at the ring buffer, not at this UBO's
-    // VkBuffer. Renderer::FeedUniforms still calls perDrawBuffer.Map() to keep GL happy (GL
-    // reads the static UBO), but on Vulkan this would otherwise emit one vkCmdUpdateBuffer +
-    // 2 barriers per draw call into a buffer that no shader ever reads. Early-out here, then
-    // SubmitPerDrawData (just below in the Renderer call sequence) handles the real upload.
+    // Slot 6 is the per-draw UBO; SubmitPerDrawData handles uploads via the ring path. Skip
+    // here to avoid recording a no-op vkCmdUpdateBuffer + 2 barriers per draw.
     if (ub->m_slot == 6)
     {
       return;
     }
 
-    // HOST_COHERENT memory — write becomes visible to the device on the next vkQueueSubmit
-    // without an explicit vkFlushMappedMemoryRanges call.
-    // Check if we are actively recording a frame.
     VkCommandBuffer cb = VK_NULL_HANDLE;
     if (m_swapchain && m_swapchain->IsFrameActive())
     {
       cb = m_swapchain->GetCurrentCommandBuffer();
     }
 
-    // vkCmdUpdateBuffer and vkCmdPipelineBarrier (without self-dependency) are illegal inside
-    // a render pass instance. For offscreen RPs (pass-scoped lazy-open), close the RP cleanly
-    // through the shared helper — the next Draw reopens with the LOAD variant so already-
-    // rendered content is preserved. For the swapchain pass (LOAD_OP_CLEAR-based) we can't
-    // safely close+reopen, fall back to memcpy-only and accept the rare multi-update hazard
-    // (no current swapchain-pass code does multi-update of the same UBO).
+    // vkCmdUpdateBuffer + vkCmdPipelineBarrier are illegal inside RP. Close offscreen RP cleanly
+    // (next Draw reopens with LOAD). Swapchain RP uses LOAD_OP_CLEAR so we fall back to memcpy.
     if (cb != VK_NULL_HANDLE && m_activePassFb != nullptr && m_rpActive)
     {
       CloseOffscreenRenderPassIfOpen(cb);
@@ -3077,17 +2745,15 @@ namespace ToolKit
 
     if (cb != VK_NULL_HANDLE && !insideRenderPass)
     {
-      // Synchronize the UBO update to the draw calls currently in flight in this command buffer.
-      // Barrier 1: Ensure previous shader reads of this UBO finish before the update overwrites it.
+      // Bracket the UBO update with UNIFORM_READ ↔ TRANSFER_WRITE barriers so in-flight draws
+      // see the previous value and subsequent draws see the new one.
       VkMemoryBarrier preBarrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
       preBarrier.srcAccessMask = VK_ACCESS_UNIFORM_READ_BIT;
       preBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
       vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 1, &preBarrier, 0, nullptr, 0, nullptr);
 
-      // Perform the update inline in the command buffer. This handles multiple updates to the same UBO in one frame gracefully.
       vkCmdUpdateBuffer(cb, gpu->buffer.handle, 0, size, data);
 
-      // Barrier 2: Ensure the transfer finishes before any subsequent draw call reads from this UBO.
       VkMemoryBarrier postBarrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
       postBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
       postBarrier.dstAccessMask = VK_ACCESS_UNIFORM_READ_BIT;
@@ -3105,20 +2771,16 @@ namespace ToolKit
     }
     else
     {
-      // Not recording: just write directly to the mapped host memory.
+      // No active cb — direct host write is safe.
       std::memcpy(gpu->buffer.mapped, data, (size_t) size);
     }
 
-    // Register non-perDraw UBOs for global descriptor write.
-    // Slot 6 = per-draw dynamic UBO (ring buffer path); all other slots are static global UBOs
-    // (Camera, GraphicConsts, DirectionalLight, etc.) that must be written into every new set.
+    // Register non-perDraw UBOs in the global registry (Camera, GraphicConsts, etc.) so the
+    // descriptor flush can pick them up. Only dirty on real handle change to keep cache hot.
     const int slot = ub->m_slot;
     if (slot >= 0 && slot != 6 && slot < kMaxUboSlots)
     {
       GlobalUboEntry& entry = m_globalUboRegistry[slot];
-      // Same-handle assignment is a no-op for the descriptor set state; only mark dirty when
-      // the handle actually changed so the FlushDescriptorState fast path keeps hitting across
-      // multi-frame static-buffer updates.
       if (entry.handle != gpu->buffer.handle || entry.size != gpu->buffer.size)
       {
         entry.handle   = gpu->buffer.handle;
@@ -3128,36 +2790,21 @@ namespace ToolKit
     }
   }
 
-  // Phase 3: data-driven descriptor flush. Walks the bound program's declared resources,
-  // resolves each to a native handle from m_shadow / m_globalUboRegistry, hashes the result,
-  // and either reuses a cached set or allocates + writes a fresh one.
-  //
-  // Caching policy: the cache is per-frame-in-flight. BeginFrame resets the entire descriptor
-  // pool for that slot (releasing every set), so we also clear the cache there. Within a frame
-  // identical (program, handle-set) tuples reuse the same VkDescriptorSet — multiple draws of
-  // the same material no longer trigger fresh allocations.
+  // Data-driven descriptor flush. Walks the bound program's declared resources, resolves each
+  // to a native handle from m_shadow / m_globalUboRegistry, hashes, and either reuses a cached
+  // set or allocates+writes a fresh one. Cache is per-FIF-slot, cleared in BeginFrame alongside
+  // the pool reset.
   VkDescriptorSet VulkanBackend::FlushDescriptorState()
   {
-    // Sole caller is Draw, which already gated on m_swapchain + IsFrameActive + m_pipelineBound +
-    // m_boundProgram. CreateGpuProgram guarantees pipelineLayout != VK_NULL_HANDLE whenever
-    // m_boundProgram is non-null. Skipping the re-checks here removes ~4 cache-miss branches per
-    // Draw on the hot path.
-
-    // ---- 0. Same-state fast path ------------------------------------------------------------
-    // BindPipeline + BindTexture + BindUniformBuffer + SubmitPerDrawData only dirty the shadow
-    // when a *value* changed; material-sorted scenes hand us N consecutive draws with the same
-    // program, same material textures, same UBO handles, same perDrawSize. For those the
-    // resolved descriptor set is identical — return the previous one without re-walking
-    // resources, recomputing the hash, or touching the cache. The dynamic offset for the
-    // per-draw UBO travels through vkCmdBindDescriptorSets at the call site, so reusing the
-    // set is safe even though m_currentDynamicOffset changes per draw.
+    // Same-state fast path: shadow only dirties on real value change. Reuse the last set if
+    // program + handles unchanged. Dynamic offset is bound at call site, so per-draw offset
+    // changes don't invalidate the cached set.
     if (!m_shadow.dirty && m_lastFlushedSet != VK_NULL_HANDLE &&
         m_lastFlushedProgram == m_boundProgram)
     {
       return m_lastFlushedSet;
     }
 
-    // ---- 1. Resolve declared resources to native handles ------------------------------------
     struct Resolved
     {
       uint32_t binding             = 0;
@@ -3184,8 +2831,6 @@ namespace ToolKit
         }
         r.binding = VulkanBindings::kTextureBindingBase + (uint32_t) res.slot;
 
-        // Texture path. CreateTexture invariant: if tex->m_gpuData is non-null its view +
-        // sampler are valid. The double-checks on vt/view/sampler were defensive duplication.
         const TexturePtr& tex = m_shadow.boundTextures[res.slot];
         if (tex && tex->m_gpuData)
         {
@@ -3195,10 +2840,7 @@ namespace ToolKit
         }
         else
         {
-          // Declared-but-unbound slot — dummy fallback. m_dummyTexture / m_dummyCubeTexture /
-          // m_dummy2DArrayTexture are created at InitBackend and live until backend dtor; their
-          // view/sampler are valid by construction. Just pick the one matching the shader's
-          // declared ViewType.
+          // Declared-but-unbound slot — dummy fallback matching shader's declared ViewType.
           const VulkanTexture* dummy =
               (res.viewType == ShaderResource::ViewType::TexCube)    ? m_dummyCubeTexture.get() :
               (res.viewType == ShaderResource::ViewType::Tex2DArray) ? m_dummy2DArrayTexture.get() :
@@ -3217,16 +2859,11 @@ namespace ToolKit
           r.bufferSize          = m_shadow.perDrawSize;
           if (r.buffer == VK_NULL_HANDLE || r.bufferSize == 0)
           {
-            // Contract enforcement: a program that declares the per-draw UBO (GL slot 6)
-            // MUST receive a SubmitPerDrawData call between BindPipeline and Draw. Reaching
-            // here means a Draw landed without one — the freshly allocated set would leave
-            // binding 38 unwritten and the shader would read an unbound dynamic UBO. The
-            // NVIDIA Vulkan ICD has been observed to NULL-deref inside vkCmdDraw in exactly
-            // this scenario (Access violation @ 0x0 in nvoglv64.dll). Bail with a diagnostic
-            // so the offending pass surfaces in the log instead of producing the crash.
+            // Programs declaring the per-draw UBO must receive a SubmitPerDrawData between
+            // BindPipeline and Draw. Drop the draw to surface the missing call (else the NVIDIA
+            // ICD NULL-derefs in vkCmdDraw).
             TK_ERR("FlushDescriptorState: program %p declares per-draw UBO (binding %u) but "
-                   "no SubmitPerDrawData was issued for this draw (perDrawSize=0). "
-                   "Dropping draw — fix the engine path to call SubmitPerDrawData first.",
+                   "no SubmitPerDrawData was issued — dropping draw",
                    (void*) m_boundProgram,
                    (unsigned) VulkanBindings::kPerDrawUboBinding);
             return VK_NULL_HANDLE;
@@ -3240,8 +2877,7 @@ namespace ToolKit
           }
           r.binding = VulkanBindings::UboBindingFor((uint32_t) res.slot);
 
-          // BindUniformBuffer override wins over the global registry. Array access — no hash,
-          // no node chase. Slot range was bounds-checked above.
+          // BindUniformBuffer override wins over the global registry.
           if (UniformBuffer* override = m_shadow.boundUniforms[res.slot])
           {
             auto* gpu = static_cast<VulkanUniformBuffer*>(override->m_gpuData.get());
@@ -3262,17 +2898,15 @@ namespace ToolKit
           }
           if (r.buffer == VK_NULL_HANDLE)
           {
-            continue; // No backing buffer; skip the binding.
+            continue;
           }
         }
       }
       resolved.push_back(r);
     }
 
-    // ---- 2. Hash native handles -------------------------------------------------------------
-    // Mix in the bound program pointer too so unrelated programs that happen to share handles
-    // get distinct cache entries; the resource declaration order is stable per program so the
-    // walk order alone is enough to disambiguate.
+    // Mix the bound program into the hash so unrelated programs with overlapping handles get
+    // distinct cache entries.
     auto mix = [](uint64_t h, uint64_t v)
     {
       v ^= v >> 33;
@@ -3295,11 +2929,10 @@ namespace ToolKit
       hash = mix(hash, r.isPerDrawDynamic ? 1ULL : 0ULL);
     }
 
-    // ---- 3. Cache lookup --------------------------------------------------------------------
     const uint frame = m_swapchain->GetCurrentFrameIndex();
     if (frame >= m_descriptorCache.size())
     {
-      return VK_NULL_HANDLE; // shouldn't happen with FRAMES_IN_FLIGHT = 2.
+      return VK_NULL_HANDLE;
     }
     auto& cache = m_descriptorCache[frame];
     for (const DescriptorCacheEntry& e : cache)
@@ -3313,11 +2946,10 @@ namespace ToolKit
       }
     }
 
-    // ---- 4. Allocate + write a fresh set ----------------------------------------------------
     VkDescriptorSet set = m_context->AllocateFrameDescriptorSet(frame, m_context->GetGlobalDescriptorSetLayout());
     if (set == VK_NULL_HANDLE)
     {
-      return VK_NULL_HANDLE; // pool exhaustion already logged.
+      return VK_NULL_HANDLE;
     }
 
     // Batch every binding into a single vkUpdateDescriptorSets. Per-binding helpers
@@ -3328,8 +2960,7 @@ namespace ToolKit
     std::vector<VkWriteDescriptorSet>   writes;
     std::vector<VkDescriptorImageInfo>  imageInfos;
     std::vector<VkDescriptorBufferInfo> bufferInfos;
-    // we must reserve beforehand since if an allocation happens while push_back to vector, the pointer of the array will
-    // change place and we give the pointer of the array to vkUpdateDescriptorSets call.
+    // Reserve before push_back: VkWriteDescriptorSet holds raw pointers into these arrays.
     writes.reserve(resolved.size());
     imageInfos.reserve(resolved.size());
     bufferInfos.reserve(resolved.size());
@@ -3392,8 +3023,7 @@ namespace ToolKit
     }
     if (shader->m_shaderType == ShaderType::IncludeShader)
     {
-      // Include shaders are textually inlined by the engine before reaching here in the GL path;
-      // no compilation target. Return null as GLBackend does.
+      // Includes are inlined by the engine before reaching here.
       TK_ERR("Include shader can't be compiled: %s", shader->GetFile().c_str());
       return nullptr;
     }
@@ -3401,16 +3031,10 @@ namespace ToolKit
     const bool isVertex             = (shader->m_shaderType == ShaderType::VertexShader);
     const VulkanShader::Stage stage = isVertex ? VulkanShader::Stage::Vertex : VulkanShader::Stage::Fragment;
 
-    // Phase C (Step 5): real compile path.
-    // Engine GLSL is now Vulkan-clean: bare uniforms removed, TK_UBO_BINDING / TK_SAMPLER_BINDING
-    // macros inject binding qualifiers when VULKAN is defined (vulkanCompatInc.shader).
-    // CompileGlslToSpirv applies SetForcedVersionProfile(450,core) + VULKAN macro +
-    // SetAutoMapLocations â€” source is passed as-is, no runtime string manipulation.
     std::vector<uint32_t> spirv = VulkanShader::CompileGlslToSpirv(stage, source, shader->GetFile());
     if (spirv.empty())
     {
-      TK_WRN("CreateShader: compile failed for '%s' â€” shader will produce no output",
-             shader->GetFile().c_str());
+      TK_WRN("CreateShader: compile failed for '%s'", shader->GetFile().c_str());
       return nullptr;
     }
 
@@ -3428,11 +3052,8 @@ namespace ToolKit
 
   void VulkanBackend::DestroyShader(GpuResourceData* shaderData)
   {
-    // GpuResourceData* arrives as a raw pointer here (matching GLBackend's signature). The
-    // owning shared_ptr is held by the Shader instance â€” we cannot defer-delete via a captured
-    // shared_ptr because we don't have one. Eager destroy is acceptable: by the time the engine
-    // calls DestroyShader, the program(s) referencing the module have already been torn down
-    // (vkDeviceWaitIdle on shutdown, or explicit DestroyGpuProgram in hot-reload paths).
+    // Eager destroy is safe: programs referencing this module have already been torn down by
+    // shutdown vkDeviceWaitIdle or by explicit DestroyGpuProgram in hot-reload.
     auto* sm = static_cast<VulkanShaderModule*>(shaderData);
     if (sm == nullptr || sm->context == nullptr || sm->module == VK_NULL_HANDLE)
     {
@@ -3468,10 +3089,8 @@ namespace ToolKit
     data->frag      = fragSm->module;
     data->resources = program->m_resources;
 
-    // Stage 7d-3: every program references the context's shared kitchen-sink descriptor set
-    // layout. Programs whose shaders touch only a subset of bindings still work â€” unused entries
-    // are simply not written to. Push constants stay at zero (per-draw data routes through the
-    // dynamic UBO at VulkanBindings::kPerDrawUboBinding instead).
+    // Every program references the shared kitchen-sink descriptor set layout. Unused bindings
+    // are simply not written. Per-draw data routes through the dynamic UBO, not push constants.
     VkDescriptorSetLayout globalSet = m_context->GetGlobalDescriptorSetLayout();
     if (globalSet == VK_NULL_HANDLE)
     {
@@ -3501,19 +3120,11 @@ namespace ToolKit
     {
       return;
     }
-    // Defer the shared_ptr release: in-flight cmd buffers may have bound a VkPipeline built off
-    // this program's layout. ~VulkanGpuProgram destroys the layout once the deleter runs.
     auto data          = program->m_gpuData;
     program->m_gpuData = nullptr;
 
-    // Evict every cached pipeline that was built using this program's pipelineLayout BEFORE the
-    // dtor destroys the layout. ~VulkanGpuProgram (line VulkanResources.cpp:179) calls
-    // vkDestroyPipelineLayout unconditionally; any cached pipeline still referencing that layout
-    // becomes a spec violation (Vulkan: VkPipeline must be destroyed before its VkPipelineLayout)
-    // and the next vkCmdDraw that picks up the orphaned pipeline NULL-derefs inside nvoglv64.dll
-    // at a small struct offset (0x104/0x105). Pipeline destroys go through DeferDelete so they
-    // share the same deleter bucket as the program shared_ptr release; bucket drains in push
-    // order, so pipelines retire before the layout dtor fires.
+    // Evict pipelines keyed by this program's layout BEFORE the program dtor destroys it.
+    // Pipelines retire in deleter-bucket push order, ahead of the program shared_ptr release.
     auto* progData = static_cast<VulkanGpuProgram*>(data.get());
     if (progData != nullptr && progData->pipelineLayout != VK_NULL_HANDLE && m_pipelineCache)
     {
@@ -3529,7 +3140,7 @@ namespace ToolKit
 
   int VulkanBackend::GetUniformLocation(GpuProgram* program, const char* name)
   {
-    // Vulkan doesn't have uniform locations  push constants / descriptors handle this.
+    // Not applicable in Vulkan — descriptors only.
     return -1;
   }
 
@@ -3552,17 +3163,10 @@ namespace ToolKit
     {
       return;
     }
-    // Same pattern as DestroyTexture: defer the shared_ptr release so the VulkanFramebuffer
-    // dtor (which destroys the cached VkRenderPass + VkFramebuffer + any owned attachment views)
-    // runs after the in-flight cmd buffer has retired. Attached texture pointers are non-owning;
-    // their lifetime is governed by their owning RenderTarget/DepthTexture.
+    // Defer shared_ptr release until in-flight cb retires. Evict pipelines keyed on this fb's
+    // cached RPs first (handle-reuse hazard, same as BuildRpVariant).
     if (auto data = fb->m_gpuData)
     {
-      // Evict pipeline cache entries keyed by every cached VkRenderPass variant before letting
-      // the dtor destroy them. Pipelines go through DeferDelete so they retire on the in-flight
-      // cb before the RP itself (within the same deleter bucket, dispatched in push order).
-      // Same handle-reuse hazard as in BuildRpVariant: NVIDIA's ICD recycles freed VkRenderPass
-      // handle values, and skipping eviction would let a future RP cache-hit a stale pipeline.
       auto* fbData = static_cast<VulkanFramebuffer*>(data.get());
       if (fbData != nullptr && m_pipelineCache)
       {
@@ -3594,12 +3198,8 @@ namespace ToolKit
     assert(fbData && "AttachColorTarget: framebuffer has no gpu data");
     assert(attachment >= 0 && attachment < VulkanFramebuffer::kMaxColorAttachments);
 
+    // Slot just borrows view handles; subresource views are owned by VulkanTexture's cache.
     auto& slot = fbData->colorAttachments[attachment];
-
-    // No defer-delete of the previous view. Subresource views are owned by VulkanTexture's
-    // subresourceViews cache; FB slot just borrows a handle. Atlas-layer iteration used to
-    // pile up one vkCreateImageView + one defer-deleted view per slot swap per frame — gone.
-
     slot      = {};
     slot.tex  = static_cast<VulkanTexture*>(rt->m_gpuData.get());
 
@@ -3608,7 +3208,7 @@ namespace ToolKit
 
     if (slot.tex == nullptr)
     {
-      // Attach with a null texture — caller error; leave slot cleared.
+      // Null texture — leave slot cleared.
     }
     else if (needsSubresourceView)
     {
@@ -3634,7 +3234,7 @@ namespace ToolKit
         baseMip = slot.tex->mipLevels - 1;
       }
 
-      // Cache lookup. (mip, layer) uniquely identifies the slice; cubemap face is just layer.
+      // Cache key: (mip, layer). Cubemap face is encoded as layer.
       VkImageView resolvedView = VK_NULL_HANDLE;
       for (const auto& e : slot.tex->subresourceViews)
       {
@@ -3671,7 +3271,7 @@ namespace ToolKit
       }
 
       slot.view           = resolvedView;
-      slot.ownsView       = false; // owned by the texture's view cache, not the slot
+      slot.ownsView       = false;
       slot.baseArrayLayer = baseArrayLayer;
       slot.layerCount     = layerCount;
       slot.baseMipLevel   = baseMip;
@@ -3685,9 +3285,6 @@ namespace ToolKit
       slot.baseMipLevel   = 0;
     }
 
-    // Don't eager-destroy the cached RP+FB — StartPass's EvictFramebufferCache will defer them
-    // on the next pass start (triggered by dirty=true). Eager destroy here would invalidate the
-    // in-flight cmd buffer.
     fbData->dirty = true;
   }
 
@@ -3727,7 +3324,6 @@ namespace ToolKit
     slot      = {};
     slot.tex  = static_cast<VulkanTexture*>(dt->m_gpuData.get());
     slot.view = slot.tex ? slot.tex->view : VK_NULL_HANDLE;
-    // Depth attachments currently always use the texture's primary view (no face/layer selection).
 
     fbData->dirty = true;
   }
@@ -3753,10 +3349,7 @@ namespace ToolKit
 
   void VulkanBackend::SetUniform4f(int location, const Vec4& value)
   {
-    // No-op. Vulkan has no glUniform-style "location" addressing; the GL backend uses this for
-    // ad-hoc per-program uniforms but the Vulkan path will route equivalent data through the
-    // per-material UBO once descriptor sets land. GetUniformLocation already returns -1 here,
-    // so well-behaved engine code shouldn't reach this with a real location anyway.
+    // No-op (no glUniform-style addressing in Vulkan). GetUniformLocation returns -1.
     (void) location;
     (void) value;
   }
@@ -3785,16 +3378,12 @@ namespace ToolKit
 
   void VulkanBackend::SetSrgbAutoEncoding(bool enable)
   {
-    // Vulkan handles sRGB via swapchain format  likely no-op.
+    // Vulkan handles sRGB via swapchain format; no-op here.
     (void) enable;
   }
 
   void VulkanBackend::Finish()
   {
-    // GL's glFinish equivalent â€” flush + wait until every queued GPU op is retired. Engine
-    // calls this at shutdown / context teardown / certain readback paths. vkDeviceWaitIdle
-    // covers all queues this device owns, which matches the GL semantics on a single-context
-    // setup.
     if (m_context != nullptr && m_context->GetDevice() != VK_NULL_HANDLE)
     {
       vkDeviceWaitIdle(m_context->GetDevice());
@@ -3812,11 +3401,8 @@ namespace ToolKit
 
   bool VulkanBackend::ValidateBackbufferSrgbEncoding()
   {
-    // Unlike GL — where the SRGB-capable bit is a request the driver may silently ignore, forcing
-    // us to clear+readback to verify — on Vulkan we picked the swapchain format ourselves in
-    // VulkanSwapchain::PickSurfaceFormat. The "validation" is just reporting whether that pick
-    // resolved to an *_SRGB format (HW does the encode automatically) vs a UNORM one (we must
-    // gamma-encode in-shader / signal ImGui to do so).
+    // Reports whether the swapchain format we picked applies sRGB encode in hardware vs UNORM
+    // (which would force gamma encoding in-shader).
     if (m_swapchain == nullptr)
     {
       return false;
@@ -3837,12 +3423,12 @@ namespace ToolKit
 
   void VulkanBackend::EnableScissorTest(bool enable)
   {
-    // Vulkan: scissor is always enabled as dynamic state. Disable = set scissor to full viewport.
+    // Scissor is dynamic state in Vulkan; "disable" means a full-viewport scissor.
   }
 
   void VulkanBackend::ReadPixels(int x, int y, int w, int h, GraphicTypes format, GraphicTypes type, void* data)
   {
-    // TODO: vkCmdCopyImageToBuffer + map staging buffer.
+    // TODO: vkCmdCopyImageToBuffer + map staging.
   }
 
   void VulkanBackend::UpdateTextureSubRegion(Texture* tex, int x, int y, int w, int h, const void* data)
@@ -3956,10 +3542,7 @@ namespace ToolKit
 
   bool VulkanBackend::SupportsFloatTextureLinearFilter()
   {
-    // Engine uses this to decide between linear-sampled HDR targets and a NEAREST fallback for
-    // older GPUs. On Vulkan we query format properties for the canonical 32-bit float color
-    // format; if linear filter is missing on that, the rest of the float chain is unlikely to
-    // support it either.
+    // Query the canonical 32-bit float format as a proxy for the rest of the float chain.
     if (m_context == nullptr || m_context->GetPhysicalDevice() == VK_NULL_HANDLE)
     {
       return true;
@@ -3973,9 +3556,6 @@ namespace ToolKit
 
   bool VulkanBackend::IsDepthClampSupported()
   {
-    // VulkanContext::CreateLogicalDevice only enables depthClamp when the device advertises it
-    // (see the supported/features split there), so querying the physical device here gives the
-    // same answer as "did we actually turn the feature on?".
     if (m_context == nullptr || m_context->GetPhysicalDevice() == VK_NULL_HANDLE)
     {
       return false;
@@ -3987,9 +3567,7 @@ namespace ToolKit
 
   void* VulkanBackend::GetNativeTextureHandle(Texture* tex)
   {
-    // Return the raw VulkanTexture* so UI layers (editor, etc.) can pull out sampler/view and
-    // register them with their own texture systems (ImGui descriptor cache, debug viewers, ...).
-    // Keeping the backend UI-framework agnostic means zero ImGui / SDL includes inside ToolKit.
+    // Returns raw VulkanTexture* so UI layers can pull out sampler/view themselves.
     return tex != nullptr ? tex->m_gpuData.get() : nullptr;
   }
 

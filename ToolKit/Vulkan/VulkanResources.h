@@ -26,25 +26,13 @@ namespace ToolKit
   class Texture;
   class Framebuffer;
 
-  /**
-   * Maps ToolKit GraphicTypes format enum to a concrete VkFormat. Returns VK_FORMAT_UNDEFINED for
-   * formats not yet supported by the Vulkan backend � caller should assert/skip.
-   */
+  /** Maps a ToolKit GraphicTypes format to VkFormat. Returns VK_FORMAT_UNDEFINED on unsupported. */
   VkFormat ToVkFormat(GraphicTypes format);
 
-  /** Returns true for depth or depth-stencil formats. */
   bool IsDepthFormat(VkFormat format);
-
-  /** Returns true for stencil or depth-stencil formats. */
   bool IsStencilFormat(VkFormat format);
 
-  /**
-   * Backend GPU data for a Texture / RenderTarget / DepthTexture.
-   * Stored on Texture::m_gpuData as GpuResourceDataPtr (shared_ptr<GpuResourceData>).
-   *
-   * Currently supports the minimal subset needed by Stage 1f (color 2D render targets + depth 2D,
-   * MSAA x1). Cubemap / 2DArray / mip-mapped textures will be extended in later stages.
-   */
+  /** Backend GPU data for Texture / RenderTarget / DepthTexture. Stored on Texture::m_gpuData. */
   struct VulkanTexture : public GpuResourceData
   {
     VulkanContext* context  = nullptr;
@@ -57,29 +45,25 @@ namespace ToolKit
     VkFormat format         = VK_FORMAT_UNDEFINED;
     VkImageAspectFlags aspect = 0;
     VkExtent2D extent       = {0, 0};
-    uint32_t arrayLayers    = 1; //!< 6 for cubemaps, >1 for 2D arrays.
+    uint32_t arrayLayers    = 1;  //!< 6 for cubemaps, >1 for 2D arrays.
     uint32_t mipLevels      = 1;
-    /** Sample count this image was created with (Stage 10). VK_SAMPLE_COUNT_1_BIT for the
-        non-MSAA path; >1 means the image is a multi-sampled render target — driving the
-        render pass attachment sampleCount, the pipeline's rasterizationSamples, and the
-        ResolveFramebuffer branch that swaps vkCmdBlitImage for vkCmdResolveImage. */
+
+    /** VK_SAMPLE_COUNT_1_BIT on non-MSAA; >1 marks an MSAA target (drives RP sampleCount, pipeline
+        rasterizationSamples, and the resolve-vs-blit branch). */
     VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
     bool isCubemap          = false;
 
-    /** Last layout we transitioned the image to. Drives pipeline barriers + render pass
-        initialLayout selection. */
+    /** Last layout we transitioned to. Drives pipeline barriers + RP initialLayout. */
     VkImageLayout currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-    /** Subresource view cache. AttachColorTarget builds layer/face/mip-specific VkImageViews
-        when an FB attachment selects a slice of this texture; without caching, atlas-layer
-        iteration churned out one vkCreateImageView + one defer-delete *per atlas slot per
-        frame*. Cached entries are owned by the texture and destroyed in ~VulkanTexture, so
-        FB swaps never trigger view destroys. Linear scan; entry counts are tiny in practice
-        (ShadowAtlas: 2 layers × shadow maps, env capture: 6 faces × 1 mip). */
+    /** Subresource view cache for face/layer/mip-specific attachment views. Owned by this
+        texture and destroyed in ~VulkanTexture so FB attachment swaps don't churn vkCreateView
+        + defer-delete on every atlas-layer iteration. Linear scan; counts stay small in
+        practice (shadow atlas: ~4 layers, env capture: 6 faces). */
     struct SubresourceViewEntry
     {
       uint32_t mip   = 0;
-      uint32_t layer = 0; //!< baseArrayLayer
+      uint32_t layer = 0;
       VkImageView view = VK_NULL_HANDLE;
       bool valid     = false;
     };
@@ -88,28 +72,20 @@ namespace ToolKit
     ~VulkanTexture() override;
   };
 
-  /**
-   * Backend GPU data for a Framebuffer.
-   * Stored on Framebuffer::m_gpuData.
-   *
-   * The VkRenderPass + VkFramebuffer are built lazily on first StartPass after the attachment
-   * set / size stabilizes. Any Attach/Detach call flips @ref dirty so the next StartPass rebuilds.
-   */
+  /** Backend GPU data for Framebuffer. Stored on Framebuffer::m_gpuData. VkRenderPass and
+      VkFramebuffer are built lazily on first use after attachments stabilize. */
   struct VulkanFramebuffer : public GpuResourceData
   {
     VulkanContext* context = nullptr;
 
-    /** Attachment slot � records the source texture and the specific view used by this slot.
-        @ref view may differ from @ref tex->view when a face/mip/layer selector is active
-        (e.g., cubemap face-as-color-attachment). When we create a transient view for this slot
-        we own it and release it on detach / destroy. */
+    /** Attachment slot. @ref view may differ from @ref tex->view when a face/mip/layer
+        subresource view is in use; transient views the slot owns get destroyed on detach. */
     struct Slot
     {
       VulkanTexture* tex       = nullptr;
       VkImageView view         = VK_NULL_HANDLE;
       bool ownsView            = false;
-      /** Subresource range covered by @ref view. Used by ClearBuffer to target the right
-          layer/mip when clearing a per-layer or per-face attachment. */
+      /** Subresource range covered by @ref view, used by clear to target the right slice. */
       uint32_t baseArrayLayer  = 0;
       uint32_t layerCount      = 1;
       uint32_t baseMipLevel    = 0;
@@ -122,17 +98,11 @@ namespace ToolKit
     uint32_t width  = 0;
     uint32_t height = 0;
 
-    /** Sample count adopted by the most recent BuildRpVariant — every attachment in
-        the pass shares the same VkSampleCountFlagBits value. Pipelines drawn into this FB
-        must use this as their rasterizationSamples (Stage 10). */
+    /** Sample count adopted from the attachments; pipelines drawn into this fb match it. */
     VkSampleCountFlagBits subpassSamples = VK_SAMPLE_COUNT_1_BIT;
 
-    /** Per-clearBits VkRenderPass variants. loadOp is baked into VkRenderPass, so the same
-        framebuffer needs a separate RP per (clearColor, clearDepth, clearStencil) combination —
-        the engine cycles between "first use clears, later uses load" patterns on the same target
-        (m_oneColorAttachmentFramebuffer, shadow atlas across cascades, etc.). All variants share
-        the same VkFramebuffer because Vulkan considers RPs with identical attachment counts /
-        formats / samples "compatible" regardless of loadOp. */
+    /** Per-clearBits VkRenderPass variants — loadOp is baked into VkRenderPass, but RP
+        compatibility ignores loadOp so all variants share the same VkFramebuffer. */
     struct RpVariant
     {
       VkRenderPass rp            = VK_NULL_HANDLE;
@@ -142,17 +112,12 @@ namespace ToolKit
     static constexpr int kMaxRpVariants = 4;
     RpVariant rpVariants[kMaxRpVariants] = {};
 
-    /** VkFramebuffer cache keyed on (view tuple). VkFramebuffer is immutable in Vulkan — every
-        attachment view change requires a fresh handle, and the old one used to defer-delete +
-        recreate. ShadowPass cycles through 4 atlas-layer views + blur ping-pong views; without
-        this cache that's ~100 vkCreate/Destroy pairs per frame piling up in the deferred-delete
-        queue, causing frame-time hitches when the queue drains. With cache: 4-8 stable FBs live
-        the texture's lifetime, AttachColorTarget just flips the active pointer. */
+    /** VkFramebuffer cache keyed by view tuple. Shadow atlas + post-process ping-pong cycle
+        through ~6 unique tuples; caching avoids ~100 vkCreate/Destroy pairs per frame. */
     struct FbCacheEntry
     {
       VkFramebuffer fb     = VK_NULL_HANDLE;
-      /** Same indexing as a Vulkan framebuffer attachment list: colors in declared order,
-          followed by depth (if any). All slots beyond viewCount are unused/VK_NULL_HANDLE. */
+      /** Colors in declared order, then depth (matches the Vulkan attachment list ordering). */
       std::array<VkImageView, kMaxColorAttachments + 1> views{};
       uint32_t viewCount   = 0;
       bool valid           = false;
@@ -160,38 +125,23 @@ namespace ToolKit
     static constexpr int kMaxFbCacheEntries = 8;
     std::array<FbCacheEntry, kMaxFbCacheEntries> fbCache{};
 
-    /** Currently-active VkRenderPass. Equals rpVariants[i].rp for the entry whose clearBits
-        matches the most recent StartPass desc. Set by EnsureRpForClearBits. */
+    /** Currently-active RP/FB. Set by EnsureRpForClearBits / BuildOffscreenFramebuffer.
+        @ref framebuffer aliases into fbCache; cache owns lifetime. */
     VkRenderPass renderPass = VK_NULL_HANDLE;
-    /** Currently-active VkFramebuffer — a pointer into fbCache[].fb. Owned by the cache; never
-        defer-deleted in isolation. Eviction (cache full / fbData teardown) is the only path that
-        destroys these handles. */
     VkFramebuffer framebuffer = VK_NULL_HANDLE;
 
     bool dirty = true;
 
     ~VulkanFramebuffer() override;
 
-    /** Release cached VkRenderPass + VkFramebuffer (called on teardown or attachment change). */
+    /** Releases cached RP variants + the active VkFramebuffer (called on teardown). */
     void ReleaseLazyObjects();
 
-    /** Release any transient views owned by attachment slots. */
+    /** Releases transient views owned by attachment slots. */
     void ReleaseOwnedViews();
   };
 
-  /**
-   * Backend GPU data for a UniformBuffer.
-   * Stored on UniformBuffer::m_gpuData.
-   *
-   * Uses a HOST_VISIBLE + HOST_COHERENT buffer with VMA persistent mapping � the CPU writes
-   * directly through @ref buffer.mapped on every UpdateUniformBuffer call. Coherent memory means
-   * no explicit flush; the next vkQueueSubmit observes the write thanks to the host-write
-   * implicit memory dependency.
-   *
-   * One UBO per ToolKit `UniformBuffer` instance � small, fixed-size, infrequently-resized.
-   * Per-draw uniforms (PerDrawUniforms) will use a dedicated dynamic UBO ring buffer in Stage 7c,
-   * not this struct.
-   */
+  /** Backend GPU data for UniformBuffer. HOST_VISIBLE+HOST_COHERENT, persistently mapped. */
   struct VulkanUniformBuffer : public GpuResourceData
   {
     VulkanContext* context = nullptr;
@@ -200,15 +150,8 @@ namespace ToolKit
     ~VulkanUniformBuffer() override;
   };
 
-  /**
-   * Backend GPU data for a Mesh.
-   * Stored on Mesh::m_gpuData.
-   *
-   * Vertex + index buffers are uploaded once (DEVICE_LOCAL via staging) at CreateMesh time and
-   * reused for every Draw. Index size is fixed at 32-bit because ToolKit's UIntArray uses uint
-   * indices � VK_INDEX_TYPE_UINT32 in Vulkan terms. SkinMesh uses the same struct; the per-vertex
-   * stride and vertex attribute layout are baked into the pipeline (selected via DrawDesc.vertexLayout).
-   */
+  /** Backend GPU data for Mesh. Vertex + index buffers uploaded once to DEVICE_LOCAL via
+      staging at CreateMesh. Indices are always 32-bit (VK_INDEX_TYPE_UINT32). */
   struct VulkanMesh : public GpuResourceData
   {
     VulkanContext* context = nullptr;
@@ -218,14 +161,8 @@ namespace ToolKit
     ~VulkanMesh() override;
   };
 
-  /**
-   * Backend GPU data for a Shader.
-   * Stored on Shader::m_gpuData via CreateShader.
-   *
-   * Holds a single VkShaderModule built from the shader's GLSL source compiled to SPIR-V. The
-   * shaderc spirv binary is not retained � once vkCreateShaderModule consumed it, only the
-   * driver-side module is needed.
-   */
+  /** Backend GPU data for Shader (single VkShaderModule). SPIR-V binary is discarded once the
+      module is built. */
   struct VulkanShaderModule : public GpuResourceData
   {
     VulkanContext* context = nullptr;
@@ -234,34 +171,19 @@ namespace ToolKit
     ~VulkanShaderModule() override;
   };
 
-  /**
-   * Backend GPU data for a GpuProgram (vertex + fragment shader pair).
-   * Stored on GpuProgram::m_gpuData via CreateGpuProgram.
-   *
-   * Owns its VkPipelineLayout. The descriptor set layout it references is shared across every
-   * program (VulkanContext::GetGlobalDescriptorSetLayout) � context owns that, programs only
-   * point at it. Shader modules are NOT owned here; they live on the source Shader's
-   * VulkanShaderModule. This struct caches raw module handles for cheap pipeline rebuild.
-   *
-   * Stage 7d-3: pipeline layout uses the global descriptor set layout (single set, kitchen-sink
-   * binding reservation \u2014 see VulkanBindings.h). Stage 7d-4 adds descriptor set allocation +
-   * BindTexture / SubmitPerDrawData wiring on top.
-   */
+  /** Backend GPU data for GpuProgram. Owns the per-program VkPipelineLayout; the descriptor
+      set layout is the context's shared global layout (programs only point at it). Shader
+      modules are owned by their source Shader's VulkanShaderModule. */
   struct VulkanGpuProgram : public GpuResourceData
   {
     VulkanContext* context = nullptr;
 
-    // Cached references; modules are owned by the source Shader's VulkanShaderModule.
     VkShaderModule vert    = VK_NULL_HANDLE;
     VkShaderModule frag    = VK_NULL_HANDLE;
 
-    /** Per-program pipeline layout. Built off the context-owned global descriptor set layout, so
-        ~VulkanGpuProgram destroys only this handle (not the set layout itself). */
     VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
 
-    /** Snapshot of the engine GpuProgram's aggregated resource declarations (textures + UBOs).
-        Cached at CreateGpuProgram time so descriptor flush logic in Draw can iterate required
-        bindings without dereferencing the engine-side GpuProgram. */
+    /** Cached snapshot of declared resources for descriptor-flush iteration. */
     ShaderResourceArray resources;
 
     ~VulkanGpuProgram() override;

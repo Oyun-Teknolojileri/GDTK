@@ -20,22 +20,13 @@ namespace ToolKit
   class VulkanContext;
 
   /**
-   * Owns the swapchain, its image views + framebuffers, a single-color render pass used to drive
-   * clear + ImGui composition, the command pool/buffers, and the per-frame sync objects needed to
-   * acquire + submit + present. Recreated on window resize (detected via VK_ERROR_OUT_OF_DATE_KHR
-   * or VK_SUBOPTIMAL_KHR).
+   * Owns the swapchain, its image views + framebuffers, the swapchain render pass, the command
+   * pool/buffers, and per-frame sync objects. Recreated on resize / VK_ERROR_OUT_OF_DATE_KHR.
    */
   class TK_API VulkanSwapchain
   {
    public:
-    // Set to 1 to fully serialize CPU recording and GPU execution per frame: each BeginFrame
-    // waits on the in-flight fence so no two cb's ever execute concurrently on the queue.
-    // Eliminates cross-cb GPU hazards that subpass-EXTERNAL deps don't reliably bridge across
-    // submissions on this driver/architecture (observed: editor viewport intermittently shows
-    // intermediate offscreen-pass content with FRAMES_IN_FLIGHT=2, even with ping-pong'd RTs
-    // and tightened RP deps). Cost is minimal in the editor: GPU is the bottleneck and CPU
-    // pipelining doesn't hide much there. Swapchain image double/triple-buffering for tear-free
-    // presentation is independent of this and continues to operate.
+    /** Frames-in-flight. Must match RHIConstants::FramesInFlight on the engine side. */
     static constexpr uint FRAMES_IN_FLIGHT = 2;
 
     VulkanSwapchain();
@@ -44,60 +35,44 @@ namespace ToolKit
     bool Init(VulkanContext* ctx);
     void Destroy();
 
-    /**
-     * Waits for the in-flight fence, resets and begins this frame's command buffer, and tries to
-     * acquire the next swapchain image. The command buffer is opened **even when the acquire
-     * fails** (window minimized, swapchain out-of-date) so the engine can keep recording GPU work
-     * — uploads, offscreen passes, etc. — while the window isn't presentable. Caller queries
-     * IsPresentable() to decide whether to drive the swapchain render pass / final blit.
-     * Returns false only when the swapchain object itself is unusable (pre-init or device lost).
-     */
+    /** Waits the in-flight fence, resets and begins this frame's cb, and tries to acquire the
+        next swapchain image. The cb opens even when acquire fails (minimize / out-of-date) so
+        engine keeps recording uploads + offscreen work; caller queries IsPresentable() to gate
+        the swapchain pass. Returns false only when the swapchain object itself is unusable. */
     bool BeginFrame();
 
-    /** True when this frame successfully acquired a swapchain image and is safe to drive the
-     *  swapchain render pass + final present. False during minimize / between out-of-date and the
-     *  next Recreate() — backend should still record cb and EndFrame() will submit it, but the
-     *  swapchain-specific work must be skipped. Valid only between BeginFrame() and EndFrame(). */
+    /** True when this frame acquired a swapchain image and may drive the swapchain pass. */
     bool IsPresentable() const { return m_presentable; }
 
-    /** Closes the command buffer and submits it (fence-only submission when not presentable, so
-     *  fences stay in lockstep with frame count and DeferDelete keeps draining each frame). When
-     *  IsPresentable(), additionally waits on the image-available semaphore, signals the
-     *  per-image renderFinished semaphore, and calls vkQueuePresentKHR. */
+    /** Closes + submits the cb. Fence-only submit when not presentable so fence cadence stays
+        in lockstep with frame count. When presentable, also waits imageAvailable, signals
+        renderFinished, and presents. */
     bool EndFrame();
 
-    /** Mid-frame command buffer flush. Closes the current cmd buffer (without semaphores or
-     *  the in-flight fence — those belong to EndFrame's terminal submission), submits it,
-     *  waits for the graphics queue to go idle, then resets and re-begins the same cmd buffer
-     *  so the rest of the frame can keep recording. Used by the backend to recover from
-     *  per-draw ring overflow without growing the ring: drain queued GPU work, then reset the
-     *  ring head from a known-empty state. Caller is responsible for ending any open render
-     *  pass before calling and for restoring dynamic state (viewport/scissor) afterwards. */
+    /** Mid-frame flush: close + submit cb (no semaphores/fence), wait the queue idle, reset and
+        re-begin the same cb. Used by per-draw ring overflow recovery. Caller closes any open
+        render pass first and restores dynamic state afterwards. */
     bool FlushCommandBuffer();
 
-    /** Begins the swapchain's main render pass with @p clearColor as loadOp value. No-op if a
-     *  swapchain pass is already active or no frame is in flight. */
+    /** Begins the swapchain RP with @p clearColor. No-op if already active or no frame. */
     void BeginSwapchainPass(const Vec4& clearColor);
 
-    /** Ends the swapchain render pass opened by BeginSwapchainPass. No-op if not active. */
+    /** Ends the swapchain RP. No-op if not active. */
     void EndSwapchainPass();
 
     bool IsSwapchainPassActive() const { return m_swapchainPassActive; }
 
-    /** True between BeginFrame() success and EndFrame() return � the cmd buffer is in
-        recording state during this window. Used by the backend to gate Draw / Bind* calls
-        that may fire before any frame has begun (engine init, hot-reload, etc.). */
+    /** True between BeginFrame success and EndFrame — the cb is in recording state. */
     bool IsFrameActive() const { return m_frameActive; }
 
-    /** Tears down swapchain-dependent objects and rebuilds them from the current surface extent. */
+    /** Rebuilds swapchain-dependent objects from the current surface extent. */
     bool Recreate();
 
     VkCommandBuffer GetCurrentCommandBuffer() const;
     VkRenderPass GetRenderPass() const { return m_renderPass; }
-    /** Image acquired by the most recent BeginFrame. VK_NULL_HANDLE if no frame is in flight.
-     *  Exposed so the backend can blit into the backbuffer outside the swapchain render pass
-     *  (engine path: `CopyFramebuffer(src, nullptr, ColorBits)` — splash screen, post-process
-     *  composite). */
+
+    /** Image acquired by the most recent BeginFrame, or VK_NULL_HANDLE. Backend uses it for
+        CopyFramebuffer(src, nullptr, ColorBits) (blit-to-screen). */
     VkImage GetCurrentImage() const
     {
       return (m_currentImage < m_images.size()) ? m_images[m_currentImage] : VK_NULL_HANDLE;
@@ -134,10 +109,9 @@ namespace ToolKit
     VkCommandPool m_cmdPool   = VK_NULL_HANDLE;
     std::array<VkCommandBuffer, FRAMES_IN_FLIGHT> m_cmdBuffers {};
 
-    // imageAvailable + inFlight are per-frame-in-flight (submission side).
-    // renderFinished is per-swapchain-image: the present queue may keep waiting on this semaphore
-    // until the image is reacquired, which can outlive the FRAMES_IN_FLIGHT slot recycle. Sharing
-    // the per-frame slot would let us re-submit a still-pending semaphore. See:
+    // imageAvailable + inFlight are per-FIF (submission side). renderFinished is per-swapchain-
+    // image: the present queue may still be waiting on it after the FIF slot recycles, so we
+    // can't share it across slots. See:
     // https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html
     std::array<VkSemaphore, FRAMES_IN_FLIGHT> m_imageAvailable {};
     std::array<VkFence, FRAMES_IN_FLIGHT> m_inFlight {};
@@ -147,9 +121,6 @@ namespace ToolKit
     uint m_currentImage = 0;
     bool m_frameActive  = false;
     bool m_swapchainPassActive = false;
-
-    /** True when the current frame acquired a swapchain image; false during minimize / between
-     *  out-of-date and recreate. EndFrame's present path keys on this. */
     bool m_presentable  = false;
   };
 

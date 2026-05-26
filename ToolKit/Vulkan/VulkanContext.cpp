@@ -172,10 +172,8 @@ namespace ToolKit
       vkDeviceWaitIdle(m_device);
     }
 
-    // Drop any GPU work that was queued but never flushed (no frame ever started, or shutdown
-    // landed mid-frame with a render pass open). The cb-side recorders are no-ops if not
-    // replayed; the cleanup callbacks still need to run to release any staging resources
-    // captured in their closures.
+    // Run cleanup callbacks for any queued GPU work never flushed (staging resources captured
+    // in their closures need releasing).
     for (PendingGpuWork& w : m_pendingGpuWork)
     {
       if (w.postFlushCleanup)
@@ -209,7 +207,7 @@ namespace ToolKit
       }
     }
 
-    // Per-draw UBO ring — destroy before the allocator goes away (VulkanBuffer::Destroy uses VMA).
+    // Destroy before the allocator (VulkanBuffer::Destroy uses VMA).
     if (m_perDrawUboRing.handle != VK_NULL_HANDLE)
     {
       VulkanBuffer::Destroy(this, m_perDrawUboRing);
@@ -270,12 +268,7 @@ namespace ToolKit
     std::vector<const char*> extensions = requiredExtensions;
     bool validationFeaturesSupported   = false;
 
-    // VK_EXT_debug_utils is enabled unconditionally when available. It provides
-    // vkCmdBegin/EndDebugUtilsLabelEXT for command-buffer markers — RenderDoc / NSight / PIX
-    // surface these as named scopes regardless of build mode. The extension is essentially
-    // free at runtime when no capture tool is attached; the cost lives entirely in the capture
-    // path. Previously this was gated on m_validationEnabled, so release builds had no markers
-    // in profilers — fixed now.
+    // VK_EXT_debug_utils enables cb markers for RenderDoc / Nsight / PIX even in release.
     if (InstanceExtensionAvailable(VK_EXT_DEBUG_UTILS_EXTENSION_NAME))
     {
       extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
@@ -302,7 +295,6 @@ namespace ToolKit
       ci.ppEnabledLayerNames = layers;
     }
 
-    // pNext chain for validation features and early debug messenger
     VkValidationFeaturesEXT validationFeatures{VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT};
     VkValidationFeatureEnableEXT enabledFeatures[] = {
         VK_VALIDATION_FEATURE_ENABLE_BEST_PRACTICES_EXT,
@@ -499,8 +491,7 @@ namespace ToolKit
 
     VkPhysicalDeviceFeatures features{};
     features.samplerAnisotropy = supported.samplerAnisotropy;
-    // Required by ortho/directional shadow passes which set rs.depthClampEnable=VK_TRUE so geometry
-    // behind the light's near plane still writes depth instead of being clipped away.
+    // depthClamp keeps geometry behind the light's near plane writing depth (ortho shadow passes).
     features.depthClamp        = supported.depthClamp;
     if (!supported.depthClamp)
     {
@@ -545,7 +536,7 @@ namespace ToolKit
 
   bool VulkanContext::CreateDescriptorPool()
   {
-    // Oversized pool shared across systems (ImGui etc). Sizes chosen to cover typical editor needs.
+    // Shared pool sized for ImGui + other long-lived systems.
     VkDescriptorPoolSize sizes[] = {
         {VK_DESCRIPTOR_TYPE_SAMPLER, 256},
         {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1024},
@@ -575,15 +566,9 @@ namespace ToolKit
 
   bool VulkanContext::CreateGlobalDescriptorSetLayout()
   {
-    // Stage 7d-3 — kitchen-sink layout shared by every VulkanGpuProgram. Reserves every binding
-    // the binding-map convention exposes (see VulkanBindings.h). Reasoning:
-    //   - Combined image samplers at 0..7 cover the GL texture slot range as-is (no remap).
-    //   - Fixed UBOs sit at the post-remap positions of the GL UBO slots ToolKit actually uses
-    //     (camera/graphic constants/lights).
-    //   - The per-draw dynamic UBO lives at @ref kPerDrawUboBinding so vkCmdBindDescriptorSets'
-    //     dynamicOffset advances it without rewriting the descriptor.
-    //   - All bindings flagged ALL_GRAPHICS so any shader stage can reference any binding without
-    //     us tracking which is used where; unused bindings are ignored at descriptor write time.
+    // Kitchen-sink layout shared by every program: textures 0..7, fixed UBOs at GL slots
+    // 3/4/5/7..10, and the per-draw dynamic UBO. Unused bindings cost nothing at write time.
+    // All bindings stage-flagged ALL_GRAPHICS — no per-stage tracking needed.
     using namespace VulkanBindings;
 
     std::vector<VkDescriptorSetLayoutBinding> bindings;
@@ -603,16 +588,11 @@ namespace ToolKit
     {
       pushBinding(kTextureBindingBase + i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
     }
-    // GL UBO slots ToolKit currently uses — see VulkanBindings.h header table. Slot 5 is the
-    // shared "pass-specific" slot: each engine pass (OutlinePass/DilatePassData, future
-    // SsaoCalc/Bloom/etc.) owns its own buffer instance and rebinds this slot at render time.
+    // GL UBO slots in use: 3=camera, 4=graphic constants, 5=pass-specific, 7..10=lights.
     for (uint glSlot : {3u, 4u, 5u, 7u, 8u, 9u, 10u})
     {
       pushBinding(UboBindingFor(glSlot), VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
     }
-    // Per-draw dynamic UBO. Backing buffer is VulkanContext::m_perDrawUboRing; SubmitPerDrawData
-    // bumps the dynamic offset each draw, so a single descriptor write covers every per-draw
-    // payload during a frame.
     pushBinding(kPerDrawUboBinding, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
 
     VkDescriptorSetLayoutCreateInfo ci{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
@@ -630,20 +610,8 @@ namespace ToolKit
 
   bool VulkanContext::CreateFrameDescriptorPools()
   {
-    // Stage 7d-4. One pool per frame-in-flight slot. Sized for the global descriptor set
-    // layout's bindings: kTextureBindingCount sampled images + 7 UBOs (slots 3,4,5,7,8,9,10)
-    // + 1 dynamic UBO (perDraw) per set, multiplied by max sets to give descriptor count
-    // budgets.
-    //
-    // 256 was the original cap and fit a typical editor frame (≤100 unique program/binding
-    // combos). It silently failed under EnvironmentComponent::CaptureEnvironment bake load:
-    // 6 cube faces × (shadow + forward) with distinct material/texture combos easily blows
-    // past 256 unique descriptor sets in a single frame. When AllocateFrameDescriptorSet
-    // returns VK_NULL_HANDLE, FlushDescriptorState returns null, Draw skips
-    // vkCmdBindDescriptorSets, and the subsequent vkCmdDraw crashes inside the driver
-    // dereferencing an unbound descriptor set 0. 2048 leaves comfortable headroom for bake
-    // and any future multi-pass workload; pool memory cost is tiny (thousands of small
-    // descriptor records).
+    // One pool per FIF slot. 2048 sets per frame covers heavy bake loads (CaptureEnvironment
+    // produces 100s of unique material/texture combos × 6 cube faces × shadow+forward).
     const uint32_t kMaxSetsPerFrame = 2048;
     VkDescriptorPoolSize sizes[]    = {
         {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, kMaxSetsPerFrame * VulkanBindings::kTextureBindingCount},
@@ -652,7 +620,7 @@ namespace ToolKit
     };
 
     VkDescriptorPoolCreateInfo ci{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
-    // No FREE_DESCRIPTOR_SET_BIT — the only release path is vkResetDescriptorPool at frame begin.
+    // No FREE_DESCRIPTOR_SET_BIT — release happens via vkResetDescriptorPool at BeginFrame.
     ci.flags         = 0;
     ci.maxSets       = kMaxSetsPerFrame;
     ci.poolSizeCount = (uint32_t) (sizeof(sizes) / sizeof(sizes[0]));
@@ -711,8 +679,7 @@ namespace ToolKit
     VkDescriptorSet set = VK_NULL_HANDLE;
     if (VkResult r = vkAllocateDescriptorSets(m_device, &ai, &set); r != VK_SUCCESS)
     {
-      // Out-of-pool errors (FRAGMENTED_POOL / OUT_OF_POOL_MEMORY) here mean a frame allocated
-      // more sets than kMaxSetsPerFrame. Increase the cap if it ever happens in real workloads.
+      // FRAGMENTED_POOL / OUT_OF_POOL_MEMORY = frame exceeded kMaxSetsPerFrame.
       TK_ERR("VulkanContext::AllocateFrameDescriptorSet failed: %d (pool exhausted?)", r);
       return VK_NULL_HANDLE;
     }
@@ -721,22 +688,16 @@ namespace ToolKit
 
   bool VulkanContext::CreatePerDrawUboRing()
   {
-    // Stage 7d-4b. Host-visible ring partitioned into FRAMES_IN_FLIGHT equal regions; each frame
-    // slot writes only to its own region so the other slot's still-in-flight UBO content can't
-    // be stomped. 32 MiB total \u2192 16 MiB per slot at FIF=2, enough for post-process-heavy frames
-    // (the previous single-buffer 8 MiB was overflowing once post-process was enabled). The
-    // "latent post-capture sync bug" the old single-ring comment warned about was actually this
-    // cross-slot stomp \u2014 partitioning removes the root cause, so the recovery stall in
-    // FlushAndResetRing is now a true safety net rather than a masking band-aid.
+    // 32 MiB total \u2192 16 MiB per slot at FIF=2. Each slot writes only to its own region so the
+    // other slot's still-in-flight UBO content can't be stomped.
     constexpr VkDeviceSize kRingBytes = 32ull << 20;
 
-    // Cache the alignment requirement so we don't query it on every Submit.
     VkPhysicalDeviceProperties props{};
     vkGetPhysicalDeviceProperties(m_physicalDevice, &props);
     m_minUniformBufferAlignment = props.limits.minUniformBufferOffsetAlignment;
     if (m_minUniformBufferAlignment == 0)
     {
-      m_minUniformBufferAlignment = 1; // Spec allows 0 meaning "no requirement"; treat as 1.
+      m_minUniformBufferAlignment = 1;
     }
 
     m_perDrawUboRing = VulkanBuffer::CreateHostVisibleMapped(this, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, kRingBytes);
@@ -764,9 +725,7 @@ namespace ToolKit
       return false;
     }
 
-    // Round size up to the alignment so successive slots stay aligned and the next AllocateSlot
-    // can land directly at head without a separate align step. Same effect as aligning head
-    // before the bump.
+    // Round size up to alignment so the next AllocateSlot can land at head directly.
     const VkDeviceSize aligned =
         (size + m_minUniformBufferAlignment - 1) & ~(m_minUniformBufferAlignment - 1);
     VkDeviceSize& head             = m_perDrawUboHeads[m_currentRingSlot];
@@ -776,8 +735,7 @@ namespace ToolKit
       if (!m_perDrawUboOverflowLogged)
       {
         const VkDeviceSize regionBase = (VkDeviceSize) m_currentRingSlot * m_perDrawUboRegionSize;
-        TK_ERR("VulkanContext::AllocatePerDrawSlot: ring region full (slot %u: %llu/%llu B). "
-               "Increase ring size.",
+        TK_ERR("VulkanContext::AllocatePerDrawSlot: ring region full (slot %u: %llu/%llu B)",
                m_currentRingSlot,
                (unsigned long long) (head - regionBase),
                (unsigned long long) m_perDrawUboRegionSize);
@@ -800,11 +758,8 @@ namespace ToolKit
       return;
     }
 
-    // Frame active path. Inline recording is only legal *outside* a render pass —
-    // vkCmdPipelineBarrier and vkCmdCopy* in our render passes lack self-dependency, so
-    // running them mid-pass trips VUID-vkCmdPipelineBarrier-None-07889. When a pass is open
-    // we park the work and let VulkanBackend flush it the moment it closes the pass — same cb,
-    // same submission, just on the safe side of vkCmdEndRenderPass.
+    // Inline recording is only legal outside a render pass. When an RP is open we park the
+    // work; the backend replays it the moment vkCmdEndRenderPass closes the pass.
     if (m_currentRecordingCb != VK_NULL_HANDLE)
     {
       const bool rpActive = m_renderPassActiveQuery && m_renderPassActiveQuery();
@@ -822,10 +777,6 @@ namespace ToolKit
       return;
     }
 
-    // No frame active: queue for the next BeginFrame to replay. Safe because the backend's
-    // frame loop now runs every tick (only present is gated by swapchain presentability), so
-    // m_pendingGpuWork never accumulates beyond a single frame — there's no window during which
-    // an owning resource can die between enqueue and flush.
     m_pendingGpuWork.push_back({std::move(recorder), std::move(postFlushCleanup)});
   }
 
