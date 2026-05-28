@@ -314,7 +314,8 @@ namespace ToolKit
               },
               texture.get());
 #endif
-          ImGui::Image(ConvertUIntImGuiTexture(texId), m_wndContentAreaSize, Vec2(0.0f, 0.0f), Vec2(1.0f, 1.0f));
+          // Match bottom left UV of OGL / Vulkan with Top left of Imgui.
+          ImGui::Image(ConvertUIntImGuiTexture(texId), m_wndContentAreaSize, ImVec2(0.0f, 1.0f), ImVec2(1.0f, 0.0f));
 
 #ifndef TK_VULKAN
           drawList->AddCallback(
