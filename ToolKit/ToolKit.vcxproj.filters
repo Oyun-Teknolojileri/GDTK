@@ -742,5 +742,8 @@
     <None Include="..\Resources\Engine\Shaders\VSMCommon.shader">
       <Filter>Render\Shaders</Filter>
     </None>
+    <None Include="..\Resources\Engine\Shaders\vulkanCompatInc.shader">
+      <Filter>Render\Shaders</Filter>
+    </None>
   </ItemGroup>
 </Project>

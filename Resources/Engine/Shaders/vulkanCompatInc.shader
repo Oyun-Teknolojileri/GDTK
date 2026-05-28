@@ -31,10 +31,14 @@
   #define TK_UBO_BINDING(n)     layout(std140, binding = n)
   #define TK_SAMPLER_BINDING(n) layout(binding = n)
   #define TK_LOC(n)             layout(location = n)
+  #define NDC_NEAR				0.0
+  #define TEX_COORD_Y(tc)		1.0 - tc.y;         					
 #else
   #define TK_UBO_BINDING(n)     layout(std140)
   #define TK_SAMPLER_BINDING(n)
   #define TK_LOC(n)
+  #define NDC_NEAR				-1.0
+  #define TEX_COORD_Y(tc)		tc.y;
 #endif
 
 #endif // TK_VULKAN_COMPAT
