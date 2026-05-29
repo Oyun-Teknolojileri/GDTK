@@ -654,7 +654,8 @@ namespace ToolKit
   {
     auto* gl = static_cast<GLUniformBufferData*>(ub->m_gpuData.get());
     glBindBuffer(GL_UNIFORM_BUFFER, gl->uboId);
-    glBufferSubData(GL_UNIFORM_BUFFER, 0, (GLsizeiptr) size, data);
+    // Orphan the old allocation and upload into a fresh one to avoid implicit sync.
+    glBufferData(GL_UNIFORM_BUFFER, (GLsizeiptr) size, data, GL_DYNAMIC_DRAW);
     // Also rebind to the buffer's UBO slot so Map() works as "upload + slot bind". Pass-specific
     // UBOs (slot 5) need this because CreateGpuProgram only writes their block binding — the
     // runtime per-program slot bind is owned by the pass via Map(). Global UBOs already get
