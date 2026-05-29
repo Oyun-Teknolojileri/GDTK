@@ -1423,11 +1423,18 @@ namespace ToolKit
       return res;
     }
 
-    bool UI::ImageButton(const char* id, void* textureId, const ImVec2& size)
+    bool UI::ImageButton(const char* id, void* textureId, const ImVec2& size, bool isRenderedImage)
     {
+      if (isRenderedImage)
+      {
+        return ImGui::ImageButton(id, textureId, size, GetUVLL(), GetUVUR());
+      }
+
       // Flip UV vertically to correct for OpenGL's bottom-left texture origin.
       return ImGui::ImageButton(id, textureId, size, ImVec2(0.0f, 1.0f), ImVec2(1.0f, 0.0f));
     }
+
+    void UI::Image(void* textureId, const ImVec2& size) { ImGui::Image(textureId, size, GetUVLL(), GetUVUR()); }
 
     bool UI::ImageButtonDecorless(uint64 textureID, const Vec2& size)
     {
@@ -1618,6 +1625,32 @@ namespace ToolKit
       if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal))
       {
         ImGui::SetItemTooltip(tip);
+      }
+    }
+
+    ImVec2 UI::GetUVLL()
+    {
+      if constexpr (TKVulkan)
+      {
+        // In vulkan, we are using negatvie viewports, flip is not needed.
+        return ImVec2(0.0f, 0.0f);
+      }
+      else
+      {
+        return ImVec2(0.0f, 1.0f);
+      }
+    }
+
+    ImVec2 UI::GetUVUR()
+    {
+      if constexpr (TKVulkan)
+      {
+        // In vulkan, we are using negatvie viewports, flip is not needed.
+        return ImVec2(1.0f, 1.0f);
+      }
+      else
+      {
+        return ImVec2(1.0f, 0.0f);
       }
     }
 

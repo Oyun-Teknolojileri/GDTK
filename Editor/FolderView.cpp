@@ -388,7 +388,7 @@ namespace ToolKit
           // Draw Item Icon.
           char iconChId[32];
           snprintf(iconChId, sizeof(iconChId), "##%llu", (unsigned long long) iconId);
-          if (UI::ImageButton(iconChId, ConvertUIntImGuiTexture(iconId), m_iconSize))
+          if (UI::ImageButton(iconChId, ConvertUIntImGuiTexture(iconId), m_iconSize, flipRenderTarget))
           {
             anyButtonClicked |= true;
             bool shiftDown    = ImGui::IsKeyDown(ImGuiKey_LeftShift);

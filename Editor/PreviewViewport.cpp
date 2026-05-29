@@ -44,10 +44,7 @@ namespace ToolKit
       DrawCommands();
 
       m_previewRenderer->m_params.MainFramebuffer = m_framebuffer;
-      GetRenderSystem()->AddRenderTask({[this](Renderer* renderer) -> void
-      {
-        m_previewRenderer->Render(renderer);
-      }});
+      GetRenderSystem()->AddRenderTask({[this](Renderer* renderer) -> void { m_previewRenderer->Render(renderer); }});
 
       // Render color attachment as rounded image
       const FramebufferSettings& fbSettings = m_framebuffer->GetSettings();
@@ -82,8 +79,8 @@ namespace ToolKit
       ImGui::GetWindowDrawList()->AddImageRounded(Convert2ImGuiTexture(texture),
                                                   currentCursorPos,
                                                   currentCursorPos + imageSize,
-                                                  Vec2(0.0f, 1.0f),
-                                                  Vec2(1.0f, 0.0f),
+                                                  UI::GetUVLL(),
+                                                  UI::GetUVUR(),
                                                   ImGui::GetColorU32(Vec4(1, 1, 1, 1)),
                                                   5.0f);
     }

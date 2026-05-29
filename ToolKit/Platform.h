@@ -23,6 +23,12 @@ namespace ToolKit
   static constexpr int TKDebug = 0;
 #endif
 
+#ifdef TK_VULKAN
+  static constexpr int TKVulkan = 1;
+#else
+  static constexpr int TKVulkan = 0;
+#endif
+
 #ifdef _WIN32
   #define TK_PLATFORM PLATFORM::TKWindows
   #define TK_WIN

@@ -70,7 +70,8 @@ namespace ToolKit
       static bool BeginCenteredTextButton(const String& text, const String& id = "");
       static void EndCenteredTextButton();
       static void CenteredText(const String& text);
-      static bool ImageButton(const char* id, void* textureId, const ImVec2& size);
+      static bool ImageButton(const char* id, void* textureId, const ImVec2& size, bool isRenderedImage = false);
+      static void Image(void* textureId, const ImVec2& size);
 
       /**
        * Takes an rgb color, gamma encode it and render the color picker. If color changed, returns an rgb color.
@@ -95,6 +96,14 @@ namespace ToolKit
 
       /** Adds a tooltip if mouse hover on item more than 0.4 seconds. Similar to UI::HelpMarker().  */
       static void AddTooltipToLastItem(const char* tip);
+
+      // Utilities.
+
+      /** Returns uv space lower left coordinates. */
+      static ImVec2 GetUVLL();
+
+      /** Returns uv space upper right coordinates. */
+      static ImVec2 GetUVUR();
 
      public:
       static bool m_showNewSceneWindow;

@@ -491,9 +491,9 @@ namespace ToolKit
 
     VkViewport vp{};
     vp.x        = 0.0f;
-    vp.y        = 0.0f;
+    vp.y        = (float) m_extent.height;
     vp.width    = (float) m_extent.width;
-    vp.height   = (float) m_extent.height;
+    vp.height   = -(float) m_extent.height;
     vp.minDepth = 0.0f;
     vp.maxDepth = 1.0f;
     vkCmdSetViewport(cb, 0, 1, &vp);

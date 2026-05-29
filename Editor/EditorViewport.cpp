@@ -302,30 +302,32 @@ namespace ToolKit
           // In Vulkan the swizzle is baked into the VkImageView created by Acquire(tex, true),
           // so no pre/post draw callbacks are needed. In GL the swizzle is set dynamically via
           // glTexParameteri around the draw call and restored afterwards.
-          uint64 texId = EditorImGuiTextureCache::Acquire(texture, true);
+          uint64 texId         = EditorImGuiTextureCache::Acquire(texture, true);
 
-#ifndef TK_VULKAN
           ImDrawList* drawList = ImGui::GetWindowDrawList();
-          drawList->AddCallback(
-              [](const ImDrawList* parentList, const ImDrawCmd* cmd)
-              {
-                Texture* t = (Texture*) cmd->UserCallbackData;
-                GetRenderSystem()->GetBackend()->SetTextureSwizzleAlpha(t, true, true);
-              },
-              texture.get());
-#endif
-          // Match bottom left UV of OGL / Vulkan with Top left of Imgui.
-          ImGui::Image(ConvertUIntImGuiTexture(texId), m_wndContentAreaSize, ImVec2(0.0f, 1.0f), ImVec2(1.0f, 0.0f));
+          if constexpr (TKVulkan)
+          {
+            drawList->AddCallback(
+                [](const ImDrawList* parentList, const ImDrawCmd* cmd)
+                {
+                  Texture* t = (Texture*) cmd->UserCallbackData;
+                  GetRenderSystem()->GetBackend()->SetTextureSwizzleAlpha(t, true, true);
+                },
+                texture.get());
+          }
 
-#ifndef TK_VULKAN
-          drawList->AddCallback(
-              [](const ImDrawList* parentList, const ImDrawCmd* cmd)
-              {
-                Texture* t = (Texture*) cmd->UserCallbackData;
-                GetRenderSystem()->GetBackend()->SetTextureSwizzleAlpha(t, false, true);
-              },
-              texture.get());
-#endif
+          UI::Image(ConvertUIntImGuiTexture(texId), m_wndContentAreaSize);
+
+          if constexpr (TKVulkan)
+          {
+            drawList->AddCallback(
+                [](const ImDrawList* parentList, const ImDrawCmd* cmd)
+                {
+                  Texture* t = (Texture*) cmd->UserCallbackData;
+                  GetRenderSystem()->GetBackend()->SetTextureSwizzleAlpha(t, false, true);
+                },
+                texture.get());
+          }
 
           if (IsActive())
           {

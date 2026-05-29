@@ -259,6 +259,7 @@
     <None Include="..\Resources\Engine\Shaders\unlitFrag.shader" />
     <None Include="..\Resources\Engine\Shaders\VSM.shader" />
     <None Include="..\Resources\Engine\Shaders\VSMCommon.shader" />
+    <None Include="..\Resources\Engine\Shaders\vulkanCompatInc.shader" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
