@@ -36,6 +36,10 @@ namespace ToolKit
     FramebufferPtr m_resolveFramebuffer = nullptr;
 
     RenderTargetPtr m_normalDepthRt     = nullptr;
+
+    /** Pass-owned passive RenderState. Forces depth test/write on and FuncLess so a material
+     *  with depth-write off cannot corrupt the prepass normal/depth output. */
+    RenderState m_passState;
   };
 
   typedef std::shared_ptr<ForwardPreProcessPass> ForwardPreProcessPassPtr;

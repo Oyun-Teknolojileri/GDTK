@@ -177,7 +177,9 @@ namespace ToolKit
     // Sanity checks.
     if (!m_initiated)
     {
-      TK_ERR("Initialize the shader before setting a value for a define.");
+      //TK_ERR("Initialize the shader before setting a value for a define.");
+      TK_ERR("Initialize the shader before setting a value for a define. (%s)", GetFile().c_str());
+
       return;
     }
 
@@ -250,6 +252,7 @@ namespace ToolKit
   XmlNode* Shader::DeSerializeImp(const SerializationFileInfo& info, XmlNode* parent)
   {
     m_includeFiles.clear();
+    m_resources.clear();
 
     XmlNode* rootNode = parent;
     for (XmlNode* node = rootNode->first_node(); node; node = node->next_sibling())
@@ -280,40 +283,6 @@ namespace ToolKit
         m_includeFiles.push_back(node->first_attribute("name")->value());
       }
 
-      if (strcmp("uniform", node->name()) == 0)
-      {
-        XmlAttribute* nameAttr = node->first_attribute("name");
-        XmlAttribute* sizeAttr = node->first_attribute("size");
-
-        bool isUniformFound    = false;
-        for (uint i = 0; i < (uint) Uniform::UNIFORM_MAX_INVALID; i++)
-        {
-          // Find uniform from name
-          if (strcmp(GetUniformName((Uniform) i), nameAttr->value()) == 0)
-          {
-            isUniformFound = true;
-
-            if (sizeAttr != nullptr)
-            {
-              // Uniform is array
-              int size = std::atoi(sizeAttr->value());
-              m_arrayUniforms.push_back({(Uniform) i, size});
-            }
-            else
-            {
-              m_uniforms.push_back((Uniform) i);
-            }
-
-            break;
-          }
-        }
-
-        if (!isUniformFound)
-        {
-          TK_ERR("Unrecognized uniform: %s", nameAttr->value());
-        }
-      }
-
       if (strcmp("define", node->name()) == 0)
       {
         ShaderDefine def;
@@ -323,6 +292,46 @@ namespace ToolKit
         Split(val, ",", def.variants);
 
         m_defineArray.push_back(def);
+      }
+
+      if (strcmp("texture", node->name()) == 0)
+      {
+        ShaderResource res;
+        res.type = ShaderResource::Type::Texture;
+
+        if (XmlAttribute* slotAttr = node->first_attribute("slot"))
+        {
+          res.slot = std::atoi(slotAttr->value());
+        }
+        if (XmlAttribute* nameAttr = node->first_attribute("name"))
+        {
+          res.name = nameAttr->value();
+        }
+        if (XmlAttribute* vtAttr = node->first_attribute("viewType"))
+        {
+          StringView vt = vtAttr->value();
+          if (vt == "2darray") res.viewType = ShaderResource::ViewType::Tex2DArray;
+          else if (vt == "cube") res.viewType = ShaderResource::ViewType::TexCube;
+        }
+
+        m_resources.push_back(res);
+      }
+
+      if (strcmp("uniform", node->name()) == 0)
+      {
+        ShaderResource res;
+        res.type = ShaderResource::Type::UniformBuffer;
+
+        if (XmlAttribute* slotAttr = node->first_attribute("slot"))
+        {
+          res.slot = std::atoi(slotAttr->value());
+        }
+        if (XmlAttribute* nameAttr = node->first_attribute("name"))
+        {
+          res.name = nameAttr->value();
+        }
+
+        m_resources.push_back(res);
       }
 
       if (strcmp("source", node->name()) == 0)
@@ -340,6 +349,21 @@ namespace ToolKit
     if (m_shaderType != ShaderType::IncludeShader)
     {
       PruneDuplicateIncludes(m_source);
+
+      // Inject the version directive. .shader sources no longer carry their own #version line —
+      // one source must compile on both backends, so the right line is picked here based on the
+      // active backend. Goes to the very top because GLSL requires #version as the first
+      // statement (anything before it is a compile error). HandleShaderIncludes already strips
+      // any stray #version/precision from included files, so prepending here can't double up.
+      // Note: VulkanShader.cpp additionally forces shaderc to 450 core via SetForcedVersionProfile,
+      // so even older shaders with a leftover #version would still compile on the VK path; we
+      // still emit the matching line here for consistency and so SPIR-V disasm shows the right
+      // header.
+#ifdef TK_VULKAN
+      m_source.insert(0, "#version 450 core\n");
+#else
+      m_source.insert(0, "#version 300 es\n");
+#endif
     }
 
     return nullptr;
@@ -380,17 +404,17 @@ namespace ToolKit
     std::sort(m_defineArray.begin(), m_defineArray.end());
     m_defineArray.erase(std::unique(m_defineArray.begin(), m_defineArray.end()), m_defineArray.end());
 
-    // Handle m_uniforms
-    m_uniforms.insert(m_uniforms.end(), includeShader->m_uniforms.begin(), includeShader->m_uniforms.end());
-    std::sort(m_uniforms.begin(), m_uniforms.end());
-    m_uniforms.erase(std::unique(m_uniforms.begin(), m_uniforms.end()), m_uniforms.end());
+    // Inherit resource declarations from the included shader, deduplicated by (type, slot, name).
+    for (const ShaderResource& incRes : includeShader->m_resources)
+    {
+      auto same = [&incRes](const ShaderResource& r)
+      { return r.type == incRes.type && r.slot == incRes.slot && r.name == incRes.name; };
 
-    // Handle m_arrayUniforms
-    m_arrayUniforms.insert(m_arrayUniforms.end(),
-                           includeShader->m_arrayUniforms.begin(),
-                           includeShader->m_arrayUniforms.end());
-    std::sort(m_arrayUniforms.begin(), m_arrayUniforms.end());
-    m_arrayUniforms.erase(std::unique(m_arrayUniforms.begin(), m_arrayUniforms.end()), m_arrayUniforms.end());
+      if (std::find_if(m_resources.begin(), m_resources.end(), same) == m_resources.end())
+      {
+        m_resources.push_back(incRes);
+      }
+    }
   }
 
   uint Shader::FindShaderMergeLocation(const String& source)

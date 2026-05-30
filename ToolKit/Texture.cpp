@@ -21,6 +21,8 @@
 #include "Stats.h"
 #include "ToolKit.h"
 
+#include <glm/gtc/packing.hpp>
+
 #include "DebugNew.h"
 
 namespace ToolKit
@@ -78,7 +80,7 @@ namespace ToolKit
       return;
     }
 
-    if (m_settings.Type == GraphicTypes::TypeFloat)
+    if (m_settings.Type == GraphicTypes::TypeFloat || m_settings.Type == GraphicTypes::TypeHalfFloat)
     {
 
       if ((m_imagef = GetFileManager()->GetHdriFile(GetFile(), &m_width, &m_height, &m_numChannels, 4)))
@@ -538,7 +540,7 @@ namespace ToolKit
   Hdri::Hdri()
   {
     m_settings.InternalFormat = GraphicTypes::FormatRGBA16F;
-    m_settings.Type           = GraphicTypes::TypeFloat;
+    m_settings.Type           = GraphicTypes::TypeHalfFloat;
     m_settings.MinFilter      = GraphicTypes::SampleLinear;
     m_settings.GenerateMipMap = false;
   }
@@ -556,6 +558,21 @@ namespace ToolKit
 
     // Load hdri image
     Texture::Load();
+
+    if (m_imagef != nullptr)
+    {
+      int pixelCount     = m_width * m_height * 4;
+      uint16_t* halfData = (uint16_t*) malloc(pixelCount * sizeof(uint16_t));
+
+      for (int i = 0; i < pixelCount; i++)
+      {
+        halfData[i] = glm::packHalf1x16((m_imagef[i]));
+      }
+
+      float* oldImagef = m_imagef;
+      m_imagef         = (float*) halfData;
+      ImageFree(oldImagef);
+    }
   }
 
   void Hdri::Init(bool flushClientSideArray)

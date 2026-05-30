@@ -1,8 +1,11 @@
 <shader>
 	<type name = "fragmentShader" />
+	<include name = "vulkanCompatInc.shader" />
+	<include name = "bloomPassDataInc.shader" />
+	<texture slot = "0" name = "s_texture0" />
 	<source>
 	<!--
-		#version 300 es
+		
 		precision mediump float;
 		precision lowp sampler2D;
 		precision lowp int;
@@ -15,19 +18,16 @@
 		// Remember to add bilinear minification filter for this texture!
 		// Remember to use a floating-point texture format (for HDR)!
 		// Remember to use edge clamping for this texture!
-		uniform sampler2D s_texture0;
-		uniform float filterRadius;
-		uniform float intensity;
-
-		in vec2 v_texture;
+		TK_SAMPLER_BINDING(0) uniform sampler2D s_texture0;
+		TK_LOC(2) in vec2 v_texture;
 		layout (location = 0) out vec3 upsample;
 
 		void main()
 		{
 				// The filter kernel is applied with a radius, specified in texture
 				// coordinates, so that the radius will vary across mip resolutions.
-				float x = filterRadius;
-				float y = filterRadius;
+				float x = bloom.upsampleParams.x;
+				float y = bloom.upsampleParams.x;
 
 				// Take 9 samples around current texel:
 				// a - b - c
@@ -54,7 +54,7 @@
 				upsample += (b+d+f+h)*2.0;
 				upsample += (a+c+g+i);
 				upsample *= 1.0 / 16.0;
-				upsample *= intensity;
+				upsample *= bloom.upsampleParams.y;
 		}
 	-->
 	</source>

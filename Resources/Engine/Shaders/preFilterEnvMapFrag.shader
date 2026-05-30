@@ -1,15 +1,15 @@
 <shader>
 	<type name = "fragmentShader" />
+	<include name = "vulkanCompatInc.shader" />
 	<include name = "pbrPrecompute.shader" />
+	<include name = "preFilterEnvMapPassDataInc.shader" />
+	<texture slot = "6" name = "s_texture6" viewType = "cube" />
 	<source>
 	<!--
-		#version 300 es
+		
 		precision highp float;
 
-		uniform samplerCube s_texture6;
-
-		uniform float resPerFace;
-		uniform float roughness;
+		TK_SAMPLER_BINDING(6) uniform samplerCube s_texture6;
 
 		in vec3 v_pos;
 		out vec4 fragColor;
@@ -26,8 +26,8 @@
 			vec3 R = N;
 			vec3 V = R;
 
-			// Convert perceptual roughness to alpha for Filament's D_GGX
-			float alpha = roughness * roughness;
+			// Convert perceptual preFilterEnvMap.params.y to alpha for Filament's D_GGX
+			float alpha = preFilterEnvMap.params.y * preFilterEnvMap.params.y;
 
 			vec3 prefilteredColor = vec3(0.0);
 			float totalWeight = 0.0;
@@ -35,7 +35,7 @@
 			for(uint i = 0u; i < SAMPLE_COUNT; ++i)
 			{
 				vec2 Xi = Hammersley(i, SAMPLE_COUNT);
-				vec3 H = ImportanceSampleGGX(Xi, N, roughness);
+				vec3 H = ImportanceSampleGGX(Xi, N, preFilterEnvMap.params.y);
 				vec3 L = normalize(2.0 * dot(V, H) * H - V);
 
 				float NdotL = max(dot(N, L), 0.0);
@@ -48,10 +48,10 @@
 					float D = distribution(alpha, NdotH, H);
 					float pdf = D * NdotH / (4.0 * HdotV) + 0.0001; 
 
-					float saTexel  = 4.0 * PI / (6.0 * resPerFace * resPerFace);
+					float saTexel  = 4.0 * PI / (6.0 * preFilterEnvMap.params.x * preFilterEnvMap.params.x);
 					float saSample = 1.0 / (float(SAMPLE_COUNT) * pdf + 0.0001);
 
-					float mipLevel = roughness == 0.0 ? 0.0 : 0.5 * log2(saSample / saTexel); 
+					float mipLevel = preFilterEnvMap.params.y == 0.0 ? 0.0 : 0.5 * log2(saSample / saTexel); 
 					
 					vec3 texel = textureLod(s_texture6, L, mipLevel).rgb;
 					texel = clamp(texel, vec3(0.0), vec3(FLT_MAX));

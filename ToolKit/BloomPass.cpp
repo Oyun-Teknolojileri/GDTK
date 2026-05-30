@@ -43,14 +43,28 @@ namespace ToolKit
 
     Renderer* renderer = GetRenderer();
 
+    // Lazy-init the pass UBO on first render — backend is alive by now.
+    if (!m_passDataBufferInitialized)
+    {
+      m_passDataBuffer.Init();
+      m_passDataBufferInitialized = true;
+    }
+
+    // Helper: stamp the relevant UBO fields and push to GPU. Each iteration calls this with
+    // freshly computed values so the shader sees per-pass data.
+    auto pushUbo = [&]()
+    {
+      m_passDataBuffer.Invalidate();
+      m_passDataBuffer.Map();
+    };
+
     // Filter pass
     {
       m_pass->SetFragmentShader(m_downsampleShader, renderer);
-      int passIndx = 0;
 
-      m_pass->UpdateUniform(ShaderUniform("passIndx", passIndx));
-      m_pass->UpdateUniform(ShaderUniform("srcResolution", mainRes));
-      m_pass->UpdateUniform(ShaderUniform("threshold", m_params.minThreshold));
+      m_passDataBuffer.m_data.passIndxAndPad.x  = 0;
+      m_passDataBuffer.m_data.downsampleParams  = Vec4((float) mainRes.x, (float) mainRes.y, m_params.minThreshold, 0.0f);
+      pushUbo();
 
       renderer->SetTexture(0, mainRt);
       m_pass->m_params.frameBuffer      = m_resampleFrameBuffers[0];
@@ -79,11 +93,9 @@ namespace ToolKit
         FramebufferPtr prevFramebuffer = m_resampleFrameBuffers[i];
         RenderTargetPtr prevRt         = prevFramebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
 
-        // Set pass' shader and parameters
-        int passIndx                   = i + 1;
-
-        m_pass->UpdateUniform(ShaderUniform("passIndx", passIndx));
-        m_pass->UpdateUniform(ShaderUniform("srcResolution", prevRes));
+        m_passDataBuffer.m_data.passIndxAndPad.x = i + 1;
+        m_passDataBuffer.m_data.downsampleParams = Vec4(prevRes.x, prevRes.y, m_passDataBuffer.m_data.downsampleParams.z, 0.0f);
+        pushUbo();
 
         renderer->SetTexture(0, prevRt);
 
@@ -100,9 +112,9 @@ namespace ToolKit
     {
       m_pass->SetFragmentShader(m_upsampleShader, renderer);
 
-      const float filterRadius = 0.002f;
-      m_pass->UpdateUniform(ShaderUniform("filterRadius", filterRadius));
-      m_pass->UpdateUniform(ShaderUniform("intensity", 1.0f));
+      const float filterRadius                = 0.002f;
+      m_passDataBuffer.m_data.upsampleParams  = Vec4(filterRadius, 1.0f, 0.0f, 0.0f);
+      pushUbo();
 
       for (int i = m_currentIterationCount; i > 0; i--)
       {
@@ -131,7 +143,9 @@ namespace ToolKit
       m_pass->m_params.clearFrameBuffer = GraphicBitFields::None;
       m_pass->m_params.frameBuffer      = m_params.FrameBuffer;
 
-      m_pass->UpdateUniform(ShaderUniform("intensity", m_params.intensity));
+      // Final merge uses the user-set intensity instead of 1.0.
+      m_passDataBuffer.m_data.upsampleParams.y = m_params.intensity;
+      pushUbo();
 
       RenderSubPass(m_pass);
     }

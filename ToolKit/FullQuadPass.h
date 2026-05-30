@@ -8,6 +8,7 @@
 #pragma once
 
 #include "Pass.h"
+#include "RenderState.h"
 
 namespace ToolKit
 {
@@ -17,6 +18,9 @@ namespace ToolKit
     FramebufferPtr frameBuffer        = nullptr;
     BlendFunction blendFunc           = BlendFunction::NONE;
     GraphicBitFields clearFrameBuffer = GraphicBitFields::AllBits;
+    /** Stencil op applied to the pass's passive state. Caller-controlled now that material no
+     *  longer carries stencil state. */
+    StencilOperation stencilOp        = StencilOperation::None;
   };
 
   /**
@@ -43,6 +47,10 @@ namespace ToolKit
 
    private:
     QuadPtr m_quad;
+
+    /** Pass-owned passive RenderState. Disables depth test/write and uses FuncAlways so the
+     *  fullscreen quad always covers the framebuffer regardless of the depth buffer state. */
+    RenderState m_passState;
   };
 
   typedef std::shared_ptr<FullQuadPass> FullQuadPassPtr;

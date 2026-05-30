@@ -17,7 +17,14 @@
 namespace ToolKit
 {
 
-  CubeMapPass::CubeMapPass() : Pass("CubeMapPass") { m_cube = MakeNewPtr<Cube>(); }
+  CubeMapPass::CubeMapPass() : Pass("CubeMapPass")
+  {
+    m_cube                        = MakeNewPtr<Cube>();
+
+    // Skybox passive default. Defaults for depthTest (on) and depthWrite (on) are fine; the
+    // cube renders before any other geometry so writing the far plane is harmless.
+    m_passState.depthFunction     = CompareFunctions::FuncLequal;
+  }
 
   void CubeMapPass::Render()
   {
@@ -29,6 +36,7 @@ namespace ToolKit
     RenderJobArray jobs;
     RenderJobProcessor::CreateRenderJobs(jobs, m_cube);
 
+    renderer->SetPassState(m_passState);
     renderer->RenderWithProgramFromMaterial(jobs);
   }
 
@@ -44,8 +52,12 @@ namespace ToolKit
     matCom->SetFirstMaterial(m_params.Material);
 
     Renderer* renderer = GetRenderer();
-    renderer->SetDepthTestFunc(CompareFunctions::FuncLequal);
     renderer->SetCamera(m_params.Cam, false);
+
+    if (m_params.onPreRender)
+    {
+      m_params.onPreRender();
+    }
   }
 
   void CubeMapPass::PostRender()
@@ -53,9 +65,7 @@ namespace ToolKit
     TK_PROFILE_FUNCTION();
 
     Pass::PostRender();
-    Renderer* renderer = GetRenderer();
-    renderer->SetDepthTestFunc(CompareFunctions::FuncLess);
-    renderer->EndPass();
+    GetRenderer()->FinishPass();
   }
 
 } // namespace ToolKit

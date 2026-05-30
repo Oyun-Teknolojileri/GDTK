@@ -236,7 +236,7 @@ namespace ToolKit
     m_skyboxMaterial->m_cubeMap = GetHdri()->m_cubemap;
     m_skyboxMaterial->SetVertexShaderVal(vertexPrg);
     m_skyboxMaterial->SetFragmentShaderVal(fragPrg);
-    m_skyboxMaterial->GetRenderState()->cullMode = CullingType::TwoSided;
+    m_skyboxMaterial->cullMode = CullingType::TwoSided;
     m_skyboxMaterial->Init();
   }
 

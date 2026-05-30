@@ -1,24 +1,27 @@
 <shader>
 	<type name = "fragmentShader" />
+	<include name = "vulkanCompatInc.shader" />
 	<include name = "materialCacheInc.shader" />
 	<include name = "drawDataInc.shader" />
 	<include name = "normalEncodingInc.shader" />
 	<define name = "DrawAlphaMasked" val="0,1" />
+	<texture slot = "0" name = "s_texture0" />
+	<texture slot = "9" name = "s_texture9" />
 	<source>
 	<!--
-	#version 300 es
+	
 	precision highp float;
 	precision lowp int;
 
-	in float v_linearDepth;
-	in vec3 v_normal;
-	in vec2 v_texture;
-	in mat3 TBN;
+	TK_LOC(0) in float v_linearDepth;
+	TK_LOC(1) in vec3 v_normal;
+	TK_LOC(2) in vec2 v_texture;
+	TK_LOC(3) in mat3 TBN;
 
 	layout (location = 0) out vec4 fragNormalDepth;
 
-	uniform sampler2D s_texture0; // color
-	uniform sampler2D s_texture9; // normal
+	TK_SAMPLER_BINDING(0) uniform sampler2D s_texture0; // color
+	TK_SAMPLER_BINDING(9) uniform sampler2D s_texture9; // normal
 
 	void main()
 	{

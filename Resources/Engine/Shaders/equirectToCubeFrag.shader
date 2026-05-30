@@ -1,12 +1,13 @@
 <shader>
 	<type name = "fragmentShader" />
+	<include name = "vulkanCompatInc.shader" />
+	<include name = "cubemapEquirectPassDataInc.shader" />
+	<texture slot = "0" name = "s_texture0" />
 	<source>
 	<!--
-		#version 300 es
+		
 		precision highp float;
-
-		uniform float Exposure;
-		uniform sampler2D s_texture0;
+		TK_SAMPLER_BINDING(0) uniform sampler2D s_texture0;
 
 		in vec3 v_pos;
 		out vec4 fragColor;
@@ -25,8 +26,8 @@
 	    vec2 uv = SampleSphericalMap(normalize(v_pos));
 	    vec3 color = texture(s_texture0, uv).rgb;
 
-			// Exposure
-			color = vec3(1.0) - exp(-color * Exposure);
+			// cubemapEquirect.exposureAndPad.x
+			color = vec3(1.0) - exp(-color * cubemapEquirect.exposureAndPad.x);
 
 			fragColor = vec4(color, 1.0);
 		}

@@ -134,6 +134,207 @@ namespace ToolKit
 
   typedef GpuBufferBase<GraphicConstatsDataLayout, 4> GraphicConstantsGpuBuffer;
 
+  // PerDrawGpuBuffer (slot 6)
+  //////////////////////////////////////////
+
+  /**
+   * std140-packed CPU mirror for the PerDrawData UBO. Holds every per-draw uniform that today
+   * is fed scatter-style via glUniform*; once a shader is migrated, it reads these fields out
+   * of `layout(std140) uniform PerDrawData { ... }` instead. Layout intentionally pads to 16-byte
+   * lines so the GPU view matches the C++ memcpy byte-for-byte.
+   *
+   * Shader-side mirror lives in `Resources/Engine/Shaders/perDrawDataInc.shader`. Any field added
+   * here must be added to that file in the same order or the layouts drift.
+   */
+  struct PerDrawUboLayout
+  {
+    // Transform matrices — 6×64 = 384 bytes
+    Mat4 model;
+    Mat4 modelWithoutTranslate;
+    Mat4 inverseModel;
+    Mat4 inverseTransposeModel;
+    Mat4 iblRotation;
+    Mat4 iblSecondaryRotation;
+
+    /** .xy = viewportSize, .zw = pad. Bundled into a vec4 so the next struct lands on a
+        16-byte boundary without an implicit gap. */
+    Vec4 viewportSizeAndPad;
+
+    /** 24 vec4 — already std140-clean. */
+    DrawCommand drawCommand;
+
+    /** 4 vec4 — MaterialCacheItem::Data is documented std140 layout. */
+    MaterialCacheItem::Data materialData;
+
+    /** 24 ints packed as 6 ivec4 — std140 would otherwise waste 12 bytes per int. */
+    IVec4 activePointLightIndices[6];
+    IVec4 activeSpotLightIndices[6];
+    /** .x = activePointLightCount, .y = activeSpotLightCount. */
+    IVec4 lightCounts;
+
+    Vec4 keyFrameData;
+    Vec4 blendFrameData;
+    Vec4 skinParams;
+    /** .x = animationBlendFactor. Padded to vec4 for std140 alignment. */
+    Vec4 animBlendFactorAndPad;
+  };
+
+  typedef GpuBufferBase<PerDrawUboLayout, 6> PerDrawUboBuffer;
+
+  // Pass-specific UBOs (slot 5)
+  //////////////////////////////////////////
+  //
+  // Pass-specific UBOs all share GL slot 5 (Vulkan binding 13 after shaderc remap). Each pass
+  // owns its own buffer instance; no two passes are active simultaneously so the slot can be
+  // re-bound by whichever pass is rendering. Each layout is intentionally tiny — only the
+  // values one pass writes per frame.
+
+  /** Single vec4 outline color, consumed by `dilateFrag.shader`. */
+  struct DilatePassDataLayout
+  {
+    Vec4 color;
+  };
+
+  typedef GpuBufferBase<DilatePassDataLayout, 5> DilatePassDataBuffer;
+
+  /** GammaTonemapFxaaPass UBO. Aggregates the six bare uniforms the master shader and its
+      gamma/tonemap/fxaa includes used to read scatter-style. Fields are packed into 16-byte
+      vectors so std140 layout matches the C++ memcpy byte-for-byte. */
+  struct GammaTonemapFxaaPassDataLayout
+  {
+    /** .x = enableFxaa, .y = enableTonemapping, .z = enableGammaCorrection (each 0/1). */
+    IVec4 enableFlags;
+    /** .xy = screenSize (in pixels). */
+    Vec4 screenSizeAndPad;
+    /** .x = useAcesTonemapper (0 = Reinhard, 1 = ACES). .y = gamma value. */
+    Vec4 tonemapParams;
+  };
+
+  typedef GpuBufferBase<GammaTonemapFxaaPassDataLayout, 5> GammaTonemapFxaaPassDataBuffer;
+
+  /** BloomPass UBO. Shared by `bloomDownsample.shader` (filter + downsample chain) and
+      `bloomUpsample.shader` (upsample chain + merge); each shader reads only the half it
+      needs. Pass fills the relevant fields per iteration and re-Map()s the buffer. */
+  struct BloomPassDataLayout
+  {
+    /** .xy = srcResolution (downsample), .z = threshold, .w = pad. */
+    Vec4 downsampleParams;
+    /** .x = filterRadius, .y = intensity (upsample). */
+    Vec4 upsampleParams;
+    /** .x = passIndx (downsample). 0 = filter pass with prefilter; 1 = first downsample with
+        Karis average; \u22652 = regular weighted downsample. */
+    IVec4 passIndxAndPad;
+  };
+
+  typedef GpuBufferBase<BloomPassDataLayout, 5> BloomPassDataBuffer;
+
+  /** Gaussian blur shader UBO. Used by `Renderer::ApplyGaussianBlur*` family with the shared
+      `gausBlurVert/Frag.shader` pair. Compact: just the per-tap scale + optional layer + UV
+      clamp window. The shader uses `#if` guards on TextureArray / BlurClampEnabled defines to
+      ignore unused fields, so the same UBO works across all blur variants. */
+  struct GaussBlurPassDataLayout
+  {
+    /** .xyz = BlurScale, .w = BlurLayer (used only when TextureArray==1). */
+    Vec4 blurScaleAndLayer;
+    /** .xy = BlurClampMin, .zw = BlurClampMax (used only when BlurClampEnabled==1). */
+    Vec4 blurClampMinMax;
+  };
+
+  typedef GpuBufferBase<GaussBlurPassDataLayout, 5> GaussBlurPassDataBuffer;
+
+  struct CubemapEquirectPassDataLayout
+  {
+    Vec4 exposureAndPad;
+    IVec4 lodLevelAndPad;
+  };
+
+  typedef GpuBufferBase<CubemapEquirectPassDataLayout, 5> CubemapEquirectPassDataBuffer;
+
+  struct PreFilterEnvMapPassDataLayout
+  {
+    /** .x = resPerFace, .y = roughness. */
+    Vec4 params;
+  };
+
+  typedef GpuBufferBase<PreFilterEnvMapPassDataLayout, 5> PreFilterEnvMapPassDataBuffer;
+
+  struct GridPassDataLayout
+  {
+    /** .x = cellSize, .y = lineMaxPixelCount. */
+    Vec4 cellAndLine;
+    /** .xyz = horizontal axis color. */
+    Vec4 horizontalAxisColor;
+    /** .xyz = vertical axis color. */
+    Vec4 verticalAxisColor;
+    /** .x = is2DViewport (0/1). */
+    IVec4 is2DAndPad;
+  };
+
+  typedef GpuBufferBase<GridPassDataLayout, 5> GridPassDataBuffer;
+
+  /** SSAO bilinear 5x5 blur pass UBO (`ssaoBlurFrag.shader`). Single vec2 texel size, padded to
+      a vec4 so the std140 layout sits on a 16-byte boundary. */
+  struct SsaoBlurPassDataLayout
+  {
+    /** .xy = 1.0 / textureSize (pixel size in UV). */
+    Vec4 texelSizeAndPad;
+  };
+
+  typedef GpuBufferBase<SsaoBlurPassDataLayout, 5> SsaoBlurPassDataBuffer;
+
+  /** Depth-of-field pass UBO (`depthOfFieldFrag.shader`). 4 floats + 1 vec2 packed into 32 bytes
+      across two vec4s. */
+  struct DofPassDataLayout
+  {
+    /** .xy = uPixelSize (1/width, 1/height). */
+    Vec4 pixelSizeAndPad;
+    /** .x = focusPoint, .y = focusScale, .z = blurSize, .w = radiusScale. */
+    Vec4 focusAndBlur;
+  };
+
+  typedef GpuBufferBase<DofPassDataLayout, 5> DofPassDataBuffer;
+
+  /** GradientSky cubemap fragment UBO (`gradientSkyboxFrag.shader`). 3 vec3 colors + 1 float
+      exponent — packed into 4 vec4s. */
+  struct GradientSkyboxPassDataLayout
+  {
+    /** .xyz = top color, .w = unused. */
+    Vec4 topColor;
+    /** .xyz = middle color, .w = unused. */
+    Vec4 middleColor;
+    /** .xyz = bottom color, .w = unused. */
+    Vec4 bottomColor;
+    /** .x = exponent. */
+    Vec4 exponentAndPad;
+  };
+
+  typedef GpuBufferBase<GradientSkyboxPassDataLayout, 5> GradientSkyboxPassDataBuffer;
+
+  /** SSAO calc pass UBO (`ssaoCalcFrag.shader`). Aggregates the 6 bare uniforms the SSAO calc
+      shader used to read scatter-style. Sized for the maximum kernel (32 samples) so the same
+      buffer works across the 8/16/32 KERNEL_SIZE define variants — the shader's loop iterates up
+      to KERNEL_SIZE only, so unused tail entries are harmless.
+
+      std140 quirks captured here:
+      - `mat3 normalToView` would take 3×vec4 = 48 bytes with awkward column padding. Stored as
+        Mat4 instead; shader extracts via `mat3(ssaoCalc.normalToView)`.
+      - `vec3 samples[N]` in std140 already pads each element to 16 bytes — directly using
+        `Vec4 samples[32]` matches the GPU view byte-for-byte; shader reads `.xyz`. */
+  struct SsaoCalcPassDataLayout
+  {
+    /** Camera view's rotation as Mat4; shader reads `mat3(normalToView)`. */
+    Mat4 normalToView;
+    /** Hemisphere kernel — 32 vec4 (max kernel size). Only first KERNEL_SIZE entries consumed. */
+    Vec4 samples[32];
+    /** (P00, P11, P20, P21) — precomputed projection matrix entries. */
+    Vec4 projParams;
+    Mat4 inverseProjection;
+    /** .x = radius, .y = bias. */
+    Vec4 radiusBiasAndPad;
+  };
+
+  typedef GpuBufferBase<SsaoCalcPassDataLayout, 5> SsaoCalcPassDataBuffer;
+
   // GlobalGpuBuffers
   //////////////////////////////////////////
 
@@ -154,6 +355,10 @@ namespace ToolKit
     /** Cached spot lights in gpu. */
     SpotLightCache spotLightBuffer;
 
+    /** Per-draw UBO — fed each draw via SubmitPerDrawData. Bound at slot 6 alongside the other
+        global UBOs. Empty until shaders migrate off bare uniforms; harmless to bind early. */
+    PerDrawUboBuffer perDrawBuffer;
+
     void InitGlobalGpuBuffers()
     {
       graphicConstantBuffer.Init();
@@ -161,6 +366,7 @@ namespace ToolKit
       directionalLightBuffer.Init();
       pointLighBuffer.Init();
       spotLightBuffer.Init();
+      perDrawBuffer.Init();
     }
   };
 
@@ -187,8 +393,6 @@ namespace ToolKit
 
     void Init();
 
-    void SetStencilOperation(StencilOperation op);
-
     void StartTimerQuery();
     void EndTimerQuery();
 
@@ -197,10 +401,11 @@ namespace ToolKit
 
     void ClearColorBuffer(const Vec4& color);
     void ClearBuffer(GraphicBitFields fields, const Vec4& value = Vec4(0.0f));
-    void ColorMask(bool r, bool g, bool b, bool a);
 
     /** Returns an opaque native texture handle as uint, obtained from the backend. */
-    static uint GetNativeTextureHandle(const TexturePtr& tex);
+    /** Returns an opaque native texture handle as uint64. GL backend returns a GLuint zero-extended
+     *  to 64 bits; Vulkan backend returns a `VulkanTexture*` (pointer), cast to uint64. */
+    static uint64 GetNativeTextureHandle(const TexturePtr& tex);
 
     // FrameBuffer Operations
     //////////////////////////////////////////
@@ -212,7 +417,7 @@ namespace ToolKit
                         const Vec4& clearColor       = Vec4(0.0f),
                         GraphicBitFields discardBits = GraphicBitFields::None);
 
-    void EndPass();
+    void FinishPass();
 
     /**
      * Resolves source multi sample buffer to single sample target buffer.
@@ -288,18 +493,6 @@ namespace ToolKit
                                uint resolution,
                                const float* perFaceClipDist = nullptr);
 
-    /**
-     * Sets the blend state directly which causes by passing material system.
-     * @param enableOverride when set true, disables the material system setting blend state per material.
-     * @param func is the BlendFunction to use.
-     */
-    void OverrideBlendState(bool enableOverride, BlendFunction func);
-
-    void EnableDepthWrite(bool enable);
-    void EnableDepthTest(bool enable);
-    void SetDepthTestFunc(CompareFunctions func);
-    bool EnableDepthClamp(bool enable);
-
     // Giving nullptr as argument means no shadows
     void SetShadowAtlas(TexturePtr shadowAtlas);
 
@@ -344,6 +537,13 @@ namespace ToolKit
     void SetCamera(CameraPtr camera, bool setLens);
 
     int GetMaxArrayTextureLayers();
+
+    /** Sets the passive pipeline state (depth test/write, depth func, stencil, color mask,
+     *  depth clamp) that will be merged with each render job's active material state at draw time.
+     *  Active fields (cullMode, blendFunction, drawType, alphaMaskTreshold, lineWidth) are
+     *  ignored; they always come from the job's material. */
+    void SetPassState(const RenderState& state);
+
     void BindProgramOfMaterial(Material* material);
     void BindProgram(const GpuProgramPtr& program);
     void ResetUsedTextureSlots();
@@ -372,6 +572,10 @@ namespace ToolKit
     /** Returns current backend. */
     IGraphicsBackend* GetBackend() { return m_backend; }
 
+    /** Convenience wrapper around backend depth-clamp capability query. Callers (e.g. ShadowPass)
+     *  use this to skip the pancake shader path when the rasterizer can clamp natively. */
+    bool IsDepthClampSupported() { return m_backend != nullptr && m_backend->IsDepthClampSupported(); }
+
     GpuProgramManager* GetGpuProgramManager() { return m_gpuProgramManager; }
 
    private:
@@ -394,6 +598,9 @@ namespace ToolKit
 
     /** Global gpu buffers for renderer. */
     GlobalGpuBuffers* m_globalGpuBuffers;
+
+    GradientSkyboxPassDataBuffer m_gradientSkyboxBuffer;
+    bool m_gradientSkyboxBufferInitialized         = false;
 
    private:
     GpuProgramPtr m_currentProgram = nullptr;
@@ -423,9 +630,14 @@ namespace ToolKit
     RenderTargetPtr m_brdfLut     = nullptr;
     TexturePtr m_aoTexture        = nullptr;
 
-    std::array<int, RHIConstants::TextureSlotCount> m_textureSlots;
+    /** Texture explicitly bound to slot 1 by Render(job) *after* BindPipeline so it survives
+     * the Vulkan descriptor wipe in VulkanBackend::BindPipeline. Used by utility passes
+     * (currently the shadow blur's horizontal sub-pass) that sample a 2DArray view from a
+     * slot the standard material / SetDataTextures flow does not bind. nullptr in normal
+     * draws. The owning pass must clear it back to nullptr when done. */
+    TexturePtr m_postPipelineSlot1Texture = nullptr;
 
-    RenderState m_renderState;
+    std::array<int, RHIConstants::TextureSlotCount> m_textureSlots;
 
     /** Current viewport size (x,y) and position (z,w) */
     UVec4 m_viewportRect;
@@ -436,12 +648,25 @@ namespace ToolKit
      */
     FramebufferPtr m_oneColorAttachmentFramebuffer = nullptr;
     MaterialPtr m_gaussianBlurMaterial             = nullptr;
+    /** Pass UBO (slot 5) shared with the gaussian blur material. Lazy-init on first
+        ApplyGaussianBlur* call together with the material itself. */
+    GaussBlurPassDataBuffer m_gaussianBlurBuffer;
+    bool m_gaussianBlurBufferInitialized           = false;
+    /** Shared by GenerateCubemapFrom2DTexture / GenerateEquiRectengularProjection paths. */
+    CubemapEquirectPassDataBuffer m_cubemapEquirectBuffer;
+    bool m_cubemapEquirectBufferInitialized        = false;
+    PreFilterEnvMapPassDataBuffer m_preFilterEnvMapBuffer;
+    bool m_preFilterEnvMapBufferInitialized        = false;
     MaterialPtr m_averageBlurMaterial              = nullptr;
     QuadPtr m_tempQuad                             = nullptr;
     MaterialPtr m_tempQuadMaterial                 = nullptr;
 
     FramebufferPtr m_copyFrameBuffer               = nullptr;
     MaterialPtr m_copyMaterial                     = nullptr;
+
+    /** Passive pipeline state merged with each job's active state in Render(). Set by passes
+     *  once per pass (or per group) instead of looping over every job. */
+    RenderState m_passiveState;
 
     int m_maxArrayTextureLayers                    = -1;
 

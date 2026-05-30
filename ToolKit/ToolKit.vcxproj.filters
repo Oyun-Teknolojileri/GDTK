@@ -202,9 +202,6 @@
     <ClCompile Include="RHI.cpp">
       <Filter>Render</Filter>
     </ClCompile>
-    <ClCompile Include="ShaderUniform.cpp">
-      <Filter>Render</Filter>
-    </ClCompile>
     <ClCompile Include="Threads.cpp">
       <Filter>Source</Filter>
     </ClCompile>
@@ -229,14 +226,35 @@
     <ClCompile Include="Stats.cpp">
       <Filter>Source</Filter>
     </ClCompile>
-    <ClCompile Include="SplashScreenRenderPath.cpp">
-      <Filter>Render</Filter>
-    </ClCompile>
     <ClCompile Include="UniformBuffer.cpp">
       <Filter>Render</Filter>
     </ClCompile>
     <ClCompile Include="ShadowAtlas.cpp">
       <Filter>Render</Filter>
+    </ClCompile>
+    <ClCompile Include="Vulkan\VulkanBackend.cpp">
+      <Filter>Render\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="Vulkan\VulkanBuffer.cpp">
+      <Filter>Render\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="Vulkan\VulkanContext.cpp">
+      <Filter>Render\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="Vulkan\VulkanDescriptor.cpp">
+      <Filter>Render\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="Vulkan\VulkanPipelineCache.cpp">
+      <Filter>Render\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="Vulkan\VulkanResources.cpp">
+      <Filter>Render\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="Vulkan\VulkanShader.cpp">
+      <Filter>Render\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="Vulkan\VulkanSwapchain.cpp">
+      <Filter>Render\Vulkan</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -468,9 +486,6 @@
     <ClInclude Include="RHI.h">
       <Filter>Render</Filter>
     </ClInclude>
-    <ClInclude Include="ShaderUniform.h">
-      <Filter>Render</Filter>
-    </ClInclude>
     <ClInclude Include="Threads.h">
       <Filter>Source</Filter>
     </ClInclude>
@@ -492,9 +507,6 @@
     <ClInclude Include="AABBTree.h">
       <Filter>Source</Filter>
     </ClInclude>
-    <ClInclude Include="SplashScreenRenderPath.h">
-      <Filter>Render</Filter>
-    </ClInclude>
     <ClInclude Include="UniformBuffer.h">
       <Filter>Render</Filter>
     </ClInclude>
@@ -507,7 +519,36 @@
     <ClInclude Include="ShadowAtlas.h">
       <Filter>Render</Filter>
     </ClInclude>
-    <ClInclude Include="PerDrawUniforms.h" />
+    <ClInclude Include="Vulkan\VulkanBackend.h">
+      <Filter>Render\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="Vulkan\VulkanBuffer.h">
+      <Filter>Render\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="Vulkan\VulkanContext.h">
+      <Filter>Render\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="Vulkan\VulkanDescriptor.h">
+      <Filter>Render\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="Vulkan\VulkanPipelineCache.h">
+      <Filter>Render\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="Vulkan\VulkanResources.h">
+      <Filter>Render\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="Vulkan\VulkanShader.h">
+      <Filter>Render\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="Vulkan\VulkanSwapchain.h">
+      <Filter>Render\Vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="PerDrawUniforms.h">
+      <Filter>Render</Filter>
+    </ClInclude>
+    <ClInclude Include="Vulkan\VulkanBindings.h">
+      <Filter>Render\Vulkan</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Entities">
@@ -536,6 +577,9 @@
     </Filter>
     <Filter Include="Render\Shaders">
       <UniqueIdentifier>{2252f47f-c3ed-4d44-8828-b7e639f283f0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Render\Vulkan">
+      <UniqueIdentifier>{9b0d9430-189c-4c23-b0f4-a44700d3e646}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -690,6 +734,9 @@
       <Filter>Render\Shaders</Filter>
     </None>
     <None Include="..\Resources\Engine\Shaders\VSMCommon.shader">
+      <Filter>Render\Shaders</Filter>
+    </None>
+    <None Include="..\Resources\Engine\Shaders\vulkanCompatInc.shader">
       <Filter>Render\Shaders</Filter>
     </None>
   </ItemGroup>

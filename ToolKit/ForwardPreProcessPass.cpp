@@ -38,6 +38,12 @@ namespace ToolKit
     set.Type            = GraphicTypes::TypeFloat;
     set.GenerateMipMap  = false;
     m_normalDepthRt     = MakeNewPtr<RenderTarget>(128, 128, set, "NormalDepthRT");
+
+    // FuncLess is correct here: this pass renders into a freshly cleared depth buffer with
+    // no prior writes from any other pass, and is itself the writer of that buffer.
+    m_passState.depthTestEnabled  = true;
+    m_passState.depthWriteEnabled = true;
+    m_passState.depthFunction     = CompareFunctions::FuncLess;
   }
 
   void ForwardPreProcessPass::InitBuffers(int width, int height, MsaaSampleCount sampleCount)
@@ -89,6 +95,7 @@ namespace ToolKit
     GpuProgramManager* gpuProgramManager = renderer->GetGpuProgramManager();
     m_program                            = gpuProgramManager->CreateProgram(vert, frag);
 
+    renderer->SetPassState(m_passState);
     renderer->BindProgram(m_program);
 
     for (RenderJobItr job = begin; job != end; job++)
@@ -140,7 +147,7 @@ namespace ToolKit
                                    m_resolveFramebuffer,
                                    {(int) Framebuffer::Attachment::ColorAttachment0});
     }
-    GetRenderer()->EndPass();
+    GetRenderer()->FinishPass();
   }
 
 } // namespace ToolKit

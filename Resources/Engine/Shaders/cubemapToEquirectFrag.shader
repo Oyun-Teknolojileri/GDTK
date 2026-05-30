@@ -1,17 +1,18 @@
 <shader>
 	<type name = "fragmentShader" />
+	<include name = "vulkanCompatInc.shader" />
+	<include name = "cubemapEquirectPassDataInc.shader" />
+	<texture slot = "6" name = "s_texture6" viewType = "cube" />
 	<source>
 	<!--
-  #version 300 es
+  
   precision highp float;
 
-  uniform samplerCube s_texture6;
-  in vec2 v_texture;
+  TK_SAMPLER_BINDING(6) uniform samplerCube s_texture6;
+  TK_LOC(2) in vec2 v_texture;
   out vec4 fragColor;
 
   const float PI = 3.1415926535897932384626433832795;
-  uniform float Exposure;
-  uniform int lodLevel;
 
   vec3 uvToXYZ(vec2 uv) {
       // Convert equirectangular UV to spherical coordinates
@@ -34,10 +35,10 @@
       vec3 direction = uvToXYZ(uv);
     
       // Sample the cubemap using the direction vector
-	    vec3 color = textureLod(s_texture6, direction, float(lodLevel)).rgb;
+	    vec3 color = textureLod(s_texture6, direction, float(cubemapEquirect.lodLevelAndPad.x)).rgb;
     
-      // TODO: Inverse exposure
-      color = -log(1.0 - color) / Exposure;
+      // TODO: Inverse cubemapEquirect.exposureAndPad.x
+      color = -log(1.0 - color) / cubemapEquirect.exposureAndPad.x;
     
       fragColor = vec4(color, 1.0);
   }

@@ -9,6 +9,7 @@
 
 #include "AndroidBuildWindow.h"
 #include "ConsoleWindow.h"
+#include "EditorBackendBindings.h"
 #include "EditorCamera.h"
 #include "EditorMetaKeys.h"
 #include "EditorViewport2d.h"
@@ -286,11 +287,11 @@ namespace ToolKit
           GetRenderSystem()->AddRenderTask({[this, viewport, deltaTime](Renderer* renderer) -> void
                                             {
                                               TK_PROFILE_SCOPE("Render " + viewport->m_name);
+
                                               viewport->m_editorRenderer->m_params.App      = g_app;
                                               viewport->m_editorRenderer->m_params.LitMode  = m_sceneLightingMode;
                                               viewport->m_editorRenderer->m_params.Viewport = viewport;
                                               viewport->m_editorRenderer->Render(renderer);
-                                              viewport->StageResolvedTexture();
                                             }});
         }
       }
@@ -629,7 +630,7 @@ namespace ToolKit
       }
 
       // Clear all dependencies to old game.
-      ClearSession();
+      ClearSession(false);
 
       // Load new code.
       if (PluginManager* pluginMan = GetPluginManager())
@@ -703,12 +704,15 @@ namespace ToolKit
       }
     }
 
-    void App::ClearSession()
+    void App::ClearSession(bool flushRenderTasks)
     {
       // Clear queued render tasks.
-      GetRenderSystem()->FlushRenderTasks();
-      GetRenderSystem()->FlushGpuPrograms();
-      GetWorkerManager()->Flush();
+      if (flushRenderTasks)
+      {
+        GetRenderSystem()->FlushRenderTasks();
+        GetRenderSystem()->FlushGpuPrograms();
+        GetWorkerManager()->Flush();
+      }
 
       // Clear all the object references from the scene about to be destroyed.
       if (OutlinerWindowPtr wnd = GetOutliner())
@@ -868,7 +872,6 @@ namespace ToolKit
         SafeDel(EditorViewport::m_overlays[i]);
       }
 
-      m_simulationViewport = nullptr;
       m_lastActiveViewport = nullptr;
       m_simulationViewport = nullptr;
 
@@ -1242,16 +1245,6 @@ namespace ToolKit
       {
         ResetUI();
       }
-
-      // Clear window before restoring the window.
-      RenderSystem* rsys = GetRenderSystem();
-      rsys->AddRenderTask({[](Renderer* renderer) -> void
-                           {
-                             renderer->SetFramebuffer(nullptr, GraphicBitFields::AllBits);
-                             SDL_GL_SwapWindow(g_window);
-                           }});
-
-      rsys->FlushRenderTasks();
 
       // Restore app window.
       UVec2 size = GetRenderSystem()->GetAppWindowSize();

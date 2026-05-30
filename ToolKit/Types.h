@@ -23,6 +23,10 @@
   #define GLM_FORCE_INTRINSICS
 #endif
 
+#ifdef TK_VULKAN
+  #define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#endif
+
 #include <glm/ext.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtx/scalar_relational.hpp>
@@ -377,6 +381,7 @@ namespace ToolKit
     DepthAttachment,
     TypeFloat,
     TypeUnsignedByte,
+    TypeHalfFloat,
     Target2D,
     TargetCubeMap,
     Target2DArray

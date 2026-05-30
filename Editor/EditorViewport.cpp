@@ -35,37 +35,6 @@ namespace ToolKit
 
     TKDefineClass(EditorViewport, Window);
 
-    void EditorViewport::SwapResolvedTexture()
-    {
-      if (m_resolvedTextureFromRender)
-      {
-        m_lastResolvedTexture       = m_resolvedTextureFromRender;
-        m_resolvedTextureFromRender = nullptr;
-      }
-    }
-
-    void EditorViewport::StageResolvedTexture()
-    {
-      if (m_renderTarget != nullptr && m_renderTarget->IsMultiSampled())
-      {
-        TexturePtr resolved = m_renderTarget->GetResolvedTexture();
-        if (resolved)
-        {
-          m_resolvedTextureFromRender = resolved;
-        }
-      }
-    }
-
-    TexturePtr EditorViewport::GetLastResolvedTexture()
-    {
-      if (m_lastResolvedTexture)
-      {
-        return m_lastResolvedTexture;
-      }
-
-      return GetTextureManager()->GetBlackTexture();
-    }
-
     std::vector<OverlayUI*> EditorViewport::m_overlays = {nullptr, nullptr, nullptr, nullptr};
 
     void InitOverlays(EditorViewport* viewport)
@@ -310,38 +279,56 @@ namespace ToolKit
           ResizeWindow((uint) wndSize.x, (uint) wndSize.y);
         }
 
-        SwapResolvedTexture();
-
         if (m_wndContentAreaSize.x > 0 && m_wndContentAreaSize.y > 0)
         {
-          TexturePtr texture = GetLastResolvedTexture();
-          if (m_framebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0) != nullptr)
+          // ImGui samples m_renderTarget within the same cb after the render task's FinishPass —
+          // within-cb subpass deps handle the layout / write→read transition. Cross-cb hazards
+          // are eliminated by FRAMES_IN_FLIGHT=1 in the swapchain.
+          TexturePtr texture = m_renderTarget;
+          if (texture != nullptr && texture->IsMultiSampled())
           {
-            RenderTargetPtr rt = m_framebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
-            if (!rt->IsMultiSampled())
+            // MSAA: ImGui can only sample the resolved (single-sample) attachment.
+            if (TexturePtr resolved = m_renderTarget->GetResolvedTexture())
             {
-              texture = rt;
+              texture = resolved;
+            }
+            else
+            {
+              // TODO: We should provide a fallback image ( previous resolved image ) if resolved image is not ready.
+              // This would look much better than black screen.
+              texture = GetTextureManager()->GetBlackTexture();
             }
           }
 
-          uint texId           = Renderer::GetNativeTextureHandle(texture);
+          // In Vulkan the swizzle is baked into the VkImageView created by Acquire(tex, true),
+          // so no pre/post draw callbacks are needed. In GL the swizzle is set dynamically via
+          // glTexParameteri around the draw call and restored afterwards.
+          uint64 texId         = EditorImGuiTextureCache::Acquire(texture, true);
 
           ImDrawList* drawList = ImGui::GetWindowDrawList();
-          drawList->AddCallback([](const ImDrawList* parentList, const ImDrawCmd* cmd)
-                                { 
-                                  Texture* t = (Texture*)cmd->UserCallbackData;
-                                  GetRenderSystem()->GetBackend()->SetTextureSwizzleAlpha(t, true, true);
-                                },
-                                texture.get());
+          if constexpr (TKVulkan)
+          {
+            drawList->AddCallback(
+                [](const ImDrawList* parentList, const ImDrawCmd* cmd)
+                {
+                  Texture* t = (Texture*) cmd->UserCallbackData;
+                  GetRenderSystem()->GetBackend()->SetTextureSwizzleAlpha(t, true, true);
+                },
+                texture.get());
+          }
 
-          ImGui::Image(ConvertUIntImGuiTexture(texId), m_wndContentAreaSize, Vec2(0.0f, 1.0f), Vec2(1.0f, 0.0f));
+          UI::Image(ConvertUIntImGuiTexture(texId), m_wndContentAreaSize);
 
-          drawList->AddCallback([](const ImDrawList* parentList, const ImDrawCmd* cmd)
-                                { 
-                                  Texture* t = (Texture*)cmd->UserCallbackData;
-                                  GetRenderSystem()->GetBackend()->SetTextureSwizzleAlpha(t, false, true); 
-                                },
-                                texture.get());
+          if constexpr (TKVulkan)
+          {
+            drawList->AddCallback(
+                [](const ImDrawList* parentList, const ImDrawCmd* cmd)
+                {
+                  Texture* t = (Texture*) cmd->UserCallbackData;
+                  GetRenderSystem()->GetBackend()->SetTextureSwizzleAlpha(t, false, true);
+                },
+                texture.get());
+          }
 
           if (IsActive())
           {

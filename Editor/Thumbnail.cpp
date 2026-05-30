@@ -8,6 +8,7 @@
 #include "Thumbnail.h"
 
 #include "App.h"
+#include "EditorImGuiTextureCache.h"
 #include "EditorRenderer.h"
 #include "EditorScene.h"
 
@@ -221,13 +222,15 @@ namespace ToolKit
       return m_thumbnailCache[fullPath];
     }
 
-    bool ThumbnailManager::TryGetThumbnail(uint& iconId, const DirectoryEntry& dirEnt)
+    bool ThumbnailManager::TryGetThumbnail(uint64& iconId, const DirectoryEntry& dirEnt)
     {
       RenderTargetPtr thumb = GetThumbnail(dirEnt);
       bool valid            = Renderer::GetNativeTextureHandle(thumb) != 0 && !IsDefaultThumbnail(thumb);
       if (valid)
       {
-        iconId = Renderer::GetNativeTextureHandle(thumb);
+        // Route through the ImGui texture cache so the consumer (UI::ImageButton, ImGui::Image)
+        // gets a backend-appropriate handle (GL texture id on GL, descriptor set on Vulkan).
+        iconId = EditorImGuiTextureCache::Acquire(thumb);
       }
       return valid;
     }

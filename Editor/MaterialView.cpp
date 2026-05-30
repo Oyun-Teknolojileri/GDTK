@@ -136,7 +136,7 @@ namespace ToolKit
         const Vec2 iconSize = Vec2(16.0f, 16.0f);
         const Vec2 spacing  = ImGui::GetStyle().ItemSpacing;
         UpdatePreviewScene();
-        if (UI::ImageButtonDecorless(Renderer::GetNativeTextureHandle(UI::m_cameraIcon), iconSize))
+        if (UI::ImageButtonDecorless(EditorImGuiTextureCache::Acquire(UI::m_cameraIcon), iconSize))
         {
           ResetCamera();
         }
@@ -186,7 +186,7 @@ namespace ToolKit
         DecomposePath(vert->GetFile(), nullptr, &vertName, nullptr);
 
         ImGui::LabelText("##vertex shader: %s", vertName.c_str());
-        DropZone(Renderer::GetNativeTextureHandle(UI::m_codeIcon),
+        DropZone(EditorImGuiTextureCache::Acquire(UI::m_codeIcon),
                  vert->GetFile(),
                  [this, mat, &updateThumbFn](const DirectoryEntry& dirEnt) -> void
                  {
@@ -216,7 +216,7 @@ namespace ToolKit
         DecomposePath(frag->GetFile(), nullptr, &fragName, nullptr);
 
         ImGui::LabelText("##fragShader fragment shader: %s", fragName.c_str());
-        DropZone(Renderer::GetNativeTextureHandle(UI::m_codeIcon),
+        DropZone(EditorImGuiTextureCache::Acquire(UI::m_codeIcon),
                  frag->GetFile(),
                  [this, mat, &updateThumbFn](const DirectoryEntry& dirEnt) -> void
                  {
@@ -245,7 +245,7 @@ namespace ToolKit
           ImGui::PushID(label.data());
 
           DropZone(
-              Renderer::GetNativeTextureHandle(UI::m_imageIcon),
+              EditorImGuiTextureCache::Acquire(UI::m_imageIcon),
               target,
               [&texVar, &updateThumbFn](const DirectoryEntry& dirEnt) -> void
               {
@@ -260,7 +260,7 @@ namespace ToolKit
             ImGui::SameLine();
             String labelClose = String(label) + "#x";
             ImGui::PushID(labelClose.c_str());
-            if (UI::ImageButtonDecorless(Renderer::GetNativeTextureHandle(UI::m_closeIcon), Vec2(16.0f, 16.0f)))
+            if (UI::ImageButtonDecorless(EditorImGuiTextureCache::Acquire(UI::m_closeIcon), Vec2(16.0f, 16.0f)))
             {
               texVar = TexturePtr();
               updateThumbFn();
@@ -287,8 +287,6 @@ namespace ToolKit
 
         ImGui::Columns(1); // End columns
       }
-
-      RenderState* renderState = mat->GetRenderState();
 
       if (ImGui::CollapsingHeader("Render States", ImGuiTreeNodeFlags_DefaultOpen))
       {
@@ -340,31 +338,31 @@ namespace ToolKit
           }
         }
 
-        int cullMode = (int) renderState->cullMode;
+        int cullMode = (int) mat->cullMode;
         if (ImGui::Combo("Cull mode", &cullMode, "Two Sided\0Front\0Back"))
         {
-          renderState->cullMode = (CullingType) cullMode;
+          mat->cullMode = (CullingType) cullMode;
           updateThumbFn();
         }
 
-        int blendMode = (int) renderState->blendFunction;
+        int blendMode = (int) mat->blendFunction;
         if (ImGui::Combo("Blend mode", &blendMode, "None\0Alpha Blending\0Alpha Mask"))
         {
           mat->SetBlendState((BlendFunction) blendMode);
           updateThumbFn();
         }
 
-        int drawType = DrawTypeToInt(mat->GetRenderState()->drawType);
+        int drawType = DrawTypeToInt(mat->drawType);
 
         if (ImGui::Combo("Draw mode", &drawType, "Triangle\0Line\0Line Strip\0Line Loop\0Point"))
         {
-          renderState->drawType = IntToDrawType(drawType);
+          mat->drawType = IntToDrawType(drawType);
           updateThumbFn();
         }
 
         if (mat->IsAlphaMasked())
         {
-          float alphaMaskTreshold = renderState->alphaMaskTreshold;
+          float alphaMaskTreshold = mat->alphaMaskTreshold;
           if (ImGui::DragFloat("Alpha Mask Threshold", &alphaMaskTreshold, 0.001f, 0.0f, 1.0f, "%.3f"))
           {
             mat->SetAlphaMaskThreshold(alphaMaskTreshold);

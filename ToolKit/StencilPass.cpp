@@ -25,6 +25,12 @@ namespace ToolKit
     m_frameBuffer           = MakeNewPtr<Framebuffer>("StencilPassFB");
 
     m_solidOverrideMaterial = GetMaterialManager()->GetCopyOfUnlitColorMaterial();
+
+    // Stencil-write passive defaults. Defaults for depthTest/depthWrite/depthFunction are
+    // correct here. colorMaskEnabled is unimplemented in the Vulkan backend; the OpenGL path
+    // takes the masked write, Vulkan keeps current behavior. Tracked separately.
+    m_writePassState.stencilOperation = StencilOperation::AllowAllPixels;
+    m_writePassState.colorMaskEnabled = false;
   }
 
   void StencilRenderPass::Render()
@@ -33,21 +39,16 @@ namespace ToolKit
 
     Renderer* renderer = GetRenderer();
 
-    // Stencil pass.
-    renderer->SetStencilOperation(StencilOperation::AllowAllPixels);
-    renderer->ColorMask(false, false, false, false);
-
+    // Stencil pass: write 1 to stencil, suppress color writes.
+    renderer->SetPassState(m_writePassState);
     renderer->Render(*m_params.RenderJobs);
 
-    // Copy pass.
-    renderer->ColorMask(true, true, true, true);
-    renderer->SetStencilOperation(StencilOperation::AllowPixelsFailingStencil);
-
+    // Copy pass: draw a fullscreen quad where stencil != 1. The stencil-op is now an explicit
+    // FullQuadPass parameter rather than smuggled through the subpass material.
     m_copyStencilSubPass->SetFragmentShader(m_unlitFragShader, renderer);
+    m_copyStencilSubPass->m_params.stencilOp = StencilOperation::AllowPixelsFailingStencil;
 
     RenderSubPass(m_copyStencilSubPass);
-
-    renderer->SetStencilOperation(StencilOperation::None);
   }
 
   void StencilRenderPass::PreRender()
@@ -72,8 +73,6 @@ namespace ToolKit
     m_copyStencilSubPass->m_params.frameBuffer      = m_frameBuffer;
     m_copyStencilSubPass->m_params.clearFrameBuffer = GraphicBitFields::None;
 
-    // Allow writing on to stencil before clear operation.
-    renderer->SetStencilOperation(StencilOperation::AllowAllPixels);
     renderer->SetFramebuffer(m_frameBuffer, GraphicBitFields::AllBits);
     renderer->SetCamera(m_params.Camera, true);
   }
@@ -81,7 +80,7 @@ namespace ToolKit
   void StencilRenderPass::PostRender()
   {
     Pass::PostRender();
-    GetRenderer()->EndPass();
+    GetRenderer()->FinishPass();
   }
 
 } // namespace ToolKit

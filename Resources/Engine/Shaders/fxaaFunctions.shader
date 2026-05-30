@@ -1,12 +1,11 @@
 <shader>
 	<type name = "includeShader" />
+	<include name = "gammaTonemapFxaaPassDataInc.shader" />
 	<source>
 	<!--
 
 #ifndef FXAA_SHADER
 #define FXAA_SHADER
-
-uniform vec2 screenSize;
 
 // https://mini.gmshaders.com/p/gm-shaders-mini-fxaa
 
@@ -20,7 +19,7 @@ uniform vec2 screenSize;
 
 vec4 Fxaa(vec2 uv, sampler2D tex)
 {
-  vec2 u_texel = vec2(1.0, 1.0) / screenSize;
+	vec2 u_texel = vec2(1.0, 1.0) / gtf.screenSizeAndPad.xy;
   //Sample center and 4 corners
   vec3 rgbCC = texture(tex, uv).rgb;
   vec3 rgb00 = texture(tex, uv + (vec2(-1.0, -1.0) * u_texel)).rgb;

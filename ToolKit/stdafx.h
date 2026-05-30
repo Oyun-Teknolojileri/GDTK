@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include "Platform.h"
+
 // STL
 #include <assert.h>
 
@@ -38,6 +40,10 @@
   #define GLM_ENABLE_EXPERIMENTAL
   #define GLM_FORCE_ALIGNED_GENTYPES
   #define GLM_FORCE_INTRINSICS
+#endif
+
+#ifdef TK_VULKAN
+  #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #endif
 
 #include <glm/ext.hpp>

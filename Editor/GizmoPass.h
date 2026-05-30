@@ -38,6 +38,13 @@ namespace ToolKit
      private:
       SpherePtr m_depthMaskSphere = nullptr;
       CameraPtr m_camera          = nullptr;
+
+      /** Default pass state used when reverting passive overrides between gizmo sub-draws. */
+      RenderState m_defaultPassState;
+      /** Depth-mask sphere variant: colorMaskEnabled=false (depth-only write). */
+      RenderState m_depthMaskPassState;
+      /** Guide-mesh variant: depthFunction=FuncAlways so guides draw on top. */
+      RenderState m_guideMeshPassState;
     };
 
   } // namespace Editor

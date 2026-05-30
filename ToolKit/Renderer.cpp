@@ -22,7 +22,6 @@
 #include "Mesh.h"
 #include "Node.h"
 #include "Pass.h"
-#include "PerDrawUniforms.h"
 #include "RHI.h"
 #include "RenderSystem.h"
 #include "Scene.h"
@@ -35,6 +34,8 @@
 #include "ToolKit.h"
 #include "UIManager.h"
 #include "Viewport.h"
+
+#include <cstring>
 
 #include "DebugNew.h"
 
@@ -76,16 +77,6 @@ namespace ToolKit
     m_globalGpuBuffers->graphicConstantBuffer.Map();
     m_drawnFrameBufferStats.clear();
 
-    // Reset volatile state to defaults for each frame.
-    // This prevents state leaks from passes that don't clean up (e.g. StencilPass, ShadowPass).
-    m_renderState.colorMaskEnabled  = true;
-    m_renderState.depthTestEnabled  = true;
-    m_renderState.depthWriteEnabled = true;
-    m_renderState.depthFunction     = CompareFunctions::FuncLess;
-    m_renderState.stencilOperation  = StencilOperation::None;
-    m_renderState.depthClampEnabled = false;
-    m_renderState.blendOverride     = false;
-
     m_backend->BeginFrame();
   }
 
@@ -102,7 +93,7 @@ namespace ToolKit
       }
     }
 
-    EndPass();
+    FinishPass();
   }
 
   void Renderer::InvalidateGraphicsConstants()
@@ -149,6 +140,7 @@ namespace ToolKit
   Renderer::~Renderer()
   {
     // Release all GPU resource references before destroying backend.
+
     m_oneColorAttachmentFramebuffer = nullptr;
     m_gaussianBlurMaterial          = nullptr;
     m_averageBlurMaterial           = nullptr;
@@ -165,7 +157,19 @@ namespace ToolKit
     m_sky                           = nullptr;
     m_currentProgram                = nullptr;
 
+    m_gaussianBlurBuffer.Destroy();
+    m_gaussianBlurBufferInitialized = false;
+
+    m_cubemapEquirectBuffer.Destroy();
+    m_cubemapEquirectBufferInitialized = false;
+    m_preFilterEnvMapBuffer.Destroy();
+    m_preFilterEnvMapBufferInitialized = false;
+
+    m_gradientSkyboxBuffer.Destroy();
+    m_gradientSkyboxBufferInitialized = false;
+
     SafeDel(m_gpuProgramManager);
+
     SafeDel(m_backend);
   }
 
@@ -178,6 +182,21 @@ namespace ToolKit
       m_maxArrayTextureLayers = m_backend->GetMaxArrayTextureLayers();
     }
     return m_maxArrayTextureLayers;
+  }
+
+  void Renderer::SetPassState(const RenderState& state)
+  {
+    // Copy only passive fields; active fields are sourced from the material at draw time.
+    m_passiveState.depthTestEnabled  = state.depthTestEnabled;
+    m_passiveState.depthWriteEnabled = state.depthWriteEnabled;
+    m_passiveState.depthFunction     = state.depthFunction;
+    m_passiveState.stencilOperation  = state.stencilOperation;
+    m_passiveState.colorMaskEnabled  = state.colorMaskEnabled;
+    m_passiveState.depthClampEnabled = state.depthClampEnabled;
+    m_passiveState.blendOverride     = state.blendOverride;
+    m_passiveState.blendOverrideFunc = state.blendOverrideFunc;
+    m_passiveState.cullOverride      = state.cullOverride;
+    m_passiveState.cullOverrideMode  = state.cullOverrideMode;
   }
 
   void Renderer::SetCamera(CameraPtr camera, bool setLens)
@@ -273,84 +292,75 @@ namespace ToolKit
       }
     };
 
-    updateAndBindSkinningTextures();
-
     // Make sure render data is initialized.
     job.Mesh->Init();
     job.Material->Init();
 
-    // Set render data.
+    // CPU-side state � no backend calls here, all read later by FeedUniforms.
     SetTransforms(job.WorldTransform);
-    SetMaterial(job.Material);
-    SetDataTextures(job);
     SetLights(job.lights);
+    m_model                 = job.WorldTransform;
 
-    m_model                    = job.WorldTransform;
+    // Compose the draw-time rasterizer state: passive bits come from the per-pass state set via
+    // SetPassState, active bits come from the material itself. RenderState is no longer stored
+    // on the material — it's transient pipeline data assembled here.
+    RenderState state       = m_passiveState;
+    state.cullMode          = job.Material->cullMode;
+    state.blendFunction     = job.Material->blendFunction;
+    state.drawType          = job.Material->drawType;
+    state.alphaMaskTreshold = job.Material->alphaMaskTreshold;
+    state.lineWidth         = job.Material->lineWidth;
 
-    // Compose state.
-    RenderState composed       = *job.Material->GetRenderState();
-    composed.depthTestEnabled  = m_renderState.depthTestEnabled;
-    composed.depthWriteEnabled = m_renderState.depthWriteEnabled;
-    composed.depthFunction     = m_renderState.depthFunction;
-    composed.stencilOperation  = m_renderState.stencilOperation;
-    composed.colorMaskEnabled  = m_renderState.colorMaskEnabled;
-    composed.depthClampEnabled = m_renderState.depthClampEnabled;
-    if (m_renderState.blendOverride)
+    // Pass-level overrides win over the material's active fields. Used by shadow casters
+    // (force blend=NONE) and two-sided translucent two-pass draws (force cull=Front then Back).
+    if (m_passiveState.blendOverride)
     {
-      composed.blendFunction = m_renderState.blendOverrideFunc;
+      state.blendFunction = m_passiveState.blendOverrideFunc;
+    }
+    if (m_passiveState.cullOverride)
+    {
+      state.cullMode = m_passiveState.cullOverrideMode;
     }
 
     if (job.requireCullFlip)
     {
-      switch (composed.cullMode)
+      switch (state.cullMode)
       {
         case CullingType::Front:
-          composed.cullMode = CullingType::Back;
+          state.cullMode = CullingType::Back;
           break;
         case CullingType::Back:
-          composed.cullMode = CullingType::Front;
+          state.cullMode = CullingType::Front;
           break;
       }
     }
 
-    m_backend->BindPipeline(m_currentProgram, &composed);
+    m_backend->BindPipeline(m_currentProgram, &state);
 
-    auto activateSkinning = [&](const Mesh* mesh)
+    // Bind textures AFTER BindPipeline. On Vulkan, BindPipeline resets the per-draw descriptor
+    // set, so texture writes before it would be lost. On GL the order is irrelevant (driver slots
+    // are independent of the program binding), so this order is safe for both backends.
+    updateAndBindSkinningTextures();
+    SetMaterial(job.Material);
+    SetDataTextures(job);
+
+    // Apply post-pipeline explicit binding for utility passes (see m_postPipelineSlot1Texture).
+    // Must happen AFTER the SetMaterial / SetDataTextures sweep above so it can't be overwritten
+    // by a stray material binding, but BEFORE Draw() where FlushDescriptorState reads the state.
+    if (m_postPipelineSlot1Texture != nullptr)
     {
-      int skinParamsLoc = m_currentProgram->GetDefaultUniformLocation(Uniform::SKIN_PARAMS);
-      if (skinParamsLoc == -1)
-      {
-        return;
-      }
-
-      bool isSkinned = mesh->IsSkinned();
-      if (isSkinned)
-      {
-        SkeletonPtr skel = static_cast<SkinMesh*>(job.Mesh)->m_skeleton;
-        assert(skel != nullptr);
-
-        float boneCount  = (float) skel->m_bones.size();
-        float isAnimated = (job.animData.currentAnimation != nullptr) ? 1.0f : 0.0f;
-        float hasBlend   = (job.animData.blendAnimation != nullptr) ? 1.0f : 0.0f;
-        m_backend->SetUniform4f(skinParamsLoc, Vec4(boneCount, 1.0f, isAnimated, hasBlend));
-      }
-      else
-      {
-        m_backend->SetUniform4f(skinParamsLoc, Vec4(0.0f));
-      }
-    };
-
-    const Mesh* mesh = job.Mesh;
-    activateSkinning(mesh);
+      SetTexture(1, m_postPipelineSlot1Texture);
+    }
 
     FeedUniforms(m_currentProgram, job);
 
+    const Mesh* mesh = job.Mesh;
     DrawDesc desc;
     desc.mesh         = mesh;
     desc.vertexLayout = mesh->m_vertexLayout;
     desc.indexed      = mesh->m_indexCount != 0;
     desc.elementCount = desc.indexed ? mesh->m_indexCount : mesh->m_vertexCount;
-    desc.type         = composed.drawType;
+    desc.type         = state.drawType;
     m_backend->Draw(desc);
 
     if (m_framebuffer)
@@ -394,8 +404,6 @@ namespace ToolKit
     }
   }
 
-  void Renderer::SetStencilOperation(StencilOperation op) { m_renderState.stencilOperation = op; }
-
   void Renderer::SetFramebuffer(FramebufferPtr frameBuffer,
                                 GraphicBitFields attachmentsToClear,
                                 const Vec4& clearColor,
@@ -408,7 +416,7 @@ namespace ToolKit
     desc.clearBits   = attachmentsToClear;
     desc.clearColor  = clearColor;
     desc.discardBits = discardBits;
-    m_backend->BeginPass(desc);
+    m_backend->StartPass(desc);
 
     if (frameBuffer != nullptr)
     {
@@ -423,7 +431,7 @@ namespace ToolKit
     m_framebuffer = frameBuffer;
   }
 
-  void Renderer::EndPass() { m_backend->EndPass(); }
+  void Renderer::FinishPass() { m_backend->FinishPass(); }
 
   void Renderer::StartTimerQuery() { m_backend->StartTimerQuery(); }
 
@@ -437,12 +445,14 @@ namespace ToolKit
 
   void Renderer::ClearBuffer(GraphicBitFields fields, const Vec4& value) { m_backend->ClearBuffer(fields, value); }
 
-  void Renderer::ColorMask(bool r, bool g, bool b, bool a) { m_renderState.colorMaskEnabled = r && g && b && a; }
-
-  uint Renderer::GetNativeTextureHandle(const TexturePtr& tex)
+  uint64 Renderer::GetNativeTextureHandle(const TexturePtr& tex)
   {
+    if (tex == nullptr)
+    {
+      return 0;
+    }
     void* id = GetRenderSystem()->GetBackend()->GetNativeTextureHandle(tex.get());
-    return static_cast<uint>(reinterpret_cast<intptr_t>(id));
+    return static_cast<uint64>(reinterpret_cast<uintptr_t>(id));
   }
 
   void Renderer::CopyFrameBuffer(FramebufferPtr src, FramebufferPtr dest, GraphicBitFields fields)
@@ -508,13 +518,19 @@ namespace ToolKit
     RenderJobArray jobs;
     RenderJobProcessor::CreateRenderJobs(jobs, m_tempQuad);
 
-    bool prevDepthWriteState = m_renderState.depthWriteEnabled;
-    EnableDepthWrite(false);
-    SetDepthTestFunc(CompareFunctions::FuncAlways);
-    RenderWithProgramFromMaterial(jobs);
+    // Renderer is not a Pass, but uses the same passive-state pattern via a function-local
+    // static. Initialized once on first call: write nothing to depth, accept every fragment.
+    static const RenderState fullQuadPassState = []
+    {
+      RenderState s;
+      s.depthTestEnabled  = false;
+      s.depthWriteEnabled = false;
+      s.depthFunction     = CompareFunctions::FuncAlways;
+      return s;
+    }();
 
-    SetDepthTestFunc(CompareFunctions::FuncLess);
-    EnableDepthWrite(prevDepthWriteState);
+    SetPassState(fullQuadPassState);
+    RenderWithProgramFromMaterial(jobs);
   }
 
   void Renderer::DrawCube(CameraPtr cam, MaterialPtr mat, const Mat4& transform)
@@ -528,10 +544,16 @@ namespace ToolKit
     RenderJobArray jobs;
     RenderJobProcessor::CreateRenderJobs(jobs, m_dummyDrawCube);
 
-    SetDepthTestFunc(CompareFunctions::FuncAlways);
-    RenderWithProgramFromMaterial(jobs);
+    // Used for cubemap convolution / equirect baking: accept every fragment.
+    static const RenderState drawCubePassState = []
+    {
+      RenderState s;
+      s.depthFunction = CompareFunctions::FuncAlways;
+      return s;
+    }();
 
-    SetDepthTestFunc(CompareFunctions::FuncLess);
+    SetPassState(drawCubePassState);
+    RenderWithProgramFromMaterial(jobs);
   }
 
   void Renderer::CopyTexture(TexturePtr src, TexturePtr dst)
@@ -564,27 +586,9 @@ namespace ToolKit
     m_copyMaterial->Init();
 
     DrawFullQuad(m_copyMaterial);
-    EndPass();
+    FinishPass();
 
     Stats::EndGpuScope();
-  }
-
-  void Renderer::OverrideBlendState(bool enableOverride, BlendFunction func)
-  {
-    m_renderState.blendOverride     = enableOverride;
-    m_renderState.blendOverrideFunc = func;
-  }
-
-  void Renderer::EnableDepthWrite(bool enable) { m_renderState.depthWriteEnabled = enable; }
-
-  void Renderer::EnableDepthTest(bool enable) { m_renderState.depthTestEnabled = enable; }
-
-  void Renderer::SetDepthTestFunc(CompareFunctions func) { m_renderState.depthFunction = func; }
-
-  bool Renderer::EnableDepthClamp(bool enable)
-  {
-    m_renderState.depthClampEnabled = enable;
-    return true;
   }
 
   void Renderer::ApplyGaussianBlur(const TexturePtr src, RenderTargetPtr dst, const Vec3& axis, const float amount)
@@ -604,15 +608,23 @@ namespace ToolKit
       m_gaussianBlurMaterial->SetDiffuseTextureVal(nullptr);
       m_gaussianBlurMaterial->Init();
     }
+    if (!m_gaussianBlurBufferInitialized)
+    {
+      m_gaussianBlurBuffer.Init();
+      m_gaussianBlurBufferInitialized = true;
+    }
 
     m_gaussianBlurMaterial->SetDiffuseTextureVal(src);
-    m_gaussianBlurMaterial->UpdateProgramUniform("BlurScale", axis * amount);
+    m_gaussianBlurBuffer.m_data.blurScaleAndLayer = Vec4(axis * amount, 0.0f);
+    m_gaussianBlurBuffer.m_data.blurClampMinMax   = Vec4(0.0f);
+    m_gaussianBlurBuffer.Invalidate();
+    m_gaussianBlurBuffer.Map();
 
     m_oneColorAttachmentFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, dst);
 
     SetFramebuffer(m_oneColorAttachmentFramebuffer, GraphicBitFields::None);
     DrawFullQuad(m_gaussianBlurMaterial);
-    EndPass();
+    FinishPass();
   }
 
   void Renderer::ApplyGaussianBlurToArrayLayerSlot(RenderTargetPtr srcArray,
@@ -640,6 +652,11 @@ namespace ToolKit
       m_gaussianBlurMaterial->SetFragmentShaderVal(frag);
       m_gaussianBlurMaterial->SetDiffuseTextureVal(nullptr);
       m_gaussianBlurMaterial->Init();
+    }
+    if (!m_gaussianBlurBufferInitialized)
+    {
+      m_gaussianBlurBuffer.Init();
+      m_gaussianBlurBufferInitialized = true;
     }
 
     ShaderPtr frag   = m_gaussianBlurMaterial->GetFragmentShaderVal();
@@ -676,17 +693,24 @@ namespace ToolKit
         SetViewportRect(0, 0, texSize, texSize);
         SetScissor(sx, sy, slotSize, slotSize);
 
-        m_gaussianBlurMaterial->UpdateProgramUniform("BlurScale", Vec3(blurAmount, 0.0f, 0.0f));
-        m_gaussianBlurMaterial->UpdateProgramUniform("BlurLayer", (float) layer);
-        m_gaussianBlurMaterial->UpdateProgramUniform("BlurClampMin", clampMin);
-        m_gaussianBlurMaterial->UpdateProgramUniform("BlurClampMax", clampMax);
+        m_gaussianBlurBuffer.m_data.blurScaleAndLayer = Vec4(blurAmount, 0.0f, 0.0f, (float) layer);
+        m_gaussianBlurBuffer.m_data.blurClampMinMax   = Vec4(clampMin, clampMax);
+        m_gaussianBlurBuffer.Invalidate();
+        m_gaussianBlurBuffer.Map();
 
         BindProgramOfMaterial(m_gaussianBlurMaterial.get());
 
-        m_backend->BindTexture(1, srcArray);
+        // Bind via the post-pipeline override. A direct m_backend->BindTexture(1, srcArray) here
+        // would be wiped by m_shadow.Reset() inside VulkanBackend::BindPipeline (called from
+        // Render(job) underneath DrawFullQuad), leaving slot 1 to fall back to the dummy 2DArray
+        // texture — i.e. the blur would read the dummy instead of the atlas and overwrite the
+        // slot with garbage. Render(job) re-applies this AFTER BindPipeline so it survives.
+        m_postPipelineSlot1Texture = srcArray;
 
         DrawFullQuad(m_gaussianBlurMaterial);
-        EndPass();
+        FinishPass();
+
+        m_postPipelineSlot1Texture = nullptr;
       }
 
       // Vertical pass: temp 2D RT -> array texture layer
@@ -702,12 +726,13 @@ namespace ToolKit
         SetScissor(sx, sy, slotSize, slotSize);
 
         m_gaussianBlurMaterial->SetDiffuseTextureVal(tempRT);
-        m_gaussianBlurMaterial->UpdateProgramUniform("BlurScale", Vec3(0.0f, blurAmount, 0.0f));
-        m_gaussianBlurMaterial->UpdateProgramUniform("BlurClampMin", clampMin);
-        m_gaussianBlurMaterial->UpdateProgramUniform("BlurClampMax", clampMax);
+        m_gaussianBlurBuffer.m_data.blurScaleAndLayer = Vec4(0.0f, blurAmount, 0.0f, 0.0f);
+        m_gaussianBlurBuffer.m_data.blurClampMinMax   = Vec4(clampMin, clampMax);
+        m_gaussianBlurBuffer.Invalidate();
+        m_gaussianBlurBuffer.Map();
 
         DrawFullQuad(m_gaussianBlurMaterial);
-        EndPass();
+        FinishPass();
       }
     }
 
@@ -757,7 +782,7 @@ namespace ToolKit
 
       SetFramebuffer(utilFramebuffer, GraphicBitFields::AllBits);
       DrawFullQuad(material);
-      EndPass();
+      FinishPass();
 
       brdfLut->SetFile(TKBrdfLutTexture);
       GetTextureManager()->Manage(brdfLut);
@@ -877,11 +902,10 @@ namespace ToolKit
   {
     TK_PROFILE_FUNCTION();
 
-    if (m_currentProgram == nullptr || m_currentProgram->m_gpuData.get() != program->m_gpuData.get())
-    {
-      m_currentProgram = program;
-      m_backend->BindPipeline(program, &m_renderState);
-    }
+    // BindProgram only stages the program — the actual VkPipeline / GL pipeline binding
+    // happens inside Render(job) where the per-job RenderState is known. Standalone draws
+    // (e.g. DrawFullQuad) all go through Render(job) too.
+    m_currentProgram = program;
   }
 
   void Renderer::ResetUsedTextureSlots()
@@ -1062,45 +1086,47 @@ namespace ToolKit
   {
     TK_PROFILE_FUNCTION();
 
-    PerDrawUniforms pdu;
-    pdu.model                 = m_model;
-    pdu.modelWithoutTranslate = m_modelWithoutTranslate;
-    pdu.inverseModel          = m_inverseModel;
-    pdu.inverseTransposeModel = m_inverseTransposeModel;
-    pdu.iblRotation           = m_iblRotation;
-    pdu.iblSecondaryRotation  = m_secondaryIblRotation;
-    pdu.viewportSize.x        = (float) m_viewportRect.x;
-    pdu.viewportSize.y        = (float) m_viewportRect.y;
-    pdu.drawCommand           = m_drawCommand;
-    pdu.materialData          = job.Material->GetCacheItem().data;
+    static_assert(RHIConstants::MaxPointLightPerObject == 24, "PerDrawUboLayout assumes 24 point indices");
+    static_assert(RHIConstants::MaxSpotLightPerObject == 24, "PerDrawUboLayout assumes 24 spot indices");
 
-    std::copy(m_activePointLightIndices.begin(), m_activePointLightIndices.end(), pdu.activePointLightIndices);
-    std::copy(m_activeSpotLightIndices.begin(), m_activeSpotLightIndices.end(), pdu.activeSpotLightIndices);
-    pdu.activePointLightCount = m_activePointLightCount;
-    pdu.activeSpotLightCount  = m_activeSpotLightCount;
+    PerDrawUboLayout& ubo     = m_globalGpuBuffers->perDrawBuffer.m_data;
+    ubo.model                 = m_model;
+    ubo.modelWithoutTranslate = m_modelWithoutTranslate;
+    ubo.inverseModel          = m_inverseModel;
+    ubo.inverseTransposeModel = m_inverseTransposeModel;
+    ubo.iblRotation           = m_iblRotation;
+    ubo.iblSecondaryRotation  = m_secondaryIblRotation;
+    ubo.viewportSizeAndPad    = Vec4((float) m_viewportRect.x, (float) m_viewportRect.y, 0.0f, 0.0f);
+    ubo.drawCommand           = m_drawCommand;
+    ubo.materialData          = job.Material->GetCacheItem().data;
 
-    // Animation / Skinning
-    pdu.keyFrameData          = Vec4(0.0f);
+    // Pack the 24 ints into 6 ivec4. std140 would otherwise grow each int to 16 bytes.
+    std::memcpy(ubo.activePointLightIndices, m_activePointLightIndices.data(), sizeof(int) * 24);
+    std::memcpy(ubo.activeSpotLightIndices, m_activeSpotLightIndices.data(), sizeof(int) * 24);
+    ubo.lightCounts   = IVec4(m_activePointLightCount, m_activeSpotLightCount, 0, 0);
+
+    // Animation / skinning
+    Vec4 keyFrameData = Vec4(0.0f);
     if (job.animData.currentAnimation != nullptr)
     {
-      pdu.keyFrameData = Vec4(job.animData.firstKeyFrame,
-                              job.animData.secondKeyFrame,
-                              job.animData.keyFrameInterpolationTime,
-                              job.animData.keyFrameCount);
+      keyFrameData = Vec4(job.animData.firstKeyFrame,
+                          job.animData.secondKeyFrame,
+                          job.animData.keyFrameInterpolationTime,
+                          job.animData.keyFrameCount);
     }
+    ubo.keyFrameData    = keyFrameData;
 
-    pdu.blendFrameData = Vec4(0.0f);
+    Vec4 blendFrameData = Vec4(0.0f);
     if (job.animData.blendAnimation != nullptr)
     {
-      pdu.blendFrameData = Vec4(job.animData.blendFirstKeyFrame,
-                                job.animData.blendSecondKeyFrame,
-                                job.animData.blendKeyFrameInterpolationTime,
-                                job.animData.blendKeyFrameCount);
+      blendFrameData = Vec4(job.animData.blendFirstKeyFrame,
+                            job.animData.blendSecondKeyFrame,
+                            job.animData.blendKeyFrameInterpolationTime,
+                            job.animData.blendKeyFrameCount);
     }
+    ubo.blendFrameData = blendFrameData;
 
-    pdu.animationBlendFactor = job.animData.animationBlendFactor;
-
-    pdu.skinParams           = Vec4(0.0f);
+    Vec4 skinParams    = Vec4(0.0f);
     if (job.Mesh->IsSkinned())
     {
       const SkeletonPtr& skel = static_cast<const SkinMesh*>(job.Mesh)->m_skeleton;
@@ -1109,14 +1135,18 @@ namespace ToolKit
         float boneCount  = (float) skel->m_bones.size();
         float isAnimated = (job.animData.currentAnimation != nullptr) ? 1.0f : 0.0f;
         float hasBlend   = (job.animData.blendAnimation != nullptr) ? 1.0f : 0.0f;
-        pdu.skinParams   = Vec4(boneCount, 1.0f, isAnimated, hasBlend);
+        skinParams       = Vec4(boneCount, 1.0f, isAnimated, hasBlend);
       }
     }
+    ubo.skinParams            = skinParams;
+    ubo.animBlendFactorAndPad = Vec4(job.animData.animationBlendFactor, 0.0f, 0.0f, 0.0f);
 
-    m_backend->SubmitPerDrawData(&pdu, sizeof(pdu));
+    m_globalGpuBuffers->perDrawBuffer.Invalidate();
+    m_globalGpuBuffers->perDrawBuffer.Map();
 
-    // Custom shader uniforms � dispatched through backend.
-    m_backend->SubmitCustomUniforms(program, program->m_customUniforms);
+    // Hand the same blob to the backend. GL is a no-op (UBO is already bound + mapped); Vulkan
+    // copies it into the per-frame dynamic-offset ring slot the descriptor set points at.
+    m_backend->SubmitPerDrawData(&ubo, sizeof(ubo));
   }
 
   void Renderer::SetTexture(ubyte slotIndx, TexturePtr texture)
@@ -1132,6 +1162,8 @@ namespace ToolKit
                                                     float exposure,
                                                     GraphicTypes minFilter)
   {
+    Stats::BeginGpuScope("GenerateCubemapFrom2DTexture");
+
     const TextureSettings set = {GraphicTypes::TargetCubeMap,
                                  GraphicTypes::UVClampToEdge,
                                  GraphicTypes::UVClampToEdge,
@@ -1156,22 +1188,39 @@ namespace ToolKit
     mat->SetDiffuseTextureVal(texture);
     mat->SetVertexShaderVal(vert);
     mat->SetFragmentShaderVal(frag);
-    mat->GetRenderState()->cullMode = CullingType::TwoSided;
+    mat->cullMode = CullingType::TwoSided;
     mat->Init();
 
-    mat->UpdateProgramUniform("Exposure", exposure);
+    if (!m_cubemapEquirectBufferInitialized)
+    {
+      m_cubemapEquirectBuffer.Init();
+      m_cubemapEquirectBufferInitialized = true;
+    }
+    m_cubemapEquirectBuffer.m_data.exposureAndPad = Vec4(exposure, 0.0f, 0.0f, 0.0f);
+    m_cubemapEquirectBuffer.m_data.lodLevelAndPad = IVec4(0);
+    m_cubemapEquirectBuffer.Invalidate();
+    m_cubemapEquirectBuffer.Map();
 
     m_oneColorAttachmentFramebuffer->ReconstructIfNeeded({(int) size, (int) size, false, false});
 
     // Views for 6 different angles
     CameraPtr cam = MakeNewPtr<Camera>();
     cam->SetLens(glm::radians(90.0f), 1.0f, 0.1f, 10.0f);
+#ifdef TK_VULKAN
+    Mat4 views[] = {glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, 1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, 1.0f, 0.0f))};
+#else // opengl
     Mat4 views[] = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
                     glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
                     glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
                     glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
                     glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
                     glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
+#endif
 
     for (int i = 0; i < 6; i++)
     {
@@ -1193,11 +1242,13 @@ namespace ToolKit
 
       SetFramebuffer(m_oneColorAttachmentFramebuffer, GraphicBitFields::None);
       DrawCube(cam, mat);
-      EndPass();
+      FinishPass();
     }
 
     CubeMapPtr cubeMap = MakeNewPtr<CubeMap>();
     cubeMap->Consume(cubeMapRt);
+
+    Stats::EndGpuScope();
 
     return cubeMap;
   }
@@ -1227,11 +1278,18 @@ namespace ToolKit
     cubeToEquiRect->m_cubeMap = cubemap;
     cubeToEquiRect->Init();
 
-    cubeToEquiRect->UpdateProgramUniform("lodLevel", level);
-    cubeToEquiRect->UpdateProgramUniform("Exposure", exposure);
+    if (!m_cubemapEquirectBufferInitialized)
+    {
+      m_cubemapEquirectBuffer.Init();
+      m_cubemapEquirectBufferInitialized = true;
+    }
+    m_cubemapEquirectBuffer.m_data.exposureAndPad = Vec4(exposure, 0.0f, 0.0f, 0.0f);
+    m_cubemapEquirectBuffer.m_data.lodLevelAndPad = IVec4(level, 0, 0, 0);
+    m_cubemapEquirectBuffer.Invalidate();
+    m_cubemapEquirectBuffer.Map();
 
     DrawFullQuad(cubeToEquiRect);
-    EndPass();
+    FinishPass();
 
     if (pixels != nullptr)
     {
@@ -1241,7 +1299,7 @@ namespace ToolKit
     }
 
     SetFramebuffer(prevBuffer, GraphicBitFields::None);
-    EndPass();
+    FinishPass();
 
     return euqiRectTexture;
   }
@@ -1288,6 +1346,8 @@ namespace ToolKit
 
   CubeMapPtr Renderer::GenerateDiffuseEnvMap(CubeMapPtr cubemap, int size)
   {
+    Stats::BeginGpuScope("GenerateDiffuseEnvMap");
+
     const TextureSettings set = {GraphicTypes::TargetCubeMap,
                                  GraphicTypes::UVClampToEdge,
                                  GraphicTypes::UVClampToEdge,
@@ -1309,12 +1369,21 @@ namespace ToolKit
     // Views for 6 different angles
     CameraPtr cam = MakeNewPtr<Camera>();
     cam->SetLens(glm::radians(90.0f), 1.0f, 0.1f, 10.0f);
-    Mat4 views[]    = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                       glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
+#ifdef TK_VULKAN
+    Mat4 views[] = {glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, 1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, 1.0f, 0.0f))};
+#else // opengl
+    Mat4 views[] = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
+#endif
 
     // Create material
     MaterialPtr mat = MakeNewPtr<Material>();
@@ -1324,7 +1393,7 @@ namespace ToolKit
     mat->m_cubeMap  = cubemap;
     mat->SetFragmentShaderVal(frag);
     mat->SetVertexShaderVal(vert);
-    mat->GetRenderState()->cullMode = CullingType::TwoSided;
+    mat->cullMode = CullingType::TwoSided;
     mat->Init();
 
     m_oneColorAttachmentFramebuffer->ReconstructIfNeeded({size, size, false, false});
@@ -1349,36 +1418,42 @@ namespace ToolKit
 
       SetFramebuffer(m_oneColorAttachmentFramebuffer, GraphicBitFields::None);
       DrawCube(cam, mat);
-      EndPass();
+      FinishPass();
     }
 
     SetFramebuffer(nullptr, GraphicBitFields::None);
-    EndPass();
+    FinishPass();
 
     CubeMapPtr newCubeMap = MakeNewPtr<CubeMap>();
     newCubeMap->Consume(cubeMapRt);
+
+    Stats::EndGpuScope();
 
     return newCubeMap;
   }
 
   CubeMapPtr Renderer::GenerateSpecularEnvMap(CubeMapPtr cubemap, int size, int mipMaps)
   {
-    const TextureSettings set = {GraphicTypes::TargetCubeMap,
-                                 GraphicTypes::UVClampToEdge,
-                                 GraphicTypes::UVClampToEdge,
-                                 GraphicTypes::UVClampToEdge,
-                                 GraphicTypes::SampleLinearMipmapLinear,
-                                 GraphicTypes::SampleLinear,
-                                 GraphicTypes::FormatRGBA16F,
-                                 GraphicTypes::FormatRGBA,
-                                 GraphicTypes::TypeFloat,
-                                 MsaaSampleCount::x0,
-                                 false};
+    Stats::BeginGpuScope("GenerateSpecularEnvMap");
+
+    const TextureSettings set  = {GraphicTypes::TargetCubeMap,
+                                  GraphicTypes::UVClampToEdge,
+                                  GraphicTypes::UVClampToEdge,
+                                  GraphicTypes::UVClampToEdge,
+                                  GraphicTypes::SampleLinearMipmapLinear,
+                                  GraphicTypes::SampleLinear,
+                                  GraphicTypes::FormatRGBA16F,
+                                  GraphicTypes::FormatRGBA,
+                                  GraphicTypes::TypeFloat,
+                                  MsaaSampleCount::x0,
+                                  false};
 
     // Don't allow caches bigger than the actual image.
-    size                      = glm::min(size, cubemap->m_width);
+    size                       = glm::min(size, cubemap->m_width);
 
-    RenderTargetPtr cubemapRt = MakeNewPtr<RenderTarget>(size, size, set);
+    TextureSettings cubemapSet = set;
+    cubemapSet.GenerateMipMap  = true;
+    RenderTargetPtr cubemapRt  = MakeNewPtr<RenderTarget>(size, size, cubemapSet);
     cubemapRt->Init();
 
     // Intentionally creating space to fill later. ( mip maps will be calculated for specular ibl )
@@ -1387,12 +1462,21 @@ namespace ToolKit
     // Views for 6 different angles
     CameraPtr cam = MakeNewPtr<Camera>();
     cam->SetLens(glm::radians(90.0f), 1.0f, 0.1f, 10.0f);
-    Mat4 views[]    = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                       glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
+#ifdef TK_VULKAN
+    Mat4 views[] = {glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, 1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, 1.0f, 0.0f))};
+#else
+    Mat4 views[] = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
+#endif
 
     // Create material
     MaterialPtr mat = MakeNewPtr<Material>();
@@ -1402,15 +1486,17 @@ namespace ToolKit
     mat->m_cubeMap  = cubemap;
     mat->SetFragmentShaderVal(frag);
     mat->SetVertexShaderVal(vert);
-    mat->GetRenderState()->cullMode = CullingType::TwoSided;
+    mat->cullMode = CullingType::TwoSided;
     mat->Init();
-
-    m_oneColorAttachmentFramebuffer->ReconstructIfNeeded({size, size, false, false});
 
     assert(size >= 128 && "Due to RHIConstants::SpecularIBLLods, it can't be lower than this resolution.");
     for (int mip = 0; mip < mipMaps; mip++)
     {
-      int mipSize               = (int) (size * std::powf(0.5f, (float) mip));
+      Stats::BeginGpuScope("SpecularEnvMapMip" + std::to_string(mip));
+
+      int mipSize = (int) (size * std::powf(0.5f, (float) mip));
+
+      m_oneColorAttachmentFramebuffer->ReconstructIfNeeded({mipSize, mipSize, false, false});
 
       // Create a temporary cubemap for each mipmap level
       RenderTargetPtr mipCubeRt = MakeNewPtr<RenderTarget>(mipSize, mipSize, set);
@@ -1436,27 +1522,43 @@ namespace ToolKit
 
         SetFramebuffer(m_oneColorAttachmentFramebuffer, GraphicBitFields::None);
 
-        mat->UpdateProgramUniform("roughness", (float) mip / (float) (mipMaps - 1));
-        mat->UpdateProgramUniform("resPerFace", (float) mipSize);
+        if (!m_preFilterEnvMapBufferInitialized)
+        {
+          m_preFilterEnvMapBuffer.Init();
+          m_preFilterEnvMapBufferInitialized = true;
+        }
+        m_preFilterEnvMapBuffer.m_data.params = Vec4((float) mipSize, (float) mip / (float) (mipMaps - 1), 0.0f, 0.0f);
+        m_preFilterEnvMapBuffer.Invalidate();
+        m_preFilterEnvMapBuffer.Map();
 
         m_backend->BindTexture(0, cubemap);
 
         DrawCube(cam, mat);
-        EndPass();
+        FinishPass();
 
         // Copy color attachment to cubemap's correct mip level and face.
-        m_backend->CopyCubemapFaceFromFramebuffer(cubemapRt.get(), i, mip, mipSize, mipSize, nullptr, nullptr);
+        m_backend->CopyCubemapFaceFromFramebuffer(cubemapRt.get(),
+                                                  i,
+                                                  mip,
+                                                  mipSize,
+                                                  mipSize,
+                                                  m_oneColorAttachmentFramebuffer.get(),
+                                                  nullptr);
       }
+
+      Stats::EndGpuScope();
     }
 
     SetFramebuffer(nullptr, GraphicBitFields::None);
-    EndPass();
+    FinishPass();
 
     // Clamp texture max mip level to the last bake level.
     m_backend->SetTextureMaxMipLevel(cubemapRt.get(), mipMaps - 1);
 
     CubeMapPtr newCubeMap = MakeNewPtr<CubeMap>();
     newCubeMap->Consume(cubemapRt);
+
+    Stats::EndGpuScope();
 
     return newCubeMap;
   }
@@ -1499,12 +1601,21 @@ namespace ToolKit
     cam->SetLens(glm::radians(90.0f), 1.0f, near, far);
 
     // 6 cubemap face view matrices.
-    Mat4 views[]                         = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                                            glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                                            glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
-                                            glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
-                                            glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                                            glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
+#ifdef TK_VULKAN
+    Mat4 views[] = {glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, 1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, 1.0f, 0.0f))};
+#else // opengl
+    Mat4 views[] = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
+#endif
     // Save original render path params.
     CameraPtr origCam                    = renderPath->m_params.Cam;
     FramebufferPtr origFramebuffer       = renderPath->m_params.MainFramebuffer;

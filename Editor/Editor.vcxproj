@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|x64">
@@ -45,13 +45,13 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <OutDir>..\Bin\</OutDir>
     <TargetName>$(ProjectName)d</TargetName>
-    <IncludePath>$(SolutionDir)Workspace;$(SolutionDir)ToolKit;$(SolutionDir)Dependency;$(SolutionDir)Dependency\glm;$(SolutionDir)Dependency\SDL2\include;$(SolutionDir)Dependency\RapidXml;$(SolutionDir)Dependency\tkimgui;$(SolutionDir)Dependency\tkimgui\imgui;$(SolutionDir)Dependency\poolSTL\include;$(VC_IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
-    <LibraryPath>$(SolutionDir)Bin;$(SolutionDir)Dependency\Intermediate\Windows\Debug;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(VULKAN_SDK)\Include;$(SolutionDir)Workspace;$(SolutionDir)ToolKit;$(SolutionDir)Dependency;$(SolutionDir)Dependency\glm;$(SolutionDir)Dependency\SDL2\include;$(SolutionDir)Dependency\RapidXml;$(SolutionDir)Dependency\tkimgui;$(SolutionDir)Dependency\tkimgui\imgui;$(SolutionDir)Dependency\poolSTL\include;$(VC_IncludePath);$(WindowsSDK_IncludePath);</IncludePath>
+    <LibraryPath>$(SolutionDir)Bin;$(SolutionDir)Dependency\Intermediate\Windows\Debug;$(VULKAN_SDK)\Lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <OutDir>..\Bin\</OutDir>
-    <IncludePath>$(SolutionDir)Workspace;$(SolutionDir)ToolKit;$(SolutionDir)Dependency;$(SolutionDir)Dependency\glm;$(SolutionDir)Dependency\SDL2\include;$(SolutionDir)Dependency\RapidXml;$(SolutionDir)Dependency\tkimgui;$(SolutionDir)Dependency\tkimgui\imgui;$(SolutionDir)Dependency\poolSTL\include;$(VC_IncludePath);$(WindowsSDK_IncludePath);$(IncludePath)</IncludePath>
-    <LibraryPath>$(SolutionDir)Bin;$(SolutionDir)Dependency\Intermediate\Windows\RelWithDebInfo;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(VULKAN_SDK)\Include;$(SolutionDir)Workspace;$(SolutionDir)ToolKit;$(SolutionDir)Dependency;$(SolutionDir)Dependency\glm;$(SolutionDir)Dependency\SDL2\include;$(SolutionDir)Dependency\RapidXml;$(SolutionDir)Dependency\tkimgui;$(SolutionDir)Dependency\tkimgui\imgui;$(SolutionDir)Dependency\poolSTL\include;$(VC_IncludePath);$(WindowsSDK_IncludePath);$(IncludePath)</IncludePath>
+    <LibraryPath>$(SolutionDir)Bin;$(SolutionDir)Dependency\Intermediate\Windows\RelWithDebInfo;$(VULKAN_SDK)\Lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -68,7 +68,7 @@
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
-      <AdditionalDependencies>SDL2maind.lib;SDL2d.lib;imguid.lib;ToolKitd.lib;Workspaced.lib;OpenGL32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>SDL2maind.lib;SDL2d.lib;imguid.lib;ToolKitd.lib;Workspaced.lib;OpenGL32.lib;vulkan-1.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -90,7 +90,7 @@
       <SubSystem>Windows</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalDependencies>SDL2main.lib;SDL2.lib;imgui.lib;ToolKit.lib;Workspace.lib;OpenGL32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>SDL2main.lib;SDL2.lib;imgui.lib;ToolKit.lib;Workspace.lib;OpenGL32.lib;vulkan-1.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
   </ItemDefinitionGroup>
@@ -112,6 +112,7 @@
     <ClCompile Include="EditorCanvas.cpp" />
     <ClCompile Include="EditorEnvironmentComponent.cpp" />
     <ClCompile Include="EditorBackendBindings.cpp" />
+    <ClCompile Include="EditorImGuiTextureCache.cpp" />
     <ClCompile Include="EditorLight.cpp" />
     <ClCompile Include="EditorRenderer.cpp" />
     <ClCompile Include="EditorViewport2d.cpp" />
@@ -183,6 +184,7 @@
     <ClInclude Include="EditorCanvas.h" />
     <ClInclude Include="EditorEnvironmentComponent.h" />
     <ClInclude Include="EditorBackendBindings.h" />
+    <ClInclude Include="EditorImGuiTextureCache.h" />
     <ClInclude Include="EditorLight.h" />
     <ClInclude Include="EditorMetaKeys.h" />
     <ClInclude Include="EditorRenderer.h" />

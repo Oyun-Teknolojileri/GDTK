@@ -7,6 +7,9 @@
 
 #pragma once
 
+/** Launcher only works with Opengl backend */
+#undef TK_VULKAN
+
 #include "../Editor/EditorTypes.h"
 #include "../Editor/IconsFontAwesome.h"
 #include "Workspace.h"

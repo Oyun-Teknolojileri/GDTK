@@ -4,11 +4,11 @@
   <include name = "cameraDataInc.shader" />
   <include name = "materialCacheInc.shader" />
   <include name = "drawDataInc.shader" />
-  <uniform name = "model" />
-  <uniform name = "inverseTransposeModel" />
-  <source>
+  <include name = "perDrawDataInc.shader" />
+  <include name="vulkanCompatInc.shader" />
+	<source>
   <!--
-  #version 300 es
+  
   precision highp float;
   precision lowp int;
 
@@ -17,13 +17,10 @@
   layout(location = 2) in vec2 vTexture;
   layout(location = 3) in vec4 vTangent;
 
-  uniform mat4 model;
-  uniform mat4 inverseTransposeModel;
-
-  out float v_linearDepth;
-  out vec3 v_normal;
-  out mediump vec2 v_texture;
-  out mediump mat3 TBN;
+  TK_LOC(0) out float v_linearDepth;
+  TK_LOC(1) out vec3 v_normal;
+  TK_LOC(2) out mediump vec2 v_texture;
+  TK_LOC(3) out mediump mat3 TBN;
 
   void main()
   {
@@ -50,7 +47,7 @@
       // World-space normal / TBN
       if (normalMapInUse)
       {
-          mat3 normalMatrix = mat3(inverseTransposeModel);
+          mat3 normalMatrix = mat3(perDraw._inverseTransposeModel);
 
           vec3 wN = normalize(normalMatrix * N);
           vec3 wT = normalize(normalMatrix * T);
@@ -60,11 +57,11 @@
       }
       else
       {
-          v_normal = normalize(mat3(inverseTransposeModel) * N);
+          v_normal = normalize(mat3(perDraw._inverseTransposeModel) * N);
       }
 
       // Position
-      vec4 worldPos = model * localPos;
+      vec4 worldPos = perDraw._model * localPos;
       v_linearDepth = -(camera.view * worldPos).z;
       v_texture     = vTexture;
       gl_Position   = camera.projectionView * worldPos;

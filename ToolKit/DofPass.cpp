@@ -34,16 +34,22 @@ namespace ToolKit
       return;
     }
 
-    const TextureSettings& colorRTSet = m_params.ColorRt->Settings();
-    m_copyTexture->ReconstructIfNeeded(m_params.ColorRt->m_width, m_params.ColorRt->m_height, &colorRTSet);
+    // Always sample from a single-sample copy. ColorRt should already be single-sample (engine
+    // wires DoF to the resolved chain when MSAA is on), but force the copy's msaaCount to x0
+    // defensively so a future caller can't introduce the MSAA-bound-to-sampler2D crash again.
+    TextureSettings copySet = m_params.ColorRt->Settings();
+    copySet.msaaCount       = MsaaSampleCount::x0;
+    m_copyTexture->ReconstructIfNeeded(m_params.ColorRt->m_width, m_params.ColorRt->m_height, &copySet);
 
     GetRenderer()->CopyTexture(m_params.ColorRt, m_copyTexture);
 
     m_quadPass->SetFragmentShader(m_dofShader, GetRenderer());
 
-    m_quadPass->UpdateUniform(ShaderUniform("focusPoint", m_params.focusPoint));
-    m_quadPass->UpdateUniform(ShaderUniform("focusScale", m_params.focusScale));
-    m_quadPass->UpdateUniform(ShaderUniform("blurSize", 5.0f));
+    if (!m_passDataBufferInitialized)
+    {
+      m_passDataBuffer.Init();
+      m_passDataBufferInitialized = true;
+    }
 
     float blurRadiusScale = 0.5f;
     switch (m_params.blurQuality)
@@ -58,12 +64,13 @@ namespace ToolKit
         blurRadiusScale = 0.2f;
         break;
     }
-    m_quadPass->UpdateUniform(ShaderUniform("radiusScale", blurRadiusScale));
 
     IVec2 size(m_params.ColorRt->m_width, m_params.ColorRt->m_height);
-
     m_quadPass->m_params.frameBuffer->ReconstructIfNeeded({size.x, size.y, false, false});
-    m_quadPass->UpdateUniform(ShaderUniform("uPixelSize", Vec2(1.0f) / Vec2(size)));
+
+    m_passDataBuffer.m_data.pixelSizeAndPad = Vec4(1.0f / float(size.x), 1.0f / float(size.y), 0.0f, 0.0f);
+    m_passDataBuffer.m_data.focusAndBlur    = Vec4(m_params.focusPoint, m_params.focusScale, 5.0f, blurRadiusScale);
+
     m_quadPass->m_params.blendFunc        = BlendFunction::NONE;
     m_quadPass->m_params.clearFrameBuffer = GraphicBitFields::None;
     m_quadPass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_params.ColorRt);
@@ -80,8 +87,20 @@ namespace ToolKit
     }
 
     renderer->SetTexture(0, m_copyTexture);
-    renderer->SetTexture(1, m_params.DepthRt);
 
+    // Depth source — gbuffer normal+depth is MSAA when the scene runs MSAA, and our depth-sampling
+    // shader is sampler2D (single-sample). Use the resolved twin in that case, matching SSAOPass.
+    TexturePtr depthTex = m_params.DepthRt;
+    if (depthTex != nullptr && depthTex->IsMultiSampled())
+    {
+      depthTex = m_params.DepthRt->GetResolvedTexture();
+    }
+    renderer->SetTexture(1, depthTex);
+
+    // Map UBO into slot 5 immediately before draw — earlier passes (bloom etc.) may have left
+    // a different buffer there. Pattern matches BloomPass / SSAOPass / GaussBlur.
+    m_passDataBuffer.Invalidate();
+    m_passDataBuffer.Map();
     RenderSubPass(m_quadPass);
   }
 

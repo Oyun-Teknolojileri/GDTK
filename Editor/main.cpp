@@ -9,6 +9,7 @@
 #include "AndroidBuildWindow.h"
 #include "App.h"
 #include "ConsoleWindow.h"
+#include "EditorBackendBindings.h"
 #include "EditorCamera.h"
 #include "EditorCanvas.h"
 #include "EditorEnvironmentComponent.h"
@@ -18,30 +19,32 @@
 #include "Mod.h"
 #include "PopupWindows.h"
 #include "PreviewViewport.h"
-#include "SplashScreenRenderPath.h"
 #include "Stats.h"
 #include "UI.h"
 
 #include <Common/SDLEventPool.h>
+#include <Common/SplashScreen.h>
 #include <Common/Win32Utils.h>
 #include <FileManager.h>
 #include <ImGui/backends/imgui_impl_sdl2.h>
+#include <ImGui/imgui.h>
+#include <Platform.h>
 #include <PluginManager.h>
 #include <SDL.h>
 #include <Types.h>
 #include <locale.h>
 
-#include <array>
-#include <chrono>
-
-SDL_Window* g_window        = nullptr;
-SDL_GLContext g_context     = nullptr;
+SDL_Window* g_window            = nullptr;
+void* g_context                 = nullptr;
 
 // Main loop signal handle.
-bool g_running              = true;
+bool g_running                  = true;
 
 // ToolKit Application main handle.
-ToolKit::Editor::App* g_app = nullptr;
+ToolKit::Editor::App* g_app     = nullptr;
+
+ToolKit::SplashScreen* g_splash = nullptr;
+static bool s_initDone          = false;
 
 namespace ToolKit
 {
@@ -282,27 +285,17 @@ namespace ToolKit
       }
       else
       {
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2); // OpenGL ES 3.0 features covered in Core 3.2.
+        EditorBackendBindings::PrepareWindowAttributes();
 
-        SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-        SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
-        SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
+        const uint32_t windowFlags = EditorBackendBindings::GetSDLWindowFlags() | SDL_WINDOW_HIDDEN |
+                                     SDL_WINDOW_RESIZABLE | SDL_WINDOW_BORDERLESS;
 
-#ifdef TK_DEBUG
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
-#endif
-
-        SDL_GL_SetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, 1);
-
-        g_window =
-            SDL_CreateWindow(settings.m_window->GetNameVal().c_str(),
-                             SDL_WINDOWPOS_CENTERED,
-                             SDL_WINDOWPOS_CENTERED,
-                             512,
-                             512,
-                             SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_BORDERLESS);
+        g_window = SDL_CreateWindow(settings.m_window->GetNameVal().c_str(),
+                                    SDL_WINDOWPOS_CENTERED,
+                                    SDL_WINDOWPOS_CENTERED,
+                                    512,
+                                    512,
+                                    windowFlags);
 
         if (g_window == nullptr)
         {
@@ -311,24 +304,28 @@ namespace ToolKit
         }
         else
         {
-          int srgbFlag = 0;
-          SDL_GL_GetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, &srgbFlag);
-          g_proxy->m_renderSys->m_backbufferFormatIsSRGB = (srgbFlag == 1);
+          String splashFile = TexturePath("splash.png", true);
+          String fontFile   = FontPath("LiberationSans-Regular.ttf", true);
+          String infoText   = TKVersionStr + "  " + (TKVulkan ? "Vulkan" : "OpenGL");
+          g_splash          = new ToolKit::SplashScreen(splashFile, fontFile, infoText);
+          g_splash->Show(512, 512);
+          g_splash->SetProgress(25.0f);
+          g_splash->SetInfoText("Initializing Engine");
 
-          g_context                                      = SDL_GL_CreateContext(g_window);
+          g_context = EditorBackendBindings::CreateGraphicsContext(g_window);
 
+#ifndef TK_VULKAN // vulkan does not have a context like this
           if (g_context == nullptr)
           {
             g_running = false;
           }
           else
+#endif
           {
-            SDL_GL_MakeCurrent(g_window, g_context);
-
             // Init graphics backend.
             ToolKit::IGraphicsBackend::BackendInitParams initParams;
-            initParams.getProcAddress = (void*) SDL_GL_GetProcAddress;
-            initParams.errorCallback  = [](const std::string& msg) -> void
+            EditorBackendBindings::FillBackendInitParams(initParams, g_window);
+            initParams.errorCallback = [](const std::string& msg) -> void
             {
               if (g_app == nullptr)
               {
@@ -343,7 +340,14 @@ namespace ToolKit
               GetLogger()->WritePlatformConsole(LogType::Error, msg.c_str());
             };
             g_proxy->m_renderSys->InitGraphics(initParams);
-            g_proxy->m_renderSys->SetPresentCallback([]() { SDL_GL_SwapWindow(g_window); });
+
+            // Backend (GL context or Vulkan swapchain) now exists, so the backbuffer's actual sRGB
+            // status can be queried. On GL this reads the SRGB_CAPABLE attribute the driver
+            // settled on; on Vulkan it inspects the picked swapchain format. Must run *before*
+            // anything that reads m_backbufferFormatIsSRGB (e.g. UI::Init's gamma-encode flag).
+            g_proxy->m_renderSys->m_backbufferFormatIsSRGB = EditorBackendBindings::IsBackbufferSrgb();
+
+            g_proxy->m_renderSys->SetPresentCallback([]() { EditorBackendBindings::PresentBackbuffer(g_window); });
 
             // Init Main.
             // Register app specific classes to toolkit.
@@ -370,7 +374,7 @@ namespace ToolKit
             GetFileManager()->m_ignorePakFile = true;
 
             // Set defaults
-            SDL_GL_SetSwapInterval(0);
+            EditorBackendBindings::SetSwapInterval(0);
 
             // Get the display bounds for the primary display
             SDL_Rect displayBounds;
@@ -394,8 +398,26 @@ namespace ToolKit
             g_app->m_sysComExecFn   = &ToolKit::PlatformHelpers::SysComExec;
             g_app->m_shellOpenDirFn = &ToolKit::PlatformHelpers::OpenExplorer;
 
+            g_splash->SetProgress(50.0f);
+            g_splash->SetInfoText("Initializing Editor");
+
+            g_app->Init();
+
+            g_splash->SetProgress(100.0f);
+            g_splash->SetInfoText("Ready");
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+            g_splash->Hide();
+            delete g_splash;
+            g_splash = nullptr;
+
+            SDL_ShowWindow(g_window);
+            SDL_SetWindowBordered(g_window, SDL_TRUE);
+            SDL_SetWindowResizable(g_window, SDL_TRUE);
+            PlatformHelpers::UpdateAppIcon(); // Sdl wipes the editor icon. This fixes it.
+
             // Register update functions
-            TKUpdateFn preUpdateFn  = [](float deltaTime)
+            TKUpdateFn preUpdateFn = [](float deltaTime)
             {
               SDL_Event sdlEvent;
               while (SDL_PollEvent(&sdlEvent))
@@ -404,41 +426,7 @@ namespace ToolKit
                 ProcessEvent(sdlEvent);
               }
 
-              static bool showSplashScreen                    = true;
-              static float elapsedTime                        = 0.0f;
-              static SplashScreenRenderPathPtr splashRenderer = nullptr;
-
-              if (showSplashScreen)
-              {
-                RenderSystem* rsys = GetRenderSystem();
-
-                if (splashRenderer == nullptr)
-                {
-                  SDL_ShowWindow(g_window);
-                  splashRenderer = MakeNewPtr<SplashScreenRenderPath>();
-                  splashRenderer->Init({512, 512});
-                }
-
-                if (elapsedTime < 1000.0f)
-                {
-                  elapsedTime += deltaTime;
-                  rsys->AddRenderTask({[](Renderer* renderer) -> void { splashRenderer->Render(renderer); }});
-                }
-                else
-                {
-                  showSplashScreen = false;
-                  splashRenderer   = nullptr;
-                  g_app->Init();
-
-                  SDL_SetWindowBordered(g_window, SDL_TRUE);
-                  SDL_SetWindowResizable(g_window, SDL_TRUE);
-                  PlatformHelpers::UpdateAppIcon(); // Sdl wipes the editor icon. This fixes it.
-                }
-              }
-              else
-              {
-                g_app->Frame(deltaTime);
-              }
+              g_app->Frame(deltaTime);
             };
 
             g_proxy->RegisterPreUpdateFunction(preUpdateFn);
@@ -464,12 +452,15 @@ namespace ToolKit
 
       g_proxy->PreUninit();
       g_proxy->Uninit();
-      g_proxy->PostUninit();
 
       SafeDel(g_app);
+
+      g_proxy->PostUninit();
       SafeDel(g_proxy);
 
       SafeDel(g_sdlEventPool);
+      EditorBackendBindings::DestroyGraphicsContext(g_context);
+      g_context = nullptr;
       SDL_DestroyWindow(g_window);
       SDL_Quit();
 

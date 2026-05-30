@@ -29,6 +29,19 @@ namespace ToolKit
 
     ShaderPtr fragmentShader  = m_programConfigMat->GetFragmentShaderVal();
     fragmentShader->SetDefine("ShadowPCF", std::to_string(m_shadowPCF));
+
+    // Opaque + alpha-masked passive defaults. Lequal so a z-prepassed depth buffer keeps
+    // exactly the visible fragments; depth write on so non-prepassed scenes still build
+    // a correct z buffer.
+    m_opaquePassState.depthFunction     = CompareFunctions::FuncLequal;
+    m_opaquePassState.depthWriteEnabled = true;
+    m_opaquePassState.depthTestEnabled  = true;
+
+    // Translucent passive defaults. Lequal matches the opaque path; depth write off so
+    // back-to-front draws don't self-occlude.
+    m_translucentPassState.depthFunction     = CompareFunctions::FuncLequal;
+    m_translucentPassState.depthWriteEnabled = false;
+    m_translucentPassState.depthTestEnabled  = true;
   }
 
   void ForwardRenderPass::Render()
@@ -64,12 +77,9 @@ namespace ToolKit
     renderer->SetFramebuffer(m_params.FrameBuffer, m_params.clearBuffer, Vec4(0.0f), discardBits);
     renderer->SetCamera(m_params.Cam, true);
 
-    // Adjust the depth test considering z-pre pass.
-    if (m_params.hasForwardPrePass)
+    if (m_params.onPreRender)
     {
-      // This is the optimal flag if the depth buffer is filled.
-      // Only the visible fragments will pass the test.
-      renderer->SetDepthTestFunc(CompareFunctions::FuncLequal);
+      m_params.onPreRender();
     }
   }
 
@@ -79,9 +89,7 @@ namespace ToolKit
 
     Pass::PostRender();
 
-    // Set the default depth test.
     Renderer* renderer = GetRenderer();
-    renderer->SetDepthTestFunc(CompareFunctions::FuncLess);
 
     // Resolve render target if necessary.
     if (m_params.FrameBuffer->IsMultiSampled() && m_params.resolveFrameBuffer != nullptr)
@@ -91,7 +99,7 @@ namespace ToolKit
                                    {(int) Framebuffer::Attachment::ColorAttachment0});
     }
 
-    renderer->EndPass();
+    renderer->FinishPass();
   }
 
   void ForwardRenderPass::RenderOpaque(RenderData* renderData)
@@ -150,8 +158,11 @@ namespace ToolKit
 
     if (begin != end)
     {
-      renderer->SetDepthTestFunc(CompareFunctions::FuncLess);
-      renderer->EnableDepthWrite(false);
+      renderer->SetPassState(m_translucentPassState);
+
+      RenderState twoSidedState = m_translucentPassState;
+      twoSidedState.cullOverride = true;
+
       for (RenderJobArray::iterator job = begin; job != end; job++)
       {
         if (job->Material->IsShaderMaterial())
@@ -162,16 +173,20 @@ namespace ToolKit
         {
           renderer->BindProgram(program);
 
-          Material* mat = job->Material;
-          if (mat->GetRenderState()->cullMode == CullingType::TwoSided)
+          if (job->Material->cullMode == CullingType::TwoSided)
           {
-            mat->GetRenderState()->cullMode = CullingType::Front;
+            // Two-sided translucent: draw back faces first then front. cullOverride forces the
+            // cull mode without touching the shared material — the pass state restores itself at
+            // the end of the iteration so the next job sees the standard translucent state.
+            twoSidedState.cullOverrideMode = CullingType::Front;
+            renderer->SetPassState(twoSidedState);
             renderer->Render(*job);
 
-            mat->GetRenderState()->cullMode = CullingType::Back;
+            twoSidedState.cullOverrideMode = CullingType::Back;
+            renderer->SetPassState(twoSidedState);
             renderer->Render(*job);
 
-            mat->GetRenderState()->cullMode = CullingType::TwoSided;
+            renderer->SetPassState(m_translucentPassState);
           }
           else
           {
@@ -179,7 +194,6 @@ namespace ToolKit
           }
         }
       }
-      renderer->EnableDepthWrite(true);
     }
   }
 
@@ -192,6 +206,8 @@ namespace ToolKit
 
     Renderer* renderer = GetRenderer();
     renderer->SetAmbientOcclusionTexture(m_params.SsaoTexture);
+
+    renderer->SetPassState(m_opaquePassState);
 
     for (RenderJobItr job = begin; job != end; job++)
     {

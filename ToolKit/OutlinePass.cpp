@@ -33,11 +33,22 @@ namespace ToolKit
     // Generate stencil binary image.
     RenderSubPass(m_stencilPass);
 
-    // Use stencil output as input to the dilation.
-    GetRenderer()->SetTexture(0, m_stencilAsRt);
+    // Feed the stencil image into slot 0 as the dilate shader's input.
+    m_outlinePass->m_material->SetDiffuseTextureVal(m_stencilAsRt);
 
     m_outlinePass->SetFragmentShader(m_dilateShader, GetRenderer());
-    m_outlinePass->UpdateUniform(ShaderUniform("Color", m_params.OutlineColor));
+
+    // Push the outline color through the pass-specific UBO. m_dilateBuffer is lazy-initialized
+    // here (rather than in the constructor) so the renderer backend is fully up by the time
+    // CreateUniformBuffer runs; OutlinePass instances can be constructed before Init.
+    if (!m_dilateBufferInitialized)
+    {
+      m_dilateBuffer.Init();
+      m_dilateBufferInitialized = true;
+    }
+    m_dilateBuffer.m_data.color = m_params.OutlineColor;
+    m_dilateBuffer.Invalidate();
+    m_dilateBuffer.Map();
 
     // Draw outline to the viewport.
     m_outlinePass->m_params.frameBuffer      = m_params.FrameBuffer;

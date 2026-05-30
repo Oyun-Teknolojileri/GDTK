@@ -10,7 +10,6 @@
 #include "IGraphicsBackend.h"
 #include "Material.h"
 #include "Shader.h"
-#include "ShaderUniform.h"
 #include "Types.h"
 
 namespace ToolKit
@@ -30,28 +29,15 @@ namespace ToolKit
     GpuProgram(ShaderPtr vertex, ShaderPtr fragment);
     ~GpuProgram();
 
-    /** If caller gives index (different than -1), this function tries to get uniform location as array. */
-    int GetDefaultUniformLocation(Uniform uniform, int index = -1);
-
-    /** Returns the location of the custom uniform in the program. */
-    int GetCustomUniformLocation(ShaderUniform& shaderUniform);
-
-    /** Updates or adds the given uniform to the uniform cache of the program. */
-    void UpdateCustomUniform(const String& name, const UniformValue& val);
-    void UpdateCustomUniform(const ShaderUniform& uniform);
-
    public:
     GpuResourceDataPtr m_gpuData;
     ShaderPtrArray m_shaders;
     MaterialCacheItem m_cachedMaterial; //!< Cached material data for the program.
 
-    IGraphicsBackend* m_backend = nullptr; //!< Set by GpuProgramManager on creation.
+    /** Aggregated resource declarations from all stage shaders, deduplicated by (type, slot, name). */
+    ShaderResourceArray m_resources;
 
-   public:
-    // Flat arrays indexed by Uniform enum value. -1 means "not present".
-    std::array<int, (uint) Uniform::UNIFORM_MAX_INVALID> m_defaultUniformLocation;
-    std::array<int, (uint) Uniform::UNIFORM_MAX_INVALID> m_defaultArrayUniformLocations;
-    std::unordered_map<String, ShaderUniform> m_customUniforms;
+    IGraphicsBackend* m_backend = nullptr; //!< Set by GpuProgramManager on creation.
   };
 
   /** Number of programmable pipeline stages. */

@@ -25,6 +25,11 @@ namespace ToolKit
     m_material       = MakeNewPtr<Material>();
     ShaderPtr shader = GetShaderManager()->Create<Shader>(ShaderPath("fullQuadVert.shader", true));
     m_material->SetVertexShaderVal(shader);
+
+    // Fullscreen quad passive defaults: write nothing to depth, accept every fragment.
+    m_passState.depthTestEnabled  = false;
+    m_passState.depthWriteEnabled = false;
+    m_passState.depthFunction     = CompareFunctions::FuncAlways;
   }
 
   void FullQuadPass::Render()
@@ -34,6 +39,11 @@ namespace ToolKit
 
     RenderJobArray jobs;
     RenderJobProcessor::CreateRenderJobs(jobs, m_quad);
+
+    // Stencil op is now a pass parameter rather than smuggled through the material.
+    m_passState.stencilOperation = m_params.stencilOp;
+    renderer->SetPassState(m_passState);
+
     renderer->Render(jobs);
   }
 
@@ -42,15 +52,14 @@ namespace ToolKit
     // Gpu Program should be bound before calling FulQuadPass Render
 
     Pass::PreRender();
-    Renderer* renderer = GetRenderer();
-    renderer->EnableDepthTest(false);
+    Renderer* renderer  = GetRenderer();
 
     MeshComponentPtr mc = m_quad->GetMeshComponent();
     MeshPtr mesh        = mc->GetMeshVal();
     mesh->m_material    = m_material;
     mesh->Init();
 
-    m_material->GetRenderState()->blendFunction = m_params.blendFunc;
+    m_material->blendFunction = m_params.blendFunc;
     SetFragmentShader(m_material->GetFragmentShaderVal(), renderer);
   }
 
@@ -58,8 +67,7 @@ namespace ToolKit
   {
     Pass::PostRender();
     Renderer* renderer = GetRenderer();
-    renderer->EnableDepthTest(true);
-    renderer->EndPass();
+    renderer->FinishPass();
   }
 
   void FullQuadPass::SetFragmentShader(ShaderPtr fragmentShader, Renderer* renderer)

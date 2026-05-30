@@ -7,6 +7,9 @@
 
 #pragma once
 
+/** If vulkan render backend is desired, define TK_VULKAN */
+//#define TK_VULKAN
+
 namespace ToolKit
 {
 
@@ -21,6 +24,12 @@ namespace ToolKit
   static constexpr int TKDebug = 1;
 #else
   static constexpr int TKDebug = 0;
+#endif
+
+#ifdef TK_VULKAN
+  static constexpr int TKVulkan = 1;
+#else
+  static constexpr int TKVulkan = 0;
 #endif
 
 #ifdef _WIN32

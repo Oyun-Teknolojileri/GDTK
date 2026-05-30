@@ -1,21 +1,21 @@
 <shader>
 	<type name = "includeShader" />
+	<include name = "vulkanCompatInc.shader" />
 	<include name = "pbrCommon.shader" />
 	<include name = "shadow.shader" />
-	<uniform name = "activePointLightIndexes" size = "24" />
-	<uniform name = "activeSpotLightIndexes" size = "24" />
+	<include name = "perDrawDataInc.shader" />
 	<define name = "highlightCascades" val="0,1" />
+	<texture slot = "8" name = "s_texture8" viewType = "2darray" />
+	<texture slot = "13" name = "s_texture13" />
 	<source>
 	<!--
 #ifndef LIGHTING_SHADER
 #define LIGHTING_SHADER
 
-uniform sampler2DArray s_texture8; // Shadow atlas
+TK_SAMPLER_BINDING(8)  uniform sampler2DArray s_texture8; // Shadow atlas
 
 /// Deferred rendering uniforms
-uniform sampler2D s_texture13; // Light data
-uniform int activePointLightIndexes[MAX_POINT_LIGHT_PER_OBJECT];
-uniform int activeSpotLightIndexes[MAX_SPOT_LIGHT_PER_OBJECT];
+TK_SAMPLER_BINDING(13) uniform sampler2D s_texture13; // Light data
 
 const float shadowFadeOutDistanceNorm = 0.9;
 
@@ -66,6 +66,13 @@ float CalculateDirectionalShadow
 {
 	vec4 fragPosForLight = lightProjView * vec4(pos, 1.0);
 	vec3 projCoord = fragPosForLight.xyz * 0.5 + 0.5;
+#ifdef VULKAN
+	// Vulkan textures: UV.y=0 is top (opposite of OpenGL's bottom-origin convention).
+	// Negate to match where the shadow atlas was rendered with the negative-viewport trick.
+	projCoord.y = 1.0 - projCoord.y;
+	// GLM_FORCE_DEPTH_ZERO_TO_ONE: ortho clip Z is already [0,1]; no * 0.5 + 0.5 needed.
+	projCoord.z = fragPosForLight.z;
+#endif
 
 	vec2 startCoord = shadowAtlasCoord;
 	vec2 endCoord = shadowAtlasCoord + shadowAtlasResRatio;
@@ -109,6 +116,10 @@ float CalculateSpotShadow
 	vec4 fragPosForLight = lightProjView * vec4(pos, 1.0);
 	vec3 projCoord = fragPosForLight.xyz / fragPosForLight.w;
 	projCoord = projCoord * 0.5 + 0.5;
+#ifdef VULKAN
+	// Same UV.y origin correction as directional shadow.
+	projCoord.y = 1.0 - projCoord.y;
+#endif
 
 	float currFragDepth = lightDistance / shadowCameraFar;
 
@@ -303,7 +314,7 @@ vec3 PBRLighting
 	// ----- Point Lights -----
 	for (int i = 0; i < GetActivePointLightCount(); i++)
 	{
-		int ii = activePointLightIndexes[i];
+		int ii = perDraw._activePointLightIndices[i >> 2][i & 3];
 		PointLightData light = pointLightArray[ii];
 
 		vec3 fragToLight = light.position - fragPos;
@@ -351,7 +362,7 @@ vec3 PBRLighting
 	// ----- Spot Lights -----
 	for (int i = 0; i < GetActiveSpotLightCount(); i++)
 	{
-		int ii = activeSpotLightIndexes[i];
+		int ii = perDraw._activeSpotLightIndices[i >> 2][i & 3];
 		SpotLightData light = spotLightArray[ii];
 
 		vec3 fragToLight = light.position - fragPos;

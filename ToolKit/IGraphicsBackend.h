@@ -9,7 +9,6 @@
 #pragma once
 
 #include "RenderState.h"
-#include "ShaderUniform.h"
 #include "Types.h"
 
 #include <memory>
@@ -58,8 +57,17 @@ namespace ToolKit
 
     struct BackendInitParams
     {
-      void* getProcAddress = nullptr;
+      void* getProcAddress = nullptr; //!< GL: SDL_GL_GetProcAddress. VK: unused.
+      void* windowHandle   = nullptr; //!< VK: SDL_Window* (opaque, used by swapchain for extent queries). GL: unused.
       GpuErrorCallback errorCallback;
+
+      //!< VK: instance-level extension names the platform requires (VK_KHR_surface + platform surface ext).
+      //!< Filled by the editor via SDL_Vulkan_GetInstanceExtensions so ToolKit stays SDL-free.
+      std::vector<const char*> vkInstanceExtensions;
+
+      //!< VK: given a VkInstance (as void*), returns the platform VkSurfaceKHR (as uint64_t). 0 on failure.
+      //!< Implemented in the editor via SDL_Vulkan_CreateSurface.
+      std::function<uint64 (void*)> vkCreateSurface;
     };
 
     virtual void InitBackend(const BackendInitParams& params)                                               = 0;
@@ -68,8 +76,8 @@ namespace ToolKit
     virtual void EndFrame()                                                                                 = 0;
     virtual void Present()                                                                                  = 0;
 
-    virtual void BeginPass(const PassDesc& desc)                                                            = 0;
-    virtual void EndPass()                                                                                  = 0;
+    virtual void StartPass(const PassDesc& desc)                                                            = 0;
+    virtual void FinishPass()                                                                                  = 0;
 
     virtual void SetViewport(uint x, uint y, uint w, uint h)                                                = 0;
     virtual void SetScissor(uint x, uint y, uint w, uint h)                                                 = 0;
@@ -81,6 +89,7 @@ namespace ToolKit
 
     virtual void SubmitPerDrawData(const void* data, size_t size)                                           = 0;
     virtual void BindTexture(ubyte slot, TexturePtr tex)                                                    = 0;
+    virtual void BindUniformBuffer(const String& name, UniformBuffer* ub)                                   = 0;
 
     virtual void Draw(const DrawDesc& desc)                                                                 = 0;
 
@@ -133,9 +142,6 @@ namespace ToolKit
     virtual void AttachDepthTarget(Framebuffer* fb, DepthTexturePtr dt)                                     = 0;
     virtual void DetachDepthTarget(Framebuffer* fb)                                                         = 0;
 
-    virtual void SubmitCustomUniforms(const GpuProgramPtr& program,
-                                      std::unordered_map<String, ShaderUniform>& uniforms)                  = 0;
-
     virtual void SetUniform4f(int location, const Vec4& value)                                              = 0;
 
     virtual String GetBackendRendererString()                                                               = 0;
@@ -171,6 +177,11 @@ namespace ToolKit
     virtual void SetDebugLabel(Framebuffer* fb)                                                             = 0;
 
     virtual bool SupportsFloatTextureLinearFilter()                                                         = 0;
+
+    /** Whether the pipeline's rasterizer can clamp depth instead of clipping (used by ortho
+     *  directional shadow passes to avoid the pancake hack). GL: GL_EXT_depth_clamp extension.
+     *  VK: VkPhysicalDeviceFeatures::depthClamp (also requested at device-create time). */
+    virtual bool IsDepthClampSupported()                                                                    = 0;
 
     virtual void* GetNativeTextureHandle(Texture* tex)                                                      = 0;
   };

@@ -1,11 +1,13 @@
 ﻿<shader>
 	<type name = "fragmentShader" />
+	<include name = "vulkanCompatInc.shader" />
 	<include name = "VSMCommon.shader" />
 	<include name = "materialCacheInc.shader" />
 	<define name = "DrawAlphaMasked" val="0,1" />
+	<texture slot = "0" name = "s_texture0" />
 	<source>
 	<!--
-    #version 300 es
+    
     precision highp float;
     precision lowp int;
 
@@ -17,7 +19,7 @@
 
     out vec2 fragColor;
 
-    uniform sampler2D s_texture0;
+    TK_SAMPLER_BINDING(0) uniform sampler2D s_texture0;
 
     void main()
     {

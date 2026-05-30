@@ -2,10 +2,10 @@
 	<type name = "vertexShader" />
 	<include name = "cameraDataInc.shader" />
 	<include name = "drawDataInc.shader" />
-	<uniform name = "modelWithoutTranslate" />
+	<include name = "perDrawDataInc.shader" />
 	<source>
 	<!--
-		#version 300 es
+		
 		precision lowp float;
 
 		// Fixed Attributes.
@@ -13,12 +13,11 @@
 		layout (location = 1) in vec3 vNormal;
 		layout (location = 2) in vec2 vTexture;
 
-		uniform mat4 modelWithoutTranslate;
 		out vec3 v_pos;
 
 		void main()
 		{
-			v_pos = (modelWithoutTranslate * vec4(vPosition, 1.0)).xyz;
+			v_pos = (perDraw._modelWithoutTranslate * vec4(vPosition, 1.0)).xyz;
 
 			vec4 clipPos = camera.projectionViewNoTranslate * vec4(vPosition, 1.0);
 

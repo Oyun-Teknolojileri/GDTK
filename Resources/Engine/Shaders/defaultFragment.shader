@@ -1,5 +1,6 @@
 <shader>
 	<type name = "fragmentShader" />
+	<include name = "vulkanCompatInc.shader" />
 	<include name = "lighting.shader" />
 	<include name = "ibl.shader" />
 	<include name = "AO.shader" />
@@ -9,19 +10,23 @@
 	<define name = "ShadowPCF" val="0,4,9,16" />
 	<define name = "highlightCascades" val="0,1" />
 	<define name = "ShadingMode" val="0,1,2,3,4,5" />
+	<texture slot = "0" name = "s_texture0" />
+	<texture slot = "1" name = "s_texture1" />
+	<texture slot = "4" name = "s_texture4" />
+	<texture slot = "9" name = "s_texture9" />
 	<source>
 	<!--
-	#version 300 es
+	
 	precision highp float;
 	precision lowp int;
 	precision mediump sampler2D;
 	precision mediump samplerCube;
 	precision highp sampler2DArray;
 
-	uniform sampler2D s_texture0; // color
-	uniform sampler2D s_texture1; // emissive
-	uniform sampler2D s_texture4; // metallic-roughness
-	uniform sampler2D s_texture9; // normal
+	TK_SAMPLER_BINDING(0) uniform sampler2D s_texture0; // color
+	TK_SAMPLER_BINDING(1) uniform sampler2D s_texture1; // emissive
+	TK_SAMPLER_BINDING(4) uniform sampler2D s_texture4; // metallic-roughness
+	TK_SAMPLER_BINDING(9) uniform sampler2D s_texture9; // normal
 
 	#define SHADE_LIGHTING_ONLY 1
 	#define SHADE_ALBEDO_ONLY 2
@@ -29,11 +34,11 @@
 	#define SHADE_METALLIC_ONLY 4
 	#define SHADE_ROUGHNESS_ONLY 5
 
-	in vec3 v_worldPos;
-	in vec3 v_worldNormal;
-	in vec2 v_texture;
-	in float v_viewDepth;
-	in mat3 TBN;
+	TK_LOC(0) in vec3 v_worldPos;
+	TK_LOC(1) in vec3 v_worldNormal;
+	TK_LOC(2) in vec2 v_texture;
+	TK_LOC(3) in float v_viewDepth;
+	TK_LOC(4) in mat3 TBN;
 
 	layout (location = 0) out vec4 fragColor;
 

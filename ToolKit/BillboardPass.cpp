@@ -27,7 +27,8 @@ namespace ToolKit
 
     GpuProgramManager* gpuProgramManager = renderer->GetGpuProgramManager();
 
-    auto renderBillboardsFn              = [this, cam, renderer, gpuProgramManager](EntityPtrArray& billboards) -> void
+    auto renderBillboardsFn = [this, cam, renderer, gpuProgramManager](EntityPtrArray& billboards,
+                                                                       bool depthTest) -> void
     {
       m_renderData.jobs.clear();
 
@@ -35,14 +36,15 @@ namespace ToolKit
       RenderJobProcessor::CreateRenderJobs(m_renderData.jobs, rawBillboards);
       RenderJobProcessor::SeperateRenderData(m_renderData, true);
 
+      // depthTestEnabled is the only passive field that varies per billboard group.
+      m_passState.depthTestEnabled = depthTest;
+      renderer->SetPassState(m_passState);
+
       renderer->RenderWithProgramFromMaterial(m_renderData.jobs);
     };
 
-    renderer->EnableDepthTest(false);
-    renderBillboardsFn(m_noDepthBillboards);
-
-    renderer->EnableDepthTest(true);
-    renderBillboardsFn(m_params.Billboards);
+    renderBillboardsFn(m_noDepthBillboards, false);
+    renderBillboardsFn(m_params.Billboards, true);
   }
 
   void BillboardPass::PreRender()
@@ -71,7 +73,7 @@ namespace ToolKit
   void BillboardPass::PostRender()
   {
     Pass::PostRender();
-    GetRenderer()->EndPass();
+    GetRenderer()->FinishPass();
   }
 
 } // namespace ToolKit

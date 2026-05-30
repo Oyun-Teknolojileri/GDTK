@@ -1,19 +1,20 @@
 <shader>
 	<type name = "includeShader" />
-	<uniform name = "viewportSize" />
+	<include name = "vulkanCompatInc.shader" />
+	<include name = "perDrawDataInc.shader" />
+	<texture slot = "5" name = "s_texture5" />
 	<source>
 	<!--
 #ifndef AO_SHADER
 #define AO_SHADER
 
-uniform sampler2D s_texture5; // ambient occlusion.
-uniform vec2 viewportSize;
+TK_SAMPLER_BINDING(5) uniform sampler2D s_texture5; // ambient occlusion.
 
 float AmbientOcclusion()
 {
 	if (IsAmbientOcculusionInUse())
 	{
-		vec2 coords = gl_FragCoord.xy / viewportSize;
+		vec2 coords = gl_FragCoord.xy / perDraw._viewportSizeAndPad.xy;
 		return texture(s_texture5, coords).r;
 	}
 

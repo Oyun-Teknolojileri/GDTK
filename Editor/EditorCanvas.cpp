@@ -31,8 +31,8 @@ namespace ToolKit
         canvasBorderMaterial         = GetMaterialManager()->GetCopyOfUnlitMaterial();
         canvasBorderMaterial->m_name = materialFile;
         canvasBorderMaterial->SetFile(materialFile);
-        canvasBorderMaterial->GetRenderState()->drawType  = DrawType::Line;
-        canvasBorderMaterial->GetRenderState()->lineWidth = 3.0f;
+        canvasBorderMaterial->drawType  = DrawType::Line;
+        canvasBorderMaterial->lineWidth = 3.0f;
         matMan->Manage(canvasBorderMaterial);
       }
 

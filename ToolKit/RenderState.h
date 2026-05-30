@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include "Serialize.h"
+#include "Types.h"
 
 namespace ToolKit
 {
@@ -101,31 +101,41 @@ namespace ToolKit
     AllowPixelsFailingStencil
   };
 
-  class TK_API RenderState : public Serializable
+  /**
+   * Rasterizer state composed at draw time and handed to the backend's BindPipeline.
+   * Passive bits (depth, stencil, color mask, depth clamp, blend override) are set once per pass
+   * via Renderer::SetPassState. Active bits (cull, blend, draw type, alpha mask threshold,
+   * line width) come from the Material that owns them — Renderer copies them in at each draw.
+   * Materials no longer store a RenderState; this struct is a transient draw-call descriptor.
+   */
+  class TK_API RenderState
   {
    public:
-    // Active state values.
-    // Changing these settings will modify the renderer's state.
+    // Active fields. Sourced from Material at draw time; not pass-level state.
     CullingType cullMode              = CullingType::Back;
     BlendFunction blendFunction       = BlendFunction::NONE;
     DrawType drawType                 = DrawType::Triangle;
     float alphaMaskTreshold           = 0.001f;
     float lineWidth                   = 1.0f;
 
-    // Passive state values.
-    // Renderer changes or updates these values.
+    // Passive fields. Set by passes through Renderer::SetPassState.
     bool depthTestEnabled             = true;
     bool depthWriteEnabled            = true;
     CompareFunctions depthFunction    = CompareFunctions::FuncLess;
     StencilOperation stencilOperation = StencilOperation::None;
     bool colorMaskEnabled             = true;
     bool depthClampEnabled            = false;
+
+    /** When true, Renderer::Render replaces the material's blendFunction with blendOverrideFunc.
+     *  Lets a pass force a single blend mode across every draw (e.g. shadow casters always = NONE)
+     *  without mutating each material asset. */
     bool blendOverride                = false;
     BlendFunction blendOverrideFunc   = BlendFunction::NONE;
 
-   protected:
-    virtual XmlNode* SerializeImp(XmlDocument* doc, XmlNode* parent) const;
-    virtual XmlNode* DeSerializeImp(const SerializationFileInfo& info, XmlNode* parent);
+    /** Same mechanism for cull. Used by two-sided translucent rendering to do a back-then-front
+     *  two-pass draw of a single job by toggling cullOverrideMode between draws. */
+    bool cullOverride                 = false;
+    CullingType cullOverrideMode      = CullingType::Back;
   };
 
 } // namespace ToolKit

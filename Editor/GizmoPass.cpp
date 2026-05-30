@@ -21,10 +21,15 @@ namespace ToolKit
       m_depthMaskSphere = MakeNewPtr<Sphere>();
       m_depthMaskSphere->SetRadiusVal(0.95f);
 
-      MeshComponentPtr mc = m_depthMaskSphere->GetMeshComponent();
-      MeshPtr mesh        = mc->GetMeshVal();
-      RenderState* rs     = mesh->m_material->GetRenderState();
-      rs->cullMode        = CullingType::Front;
+      MeshComponentPtr mc          = m_depthMaskSphere->GetMeshComponent();
+      MeshPtr mesh                 = mc->GetMeshVal();
+      mesh->m_material->cullMode   = CullingType::Front;
+
+      // Passive overrides used by the two non-default sub-draws (depth-mask sphere, guide meshes).
+      // Both inherit the rest from the default RenderState construction; only the highlighted
+      // field is the meaningful change in each case.
+      m_depthMaskPassState.colorMaskEnabled = false;
+      m_guideMeshPassState.depthFunction    = CompareFunctions::FuncAlways;
     }
 
     GizmoPass::GizmoPass(const GizmoPassParams& params) : GizmoPass() { m_params = params; }
@@ -41,13 +46,11 @@ namespace ToolKit
           Mat4 ts = billboard->m_node->GetTransform();
           m_depthMaskSphere->m_node->SetTransform(ts, TransformationSpace::TS_WORLD);
 
-          renderer->ColorMask(false, false, false, false);
-
+          // Depth-mask sphere: write only depth, no color.
           RenderJobArray jobs;
           RenderJobProcessor::CreateRenderJobs(jobs, m_depthMaskSphere);
+          renderer->SetPassState(m_depthMaskPassState);
           renderer->RenderWithProgramFromMaterial(jobs);
-
-          renderer->ColorMask(true, true, true, true);
 
           jobs.clear();
           RenderJobProcessor::CreateRenderJobs(jobs, billboard);
@@ -69,14 +72,18 @@ namespace ToolKit
               }
             }
 
+            // Reset passive state to defaults before drawing the normal jobs — the depth-mask
+            // pass left colorMaskEnabled=false in m_passiveState.
+            renderer->SetPassState(m_defaultPassState);
             renderer->RenderWithProgramFromMaterial(normalJobs);
 
-            renderer->SetDepthTestFunc(CompareFunctions::FuncAlways);
+            // Guide meshes draw on top regardless of depth.
+            renderer->SetPassState(m_guideMeshPassState);
             renderer->RenderWithProgramFromMaterial(guideJobs);
-            renderer->SetDepthTestFunc(CompareFunctions::FuncLess);
           }
           else
           {
+            renderer->SetPassState(m_defaultPassState);
             renderer->RenderWithProgramFromMaterial(jobs);
           }
         }
@@ -84,6 +91,7 @@ namespace ToolKit
         {
           RenderJobArray jobs;
           RenderJobProcessor::CreateRenderJobs(jobs, billboard);
+          renderer->SetPassState(m_defaultPassState);
           renderer->RenderWithProgramFromMaterial(jobs);
         }
       }

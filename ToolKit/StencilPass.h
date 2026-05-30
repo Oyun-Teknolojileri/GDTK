@@ -41,6 +41,10 @@ namespace ToolKit
     MaterialPtr m_solidOverrideMaterial  = nullptr;
     FullQuadPassPtr m_copyStencilSubPass = nullptr;
     ShaderPtr m_unlitFragShader          = nullptr;
+
+    /** Pass-owned passive RenderState for the stencil-write loop: stencilOp = AllowAllPixels
+     *  to mark covered pixels, colorMask off so the pass writes only stencil. */
+    RenderState m_writePassState;
   };
 
   typedef std::shared_ptr<StencilRenderPass> StencilRenderPassPtr;

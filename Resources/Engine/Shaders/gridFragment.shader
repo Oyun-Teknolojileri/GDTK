@@ -1,6 +1,7 @@
 <shader>
 	<type name = "fragmentShader" />
 	<include name = "cameraDataInc.shader" />
+<include name = "gridPassDataInc.shader" />
 	<source>
 	<!--
 		// This algorithm works as:
@@ -27,7 +28,7 @@
 
 
 		// This shader
-		#version 300 es
+		
 		precision highp float;
 		precision mediump int;
 
@@ -37,16 +38,6 @@
 		in vec3 v_pos;
 
 		const float gridCullDistance = 10000.0f;
-		struct _GridData
-		{
-			float cellSize;
-			float lineMaxPixelCount;
-			vec3 horizontalAxisColor;
-			vec3 verticalAxisColor;
-			uint is2DViewport; //!-< True: Viewport is 2D. False: Viewport is 3D.
-			float cullDistance;	//!-< Not used for now, gridCullDistance constant above is used for now
-		};
-		uniform _GridData GridData;
 		
 		out vec4 fragColor;
 
@@ -64,7 +55,7 @@
 			vec2 dudv = vec2(length(vec2(dFdx(uv.x), dFdy(uv.x))), length(vec2(dFdx(uv.y), dFdy(uv.y))));
 
 			float min_pixels_between_cells = 1.0f;
-			float cs = GridData.cellSize / ((GridData.is2DViewport > 0u) ? 10.0f : 1.0f);
+			float cs = gridData.cellAndLine.x / ((gridData.is2DAndPad.x != 0) ? 10.0f : 1.0f);
 
 			// Calc lod-level
 			float lod_level = max(0.0f, log10((length(dudv) * min_pixels_between_cells) / cs) + 1.0f);
@@ -77,9 +68,9 @@
 
 
 			// Allow each anti-aliased line to cover up to N pixels.
-			dudv *= GridData.lineMaxPixelCount;
+			dudv *= gridData.cellAndLine.y;
 			// Offset to pixel center
-			uv = abs(uv) + dudv / GridData.lineMaxPixelCount;
+			uv = abs(uv) + dudv / gridData.cellAndLine.y;
 
 			// For each cell LoD: calculate distance to nearest cell's line center
 			//		and pick max of X,Y to get a coverage alpha value
@@ -98,10 +89,10 @@
 			bool is_axis_x = lod2_cross_a.y > 0.0f && (-lod1_cs < o_gridPos.y && o_gridPos.y < lod1_cs);
 
 			if(is_axis_x){
-				thick_color = vec4(GridData.horizontalAxisColor, 1.0f);
+				thick_color = vec4(gridData.horizontalAxisColor.xyz, 1.0f);
 			}
 			if(is_axis_z){
-				thick_color = vec4(GridData.verticalAxisColor, 1.0f);
+				thick_color = vec4(gridData.verticalAxisColor.xyz, 1.0f);
 			}
 			
 			// Blend between falloff colors.
@@ -124,7 +115,7 @@
 					c.a *= lod0_a * (1.0f-lod_fade);
 				}
 			}
-			if (GridData.is2DViewport == 0u)
+			if (gridData.is2DAndPad.x == 0)
 			{
 				// Attenuation
 				float constant = 1.0;

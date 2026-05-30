@@ -11,7 +11,6 @@
 #include "ParameterBlock.h"
 #include "Resource.h"
 #include "ResourceManager.h"
-#include "ShaderUniform.h"
 
 namespace ToolKit
 {
@@ -23,6 +22,32 @@ namespace ToolKit
     FragmentShader, //!< Fragment shader to execute.
     IncludeShader   //!< Shader file to be included other shader files.
   };
+
+  /** Resource binding declaration parsed from shader XML metadata. */
+  struct ShaderResource
+  {
+    enum class Type
+    {
+      Texture,      //!< Sampler / texture binding.
+      UniformBuffer //!< Uniform buffer (UBO) binding.
+    };
+
+    /** The image view type required by the SPIR-V OpTypeImage for this sampler. Used by the
+        Vulkan backend to select the correct dummy texture when a slot is left unbound. */
+    enum class ViewType
+    {
+      Tex2D,      //!< sampler2D  — default.
+      Tex2DArray, //!< sampler2DArray
+      TexCube,    //!< samplerCube
+    };
+
+    Type type         = Type::Texture;
+    ViewType viewType = ViewType::Tex2D;
+    int slot          = -1; //!< Binding slot index. -1 means unspecified (name-based lookup).
+    String name;            //!< Identifier as it appears in the shader source.
+  };
+
+  typedef std::vector<ShaderResource> ShaderResourceArray;
 
   /** Struct that holds shader definitions and its variants. */
   struct ShaderDefine
@@ -105,22 +130,6 @@ namespace ToolKit
                                    ShaderDefineCombinaton& currentCombination);
 
    public:
-    struct ArrayUniform
-    {
-      Uniform uniform;
-      int size;
-
-      bool operator==(const ArrayUniform& other) const { return uniform == other.uniform && size == other.size; }
-
-      bool operator<(const ArrayUniform& other) const { return uniform < other.uniform; }
-    };
-
-    /** Built-in Uniform's that are required for the shader. */
-    std::vector<Uniform> m_uniforms;
-
-    /** Built-in Uniform's that are arrays and required for the shader. */
-    std::vector<ArrayUniform> m_arrayUniforms;
-
     /** Type of the shader. */
     ShaderType m_shaderType = ShaderType::VertexShader;
 
@@ -135,6 +144,9 @@ namespace ToolKit
 
     /** Shader defines are stored in this array. */
     ShaderDefineArray m_defineArray;
+
+    /** Resource bindings (textures + UBOs) declared in the shader XML metadata. */
+    ShaderResourceArray m_resources;
 
    private:
     /**

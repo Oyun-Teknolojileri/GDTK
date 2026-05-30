@@ -24,8 +24,8 @@ namespace ToolKit
     void EndFrame() override;
     void Present() override;
 
-    void BeginPass(const PassDesc& desc) override;
-    void EndPass() override;
+    void StartPass(const PassDesc& desc) override;
+    void FinishPass() override;
 
     void SetViewport(uint x, uint y, uint w, uint h) override;
     void SetScissor(uint x, uint y, uint w, uint h) override;
@@ -37,6 +37,7 @@ namespace ToolKit
 
     void SubmitPerDrawData(const void* data, size_t size) override;
     void BindTexture(ubyte slot, TexturePtr tex) override;
+    void BindUniformBuffer(const String& name, UniformBuffer* ub) override;
 
     void Draw(const DrawDesc& desc) override;
 
@@ -100,8 +101,6 @@ namespace ToolKit
     void InvalidateTextureCache(uint id);
 
     // Phase 7a: Custom uniforms and renderer utility
-    void SubmitCustomUniforms(const GpuProgramPtr& program,
-                              std::unordered_map<String, ShaderUniform>& uniforms) override;
     void SetUniform4f(int location, const Vec4& value) override;
     String GetBackendRendererString() override;
     int GetMaxArrayTextureLayers() override;
@@ -117,6 +116,7 @@ namespace ToolKit
     void SetDebugLabel(Texture* tex) override;
     void SetDebugLabel(Framebuffer* fb) override;
     bool SupportsFloatTextureLinearFilter() override;
+    bool IsDepthClampSupported() override;
     void* GetNativeTextureHandle(Texture* tex) override;
 
    private:

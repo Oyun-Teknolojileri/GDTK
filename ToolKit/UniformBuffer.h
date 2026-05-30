@@ -27,6 +27,8 @@ namespace ToolKit
 
     void Init(uint64 size);
 
+    void Destroy();
+
     /**
      * Maps the cpu data to gpu.
      * data must be a struct or an array of struct with std140 layout.
@@ -44,7 +46,7 @@ namespace ToolKit
   };
 
   template <typename DataLayout, int Slot>
-  class TK_API GpuBufferBase
+  class GpuBufferBase
   {
    public:
     static constexpr int Binding() { return Slot; }
@@ -68,6 +70,12 @@ namespace ToolKit
         m_buffer.Map(&m_data, sizeof(DataLayout));
         m_invalid = false;
       }
+    }
+
+    void Destroy()
+    {
+      m_buffer.Destroy();
+      m_invalid = true;
     }
 
    public:

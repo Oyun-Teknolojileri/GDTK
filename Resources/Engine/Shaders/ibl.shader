@@ -1,9 +1,16 @@
 <shader>
 	<type name = "includeShader" />
+	<include name = "vulkanCompatInc.shader" />
 	<include name = "pbrCommon.shader" />
 	<include name = "drawDataInc.shader" />
-	<uniform name = "iblRotation" />
-	<uniform name = "iblSecondaryRotation" />
+	<include name = "perDrawDataInc.shader" />
+	<texture slot = "7"  name = "s_texture7"  viewType = "cube" />
+	<texture slot = "10" name = "s_texture10" />
+	<texture slot = "11" name = "s_texture11" viewType = "cube" />
+	<texture slot = "12" name = "s_texture12" viewType = "cube" />
+	<texture slot = "15" name = "s_texture15" viewType = "cube" />
+	<texture slot = "16" name = "s_texture16" viewType = "cube" />
+	<texture slot = "17" name = "s_texture17" viewType = "cube" />
 	<source>
 	<!--
 
@@ -11,20 +18,21 @@
 #define IBL_SHADER
 
 // Local volume 0
-uniform samplerCube s_texture7; 	// Diffuse Map
-uniform samplerCube s_texture15; 	// Pre-Filtered Specular Map
-uniform sampler2D s_texture10;		// IBL BRDF Lut
+TK_SAMPLER_BINDING(7)  uniform samplerCube s_texture7; 	// Diffuse Map
+TK_SAMPLER_BINDING(15) uniform samplerCube s_texture15; 	// Pre-Filtered Specular Map
+TK_SAMPLER_BINDING(10) uniform sampler2D s_texture10;		// IBL BRDF Lut
 
 // Local volume 1
-uniform samplerCube s_texture11;	// Diffuse Map
-uniform samplerCube s_texture12;	// Pre-Filtered Specular Map
+TK_SAMPLER_BINDING(11) uniform samplerCube s_texture11;	// Diffuse Map
+TK_SAMPLER_BINDING(12) uniform samplerCube s_texture12;	// Pre-Filtered Specular Map
 
 // Sky (global fallback)
-uniform samplerCube s_texture16;	// Sky Diffuse Map
-uniform samplerCube s_texture17;	// Sky Pre-Filtered Specular Map
+TK_SAMPLER_BINDING(16) uniform samplerCube s_texture16;	// Sky Diffuse Map
+TK_SAMPLER_BINDING(17) uniform samplerCube s_texture17;	// Sky Pre-Filtered Specular Map
 
-uniform mat4 iblRotation;            // Sky rotation
-uniform mat4 iblSecondaryRotation;   // Unused placeholder for local volume rotations (local = identity)
+// Sky rotation backed by perDraw._iblRotation (PerDrawData UBO, slot 6).
+// `iblSecondaryRotation` is reserved for local-volume rotations but currently identity-only —
+// reads come straight off `perDraw._iblSecondaryRotation` if/when needed.
 
 // ---------------------------------------------------------------------------
 // Filament-style IBL helpers
@@ -78,14 +86,14 @@ vec3 EvalSky(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float per
 
 	// Diffuse
 	vec3 diffuseColor = albedo * (1.0 - metallic);
-	vec3 iblDiffuseVec = (iblRotation * vec4(normal, 0.0)).xyz;
+	vec3 iblDiffuseVec = (perDraw._iblRotation * vec4(normal, 0.0)).xyz;
 	vec3 irradiance = texture(s_texture16, iblDiffuseVec).rgb;
 	color += diffuseColor * irradiance * (1.0 - E);
 
 	// Specular
 	vec3 R = reflect(-fragToEye, normal);
 	R = GetSpecularDominantDirection(normal, R, perceptualRoughness);
-	vec3 iblSpecVec = (iblRotation * vec4(R, 0.0)).xyz;
+	vec3 iblSpecVec = (perDraw._iblRotation * vec4(R, 0.0)).xyz;
 	float lod = RoughnessToLod(perceptualRoughness, float(graphicConstants.iblMaxReflectionLod));
 	vec3 preFilteredColor = textureLod(s_texture17, iblSpecVec, lod).rgb;
 	color += E * preFilteredColor * energyComp;
