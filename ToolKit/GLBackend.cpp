@@ -69,6 +69,7 @@ namespace ToolKit
       GL_DEPTH_ATTACHMENT,        // DepthAttachment
       GL_FLOAT,                   // TypeFloat
       GL_UNSIGNED_BYTE,           // TypeUnsignedByte
+      GL_HALF_FLOAT,              // TypeHalfFloat
       GL_TEXTURE_2D,              // Target2D
       GL_TEXTURE_CUBE_MAP,        // TargetCubeMap
       GL_TEXTURE_2D_ARRAY         // Target2DArray

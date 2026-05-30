@@ -381,6 +381,7 @@ namespace ToolKit
     DepthAttachment,
     TypeFloat,
     TypeUnsignedByte,
+    TypeHalfFloat,
     Target2D,
     TargetCubeMap,
     Target2DArray

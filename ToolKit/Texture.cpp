@@ -80,7 +80,7 @@ namespace ToolKit
       return;
     }
 
-    if (m_settings.Type == GraphicTypes::TypeFloat)
+    if (m_settings.Type == GraphicTypes::TypeFloat || m_settings.Type == GraphicTypes::TypeHalfFloat)
     {
 
       if ((m_imagef = GetFileManager()->GetHdriFile(GetFile(), &m_width, &m_height, &m_numChannels, 4)))
@@ -540,7 +540,7 @@ namespace ToolKit
   Hdri::Hdri()
   {
     m_settings.InternalFormat = GraphicTypes::FormatRGBA16F;
-    m_settings.Type           = GraphicTypes::TypeFloat;
+    m_settings.Type           = GraphicTypes::TypeHalfFloat;
     m_settings.MinFilter      = GraphicTypes::SampleLinear;
     m_settings.GenerateMipMap = false;
   }
