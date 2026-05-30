@@ -166,7 +166,7 @@ namespace ToolKit
     m_preFilterEnvMapBufferInitialized = false;
 
     m_gradientSkyboxBuffer.Destroy();
-    m_gradientSkyboxBufferInitialized  = false;
+    m_gradientSkyboxBufferInitialized = false;
 
     SafeDel(m_gpuProgramManager);
 
@@ -299,7 +299,7 @@ namespace ToolKit
     // CPU-side state � no backend calls here, all read later by FeedUniforms.
     SetTransforms(job.WorldTransform);
     SetLights(job.lights);
-    m_model = job.WorldTransform;
+    m_model                 = job.WorldTransform;
 
     // Compose the draw-time rasterizer state: passive bits come from the per-pass state set via
     // SetPassState, active bits come from the material itself. RenderState is no longer stored
@@ -354,7 +354,7 @@ namespace ToolKit
 
     FeedUniforms(m_currentProgram, job);
 
-    const Mesh* mesh  = job.Mesh;
+    const Mesh* mesh = job.Mesh;
     DrawDesc desc;
     desc.mesh         = mesh;
     desc.vertexLayout = mesh->m_vertexLayout;
@@ -1089,21 +1089,21 @@ namespace ToolKit
     static_assert(RHIConstants::MaxPointLightPerObject == 24, "PerDrawUboLayout assumes 24 point indices");
     static_assert(RHIConstants::MaxSpotLightPerObject == 24, "PerDrawUboLayout assumes 24 spot indices");
 
-    PerDrawUboLayout& ubo       = m_globalGpuBuffers->perDrawBuffer.m_data;
-    ubo.model                   = m_model;
-    ubo.modelWithoutTranslate   = m_modelWithoutTranslate;
-    ubo.inverseModel            = m_inverseModel;
-    ubo.inverseTransposeModel   = m_inverseTransposeModel;
-    ubo.iblRotation             = m_iblRotation;
-    ubo.iblSecondaryRotation    = m_secondaryIblRotation;
-    ubo.viewportSizeAndPad      = Vec4((float) m_viewportRect.x, (float) m_viewportRect.y, 0.0f, 0.0f);
-    ubo.drawCommand             = m_drawCommand;
-    ubo.materialData            = job.Material->GetCacheItem().data;
+    PerDrawUboLayout& ubo     = m_globalGpuBuffers->perDrawBuffer.m_data;
+    ubo.model                 = m_model;
+    ubo.modelWithoutTranslate = m_modelWithoutTranslate;
+    ubo.inverseModel          = m_inverseModel;
+    ubo.inverseTransposeModel = m_inverseTransposeModel;
+    ubo.iblRotation           = m_iblRotation;
+    ubo.iblSecondaryRotation  = m_secondaryIblRotation;
+    ubo.viewportSizeAndPad    = Vec4((float) m_viewportRect.x, (float) m_viewportRect.y, 0.0f, 0.0f);
+    ubo.drawCommand           = m_drawCommand;
+    ubo.materialData          = job.Material->GetCacheItem().data;
 
     // Pack the 24 ints into 6 ivec4. std140 would otherwise grow each int to 16 bytes.
     std::memcpy(ubo.activePointLightIndices, m_activePointLightIndices.data(), sizeof(int) * 24);
     std::memcpy(ubo.activeSpotLightIndices, m_activeSpotLightIndices.data(), sizeof(int) * 24);
-    ubo.lightCounts             = IVec4(m_activePointLightCount, m_activeSpotLightCount, 0, 0);
+    ubo.lightCounts   = IVec4(m_activePointLightCount, m_activeSpotLightCount, 0, 0);
 
     // Animation / skinning
     Vec4 keyFrameData = Vec4(0.0f);
@@ -1114,7 +1114,7 @@ namespace ToolKit
                           job.animData.keyFrameInterpolationTime,
                           job.animData.keyFrameCount);
     }
-    ubo.keyFrameData = keyFrameData;
+    ubo.keyFrameData    = keyFrameData;
 
     Vec4 blendFrameData = Vec4(0.0f);
     if (job.animData.blendAnimation != nullptr)
@@ -1126,7 +1126,7 @@ namespace ToolKit
     }
     ubo.blendFrameData = blendFrameData;
 
-    Vec4 skinParams = Vec4(0.0f);
+    Vec4 skinParams    = Vec4(0.0f);
     if (job.Mesh->IsSkinned())
     {
       const SkeletonPtr& skel = static_cast<const SkinMesh*>(job.Mesh)->m_skeleton;
@@ -1135,11 +1135,11 @@ namespace ToolKit
         float boneCount  = (float) skel->m_bones.size();
         float isAnimated = (job.animData.currentAnimation != nullptr) ? 1.0f : 0.0f;
         float hasBlend   = (job.animData.blendAnimation != nullptr) ? 1.0f : 0.0f;
-        skinParams = Vec4(boneCount, 1.0f, isAnimated, hasBlend);
+        skinParams       = Vec4(boneCount, 1.0f, isAnimated, hasBlend);
       }
     }
-    ubo.skinParams              = skinParams;
-    ubo.animBlendFactorAndPad   = Vec4(job.animData.animationBlendFactor, 0.0f, 0.0f, 0.0f);
+    ubo.skinParams            = skinParams;
+    ubo.animBlendFactorAndPad = Vec4(job.animData.animationBlendFactor, 0.0f, 0.0f, 0.0f);
 
     m_globalGpuBuffers->perDrawBuffer.Invalidate();
     m_globalGpuBuffers->perDrawBuffer.Map();
@@ -1206,7 +1206,7 @@ namespace ToolKit
     // Views for 6 different angles
     CameraPtr cam = MakeNewPtr<Camera>();
     cam->SetLens(glm::radians(90.0f), 1.0f, 0.1f, 10.0f);
-#if TK_VULKAN
+#ifdef TK_VULKAN
     Mat4 views[] = {glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f)),
                     glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f)),
                     glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
@@ -1369,20 +1369,20 @@ namespace ToolKit
     // Views for 6 different angles
     CameraPtr cam = MakeNewPtr<Camera>();
     cam->SetLens(glm::radians(90.0f), 1.0f, 0.1f, 10.0f);
-#if TK_VULKAN
-    Mat4 views[]    = {glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f)),
-                       glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, 1.0f, 0.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, 1.0f, 0.0f))};
+#ifdef TK_VULKAN
+    Mat4 views[] = {glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, 1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, 1.0f, 0.0f))};
 #else // opengl
-    Mat4 views[]    = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                       glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
+    Mat4 views[] = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
 #endif
 
     // Create material
@@ -1436,20 +1436,20 @@ namespace ToolKit
   {
     Stats::BeginGpuScope("GenerateSpecularEnvMap");
 
-    const TextureSettings set = {GraphicTypes::TargetCubeMap,
-                                 GraphicTypes::UVClampToEdge,
-                                 GraphicTypes::UVClampToEdge,
-                                 GraphicTypes::UVClampToEdge,
-                                 GraphicTypes::SampleLinearMipmapLinear,
-                                 GraphicTypes::SampleLinear,
-                                 GraphicTypes::FormatRGBA16F,
-                                 GraphicTypes::FormatRGBA,
-                                 GraphicTypes::TypeFloat,
-                                 MsaaSampleCount::x0,
-                                 false};
+    const TextureSettings set  = {GraphicTypes::TargetCubeMap,
+                                  GraphicTypes::UVClampToEdge,
+                                  GraphicTypes::UVClampToEdge,
+                                  GraphicTypes::UVClampToEdge,
+                                  GraphicTypes::SampleLinearMipmapLinear,
+                                  GraphicTypes::SampleLinear,
+                                  GraphicTypes::FormatRGBA16F,
+                                  GraphicTypes::FormatRGBA,
+                                  GraphicTypes::TypeFloat,
+                                  MsaaSampleCount::x0,
+                                  false};
 
     // Don't allow caches bigger than the actual image.
-    size                      = glm::min(size, cubemap->m_width);
+    size                       = glm::min(size, cubemap->m_width);
 
     TextureSettings cubemapSet = set;
     cubemapSet.GenerateMipMap  = true;
@@ -1462,7 +1462,7 @@ namespace ToolKit
     // Views for 6 different angles
     CameraPtr cam = MakeNewPtr<Camera>();
     cam->SetLens(glm::radians(90.0f), 1.0f, 0.1f, 10.0f);
-#if TK_VULKAN
+#ifdef TK_VULKAN
     Mat4 views[] = {glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f)),
                     glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f)),
                     glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
@@ -1470,12 +1470,12 @@ namespace ToolKit
                     glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, 1.0f, 0.0f)),
                     glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, 1.0f, 0.0f))};
 #else
-    Mat4 views[]    = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                       glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                       glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
+    Mat4 views[] = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
 #endif
 
     // Create material
@@ -1494,7 +1494,7 @@ namespace ToolKit
     {
       Stats::BeginGpuScope("SpecularEnvMapMip" + std::to_string(mip));
 
-      int mipSize               = (int) (size * std::powf(0.5f, (float) mip));
+      int mipSize = (int) (size * std::powf(0.5f, (float) mip));
 
       m_oneColorAttachmentFramebuffer->ReconstructIfNeeded({mipSize, mipSize, false, false});
 
@@ -1601,20 +1601,20 @@ namespace ToolKit
     cam->SetLens(glm::radians(90.0f), 1.0f, near, far);
 
     // 6 cubemap face view matrices.
-#if TK_VULKAN
-    Mat4 views[]                         = {glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f)),
-                                            glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f)),
-                                            glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
-                                            glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
-                                            glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, 1.0f, 0.0f)),
-                                            glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, 1.0f, 0.0f))};
+#ifdef TK_VULKAN
+    Mat4 views[] = {glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, 1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, 1.0f, 0.0f))};
 #else // opengl
-    Mat4 views[]                         = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                                            glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                                            glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
-                                            glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
-                                            glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
-                                            glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
+    Mat4 views[] = {glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, -1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 0.0f, 1.0f), Vec3(0.0f, -1.0f, 0.0f)),
+                    glm::lookAt(ZERO, Vec3(0.0f, 0.0f, -1.0f), Vec3(0.0f, -1.0f, 0.0f))};
 #endif
     // Save original render path params.
     CameraPtr origCam                    = renderPath->m_params.Cam;

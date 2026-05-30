@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include "Platform.h"
+
 // STL
 #include <assert.h>
 

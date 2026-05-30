@@ -7,6 +7,9 @@
 
 #pragma once
 
+/** If vulkan render backend is desired, define TK_VULKAN */
+//#define TK_VULKAN
+
 namespace ToolKit
 {
 

@@ -159,10 +159,10 @@ namespace ToolKit
       renderer->m_gradientSkyboxBuffer.Init();
       renderer->m_gradientSkyboxBufferInitialized = true;
     }
-    renderer->m_gradientSkyboxBuffer.m_data.topColor        = Vec4(GetTopColorVal(), 1.0f);
-    renderer->m_gradientSkyboxBuffer.m_data.middleColor     = Vec4(GetMiddleColorVal(), 1.0f);
-    renderer->m_gradientSkyboxBuffer.m_data.bottomColor     = Vec4(GetBottomColorVal(), 1.0f);
-    renderer->m_gradientSkyboxBuffer.m_data.exponentAndPad  = Vec4(GetGradientExponentVal(), 0.0f, 0.0f, 0.0f);
+    renderer->m_gradientSkyboxBuffer.m_data.topColor       = Vec4(GetTopColorVal(), 1.0f);
+    renderer->m_gradientSkyboxBuffer.m_data.middleColor    = Vec4(GetMiddleColorVal(), 1.0f);
+    renderer->m_gradientSkyboxBuffer.m_data.bottomColor    = Vec4(GetBottomColorVal(), 1.0f);
+    renderer->m_gradientSkyboxBuffer.m_data.exponentAndPad = Vec4(GetGradientExponentVal(), 0.0f, 0.0f, 0.0f);
     renderer->m_gradientSkyboxBuffer.Invalidate();
     renderer->m_gradientSkyboxBuffer.Map();
 
@@ -173,7 +173,7 @@ namespace ToolKit
     // Must match the conventions used by Renderer::GenerateCubemapFrom2DTexture /
     // GenerateDiffuseEnvMap / GenerateSpecularEnvMap so the gradient cubemap can flow through the
     // same IBL pipeline without face-orientation mismatches.
-#if TK_VULKAN
+#ifdef TK_VULKAN
     Mat4 views[] = {glm::lookAt(ZERO, Vec3(-1.0f, 0.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f)),
                     glm::lookAt(ZERO, Vec3(1.0f, 0.0f, 0.0f), Vec3(0.0f, 1.0f, 0.0f)),
                     glm::lookAt(ZERO, Vec3(0.0f, 1.0f, 0.0f), Vec3(0.0f, 0.0f, -1.0f)),
