@@ -288,15 +288,16 @@ namespace ToolKit
           if (texture != nullptr && texture->IsMultiSampled())
           {
             // MSAA: ImGui can only sample the resolved (single-sample) attachment.
-            TexturePtr resolved = m_renderTarget->GetResolvedTexture();
-            if (resolved)
+            if (TexturePtr resolved = m_renderTarget->GetResolvedTexture())
             {
               texture = resolved;
             }
-          }
-          if (texture == nullptr)
-          {
-            texture = GetTextureManager()->GetBlackTexture();
+            else
+            {
+              // TODO: We should provide a fallback image ( previous resolved image ) if resolved image is not ready.
+              // This would look much better than black screen.
+              texture = GetTextureManager()->GetBlackTexture();
+            }
           }
 
           // In Vulkan the swizzle is baked into the VkImageView created by Acquire(tex, true),
