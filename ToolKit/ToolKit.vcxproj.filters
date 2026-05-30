@@ -226,9 +226,6 @@
     <ClCompile Include="Stats.cpp">
       <Filter>Source</Filter>
     </ClCompile>
-    <ClCompile Include="SplashScreenRenderPath.cpp">
-      <Filter>Render</Filter>
-    </ClCompile>
     <ClCompile Include="UniformBuffer.cpp">
       <Filter>Render</Filter>
     </ClCompile>
@@ -509,9 +506,6 @@
     </ClInclude>
     <ClInclude Include="AABBTree.h">
       <Filter>Source</Filter>
-    </ClInclude>
-    <ClInclude Include="SplashScreenRenderPath.h">
-      <Filter>Render</Filter>
     </ClInclude>
     <ClInclude Include="UniformBuffer.h">
       <Filter>Render</Filter>

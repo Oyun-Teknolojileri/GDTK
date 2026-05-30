@@ -19,31 +19,32 @@
 #include "Mod.h"
 #include "PopupWindows.h"
 #include "PreviewViewport.h"
-#include "SplashScreenRenderPath.h"
 #include "Stats.h"
 #include "UI.h"
 
 #include <Common/SDLEventPool.h>
+#include <Common/SplashScreen.h>
 #include <Common/Win32Utils.h>
 #include <FileManager.h>
 #include <ImGui/backends/imgui_impl_sdl2.h>
 #include <ImGui/imgui.h>
+#include <Platform.h>
 #include <PluginManager.h>
 #include <SDL.h>
 #include <Types.h>
 #include <locale.h>
 
-#include <array>
-#include <chrono>
-
-SDL_Window* g_window        = nullptr;
-void* g_context             = nullptr;
+SDL_Window* g_window            = nullptr;
+void* g_context                 = nullptr;
 
 // Main loop signal handle.
-bool g_running              = true;
+bool g_running                  = true;
 
 // ToolKit Application main handle.
-ToolKit::Editor::App* g_app = nullptr;
+ToolKit::Editor::App* g_app     = nullptr;
+
+ToolKit::SplashScreen* g_splash = nullptr;
+static bool s_initDone          = false;
 
 namespace ToolKit
 {
@@ -303,7 +304,15 @@ namespace ToolKit
         }
         else
         {
-          g_context                                      = EditorBackendBindings::CreateGraphicsContext(g_window);
+          String splashFile = TexturePath("splash.png", true);
+          String fontFile   = FontPath("LiberationSans-Regular.ttf", true);
+          String infoText   = TKVersionStr + "  " + (TKVulkan ? "Vulkan" : "OpenGL");
+          g_splash          = new ToolKit::SplashScreen(splashFile, fontFile, infoText);
+          g_splash->Show(512, 512);
+          g_splash->SetProgress(25.0f);
+          g_splash->SetInfoText("Initializing Engine");
+
+          g_context = EditorBackendBindings::CreateGraphicsContext(g_window);
 
 #ifndef TK_VULKAN // vulkan does not have a context like this
           if (g_context == nullptr)
@@ -389,6 +398,24 @@ namespace ToolKit
             g_app->m_sysComExecFn   = &ToolKit::PlatformHelpers::SysComExec;
             g_app->m_shellOpenDirFn = &ToolKit::PlatformHelpers::OpenExplorer;
 
+            g_splash->SetProgress(50.0f);
+            g_splash->SetInfoText("Initializing Editor");
+
+            g_app->Init();
+
+            g_splash->SetProgress(100.0f);
+            g_splash->SetInfoText("Ready");
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+            g_splash->Hide();
+            delete g_splash;
+            g_splash = nullptr;
+
+            SDL_ShowWindow(g_window);
+            SDL_SetWindowBordered(g_window, SDL_TRUE);
+            SDL_SetWindowResizable(g_window, SDL_TRUE);
+            PlatformHelpers::UpdateAppIcon(); // Sdl wipes the editor icon. This fixes it.
+
             // Register update functions
             TKUpdateFn preUpdateFn = [](float deltaTime)
             {
@@ -399,41 +426,7 @@ namespace ToolKit
                 ProcessEvent(sdlEvent);
               }
 
-              static bool showSplashScreen                    = true;
-              static float elapsedTime                        = 0.0f;
-              static SplashScreenRenderPathPtr splashRenderer = nullptr;
-
-              if (showSplashScreen)
-              {
-                RenderSystem* rsys = GetRenderSystem();
-
-                if (splashRenderer == nullptr)
-                {
-                  SDL_ShowWindow(g_window);
-                  splashRenderer = MakeNewPtr<SplashScreenRenderPath>();
-                  splashRenderer->Init({512, 512});
-                }
-
-                if (elapsedTime < 1000.0f)
-                {
-                  elapsedTime += deltaTime;
-                  rsys->AddRenderTask({[](Renderer* renderer) -> void { splashRenderer->Render(renderer); }});
-                }
-                else
-                {
-                  showSplashScreen = false;
-                  splashRenderer   = nullptr;
-                  g_app->Init();
-
-                  SDL_SetWindowBordered(g_window, SDL_TRUE);
-                  SDL_SetWindowResizable(g_window, SDL_TRUE);
-                  PlatformHelpers::UpdateAppIcon(); // Sdl wipes the editor icon. This fixes it.
-                }
-              }
-              else
-              {
-                g_app->Frame(deltaTime);
-              }
+              g_app->Frame(deltaTime);
             };
 
             g_proxy->RegisterPreUpdateFunction(preUpdateFn);
