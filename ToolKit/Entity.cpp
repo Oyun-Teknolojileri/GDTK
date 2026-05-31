@@ -393,7 +393,7 @@ namespace ToolKit
 
   void Entity::RemoveResources() { assert(false && "Not implemented"); }
 
-  bool Entity::IsVisible()
+  bool Entity::IsVisible() const
   {
     if (Entity* root = GetPrefabRoot())
     {
