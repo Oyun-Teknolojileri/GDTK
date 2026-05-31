@@ -299,6 +299,9 @@ namespace ToolKit
      */
     void _RemoveChildren(EntityPtr removed);
 
+    /** Rebuilds the entity ID to index map. Called after bulk operations that bypass AddEntity. */
+    void _RebuildEntityIdMap();
+
    public:
     PostProcessingSettingsPtr m_postProcessSettings; //!< Post process settings that this scene uses
 
@@ -314,6 +317,8 @@ namespace ToolKit
     mutable LightRawPtrArray m_directionalLightCache;              //!< Cached directional lights in the scene.
     mutable EnvironmentComponentPtrArray m_environmentVolumeCache; //!< Environment volumes in the scene.
     mutable SkyBasePtr m_skyCache;                                 //!< Last added sky.
+
+    std::unordered_map<ObjectId, int> m_entityIdToIndex; //!< Fast entity ID lookup map.
   };
 
   /**

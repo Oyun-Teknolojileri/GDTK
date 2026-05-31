@@ -317,18 +317,14 @@ namespace ToolKit
 
   EntityPtr Scene::GetEntity(ObjectId id, int* index) const
   {
-    for (int i = 0; i < (int) m_entities.size(); i++)
+    auto it = m_entityIdToIndex.find(id);
+    if (it != m_entityIdToIndex.end())
     {
-      EntityPtr ntt = m_entities[i];
-      if (ntt->GetIdVal() == id)
+      if (index != nullptr)
       {
-        if (index != nullptr)
-        {
-          *index = i;
-        }
-
-        return ntt;
+        *index = it->second;
       }
+      return m_entities[it->second];
     }
 
     if (index != nullptr)
@@ -362,11 +358,17 @@ namespace ToolKit
 
         if (index < 0 || index >= (int) m_entities.size())
         {
+          int newIndex = (int) m_entities.size();
           m_entities.push_back(entity);
+          m_entityIdToIndex[entity->GetIdVal()] = newIndex;
         }
         else
         {
           m_entities.insert(m_entities.begin() + index, entity);
+          for (int i = index; i < (int) m_entities.size(); ++i)
+          {
+            m_entityIdToIndex[m_entities[i]->GetIdVal()] = i;
+          }
         }
 
         entity->m_scene = Self<Scene>();
@@ -424,6 +426,12 @@ namespace ToolKit
     UpdateEntityCaches(removed, false);
     m_entities.erase(m_entities.begin() + indx);
 
+    m_entityIdToIndex.erase(id);
+    for (int i = indx; i < (int) m_entities.size(); ++i)
+    {
+      m_entityIdToIndex[m_entities[i]->GetIdVal()] = i;
+    }
+
     if (deep)
     {
       _RemoveChildren(removed);
@@ -452,7 +460,11 @@ namespace ToolKit
     }
   }
 
-  void Scene::RemoveAllEntities() { m_entities.clear(); }
+  void Scene::RemoveAllEntities()
+  {
+    m_entities.clear();
+    m_entityIdToIndex.clear();
+  }
 
   const EntityPtrArray& Scene::GetEntities() const { return m_entities; }
 
@@ -566,6 +578,7 @@ namespace ToolKit
     }
 
     m_entities.clear();
+    m_entityIdToIndex.clear();
     m_aabbTree.Reset();
 
     m_lightCache.clear();
@@ -595,6 +608,7 @@ namespace ToolKit
     prefab->m_name = name;
     prefab->Save(false);
     prefab->m_entities.clear();
+    prefab->m_entityIdToIndex.clear();
 
     // Restore the old node.
     entity->m_node->m_children.clear();
@@ -606,6 +620,7 @@ namespace ToolKit
   {
     m_aabbTree.Reset();
     m_entities.clear();
+    m_entityIdToIndex.clear();
   }
 
   const BoundingBox& Scene::GetSceneBoundary() { return m_aabbTree.GetRootBoundingBox(); }
@@ -624,6 +639,8 @@ namespace ToolKit
     {
       DeepCopy(ntt, cpy->m_entities);
     }
+
+    cpy->_RebuildEntityIdMap();
   }
 
   void Scene::UpdateEntityCaches(const EntityPtr& ntt, bool add)
@@ -911,6 +928,16 @@ namespace ToolKit
     }
 
     return lastId;
+  }
+
+  void Scene::_RebuildEntityIdMap()
+  {
+    m_entityIdToIndex.clear();
+    m_entityIdToIndex.reserve(m_entities.size());
+    for (int i = 0; i < (int) m_entities.size(); ++i)
+    {
+      m_entityIdToIndex[m_entities[i]->GetIdVal()] = i;
+    }
   }
 
   SceneManager::SceneManager() { m_baseType = Scene::StaticClass(); }
