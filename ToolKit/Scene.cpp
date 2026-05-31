@@ -375,7 +375,7 @@ namespace ToolKit
 
         if (entity->m_partOfAABBTree)
         {
-          m_aabbTree.CreateNode(entity, entity->GetBoundingBox(true));
+          m_aabbTree.CreateNode(entity.get(), entity->GetBoundingBox(true));
         }
       }
     }
@@ -577,9 +577,9 @@ namespace ToolKit
       }
     }
 
+    m_aabbTree.Reset();
     m_entities.clear();
     m_entityIdToIndex.clear();
-    m_aabbTree.Reset();
 
     m_lightCache.clear();
     m_directionalLightCache.clear();
