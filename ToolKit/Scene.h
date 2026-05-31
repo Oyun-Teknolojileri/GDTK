@@ -164,6 +164,12 @@ namespace ToolKit
      */
     EnvironmentComponentPtrArray& GetEnvironmentVolumes() const;
 
+    /** Adds an environment component to the volume cache if it has a valid Hdri. */
+    void AddEnvironmentVolume(const EnvironmentComponentPtr& envComp);
+
+    /** Removes an environment component from the volume cache. */
+    void RemoveEnvironmentVolume(EnvironmentComponent* envComp);
+
     /**
      * Gets the first entity in the scene with the given name.
      * @param name The name of the entity to get.

@@ -26,7 +26,18 @@ namespace ToolKit
 
   EnvironmentComponent::EnvironmentComponent() {}
 
-  EnvironmentComponent::~EnvironmentComponent() { UnInit(); }
+  EnvironmentComponent::~EnvironmentComponent()
+  {
+    UnInit();
+
+    if (EntityPtr owner = OwnerEntity())
+    {
+      if (ScenePtr scene = owner->m_scene.lock())
+      {
+        scene->RemoveEnvironmentVolume(this);
+      }
+    }
+  }
 
   void EnvironmentComponent::Init(bool flushClientSideArray)
   {
@@ -156,19 +167,14 @@ namespace ToolKit
             {
               // This is a procedurally generated hdri.
               // Image and irradiance cache generation must be performed by the owner entity.
-              return;
             }
-
-            if (hdri->m_waitingForInit && hdri->m_generateIrradianceCaches)
+            else if (hdri->m_waitingForInit && hdri->m_generateIrradianceCaches)
             {
               // A generate is already in progress.
-              return;
             }
-
-            if (hdri->m_initiated && hdri->m_specularEnvMap && hdri->m_diffuseEnvMap)
+            else if (hdri->m_initiated && hdri->m_specularEnvMap && hdri->m_diffuseEnvMap)
             {
               // Already initialized.
-              return;
             }
             else
             {
@@ -183,6 +189,21 @@ namespace ToolKit
                 hdri->m_generateIrradianceCaches = true;
                 hdri->Load();
                 hdri->Init();
+              }
+            }
+          }
+
+          if (EntityPtr owner = OwnerEntity())
+          {
+            if (ScenePtr scene = owner->m_scene.lock())
+            {
+              if (hdri != nullptr)
+              {
+                scene->AddEnvironmentVolume(Self<EnvironmentComponent>());
+              }
+              else
+              {
+                scene->RemoveEnvironmentVolume(this);
               }
             }
           }

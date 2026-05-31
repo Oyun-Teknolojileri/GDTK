@@ -185,19 +185,11 @@ namespace ToolKit
 
   void Scene::Update(float deltaTime)
   {
-    m_environmentVolumeCache.clear();
-
-    for (const EntityPtr& ntt : m_entities)
+    // Environment volume cache is maintained incrementally by UpdateEntityCaches
+    // in AddEntity/RemoveEntity. No need to scan all entities every frame.
+    for (const EnvironmentComponentPtr& envComp : m_environmentVolumeCache)
     {
-      // Update volume caches.
-      if (const EnvironmentComponentPtr& envComp = ntt->GetComponent<EnvironmentComponent>())
-      {
-        if (envComp->GetHdriVal() != nullptr)
-        {
-          envComp->Init(true);
-          m_environmentVolumeCache.push_back(envComp);
-        }
-      }
+      envComp->Init(true);
     }
 
     for (Light* light : m_lightCache)
@@ -689,6 +681,37 @@ namespace ToolKit
           remove(m_environmentVolumeCache, envComp);
         }
       }
+    }
+  }
+
+  void Scene::AddEnvironmentVolume(const EnvironmentComponentPtr& envComp)
+  {
+    if (envComp == nullptr || envComp->GetHdriVal() == nullptr)
+    {
+      return;
+    }
+
+    if (std::find(m_environmentVolumeCache.begin(), m_environmentVolumeCache.end(), envComp)
+        == m_environmentVolumeCache.end())
+    {
+      m_environmentVolumeCache.push_back(envComp);
+    }
+  }
+
+  void Scene::RemoveEnvironmentVolume(EnvironmentComponent* envComp)
+  {
+    if (envComp == nullptr)
+    {
+      return;
+    }
+
+    auto it = std::find_if(m_environmentVolumeCache.begin(),
+                           m_environmentVolumeCache.end(),
+                           [envComp](const EnvironmentComponentPtr& ptr) { return ptr.get() == envComp; });
+
+    if (it != m_environmentVolumeCache.end())
+    {
+      m_environmentVolumeCache.erase(it);
     }
   }
 
