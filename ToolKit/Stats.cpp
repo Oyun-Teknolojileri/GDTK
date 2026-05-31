@@ -99,6 +99,11 @@ namespace ToolKit
 
   void TKProfiler::BeginScope(StringView name)
   {
+    BeginScope(std::hash<StringView>{}(name), name);
+  }
+
+  void TKProfiler::BeginScope(uint64_t nameHash, StringView name)
+  {
     if (!m_enabled)
     {
       return;
@@ -110,7 +115,7 @@ namespace ToolKit
 
     for (ProfilerNode* child : searchPool)
     {
-      if (child->name == name)
+      if (child->nameHash == nameHash && child->name == name)
       {
         node = child;
         break;
@@ -122,6 +127,7 @@ namespace ToolKit
     {
       node         = new ProfilerNode();
       node->name   = String(name);
+      node->nameHash = nameHash;
       node->depth  = (m_currentNode == nullptr) ? 0 : m_currentNode->depth + 1;
       node->parent = m_currentNode;
 
@@ -258,6 +264,18 @@ namespace ToolKit
       if (stats->GetProfiler().IsEnabled())
       {
         stats->GetProfiler().BeginScope(name);
+        m_active = true;
+      }
+    }
+  }
+
+  ProfileScope::ProfileScope(uint64_t nameHash, StringView name)
+  {
+    if (TKStats* stats = GetTKStats())
+    {
+      if (stats->GetProfiler().IsEnabled())
+      {
+        stats->GetProfiler().BeginScope(nameHash, name);
         m_active = true;
       }
     }
@@ -518,6 +536,14 @@ namespace ToolKit
       if (TKStats* tkStats = GetTKStats())
       {
         tkStats->GetProfiler().BeginScope(name);
+      }
+    }
+
+    void BeginProfileScope(uint64_t nameHash, StringView name)
+    {
+      if (TKStats* tkStats = GetTKStats())
+      {
+        tkStats->GetProfiler().BeginScope(nameHash, name);
       }
     }
 

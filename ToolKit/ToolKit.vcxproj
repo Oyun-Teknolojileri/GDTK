@@ -123,6 +123,7 @@
     <ClInclude Include="DofPass.h" />
     <ClInclude Include="Dpad.h" />
     <ClInclude Include="Drawable.h" />
+    <ClInclude Include="Hash.h" />
     <ClInclude Include="PerDrawUniforms.h" />
     <ClInclude Include="ShadowAtlas.h" />
     <ClInclude Include="TextureBuffer.h" />
@@ -349,6 +350,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <AdditionalDependencies>vulkan-1.lib;shaderc_combined.lib;OpenGL32.lib;zstd_static.lib;minizip.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <Profile>true</Profile>
     </Link>
     <Lib />
     <PostBuildEvent />

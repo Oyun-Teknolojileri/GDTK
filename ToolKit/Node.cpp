@@ -283,6 +283,7 @@ namespace ToolKit
     node->m_worldCache            = m_worldCache;
     node->m_worldTranslationCache = m_worldTranslationCache;
     node->m_worldOrientationCache = m_worldOrientationCache;
+    node->m_cullFlip              = m_cullFlip;
 
     return node;
   }
@@ -308,12 +309,7 @@ namespace ToolKit
     UpdateTransformCaches();
   }
 
-  bool Node::RequireCullFlip()
-  {
-    Mat3 basis = GetWorldCache();
-    float det  = glm::determinant(basis);
-    return det < 0.0f; // Negative determinant indicates handedness change which requires cull flip.
-  }
+  bool Node::RequireCullFlip() { return m_cullFlip; }
 
   XmlNode* Node::SerializeImp(XmlDocument* doc, XmlNode* parent) const
   {
@@ -380,12 +376,12 @@ namespace ToolKit
     Mat4 ts;
     switch (space)
     {
-    case TransformationSpace::TS_WORLD:
-      ts = val * m_localCache;
-      break;
-    case TransformationSpace::TS_LOCAL:
-      ts = m_localCache * val;
-      break;
+      case TransformationSpace::TS_WORLD:
+        ts = val * m_localCache;
+        break;
+      case TransformationSpace::TS_LOCAL:
+        ts = m_localCache * val;
+        break;
     };
 
     // Extracted translation, orientation and scale is in local space,
@@ -404,15 +400,15 @@ namespace ToolKit
     Mat4 ts;
     switch (space)
     {
-    case TransformationSpace::TS_WORLD:
-      if (m_parent != nullptr)
-      {
-        Mat4 ps = GetParentTransform();
-        ts      = glm::inverse(ps) * val;
-        break;
-      } // Fall trough
-    case TransformationSpace::TS_LOCAL:
-      ts = val;
+      case TransformationSpace::TS_WORLD:
+        if (m_parent != nullptr)
+        {
+          Mat4 ps = GetParentTransform();
+          ts      = glm::inverse(ps) * val;
+          break;
+        } // Fall trough
+      case TransformationSpace::TS_LOCAL:
+        ts = val;
     }
 
     DecomposeMatrix(ts, translation, orientation, scale);
@@ -433,38 +429,38 @@ namespace ToolKit
 
     switch (space)
     {
-    case TransformationSpace::TS_WORLD:
-      if (m_parent != nullptr)
-      {
+      case TransformationSpace::TS_WORLD:
+        if (m_parent != nullptr)
+        {
+          if (transform != nullptr)
+          {
+            *transform = m_worldCache;
+          }
+          if (translation != nullptr)
+          {
+            *translation = m_worldTranslationCache;
+          }
+          if (orientation != nullptr)
+          {
+            *orientation = m_worldOrientationCache;
+          }
+          break;
+        } // Fall trough
+      case TransformationSpace::TS_LOCAL:
+      default:
         if (transform != nullptr)
         {
-          *transform = m_worldCache;
+          *transform = m_localCache;
         }
         if (translation != nullptr)
         {
-          *translation = m_worldTranslationCache;
+          *translation = m_translation;
         }
         if (orientation != nullptr)
         {
-          *orientation = m_worldOrientationCache;
+          *orientation = m_orientation;
         }
         break;
-      } // Fall trough
-    case TransformationSpace::TS_LOCAL:
-    default:
-      if (transform != nullptr)
-      {
-        *transform = m_localCache;
-      }
-      if (translation != nullptr)
-      {
-        *translation = m_translation;
-      }
-      if (orientation != nullptr)
-      {
-        *orientation = m_orientation;
-      }
-      break;
     }
 
     if (scale != nullptr)
@@ -486,6 +482,9 @@ namespace ToolKit
 
     // Update world cache. Iteratively goes up until the root or a clean parent.
     m_worldCache = GetParentTransform() * m_localCache;
+
+    float det    = glm::determinant(m_worldCache);
+    m_cullFlip   = det < 0.0f; // Negative determinant indicates handedness change which requires cull flip.
 
     // Update individual transform caches.
     DecomposeMatrix(m_worldCache, &m_worldTranslationCache, &m_worldOrientationCache, nullptr);

@@ -263,7 +263,8 @@ namespace ToolKit
     /** World orientation cache. Never access directly. It may be dirty. */
     Quaternion m_worldOrientationCache;
 
-    bool m_dirty; //!< Hint for child to update its parent cache.
+    bool m_dirty;            //!< Hint for child to update its parent cache.
+    bool m_cullFlip = false; //!< Cached cull flip result.
   };
 
   /**
