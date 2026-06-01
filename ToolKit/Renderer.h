@@ -267,7 +267,7 @@ namespace ToolKit
 
     void InitGlobalGpuBuffers();
 
-    /** Block ismine karşılık gelen global buffer bilgisini döndürür. Bulamazsa nullptr döner. */
+    /** Return corresponding global buffer, if not found returns null. */
     const GlobalBufferInfo* FindGlobalBufferInfo(const char* blockName) const;
 
    private:
@@ -504,7 +504,7 @@ namespace ToolKit
     GlobalGpuBuffers* m_globalGpuBuffers;
 
     GradientSkyboxPassDataBuffer m_gradientSkyboxBuffer;
-    bool m_gradientSkyboxBufferInitialized         = false;
+    bool m_gradientSkyboxBufferInitialized = false;
 
    private:
     GpuProgramPtr m_currentProgram = nullptr;
@@ -525,14 +525,14 @@ namespace ToolKit
     std::array<int, RHIConstants::MaxSpotLightPerObject> m_activeSpotLightIndices;
     DrawCommand m_drawCommand;
 
-    int m_activePointLightCount   = 0;
-    int m_activeSpotLightCount    = 0;
-    bool m_ambientOcculusionInUse = false;
+    int m_activePointLightCount           = 0;
+    int m_activeSpotLightCount            = 0;
+    bool m_ambientOcculusionInUse         = false;
 
-    FramebufferPtr m_framebuffer  = nullptr;
-    TexturePtr m_shadowAtlas      = nullptr;
-    RenderTargetPtr m_brdfLut     = nullptr;
-    TexturePtr m_aoTexture        = nullptr;
+    FramebufferPtr m_framebuffer          = nullptr;
+    TexturePtr m_shadowAtlas              = nullptr;
+    RenderTargetPtr m_brdfLut             = nullptr;
+    TexturePtr m_aoTexture                = nullptr;
 
     /** Texture explicitly bound to slot 1 by Render(job) *after* BindPipeline so it survives
      * the Vulkan descriptor wipe in VulkanBackend::BindPipeline. Used by utility passes
@@ -555,31 +555,31 @@ namespace ToolKit
     /** Pass UBO (slot 7) shared with the gaussian blur material. Lazy-init on first
         ApplyGaussianBlur* call together with the material itself. */
     GaussBlurPassDataBuffer m_gaussianBlurBuffer;
-    bool m_gaussianBlurBufferInitialized           = false;
+    bool m_gaussianBlurBufferInitialized = false;
     /** Shared by GenerateCubemapFrom2DTexture / GenerateEquiRectengularProjection paths. */
     CubemapEquirectPassDataBuffer m_cubemapEquirectBuffer;
-    bool m_cubemapEquirectBufferInitialized        = false;
+    bool m_cubemapEquirectBufferInitialized = false;
     PreFilterEnvMapPassDataBuffer m_preFilterEnvMapBuffer;
-    bool m_preFilterEnvMapBufferInitialized        = false;
-    MaterialPtr m_averageBlurMaterial              = nullptr;
-    QuadPtr m_tempQuad                             = nullptr;
-    MaterialPtr m_tempQuadMaterial                 = nullptr;
+    bool m_preFilterEnvMapBufferInitialized = false;
+    MaterialPtr m_averageBlurMaterial       = nullptr;
+    QuadPtr m_tempQuad                      = nullptr;
+    MaterialPtr m_tempQuadMaterial          = nullptr;
 
-    FramebufferPtr m_copyFrameBuffer               = nullptr;
-    MaterialPtr m_copyMaterial                     = nullptr;
+    FramebufferPtr m_copyFrameBuffer        = nullptr;
+    MaterialPtr m_copyMaterial              = nullptr;
 
     /** Passive pipeline state merged with each job's active state in Render(). Set by passes
      *  once per pass (or per group) instead of looping over every job. */
     RenderState m_passiveState;
 
-    int m_maxArrayTextureLayers                    = -1;
+    int m_maxArrayTextureLayers            = -1;
 
     // Dummy objects for draw commands.
-    CubePtr m_dummyDrawCube                        = nullptr;
+    CubePtr m_dummyDrawCube                = nullptr;
 
-    GpuProgramManager* m_gpuProgramManager         = nullptr;
+    GpuProgramManager* m_gpuProgramManager = nullptr;
 
-    IGraphicsBackend* m_backend                    = nullptr;
+    IGraphicsBackend* m_backend            = nullptr;
 
     /** Per-frame draw counters keyed by framebuffer ObjectId. */
     std::unordered_map<ObjectId, int> m_drawnFrameBufferStats;
