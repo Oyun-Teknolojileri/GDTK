@@ -80,7 +80,49 @@ namespace ToolKit
       GpuProgramPtr program = MakeNewPtr<GpuProgram>(vertexShader, fragmentShader);
       program->m_backend    = m_backend;
 
-      // Build explicit binding list from shader declarations.
+      // Validate uniform buffer slots. Global buffers must match their reserved slot so
+      // Vulkan pipeline layouts agree with the SPIR-V binding declared in the shader source.
+      for (const ShaderResource& res : program->m_resources)
+      {
+        if (res.type != ShaderResource::Type::UniformBuffer)
+          continue;
+
+        if (const GlobalBufferInfo* info = m_globalGpuBuffers->FindGlobalBufferInfo(res.name.c_str()))
+        {
+          if (res.slot != info->slot)
+          {
+            TK_WRN("Shader '%s' declares global UBO '%s' at slot %d, but reserved slot is %d. "
+                   "Update the shader XML / GLSL binding to match.",
+                   vertexShader->GetFile().c_str(), res.name.c_str(), res.slot, info->slot);
+          }
+        }
+        else
+        {
+          // Custom (pass-specific) buffer: validate slot is explicitly assigned and outside the
+          // reserved global range.
+          if (res.slot == -1)
+          {
+            TK_ERR("Shader '%s' uses uniform block '%s' without specifying a binding slot. "
+                   "Add layout(binding = X) to the UBO declaration.",
+                   vertexShader->GetFile().c_str(), res.name.c_str());
+            static GpuProgramPtr s_null;
+            return s_null;
+          }
+
+          if (res.slot < ReservedUniformBufferSlots::FirstCustomSlot)
+          {
+            TK_ERR("Custom uniform buffer '%s' uses slot %d which is in the reserved global range [0, %d). "
+                   "Move it to slot >= %d.",
+                   res.name.c_str(), res.slot,
+                   ReservedUniformBufferSlots::FirstCustomSlot,
+                   ReservedUniformBufferSlots::FirstCustomSlot);
+            static GpuProgramPtr s_null;
+            return s_null;
+          }
+        }
+      }
+
+      // Build explicit binding list for GL backend (VK reads program->m_resources directly).
       std::vector<ShaderResourceBinding> bindings;
       bindings.reserve(program->m_resources.size());
 
@@ -91,36 +133,12 @@ namespace ToolKit
 
         ShaderResourceBinding b;
         b.blockName = res.name.c_str();
+        b.slot      = res.slot;
         b.buffer    = nullptr;
 
         if (const GlobalBufferInfo* info = m_globalGpuBuffers->FindGlobalBufferInfo(res.name.c_str()))
         {
-          // Global buffer: use reserved slot, ignore shader-declared binding.
-          b.slot   = info->slot;
           b.buffer = info->buffer;
-        }
-        else
-        {
-          // Custom (pass-specific) buffer: use shader-declared slot.
-          b.slot = res.slot;
-
-          if (b.slot == -1)
-          {
-            TK_ERR("Shader '%s' uses uniform block '%s' without specifying a binding slot. "
-                   "Add layout(binding = X) to the UBO declaration.",
-                   vertexShader->GetFile().c_str(), res.name.c_str());
-            return nullptr;
-          }
-
-          if (b.slot < ReservedUniformBufferSlots::FirstCustomSlot)
-          {
-            TK_ERR("Custom uniform buffer '%s' uses slot %d which is in the reserved global range [0, %d). "
-                   "Move it to slot >= %d.",
-                   res.name.c_str(), b.slot,
-                   ReservedUniformBufferSlots::FirstCustomSlot,
-                   ReservedUniformBufferSlots::FirstCustomSlot);
-            return nullptr;
-          }
         }
 
         bindings.push_back(b);

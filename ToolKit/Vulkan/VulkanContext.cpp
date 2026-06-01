@@ -566,13 +566,13 @@ namespace ToolKit
 
   bool VulkanContext::CreateGlobalDescriptorSetLayout()
   {
-    // Kitchen-sink layout shared by every program: textures 0..7, fixed UBOs at GL slots
-    // 3/4/5/7..10, and the per-draw dynamic UBO. Unused bindings cost nothing at write time.
-    // All bindings stage-flagged ALL_GRAPHICS — no per-stage tracking needed.
+    // Kitchen-sink layout shared by every program: textures 0..31, fixed UBOs at GL slots
+    // 0..7 (global 0-6 + pass-specific 7), and the per-draw dynamic UBO. Unused bindings cost
+    // nothing at write time. All bindings stage-flagged ALL_GRAPHICS.
     using namespace VulkanBindings;
 
     std::vector<VkDescriptorSetLayoutBinding> bindings;
-    bindings.reserve(kTextureBindingCount + 7);
+    bindings.reserve(kTextureBindingCount + 8);
 
     auto pushBinding = [&](uint binding, VkDescriptorType type)
     {
@@ -588,8 +588,9 @@ namespace ToolKit
     {
       pushBinding(kTextureBindingBase + i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
     }
-    // GL UBO slots in use: 3=camera, 4=graphic constants, 5=pass-specific, 7..10=lights.
-    for (uint glSlot : {3u, 4u, 5u, 7u, 8u, 9u, 10u})
+    // GL UBO slots in use: 0=camera, 1=graphic constants, 3=dirLight, 4=pointLights,
+    // 5=spotLights, 6=dirLightPVM, 7=pass-specific. Slot 2 is per-draw (dynamic).
+    for (uint glSlot : {0u, 1u, 3u, 4u, 5u, 6u, 7u})
     {
       pushBinding(UboBindingFor(glSlot), VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
     }

@@ -1,13 +1,13 @@
 <shader>
 	<type name = "includeShader" />
 	<include name = "vulkanCompatInc.shader" />
-	<uniform slot = "6" name = "PerDrawData" />
+	<uniform slot = "2" name = "PerDrawData" />
 	<source>
 	<!--
 #ifndef PER_DRAW_DATA
 #define PER_DRAW_DATA
 
-// PerDrawData UBO — slot 6 (Vulkan binding 14 after shaderc remap).
+// PerDrawData UBO — slot 2 (Vulkan binding 34 after UboBindingFor remap).
 //
 // Mirror of `PerDrawUboLayout` in Renderer.h. Add or reorder fields ONLY in lockstep — shader
 // and C++ are byte-identical std140 layouts.
@@ -59,7 +59,7 @@ struct MaterialDataLayout
 	vec4 textureFlags;      // x=emissiveInUse, y=normalInUse, z=metallicRoughInUse, w=pad
 };
 
-TK_UBO_BINDING(6) uniform PerDrawData
+TK_UBO_BINDING(2) uniform PerDrawData
 {
 	mat4 _model;
 	mat4 _modelWithoutTranslate;

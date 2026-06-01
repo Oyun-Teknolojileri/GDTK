@@ -2,18 +2,18 @@
 	<type name = "includeShader" />
 	<include name = "vulkanCompatInc.shader" />
 	<include name = "perDrawDataInc.shader" />
-	<uniform slot = "4" name = "GraphicConstatsData" />
-	<uniform slot = "7" name = "DirectionalLightBuffer" />
-	<uniform slot = "8" name = "PointLightCache" />
-	<uniform slot = "9" name = "SpotLightCache" />
-	<uniform slot = "10" name = "DirectionalLightPVMBuffer" />
+	<uniform slot = "1" name = "GraphicConstatsData" />
+	<uniform slot = "3" name = "DirectionalLightBuffer" />
+	<uniform slot = "4" name = "PointLightCache" />
+	<uniform slot = "5" name = "SpotLightCache" />
+	<uniform slot = "6" name = "DirectionalLightPVMBuffer" />
 	<source>
 	<!--
 
 	#ifndef DRAW_DATA
 	#define DRAW_DATA
 
-	// DrawCommand accessors — back-end is now `perDraw._drawCommand` (PerDrawData UBO, slot 6).
+	// DrawCommand accessors — back-end is now `perDraw._drawCommand` (PerDrawData UBO, slot 2).
 	// Function signatures kept identical so every call site (lighting/ibl/AO) stays untouched.
 	// Volume index branches with a ternary; the GLSL compiler folds it when `vol` is constant.
 	//////////////////////////////////////////
@@ -163,7 +163,7 @@
 		vec4 cascadeDistances;
 	};
 
-	TK_UBO_BINDING(4) uniform GraphicConstatsData
+	TK_UBO_BINDING(1) uniform GraphicConstatsData
 	{
 		GraphicConstatsDataLayout graphicConstants;
 	};
@@ -193,7 +193,7 @@
 		float pad0;
 	};
 
-	TK_UBO_BINDING(7) uniform DirectionalLightBuffer
+	TK_UBO_BINDING(3) uniform DirectionalLightBuffer
 	{
 		DirectionalLightData directionalLightArray[DIRECTIONAL_LIGHT_CACHE_ITEM_COUNT];
 	};
@@ -203,7 +203,7 @@
 		mat4 projectionViewMatrices[MAX_CASCADE_COUNT];
 	};
 
-	TK_UBO_BINDING(10) uniform DirectionalLightPVMBuffer
+	TK_UBO_BINDING(6) uniform DirectionalLightPVMBuffer
 	{
 		DirectionalLightPVMData directionalLightPVMArray[DIRECTIONAL_LIGHT_CACHE_ITEM_COUNT];
 	};
@@ -216,7 +216,7 @@
 		float radius;
 	};
 
-	TK_UBO_BINDING(8) uniform PointLightCache
+	TK_UBO_BINDING(4) uniform PointLightCache
 	{
 		PointLightData pointLightArray[POINT_LIGHT_CACHE_ITEM_COUNT];
 	};
@@ -235,7 +235,7 @@
 		mat4 projectionViewMatrix;
 	};
 
-	TK_UBO_BINDING(9) uniform SpotLightCache
+	TK_UBO_BINDING(5) uniform SpotLightCache
 	{
 		SpotLightData spotLightArray[SPOT_LIGHT_CACHE_ITEM_COUNT];
 	};

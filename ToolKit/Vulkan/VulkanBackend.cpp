@@ -2722,9 +2722,9 @@ namespace ToolKit
       return;
     }
 
-    // Slot 6 is the per-draw UBO; SubmitPerDrawData handles uploads via the ring path. Skip
+    // Slot 2 is the per-draw UBO; SubmitPerDrawData handles uploads via the ring path. Skip
     // here to avoid recording a no-op vkCmdUpdateBuffer + 2 barriers per draw.
-    if (ub->m_slot == 6)
+    if (ub->m_slot == ReservedUniformBufferSlots::PerDrawData)
     {
       return;
     }
@@ -2778,7 +2778,7 @@ namespace ToolKit
     // Register non-perDraw UBOs in the global registry (Camera, GraphicConsts, etc.) so the
     // descriptor flush can pick them up. Only dirty on real handle change to keep cache hot.
     const int slot = ub->m_slot;
-    if (slot >= 0 && slot != 6 && slot < kMaxUboSlots)
+    if (slot >= 0 && slot != ReservedUniformBufferSlots::PerDrawData && slot < kMaxUboSlots)
     {
       GlobalUboEntry& entry = m_globalUboRegistry[slot];
       if (entry.handle != gpu->buffer.handle || entry.size != gpu->buffer.size)
@@ -2851,7 +2851,7 @@ namespace ToolKit
       }
       else // UniformBuffer
       {
-        if (res.slot == 6) // per-draw dynamic UBO
+        if (res.slot == ReservedUniformBufferSlots::PerDrawData) // per-draw dynamic UBO
         {
           r.binding             = VulkanBindings::kPerDrawUboBinding;
           r.isPerDrawDynamic    = true;

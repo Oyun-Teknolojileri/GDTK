@@ -21,8 +21,8 @@ namespace ToolKit
    *   bindings kTextureBindingCount..         — uniform buffers (GL slot N → N + kUboBindingBase)
    *
    * UBO mapping for ToolKit's buffers (kTextureBindingCount = 32):
-   *   GL 3=Camera→35   4=GraphicConsts→36   5=PassSpecific→37   6=PerDraw(dynamic)→38
-   *   GL 7=DirLight→39  8=PointLights→40  9=SpotLights→41  10=DirLightPVM→42
+   *   GL 0=Camera→32   1=GraphicConsts→33   2=PerDraw(dynamic)→34   3=DirLight→35
+   *   GL 4=PointLights→36  5=SpotLights→37  6=DirLightPVM→38  7=PassSpecific→39
    */
   namespace VulkanBindings
   {
@@ -39,7 +39,7 @@ namespace ToolKit
     constexpr uint UboBindingFor(uint glSlot) { return glSlot + kUboBindingBase; }
 
     /** Per-draw dynamic UBO binding. Offset travels via vkCmdBindDescriptorSets' dynamicOffset. */
-    constexpr uint kPerDrawUboBinding   = UboBindingFor(6); // = 38
+    constexpr uint kPerDrawUboBinding   = UboBindingFor(2); // = 34
 
     constexpr uint kMaxBindings         = 64;
 
