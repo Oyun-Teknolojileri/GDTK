@@ -37,6 +37,17 @@ namespace ToolKit
     /** Aggregated resource declarations from all stage shaders, deduplicated by (type, slot, name). */
     ShaderResourceArray m_resources;
 
+    /** Returns the texture slot declared for the given sampler name, or -1 if not found. */
+    int GetTextureSlot(const char* samplerName) const
+    {
+      for (const ShaderResource& res : m_resources)
+      {
+        if (res.type == ShaderResource::Type::Texture && res.name == samplerName)
+          return res.slot;
+      }
+      return -1;
+    }
+
     IGraphicsBackend* m_backend = nullptr; //!< Set by GpuProgramManager on creation.
   };
 

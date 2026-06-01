@@ -65,14 +65,14 @@ namespace ToolKit
 
     // Generate SSAO texture. calc + blur share GL slot 7 (pass-specific UBO convention) —
     // Map each one immediately before its draw so the slot has the right buffer at consume time.
-    renderer->SetTexture(1, normalDepthBuffer);
+    renderer->SetTexture("s_normalDepth", normalDepthBuffer);
 
     m_calcPassDataBuffer.Invalidate();
     m_calcPassDataBuffer.Map();
     RenderSubPass(m_quadPass);
 
     // Single-pass bilinear 5x5 blur (reads raw SSAO, writes to m_ssaoTexture)
-    renderer->SetTexture(0, m_rawSsaoRt);
+    renderer->SetTexture("s_diffuseColor", m_rawSsaoRt);
 
     m_blurPassDataBuffer.Invalidate();
     m_blurPassDataBuffer.Map();

@@ -128,17 +128,19 @@ namespace ToolKit
 
       for (const ShaderResource& res : program->m_resources)
       {
-        if (res.type != ShaderResource::Type::UniformBuffer)
-          continue;
-
         ShaderResourceBinding b;
-        b.blockName = res.name.c_str();
-        b.slot      = res.slot;
-        b.buffer    = nullptr;
+        b.type = (res.type == ShaderResource::Type::Texture)
+                   ? ShaderResourceBinding::Type::Texture
+                   : ShaderResourceBinding::Type::UniformBuffer;
+        b.name = res.name.c_str();
+        b.slot = res.slot;
 
-        if (const GlobalBufferInfo* info = m_globalGpuBuffers->FindGlobalBufferInfo(res.name.c_str()))
+        if (res.type == ShaderResource::Type::UniformBuffer)
         {
-          b.buffer = info->buffer;
+          if (const GlobalBufferInfo* info = m_globalGpuBuffers->FindGlobalBufferInfo(res.name.c_str()))
+          {
+            b.buffer = info->buffer;
+          }
         }
 
         bindings.push_back(b);

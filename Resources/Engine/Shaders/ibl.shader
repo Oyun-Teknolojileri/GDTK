@@ -4,13 +4,13 @@
 	<include name = "pbrCommon.shader" />
 	<include name = "drawDataInc.shader" />
 	<include name = "perDrawDataInc.shader" />
-	<texture slot = "7"  name = "s_texture7"  viewType = "cube" />
-	<texture slot = "10" name = "s_texture10" />
-	<texture slot = "11" name = "s_texture11" viewType = "cube" />
-	<texture slot = "12" name = "s_texture12" viewType = "cube" />
-	<texture slot = "15" name = "s_texture15" viewType = "cube" />
-	<texture slot = "16" name = "s_texture16" viewType = "cube" />
-	<texture slot = "17" name = "s_texture17" viewType = "cube" />
+	<texture slot = "7"  name = "s_irradianceMap"  viewType = "cube" />
+	<texture slot = "10" name = "s_brdfLut" />
+	<texture slot = "11" name = "s_secondaryIrradiance" viewType = "cube" />
+	<texture slot = "12" name = "s_secondarySpecular" viewType = "cube" />
+	<texture slot = "15" name = "s_iblSpecular" viewType = "cube" />
+	<texture slot = "16" name = "s_skyIrradiance" viewType = "cube" />
+	<texture slot = "17" name = "s_skySpecular" viewType = "cube" />
 	<source>
 	<!--
 
@@ -18,17 +18,17 @@
 #define IBL_SHADER
 
 // Local volume 0
-TK_SAMPLER_BINDING(7)  uniform samplerCube s_texture7; 	// Diffuse Map
-TK_SAMPLER_BINDING(15) uniform samplerCube s_texture15; 	// Pre-Filtered Specular Map
-TK_SAMPLER_BINDING(10) uniform sampler2D s_texture10;		// IBL BRDF Lut
+TK_SAMPLER_BINDING(7)  uniform samplerCube s_irradianceMap; 	// Diffuse Map
+TK_SAMPLER_BINDING(15) uniform samplerCube s_iblSpecular; 	// Pre-Filtered Specular Map
+TK_SAMPLER_BINDING(10) uniform sampler2D s_brdfLut;		// IBL BRDF Lut
 
 // Local volume 1
-TK_SAMPLER_BINDING(11) uniform samplerCube s_texture11;	// Diffuse Map
-TK_SAMPLER_BINDING(12) uniform samplerCube s_texture12;	// Pre-Filtered Specular Map
+TK_SAMPLER_BINDING(11) uniform samplerCube s_secondaryIrradiance;	// Diffuse Map
+TK_SAMPLER_BINDING(12) uniform samplerCube s_secondarySpecular;	// Pre-Filtered Specular Map
 
 // Sky (global fallback)
-TK_SAMPLER_BINDING(16) uniform samplerCube s_texture16;	// Sky Diffuse Map
-TK_SAMPLER_BINDING(17) uniform samplerCube s_texture17;	// Sky Pre-Filtered Specular Map
+TK_SAMPLER_BINDING(16) uniform samplerCube s_skyIrradiance;	// Sky Diffuse Map
+TK_SAMPLER_BINDING(17) uniform samplerCube s_skySpecular;	// Sky Pre-Filtered Specular Map
 
 // Sky rotation backed by perDraw._iblRotation (PerDrawData UBO, slot 6).
 // `iblSecondaryRotation` is reserved for local-volume rotations but currently identity-only —
@@ -87,7 +87,7 @@ vec3 EvalSky(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float per
 	// Diffuse
 	vec3 diffuseColor = albedo * (1.0 - metallic);
 	vec3 iblDiffuseVec = (perDraw._iblRotation * vec4(normal, 0.0)).xyz;
-	vec3 irradiance = texture(s_texture16, iblDiffuseVec).rgb;
+	vec3 irradiance = texture(s_skyIrradiance, iblDiffuseVec).rgb;
 	color += diffuseColor * irradiance * (1.0 - E);
 
 	// Specular
@@ -95,7 +95,7 @@ vec3 EvalSky(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float per
 	R = GetSpecularDominantDirection(normal, R, perceptualRoughness);
 	vec3 iblSpecVec = (perDraw._iblRotation * vec4(R, 0.0)).xyz;
 	float lod = RoughnessToLod(perceptualRoughness, float(graphicConstants.iblMaxReflectionLod));
-	vec3 preFilteredColor = textureLod(s_texture17, iblSpecVec, lod).rgb;
+	vec3 preFilteredColor = textureLod(s_skySpecular, iblSpecVec, lod).rgb;
 	color += E * preFilteredColor * energyComp;
 
 	return color * skyIntensity;
@@ -112,9 +112,9 @@ vec3 EvalVolumeDiffuse(int vol, vec3 normal, vec3 albedo, float metallic, vec3 E
 	vec3 iblSamplerVec = (GetVolumeInverseTransform(vol) * vec4(normal, 0.0)).xyz;
 	vec3 irradiance;
 	if (vol == 0)
-		irradiance = texture(s_texture7, iblSamplerVec).rgb;
+		irradiance = texture(s_irradianceMap, iblSamplerVec).rgb;
 	else
-		irradiance = texture(s_texture11, iblSamplerVec).rgb;
+		irradiance = texture(s_secondaryIrradiance, iblSamplerVec).rgb;
 	return diffuseColor * irradiance * (1.0 - E);
 }
 
@@ -140,9 +140,9 @@ vec3 EvalVolumeSpecular(int vol, vec3 normal, vec3 fragToEye, float perceptualRo
 	float lod = RoughnessToLod(perceptualRoughness, float(graphicConstants.iblMaxReflectionLod));
 	vec3 preFilteredColor;
 	if (vol == 0)
-		preFilteredColor = textureLod(s_texture15, iblSamplerVec, lod).rgb;
+		preFilteredColor = textureLod(s_iblSpecular, iblSamplerVec, lod).rgb;
 	else
-		preFilteredColor = textureLod(s_texture12, iblSamplerVec, lod).rgb;
+		preFilteredColor = textureLod(s_secondarySpecular, iblSamplerVec, lod).rgb;
 
 	vec3 specular = E * preFilteredColor;
 	specular *= energyComp;

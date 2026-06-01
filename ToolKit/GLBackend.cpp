@@ -785,31 +785,33 @@ namespace ToolKit
     m_currentProgramId = pid;
     m_currentProgram   = program;
 
-    // Bind sampler slots so shader samplers map to texture bind slots.
-    for (ubyte slot = 0; slot < RHIConstants::TextureSlotCount; slot++)
-    {
-      GLint loc = glGetUniformLocation(pid, ("s_texture" + std::to_string(slot)).c_str());
-      if (loc != -1)
-      {
-        glUniform1i(loc, slot);
-      }
-    }
-
-    // Dynamic UBO binding: bind only the entries provided in the binding list.
+    // Explicit resource binding: set sampler slots and UBO block bindings from the
+    // shader declaration list so no hardcoded names or slots are needed.
     for (int i = 0; i < bindingCount; ++i)
     {
       const ShaderResourceBinding& b = bindings[i];
 
-      int loc = glGetUniformBlockIndex(pid, b.blockName);
-      if (loc == GL_INVALID_INDEX)
-        continue;
-
-      glUniformBlockBinding(pid, (GLuint)loc, b.slot);
-
-      if (b.buffer && b.buffer->m_gpuData)
+      if (b.type == ShaderResourceBinding::Type::Texture)
       {
-        GLuint uboId = static_cast<GLUniformBufferData*>(b.buffer->m_gpuData.get())->uboId;
-        glBindBufferBase(GL_UNIFORM_BUFFER, b.slot, uboId);
+        GLint loc = glGetUniformLocation(pid, b.name);
+        if (loc != -1)
+        {
+          glUniform1i(loc, b.slot);
+        }
+      }
+      else // UniformBuffer
+      {
+        int loc = glGetUniformBlockIndex(pid, b.name);
+        if (loc == GL_INVALID_INDEX)
+          continue;
+
+        glUniformBlockBinding(pid, (GLuint)loc, b.slot);
+
+        if (b.buffer && b.buffer->m_gpuData)
+        {
+          GLuint uboId = static_cast<GLUniformBufferData*>(b.buffer->m_gpuData.get())->uboId;
+          glBindBufferBase(GL_UNIFORM_BUFFER, b.slot, uboId);
+        }
       }
     }
   }

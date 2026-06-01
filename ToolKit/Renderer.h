@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include <unordered_map>
+
 #include "Camera.h"
 #include "GenericBuffers.h"
 #include "GpuProgram.h"
@@ -353,6 +355,10 @@ namespace ToolKit
 
     void SetTexture(ubyte slotIndx, TexturePtr texture);
 
+    /** Binds a texture to the slot declared for the given semantic sampler name in the
+     *  currently bound program. No-op if the program does not declare that sampler. */
+    void SetTexture(const char* semanticName, TexturePtr texture);
+
     /** Reads an equirectengular hdr image and creates a cube map from it. */
     CubeMapPtr GenerateCubemapFrom2DTexture(TexturePtr texture,
                                             uint size,
@@ -534,12 +540,12 @@ namespace ToolKit
     RenderTargetPtr m_brdfLut             = nullptr;
     TexturePtr m_aoTexture                = nullptr;
 
-    /** Texture explicitly bound to slot 1 by Render(job) *after* BindPipeline so it survives
-     * the Vulkan descriptor wipe in VulkanBackend::BindPipeline. Used by utility passes
-     * (currently the shadow blur's horizontal sub-pass) that sample a 2DArray view from a
-     * slot the standard material / SetDataTextures flow does not bind. nullptr in normal
-     * draws. The owning pass must clear it back to nullptr when done. */
-    TexturePtr m_postPipelineSlot1Texture = nullptr;
+    /** Extra textures bound by Render(job) *after* BindPipeline so they survive the Vulkan
+     * descriptor wipe in VulkanBackend::BindPipeline. Key is the shader-side sampler name
+     * (e.g. "s_sourceArray"); value is the texture to bind. Used by utility passes that
+     * sample from a slot the standard material / SetDataTextures flow does not bind.
+     * The owning pass must clear its entry when done. */
+    std::unordered_map<String, TexturePtr> m_postPipelineTextures;
 
     std::array<int, RHIConstants::TextureSlotCount> m_textureSlots;
 

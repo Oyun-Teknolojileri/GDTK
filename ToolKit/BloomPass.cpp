@@ -66,7 +66,7 @@ namespace ToolKit
       m_passDataBuffer.m_data.downsampleParams  = Vec4((float) mainRes.x, (float) mainRes.y, m_params.minThreshold, 0.0f);
       pushUbo();
 
-      renderer->SetTexture(0, mainRt);
+      renderer->SetTexture("s_diffuseColor", mainRt);
       m_pass->m_params.frameBuffer      = m_resampleFrameBuffers[0];
       m_pass->m_params.blendFunc        = BlendFunction::NONE;
       m_pass->m_params.clearFrameBuffer = GraphicBitFields::None;
@@ -97,7 +97,7 @@ namespace ToolKit
         m_passDataBuffer.m_data.downsampleParams = Vec4(prevRes.x, prevRes.y, m_passDataBuffer.m_data.downsampleParams.z, 0.0f);
         pushUbo();
 
-        renderer->SetTexture(0, prevRt);
+        renderer->SetTexture("s_diffuseColor", prevRt);
 
         // Set pass parameters
         m_pass->m_params.clearFrameBuffer = GraphicBitFields::None;
@@ -121,7 +121,7 @@ namespace ToolKit
 
         FramebufferPtr prevFramebuffer = m_resampleFrameBuffers[i];
         RenderTargetPtr prevRt         = prevFramebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
-        renderer->SetTexture(0, prevRt);
+        renderer->SetTexture("s_diffuseColor", prevRt);
 
         m_pass->m_params.blendFunc        = BlendFunction::ONE_TO_ONE;
         m_pass->m_params.clearFrameBuffer = GraphicBitFields::None;
@@ -137,7 +137,7 @@ namespace ToolKit
 
       FramebufferPtr prevFramebuffer = m_resampleFrameBuffers[0];
       RenderTargetPtr prevRt         = prevFramebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
-      renderer->SetTexture(0, prevRt);
+      renderer->SetTexture("s_diffuseColor", prevRt);
 
       m_pass->m_params.blendFunc        = BlendFunction::ONE_TO_ONE;
       m_pass->m_params.clearFrameBuffer = GraphicBitFields::None;

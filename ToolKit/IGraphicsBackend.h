@@ -30,13 +30,14 @@ namespace ToolKit
 
   using GpuResourceDataPtr = std::shared_ptr<GpuResourceData>;
 
-  /** Single UBO or resource binding entry passed to CreateGpuProgram.
+  /** Single UBO or texture sampler binding entry passed to CreateGpuProgram.
    *  Vulkan backend may extend this with a 'set' field later. */
   struct ShaderResourceBinding
   {
-    const char* blockName;  //!< Shader-side uniform block name.
-    int slot;               //!< Binding slot (reserved for globals, shader-declared for custom).
-    UniformBuffer* buffer;  //!< nullptr = block binding only (pass-specific buffers).
+    enum class Type { UniformBuffer, Texture } type = Type::UniformBuffer;
+    const char* name;       //!< Shader-side uniform block name or sampler name.
+    int slot;               //!< Binding slot / texture unit.
+    UniformBuffer* buffer = nullptr;  //!< Valid only for UniformBuffer.
   };
 
   struct PassDesc

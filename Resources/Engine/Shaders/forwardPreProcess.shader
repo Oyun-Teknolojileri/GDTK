@@ -5,8 +5,8 @@
 	<include name = "drawDataInc.shader" />
 	<include name = "normalEncodingInc.shader" />
 	<define name = "DrawAlphaMasked" val="0,1" />
-	<texture slot = "0" name = "s_texture0" />
-	<texture slot = "9" name = "s_texture9" />
+	<texture slot = "0" name = "s_diffuseColor" />
+	<texture slot = "9" name = "s_normalMap" />
 	<source>
 	<!--
 	
@@ -20,8 +20,8 @@
 
 	layout (location = 0) out vec4 fragNormalDepth;
 
-	TK_SAMPLER_BINDING(0) uniform sampler2D s_texture0; // color
-	TK_SAMPLER_BINDING(9) uniform sampler2D s_texture9; // normal
+	TK_SAMPLER_BINDING(0) uniform sampler2D s_diffuseColor; // color
+	TK_SAMPLER_BINDING(9) uniform sampler2D s_normalMap; // normal
 
 	void main()
 	{
@@ -30,7 +30,7 @@
 		vec4 color;
 		if (material.diffuseTextureInUse > 0)
 		{
-			color = texture(s_texture0, v_texture).rgba;
+			color = texture(s_diffuseColor, v_texture).rgba;
 		}
 		else
 		{
@@ -47,7 +47,7 @@
 		vec3 normal;
 		if (material.normalMapInUse == 1)
 		{
-			normal = texture(s_texture9, v_texture).xyz;
+			normal = texture(s_normalMap, v_texture).xyz;
 			normal = normal * 2.0 - 1.0;
 			normal = TBN * normal;
 			normal = normalize(normal);

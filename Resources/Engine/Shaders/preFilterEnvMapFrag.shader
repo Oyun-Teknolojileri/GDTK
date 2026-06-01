@@ -3,13 +3,13 @@
 	<include name = "vulkanCompatInc.shader" />
 	<include name = "pbrPrecompute.shader" />
 	<include name = "preFilterEnvMapPassDataInc.shader" />
-	<texture slot = "6" name = "s_texture6" viewType = "cube" />
+	<texture slot = "6" name = "s_cubeMap" viewType = "cube" />
 	<source>
 	<!--
 		
 		precision highp float;
 
-		TK_SAMPLER_BINDING(6) uniform samplerCube s_texture6;
+		TK_SAMPLER_BINDING(6) uniform samplerCube s_cubeMap;
 
 		in vec3 v_pos;
 		out vec4 fragColor;
@@ -53,7 +53,7 @@
 
 					float mipLevel = preFilterEnvMap.params.y == 0.0 ? 0.0 : 0.5 * log2(saSample / saTexel); 
 					
-					vec3 texel = textureLod(s_texture6, L, mipLevel).rgb;
+					vec3 texel = textureLod(s_cubeMap, L, mipLevel).rgb;
 					texel = clamp(texel, vec3(0.0), vec3(FLT_MAX));
 					prefilteredColor += texel * NdotL;
 					
