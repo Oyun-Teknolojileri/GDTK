@@ -164,6 +164,12 @@ namespace ToolKit
      */
     EnvironmentComponentPtrArray& GetEnvironmentVolumes() const;
 
+    /** Adds an environment component to the volume cache if it has a valid Hdri. */
+    void AddEnvironmentVolume(const EnvironmentComponentPtr& envComp);
+
+    /** Removes an environment component from the volume cache. */
+    void RemoveEnvironmentVolume(EnvironmentComponent* envComp);
+
     /**
      * Gets the first entity in the scene with the given name.
      * @param name The name of the entity to get.
@@ -299,6 +305,9 @@ namespace ToolKit
      */
     void _RemoveChildren(EntityPtr removed);
 
+    /** Rebuilds the entity ID to index map. Called after bulk operations that bypass AddEntity. */
+    void _RebuildEntityIdMap();
+
    public:
     PostProcessingSettingsPtr m_postProcessSettings; //!< Post process settings that this scene uses
 
@@ -314,6 +323,8 @@ namespace ToolKit
     mutable LightRawPtrArray m_directionalLightCache;              //!< Cached directional lights in the scene.
     mutable EnvironmentComponentPtrArray m_environmentVolumeCache; //!< Environment volumes in the scene.
     mutable SkyBasePtr m_skyCache;                                 //!< Last added sky.
+
+    std::unordered_map<ObjectId, int> m_entityIdToIndex; //!< Fast entity ID lookup map.
   };
 
   /**

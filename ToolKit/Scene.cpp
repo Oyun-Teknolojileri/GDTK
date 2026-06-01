@@ -185,19 +185,11 @@ namespace ToolKit
 
   void Scene::Update(float deltaTime)
   {
-    m_environmentVolumeCache.clear();
-
-    for (const EntityPtr& ntt : m_entities)
+    // Environment volume cache is maintained incrementally by UpdateEntityCaches
+    // in AddEntity/RemoveEntity. No need to scan all entities every frame.
+    for (const EnvironmentComponentPtr& envComp : m_environmentVolumeCache)
     {
-      // Update volume caches.
-      if (const EnvironmentComponentPtr& envComp = ntt->GetComponent<EnvironmentComponent>())
-      {
-        if (envComp->GetHdriVal() != nullptr)
-        {
-          envComp->Init(true);
-          m_environmentVolumeCache.push_back(envComp);
-        }
-      }
+      envComp->Init(true);
     }
 
     for (Light* light : m_lightCache)
@@ -317,18 +309,14 @@ namespace ToolKit
 
   EntityPtr Scene::GetEntity(ObjectId id, int* index) const
   {
-    for (int i = 0; i < (int) m_entities.size(); i++)
+    auto it = m_entityIdToIndex.find(id);
+    if (it != m_entityIdToIndex.end())
     {
-      EntityPtr ntt = m_entities[i];
-      if (ntt->GetIdVal() == id)
+      if (index != nullptr)
       {
-        if (index != nullptr)
-        {
-          *index = i;
-        }
-
-        return ntt;
+        *index = it->second;
       }
+      return m_entities[it->second];
     }
 
     if (index != nullptr)
@@ -362,18 +350,24 @@ namespace ToolKit
 
         if (index < 0 || index >= (int) m_entities.size())
         {
+          int newIndex = (int) m_entities.size();
           m_entities.push_back(entity);
+          m_entityIdToIndex[entity->GetIdVal()] = newIndex;
         }
         else
         {
           m_entities.insert(m_entities.begin() + index, entity);
+          for (int i = index; i < (int) m_entities.size(); ++i)
+          {
+            m_entityIdToIndex[m_entities[i]->GetIdVal()] = i;
+          }
         }
 
         entity->m_scene = Self<Scene>();
 
         if (entity->m_partOfAABBTree)
         {
-          m_aabbTree.CreateNode(entity, entity->GetBoundingBox(true));
+          m_aabbTree.CreateNode(entity.get(), entity->GetBoundingBox(true));
         }
       }
     }
@@ -424,6 +418,12 @@ namespace ToolKit
     UpdateEntityCaches(removed, false);
     m_entities.erase(m_entities.begin() + indx);
 
+    m_entityIdToIndex.erase(id);
+    for (int i = indx; i < (int) m_entities.size(); ++i)
+    {
+      m_entityIdToIndex[m_entities[i]->GetIdVal()] = i;
+    }
+
     if (deep)
     {
       _RemoveChildren(removed);
@@ -452,7 +452,11 @@ namespace ToolKit
     }
   }
 
-  void Scene::RemoveAllEntities() { m_entities.clear(); }
+  void Scene::RemoveAllEntities()
+  {
+    m_entities.clear();
+    m_entityIdToIndex.clear();
+  }
 
   const EntityPtrArray& Scene::GetEntities() const { return m_entities; }
 
@@ -565,8 +569,9 @@ namespace ToolKit
       }
     }
 
-    m_entities.clear();
     m_aabbTree.Reset();
+    m_entities.clear();
+    m_entityIdToIndex.clear();
 
     m_lightCache.clear();
     m_directionalLightCache.clear();
@@ -595,6 +600,7 @@ namespace ToolKit
     prefab->m_name = name;
     prefab->Save(false);
     prefab->m_entities.clear();
+    prefab->m_entityIdToIndex.clear();
 
     // Restore the old node.
     entity->m_node->m_children.clear();
@@ -606,6 +612,7 @@ namespace ToolKit
   {
     m_aabbTree.Reset();
     m_entities.clear();
+    m_entityIdToIndex.clear();
   }
 
   const BoundingBox& Scene::GetSceneBoundary() { return m_aabbTree.GetRootBoundingBox(); }
@@ -624,6 +631,8 @@ namespace ToolKit
     {
       DeepCopy(ntt, cpy->m_entities);
     }
+
+    cpy->_RebuildEntityIdMap();
   }
 
   void Scene::UpdateEntityCaches(const EntityPtr& ntt, bool add)
@@ -672,6 +681,37 @@ namespace ToolKit
           remove(m_environmentVolumeCache, envComp);
         }
       }
+    }
+  }
+
+  void Scene::AddEnvironmentVolume(const EnvironmentComponentPtr& envComp)
+  {
+    if (envComp == nullptr || envComp->GetHdriVal() == nullptr)
+    {
+      return;
+    }
+
+    if (std::find(m_environmentVolumeCache.begin(), m_environmentVolumeCache.end(), envComp)
+        == m_environmentVolumeCache.end())
+    {
+      m_environmentVolumeCache.push_back(envComp);
+    }
+  }
+
+  void Scene::RemoveEnvironmentVolume(EnvironmentComponent* envComp)
+  {
+    if (envComp == nullptr)
+    {
+      return;
+    }
+
+    auto it = std::find_if(m_environmentVolumeCache.begin(),
+                           m_environmentVolumeCache.end(),
+                           [envComp](const EnvironmentComponentPtr& ptr) { return ptr.get() == envComp; });
+
+    if (it != m_environmentVolumeCache.end())
+    {
+      m_environmentVolumeCache.erase(it);
     }
   }
 
@@ -911,6 +951,16 @@ namespace ToolKit
     }
 
     return lastId;
+  }
+
+  void Scene::_RebuildEntityIdMap()
+  {
+    m_entityIdToIndex.clear();
+    m_entityIdToIndex.reserve(m_entities.size());
+    for (int i = 0; i < (int) m_entities.size(); ++i)
+    {
+      m_entityIdToIndex[m_entities[i]->GetIdVal()] = i;
+    }
   }
 
   SceneManager::SceneManager() { m_baseType = Scene::StaticClass(); }

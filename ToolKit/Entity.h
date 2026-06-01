@@ -72,7 +72,7 @@ namespace ToolKit
      * Returns the visibility status of the current Entity. If it belongs to a
      * prefab, it returns the visibility of Prefab.
      */
-    virtual bool IsVisible();
+    bool IsVisible() const;
 
     /** Sets the visibility of the entity. If deep is true, all child entities gets the given value. */
     void SetVisibility(bool vis, bool deep);

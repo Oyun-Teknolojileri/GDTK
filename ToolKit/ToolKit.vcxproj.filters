@@ -549,6 +549,9 @@
     <ClInclude Include="Vulkan\VulkanBindings.h">
       <Filter>Render\Vulkan</Filter>
     </ClInclude>
+    <ClInclude Include="Hash.h">
+      <Filter>Source</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Entities">

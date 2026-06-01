@@ -92,6 +92,7 @@
       <OptimizeReferences>true</OptimizeReferences>
       <AdditionalDependencies>SDL2main.lib;SDL2.lib;imgui.lib;ToolKit.lib;Workspace.lib;OpenGL32.lib;vulkan-1.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <Profile>true</Profile>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>

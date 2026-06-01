@@ -16,11 +16,15 @@
 
 #include "GeometryTypes.h"
 
+#include <atomic>
+
 namespace ToolKit
 {
 
+  class Entity;
+
   typedef int AABBNodeProxy;
-  typedef std::unordered_set<AABBNodeProxy> AABBNodeProxySet;
+  typedef std::vector<AABBNodeProxy> AABBNodeProxySet;
   typedef std::vector<AABBNodeProxy> NodeProxyArray;
 
   class TK_API AABBTree
@@ -33,12 +37,12 @@ namespace ToolKit
       bool IsLeaf() const { return child1 == nullNode; }
 
       BoundingBox aabb;
-      EntityWeakPtr entity;
+      Entity* entity       = nullptr;
 
-      AABBNodeProxy parent;
-      AABBNodeProxy child1;
-      AABBNodeProxy child2;
-      AABBNodeProxy next;
+      AABBNodeProxy parent = nullNode;
+      AABBNodeProxy child1 = nullNode;
+      AABBNodeProxy child2 = nullNode;
+      AABBNodeProxy next   = nullNode;
 
       AABBNodeProxySet leafs;
     };
@@ -54,7 +58,7 @@ namespace ToolKit
     AABBTree& operator=(const AABBTree&) = delete;
 
     void Reset();
-    AABBNodeProxy CreateNode(EntityWeakPtr entity, const BoundingBox& aabb);
+    AABBNodeProxy CreateNode(Entity* entity, const BoundingBox& aabb);
 
     /** Updates the aabb tree for every invalid node, if any. */
     void UpdateTree();
@@ -94,10 +98,12 @@ namespace ToolKit
     void RemoveLeaf(AABBNodeProxy leaf);
     void Rotate(AABBNodeProxy node);
 
+    template <typename QueryFn>
     void VolumeQuery(EntityRawPtrArray& result,
                      std::atomic_int& threadCount,
                      AABBNodeProxy root,
-                     std::function<IntersectResult(AABBNodeProxy)> queryFn) const;
+                     QueryFn queryFn,
+                     bool allowThreading) const;
 
    private:
     AABBNodeProxy m_root;
@@ -114,6 +120,9 @@ namespace ToolKit
 
     /** Internally used to get max available thread count. */
     mutable int m_maxThreadCount;
+
+    /** Reusable buffer to avoid per-query allocation. */
+    mutable EntityRawPtrArray m_queryResultBuffer;
   };
 
 } // namespace ToolKit

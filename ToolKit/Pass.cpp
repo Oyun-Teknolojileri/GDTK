@@ -52,86 +52,135 @@ namespace ToolKit
                                             const LightRawPtrArray& lights,
                                             const EnvironmentComponentPtrArray& environments)
   {
-    // Each entity can contain several meshes. This submeshIndexLookup array will be used
-    // to find the index of the submesh for a given entity index.
-    // Ex: Entity index is 4 and it has 3 submesh,
-    // its submesh indexes would be = {4, 5, 6}
-    // to look them up: {nttIndex + 0, nttIndex + 1, nttIndex + 3} formula is used.
+    struct EntityRenderCache
+    {
+      Entity* entity = nullptr;
+      MeshComponent* meshComp = nullptr;
+      MaterialComponent* matComp = nullptr;
+      SkeletonComponent* skelComp = nullptr;
+      const MeshRawPtrArray* allMeshes = nullptr;
+      MaterialPtrArray* materialList = nullptr;
+      Mat4 worldTransform;
+      BoundingBox bbox;
+      bool cullFlip = false;
+      bool shadowCaster = true;
+      bool hasAnimData = false;
+      AnimData animData;
+    };
+
     IntArray submeshIndexLookup;
+    submeshIndexLookup.reserve(entities.size());
+
+    std::vector<EntityRenderCache> cache;
+    cache.reserve(entities.size());
+
     int size = 0;
 
-    // Apply ntt visibility check.
-    erase_if(entities,
-             [&](Entity* ntt) -> bool
-             {
-               if (ntt->IsVisible() || ignoreVisibility)
-               {
-                 if (MeshComponent* meshComp = ntt->GetComponentFast<MeshComponent>())
-                 {
-                   meshComp->Init(false);
-                   submeshIndexLookup.push_back(size);
-                   size += meshComp->GetMeshVal()->GetMeshCount();
-                   return false;
-                 }
-               }
+    // Single-pass filter + component cache.
+    // All component lookups and mesh queries happen here once per entity.
+    for (Entity* ntt : entities)
+    {
+      if (!ntt->IsVisible() && !ignoreVisibility)
+        continue;
 
-               return true;
-             });
+      MeshComponent* meshComp = ntt->GetComponentFast<MeshComponent>();
+      if (meshComp == nullptr)
+        continue;
 
-    jobArray.clear();
-    jobArray.resize(size); // at least.
+      meshComp->Init(false);
+
+      const MeshPtr& parentMesh = meshComp->GetMeshVal();
+      int meshCount = parentMesh->GetMeshCount();
+      if (meshCount == 0)
+        continue;
+
+      submeshIndexLookup.push_back(size);
+      size += meshCount;
+
+      EntityRenderCache rd;
+      rd.entity = ntt;
+      rd.meshComp = meshComp;
+      rd.allMeshes = &parentMesh->GetAllMeshes();
+      rd.worldTransform = ntt->m_node->GetTransform();
+      rd.bbox = ntt->GetBoundingBox(true);
+      rd.cullFlip = ntt->m_node->RequireCullFlip();
+      rd.shadowCaster = meshComp->GetCastShadowVal();
+
+      if (MaterialComponent* matComp = ntt->GetComponentFast<MaterialComponent>())
+      {
+        rd.matComp = matComp;
+        rd.materialList = &matComp->GetMaterialList();
+      }
+
+      if (SkeletonComponent* skComp = ntt->GetComponentFast<SkeletonComponent>())
+      {
+        rd.skelComp = skComp;
+        rd.animData = skComp->GetAnimData();
+        rd.hasAnimData = true;
+      }
+
+      cache.push_back(std::move(rd));
+    }
+
+    entities.clear();
+    entities.reserve(cache.size());
+    for (const EntityRenderCache& rd : cache)
+    {
+      entities.push_back(rd.entity);
+    }
 
     if (entities.empty())
     {
+      jobArray.clear();
       return;
     }
 
-    // Construct jobs.
+    if (jobArray.size() != size)
+    {
+      jobArray.clear();
+      jobArray.resize(size);
+    }
+    else
+    {
+      for (RenderJob& job : jobArray)
+      {
+        job.lights.clear();
+      }
+    }
+
     using poolstl::iota_iter;
     std::for_each(TKExecByConditional(entities.size() > 1000, WorkerManager::FramePool),
                   iota_iter<size_t>(0),
                   iota_iter<size_t>(entities.size()),
                   [&](size_t nttIndex)
                   {
-                    Entity* ntt                    = entities[nttIndex];
-                    MaterialPtrArray* materialList = nullptr;
-                    if (MaterialComponent* matComp = ntt->GetComponentFast<MaterialComponent>())
+                    const EntityRenderCache& rd = cache[nttIndex];
+                    Entity* ntt = rd.entity;
+
+                    const int meshCount = static_cast<int>(rd.allMeshes->size());
+                    const int jobBase = submeshIndexLookup[nttIndex];
+
+                    // Lights and environment are identical for all submeshes of the same entity.
+                    RenderJob& firstJob = jobArray[jobBase];
+                    firstJob.BoundingBox = rd.bbox;
+                    AssignLight(firstJob, lights, dirLightEndIndex);
+                    AssignEnvironment(firstJob, environments);
+
+                    for (int subMeshIndx = 0; subMeshIndx < meshCount; subMeshIndx++)
                     {
-                      materialList = &matComp->GetMaterialList();
-                    }
-
-                    MeshComponent* meshComp   = ntt->GetComponentFast<MeshComponent>();
-                    const MeshPtr& parentMesh = meshComp->GetMeshVal();
-
-                    MeshRawPtrArray allMeshes;
-                    parentMesh->GetAllMeshes(allMeshes);
-
-                    bool cullFlip  = ntt->m_node->RequireCullFlip();
-                    Mat4 transform = ntt->m_node->GetTransform();
-                    for (int subMeshIndx = 0; subMeshIndx < (int) allMeshes.size(); subMeshIndx++)
-                    {
-                      Mesh* mesh           = allMeshes[subMeshIndx];
+                      Mesh* mesh = (*rd.allMeshes)[subMeshIndx];
                       MaterialPtr material = nullptr;
 
-                      // Pick the material for submesh.
-                      if (materialList != nullptr)
+                      if (rd.materialList != nullptr && subMeshIndx < (int) rd.materialList->size())
                       {
-                        if (subMeshIndx < materialList->size())
-                        {
-                          material = (*materialList)[subMeshIndx];
-                        }
+                        material = (*rd.materialList)[subMeshIndx];
                       }
 
-                      // if material is still null, pick from mesh.
-                      if (material == nullptr)
+                      if (material == nullptr && mesh->m_material)
                       {
-                        if (mesh->m_material)
-                        {
-                          material = mesh->m_material;
-                        }
+                        material = mesh->m_material;
                       }
 
-                      // Worst case, no material found pick a copy of default.
                       if (material == nullptr)
                       {
                         material = GetMaterialManager()->GetDefaultMaterial();
@@ -140,27 +189,26 @@ namespace ToolKit
                                ntt->GetNameVal().c_str());
                       }
 
-                      // Translate nttIndex to corresponding job index.
-                      int jobIndex        = submeshIndexLookup[nttIndex] + subMeshIndx;
+                      RenderJob& job = jobArray[jobBase + subMeshIndx];
+                      job.Entity = ntt;
+                      job.Mesh = mesh;
+                      job.Material = material.get();
+                      job.requireCullFlip = rd.cullFlip;
+                      job.ShadowCaster = rd.shadowCaster;
+                      job.WorldTransform = rd.worldTransform;
+                      job.BoundingBox = rd.bbox;
 
-                      RenderJob& job      = jobArray[jobIndex];
-                      job.Entity          = ntt;
-                      job.Mesh            = mesh;
-                      job.Material        = material.get();
-                      job.requireCullFlip = cullFlip;
-                      job.ShadowCaster    = meshComp->GetCastShadowVal();
-                      job.WorldTransform  = ntt->m_node->GetTransform();
-                      job.BoundingBox     = ntt->GetBoundingBox(true);
-
-                      // Assign skeletal animations.
-                      if (SkeletonComponent* skComp = ntt->GetComponentFast<SkeletonComponent>())
+                      if (rd.hasAnimData)
                       {
-                        job.animData = skComp->GetAnimData(); // copy
+                        job.animData = rd.animData;
                       }
 
-                      // push directional lights.
-                      AssignLight(job, lights, dirLightEndIndex);
-                      AssignEnvironment(job, environments);
+                      if (subMeshIndx > 0)
+                      {
+                        job.lights = firstJob.lights;
+                        job.EnvironmentVolume = firstJob.EnvironmentVolume;
+                        job.SecondaryEnvironmentVolume = firstJob.SecondaryEnvironmentVolume;
+                      }
                     }
                   });
   }

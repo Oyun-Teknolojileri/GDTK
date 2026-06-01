@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include "Hash.h"
 #include "Types.h"
 
 namespace ToolKit
@@ -21,6 +22,7 @@ namespace ToolKit
   struct TK_API ProfilerNode
   {
     String name;                         //!< Name of this scope.
+    uint64 nameHash           = 0;       //!< Hash of the name for fast lookups.
     float beginTime           = 0.0f;    //!< Start time of current measurement.
     float inclusiveTime       = 0.0f;    //!< Total time including children (ms) - current frame.
     float exclusiveTime       = 0.0f;    //!< Time excluding children (ms) - current frame.
@@ -79,6 +81,7 @@ namespace ToolKit
 
     /** Begin a profiling scope. Call at the start of a code block. */
     void BeginScope(StringView name);
+    void BeginScope(uint64_t nameHash, StringView name);
 
     /** End the current profiling scope. Call at the end of a code block. */
     void EndScope();
@@ -129,6 +132,7 @@ namespace ToolKit
   {
    public:
     ProfileScope(StringView name);
+    ProfileScope(uint64_t nameHash, StringView name);
     ~ProfileScope();
 
    private:
@@ -137,7 +141,9 @@ namespace ToolKit
 
 // Convenience macros for profiling.
 #define TK_PROFILE_SCOPE(name) ToolKit::ProfileScope _tkProfileScope##__LINE__(name)
-#define TK_PROFILE_FUNCTION()  TK_PROFILE_SCOPE(__FUNCTION__)
+#define TK_PROFILE_FUNCTION()                                                                                          \
+  ToolKit::ProfileScope _tkProfileScope##__LINE__(ToolKit::TKConstexprHash(__FUNCTION__, sizeof(__FUNCTION__) - 1),    \
+                                                  __FUNCTION__)
 
   // Per-Frame Counter
   //////////////////////////////////////////

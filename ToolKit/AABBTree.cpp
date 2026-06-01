@@ -35,13 +35,12 @@ namespace ToolKit
     // Build a linked list for the free list.
     for (int32 i = 0; i < m_nodeCapacity - 1; ++i)
     {
-      if (!m_nodes[i].entity.expired())
+      if (Entity* ntt = m_nodes[i].entity)
       {
-        EntityPtr ntt            = m_nodes[i].entity.lock();
         ntt->m_aabbTreeNodeProxy = nullNode;
       }
 
-      m_nodes[i].entity = EntityWeakPtr();
+      m_nodes[i].entity = nullptr;
       m_nodes[i].next   = i + 1;
       m_nodes[i].parent = i;
       m_nodes[i].leafs.clear();
@@ -53,13 +52,13 @@ namespace ToolKit
     m_invalidNodes.clear();
   }
 
-  AABBNodeProxy AABBTree::CreateNode(EntityWeakPtr entity, const BoundingBox& aabb)
+  AABBNodeProxy AABBTree::CreateNode(Entity* entity, const BoundingBox& aabb)
   {
     AABBNodeProxy newNode = AllocateNode();
 
-    if (EntityPtr ntt = entity.lock())
+    if (entity != nullptr)
     {
-      ntt->m_aabbTreeNodeProxy = newNode;
+      entity->m_aabbTreeNodeProxy = newNode;
     }
 
     // Fatten the aabb
@@ -69,7 +68,7 @@ namespace ToolKit
     m_nodes[newNode].parent   = nullNode;
 
     // Insert a reference to self to create leafs struct properly in the tree.
-    m_nodes[newNode].leafs.insert(newNode);
+    m_nodes[newNode].leafs.push_back(newNode);
 
     InsertLeaf(newNode);
 
@@ -92,10 +91,9 @@ namespace ToolKit
       RemoveLeaf(node);
 
       BoundingBox aabb = m_nodes[node].aabb;
-      if (!m_nodes[node].entity.expired())
+      if (Entity* ntt = m_nodes[node].entity)
       {
-        EntityPtr ntt = m_nodes[node].entity.lock();
-        aabb          = ntt->GetBoundingBox(true);
+        aabb = ntt->GetBoundingBox(true);
       }
 
       m_nodes[node].aabb = aabb;
@@ -122,7 +120,7 @@ namespace ToolKit
 
     UpdateTree();
 
-    std::deque<AABBNodeProxy> stack;
+    std::vector<AABBNodeProxy> stack;
     stack.emplace_back(m_root);
 
     while (stack.size() != 0)
@@ -269,7 +267,7 @@ namespace ToolKit
     m_nodes[node].parent = nullNode;
     m_nodes[node].child1 = nullNode;
     m_nodes[node].child2 = nullNode;
-    m_nodes[node].entity.reset();
+    m_nodes[node].entity = nullptr;
     m_nodes[node].leafs.clear();
     ++m_nodeCount;
 
@@ -293,9 +291,11 @@ namespace ToolKit
       return entities;
     }
 
-    EntityRawPtrArray entitiesInVolume;
-    entitiesInVolume.resize(m_nodeCapacity);
-    std::fill(entitiesInVolume.begin(), entitiesInVolume.end(), nullptr);
+    if ((int) m_queryResultBuffer.size() < m_nodeCapacity)
+    {
+      m_queryResultBuffer.resize(m_nodeCapacity);
+    }
+    std::fill(m_queryResultBuffer.begin(), m_queryResultBuffer.end(), nullptr);
 
     m_maxThreadCount =
         m_nodeCount > m_threadTreshold && threaded ? GetWorkerManager()->GetThreadCount(WorkerManager::FramePool) : 0;
@@ -304,19 +304,22 @@ namespace ToolKit
 
     if constexpr (std::is_same_v<VolumeType, Frustum>)
     {
-      VolumeQuery(entitiesInVolume,
-                  availableThreadCount,
-                  m_root,
-                  [this, &vol](AABBNodeProxy root) -> IntersectResult
-                  { return FrustumBoxIntersection(vol, m_nodes[root].aabb); });
+      VolumeQuery(
+          m_queryResultBuffer,
+          availableThreadCount,
+          m_root,
+          [this, &vol](AABBNodeProxy root) -> IntersectResult
+          { return FrustumBoxIntersection(vol, m_nodes[root].aabb); },
+          true);
     }
     else if constexpr (std::is_same_v<VolumeType, BoundingBox>)
     {
-      VolumeQuery(entitiesInVolume,
-                  availableThreadCount,
-                  m_root,
-                  [this, &vol](AABBNodeProxy root) -> IntersectResult
-                  { return BoxBoxIntersection(vol, m_nodes[root].aabb); });
+      VolumeQuery(
+          m_queryResultBuffer,
+          availableThreadCount,
+          m_root,
+          [this, &vol](AABBNodeProxy root) -> IntersectResult { return BoxBoxIntersection(vol, m_nodes[root].aabb); },
+          true);
     }
     else
     {
@@ -327,13 +330,13 @@ namespace ToolKit
     // If there are threads in work, wait for them.
     SpinWaitBarrier([&]() -> bool { return availableThreadCount.load() < m_maxThreadCount; });
 
-    entities.reserve(m_nodeCapacity);
+    entities.reserve(m_nodeCount);
 
-    for (int i = 0; i < (int) entitiesInVolume.size(); i++)
+    for (int i = 0; i < (int) m_queryResultBuffer.size(); i++)
     {
-      if (entitiesInVolume[i] != nullptr)
+      if (m_queryResultBuffer[i] != nullptr)
       {
-        entities.push_back(entitiesInVolume[i]);
+        entities.push_back(m_queryResultBuffer[i]);
       }
     }
 
@@ -349,7 +352,7 @@ namespace ToolKit
 
     UpdateTree();
 
-    std::deque<AABBNodeProxy> stack;
+    std::vector<AABBNodeProxy> stack;
     stack.emplace_back(m_root);
 
     float hitDist = TK_FLT_MAX;
@@ -365,7 +368,12 @@ namespace ToolKit
       {
         if (m_nodes[current].IsLeaf())
         {
-          EntityPtr candidate = m_nodes[current].entity.lock();
+          Entity* candidate = m_nodes[current].entity;
+          if (candidate == nullptr)
+          {
+            continue;
+          }
+
           if (!ignoreList.empty())
           {
             if (contains(ignoreList, candidate->GetIdVal()))
@@ -377,7 +385,7 @@ namespace ToolKit
           if (deep)
           {
             float meshDist;
-            if (RayEntityIntersection(ray, candidate, meshDist))
+            if (RayEntityIntersection(ray, candidate->Self<Entity>(), meshDist))
             {
               intersecLen = meshDist;
             }
@@ -390,7 +398,7 @@ namespace ToolKit
           if (intersecLen < hitDist)
           {
             hitDist   = intersecLen;
-            hitEntity = candidate;
+            hitEntity = candidate->Self<Entity>();
           }
         }
         else
@@ -424,14 +432,14 @@ namespace ToolKit
     assert(0 <= node && node <= m_nodeCapacity);
     assert(0 < m_nodeCount);
 
-    if (EntityPtr ntt = m_nodes[node].entity.lock())
+    if (Entity* ntt = m_nodes[node].entity)
     {
       ntt->m_aabbTreeNodeProxy = nullNode;
     }
 
     m_nodes[node].parent = node;
     m_nodes[node].next   = m_freeList;
-    m_nodes[node].entity.reset();
+    m_nodes[node].entity = nullptr;
     m_nodes[node].leafs.clear();
     m_freeList = node;
 
@@ -492,147 +500,84 @@ namespace ToolKit
 
       for (AABBNodeProxy leaf : m_nodes[n1].leafs)
       {
-        m_nodes[n0sibling].leafs.erase(leaf);
+        auto& siblingLeafs = m_nodes[n0sibling].leafs;
+        auto it            = std::find(siblingLeafs.begin(), siblingLeafs.end(), leaf);
+        if (it != siblingLeafs.end())
+        {
+          *it = siblingLeafs.back();
+          siblingLeafs.pop_back();
+        }
       }
 
       for (AABBNodeProxy leaf : m_nodes[n0].leafs)
       {
-        m_nodes[n0sibling].leafs.insert(leaf);
+        m_nodes[n0sibling].leafs.push_back(leaf);
       }
     };
 
     // printf("Tree rotation occurred: %d\n", bestDiffIndex);
     switch (bestDiffIndex)
     {
-    case 0:
-    {
-      // Swap(child2, nodes[child1].child2);
-      leafCacheUpdate(child2, m_nodes[child1].child2);
-
-      m_nodes[m_nodes[child1].child2].parent = node;
-      m_nodes[node].child2                   = m_nodes[child1].child2;
-
-      m_nodes[child1].child2                 = child2;
-      m_nodes[child2].parent                 = child1;
-
-      m_nodes[child1].aabb =
-          BoundingBox::Union(m_nodes[m_nodes[child1].child1].aabb, m_nodes[m_nodes[child1].child2].aabb);
-    }
-    break;
-    case 1:
-    {
-      // Swap(child2, nodes[child1].child1);
-      leafCacheUpdate(child2, m_nodes[child1].child1);
-
-      m_nodes[m_nodes[child1].child1].parent = node;
-      m_nodes[node].child2                   = m_nodes[child1].child1;
-
-      m_nodes[child1].child1                 = child2;
-      m_nodes[child2].parent                 = child1;
-
-      m_nodes[child1].aabb =
-          BoundingBox::Union(m_nodes[m_nodes[child1].child1].aabb, m_nodes[m_nodes[child1].child2].aabb);
-    }
-    break;
-    case 2:
-    {
-      // Swap(child1, nodes[child2].child2);
-      leafCacheUpdate(child1, m_nodes[child2].child2);
-
-      m_nodes[m_nodes[child2].child2].parent = node;
-      m_nodes[node].child1                   = m_nodes[child2].child2;
-
-      m_nodes[child2].child2                 = child1;
-      m_nodes[child1].parent                 = child2;
-      m_nodes[child2].aabb =
-          BoundingBox::Union(m_nodes[m_nodes[child2].child1].aabb, m_nodes[m_nodes[child2].child2].aabb);
-    }
-    break;
-    case 3:
-    {
-      // Swap(child1, nodes[child2].child1);
-      leafCacheUpdate(child1, m_nodes[child2].child1);
-
-      m_nodes[m_nodes[child2].child1].parent = node;
-      m_nodes[node].child1                   = m_nodes[child2].child1;
-
-      m_nodes[child2].child1                 = child1;
-      m_nodes[child1].parent                 = child2;
-
-      m_nodes[child2].aabb =
-          BoundingBox::Union(m_nodes[m_nodes[child2].child1].aabb, m_nodes[m_nodes[child2].child2].aabb);
-    }
-    break;
-    }
-  }
-
-  void AABBTree::VolumeQuery(EntityRawPtrArray& result,
-                             std::atomic_int& threadCount,
-                             AABBNodeProxy root,
-                             std::function<IntersectResult(AABBNodeProxy)> queryFn) const
-  {
-    std::deque<AABBNodeProxy> stack;
-    stack.emplace_back(root);
-
-    while (stack.size() != 0)
-    {
-      AABBNodeProxy current = stack.back();
-      stack.pop_back();
-
-      IntersectResult intResult = queryFn(current);
-
-      if (intResult == IntersectResult::Intersect)
+      case 0:
       {
-        // Volume is partially inside, check all internal volumes.
-        if (m_nodes[current].IsLeaf())
-        {
-          if (!m_nodes[current].entity.expired())
-          {
-            result[current] = m_nodes[current].entity.lock().get();
-          }
-        }
-        else
-        {
-          auto parallelProcessFn = [&](AABBNodeProxy node) -> void
-          {
-            if (node == nullNode)
-            {
-              return;
-            }
+        // Swap(child2, nodes[child1].child2);
+        leafCacheUpdate(child2, m_nodes[child1].child2);
 
-            int currentCount = threadCount.load();
-            if (currentCount > 0)
-            {
-              if (threadCount.compare_exchange_strong(currentCount, currentCount - 1))
-              {
-                TKAsyncTask(WorkerManager::FramePool,
-                            [this, &result, &threadCount, node, queryFn]() -> void
-                            { VolumeQuery(result, threadCount, node, queryFn); });
-                return;
-              }
-            }
+        m_nodes[m_nodes[child1].child2].parent = node;
+        m_nodes[node].child2                   = m_nodes[child1].child2;
 
-            stack.emplace_back(node);
-          };
+        m_nodes[child1].child2                 = child2;
+        m_nodes[child2].parent                 = child1;
 
-          parallelProcessFn(m_nodes[current].child1);
-          parallelProcessFn(m_nodes[current].child2);
-        }
+        m_nodes[child1].aabb =
+            BoundingBox::Union(m_nodes[m_nodes[child1].child1].aabb, m_nodes[m_nodes[child1].child2].aabb);
       }
-      else if (intResult == IntersectResult::Inside)
+      break;
+      case 1:
       {
-        // Volume is fully inside, get all entities from cache.
-        for (AABBNodeProxy leaf : m_nodes[current].leafs)
-        {
-          if (!m_nodes[leaf].entity.expired())
-          {
-            result[leaf] = m_nodes[leaf].entity.lock().get();
-          }
-        }
-      }
-    }
+        // Swap(child2, nodes[child1].child1);
+        leafCacheUpdate(child2, m_nodes[child1].child1);
 
-    threadCount.fetch_add(1);
+        m_nodes[m_nodes[child1].child1].parent = node;
+        m_nodes[node].child2                   = m_nodes[child1].child1;
+
+        m_nodes[child1].child1                 = child2;
+        m_nodes[child2].parent                 = child1;
+
+        m_nodes[child1].aabb =
+            BoundingBox::Union(m_nodes[m_nodes[child1].child1].aabb, m_nodes[m_nodes[child1].child2].aabb);
+      }
+      break;
+      case 2:
+      {
+        // Swap(child1, nodes[child2].child2);
+        leafCacheUpdate(child1, m_nodes[child2].child2);
+
+        m_nodes[m_nodes[child2].child2].parent = node;
+        m_nodes[node].child1                   = m_nodes[child2].child2;
+
+        m_nodes[child2].child2                 = child1;
+        m_nodes[child1].parent                 = child2;
+        m_nodes[child2].aabb =
+            BoundingBox::Union(m_nodes[m_nodes[child2].child1].aabb, m_nodes[m_nodes[child2].child2].aabb);
+      }
+      break;
+      case 3:
+      {
+        // Swap(child1, nodes[child2].child1);
+        leafCacheUpdate(child1, m_nodes[child2].child1);
+
+        m_nodes[m_nodes[child2].child1].parent = node;
+        m_nodes[node].child1                   = m_nodes[child2].child1;
+
+        m_nodes[child2].child1                 = child1;
+        m_nodes[child1].parent                 = child2;
+
+        m_nodes[child2].aabb =
+            BoundingBox::Union(m_nodes[m_nodes[child2].child1].aabb, m_nodes[m_nodes[child2].child2].aabb);
+      }
+      break;
+    }
   }
 
   AABBNodeProxy AABBTree::InsertLeaf(AABBNodeProxy leaf)
@@ -662,7 +607,7 @@ namespace ToolKit
       Candidate(AABBNodeProxy node, float inheritedCost) : node(node), inheritedCost(inheritedCost) {}
     };
 
-    std::deque<Candidate> stack;
+    std::vector<Candidate> stack;
     stack.emplace_back(m_root, 0.0f);
 
     while (stack.size() != 0)
@@ -725,13 +670,13 @@ namespace ToolKit
     // Construct new parent's leaf cache.
     if (m_nodes[bestSibling].IsLeaf())
     {
-      m_nodes[newParent].leafs.insert(bestSibling);
+      m_nodes[newParent].leafs.push_back(bestSibling);
     }
     else
     {
       for (AABBNodeProxy sibLeaf : m_nodes[bestSibling].leafs)
       {
-        m_nodes[newParent].leafs.insert(sibLeaf);
+        m_nodes[newParent].leafs.push_back(sibLeaf);
       }
     }
 
@@ -739,7 +684,7 @@ namespace ToolKit
     AABBNodeProxy ancestor = newParent;
     while (ancestor != nullNode)
     {
-      m_nodes[ancestor].leafs.insert(leaf); // Insert to all ancestors.
+      m_nodes[ancestor].leafs.push_back(leaf); // Insert to all ancestors.
 
       AABBNodeProxy child1   = m_nodes[ancestor].child1;
       AABBNodeProxy child2   = m_nodes[ancestor].child2;
@@ -799,7 +744,13 @@ namespace ToolKit
       AABBNodeProxy ancestor = grandParent;
       while (ancestor != nullNode)
       {
-        m_nodes[ancestor].leafs.erase(leaf); // Remove from all ancestors.
+        auto& leafs = m_nodes[ancestor].leafs;
+        auto it     = std::find(leafs.begin(), leafs.end(), leaf);
+        if (it != leafs.end())
+        {
+          *it = leafs.back();
+          leafs.pop_back();
+        }
 
         AABBNodeProxy child1   = m_nodes[ancestor].child1;
         AABBNodeProxy child2   = m_nodes[ancestor].child2;
@@ -816,6 +767,80 @@ namespace ToolKit
       m_root                  = sibling;
       m_nodes[sibling].parent = nullNode;
     }
+  }
+
+  template <typename QueryFn>
+  void AABBTree::VolumeQuery(EntityRawPtrArray& result,
+                             std::atomic_int& threadCount,
+                             AABBNodeProxy root,
+                             QueryFn queryFn,
+                             bool allowThreading) const
+  {
+    std::vector<AABBNodeProxy> stack;
+    stack.emplace_back(root);
+
+    while (stack.size() != 0)
+    {
+      AABBNodeProxy current = stack.back();
+      stack.pop_back();
+
+      IntersectResult intResult = queryFn(current);
+
+      if (intResult == IntersectResult::Intersect)
+      {
+        // Volume is partially inside, check all internal volumes.
+        if (m_nodes[current].IsLeaf())
+        {
+          if (Entity* ntt = m_nodes[current].entity)
+          {
+            result[current] = ntt;
+          }
+        }
+        else
+        {
+          auto parallelProcessFn = [&](AABBNodeProxy node) -> void
+          {
+            if (node == nullNode)
+            {
+              return;
+            }
+
+            if (allowThreading)
+            {
+              int currentCount = threadCount.load();
+              if (currentCount > 0)
+              {
+                if (threadCount.compare_exchange_strong(currentCount, currentCount - 1))
+                {
+                  TKAsyncTask(WorkerManager::FramePool,
+                              [this, &result, &threadCount, node, queryFn]() -> void
+                              { VolumeQuery(result, threadCount, node, queryFn, false); });
+                  return;
+                }
+              }
+            }
+
+            stack.emplace_back(node);
+          };
+
+          parallelProcessFn(m_nodes[current].child1);
+          parallelProcessFn(m_nodes[current].child2);
+        }
+      }
+      else if (intResult == IntersectResult::Inside)
+      {
+        // Volume is fully inside, get all entities from cache.
+        for (AABBNodeProxy leaf : m_nodes[current].leafs)
+        {
+          if (Entity* ntt = m_nodes[leaf].entity)
+          {
+            result[leaf] = ntt;
+          }
+        }
+      }
+    }
+
+    threadCount.fetch_add(1);
   }
 
 } // namespace ToolKit
