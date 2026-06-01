@@ -30,6 +30,15 @@ namespace ToolKit
 
   using GpuResourceDataPtr = std::shared_ptr<GpuResourceData>;
 
+  /** Single UBO or resource binding entry passed to CreateGpuProgram.
+   *  Vulkan backend may extend this with a 'set' field later. */
+  struct ShaderResourceBinding
+  {
+    const char* blockName;  //!< Shader-side uniform block name.
+    int slot;               //!< Binding slot (reserved for globals, shader-declared for custom).
+    UniformBuffer* buffer;  //!< nullptr = block binding only (pass-specific buffers).
+  };
+
   struct PassDesc
   {
     FramebufferPtr target;
@@ -126,7 +135,9 @@ namespace ToolKit
     virtual GpuResourceDataPtr CreateShader(Shader* shader, const String& source)                           = 0;
     virtual void DestroyShader(GpuResourceData* shaderData)                                                 = 0;
 
-    virtual void CreateGpuProgram(GpuProgram* program, struct GlobalGpuBuffers* buffers)                    = 0;
+    virtual void CreateGpuProgram(GpuProgram* program,
+                                  const struct ShaderResourceBinding* bindings,
+                                  int bindingCount)                                                         = 0;
     virtual void DestroyGpuProgram(GpuProgram* program)                                                     = 0;
     virtual int GetUniformLocation(GpuProgram* program, const char* name)                                   = 0;
 

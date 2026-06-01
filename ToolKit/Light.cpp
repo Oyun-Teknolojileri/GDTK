@@ -180,10 +180,10 @@ namespace ToolKit
   void DirectionalLightBuffer::Init()
   {
     m_lightDataBuffer.Init(m_lightDataSize);
-    m_lightDataBuffer.m_slot = BindingSlotForLight;
+    m_lightDataBuffer.m_slot = ReservedUniformBufferSlots::DirectionalLightBuffer;
 
     m_pvms.Init(m_pvmDataSize);
-    m_pvms.m_slot = BindingSlotForPVM;
+    m_pvms.m_slot = ReservedUniformBufferSlots::DirectionalLightPVMBuffer;
   }
 
   void DirectionalLightBuffer::Map(const LightRawPtrArray& lights)
@@ -428,7 +428,7 @@ namespace ToolKit
   void PointLightCache::Init()
   {
     m_gpuBuffer.Init(m_cacheSize);
-    m_gpuBuffer.m_slot = BindingSlot;
+    m_gpuBuffer.m_slot = ReservedUniformBufferSlots::PointLightCache;
   }
 
   bool PointLightCache::Map()
@@ -525,7 +525,7 @@ namespace ToolKit
   void SpotLightCache::Init()
   {
     m_gpuBuffer.Init(m_cacheSize);
-    m_gpuBuffer.m_slot = BindingSlot;
+    m_gpuBuffer.m_slot = ReservedUniformBufferSlots::SpotLightCache;
   }
 
   bool SpotLightCache::Map()

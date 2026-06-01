@@ -13,6 +13,18 @@
 namespace ToolKit
 {
 
+  /** Depth-of-field pass UBO (`depthOfFieldFrag.shader`). 4 floats + 1 vec2 packed into 32 bytes
+      across two vec4s. */
+  struct DofPassDataLayout
+  {
+    /** .xy = uPixelSize (1/width, 1/height). */
+    Vec4 pixelSizeAndPad;
+    /** .x = focusPoint, .y = focusScale, .z = blurSize, .w = radiusScale. */
+    Vec4 focusAndBlur;
+  };
+
+  typedef GpuBufferBase<DofPassDataLayout> DofPassDataBuffer;
+
   enum class DoFQuality
   {
     Low,    // Radius Scale = 2.0f

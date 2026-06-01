@@ -130,8 +130,7 @@ namespace ToolKit
     void Map(const LightRawPtrArray& lights);
 
    public:
-    static constexpr int BindingSlotForLight = 7;
-    static constexpr int BindingSlotForPVM   = 10;
+
 
     /** All data containing directional light properties. */
     UniformBuffer m_lightDataBuffer;
@@ -224,7 +223,6 @@ namespace ToolKit
     bool Map();
 
    public:
-    static constexpr int BindingSlot = 8;
     UniformBuffer m_gpuBuffer;
   };
 
@@ -299,7 +297,6 @@ namespace ToolKit
     bool Map();
 
    public:
-    static constexpr int BindingSlot = 9;
     UniformBuffer m_gpuBuffer;
   };
 

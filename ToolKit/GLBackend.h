@@ -63,7 +63,9 @@ namespace ToolKit
     void DestroyShader(GpuResourceData* shaderData) override;
 
     // GpuProgram resource management
-    void CreateGpuProgram(GpuProgram* program, struct GlobalGpuBuffers* buffers) override;
+    void CreateGpuProgram(GpuProgram* program,
+                          const struct ShaderResourceBinding* bindings,
+                          int bindingCount) override;
     void DestroyGpuProgram(GpuProgram* program) override;
     int GetUniformLocation(GpuProgram* program, const char* name) override;
 

@@ -12,9 +12,25 @@
 #include <Entity.h>
 #include <Renderer.h>
 #include <Shader.h>
+#include <UniformBuffer.h>
 
 namespace ToolKit
 {
+
+  struct GridPassDataLayout
+  {
+    /** .x = cellSize, .y = lineMaxPixelCount. */
+    Vec4 cellAndLine;
+    /** .xyz = horizontal axis color. */
+    Vec4 horizontalAxisColor;
+    /** .xyz = vertical axis color. */
+    Vec4 verticalAxisColor;
+    /** .x = is2DViewport (0/1). */
+    IVec4 is2DAndPad;
+  };
+
+  typedef GpuBufferBase<GridPassDataLayout> GridPassDataBuffer;
+
   namespace Editor
   {
 

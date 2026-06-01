@@ -132,7 +132,7 @@ namespace ToolKit
     Vec4 cascadeDistances;
   };
 
-  typedef GpuBufferBase<GraphicConstatsDataLayout, 4> GraphicConstantsGpuBuffer;
+  typedef GpuBufferBase<GraphicConstatsDataLayout> GraphicConstantsGpuBuffer;
 
   // PerDrawGpuBuffer (slot 6)
   //////////////////////////////////////////
@@ -179,7 +179,7 @@ namespace ToolKit
     Vec4 animBlendFactorAndPad;
   };
 
-  typedef GpuBufferBase<PerDrawUboLayout, 6> PerDrawUboBuffer;
+  typedef GpuBufferBase<PerDrawUboLayout> PerDrawUboBuffer;
 
   // Pass-specific UBOs (slot 5)
   //////////////////////////////////////////
@@ -188,45 +188,6 @@ namespace ToolKit
   // owns its own buffer instance; no two passes are active simultaneously so the slot can be
   // re-bound by whichever pass is rendering. Each layout is intentionally tiny — only the
   // values one pass writes per frame.
-
-  /** Single vec4 outline color, consumed by `dilateFrag.shader`. */
-  struct DilatePassDataLayout
-  {
-    Vec4 color;
-  };
-
-  typedef GpuBufferBase<DilatePassDataLayout, 5> DilatePassDataBuffer;
-
-  /** GammaTonemapFxaaPass UBO. Aggregates the six bare uniforms the master shader and its
-      gamma/tonemap/fxaa includes used to read scatter-style. Fields are packed into 16-byte
-      vectors so std140 layout matches the C++ memcpy byte-for-byte. */
-  struct GammaTonemapFxaaPassDataLayout
-  {
-    /** .x = enableFxaa, .y = enableTonemapping, .z = enableGammaCorrection (each 0/1). */
-    IVec4 enableFlags;
-    /** .xy = screenSize (in pixels). */
-    Vec4 screenSizeAndPad;
-    /** .x = useAcesTonemapper (0 = Reinhard, 1 = ACES). .y = gamma value. */
-    Vec4 tonemapParams;
-  };
-
-  typedef GpuBufferBase<GammaTonemapFxaaPassDataLayout, 5> GammaTonemapFxaaPassDataBuffer;
-
-  /** BloomPass UBO. Shared by `bloomDownsample.shader` (filter + downsample chain) and
-      `bloomUpsample.shader` (upsample chain + merge); each shader reads only the half it
-      needs. Pass fills the relevant fields per iteration and re-Map()s the buffer. */
-  struct BloomPassDataLayout
-  {
-    /** .xy = srcResolution (downsample), .z = threshold, .w = pad. */
-    Vec4 downsampleParams;
-    /** .x = filterRadius, .y = intensity (upsample). */
-    Vec4 upsampleParams;
-    /** .x = passIndx (downsample). 0 = filter pass with prefilter; 1 = first downsample with
-        Karis average; \u22652 = regular weighted downsample. */
-    IVec4 passIndxAndPad;
-  };
-
-  typedef GpuBufferBase<BloomPassDataLayout, 5> BloomPassDataBuffer;
 
   /** Gaussian blur shader UBO. Used by `Renderer::ApplyGaussianBlur*` family with the shared
       `gausBlurVert/Frag.shader` pair. Compact: just the per-tap scale + optional layer + UV
@@ -240,7 +201,7 @@ namespace ToolKit
     Vec4 blurClampMinMax;
   };
 
-  typedef GpuBufferBase<GaussBlurPassDataLayout, 5> GaussBlurPassDataBuffer;
+  typedef GpuBufferBase<GaussBlurPassDataLayout> GaussBlurPassDataBuffer;
 
   struct CubemapEquirectPassDataLayout
   {
@@ -248,7 +209,7 @@ namespace ToolKit
     IVec4 lodLevelAndPad;
   };
 
-  typedef GpuBufferBase<CubemapEquirectPassDataLayout, 5> CubemapEquirectPassDataBuffer;
+  typedef GpuBufferBase<CubemapEquirectPassDataLayout> CubemapEquirectPassDataBuffer;
 
   struct PreFilterEnvMapPassDataLayout
   {
@@ -256,43 +217,7 @@ namespace ToolKit
     Vec4 params;
   };
 
-  typedef GpuBufferBase<PreFilterEnvMapPassDataLayout, 5> PreFilterEnvMapPassDataBuffer;
-
-  struct GridPassDataLayout
-  {
-    /** .x = cellSize, .y = lineMaxPixelCount. */
-    Vec4 cellAndLine;
-    /** .xyz = horizontal axis color. */
-    Vec4 horizontalAxisColor;
-    /** .xyz = vertical axis color. */
-    Vec4 verticalAxisColor;
-    /** .x = is2DViewport (0/1). */
-    IVec4 is2DAndPad;
-  };
-
-  typedef GpuBufferBase<GridPassDataLayout, 5> GridPassDataBuffer;
-
-  /** SSAO bilinear 5x5 blur pass UBO (`ssaoBlurFrag.shader`). Single vec2 texel size, padded to
-      a vec4 so the std140 layout sits on a 16-byte boundary. */
-  struct SsaoBlurPassDataLayout
-  {
-    /** .xy = 1.0 / textureSize (pixel size in UV). */
-    Vec4 texelSizeAndPad;
-  };
-
-  typedef GpuBufferBase<SsaoBlurPassDataLayout, 5> SsaoBlurPassDataBuffer;
-
-  /** Depth-of-field pass UBO (`depthOfFieldFrag.shader`). 4 floats + 1 vec2 packed into 32 bytes
-      across two vec4s. */
-  struct DofPassDataLayout
-  {
-    /** .xy = uPixelSize (1/width, 1/height). */
-    Vec4 pixelSizeAndPad;
-    /** .x = focusPoint, .y = focusScale, .z = blurSize, .w = radiusScale. */
-    Vec4 focusAndBlur;
-  };
-
-  typedef GpuBufferBase<DofPassDataLayout, 5> DofPassDataBuffer;
+  typedef GpuBufferBase<PreFilterEnvMapPassDataLayout> PreFilterEnvMapPassDataBuffer;
 
   /** GradientSky cubemap fragment UBO (`gradientSkyboxFrag.shader`). 3 vec3 colors + 1 float
       exponent — packed into 4 vec4s. */
@@ -308,35 +233,17 @@ namespace ToolKit
     Vec4 exponentAndPad;
   };
 
-  typedef GpuBufferBase<GradientSkyboxPassDataLayout, 5> GradientSkyboxPassDataBuffer;
-
-  /** SSAO calc pass UBO (`ssaoCalcFrag.shader`). Aggregates the 6 bare uniforms the SSAO calc
-      shader used to read scatter-style. Sized for the maximum kernel (32 samples) so the same
-      buffer works across the 8/16/32 KERNEL_SIZE define variants — the shader's loop iterates up
-      to KERNEL_SIZE only, so unused tail entries are harmless.
-
-      std140 quirks captured here:
-      - `mat3 normalToView` would take 3×vec4 = 48 bytes with awkward column padding. Stored as
-        Mat4 instead; shader extracts via `mat3(ssaoCalc.normalToView)`.
-      - `vec3 samples[N]` in std140 already pads each element to 16 bytes — directly using
-        `Vec4 samples[32]` matches the GPU view byte-for-byte; shader reads `.xyz`. */
-  struct SsaoCalcPassDataLayout
-  {
-    /** Camera view's rotation as Mat4; shader reads `mat3(normalToView)`. */
-    Mat4 normalToView;
-    /** Hemisphere kernel — 32 vec4 (max kernel size). Only first KERNEL_SIZE entries consumed. */
-    Vec4 samples[32];
-    /** (P00, P11, P20, P21) — precomputed projection matrix entries. */
-    Vec4 projParams;
-    Mat4 inverseProjection;
-    /** .x = radius, .y = bias. */
-    Vec4 radiusBiasAndPad;
-  };
-
-  typedef GpuBufferBase<SsaoCalcPassDataLayout, 5> SsaoCalcPassDataBuffer;
+  typedef GpuBufferBase<GradientSkyboxPassDataLayout> GradientSkyboxPassDataBuffer;
 
   // GlobalGpuBuffers
   //////////////////////////////////////////
+
+  struct GlobalBufferInfo
+  {
+    const char* name;
+    int slot;
+    UniformBuffer* buffer;
+  };
 
   struct GlobalGpuBuffers
   {
@@ -355,19 +262,16 @@ namespace ToolKit
     /** Cached spot lights in gpu. */
     SpotLightCache spotLightBuffer;
 
-    /** Per-draw UBO — fed each draw via SubmitPerDrawData. Bound at slot 6 alongside the other
-        global UBOs. Empty until shaders migrate off bare uniforms; harmless to bind early. */
+    /** Per-draw UBO — fed each draw via SubmitPerDrawData. */
     PerDrawUboBuffer perDrawBuffer;
 
-    void InitGlobalGpuBuffers()
-    {
-      graphicConstantBuffer.Init();
-      cameraGpuBuffer.Init();
-      directionalLightBuffer.Init();
-      pointLighBuffer.Init();
-      spotLightBuffer.Init();
-      perDrawBuffer.Init();
-    }
+    void InitGlobalGpuBuffers();
+
+    /** Block ismine karşılık gelen global buffer bilgisini döndürür. Bulamazsa nullptr döner. */
+    const GlobalBufferInfo* FindGlobalBufferInfo(const char* blockName) const;
+
+   private:
+    GlobalBufferInfo m_bufferTable[ReservedUniformBufferSlots::GlobalBufferCount];
   };
 
   // Renderer

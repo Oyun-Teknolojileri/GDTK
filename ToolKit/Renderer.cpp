@@ -1686,4 +1686,45 @@ namespace ToolKit
     return cubemap;
   }
 
+  // GlobalGpuBuffers
+  //////////////////////////////////////////
+
+  void GlobalGpuBuffers::InitGlobalGpuBuffers()
+  {
+    graphicConstantBuffer.Init();
+    cameraGpuBuffer.Init();
+    directionalLightBuffer.Init();
+    pointLighBuffer.Init();
+    spotLightBuffer.Init();
+    perDrawBuffer.Init();
+
+    // Global buffer slot’larını reserved değerlere set et.
+    cameraGpuBuffer.GetBuffer().m_slot              = ReservedUniformBufferSlots::CameraData;
+    graphicConstantBuffer.GetBuffer().m_slot        = ReservedUniformBufferSlots::GraphicConstantsData;
+    perDrawBuffer.GetBuffer().m_slot                = ReservedUniformBufferSlots::PerDrawData;
+    directionalLightBuffer.m_lightDataBuffer.m_slot = ReservedUniformBufferSlots::DirectionalLightBuffer;
+    directionalLightBuffer.m_pvms.m_slot            = ReservedUniformBufferSlots::DirectionalLightPVMBuffer;
+    pointLighBuffer.m_gpuBuffer.m_slot              = ReservedUniformBufferSlots::PointLightCache;
+    spotLightBuffer.m_gpuBuffer.m_slot              = ReservedUniformBufferSlots::SpotLightCache;
+
+    // Tek lookup tablosunu doldur.
+    m_bufferTable[0] = {"CameraData",                ReservedUniformBufferSlots::CameraData,              &cameraGpuBuffer.GetBuffer()};
+    m_bufferTable[1] = {"GraphicConstatsData",       ReservedUniformBufferSlots::GraphicConstantsData,    &graphicConstantBuffer.GetBuffer()};
+    m_bufferTable[2] = {"PerDrawData",               ReservedUniformBufferSlots::PerDrawData,             &perDrawBuffer.GetBuffer()};
+    m_bufferTable[3] = {"DirectionalLightBuffer",    ReservedUniformBufferSlots::DirectionalLightBuffer,  &directionalLightBuffer.m_lightDataBuffer};
+    m_bufferTable[4] = {"DirectionalLightPVMBuffer", ReservedUniformBufferSlots::DirectionalLightPVMBuffer, &directionalLightBuffer.m_pvms};
+    m_bufferTable[5] = {"PointLightCache",           ReservedUniformBufferSlots::PointLightCache,         &pointLighBuffer.m_gpuBuffer};
+    m_bufferTable[6] = {"SpotLightCache",            ReservedUniformBufferSlots::SpotLightCache,          &spotLightBuffer.m_gpuBuffer};
+  }
+
+  const GlobalBufferInfo* GlobalGpuBuffers::FindGlobalBufferInfo(const char* blockName) const
+  {
+    for (int i = 0; i < ReservedUniformBufferSlots::GlobalBufferCount; ++i)
+    {
+      if (strcmp(blockName, m_bufferTable[i].name) == 0)
+        return &m_bufferTable[i];
+    }
+    return nullptr;
+  }
+
 } // namespace ToolKit

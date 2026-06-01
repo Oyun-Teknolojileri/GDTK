@@ -41,7 +41,7 @@ namespace ToolKit
     void* GetData() override { return (void*) &data; }
   };
 
-  typedef GpuBufferBase<CameraCacheItem::Data, 3> CameraGpuBuffer;
+  typedef GpuBufferBase<CameraCacheItem::Data> CameraGpuBuffer;
 
   // Camera
   //////////////////////////////////////////

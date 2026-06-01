@@ -745,7 +745,9 @@ namespace ToolKit
   // GpuProgram resource management
   // -----------------------------------------------------------------------
 
-  void GLBackend::CreateGpuProgram(GpuProgram* program, GlobalGpuBuffers* buffers)
+  void GLBackend::CreateGpuProgram(GpuProgram* program,
+                                   const ShaderResourceBinding* bindings,
+                                   int bindingCount)
   {
     const ShaderPtr& vs = program->m_shaders[0];
     const ShaderPtr& fs = program->m_shaders[1];
@@ -793,52 +795,23 @@ namespace ToolKit
       }
     }
 
-    // Bind all known UBO blocks.
-    auto bindUBO = [&](const char* blockName, int bindingSlot, UniformBuffer* ub)
+    // Dynamic UBO binding: bind only the entries provided in the binding list.
+    for (int i = 0; i < bindingCount; ++i)
     {
-      int loc = glGetUniformBlockIndex(pid, blockName);
-      if (loc != GL_INVALID_INDEX)
+      const ShaderResourceBinding& b = bindings[i];
+
+      int loc = glGetUniformBlockIndex(pid, b.blockName);
+      if (loc == GL_INVALID_INDEX)
+        continue;
+
+      glUniformBlockBinding(pid, (GLuint)loc, b.slot);
+
+      if (b.buffer && b.buffer->m_gpuData)
       {
-        GLuint uboId = static_cast<GLUniformBufferData*>(ub->m_gpuData.get())->uboId;
-        glUniformBlockBinding(pid, loc, bindingSlot);
-        glBindBufferBase(GL_UNIFORM_BUFFER, bindingSlot, uboId);
+        GLuint uboId = static_cast<GLUniformBufferData*>(b.buffer->m_gpuData.get())->uboId;
+        glBindBufferBase(GL_UNIFORM_BUFFER, b.slot, uboId);
       }
-    };
-
-    bindUBO("CameraData", CameraGpuBuffer::Binding(), &buffers->cameraGpuBuffer.GetBuffer());
-    bindUBO("GraphicConstatsData", GraphicConstantsGpuBuffer::Binding(), &buffers->graphicConstantBuffer.GetBuffer());
-    bindUBO("DirectionalLightBuffer",
-            DirectionalLightBuffer::BindingSlotForLight,
-            &buffers->directionalLightBuffer.m_lightDataBuffer);
-    bindUBO("DirectionalLightPVMBuffer",
-            DirectionalLightBuffer::BindingSlotForPVM,
-            &buffers->directionalLightBuffer.m_pvms);
-    bindUBO("PointLightCache", PointLightCache::BindingSlot, &buffers->pointLighBuffer.m_gpuBuffer);
-    bindUBO("SpotLightCache", SpotLightCache::BindingSlot, &buffers->spotLightBuffer.m_gpuBuffer);
-    bindUBO("PerDrawData", PerDrawUboBuffer::Binding(), &buffers->perDrawBuffer.GetBuffer());
-
-    // Pass-specific UBOs (slot 5) only need the block-binding wired here — the actual buffer
-    // bound to slot 5 changes per pass at runtime via UniformBuffer::Map (see UpdateUniformBuffer).
-    auto bindUBOBlockOnly = [&](const char* blockName, int bindingSlot)
-    {
-      int loc = glGetUniformBlockIndex(pid, blockName);
-      if (loc != GL_INVALID_INDEX)
-      {
-        glUniformBlockBinding(pid, loc, bindingSlot);
-      }
-    };
-
-    bindUBOBlockOnly("DilatePassData", DilatePassDataBuffer::Binding());
-    bindUBOBlockOnly("GammaTonemapFxaaPassData", GammaTonemapFxaaPassDataBuffer::Binding());
-    bindUBOBlockOnly("BloomPassData", BloomPassDataBuffer::Binding());
-    bindUBOBlockOnly("GaussBlurPassData", GaussBlurPassDataBuffer::Binding());
-    bindUBOBlockOnly("CubemapEquirectPassData", CubemapEquirectPassDataBuffer::Binding());
-    bindUBOBlockOnly("PreFilterEnvMapPassData", PreFilterEnvMapPassDataBuffer::Binding());
-    bindUBOBlockOnly("GridPassData", GridPassDataBuffer::Binding());
-    bindUBOBlockOnly("SsaoBlurPassData", SsaoBlurPassDataBuffer::Binding());
-    bindUBOBlockOnly("SsaoCalcPassData", SsaoCalcPassDataBuffer::Binding());
-    bindUBOBlockOnly("DofPassData", DofPassDataBuffer::Binding());
-    bindUBOBlockOnly("GradientSkyboxPassData", GradientSkyboxPassDataBuffer::Binding());
+    }
   }
 
   void GLBackend::DestroyGpuProgram(GpuProgram* program)

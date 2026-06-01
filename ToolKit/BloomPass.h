@@ -14,6 +14,22 @@
 namespace ToolKit
 {
 
+  /** BloomPass UBO. Shared by `bloomDownsample.shader` (filter + downsample chain) and
+      `bloomUpsample.shader` (upsample chain + merge); each shader reads only the half it
+      needs. Pass fills the relevant fields per iteration and re-Map()s the buffer. */
+  struct BloomPassDataLayout
+  {
+    /** .xy = srcResolution (downsample), .z = threshold, .w = pad. */
+    Vec4 downsampleParams;
+    /** .x = filterRadius, .y = intensity (upsample). */
+    Vec4 upsampleParams;
+    /** .x = passIndx (downsample). 0 = filter pass with prefilter; 1 = first downsample with
+        Karis average; \u22652 = regular weighted downsample. */
+    IVec4 passIndxAndPad;
+  };
+
+  typedef GpuBufferBase<BloomPassDataLayout> BloomPassDataBuffer;
+
   struct BloomPassParams
   {
     FramebufferPtr FrameBuffer = nullptr;

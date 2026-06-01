@@ -44,4 +44,20 @@ namespace ToolKit
     static constexpr uint MaxSpotLightPerObject          = 24;
   };
 
+  /** Reserved uniform buffer slot assignments for global engine UBOs.
+   *  Custom (pass-specific) UBOs must use slots >= FirstCustomSlot. */
+  namespace ReservedUniformBufferSlots
+  {
+    constexpr int CameraData                = 0;
+    constexpr int GraphicConstantsData      = 1;
+    constexpr int PerDrawData               = 2;
+    constexpr int DirectionalLightBuffer    = 3;
+    constexpr int PointLightCache           = 4;
+    constexpr int SpotLightCache            = 5;
+    constexpr int DirectionalLightPVMBuffer = 6;
+
+    constexpr int GlobalBufferCount         = 7;
+    constexpr int FirstCustomSlot           = GlobalBufferCount;
+  }
+
 } // namespace ToolKit

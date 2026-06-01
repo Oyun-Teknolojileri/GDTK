@@ -3063,8 +3063,13 @@ namespace ToolKit
     sm->module = VK_NULL_HANDLE;
   }
 
-  void VulkanBackend::CreateGpuProgram(GpuProgram* program, GlobalGpuBuffers* buffers)
+  void VulkanBackend::CreateGpuProgram(GpuProgram* program,
+                                       const ShaderResourceBinding* bindings,
+                                       int bindingCount)
   {
+    (void)bindings;
+    (void)bindingCount;
+
     assert(program != nullptr && "CreateGpuProgram: null program");
     assert(program->m_gpuData == nullptr && "CreateGpuProgram: program already has gpu data");
 

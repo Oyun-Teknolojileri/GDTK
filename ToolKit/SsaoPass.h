@@ -13,6 +13,41 @@
 namespace ToolKit
 {
 
+  /** SSAO bilinear 5x5 blur pass UBO (`ssaoBlurFrag.shader`). Single vec2 texel size, padded to
+      a vec4 so the std140 layout sits on a 16-byte boundary. */
+  struct SsaoBlurPassDataLayout
+  {
+    /** .xy = 1.0 / textureSize (pixel size in UV). */
+    Vec4 texelSizeAndPad;
+  };
+
+  typedef GpuBufferBase<SsaoBlurPassDataLayout> SsaoBlurPassDataBuffer;
+
+  /** SSAO calc pass UBO (`ssaoCalcFrag.shader`). Aggregates the 6 bare uniforms the SSAO calc
+      shader used to read scatter-style. Sized for the maximum kernel (32 samples) so the same
+      buffer works across the 8/16/32 KERNEL_SIZE define variants — the shader's loop iterates up
+      to KERNEL_SIZE only, so unused tail entries are harmless.
+
+      std140 quirks captured here:
+      - `mat3 normalToView` would take 3×vec4 = 48 bytes with awkward column padding. Stored as
+        Mat4 instead; shader extracts via `mat3(ssaoCalc.normalToView)`.
+      - `vec3 samples[N]` in std140 already pads each element to 16 bytes — directly using
+        `Vec4 samples[32]` matches the GPU view byte-for-byte; shader reads `.xyz`. */
+  struct SsaoCalcPassDataLayout
+  {
+    /** Camera view's rotation as Mat4; shader reads `mat3(normalToView)`. */
+    Mat4 normalToView;
+    /** Hemisphere kernel — 32 vec4 (max kernel size). Only first KERNEL_SIZE entries consumed. */
+    Vec4 samples[32];
+    /** (P00, P11, P20, P21) — precomputed projection matrix entries. */
+    Vec4 projParams;
+    Mat4 inverseProjection;
+    /** .x = radius, .y = bias. */
+    Vec4 radiusBiasAndPad;
+  };
+
+  typedef GpuBufferBase<SsaoCalcPassDataLayout> SsaoCalcPassDataBuffer;
+
   struct SSAOPassParams
   {
     RenderTargetPtr GNormalDepthBuffer = nullptr;

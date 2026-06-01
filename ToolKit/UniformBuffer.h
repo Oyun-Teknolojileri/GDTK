@@ -45,16 +45,14 @@ namespace ToolKit
     uint64 m_size = 0;
   };
 
-  template <typename DataLayout, int Slot>
+  template <typename DataLayout>
   class GpuBufferBase
   {
    public:
-    static constexpr int Binding() { return Slot; }
-
     void Init()
     {
       m_buffer.Init(sizeof(DataLayout));
-      m_buffer.m_slot = Binding();
+      m_buffer.m_slot = -1;
     }
 
     void Invalidate() { m_invalid = true; }

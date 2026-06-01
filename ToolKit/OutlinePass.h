@@ -14,6 +14,14 @@
 namespace ToolKit
 {
 
+  /** Single vec4 outline color, consumed by `dilateFrag.shader`. */
+  struct DilatePassDataLayout
+  {
+    Vec4 color;
+  };
+
+  typedef GpuBufferBase<DilatePassDataLayout> DilatePassDataBuffer;
+
   struct OutlinePassParams
   {
     RenderJobArray* RenderJobs = nullptr;
