@@ -63,7 +63,7 @@ namespace ToolKit
       normalDepthBuffer = m_params.GNormalDepthBuffer->GetResolvedTexture();
     }
 
-    // Generate SSAO texture. calc + blur share GL slot 5 (pass-specific UBO convention) —
+    // Generate SSAO texture. calc + blur share GL slot 7 (pass-specific UBO convention) —
     // Map each one immediately before its draw so the slot has the right buffer at consume time.
     renderer->SetTexture(1, normalDepthBuffer);
 

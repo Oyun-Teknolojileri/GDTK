@@ -66,7 +66,7 @@ namespace ToolKit
     int m_cachedIterCount;
     bool m_resourcesValid;
 
-    /** Pass-specific UBO (slot 5). Holds both the downsample and upsample parameter halves;
+    /** Pass-specific UBO (slot 7). Holds both the downsample and upsample parameter halves;
         each iteration writes the relevant fields and re-Map()s. */
     BloomPassDataBuffer m_passDataBuffer;
     bool m_passDataBufferInitialized = false;

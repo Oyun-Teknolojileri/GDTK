@@ -269,8 +269,8 @@ namespace ToolKit
       m_billboardPass->m_params.Billboards.push_back(app->m_cursor);
       m_billboardPass->m_params.Viewport = m_params.Viewport;
 
-      // Grid. UpdateShaderParams (which Map()s GridPassData into slot 5) must happen AFTER the
-      // shadow/ssao/sky passes that share slot 5 — earlier passes (e.g. ShadowPass via gauss blur)
+      // Grid. UpdateShaderParams (which Map()s GridPassData into slot 7) must happen AFTER the
+      // shadow/ssao/sky passes that share slot 7 — earlier passes (e.g. ShadowPass via gauss blur)
       // would otherwise displace the grid buffer before the forward pass draws the grid. Hook it
       // into ForwardRenderPass::PreRender so the timing is right regardless of which earlier
       // passes are active in this frame.

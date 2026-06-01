@@ -97,7 +97,7 @@ namespace ToolKit
     }
     renderer->SetTexture(1, depthTex);
 
-    // Map UBO into slot 5 immediately before draw — earlier passes (bloom etc.) may have left
+    // Map UBO into slot 7 immediately before draw — earlier passes (bloom etc.) may have left
     // a different buffer there. Pattern matches BloomPass / SSAOPass / GaussBlur.
     m_passDataBuffer.Invalidate();
     m_passDataBuffer.Map();

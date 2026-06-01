@@ -23,8 +23,8 @@ namespace ToolKit
     Mat4 Transform;
 
     /** Invoked at the end of PreRender (after shadow/preProcess/ssao have run). Lets a sky owner
-        Map its slot-5 UBO so the sky cubemap draw reads its own data instead of whatever pass
-        last touched slot 5 (typically gauss blur from ShadowPass). Used by GradientSky. */
+        Map its pass-specific UBO (slot 7) so the sky cubemap draw reads its own data instead of whatever pass
+        last touched that slot (typically gauss blur from ShadowPass). Used by GradientSky. */
     std::function<void()> onPreRender;
   };
 

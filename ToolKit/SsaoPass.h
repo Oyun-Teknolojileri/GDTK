@@ -108,13 +108,13 @@ namespace ToolKit
     ShaderPtr m_ssaoShader                   = nullptr;
     ShaderPtr m_blurShader                   = nullptr;
 
-    /** Slot-5 UBO for `ssaoCalcFrag.shader`. Lazy-init on first PreRender; data filled in
-        PreRender, Map() called from Render right before m_quadPass renders so slot 5 has the
+    /** Slot-7 UBO for `ssaoCalcFrag.shader`. Lazy-init on first PreRender; data filled in
+        PreRender, Map() called from Render right before m_quadPass renders so slot 7 has the
         calc buffer at draw time (blur Map runs between calc and blur subpasses, see Render). */
     SsaoCalcPassDataBuffer m_calcPassDataBuffer;
     bool m_calcPassDataBufferInitialized     = false;
 
-    /** Slot-5 UBO for `ssaoBlurFrag.shader`. Lazy-init on first PreRender. */
+    /** Slot-7 UBO for `ssaoBlurFrag.shader`. Lazy-init on first PreRender. */
     SsaoBlurPassDataBuffer m_blurPassDataBuffer;
     bool m_blurPassDataBufferInitialized     = false;
 
