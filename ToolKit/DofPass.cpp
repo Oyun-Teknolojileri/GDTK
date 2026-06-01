@@ -47,7 +47,7 @@ namespace ToolKit
 
     if (!m_passDataBufferInitialized)
     {
-      m_passDataBuffer.Init();
+      m_passDataBuffer.Init(7);
       m_passDataBufferInitialized = true;
     }
 

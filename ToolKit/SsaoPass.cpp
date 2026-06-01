@@ -157,7 +157,7 @@ namespace ToolKit
 
     if (!m_calcPassDataBufferInitialized)
     {
-      m_calcPassDataBuffer.Init();
+      m_calcPassDataBuffer.Init(7);
       m_calcPassDataBufferInitialized = true;
     }
 
@@ -190,7 +190,7 @@ namespace ToolKit
 
     if (!m_blurPassDataBufferInitialized)
     {
-      m_blurPassDataBuffer.Init();
+      m_blurPassDataBuffer.Init(7);
       m_blurPassDataBufferInitialized = true;
     }
     m_blurPassDataBuffer.m_data.texelSizeAndPad = Vec4(1.0f / renderWidth, 1.0f / renderHeight, 0.0f, 0.0f);

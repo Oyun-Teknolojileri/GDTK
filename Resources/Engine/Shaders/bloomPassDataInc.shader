@@ -1,7 +1,7 @@
 <shader>
   <type name = "includeShader" />
   <include name = "vulkanCompatInc.shader" />
-  <uniform slot = "5" name = "BloomPassData" />
+  <uniform slot = "7" name = "BloomPassData" />
   <source>
   <!--
 
@@ -17,7 +17,7 @@
 //   upsampleParams.x    : filterRadius (upsample only)
 //   upsampleParams.y    : intensity    (upsample only)
 //   passIndxAndPad.x    : passIndx (downsample switch: 0=filter, 1=karis, >=2=plain)
-TK_UBO_BINDING(5) uniform BloomPassData
+TK_UBO_BINDING(7) uniform BloomPassData
 {
   vec4  downsampleParams;
   vec4  upsampleParams;

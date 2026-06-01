@@ -46,7 +46,7 @@ namespace ToolKit
     // Lazy-init the pass UBO on first render — backend is alive by now.
     if (!m_passDataBufferInitialized)
     {
-      m_passDataBuffer.Init();
+      m_passDataBuffer.Init(7);
       m_passDataBufferInitialized = true;
     }
 

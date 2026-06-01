@@ -49,10 +49,10 @@ namespace ToolKit
   class GpuBufferBase
   {
    public:
-    void Init()
+    void Init(int slot = -1)
     {
       m_buffer.Init(sizeof(DataLayout));
-      m_buffer.m_slot = -1;
+      m_buffer.m_slot = slot;
     }
 
     void Invalidate() { m_invalid = true; }

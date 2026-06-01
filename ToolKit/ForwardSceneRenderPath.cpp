@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2019-2025 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
@@ -221,7 +221,7 @@ namespace ToolKit
             {
               if (!renderer->m_gradientSkyboxBufferInitialized)
               {
-                renderer->m_gradientSkyboxBuffer.Init();
+                renderer->m_gradientSkyboxBuffer.Init(7);
                 renderer->m_gradientSkyboxBufferInitialized = true;
               }
               renderer->m_gradientSkyboxBuffer.m_data.topColor       = Vec4(gSky->GetTopColorVal(), 1.0f);

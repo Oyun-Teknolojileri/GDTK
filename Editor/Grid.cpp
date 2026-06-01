@@ -238,7 +238,7 @@ namespace ToolKit
     {
       if (!m_dataBufferInitialized)
       {
-        m_dataBuffer.Init();
+        m_dataBuffer.Init(7);
         m_dataBufferInitialized = true;
       }
       m_dataBuffer.m_data.cellAndLine          = Vec4(m_gridCellSize, m_maxLinePixelCount, 0.0f, 0.0f);

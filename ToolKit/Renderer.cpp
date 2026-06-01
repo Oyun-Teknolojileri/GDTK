@@ -610,7 +610,7 @@ namespace ToolKit
     }
     if (!m_gaussianBlurBufferInitialized)
     {
-      m_gaussianBlurBuffer.Init();
+      m_gaussianBlurBuffer.Init(7);
       m_gaussianBlurBufferInitialized = true;
     }
 
@@ -655,7 +655,7 @@ namespace ToolKit
     }
     if (!m_gaussianBlurBufferInitialized)
     {
-      m_gaussianBlurBuffer.Init();
+      m_gaussianBlurBuffer.Init(7);
       m_gaussianBlurBufferInitialized = true;
     }
 
@@ -1524,7 +1524,7 @@ namespace ToolKit
 
         if (!m_preFilterEnvMapBufferInitialized)
         {
-          m_preFilterEnvMapBuffer.Init();
+          m_preFilterEnvMapBuffer.Init(7);
           m_preFilterEnvMapBufferInitialized = true;
         }
         m_preFilterEnvMapBuffer.m_data.params = Vec4((float) mipSize, (float) mip / (float) (mipMaps - 1), 0.0f, 0.0f);

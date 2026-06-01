@@ -181,10 +181,10 @@ namespace ToolKit
 
   typedef GpuBufferBase<PerDrawUboLayout> PerDrawUboBuffer;
 
-  // Pass-specific UBOs (slot 5)
+  // Pass-specific UBOs (slot 7)
   //////////////////////////////////////////
   //
-  // Pass-specific UBOs all share GL slot 5 (Vulkan binding 13 after shaderc remap). Each pass
+  // Pass-specific UBOs all share GL slot 7. Each pass
   // owns its own buffer instance; no two passes are active simultaneously so the slot can be
   // re-bound by whichever pass is rendering. Each layout is intentionally tiny — only the
   // values one pass writes per frame.
@@ -552,7 +552,7 @@ namespace ToolKit
      */
     FramebufferPtr m_oneColorAttachmentFramebuffer = nullptr;
     MaterialPtr m_gaussianBlurMaterial             = nullptr;
-    /** Pass UBO (slot 5) shared with the gaussian blur material. Lazy-init on first
+    /** Pass UBO (slot 7) shared with the gaussian blur material. Lazy-init on first
         ApplyGaussianBlur* call together with the material itself. */
     GaussBlurPassDataBuffer m_gaussianBlurBuffer;
     bool m_gaussianBlurBufferInitialized           = false;

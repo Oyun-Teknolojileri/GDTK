@@ -1,7 +1,7 @@
 <shader>
   <type name = "includeShader" />
   <include name = "vulkanCompatInc.shader" />
-  <uniform slot = "5" name = "GaussBlurPassData" />
+  <uniform slot = "7" name = "GaussBlurPassData" />
   <source>
   <!--
 
@@ -16,7 +16,7 @@
 //   blurScaleAndLayer.w   : BlurLayer (used only when TextureArray==1)
 //   blurClampMinMax.xy    : BlurClampMin (used only when BlurClampEnabled==1)
 //   blurClampMinMax.zw    : BlurClampMax (used only when BlurClampEnabled==1)
-TK_UBO_BINDING(5) uniform GaussBlurPassData
+TK_UBO_BINDING(7) uniform GaussBlurPassData
 {
   vec4 blurScaleAndLayer;
   vec4 blurClampMinMax;

@@ -43,7 +43,7 @@ namespace ToolKit
     // CreateUniformBuffer runs; OutlinePass instances can be constructed before Init.
     if (!m_dilateBufferInitialized)
     {
-      m_dilateBuffer.Init();
+      m_dilateBuffer.Init(7);
       m_dilateBufferInitialized = true;
     }
     m_dilateBuffer.m_data.color = m_params.OutlineColor;

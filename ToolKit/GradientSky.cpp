@@ -156,7 +156,7 @@ namespace ToolKit
     // Create material
     if (!renderer->m_gradientSkyboxBufferInitialized)
     {
-      renderer->m_gradientSkyboxBuffer.Init();
+      renderer->m_gradientSkyboxBuffer.Init(7);
       renderer->m_gradientSkyboxBufferInitialized = true;
     }
     renderer->m_gradientSkyboxBuffer.m_data.topColor       = Vec4(GetTopColorVal(), 1.0f);

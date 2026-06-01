@@ -46,7 +46,7 @@ namespace ToolKit
     // — the renderer/backend may not be live in the constructor.
     if (!m_passDataBufferInitialized)
     {
-      m_passDataBuffer.Init();
+      m_passDataBuffer.Init(7);
       m_passDataBufferInitialized = true;
     }
     GammaTonemapFxaaPassDataLayout& ubo = m_passDataBuffer.m_data;

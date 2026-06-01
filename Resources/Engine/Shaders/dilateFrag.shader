@@ -1,15 +1,15 @@
 <shader>
 	<type name = "fragmentShader" />
 	<include name = "vulkanCompatInc.shader" />
-	<uniform slot = "5" name = "DilatePassData" />
+	<uniform slot = "7" name = "DilatePassData" />
 	<texture slot = "0" name = "u_texture" />
 	<source>
 	<!--
 	
 	precision mediump float;
 
-	// Pass-specific UBO (slot 5). Mirrors `DilatePassDataLayout` in Renderer.h byte-for-byte.
-	TK_UBO_BINDING(5) uniform DilatePassData
+	// Pass-specific UBO (slot 7). Mirrors `DilatePassDataLayout` in Renderer.h byte-for-byte.
+	TK_UBO_BINDING(7) uniform DilatePassData
 	{
 		vec4 color;
 	} dilate;
