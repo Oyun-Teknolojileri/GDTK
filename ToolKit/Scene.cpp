@@ -513,12 +513,12 @@ namespace ToolKit
     return filtered;
   }
 
-  void Scene::LinkPrefab(const String& fullPath)
+  PrefabPtr Scene::LinkPrefab(const String& fullPath)
   {
     if (fullPath == GetFile())
     {
       TK_ERR("You can't prefab same scene.");
-      return;
+      return nullptr;
     }
 
     String path = GetRelativeResourcePath(fullPath);
@@ -529,7 +529,7 @@ namespace ToolKit
       if (folder != PrefabPath(""))
       {
         TK_ERR("You can't use a prefab outside of Prefab folder.");
-        return;
+        return nullptr;
       }
     }
 
@@ -539,6 +539,7 @@ namespace ToolKit
     prefab->Init(Self<Scene>());
 
     AddEntity(prefab);
+    return prefab;
   }
 
   void Scene::Destroy(bool removeResources)
@@ -988,7 +989,10 @@ namespace ToolKit
   void SceneManager::SetCurrentScene(const ScenePtr& scene)
   {
     m_currentScene = scene;
-    m_currentScene->Init();
+    if (Main::GetInstance()->m_graphicsInitiated)
+    {
+      m_currentScene->Init();
+    }
 
     // Apply scene post processing effects.
     GetEngineSettings().m_postProcessing = m_currentScene->m_postProcessSettings;

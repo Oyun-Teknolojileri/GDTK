@@ -102,13 +102,21 @@ namespace ToolKit
                              VariantCallback,
                              struct MultiChoiceVariant,
                              TexturePtr,
-                             ShaderPtr>;
+                             ShaderPtr,
+                             ScenePtr>;
 
   /**
    * Value change function callback. When the Variant value has changed, all the
    * registered callbacks are called with old and new values of the parameter.
    */
   typedef std::function<void(Value& oldVal, Value& newVal)> ValueUpdateFn;
+
+  /**
+   * Validator callback. Used to validate the new value before assignment.
+   * Returns true if valid, false otherwise.
+   * msg: Output parameter for error message.
+   */
+  typedef std::function<bool(Value& val, String& msg)> ValidatorCallback;
 
   /** Variant holding fixed choices. */
   struct MultiChoiceVariant
@@ -217,7 +225,9 @@ namespace ToolKit
       VariantCallback,
       MultiChoice,
       TexturePtr,
-      ShaderPtr
+      ShaderPtr,
+      PrefabPtr,
+      ScenePtr
     };
 
     /**
@@ -352,6 +362,11 @@ namespace ToolKit
     explicit ParameterVariant(const SkeletonPtr& var);
 
     /**
+     * Constructs ScenePtr type variant.
+     */
+    explicit ParameterVariant(const ScenePtr& var);
+
+    /**
      * Constructs CallbackFn type variant.
      */
     ParameterVariant(const VariantCallback& var);
@@ -396,7 +411,7 @@ namespace ToolKit
     template <typename T>
     T* GetVarPtr()
     {
-      return &std::get<T>(m_var);
+      return std::get_if<T>(&m_var);
     }
 
     /** Helper function to get an enum. Internally stored int casted to target EnumT. */
@@ -526,6 +541,11 @@ namespace ToolKit
     ParameterVariant& operator=(const SkeletonPtr& var);
 
     /**
+     * Assign a ScenePtr to the value of the variant.
+     */
+    ParameterVariant& operator=(const ScenePtr& var);
+
+    /**
      * Assign a CallbackFn to the value of the variant.
      */
     ParameterVariant& operator=(const VariantCallback& var);
@@ -571,6 +591,12 @@ namespace ToolKit
     String m_name = "NoName"; //<! Name of the variant.
 
     UIHint m_hint;
+
+    /**
+     * Validator function. Returns true if the value is valid.
+     * If false, the string parameter is populated with the error message.
+     */
+    ValidatorCallback m_validator;
 
     /**
      * Callback function for value changes. This function gets called after

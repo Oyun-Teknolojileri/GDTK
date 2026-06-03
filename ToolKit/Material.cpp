@@ -599,6 +599,10 @@ namespace ToolKit
   {
     String file        = MaterialPath("unlit.material", true);
     ResourcePtr source = m_storage[file];
+    if (source == nullptr)
+    {
+      return MakeNewPtr<Material>();
+    }
     return Copy<Material>(source, storeInMaterialManager);
   }
 
@@ -622,6 +626,10 @@ namespace ToolKit
   {
     String file        = MaterialPath("default.material", true);
     ResourcePtr source = m_storage[file];
+    if (source == nullptr)
+    {
+      return MakeNewPtr<Material>();
+    }
     return Copy<Material>(source, storeInMaterialManager);
   }
 

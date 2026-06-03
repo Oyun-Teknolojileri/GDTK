@@ -135,7 +135,9 @@ namespace ToolKit
     m_preInitiated      = true;
   }
 
-  void Main::Init()
+  void Main::Init() { Init(true); }
+
+  void Main::Init(bool initGraphics)
   {
     assert(m_preInitiated && "Preinitialize first");
     assert(m_initiated == false && "Main already initialized");
@@ -147,20 +149,30 @@ namespace ToolKit
 
     m_logger->Log("Main Init");
 
+    m_graphicsInitiated = initGraphics;
+    if (m_graphicsInitiated)
+    {
+      m_gpuBuffers->InitGlobalGpuBuffers();
+    }
+
     m_workerManager->Init();
     m_animationMan->Init();
-    m_textureMan->Init();
     m_meshMan->Init();
     m_spriteSheetMan->Init();
     m_audioMan->Init();
-    m_shaderMan->Init();
-    m_materialManager->Init();
+    if (m_graphicsInitiated)
+    {
+      m_textureMan->Init();
+      m_shaderMan->Init();
+      m_materialManager->Init();
+    }
     m_sceneManager->Init();
     m_skeletonManager->Init();
-    m_renderSys->Init();
-    m_timing.Init(m_engineSettings->m_graphics->GetFPSVal());
-
-    m_gpuBuffers->InitGlobalGpuBuffers();
+    if (m_graphicsInitiated)
+    {
+      m_renderSys->Init();
+    }
+    m_timing.Init(m_graphicsInitiated ? m_engineSettings->m_graphics->GetFPSVal() : 120);
 
     m_initiated = true;
   }
@@ -254,7 +266,10 @@ namespace ToolKit
 
     Stats::SwapFrameStats();
 
-    GetRenderSystem()->StartFrame();
+    if (m_graphicsInitiated)
+    {
+      GetRenderSystem()->StartFrame();
+    }
   }
 
   void Main::FrameUpdate()
@@ -288,7 +303,10 @@ namespace ToolKit
     }
 
     m_timing.LastTime = m_timing.CurrentTime;
-    GetRenderSystem()->EndFrame();
+    if (m_graphicsInitiated)
+    {
+      GetRenderSystem()->EndFrame();
+    }
 
     // End profiler frame.
     Profiler::EndProfileFrame();
@@ -301,15 +319,24 @@ namespace ToolKit
 
     // Update engine.
     GetAnimationPlayer()->Update(MillisecToSec(deltaTime));
-    GetUIManager()->Update(deltaTime);
-
-    if (ScenePtr scene = GetSceneManager()->GetCurrentScene())
+    if (m_graphicsInitiated)
     {
-      scene->Update(deltaTime);
+      GetUIManager()->Update(deltaTime);
     }
 
-    GetRenderSystem()->DecrementSkipFrame();
-    GetRenderSystem()->ExecuteRenderTasks();
+    if (m_graphicsInitiated)
+    {
+      if (ScenePtr scene = GetSceneManager()->GetCurrentScene())
+      {
+        scene->Update(deltaTime);
+      }
+    }
+
+    if (m_graphicsInitiated)
+    {
+      GetRenderSystem()->DecrementSkipFrame();
+      GetRenderSystem()->ExecuteRenderTasks();
+    }
   }
 
   void Main::RegisterPreUpdateFunction(TKUpdateFn preUpdateFn) { m_preUpdateFunctions.push_back(preUpdateFn); }

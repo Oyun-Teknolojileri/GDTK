@@ -542,9 +542,17 @@ namespace ToolKit
 
   bool ShaderManager::CanStore(ClassMeta* Class) { return Class == Shader::StaticClass(); }
 
-  ShaderPtr ShaderManager::GetDefaultVertexShader() { return Cast<Shader>(m_storage[m_defaultVertexShaderFile]); }
+  ShaderPtr ShaderManager::GetDefaultVertexShader()
+  {
+    auto shader = m_storage.find(m_defaultVertexShaderFile);
+    return shader != m_storage.end() ? Cast<Shader>(shader->second) : nullptr;
+  }
 
-  ShaderPtr ShaderManager::GetPbrForwardShader() { return Cast<Shader>(m_storage[m_pbrForwardShaderFile]); }
+  ShaderPtr ShaderManager::GetPbrForwardShader()
+  {
+    auto shader = m_storage.find(m_pbrForwardShaderFile);
+    return shader != m_storage.end() ? Cast<Shader>(shader->second) : nullptr;
+  }
 
   const String& ShaderManager::PbrForwardShaderFile() { return m_pbrForwardShaderFile; }
 

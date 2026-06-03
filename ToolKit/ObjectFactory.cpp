@@ -63,11 +63,14 @@ namespace ToolKit
   {
     if (Class->Super)
     {
-      if (Class->Super == Object::StaticClass())
+      ClassMeta* objCls = Object::StaticClass();
+      const bool reachedObjectRoot =
+          Class->Super == Class || Class->Super == objCls || Class->Super->HashId == objCls->HashId ||
+          Class->Super->Name == objCls->Name;
+      if (reachedObjectRoot)
       {
         FirstClass->SuperClassLookUp.push_back({Class->Name, Class->HashId});
 
-        ClassMeta* objCls = Object::StaticClass();
         FirstClass->SuperClassLookUp.push_back({objCls->Name, objCls->HashId});
       }
       else

@@ -208,7 +208,7 @@ namespace ToolKit
      * Links a prefab to the scene.
      * @param fullPath The full path to the prefab file.
      */
-    void LinkPrefab(const String& fullPath);
+    PrefabPtr LinkPrefab(const String& fullPath);
 
     /**
      * Removes the entity with the given ID from the scene.

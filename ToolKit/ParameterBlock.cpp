@@ -10,6 +10,8 @@
 #include "Animation.h"
 #include "Material.h"
 #include "Mesh.h"
+#include "Prefab.h"
+#include "Scene.h"
 #include "ToolKit.h"
 #include "Util.h"
 
@@ -122,6 +124,8 @@ namespace ToolKit
   ParameterVariant::ParameterVariant(const AnimRecordPtrMap& var) { *this = var; }
 
   ParameterVariant::ParameterVariant(const SkeletonPtr& var) { *this = var; }
+
+  ParameterVariant::ParameterVariant(const ScenePtr& var) { *this = var; }
 
   ParameterVariant::ParameterVariant(const VariantCallback& var) { *this = var; }
 
@@ -279,6 +283,13 @@ namespace ToolKit
   ParameterVariant& ParameterVariant::operator=(const SkeletonPtr& var)
   {
     m_type = VariantType::SkeletonPtr;
+    AsignVal(var);
+    return *this;
+  }
+
+  ParameterVariant& ParameterVariant::operator=(const ScenePtr& var)
+  {
+    m_type = VariantType::ScenePtr;
     AsignVal(var);
     return *this;
   }
@@ -457,6 +468,16 @@ namespace ToolKit
         if (SkeletonPtr sklt = var->GetCVar<SkeletonPtr>())
         {
           sklt->SerializeRef(doc, node);
+        }
+      }
+      break;
+      case VariantType::ScenePtr:
+      {
+        ScenePtr res = var->GetCVar<ScenePtr>();
+        if (res && !res->IsDynamic())
+        {
+          res->Save(true);
+          res->SerializeRef(doc, node);
         }
       }
       break;
@@ -724,6 +745,53 @@ namespace ToolKit
         {
           file        = SkeletonPath(file);
           pVar->m_var = GetSkeletonManager()->Create<Skeleton>(file);
+        }
+      }
+      break;
+      case VariantType::PrefabPtr: // Legacy support
+      {
+        String file;
+        ReadAttr(parent, XmlParamterValAttr, file);
+        if (!file.empty())
+        {
+          if (!CheckSystemFile(file))
+          {
+            String path = PrefabPath(file);
+            if (CheckSystemFile(path))
+            {
+              file = path;
+            }
+          }
+
+          if (CheckSystemFile(file))
+          {
+            String rel = GetRelativeResourcePath(file);
+            if (!rel.empty())
+            {
+              file = rel;
+            }
+          }
+
+          pVar->m_var = GetSceneManager()->Create<Scene>(file);
+        }
+        else
+        {
+          pVar->m_var = ScenePtr();
+        }
+        pVar->m_type = VariantType::ScenePtr; // Upgrade type
+      }
+      break;
+      case VariantType::ScenePtr:
+      {
+        String file = Resource::DeserializeRef(parent);
+        if (file.empty())
+        {
+          pVar->m_var = ScenePtr();
+        }
+        else
+        {
+          String prefabFile = PrefabPath(file);
+          pVar->m_var       = GetSceneManager()->Create<Scene>(prefabFile);
         }
       }
       break;

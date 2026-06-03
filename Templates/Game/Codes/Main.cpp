@@ -21,6 +21,8 @@
 #include "EngineSettings.h"
 #include "GameRenderer.h"
 #include "GameViewport.h"
+#include "NetworkPlayBootManifest.h"
+#include "NetworkPlayBootRuntime.h"
 #include "Plugin.h"
 #include "SDL.h"
 #include "Scene.h"
@@ -29,9 +31,63 @@
 #include "ToolKit.h"
 #include "Types.h"
 #include "UIManager.h"
+#include <filesystem>
 
 namespace ToolKit
 {
+  extern Main* g_proxy;
+  extern bool g_headless;
+
+  namespace
+  {
+    NetworkPlayBootManifest g_networkPlayManifest;
+
+    void ApplyNetworkPlayBootOverrides()
+    {
+      if (!g_networkPlayManifest.Valid || g_proxy == nullptr)
+      {
+        return;
+      }
+
+      if (!g_networkPlayManifest.ConfigRoot.empty())
+      {
+        std::filesystem::create_directories(g_networkPlayManifest.ConfigRoot);
+        g_proxy->SetConfigPath(g_networkPlayManifest.ConfigRoot);
+      }
+
+      if (!g_networkPlayManifest.ResourceRoot.empty())
+      {
+        g_proxy->m_resourceRoot = g_networkPlayManifest.ResourceRoot;
+      }
+
+      g_headless = ResolveNetworkPlayHeadlessMode(g_headless, g_networkPlayManifest);
+    }
+
+    bool LoadBootSceneIfRequested()
+    {
+      if (!g_networkPlayManifest.Valid || g_networkPlayManifest.ScenePath.empty())
+      {
+        return true;
+      }
+
+      if (!CheckFile(g_networkPlayManifest.ScenePath))
+      {
+        TK_LOG("NetworkPlay manifest scene does not exist: %s", g_networkPlayManifest.ScenePath.c_str());
+        return false;
+      }
+
+      ScenePtr scene = GetSceneManager()->Create<Scene>(g_networkPlayManifest.ScenePath);
+      if (!scene)
+      {
+        TK_LOG("NetworkPlay failed to create scene: %s", g_networkPlayManifest.ScenePath.c_str());
+        return false;
+      }
+
+      GetSceneManager()->SetCurrentScene(scene);
+      return true;
+    }
+  } // namespace
+
   Game* g_game                              = nullptr;
   bool g_running                            = true;
   SDL_Window* g_window                      = nullptr;
@@ -41,9 +97,11 @@ namespace ToolKit
   EngineSettings* g_engineSettings          = nullptr;
   SDLEventPool<TK_PLATFORM>* g_sdlEventPool = nullptr;
   GameRenderer* g_gameRenderer              = nullptr;
+  bool g_headless                           = false;
 
   // Setup.
   const char* g_appName                     = "ToolKit";
+
   const uint g_targetFps                    = 120;
 
   void ProcessEvent(const SDL_Event& e)
@@ -65,101 +123,139 @@ namespace ToolKit
     g_proxy->PreInit();
 
     PlatformPreInit(g_proxy);
+    ApplyNetworkPlayBootOverrides();
   }
 
   void Init()
   {
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER) < 0)
+    if (g_headless)
     {
-      g_running = false;
-      return;
-    }
+      if (SDL_Init(SDL_INIT_EVENTS) < 0)
+      {
+        g_running = false;
+        return;
+      }
 
-    if constexpr (TK_PLATFORM == PLATFORM::TKWindows)
-    {
-      SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-      SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-      SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
-      SDL_GL_SetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, 1);
+      String settingsFile = ConcatPaths({ConfigPath(), "Engine.settings"});
+      g_proxy->m_engineSettings->Load(settingsFile);
+      g_engineSettings = g_proxy->m_engineSettings;
+
+      g_proxy->Init(false);
+      g_proxy->PostInit();
+      if (!LoadBootSceneIfRequested())
+      {
+        g_running = false;
+        return;
+      }
+
+      g_game = new Game();
+      g_game->Init(g_proxy);
+      g_game->m_currentState = PluginState::Running;
+      if (ShouldAutoPlayNetworkPlayBoot(g_networkPlayManifest))
+      {
+        g_game->OnPlay();
+      }
     }
     else
     {
-      SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
-      SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-      SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
-    }
-
-    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
-    SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
-
-    SDL_DisplayMode DM;
-    SDL_GetCurrentDisplayMode(0, &DM);
-
-    String settingsFile = ConcatPaths({ConfigPath(), "Engine.settings"});
-    g_proxy->m_engineSettings->Load(settingsFile);
-    g_engineSettings = g_proxy->m_engineSettings;
-    if (g_engineSettings->m_window->GetFullScreenVal())
-    {
-      g_engineSettings->m_window->SetWidthVal(DM.w);
-      g_engineSettings->m_window->SetHeightVal(DM.h);
-    }
-
-    PlatformAdjustEngineSettings(DM.w, DM.h, g_engineSettings);
-
-    g_window = SDL_CreateWindow(g_appName,
-                                SDL_WINDOWPOS_CENTERED,
-                                SDL_WINDOWPOS_CENTERED,
-                                g_engineSettings->m_window->GetWidthVal(),
-                                g_engineSettings->m_window->GetHeightVal(),
-                                PLATFORM_SDL_FLAGS | SDL_WINDOW_BORDERLESS);
-
-    if (g_window == nullptr)
-    {
-      const char* error = SDL_GetError();
-      TK_LOG("%s", error);
-      g_running = false;
-      return;
-    }
-
-    g_context = SDL_GL_CreateContext(g_window);
-    if (g_context == nullptr)
-    {
-      const char* error = SDL_GetError();
-      TK_LOG("%s", error);
-      g_running = false;
-      return;
-    }
-
-    int srgbFlag = 0;
-    SDL_GL_GetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, &srgbFlag);
-    g_proxy->m_renderSys->m_backbufferFormatIsSRGB = (srgbFlag == 1);
-
-    SDL_GL_MakeCurrent(g_window, g_context);
-    const char* error = SDL_GetError();
-    TK_LOG("%s", error);
-
-    // Init OpenGl.
-    ToolKit::IGraphicsBackend::BackendInitParams initParams;
-    initParams.getProcAddress = (void*) SDL_GL_GetProcAddress;
-    initParams.errorCallback  = [](const String& msg) { TK_LOG("%s", msg.c_str()); };
-    g_proxy->m_renderSys->InitGraphics(initParams);
-    g_proxy->m_renderSys->SetPresentCallback([]() { SDL_GL_SwapWindow(g_window); });
-
-    // Set defaults
-    if constexpr (TK_PLATFORM != PLATFORM::TKWeb)
-    {
-      if (!SDL_GL_SetSwapInterval(-1)) // Try adaptive VSync.
+      if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER) < 0)
       {
-        if (!SDL_GL_SetSwapInterval(1)) // VSync.
+        g_running = false;
+        return;
+      }
+
+      if constexpr (TK_PLATFORM == PLATFORM::TKWindows)
+      {
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
+        SDL_GL_SetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, 1);
+      }
+      else
+      {
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+      }
+
+      SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+      SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
+      SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
+
+      SDL_DisplayMode DM;
+      SDL_GetCurrentDisplayMode(0, &DM);
+
+      String settingsFile = ConcatPaths({ConfigPath(), "Engine.settings"});
+      g_proxy->m_engineSettings->Load(settingsFile);
+      g_engineSettings = g_proxy->m_engineSettings;
+      if (g_engineSettings->m_window->GetFullScreenVal())
+      {
+        g_engineSettings->m_window->SetWidthVal(DM.w);
+        g_engineSettings->m_window->SetHeightVal(DM.h);
+      }
+
+      PlatformAdjustEngineSettings(DM.w, DM.h, g_engineSettings);
+
+      g_window = SDL_CreateWindow(g_appName,
+                                  SDL_WINDOWPOS_CENTERED,
+                                  SDL_WINDOWPOS_CENTERED,
+                                  g_engineSettings->m_window->GetWidthVal(),
+                                  g_engineSettings->m_window->GetHeightVal(),
+                                  PLATFORM_SDL_FLAGS | SDL_WINDOW_BORDERLESS);
+
+      if (g_window == nullptr)
+      {
+        const char* error = SDL_GetError();
+        TK_LOG("%s", error);
+        g_running = false;
+        return;
+      }
+
+      g_context = SDL_GL_CreateContext(g_window);
+      if (g_context == nullptr)
+      {
+        const char* error = SDL_GetError();
+        TK_LOG("%s", error);
+        g_running = false;
+        return;
+      }
+
+      int srgbFlag = 0;
+      SDL_GL_GetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, &srgbFlag);
+      g_proxy->m_renderSys->m_backbufferFormatIsSRGB = (srgbFlag == 1);
+
+      SDL_GL_MakeCurrent(g_window, g_context);
+      const char* error = SDL_GetError();
+      TK_LOG("%s", error);
+
+      // Init OpenGl.
+      ToolKit::IGraphicsBackend::BackendInitParams initParams;
+      initParams.getProcAddress = (void*) SDL_GL_GetProcAddress;
+      initParams.errorCallback  = [](const String& msg) { TK_LOG("%s", msg.c_str()); };
+      g_proxy->m_renderSys->InitGraphics(initParams);
+      g_proxy->m_renderSys->SetPresentCallback([]() { SDL_GL_SwapWindow(g_window); });
+
+      // Set defaults
+      if constexpr (TK_PLATFORM != PLATFORM::TKWeb)
+      {
+        if (!SDL_GL_SetSwapInterval(-1)) // Try adaptive VSync.
         {
-          TK_ERR("VSync can't be set. SDL Error: %s", SDL_GetError());
+          if (!SDL_GL_SetSwapInterval(1)) // VSync.
+          {
+            TK_ERR("VSync can't be set. SDL Error: %s", SDL_GetError());
+          }
         }
       }
-    }
 
-    // ToolKit Init
-    g_proxy->Init();
+      // ToolKit Init
+      g_proxy->Init();
+      g_proxy->PostInit();
+      if (!LoadBootSceneIfRequested())
+      {
+        g_running = false;
+        return;
+      }
+    }
 
     // Register pre update function.
     TKUpdateFn preUpdateFn = [](float deltaTime)
@@ -171,8 +267,17 @@ namespace ToolKit
         ProcessEvent(sdlEvent);
       }
 
+      if (g_headless)
+      {
+        g_game->Frame(deltaTime);
+        g_sdlEventPool->ClearPool();
+        g_running = g_running && g_game->m_currentState != PluginState::Stop;
+        return;
+      }
+
       // Initiate splash screen drawing.
       static bool showSplashScreen                    = true;
+
       static float elapsedTime                        = 0.0f;
       static SplashScreenRenderPathPtr splashRenderer = nullptr;
 
@@ -224,7 +329,10 @@ namespace ToolKit
           g_game->Init(g_proxy);
           g_game->m_currentState = PluginState::Running;
           g_gameRenderer         = new GameRenderer();
-          g_game->OnPlay();
+          if (ShouldAutoPlayNetworkPlayBoot(g_networkPlayManifest))
+          {
+            g_game->OnPlay();
+          }
         }
       }
       else
@@ -253,24 +361,43 @@ namespace ToolKit
     // Register post update function.
     TKUpdateFn postUpdateFn = [](float deltaTime)
     {
-      SDL_GL_MakeCurrent(g_window, g_context);
-      g_proxy->m_renderSys->Present();
+      if (!g_headless)
+      {
+        SDL_GL_MakeCurrent(g_window, g_context);
+        g_proxy->m_renderSys->Present();
+      }
 
       g_sdlEventPool->ClearPool(); // Clear after consumption.
     };
+
     g_proxy->RegisterPostUpdateFunction(postUpdateFn);
   }
 
   void Exit()
   {
-    SafeDel(g_gameRenderer);
+    if (!g_headless)
+    {
+      SafeDel(g_gameRenderer);
+    }
 
-    g_game->Destroy();
-    Main::GetInstance()->Uninit();
+    if (g_game != nullptr)
+    {
+      g_game->Destroy();
+      g_game = nullptr;
+    }
+    if (Main::GetInstance() != nullptr)
+    {
+      Main::GetInstance()->PreUninit();
+      Main::GetInstance()->Uninit();
+    }
     SafeDel(g_proxy);
 
     SafeDel(g_sdlEventPool);
-    SDL_DestroyWindow(g_window);
+
+    if (!g_headless)
+    {
+      SDL_DestroyWindow(g_window);
+    }
     SDL_Quit();
 
     g_running = false;
@@ -288,7 +415,23 @@ namespace ToolKit
 
   int ToolKit_Main(int argc, char* argv[])
   {
+    const String manifestPath = FindNetworkPlayManifestPath(argc, argv);
+    if (!manifestPath.empty() && !ParseNetworkPlayManifestFile(manifestPath, g_networkPlayManifest))
+    {
+      TK_LOG("NetworkPlay manifest could not be parsed: %s", manifestPath.c_str());
+      return 1;
+    }
+
+    for (int i = 0; i < argc; ++i)
+    {
+      if (strcmp(argv[i], "-headless") == 0)
+      {
+        g_headless = true;
+      }
+    }
+
     PreInit();
+
     Init();
 
     PlatformMainLoop(&g_running, TK_Loop);

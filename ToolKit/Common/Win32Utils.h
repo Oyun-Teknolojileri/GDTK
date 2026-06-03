@@ -226,7 +226,7 @@ namespace ToolKit
     void* TKLoadModule(StringView fullPath)
     {
       std::wstring wFile = UTF8Util::ConvertUTF8ToUTF16(fullPath.data());
-      HMODULE module     = LoadLibraryW(wFile.data());
+      HMODULE module     = LoadLibraryExW(wFile.data(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
 
       return (void*) module;
     }

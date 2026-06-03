@@ -90,12 +90,19 @@ namespace ToolKit
     va_list args;
     va_start(args, msg);
 
-    OutputUtil(m_writeConsoleFn, logType, msg, args);
+    char messageBuffer[TKMessageBufferLength];
+    vsprintf(messageBuffer, msg, args);
+    m_logFile << messageBuffer << std::endl;
+
+    if (m_writeConsoleFn)
+    {
+      m_writeConsoleFn(logType, messageBuffer);
+    }
 
     // Echo to platform console.
     if (m_platfromConsoleFn)
     {
-      OutputUtil(m_platfromConsoleFn, logType, msg, args);
+      m_platfromConsoleFn(logType, messageBuffer);
     }
 
     va_end(args);

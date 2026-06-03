@@ -652,6 +652,45 @@ namespace ToolKit
       if (PluginWindowPtr pluginWnd = GetWindow<PluginWindow>(g_pluginWindow))
       {
         pluginWnd->LoadEnabledPlugins();
+        return;
+      }
+
+      const EngineSettings& settings = GetEngineSettings();
+      const String pluginDir = m_workspace.GetPluginDirectory();
+      if (!CheckSystemFile(pluginDir) || !IsDirectory(pluginDir))
+      {
+        TK_ERR("Can not traverse project plugin directory: %s", pluginDir.c_str());
+        return;
+      }
+
+      namespace fs = std::filesystem;
+      for (const fs::directory_entry& entry : fs::directory_iterator(pluginDir))
+      {
+        const String path = entry.path().u8string();
+        const String cfgFile = ConcatPaths({path, "Config", "Plugin.settings"});
+        if (!CheckSystemFile(cfgFile))
+        {
+          continue;
+        }
+
+        PluginSettings pluginSet;
+        pluginSet.Load(cfgFile);
+        if (settings.m_loadedPlugins.find(pluginSet.name) == settings.m_loadedPlugins.end())
+        {
+          continue;
+        }
+
+        if (PluginManager* plugMan = GetPluginManager())
+        {
+          if (PluginRegister* reg = plugMan->Load(pluginSet.file))
+          {
+            reg->m_plugin->m_currentState = PluginState::Running;
+          }
+          else
+          {
+            TK_ERR("Failed to load plugin: %s. Is it compiled ?", pluginSet.name.c_str());
+          }
+        }
       }
     }
 
