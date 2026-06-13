@@ -187,10 +187,18 @@ namespace ToolKit
 
 ## Enforcement
 
-- All rules in this file are enforced via `.clang-format` (formatting) and code review.
+- All rules in this file are enforced via Visual Studio's built-in formatter
+  (driven by `.clang-format` at the repo root) and code review.
 - Non-ASCII characters found in files must be reported and fixed.
 - Non-English comments must be reported and fixed.
-- Run `clang-format -i file.cpp` before committing.
+- **Formatting**: Visual Studio picks up the project's `.clang-format`
+  automatically. After editing any C/C++ file the agent must trigger
+  "Format Document" (Ctrl+K, Ctrl+D) on the touched file(s) — VS's
+  built-in clang-format is the formatter, no extra tooling required.
+  Apply per-file, not per-folder, to keep diffs tight.
+  - Edit > Advanced > "Format Document" applies the project rules to the
+    active file. Configure "Format on Save" under
+    Tools > Options > Text Editor > C/C++ > Formatting if desired.
 
 ---
 
