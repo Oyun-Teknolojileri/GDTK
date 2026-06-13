@@ -62,8 +62,9 @@ namespace ToolKit
     {
       m_pass->SetFragmentShader(m_downsampleShader, renderer);
 
-      m_passDataBuffer.m_data.passIndxAndPad.x  = 0;
-      m_passDataBuffer.m_data.downsampleParams  = Vec4((float) mainRes.x, (float) mainRes.y, m_params.minThreshold, 0.0f);
+      m_passDataBuffer.m_data.passIndxAndPad.x = 0;
+      m_passDataBuffer.m_data.downsampleParams =
+          Vec4((float) mainRes.x, (float) mainRes.y, m_params.minThreshold, 0.0f);
       pushUbo();
 
       renderer->SetTexture("s_diffuseColor", mainRt);
@@ -94,7 +95,8 @@ namespace ToolKit
         RenderTargetPtr prevRt         = prevFramebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
 
         m_passDataBuffer.m_data.passIndxAndPad.x = i + 1;
-        m_passDataBuffer.m_data.downsampleParams = Vec4(prevRes.x, prevRes.y, m_passDataBuffer.m_data.downsampleParams.z, 0.0f);
+        m_passDataBuffer.m_data.downsampleParams =
+            Vec4(prevRes.x, prevRes.y, m_passDataBuffer.m_data.downsampleParams.z, 0.0f);
         pushUbo();
 
         renderer->SetTexture("s_diffuseColor", prevRt);
@@ -112,8 +114,8 @@ namespace ToolKit
     {
       m_pass->SetFragmentShader(m_upsampleShader, renderer);
 
-      const float filterRadius                = 0.002f;
-      m_passDataBuffer.m_data.upsampleParams  = Vec4(filterRadius, 1.0f, 0.0f, 0.0f);
+      const float filterRadius               = 0.002f;
+      m_passDataBuffer.m_data.upsampleParams = Vec4(filterRadius, 1.0f, 0.0f, 0.0f);
       pushUbo();
 
       for (int i = m_currentIterationCount; i > 0; i--)
@@ -139,9 +141,9 @@ namespace ToolKit
       RenderTargetPtr prevRt         = prevFramebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
       renderer->SetTexture("s_diffuseColor", prevRt);
 
-      m_pass->m_params.blendFunc        = BlendFunction::ONE_TO_ONE;
-      m_pass->m_params.clearFrameBuffer = GraphicBitFields::None;
-      m_pass->m_params.frameBuffer      = m_params.FrameBuffer;
+      m_pass->m_params.blendFunc               = BlendFunction::ONE_TO_ONE;
+      m_pass->m_params.clearFrameBuffer        = GraphicBitFields::None;
+      m_pass->m_params.frameBuffer             = m_params.FrameBuffer;
 
       // Final merge uses the user-set intensity instead of 1.0.
       m_passDataBuffer.m_data.upsampleParams.y = m_params.intensity;

@@ -14,7 +14,7 @@
 namespace ToolKit
 {
 
-  /** 
+  /**
    * This struct holds all the data required to update built-in uniforms for a single draw call.
    * It's designed to be used with IGraphicsBackend::SubmitPerDrawData.
    */
@@ -44,10 +44,10 @@ namespace ToolKit
     int activeSpotLightCount;
 
     // Animation data
-    Vec4 keyFrameData;       // x: kf1, y: kf2, z: interpTime, w: kfCount
-    Vec4 blendFrameData;     // x: blendKf1, y: blendKf2, z: blendInterpTime, w: blendKfCount
+    Vec4 keyFrameData;   // x: kf1, y: kf2, z: interpTime, w: kfCount
+    Vec4 blendFrameData; // x: blendKf1, y: blendKf2, z: blendInterpTime, w: blendKfCount
     float animationBlendFactor;
-    Vec4 skinParams;         // x: boneCount, y: isSkinned, z: isAnimated, w: hasBlend
+    Vec4 skinParams; // x: boneCount, y: isSkinned, z: isAnimated, w: hasBlend
   };
 
 } // namespace ToolKit

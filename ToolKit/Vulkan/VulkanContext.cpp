@@ -6,13 +6,13 @@
  */
 
 #define VMA_IMPLEMENTATION
-#include <vma/vk_mem_alloc.h>
-
 #include "VulkanContext.h"
 
 #include "../Logger.h"
 #include "VulkanBindings.h"
 #include "VulkanSwapchain.h"
+
+#include <vma/vk_mem_alloc.h>
 
 #include <algorithm>
 #include <cstring>
@@ -93,7 +93,7 @@ namespace ToolKit
   VulkanContext::~VulkanContext() { Destroy(); }
 
   bool VulkanContext::Init(const std::vector<const char*>& instanceExtensions,
-                           const std::function<uint64 (void*)>& surfaceFactory)
+                           const std::function<uint64(void*)>& surfaceFactory)
   {
     if (instanceExtensions.empty() || !surfaceFactory)
     {
@@ -213,7 +213,6 @@ namespace ToolKit
       VulkanBuffer::Destroy(this, m_perDrawUboRing);
     }
 
-
     if (m_globalDescriptorSetLayout != VK_NULL_HANDLE)
     {
       vkDestroyDescriptorSetLayout(m_device, m_globalDescriptorSetLayout, nullptr);
@@ -240,8 +239,8 @@ namespace ToolKit
 
     if (m_debugMessenger != VK_NULL_HANDLE && m_instance != VK_NULL_HANDLE)
     {
-      auto fn = (PFN_vkDestroyDebugUtilsMessengerEXT)
-          vkGetInstanceProcAddr(m_instance, "vkDestroyDebugUtilsMessengerEXT");
+      auto fn =
+          (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(m_instance, "vkDestroyDebugUtilsMessengerEXT");
       if (fn != nullptr)
       {
         fn(m_instance, m_debugMessenger, nullptr);
@@ -258,15 +257,15 @@ namespace ToolKit
 
   bool VulkanContext::CreateInstance(const std::vector<const char*>& requiredExtensions)
   {
-    VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO};
-    app.pApplicationName   = "ToolKit";
-    app.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-    app.pEngineName        = "ToolKit";
-    app.engineVersion      = VK_MAKE_VERSION(1, 0, 0);
-    app.apiVersion         = VK_API_VERSION_1_3;
+    VkApplicationInfo app {VK_STRUCTURE_TYPE_APPLICATION_INFO};
+    app.pApplicationName                = "ToolKit";
+    app.applicationVersion              = VK_MAKE_VERSION(1, 0, 0);
+    app.pEngineName                     = "ToolKit";
+    app.engineVersion                   = VK_MAKE_VERSION(1, 0, 0);
+    app.apiVersion                      = VK_API_VERSION_1_3;
 
     std::vector<const char*> extensions = requiredExtensions;
-    bool validationFeaturesSupported   = false;
+    bool validationFeaturesSupported    = false;
 
     // VK_EXT_debug_utils enables cb markers for RenderDoc / Nsight / PIX even in release.
     if (InstanceExtensionAvailable(VK_EXT_DEBUG_UTILS_EXTENSION_NAME))
@@ -283,29 +282,30 @@ namespace ToolKit
       }
     }
 
-    VkInstanceCreateInfo ci{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
+    VkInstanceCreateInfo ci {VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
     ci.pApplicationInfo        = &app;
     ci.enabledExtensionCount   = (uint32_t) extensions.size();
     ci.ppEnabledExtensionNames = extensions.data();
 
-    const char* layers[] = {kValidationLayerName};
+    const char* layers[]       = {kValidationLayerName};
     if (m_validationEnabled)
     {
       ci.enabledLayerCount   = 1;
       ci.ppEnabledLayerNames = layers;
     }
 
-    VkValidationFeaturesEXT validationFeatures{VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT};
-    VkValidationFeatureEnableEXT enabledFeatures[] = {
-        VK_VALIDATION_FEATURE_ENABLE_BEST_PRACTICES_EXT,
-        VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT};
+    VkValidationFeaturesEXT validationFeatures {VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT};
+    VkValidationFeatureEnableEXT enabledFeatures[] = {VK_VALIDATION_FEATURE_ENABLE_BEST_PRACTICES_EXT,
+                                                      VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT};
 
-    VkDebugUtilsMessengerCreateInfoEXT debugCi{VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
+    VkDebugUtilsMessengerCreateInfoEXT debugCi {VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
 
     if (m_validationEnabled)
     {
-      debugCi.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-      debugCi.messageType     = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+      debugCi.messageSeverity =
+          VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+      debugCi.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+                            VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
                             VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
       debugCi.pfnUserCallback = DebugMessengerCallback;
 
@@ -333,24 +333,22 @@ namespace ToolKit
 
   bool VulkanContext::CreateDebugMessenger()
   {
-    auto fn = (PFN_vkCreateDebugUtilsMessengerEXT)
-        vkGetInstanceProcAddr(m_instance, "vkCreateDebugUtilsMessengerEXT");
+    auto fn = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(m_instance, "vkCreateDebugUtilsMessengerEXT");
     if (fn == nullptr)
     {
       TK_WRN("vkCreateDebugUtilsMessengerEXT not resolved — no messenger");
       return true;
     }
 
-    VkDebugUtilsMessengerCreateInfoEXT ci{VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
-    ci.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
-                         VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
-                         VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-                         VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+    VkDebugUtilsMessengerCreateInfoEXT ci {VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
+    ci.messageSeverity =
+        VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
+        VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
     ci.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
                      VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
     ci.pfnUserCallback = DebugMessengerCallback;
 
-    VkResult r = fn(m_instance, &ci, nullptr, &m_debugMessenger);
+    VkResult r         = fn(m_instance, &ci, nullptr, &m_debugMessenger);
     if (r != VK_SUCCESS)
     {
       TK_ERR("vkCreateDebugUtilsMessengerEXT failed: %d", r);
@@ -359,7 +357,7 @@ namespace ToolKit
     return true;
   }
 
-  bool VulkanContext::CreateSurface(const std::function<uint64 (void*)>& factory)
+  bool VulkanContext::CreateSurface(const std::function<uint64(void*)>& factory)
   {
     const uint64 handle = factory((void*) m_instance);
     if (handle == 0)
@@ -373,8 +371,8 @@ namespace ToolKit
 
   static bool FindQueueFamilies(VkPhysicalDevice phys, VkSurfaceKHR surface, uint& graphics, uint& present)
   {
-    graphics = (uint) -1;
-    present  = (uint) -1;
+    graphics       = (uint) -1;
+    present        = (uint) -1;
 
     uint32_t count = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(phys, &count, nullptr);
@@ -477,7 +475,7 @@ namespace ToolKit
     float priority = 1.0f;
     for (uint family : uniqueFamilies)
     {
-      VkDeviceQueueCreateInfo qi{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
+      VkDeviceQueueCreateInfo qi {VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
       qi.queueFamilyIndex = family;
       qi.queueCount       = 1;
       qi.pQueuePriorities = &priority;
@@ -486,10 +484,10 @@ namespace ToolKit
 
     const char* deviceExts[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 
-    VkPhysicalDeviceFeatures supported{};
+    VkPhysicalDeviceFeatures supported {};
     vkGetPhysicalDeviceFeatures(m_physicalDevice, &supported);
 
-    VkPhysicalDeviceFeatures features{};
+    VkPhysicalDeviceFeatures features {};
     features.samplerAnisotropy = supported.samplerAnisotropy;
     // depthClamp keeps geometry behind the light's near plane writing depth (ortho shadow passes).
     features.depthClamp        = supported.depthClamp;
@@ -498,14 +496,14 @@ namespace ToolKit
       TK_WRN("Vulkan device does not support depthClamp — shadow passes that rely on it will clip.");
     }
 
-    VkDeviceCreateInfo ci{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
+    VkDeviceCreateInfo ci {VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
     ci.queueCreateInfoCount    = (uint32_t) queueInfos.size();
     ci.pQueueCreateInfos       = queueInfos.data();
     ci.enabledExtensionCount   = 1;
     ci.ppEnabledExtensionNames = deviceExts;
     ci.pEnabledFeatures        = &features;
 
-    VkResult r = vkCreateDevice(m_physicalDevice, &ci, nullptr, &m_device);
+    VkResult r                 = vkCreateDevice(m_physicalDevice, &ci, nullptr, &m_device);
     if (r != VK_SUCCESS)
     {
       TK_ERR("vkCreateDevice failed: %d", r);
@@ -519,13 +517,13 @@ namespace ToolKit
 
   bool VulkanContext::CreateAllocator()
   {
-    VmaAllocatorCreateInfo ci{};
+    VmaAllocatorCreateInfo ci {};
     ci.physicalDevice   = m_physicalDevice;
     ci.device           = m_device;
     ci.instance         = m_instance;
     ci.vulkanApiVersion = VK_API_VERSION_1_3;
 
-    VkResult r = vmaCreateAllocator(&ci, &m_allocator);
+    VkResult r          = vmaCreateAllocator(&ci, &m_allocator);
     if (r != VK_SUCCESS)
     {
       TK_ERR("vmaCreateAllocator failed: %d", r);
@@ -538,24 +536,24 @@ namespace ToolKit
   {
     // Shared pool sized for ImGui + other long-lived systems.
     VkDescriptorPoolSize sizes[] = {
-        {VK_DESCRIPTOR_TYPE_SAMPLER, 256},
+        {VK_DESCRIPTOR_TYPE_SAMPLER,                256 },
         {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1024},
-        {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 256},
-        {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 256},
-        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 256},
-        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 256},
-        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 64},
-        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 64},
-        {VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 64},
+        {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,          256 },
+        {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          256 },
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         256 },
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         256 },
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 64  },
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 64  },
+        {VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT,       64  },
     };
 
-    VkDescriptorPoolCreateInfo ci{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+    VkDescriptorPoolCreateInfo ci {VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
     ci.flags         = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
     ci.maxSets       = 2048;
     ci.poolSizeCount = (uint32_t) (sizeof(sizes) / sizeof(sizes[0]));
     ci.pPoolSizes    = sizes;
 
-    VkResult r = vkCreateDescriptorPool(m_device, &ci, nullptr, &m_descriptorPool);
+    VkResult r       = vkCreateDescriptorPool(m_device, &ci, nullptr, &m_descriptorPool);
     if (r != VK_SUCCESS)
     {
       TK_ERR("vkCreateDescriptorPool failed: %d", r);
@@ -576,7 +574,7 @@ namespace ToolKit
 
     auto pushBinding = [&](uint binding, VkDescriptorType type)
     {
-      VkDescriptorSetLayoutBinding b{};
+      VkDescriptorSetLayoutBinding b {};
       b.binding         = binding;
       b.descriptorType  = type;
       b.descriptorCount = 1;
@@ -596,11 +594,11 @@ namespace ToolKit
     }
     pushBinding(kPerDrawUboBinding, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
 
-    VkDescriptorSetLayoutCreateInfo ci{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+    VkDescriptorSetLayoutCreateInfo ci {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
     ci.bindingCount = (uint32_t) bindings.size();
     ci.pBindings    = bindings.data();
 
-    VkResult r = vkCreateDescriptorSetLayout(m_device, &ci, nullptr, &m_globalDescriptorSetLayout);
+    VkResult r      = vkCreateDescriptorSetLayout(m_device, &ci, nullptr, &m_globalDescriptorSetLayout);
     if (r != VK_SUCCESS)
     {
       TK_ERR("vkCreateDescriptorSetLayout (global) failed: %d", r);
@@ -616,11 +614,11 @@ namespace ToolKit
     const uint32_t kMaxSetsPerFrame = 2048;
     VkDescriptorPoolSize sizes[]    = {
         {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, kMaxSetsPerFrame * VulkanBindings::kTextureBindingCount},
-        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         kMaxSetsPerFrame * 7},
-        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, kMaxSetsPerFrame * 1},
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         kMaxSetsPerFrame * 7                                   },
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, kMaxSetsPerFrame * 1                                   },
     };
 
-    VkDescriptorPoolCreateInfo ci{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+    VkDescriptorPoolCreateInfo ci {VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
     // No FREE_DESCRIPTOR_SET_BIT — release happens via vkResetDescriptorPool at BeginFrame.
     ci.flags         = 0;
     ci.maxSets       = kMaxSetsPerFrame;
@@ -672,12 +670,12 @@ namespace ToolKit
       return VK_NULL_HANDLE;
     }
 
-    VkDescriptorSetAllocateInfo ai{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+    VkDescriptorSetAllocateInfo ai {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
     ai.descriptorPool     = pool;
     ai.descriptorSetCount = 1;
     ai.pSetLayouts        = &layout;
 
-    VkDescriptorSet set = VK_NULL_HANDLE;
+    VkDescriptorSet set   = VK_NULL_HANDLE;
     if (VkResult r = vkAllocateDescriptorSets(m_device, &ai, &set); r != VK_SUCCESS)
     {
       // FRAGMENTED_POOL / OUT_OF_POOL_MEMORY = frame exceeded kMaxSetsPerFrame.
@@ -693,7 +691,7 @@ namespace ToolKit
     // other slot's still-in-flight UBO content can't be stomped.
     constexpr VkDeviceSize kRingBytes = 32ull << 20;
 
-    VkPhysicalDeviceProperties props{};
+    VkPhysicalDeviceProperties props {};
     vkGetPhysicalDeviceProperties(m_physicalDevice, &props);
     m_minUniformBufferAlignment = props.limits.minUniformBufferOffsetAlignment;
     if (m_minUniformBufferAlignment == 0)
@@ -707,7 +705,7 @@ namespace ToolKit
       TK_ERR("VulkanContext::CreatePerDrawUboRing: ring allocation failed");
       return false;
     }
-    m_perDrawUboRegionSize     = kRingBytes / VulkanSwapchain::FRAMES_IN_FLIGHT;
+    m_perDrawUboRegionSize = kRingBytes / VulkanSwapchain::FRAMES_IN_FLIGHT;
     for (uint i = 0; i < VulkanSwapchain::FRAMES_IN_FLIGHT; ++i)
     {
       m_perDrawUboHeads[i] = (VkDeviceSize) i * m_perDrawUboRegionSize;
@@ -727,10 +725,9 @@ namespace ToolKit
     }
 
     // Round size up to alignment so the next AllocateSlot can land at head directly.
-    const VkDeviceSize aligned =
-        (size + m_minUniformBufferAlignment - 1) & ~(m_minUniformBufferAlignment - 1);
-    VkDeviceSize& head             = m_perDrawUboHeads[m_currentRingSlot];
-    const VkDeviceSize regionEnd   = (VkDeviceSize) (m_currentRingSlot + 1) * m_perDrawUboRegionSize;
+    const VkDeviceSize aligned   = (size + m_minUniformBufferAlignment - 1) & ~(m_minUniformBufferAlignment - 1);
+    VkDeviceSize& head           = m_perDrawUboHeads[m_currentRingSlot];
+    const VkDeviceSize regionEnd = (VkDeviceSize) (m_currentRingSlot + 1) * m_perDrawUboRegionSize;
     if (head + aligned > regionEnd)
     {
       if (!m_perDrawUboOverflowLogged)
@@ -745,9 +742,9 @@ namespace ToolKit
       return false;
     }
 
-    outOffset    = head;
-    outMappedPtr = static_cast<uint8_t*>(m_perDrawUboRing.mapped) + head;
-    head += aligned;
+    outOffset     = head;
+    outMappedPtr  = static_cast<uint8_t*>(m_perDrawUboRing.mapped) + head;
+    head         += aligned;
     return true;
   }
 
@@ -827,9 +824,9 @@ namespace ToolKit
                                             std::function<void(std::function<void()>)> inlineCleanupSink,
                                             std::function<bool()> renderPassActiveQuery)
   {
-    m_currentRecordingCb     = cb;
-    m_inlineCleanupSink      = std::move(inlineCleanupSink);
-    m_renderPassActiveQuery  = std::move(renderPassActiveQuery);
+    m_currentRecordingCb    = cb;
+    m_inlineCleanupSink     = std::move(inlineCleanupSink);
+    m_renderPassActiveQuery = std::move(renderPassActiveQuery);
   }
 
 } // namespace ToolKit

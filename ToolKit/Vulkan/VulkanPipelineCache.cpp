@@ -19,25 +19,19 @@ namespace ToolKit
   {
     // Attribute tail (beyond attributeCount) is uninitialized — compare only the live prefix.
     const bool scalarsEqual =
-        renderPass == o.renderPass && vert == o.vert && frag == o.frag &&
-        vertexStride == o.vertexStride && attributeCount == o.attributeCount &&
-        topology == o.topology && cullMode == o.cullMode && frontFace == o.frontFace &&
-        depthClampEnable == o.depthClampEnable &&
-        depthTestEnable == o.depthTestEnable && depthWriteEnable == o.depthWriteEnable &&
-        depthCompareOp == o.depthCompareOp &&
+        renderPass == o.renderPass && vert == o.vert && frag == o.frag && vertexStride == o.vertexStride &&
+        attributeCount == o.attributeCount && topology == o.topology && cullMode == o.cullMode &&
+        frontFace == o.frontFace && depthClampEnable == o.depthClampEnable && depthTestEnable == o.depthTestEnable &&
+        depthWriteEnable == o.depthWriteEnable && depthCompareOp == o.depthCompareOp &&
         stencilTestEnable == o.stencilTestEnable &&
-        (!stencilTestEnable || (stencilFailOp == o.stencilFailOp &&
-                                stencilPassOp == o.stencilPassOp &&
-                                stencilDepthFailOp == o.stencilDepthFailOp &&
-                                stencilCompareOp == o.stencilCompareOp &&
+        (!stencilTestEnable || (stencilFailOp == o.stencilFailOp && stencilPassOp == o.stencilPassOp &&
+                                stencilDepthFailOp == o.stencilDepthFailOp && stencilCompareOp == o.stencilCompareOp &&
                                 stencilReference == o.stencilReference)) &&
-        blendEnable == o.blendEnable &&
-        srcColorBlendFactor == o.srcColorBlendFactor && dstColorBlendFactor == o.dstColorBlendFactor &&
-        colorBlendOp == o.colorBlendOp && srcAlphaBlendFactor == o.srcAlphaBlendFactor &&
-        dstAlphaBlendFactor == o.dstAlphaBlendFactor && alphaBlendOp == o.alphaBlendOp &&
-        colorAttachmentCount == o.colorAttachmentCount &&
-        colorWriteMask == o.colorWriteMask &&
-        rasterizationSamples == o.rasterizationSamples;
+        blendEnable == o.blendEnable && srcColorBlendFactor == o.srcColorBlendFactor &&
+        dstColorBlendFactor == o.dstColorBlendFactor && colorBlendOp == o.colorBlendOp &&
+        srcAlphaBlendFactor == o.srcAlphaBlendFactor && dstAlphaBlendFactor == o.dstAlphaBlendFactor &&
+        alphaBlendOp == o.alphaBlendOp && colorAttachmentCount == o.colorAttachmentCount &&
+        colorWriteMask == o.colorWriteMask && rasterizationSamples == o.rasterizationSamples;
 
     if (!scalarsEqual)
     {
@@ -48,8 +42,7 @@ namespace ToolKit
     {
       const VkVertexInputAttributeDescription& a = attributes[i];
       const VkVertexInputAttributeDescription& b = o.attributes[i];
-      if (a.location != b.location || a.binding != b.binding || a.format != b.format ||
-          a.offset != b.offset)
+      if (a.location != b.location || a.binding != b.binding || a.format != b.format || a.offset != b.offset)
       {
         return false;
       }
@@ -65,18 +58,18 @@ namespace ToolKit
   std::size_t VulkanPipelineDescHash::operator()(const VulkanPipelineDesc& d) const noexcept
   {
     std::size_t h = 0;
-    h = MixBits(h, reinterpret_cast<std::uintptr_t>(d.renderPass));
-    h = MixBits(h, reinterpret_cast<std::uintptr_t>(d.vert));
-    h = MixBits(h, reinterpret_cast<std::uintptr_t>(d.frag));
-    h = MixBits(h, d.vertexStride);
-    h = MixBits(h, d.attributeCount);
+    h             = MixBits(h, reinterpret_cast<std::uintptr_t>(d.renderPass));
+    h             = MixBits(h, reinterpret_cast<std::uintptr_t>(d.vert));
+    h             = MixBits(h, reinterpret_cast<std::uintptr_t>(d.frag));
+    h             = MixBits(h, d.vertexStride);
+    h             = MixBits(h, d.attributeCount);
     for (uint i = 0; i < d.attributeCount; ++i)
     {
       const auto& a = d.attributes[i];
-      h = MixBits(h, a.location);
-      h = MixBits(h, a.binding);
-      h = MixBits(h, (std::size_t) a.format);
-      h = MixBits(h, a.offset);
+      h             = MixBits(h, a.location);
+      h             = MixBits(h, a.binding);
+      h             = MixBits(h, (std::size_t) a.format);
+      h             = MixBits(h, a.offset);
     }
     h = MixBits(h, (std::size_t) d.topology);
     h = MixBits(h, (std::size_t) d.cullMode);
@@ -125,7 +118,7 @@ namespace ToolKit
 
     VkDevice device = ctx->GetDevice();
 
-    VkPipelineShaderStageCreateInfo stages[2]{};
+    VkPipelineShaderStageCreateInfo stages[2] {};
     stages[0].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     stages[0].stage  = VK_SHADER_STAGE_VERTEX_BIT;
     stages[0].module = desc.vert;
@@ -135,12 +128,12 @@ namespace ToolKit
     stages[1].module = desc.frag;
     stages[1].pName  = "main";
 
-    VkVertexInputBindingDescription binding{};
+    VkVertexInputBindingDescription binding {};
     binding.binding   = 0;
     binding.stride    = desc.vertexStride;
     binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
-    VkPipelineVertexInputStateCreateInfo vi{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+    VkPipelineVertexInputStateCreateInfo vi {VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
     if (desc.vertexStride > 0 && desc.attributeCount > 0)
     {
       vi.vertexBindingDescriptionCount   = 1;
@@ -149,14 +142,14 @@ namespace ToolKit
       vi.pVertexAttributeDescriptions    = desc.attributes.data();
     }
 
-    VkPipelineInputAssemblyStateCreateInfo ia{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
+    VkPipelineInputAssemblyStateCreateInfo ia {VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
     ia.topology = desc.topology;
 
-    VkPipelineViewportStateCreateInfo vp{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
+    VkPipelineViewportStateCreateInfo vp {VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
     vp.viewportCount = 1;
     vp.scissorCount  = 1;
 
-    VkPipelineRasterizationStateCreateInfo rs{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
+    VkPipelineRasterizationStateCreateInfo rs {VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
     rs.polygonMode      = VK_POLYGON_MODE_FILL;
     rs.cullMode         = desc.cullMode;
     rs.frontFace        = desc.frontFace;
@@ -164,18 +157,17 @@ namespace ToolKit
     // Shadow passes flip this on so geometry behind the light's near plane still writes depth.
     rs.depthClampEnable = desc.depthClampEnable;
 
-    VkPipelineMultisampleStateCreateInfo ms{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
-    ms.rasterizationSamples = desc.rasterizationSamples != 0 ? desc.rasterizationSamples
-                                                             : VK_SAMPLE_COUNT_1_BIT;
+    VkPipelineMultisampleStateCreateInfo ms {VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
+    ms.rasterizationSamples = desc.rasterizationSamples != 0 ? desc.rasterizationSamples : VK_SAMPLE_COUNT_1_BIT;
 
-    VkPipelineDepthStencilStateCreateInfo ds{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
-    ds.depthTestEnable       = desc.depthTestEnable;
-    ds.depthWriteEnable      = desc.depthWriteEnable;
-    ds.depthCompareOp        = desc.depthCompareOp;
-    ds.stencilTestEnable     = desc.stencilTestEnable;
+    VkPipelineDepthStencilStateCreateInfo ds {VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
+    ds.depthTestEnable   = desc.depthTestEnable;
+    ds.depthWriteEnable  = desc.depthWriteEnable;
+    ds.depthCompareOp    = desc.depthCompareOp;
+    ds.stencilTestEnable = desc.stencilTestEnable;
     if (desc.stencilTestEnable)
     {
-      VkStencilOpState sop{};
+      VkStencilOpState sop {};
       sop.failOp      = desc.stencilFailOp;
       sop.passOp      = desc.stencilPassOp;
       sop.depthFailOp = desc.stencilDepthFailOp;
@@ -183,12 +175,12 @@ namespace ToolKit
       sop.compareMask = 0xFF;
       sop.writeMask   = 0xFF;
       sop.reference   = desc.stencilReference;
-      ds.front = sop;
-      ds.back  = sop;
+      ds.front        = sop;
+      ds.back         = sop;
     }
 
     // Desc carries the full blend recipe; factor/op fields are ignored when blendEnable=FALSE.
-    VkPipelineColorBlendAttachmentState att{};
+    VkPipelineColorBlendAttachmentState att {};
     att.colorWriteMask      = desc.colorWriteMask;
     att.blendEnable         = desc.blendEnable;
     att.srcColorBlendFactor = desc.srcColorBlendFactor;
@@ -199,21 +191,21 @@ namespace ToolKit
     att.alphaBlendOp        = desc.alphaBlendOp;
 
     // Single blend state replicated across all attachments. MRT with per-target blend is TBD.
-    std::array<VkPipelineColorBlendAttachmentState, 8> attStates{};
+    std::array<VkPipelineColorBlendAttachmentState, 8> attStates {};
     for (uint i = 0; i < desc.colorAttachmentCount && i < attStates.size(); ++i)
     {
       attStates[i] = att;
     }
-    VkPipelineColorBlendStateCreateInfo cb{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
+    VkPipelineColorBlendStateCreateInfo cb {VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
     cb.attachmentCount = desc.colorAttachmentCount;
     cb.pAttachments    = attStates.data();
 
-    VkDynamicState dynStates[]{VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
-    VkPipelineDynamicStateCreateInfo dyn{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
+    VkDynamicState dynStates[] {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+    VkPipelineDynamicStateCreateInfo dyn {VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
     dyn.dynamicStateCount = 2;
     dyn.pDynamicStates    = dynStates;
 
-    VkGraphicsPipelineCreateInfo pci{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
+    VkGraphicsPipelineCreateInfo pci {VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
     pci.stageCount          = 2;
     pci.pStages             = stages;
     pci.pVertexInputState   = &vi;
@@ -228,25 +220,24 @@ namespace ToolKit
     pci.renderPass          = desc.renderPass;
     pci.subpass             = 0;
 
-    VkPipeline newPipe = VK_NULL_HANDLE;
+    VkPipeline newPipe      = VK_NULL_HANDLE;
     if (VkResult r = vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pci, nullptr, &newPipe); r != VK_SUCCESS)
     {
       TK_ERR("VulkanPipelineCache::GetOrCreate vkCreateGraphicsPipelines failed: %d", r);
       return VK_NULL_HANDLE;
     }
 
-    m_pipelines.emplace(desc, Entry{newPipe, layout});
+    m_pipelines.emplace(desc, Entry {newPipe, layout});
     return newPipe;
   }
 
-  void VulkanPipelineCache::InvalidateForRenderPass(VkRenderPass rp,
-                                                    const std::function<void(VkPipeline)>& deferDelete)
+  void VulkanPipelineCache::InvalidateForRenderPass(VkRenderPass rp, const std::function<void(VkPipeline)>& deferDelete)
   {
     if (rp == VK_NULL_HANDLE)
     {
       return;
     }
-    for (auto it = m_pipelines.begin(); it != m_pipelines.end(); )
+    for (auto it = m_pipelines.begin(); it != m_pipelines.end();)
     {
       if (it->first.renderPass == rp)
       {
@@ -270,7 +261,7 @@ namespace ToolKit
     {
       return;
     }
-    for (auto it = m_pipelines.begin(); it != m_pipelines.end(); )
+    for (auto it = m_pipelines.begin(); it != m_pipelines.end();)
     {
       if (it->second.layout == layout)
       {
@@ -306,10 +297,13 @@ namespace ToolKit
   {
     switch (c)
     {
-      case CullingType::Front: return VK_CULL_MODE_FRONT_BIT;
-      case CullingType::Back:  return VK_CULL_MODE_BACK_BIT;
+      case CullingType::Front:
+        return VK_CULL_MODE_FRONT_BIT;
+      case CullingType::Back:
+        return VK_CULL_MODE_BACK_BIT;
       case CullingType::TwoSided:
-      default:                 return VK_CULL_MODE_NONE;
+      default:
+        return VK_CULL_MODE_NONE;
     }
   }
 
@@ -317,15 +311,23 @@ namespace ToolKit
   {
     switch (f)
     {
-      case CompareFunctions::FuncNever:   return VK_COMPARE_OP_NEVER;
-      case CompareFunctions::FuncLess:    return VK_COMPARE_OP_LESS;
-      case CompareFunctions::FuncEqual:   return VK_COMPARE_OP_EQUAL;
-      case CompareFunctions::FuncLequal:  return VK_COMPARE_OP_LESS_OR_EQUAL;
-      case CompareFunctions::FuncGreater: return VK_COMPARE_OP_GREATER;
-      case CompareFunctions::FuncNEqual:  return VK_COMPARE_OP_NOT_EQUAL;
-      case CompareFunctions::FuncGEqual:  return VK_COMPARE_OP_GREATER_OR_EQUAL;
+      case CompareFunctions::FuncNever:
+        return VK_COMPARE_OP_NEVER;
+      case CompareFunctions::FuncLess:
+        return VK_COMPARE_OP_LESS;
+      case CompareFunctions::FuncEqual:
+        return VK_COMPARE_OP_EQUAL;
+      case CompareFunctions::FuncLequal:
+        return VK_COMPARE_OP_LESS_OR_EQUAL;
+      case CompareFunctions::FuncGreater:
+        return VK_COMPARE_OP_GREATER;
+      case CompareFunctions::FuncNEqual:
+        return VK_COMPARE_OP_NOT_EQUAL;
+      case CompareFunctions::FuncGEqual:
+        return VK_COMPARE_OP_GREATER_OR_EQUAL;
       case CompareFunctions::FuncAlways:
-      default:                            return VK_COMPARE_OP_ALWAYS;
+      default:
+        return VK_COMPARE_OP_ALWAYS;
     }
   }
 
@@ -333,13 +335,17 @@ namespace ToolKit
   {
     switch (d)
     {
-      case DrawType::Point:      return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
-      case DrawType::Line:       return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
-      case DrawType::LineStrip:  return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
-      case DrawType::LineLoop:   // No native line-loop in Vulkan; closest is LINE_STRIP.
-                                 return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
+      case DrawType::Point:
+        return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
+      case DrawType::Line:
+        return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+      case DrawType::LineStrip:
+        return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
+      case DrawType::LineLoop: // No native line-loop in Vulkan; closest is LINE_STRIP.
+        return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
       case DrawType::Triangle:
-      default:                   return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+      default:
+        return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     }
   }
 
@@ -391,22 +397,22 @@ namespace ToolKit
   void RenderStateToPipelineDesc(const RenderState& state, VulkanPipelineDesc& out)
   {
     // blendFunction / cullMode arrive pre-resolved by Renderer::Render.
-    const BlendRecipe r = ToBlendRecipe(state.blendFunction);
+    const BlendRecipe r  = ToBlendRecipe(state.blendFunction);
 
-    out.topology            = ToVkTopology(state.drawType);
-    out.cullMode            = ToVkCullMode(state.cullMode);
-    out.frontFace           = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-    out.depthClampEnable    = state.depthClampEnabled ? VK_TRUE : VK_FALSE;
+    out.topology         = ToVkTopology(state.drawType);
+    out.cullMode         = ToVkCullMode(state.cullMode);
+    out.frontFace        = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    out.depthClampEnable = state.depthClampEnabled ? VK_TRUE : VK_FALSE;
 
-    out.depthTestEnable     = state.depthTestEnabled ? VK_TRUE : VK_FALSE;
-    out.depthWriteEnable    = state.depthWriteEnabled ? VK_TRUE : VK_FALSE;
-    out.depthCompareOp      = ToVkCompareOp(state.depthFunction);
+    out.depthTestEnable  = state.depthTestEnabled ? VK_TRUE : VK_FALSE;
+    out.depthWriteEnable = state.depthWriteEnabled ? VK_TRUE : VK_FALSE;
+    out.depthCompareOp   = ToVkCompareOp(state.depthFunction);
 
     // Engine uses a binary stencil model: reference=1, full masks.
     switch (state.stencilOperation)
     {
       case StencilOperation::None:
-        out.stencilTestEnable  = VK_FALSE;
+        out.stencilTestEnable = VK_FALSE;
         break;
       case StencilOperation::AllowAllPixels:
         // Write 1 for every fragment that survives depth test.
@@ -445,10 +451,9 @@ namespace ToolKit
     out.dstAlphaBlendFactor = r.dstAlpha;
     out.alphaBlendOp        = r.alphaOp;
 
-    out.colorWriteMask = state.colorMaskEnabled
-                             ? (VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-                                VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT)
-                             : 0;
+    out.colorWriteMask      = state.colorMaskEnabled ? (VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                                                   VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT)
+                                                     : 0;
   }
 
 } // namespace ToolKit

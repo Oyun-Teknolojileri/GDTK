@@ -30,14 +30,14 @@ namespace ToolKit
     m_linearMaterial->SetFragmentShaderVal(fragmentShader);
     m_linearMaterial->Init();
 
-    TextureSettings set = {};
-    set.WarpS           = GraphicTypes::UVClampToEdge;
-    set.WarpT           = GraphicTypes::UVClampToEdge;
-    set.InternalFormat  = GraphicTypes::FormatRGBA16F;
-    set.Format          = GraphicTypes::FormatRGBA;
-    set.Type            = GraphicTypes::TypeFloat;
-    set.GenerateMipMap  = false;
-    m_normalDepthRt     = MakeNewPtr<RenderTarget>(128, 128, set, "NormalDepthRT");
+    TextureSettings set           = {};
+    set.WarpS                     = GraphicTypes::UVClampToEdge;
+    set.WarpT                     = GraphicTypes::UVClampToEdge;
+    set.InternalFormat            = GraphicTypes::FormatRGBA16F;
+    set.Format                    = GraphicTypes::FormatRGBA;
+    set.Type                      = GraphicTypes::TypeFloat;
+    set.GenerateMipMap            = false;
+    m_normalDepthRt               = MakeNewPtr<RenderTarget>(128, 128, set, "NormalDepthRT");
 
     // FuncLess is correct here: this pass renders into a freshly cleared depth buffer with
     // no prior writes from any other pass, and is itself the writer of that buffer.

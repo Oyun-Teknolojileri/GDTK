@@ -182,13 +182,13 @@ namespace ToolKit
 
       switch (msaaVal)
       {
-      case MsaaSampleCount::x0:
-      case MsaaSampleCount::x2:
-      case MsaaSampleCount::x4:
-      case MsaaSampleCount::x8:
-        break;
-      default:
-        msaaVal = MsaaSampleCount::x0;
+        case MsaaSampleCount::x0:
+        case MsaaSampleCount::x2:
+        case MsaaSampleCount::x4:
+        case MsaaSampleCount::x8:
+          break;
+        default:
+          msaaVal = MsaaSampleCount::x0;
       }
 
       MultiChoiceVariant msaa = gDefaultMsaaMcv;
@@ -232,7 +232,7 @@ namespace ToolKit
          CreateMultiChoiceParameter("8", 8),
          CreateMultiChoiceParameter("16", 16),
          CreateMultiChoiceParameter("32", 32),
-        },
+         },
         1
     };
     SSAOKernelSize_Define(ssaoKernelMcv, "PostProcessingSettings", 0, true, true);

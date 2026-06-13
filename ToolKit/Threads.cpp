@@ -47,12 +47,12 @@ namespace ToolKit
   {
     switch (executor)
     {
-    case WorkerManager::Executor::BackgroundPool:
-      return *m_backgroundWorkers;
-    case WorkerManager::Executor::FramePool:
-    default:
-      return *m_frameWorkers;
-      break;
+      case WorkerManager::Executor::BackgroundPool:
+        return *m_backgroundWorkers;
+      case WorkerManager::Executor::FramePool:
+      default:
+        return *m_frameWorkers;
+        break;
     }
   }
 

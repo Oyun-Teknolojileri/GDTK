@@ -311,13 +311,13 @@ namespace ToolKit
         String ts;
         switch (currentItemOrient)
         {
-        case 1:
-          ts = "local";
-          break;
-        case 0:
-        default:
-          ts = "world";
-          break;
+          case 1:
+            ts = "local";
+            break;
+          case 0:
+          default:
+            ts = "world";
+            break;
         }
 
         String cmd = "SetTransformOrientation " + ts;
@@ -345,7 +345,8 @@ namespace ToolKit
       }
 
       ImGui::TableSetColumnIndex(nextItemIndex++);
-      GetApp()->m_snapsEnabled = UI::ToggleButton(EditorImGuiTextureCache::Acquire(UI::m_snapIcon), Vec2(16.0), GetApp()->m_snapsEnabled);
+      GetApp()->m_snapsEnabled =
+          UI::ToggleButton(EditorImGuiTextureCache::Acquire(UI::m_snapIcon), Vec2(16.0), GetApp()->m_snapsEnabled);
       UI::HelpMarker(TKLoc + m_owner->m_name, "Grid snaping\nRight click for options");
 
       if (ImGui::BeginPopupContextItem("##SnapMenu"))
@@ -410,22 +411,22 @@ namespace ToolKit
         String view;
         switch ((CameraAlignment) currentItemCam)
         {
-        case CameraAlignment::Top:
-          view = "Top";
-          break;
-        case CameraAlignment::Front:
-          view = "Front";
-          break;
-        case CameraAlignment::Left:
-          view = "Left";
-          break;
-        case CameraAlignment::User:
-          view = "User";
-          break;
-        case CameraAlignment::Free:
-        default:
-          view = "Free";
-          break;
+          case CameraAlignment::Top:
+            view = "Top";
+            break;
+          case CameraAlignment::Front:
+            view = "Front";
+            break;
+          case CameraAlignment::Left:
+            view = "Left";
+            break;
+          case CameraAlignment::User:
+            view = "User";
+            break;
+          case CameraAlignment::Free:
+          default:
+            view = "Free";
+            break;
         }
 
         if (view == "User")

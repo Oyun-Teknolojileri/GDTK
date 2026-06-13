@@ -11,9 +11,10 @@
 #include "../ToolKit.h"
 #include "VulkanBindings.h"
 
+#include <shaderc/shaderc.hpp>
+
 #include <filesystem>
 #include <fstream>
-#include <shaderc/shaderc.hpp>
 
 namespace ToolKit
 {
@@ -24,8 +25,10 @@ namespace ToolKit
     {
       switch (stage)
       {
-      case Stage::Vertex:   return shaderc_glsl_vertex_shader;
-      case Stage::Fragment: return shaderc_glsl_fragment_shader;
+        case Stage::Vertex:
+          return shaderc_glsl_vertex_shader;
+        case Stage::Fragment:
+          return shaderc_glsl_fragment_shader;
       }
       return shaderc_glsl_vertex_shader;
     }
@@ -36,7 +39,11 @@ namespace ToolKit
     static uint64_t SpvCacheHash(const std::string& src, Stage stage)
     {
       uint64_t h = 14695981039346656037ULL;
-      for (unsigned char c : src) { h ^= c; h *= 1099511628211ULL; }
+      for (unsigned char c : src)
+      {
+        h ^= c;
+        h *= 1099511628211ULL;
+      }
       h ^= (stage == Stage::Vertex ? 0u : 1u);
       h *= 1099511628211ULL;
       return h;
@@ -45,22 +52,22 @@ namespace ToolKit
     static std::string SpvCachePath(uint64_t hash, Stage stage)
     {
       char buf[32];
-      snprintf(buf, sizeof(buf), "%016llx_%c.spv",
-               (unsigned long long) hash,
-               stage == Stage::Vertex ? 'v' : 'f');
+      snprintf(buf, sizeof(buf), "%016llx_%c.spv", (unsigned long long) hash, stage == Stage::Vertex ? 'v' : 'f');
       return ConcatPaths({ConfigPath(), "SpirVCache", buf});
     }
 
     static std::vector<uint32_t> LoadSpv(const std::string& path)
     {
       std::ifstream f(path, std::ios::binary | std::ios::ate);
-      if (!f) return {};
+      if (!f)
+        return {};
       auto sz = f.tellg();
-      if (sz <= 0 || sz % 4 != 0) return {};
+      if (sz <= 0 || sz % 4 != 0)
+        return {};
       f.seekg(0);
       std::vector<uint32_t> spv(static_cast<size_t>(sz) / 4);
       f.read(reinterpret_cast<char*>(spv.data()), sz);
-      return f ? spv : std::vector<uint32_t>{};
+      return f ? spv : std::vector<uint32_t> {};
     }
 
     static void SaveSpv(const std::string& path, const std::vector<uint32_t>& spv)
@@ -68,9 +75,11 @@ namespace ToolKit
       namespace fs = std::filesystem;
       std::error_code ec;
       fs::create_directories(fs::path(path).parent_path(), ec);
-      if (ec) return;
+      if (ec)
+        return;
       std::ofstream f(path, std::ios::binary);
-      if (!f) return;
+      if (!f)
+        return;
       f.write(reinterpret_cast<const char*>(spv.data()), spv.size() * 4);
     }
 
@@ -127,9 +136,9 @@ namespace ToolKit
       {
         return VK_NULL_HANDLE;
       }
-      VkShaderModuleCreateInfo ci{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
-      ci.codeSize    = spirv.size() * sizeof(uint32_t);
-      ci.pCode       = spirv.data();
+      VkShaderModuleCreateInfo ci {VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
+      ci.codeSize        = spirv.size() * sizeof(uint32_t);
+      ci.pCode           = spirv.data();
 
       VkShaderModule mod = VK_NULL_HANDLE;
       if (VkResult r = vkCreateShaderModule(device, &ci, nullptr, &mod); r != VK_SUCCESS)

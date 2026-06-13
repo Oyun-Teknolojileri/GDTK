@@ -34,7 +34,9 @@ namespace ToolKit
     ~VulkanBackend() override;
 
     VulkanContext* GetContext() { return m_context.get(); }
+
     VulkanSwapchain* GetSwapchain() { return m_swapchain.get(); }
+
     class VulkanPipelineCache* GetPipelineCache() { return m_pipelineCache.get(); }
 
     /** Command buffer being recorded this frame, or VK_NULL_HANDLE between frames. */
@@ -97,9 +99,7 @@ namespace ToolKit
     GpuResourceDataPtr CreateShader(Shader* shader, const String& source) override;
     void DestroyShader(GpuResourceData* shaderData) override;
 
-    void CreateGpuProgram(GpuProgram* program,
-                          const struct ShaderResourceBinding* bindings,
-                          int bindingCount) override;
+    void CreateGpuProgram(GpuProgram* program, const struct ShaderResourceBinding* bindings, int bindingCount) override;
     void DestroyGpuProgram(GpuProgram* program) override;
     int GetUniformLocation(GpuProgram* program, const char* name) override;
 
@@ -137,26 +137,26 @@ namespace ToolKit
     std::unique_ptr<VulkanContext> m_context;
     std::unique_ptr<VulkanSwapchain> m_swapchain;
     std::unique_ptr<class VulkanPipelineCache> m_pipelineCache;
-    bool m_frameStarted  = false;
-    bool m_needsRecreate = false;
-    Vec4 m_clearColor    = Vec4(0.4f, 0.0f, 0.4f, 1.0f);
+    bool m_frameStarted                      = false;
+    bool m_needsRecreate                     = false;
+    Vec4 m_clearColor                        = Vec4(0.4f, 0.0f, 0.4f, 1.0f);
 
     /** Active offscreen framebuffer between StartPass and FinishPass; null otherwise. */
     struct VulkanFramebuffer* m_activePassFb = nullptr;
 
     /** Last PassDesc supplied to StartPass; reused by Draw's lazy RP open. */
-    PassDesc m_pendingPassDesc{};
+    PassDesc m_pendingPassDesc {};
 
     /** True while a render pass instance is open (gates resolve/blit which must run outside RP). */
-    bool m_rpActive = false;
+    bool m_rpActive                         = false;
 
     /** True between BindPipeline success and the next FinishPass. */
-    bool m_pipelineBound = false;
+    bool m_pipelineBound                    = false;
 
     /** Cached by BindPipeline; the pipeline is built lazily in Draw because the desc needs the
         vertex layout that only arrives with DrawDesc. */
     struct VulkanGpuProgram* m_boundProgram = nullptr;
-    RenderState m_boundState{};
+    RenderState m_boundState {};
 
     /** UBO slot count for fixed-array indexing (covers GL slots 3..10 plus headroom). */
     static constexpr int kMaxUboSlots = 16;
@@ -164,10 +164,10 @@ namespace ToolKit
     struct ShadowState
     {
       /** Per binding slot; null = unbound (dummy fallback at flush time). */
-      std::array<TexturePtr, VulkanBindings::kTextureBindingCount> boundTextures{};
+      std::array<TexturePtr, VulkanBindings::kTextureBindingCount> boundTextures {};
 
       /** UBO bindings indexed by GL slot. */
-      std::array<UniformBuffer*, kMaxUboSlots> boundUniforms{};
+      std::array<UniformBuffer*, kMaxUboSlots> boundUniforms {};
 
       /** True after SubmitPerDrawData has run this draw cycle. */
       bool perDrawSubmitted = false;
@@ -193,31 +193,33 @@ namespace ToolKit
         dirty            = false;
       }
     };
+
     ShadowState m_shadow;
 
     /** Per-frame descriptor set cache. Key = state hash, value = the set allocated for that
         state. Cleared in BeginFrame alongside the pool reset. */
     struct DescriptorCacheEntry
     {
-      uint64_t hash    = 0;
+      uint64_t hash       = 0;
       VkDescriptorSet set = VK_NULL_HANDLE;
     };
-    std::array<std::vector<DescriptorCacheEntry>, 2> m_descriptorCache{};
+
+    std::array<std::vector<DescriptorCacheEntry>, 2> m_descriptorCache {};
 
     /** MRU shortcut for FlushDescriptorState — material-sorted scenes hit it repeatedly. */
-    VkDescriptorSet m_lastFlushedSet         = VK_NULL_HANDLE;
+    VkDescriptorSet m_lastFlushedSet              = VK_NULL_HANDLE;
     struct VulkanGpuProgram* m_lastFlushedProgram = nullptr;
 
     // Timer query. Pool holds (start, end) timestamps; one cycle in flight at a time. Result is
     // polled non-blocking next BeginFrame, so multiple frames may pass between cycles.
-    VkQueryPool m_timestampPool   = VK_NULL_HANDLE;
-    bool m_timerSupported         = false;
-    bool m_timerQueryActive       = false;
-    bool m_timerQueryWaiting      = false;
-    float m_timestampPeriodNs     = 1.0f; //!< vkPhysicalDeviceLimits::timestampPeriod, cached.
-    float m_cpuStartMs            = 0.0f;
-    float m_cpuTimeMs             = 1.0f; //!< Non-zero default so Stats' 1000/x FPS doesn't /0.
-    float m_gpuTimeMs             = 1.0f;
+    VkQueryPool m_timestampPool                   = VK_NULL_HANDLE;
+    bool m_timerSupported                         = false;
+    bool m_timerQueryActive                       = false;
+    bool m_timerQueryWaiting                      = false;
+    float m_timestampPeriodNs                     = 1.0f; //!< vkPhysicalDeviceLimits::timestampPeriod, cached.
+    float m_cpuStartMs                            = 0.0f;
+    float m_cpuTimeMs                             = 1.0f; //!< Non-zero default so Stats' 1000/x FPS doesn't /0.
+    float m_gpuTimeMs                             = 1.0f;
 
     /** Resolves bound program's resources against m_shadow / m_globalUboRegistry, hashes, and
         returns the cached or freshly written descriptor set. */
@@ -225,8 +227,13 @@ namespace ToolKit
 
     /** Global (non-per-draw) UBO handles indexed by GL slot. Fallback source when no explicit
         BindUniformBuffer overrides the slot. */
-    struct GlobalUboEntry { VkBuffer handle = VK_NULL_HANDLE; uint64_t size = 0; };
-    std::array<GlobalUboEntry, kMaxUboSlots> m_globalUboRegistry{};
+    struct GlobalUboEntry
+    {
+      VkBuffer handle = VK_NULL_HANDLE;
+      uint64_t size   = 0;
+    };
+
+    std::array<GlobalUboEntry, kMaxUboSlots> m_globalUboRegistry {};
 
     /** Dummy textures filling declared-but-unbound slots in descriptor sets. */
     std::shared_ptr<struct VulkanTexture> m_dummyTexture;
@@ -236,7 +243,7 @@ namespace ToolKit
 
     /** dynamicOffsets[0] for the next Draw's vkCmdBindDescriptorSets. Set by SubmitPerDrawData;
         reset by BeginFrame and BindPipeline. */
-    uint32_t m_currentDynamicOffset        = 0;
+    uint32_t m_currentDynamicOffset = 0;
 
     /** Cached viewport/scissor — re-issued onto the new cb after FlushAndResetRing. */
     struct CachedRect2D
@@ -244,8 +251,9 @@ namespace ToolKit
       uint32_t x = 0, y = 0, w = 0, h = 0;
       bool valid = false;
     };
-    CachedRect2D m_cachedViewport{};
-    CachedRect2D m_cachedScissor{};
+
+    CachedRect2D m_cachedViewport {};
+    CachedRect2D m_cachedScissor {};
 
     /** Recovery for per-draw ring overflow: flush in-progress cb, wait, reset pools/cache/ring,
         re-issue dynamic state onto the new cb. Shadow state preserved. */

@@ -95,7 +95,7 @@ namespace ToolKit
       return;
 
     // Load image on the calling thread to avoid stbi global state races
-    int comp = 0;
+    int comp      = 0;
     ubyte* pixels = ImageLoad(m_splashFile.c_str(), &m_imgW, &m_imgH, &comp, 4);
     if (!pixels)
     {
@@ -280,8 +280,12 @@ namespace ToolKit
       return;
     }
 
-    SDL_Surface* imgSurf = SDL_CreateRGBSurfaceWithFormatFrom(
-        m_splashPixels.data(), m_imgW, m_imgH, 32, m_imgW * 4, SDL_PIXELFORMAT_RGBA32);
+    SDL_Surface* imgSurf = SDL_CreateRGBSurfaceWithFormatFrom(m_splashPixels.data(),
+                                                              m_imgW,
+                                                              m_imgH,
+                                                              32,
+                                                              m_imgW * 4,
+                                                              SDL_PIXELFORMAT_RGBA32);
     if (!imgSurf)
     {
       TK_ERR("SplashScreen: Failed to create surface: %s", SDL_GetError());

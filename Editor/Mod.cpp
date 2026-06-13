@@ -94,7 +94,7 @@ namespace ToolKit
             nextMod    = new TransformMod(mod);
             modNameDbg = "Mod: Scale";
             break;
-        case ModId::Anchor:
+          case ModId::Anchor:
             nextMod    = new AnchorMod(mod);
             modNameDbg = "Mod: Anchor";
             break;

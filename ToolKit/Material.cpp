@@ -114,14 +114,14 @@ namespace ToolKit
   {
     switch (blendFunction)
     {
-    case BlendFunction::NONE:
-    case BlendFunction::ALPHA_MASK:
-      return false;
-    case BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA:
-    case BlendFunction::ONE_TO_ONE:
-      return true;
-    default:
-      return false;
+      case BlendFunction::NONE:
+      case BlendFunction::ALPHA_MASK:
+        return false;
+      case BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA:
+      case BlendFunction::ONE_TO_ONE:
+        return true;
+      default:
+        return false;
     }
   }
 
@@ -162,9 +162,9 @@ namespace ToolKit
 
   XmlNode* Material::SerializeImp(XmlDocument* doc, XmlNode* parent) const
   {
-    parent             = Super::SerializeImp(doc, parent);
+    parent                   = Super::SerializeImp(doc, parent);
 
-    XmlNode* container = CreateXmlNode(doc, Material::StaticClass()->Name, parent);
+    XmlNode* container       = CreateXmlNode(doc, Material::StaticClass()->Name, parent);
 
     // Active rasterizer state. Asset format keeps the <renderState> wrapper for backwards
     // compatibility with existing material files; in memory the fields live directly on Material.
@@ -291,45 +291,45 @@ namespace ToolKit
     ReadAttr(renderStateNode, "cullMode", cullModeInt);
     switch ((CullingType) cullModeInt)
     {
-    case CullingType::TwoSided:
-    case CullingType::Front:
-    case CullingType::Back:
-      cullMode = (CullingType) cullModeInt;
-      break;
-    default:
-      cullMode = CullingType::Back;
-      break;
+      case CullingType::TwoSided:
+      case CullingType::Front:
+      case CullingType::Back:
+        cullMode = (CullingType) cullModeInt;
+        break;
+      default:
+        cullMode = CullingType::Back;
+        break;
     }
 
     int blendInt = (int) blendFunction;
     ReadAttr(renderStateNode, "blendFunction", blendInt);
     switch ((BlendFunction) blendInt)
     {
-    case BlendFunction::NONE:
-    case BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA:
-    case BlendFunction::ALPHA_MASK:
-    case BlendFunction::ONE_TO_ONE:
-      blendFunction = (BlendFunction) blendInt;
-      break;
-    default:
-      blendFunction = BlendFunction::NONE;
-      break;
+      case BlendFunction::NONE:
+      case BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA:
+      case BlendFunction::ALPHA_MASK:
+      case BlendFunction::ONE_TO_ONE:
+        blendFunction = (BlendFunction) blendInt;
+        break;
+      default:
+        blendFunction = BlendFunction::NONE;
+        break;
     }
 
     int drawInt = (int) drawType;
     ReadAttr(renderStateNode, "drawType", drawInt);
     switch ((DrawType) drawInt)
     {
-    case DrawType::Triangle:
-    case DrawType::Line:
-    case DrawType::LineStrip:
-    case DrawType::LineLoop:
-    case DrawType::Point:
-      drawType = (DrawType) drawInt;
-      break;
-    default:
-      drawType = DrawType::Triangle;
-      break;
+      case DrawType::Triangle:
+      case DrawType::Line:
+      case DrawType::LineStrip:
+      case DrawType::LineLoop:
+      case DrawType::Point:
+        drawType = (DrawType) drawInt;
+        break;
+      default:
+        drawType = DrawType::Triangle;
+        break;
     }
 
     ReadAttr(renderStateNode, "alphaMaskTreshold", alphaMaskTreshold);
@@ -503,9 +503,8 @@ namespace ToolKit
       dataSet.InternalFormat = GraphicTypes::FormatRGBA8;
     }
 
-    if (current.MinFilter == dataSet.MinFilter && current.WarpS == dataSet.WarpS &&
-        current.WarpT == dataSet.WarpT && current.GenerateMipMap == dataSet.GenerateMipMap &&
-        current.InternalFormat == dataSet.InternalFormat)
+    if (current.MinFilter == dataSet.MinFilter && current.WarpS == dataSet.WarpS && current.WarpT == dataSet.WarpT &&
+        current.GenerateMipMap == dataSet.GenerateMipMap && current.InternalFormat == dataSet.InternalFormat)
     {
       if (texture->m_initiated)
       {
@@ -538,13 +537,12 @@ namespace ToolKit
     m_materialCacheItem.data.colorAlpha        = Vec4(GetColorVal(), GetAlphaVal());
     m_materialCacheItem.data.emissiveThreshold = Vec4(GetEmissiveColorVal(), alphaMaskTreshold);
 
-    m_materialCacheItem.data.metallicRoughness =
-        Vec4(GetMetallicVal(),
-             GetRoughnessVal(),
-             (blendFunction == BlendFunction::ALPHA_MASK) ? 1.0f : 0.0f,
-             (GetDiffuseTextureVal() != nullptr) ? 1.0f : 0.0f);
+    m_materialCacheItem.data.metallicRoughness = Vec4(GetMetallicVal(),
+                                                      GetRoughnessVal(),
+                                                      (blendFunction == BlendFunction::ALPHA_MASK) ? 1.0f : 0.0f,
+                                                      (GetDiffuseTextureVal() != nullptr) ? 1.0f : 0.0f);
 
-    m_materialCacheItem.data.textureFlags = Vec4((GetEmissiveTextureVal() != nullptr) ? 1.0f : 0.0f,
+    m_materialCacheItem.data.textureFlags      = Vec4((GetEmissiveTextureVal() != nullptr) ? 1.0f : 0.0f,
                                                  (GetNormalTextureVal() != nullptr) ? 1.0f : 0.0f,
                                                  (GetMetallicRoughnessTextureVal() != nullptr) ? 1.0f : 0.0f,
                                                  0.0f // Padding
@@ -604,7 +602,7 @@ namespace ToolKit
 
   MaterialPtr MaterialManager::GetCopyOfUIMaterial(bool storeInMaterialManager)
   {
-    MaterialPtr material                      = GetMaterialManager()->GetCopyOfUnlitMaterial(storeInMaterialManager);
+    MaterialPtr material    = GetMaterialManager()->GetCopyOfUnlitMaterial(storeInMaterialManager);
     material->blendFunction = BlendFunction::ALPHA_MASK;
 
     return material;

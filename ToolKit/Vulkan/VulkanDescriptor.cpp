@@ -16,15 +16,15 @@ namespace ToolKit
 
     VkDescriptorSetLayout CreateLayoutSingleSampler(VkDevice device, VkShaderStageFlags stages)
     {
-      VkDescriptorSetLayoutBinding binding{};
+      VkDescriptorSetLayoutBinding binding {};
       binding.binding         = 0;
       binding.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
       binding.descriptorCount = 1;
       binding.stageFlags      = stages;
 
-      VkDescriptorSetLayoutCreateInfo ci{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-      ci.bindingCount = 1;
-      ci.pBindings    = &binding;
+      VkDescriptorSetLayoutCreateInfo ci {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+      ci.bindingCount              = 1;
+      ci.pBindings                 = &binding;
 
       VkDescriptorSetLayout layout = VK_NULL_HANDLE;
       if (VkResult r = vkCreateDescriptorSetLayout(device, &ci, nullptr, &layout); r != VK_SUCCESS)
@@ -41,7 +41,7 @@ namespace ToolKit
                                                     uint uboBinding,
                                                     VkShaderStageFlags uboStages)
     {
-      VkDescriptorSetLayoutBinding bindings[2]{};
+      VkDescriptorSetLayoutBinding bindings[2] {};
       bindings[0].binding         = samplerBinding;
       bindings[0].descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
       bindings[0].descriptorCount = 1;
@@ -51,9 +51,9 @@ namespace ToolKit
       bindings[1].descriptorCount = 1;
       bindings[1].stageFlags      = uboStages;
 
-      VkDescriptorSetLayoutCreateInfo ci{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-      ci.bindingCount = 2;
-      ci.pBindings    = bindings;
+      VkDescriptorSetLayoutCreateInfo ci {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+      ci.bindingCount              = 2;
+      ci.pBindings                 = bindings;
 
       VkDescriptorSetLayout layout = VK_NULL_HANDLE;
       if (VkResult r = vkCreateDescriptorSetLayout(device, &ci, nullptr, &layout); r != VK_SUCCESS)
@@ -66,12 +66,12 @@ namespace ToolKit
 
     VkDescriptorSet AllocateSet(VkDevice device, VkDescriptorPool pool, VkDescriptorSetLayout layout)
     {
-      VkDescriptorSetAllocateInfo ai{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+      VkDescriptorSetAllocateInfo ai {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
       ai.descriptorPool     = pool;
       ai.descriptorSetCount = 1;
       ai.pSetLayouts        = &layout;
 
-      VkDescriptorSet set = VK_NULL_HANDLE;
+      VkDescriptorSet set   = VK_NULL_HANDLE;
       if (VkResult r = vkAllocateDescriptorSets(device, &ai, &set); r != VK_SUCCESS)
       {
         TK_ERR("vkAllocateDescriptorSets failed: %d", r);
@@ -86,12 +86,12 @@ namespace ToolKit
                                    VkImageView view,
                                    VkSampler sampler)
     {
-      VkDescriptorImageInfo info{};
+      VkDescriptorImageInfo info {};
       info.sampler     = sampler;
       info.imageView   = view;
       info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-      VkWriteDescriptorSet w{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+      VkWriteDescriptorSet w {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
       w.dstSet          = set;
       w.dstBinding      = binding;
       w.dstArrayElement = 0;
@@ -109,12 +109,12 @@ namespace ToolKit
                             VkDeviceSize offset,
                             VkDeviceSize range)
     {
-      VkDescriptorBufferInfo info{};
+      VkDescriptorBufferInfo info {};
       info.buffer = buffer;
       info.offset = offset;
       info.range  = range;
 
-      VkWriteDescriptorSet w{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+      VkWriteDescriptorSet w {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
       w.dstSet          = set;
       w.dstBinding      = binding;
       w.dstArrayElement = 0;
@@ -132,12 +132,12 @@ namespace ToolKit
                                    VkDeviceSize offset,
                                    VkDeviceSize range)
     {
-      VkDescriptorBufferInfo info{};
+      VkDescriptorBufferInfo info {};
       info.buffer = buffer;
       info.offset = offset;
       info.range  = range;
 
-      VkWriteDescriptorSet w{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+      VkWriteDescriptorSet w {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
       w.dstSet          = set;
       w.dstBinding      = binding;
       w.dstArrayElement = 0;

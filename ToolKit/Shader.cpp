@@ -11,8 +11,8 @@
 #include "FileManager.h"
 #include "GpuProgram.h"
 #include "Logger.h"
-#include "Renderer.h"
 #include "RenderSystem.h"
+#include "Renderer.h"
 #include "TKAssert.h"
 #include "ToolKit.h"
 #include "Util.h"
@@ -145,7 +145,7 @@ namespace ToolKit
     IGraphicsBackend* backend = GetRenderSystem()->GetBackend();
 
     // Destroy all compiled variants.
-    bool handleInMap = false;
+    bool handleInMap          = false;
     for (auto& [key, data] : m_shaderVariantMap)
     {
       if (data.get() == m_gpuData.get())
@@ -163,7 +163,7 @@ namespace ToolKit
     }
 
     m_gpuData.reset();
-    m_initiated    = false;
+    m_initiated = false;
   }
 
   void Shader::Save(bool onlyIfDirty)
@@ -177,7 +177,7 @@ namespace ToolKit
     // Sanity checks.
     if (!m_initiated)
     {
-      //TK_ERR("Initialize the shader before setting a value for a define.");
+      // TK_ERR("Initialize the shader before setting a value for a define.");
       TK_ERR("Initialize the shader before setting a value for a define. (%s)", GetFile().c_str());
 
       return;
@@ -310,8 +310,10 @@ namespace ToolKit
         if (XmlAttribute* vtAttr = node->first_attribute("viewType"))
         {
           StringView vt = vtAttr->value();
-          if (vt == "2darray") res.viewType = ShaderResource::ViewType::Tex2DArray;
-          else if (vt == "cube") res.viewType = ShaderResource::ViewType::TexCube;
+          if (vt == "2darray")
+            res.viewType = ShaderResource::ViewType::Tex2DArray;
+          else if (vt == "cube")
+            res.viewType = ShaderResource::ViewType::TexCube;
         }
 
         m_resources.push_back(res);

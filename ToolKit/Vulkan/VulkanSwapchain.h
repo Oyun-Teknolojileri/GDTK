@@ -69,6 +69,7 @@ namespace ToolKit
     bool Recreate();
 
     VkCommandBuffer GetCurrentCommandBuffer() const;
+
     VkRenderPass GetRenderPass() const { return m_renderPass; }
 
     /** Image acquired by the most recent BeginFrame, or VK_NULL_HANDLE. Backend uses it for
@@ -77,10 +78,15 @@ namespace ToolKit
     {
       return (m_currentImage < m_images.size()) ? m_images[m_currentImage] : VK_NULL_HANDLE;
     }
+
     uint GetImageCount() const { return (uint) m_images.size(); }
+
     uint GetMinImageCount() const { return m_minImageCount; }
+
     VkExtent2D GetExtent() const { return m_extent; }
+
     VkFormat GetFormat() const { return m_format; }
+
     uint GetCurrentFrameIndex() const { return m_currentFrame; }
 
    private:
@@ -117,11 +123,11 @@ namespace ToolKit
     std::array<VkFence, FRAMES_IN_FLIGHT> m_inFlight {};
     std::vector<VkSemaphore> m_renderFinished;
 
-    uint m_currentFrame = 0;
-    uint m_currentImage = 0;
-    bool m_frameActive  = false;
+    uint m_currentFrame        = 0;
+    uint m_currentImage        = 0;
+    bool m_frameActive         = false;
     bool m_swapchainPassActive = false;
-    bool m_presentable  = false;
+    bool m_presentable         = false;
   };
 
 } // namespace ToolKit

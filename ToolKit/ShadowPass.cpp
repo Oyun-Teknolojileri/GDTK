@@ -54,12 +54,12 @@ namespace ToolKit
       return material;
     };
 
-    m_shadowMatOrtho = createShadowMaterialFn("orthogonalDepthVert.shader", "orthogonalDepthFrag.shader");
-    m_shadowMatPersp = createShadowMaterialFn("perspectiveDepthVert.shader", "perspectiveDepthFrag.shader");
+    m_shadowMatOrtho             = createShadowMaterialFn("orthogonalDepthVert.shader", "orthogonalDepthFrag.shader");
+    m_shadowMatPersp             = createShadowMaterialFn("perspectiveDepthVert.shader", "perspectiveDepthFrag.shader");
 
     // Pass-owned passive defaults. depthClampEnabled is refreshed per camera type before the
     // caster loop in RenderShadowCasters (true for directional, false otherwise).
-    m_passState.depthTestEnabled  = true;
+    m_passState.depthTestEnabled = true;
     m_passState.depthWriteEnabled = true;
 
     // Shadow casters always render with blending off, regardless of what the material declares.
@@ -96,8 +96,8 @@ namespace ToolKit
     // Main render loop, grouped by the first atlas layer each light occupies.
     for (int layerIndex = 0; layerIndex < (int) m_atlasLayerSwitchIndices.size(); layerIndex++)
     {
-      int begin           = m_atlasLayerSwitchIndices[layerIndex];
-      int end             = (int) m_lights.size();
+      int begin = m_atlasLayerSwitchIndices[layerIndex];
+      int end   = (int) m_lights.size();
       if (layerIndex + 1 < (int) m_atlasLayerSwitchIndices.size())
       {
         end = m_atlasLayerSwitchIndices[layerIndex + 1];
@@ -226,7 +226,7 @@ namespace ToolKit
     // Switches the active pass to the per-layer framebuffer matching @p targetLayer if it isn't
     // already current. Depth attachment is shared across all per-layer FBs, so closing and
     // reopening preserves the in-progress depth content (LOAD_OP_LOAD).
-    auto switchToLayer = [&](int targetLayer)
+    auto switchToLayer        = [&](int targetLayer)
     {
       if (targetLayer == m_currentRenderLayer)
       {
@@ -371,7 +371,7 @@ namespace ToolKit
 
     // Refresh the param-dependent passive field on the pass-owned state before the loop:
     // depth clamp is on only for orthogonal (directional) shadow cameras.
-    m_passState.depthClampEnabled = orthogonalShadowMap;
+    m_passState.depthClampEnabled   = orthogonalShadowMap;
     renderer->SetPassState(m_passState);
 
     // Draw opaque.
@@ -670,7 +670,7 @@ namespace ToolKit
       // the original design relied on a single shared depth (cleared once per layer group, then
       // partitioned by viewport across cascades). We extract it from m_shadowFramebuffer and
       // attach the same DepthTexturePtr to every per-layer FB.
-      DepthTexturePtr sharedDepth = m_shadowFramebuffer->GetDepthTexture();
+      DepthTexturePtr sharedDepth          = m_shadowFramebuffer->GetDepthTexture();
       FramebufferSettings perLayerSettings = {shadowAtlasSize, shadowAtlasSize, false, false, MsaaSampleCount::x0};
       for (int layer = 0; layer < ShadowAtlas::LayerCount; ++layer)
       {

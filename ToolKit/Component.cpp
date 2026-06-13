@@ -81,25 +81,25 @@ namespace ToolKit
   {
     switch (Class)
     {
-    case ComponentType::MeshComponent:
-      return MakeNewPtr<MeshComponent>();
-    case ComponentType::DirectionComponent:
-      return MakeNewPtr<DirectionComponent>();
-    case ComponentType::MultiMaterialComponent:
-    case ComponentType::MaterialComponent:
-      return MakeNewPtr<MaterialComponent>();
-    case ComponentType::EnvironmentComponent:
-      return MakeNewPtr<EnvironmentComponent>();
-    case ComponentType::AnimControllerComponent:
-      return MakeNewPtr<AnimControllerComponent>();
-    case ComponentType::SkeletonComponent:
-      return MakeNewPtr<SkeletonComponent>();
-    case ComponentType::AABBOverrideComponent:
-      return MakeNewPtr<AABBOverrideComponent>();
-    case ComponentType::Base:
-    default:
-      assert(0 && "Unknown Component Type !");
-      break;
+      case ComponentType::MeshComponent:
+        return MakeNewPtr<MeshComponent>();
+      case ComponentType::DirectionComponent:
+        return MakeNewPtr<DirectionComponent>();
+      case ComponentType::MultiMaterialComponent:
+      case ComponentType::MaterialComponent:
+        return MakeNewPtr<MaterialComponent>();
+      case ComponentType::EnvironmentComponent:
+        return MakeNewPtr<EnvironmentComponent>();
+      case ComponentType::AnimControllerComponent:
+        return MakeNewPtr<AnimControllerComponent>();
+      case ComponentType::SkeletonComponent:
+        return MakeNewPtr<SkeletonComponent>();
+      case ComponentType::AABBOverrideComponent:
+        return MakeNewPtr<AABBOverrideComponent>();
+      case ComponentType::Base:
+      default:
+        assert(0 && "Unknown Component Type !");
+        break;
     }
 
     return nullptr;

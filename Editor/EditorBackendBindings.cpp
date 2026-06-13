@@ -15,14 +15,13 @@
   #include "EditorImGuiTextureCache.h"
 
   #include <RenderSystem.h>
+  #include <SDL_vulkan.h>
   #include <ToolKit.h>
   #include <Vulkan/VulkanBackend.h>
   #include <Vulkan/VulkanContext.h>
   #include <Vulkan/VulkanSwapchain.h>
   #include <imgui/backends/imgui_impl_vulkan.h>
   #include <vulkan/vulkan.h>
-
-  #include <SDL_vulkan.h>
 #else
   #include <imgui/backends/imgui_impl_opengl3.h>
 #endif
@@ -39,7 +38,7 @@ namespace ToolKit
 #ifdef TK_VULKAN
       // Tracks the last MinImageCount handed to ImGui. Seeded at InitImGui so the first frame
       // doesn't trigger a redundant SetMinImageCount (which would re-run pipeline creation).
-      static uint s_lastMinImageCount = 0;
+      static uint s_lastMinImageCount       = 0;
 
       // Stable storage referenced by ImGui_ImplVulkan_InitInfo::PipelineInfoForViewports —
       // ImGui's secondary-viewport surface format selection walks `pColorAttachmentFormats`, so
@@ -200,36 +199,37 @@ namespace ToolKit
           TK_ERR("InitImGui: VulkanBackend/context/swapchain not ready");
           return;
         }
-        VulkanContext* ctx     = backend->GetContext();
-        VulkanSwapchain* swap  = backend->GetSwapchain();
+        VulkanContext* ctx    = backend->GetContext();
+        VulkanSwapchain* swap = backend->GetSwapchain();
 
-        ImGui_ImplVulkan_InitInfo info{};
-        info.ApiVersion                      = VK_API_VERSION_1_3;
-        info.Instance                        = ctx->GetInstance();
-        info.PhysicalDevice                  = ctx->GetPhysicalDevice();
-        info.Device                          = ctx->GetDevice();
-        info.QueueFamily                     = ctx->GetGraphicsQueueFamily();
-        info.Queue                           = ctx->GetGraphicsQueue();
-        info.DescriptorPool                  = ctx->GetSharedDescriptorPool();
-        info.MinImageCount                   = swap->GetMinImageCount();
-        info.ImageCount                      = swap->GetImageCount();
-        s_lastMinImageCount                  = info.MinImageCount;
-        info.PipelineInfoMain.RenderPass     = swap->GetRenderPass();
-        info.PipelineInfoMain.Subpass        = 0;
-        info.PipelineInfoMain.MSAASamples    = VK_SAMPLE_COUNT_1_BIT;
+        ImGui_ImplVulkan_InitInfo info {};
+        info.ApiVersion                           = VK_API_VERSION_1_3;
+        info.Instance                             = ctx->GetInstance();
+        info.PhysicalDevice                       = ctx->GetPhysicalDevice();
+        info.Device                               = ctx->GetDevice();
+        info.QueueFamily                          = ctx->GetGraphicsQueueFamily();
+        info.Queue                                = ctx->GetGraphicsQueue();
+        info.DescriptorPool                       = ctx->GetSharedDescriptorPool();
+        info.MinImageCount                        = swap->GetMinImageCount();
+        info.ImageCount                           = swap->GetImageCount();
+        s_lastMinImageCount                       = info.MinImageCount;
+        info.PipelineInfoMain.RenderPass          = swap->GetRenderPass();
+        info.PipelineInfoMain.Subpass             = 0;
+        info.PipelineInfoMain.MSAASamples         = VK_SAMPLE_COUNT_1_BIT;
 
         // Secondary (detached) viewports: ImGui's default request list is UNORM-only
         // (imgui_impl_vulkan.cpp's `defaultFormats[]`), so dragged-out windows land on a linear
         // swapchain while the main window is sRGB → ImGui draws end up gamma-uncompensated.
         // Prepending our main swapchain's format here makes `ImGui_ImplVulkanH_SelectSurfaceFormat`
         // pick the same sRGB format the loop in CreateWindow seeds from this struct.
-        s_viewportColorFormat                                                  = swap->GetFormat();
-        info.PipelineInfoForViewports.Subpass                                  = 0;
-        info.PipelineInfoForViewports.MSAASamples                              = VK_SAMPLE_COUNT_1_BIT;
-        info.PipelineInfoForViewports.PipelineRenderingCreateInfo.sType        = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-        info.PipelineInfoForViewports.PipelineRenderingCreateInfo.colorAttachmentCount = 1;
+        s_viewportColorFormat                     = swap->GetFormat();
+        info.PipelineInfoForViewports.Subpass     = 0;
+        info.PipelineInfoForViewports.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+        info.PipelineInfoForViewports.PipelineRenderingCreateInfo.sType =
+            VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+        info.PipelineInfoForViewports.PipelineRenderingCreateInfo.colorAttachmentCount    = 1;
         info.PipelineInfoForViewports.PipelineRenderingCreateInfo.pColorAttachmentFormats = &s_viewportColorFormat;
-        info.CheckVkResultFn                 = [](VkResult r)
+        info.CheckVkResultFn                                                              = [](VkResult r)
         {
           if (r != VK_SUCCESS)
           {

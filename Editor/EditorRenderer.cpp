@@ -81,8 +81,8 @@ namespace ToolKit
       else if (m_params.LitMode == EditorLitMode::Game)
       {
         m_params.App->HideGizmos();
-        sceneRenderer->m_params.grid                              = nullptr;
-        sceneRenderer->m_forwardRenderPass->m_params.onPreRender  = nullptr;
+        sceneRenderer->m_params.grid                             = nullptr;
+        sceneRenderer->m_forwardRenderPass->m_params.onPreRender = nullptr;
         sceneRenderer->Render(renderer);
 
         copyToMultiSampleBuffer(); // Resolved buffer may need to be drawn to msaa buffer.
@@ -275,7 +275,7 @@ namespace ToolKit
       // into ForwardRenderPass::PreRender so the timing is right regardless of which earlier
       // passes are active in this frame.
       GridPtr grid                       = m_params.Viewport->IsA<EditorViewport2d>() ? app->m_2dGrid : app->m_grid;
-      m_sceneRenderPath->m_params.grid = grid;
+      m_sceneRenderPath->m_params.grid   = grid;
       m_sceneRenderPath->m_forwardRenderPass->m_params.onPreRender = [grid]() { grid->UpdateShaderParams(); };
 
       // Light gizmos.

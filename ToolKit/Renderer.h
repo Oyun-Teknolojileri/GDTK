@@ -7,8 +7,6 @@
 
 #pragma once
 
-#include <unordered_map>
-
 #include "Camera.h"
 #include "GenericBuffers.h"
 #include "GpuProgram.h"
@@ -20,6 +18,8 @@
 #include "Sky.h"
 #include "Types.h"
 #include "Viewport.h"
+
+#include <unordered_map>
 
 namespace ToolKit
 {
@@ -531,14 +531,14 @@ namespace ToolKit
     std::array<int, RHIConstants::MaxSpotLightPerObject> m_activeSpotLightIndices;
     DrawCommand m_drawCommand;
 
-    int m_activePointLightCount           = 0;
-    int m_activeSpotLightCount            = 0;
-    bool m_ambientOcculusionInUse         = false;
+    int m_activePointLightCount   = 0;
+    int m_activeSpotLightCount    = 0;
+    bool m_ambientOcculusionInUse = false;
 
-    FramebufferPtr m_framebuffer          = nullptr;
-    TexturePtr m_shadowAtlas              = nullptr;
-    RenderTargetPtr m_brdfLut             = nullptr;
-    TexturePtr m_aoTexture                = nullptr;
+    FramebufferPtr m_framebuffer  = nullptr;
+    TexturePtr m_shadowAtlas      = nullptr;
+    RenderTargetPtr m_brdfLut     = nullptr;
+    TexturePtr m_aoTexture        = nullptr;
 
     /** Extra textures bound by Render(job) *after* BindPipeline so they survive the Vulkan
      * descriptor wipe in VulkanBackend::BindPipeline. Key is the shader-side sampler name

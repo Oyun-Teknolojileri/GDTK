@@ -21,25 +21,25 @@ namespace ToolKit
 
     Buffer Create(VulkanContext* ctx, VkBufferUsageFlags usage, VkDeviceSize size, int vmaUsageFlag)
     {
-      Buffer out{};
+      Buffer out {};
       if (ctx == nullptr || ctx->GetAllocator() == nullptr || size == 0)
       {
         return out;
       }
 
-      VkBufferCreateInfo bci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+      VkBufferCreateInfo bci {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
       bci.size        = size;
       bci.usage       = usage;
       bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-      VmaAllocationCreateInfo aci{};
+      VmaAllocationCreateInfo aci {};
       aci.usage = (VmaMemoryUsage) vmaUsageFlag;
 
       if (VkResult r = vmaCreateBuffer(ctx->GetAllocator(), &bci, &aci, &out.handle, &out.alloc, nullptr);
           r != VK_SUCCESS)
       {
         TK_ERR("VulkanBuffer::Create vmaCreateBuffer failed: %d", r);
-        out = Buffer{};
+        out = Buffer {};
         return out;
       }
       out.size = size;
@@ -50,37 +50,37 @@ namespace ToolKit
     {
       if (ctx == nullptr || buf.handle == VK_NULL_HANDLE)
       {
-        buf = Buffer{};
+        buf = Buffer {};
         return;
       }
       vmaDestroyBuffer(ctx->GetAllocator(), buf.handle, buf.alloc);
-      buf = Buffer{};
+      buf = Buffer {};
     }
 
     Buffer CreateHostVisibleMapped(VulkanContext* ctx, VkBufferUsageFlags usage, VkDeviceSize size)
     {
-      Buffer out{};
+      Buffer out {};
       if (ctx == nullptr || ctx->GetAllocator() == nullptr || size == 0)
       {
         return out;
       }
 
-      VkBufferCreateInfo bci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+      VkBufferCreateInfo bci {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
       bci.size        = size;
       bci.usage       = usage;
       bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
       // CPU_TO_GPU + MAPPED_BIT → HOST_VISIBLE+HOST_COHERENT, persistently mapped.
-      VmaAllocationCreateInfo aci{};
+      VmaAllocationCreateInfo aci {};
       aci.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
       aci.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
 
-      VmaAllocationInfo info{};
+      VmaAllocationInfo info {};
       if (VkResult r = vmaCreateBuffer(ctx->GetAllocator(), &bci, &aci, &out.handle, &out.alloc, &info);
           r != VK_SUCCESS)
       {
         TK_ERR("VulkanBuffer::CreateHostVisibleMapped vmaCreateBuffer failed: %d", r);
-        out = Buffer{};
+        out = Buffer {};
         return out;
       }
       out.size   = size;
@@ -89,14 +89,14 @@ namespace ToolKit
       {
         TK_ERR("VulkanBuffer::CreateHostVisibleMapped: MAPPED_BIT requested but pMappedData null");
         vmaDestroyBuffer(ctx->GetAllocator(), out.handle, out.alloc);
-        out = Buffer{};
+        out = Buffer {};
       }
       return out;
     }
 
     Buffer UploadDeviceLocal(VulkanContext* ctx, VkBufferUsageFlags usage, const void* data, VkDeviceSize size)
     {
-      Buffer out{};
+      Buffer out {};
       if (ctx == nullptr || data == nullptr || size == 0)
       {
         return out;
@@ -129,19 +129,17 @@ namespace ToolKit
       ctx->EnqueueGpuWork(
           [staging, out, size](VkCommandBuffer cb)
           {
-            VkBufferCopy region{};
+            VkBufferCopy region {};
             region.size = size;
             vkCmdCopyBuffer(cb, staging.handle, out.handle, 1, &region);
 
             // Required so draws later in the same cb see the upload — submission-order alone
             // doesn't guarantee memory visibility across stages. Covers vertex/index fetch and
             // shader UBO read (the three usages this helper feeds).
-            VkBufferMemoryBarrier barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
-            barrier.srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
-            barrier.dstAccessMask       = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT |
-                                          VK_ACCESS_INDEX_READ_BIT |
-                                          VK_ACCESS_UNIFORM_READ_BIT |
-                                          VK_ACCESS_SHADER_READ_BIT;
+            VkBufferMemoryBarrier barrier {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+            barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            barrier.dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_INDEX_READ_BIT |
+                                    VK_ACCESS_UNIFORM_READ_BIT | VK_ACCESS_SHADER_READ_BIT;
             barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             barrier.buffer              = out.handle;
@@ -150,13 +148,15 @@ namespace ToolKit
 
             vkCmdPipelineBarrier(cb,
                                  VK_PIPELINE_STAGE_TRANSFER_BIT,
-                                 VK_PIPELINE_STAGE_VERTEX_INPUT_BIT |
-                                     VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
+                                 VK_PIPELINE_STAGE_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
                                      VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
                                  0,
-                                 0, nullptr,
-                                 1, &barrier,
-                                 0, nullptr);
+                                 0,
+                                 nullptr,
+                                 1,
+                                 &barrier,
+                                 0,
+                                 nullptr);
           },
           [ctx, staging]() mutable { Destroy(ctx, staging); });
       return out;

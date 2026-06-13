@@ -7,21 +7,20 @@
 
 #include "Launcher.h"
 
-#include <Texture.h>
-#include <ToolKit.h>
 #include <RenderSystem.h>
 #include <Renderer.h>
+#include <Texture.h>
+#include <ToolKit.h>
 #include <Util.h>
 #include <WorkspaceTypes.h>
 
 #define IMGUI_USER_CONFIG "tk_imconfig.h"
+#include <RenderSystem.h>
+#include <Renderer.h>
 #include <imgui/imgui.h>
 #include <imgui/misc/cpp/imgui_stdlib.h>
 
 #include <cstdio>
-
-#include <RenderSystem.h>
-#include <Renderer.h>
 
 extern bool g_running;
 extern bool g_launcherRunning;

@@ -7,8 +7,8 @@
 
 #include "EditorImGuiTextureCache.h"
 
-#include <Renderer.h>
 #include <RenderSystem.h>
+#include <Renderer.h>
 #include <ToolKit.h>
 
 #ifdef TK_VULKAN
@@ -81,7 +81,7 @@ namespace ToolKit
         VkImageView swizzledView = VK_NULL_HANDLE;
         if (swizzleAlphaOne)
         {
-          VkImageViewCreateInfo vci{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+          VkImageViewCreateInfo vci {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
           vci.image                       = vt->image;
           vci.viewType                    = VK_IMAGE_VIEW_TYPE_2D;
           vci.format                      = vt->format;
@@ -96,9 +96,8 @@ namespace ToolKit
         }
 
         VkImageView viewToUse = (swizzledView != VK_NULL_HANDLE) ? swizzledView : vt->view;
-        VkDescriptorSet ds    = ImGui_ImplVulkan_AddTexture(vt->sampler,
-                                                            viewToUse,
-                                                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        VkDescriptorSet ds =
+            ImGui_ImplVulkan_AddTexture(vt->sampler, viewToUse, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         if (ds == VK_NULL_HANDLE)
         {
           if (swizzledView != VK_NULL_HANDLE)

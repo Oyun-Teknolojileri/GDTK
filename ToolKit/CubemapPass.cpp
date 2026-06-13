@@ -19,11 +19,11 @@ namespace ToolKit
 
   CubeMapPass::CubeMapPass() : Pass("CubeMapPass")
   {
-    m_cube                        = MakeNewPtr<Cube>();
+    m_cube                    = MakeNewPtr<Cube>();
 
     // Skybox passive default. Defaults for depthTest (on) and depthWrite (on) are fine; the
     // cube renders before any other geometry so writing the far plane is harmless.
-    m_passState.depthFunction     = CompareFunctions::FuncLequal;
+    m_passState.depthFunction = CompareFunctions::FuncLequal;
   }
 
   void CubeMapPass::Render()

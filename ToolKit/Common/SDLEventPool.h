@@ -87,15 +87,15 @@ namespace ToolKit
 
         switch (event.button.button)
         {
-        case SDL_BUTTON_LEFT:
-          mouseEvent->m_action = EventAction::LeftClick;
-          break;
-        case SDL_BUTTON_RIGHT:
-          mouseEvent->m_action = EventAction::RightClick;
-          break;
-        case SDL_BUTTON_MIDDLE:
-          mouseEvent->m_action = EventAction::MiddleClick;
-          break;
+          case SDL_BUTTON_LEFT:
+            mouseEvent->m_action = EventAction::LeftClick;
+            break;
+          case SDL_BUTTON_RIGHT:
+            mouseEvent->m_action = EventAction::RightClick;
+            break;
+          case SDL_BUTTON_MIDDLE:
+            mouseEvent->m_action = EventAction::MiddleClick;
+            break;
         }
         mouseEvent->absolute[0] = event.motion.x;
         mouseEvent->absolute[1] = event.motion.y;
@@ -229,10 +229,10 @@ namespace ToolKit
         GamepadEvent* gamepadEvent = nullptr;
         switch (event.type)
         {
-        case SDL_CONTROLLERAXISMOTION:
-        case SDL_CONTROLLERBUTTONDOWN:
-        case SDL_CONTROLLERBUTTONUP:
-          gamepadEvent = m_gamepadEventPool[m_gamepadEventPoolCurrentIndex++];
+          case SDL_CONTROLLERAXISMOTION:
+          case SDL_CONTROLLERBUTTONDOWN:
+          case SDL_CONTROLLERBUTTONUP:
+            gamepadEvent = m_gamepadEventPool[m_gamepadEventPoolCurrentIndex++];
         };
 
         if (gamepadEvent != nullptr)
@@ -240,26 +240,26 @@ namespace ToolKit
           // handle joystick events
           switch (event.type)
           {
-          case SDL_CONTROLLERAXISMOTION:
-            gamepadEvent->m_action = EventAction::GamepadAxis;
-            gamepadEvent->m_angle  = event.caxis.value / (float) (SDL_JOYSTICK_AXIS_MAX);
-            gamepadEvent->m_axis   = (GamepadEvent::StickAxis) event.caxis.axis;
-            break;
-          case SDL_CONTROLLERBUTTONDOWN:
-            gamepadEvent->m_action = EventAction::GamepadButtonDown;
-            gamepadEvent->m_button = (GamepadButton) (1 << event.cbutton.button);
-            break;
-          case SDL_CONTROLLERBUTTONUP:
-            gamepadEvent->m_action = EventAction::GamepadButtonUp;
-            gamepadEvent->m_button = (GamepadButton) (1 << event.cbutton.button);
-            break;
-          case SDL_CONTROLLERDEVICEADDED:
-            TK_SYSLOG("Gamepad connected.");
-            SDL_GameControllerOpen(event.cdevice.which);
-            break;
-          case SDL_CONTROLLERDEVICEREMOVED:
-            TK_SYSLOG("Gamepad disconnected.");
-            break;
+            case SDL_CONTROLLERAXISMOTION:
+              gamepadEvent->m_action = EventAction::GamepadAxis;
+              gamepadEvent->m_angle  = event.caxis.value / (float) (SDL_JOYSTICK_AXIS_MAX);
+              gamepadEvent->m_axis   = (GamepadEvent::StickAxis) event.caxis.axis;
+              break;
+            case SDL_CONTROLLERBUTTONDOWN:
+              gamepadEvent->m_action = EventAction::GamepadButtonDown;
+              gamepadEvent->m_button = (GamepadButton) (1 << event.cbutton.button);
+              break;
+            case SDL_CONTROLLERBUTTONUP:
+              gamepadEvent->m_action = EventAction::GamepadButtonUp;
+              gamepadEvent->m_button = (GamepadButton) (1 << event.cbutton.button);
+              break;
+            case SDL_CONTROLLERDEVICEADDED:
+              TK_SYSLOG("Gamepad connected.");
+              SDL_GameControllerOpen(event.cdevice.which);
+              break;
+            case SDL_CONTROLLERDEVICEREMOVED:
+              TK_SYSLOG("Gamepad disconnected.");
+              break;
           };
 
           Main::GetInstance()->m_eventPool.push_back(gamepadEvent);

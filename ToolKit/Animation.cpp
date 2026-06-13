@@ -8,7 +8,6 @@
 #include "Animation.h"
 
 #include "AnimationControllerComponent.h"
-#include "Common/base64.h"
 #include "Entity.h"
 #include "FileManager.h"
 #include "MathUtil.h"
@@ -17,6 +16,7 @@
 #include "Skeleton.h"
 #include "ToolKit.h"
 #include "Util.h"
+#include "utilities/base64.h"
 
 #include "DebugNew.h"
 

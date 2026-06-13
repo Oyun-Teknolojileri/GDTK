@@ -8,7 +8,6 @@
 #include "Util.h"
 
 #include "Audio.h"
-#include "Common/utf8.h"
 #include "FileManager.h"
 #include "Material.h"
 #include "MathUtil.h"
@@ -18,6 +17,7 @@
 #include "Shader.h"
 #include "SpriteSheet.h"
 #include "ToolKit.h"
+#include "utilities/utf8.h"
 
 #include "DebugNew.h"
 

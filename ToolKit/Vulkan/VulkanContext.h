@@ -39,23 +39,29 @@ namespace ToolKit
      * @param instanceExtensions - platform-specific extension names.
      * @param surfaceFactory     - given the created VkInstance (as void*), returns VkSurfaceKHR (as uint64) or 0.
      */
-    bool Init(const std::vector<const char*>& instanceExtensions,
-              const std::function<uint64 (void*)>& surfaceFactory);
+    bool Init(const std::vector<const char*>& instanceExtensions, const std::function<uint64(void*)>& surfaceFactory);
 
     /** Tears everything down in reverse order. Safe on a partially-initialized context. */
     void Destroy();
 
     VkInstance GetInstance() const { return m_instance; }
+
     VkPhysicalDevice GetPhysicalDevice() const { return m_physicalDevice; }
+
     VkDevice GetDevice() const { return m_device; }
+
     VkSurfaceKHR GetSurface() const { return m_surface; }
 
     VkQueue GetGraphicsQueue() const { return m_graphicsQueue; }
+
     VkQueue GetPresentQueue() const { return m_presentQueue; }
+
     uint GetGraphicsQueueFamily() const { return m_graphicsQueueFamily; }
+
     uint GetPresentQueueFamily() const { return m_presentQueueFamily; }
 
     VmaAllocator GetAllocator() const { return m_allocator; }
+
     VkDescriptorPool GetSharedDescriptorPool() const { return m_descriptorPool; }
 
     /** Single descriptor set layout shared by every VulkanGpuProgram. Programs only touching a
@@ -78,6 +84,7 @@ namespace ToolKit
     // an aligned slice; offset travels through vkCmdBindDescriptorSets pDynamicOffsets.
 
     VkBuffer GetPerDrawUboBuffer() const { return m_perDrawUboRing.handle; }
+
     VkDeviceSize GetPerDrawUboCapacity() const { return m_perDrawUboRing.size; }
 
     /** Re-bases @p slot's head to its region start and latches @p slot as the current slot.
@@ -102,8 +109,7 @@ namespace ToolKit
      *     (barriers + copies are illegal mid-RP).
      *   - No frame active: queued and replayed at the next BeginFrame before any pass starts.
      */
-    void EnqueueGpuWork(std::function<void(VkCommandBuffer)> recorder,
-                        std::function<void()> postFlushCleanup = {});
+    void EnqueueGpuWork(std::function<void(VkCommandBuffer)> recorder, std::function<void()> postFlushCleanup = {});
 
     /** Replays the no-frame queue into @p cb. Returns the cleanup callbacks for the caller's
         frame-fenced deletion queue. Called by VulkanBackend at BeginFrame. */
@@ -125,7 +131,7 @@ namespace ToolKit
    private:
     bool CreateInstance(const std::vector<const char*>& requiredExtensions);
     bool CreateDebugMessenger();
-    bool CreateSurface(const std::function<uint64 (void*)>& factory);
+    bool CreateSurface(const std::function<uint64(void*)>& factory);
     bool PickPhysicalDevice();
     bool CreateLogicalDevice();
     bool CreateAllocator();
@@ -135,32 +141,32 @@ namespace ToolKit
     bool CreatePerDrawUboRing();
 
    private:
-    VkInstance m_instance                       = VK_NULL_HANDLE;
-    VkDebugUtilsMessengerEXT m_debugMessenger   = VK_NULL_HANDLE;
-    VkSurfaceKHR m_surface                      = VK_NULL_HANDLE;
-    VkPhysicalDevice m_physicalDevice           = VK_NULL_HANDLE;
-    VkDevice m_device                           = VK_NULL_HANDLE;
+    VkInstance m_instance                                     = VK_NULL_HANDLE;
+    VkDebugUtilsMessengerEXT m_debugMessenger                 = VK_NULL_HANDLE;
+    VkSurfaceKHR m_surface                                    = VK_NULL_HANDLE;
+    VkPhysicalDevice m_physicalDevice                         = VK_NULL_HANDLE;
+    VkDevice m_device                                         = VK_NULL_HANDLE;
 
-    VkQueue m_graphicsQueue                     = VK_NULL_HANDLE;
-    VkQueue m_presentQueue                      = VK_NULL_HANDLE;
-    uint m_graphicsQueueFamily                  = (uint) -1;
-    uint m_presentQueueFamily                   = (uint) -1;
+    VkQueue m_graphicsQueue                                   = VK_NULL_HANDLE;
+    VkQueue m_presentQueue                                    = VK_NULL_HANDLE;
+    uint m_graphicsQueueFamily                                = (uint) -1;
+    uint m_presentQueueFamily                                 = (uint) -1;
 
-    VmaAllocator m_allocator                    = nullptr;
-    VkDescriptorPool m_descriptorPool           = VK_NULL_HANDLE;
-    VkDescriptorSetLayout m_globalDescriptorSetLayout = VK_NULL_HANDLE;
+    VmaAllocator m_allocator                                  = nullptr;
+    VkDescriptorPool m_descriptorPool                         = VK_NULL_HANDLE;
+    VkDescriptorSetLayout m_globalDescriptorSetLayout         = VK_NULL_HANDLE;
 
     /** One pool per FIF slot. */
     std::array<VkDescriptorPool, 2> m_perFrameDescriptorPools = {VK_NULL_HANDLE, VK_NULL_HANDLE};
 
     /** Per-draw UBO ring partitioned into FIF equal regions. Slot S writes only to
         [S*regionSize, (S+1)*regionSize); the other slot's region stays untouched. */
-    VulkanBuffer::Buffer m_perDrawUboRing{};
+    VulkanBuffer::Buffer m_perDrawUboRing {};
     std::array<VkDeviceSize, 2> m_perDrawUboHeads = {0, 0};
-    VkDeviceSize m_perDrawUboRegionSize        = 0;
-    uint m_currentRingSlot                     = 0;
-    VkDeviceSize m_minUniformBufferAlignment   = 256;
-    bool m_perDrawUboOverflowLogged            = false;
+    VkDeviceSize m_perDrawUboRegionSize           = 0;
+    uint m_currentRingSlot                        = 0;
+    VkDeviceSize m_minUniformBufferAlignment      = 256;
+    bool m_perDrawUboOverflowLogged               = false;
 
     /** EnqueueGpuWork backlog while no frame is active; replayed at next BeginFrame. */
     struct PendingGpuWork
@@ -168,6 +174,7 @@ namespace ToolKit
       std::function<void(VkCommandBuffer)> recorder;
       std::function<void()> postFlushCleanup;
     };
+
     std::vector<PendingGpuWork> m_pendingGpuWork;
 
     /** EnqueueGpuWork entries that arrived while an RP was open; flushed when the RP closes. */
@@ -178,7 +185,7 @@ namespace ToolKit
     std::function<void(std::function<void()>)> m_inlineCleanupSink;
     std::function<bool()> m_renderPassActiveQuery;
 
-    bool m_validationEnabled                    = false;
+    bool m_validationEnabled = false;
   };
 
 } // namespace ToolKit

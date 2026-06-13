@@ -115,7 +115,8 @@ namespace ToolKit
       }
     }
 
-    return formats.empty() ? VkSurfaceFormatKHR{VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR} : formats[0];
+    return formats.empty() ? VkSurfaceFormatKHR {VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR}
+                           : formats[0];
   }
 
   static VkPresentModeKHR PickPresentMode(VkPhysicalDevice phys, VkSurfaceKHR surface)
@@ -137,9 +138,9 @@ namespace ToolKit
 
   bool VulkanSwapchain::CreateSwapchainObjects()
   {
-    VkDevice device          = m_ctx->GetDevice();
-    VkPhysicalDevice phys    = m_ctx->GetPhysicalDevice();
-    VkSurfaceKHR surface     = m_ctx->GetSurface();
+    VkDevice device       = m_ctx->GetDevice();
+    VkPhysicalDevice phys = m_ctx->GetPhysicalDevice();
+    VkSurfaceKHR surface  = m_ctx->GetSurface();
 
     VkSurfaceCapabilitiesKHR caps;
     if (VkResult r = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(phys, surface, &caps); r != VK_SUCCESS)
@@ -174,20 +175,20 @@ namespace ToolKit
     }
     m_minImageCount = caps.minImageCount;
 
-    VkSwapchainCreateInfoKHR ci{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
-    ci.surface          = surface;
-    ci.minImageCount    = imageCount;
-    ci.imageFormat      = m_format;
-    ci.imageColorSpace  = m_colorSpace;
-    ci.imageExtent      = extent;
-    ci.imageArrayLayers = 1;
+    VkSwapchainCreateInfoKHR ci {VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
+    ci.surface                = surface;
+    ci.minImageCount          = imageCount;
+    ci.imageFormat            = m_format;
+    ci.imageColorSpace        = m_colorSpace;
+    ci.imageExtent            = extent;
+    ci.imageArrayLayers       = 1;
     // TRANSFER_DST so CopyFramebuffer(dst=nullptr) can blit into the backbuffer.
-    ci.imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    ci.preTransform     = caps.currentTransform;
-    ci.compositeAlpha   = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-    ci.presentMode      = m_presentMode;
-    ci.clipped          = VK_TRUE;
-    ci.oldSwapchain     = VK_NULL_HANDLE;
+    ci.imageUsage             = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    ci.preTransform           = caps.currentTransform;
+    ci.compositeAlpha         = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    ci.presentMode            = m_presentMode;
+    ci.clipped                = VK_TRUE;
+    ci.oldSwapchain           = VK_NULL_HANDLE;
 
     const uint graphicsFamily = m_ctx->GetGraphicsQueueFamily();
     const uint presentFamily  = m_ctx->GetPresentQueueFamily();
@@ -208,7 +209,7 @@ namespace ToolKit
       TK_ERR("vkCreateSwapchainKHR failed: %d", r);
       return false;
     }
-    m_extent = extent;
+    m_extent             = extent;
 
     uint32_t actualCount = 0;
     vkGetSwapchainImagesKHR(device, m_swapchain, &actualCount, nullptr);
@@ -218,14 +219,14 @@ namespace ToolKit
     m_imageViews.resize(actualCount);
     for (uint i = 0; i < actualCount; ++i)
     {
-      VkImageViewCreateInfo ivci{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+      VkImageViewCreateInfo ivci {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
       ivci.image                           = m_images[i];
       ivci.viewType                        = VK_IMAGE_VIEW_TYPE_2D;
       ivci.format                          = m_format;
       ivci.components                      = {VK_COMPONENT_SWIZZLE_IDENTITY,
-                                               VK_COMPONENT_SWIZZLE_IDENTITY,
-                                               VK_COMPONENT_SWIZZLE_IDENTITY,
-                                               VK_COMPONENT_SWIZZLE_IDENTITY};
+                                              VK_COMPONENT_SWIZZLE_IDENTITY,
+                                              VK_COMPONENT_SWIZZLE_IDENTITY,
+                                              VK_COMPONENT_SWIZZLE_IDENTITY};
       ivci.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
       ivci.subresourceRange.baseMipLevel   = 0;
       ivci.subresourceRange.levelCount     = 1;
@@ -241,7 +242,7 @@ namespace ToolKit
     m_framebuffers.resize(actualCount);
     for (uint i = 0; i < actualCount; ++i)
     {
-      VkFramebufferCreateInfo fbci{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
+      VkFramebufferCreateInfo fbci {VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
       fbci.renderPass      = m_renderPass;
       fbci.attachmentCount = 1;
       fbci.pAttachments    = &m_imageViews[i];
@@ -256,7 +257,7 @@ namespace ToolKit
     }
 
     // renderFinished is per-image (image count can change on Recreate).
-    VkSemaphoreCreateInfo sci{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+    VkSemaphoreCreateInfo sci {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
     m_renderFinished.resize(actualCount, VK_NULL_HANDLE);
     for (uint i = 0; i < actualCount; ++i)
     {
@@ -272,13 +273,13 @@ namespace ToolKit
 
   bool VulkanSwapchain::CreateRenderPass()
   {
-    VkDevice device = m_ctx->GetDevice();
+    VkDevice device                  = m_ctx->GetDevice();
 
     VkSurfaceFormatKHR surfaceFormat = PickSurfaceFormat(m_ctx->GetPhysicalDevice(), m_ctx->GetSurface());
     m_format                         = surfaceFormat.format;
     m_colorSpace                     = surfaceFormat.colorSpace;
 
-    VkAttachmentDescription color{};
+    VkAttachmentDescription color {};
     color.format         = m_format;
     color.samples        = VK_SAMPLE_COUNT_1_BIT;
     color.loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
@@ -288,16 +289,16 @@ namespace ToolKit
     color.initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
     color.finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
-    VkAttachmentReference colorRef{};
+    VkAttachmentReference colorRef {};
     colorRef.attachment = 0;
     colorRef.layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-    VkSubpassDescription subpass{};
+    VkSubpassDescription subpass {};
     subpass.pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpass.colorAttachmentCount = 1;
     subpass.pColorAttachments    = &colorRef;
 
-    VkSubpassDependency dep{};
+    VkSubpassDependency dep {};
     dep.srcSubpass    = VK_SUBPASS_EXTERNAL;
     dep.dstSubpass    = 0;
     dep.srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -305,7 +306,7 @@ namespace ToolKit
     dep.dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     dep.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 
-    VkRenderPassCreateInfo rpci{VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
+    VkRenderPassCreateInfo rpci {VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
     rpci.attachmentCount = 1;
     rpci.pAttachments    = &color;
     rpci.subpassCount    = 1;
@@ -325,8 +326,8 @@ namespace ToolKit
   {
     VkDevice device = m_ctx->GetDevice();
 
-    VkSemaphoreCreateInfo sci{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
-    VkFenceCreateInfo fci{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+    VkSemaphoreCreateInfo sci {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+    VkFenceCreateInfo fci {VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
     fci.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
     for (uint i = 0; i < FRAMES_IN_FLIGHT; ++i)
@@ -345,7 +346,7 @@ namespace ToolKit
   {
     VkDevice device = m_ctx->GetDevice();
 
-    VkCommandPoolCreateInfo pci{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
+    VkCommandPoolCreateInfo pci {VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
     pci.flags            = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     pci.queueFamilyIndex = m_ctx->GetGraphicsQueueFamily();
     if (VkResult r = vkCreateCommandPool(device, &pci, nullptr, &m_cmdPool); r != VK_SUCCESS)
@@ -354,7 +355,7 @@ namespace ToolKit
       return false;
     }
 
-    VkCommandBufferAllocateInfo ai{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+    VkCommandBufferAllocateInfo ai {VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
     ai.commandPool        = m_cmdPool;
     ai.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     ai.commandBufferCount = FRAMES_IN_FLIGHT;
@@ -422,8 +423,8 @@ namespace ToolKit
       return false;
     }
 
-    VkDevice device  = m_ctx->GetDevice();
-    m_presentable    = false;
+    VkDevice device = m_ctx->GetDevice();
+    m_presentable   = false;
 
     // Always wait the slot fence (EndFrame submits a fence-only cb when not presentable so the
     // fence cadence stays in lockstep with frame count; DeferDelete relies on this).
@@ -435,7 +436,7 @@ namespace ToolKit
     VkCommandBuffer cb = m_cmdBuffers[m_currentFrame];
     vkResetCommandBuffer(cb, 0);
 
-    VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    VkCommandBufferBeginInfo bi {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     if (VkResult br = vkBeginCommandBuffer(cb, &bi); br != VK_SUCCESS)
     {
@@ -450,11 +451,11 @@ namespace ToolKit
     {
       uint32_t imageIndex = 0;
       VkResult r          = vkAcquireNextImageKHR(device,
-                                                  m_swapchain,
-                                                  UINT64_MAX,
-                                                  m_imageAvailable[m_currentFrame],
-                                                  VK_NULL_HANDLE,
-                                                  &imageIndex);
+                                         m_swapchain,
+                                         UINT64_MAX,
+                                         m_imageAvailable[m_currentFrame],
+                                         VK_NULL_HANDLE,
+                                         &imageIndex);
       if (r == VK_SUCCESS || r == VK_SUBOPTIMAL_KHR)
       {
         m_currentImage = imageIndex;
@@ -477,10 +478,12 @@ namespace ToolKit
 
     VkCommandBuffer cb = m_cmdBuffers[m_currentFrame];
 
-    VkClearValue clear{};
-    clear.color = {{clearColor.r, clearColor.g, clearColor.b, clearColor.a}};
+    VkClearValue clear {};
+    clear.color = {
+        {clearColor.r, clearColor.g, clearColor.b, clearColor.a}
+    };
 
-    VkRenderPassBeginInfo rpbi{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
+    VkRenderPassBeginInfo rpbi {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
     rpbi.renderPass        = m_renderPass;
     rpbi.framebuffer       = m_framebuffers[m_currentImage];
     rpbi.renderArea.offset = {0, 0};
@@ -489,7 +492,7 @@ namespace ToolKit
     rpbi.pClearValues      = &clear;
     vkCmdBeginRenderPass(cb, &rpbi, VK_SUBPASS_CONTENTS_INLINE);
 
-    VkViewport vp{};
+    VkViewport vp {};
     vp.x        = 0.0f;
     vp.y        = (float) m_extent.height;
     vp.width    = (float) m_extent.width;
@@ -498,7 +501,7 @@ namespace ToolKit
     vp.maxDepth = 1.0f;
     vkCmdSetViewport(cb, 0, 1, &vp);
 
-    VkRect2D scissor{};
+    VkRect2D scissor {};
     scissor.offset = {0, 0};
     scissor.extent = m_extent;
     vkCmdSetScissor(cb, 0, 1, &scissor);
@@ -540,9 +543,9 @@ namespace ToolKit
 
     VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 
-    VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
-    si.commandBufferCount   = 1;
-    si.pCommandBuffers      = &cb;
+    VkSubmitInfo si {VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    si.commandBufferCount = 1;
+    si.pCommandBuffers    = &cb;
     if (m_presentable)
     {
       si.waitSemaphoreCount   = 1;
@@ -565,7 +568,7 @@ namespace ToolKit
     bool result = true;
     if (m_presentable)
     {
-      VkPresentInfoKHR pi{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
+      VkPresentInfoKHR pi {VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
       pi.waitSemaphoreCount = 1;
       pi.pWaitSemaphores    = &m_renderFinished[m_currentImage];
       pi.swapchainCount     = 1;
@@ -606,7 +609,7 @@ namespace ToolKit
     }
 
     // No semaphores/fence — those belong to the terminal EndFrame submission.
-    VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    VkSubmitInfo si {VK_STRUCTURE_TYPE_SUBMIT_INFO};
     si.commandBufferCount = 1;
     si.pCommandBuffers    = &cb;
     if (VkResult r = vkQueueSubmit(m_ctx->GetGraphicsQueue(), 1, &si, VK_NULL_HANDLE); r != VK_SUCCESS)
@@ -628,7 +631,7 @@ namespace ToolKit
       return false;
     }
 
-    VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    VkCommandBufferBeginInfo bi {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     if (VkResult r = vkBeginCommandBuffer(cb, &bi); r != VK_SUCCESS)
     {

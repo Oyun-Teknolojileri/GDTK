@@ -55,7 +55,7 @@ namespace ToolKit
     /** Pass-specific UBO holding the outline color (slot 7). Lazily initialized on first
         render so the GL backend has a live context when CreateUniformBuffer runs. */
     DilatePassDataBuffer m_dilateBuffer;
-    bool m_dilateBufferInitialized     = false;
+    bool m_dilateBufferInitialized = false;
   };
 
   typedef std::shared_ptr<OutlinePass> OutlinePassPtr;

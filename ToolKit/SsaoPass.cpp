@@ -170,21 +170,21 @@ namespace ToolKit
       m_prevSpread = m_params.spread;
     }
 
-    const Mat4& proj                            = m_params.Cam->GetProjectionMatrix();
+    const Mat4& proj                              = m_params.Cam->GetProjectionMatrix();
     m_calcPassDataBuffer.m_data.inverseProjection = glm::inverse(proj);
 
     // Precompute projection params.
     // projParams = (P00, P11, P20, P21)
     // clip.x = P00*x_view + P20*z_view, clip.y = P11*y_view + P21*z_view, w_clip = -z_view
-    m_calcPassDataBuffer.m_data.projParams      = Vec4(proj[0][0], proj[1][1], proj[2][0], proj[2][1]);
+    m_calcPassDataBuffer.m_data.projParams        = Vec4(proj[0][0], proj[1][1], proj[2][0], proj[2][1]);
 
     // Stored as Mat4 (std140 mat3 padding would be 48 bytes anyway); shader extracts mat3().
-    m_calcPassDataBuffer.m_data.normalToView    = Mat4(Mat3(m_params.Cam->GetViewMatrix()));
-    m_calcPassDataBuffer.m_data.radiusBiasAndPad = Vec4(m_params.Radius, m_params.Bias, 0.0f, 0.0f);
+    m_calcPassDataBuffer.m_data.normalToView      = Mat4(Mat3(m_params.Cam->GetViewMatrix()));
+    m_calcPassDataBuffer.m_data.radiusBiasAndPad  = Vec4(m_params.Radius, m_params.Bias, 0.0f, 0.0f);
 
     // Setup blur pass
-    m_blurPass->m_params.frameBuffer      = m_blurFramebuffer;
-    m_blurPass->m_params.clearFrameBuffer = GraphicBitFields::None;
+    m_blurPass->m_params.frameBuffer              = m_blurFramebuffer;
+    m_blurPass->m_params.clearFrameBuffer         = GraphicBitFields::None;
 
     m_blurPass->SetFragmentShader(m_blurShader, GetRenderer());
 

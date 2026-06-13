@@ -257,7 +257,7 @@ namespace ToolKit
         if (animTexture != nullptr)
         {
           if (int slot = m_currentProgram->GetTextureSlot("s_skinningPose"); slot != -1)
-            SetTexture((ubyte)slot, animTexture);
+            SetTexture((ubyte) slot, animTexture);
         }
 
         // animation to blend.
@@ -265,13 +265,13 @@ namespace ToolKit
         {
           animTexture = animPlayer->GetAnimationDataTexture(skel->GetIdVal(), job.animData.blendAnimation->GetIdVal());
           if (int slot = m_currentProgram->GetTextureSlot("s_blendWeights"); slot != -1)
-            SetTexture((ubyte)slot, animTexture);
+            SetTexture((ubyte) slot, animTexture);
         }
       }
       else
       {
         if (int slot = m_currentProgram->GetTextureSlot("s_skinningPose"); slot != -1)
-          SetTexture((ubyte)slot, skel->m_bindPoseTexture);
+          SetTexture((ubyte) slot, skel->m_bindPoseTexture);
       }
     };
 
@@ -333,7 +333,7 @@ namespace ToolKit
     for (const auto& pair : m_postPipelineTextures)
     {
       if (int slot = m_currentProgram->GetTextureSlot(pair.first.c_str()); slot != -1)
-        SetTexture((ubyte)slot, pair.second);
+        SetTexture((ubyte) slot, pair.second);
     }
 
     FeedUniforms(m_currentProgram, job);
@@ -789,31 +789,31 @@ namespace ToolKit
     if (cache.DiffuseTextureInUse())
     {
       if (int slot = m_currentProgram->GetTextureSlot("s_diffuseColor"); slot != -1)
-        SetTexture((ubyte)slot, mat->GetDiffuseTextureVal());
+        SetTexture((ubyte) slot, mat->GetDiffuseTextureVal());
     }
 
     if (cache.EmissiveTextureInUse())
     {
       if (int slot = m_currentProgram->GetTextureSlot("s_emissiveColor"); slot != -1)
-        SetTexture((ubyte)slot, mat->GetEmissiveTextureVal());
+        SetTexture((ubyte) slot, mat->GetEmissiveTextureVal());
     }
 
     if (cache.MetallicRoughnessTextureInUse())
     {
       if (int slot = m_currentProgram->GetTextureSlot("s_metallicRoughness"); slot != -1)
-        SetTexture((ubyte)slot, mat->GetMetallicRoughnessTextureVal());
+        SetTexture((ubyte) slot, mat->GetMetallicRoughnessTextureVal());
     }
 
     if (cache.NormalTextureInUse())
     {
       if (int slot = m_currentProgram->GetTextureSlot("s_normalMap"); slot != -1)
-        SetTexture((ubyte)slot, mat->GetNormalTextureVal());
+        SetTexture((ubyte) slot, mat->GetNormalTextureVal());
     }
 
     if (mat->IsPBR())
     {
       if (int slot = m_currentProgram->GetTextureSlot("s_brdfLut"); slot != -1)
-        SetTexture((ubyte)slot, m_brdfLut);
+        SetTexture((ubyte) slot, m_brdfLut);
     }
   }
 
@@ -918,7 +918,7 @@ namespace ToolKit
     if (mat && mat->m_cubeMap)
     {
       if (int slot = m_currentProgram->GetTextureSlot("s_cubeMap"); slot != -1)
-        SetTexture((ubyte)slot, mat->m_cubeMap);
+        SetTexture((ubyte) slot, mat->m_cubeMap);
     }
 
     // Sky and Ibl data.
@@ -940,9 +940,9 @@ namespace ToolKit
         if (skyHdri != nullptr && skyHdri->m_diffuseEnvMap && skyHdri->m_specularEnvMap && m_brdfLut)
         {
           if (int slot = m_currentProgram->GetTextureSlot("s_skyIrradiance"); slot != -1)
-            SetTexture((ubyte)slot, skyHdri->m_diffuseEnvMap);
+            SetTexture((ubyte) slot, skyHdri->m_diffuseEnvMap);
           if (int slot = m_currentProgram->GetTextureSlot("s_skySpecular"); slot != -1)
-            SetTexture((ubyte)slot, skyHdri->m_specularEnvMap);
+            SetTexture((ubyte) slot, skyHdri->m_specularEnvMap);
 
           float skyIntensity = skyEnvCom->GetIlluminateVal() ? skyEnvCom->GetIntensityVal() : 0.0f;
           m_drawCommand.SetSkyIntensity(skyIntensity);
@@ -963,9 +963,9 @@ namespace ToolKit
       if (diffuseEnvMap && specularEnvMap && m_brdfLut)
       {
         if (int slot = m_currentProgram->GetTextureSlot("s_irradianceMap"); slot != -1)
-          SetTexture((ubyte)slot, diffuseEnvMap);
+          SetTexture((ubyte) slot, diffuseEnvMap);
         if (int slot = m_currentProgram->GetTextureSlot("s_iblSpecular"); slot != -1)
-          SetTexture((ubyte)slot, specularEnvMap);
+          SetTexture((ubyte) slot, specularEnvMap);
 
         anyIbl = true;
         m_drawCommand.SetVolumeIntensity(0, envCom->GetIntensityVal());
@@ -1015,9 +1015,9 @@ namespace ToolKit
           if (secDiffuse && secSpecular)
           {
             if (int slot = m_currentProgram->GetTextureSlot("s_secondaryIrradiance"); slot != -1)
-              SetTexture((ubyte)slot, secDiffuse);
+              SetTexture((ubyte) slot, secDiffuse);
             if (int slot = m_currentProgram->GetTextureSlot("s_secondarySpecular"); slot != -1)
-              SetTexture((ubyte)slot, secSpecular);
+              SetTexture((ubyte) slot, secSpecular);
             m_drawCommand.SetVolumeIntensity(1, secEnvCom->GetIntensityVal());
 
             Vec3 secOffset = secEnvCom->GetPositionOffsetVal();
@@ -1045,21 +1045,21 @@ namespace ToolKit
     {
       m_drawCommand.SetIblInUse(true);
       if (int slot = m_currentProgram->GetTextureSlot("s_brdfLut"); slot != -1)
-        SetTexture((ubyte)slot, m_brdfLut);
+        SetTexture((ubyte) slot, m_brdfLut);
     }
 
     // AO texture.
     if (m_ambientOcculusionInUse)
     {
       if (int slot = m_currentProgram->GetTextureSlot("s_ambientOcclusion"); slot != -1)
-        SetTexture((ubyte)slot, m_aoTexture);
+        SetTexture((ubyte) slot, m_aoTexture);
     }
 
     // Bind shadow map if activated.
     if (m_shadowAtlas != nullptr)
     {
       if (int slot = m_currentProgram->GetTextureSlot("s_shadowAtlas"); slot != -1)
-        SetTexture((ubyte)slot, m_shadowAtlas);
+        SetTexture((ubyte) slot, m_shadowAtlas);
     }
   }
 
@@ -1158,7 +1158,7 @@ namespace ToolKit
       return;
     int slot = m_currentProgram->GetTextureSlot(semanticName);
     if (slot != -1)
-      SetTexture((ubyte)slot, texture);
+      SetTexture((ubyte) slot, texture);
   }
 
   void Renderer::SetShadowAtlas(TexturePtr shadowAtlas) { m_shadowAtlas = shadowAtlas; }

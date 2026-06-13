@@ -667,16 +667,16 @@ namespace ToolKit
     vertices.resize(8);
 
     // Line
-    vertices[0].pos                    = Vec3(0.0f, 0.0f, 0.0f);
-    vertices[1].pos                    = Vec3(0.8f, 0.0f, 0.0f);
+    vertices[0].pos    = Vec3(0.0f, 0.0f, 0.0f);
+    vertices[1].pos    = Vec3(0.8f, 0.0f, 0.0f);
 
     // Triangle
-    vertices[2].pos                    = Vec3(0.8f, -0.2f, 0.0f);
-    vertices[3].pos                    = Vec3(0.8f, 0.2f, 0.0f);
-    vertices[4].pos                    = Vec3(0.8f, 0.2f, 0.0f);
-    vertices[5].pos                    = Vec3(1.0f, 0.0f, 0.0f);
-    vertices[6].pos                    = Vec3(1.0f, 0.0f, 0.0f);
-    vertices[7].pos                    = Vec3(0.8f, -0.2f, 0.0f);
+    vertices[2].pos    = Vec3(0.8f, -0.2f, 0.0f);
+    vertices[3].pos    = Vec3(0.8f, 0.2f, 0.0f);
+    vertices[4].pos    = Vec3(0.8f, 0.2f, 0.0f);
+    vertices[5].pos    = Vec3(1.0f, 0.0f, 0.0f);
+    vertices[6].pos    = Vec3(1.0f, 0.0f, 0.0f);
+    vertices[7].pos    = Vec3(0.8f, -0.2f, 0.0f);
 
     MaterialPtr newMat = GetMaterialManager()->GetCopyOfUnlitColorMaterial();
     newMat->drawType   = DrawType::Line;
@@ -736,7 +736,7 @@ namespace ToolKit
 
     MeshPtr mesh = GetComponent<MeshComponent>()->GetMeshVal();
     mesh->UnInit();
-    mesh->m_material         = GetMaterialManager()->GetCopyOfUnlitColorMaterial(false);
+    mesh->m_material           = GetMaterialManager()->GetCopyOfUnlitColorMaterial(false);
 
     mesh->m_material->drawType = t;
 

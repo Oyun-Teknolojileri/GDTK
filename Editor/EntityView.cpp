@@ -111,34 +111,34 @@ namespace ToolKit
                     uint anchorVerticalPos   = mainMode;
                     switch (anchorHorizontalPos)
                     {
-                    case 0:
-                      gatherAtLeft();
-                      break;
-                    case 1:
-                      gatherAtMiddle(true);
-                      break;
-                    case 2:
-                      gatherAtRight();
-                      break;
-                    case 3:
-                      scatterToSide(true);
-                      break;
-                    default:
-                      assert(0 && "This shouldn't happen!");
+                      case 0:
+                        gatherAtLeft();
+                        break;
+                      case 1:
+                        gatherAtMiddle(true);
+                        break;
+                      case 2:
+                        gatherAtRight();
+                        break;
+                      case 3:
+                        scatterToSide(true);
+                        break;
+                      default:
+                        assert(0 && "This shouldn't happen!");
                     }
                     switch (anchorVerticalPos)
                     {
-                    case 0:
-                      gatherAtTop();
-                      break;
-                    case 1:
-                      gatherAtMiddle(false);
-                      break;
-                    case 2:
-                      gatherAtBottom();
-                      break;
-                    default:
-                      assert(0 && "This shouldn't happen!");
+                      case 0:
+                        gatherAtTop();
+                        break;
+                      case 1:
+                        gatherAtMiddle(false);
+                        break;
+                      case 2:
+                        gatherAtBottom();
+                        break;
+                      default:
+                        assert(0 && "This shouldn't happen!");
                     }
                   }
                   // Vertical Modes
@@ -149,20 +149,20 @@ namespace ToolKit
                     scatterToSide(false);
                     switch (anchorHorizontalPos)
                     {
-                    case 0:
-                      gatherAtLeft();
-                      break;
-                    case 1:
-                      gatherAtMiddle(true);
-                      break;
-                    case 2:
-                      gatherAtRight();
-                      break;
-                    case 3:
-                      scatterToSide(true);
-                      break;
-                    default:
-                      assert(0 && "This shouldn't happen!");
+                      case 0:
+                        gatherAtLeft();
+                        break;
+                      case 1:
+                        gatherAtMiddle(true);
+                        break;
+                      case 2:
+                        gatherAtRight();
+                        break;
+                      case 3:
+                        scatterToSide(true);
+                        break;
+                      default:
+                        assert(0 && "This shouldn't happen!");
                     }
                   }
                 };

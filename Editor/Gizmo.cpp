@@ -69,10 +69,10 @@ namespace ToolKit
 
       MaterialPtr newMaterial = GetMaterialManager()->GetCopyOfUnlitColorMaterial();
       newMaterial->SetColorVal(Vec3(0.1f, 0.1f, 0.1f));
-      newMaterial->drawType = DrawType::Line;
+      newMaterial->drawType            = DrawType::Line;
 
-      parentMesh->m_clientSideVertices        = vertices;
-      parentMesh->m_material                  = newMaterial;
+      parentMesh->m_clientSideVertices = vertices;
+      parentMesh->m_material           = newMaterial;
 
       parentMesh->Init();
 
@@ -357,12 +357,12 @@ namespace ToolKit
       material->SetColorVal(params.color);
       material->cullMode = CullingType::TwoSided;
 
-      MeshPtr mesh                         = solid->GetMeshComponent()->GetMeshVal();
-      mesh->m_material                     = material;
-      m_mesh                               = mesh;
+      MeshPtr mesh       = solid->GetMeshComponent()->GetMeshVal();
+      mesh->m_material   = material;
+      m_mesh             = mesh;
 
-      float scale                          = 0.15f;
-      float offset                         = 2.0f;
+      float scale        = 0.15f;
+      float offset       = 2.0f;
 
       m_mesh->UnInit();
       for (Vertex& v : m_mesh->m_clientSideVertices)

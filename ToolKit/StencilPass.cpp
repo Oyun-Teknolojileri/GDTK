@@ -20,11 +20,11 @@ namespace ToolKit
   StencilRenderPass::StencilRenderPass() : Pass("StencilRenderPass")
   {
     // Init sub pass.
-    m_copyStencilSubPass    = MakeNewPtr<FullQuadPass>();
-    m_unlitFragShader       = GetShaderManager()->Create<Shader>(ShaderPath("unlitFrag.shader", true));
-    m_frameBuffer           = MakeNewPtr<Framebuffer>("StencilPassFB");
+    m_copyStencilSubPass              = MakeNewPtr<FullQuadPass>();
+    m_unlitFragShader                 = GetShaderManager()->Create<Shader>(ShaderPath("unlitFrag.shader", true));
+    m_frameBuffer                     = MakeNewPtr<Framebuffer>("StencilPassFB");
 
-    m_solidOverrideMaterial = GetMaterialManager()->GetCopyOfUnlitColorMaterial();
+    m_solidOverrideMaterial           = GetMaterialManager()->GetCopyOfUnlitColorMaterial();
 
     // Stencil-write passive defaults. Defaults for depthTest/depthWrite/depthFunction are
     // correct here. colorMaskEnabled is unimplemented in the Vulkan backend; the OpenGL path

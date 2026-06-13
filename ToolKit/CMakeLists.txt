@@ -8,6 +8,7 @@ include_directories(
 	"${TOOLKIT_DIR}/Dependency/mini_audio"
 	"${TOOLKIT_DIR}/Dependency/RapidXml"
 	"${TOOLKIT_DIR}/Dependency/stb"
+	"${TOOLKIT_DIR}/Dependency/utilities"
 	"${TOOLKIT_DIR}/Dependency/minizip-ng"
 	"${TOOLKIT_DIR}/Dependency/minizip-ng/compat"
 	"${TOOLKIT_DIR}/Dependency/poolSTL/include"

@@ -130,8 +130,6 @@ namespace ToolKit
     void Map(const LightRawPtrArray& lights);
 
    public:
-
-
     /** All data containing directional light properties. */
     UniformBuffer m_lightDataBuffer;
 

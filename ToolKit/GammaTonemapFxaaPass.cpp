@@ -50,15 +50,10 @@ namespace ToolKit
       m_passDataBufferInitialized = true;
     }
     GammaTonemapFxaaPassDataLayout& ubo = m_passDataBuffer.m_data;
-    ubo.enableFlags                     = IVec4((int) m_params.enableFxaa,
-                                                (int) m_params.enableTonemapping,
-                                                (int) m_params.enableGammaCorrection,
-                                                0);
-    ubo.screenSizeAndPad                = Vec4(m_params.screenSize, 0.0f, 0.0f);
-    ubo.tonemapParams                   = Vec4((float) (uint) m_params.tonemapMethod,
-                                                m_params.gamma,
-                                                0.0f,
-                                                0.0f);
+    ubo.enableFlags =
+        IVec4((int) m_params.enableFxaa, (int) m_params.enableTonemapping, (int) m_params.enableGammaCorrection, 0);
+    ubo.screenSizeAndPad = Vec4(m_params.screenSize, 0.0f, 0.0f);
+    ubo.tonemapParams    = Vec4((float) (uint) m_params.tonemapMethod, m_params.gamma, 0.0f, 0.0f);
     m_passDataBuffer.Invalidate();
     m_passDataBuffer.Map();
   }

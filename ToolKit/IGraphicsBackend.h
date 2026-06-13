@@ -34,10 +34,14 @@ namespace ToolKit
    *  Vulkan backend may extend this with a 'set' field later. */
   struct ShaderResourceBinding
   {
-    enum class Type { UniformBuffer, Texture } type = Type::UniformBuffer;
-    const char* name;       //!< Shader-side uniform block name or sampler name.
-    int slot;               //!< Binding slot / texture unit.
-    UniformBuffer* buffer = nullptr;  //!< Valid only for UniformBuffer.
+    enum class Type
+    {
+      UniformBuffer,
+      Texture
+    } type = Type::UniformBuffer;
+    const char* name;                //!< Shader-side uniform block name or sampler name.
+    int slot;                        //!< Binding slot / texture unit.
+    UniformBuffer* buffer = nullptr; //!< Valid only for UniformBuffer.
   };
 
   struct PassDesc
@@ -77,7 +81,7 @@ namespace ToolKit
 
       //!< VK: given a VkInstance (as void*), returns the platform VkSurfaceKHR (as uint64_t). 0 on failure.
       //!< Implemented in the editor via SDL_Vulkan_CreateSurface.
-      std::function<uint64 (void*)> vkCreateSurface;
+      std::function<uint64(void*)> vkCreateSurface;
     };
 
     virtual void InitBackend(const BackendInitParams& params)                                               = 0;
@@ -87,7 +91,7 @@ namespace ToolKit
     virtual void Present()                                                                                  = 0;
 
     virtual void StartPass(const PassDesc& desc)                                                            = 0;
-    virtual void FinishPass()                                                                                  = 0;
+    virtual void FinishPass()                                                                               = 0;
 
     virtual void SetViewport(uint x, uint y, uint w, uint h)                                                = 0;
     virtual void SetScissor(uint x, uint y, uint w, uint h)                                                 = 0;

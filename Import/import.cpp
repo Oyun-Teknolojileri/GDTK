@@ -370,20 +370,21 @@ namespace ToolKit
         aiNodeAnim* nodeAnim = anim->mChannels[chIndx];
 
         // Determine the first tick where all channels have data.
-        float firstPosTick = (nodeAnim->mNumPositionKeys > 0) ? (float) nodeAnim->mPositionKeys[0].mTime : 0.0f;
-        float firstRotTick = (nodeAnim->mNumRotationKeys > 0) ? (float) nodeAnim->mRotationKeys[0].mTime : 0.0f;
-        float firstSclTick = (nodeAnim->mNumScalingKeys > 0) ? (float) nodeAnim->mScalingKeys[0].mTime : 0.0f;
+        float firstPosTick   = (nodeAnim->mNumPositionKeys > 0) ? (float) nodeAnim->mPositionKeys[0].mTime : 0.0f;
+        float firstRotTick   = (nodeAnim->mNumRotationKeys > 0) ? (float) nodeAnim->mRotationKeys[0].mTime : 0.0f;
+        float firstSclTick   = (nodeAnim->mNumScalingKeys > 0) ? (float) nodeAnim->mScalingKeys[0].mTime : 0.0f;
 
         // Get the initial values for each channel (first key or defaults).
-        aiVector3D initPos   = (nodeAnim->mNumPositionKeys > 0) ? nodeAnim->mPositionKeys[0].mValue : aiVector3D(0, 0, 0);
-        aiQuaternion initRot = (nodeAnim->mNumRotationKeys > 0) ? nodeAnim->mRotationKeys[0].mValue : aiQuaternion(1, 0, 0, 0);
-        aiVector3D initScl   = (nodeAnim->mNumScalingKeys > 0) ? nodeAnim->mScalingKeys[0].mValue : aiVector3D(1, 1, 1);
+        aiVector3D initPos = (nodeAnim->mNumPositionKeys > 0) ? nodeAnim->mPositionKeys[0].mValue : aiVector3D(0, 0, 0);
+        aiQuaternion initRot =
+            (nodeAnim->mNumRotationKeys > 0) ? nodeAnim->mRotationKeys[0].mValue : aiQuaternion(1, 0, 0, 0);
+        aiVector3D initScl = (nodeAnim->mNumScalingKeys > 0) ? nodeAnim->mScalingKeys[0].mValue : aiVector3D(1, 1, 1);
 
         // Find the earliest tick among all channels for this bone.
-        float earliestTick   = glm::min(firstPosTick, glm::min(firstRotTick, firstSclTick));
+        float earliestTick = glm::min(firstPosTick, glm::min(firstRotTick, firstSclTick));
 
         // Convert earliest tick to frame number.
-        uint earliestFrame   = 0;
+        uint earliestFrame = 0;
         if (earliestTick > g_animEps && fps > 0.0)
         {
           earliestFrame = (uint) glm::round((earliestTick / (float) fps) * g_desiredFps);
@@ -698,9 +699,9 @@ namespace ToolKit
         }
         else if (mode == "MASK")
         {
-          tMaterial->blendFunction     = BlendFunction::ALPHA_MASK;
+          tMaterial->blendFunction = BlendFunction::ALPHA_MASK;
 
-          float alphaCutoff            = 0.5f;
+          float alphaCutoff        = 0.5f;
           material->Get(AI_MATKEY_GLTF_ALPHACUTOFF, alphaCutoff);
           tMaterial->alphaMaskTreshold = alphaCutoff;
         }

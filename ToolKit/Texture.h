@@ -82,8 +82,8 @@ namespace ToolKit
 
    public:
     GpuResourceDataPtr m_gpuData;
-    int m_width     = 0;
-    int m_height    = 0;
+    int m_width       = 0;
+    int m_height      = 0;
     uint8* m_image    = nullptr;
     float* m_imagef   = nullptr;
 

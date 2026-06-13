@@ -184,13 +184,13 @@ namespace ToolKit
 // uint-overload assumes the caller already converted the texture via the cache (or Acquire) and
 // just casts the opaque uint64 to ImTextureID.
 #ifdef TK_VULKAN
-  #define Convert2ImGuiTexture(TexturePtr)                                                                              \
+  #define Convert2ImGuiTexture(TexturePtr)                                                                             \
     (void*) (uintptr_t) ::ToolKit::Editor::EditorImGuiTextureCache::Acquire(TexturePtr)
 #else
   #define Convert2ImGuiTexture(TexturePtr) (void*) (uintptr_t) Renderer::GetNativeTextureHandle(TexturePtr)
 #endif
 
-#define ConvertUIntImGuiTexture(uint)    (void*) (uintptr_t) (uint)
+#define ConvertUIntImGuiTexture(uint) (void*) (uintptr_t) (uint)
 
   } // namespace Editor
 } // namespace ToolKit

@@ -8,9 +8,9 @@
 #include "Skeleton.h"
 
 #include "FileManager.h"
+#include "IGraphicsBackend.h"
 #include "MathUtil.h"
 #include "Node.h"
-#include "IGraphicsBackend.h"
 #include "RHI.h"
 #include "RenderSystem.h"
 #include "Renderer.h"
@@ -40,7 +40,7 @@ namespace ToolKit
     set.MinFilter      = GraphicTypes::SampleNearest;
     set.Type           = GraphicTypes::TypeFloat;
     ptr->Settings(set);
-    ptr->m_name = skeleton->m_name + " BindPoseTexture";
+    ptr->m_name               = skeleton->m_name + " BindPoseTexture";
 
     IGraphicsBackend* backend = GetRenderSystem()->GetBackend();
     backend->CreateTexture(ptr.get());

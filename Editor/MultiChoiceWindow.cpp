@@ -72,37 +72,37 @@ namespace ToolKit::Editor
     {
       switch (dataType)
       {
-      case 0:
-      case 1:
-        m_variant.Choices.push_back(ParameterVariant(String("")));
-        break;
-      case 2:
-        m_variant.Choices.push_back(ParameterVariant(false));
-        break;
-      case 3:
-        m_variant.Choices.push_back(ParameterVariant(0));
-        break;
-      case 4:
-        m_variant.Choices.push_back(ParameterVariant(0.0f));
-        break;
-      case 5:
-        m_variant.Choices.push_back(ParameterVariant(Vec2()));
-        break;
-      case 6:
-        m_variant.Choices.push_back(ParameterVariant(Vec3()));
-        break;
-      case 7:
-        m_variant.Choices.push_back(ParameterVariant(Vec4()));
-        break;
-      case 8:
-        m_variant.Choices.push_back(ParameterVariant(Mat3()));
-        break;
-      case 9:
-        m_variant.Choices.push_back(ParameterVariant(Mat4()));
-        break;
-      default:
-        assert(false && "parameter type invalid");
-        break;
+        case 0:
+        case 1:
+          m_variant.Choices.push_back(ParameterVariant(String("")));
+          break;
+        case 2:
+          m_variant.Choices.push_back(ParameterVariant(false));
+          break;
+        case 3:
+          m_variant.Choices.push_back(ParameterVariant(0));
+          break;
+        case 4:
+          m_variant.Choices.push_back(ParameterVariant(0.0f));
+          break;
+        case 5:
+          m_variant.Choices.push_back(ParameterVariant(Vec2()));
+          break;
+        case 6:
+          m_variant.Choices.push_back(ParameterVariant(Vec3()));
+          break;
+        case 7:
+          m_variant.Choices.push_back(ParameterVariant(Vec4()));
+          break;
+        case 8:
+          m_variant.Choices.push_back(ParameterVariant(Mat3()));
+          break;
+        case 9:
+          m_variant.Choices.push_back(ParameterVariant(Mat4()));
+          break;
+        default:
+          assert(false && "parameter type invalid");
+          break;
       }
     }
   }

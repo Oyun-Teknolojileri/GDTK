@@ -24,18 +24,18 @@ namespace ToolKit
     {
       switch (light->GetLightType())
       {
-      case Light::Directional:
-        static_cast<EditorDirectionalLight*>(light)->EnableGizmo(enable);
-        break;
-      case Light::Point:
-        static_cast<EditorPointLight*>(light)->EnableGizmo(enable);
-        break;
-      case Light::Spot:
-        static_cast<EditorSpotLight*>(light)->EnableGizmo(enable);
-        break;
-      default:
-        assert(false && "Invalid Light Type");
-        break;
+        case Light::Directional:
+          static_cast<EditorDirectionalLight*>(light)->EnableGizmo(enable);
+          break;
+        case Light::Point:
+          static_cast<EditorPointLight*>(light)->EnableGizmo(enable);
+          break;
+        case Light::Spot:
+          static_cast<EditorSpotLight*>(light)->EnableGizmo(enable);
+          break;
+        default:
+          assert(false && "Invalid Light Type");
+          break;
       }
     }
 
@@ -88,18 +88,18 @@ namespace ToolKit
     {
       switch (light->GetLightType())
       {
-      case Light::Directional:
-        m_gizmoGenerator = new DirectionalLightMeshGenerator(static_cast<DirectionalLight*>(light));
-        break;
-      case Light::Point:
-        m_gizmoGenerator = new PointLightMeshGenerator(static_cast<PointLight*>(light));
-        break;
-      case Light::Spot:
-        m_gizmoGenerator = new SpotLightMeshGenerator(static_cast<SpotLight*>(light));
-        break;
-      default:
-        assert(false && "Invalid Light Type");
-        break;
+        case Light::Directional:
+          m_gizmoGenerator = new DirectionalLightMeshGenerator(static_cast<DirectionalLight*>(light));
+          break;
+        case Light::Point:
+          m_gizmoGenerator = new PointLightMeshGenerator(static_cast<PointLight*>(light));
+          break;
+        case Light::Spot:
+          m_gizmoGenerator = new SpotLightMeshGenerator(static_cast<SpotLight*>(light));
+          break;
+        default:
+          assert(false && "Invalid Light Type");
+          break;
       }
 
       m_gizmoUpdateFn = [this](Value& oldVal, Value& newVal) -> void { m_gizmoGenerator->InitGizmo(); };

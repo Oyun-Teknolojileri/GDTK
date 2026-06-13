@@ -21,9 +21,9 @@ namespace ToolKit
       m_depthMaskSphere = MakeNewPtr<Sphere>();
       m_depthMaskSphere->SetRadiusVal(0.95f);
 
-      MeshComponentPtr mc          = m_depthMaskSphere->GetMeshComponent();
-      MeshPtr mesh                 = mc->GetMeshVal();
-      mesh->m_material->cullMode   = CullingType::Front;
+      MeshComponentPtr mc                   = m_depthMaskSphere->GetMeshComponent();
+      MeshPtr mesh                          = mc->GetMeshVal();
+      mesh->m_material->cullMode            = CullingType::Front;
 
       // Passive overrides used by the two non-default sub-draws (depth-mask sphere, guide meshes).
       // Both inherit the rest from the default RenderState construction; only the highlighted

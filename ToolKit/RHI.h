@@ -58,6 +58,6 @@ namespace ToolKit
 
     constexpr int GlobalBufferCount         = 7;
     constexpr int FirstCustomSlot           = GlobalBufferCount;
-  }
+  } // namespace ReservedUniformBufferSlots
 
 } // namespace ToolKit

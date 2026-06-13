@@ -32,5 +32,5 @@ namespace ToolKit
       void ImGuiRenderDrawData() { ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData()); }
 
     } // namespace LauncherBackendBindings
-  }   // namespace Launcher
+  } // namespace Launcher
 } // namespace ToolKit

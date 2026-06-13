@@ -63,9 +63,7 @@ namespace ToolKit
     void DestroyShader(GpuResourceData* shaderData) override;
 
     // GpuProgram resource management
-    void CreateGpuProgram(GpuProgram* program,
-                          const struct ShaderResourceBinding* bindings,
-                          int bindingCount) override;
+    void CreateGpuProgram(GpuProgram* program, const struct ShaderResourceBinding* bindings, int bindingCount) override;
     void DestroyGpuProgram(GpuProgram* program) override;
     int GetUniformLocation(GpuProgram* program, const char* name) override;
 
@@ -132,12 +130,12 @@ namespace ToolKit
     PassDesc m_activePassDesc;
 
     // Program cache — avoids glUseProgram no-ops and glGetIntegerv(GL_CURRENT_PROGRAM) roundtrips.
-    uint        m_currentProgramId = 0;
-    GpuProgram* m_currentProgram   = nullptr;
+    uint m_currentProgramId      = 0;
+    GpuProgram* m_currentProgram = nullptr;
 
     // Framebuffer cache
-    uint m_currentReadFboId = (uint) -1;
-    uint m_currentDrawFboId = (uint) -1;
+    uint m_currentReadFboId      = (uint) -1;
+    uint m_currentDrawFboId      = (uint) -1;
     IntArray m_storedReadFboStack;
     IntArray m_storedDrawFboStack;
 

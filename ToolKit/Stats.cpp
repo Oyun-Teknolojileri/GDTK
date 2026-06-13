@@ -97,10 +97,7 @@ namespace ToolKit
 
   TKProfiler::~TKProfiler() { Reset(); }
 
-  void TKProfiler::BeginScope(StringView name)
-  {
-    BeginScope(std::hash<StringView>{}(name), name);
-  }
+  void TKProfiler::BeginScope(StringView name) { BeginScope(std::hash<StringView> {}(name), name); }
 
   void TKProfiler::BeginScope(uint64_t nameHash, StringView name)
   {
@@ -125,11 +122,11 @@ namespace ToolKit
     // 2. If not found, create a new node and link it to the tree
     if (node == nullptr)
     {
-      node         = new ProfilerNode();
-      node->name   = String(name);
+      node           = new ProfilerNode();
+      node->name     = String(name);
       node->nameHash = nameHash;
-      node->depth  = (m_currentNode == nullptr) ? 0 : m_currentNode->depth + 1;
-      node->parent = m_currentNode;
+      node->depth    = (m_currentNode == nullptr) ? 0 : m_currentNode->depth + 1;
+      node->parent   = m_currentNode;
 
       if (m_currentNode == nullptr)
         m_rootNodes.push_back(node);
@@ -434,12 +431,12 @@ namespace ToolKit
       {
         switch (unit)
         {
-        case MemoryUnit::KB:
-          return tkStats->GetTotalVRAMUsageInKB();
-        case MemoryUnit::MB:
-          return tkStats->GetTotalVRAMUsageInMB();
-        default:
-          return tkStats->GetTotalVRAMUsageInBytes();
+          case MemoryUnit::KB:
+            return tkStats->GetTotalVRAMUsageInKB();
+          case MemoryUnit::MB:
+            return tkStats->GetTotalVRAMUsageInMB();
+          default:
+            return tkStats->GetTotalVRAMUsageInBytes();
         }
       }
       return 0;

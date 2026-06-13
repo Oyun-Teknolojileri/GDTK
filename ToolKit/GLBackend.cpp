@@ -745,9 +745,7 @@ namespace ToolKit
   // GpuProgram resource management
   // -----------------------------------------------------------------------
 
-  void GLBackend::CreateGpuProgram(GpuProgram* program,
-                                   const ShaderResourceBinding* bindings,
-                                   int bindingCount)
+  void GLBackend::CreateGpuProgram(GpuProgram* program, const ShaderResourceBinding* bindings, int bindingCount)
   {
     const ShaderPtr& vs = program->m_shaders[0];
     const ShaderPtr& fs = program->m_shaders[1];
@@ -805,7 +803,7 @@ namespace ToolKit
         if (loc == GL_INVALID_INDEX)
           continue;
 
-        glUniformBlockBinding(pid, (GLuint)loc, b.slot);
+        glUniformBlockBinding(pid, (GLuint) loc, b.slot);
 
         if (b.buffer && b.buffer->m_gpuData)
         {

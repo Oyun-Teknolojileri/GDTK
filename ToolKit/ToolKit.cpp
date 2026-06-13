@@ -18,8 +18,8 @@
 #include "ObjectFactory.h"
 #include "PluginManager.h"
 #include "RHI.h"
-#include "Renderer.h"
 #include "RenderSystem.h"
+#include "Renderer.h"
 #include "Scene.h"
 #include "Shader.h"
 #include "Stats.h"
@@ -112,27 +112,27 @@ namespace ToolKit
     m_objectFactory = new ObjectFactory();
     m_objectFactory->Init();
 
-    m_gpuBuffers        = new GlobalGpuBuffers();
+    m_gpuBuffers      = new GlobalGpuBuffers();
 
-    m_workerManager     = new WorkerManager();
-    m_engineSettings    = new EngineSettings();
+    m_workerManager   = new WorkerManager();
+    m_engineSettings  = new EngineSettings();
 
-    m_renderSys         = new RenderSystem();
-    m_pluginManager     = new PluginManager();
-    m_animationMan      = new AnimationManager();
-    m_animationPlayer   = new AnimationPlayer();
-    m_textureMan        = new TextureManager();
-    m_meshMan           = new MeshManager();
-    m_spriteSheetMan    = new SpriteSheetManager();
-    m_audioMan          = new AudioManager();
-    m_shaderMan         = new ShaderManager();
-    m_materialManager   = new MaterialManager();
-    m_sceneManager      = new SceneManager();
-    m_uiManager         = new UIManager();
-    m_skeletonManager   = new SkeletonManager();
-    m_fileManager       = new FileManager();
+    m_renderSys       = new RenderSystem();
+    m_pluginManager   = new PluginManager();
+    m_animationMan    = new AnimationManager();
+    m_animationPlayer = new AnimationPlayer();
+    m_textureMan      = new TextureManager();
+    m_meshMan         = new MeshManager();
+    m_spriteSheetMan  = new SpriteSheetManager();
+    m_audioMan        = new AudioManager();
+    m_shaderMan       = new ShaderManager();
+    m_materialManager = new MaterialManager();
+    m_sceneManager    = new SceneManager();
+    m_uiManager       = new UIManager();
+    m_skeletonManager = new SkeletonManager();
+    m_fileManager     = new FileManager();
 
-    m_preInitiated      = true;
+    m_preInitiated    = true;
   }
 
   void Main::Init()

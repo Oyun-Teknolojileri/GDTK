@@ -691,8 +691,8 @@ namespace ToolKit
       return;
     }
 
-    if (std::find(m_environmentVolumeCache.begin(), m_environmentVolumeCache.end(), envComp)
-        == m_environmentVolumeCache.end())
+    if (std::find(m_environmentVolumeCache.begin(), m_environmentVolumeCache.end(), envComp) ==
+        m_environmentVolumeCache.end())
     {
       m_environmentVolumeCache.push_back(envComp);
     }

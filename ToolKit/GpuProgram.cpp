@@ -93,7 +93,10 @@ namespace ToolKit
           {
             TK_WRN("Shader '%s' declares global UBO '%s' at slot %d, but reserved slot is %d. "
                    "Update the shader XML / GLSL binding to match.",
-                   vertexShader->GetFile().c_str(), res.name.c_str(), res.slot, info->slot);
+                   vertexShader->GetFile().c_str(),
+                   res.name.c_str(),
+                   res.slot,
+                   info->slot);
           }
         }
         else
@@ -104,7 +107,8 @@ namespace ToolKit
           {
             TK_ERR("Shader '%s' uses uniform block '%s' without specifying a binding slot. "
                    "Add layout(binding = X) to the UBO declaration.",
-                   vertexShader->GetFile().c_str(), res.name.c_str());
+                   vertexShader->GetFile().c_str(),
+                   res.name.c_str());
             static GpuProgramPtr s_null;
             return s_null;
           }
@@ -113,7 +117,8 @@ namespace ToolKit
           {
             TK_ERR("Custom uniform buffer '%s' uses slot %d which is in the reserved global range [0, %d). "
                    "Move it to slot >= %d.",
-                   res.name.c_str(), res.slot,
+                   res.name.c_str(),
+                   res.slot,
                    ReservedUniformBufferSlots::FirstCustomSlot,
                    ReservedUniformBufferSlots::FirstCustomSlot);
             static GpuProgramPtr s_null;
@@ -129,9 +134,8 @@ namespace ToolKit
       for (const ShaderResource& res : program->m_resources)
       {
         ShaderResourceBinding b;
-        b.type = (res.type == ShaderResource::Type::Texture)
-                   ? ShaderResourceBinding::Type::Texture
-                   : ShaderResourceBinding::Type::UniformBuffer;
+        b.type = (res.type == ShaderResource::Type::Texture) ? ShaderResourceBinding::Type::Texture
+                                                             : ShaderResourceBinding::Type::UniformBuffer;
         b.name = res.name.c_str();
         b.slot = res.slot;
 
@@ -146,7 +150,7 @@ namespace ToolKit
         bindings.push_back(b);
       }
 
-      m_backend->CreateGpuProgram(program.get(), bindings.data(), (int)bindings.size());
+      m_backend->CreateGpuProgram(program.get(), bindings.data(), (int) bindings.size());
 
       auto key        = std::array<ObjectId, TKGpuPipelineStages> {(ObjectId) (uintptr_t) vertexShader->m_gpuData.get(),
                                                                    (ObjectId) (uintptr_t) fragmentShader->m_gpuData.get()};

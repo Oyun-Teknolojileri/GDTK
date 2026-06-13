@@ -308,184 +308,184 @@ namespace ToolKit
       // Serialize data.
       switch (var->GetType())
       {
-      case VariantType::Bool:
-      {
-        WriteAttr(node, doc, XmlParamterValAttr.c_str(), std::to_string(var->GetCVar<bool>()));
-      }
-      break;
-      case VariantType::Byte:
-      {
-        WriteAttr(node, doc, XmlParamterValAttr.c_str(), std::to_string(var->GetCVar<byte>()));
-      }
-      break;
-      case VariantType::Ubyte:
-      {
-        WriteAttr(node, doc, XmlParamterValAttr.c_str(), std::to_string(var->GetCVar<ubyte>()));
-      }
-      break;
-      case VariantType::Float:
-      {
-        WriteAttr(node, doc, XmlParamterValAttr.c_str(), std::to_string(var->GetCVar<float>()));
-      }
-      break;
-      case VariantType::Int:
-      {
-        WriteAttr(node, doc, XmlParamterValAttr.c_str(), std::to_string(var->GetCVar<int>()));
-      }
-      break;
-      case VariantType::UInt:
-      {
-        WriteAttr(node, doc, XmlParamterValAttr.c_str(), std::to_string(var->GetCVar<uint>()));
-      }
-      break;
-      case VariantType::Vec2:
-      {
-        WriteVec(node, doc, var->GetCVar<Vec2>());
-      }
-      break;
-      case VariantType::Vec3:
-      {
-        WriteVec(node, doc, var->GetCVar<Vec3>());
-      }
-      break;
-      case VariantType::Vec4:
-      {
-        WriteVec(node, doc, var->GetCVar<Vec4>());
-      }
-      break;
-      case VariantType::Mat3:
-      {
-        const Mat3& val = var->GetCVar<Mat3>();
-        for (int i = 0; i < 3; i++)
+        case VariantType::Bool:
         {
-          XmlNode* row = CreateXmlNode(doc, "row", node);
-          WriteVec(row, doc, glm::row(val, i));
+          WriteAttr(node, doc, XmlParamterValAttr.c_str(), std::to_string(var->GetCVar<bool>()));
         }
-      }
-      break;
-      case VariantType::Mat4:
-      {
-        const Mat4& val = var->GetCVar<Mat4>();
-        for (int i = 0; i < 4; i++)
-        {
-          XmlNode* row = CreateXmlNode(doc, "row", node);
-          WriteVec(row, doc, glm::row(val, i));
-        }
-      }
-      break;
-      case VariantType::String:
-      {
-        WriteAttr(node, doc, XmlParamterValAttr.c_str(), var->GetCVar<String>());
-      }
-      break;
-      case VariantType::ObjectId:
-        WriteAttr(node, doc, XmlParamterValAttr.c_str(), std::to_string(var->GetCVar<ObjectId>()));
         break;
-      case VariantType::MeshPtr:
-      {
-        MeshPtr res = var->GetCVar<MeshPtr>();
-        if (res && !res->IsDynamic())
+        case VariantType::Byte:
         {
-          res->Save(true);
-          res->SerializeRef(doc, node);
+          WriteAttr(node, doc, XmlParamterValAttr.c_str(), std::to_string(var->GetCVar<byte>()));
         }
-      }
-      break;
-      case VariantType::TexturePtr:
-      {
-        TexturePtr res = var->GetCVar<TexturePtr>();
-        if (res && !res->IsDynamic())
+        break;
+        case VariantType::Ubyte:
         {
-          res->Save(true);
-          res->SerializeRef(doc, node);
+          WriteAttr(node, doc, XmlParamterValAttr.c_str(), std::to_string(var->GetCVar<ubyte>()));
         }
-      }
-      break;
-      case VariantType::ShaderPtr:
-      {
-        ShaderPtr res = var->GetCVar<ShaderPtr>();
-        if (res && !res->IsDynamic())
+        break;
+        case VariantType::Float:
         {
-          res->Save(true);
-          res->SerializeRef(doc, node);
+          WriteAttr(node, doc, XmlParamterValAttr.c_str(), std::to_string(var->GetCVar<float>()));
         }
-      }
-      break;
-      case VariantType::MaterialPtr:
-      {
-        MaterialPtr res = var->GetCVar<MaterialPtr>();
-        if (res && !res->IsDynamic())
+        break;
+        case VariantType::Int:
         {
-          res->Save(true);
-          res->SerializeRef(doc, node);
+          WriteAttr(node, doc, XmlParamterValAttr.c_str(), std::to_string(var->GetCVar<int>()));
         }
-      }
-      break;
-      case VariantType::HdriPtr:
-      {
-        HdriPtr res = var->GetCVar<HdriPtr>();
-        if (res && !res->IsDynamic())
+        break;
+        case VariantType::UInt:
         {
-          res->Save(true);
-          res->SerializeRef(doc, node);
+          WriteAttr(node, doc, XmlParamterValAttr.c_str(), std::to_string(var->GetCVar<uint>()));
         }
-      }
-      break;
-      case VariantType::AnimRecordPtrMap:
-      {
-        const AnimRecordPtrMap& list = var->GetCVar<AnimRecordPtrMap>();
-        XmlNode* listNode            = CreateXmlNode(doc, "List", node);
-        WriteAttr(listNode, doc, "size", std::to_string(list.size()));
-        uint recordIndx = 0;
-        for (auto iter = list.begin(); iter != list.end(); ++iter, recordIndx++)
+        break;
+        case VariantType::Vec2:
         {
-          const AnimRecordPtr& state = iter->second;
-          XmlNode* elementNode       = CreateXmlNode(doc, std::to_string(recordIndx), listNode);
-          if (iter->first.length())
+          WriteVec(node, doc, var->GetCVar<Vec2>());
+        }
+        break;
+        case VariantType::Vec3:
+        {
+          WriteVec(node, doc, var->GetCVar<Vec3>());
+        }
+        break;
+        case VariantType::Vec4:
+        {
+          WriteVec(node, doc, var->GetCVar<Vec4>());
+        }
+        break;
+        case VariantType::Mat3:
+        {
+          const Mat3& val = var->GetCVar<Mat3>();
+          for (int i = 0; i < 3; i++)
           {
-            WriteAttr(elementNode, doc, "SignalName", iter->first);
-          }
-          if (state->m_animation)
-          {
-            state->m_animation->SerializeRef(doc, elementNode);
+            XmlNode* row = CreateXmlNode(doc, "row", node);
+            WriteVec(row, doc, glm::row(val, i));
           }
         }
-      }
-      break;
-      case VariantType::SkeletonPtr:
-      {
-        if (SkeletonPtr sklt = var->GetCVar<SkeletonPtr>())
-        {
-          sklt->SerializeRef(doc, node);
-        }
-      }
-      break;
-      case VariantType::VariantCallback:
         break;
-      case VariantType::MultiChoice:
-      {
-        MultiChoiceVariant mcv = var->GetCVar<MultiChoiceVariant>();
-        size_t choiceCount     = mcv.Choices.size();
-
-        XmlNode* listNode      = CreateXmlNode(doc, "List", node);
-        WriteAttr(listNode, doc, "size", std::to_string(choiceCount));
-
-        XmlNode* nextNode = CreateXmlNode(doc, "CurrVal", listNode);
-        WriteAttr(nextNode, doc, XmlParamterValAttr.c_str(), std::to_string(mcv.CurrentVal.Index));
-
-        for (size_t i = 0; i < choiceCount; ++i)
+        case VariantType::Mat4:
         {
-          nextNode = CreateXmlNode(doc, std::to_string(i), listNode);
-          WriteAttr(nextNode, doc, "valType", std::to_string((int) mcv.Choices[i].GetType()));
-          WriteAttr(nextNode, doc, "valName", mcv.Choices[i].m_name.c_str());
-          const ParameterVariant* variant = &mcv.Choices[i];
-          serializeDataFn(nextNode, doc, variant);
+          const Mat4& val = var->GetCVar<Mat4>();
+          for (int i = 0; i < 4; i++)
+          {
+            XmlNode* row = CreateXmlNode(doc, "row", node);
+            WriteVec(row, doc, glm::row(val, i));
+          }
         }
-      }
-      break;
-      default:
-        assert(false && "Invalid type.");
         break;
+        case VariantType::String:
+        {
+          WriteAttr(node, doc, XmlParamterValAttr.c_str(), var->GetCVar<String>());
+        }
+        break;
+        case VariantType::ObjectId:
+          WriteAttr(node, doc, XmlParamterValAttr.c_str(), std::to_string(var->GetCVar<ObjectId>()));
+          break;
+        case VariantType::MeshPtr:
+        {
+          MeshPtr res = var->GetCVar<MeshPtr>();
+          if (res && !res->IsDynamic())
+          {
+            res->Save(true);
+            res->SerializeRef(doc, node);
+          }
+        }
+        break;
+        case VariantType::TexturePtr:
+        {
+          TexturePtr res = var->GetCVar<TexturePtr>();
+          if (res && !res->IsDynamic())
+          {
+            res->Save(true);
+            res->SerializeRef(doc, node);
+          }
+        }
+        break;
+        case VariantType::ShaderPtr:
+        {
+          ShaderPtr res = var->GetCVar<ShaderPtr>();
+          if (res && !res->IsDynamic())
+          {
+            res->Save(true);
+            res->SerializeRef(doc, node);
+          }
+        }
+        break;
+        case VariantType::MaterialPtr:
+        {
+          MaterialPtr res = var->GetCVar<MaterialPtr>();
+          if (res && !res->IsDynamic())
+          {
+            res->Save(true);
+            res->SerializeRef(doc, node);
+          }
+        }
+        break;
+        case VariantType::HdriPtr:
+        {
+          HdriPtr res = var->GetCVar<HdriPtr>();
+          if (res && !res->IsDynamic())
+          {
+            res->Save(true);
+            res->SerializeRef(doc, node);
+          }
+        }
+        break;
+        case VariantType::AnimRecordPtrMap:
+        {
+          const AnimRecordPtrMap& list = var->GetCVar<AnimRecordPtrMap>();
+          XmlNode* listNode            = CreateXmlNode(doc, "List", node);
+          WriteAttr(listNode, doc, "size", std::to_string(list.size()));
+          uint recordIndx = 0;
+          for (auto iter = list.begin(); iter != list.end(); ++iter, recordIndx++)
+          {
+            const AnimRecordPtr& state = iter->second;
+            XmlNode* elementNode       = CreateXmlNode(doc, std::to_string(recordIndx), listNode);
+            if (iter->first.length())
+            {
+              WriteAttr(elementNode, doc, "SignalName", iter->first);
+            }
+            if (state->m_animation)
+            {
+              state->m_animation->SerializeRef(doc, elementNode);
+            }
+          }
+        }
+        break;
+        case VariantType::SkeletonPtr:
+        {
+          if (SkeletonPtr sklt = var->GetCVar<SkeletonPtr>())
+          {
+            sklt->SerializeRef(doc, node);
+          }
+        }
+        break;
+        case VariantType::VariantCallback:
+          break;
+        case VariantType::MultiChoice:
+        {
+          MultiChoiceVariant mcv = var->GetCVar<MultiChoiceVariant>();
+          size_t choiceCount     = mcv.Choices.size();
+
+          XmlNode* listNode      = CreateXmlNode(doc, "List", node);
+          WriteAttr(listNode, doc, "size", std::to_string(choiceCount));
+
+          XmlNode* nextNode = CreateXmlNode(doc, "CurrVal", listNode);
+          WriteAttr(nextNode, doc, XmlParamterValAttr.c_str(), std::to_string(mcv.CurrentVal.Index));
+
+          for (size_t i = 0; i < choiceCount; ++i)
+          {
+            nextNode = CreateXmlNode(doc, std::to_string(i), listNode);
+            WriteAttr(nextNode, doc, "valType", std::to_string((int) mcv.Choices[i].GetType()));
+            WriteAttr(nextNode, doc, "valName", mcv.Choices[i].m_name.c_str());
+            const ParameterVariant* variant = &mcv.Choices[i];
+            serializeDataFn(nextNode, doc, variant);
+          }
+        }
+        break;
+        default:
+          assert(false && "Invalid type.");
+          break;
       }
     };
     serializeDataFn(node, doc, this);
@@ -505,262 +505,262 @@ namespace ToolKit
     {
       switch (pVar->GetType())
       {
-      case VariantType::Bool:
-      {
-        bool val = false;
-        ReadAttr(parent, XmlParamterValAttr, val);
-        pVar->m_var = val;
-      }
-      break;
-      case VariantType::Byte:
-      {
-        byte val(0);
-        ReadAttr(parent, XmlParamterValAttr, val);
-        pVar->m_var = val;
-      }
-      break;
-      case VariantType::Ubyte:
-      {
-        ubyte val(0);
-        ReadAttr(parent, XmlParamterValAttr, val);
-        pVar->m_var = val;
-      }
-      break;
-      case VariantType::Float:
-      {
-        float val(0.0f);
-        ReadAttr(parent, XmlParamterValAttr, val);
-        pVar->m_var = val;
-      }
-      break;
-      case VariantType::Int:
-      {
-        int val(0);
-        ReadAttr(parent, XmlParamterValAttr, val);
-        pVar->m_var = val;
-      }
-      break;
-      case VariantType::UInt:
-      {
-        uint val(0);
-        ReadAttr(parent, XmlParamterValAttr, val);
-        pVar->m_var = val;
-      }
-      break;
-      case VariantType::Vec2:
-      {
-        Vec2 var;
-        ReadVec(parent, var);
-        pVar->m_var = var;
-      }
-      break;
-      case VariantType::Vec3:
-      {
-        Vec3 var;
-        ReadVec(parent, var);
-        pVar->m_var = var;
-      }
-      break;
-      case VariantType::Vec4:
-      {
-        Vec4 var;
-        ReadVec(parent, var);
-        pVar->m_var = var;
-      }
-      break;
-      case VariantType::String:
-      {
-        String val;
-        ReadAttr(parent, XmlParamterValAttr, val);
-        pVar->m_var = val;
-      }
-      break;
-      case VariantType::Mat3:
-      {
-        Mat3 val;
-        Vec3 vec;
-        XmlNode* row = parent->first_node();
-        for (int i = 0; i < 3; i++)
+        case VariantType::Bool:
         {
-          ReadVec<Vec3>(row, vec);
-          val = glm::row(val, i, vec);
-          row = row->next_sibling();
+          bool val = false;
+          ReadAttr(parent, XmlParamterValAttr, val);
+          pVar->m_var = val;
         }
-        pVar->m_var = val;
-      }
-      break;
-      case VariantType::Mat4:
-      {
-        Mat4 val;
-        Vec4 vec;
-        XmlNode* row = parent->first_node();
-        for (int i = 0; i < 4; i++)
+        break;
+        case VariantType::Byte:
         {
-          ReadVec<Vec4>(row, vec);
-          val = glm::row(val, i, vec);
-          row = row->next_sibling();
+          byte val(0);
+          ReadAttr(parent, XmlParamterValAttr, val);
+          pVar->m_var = val;
         }
-        pVar->m_var = val;
-      }
-      break;
-      case VariantType::ObjectId:
-      {
-        ObjectId val(0);
-        ReadAttr(parent, XmlParamterValAttr, val);
-        pVar->m_var = val;
-      }
-      break;
-      case VariantType::MeshPtr:
-      {
-        String file = Resource::DeserializeRef(parent);
-        if (file.empty())
+        break;
+        case VariantType::Ubyte:
         {
-          pVar->m_var = MakeNewPtr<Mesh>();
+          ubyte val(0);
+          ReadAttr(parent, XmlParamterValAttr, val);
+          pVar->m_var = val;
         }
-        else
+        break;
+        case VariantType::Float:
         {
-          file = MeshPath(file);
-          String ext;
-          DecomposePath(file, nullptr, nullptr, &ext);
-          if (ext == SKINMESH)
+          float val(0.0f);
+          ReadAttr(parent, XmlParamterValAttr, val);
+          pVar->m_var = val;
+        }
+        break;
+        case VariantType::Int:
+        {
+          int val(0);
+          ReadAttr(parent, XmlParamterValAttr, val);
+          pVar->m_var = val;
+        }
+        break;
+        case VariantType::UInt:
+        {
+          uint val(0);
+          ReadAttr(parent, XmlParamterValAttr, val);
+          pVar->m_var = val;
+        }
+        break;
+        case VariantType::Vec2:
+        {
+          Vec2 var;
+          ReadVec(parent, var);
+          pVar->m_var = var;
+        }
+        break;
+        case VariantType::Vec3:
+        {
+          Vec3 var;
+          ReadVec(parent, var);
+          pVar->m_var = var;
+        }
+        break;
+        case VariantType::Vec4:
+        {
+          Vec4 var;
+          ReadVec(parent, var);
+          pVar->m_var = var;
+        }
+        break;
+        case VariantType::String:
+        {
+          String val;
+          ReadAttr(parent, XmlParamterValAttr, val);
+          pVar->m_var = val;
+        }
+        break;
+        case VariantType::Mat3:
+        {
+          Mat3 val;
+          Vec3 vec;
+          XmlNode* row = parent->first_node();
+          for (int i = 0; i < 3; i++)
           {
-            pVar->m_var = GetMeshManager()->Create<SkinMesh>(file);
+            ReadVec<Vec3>(row, vec);
+            val = glm::row(val, i, vec);
+            row = row->next_sibling();
+          }
+          pVar->m_var = val;
+        }
+        break;
+        case VariantType::Mat4:
+        {
+          Mat4 val;
+          Vec4 vec;
+          XmlNode* row = parent->first_node();
+          for (int i = 0; i < 4; i++)
+          {
+            ReadVec<Vec4>(row, vec);
+            val = glm::row(val, i, vec);
+            row = row->next_sibling();
+          }
+          pVar->m_var = val;
+        }
+        break;
+        case VariantType::ObjectId:
+        {
+          ObjectId val(0);
+          ReadAttr(parent, XmlParamterValAttr, val);
+          pVar->m_var = val;
+        }
+        break;
+        case VariantType::MeshPtr:
+        {
+          String file = Resource::DeserializeRef(parent);
+          if (file.empty())
+          {
+            pVar->m_var = MakeNewPtr<Mesh>();
           }
           else
           {
-            pVar->m_var = GetMeshManager()->Create<Mesh>(file);
+            file = MeshPath(file);
+            String ext;
+            DecomposePath(file, nullptr, nullptr, &ext);
+            if (ext == SKINMESH)
+            {
+              pVar->m_var = GetMeshManager()->Create<SkinMesh>(file);
+            }
+            else
+            {
+              pVar->m_var = GetMeshManager()->Create<Mesh>(file);
+            }
           }
         }
-      }
-      break;
-      case VariantType::TexturePtr:
-      {
-        String file = Resource::DeserializeRef(parent);
-        if (file.empty())
+        break;
+        case VariantType::TexturePtr:
         {
-          pVar->m_var = TexturePtr();
-        }
-        else
-        {
-          file        = TexturePath(file);
-          pVar->m_var = GetTextureManager()->Create<Texture>(file);
-        }
-      }
-      break;
-      case VariantType::ShaderPtr:
-      {
-        String file = Resource::DeserializeRef(parent);
-        if (file.empty())
-        {
-          pVar->m_var = ShaderPtr();
-        }
-        else
-        {
-          file        = ShaderPath(file);
-          pVar->m_var = GetShaderManager()->Create<Shader>(file);
-        }
-      }
-      break;
-      case VariantType::MaterialPtr:
-      {
-        String file = Resource::DeserializeRef(parent);
-        if (file.empty())
-        {
-          pVar->m_var = MakeNewPtr<Material>();
-        }
-        else
-        {
-          file        = MaterialPath(file);
-          pVar->m_var = GetMaterialManager()->Create<Material>(file);
-        }
-      }
-      break;
-      case VariantType::HdriPtr:
-      {
-        String file = Resource::DeserializeRef(parent);
-        if (file.empty())
-        {
-          pVar->m_var = MakeNewPtr<Hdri>();
-        }
-        else
-        {
-          file        = TexturePath(file);
-          pVar->m_var = GetTextureManager()->Create<Hdri>(file);
-        }
-      }
-      break;
-      case VariantType::AnimRecordPtrMap:
-      {
-        XmlNode* listNode = parent->first_node("List");
-        uint listSize     = 0;
-        ReadAttr(listNode, "size", listSize);
-        AnimRecordPtrMap list;
-        for (uint stateIndx = 0; stateIndx < listSize; stateIndx++)
-        {
-          AnimRecordPtr record = MakeNewPtr<AnimRecord>();
-          XmlNode* elementNode = listNode->first_node(std::to_string(stateIndx).c_str());
-
-          String signalName;
-          ReadAttr(elementNode, "SignalName", signalName);
-          String file = Resource::DeserializeRef(elementNode);
-          if (!file.empty())
+          String file = Resource::DeserializeRef(parent);
+          if (file.empty())
           {
-            file                = AnimationPath(file);
-            record->m_animation = GetAnimationManager()->Create<Animation>(file);
+            pVar->m_var = TexturePtr();
           }
-          list.insert(std::make_pair(signalName, record));
+          else
+          {
+            file        = TexturePath(file);
+            pVar->m_var = GetTextureManager()->Create<Texture>(file);
+          }
         }
-        pVar->m_var = list;
-      }
-      break;
-      case VariantType::SkeletonPtr:
-      {
-        String file = Resource::DeserializeRef(parent);
-        if (file.empty())
-        {
-          pVar->m_var = MakeNewPtr<Skeleton>();
-        }
-        else
-        {
-          file        = SkeletonPath(file);
-          pVar->m_var = GetSkeletonManager()->Create<Skeleton>(file);
-        }
-      }
-      break;
-      case VariantType::VariantCallback:
         break;
-      case VariantType::MultiChoice:
-      {
-        pVar->m_var       = MultiChoiceVariant();
-
-        XmlNode* listNode = parent->first_node("List");
-        uint listSize     = 0;
-        ReadAttr(listNode, "size", listSize);
-
-        uint currentValIndex = 0;
-        XmlNode* currValNode = listNode->first_node("CurrVal");
-        ReadAttr(currValNode, XmlParamterValAttr.c_str(), currentValIndex);
-        pVar->GetVar<MultiChoiceVariant>().CurrentVal = currentValIndex;
-
-        for (uint i = 0; i < listSize; ++i)
+        case VariantType::ShaderPtr:
         {
-          XmlNode* currIndexNode = listNode->first_node(std::to_string(i).c_str());
-          int valType            = 0;
-          String valName;
-          ReadAttr(currIndexNode, "valType", valType);
-          ReadAttr(currIndexNode, "valName", valName);
-          ParameterVariant p;
-          p.m_type = (VariantType) valType;
-          p.m_name = valName;
-          deserializeDataFn(currIndexNode, &p);
-
-          pVar->GetVar<MultiChoiceVariant>().Choices.push_back(std::move(p));
+          String file = Resource::DeserializeRef(parent);
+          if (file.empty())
+          {
+            pVar->m_var = ShaderPtr();
+          }
+          else
+          {
+            file        = ShaderPath(file);
+            pVar->m_var = GetShaderManager()->Create<Shader>(file);
+          }
         }
-      }
-      break;
-      default:
-        assert(false && "Invalid type.");
         break;
+        case VariantType::MaterialPtr:
+        {
+          String file = Resource::DeserializeRef(parent);
+          if (file.empty())
+          {
+            pVar->m_var = MakeNewPtr<Material>();
+          }
+          else
+          {
+            file        = MaterialPath(file);
+            pVar->m_var = GetMaterialManager()->Create<Material>(file);
+          }
+        }
+        break;
+        case VariantType::HdriPtr:
+        {
+          String file = Resource::DeserializeRef(parent);
+          if (file.empty())
+          {
+            pVar->m_var = MakeNewPtr<Hdri>();
+          }
+          else
+          {
+            file        = TexturePath(file);
+            pVar->m_var = GetTextureManager()->Create<Hdri>(file);
+          }
+        }
+        break;
+        case VariantType::AnimRecordPtrMap:
+        {
+          XmlNode* listNode = parent->first_node("List");
+          uint listSize     = 0;
+          ReadAttr(listNode, "size", listSize);
+          AnimRecordPtrMap list;
+          for (uint stateIndx = 0; stateIndx < listSize; stateIndx++)
+          {
+            AnimRecordPtr record = MakeNewPtr<AnimRecord>();
+            XmlNode* elementNode = listNode->first_node(std::to_string(stateIndx).c_str());
+
+            String signalName;
+            ReadAttr(elementNode, "SignalName", signalName);
+            String file = Resource::DeserializeRef(elementNode);
+            if (!file.empty())
+            {
+              file                = AnimationPath(file);
+              record->m_animation = GetAnimationManager()->Create<Animation>(file);
+            }
+            list.insert(std::make_pair(signalName, record));
+          }
+          pVar->m_var = list;
+        }
+        break;
+        case VariantType::SkeletonPtr:
+        {
+          String file = Resource::DeserializeRef(parent);
+          if (file.empty())
+          {
+            pVar->m_var = MakeNewPtr<Skeleton>();
+          }
+          else
+          {
+            file        = SkeletonPath(file);
+            pVar->m_var = GetSkeletonManager()->Create<Skeleton>(file);
+          }
+        }
+        break;
+        case VariantType::VariantCallback:
+          break;
+        case VariantType::MultiChoice:
+        {
+          pVar->m_var       = MultiChoiceVariant();
+
+          XmlNode* listNode = parent->first_node("List");
+          uint listSize     = 0;
+          ReadAttr(listNode, "size", listSize);
+
+          uint currentValIndex = 0;
+          XmlNode* currValNode = listNode->first_node("CurrVal");
+          ReadAttr(currValNode, XmlParamterValAttr.c_str(), currentValIndex);
+          pVar->GetVar<MultiChoiceVariant>().CurrentVal = currentValIndex;
+
+          for (uint i = 0; i < listSize; ++i)
+          {
+            XmlNode* currIndexNode = listNode->first_node(std::to_string(i).c_str());
+            int valType            = 0;
+            String valName;
+            ReadAttr(currIndexNode, "valType", valType);
+            ReadAttr(currIndexNode, "valName", valName);
+            ParameterVariant p;
+            p.m_type = (VariantType) valType;
+            p.m_name = valName;
+            deserializeDataFn(currIndexNode, &p);
+
+            pVar->GetVar<MultiChoiceVariant>().Choices.push_back(std::move(p));
+          }
+        }
+        break;
+        default:
+          assert(false && "Invalid type.");
+          break;
       }
     };
 

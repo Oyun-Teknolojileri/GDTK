@@ -39,9 +39,9 @@ namespace ToolKit
     constexpr uint UboBindingFor(uint glSlot) { return glSlot + kUboBindingBase; }
 
     /** Per-draw dynamic UBO binding. Offset travels via vkCmdBindDescriptorSets' dynamicOffset. */
-    constexpr uint kPerDrawUboBinding   = UboBindingFor(2); // = 34
+    constexpr uint kPerDrawUboBinding = UboBindingFor(2); // = 34
 
-    constexpr uint kMaxBindings         = 64;
+    constexpr uint kMaxBindings       = 64;
 
   } // namespace VulkanBindings
 

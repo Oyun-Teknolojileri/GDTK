@@ -18,25 +18,42 @@ namespace ToolKit
   {
     switch (format)
     {
-      case GraphicTypes::FormatR8:                return VK_FORMAT_R8_UNORM;
-      case GraphicTypes::FormatRG8:               return VK_FORMAT_R8G8_UNORM;
-      case GraphicTypes::FormatRGB8:              return VK_FORMAT_R8G8B8_UNORM;
+      case GraphicTypes::FormatR8:
+        return VK_FORMAT_R8_UNORM;
+      case GraphicTypes::FormatRG8:
+        return VK_FORMAT_R8G8_UNORM;
+      case GraphicTypes::FormatRGB8:
+        return VK_FORMAT_R8G8B8_UNORM;
       case GraphicTypes::FormatRGBA8:
-      case GraphicTypes::FormatRGBA:              return VK_FORMAT_R8G8B8A8_UNORM;
-      case GraphicTypes::FormatSRGB8_A8:          return VK_FORMAT_R8G8B8A8_SRGB;
-      case GraphicTypes::FormatR16F:              return VK_FORMAT_R16_SFLOAT;
-      case GraphicTypes::FormatRG16F:             return VK_FORMAT_R16G16_SFLOAT;
-      case GraphicTypes::FormatRGB16F:            return VK_FORMAT_R16G16B16_SFLOAT;
-      case GraphicTypes::FormatRGBA16F:           return VK_FORMAT_R16G16B16A16_SFLOAT;
-      case GraphicTypes::FormatR32F:              return VK_FORMAT_R32_SFLOAT;
-      case GraphicTypes::FormatRG32F:             return VK_FORMAT_R32G32_SFLOAT;
-      case GraphicTypes::FormatRGB32F:            return VK_FORMAT_R32G32B32_SFLOAT;
-      case GraphicTypes::FormatRGBA32F:           return VK_FORMAT_R32G32B32A32_SFLOAT;
-      case GraphicTypes::FormatR16SNorm:          return VK_FORMAT_R16_SNORM;
+      case GraphicTypes::FormatRGBA:
+        return VK_FORMAT_R8G8B8A8_UNORM;
+      case GraphicTypes::FormatSRGB8_A8:
+        return VK_FORMAT_R8G8B8A8_SRGB;
+      case GraphicTypes::FormatR16F:
+        return VK_FORMAT_R16_SFLOAT;
+      case GraphicTypes::FormatRG16F:
+        return VK_FORMAT_R16G16_SFLOAT;
+      case GraphicTypes::FormatRGB16F:
+        return VK_FORMAT_R16G16B16_SFLOAT;
+      case GraphicTypes::FormatRGBA16F:
+        return VK_FORMAT_R16G16B16A16_SFLOAT;
+      case GraphicTypes::FormatR32F:
+        return VK_FORMAT_R32_SFLOAT;
+      case GraphicTypes::FormatRG32F:
+        return VK_FORMAT_R32G32_SFLOAT;
+      case GraphicTypes::FormatRGB32F:
+        return VK_FORMAT_R32G32B32_SFLOAT;
+      case GraphicTypes::FormatRGBA32F:
+        return VK_FORMAT_R32G32B32A32_SFLOAT;
+      case GraphicTypes::FormatR16SNorm:
+        return VK_FORMAT_R16_SNORM;
       // D32_SFLOAT — wider support + better precision than X8_D24_UNORM_PACK32.
-      case GraphicTypes::FormatDepth24:           return VK_FORMAT_D32_SFLOAT;
-      case GraphicTypes::FormatDepth24Stencil8:   return VK_FORMAT_D24_UNORM_S8_UINT;
-      default:                                    return VK_FORMAT_UNDEFINED;
+      case GraphicTypes::FormatDepth24:
+        return VK_FORMAT_D32_SFLOAT;
+      case GraphicTypes::FormatDepth24Stencil8:
+        return VK_FORMAT_D24_UNORM_S8_UINT;
+      default:
+        return VK_FORMAT_UNDEFINED;
     }
   }
 
@@ -77,7 +94,7 @@ namespace ToolKit
       return;
     }
 
-    VkDevice device       = context->GetDevice();
+    VkDevice device        = context->GetDevice();
     VmaAllocator allocator = context->GetAllocator();
 
     if (sampler != VK_NULL_HANDLE)
@@ -147,7 +164,7 @@ namespace ToolKit
     {
       return;
     }
-    VkDevice device = context->GetDevice();
+    VkDevice device  = context->GetDevice();
 
     auto releaseSlot = [device](Slot& s)
     {

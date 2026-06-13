@@ -298,7 +298,7 @@ namespace ToolKit
         {
           GetRenderSystem()->AddRenderTask({[self](Renderer* renderer) -> void
                                             {
-                                               if (SkyPtr sky = self.lock())
+                                              if (SkyPtr sky = self.lock())
                                               {
                                                 if (HdriPtr hdr = sky->GetHdri())
                                                 {

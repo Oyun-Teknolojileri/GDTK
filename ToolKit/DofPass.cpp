@@ -71,8 +71,8 @@ namespace ToolKit
     m_passDataBuffer.m_data.pixelSizeAndPad = Vec4(1.0f / float(size.x), 1.0f / float(size.y), 0.0f, 0.0f);
     m_passDataBuffer.m_data.focusAndBlur    = Vec4(m_params.focusPoint, m_params.focusScale, 5.0f, blurRadiusScale);
 
-    m_quadPass->m_params.blendFunc        = BlendFunction::NONE;
-    m_quadPass->m_params.clearFrameBuffer = GraphicBitFields::None;
+    m_quadPass->m_params.blendFunc          = BlendFunction::NONE;
+    m_quadPass->m_params.clearFrameBuffer   = GraphicBitFields::None;
     m_quadPass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_params.ColorRt);
   }
 

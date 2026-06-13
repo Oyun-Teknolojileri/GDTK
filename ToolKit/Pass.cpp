@@ -54,17 +54,17 @@ namespace ToolKit
   {
     struct EntityRenderCache
     {
-      Entity* entity = nullptr;
-      MeshComponent* meshComp = nullptr;
-      MaterialComponent* matComp = nullptr;
-      SkeletonComponent* skelComp = nullptr;
+      Entity* entity                   = nullptr;
+      MeshComponent* meshComp          = nullptr;
+      MaterialComponent* matComp       = nullptr;
+      SkeletonComponent* skelComp      = nullptr;
       const MeshRawPtrArray* allMeshes = nullptr;
-      MaterialPtrArray* materialList = nullptr;
+      MaterialPtrArray* materialList   = nullptr;
       Mat4 worldTransform;
       BoundingBox bbox;
-      bool cullFlip = false;
+      bool cullFlip     = false;
       bool shadowCaster = true;
-      bool hasAnimData = false;
+      bool hasAnimData  = false;
       AnimData animData;
     };
 
@@ -90,7 +90,7 @@ namespace ToolKit
       meshComp->Init(false);
 
       const MeshPtr& parentMesh = meshComp->GetMeshVal();
-      int meshCount = parentMesh->GetMeshCount();
+      int meshCount             = parentMesh->GetMeshCount();
       if (meshCount == 0)
         continue;
 
@@ -98,24 +98,24 @@ namespace ToolKit
       size += meshCount;
 
       EntityRenderCache rd;
-      rd.entity = ntt;
-      rd.meshComp = meshComp;
-      rd.allMeshes = &parentMesh->GetAllMeshes();
+      rd.entity         = ntt;
+      rd.meshComp       = meshComp;
+      rd.allMeshes      = &parentMesh->GetAllMeshes();
       rd.worldTransform = ntt->m_node->GetTransform();
-      rd.bbox = ntt->GetBoundingBox(true);
-      rd.cullFlip = ntt->m_node->RequireCullFlip();
-      rd.shadowCaster = meshComp->GetCastShadowVal();
+      rd.bbox           = ntt->GetBoundingBox(true);
+      rd.cullFlip       = ntt->m_node->RequireCullFlip();
+      rd.shadowCaster   = meshComp->GetCastShadowVal();
 
       if (MaterialComponent* matComp = ntt->GetComponentFast<MaterialComponent>())
       {
-        rd.matComp = matComp;
+        rd.matComp      = matComp;
         rd.materialList = &matComp->GetMaterialList();
       }
 
       if (SkeletonComponent* skComp = ntt->GetComponentFast<SkeletonComponent>())
       {
-        rd.skelComp = skComp;
-        rd.animData = skComp->GetAnimData();
+        rd.skelComp    = skComp;
+        rd.animData    = skComp->GetAnimData();
         rd.hasAnimData = true;
       }
 
@@ -155,20 +155,20 @@ namespace ToolKit
                   [&](size_t nttIndex)
                   {
                     const EntityRenderCache& rd = cache[nttIndex];
-                    Entity* ntt = rd.entity;
+                    Entity* ntt                 = rd.entity;
 
-                    const int meshCount = static_cast<int>(rd.allMeshes->size());
-                    const int jobBase = submeshIndexLookup[nttIndex];
+                    const int meshCount         = static_cast<int>(rd.allMeshes->size());
+                    const int jobBase           = submeshIndexLookup[nttIndex];
 
                     // Lights and environment are identical for all submeshes of the same entity.
-                    RenderJob& firstJob = jobArray[jobBase];
-                    firstJob.BoundingBox = rd.bbox;
+                    RenderJob& firstJob         = jobArray[jobBase];
+                    firstJob.BoundingBox        = rd.bbox;
                     AssignLight(firstJob, lights, dirLightEndIndex);
                     AssignEnvironment(firstJob, environments);
 
                     for (int subMeshIndx = 0; subMeshIndx < meshCount; subMeshIndx++)
                     {
-                      Mesh* mesh = (*rd.allMeshes)[subMeshIndx];
+                      Mesh* mesh           = (*rd.allMeshes)[subMeshIndx];
                       MaterialPtr material = nullptr;
 
                       if (rd.materialList != nullptr && subMeshIndx < (int) rd.materialList->size())
@@ -189,14 +189,14 @@ namespace ToolKit
                                ntt->GetNameVal().c_str());
                       }
 
-                      RenderJob& job = jobArray[jobBase + subMeshIndx];
-                      job.Entity = ntt;
-                      job.Mesh = mesh;
-                      job.Material = material.get();
+                      RenderJob& job      = jobArray[jobBase + subMeshIndx];
+                      job.Entity          = ntt;
+                      job.Mesh            = mesh;
+                      job.Material        = material.get();
                       job.requireCullFlip = rd.cullFlip;
-                      job.ShadowCaster = rd.shadowCaster;
-                      job.WorldTransform = rd.worldTransform;
-                      job.BoundingBox = rd.bbox;
+                      job.ShadowCaster    = rd.shadowCaster;
+                      job.WorldTransform  = rd.worldTransform;
+                      job.BoundingBox     = rd.bbox;
 
                       if (rd.hasAnimData)
                       {
@@ -205,8 +205,8 @@ namespace ToolKit
 
                       if (subMeshIndx > 0)
                       {
-                        job.lights = firstJob.lights;
-                        job.EnvironmentVolume = firstJob.EnvironmentVolume;
+                        job.lights                     = firstJob.lights;
+                        job.EnvironmentVolume          = firstJob.EnvironmentVolume;
                         job.SecondaryEnvironmentVolume = firstJob.SecondaryEnvironmentVolume;
                       }
                     }

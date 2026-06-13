@@ -7,7 +7,6 @@
 
 #include "Mesh.h"
 
-#include "Common/base64.h"
 #include "FileManager.h"
 #include "IGraphicsBackend.h"
 #include "Material.h"
@@ -23,6 +22,7 @@
 #include "Threads.h"
 #include "ToolKit.h"
 #include "Util.h"
+#include "utilities/base64.h"
 
 #include "DebugNew.h"
 
@@ -30,7 +30,6 @@ static constexpr bool SERIALIZE_MESH_AS_BINARY = true;
 
 namespace ToolKit
 {
-
 
   // Mesh
   //////////////////////////////////////////
@@ -163,7 +162,10 @@ namespace ToolKit
 
   int Mesh::GetVertexSize() const { return sizeof(Vertex); }
 
-  const void* Mesh::GetClientVertexData() const { return m_clientSideVertices.empty() ? nullptr : m_clientSideVertices.data(); }
+  const void* Mesh::GetClientVertexData() const
+  {
+    return m_clientSideVertices.empty() ? nullptr : m_clientSideVertices.data();
+  }
 
   size_t Mesh::GetClientVertexCount() const { return m_clientSideVertices.size(); }
 
@@ -734,7 +736,10 @@ namespace ToolKit
 
   int SkinMesh::GetVertexSize() const { return sizeof(SkinVertex); }
 
-  const void* SkinMesh::GetClientVertexData() const { return m_clientSideVertices.empty() ? nullptr : m_clientSideVertices.data(); }
+  const void* SkinMesh::GetClientVertexData() const
+  {
+    return m_clientSideVertices.empty() ? nullptr : m_clientSideVertices.data();
+  }
 
   size_t SkinMesh::GetClientVertexCount() const { return m_clientSideVertices.size(); }
 
@@ -742,10 +747,7 @@ namespace ToolKit
 
   bool SkinMesh::IsSkinned() const { return true; }
 
-  void SkinMesh::InitVertices(bool flush)
-  {
-    Mesh::InitVertices(flush);
-  }
+  void SkinMesh::InitVertices(bool flush) { Mesh::InitVertices(flush); }
 
   void SkinMesh::CopyTo(Resource* other)
   {

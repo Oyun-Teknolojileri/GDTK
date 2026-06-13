@@ -77,21 +77,21 @@ namespace ToolKit
       // Rotate according to axis label and set origin axis line colors
       switch (axis)
       {
-      case AxisLabel::XY:
-        m_node->SetOrientation(glm::angleAxis(glm::radians(90.0f), Z_AXIS) * RotationTo(X_AXIS, Y_AXIS));
-        m_horizontalAxisColor = g_gridAxisRed;
-        m_verticalAxisColor   = g_gridAxisGreen;
-        break;
-      case AxisLabel::ZX:
-        m_node->SetOrientation(RotationTo(Z_AXIS, Y_AXIS));
-        m_horizontalAxisColor = g_gridAxisRed;
-        m_verticalAxisColor   = g_gridAxisBlue;
-        break;
-      case AxisLabel::YZ:
-        m_node->SetOrientation(glm::angleAxis(glm::radians(90.0f), Y_AXIS) * RotationTo(X_AXIS, Y_AXIS));
-        m_horizontalAxisColor = g_gridAxisGreen;
-        m_verticalAxisColor   = g_gridAxisBlue;
-        break;
+        case AxisLabel::XY:
+          m_node->SetOrientation(glm::angleAxis(glm::radians(90.0f), Z_AXIS) * RotationTo(X_AXIS, Y_AXIS));
+          m_horizontalAxisColor = g_gridAxisRed;
+          m_verticalAxisColor   = g_gridAxisGreen;
+          break;
+        case AxisLabel::ZX:
+          m_node->SetOrientation(RotationTo(Z_AXIS, Y_AXIS));
+          m_horizontalAxisColor = g_gridAxisRed;
+          m_verticalAxisColor   = g_gridAxisBlue;
+          break;
+        case AxisLabel::YZ:
+          m_node->SetOrientation(glm::angleAxis(glm::radians(90.0f), Y_AXIS) * RotationTo(X_AXIS, Y_AXIS));
+          m_horizontalAxisColor = g_gridAxisGreen;
+          m_verticalAxisColor   = g_gridAxisBlue;
+          break;
       }
 
       // Get main mesh
@@ -203,9 +203,9 @@ namespace ToolKit
       // Create grid material.
       if (!GetMaterialManager()->Exist(g_gridMaterialName))
       {
-        MaterialPtr unlitMaterial  = GetMaterialManager()->GetCopyOfUnlitMaterial();
+        MaterialPtr unlitMaterial         = GetMaterialManager()->GetCopyOfUnlitMaterial();
 
-        MaterialPtr shaderMaterial = MakeNewPtr<Material>();
+        MaterialPtr shaderMaterial        = MakeNewPtr<Material>();
         // Inherit the active rasterizer state from the unlit template, then override blend/cull.
         shaderMaterial->cullMode          = unlitMaterial->cullMode;
         shaderMaterial->blendFunction     = unlitMaterial->blendFunction;
@@ -215,7 +215,7 @@ namespace ToolKit
 
         shaderMaterial->blendFunction     = BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA;
         shaderMaterial->cullMode          = CullingType::TwoSided;
-        ShaderPtr vert = GetShaderManager()->Create<Shader>(ShaderPath("gridVertex.shader", true));
+        ShaderPtr vert                    = GetShaderManager()->Create<Shader>(ShaderPath("gridVertex.shader", true));
         shaderMaterial->SetVertexShaderVal(vert);
 
         // Custom creation & shader management.
@@ -241,10 +241,10 @@ namespace ToolKit
         m_dataBuffer.Init(7);
         m_dataBufferInitialized = true;
       }
-      m_dataBuffer.m_data.cellAndLine          = Vec4(m_gridCellSize, m_maxLinePixelCount, 0.0f, 0.0f);
-      m_dataBuffer.m_data.horizontalAxisColor  = Vec4(m_horizontalAxisColor, 0.0f);
-      m_dataBuffer.m_data.verticalAxisColor    = Vec4(m_verticalAxisColor, 0.0f);
-      m_dataBuffer.m_data.is2DAndPad           = IVec4(m_is2d ? 1 : 0, 0, 0, 0);
+      m_dataBuffer.m_data.cellAndLine         = Vec4(m_gridCellSize, m_maxLinePixelCount, 0.0f, 0.0f);
+      m_dataBuffer.m_data.horizontalAxisColor = Vec4(m_horizontalAxisColor, 0.0f);
+      m_dataBuffer.m_data.verticalAxisColor   = Vec4(m_verticalAxisColor, 0.0f);
+      m_dataBuffer.m_data.is2DAndPad          = IVec4(m_is2d ? 1 : 0, 0, 0, 0);
       m_dataBuffer.Invalidate();
       m_dataBuffer.Map();
     }

@@ -31,36 +31,36 @@ namespace ToolKit
   {
     static constexpr int kMaxAttribs = 8;
 
-    VkRenderPass renderPass    = VK_NULL_HANDLE;
-    VkShaderModule vert        = VK_NULL_HANDLE;
-    VkShaderModule frag        = VK_NULL_HANDLE;
+    VkRenderPass renderPass          = VK_NULL_HANDLE;
+    VkShaderModule vert              = VK_NULL_HANDLE;
+    VkShaderModule frag              = VK_NULL_HANDLE;
 
     // Vertex input (single binding).
-    uint vertexStride      = 0;
-    uint attributeCount    = 0;
-    std::array<VkVertexInputAttributeDescription, kMaxAttribs> attributes{};
+    uint vertexStride                = 0;
+    uint attributeCount              = 0;
+    std::array<VkVertexInputAttributeDescription, kMaxAttribs> attributes {};
 
     // Raster + primitive.
-    VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-    VkCullModeFlags cullMode     = VK_CULL_MODE_NONE;
-    VkFrontFace frontFace        = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-    VkBool32 depthClampEnable    = VK_FALSE;
+    VkPrimitiveTopology topology      = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    VkCullModeFlags cullMode          = VK_CULL_MODE_NONE;
+    VkFrontFace frontFace             = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    VkBool32 depthClampEnable         = VK_FALSE;
 
     // Depth.
-    VkBool32 depthTestEnable   = VK_FALSE;
-    VkBool32 depthWriteEnable  = VK_FALSE;
-    VkCompareOp depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+    VkBool32 depthTestEnable          = VK_FALSE;
+    VkBool32 depthWriteEnable         = VK_FALSE;
+    VkCompareOp depthCompareOp        = VK_COMPARE_OP_LESS_OR_EQUAL;
 
     // Stencil. When stencilTestEnable is false the op fields are ignored by the driver.
-    VkBool32     stencilTestEnable = VK_FALSE;
-    VkStencilOp  stencilFailOp     = VK_STENCIL_OP_KEEP;
-    VkStencilOp  stencilPassOp     = VK_STENCIL_OP_KEEP;
-    VkStencilOp  stencilDepthFailOp= VK_STENCIL_OP_KEEP;
-    VkCompareOp  stencilCompareOp  = VK_COMPARE_OP_ALWAYS;
-    uint32_t     stencilReference  = 1;
+    VkBool32 stencilTestEnable        = VK_FALSE;
+    VkStencilOp stencilFailOp         = VK_STENCIL_OP_KEEP;
+    VkStencilOp stencilPassOp         = VK_STENCIL_OP_KEEP;
+    VkStencilOp stencilDepthFailOp    = VK_STENCIL_OP_KEEP;
+    VkCompareOp stencilCompareOp      = VK_COMPARE_OP_ALWAYS;
+    uint32_t stencilReference         = 1;
 
     // Color blend (single attachment state replicated across colorAttachmentCount).
-    VkBool32 blendEnable           = VK_FALSE;
+    VkBool32 blendEnable              = VK_FALSE;
     VkBlendFactor srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
     VkBlendFactor dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
     VkBlendOp colorBlendOp            = VK_BLEND_OP_ADD;
@@ -70,8 +70,8 @@ namespace ToolKit
     uint colorAttachmentCount         = 1;
 
     /** 0 = all channels masked. */
-    VkColorComponentFlags colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-                                           VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    VkColorComponentFlags colorWriteMask =
+        VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 
     /** Subpass sample count. Drives pMultisampleState.rasterizationSamples and participates in
         the cache key so MSAA / non-MSAA copies of the same recipe land in distinct slots. */
@@ -116,9 +116,10 @@ namespace ToolKit
    private:
     struct Entry
     {
-      VkPipeline pipeline       = VK_NULL_HANDLE;
-      VkPipelineLayout layout   = VK_NULL_HANDLE;
+      VkPipeline pipeline     = VK_NULL_HANDLE;
+      VkPipelineLayout layout = VK_NULL_HANDLE;
     };
+
     std::unordered_map<VulkanPipelineDesc, Entry, VulkanPipelineDescHash> m_pipelines;
   };
 

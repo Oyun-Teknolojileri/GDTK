@@ -33,9 +33,9 @@ namespace ToolKit
     // Opaque + alpha-masked passive defaults. Lequal so a z-prepassed depth buffer keeps
     // exactly the visible fragments; depth write on so non-prepassed scenes still build
     // a correct z buffer.
-    m_opaquePassState.depthFunction     = CompareFunctions::FuncLequal;
-    m_opaquePassState.depthWriteEnabled = true;
-    m_opaquePassState.depthTestEnabled  = true;
+    m_opaquePassState.depthFunction          = CompareFunctions::FuncLequal;
+    m_opaquePassState.depthWriteEnabled      = true;
+    m_opaquePassState.depthTestEnabled       = true;
 
     // Translucent passive defaults. Lequal matches the opaque path; depth write off so
     // back-to-front draws don't self-occlude.
@@ -160,7 +160,7 @@ namespace ToolKit
     {
       renderer->SetPassState(m_translucentPassState);
 
-      RenderState twoSidedState = m_translucentPassState;
+      RenderState twoSidedState  = m_translucentPassState;
       twoSidedState.cullOverride = true;
 
       for (RenderJobArray::iterator job = begin; job != end; job++)
