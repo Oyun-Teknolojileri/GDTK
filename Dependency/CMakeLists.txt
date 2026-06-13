@@ -50,6 +50,31 @@ if (NOT ${SKIP_ASSIMP})
     set(ASSIMP_ARCHIVE_OUTPUT_DIRECTORY "${TK_DEPENDECY_OUT_DIR}" CACHE STRING "" FORCE)
     
     add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/assimp ${CMAKE_CURRENT_LIST_DIR}/Intermediate/${TK_PLATFORM}/assimp)
+
+    # ---- ToolKit: stabilize assimp output names ----
+    # Upstream assimp injects a compiler/toolset suffix (e.g. "-vc143-mt") into
+    # LIBRARY_SUFFIX, which lands in the final library name (assimp-vc143-mt.lib
+    # / assimpd-vc143-mt.lib). That breaks downstream projects whenever the
+    # MSVC toolset changes (vc142 <-> vc143 <-> vc14x). The Import project links
+    # against the unsuffixed "assimp.lib" / "assimpd.lib", so we override the
+    # output name here, on the wrapper level only — assimp's own CMakeLists
+    # files are NOT modified. Platform-specific prefixes/suffixes (.lib/.dll on
+    # Windows, .a/.so + SONAME on Linux/macOS, .a/.bc on Emscripten) are still
+    # applied by CMake automatically; we only strip the *internal* suffix.
+    if(TARGET assimp)
+        # Force a flat name: assimp (Release) / assimpd (Debug, via CMAKE_DEBUG_POSTFIX).
+        set_target_properties(assimp PROPERTIES
+            OUTPUT_NAME              "assimp"
+            ARCHIVE_OUTPUT_NAME      "assimp"
+            LIBRARY_OUTPUT_NAME      "assimp"
+            RUNTIME_OUTPUT_NAME      "assimp"
+            # Reuse the same name for PDB / versioned outputs to keep them
+            # discoverable next to the .lib/.dll. SONAME on POSIX is left
+            # intact via VERSION/SOVERSION already set by assimp.
+            COMPILE_PDB_NAME         "assimp"
+            COMPILE_PDB_NAME_DEBUG   "assimpd"
+        )
+    endif()
 endif()
 
 #---- SDL2 ----#
