@@ -355,6 +355,10 @@ namespace ToolKit
 
     void SetTexture(ubyte slotIndx, TexturePtr texture);
 
+    /** Bind a pass-specific uniform buffer (custom slot, not a reserved global UBO).
+     *  Preferred entry point for new code — PassRequirements::customUbos drives this. */
+    void BindUniformBuffer(int slot, UniformBuffer* ubo);
+
     /** Binds a texture to the slot declared for the given semantic sampler name in the
      *  currently bound program. No-op if the program does not declare that sampler. */
     void SetTexture(const char* semanticName, TexturePtr texture);

@@ -43,7 +43,7 @@ namespace ToolKit
 
     Renderer* renderer = GetRenderer();
 
-    // Lazy-init the pass UBO on first render — backend is alive by now.
+    // Lazy-init the pass UBO on first render ï¿½ backend is alive by now.
     if (!m_passDataBufferInitialized)
     {
       m_passDataBuffer.Init(7);
@@ -67,7 +67,7 @@ namespace ToolKit
           Vec4((float) mainRes.x, (float) mainRes.y, m_params.minThreshold, 0.0f);
       pushUbo();
 
-      renderer->SetTexture("s_diffuseColor", mainRt);
+      renderer->SetTexture((ubyte) 0, mainRt);
       m_pass->m_params.frameBuffer      = m_resampleFrameBuffers[0];
       m_pass->m_params.blendFunc        = BlendFunction::NONE;
       m_pass->m_params.clearFrameBuffer = GraphicBitFields::None;
@@ -99,7 +99,7 @@ namespace ToolKit
             Vec4(prevRes.x, prevRes.y, m_passDataBuffer.m_data.downsampleParams.z, 0.0f);
         pushUbo();
 
-        renderer->SetTexture("s_diffuseColor", prevRt);
+        renderer->SetTexture((ubyte) 0, prevRt);
 
         // Set pass parameters
         m_pass->m_params.clearFrameBuffer = GraphicBitFields::None;
@@ -123,7 +123,7 @@ namespace ToolKit
 
         FramebufferPtr prevFramebuffer = m_resampleFrameBuffers[i];
         RenderTargetPtr prevRt         = prevFramebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
-        renderer->SetTexture("s_diffuseColor", prevRt);
+        renderer->SetTexture((ubyte) 0, prevRt);
 
         m_pass->m_params.blendFunc        = BlendFunction::ONE_TO_ONE;
         m_pass->m_params.clearFrameBuffer = GraphicBitFields::None;
@@ -139,7 +139,7 @@ namespace ToolKit
 
       FramebufferPtr prevFramebuffer = m_resampleFrameBuffers[0];
       RenderTargetPtr prevRt         = prevFramebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
-      renderer->SetTexture("s_diffuseColor", prevRt);
+      renderer->SetTexture((ubyte) 0, prevRt);
 
       m_pass->m_params.blendFunc               = BlendFunction::ONE_TO_ONE;
       m_pass->m_params.clearFrameBuffer        = GraphicBitFields::None;

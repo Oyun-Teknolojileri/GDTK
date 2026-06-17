@@ -34,23 +34,16 @@ namespace ToolKit
 
   void FullQuadPass::Render()
   {
+    // Pure draw call. State was bound by ApplyRequirements in PreRender.
     Renderer* renderer = GetRenderer();
-    renderer->SetFramebuffer(m_params.frameBuffer, m_params.clearFrameBuffer);
-
     RenderJobArray jobs;
     RenderJobProcessor::CreateRenderJobs(jobs, m_quad);
-
-    // Stencil op is now a pass parameter rather than smuggled through the material.
-    m_passState.stencilOperation = m_params.stencilOp;
-    renderer->SetPassState(m_passState);
-
     renderer->Render(jobs);
   }
 
   void FullQuadPass::PreRender()
   {
     // Gpu Program should be bound before calling FulQuadPass Render
-
     Pass::PreRender();
     Renderer* renderer  = GetRenderer();
 
@@ -61,6 +54,42 @@ namespace ToolKit
 
     m_material->blendFunction = m_params.blendFunc;
     SetFragmentShader(m_material->GetFragmentShaderVal(), renderer);
+
+    // Build the declarative requirements for the upcoming draw. Only fill in fields the
+    // subclass didn't already populate — caller (e.g. SSAOPass) injects customUbos /
+    // semanticTextures through m_requirements before RenderSubPass runs.
+    GatherRequirements(m_requirements);
+
+    // Apply: program/framebuffer/state/UBOs/textures bind in correct order.
+    ApplyRequirements(renderer);
+  }
+
+  void FullQuadPass::GatherRequirements(PassRequirements& reqs)
+  {
+    // Default merge: pull fragment shader + framebuffer + state from the quad's own state.
+    // If the caller (outer pass) already set fragmentShader/program/frameBuffer/clearBits,
+    // don't stomp them.
+    if (reqs.fragmentShader == nullptr)
+    {
+      reqs.fragmentShader = m_material->GetFragmentShaderVal();
+    }
+    if (reqs.frameBuffer == nullptr)
+    {
+      reqs.frameBuffer = m_params.frameBuffer;
+      reqs.clearBits   = m_params.clearFrameBuffer;
+    }
+
+    // Re-derive passive state from defaults + the caller's stencil op. Always overlay our
+    // depth-off / FuncAlways defaults so a caller can opt out per-field by changing
+    // m_passState first.
+    m_passState.stencilOperation = m_params.stencilOp;
+    reqs.passState               = m_passState;
+
+    // Inherit any textures the outer pass pushed into the material (e.g. diffuse slot 0).
+    if (m_material->GetDiffuseTextureVal() != nullptr && reqs.textures.find(0) == reqs.textures.end())
+    {
+      reqs.textures[0] = m_material->GetDiffuseTextureVal();
+    }
   }
 
   void FullQuadPass::PostRender()

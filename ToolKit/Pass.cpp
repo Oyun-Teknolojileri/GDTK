@@ -10,11 +10,13 @@
 #include "AABBOverrideComponent.h"
 #include "Camera.h"
 #include "DirectionComponent.h"
+#include "GpuProgram.h"
 #include "Material.h"
 #include "MathUtil.h"
 #include "Mesh.h"
 #include "Renderer.h"
 #include "Scene.h"
+#include "Shader.h"
 #include "Threads.h"
 #include "ToolKit.h"
 #include "Viewport.h"
@@ -39,6 +41,97 @@ namespace ToolKit
     pass->PreRender();
     pass->Render();
     pass->PostRender();
+  }
+
+  void Pass::GatherRequirements(PassRequirements& reqs)
+  {
+    // Default: no-op. Subclasses override to populate state specific to their draw.
+    (void) reqs;
+  }
+
+  void Pass::ApplyRequirements(Renderer* renderer)
+  {
+    // Step 1: shader defines (before program build, so defines are baked into SPIR-V/GLSL).
+    if (m_requirements.fragmentShader && !m_requirements.defines.empty())
+    {
+      for (const auto& [key, val] : m_requirements.defines)
+      {
+        m_requirements.fragmentShader->SetDefine(key, val);
+      }
+    }
+
+    // Step 2: program — use the pre-built one or create from shaders via manager.
+    GpuProgramPtr program = m_requirements.program;
+    if (program == nullptr)
+    {
+      ShaderPtr frag = m_requirements.fragmentShader;
+      assert(frag != nullptr && "PassRequirements must supply a fragment shader or a program.");
+
+      // Vertex shader is owned by the material/quad pass. Pull it from m_program if set
+      // (subclass convention) or use the default fullQuad vert.
+      ShaderPtr vert = nullptr;
+      if (m_program != nullptr && !m_program->m_shaders.empty())
+      {
+        vert = m_program->m_shaders.front();
+      }
+
+      if (vert == nullptr)
+      {
+        vert = GetShaderManager()->Create<Shader>(ShaderPath("fullQuadVert.shader", true));
+      }
+
+      program = renderer->GetGpuProgramManager()->CreateProgram(vert, frag);
+    }
+    m_program = program;
+    renderer->BindProgram(program);
+
+    // Step 3: framebuffer + clear.
+    if (m_requirements.frameBuffer != nullptr)
+    {
+      renderer->SetFramebuffer(m_requirements.frameBuffer, m_requirements.clearBits, m_requirements.clearColor);
+    }
+
+    // Step 4: passive pipeline state.
+    renderer->SetPassState(m_requirements.passState);
+
+    // Step 5: scissor (optional).
+    if (m_requirements.scissorEnabled)
+    {
+      renderer->SetScissor(m_requirements.scissor.x,
+                           m_requirements.scissor.y,
+                           m_requirements.scissor.z,
+                           m_requirements.scissor.w);
+    }
+
+    // Step 6: custom UBOs (pass-specific). Mark m_invalid on backend side, then Map.
+    for (auto& [slot, ubo] : m_requirements.customUbos)
+    {
+      if (ubo != nullptr)
+      {
+        renderer->BindUniformBuffer(slot, ubo);
+      }
+    }
+
+    // Step 7a: textures bound by slot number directly.
+    for (auto& [slot, tex] : m_requirements.textures)
+    {
+      if (tex != nullptr)
+      {
+        renderer->SetTexture((ubyte) slot, tex);
+      }
+    }
+
+    // Step 7b: textures bound by semantic name. Program is already bound — slot lookup
+    // is guaranteed to succeed. This is the path that fixes the SSAO bug: previously
+    // SetTexture("s_normalDepth", ...) was called BEFORE the program was bound and
+    // silently no-op'd because m_currentProgram was null.
+    for (auto& [name, tex] : m_requirements.semanticTextures)
+    {
+      if (tex != nullptr)
+      {
+        renderer->SetTexture(name.c_str(), tex);
+      }
+    }
   }
 
   Renderer* Pass::GetRenderer() { return m_renderer; }

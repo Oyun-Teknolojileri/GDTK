@@ -41,6 +41,10 @@ namespace ToolKit
      */
     void SetFragmentShader(ShaderPtr fragmentShader, Renderer* renderer);
 
+    /** Populate m_requirements from m_params + the assigned fragment shader.
+     *  The default RenderState (depth off, FuncAlways) lives here too. */
+    void GatherRequirements(PassRequirements& reqs) override;
+
    public:
     FullQuadPassParams m_params;
     MaterialPtr m_material = nullptr;

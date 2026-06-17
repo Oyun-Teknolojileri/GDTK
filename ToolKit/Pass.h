@@ -8,13 +8,64 @@
 #pragma once
 
 #include "EnvironmentComponent.h"
+#include "RenderState.h"
 #include "Renderer.h"
+#include "UniformBuffer.h"
+
+#include <unordered_map>
 
 namespace ToolKit
 {
 
   typedef std::shared_ptr<class Pass> PassPtr;
   typedef std::vector<PassPtr> PassPtrArray;
+
+  /**
+   * Declarative description of every piece of GPU state a pass needs before its draw call.
+   * Passes populate this struct in Setup() (or end of PreRender) and Renderer::ApplyRequirements
+   * binds everything in the correct order:
+   *   1. shader defines / fragment shader
+   *   2. program create + bind
+   *   3. framebuffer + clear
+   *   4. pass RenderState
+   *   5. custom UBOs (pass-specific UBOs)
+   *   6. textures — semantic names are resolved to slots AFTER the program is bound, so
+   *      "program not yet bound" silent no-ops become impossible.
+   *
+   * Render() itself becomes a pure draw call. No texture/program/state mutation inside.
+   */
+  struct TK_API PassRequirements
+  {
+    /** Optional: a specific fragment shader. If null, the program's existing fragment is used. */
+    ShaderPtr fragmentShader = nullptr;
+    /** Optional: a pre-built program. If null, the manager creates one from the pass's
+     *  vertex + fragment shaders. */
+    GpuProgramPtr program    = nullptr;
+
+    /** Slot → texture bindings. Use this when you know the slot number directly. */
+    std::unordered_map<int, TexturePtr> textures;
+    /** Semantic name (e.g. "s_normalDepth") → texture. Resolved to slot after program bind.
+     *  Use this for new code — it's the safe path that makes the SSAO bug class extinct. */
+    std::unordered_map<String, TexturePtr> semanticTextures;
+
+    /** Slot → uniform buffer. Pass-specific UBOs (DoF, Bloom, SSAO, GaussBlur) go here. */
+    std::unordered_map<int, UniformBuffer*> customUbos;
+
+    /** Shader defines applied to the fragment shader before program creation. */
+    std::unordered_map<String, String> defines;
+
+    /** Passive pipeline state (depth test/write, depth func, stencil, color mask, etc.). */
+    RenderState passState;
+
+    /** Framebuffer / viewport / clear. */
+    FramebufferPtr frameBuffer = nullptr;
+    GraphicBitFields clearBits = GraphicBitFields::None;
+    Vec4 clearColor            = Vec4(0.0f);
+
+    /** Optional: scissor rect. If scissorEnabled, SetScissor is called. */
+    bool scissorEnabled        = false;
+    UVec4 scissor              = UVec4(0, 0, 0, 0);
+  };
 
   /** Base Pass class. */
   class TK_API Pass
@@ -23,10 +74,35 @@ namespace ToolKit
     Pass(StringView name);
     virtual ~Pass();
 
+    /**
+     * Pure draw call. Subclasses should NOT mutate GPU state here — populate
+     * m_requirements in Setup()/PreRender() and let ApplyRequirements do the binding.
+     */
     virtual void Render() = 0;
+
+    /** CPU-side prep. Subclasses do most work here: build framebuffers, compute UBOs,
+     *  decide what textures/UBOs to bind, set defines, etc. Ends by populating m_requirements. */
     virtual void PreRender();
+
+    /** Cleanup. */
     virtual void PostRender();
+
+    /** Run a sub-pass. Same PreRender → Render → PostRender lifecycle, with this pass as renderer owner. */
     void RenderSubPass(const PassPtr& pass);
+
+    /** Apply m_requirements to the renderer. Called automatically by RenderPath::Render just
+     *  before the pass's Render() runs. Subclasses can call it manually if they need finer
+     *  control (e.g. SSAO running calc + blur with different state between draws). */
+    void ApplyRequirements(Renderer* renderer);
+
+    /** Subclass hook: extend m_requirements with whatever it needs. Default impl is in Pass.cpp. */
+    virtual void GatherRequirements(PassRequirements& reqs);
+
+    /** Public accessor for the requirements. Lets a parent pass inject custom state into
+     *  a sub-pass without exposing internals. */
+    PassRequirements& GetRequirements() { return m_requirements; }
+
+    const PassRequirements& GetRequirements() const { return m_requirements; }
 
     Renderer* GetRenderer();
     void SetRenderer(Renderer* renderer);
@@ -37,6 +113,10 @@ namespace ToolKit
    protected:
     GpuProgramPtr m_program = nullptr; //!< Program used to draw objects with in the pass.
     StringView m_name; //!< Label that appears in the gpu profile / debug applications (RenderDoc etc...).
+
+    /** Declarative description of what this pass needs at draw time. Populated in
+     *  PreRender()/Setup() and consumed by ApplyRequirements. */
+    PassRequirements m_requirements;
 
    private:
     Renderer* m_renderer = nullptr;

@@ -86,8 +86,6 @@ namespace ToolKit
       return;
     }
 
-    renderer->SetTexture("s_diffuseColor", m_copyTexture);
-
     // Depth source — gbuffer normal+depth is MSAA when the scene runs MSAA, and our depth-sampling
     // shader is sampler2D (single-sample). Use the resolved twin in that case, matching SSAOPass.
     TexturePtr depthTex = m_params.DepthRt;
@@ -95,12 +93,16 @@ namespace ToolKit
     {
       depthTex = m_params.DepthRt->GetResolvedTexture();
     }
-    renderer->SetTexture("s_normalDepth", depthTex);
 
-    // Map UBO into slot 7 immediately before draw — earlier passes (bloom etc.) may have left
-    // a different buffer there. Pattern matches BloomPass / SSAOPass / GaussBlur.
+    // Declarative requirements — slot 0 = color copy, slot 1 = depth. Pass-specific UBO on
+    // slot 7. ApplyRequirements binds them in the right order.
+    m_requirements.textures[0]   = m_copyTexture;
+    m_requirements.textures[1]   = depthTex;
+    m_requirements.customUbos[7] = &m_passDataBuffer.GetBuffer();
+
     m_passDataBuffer.Invalidate();
     m_passDataBuffer.Map();
+    ApplyRequirements(renderer);
     RenderSubPass(m_quadPass);
   }
 

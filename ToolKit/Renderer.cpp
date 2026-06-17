@@ -1154,11 +1154,37 @@ namespace ToolKit
 
   void Renderer::SetTexture(const char* semanticName, TexturePtr texture)
   {
+    // The previous version silently no-op'd when m_currentProgram was null, which is exactly
+    // what hid the SSAO bug: SetTexture("s_normalDepth", ...) ran before the program was
+    // bound and the call vanished. Now we fail loudly — the new entry point is
+    // PassRequirements::semanticTextures, which guarantees program-bind happens first.
     if (m_currentProgram == nullptr)
+    {
+      TK_ERR("Renderer::SetTexture(\"%s\") called with no current program. "
+             "Use PassRequirements::semanticTextures or bind the program first.",
+             semanticName);
       return;
+    }
     int slot = m_currentProgram->GetTextureSlot(semanticName);
-    if (slot != -1)
-      SetTexture((ubyte) slot, texture);
+    if (slot == -1)
+    {
+      TK_WRN("Renderer::SetTexture: current program has no resource named \"%s\".", semanticName);
+      return;
+    }
+    SetTexture((ubyte) slot, texture);
+  }
+
+  void Renderer::BindUniformBuffer(int slot, UniformBuffer* ubo)
+  {
+    assert(ubo != nullptr);
+    assert(ubo->m_slot == slot && "UBO m_slot must match the requested binding slot");
+    if (ubo->m_slot == ReservedUniformBufferSlots::PerDrawData)
+    {
+      // Per-draw UBO is uploaded through SubmitPerDrawData; backend reads it from the
+      // dynamic-offset ring, not from BindUniformBuffer.
+      return;
+    }
+    m_backend->BindUniformBuffer(ubo, slot);
   }
 
   void Renderer::SetShadowAtlas(TexturePtr shadowAtlas) { m_shadowAtlas = shadowAtlas; }

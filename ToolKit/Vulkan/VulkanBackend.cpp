@@ -1377,6 +1377,28 @@ namespace ToolKit
     }
   }
 
+  void VulkanBackend::BindUniformBuffer(UniformBuffer* ub, int slot)
+  {
+    // PassRequirements::customUbos entry point. Caller must keep the UBO's m_slot in sync with
+    // the slot argument — typically the UBO was Init(slot)'d, so we sanity-check and then
+    // route through the same shadow-state update as the name-based path.
+    if (ub == nullptr)
+    {
+      return;
+    }
+    assert(ub->m_slot == slot && "VulkanBackend::BindUniformBuffer: UBO m_slot must match the bind slot");
+    if (slot < 0 || slot >= kMaxUboSlots)
+    {
+      return;
+    }
+    UniformBuffer*& shadowSlot = m_shadow.boundUniforms[slot];
+    if (shadowSlot != ub)
+    {
+      shadowSlot     = ub;
+      m_shadow.dirty = true;
+    }
+  }
+
   // Fills the vertex-input portion of @p out for ToolKit's VertexLayout.
   // Locations: 0=pos(vec3) 1=norm(vec3) 2=tex(vec2) 3=tan(vec4) [SkinMesh: +4=bones, 5=weights]
   static void FillVertexInput(VertexLayout layout, VulkanPipelineDesc& out)

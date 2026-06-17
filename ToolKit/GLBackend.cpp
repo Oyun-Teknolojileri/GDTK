@@ -494,6 +494,20 @@ namespace ToolKit
     (void) ub;
   }
 
+  void GLBackend::BindUniformBuffer(UniformBuffer* ub, int slot)
+  {
+    // GL backend currently picks up UBO updates per-frame in FlushUBO / per-draw in
+    // SubmitPerDrawData using UniformBuffer::m_slot. The slot argument here is checked
+    // against the UBO's own slot for caller-side consistency; the actual bind still
+    // happens lazily when the program is drawn, so we don't need to issue a glBindBuffer
+    // right now. Recording the slot/buffer pair keeps the next flush path happy.
+    assert(ub != nullptr);
+    assert(ub->m_slot == slot && "GLBackend: BindUniformBuffer slot must match UBO::m_slot");
+    // No-op: GL keeps the UBO bound to its slot from the most recent Map(); the descriptor
+    // set isn't a thing here, so there's nothing to push.
+    (void) slot;
+  }
+
   void GLBackend::Draw(const DrawDesc& desc)
   {
     if (desc.mesh == nullptr)

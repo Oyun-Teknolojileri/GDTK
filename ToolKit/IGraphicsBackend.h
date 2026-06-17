@@ -104,6 +104,9 @@ namespace ToolKit
     virtual void SubmitPerDrawData(const void* data, size_t size)                                           = 0;
     virtual void BindTexture(ubyte slot, TexturePtr tex)                                                    = 0;
     virtual void BindUniformBuffer(const String& name, UniformBuffer* ub)                                   = 0;
+    /** Slot-based UBO bind, used by PassRequirements::customUbos. The pre-existing
+     *  name-based overload stays for callers that know the block name. */
+    virtual void BindUniformBuffer(UniformBuffer* ub, int slot)                                             = 0;
 
     virtual void Draw(const DrawDesc& desc)                                                                 = 0;
 

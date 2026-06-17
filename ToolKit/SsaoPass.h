@@ -89,8 +89,14 @@ namespace ToolKit
     void PreRender();
     void PostRender();
 
+    /** Populate the calc + blur requirements from current params. Used by Render(). */
+    void GatherRequirements(PassRequirements& reqs) override;
+
    private:
     void GenerateSSAONoise();
+
+    /** Run a single sub-pass: applies m_requirements (or the override) and calls DrawFullQuad. */
+    void RunSubPass(FullQuadPassPtr quadPass, const PassRequirements& reqs);
 
    public:
     SSAOPassParams m_params;

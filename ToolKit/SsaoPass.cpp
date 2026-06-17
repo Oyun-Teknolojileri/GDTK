@@ -63,20 +63,53 @@ namespace ToolKit
       normalDepthBuffer = m_params.GNormalDepthBuffer->GetResolvedTexture();
     }
 
-    // Generate SSAO texture. calc + blur share GL slot 7 (pass-specific UBO convention) —
-    // Map each one immediately before its draw so the slot has the right buffer at consume time.
-    renderer->SetTexture("s_normalDepth", normalDepthBuffer);
-
+    // Build calc + blur requirements. Each gets its own framebuffer, custom UBO, and
+    // semantic-named texture. SSAO shader's s_normalDepth is bound BEFORE the program is
+    // bound in the old code, which made the SetTexture("s_normalDepth", ...) call a
+    // silent no-op. RunSubPass now goes through ApplyRequirements which guarantees
+    // program-bind first, then semantic → slot resolution.
+    PassRequirements calcReqs;
+    GatherRequirements(calcReqs);
+    calcReqs.fragmentShader                    = m_ssaoShader;
+    calcReqs.frameBuffer                       = m_ssaoFramebuffer;
+    calcReqs.clearBits                         = GraphicBitFields::None;
+    calcReqs.semanticTextures["s_normalDepth"] = normalDepthBuffer;
+    calcReqs.customUbos[7]                     = &m_calcPassDataBuffer.GetBuffer();
     m_calcPassDataBuffer.Invalidate();
     m_calcPassDataBuffer.Map();
-    RenderSubPass(m_quadPass);
+    RunSubPass(m_quadPass, calcReqs);
 
-    // Single-pass bilinear 5x5 blur (reads raw SSAO, writes to m_ssaoTexture)
-    renderer->SetTexture("s_diffuseColor", m_rawSsaoRt);
-
+    PassRequirements blurReqs;
+    GatherRequirements(blurReqs);
+    blurReqs.fragmentShader                     = m_blurShader;
+    blurReqs.frameBuffer                        = m_blurFramebuffer;
+    blurReqs.clearBits                          = GraphicBitFields::None;
+    blurReqs.semanticTextures["s_diffuseColor"] = m_rawSsaoRt;
+    blurReqs.customUbos[7]                      = &m_blurPassDataBuffer.GetBuffer();
     m_blurPassDataBuffer.Invalidate();
     m_blurPassDataBuffer.Map();
-    RenderSubPass(m_blurPass);
+    RunSubPass(m_blurPass, blurReqs);
+  }
+
+  void SSAOPass::GatherRequirements(PassRequirements& reqs)
+  {
+    // Default passive state: nothing pass-specific. Clear bits / framebuffer / textures
+    // are filled in by the caller (Render()) because calc and blur need different ones.
+    reqs.passState.depthTestEnabled  = false;
+    reqs.passState.depthWriteEnabled = false;
+    reqs.passState.depthFunction     = CompareFunctions::FuncAlways;
+  }
+
+  void SSAOPass::RunSubPass(FullQuadPassPtr quadPass, const PassRequirements& reqs)
+  {
+    // Steer the quad pass's own requirements and the m_program slot, then let it Render.
+    quadPass->m_params.frameBuffer             = reqs.frameBuffer;
+    quadPass->m_params.clearFrameBuffer        = reqs.clearBits;
+    quadPass->GetRequirements()                = reqs;
+    // Inject our program + fragment shader so the quad's Gather sees them.
+    quadPass->GetRequirements().fragmentShader = reqs.fragmentShader;
+    quadPass->GetRequirements().program        = reqs.program;
+    RenderSubPass(quadPass);
   }
 
   void SSAOPass::PreRender()
