@@ -60,25 +60,21 @@ namespace ToolKit
       }
     }
 
-    // Step 2: program — use the pre-built one or create from shaders via manager.
+    // Step 2: program — use the pre-built one or create from explicit vert+frag in
+    // m_requirements. Caller MUST set either program OR (vertexShader + fragmentShader) in
+    // m_requirements before calling ApplyRequirements. If neither is set, fail loudly —
+    // implicit shader lookups (e.g. "any old m_program lying around") are exactly the bug
+    // class we're killing.
     GpuProgramPtr program = m_requirements.program;
     if (program == nullptr)
     {
       ShaderPtr frag = m_requirements.fragmentShader;
-      assert(frag != nullptr && "PassRequirements must supply a fragment shader or a program.");
+      assert(frag != nullptr && "PassRequirements must supply a fragment shader or a program. "
+                                "Set m_requirements.fragmentShader (or m_requirements.program) in PreRender().");
 
-      // Vertex shader is owned by the material/quad pass. Pull it from m_program if set
-      // (subclass convention) or use the default fullQuad vert.
-      ShaderPtr vert = nullptr;
-      if (m_program != nullptr && !m_program->m_shaders.empty())
-      {
-        vert = m_program->m_shaders.front();
-      }
-
-      if (vert == nullptr)
-      {
-        vert = GetShaderManager()->Create<Shader>(ShaderPath("fullQuadVert.shader", true));
-      }
+      ShaderPtr vert = m_requirements.vertexShader;
+      assert(vert != nullptr && "PassRequirements must supply a vertex shader when no program is set. "
+                                "Set m_requirements.vertexShader (or m_requirements.program) in PreRender().");
 
       program = renderer->GetGpuProgramManager()->CreateProgram(vert, frag);
     }

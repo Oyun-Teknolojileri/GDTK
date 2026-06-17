@@ -94,11 +94,19 @@ namespace ToolKit
       depthTex = m_params.DepthRt->GetResolvedTexture();
     }
 
-    // Declarative requirements — slot 0 = color copy, slot 1 = depth. Pass-specific UBO on
-    // slot 7. ApplyRequirements binds them in the right order.
-    m_requirements.textures[0]   = m_copyTexture;
-    m_requirements.textures[1]   = depthTex;
-    m_requirements.customUbos[7] = &m_passDataBuffer.GetBuffer();
+    // Make sure the quad pass has the right fragment shader + program bound before we ask
+    // ApplyRequirements to derive vert/frag from m_program. m_quadPass->SetFragmentShader
+    // creates the program (cached in the manager) and binds it.
+    m_quadPass->SetFragmentShader(m_dofShader, renderer);
+
+    // Declarative requirements — explicit vert+frag+program so ApplyRequirements has no
+    // implicit fallbacks to do.
+    m_requirements.fragmentShader = m_dofShader;
+    m_requirements.vertexShader   = m_quadPass->m_material->GetVertexShaderVal();
+    m_requirements.program        = m_quadPass->GetProgram();
+    m_requirements.textures[0]    = m_copyTexture;
+    m_requirements.textures[1]    = depthTex;
+    m_requirements.customUbos[7]  = &m_passDataBuffer.GetBuffer();
 
     m_passDataBuffer.Invalidate();
     m_passDataBuffer.Map();

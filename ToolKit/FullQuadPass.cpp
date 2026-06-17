@@ -66,12 +66,19 @@ namespace ToolKit
 
   void FullQuadPass::GatherRequirements(PassRequirements& reqs)
   {
-    // Default merge: pull fragment shader + framebuffer + state from the quad's own state.
-    // If the caller (outer pass) already set fragmentShader/program/frameBuffer/clearBits,
-    // don't stomp them.
+    // Default merge: pull vert/frag/program/framebuffer/state from the quad's own state.
+    // Caller can override any of these by populating m_requirements first.
     if (reqs.fragmentShader == nullptr)
     {
       reqs.fragmentShader = m_material->GetFragmentShaderVal();
+    }
+    if (reqs.vertexShader == nullptr)
+    {
+      reqs.vertexShader = m_material->GetVertexShaderVal();
+    }
+    if (reqs.program == nullptr)
+    {
+      reqs.program = m_program;
     }
     if (reqs.frameBuffer == nullptr)
     {

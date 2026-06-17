@@ -38,9 +38,12 @@ namespace ToolKit
   {
     /** Optional: a specific fragment shader. If null, the program's existing fragment is used. */
     ShaderPtr fragmentShader = nullptr;
+    /** Optional: a specific vertex shader. If null, the program's existing vertex is used
+     *  (and if no program is provided either, the default fullQuadVert.shader is used). */
+    ShaderPtr vertexShader = nullptr;
     /** Optional: a pre-built program. If null, the manager creates one from the pass's
      *  vertex + fragment shaders. */
-    GpuProgramPtr program    = nullptr;
+    GpuProgramPtr program = nullptr;
 
     /** Slot → texture bindings. Use this when you know the slot number directly. */
     std::unordered_map<int, TexturePtr> textures;
@@ -103,6 +106,11 @@ namespace ToolKit
     PassRequirements& GetRequirements() { return m_requirements; }
 
     const PassRequirements& GetRequirements() const { return m_requirements; }
+
+    /** Public accessor for m_program. SetFragmentShader assigns it; outer passes that drive
+     *  a sub-pass's draw can read it to fill in PassRequirements::program explicitly. */
+    GpuProgramPtr GetProgram() const { return m_program; }
+    void SetProgram(const GpuProgramPtr& prog) { m_program = prog; }
 
     Renderer* GetRenderer();
     void SetRenderer(Renderer* renderer);
