@@ -309,12 +309,28 @@ namespace ToolKit
     m_gammaTonemapFxaaPass->m_params.enableGammaCorrection = pps->GetGammaCorrectionEnabledVal() && gammaNeeded;
     m_gammaTonemapFxaaPass->m_params.enableFxaa            = pps->GetFXAAEnabledVal();
     m_gammaTonemapFxaaPass->m_params.enableTonemapping     = pps->GetTonemappingEnabledVal();
+    // GammaTonemapFxaa writes the final composited color. When MSAA is on, the rest of the
+    // post chain (Bloom, DoF) operates on the resolved (single-sample) buffer, so this pass
+    // must read from MainFramebuffer (where the forward pass wrote) and write to the
+    // resolved framebuffer that the editor will copy back. Don't override to MainFramebuffer
+    // when MSAA is on — that would clobber the resolve and leave editor with pre-tonemap colors.
     m_gammaTonemapFxaaPass->m_params.frameBuffer           = m_params.MainFramebuffer;
     m_gammaTonemapFxaaPass->m_params.tonemapMethod         = pps->GetTonemapperModeVal().GetEnum<TonemapMethod>();
     m_gammaTonemapFxaaPass->m_params.gamma                 = pps->GetGammaVal();
 
     FramebufferSettings fbs                                = m_params.MainFramebuffer->GetSettings();
     m_gammaTonemapFxaaPass->m_params.screenSize            = Vec2(fbs.width, fbs.height);
+
+    // Final override: when MSAA is on, the post-process chain (Bloom + GammaTonemapFxaa) must
+    // operate on the resolved single-sample framebuffer, NOT the MSAA one. The earlier
+    // `m_params.MainFramebuffer` assignments below are the source-of-truth defaults; the
+    // MSAA branch in PreRender sets the resolve target, and we re-apply it here so the
+    // later assignments don't clobber it.
+    if (m_params.MainFramebuffer->IsMultiSampled())
+    {
+      m_bloomPass->m_params.FrameBuffer             = m_resolvedFramebuffer;
+      m_gammaTonemapFxaaPass->m_params.frameBuffer  = m_resolvedFramebuffer;
+    }
   }
 
   bool ForwardSceneRenderPath::RequiresForwardPreProcessPass()

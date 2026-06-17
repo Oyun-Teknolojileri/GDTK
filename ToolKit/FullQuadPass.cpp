@@ -80,11 +80,12 @@ namespace ToolKit
     {
       reqs.program = m_program;
     }
-    if (reqs.frameBuffer == nullptr)
-    {
-      reqs.frameBuffer = m_params.frameBuffer;
-      reqs.clearBits   = m_params.clearFrameBuffer;
-    }
+    // Always pull framebuffer + clearBits from the quad's m_params. Stale values from a
+    // prior RenderSubPass (e.g. SSAOPass::RunSubPass injecting m_quadPass->m_requirements
+    // for its own draw) must NOT leak into GammaTonemapFxaaPass's draw, or the gamma
+    // compositing ends up on the wrong framebuffer and the editor sees pre-tonemap colors.
+    reqs.frameBuffer = m_params.frameBuffer;
+    reqs.clearBits   = m_params.clearFrameBuffer;
 
     // Re-derive passive state from defaults + the caller's stencil op. Always overlay our
     // depth-off / FuncAlways defaults so a caller can opt out per-field by changing
