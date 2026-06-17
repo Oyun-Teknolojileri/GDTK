@@ -143,7 +143,7 @@ namespace ToolKit
         GenerateHandles();
       }
 
-      // No billboard behavior — gizmo is world-space.
+      // No billboard behavior   gizmo is world-space.
       // Keep node at identity so world-space handle vertices render correctly.
       m_node->SetTransform(Mat4(1.0f));
     }

@@ -36,7 +36,7 @@ namespace ToolKit
         Vulkan backend to select the correct dummy texture when a slot is left unbound. */
     enum class ViewType
     {
-      Tex2D,      //!< sampler2D  — default.
+      Tex2D,      //!< sampler2D    default.
       Tex2DArray, //!< sampler2DArray
       TexCube,    //!< samplerCube
     };

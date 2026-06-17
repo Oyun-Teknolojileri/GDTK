@@ -279,7 +279,7 @@ namespace ToolKit
     job.Mesh->Init();
     job.Material->Init();
 
-    // CPU-side state � no backend calls here, all read later by FeedUniforms.
+    // CPU-side state   no backend calls here, all read later by FeedUniforms.
     SetTransforms(job.WorldTransform);
     SetLights(job.lights);
     m_model                 = job.WorldTransform;

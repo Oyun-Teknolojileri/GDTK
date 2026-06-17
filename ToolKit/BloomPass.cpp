@@ -43,7 +43,7 @@ namespace ToolKit
 
     Renderer* renderer = GetRenderer();
 
-    // Lazy-init the pass UBO on first render � backend is alive by now.
+    // Lazy-init the pass UBO on first render   backend is alive by now.
     if (!m_passDataBufferInitialized)
     {
       m_passDataBuffer.Init(7);

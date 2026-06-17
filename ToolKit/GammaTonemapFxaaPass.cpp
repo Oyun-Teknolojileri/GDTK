@@ -43,7 +43,7 @@ namespace ToolKit
     m_quadPass->m_params.clearFrameBuffer = GraphicBitFields::AllBits;
 
     // Push parameters through the pass-specific UBO. Lazy-init the buffer on the first PreRender
-    // — the renderer/backend may not be live in the constructor.
+    //   the renderer/backend may not be live in the constructor.
     if (!m_passDataBufferInitialized)
     {
       m_passDataBuffer.Init(7);
