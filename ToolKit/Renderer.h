@@ -339,9 +339,14 @@ namespace ToolKit
 
     /**
      * Copies src to dst texture using a copy frame buffer.
-     * After the operation sets the previous frame buffer back.
+     *
+     * @param alphaToOne When true, forces dst's alpha channel to 1.0 during the copy.
+     *                   Useful when copying color attachments that may have been
+     *                   partially-cleared or alpha-blended; downstream passes that
+     *                   treat the texture as opaque (e.g. bloom, DOF) shouldn't see a
+     *                   premultiplied or zero alpha.
      */
-    void CopyTexture(TexturePtr src, TexturePtr dst);
+    void CopyTexture(TexturePtr src, TexturePtr dst, bool alphaToOne = false);
 
     //////////////////////////////////////////
 

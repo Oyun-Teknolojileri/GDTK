@@ -540,7 +540,7 @@ namespace ToolKit
     RenderWithProgramFromMaterial(jobs);
   }
 
-  void Renderer::CopyTexture(TexturePtr src, TexturePtr dst)
+  void Renderer::CopyTexture(TexturePtr src, TexturePtr dst, bool alphaToOne)
   {
     TK_PROFILE_FUNCTION();
 
@@ -565,6 +565,12 @@ namespace ToolKit
       m_copyMaterial->SetVertexShaderVal(vert);
       m_copyMaterial->SetFragmentShaderVal(frag);
     }
+
+    // The copy shader exposes an ALPHA_TO_ONE define that forces the output alpha to 1.0
+    // in the fragment stage. SetDefine on the shader recompiles the program (cached) only
+    // when the value actually changes, so toggling per-call is cheap.
+    ShaderPtr copyFrag = m_copyMaterial->GetFragmentShaderVal();
+    copyFrag->SetDefine("ALPHA_TO_ONE", alphaToOne ? "1" : "0");
 
     m_copyMaterial->SetDiffuseTextureVal(src);
     m_copyMaterial->Init();

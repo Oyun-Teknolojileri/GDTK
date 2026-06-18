@@ -77,7 +77,6 @@ namespace ToolKit
     void CreateTexture(Texture* tex) override;
     void DestroyTexture(Texture* tex) override;
     void ApplyTextureSettings(Texture* tex) override;
-    void SetTextureSwizzleAlpha(Texture* tex, bool swizzleToOne, bool setLastBindBack = false) override;
     void GenerateMipmaps(Texture* tex) override;
     void UpdateTextureRegion(Texture* tex, const void* data) override;
     void SetTextureMaxMipLevel(Texture* tex, int maxLevel) override;

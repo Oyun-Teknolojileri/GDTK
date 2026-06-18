@@ -120,7 +120,6 @@ namespace ToolKit
     virtual void CreateTexture(Texture* tex)                                                                = 0;
     virtual void DestroyTexture(Texture* tex)                                                               = 0;
     virtual void ApplyTextureSettings(Texture* tex)                                                         = 0;
-    virtual void SetTextureSwizzleAlpha(Texture* tex, bool swizzleToOne, bool setLastBindBack = false)      = 0;
     virtual void GenerateMipmaps(Texture* tex)                                                              = 0;
     virtual void UpdateTextureRegion(Texture* tex, const void* data)                                        = 0;
     virtual void SetTextureMaxMipLevel(Texture* tex, int maxLevel)                                          = 0;

@@ -114,9 +114,7 @@ namespace ToolKit
     }
 
     bool EditorViewport::IsViewportQueriable() const
-    {
-      return m_mouseOverContentArea && m_mouseHover && m_active && m_visible && m_relMouseModBegin;
-    }
+    { return m_mouseOverContentArea && m_mouseHover && m_active && m_visible && m_relMouseModBegin; }
 
     void EditorViewport::DispatchSignals() const
     {
@@ -303,32 +301,9 @@ namespace ToolKit
           // In Vulkan the swizzle is baked into the VkImageView created by Acquire(tex, true),
           // so no pre/post draw callbacks are needed. In GL the swizzle is set dynamically via
           // glTexParameteri around the draw call and restored afterwards.
-          uint64 texId         = EditorImGuiTextureCache::Acquire(texture, true);
-
-          ImDrawList* drawList = ImGui::GetWindowDrawList();
-          if constexpr (TKVulkan)
-          {
-            drawList->AddCallback(
-                [](const ImDrawList* parentList, const ImDrawCmd* cmd)
-                {
-                  Texture* t = (Texture*) cmd->UserCallbackData;
-                  GetRenderSystem()->GetBackend()->SetTextureSwizzleAlpha(t, true, true);
-                },
-                texture.get());
-          }
+          uint64 texId = EditorImGuiTextureCache::Acquire(texture, true);
 
           UI::Image(ConvertUIntImGuiTexture(texId), m_wndContentAreaSize);
-
-          if constexpr (TKVulkan)
-          {
-            drawList->AddCallback(
-                [](const ImDrawList* parentList, const ImDrawCmd* cmd)
-                {
-                  Texture* t = (Texture*) cmd->UserCallbackData;
-                  GetRenderSystem()->GetBackend()->SetTextureSwizzleAlpha(t, false, true);
-                },
-                texture.get());
-          }
 
           if (IsActive())
           {

@@ -143,16 +143,12 @@ namespace ToolKit
   static GLTextureData* GetGLTextureData(Texture* tex) { return static_cast<GLTextureData*>(tex->m_gpuData.get()); }
 
   static GLFramebufferData* GetGLFramebufferData(Framebuffer* fb)
-  {
-    return static_cast<GLFramebufferData*>(fb->m_gpuData.get());
-  }
+  { return static_cast<GLFramebufferData*>(fb->m_gpuData.get()); }
 
   static GLMeshData* GetGLMeshData(const Mesh* mesh) { return static_cast<GLMeshData*>(mesh->m_gpuData.get()); }
 
   static GLProgramData* GetGLProgramData(GpuProgram* program)
-  {
-    return static_cast<GLProgramData*>(program->m_gpuData.get());
-  }
+  { return static_cast<GLProgramData*>(program->m_gpuData.get()); }
 
   static GLuint GetGLProgramId(GpuProgram* program)
   {
@@ -843,9 +839,7 @@ namespace ToolKit
   }
 
   int GLBackend::GetUniformLocation(GpuProgram* program, const char* name)
-  {
-    return glGetUniformLocation(GetGLProgramId(program), name);
-  }
+  { return glGetUniformLocation(GetGLProgramId(program), name); }
 
   // -----------------------------------------------------------------------
   // Texture resource management
@@ -1049,43 +1043,6 @@ namespace ToolKit
       int anisoVal                = engSettings.m_graphics->GetAnisotropicTextureFilteringVal().GetValue<int>();
       float aniso                 = glm::min(maxAniso, glm::max(1.0f, float(anisoVal)));
       glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, aniso);
-    }
-  }
-
-  void GLBackend::SetTextureSwizzleAlpha(Texture* tex, bool swizzleToOne, bool setLastBindBack)
-  {
-    if (!tex)
-    {
-      return;
-    }
-
-    GLTextureData* gl = GetGLTextureData(tex);
-    if (!gl)
-    {
-      return;
-    }
-
-    GLenum target = ToGLGraphicType(tex->Settings().Target);
-
-    if (setLastBindBack)
-    {
-      GLenum bindingTarget = GL_TEXTURE_BINDING_2D;
-      if (target == GL_TEXTURE_CUBE_MAP)
-        bindingTarget = GL_TEXTURE_BINDING_CUBE_MAP;
-      if (target == GL_TEXTURE_2D_ARRAY)
-        bindingTarget = GL_TEXTURE_BINDING_2D_ARRAY;
-
-      GLint currentBinding = 0;
-      glGetIntegerv(bindingTarget, &currentBinding);
-
-      glBindTexture(target, gl->textureId);
-      glTexParameteri(target, GL_TEXTURE_SWIZZLE_A, swizzleToOne ? GL_ONE : GL_ALPHA);
-      glBindTexture(target, currentBinding);
-    }
-    else
-    {
-      BindTextureDirect(target, gl->textureId, 0);
-      glTexParameteri(target, GL_TEXTURE_SWIZZLE_A, swizzleToOne ? GL_ONE : GL_ALPHA);
     }
   }
 
@@ -1554,9 +1511,7 @@ namespace ToolKit
   }
 
   void GLBackend::SetUniform4f(int location, const Vec4& value)
-  {
-    glUniform4f(location, value.x, value.y, value.z, value.w);
-  }
+  { glUniform4f(location, value.x, value.y, value.z, value.w); }
 
   String GLBackend::GetBackendRendererString()
   {
@@ -1634,9 +1589,7 @@ namespace ToolKit
   }
 
   void GLBackend::ReadPixels(int x, int y, int w, int h, GraphicTypes format, GraphicTypes type, void* data)
-  {
-    glReadPixels(x, y, w, h, ToGLGraphicType(format), ToGLGraphicType(type), data);
-  }
+  { glReadPixels(x, y, w, h, ToGLGraphicType(format), ToGLGraphicType(type), data); }
 
   void GLBackend::UpdateTextureSubRegion(Texture* tex, int x, int y, int w, int h, const void* data)
   {

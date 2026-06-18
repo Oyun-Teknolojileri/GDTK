@@ -26,9 +26,9 @@ TK_LOC(2) in vec2 v_texture;
 			return abs(coc) * blurSize;
 		}
 
-		vec3 depthOfField(vec2 texCoord)
+		vec4 depthOfField(vec2 texCoord)
 		{
-			vec3 color = texture(s_diffuseColor, texCoord).rgb;
+			vec4 color = texture(s_diffuseColor, texCoord);
 			float focusScale = dof.focusAndBlur.y;
 			float blurSize = dof.focusAndBlur.z;
 			float radiusScale = dof.focusAndBlur.w;
@@ -44,7 +44,7 @@ TK_LOC(2) in vec2 v_texture;
 			for (float ang = 0.0; radius<blurSize; ang += GOLDEN_ANGLE)
 			{
 				vec2 tc = texCoord + vec2(cos(ang), sin(ang)) * dof.pixelSizeAndPad.xy * radius;
-				vec3 sampleColor = texture(s_diffuseColor, tc).rgb;
+				vec4 sampleColor = texture(s_diffuseColor, tc);
 				float sampleDepth = texture(s_normalDepth, tc).b;
 				float sampleSize = getBlurSize(sampleDepth);
 				if (sampleDepth > centerDepth)
@@ -53,14 +53,14 @@ TK_LOC(2) in vec2 v_texture;
 				color += mix(color/tot, sampleColor, m);
 				tot += 1.0;   radius += radiusScale/radius;
 			}
-			return color /= tot;
+			return vec4(color.rgb / tot, color.a);
 		}
 
 
 		void main()
 		{
 			vec2 uv = vec2(v_texture.x, v_texture.y);
-			fragColor = vec4(depthOfField(uv), 1.0f);
+			fragColor = vec4(depthOfField(uv));
 		}
 	-->
 	</source>

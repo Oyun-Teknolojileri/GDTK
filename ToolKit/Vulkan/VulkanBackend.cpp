@@ -948,7 +948,7 @@ namespace ToolKit
     deps[1].dstSubpass    = VK_SUBPASS_EXTERNAL;
     deps[1].srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
     deps[1].dstStageMask  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
-                           VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+                            VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
     deps[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
     deps[1].dstAccessMask =
         VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
@@ -2432,11 +2432,6 @@ namespace ToolKit
     vt->sampler = newSampler;
   }
 
-  void VulkanBackend::SetTextureSwizzleAlpha(Texture* tex, bool swizzleToOne, bool setLastBindBack)
-  {
-    // TODO: recreate VkImageView with VK_COMPONENT_SWIZZLE_ONE on alpha.
-  }
-
   void VulkanBackend::GenerateMipmaps(Texture* tex)
   {
     if (tex == nullptr)
@@ -2742,9 +2737,9 @@ namespace ToolKit
     {
       const VkDeviceSize indexBytes = sizeof(uint) * (VkDeviceSize) mesh->m_clientSideIndices.size();
       data->index                   = VulkanBuffer::UploadDeviceLocal(m_context.get(),
-                                                    VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-                                                    mesh->m_clientSideIndices.data(),
-                                                    indexBytes);
+                                                                      VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                                                                      mesh->m_clientSideIndices.data(),
+                                                                      indexBytes);
       if (data->index.handle == VK_NULL_HANDLE)
       {
         TK_ERR("VulkanBackend::CreateMesh: index upload failed (%llu bytes)", (unsigned long long) indexBytes);

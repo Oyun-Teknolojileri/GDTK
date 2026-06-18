@@ -34,7 +34,7 @@ namespace ToolKit
     RenderTargetPtr srcTexture = framebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
     m_processTexture->ReconstructIfNeeded(srcTexture->m_width, srcTexture->m_height, &srcTexture->Settings());
 
-    renderer->CopyTexture(srcTexture, m_processTexture);
+    renderer->CopyTexture(srcTexture, m_processTexture, true);
 
     m_quadPass->m_material->SetDiffuseTextureVal(m_processTexture);
     m_quadPass->SetFragmentShader(m_postProcessShader, renderer);
@@ -73,8 +73,6 @@ namespace ToolKit
   }
 
   bool GammaTonemapFxaaPass::IsEnabled()
-  {
-    return m_params.enableFxaa || m_params.enableGammaCorrection || m_params.enableTonemapping;
-  }
+  { return m_params.enableFxaa || m_params.enableGammaCorrection || m_params.enableTonemapping; }
 
 } // namespace ToolKit

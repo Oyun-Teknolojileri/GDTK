@@ -1,10 +1,11 @@
 <shader>
 	<type name = "fragmentShader" />
 	<include name = "vulkanCompatInc.shader" />
+	<define name = "ALPHA_TO_ONE" val="0" />
 	<texture slot = "0" name = "s_diffuseColor" />
 	<source>
 	<!--
-		
+
 		precision highp float;
 
 		TK_LOC(0) in vec3 v_pos;
@@ -16,7 +17,11 @@
 
 		void main()
 		{
-			fragColor = texture(s_diffuseColor, v_texture).rgba;
+			vec4 src = texture(s_diffuseColor, v_texture).rgba;
+		#if ALPHA_TO_ONE
+			src.a = 1.0;
+		#endif
+			fragColor = src;
 		}
 	-->
 	</source>
