@@ -54,12 +54,25 @@ namespace ToolKit
     // Iteration Count + 1 number of textures & framebuffers
     RenderTargetPtrArray m_resampleRenderTargets;
     FramebufferPtrArray m_resampleFrameBuffers;
-    FullQuadPassPtr m_pass       = nullptr;
-    ShaderPtr m_downsampleShader = nullptr;
-    ShaderPtr m_upsampleShader   = nullptr;
+
+    /** Two separate full-quad passes — one for the downsample chain, one for the upsample
+     *  chain. Sharing a single m_pass worked when SetFragmentShader re-bound the program
+     *  on every call, but refactor + backend shadow-state quirks let the downsample
+     *  program occasionally linger into the upsample draw, leading to wrong shader
+     *  output. Two quad instances guarantee each phase binds the correct program. */
+    FullQuadPassPtr m_downPass    = nullptr;
+    FullQuadPassPtr m_upPass      = nullptr;
+    ShaderPtr m_downsampleShader  = nullptr;
+    ShaderPtr m_upsampleShader    = nullptr;
 
     bool m_invalidRenderParams   = false;
     int m_currentIterationCount  = 0;
+
+    // Once the backend is alive (first PreRender), pin each quad to its fragment
+    // shader so the program attached to m_downPass is the downsample program and
+    // m_upPass is the upsample program — no more SetFragmentShader swaps during
+    // Render, which is what let the downsample program linger into the upsample draw.
+    bool m_fragmentsPinned       = false;
 
     // Render target caches.
     UVec2 m_cachedMainRes;

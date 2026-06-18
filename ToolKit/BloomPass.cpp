@@ -20,7 +20,16 @@ namespace ToolKit
   {
     m_downsampleShader = GetShaderManager()->Create<Shader>(ShaderPath("bloomDownsample.shader", true));
     m_upsampleShader   = GetShaderManager()->Create<Shader>(ShaderPath("bloomUpsample.shader", true));
-    m_pass             = MakeNewPtr<FullQuadPass>();
+
+    // Two full-quad passes — one for the downsample chain, one for the upsample chain.
+    // Each binds its own fragment shader in PreRender (not the constructor — the
+    // backend isn't alive yet, so GetRenderer() returns null and SetFragmentShader
+    // would crash). After that the program attached to m_downPass is always the
+    // downsample program and m_upPass always carries the upsample program. Sharing
+    // one quad across both phases let downsample state leak into the upsample draw
+    // under the refactor.
+    m_downPass         = MakeNewPtr<FullQuadPass>();
+    m_upPass           = MakeNewPtr<FullQuadPass>();
 
     // Cache initialization
     m_cachedMainRes    = UVec2(0, 0);
@@ -60,25 +69,21 @@ namespace ToolKit
 
     // Filter pass
     {
-      m_pass->SetFragmentShader(m_downsampleShader, renderer);
-
       m_passDataBuffer.m_data.passIndxAndPad.x = 0;
       m_passDataBuffer.m_data.downsampleParams =
           Vec4((float) mainRes.x, (float) mainRes.y, m_params.minThreshold, 0.0f);
       pushUbo();
 
       renderer->SetTexture((ubyte) 0, mainRt);
-      m_pass->m_params.frameBuffer      = m_resampleFrameBuffers[0];
-      m_pass->m_params.blendFunc        = BlendFunction::NONE;
-      m_pass->m_params.clearFrameBuffer = GraphicBitFields::None;
+      m_downPass->m_params.frameBuffer      = m_resampleFrameBuffers[0];
+      m_downPass->m_params.blendFunc        = BlendFunction::NONE;
+      m_downPass->m_params.clearFrameBuffer = GraphicBitFields::None;
 
-      RenderSubPass(m_pass);
+      RenderSubPass(m_downPass);
     }
 
     // Downsample Pass
     {
-      m_pass->SetFragmentShader(m_downsampleShader, renderer);
-
       for (int i = 0; i < m_currentIterationCount; i++)
       {
         // Calculate current and previous resolutions
@@ -102,18 +107,16 @@ namespace ToolKit
         renderer->SetTexture((ubyte) 0, prevRt);
 
         // Set pass parameters
-        m_pass->m_params.clearFrameBuffer = GraphicBitFields::None;
-        m_pass->m_params.frameBuffer      = m_resampleFrameBuffers[i + 1];
-        m_pass->m_params.blendFunc        = BlendFunction::NONE;
+        m_downPass->m_params.clearFrameBuffer = GraphicBitFields::None;
+        m_downPass->m_params.frameBuffer      = m_resampleFrameBuffers[i + 1];
+        m_downPass->m_params.blendFunc        = BlendFunction::NONE;
 
-        RenderSubPass(m_pass);
+        RenderSubPass(m_downPass);
       }
     }
 
     // Upsample Pass
     {
-      m_pass->SetFragmentShader(m_upsampleShader, renderer);
-
       const float filterRadius               = 0.002f;
       m_passDataBuffer.m_data.upsampleParams = Vec4(filterRadius, 1.0f, 0.0f, 0.0f);
       pushUbo();
@@ -125,31 +128,29 @@ namespace ToolKit
         RenderTargetPtr prevRt         = prevFramebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
         renderer->SetTexture((ubyte) 0, prevRt);
 
-        m_pass->m_params.blendFunc        = BlendFunction::ONE_TO_ONE;
-        m_pass->m_params.clearFrameBuffer = GraphicBitFields::None;
-        m_pass->m_params.frameBuffer      = m_resampleFrameBuffers[i - 1];
+        m_upPass->m_params.blendFunc        = BlendFunction::ONE_TO_ONE;
+        m_upPass->m_params.clearFrameBuffer = GraphicBitFields::None;
+        m_upPass->m_params.frameBuffer      = m_resampleFrameBuffers[i - 1];
 
-        RenderSubPass(m_pass);
+        RenderSubPass(m_upPass);
       }
     }
 
     // Merge Pass
     {
-      m_pass->SetFragmentShader(m_upsampleShader, renderer);
-
       FramebufferPtr prevFramebuffer = m_resampleFrameBuffers[0];
       RenderTargetPtr prevRt         = prevFramebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
       renderer->SetTexture((ubyte) 0, prevRt);
 
-      m_pass->m_params.blendFunc               = BlendFunction::ONE_TO_ONE;
-      m_pass->m_params.clearFrameBuffer        = GraphicBitFields::None;
-      m_pass->m_params.frameBuffer             = m_params.FrameBuffer;
+      m_upPass->m_params.blendFunc               = BlendFunction::ONE_TO_ONE;
+      m_upPass->m_params.clearFrameBuffer        = GraphicBitFields::None;
+      m_upPass->m_params.frameBuffer             = m_params.FrameBuffer;
 
       // Final merge uses the user-set intensity instead of 1.0.
       m_passDataBuffer.m_data.upsampleParams.y = m_params.intensity;
       pushUbo();
 
-      RenderSubPass(m_pass);
+      RenderSubPass(m_upPass);
     }
   }
 
@@ -158,6 +159,18 @@ namespace ToolKit
     TK_PROFILE_FUNCTION();
 
     Pass::PreRender();
+
+    // Pin each quad to its fragment shader exactly once — the backend is now alive.
+    // After this point, m_downPass and m_upPass carry their respective programs
+    // and never swap them, so the program can never accidentally drift between
+    // downsample and upsample draws.
+    if (!m_fragmentsPinned)
+    {
+      Renderer* pinRenderer = GetRenderer();
+      m_downPass->SetFragmentShader(m_downsampleShader, pinRenderer);
+      m_upPass->SetFragmentShader(m_upsampleShader, pinRenderer);
+      m_fragmentsPinned = true;
+    }
 
     RenderTargetPtr mainRt = m_params.FrameBuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
 
