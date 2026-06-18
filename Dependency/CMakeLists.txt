@@ -27,6 +27,9 @@ set(MZ_FORCE_FETCH_LIBS ON)
 set(MZ_PKCRYPT OFF)
 set(MZ_WZAES OFF)
 set(MZ_ICONV OFF)
+# Disable OpenSSL backend: we don't need its encryption here and Linux dev
+# boxes without openssl-devel installed shouldn't fail to build the tree.
+set(MZ_OPENSSL OFF CACHE BOOL "" FORCE)
 set(FETCHCONTENT_BASE_DIR ${CMAKE_CURRENT_LIST_DIR}/Intermediate/${TK_PLATFORM}/minizip-ng/_deps CACHE STRING "" FORCE)
 set(CMAKE_DEBUG_POSTFIX d)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/minizip-ng ${CMAKE_CURRENT_LIST_DIR}/Intermediate/${TK_PLATFORM}/minizip-ng)
@@ -39,6 +42,12 @@ endif()
 
 #---- ASSIMP ----#
 if (NOT ${SKIP_ASSIMP})
+    # Modern GCC (>= 16) flags a long-standing `set but not used` variable
+    # in MS3DLoader.cpp and turns it into a hard error because assimp enables
+    # -Werror. We are not patching upstream assimp; instead we just disable
+    # that specific upgrade here. The warning itself is still emitted, just
+    # not fatal.
+    set(ASSIMP_WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
     set(ASSIMP_BUILD_TESTS OFF)
     set(ASSIMP_INJECT_DEBUG_POSTFIX ON)
     set(BUILD_SHARED_LIBS ON)

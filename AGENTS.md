@@ -394,9 +394,9 @@ Update `gdtk-overview.md` after a change that affects any of:
 - **Project layout / solution structure** — new folder, new vcxproj, file moved
   out of its old module, project renamed, new template added.
 - **Build / dependency pipeline** — new vendored dep, dep swapped, build script
-  behavior change (e.g. `BuildDependencies.bat` flow, output naming, generator
-  flags), toolchain version bump, new compile define that changes the public
-  surface (`-DTK_GL_ES_3_0` etc.).
+  behavior change (e.g. `BuildScripts/build_dependencies.py` flow, output
+  naming, generator flags), toolchain version bump, new compile define that
+  changes the public surface (`-DTK_GL_ES_3_0` etc.).
 - **Core engine architecture** — new manager on the `Main` singleton, new
   subsystem, new render path, new pass, new UBO slot, new RHI backend, new
   resource type, new scene/ECS concept, new threading primitive.

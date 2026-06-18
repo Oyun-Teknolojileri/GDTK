@@ -50,7 +50,7 @@ GDTK/
 ├── Bin/                         # Compiled editor.exe + runtime files
 ├── Templates/                   # Project templates
 ├── CMakeLists.txt               # Top-level CMake
-├── BuildDependencies.bat        # Builds all vendored deps
+├── BuildScripts/                # Cross-platform build scripts
 └── .clang-format                # Project formatting rules
 ```
 
@@ -516,10 +516,16 @@ Project launcher — picks up the engine + project, runs the game.
 ## 12. Build & Run
 
 ### 12.1 Build deps
-```bat
-cd C:\Users\Cihan\Desktop\GDTK
-.\BuildDependencies.bat
+```bash
+cd /path/to/GDTK
+python3 BuildScripts/build_dependencies.py
 ```
+
+Use `--configs Debug Release` (default), `--skip-assimp` / `--skip-imgui` to
+drop deps you do not need right now, and `--clean` to wipe
+`Dependency/Intermediate/<Platform>/` before configuring. The script is
+cross-platform: on Windows it picks `Ninja` if available, otherwise
+`Visual Studio 17 2022`; on Linux it picks `Ninja` or `Unix Makefiles`.
 
 The dependency build produces **flat** output names for assimp — `assimp.lib` /
 `assimpd.lib` and `assimp.dll` / `assimpd.dll` (Debug vs Release split is via
@@ -597,7 +603,7 @@ When writing/editing any `.h`/`.cpp` in this repo:
 | Editor app | `Editor/App.h` |
 | Editor renderer | `Editor/EditorRenderer.h` |
 | Workspace | `Workspace/Workspace.vcxproj` |
-| Build deps | `BuildDependencies.bat` |
+| Build deps | `BuildScripts/build_dependencies.py` |
 | Dep wrapper (assimp name fix, output dirs) | `Dependency/CMakeLists.txt` |
 | Solution | `ToolKit.sln` |
 
