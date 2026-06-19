@@ -568,13 +568,39 @@ namespace ToolKit
       std::vector<DirectoryEntry> tempFiles;
 
       m_entries.clear();
-      for (const std::filesystem::directory_entry& e : std::filesystem::directory_iterator(m_path))
+
+      // Guard: directory_iterator throws std::filesystem::filesystem_error if the
+      // path is missing/not a directory. The path can be invalid when the workspace
+      // root is misconfigured (e.g. wrong case on a case-sensitive FS), so validate
+      // first and bail out cleanly with a log instead of crashing the editor.
+      std::error_code pathEc;
+      if (!std::filesystem::is_directory(m_path, pathEc) || pathEc)
       {
+        TK_ERR("FolderView::Iterate: '%s' is not a directory (%s).",
+               m_path.c_str(),
+               pathEc ? pathEc.message().c_str() : "path missing");
+        return;
+      }
+
+      // Non-throwing iterator: an unreadable entry (e.g. broken symlink, perm
+      // denied) yields error_code set and e == end() — we simply skip it.
+      std::error_code iterEc;
+      for (auto it = std::filesystem::directory_iterator(m_path, iterEc);
+           !iterEc && it != std::filesystem::end(it);
+           it.increment(iterEc))
+      {
+        const std::filesystem::directory_entry& e = *it;
+
         DirectoryEntry de;
-        de.m_isDirectory = e.is_directory();
-        de.m_rootPath    = NormalizePath(PathToString(e.path().parent_path()));
-        de.m_fileName    = PathToString(e.path().stem());
-        de.m_ext         = PathToString(e.path().filename().extension());
+        std::error_code entEc;
+        de.m_isDirectory = e.is_directory(entEc);
+        if (entEc)
+        {
+          continue;
+        }
+        de.m_rootPath = NormalizePath(PathToString(e.path().parent_path()));
+        de.m_fileName = PathToString(e.path().stem());
+        de.m_ext      = PathToString(e.path().filename().extension());
 
         // Do not show hidden files
         if (de.m_fileName.size() > 1 && de.m_fileName[0] == '.')
@@ -589,6 +615,12 @@ namespace ToolKit
         {
           tempFiles.push_back(de);
         }
+      }
+      if (iterEc)
+      {
+        TK_ERR("FolderView::Iterate: failed to iterate '%s': %s",
+               m_path.c_str(),
+               iterEc.message().c_str());
       }
 
       // Folder first, files next

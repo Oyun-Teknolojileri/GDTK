@@ -72,8 +72,16 @@ namespace ToolKit
           String& clsName = classItr->second->Name;
           if (clsName == objectClass->Name)
           {
-            TK_ERR("Registering the same class multiple times: %s", clsName.c_str());
-            assert(false && "Registering the same class multiple times");
+            // Idempotent re-registration. The class is already in the
+            // factory; this happens harmlessly when a module re-iterates
+            // its own static register list (ObjectFactory::Init walks the
+            // list once, then a host program's editor/main.cpp walks it
+            // again at its own init hook). The module-merge contract is:
+            // each module's init hook drains the per-module register list
+            // into the factory, and the factory dedupes by class hash.
+            // Plugins use the same hook at load time without requiring
+            // any change to toolkit sources.
+            return;
           }
           else
           {

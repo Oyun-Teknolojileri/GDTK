@@ -118,11 +118,14 @@ namespace ToolKit
       }
     }
 
-    // Windows util function for creating ToolKit config files in AppData.
+    // Populates the per-user config dir with stock Workspace.settings,
+    // Editor.settings, etc. so the editor has a working set on first
+    // launch. The platform-specific config dir is resolved centrally
+    // by PlatformHelpers::GetUserConfigDir() (LinuxUtils.h / Win32Utils.h)
+    // -- no #ifdef here.
     void CreateAppData()
     {
-      // Get APPDATA environment variable
-      StringView appData = getenv("APPDATA");
+      String appData = PlatformHelpers::GetUserConfigDir();
       if (appData.empty())
       {
         return;

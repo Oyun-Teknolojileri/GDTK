@@ -210,6 +210,23 @@ namespace ToolKit
       }
     }
 
+    // Returns the per-user config directory to use for engine config
+    // files (Workspace.settings, Editor.settings, etc.). On Windows
+    // that's %APPDATA% (e.g. C:/Users/<u>/AppData/Roaming), which is
+    // always set for an interactive session. Returns an empty String
+    // when APPDATA is missing or empty; the caller should treat that
+    // as a soft failure and skip the config bootstrap rather than
+    // abort.
+    String GetUserConfigDir()
+    {
+      const char* raw = getenv("APPDATA");
+      if (raw == nullptr || raw[0] == '\0')
+      {
+        return String();
+      }
+      return raw;
+    }
+
     String GetCreationTime(const String& fullPath)
     {
       std::wstring wFile = UTF8Util::ConvertUTF8ToUTF16(fullPath.c_str());

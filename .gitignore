@@ -85,3 +85,6 @@ Import/build
 Intermediate
 /Workspace/x64
 Launcher/x64
+Log.txt
+.vscode/launch.json
+.claude/settings.local.json

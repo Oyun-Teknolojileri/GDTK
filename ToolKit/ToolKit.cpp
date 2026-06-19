@@ -439,13 +439,23 @@ namespace ToolKit
     static String absolutePath;
     if (absolutePath.empty())
     {
-      StringArray splits;
-      String currentPath = GetCurrentPath();
-      Split(currentPath, GetPathSeparatorAsStr(), splits);
-      splits.erase(splits.end() - 1);
-      splits.push_back("Resources");
-      splits.push_back("Engine");
-      absolutePath = ConcatPaths(splits);
+      // Build the path through std::filesystem::path so the root
+      // component (leading '/' on POSIX, drive letter on Windows) is
+      // preserved across the parent / append dance. The previous
+      // implementation routed the current path through Split +
+      // ConcatPaths, which drops the leading empty component before
+      // the first separator. On POSIX that turned "/home/.../Bin"
+      // into "home/.../Resources/Engine" (rootless) and any later
+      // call to std::filesystem::absolute re-anchored the result at
+      // the editor's CWD, producing the duplicated
+      // "/cwd/home/.../Resources/Engine" string.
+      std::filesystem::path p = std::filesystem::current_path();
+      p = p.parent_path(); // drop the trailing "Bin" component
+      p /= "Resources";
+      p /= "Engine";
+      p = std::filesystem::absolute(p); // belt-and-braces: guarantee root
+      absolutePath = PathToString(p);
+      NormalizePathInplace(absolutePath);
     }
 
     return absolutePath;

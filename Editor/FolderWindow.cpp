@@ -402,24 +402,56 @@ namespace ToolKit
       char pathSep        = GetPathSeparator();
       int baseCount       = CountChar(resourceRoot, pathSep);
 
-      for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(path))
+      // Resolve to an absolute path. Workspace paths stored without a leading
+      // slash (e.g. coming from Editor.settings) are otherwise resolved against
+      // the editor's CWD and silently miss the real directory.
+      String absPath = ToAbsolutePath(path);
+
+      // Guard: directory_iterator throws on a missing/non-directory path.
+      // Bail with a clear log instead of crashing the editor.
+      std::error_code pathEc;
+      if (!std::filesystem::is_directory(absPath, pathEc) || pathEc)
       {
-        if (entry.is_directory())
+        TK_ERR("FolderWindow::Iterate: '%s' (resolved to '%s') is not a directory (%s).",
+               path.c_str(),
+               absPath.c_str(),
+               pathEc ? pathEc.message().c_str() : "path missing");
+        return;
+      }
+
+      // Non-throwing iterator: a single unreadable entry won't kill the loop.
+      std::error_code iterEc;
+      for (auto it = std::filesystem::directory_iterator(absPath, iterEc);
+           !iterEc && it != std::filesystem::end(it);
+           it.increment(iterEc))
+      {
+        const std::filesystem::directory_entry& entry = *it;
+
+        std::error_code entEc;
+        if (!entry.is_directory(entEc) || entEc)
         {
-          FolderView view(this);
-          String path = NormalizePath(PathToString(entry.path()));
-          view.m_root = CountChar(path, pathSep) == baseCount + 1;
-
-          view.SetPath(path);
-          if (!view.m_folder.compare("Engine"))
-          {
-            continue;
-          }
-
-          view.Iterate();
-          AddEntry(view);
-          Iterate(view.GetPath(), false, false);
+          continue;
         }
+
+        FolderView view(this);
+        String childPath = NormalizePath(PathToString(entry.path()));
+        view.m_root      = CountChar(childPath, pathSep) == baseCount + 1;
+
+        view.SetPath(childPath);
+        if (!view.m_folder.compare("Engine"))
+        {
+          continue;
+        }
+
+        view.Iterate();
+        AddEntry(view);
+        Iterate(view.GetPath(), false, false);
+      }
+      if (iterEc)
+      {
+        TK_ERR("FolderWindow::Iterate: failed to iterate '%s': %s",
+               absPath.c_str(),
+               iterEc.message().c_str());
       }
 
       if (addEngine)

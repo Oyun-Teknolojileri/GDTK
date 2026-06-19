@@ -20,16 +20,22 @@ namespace ToolKit
   //////////////////////////////////////////
 
   /**
-   * Returns a static list of all registered classes.
-   * This is used to register classes at startup, so they can be created dynamically later.
+   * Returns the global list of all classes that registered themselves
+   * via TKDefineClass. Object::Init walks this list to plug every
+   * toolkit class into ObjectFactory.
+   *
+   * Implementation lives in Object.cpp, NOT inline in this header. An
+   * inline static-local version compiles fine on its own, but the
+   * `inline` keyword does not actually unify the static across
+   * translation units that end up in different load modules (ToolKit.so
+   * vs. Editor.exe). Each module then registers the same class twice
+   * and ObjectFactory::Register trips its "already registered" assert.
+   * One out-of-line definition, exported with TK_API, gives every
+   * translation unit the same vector and the duplicate goes away.
    */
   using RegisterFn = void (*)();
 
-  inline std::vector<RegisterFn>& GetRegisterFnList()
-  {
-    static std::vector<RegisterFn> list;
-    return list;
-  }
+  TK_API std::vector<RegisterFn>& GetRegisterFnList();
 
   /**
    * Base Macro that declares required fields and functions for each class that will be part of

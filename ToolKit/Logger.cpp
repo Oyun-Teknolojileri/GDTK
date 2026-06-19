@@ -25,7 +25,9 @@ namespace ToolKit
       return;
     }
 
-    vsprintf(messageBuffer, msg, args);
+    // vsnprintf so an over-long formatted message doesn't blow the
+    // fixed-size buffer; vsprintf would happily write past it.
+    vsnprintf(messageBuffer, sizeof(messageBuffer), msg, args);
     strcat(messageBuffer, "\n");
 
     logFn(logType, String(messageBuffer));
@@ -58,7 +60,7 @@ namespace ToolKit
     static const char* logTypes[] = {"[Memo]", "[Error]", "[Warning]", "[Command]"};
 
     char messageBuffer[TKMessageBufferLength];
-    vsprintf(messageBuffer, msg, args);
+    vsnprintf(messageBuffer, sizeof(messageBuffer), msg, args);
 
     m_logFile << logTypes[(int) logType] << messageBuffer << std::endl;
 
@@ -80,25 +82,39 @@ namespace ToolKit
     SpinlockGuard lock(m_writeLock);
     if (strlen(msg) >= TKMessageBufferLength)
     {
+      // Overflow path: hand the raw (still-unformatted) format string
+      // to the platform console verbatim. It does NOT take varargs,
+      // so we must not pass an uninitialised va_list into the
+      // %s-expanding callback. The previous code passed `msg` and
+      // expected it to render as a literal; that only worked by
+      // accident on console sinks that treat the second arg as
+      // already-rendered text. Print the format string as a literal
+      // (it carries no embedded %s we could expand anyway, since
+      // we bailed before formatting).
       if (m_platfromConsoleFn)
       {
         m_platfromConsoleFn(LogType::Warning, "Maximum size for WriteConsole exceeded, cannot format.");
-        m_platfromConsoleFn(logType, msg);
+        m_platfromConsoleFn(logType, String(msg));
       }
       return;
     }
+
+    // va_list is consumed by the first call to a vararg consumer
+    // (vsnprintf inside OutputUtil). Re-initialise it for the second
+    // call -- the old code passed the same args twice, which on
+    // x86-64 read past the stack and segfaulted inside __strlen_avx2.
     va_list args;
     va_start(args, msg);
-
     OutputUtil(m_writeConsoleFn, logType, msg, args);
+    va_end(args);
 
     // Echo to platform console.
     if (m_platfromConsoleFn)
     {
+      va_start(args, msg);
       OutputUtil(m_platfromConsoleFn, logType, msg, args);
+      va_end(args);
     }
-
-    va_end(args);
   }
 
   void Logger::WritePlatformConsole(LogType logType, const char* msg, ...)

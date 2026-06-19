@@ -205,6 +205,30 @@ namespace ToolKit
       }
     }
 
+    // Returns the per-user config directory to use for engine config
+    // files (Workspace.settings, Editor.settings, etc.). Follows the
+    // freedesktop.org XDG Base Directory spec:
+    //   $XDG_CONFIG_HOME  -> use it directly
+    //   otherwise         -> $HOME/.config
+    // Empty / unset values are treated the same as missing. Returns
+    // an empty String when no usable config dir can be resolved; the
+    // caller should treat that as a soft failure and skip the
+    // config bootstrap rather than abort.
+    String GetUserConfigDir()
+    {
+      const char* xdg = getenv("XDG_CONFIG_HOME");
+      if (xdg != nullptr && xdg[0] != '\0')
+      {
+        return xdg;
+      }
+      const char* home = getenv("HOME");
+      if (home == nullptr || home[0] == '\0')
+      {
+        return String();
+      }
+      return std::string(home) + "/.config";
+    }
+
     // Return the file's mtime as a string the same way the Win32 helper
     // does, so the plugin manager's "did the file change" logic keeps
     // working unchanged.

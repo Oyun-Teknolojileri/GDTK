@@ -44,7 +44,13 @@ namespace ToolKit
 
   void LoadGlFunctions(void* glGetProcAddres)
   {
-#ifdef TK_WIN
+    // glad fills in the GL function pointers. Without this every gl*
+    // call is a NULL function pointer and the first glEnable inside
+    // GLBackend::InitBackend segfaults. Windows and Linux use the same
+    // glad build so they share the load + extension-probe block;
+    // Android uses a manual glLoader path (its GLES surface differs)
+    // and the Web uses Emscripten's own WebGL headers.
+#if defined(TK_WIN) || defined(TK_LINUX)
     gladLoadGL((GLADloadfunc) glGetProcAddres);
 
   #ifdef GL_EXT_multisampled_render_to_texture

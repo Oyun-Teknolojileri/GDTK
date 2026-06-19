@@ -14,6 +14,12 @@
 
 namespace ToolKit
 {
+  std::vector<RegisterFn>& GetRegisterFnList()
+  {
+    static std::vector<RegisterFn> list;
+    return list;
+  }
+
 
   TKDefineClass(Object, Object);
 
