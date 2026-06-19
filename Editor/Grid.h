@@ -60,6 +60,11 @@ namespace ToolKit
       bool HitTest(const Ray& ray, Vec3& pos);
       void UpdateShaderParams();
 
+      /** Accessor for the slot-7 UBO. GridPass::PreRender stages this into its
+          PassRequirements so the descriptor set picks up the right VkBuffer at draw time. */
+      GridPassDataBuffer& GetDataBuffer() { return m_dataBuffer; }
+      const GridPassDataBuffer& GetDataBuffer() const { return m_dataBuffer; }
+
      private:
       void Init();
 
