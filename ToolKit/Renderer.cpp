@@ -1231,7 +1231,7 @@ namespace ToolKit
 
     if (!m_cubemapEquirectBufferInitialized)
     {
-      m_cubemapEquirectBuffer.Init();
+      m_cubemapEquirectBuffer.Init(7);
       m_cubemapEquirectBufferInitialized = true;
     }
     m_cubemapEquirectBuffer.m_data.exposureAndPad = Vec4(exposure, 0.0f, 0.0f, 0.0f);
@@ -1318,7 +1318,7 @@ namespace ToolKit
 
     if (!m_cubemapEquirectBufferInitialized)
     {
-      m_cubemapEquirectBuffer.Init();
+      m_cubemapEquirectBuffer.Init(7);
       m_cubemapEquirectBufferInitialized = true;
     }
     m_cubemapEquirectBuffer.m_data.exposureAndPad = Vec4(exposure, 0.0f, 0.0f, 0.0f);

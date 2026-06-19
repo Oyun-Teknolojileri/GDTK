@@ -51,6 +51,13 @@ namespace ToolKit
    public:
     void Init(int slot = -1)
     {
+      // slot is optional at Init time. For GlobalGpuBuffers the slot is assigned in a
+      // second pass (Renderer::InitGlobalGpuBuffers, line ~1740) where each global
+      // buffer is bound to its ReservedUniformBufferSlots::X. For pass-specific UBOs
+      // (BloomPass, OutlinePass, StencilPass, etc.) Init(slot) is called with the
+      // explicit slot up front. If you leave it at -1 and never set m_slot, Map()
+      // will TK_ERR and the shader reads uninitialized data — that's the HDRI
+      // cubemap bug we hit when cubemapEquirect.Init() was called without a slot.
       m_buffer.Init(sizeof(DataLayout));
       m_buffer.m_slot = slot;
     }
