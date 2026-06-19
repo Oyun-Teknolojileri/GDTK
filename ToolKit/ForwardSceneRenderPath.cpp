@@ -217,7 +217,7 @@ namespace ToolKit
           if (m_sky->IsA<GradientSky>())
           {
             GradientSky* gSky               = static_cast<GradientSky*>(m_sky.get());
-            m_skyPass->m_params.onPreRender = [renderer, gSky]()
+            m_skyPass->m_params.onPreRender = [renderer, gSky, this]()
             {
               if (!renderer->m_gradientSkyboxBufferInitialized)
               {
@@ -232,11 +232,10 @@ namespace ToolKit
               renderer->m_gradientSkyboxBuffer.Invalidate();
               renderer->m_gradientSkyboxBuffer.Map();
 
-              // Stage the gradient-skybox UBO into slot 7 so the descriptor set points
-              // at it when the cube's draw records. Earlier passes (none in practice,
-              // but SSAO/DoF can run between frame setup and sky draw on Vulkan) may
-              // have written into slot 7, leaving the descriptor pointing elsewhere.
-              renderer->BindUniformBuffer(7, &renderer->m_gradientSkyboxBuffer.GetBuffer());
+              // CubeMapPass::Render now drives ApplyRequirements, so populating
+              // customUbos[7] is enough — the descriptor set picks up our VkBuffer
+              // without needing a manual BindUniformBuffer here.
+              m_skyPass->GetRequirements().customUbos[7] = &renderer->m_gradientSkyboxBuffer.GetBuffer();
             };
           }
         }

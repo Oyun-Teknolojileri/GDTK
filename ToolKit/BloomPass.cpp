@@ -60,17 +60,16 @@ namespace ToolKit
     }
 
     // Helper: stamp the relevant UBO fields and push to GPU. Each iteration calls this with
-    // freshly computed values so the shader sees per-pass data.
+    // freshly computed values so the shader sees per-pass data. The PassRequirements'
+    // customUbos[7] is kept in sync at every step so ApplyRequirements re-binds the
+    // descriptor set to our buffer (instead of a stale VkBuffer left by an earlier
+    // pass sharing the slot — gradient sky, SSAO, DoF, gamma, etc.).
     auto pushUbo = [&]()
     {
       m_passDataBuffer.Invalidate();
       m_passDataBuffer.Map();
-
-      // Re-stage slot 7's UBO so the descriptor set points at this buffer when the
-      // quad's draw records. Without this, prior passes (GradientSky, SSAO, DoF,
-      // GammaTonemapFxaa) sharing slot 7 leave the Vulkan descriptor pointing at
-      // their own VkBuffer, and bloom reads garbage.
-      renderer->BindUniformBuffer(7, &m_passDataBuffer.GetBuffer());
+      m_downPass->GetRequirements().customUbos[7] = &m_passDataBuffer.GetBuffer();
+      m_upPass->GetRequirements().customUbos[7]   = &m_passDataBuffer.GetBuffer();
     };
 
     // Filter pass

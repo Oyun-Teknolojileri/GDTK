@@ -31,13 +31,28 @@ namespace ToolKit
     TK_PROFILE_FUNCTION();
 
     Renderer* renderer = GetRenderer();
-    renderer->SetFramebuffer(m_params.FrameBuffer, m_params.clearBuffer);
+
+    // Drive the draw through the standard PassRequirements flow. This way the slot-7
+    // customUbos entry (e.g. the gradient-skybox UBO staged by the sky callback) gets
+    // bound into the descriptor set on Vulkan, instead of being silently ignored by
+    // the old RenderWithProgramFromMaterial path which never touched customUbos.
+    //
+    // CubeMapPass owns no material of its own — the skybox material lives on the cube
+    // entity. Pull vert/frag/program from it so ApplyRequirements has the program
+    // identity (and so the descriptor set knows what samplers the cube's draw expects).
+    MaterialPtr skyMaterial = m_cube->GetMaterialComponent()->GetFirstMaterial();
+    m_requirements.fragmentShader = skyMaterial ? skyMaterial->GetFragmentShaderVal() : nullptr;
+    m_requirements.vertexShader   = skyMaterial ? skyMaterial->GetVertexShaderVal()   : nullptr;
+    m_requirements.program        = nullptr;
+    m_requirements.frameBuffer    = m_params.FrameBuffer;
+    m_requirements.clearBits      = m_params.clearBuffer;
+    m_requirements.passState      = m_passState;
 
     RenderJobArray jobs;
     RenderJobProcessor::CreateRenderJobs(jobs, m_cube);
 
-    renderer->SetPassState(m_passState);
-    renderer->RenderWithProgramFromMaterial(jobs);
+    ApplyRequirements(renderer);
+    renderer->Render(jobs);
   }
 
   void CubeMapPass::PreRender()
@@ -65,7 +80,6 @@ namespace ToolKit
     TK_PROFILE_FUNCTION();
 
     Pass::PostRender();
-    GetRenderer()->FinishPass();
   }
 
 } // namespace ToolKit

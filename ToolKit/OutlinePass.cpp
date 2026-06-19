@@ -50,11 +50,10 @@ namespace ToolKit
     m_dilateBuffer.Invalidate();
     m_dilateBuffer.Map();
 
-    // Re-stage slot 7's UBO so the Vulkan descriptor set points at this buffer when
-    // the outline's draw records. Earlier passes sharing slot 7 (gradient sky, bloom,
-    // SSAO, DoF, GammaTonemapFxaa) would otherwise leave the descriptor pointing at
-    // their own VkBuffer, so the outline shader would read stale color data.
-    GetRenderer()->BindUniformBuffer(7, &m_dilateBuffer.GetBuffer());
+    // Stage slot 7 in the quad's PassRequirements so ApplyRequirements re-binds the
+    // descriptor set to this buffer (instead of a stale VkBuffer left by an earlier
+    // pass sharing the slot — gradient sky, bloom, SSAO, DoF, gamma, etc.).
+    m_outlinePass->GetRequirements().customUbos[7] = &m_dilateBuffer.GetBuffer();
 
     // Draw outline to the viewport.
     m_outlinePass->m_params.frameBuffer      = m_params.FrameBuffer;
