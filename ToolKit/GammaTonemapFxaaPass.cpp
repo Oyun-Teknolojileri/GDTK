@@ -62,6 +62,14 @@ namespace ToolKit
   {
     TK_PROFILE_FUNCTION();
 
+    // Stage slot 7's UBO into the sub-pass's PassRequirements so the descriptor set
+    // picks up this buffer when the quad's program binds. Without this, earlier passes
+    // (ForwardPreProcess, SSAO, DoF) that share slot 7 with their own buffers can
+    // leave the Vulkan descriptor set pointing at the wrong VkBuffer by the time
+    // GammaTonemapFxaa runs.
+    PassRequirements& qreq            = m_quadPass->GetRequirements();
+    qreq.customUbos[7]                = &m_passDataBuffer.GetBuffer();
+
     RenderSubPass(m_quadPass);
   }
 

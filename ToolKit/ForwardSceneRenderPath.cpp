@@ -231,6 +231,12 @@ namespace ToolKit
                   Vec4(gSky->GetGradientExponentVal(), 0.0f, 0.0f, 0.0f);
               renderer->m_gradientSkyboxBuffer.Invalidate();
               renderer->m_gradientSkyboxBuffer.Map();
+
+              // Stage the gradient-skybox UBO into slot 7 so the descriptor set points
+              // at it when the cube's draw records. Earlier passes (none in practice,
+              // but SSAO/DoF can run between frame setup and sky draw on Vulkan) may
+              // have written into slot 7, leaving the descriptor pointing elsewhere.
+              renderer->BindUniformBuffer(7, &renderer->m_gradientSkyboxBuffer.GetBuffer());
             };
           }
         }
