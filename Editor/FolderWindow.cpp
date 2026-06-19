@@ -89,7 +89,7 @@ namespace ToolKit
           continue;
         }
 
-        String subDir = NormalizePath(directory.path().u8string());
+        String subDir = NormalizePath(directory.path().string());
         int childIdx  = CreateTreeRec(parent + 1, subDir);
         m_folderNodes[index].childs.push_back(childIdx);
       }
@@ -407,7 +407,7 @@ namespace ToolKit
         if (entry.is_directory())
         {
           FolderView view(this);
-          String path = NormalizePath(entry.path().u8string());
+          String path = NormalizePath(entry.path().string());
           view.m_root = CountChar(path, pathSep) == baseCount + 1;
 
           view.SetPath(path);

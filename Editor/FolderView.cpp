@@ -572,9 +572,9 @@ namespace ToolKit
       {
         DirectoryEntry de;
         de.m_isDirectory = e.is_directory();
-        de.m_rootPath    = NormalizePath(e.path().parent_path().u8string());
-        de.m_fileName    = e.path().stem().u8string();
-        de.m_ext         = e.path().filename().extension().u8string();
+        de.m_rootPath    = NormalizePath(e.path().parent_path().string());
+        de.m_fileName    = e.path().stem().string();
+        de.m_ext         = e.path().filename().extension().string();
 
         // Do not show hidden files
         if (de.m_fileName.size() > 1 && de.m_fileName[0] == '.')

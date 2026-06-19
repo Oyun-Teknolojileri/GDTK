@@ -24,10 +24,14 @@
 
 #include <Common/SDLEventPool.h>
 #include <Common/SplashScreen.h>
-#include <Common/Win32Utils.h>
+#ifdef _WIN32
+  #include <Common/Win32Utils.h>
+#else
+  #include <Common/LinuxUtils.h>
+#endif
 #include <FileManager.h>
-#include <ImGui/backends/imgui_impl_sdl2.h>
-#include <ImGui/imgui.h>
+#include <imgui/backends/imgui_impl_sdl2.h>
+#include <imgui/imgui.h>
 #include <Platform.h>
 #include <PluginManager.h>
 #include <SDL.h>
@@ -206,7 +210,7 @@ namespace ToolKit
         std::filesystem::path path = std::filesystem::current_path();
         if (path.has_parent_path())
         {
-          String utf8Path = path.parent_path().u8string();
+          String utf8Path = path.parent_path().string();
           utf8Path.erase(remove(utf8Path.begin(), utf8Path.end(), '\"'), utf8Path.end());
           UnixifyPath(utf8Path);
 
@@ -501,7 +505,7 @@ int main(int argc, char* argv[])
   setlocale(LC_ALL, ".UTF-8");
   setlocale(LC_NUMERIC, "C");
 
-#ifdef TK_DEBUG
+#if defined(TK_DEBUG) && defined(_WIN32) && defined(_MSC_VER)
   _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 #endif
 

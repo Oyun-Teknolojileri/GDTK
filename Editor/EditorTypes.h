@@ -20,6 +20,11 @@ extern void* g_context;
   #else
     #define TK_EDITOR_API __declspec(dllimport)
   #endif
+#else
+  // Editor is a single executable on Linux, so there's no DLL import/export
+  // to model. Mirror ToolKit's Platform.h and use default ELF visibility so
+  // editor symbols stay usable from shared objects that link against them.
+  #define TK_EDITOR_API __attribute__((visibility("default")))
 #endif
 
 namespace ToolKit

@@ -57,9 +57,26 @@ target_link_libraries(Editor PRIVATE
 # X11 / Wayland / OpenGL platform support. SDL2's pkg-config on Linux pulls
 # in the bulk of these transitively, but listing them explicitly keeps the
 # link line obvious.
+#
+# The versioned-soname `-l:libX11.so.6` form is used on purpose: this
+# repo is built on Fedora systems where the *-devel RPMs (which provide
+# the unversioned `libX11.so` symlinks the linker looks up by default)
+# are not installed. The runtime libraries are present, so linking
+# directly against the versioned soname gives us a working binary
+# without needing sudo to install libX11-devel / mesa-libGL-devel.
 if(UNIX)
-  target_link_libraries(Editor PRIVATE X11 Xext Xrandr Xinerama Xi Xcursor
-                                        GL GLX pthread dl)
+  target_link_libraries(Editor PRIVATE
+    -l:libX11.so.6
+    -l:libXext.so.6
+    -l:libXrandr.so.2
+    -l:libXinerama.so.1
+    -l:libXi.so.6
+    -l:libXcursor.so.1
+    -l:libGL.so.1
+    -l:libGLX.so.0
+    pthread
+    dl
+  )
 elseif(WIN32)
   target_link_libraries(Editor PRIVATE OpenGL32)
 endif()

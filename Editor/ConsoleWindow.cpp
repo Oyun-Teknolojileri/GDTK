@@ -764,7 +764,7 @@ namespace ToolKit
     {
       String lineNum   = std::to_string(++line);
       size_t numDigits = (size_t) std::log10(line);
-      lineNum.append(std::max(4ull, numDigits) - numDigits, ' ');
+      lineNum.append(std::max<size_t>(4, numDigits) - numDigits, ' ');
       return lineNum + ": ";
     }
 
