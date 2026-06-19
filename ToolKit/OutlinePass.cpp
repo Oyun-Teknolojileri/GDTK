@@ -50,6 +50,12 @@ namespace ToolKit
     m_dilateBuffer.Invalidate();
     m_dilateBuffer.Map();
 
+    // Re-stage slot 7's UBO so the Vulkan descriptor set points at this buffer when
+    // the outline's draw records. Earlier passes sharing slot 7 (gradient sky, bloom,
+    // SSAO, DoF, GammaTonemapFxaa) would otherwise leave the descriptor pointing at
+    // their own VkBuffer, so the outline shader would read stale color data.
+    GetRenderer()->BindUniformBuffer(7, &m_dilateBuffer.GetBuffer());
+
     // Draw outline to the viewport.
     m_outlinePass->m_params.frameBuffer      = m_params.FrameBuffer;
     m_outlinePass->m_params.clearFrameBuffer = GraphicBitFields::None;
