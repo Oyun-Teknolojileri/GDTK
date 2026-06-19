@@ -323,6 +323,15 @@ void MyPass::PreRender()
    independently of the explicit `SetTexture(0, srcTex)` call. Either set the
    material's diffuse to match (`SetDiffuseTextureVal(srcTex)`) or use a different
    sampler slot to avoid the collision.
+6. **Driving a per-job stencil/depth prepass through `ApplyRequirements`.** The
+   `StencilRenderPass` write phase renders `m_params.RenderJobs`, each of which
+   carries its own `Material->GetProgram()` with its own uniforms. If you call
+   `ApplyRequirements` with `m_requirements.program = m_program` (the solidOverride
+   material's program), every job gets the wrong program and the wrong uniform
+   layout — visible symptom: outline goes missing on Vulkan because the outline
+   pass's stencil-mask reads stale values. The write phase is one of the few places
+   that stays on the older `renderer->SetPassState + renderer->Render(jobs)` flow.
+   See "Exceptions to the declarative flow" below.
 
 ### When to override `GatherRequirements` vs. populate manually
 
@@ -340,6 +349,34 @@ void MyPass::PreRender()
   get a fresh descriptor-set flush before their draw.
 - NOT called from `RenderSubPass` for `Pass`-derived sub-passes that don't extend
   `FullQuadPass` — those must call `ApplyRequirements` themselves.
+
+### Exceptions to the declarative flow
+
+The declarative `ApplyRequirements` flow assumes the pass draws with **one** program
+that the pass owns. Two cases break this assumption and stay on the older imperative
+flow:
+
+1. **Per-job stencil / depth prepass** (e.g. `StencilRenderPass` write phase,
+   hypothetical depth-prepass). The phase takes a `RenderJobArray` and lets
+   `renderer->Render(jobs)` select the program per job from `job.Material`. Binding a
+   single program via `ApplyRequirements` would shadow the per-job programs and break
+   the entire draw.
+   ```cpp
+   // StencilRenderPass::Render — known exception, do not migrate.
+   renderer->SetPassState(m_writePassState);
+   renderer->Render(*m_params.RenderJobs);
+   ```
+   Framebuffer + clear still come from `PreRender`'s `renderer->SetFramebuffer`.
+   The post-write copy sub-phase (`m_copyStencilSubPass`) is a separate quad and
+   uses the normal declarative flow.
+
+2. **Passes that call `renderer->Render(jobs)` with `m_program` deliberately
+   pre-bound** to set a non-default state (e.g. wireframe overlay) before per-job
+   draws take over. Same problem as #1: if you set `m_requirements.program` to
+   `m_program` you shadow the per-job programs. Only do the pre-bind in `PreRender`
+   so the actual `Render()` stays imperative.
+
+If you find a new third exception, document it here with the failing symptom.
 
 ---
 
