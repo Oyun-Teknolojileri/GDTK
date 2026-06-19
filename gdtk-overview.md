@@ -155,6 +155,65 @@ Base render pass. Holds a `GpuProgramPtr m_program` and a `StringView m_name` (R
 
 `RenderSubPass(pass)` for sub-passes (e.g. blur chains).
 
+#### PassRequirements (declarative draw binding)
+
+Passes declare what they need for a draw via a `PassRequirements` struct:
+
+```cpp
+struct PassRequirements
+{
+  ShaderPtr fragmentShader;
+  ShaderPtr vertexShader;
+  GpuProgramPtr program;          // optional pre-built program
+  FramebufferPtr frameBuffer;
+  GraphicBitFields clearBits;
+  std::unordered_map<int, TexturePtr>    textures;           // slot-indexed
+  std::unordered_map<String, TexturePtr> semanticTextures;   // name-indexed, resolved AFTER program bind
+  std::unordered_map<int, UniformBuffer*> customUbos;         // pass-specific UBOs (slot 7 in particular)
+  std::unordered_map<String, String>     defines;
+  RenderState passState;
+  bool scissorEnabled; UVec4 scissor;
+};
+```
+
+`Pass::ApplyRequirements(renderer)` walks this in a fixed 7-step order:
+1. Shader defines -> recompile fragment shader.
+2. Build or reuse `GpuProgramPtr` from vert+frag (fails loudly if either is missing).
+3. Bind the program.
+4. Bind the framebuffer + clear bits.
+5. Apply the passive RenderState (depth test/write, stencil, blend override, etc.).
+6. Stage scissor (if enabled).
+7. Bind custom UBOs by slot -> bind textures by slot -> bind textures by semantic name.
+
+This deterministic order replaces the older "call `renderer->SetTexture` /
+`SetFramebuffer` / `BindProgram` from inside the pass body" pattern. The old pattern
+leaked descriptor-set bindings between passes on Vulkan (slot 7 in particular is
+shared by Bloom, DoF, SSAO, gamma, outline, gradient sky, grid); ApplyRequirements
+makes the binding deterministic per draw.
+
+#### Sub-class flow
+
+```cpp
+class MyPass : public Pass {
+  void Render() override {
+    PassRequirements req;
+    req.fragmentShader = m_shader;
+    req.vertexShader   = m_subPass->m_material->GetVertexShaderVal();
+    req.program        = m_subPass->GetProgram();
+    req.frameBuffer    = m_output;
+    req.customUbos[7]  = &m_ubo.GetBuffer();
+    req.textures[0]    = m_input;
+    ApplyRequirements(GetRenderer());   // 7-step bind
+    m_subPass->Render();               // pure draw call
+  }
+};
+```
+
+See `AGENTS.md` section "Pass / PassRequirements Conventions" for the full pattern,
+including the two-quad rule for passes that use two fragment shaders (Bloom, etc.).
+
+#### RenderJob & RenderData
+
 #### RenderJob & RenderData
 
 `RenderJob` = one drawcall's worth of data:

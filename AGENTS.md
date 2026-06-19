@@ -202,6 +202,147 @@ namespace ToolKit
 
 ---
 
+## Pass / PassRequirements Conventions
+
+A pass is a single step in the render pipeline (bloom downsample, gamma tonemap,
+forward opaque draw, etc.). Passes declare **what they need** via `PassRequirements`
+and `Renderer::ApplyRequirements` does the actual binding in a deterministic order.
+This replaces the older ad-hoc pattern of calling `renderer->SetTexture` /
+`SetFramebuffer` / `BindProgram` from inside the pass.
+
+### Rule of thumb
+
+- **Declare, don't mutate.** A pass populates `m_requirements` in `PreRender()` (or in
+  a callback like `onPreRender`) and then calls `ApplyRequirements(GetRenderer())`
+  once. `Render()` itself becomes a pure draw call.
+- **No manual `BindUniformBuffer` for slot 7 unless the pass does not use
+  `ApplyRequirements`.** The descriptor-set binding for shared slots (slot 7 is the
+  pass-specific UBO slot shared by Bloom, DoF, SSAO, gamma, outline, grid, gradient
+  sky) is managed by `ApplyRequirements` reading `m_requirements.customUbos`.
+- **Two full-quad passes per phase** when a pass uses two fragment shaders that
+  must stay attached to their programs (e.g. Bloom's `m_downPass` + `m_upPass`).
+  Sharing one quad across both phases let downsample state leak into the upsample draw.
+
+### `PassRequirements` fields
+
+| Field             | When to set                                                    |
+|-------------------|----------------------------------------------------------------|
+| `fragmentShader`  | Always (must be non-null before ApplyRequirements)             |
+| `vertexShader`    | Always (must be non-null before ApplyRequirements)             |
+| `program`         | Only if you already have a built `GpuProgramPtr` to reuse       |
+| `frameBuffer`     | Where the pass writes color/depth                              |
+| `clearBits`       | Color/depth/stencil mask — defaults to `None`                  |
+| `textures`        | Slot-indexed sampler bindings (`std::unordered_map<int, TexturePtr>`) |
+| `semanticTextures`| Name-indexed sampler bindings (`std::unordered_map<String, TexturePtr>`). Resolved to slot AFTER program is bound — safer than `textures` for unknown binding order. |
+| `customUbos`      | Slot-indexed pass-specific UBO bindings (`std::unordered_map<int, UniformBuffer*>`) |
+| `defines`         | `std::unordered_map<String, String>` of `#define`s applied to fragment shader before program build |
+| `passState`       | Passive pipeline state (`RenderState` — depth, blend override, stencil, scissor) |
+| `scissorEnabled` / `scissor` | Per-pass scissor rectangle                          |
+
+### Standard pass template (sub-pass pattern, like SSAOPass)
+
+```cpp
+// Pass.h
+class TK_API MyPass : public Pass
+{
+ public:
+  MyPass();
+  void Render() override;
+  void PreRender() override;
+  void PostRender() override;
+
+  // Optional: populate m_requirements in PreRender, override the default
+  // Gather() that the base class calls.
+  void GatherRequirements(PassRequirements& reqs) override;
+
+ private:
+  // Sub-passes are usually a FullQuadPass per phase. Two fragment shaders ->
+  // two quad instances, each pinned to its own program in the constructor.
+  FullQuadPassPtr m_subPass     = nullptr;
+  FullQuadPassPtr m_subPass2    = nullptr;
+  ShaderPtr       m_shaderA     = nullptr;
+  ShaderPtr       m_shaderB     = nullptr;
+};
+
+// Pass.cpp
+MyPass::MyPass() : Pass("MyPass")
+{
+  m_shaderA = GetShaderManager()->Create<Shader>(ShaderPath("a.shader", true));
+  m_shaderB = GetShaderManager()->Create<Shader>(ShaderPath("b.shader", true));
+
+  // Pin each quad to its own shader ONCE in the constructor (renderer not alive
+  // yet is fine — SetFragmentShader only stages the program, BindProgram is no-op).
+  // Or do this once in PreRender if the renderer must be live.
+  m_subPass  = MakeNewPtr<FullQuadPass>();
+  m_subPass2 = MakeNewPtr<FullQuadPass>();
+}
+
+void MyPass::Render()
+{
+  // Each phase: build requirements, Apply, draw.
+  PassRequirements reqA;
+  reqA.fragmentShader = m_shaderA;
+  reqA.vertexShader   = m_subPass->m_material->GetVertexShaderVal();
+  reqA.program        = m_subPass->GetProgram();
+  reqA.frameBuffer    = m_outputFramebuffer;
+  reqA.customUbos[7]  = &m_passDataBuffer.GetBuffer();
+  reqA.textures[0]    = m_inputTexture;
+
+  ApplyRequirements(GetRenderer());
+  m_subPass->Render();
+}
+
+void MyPass::PreRender()
+{
+  Pass::PreRender();
+  // Update UBO data, decide which sub-pass runs, etc.
+  m_passDataBuffer.m_data.someField = ...;
+  m_passDataBuffer.Invalidate();
+  m_passDataBuffer.Map();
+}
+```
+
+### Common mistakes
+
+1. **Setting a framebuffer in the quad's `m_params.frameBuffer` instead of the
+   outer pass's `m_requirements.frameBuffer`.** The outer pass owns the destination;
+   the quad just consumes it. With the Gather fallback `reqs.frameBuffer = m_params.frameBuffer`,
+   this leaks old framebuffer state from a prior sub-pass call.
+2. **Forgetting `Map()` after writing UBO data.** `Map()` only uploads when
+   `m_invalid == true`. Call `Invalidate()` first or your UBO silently keeps
+   last frame's data.
+3. **Re-using one `FullQuadPass` for two fragment shaders.** Drift bugs (e.g. the
+   downsample shader lingering into an upsample draw) come from this. Use one quad
+   per shader.
+4. **Calling `renderer->BindUniformBuffer(slot, ub)` from `onPreRender` when the
+   pass uses `ApplyRequirements`.** Set `m_requirements.customUbos[slot] = ub` instead
+   and let Apply stage the descriptor set.
+5. **Implicit sampler binding via material's diffuse texture when the shader binds a
+   different sampler name.** When `BloomPass` lost `s_diffuseColor` to a default
+   texture, it was because the quad material's diffuse texture was bound to slot 0
+   independently of the explicit `SetTexture(0, srcTex)` call. Either set the
+   material's diffuse to match (`SetDiffuseTextureVal(srcTex)`) or use a different
+   sampler slot to avoid the collision.
+
+### When to override `GatherRequirements` vs. populate manually
+
+- **Sub-class populates `m_requirements` in `PreRender()` or `Render()`** when the
+  requirements are computed per-frame (e.g. camera-dependent state, dynamic UBOs).
+- **Override `GatherRequirements`** when the same pass can be called from multiple
+  places (e.g. `RunSubPass` in SSAOPass) and you want a single canonical builder.
+  Use `if (reqs.fragmentShader == nullptr) reqs.fragmentShader = ...` so callers can
+  still override fields by populating them first.
+
+### When Apply is called
+
+- Once at the top of `Render()`, before any draws.
+- Inside `RenderSubPass(subPass)` (via `FullQuadPass::PreRender`), so nested passes
+  get a fresh descriptor-set flush before their draw.
+- NOT called from `RenderSubPass` for `Pass`-derived sub-passes that don't extend
+  `FullQuadPass` — those must call `ApplyRequirements` themselves.
+
+---
+
 ## Documentation Maintenance (`gdtk-overview.md`)
 
 `gdtk-overview.md` is the project's architectural / context file. It is the first
