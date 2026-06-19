@@ -13,7 +13,6 @@
  */
 
 #include "Logger.h"
-#include "Object.h"
 #include "Platform.h"
 #include "Threads.h"
 #include "Types.h"

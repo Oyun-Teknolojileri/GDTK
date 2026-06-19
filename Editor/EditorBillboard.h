@@ -8,6 +8,7 @@
 #pragma once
 
 #include "EditorTypes.h"
+#include "Primative.h"
 
 namespace ToolKit
 {

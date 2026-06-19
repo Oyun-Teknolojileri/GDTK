@@ -8,7 +8,9 @@
 #pragma once
 
 #include "Entity.h"
+#include "GenericBuffers.h"
 #include "RHI.h"
+#include "UniformBuffer.h"
 
 namespace ToolKit
 {

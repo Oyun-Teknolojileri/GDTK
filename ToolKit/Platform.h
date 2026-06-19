@@ -17,7 +17,8 @@ namespace ToolKit
   {
     TKWindows,
     TKWeb,
-    TKAndroid
+    TKAndroid,
+    TKLlinux
   };
 
 #ifdef TK_DEBUG
@@ -41,6 +42,9 @@ namespace ToolKit
 #elif __EMSCRIPTEN__
   #define TK_PLATFORM PLATFORM::TKWeb
   #define TK_WEB
+#elif __linux__
+  #define TK_PLATFORM PLATFORM::TKLlinux
+  #define TK_LINUX
 #endif
 
 #ifdef TK_WIN // Windows.

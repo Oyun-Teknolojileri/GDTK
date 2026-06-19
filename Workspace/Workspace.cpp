@@ -199,7 +199,7 @@ namespace ToolKit
         }
 
         // Don't show hidden folders
-        String dirName = dir.path().filename().u8string();
+        String dirName = dir.path().filename().string();
         if (dirName.size() > 1 && dirName[0] != '.')
         {
           Project project = {dirName, ""};
@@ -461,7 +461,7 @@ namespace ToolKit
                            {".filters", ".vcxproj", ".user", ".cxx"});
 
     // Update cmake.
-    String currentPath = std::filesystem::current_path().parent_path().u8string();
+    String currentPath = std::filesystem::current_path().parent_path().string();
     String cmakePath   = ConcatPaths({fullPath, "Codes", "CMakeLists.txt"});
     TemplateUpdate(cmakePath, "__projectname__", name);
 

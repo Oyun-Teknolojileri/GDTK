@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include "IGraphicsBackend.h"
 #include "Stats.h"
 #include "Types.h"
 

@@ -241,21 +241,21 @@ namespace ToolKit
 
   String GetCurrentPath()
   {
-    String path = std::filesystem::current_path().u8string();
+    String path = std::filesystem::current_path().string();
     UnixifyPath(path);
     return path;
   }
 
   String GetCurrentParentPath()
   {
-    String path = std::filesystem::current_path().parent_path().u8string();
+    String path = std::filesystem::current_path().parent_path().string();
     UnixifyPath(path);
     return path;
   }
 
   String ToAbsolutePath(const String& path)
   {
-    String absolutePath = std::filesystem::absolute(path).u8string();
+    String absolutePath = std::filesystem::absolute(path).string();
     NormalizePathInplace(absolutePath);
     return absolutePath;
   }
@@ -315,7 +315,7 @@ namespace ToolKit
   void NormalizePathInplace(String& path)
   {
     std::filesystem::path patify = path;
-    path                         = patify.lexically_normal().u8string();
+    path                         = patify.lexically_normal().string();
     UnixifyPath(path);
   }
 
@@ -1050,7 +1050,7 @@ namespace ToolKit
       const path new_path     = destination / current_path.filename();
 
       String ext;
-      DecomposePath(current_path.u8string(), nullptr, nullptr, &ext);
+      DecomposePath(current_path.string(), nullptr, nullptr, &ext);
 
       if (ignoredExtSet.count(std::hash<String> {}(ext)) != 0)
       {
@@ -1059,7 +1059,7 @@ namespace ToolKit
 
       if (is_directory(current_path))
       {
-        RecursiveCopyDirectoryWithSet(current_path.generic_u8string(), new_path.generic_u8string(), ignoredExtSet);
+        RecursiveCopyDirectoryWithSet(current_path.generic_string(), new_path.generic_string(), ignoredExtSet);
       }
       else if (is_regular_file(current_path))
       {

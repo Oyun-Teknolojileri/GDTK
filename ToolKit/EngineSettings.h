@@ -10,6 +10,8 @@
 #include "Object.h"
 #include "Shader.h"
 
+#include <map>
+
 namespace ToolKit
 {
 
