@@ -164,7 +164,7 @@ namespace ToolKit
     {
       if (dir.is_directory())
       {
-        String dirPath = dir.path().string();
+        String dirPath = PathToString(dir.path());
         if (dirPath.find(".git") != String::npos)
         {
           // Skip git directory.
@@ -199,7 +199,7 @@ namespace ToolKit
         }
 
         // Don't show hidden folders
-        String dirName = dir.path().filename().string();
+        String dirName = PathToString(dir.path().filename());
         if (dirName.size() > 1 && dirName[0] != '.')
         {
           Project project = {dirName, ""};
@@ -461,7 +461,7 @@ namespace ToolKit
                            {".filters", ".vcxproj", ".user", ".cxx"});
 
     // Update cmake.
-    String currentPath = std::filesystem::current_path().parent_path().string();
+    String currentPath = PathToString(std::filesystem::current_path().parent_path());
     String cmakePath   = ConcatPaths({fullPath, "Codes", "CMakeLists.txt"});
     TemplateUpdate(cmakePath, "__projectname__", name);
 

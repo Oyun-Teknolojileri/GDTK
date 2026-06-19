@@ -906,7 +906,7 @@ namespace ToolKit
 
       // Set the execute path.
       std::filesystem::path pathBck = std::filesystem::current_path();
-      std::filesystem::path path    = pathBck.string() + ConcatPaths({"", "..", "Utils", "Import"});
+      std::filesystem::path path    = PathToString(pathBck) + ConcatPaths({"", "..", "Utils", "Import"});
       std::filesystem::current_path(path);
 
       std::filesystem::path cpyDir = ".";

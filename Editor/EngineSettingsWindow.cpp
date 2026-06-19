@@ -107,7 +107,7 @@ namespace ToolKit
             {
               if (entry.is_regular_file() && entry.path().extension() == ".settings")
               {
-                String filename = entry.path().stem().string();
+                String filename = PathToString(entry.path().stem());
                 if (filename != "Editor")
                 {
                   settingsFiles.push_back(filename);

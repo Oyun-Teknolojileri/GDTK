@@ -210,7 +210,7 @@ namespace ToolKit
         std::filesystem::path path = std::filesystem::current_path();
         if (path.has_parent_path())
         {
-          String utf8Path = path.parent_path().string();
+          String utf8Path = PathToString(path.parent_path());
           utf8Path.erase(remove(utf8Path.begin(), utf8Path.end(), '\"'), utf8Path.end());
           UnixifyPath(utf8Path);
 

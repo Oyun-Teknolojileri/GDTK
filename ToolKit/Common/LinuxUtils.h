@@ -158,7 +158,7 @@ namespace ToolKit
     void OpenExplorer(const StringView utf8Path)
     {
       std::filesystem::path systemPath = utf8Path;
-      std::string systemPathStr        = systemPath.lexically_normal().string();
+      std::string systemPathStr        = PathToString(systemPath.lexically_normal());
 
       pid_t pid = fork();
       if (pid < 0)
@@ -252,7 +252,7 @@ namespace ToolKit
                                         const String& exePathOverride = "")
     {
       std::string exePath = exePathOverride.empty()
-                                ? std::filesystem::read_symlink("/proc/self/exe").string()
+                                ? PathToString(std::filesystem::read_symlink("/proc/self/exe"))
                                 : exePathOverride;
 
       // Resolve $XDG_DESKTOP_DIR, falling back to $HOME/Desktop.

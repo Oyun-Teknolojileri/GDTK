@@ -141,7 +141,7 @@ namespace ToolKit
       GetFileManager()->CloseZipFile();
 
       m_isBuilding           = true;
-      packerPath             = std::filesystem::absolute(ConcatPaths({"..", packerPath})).string();
+      packerPath             = PathToString(std::filesystem::absolute(ConcatPaths({"..", packerPath})));
 
       const auto afterPackFn = [&](int res) -> void
       {

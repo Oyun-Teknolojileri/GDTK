@@ -249,12 +249,12 @@ namespace ToolKit
       if (entry.is_directory())
       {
         // Go scenes in directories
-        LoadAllScenes(entry.path().string());
+        LoadAllScenes(PathToString(entry.path()));
         continue;
       }
 
       // Load all scenes
-      String pt = entry.path().string();
+      String pt = PathToString(entry.path());
       String name, ext;
       DecomposePath(pt, nullptr, &name, &ext);
 
@@ -515,11 +515,11 @@ namespace ToolKit
       if (entry.is_directory())
       {
         // Go animations in directories
-        GetAllPaths(entry.path().string());
+        GetAllPaths(PathToString(entry.path()));
         continue;
       }
 
-      m_allPaths.insert(std::filesystem::absolute(entry.path()).string());
+      m_allPaths.insert(PathToString(std::filesystem::absolute(entry.path())));
     }
   }
 

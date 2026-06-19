@@ -241,21 +241,21 @@ namespace ToolKit
 
   String GetCurrentPath()
   {
-    String path = std::filesystem::current_path().string();
+    String path = PathToString(std::filesystem::current_path());
     UnixifyPath(path);
     return path;
   }
 
   String GetCurrentParentPath()
   {
-    String path = std::filesystem::current_path().parent_path().string();
+    String path = PathToString(std::filesystem::current_path().parent_path());
     UnixifyPath(path);
     return path;
   }
 
   String ToAbsolutePath(const String& path)
   {
-    String absolutePath = std::filesystem::absolute(path).string();
+    String absolutePath = PathToString(std::filesystem::absolute(path));
     NormalizePathInplace(absolutePath);
     return absolutePath;
   }
@@ -315,7 +315,7 @@ namespace ToolKit
   void NormalizePathInplace(String& path)
   {
     std::filesystem::path patify = path;
-    path                         = patify.lexically_normal().string();
+    path                         = PathToString(patify.lexically_normal());
     UnixifyPath(path);
   }
 
@@ -383,7 +383,7 @@ namespace ToolKit
     if (exist == String::npos)
     {
       // ToolKit resource absolute path
-      root  = std::filesystem::absolute(root).string();
+      root  = PathToString(std::filesystem::absolute(root));
       root  = NormalizePath(root);
       exist = path.find(root, 0);
     }
@@ -1050,7 +1050,7 @@ namespace ToolKit
       const path new_path     = destination / current_path.filename();
 
       String ext;
-      DecomposePath(current_path.string(), nullptr, nullptr, &ext);
+      DecomposePath(PathToString(current_path), nullptr, nullptr, &ext);
 
       if (ignoredExtSet.count(std::hash<String> {}(ext)) != 0)
       {

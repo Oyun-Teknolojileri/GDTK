@@ -255,7 +255,7 @@ namespace ToolKit
         namespace fs = std::filesystem;
         for (const fs::directory_entry& entry : fs::directory_iterator(pluginDir))
         {
-          String path    = entry.path().string();
+          String path    = PathToString(entry.path());
           String cfgFile = ConcatPaths({path, "Config", "Plugin.settings"});
           if (CheckSystemFile(cfgFile))
           {

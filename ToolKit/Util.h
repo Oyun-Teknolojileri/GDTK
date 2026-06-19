@@ -10,6 +10,8 @@
 #include "GeometryTypes.h"
 #include "Types.h"
 
+#include <filesystem>
+
 namespace ToolKit
 {
 
@@ -108,6 +110,30 @@ namespace ToolKit
 
   /** Concatenates multiple entries to create a unixified path. */
   TK_API String ConcatPaths(const StringArray& entries);
+
+  /**
+   * Convert a std::filesystem::path to the engine's UTF-8 String.
+   *
+   * Linux paths are already UTF-8, so .string() is correct there. On
+   * Windows .string() decodes via the active code page (e.g. cp1254 on
+   * a Turkish system), which mangles any non-ASCII character and breaks
+   * file names that contain accented letters, emoji, CJK glyphs, etc.
+   * There we go through .u8string() and copy its bytes into String
+   * verbatim. Reading each char8_t as a char is safe because well-formed
+   * UTF-8 stays well-formed at the byte level.
+   *
+   * Use this helper at every path -> String boundary (file scan, dialog,
+   * stat, dlopen) instead of calling .string() / .u8string() directly.
+   */
+  inline String PathToString(const std::filesystem::path& p)
+  {
+#ifdef _WIN32
+    const auto u8 = p.u8string();
+    return String(u8.begin(), u8.end());
+#else
+    return p.string();
+#endif
+  }
 
   /**
    * Copies all of the directories and folders recursively.
