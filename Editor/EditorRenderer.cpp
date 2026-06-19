@@ -276,13 +276,15 @@ namespace ToolKit
       // passes are active in this frame.
       GridPtr grid                       = m_params.Viewport->IsA<EditorViewport2d>() ? app->m_2dGrid : app->m_grid;
       m_sceneRenderPath->m_params.grid   = grid;
-      m_sceneRenderPath->m_forwardRenderPass->m_params.onPreRender = [renderer, grid]()
+      ForwardRenderPass* forwardRenderPass = m_sceneRenderPath->m_forwardRenderPass.get();
+      forwardRenderPass->m_params.onPreRender = [grid, forwardRenderPass]()
       {
         grid->UpdateShaderParams();
-        // Re-stage slot 7's UBO so the Vulkan descriptor set points at the grid buffer
-        // when the forward pass draws the grid. Earlier passes sharing slot 7 may have
-        // left the descriptor pointing elsewhere.
-        renderer->BindUniformBuffer(7, &grid->GetDataBuffer().GetBuffer());
+        // Stage slot 7 on the forward render pass so ApplyRequirements (called at the top
+        // of Render) re-binds the descriptor set to the grid's VkBuffer before the grid's
+        // draw records. Earlier passes sharing slot 7 may have left the descriptor
+        // pointing elsewhere; this gets it back on track.
+        forwardRenderPass->GetRequirements().customUbos[7] = &grid->GetDataBuffer().GetBuffer();
       };
 
       // Light gizmos.

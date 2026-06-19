@@ -48,6 +48,30 @@ namespace ToolKit
   {
     TK_PROFILE_FUNCTION();
 
+    // Pre-bind the slot-7 custom UBO (if any — set via m_requirements.customUbos by the
+    // caller's onPreRender callback, typically the Grid's UBO). Doing this once at the
+    // top of Render() means every subsequent renderer->Render(job) sees a descriptor set
+    // already pointed at the right VkBuffer, so the grid material's draw picks up its
+    // GridPassData without needing per-job rebinds.
+    //
+    // Pass-level passive state is also stamped in once; per-job bits (cull, blend,
+    // alphaMask) are merged from the job's material inside Renderer::Render.
+    m_requirements.frameBuffer  = m_params.FrameBuffer;
+    m_requirements.clearBits    = m_params.clearBuffer;
+    m_requirements.passState    = m_opaquePassState;
+    m_requirements.program      = nullptr; // let Apply build from vert/frag below
+
+    // We don't have a single vert/frag here (ForwardRenderPass builds programs
+    // dynamically per-config-material). Pull vert/frag from m_programConfigMat so
+    // ApplyRequirements has a valid program. For jobs that override the material
+    // (shader materials, two-sided translucent), the per-job renderer->Render path
+    // rebinds with the right program internally — the customUbos binding we set
+    // here survives across those rebinds.
+    m_requirements.fragmentShader = m_programConfigMat->GetFragmentShaderVal();
+    m_requirements.vertexShader   = m_programConfigMat->GetVertexShaderVal();
+
+    ApplyRequirements(GetRenderer());
+
     RenderOpaque(m_params.renderData);
     RenderTranslucent(m_params.renderData);
   }
