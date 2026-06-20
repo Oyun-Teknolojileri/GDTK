@@ -987,11 +987,18 @@ namespace ToolKit
 
   void SceneManager::SetCurrentScene(const ScenePtr& scene)
   {
+    // Keep the old scene alive until m_currentScene points to the new one.
+    // Otherwise its destructor runs mid-assignment, calls GetCurrentScene()
+    // from EditorScene::Destroy(), gets a fresh ref to itself, and re-enters
+    // the destructor when that temporary drops -> infinite recursion.
+    ScenePtr old   = m_currentScene;
     m_currentScene = scene;
     m_currentScene->Init();
 
     // Apply scene post processing effects.
     GetEngineSettings().m_postProcessing = m_currentScene->m_postProcessSettings;
+
+    old.reset();
   }
 
   void SceneManager::Clear() { m_storage.clear(); }
