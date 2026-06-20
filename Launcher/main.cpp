@@ -54,13 +54,13 @@ namespace ToolKit
 
     void CreateAppData()
     {
-      StringView appData = getenv("APPDATA");
+      String appData = PlatformHelpers::GetUserConfigDir();
       if (appData.empty())
       {
         return;
       }
 
-      String cfgPath = ConcatPaths({String(appData), "ToolKit", "Config"});
+      String cfgPath              = ConcatPaths({String(appData), "ToolKit", "Config"});
       if (!CheckSystemFile(cfgPath))
       {
         std::filesystem::create_directories(cfgPath);
