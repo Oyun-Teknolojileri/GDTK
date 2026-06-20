@@ -190,7 +190,7 @@ namespace ToolKit
     //                once the child exits; the call returns 0 immediately.
     // async=false -> wait for the child synchronously and return its
     //                exit status.
-    inline int SysComExec(const std::vector<String>& argv,
+    inline int SysComExec(const StringArray& argv,
                           bool async,
                           bool showConsole,
                           std::function<void(int)> callback)

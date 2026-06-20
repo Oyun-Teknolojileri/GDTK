@@ -777,7 +777,7 @@ namespace ToolKit
       }
     }
 
-    int App::ExecSysCommand(const std::vector<String>& argv,
+    int App::ExecSysCommand(const StringArray& argv,
                             bool async,
                             bool showConsole,
                             SysCommandDoneCallback callback)
@@ -934,7 +934,7 @@ namespace ToolKit
             finalPath = "importList.txt";
           }
 
-          std::vector<String> importArgv = {String("Import"), finalPath};
+          StringArray importArgv = {String("Import"), finalPath};
           if (!subDir.empty())
           {
             importArgv.push_back(String("-t"));

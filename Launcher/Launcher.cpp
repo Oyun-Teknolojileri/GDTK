@@ -203,9 +203,9 @@ namespace ToolKit
       // Build a tokenized argv so the executor can avoid the shell
       // entirely. The editor's own path is resolved up front so we
       // don't rely on $PATH or a hardcoded Bin/ relative path.
-      std::vector<String> argv;
+      StringArray argv;
       argv.push_back(PlatformHelpers::GetEditorExecutablePath());
-      const std::vector<String> launchArgv = PlatformHelpers::BuildEditorLaunchArgv(workspacePath, project.name);
+      const StringArray launchArgv = PlatformHelpers::BuildEditorLaunchArgv(workspacePath, project.name);
       argv.insert(argv.end(), launchArgv.begin(), launchArgv.end());
 
       m_sysComExecFn(argv, true, false, nullptr);
@@ -992,10 +992,10 @@ namespace ToolKit
 
               String workspacePath = m_workspace->GetActiveWorkspace();
               String targetPath    = ConcatPaths({workspacePath, projectName});
-              std::vector<String> gitArgv = {String("git"),
-                                             String("clone"),
-                                             m_newProjectPathOrUrl,
-                                             targetPath};
+              StringArray gitArgv = {String("git"),
+                                     String("clone"),
+                                     m_newProjectPathOrUrl,
+                                     targetPath};
 
               m_sysComExecFn(gitArgv,
                              true,

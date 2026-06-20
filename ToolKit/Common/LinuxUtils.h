@@ -107,13 +107,13 @@ namespace ToolKit
       return GetSiblingExecutablePath(GetPackerExecutableName());
     }
 
-    // Helper: convert std::vector<String> to a null-terminated
+    // Helper: convert StringArray to a null-terminated
     // char** suitable for posix_spawn's argv parameter. Each entry
     // is duplicated so the spawn call can survive argv going out
     // of scope if needed (posix_spawn may copy internally on some
     // libcs, but the spec doesn't guarantee it for the file_actions
     // path on all platforms).
-    inline char** ToNullTerminatedArgv(const std::vector<String>& argv)
+    inline char** ToNullTerminatedArgv(const StringArray& argv)
     {
       char** arr = new char*[argv.size() + 1];
       for (size_t i = 0; i < argv.size(); ++i)
@@ -149,7 +149,7 @@ namespace ToolKit
     //                once the child exits; the call returns 0 immediately.
     // async=false -> wait for the child synchronously and return its
     //                exit status.
-    inline int SysComExec(const std::vector<String>& argv,
+    inline int SysComExec(const StringArray& argv,
                           bool async,
                           bool showConsole,
                           std::function<void(int)> callback)

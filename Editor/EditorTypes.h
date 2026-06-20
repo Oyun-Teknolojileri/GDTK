@@ -86,7 +86,7 @@ namespace ToolKit
     // arguments. The executor (PlatformHelpers::SysComExec) does
     // its own platform-appropriate escaping -- callers do not
     // need to pre-quote or pre-escape anything.
-    typedef std::function<int(const std::vector<String>&, bool, bool, SysCommandDoneCallback)>
+    typedef std::function<int(const StringArray&, bool, bool, SysCommandDoneCallback)>
         SysCommandExecutionFn;
     typedef std::function<void(const StringView)> ShellOpenDirFn;
 

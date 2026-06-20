@@ -232,7 +232,7 @@ namespace ToolKit
           String codePath = ConcatPaths({GetApp()->m_workspace->GetCodeDirectory(), "..", "."});
           if (CheckFile(codePath))
           {
-            std::vector<String> codeArgv = {String("code"), codePath};
+            StringArray codeArgv = {String("code"), codePath};
             int result                  = GetApp()->ExecSysCommand(codeArgv, true, false);
             if (result != 0)
             {

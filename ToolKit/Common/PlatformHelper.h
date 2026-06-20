@@ -124,12 +124,12 @@ namespace ToolKit
     }
 
     // Same args as BuildEditorLaunchArgs but as a tokenized argv that
-    // can be handed straight to SysComExec(const std::vector<String>&,
+    // can be handed straight to SysComExec(const StringArray&,
     // ...). Avoids the shell-escaping pitfalls the string form has
     // (paths with spaces, quotes, dollar signs, etc.) because each
     // token reaches the child process verbatim.
-    inline std::vector<String> BuildEditorLaunchArgv(const String& workspacePath,
-                                                     const String& projectName)
+    inline StringArray BuildEditorLaunchArgv(const String& workspacePath,
+                                             const String& projectName)
     {
       return {String("--workspace"), workspacePath, String("--project-name"), projectName};
     }
