@@ -28,6 +28,9 @@ namespace ToolKit
   class TK_API Serializable
   {
    public:
+    /** Assign default version to the serializable object. */
+    Serializable() { m_version = TKVersionStr; }
+
     /** Serialize the object to given document from the given parent. */
     void Serialize(XmlDocument* doc, XmlNode* parent) const
     {
@@ -104,7 +107,7 @@ namespace ToolKit
 
    public:
     /** Version of the serializable object. */
-    String m_version = TKVersionStr;
+    String m_version;
 
    protected:
     /** Total number of things that will be loading. Used in completed percent calculation. */
