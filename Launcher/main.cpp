@@ -8,8 +8,8 @@
 #include "Launcher.h"
 #include "LauncherBackendBindings.h"
 
+#include <Common/PlatformHelper.h>
 #include <Common/SDLEventPool.h>
-#include <Common/Win32Utils.h>
 #include <EngineSettings.h>
 #include <FileManager.h>
 #include <Image.h>
@@ -17,9 +17,10 @@
 #include <RenderSystem.h>
 #include <SDL.h>
 #include <Types.h>
+#include <Util.h>
 
 #define IMGUI_USER_CONFIG "tk_imconfig.h"
-#include <ImGui/backends/imgui_impl_sdl2.h>
+#include <imgui/backends/imgui_impl_sdl2.h>
 #include <imgui/imgui.h>
 #include <locale.h>
 
@@ -90,7 +91,7 @@ namespace ToolKit
         std::filesystem::path path = std::filesystem::current_path();
         if (path.has_parent_path())
         {
-          String utf8Path = path.parent_path().u8string();
+          String utf8Path = PathToString(path.parent_path());
           utf8Path.erase(remove(utf8Path.begin(), utf8Path.end(), '\"'), utf8Path.end());
           UnixifyPath(utf8Path);
           file << utf8Path;
@@ -197,9 +198,9 @@ namespace ToolKit
       g_launcher->m_createProjectShortcutOnDesktopFn = [](const String& name, const String& args)
       {
 #ifdef TK_DEBUG
-        String editorExe = std::filesystem::current_path().u8string() + "/Editord.exe";
+        String editorExe = PathToString(std::filesystem::current_path()) + "/Editord.exe";
 #else
-        String editorExe = std::filesystem::current_path().u8string() + "/Editor.exe";
+        String editorExe = PathToString(std::filesystem::current_path()) + "/Editor.exe";
 #endif
         UnixifyPath(editorExe);
         PlatformHelpers::CreateProjectShortcutOnDesktop(name, args, editorExe);
@@ -293,7 +294,7 @@ int main(int argc, char* argv[])
   setlocale(LC_ALL, ".UTF-8");
   setlocale(LC_NUMERIC, "C");
 
-#ifdef TK_DEBUG
+#if defined(TK_DEBUG) && defined(_WIN32) && defined(_MSC_VER)
   _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 #endif
 

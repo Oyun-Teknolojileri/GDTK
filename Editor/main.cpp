@@ -22,13 +22,9 @@
 #include "Stats.h"
 #include "UI.h"
 
+#include <Common/PlatformHelper.h>
 #include <Common/SDLEventPool.h>
 #include <Common/SplashScreen.h>
-#ifdef _WIN32
-  #include <Common/Win32Utils.h>
-#else
-  #include <Common/LinuxUtils.h>
-#endif
 #include <FileManager.h>
 #include <imgui/backends/imgui_impl_sdl2.h>
 #include <imgui/imgui.h>
@@ -121,7 +117,7 @@ namespace ToolKit
     // Populates the per-user config dir with stock Workspace.settings,
     // Editor.settings, etc. so the editor has a working set on first
     // launch. The platform-specific config dir is resolved centrally
-    // by PlatformHelpers::GetUserConfigDir() (LinuxUtils.h / Win32Utils.h)
+    // by PlatformHelpers::GetUserConfigDir() (declared in Common/PlatformHelper.h)
     // -- no #ifdef here.
     void CreateAppData()
     {

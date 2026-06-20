@@ -6,7 +6,7 @@
  */
 
 #include <Animation.h>
-#include <Common/Win32Utils.h>
+#include <Common/PlatformHelper.h>
 #include <FileManager.h>
 #include <Image.h>
 #include <Material.h>

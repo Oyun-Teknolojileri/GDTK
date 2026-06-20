@@ -6,7 +6,7 @@
  */
 
 #include <Animation.h>
-#include <Common/Win32Utils.h>
+#include <Common/PlatformHelper.h>
 #include <DirectionComponent.h>
 #include <Image.h>
 #include <Material.h>
@@ -55,7 +55,7 @@ GLMtype convertAssimpColorToGlm(AiType source)
 void TrunckToFileName(string& fullPath)
 {
   fs::path patify = fullPath;
-  fullPath        = patify.filename().u8string();
+  fullPath        = ToolKit::PathToString(patify.filename());
 }
 
 namespace ToolKit
@@ -542,7 +542,7 @@ namespace ToolKit
 
         string fileName = tName;
         TrunckToFileName(fileName);
-        string textPath = NormalizePath(fs::path(filePath + fileName).lexically_normal().u8string());
+        string textPath = NormalizePath(PathToString(fs::path(filePath + fileName).lexically_normal()));
 
         if (!embedded && !CheckSystemFile(textPath))
         {
@@ -1457,7 +1457,7 @@ namespace ToolKit
 
         if (arg == "-t")
         {
-          dest = fs::path(argv[i + 1]).append("").u8string();
+          dest = PathToString(fs::path(argv[i + 1]).append(""));
         }
 
         if (arg == "-s")
@@ -1472,7 +1472,7 @@ namespace ToolKit
         }
       }
 
-      dest = NormalizePath(fs::path(dest).lexically_normal().u8string());
+      dest = NormalizePath(PathToString(fs::path(dest).lexically_normal()));
       if (!dest.empty())
       {
         fs::create_directories(dest);
