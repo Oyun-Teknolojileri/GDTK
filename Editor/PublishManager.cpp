@@ -9,6 +9,7 @@
 
 #include "App.h"
 
+#include <Common/PlatformHelper.h>
 #include <FileManager.h>
 #include <PluginManager.h>
 
@@ -30,7 +31,7 @@ namespace ToolKit
       GetFileManager()->WriteAllText("PublishArguments.txt", publishArguments);
       GetApp()->SetStatusMsg(g_statusPublishing + g_statusNoTerminate);
 
-      String packerPath = NormalizePath("Utils/Packer/Packer.exe");
+      String packerPath = NormalizePath(ConcatPaths({"Utils", "Packer", PlatformHelpers::GetPackerExecutableName()}));
 
       // Close zip file before running packer, because packer will use this file as well,
       // this will cause errors otherwise.
@@ -117,7 +118,7 @@ namespace ToolKit
         };
       }
 
-      GetApp()->ExecSysCommand(packerPath, isAsync, true, afterPackFn);
+      GetApp()->ExecSysCommand({packerPath}, isAsync, true, afterPackFn);
     }
 
     void PublishManager::Pack()
@@ -134,7 +135,7 @@ namespace ToolKit
       GetFileManager()->WriteAllText("PublishArguments.txt", publishArguments);
       GetApp()->SetStatusMsg(g_statusPacking + g_statusNoTerminate);
 
-      String packerPath = NormalizePath("Utils/Packer/Packer.exe");
+      String packerPath = NormalizePath(ConcatPaths({"Utils", "Packer", PlatformHelpers::GetPackerExecutableName()}));
 
       // Close zip file before running packer, because packer will use this file as well,
       // this will cause errors otherwise.
@@ -158,7 +159,7 @@ namespace ToolKit
         m_isBuilding = false;
       };
 
-      GetApp()->ExecSysCommand(packerPath, true, true, afterPackFn);
+      GetApp()->ExecSysCommand({packerPath}, true, true, afterPackFn);
     }
 
     String PublishManager::ConstructPublishArgs(PublishPlatform platform, PublishConfig publishConfig, bool packOnly)

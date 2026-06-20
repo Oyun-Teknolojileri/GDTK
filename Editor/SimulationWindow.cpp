@@ -232,8 +232,8 @@ namespace ToolKit
           String codePath = ConcatPaths({GetApp()->m_workspace->GetCodeDirectory(), "..", "."});
           if (CheckFile(codePath))
           {
-            String cmd = "code \"" + codePath + "\"";
-            int result = GetApp()->ExecSysCommand(cmd, true, false);
+            std::vector<String> codeArgv = {String("code"), codePath};
+            int result                  = GetApp()->ExecSysCommand(codeArgv, true, false);
             if (result != 0)
             {
               TK_ERR("Visual Studio Code can't be started. Make sure it is installed.");

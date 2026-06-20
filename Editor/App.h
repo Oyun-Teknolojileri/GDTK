@@ -73,7 +73,7 @@ namespace ToolKit
        * @param callback function to call when the operation completed.
        * @return 0 if command can be started successfully.
        */
-      int ExecSysCommand(StringView cmd,
+      int ExecSysCommand(const std::vector<String>& argv,
                          bool async,
                          bool showConsole,
                          /**

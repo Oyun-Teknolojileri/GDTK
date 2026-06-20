@@ -197,12 +197,11 @@ namespace ToolKit
       g_launcher->m_sysComExecFn                     = &PlatformHelpers::SysComExec;
       g_launcher->m_createProjectShortcutOnDesktopFn = [](const String& name, const String& args)
       {
-#ifdef TK_DEBUG
-        String editorExe = PathToString(std::filesystem::current_path()) + "/Editord.exe";
-#else
-        String editorExe = PathToString(std::filesystem::current_path()) + "/Editor.exe";
-#endif
-        UnixifyPath(editorExe);
+        // Resolve the absolute path of the editor we're currently
+        // running as. CWD-based or $PATH-based lookups are unsafe
+        // for shortcut targets (a shortcut must work even if the
+        // user double-clicks it from a different working dir).
+        String editorExe = PlatformHelpers::GetEditorExecutablePath();
         PlatformHelpers::CreateProjectShortcutOnDesktop(name, args, editorExe);
       };
 

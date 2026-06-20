@@ -7,6 +7,7 @@
 
 #include "Launcher.h"
 
+#include <Common/PlatformHelper.h>
 #include <RenderSystem.h>
 #include <Renderer.h>
 #include <Texture.h>
@@ -198,13 +199,16 @@ namespace ToolKit
 
       String workspacePath = m_workspace->GetActiveWorkspace();
       UnixifyPath(workspacePath);
-#ifdef TK_DEBUG
-      String cmd = "Editord.exe --workspace \"" + workspacePath + "\" --project-name \"" + project.name + "\"";
-#else
-      String cmd = "Editor.exe --workspace \"" + workspacePath + "\" --project-name \"" + project.name + "\"";
-#endif
 
-      m_sysComExecFn(cmd, true, false, nullptr);
+      // Build a tokenized argv so the executor can avoid the shell
+      // entirely. The editor's own path is resolved up front so we
+      // don't rely on $PATH or a hardcoded Bin/ relative path.
+      std::vector<String> argv;
+      argv.push_back(PlatformHelpers::GetEditorExecutablePath());
+      const std::vector<String> launchArgv = PlatformHelpers::BuildEditorLaunchArgv(workspacePath, project.name);
+      argv.insert(argv.end(), launchArgv.begin(), launchArgv.end());
+
+      m_sysComExecFn(argv, true, false, nullptr);
       g_running = false;
     }
 
@@ -592,7 +596,7 @@ namespace ToolKit
                   const Project& selected = m_workspace->m_projects[m_selectedProjectIndex];
                   String workspacePath    = m_workspace->GetActiveWorkspace();
                   UnixifyPath(workspacePath);
-                  String args = "--workspace \"" + workspacePath + "\" --project-name \"" + selected.name + "\"";
+                  String args = PlatformHelpers::BuildEditorLaunchArgs(workspacePath, selected.name);
                   m_createProjectShortcutOnDesktopFn(selected.name, args);
                 }
               }
@@ -988,9 +992,12 @@ namespace ToolKit
 
               String workspacePath = m_workspace->GetActiveWorkspace();
               String targetPath    = ConcatPaths({workspacePath, projectName});
-              String gitCmd        = "git clone \"" + m_newProjectPathOrUrl + "\" \"" + targetPath + "\"";
+              std::vector<String> gitArgv = {String("git"),
+                                             String("clone"),
+                                             m_newProjectPathOrUrl,
+                                             targetPath};
 
-              m_sysComExecFn(gitCmd,
+              m_sysComExecFn(gitArgv,
                              true,
                              false,
                              [this](int exitCode) -> void

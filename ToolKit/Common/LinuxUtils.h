@@ -47,75 +47,176 @@ namespace ToolKit
     {
       // Linux paths are already UTF-8 in std::string; this is a no-op
       // identity function kept for API symmetry with Win32Utils.h.
-      std::wstring ConvertUTF8ToUTF16(const std::string& utf8String)
+      inline std::wstring ConvertUTF8ToUTF16(const std::string& utf8String)
       {
         return std::wstring(utf8String.begin(), utf8String.end());
       }
     } // namespace UTF8Util
 
+    // Returns the absolute path of the running executable by
+    // resolving the /proc/self/exe symlink. Mirrors the Windows
+    // GetModuleFileNameW-based resolver. Implementation detail
+    // for GetExecutableDirectory() / GetSiblingExecutablePath().
+    inline String GetExecutablePath()
+    {
+      std::error_code ec;
+      std::filesystem::path exePath = std::filesystem::read_symlink("/proc/self/exe", ec);
+      if (ec)
+      {
+        return String();
+      }
+      return PathToString(exePath.lexically_normal());
+    }
+
+    // Returns the directory containing the running executable
+    // (with trailing separator). Use to resolve sibling binaries
+    // that ship next to the current process (e.g. the editor
+    // next to the launcher, both living in Bin/).
+    inline String GetExecutableDirectory()
+    {
+      String exePath = GetExecutablePath();
+      if (exePath.empty())
+      {
+        return String();
+      }
+      std::filesystem::path p(exePath);
+      return PathToString(p.parent_path()) + GetPathSeparator();
+    }
+
+    // Returns the absolute path of `name` interpreted as a binary
+    // that lives next to the current process. Lets the launcher
+    // locate the editor, the editor locate the packer, etc.,
+    // without hardcoded Bin/ relative paths or $PATH lookups.
+    inline String GetSiblingExecutablePath(const String& name)
+    {
+      return GetExecutableDirectory() + name;
+    }
+
+    // Returns the absolute path of the editor binary. The editor
+    // is expected to ship next to the current process (both live
+    // in Bin/), so this is just a sibling lookup.
+    inline String GetEditorExecutablePath()
+    {
+      return GetSiblingExecutablePath(GetEditorExecutableName());
+    }
+
+    // Returns the absolute path of the packer binary. Same sibling
+    // semantics as GetEditorExecutablePath().
+    inline String GetPackerExecutablePath()
+    {
+      return GetSiblingExecutablePath(GetPackerExecutableName());
+    }
+
+    // Helper: convert std::vector<String> to a null-terminated
+    // char** suitable for posix_spawn's argv parameter. Each entry
+    // is duplicated so the spawn call can survive argv going out
+    // of scope if needed (posix_spawn may copy internally on some
+    // libcs, but the spec doesn't guarantee it for the file_actions
+    // path on all platforms).
+    inline char** ToNullTerminatedArgv(const std::vector<String>& argv)
+    {
+      char** arr = new char*[argv.size() + 1];
+      for (size_t i = 0; i < argv.size(); ++i)
+      {
+        arr[i] = new char[argv[i].size() + 1];
+        std::memcpy(arr[i], argv[i].data(), argv[i].size());
+        arr[i][argv[i].size()] = '\0';
+      }
+      arr[argv.size()] = nullptr;
+      return arr;
+    }
+
+    inline void FreeNullTerminatedArgv(char** arr, size_t count)
+    {
+      if (arr == nullptr)
+      {
+        return;
+      }
+      for (size_t i = 0; i < count; ++i)
+      {
+        delete[] arr[i];
+      }
+      delete[] arr;
+    }
+
     // Linux console command execution callback.
+    //
+    // Takes a tokenized argv (argv[0] is the executable). No shell
+    // is invoked, so each argument reaches the child verbatim -- no
+    // need to escape spaces, quotes, $vars, etc. on the caller side.
     //
     // async=true  -> spawn child, fire `callback` from a detached thread
     //                once the child exits; the call returns 0 immediately.
     // async=false -> wait for the child synchronously and return its
     //                exit status.
-    int SysComExec(StringView cmd, bool async, bool showConsole, std::function<void(int)> callback)
+    inline int SysComExec(const std::vector<String>& argv,
+                          bool async,
+                          bool showConsole,
+                          std::function<void(int)> callback)
     {
       (void) showConsole; // No Win32-style console window concept on Linux.
 
-      // Copy cmd into a mutable buffer; posix_spawn / execvp want a
-      // null-terminated string and StringView only guarantees a view.
-      std::string cmdStr(cmd.data(), cmd.size());
-
-      if (!async)
+      if (argv.empty())
       {
-        // Synchronous path: block until the child exits.
-        int status = 0;
-        int rc = std::system(cmdStr.c_str());
-        if (rc == -1)
-        {
-          return -1;
-        }
-
-        // system() returns the waitpid-encoded status; extract the
-        // exit code the same way the Windows version surfaces it.
-        if (WIFEXITED(rc))
-        {
-          status = WEXITSTATUS(rc);
-        }
-        else
-        {
-          status = 128 + WTERMSIG(rc);
-        }
-
-        if (callback != nullptr)
-        {
-          callback(status);
-        }
-        return status;
-      }
-
-      // Async path: fork a child to run the command. The parent returns
-      // 0 immediately. The child runs the command via /bin/sh -c to
-      // preserve the shell-isms the editor relies on (e.g. "code \"$p\"").
-      pid_t pid = fork();
-      if (pid < 0)
-      {
-        TK_ERR("fork failed (%d).", errno);
+        TK_ERR("SysComExec: empty argv.");
         return -1;
       }
 
-      if (pid == 0)
+      char** argvArr = ToNullTerminatedArgv(argv);
+      const size_t argcCount = argv.size();
+
+      if (!async)
       {
-        // Child: hand the command to /bin/sh so the editor's existing
-        // Windows-style shell commands keep working unmodified.
-        execl("/bin/sh", "sh", "-c", cmdStr.c_str(), (char*) nullptr);
-        // execl only returns on failure.
-        _exit(127);
+        // Synchronous path: posix_spawn + waitpid, no shell.
+        pid_t pid = -1;
+        int rc = posix_spawn(&pid,
+                             argvArr[0],
+                             nullptr,    // file_actions
+                             nullptr,    // attrp
+                             argvArr,
+                             environ);
+        if (rc != 0)
+        {
+          TK_ERR("posix_spawn failed (%d): %s", rc, std::strerror(rc));
+          FreeNullTerminatedArgv(argvArr, argcCount);
+          return -1;
+        }
+
+        int status = 0;
+        if (waitpid(pid, &status, 0) < 0)
+        {
+          TK_ERR("waitpid failed (%d).", errno);
+          FreeNullTerminatedArgv(argvArr, argcCount);
+          return -1;
+        }
+
+        FreeNullTerminatedArgv(argvArr, argcCount);
+
+        int code = WIFEXITED(status) ? WEXITSTATUS(status) : 128 + WTERMSIG(status);
+        if (callback != nullptr)
+        {
+          callback(code);
+        }
+        return code;
       }
 
-      // Parent: arm a detached watcher that fires the callback once
-      // the child exits, so callers don't have to drive a wait loop.
+      // Async path: posix_spawn, parent returns 0 immediately. Arm
+      // a detached watcher thread that reaps and fires the callback.
+      pid_t pid = -1;
+      int rc = posix_spawn(&pid,
+                           argvArr[0],
+                           nullptr,
+                           nullptr,
+                           argvArr,
+                           environ);
+      FreeNullTerminatedArgv(argvArr, argcCount);
+
+      if (rc != 0)
+      {
+        TK_ERR("posix_spawn failed (%d): %s", rc, std::strerror(rc));
+        return -1;
+      }
+
       if (callback != nullptr)
       {
         std::thread t(
@@ -140,7 +241,7 @@ namespace ToolKit
 
     // Write a log line to stderr tagged with the same prefixes the
     // Windows OutputDebugStringW path produces.
-    void OutputLog(int logType, const char* szFormat, ...)
+    inline void OutputLog(int logType, const char* szFormat, ...)
     {
       static const char* logNames[] = {"[Memo]", "[Error]", "[Warning]", "[Command]", "[Success]"};
       const char* tag               = (logType >= 0 && logType < 5) ? logNames[logType] : "[Log]";
@@ -155,7 +256,7 @@ namespace ToolKit
     }
 
     // Open `utf8Path` in the platform's default file manager via xdg-open.
-    void OpenExplorer(const StringView utf8Path)
+    inline void OpenExplorer(const StringView utf8Path)
     {
       std::filesystem::path systemPath = utf8Path;
       std::string systemPathStr        = PathToString(systemPath.lexically_normal());
@@ -188,14 +289,14 @@ namespace ToolKit
 
     // No Win32 console window on Linux; this is a no-op kept for API
     // symmetry with Win32Utils.h.
-    void HideConsoleWindow() {}
+    inline void HideConsoleWindow() {}
 
     // Fix working directory when launched from a shortcut (the
     // shortcut's CWD is usually $HOME). Mirror the Win32 helper by
     // resolving the current executable's directory and chdir'ing there
     // so Resources/Config relative paths resolve the same way the
     // Windows binary expects.
-    void SetWorkingDirectoryToBinFolder()
+    inline void SetWorkingDirectoryToBinFolder()
     {
       std::filesystem::path exePath = std::filesystem::read_symlink("/proc/self/exe");
       std::filesystem::path exeDir  = exePath.parent_path(); // .../Bin
@@ -214,7 +315,7 @@ namespace ToolKit
     // an empty String when no usable config dir can be resolved; the
     // caller should treat that as a soft failure and skip the
     // config bootstrap rather than abort.
-    String GetUserConfigDir()
+    inline String GetUserConfigDir()
     {
       const char* xdg = getenv("XDG_CONFIG_HOME");
       if (xdg != nullptr && xdg[0] != '\0')
@@ -232,7 +333,7 @@ namespace ToolKit
     // Return the file's mtime as a string the same way the Win32 helper
     // does, so the plugin manager's "did the file change" logic keeps
     // working unchanged.
-    String GetCreationTime(const String& fullPath)
+    inline String GetCreationTime(const String& fullPath)
     {
       struct stat st;
       if (stat(fullPath.c_str(), &st) != 0)
@@ -245,7 +346,7 @@ namespace ToolKit
     // dlopen-based plugin loader. Returns the opaque module handle
     // (a void* pointing at the link_map chain), which the rest of the
     // editor hands back to TKFreeModule / TKGetFunction.
-    void* TKLoadModule(StringView fullPath)
+    inline void* TKLoadModule(StringView fullPath)
     {
       std::string pathStr(fullPath.data(), fullPath.size());
       // RTLD_NOW forces all symbols to resolve at load time, matching
@@ -253,9 +354,9 @@ namespace ToolKit
       return dlopen(pathStr.c_str(), RTLD_NOW);
     }
 
-    void TKFreeModule(void* module) { dlclose(module); }
+    inline void TKFreeModule(void* module) { dlclose(module); }
 
-    void* TKGetFunction(void* module, StringView func)
+    inline void* TKGetFunction(void* module, StringView func)
     {
       std::string funcStr(func.data(), func.size());
       return dlsym(module, funcStr.c_str());
@@ -264,16 +365,16 @@ namespace ToolKit
     // SDL drives the editor window on Linux; there is no separate Win32
     // HWND icon to set after SDL wipes ours. Kept as a no-op for API
     // symmetry.
-    void UpdateAppIcon() {}
+    inline void UpdateAppIcon() {}
 
     // Create a desktop entry that launches the current editor
     // executable. On Linux the "shortcut" is a freedesktop.org .desktop
     // file in $XDG_DESKTOP_DIR (or $HOME/Desktop if unset). The args
     // match the Windows helper so the editor's project dialog can use
     // either platform's API without branching.
-    bool CreateProjectShortcutOnDesktop(const String& shortcutName,
-                                        const String& arguments,
-                                        const String& exePathOverride = "")
+    inline bool CreateProjectShortcutOnDesktop(const String& shortcutName,
+                                               const String& arguments,
+                                               const String& exePathOverride = "")
     {
       std::string exePath = exePathOverride.empty()
                                 ? PathToString(std::filesystem::read_symlink("/proc/self/exe"))

@@ -777,11 +777,14 @@ namespace ToolKit
       }
     }
 
-    int App::ExecSysCommand(StringView cmd, bool async, bool showConsole, SysCommandDoneCallback callback)
+    int App::ExecSysCommand(const std::vector<String>& argv,
+                            bool async,
+                            bool showConsole,
+                            SysCommandDoneCallback callback)
     {
       if (m_sysComExecFn)
       {
-        return m_sysComExecFn(cmd, async, showConsole, callback);
+        return m_sysComExecFn(argv, async, showConsole, callback);
       }
 
       return -1;
@@ -931,21 +934,19 @@ namespace ToolKit
             finalPath = "importList.txt";
           }
 
-          String cmd = "Import \"";
+          std::vector<String> importArgv = {String("Import"), finalPath};
           if (!subDir.empty())
           {
-            cmd += finalPath + "\" -t \"" + subDir;
+            importArgv.push_back(String("-t"));
+            importArgv.push_back(subDir);
           }
-          else
-          {
-            cmd += finalPath;
-          }
-
-          cmd    += "\" -s " + std::to_string(UI::ImportData.Scale);
-          cmd    += " -o " + std::to_string(UI::ImportData.optimize);
+          importArgv.push_back(String("-s"));
+          importArgv.push_back(std::to_string(UI::ImportData.Scale));
+          importArgv.push_back(String("-o"));
+          importArgv.push_back(std::to_string(UI::ImportData.optimize));
 
           // Execute command
-          result  = ExecSysCommand(cmd.c_str(), false, false);
+          result = ExecSysCommand(importArgv, false, false);
           if (result != 0)
           {
             TK_ERR("Import failed!");

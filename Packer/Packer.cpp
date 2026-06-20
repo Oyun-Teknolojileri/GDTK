@@ -419,13 +419,24 @@ namespace ToolKit
     String packageName = "com.otyazilim.toolkit." + projectName + "/com.otyazilim.toolkit.ToolKitActivity";
 
     int execResult;
-    execResult = PlatformHelpers::SysComExec("adb install " + apkLocation, false, true, nullptr);
+    execResult = PlatformHelpers::SysComExec({String("adb"), String("install"), apkLocation},
+                                              false,
+                                              true,
+                                              nullptr);
     if (checkIfFailedFn(execResult, "adb install " + apkLocation))
     {
       return;
     }
 
-    execResult = PlatformHelpers::SysComExec("adb shell am start -n " + packageName, true, true, nullptr);
+    execResult = PlatformHelpers::SysComExec({String("adb"),
+                                               String("shell"),
+                                               String("am"),
+                                               String("start"),
+                                               String("-n"),
+                                               packageName},
+                                              true,
+                                              true,
+                                              nullptr);
     if (checkIfFailedFn(execResult, "adb shell am start -n " + packageName))
     {
       return;

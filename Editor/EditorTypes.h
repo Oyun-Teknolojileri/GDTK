@@ -81,7 +81,13 @@ namespace ToolKit
     typedef std::shared_ptr<class EditorCanvas> EditorCanvasPtr;
 
     typedef std::function<void(int)> SysCommandDoneCallback;
-    typedef std::function<int(StringView, bool, bool, SysCommandDoneCallback)> SysCommandExecutionFn;
+    // SysCommandExecutionFn takes a tokenized argv. argv[0] is the
+    // executable (typically an absolute path); the rest are the
+    // arguments. The executor (PlatformHelpers::SysComExec) does
+    // its own platform-appropriate escaping -- callers do not
+    // need to pre-quote or pre-escape anything.
+    typedef std::function<int(const std::vector<String>&, bool, bool, SysCommandDoneCallback)>
+        SysCommandExecutionFn;
     typedef std::function<void(const StringView)> ShellOpenDirFn;
 
     // UI Strings

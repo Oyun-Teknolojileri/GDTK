@@ -446,7 +446,7 @@ Key entry points:
 - `Import(fullPath, subDir, overwrite)` — via assimp
 - `OpenSceneAsync`, `MergeScene`, `LinkScene`
 - `OpenProject(Project)`, `PackResources`, `SaveAllResources`
-- `ExecSysCommand(cmd, async, showConsole, callback)` — wraps `system()` with utf-8 + completion callback
+- `ExecSysCommand(argv, async, showConsole, callback)` — spawns a child process directly from a tokenized `std::vector<String>` argv (no shell); platform backends are `posix_spawn` (Linux) and `CreateProcessW` with proper Microsoft command-line quoting (Windows); completion callback receives the exit code
 - `IsWorkspaceSane`, `IsValidCppLibraryName`
 
 `ClearSession(flushRenderTasks)` — must be called between project switches or when stopping PIE.
