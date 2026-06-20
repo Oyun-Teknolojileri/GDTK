@@ -285,7 +285,7 @@ namespace ToolKit
                     TKAsyncTask(WorkerManager::MainThread,
                                 [this, dirEnt]() -> void
                                 {
-                                  GetRenderSystem()->AddRenderTask({[=](Renderer* renderer) -> void
+                                  GetRenderSystem()->AddRenderTask({[=, this](Renderer* renderer) -> void
                                                                     {
                                                                       RenderTargetPtr rt =
                                                                           m_renderer.RenderThumbnail(renderer, dirEnt);

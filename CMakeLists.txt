@@ -14,6 +14,30 @@ cmake_minimum_required(VERSION 3.16)
 project(GDTK LANGUAGES C CXX)
 
 # --------------------------------------------------------------------------- #
+# C++ standard                                                                 #
+# --------------------------------------------------------------------------- #
+#
+# AGENTS.md declares C++17, and every GDTK target uses
+# `target_compile_features(... cxx_std_17)`. That feature requirement alone
+# does NOT add `-std=c++17` to the compile line -- it only expresses that
+# the target needs C++17 to compile. On GCC 16 (whose default `g++` is
+# C++20) the absence of an explicit `-std=` flag means we silently compile
+# in C++20 mode, which is what surfaces warnings like:
+#   - `char*` -> `const char8_t*` from utf8.h (a 3rd-party header that
+#     picks the C++20 `using utf8_int8_t = char8_t;` branch)
+#   - `reinterpret_cast` not a constant expression (Hash.h)
+#   - implicit `[=]` capture of `this` deprecated (PublishManager, Thumbnail)
+#
+# Pinning CMAKE_CXX_STANDARD here forces `-std=c++17` on the command line
+# for every target, including third-party vendored headers that the engine
+# pulls in. This is consistent with the declared C++17 standard and lets
+# us drop the `-fpermissive` workaround (see ToolKit/CMakeLists.txt) if
+# we choose to in a follow-up.
+set(CMAKE_CXX_STANDARD 17 CACHE STRING "" FORCE)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# --------------------------------------------------------------------------- #
 # Platform detection                                                          #
 # --------------------------------------------------------------------------- #
 

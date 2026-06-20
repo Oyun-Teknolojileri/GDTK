@@ -19,27 +19,34 @@ namespace ToolKit
    */
   constexpr uint64_t MurmurHash64A(const void* key, int len, uint64_t seed)
   {
-    const uint64_t m     = 0xc6a4a7935bd1e995;
-    const int r          = 47;
+    const uint64_t m            = 0xc6a4a7935bd1e995;
+    const int r                 = 47;
 
-    uint64_t h           = seed ^ (len * m);
+    uint64_t h                  = seed ^ (len * m);
 
-    const uint64_t* data = (const uint64_t*) key;
-    const uint64_t* end  = data + (len / 8);
+    // Walk the input as bytes so the function stays a true constant expression
+    // (a reinterpret_cast on the key pointer would not be allowed in a
+    // constexpr context under C++17). Reading 8 bytes individually also makes
+    // the hash endian-portable, which is what we want for class-name lookups.
+    const unsigned char* data   = static_cast<const unsigned char*>(key);
+    const unsigned char* end    = data + (len & ~7);
 
     while (data != end)
     {
-      uint64_t k  = *(data++);
+      uint64_t k = uint64_t(data[0])         | (uint64_t(data[1]) <<  8) | (uint64_t(data[2]) << 16) |
+                   (uint64_t(data[3]) << 24) | (uint64_t(data[4]) << 32) | (uint64_t(data[5]) << 40) |
+                   (uint64_t(data[6]) << 48) | (uint64_t(data[7]) << 56);
+      data      += 8;
 
-      k          *= m;
-      k          ^= k >> r;
-      k          *= m;
+      k         *= m;
+      k         ^= k >> r;
+      k         *= m;
 
-      h          ^= k;
-      h          *= m;
+      h         ^= k;
+      h         *= m;
     }
 
-    const unsigned char* data2 = (const unsigned char*) data;
+    const unsigned char* data2 = data;
 
     switch (len & 7)
     {

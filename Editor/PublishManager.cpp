@@ -70,7 +70,7 @@ namespace ToolKit
       {
         TK_LOG("Building Plugin...");
 
-        afterPackFn = [=](int res) -> void
+        afterPackFn = [=, this](int res) -> void
         {
           if (res != 0)
           {
@@ -85,7 +85,7 @@ namespace ToolKit
             GetApp()->SetStatusMsg(g_statusSucceeded);
           }
 
-          auto afterCompile = [=]() -> void
+          auto afterCompile = [=, this]() -> void
           {
             String fullPath = GetApp()->m_workspace->GetBinPath();
             if (platform == PublishPlatform::EditorPlugin)
