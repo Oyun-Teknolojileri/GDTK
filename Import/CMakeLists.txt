@@ -1,5 +1,7 @@
 # Import -- GDTK's offline 3D asset converter.
-# Linux binary: Bin/Import. Windows binary: Bin/Import.exe.
+# Linux binary: Utils/Import/Import. Windows binary: Utils/Import/Import.exe.
+# ToolKit + assimp are staged next to the binary at build time (see the
+# POST_BUILD block at the bottom of this file).
 #
 # Single-file CLI tool. Takes one or more source files (via the assimp
 # importer) and writes them out as ToolKit-native scene / mesh / material
@@ -88,12 +90,55 @@ elseif(WIN32)
   target_link_libraries(Import PRIVATE OpenGL32)
 endif()
 
-# RPATH: find ToolKit.so + the vendored shared libs (SDL2, imgui, assimp)
-# next to the binary. The build host has the runtime .so.N files but
-# not the unversioned dev symlinks.
+# ---------------------------------------------------------------------------
+# Output: Utils/Import/
+#
+# Import ships as a standalone CLI tool -- users run it from a fresh
+# checkout (CI, packagers) without the full Bin/ tree available, so we
+# publish it to Utils/Import/ alongside its runtime deps (ToolKit,
+# assimp). POST_BUILD below copies those libs in. The Editor/Launcher
+# keep using Bin/ToolKit.so unchanged.
+#
+# - add_dependencies(Import ToolKit) is the trigger: when any ToolKit
+#   source changes, ToolKit is rebuilt AND Import is relinked (because
+#   ToolKit is on Import's link line). The relink re-runs the POST_BUILD
+#   copy, so Utils/Import/ToolKit.so stays in sync with Bin/ToolKit.so.
+# - The POST_BUILD also runs unconditionally on every Import build,
+#   so a clean build always populates Utils/Import/.
+# ---------------------------------------------------------------------------
+set_target_properties(Import PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${GDTK_UTILS_IMPORT_DIR}"
+)
+add_dependencies(Import ToolKit)
+
+# Generator expressions evaluate at build time, so single-config (Ninja,
+# Unix Makefiles, NMake, MinGW) and multi-config (Visual Studio) both
+# get the right per-config file -- no CMAKE_BUILD_TYPE branching needed.
+#   $<TARGET_FILE:ToolKit>       -> the actual libToolKitd.so / ToolKitd.dll
+#                                  path in the current build config.
+#   $<TARGET_FILE:assimp>        -> the IMPORTED_LOCATION of the assimp
+#                                  target, resolved per-config.
+add_custom_command(TARGET Import POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "$<TARGET_FILE:ToolKit>"
+    "${GDTK_UTILS_IMPORT_DIR}/"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "$<TARGET_FILE:assimp>"
+    "${GDTK_UTILS_IMPORT_DIR}/"
+  COMMENT "Import: staging ToolKit + assimp into ${GDTK_UTILS_IMPORT_DIR}"
+  VERBATIM
+)
+
+# RPATH: find ToolKit + the vendored shared libs (SDL2, imgui) next to
+# the binary (Utils/Import/) or under Dependency/Intermediate/...
+# without LD_LIBRARY_PATH. On Linux assimp also lives next to the
+# binary once the POST_BUILD copy runs, so $ORIGIN picks it up first.
 if(UNIX)
   set_target_properties(Import PROPERTIES
     BUILD_RPATH   "$ORIGIN:${TK_DEPS_DIR}"
     INSTALL_RPATH "$ORIGIN:${TK_DEPS_DIR}"
   )
+elseif(WIN32)
+  # Windows resolves DLLs from the binary's directory first, so the
+  # POST_BUILD copies are enough. No PATH plumbing needed.
 endif()

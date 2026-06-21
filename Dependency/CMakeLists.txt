@@ -216,61 +216,48 @@ if(UNIX AND NOT APPLE)
     message(STATUS "GDTK: SDL2 video drivers enabled: ${_SDL_REAL_DRIVERS}")
 endif()
 
-#---- Copy DLL/LIB ----#
+#---- Copy DLLs to runtime locations (Windows only) ----#
+#
+# Stages the runtime DLLs of the GDTK tools into the directories where
+# the binaries land. Windows resolves DLLs from the binary's directory
+# first, so without these copies Import.exe / Packer.exe / Editor.exe
+# would not find SDL2 / imgui at runtime. Linux relies on RPATH
+# ($ORIGIN + TK_DEPS_DIR) instead and doesn't need any of this.
+#
+# What is *not* handled here and why:
+#   - ToolKit.dll copying is in Import/CMakeLists.txt and
+#     Packer/CMakeLists.txt (POST_BUILD on each target, tied to the
+#     target via add_dependencies(... ToolKit) so a ToolKit source
+#     change re-runs the copy). Keeping it there means a single source
+#     of truth for "where ToolKit lives next to the consumer".
+#   - assimp.dll copying is in Import/CMakeLists.txt the same way --
+#     tied to the Import target via the link line. Packer does not
+#     depend on assimp.
+#   - minizip and zstd are static libs (BUILD_SHARED_LIBS=OFF / ZSTD_
+#     BUILD_SHARED=OFF above) -- they're linked into the binaries,
+#     not dlopen'd, so they don't need a runtime copy.
 if ("${TK_PLATFORM}" STREQUAL "Windows")
-    # Create target directories
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/../Bin/")
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/../Utils/Import/")
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/../Utils/Packer/")
-    
-    # Set dependencies list
-    if (NOT ${SKIP_ASSIMP})
-        set(COPY_DEPENDENCIES minizip zstd SDL2 imgui assimp)
-    else()
-        set(COPY_DEPENDENCIES minizip zstd SDL2 imgui)
-    endif()
-    
+    set(COPY_RUNTIME_DLLS SDL2 imgui)
+
     add_custom_target(CopyDependencies ALL
-        # Copy SDL2
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different 
-            "$<TARGET_FILE:SDL2>" 
+        # SDL2: needed by Editor / Launcher / Import / Packer at runtime.
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:SDL2>"
             "${CMAKE_CURRENT_LIST_DIR}/../Bin/"
-        
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different 
-            "$<TARGET_FILE:SDL2>" 
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:SDL2>"
             "${CMAKE_CURRENT_LIST_DIR}/../Utils/Import/"
-        
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different 
-            "$<TARGET_FILE:SDL2>" 
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:SDL2>"
             "${CMAKE_CURRENT_LIST_DIR}/../Utils/Packer/"
-        
-        # Copy ImGui
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different 
-            "$<TARGET_FILE:imgui>" 
+
+        # imgui: needed by Editor / Launcher at runtime.
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:imgui>"
             "${CMAKE_CURRENT_LIST_DIR}/../Bin/"
-        
-        DEPENDS ${COPY_DEPENDENCIES}
-        COMMENT "Copying dependencies for configuration: $<CONFIG>"
+
+        DEPENDS ${COPY_RUNTIME_DLLS}
+        COMMENT "Copying runtime DLLs for configuration: $<CONFIG>"
         VERBATIM
     )
-    
-    # Add Assimp copy conditionally
-    if (NOT ${SKIP_ASSIMP})
-        add_custom_command(TARGET CopyDependencies POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different 
-                "$<TARGET_FILE:assimp>" 
-                "${CMAKE_CURRENT_LIST_DIR}/../Utils/Import/"
-            COMMENT "Copying Assimp for configuration: $<CONFIG>"
-        )
-    endif()
-    
-    # Debug information
-    message(STATUS "TK_PLATFORM: ${TK_PLATFORM}")
-    message(STATUS "CMAKE_CURRENT_LIST_DIR: ${CMAKE_CURRENT_LIST_DIR}")
-    message(STATUS "CMAKE_GENERATOR: ${CMAKE_GENERATOR}")
-    message(STATUS "CMAKE_CONFIGURATION_TYPES: ${CMAKE_CONFIGURATION_TYPES}")
-    message(STATUS "Target directories:")
-    message(STATUS "  - Bin: ${CMAKE_CURRENT_LIST_DIR}/../Bin/")
-    message(STATUS "  - Import: ${CMAKE_CURRENT_LIST_DIR}/../Utils/Import/")
-    message(STATUS "  - Packer: ${CMAKE_CURRENT_LIST_DIR}/../Utils/Packer/")
 endif()
