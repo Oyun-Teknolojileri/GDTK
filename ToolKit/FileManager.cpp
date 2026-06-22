@@ -71,15 +71,17 @@ namespace ToolKit
 
   FileManager::FileDataType FileManager::GetFile(FileType fileType, ImageFileInfo& fileInfo)
   {
-    String pakPath      = ConcatPaths({ResourcePath(), "..", "MinResources.pak"});
-
     // Get relative path from Resources directory
     String relativePath = fileInfo.filePath;
     GetRelativeResourcesPath(relativePath);
 
     if (!m_zfile)
     {
-      m_zfile = unzOpen(pakPath.c_str());
+      String pakPath = ConcatPaths({ResourcePath(), "..", "MinResources.pak"});
+      if (CheckSystemFile(pakPath))
+      {
+        m_zfile = unzOpen(pakPath.c_str());
+      }
     }
 
     if (m_zfile && !m_ignorePakFile)

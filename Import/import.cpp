@@ -60,11 +60,45 @@ void TrunckToFileName(string& fullPath)
 
 namespace ToolKit
 {
+
+  // Global variables for import process.
+  ////////////////////////////////////////////////////////////////
   vector<string> g_usedFiles;
-  SkeletonPtr g_skeleton;
   bool isSkeletonEntityCreated = false;
   const aiScene* g_scene       = nullptr;
 
+  SkeletonPtr g_skeleton;
+  std::vector<MaterialPtr> tMaterials;
+  std::unordered_map<aiMesh*, MeshPtr> g_meshes;
+  SkinMeshPtr mainSkinMesh;
+  std::vector<LightPtr> sceneLights;
+  std::vector<CameraPtr> sceneCameras;
+  EntityPtrArray deletedEntities;
+
+  const float g_desiredFps = 30.0f;
+  const float g_animEps    = 0.001f;
+  String g_currentExt;
+
+  class BoneNode
+  {
+   public:
+    BoneNode() {}
+
+    BoneNode(aiNode* node, uint index)
+    {
+      boneIndex = index;
+      boneNode  = node;
+    }
+
+    aiNode* boneNode = nullptr;
+    aiBone* bone     = nullptr;
+    uint boneIndex   = 0;
+  };
+
+  unordered_map<string, BoneNode> g_skeletonMap;
+
+  // Importer helper functions.
+  ////////////////////////////////////////////////////////////////
   Vec3 toVec3(aiVector3f vec)
   {
     Vec3 gv;
@@ -100,24 +134,6 @@ namespace ToolKit
 
     return gm;
   }
-
-  class BoneNode
-  {
-   public:
-    BoneNode() {}
-
-    BoneNode(aiNode* node, uint index)
-    {
-      boneIndex = index;
-      boneNode  = node;
-    }
-
-    aiNode* boneNode = nullptr;
-    aiBone* bone     = nullptr;
-    uint boneIndex   = 0;
-  };
-
-  unordered_map<string, BoneNode> g_skeletonMap;
 
   bool IsUsed(const string& file) { return find(g_usedFiles.begin(), g_usedFiles.end(), file) == g_usedFiles.end(); }
 
@@ -197,18 +213,12 @@ namespace ToolKit
     return GetMaterialName(g_scene->mMaterials[mesh->mMaterialIndex], mesh->mMaterialIndex);
   }
 
-  std::vector<MaterialPtr> tMaterials;
-
   template <typename T>
   void CreateFileAndSerializeObject(T* objectToSerialize, const String& filePath)
   {
     objectToSerialize->SetFile(filePath);
     objectToSerialize->Save(false);
   }
-
-  const float g_desiredFps = 30.0f;
-  const float g_animEps    = 0.001f;
-  String g_currentExt;
 
   // Interpolator functions Begin
   // Range checks added by OTSoftware.
@@ -841,9 +851,6 @@ namespace ToolKit
     }
   }
 
-  std::unordered_map<aiMesh*, MeshPtr> g_meshes;
-  SkinMeshPtr mainSkinMesh;
-
   void ImportMeshes(string& filePath)
   {
     string path, name;
@@ -905,8 +912,6 @@ namespace ToolKit
       CreateFileAndSerializeObject(mainSkinMesh.get(), skinMeshPath);
     }
   }
-
-  std::vector<LightPtr> sceneLights;
 
   void ImportLights()
   {
@@ -1008,8 +1013,6 @@ namespace ToolKit
     }
   }
 
-  std::vector<CameraPtr> sceneCameras;
-
   void ImportCameras()
   {
     for (uint i = 0; i < g_scene->mNumCameras; i++)
@@ -1036,8 +1039,6 @@ namespace ToolKit
       sceneCameras.push_back(tkCam);
     }
   }
-
-  EntityPtrArray deletedEntities;
 
   bool DeleteEmptyEntitiesRecursively(ScenePtr tScene, EntityPtr ntt)
   {
@@ -1472,6 +1473,7 @@ namespace ToolKit
         }
       }
 
+      dest = ConcatPaths({"Temp", dest});
       dest = NormalizePath(PathToString(fs::path(dest).lexically_normal()));
       if (!dest.empty())
       {
@@ -1590,6 +1592,16 @@ namespace ToolKit
         inUse << fs << endl;
       }
       inUse.close();
+
+      // Uninit globals
+      g_skeleton = nullptr;
+      g_skeletonMap.clear();
+      tMaterials.clear();
+      g_meshes.clear();
+      mainSkinMesh = nullptr;
+      sceneLights.clear();
+      sceneCameras.clear();
+      deletedEntities.clear();
 
       g_proxy->Uninit();
       g_proxy = nullptr;
