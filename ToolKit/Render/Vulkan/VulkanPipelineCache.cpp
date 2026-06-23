@@ -7,7 +7,7 @@
 
 #include "VulkanPipelineCache.h"
 
-#include "../Logger.h"
+#include "Logger.h"
 #include "VulkanContext.h"
 
 namespace ToolKit

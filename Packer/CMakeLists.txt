@@ -34,7 +34,7 @@ target_compile_features(Packer PRIVATE cxx_std_17)
 target_compile_options(Packer PRIVATE
   -Wno-changes-meaning
   -Wno-delete-incomplete
-  -include ${CMAKE_SOURCE_DIR}/ToolKit/stdafx.h
+  -include ${CMAKE_SOURCE_DIR}/ToolKit/Source/stdafx.h
   -fpermissive
 )
 

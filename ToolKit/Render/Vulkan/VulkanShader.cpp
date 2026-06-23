@@ -7,8 +7,8 @@
 
 #include "VulkanShader.h"
 
-#include "../Logger.h"
-#include "../ToolKit.h"
+#include "Logger.h"
+#include "ToolKit.h"
 #include "VulkanBindings.h"
 
 #include <shaderc/shaderc.hpp>

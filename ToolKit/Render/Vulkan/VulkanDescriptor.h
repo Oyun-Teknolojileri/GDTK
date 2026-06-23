@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include "../Types.h"
+#include "Types.h"
 
 #include <vulkan/vulkan.h>
 

@@ -7,8 +7,8 @@
 
 #pragma once
 
-#include "../RenderState.h"
-#include "../Types.h"
+#include "RenderState.h"
+#include "Types.h"
 
 #include <vulkan/vulkan.h>
 

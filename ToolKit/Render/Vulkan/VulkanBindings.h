@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include "../Types.h"
+#include "Types.h"
 
 namespace ToolKit
 {

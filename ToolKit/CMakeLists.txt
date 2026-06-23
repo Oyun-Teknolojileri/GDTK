@@ -1,24 +1,60 @@
 # ToolKit engine -- shared library (ToolKit.so on Linux, ToolKit.dll on Windows).
 #
-# Source layout:
-#   ToolKit/*.cpp / ToolKit/*.h    Engine sources.
-#   ToolKit/Vulkan/                Optional Vulkan backend. Excluded from
-#                                  this build because TK_VULKAN is not
-#                                  defined in Phase 2. Enable by passing
-#                                  -DTK_VULKAN=ON to CMake.
+# Source layout (mirrors the legacy ToolKit.vcxproj.filters groupings):
+#   ToolKit/Source/                 Engine plumbing (Logger, FileManager, ...)
+#   ToolKit/Resources/              Resource types (Material, Mesh, Texture, ...)
+#   ToolKit/UI/                     ImGui / 2D UI (Canvas, Dpad, UIManager, ...)
+#   ToolKit/Entities/               Game objects (Camera, Entity, Light, ...)
+#   ToolKit/Components/             Components (Mesh, Skeleton, Material, ...)
+#   ToolKit/Render/                 Renderer core (Pass, Renderer, RenderSystem, ...)
+#   ToolKit/Render/RenderPass/      Per-frame render passes
+#   ToolKit/Render/PostProcessPass/ Post-process passes
+#   ToolKit/Render/Vulkan/          Optional Vulkan backend (Phase 3)
+#   ToolKit/Common/                 Cross-platform helpers (untouched)
+#   ToolKit/toolkit.natvis          Visual Studio debugger view (untouched)
 
-file(GLOB TOOLKIT_SOURCES
+file(GLOB_RECURSE TOOLKIT_SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
 )
 
-if(TK_VULKAN)
-  file(GLOB TOOLKIT_VULKAN_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/Vulkan/*.cpp)
-  list(APPEND TOOLKIT_SOURCES ${TOOLKIT_VULKAN_SOURCES})
+# GLOB_RECURSE picks up the Vulkan backend too, but that backend needs
+# the system <vulkan/vulkan.h> headers (only present when the Vulkan
+# SDK is installed) and links against vulkan-1. Drop it from the source
+# list when TK_VULKAN is OFF, matching the legacy ToolKit.sln behavior
+# where the Vulkan .vcxproj was an optional sibling.
+if(NOT TK_VULKAN)
+  list(FILTER TOOLKIT_SOURCES EXCLUDE REGEX ".*/Render/Vulkan/.*\\.cpp$")
 endif()
 
 add_library(ToolKit SHARED ${TOOLKIT_SOURCES})
 
+# Each subfolder is added to the public include path so legacy unqualified
+# `#include "X.h"` keeps resolving after the move into subfolders. PUBLIC
+# because ToolKit is a shared library and downstream targets (Editor,
+# Launcher, Packer, Import) build against its public headers.
+foreach(toolkit_subdir
+  Source
+  Resources
+  UI
+  Entities
+  Components
+  Render
+  Render/RenderPass
+  Render/PostProcessPass
+  Common)
+  target_include_directories(ToolKit PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/${toolkit_subdir}
+  )
+endforeach()
+
+if(TK_VULKAN)
+  target_include_directories(ToolKit PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/Render/Vulkan
+  )
+endif()
+
 target_include_directories(ToolKit PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}
   ${GDTK_INCLUDE_DIRS}
 )
 
@@ -56,7 +92,7 @@ target_compile_options(ToolKit PRIVATE
 # equivalent is -include. Keep them aligned until the source files are
 # fixed to include their own dependencies.
 target_compile_options(ToolKit PRIVATE
-  -include ${CMAKE_CURRENT_SOURCE_DIR}/stdafx.h
+  -include ${CMAKE_CURRENT_SOURCE_DIR}/Source/stdafx.h
 )
 
 # GCC 16 (and modern Clang) treat `char*` -> `const char8_t*` conversions as

@@ -1,11 +1,47 @@
 # Editor -- GDTK's main development tool, an ImGui-based desktop application.
 # Linux binary: Bin/Editor. Windows binary: Bin/Editor.exe.
+#
+# Source layout (mirrors the legacy Editor.vcxproj.filters groupings):
+#   Editor/Source/                App, main, EditorScene, ...
+#   Editor/Mods/                  Editor modes (Transform, Anchor, BoxEdit)
+#   Editor/UI/                    ImGui plumbing (UI, Window, DynamicMenu, ...)
+#   Editor/UI/Overlay/            TopBar, StatusBar, LeftBar, ...
+#   Editor/UI/Viewport/           EditorViewport, PreviewViewport, ...
+#   Editor/UI/Window/             ConsoleWindow, FolderWindow, ...
+#   Editor/UI/View/               View, EntityView, MaterialView, ...
+#   Editor/Entities/              Grid, Gizmo, EditorCamera, ...
+#   Editor/Entities/Light/        EditorLight, LightMeshGenerator
+#   Editor/Entities/UI/           EditorCanvas
+#   Editor/Render/                EditorRenderer
+#   Editor/Render/Pass/           GizmoPass
+#   Editor/Components/            EditorEnvironmentComponent
 
-file(GLOB EDITOR_SOURCES
+file(GLOB_RECURSE EDITOR_SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
 )
 
 add_executable(Editor ${EDITOR_SOURCES})
+
+# Each subfolder is added to the include path so legacy unqualified
+# `#include "X.h"` keeps resolving after the move into subfolders.
+foreach(editor_subdir
+  Source
+  Mods
+  UI
+  UI/Overlay
+  UI/Viewport
+  UI/Window
+  UI/View
+  Entities
+  Entities/Light
+  Entities/UI
+  Render
+  Render/Pass
+  Components)
+  target_include_directories(Editor PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/${editor_subdir}
+  )
+endforeach()
 
 target_include_directories(Editor PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
@@ -30,7 +66,7 @@ target_compile_features(Editor PRIVATE cxx_std_17)
 target_compile_options(Editor PRIVATE
   -Wno-changes-meaning
   -Wno-delete-incomplete
-  -include ${CMAKE_SOURCE_DIR}/ToolKit/stdafx.h
+  -include ${CMAKE_SOURCE_DIR}/ToolKit/Source/stdafx.h
 )
 
 # Link against the engine (shared), the workspace helper (static), and the

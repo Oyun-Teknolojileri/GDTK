@@ -7,8 +7,8 @@
 
 #pragma once
 
-#include "../IGraphicsBackend.h"
-#include "../Shader.h"
+#include "IGraphicsBackend.h"
+#include "Shader.h"
 #include "VulkanBindings.h"
 
 #include <vulkan/vulkan.h>

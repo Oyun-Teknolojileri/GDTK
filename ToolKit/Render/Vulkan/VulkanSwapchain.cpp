@@ -7,7 +7,7 @@
 
 #include "VulkanSwapchain.h"
 
-#include "../Logger.h"
+#include "Logger.h"
 #include "VulkanContext.h"
 
 #include <algorithm>

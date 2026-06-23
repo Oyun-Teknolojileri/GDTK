@@ -1,12 +1,20 @@
 # Workspace -- small static library that holds project-management helpers
 # shared by the Editor and the Launcher. Compiled into both executables.
+#
+# Source layout: Workspace/Source/ holds every workspace .cpp / .h,
+# matching the legacy Workspace.vcxproj.filters "Source" grouping.
+
+file(GLOB_RECURSE WORKSPACE_SOURCES
+  ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
+)
 
 add_library(Workspace STATIC
-  ${CMAKE_CURRENT_SOURCE_DIR}/Workspace.cpp
+  ${WORKSPACE_SOURCES}
 )
 
 target_include_directories(Workspace PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/Source
   ${GDTK_INCLUDE_DIRS}
 )
 

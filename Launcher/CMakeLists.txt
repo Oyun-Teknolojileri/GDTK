@@ -10,8 +10,11 @@
 # it stays consistent with the Editor build; on Linux the macro does
 # not affect TK_EDITOR_API (it is always default ELF visibility here,
 # see Editor/EditorTypes.h).
+#
+# Source layout: Launcher/Source/ holds every launcher .cpp / .h,
+# matching the legacy Launcher.vcxproj.filters "Source" grouping.
 
-file(GLOB LAUNCHER_SOURCES
+file(GLOB_RECURSE LAUNCHER_SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
 )
 
@@ -22,6 +25,7 @@ add_executable(Launcher ${LAUNCHER_SOURCES})
 # in GDTK_INCLUDE_DIRS; Editor/ is not, so we add it explicitly.
 target_include_directories(Launcher PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/Source
   ${CMAKE_SOURCE_DIR}/Editor
   ${GDTK_INCLUDE_DIRS}
 )
@@ -42,7 +46,7 @@ target_compile_features(Launcher PRIVATE cxx_std_17)
 target_compile_options(Launcher PRIVATE
   -Wno-changes-meaning
   -Wno-delete-incomplete
-  -include ${CMAKE_SOURCE_DIR}/ToolKit/stdafx.h
+  -include ${CMAKE_SOURCE_DIR}/ToolKit/Source/stdafx.h
 )
 
 # -fpermissive is the same workaround as ToolKit itself: GCC 16's hard

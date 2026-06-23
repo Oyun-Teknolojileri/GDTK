@@ -8,7 +8,7 @@
 #define VMA_IMPLEMENTATION
 #include "VulkanContext.h"
 
-#include "../Logger.h"
+#include "Logger.h"
 #include "VulkanBindings.h"
 #include "VulkanSwapchain.h"
 

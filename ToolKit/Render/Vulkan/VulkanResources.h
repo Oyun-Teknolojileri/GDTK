@@ -7,9 +7,9 @@
 
 #pragma once
 
-#include "../IGraphicsBackend.h"
-#include "../Shader.h"
-#include "../Types.h"
+#include "IGraphicsBackend.h"
+#include "Shader.h"
+#include "Types.h"
 #include "VulkanBuffer.h"
 
 #include <vulkan/vulkan.h>

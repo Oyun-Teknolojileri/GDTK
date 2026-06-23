@@ -7,7 +7,7 @@
 
 #include "VulkanBuffer.h"
 
-#include "../Logger.h"
+#include "Logger.h"
 #include "VulkanContext.h"
 
 #include <vma/vk_mem_alloc.h>
