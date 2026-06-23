@@ -1016,7 +1016,18 @@ namespace ToolKit
               const String selfDir = '.' + GetPathSeparatorAsStr();
               if (line.rfind(selfDir) == 0)
               {
-                line = line.substr(2, -1);
+                line = line.substr(selfDir.size(), -1);
+              }
+
+              // Importer drops everything under a "Temp/" intermediate
+              // folder (see Import/import.cpp). Strip that prefix so the
+              // resource lands directly under Resources/<Type>/... instead
+              // of Resources/<Type>/Temp/<Type>/....
+              const String tempPrefix = String("Temp") + GetPathSeparator();
+              const String sourceFile = line;
+              if (line.rfind(tempPrefix) == 0)
+              {
+                line = line.substr(tempPrefix.size(), -1);
               }
 
               String fullPath;
@@ -1062,7 +1073,7 @@ namespace ToolKit
               }
               else
               {
-                std::filesystem::copy(line, fullPath, std::filesystem::copy_options::overwrite_existing, fileOpErr);
+                std::filesystem::copy(sourceFile, fullPath, std::filesystem::copy_options::overwrite_existing, fileOpErr);
                 if (fileOpErr)
                 {
                   TK_ERR("File copy failed: %s", fileOpErr.message().c_str());

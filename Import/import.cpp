@@ -1534,6 +1534,14 @@ namespace ToolKit
 
       g_proxy->Init();
 
+      // The importer writes resources under an intermediate "Temp/" folder.
+      // Set this as the resource root so GetRelativeResourcePath() strips
+      // "Temp/" + the resource-type layer (Materials/, Textures/, ...) when
+      // serializing cross-references inside .material / .mesh / .scene files.
+      // Result: internal refs are clean filenames (e.g. "texture.png") which
+      // the editor can resolve via TexturePath() in its own Resources tree.
+      g_proxy->m_resourceRoot = "Temp";
+
       for (int i = 0; i < (int) (files.size()); i++)
       {
         file = files[i];
