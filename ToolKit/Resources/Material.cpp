@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #include "Material.h"
@@ -543,9 +543,9 @@ namespace ToolKit
                                                       (GetDiffuseTextureVal() != nullptr) ? 1.0f : 0.0f);
 
     m_materialCacheItem.data.textureFlags      = Vec4((GetEmissiveTextureVal() != nullptr) ? 1.0f : 0.0f,
-                                                 (GetNormalTextureVal() != nullptr) ? 1.0f : 0.0f,
-                                                 (GetMetallicRoughnessTextureVal() != nullptr) ? 1.0f : 0.0f,
-                                                 0.0f // Padding
+                                                      (GetNormalTextureVal() != nullptr) ? 1.0f : 0.0f,
+                                                      (GetMetallicRoughnessTextureVal() != nullptr) ? 1.0f : 0.0f,
+                                                      0.0f // Padding
     );
 
     // Validate the cache

@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #include "App.h"
@@ -585,8 +585,7 @@ namespace ToolKit
       // Non-throwing iterator: an unreadable entry (e.g. broken symlink, perm
       // denied) yields error_code set and e == end() — we simply skip it.
       std::error_code iterEc;
-      for (auto it = std::filesystem::directory_iterator(m_path, iterEc);
-           !iterEc && it != std::filesystem::end(it);
+      for (auto it = std::filesystem::directory_iterator(m_path, iterEc); !iterEc && it != std::filesystem::end(it);
            it.increment(iterEc))
       {
         const std::filesystem::directory_entry& e = *it;
@@ -618,9 +617,7 @@ namespace ToolKit
       }
       if (iterEc)
       {
-        TK_ERR("FolderView::Iterate: failed to iterate '%s': %s",
-               m_path.c_str(),
-               iterEc.message().c_str());
+        TK_ERR("FolderView::Iterate: failed to iterate '%s': %s", m_path.c_str(), iterEc.message().c_str());
       }
 
       // Folder first, files next

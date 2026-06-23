@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #include "UI.h"
@@ -36,9 +36,9 @@ namespace ToolKit
   namespace Editor
   {
 
-    const float g_indentSpacing = 6.0f;
-    const int g_treeNodeFlags   = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick |
-                                ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowOverlap;
+    const float g_indentSpacing      = 6.0f;
+    const int g_treeNodeFlags        = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick |
+                                       ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowOverlap;
 
     bool UI::m_windowMenushowMetrics = false;
     bool UI::m_imguiSampleWindow     = false;
@@ -154,9 +154,9 @@ namespace ToolKit
       icons_config.MergeMode = true;
       // icons_config.PixelSnapH = true;
       IconFont               = io.Fonts->AddFontFromFileTTF(FontPath(FONT_ICON_FILE_NAME_FA, true).c_str(),
-                                              14.0f,
-                                              &icons_config,
-                                              icons_ranges);
+                                                            14.0f,
+                                                            &icons_config,
+                                                            icons_ranges);
 
       LiberationSansBold =
           io.Fonts->AddFontFromFileTTF(FontPath("LiberationSans-Bold.ttf", true).c_str(), 14.0f, nullptr, utf8TR);

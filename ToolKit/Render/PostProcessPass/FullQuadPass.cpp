@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #include "FullQuadPass.h"
@@ -84,8 +84,8 @@ namespace ToolKit
     // prior RenderSubPass (e.g. SSAOPass::RunSubPass injecting m_quadPass->m_requirements
     // for its own draw) must NOT leak into GammaTonemapFxaaPass's draw, or the gamma
     // compositing ends up on the wrong framebuffer and the editor sees pre-tonemap colors.
-    reqs.frameBuffer = m_params.frameBuffer;
-    reqs.clearBits   = m_params.clearFrameBuffer;
+    reqs.frameBuffer             = m_params.frameBuffer;
+    reqs.clearBits               = m_params.clearFrameBuffer;
 
     // Re-derive passive state from defaults + the caller's stencil op. Always overlay our
     // depth-off / FuncAlways defaults so a caller can opt out per-field by changing

@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #include <Animation.h>
@@ -419,24 +419,17 @@ namespace ToolKit
     String packageName = "com.otyazilim.toolkit." + projectName + "/com.otyazilim.toolkit.ToolKitActivity";
 
     int execResult;
-    execResult = PlatformHelpers::SysComExec({String("adb"), String("install"), apkLocation},
-                                              false,
-                                              true,
-                                              nullptr);
+    execResult = PlatformHelpers::SysComExec({String("adb"), String("install"), apkLocation}, false, true, nullptr);
     if (checkIfFailedFn(execResult, "adb install " + apkLocation))
     {
       return;
     }
 
-    execResult = PlatformHelpers::SysComExec({String("adb"),
-                                               String("shell"),
-                                               String("am"),
-                                               String("start"),
-                                               String("-n"),
-                                               packageName},
-                                              true,
-                                              true,
-                                              nullptr);
+    execResult = PlatformHelpers::SysComExec(
+        {String("adb"), String("shell"), String("am"), String("start"), String("-n"), packageName},
+        true,
+        true,
+        nullptr);
     if (checkIfFailedFn(execResult, "adb shell am start -n " + packageName))
     {
       return;
@@ -732,9 +725,9 @@ namespace ToolKit
     }
 
     // Compile game.
-    String cmd = "emcmake cmake -S . -B ./Intermediate/Web -DTK_CXX_EXTRA:STRING=-pthread -DTK_PLATFORM=Web "
-                 "-DCMAKE_BUILD_TYPE=" +
-                 buildConfig;
+    String cmd     = "emcmake cmake -S . -B ./Intermediate/Web -DTK_CXX_EXTRA:STRING=-pthread -DTK_PLATFORM=Web "
+                     "-DCMAKE_BUILD_TYPE=" +
+                     buildConfig;
 
     int compileRes = std::system(cmd.c_str());
     if (compileRes != 0)
@@ -852,11 +845,11 @@ namespace ToolKit
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
 
     SDL_Window* g_window    = SDL_CreateWindow("temp",
-                                            SDL_WINDOWPOS_UNDEFINED,
-                                            SDL_WINDOWPOS_UNDEFINED,
-                                            32,
-                                            32,
-                                            SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
+                                               SDL_WINDOWPOS_UNDEFINED,
+                                               SDL_WINDOWPOS_UNDEFINED,
+                                               32,
+                                               32,
+                                               SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
     SDL_GLContext g_context = SDL_GL_CreateContext(g_window);
 
     ToolKit::IGraphicsBackend::BackendInitParams initParams;

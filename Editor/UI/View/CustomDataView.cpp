@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #include "CustomDataView.h"
@@ -144,7 +144,7 @@ namespace ToolKit
       strncpy(buff, var->m_name.c_str(), sizeof(buff) - 1);
       buff[sizeof(buff) - 1] = '\0';
 
-      String pNameId = "##Name" + std::to_string(uiId);
+      String pNameId         = "##Name" + std::to_string(uiId);
       if (isListEditable)
       {
         ImGui::InputText(pNameId.c_str(), buff, sizeof(buff));

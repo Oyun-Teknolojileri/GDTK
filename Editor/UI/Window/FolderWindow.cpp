@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #include "FolderWindow.h"
@@ -405,7 +405,7 @@ namespace ToolKit
       // Resolve to an absolute path. Workspace paths stored without a leading
       // slash (e.g. coming from Editor.settings) are otherwise resolved against
       // the editor's CWD and silently miss the real directory.
-      String absPath = ToAbsolutePath(path);
+      String absPath      = ToAbsolutePath(path);
 
       // Guard: directory_iterator throws on a missing/non-directory path.
       // Bail with a clear log instead of crashing the editor.
@@ -421,8 +421,7 @@ namespace ToolKit
 
       // Non-throwing iterator: a single unreadable entry won't kill the loop.
       std::error_code iterEc;
-      for (auto it = std::filesystem::directory_iterator(absPath, iterEc);
-           !iterEc && it != std::filesystem::end(it);
+      for (auto it = std::filesystem::directory_iterator(absPath, iterEc); !iterEc && it != std::filesystem::end(it);
            it.increment(iterEc))
       {
         const std::filesystem::directory_entry& entry = *it;
@@ -449,9 +448,7 @@ namespace ToolKit
       }
       if (iterEc)
       {
-        TK_ERR("FolderWindow::Iterate: failed to iterate '%s': %s",
-               absPath.c_str(),
-               iterEc.message().c_str());
+        TK_ERR("FolderWindow::Iterate: failed to iterate '%s': %s", absPath.c_str(), iterEc.message().c_str());
       }
 
       if (addEngine)

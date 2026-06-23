@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #pragma once
@@ -16,6 +16,8 @@
 #ifdef _WIN32
   #error "LinuxUtils.h is the non-Windows implementation; do not include on _WIN32."
 #endif
+
+#include "Types.h"
 
 #include <dlfcn.h>
 #include <fcntl.h>
@@ -34,8 +36,6 @@
 #include <future>
 #include <string>
 #include <thread>
-
-#include "Types.h"
 
 extern char** environ;
 
@@ -87,25 +87,16 @@ namespace ToolKit
     // that lives next to the current process. Lets the launcher
     // locate the editor, the editor locate the packer, etc.,
     // without hardcoded Bin/ relative paths or $PATH lookups.
-    inline String GetSiblingExecutablePath(const String& name)
-    {
-      return GetExecutableDirectory() + name;
-    }
+    inline String GetSiblingExecutablePath(const String& name) { return GetExecutableDirectory() + name; }
 
     // Returns the absolute path of the editor binary. The editor
     // is expected to ship next to the current process (both live
     // in Bin/), so this is just a sibling lookup.
-    inline String GetEditorExecutablePath()
-    {
-      return GetSiblingExecutablePath(GetEditorExecutableName());
-    }
+    inline String GetEditorExecutablePath() { return GetSiblingExecutablePath(GetEditorExecutableName()); }
 
     // Returns the absolute path of the packer binary. Same sibling
     // semantics as GetEditorExecutablePath().
-    inline String GetPackerExecutablePath()
-    {
-      return GetSiblingExecutablePath(GetPackerExecutableName());
-    }
+    inline String GetPackerExecutablePath() { return GetSiblingExecutablePath(GetPackerExecutableName()); }
 
     // Helper: convert StringArray to a null-terminated
     // char** suitable for posix_spawn's argv parameter. Each entry
@@ -149,10 +140,7 @@ namespace ToolKit
     //                once the child exits; the call returns 0 immediately.
     // async=false -> wait for the child synchronously and return its
     //                exit status.
-    inline int SysComExec(const StringArray& argv,
-                          bool async,
-                          bool showConsole,
-                          std::function<void(int)> callback)
+    inline int SysComExec(const StringArray& argv, bool async, bool showConsole, std::function<void(int)> callback)
     {
       (void) showConsole; // No Win32-style console window concept on Linux.
 
@@ -162,19 +150,19 @@ namespace ToolKit
         return -1;
       }
 
-      char** argvArr = ToNullTerminatedArgv(argv);
+      char** argvArr         = ToNullTerminatedArgv(argv);
       const size_t argcCount = argv.size();
 
       if (!async)
       {
         // Synchronous path: posix_spawn + waitpid, no shell.
         pid_t pid = -1;
-        int rc = posix_spawn(&pid,
-                             argvArr[0],
-                             nullptr,    // file_actions
-                             nullptr,    // attrp
-                             argvArr,
-                             environ);
+        int rc    = posix_spawn(&pid,
+                                argvArr[0],
+                                nullptr, // file_actions
+                                nullptr, // attrp
+                                argvArr,
+                                environ);
         if (rc != 0)
         {
           TK_ERR("posix_spawn failed (%d): %s", rc, std::strerror(rc));
@@ -203,12 +191,7 @@ namespace ToolKit
       // Async path: posix_spawn, parent returns 0 immediately. Arm
       // a detached watcher thread that reaps and fires the callback.
       pid_t pid = -1;
-      int rc = posix_spawn(&pid,
-                           argvArr[0],
-                           nullptr,
-                           nullptr,
-                           argvArr,
-                           environ);
+      int rc    = posix_spawn(&pid, argvArr[0], nullptr, nullptr, argvArr, environ);
       FreeNullTerminatedArgv(argvArr, argcCount);
 
       if (rc != 0)
@@ -246,7 +229,7 @@ namespace ToolKit
       static const char* logNames[] = {"[Memo]", "[Error]", "[Warning]", "[Command]", "[Success]"};
       const char* tag               = (logType >= 0 && logType < 5) ? logNames[logType] : "[Log]";
 
-      char szBuff[1024] = {0};
+      char szBuff[1024]             = {0};
       va_list arg;
       va_start(arg, szFormat);
       std::vsnprintf(szBuff, sizeof(szBuff), szFormat, arg);
@@ -261,7 +244,7 @@ namespace ToolKit
       std::filesystem::path systemPath = utf8Path;
       std::string systemPathStr        = PathToString(systemPath.lexically_normal());
 
-      pid_t pid = fork();
+      pid_t pid                        = fork();
       if (pid < 0)
       {
         TK_ERR("Failed to fork for xdg-open: %s", std::strerror(errno));
@@ -376,9 +359,8 @@ namespace ToolKit
                                                const String& arguments,
                                                const String& exePathOverride = "")
     {
-      std::string exePath = exePathOverride.empty()
-                                ? PathToString(std::filesystem::read_symlink("/proc/self/exe"))
-                                : exePathOverride;
+      std::string exePath =
+          exePathOverride.empty() ? PathToString(std::filesystem::read_symlink("/proc/self/exe")) : exePathOverride;
 
       // Resolve $XDG_DESKTOP_DIR, falling back to $HOME/Desktop.
       std::string desktopDir;
@@ -422,8 +404,7 @@ namespace ToolKit
 
       // Mark the .desktop as executable so launchers will accept it.
       std::filesystem::permissions(shortcutPath,
-                                   std::filesystem::perms::owner_all |
-                                       std::filesystem::perms::group_read |
+                                   std::filesystem::perms::owner_all | std::filesystem::perms::group_read |
                                        std::filesystem::perms::others_read,
                                    std::filesystem::perm_options::replace);
 

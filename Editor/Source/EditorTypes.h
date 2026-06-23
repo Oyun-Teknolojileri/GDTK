@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #pragma once
@@ -86,8 +86,7 @@ namespace ToolKit
     // arguments. The executor (PlatformHelpers::SysComExec) does
     // its own platform-appropriate escaping -- callers do not
     // need to pre-quote or pre-escape anything.
-    typedef std::function<int(const StringArray&, bool, bool, SysCommandDoneCallback)>
-        SysCommandExecutionFn;
+    typedef std::function<int(const StringArray&, bool, bool, SysCommandDoneCallback)> SysCommandExecutionFn;
     typedef std::function<void(const StringView)> ShellOpenDirFn;
 
     // UI Strings

@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #include "ConsoleWindow.h"
@@ -228,8 +228,8 @@ namespace ToolKit
               {
                 vp->m_cameraAlignment = CameraAlignment::Top;
                 Quaternion ws         = glm::angleAxis(glm::pi<float>(), -Y_AXIS) *
-                                glm::angleAxis(glm::half_pi<float>(), X_AXIS) *
-                                glm::angleAxis(glm::pi<float>(), Y_AXIS);
+                                        glm::angleAxis(glm::half_pi<float>(), X_AXIS) *
+                                        glm::angleAxis(glm::pi<float>(), Y_AXIS);
                 node->SetOrientation(ws, TransformationSpace::TS_WORLD);
                 if (c->IsOrtographic())
                 {

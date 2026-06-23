@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #include "OutlinePass.h"
@@ -56,8 +56,8 @@ namespace ToolKit
     m_outlinePass->GetRequirements().customUbos[7] = &m_dilateBuffer.GetBuffer();
 
     // Draw outline to the viewport.
-    m_outlinePass->m_params.frameBuffer      = m_params.FrameBuffer;
-    m_outlinePass->m_params.clearFrameBuffer = GraphicBitFields::None;
+    m_outlinePass->m_params.frameBuffer            = m_params.FrameBuffer;
+    m_outlinePass->m_params.clearFrameBuffer       = GraphicBitFields::None;
 
     RenderSubPass(m_outlinePass);
   }

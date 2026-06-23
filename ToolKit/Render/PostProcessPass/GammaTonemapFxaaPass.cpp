@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #include "GammaTonemapFxaaPass.h"
@@ -67,8 +67,8 @@ namespace ToolKit
     // (ForwardPreProcess, SSAO, DoF) that share slot 7 with their own buffers can
     // leave the Vulkan descriptor set pointing at the wrong VkBuffer by the time
     // GammaTonemapFxaa runs.
-    PassRequirements& qreq            = m_quadPass->GetRequirements();
-    qreq.customUbos[7]                = &m_passDataBuffer.GetBuffer();
+    PassRequirements& qreq = m_quadPass->GetRequirements();
+    qreq.customUbos[7]     = &m_passDataBuffer.GetBuffer();
 
     RenderSubPass(m_quadPass);
   }
@@ -81,6 +81,8 @@ namespace ToolKit
   }
 
   bool GammaTonemapFxaaPass::IsEnabled()
-  { return m_params.enableFxaa || m_params.enableGammaCorrection || m_params.enableTonemapping; }
+  {
+    return m_params.enableFxaa || m_params.enableGammaCorrection || m_params.enableTonemapping;
+  }
 
 } // namespace ToolKit

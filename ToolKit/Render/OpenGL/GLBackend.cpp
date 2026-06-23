@@ -1,9 +1,9 @@
 /*
  /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #include "GLBackend.h"
@@ -143,12 +143,16 @@ namespace ToolKit
   static GLTextureData* GetGLTextureData(Texture* tex) { return static_cast<GLTextureData*>(tex->m_gpuData.get()); }
 
   static GLFramebufferData* GetGLFramebufferData(Framebuffer* fb)
-  { return static_cast<GLFramebufferData*>(fb->m_gpuData.get()); }
+  {
+    return static_cast<GLFramebufferData*>(fb->m_gpuData.get());
+  }
 
   static GLMeshData* GetGLMeshData(const Mesh* mesh) { return static_cast<GLMeshData*>(mesh->m_gpuData.get()); }
 
   static GLProgramData* GetGLProgramData(GpuProgram* program)
-  { return static_cast<GLProgramData*>(program->m_gpuData.get()); }
+  {
+    return static_cast<GLProgramData*>(program->m_gpuData.get());
+  }
 
   static GLuint GetGLProgramId(GpuProgram* program)
   {
@@ -839,7 +843,9 @@ namespace ToolKit
   }
 
   int GLBackend::GetUniformLocation(GpuProgram* program, const char* name)
-  { return glGetUniformLocation(GetGLProgramId(program), name); }
+  {
+    return glGetUniformLocation(GetGLProgramId(program), name);
+  }
 
   // -----------------------------------------------------------------------
   // Texture resource management
@@ -1511,7 +1517,9 @@ namespace ToolKit
   }
 
   void GLBackend::SetUniform4f(int location, const Vec4& value)
-  { glUniform4f(location, value.x, value.y, value.z, value.w); }
+  {
+    glUniform4f(location, value.x, value.y, value.z, value.w);
+  }
 
   String GLBackend::GetBackendRendererString()
   {
@@ -1589,7 +1597,9 @@ namespace ToolKit
   }
 
   void GLBackend::ReadPixels(int x, int y, int w, int h, GraphicTypes format, GraphicTypes type, void* data)
-  { glReadPixels(x, y, w, h, ToGLGraphicType(format), ToGLGraphicType(type), data); }
+  {
+    glReadPixels(x, y, w, h, ToGLGraphicType(format), ToGLGraphicType(type), data);
+  }
 
   void GLBackend::UpdateTextureSubRegion(Texture* tex, int x, int y, int w, int h, const void* data)
   {

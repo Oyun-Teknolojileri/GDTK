@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #include "Anchor.h"
@@ -26,12 +26,12 @@
 #include <Common/SDLEventPool.h>
 #include <Common/SplashScreen.h>
 #include <FileManager.h>
-#include <imgui/backends/imgui_impl_sdl2.h>
-#include <imgui/imgui.h>
 #include <Platform.h>
 #include <PluginManager.h>
 #include <SDL.h>
 #include <Types.h>
+#include <imgui/backends/imgui_impl_sdl2.h>
+#include <imgui/imgui.h>
 #include <locale.h>
 
 SDL_Window* g_window            = nullptr;
@@ -293,12 +293,12 @@ namespace ToolKit
         const uint32_t windowFlags = EditorBackendBindings::GetSDLWindowFlags() | SDL_WINDOW_HIDDEN |
                                      SDL_WINDOW_RESIZABLE | SDL_WINDOW_BORDERLESS;
 
-        g_window = SDL_CreateWindow(settings.m_window->GetNameVal().c_str(),
-                                    SDL_WINDOWPOS_CENTERED,
-                                    SDL_WINDOWPOS_CENTERED,
-                                    512,
-                                    512,
-                                    windowFlags);
+        g_window                   = SDL_CreateWindow(settings.m_window->GetNameVal().c_str(),
+                                                      SDL_WINDOWPOS_CENTERED,
+                                                      SDL_WINDOWPOS_CENTERED,
+                                                      512,
+                                                      512,
+                                                      windowFlags);
 
         if (g_window == nullptr)
         {

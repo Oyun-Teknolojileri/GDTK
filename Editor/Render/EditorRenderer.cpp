@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #include "EditorRenderer.h"
@@ -267,15 +267,15 @@ namespace ToolKit
       m_billboardPass->m_params.Billboards = scene->GetBillboards();
       m_billboardPass->m_params.Billboards.push_back(app->m_origin);
       m_billboardPass->m_params.Billboards.push_back(app->m_cursor);
-      m_billboardPass->m_params.Viewport = m_params.Viewport;
+      m_billboardPass->m_params.Viewport   = m_params.Viewport;
 
       // Grid. UpdateShaderParams (which Map()s GridPassData into slot 7) must happen AFTER the
       // shadow/ssao/sky passes that share slot 7 — earlier passes (e.g. ShadowPass via gauss blur)
       // would otherwise displace the grid buffer before the forward pass draws the grid. Hook it
       // into ForwardRenderPass::PreRender so the timing is right regardless of which earlier
       // passes are active in this frame.
-      GridPtr grid                       = m_params.Viewport->IsA<EditorViewport2d>() ? app->m_2dGrid : app->m_grid;
-      m_sceneRenderPath->m_params.grid   = grid;
+      GridPtr grid                         = m_params.Viewport->IsA<EditorViewport2d>() ? app->m_2dGrid : app->m_grid;
+      m_sceneRenderPath->m_params.grid     = grid;
       ForwardRenderPass* forwardRenderPass = m_sceneRenderPath->m_forwardRenderPass.get();
       forwardRenderPass->m_params.onPreRender = [grid, forwardRenderPass]()
       {
@@ -431,7 +431,7 @@ namespace ToolKit
       Viewport* viewport       = m_params.Viewport;
       CameraPtr viewportCamera = viewport->GetCamera();
       auto RenderFn            = [this, viewport, renderer, &viewportCamera](const EntityPtrArray& selection,
-                                                                  const Vec4& color) -> void
+                                                                             const Vec4& color) -> void
       {
         if (selection.empty())
         {

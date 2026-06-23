@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #include "GpuProgram.h"
@@ -152,8 +152,8 @@ namespace ToolKit
 
       m_backend->CreateGpuProgram(program.get(), bindings.data(), (int) bindings.size());
 
-      auto key        = std::array<ObjectId, TKGpuPipelineStages> {(ObjectId) (uintptr_t) vertexShader->m_gpuData.get(),
-                                                                   (ObjectId) (uintptr_t) fragmentShader->m_gpuData.get()};
+      auto key = std::array<ObjectId, TKGpuPipelineStages> {(ObjectId) (uintptr_t) vertexShader->m_gpuData.get(),
+                                                            (ObjectId) (uintptr_t) fragmentShader->m_gpuData.get()};
       m_programs[key] = program;
       return m_programs[key];
     }

@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #include "VulkanSwapchain.h"
@@ -451,11 +451,11 @@ namespace ToolKit
     {
       uint32_t imageIndex = 0;
       VkResult r          = vkAcquireNextImageKHR(device,
-                                         m_swapchain,
-                                         UINT64_MAX,
-                                         m_imageAvailable[m_currentFrame],
-                                         VK_NULL_HANDLE,
-                                         &imageIndex);
+                                                  m_swapchain,
+                                                  UINT64_MAX,
+                                                  m_imageAvailable[m_currentFrame],
+                                                  VK_NULL_HANDLE,
+                                                  &imageIndex);
       if (r == VK_SUCCESS || r == VK_SUBOPTIMAL_KHR)
       {
         m_currentImage = imageIndex;

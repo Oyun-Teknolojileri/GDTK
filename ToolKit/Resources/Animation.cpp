@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #include "Animation.h"
@@ -507,8 +507,8 @@ namespace ToolKit
             skComp->m_animData.blendKeyFrameCount   = (float) blendAnimKeys.size();
             skComp->m_animData.animationBlendFactor = recordToBlend->m_blendingData.blendCurrentDurationInSec /
                                                       recordToBlend->m_blendingData.blendTotalDurationInSec;
-            skComp->m_animData.blendFirstKeyFrame             = (float) key1 / skComp->m_animData.blendKeyFrameCount;
-            skComp->m_animData.blendSecondKeyFrame            = (float) key2 / skComp->m_animData.blendKeyFrameCount;
+            skComp->m_animData.blendFirstKeyFrame   = (float) key1 / skComp->m_animData.blendKeyFrameCount;
+            skComp->m_animData.blendSecondKeyFrame  = (float) key2 / skComp->m_animData.blendKeyFrameCount;
             skComp->m_animData.blendKeyFrameInterpolationTime = ratio;
             skComp->m_animData.blendAnimation                 = recordToBlend->m_animation;
           }

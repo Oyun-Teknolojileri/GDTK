@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #include "ForwardPass.h"
@@ -56,10 +56,10 @@ namespace ToolKit
     //
     // Pass-level passive state is also stamped in once; per-job bits (cull, blend,
     // alphaMask) are merged from the job's material inside Renderer::Render.
-    m_requirements.frameBuffer  = m_params.FrameBuffer;
-    m_requirements.clearBits    = m_params.clearBuffer;
-    m_requirements.passState    = m_opaquePassState;
-    m_requirements.program      = nullptr; // let Apply build from vert/frag below
+    m_requirements.frameBuffer    = m_params.FrameBuffer;
+    m_requirements.clearBits      = m_params.clearBuffer;
+    m_requirements.passState      = m_opaquePassState;
+    m_requirements.program        = nullptr; // let Apply build from vert/frag below
 
     // We don't have a single vert/frag here (ForwardRenderPass builds programs
     // dynamically per-config-material). Pull vert/frag from m_programConfigMat so

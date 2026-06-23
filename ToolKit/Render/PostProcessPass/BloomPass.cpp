@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #include "BloomPass.h"
@@ -147,9 +147,9 @@ namespace ToolKit
       RenderTargetPtr prevRt         = prevFramebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
       renderer->SetTexture((ubyte) 0, prevRt);
 
-      m_upPass->m_params.blendFunc               = BlendFunction::ONE_TO_ONE;
-      m_upPass->m_params.clearFrameBuffer        = GraphicBitFields::None;
-      m_upPass->m_params.frameBuffer             = m_params.FrameBuffer;
+      m_upPass->m_params.blendFunc             = BlendFunction::ONE_TO_ONE;
+      m_upPass->m_params.clearFrameBuffer      = GraphicBitFields::None;
+      m_upPass->m_params.frameBuffer           = m_params.FrameBuffer;
 
       // Final merge uses the user-set intensity instead of 1.0.
       m_passDataBuffer.m_data.upsampleParams.y = m_params.intensity;

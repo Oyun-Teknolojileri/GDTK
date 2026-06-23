@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #include "StatsWindow.h"
@@ -174,7 +174,7 @@ namespace ToolKit
                                            ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingStretchProp;
 
               // Calculate available height for the table.
-              float availableHeight = ImGui::GetContentRegionAvail().y;
+              float availableHeight      = ImGui::GetContentRegionAvail().y;
 
               if (ImGui::BeginTable("ProfilerTable", 6, tableFlags, ImVec2(0.0f, availableHeight)))
               {

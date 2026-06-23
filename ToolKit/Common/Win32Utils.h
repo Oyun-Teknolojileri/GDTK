@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #pragma once
@@ -10,6 +10,8 @@
 #ifdef _WIN32
   #define NOMINMAX
   #define WIN32_LEAN_AND_MEAN
+  #include "Types.h"
+
   #include <Windows.h>
   #include <shellapi.h>
   #include <shlobj.h>
@@ -20,8 +22,6 @@
   #include <fstream>
   #include <thread>
   #include <vector>
-
-  #include "Types.h"
 
 namespace ToolKit
 {
@@ -97,25 +97,16 @@ namespace ToolKit
     // Returns the absolute path of `name` interpreted as a binary
     // that lives next to the current process (e.g. Editor.exe
     // next to Launcher.exe, both in Bin/).
-    inline String GetSiblingExecutablePath(const String& name)
-    {
-      return GetExecutableDirectory() + name;
-    }
+    inline String GetSiblingExecutablePath(const String& name) { return GetExecutableDirectory() + name; }
 
     // Returns the absolute path of the editor binary. The editor
     // is expected to ship next to the current process (both live
     // in Bin/), so this is just a sibling lookup.
-    inline String GetEditorExecutablePath()
-    {
-      return GetSiblingExecutablePath(GetEditorExecutableName());
-    }
+    inline String GetEditorExecutablePath() { return GetSiblingExecutablePath(GetEditorExecutableName()); }
 
     // Returns the absolute path of the packer binary. Same sibling
     // semantics as GetEditorExecutablePath().
-    inline String GetPackerExecutablePath()
-    {
-      return GetSiblingExecutablePath(GetPackerExecutableName());
-    }
+    inline String GetPackerExecutablePath() { return GetSiblingExecutablePath(GetPackerExecutableName()); }
 
     // Quote a single argv entry per the Microsoft "Parsing C++
     // Command-Line Arguments" rules so it survives a round trip
@@ -190,10 +181,7 @@ namespace ToolKit
     //                once the child exits; the call returns 0 immediately.
     // async=false -> wait for the child synchronously and return its
     //                exit status.
-    inline int SysComExec(const StringArray& argv,
-                          bool async,
-                          bool showConsole,
-                          std::function<void(int)> callback)
+    inline int SysComExec(const StringArray& argv, bool async, bool showConsole, std::function<void(int)> callback)
     {
       if (argv.empty())
       {
@@ -212,8 +200,8 @@ namespace ToolKit
         {
           cmdLine.push_back(L' ');
         }
-        std::wstring wArg = UTF8Util::ConvertUTF8ToUTF16(argv[i]);
-        cmdLine          += Win32QuoteArg(wArg);
+        std::wstring wArg  = UTF8Util::ConvertUTF8ToUTF16(argv[i]);
+        cmdLine           += Win32QuoteArg(wArg);
       }
 
       // Pass argv[0] as lpApplicationName so CreateProcess doesn't
@@ -235,16 +223,16 @@ namespace ToolKit
       // Start the child process. CreateProcessW may modify the
       // command line buffer in place (it rewrites argv[0] to the
       // full path), so we pass a mutable wstring's data().
-      if (!CreateProcessW(wExePath.data(),               // module name (no PATH lookup)
+      if (!CreateProcessW(wExePath.data(), // module name (no PATH lookup)
                           cmdLine.empty() ? nullptr : cmdLine.data(),
-                          NULL,                          // Process handle not inheritable
-                          NULL,                          // Thread handle not inheritable
-                          FALSE,                         // Set handle inheritance to FALSE
-                          0,                             // No creation flags
-                          NULL,                          // Use parent's environment block
-                          NULL,                          // Use parent's starting directory
-                          &si,                           // Pointer to STARTUPINFO structure
-                          &pi)                           // Pointer to PROCESS_INFORMATION structure
+                          NULL,  // Process handle not inheritable
+                          NULL,  // Thread handle not inheritable
+                          FALSE, // Set handle inheritance to FALSE
+                          0,     // No creation flags
+                          NULL,  // Use parent's environment block
+                          NULL,  // Use parent's starting directory
+                          &si,   // Pointer to STARTUPINFO structure
+                          &pi)   // Pointer to PROCESS_INFORMATION structure
       )
       {
         DWORD errCode = GetLastError();
@@ -411,7 +399,10 @@ namespace ToolKit
 
     inline void TKFreeModule(void* module) { FreeLibrary((HMODULE) module); }
 
-    inline void* TKGetFunction(void* module, StringView func) { return (void*) GetProcAddress((HMODULE) module, func.data()); }
+    inline void* TKGetFunction(void* module, StringView func)
+    {
+      return (void*) GetProcAddress((HMODULE) module, func.data());
+    }
 
     inline void UpdateAppIcon()
     {

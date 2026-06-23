@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #pragma once
@@ -117,8 +117,7 @@ namespace ToolKit
     // (e.g. Windows .lnk SetArguments, Linux .desktop Exec=). Code
     // that actually launches the editor should prefer the argv form
     // below so the executor can avoid shell parsing.
-    inline String BuildEditorLaunchArgs(const String& workspacePath,
-                                        const String& projectName)
+    inline String BuildEditorLaunchArgs(const String& workspacePath, const String& projectName)
     {
       return "--workspace \"" + workspacePath + "\" --project-name \"" + projectName + "\"";
     }
@@ -128,8 +127,7 @@ namespace ToolKit
     // ...). Avoids the shell-escaping pitfalls the string form has
     // (paths with spaces, quotes, dollar signs, etc.) because each
     // token reaches the child process verbatim.
-    inline StringArray BuildEditorLaunchArgv(const String& workspacePath,
-                                             const String& projectName)
+    inline StringArray BuildEditorLaunchArgv(const String& workspacePath, const String& projectName)
     {
       return {String("--workspace"), workspacePath, String("--project-name"), projectName};
     }

@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #pragma once
@@ -40,10 +40,10 @@ namespace ToolKit
     ShaderPtr fragmentShader = nullptr;
     /** Optional: a specific vertex shader. If null, the program's existing vertex is used
      *  (and if no program is provided either, the default fullQuadVert.shader is used). */
-    ShaderPtr vertexShader = nullptr;
+    ShaderPtr vertexShader   = nullptr;
     /** Optional: a pre-built program. If null, the manager creates one from the pass's
      *  vertex + fragment shaders. */
-    GpuProgramPtr program = nullptr;
+    GpuProgramPtr program    = nullptr;
 
     /** Slot → texture bindings. Use this when you know the slot number directly. */
     std::unordered_map<int, TexturePtr> textures;
@@ -110,6 +110,7 @@ namespace ToolKit
     /** Public accessor for m_program. SetFragmentShader assigns it; outer passes that drive
      *  a sub-pass's draw can read it to fill in PassRequirements::program explicitly. */
     GpuProgramPtr GetProgram() const { return m_program; }
+
     void SetProgram(const GpuProgramPtr& prog) { m_program = prog; }
 
     Renderer* GetRenderer();

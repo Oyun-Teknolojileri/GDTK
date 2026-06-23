@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #include "Launcher.h"
@@ -124,9 +124,9 @@ namespace ToolKit
       icons_config.MergeMode = true;
       // icons_config.PixelSnapH = true;
       IconFont               = io.Fonts->AddFontFromFileTTF(FontPath(FONT_ICON_FILE_NAME_FA, true).c_str(),
-                                              14.0f,
-                                              &icons_config,
-                                              icons_ranges);
+                                                            14.0f,
+                                                            &icons_config,
+                                                            icons_ranges);
 
       LiberationSansBold =
           io.Fonts->AddFontFromFileTTF(FontPath("LiberationSans-Bold.ttf", true).c_str(), 14.0f, nullptr, utf8TR);
@@ -992,10 +992,7 @@ namespace ToolKit
 
               String workspacePath = m_workspace->GetActiveWorkspace();
               String targetPath    = ConcatPaths({workspacePath, projectName});
-              StringArray gitArgv = {String("git"),
-                                     String("clone"),
-                                     m_newProjectPathOrUrl,
-                                     targetPath};
+              StringArray gitArgv  = {String("git"), String("clone"), m_newProjectPathOrUrl, targetPath};
 
               m_sysComExecFn(gitArgv,
                              true,

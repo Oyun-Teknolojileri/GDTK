@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #include "LightMeshGenerator.h"
@@ -207,9 +207,9 @@ namespace ToolKit
       LineBatchPtrArray lines = {MakeNewPtr<LineBatch>(), MakeNewPtr<LineBatch>(), MakeNewPtr<LineBatch>()};
 
       auto drawCircleGizmoFn  = [&pLight, &deltaAngle, &lines, this](Vec3Array vertices,
-                                                                    const Vec3& axis,
-                                                                    const Vec3& perpAxis,
-                                                                    int lineBatchIndex)
+                                                                     const Vec3& axis,
+                                                                     const Vec3& perpAxis,
+                                                                     int lineBatchIndex)
       {
         Vec3 startingPoint  = perpAxis * pLight->GetRadiusVal();
         vertices[0]         = startingPoint;

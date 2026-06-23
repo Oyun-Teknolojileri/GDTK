@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #include "Camera.h"
@@ -46,11 +46,11 @@ namespace ToolKit
   {
     m_aspect      = (right - left) / (top - bottom);
     m_projection  = glm::ortho(left * m_orthographicScale,
-                              right * m_orthographicScale,
-                              bottom * m_orthographicScale,
-                              top * m_orthographicScale,
-                              near,
-                              far);
+                               right * m_orthographicScale,
+                               bottom * m_orthographicScale,
+                               top * m_orthographicScale,
+                               near,
+                               far);
 
     m_left        = left;
     m_right       = right;

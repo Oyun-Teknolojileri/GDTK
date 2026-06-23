@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #pragma once
@@ -63,6 +63,7 @@ namespace ToolKit
       /** Accessor for the slot-7 UBO. GridPass::PreRender stages this into its
           PassRequirements so the descriptor set picks up the right VkBuffer at draw time. */
       GridPassDataBuffer& GetDataBuffer() { return m_dataBuffer; }
+
       const GridPassDataBuffer& GetDataBuffer() const { return m_dataBuffer; }
 
      private:

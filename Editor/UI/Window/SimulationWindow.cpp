@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #include "SimulationWindow.h"
@@ -233,7 +233,7 @@ namespace ToolKit
           if (CheckFile(codePath))
           {
             StringArray codeArgv = {String("code"), codePath};
-            int result                  = GetApp()->ExecSysCommand(codeArgv, true, false);
+            int result           = GetApp()->ExecSysCommand(codeArgv, true, false);
             if (result != 0)
             {
               TK_ERR("Visual Studio Code can't be started. Make sure it is installed.");

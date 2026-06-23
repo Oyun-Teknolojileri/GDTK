@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #include "BoxEditMod.h"
@@ -312,8 +312,8 @@ namespace ToolKit
       Vec3 halfSize         = (bb.max - bb.min) * 0.5f;
       Vec3 localFaceNormal  = BoxEditGizmo::GetFaceNormalLocal(m_dragFace);
       Vec3 localFaceCenter  = localCenter + localFaceNormal * (halfSize.x * glm::abs(localFaceNormal.x) +
-                                                              halfSize.y * glm::abs(localFaceNormal.y) +
-                                                              halfSize.z * glm::abs(localFaceNormal.z));
+                                                               halfSize.y * glm::abs(localFaceNormal.y) +
+                                                               halfSize.z * glm::abs(localFaceNormal.z));
       Vec3 faceCenter       = Vec3(m_gizmo->GetWorldTransform() * Vec4(localFaceCenter, 1.0f));
 
       EditorViewportPtr vp  = GetApp()->GetActiveViewport();

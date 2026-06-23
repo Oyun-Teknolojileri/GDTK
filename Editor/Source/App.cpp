@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #include "App.h"
@@ -777,10 +777,7 @@ namespace ToolKit
       }
     }
 
-    int App::ExecSysCommand(const StringArray& argv,
-                            bool async,
-                            bool showConsole,
-                            SysCommandDoneCallback callback)
+    int App::ExecSysCommand(const StringArray& argv, bool async, bool showConsole, SysCommandDoneCallback callback)
     {
       if (m_sysComExecFn)
       {
@@ -1073,7 +1070,10 @@ namespace ToolKit
               }
               else
               {
-                std::filesystem::copy(sourceFile, fullPath, std::filesystem::copy_options::overwrite_existing, fileOpErr);
+                std::filesystem::copy(sourceFile,
+                                      fullPath,
+                                      std::filesystem::copy_options::overwrite_existing,
+                                      fileOpErr);
                 if (fileOpErr)
                 {
                   TK_ERR("File copy failed: %s", fileOpErr.message().c_str());
