@@ -25,7 +25,7 @@
 #include "SDL.h"
 #include "Scene.h"
 #include "SplashScreenRenderPath.h"
-#include "TKOpenGL.h"
+#include "OpenGL/TKOpenGL.h"
 #include "ToolKit.h"
 #include "Types.h"
 #include "UIManager.h"

@@ -174,6 +174,7 @@ set(GDTK_INCLUDE_DIRS
   ${CMAKE_SOURCE_DIR}/ToolKit/Render
   ${CMAKE_SOURCE_DIR}/ToolKit/Render/RenderPass
   ${CMAKE_SOURCE_DIR}/ToolKit/Render/PostProcessPass
+  ${CMAKE_SOURCE_DIR}/ToolKit/Render/OpenGL
   ${CMAKE_SOURCE_DIR}/ToolKit/Common
   ${CMAKE_SOURCE_DIR}/Workspace
   ${CMAKE_SOURCE_DIR}/Workspace/Source
