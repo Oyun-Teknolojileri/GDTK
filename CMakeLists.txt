@@ -53,6 +53,18 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Debug CACHE STRING "" FORCE)
 endif()
 
+# Multi-config generators (Visual Studio) leave CMAKE_BUILD_TYPE
+# empty at configure time, which makes the dependency lookup
+# (TK_DEPS_DIR = ".../<Plat>/<empty>") look in the wrong folder.
+# Pin CMAKE_BUILD_TYPE to "Debug" on those generators so the
+# configure-time dep import finds the same artifacts the user
+# builds with --config Debug. The active configuration is still
+# selected per-build via --config; the value below is only used
+# for configure-time path resolution, not for compile flags.
+if(NOT CMAKE_BUILD_TYPE AND CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE Debug CACHE STRING "" FORCE)
+endif()
+
 message(STATUS "GDTK: building for ${TK_PLATFORM} (config: ${CMAKE_BUILD_TYPE})")
 
 # --------------------------------------------------------------------------- #
@@ -101,6 +113,14 @@ message(STATUS "GDTK: building for ${TK_PLATFORM} (config: ${CMAKE_BUILD_TYPE})"
 #     └── build-Packer/
 set(GDTK_BIN_DIR "${CMAKE_SOURCE_DIR}/Bin")
 set(GDTK_INTERMEDIATE_DIR "${CMAKE_SOURCE_DIR}/Intermediate/${TK_PLATFORM}/${CMAKE_BUILD_TYPE}")
+# Default output directories for any targets added by add_subdirectory
+# below. Multi-config generators (Visual Studio, Ninja Multi-Config)
+# append the active configuration as a final path component -- that
+# would put Editor.exe at Bin/Debug/Editor.exe instead of Bin/Editor.exe.
+# CMAKE_*_OUTPUT_DIRECTORY is plain-text only, so the per-target
+# override below is the actual mechanism that strips the suffix; this
+# default still acts as a fallback for any target that does not have
+# an explicit override.
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}")
@@ -235,31 +255,189 @@ target_include_directories(tkimgui INTERFACE
 
 # ---- Binary IMPORTED targets ---- #
 
-# Generator expressions are not allowed in IMPORTED_LOCATION, so pick the
-# concrete file name per build type. Single-config generators only
-# (Debug/Release); multi-config (VS / Ninja Multi-Config) is Phase 3+.
+# Generator expressions are not allowed in IMPORTED_LOCATION, so pick
+# the concrete file name per platform and per build type. Windows
+# uses CMake's default shared/static naming (foo.lib for static /
+# import, foo.dll for runtime), while Linux uses the libfoo.so /
+# libfoo.a convention. The Debug suffix (set via
+# CMAKE_DEBUG_POSTFIX="d" in Dependency/CMakeLists.txt) lands
+# before the extension.
+#
+# Multi-config generators (Visual Studio) leave CMAKE_BUILD_TYPE
+# empty at configure time -- the active config is selected per-build
+# via --config. In that case we cannot know which variant to link
+# against at configure time, so we look for the Release variant
+# first and fall back to Debug if it is missing. The link artifact
+# is what we import here; the runtime .dll staging is handled
+# separately by CopyDependencies per build configuration.
+#
+# Note: tk_add_imported() FATAL_ERRORs when the file is missing.
+# If a target below is unwanted on a platform, wrap the import in
+# an if(UNIX)/if(WIN32) block rather than letting the missing file
+# blow up configure.
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  set(_d "d")
+  set(_d_suffix "d")
+  set(_d_suffix_alt "")
 else()
-  set(_d "")
+  # Multi-config generators (VS) reach this branch with
+  # CMAKE_BUILD_TYPE empty; we don't know the active config at
+  # configure time, so probe both suffixes and prefer the Release
+  # variant if it exists.
+  set(_d_suffix "")
+  set(_d_suffix_alt "d")
 endif()
 
-tk_add_imported(SDL2 ${TK_DEPS_DIR}/libSDL2-2.0${_d}.so)
-tk_add_imported(SDL2main ${TK_DEPS_DIR}/libSDL2main${_d}.a)
-tk_add_imported(minizip ${TK_DEPS_DIR}/libminizip${_d}.a)
+# Build the candidate path list for a dep, in priority order. The
+# caller supplies per-platform file names WITH extensions, in
+# Release form first ("libSDL2-2.0.so") and Debug form second
+# ("libSDL2-2.0d.so"). We probe both the active-config directory
+# (TK_DEPS_DIR) AND a Debug-fallback directory (<deps>/Debug) so
+# multi-config generators that leave CMAKE_BUILD_TYPE empty at
+# configure time still find the artifacts the dependency script
+# produced under <Platform>/<Config>/.
+#
+# We strip a trailing slash from the joined path components so a
+# trailing separator (which CMake can leave behind when
+# CMAKE_BUILD_TYPE is empty on multi-config generators) does not
+# produce a doubled separator in the joined path. CMake's EXISTS
+# check returns FALSE for "<dir-with-trailing-slash>/<file>"
+# on Windows, which is a known sharp edge.
+function(tk_dep_candidates out_var)
+  string(REGEX REPLACE "/+$" "" _tk_deps_dir "${TK_DEPS_DIR}")
+  # Strip the last path segment by hand. We cannot use
+  # get_filename_component(... DIRECTORY) here -- it returns the
+  # directory of a *file* path, dropping the last segment of a
+  # directory path. We need to walk the string ourselves so
+  # "<deps>/Windows/Debug" becomes "<deps>/Windows".
+  string(REGEX REPLACE "[^/]+$" "" _tk_deps_parent "${_tk_deps_dir}")
+  set(_candidates "")
+  # Priority 1: TK_DEPS_DIR (active config) for each Release then Debug name.
+  foreach(_arg IN LISTS ARGN)
+    list(APPEND _candidates "${_tk_deps_dir}/${_arg}")
+  endforeach()
+  # Priority 2: <parent>/Debug/ (Debug fallback for multi-config users
+  # whose CMAKE_BUILD_TYPE was empty at configure time). We always
+  # probe this so a Debug-only build of the dependency tree still
+  # finds its artifacts.
+  foreach(_arg IN LISTS ARGN)
+    list(APPEND _candidates "${_tk_deps_parent}Debug/${_arg}")
+  endforeach()
+  set(${out_var} "${_candidates}" PARENT_SCOPE)
+endfunction()
+
+# Import the first existing candidate for a dep. Emits a clear
+# error listing what we looked for if nothing matches.
+function(tk_add_imported_resolved name)
+  tk_dep_candidates(_candidates ${ARGN})
+  foreach(_path IN LISTS _candidates)
+    if(EXISTS "${_path}")
+      tk_add_imported(${name} "${_path}")
+      return()
+    endif()
+  endforeach()
+  set(_msg "Expected dependency library not found for ${name}. Looked at:")
+  foreach(_path IN LISTS _candidates)
+    set(_msg "${_msg}\n  ${_path}")
+  endforeach()
+  message(FATAL_ERROR "${_msg}")
+endfunction()
+
+# --- SDL2 (shared) ---
+# Linux: SONAME-encoded filename libSDL2-2.0.so (Release) /
+#        libSDL2-2.0d.so (Debug).
+# Windows: import lib SDL2.lib (Release) / SDL2d.lib (Debug).
+#        Runtime DLL lives next to it (SDL2.dll / SDL2d.dll) but
+#        is not what we link against.
 if(UNIX)
-  tk_add_imported(zstd ${TK_DEPS_DIR}/libzstd${_d}.a)
+  tk_add_imported_resolved(SDL2
+    "libSDL2-2.0.so"   # Release
+    "libSDL2-2.0d.so"  # Debug
+  )
 elseif(WIN32)
-  tk_add_imported(zstd ${TK_DEPS_DIR}/zstd_static${_d}.lib)
-endif()
-if(UNIX)
-  tk_add_imported(assimp ${TK_DEPS_DIR}/libassimp${_d}.so)
+  tk_add_imported_resolved(SDL2
+    "SDL2.lib"         # Release
+    "SDL2d.lib"        # Debug
+  )
 endif()
 
-# tkimgui is built as a shared library on Linux (Dependency/CMakeLists.txt
-# forces BUILD_SHARED_LIBS=ON for it). On Windows the name drops the
-# "lib" prefix and uses .lib. We only target Linux in this phase.
-tk_add_imported(imgui ${TK_DEPS_DIR}/libimgui${_d}.so)
+# --- SDL2main (static) ---
+# Linux: libSDL2main.a / libSDL2maind.a.
+# Windows: SDL2main.lib / SDL2maind.lib (no "lib" prefix, .lib vs .a).
+if(UNIX)
+  tk_add_imported_resolved(SDL2main
+    "libSDL2main.a"
+    "libSDL2maind.a"
+  )
+elseif(WIN32)
+  tk_add_imported_resolved(SDL2main
+    "SDL2main.lib"
+    "SDL2maind.lib"
+  )
+endif()
+
+# --- minizip (static) ---
+# Linux: libminizip.a / libminizipd.a.
+# Windows: minizip.lib / minizipd.lib.
+if(UNIX)
+  tk_add_imported_resolved(minizip
+    "libminizip.a"
+    "libminizipd.a"
+  )
+elseif(WIN32)
+  tk_add_imported_resolved(minizip
+    "minizip.lib"
+    "minizipd.lib"
+  )
+endif()
+
+# --- zstd (static) ---
+# Linux: libzstd.a / libzstdd.a.
+# Windows: zstd's upstream CMake target names the static library
+# zstd_static.lib / zstd_staticd.lib (the "static" infix is zstd's
+# quirk, not a GDTK convention).
+if(UNIX)
+  tk_add_imported_resolved(zstd
+    "libzstd.a"
+    "libzstdd.a"
+  )
+elseif(WIN32)
+  tk_add_imported_resolved(zstd
+    "zstd_static.lib"
+    "zstd_staticd.lib"
+  )
+endif()
+
+# --- assimp (shared) ---
+# Only built when the dependency script runs without --skip-assimp.
+# Linux: libassimp.so / libassimpd.so.
+# Windows: assimp.lib / assimpd.lib (import) + assimp.dll / assimpd.dll.
+if(UNIX)
+  tk_add_imported_resolved(assimp
+    "libassimp.so"
+    "libassimpd.so"
+  )
+elseif(WIN32)
+  tk_add_imported_resolved(assimp
+    "assimp.lib"
+    "assimpd.lib"
+  )
+endif()
+
+# --- imgui / tkimgui (shared) ---
+# Dependency/CMakeLists.txt forces BUILD_SHARED_LIBS=ON for tkimgui.
+# Linux: libimgui.so / libimguid.so.
+# Windows: imgui.lib / imguid.lib + imgui.dll / imguid.dll.
+if(UNIX)
+  tk_add_imported_resolved(imgui
+    "libimgui.so"
+    "libimguid.so"
+  )
+elseif(WIN32)
+  tk_add_imported_resolved(imgui
+    "imgui.lib"
+    "imguid.lib"
+  )
+endif()
 
 # --------------------------------------------------------------------------- #
 # Engine + tools                                                              #

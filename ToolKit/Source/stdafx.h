@@ -64,6 +64,12 @@
 #include "Threads.h"
 
 #ifdef TK_EDITOR
+  // Editor-only forward declarations. App.h and EditorRenderer.h
+  // pull in TK_EDITOR_API (from EditorTypes.h) and the editor-side
+  // ComponentPtr definitions, both of which are required by every
+  // Editor translation unit. Adding them here lets the editor use
+  // the same PCH as the engine without keeping a separate header.
+  #include "EditorTypes.h"
   #include "App.h"
   #include "EditorRenderer.h"
 #endif

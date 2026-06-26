@@ -39,19 +39,25 @@ target_compile_definitions(Launcher PRIVATE
 
 target_compile_features(Launcher PRIVATE cxx_std_17)
 
+# Precompiled header. ToolKit's stdafx.h is shared with the engine;
+# inject it into every translation unit so the symbols Pass.h,
+# Object.h, etc. transitively bring in are always visible.
+target_precompile_headers(Launcher PRIVATE
+  ${CMAKE_SOURCE_DIR}/ToolKit/Source/stdafx.h
+)
+
 # Mirror Editor's GCC 16 warning suppressions. The Launcher sources include
 # Pass.h transitively (via Workspace), which has a `Entity* Entity` field
 # that GCC 16 promotes to a hard error under -Wchanges-meaning. Also turn
 # off -Wdelete-incomplete -- same reason as Editor (Audio.cpp::SafeDel).
-target_compile_options(Launcher PRIVATE
-  -Wno-changes-meaning
-  -Wno-delete-incomplete
-  -include ${CMAKE_SOURCE_DIR}/ToolKit/Source/stdafx.h
-)
-
-# -fpermissive is the same workaround as ToolKit itself: GCC 16's hard
-# error on `char*` -> `const char8_t*` would otherwise fail utf8.h.
-target_compile_options(Launcher PRIVATE -fpermissive)
+# All flags here are GCC/Clang-only; MSVC rejects them with D8021.
+if(NOT MSVC)
+  target_compile_options(Launcher PRIVATE
+    -Wno-changes-meaning
+    -Wno-delete-incomplete
+    -fpermissive
+  )
+endif()
 
 # Same link surface as the Editor: ToolKit (shared), Workspace (static),
 # all the vendored deps (SDL2, minizip, zstd, imgui + the INTERFACE
@@ -102,3 +108,13 @@ if(UNIX)
     INSTALL_RPATH "$ORIGIN:${TK_DEPS_DIR}"
   )
 endif()
+
+# Flat Bin/ output. See ToolKit/CMakeLists.txt for why the $<0:>
+# trailer is here: it strips the multi-config generator's
+# $<CONFIGURATION> suffix so Launcher (and its .lib / .exp
+# side artifacts) land at Bin/ instead of Bin/Debug/.
+set_target_properties(Launcher PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}/$<0:>"
+  LIBRARY_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}/$<0:>"
+  ARCHIVE_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}/$<0:>"
+)

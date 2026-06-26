@@ -48,16 +48,26 @@ target_compile_definitions(Import PRIVATE
 
 target_compile_features(Import PRIVATE cxx_std_17)
 
+# Precompiled header. ToolKit's stdafx.h is shared with the engine;
+# inject it into every translation unit so the symbols Pass.h,
+# Object.h, etc. transitively bring in are always visible.
+target_precompile_headers(Import PRIVATE
+  ${CMAKE_SOURCE_DIR}/ToolKit/Source/stdafx.h
+)
+
 # Same GCC 16 workarounds as the rest of the engine. Import pulls in
 # Pass.h (via Workspace), so -Wno-changes-meaning is required. utf8.h
 # triggers the C++20 `char*` -> `const char8_t*` error -- -fpermissive
 # silences it without rewriting the UTF-8 helpers.
-target_compile_options(Import PRIVATE
-  -Wno-changes-meaning
-  -Wno-delete-incomplete
-  -include ${CMAKE_SOURCE_DIR}/ToolKit/Source/stdafx.h
-  -fpermissive
-)
+# All flags in this block are GCC/Clang-only; MSVC rejects them
+# with D8021. Skip the block on MSVC builds.
+if(NOT MSVC)
+  target_compile_options(Import PRIVATE
+    -Wno-changes-meaning
+    -Wno-delete-incomplete
+    -fpermissive
+  )
+endif()
 
 # Link: ToolKit for the engine, Workspace for the project file helpers,
 # assimp for the actual import work. SDL2 + the OpenGL stack are needed
@@ -107,7 +117,9 @@ endif()
 #   so a clean build always populates Utils/Import/.
 # ---------------------------------------------------------------------------
 set_target_properties(Import PROPERTIES
-  RUNTIME_OUTPUT_DIRECTORY "${GDTK_UTILS_IMPORT_DIR}"
+  RUNTIME_OUTPUT_DIRECTORY "${GDTK_UTILS_IMPORT_DIR}/$<0:>"
+  LIBRARY_OUTPUT_DIRECTORY "${GDTK_UTILS_IMPORT_DIR}/$<0:>"
+  ARCHIVE_OUTPUT_DIRECTORY "${GDTK_UTILS_IMPORT_DIR}/$<0:>"
 )
 add_dependencies(Import ToolKit)
 
@@ -125,7 +137,30 @@ add_custom_command(TARGET Import POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_if_different
     "$<TARGET_FILE:assimp>"
     "${GDTK_UTILS_IMPORT_DIR}/"
-  COMMENT "Import: staging ToolKit + assimp into ${GDTK_UTILS_IMPORT_DIR}"
+  # Also stage assimp's runtime DLL. $<TARGET_FILE:assimp> resolves
+  # to the IMPORTED_LOCATION (assimpd.lib on Windows). The matching
+  # runtime DLL lives next to it (assimpd.dll) and Import.exe needs
+  # it on PATH / next to the binary at runtime. We rebuild the path
+  # from the absolute deps root + active config rather than
+  # transforming the generator expression -- the IMPORTED target's
+  # $<TARGET_FILE_BASE:...> generator extension does not work with
+  # IMPORTED_LOCATION, so a literal path is the only reliable way.
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${CMAKE_SOURCE_DIR}/Dependency/Intermediate/${TK_PLATFORM}/$<CONFIG>/assimp$<$<CONFIG:Debug>:d>.dll"
+    "${GDTK_UTILS_IMPORT_DIR}/"
+  # Stage the vendored runtime DLLs (SDL2, imgui) next to Import.exe
+  # so the binary can find them at runtime without LD_LIBRARY_PATH
+  # (POSIX) or PATH manipulation (Windows). These come from
+  # build_dependencies.py's intermediate dir, not from any IMPORTED
+  # target, so we rebuild the path from the deps root + active config
+  # the same way assimp's DLL is staged above.
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${CMAKE_SOURCE_DIR}/Dependency/Intermediate/${TK_PLATFORM}/$<CONFIG>/SDL2$<$<CONFIG:Debug>:d>.dll"
+    "${GDTK_UTILS_IMPORT_DIR}/"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${CMAKE_SOURCE_DIR}/Dependency/Intermediate/${TK_PLATFORM}/$<CONFIG>/imgui$<$<CONFIG:Debug>:d>.dll"
+    "${GDTK_UTILS_IMPORT_DIR}/"
+  COMMENT "Import: staging ToolKit + assimp + SDL2 + imgui into ${GDTK_UTILS_IMPORT_DIR}"
   VERBATIM
 )
 

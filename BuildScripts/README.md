@@ -134,6 +134,86 @@ python3 BuildScripts/build_dependencies.py --configs Debug --clean
 python3 BuildScripts/build_dependencies.py --platform Linux --configs Release
 ```
 
+## `build_gdtk.py`
+
+Builds the GDTK engine and tools (the root `CMakeLists.txt`):
+`ToolKit` (shared library), `Workspace` (static helper library), and
+the `Editor` / `Launcher` / `Import` / `Packer` executables. The
+dependency tree (`Dependency/Intermediate/<Platform>/<Config>/`) is
+required for the engine build to configure; the script checks for it
+on entry and, if any configuration is missing, auto-invokes
+`build_dependencies.py` to populate it before continuing. Pass
+`--no-deps-check` to opt out of that auto-invoke (e.g. when you
+intend to run a configure-only pass and do not want the script to
+spawn a second build).
+
+### Quick start
+
+```bash
+# from the repo root
+python3 BuildScripts/build_gdtk.py
+```
+
+The script will tell you what it is doing at every step:
+
+| Output line                                          | Meaning                                                            |
+|------------------------------------------------------|--------------------------------------------------------------------|
+| `Dependency tree is missing for: <Plat>/<Cfg>`       | One or more configs are not yet built; the script is going to fix it. |
+| `Invoking build_dependencies.py to populate it ...`  | The dep script is being spawned with the same `--platform` / `--configs` / `--parallel`. |
+| `Dependency tree populated.`                         | Auto-invoked dep build finished; the engine build proceeds.        |
+| `Dependency tree present -- skipping build_dependencies.py.` | Deps already on disk; the script does not re-run them.       |
+
+### Common flags
+
+```text
+--platform {Windows,Linux,Mac,auto}    Default: auto-detect
+--configs  CFG [CFG ...]              Default: Debug Release
+--target  TGT                         Build only TGT. May be passed
+                                      multiple times. Default: all.
+--no-deps-check                       Skip the dep auto-invoke (default
+                                      behaviour is to build deps on
+                                      demand when missing).
+--clean                               Wipe Intermediate/<Platform>/ first
+-j, --parallel N                      Parallel build jobs (default: CPU count)
+--generator {auto,msvc,ninja,make}    Same semantics as build_dependencies.py
+```
+
+### Typical workflows
+
+```bash
+# Cold first-time build -- the dep tree is built on demand, then the
+# engine. Both phases log clearly so the user can see what happened.
+python3 BuildScripts/build_gdtk.py
+
+# Explicit two-step from a clean tree
+python3 BuildScripts/build_dependencies.py
+python3 BuildScripts/build_gdtk.py
+
+# Just the editor, in Debug
+python3 BuildScripts/build_gdtk.py --configs Debug --target Editor
+
+# Rebuild after a ToolKit source change (deps already present, so the
+# script logs "skipping build_dependencies.py" and goes straight to
+# the engine)
+python3 BuildScripts/build_gdtk.py --target ToolKit
+```
+
+### Output layout
+
+```
+Bin/                                  Final binaries the engine ships
+  ├── Editor(.exe)
+  ├── Launcher(.exe)
+  ├── libToolKitd.so / ToolKitd.dll
+  └── libWorkspace.a / Workspace.lib
+Intermediate/<Platform>/<Config>/     CMake state + per-module .o files
+  ├── build-ToolKit/
+  ├── build-Editor/
+  ├── build-Launcher/
+  ├── build-Import/
+  └── build-Packer/
+```
+
 ## Adding more scripts
 
 This folder is the new home for any cross-platform build glue. Future

@@ -1,14 +1,27 @@
 #!/usr/bin/env python3
 """
-GDTK dependency build script.
+GDTK engine + tools build script.
 
-Cross-platform replacement for BuildDependencies.bat. Builds the vendored
-dependencies in Dependency/ via CMake. Supports Windows and Linux out of
-the box; macOS is wired up but untested.
+Cross-platform replacement for the old hand-rolled .bat / .sh build
+flow. Configures and builds the root GDTK CMake project, which produces
+the engine shared library (ToolKit), the Workspace helper library, and
+the Editor / Launcher / Import / Packer executables.
 
-All build artifacts are produced under Dependency/Intermediate/<Platform>/.
-No system packages are required -- every dependency lives in the repo as a
-git submodule.
+Vendored dependencies in Dependency/ are expected to be built ahead of
+time via BuildScripts/build_dependencies.py -- the root CMakeLists
+imports them through IMPORTED targets and FATAL_ERRORs at configure
+time if they are missing.
+
+Build artifacts land in:
+  Bin/                              Final binaries (Editor, Launcher,
+                                    libToolKitd.so, libWorkspace.a, ...)
+  Intermediate/<Platform>/<Config>/ CMake state + per-module .o files
+
+Per-platform generator selection matches build_dependencies.py so the
+two scripts can be run side by side without surprise: on Windows the
+script prefers cl.exe (MSVC) when reachable, then Ninja, then the
+Visual Studio generator; on Linux/macOS it prefers Ninja, then
+Unix Makefiles.
 """
 
 from __future__ import annotations
@@ -24,11 +37,10 @@ from typing import List, Optional, Tuple
 # Project layout -- the script lives in BuildScripts/, the GDTK root is its parent.
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT_DIR = SCRIPT_DIR.parent
-DEP_SRC = ROOT_DIR / "Dependency"
 DEP_INT = ROOT_DIR / "Dependency" / "Intermediate"
 
-# Default build configurations. RelWithDebInfo is omitted by default since
-# it is rarely useful on Linux and roughly doubles the build time.
+# Default build configurations. RelWithDebInfo and MinSizeRel are
+# included for completeness but the main development loop is Debug.
 DEFAULT_CONFIGS = ["Debug", "Release"]
 
 
@@ -108,20 +120,18 @@ def detect_platform() -> str:
 
 # Map of Visual Studio install-path suffix -> CMake generator name.
 # Microsoft switched the on-disk folder from a year ("2022") to a major
-# version number ("18" for VS 2026) in late 2025, while CMake keeps using
-# the historical "Visual Studio <major> <year>" naming. Keep this table
-# in sync with whatever is current whenever a new VS release lands.
+# version number ("18" for VS 2026) in late 2025, while CMake keeps
+# using the historical "Visual Studio <major> <year>" naming. Keep
+# this table in sync with whatever is current whenever a new VS
+# release lands.
 _VS_GENERATOR_BY_INSTALL_DIR: dict[str, str] = {
     "2022": "Visual Studio 17 2022",
     "18":   "Visual Studio 18 2026",
     "19":   "Visual Studio 19 2027",
-    # Fallback for older installs that still live under a year folder.
     "2019": "Visual Studio 16 2019",
     "2017": "Visual Studio 15 2017",
 }
 
-# Newest first -- used when we have to pick a generator without an
-# installation path (e.g. cl.exe is already on PATH from a vcvars shell).
 _VS_GENERATOR_NEWEST_FIRST: tuple[str, ...] = (
     "Visual Studio 18 2026",
     "Visual Studio 17 2022",
@@ -134,8 +144,7 @@ def _vs_generator_for_install_path(install_path: str) -> Optional[str]:
 
     The parent of the edition folder is what we key off. For
     `C:\\Program Files\\Microsoft Visual Studio\\18\\Community` the key
-    is `"18"`, and the mapping returns `"Visual Studio 18 2026"`. For
-    the pre-2026 layout (`...\\2022\\Community`) the key is `"2022"`.
+    is `"18"`, and the mapping returns `"Visual Studio 18 2026"`.
     """
     parent = Path(install_path.rstrip("\\/")).parent.name
     return _VS_GENERATOR_BY_INSTALL_DIR.get(parent)
@@ -147,26 +156,11 @@ def _default_vs_generator() -> str:
 
 
 def detect_compiler(platform: str) -> Tuple[Optional[str], Optional[str]]:
-    """Return (cl_path, vs_install_path) if an MSVC toolset is reachable.
-
-    We probe a few different ways because cl.exe is rarely on PATH
-    out of the box -- typically it lives somewhere under
-    `C:\\Program Files\\Microsoft Visual Studio\\<ver-or-year>\\<edition>\\VC\\Tools\\MSVC\\<ver>\\bin\\Hostx64\\x64\\`
-    and is only added to PATH inside a `vcvars64.bat` shell.
-
-    `vs_install_path` is returned alongside cl_path so the caller can
-    resolve the correct CMake generator name for the installed VS
-    release (the install-folder suffix no longer matches the year).
-    """
-    # 1. Already on PATH (vcvars was sourced, or VS is in PATH).
+    """Return (cl_path, vs_install_path) if an MSVC toolset is reachable."""
     direct = which("cl")
     if direct:
-        # We don't know which install path it came from -- use vcvars.
-        # The newest-known generator name is a safe bet; CMake will
-        # fall through to whichever VS is actually registered.
         return direct, None
 
-    # 2. Probe the VS install root via vswhere.exe (ships with VS 2017+).
     vswhere = Path(r"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe")
     if platform == "Windows" and vswhere.exists():
         try:
@@ -187,7 +181,7 @@ def detect_compiler(platform: str) -> Tuple[Optional[str], Optional[str]]:
                 candidates = list(
                     (Path(install_path) / "VC" / "Tools" / "MSVC").glob("*")
                 )
-                candidates.sort(reverse=True)  # newest toolset first
+                candidates.sort(reverse=True)
                 for toolset in candidates:
                     cl = toolset / "bin" / "Hostx64" / "x64" / "cl.exe"
                     if cl.exists():
@@ -204,21 +198,16 @@ def detect_generator(
 ) -> Tuple[str, bool, Optional[str], Optional[str]]:
     """Return (generator, is_multi_config, cl_path, ninja_path).
 
-    Selection rules (Windows):
-      - If --generator msvc OR (auto AND cl.exe is reachable):
-          pick the Visual Studio generator that matches the installed
-          VS release (VS 2022 -> "Visual Studio 17 2022", VS 2026 ->
-          "Visual Studio 18 2026", ...).
-      - Else if Ninja exists (auto or explicit): pick Ninja.
-      - Else fall back to the newest-known VS generator anyway; CMake
-        will surface the actual missing toolset error so the user can
-        fix the environment.
+    Selection rules mirror build_dependencies.py so the two scripts
+    behave consistently when run in sequence.
 
-    On Linux/macOS the same generator choices apply but cl.exe is
-    irrelevant -- we use Ninja if available, else Unix Makefiles.
-
-    `cl_path` and `ninja_path` are returned so the caller can wire
-    `-DCMAKE_C_COMPILER=cl` / `-DCMAKE_CXX_COMPILER=cl` when needed.
+    Windows:
+      - cl.exe reachable: pick the VS generator that matches the
+        installed VS release (VS 2022 -> "Visual Studio 17 2022",
+        VS 2026 -> "Visual Studio 18 2026", ...).
+      - cl.exe not on PATH but Ninja exists: pick Ninja.
+      - else: fall back to the newest-known VS generator (CMake will
+        surface a helpful "toolset not found" error).
     """
     cl_path: Optional[str] = None
     vs_install_path: Optional[str] = None
@@ -226,7 +215,6 @@ def detect_generator(
         cl_path, vs_install_path = detect_compiler(platform)
     ninja_path = which("ninja")
 
-    # Decide which VS generator name to use when we have to.
     def _vs_generator_name() -> str:
         if vs_install_path:
             resolved = _vs_generator_for_install_path(vs_install_path)
@@ -234,7 +222,6 @@ def detect_generator(
                 return resolved
         return _default_vs_generator()
 
-    # Manual override.
     if prefer == "msvc":
         if platform == "Windows":
             return _vs_generator_name(), True, cl_path, ninja_path
@@ -249,7 +236,6 @@ def detect_generator(
             return "Unix Makefiles", False, cl_path, ninja_path
         warn("--generator make is a no-op on Windows; using default.")
 
-    # Auto-selection.
     if platform == "Windows":
         # We pick the Visual Studio generator (MSBuild) on Windows
         # because the MSVC 18 (Visual Studio 2026) C++ STL is built
@@ -265,7 +251,6 @@ def detect_generator(
             return "Ninja", False, cl_path, ninja_path
         return _vs_generator_name(), True, cl_path, ninja_path
 
-    # Linux / macOS.
     if ninja_path:
         return "Ninja", False, cl_path, ninja_path
     return "Unix Makefiles", False, cl_path, ninja_path
@@ -276,34 +261,47 @@ def detect_parallel_jobs() -> int:
 
 
 # --------------------------------------------------------------------------- #
-# Submodules                                                                  #
+# Dependency gate                                                              #
 # --------------------------------------------------------------------------- #
 
-def update_submodules() -> None:
-    info("git submodule init")
-    subprocess.run(["git", "submodule", "init"], cwd=ROOT_DIR, check=True)
-    info("git submodule update")
-    subprocess.run(["git", "submodule", "update"], cwd=ROOT_DIR, check=True)
+def check_dependencies(platform: str, config: str) -> Tuple[bool, Path]:
+    """Check whether Dependency/Intermediate/<Plat>/<Cfg> is populated.
+
+    Returns (present, deps_dir). When the directory is missing or the
+    SDL2 spot-check fails, present is False and the caller is expected
+    to invoke build_dependencies.py to populate it. A True result
+    with the SDL2 spot-check still missing is a soft warning -- CMake
+    will surface a clearer error if a real dep is actually missing.
+
+    The root CMakeLists imports ToolKit's runtime deps from there and
+    FATAL_ERRORs if any of them are missing. Catching the absence
+    here produces a friendlier message that points the user at
+    build_dependencies.py, and lets us auto-invoke it instead of
+    failing the engine build outright.
+    """
+    deps_dir = DEP_INT / platform / config
+    if not deps_dir.exists():
+        return False, deps_dir
+
+    # Cheap spot-check: every config directory should at least contain
+    # the SDL2 .so / .dll we linked against. The list matches what
+    # build_dependencies.py produces today; if a new dep is added
+    # there, the worst case is that this gate is a no-op, not a false
+    # negative -- CMake will still surface a clear error.
+    if platform == "Windows":
+        candidates = ["SDL2d.dll", "SDL2.dll"]
+    else:
+        candidates = ["libSDL2-2.0.so", "libSDL2-2.0d.so"]
+    if not any((deps_dir / c).exists() for c in candidates):
+        warn(f"{deps_dir} exists but no SDL2 runtime artifact was found in it.")
+        warn("build_dependencies.py may have been interrupted -- re-run it.")
+        return False, deps_dir
+    return True, deps_dir
 
 
 # --------------------------------------------------------------------------- #
 # CMake                                                                       #
 # --------------------------------------------------------------------------- #
-
-def _common_cmake_args(
-    *,
-    platform: str,
-    skip_assimp: bool,
-    skip_imgui: bool,
-) -> List[str]:
-    """Arguments shared by every configure invocation."""
-    return [
-        f"-DTK_PLATFORM={platform}",
-        f"-DSKIP_ASSIMP={'TRUE' if skip_assimp else 'FALSE'}",
-        f"-DSKIP_IMGUI={'TRUE' if skip_imgui else 'FALSE'}",
-        f"-DTOOLKIT_DIR={ROOT_DIR}",
-    ]
-
 
 def _run_cmake(args: List[str]) -> None:
     """Run a cmake invocation, printing the command first."""
@@ -312,161 +310,81 @@ def _run_cmake(args: List[str]) -> None:
     subprocess.run(args, check=True)
 
 
-def build_windows(
+def build_project(
     configs: List[str],
     *,
-    skip_assimp: bool,
-    skip_imgui: bool,
+    platform: str,
     parallel: int,
     generator: str,
     is_multiconfig: bool,
     cl_path: Optional[str],
+    targets: List[str],
 ) -> List[Tuple[str, bool]]:
-    """Build the dependency tree on Windows. Returns per-config (ok?)."""
+    """Configure and build the root GDTK CMake project. Returns per-config (ok?)."""
     results: List[Tuple[str, bool]] = []
 
-    # When we picked the MSVC generator explicitly, pin the C/C++ compilers
-    # to the exact cl.exe we located. CMake's multi-config generator will
-    # otherwise sniff MSBuild and pick whichever toolset it finds first,
-    # which can silently disagree with what GDTK expects (vc143 / vc145).
-    msvc_compiler_args: List[str] = []
-    if is_multiconfig and cl_path and generator.startswith("Visual Studio"):
-        msvc_compiler_args = [
+    # Pin C/C++ compilers to the located cl.exe when the MSVC generator
+    # is in use. The single-config generators (Ninja on Linux,
+    # Unix Makefiles) inherit the toolchain from PATH, so this only
+    # matters for the Visual Studio generator.
+    compiler_args: List[str] = []
+    if cl_path and generator.startswith("Visual Studio"):
+        compiler_args = [
             f"-DCMAKE_C_COMPILER={cl_path}",
             f"-DCMAKE_CXX_COMPILER={cl_path}",
         ]
 
-    if is_multiconfig:
-        # One configure, three builds. Output goes to Intermediate/Windows/.
-        build_dir = DEP_INT / "Windows"
-        build_dir.mkdir(parents=True, exist_ok=True)
-        configure_args = [
-            "cmake", "-S", str(DEP_SRC), "-B", str(build_dir),
-            "-G", generator, "-A", "x64",
-            "-DTK_WINDOWS=Windows",
-            *msvc_compiler_args,
-            *_common_cmake_args(
-                platform="Windows",
-                skip_assimp=skip_assimp,
-                skip_imgui=skip_imgui,
-            ),
-        ]
-        try:
-            _run_cmake(configure_args)
-        except subprocess.CalledProcessError:
-            return [(c, False) for c in configs]
+    # The intermediate dir matches what the root CMakeLists.txt lays
+    # out: Intermediate/<Platform>/<Config>/. We feed it as the build
+    # dir for cmake, so re-runs are incremental and not a full
+    # re-configure.
+    target_arg: List[str] = ["--target", *targets] if targets else []
 
-        for config in configs:
-            section(f"Windows / {config}")
-            # Build every dependency in the tree, then run
-            # CopyDependencies on top of that to stage the runtime
-            # DLLs next to Bin/ and Utils/. The two invocations
-            # are separate because CopyDependencies' `DEPENDS`
-            # list only mentions SDL2 + imgui -- building only
-            # that target would skip minizip, zstd and assimp
-            # (the static libs are link-time only, the assimp
-            # DLL is staged by the engine's Import/CMakeLists
-            # POST_BUILD, not by us). Building the default
-            # target (ALL_BUILD) first ensures every
-            # `add_subdirectory` from Dependency/CMakeLists.txt
-            # is materialized before CopyDependencies runs.
-            try:
-                _run_cmake([
-                    "cmake", "--build", str(build_dir),
-                    "--config", config,
-                    "--parallel", str(parallel),
-                ])
-                _run_cmake([
-                    "cmake", "--build", str(build_dir),
-                    "--config", config,
-                    "--target", "CopyDependencies",
-                    "--parallel", str(parallel),
-                ])
-                results.append((config, True))
-            except subprocess.CalledProcessError:
-                results.append((config, False))
-    else:
-        # Ninja: one configure+build per config, mirroring the bat's
-        # behaviour of producing a per-config build directory.
-        for config in configs:
-            build_dir = DEP_INT / "Windows" / config
-            build_dir.mkdir(parents=True, exist_ok=True)
-            section(f"Windows / {config} (configure)")
-            try:
-                _run_cmake([
-                    "cmake", "-S", str(DEP_SRC), "-B", str(build_dir),
-                    "-G", generator,
-                    f"-DCMAKE_BUILD_TYPE={config}",
-                    "-DTK_WINDOWS=Windows",
-                    *msvc_compiler_args,
-                    *_common_cmake_args(
-                        platform="Windows",
-                        skip_assimp=skip_assimp,
-                        skip_imgui=skip_imgui,
-                    ),
-                ])
-            except subprocess.CalledProcessError:
-                results.append((config, False))
-                continue
-            section(f"Windows / {config} (build)")
-            try:
-                _run_cmake([
-                    "cmake", "--build", str(build_dir),
-                    "--config", config,
-                    "--parallel", str(parallel),
-                ])
-                results.append((config, True))
-            except subprocess.CalledProcessError:
-                results.append((config, False))
-    return results
-
-
-def build_linux_or_mac(
-    platform: str,
-    configs: List[str],
-    *,
-    skip_assimp: bool,
-    skip_imgui: bool,
-    parallel: int,
-    generator: str,
-) -> List[Tuple[str, bool]]:
-    """Build the dependency tree on Linux/macOS. Single-config only."""
-    results: List[Tuple[str, bool]] = []
     for config in configs:
-        build_dir = DEP_INT / platform / config
-        build_dir.mkdir(parents=True, exist_ok=True)
+        int_dir = ROOT_DIR / "Intermediate" / platform / config
+        int_dir.mkdir(parents=True, exist_ok=True)
+
         section(f"{platform} / {config} (configure)")
         try:
-            _run_cmake([
-                "cmake", "-S", str(DEP_SRC), "-B", str(build_dir),
+            configure_args = [
+                "cmake", "-S", str(ROOT_DIR), "-B", str(int_dir),
                 "-G", generator,
-                f"-DCMAKE_BUILD_TYPE={config}",
-                *_common_cmake_args(
-                    platform=platform,
-                    skip_assimp=skip_assimp,
-                    skip_imgui=skip_imgui,
-                ),
-            ])
+            ]
+            if is_multiconfig:
+                # Multi-config (VS): --config selects the active
+                # configuration at build time. -A x64 picks the
+                # 64-bit toolchain on Windows.
+                configure_args += ["-A", "x64"]
+            else:
+                # Single-config (Ninja / Unix Makefiles): pick the
+                # build type up front.
+                configure_args += [f"-DCMAKE_BUILD_TYPE={config}"]
+            configure_args += [
+                *compiler_args,
+            ]
+            _run_cmake(configure_args)
         except subprocess.CalledProcessError:
             results.append((config, False))
             continue
+
         section(f"{platform} / {config} (build)")
         try:
-            # No --target CopyDependencies here: that target is only defined
-            # in Dependency/CMakeLists.txt for Windows. On Linux the binaries
-            # already land in DEP_INT/.../<Config> via CMAKE_*_OUTPUT_DIRECTORY.
-            _run_cmake([
-                "cmake", "--build", str(build_dir),
+            build_args = [
+                "cmake", "--build", str(int_dir),
+                "--config", config,
                 "--parallel", str(parallel),
-            ])
+                *target_arg,
+            ]
+            _run_cmake(build_args)
             results.append((config, True))
         except subprocess.CalledProcessError:
             results.append((config, False))
+
     return results
 
 
 def clean_platform(platform: str) -> None:
-    target = DEP_INT / platform
+    target = ROOT_DIR / "Intermediate" / platform
     if target.exists():
         info(f"Removing {target}")
         shutil.rmtree(target)
@@ -480,7 +398,7 @@ def clean_platform(platform: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Build GDTK's vendored dependencies via CMake.",
+        description="Build the GDTK engine + tools via CMake.",
     )
     parser.add_argument(
         "--platform", choices=["Windows", "Linux", "Mac", "auto"],
@@ -489,23 +407,29 @@ def main() -> int:
     )
     parser.add_argument(
         "--configs", nargs="+", default=DEFAULT_CONFIGS,
-        help="Build configurations to produce.",
+        help="Build configurations to produce (default: Debug Release).",
     )
     parser.add_argument(
-        "--skip-submodules", action="store_true",
-        help="Skip `git submodule init/update`.",
+        "--target", dest="targets", action="append", default=[],
+        help=(
+            "CMake target to build. May be passed multiple times. "
+            "Default: build everything (no --target means \"all\")."
+        ),
     )
     parser.add_argument(
-        "--skip-assimp", action="store_true",
-        help="Skip the assimp build (saves time when not building Import).",
-    )
-    parser.add_argument(
-        "--skip-imgui", action="store_true",
-        help="Skip the imgui build (saves time when not building Editor).",
+        "--no-deps-check", action="store_true",
+        help=(
+            "Skip the Dependency/Intermediate/<Plat>/<Cfg> gate. By "
+            "default, the script checks the dependency tree and "
+            "auto-invokes build_dependencies.py for any missing "
+            "configurations; pass this flag to opt out (e.g. when you "
+            "know you are about to run a configure-only pass and do "
+            "not want the script to spawn a second build)."
+        ),
     )
     parser.add_argument(
         "--clean", action="store_true",
-        help="Wipe Dependency/Intermediate/<Platform>/ before configuring.",
+        help="Wipe Intermediate/<Platform>/ before configuring.",
     )
     parser.add_argument(
         "-j", "--parallel", type=int, default=detect_parallel_jobs(),
@@ -527,26 +451,55 @@ def main() -> int:
 
     platform = args.platform if args.platform != "auto" else detect_platform()
 
-    print(f"{Style.BOLD}GDTK dependency build{Style.RESET}")
+    print(f"{Style.BOLD}GDTK engine build{Style.RESET}")
     print(f"  Platform:    {platform}")
     print(f"  Configs:     {', '.join(args.configs)}")
     print(f"  Root:        {ROOT_DIR}")
     print(f"  Parallel:    {args.parallel}")
-    print(f"  Skip assimp: {args.skip_assimp}")
-    print(f"  Skip imgui:  {args.skip_imgui}")
+    if args.targets:
+        print(f"  Targets:     {', '.join(args.targets)}")
+    else:
+        print(f"  Targets:     (all)")
 
     require_tool("cmake")
-    require_tool("git")
 
-    if not args.skip_submodules:
-        section("Updating submodules")
-        try:
-            update_submodules()
-        except subprocess.CalledProcessError as e:
-            err(f"git submodule update failed: {e}")
-            return 1
-    else:
-        warn("Skipping submodule update (--skip-submodules).")
+    if not args.no_deps_check:
+        section("Checking dependencies")
+        missing_configs: List[str] = []
+        for config in args.configs:
+            present, _ = check_dependencies(platform, config)
+            if not present:
+                missing_configs.append(config)
+        if missing_configs:
+            # Build the dependency tree for the missing configurations
+            # before touching the engine. The dependency script shares
+            # the same --platform / --configs / --generator flag
+            # vocabulary, so we forward them verbatim -- minus the
+            # engine-specific flags (--target, --clean, ...) that
+            # build_dependencies.py does not understand.
+            warn(
+                "Dependency tree is missing for: "
+                f"{', '.join(f'{platform}/{c}' for c in missing_configs)}"
+            )
+            warn("Invoking build_dependencies.py to populate it before continuing.")
+            try:
+                subprocess.run(
+                    [
+                        sys.executable,
+                        str(SCRIPT_DIR / "build_dependencies.py"),
+                        "--platform", platform,
+                        "--configs", *missing_configs,
+                        "--parallel", str(args.parallel),
+                    ],
+                    check=True,
+                )
+            except subprocess.CalledProcessError as e:
+                err(f"build_dependencies.py failed with exit code {e.returncode}.")
+                err("The dependency tree is required to build the engine -- aborting.")
+                return 1
+            ok("Dependency tree populated.")
+        else:
+            ok("Dependency tree present -- skipping build_dependencies.py.")
 
     if args.clean:
         section(f"Cleaning {platform} intermediates")
@@ -565,26 +518,17 @@ def main() -> int:
     print(f"  Generator:   {generator}"
           f"{' (multi-config)' if is_multiconfig else ''}")
 
-    section(f"Building dependencies for {platform}")
+    section(f"Building {platform} engine + tools")
     try:
-        if platform == "Windows":
-            results = build_windows(
-                args.configs,
-                skip_assimp=args.skip_assimp,
-                skip_imgui=args.skip_imgui,
-                parallel=args.parallel,
-                generator=generator,
-                is_multiconfig=is_multiconfig,
-                cl_path=cl_path,
-            )
-        else:
-            results = build_linux_or_mac(
-                platform, args.configs,
-                skip_assimp=args.skip_assimp,
-                skip_imgui=args.skip_imgui,
-                parallel=args.parallel,
-                generator=generator,
-            )
+        results = build_project(
+            args.configs,
+            platform=platform,
+            parallel=args.parallel,
+            generator=generator,
+            is_multiconfig=is_multiconfig,
+            cl_path=cl_path,
+            targets=args.targets,
+        )
     except KeyboardInterrupt:
         err("Interrupted.")
         return 130

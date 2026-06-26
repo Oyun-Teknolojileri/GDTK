@@ -58,16 +58,27 @@ target_compile_definitions(Editor PRIVATE
 
 target_compile_features(Editor PRIVATE cxx_std_17)
 
-# Precompiled header disabled (see ToolKit/CMakeLists.txt for the reason).
-# MSVC's /FI "stdafx.h" equivalent for GCC -- Editor's sources assume the
-# symbols stdafx.h transitively brings in are visible everywhere. The
-# engine's stdafx.h is shared: TK_EDITOR is already defined above, so
-# the editor-specific include block at the bottom of it gets pulled in.
-target_compile_options(Editor PRIVATE
-  -Wno-changes-meaning
-  -Wno-delete-incomplete
-  -include ${CMAKE_SOURCE_DIR}/ToolKit/Source/stdafx.h
+# Precompiled header. The engine's stdafx.h is shared: TK_EDITOR is
+# already defined above, so the editor-specific include block at the
+# bottom of it (EditorTypes.h, App.h, EditorRenderer.h) gets pulled
+# in here too. CMake's target_precompile_headers works on both MSVC
+# (cl.exe's native /Yu+stdafx.cpp) and GCC/Clang (-include), so this
+# is the single source of truth for both toolchains.
+target_precompile_headers(Editor PRIVATE
+  ${CMAKE_SOURCE_DIR}/ToolKit/Source/stdafx.h
 )
+
+# GCC 16 enables a handful of new warnings by default. Two of them bite
+# the existing sources even though the MSVC build was clean:
+#   - -Wchanges-meaning         in BillboardPass.h (member named Viewport)
+#   - -Wdelete-incomplete       in Audio.cpp (SafeDel on void*)
+# These flags are GCC/Clang-only; MSVC rejects them with D8021.
+if(NOT MSVC)
+  target_compile_options(Editor PRIVATE
+    -Wno-changes-meaning
+    -Wno-delete-incomplete
+  )
+endif()
 
 # Link against the engine (shared), the workspace helper (static), and the
 # vendored deps. INTERFACE libraries (glm, glad, tkimgui, ...) only
@@ -126,3 +137,15 @@ if(UNIX)
     INSTALL_RPATH "$ORIGIN:${TK_DEPS_DIR}"
   )
 endif()
+
+# Flat Bin/ output. See ToolKit/CMakeLists.txt for why the $<0:>
+# trailer is here: it strips the multi-config generator's
+# $<CONFIGURATION> suffix so Editor.exe (and its .exp / .lib
+# import library, which the VS generator still produces for an
+# executable that links a shared library) land at Bin/ instead
+# of Bin/Debug/.
+set_target_properties(Editor PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}/$<0:>"
+  LIBRARY_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}/$<0:>"
+  ARCHIVE_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}/$<0:>"
+)

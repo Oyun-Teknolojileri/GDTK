@@ -70,37 +70,55 @@ target_compile_definitions(ToolKit PRIVATE
 
 target_compile_features(ToolKit PUBLIC cxx_std_17)
 
-# Precompiled header disabled for Phase 2: GCC 16 + the PCH pipeline
-# promote a long-standing `changes meaning of 'Viewport'` warning in
-# BillboardPass.h to a hard error, even though the legacy ToolKit.sln
-# build was happy with it. We can re-enable PCH in a follow-up once
-# stdafx.h is cleaned up.
+# Precompiled header. stdafx.h is the project's shared "everything
+# everyone needs" header (Platform.h, STL, GLM config, ...); without
+# it being injected into every translation unit, files that omit a
+# transitive include (e.g. Object.h via ToolKit.h) fail to compile.
+# CMake's target_precompile_headers works on both MSVC (cl.exe's
+# native /Yu+stdafx.cpp) and GCC/Clang (-include), so this is the
+# single source of truth for both toolchains.
+target_precompile_headers(ToolKit PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/Source/stdafx.h
+)
 
 # GCC 16 enables a handful of new warnings by default. Two of them bite
 # the existing engine sources even though the MSVC build was clean:
 #   - -Wchanges-meaning         in BillboardPass.h (member named Viewport)
 #   - -Wdelete-incomplete       in Audio.cpp (SafeDel on void*)
 # Both are noise for this phase; the code is otherwise well-behaved.
-target_compile_options(ToolKit PRIVATE
-  -Wno-changes-meaning
-  -Wno-delete-incomplete
-)
-
-# stdafx.h in this project is *not* a proper PCH-only header; many .cpp
-# files rely on the symbols it transitively pulls in (Platform.h, std::map,
-# TK_PLATFORM, etc.). MSVC achieves this with /FI "stdafx.h" -- GCC's
-# equivalent is -include. Keep them aligned until the source files are
-# fixed to include their own dependencies.
-target_compile_options(ToolKit PRIVATE
-  -include ${CMAKE_CURRENT_SOURCE_DIR}/Source/stdafx.h
-)
+# These flags are GCC/Clang-only -- MSVC has its own /W<level> family
+# and rejects unknown command-line arguments with D8021.
+if(NOT MSVC)
+  target_compile_options(ToolKit PRIVATE
+    -Wno-changes-meaning
+    -Wno-delete-incomplete
+  )
+endif()
 
 # GCC 16 (and modern Clang) treat `char*` -> `const char8_t*` conversions as
 # hard errors by default, but ToolKit's Util.cpp / utf8.h bridge was written
 # against the pre-C++20 relaxed rules. -fpermissive keeps the legacy code
 # building on a modern compiler without rewriting the UTF-8 helpers.
-target_compile_options(ToolKit PRIVATE
-  -fpermissive
+# -fpermissive is GCC/Clang-only; MSVC has /permissive- which is the
+# inverse and applied via CMAKE_CXX_EXTENSIONS / CMAKE_CXX_STANDARD
+# elsewhere in the tree.
+if(NOT MSVC)
+  target_compile_options(ToolKit PRIVATE
+    -fpermissive
+  )
+endif()
+
+# Vendored dependency libraries. These are IMPORTED targets created
+# by the root CMakeLists via tk_add_imported(); they expose the
+# pre-built .a / .lib / .so / .dll artifacts from
+# Dependency/Intermediate/<Platform>/<Config>/. Public so downstream
+# consumers (Editor, Launcher, ...) transitively inherit them.
+target_link_libraries(ToolKit PUBLIC
+  SDL2
+  SDL2main
+  minizip
+  zstd
+  imgui
 )
 
 # Platform-specific link libraries.
@@ -119,7 +137,19 @@ elseif(WIN32)
 endif()
 
 # Output naming: ToolKitd on Debug, ToolKit on Release.
+#
+# The $<0:> trailer on the *OUTPUT_DIRECTORY properties below is a
+# generator expression that always expands to the empty string. On
+# multi-config generators (Visual Studio) CMake would otherwise
+# append $<CONFIGURATION> as a final path component, putting
+# libToolKitd.dll at Bin/Debug/ instead of Bin/. The $<0:> trailer
+# neutralises that suffix; on single-config generators (Ninja,
+# Unix Makefiles) there is no suffix to strip, so the trailing
+# slash is a no-op and the layout is naturally flat.
 set_target_properties(ToolKit PROPERTIES
   OUTPUT_NAME "ToolKit$<$<CONFIG:Debug>:d>"
   PREFIX "lib"
+  RUNTIME_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}/$<0:>"
+  LIBRARY_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}/$<0:>"
+  ARCHIVE_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}/$<0:>"
 )

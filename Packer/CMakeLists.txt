@@ -29,14 +29,24 @@ target_compile_definitions(Packer PRIVATE
 
 target_compile_features(Packer PRIVATE cxx_std_17)
 
+# Precompiled header. ToolKit's stdafx.h is shared with the engine;
+# inject it into every translation unit so the symbols Pass.h,
+# Object.h, etc. transitively bring in are always visible.
+target_precompile_headers(Packer PRIVATE
+  ${CMAKE_SOURCE_DIR}/ToolKit/Source/stdafx.h
+)
+
 # Same GCC 16 workarounds as Import/Launcher: Pass.h's `Entity* Entity`
 # field trips -Wchanges-meaning, utf8.h trips the C++20 char8_t error.
-target_compile_options(Packer PRIVATE
-  -Wno-changes-meaning
-  -Wno-delete-incomplete
-  -include ${CMAKE_SOURCE_DIR}/ToolKit/Source/stdafx.h
-  -fpermissive
-)
+# All of these flags are GCC/Clang-only; MSVC rejects them with
+# D8021 ("invalid numeric argument"). Skip the whole block on MSVC.
+if(NOT MSVC)
+  target_compile_options(Packer PRIVATE
+    -Wno-changes-meaning
+    -Wno-delete-incomplete
+    -fpermissive
+  )
+endif()
 
 # Packer bakes/packs projects -- it does NOT import 3D assets, so it
 # does not link assimp. (ToolKit itself also does not link assimp;
@@ -85,7 +95,9 @@ endif()
 #   so a clean build always populates Utils/Packer/.
 # ---------------------------------------------------------------------------
 set_target_properties(Packer PROPERTIES
-  RUNTIME_OUTPUT_DIRECTORY "${GDTK_UTILS_PACKER_DIR}"
+  RUNTIME_OUTPUT_DIRECTORY "${GDTK_UTILS_PACKER_DIR}/$<0:>"
+  LIBRARY_OUTPUT_DIRECTORY "${GDTK_UTILS_PACKER_DIR}/$<0:>"
+  ARCHIVE_OUTPUT_DIRECTORY "${GDTK_UTILS_PACKER_DIR}/$<0:>"
 )
 add_dependencies(Packer ToolKit)
 
@@ -95,7 +107,18 @@ add_custom_command(TARGET Packer POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_if_different
     "$<TARGET_FILE:ToolKit>"
     "${GDTK_UTILS_PACKER_DIR}/"
-  COMMENT "Packer: staging ToolKit into ${GDTK_UTILS_PACKER_DIR}"
+  # Stage the vendored runtime DLLs (SDL2, imgui) next to Packer.exe
+  # so the binary can find them at runtime. These come from
+  # build_dependencies.py's intermediate dir, not from any IMPORTED
+  # target, so we rebuild the path from the deps root + active config
+  # the same way ToolKit is staged above.
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${CMAKE_SOURCE_DIR}/Dependency/Intermediate/${TK_PLATFORM}/$<CONFIG>/SDL2$<$<CONFIG:Debug>:d>.dll"
+    "${GDTK_UTILS_PACKER_DIR}/"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${CMAKE_SOURCE_DIR}/Dependency/Intermediate/${TK_PLATFORM}/$<CONFIG>/imgui$<$<CONFIG:Debug>:d>.dll"
+    "${GDTK_UTILS_PACKER_DIR}/"
+  COMMENT "Packer: staging ToolKit + SDL2 + imgui into ${GDTK_UTILS_PACKER_DIR}"
   VERBATIM
 )
 
