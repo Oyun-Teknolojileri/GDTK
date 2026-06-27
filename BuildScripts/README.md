@@ -9,152 +9,43 @@ forking.
 
 | Tool       | Notes                                                          |
 |------------|----------------------------------------------------------------|
-| Python     | 3.6 or newer (uses only the standard library)                 |
+| Python     | 3.6 or newer (uses only the standard library)                  |
 | CMake      | 3.16 or newer                                                  |
 | Git        | Required for the `submodule` step                              |
-| A C/C++ compiler | MSVC (Windows), GCC or Clang (Linux), Apple Clang (macOS) |
+| A C/C++ compiler | MSVC (Windows), GCC or Clang (Linux), Apple Clang (macOS)  |
 | Ninja      | Optional but strongly recommended -- much faster than the alternatives |
 
 > **No system packages are required.** Every dependency (SDL2, glm, assimp,
 > minizip-ng, imgui, poolSTL, miniaudio) lives in `Dependency/` as a git
 > submodule. The script pulls and builds them.
 
-## `build_dependencies.py`
+## Scripts at a glance
 
-Builds the vendored dependencies in `Dependency/`. This is the equivalent
-of the old `BuildDependencies.bat`.
+| Script | Purpose |
+|---|---|
+| `_common.py` | Internal helpers shared by the two entry points: terminal colors, toolchain probing, the CMake invoker, the per-platform clean helper. **Not meant to be run directly.** |
+| `build_gdtk.py` | **Main entry point.** Configures + builds the root CMake project (ToolKit, Workspace, Editor, Launcher, Import, Packer). Auto-invokes `build_dependencies.py` if the dep tree is missing. |
+| `build_dependencies.py` | **Advanced / explicit.** Builds the vendored dep tree only, without touching the engine. Use this when you want to warm up the dep cache without configuring GDTK, or when you want to drive the two steps separately (e.g. in CI). |
 
-### Quick start
+For 99% of workflows, **only `build_gdtk.py` is needed** -- the dep tree is
+populated on demand.
 
-```bash
-# from the repo root
-python3 BuildScripts/build_dependencies.py
-```
-
-This will:
-
-1. Run `git submodule init` and `git submodule update`.
-2. Detect the platform (`Windows` / `Linux` / `Mac`) and pick the best
-   available CMake generator. On Windows the script prefers
-   `cl.exe` (MSVC) when it is reachable, otherwise Ninja; on Linux/macOS
-   the script prefers Ninja, otherwise Unix Makefiles. See
-   [Generator selection on Windows](#generator-selection-on-windows).
-3. Configure and build `Dependency/CMakeLists.txt` for the chosen
-   configurations, producing binaries under
-   `Dependency/Intermediate/<Platform>/<Config>/`.
-
-### Common flags
-
-```text
---platform {Windows,Linux,Mac,auto}    Default: auto-detect
---configs  CFG [CFG ...]              Default: Debug Release
---skip-submodules                     Skip git submodule update
---skip-assimp                         Skip assimp (faster when not building Import)
---skip-imgui                          Skip imgui (faster when not building Editor)
---clean                               Wipe Dependency/Intermediate/<Platform>/ first
--j, --parallel N                      Parallel build jobs (default: CPU count)
---generator {auto,msvc,ninja,make}    Default: auto
-                                       auto: on Windows picks MSVC (cl.exe)
-                                             if reachable, else Ninja, else
-                                             the platform fallback.
-                                             On non-Windows: Ninja > Make.
-                                       msvc:  force Visual Studio generator
-                                       ninja: force Ninja (errors if missing)
-                                       make:  force Unix Makefiles
-```
-
-### Generator selection on Windows
-
-On Windows the script prefers **cl.exe** (MSVC) because it matches the rest
-of the GDTK build. `cl.exe` is located in one of two ways:
-
-1. `cl` is already on `PATH` (e.g. you ran the script from a `vcvars64.bat`
-   shell).
-2. `cl` is not on `PATH` but VS is installed: the script probes
-   `vswhere.exe` and resolves the latest `VC\\Tools\\MSVC\\*\\bin\\Hostx64\\x64\\cl.exe`
-   together with the install path.
-
-The CMake generator name is then picked from a small mapping table that
-keys off the install-path parent folder, because Microsoft switched the
-on-disk folder from a calendar year (`2022`) to a major version number
-(`18` for VS 2026) in late 2025 while CMake kept using the historical
-`Visual Studio <major> <year>` naming. The table looks like this:
-
-| Install path ends in | CMake generator            |
-|----------------------|----------------------------|
-| `2022`               | `Visual Studio 17 2022`    |
-| `18`                 | `Visual Studio 18 2026`    |
-| `19`                 | `Visual Studio 19 2027`    |
-| `2019`               | `Visual Studio 16 2019`    |
-| `2017`               | `Visual Studio 15 2017`    |
-
-If you upgrade Visual Studio to a release the table does not know about,
-either add a row in `_VS_GENERATOR_BY_INSTALL_DIR` at the top of
-`build_dependencies.py` or pass `--generator ninja` to sidestep the
-mapping entirely.
-
-When the MSVC generator is selected, the script pins
-`-DCMAKE_C_COMPILER=<cl.exe>` and `-DCMAKE_CXX_COMPILER=<cl.exe>` to the exact
-toolset it located, so CMake does not silently fall back to a different
-MSVC version. Pass `--generator ninja` to force Ninja instead (useful in CI
-or when you have a custom toolchain setup).
-
-### Output layout
-
-```
-Dependency/
-└── Intermediate/
-    ├── Windows/
-    │   ├── Debug/         *.lib, *.dll, *.pdb
-    │   ├── RelWithDebInfo/
-    │   └── Release/
-    └── Linux/
-        ├── Debug/         *.a, *.so
-        └── Release/
-```
-
-> The `CopyDependencies` step (which copies DLLs next to the editor on
-> Windows) is invoked automatically when the platform is `Windows` and the
-> generator is the multi-config Visual Studio one. On Linux there is
-> nothing to copy, so the step is skipped.
-
-### Typical workflows
+## Quick start
 
 ```bash
-# Cold first-time build
-python3 BuildScripts/build_dependencies.py
-
-# Rebuild after pulling submodule updates
-python3 BuildScripts/build_dependencies.py --skip-assimp --skip-imgui
-
-# Only Debug, in a clean tree
-python3 BuildScripts/build_dependencies.py --configs Debug --clean
-
-# Pin to a specific platform (useful in CI)
-python3 BuildScripts/build_dependencies.py --platform Linux --configs Release
-```
-
-## `build_gdtk.py`
-
-Builds the GDTK engine and tools (the root `CMakeLists.txt`):
-`ToolKit` (shared library), `Workspace` (static helper library), and
-the `Editor` / `Launcher` / `Import` / `Packer` executables. The
-dependency tree (`Dependency/Intermediate/<Platform>/<Config>/`) is
-required for the engine build to configure; the script checks for it
-on entry and, if any configuration is missing, auto-invokes
-`build_dependencies.py` to populate it before continuing. Pass
-`--no-deps-check` to opt out of that auto-invoke (e.g. when you
-intend to run a configure-only pass and do not want the script to
-spawn a second build).
-
-### Quick start
-
-```bash
-# from the repo root
+# Cold first-time build -- runs dep build then engine build.
 python3 BuildScripts/build_gdtk.py
+
+# Rebuild after a ToolKit source change (deps already present, so the
+# script logs "skipping build_dependencies.py" and goes straight to
+# the engine).
+python3 BuildScripts/build_gdtk.py --target ToolKit
+
+# Just the editor, in Debug only.
+python3 BuildScripts/build_gdtk.py --configs Debug --target Editor
 ```
 
-The script will tell you what it is doing at every step:
+The script announces what it is doing at every step:
 
 | Output line                                          | Meaning                                                            |
 |------------------------------------------------------|--------------------------------------------------------------------|
@@ -163,7 +54,7 @@ The script will tell you what it is doing at every step:
 | `Dependency tree populated.`                         | Auto-invoked dep build finished; the engine build proceeds.        |
 | `Dependency tree present -- skipping build_dependencies.py.` | Deps already on disk; the script does not re-run them.       |
 
-### Common flags
+## `build_gdtk.py` flags
 
 ```text
 --platform {Windows,Linux,Mac,auto}    Default: auto-detect
@@ -175,30 +66,48 @@ The script will tell you what it is doing at every step:
                                       demand when missing).
 --clean                               Wipe Intermediate/<Platform>/ first
 -j, --parallel N                      Parallel build jobs (default: CPU count)
---generator {auto,msvc,ninja,make}    Same semantics as build_dependencies.py
+--generator {auto,msvc,ninja,make}    See "Generator selection" below.
 ```
 
-### Typical workflows
+### Generator selection
 
-```bash
-# Cold first-time build -- the dep tree is built on demand, then the
-# engine. Both phases log clearly so the user can see what happened.
-python3 BuildScripts/build_gdtk.py
+`build_gdtk.py` (and `build_dependencies.py`) probe for the best CMake
+generator using the same logic on Windows:
 
-# Explicit two-step from a clean tree
-python3 BuildScripts/build_dependencies.py
-python3 BuildScripts/build_gdtk.py
+1. `cl.exe` on `PATH` (e.g. you ran the script from a `vcvars64.bat` shell)
+   -> the Visual Studio generator matching the installed VS release.
+2. `cl.exe` not on `PATH` but VS is installed -> `vswhere.exe` resolves
+   the latest `VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe` and the install
+   path.
+3. Otherwise Ninja (if available) or the platform fallback
+   (Unix Makefiles on Linux/macOS).
 
-# Just the editor, in Debug
-python3 BuildScripts/build_gdtk.py --configs Debug --target Editor
+The generator name is picked from a small mapping table that keys off
+the VS install-path parent folder, because Microsoft switched the
+on-disk folder from a calendar year (`2022`) to a major version number
+(`18` for VS 2026) in late 2025 while CMake kept using the historical
+`Visual Studio <major> <year>` naming:
 
-# Rebuild after a ToolKit source change (deps already present, so the
-# script logs "skipping build_dependencies.py" and goes straight to
-# the engine)
-python3 BuildScripts/build_gdtk.py --target ToolKit
-```
+| Install path ends in | CMake generator            |
+|----------------------|----------------------------|
+| `2022`               | `Visual Studio 17 2022`    |
+| `18`                 | `Visual Studio 18 2026`    |
+| `19`                 | `Visual Studio 19 2027`    |
+| `2019`               | `Visual Studio 16 2019`    |
+| `2017`               | `Visual Studio 15 2017`    |
 
-### Output layout
+If you upgrade Visual Studio to a release the table does not know about,
+either add a row in `_VS_GENERATOR_BY_INSTALL_DIR` at the top of
+`_common.py` (single source of truth, picked up by both scripts) or
+pass `--generator ninja` to sidestep the mapping entirely.
+
+When the MSVC generator is selected, both scripts pin
+`-DCMAKE_C_COMPILER=<cl.exe>` and `-DCMAKE_CXX_COMPILER=<cl.exe>` to the
+exact toolset they located, so CMake does not silently fall back to a
+different MSVC version. Pass `--generator ninja` to force Ninja instead
+(useful in CI or with a custom toolchain setup).
+
+## Output layout
 
 ```
 Bin/                                  Final binaries the engine ships
@@ -212,10 +121,35 @@ Intermediate/<Platform>/<Config>/     CMake state + per-module .o files
   ├── build-Launcher/
   ├── build-Import/
   └── build-Packer/
+Dependency/Intermediate/<Platform>/<Config>/   Vendored dep artifacts
+  ├── libSDL2-2.0d.so / SDL2d.lib
+  ├── libminizipd.a / minizipd.lib
+  ├── libzstdd.a / zstd_staticd.lib
+  ├── libassimpd.so / assimpd.lib
+  ├── libimguid.so / imguid.lib
+  └── <dep>/<dep>Config.cmake   (wrapper for find_package CONFIG mode)
+```
+
+## `build_dependencies.py` flags
+
+Use this when you want to drive the two steps explicitly or skip the
+engine build entirely. The auto-invoke in `build_gdtk.py` calls this
+script under the hood, so behaviour is identical to running it by hand.
+
+```text
+--platform {Windows,Linux,Mac,auto}    Default: auto-detect
+--configs  CFG [CFG ...]              Default: Debug Release
+--skip-submodules                     Skip git submodule update
+--skip-assimp                         Skip assimp (faster when not building Import)
+--skip-imgui                          Skip imgui (faster when not building Editor)
+--clean                               Wipe Dependency/Intermediate/<Platform>/ first
+-j, --parallel N                      Parallel build jobs (default: CPU count)
+--generator {auto,msvc,ninja,make}    Same semantics as build_gdtk.py
 ```
 
 ## Adding more scripts
 
 This folder is the new home for any cross-platform build glue. Future
-scripts (engine build, test runner, packaging, etc.) should land here and
-follow the same stdlib-only Python style.
+scripts (test runner, packaging, etc.) should land here and follow the
+same stdlib-only Python style. Anything shared between scripts belongs
+in `_common.py`.
