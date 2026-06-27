@@ -103,24 +103,39 @@ add_dependencies(Packer ToolKit)
 
 # Generator expression: per-config file path. Works for single-config
 # (Ninja, NMake, MinGW) and multi-config (Visual Studio) alike.
+# On Linux the shared library (libToolKitd.so) lives next to the Packer
+# binary via the RPATH set further below; we only need to stage it here
+# on Windows, where Packer.exe resolves its DLLs from its own directory
+# first. Split the staging into two POST_BUILD blocks so we can gate the
+# .dll copies (which only exist on Windows) behind WIN32 -- you cannot
+# use `if(WIN32)` inside an `add_custom_command(... VERBATIM)` block
+# because VERBATIM passes the text straight through, including the if()
+# directive itself, and CMake would then try to copy a file named ")"
+# into the destination.
 add_custom_command(TARGET Packer POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_if_different
     "$<TARGET_FILE:ToolKit>"
     "${GDTK_UTILS_PACKER_DIR}/"
-  # Stage the vendored runtime DLLs (SDL2, imgui) next to Packer.exe
-  # so the binary can find them at runtime. These come from
-  # build_dependencies.py's intermediate dir, not from any IMPORTED
-  # target, so we rebuild the path from the deps root + active config
-  # the same way ToolKit is staged above.
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    "${CMAKE_SOURCE_DIR}/Dependency/Intermediate/${TK_PLATFORM}/$<CONFIG>/SDL2$<$<CONFIG:Debug>:d>.dll"
-    "${GDTK_UTILS_PACKER_DIR}/"
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    "${CMAKE_SOURCE_DIR}/Dependency/Intermediate/${TK_PLATFORM}/$<CONFIG>/imgui$<$<CONFIG:Debug>:d>.dll"
-    "${GDTK_UTILS_PACKER_DIR}/"
-  COMMENT "Packer: staging ToolKit + SDL2 + imgui into ${GDTK_UTILS_PACKER_DIR}"
+  COMMENT "Packer: staging ToolKit into ${GDTK_UTILS_PACKER_DIR}"
   VERBATIM
 )
+# Windows-only: stage the vendored runtime DLLs (SDL2, imgui) next to
+# Packer.exe so the binary can find them at runtime without LD_LIBRARY_PATH
+# (POSIX) or PATH manipulation (Windows). These come from
+# build_dependencies.py's intermediate dir, not from any IMPORTED target,
+# so we rebuild the path from the deps root + active config.
+if(WIN32)
+  add_custom_command(TARGET Packer POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${CMAKE_SOURCE_DIR}/Dependency/Intermediate/${TK_PLATFORM}/$<CONFIG>/SDL2$<$<CONFIG:Debug>:d>.dll"
+      "${GDTK_UTILS_PACKER_DIR}/"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${CMAKE_SOURCE_DIR}/Dependency/Intermediate/${TK_PLATFORM}/$<CONFIG>/imgui$<$<CONFIG:Debug>:d>.dll"
+      "${GDTK_UTILS_PACKER_DIR}/"
+    COMMENT "Packer: staging Windows runtime DLLs into ${GDTK_UTILS_PACKER_DIR}"
+    VERBATIM
+  )
+endif()
 
 # RPATH: find ToolKit + vendored shared libs (SDL2, imgui) next to the
 # binary (Utils/Packer/) or under Dependency/Intermediate/... without

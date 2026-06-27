@@ -14,6 +14,17 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${TK_DEPENDECY_OUT_DIR}")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${TK_DEPENDECY_OUT_DIR}")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${TK_DEPENDECY_OUT_DIR}")
 
+# Build static libraries (minizip, zstd, SDL2main) with -fPIC so they
+# can be linked into the shared ToolKit.so. The previous Phase 2 design
+# linked these static libs directly into the Editor executable (which
+# does not require PIC); Phase 3+ moved the linkage up into ToolKit so
+# the editor / launcher / import / packer inherit the deps transitively.
+# That change makes ToolKit -> minizip / ToolKit -> zstd a shared->static
+# edge, which requires PIC on Linux (and on Windows when building with
+# Ninja/clang-cl). Shared libs (SDL2, tkimgui, assimp) are unaffected --
+# they are already PIC because they are built as shared.
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 #---- MINIZIP ----#
 set(MZ_COMPAT ON)
 set(ZSTD_BUILD_STATIC ON)
