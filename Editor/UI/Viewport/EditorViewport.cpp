@@ -380,6 +380,14 @@ namespace ToolKit
           {
             m_relMouseModBegin = false;
             SDL_SetRelativeMouseMode(SDL_TRUE);
+            // Drain the accumulated motion that happened while relative mode
+            // was off (e.g. user moved the cursor between right-click
+            // releases). SDL_GetRelativeMouseState returns that as the first
+            // delta after a mode toggle, which would otherwise produce a
+            // spurious camera jump on the very first frame.
+            int drainX = 0;
+            int drainY = 0;
+            SDL_GetRelativeMouseState(&drainX, &drainY);
           }
 
           int relX = 0;
