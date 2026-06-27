@@ -101,7 +101,14 @@ namespace ToolKit
     {
       if (!IsActive())
       {
-        SDL_GetGlobalMouseState(&m_mousePosBegin.x, &m_mousePosBegin.y);
+        // Defensive: if we lost focus while in FPS navigation, release the
+        // SDL relative mouse grab so the cursor comes back and input flows
+        // to other widgets/windows.
+        if (!m_relMouseModBegin)
+        {
+          SDL_SetRelativeMouseMode(SDL_FALSE);
+          m_relMouseModBegin = true;
+        }
         return;
       }
 
@@ -364,19 +371,22 @@ namespace ToolKit
             }
           }
 
-          // Handle relative mouse hack.
+          // Engage SDL relative mouse mode. On Wayland this drives the
+          // zwp_pointer_constraints_v1.lock protocol under the hood, so the
+          // cursor is genuinely trapped to our surface and we receive delta
+          // motion instead of absolute position. SDL_WarpMouseGlobal would
+          // be a no-op on Wayland, which is why this approach is required.
           if (m_relMouseModBegin)
           {
             m_relMouseModBegin = false;
-            SDL_GetGlobalMouseState(&m_mousePosBegin.x, &m_mousePosBegin.y);
+            SDL_SetRelativeMouseMode(SDL_TRUE);
           }
 
-          IVec2 absMousePos;
-          SDL_GetGlobalMouseState(&absMousePos.x, &absMousePos.y);
-          IVec2 delta = absMousePos - m_mousePosBegin;
-
-          SDL_WarpMouseGlobal(m_mousePosBegin.x, m_mousePosBegin.y);
-          // End of relative mouse hack.
+          int relX = 0;
+          int relY = 0;
+          SDL_GetRelativeMouseState(&relX, &relY);
+          IVec2 delta(relX, relY);
+          // End of relative mouse handling.
 
           if (!VecAllEqual<IVec2>(delta, glm::zero<IVec2>()))
           {
@@ -442,8 +452,11 @@ namespace ToolKit
         }
         else
         {
+          // Right mouse released: leave relative mouse mode so the cursor
+          // reappears and other widgets/windows can receive input again.
           if (!m_relMouseModBegin)
           {
+            SDL_SetRelativeMouseMode(SDL_FALSE);
             m_relMouseModBegin = true;
           }
         }
