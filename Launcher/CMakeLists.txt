@@ -83,19 +83,25 @@ target_link_libraries(Launcher PRIVATE
   tkimgui
 )
 
-# SDL2 + OpenGL platform deps. Same versioned-soname form as the Editor:
-# the *-devel RPMs aren't installed on the build host, so linking against
-# the runtime .so.N files sidesteps the missing unversioned symlinks.
-if(UNIX)
+# X11 / OpenGL platform support. Same rationale as Editor/CMakeLists.txt:
+# SDL2 is built as a shared library whose DT_NEEDED already pulls in
+# libX11.so.6, libGL.so.1, libGLX.so.0, libXext, libXrandr, libXinerama,
+# libXi and libXcursor at runtime, so we only have to declare the X11 +
+# OpenGL surface the build system itself needs (configure-time check
+# that the *-devel packages are installed). find_package makes a
+# missing -devel package fail-fast with a clear error, instead of the
+# old hardcoded-soname hack that silently picked up whatever happened
+# to be on the system.
+if(UNIX AND NOT APPLE)
+  find_package(X11    REQUIRED)
+  find_package(OpenGL REQUIRED)
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(GLX REQUIRED glx)
+
   target_link_libraries(Launcher PRIVATE
-    -l:libX11.so.6
-    -l:libXext.so.6
-    -l:libXrandr.so.2
-    -l:libXinerama.so.1
-    -l:libXi.so.6
-    -l:libXcursor.so.1
-    -l:libGL.so.1
-    -l:libGLX.so.0
+    X11::X11
+    OpenGL::GL
+    ${GLX_LIBRARIES}
     pthread
     dl
   )

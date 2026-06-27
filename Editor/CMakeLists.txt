@@ -112,26 +112,45 @@ target_link_libraries(Editor PRIVATE
   tkimgui
 )
 
-# X11 / Wayland / OpenGL platform support. SDL2's pkg-config on Linux pulls
-# in the bulk of these transitively, but listing them explicitly keeps the
-# link line obvious.
+# X11 / OpenGL platform support.
 #
-# The versioned-soname `-l:libX11.so.6` form is used on purpose: this
-# repo is built on Fedora systems where the *-devel RPMs (which provide
-# the unversioned `libX11.so` symlinks the linker looks up by default)
-# are not installed. The runtime libraries are present, so linking
-# directly against the versioned soname gives us a working binary
-# without needing sudo to install libX11-devel / mesa-libGL-devel.
-if(UNIX)
+# The Editor / Launcher / Import / Packer all use SDL2 for windowing,
+# and SDL2 is built as a shared library whose DT_NEEDED already pulls
+# in libX11.so.6, libGL.so.1, libGLX.so.0, libXext, libXrandr,
+# libXinerama, libXi and libXcursor at runtime. We don't have to
+# forward those ourselves -- listing them here would just duplicate
+# SDL2's own dependency declaration and pull the X11 extensions
+# twice on link (once via SDL2's DT_NEEDED, once via Editor's).
+#
+# What we DO need to declare is the bit of X11 / OpenGL surface that
+# the build system itself interacts with at configure time: pkg-config
+# needs to know which *-devel packages to require, and our find_package
+# calls make missing -devel packages fail-fast with a clear message
+# instead of producing a binary that mysteriously won't start.
+#
+# - FindX11  (built into CMake)   -> X11::X11 imported target
+# - FindOpenGL (built into CMake) -> OpenGL::GL imported target
+# - FindGLX  is NOT shipped with CMake -- pkg-config's `glx.pc` does
+#   the same job and is provided by libglvnd-devel / mesa-libGL-devel
+#   on the major distros.
+#
+# If any of these is missing, the configure step aborts with a clear
+# "Could NOT find X11 (missing: X11_X11_LIB ...)" message, which tells
+# the user to install libX11-devel / mesa-libGL-devel. That is the
+# intentional trade-off here: we trade the "build without -devel
+# packages" hack (which relied on hardcoded sonames and silently
+# picked up whatever X11 happened to be on the system) for explicit,
+# reproducible builds.
+if(UNIX AND NOT APPLE)
+  find_package(X11    REQUIRED)
+  find_package(OpenGL REQUIRED)
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(GLX REQUIRED glx)
+
   target_link_libraries(Editor PRIVATE
-    -l:libX11.so.6
-    -l:libXext.so.6
-    -l:libXrandr.so.2
-    -l:libXinerama.so.1
-    -l:libXi.so.6
-    -l:libXcursor.so.1
-    -l:libGL.so.1
-    -l:libGLX.so.0
+    X11::X11
+    OpenGL::GL
+    ${GLX_LIBRARIES}
     pthread
     dl
   )

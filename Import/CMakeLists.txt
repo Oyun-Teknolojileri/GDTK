@@ -94,10 +94,14 @@ target_link_libraries(Import PRIVATE
   tkimgui
 )
 
-if(UNIX)
+if(UNIX AND NOT APPLE)
+  find_package(OpenGL REQUIRED)
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(GLX REQUIRED glx)
+
   target_link_libraries(Import PRIVATE
-    -l:libGL.so.1
-    -l:libGLX.so.0
+    OpenGL::GL
+    ${GLX_LIBRARIES}
     pthread
     dl
   )
