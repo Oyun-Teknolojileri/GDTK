@@ -51,13 +51,18 @@ endif()
 # Packer bakes/packs projects -- it does NOT import 3D assets, so it
 # does not link assimp. (ToolKit itself also does not link assimp;
 # only Import does.) Keep this target's link surface minimal.
+#
+# - SDL2 / SDL2main: Packer/Source/Packer.cpp initializes the engine
+#   through ToolKit (m_renderSys), which spins up a GL context; SDL2
+#   is therefore required and SDL2main is the static entry-point shim.
+# - minizip / zstd are NOT listed here -- ToolKit embeds them as
+#   PRIVATE static libs and Packer only goes through ToolKit's API.
+# - imgui / tkimgui are NOT listed -- Packer is a headless CLI tool.
 target_link_libraries(Packer PRIVATE
   ToolKit
   Workspace
   SDL2
   SDL2main
-  minizip
-  zstd
   glm
   glad
   RapidXml

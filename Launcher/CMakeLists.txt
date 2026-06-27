@@ -60,16 +60,19 @@ if(NOT MSVC)
 endif()
 
 # Same link surface as the Editor: ToolKit (shared), Workspace (static),
-# all the vendored deps (SDL2, minizip, zstd, imgui + the INTERFACE
-# header-only libs). The Launcher does not export any symbols, so the
-# editor's TK_EDITOR_DLL_EXPORT switch is not needed here.
+# and the vendored deps the Launcher actually uses directly:
+#   - SDL2 / SDL2main: window + input (Launcher/Source/main.cpp,
+#     LauncherBackendBindings.cpp, Launcher.cpp).
+#   - imgui: shared lib used everywhere in the launcher's UI.
+# minizip / zstd are NOT listed here -- they are PRIVATE static libs
+# embedded in libToolKit.so and the Launcher never calls them directly.
+# The Launcher's include path through ToolKit exposes the engine API,
+# which is all it needs.
 target_link_libraries(Launcher PRIVATE
   ToolKit
   Workspace
   SDL2
   SDL2main
-  minizip
-  zstd
   imgui
   glm
   glad

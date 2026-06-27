@@ -70,16 +70,21 @@ if(NOT MSVC)
 endif()
 
 # Link: ToolKit for the engine, Workspace for the project file helpers,
-# assimp for the actual import work. SDL2 + the OpenGL stack are needed
-# because the headless render-system init still spins up a GL context.
+# assimp for the actual import work.
+#
+# - SDL2 / SDL2main: the headless render-system init still spins up a
+#   GL context (m_renderSys->InitGraphics), so the SDL2 driver stack
+#   is needed; SDL2main is the static entry-point shim.
+# - minizip / zstd are NOT listed here -- ToolKit embeds them as
+#   PRIVATE static libs and Import only goes through ToolKit's file API.
+# - imgui / tkimgui are NOT listed -- Import is a headless CLI tool,
+#   no UI surfaces are created.
 target_link_libraries(Import PRIVATE
   ToolKit
   Workspace
   assimp
   SDL2
   SDL2main
-  minizip
-  zstd
   glm
   glad
   RapidXml

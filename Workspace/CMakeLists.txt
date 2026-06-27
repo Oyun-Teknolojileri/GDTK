@@ -13,17 +13,26 @@ add_library(Workspace STATIC
 )
 
 target_include_directories(Workspace PUBLIC
-  ${CMAKE_CURRENT_SOURCE_DIR}
+  # Workspace's headers all live under Source/, so that is the only path
+  # consumers need to write `#include "Workspace.h"`. The parent
+  # Workspace/ dir has no headers of its own.
   ${CMAKE_CURRENT_SOURCE_DIR}/Source
   ${GDTK_INCLUDE_DIRS}
 )
 
-target_compile_definitions(Workspace PUBLIC
-  TK_GL_3_0
-  $<$<CONFIG:Debug>:TK_DEBUG>
-)
+# TK_GL_3_0 and TK_DEBUG are ToolKit-internal switches (desktop GL vs
+# GLES, and the assert/DebugNew-macro gate respectively). Workspace
+# itself needs them to compile its .cpp files, but consumers do NOT
+# need to inherit them from here -- every consumer (Editor, Launcher,
+# Import, Packer) already sets them in its own CMakeLists. Putting them
+# PUBLIC here would re-broadcast the same flags onto every consumer
+# without adding any new info, and would also mask a future consumer
+# that forgot to define TK_DEBUG in Debug (Workspace would still work
+# silently with assertions off). PRIVATE keeps the intent honest.
 target_compile_definitions(Workspace PRIVATE
   TK_DLL_IMPORT
+  TK_GL_3_0
+  $<$<CONFIG:Debug>:TK_DEBUG>
 )
 
 target_compile_features(Workspace PUBLIC cxx_std_17)
@@ -42,7 +51,10 @@ target_precompile_headers(Workspace PRIVATE
 # -W<...> is a GCC/Clang flag; MSVC rejects it with D8021 ("invalid
 # numeric argument"). Only attach it when we are not on MSVC.
 if(NOT MSVC)
-  target_compile_options(Workspace PRIVATE -Wno-changes-meaning)
+  target_compile_options(Workspace PRIVATE
+    -Wno-changes-meaning
+    -fpermissive
+  )
 endif()
 
 # Flat Bin/ output. See ToolKit/CMakeLists.txt for why the $<0:>

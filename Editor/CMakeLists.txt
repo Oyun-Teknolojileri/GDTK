@@ -81,16 +81,27 @@ if(NOT MSVC)
 endif()
 
 # Link against the engine (shared), the workspace helper (static), and the
-# vendored deps. INTERFACE libraries (glm, glad, tkimgui, ...) only
-# contribute include paths; the real libs come from ToolKit itself or
-# the IMPORTED targets declared in the root CMakeLists.
+# vendored deps the Editor actually consumes directly.
+#
+# - SDL2 / SDL2main: Editor uses SDL2 for window + input
+#   (Editor/Source/main.cpp, Editor/Mods/*Mod.cpp, etc.); SDL2main is
+#   the static entry-point shim, must be embedded into the executable.
+# - imgui / tkimgui: shared lib, used everywhere in the editor's UI.
+# - minizip / zstd: NOT listed here. ToolKit embeds them as PRIVATE
+#   static libs (libToolKit.so carries the symbols), and Editor does
+#   not call any zip / ZSTD API directly -- it only goes through
+#   ToolKit's file API. Re-listing them on the Editor link line would
+#   shadow ToolKit's symbols and produce duplicate-symbol warnings
+#   if anything in Editor ever does #include <mz.h>.
+#
+# INTERFACE libraries (glm, glad, tkimgui, ...) only contribute include
+# paths; the real libs come from ToolKit itself or the IMPORTED targets
+# declared in the root CMakeLists.
 target_link_libraries(Editor PRIVATE
   ToolKit
   Workspace
   SDL2
   SDL2main
-  minizip
-  zstd
   imgui
   glm
   glad

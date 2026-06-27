@@ -108,17 +108,28 @@ if(NOT MSVC)
   )
 endif()
 
-# Vendored dependency libraries. These are IMPORTED targets created
-# by the root CMakeLists via tk_add_imported(); they expose the
-# pre-built .a / .lib / .so / .dll artifacts from
-# Dependency/Intermediate/<Platform>/<Config>/. Public so downstream
-# consumers (Editor, Launcher, ...) transitively inherit them.
-target_link_libraries(ToolKit PUBLIC
-  SDL2
-  SDL2main
+# Vendored dependency libraries.
+#
+# Static libs (minizip + zstd) are PRIVATE: ToolKit's FileManager.cpp
+# uses the zip API and the ZSTD compression method
+# (MZ_COMPRESS_METHOD_ZSTD), so the symbols must be embedded inside
+# libToolKit.so -- this is the link edge that requires PIC on the
+# dependency side (see Dependency/CMakeLists.txt's
+# CMAKE_POSITION_INDEPENDENT_CODE). PRIVATE keeps them out of the
+# public INTERFACE so consumers don't accidentally grow an undeclared
+# dependency on minizip/zstd; if a future consumer needs them directly,
+# it should declare its own link line.
+#
+# Shared libs (SDL2, SDL2main, imgui) are NOT linked here. ToolKit's
+# public headers do not expose SDL2 or ImGui types, and none of
+# ToolKit's source files include them -- adding them to ToolKit's link
+# line would forward a transitive dependency that ToolKit itself does
+# not have, which lies about the library's interface. Editor /
+# Launcher / Import / Packer link SDL2 + imgui directly in their own
+# CMakeLists.
+target_link_libraries(ToolKit PRIVATE
   minizip
   zstd
-  imgui
 )
 
 # Platform-specific link libraries.
