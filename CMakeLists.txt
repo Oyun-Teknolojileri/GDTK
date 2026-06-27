@@ -253,191 +253,35 @@ target_include_directories(tkimgui INTERFACE
   ${CMAKE_SOURCE_DIR}/Dependency/tkimgui/imgui
 )
 
-# ---- Binary IMPORTED targets ---- #
-
-# Generator expressions are not allowed in IMPORTED_LOCATION, so pick
-# the concrete file name per platform and per build type. Windows
-# uses CMake's default shared/static naming (foo.lib for static /
-# import, foo.dll for runtime), while Linux uses the libfoo.so /
-# libfoo.a convention. The Debug suffix (set via
-# CMAKE_DEBUG_POSTFIX="d" in Dependency/CMakeLists.txt) lands
-# before the extension.
+# ---- Prebuild dependency imports ---- #
 #
-# Multi-config generators (Visual Studio) leave CMAKE_BUILD_TYPE
-# empty at configure time -- the active config is selected per-build
-# via --config. In that case we cannot know which variant to link
-# against at configure time, so we look for the Release variant
-# first and fall back to Debug if it is missing. The link artifact
-# is what we import here; the runtime .dll staging is handled
-# separately by CopyDependencies per build configuration.
+# Each prebuilt library is imported via a tiny per-dep wrapper config
+# file (Dependency/Config/<dep>-config.cmake) that build_dependencies.py
+# stages under <deps>/<dep>/. find_package's CONFIG mode probes
+# <prefix>/<name>/<name>Config.cmake and
+# <prefix>/<name>/<name>-config.cmake by default -- adding TK_DEPS_DIR
+# to CMAKE_PREFIX_PATH makes those wrappers discoverable without any
+# extra CMAKE_FIND_ROOT_PATH gymnastics.
 #
-# Note: tk_add_imported() FATAL_ERRORs when the file is missing.
-# If a target below is unwanted on a platform, wrap the import in
-# an if(UNIX)/if(WIN32) block rather than letting the missing file
-# blow up configure.
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  set(_d_suffix "d")
-  set(_d_suffix_alt "")
-else()
-  # Multi-config generators (VS) reach this branch with
-  # CMAKE_BUILD_TYPE empty; we don't know the active config at
-  # configure time, so probe both suffixes and prefer the Release
-  # variant if it exists.
-  set(_d_suffix "")
-  set(_d_suffix_alt "d")
-endif()
+# The wrappers declare each dep as an UNKNOWN IMPORTED target
+# pointing at the prebuilt artifact. They hide every per-platform /
+# per-config naming detail (libminizip<d>.a vs minizip<d>.lib vs
+# zstd_static<d>.lib, ...) behind that boundary, so this file no
+# longer has to maintain per-dep file-name tables or a Debug-suffix
+# probing helper.
+list(APPEND CMAKE_PREFIX_PATH "${TK_DEPS_DIR}")
 
-# Build the candidate path list for a dep, in priority order. The
-# caller supplies per-platform file names WITH extensions, in
-# Release form first ("libSDL2-2.0.so") and Debug form second
-# ("libSDL2-2.0d.so"). We probe both the active-config directory
-# (TK_DEPS_DIR) AND a Debug-fallback directory (<deps>/Debug) so
-# multi-config generators that leave CMAKE_BUILD_TYPE empty at
-# configure time still find the artifacts the dependency script
-# produced under <Platform>/<Config>/.
-#
-# We strip a trailing slash from the joined path components so a
-# trailing separator (which CMake can leave behind when
-# CMAKE_BUILD_TYPE is empty on multi-config generators) does not
-# produce a doubled separator in the joined path. CMake's EXISTS
-# check returns FALSE for "<dir-with-trailing-slash>/<file>"
-# on Windows, which is a known sharp edge.
-function(tk_dep_candidates out_var)
-  string(REGEX REPLACE "/+$" "" _tk_deps_dir "${TK_DEPS_DIR}")
-  # Strip the last path segment by hand. We cannot use
-  # get_filename_component(... DIRECTORY) here -- it returns the
-  # directory of a *file* path, dropping the last segment of a
-  # directory path. We need to walk the string ourselves so
-  # "<deps>/Windows/Debug" becomes "<deps>/Windows".
-  string(REGEX REPLACE "[^/]+$" "" _tk_deps_parent "${_tk_deps_dir}")
-  set(_candidates "")
-  # Priority 1: TK_DEPS_DIR (active config) for each Release then Debug name.
-  foreach(_arg IN LISTS ARGN)
-    list(APPEND _candidates "${_tk_deps_dir}/${_arg}")
-  endforeach()
-  # Priority 2: <parent>/Debug/ (Debug fallback for multi-config users
-  # whose CMAKE_BUILD_TYPE was empty at configure time). We always
-  # probe this so a Debug-only build of the dependency tree still
-  # finds its artifacts.
-  foreach(_arg IN LISTS ARGN)
-    list(APPEND _candidates "${_tk_deps_parent}Debug/${_arg}")
-  endforeach()
-  set(${out_var} "${_candidates}" PARENT_SCOPE)
-endfunction()
-
-# Import the first existing candidate for a dep. Emits a clear
-# error listing what we looked for if nothing matches.
-function(tk_add_imported_resolved name)
-  tk_dep_candidates(_candidates ${ARGN})
-  foreach(_path IN LISTS _candidates)
-    if(EXISTS "${_path}")
-      tk_add_imported(${name} "${_path}")
-      return()
-    endif()
-  endforeach()
-  set(_msg "Expected dependency library not found for ${name}. Looked at:")
-  foreach(_path IN LISTS _candidates)
-    set(_msg "${_msg}\n  ${_path}")
-  endforeach()
-  message(FATAL_ERROR "${_msg}")
-endfunction()
-
-# --- SDL2 (shared) ---
-# Linux: SONAME-encoded filename libSDL2-2.0.so (Release) /
-#        libSDL2-2.0d.so (Debug).
-# Windows: import lib SDL2.lib (Release) / SDL2d.lib (Debug).
-#        Runtime DLL lives next to it (SDL2.dll / SDL2d.dll) but
-#        is not what we link against.
-if(UNIX)
-  tk_add_imported_resolved(SDL2
-    "libSDL2-2.0.so"   # Release
-    "libSDL2-2.0d.so"  # Debug
-  )
-elseif(WIN32)
-  tk_add_imported_resolved(SDL2
-    "SDL2.lib"         # Release
-    "SDL2d.lib"        # Debug
-  )
-endif()
-
-# --- SDL2main (static) ---
-# Linux: libSDL2main.a / libSDL2maind.a.
-# Windows: SDL2main.lib / SDL2maind.lib (no "lib" prefix, .lib vs .a).
-if(UNIX)
-  tk_add_imported_resolved(SDL2main
-    "libSDL2main.a"
-    "libSDL2maind.a"
-  )
-elseif(WIN32)
-  tk_add_imported_resolved(SDL2main
-    "SDL2main.lib"
-    "SDL2maind.lib"
-  )
-endif()
-
-# --- minizip (static) ---
-# Linux: libminizip.a / libminizipd.a.
-# Windows: minizip.lib / minizipd.lib.
-if(UNIX)
-  tk_add_imported_resolved(minizip
-    "libminizip.a"
-    "libminizipd.a"
-  )
-elseif(WIN32)
-  tk_add_imported_resolved(minizip
-    "minizip.lib"
-    "minizipd.lib"
-  )
-endif()
-
-# --- zstd (static) ---
-# Linux: libzstd.a / libzstdd.a.
-# Windows: zstd's upstream CMake target names the static library
-# zstd_static.lib / zstd_staticd.lib (the "static" infix is zstd's
-# quirk, not a GDTK convention).
-if(UNIX)
-  tk_add_imported_resolved(zstd
-    "libzstd.a"
-    "libzstdd.a"
-  )
-elseif(WIN32)
-  tk_add_imported_resolved(zstd
-    "zstd_static.lib"
-    "zstd_staticd.lib"
-  )
-endif()
-
-# --- assimp (shared) ---
-# Only built when the dependency script runs without --skip-assimp.
-# Linux: libassimp.so / libassimpd.so.
-# Windows: assimp.lib / assimpd.lib (import) + assimp.dll / assimpd.dll.
-if(UNIX)
-  tk_add_imported_resolved(assimp
-    "libassimp.so"
-    "libassimpd.so"
-  )
-elseif(WIN32)
-  tk_add_imported_resolved(assimp
-    "assimp.lib"
-    "assimpd.lib"
-  )
-endif()
-
-# --- imgui / tkimgui (shared) ---
-# Dependency/CMakeLists.txt forces BUILD_SHARED_LIBS=ON for tkimgui.
-# Linux: libimgui.so / libimguid.so.
-# Windows: imgui.lib / imguid.lib + imgui.dll / imguid.dll.
-if(UNIX)
-  tk_add_imported_resolved(imgui
-    "libimgui.so"
-    "libimguid.so"
-  )
-elseif(WIN32)
-  tk_add_imported_resolved(imgui
-    "imgui.lib"
-    "imguid.lib"
-  )
-endif()
+# Required at configure time -- if a dep is missing the error message
+# comes from the wrapper itself (it knows the per-platform file name
+# the project was expecting to find). NO_DEFAULT_PATH keeps us from
+# accidentally picking up a system-installed SDL2 / minizip with a
+# mismatched version.
+find_package(SDL2     REQUIRED CONFIG)
+find_package(SDL2main REQUIRED CONFIG)
+find_package(minizip  REQUIRED CONFIG)
+find_package(zstd     REQUIRED CONFIG)
+find_package(assimp   REQUIRED CONFIG)
+find_package(imgui    REQUIRED CONFIG)
 
 # --------------------------------------------------------------------------- #
 # Engine + tools                                                              #

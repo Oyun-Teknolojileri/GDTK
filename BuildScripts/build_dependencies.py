@@ -312,6 +312,50 @@ def _run_cmake(args: List[str]) -> None:
     subprocess.run(args, check=True)
 
 
+# Per-dep wrapper config files live under Dependency/Config/. They are
+# tiny (a few dozen lines each) and are copied next to the prebuild
+# artifacts so the root CMakeLists can import them via
+# `find_package(<dep> REQUIRED CONFIG)`. Without this staging step the
+# root build would have to keep a per-platform, per-config file-name
+# table (libminizip<d>.a vs minizip<d>.lib vs zstd_static<d>.lib, ...)
+# inside CMakeLists.txt
+def stage_dep_configs(platform: str, config: str) -> None:
+    """Copy Dependency/Config/<dep>-config.cmake to <deps>/<dep>/.
+
+    The destination layout matches CMake's find_package CONFIG search
+    paths: `<prefix>/<name>/<name>Config.cmake` and
+    `<prefix>/<name>/<name>-config.cmake` are both standard probe
+    locations. By putting each wrapper in its own `<dep>/` subdir
+    we keep the prebuild artifacts (libfoo<d>.a, ...) next to their
+    metadata without any extra cmake/ subdirectory layer.
+    """
+    config_src = ROOT_DIR / "Dependency" / "Config"
+    if not config_src.is_dir():
+        # The wrapper files are a build-system addition; if the source
+        # tree is missing them we cannot proceed. Surface a clear error
+        # so the user knows it is a checkout / merge issue, not a
+        # prebuild failure.
+        err(f"Dependency/Config/ directory missing at {config_src}.")
+        err("It should contain <dep>-config.cmake wrapper files.")
+        raise FileNotFoundError(str(config_src))
+
+    dst_root = ROOT_DIR / "Dependency" / "Intermediate" / platform / config
+    count = 0
+    for src in sorted(config_src.glob("*.cmake")):
+        # Source file name: SDL2-config.cmake -> dep_name = SDL2.
+        # Destination file name: SDL2Config.cmake (CamelCase) because
+        # that is the file name CMake's find_package CONFIG mode
+        # probes for. `<name>-config.cmake` (all-lowercase + dash)
+        # would also be accepted, but our dep names are camelCase
+        # (SDL2, SDL2main, ...) so the CamelCase form reads better.
+        dep_name = src.name[: -len("-config.cmake")]
+        dst_dir = dst_root / dep_name
+        dst_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst_dir / f"{dep_name}Config.cmake")
+        count += 1
+    info(f"Staged {count} wrapper config(s) under {dst_root}/<dep>/")
+
+
 def build_windows(
     configs: List[str],
     *,
@@ -382,6 +426,10 @@ def build_windows(
                     "--target", "CopyDependencies",
                     "--parallel", str(parallel),
                 ])
+                # Stage the Dependency/Config/*.cmake wrappers next to
+                # the artifacts so the root CMakeLists can find them
+                # via `find_package(<dep> REQUIRED CONFIG)`.
+                stage_dep_configs("Windows", config)
                 results.append((config, True))
             except subprocess.CalledProcessError:
                 results.append((config, False))
@@ -459,6 +507,10 @@ def build_linux_or_mac(
                 "cmake", "--build", str(build_dir),
                 "--parallel", str(parallel),
             ])
+            # Stage the Dependency/Config/*.cmake wrappers next to the
+            # artifacts so the root CMakeLists can find them via
+            # `find_package(<dep> REQUIRED CONFIG)`.
+            stage_dep_configs(platform, config)
             results.append((config, True))
         except subprocess.CalledProcessError:
             results.append((config, False))
