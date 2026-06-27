@@ -86,71 +86,49 @@ endif()
 # ---------------------------------------------------------------------------
 # Output: Utils/Packer/
 #
-# Packer ships as a standalone CLI tool -- users run it from a fresh
-# checkout (CI, packagers) without the full Bin/ tree available, so we
-# publish it to Utils/Packer/ alongside its runtime dep (ToolKit).
-# POST_BUILD below copies ToolKit in. Packer does NOT need assimp --
-# see the comment on target_link_libraries above.
+# Packer is a standalone CLI tool, published to Utils/Packer/ so users
+# can run it from a fresh checkout. It does NOT copy ToolKit / SDL2 /
+# imgui next to itself; instead the RPATH (set below) points the
+# binary at the canonical copies under Bin/ and the absolute
+# vendored-deps tree under Dependency/Intermediate/. This keeps a
+# single source of truth for libToolKit.{so,dll}: changing engine
+# code updates Bin/libToolKitd.so in place, and Utils/Packer/Packer
+# picks up the change at its next invocation without an intermediate
+# staging copy.
 #
-# - add_dependencies(Packer ToolKit) is the trigger: when any ToolKit
-#   source changes, ToolKit is rebuilt AND Packer is relinked (because
-#   ToolKit is on Packer's link line). The relink re-runs the POST_BUILD
-#   copy, so Utils/Packer/ToolKit.so stays in sync with Bin/ToolKit.so.
-# - The POST_BUILD also runs unconditionally on every Packer build,
-#   so a clean build always populates Utils/Packer/.
+# Packer does NOT link assimp (it does not import 3D assets) -- the
+# comment on target_link_libraries above documents this. So no assimp
+# entry is needed in the RPATH either.
+#
+# Layout after a build:
+#   Bin/                  libToolKitd.so  (canonical)
+#   Utils/Packer/         Packer          (RPATH $ORIGIN/../../Bin)
+#   Dependency/.../<cfg>/ libSDL2-2.0d.so, libimguid.so
 # ---------------------------------------------------------------------------
 set_target_properties(Packer PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY "${GDTK_UTILS_PACKER_DIR}/$<0:>"
   LIBRARY_OUTPUT_DIRECTORY "${GDTK_UTILS_PACKER_DIR}/$<0:>"
   ARCHIVE_OUTPUT_DIRECTORY "${GDTK_UTILS_PACKER_DIR}/$<0:>"
 )
-add_dependencies(Packer ToolKit)
 
-# Generator expression: per-config file path. Works for single-config
-# (Ninja, NMake, MinGW) and multi-config (Visual Studio) alike.
-# On Linux the shared library (libToolKitd.so) lives next to the Packer
-# binary via the RPATH set further below; we only need to stage it here
-# on Windows, where Packer.exe resolves its DLLs from its own directory
-# first. Split the staging into two POST_BUILD blocks so we can gate the
-# .dll copies (which only exist on Windows) behind WIN32 -- you cannot
-# use `if(WIN32)` inside an `add_custom_command(... VERBATIM)` block
-# because VERBATIM passes the text straight through, including the if()
-# directive itself, and CMake would then try to copy a file named ")"
-# into the destination.
-add_custom_command(TARGET Packer POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    "$<TARGET_FILE:ToolKit>"
-    "${GDTK_UTILS_PACKER_DIR}/"
-  COMMENT "Packer: staging ToolKit into ${GDTK_UTILS_PACKER_DIR}"
-  VERBATIM
-)
-# Windows-only: stage the vendored runtime DLLs (SDL2, imgui) next to
-# Packer.exe so the binary can find them at runtime without LD_LIBRARY_PATH
-# (POSIX) or PATH manipulation (Windows). These come from
-# build_dependencies.py's intermediate dir, not from any IMPORTED target,
-# so we rebuild the path from the deps root + active config.
-if(WIN32)
-  add_custom_command(TARGET Packer POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-      "${CMAKE_SOURCE_DIR}/Dependency/Intermediate/${TK_PLATFORM}/$<CONFIG>/SDL2$<$<CONFIG:Debug>:d>.dll"
-      "${GDTK_UTILS_PACKER_DIR}/"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-      "${CMAKE_SOURCE_DIR}/Dependency/Intermediate/${TK_PLATFORM}/$<CONFIG>/imgui$<$<CONFIG:Debug>:d>.dll"
-      "${GDTK_UTILS_PACKER_DIR}/"
-    COMMENT "Packer: staging Windows runtime DLLs into ${GDTK_UTILS_PACKER_DIR}"
-    VERBATIM
-  )
-endif()
-
-# RPATH: find ToolKit + vendored shared libs (SDL2, imgui) next to the
-# binary (Utils/Packer/) or under Dependency/Intermediate/... without
-# LD_LIBRARY_PATH. The POST_BUILD copy of ToolKit lands in $ORIGIN.
+# RPATH strategy (Linux + Windows both honour $ORIGIN via CMake 3.16+):
+#   - $ORIGIN/../../Bin      -> Utils/Packer/Packer finds libToolKitd.so /
+#                                ToolKitd.dll under the canonical Bin/.
+#   - ${TK_DEPS_DIR}         -> absolute path to Dependency/Intermediate/
+#                                <Plat>/<Cfg>/, where SDL2 / imgui live.
+# On Linux this is encoded into the ELF DT_RUNPATH; on Windows CMake
+# converts it into the DLL search path in the PE header. Both platforms
+# resolve $ORIGIN to the directory containing the executable at runtime,
+# so the binary can be invoked from any cwd without LD_LIBRARY_PATH or
+# %PATH% tweaks.
 if(UNIX)
   set_target_properties(Packer PROPERTIES
-    BUILD_RPATH   "$ORIGIN:${TK_DEPS_DIR}"
-    INSTALL_RPATH "$ORIGIN:${TK_DEPS_DIR}"
+    BUILD_RPATH   "$ORIGIN/../../Bin:${TK_DEPS_DIR}"
+    INSTALL_RPATH "$ORIGIN/../../Bin:${TK_DEPS_DIR}"
   )
 elseif(WIN32)
-  # Windows resolves DLLs from the binary's directory first, so the
-  # POST_BUILD copy is enough. No PATH plumbing needed.
+  set_target_properties(Packer PROPERTIES
+    BUILD_RPATH   "$ORIGIN/../../Bin;${TK_DEPS_DIR}"
+    INSTALL_RPATH "$ORIGIN/../../Bin;${TK_DEPS_DIR}"
+  )
 endif()

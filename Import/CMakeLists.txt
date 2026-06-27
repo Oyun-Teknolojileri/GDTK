@@ -108,87 +108,49 @@ endif()
 # ---------------------------------------------------------------------------
 # Output: Utils/Import/
 #
-# Import ships as a standalone CLI tool -- users run it from a fresh
-# checkout (CI, packagers) without the full Bin/ tree available, so we
-# publish it to Utils/Import/ alongside its runtime deps (ToolKit,
-# assimp). POST_BUILD below copies those libs in. The Editor/Launcher
-# keep using Bin/ToolKit.so unchanged.
+# Import is a standalone CLI tool, published to Utils/Import/ so users
+# can run it from a fresh checkout. It does NOT copy ToolKit / assimp
+# / SDL2 / imgui next to itself; instead the RPATH (set below) points
+# the binary at the canonical copies under Bin/ and the absolute
+# vendored-deps tree under Dependency/Intermediate/. This keeps a
+# single source of truth for libToolKit.{so,dll} and the assimp shared
+# library -- changing engine code updates Bin/libToolKitd.so in place,
+# and Utils/Import/Import picks up the change at its next invocation
+# without an intermediate staging copy.
 #
-# - add_dependencies(Import ToolKit) is the trigger: when any ToolKit
-#   source changes, ToolKit is rebuilt AND Import is relinked (because
-#   ToolKit is on Import's link line). The relink re-runs the POST_BUILD
-#   copy, so Utils/Import/ToolKit.so stays in sync with Bin/ToolKit.so.
-# - The POST_BUILD also runs unconditionally on every Import build,
-#   so a clean build always populates Utils/Import/.
+# Layout after a build:
+#   Bin/                  libToolKitd.so  (canonical)
+#   Utils/Import/         Import          (RPATH $ORIGIN/../../Bin)
+#   Dependency/.../<cfg>/ libSDL2-2.0d.so, libimguid.so, libassimpd.so
 # ---------------------------------------------------------------------------
 set_target_properties(Import PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY "${GDTK_UTILS_IMPORT_DIR}/$<0:>"
   LIBRARY_OUTPUT_DIRECTORY "${GDTK_UTILS_IMPORT_DIR}/$<0:>"
   ARCHIVE_OUTPUT_DIRECTORY "${GDTK_UTILS_IMPORT_DIR}/$<0:>"
 )
-add_dependencies(Import ToolKit)
 
-# Generator expressions evaluate at build time, so single-config (Ninja,
-# Unix Makefiles, NMake, MinGW) and multi-config (Visual Studio) both
-# get the right per-config file -- no CMAKE_BUILD_TYPE branching needed.
-#   $<TARGET_FILE:ToolKit>       -> the actual libToolKitd.so / ToolKitd.dll
-#                                  path in the current build config.
-#   $<TARGET_FILE:assimp>        -> the IMPORTED_LOCATION of the assimp
-#                                  target, resolved per-config.
-# On Linux the shared libraries (libToolKitd.so, libassimpd.so) live next to
-# the Import binary via the RPATH set further below; we only need to stage
-# them here on Windows, where Import.exe resolves its DLLs from its own
-# directory first. Split the staging into two POST_BUILD blocks so we can
-# gate the .dll copies (which only exist on Windows) behind WIN32 -- you
-# cannot use `if(WIN32)` inside an `add_custom_command(... VERBATIM)`
-# block because VERBATIM passes the text straight through, including the
-# if() directive itself, and CMake would then try to copy a file named
-# ")" into the destination.
-add_custom_command(TARGET Import POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    "$<TARGET_FILE:ToolKit>"
-    "${GDTK_UTILS_IMPORT_DIR}/"
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    "$<TARGET_FILE:assimp>"
-    "${GDTK_UTILS_IMPORT_DIR}/"
-  COMMENT "Import: staging ToolKit + assimp into ${GDTK_UTILS_IMPORT_DIR}"
-  VERBATIM
-)
-# Windows-only: stage the runtime DLLs (assimp / SDL2 / imgui) next to
-# Import.exe. $<TARGET_FILE:assimp> resolves to the IMPORTED_LOCATION
-# (assimpd.lib on Windows); the matching runtime DLL (assimpd.dll) lives
-# next to it and Import.exe needs it on PATH / next to the binary at
-# runtime. We rebuild the path from the deps root + active config rather
-# than transforming the generator expression -- the IMPORTED target's
-# $<TARGET_FILE_BASE:...> extension does not work with IMPORTED_LOCATION,
-# so a literal path is the only reliable way. SDL2d.dll / imgui*.dll
-# follow the same pattern.
-if(WIN32)
-  add_custom_command(TARGET Import POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-      "${CMAKE_SOURCE_DIR}/Dependency/Intermediate/${TK_PLATFORM}/$<CONFIG>/assimp$<$<CONFIG:Debug>:d>.dll"
-      "${GDTK_UTILS_IMPORT_DIR}/"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-      "${CMAKE_SOURCE_DIR}/Dependency/Intermediate/${TK_PLATFORM}/$<CONFIG>/SDL2$<$<CONFIG:Debug>:d>.dll"
-      "${GDTK_UTILS_IMPORT_DIR}/"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-      "${CMAKE_SOURCE_DIR}/Dependency/Intermediate/${TK_PLATFORM}/$<CONFIG>/imgui$<$<CONFIG:Debug>:d>.dll"
-      "${GDTK_UTILS_IMPORT_DIR}/"
-    COMMENT "Import: staging Windows runtime DLLs into ${GDTK_UTILS_IMPORT_DIR}"
-    VERBATIM
-  )
-endif()
-
-# RPATH: find ToolKit + the vendored shared libs (SDL2, imgui) next to
-# the binary (Utils/Import/) or under Dependency/Intermediate/...
-# without LD_LIBRARY_PATH. On Linux assimp also lives next to the
-# binary once the POST_BUILD copy runs, so $ORIGIN picks it up first.
+# RPATH strategy (Linux + Windows both honour $ORIGIN via CMake 3.16+):
+#   - $ORIGIN/../../Bin      -> Utils/Import/Import finds libToolKitd.so /
+#                                ToolKitd.dll under the canonical Bin/.
+#   - ${TK_DEPS_DIR}         -> absolute path to Dependency/Intermediate/
+#                                <Plat>/<Cfg>/, where SDL2 / imgui / assimp
+#                                live. The Toolkit build links the vendored
+#                                static libs (minizip / zstd / SDL2main) into
+#                                libToolKit.so, so they do NOT need to be
+#                                findable here; only the *shared* deps do.
+# On Linux this is encoded into the ELF DT_RUNPATH; on Windows CMake
+# converts it into the DLL search path in the PE header. Both platforms
+# resolve $ORIGIN to the directory containing the executable at runtime,
+# so the binary can be invoked from any cwd without LD_LIBRARY_PATH or
+# %PATH% tweaks.
 if(UNIX)
   set_target_properties(Import PROPERTIES
-    BUILD_RPATH   "$ORIGIN:${TK_DEPS_DIR}"
-    INSTALL_RPATH "$ORIGIN:${TK_DEPS_DIR}"
+    BUILD_RPATH   "$ORIGIN/../../Bin:${TK_DEPS_DIR}"
+    INSTALL_RPATH "$ORIGIN/../../Bin:${TK_DEPS_DIR}"
   )
 elseif(WIN32)
-  # Windows resolves DLLs from the binary's directory first, so the
-  # POST_BUILD copies are enough. No PATH plumbing needed.
+  set_target_properties(Import PROPERTIES
+    BUILD_RPATH   "$ORIGIN/../../Bin;${TK_DEPS_DIR}"
+    INSTALL_RPATH "$ORIGIN/../../Bin;${TK_DEPS_DIR}"
+  )
 endif()
