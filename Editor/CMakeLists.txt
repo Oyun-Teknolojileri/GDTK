@@ -56,6 +56,19 @@ target_compile_definitions(Editor PRIVATE
   $<$<CONFIG:Debug>:TK_DEBUG>
 )
 
+# Mirror ToolKit's TK_VULKAN gate. ToolKit only forwards TK_VULKAN
+# PRIVATE (see ToolKit/CMakeLists.txt) because Launcher hard-wires
+# itself to GL via `#undef TK_VULKAN` and precompiled stdafx.h would
+# expand the editor-side Vulkan macros (Convert2ImGuiTexture in
+# EditorTypes.h, EditorImGuiTextureCache, EditorBackendBindings)
+# before Launcher.h got a chance to undef. We re-declare it here so
+# Editor itself sees TK_VULKAN=1 when ToolKit was built with it;
+# Import and Packer (the other consumers) do not need this because
+# they don't use the editor-side ImGui/texture bridge.
+if(TK_VULKAN)
+  target_compile_definitions(Editor PRIVATE TK_VULKAN)
+endif()
+
 target_compile_features(Editor PRIVATE cxx_std_17)
 
 # Precompiled header. The engine's stdafx.h is shared: TK_EDITOR is

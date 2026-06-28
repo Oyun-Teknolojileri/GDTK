@@ -51,6 +51,37 @@ if(TK_VULKAN)
   target_include_directories(ToolKit PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/Render/Vulkan
   )
+
+  # Vulkan Memory Allocator header lookup. The GDTK Vulkan backend
+  # uses `#include <vk_mem_alloc.h>` (no `vma/` prefix) so the same
+  # source compiles on both platforms; CMake fills in the path where
+  # the header actually lives:
+  #
+  #   Linux:   Fedora's VulkanMemoryAllocator-devel installs it at
+  #            /usr/include/vk_mem_alloc.h (no prefix), Debian's
+  #            libvulkan-memory-allocator-dev follows the same layout.
+  #            /usr/include is already on the system include path,
+  #            so no extra include directory is needed.
+  #
+  #   Windows: LunarG SDK ships VMA under $(VULKAN_SDK)/Include/vma/
+  #            so we add that subdir to the include path. The
+  #            TK_VULKAN gate on WIN32 keeps the variable unset on
+  #            machines without the SDK installed.
+  if(WIN32)
+    if(NOT DEFINED VULKAN_SDK AND DEFINED ENV{VULKAN_SDK})
+      set(VULKAN_SDK $ENV{VULKAN_SDK})
+    endif()
+    if(VULKAN_SDK)
+      target_include_directories(ToolKit SYSTEM PUBLIC
+        ${VULKAN_SDK}/Include/vma
+      )
+    else()
+      message(FATAL_ERROR
+        "TK_VULKAN=ON on Windows requires the Vulkan SDK (VULKAN_SDK "
+        "env var or VULKAN_SDK CMake cache entry pointing at the SDK root)."
+      )
+    endif()
+  endif()
 endif()
 
 target_include_directories(ToolKit PUBLIC
@@ -67,6 +98,27 @@ target_compile_definitions(ToolKit PUBLIC
 target_compile_definitions(ToolKit PRIVATE
   TK_DLL_EXPORT
 )
+
+# Opt-in: define TK_VULKAN so the #ifdef-guarded Vulkan branches in
+# the engine (ToolKit/Render/Renderer.cpp, Resources/Shader.cpp, ...)
+# compile in. Platform.h uses this same symbol to set TKVulkan=1.
+# Without it, legacy behavior (GL-only backend) is preserved.
+#
+# PRIVATE so ToolKit's own sources compile with TK_VULKAN=1 but
+# consumers (Editor, Packer, Import) do NOT inherit it through the
+# shared public header set -- each consumer decides for itself whether
+# to enable the Vulkan branches of its own UI bindings. The Launcher
+# is hard-wired to GL via `#undef TK_VULKAN` in Launcher.h, and that
+# undef actually takes effect only when TK_VULKAN is not also being
+# pushed in via -D from the ToolKit consumer interface (precompiled
+# stdafx.h would otherwise expand `Convert2ImGuiTexture` to the Vulkan
+# macro branch before Launcher.h is even seen).
+#
+# Consumers that want the Vulkan path must re-declare TK_VULKAN on
+# their own target -- Editor does this today.
+if(TK_VULKAN)
+  target_compile_definitions(ToolKit PRIVATE TK_VULKAN)
+endif()
 
 target_compile_features(ToolKit PUBLIC cxx_std_17)
 
@@ -140,6 +192,38 @@ target_link_libraries(ToolKit PRIVATE
 # mesa-libGL-devel installed.
 if(UNIX)
   target_link_libraries(ToolKit PUBLIC pthread dl)
+  if(TK_VULKAN)
+    # Linux distro packaging for Vulkan + shaderc is wildly
+    # inconsistent; using -l<name> with the canonical "vulkan-1" /
+    # "shaderc" SONAMEs breaks because the SONAMEs don't always
+    # exist as unversioned .so files. The reliable cross-distro
+    # strategy is to import each library directly by absolute path.
+    #
+    #   - vulkan-1     : libvulkan.so.1 (loader)
+    #                   Debian/Ubuntu: /usr/lib/<triple>/libvulkan.so.1
+    #                   Fedora/RHEL:  /usr/lib64/libvulkan.so.1
+    #
+    #   - shaderc     : libshaderc_shared.so.1 (the only shared build
+    #                   most distros ship; libshaderc.so tends to be
+    #                   static-only or absent on Linux). Pulled in
+    #                   transitively from SPIRV-Tools at runtime.
+    find_library(_TK_VULKAN_LOADER_LIB
+      NAMES vulkan
+      PATHS /usr/lib64 /usr/lib /usr/lib/${CMAKE_SYSTEM_PROCESSOR}-linux-gnu
+      NO_DEFAULT_PATH
+      REQUIRED
+    )
+    find_library(_TK_SHADERC_LIB
+      NAMES shaderc_shared
+      PATHS /usr/lib64 /usr/lib /usr/lib/${CMAKE_SYSTEM_PROCESSOR}-linux-gnu
+      NO_DEFAULT_PATH
+      REQUIRED
+    )
+    target_link_libraries(ToolKit PUBLIC
+      ${_TK_VULKAN_LOADER_LIB}
+      ${_TK_SHADERC_LIB}
+    )
+  endif()
 elseif(WIN32)
   target_link_libraries(ToolKit PUBLIC OpenGL32)
   if(TK_VULKAN)

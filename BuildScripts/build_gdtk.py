@@ -106,6 +106,7 @@ def build_project(
     is_multiconfig: bool,
     cl_path: Optional[str],
     targets: List[str],
+    vulkan: bool,
 ) -> List[Tuple[str, bool]]:
     """Configure and build the root GDTK CMake project. Returns per-config (ok?)."""
     results: List[Tuple[str, bool]] = []
@@ -148,6 +149,7 @@ def build_project(
                 configure_args += [f"-DCMAKE_BUILD_TYPE={config}"]
             configure_args += [
                 *compiler_args,
+                f"-DTK_VULKAN={'ON' if vulkan else 'OFF'}",
             ]
             _run_cmake(configure_args)
         except subprocess.CalledProcessError:
@@ -203,6 +205,14 @@ def main() -> int:
             "configurations; pass this flag to opt out (e.g. when you "
             "know you are about to run a configure-only pass and do "
             "not want the script to spawn a second build)."
+        ),
+    )
+    parser.add_argument(
+        "--vulkan", action="store_true",
+        help=(
+            "Enable the Vulkan render backend (TK_VULKAN=ON). Requires "
+            "vulkan-loader-devel + libshaderc-devel + mesa-vulkan-drivers "
+            "(Fedora) or libvulkan-dev + libshaderc-dev (Debian) installed."
         ),
     )
     parser.add_argument(
@@ -296,6 +306,11 @@ def main() -> int:
     print(f"  Generator:   {generator}"
           f"{' (multi-config)' if is_multiconfig else ''}")
 
+    if args.vulkan:
+        print(f"  Vulkan:      ON (TK_VULKAN)")
+    else:
+        print(f"  Vulkan:      OFF")
+
     section(f"Building {platform} engine + tools")
     try:
         results = build_project(
@@ -306,6 +321,7 @@ def main() -> int:
             is_multiconfig=is_multiconfig,
             cl_path=cl_path,
             targets=args.targets,
+            vulkan=args.vulkan,
         )
     except KeyboardInterrupt:
         err("Interrupted.")

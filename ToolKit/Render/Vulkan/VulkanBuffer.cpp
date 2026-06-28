@@ -10,7 +10,7 @@
 #include "Logger.h"
 #include "VulkanContext.h"
 
-#include <vma/vk_mem_alloc.h>
+#include <vk_mem_alloc.h>
 
 #include <cstring>
 

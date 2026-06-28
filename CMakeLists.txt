@@ -53,6 +53,16 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Debug CACHE STRING "" FORCE)
 endif()
 
+# Vulkan backend -- opt-in. When ON, ToolKit/Render/Vulkan/*.cpp joins
+# the build, vulkan-1 + shaderc get linked, and TK_VULKAN is defined
+# so the engine's #ifdef-guarded Vulkan branches activate. Requires
+# the system Vulkan loader + shaderc dev packages:
+#   Fedora:    dnf install vulkan-loader-devel libshaderc-devel mesa-vulkan-drivers
+#   Debian:    apt install libvulkan-dev libshaderc-dev mesa-vulkan-drivers
+# Default OFF to match the legacy GL-only behaviour and to avoid
+# hard-failing on minimal CI images that lack the Vulkan SDK.
+option(TK_VULKAN "Build the Vulkan render backend into ToolKit" OFF)
+
 # Multi-config generators (Visual Studio) leave CMAKE_BUILD_TYPE
 # empty at configure time, which makes the dependency lookup
 # (TK_DEPS_DIR = ".../<Plat>/<empty>") look in the wrong folder.

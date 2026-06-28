@@ -12,7 +12,7 @@
 #include "VulkanBindings.h"
 #include "VulkanSwapchain.h"
 
-#include <vma/vk_mem_alloc.h>
+#include <vk_mem_alloc.h>
 
 #include <algorithm>
 #include <cstring>

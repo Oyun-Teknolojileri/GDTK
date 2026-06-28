@@ -15,9 +15,46 @@ forking.
 | A C/C++ compiler | MSVC (Windows), GCC or Clang (Linux), Apple Clang (macOS)  |
 | Ninja      | Optional but strongly recommended -- much faster than the alternatives |
 
-> **No system packages are required.** Every dependency (SDL2, glm, assimp,
-> minizip-ng, imgui, poolSTL, miniaudio) lives in `Dependency/` as a git
-> submodule. The script pulls and builds them.
+> **No system packages are required** for the default (GL) backend.
+> Every dependency (SDL2, glm, assimp, minizip-ng, imgui, poolSTL,
+> miniaudio) lives in `Dependency/` as a git submodule. The script
+> pulls and builds them.
+
+### Optional: Vulkan backend (`--vulkan`)
+
+The Vulkan render path is **opt-in** because it pulls in heavy system
+libraries that most CI images don't carry by default. To enable it,
+install the platform's Vulkan + shaderc + VMA dev packages **before**
+running the build:
+
+| Distro                | Packages                                                                                  |
+|-----------------------|-------------------------------------------------------------------------------------------|
+| Fedora / RHEL         | `vulkan-loader-devel libshaderc-devel VulkanMemoryAllocator-devel mesa-vulkan-drivers`     |
+| Debian / Ubuntu       | `libvulkan-dev libshaderc-dev libvulkan-memory-allocator-dev mesa-vulkan-drivers`         |
+| Arch                  | `vulkan-headers vulkan-icd-loader shaderc vulkan-memory-allocator`                        |
+| Windows               | LunarG Vulkan SDK (`VULKAN_SDK` env var set to the SDK root)                              |
+
+Then:
+
+```bash
+python3 BuildScripts/build_gdtk.py --vulkan
+```
+
+The build script forwards `--vulkan` as `-DTK_VULKAN=ON` to CMake,
+which:
+
+1. Pulls `ToolKit/Render/Vulkan/*.cpp` into the GLOB'd source list
+   (otherwise they are filtered out and only the GL backend builds).
+2. Defines `TK_VULKAN` so `#ifdef`-guarded Vulkan branches in
+   Renderer / Shader / Resources / Entities activate.
+3. Links `libvulkan.so.1` + `libshaderc_shared.so.1` on Linux
+   (resolved by absolute path -- distros ship inconsistent SONAMEs)
+   and `vulkan-1.lib` on Windows.
+4. Adds the VMA header path: implicit `/usr/include` on Linux,
+   `$VULKAN_SDK/Include/vma` on Windows.
+
+Without `--vulkan` (the default) the engine builds the legacy GL
+backend and zero Vulkan source files participate in the compile.
 
 ## Scripts at a glance
 
@@ -43,6 +80,9 @@ python3 BuildScripts/build_gdtk.py --target ToolKit
 
 # Just the editor, in Debug only.
 python3 BuildScripts/build_gdtk.py --configs Debug --target Editor
+
+# Vulkan build (requires system Vulkan + shaderc + VMA dev packages).
+python3 BuildScripts/build_gdtk.py --vulkan
 ```
 
 The script announces what it is doing at every step:
@@ -61,6 +101,11 @@ The script announces what it is doing at every step:
 --configs  CFG [CFG ...]              Default: Debug Release
 --target  TGT                         Build only TGT. May be passed
                                       multiple times. Default: all.
+--vulkan                              Build with the Vulkan render backend
+                                      (TK_VULKAN=ON). Requires the
+                                      platform's Vulkan + shaderc + VMA
+                                      dev packages -- see "Optional:
+                                      Vulkan backend" above.
 --no-deps-check                       Skip the dep auto-invoke (default
                                       behaviour is to build deps on
                                       demand when missing).
@@ -113,7 +158,8 @@ different MSVC version. Pass `--generator ninja` to force Ninja instead
 Bin/                                  Final binaries the engine ships
   ├── Editor(.exe)
   ├── Launcher(.exe)
-  ├── libToolKitd.so / ToolKitd.dll
+  ├── libToolKitd.so / ToolKitd.dll   # with --vulkan: NEEDITED libvulkan.so.1,
+  │                                    libshaderc_shared.so.1, libSPIRV-Tools.so
   └── libWorkspace.a / Workspace.lib
 Intermediate/<Platform>/<Config>/     CMake state + per-module .o files
   ├── build-ToolKit/
@@ -146,6 +192,13 @@ script under the hood, so behaviour is identical to running it by hand.
 -j, --parallel N                      Parallel build jobs (default: CPU count)
 --generator {auto,msvc,ninja,make}    Same semantics as build_gdtk.py
 ```
+
+> **Note:** `build_dependencies.py` has no `--vulkan` flag because the
+> dependency tree (SDL2, glm, assimp, ...) is identical regardless of
+> which render backend the engine selects. Vulkan's own libraries
+> (libvulkan, libshaderc, VMA) are system-provided and consumed
+> directly from the OS package set, not built as submodules. The
+> `--vulkan` flag is engine-side only; see `build_gdtk.py --help`.
 
 ## Adding more scripts
 
