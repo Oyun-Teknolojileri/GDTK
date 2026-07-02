@@ -566,14 +566,14 @@ namespace ToolKit
       m_copyMaterial->SetFragmentShaderVal(frag);
     }
 
+    m_copyMaterial->SetDiffuseTextureVal(src);
+    m_copyMaterial->Init();
+
     // The copy shader exposes an ALPHA_TO_ONE define that forces the output alpha to 1.0
     // in the fragment stage. SetDefine on the shader recompiles the program (cached) only
     // when the value actually changes, so toggling per-call is cheap.
     ShaderPtr copyFrag = m_copyMaterial->GetFragmentShaderVal();
     copyFrag->SetDefine("ALPHA_TO_ONE", alphaToOne ? "1" : "0");
-
-    m_copyMaterial->SetDiffuseTextureVal(src);
-    m_copyMaterial->Init();
 
     DrawFullQuad(m_copyMaterial);
     FinishPass();
