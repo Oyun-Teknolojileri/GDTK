@@ -15,10 +15,36 @@ forking.
 | A C/C++ compiler | MSVC (Windows), GCC or Clang (Linux), Apple Clang (macOS)  |
 | Ninja      | Optional but strongly recommended -- much faster than the alternatives |
 
-> **No system packages are required** for the default (GL) backend.
-> Every dependency (SDL2, glm, assimp, minizip-ng, imgui, poolSTL,
-> miniaudio) lives in `Dependency/` as a git submodule. The script
-> pulls and builds them.
+> All dependency *libraries* (SDL2, glm, assimp, minizip-ng, imgui,
+> poolSTL, miniaudio) live in `Dependency/` as git submodules and the
+> script pulls + builds them. The one exception on Linux is SDL2's
+> X11 video backend, which is now the primary Linux backend (we want
+> Win32-comparable windowing behavior and don't want SDL2 to prefer
+> Wayland). X11 ships as a system package on every desktop distro,
+> but the matching `*-devel` headers must be installed **before**
+> running the build:
+
+### Linux X11 dev packages
+
+| Distro          | Packages                                                                                  |
+|-----------------|-------------------------------------------------------------------------------------------|
+| Fedora / RHEL   | `libX11-devel libXext-devel libXrandr-devel libXcursor-devel libXi-devel libXinerama-devel libxkbcommon-devel` |
+| Debian / Ubuntu | `libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxinerama-dev libxkbcommon-dev` |
+| Arch            | `libx11 libxext libxrandr libxcursor libxi libxinerama libxkbcommon`                      |
+
+On a Wayland session the resulting binary talks to Xwayland, which
+is exactly the path we want here: it gives the Win32-style input
+and coordinate semantics we depend on, instead of Wayland's. If
+SDL2 configure fails because none of those modules are reachable,
+the dependency build aborts with the same package list inline.
+
+`build_gdtk.py` enforces this pre-flight automatically on Linux: it
+detects the distro family from `/etc/os-release` and probes every
+package in the table above. By default a missing package just
+prints the per-distro install command and aborts (no implicit
+sudo). Pass `--install-deps` to have the script run the install
+itself. With `--vulkan` the same gate also covers the Vulkan
+loader / shaderc / VMA dev packages.
 
 ### Optional: Vulkan backend (`--vulkan`)
 
@@ -73,6 +99,12 @@ populated on demand.
 # Cold first-time build -- runs dep build then engine build.
 python3 BuildScripts/build_gdtk.py
 
+# Cold first-time build on a fresh Linux box. Without --install-deps
+# the script aborts with a "missing X11 dev packages" list if
+# libX11-devel etc. are not yet installed; --install-deps has it
+# sudo-install the lot via dnf / apt / pacman.
+python3 BuildScripts/build_gdtk.py --install-deps
+
 # Rebuild after a ToolKit source change (deps already present, so the
 # script logs "skipping build_dependencies.py" and goes straight to
 # the engine).
@@ -81,8 +113,9 @@ python3 BuildScripts/build_gdtk.py --target ToolKit
 # Just the editor, in Debug only.
 python3 BuildScripts/build_gdtk.py --configs Debug --target Editor
 
-# Vulkan build (requires system Vulkan + shaderc + VMA dev packages).
-python3 BuildScripts/build_gdtk.py --vulkan
+# Vulkan build. --install-deps also covers the Vulkan + shaderc + VMA
+# dev packages if missing.
+python3 BuildScripts/build_gdtk.py --vulkan --install-deps
 ```
 
 The script announces what it is doing at every step:
@@ -106,6 +139,15 @@ The script announces what it is doing at every step:
                                       platform's Vulkan + shaderc + VMA
                                       dev packages -- see "Optional:
                                       Vulkan backend" above.
+--install-deps                        Linux only. If SDL2 X11 dev
+                                      packages (and, with --vulkan,
+                                      Vulkan loader + shaderc + VMA
+                                      dev packages) are missing,
+                                      install them via the distro's
+                                      package manager + sudo
+                                      automatically. Without this flag
+                                      the script just lists what's
+                                      missing and aborts.
 --no-deps-check                       Skip the dep auto-invoke (default
                                       behaviour is to build deps on
                                       demand when missing).

@@ -295,3 +295,243 @@ def clean_platform(platform_root: Path) -> None:
         shutil.rmtree(platform_root)
     else:
         info(f"Nothing to clean at {platform_root}")
+
+
+# --------------------------------------------------------------------------- #
+# Linux system package management                                             #
+# --------------------------------------------------------------------------- #
+#
+# Why this lives here: GDTK's Linux build has a small number of hard
+# system-level dependencies that the vendored dep tree (SDL2, glm,
+# assimp, ...) cannot satisfy on its own. The two that matter today:
+#
+#   1. SDL2's X11 video backend dev packages -- always required now
+#      because Dependency/CMakeLists.txt pins SDL_X11=ON, SDL_WAYLAND=OFF
+#      (we want Win32-comparable windowing on Linux). Without these,
+#      SDL2's CheckX11() macro silently disables the X11 driver and
+#      the editor falls back to the dummy video driver -- a silent
+#      window-not-shown failure mode.
+#
+#   2. Vulkan render backend dev packages -- only required when the
+#      user passes --vulkan. Without them, the engine still builds but
+#      `find_package(Vulkan)` / `find_package(shaderc)` fail.
+#
+# We support three distro families because that's where GDTK actually
+# gets built:
+#   * fedora  -- Fedora, RHEL, Rocky, Alma, Nobara, ...
+#   * debian  -- Debian, Ubuntu, Mint, Pop, Elementary, Zorin, ...
+#   * arch    -- Arch, Manjaro, Endeavour, Garuda, ...
+#
+# Anything else gets treated as "unknown" and we surface a manual
+# install hint instead of guessing at the package manager.
+
+LINUX_DISTRO_FEDORA = "fedora"
+LINUX_DISTRO_DEBIAN = "debian"
+LINUX_DISTRO_ARCH   = "arch"
+LINUX_DISTROS = (LINUX_DISTRO_FEDORA, LINUX_DISTRO_DEBIAN, LINUX_DISTRO_ARCH)
+
+# Display names for the three supported families, used in log output.
+LINUX_DISTRO_DISPLAY_NAME: dict[str, str] = {
+    LINUX_DISTRO_FEDORA: "Fedora / RHEL family (dnf)",
+    LINUX_DISTRO_DEBIAN: "Debian / Ubuntu family (apt)",
+    LINUX_DISTRO_ARCH:   "Arch family (pacman)",
+}
+
+# X11 dev packages -- always required on Linux (see header comment).
+LINUX_X11_PACKAGES: dict[str, tuple[str, ...]] = {
+    LINUX_DISTRO_FEDORA: (
+        "libX11-devel",
+        "libXext-devel",
+        "libXrandr-devel",
+        "libXcursor-devel",
+        "libXi-devel",
+        "libXinerama-devel",
+        "libxkbcommon-devel",
+    ),
+    LINUX_DISTRO_DEBIAN: (
+        "libx11-dev",
+        "libxext-dev",
+        "libxrandr-dev",
+        "libxcursor-dev",
+        "libxi-dev",
+        "libxinerama-dev",
+        "libxkbcommon-dev",
+    ),
+    LINUX_DISTRO_ARCH: (
+        "libx11",
+        "libxext",
+        "libxrandr",
+        "libxcursor",
+        "libxi",
+        "libxinerama",
+        "libxkbcommon",
+    ),
+}
+
+# Vulkan render backend dev packages -- only required when --vulkan.
+# Mirrors the table documented in CMakeLists.txt and README so all three
+# places stay in sync (single source of truth is *this* dict).
+LINUX_VULKAN_PACKAGES: dict[str, tuple[str, ...]] = {
+    LINUX_DISTRO_FEDORA: (
+        "vulkan-loader-devel",
+        "libshaderc-devel",
+        "VulkanMemoryAllocator-devel",
+        "mesa-vulkan-drivers",
+    ),
+    LINUX_DISTRO_DEBIAN: (
+        "libvulkan-dev",
+        "libshaderc-dev",
+        "libvulkan-memory-allocator-dev",
+        "mesa-vulkan-drivers",
+    ),
+    LINUX_DISTRO_ARCH: (
+        "vulkan-headers",
+        "vulkan-icd-loader",
+        "shaderc",
+        "vulkan-memory-allocator",
+        "mesa-vulkan-drivers",
+    ),
+}
+
+
+def _read_os_release() -> dict[str, str]:
+    """Parse /etc/os-release into a flat dict.
+
+    Returns an empty dict if /etc/os-release is missing or unreadable --
+    the caller is expected to fall back to "unknown distro" in that case
+    rather than crash, because on a stripped CI image the file may be
+    gone and we still want to print a useful error.
+    """
+    result: dict[str, str] = {}
+    try:
+        with open("/etc/os-release", "r", encoding="utf-8") as f:
+            for raw in f:
+                line = raw.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                result[key] = value.strip().strip('"').strip("'")
+    except OSError:
+        pass
+    return result
+
+
+def detect_linux_distro() -> str:
+    """Best-effort identification of one of the supported Linux families.
+
+    Reads /etc/os-release and matches on ID / ID_LIKE so derivatives
+    (Ubuntu -> debian family, Manjaro -> arch family, ...) resolve
+    automatically. Returns 'unknown' for anything we don't know how
+    to provision -- the caller then surfaces a manual-install hint
+    instead of trying to guess at the package manager.
+    """
+    info = _read_os_release()
+    distro_id = info.get("ID", "").lower()
+    like = info.get("ID_LIKE", "").lower()
+    candidates = [distro_id]
+    candidates.extend(s.strip() for s in like.split() if s.strip())
+
+    for c in candidates:
+        # Fedora / RHEL family. `fedora-asahi-remix`, `fedora-remix`, ...
+        # all start with "fedora" so a prefix match is enough.
+        if c.startswith("fedora") or c in ("rhel", "centos", "rocky", "almalinux", "nobara"):
+            return LINUX_DISTRO_FEDORA
+        # Debian / Ubuntu family. The Debian derivatives tend to keep
+        # their own ID (linuxmint, elementary, zorin, pop) but list
+        # "ubuntu" / "debian" in ID_LIKE so we cover both axes.
+        if (c.startswith("debian") or c.startswith("ubuntu")
+                or c in ("linuxmint", "elementary", "zorin", "pop", "neon", "kubuntu")):
+            return LINUX_DISTRO_DEBIAN
+        # Arch family.
+        if c.startswith("arch") or c in ("manjaro", "endeavouros", "garuda", "artix"):
+            return LINUX_DISTRO_ARCH
+    return "unknown"
+
+
+def _is_pkg_installed(distro: str, pkg: str) -> bool:
+    """Return True if `pkg` is currently installed on this system.
+
+    Each distro has a different "is X installed?" query:
+
+      fedora:  `rpm -q X`            -- exit 0 iff installed
+      debian:  `dpkg-query -W ...`   -- stdout contains "install ok installed"
+      arch:    `pacman -Q X`         -- exit 0 iff installed
+
+    We treat a query error (OSError, command missing) as "not installed"
+    rather than raising, so a broken toolchain still produces a useful
+    "please install X" message instead of a traceback.
+    """
+    try:
+        if distro == LINUX_DISTRO_FEDORA:
+            out = subprocess.run(
+                ["rpm", "-q", pkg],
+                capture_output=True, text=True, check=False,
+            )
+            return out.returncode == 0
+        if distro == LINUX_DISTRO_DEBIAN:
+            # dpkg-query with -W prints "<pkg>\t<status>"; the standard
+            # format string we ask for is just the status field.
+            out = subprocess.run(
+                ["dpkg-query", "-W", "-f=${Status}", pkg],
+                capture_output=True, text=True, check=False,
+            )
+            return out.returncode == 0 and "install ok installed" in out.stdout
+        if distro == LINUX_DISTRO_ARCH:
+            out = subprocess.run(
+                ["pacman", "-Q", pkg],
+                capture_output=True, text=True, check=False,
+            )
+            return out.returncode == 0
+    except OSError:
+        pass
+    return False
+
+
+def missing_system_packages(distro: str, packages) -> List[str]:
+    """Return the subset of `packages` that are not currently installed.
+
+    `packages` is an iterable; result preserves the input order so the
+    user sees them in the same sequence the table above defines them.
+    """
+    return [p for p in packages if not _is_pkg_installed(distro, p)]
+
+
+def install_system_packages(distro: str, packages: List[str]) -> None:
+    """Install the given packages via the distro's package manager.
+
+    Streams the package manager's own output to the terminal so the
+    user sees dnf / apt / pacman progress directly (subprocess.run with
+    stdout/stderr inherited -- no capture_output). Requires sudo; on
+    Debian we run `apt-get update` first so the package index is fresh.
+
+    Raises subprocess.CalledProcessError on failure, which the caller
+    is expected to translate into a script abort.
+    """
+    if distro == LINUX_DISTRO_DEBIAN:
+        # apt-get install on a stale index hits "Unable to locate
+        # package" on brand-new distros that have not been updated
+        # since install. `update` is harmless if the index is fresh.
+        info("$ sudo apt-get update")
+        subprocess.run(["sudo", "apt-get", "update"], check=True)
+        info(f"$ sudo apt-get install -y {' '.join(packages)}")
+        subprocess.run(
+            ["sudo", "apt-get", "install", "-y", *packages],
+            check=True,
+        )
+        return
+
+    if distro == LINUX_DISTRO_FEDORA:
+        cmd = ["sudo", "dnf", "install", "-y", *packages]
+    elif distro == LINUX_DISTRO_ARCH:
+        # --needed skips packages already present (without it pacman
+        # errors out on an "already up to date" target); --noconfirm
+        # mirrors the non-interactive mode dnf/apt use by default.
+        cmd = ["sudo", "pacman", "-S", "--needed", "--noconfirm", *packages]
+    else:
+        err(f"install_system_packages: unknown distro '{distro}'")
+        sys.exit(2)
+
+    info(f"$ {' '.join(cmd)}")
+    subprocess.run(cmd, check=True)

@@ -51,6 +51,11 @@ from _common import (  # noqa: E402  -- intentional import after sys.path tweak
     require_tool,
     detect_platform, detect_generator, detect_parallel_jobs,
     _run_cmake, clean_platform,
+    # Linux system package management -- see _common.py for the
+    # rationale and the per-distro package tables.
+    detect_linux_distro, LINUX_DISTRO_DISPLAY_NAME,
+    LINUX_X11_PACKAGES, LINUX_VULKAN_PACKAGES,
+    missing_system_packages, install_system_packages,
 )
 
 
@@ -91,6 +96,111 @@ def check_dependencies(platform: str, config: str) -> Tuple[bool, Path]:
         warn("build_dependencies.py may have been interrupted -- re-run it.")
         return False, deps_dir
     return True, deps_dir
+
+
+# --------------------------------------------------------------------------- #
+# System package pre-flight (Linux only)                                       #
+# --------------------------------------------------------------------------- #
+
+def system_package_preflight(
+    platform: str,
+    *,
+    vulkan: bool,
+    install_deps: bool,
+) -> int:
+    """Verify that the Linux system packages GDTK needs are installed.
+
+    On Linux we have a small set of *system* (i.e. not vendored)
+    dependencies that the build cannot satisfy on its own:
+
+      * SDL2's X11 dev packages -- always required, because
+        Dependency/CMakeLists.txt pins SDL_X11=ON, SDL_WAYLAND=OFF.
+      * Vulkan loader / shaderc / VMA dev packages -- only required
+        when `--vulkan` is passed.
+
+    Behaviour:
+      * Unknown distro, non-Linux, or no missing packages -> return 0.
+      * Missing packages, `--install-deps` set -> invoke sudo to install
+        them, re-probe, and return 0 (or raise on install failure).
+      * Missing packages, `--install-deps` NOT set -> print a clear
+        per-distro install command and return 2 so the caller aborts
+        before launching the dependency build (which would also fail,
+        less helpfully, inside SDL2's CheckX11()).
+
+    This gate runs before `--no-deps-check` is honoured on purpose:
+    `--no-deps-check` is about the *vendored* dep tree, not about
+    system packages, and silently ignoring a missing libX11-devel
+    would produce a working-looking build that only has the dummy
+    video driver.
+    """
+    if platform != "Linux":
+        return 0
+
+    distro = detect_linux_distro()
+    if distro == "unknown":
+        warn("Could not identify your Linux distro from /etc/os-release.")
+        warn("Install the SDL2 X11 dev headers (and Vulkan dev headers if you")
+        warn("pass --vulkan) manually -- see README.md for the package list.")
+        # Don't hard-fail: the FATAL_ERROR inside Dependency/CMakeLists
+        # will catch missing X11 dev packages anyway, and a user on a
+        # distro we don't recognise is better served by that specific
+        # message than by a generic "distro unknown" abort here.
+        return 0
+
+    # Compose the required package list: X11 always, Vulkan if asked.
+    required = list(LINUX_X11_PACKAGES[distro])
+    section_name = "X11 dev packages"
+    if vulkan:
+        required.extend(LINUX_VULKAN_PACKAGES[distro])
+        section_name = "X11 + Vulkan dev packages"
+
+    section(f"Checking {section_name} on {LINUX_DISTRO_DISPLAY_NAME[distro]}")
+    info(f"Required: {', '.join(required)}")
+    missing = missing_system_packages(distro, required)
+
+    if not missing:
+        ok("All required system packages are present.")
+        return 0
+
+    # Print exactly what's missing so the user can act on it whether
+    # they end up using --install-deps or not.
+    err(f"Missing system packages: {', '.join(missing)}")
+
+    if not install_deps:
+        # No opt-in -> safe path: print the install command for the
+        # user's specific distro and abort. We DO NOT auto-sudo on a
+        # plain `build_gdtk.py` invocation because that would mean
+        # every fresh checkout reaches for root privileges without an
+        # explicit user action.
+        install_cmd = {
+            "fedora": "sudo dnf install -y " + " ".join(missing),
+            "debian": "sudo apt-get update && sudo apt-get install -y " + " ".join(missing),
+            "arch":   "sudo pacman -S --needed --noconfirm " + " ".join(missing),
+        }[distro]
+        err("Re-run with --install-deps to install them automatically,")
+        err(f"or run this yourself:\n  {install_cmd}")
+        return 2
+
+    # Auto-install path. Stream sudo's prompt + the package manager's
+    # own output straight to the terminal so the user sees what is
+    # about to be added to their system.
+    info("Auto-installing missing system packages (--install-deps was set)...")
+    try:
+        install_system_packages(distro, missing)
+    except subprocess.CalledProcessError as e:
+        err(f"Package install failed with exit code {e.returncode}.")
+        err("Re-run after fixing the package manager output above.")
+        return 2
+
+    # Re-probe -- a partial install (one package failed mid-way) should
+    # still surface clearly, not be hidden by an optimistic "all good".
+    still_missing = missing_system_packages(distro, required)
+    if still_missing:
+        err(f"Still missing after install: {', '.join(still_missing)}")
+        return 2
+
+    ok("All required system packages are now installed.")
+    return 0
 
 
 # --------------------------------------------------------------------------- #
@@ -216,6 +326,16 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--install-deps", action="store_true",
+        help=(
+            "On Linux, auto-install the system dev packages GDTK needs "
+            "(SDL2 X11 + -- when --vulkan is set -- Vulkan loader/shaderc/"
+            "VMA) via the distro's package manager + sudo, if any are "
+            "missing. By default the script just lists what's missing "
+            "and aborts without touching the system."
+        ),
+    )
+    parser.add_argument(
         "--clean", action="store_true",
         help="Wipe Intermediate/<Platform>/ before configuring.",
     )
@@ -250,6 +370,20 @@ def main() -> int:
         print(f"  Targets:     (all)")
 
     require_tool("cmake")
+
+    # Linux system package pre-flight. Runs BEFORE the vendored-dep
+    # gate because if libX11-devel is missing, the SDL2 configure
+    # inside build_dependencies.py is the one that will trip on it,
+    # and we'd rather give the user a clear per-distro install command
+    # up front than a cryptic "no usable SDL2 video driver" FATAL_ERROR
+    # buried inside the dep build's cmake output.
+    preflight_rc = system_package_preflight(
+        platform,
+        vulkan=args.vulkan,
+        install_deps=args.install_deps,
+    )
+    if preflight_rc != 0:
+        return preflight_rc
 
     if not args.no_deps_check:
         section("Checking dependencies")
@@ -310,6 +444,8 @@ def main() -> int:
         print(f"  Vulkan:      ON (TK_VULKAN)")
     else:
         print(f"  Vulkan:      OFF")
+    if args.install_deps:
+        print(f"  Install-deps: ON (Linux system packages will be auto-installed via sudo if missing)")
 
     section(f"Building {platform} engine + tools")
     try:

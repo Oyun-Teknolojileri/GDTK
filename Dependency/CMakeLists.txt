@@ -115,13 +115,15 @@ set(CMAKE_DEBUG_POSTFIX d)
 # loaded libSDL2-2.0d.so.0 and ran "fine" but only because the dummy video
 # driver was being selected, leaving the window invisible.
 if(UNIX AND NOT APPLE)
-    # Wayland is the primary Linux backend on modern Fedora/Ubuntu/etc.
-    # X11 is intentionally left off: it pulls in libXext / libXrandr /
-    # libXcursor / libXi / libXinerama dev packages, all of which are
-    # unrelated to our use case (we run on a native Wayland session).
+    # X11 is the primary Linux backend. We want the same windowing
+    # behavior on Linux that we already have on Windows, and Wayland's
+    # input / focus / coordinate semantics differ enough from Win32 that
+    # the editor behaves inconsistently between the two. Wayland is
+    # intentionally left off so SDL_CreateWindow() goes straight to X11
+    # instead of preferring Wayland when both are available.
     # KMSDRM is for embedded/headless; leave it off too.
-    set(SDL_WAYLAND  ON CACHE BOOL "" FORCE)
-    set(SDL_X11      OFF CACHE BOOL "" FORCE)
+    set(SDL_WAYLAND  OFF CACHE BOOL "" FORCE)
+    set(SDL_X11      ON  CACHE BOOL "" FORCE)
     set(SDL_KMSDRM   OFF CACHE BOOL "" FORCE)
     set(SDL_OPENGL   ON CACHE BOOL "" FORCE)
     set(SDL_OPENGLES ON CACHE BOOL "" FORCE)
@@ -188,8 +190,8 @@ if(UNIX AND NOT APPLE)
         find_package(PkgConfig REQUIRED)
         set(_SDL_MISSING "")
         foreach(_m IN ITEMS
-                wayland-client wayland-egl wayland-cursor egl xkbcommon
-                x11 xext xrandr xcursor xi xinerama
+                x11 xext xrandr xcursor xi xinerama xkbcommon
+                wayland-client wayland-egl wayland-cursor egl
                 libdrm gbm)
             execute_process(
                 COMMAND pkg-config --exists ${_m}
@@ -212,9 +214,9 @@ if(UNIX AND NOT APPLE)
             "${_SDL_MISSING}\n"
             "\n"
             "Install the corresponding *-devel / -dev packages (e.g.\n"
-            "  dnf install wayland-devel libxkbcommon-devel mesa-libEGL-devel\n"
+            "  dnf install libX11-devel libXext-devel libXrandr-devel libXcursor-devel libXi-devel libXinerama-devel libxkbcommon-devel\n"
             "on Fedora, or\n"
-            "  apt install libwayland-dev libxkbcommon-dev libegl-dev\n"
+            "  apt install libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxinerama-dev libxkbcommon-dev\n"
             "on Debian/Ubuntu) and re-run the dependency build.\n"
             "\n"
             "If you actually want a headless / CI build, pass\n"
