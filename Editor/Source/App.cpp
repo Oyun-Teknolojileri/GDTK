@@ -904,8 +904,17 @@ namespace ToolKit
 
       bool importFileExist          = CheckFile(fullPath);
 
-      // Set the execute path.
+      // Resolve Import binary's absolute path BEFORE chdir. The chdir
+      // below changes CWD so that Import can drop "out.txt" alongside
+      // itself, but it also used to be relied on by posix_spawn's
+      // CWD-relative lookup for the bare "Import" argv[0]. We don't
+      // want that implicit CWD coupling any more -- pass an explicit
+      // absolute path so posix_spawnp never has to guess.
       std::filesystem::path pathBck = std::filesystem::current_path();
+      String importExePath         = PathToString(std::filesystem::absolute(PathToString(pathBck) +
+                                                                       ConcatPaths({"", "..", "Utils", "Import", "Import"})));
+
+      // Set the execute path.
       std::filesystem::path path    = PathToString(pathBck) + ConcatPaths({"", "..", "Utils", "Import"});
       std::filesystem::current_path(path);
 
@@ -931,7 +940,7 @@ namespace ToolKit
             finalPath = "importList.txt";
           }
 
-          StringArray importArgv = {String("Import"), finalPath};
+          StringArray importArgv = {importExePath, finalPath};
           if (!subDir.empty())
           {
             importArgv.push_back(String("-t"));

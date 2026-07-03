@@ -11,6 +11,7 @@
 #include "EditorViewport2d.h"
 #include "PublishManager.h"
 
+#include <Util.h>
 #include <UIManager.h>
 
 namespace ToolKit
@@ -230,6 +231,7 @@ namespace ToolKit
         if (GetApp()->IsWorkspaceSane(true, true))
         {
           String codePath = ConcatPaths({GetApp()->m_workspace->GetCodeDirectory(), "..", "."});
+          NormalizePathInplace(codePath);
           if (CheckFile(codePath))
           {
             StringArray codeArgv = {String("code"), codePath};

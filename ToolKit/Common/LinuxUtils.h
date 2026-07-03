@@ -155,14 +155,16 @@ namespace ToolKit
 
       if (!async)
       {
-        // Synchronous path: posix_spawn + waitpid, no shell.
+        // Synchronous path: posix_spawnp + waitpid, no shell.
+        // posix_spawnp performs $PATH lookup (terminal behaviour),
+        // so bare binary names like "code" resolve correctly.
         pid_t pid = -1;
-        int rc    = posix_spawn(&pid,
-                                argvArr[0],
-                                nullptr, // file_actions
-                                nullptr, // attrp
-                                argvArr,
-                                environ);
+        int rc    = posix_spawnp(&pid,
+                                 argvArr[0],
+                                 nullptr, // file_actions
+                                 nullptr, // attrp
+                                 argvArr,
+                                 environ);
         if (rc != 0)
         {
           TK_ERR("posix_spawn failed (%d): %s", rc, std::strerror(rc));
@@ -188,10 +190,11 @@ namespace ToolKit
         return code;
       }
 
-      // Async path: posix_spawn, parent returns 0 immediately. Arm
+      // Async path: posix_spawnp, parent returns 0 immediately. Arm
       // a detached watcher thread that reaps and fires the callback.
+      // posix_spawnp performs $PATH lookup so names like "code" work.
       pid_t pid = -1;
-      int rc    = posix_spawn(&pid, argvArr[0], nullptr, nullptr, argvArr, environ);
+      int rc    = posix_spawnp(&pid, argvArr[0], nullptr, nullptr, argvArr, environ);
       FreeNullTerminatedArgv(argvArr, argcCount);
 
       if (rc != 0)
