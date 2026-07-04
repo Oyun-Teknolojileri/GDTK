@@ -1025,15 +1025,22 @@ namespace ToolKit
                 line = line.substr(selfDir.size(), -1);
               }
 
-              // Importer drops everything under a "Temp/" intermediate
-              // folder (see Import/import.cpp). Strip that prefix so the
-              // resource lands directly under Resources/<Type>/... instead
-              // of Resources/<Type>/Temp/<Type>/....
+              // Importer drops everything under a "Temp/<type-layer>/..."
+              // intermediate folder (see Import/import.cpp): each resource is
+              // nested in its type folder (Textures/, Materials/, Meshes/,
+              // Prefabs/). Strip Temp/ AND that layer so the resource lands
+              // under Resources/<Type>/<target>/... and TexturePath/MeshPath/
+              // MaterialPath don't double-nest the type folder.
               const String tempPrefix = String("Temp") + GetPathSeparator();
               const String sourceFile = line;
               if (line.rfind(tempPrefix) == 0)
               {
                 line = line.substr(tempPrefix.size(), -1);
+                const size_t sep = line.find(GetPathSeparator());
+                if (sep != String::npos)
+                {
+                  line = line.substr(sep + 1, -1);
+                }
               }
 
               String fullPath;

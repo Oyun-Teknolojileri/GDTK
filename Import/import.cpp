@@ -522,11 +522,11 @@ namespace ToolKit
     }
   }
 
-  void ImportMaterial(const string& filePath, const string& origin)
+  void ImportMaterial(const string& matDir, const string& texDir, const string& origin)
   {
     fs::path pathOrg              = fs::path(origin).parent_path();
 
-    auto textureFindAndCreateFunc = [filePath, pathOrg](aiTextureType textureAssimpType,
+    auto textureFindAndCreateFunc = [texDir, pathOrg](aiTextureType textureAssimpType,
                                                         aiMaterial* material) -> TexturePtr
     {
       int texCount = material->GetTextureCount(textureAssimpType);
@@ -552,7 +552,7 @@ namespace ToolKit
 
         string fileName = tName;
         TrunckToFileName(fileName);
-        string textPath = NormalizePath(PathToString(fs::path(filePath + fileName).lexically_normal()));
+        string textPath = NormalizePath(PathToString(fs::path(texDir + fileName).lexically_normal()));
 
         if (!embedded && !CheckSystemFile(textPath))
         {
@@ -591,7 +591,7 @@ namespace ToolKit
     {
       aiMaterial* material  = g_scene->mMaterials[i];
       string name           = GetMaterialName(material, i);
-      string writePath      = filePath + name + MATERIAL;
+      string writePath      = matDir + name + MATERIAL;
       MaterialPtr tMaterial = MakeNewPtr<Material>();
 
       // Diffuse / Base Color texture
@@ -1473,11 +1473,29 @@ namespace ToolKit
         }
       }
 
-      dest = ConcatPaths({"Temp", dest});
-      dest = NormalizePath(PathToString(fs::path(dest).lexically_normal()));
-      if (!dest.empty())
+      // Resources are written under Temp/<type-layer>/<target>/... mirroring
+      // the editor's resource tree (Textures/, Materials/, Meshes/, Prefabs/).
+      // GetRelativeResourcePath() -- with m_resourceRoot "Temp" -- then strips
+      // Temp + the type layer and leaves "<target>/file" in every serialized
+      // cross-reference, exactly what TexturePath/MeshPath/MaterialPath resolve
+      // in the editor's Resources tree. Writing flat (Temp/<target>/) instead
+      // would make that layer-strip eat the user's target subdirectory.
+      string subDest = dest;
+      auto makeDest  = [&](const string& layer) -> string
       {
-        fs::create_directories(dest);
+        string d = ConcatPaths({"Temp", layer, subDest});
+        return NormalizePath(PathToString(fs::path(d).lexically_normal()));
+      };
+      string texDest    = makeDest("Textures");
+      string matDest    = makeDest("Materials");
+      string meshDest   = makeDest("Meshes");
+      string prefabDest = makeDest("Prefabs");
+      for (const string& d : {texDest, matDest, meshDest, prefabDest})
+      {
+        if (!d.empty())
+        {
+          fs::create_directories(d);
+        }
       }
 
       string ext = file.substr(file.find_last_of("."));
@@ -1534,12 +1552,10 @@ namespace ToolKit
 
       g_proxy->Init();
 
-      // The importer writes resources under an intermediate "Temp/" folder.
-      // Set this as the resource root so GetRelativeResourcePath() strips
-      // "Temp/" + the resource-type layer (Materials/, Textures/, ...) when
-      // serializing cross-references inside .material / .mesh / .scene files.
-      // Result: internal refs are clean filenames (e.g. "texture.png") which
-      // the editor can resolve via TexturePath() in its own Resources tree.
+      // Resources live under Temp/<type-layer>/<target>/... (see makeDest
+      // above). Set "Temp" as the resource root so GetRelativeResourcePath()
+      // strips Temp + the type layer from every cross-reference it serializes
+      // inside .material / .mesh / .scene files, leaving "<target>/file".
       g_proxy->m_resourceRoot = "Temp";
 
       for (int i = 0; i < (int) (files.size()); i++)
@@ -1565,23 +1581,24 @@ namespace ToolKit
 
         String fileName;
         DecomposePath(file, nullptr, &fileName, &g_currentExt);
-        string destFile = dest + fileName;
+        string meshDestFile   = meshDest + fileName;
+        string prefabDestFile = prefabDest + fileName;
         // DON'T BREAK THE CALLING ORDER!
 
         // Create Textures to reference in Materials
-        ImportTextures(dest);
+        ImportTextures(texDest);
 
         // Create Materials to reference in Meshes
-        ImportMaterial(dest, file);
+        ImportMaterial(matDest, texDest, file);
 
         // Create a Skeleton to reference in Meshes
-        ImportSkeleton(destFile);
+        ImportSkeleton(meshDestFile);
 
         // Import animations after skeleton so g_skeletonMap is available.
-        ImportAnimation(dest);
+        ImportAnimation(meshDest);
 
         // Add Meshes.
-        ImportMeshes(destFile);
+        ImportMeshes(meshDestFile);
 
         // Add lights.
         ImportLights();
@@ -1590,7 +1607,7 @@ namespace ToolKit
         ImportCameras();
 
         // Create Meshes & Scene
-        ImportScene(destFile);
+        ImportScene(prefabDestFile);
       }
 
       // Report all in use files.
