@@ -669,8 +669,19 @@ namespace ToolKit
       return -1;
     }
 
-    // Compile game plugin.
+    // Compile game / editor plugin.
+    // -A x64 is a Visual Studio generator flag; skip it on other platforms.
+    // Always tell the project where the engine is (Packer already resolved it
+    // from Path.txt), so the project CMake does not need TOOLKIT_DIR in its env.
+#ifdef _WIN32
     String cmd     = "cmake -S . -B ./Intermediate/Plugin -A x64";
+#else
+    String cmd     = "cmake -S . -B ./Intermediate/Plugin";
+#endif
+    if (!m_toolkitPath.empty())
+    {
+      cmd += " -DTOOLKIT_DIR=\"" + m_toolkitPath + "\"";
+    }
     int compileRes = std::system(cmd.c_str());
     if (compileRes != 0)
     {
@@ -828,9 +839,17 @@ namespace ToolKit
     // Set resource root to project's Resources folder
     g_proxy->m_resourceRoot   = ConcatPaths({workspacePath, activeProjectName, "Resources"});
 
-    String toolkitAppdata     = ConcatPaths({getenv("APPDATA"), "ToolKit", "Config", "Path.txt"});
-    String toolkitPath        = GetFileManager()->ReadAllText(toolkitAppdata);
-    NormalizePathInplace(toolkitPath);
+    // Resolve the engine root via the per-user config directory (cross-platform).
+    // The editor writes the engine's parent directory to Path.txt on startup
+    // (Editor/Source/main.cpp), mirroring the logic game-project CMake uses.
+    String configDir          = PlatformHelpers::GetUserConfigDir();
+    String toolkitPath;
+    if (!configDir.empty())
+    {
+      String pathFile         = ConcatPaths({configDir, "ToolKit", "Config", "Path.txt"});
+      toolkitPath             = GetFileManager()->ReadAllText(pathFile);
+      NormalizePathInplace(toolkitPath);
+    }
     packer.m_toolkitPath            = toolkitPath;
     packer.m_templateGameFolderPath = ConcatPaths({toolkitPath, "Templates", "Game"});
     g_proxy->SetConfigPath(ConcatPaths({toolkitPath, "Config"}));
