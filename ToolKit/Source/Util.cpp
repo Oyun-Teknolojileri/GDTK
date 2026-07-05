@@ -609,11 +609,14 @@ namespace ToolKit
 
   String GetPluginExtention()
   {
+    // TK_PLUGIN_EXT / TK_PLUGIN_DEBUG_EXT are platform-specific (see
+    // Platform.h). The debug variant matches the "d" postfix the build
+    // system appends to plugin binaries in Debug builds.
     if constexpr (TKDebug)
     {
-      return "d.dll";
+      return TK_PLUGIN_DEBUG_EXT;
     }
-    return ".dll";
+    return TK_PLUGIN_EXT;
   }
 
   // split a string into multiple sub strings, based on a separator string

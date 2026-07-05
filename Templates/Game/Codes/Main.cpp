@@ -16,6 +16,9 @@
 #ifdef TK_ANDROID
   #include "Platform/android_main.h"
 #endif
+#ifdef TK_LINUX
+  #include "Platform/linux_main.h"
+#endif
 
 #include "Common/SDLEventPool.h"
 #include "EngineSettings.h"
@@ -25,7 +28,6 @@
 #include "Plugin.h"
 #include "SDL.h"
 #include "Scene.h"
-#include "SplashScreenRenderPath.h"
 #include "ToolKit.h"
 #include "Types.h"
 #include "UIManager.h"
@@ -171,65 +173,36 @@ namespace ToolKit
         ProcessEvent(sdlEvent);
       }
 
-      // Initiate splash screen drawing.
-      static bool showSplashScreen                    = true;
-      static float elapsedTime                        = 0.0f;
-      static SplashScreenRenderPathPtr splashRenderer = nullptr;
-
-      if (showSplashScreen)
+      // One-time app initialization (viewport + game) on the first frame.
+      static bool initialized = false;
+      if (!initialized)
       {
-        // Draw splash screen.
         uint width  = g_engineSettings->m_window->GetWidthVal();
         uint height = g_engineSettings->m_window->GetHeightVal();
 
-        if (splashRenderer == nullptr)
-        {
-          splashRenderer = MakeNewPtr<SplashScreenRenderPath>();
-          splashRenderer->Init(UVec2(width, height));
-        }
+        // Init viewport and window size.
+        g_viewport = MakeNewPtr<GameViewport>((float) width, (float) height);
+        GetUIManager()->RegisterViewport(g_viewport);
+        GetRenderSystem()->SetAppWindowSize(width, height);
 
-        RenderSystem* rsys = GetRenderSystem();
+        // Update window.
+        SDL_SetWindowSize(g_window, width, height);
+        SDL_SetWindowBordered(g_window, SDL_TRUE);
+        SDL_SetWindowResizable(g_window, SDL_TRUE);
 
-        if (elapsedTime < 1000.0f)
-        {
-          elapsedTime += deltaTime;
-          rsys->AddRenderTask({[](Renderer* renderer) -> void { splashRenderer->Render(renderer); }});
-        }
-        else
-        {
-          // At the end of splash drawing, initiate the app.
-          rsys->AddRenderTask({[](Renderer* renderer) -> void
-                               {
-                                 renderer->SetFramebuffer(nullptr, GraphicBitFields::AllBits);
-                                 g_proxy->m_renderSys->Present();
-                               }});
-          rsys->FlushRenderTasks();
+        // Init game.
+        g_game = new Game();
+        g_game->SetViewport(g_viewport);
+        g_game->Init(g_proxy);
+        g_game->m_currentState = PluginState::Running;
+        g_gameRenderer         = new GameRenderer();
+        g_game->OnPlay();
 
-          showSplashScreen = false;
-          splashRenderer   = nullptr;
-
-          // Init viewport and window size
-          g_viewport       = MakeNewPtr<GameViewport>((float) width, (float) height);
-          GetUIManager()->RegisterViewport(g_viewport);
-          GetRenderSystem()->SetAppWindowSize(width, height);
-
-          // Update widnow
-          SDL_SetWindowSize(g_window, width, height);
-          SDL_SetWindowBordered(g_window, SDL_TRUE);
-          SDL_SetWindowResizable(g_window, SDL_TRUE);
-
-          // Init game
-          g_game = new Game();
-          g_game->SetViewport(g_viewport);
-          g_game->Init(g_proxy);
-          g_game->m_currentState = PluginState::Running;
-          g_gameRenderer         = new GameRenderer();
-          g_game->OnPlay();
-        }
+        initialized = true;
       }
       else
       {
-        // After splash shown, execute and display the app frames.
+        // Execute and display the app frames.
         g_viewport->Update(deltaTime);
         g_game->Frame(deltaTime);
 

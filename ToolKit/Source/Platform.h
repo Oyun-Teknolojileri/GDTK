@@ -18,7 +18,7 @@ namespace ToolKit
     TKWindows,
     TKWeb,
     TKAndroid,
-    TKLlinux
+    TKLinux
   };
 
 #ifdef TK_DEBUG
@@ -43,7 +43,7 @@ namespace ToolKit
   #define TK_PLATFORM PLATFORM::TKWeb
   #define TK_WEB
 #elif __linux__
-  #define TK_PLATFORM PLATFORM::TKLlinux
+  #define TK_PLATFORM PLATFORM::TKLinux
   #define TK_LINUX
 #endif
 
@@ -65,6 +65,20 @@ namespace ToolKit
   #define TK_PLUGIN_API __declspec(dllexport)
 #else // Other OS.
   #define TK_PLUGIN_API
+#endif
+
+// Native file extension for dynamically loaded plugins. PluginManager::Load
+// appends this to the binary path before dlopen()/LoadLibrary(), so it must
+// match the file name the build system actually produces (xyzd.so / xyz.dll).
+// The debug variant carries the same "d" postfix the build system appends in
+// Debug (CMAKE_DEBUG_POSTFIX on the game / OUTPUT_NAME "ToolKit$<...:d>" on
+// the engine), so a Debug editor finds the Debug plugin.
+#ifdef TK_WIN
+  #define TK_PLUGIN_EXT ".dll"
+  #define TK_PLUGIN_DEBUG_EXT "d.dll"
+#else
+  #define TK_PLUGIN_EXT ".so"
+  #define TK_PLUGIN_DEBUG_EXT "d.so"
 #endif
 
 } // namespace ToolKit
