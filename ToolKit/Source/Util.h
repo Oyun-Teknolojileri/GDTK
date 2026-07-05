@@ -97,9 +97,10 @@ namespace ToolKit
   /** Decomposes a given path into path, name, extention parts. */
   TK_API void DecomposePath(const String& fullPath, String* path, String* name, String* ext);
 
+  /** Unixify path. */
   TK_API String NormalizePath(String path);
 
-  /** Lexically normalize and unixify path in place. */
+  /**  Unixify path in place. */
   TK_API void NormalizePathInplace(String& path);
 
   /** Unixify path by converting back slashes to forward. */

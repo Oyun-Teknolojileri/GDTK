@@ -256,7 +256,7 @@ namespace ToolKit
   String ToAbsolutePath(const String& path)
   {
     String absolutePath = PathToString(std::filesystem::absolute(path));
-    NormalizePathInplace(absolutePath);
+    UnixifyPath(absolutePath);
     return absolutePath;
   }
 
@@ -314,8 +314,6 @@ namespace ToolKit
 
   void NormalizePathInplace(String& path)
   {
-    std::filesystem::path patify = path;
-    path                         = PathToString(patify.lexically_normal());
     UnixifyPath(path);
   }
 
