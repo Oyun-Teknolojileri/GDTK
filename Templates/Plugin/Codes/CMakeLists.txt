@@ -24,6 +24,9 @@ set(PLUGIN_BIN_DIR "${PLUGIN_CODE_DIR}/Bin")
 #        Windows: %APPDATA%/ToolKit/Config/Path.txt
 #        Linux:   $XDG_CONFIG_HOME/ToolKit/Config/Path.txt
 #                 (fallback: ~/.config/ToolKit/Config/Path.txt)
+#
+# Resolved here (not in the shared helper) because the helper itself lives under
+# ${TOOLKIT_DIR}/CMake/, so we need the path to find it.
 # --------------------------------------------------------------------------- #
 if(NOT DEFINED TOOLKIT_DIR)
     if(DEFINED ENV{TOOLKIT_DIR})
@@ -69,109 +72,12 @@ endif()
 # Create the project.
 project(${PLUGIN_PROJECT_NAME})
 
-# --------------------------------------------------------------------------- #
-# Platform + configuration.
-# --------------------------------------------------------------------------- #
-set(TK_WINDOWS "Windows")
-set(TK_LINUX "Linux")
-
-if(NOT DEFINED TK_PLATFORM)
-    if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
-        set(TK_PLATFORM "${TK_WINDOWS}")
-    elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
-        set(TK_PLATFORM "${TK_LINUX}")
-    else()
-        message(FATAL_ERROR
-            "Could not auto-detect TK_PLATFORM on host '${CMAKE_HOST_SYSTEM_NAME}'. "
-            "Set it explicitly to one of: ${TK_WINDOWS}, ${TK_LINUX}.")
-    endif()
-endif()
-
-# Pin the build configuration (dep wrappers select their artifact by a "d"
-# suffix when CMAKE_BUILD_TYPE == Debug, and TK_DEPS_DIR embeds it as a path).
-if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
-    set(CMAKE_BUILD_TYPE Debug CACHE STRING "" FORCE)
-endif()
-
-set(TK_BUILD_TYPE "$<CONFIG>")
-if(CMAKE_BUILD_TYPE)
-    set(TK_BUILD_TYPE "${CMAKE_BUILD_TYPE}")
-endif()
-
-# C++ standard and warnings (mirror the game project).
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-if(NOT MSVC)
-    add_compile_options(-w)
-endif()
+# Consume the pre-built GDTK engine (sets TK_PLATFORM / TK_DEPS_DIR, C++17,
+# warnings, and the IMPORTED target TK::ToolKit).
+include("${TOOLKIT_DIR}/CMake/ToolKitEngine.cmake")
 
 string(TOLOWER ${CMAKE_CXX_COMPILER_ID} TK_COMPILER)
 message("Compiling ${PLUGIN_PROJECT_NAME} with ${TK_COMPILER} for platform ${TK_PLATFORM} (${TK_BUILD_TYPE})")
-
-# --------------------------------------------------------------------------- #
-# Consume the pre-built GDTK engine as an IMPORTED target.
-# --------------------------------------------------------------------------- #
-set(TK_DEPS_DIR "${TOOLKIT_DIR}/Dependency/Intermediate/${TK_PLATFORM}/${CMAKE_BUILD_TYPE}")
-list(APPEND CMAKE_PREFIX_PATH "${TK_DEPS_DIR}")
-
-# Flat include path for the engine headers (subfolders use unqualified includes).
-file(GLOB_RECURSE _TK_HEADERS "${TOOLKIT_DIR}/ToolKit/*.h")
-set(_TK_ENGINE_INCLUDE_DIRS "${TOOLKIT_DIR}" "${TOOLKIT_DIR}/ToolKit")
-foreach(_h ${_TK_HEADERS})
-    get_filename_component(_d "${_h}" DIRECTORY)
-    list(APPEND _TK_ENGINE_INCLUDE_DIRS "${_d}")
-endforeach()
-list(REMOVE_DUPLICATES _TK_ENGINE_INCLUDE_DIRS)
-
-list(APPEND _TK_ENGINE_INCLUDE_DIRS
-    "${TOOLKIT_DIR}/Dependency"
-    "${TOOLKIT_DIR}/Dependency/glm"
-    "${TOOLKIT_DIR}/Dependency/glad"
-    "${TOOLKIT_DIR}/Dependency/RapidXml"
-    "${TOOLKIT_DIR}/Dependency/stb"
-    "${TOOLKIT_DIR}/Dependency/miniaudio"
-    "${TOOLKIT_DIR}/Dependency/poolSTL/include"
-    "${TOOLKIT_DIR}/Dependency/tkimgui"
-    "${TOOLKIT_DIR}/Dependency/tkimgui/imgui"
-    "${TOOLKIT_DIR}/Dependency/SDL2/include")
-
-if(WIN32)
-    set(_TK_ENGINE_LIB_DEBUG   "${TOOLKIT_DIR}/Bin/ToolKitd.dll")
-    set(_TK_ENGINE_LIB_RELEASE "${TOOLKIT_DIR}/Bin/ToolKit.dll")
-    set(_TK_ENGINE_IMPLIB_DEBUG   "${TOOLKIT_DIR}/Bin/ToolKitd.lib")
-    set(_TK_ENGINE_IMPLIB_RELEASE "${TOOLKIT_DIR}/Bin/ToolKit.lib")
-else()
-    set(_TK_ENGINE_LIB_DEBUG   "${TOOLKIT_DIR}/Bin/libToolKitd.so")
-    set(_TK_ENGINE_LIB_RELEASE "${TOOLKIT_DIR}/Bin/libToolKit.so")
-endif()
-
-if(NOT EXISTS "${_TK_ENGINE_LIB_DEBUG}" AND NOT EXISTS "${_TK_ENGINE_LIB_RELEASE}")
-    message(FATAL_ERROR
-        "ToolKit engine library not found under '${TOOLKIT_DIR}/Bin' "
-        "(looked for libToolKit[d].so / ToolKit[d].dll). Build the engine first.")
-endif()
-
-add_library(TK::ToolKit SHARED IMPORTED)
-set_target_properties(TK::ToolKit PROPERTIES
-    IMPORTED_CONFIGURATIONS "Debug;Release"
-    MAP_IMPORTED_CONFIG_RELWITHDEBINFO Debug
-    MAP_IMPORTED_CONFIG_MINSIZEREL Release
-    INTERFACE_INCLUDE_DIRECTORIES "${_TK_ENGINE_INCLUDE_DIRS}"
-    INTERFACE_COMPILE_DEFINITIONS "TK_GL_3_0;$<$<CONFIG:Debug>:TK_DEBUG>;TK_DLL_IMPORT"
-)
-if(WIN32)
-    set_target_properties(TK::ToolKit PROPERTIES
-        IMPORTED_LOCATION_DEBUG   "${_TK_ENGINE_LIB_DEBUG}"
-        IMPORTED_LOCATION_RELEASE "${_TK_ENGINE_LIB_RELEASE}"
-        IMPORTED_IMPLIB_DEBUG     "${_TK_ENGINE_IMPLIB_DEBUG}"
-        IMPORTED_IMPLIB_RELEASE   "${_TK_ENGINE_IMPLIB_RELEASE}"
-        INTERFACE_LINK_LIBRARIES  "OpenGL32")
-else()
-    set_target_properties(TK::ToolKit PROPERTIES
-        IMPORTED_LOCATION_DEBUG   "${_TK_ENGINE_LIB_DEBUG}"
-        IMPORTED_LOCATION_RELEASE "${_TK_ENGINE_LIB_RELEASE}"
-        INTERFACE_LINK_LIBRARIES  "pthread;dl")
-endif()
 
 # --------------------------------------------------------------------------- #
 # Plugin target.
