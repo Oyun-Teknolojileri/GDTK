@@ -1041,6 +1041,11 @@ namespace ToolKit
           choosePublishPlatformFn(PublishPlatform::Android, false);
         }
 
+        if (ImGui::BeginMenu("Linux"))
+        {
+          choosePublishPlatformFn(PublishPlatform::Linux);
+        }
+
         if (ImGui::BeginMenu("Windows"))
         {
           choosePublishPlatformFn(PublishPlatform::Windows);

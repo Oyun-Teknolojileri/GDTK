@@ -67,6 +67,10 @@ namespace ToolKit
       {
         TK_LOG("Publishing to Windows...");
       }
+      else if (platform == PublishPlatform::Linux)
+      {
+        TK_LOG("Publishing to Linux...");
+      }
       else
       {
         TK_LOG("Building Plugin...");

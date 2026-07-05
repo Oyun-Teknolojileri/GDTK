@@ -71,6 +71,7 @@ namespace ToolKit
    public:
     int Publish();
     int WindowsPublish();
+    int LinuxPublish();
     int WebPublish();
     int AndroidPublish();
     int PluginPublish();
@@ -177,6 +178,9 @@ namespace ToolKit
         break;
       case PublishPlatform::Windows:
         return WindowsPublish();
+        break;
+      case PublishPlatform::Linux:
+        return LinuxPublish();
         break;
       case PublishPlatform::Android:
         return AndroidPublish();
@@ -320,6 +324,150 @@ namespace ToolKit
 
     // Tell user about where the location of output files is
     TK_SUCCESS("Building for WINDOWS has been completed successfully.\n");
+    TK_LOG("Output files location: %s\n", std::filesystem::absolute(publishDirectory).string().c_str());
+
+    PlatformHelpers::OpenExplorer(publishDirectory);
+    return 0;
+  }
+
+  int Packer::LinuxPublish()
+  {
+    TK_LOG("Building for Linux\n");
+    m_workingDirectory            = std::filesystem::current_path();
+
+    // Run cmake for Linux build
+    String buildConfig;
+    if (m_publishConfig == PublishConfig::Debug)
+    {
+      buildConfig = "Debug";
+    }
+    else if (m_publishConfig == PublishConfig::Develop)
+    {
+      buildConfig = "RelWithDebInfo";
+    }
+    else
+    {
+      buildConfig = "Release";
+    }
+
+    Path newWorkDir = Path(ConcatPaths({ResourcePath(), ".."})).lexically_normal();
+    std::filesystem::current_path(newWorkDir, m_errorCode);
+    if (CheckErrorReturn("Setting current directory to " + newWorkDir.string()))
+    {
+      return -1;
+    }
+
+    String cmd = "cmake -S . -B ./Intermediate/Linux -DTK_PLATFORM=Linux";
+    if (!m_toolkitPath.empty())
+    {
+      cmd += " -DTOOLKIT_DIR=\"" + m_toolkitPath + "\"";
+    }
+    int compileRes = std::system(cmd.c_str());
+    if (compileRes != 0)
+    {
+      TK_ERR("Cmake configure failed: %s\n", cmd.c_str());
+      return -1;
+    }
+
+    cmd        = "cmake --build ./Intermediate/Linux --config " + buildConfig;
+    compileRes = std::system(cmd.c_str());
+    if (compileRes != 0)
+    {
+      TK_ERR("Cmake build failed: %s\n", cmd.c_str());
+      return -1;
+    }
+
+    std::filesystem::current_path(m_workingDirectory, m_errorCode);
+    if (CheckErrorReturn("Setting current directory to " + m_workingDirectory.string()))
+    {
+      return -1;
+    }
+
+    Path projectDir                = Path(ConcatPaths({ResourcePath(), ".."})).lexically_normal();
+    String projectDirStr           = projectDir.string();
+    projectDirStr                  = projectDirStr.substr(0, projectDirStr.size() - 1);
+
+    const String projectName       = activeProjectName;
+    const String publishDirectory  = ConcatPaths({projectDirStr, "Publish", "Linux"});
+    const String publishBinDir     = ConcatPaths({publishDirectory, "Bin"});
+    const String publishConfigDir  = ConcatPaths({publishDirectory, "Config"});
+
+    std::filesystem::create_directories(publishDirectory, m_errorCode);
+    if (CheckErrorReturn("Creating directory " + publishDirectory))
+    {
+      return -1;
+    }
+    std::filesystem::create_directories(publishBinDir, m_errorCode);
+    if (CheckErrorReturn("Creating directory " + publishBinDir))
+    {
+      return -1;
+    }
+    std::filesystem::create_directories(publishConfigDir, m_errorCode);
+    if (CheckErrorReturn("Creating directory " + publishConfigDir))
+    {
+      return -1;
+    }
+
+    // Copy build artifacts from the project's Codes/Bin and the engine's Bin.
+    String binDir                    = ConcatPaths({projectDirStr, "Codes", "Bin"});
+    String tkBin                     = ConcatPaths({m_toolkitPath, "Bin"});
+    String sdlSuffix                 = buildConfig == "Debug" ? "d" : "";
+    const String exeFile             = ConcatPaths({binDir, projectName});
+    const String pakFile             = ConcatPaths({projectDirStr, "MinResources.pak"});
+    const String engineLib           = ConcatPaths({tkBin, "libToolKit" + sdlSuffix + ".so"});
+    const String sdlLib              = ConcatPaths({m_toolkitPath, "Dependency", "Intermediate", "Linux", buildConfig, "libSDL2-2.0" + sdlSuffix + ".so"});
+    const String imguiLib            = ConcatPaths({m_toolkitPath, "Dependency", "Intermediate", "Linux", buildConfig, "libimgui" + sdlSuffix + ".so"});
+    const String engineSettingsPath  = ConcatPaths({projectDirStr, "Config", "Linux", "Engine.settings"});
+    const String destEngineSettings  = ConcatPaths({publishConfigDir, "Engine.settings"});
+
+    TK_LOG("Linux build done, moving files\n");
+
+    // Copy executable
+    std::filesystem::copy(exeFile, publishBinDir, std::filesystem::copy_options::overwrite_existing, m_errorCode);
+    if (CheckErrorReturn("Copy exe to " + publishBinDir))
+    {
+      return -1;
+    }
+
+    // Copy engine shared library next to the executable.
+    std::filesystem::copy(engineLib, publishBinDir, std::filesystem::copy_options::overwrite_existing, m_errorCode);
+    if (CheckErrorReturn("Copy libToolKit.so to " + publishBinDir))
+    {
+      return -1;
+    }
+
+    // Copy the vendored shared deps so the binary finds them without
+    // LD_LIBRARY_PATH (the exe's RUNPATH points to its own directory + the
+    // deps dir; placing the .so files next to the exe covers both).
+    std::filesystem::copy(sdlLib, publishBinDir, std::filesystem::copy_options::overwrite_existing, m_errorCode);
+    if (CheckErrorReturn("Copy SDL2.so to " + publishBinDir))
+    {
+      return -1;
+    }
+    std::filesystem::copy(imguiLib, publishBinDir, std::filesystem::copy_options::overwrite_existing, m_errorCode);
+    if (CheckErrorReturn("Copy imgui.so to " + publishBinDir))
+    {
+      return -1;
+    }
+
+    // Copy pak
+    std::filesystem::copy(pakFile, publishDirectory, std::filesystem::copy_options::overwrite_existing, m_errorCode);
+    if (CheckErrorReturn("Copy MinResources.pak to " + publishDirectory))
+    {
+      return -1;
+    }
+
+    // Copy engine settings
+    std::filesystem::copy(engineSettingsPath,
+                          destEngineSettings,
+                          std::filesystem::copy_options::overwrite_existing,
+                          m_errorCode);
+    if (CheckErrorReturn("Copy Engine.settings to " + engineSettingsPath))
+    {
+      return -1;
+    }
+
+    TK_SUCCESS("Building for LINUX has been completed successfully.\n");
     TK_LOG("Output files location: %s\n", std::filesystem::absolute(publishDirectory).string().c_str());
 
     PlatformHelpers::OpenExplorer(publishDirectory);
