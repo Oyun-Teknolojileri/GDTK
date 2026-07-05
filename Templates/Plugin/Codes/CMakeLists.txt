@@ -7,8 +7,8 @@ cmake_minimum_required(VERSION 3.16)
 # inside the editor process. Only the engine is linked; SDL2 / imgui / Editor
 # symbols are provided by the host editor at runtime.
 #
-# NOTE: the editor replaces the __projectname__ token below with the actual
-# plugin name when a plugin is created from this template.
+# NOTE: the project-name placeholder below is filled in by the editor when
+# a new plugin is created from this template.
 
 set(PLUGIN_PROJECT_NAME "__projectname__" CACHE STRING "What is the project name ?")
 
