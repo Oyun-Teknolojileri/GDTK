@@ -230,6 +230,17 @@ def detect_generator(
             return _vs_generator_name(), True, cl_path, ninja_path
         warn("--generator msvc is a no-op on non-Windows platforms; using default.")
     elif prefer == "ninja":
+        if platform == "Windows":
+            # MSVC 18+ (VS 2026+) ships an STL built against Clang 20+
+            # intrinsics (__builtin_verbose_trap, ...). Ninja invokes
+            # cl.exe in classic MSVC mode which lacks those builtins,
+            # producing 20+ STL errors. The MSBuild pipeline (Visual
+            # Studio generator) routes through Clang's frontend and
+            # works correctly. Force the VS generator instead.
+            warn("--generator ninja on Windows with VS 2026+ is not supported.")
+            warn("The MSVC STL requires the MSBuild pipeline (Clang frontend).")
+            warn("Falling back to the Visual Studio generator.")
+            return _vs_generator_name(), True, cl_path, ninja_path
         if ninja_path:
             return "Ninja", False, cl_path, ninja_path
         err("--generator ninja requested but `ninja` is not on PATH.")

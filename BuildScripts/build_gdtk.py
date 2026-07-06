@@ -246,19 +246,20 @@ def build_project(
         section(f"{platform} / {config} (configure)")
         try:
             configure_args = [
-                "cmake", "-S", str(ROOT_DIR), "-B", str(int_dir),
+                "cmake", "-Wno-deprecated", "-S", str(ROOT_DIR), "-B", str(int_dir),
                 "-G", generator,
-                *([f"-DCMAKE_MAKE_PROGRAM={ninja_path}"] if ninja_path else []),
+                *([f"-DCMAKE_MAKE_PROGRAM={ninja_path}"] if ninja_path and generator == "Ninja" else []),
             ]
             if is_multiconfig:
                 # Multi-config (VS): --config selects the active
                 # configuration at build time. -A x64 picks the
                 # 64-bit toolchain on Windows.
                 configure_args += ["-A", "x64"]
-            else:
-                # Single-config (Ninja / Unix Makefiles): pick the
-                # build type up front.
-                configure_args += [f"-DCMAKE_BUILD_TYPE={config}"]
+            # Always set CMAKE_BUILD_TYPE so the CMakeLists dependency
+            # lookup (TK_DEPS_DIR) and the per-dep config wrappers can
+            # locate per-config artifacts even when the generator itself
+            # is multi-config (Visual Studio leaves it empty otherwise).
+            configure_args += [f"-DCMAKE_BUILD_TYPE={config}"]
             configure_args += [
                 *compiler_args,
                 f"-DTK_VULKAN={'ON' if vulkan else 'OFF'}",
@@ -414,6 +415,7 @@ def main() -> int:
                         "--platform", platform,
                         "--configs", *missing_configs,
                         "--parallel", str(args.parallel),
+                        "--generator", args.generator,
                     ],
                     check=True,
                 )

@@ -147,9 +147,9 @@ def build_windows(
         build_dir = DEP_INT / "Windows"
         build_dir.mkdir(parents=True, exist_ok=True)
         configure_args = [
-            "cmake", "-S", str(DEP_SRC), "-B", str(build_dir),
+            "cmake", "-Wno-deprecated", "-S", str(DEP_SRC), "-B", str(build_dir),
             "-G", generator, "-A", "x64",
-            *([f"-DCMAKE_MAKE_PROGRAM={ninja_path}"] if ninja_path else []),
+            *([f"-DCMAKE_MAKE_PROGRAM={ninja_path}"] if ninja_path and generator == "Ninja" else []),
             "-DTK_WINDOWS=Windows",
             *msvc_compiler_args,
             *_common_cmake_args(
@@ -205,9 +205,9 @@ def build_windows(
             section(f"Windows / {config} (configure)")
             try:
                 _run_cmake([
-                    "cmake", "-S", str(DEP_SRC), "-B", str(build_dir),
+                    "cmake", "-Wno-deprecated", "-S", str(DEP_SRC), "-B", str(build_dir),
                     "-G", generator,
-                    *([f"-DCMAKE_MAKE_PROGRAM={ninja_path}"] if ninja_path else []),
+                    *([f"-DCMAKE_MAKE_PROGRAM={ninja_path}"] if ninja_path and generator == "Ninja" else []),
                     f"-DCMAKE_BUILD_TYPE={config}",
                     "-DTK_WINDOWS=Windows",
                     *msvc_compiler_args,
@@ -251,9 +251,9 @@ def build_linux_or_mac(
         section(f"{platform} / {config} (configure)")
         try:
             _run_cmake([
-                "cmake", "-S", str(DEP_SRC), "-B", str(build_dir),
+                "cmake", "-Wno-deprecated", "-S", str(DEP_SRC), "-B", str(build_dir),
                 "-G", generator,
-                *([f"-DCMAKE_MAKE_PROGRAM={ninja_path}"] if ninja_path else []),
+                *([f"-DCMAKE_MAKE_PROGRAM={ninja_path}"] if ninja_path and generator == "Ninja" else []),
                 f"-DCMAKE_BUILD_TYPE={config}",
                 *_common_cmake_args(
                     platform=platform,
