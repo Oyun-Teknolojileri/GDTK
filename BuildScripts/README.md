@@ -89,9 +89,18 @@ backend and zero Vulkan source files participate in the compile.
 | `_common.py` | Internal helpers shared by the two entry points: terminal colors, toolchain probing, the CMake invoker, the per-platform clean helper. **Not meant to be run directly.** |
 | `build_gdtk.py` | **Main entry point.** Configures + builds the root CMake project (ToolKit, Workspace, Editor, Launcher, Import, Packer). Auto-invokes `build_dependencies.py` if the dep tree is missing. |
 | `build_dependencies.py` | **Advanced / explicit.** Builds the vendored dep tree only, without touching the engine. Use this when you want to warm up the dep cache without configuring GDTK, or when you want to drive the two steps separately (e.g. in CI). |
+| `build_ui.py` | **GUI.** Single-window Tkinter front end that exposes every flag of both scripts above, shows a live command preview, and streams the build log with colour. Thin wrapper around `build_gdtk.py` / `build_dependencies.py` -- no build logic of its own. |
 
 For 99% of workflows, **only `build_gdtk.py` is needed** -- the dep tree is
 populated on demand.
+
+If you prefer a GUI, `build_ui.py` is a single-window Tkinter front end that
+exposes every flag of both scripts and shows a live command preview + build
+log. Stdlib only -- no extra install:
+
+```bash
+python3 BuildScripts/build_ui.py
+```
 
 ## Quick start
 
