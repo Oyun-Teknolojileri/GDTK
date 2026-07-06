@@ -1525,29 +1525,24 @@ namespace ToolKit
 
       g_proxy->SetDefaultPath(ConcatPaths({"..", "..", "Resources", "Engine"}));
       g_proxy->SetConfigPath(ConcatPaths({"..", "..", "..", "Config"}));
+
+      // Headless mode: use NullBackend (no GPU), dummy SDL video driver.
+      // Import only serializes resources — it never renders.
+      SDL_SetHint(SDL_HINT_VIDEODRIVER, "dummy");
+      RenderSystem::UseNullBackend();
+
       g_proxy->PreInit();
 
       GetLogger()->SetPlatformConsoleFn([](LogType type, const String& msg) -> void
                                         { ToolKit::PlatformHelpers::OutputLog((int) type, msg.c_str()); });
 
-      // Init SDL
-      SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER);
-      SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+      // Init SDL with dummy driver (no video / GPU required).
+      // Only events and gamecontroller are needed for the engine to boot.
+      SDL_Init(SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER);
 
-      SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-      SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
-
-      SDL_Window* g_window    = SDL_CreateWindow("temp",
-                                                 SDL_WINDOWPOS_UNDEFINED,
-                                                 SDL_WINDOWPOS_UNDEFINED,
-                                                 32,
-                                                 32,
-                                                 SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
-      SDL_GLContext g_context = SDL_GL_CreateContext(g_window);
-
-      ToolKit::IGraphicsBackend::BackendInitParams initParams;
-      initParams.getProcAddress = (void*) SDL_GL_GetProcAddress;
-      g_proxy->m_renderSys->InitGraphics(initParams);
+      // No window, no GL context, no InitGraphics.
+      // RenderSystem already created a NullBackend (UseNullBackend was called
+      // before PreInit), so all GPU calls are no-ops.
       g_proxy->m_renderSys->SetPresentCallback([]() { /* headless, no swap */ });
 
       g_proxy->Init();

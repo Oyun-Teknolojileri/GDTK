@@ -107,6 +107,15 @@ namespace ToolKit
 
     void Present();
 
+    /**
+     * Force the render system to use a Null (no-op) backend.
+     * Must be called BEFORE InitGraphics or Init.
+     * All GPU operations become no-ops — useful for headless CLI tools
+     * (Packer, Import) that only need serialization, not rendering.
+     */
+    static void UseNullBackend() { m_useNullBackend = true; }
+    static bool IsNullBackend() { return m_useNullBackend; }
+
    private:
     IGraphicsBackend* CreateBackend();
 
@@ -123,6 +132,8 @@ namespace ToolKit
     int m_skipFrames     = 0;
     uint m_frameCount    = 0;
     std::function<void()> m_presentCallback;
+
+    static bool m_useNullBackend;
   };
 
 } // namespace ToolKit

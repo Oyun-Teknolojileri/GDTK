@@ -9,6 +9,7 @@
 
 #include "Image.h"
 #include "Logger.h"
+#include "NullBackend.h"
 #include "OpenGL/GLBackend.h"
 #include "RHI.h"
 #include "Stats.h"
@@ -21,6 +22,8 @@
 
 namespace ToolKit
 {
+  bool RenderSystem::m_useNullBackend = false;
+
   RenderPath::RenderPath() {}
 
   RenderPath::~RenderPath() { m_passArray.clear(); }
@@ -56,6 +59,11 @@ namespace ToolKit
 
   IGraphicsBackend* RenderSystem::CreateBackend()
   {
+    if (m_useNullBackend)
+    {
+      return new NullBackend();
+    }
+
 #ifdef TK_VULKAN
     return new VulkanBackend();
 #else
