@@ -168,6 +168,115 @@ namespace ToolKit
       return result;
     }
 
+    // Case-insensitive suffix test for a std::wstring against a C string.
+    // Kept dependency-free (no <cwctype>) because everything else in this
+    // header leans only on the Windows SDK.
+    inline bool EndsWithI(const std::wstring& s, const wchar_t* suffix)
+    {
+      size_t slen = s.size();
+      size_t plen = wcslen(suffix);
+      if (plen > slen)
+      {
+        return false;
+      }
+      for (size_t i = 0; i < plen; ++i)
+      {
+        wchar_t a = s[slen - plen + i];
+        wchar_t b = suffix[i];
+        if (a >= L'A' && a <= L'Z')
+        {
+          a += L'a' - L'A';
+        }
+        if (b >= L'A' && b <= L'Z')
+        {
+          b += L'a' - L'A';
+        }
+        if (a != b)
+        {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    // Resolve argv[0] into a real on-disk executable path.
+    //
+    // CreateProcessW with a non-NULL lpApplicationName does NOT consult
+    // %PATH% -- it only looks at the literal string (plus the current
+    // directory). That is fine when argv[0] is already an absolute path
+    // (the GetEditorExecutablePath / sibling-binary case) but silently
+    // breaks bare names like "code" or "adb", which on Linux resolve via
+    // posix_spawnp's $PATH lookup. This helper closes that gap so the two
+    // platforms behave the same:
+    //
+    //   1. If argv[0] already names an existing file (absolute path or a
+    //      file in the current directory), return it verbatim.
+    //   2. Otherwise, if it is a bare name (no drive / separator), walk
+    //      every %PATH% directory appending each %PATHEXT% extension in
+    //      turn and return the first match.
+    //   3. If nothing is found, return an empty wstring (caller surfaces
+    //      an ERROR_FILE_NOT_FOUND-style message).
+    inline std::wstring ResolveExecutable(const std::wstring& arg0)
+    {
+      // 1. As-is: a path that already points at a file.
+      DWORD attr = GetFileAttributesW(arg0.c_str());
+      if (attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY))
+      {
+        return arg0;
+      }
+
+      // 2. Only bare names get a %PATH search. If arg0 already carried a
+      // drive letter or separator, it was meant to be a path -- and that
+      // path does not exist, so we fail rather than guessing.
+      if (arg0.find_first_of(L"\\/:") != std::wstring::npos)
+      {
+        return std::wstring();
+      }
+
+      wchar_t pathExt[1024] = {0};
+      if (GetEnvironmentVariableW(L"PATHEXT", pathExt, 1024) == 0)
+      {
+        // Conservative default mirroring a stock Windows install.
+        wcscpy_s(pathExt, L".COM;.EXE;.BAT;.CMD;.VBS;.JS;.WS;.MSC");
+      }
+
+      // %PATH can grow well past MAX_PATH; 32K is the UNICODE_STRING cap.
+      wchar_t pathEnv[32768] = {0};
+      if (GetEnvironmentVariableW(L"PATH", pathEnv, 32768) == 0)
+      {
+        return std::wstring();
+      }
+
+      wchar_t* pathCtx  = nullptr;
+      wchar_t* dirToken = wcstok_s(pathEnv, L";", &pathCtx);
+      while (dirToken != nullptr)
+      {
+        std::wstring dir(dirToken);
+        if (!dir.empty() && dir.back() != L'\\' && dir.back() != L'/')
+        {
+          dir.push_back(L'\\');
+        }
+
+        // PATHEXT is re-tokenized per directory, so take a scratch copy.
+        wchar_t extCopy[1024]  = {0};
+        wcscpy_s(extCopy, pathExt);
+        wchar_t* extCtx  = nullptr;
+        wchar_t* extTok  = wcstok_s(extCopy, L";", &extCtx);
+        while (extTok != nullptr)
+        {
+          std::wstring candidate = dir + arg0 + extTok;
+          DWORD a                = GetFileAttributesW(candidate.c_str());
+          if (a != INVALID_FILE_ATTRIBUTES && !(a & FILE_ATTRIBUTE_DIRECTORY))
+          {
+            return candidate;
+          }
+          extTok = wcstok_s(nullptr, L";", &extCtx);
+        }
+        dirToken = wcstok_s(nullptr, L";", &pathCtx);
+      }
+      return std::wstring();
+    }
+
     // Win32 console command execution callback.
     //
     // Takes a tokenized argv (argv[0] is the executable, typically
@@ -189,25 +298,65 @@ namespace ToolKit
         return -1;
       }
 
-      // Build a Win32 command line by quoting each argv entry. The
-      // first token is conventionally the program name even when
-      // lpApplicationName is set; this is what CommandLineToArgvW
-      // and most child programs expect.
-      std::wstring cmdLine;
-      for (size_t i = 0; i < argv.size(); ++i)
+      // Resolve argv[0] to a real executable on disk. Absolute paths
+      // (the sibling-binary case) come back unchanged; bare names like
+      // "code" / "adb" are looked up in %PATH% + %PATHEXT% so they work
+      // the same way posix_spawnp makes them work on Linux -- without
+      // this, CreateProcessW returns ERROR_FILE_NOT_FOUND (2) because a
+      // non-NULL lpApplicationName skips %PATH entirely.
+      std::wstring wArg0   = UTF8Util::ConvertUTF8ToUTF16(argv[0]);
+      std::wstring resolved = ResolveExecutable(wArg0);
+      if (resolved.empty())
       {
-        if (i > 0)
-        {
-          cmdLine.push_back(L' ');
-        }
-        std::wstring wArg  = UTF8Util::ConvertUTF8ToUTF16(argv[i]);
-        cmdLine           += Win32QuoteArg(wArg);
+        TK_ERR("SysComExec: executable not found: %s", argv[0].c_str());
+        return 2; // ERROR_FILE_NOT_FOUND
       }
 
-      // Pass argv[0] as lpApplicationName so CreateProcess doesn't
-      // need to re-parse the program name out of the command line
-      // (which would defeat the quoting for spaces-in-paths).
-      std::wstring wExePath = UTF8Util::ConvertUTF8ToUTF16(argv[0]);
+      // Windows ships many CLI tools (notably VS Code's `code`) as
+      // .cmd / .bat batch wrappers rather than real PE images.
+      // CreateProcessW cannot launch a batch file directly, so we run
+      // those through cmd.exe instead. /S /C plus an outer pair of
+      // quotes is the documented idiom that preserves every inner
+      // quote verbatim (cmd strips only the outermost pair).
+      std::wstring wExePath;
+      std::wstring cmdLine;
+      const bool isBatch = EndsWithI(resolved, L".cmd") || EndsWithI(resolved, L".bat");
+
+      if (isBatch)
+      {
+        wchar_t comspec[MAX_PATH] = {0};
+        if (GetEnvironmentVariableW(L"ComSpec", comspec, MAX_PATH) == 0 || comspec[0] == L'\0')
+        {
+          GetSystemDirectoryW(comspec, MAX_PATH);
+          wcscat_s(comspec, MAX_PATH, L"\\cmd.exe");
+        }
+        wExePath = comspec;
+
+        cmdLine  = L"\"";
+        cmdLine += comspec;
+        cmdLine += L"\" /S /C \"";
+        cmdLine += Win32QuoteArg(resolved);
+        for (size_t i = 1; i < argv.size(); ++i)
+        {
+          cmdLine.push_back(L' ');
+          cmdLine += Win32QuoteArg(UTF8Util::ConvertUTF8ToUTF16(argv[i]));
+        }
+        cmdLine += L"\"";
+      }
+      else
+      {
+        // lpApplicationName = the resolved path; the command line mirrors
+        // it as argv[0] (what CommandLineToArgvW and most children expect)
+        // so spaces-in-paths quoting still survives a round trip.
+        wExePath = resolved;
+
+        cmdLine  = Win32QuoteArg(resolved);
+        for (size_t i = 1; i < argv.size(); ++i)
+        {
+          cmdLine.push_back(L' ');
+          cmdLine += Win32QuoteArg(UTF8Util::ConvertUTF8ToUTF16(argv[i]));
+        }
+      }
 
       // https://learn.microsoft.com/en-us/windows/win32/procthread/creating-processes
       STARTUPINFOW si;
@@ -223,7 +372,7 @@ namespace ToolKit
       // Start the child process. CreateProcessW may modify the
       // command line buffer in place (it rewrites argv[0] to the
       // full path), so we pass a mutable wstring's data().
-      if (!CreateProcessW(wExePath.data(), // module name (no PATH lookup)
+      if (!CreateProcessW(wExePath.data(), // module name (already resolved above)
                           cmdLine.empty() ? nullptr : cmdLine.data(),
                           NULL,  // Process handle not inheritable
                           NULL,  // Thread handle not inheritable
