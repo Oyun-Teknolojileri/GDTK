@@ -107,8 +107,8 @@ list(APPEND _TK_ENGINE_INCLUDE_DIRS
 # Engine shared library, per platform/configuration.
 # --------------------------------------------------------------------------- #
 if(WIN32)
-    set(_TK_ENGINE_LIB_DEBUG    "${TOOLKIT_DIR}/Bin/ToolKitd.dll")
-    set(_TK_ENGINE_LIB_RELEASE  "${TOOLKIT_DIR}/Bin/ToolKit.dll")
+    set(_TK_ENGINE_LIB_DEBUG    "${TOOLKIT_DIR}/Bin/libToolKitd.dll")
+    set(_TK_ENGINE_LIB_RELEASE  "${TOOLKIT_DIR}/Bin/libToolKit.dll")
     set(_TK_ENGINE_IMPLIB_DEBUG   "${TOOLKIT_DIR}/Bin/ToolKitd.lib")
     set(_TK_ENGINE_IMPLIB_RELEASE "${TOOLKIT_DIR}/Bin/ToolKit.lib")
 else()
@@ -119,7 +119,7 @@ endif()
 if(NOT EXISTS "${_TK_ENGINE_LIB_DEBUG}" AND NOT EXISTS "${_TK_ENGINE_LIB_RELEASE}")
     message(FATAL_ERROR
         "ToolKit engine library not found under '${TOOLKIT_DIR}/Bin' "
-        "(looked for libToolKit[d].so / ToolKit[d].dll). Build the engine first, e.g.:\n"
+        "(looked for libToolKit[d].so / libToolKit[d].dll). Build the engine first, e.g.:\n"
         "  python3 ${TOOLKIT_DIR}/BuildScripts/build_dependencies.py --configs ${CMAKE_BUILD_TYPE}\n"
         "  cmake -S ${TOOLKIT_DIR} -B ${TOOLKIT_DIR}/Intermediate/${TK_PLATFORM}/${CMAKE_BUILD_TYPE} -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}\n"
         "  cmake --build ${TOOLKIT_DIR}/Intermediate/${TK_PLATFORM}/${CMAKE_BUILD_TYPE}")
