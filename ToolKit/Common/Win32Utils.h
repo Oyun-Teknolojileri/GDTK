@@ -369,6 +369,16 @@ namespace ToolKit
 
       ZeroMemory(&pi, sizeof(pi));
 
+      // showConsole opens a dedicated console window for the child. The
+      // Editor / Launcher are GUI apps (SUBSYSTEM:WINDOWS) with no console
+      // of their own, so with the default flags the child inherits no
+      // console: its stdout/stdin go nowhere, its output is invisible, and
+      // any prompt it emits (a "continue? [y/n]", a password request, an
+      // interactive tool) blocks forever -- the call never returns.
+      // CREATE_NEW_CONSOLE gives the child a real, visible window the user
+      // can read from and type into; SW_SHOWNORMAL makes sure it is shown.
+      DWORD creationFlags = showConsole ? CREATE_NEW_CONSOLE : 0;
+
       // Start the child process. CreateProcessW may modify the
       // command line buffer in place (it rewrites argv[0] to the
       // full path), so we pass a mutable wstring's data().
@@ -377,7 +387,7 @@ namespace ToolKit
                           NULL,  // Process handle not inheritable
                           NULL,  // Thread handle not inheritable
                           FALSE, // Set handle inheritance to FALSE
-                          0,     // No creation flags
+                          creationFlags,
                           NULL,  // Use parent's environment block
                           NULL,  // Use parent's starting directory
                           &si,   // Pointer to STARTUPINFO structure
