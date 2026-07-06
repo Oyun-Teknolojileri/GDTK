@@ -215,6 +215,7 @@ def build_project(
     generator: str,
     is_multiconfig: bool,
     cl_path: Optional[str],
+    ninja_path: Optional[str],
     targets: List[str],
     vulkan: bool,
 ) -> List[Tuple[str, bool]]:
@@ -247,6 +248,7 @@ def build_project(
             configure_args = [
                 "cmake", "-S", str(ROOT_DIR), "-B", str(int_dir),
                 "-G", generator,
+                *([f"-DCMAKE_MAKE_PROGRAM={ninja_path}"] if ninja_path else []),
             ]
             if is_multiconfig:
                 # Multi-config (VS): --config selects the active
@@ -456,6 +458,7 @@ def main() -> int:
             generator=generator,
             is_multiconfig=is_multiconfig,
             cl_path=cl_path,
+            ninja_path=ninja_path,
             targets=args.targets,
             vulkan=args.vulkan,
         )

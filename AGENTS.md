@@ -450,3 +450,73 @@ At the start of a session, if the agent spots that `gdtk-overview.md` no
 longer matches the codebase (e.g. a listed file no longer exists, a manager
 on `Main` is missing, a referenced vcxproj is gone), it MUST fix the overview
 in the same pass instead of silently working around the drift.
+
+---
+
+## WSL / Linux Build
+
+GDTK builds on Linux via WSL2. The build scripts (`BuildScripts/build_gdtk.py`
+and `BuildScripts/build_dependencies.py`) handle both native Linux and WSL, but
+WSL has one known pitfall: **Windows PATH leaks into the WSL session** and
+CMake may find Windows binaries (e.g. `depot_tools/ninja`, a PE `.exe` wrapper
+with CRLF line endings) before the Linux ones. The scripts now pass
+`-DCMAKE_MAKE_PROGRAM=<resolved-ninja>` to every cmake configure call to pin
+the correct ninja, but a clean PATH is still recommended.
+
+### Prerequisites (Fedora)
+
+```bash
+# X11 dev headers (SDL2 video backend — required)
+sudo dnf install -y libX11-devel libXext-devel libXrandr-devel \
+  libXcursor-devel libXi-devel libXinerama-devel libxkbcommon-devel
+
+# Build tools
+sudo dnf install -y cmake ninja-build gcc-c++ python3
+
+# Optional: terminal emulator for showConsole testing
+sudo dnf install -y xterm
+```
+
+### Clean build (recommended)
+
+```bash
+# From the GDTK root inside WSL:
+rm -rf Dependency/Intermediate/Linux Intermediate/Linux
+
+# Clean PATH — strip Windows directories so CMake never sees host binaries.
+# /usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin is the safe subset.
+PATH='/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin' \
+  python3 BuildScripts/build_gdtk.py --configs Debug --generator ninja
+```
+
+### Generator notes
+
+| Generator | WSL safe? | Notes |
+|-----------|-----------|-------|
+| `ninja` | ✅ (with fix) | Fastest. Scripts pin `-DCMAKE_MAKE_PROGRAM` so CMake uses the right one. |
+| `make` | ✅ | Slower but immune to the ninja PATH problem. Fallback if ninja acts up. |
+| `auto` | ⚠️ | Avoid on WSL — `detect_generator` picks ninja but PATH may resolve the Windows wrapper. Pass `--generator ninja` or `--generator make` explicitly. |
+
+### Quick incremental build (after first clean build)
+
+```bash
+PATH='/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin' \
+  python3 BuildScripts/build_gdtk.py --configs Debug --generator ninja
+```
+
+The script skips deps if already built and only rebuilds changed sources.
+
+### showConsole testing on WSL
+
+The `SysComExec` `showConsole` path (see `ToolKit/Common/LinuxUtils.h`) wraps
+commands in a terminal emulator window. WSLg provides `DISPLAY=:0` and
+`WAYLAND_DISPLAY=wayland-0` automatically on Windows 11. Install a terminal
+emulator that `ResolveTerminal()` knows about:
+
+- `xterm` — lightweight, always available (`sudo dnf install xterm`)
+- `gnome-terminal`, `konsole`, `kitty`, `alacritty` — also supported
+
+The `ResolveTerminal()` function checks `$TERMINAL` first, then probes the
+common emulators in order (see `LinuxUtils.h` for the full list).
+Without any emulator installed, `showConsole` falls back to running the
+command hidden — the same as `showConsole=false`.

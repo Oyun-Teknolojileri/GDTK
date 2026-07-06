@@ -126,6 +126,7 @@ def build_windows(
     generator: str,
     is_multiconfig: bool,
     cl_path: Optional[str],
+    ninja_path: Optional[str],
 ) -> List[Tuple[str, bool]]:
     """Build the dependency tree on Windows. Returns per-config (ok?)."""
     results: List[Tuple[str, bool]] = []
@@ -148,6 +149,7 @@ def build_windows(
         configure_args = [
             "cmake", "-S", str(DEP_SRC), "-B", str(build_dir),
             "-G", generator, "-A", "x64",
+            *([f"-DCMAKE_MAKE_PROGRAM={ninja_path}"] if ninja_path else []),
             "-DTK_WINDOWS=Windows",
             *msvc_compiler_args,
             *_common_cmake_args(
@@ -205,6 +207,7 @@ def build_windows(
                 _run_cmake([
                     "cmake", "-S", str(DEP_SRC), "-B", str(build_dir),
                     "-G", generator,
+                    *([f"-DCMAKE_MAKE_PROGRAM={ninja_path}"] if ninja_path else []),
                     f"-DCMAKE_BUILD_TYPE={config}",
                     "-DTK_WINDOWS=Windows",
                     *msvc_compiler_args,
@@ -238,6 +241,7 @@ def build_linux_or_mac(
     skip_imgui: bool,
     parallel: int,
     generator: str,
+    ninja_path: Optional[str],
 ) -> List[Tuple[str, bool]]:
     """Build the dependency tree on Linux/macOS. Single-config only."""
     results: List[Tuple[str, bool]] = []
@@ -249,6 +253,7 @@ def build_linux_or_mac(
             _run_cmake([
                 "cmake", "-S", str(DEP_SRC), "-B", str(build_dir),
                 "-G", generator,
+                *([f"-DCMAKE_MAKE_PROGRAM={ninja_path}"] if ninja_path else []),
                 f"-DCMAKE_BUILD_TYPE={config}",
                 *_common_cmake_args(
                     platform=platform,
@@ -380,6 +385,7 @@ def main() -> int:
                 generator=generator,
                 is_multiconfig=is_multiconfig,
                 cl_path=cl_path,
+                ninja_path=ninja_path,
             )
         else:
             results = build_linux_or_mac(
@@ -388,6 +394,7 @@ def main() -> int:
                 skip_imgui=args.skip_imgui,
                 parallel=args.parallel,
                 generator=generator,
+                ninja_path=ninja_path,
             )
     except KeyboardInterrupt:
         err("Interrupted.")

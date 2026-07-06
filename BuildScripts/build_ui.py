@@ -28,9 +28,81 @@ import shlex
 import subprocess
 import sys
 import threading
-import tkinter as tk
 from pathlib import Path
-from tkinter import messagebox, ttk
+
+# --------------------------------------------------------------------------- #
+# tkinter gate (Linux: not always in the base Python package)                 #
+# --------------------------------------------------------------------------- #
+# python3-tkinter is a separate package on Fedora/Debian/Arch and is not
+# pulled in by the "Python 3" meta-package on minimal installs. If it is
+# missing we detect the distro and install it via the native package manager
+# before importing. Failing that we print the install command and abort
+# with a clear message rather than a bare ModuleNotFoundError.
+try:
+    import tkinter as tk
+    from tkinter import messagebox, ttk
+except ModuleNotFoundError:
+    # ---------------------------------------------------------------- #
+    # Quick inline distro probe (mirrors _common.detect_linux_distro   #
+    # without pulling in _common itself, which may in turn import      #
+    # modules that aren't available in a minimal Python install).       #
+    # ---------------------------------------------------------------- #
+    _distro = "unknown"
+    if sys.platform.startswith("linux"):
+        try:
+            _info = {}
+            with open("/etc/os-release", "r", encoding="utf-8") as _f:
+                for _line in _f:
+                    _line = _line.strip()
+                    if not _line or _line.startswith("#"):
+                        continue
+                    if "=" in _line:
+                        _k, _v = _line.split("=", 1)
+                        _v = _v.strip().strip('"').strip("'")
+                        _info[_k] = _v
+            _did = _info.get("ID", "").lower()
+            _like = _info.get("ID_LIKE", "").lower()
+            _cands = [_did] + [s.strip() for s in _like.split() if s.strip()]
+            for _c in _cands:
+                if _c.startswith("fedora") or _c in ("rhel", "centos", "rocky", "almalinux", "nobara"):
+                    _distro = "fedora"
+                    break
+                if (_c.startswith("debian") or _c.startswith("ubuntu")
+                        or _c in ("linuxmint", "elementary", "zorin", "pop", "neon", "kubuntu")):
+                    _distro = "debian"
+                    break
+                if _c.startswith("arch") or _c in ("manjaro", "endeavouros", "garuda", "artix"):
+                    _distro = "arch"
+                    break
+        except Exception:
+            pass
+
+    _PKG = {"fedora": "python3-tkinter", "debian": "python3-tk", "arch": "tk"}.get(_distro)
+    _CMD = {"fedora": f"sudo dnf install -y {_PKG}" if _PKG else None,
+            "debian": f"sudo apt-get install -y {_PKG}" if _PKG else None,
+            "arch": f"sudo pacman -S --needed --noconfirm {_PKG}" if _PKG else None}.get(_distro)
+
+    if _PKG and _CMD:
+        print(f"[build_ui] tkinter not found. Installing {_PKG} ...")
+        _install_ok = False
+        try:
+            subprocess.run(_CMD.split(), check=True)
+            _install_ok = True
+        except subprocess.CalledProcessError:
+            pass
+
+        if _install_ok:
+            print("[build_ui] tkinter installed — restarting ...")
+            os.execv(sys.executable, [sys.executable, *sys.argv])
+        else:
+            print(f"[build_ui] Auto-install failed. Run manually: {_CMD}")
+    elif sys.platform.startswith("linux"):
+        print("[build_ui] tkinter is missing. Install it with your package manager and retry.")
+        if _distro == "unknown":
+            print("          (could not detect distro — look for python3-tkinter / python3-tk)")
+    else:
+        print("[build_ui] tkinter is missing. Install it for your platform and retry.")
+    sys.exit(1)
 
 # --------------------------------------------------------------------------- #
 # Layout                                                                      #

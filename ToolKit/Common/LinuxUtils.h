@@ -130,6 +130,151 @@ namespace ToolKit
       delete[] arr;
     }
 
+    // Single-quote shell-escape one argv entry so it survives being embedded
+    // in a `sh -c` command string verbatim. Wraps in single quotes and rewrites
+    // any embedded single quote via the standard '"'"' idiom.
+    inline String ShellQuote(const String& s)
+    {
+      String out = "'";
+      for (char c : s)
+      {
+        if (c == '\'')
+        {
+          out += "'\\''";
+        }
+        else
+        {
+          out += c;
+        }
+      }
+      out += "'";
+      return out;
+    }
+
+    // Resolve `bin` to an executable: absolute/relative names are tested as-is,
+    // bare names are searched on $PATH the way a shell would. Fills `out` with
+    // the resolved path and returns true on success.
+    inline bool FindInPath(const String& bin, String& out)
+    {
+      if (bin.find('/') != String::npos)
+      {
+        if (access(bin.c_str(), X_OK) == 0)
+        {
+          out = bin;
+          return true;
+        }
+        return false;
+      }
+      const char* pathEnv = std::getenv("PATH");
+      if (pathEnv == nullptr || pathEnv[0] == '\0')
+      {
+        return false;
+      }
+      String path(pathEnv);
+      size_t start = 0;
+      while (start <= path.size())
+      {
+        size_t colon = path.find(':', start);
+        String dir   = (colon == String::npos) ? path.substr(start) : path.substr(start, colon - start);
+        String cand  = dir.empty() ? bin : (dir + "/" + bin);
+        if (access(cand.c_str(), X_OK) == 0)
+        {
+          out = cand;
+          return true;
+        }
+        if (colon == String::npos)
+        {
+          break;
+        }
+        start = colon + 1;
+      }
+      return false;
+    }
+
+    // Pick a terminal emulator and the flag it uses to run a command. $TERMINAL
+    // wins if it resolves (assumed to take -e); otherwise the common desktop
+    // emulators are tried in rough popularity order. Each takes either -e
+    // (pass-through argv list) or -- (gnome/mate's modern separator). Returns
+    // false when none of them is installed.
+    inline bool ResolveTerminal(String& bin, String& flag)
+    {
+      struct Spec
+      {
+        const char* name;
+        const char* execFlag;
+      };
+      static const Spec specs[] = {
+        {"x-terminal-emulator", "-e"},
+        {"gnome-terminal", "--"},
+        {"konsole", "-e"},
+        {"xfce4-terminal", "-e"},
+        {"mate-terminal", "--"},
+        {"lxterminal", "-e"},
+        {"qterminal", "-e"},
+        {"alacritty", "-e"},
+        {"kitty", "-e"},
+        {"terminator", "-e"},
+        {"urxvt", "-e"},
+        {"xterm", "-e"},
+      };
+
+      if (const char* envTerm = std::getenv("TERMINAL"))
+      {
+        if (envTerm[0] != '\0')
+        {
+          String resolved;
+          if (FindInPath(envTerm, resolved))
+          {
+            bin  = envTerm;
+            flag = "-e";
+            return true;
+          }
+        }
+      }
+      for (const Spec& s : specs)
+      {
+        String resolved;
+        if (FindInPath(s.name, resolved))
+        {
+          bin  = s.name;
+          flag = s.execFlag;
+          return true;
+        }
+      }
+      return false;
+    }
+
+    // Wrap `argv` so it runs inside a visible terminal window:
+    //   <emulator> <execFlag> sh -c "<shell-quoted argv>; hold prompt"
+    // The trailing read keeps the window open after the command exits so the
+    // user can read the output; while the command runs, sh's stdin is the
+    // terminal's, so interactive prompts (sudo password, y/n, ...) work too.
+    // Falls back to `argv` unchanged when no emulator is installed.
+    inline StringArray WrapInTerminal(const StringArray& argv)
+    {
+      String termBin;
+      String termFlag;
+      if (!ResolveTerminal(termBin, termFlag))
+      {
+        TK_LOG("SysComExec: showConsole requested but no terminal emulator "
+               "found on $PATH; running the command hidden instead.");
+        return argv;
+      }
+
+      String cmdString;
+      for (size_t i = 0; i < argv.size(); ++i)
+      {
+        if (i > 0)
+        {
+          cmdString += ' ';
+        }
+        cmdString += ShellQuote(argv[i]);
+      }
+      cmdString += "; echo; echo '[Process finished - press Enter to close]'; read -r _";
+
+      return {termBin, termFlag, "sh", "-c", cmdString};
+    }
+
     // Linux console command execution callback.
     //
     // Takes a tokenized argv (argv[0] is the executable). No shell
@@ -142,16 +287,27 @@ namespace ToolKit
     //                exit status.
     inline int SysComExec(const StringArray& argv, bool async, bool showConsole, std::function<void(int)> callback)
     {
-      (void) showConsole; // No Win32-style console window concept on Linux.
-
       if (argv.empty())
       {
         TK_ERR("SysComExec: empty argv.");
         return -1;
       }
 
-      char** argvArr         = ToNullTerminatedArgv(argv);
-      const size_t argcCount = argv.size();
+      // showConsole asks for a visible console. On Linux there is no kernel
+      // "new console" concept like Win32's CREATE_NEW_CONSOLE, so we run the
+      // command inside a terminal-emulator window instead. Without this, a
+      // desktop-launched editor has no inherited terminal: the child's
+      // stdout/stdin go nowhere, its output is invisible, and any prompt it
+      // emits hangs the call forever. When no emulator is installed, the
+      // wrapper falls back to running `argv` directly (hidden).
+      StringArray effectiveArgv = argv;
+      if (showConsole)
+      {
+        effectiveArgv = WrapInTerminal(argv);
+      }
+
+      char** argvArr         = ToNullTerminatedArgv(effectiveArgv);
+      const size_t argcCount = effectiveArgv.size();
 
       if (!async)
       {
