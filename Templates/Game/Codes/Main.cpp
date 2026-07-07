@@ -39,7 +39,6 @@ namespace ToolKit
   SDL_Window* g_window                      = nullptr;
   SDL_GLContext g_context                   = nullptr;
   Main* g_proxy                             = nullptr;
-  ViewportPtr g_viewport                    = nullptr;
   EngineSettings* g_engineSettings          = nullptr;
   SDLEventPool<TK_PLATFORM>* g_sdlEventPool = nullptr;
   GameRenderer* g_gameRenderer              = nullptr;
@@ -174,14 +173,14 @@ namespace ToolKit
       }
 
       // One-time app initialization (viewport + game) on the first frame.
-      static bool initialized = false;
-      if (!initialized)
+      static ViewportPtr g_viewport = nullptr;
+      if (g_viewport == nullptr)
       {
         uint width  = g_engineSettings->m_window->GetWidthVal();
         uint height = g_engineSettings->m_window->GetHeightVal();
 
         // Init viewport and window size.
-        g_viewport = MakeNewPtr<GameViewport>((float) width, (float) height);
+        g_viewport  = MakeNewPtr<GameViewport>((float) width, (float) height);
         GetUIManager()->RegisterViewport(g_viewport);
         GetRenderSystem()->SetAppWindowSize(width, height);
 
@@ -197,8 +196,6 @@ namespace ToolKit
         g_game->m_currentState = PluginState::Running;
         g_gameRenderer         = new GameRenderer();
         g_game->OnPlay();
-
-        initialized = true;
       }
       else
       {
@@ -206,14 +203,16 @@ namespace ToolKit
         g_viewport->Update(deltaTime);
         g_game->Frame(deltaTime);
 
+        GameRendererParams params;
+        params.viewport = g_viewport;
+
         if (ScenePtr scene = GetSceneManager()->GetCurrentScene())
         {
-          GameRendererParams params;
           params.postProcessSettings = scene->m_postProcessSettings;
           params.scene               = scene;
-          params.viewport            = g_viewport;
-          g_gameRenderer->SetParams(params);
         }
+
+        g_gameRenderer->SetParams(params);
 
         GetRenderSystem()->AddRenderTask(
             {[deltaTime](Renderer* renderer) -> void { g_gameRenderer->Render(renderer); }});
