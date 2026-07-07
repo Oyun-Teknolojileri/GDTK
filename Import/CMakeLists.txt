@@ -113,20 +113,21 @@ endif()
 # Output: Utils/Import/
 #
 # Import is a standalone CLI tool, published to Utils/Import/ so users
-# can run it from a fresh checkout. It does NOT copy ToolKit / assimp
-# / SDL2 / imgui next to itself; instead the RPATH (set below) points
-# the binary at the canonical copies under Bin/ and the absolute
-# vendored-deps tree under Dependency/Intermediate/. This keeps a
-# single source of truth for libToolKit.{so,dll} and the assimp shared
-# library -- changing engine code updates Bin/libToolKitd.so in place,
-# and Utils/Import/Import picks up the change at its next invocation
-# without an intermediate staging copy.
+# can run it from a fresh checkout. RPATH ($ORIGIN/../../Bin) points
+# the binary at the canonical libToolKitd.so under Bin/ on Linux. On
+# Windows the DLL is staged next to the executable by ToolKit's own
+# POST_BUILD step (ToolKit/CMakeLists.txt), because the Windows loader
+# searches the exe directory before RPATH.
+#
+# add_dependencies ensures Import re-links whenever ToolKit changes,
+# so the import library stays in sync with the DLL exports.
 #
 # Layout after a build:
-#   Bin/                  libToolKitd.so  (canonical)
-#   Utils/Import/         Import          (RPATH $ORIGIN/../../Bin)
+#   Bin/                  libToolKitd.so / libToolKitd.dll (canonical)
+#   Utils/Import/         Import + libToolKitd.dll         (Windows)
 #   Dependency/.../<cfg>/ libSDL2-2.0d.so, libimguid.so, libassimpd.so
 # ---------------------------------------------------------------------------
+add_dependencies(Import ToolKit)
 set_target_properties(Import PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY "${GDTK_UTILS_IMPORT_DIR}/$<0:>"
   LIBRARY_OUTPUT_DIRECTORY "${GDTK_UTILS_IMPORT_DIR}/$<0:>"

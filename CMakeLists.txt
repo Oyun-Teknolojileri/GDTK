@@ -139,13 +139,17 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}")
 # the Import and Packer CLI tools. Everything else (Editor, Launcher,
 # libToolKitd.so, libWorkspace.a) lands in Bin/. Import and Packer
 # override RUNTIME_OUTPUT_DIRECTORY to point at Utils/... (see
-# Import/CMakeLists.txt, Packer/CMakeLists.txt). Their POST_BUILD steps
-# then copy ToolKit (and assimp, for Import) next to the binaries so
-# $ORIGIN-based RPATH resolves without LD_LIBRARY_PATH.
+# Import/CMakeLists.txt, Packer/CMakeLists.txt).
 #
-# add_dependencies(... ToolKit) on those targets forces a relink whenever
-# ToolKit changes, which re-runs the POST_BUILD copy. Net effect: editing
-# engine code refreshes Utils/Import/ and Utils/Packer/ on every build.
+# On Linux, RPATH ($ORIGIN/../../Bin) lets the CLI tools find
+# libToolKitd.so under Bin/ without LD_LIBRARY_PATH. On Windows the
+# DLL is staged next to each tool by ToolKit/CMakeLists.txt's POST_BUILD
+# step, because the Windows loader searches the exe directory before
+# RPATH.
+#
+# Each consumer declares `add_dependencies(... ToolKit)` in its own
+# CMakeLists -- when ToolKit is rebuilt, Import / Packer / Editor /
+# Launcher re-link to stay in sync with the new import library.
 set(GDTK_UTILS_IMPORT_DIR "${CMAKE_SOURCE_DIR}/Utils/Import")
 set(GDTK_UTILS_PACKER_DIR "${CMAKE_SOURCE_DIR}/Utils/Packer")
 

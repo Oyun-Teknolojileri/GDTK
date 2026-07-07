@@ -118,6 +118,10 @@ if(UNIX)
   )
 endif()
 
+# Launcher links against ToolKit and should re-link whenever the engine
+# DLL changes so the import library stays in sync with the exports.
+add_dependencies(Launcher ToolKit)
+
 # Flat Bin/ output. See ToolKit/CMakeLists.txt for why the $<0:>
 # trailer is here: it strips the multi-config generator's
 # $<CONFIGURATION> suffix so Launcher (and its .lib / .exp
