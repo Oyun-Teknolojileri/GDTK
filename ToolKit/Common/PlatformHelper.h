@@ -27,17 +27,11 @@ namespace ToolKit
 {
   namespace PlatformHelpers
   {
-    // Returns the editor executable name for the current build
-    // configuration.
+    // Returns the editor executable name for the current platform.
     //
-    // The trailing "d" suffix is a Windows/MSVC convention (debug
-    // builds are named "Editord.exe" via the .vcxproj TargetName).
-    // It does NOT apply on Linux: the CMake build always names the
-    // binary "Editor" (see add_executable(Editor ...) in
-    // Editor/CMakeLists.txt), regardless of build type. CMake's
-    // TK_DEBUG define is still set on Linux, but the resulting
-    // binary on disk is just "Editor" -- appending a "d" there
-    // would point at a file that does not exist.
+    // CMake names the binary "Editor" on both platforms (see
+    // Editor/CMakeLists.txt). On Windows the ".exe" suffix is
+    // appended; there is no "d" debug suffix on either platform.
     //
     // Declared ABOVE the platform-header include so that the
     // inline implementations of GetEditorExecutablePath() and
@@ -46,11 +40,7 @@ namespace ToolKit
     inline String GetEditorExecutableName()
     {
 #ifdef _WIN32
-  #ifdef TK_DEBUG
-      return "Editord.exe";
-  #else
       return "Editor.exe";
-  #endif
 #else
       return "Editor";
 #endif
