@@ -22,6 +22,14 @@ file(GLOB_RECURSE EDITOR_SOURCES
 
 add_executable(Editor ${EDITOR_SOURCES})
 
+# Windows: embed the app icon (.rc compiled to .res by the MSVC resource
+# compiler, linked into the executable). The .rc references the icon at
+#   ../Resources/Engine/Textures/Icons/app.ico
+# relative to Editor/Editor.rc, which resolves to the engine asset tree.
+if(WIN32)
+  target_sources(Editor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Editor.rc)
+endif()
+
 # Each subfolder is added to the include path so legacy unqualified
 # `#include "X.h"` keeps resolving after the move into subfolders.
 foreach(editor_subdir
