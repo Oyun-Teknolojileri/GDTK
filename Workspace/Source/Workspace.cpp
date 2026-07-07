@@ -417,20 +417,6 @@ namespace ToolKit
     String cmakePath   = ConcatPaths({fullPath, "Codes", "CMakeLists.txt"});
     TemplateUpdate(cmakePath, "__projectname__", name);
 
-    // update vscode includes.
-    String cppPropertiesPath = ConcatPaths({fullPath, ".vscode", "c_cpp_properties.json"});
-
-    String tkRoot            = currentPath;
-    String tkPath            = ConcatPaths({tkRoot, "ToolKit"});
-    String depPath           = ConcatPaths({tkRoot, "Dependency"});
-    String glmPath           = ConcatPaths({tkRoot, "Dependency", "glm"});
-    String imguiPath         = ConcatPaths({tkRoot, "Dependency", "tkimgui"});
-
-    String replacement = "\"" + tkRoot + "\",\n" + "\t\t\t\t\"" + tkPath + "\",\n" + "\t\t\t\t\"" + depPath + "\",\n" +
-                         "\t\t\t\t\"" + glmPath + "\",\n" + "\t\t\t\t\"" + imguiPath + "\"";
-
-    TemplateUpdate(cppPropertiesPath, "__tk_includes__", replacement);
-
     return true;
   }
 

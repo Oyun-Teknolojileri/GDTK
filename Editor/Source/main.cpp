@@ -127,12 +127,11 @@ namespace ToolKit
         return;
       }
 
-      std::array<String, 8> files = {
+      std::array<String, 7> files = {
           "Workspace.settings",
           "Editor.settings",
           "UILayout.ini",
           "Engine.settings",
-          "GamePluginBuild.bat",
           "DarkTheme.settings",
           "GreyTheme.settings",
           "LightTheme.settings",
@@ -160,41 +159,6 @@ namespace ToolKit
             {
               std::filesystem::copy(sourceFile, targetFile, std::filesystem::copy_options::overwrite_existing);
             }
-          }
-        }
-      }
-
-      // Update GamePluginBuild.bat with correct BUILD_CONFIG
-      String buildBatPath   = ConcatPaths({cfgPath, "GamePluginBuild.bat"});
-      String buildConfigStr = (TKDebug == 1) ? "Debug" : "RelWithDebInfo";
-
-      // Read the batch file lines, replace the placeholder line, then write back
-      {
-        std::ifstream inFile(buildBatPath);
-        if (inFile.is_open())
-        {
-          String line;
-          StringArray lines;
-          const String token = "set BUILD_CONFIG=__ENGINE_CONFIG__";
-
-          while (std::getline(inFile, line))
-          {
-            if (line.find(token) != String::npos)
-            {
-              line = "set BUILD_CONFIG=" + buildConfigStr;
-            }
-            lines.push_back(line);
-          }
-          inFile.close();
-
-          std::ofstream outFile(buildBatPath, std::ios::trunc);
-          if (outFile.is_open())
-          {
-            for (String& l : lines)
-            {
-              outFile << l << "\n";
-            }
-            outFile.close();
           }
         }
       }
@@ -293,12 +257,12 @@ namespace ToolKit
         const uint32_t windowFlags = EditorBackendBindings::GetSDLWindowFlags() | SDL_WINDOW_HIDDEN |
                                      SDL_WINDOW_RESIZABLE | SDL_WINDOW_BORDERLESS;
 
-        g_window                   = SDL_CreateWindow(settings.m_window->GetNameVal().c_str(),
-                                                      SDL_WINDOWPOS_CENTERED,
-                                                      SDL_WINDOWPOS_CENTERED,
-                                                      512,
-                                                      512,
-                                                      windowFlags);
+        g_window = SDL_CreateWindow(settings.m_window->GetNameVal().c_str(),
+                                    SDL_WINDOWPOS_CENTERED,
+                                    SDL_WINDOWPOS_CENTERED,
+                                    512,
+                                    512,
+                                    windowFlags);
 
         if (g_window == nullptr)
         {

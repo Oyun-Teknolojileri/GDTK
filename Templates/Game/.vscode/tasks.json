@@ -2,20 +2,168 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Game Plugin Build",
+            "label": "Debug Windows Plugin: Configure",
             "type": "shell",
             "command": "cmd",
             "args": [
                 "/c",
-                "%APPDATA%/ToolKit/Config/GamePluginBuild.bat",
-                "${workspaceFolder}",                        // -S
-                "${workspaceFolder}/Intermediate/Plugin"   // -B
+                "cmake",
+                "-S",
+                "${workspaceFolder}",
+                "-B",
+                "${workspaceFolder}/Intermediate/Plugin",
+                "-A",
+                "x64"
+            ],
+            "group": "build",
+            "problemMatcher": [],
+            "detail": "CMake configure."
+        },
+        {
+            "label": "Debug Windows Plugin: Build",
+            "type": "shell",
+            "command": "cmd",
+            "args": [
+                "/c",
+                "cmake",
+                "--build",
+                "${workspaceFolder}/Intermediate/Plugin",
+                "--config",
+                "Debug"
             ],
             "group": {
                 "kind": "build",
                 "isDefault": true
             },
-            "problemMatcher": []
+            "problemMatcher": [],
+            "dependsOn": [
+                "Debug Windows Plugin: Configure"
+            ],
+            "detail": "CMake build."
+        },
+        {
+            "label": "Debug Windows Standalone: Configure",
+            "type": "shell",
+            "command": "cmd",
+            "args": [
+                "/c",
+                "cmake",
+                "-S",
+                "${workspaceFolder}",
+                "-B",
+                "${workspaceFolder}/Intermediate/Standalone/Windows",
+                "-DTK_PLATFORM=Windows",
+                "-DCMAKE_BUILD_TYPE=Debug"
+            ],
+            "group": "build",
+            "problemMatcher": [],
+            "detail": "CMake configure."
+        },
+        {
+            "label": "Debug Windows Standalone: Build",
+            "type": "shell",
+            "command": "cmd",
+            "args": [
+                "/c",
+                "cmake",
+                "--build",
+                "${workspaceFolder}/Intermediate/Standalone/Windows",
+                "--config",
+                "Debug"
+            ],
+            "group": "build",
+            "problemMatcher": [],
+            "dependsOn": [
+                "Debug Windows Standalone: Configure"
+            ],
+            "detail": "CMake build."
+        },
+        {
+            "label": "Debug Windows Standalone: Copy Engine DLLs",
+            "type": "shell",
+            "command": "powershell",
+            "args": [
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                "${workspaceFolder}/.vscode/CopyEngineDlls.ps1",
+                "-OutputDir",
+                "${workspaceFolder}/Codes/Bin",
+                "-Config",
+                "Debug"
+            ],
+            "group": "build",
+            "problemMatcher": [],
+            "dependsOn": [
+                "Debug Windows Standalone: Build"
+            ],
+            "detail": "Copy engine DLLs to Codes/Bin."
+        },
+        {
+            "label": "Debug Windows Standalone: Build & Copy DLLs",
+            "type": "shell",
+            "command": "cmd",
+            "args": [
+                "/c",
+                "cmake --build \"${workspaceFolder}/Intermediate/Standalone/Windows\" --config Debug && powershell -ExecutionPolicy Bypass -File \"${workspaceFolder}/.vscode/CopyEngineDlls.ps1\" -OutputDir \"${workspaceFolder}/Codes/Bin\" -Config Debug"
+            ],
+            "group": "build",
+            "problemMatcher": [],
+            "dependsOn": [
+                "Debug Windows Standalone: Configure"
+            ],
+            "detail": "Build + copy DLLs."
+        },
+        {
+            "label": "Debug Linux Plugin: Configure",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-c",
+                "cmake -S \"${workspaceFolder}\" -B \"${workspaceFolder}/Intermediate/Plugin\""
+            ],
+            "group": "build",
+            "problemMatcher": [],
+            "detail": "CMake configure."
+        },
+        {
+            "label": "Debug Linux Plugin: Build",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-c",
+                "cmake --build \"${workspaceFolder}/Intermediate/Plugin\" --config Debug"
+            ],
+            "group": "build",
+            "problemMatcher": [],
+            "dependsOn": [
+                "Debug Linux Plugin: Configure"
+            ],
+            "detail": "CMake build."
+        },
+        {
+            "label": "Debug Linux Standalone: Configure",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-c",
+                "cmake -S \"${workspaceFolder}\" -B \"${workspaceFolder}/Intermediate/Standalone/Linux\" -DTK_PLATFORM=Linux -DCMAKE_BUILD_TYPE=Debug"
+            ],
+            "group": "build",
+            "problemMatcher": [],
+            "detail": "CMake configure."
+        },
+        {
+            "label": "Debug Linux Standalone: Build",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-c",
+                "cmake --build \"${workspaceFolder}/Intermediate/Standalone/Linux\" --config Debug"
+            ],
+            "group": "build",
+            "problemMatcher": [],
+            "detail": "CMake build."
         }
     ]
 }

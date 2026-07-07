@@ -3,9 +3,39 @@
     // Hover to view descriptions of existing attributes.
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
-    "configurations": [{
-        "name": "(Windows) Attach",
-        "type": "cppvsdbg",
-        "request": "attach",
-    }]
+    "configurations": [
+        {
+            "name": "Debug Windows: Launch",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/Codes/Bin/${workspaceFolderBasename}.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}/Codes/",
+            "console": "integratedTerminal",
+            "preLaunchTask": "Debug Windows Standalone: Build & Copy DLLs",
+            "symbolSearchPath": "${workspaceFolder}/Codes/Bin"
+        },
+        {
+            "name": "Debug Windows: Attach",
+            "type": "cppvsdbg",
+            "request": "attach"
+        },
+        {
+            "name": "Debug Linux: Launch",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/Codes/Bin/${workspaceFolderBasename}",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "Debug Linux Standalone: Build",
+            "MIMode": "gdb"
+        },
+        {
+            "name": "Debug Linux: Attach",
+            "type": "cppdbg",
+            "request": "attach",
+            "program": "${workspaceFolder}/Codes/Bin/${workspaceFolderBasename}",
+            "MIMode": "gdb"
+        }
+    ]
 }
