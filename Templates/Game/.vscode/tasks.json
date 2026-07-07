@@ -163,6 +163,9 @@
             ],
             "group": "build",
             "problemMatcher": [],
+            "dependsOn": [
+                "Debug Linux Standalone: Configure"
+            ],
             "detail": "CMake build."
         }
     ]
