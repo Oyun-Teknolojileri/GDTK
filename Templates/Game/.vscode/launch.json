@@ -12,7 +12,7 @@
             "args": [],
             "cwd": "${workspaceFolder}/Codes/",
             "console": "integratedTerminal",
-            "preLaunchTask": "Debug Windows Standalone: Build & Copy DLLs",
+            "preLaunchTask": "Build",
             "symbolSearchPath": "${workspaceFolder}/Codes/Bin"
         },
         {
