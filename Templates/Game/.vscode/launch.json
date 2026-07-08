@@ -5,37 +5,34 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Debug Windows: Launch",
-            "type": "cppvsdbg",
+            "name": "Debug: Launch",
             "request": "launch",
-            "program": "${workspaceFolder}/Codes/Bin/${workspaceFolderBasename}.exe",
+            "program": "${workspaceFolder}/Codes/Bin/${workspaceFolderBasename}",
             "args": [],
             "cwd": "${workspaceFolder}/Codes/",
-            "console": "integratedTerminal",
             "preLaunchTask": "Build",
-            "symbolSearchPath": "${workspaceFolder}/Codes/Bin"
+            "windows": {
+                "type": "cppvsdbg",
+                "program": "${workspaceFolder}/Codes/Bin/${workspaceFolderBasename}.exe",
+                "console": "integratedTerminal",
+                "symbolSearchPath": "${workspaceFolder}/Codes/Bin"
+            },
+            "linux": {
+                "type": "cppdbg",
+                "MIMode": "gdb"
+            }
         },
         {
-            "name": "Debug Windows: Attach",
-            "type": "cppvsdbg",
-            "request": "attach"
-        },
-        {
-            "name": "Debug Linux: Launch",
-            "type": "cppdbg",
-            "request": "launch",
-            "program": "${workspaceFolder}/Codes/Bin/${workspaceFolderBasename}",
-            "args": [],
-            "cwd": "${workspaceFolder}/Codes/",
-            "preLaunchTask": "Debug Linux Standalone: Build",
-            "MIMode": "gdb"
-        },
-        {
-            "name": "Debug Linux: Attach",
-            "type": "cppdbg",
+            "name": "Debug: Attach",
             "request": "attach",
-            "program": "${workspaceFolder}/Codes/Bin/${workspaceFolderBasename}",
-            "MIMode": "gdb"
+            "windows": {
+                "type": "cppvsdbg"
+            },
+            "linux": {
+                "type": "cppdbg",
+                "program": "${workspaceFolder}/Codes/Bin/${workspaceFolderBasename}",
+                "MIMode": "gdb"
+            }
         }
     ]
 }
