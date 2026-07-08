@@ -49,6 +49,18 @@ find_library(SDL2main SDL2main)
 
 target_link_libraries(imgui PRIVATE SDL2 SDL2main)
 
+# Bake a clean, relocatable $ORIGIN RUNPATH so libimgui resolves the sibling
+# libSDL2 both at dev time (siblings in TK_DEPS_DIR/<cfg>) and in the publish
+# bundle (siblings next to the game exe). Mirrors the engine root policy
+# (CMakeLists.txt CMAKE_INSTALL_RPATH=$ORIGIN + CMAKE_BUILD_WITH_INSTALL_RPATH).
+# NB: BUILD_RPATH is ADDITIVE and would leave the absolute TK_DEPS_DIR entry in
+# place; BUILD_WITH_INSTALL_RPATH makes the build binary use INSTALL_RPATH
+# exclusively. Required because install(FILES) does NOT rewrite RPATH, so
+# libimgui ships as-built.
+set_target_properties(imgui PROPERTIES
+    INSTALL_RPATH            "$ORIGIN"
+    BUILD_WITH_INSTALL_RPATH TRUE)
+
 if(Vulkan_FOUND)
     target_link_libraries(imgui PRIVATE Vulkan::Vulkan)
 endif()

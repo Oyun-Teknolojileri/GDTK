@@ -204,20 +204,14 @@ namespace ToolKit
     projectDirStr                 = projectDirStr.substr(0, projectDirStr.size() - 1);
 
     // Move files to publish directory
-    const String projectName      = activeProjectName;
     const String publishDirectory = ConcatPaths({projectDirStr, "Publish", "Windows"});
-    const String publishBinDir    = ConcatPaths({publishDirectory, "Bin"});
     const String publishConfigDir = ConcatPaths({publishDirectory, "Config"});
 
-    // Create directories
+    // Create directories. publishDirectory is the cmake --install --prefix; the
+    // Bin/ subdir under it is created by the install rules (DESTINATION Bin), so
+    // we only need the root + Config/ here.
     std::filesystem::create_directories(publishDirectory, m_errorCode);
     if (CheckErrorReturn("Creating directory " + publishDirectory))
-    {
-      return -1;
-    }
-
-    std::filesystem::create_directories(publishBinDir, m_errorCode);
-    if (CheckErrorReturn("Creating directory " + publishBinDir))
     {
       return -1;
     }
@@ -267,58 +261,29 @@ namespace ToolKit
       return -1;
     }
 
+    // Install the self-contained bundle (exe + libToolKit + SDL2 + imgui, with
+    // $ORIGIN RPATH) into <publishDirectory>/Bin. The install rules live in the
+    // game's CMakeLists.txt and pick the matching per-config DLL set. Run while
+    // cwd is still the project root so ./Intermediate/Windows resolves.
+    cmd = "cmake --install ./Intermediate/Windows --config " + buildConfig + " --prefix \"" + publishDirectory + "\"";
+    winBuildCompileResult = std::system(cmd.c_str());
+    if (winBuildCompileResult != 0)
+    {
+      TK_ERR("Cmake install failed: %s\n", cmd.c_str());
+      return -1;
+    }
+
     std::filesystem::current_path(m_workingDirectory, m_errorCode);
     if (CheckErrorReturn("Setting current directory to " + m_workingDirectory.string()))
     {
       return -1;
     }
 
-    // Create bin directory if not exist already.
-    String binDir = ConcatPaths({projectDirStr, "Codes", "Bin"});
-    std::filesystem::create_directories(binDir);
-    if (CheckErrorReturn("Creating directory " + binDir))
-    {
-      return -1;
-    }
-
-    const String suffix                 = buildConfig == "Debug" ? "d" : "";
-    const String exeFile                = ConcatPaths({binDir, projectName + ".exe"});
     const String pakFile                = ConcatPaths({projectDirStr, "MinResources.pak"});
-    const String engineDll              = ConcatPaths({m_toolkitPath, "Bin", "libToolKit" + suffix + ".dll"});
-    const String sdlDll                 = ConcatPaths({m_toolkitPath, "Bin", "SDL2" + suffix + ".dll"});
-    const String imguiDll               = ConcatPaths({m_toolkitPath, "Bin", "imgui" + suffix + ".dll"});
     const String engineSettingsPath     = ConcatPaths({projectDirStr, "Config", "Windows", "Engine.settings"});
     const String destEngineSettingsPath = ConcatPaths({publishConfigDir, "Engine.settings"});
 
     TK_LOG("Windows build done, moving files\n");
-
-    // Copy exe
-    std::filesystem::copy(exeFile, publishBinDir, std::filesystem::copy_options::overwrite_existing, m_errorCode);
-    if (CheckErrorReturn("Copy exe to " + publishBinDir))
-    {
-      return -1;
-    }
-
-    // Copy engine DLL (libToolKit[d].dll)
-    std::filesystem::copy(engineDll, publishBinDir, std::filesystem::copy_options::overwrite_existing, m_errorCode);
-    if (CheckErrorReturn("Copy libToolKit.dll to " + publishBinDir))
-    {
-      return -1;
-    }
-
-    // Copy SDL2[d].dll
-    std::filesystem::copy(sdlDll, publishBinDir, std::filesystem::copy_options::overwrite_existing, m_errorCode);
-    if (CheckErrorReturn("Copy SDL2.dll to " + publishBinDir))
-    {
-      return -1;
-    }
-
-    // Copy imgui[d].dll
-    std::filesystem::copy(imguiDll, publishBinDir, std::filesystem::copy_options::overwrite_existing, m_errorCode);
-    if (CheckErrorReturn("Copy imgui.dll to " + publishBinDir))
-    {
-      return -1;
-    }
 
     // Copy pak
     std::filesystem::copy(pakFile, publishDirectory, std::filesystem::copy_options::overwrite_existing, m_errorCode);
@@ -366,6 +331,27 @@ namespace ToolKit
       buildConfig = "Release";
     }
 
+    Path projectDir                = Path(ConcatPaths({ResourcePath(), ".."})).lexically_normal();
+    String projectDirStr           = projectDir.string();
+    projectDirStr                  = projectDirStr.substr(0, projectDirStr.size() - 1);
+
+    const String publishDirectory  = ConcatPaths({projectDirStr, "Publish", "Linux"});
+    const String publishConfigDir  = ConcatPaths({publishDirectory, "Config"});
+
+    // Create directories. publishDirectory is the cmake --install --prefix; the
+    // Bin/ subdir under it is created by the install rules (DESTINATION Bin), so
+    // we only need the root + Config/ here.
+    std::filesystem::create_directories(publishDirectory, m_errorCode);
+    if (CheckErrorReturn("Creating directory " + publishDirectory))
+    {
+      return -1;
+    }
+    std::filesystem::create_directories(publishConfigDir, m_errorCode);
+    if (CheckErrorReturn("Creating directory " + publishConfigDir))
+    {
+      return -1;
+    }
+
     Path newWorkDir = Path(ConcatPaths({ResourcePath(), ".."})).lexically_normal();
     std::filesystem::current_path(newWorkDir, m_errorCode);
     if (CheckErrorReturn("Setting current directory to " + newWorkDir.string()))
@@ -393,78 +379,29 @@ namespace ToolKit
       return -1;
     }
 
+    // Install the self-contained bundle (exe + libToolKit + libimgui + the SDL2
+    // SONAME, all with $ORIGIN RPATH) into <publishDirectory>/Bin. The install
+    // rules live in the game's CMakeLists.txt. Single-config generator, so no
+    // --config. Run while cwd is still the project root.
+    cmd = "cmake --install ./Intermediate/Linux --prefix \"" + publishDirectory + "\"";
+    compileRes = std::system(cmd.c_str());
+    if (compileRes != 0)
+    {
+      TK_ERR("Cmake install failed: %s\n", cmd.c_str());
+      return -1;
+    }
+
     std::filesystem::current_path(m_workingDirectory, m_errorCode);
     if (CheckErrorReturn("Setting current directory to " + m_workingDirectory.string()))
     {
       return -1;
     }
 
-    Path projectDir                = Path(ConcatPaths({ResourcePath(), ".."})).lexically_normal();
-    String projectDirStr           = projectDir.string();
-    projectDirStr                  = projectDirStr.substr(0, projectDirStr.size() - 1);
-
-    const String projectName       = activeProjectName;
-    const String publishDirectory  = ConcatPaths({projectDirStr, "Publish", "Linux"});
-    const String publishBinDir     = ConcatPaths({publishDirectory, "Bin"});
-    const String publishConfigDir  = ConcatPaths({publishDirectory, "Config"});
-
-    std::filesystem::create_directories(publishDirectory, m_errorCode);
-    if (CheckErrorReturn("Creating directory " + publishDirectory))
-    {
-      return -1;
-    }
-    std::filesystem::create_directories(publishBinDir, m_errorCode);
-    if (CheckErrorReturn("Creating directory " + publishBinDir))
-    {
-      return -1;
-    }
-    std::filesystem::create_directories(publishConfigDir, m_errorCode);
-    if (CheckErrorReturn("Creating directory " + publishConfigDir))
-    {
-      return -1;
-    }
-
-    // Copy build artifacts from the project's Codes/Bin and the engine's Bin.
-    String binDir                    = ConcatPaths({projectDirStr, "Codes", "Bin"});
-    String tkBin                     = ConcatPaths({m_toolkitPath, "Bin"});
-    String sdlSuffix                 = buildConfig == "Debug" ? "d" : "";
-    const String exeFile             = ConcatPaths({binDir, projectName});
     const String pakFile             = ConcatPaths({projectDirStr, "MinResources.pak"});
-    const String engineLib           = ConcatPaths({tkBin, "libToolKit" + sdlSuffix + ".so"});
-    const String sdlLib              = ConcatPaths({m_toolkitPath, "Dependency", "Intermediate", "Linux", buildConfig, "libSDL2-2.0" + sdlSuffix + ".so"});
-    const String imguiLib            = ConcatPaths({m_toolkitPath, "Dependency", "Intermediate", "Linux", buildConfig, "libimgui" + sdlSuffix + ".so"});
     const String engineSettingsPath  = ConcatPaths({projectDirStr, "Config", "Linux", "Engine.settings"});
     const String destEngineSettings  = ConcatPaths({publishConfigDir, "Engine.settings"});
 
     TK_LOG("Linux build done, moving files\n");
-
-    // Copy executable
-    std::filesystem::copy(exeFile, publishBinDir, std::filesystem::copy_options::overwrite_existing, m_errorCode);
-    if (CheckErrorReturn("Copy exe to " + publishBinDir))
-    {
-      return -1;
-    }
-
-    // Copy engine shared library next to the executable.
-    std::filesystem::copy(engineLib, publishBinDir, std::filesystem::copy_options::overwrite_existing, m_errorCode);
-    if (CheckErrorReturn("Copy libToolKit.so to " + publishBinDir))
-    {
-      return -1;
-    }
-
-    // Copy the vendored shared deps so the binary finds them without
-    // LD_LIBRARY_PATH (the exe's RUNPATH points to its own directory + the
-    // deps dir; placing the .so files next to the exe covers both).
-    std::filesystem::copy(sdlLib, publishBinDir, std::filesystem::copy_options::overwrite_existing, m_errorCode);
-    if (CheckErrorReturn("Copy SDL2.so to " + publishBinDir))
-    {
-      return -1;
-    }
-    std::filesystem::copy(imguiLib, publishBinDir, std::filesystem::copy_options::overwrite_existing, m_errorCode);
-    if (CheckErrorReturn("Copy imgui.so to " + publishBinDir))
-    {
-      return -1;
-    }
 
     // Copy pak
     std::filesystem::copy(pakFile, publishDirectory, std::filesystem::copy_options::overwrite_existing, m_errorCode);
