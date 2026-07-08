@@ -251,7 +251,7 @@ namespace ToolKit
     }
 
     int winBuildCompileResult = -1;
-    String cmd                = "cmake -S . -B ./Intermediate/Windows -A x64 -DTK_PLATFORM=Windows";
+    String cmd                = "cmake -S . -B ./Intermediate/Windows -A x64 -DTK_PLATFORM=Windows -DCMAKE_BUILD_TYPE=" + buildConfig;
     winBuildCompileResult     = std::system(cmd.c_str());
     if (winBuildCompileResult != 0)
     {
@@ -281,25 +281,41 @@ namespace ToolKit
       return -1;
     }
 
-    String sdlName                      = buildConfig == "Debug" ? "SDL2d.dll" : "SDL2.dll";
+    const String suffix                 = buildConfig == "Debug" ? "d" : "";
     const String exeFile                = ConcatPaths({binDir, projectName + ".exe"});
     const String pakFile                = ConcatPaths({projectDirStr, "MinResources.pak"});
-    const String sdlDllPath             = ConcatPaths({m_toolkitPath, "Bin", sdlName});
+    const String engineDll              = ConcatPaths({m_toolkitPath, "Bin", "libToolKit" + suffix + ".dll"});
+    const String sdlDll                 = ConcatPaths({m_toolkitPath, "Bin", "SDL2" + suffix + ".dll"});
+    const String imguiDll               = ConcatPaths({m_toolkitPath, "Bin", "imgui" + suffix + ".dll"});
     const String engineSettingsPath     = ConcatPaths({projectDirStr, "Config", "Windows", "Engine.settings"});
     const String destEngineSettingsPath = ConcatPaths({publishConfigDir, "Engine.settings"});
 
     TK_LOG("Windows build done, moving files\n");
 
-    // Copy exe file
+    // Copy exe
     std::filesystem::copy(exeFile, publishBinDir, std::filesystem::copy_options::overwrite_existing, m_errorCode);
     if (CheckErrorReturn("Copy exe to " + publishBinDir))
     {
       return -1;
     }
 
-    // Copy SDL2.dll from ToolKit bin folder to publish bin folder
-    std::filesystem::copy(sdlDllPath, publishBinDir, std::filesystem::copy_options::overwrite_existing, m_errorCode);
-    if (CheckErrorReturn("Copy sdl.dll to " + publishBinDir))
+    // Copy engine DLL (libToolKit[d].dll)
+    std::filesystem::copy(engineDll, publishBinDir, std::filesystem::copy_options::overwrite_existing, m_errorCode);
+    if (CheckErrorReturn("Copy libToolKit.dll to " + publishBinDir))
+    {
+      return -1;
+    }
+
+    // Copy SDL2[d].dll
+    std::filesystem::copy(sdlDll, publishBinDir, std::filesystem::copy_options::overwrite_existing, m_errorCode);
+    if (CheckErrorReturn("Copy SDL2.dll to " + publishBinDir))
+    {
+      return -1;
+    }
+
+    // Copy imgui[d].dll
+    std::filesystem::copy(imguiDll, publishBinDir, std::filesystem::copy_options::overwrite_existing, m_errorCode);
+    if (CheckErrorReturn("Copy imgui.dll to " + publishBinDir))
     {
       return -1;
     }
@@ -311,7 +327,7 @@ namespace ToolKit
       return -1;
     }
 
-    // Copy engine settings to config folder
+    // Copy engine settings
     std::filesystem::copy(engineSettingsPath,
                           destEngineSettingsPath,
                           std::filesystem::copy_options::overwrite_existing,
@@ -357,7 +373,7 @@ namespace ToolKit
       return -1;
     }
 
-    String cmd = "cmake -S . -B ./Intermediate/Linux -DTK_PLATFORM=Linux";
+    String cmd = "cmake -S . -B ./Intermediate/Linux -DTK_PLATFORM=Linux -DCMAKE_BUILD_TYPE=" + buildConfig;
     if (!m_toolkitPath.empty())
     {
       cmd += " -DTOOLKIT_DIR=\"" + m_toolkitPath + "\"";
@@ -822,9 +838,9 @@ namespace ToolKit
     // Always tell the project where the engine is (Packer already resolved it
     // from Path.txt), so the project CMake does not need TOOLKIT_DIR in its env.
 #ifdef _WIN32
-    String cmd     = "cmake -S . -B ./Intermediate/Plugin -A x64";
+    String cmd     = "cmake -S . -B ./Intermediate/Plugin -A x64 -DCMAKE_BUILD_TYPE=" + buildConfig;
 #else
-    String cmd     = "cmake -S . -B ./Intermediate/Plugin";
+    String cmd     = "cmake -S . -B ./Intermediate/Plugin -DCMAKE_BUILD_TYPE=" + buildConfig;
 #endif
     if (!m_toolkitPath.empty())
     {

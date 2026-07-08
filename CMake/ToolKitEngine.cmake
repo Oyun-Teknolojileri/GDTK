@@ -52,15 +52,19 @@ endif()
 # wrong folder. Multi-config generators pick the active config per --build; this
 # only fixes configure-time path/suffix resolution.
 # --------------------------------------------------------------------------- #
-if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+# Pinning CMAKE_BUILD_TYPE is required for configure-time path resolution:
+# TK_DEPS_DIR embeds the build type as a path component, and the vendored
+# dependency wrappers use a "d" suffix in Debug. An empty value here
+# resolves to the wrong folder (e.g. .../Windows/ instead of .../Windows/Debug/).
+#
+# Multi-config generators (Visual Studio) leave CMAKE_BUILD_TYPE empty at
+# configure time; single-config generators (Ninja, Make) may also have it
+# unset if the caller didn't pass -DCMAKE_BUILD_TYPE. Handle both.
+if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug CACHE STRING "" FORCE)
 endif()
 
-if(CMAKE_BUILD_TYPE)
-    set(TK_BUILD_TYPE "${CMAKE_BUILD_TYPE}")
-else()
-    set(TK_BUILD_TYPE "$<CONFIG>")
-endif()
+set(TK_BUILD_TYPE "${CMAKE_BUILD_TYPE}")
 
 # C++ standard + warnings (consistent with the engine build).
 set(CMAKE_CXX_STANDARD 17)
