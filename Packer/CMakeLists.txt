@@ -91,11 +91,13 @@ endif()
 # Output: Utils/Packer/
 #
 # Packer is a standalone CLI tool, published to Utils/Packer/ so users
-# can run it from a fresh checkout. RPATH ($ORIGIN/../../Bin) points
-# the binary at the canonical libToolKitd.so under Bin/ on Linux. On
-# Windows the DLL is staged next to the executable by ToolKit's own
-# POST_BUILD step (ToolKit/CMakeLists.txt), because the Windows loader
-# searches the exe directory before RPATH.
+# can run it from a fresh checkout. It is NOT split per config (its Utils/
+# output dir stays flat -- last-built config wins). RPATH
+# ($ORIGIN/../../Bin$<CONFIG>) points the binary at the canonical
+# libToolKitd.so under the matching Bin<Config>/ on Linux. On Windows the
+# DLL is staged next to the executable by ToolKit's own POST_BUILD step
+# (ToolKit/CMakeLists.txt), because the Windows loader searches the exe
+# directory before RPATH.
 #
 # Packer does NOT link assimp (it does not import 3D assets) -- the
 # comment on target_link_libraries above documents this. So no assimp
@@ -105,8 +107,8 @@ endif()
 # so the import library stays in sync with the DLL exports.
 #
 # Layout after a build:
-#   Bin/                  libToolKitd.so / libToolKitd.dll (canonical)
-#   Utils/Packer/         Packer + libToolKitd.dll         (Windows)
+#   Bin<Config>/          libToolKitd.so / libToolKitd.dll (canonical, per cfg)
+#   Utils/Packer/         Packer + libToolKitd.dll         (Windows, flat)
 #   Dependency/.../<cfg>/ libSDL2-2.0d.so, libimguid.so
 # ---------------------------------------------------------------------------
 add_dependencies(Packer ToolKit)
@@ -117,8 +119,8 @@ set_target_properties(Packer PROPERTIES
 )
 
 # RPATH strategy (Linux + Windows both honour $ORIGIN via CMake 3.16+):
-#   - $ORIGIN/../../Bin      -> Utils/Packer/Packer finds libToolKitd.so /
-#                                ToolKitd.dll under the canonical Bin/.
+#   - $ORIGIN/../../Bin$<CONFIG> -> Utils/Packer/Packer finds libToolKitd.so /
+#                                ToolKitd.dll under the canonical Bin<Config>/.
 #   - ${TK_DEPS_DIR}         -> absolute path to Dependency/Intermediate/
 #                                <Plat>/<Cfg>/, where SDL2 / imgui live.
 # On Linux this is encoded into the ELF DT_RUNPATH; on Windows CMake
@@ -128,12 +130,12 @@ set_target_properties(Packer PROPERTIES
 # %PATH% tweaks.
 if(UNIX)
   set_target_properties(Packer PROPERTIES
-    BUILD_RPATH   "$ORIGIN/../../Bin:${TK_DEPS_DIR}"
-    INSTALL_RPATH "$ORIGIN/../../Bin:${TK_DEPS_DIR}"
+    BUILD_RPATH   "$ORIGIN/../../Bin$<CONFIG>:${TK_DEPS_DIR}"
+    INSTALL_RPATH "$ORIGIN/../../Bin$<CONFIG>:${TK_DEPS_DIR}"
   )
 elseif(WIN32)
   set_target_properties(Packer PROPERTIES
-    BUILD_RPATH   "$ORIGIN/../../Bin;${TK_DEPS_DIR}"
-    INSTALL_RPATH "$ORIGIN/../../Bin;${TK_DEPS_DIR}"
+    BUILD_RPATH   "$ORIGIN/../../Bin$<CONFIG>;${TK_DEPS_DIR}"
+    INSTALL_RPATH "$ORIGIN/../../Bin$<CONFIG>;${TK_DEPS_DIR}"
   )
 endif()

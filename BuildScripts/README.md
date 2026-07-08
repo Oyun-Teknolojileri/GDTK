@@ -206,12 +206,15 @@ different MSVC version. Pass `--generator ninja` to force Ninja instead
 ## Output layout
 
 ```
-Bin/                                  Final binaries the engine ships
+Bin<Config>/                          Final binaries the engine ships, one
+                                      folder per config (BinDebug/, BinRelease/)
   ├── Editor(.exe)
   ├── Launcher(.exe)
   ├── libToolKitd.so / ToolKitd.dll   # with --vulkan: NEEDITED libvulkan.so.1,
   │                                    libshaderc_shared.so.1, libSPIRV-Tools.so
   └── libWorkspace.a / Workspace.lib
+Utils/Import/                         Import CLI tool (flat, last-built config)
+Utils/Packer/                         Packer CLI tool (flat, last-built config)
 Intermediate/<Platform>/<Config>/     CMake state + per-module .o files
   ├── build-ToolKit/
   ├── build-Editor/

@@ -15,7 +15,7 @@
 /Editor/bin/Debug_Editor/netcoreapp3.0
 /Editor/bin/Release_Editor/netcoreapp3.0
 /ToolKit/Release_Editor
-/Bin
+/Bin*
 /.vs
 /Dependency/Glm/out/build/x64-Debug
 /Dependency/ImGui/CMakeChace.txt

@@ -67,10 +67,11 @@ else()
 
     # The exe lives in Codes/Bin, which is NOT collocated with the engine lib,
     # so use absolute RPATH entries to locate libToolKit<cfg>.so and the
-    # dependency .so's without LD_LIBRARY_PATH.
+    # dependency .so's without LD_LIBRARY_PATH. The engine ships one Bin dir
+    # per config (BinDebug/, BinRelease/), so $<CONFIG> selects the matching one.
     set_target_properties(${GAME_PROJECT_NAME} PROPERTIES
-        BUILD_RPATH   "${TOOLKIT_DIR}/Bin;${TK_DEPS_DIR}"
-        INSTALL_RPATH "${TOOLKIT_DIR}/Bin;${TK_DEPS_DIR}")
+        BUILD_RPATH   "${TOOLKIT_DIR}/Bin$<CONFIG>;${TK_DEPS_DIR}"
+        INSTALL_RPATH "${TOOLKIT_DIR}/Bin$<CONFIG>;${TK_DEPS_DIR}")
 endif()
 
 # Project's own headers (Game.h, Platform/*_main.h). Required so the platform

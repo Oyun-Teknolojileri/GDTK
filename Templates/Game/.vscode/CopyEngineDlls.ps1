@@ -24,8 +24,9 @@ if (-not (Test-Path "$toolkitDir\ToolKit\Source\ToolKit.h")) {
 
 $suffix = if ($Config -eq "Debug") { "d" } else { "" }
 
-# Engine DLL (always needed)
-$toolkitBin  = "$toolkitDir\Bin"
+# Engine DLL (always needed). The engine ships one Bin folder per config
+# (BinDebug / BinRelease), so index it by the requested $Config.
+$toolkitBin  = "$toolkitDir\Bin$Config"
 $depsDir     = "$toolkitDir\Dependency\Intermediate\Windows\$Config"
 
 Write-Host "ToolKit: $toolkitDir"

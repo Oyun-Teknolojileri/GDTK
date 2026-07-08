@@ -79,7 +79,7 @@ There are cmake files all around the repository and .bat files. They are used to
 
 ## Setup
 
-After compiling the ToolKit solution, it creates the editor.exe in the Bin folder. When running the editor for the first time it asks a folder to use as a workspace directory. Its reasonable to give it a folder in the documents where you have full read & write access. All projects and related files get stored under the workspace / project folder. A sample path for workspace 
+After compiling the ToolKit solution, it creates the editor.exe in the Bin<Config> folder (e.g. BinDebug/ or BinRelease/). When running the editor for the first time it asks a folder to use as a workspace directory. Its reasonable to give it a folder in the documents where you have full read & write access. All projects and related files get stored under the workspace / project folder. A sample path for workspace 
 > "C:/Users/**YourUserName**/Documents/TK-Workspace"
 
 ![ToolKit setting a workspace](Images/tk_workspace.png)

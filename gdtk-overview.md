@@ -47,7 +47,7 @@ GDTK/
 ├── Dependency/                  # Vendored deps (assimp, glm, glad, imgui, etc.)
 ├── Resources/                   # Engine resources (shaders, textures, default scenes)
 ├── Config/                      # Default engine config files
-├── Bin/                         # Compiled editor.exe + runtime files
+├── Bin<Config>/                 # Compiled editor.exe + runtime files (per config: BinDebug/, BinRelease/)
 ├── Templates/                   # Project templates
 ├── CMakeLists.txt               # Top-level CMake
 ├── BuildScripts/                # Cross-platform build scripts

@@ -83,13 +83,18 @@ message(STATUS "GDTK: building for ${TK_PLATFORM} (config: ${CMAKE_BUILD_TYPE})"
 
 # Build artifacts split across two roots:
 #
-#   Bin/                        Final binaries the engine ships with
-#                               (Editor, Launcher, libToolKitd.so, ...).
-#                               The user-facing runtime CWD expectation is
-#                               "Bin/ holds the engine", so the editor's
-#                               `../Resources/...` and other relative
-#                               paths resolve from there. Removing Bin/
-#                               breaks runtime loading.
+#   Bin<Config>/                Final binaries the engine ships with
+#                               (Editor, Launcher, libToolKitd.so, ...), one
+#                               folder per build configuration -- BinDebug/,
+#                               BinRelease/, ... -- so Debug and Release do
+#                               not clobber each other. The config is baked
+#                               in via $<CONFIG> (see GDTK_BIN_DIR below),
+#                               which resolves per-build on both single-config
+#                               (Ninja/Make) and multi-config (Visual Studio)
+#                               generators. Bin<Config> is a direct child of
+#                               the root (same as the old flat Bin/), so the
+#                               editor's `../Resources/...` and `../Utils/...`
+#                               relative climbs resolve exactly as before.
 #
 #   Intermediate/<Plat>/<Cfg>/  Everything CMake generates per-build:
 #                               CMakeCache.txt, Makefile, *.cmake_install,
@@ -108,11 +113,12 @@ message(STATUS "GDTK: building for ${TK_PLATFORM} (config: ${CMAKE_BUILD_TYPE})"
 # of the others.
 #
 # Final layout:
-#   Bin/                              ← binaries the engine ships
+#   BinDebug/                        ← binaries the engine ships (per config)
 #     ├── Editor
 #     ├── Launcher
 #     ├── libToolKitd.so
 #     └── libWorkspace.a
+#   BinRelease/                      ← (same set, Release-named libs)
 #   Intermediate/Linux/Debug/         ← cmake state, *.o, link.txt, ...
 #     ├── CMakeCache.txt, Makefile, CMakeFiles/, ...
 #     ├── build-Editor/
@@ -121,31 +127,40 @@ message(STATUS "GDTK: building for ${TK_PLATFORM} (config: ${CMAKE_BUILD_TYPE})"
 #     ├── build-Launcher/
 #     ├── build-Import/
 #     └── build-Packer/
-set(GDTK_BIN_DIR "${CMAKE_SOURCE_DIR}/Bin")
+#
+# $<CONFIG> evaluates to the active build configuration ("Debug", "Release",
+# ...), so each config lands in its own Bin<Config>/ on every generator.
+# (Import and Packer still publish flat to Utils/Import, Utils/Packer -- see
+# GDTK_UTILS_*_DIR below -- last-built config wins there.)
+set(GDTK_BIN_DIR "${CMAKE_SOURCE_DIR}/Bin$<CONFIG>")
 set(GDTK_INTERMEDIATE_DIR "${CMAKE_SOURCE_DIR}/Intermediate/${TK_PLATFORM}/${CMAKE_BUILD_TYPE}")
 # Default output directories for any targets added by add_subdirectory
-# below. Multi-config generators (Visual Studio, Ninja Multi-Config)
-# append the active configuration as a final path component -- that
-# would put Editor.exe at Bin/Debug/Editor.exe instead of Bin/Editor.exe.
-# CMAKE_*_OUTPUT_DIRECTORY is plain-text only, so the per-target
-# override below is the actual mechanism that strips the suffix; this
-# default still acts as a fallback for any target that does not have
-# an explicit override.
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}")
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}")
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}")
+# below. These directory-scope variables are plain text and cannot expand
+# the $<CONFIG> generator expression that GDTK_BIN_DIR carries, so they
+# are left pointing at a plain genex-free Bin/ fallback. Every real target
+# (ToolKit, Editor, Launcher, Workspace) overrides RUNTIME/LIBRARY/
+# ARCHIVE_OUTPUT_DIRECTORY per-target with ${GDTK_BIN_DIR} (which DOES
+# expand $<CONFIG>), so this default is never actually consulted today --
+# it exists only so a future target that forgets the override still lands
+# somewhere sensible instead of under a literal "$<CONFIG>" folder.
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/Bin")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/Bin")
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/Bin")
 
 # Utils/Import/ and Utils/Packer/ are the *published* output locations for
 # the Import and Packer CLI tools. Everything else (Editor, Launcher,
-# libToolKitd.so, libWorkspace.a) lands in Bin/. Import and Packer
+# libToolKitd.so, libWorkspace.a) lands in Bin<Config>/. Import and Packer
 # override RUNTIME_OUTPUT_DIRECTORY to point at Utils/... (see
-# Import/CMakeLists.txt, Packer/CMakeLists.txt).
+# Import/CMakeLists.txt, Packer/CMakeLists.txt), so they stay FLAT (not split
+# per config) -- last-built config wins. The editor finds them via the
+# relative `../Utils/...` path (PublishManager.cpp / UI.cpp), which climbs
+# from Bin<Config>/ to the root exactly as it did from flat Bin/.
 #
-# On Linux, RPATH ($ORIGIN/../../Bin) lets the CLI tools find
-# libToolKitd.so under Bin/ without LD_LIBRARY_PATH. On Windows the
-# DLL is staged next to each tool by ToolKit/CMakeLists.txt's POST_BUILD
-# step, because the Windows loader searches the exe directory before
-# RPATH.
+# On Linux, RPATH ($ORIGIN/../../Bin$<CONFIG>) lets the CLI tools find
+# libToolKitd.so under the matching Bin<Config>/ without LD_LIBRARY_PATH.
+# On Windows the DLL is staged next to each tool by ToolKit/CMakeLists.txt's
+# POST_BUILD step, because the Windows loader searches the exe directory
+# before RPATH.
 #
 # Each consumer declares `add_dependencies(... ToolKit)` in its own
 # CMakeLists -- when ToolKit is rebuilt, Import / Packer / Editor /

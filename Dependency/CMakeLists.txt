@@ -254,14 +254,16 @@ if ("${TK_PLATFORM}" STREQUAL "Windows")
 
     # `cmake -E copy_if_different` errors with "Invalid argument" when the
     # destination directory does not exist yet -- it does not auto-create
-    # parents the way `cp` does. The Bin/ and Utils/{Import,Packer}/
+    # parents the way `cp` does. The Bin<Config>/ and Utils/{Import,Packer}/
     # folders only get created when the first build of the corresponding
     # target runs, which is *after* this CopyDependencies step on a clean
     # checkout. Make sure each destination directory exists immediately
     # before the copy that targets it; doing it once up-front is not
     # enough on the Visual Studio generator because MSBuild may run
     # sibling CustomBuild steps concurrently and race the mkdir.
-    set(_BIN_DIR     "${CMAKE_CURRENT_LIST_DIR}/../Bin")
+    # _BIN_DIR uses $<CONFIG> so each config's runtime DLLs land in the
+    # matching Bin<Config>/ that the engine build wrote.
+    set(_BIN_DIR     "${CMAKE_CURRENT_LIST_DIR}/../Bin$<CONFIG>")
     set(_IMPORT_DIR  "${CMAKE_CURRENT_LIST_DIR}/../Utils/Import")
     set(_PACKER_DIR  "${CMAKE_CURRENT_LIST_DIR}/../Utils/Packer")
 
