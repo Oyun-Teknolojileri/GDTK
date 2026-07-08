@@ -57,6 +57,7 @@ namespace ToolKit
 
     bool OnNewProject(const String& name);
     bool OnNewPlugin(const String& name);
+    void DeleteProject(const String& path);
 
     static bool DeserializeThemeColors(const String& themeFileName, Vec4Array& outColors);
 

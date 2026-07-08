@@ -10,6 +10,7 @@
 #include <Common/PlatformHelper.h>
 #include <RenderSystem.h>
 #include <Renderer.h>
+#include <SDL.h>
 #include <Texture.h>
 #include <ToolKit.h>
 #include <Util.h>
@@ -25,6 +26,7 @@
 
 extern bool g_running;
 extern bool g_launcherRunning;
+extern SDL_Window* g_window;
 
 namespace ToolKit
 {
@@ -209,7 +211,11 @@ namespace ToolKit
       argv.insert(argv.end(), launchArgv.begin(), launchArgv.end());
 
       m_sysComExecFn(argv, true, false, nullptr);
-      g_running = false;
+
+      if (g_window != nullptr)
+      {
+        SDL_MinimizeWindow(g_window);
+      }
     }
 
     void LauncherApp::UpdateThumbnailCache()
@@ -262,13 +268,25 @@ namespace ToolKit
       ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
       ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.8f, 0.2f, 0.2f, 0.8f));
       ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.9f, 0.1f, 0.1f, 1.0f));
-      ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.5f, 0.5f));
 
-      if (ImGui::Button("x", ImVec2(closeButtonSize, closeButtonSize)))
+      if (ImGui::Button("##closeBtn", ImVec2(closeButtonSize, closeButtonSize)))
       {
         g_running = false;
       }
-      ImGui::PopStyleVar();
+
+      // Draw the X with lines so it is perfectly centred regardless of font.
+      bool closeHovered = ImGui::IsItemHovered();
+      ImVec2 closeMin   = ImGui::GetItemRectMin();
+      ImVec2 closeMax   = ImGui::GetItemRectMax();
+      float cx          = (closeMin.x + closeMax.x) * 0.5f;
+      float cy          = (closeMin.y + closeMax.y) * 0.5f;
+      float half        = 5.0f; // arm length
+      ImU32 xColor      = ImGui::GetColorU32(closeHovered ? ImVec4(1.0f, 1.0f, 1.0f, 1.0f)
+                                                         : ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
+      float thickness   = 1.5f;
+      drawList->AddLine(ImVec2(cx - half, cy - half), ImVec2(cx + half, cy + half), xColor, thickness);
+      drawList->AddLine(ImVec2(cx + half, cy - half), ImVec2(cx - half, cy + half), xColor, thickness);
+
       ImGui::PopStyleColor(3);
 
       // Logo / title.
@@ -602,6 +620,22 @@ namespace ToolKit
               }
             }
 
+            ImGui::Spacing();
+            ImGui::SetCursorPosX((toolsPanelWidth - buttonWidth) * 0.5f);
+
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.6f, 0.1f, 0.1f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.8f, 0.2f, 0.2f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.9f, 0.1f, 0.1f, 1.0f));
+
+            if (ImGui::Button("Delete", ImVec2(buttonWidth, buttonHeight)))
+            {
+              if (hasSelection)
+              {
+                m_showDeleteConfirmPopup = true;
+              }
+            }
+            ImGui::PopStyleColor(3);
+
             ImGui::EndDisabled();
           }
           ImGui::EndChild();
@@ -645,6 +679,7 @@ namespace ToolKit
 
       ShowWorkspacePopup();
       ShowNewProjectPopup();
+      ShowDeleteProjectPopup();
 
       ImGui::PopFont();
 
@@ -747,6 +782,13 @@ namespace ToolKit
 
         ImGui::SetCursorPosX(innerPad);
         ImGui::PushItemWidth(ImGui::GetWindowWidth() - innerPad * 2);
+
+        // Auto-focus input on first frame.
+        if (ImGui::IsWindowAppearing())
+        {
+          ImGui::SetKeyboardFocusHere();
+        }
+
         bool enterPressed =
             ImGui::InputText("##workspacePath", &m_workspacePathOnUI, ImGuiInputTextFlags_EnterReturnsTrue);
         ImGui::PopItemWidth();
@@ -806,6 +848,9 @@ namespace ToolKit
 
         ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 5.0f);
 
+        // Track tab switches so we can re-focus the input below.
+        bool refocusInput = false;
+
         ImGui::SetCursorPosX(innerPad);
         if (ImGui::BeginTabBar("##NewProjectTabs"))
         {
@@ -820,6 +865,9 @@ namespace ToolKit
             ImGui::EndTabItem();
           }
           ImGui::EndTabBar();
+
+          refocusInput = (m_newProjectTabLocal != m_prevNewProjectTabLocal);
+          m_prevNewProjectTabLocal = m_newProjectTabLocal;
         }
 
         ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 5.0f);
@@ -839,6 +887,12 @@ namespace ToolKit
 
           ImGui::SetCursorPosX(innerPad);
           ImGui::PushItemWidth(ImGui::GetWindowWidth() - innerPad * 2);
+
+          // Auto-focus input on first frame or when tab is switched.
+          if (ImGui::IsWindowAppearing() || refocusInput)
+          {
+            ImGui::SetKeyboardFocusHere();
+          }
 
           bool projectNameExists  = false;
           bool projectNameInvalid = false;
@@ -894,6 +948,13 @@ namespace ToolKit
 
           ImGui::SetCursorPosX(innerPad);
           ImGui::PushItemWidth(ImGui::GetWindowWidth() - innerPad * 2);
+
+          // Auto-focus input on first frame or when tab is switched.
+          if (ImGui::IsWindowAppearing() || refocusInput)
+          {
+            ImGui::SetKeyboardFocusHere();
+          }
+
           enterPressed =
               ImGui::InputText("##newProjectUrl", &m_newProjectPathOrUrl, ImGuiInputTextFlags_EnterReturnsTrue);
           ImGui::PopItemWidth();
@@ -1021,8 +1082,8 @@ namespace ToolKit
               bool result = m_workspace->OnNewProject(projectName);
               if (result)
               {
-                g_launcherRunning = false;
-                m_workspace->SetActiveProject({projectName, ""});
+                m_workspace->RefreshProjects();
+                UpdateThumbnailCache();
               }
               m_showNewProjectPopup = false;
               ImGui::CloseCurrentPopup();
@@ -1041,6 +1102,78 @@ namespace ToolKit
           m_newProjectPathOrUrl.clear();
           m_isCloning = false;
           m_cloneProgress.clear();
+        }
+
+        ImGui::EndPopup();
+      }
+    }
+
+    void LauncherApp::ShowDeleteProjectPopup()
+    {
+      if (!m_showDeleteConfirmPopup)
+        return;
+
+      if (m_selectedProjectIndex < 0 || m_selectedProjectIndex >= (int) m_workspace->m_projects.size())
+      {
+        m_showDeleteConfirmPopup = false;
+        return;
+      }
+
+      const Project& project = m_workspace->m_projects[m_selectedProjectIndex];
+
+      ImGuiViewport* vp = ImGui::GetMainViewport();
+      ImVec2 center     = ImVec2(vp->Pos.x + vp->Size.x * 0.5f, vp->Pos.y + vp->Size.y * 0.5f);
+
+      ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+      ImGui::SetNextWindowSize(ImVec2(400.0f, 150.0f), ImGuiCond_Appearing);
+      ImGui::OpenPopup("Delete Project##confirm");
+
+      if (ImGui::BeginPopupModal("Delete Project##confirm",
+                                 &m_showDeleteConfirmPopup,
+                                 ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove))
+      {
+        float innerPad = 15.0f;
+
+        ImGui::SetCursorPosX(innerPad);
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 10.0f);
+        ImGui::Text("Are you sure you want to delete this project?");
+        ImGui::SetCursorPosX(innerPad);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.8f, 0.2f, 1.0f));
+        ImGui::Text("\"%s\"", project.name.c_str());
+        ImGui::PopStyleColor();
+        ImGui::SetCursorPosX(innerPad);
+        ImGui::Text("This action cannot be undone.");
+
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 12.0f);
+
+        float buttonWidth   = 120.0f;
+        float buttonSpacing = 15.0f;
+        float totalWidth    = buttonWidth * 2 + buttonSpacing;
+        float startX        = (ImGui::GetWindowWidth() - totalWidth) * 0.5f;
+
+        ImGui::SetCursorPosX(startX);
+
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.6f, 0.1f, 0.1f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.8f, 0.2f, 0.2f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.9f, 0.1f, 0.1f, 1.0f));
+        if (ImGui::Button("Delete", ImVec2(buttonWidth, 0)))
+        {
+          String projectPath =
+              ConcatPaths({m_workspace->GetActiveWorkspace(), project.name});
+          m_workspace->DeleteProject(projectPath);
+          m_workspace->RefreshProjects();
+          UpdateThumbnailCache();
+          m_selectedProjectIndex = -1;
+          m_showDeleteConfirmPopup = false;
+          ImGui::CloseCurrentPopup();
+        }
+        ImGui::PopStyleColor(3);
+
+        ImGui::SameLine(0.0f, buttonSpacing);
+        if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0)))
+        {
+          m_showDeleteConfirmPopup = false;
+          ImGui::CloseCurrentPopup();
         }
 
         ImGui::EndPopup();

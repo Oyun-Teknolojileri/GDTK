@@ -399,7 +399,14 @@ namespace ToolKit
         return (int) errCode;
       }
 
-      SetWindowPos((HWND) pi.hProcess, HWND_TOPMOST, 0, 0, 0, 0, 0);
+      // Grant the child process permission to bring its windows to the
+      // foreground. Without this the OS may block SetForegroundWindow
+      // calls from the child (especially when the caller is a GUI app
+      // that currently holds foreground). Using the child's PID rather
+      // than ASFW_ANY keeps the grant scoped and lets multi-window
+      // children (e.g. splash → main window transitions) retain the
+      // right across window lifecycles.
+      ::AllowSetForegroundWindow(pi.dwProcessId);
 
       auto finalizeFn = [pi, callback](DWORD stat) -> int
       {

@@ -458,6 +458,50 @@ namespace ToolKit
     return true;
   }
 
+  void Workspace::DeleteProject(const String& path)
+  {
+    if (path.empty() || !CheckSystemFile(path))
+    {
+      TK_ERR("Project path does not exist: %s", path.c_str());
+      return;
+    }
+
+    // Safety check: only delete directories that live inside the active
+    // workspace (not some arbitrary system path).
+    String workspacePath = GetActiveWorkspace();
+    if (workspacePath.empty())
+    {
+      TK_ERR("No active workspace. Cannot delete project.");
+      return;
+    }
+
+    if (path.find(workspacePath) != 0)
+    {
+      TK_ERR("Project path is not inside the active workspace. Refusing to delete.");
+      return;
+    }
+
+    // Additional safety: the path must contain at least one level deeper
+    // than the workspace (the project folder itself).
+    String relative = path.substr(workspacePath.size());
+    if (relative.empty() || relative == "/" || relative == "\\")
+    {
+      TK_ERR("Refusing to delete the workspace root.");
+      return;
+    }
+
+    std::error_code ec;
+    std::filesystem::remove_all(path, ec);
+    if (ec)
+    {
+      TK_ERR("Failed to delete project: %s", ec.message().c_str());
+    }
+    else
+    {
+      TK_LOG("Project deleted: %s", path.c_str());
+    }
+  }
+
   bool Workspace::DeserializeThemeColors(const String& themeFileName, Vec4Array& outColors)
   {
     String path = ConcatPaths({ConfigPath(), themeFileName});

@@ -33,6 +33,7 @@ namespace ToolKit
       void UpdateThumbnailCache();
       void ShowWorkspacePopup();
       void ShowNewProjectPopup();
+      void ShowDeleteProjectPopup();
       void OpenProject(const Project& project);
 
      public:
@@ -45,15 +46,17 @@ namespace ToolKit
       float m_windowHeight = 768.0f;
 
       WorkspacePtr m_workspace;
-      bool m_showWorkspacePopup  = false;
-      bool m_showNewProjectPopup = false;
+      bool m_showWorkspacePopup       = false;
+      bool m_showNewProjectPopup      = false;
+      bool m_showDeleteConfirmPopup   = false;
 
       String m_newProjectName;
       String m_newProjectPathOrUrl;
       bool m_isCloning = false;
       String m_cloneProgress;
-      bool m_newProjectTabLocal  = true;
-      int m_selectedProjectIndex = -1;
+      bool m_newProjectTabLocal       = true;
+      bool m_prevNewProjectTabLocal   = true;
+      int m_selectedProjectIndex      = -1;
 
       StringBoolMap m_thumbnailCache;
       String m_searchFilter;
