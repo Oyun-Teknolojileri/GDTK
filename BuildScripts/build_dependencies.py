@@ -26,9 +26,16 @@ ROOT_DIR = SCRIPT_DIR.parent
 DEP_SRC = ROOT_DIR / "Dependency"
 DEP_INT = ROOT_DIR / "Dependency" / "Intermediate"
 
-# Default build configurations. RelWithDebInfo is omitted by default since
-# it is rarely useful on Linux and roughly doubles the build time.
-DEFAULT_CONFIGS = ["Debug", "Release"]
+# Default build configurations. All four CMake standard configs are built
+# so every PublishConfig (Debug/Develop/Deploy) maps to its own Bin<Config>/
+# folder without cross-config IMPORTED fallback (MAP_IMPORTED_CONFIG).
+#   Debug          -> Publishing Debug
+#   RelWithDebInfo -> Publishing Develop (release + debug info / profile)
+#   Release        -> Publishing Deploy  (optimised release)
+#   MinSizeRel     -> minimum-size release (not currently mapped to a
+#                      PublishConfig entry, but available for people who
+#                      call cmake/cpack directly).
+DEFAULT_CONFIGS = ["Debug", "Release", "RelWithDebInfo", "MinSizeRel"]
 
 
 # Shared helpers -- terminal colors, toolchain probing, CMake invoker,

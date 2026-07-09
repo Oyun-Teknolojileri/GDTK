@@ -110,27 +110,43 @@ list(APPEND _TK_ENGINE_INCLUDE_DIRS
 # --------------------------------------------------------------------------- #
 # Engine shared library, per platform/configuration.
 #
-# The engine build writes one folder per config (BinDebug/, BinRelease/, ...),
-# so the Debug and Release artifacts live in separate dirs. Each IMPORTED
-# variant below points at its own Bin<Config>/, and CMake's
-# IMPORTED_LOCATION_DEBUG / _RELEASE mapping selects the right one for the
-# consuming project's active build config.
+# The engine build writes one folder per config via GDTK_BIN_DIR=Bin$<CONFIG>
+# (BinDebug/, BinRelease/, BinRelWithDebInfo/, BinMinSizeRel/). Each IMPORTED
+# variant points at its own Bin<Config>/ with no cross-config mapping -- the
+# consumer's active CMAKE_BUILD_TYPE selects the matching IMPORTED_LOCATION.
+# Only Debug carries the "d" postfix (CMAKE_DEBUG_POSTFIX); the other three
+# configs use the unsuffixed library name.
 # --------------------------------------------------------------------------- #
-if(WIN32)
-    set(_TK_ENGINE_LIB_DEBUG    "${TOOLKIT_DIR}/BinDebug/libToolKitd.dll")
-    set(_TK_ENGINE_LIB_RELEASE  "${TOOLKIT_DIR}/BinRelease/libToolKit.dll")
-    set(_TK_ENGINE_IMPLIB_DEBUG   "${TOOLKIT_DIR}/BinDebug/ToolKitd.lib")
-    set(_TK_ENGINE_IMPLIB_RELEASE "${TOOLKIT_DIR}/BinRelease/ToolKit.lib")
-else()
-    set(_TK_ENGINE_LIB_DEBUG   "${TOOLKIT_DIR}/BinDebug/libToolKitd.so")
-    set(_TK_ENGINE_LIB_RELEASE "${TOOLKIT_DIR}/BinRelease/libToolKit.so")
-endif()
+set(_TK_CONFIGS Debug Release RelWithDebInfo MinSizeRel)
+foreach(_cfg IN LISTS _TK_CONFIGS)
+    if(_cfg STREQUAL "Debug")
+        set(_sfx "d")
+    else()
+        set(_sfx "")
+    endif()
+    if(WIN32)
+        set(_engine_lib_${_cfg}   "${TOOLKIT_DIR}/Bin${_cfg}/libToolKit${_sfx}.dll")
+        set(_engine_implib_${_cfg} "${TOOLKIT_DIR}/Bin${_cfg}/ToolKit${_sfx}.lib")
+    else()
+        set(_engine_lib_${_cfg} "${TOOLKIT_DIR}/Bin${_cfg}/libToolKit${_sfx}.so")
+    endif()
+endforeach()
 
-if(NOT EXISTS "${_TK_ENGINE_LIB_DEBUG}" AND NOT EXISTS "${_TK_ENGINE_LIB_RELEASE}")
+# At minimum Debug or Release MUST exist (the two configurations the engine
+# is always expected to be built in). Warn if RelWithDebInfo or MinSizeRel
+# are missing -- the consumer simply won't be able to use that config.
+set(_tk_lib_missing TRUE)
+foreach(_cfg IN LISTS _TK_CONFIGS)
+    if(EXISTS "${_engine_lib_${_cfg}}")
+        set(_tk_lib_missing FALSE)
+        break()
+    endif()
+endforeach()
+if(_tk_lib_missing)
     message(FATAL_ERROR
         "ToolKit engine library not found under '${TOOLKIT_DIR}/Bin<Config>' "
-        "(looked in BinDebug/ and BinRelease/ for libToolKit[d].so / "
-        "libToolKit[d].dll). Build the engine first, e.g.:\n"
+        "(looked in BinDebug/, BinRelease/, BinRelWithDebInfo/, BinMinSizeRel/ "
+        "for libToolKit[d].so / libToolKit[d].dll). Build the engine first, e.g.:\n"
         "  python3 ${TOOLKIT_DIR}/BuildScripts/build_dependencies.py --configs ${CMAKE_BUILD_TYPE}\n"
         "  cmake -S ${TOOLKIT_DIR} -B ${TOOLKIT_DIR}/Intermediate/${TK_PLATFORM}/${CMAKE_BUILD_TYPE} -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}\n"
         "  cmake --build ${TOOLKIT_DIR}/Intermediate/${TK_PLATFORM}/${CMAKE_BUILD_TYPE}")
@@ -138,26 +154,30 @@ endif()
 
 # --------------------------------------------------------------------------- #
 # The IMPORTED engine target. Consumers link TK::ToolKit and inherit its public
-# include dirs + compile definitions.
+# include dirs + compile definitions. Every config has its own
+# IMPORTED_LOCATION -- no MAP_IMPORTED_CONFIG fallback.
 # --------------------------------------------------------------------------- #
 add_library(TK::ToolKit SHARED IMPORTED)
+list(JOIN _TK_CONFIGS ";" _TK_CONFIGS_STR)
 set_target_properties(TK::ToolKit PROPERTIES
-    IMPORTED_CONFIGURATIONS "Debug;Release"
-    MAP_IMPORTED_CONFIG_RELWITHDEBINFO Debug
-    MAP_IMPORTED_CONFIG_MINSIZEREL Release
+    IMPORTED_CONFIGURATIONS "${_TK_CONFIGS_STR}"
     INTERFACE_INCLUDE_DIRECTORIES "${_TK_ENGINE_INCLUDE_DIRS}"
-    INTERFACE_COMPILE_DEFINITIONS "TK_GL_3_0;$<$<CONFIG:Debug>:TK_DEBUG>;TK_DLL_IMPORT"
-)
+    INTERFACE_COMPILE_DEFINITIONS "TK_GL_3_0;$<$<CONFIG:Debug>:TK_DEBUG>;TK_DLL_IMPORT")
+
+foreach(_cfg IN LISTS _TK_CONFIGS)
+    string(TOUPPER "${_cfg}" _cfgu)
+    set_target_properties(TK::ToolKit PROPERTIES
+        IMPORTED_LOCATION_${_cfgu} "${_engine_lib_${_cfg}}")
+    if(WIN32)
+        set_target_properties(TK::ToolKit PROPERTIES
+            IMPORTED_IMPLIB_${_cfgu} "${_engine_implib_${_cfg}}")
+    endif()
+endforeach()
+
 if(WIN32)
     set_target_properties(TK::ToolKit PROPERTIES
-        IMPORTED_LOCATION_DEBUG   "${_TK_ENGINE_LIB_DEBUG}"
-        IMPORTED_LOCATION_RELEASE "${_TK_ENGINE_LIB_RELEASE}"
-        IMPORTED_IMPLIB_DEBUG     "${_TK_ENGINE_IMPLIB_DEBUG}"
-        IMPORTED_IMPLIB_RELEASE   "${_TK_ENGINE_IMPLIB_RELEASE}"
         INTERFACE_LINK_LIBRARIES  "OpenGL32")
 else()
     set_target_properties(TK::ToolKit PROPERTIES
-        IMPORTED_LOCATION_DEBUG   "${_TK_ENGINE_LIB_DEBUG}"
-        IMPORTED_LOCATION_RELEASE "${_TK_ENGINE_LIB_RELEASE}"
         INTERFACE_LINK_LIBRARIES  "pthread;dl")
 endif()

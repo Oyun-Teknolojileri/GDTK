@@ -99,27 +99,20 @@ else()
     get_property(_TK_IS_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
     if(_TK_IS_MULTI_CONFIG)
         # ---- Windows / Visual Studio (multi-config) ----
-        # The engine ships ONLY BinDebug/ and BinRelease/ (no BinRelWithDebInfo),
-        # and deps are built only for Debug/Release. TK::ToolKit maps
-        # RelWithDebInfo->Debug and MinSizeRel->Release (ToolKitEngine.cmake
-        # MAP_IMPORTED_CONFIG_*), so each game config bundles the matching
-        # {source dir, "d" suffix} pair rather than a literal Bin<cfg>. OPTIONAL
-        # keeps a missing file non-fatal during bring-up.
-        set(_tk_dir_Debug          "BinDebug")
-        set(_tk_dir_Release        "BinRelease")
-        set(_tk_dir_RelWithDebInfo "BinDebug")    # mapped to Debug
-        set(_tk_dir_MinSizeRel     "BinRelease")  # mapped to Release
-        set(_tk_sfx_Debug          "d")
-        set(_tk_sfx_Release        "")
-        set(_tk_sfx_RelWithDebInfo "d")           # mapped to Debug
-        set(_tk_sfx_MinSizeRel     "")
-
+        # Every config writes its own Bin<Config>/ folder (BinDebug, BinRelease,
+        # BinRelWithDebInfo, BinMinSizeRel) -- no cross-config MAP_IMPORTED_CONFIG
+        # remapping. Only Debug carries the "d" postfix. Derive dir + suffix from
+        # the config name; OPTIONAL keeps a missing file non-fatal during bring-up.
         foreach(_cfg Debug Release RelWithDebInfo MinSizeRel)
             if(NOT _cfg IN_LIST CMAKE_CONFIGURATION_TYPES)
                 continue()
             endif()
-            set(_d "${TOOLKIT_DIR}/${_tk_dir_${_cfg}}")
-            set(_s "${_tk_sfx_${_cfg}}")
+            if(_cfg STREQUAL "Debug")
+                set(_s "d")
+            else()
+                set(_s "")
+            endif()
+            set(_d "${TOOLKIT_DIR}/Bin${_cfg}")
             install(FILES
                     "${_d}/libToolKit${_s}.dll"
                     "${_d}/SDL2${_s}.dll"
@@ -130,11 +123,10 @@ else()
         endforeach()
     else()
         # ---- Linux / Make / Ninja (single-config) ----
-        # Active config is known at configure time. Deps are built only for
-        # Debug/Release (build_dependencies.py DEFAULT_CONFIGS). libToolKit and
-        # libimgui are real files; SDL2 is handled separately below (it ships as
-        # a SONAME symlink chain that install(FILES) would copy verbatim, leaving
-        # a dangling link).
+        # Active config is known at configure time. libToolKit and libimgui are
+        # real files; SDL2 is handled separately below (it ships as a SONAME
+        # symlink chain that install(FILES) would copy verbatim, leaving a
+        # dangling link).
         if("${TK_PLATFORM}" STREQUAL "${TK_LINUX}")
             if(TK_BUILD_TYPE STREQUAL "Debug")
                 set(_sfx "d")
