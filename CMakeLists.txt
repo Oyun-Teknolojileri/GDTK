@@ -298,7 +298,7 @@ target_include_directories(tkimgui INTERFACE
 # zstd_static<d>.lib, ...) behind that boundary, so this file no
 # longer has to maintain per-dep file-name tables or a Debug-suffix
 # probing helper.
-list(APPEND CMAKE_PREFIX_PATH "${TK_DEPS_DIR}")
+set(CMAKE_PREFIX_PATH "${TK_DEPS_DIR}")
 
 # Required at configure time -- if a dep is missing the error message
 # comes from the wrapper itself (it knows the per-platform file name

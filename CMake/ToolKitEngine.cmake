@@ -79,7 +79,16 @@ endif()
 # the prebuilt .so/.a here.
 # --------------------------------------------------------------------------- #
 set(TK_DEPS_DIR "${TOOLKIT_DIR}/Dependency/Intermediate/${TK_PLATFORM}/${CMAKE_BUILD_TYPE}")
-list(APPEND CMAKE_PREFIX_PATH "${TK_DEPS_DIR}")
+set(CMAKE_PREFIX_PATH "${TK_DEPS_DIR}")
+
+# find_package honours a cached <dep>_DIR above CMAKE_PREFIX_PATH, so when the
+# build tree is reconfigured for a different CMAKE_BUILD_TYPE the stale
+# SDL2_DIR / imgui_DIR entries from the previous config would point find_package
+# at the wrong config's wrappers. Unset them so the wrapper for the CURRENT
+# config is rediscovered via CMAKE_PREFIX_PATH.
+foreach(_dep SDL2 SDL2main imgui assimp)
+    unset(${_dep}_DIR CACHE)
+endforeach()
 
 # --------------------------------------------------------------------------- #
 # Flat include path for the engine headers. ToolKit's sources live in many
