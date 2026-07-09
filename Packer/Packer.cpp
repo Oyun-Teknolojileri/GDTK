@@ -153,7 +153,7 @@ namespace ToolKit
 
   int Packer::Publish()
   {
-    String packPath   = ConcatPaths({ResourcePath(), "..", "MinResources.pak"});
+    String packPath   = ConcatPaths({ResourcePath(), "..", TKResourcePak});
 
     bool needPacking  = m_publishConfig == PublishConfig::Deploy;
     needPacking      |= !CheckSystemFile(packPath);
@@ -279,7 +279,7 @@ namespace ToolKit
       return -1;
     }
 
-    const String pakFile                = ConcatPaths({projectDirStr, "MinResources.pak"});
+    const String pakFile                = ConcatPaths({projectDirStr, TKResourcePak});
     const String engineSettingsPath     = ConcatPaths({projectDirStr, "Config", "Windows", "Engine.settings"});
     const String destEngineSettingsPath = ConcatPaths({publishConfigDir, "Engine.settings"});
 
@@ -287,7 +287,7 @@ namespace ToolKit
 
     // Copy pak
     std::filesystem::copy(pakFile, publishDirectory, std::filesystem::copy_options::overwrite_existing, m_errorCode);
-    if (CheckErrorReturn("Copy MinResource.pak to " + publishDirectory))
+    if (CheckErrorReturn("Copy " + TKResourcePak + " to " + publishDirectory))
     {
       return -1;
     }
@@ -397,7 +397,7 @@ namespace ToolKit
       return -1;
     }
 
-    const String pakFile             = ConcatPaths({projectDirStr, "MinResources.pak"});
+    const String pakFile             = ConcatPaths({projectDirStr, TKResourcePak});
     const String engineSettingsPath  = ConcatPaths({projectDirStr, "Config", "Linux", "Engine.settings"});
     const String destEngineSettings  = ConcatPaths({publishConfigDir, "Engine.settings"});
 
@@ -405,7 +405,7 @@ namespace ToolKit
 
     // Copy pak
     std::filesystem::copy(pakFile, publishDirectory, std::filesystem::copy_options::overwrite_existing, m_errorCode);
-    if (CheckErrorReturn("Copy MinResources.pak to " + publishDirectory))
+    if (CheckErrorReturn("Copy " + TKResourcePak + " to " + publishDirectory))
     {
       return -1;
     }
@@ -599,8 +599,8 @@ namespace ToolKit
 
     const String assetsPath             = NormalizePath("Android/app/src/main/assets");
     const String projectLocation        = ConcatPaths({workspacePath, projectName});
-    const String sceneResourcesPath     = ConcatPaths({projectLocation, "MinResources.pak"});
-    const String androidResourcesPath   = ConcatPaths({projectLocation, assetsPath, "MinResources.pak"});
+    const String sceneResourcesPath     = ConcatPaths({projectLocation, TKResourcePak});
+    const String androidResourcesPath   = ConcatPaths({projectLocation, assetsPath, TKResourcePak});
     const String engineSettingsPath     = ConcatPaths({ResourcePath(), "..", "Config", "Android", "Engine.settings"});
     const String destEngineSettingsPath = ConcatPaths({projectLocation, assetsPath, "Config", "Engine.settings"});
 

@@ -76,7 +76,7 @@ namespace ToolKit
     mkdir(ConcatPaths({internalDataPath, "Resources"}).c_str(), 0777);
     mkdir(ConcatPaths({internalDataPath, "Config"}).c_str(), 0777);
 
-    CopyFileToDataPath(internalDataPath, "MinResources.pak");
+    CopyFileToDataPath(internalDataPath, TKResourcePak);
     CopyFileToDataPath(internalDataPath, ConcatPaths({"Config", "Engine.settings"}).c_str());
   }
 

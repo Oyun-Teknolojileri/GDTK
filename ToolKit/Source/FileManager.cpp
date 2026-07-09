@@ -75,9 +75,9 @@ namespace ToolKit
     String relativePath = fileInfo.filePath;
     GetRelativeResourcesPath(relativePath);
 
-    if (!m_zfile)
+    if (!m_zfile && !m_ignorePakFile)
     {
-      String pakPath = ConcatPaths({ResourcePath(), "..", "MinResources.pak"});
+      String pakPath = ConcatPaths({ResourceParentPath(), TKResourcePak});
       if (CheckSystemFile(pakPath))
       {
         m_zfile = unzOpen(pakPath.c_str());
@@ -162,7 +162,7 @@ namespace ToolKit
 
   int FileManager::PackResources()
   {
-    String zipFile = ConcatPaths({ResourcePath(), "..", "MinResources.pak"});
+    String zipFile = ConcatPaths({ResourceParentPath(), TKResourcePak});
 
     if (CheckSystemFile(zipFile.c_str()))
     {
@@ -175,7 +175,7 @@ namespace ToolKit
       std::error_code err;
       if (!std::filesystem::remove(zipFile, err))
       {
-        TK_LOG("cannot remove MinResources.pak! message: %s\n", err.message().c_str());
+        TK_LOG("cannot remove %s! message: %s\n", TKResourcePak.c_str(), err.message().c_str());
         return -1;
       }
     }
@@ -204,8 +204,8 @@ namespace ToolKit
     }
 
     // Copy assets under android assets if exists
-    String androidAssetFolder = ConcatPaths({ResourcePath(), "..", "Android", "app", "src", "main", "assets"});
-    String minResourcesPath   = ConcatPaths({ResourcePath(), "..", "MinResources.pak"});
+    String androidAssetFolder = ConcatPaths({ResourceParentPath(), "Android", "app", "src", "main", "assets"});
+    String minResourcesPath   = ConcatPaths({ResourceParentPath(), TKResourcePak});
     if (CheckSystemFile(androidAssetFolder) && CheckSystemFile(minResourcesPath))
     {
       std::error_code ec;
@@ -220,11 +220,6 @@ namespace ToolKit
 
   bool FileManager::CheckFileFromResources(const String& path)
   {
-    if (!Main::GetInstance()->m_resourceRoot.empty())
-    {
-      GenerateOffsetTableForPakFiles();
-    }
-
     String relativePath = path;
     UnixifyPath(relativePath);
     GetRelativeResourcesPath(relativePath);
@@ -237,6 +232,8 @@ namespace ToolKit
     bool inPak = false;
     if (!m_ignorePakFile)
     {
+      assert(!Main::GetInstance()->m_resourceRoot.empty() && "Resource root can't be empty.");
+      GenerateOffsetTableForPakFiles();
       inPak = IsFileInPak(relativePath);
     }
 
@@ -297,7 +294,7 @@ namespace ToolKit
       {
         size_t index = absolutePath.find("Materials");
         absolutePath = absolutePath.substr(index);
-        absolutePath = ConcatPaths({DefaultAbsolutePath(), absolutePath});
+        absolutePath = ConcatPaths({DefaultPath(), absolutePath});
       }
 
       m_allPaths.insert(absolutePath);
@@ -313,7 +310,7 @@ namespace ToolKit
       {
         size_t index = absolutePath.find("Meshes");
         absolutePath = absolutePath.substr(index);
-        absolutePath = ConcatPaths({DefaultAbsolutePath(), absolutePath});
+        absolutePath = ConcatPaths({DefaultPath(), absolutePath});
       }
 
       m_allPaths.insert(absolutePath);
@@ -329,7 +326,7 @@ namespace ToolKit
       {
         size_t index = absolutePath.find("Meshes");
         absolutePath = absolutePath.substr(index);
-        absolutePath = ConcatPaths({DefaultAbsolutePath(), absolutePath});
+        absolutePath = ConcatPaths({DefaultPath(), absolutePath});
       }
 
       m_allPaths.insert(absolutePath);
@@ -345,7 +342,7 @@ namespace ToolKit
       {
         size_t index = absolutePath.find("Meshes");
         absolutePath = absolutePath.substr(index);
-        absolutePath = ConcatPaths({DefaultAbsolutePath(), absolutePath});
+        absolutePath = ConcatPaths({DefaultPath(), absolutePath});
       }
 
       m_allPaths.insert(absolutePath);
@@ -365,7 +362,7 @@ namespace ToolKit
           continue;
         }
         absolutePath = absolutePath.substr(index);
-        absolutePath = ConcatPaths({DefaultAbsolutePath(), absolutePath});
+        absolutePath = ConcatPaths({DefaultPath(), absolutePath});
       }
 
       m_allPaths.insert(absolutePath);
@@ -381,7 +378,7 @@ namespace ToolKit
       {
         size_t index = absolutePath.find("Shaders");
         absolutePath = absolutePath.substr(index);
-        absolutePath = ConcatPaths({DefaultAbsolutePath(), absolutePath});
+        absolutePath = ConcatPaths({DefaultPath(), absolutePath});
       }
 
       m_allPaths.insert(absolutePath);
@@ -397,7 +394,7 @@ namespace ToolKit
       {
         size_t index = absolutePath.find("Textures");
         absolutePath = absolutePath.substr(index);
-        absolutePath = ConcatPaths({DefaultAbsolutePath(), absolutePath});
+        absolutePath = ConcatPaths({DefaultPath(), absolutePath});
       }
 
       m_allPaths.insert(absolutePath);
@@ -805,7 +802,7 @@ namespace ToolKit
       return;
     }
 
-    String pakPath = ConcatPaths({ResourcePath(), "..", "MinResources.pak"});
+    String pakPath = ConcatPaths({ResourceParentPath(), TKResourcePak});
 
     if (!m_zfile)
     {

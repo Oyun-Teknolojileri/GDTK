@@ -333,12 +333,14 @@ namespace ToolKit
             objFactory->Override<EditorCanvas, Canvas>();
             objFactory->Override<EditorEnvironmentComponent, EnvironmentComponent>();
 
+            // Let editor use actual resource path instead of the one in the pak file.
+            // pak maybe not upto date.
+            GetFileManager()->m_ignorePakFile = true;
+
             // Override SceneManager.
             SafeDel(g_proxy->m_sceneManager);
             g_proxy->m_sceneManager = new EditorSceneManager();
             g_proxy->Init();
-
-            GetFileManager()->m_ignorePakFile = true;
 
             // Set defaults
             EditorBackendBindings::SetSwapInterval(0);

@@ -448,14 +448,14 @@ namespace ToolKit
       }
       if (iterEc)
       {
-        TK_ERR("FolderWindow::Iterate: failed to iterate '%s': %s", absPath.c_str(), iterEc.message().c_str());
+        TK_ERR("FolderWindow failed to iterate '%s': %s", absPath.c_str(), iterEc.message().c_str());
       }
 
       if (addEngine)
       {
         // Engine folder
         FolderView view(this);
-        view.SetPath(DefaultAbsolutePath());
+        view.SetPath(DefaultPath());
 
         view.Iterate();
         AddEntry(view);

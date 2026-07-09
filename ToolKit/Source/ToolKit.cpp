@@ -434,33 +434,6 @@ namespace ToolKit
 
   EngineSettings& GetEngineSettings() { return *Main::GetInstance()->m_engineSettings; }
 
-  String DefaultAbsolutePath()
-  {
-    static String absolutePath;
-    if (absolutePath.empty())
-    {
-      // Build the path through std::filesystem::path so the root
-      // component (leading '/' on POSIX, drive letter on Windows) is
-      // preserved across the parent / append dance. The previous
-      // implementation routed the current path through Split +
-      // ConcatPaths, which drops the leading empty component before
-      // the first separator. On POSIX that turned "/home/.../Bin"
-      // into "home/.../Resources/Engine" (rootless) and any later
-      // call to std::filesystem::absolute re-anchored the result at
-      // the editor's CWD, producing the duplicated
-      // "/cwd/home/.../Resources/Engine" string.
-      std::filesystem::path p  = std::filesystem::current_path();
-      p                        = p.parent_path(); // drop the trailing "Bin" component
-      p                       /= "Resources";
-      p                       /= "Engine";
-      p                        = std::filesystem::absolute(p); // belt-and-braces: guarantee root
-      absolutePath             = PathToString(p);
-      NormalizePathInplace(absolutePath);
-    }
-
-    return absolutePath;
-  }
-
   TK_API String ConfigPath()
   {
     StringView path = Main::GetInstance()->GetConfigPath();
@@ -469,17 +442,24 @@ namespace ToolKit
       return String(path);
     }
 
-    return ConcatPaths({".", "..", "Config"});
+    static const String res = ToAbsolutePath(ConcatPaths({".", "..", "Config"}));
+    return res;
   }
 
-  TK_API String EngineSettingsPath() { return ConcatPaths({ConfigPath(), "Engine.settings"}); }
+  TK_API String EngineSettingsPath() 
+  { 
+    static const String res = ToAbsolutePath(ConcatPaths({ConfigPath(), "Engine.settings"}));
+    return res;
+  }
 
   String DefaultPath()
   {
-    static const String defPath = Main::GetInstance()->m_defaultResourceRoot;
+    const String& defPath = Main::GetInstance()->m_defaultResourceRoot;
     if (defPath.empty())
     {
-      static const String res = ConcatPaths({"..", "Resources", "Engine"});
+      // If no path is set, find the default path relative to the current working directory.
+      // assumption is that the current working directory is the Bin folder of the engine.
+      static const String res = ToAbsolutePath(ConcatPaths({"..", "Resources", "Engine"}));
       return res;
     }
 
@@ -490,7 +470,7 @@ namespace ToolKit
   {
     if (!def)
     {
-      String& path = Main::GetInstance()->m_resourceRoot;
+      const String& path = Main::GetInstance()->m_resourceRoot;
       if (!path.empty())
       {
         return path;
@@ -498,6 +478,12 @@ namespace ToolKit
     }
 
     return DefaultPath();
+  }
+
+  String ResourceParentPath(bool def)
+  {
+    String path = ResourcePath(def);
+    return PathToString(std::filesystem::path(path).parent_path());
   }
 
   String ProcessPath(const String& file, const String& prefix, bool def)
