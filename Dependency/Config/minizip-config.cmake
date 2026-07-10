@@ -1,48 +1,44 @@
 # Wrapper for the prebuilt minizip-ng static library.
 #
 # Source: Dependency/Config/minizip-config.cmake
-# Staged: <deps>/cmake/minizip-config.cmake by build_dependencies.py
+# Staged: <deps>/<Config>/minizip/minizipConfig.cmake by build_dependencies.py
 #
-# Declares the `minizip` IMPORTED target pointing at the prebuilt
-# libminizip<d>.a (Linux) or minizip<d>.lib (Windows) artifact.
-# The Debug suffix is decided here from CMAKE_BUILD_TYPE -- callers
-# never have to think about per-platform or per-config naming.
+# Declares the `minizip` IMPORTED target with per-config IMPORTED_LOCATION_<CFG>
+# entries for every config that is actually present under
+# <deps>/<Platform>/<Config>/. On Linux the artifact is libminizip<d>.a; on
+# Windows it is minizip<d>.lib.
 
-# Resolve the prebuild root from this file's location.
-#   <deps>/cmake/minizip-config.cmake
-#   <deps>/                     <- _TK_DEPS_DIR
-get_filename_component(_TK_DEPS_DIR
-  "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
-get_filename_component(_TK_DEPS_DIR
-  "${_TK_DEPS_DIR}" DIRECTORY)
+get_filename_component(_TK_DEP_PLAT_DIR "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
+get_filename_component(_TK_DEP_PLAT_DIR "${_TK_DEP_PLAT_DIR}" DIRECTORY)
+get_filename_component(_TK_DEP_PLAT_DIR "${_TK_DEP_PLAT_DIR}" DIRECTORY)
 
-# Multi-config generators (VS) leave CMAKE_BUILD_TYPE empty at
-# configure time; default to Release in that case. Debug-only trees
-# still work because the artifact actually present on disk will be
-# the Debug one and the fallback probing in tk_add_imported_resolved
-# (legacy) handled this -- but here we commit to one suffix per
-# configure. To switch configs, re-configure.
-set(_TK_SUFFIX "")
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  set(_TK_SUFFIX "d")
-endif()
+add_library(minizip UNKNOWN IMPORTED)
+set(_TK_CONFIGS "")
+foreach(_cfg Debug Release RelWithDebInfo MinSizeRel)
+  if(_cfg STREQUAL "Debug")
+    set(_sfx "d")
+  else()
+    set(_sfx "")
+  endif()
+  if(UNIX)
+    set(_f "${_TK_DEP_PLAT_DIR}/${_cfg}/libminizip${_sfx}.a")
+  elseif(WIN32)
+    set(_f "${_TK_DEP_PLAT_DIR}/${_cfg}/minizip${_sfx}.lib")
+  endif()
+  if(EXISTS "${_f}")
+    string(TOUPPER "${_cfg}" _cfgu)
+    set_target_properties(minizip PROPERTIES IMPORTED_LOCATION_${_cfgu} "${_f}")
+    list(APPEND _TK_CONFIGS "${_cfg}")
+  endif()
+endforeach()
 
-# Static library naming.
-if(UNIX)
-  set(_TK_FILE "${_TK_DEPS_DIR}/libminizip${_TK_SUFFIX}.a")
-elseif(WIN32)
-  set(_TK_FILE "${_TK_DEPS_DIR}/minizip${_TK_SUFFIX}.lib")
-endif()
-
-if(NOT EXISTS "${_TK_FILE}")
+if(NOT _TK_CONFIGS)
   message(FATAL_ERROR
-    "minizip prebuild artifact not found: ${_TK_FILE}\n"
+    "minizip prebuild artifact not found under '${_TK_DEP_PLAT_DIR}/<Config>/'.\n"
     "Run: python3 BuildScripts/build_dependencies.py --configs <Debug|Release>")
 endif()
 
-add_library(minizip UNKNOWN IMPORTED)
-set_target_properties(minizip PROPERTIES
-  IMPORTED_LOCATION "${_TK_FILE}"
-)
+list(JOIN _TK_CONFIGS ";" _TK_CONFIGS_STR)
+set_target_properties(minizip PROPERTIES IMPORTED_CONFIGURATIONS "${_TK_CONFIGS_STR}")
 
 set(minizip_FOUND TRUE)

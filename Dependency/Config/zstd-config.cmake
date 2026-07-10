@@ -1,40 +1,45 @@
 # Wrapper for the prebuilt zstd static library.
 #
 # Source: Dependency/Config/zstd-config.cmake
-# Staged: <deps>/cmake/zstd-config.cmake by build_dependencies.py
+# Staged: <deps>/<Config>/zstd/zstdConfig.cmake by build_dependencies.py
 #
-# Declares the `zstd` IMPORTED target. On Linux the artifact is
-# libzstd<d>.a, but on Windows zstd's upstream CMake target uses the
-# zstd_static<d>.lib naming (the "static" infix is zstd's quirk --
-# not a GDTK convention). All of that platform/detail knowledge is
-# hidden inside this file.
+# Declares the `zstd` IMPORTED target with per-config IMPORTED_LOCATION_<CFG>
+# entries for every config that is actually present under
+# <deps>/<Platform>/<Config>/. On Linux the artifact is libzstd<d>.a; on
+# Windows zstd's upstream CMake target uses the zstd_static<d>.lib naming
+# (the "static" infix is zstd's quirk -- not a GDTK convention).
 
-get_filename_component(_TK_DEPS_DIR
-  "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
-get_filename_component(_TK_DEPS_DIR
-  "${_TK_DEPS_DIR}" DIRECTORY)
+get_filename_component(_TK_DEP_PLAT_DIR "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
+get_filename_component(_TK_DEP_PLAT_DIR "${_TK_DEP_PLAT_DIR}" DIRECTORY)
+get_filename_component(_TK_DEP_PLAT_DIR "${_TK_DEP_PLAT_DIR}" DIRECTORY)
 
-set(_TK_SUFFIX "")
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  set(_TK_SUFFIX "d")
-endif()
+add_library(zstd UNKNOWN IMPORTED)
+set(_TK_CONFIGS "")
+foreach(_cfg Debug Release RelWithDebInfo MinSizeRel)
+  if(_cfg STREQUAL "Debug")
+    set(_sfx "d")
+  else()
+    set(_sfx "")
+  endif()
+  if(UNIX)
+    set(_f "${_TK_DEP_PLAT_DIR}/${_cfg}/libzstd${_sfx}.a")
+  elseif(WIN32)
+    set(_f "${_TK_DEP_PLAT_DIR}/${_cfg}/zstd_static${_sfx}.lib")
+  endif()
+  if(EXISTS "${_f}")
+    string(TOUPPER "${_cfg}" _cfgu)
+    set_target_properties(zstd PROPERTIES IMPORTED_LOCATION_${_cfgu} "${_f}")
+    list(APPEND _TK_CONFIGS "${_cfg}")
+  endif()
+endforeach()
 
-if(UNIX)
-  set(_TK_FILE "${_TK_DEPS_DIR}/libzstd${_TK_SUFFIX}.a")
-elseif(WIN32)
-  # zstd's upstream static target name carries the "static" infix.
-  set(_TK_FILE "${_TK_DEPS_DIR}/zstd_static${_TK_SUFFIX}.lib")
-endif()
-
-if(NOT EXISTS "${_TK_FILE}")
+if(NOT _TK_CONFIGS)
   message(FATAL_ERROR
-    "zstd prebuild artifact not found: ${_TK_FILE}\n"
+    "zstd prebuild artifact not found under '${_TK_DEP_PLAT_DIR}/<Config>/'.\n"
     "Run: python3 BuildScripts/build_dependencies.py --configs <Debug|Release>")
 endif()
 
-add_library(zstd UNKNOWN IMPORTED)
-set_target_properties(zstd PROPERTIES
-  IMPORTED_LOCATION "${_TK_FILE}"
-)
+list(JOIN _TK_CONFIGS ";" _TK_CONFIGS_STR)
+set_target_properties(zstd PROPERTIES IMPORTED_CONFIGURATIONS "${_TK_CONFIGS_STR}")
 
 set(zstd_FOUND TRUE)
