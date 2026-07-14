@@ -1,7 +1,5 @@
 # Import -- GDTK's offline 3D asset converter.
-# Linux binary: Utils/Import/Import. Windows binary: Utils/Import/Import.exe.
-# ToolKit + assimp are staged next to the binary at build time (see the
-# POST_BUILD block at the bottom of this file).
+# Linux binary: Bin<Config>/Import. Windows binary: Bin<Config>/Import.exe.
 #
 # Single-file CLI tool. Takes one or more source files (via the assimp
 # importer) and writes them out as ToolKit-native scene / mesh / material
@@ -110,54 +108,33 @@ elseif(WIN32)
 endif()
 
 # ---------------------------------------------------------------------------
-# Output: Utils/Import/
+# Output: Bin<Config>/
 #
-# Import is a standalone CLI tool, published to Utils/Import/ so users
-# can run it from a fresh checkout. It is NOT split per config (its Utils/
-# output dir stays flat -- last-built config wins). RPATH
-# ($ORIGIN/../../Bin$<CONFIG>) points the binary at the canonical
-# libToolKitd.so under the matching Bin<Config>/ on Linux. On Windows the
-# DLL is staged next to the executable by ToolKit's own POST_BUILD step
-# (ToolKit/CMakeLists.txt), because the Windows loader searches the exe
-# directory before RPATH.
+# Import outputs alongside Editor, Launcher, and libToolKitd.so in the
+# per-config Bin<Config>/ directory. RPATH ($ORIGIN) points the binary at
+# libToolKitd.so in the same directory; the TK_DEPS_DIR entry covers the
+# vendored shared dependencies (SDL2, imgui, assimp) under Dependency/.
 #
 # add_dependencies ensures Import re-links whenever ToolKit changes,
 # so the import library stays in sync with the DLL exports.
-#
-# Layout after a build:
-#   Bin<Config>/          libToolKitd.so / libToolKitd.dll (canonical, per cfg)
-#   Utils/Import/         Import + libToolKitd.dll         (Windows, flat)
-#   Dependency/.../<cfg>/ libSDL2-2.0d.so, libimguid.so, libassimpd.so
 # ---------------------------------------------------------------------------
 add_dependencies(Import ToolKit)
 set_target_properties(Import PROPERTIES
-  RUNTIME_OUTPUT_DIRECTORY "${GDTK_UTILS_IMPORT_DIR}/$<0:>"
-  LIBRARY_OUTPUT_DIRECTORY "${GDTK_UTILS_IMPORT_DIR}/$<0:>"
-  ARCHIVE_OUTPUT_DIRECTORY "${GDTK_UTILS_IMPORT_DIR}/$<0:>"
+  RUNTIME_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}/$<0:>"
+  LIBRARY_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}/$<0:>"
+  ARCHIVE_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}/$<0:>"
 )
 
-# RPATH strategy (Linux + Windows both honour $ORIGIN via CMake 3.16+):
-#   - $ORIGIN/../../Bin$<CONFIG> -> Utils/Import/Import finds libToolKitd.so /
-#                                ToolKitd.dll under the canonical Bin<Config>/.
-#   - ${TK_DEPS_DIR}         -> absolute path to Dependency/Intermediate/
-#                                <Plat>/<Cfg>/, where SDL2 / imgui / assimp
-#                                live. The Toolkit build links the vendored
-#                                static libs (minizip / zstd / SDL2main) into
-#                                libToolKit.so, so they do NOT need to be
-#                                findable here; only the *shared* deps do.
-# On Linux this is encoded into the ELF DT_RUNPATH; on Windows CMake
-# converts it into the DLL search path in the PE header. Both platforms
-# resolve $ORIGIN to the directory containing the executable at runtime,
-# so the binary can be invoked from any cwd without LD_LIBRARY_PATH or
-# %PATH% tweaks.
+# RPATH: $ORIGIN finds libToolKitd.so next to the binary in Bin<Config>/;
+# ${TK_DEPS_DIR} covers the vendored shared deps (SDL2, assimp, imgui).
 if(UNIX)
   set_target_properties(Import PROPERTIES
-    BUILD_RPATH   "$ORIGIN/../../Bin$<CONFIG>:${TK_DEPS_DIR}"
-    INSTALL_RPATH "$ORIGIN/../../Bin$<CONFIG>:${TK_DEPS_DIR}"
+    BUILD_RPATH   "$ORIGIN:${TK_DEPS_DIR}"
+    INSTALL_RPATH "$ORIGIN:${TK_DEPS_DIR}"
   )
 elseif(WIN32)
   set_target_properties(Import PROPERTIES
-    BUILD_RPATH   "$ORIGIN/../../Bin$<CONFIG>;${TK_DEPS_DIR}"
-    INSTALL_RPATH "$ORIGIN/../../Bin$<CONFIG>;${TK_DEPS_DIR}"
+    BUILD_RPATH   "$ORIGIN;${TK_DEPS_DIR}"
+    INSTALL_RPATH "$ORIGIN;${TK_DEPS_DIR}"
   )
 endif()

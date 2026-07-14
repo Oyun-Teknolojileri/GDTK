@@ -1067,7 +1067,7 @@ namespace ToolKit
       if (load.empty())
       {
         std::fstream importList;
-        load = ConcatPaths({"..", "Utils", "Import", "importList.txt"});
+        load = ConcatPaths({"importList.txt"});
         importList.open(load, std::ios::out);
         if (importList.is_open())
         {

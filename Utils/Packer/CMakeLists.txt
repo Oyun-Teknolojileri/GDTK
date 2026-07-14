@@ -1,7 +1,5 @@
 # Packer -- GDTK's release / publish tool.
-# Linux binary: Utils/Packer/Packer. Windows binary: Utils/Packer/Packer.exe.
-# ToolKit is staged next to the binary at build time (see the POST_BUILD
-# block at the bottom of this file).
+# Linux binary: Bin<Config>/Packer. Windows binary: Bin<Config>/Packer.exe.
 #
 # Single-file CLI tool. Bundles a project into a redistributable form
 # (Windows zip, Web zip, Android APK, Game/Editor plugin). Most code
@@ -88,16 +86,12 @@ elseif(WIN32)
 endif()
 
 # ---------------------------------------------------------------------------
-# Output: Utils/Packer/
+# Output: Bin<Config>/
 #
-# Packer is a standalone CLI tool, published to Utils/Packer/ so users
-# can run it from a fresh checkout. It is NOT split per config (its Utils/
-# output dir stays flat -- last-built config wins). RPATH
-# ($ORIGIN/../../Bin$<CONFIG>) points the binary at the canonical
-# libToolKitd.so under the matching Bin<Config>/ on Linux. On Windows the
-# DLL is staged next to the executable by ToolKit's own POST_BUILD step
-# (ToolKit/CMakeLists.txt), because the Windows loader searches the exe
-# directory before RPATH.
+# Packer outputs alongside Editor, Launcher, Import and libToolKitd.so in
+# the per-config Bin<Config>/ directory. RPATH ($ORIGIN) points the binary
+# at libToolKitd.so in the same directory; the TK_DEPS_DIR entry covers
+# the vendored shared dependencies (SDL2, imgui) under Dependency/.
 #
 # Packer does NOT link assimp (it does not import 3D assets) -- the
 # comment on target_link_libraries above documents this. So no assimp
@@ -105,37 +99,24 @@ endif()
 #
 # add_dependencies ensures Packer re-links whenever ToolKit changes,
 # so the import library stays in sync with the DLL exports.
-#
-# Layout after a build:
-#   Bin<Config>/          libToolKitd.so / libToolKitd.dll (canonical, per cfg)
-#   Utils/Packer/         Packer + libToolKitd.dll         (Windows, flat)
-#   Dependency/.../<cfg>/ libSDL2-2.0d.so, libimguid.so
 # ---------------------------------------------------------------------------
 add_dependencies(Packer ToolKit)
 set_target_properties(Packer PROPERTIES
-  RUNTIME_OUTPUT_DIRECTORY "${GDTK_UTILS_PACKER_DIR}/$<0:>"
-  LIBRARY_OUTPUT_DIRECTORY "${GDTK_UTILS_PACKER_DIR}/$<0:>"
-  ARCHIVE_OUTPUT_DIRECTORY "${GDTK_UTILS_PACKER_DIR}/$<0:>"
+  RUNTIME_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}/$<0:>"
+  LIBRARY_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}/$<0:>"
+  ARCHIVE_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}/$<0:>"
 )
 
-# RPATH strategy (Linux + Windows both honour $ORIGIN via CMake 3.16+):
-#   - $ORIGIN/../../Bin$<CONFIG> -> Utils/Packer/Packer finds libToolKitd.so /
-#                                ToolKitd.dll under the canonical Bin<Config>/.
-#   - ${TK_DEPS_DIR}         -> absolute path to Dependency/Intermediate/
-#                                <Plat>/<Cfg>/, where SDL2 / imgui live.
-# On Linux this is encoded into the ELF DT_RUNPATH; on Windows CMake
-# converts it into the DLL search path in the PE header. Both platforms
-# resolve $ORIGIN to the directory containing the executable at runtime,
-# so the binary can be invoked from any cwd without LD_LIBRARY_PATH or
-# %PATH% tweaks.
+# RPATH: $ORIGIN finds libToolKitd.so next to the binary in Bin<Config>/;
+# ${TK_DEPS_DIR} covers the vendored shared deps (SDL2, imgui).
 if(UNIX)
   set_target_properties(Packer PROPERTIES
-    BUILD_RPATH   "$ORIGIN/../../Bin$<CONFIG>:${TK_DEPS_DIR}"
-    INSTALL_RPATH "$ORIGIN/../../Bin$<CONFIG>:${TK_DEPS_DIR}"
+    BUILD_RPATH   "$ORIGIN:${TK_DEPS_DIR}"
+    INSTALL_RPATH "$ORIGIN:${TK_DEPS_DIR}"
   )
 elseif(WIN32)
   set_target_properties(Packer PROPERTIES
-    BUILD_RPATH   "$ORIGIN/../../Bin$<CONFIG>;${TK_DEPS_DIR}"
-    INSTALL_RPATH "$ORIGIN/../../Bin$<CONFIG>;${TK_DEPS_DIR}"
+    BUILD_RPATH   "$ORIGIN;${TK_DEPS_DIR}"
+    INSTALL_RPATH "$ORIGIN;${TK_DEPS_DIR}"
   )
 endif()

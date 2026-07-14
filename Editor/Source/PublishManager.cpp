@@ -31,14 +31,13 @@ namespace ToolKit
       GetFileManager()->WriteAllText("PublishArguments.txt", publishArguments);
       GetApp()->SetStatusMsg(g_statusPublishing + g_statusNoTerminate);
 
-      String packerPath = NormalizePath(ConcatPaths({"Utils", "Packer", PlatformHelpers::GetPackerExecutableName()}));
+      String packerPath = PlatformHelpers::GetPackerExecutablePath();
 
       // Close zip file before running packer, because packer will use this file as well,
       // this will cause errors otherwise.
       GetFileManager()->CloseZipFile();
 
       m_isBuilding                       = true;
-      packerPath                         = ToAbsolutePath(ConcatPaths({"..", packerPath}));
 
       SysCommandDoneCallback afterPackFn = [&](int res) -> void
       {
@@ -139,7 +138,7 @@ namespace ToolKit
       GetFileManager()->WriteAllText("PublishArguments.txt", publishArguments);
       GetApp()->SetStatusMsg(g_statusPacking + g_statusNoTerminate);
 
-      String packerPath = NormalizePath(ConcatPaths({"Utils", "Packer", PlatformHelpers::GetPackerExecutableName()}));
+      String packerPath = PlatformHelpers::GetPackerExecutablePath();
 
       // Close zip file before running packer, because packer will use this file as well,
       // this will cause errors otherwise.

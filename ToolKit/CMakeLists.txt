@@ -249,19 +249,7 @@ set_target_properties(ToolKit PROPERTIES
   ARCHIVE_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}/$<0:>"
 )
 
-# Windows DLL search order always checks the exe directory first -- a stale
-# libToolKitd.dll there would shadow the fresh one in Bin/. After each
-# ToolKit build, copy the DLL next to Import and Packer so the CLI tools
-# pick up the latest engine without manual staging.
-# copy_if_different keeps incremental builds fast (no-op when unchanged).
-if(WIN32)
-  add_custom_command(TARGET ToolKit POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-      "$<TARGET_FILE:ToolKit>"
-      "${GDTK_UTILS_IMPORT_DIR}/"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-      "$<TARGET_FILE:ToolKit>"
-      "${GDTK_UTILS_PACKER_DIR}/"
-    COMMENT "Copying libToolKitd.dll to Utils/Import/ and Utils/Packer/"
-  )
-endif()
+# All binaries now live under Bin<Config>/ so Import and Packer find
+# libToolKitd.so / ToolKitd.dll next to themselves at runtime. No
+# POST_BUILD copy step is needed -- the Windows loader searches the
+# exe directory first, and Linux RPATH handles the rest.

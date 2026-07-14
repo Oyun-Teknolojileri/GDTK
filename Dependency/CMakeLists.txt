@@ -254,18 +254,15 @@ if ("${TK_PLATFORM}" STREQUAL "Windows")
 
     # `cmake -E copy_if_different` errors with "Invalid argument" when the
     # destination directory does not exist yet -- it does not auto-create
-    # parents the way `cp` does. The Bin<Config>/ and Utils/{Import,Packer}/
-    # folders only get created when the first build of the corresponding
-    # target runs, which is *after* this CopyDependencies step on a clean
-    # checkout. Make sure each destination directory exists immediately
-    # before the copy that targets it; doing it once up-front is not
-    # enough on the Visual Studio generator because MSBuild may run
-    # sibling CustomBuild steps concurrently and race the mkdir.
-    # _BIN_DIR uses $<CONFIG> so each config's runtime DLLs land in the
-    # matching Bin<Config>/ that the engine build wrote.
+    # parents the way `cp` does. The Bin<Config>/ folder only gets created
+    # when the first build of the corresponding target runs, which is *after*
+    # this CopyDependencies step on a clean checkout. Make sure each
+    # destination directory exists immediately before the copy that targets
+    # it; doing it once up-front is not enough on the Visual Studio generator
+    # because MSBuild may run sibling CustomBuild steps concurrently and
+    # race the mkdir. _BIN_DIR uses $<CONFIG> so each config's runtime DLLs
+    # land in the matching Bin<Config>/ that the engine build wrote.
     set(_BIN_DIR     "${CMAKE_CURRENT_LIST_DIR}/../Bin$<CONFIG>")
-    set(_IMPORT_DIR  "${CMAKE_CURRENT_LIST_DIR}/../Utils/Import")
-    set(_PACKER_DIR  "${CMAKE_CURRENT_LIST_DIR}/../Utils/Packer")
 
     add_custom_target(CopyDependencies ALL
         # SDL2: needed by Editor / Launcher / Import / Packer at runtime.
@@ -273,14 +270,6 @@ if ("${TK_PLATFORM}" STREQUAL "Windows")
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "$<TARGET_FILE:SDL2>"
             "${_BIN_DIR}/"
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${_IMPORT_DIR}"
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "$<TARGET_FILE:SDL2>"
-            "${_IMPORT_DIR}/"
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${_PACKER_DIR}"
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "$<TARGET_FILE:SDL2>"
-            "${_PACKER_DIR}/"
 
         # imgui: needed by Editor / Launcher at runtime. _BIN_DIR was
         # already created above; mkdir is a no-op if it exists.

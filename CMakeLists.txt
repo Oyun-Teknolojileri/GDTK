@@ -116,6 +116,8 @@ message(STATUS "GDTK: building for ${TK_PLATFORM} (config: ${CMAKE_BUILD_TYPE})"
 #   BinDebug/                        ← binaries the engine ships (per config)
 #     ├── Editor
 #     ├── Launcher
+#     ├── Import
+#     ├── Packer
 #     ├── libToolKitd.so
 #     └── libWorkspace.a
 #   BinRelease/                      ← (same set, Release-named libs)
@@ -127,11 +129,6 @@ message(STATUS "GDTK: building for ${TK_PLATFORM} (config: ${CMAKE_BUILD_TYPE})"
 #     ├── build-Launcher/
 #     ├── build-Import/
 #     └── build-Packer/
-#
-# $<CONFIG> evaluates to the active build configuration ("Debug", "Release",
-# ...), so each config lands in its own Bin<Config>/ on every generator.
-# (Import and Packer still publish flat to Utils/Import, Utils/Packer -- see
-# GDTK_UTILS_*_DIR below -- last-built config wins there.)
 set(GDTK_BIN_DIR "${CMAKE_SOURCE_DIR}/Bin$<CONFIG>")
 set(GDTK_INTERMEDIATE_DIR "${CMAKE_SOURCE_DIR}/Intermediate/${TK_PLATFORM}/${CMAKE_BUILD_TYPE}")
 # Default output directories for any targets added by add_subdirectory
@@ -147,35 +144,14 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/Bin")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/Bin")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/Bin")
 
-# Utils/Import/ and Utils/Packer/ are the *published* output locations for
-# the Import and Packer CLI tools. Everything else (Editor, Launcher,
-# libToolKitd.so, libWorkspace.a) lands in Bin<Config>/. Import and Packer
-# override RUNTIME_OUTPUT_DIRECTORY to point at Utils/... (see
-# Import/CMakeLists.txt, Packer/CMakeLists.txt), so they stay FLAT (not split
-# per config) -- last-built config wins. The editor finds them via the
-# relative `../Utils/...` path (PublishManager.cpp / UI.cpp), which climbs
-# from Bin<Config>/ to the root exactly as it did from flat Bin/.
-#
-# On Linux, RPATH ($ORIGIN/../../Bin$<CONFIG>) lets the CLI tools find
-# libToolKitd.so under the matching Bin<Config>/ without LD_LIBRARY_PATH.
-# On Windows the DLL is staged next to each tool by ToolKit/CMakeLists.txt's
-# POST_BUILD step, because the Windows loader searches the exe directory
-# before RPATH.
+# All engine binaries and utility tools land in Bin<Config>/ (per-config).
+# On Linux, RPATH ($ORIGIN) lets each binary find libToolKitd.so next to
+# itself without LD_LIBRARY_PATH. The TK_DEPS_DIR RPATH entry covers the
+# vendored shared dependencies (SDL2, imgui, assimp) under Dependency/.
 #
 # Each consumer declares `add_dependencies(... ToolKit)` in its own
 # CMakeLists -- when ToolKit is rebuilt, Import / Packer / Editor /
 # Launcher re-link to stay in sync with the new import library.
-set(GDTK_UTILS_IMPORT_DIR "${CMAKE_SOURCE_DIR}/Utils/Import")
-set(GDTK_UTILS_PACKER_DIR "${CMAKE_SOURCE_DIR}/Utils/Packer")
-
-# Create the dirs eagerly so IDEs (VS, etc.) see them before the first
-# build. POST_BUILD copy steps also `file(COPY ...)` lazily but having
-# the dirs upfront avoids the "binary runs but its deps aren't there
-# yet" footgun on a clean checkout.
-file(MAKE_DIRECTORY "${GDTK_UTILS_IMPORT_DIR}")
-file(MAKE_DIRECTORY "${GDTK_UTILS_PACKER_DIR}")
-
-# Linux: editor/utils find ToolKit.so next to themselves, no LD_LIBRARY_PATH.
 if(UNIX)
   set(CMAKE_INSTALL_RPATH "$ORIGIN")
   set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
@@ -335,6 +311,6 @@ find_package(imgui    REQUIRED CONFIG)
 add_subdirectory(ToolKit   ${GDTK_INTERMEDIATE_DIR}/build-ToolKit)
 add_subdirectory(Workspace ${GDTK_INTERMEDIATE_DIR}/build-Workspace)
 add_subdirectory(Editor    ${GDTK_INTERMEDIATE_DIR}/build-Editor)
-add_subdirectory(Launcher  ${GDTK_INTERMEDIATE_DIR}/build-Launcher)
-add_subdirectory(Import    ${GDTK_INTERMEDIATE_DIR}/build-Import)
-add_subdirectory(Packer    ${GDTK_INTERMEDIATE_DIR}/build-Packer)
+add_subdirectory(Utils/Launcher ${GDTK_INTERMEDIATE_DIR}/build-Launcher)
+add_subdirectory(Utils/Import   ${GDTK_INTERMEDIATE_DIR}/build-Import)
+add_subdirectory(Utils/Packer   ${GDTK_INTERMEDIATE_DIR}/build-Packer)

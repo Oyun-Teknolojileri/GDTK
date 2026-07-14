@@ -23,14 +23,6 @@
 /x64/Debug
 /CC/verbose.txt
 /enc_temp_folder
-/Utils/Import/.vs/Import/v16
-/Import/x64
-/Utils/Import/Import.pdb
-/Utils/Import/Import.exe
-/Utils/Import/Import.ilk
-/Utils/Import/Import.ipdb
-/Utils/Import/Import.iobj
-/Utils/Import
 /Test/x64
 /Editor/editor.aps
 /Resources/Engine/workspace.settings
@@ -68,20 +60,10 @@ Template/Android/local.properties
 Template/Android/app/src/main/assets
 Template/Windows/build/CMakeFiles
 
-Packer/x64
-/Utils/Packer
-
-Packer/build
-Import/build
-
 *.user
 /ToolKit/ninjaBuild/build
 /Dependency/tkimgui/build
 /Dependency/tkimgui/lib
-/Import/assimp.lib
-/Import/assimpd.lib
-/Import/Assimplog.txt
-/Import/Log.txt
 Intermediate
 /Workspace/x64
 Launcher/x64

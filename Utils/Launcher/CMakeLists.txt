@@ -1,5 +1,5 @@
 # Launcher -- GDTK's project browser / entry point. ImGui-based GUI.
-# Linux binary: Bin/Launcher. Windows binary: Bin/Launcher.exe.
+# Linux binary: Bin<Config>/Launcher. Windows binary: Bin<Config>/Launcher.exe.
 #
 # Mirrors Editor/CMakeLists.txt because the two apps share most of the
 # engine surface (SDL2 + OpenGL + ImGui + ToolKit). The Launcher pulls
