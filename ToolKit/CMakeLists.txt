@@ -231,19 +231,20 @@ elseif(WIN32)
   endif()
 endif()
 
-# Output naming: ToolKitd on Debug, ToolKit on Release.
+# Output naming:
+#   Unix    Debug:   libToolKitd.so
+#   Unix    Release: libToolKit.so
+#   Windows Debug:   ToolKitd.dll
+#   Windows Release: ToolKit.dll
 #
-# The $<0:> trailer on the *OUTPUT_DIRECTORY properties below is a
-# generator expression that always expands to the empty string. On
-# multi-config generators (Visual Studio) CMake would otherwise
-# append $<CONFIGURATION> as a final path component, putting
-# libToolKitd.dll at Bin/Debug/ instead of Bin/. The $<0:> trailer
-# neutralises that suffix; on single-config generators (Ninja,
-# Unix Makefiles) there is no suffix to strip, so the trailing
-# slash is a no-op and the layout is naturally flat.
+# CMake's default PREFIX handles the platform split automatically:
+# empty on Windows (SHARED libs get no prefix), "lib" on Unix.
+# We only override OUTPUT_NAME for the Debug 'd' suffix.
+#
+# The $<0:> trailer strips the multi-config generator's $<CONFIGURATION>
+# suffix so binaries land flat in Bin<Config>/ instead of Bin<Config>/Debug/.
 set_target_properties(ToolKit PROPERTIES
   OUTPUT_NAME "ToolKit$<$<CONFIG:Debug>:d>"
-  PREFIX "lib"
   RUNTIME_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}/$<0:>"
   LIBRARY_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}/$<0:>"
   ARCHIVE_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}/$<0:>"

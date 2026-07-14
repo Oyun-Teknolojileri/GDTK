@@ -57,13 +57,18 @@ if(NOT MSVC)
   )
 endif()
 
-# Flat Bin/ output. See ToolKit/CMakeLists.txt for why the $<0:>
-# trailer is here: it strips the multi-config generator's
-# $<CONFIGURATION> suffix so Workspace.lib lands at Bin/ instead
-# of Bin/Debug/. RUNTIME_OUTPUT_DIRECTORY is set alongside for
-# consistency, even though Workspace is a STATIC library and
-# does not produce a runtime artifact.
+# Output naming (matches ToolKit convention):
+#   Unix    Debug:   libWorkspaced.a
+#   Unix    Release: libWorkspace.a
+#   Windows Debug:   Workspaced.lib
+#   Windows Release: Workspace.lib
+#
+# CMake's default PREFIX is empty on Windows, "lib" on Unix for STATIC
+# libs -- no override needed. OUTPUT_NAME adds the Debug 'd' suffix.
+# The $<0:> trailer strips multi-config generator's $<CONFIGURATION>
+# suffix to keep the output flat in Bin<Config>/.
 set_target_properties(Workspace PROPERTIES
+  OUTPUT_NAME "Workspace$<$<CONFIG:Debug>:d>"
   RUNTIME_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}/$<0:>"
   LIBRARY_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}/$<0:>"
   ARCHIVE_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}/$<0:>"

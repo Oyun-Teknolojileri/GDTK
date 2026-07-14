@@ -1,7 +1,7 @@
 # GDTK root CMake file.
 #
 # Builds the engine (ToolKit shared library), Workspace (static helper
-# library), and the Editor (executable). Vendored dependencies in
+# library under Modules/), and the Editor (executable). Vendored dependencies in
 # Dependency/ are expected to be built ahead of time via
 # BuildScripts/build_dependencies.py -- this file only consumes them
 # through IMPORTED targets so the editor/utils build is fast and
@@ -119,7 +119,7 @@ message(STATUS "GDTK: building for ${TK_PLATFORM} (config: ${CMAKE_BUILD_TYPE})"
 #     ├── Import
 #     ├── Packer
 #     ├── libToolKitd.so
-#     └── libWorkspace.a
+#     └── libWorkspaced.a
 #   BinRelease/                      ← (same set, Release-named libs)
 #   Intermediate/Linux/Debug/         ← cmake state, *.o, link.txt, ...
 #     ├── CMakeCache.txt, Makefile, CMakeFiles/, ...
@@ -201,8 +201,8 @@ set(GDTK_INCLUDE_DIRS
   ${CMAKE_SOURCE_DIR}/ToolKit/Render/PostProcessPass
   ${CMAKE_SOURCE_DIR}/ToolKit/Render/OpenGL
   ${CMAKE_SOURCE_DIR}/ToolKit/Common
-  ${CMAKE_SOURCE_DIR}/Workspace
-  ${CMAKE_SOURCE_DIR}/Workspace/Source
+  ${CMAKE_SOURCE_DIR}/Modules/Workspace
+  ${CMAKE_SOURCE_DIR}/Modules/Workspace/Source
   ${CMAKE_SOURCE_DIR}/Editor
   ${CMAKE_SOURCE_DIR}/Editor/Source
   ${CMAKE_SOURCE_DIR}/Editor/Mods
@@ -309,7 +309,7 @@ find_package(imgui    REQUIRED CONFIG)
 # write to "." (a directory). The `build-` prefix is purely cosmetic
 # for organizing intermediate state; it does not affect the build.
 add_subdirectory(ToolKit   ${GDTK_INTERMEDIATE_DIR}/build-ToolKit)
-add_subdirectory(Workspace ${GDTK_INTERMEDIATE_DIR}/build-Workspace)
+add_subdirectory(Modules/Workspace ${GDTK_INTERMEDIATE_DIR}/build-Workspace)
 add_subdirectory(Editor    ${GDTK_INTERMEDIATE_DIR}/build-Editor)
 add_subdirectory(Utils/Launcher ${GDTK_INTERMEDIATE_DIR}/build-Launcher)
 add_subdirectory(Utils/Import   ${GDTK_INTERMEDIATE_DIR}/build-Import)
