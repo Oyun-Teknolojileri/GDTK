@@ -139,13 +139,19 @@ namespace ToolKit
         settings.msaaCount           = MsaaSampleCount::x0;
         m_resolvedFramebuffer->ReconstructIfNeeded(settings);
         renderer->ResolveFramebuffer(mainBuffer, m_resolvedFramebuffer, {0});
-
-        // We only need resolved color texture. Msaa color, depth and stencil buffers are not needed after resolve.
-        renderer->FinishPass();
       }
-      else
+
+      // We need to fill the alpha channel with one, imgui insist on blending alpha with window background.
       {
-        renderer->FinishPass();
+        RenderTargetPtr colorBuffer = mainBuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
+        if (colorBuffer->IsMultiSampled())
+        {
+          colorBuffer = m_resolvedFramebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
+        }
+        RenderTargetPtr alphaBuffer = MakeNewPtr<RenderTarget>();
+        alphaBuffer->ReconstructIfNeeded(colorBuffer->m_width, colorBuffer->m_height, &colorBuffer->Settings());
+        renderer->CopyTexture(colorBuffer, alphaBuffer);
+        renderer->CopyTexture(alphaBuffer, colorBuffer, true);
       }
 
       PostRender(renderer);
@@ -371,7 +377,11 @@ namespace ToolKit
       m_gizmoPass->m_params.GizmoArray = {app->m_gizmo, anchorGizmo};
     }
 
-    void EditorRenderer::PostRender(Renderer* renderer) { m_params.App->m_perFrameDebugObjects.clear(); }
+    void EditorRenderer::PostRender(Renderer* renderer) 
+    { 
+      renderer->FinishPass();
+      m_params.App->m_perFrameDebugObjects.clear(); 
+    }
 
     void EditorRenderer::SetLitMode(Renderer* renderer, EditorLitMode mode)
     {

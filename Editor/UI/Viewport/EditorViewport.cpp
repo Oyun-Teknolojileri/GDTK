@@ -300,10 +300,7 @@ namespace ToolKit
             }
           }
 
-          // In Vulkan the swizzle is baked into the VkImageView created by Acquire(tex, true),
-          // so no pre/post draw callbacks are needed. In GL the swizzle is set dynamically via
-          // glTexParameteri around the draw call and restored afterwards.
-          uint64 texId = EditorImGuiTextureCache::Acquire(texture, true);
+          uint64 texId = EditorImGuiTextureCache::Acquire(texture);
 
           UI::Image(ConvertUIntImGuiTexture(texId), m_wndContentAreaSize);
 
