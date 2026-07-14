@@ -427,9 +427,9 @@ LINUX_VULKAN_PACKAGES: dict[str, tuple[str, ...]] = {
 # (NOT `pkgconfig`, which is only a virtual rpm provides), and its ninja
 # package is `ninja-build` (NOT `ninja`).
 LINUX_BUILD_PACKAGES: dict[str, tuple[str, ...]] = {
-    LINUX_DISTRO_DEBIAN: ("pkg-config", "zlib1g-dev", "build-essential", "ninja-build"),
-    LINUX_DISTRO_FEDORA: ("pkgconf-pkg-config", "zlib-devel", "gcc-c++", "ninja-build"),
-    LINUX_DISTRO_ARCH:   ("pkgconf", "zlib", "gcc", "make", "ninja"),
+    LINUX_DISTRO_DEBIAN: ("pkg-config", "zlib1g-dev", "build-essential", "ninja-build", "libgl1-mesa-dev"),
+    LINUX_DISTRO_FEDORA: ("pkgconf-pkg-config", "zlib-devel", "gcc-c++", "ninja-build", "mesa-libGL-devel"),
+    LINUX_DISTRO_ARCH:   ("pkgconf", "zlib", "gcc", "make", "ninja", "libgl"),
 }
 
 
