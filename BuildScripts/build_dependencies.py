@@ -134,6 +134,7 @@ def build_windows(
     is_multiconfig: bool,
     cl_path: Optional[str],
     ninja_path: Optional[str],
+    targets: List[str],
 ) -> List[Tuple[str, bool]]:
     """Build the dependency tree on Windows. Returns per-config (ok?)."""
     results: List[Tuple[str, bool]] = []
@@ -148,6 +149,12 @@ def build_windows(
             f"-DCMAKE_C_COMPILER={cl_path}",
             f"-DCMAKE_CXX_COMPILER={cl_path}",
         ]
+
+    # When --target is given, build only the requested dep target(s). The
+    # CopyDependencies step (multi-config only) is skipped in that case
+    # because it DEPENDS on SDL2 + imgui and would force-build deps the
+    # user explicitly excluded.
+    target_arg: List[str] = ["--target", *targets] if targets else []
 
     if is_multiconfig:
         # One configure, three builds. Output goes to Intermediate/Windows/.
@@ -189,13 +196,19 @@ def build_windows(
                     "cmake", "--build", str(build_dir),
                     "--config", config,
                     "--parallel", str(parallel),
+                    *target_arg,
                 ])
-                _run_cmake([
-                    "cmake", "--build", str(build_dir),
-                    "--config", config,
-                    "--target", "CopyDependencies",
-                    "--parallel", str(parallel),
-                ])
+                # CopyDependencies stages the SDL2 / imgui runtime DLLs
+                # next to the tools; only run it for a full build, since
+                # it DEPENDS on SDL2 + imgui and would otherwise rebuild
+                # the deps a --target selection excluded.
+                if not targets:
+                    _run_cmake([
+                        "cmake", "--build", str(build_dir),
+                        "--config", config,
+                        "--target", "CopyDependencies",
+                        "--parallel", str(parallel),
+                    ])
                 # Stage the Dependency/Config/*.cmake wrappers next to
                 # the artifacts so the root CMakeLists can find them
                 # via `find_package(<dep> REQUIRED CONFIG)`.
@@ -233,6 +246,7 @@ def build_windows(
                     "cmake", "--build", str(build_dir),
                     "--config", config,
                     "--parallel", str(parallel),
+                    *target_arg,
                 ])
                 results.append((config, True))
             except subprocess.CalledProcessError:
@@ -249,9 +263,11 @@ def build_linux_or_mac(
     parallel: int,
     generator: str,
     ninja_path: Optional[str],
+    targets: List[str],
 ) -> List[Tuple[str, bool]]:
     """Build the dependency tree on Linux/macOS. Single-config only."""
     results: List[Tuple[str, bool]] = []
+    target_arg: List[str] = ["--target", *targets] if targets else []
     for config in configs:
         build_dir = DEP_INT / platform / config
         build_dir.mkdir(parents=True, exist_ok=True)
@@ -279,6 +295,7 @@ def build_linux_or_mac(
             _run_cmake([
                 "cmake", "--build", str(build_dir),
                 "--parallel", str(parallel),
+                *target_arg,
             ])
             # Stage the Dependency/Config/*.cmake wrappers next to the
             # artifacts so the root CMakeLists can find them via
@@ -306,6 +323,16 @@ def main() -> int:
     parser.add_argument(
         "--configs", nargs="+", default=DEFAULT_CONFIGS,
         help="Build configurations to produce.",
+    )
+    parser.add_argument(
+        "--target", dest="targets", action="append", default=[],
+        help=(
+            "Dependency target to build (SDL2, minizip, imgui, assimp). "
+            "May be passed multiple times. Default: build everything "
+            "(no --target). When set, the Windows CopyDependencies step "
+            "is skipped because it DEPENDS on SDL2 + imgui and would "
+            "force-build the deps you excluded."
+        ),
     )
     parser.add_argument(
         "--skip-submodules", action="store_true",
@@ -348,6 +375,10 @@ def main() -> int:
     print(f"  Configs:     {', '.join(args.configs)}")
     print(f"  Root:        {ROOT_DIR}")
     print(f"  Parallel:    {args.parallel}")
+    if args.targets:
+        print(f"  Targets:     {', '.join(args.targets)}")
+    else:
+        print(f"  Targets:     (all)")
     print(f"  Skip assimp: {args.skip_assimp}")
     print(f"  Skip imgui:  {args.skip_imgui}")
 
@@ -393,6 +424,7 @@ def main() -> int:
                 is_multiconfig=is_multiconfig,
                 cl_path=cl_path,
                 ninja_path=ninja_path,
+                targets=args.targets,
             )
         else:
             results = build_linux_or_mac(
@@ -402,6 +434,7 @@ def main() -> int:
                 parallel=args.parallel,
                 generator=generator,
                 ninja_path=ninja_path,
+                targets=args.targets,
             )
     except KeyboardInterrupt:
         err("Interrupted.")

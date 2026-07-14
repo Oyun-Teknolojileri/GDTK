@@ -127,6 +127,12 @@ CONFIGS = ["Debug", "Release", "RelWithDebInfo", "MinSizeRel"]
 # which is the scripts' "build everything" behaviour.
 TARGETS = ["ToolKit", "Workspace", "Editor", "Launcher", "Import", "Packer"]
 
+# Dependency targets the Dependencies-mode panel exposes. These are the
+# real CMake target names Dependency/CMakeLists.txt defines (SDL2,
+# minizip, imgui, assimp); "All" maps to no --target so the whole tree
+# is built, a subset is forwarded as --target <dep>.
+DEPS_TARGETS = ["SDL2", "minizip", "imgui", "assimp"]
+
 PLATFORMS = ["auto", "Windows", "Linux", "Mac"]
 GENERATORS = ["auto", "msvc", "ninja", "make"]
 
@@ -222,18 +228,19 @@ class BuildApp:
         self.jobs = tk.IntVar(value=DEFAULT_JOBS)
         self.clean = tk.BooleanVar(value=False)
 
-        self.config_vars = {c: tk.BooleanVar(value=c in ("Debug", "Release"))
+        self.config_vars = {c: tk.BooleanVar(value=c == "Debug")
                             for c in CONFIGS}
 
         self.target_all = tk.BooleanVar(value=True)
         self.target_vars = {t: tk.BooleanVar(value=False) for t in TARGETS}
 
+        # Dependency targets (SDL2 / minizip / imgui / assimp). "All" is
+        # the default and maps to no --target (build the whole tree);
+        # picking a subset forwards --target to build_dependencies.py.
+        self.deps_target_all = tk.BooleanVar(value=True)
+        self.deps_target_vars = {t: tk.BooleanVar(value=False) for t in DEPS_TARGETS}
+
         self.vulkan = tk.BooleanVar(value=False)
-        self.install_deps = tk.BooleanVar(value=False)
-        self.no_deps_check = tk.BooleanVar(value=False)
-        self.skip_submodules = tk.BooleanVar(value=False)
-        self.skip_assimp = tk.BooleanVar(value=False)
-        self.skip_imgui = tk.BooleanVar(value=False)
 
         self._build_ui()
         self._apply_mode()         # show/hide the per-mode panels
@@ -318,29 +325,30 @@ class BuildApp:
         ttk.Checkbutton(flags_row1, text="Vulkan backend (--vulkan)",
                         variable=self.vulkan,
                         command=self._update_preview).grid(row=0, column=0, padx=(0, 16))
-        ttk.Checkbutton(flags_row1, text="Install-deps / Linux (--install-deps)",
-                        variable=self.install_deps,
-                        command=self._update_preview).grid(row=0, column=1, padx=(0, 16))
-        ttk.Checkbutton(flags_row1, text="Skip dep auto-build (--no-deps-check)",
-                        variable=self.no_deps_check,
-                        command=self._update_preview).grid(row=0, column=2)
 
         # -- Dependencies-only panel -------------------------------------
         self.deps_frame = ttk.LabelFrame(
             container, text="Dependencies options", padding=8)
         self.deps_frame.grid(row=2, column=0, sticky="ew", pady=(0, 8))
+        self.deps_frame.columnconfigure(7, weight=1)
 
-        drow = ttk.Frame(self.deps_frame)
-        drow.grid(row=0, column=0, sticky="w")
-        ttk.Checkbutton(drow, text="Skip submodules (--skip-submodules)",
-                        variable=self.skip_submodules,
-                        command=self._update_preview).grid(row=0, column=0, padx=(0, 16))
-        ttk.Checkbutton(drow, text="Skip assimp (--skip-assimp)",
-                        variable=self.skip_assimp,
-                        command=self._update_preview).grid(row=0, column=1, padx=(0, 16))
-        ttk.Checkbutton(drow, text="Skip imgui (--skip-imgui)",
-                        variable=self.skip_imgui,
-                        command=self._update_preview).grid(row=0, column=2)
+        # Mirror the engine panel's target row. "All" builds the whole
+        # dependency tree (no --target); unchecking it lets you build a
+        # subset via --target <dep>. Submodules are always init/updated
+        # by build_dependencies.py, so there is no toggle for that here.
+        ttk.Label(self.deps_frame, text="Targets:").grid(row=0, column=0, sticky="nw")
+        dtgt_inner = ttk.Frame(self.deps_frame)
+        dtgt_inner.grid(row=0, column=1, columnspan=7, sticky="w")
+        self.deps_target_checks: dict[str, ttk.Checkbutton] = {}
+        ttk.Checkbutton(dtgt_inner, text="All (no --target)",
+                        variable=self.deps_target_all,
+                        command=self._on_deps_target_all_toggle).grid(
+            row=0, column=0, padx=(0, 12))
+        for i, t in enumerate(DEPS_TARGETS, start=1):
+            cb = ttk.Checkbutton(dtgt_inner, text=t, variable=self.deps_target_vars[t],
+                                 command=self._update_preview)
+            cb.grid(row=0, column=i, padx=(0, 12))
+            self.deps_target_checks[t] = cb
 
         # -- Command preview ---------------------------------------------
         preview_box = ttk.LabelFrame(container, text="Command preview", padding=8)
@@ -418,6 +426,12 @@ class BuildApp:
             cb.configure(state=tk.DISABLED if all_on else tk.NORMAL)
         self._update_preview()
 
+    def _on_deps_target_all_toggle(self) -> None:
+        all_on = self.deps_target_all.get()
+        for cb in self.deps_target_checks.values():
+            cb.configure(state=tk.DISABLED if all_on else tk.NORMAL)
+        self._update_preview()
+
     def _selected_configs(self) -> list[str]:
         return [c for c in CONFIGS if self.config_vars[c].get()]
 
@@ -453,17 +467,20 @@ class BuildApp:
                     cmd += ["--target", t]
             if self.vulkan.get():
                 cmd += ["--vulkan"]
-            if self.install_deps.get():
-                cmd += ["--install-deps"]
-            if self.no_deps_check.get():
-                cmd += ["--no-deps-check"]
+            # Always on: auto-install missing Linux system packages via
+            # sudo (a no-op on Windows). The vendored-dep auto-build is
+            # left enabled too -- if a dep is missing, build_gdtk.py
+            # invokes build_dependencies.py itself -- so neither needs a
+            # UI toggle.
+            cmd += ["--install-deps"]
         else:
-            if self.skip_submodules.get():
-                cmd += ["--skip-submodules"]
-            if self.skip_assimp.get():
-                cmd += ["--skip-assimp"]
-            if self.skip_imgui.get():
-                cmd += ["--skip-imgui"]
+            # "All" builds the whole tree; a picked subset is forwarded
+            # as --target <dep>. Submodules are always updated by the
+            # script, so there is no skip-submodules toggle here.
+            if not self.deps_target_all.get():
+                for t in DEPS_TARGETS:
+                    if self.deps_target_vars[t].get():
+                        cmd += ["--target", t]
         return cmd
 
     def _update_preview(self) -> None:
