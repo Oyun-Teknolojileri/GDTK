@@ -179,13 +179,12 @@ elseif(WIN32)
   target_link_libraries(Editor PRIVATE OpenGL32)
 endif()
 
-# Make sure the editor finds ToolKit.so next to itself and the vendored
-# shared libs (SDL2, tkimgui) under Dependency/Intermediate/... without
-# needing LD_LIBRARY_PATH or a post-build copy. RPATH covers both dirs.
+# RPATH: $ORIGIN finds libToolKitd.so and vendored shared libs (SDL2,
+# imgui) next to the binary in Bin<Config>/ after `cmake --install`.
 if(UNIX)
   set_target_properties(Editor PROPERTIES
-    BUILD_RPATH   "$ORIGIN:${TK_DEPS_DIR}"
-    INSTALL_RPATH "$ORIGIN:${TK_DEPS_DIR}"
+    BUILD_RPATH   "$ORIGIN"
+    INSTALL_RPATH "$ORIGIN"
   )
 endif()
 

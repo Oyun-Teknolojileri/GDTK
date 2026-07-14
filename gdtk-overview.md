@@ -35,19 +35,19 @@ GDTK/
 │   ├── Editor/                  # Editor.vcxproj — ImGui-based 3D editor application
 │   └── ...
 ├── Utils/
-│   ├── Import/                  # Asset import (assimp-based, into engine format)
-│   ├── Packer/                  # Resource packer (.tk files)
-│   └── ...
+│   ├── Import/                  # Asset import CLI (assimp-based, into engine format)
+│   ├── Packer/                  # Release / publish CLI (.tk bundle, platform packages)
+│   └── Launcher/                # Project browser / entry point (ImGui-based GUI)
 ├── Modules/
-│   └── Workspace/               # Project workspace management
+│   └── Workspace/               # Project workspace management (static library)
 ├── Templates/
-│   ├── Plugin/                  # Plugin template (Plugin.vcxproj)
-│   └── Game/                    # Game template (Game.vcxproj)
-├── Launcher/                    # Launcher.vcxproj — picks up the engine + project
-├── Dependency/                  # Vendored deps (assimp, glm, glad, imgui, etc.)
+│   ├── Plugin/                  # Plugin template
+│   └── Game/                    # Game template
+├── Dependency/                  # Vendored deps (assimp, glm, glad, SDL2, imgui, ...)
 ├── Resources/                   # Engine resources (shaders, textures, default scenes)
 ├── Config/                      # Default engine config files
-├── Bin<Config>/                 # Compiled editor.exe + runtime files (per config: BinDebug/, BinRelease/)
+├── Bin<Config>/                 # Self-contained output: binaries + shared deps
+│                                # (per config: BinDebug/, BinRelease/)
 ├── Templates/                   # Project templates
 ├── CMakeLists.txt               # Top-level CMake
 ├── BuildScripts/                # Cross-platform build scripts
@@ -500,16 +500,22 @@ TKAsyncTask(BackgroundPool, Func, arg1, ...)  // fire-and-forget async
 
 ---
 
-## 11. Packer / Import / Launcher
+## 11. Utils — Import / Packer / Launcher
 
-### 11.1 Packer (Packer/Packer.vcxproj)
-Builds `.tk` packs from editor resources for shipping. CLI tool.
+All three utility projects live under `Utils/` and output to `Bin<Config>/`
+alongside the engine.
 
-### 11.2 Import (Import/Import.vcxproj)
-Asset import (assimp-based). Editor uses it via `App::Import`.
+### 11.1 Import (`Utils/Import/`)
+Asset import CLI (assimp-based). Editor uses it via `App::Import`. Links
+assimp, SDL2, ToolKit.
 
-### 11.3 Launcher (Launcher/Launcher.vcxproj)
-Project launcher — picks up the engine + project, runs the game.
+### 11.2 Packer (`Utils/Packer/`)
+Release / publish CLI. Bundles projects for Windows, Web, Android. Links
+SDL2, ToolKit (no assimp).
+
+### 11.3 Launcher (`Utils/Launcher/`)
+Project browser / entry point (ImGui-based GUI). Links SDL2, imgui, ToolKit,
+reuses Editor types.
 
 ---
 
@@ -538,7 +544,26 @@ stable across MSVC toolsets (vc142 / vc143 / vc145 all produce the same name).
 Upstream assimp's compiler-suffixed name (`assimp-vc143-mt.lib`) is no longer
 emitted into the dependency output directory.
 
-### 12.2 Open in Visual Studio
+### 12.2 Build engine + tools
+
+**Cross-platform (recommended):**
+```bash
+# One command — configures, builds, installs shared deps
+python3 BuildScripts/build_gdtk.py --configs Debug
+```
+
+**Manual cmake:**
+```bash
+cmake -S . -B Intermediate/Linux/Debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
+cmake --build Intermediate/Linux/Debug --parallel $(nproc)
+cmake --install Intermediate/Linux/Debug --prefix .
+```
+
+All binaries and shared dependencies land in `Bin<Config>/` (e.g. `BinDebug/`).
+After `cmake --install`, the directory is self-contained — `$ORIGIN` RPATH
+covers every shared library.
+
+**Windows / Visual Studio:**
 ```bat
 start ToolKit.sln
 ```

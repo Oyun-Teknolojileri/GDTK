@@ -314,3 +314,65 @@ add_subdirectory(Editor    ${GDTK_INTERMEDIATE_DIR}/build-Editor)
 add_subdirectory(Utils/Launcher ${GDTK_INTERMEDIATE_DIR}/build-Launcher)
 add_subdirectory(Utils/Import   ${GDTK_INTERMEDIATE_DIR}/build-Import)
 add_subdirectory(Utils/Packer   ${GDTK_INTERMEDIATE_DIR}/build-Packer)
+
+# --------------------------------------------------------------------------- #
+# Install rules                                                               #
+# --------------------------------------------------------------------------- #
+# `cmake --install <build_dir> --prefix <root>` stages everything into
+# Bin<Config>/, making it a self-contained runtime directory. After install,
+# Bin<Config>/ carries every shared library the binaries need, so RPATH
+# only requires $ORIGIN.
+#
+#   cmake --install <build_dir> --prefix ${CMAKE_SOURCE_DIR}
+#
+# build_gdtk.py runs this automatically after a successful build.
+
+# GDTK targets -- install alongside the build output (idempotent since
+# RUNTIME_OUTPUT_DIRECTORY already points at Bin<Config>/).
+install(TARGETS ToolKit Editor Launcher Import Packer Workspace
+  RUNTIME DESTINATION "Bin$<CONFIG>"
+  LIBRARY DESTINATION "Bin$<CONFIG>"
+  ARCHIVE DESTINATION "Bin$<CONFIG>"
+)
+
+# Vendored shared runtime dependencies.
+#
+# install(DIRECTORY ...) and install(FILES ...) both resolve symlinks
+# during install, which breaks the SONAME chain (libSDL2-2.0d.so ->
+# .so.0 -> .so.0.3200.8). install(CODE ...) lets us recreate the
+# symlink tree so the dynamic loader can find libraries by SONAME in
+# the self-contained Bin<Config>/ directory.
+if(UNIX)
+  install(CODE "
+    set(_SRC  \"${TK_DEPS_DIR}\")
+    set(_DEST \"\${CMAKE_INSTALL_PREFIX}/Bin$<CONFIG>\")
+    file(MAKE_DIRECTORY \"\${_DEST}\")
+    foreach(_pat \"libSDL2-*\" \"libimgui*\" \"libassimp*\")
+      file(GLOB _files \"\${_SRC}/\${_pat}\")
+      foreach(_f \${_files})
+        get_filename_component(_name \"\${_f}\" NAME)
+        if(IS_SYMLINK \"\${_f}\")
+          file(READ_SYMLINK \"\${_f}\" _target)
+          execute_process(COMMAND ln -sf \"\${_target}\" \"\${_DEST}/\${_name}\")
+        else()
+          execute_process(COMMAND \${CMAKE_COMMAND} -E copy_if_different
+            \"\${_f}\" \"\${_DEST}/\")
+        endif()
+      endforeach()
+    endforeach()
+  ")
+elseif(WIN32)
+  install(CODE "
+    set(_SRC  \"${TK_DEPS_DIR}\")
+    set(_DEST \"\${CMAKE_INSTALL_PREFIX}/Bin$<CONFIG>\")
+    file(MAKE_DIRECTORY \"\${_DEST}\")
+    foreach(_pat \"SDL2*.dll\" \"imgui*.dll\" \"assimp*.dll\")
+      file(GLOB _files \"\${_SRC}/\${_pat}\")
+      foreach(_f \${_files})
+        get_filename_component(_name \"\${_f}\" NAME)
+        execute_process(COMMAND \${CMAKE_COMMAND} -E copy_if_different
+          \"\${_f}\" \"\${_DEST}/\")
+      endforeach()
+    endforeach()
+  ")
+endif()

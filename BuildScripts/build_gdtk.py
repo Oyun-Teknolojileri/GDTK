@@ -13,8 +13,10 @@ imports them through IMPORTED targets and FATAL_ERRORs at configure
 time if they are missing.
 
 Build artifacts land in:
-  Bin/                              Final binaries (Editor, Launcher,
-                                    libToolKitd.so, libWorkspace.a, ...)
+  Bin<Config>/                      Final binaries + shared dependencies
+                                    (Editor, Launcher, Import, Packer,
+                                    libToolKitd.so, libWorkspace.a,
+                                    libSDL2-*.so, libimguid.so, ...)
   Intermediate/<Platform>/<Config>/ CMake state + per-module .o files
 
 Per-platform generator selection matches build_dependencies.py so the
@@ -169,6 +171,22 @@ def build_project(
                 *target_arg,
             ]
             _run_cmake(build_args)
+
+            # Install: stage shared dependencies into Bin<Config>/ so the
+            # runtime directory is self-contained (RPATH only needs $ORIGIN).
+            section(f"{platform} / {config} (install)")
+            try:
+                install_args = [
+                    "cmake", "--install", str(int_dir),
+                    "--config", config,
+                    "--prefix", str(ROOT_DIR),
+                ]
+                _run_cmake(install_args)
+            except subprocess.CalledProcessError:
+                warn(f"Install step failed for {platform}/{config} -- "
+                     "Bin<Config>/ may be missing shared dependencies.")
+                # Don't fail the build; the binaries are still usable with
+                # LD_LIBRARY_PATH / %PATH% pointing at TK_DEPS_DIR.
             results.append((config, True))
         except subprocess.CalledProcessError:
             results.append((config, False))

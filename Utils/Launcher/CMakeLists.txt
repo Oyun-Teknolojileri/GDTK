@@ -109,12 +109,12 @@ elseif(WIN32)
   target_link_libraries(Launcher PRIVATE OpenGL32)
 endif()
 
-# RPATH: find ToolKit.so + the vendored shared libs (SDL2, imgui) next to
-# the binary / under Dependency/Intermediate/... without LD_LIBRARY_PATH.
+# RPATH: $ORIGIN finds libToolKitd.so and vendored shared libs (SDL2,
+# imgui) next to the binary in Bin<Config>/ after `cmake --install`.
 if(UNIX)
   set_target_properties(Launcher PROPERTIES
-    BUILD_RPATH   "$ORIGIN:${TK_DEPS_DIR}"
-    INSTALL_RPATH "$ORIGIN:${TK_DEPS_DIR}"
+    BUILD_RPATH   "$ORIGIN"
+    INSTALL_RPATH "$ORIGIN"
   )
 endif()
 

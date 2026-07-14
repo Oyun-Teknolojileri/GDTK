@@ -111,9 +111,8 @@ endif()
 # Output: Bin<Config>/
 #
 # Import outputs alongside Editor, Launcher, and libToolKitd.so in the
-# per-config Bin<Config>/ directory. RPATH ($ORIGIN) points the binary at
-# libToolKitd.so in the same directory; the TK_DEPS_DIR entry covers the
-# vendored shared dependencies (SDL2, imgui, assimp) under Dependency/.
+# per-config Bin<Config>/ directory. After `cmake --install` every shared
+# dependency is also staged there, so RPATH only needs $ORIGIN.
 #
 # add_dependencies ensures Import re-links whenever ToolKit changes,
 # so the import library stays in sync with the DLL exports.
@@ -125,16 +124,16 @@ set_target_properties(Import PROPERTIES
   ARCHIVE_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}/$<0:>"
 )
 
-# RPATH: $ORIGIN finds libToolKitd.so next to the binary in Bin<Config>/;
-# ${TK_DEPS_DIR} covers the vendored shared deps (SDL2, assimp, imgui).
+# RPATH: $ORIGIN finds libToolKitd.so and vendored shared libs (SDL2,
+# assimp) next to the binary in Bin<Config>/ after `cmake --install`.
 if(UNIX)
   set_target_properties(Import PROPERTIES
-    BUILD_RPATH   "$ORIGIN:${TK_DEPS_DIR}"
-    INSTALL_RPATH "$ORIGIN:${TK_DEPS_DIR}"
+    BUILD_RPATH   "$ORIGIN"
+    INSTALL_RPATH "$ORIGIN"
   )
 elseif(WIN32)
   set_target_properties(Import PROPERTIES
-    BUILD_RPATH   "$ORIGIN;${TK_DEPS_DIR}"
-    INSTALL_RPATH "$ORIGIN;${TK_DEPS_DIR}"
+    BUILD_RPATH   "$ORIGIN"
+    INSTALL_RPATH "$ORIGIN"
   )
 endif()

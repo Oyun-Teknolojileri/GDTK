@@ -89,9 +89,8 @@ endif()
 # Output: Bin<Config>/
 #
 # Packer outputs alongside Editor, Launcher, Import and libToolKitd.so in
-# the per-config Bin<Config>/ directory. RPATH ($ORIGIN) points the binary
-# at libToolKitd.so in the same directory; the TK_DEPS_DIR entry covers
-# the vendored shared dependencies (SDL2, imgui) under Dependency/.
+# the per-config Bin<Config>/ directory. After `cmake --install` every
+# shared dependency is also staged there, so RPATH only needs $ORIGIN.
 #
 # Packer does NOT link assimp (it does not import 3D assets) -- the
 # comment on target_link_libraries above documents this. So no assimp
@@ -107,16 +106,16 @@ set_target_properties(Packer PROPERTIES
   ARCHIVE_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}/$<0:>"
 )
 
-# RPATH: $ORIGIN finds libToolKitd.so next to the binary in Bin<Config>/;
-# ${TK_DEPS_DIR} covers the vendored shared deps (SDL2, imgui).
+# RPATH: $ORIGIN finds libToolKitd.so and vendored shared libs (SDL2)
+# next to the binary in Bin<Config>/ after `cmake --install`.
 if(UNIX)
   set_target_properties(Packer PROPERTIES
-    BUILD_RPATH   "$ORIGIN:${TK_DEPS_DIR}"
-    INSTALL_RPATH "$ORIGIN:${TK_DEPS_DIR}"
+    BUILD_RPATH   "$ORIGIN"
+    INSTALL_RPATH "$ORIGIN"
   )
 elseif(WIN32)
   set_target_properties(Packer PROPERTIES
-    BUILD_RPATH   "$ORIGIN;${TK_DEPS_DIR}"
-    INSTALL_RPATH "$ORIGIN;${TK_DEPS_DIR}"
+    BUILD_RPATH   "$ORIGIN"
+    INSTALL_RPATH "$ORIGIN"
   )
 endif()

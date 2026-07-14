@@ -67,7 +67,25 @@ cd .\GDTK\
 .\BuildDependencies.bat
 ```
 
-After this point ToolKit/ToolKit.sln file can be open and build.
+After this point, the project is ready to build:
+
+```bash
+# Build all targets (Linux / macOS)
+python3 BuildScripts/build_gdtk.py --configs Debug
+
+# Or manually via cmake
+cmake -S . -B Intermediate/Linux/Debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
+cmake --build Intermediate/Linux/Debug --parallel $(nproc)
+cmake --install Intermediate/Linux/Debug --prefix .
+```
+
+Binaries and shared dependencies land in `Bin<Config>/` (e.g. `BinDebug/`):
+- `Editor`, `Launcher`, `Import`, `Packer` — executables
+- `libToolKitd.so`, `libWorkspace.a` — engine libraries
+- `libSDL2-*.so`, `libimguid.so`, `libassimpd.so` — shared dependencies
+
+After a successful build + install, `Bin<Config>/` is self-contained — all binaries
+find their dependencies via `$ORIGIN` RPATH, no `LD_LIBRARY_PATH` needed.
 
 #### Visual Studio Project Overview
 

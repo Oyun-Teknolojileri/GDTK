@@ -229,57 +229,23 @@ if(UNIX AND NOT APPLE)
     message(STATUS "GDTK: SDL2 video drivers enabled: ${_SDL_REAL_DRIVERS}")
 endif()
 
-#---- Copy DLLs to runtime locations (Windows only) ----#
+#---- Runtime dependency staging ----#
 #
-# Stages the runtime DLLs of the GDTK tools into the directories where
-# the binaries land. Windows resolves DLLs from the binary's directory
-# first, so without these copies Import.exe / Packer.exe / Editor.exe
-# would not find SDL2 / imgui at runtime. Linux relies on RPATH
-# ($ORIGIN + TK_DEPS_DIR) instead and doesn't need any of this.
+# Shared runtime dependencies (SDL2, imgui, assimp) are staged into
+# Bin<Config>/ via `cmake --install`. See the "Install rules" block in
+# the root CMakeLists.txt for the install() invocations. On both Linux
+# and Windows the install step copies every shared library the binaries
+# need at runtime alongside them, so $ORIGIN in RPATH is all that's
+# needed.
 #
-# What is *not* handled here and why:
-#   - ToolKit.dll copying is in Import/CMakeLists.txt and
-#     Packer/CMakeLists.txt (POST_BUILD on each target, tied to the
-#     target via add_dependencies(... ToolKit) so a ToolKit source
-#     change re-runs the copy). Keeping it there means a single source
-#     of truth for "where ToolKit lives next to the consumer".
-#   - assimp.dll copying is in Import/CMakeLists.txt the same way --
-#     tied to the Import target via the link line. Packer does not
-#     depend on assimp.
-#   - minizip and zstd are static libs (BUILD_SHARED_LIBS=OFF / ZSTD_
-#     BUILD_SHARED=OFF above) -- they're linked into the binaries,
+# No POST_BUILD copy_dll or CopyDependencies target is necessary any
+# more -- the install() rules in the root CMakeLists are the single
+# source of truth for staging.
+#
+# What's handled by install and not here:
+#   - ToolKit.so / ToolKit.dll already builds into Bin<Config>/ via
+#     RUNTIME_OUTPUT_DIRECTORY.
+#   - SDL2, imgui, assimp shared libs are installed from TK_DEPS_DIR
+#     via install(DIRECTORY ...) in the root CMakeLists.
+#   - minizip and zstd are static libs -- they're linked into ToolKit,
 #     not dlopen'd, so they don't need a runtime copy.
-if ("${TK_PLATFORM}" STREQUAL "Windows")
-    set(COPY_RUNTIME_DLLS SDL2 imgui)
-
-    # `cmake -E copy_if_different` errors with "Invalid argument" when the
-    # destination directory does not exist yet -- it does not auto-create
-    # parents the way `cp` does. The Bin<Config>/ folder only gets created
-    # when the first build of the corresponding target runs, which is *after*
-    # this CopyDependencies step on a clean checkout. Make sure each
-    # destination directory exists immediately before the copy that targets
-    # it; doing it once up-front is not enough on the Visual Studio generator
-    # because MSBuild may run sibling CustomBuild steps concurrently and
-    # race the mkdir. _BIN_DIR uses $<CONFIG> so each config's runtime DLLs
-    # land in the matching Bin<Config>/ that the engine build wrote.
-    set(_BIN_DIR     "${CMAKE_CURRENT_LIST_DIR}/../Bin$<CONFIG>")
-
-    add_custom_target(CopyDependencies ALL
-        # SDL2: needed by Editor / Launcher / Import / Packer at runtime.
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${_BIN_DIR}"
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "$<TARGET_FILE:SDL2>"
-            "${_BIN_DIR}/"
-
-        # imgui: needed by Editor / Launcher at runtime. _BIN_DIR was
-        # already created above; mkdir is a no-op if it exists.
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${_BIN_DIR}"
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "$<TARGET_FILE:imgui>"
-            "${_BIN_DIR}/"
-
-        DEPENDS ${COPY_RUNTIME_DLLS}
-        COMMENT "Copying runtime DLLs for configuration: $<CONFIG>"
-        VERBATIM
-    )
-endif()
