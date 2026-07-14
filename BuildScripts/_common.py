@@ -504,8 +504,11 @@ def _is_pkg_installed(distro: str, pkg: str) -> bool:
     """
     try:
         if distro == LINUX_DISTRO_FEDORA:
+            # --whatprovides handles virtual packages: e.g. Fedora >= 44
+            # ships zlib-ng-compat-devel which provides zlib-devel but
+            # does not own the "zlib-devel" package name directly.
             out = subprocess.run(
-                ["rpm", "-q", pkg],
+                ["rpm", "-q", "--whatprovides", pkg],
                 capture_output=True, text=True, check=False,
             )
             return out.returncode == 0
@@ -548,6 +551,20 @@ def install_system_packages(distro: str, packages: List[str]) -> None:
     Raises subprocess.CalledProcessError on failure, which the caller
     is expected to translate into a script abort.
     """
+    # Prime the sudo timestamp BEFORE the package manager floods stdout.
+    # `sudo -v` validates credentials and shows a clear password prompt
+    # (or a cached-credentials message) so the user knows what's going on
+    # instead of staring at a frozen terminal after dnf/apt starts.
+    info("Package install requires superuser privileges.")
+    info("If prompted, enter your sudo password below.")
+    try:
+        subprocess.run(["sudo", "-v"], check=True)
+    except subprocess.CalledProcessError:
+        err("sudo authentication failed -- cannot install packages without")
+        err("superuser privileges. Re-run with --install-deps after resolving")
+        err("the sudo access, or install the missing packages manually.")
+        sys.exit(2)
+
     if distro == LINUX_DISTRO_DEBIAN:
         # apt-get install on a stale index hits "Unable to locate
         # package" on brand-new distros that have not been updated
