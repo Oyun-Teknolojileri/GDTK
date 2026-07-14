@@ -44,9 +44,10 @@ DEFAULT_CONFIGS = ["Debug", "Release", "RelWithDebInfo", "MinSizeRel"]
 sys.path.insert(0, str(SCRIPT_DIR))
 from _common import (  # noqa: E402  -- intentional import after sys.path tweak
     Style, info, ok, warn, err, section,
-    which, require_tool,
     detect_platform, detect_generator, detect_parallel_jobs,
     _run_cmake, clean_platform,
+    # Pre-flight checks shared with build_gdtk.py -- see _common.py.
+    tool_preflight, system_package_preflight,
 )
 
 
@@ -351,6 +352,15 @@ def main() -> int:
         help="Wipe Dependency/Intermediate/<Platform>/ before configuring.",
     )
     parser.add_argument(
+        "--install-deps", action="store_true",
+        help=(
+            "On Linux, auto-install the system dev packages GDTK needs "
+            "(build essentials + SDL2 X11) via the distro's package manager "
+            "+ sudo, if any are missing. By default the script just lists "
+            "what's missing and aborts without touching the system."
+        ),
+    )
+    parser.add_argument(
         "-j", "--parallel", type=int, default=detect_parallel_jobs(),
         help="Parallel build jobs (default: nproc / CPU count).",
     )
@@ -382,8 +392,22 @@ def main() -> int:
     print(f"  Skip assimp: {args.skip_assimp}")
     print(f"  Skip imgui:  {args.skip_imgui}")
 
-    require_tool("cmake")
-    require_tool("git")
+    # Build-tool pre-flight (cmake/git/ninja/cl.exe) -- hard-fails on a
+    # missing hard requirement with an install hint. Python is assumed.
+    tool_preflight(platform)
+
+    # Linux system package pre-flight (build essentials + X11 [+ Vulkan]).
+    # The vendored dep tree is exactly where a missing pkg-config /
+    # zlib-dev / libX11-devel surfaces (assimp's find_package(ZLIB) and
+    # SDL2's CheckX11()), so catch them here with a clear per-distro
+    # install command instead of a cryptic CMake FATAL_ERROR.
+    preflight_rc = system_package_preflight(
+        platform,
+        vulkan=False,
+        install_deps=args.install_deps,
+    )
+    if preflight_rc != 0:
+        return preflight_rc
 
     if not args.skip_submodules:
         section("Updating submodules")

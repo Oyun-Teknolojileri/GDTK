@@ -404,6 +404,34 @@ LINUX_VULKAN_PACKAGES: dict[str, tuple[str, ...]] = {
     ),
 }
 
+# Build-essential system packages -- always required on Linux.
+#
+# These are the *system* tools/headers the vendored dep tree needs but
+# cannot fetch for itself, and that are NOT covered by the X11 list above:
+#
+#   * pkg-config / pkgconf -- CMake's find_package backend. Without it,
+#     assimp's `find_package(ZLIB)` and SDL2's X11 probe both fail with a
+#     cryptic "Could NOT find PkgConfig" deep inside the dep configure
+#     (this is exactly what aborted the Ubuntu build before this gate
+#     existed).
+#   * zlib dev headers -- assimp builds with ASSIMP_BUILD_ZLIB=OFF, so it
+#     has to find the system zlib; the dev headers are what's missing on a
+#     fresh install.
+#   * the C/C++ toolchain + ninja -- gcc/g++ (or the distro's "build
+#     essentials" meta-package) plus the ninja build driver. CMake and git
+#     are checked separately as tools (see tool_preflight); they live here
+#     too on Linux so --install-deps can provision the whole set in one go.
+#
+# Package names are the real, queryable names per distro (verified against
+# dpkg-query / rpm -q): Fedora's pkg-config provider is `pkgconf-pkg-config`
+# (NOT `pkgconfig`, which is only a virtual rpm provides), and its ninja
+# package is `ninja-build` (NOT `ninja`).
+LINUX_BUILD_PACKAGES: dict[str, tuple[str, ...]] = {
+    LINUX_DISTRO_DEBIAN: ("pkg-config", "zlib1g-dev", "build-essential", "ninja-build"),
+    LINUX_DISTRO_FEDORA: ("pkgconf-pkg-config", "zlib-devel", "gcc-c++", "ninja-build"),
+    LINUX_DISTRO_ARCH:   ("pkgconf", "zlib", "gcc", "make", "ninja"),
+}
+
 
 def _read_os_release() -> dict[str, str]:
     """Parse /etc/os-release into a flat dict.
@@ -546,3 +574,160 @@ def install_system_packages(distro: str, packages: List[str]) -> None:
 
     info(f"$ {' '.join(cmd)}")
     subprocess.run(cmd, check=True)
+
+
+# --------------------------------------------------------------------------- #
+# Pre-flight checks                                                            #
+# --------------------------------------------------------------------------- #
+
+def tool_preflight(platform: str) -> None:
+    """Verify the build tools GDTK needs are reachable. Python is assumed.
+
+    Hard-fails (sys.exit) on a missing hard requirement (cmake, git) with a
+    platform-specific install hint, and only warns on soft ones (ninja, the
+    MSVC toolset) where a fallback generator exists. Runs on every platform
+    before any configure/build step so a missing cmake/git surfaces here
+    instead of as a bare "command not found" later.
+
+    On Linux the C/C++ toolchain, pkg-config, zlib-dev and ninja are verified
+    separately as system packages (see system_package_preflight) because they
+    are installable through the distro's package manager and benefit from the
+    --install-deps auto-install path; here we only probe the binary tools that
+    a `which` can settle instantly.
+    """
+    section("Checking build tools")
+
+    for tool in ("cmake", "git"):
+        path = which(tool)
+        if path:
+            ok(f"{tool}: {path}")
+            continue
+        err(f"Required tool '{tool}' not found in PATH.")
+        if platform == "Windows":
+            err("  Install CMake (https://cmake.org/download) and Git")
+            err("  (https://git-scm.com), then reopen your terminal.")
+        else:
+            distro = detect_linux_distro()
+            hint = {
+                LINUX_DISTRO_DEBIAN: "sudo apt-get install -y cmake git",
+                LINUX_DISTRO_FEDORA: "sudo dnf install -y cmake git",
+                LINUX_DISTRO_ARCH:   "sudo pacman -S --needed cmake git",
+            }.get(distro, "install cmake and git via your package manager")
+            err(f"  {hint}")
+        sys.exit(2)
+
+    ninja = which("ninja")
+    if ninja:
+        ok(f"ninja: {ninja}")
+    else:
+        warn("ninja not found -- a slower generator (Unix Makefiles / MSBuild)")
+        warn("will be used. Install it for faster builds "
+             "(Debian: ninja-build, Fedora: ninja-build, Arch: ninja).")
+
+    if platform == "Windows":
+        cl, _ = detect_compiler(platform)
+        if cl:
+            ok(f"cl.exe: {cl}")
+        else:
+            warn("MSVC (cl.exe) not found. Run from a Visual Studio Developer")
+            warn("Command Prompt, or install VS with the 'Desktop development")
+            warn("with C++' workload. CMake will surface the real error if a")
+            warn("build toolset is genuinely missing.")
+
+
+def system_package_preflight(
+    platform: str,
+    *,
+    vulkan: bool,
+    install_deps: bool,
+) -> int:
+    """Verify the Linux system packages GDTK needs are installed.
+
+    On Linux GDTK has a small set of *system* (not vendored) dependencies the
+    build cannot satisfy on its own:
+
+      * build essentials -- pkg-config, zlib dev headers, the C/C++ toolchain
+        and ninja. Without these the dep configure aborts with cryptic
+        "Could NOT find PkgConfig / ZLIB" errors deep inside assimp (this is
+        the exact failure that hit Ubuntu before the gate existed).
+      * SDL2's X11 dev packages -- always required, because
+        Dependency/CMakeLists.txt pins SDL_X11=ON, SDL_WAYLAND=OFF.
+      * Vulkan loader / shaderc / VMA dev packages -- only required when
+        `--vulkan` is passed.
+
+    Behaviour:
+      * Non-Linux / unknown distro / nothing missing -> return 0.
+      * Missing packages, `--install-deps` set -> sudo-install them, re-probe,
+        return 0 (or 2 on install failure).
+      * Missing packages, `--install-deps` NOT set -> print a clear per-distro
+        install command and return 2 so the caller aborts before launching the
+        dep build, which would otherwise fail less helpfully inside assimp /
+        SDL2's CheckX11().
+
+    This gate runs before the vendored-dep tree is touched on purpose: it is
+    about *system* packages, not the vendored deps, and silently ignoring a
+    missing pkg-config / libX11-devel would produce a broken-looking build.
+    """
+    if platform != "Linux":
+        return 0
+
+    distro = detect_linux_distro()
+    if distro == "unknown":
+        warn("Could not identify your Linux distro from /etc/os-release.")
+        warn("Install pkg-config, the zlib dev headers, the SDL2 X11 dev")
+        warn("headers (and Vulkan dev headers if you pass --vulkan) manually")
+        warn("-- see BuildScripts/README.md for the package list.")
+        # Don't hard-fail: the FATAL_ERROR inside Dependency/CMakeLists will
+        # catch missing X11 dev packages anyway, and a user on a distro we
+        # don't recognise is better served by that specific message.
+        return 0
+
+    # Compose the required package list: build essentials + X11 always,
+    # Vulkan if asked.
+    required = list(LINUX_BUILD_PACKAGES[distro]) + list(LINUX_X11_PACKAGES[distro])
+    section_name = "build + X11 dev packages"
+    if vulkan:
+        required.extend(LINUX_VULKAN_PACKAGES[distro])
+        section_name = "build + X11 + Vulkan dev packages"
+
+    section(f"Checking {section_name} on {LINUX_DISTRO_DISPLAY_NAME[distro]}")
+    info(f"Required: {', '.join(required)}")
+    missing = missing_system_packages(distro, required)
+
+    if not missing:
+        ok("All required system packages are present.")
+        return 0
+
+    err(f"Missing system packages: {', '.join(missing)}")
+
+    if not install_deps:
+        # No opt-in -> safe path: print the install command for the user's
+        # specific distro and abort. We DO NOT auto-sudo on a plain invocation
+        # because that would mean every fresh checkout reaches for root
+        # privileges without an explicit user action.
+        install_cmd = {
+            LINUX_DISTRO_FEDORA: "sudo dnf install -y " + " ".join(missing),
+            LINUX_DISTRO_DEBIAN: "sudo apt-get update && sudo apt-get install -y " + " ".join(missing),
+            LINUX_DISTRO_ARCH:   "sudo pacman -S --needed --noconfirm " + " ".join(missing),
+        }[distro]
+        err("Re-run with --install-deps to install them automatically,")
+        err(f"or run this yourself:\n  {install_cmd}")
+        return 2
+
+    # Auto-install path. Stream sudo's prompt + the package manager's own
+    # output straight to the terminal so the user sees what is being added.
+    info("Auto-installing missing system packages (--install-deps was set)...")
+    try:
+        install_system_packages(distro, missing)
+    except subprocess.CalledProcessError as e:
+        err(f"Package install failed with exit code {e.returncode}.")
+        err("Re-run after fixing the package manager output above.")
+        return 2
+
+    still_missing = missing_system_packages(distro, required)
+    if still_missing:
+        err(f"Still missing after install: {', '.join(still_missing)}")
+        return 2
+
+    ok("All required system packages are now installed.")
+    return 0
