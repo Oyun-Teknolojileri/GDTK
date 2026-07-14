@@ -1523,8 +1523,8 @@ namespace ToolKit
       std::unique_ptr<Main> g_proxy = std::make_unique<Main>();
       Main::SetProxy(g_proxy.get());
 
-      g_proxy->SetDefaultPath(ConcatPaths({"..", "..", "Resources", "Engine"}));
-      g_proxy->SetConfigPath(ConcatPaths({"..", "..", "..", "Config"}));
+      g_proxy->SetDefaultPath(ConcatPaths({"..", "Resources", "Engine"}));
+      g_proxy->SetConfigPath(ConcatPaths({"..", "Config"}));
 
       // Headless mode: use NullBackend (no GPU), dummy SDL video driver.
       // Import only serializes resources — it never renders.
