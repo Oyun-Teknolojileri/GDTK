@@ -220,10 +220,6 @@ namespace ToolKit
 
   bool FileManager::CheckFileFromResources(const String& path)
   {
-    String relativePath = path;
-    UnixifyPath(relativePath);
-    GetRelativeResourcesPath(relativePath);
-
     if (CheckSystemFile(path))
     {
       return true;
@@ -233,6 +229,11 @@ namespace ToolKit
     if (!m_ignorePakFile)
     {
       assert(!Main::GetInstance()->m_resourceRoot.empty() && "Resource root can't be empty.");
+
+      String relativePath = path;
+      UnixifyPath(relativePath);
+      GetRelativeResourcesPath(relativePath);
+
       GenerateOffsetTableForPakFiles();
       inPak = IsFileInPak(relativePath);
     }

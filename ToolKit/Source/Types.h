@@ -436,7 +436,7 @@ namespace ToolKit
   static const String TKBrdfLutTexture        = "GLOBAL_BRDF_LUT_TEXTURE";
   static const String TKIrradianceCacheFolder = "EnvCacheMap";
   static const String TKDefaultGradientSky    = "DefaultGradientSky";
-  static const String TKDefaultHdri           = "DefaultHDRI";
+  static const String TKDefaultHdri           = "defaultHDRI.hdr";
   static const String TKDefaultImage          = "default.png";
   static const String TKResourcePak           = "MinResources.pak";
 

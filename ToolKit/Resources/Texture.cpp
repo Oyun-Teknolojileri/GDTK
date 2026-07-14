@@ -1021,7 +1021,7 @@ namespace ToolKit
   {
     if (Class == Hdri::StaticClass())
     {
-      return TexturePath(TKDefaultHdri + HDR, true);
+      return TexturePath(TKDefaultHdri, true);
     }
     else
     {
