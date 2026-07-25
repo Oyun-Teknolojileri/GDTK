@@ -1,12 +1,13 @@
 # GDTK Render Instancing Refactor - Roadmap
 
-> **Status:** Draft v3 (design phase, pending review).
+> **Status:** Draft v4 (design phase, pending review).
 > **Targets:** Native mobile (GLES 3.2, see `ToolKit/Render/OpenGL/TKOpenGL.h` -> `GLES3/gl32.h`) and WebGL 2.0; Vulkan remains a first-class desktop/backend target.
 > **Related docs:** `AGENTS.md` (coding standards, Pass/PassRequirements conventions, overview-sync rules), `gdtk-overview.md` (architecture), Section 4 (Rendering Subsystem).
 > **Goal:** Collapse per-object draw calls and per-object state changes into a small number of instanced draws, without rewriting the renderer.
 
 ### Changelog
 
+- **v4** - Third external review (9.8/10, "no serious architectural problem"). Final polish: (1) `renderObjectIndex` removed from `InstanceRecord` (it is batch-uniform, already in the `BatchKey`) - the record is now self-consistent; `RenderObject` is accessed via `LoadRenderObject()` (backend-impl-detail: per-draw uniform/UBO today, buffer/SSBO read as it grows). (2) Generations are `uint64` (CPU-side validation only). (3) `BatchKey` is `alignas(32)` for SIMD compare. (4) Added "Future extensions" subsection (compressed transforms; material/pipeline-system refactor).
 - **v3** - Second external review incorporated. Key changes: (1) **`RenderObject` / `InstanceRecord` split** - shared (batch-uniform) handles hoisted into a `RenderObject` (the stable extension point for future scene features); `InstanceRecord` keeps only per-instance-varying data. (2) **Resource-side generation / dependency graph** replaces object-side dirty flags. (3) **Fixed-stride light list.** (4) **Sort-based batching** (memcmp key, no hashing) with **`RenderItem`** output. (5) **Instrumentation phase** added as a prerequisite (Phase 1). (6) **Native multi-draw-indirect** fast-path (Phase 8). (7) Per-instance **inverse-matrix heuristic.** (8) Explicit **table lifetimes.** Phase numbers shifted (instrumentation is now Phase 1).
 - **v2** - First external review: lean `InstanceRecord`, `LoadInstance`, RenderState in batch key, generation-based validation, separate `BatchBuilder`.
 - **v1** - Initial grounded draft.
@@ -115,18 +116,22 @@ Two records:
 
 ```cpp
 // Lean per-instance record. Populated from PerDrawUboLayout / RenderJob.
+// renderObjectIndex is NOT here: it is batch-uniform (in the BatchKey), so all
+// instances in a batch share one RenderObject (accessed via LoadRenderObject()).
 struct InstanceRecord
 {
-  Mat4  model;             // world matrix (always per-instance)
-  uint  renderObjectIndex; // -> RenderObject table (the shared bundle)
-  uint  lightListIndex;    // -> fixed-stride light-index table (position-dependent)
-  uint  animKeyIndex;      // -> animation keyframe params (skinned; 0 = none)
-  uint  flags;             // bit0: uniformScale, bit1: isSkinned, bit2: envOverride, ...
+  Mat4  model;          // world matrix (always per-instance)
+  uint  lightListIndex; // -> fixed-stride light-index table (position-dependent)
+  uint  animKeyIndex;   // -> animation keyframe params (skinned; 0 = none)
+  uint  flags;          // bit0: uniformScale, bit1: isSkinned, bit2: envOverride, ...
+  uint  _pad;           // texel alignment
 };
-// ~64 (Mat4) + 16 = 80 bytes -> ~5 RGBA32F texels.
+// 64 (Mat4) + 16 = 80 bytes -> 5 RGBA32F texels.
+// Future optimization: compressed transforms (quat + translation + scale ~= 40 B),
+// only if profiling shows the matrix is the instance bottleneck (see 2.7).
 ```
 
-**`RenderObject`** - shared across all instances of a mesh+material+env+anim bundle. **Bound per-batch (uniform), NOT fetched per-instance.** The extension point:
+**`RenderObject`** - shared across all instances of a mesh+material+env+anim bundle (= one per batch, identified by `renderObjectId` in the `BatchKey`). Accessed in-shader via **`LoadRenderObject()`**, a backend-implementation-detail fetch (per-draw uniform/UBO today; promoted to a buffer/SSBO read as `RenderObject` grows with future probes/decals/GI). The shader never knows the mechanism. The extension point:
 
 ```cpp
 // Shared bundle. One per distinct (mesh + material + env + anim) bundle.
@@ -143,7 +148,7 @@ struct RenderObject
 // ~16 bytes.
 ```
 
-**Why the split (v2 mistake corrected):** in v2 `materialIndex`/`envVolumeIndex`/`animIndex` sat per-instance even though they are uniform across a batch (material is in the batch key). v3 hoists the shared handles into `RenderObject` (bound once per draw, zero extra per-instance fetch), leaving `InstanceRecord` with only per-instance-varying data. Adding decals/probes/GI volumes later grows `RenderObject`, never `InstanceRecord`.
+**Why the split (v2 mistake corrected):** in v2 `materialIndex`/`envVolumeIndex`/`animIndex` sat per-instance even though they are uniform across a batch (material is in the batch key). v3 hoists the shared handles into `RenderObject` (exposed via `LoadRenderObject()`, uniform today - zero extra per-instance fetch), leaving `InstanceRecord` with only per-instance-varying data. Adding decals/probes/GI volumes later grows `RenderObject`, never `InstanceRecord`.
 
 **Env volume placement:** `envVolumeIndex` lives on `RenderObject`, so a batch must be env-coherent (all instances in the same primary env volume). If objects in one batch span an env boundary, either split the batch by env or use the per-instance `envOverride` flag (fetch env per-instance for that batch).
 
@@ -177,7 +182,7 @@ The light data itself (point/spot) stays in the existing global cache UBOs (slot
 **`BatchBuilder`** produces a flat array of **`RenderItem`**s. Each `RenderItem` carries a small POD **`BatchKey`** (~32 bytes):
 
 ```cpp
-struct BatchKey
+struct alignas(32) BatchKey    // 32-byte aligned for SIMD memcmp / compare
 {
   uint32 meshId;
   uint32 vertVariantId;
@@ -197,7 +202,7 @@ struct RenderItem
 ```
 
 - **Sort, don't hash:** sort the `RenderItem` array by `BatchKey` (memcmp / struct `<`); contiguous runs of equal keys = batches. No hash table, no collisions, cache-friendly linear scan.
-- **One draw per batch:** `drawElementsInstanced(count = run length)`, with the batch's `RenderObject` bound as a per-draw uniform.
+- **One draw per batch:** `drawElementsInstanced(count = run length)`, with the batch's `RenderObject` exposed via `LoadRenderObject()`.
 - **Key includes:**
   - `textureSetId` - material textures are bound once per batch.
   - `renderStateSig` - cull/blend/depth/stencil/primitive differ -> separate batch (correctness).
@@ -243,7 +248,7 @@ struct RenderItem
 
 ### 2.5 Cache validation (resource-side dependency graph)
 
-Generations live on **resources**, not objects. Consumers cache the generation of each resource they last consumed. This is automatic propagation: the generation is bumped inside the resource's mutator, so a missed setter cannot silently produce stale data.
+Generations live on **resources**, not objects. Consumers cache the generation of each resource they last consumed. This is automatic propagation: the generation is bumped inside the resource's mutator, so a missed setter cannot silently produce stale data. Generations are `uint64` (CPU-side validation only - the shader never sees them) to make wrap-around a non-issue in long-lived editor sessions.
 
 | Resource | Generation bumps on | Affected consumers (auto-propagated) |
 |---|---|---|
@@ -269,6 +274,11 @@ Generations live on **resources**, not objects. Consumers cache the generation o
 
 **When implemented:** use `sampler2DArray` (NOT a 2D UV atlas - arrays preserve tiling/repeat and avoid mip bleeding), bucket by size + wrap mode, store per-instance texture indices. RHI plumbing already exists (`GL_TEXTURE_2D_ARRAY` in `GLBackend.cpp`, `Tex2DArray` in `Shader.h`).
 
+### 2.7 Future extensions (out of scope, noted for awareness)
+
+- **Compressed transforms:** `Mat4 model` (64 B) could become quat + translation + scale (~40 B), with optional quantization for extreme mobile. Only if profiling shows the matrix is the instance bottleneck.
+- **Material / pipeline system:** as the renderer grows, the next major complexity will be a unified `MaterialCompiler` + shader-variant + pipeline-cache layer (today the engine uses a runtime-branch PBR ubershader + per-pass defines). This roadmap assumes the current material system; a material-system refactor is a separate future track.
+
 ---
 
 ## 3. Frame Loop
@@ -293,7 +303,7 @@ GPU (frame N):
        For each batch (sorted RenderItem run):
          - ApplyRequirements       -> program, framebuffer, pass RenderState
          - bind material textures (diffuse/normal/ORM) once
-         - bind RenderObject (per-draw uniform) + s_instanceData + table bindings
+         - set RenderObject (LoadRenderObject source) + bind s_instanceData + table bindings
          - drawElementsInstanced(count = run length)
        Legacy per-draw for: translucent, shader materials, skinned
   9. Swap read/write buffers       -> next frame writes A, reads B (Phase 6 only)
@@ -328,7 +338,7 @@ Incremental. Each phase is independently shippable and measurable. The legacy pe
 ### Phase 2 - Instance data transport + `InstanceRecord` + `RenderObject` + `LoadInstance`
 
 - **2a - Transport proof:** add `InstanceDataBuffer` RHI abstraction (Section 5) + `LoadInstance(id)` shader abstraction. Introduce `InstanceRecord` + `RenderObject`; in 2a they may initially mirror `PerDrawUboLayout` 1:1 to prove the transport. Render a SINGLE instance through the new path, verify pixel-identical vs the current UBO path (`instanceCount = 1`, no batching).
-- **2b - Lean split + global tables:** switch to the v3 split (2.1) - `RenderObject` (shared, per-draw uniform) + lean `InstanceRecord`; build the material / env-volume / light-index / animation / RenderObject tables; apply the inverse-matrix heuristic. Measure per-instance byte count and upload bandwidth (Phase 1 metrics).
+- **2b - Lean split + global tables:** switch to the v3 split (2.1) - `RenderObject` (shared, via `LoadRenderObject`) + lean `InstanceRecord`; build the material / env-volume / light-index / animation / RenderObject tables; apply the inverse-matrix heuristic. Measure per-instance byte count and upload bandwidth (Phase 1 metrics).
 - **Success (2a):** one object renders identically through the data-buffer path. **Success (2b):** per-instance data ~80 bytes; visual parity; upload bytes < baseline.
 - **Risk:** RGBA32F `texelFetch` extension story on WebGL 2 (Section 7). Note: native GLES 3.2 may use SSBO directly via the same `LoadInstance` interface.
 
@@ -412,7 +422,7 @@ Backend mapping (forward-looking):
 | (future Metal) | Buffer | buffer read |
 
 - `LoadInstance` hides the fetch; switching texture <-> SSBO changes only the backend include, never the shader body. WebGPU / Metal can be added without touching shaders.
-- `RenderObject` is bound per-draw as a uniform (small, ~16 bytes) - NOT fetched per-instance. Future scene-aware bindings (probes/decals/GI) added to `RenderObject` are therefore free at the per-instance level.
+- `RenderObject` is accessed via `LoadRenderObject()` - a backend-impl-detail fetch (per-draw uniform/UBO today; buffer/SSBO read as it grows). NOT fetched per-instance in the common case. Future scene-aware bindings (probes/decals/GI) added to `RenderObject` are therefore free at the per-instance level.
 
 **Indexing:** `gl_InstanceID + u_instanceBase` (GLSL ES 3.00 provides `gl_InstanceID`; Vulkan uses `gl_InstanceIndex`). No per-instance vertex attribute required -> zero per-instance vertex bandwidth.
 
@@ -430,8 +440,8 @@ Backend mapping (forward-looking):
 
 ## 6. Shader Changes
 
-- **Shared include `instanceDataInc.shader`:** declares `InstanceRecord` + `RenderObject` layouts, the `LoadInstance(uint id)` function (backend-specific fetch: `texelFetch` on GL/WebGL, SSBO read on native/Vulkan), and table accessors (`LoadMaterial(idx)`, `LoadEnvVolume(idx)`, `LoadLightList(idx, count)`, `LoadAnim(idx)`). `LoadRenderObject` reads the per-draw uniform (not an instance fetch).
-- **`defaultVertex.shader`:** when instanced, `InstanceRecord r = LoadInstance(gl_InstanceID + u_instanceBase);` use `r.model`; derive inverse/normal matrix via the uniformScale flag; read `RenderObject ro = LoadRenderObject(r.renderObjectIndex);` for env/material indices.
+- **Shared include `instanceDataInc.shader`:** declares `InstanceRecord` + `RenderObject` layouts, the `LoadInstance(uint id)` function (backend-specific fetch: `texelFetch` on GL/WebGL, SSBO read on native/Vulkan), and table accessors (`LoadMaterial(idx)`, `LoadEnvVolume(idx)`, `LoadLightList(idx, count)`, `LoadAnim(idx)`). `LoadRenderObject()` is the same abstraction as `LoadInstance` (per-draw uniform/UBO today, buffer read later - the shader does not know).
+- **`defaultVertex.shader`:** when instanced, `InstanceRecord r = LoadInstance(gl_InstanceID + u_instanceBase);` use `r.model`; derive inverse/normal matrix via the uniformScale flag; read `RenderObject ro = LoadRenderObject();` (the batch's RenderObject) for env/material indices.
 - **`defaultFragment.shader`:** fetch `MaterialCacheItem::Data` via `LoadMaterial(ro.materialIndex)`, light indices via `LoadLightList(r.lightListIndex, ...)`, env volumes via `LoadEnvVolume(ro.envVolumeIndex)`. Existing `material.*InUse` branches unchanged (uniform within a batch).
 - **`skinning.shader`:** unchanged for now; Phase 7 reads per-instance keyframe via `LoadAnim(r.animKeyIndex)` and the shared `s_skinningPose` texture from `ro.skeletonIndex`.
 - **`perDrawDataInc.shader`:** the existing std140 mirror stays for the legacy per-draw path.
@@ -470,7 +480,7 @@ Backend mapping (forward-looking):
 2. **Mobile light caps:** 4 dir / 6 point / 6 spot per object, gated on `TK_GL_ES_3_0` (or a new render-profile define). Pick final numbers.
 3. **Hybrid scope:** instanced path for static opaque PBR only; translucent / shader materials / skinned remain legacy. -> Recommended.
 4. **Deferred partitions:** confirm whether `RenderData` partitions 1-2 are live or dead. If dead, remove; if live, decide instanced vs per-draw.
-5. **`RenderObject` / `InstanceRecord` field sets:** confirm exact fields, the inverse-matrix heuristic thresholds, and per-instance vs per-batch env placement (envOverride flag). Concretize table layouts before Phase 2b.
+5. **`RenderObject` / `InstanceRecord` field sets:** confirm exact fields and the inverse-matrix heuristic thresholds; `renderObjectIndex` is now confirmed batch-uniform (in the `BatchKey`). Confirm per-instance vs per-batch env placement (envOverride flag) and table layouts before Phase 2b.
 6. **Allocator:** confirm page size for the instance-row allocator (Phase 4) vs a simpler per-batch-contiguous scheme for v1.
 7. **Instrumentation surface:** confirm which metrics are overlay vs logged, and the metric naming in `FrameStatType`.
 
@@ -478,13 +488,13 @@ Backend mapping (forward-looking):
 
 ## 10. Glossary
 
-- **InstanceRecord:** lean per-instance record (~80 bytes): model, renderObjectIndex, lightListIndex, animKeyIndex, flags. Populated from `PerDrawUboLayout`/`RenderJob`.
+- **InstanceRecord:** lean per-instance record (~80 bytes): model, lightListIndex, animKeyIndex, flags (`renderObjectIndex` is batch-uniform, not here). Populated from `PerDrawUboLayout`/`RenderJob`.
 - **RenderObject:** shared bundle (material/env/skeleton indices + future probes/decals/GI), bound per-draw uniform. The stable extension point. One per (mesh + material + env + anim) bundle.
 - **RenderItem:** one draw-unit emitted by `BatchBuilder`, carrying a `BatchKey` + instance index. Sortable; maps to indirect draw args (Phase 8).
 - **BatchKey:** 32-byte POD (mesh + shader-variant + texture-set + render-state + renderObject). Sort key for batching (memcmp).
 - **BatchBuilder:** component that turns visible render jobs into a sorted `RenderItem` array consumed by the Renderer.
 - **Global tables:** material / env-volume / light-index / animation / RenderObject tables, each with a declared lifetime (persistent / semi-persistent / frame-local).
-- **LoadInstance / LoadRenderObject:** shader abstractions that fetch records by index/handle; hide texture-vs-SSBO transport.
+- **LoadInstance / LoadRenderObject:** shader abstractions that fetch records by index/handle; hide the transport (texture vs SSBO vs uniform). `LoadInstance` is per-instance; `LoadRenderObject` is per-batch.
 - **Resource-side generation (dependency graph):** each resource (Material/Light/EnvVolume/Skeleton) carries a generation bumped in its mutator; consumers validate against cached gen -> automatic, robust invalidation.
 - **PerDrawUboLayout** (`Renderer.h:151-182`): existing per-draw record (~1100 bytes), bound per-draw at UBO slot 2. The **source** for `InstanceRecord`/`RenderObject`, not the target schema. Stays for the legacy per-draw path.
 - **RenderJob** (`Pass.h:135-151`): one draw call's worth of data today.
