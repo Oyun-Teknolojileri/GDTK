@@ -1,12 +1,13 @@
 # GDTK Render Instancing Refactor - Roadmap
 
-> **Status:** Draft v4 (design phase, pending review).
+> **Status:** Draft v5 (design phase, pending review).
 > **Targets:** Native mobile (GLES 3.2, see `ToolKit/Render/OpenGL/TKOpenGL.h` -> `GLES3/gl32.h`) and WebGL 2.0; Vulkan remains a first-class desktop/backend target.
 > **Related docs:** `AGENTS.md` (coding standards, Pass/PassRequirements conventions, overview-sync rules), `gdtk-overview.md` (architecture), Section 4 (Rendering Subsystem).
 > **Goal:** Collapse per-object draw calls and per-object state changes into a small number of instanced draws, without rewriting the renderer.
 
 ### Changelog
 
+- **v5** - Fourth external review. (1) **Double-buffer correctness rule:** dirty rows enter a pending-write set and are uploaded to the current write-buffer each frame until BOTH buffers hold the new value (carried across one swap); the read-buffer is never written during its read frame - fixes an every-other-frame flicker for dirty-then-static instances. (2) **Profile-driven instance-texture sizing** (from a max-instance budget x STRIDE, not a fixed 2048x2048; ~1.25 MB for ~16k mobile instances vs the previous 64 MB). (3) **`RenderObject` lifecycle clarified:** persistent stable handles held by the source entity, generation-tracked, NOT rebuilt via per-frame hash (preserves "sort, don't hash" on the RenderObject side too); env stays on `RenderObject`, reassigned only on env-boundary crossing (rare, dependency-graph detected). (4) **WebGL2 vertex-stage texelFetch (VTF) bandwidth** added to the risk table + an A/B GPU-time metric in Phase 1. (5) **Dead deferred render partitions** (`RenderData` partitions 1-2, confirmed unused) scheduled for removal in Phase 0. (6) **WebGL2 RGBA32F** confirmed core-supported for creation + nearest (texelFetch) sampling - no extension needed.
 - **v4** - Third external review (9.8/10, "no serious architectural problem"). Final polish: (1) `renderObjectIndex` removed from `InstanceRecord` (it is batch-uniform, already in the `BatchKey`) - the record is now self-consistent; `RenderObject` is accessed via `LoadRenderObject()` (backend-impl-detail: per-draw uniform/UBO today, buffer/SSBO read as it grows). (2) Generations are `uint64` (CPU-side validation only). (3) `BatchKey` is `alignas(32)` for SIMD compare. (4) Added "Future extensions" subsection (compressed transforms; material/pipeline-system refactor).
 - **v3** - Second external review incorporated. Key changes: (1) **`RenderObject` / `InstanceRecord` split** - shared (batch-uniform) handles hoisted into a `RenderObject` (the stable extension point for future scene features); `InstanceRecord` keeps only per-instance-varying data. (2) **Resource-side generation / dependency graph** replaces object-side dirty flags. (3) **Fixed-stride light list.** (4) **Sort-based batching** (memcmp key, no hashing) with **`RenderItem`** output. (5) **Instrumentation phase** added as a prerequisite (Phase 1). (6) **Native multi-draw-indirect** fast-path (Phase 8). (7) Per-instance **inverse-matrix heuristic.** (8) Explicit **table lifetimes.** Phase numbers shifted (instrumentation is now Phase 1).
 - **v2** - First external review: lean `InstanceRecord`, `LoadInstance`, RenderState in batch key, generation-based validation, separate `BatchBuilder`.
@@ -150,7 +151,9 @@ struct RenderObject
 
 **Why the split (v2 mistake corrected):** in v2 `materialIndex`/`envVolumeIndex`/`animIndex` sat per-instance even though they are uniform across a batch (material is in the batch key). v3 hoists the shared handles into `RenderObject` (exposed via `LoadRenderObject()`, uniform today - zero extra per-instance fetch), leaving `InstanceRecord` with only per-instance-varying data. Adding decals/probes/GI volumes later grows `RenderObject`, never `InstanceRecord`.
 
-**Env volume placement:** `envVolumeIndex` lives on `RenderObject`, so a batch must be env-coherent (all instances in the same primary env volume). If objects in one batch span an env boundary, either split the batch by env or use the per-instance `envOverride` flag (fetch env per-instance for that batch).
+**`RenderObject` lifecycle (stable handles, no per-frame hash):** a `RenderObject` is a persistent handle held by the source entity/drawable, created once per distinct (mesh + material + env + skeleton) bundle and generation-tracked. `BatchBuilder` reads the entity's handle directly - there is no per-frame hash/lookup to resolve `(mesh + material + env + anim) -> renderObjectId` (this preserves the "sort, don't hash" principle on the RenderObject side too).
+
+**Env volume placement:** `envVolumeIndex` lives on `RenderObject`, so a batch is env-coherent by construction (`renderObjectId` is in the `BatchKey`). Env is the one spatially-dynamic component: when an entity crosses an env-volume boundary, the dependency graph bumps `envGen` and the entity's `RenderObject` handle is reassigned/rebuilt - rare, so cheaper than a per-instance env fetch for the common case. The `envOverride` flag remains as the escape hatch for pathological batch-spanning-boundary cases.
 
 **Derived, not stored:**
 
@@ -223,7 +226,7 @@ struct RenderItem
 | RenderData partition (`Pass.h:166-189`) | Instanced path? |
 |---|---|
 | 0 Culled | not drawn |
-| 1 Deferred Opaque / 2 Deferred Alpha-Masked | TBD - confirm whether deferred is live or dead (Section 9) |
+| 1 Deferred Opaque / 2 Deferred Alpha-Masked | DEAD - scheduled for removal (Phase 0); not instanced |
 | 3 Forward Opaque | YES - instanced |
 | 4 Forward Alpha-Masked | YES - instanced (`DrawAlphaMasked=1` variant) |
 | 5 Forward Translucent | NO - legacy per-draw |
@@ -259,6 +262,7 @@ Generations live on **resources**, not objects. Consumers cache the generation o
 
 - Each instance row / `RenderObject` row stores cached gens for its consumed resources. Upload/rebind only when a resource gen advanced AND the instance is visible.
 - **Upload rule:** upload only `(visible AND any-consumed-gen-advanced)` rows + dirty table rows. Newly-visible rows are fully stale (full write). Static visible rows are never re-uploaded after their first write.
+- **Double-buffer write rule (Phase 6):** a dirty row is uploaded to the current write-buffer AND enters a pending-write set; it is re-uploaded to the (now-current) write-buffer next frame until BOTH buffers hold the new value. Required because a dirty-then-static instance would otherwise leave the other buffer stale and flicker every swap. Never write the read-buffer during its read frame.
 - **Threshold (small vs full upload):** if `dirtyCount < X`, upload rows individually (grouped by page/region); if `dirtyCount >= X`, re-upload the whole used region (avoids many small `texSubImage2D` calls).
 
 ### 2.6 Texture arrays (DEFERRED - Phase 9)
@@ -317,11 +321,12 @@ GPU (frame N):
 
 Incremental. Each phase is independently shippable and measurable. The legacy per-draw path is always retained as the fallback, so a broken phase never blocks shipping. **Phase 1 (Instrumentation) is a prerequisite** - without it, no later phase's win is measurable.
 
-### Phase 0 - Documentation sync (prerequisite)
+### Phase 0 - Documentation sync + dead-code cleanup (prerequisite)
 
 - Fix `gdtk-overview.md` Section 4.5 UBO slot table (per-draw is slot 2, not 6; custom slots start at 7).
 - Fix stale comments: `Renderer.h:141`, `Renderer.h:267`, `GLBackend.cpp:466`.
-- **Success:** overview matches `RHI.h:50-62`.
+- Remove dead deferred render partitions (`RenderData` partitions 1-2, deferred opaque / alpha-masked) + simplify `RenderData` / `RenderJobProcessor` (confirmed unused).
+- **Success:** overview matches `RHI.h:50-62`; `RenderData` carries only the forward partitions.
 
 ### Phase 1 - Instrumentation (prerequisite)
 
@@ -332,6 +337,7 @@ Incremental. Each phase is independently shippable and measurable. The legacy pe
   - shadow redraw count
   - culled objects, visible objects
   - CPU batch-build time, GPU frame time
+  - instanced-draw GPU time vs legacy per-draw baseline (A/B) - isolates WebGL2 vertex-stage texelFetch cost
 - Surface as a debug overlay / `FrameStats` dump.
 - **Success:** every later phase's success criterion is expressed as a measured number (baseline captured here). This is the only way to validate Phase 3's draw-call reduction, Phase 4's upload reduction, Phase 5's zero-shadow-redraw.
 
@@ -340,7 +346,7 @@ Incremental. Each phase is independently shippable and measurable. The legacy pe
 - **2a - Transport proof:** add `InstanceDataBuffer` RHI abstraction (Section 5) + `LoadInstance(id)` shader abstraction. Introduce `InstanceRecord` + `RenderObject`; in 2a they may initially mirror `PerDrawUboLayout` 1:1 to prove the transport. Render a SINGLE instance through the new path, verify pixel-identical vs the current UBO path (`instanceCount = 1`, no batching).
 - **2b - Lean split + global tables:** switch to the v3 split (2.1) - `RenderObject` (shared, via `LoadRenderObject`) + lean `InstanceRecord`; build the material / env-volume / light-index / animation / RenderObject tables; apply the inverse-matrix heuristic. Measure per-instance byte count and upload bandwidth (Phase 1 metrics).
 - **Success (2a):** one object renders identically through the data-buffer path. **Success (2b):** per-instance data ~80 bytes; visual parity; upload bytes < baseline.
-- **Risk:** RGBA32F `texelFetch` extension story on WebGL 2 (Section 7). Note: native GLES 3.2 may use SSBO directly via the same `LoadInstance` interface.
+- **Risk:** WebGL2 vertex-stage texelFetch (VTF) bandwidth (Section 7); mitigate via lean `InstanceRecord` + large batches. RGBA32F creation + nearest sampling is core-supported on WebGL2 (no extension). Native GLES 3.2 may use SSBO directly via the same `LoadInstance` interface.
 
 ### Phase 3 - `BatchBuilder` + sort-based batching + instanced draws (the headline win)
 
@@ -368,7 +374,7 @@ Incremental. Each phase is independently shippable and measurable. The legacy pe
 ### Phase 6 - Double buffering (optional, profiling-gated)
 
 - Ping-pong two instance buffers (+ tables); render frame N from buffer A while CPU writes buffer B.
-- On first allocation of an instance, write its full record + table rows to BOTH buffers.
+- **Pending-write-across-swap rule (correctness):** every dirty row (including a first allocation) is uploaded to the current write-buffer and enters a pending set; it stays pending and is re-uploaded to the (now-current) write-buffer next frame until BOTH buffers hold the new value. Without this, a dirty-then-static instance leaves the other buffer stale and flickers every swap. Never write the read-buffer during its read frame (that would reintroduce the stall the double-buffer exists to avoid). See 2.5.
 - **Note:** introduces 1 frame of latency. Revisit for camera-locked objects.
 - **Success (measured):** no `texSubImage2D`-induced stalls under high dirty churn (GPU frame time stable).
 
@@ -431,8 +437,8 @@ Backend mapping (forward-looking):
 **Layout (concrete, when texture-backed):**
 
 - `STRIDE = ceil(sizeof(InstanceRecord) / 16)` RGBA32F texels per instance.
-- `WIDTH` conservative (e.g. 2048, below `gl_MaxTextureSize`). Instances pack `WIDTH / STRIDE` per row, stacked vertically.
-- With the lean `InstanceRecord` (~80 bytes -> STRIDE ~5), a 2048x2048 texture holds ~840k instances.
+- **Profile-driven sizing (not a fixed 2048x2048):** size the texture from a per-profile max-instance budget x `STRIDE`. Mobile ~16k instances x 5 texels = ~80k texels -> a ~256x512 (or similar) texture ~= 1.25 MB (the old fixed 2048x2048 = 64 MB was ~50x over-provisioned for mobile). Desktop uses a larger budget. Grow geometrically on demand (reallocate + copy) if the budget is exceeded.
+- `WIDTH` chosen as a divisor that packs `WIDTH / STRIDE` instances per row, stacked vertically; stay below `gl_MaxTextureSize`.
 
 **Mirroring rule (add to `AGENTS.md`):** the C++ `InstanceRecord` / `RenderObject` / table rows and the GLSL `LoadInstance` layouts must agree on field order/offset. Add static asserts that `sizeof(...)` matches the shader-declared strides. (This replaces the per-draw std140 mirror for the instanced path; `PerDrawUboLayout`'s std140 mirror stays for the legacy per-draw path.)
 
@@ -453,10 +459,11 @@ Backend mapping (forward-looking):
 | Concern | Status / action |
 |---|---|
 | `RGBA32F` texture + `texelFetch` (nearest) on GLES 3.2 native | Supported; native may prefer SSBO (same `LoadInstance` interface). Verify on lowest target device. |
-| `RGBA32F` on WebGL 2 | Confirm exact extension requirement for nearest/texelFetch (verify `EXT_color_buffer_float` is NOT needed for sampling-only). Pin a capability table before Phase 2. |
+| `RGBA32F` on WebGL 2 | **Core-supported:** creating an RGBA32F texture and sampling it with NEAREST (`texelFetch`) needs no extension. (`EXT_color_buffer_float` is only required to render *to* float, which this path does not do.) |
 | Native GLES 3.2 SSBO / MDI | Available (`gl32.h`). `LoadInstance` -> SSBO; Phase 8 MDI. WebGL has neither -> stays texture + per-batch instanced. |
+| WebGL2 vertex-stage texelFetch (VTF) bandwidth | `LoadInstance` does a per-vertex texture fetch on WebGL2 (native uses SSBO). Monitor via the Phase 1 A/B GPU-time metric; mitigate via lean `InstanceRecord` + large batches. |
 | `gl_InstanceID` (GLSL ES 3.00) | Available. Vulkan uses `gl_InstanceIndex`. |
-| Max texture size | Use `gl_MaxTextureSize`; design `WIDTH` conservatively (2048) for mobile. |
+| Max texture size | Stay below `gl_MaxTextureSize`; size from the instance budget (5.x), not a fixed 2048x2048. |
 | Divergent branching | Prevented by `textureSetId` in the batch key. |
 | RenderState divergence | Prevented by `renderStateSig` in the batch key. |
 | Env divergence within a batch | Prevented by `renderObjectId` in the key; or per-instance `envOverride`. |
@@ -479,26 +486,28 @@ Backend mapping (forward-looking):
 1. **Backend abstraction:** add `InstanceDataBuffer` + `LoadInstance` to `IGraphicsBackend` (GL/WebGL = texture, native GLES 3.2 + Vulkan = SSBO). -> Recommended.
 2. **Mobile light caps:** 4 dir / 6 point / 6 spot per object, gated on `TK_GL_ES_3_0` (or a new render-profile define). Pick final numbers.
 3. **Hybrid scope:** instanced path for static opaque PBR only; translucent / shader materials / skinned remain legacy. -> Recommended.
-4. **Deferred partitions:** confirm whether `RenderData` partitions 1-2 are live or dead. If dead, remove; if live, decide instanced vs per-draw.
-5. **`RenderObject` / `InstanceRecord` field sets:** confirm exact fields and the inverse-matrix heuristic thresholds; `renderObjectIndex` is now confirmed batch-uniform (in the `BatchKey`). Confirm per-instance vs per-batch env placement (envOverride flag) and table layouts before Phase 2b.
+4. **Deferred partitions:** RESOLVED - confirmed dead code; scheduled for removal in Phase 0.
+5. **`RenderObject` / `InstanceRecord` field sets:** confirm exact fields and the inverse-matrix heuristic thresholds. `renderObjectIndex` confirmed batch-uniform; env placement RESOLVED (env on `RenderObject`, reassigned on env-boundary crossing). RenderObject lifecycle confirmed: persistent entity-held handles, no per-frame hash. Remaining: concretize table layouts before Phase 2b.
 6. **Allocator:** confirm page size for the instance-row allocator (Phase 4) vs a simpler per-batch-contiguous scheme for v1.
 7. **Instrumentation surface:** confirm which metrics are overlay vs logged, and the metric naming in `FrameStatType`.
+8. **Instance-texture sizing:** confirm the per-profile max-instance budget (mobile target) and the grow-on-demand policy (Phase 2).
 
 ---
 
 ## 10. Glossary
 
 - **InstanceRecord:** lean per-instance record (~80 bytes): model, lightListIndex, animKeyIndex, flags (`renderObjectIndex` is batch-uniform, not here). Populated from `PerDrawUboLayout`/`RenderJob`.
-- **RenderObject:** shared bundle (material/env/skeleton indices + future probes/decals/GI), bound per-draw uniform. The stable extension point. One per (mesh + material + env + anim) bundle.
+- **RenderObject:** shared bundle (material/env/skeleton indices + future probes/decals/GI), accessed via `LoadRenderObject()`. The stable extension point. One per (mesh + material + env + anim) bundle; persistent entity-held handle, generation-tracked (no per-frame hash).
 - **RenderItem:** one draw-unit emitted by `BatchBuilder`, carrying a `BatchKey` + instance index. Sortable; maps to indirect draw args (Phase 8).
 - **BatchKey:** 32-byte POD (mesh + shader-variant + texture-set + render-state + renderObject). Sort key for batching (memcmp).
 - **BatchBuilder:** component that turns visible render jobs into a sorted `RenderItem` array consumed by the Renderer.
 - **Global tables:** material / env-volume / light-index / animation / RenderObject tables, each with a declared lifetime (persistent / semi-persistent / frame-local).
 - **LoadInstance / LoadRenderObject:** shader abstractions that fetch records by index/handle; hide the transport (texture vs SSBO vs uniform). `LoadInstance` is per-instance; `LoadRenderObject` is per-batch.
-- **Resource-side generation (dependency graph):** each resource (Material/Light/EnvVolume/Skeleton) carries a generation bumped in its mutator; consumers validate against cached gen -> automatic, robust invalidation.
+- **Resource-side generation (dependency graph):** each resource (Material/Light/EnvVolume/Skeleton) carries a `uint64` generation bumped in its mutator; consumers validate against cached gen -> automatic, robust invalidation.
+- **Pending-write set (double-buffer):** dirty rows carried across one swap until both buffers hold the new value (Phase 6 correctness rule).
 - **PerDrawUboLayout** (`Renderer.h:151-182`): existing per-draw record (~1100 bytes), bound per-draw at UBO slot 2. The **source** for `InstanceRecord`/`RenderObject`, not the target schema. Stays for the legacy per-draw path.
 - **RenderJob** (`Pass.h:135-151`): one draw call's worth of data today.
-- **RenderData** (`Pass.h:166-189`): partitioned job list (culled / deferred / forward opaque / alpha-masked / translucent).
+- **RenderData** (`Pass.h:166-189`): partitioned job list (culled / forward opaque / alpha-masked / translucent; deferred partitions 1-2 are dead, removed in Phase 0).
 - **RenderJobProcessor** (`Pass.h:191-253`): builds jobs, separates partitions, assigns lights/environments, sorts.
 - **PassRequirements / ApplyRequirements** (`Pass.h:37-71`): declarative per-draw binding; 7-step deterministic bind.
 - **ShadowAtlas** (`ShadowAtlas.h`): 2-layer tiered shadow array texture.
