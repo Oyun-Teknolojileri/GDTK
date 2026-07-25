@@ -162,12 +162,8 @@ inline uint64 ReadCycleCounter()
         m_currentNode->children.push_back(node);
     }
 
-    // 3. Record start time and snapshot children's cycle sum
-    uint64 childrenSum = 0;
-    for (ProfilerNode* child : node->children)
-      childrenSum += child->inclusiveCycles;
-
-    node->childrenCyclesAtBegin = childrenSum;
+    // 3. Record start time and snapshot children's running sum (O(1)).
+    node->childrenCyclesAtBegin = node->childrenInclusiveSum;
     node->beginCycle            = ReadCycleCounter();
 
     // Update current context pointer
@@ -187,15 +183,15 @@ inline uint64 ReadCycleCounter()
     m_currentNode->inclusiveCycles += elapsed;
     m_currentNode->hitCount++;
 
-    // Calculate exclusive cycles by subtracting delta of children's inclusive cycles
-    uint64 childrenCyclesNow        = 0;
-    for (ProfilerNode* child : m_currentNode->children)
+    // Propagate inclusive delta to parent's running children sum (O(1)).
+    if (m_currentNode->parent)
     {
-      childrenCyclesNow += child->inclusiveCycles;
+      m_currentNode->parent->childrenInclusiveSum += elapsed;
     }
 
-    uint64 childrenDelta            = childrenCyclesNow - m_currentNode->childrenCyclesAtBegin;
-    uint64 exclusive                = elapsed - childrenDelta;
+    // Calculate exclusive cycles from the running children sum (O(1)).
+    uint64 childrenDelta = m_currentNode->childrenInclusiveSum - m_currentNode->childrenCyclesAtBegin;
+    uint64 exclusive      = elapsed - childrenDelta;
 
     m_currentNode->exclusiveCycles += exclusive;
 
@@ -288,6 +284,7 @@ inline uint64 ReadCycleCounter()
     node->inclusiveCycles     = 0;
     node->exclusiveCycles     = 0;
     node->childrenCyclesAtBegin = 0;
+    node->childrenInclusiveSum  = 0;
     node->hitCount            = 0;
 
     for (ProfilerNode* child : node->children)

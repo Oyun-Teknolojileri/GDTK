@@ -27,6 +27,7 @@ namespace ToolKit
     uint64 inclusiveCycles     = 0;       //!< Total cycles including children - current frame.
     uint64 exclusiveCycles     = 0;       //!< Cycles excluding children - current frame.
     uint64 childrenCyclesAtBegin = 0;     //!< Snapshot of children's inclusiveCycles sum at BeginScope.
+    uint64 childrenInclusiveSum = 0;      //!< Running sum of children's inclusiveCycles (avoids O(n) loop).
     float inclusiveTimePrev    = 0.0f;    //!< Previous frame inclusive time for display (ms).
     float exclusiveTimePrev    = 0.0f;    //!< Previous frame exclusive time for display (ms).
     float accumulatedIncl      = 0.0f;    //!< Accumulated inclusive time over frames (ms).
@@ -50,11 +51,12 @@ namespace ToolKit
     {
       inclusiveCycles       = 0;
       exclusiveCycles       = 0;
+      childrenCyclesAtBegin = 0;
+      childrenInclusiveSum  = 0;
       inclusiveTimePrev     = 0.0f;
       exclusiveTimePrev     = 0.0f;
       accumulatedIncl       = 0.0f;
       accumulatedExcl       = 0.0f;
-      childrenCyclesAtBegin = 0;
       hitCount              = 0;
       hitCountPrev          = 0;
     }
