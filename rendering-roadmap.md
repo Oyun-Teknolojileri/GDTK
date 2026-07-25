@@ -1,12 +1,13 @@
 # GDTK Render Instancing Refactor - Roadmap
 
-> **Status:** Draft v8 (design phase, pending review).
+> **Status:** Draft v9 (design phase, pending review).
 > **Targets:** Native mobile (GLES 3.2, see `ToolKit/Render/OpenGL/TKOpenGL.h` -> `GLES3/gl32.h`) and WebGL 2.0; Vulkan remains a first-class desktop/backend target.
 > **Related docs:** `AGENTS.md` (coding standards, Pass/PassRequirements conventions, overview-sync rules), `gdtk-overview.md` (architecture), Section 4 (Rendering Subsystem).
 > **Goal:** Collapse per-object draw calls and per-object state changes into a small number of instanced draws, without rewriting the renderer.
 
 ### Changelog
 
+- **v9** - Light store redesign (correctness for instancing). The engine's **LRU-based light cache UBO** (`PointLightCache`/`SpotLightCache`, capacity 32) is incompatible with the instanced path: per-instance light indices are stored in instance data and must remain valid for the whole frame, but LRU evicts mid-frame. -> Replaced by a **persistent, frame-stable light data buffer** (id-indexed, no eviction, generation-dirty via `Light.gen`). Per-instance light-index lists point into it by stable id. Fixes the v8 §1.3 assumption ("reused directly") that was wrong. Also removes the 32-capacity UBO limit (texture/SSBO holds thousands). Lights do NOT need generational handles (per-instance index lists are frame-local, so no cross-frame staleness) - only frame-stability + generation-dirty update.
 - **v8** - Seventh external review (~9.7-9.8/10). Execution-detail tightening (not architecture): (1) **Handle generation vs resource generation separated** - `RenderObjectHandle.generation` = table-slot lifetime (stale-handle detection); the CPU-side `RenderObjectEntry` caches the resource gens it last validated against (Material/Env/Skeleton). (2) **Resource param changes update table/texture rows only, never instance rows** (a material color tweak -> one material-table upload; `RenderObject` + instances untouched) - fixes a §2.5 path that would have caused mass instance uploads on a color tweak. (3) `static_assert(alignof(InstanceRecord) >= 16)` added (`sizeof%16` alone does not guarantee alignment for SSBO/Vulkan). (4) **`InstanceTransport` backend-capability enum** (`TextureFetch` / `SSBO` / `VertexBuffer`) + Phase 1 VTF-vs-vertex-attribute A/B metrics -> data-driven fallback, no renderer rewrite. (5) **Batch fragmentation score** formula `(actual-ideal)/max(ideal,1)` (0 = perfect). (6) `RenderItemCount` metric (sort is O(N log N)). (7) Sort-identity-vs-storage-identity noted (content-hash sort key as a Phase 4+ option). (8) `RenderItem` as the scene->renderer seam (optionally pre-wired in the legacy path).
 - **v7** - Sixth external review (~9.6/10, "implementation-ready"). Pre-Phase-2 consistency fixes (not architecture): (1) **`RenderObjectHandle.generation` -> `uint64`** (matches resource gen width). (2) **RenderObject identity is immutable** - a material/env/skeleton *swap* creates a new RenderObject + handle; a *parameter* change bumps the resource gen (RenderObject unchanged). (3) RenderObject identity clarified as (material+env+skeleton), **excluding mesh** (mesh lives in the `BatchKey`). (4) Phase 2.5 image-diff uses **tolerances** (RMS < 1/255, max channel <= 2), not "zero pixels". (5) Phase 1 CPU metric split: `BatchBuildCPUTime` / `RenderItemSortCPUTime` / `InstanceUploadCPUTime`. (6) **Phase 2.75 - single-batch instancing** (1000 identical, `drawElementsInstanced(1000)`, no sort) - isolates instanced-draw mechanics before batching. (7) InstanceRecord mirroring: explicit `static_assert(sizeof % 16 == 0)` + `offsetof(model)==0`. (8) Phase 3 instance indices documented as transient frame-local (stable identity arrives with Phase 4 page allocator). (9) Light offset+count inline (vs table lookup) noted as a Phase 2b/3 fragment-heavy optimization.
 - **v6** - Fifth external review (second reviewer, ~9.7/10) + first reviewer's open-decision resolutions folded in. Architecture declared implementation-ready; remaining items are implementation-discipline. (1) **`RenderObjectHandle {index, generation}`** + ownership invariant: `Entity -> RenderComponent -> RenderObjectHandle`; `BatchBuilder` never creates/destroys RenderObjects (documented invariant). (2) **RenderObject identity = shader-visible only** - debug/editor/CPU metadata never enters identity (anti-fragmentation rule). (3) **`InstanceDataBuffer` API byte-oriented** (`offset + size + data`), no "instance row" leak. (4) **`baseInstance` designed day-one** (unlocks Phase 8 indirect). (5) **Phase 2.5 - shader transport validation** (full-scene `instanceCount=1` + image-diff vs legacy) - isolates transport correctness before batching. (6) **Batch fragmentation metric** (`actual/ideal`) in Phase 1. (7) **Single-buffer = production baseline** (Phase 6 strictly profiling-gated). (8) **Light list = interleaved fixed-stride for v1** behind a `LoadLightList` abstraction (split/forward+ layout is a drop-in swap later). (9) Instrumentation overlay-vs-logged split + `FrameStatType` naming. (10) Per-batch-contiguous allocator for v1 (page allocator behind Phase 4 gate). (11) Tiered mobile profiles (`TK_MOBILE_LOW` / `TK_MOBILE_HIGH`) calibrated from Phase 1. (12) Graceful fallback: instance-budget overflow -> excess instances to legacy per-draw (no OOM). AGENTS.md additions queued.
@@ -89,7 +90,7 @@ The per-draw UBO is bound at **slot `ReservedUniformBufferSlots::PerDrawData == 
 ### 1.3 Light binding model (important for what stays global vs per-instance)
 
 - **Directional lights:** bound ONCE per pass into the global `directionalLightBuffer` (slot 3). NOT per-instance.
-- **Point/spot light DATA:** lives in global cache UBOs (`PointLightCache` slot 4, `SpotLightCache` slot 5), capacity `PointLightCacheItemCount=32`, `SpotLightCacheItemCount=32` (`RHI.h`). Already global - reused directly.
+- **Point/spot light DATA:** today in an **LRU-based cache UBO** (`PointLightCache` slot 4, `SpotLightCache` slot 5, capacity 32). The LRU is fine for the per-draw path (indices resolved fresh at draw time) but **incompatible with instancing**: per-instance indices are stored in instance data and must stay valid for the whole frame, while LRU evicts mid-frame. -> The instanced path uses a **persistent, frame-stable light data buffer** (id-indexed, no eviction, generation-dirty) instead (2.1).
 - **Point/spot active INDICES per object:** today written into the per-draw UBO. These move into the fixed-stride light-index table (2.1).
 
 So per-instance light data = the active index lists only. The light data itself stays global.
@@ -197,12 +198,13 @@ struct RenderObjectEntry {       // CPU-side table row (only `shaderData` reache
 |---|---|---|---|
 | Material table | `MaterialCacheItem::Data` (4 `Vec4`) | `Material.h:26-43`, `GetCacheItem()` | **persistent** (dirty-update on material change) |
 | Env-volume table | active `EnvironmentComponent`s (11 `Vec4` each) | `RenderJob::EnvironmentVolume`, `AssignEnvironment` | **semi-persistent** (on env transform change) |
+| Light data buffer | all lights' params (pos/color/range/direction), id-indexed | `PointLight`/`SpotLight`; **replaces the LRU `PointLightCache`/`SpotLightCache`** | **persistent** (generation-dirty; no eviction) |
 | Light-index table | fixed-stride per-instance point/spot index lists | `PerDrawUboLayout` arrays | **frame-local** |
 | Animation key table | per-instance keyframe/blend params (skinned) | `PerDrawUboLayout` anim | **frame-local** |
 | Skinning pose texture | pre-baked bone matrices | `AnimationPlayer::CreateAnimationDataTexture` `Animation.cpp:609-688` | **persistent** (on anim data change) |
 | RenderObject table | shared bundles (above) | batch-build | **semi-persistent** (on bundle change) |
 
-The light data itself (point/spot) stays in the existing global cache UBOs (slots 4/5); only the per-instance index lists move.
+The light data itself (point/spot) moves into the **persistent light data buffer** (id-indexed, generation-dirty, no eviction - replaces the LRU `PointLightCache`/`SpotLightCache`); the per-instance index lists point into it by stable id.
 
 **Fixed-stride light list (v6 decision: interleaved for v1):** each instance reserves `MaxPointLightPerObject + MaxSpotLightPerObject` slots in the light-index table (mobile 6+6 = 48 bytes, desktop 24+24), interleaved point-then-spot. Accessed via a **`LoadLightList(idx, ...)`** abstraction (same hiding philosophy as `LoadInstance`) so a future split layout (separate point/spot offsets + packed arrays, forward+ aligned) is a drop-in swap with zero shader change. Interleaved chosen for v1 for simplicity + measure-first discipline; the abstraction makes the later swap cheap. Mobile stride is small enough to inline into `InstanceRecord` if desired; desktop stays in a separate fixed-stride table to avoid bloating the hot record. **Fragment-heavy optimization (Phase 2b/3):** inline `lightOffset` + `lightCounts` into `InstanceRecord` (plumbed as flat varyings to the fragment shader) instead of a `lightListIndex` -> table lookup, so per-fragment light setup costs zero fetch; the `LoadLightList(offset, counts, ...)` signature stays compatible.
 
@@ -285,7 +287,7 @@ Generations live on **resources**, not objects. Consumers cache the generation o
 | Resource | Generation bumps on | Affected consumers (auto-propagated) |
 |---|---|---|
 | `Material` | any param change | **material table row only** (one upload); `RenderObject` + instances untouched |
-| `Light` | transform/color/range | AABBTree query -> affected instances' light-index rows (per-object assignment changed); light's shadow slot |
+| `Light` | transform/color/range | **light data buffer slot** (one upload); transform ALSO triggers AABBTree reassignment of affected instances' light-index rows + the light's shadow slot |
 | `EnvironmentComponent` | data/transform change | **env table row only**; boundary crossing -> RenderObject reassignment (immutability), not instance content |
 | `Skeleton`/`Animation` | anim data | **skinning pose texture only**; per-instance `animKeyIndex` advances with anim time (normal per-frame update, not a resource invalidation) |
 
@@ -324,7 +326,7 @@ CPU (frame N):
        a. for each visible instance, write a RenderItem
           (BatchKey = mesh + shader-variant + texture-set + render-state + renderObject)
        b. extract InstanceRecord (model, indices, flags) from PerDrawUboLayout/RenderJob
-       c. refresh global tables (material/env/light-list/anim/RenderObject) per resource gens
+       c. refresh global tables (material/env/light-data/light-list/anim/RenderObject) per resource gens
   3. Sort RenderItems by BatchKey  -> contiguous runs = batches
   4. Allocate/free instance rows   -> newly visible = new row (all gens stale)
                                       culled-out = free row
@@ -476,6 +478,7 @@ Backend mapping (forward-looking):
 - `LoadInstance` hides the fetch; switching texture <-> SSBO changes only the backend include, never the shader body. WebGPU / Metal can be added without touching shaders.
 - `RenderObject` is accessed via `LoadRenderObject()` - a backend-impl-detail fetch (per-draw uniform/UBO today; buffer/SSBO read as it grows). NOT fetched per-instance in the common case. Future scene-aware bindings (probes/decals/GI) added to `RenderObject` are therefore free at the per-instance level.
 - `LoadLightList(idx, ...)` similarly hides the light-index layout (interleaved fixed-stride today; split/forward+ layout is a drop-in swap).
+- The **light data buffer** (light params, id-indexed) is a separate persistent buffer (texture on GL/WebGL, SSBO on native/Vulkan) fetched via `LoadLight(id)`; `LoadLightList` returns ids that `LoadLight` resolves. **No LRU eviction** - indices are frame-stable for the instanced draw.
 - **`InstanceTransport` (backend capability):** `{ TextureFetch (GL/WebGL), SSBO (native GLES 3.2 + Vulkan), VertexBuffer (fallback) }`, selected per backend; `LoadInstance` hides it. If Phase 1 metrics show VTF underperforms on a target device, swap to `VertexBuffer` - no renderer or shader rewrite.
 
 **Indexing (baseInstance designed day-one):** the instance id is `gl_InstanceID + baseInstance`. Today `baseInstance` is a per-draw uniform (`u_instanceBase`); in Phase 8 it becomes the indirect draw's `firstInstance` directly - designed in now so MDI is trivial later. (Desktop GL's `gl_InstanceID`-excludes-base gotcha is absorbed inside `LoadInstance`; GLSL ES 3.00 provides `gl_InstanceID`, Vulkan uses `gl_InstanceIndex`.) No per-instance vertex attribute required -> zero per-instance vertex bandwidth.
@@ -568,7 +571,7 @@ Architecture is locked. Remaining items are number-calibration, not design.
 - **BatchKey:** 32-byte POD (mesh + shader-variant + texture-set + render-state + renderObject). Sort key for batching (memcmp).
 - **BatchBuilder:** component that turns visible render jobs into a sorted `RenderItem` array consumed by the Renderer.
 - **Batch fragmentation score:** `(actual_batches - ideal_batches) / max(ideal_batches, 1)` - 0 = perfect, positive = fragmentation (ideal = distinct mesh+material+state combos). High score signals RenderObject identity pollution, overly-unique materials, or state divergence.
-- **Global tables:** material / env-volume / light-index / animation / RenderObject tables, each with a declared lifetime (persistent / semi-persistent / frame-local).
+- **Global tables:** material / env-volume / **light-data** / light-index / animation / RenderObject tables, each with a declared lifetime (persistent / semi-persistent / frame-local).
 - **LoadInstance / LoadRenderObject:** shader abstractions that fetch records by index/handle; hide the transport (texture vs SSBO vs uniform). `LoadInstance` is per-instance; `LoadRenderObject` is per-batch.
 - **Resource-side generation (dependency graph):** each resource (Material/Light/EnvVolume/Skeleton) carries a `uint64` generation bumped in its mutator; consumers validate against cached gen -> automatic, robust invalidation.
 - **Pending-write set (double-buffer):** dirty rows carried across one swap until both buffers hold the new value (Phase 6 correctness rule).
