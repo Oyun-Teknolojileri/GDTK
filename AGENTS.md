@@ -380,6 +380,64 @@ If you find a new third exception, document it here with the failing symptom.
 
 ---
 
+## Instancing Refactor Invariants (forward-looking, Phase 2+)
+
+> **Status:** These describe the upcoming texture/SSBO-based instancing refactor
+> (`rendering-roadmap.md`). The concepts (`InstanceRecord`, `RenderObject`,
+> `RenderObjectHandle`, `InstanceDataBuffer`, `BatchBuilder`) do NOT exist in the
+> codebase yet - they arrive starting Phase 2. The invariants are written early so
+> the implementation, and any "small conveniences" added later, respect them. This
+> whole section becomes live rules once Phase 2 lands.
+
+### Backend selection (instance data transport)
+
+The per-instance data transport is backend-specific and hidden behind `LoadInstance`
+in a backend-specific include. Shader bodies never branch on it.
+- **GL / WebGL 2** -> `RGBA32F` `GL_TEXTURE_2D` + `texelFetch`. (RGBA32F creation +
+  nearest `texelFetch` sampling is core-supported on WebGL 2 - no extension.)
+- **Native GLES 3.2 + Vulkan** -> SSBO.
+
+Switching a backend's transport changes only the include, never the shader body.
+
+### RenderObject ownership invariant
+
+`Entity -> RenderComponent -> RenderObjectHandle`. The `RenderObject` table row is
+created/destroyed ONLY through the source entity's render component. **`BatchBuilder`
+never creates or destroys `RenderObject`s** - it maps
+`RenderComponent -> RenderObjectHandle -> RenderItem`. Do not let the frame-local
+batcher become a hidden resource manager when probes/decals/GI/material-variants
+arrive.
+
+### RenderObject identity rule (anti-fragmentation)
+
+`RenderObject` identity = **shader-visible data only**: `(material + env + skeleton +
+future probes/decals/GI)`, **excluding mesh** (mesh lives in the `BatchKey`).
+Debug names, editor selection flags, CPU metadata, `debugMaterialOverride`, etc. must
+NEVER enter `RenderObject` identity or the `BatchKey` - they fragment batches silently.
+Identity is **immutable**: an identity-field swap creates a new `RenderObject` + handle;
+a *parameter* change (e.g. material color tweak) bumps the resource generation, the
+`RenderObject` stays the same.
+
+### InstanceRecord mirroring + flags
+
+The C++ `InstanceRecord` and the GLSL `LoadInstance` layout must agree byte-for-byte.
+Required asserts (GLSL texel layouts are unforgiving):
+```cpp
+static_assert(alignof(InstanceRecord) >= 16);
+static_assert(sizeof(InstanceRecord) % 16 == 0);
+static_assert(offsetof(InstanceRecord, model) == 0);
+static_assert(sizeof(InstanceRecord) == STRIDE * 16);
+```
+
+`InstanceRecord.flags` bit table - add new bits at the next free index, never reuse:
+| bit | field         | meaning                                                          |
+|-----|---------------|------------------------------------------------------------------|
+| 0   | `uniformScale`| normal matrix = `mat3(model)` (skip shader inverse)              |
+| 1   | `isSkinned`   | per-instance skinning active (reads `animKeyIndex`)              |
+| 2   | `envOverride` | fetch env per-instance instead of the batch `RenderObject`       |
+
+---
+
 ## Documentation Maintenance (`gdtk-overview.md`)
 
 `gdtk-overview.md` is the project's architectural / context file. It is the first

@@ -136,7 +136,7 @@ namespace ToolKit
 
   typedef GpuBufferBase<GraphicConstatsDataLayout> GraphicConstantsGpuBuffer;
 
-  // PerDrawGpuBuffer (slot 6)
+  // PerDrawGpuBuffer (slot 2)
   //////////////////////////////////////////
 
   /**

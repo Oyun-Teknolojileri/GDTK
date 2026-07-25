@@ -337,7 +337,7 @@ namespace ToolKit
       m_renderData.jobs.clear();
       EntityRawPtrArray rawNtties = ToEntityRawPtrArray(editorEntities);
       RenderJobProcessor::CreateRenderJobs(m_renderData.jobs, rawNtties);
-      RenderJobProcessor::SeperateRenderData(m_renderData, true);
+      RenderJobProcessor::SeperateRenderData(m_renderData);
 
       m_editorPass->m_params.renderData     = &m_renderData;
       m_editorPass->m_params.Cam            = m_camera;
@@ -359,7 +359,7 @@ namespace ToolKit
         RenderJobProcessor::CreateRenderJobs(m_uiRenderData.jobs, rawNtties);
       }
 
-      RenderJobProcessor::SeperateRenderData(m_uiRenderData, true);
+      RenderJobProcessor::SeperateRenderData(m_uiRenderData);
 
       m_uiPass->m_params.renderData  = &m_uiRenderData;
       m_uiPass->m_params.Cam         = GetUIManager()->GetUICamera();

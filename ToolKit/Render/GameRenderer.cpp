@@ -57,7 +57,7 @@ namespace ToolKit
       RenderJobProcessor::CreateRenderJobs(m_uiRenderData.jobs, rawUINtties);
     }
 
-    RenderJobProcessor::SeperateRenderData(m_uiRenderData, true);
+    RenderJobProcessor::SeperateRenderData(m_uiRenderData);
 
     m_uiPass->m_params.renderData               = &m_uiRenderData;
     m_uiPass->m_params.Cam                      = GetUIManager()->GetUICamera();

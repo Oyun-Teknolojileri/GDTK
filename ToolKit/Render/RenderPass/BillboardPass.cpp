@@ -34,7 +34,7 @@ namespace ToolKit
 
       EntityRawPtrArray rawBillboards = ToEntityRawPtrArray(billboards);
       RenderJobProcessor::CreateRenderJobs(m_renderData.jobs, rawBillboards);
-      RenderJobProcessor::SeperateRenderData(m_renderData, true);
+      RenderJobProcessor::SeperateRenderData(m_renderData);
 
       // depthTestEnabled is the only passive field that varies per billboard group.
       m_passState.depthTestEnabled = depthTest;

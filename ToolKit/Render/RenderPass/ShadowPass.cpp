@@ -337,7 +337,7 @@ namespace ToolKit
              });
 
     RenderJobProcessor::CreateRenderJobs(renderData.jobs, entities);
-    RenderJobProcessor::SeperateRenderData(renderData, true);
+    RenderJobProcessor::SeperateRenderData(renderData);
 
     // Set material and program.
     bool orthogonalShadowMap   = lightType == Light::LightType::Directional;

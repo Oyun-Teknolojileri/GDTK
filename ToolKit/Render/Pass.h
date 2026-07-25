@@ -154,36 +154,24 @@ namespace ToolKit
 
   /**
    * Singular render data that contains all the rendering information for a frame.
-   * When first culled than separated by a render job processor, the indexes become valid.
-   * Partition structure
-   * 0 Culled                 : jobs.begin to deferredJobsStartIndex
-   * 1 Deferred Opaque        : deferredJobsStartIndex to deferredAlphaMaskedJobsStartIndex
-   * 2 Deferred Alpha Masked  : deferredAlphaMaskedJobsStartIndex to forwardOpaqueStartIndex
-   * 3 Forward Opaque         : forwardOpaqueStartIndex to forwardAlphaMaskedJobsStartIndex
-   * 4 Forward Alpha Masked   : forwardAlphaMaskedJobsStartIndex to forwardTranslucentStartIndex
-   * 5 Forward Translucent    : forwardTranslucentStartIndex to jobs.end
+   * Populated by RenderJobProcessor::SeperateRenderData, which partitions the job array
+   * into the forward ranges below.
+   * Partition structure (forward renderer):
+   * 0 Forward Opaque         : forwardOpaqueStartIndex to forwardAlphaMaskedJobsStartIndex
+   * 1 Forward Alpha Masked   : forwardAlphaMaskedJobsStartIndex to forwardTranslucentStartIndex
+   * 2 Forward Translucent    : forwardTranslucentStartIndex to jobs.end
    */
   struct RenderData
   {
     RenderJobArray jobs;
 
-    int deferredJobsStartIndex            = 0; //!< Beginning of deferred jobs. Before this, culled jobs resides.
-    int deferredAlphaMaskedJobsStartIndex = 0; //<! Beginning of deferred render alpha masked jobs.
     int forwardOpaqueStartIndex           = 0; //!< Beginning of forward opaque jobs.
     int forwardAlphaMaskedJobsStartIndex  = 0; //!< Beginning of forward render alpha masked jobs.
     int forwardTranslucentStartIndex      = 0; //!< Beginning of forward translucent jobs.
 
-    RenderJobItr GetDefferedBegin()
-    {
-      assert(deferredJobsStartIndex != -1 && "Accessing forward only data.");
-      return jobs.begin() + deferredJobsStartIndex;
-    }
-
     RenderJobItr GetForwardOpaqueBegin() { return jobs.begin() + forwardOpaqueStartIndex; }
 
     RenderJobItr GetForwardTranslucentBegin() { return jobs.begin() + forwardTranslucentStartIndex; }
-
-    RenderJobItr GetDeferredAlphaMaskedBegin() { return jobs.begin() + deferredAlphaMaskedJobsStartIndex; }
 
     RenderJobItr GetForwardAlphaMaskedBegin() { return jobs.begin() + forwardAlphaMaskedJobsStartIndex; }
   };
@@ -209,12 +197,11 @@ namespace ToolKit
     static void CreateRenderJobs(RenderJobArray& jobArray, EntityPtr entity);
 
     /**
-     * Separate jobs such that job array starts with culled jobs, than deferred jobs, than forward opaque and
-     * translucent jobs.
-     * For example, all jobs between these iterators are the deferred jobs.
-     * RenderData::GetDefferedBegin() and RenderData::GetForwardOpaqueBegin()
+     * Partition the job array into forward opaque, forward alpha-masked, and forward translucent
+     * ranges (sets RenderData::forwardOpaqueStartIndex / forwardAlphaMaskedJobsStartIndex /
+     * forwardTranslucentStartIndex).
      */
-    static void SeperateRenderData(RenderData& renderData, bool forwardOnly);
+    static void SeperateRenderData(RenderData& renderData);
 
     /** Assign all lights affecting the job. */
     static void AssignLight(RenderJob& job, const LightRawPtrArray& lights, int startIndex);

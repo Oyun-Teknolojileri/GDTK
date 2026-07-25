@@ -463,7 +463,7 @@ namespace ToolKit
   void GLBackend::SubmitPerDrawData(const void* data, size_t size)
   {
     // No-op on GL: every per-draw payload now lives in `GlobalGpuBuffers::perDrawBuffer`
-    // (slot 6, `PerDrawData` UBO). Renderer::FeedUniforms updates that buffer + calls
+    // (slot 2, `PerDrawData` UBO). Renderer::FeedUniforms updates that buffer + calls
     // glBindBufferBase via the GpuProgram path, so by the time the next Draw fires the
     // shader sees fresh data straight from the UBO. Vulkan still uses this entry point to
     // copy the same blob into its per-frame dynamic-offset ring.

@@ -251,26 +251,28 @@ Heavyweight class that drives the GPU. Key responsibilities:
 
 #### Renderer global UBO layout
 
-All bind at fixed slots (slot 5 = pass UBOs, slot 6 = per-draw UBO):
+Reserved slots are defined in `ReservedUniformBufferSlots` (`RHI.h`); custom (pass-specific) UBOs bind at `FirstCustomSlot = 7` (shared - one pass-specific UBO bound at a time):
 
 | Layout | Slot | Used by |
 |---|---|---|
-| `CameraGpuBuffer` | global | every pass |
-| `GraphicConstantsGpuBuffer` | global | every pass (shadow distance, atlas size, IBL lod, cascades) |
-| `DirectionalLightBuffer` | global | forward pass |
-| `PointLightCache` / `SpotLightCache` | global | forward pass |
-| `PerDrawUboBuffer` | 6 | per-draw (model matrix etc., mirror in `perDrawDataInc.shader`) |
-| `DilatePassDataLayout` | 5 | outline/dilate pass |
-| `GammaTonemapFxaaPassDataLayout` | 5 | gamma/tonemap/fxaa pass |
-| `BloomPassDataLayout` | 5 | bloom downsample/upsample chain |
-| `GaussBlurPassDataLayout` | 5 | shadow blur, gaussian passes |
-| `CubemapEquirectPassDataLayout` | 5 | equirect -> cubemap conversion |
-| `PreFilterEnvMapPassDataLayout` | 5 | specular IBL prefilter |
-| `GridPassDataLayout` | 5 | editor grid |
-| `SsaoBlurPassDataLayout` | 5 | SSAO blur |
-| `DofPassDataLayout` | 5 | DoF pass |
-| `GradientSkyboxPassDataLayout` | 5 | gradient skybox |
-| `SsaoCalcPassDataLayout` | 5 | SSAO calc |
+| `CameraGpuBuffer` | 0 | every pass |
+| `GraphicConstantsGpuBuffer` | 1 | every pass (shadow distance, atlas size, IBL lod, cascades) |
+| `PerDrawUboBuffer` | 2 | per-draw (model matrix etc., mirror in `perDrawDataInc.shader`) |
+| `DirectionalLightBuffer` | 3 | forward pass |
+| `PointLightCache` | 4 | forward pass |
+| `SpotLightCache` | 5 | forward pass |
+| `DirectionalLightPVMBuffer` | 6 | shadow pass (directional light PVM matrices) |
+| `DilatePassDataLayout` | 7 (custom) | outline/dilate pass |
+| `GammaTonemapFxaaPassDataLayout` | 7 (custom) | gamma/tonemap/fxaa pass |
+| `BloomPassDataLayout` | 7 (custom) | bloom downsample/upsample chain |
+| `GaussBlurPassDataLayout` | 7 (custom) | shadow blur, gaussian passes |
+| `CubemapEquirectPassDataLayout` | 7 (custom) | equirect -> cubemap conversion |
+| `PreFilterEnvMapPassDataLayout` | 7 (custom) | specular IBL prefilter |
+| `GridPassDataLayout` | 7 (custom) | editor grid |
+| `SsaoBlurPassDataLayout` | 7 (custom) | SSAO blur |
+| `DofPassDataLayout` | 7 (custom) | DoF pass |
+| `GradientSkyboxPassDataLayout` | 7 (custom) | gradient skybox |
+| `SsaoCalcPassDataLayout` | 7 (custom) | SSAO calc |
 
 > **Std140 mirroring rule**: every `*Layout` struct in C++ MUST match its GLSL counterpart byte-for-byte. If you add a field, add it in the matching `.shader` include in the same order.
 

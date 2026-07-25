@@ -19,6 +19,45 @@
 
 ---
 
+## Implementation Progress
+
+> Living log - updated each phase. Last updated: 2026-07-25.
+
+**Current status:** Phase 0 complete (build green). Next: Phase 1 (Instrumentation).
+
+| Phase | Status |
+|---|---|
+| 0 - Doc sync + dead-code cleanup | done (2026-07-25) |
+| 1 - Instrumentation | next |
+| 2 - Instance data transport (2a/2b) | pending |
+| 2.5 - Shader transport validation | pending |
+| 2.75 - Single-batch instancing | pending |
+| 3 - BatchBuilder + batching | pending |
+| 4 - Gen-based incremental uploads | pending |
+| 5 - Shadow caching + hysteresis | pending |
+| 6 - Double buffering (optional) | pending |
+| 7 - Skinned instancing (optional) | pending |
+| 8 - Native MDI fast-path (optional) | pending |
+| 9 - Texture arrays (optional) | pending |
+
+### Phase 0 - completed 2026-07-25
+
+- Synced `gdtk-overview.md` §4.5 UBO slot table to `RHI.h` (per-draw = slot 2, not 6; custom pass UBOs at slot 7).
+- Fixed stale slot-6 comments: `Renderer.h:141`, `GLBackend.cpp:466`.
+- Removed dead deferred render partitions: dropped `deferredJobsStartIndex` / `deferredAlphaMaskedJobsStartIndex` + their getters from `RenderData` (`Pass.h`); removed the `forwardOnly` param + dead grouping branch from `SeperateRenderData` and the deferred sort block from `SortByMaterial` (`Pass.cpp`); updated 7 callers (GameRenderer, ForwardSceneRenderPath, BillboardPass, ShadowPass, EditorRenderer x2). Build green (Debug/ninja). Behavior identical (forward-only path preserved).
+- Added forward-looking instancing invariants to `AGENTS.md` (backend selection, RenderObject ownership + identity rules, InstanceRecord mirroring + flags bit table) - marked Phase 2+.
+- Out-of-scope noted for later: `RenderJob::frustumCulled` (`Pass.h:143`) is also never set (vestigial) - candidate for a future cleanup.
+
+### Next: Phase 1 - Instrumentation
+
+Extend `Stats` + GPU timer queries.
+- Overlay (live): draw calls, instanced draw calls, batch count, avg batch size, batch fragmentation score (`(actual-ideal)/max(ideal,1)`), render-item count, frame time, shadow redraw count, CPU build/sort/upload time.
+- Logged: uploaded bytes history, instanced-vs-legacy A/B GPU time, `GPUTime_TextureFetch` vs `GPUTime_VertexAttribute`, culled/visible counts.
+- `FrameStatType` entries: `InstancedDrawCall`, `BatchCount`, `AvgBatchSize`, `BatchFragmentationScore`, `RenderItemCount`, `UploadedBytes`, `ShadowRedrawCount`, `BatchBuildCPUTime`, `RenderItemSortCPUTime`, `InstanceUploadCPUTime`.
+- Success: baseline captured; every later phase's win is a measured number.
+
+---
+
 ## 0. Summary & Core Reframe
 
 **This is not a new renderer.** The engine already computes everything an instanced pipeline needs. The refactor changes the **transport** of that data and the **draw granularity**:
