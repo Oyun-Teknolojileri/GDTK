@@ -1,13 +1,14 @@
 # GDTK Render Instancing Refactor - Roadmap
 
-> **Status:** Draft v2 (design phase, pending review).
+> **Status:** Draft v3 (design phase, pending review).
 > **Targets:** Native mobile (GLES 3.2, see `ToolKit/Render/OpenGL/TKOpenGL.h` -> `GLES3/gl32.h`) and WebGL 2.0; Vulkan remains a first-class desktop/backend target.
 > **Related docs:** `AGENTS.md` (coding standards, Pass/PassRequirements conventions, overview-sync rules), `gdtk-overview.md` (architecture), Section 4 (Rendering Subsystem).
 > **Goal:** Collapse per-object draw calls and per-object state changes into a small number of instanced draws, without rewriting the renderer.
 
 ### Changelog
 
-- **v2** - External design review incorporated. Key changes: (1) `PerDrawUboLayout` is no longer the instance schema; a lean, handle-based **`InstanceRecord`** is introduced, with heavy per-draw data (env volumes, material data, light lists) moved into global tables indexed per instance. (2) **`LoadInstance(id)`** abstraction hides the transport (texel vs SSBO) from shaders. (3) **`RenderState` added to the batch key.** (4) **Generation-based cache validation** replaces bool dirty flags. (5) Separate **`BatchBuilder`** component. (6) Native GLES 3.2 SSBO option noted.
+- **v3** - Second external review incorporated. Key changes: (1) **`RenderObject` / `InstanceRecord` split** - shared (batch-uniform) handles hoisted into a `RenderObject` (the stable extension point for future scene features); `InstanceRecord` keeps only per-instance-varying data. (2) **Resource-side generation / dependency graph** replaces object-side dirty flags. (3) **Fixed-stride light list.** (4) **Sort-based batching** (memcmp key, no hashing) with **`RenderItem`** output. (5) **Instrumentation phase** added as a prerequisite (Phase 1). (6) **Native multi-draw-indirect** fast-path (Phase 8). (7) Per-instance **inverse-matrix heuristic.** (8) Explicit **table lifetimes.** Phase numbers shifted (instrumentation is now Phase 1).
+- **v2** - First external review: lean `InstanceRecord`, `LoadInstance`, RenderState in batch key, generation-based validation, separate `BatchBuilder`.
 - **v1** - Initial grounded draft.
 
 ---
@@ -17,11 +18,11 @@
 **This is not a new renderer.** The engine already computes everything an instanced pipeline needs. The refactor changes the **transport** of that data and the **draw granularity**:
 
 - **From:** per draw call -> one `Renderer::Render(job)` per `RenderJob` -> one `BindPipeline` + one per-draw UBO upload (`FeedUniforms`) + one `Draw`.
-- **To:** per batch -> one `drawElementsInstanced` per (mesh + shader-variant + material-texture-set + render-state-signature), reading per-instance records from an instance data buffer indexed by `gl_InstanceID`.
+- **To:** per batch -> one `drawElementsInstanced` per batch (keyed by mesh + shader-variant + texture-set + render-state + render-object), reading per-instance records from an instance data buffer indexed by `gl_InstanceID`.
 
-The per-instance data the new pipeline needs is **already computed**: it lives in `PerDrawUboLayout` (`ToolKit/Render/Renderer.h:151-182`), bound per-draw today at UBO slot 2 (`ReservedUniformBufferSlots::PerDrawData`). But `PerDrawUboLayout` is a **per-draw** record (bloated for per-instance use - see 2.1). So we reuse the **computation**, not the **layout**: a new lean **`InstanceRecord`** is populated from `PerDrawUboLayout`/`RenderJob` at batch-build time, and the heavy shared fields (environment volumes, material data, light lists) are externalized into global tables.
+The per-instance data the new pipeline needs is **already computed** in `PerDrawUboLayout` (`ToolKit/Render/Renderer.h:151-182`), bound per-draw today at UBO slot 2. We reuse the **computation, not the layout** ("reuse the computation, not the layout" is this roadmap's one-line summary): a lean **`InstanceRecord`** + shared **`RenderObject`** are populated from `PerDrawUboLayout`/`RenderJob` at batch-build time, and heavy shared data is externalized into global tables.
 
-**Headline outcome:** draw calls go from `N_objects` to `N_batches` (e.g. 1000 objects across 20 mesh+material combos -> 20 draws). Per-object UBO upload and per-object state changes are eliminated for the static opaque PBR path. Per-instance data shrinks from ~1100 bytes (`PerDrawUboLayout`) to ~80-140 bytes (`InstanceRecord`).
+**Headline outcome:** draw calls go from `N_objects` to `N_batches` (e.g. 1000 objects across 20 mesh+material combos -> 20 draws, or one multi-draw-indirect call on native). Per-object UBO upload and per-object state changes are eliminated for the static opaque PBR path. Per-instance data shrinks from ~1100 bytes (`PerDrawUboLayout`) to ~80 bytes (`InstanceRecord`).
 
 ---
 
@@ -31,20 +32,21 @@ The refactor reuses existing machinery rather than rebuilding it. This table map
 
 | Capability | Already in engine? | Where | What is actually new |
 |---|---|---|---|
-| Per-instance data SOURCE (matrices, material, light indices, anim params) | YES | `PerDrawUboLayout` `Renderer.h:151-182` (per-draw UBO slot 2) | A lean `InstanceRecord` extracted from it at batch-build time (2.1) |
-| Per-object CPU light assignment + active index lists | YES | `RenderJobProcessor::AssignLight` (`Pass.h:220`), `activePointLightIndices`/`activeSpotLightIndices` in `PerDrawUboLayout` | Lower per-object caps for the mobile profile |
+| Per-instance data SOURCE (matrices, material, light indices, anim params) | YES | `PerDrawUboLayout` `Renderer.h:151-182` (per-draw UBO slot 2) | `InstanceRecord` + `RenderObject` extracted from it at batch-build time (2.1) |
+| Per-object CPU light assignment + active index lists | YES | `RenderJobProcessor::AssignLight` (`Pass.h:220`), `activePointLightIndices`/`activeSpotLightIndices` in `PerDrawUboLayout` | Fixed-stride light-index table (2.1) |
 | Spatial acceleration (BVH) | YES | `Scene::m_aabbTree`, `ToolKit/Source/AABBTree.h` (dynamic, proxy-based) | Add light-influence region query (sphere/AABB); do NOT build a new BVH |
 | Tiered layered shadow atlas | YES | `ShadowAtlas` `ToolKit/Render/ShadowAtlas.h` (2 layers, Half/Quarter/Eighth, atomic batch alloc) | Shadow caching + hysteresis (2.4) |
-| GPU-side skinning via texture | YES | `Renderer.cpp:237-276` (`updateAndBindSkinningTextures`), `AnimationPlayer::CreateAnimationDataTexture` `Animation.cpp:609-688`, `Resources/Engine/Shaders/skinning.shader` | Natural fallback for the non-instanced path; (optional) skinned instancing later |
-| Runtime-branch PBR "ubershader" | YES | `Resources/Engine/Shaders/defaultFragment.shader` (texture presence via UBO flags: lines 50, 60, 70, 113) | None - existing branches work with per-instance material data, provided batches are uniform in texture-presence flags |
+| GPU-side skinning via texture | YES | `Renderer.cpp:237-276` (`updateAndBindSkinningTextures`), `AnimationPlayer::CreateAnimationDataTexture` `Animation.cpp:609-688`, `Resources/Engine/Shaders/skinning.shader` | Natural fallback; (optional) skinned instancing (Phase 7) |
+| Runtime-branch PBR "ubershader" | YES | `Resources/Engine/Shaders/defaultFragment.shader` (texture presence via UBO flags: lines 50, 60, 70, 113) | None - existing branches work with per-instance material data |
 | Declarative pass binding | YES (migration effectively complete) | `PassRequirements` / `ApplyRequirements` `ToolKit/Render/Pass.h` | Coordinate so the instanced batch draw flows through `ApplyRequirements` |
-| Texture arrays (RHI plumbing) | YES | `GL_TEXTURE_2D_ARRAY` `GLBackend.cpp:75,976`, `Tex2DArray` `Shader.h:40`, `sampler2DArray` (shadow atlas, blur) | DEFERRED to Phase 7 (see 2.6) |
-| Instanced draws (`drawElementsInstanced`, `instanceCount > 1`) | NO | `DrawDesc.instanceCount` exists but defaults to 1 (`IGraphicsBackend.h:63`) | Core new work |
+| Frame statistics + GPU timer queries | YES | `Stats::IncrementStat(FrameStatType::DrawCall)` `Renderer.cpp:355`, `StartTimerQuery`/`EndTimerQuery`/`GetElapsedTime` | Extend to the full metric set (Phase 1) |
+| Texture arrays (RHI plumbing) | YES | `GL_TEXTURE_2D_ARRAY` `GLBackend.cpp:75,976`, `Tex2DArray` `Shader.h:40` | DEFERRED to Phase 9 (see 2.6) |
+| Instanced draws / MDI | NO | `DrawDesc.instanceCount` defaults to 1 (`IGraphicsBackend.h:63`) | `drawElementsInstanced` (Phase 3) + `glMultiDrawElementsIndirect` native (Phase 8) |
 | Instance data buffer (texture/SSBO) | NO | - | New `InstanceDataBuffer` RHI abstraction (Section 5) |
-| Material / env-volume / light-list global tables | PARTIAL | `MaterialCacheItem` (`Material.h:26-43`), `PointLightCache`/`SpotLightCache` UBOs (slots 4/5), `EnvironmentComponent` | Pack into instance-indexed tables (2.1) |
-| Dirty-flag incremental uploads | PARTIAL | `AABBTree::Invalidate`, `Entity::m_aabbTreeNodeProxy` | Per-instance generation-based validation (2.5) |
+| Material / env-volume / light-list tables | PARTIAL | `MaterialCacheItem` (`Material.h:26-43`), `PointLightCache`/`SpotLightCache` UBOs (slots 4/5), `EnvironmentComponent` | Pack into instance-indexed tables with lifetimes (2.1) |
+| Cache validation | PARTIAL | `AABBTree::Invalidate`, `Entity::m_aabbTreeNodeProxy` | Resource-side generation / dependency graph (2.5) |
 | Shadow caching / hysteresis | NO | - | New (atop existing `ShadowAtlas`, generation-based) |
-| Double buffering of instance data | NO | - | New, optional (Phase 5) |
+| Double buffering of instance data | NO | - | New, optional (Phase 6) |
 
 ### 1.1 Forward pass draw loop (the surface an instanced rewrite replaces)
 
@@ -83,7 +85,7 @@ The per-draw UBO is bound at **slot `ReservedUniformBufferSlots::PerDrawData == 
 
 - **Directional lights:** bound ONCE per pass into the global `directionalLightBuffer` (slot 3). NOT per-instance.
 - **Point/spot light DATA:** lives in global cache UBOs (`PointLightCache` slot 4, `SpotLightCache` slot 5), capacity `PointLightCacheItemCount=32`, `SpotLightCacheItemCount=32` (`RHI.h`). Already global - reused directly.
-- **Point/spot active INDICES per object:** today written into the per-draw UBO (`activePointLightIndices`, `activeSpotLightIndices` + counts). These are what move into the per-instance light-list table (2.1).
+- **Point/spot active INDICES per object:** today written into the per-draw UBO. These move into the fixed-stride light-index table (2.1).
 
 So per-instance light data = the active index lists only. The light data itself stays global.
 
@@ -97,62 +99,111 @@ So per-instance light data = the active index lists only. The light data itself 
 | `TextureSlotCount` | 32 | - |
 | `ShadowAtlasSlot` | 8 | - |
 
-These are desktop-oriented. The mobile profile lowers the per-object caps (Section 2.3), which shrinks the per-instance record width.
+These are desktop-oriented. The mobile profile lowers the per-object caps (Section 2.3), which shrinks the fixed-stride light list.
 
 ---
 
 ## 2. Architecture
 
-### 2.1 Instance data: lean `InstanceRecord` + global tables
+### 2.1 Instance data: `RenderObject` (shared) + lean `InstanceRecord` (per-instance) + global tables
 
-> **Design principle (biggest risk avoided):** per-draw and per-instance needs diverge over time. Do NOT adopt `PerDrawUboLayout` as the instance schema. Reuse its **computation**, design a dedicated lean **`InstanceRecord`**.
+> **Design principle:** separate what is **shared** (per-batch) from what **varies** (per-instance). The shared bundle is the stable extension point for future scene features; the per-instance record stays minimal and hot.
 
-`PerDrawUboLayout` is ~1100 bytes/instance. Most of that is either derivable or shared:
+Two records:
 
-- 6 `Mat4` (model, modelWithoutTranslate, inverseModel, inverseTransposeModel, iblRotation, iblSecondaryRotation) - only `model` is the true per-instance input; the rest are derived or shared.
-- `DrawCommand` env volumes: 2 x 11 `Vec4` = 352 bytes PER INSTANCE - but environment volumes are **scene-level spatial structures shared by many nearby objects**. Inlining them per instance is the largest waste.
-- `MaterialCacheItem::Data` (4 `Vec4`) - shared by every object using the same material.
-
-**`InstanceRecord` (target ~80-140 bytes, populated at batch-build time):**
+**`InstanceRecord`** - per-instance, the hot per-vertex fetch. Only fields that actually vary per object:
 
 ```cpp
 // Lean per-instance record. Populated from PerDrawUboLayout / RenderJob.
 struct InstanceRecord
 {
-  Mat4  model;                   // world matrix (only true per-instance transform)
-  uint  materialIndex;           // -> global material table (MaterialCacheItem::Data)
-  uint  envVolumeIndex;          // -> global env-volume table (primary)
-  uint  secondaryEnvVolumeIndex; // -> global env-volume table (IBL blend), or -1
-  uint  lightListIndex;          // -> global light-index list table (point+spot)
-  uint  animIndex;               // -> animation table (skinned/animated only; 0 = none)
-  uint  flags;                   // bit0: uniformScale (skip shader inverse), bit1: isSkinned, ...
+  Mat4  model;             // world matrix (always per-instance)
+  uint  renderObjectIndex; // -> RenderObject table (the shared bundle)
+  uint  lightListIndex;    // -> fixed-stride light-index table (position-dependent)
+  uint  animKeyIndex;      // -> animation keyframe params (skinned; 0 = none)
+  uint  flags;             // bit0: uniformScale, bit1: isSkinned, bit2: envOverride, ...
 };
-// ~64 (Mat4) + 24 = 88 bytes -> ~6 RGBA32F texels.
+// ~64 (Mat4) + 16 = 80 bytes -> ~5 RGBA32F texels.
 ```
 
-**Derived in shader (not stored):** `inverseModel`, `inverseTransposeModel`/normal matrix, `modelWithoutTranslate`, IBL rotations. If `flags & uniformScale`, the normal matrix is just `mat3(model)` (cheap); otherwise compute the 3x3 inverse-transpose per vertex.
+**`RenderObject`** - shared across all instances of a mesh+material+env+anim bundle. **Bound per-batch (uniform), NOT fetched per-instance.** The extension point:
 
-**Global tables (instance-indexed, built from already-computed data):**
+```cpp
+// Shared bundle. One per distinct (mesh + material + env + anim) bundle.
+struct RenderObject
+{
+  uint  materialIndex;            // -> material table (MaterialCacheItem::Data)
+  uint  envVolumeIndex;           // -> env-volume table (primary)
+  uint  secondaryEnvVolumeIndex;  // -> env-volume table (IBL blend)
+  uint  skeletonIndex;            // -> skinning pose texture (Phase 7 skinned)
+  // Future scene-aware bindings attach HERE, not to InstanceRecord:
+  //   reflectionProbeIndex, lightProbeIndex, decalSetIndex, giVolumeIndex,
+  //   fogVolumeIndex, clipPlaneIndex, ...
+};
+// ~16 bytes.
+```
 
-| Table | Contents | Source in engine | Built when |
+**Why the split (v2 mistake corrected):** in v2 `materialIndex`/`envVolumeIndex`/`animIndex` sat per-instance even though they are uniform across a batch (material is in the batch key). v3 hoists the shared handles into `RenderObject` (bound once per draw, zero extra per-instance fetch), leaving `InstanceRecord` with only per-instance-varying data. Adding decals/probes/GI volumes later grows `RenderObject`, never `InstanceRecord`.
+
+**Env volume placement:** `envVolumeIndex` lives on `RenderObject`, so a batch must be env-coherent (all instances in the same primary env volume). If objects in one batch span an env boundary, either split the batch by env or use the per-instance `envOverride` flag (fetch env per-instance for that batch).
+
+**Derived, not stored:**
+
+- `inverseModel`, normal matrix, `modelWithoutTranslate`, IBL rotations - derived in shader or via the inverse heuristic below.
+- **Inverse-matrix heuristic (per-instance, not per-vertex):** all vertices of an instance share one normal matrix, so never recompute it per-vertex. At batch-build, decide per instance:
+  - uniform scale (`flags & uniformScale`) -> shader uses `mat3(model)` directly (cheap).
+  - non-uniform scale -> CPU precomputes the 3x3 inverse-transpose once, stored in a small per-instance transform extension.
+  - (Dynamic vs static does not change this - a moving object's matrix changes per frame either way; the decision is about scale type.)
+
+**Global tables** (generation tracked on the resource, see 2.5):
+
+| Table | Contents | Source | Lifetime |
 |---|---|---|---|
-| Material table | active `MaterialCacheItem::Data` (4 `Vec4` each) | `Material.h:26-43`, `Material::GetCacheItem()` | per visible-material set; persistent with dirty updates (rarely change) |
-| Env-volume table | active `EnvironmentComponent`s (11 `Vec4` each: params, min/max, inverse/world transforms) | `RenderJob::EnvironmentVolume`, `AssignEnvironment` | per visible env-volume set |
-| Light-index table | per-instance active point/spot index lists into the global light cache UBOs | `PerDrawUboLayout` index arrays | per instance (variable size) |
-| Animation table | keyframe/blend/skin params for skinned instances | `PerDrawUboLayout` anim fields | per skinned instance; static instances -> null entry |
+| Material table | `MaterialCacheItem::Data` (4 `Vec4`) | `Material.h:26-43`, `GetCacheItem()` | **persistent** (dirty-update on material change) |
+| Env-volume table | active `EnvironmentComponent`s (11 `Vec4` each) | `RenderJob::EnvironmentVolume`, `AssignEnvironment` | **semi-persistent** (on env transform change) |
+| Light-index table | fixed-stride per-instance point/spot index lists | `PerDrawUboLayout` arrays | **frame-local** |
+| Animation key table | per-instance keyframe/blend params (skinned) | `PerDrawUboLayout` anim | **frame-local** |
+| Skinning pose texture | pre-baked bone matrices | `AnimationPlayer::CreateAnimationDataTexture` `Animation.cpp:609-688` | **persistent** (on anim data change) |
+| RenderObject table | shared bundles (above) | batch-build | **semi-persistent** (on bundle change) |
 
 The light data itself (point/spot) stays in the existing global cache UBOs (slots 4/5); only the per-instance index lists move.
 
-**Why this layout (fetch locality + bandwidth):** the small fixed `InstanceRecord` is fetched once per vertex (model + material + env indices in a tight cache footprint). The variable light-index list is fetched only in the fragment shader (where lights are evaluated). Upload bandwidth for dirty instances drops ~9x vs the raw `PerDrawUboLayout`.
+**Fixed-stride light list (v3):** each instance reserves `MaxPointLightPerObject + MaxSpotLightPerObject` slots in the light-index table (mobile 6+6 = 48 bytes, desktop 24+24). Fixed stride -> predictable fetch, contiguous locality, early-out via count. Mobile stride is small enough to inline into `InstanceRecord` if desired; desktop stays in a separate fixed-stride table to avoid bloating the hot record.
 
-### 2.2 Batching
+**Fetch locality (why the split helps):** the small fixed `InstanceRecord` is fetched once per vertex (model + indices in a tight cache footprint). Variable data (light list) is fetched only in the fragment shader. Upload bandwidth for dirty instances drops ~9x vs the raw `PerDrawUboLayout`.
 
-**Batch key = (Mesh, vertex-shader-variant, fragment-shader-variant, bound-texture-set, render-state-signature).**
+### 2.2 Batching (sort-based, memcmp key, `RenderItem` output)
 
-- Program identity in the cache is `(vert-variant-pointer, frag-variant-pointer)` (`GpuProgram.h:111`), so variant specialization is already the cache granularity.
-- **Texture-set in the key:** material textures (diffuse/normal/ORM) are bound once per batch. Two objects with the same mesh + shader but different bound textures must be different batches (unless texture arrays are used - deferred, 2.6).
-- **RenderState in the key (added):** the same shader + mesh + textures can still differ in `cullMode` (double-sided materials), `blendFunction`, `depthWrite`, stencil, primitive. The pipeline state object differs, so the batch must break. For opaque PBR the RenderState is mostly homogeneous (depth test/write on, cull back) so it collapses in practice, but it MUST be in the key for correctness. Signature = hash of the material-derived active state bits that affect the pipeline.
-- **Within a batch, `material.*InUse` flags are uniform** -> the existing runtime branches in `defaultFragment.shader` (lines 50, 60, 70, 113) stay uniform -> no divergent branching. Per-instance varying fields: color, emissive, metallic, roughness, alpha threshold, light indices.
+**`BatchBuilder`** produces a flat array of **`RenderItem`**s. Each `RenderItem` carries a small POD **`BatchKey`** (~32 bytes):
+
+```cpp
+struct BatchKey
+{
+  uint32 meshId;
+  uint32 vertVariantId;
+  uint32 fragVariantId;
+  uint32 textureSetId;   // packed material-texture-set identity
+  uint32 renderStateSig; // packed cull/blend/depth/stencil/primitive bits
+  uint32 renderObjectId; // -> RenderObject (env/material/anim bundle)
+  uint32 _pad;
+};  // 32 bytes - sortable with memcmp / struct operator<.
+
+struct RenderItem
+{
+  BatchKey key;
+  uint32   instanceIndex;   // -> InstanceRecord row
+  // ...draw params; maps to VkDrawIndexedIndirectCommand (Phase 8)
+};
+```
+
+- **Sort, don't hash:** sort the `RenderItem` array by `BatchKey` (memcmp / struct `<`); contiguous runs of equal keys = batches. No hash table, no collisions, cache-friendly linear scan.
+- **One draw per batch:** `drawElementsInstanced(count = run length)`, with the batch's `RenderObject` bound as a per-draw uniform.
+- **Key includes:**
+  - `textureSetId` - material textures are bound once per batch.
+  - `renderStateSig` - cull/blend/depth/stencil/primitive differ -> separate batch (correctness).
+  - `renderObjectId` - the env/material/anim bundle.
+- Within a batch, `material.*InUse` flags are uniform -> existing `defaultFragment.shader` branches (lines 50, 60, 70, 113) stay uniform -> no divergent branching.
+- The `RenderItem` array maps directly to `VkDrawIndexedIndirectCommand` for the GPU-driven / multi-draw-indirect future (Phase 8). It is the common output of instanced / indirect / mesh-shader / visibility-buffer pipelines.
 
 **The instanced batches map onto the existing partition split:** the `DrawAlphaMasked` define flip (`ForwardPass.cpp:140,150,171`) becomes a per-batch program variant, exactly as today.
 
@@ -160,67 +211,63 @@ The light data itself (point/spot) stays in the existing global cache UBOs (slot
 
 - **Translucent** (forward-translucent partition): needs per-fragment depth sort; cannot naively batch. Stays per-draw.
 - **Shader materials** (`Material->IsShaderMaterial()`): own program per material. Stays per-draw.
-- **Skinned meshes:** GPU skinning is keyed by `(skeletonId, animationId)`; each job currently has its own bone-pose texture bind. Stays per-draw by default. (Optional Phase 6: batch skinned instances sharing skeleton+animation, with per-instance skin params moved into the animation table.)
+- **Skinned meshes:** GPU skinning keyed by `(skeletonId, animationId)`. Stays per-draw until Phase 7.
 
 **Draw type mapping for the instanced path:**
 
 | RenderData partition (`Pass.h:166-189`) | Instanced path? |
 |---|---|
 | 0 Culled | not drawn |
-| 1 Deferred Opaque / 2 Deferred Alpha-Masked | TBD - confirm whether deferred is live or dead (open question, Section 9) |
+| 1 Deferred Opaque / 2 Deferred Alpha-Masked | TBD - confirm whether deferred is live or dead (Section 9) |
 | 3 Forward Opaque | YES - instanced |
 | 4 Forward Alpha-Masked | YES - instanced (`DrawAlphaMasked=1` variant) |
 | 5 Forward Translucent | NO - legacy per-draw |
 
 ### 2.3 CPU light assignment (reuse, do not rebuild)
 
-- `RenderJobProcessor::AssignLight` already assigns per-object lights and produces the active index lists. Reuse as-is.
-- Reuse `Scene::m_aabbTree` for light-vs-object intersection instead of a new BVH. Add a region query (sphere/AABB) to `AABBTree` (it already has `Traverse`, `Invalidate`, `Rebuild`). On light move, query affected objects and bump their light-list generation (2.5) + the light's shadow generation (2.4).
-- **Mobile profile:** gate lower per-object caps on a render profile (e.g. `TK_GL_ES_3_0` -> mobile). Proposal: 4 directional / 6 point / 6 spot per object on mobile (current 8/24/24 is desktop-oriented). Because these constants are `constexpr`, profile selection is compile-time. **The per-instance record / table widths must be derived from the active profile**, not hardcoded - so the layout computation reads the same constants the shader mirrors.
+- `RenderJobProcessor::AssignLight` already assigns per-object lights and produces the active index lists. Reuse as-is; write into the fixed-stride light-index table.
+- Reuse `Scene::m_aabbTree` for light-vs-object intersection instead of a new BVH. Add a region query (sphere/AABB) to `AABBTree` (it already has `Traverse`, `Invalidate`, `Rebuild`). On light move, query affected objects -> bump their consumed-light generation (2.5) + the light's generation (2.4).
+- **Mobile profile:** gate lower per-object caps on a render profile (e.g. `TK_GL_ES_3_0` -> mobile). Proposal: 4 directional / 6 point / 6 spot per object on mobile (current 8/24/24 is desktop-oriented). Because these constants are `constexpr`, profile selection is compile-time. **The fixed-stride light list / table widths must be derived from the active profile**, not hardcoded.
 
-### 2.4 Shadow atlas (mostly done; add caching + hysteresis)
+### 2.4 Shadow atlas (generation-based, resource-side)
 
 `ShadowAtlas` (`ShadowAtlas.h`) already implements a 2-layer, Half/Quarter/Eighth tiered atlas with atomic batch allocation and a single FBO + `glFramebufferTextureLayer`. Do not rebuild.
 
 **New work:**
 
-- **Shadow caching (generation-based, not bool dirty):** each cached slot stores the generations it was rendered with. A slot is re-rendered only when an input generation advanced past the cached one.
-  - `LightGeneration` - bumps on light transform/color/range change.
-  - `GeometryGeneration` - bumps when any shadow-casting object moved within the light's influence volume (detected via the AABBTree region query).
-  - `ViewGeneration` - bumps on camera-driven tier change.
-  - Skip redraw when all three match the cached values. (Pull-model validation is robust: a missed setter cannot silently produce a stale shadow.)
-- **Hysteresis:** add a tolerance margin to the tier-selection distance check (Half/Quarter/Eighth) so a light near a tier boundary does not thrash between resolutions every frame (e.g. promote to a larger tier at distance D, demote only beyond D + margin).
-- **No double buffering for the atlas** (correct as proposed): reading and writing different slots of the same array texture in one frame is fine; the hardware handles it.
+- **Resource-side generation:** each `Light` carries `m_gen` (bumps on transform/color/range). Each cached slot stores the generations it was rendered with - `LightGen` + `GeometryGen` (region) + `ViewGen` (tier). Re-render only when any advances.
+  - `GeometryGen` bumps via the AABBTree region query when a shadow-caster moves in the light's influence.
+  - `ViewGen` bumps on camera-driven tier change.
+- **Hysteresis:** tolerance margin on the tier-selection distance check so a light near a boundary does not thrash between resolutions every frame (promote at distance D, demote only beyond D + margin).
+- **No double buffering for the atlas:** reading and writing different slots of the same array texture in one frame is fine; the hardware handles it.
 
-### 2.5 Dirty-flag system (generation-based)
+### 2.5 Cache validation (resource-side dependency graph)
 
-- Reuse the existing spatial invalidation (`AABBTree::Invalidate`, `Entity::m_aabbTreeNodeProxy`).
-- **Per-instance validation via generations** (same pull model as 2.4): each instance row tracks `materialGen`, `transformGen`, `lightListGen`, `envGen`. Upload a row only when its source generation advanced past the cached copy AND the instance is visible.
-- **Triggers:**
+Generations live on **resources**, not objects. Consumers cache the generation of each resource they last consumed. This is automatic propagation: the generation is bumped inside the resource's mutator, so a missed setter cannot silently produce stale data.
 
-| Event | Generation bumped |
-|---|---|
-| Object moved / transformed | `transformGen`; if AABBTree region changed -> `lightListGen` + `envGen` |
-| Material scalar changed (color, roughness, etc.) | material table row dirty (material is shared -> one bump affects all instances using it) |
-| Light moved / changed | AABBTree query -> affected objects' `lightListGen`; light's `LightGeneration` |
-| Object becomes visible (frustum) | allocate row -> all gens stale -> full write |
-| Object culled out | free row (no upload) |
+| Resource | Generation bumps on | Affected consumers (auto-propagated) |
+|---|---|---|
+| `Material` | any param change | material table row -> all `RenderObject`s using it -> their instances |
+| `Light` | transform/color/range | AABBTree query -> affected instances' light-list; light's shadow slot |
+| `EnvironmentComponent` | transform | instances in that volume |
+| `Skeleton`/`Animation` | anim data | skinning pose texture -> skinned instances |
 
-- **Upload rule:** upload only rows that are `(visible AND any-gen-stale)`. Newly-visible rows are fully stale by definition. Static visible rows are never re-uploaded after their first write.
-- **Threshold (small vs full upload):** if `dirtyCount < X`, upload rows individually (grouped by page/region for contiguity); if `dirtyCount >= X`, re-upload the whole used region (avoids many small `texSubImage2D` calls).
+- Each instance row / `RenderObject` row stores cached gens for its consumed resources. Upload/rebind only when a resource gen advanced AND the instance is visible.
+- **Upload rule:** upload only `(visible AND any-consumed-gen-advanced)` rows + dirty table rows. Newly-visible rows are fully stale (full write). Static visible rows are never re-uploaded after their first write.
+- **Threshold (small vs full upload):** if `dirtyCount < X`, upload rows individually (grouped by page/region); if `dirtyCount >= X`, re-upload the whole used region (avoids many small `texSubImage2D` calls).
 
-### 2.6 Texture arrays (DEFERRED - Phase 7)
+### 2.6 Texture arrays (DEFERRED - Phase 9)
 
 **Decision: defer.** Rationale:
 
-- Texture arrays would remove `bound-texture-set` from the batch key (collapsing more batches), but only help the **same mesh + different texture** content pattern (billboards, cards, decals, crowd clothing variation, unique-sign buildings).
-- Typical mobile instancing wins (foliage, repeated props, identical units) already batch perfectly under mesh + material-texture-set batching, because those objects share textures too. Arrays add nothing there.
-- Cost is a permanent packing pipeline: uniform layer size + format (resize/pad to power-of-two buckets), shared wrap mode per array sampler (tiling `GL_REPEAT` vs clamped must be separate arrays), layer-index management, memory overhead from padding.
+- Texture arrays would remove `textureSetId` from the batch key (collapsing more batches), but only help the **same mesh + different texture** content pattern (billboards, cards, decals, crowd clothing variation, unique-sign buildings).
+- Typical mobile instancing wins (foliage, repeated props, identical units) already batch perfectly, because those objects share textures too. Arrays add nothing there.
+- Cost is a permanent packing pipeline: uniform layer size + format (resize/pad to power-of-two buckets), shared wrap mode per array sampler (tiling `GL_REPEAT` vs clamped must be separate arrays), layer-index management, memory overhead.
 - On mobile tiler GPUs (Mali/Adreno), once per-object calls are gone, the remaining per-batch texture binds are cheap relative to fragment bandwidth.
 
-**Revisit trigger (Phase 7, profiling-gated):** add texture arrays ONLY if (a) profiling shows batch count / texture binds as the bottleneck, AND (b) the target content is "same mesh, many unique textures."
+**Revisit trigger (Phase 9, profiling-gated):** add texture arrays ONLY if (a) profiling shows batch count / texture binds as the bottleneck, AND (b) the target content is "same mesh, many unique textures."
 
-**When implemented:** use `sampler2DArray` (NOT a 2D UV atlas - arrays preserve tiling/repeat and avoid mip bleeding), bucket by size + wrap mode, store per-instance texture indices in the instance record. The RHI plumbing already exists (`GL_TEXTURE_2D_ARRAY` in `GLBackend.cpp`, `Tex2DArray` in `Shader.h`).
+**When implemented:** use `sampler2DArray` (NOT a 2D UV atlas - arrays preserve tiling/repeat and avoid mip bleeding), bucket by size + wrap mode, store per-instance texture indices. RHI plumbing already exists (`GL_TEXTURE_2D_ARRAY` in `GLBackend.cpp`, `Tex2DArray` in `Shader.h`).
 
 ---
 
@@ -228,38 +275,37 @@ The light data itself (point/spot) stays in the existing global cache UBOs (slot
 
 ```
 CPU (frame N):
-  1. Frustum cull                 -> visible instances this frame (reuse)
+  1. Frustum cull                 -> visible instances (reuse)
   2. BatchBuilder:
-       a. group visible instances by batch key
-          (mesh + shader-variant + texture-set + render-state-signature)
-       b. extract lean InstanceRecord per instance from PerDrawUboLayout/RenderJob
-       c. build/refresh global tables (material / env / light-list / anim),
-          assign indices
-  3. Allocate/free rows          -> newly visible = new row (all gens stale)
-                                    culled-out = free row
-  4. Generation check             -> visible AND any source gen advanced
-  5. Upload dirty rows + tables   -> write-buffer (B) via texSubImage2D (GL/WebGL)
-                                    or SSBO write (Vulkan)
+       a. for each visible instance, write a RenderItem
+          (BatchKey = mesh + shader-variant + texture-set + render-state + renderObject)
+       b. extract InstanceRecord (model, indices, flags) from PerDrawUboLayout/RenderJob
+       c. refresh global tables (material/env/light-list/anim/RenderObject) per resource gens
+  3. Sort RenderItems by BatchKey  -> contiguous runs = batches
+  4. Allocate/free instance rows   -> newly visible = new row (all gens stale)
+                                      culled-out = free row
+  5. Generation check              -> visible AND any consumed resource gen advanced
+  6. Upload dirty rows + tables    -> write-buffer (B): texSubImage2D (GL/WebGL) / SSBO (Vulkan)
 
 GPU (frame N):
-  6. Shadow pass                  -> re-render only slots whose gen advanced
-  7. Forward pass:
-       For each instanced batch (from BatchBuilder output):
-         - ApplyRequirements      -> program, framebuffer, pass RenderState
+  7. Shadow pass                   -> re-render only slots whose gen advanced
+  8. Forward pass:
+       For each batch (sorted RenderItem run):
+         - ApplyRequirements       -> program, framebuffer, pass RenderState
          - bind material textures (diffuse/normal/ORM) once
-         - bind s_instanceData + table textures/buffers
-         - drawElementsInstanced(count = batch size)
+         - bind RenderObject (per-draw uniform) + s_instanceData + table bindings
+         - drawElementsInstanced(count = run length)
        Legacy per-draw for: translucent, shader materials, skinned
-  8. Swap read/write buffers      -> next frame writes A, reads B (Phase 5 only)
+  9. Swap read/write buffers       -> next frame writes A, reads B (Phase 6 only)
 ```
 
-**Mental model (validated):** static instance data is written once; only `(visible AND gen-stale)` rows are re-uploaded. Draw calls go from `N_objects` to `N_batches`. Per-object UBO upload and per-object state changes are eliminated on the instanced path. What remains: per-batch binds (program + material textures + one instanced draw) and per-frame global binds (camera/light cache UBOs, shadow atlas, IBL, instance data + tables).
+**Mental model:** static instance data is written once; only `(visible AND gen-stale)` rows are re-uploaded. Draw calls go from `N_objects` to `N_batches` (or one MDI call on native). Per-object UBO upload and per-object state changes are eliminated on the instanced path. What remains: per-batch binds (program + material textures + RenderObject + one instanced draw) and per-frame global binds.
 
 ---
 
 ## 4. Phasing
 
-Incremental. Each phase is independently shippable and measurable. The legacy per-draw path is always retained as the fallback, so a broken phase never blocks shipping.
+Incremental. Each phase is independently shippable and measurable. The legacy per-draw path is always retained as the fallback, so a broken phase never blocks shipping. **Phase 1 (Instrumentation) is a prerequisite** - without it, no later phase's win is measurable.
 
 ### Phase 0 - Documentation sync (prerequisite)
 
@@ -267,63 +313,80 @@ Incremental. Each phase is independently shippable and measurable. The legacy pe
 - Fix stale comments: `Renderer.h:141`, `Renderer.h:267`, `GLBackend.cpp:466`.
 - **Success:** overview matches `RHI.h:50-62`.
 
-### Phase 1 - Instance data transport + `InstanceRecord` + `LoadInstance`
+### Phase 1 - Instrumentation (prerequisite)
 
-- **1a - Transport proof:** add `InstanceDataBuffer` RHI abstraction (Section 5) + the `LoadInstance(id)` shader abstraction. Introduce `InstanceRecord`; in 1a it may initially mirror `PerDrawUboLayout` 1:1 to prove the transport. Render a SINGLE instance through the new path and verify pixel-identical output vs the current UBO path (`instanceCount = 1`, no batching).
-- **1b - Lean record + global tables:** switch `InstanceRecord` to the lean handle-based form (2.1); build the material / env-volume / light-list / animation tables; derive inverse/normal matrices in shader. Measure per-instance byte count and upload bandwidth.
-- **Success (1a):** one object renders identically through the data-buffer path. **Success (1b):** per-instance data ~80-140 bytes; visual parity maintained.
-- **Risk:** RGBA32F `texelFetch` extension story on WebGL 2 (Section 7). Note: on native GLES 3.2 the backend may use SSBO directly via the same `LoadInstance` interface.
+- Extend the existing `Stats` system + GPU timer queries (`StartTimerQuery`/`EndTimerQuery`) to capture:
+  - draw calls, state changes, pipeline switches, texture binds
+  - uploaded bytes (instance rows + tables)
+  - instance count, batch count, average batch size
+  - shadow redraw count
+  - culled objects, visible objects
+  - CPU batch-build time, GPU frame time
+- Surface as a debug overlay / `FrameStats` dump.
+- **Success:** every later phase's success criterion is expressed as a measured number (baseline captured here). This is the only way to validate Phase 3's draw-call reduction, Phase 4's upload reduction, Phase 5's zero-shadow-redraw.
 
-### Phase 2 - `BatchBuilder` + batching + instanced draws (the headline win)
+### Phase 2 - Instance data transport + `InstanceRecord` + `RenderObject` + `LoadInstance`
 
-- Introduce a **separate `BatchBuilder`** component: input = visible render jobs, output = a `BatchList` (the thin command stream consumed by the Renderer). The Renderer no longer builds batches itself - this decoupling enables future multithreaded recording, indirect draw, and Vulkan secondary command buffers.
-- Group visible forward-opaque / forward-alpha-masked jobs by batch key including **RenderState-signature** (2.2).
-- Replace the per-job loop in `RenderOpaqueHelper` (`ForwardPass.cpp:224-248`) with: consume `BatchList` -> per batch, one `drawElementsInstanced`.
+- **2a - Transport proof:** add `InstanceDataBuffer` RHI abstraction (Section 5) + `LoadInstance(id)` shader abstraction. Introduce `InstanceRecord` + `RenderObject`; in 2a they may initially mirror `PerDrawUboLayout` 1:1 to prove the transport. Render a SINGLE instance through the new path, verify pixel-identical vs the current UBO path (`instanceCount = 1`, no batching).
+- **2b - Lean split + global tables:** switch to the v3 split (2.1) - `RenderObject` (shared, per-draw uniform) + lean `InstanceRecord`; build the material / env-volume / light-index / animation / RenderObject tables; apply the inverse-matrix heuristic. Measure per-instance byte count and upload bandwidth (Phase 1 metrics).
+- **Success (2a):** one object renders identically through the data-buffer path. **Success (2b):** per-instance data ~80 bytes; visual parity; upload bytes < baseline.
+- **Risk:** RGBA32F `texelFetch` extension story on WebGL 2 (Section 7). Note: native GLES 3.2 may use SSBO directly via the same `LoadInstance` interface.
+
+### Phase 3 - `BatchBuilder` + sort-based batching + instanced draws (the headline win)
+
+- Separate **`BatchBuilder`** component: input = visible render jobs, output = sorted `RenderItem` array consumed by the Renderer. The Renderer no longer builds batches - this decoupling enables future multithreaded recording, indirect draw, and Vulkan secondary command buffers.
+- Sort by `BatchKey` (memcmp); contiguous runs = batches; one `drawElementsInstanced` per run.
 - Translucent / shader materials / skinned stay on legacy per-draw path.
-- **Success:** draw-call count drops from `N_objects` to `N_batches` for static opaque PBR; visual parity maintained.
-- **Risk:** batch granularity must include texture-set AND RenderState, or pipelines/branches diverge.
-- **Scope guard:** the `BatchList` is a thin command stream, NOT a full render graph. A full render graph / GPU-driven pipeline is a separate future track that builds on this output.
+- **Success (measured):** draw-call count drops from `N_objects` to `N_batches` for static opaque PBR; visual parity; average batch size reported by Phase 1 metrics.
+- **Risk:** batch granularity must include texture-set, render-state, AND renderObject, or pipelines/branches diverge.
+- **Scope guard:** the `RenderItem` array is a thin command stream, NOT a full render graph. GPU-driven / render-graph is a separate future track.
 
-### Phase 3 - Generation-based incremental uploads + allocator
+### Phase 4 - Generation-based incremental uploads + allocator
 
-- Per-instance generation validation (2.5).
+- Resource-side generation / dependency graph (2.5).
 - Upload only `(visible AND gen-stale)` rows + dirty table rows.
 - Threshold: small dirty set -> per-row upload (grouped by region); large dirty set -> whole-region re-upload.
-- **Allocator:** page/chunk allocator for instance rows (locality for upload, L2 cache, future streaming) over a plain free-list. Resolution of the stable-index (for gen tracking) vs compact-index (for locality) tension: stable handle = (page, offset); dirty uploads grouped per page.
-- **Success:** a static scene with a few moving objects uploads near-zero bytes per frame.
+- **Allocator:** page/chunk allocator for instance rows (locality for upload, L2 cache, future streaming). Stable handle = (page, offset); dirty uploads grouped per page. Resolves the stable-index (gen tracking) vs compact-index (locality) tension.
+- **Success (measured):** a static scene with a few moving objects uploads near-zero bytes/frame (Phase 1 "uploaded bytes" metric).
 
-### Phase 4 - Shadow caching + hysteresis (atop existing `ShadowAtlas`)
+### Phase 5 - Shadow caching + hysteresis (atop existing `ShadowAtlas`)
 
-- Generation-based slot validation (`LightGeneration` / `GeometryGeneration` / `ViewGeneration`, 2.4).
+- Resource-side slot validation (`LightGen` / `GeometryGen` / `ViewGen`, 2.4).
 - Hysteresis margin on tier transitions.
-- **Success:** a scene with static shadows issues zero shadow draws per frame.
+- **Success (measured):** a scene with static shadows reports zero shadow redraws (Phase 1 metric).
 
-### Phase 5 - Double buffering (optional, profiling-gated)
+### Phase 6 - Double buffering (optional, profiling-gated)
 
 - Ping-pong two instance buffers (+ tables); render frame N from buffer A while CPU writes buffer B.
 - On first allocation of an instance, write its full record + table rows to BOTH buffers.
-- **Note:** introduces 1 frame of latency. Acceptable for most content; revisit for camera-locked objects.
-- **Success:** no `texSubImage2D`-induced stalls under high dirty churn.
+- **Note:** introduces 1 frame of latency. Revisit for camera-locked objects.
+- **Success (measured):** no `texSubImage2D`-induced stalls under high dirty churn (GPU frame time stable).
 
-### Phase 6 - Skinned instancing (optional)
+### Phase 7 - Skinned instancing (optional)
 
 - Batch skinned instances sharing skeleton + animation (same `s_skinningPose` texture).
-- Per-instance skin params move into the animation table (indexed by `animIndex`).
-- **Success:** crowds of identical animated characters batch.
+- Per-instance keyframe params move into the animation key table (indexed by `animKeyIndex`); `skeletonIndex` on `RenderObject`.
+- **Success (measured):** crowds of identical animated characters batch (batch count down, draw calls down).
 
-### Phase 7 - Texture arrays (optional, profiling-gated)
+### Phase 8 - Native multi-draw-indirect fast-path (optional, native-only)
+
+- Native GLES 3.2 + Vulkan: convert the sorted `RenderItem` array to `glMultiDrawElementsIndirect` / `vkCmdDrawIndexedIndirect` args -> one (or few) indirect calls submit all batches. Use persistent-mapped SSBOs for the instance data + draw args.
+- **WebGL 2 has no indirect draws** -> stays on per-batch `drawElementsInstanced` (Phase 3). WebGL is the lowest-common-denominator backend.
+- **Success (measured):** draw-call count near-constant regardless of batch count on native (driver counter / Phase 1 metric).
+
+### Phase 9 - Texture arrays (optional, profiling-gated)
 
 - See 2.6. Only if content is "same mesh, many unique textures" and batch count is the bottleneck.
 
 ### Vulkan parity
 
-Threaded through Phase 1 (the `LoadInstance` interface lets Vulkan use SSBO directly while GL/WebGL uses a texture). Every phase's definition of done includes "Vulkan renders identically."
+Threaded through Phase 2 (the `LoadInstance` interface lets Vulkan use SSBO directly while GL/WebGL uses a texture). Every phase's definition of done includes "Vulkan renders identically."
 
 ---
 
 ## 5. RHI / Backend Abstraction
 
-Add a logical instance-data concept to `IGraphicsBackend` so the per-instance transport is backend-agnostic. **Shaders never see the transport** - they call `LoadInstance(id)` and access fields; the fetch mechanism lives in a backend-specific include.
+Add a logical instance-data concept to `IGraphicsBackend` so the per-instance transport is backend-agnostic. **Shaders never see the transport** - they call `LoadInstance(id)` / `LoadRenderObject(idx)` and access fields; the fetch mechanism lives in a backend-specific include.
 
 ```cpp
 // Sketch - exact names TBD, must follow AGENTS.md style.
@@ -343,12 +406,13 @@ Backend mapping (forward-looking):
 | Backend | `InstanceDataBuffer` backing | `LoadInstance` fetch |
 |---|---|---|
 | GL / WebGL 2 | `RGBA32F` `GL_TEXTURE_2D` | `texelFetch` |
-| Native GLES 3.2 | SSBO (available - preferred over texture) | SSBO read |
+| Native GLES 3.2 | SSBO (available - preferred) | SSBO read |
 | Vulkan | SSBO | SSBO read |
 | (future D3D12) | StructuredBuffer | SRV read |
 | (future Metal) | Buffer | buffer read |
 
-- Because `LoadInstance` hides the fetch, switching a backend from texture to SSBO changes only the backend include, never the shader body. This also means **WebGPU / Metal can be added later without touching shaders.**
+- `LoadInstance` hides the fetch; switching texture <-> SSBO changes only the backend include, never the shader body. WebGPU / Metal can be added without touching shaders.
+- `RenderObject` is bound per-draw as a uniform (small, ~16 bytes) - NOT fetched per-instance. Future scene-aware bindings (probes/decals/GI) added to `RenderObject` are therefore free at the per-instance level.
 
 **Indexing:** `gl_InstanceID + u_instanceBase` (GLSL ES 3.00 provides `gl_InstanceID`; Vulkan uses `gl_InstanceIndex`). No per-instance vertex attribute required -> zero per-instance vertex bandwidth.
 
@@ -358,18 +422,18 @@ Backend mapping (forward-looking):
 
 - `STRIDE = ceil(sizeof(InstanceRecord) / 16)` RGBA32F texels per instance.
 - `WIDTH` conservative (e.g. 2048, below `gl_MaxTextureSize`). Instances pack `WIDTH / STRIDE` per row, stacked vertically.
-- With the lean `InstanceRecord` (~88 bytes -> STRIDE ~6), a 2048x2048 texture holds ~700k instances.
+- With the lean `InstanceRecord` (~80 bytes -> STRIDE ~5), a 2048x2048 texture holds ~840k instances.
 
-**Mirroring rule (add to `AGENTS.md`):** the C++ `InstanceRecord` and the GLSL `LoadInstance` layout must agree on field order/offset. Add a static assert that `sizeof(InstanceRecord)` matches the shader-declared stride. Same rule applies to each global table's row layout. (This replaces the per-draw std140 mirror for the instanced path; `PerDrawUboLayout`'s std140 mirror stays for the legacy per-draw path.)
+**Mirroring rule (add to `AGENTS.md`):** the C++ `InstanceRecord` / `RenderObject` / table rows and the GLSL `LoadInstance` layouts must agree on field order/offset. Add static asserts that `sizeof(...)` matches the shader-declared strides. (This replaces the per-draw std140 mirror for the instanced path; `PerDrawUboLayout`'s std140 mirror stays for the legacy per-draw path.)
 
 ---
 
 ## 6. Shader Changes
 
-- **Shared include `instanceDataInc.shader`:** declares the `InstanceRecord` layout and the `LoadInstance(uint id)` function (backend-specific fetch: `texelFetch` on GL/WebGL, SSBO read on native/Vulkan). Also declares table accessors (`LoadMaterial(idx)`, `LoadEnvVolume(idx)`, `LoadLightList(idx)`, `LoadAnim(idx)`).
-- **`defaultVertex.shader`:** when instanced, `InstanceRecord r = LoadInstance(gl_InstanceID + u_instanceBase);` use `r.model`; derive inverse/normal matrices (skip inverse if `r.flags & uniformScale`); read env/material indices from `r`.
-- **`defaultFragment.shader`:** fetch `MaterialCacheItem::Data` via `LoadMaterial(r.materialIndex)`, light indices via `LoadLightList(r.lightListIndex)`, env volumes via `LoadEnvVolume(...)`. The existing `material.*InUse` branches are unchanged (uniform within a batch).
-- **`skinning.shader`:** unchanged for now; Phase 6 reads per-instance skin params via `LoadAnim(r.animIndex)`.
+- **Shared include `instanceDataInc.shader`:** declares `InstanceRecord` + `RenderObject` layouts, the `LoadInstance(uint id)` function (backend-specific fetch: `texelFetch` on GL/WebGL, SSBO read on native/Vulkan), and table accessors (`LoadMaterial(idx)`, `LoadEnvVolume(idx)`, `LoadLightList(idx, count)`, `LoadAnim(idx)`). `LoadRenderObject` reads the per-draw uniform (not an instance fetch).
+- **`defaultVertex.shader`:** when instanced, `InstanceRecord r = LoadInstance(gl_InstanceID + u_instanceBase);` use `r.model`; derive inverse/normal matrix via the uniformScale flag; read `RenderObject ro = LoadRenderObject(r.renderObjectIndex);` for env/material indices.
+- **`defaultFragment.shader`:** fetch `MaterialCacheItem::Data` via `LoadMaterial(ro.materialIndex)`, light indices via `LoadLightList(r.lightListIndex, ...)`, env volumes via `LoadEnvVolume(ro.envVolumeIndex)`. Existing `material.*InUse` branches unchanged (uniform within a batch).
+- **`skinning.shader`:** unchanged for now; Phase 7 reads per-instance keyframe via `LoadAnim(r.animKeyIndex)` and the shared `s_skinningPose` texture from `ro.skeletonIndex`.
 - **`perDrawDataInc.shader`:** the existing std140 mirror stays for the legacy per-draw path.
 
 ---
@@ -378,15 +442,17 @@ Backend mapping (forward-looking):
 
 | Concern | Status / action |
 |---|---|
-| `RGBA32F` texture + `texelFetch` (nearest) on GLES 3.2 native | Supported; native may prefer SSBO instead (same `LoadInstance` interface). Verify on lowest target device. |
-| `RGBA32F` on WebGL 2 | Sampling float textures: confirm exact extension requirement for nearest/texelFetch (verify `EXT_color_buffer_float` is NOT needed for sampling-only). Pin a capability table before Phase 1. |
-| Native GLES 3.2 SSBO | Available (`gl32.h`). `LoadInstance` lets the native backend use SSBO while WebGL uses texture - no shader change. |
+| `RGBA32F` texture + `texelFetch` (nearest) on GLES 3.2 native | Supported; native may prefer SSBO (same `LoadInstance` interface). Verify on lowest target device. |
+| `RGBA32F` on WebGL 2 | Confirm exact extension requirement for nearest/texelFetch (verify `EXT_color_buffer_float` is NOT needed for sampling-only). Pin a capability table before Phase 2. |
+| Native GLES 3.2 SSBO / MDI | Available (`gl32.h`). `LoadInstance` -> SSBO; Phase 8 MDI. WebGL has neither -> stays texture + per-batch instanced. |
 | `gl_InstanceID` (GLSL ES 3.00) | Available. Vulkan uses `gl_InstanceIndex`. |
 | Max texture size | Use `gl_MaxTextureSize`; design `WIDTH` conservatively (2048) for mobile. |
-| Divergent branching | Prevented by including texture-set in the batch key. |
-| RenderState divergence | Prevented by including render-state-signature in the batch key. |
-| Small `texSubImage2D` churn | Phase 3 threshold + whole-region fallback. |
-| Double-buffer latency | Phase 5 only; 1-frame lag, documented. |
+| Divergent branching | Prevented by `textureSetId` in the batch key. |
+| RenderState divergence | Prevented by `renderStateSig` in the batch key. |
+| Env divergence within a batch | Prevented by `renderObjectId` in the key; or per-instance `envOverride`. |
+| Per-vertex inverse redundancy | Avoided by per-instance inverse heuristic (2.1). |
+| Small `texSubImage2D` churn | Phase 4 threshold + whole-region fallback. |
+| Double-buffer latency | Phase 6 only; 1-frame lag, documented. |
 
 ---
 
@@ -400,37 +466,41 @@ Backend mapping (forward-looking):
 
 ## 9. Open Decisions (need confirmation)
 
-1. **Backend abstraction:** add `InstanceDataBuffer` + `LoadInstance` to `IGraphicsBackend` (GL/WebGL = texture, native GLES 3.2 + Vulkan = SSBO), keeping all backends first-class. -> Recommended.
+1. **Backend abstraction:** add `InstanceDataBuffer` + `LoadInstance` to `IGraphicsBackend` (GL/WebGL = texture, native GLES 3.2 + Vulkan = SSBO). -> Recommended.
 2. **Mobile light caps:** 4 dir / 6 point / 6 spot per object, gated on `TK_GL_ES_3_0` (or a new render-profile define). Pick final numbers.
-3. **Hybrid scope:** instanced path for static opaque PBR only; translucent / shader materials / skinned remain on the legacy per-draw path. -> Recommended (low-risk migration).
-4. **Deferred partitions:** confirm whether `RenderData` partitions 1-2 (deferred opaque / deferred alpha-masked) are live or dead code. If dead, remove; if live, decide whether they go instanced or stay per-draw.
-5. **`InstanceRecord` field set (from review):** confirm the exact field set and which derived matrices are computed in-shader vs stored. Concretize material/env/light-list/anim table layouts before Phase 1b.
-6. **Allocator:** confirm page size for the instance-row allocator (Phase 3) vs a simpler per-batch-contiguous scheme for v1.
+3. **Hybrid scope:** instanced path for static opaque PBR only; translucent / shader materials / skinned remain legacy. -> Recommended.
+4. **Deferred partitions:** confirm whether `RenderData` partitions 1-2 are live or dead. If dead, remove; if live, decide instanced vs per-draw.
+5. **`RenderObject` / `InstanceRecord` field sets:** confirm exact fields, the inverse-matrix heuristic thresholds, and per-instance vs per-batch env placement (envOverride flag). Concretize table layouts before Phase 2b.
+6. **Allocator:** confirm page size for the instance-row allocator (Phase 4) vs a simpler per-batch-contiguous scheme for v1.
+7. **Instrumentation surface:** confirm which metrics are overlay vs logged, and the metric naming in `FrameStatType`.
 
 ---
 
 ## 10. Glossary
 
-- **InstanceRecord:** the lean, handle-based per-instance record (~80-140 bytes). Populated from `PerDrawUboLayout`/`RenderJob` at batch-build time. Distinct from `PerDrawUboLayout` by design (per-draw vs per-instance needs diverge).
-- **PerDrawUboLayout** (`Renderer.h:151-182`): the existing per-draw record (~1100 bytes), bound per-draw at UBO slot 2. The **source** for `InstanceRecord`, not the target schema. Stays for the legacy per-draw path.
-- **Global tables:** material / env-volume / light-list / animation tables, instance-indexed, holding the heavy shared data externalized out of `InstanceRecord`.
-- **LoadInstance(id):** shader abstraction that fetches an `InstanceRecord` by index; hides texture-vs-SSBO transport.
-- **BatchBuilder:** separate component that turns visible render jobs into a `BatchList` (thin command stream) consumed by the Renderer.
-- **Batch key:** `(Mesh, vert-variant, frag-variant, bound-texture-set, render-state-signature)`.
-- **RenderJob** (`Pass.h:135-151`): one draw call's worth of data today (Entity, Mesh, Material, lights, transform, animData).
+- **InstanceRecord:** lean per-instance record (~80 bytes): model, renderObjectIndex, lightListIndex, animKeyIndex, flags. Populated from `PerDrawUboLayout`/`RenderJob`.
+- **RenderObject:** shared bundle (material/env/skeleton indices + future probes/decals/GI), bound per-draw uniform. The stable extension point. One per (mesh + material + env + anim) bundle.
+- **RenderItem:** one draw-unit emitted by `BatchBuilder`, carrying a `BatchKey` + instance index. Sortable; maps to indirect draw args (Phase 8).
+- **BatchKey:** 32-byte POD (mesh + shader-variant + texture-set + render-state + renderObject). Sort key for batching (memcmp).
+- **BatchBuilder:** component that turns visible render jobs into a sorted `RenderItem` array consumed by the Renderer.
+- **Global tables:** material / env-volume / light-index / animation / RenderObject tables, each with a declared lifetime (persistent / semi-persistent / frame-local).
+- **LoadInstance / LoadRenderObject:** shader abstractions that fetch records by index/handle; hide texture-vs-SSBO transport.
+- **Resource-side generation (dependency graph):** each resource (Material/Light/EnvVolume/Skeleton) carries a generation bumped in its mutator; consumers validate against cached gen -> automatic, robust invalidation.
+- **PerDrawUboLayout** (`Renderer.h:151-182`): existing per-draw record (~1100 bytes), bound per-draw at UBO slot 2. The **source** for `InstanceRecord`/`RenderObject`, not the target schema. Stays for the legacy per-draw path.
+- **RenderJob** (`Pass.h:135-151`): one draw call's worth of data today.
 - **RenderData** (`Pass.h:166-189`): partitioned job list (culled / deferred / forward opaque / alpha-masked / translucent).
 - **RenderJobProcessor** (`Pass.h:191-253`): builds jobs, separates partitions, assigns lights/environments, sorts.
 - **PassRequirements / ApplyRequirements** (`Pass.h:37-71`): declarative per-draw binding; 7-step deterministic bind.
 - **ShadowAtlas** (`ShadowAtlas.h`): 2-layer tiered shadow array texture.
 - **AABBTree** (`ToolKit/Source/AABBTree.h`): dynamic spatial structure on `Scene`, reused for light intersection.
-- **Generation-based validation:** pull-model cache validity via version counters (instance rows, shadow slots) instead of bool dirty flags.
+- **MDI:** multi-draw-indirect (`glMultiDrawElementsIndirect`); native-only fast-path (Phase 8).
 
 ---
 
 ## 11. References (file index)
 
 - Forward pass: `ToolKit/Render/RenderPass/ForwardPass.cpp` (`Render` 47-77, opaque 129-156, `RenderOpaqueHelper` 224-248, translucent 158-222).
-- Per-job draw: `ToolKit/Render/Renderer.cpp` (`Render(job)` 232-356, `Render(jobs)` 381-389, `FeedUniforms` 1088-1153, RenderState compose 290-319, skinning lambda 237-276).
+- Per-job draw: `ToolKit/Render/Renderer.cpp` (`Render(job)` 232-356, `Render(jobs)` 381-389, `FeedUniforms` 1088-1153, RenderState compose 290-319, skinning lambda 237-276, DrawCall stat 355).
 - Per-instance SOURCE: `ToolKit/Render/Renderer.h:151-182` (`PerDrawUboLayout`).
 - Pass / RenderJob / RenderData / RenderJobProcessor: `ToolKit/Render/Pass.h`.
 - RHI slots + limits: `ToolKit/Render/RHI.h:17-62`.
