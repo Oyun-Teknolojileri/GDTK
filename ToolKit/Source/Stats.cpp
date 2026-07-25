@@ -14,10 +14,38 @@
 #include "ToolKit.h"
 #include "Util.h"
 
+#include <chrono>
+#include <thread>
+
 #include "DebugNew.h"
 
 namespace ToolKit
 {
+
+// Portable cycle counter — rdtsc on x86/64, CNTVCT on ARM64, chrono fallback.
+inline uint64 ReadCycleCounter()
+{
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+  // x86 / x86-64: rdtsc via intrinsic (GCC, Clang, MSVC).
+  #if defined(__GNUC__) || defined(__clang__)
+    return __builtin_ia32_rdtsc();
+  #elif defined(_MSC_VER)
+    #include <intrin.h>
+    return __rdtsc();
+  #else
+    #include <x86intrin.h>
+    return __rdtsc();
+  #endif
+#elif defined(__aarch64__) || defined(_M_ARM64)
+  // ARM64: generic timer counter (Linux, Android, Windows ARM).
+  uint64 val;
+  __asm__ volatile("mrs %0, CNTVCT_EL0" : "=r"(val));
+  return val;
+#else
+  // Fallback: chrono ticks (not used on hot path, calibration only).
+  return std::chrono::steady_clock::now().time_since_epoch().count();
+#endif
+}
 
   // Per-Frame Counter (internal)
   //////////////////////////////////////////
@@ -134,16 +162,16 @@ namespace ToolKit
         m_currentNode->children.push_back(node);
     }
 
-    // 3. Record start times and snapshot children's time
-    float childrenSum = 0.0f;
+    // 3. Record start time and snapshot children's cycle sum
+    uint64 childrenSum = 0;
     for (ProfilerNode* child : node->children)
-      childrenSum += child->inclusiveTime;
+      childrenSum += child->inclusiveCycles;
 
-    node->childrenTimeAtBegin = childrenSum;
-    node->beginTime           = GetElapsedMilliSeconds();
+    node->childrenCyclesAtBegin = childrenSum;
+    node->beginCycle            = ReadCycleCounter();
 
     // Update current context pointer
-    m_currentNode             = node;
+    m_currentNode               = node;
   }
 
   void TKProfiler::EndScope()
@@ -153,25 +181,23 @@ namespace ToolKit
       return;
     }
 
-    float endTime                 = GetElapsedMilliSeconds();
-    float elapsed                 = endTime - m_currentNode->beginTime;
+    uint64 endCycle                 = ReadCycleCounter();
+    uint64 elapsed                  = endCycle - m_currentNode->beginCycle;
 
-    m_currentNode->inclusiveTime += elapsed;
+    m_currentNode->inclusiveCycles += elapsed;
     m_currentNode->hitCount++;
-    m_currentNode->accumulatedIncl += elapsed;
 
-    // Calculate exclusive time by subtracting delta of children's inclusive time
-    float childrenTimeNow           = 0.0f;
+    // Calculate exclusive cycles by subtracting delta of children's inclusive cycles
+    uint64 childrenCyclesNow        = 0;
     for (ProfilerNode* child : m_currentNode->children)
     {
-      childrenTimeNow += child->inclusiveTime;
+      childrenCyclesNow += child->inclusiveCycles;
     }
 
-    float childrenDelta             = childrenTimeNow - m_currentNode->childrenTimeAtBegin;
-    float exclusive                 = elapsed - childrenDelta;
+    uint64 childrenDelta            = childrenCyclesNow - m_currentNode->childrenCyclesAtBegin;
+    uint64 exclusive                = elapsed - childrenDelta;
 
-    m_currentNode->exclusiveTime   += exclusive;
-    m_currentNode->accumulatedExcl += exclusive;
+    m_currentNode->exclusiveCycles += exclusive;
 
     // Move back to parent node without stack operations
     m_currentNode                   = m_currentNode->parent;
@@ -243,11 +269,51 @@ namespace ToolKit
       return;
     }
 
-    node->SwapFrameData();
+    EnsureCalibrated();
+
+    // Convert cycles to milliseconds for display.
+    float inclMs = static_cast<float>(node->inclusiveCycles * m_cyclesToMs);
+    float exclMs = static_cast<float>(node->exclusiveCycles * m_cyclesToMs);
+
+    // Accumulate over frames (ms).
+    node->accumulatedIncl += inclMs;
+    node->accumulatedExcl += exclMs;
+
+    // Swap current → prev for display.
+    node->inclusiveTimePrev = inclMs;
+    node->exclusiveTimePrev = exclMs;
+    node->hitCountPrev      = node->hitCount;
+
+    // Reset current-frame cycle counters.
+    node->inclusiveCycles     = 0;
+    node->exclusiveCycles     = 0;
+    node->childrenCyclesAtBegin = 0;
+    node->hitCount            = 0;
 
     for (ProfilerNode* child : node->children)
     {
       SwapNodeFrameData(child);
+    }
+  }
+
+  void TKProfiler::EnsureCalibrated()
+  {
+    if (m_cyclesToMs > 0.0)
+    {
+      return; // Already calibrated.
+    }
+
+    // One-time calibration: measure cycles over a known time interval.
+    auto t1   = std::chrono::high_resolution_clock::now();
+    uint64 c1 = ReadCycleCounter();
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    uint64 c2 = ReadCycleCounter();
+    auto t2   = std::chrono::high_resolution_clock::now();
+
+    double ms = std::chrono::duration<double, std::milli>(t2 - t1).count();
+    if (c2 > c1)
+    {
+      m_cyclesToMs = ms / static_cast<double>(c2 - c1);
     }
   }
 

@@ -21,23 +21,23 @@ namespace ToolKit
   /** A single node in the profiler tree hierarchy. */
   struct TK_API ProfilerNode
   {
-    String name;                         //!< Name of this scope.
-    uint64 nameHash           = 0;       //!< Hash of the name for fast lookups.
-    float beginTime           = 0.0f;    //!< Start time of current measurement.
-    float inclusiveTime       = 0.0f;    //!< Total time including children (ms) - current frame.
-    float exclusiveTime       = 0.0f;    //!< Time excluding children (ms) - current frame.
-    float inclusiveTimePrev   = 0.0f;    //!< Previous frame inclusive time for display.
-    float exclusiveTimePrev   = 0.0f;    //!< Previous frame exclusive time for display.
-    float accumulatedIncl     = 0.0f;    //!< Accumulated inclusive time over frames.
-    float accumulatedExcl     = 0.0f;    //!< Accumulated exclusive time over frames.
-    float childrenTimeAtBegin = 0.0f;    //!< Snapshot of children's inclusiveTime sum at BeginScope.
-    uint hitCount             = 0;       //!< Number of times this scope was hit.
-    uint hitCountPrev         = 0;       //!< Previous frame hit count for display.
-    uint depth                = 0;       //!< Depth in the tree (0 = root).
-    ProfilerNode* parent      = nullptr; //!< Parent node.
-    ProfilerNodeArray children;          //!< Child nodes.
-    bool expanded = false;               //!< UI expansion state.
-    bool enabled  = true;                //!< Whether to display this node.
+    String name;                          //!< Name of this scope.
+    uint64 nameHash            = 0;       //!< Hash of the name for fast lookups.
+    uint64 beginCycle          = 0;       //!< Start cycle of current measurement (rdtsc).
+    uint64 inclusiveCycles     = 0;       //!< Total cycles including children - current frame.
+    uint64 exclusiveCycles     = 0;       //!< Cycles excluding children - current frame.
+    uint64 childrenCyclesAtBegin = 0;     //!< Snapshot of children's inclusiveCycles sum at BeginScope.
+    float inclusiveTimePrev    = 0.0f;    //!< Previous frame inclusive time for display (ms).
+    float exclusiveTimePrev    = 0.0f;    //!< Previous frame exclusive time for display (ms).
+    float accumulatedIncl      = 0.0f;    //!< Accumulated inclusive time over frames (ms).
+    float accumulatedExcl      = 0.0f;    //!< Accumulated exclusive time over frames (ms).
+    uint hitCount              = 0;       //!< Number of times this scope was hit.
+    uint hitCountPrev          = 0;       //!< Previous frame hit count for display.
+    uint depth                 = 0;       //!< Depth in the tree (0 = root).
+    ProfilerNode* parent       = nullptr; //!< Parent node.
+    ProfilerNodeArray children;           //!< Child nodes.
+    bool expanded = false;                //!< UI expansion state.
+    bool enabled  = true;                 //!< Whether to display this node.
 
     /** Get average inclusive time. */
     float GetAverageInclusive() const { return hitCount > 0 ? accumulatedIncl / hitCount : 0.0f; }
@@ -45,30 +45,18 @@ namespace ToolKit
     /** Get average exclusive time. */
     float GetAverageExclusive() const { return hitCount > 0 ? accumulatedExcl / hitCount : 0.0f; }
 
-    /** Reset frame-specific data - called at end of frame to swap values. */
-    void SwapFrameData()
-    {
-      inclusiveTimePrev   = inclusiveTime;
-      exclusiveTimePrev   = exclusiveTime;
-      hitCountPrev        = hitCount;
-      inclusiveTime       = 0.0f;
-      exclusiveTime       = 0.0f;
-      childrenTimeAtBegin = 0.0f;
-      hitCount            = 0;
-    }
-
     /** Reset all accumulated data. */
     void ResetAll()
     {
-      inclusiveTime       = 0.0f;
-      exclusiveTime       = 0.0f;
-      inclusiveTimePrev   = 0.0f;
-      exclusiveTimePrev   = 0.0f;
-      accumulatedIncl     = 0.0f;
-      accumulatedExcl     = 0.0f;
-      childrenTimeAtBegin = 0.0f;
-      hitCount            = 0;
-      hitCountPrev        = 0;
+      inclusiveCycles       = 0;
+      exclusiveCycles       = 0;
+      inclusiveTimePrev     = 0.0f;
+      exclusiveTimePrev     = 0.0f;
+      accumulatedIncl       = 0.0f;
+      accumulatedExcl       = 0.0f;
+      childrenCyclesAtBegin = 0;
+      hitCount              = 0;
+      hitCountPrev          = 0;
     }
   };
 
@@ -116,6 +104,7 @@ namespace ToolKit
    private:
     void DeleteNodeRecursive(ProfilerNode* node);
     void SwapNodeFrameData(ProfilerNode* node);
+    void EnsureCalibrated();
 
    private:
     ProfilerNodeArray m_rootNodes;          //!< Root level nodes.
@@ -125,6 +114,7 @@ namespace ToolKit
     float m_accumulatedFrameTime = 0.0f;    //!< Accumulated frame time.
     uint m_frameCount            = 0;       //!< Number of frames recorded.
     bool m_enabled               = true;    //!< Whether profiling is active.
+    double m_cyclesToMs          = 0.0;     //!< Calibration: cycles to milliseconds.
   };
 
   /** RAII helper for automatic scope management. */
