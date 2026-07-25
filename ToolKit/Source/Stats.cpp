@@ -191,7 +191,8 @@ inline uint64 ReadCycleCounter()
 
     // Calculate exclusive cycles from the running children sum (O(1)).
     uint64 childrenDelta = m_currentNode->childrenInclusiveSum - m_currentNode->childrenCyclesAtBegin;
-    uint64 exclusive      = elapsed - childrenDelta;
+    // Guard against underflow: context switches can make childrenDelta > elapsed.
+    uint64 exclusive      = (elapsed > childrenDelta) ? (elapsed - childrenDelta) : 0;
 
     m_currentNode->exclusiveCycles += exclusive;
 
@@ -221,6 +222,26 @@ inline uint64 ReadCycleCounter()
     m_accumulatedFrameTime += m_frameTime;
     m_frameCount++;
 
+    // Ensure calibration is done once before we convert cycles to ms.
+    EnsureCalibrated();
+
+    // Sliding-window frame time history (~1s).
+    float filteredFt = FilterOutlier(m_frameTime, m_frameTimeHistory, m_frameTimePos, m_frameTimeCount);
+
+    // Remove oldest entry if buffer is full.
+    if (m_frameTimeCount == ProfilerNode::WINDOW_SIZE)
+    {
+      m_frameTimeSum -= m_frameTimeHistory[m_frameTimePos];
+    }
+
+    m_frameTimeHistory[m_frameTimePos] = filteredFt;
+    m_frameTimeSum                    += filteredFt;
+    m_frameTimePos                     = (m_frameTimePos + 1) % ProfilerNode::WINDOW_SIZE;
+    if (m_frameTimeCount < ProfilerNode::WINDOW_SIZE)
+    {
+      m_frameTimeCount++;
+    }
+
     // Swap frame data for all nodes - this preserves values for UI display
     // and resets current frame values for next frame
     for (ProfilerNode* root : m_rootNodes)
@@ -240,7 +261,15 @@ inline uint64 ReadCycleCounter()
     m_currentNode          = nullptr;
     m_frameTime            = 0.0f;
     m_accumulatedFrameTime = 0.0f;
-    m_frameCount           = 0;
+    // Reset frame time history.
+    for (uint8 i = 0; i < ProfilerNode::WINDOW_SIZE; ++i)
+    {
+      m_frameTimeHistory[i] = 0.0f;
+    }
+    m_frameTimeSum   = 0.0f;
+    m_frameTimePos   = 0;
+    m_frameTimeCount = 0;
+    m_frameCount     = 0;
   }
 
   void TKProfiler::DeleteNodeRecursive(ProfilerNode* node)
@@ -258,6 +287,26 @@ inline uint64 ReadCycleCounter()
     delete node;
   }
 
+  float TKProfiler::FilterOutlier(float value, const float* history, uint8 pos, uint8 count)
+  {
+    if (count < 2)
+    {
+      return value; // Not enough history for outlier detection.
+    }
+
+    // Average of the previous 2 entries in the ring buffer.
+    uint8 prev1 = (pos == 0) ? ProfilerNode::WINDOW_SIZE - 1 : pos - 1;
+    uint8 prev2 = (prev1 == 0) ? ProfilerNode::WINDOW_SIZE - 1 : prev1 - 1;
+    float avg   = (history[prev1] + history[prev2]) * 0.5f;
+
+    // If > 3x the trailing average, it's a context-switch spike — suppress.
+    if (value > avg * 3.0f)
+    {
+      return avg;
+    }
+    return value;
+  }
+
   void TKProfiler::SwapNodeFrameData(ProfilerNode* node)
   {
     if (node == nullptr)
@@ -265,27 +314,47 @@ inline uint64 ReadCycleCounter()
       return;
     }
 
-    EnsureCalibrated();
-
     // Convert cycles to milliseconds for display.
-    float inclMs = static_cast<float>(node->inclusiveCycles * m_cyclesToMs);
-    float exclMs = static_cast<float>(node->exclusiveCycles * m_cyclesToMs);
+    float rawInclMs = static_cast<float>(node->inclusiveCycles * m_cyclesToMs);
+    float rawExclMs = static_cast<float>(node->exclusiveCycles * m_cyclesToMs);
 
-    // Accumulate over frames (ms).
-    node->accumulatedIncl += inclMs;
-    node->accumulatedExcl += exclMs;
+    // Outlier rejection: compare against trailing 2 frames.
+    float filtInclMs = FilterOutlier(rawInclMs, node->inclHistory, node->historyPos, node->historyCount);
+    float filtExclMs = FilterOutlier(rawExclMs, node->exclHistory, node->historyPos, node->historyCount);
 
-    // Swap current → prev for display.
-    node->inclusiveTimePrev = inclMs;
-    node->exclusiveTimePrev = exclMs;
+    // Accumulate filtered values over all frames (ms).
+    node->accumulatedIncl += filtInclMs;
+    node->accumulatedExcl += filtExclMs;
+
+    // Sliding-window ring buffer update (O(1)).
+    if (node->historyCount == ProfilerNode::WINDOW_SIZE)
+    {
+      // Remove oldest entry from the running sum.
+      node->inclWindowSum -= node->inclHistory[node->historyPos];
+      node->exclWindowSum -= node->exclHistory[node->historyPos];
+    }
+
+    node->inclHistory[node->historyPos] = filtInclMs;
+    node->exclHistory[node->historyPos] = filtExclMs;
+    node->inclWindowSum                += filtInclMs;
+    node->exclWindowSum                += filtExclMs;
+    node->historyPos                   = (node->historyPos + 1) % ProfilerNode::WINDOW_SIZE;
+    if (node->historyCount < ProfilerNode::WINDOW_SIZE)
+    {
+      node->historyCount++;
+    }
+
+    // Display value = window average.
+    node->inclusiveTimePrev = node->inclWindowSum / node->historyCount;
+    node->exclusiveTimePrev = node->exclWindowSum / node->historyCount;
     node->hitCountPrev      = node->hitCount;
 
     // Reset current-frame cycle counters.
-    node->inclusiveCycles     = 0;
-    node->exclusiveCycles     = 0;
+    node->inclusiveCycles       = 0;
+    node->exclusiveCycles       = 0;
     node->childrenCyclesAtBegin = 0;
     node->childrenInclusiveSum  = 0;
-    node->hitCount            = 0;
+    node->hitCount              = 0;
 
     for (ProfilerNode* child : node->children)
     {
