@@ -21,15 +21,15 @@
 
 ## Implementation Progress
 
-> Living log - updated each phase. Last updated: 2026-07-25.
+> Living log - updated each phase. Last updated: 2026-07-26.
 
-**Current status:** Phase 0 complete (build green). Next: Phase 1 (Instrumentation).
+**Current status:** Phase 1 complete. Next: Phase 2 (Instance data transport).
 
 | Phase | Status |
 |---|---|
 | 0 - Doc sync + dead-code cleanup | done (2026-07-25) |
-| 1 - Instrumentation | next |
-| 2 - Instance data transport (2a/2b) | pending |
+| 1 - Instrumentation | **done (2026-07-26)** |
+| 2 - Instance data transport (2a/2b) | next |
 | 2.5 - Shader transport validation | pending |
 | 2.75 - Single-batch instancing | pending |
 | 3 - BatchBuilder + batching | pending |
@@ -48,13 +48,49 @@
 - Added forward-looking instancing invariants to `AGENTS.md` (backend selection, RenderObject ownership + identity rules, InstanceRecord mirroring + flags bit table) - marked Phase 2+.
 - Out-of-scope noted for later: `RenderJob::frustumCulled` (`Pass.h:143`) is also never set (vestigial) - candidate for a future cleanup.
 
-### Next: Phase 1 - Instrumentation
+### Phase 1 - completed 2026-07-26
 
-Extend `Stats` + GPU timer queries.
-- Overlay (live): draw calls, instanced draw calls, batch count, avg batch size, batch fragmentation score (`(actual-ideal)/max(ideal,1)`), render-item count, frame time, shadow redraw count, CPU build/sort/upload time.
-- Logged: uploaded bytes history, instanced-vs-legacy A/B GPU time, `GPUTime_TextureFetch` vs `GPUTime_VertexAttribute`, culled/visible counts.
-- `FrameStatType` entries: `InstancedDrawCall`, `BatchCount`, `AvgBatchSize`, `BatchFragmentationScore`, `RenderItemCount`, `UploadedBytes`, `ShadowRedrawCount`, `BatchBuildCPUTime`, `RenderItemSortCPUTime`, `InstanceUploadCPUTime`.
-- Success: baseline captured; every later phase's win is a measured number.
+**Profiler hot-path optimisations (prerequisite):**
+- Replaced `GetElapsedMilliSeconds()` with portable `rdtsc` in `BeginScope`/`EndScope` (9831862).
+- Eliminated O(n) children summation loops in `BeginScope`/`EndScope` via running `childrenInclusiveSum` propagated O(1) on each `EndScope` (65e787e).
+- Replaced raw per-frame display values with 15-frame sliding window average + outlier detection: each node keeps `inclHistory[15]`/`exclHistory[15]` ring buffers with O(1) running sums; spikes >3x trailing 2-frame average are suppressed (42aa617).
+
+**Instrumentation (c45bfbb):**
+
+Extended `FrameStatType` enum with Phase 1 entries:
+| Entry | Populated? | Source |
+|---|---|---|
+| `DrawCall` | yes (existing) | `Renderer::Render` |
+| `RenderPass` | yes (existing) | `Renderer::BeginRenderPass` |
+| `InstancedDrawCall` | placeholder | Phase 3 |
+| `BatchCount` | placeholder | Phase 3 |
+| `RenderItemCount` | placeholder | Phase 3 |
+| `ShadowRedrawCount` | yes | `ShadowPass::Render` — lights with valid shadow slots |
+| `CulledObjectCount` | yes | `ForwardSceneRenderPath::SetPassParams` — AABB-tree entities outside frustum |
+| `VisibleObjectCount` | yes | `ForwardSceneRenderPath::SetPassParams` — frustum query result |
+| `UploadedBytes` | yes | `Renderer::FeedUniforms` — `sizeof(PerDrawUboLayout)` per draw call |
+
+GPU timer API added for future A/B path comparison:
+- `Stats::SetGpuElapsedTime(cpu, gpu)` / `Stats::GetGpuElapsedTime(cpu, gpu)` — storage in `TKStats`, ready for Phase 2 instanced-vs-legacy and VTF-vs-vertex-attribute measurements.
+
+`GetPerFrameStats()` updated with visible/culled, shadow redraws, and uploaded bytes.
+
+Instrumentation points:
+- `ForwardSceneRenderPath.cpp:151-160` — culled vs visible from frustum (AABB-tree entities only).
+- `ShadowPass.cpp:129` — shadow redraw count.
+- `Renderer.cpp:1155` — per-draw UBO upload bytes.
+
+**Not yet populated (deferred to later phases):**
+- `InstancedDrawCall`, `BatchCount`, `RenderItemCount` — need `BatchBuilder` (Phase 3).
+- `BatchBuildCPUTime`, `RenderItemSortCPUTime`, `InstanceUploadCPUTime` — CPU timers for batch pipeline (Phase 3-4). The hierarchical profiler already captures these via `TK_PROFILE_FUNCTION()` in the relevant functions; per-frame counters will be added when the functions exist.
+- GPU A/B times — need the instanced transport path (Phase 2a) to compare against.
+
+Success: baseline captured. Every later phase's win is a measured number.
+
+---
+### Next: Phase 2 - Instance data transport
+
+(See Section 4 Phase 2 for full plan. Key deliverable: byte-oriented `InstanceDataBuffer` RHI abstraction + `InstanceRecord` + `RenderObject` + `LoadInstance` shader abstraction, rendering a single instance pixel-identical vs the legacy UBO path.)
 
 ---
 
