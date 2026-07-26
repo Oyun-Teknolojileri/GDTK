@@ -794,8 +794,14 @@ namespace ToolKit
 
   void Hdri::GenerateIrradianceCaches(Renderer* renderer)
   {
-    // Pre-filtered and mip mapped environment map
-    m_specularEnvMap = renderer->GenerateSpecularEnvMap(m_cubemap, m_cubemap->m_width, RHIConstants::SpecularIBLLods);
+    // Pre-filtered and mip mapped environment map (drives reflections).
+    // mip-0 work = size² × 6 × SAMPLE_COUNT (preFilterEnvMapFrag). Generating at the full source
+    // width with 1024 samples ran ~1.6G samples and tripped the amdgpu gfx-ring watchdog ->
+    // VK_ERROR_DEVICE_LOST. 512/face (the editor's env-map cap) × 256 samples = ~400M, 4× under the
+    // hang point. If a larger source is ever allowed, drop SAMPLE_COUNT proportionally to stay safe.
+    constexpr int kSpecularEnvMapSize = 512;
+    const int specularEnvMapSize      = glm::min(kSpecularEnvMapSize, m_cubemap->m_width);
+    m_specularEnvMap = renderer->GenerateSpecularEnvMap(m_cubemap, specularEnvMapSize, RHIConstants::SpecularIBLLods);
 
     // Generate diffuse irradience cubemap images
     int size         = glm::max(64, m_width / 32); // Smaller size for diffuse.
