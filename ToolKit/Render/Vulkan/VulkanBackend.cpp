@@ -465,8 +465,9 @@ namespace ToolKit
   void VulkanBackend::BeginFrame()
   {
     // Skip Recreate while the surface has no presentable extent (window minimized); keep running
-    // no-present frames so engine state (uploads, offscreen passes) keeps advancing.
-    if (m_needsRecreate)
+    // no-present frames so engine state (uploads, offscreen passes) keeps advancing. Also skip on
+    // device-lost — Recreate would vkDeviceWaitIdle + rebuild swapchain objects on a dead VkDevice.
+    if (m_needsRecreate && !m_swapchain->IsDeviceLost())
     {
       VkSurfaceCapabilitiesKHR caps {};
       if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_context->GetPhysicalDevice(), m_context->GetSurface(), &caps) ==
