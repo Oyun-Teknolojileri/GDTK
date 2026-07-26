@@ -65,6 +65,12 @@ namespace ToolKit
     /** True between BeginFrame success and EndFrame — the cb is in recording state. */
     bool IsFrameActive() const { return m_frameActive; }
 
+    /** Sticky once the logical device is reported lost (VK_ERROR_DEVICE_LOST). While set, BeginFrame
+        is a no-op: a fence handed to a failed submit can't be reset on a dead device
+        (VUID-vkResetFences-pFences-01123), so the frame loop halts instead of thrashing fences
+        every tick. Only a full VkDevice rebuild can legitimately clear it. */
+    bool IsDeviceLost() const { return m_deviceLost; }
+
     /** Rebuilds swapchain-dependent objects from the current surface extent. */
     bool Recreate();
 
@@ -128,6 +134,7 @@ namespace ToolKit
     bool m_frameActive         = false;
     bool m_swapchainPassActive = false;
     bool m_presentable         = false;
+    bool m_deviceLost          = false;
   };
 
 } // namespace ToolKit

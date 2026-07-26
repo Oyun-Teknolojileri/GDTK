@@ -422,13 +422,31 @@ namespace ToolKit
     {
       return false;
     }
+    if (m_deviceLost)
+    {
+      // Sticky: once the device is lost, the fence handed to the failed submit stays associated
+      // with the queue — it can't be waited/reset (VUID-vkResetFences-pFences-01123) and all queue
+      // ops are undefined. Halt the frame loop instead of thrashing fences every tick. Recovery
+      // requires rebuilding the VkDevice from scratch.
+      return false;
+    }
 
     VkDevice device = m_ctx->GetDevice();
     m_presentable   = false;
 
     // Always wait the slot fence (EndFrame submits a fence-only cb when not presentable so the
-    // fence cadence stays in lockstep with frame count; DeferDelete relies on this).
-    vkWaitForFences(device, 1, &m_inFlight[m_currentFrame], VK_TRUE, UINT64_MAX);
+    // fence cadence stays in lockstep with frame count; DeferDelete relies on this). A device-lost
+    // here means a previously-submitted cb faulted during execution — surface it the same way as
+    // a submit-time loss and let the sticky flag halt the loop.
+    VkResult wr = vkWaitForFences(device, 1, &m_inFlight[m_currentFrame], VK_TRUE, UINT64_MAX);
+    if (wr == VK_ERROR_DEVICE_LOST)
+    {
+      m_deviceLost = true;
+      TK_ERR("VulkanSwapchain::BeginFrame: vkWaitForFences reported VK_ERROR_DEVICE_LOST. Halting "
+             "the frame loop; recovery requires a full VkDevice rebuild. Inspect dmesg / run with "
+             "RADV_DEBUG=hang to find the faulting GPU work.");
+      return false;
+    }
     vkResetFences(device, 1, &m_inFlight[m_currentFrame]);
 
     // Reset + begin cb regardless of swapchain state so the engine can keep recording uploads
@@ -560,6 +578,16 @@ namespace ToolKit
     if (VkResult r = vkQueueSubmit(m_ctx->GetGraphicsQueue(), 1, &si, m_inFlight[m_currentFrame]); r != VK_SUCCESS)
     {
       TK_ERR("vkQueueSubmit failed: %d", r);
+      if (r == VK_ERROR_DEVICE_LOST)
+      {
+        // The fence was handed to the (failed) submit, so it stays associated with the queue and
+        // can't be reset on the next BeginFrame (VUID-vkResetFences-pFences-01123). Mark the device
+        // lost so the frame loop halts instead of thrashing fences on a dead device.
+        m_deviceLost = true;
+        TK_ERR("VulkanSwapchain::EndFrame: device lost. Halting frame loop; recovery requires a "
+               "full VkDevice rebuild. Inspect dmesg / run with RADV_DEBUG=hang for the faulting "
+               "GPU work.");
+      }
       m_frameActive = false;
       m_presentable = false;
       return false;
@@ -615,6 +643,12 @@ namespace ToolKit
     if (VkResult r = vkQueueSubmit(m_ctx->GetGraphicsQueue(), 1, &si, VK_NULL_HANDLE); r != VK_SUCCESS)
     {
       TK_ERR("VulkanSwapchain::FlushCommandBuffer: vkQueueSubmit failed: %d", r);
+      if (r == VK_ERROR_DEVICE_LOST)
+      {
+        // No fence on this submit, but the device is gone — flag it so the frame loop halts and
+        // the terminal EndFrame submit doesn't keep poking a dead queue.
+        m_deviceLost = true;
+      }
       return false;
     }
 
