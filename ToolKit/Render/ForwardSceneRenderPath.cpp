@@ -146,6 +146,21 @@ namespace ToolKit
     Frustum frustum            = ExtractFrustum(m_params.Cam->GetProjectViewMatrix(), false);
     EntityRawPtrArray entities = m_params.Scene->m_aabbTree.VolumeQuery(frustum);
 
+    // Phase 1: track culled vs visible object counts.
+    // Only count entities that are actually in the AABB tree (have valid proxies).
+    uint totalInTree = 0;
+    for (const EntityPtr& entity : m_params.Scene->GetEntities())
+    {
+      if (entity->m_aabbTreeNodeProxy != AABBTree::nullNode)
+      {
+        totalInTree++;
+      }
+    }
+    uint visibleCount = (uint) entities.size();
+    Stats::AddStat(FrameStatType::VisibleObjectCount, (uint64) visibleCount);
+    Stats::AddStat(FrameStatType::CulledObjectCount,
+                   (uint64) (totalInTree > visibleCount ? totalInTree - visibleCount : 0));
+
     if (m_params.grid != nullptr)
     {
       entities.push_back(m_params.grid.get());

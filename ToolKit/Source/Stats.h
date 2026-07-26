@@ -176,6 +176,7 @@ namespace ToolKit
   /** Indices for per-frame stat counters. */
   enum class FrameStatType
   {
+    // Pre-Phase-1
     LightCacheInvalidation,
     MaterialCacheInvalidation,
     UboUpdates,
@@ -183,6 +184,14 @@ namespace ToolKit
     DirectionalLightUpdate,
     DrawCall,
     RenderPass,
+    // Phase 1 - live overlay
+    InstancedDrawCall,
+    BatchCount,
+    RenderItemCount,
+    ShadowRedrawCount,
+    CulledObjectCount,
+    VisibleObjectCount,
+    UploadedBytes,
     Count
   };
 
@@ -225,6 +234,10 @@ namespace ToolKit
     TK_API void GetRenderTimeAvg(float& cpu, float& gpu);
     TK_API void SetRenderTime(float cpu, float gpu);
     TK_API void SetRenderTimeAvg(float cpu, float gpu);
+
+    // GPU Elapsed Time (for A/B path comparison — instanced vs legacy, VTF vs vertex-attribute).
+    TK_API void SetGpuElapsedTime(float cpu, float gpu);
+    TK_API void GetGpuElapsedTime(float& cpu, float& gpu);
 
     // Formatted Stats
     TK_API String GetPerFrameStats();

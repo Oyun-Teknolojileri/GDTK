@@ -112,6 +112,10 @@ inline uint64 ReadCycleCounter()
     float m_elapsedCpuRenderTime    = 0.0f;
     float m_elapsedCpuRenderTimeAvg = 0.0f;
 
+    // GPU elapsed time for A/B path comparison (Phase 2+).
+    float m_gpuElapsedCpuTime       = 0.0f;
+    float m_gpuElapsedGpuTime       = 0.0f;
+
    private:
     FrameStat m_frameStats[(int) FrameStatType::Count];
     uint64 m_totalVRAMUsageInBytes = 0;
@@ -503,6 +507,25 @@ inline uint64 ReadCycleCounter()
     snprintf(buffer, sizeof(buffer), "UBO updates Per Frame: %llu\n", Stats::GetStatPrev(FrameStatType::UboUpdates));
     stats += buffer;
 
+    snprintf(buffer,
+             sizeof(buffer),
+             "Visible Objects: %llu | Culled: %llu\n",
+             Stats::GetStatPrev(FrameStatType::VisibleObjectCount),
+             Stats::GetStatPrev(FrameStatType::CulledObjectCount));
+    stats += buffer;
+
+    snprintf(buffer,
+             sizeof(buffer),
+             "Shadow Redraws: %llu\n",
+             Stats::GetStatPrev(FrameStatType::ShadowRedrawCount));
+    stats += buffer;
+
+    snprintf(buffer,
+             sizeof(buffer),
+             "Uploaded Bytes Per Frame: %llu\n",
+             Stats::GetStatPrev(FrameStatType::UploadedBytes));
+    stats += buffer;
+
     return stats;
   }
 
@@ -641,6 +664,29 @@ inline uint64 ReadCycleCounter()
       {
         tkStats->m_elapsedCpuRenderTimeAvg = cpu;
         tkStats->m_elapsedGpuRenderTimeAvg = gpu;
+      }
+    }
+
+    void SetGpuElapsedTime(float cpu, float gpu)
+    {
+      if (TKStats* tkStats = GetTKStats())
+      {
+        tkStats->m_gpuElapsedCpuTime = cpu;
+        tkStats->m_gpuElapsedGpuTime = gpu;
+      }
+    }
+
+    void GetGpuElapsedTime(float& cpu, float& gpu)
+    {
+      if (TKStats* tkStats = GetTKStats())
+      {
+        cpu = tkStats->m_gpuElapsedCpuTime;
+        gpu = tkStats->m_gpuElapsedGpuTime;
+      }
+      else
+      {
+        cpu = 1.0f;
+        gpu = 1.0f;
       }
     }
 

@@ -1150,6 +1150,9 @@ namespace ToolKit
     // Hand the same blob to the backend. GL is a no-op (UBO is already bound + mapped); Vulkan
     // copies it into the per-frame dynamic-offset ring slot the descriptor set points at.
     m_backend->SubmitPerDrawData(&ubo, sizeof(ubo));
+
+    // Phase 1: track per-draw UBO upload bytes (baseline; Phase 4 upload reduction target).
+    Stats::AddStat(FrameStatType::UploadedBytes, sizeof(ubo));
   }
 
   void Renderer::SetTexture(ubyte slotIndx, TexturePtr texture)

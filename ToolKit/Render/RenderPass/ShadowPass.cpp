@@ -125,6 +125,9 @@ namespace ToolKit
     BlurShadowAtlas();
 
     renderer->m_clearColor = lastClearColor;
+
+    // Phase 1: track shadow redraw count (baseline; Phase 5 caching will drop this).
+    Stats::AddStat(FrameStatType::ShadowRedrawCount, (uint64) m_lights.size());
   }
 
   void ShadowPass::PreRender()
