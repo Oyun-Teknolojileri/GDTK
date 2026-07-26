@@ -21,9 +21,9 @@
 
 ## Implementation Progress
 
-> Living log - updated each phase. Last updated: 2026-07-26.
+> Living log - updated each phase. Last updated: 2026-07-26 (Phase 2a plan added).
 
-**Current status:** Phase 1 complete. Next: Phase 2 (Instance data transport).
+**Current status:** Phase 1 complete. Next: Phase 2a (instance data transport proof) — planned, implementation pending.
 
 | Phase | Status |
 |---|---|
@@ -88,9 +88,68 @@ Instrumentation points:
 Success: baseline captured. Every later phase's win is a measured number.
 
 ---
-### Next: Phase 2 - Instance data transport
+### Next: Phase 2a - Instance data transport proof
 
-(See Section 4 Phase 2 for full plan. Key deliverable: byte-oriented `InstanceDataBuffer` RHI abstraction + `InstanceRecord` + `RenderObject` + `LoadInstance` shader abstraction, rendering a single instance pixel-identical vs the legacy UBO path.)
+> **Status:** Planned 2026-07-26 (implementation pending). Full design lives here as the living reference; revise in place. Section 4 §Phase 2 stays the high-level spec; this subsection is the concrete 2a build plan.
+
+**Goal:** Render a SINGLE instance through a new instance-data-buffer path, pixel-identical vs the legacy per-draw UBO path (`instanceCount=1`, no batching). Isolates the transport mechanism — batching, lean split, global tables all defer to 2b+.
+
+**Decisions (locked):**
+- **Transport:** Texture (VTF, `texelFetch`) on BOTH GL and Vulkan. SSBO is fully unwired (`ShaderResource::Type` has no `StorageBuffer`; Vulkan descriptor pool/layout/`FlushDescriptorState` have no storage-buffer path) — wiring it is a large multi-file change that proves nothing texture doesn't already prove. Defer SSBO to 2b. Reuse the existing `TextureBuffer<>` precedent (`TextureBuffer.h`), zero new `IGraphicsBackend` virtuals.
+- **Scope:** 2a only. `InstanceRecord2a` = `PerDrawUboLayout` 1:1 mirror (throwaway-by-design; lean split + `RenderObject` + tables = 2b).
+- **Verification:** `ReadPixels` A/B diff — render one frame legacy, one frame instanced, compare (RMS < 1/255 AND max channel ≤ 2). Seeds the Phase 2.5 harness.
+
+**Why texture-only:** `LoadInstance(id)` is a backend-include detail, not a shader-body change. A texture-only 2a validates the abstraction; 2b swaps only the backend include for SSBO on Vulkan/native — shader body + renderer `InstanceDataBuffer` API stay identical.
+
+**Design — vertex-only consumption (pixel-identical guarantee):**
+`defaultVertex.shader` reads only two `mat4`s from `PerDrawData`: `perDraw._inverseTransposeModel` (line 50, 60) and `perDraw._model` (line 63). Route ONLY these through `LoadInstance(gl_InstanceID + u_instanceBase)`. **The fragment shader stays on the UBO** — in the same frame the instance texture and the UBO hold identical `PerDrawUboLayout` bytes (literally the same struct written to both), so the fragment reads bytes identical to legacy. Any divergence isolates to the new mechanism (texelFetch mat4 reconstruction), which is exactly what 2a exists to catch.
+
+**A/B switch:** `Renderer::m_instancedTransportEnabled` flag (mirrors the `m_shadingMode` precedent). A `TK_INSTANCED` define produces a distinct program variant (same mechanism as `DrawAlphaMasked`; the `GpuProgram` cache keys on variant gpuData pointers, so `TK_INSTANCED=0`/`=1` are distinct entries). Flag off → legacy path byte-identical.
+
+#### File-by-file changes (2a)
+
+| File | Change |
+|---|---|
+| **NEW** `ToolKit/Render/InstanceDataBuffer.h` | Renderer-side class wrapping `TextureBuffer<InstanceRecord2a, RGBA32F>`. Byte-oriented API: `Init(maxInstances)`→`Resize`, `Write(index, PerDrawUboLayout&)`→`memcpy` into `StructBuffer` row, `Flush()`→`Map()` (full re-upload; cheap for one instance), `Bind(ubyte slot)`→`BindTexture`. No new `IGraphicsBackend` virtual → `NullBackend`/`IGraphicsBackend` untouched. |
+| **NEW** `Resources/Engine/Shaders/instanceDataInc.shader` | Include shader (`type=includeShader`): `uniform uint u_instanceBase;` (day-one `baseInstance`; always 0 in 2a, for Phase 8 MDI); `TK_SAMPLER_BINDING(14) uniform sampler2D s_instanceData;` (slot 14 = lowest free in forward PBR path; 18-31 also a clean block); `#define TK_INSTANCE_STRIDE 47u` (matches C++ static_assert); `struct InstanceRecord { mat4 model; ... full PerDrawUboLayout mirror ... };`; `InstanceRecord LoadInstance(uint id)` — 47 `texelFetch`es from `id * TK_INSTANCE_STRIDE` under the 1024-wide layout; `gl_InstanceID` (GLES) vs `gl_InstanceIndex` (Vulkan) macro guard. Sampler declaration **ungated** so GLSL and `<texture>` XML metadata stay in lockstep (avoids Vulkan "declared resource absent from SPIR-V"). |
+| **MOD** `defaultVertex.shader` | Add `<include name="instanceDataInc.shader"/>` (after line 7), `<texture slot="14" name="s_instanceData"/>`, `<define name="TK_INSTANCED" val="0,1"/>` (compiles both variants up front). In `main()`, gate the two per-draw reads (lines 50/60/63) behind `#if TK_INSTANCED ... #else perDraw._model/_inverseTransposeModel #endif`. Legacy `else` branch byte-identical. |
+| **MOD** `Renderer.h` | `using InstanceRecord2a = PerDrawUboLayout;` (next to line ~184). §5 static_asserts: `alignof >= 16`, `sizeof % 16 == 0`, `offsetof(model) == 0`, `sizeof == 47*16`. Private members: `InstanceDataBuffer m_instanceBuffer;`, `bool m_instancedTransportEnabled = false;` + public `IsInstancedTransportEnabled()`. |
+| **MOD** `Renderer.cpp` | `Render(const RenderJob&)` (232-356): after `FeedUniforms` (339), when flag set write the same `PerDrawUboLayout` (`m_globalGpuBuffers->perDrawBuffer.m_data`) to `m_instanceBuffer` + `Flush()` + `Bind(14)`. **Scope guard:** only when `!job.Mesh->IsSkinned() && !job.Material->IsShaderMaterial()`. `Init()`: `m_instanceBuffer.Init(1024)` (2a budget; per-profile sizing = Phase 3). |
+| **MOD** `ForwardPass.cpp` | `RenderOpaque` (129-156): after `ConfigureProgram`, if flag set `vert->SetDefine("TK_INSTANCED","1")` → parallel program pair (both `DrawAlphaMasked` values); else `"0"` (legacy). Pass the right program to `RenderOpaqueHelper` (224-248). |
+| **MOD** `GLBackend.cpp` | `Draw` (511-535): add instanced branch — `instanceCount > 1` (and the 2a-flagged draws) use `glDrawElementsInstanced`/`glDrawArraysInstanced`; else existing `glDrawElements`/`glDrawArrays` (legacy byte-identical). GLES 3.2 provides `gl_InstanceID` + `glDrawElementsInstanced`. Vulkan already correct (`VulkanBackend.cpp:1602`, `firstInstance=0`). |
+| **NEW** verification (debug-only) | `Renderer::VerifyInstancedTransport()`: legacy frame → `ReadPixels` → A; instanced frame → `ReadPixels` → B; compute RMS + max channel delta. Gate: RMS < 1/255 AND max ≤ 2. Editor-triggerable. CPU assertion in `Render(job)`: `memcmp(&ubo, &m_instanceBuffer.Record(0), sizeof(PerDrawUboLayout)) == 0` after the write. |
+
+#### Files NOT modified (2a scope guard)
+`IGraphicsBackend.h`, `NullBackend.cpp`, `VulkanBackend.cpp` (instanced `Draw` already correct; texture bind via existing `FlushDescriptorState` `Type::Texture` path), `defaultFragment.shader` + `materialCacheInc.shader` + `drawDataInc.shader` + `skinning.shader` (fragment stays on UBO; skinning legacy). Lean split, `RenderObject`, global tables, SSBO, mobile profile = **2b**.
+
+#### Out of scope (explicit)
+Batching (P3); lean `InstanceRecord`+`RenderObject` split (2b); global tables (2b); SSBO transport (2b/3); non-zero `baseInstance` (P8); light data buffer redesign (2b); RenderObject entity ownership (2b); per-region texture upload (P4); skinned/shader-material/translucent instancing; mobile profile sizing.
+
+#### Risks
+1. **std140→texel mirror alignment** — `PerDrawUboLayout` has `ivec4 _activePointLightIndices[6]`/`_activeSpotLightIndices[6]`; RGBA32F stores them as float bits, reading back as `int` needs a cast. Only bites when the fragment starts reading light indices — **2a defers that** (fragment stays on UBO). The vertex's two `mat4` reads are pure-float, risk-free. Flagged for 2b.
+2. **static_assert misalignment** — `sizeof == 47*16` catching a real padding bug is a *feature*. `PerDrawUboLayout` is already std140-clean and the existing UBO path is GPU-byte-identical, so it should pass; if not, the fix is one explicit pad and it would have been a latent UBO bug anyway.
+3. **GL instanced branch driver quirk** — `glDrawElementsInstanced(...,1)` should be a strict superset; keep the `instanceCount <= 1` legacy `glDrawElements` branch intact so non-flagged draws are byte-identical.
+4. **Vulkan `s_instanceData` in `TK_INSTANCED=0` variant** — sampler always declared → both variants carry the resource → `FlushDescriptorState` expects slot 14 bound or substitutes a dummy (existing behavior). Always bind the instance texture on the default PBR program, even in legacy mode (cost: one `BindTexture` per program-bind). Verify with the Vulkan validation layer in the A/B run.
+
+#### Sequencing (commit order — each step ships green)
+1. `instanceDataInc.shader` + `InstanceRecord2a` typedef + static_asserts (compiles, nothing runs differently).
+2. `InstanceDataBuffer.h` (compiles, unused).
+3. GL `Draw` instanced branch (flag off → legacy byte-identical).
+4. `defaultVertex.shader` `TK_INSTANCED` define + gated call site (flag off → legacy variant byte-identical; render + verify).
+5. Renderer write/bind + `ForwardPass` variant selection (`m_instancedTransportEnabled = false`).
+6. Flip the flag; `ReadPixels` A/B verification on a single static mesh.
+7. Expand to the full opaque partition; re-verify.
+
+#### Verification (end-to-end)
+1. Build green: `cmake --build build --target ToolKit Editor`.
+2. Flag off → editor renders the scene → **visually unchanged** (legacy byte-identical).
+3. Flag on → `VerifyInstancedTransport()` on a single static mesh (cube/sphere, one directional light, no IBL, no skinning) → **RMS < 1/255 AND max channel ≤ 2**.
+4. CPU assertion passes (`memcmp` zero).
+5. Expand: full opaque partition → same tolerance.
+6. Vulkan backend A/B run + validation layer clean.
+7. `FrameStatType::InstancedDrawCall` populated (each instanced draw = 1 for now; real batch count = Phase 3).
+
+**Success:** one object renders pixel-identically through the data-buffer transport path.
 
 ---
 
