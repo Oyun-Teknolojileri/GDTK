@@ -19,6 +19,7 @@
 #include "Types.h"
 #include "Viewport.h"
 
+#include <cstddef> // offsetof (InstanceRecord2a static_asserts)
 #include <unordered_map>
 
 namespace ToolKit
@@ -182,6 +183,36 @@ namespace ToolKit
   };
 
   typedef GpuBufferBase<PerDrawUboLayout> PerDrawUboBuffer;
+
+  // Instanced transport — Phase 2a (see `rendering-roadmap.md` §Phase 2a + §5).
+  //
+  // 2a proves the instance-data-buffer transport with a *throwaway, byte-for-byte mirror* of
+  // `PerDrawUboLayout`: the same struct is written to both the per-draw UBO and the instance
+  // texture in one frame, so the (UBO-bound) fragment shader reads bytes identical to legacy
+  // and any divergence isolates to the new transport. The lean `InstanceRecord` + `RenderObject`
+  // + global-table split replaces this alias in 2b.
+  using InstanceRecord2a = PerDrawUboLayout;
+
+  // RGBA32F texel stride of one instance record. Anchors the GLSL texel layout declared in
+  // `Resources/Engine/Shaders/instanceDataInc.shader` (`TK_INSTANCE_STRIDE`) to this C++ layout
+  // — a future compiler-padding change cannot drift silently (GLSL texel layouts are unforgiving;
+  // see roadmap §5 mirroring rule).
+  //
+  // These three guards are the ones the 2a *texture/memcpy* transport needs: we copy
+  // `InstanceRecord2a` bytes into an RGBA32F texture and the GPU reads them as texels, so only
+  // the byte layout matters — C++ alignment is irrelevant here. glm's gentypes use natural
+  // 4-byte alignment in this project (verified: `alignof(glm::mat4) == 4`), so `InstanceRecord2a`
+  // — a typedef of the existing `PerDrawUboLayout` — is 4-byte aligned, which is correct for
+  // texel transport. The `alignof >= 16` SSBO/Vulkan-binding guard (roadmap v8) belongs on the
+  // *lean* 2b `InstanceRecord`, which will be authored with explicit `alignas(16)`; it is
+  // intentionally not asserted against this reuse alias.
+  static_assert(sizeof(InstanceRecord2a) % 16 == 0,
+                "InstanceRecord2a stride must be a whole number of RGBA32F texels.");
+  static_assert(offsetof(InstanceRecord2a, model) == 0,
+                "InstanceRecord2a.model must be the first field (texel offset 0).");
+  static_assert(sizeof(InstanceRecord2a) == 70 * 16,
+                "InstanceRecord2a must be 70 RGBA32F texels (1120 bytes) — mirrors PerDrawUboLayout.");
+  static constexpr uint InstanceRecord2aStride = sizeof(InstanceRecord2a) / 16; // == 70
 
   // Pass-specific UBOs (slot 7)
   //////////////////////////////////////////

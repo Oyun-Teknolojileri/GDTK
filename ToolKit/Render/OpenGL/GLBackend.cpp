@@ -524,13 +524,37 @@ namespace ToolKit
 
     BindVAO(meshGl->vaoId);
 
+    // Instanced draw path (Phase 2.75 / 3 batching). `instanceCount` defaults to 1 and nothing
+    // sets it higher yet, so the legacy `glDrawElements` / `glDrawArrays` branches below stay
+    // byte-identical for every current draw. Vulkan's Draw already passes `instanceCount`
+    // uniformly (`vkCmdDraw*` with instanceCount = 1 == a single draw), so the backends agree
+    // once instancing is exercised. The 2a single-instance transport proof (instanceCount = 1)
+    // rides the legacy branch here with `gl_InstanceID = 0`.
     if (desc.indexed)
     {
-      glDrawElements(ToGLDrawType(desc.type), desc.elementCount, GL_UNSIGNED_INT, nullptr);
+      if (desc.instanceCount > 1u)
+      {
+        glDrawElementsInstanced(ToGLDrawType(desc.type),
+                                desc.elementCount,
+                                GL_UNSIGNED_INT,
+                                nullptr,
+                                desc.instanceCount);
+      }
+      else
+      {
+        glDrawElements(ToGLDrawType(desc.type), desc.elementCount, GL_UNSIGNED_INT, nullptr);
+      }
     }
     else
     {
-      glDrawArrays(ToGLDrawType(desc.type), 0, desc.elementCount);
+      if (desc.instanceCount > 1u)
+      {
+        glDrawArraysInstanced(ToGLDrawType(desc.type), 0, desc.elementCount, desc.instanceCount);
+      }
+      else
+      {
+        glDrawArrays(ToGLDrawType(desc.type), 0, desc.elementCount);
+      }
     }
   }
 

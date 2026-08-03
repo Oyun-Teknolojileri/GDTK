@@ -18,13 +18,18 @@ namespace ToolKit
   template <typename Struct, GraphicTypes format>
   class TK_API TextureBuffer : public StructBuffer<Struct>
   {
+    // Dependent-base alias: `StructBuffer<Struct>` is dependent on `Struct`, so its members must
+    // be reached through a type (not the bare template name `StructBuffer`, which GCC 16's
+    // template-body checking rejects as an ambiguous qualified-id).
+    using BaseType = StructBuffer<Struct>;
+
    public:
     /** Maps the current data to gpu buffer. */
     void Map()
     {
       if (m_buffer && m_buffer->m_initiated)
       {
-        StructBuffer::Map([this](void* data, uint64 size) -> void { m_buffer->Map(data, size); });
+        BaseType::Map([this](void* data, uint64 /*size*/) -> void { m_buffer->Map(data); });
       }
       else
       {
@@ -35,7 +40,7 @@ namespace ToolKit
     /** Initialize and sets the size of underlying buffer. */
     void Resize(int count)
     {
-      StructBuffer::Allocate(count);
+      BaseType::Allocate(count);
 
       // Calculate the size of the buffer in bytes.
       const int structSizeBytes = sizeof(Struct);
@@ -54,6 +59,10 @@ namespace ToolKit
       sets.Format = format;
       m_buffer    = MakeNewPtr<DataTexture>(width, height, sets, "DrawBuffer");
     }
+
+    /** Indexed access to the CPU-side row (write/mutate before `Map()`). */
+    Struct& operator[](int i) { return this->m_data[i]; }
+    const Struct& operator[](int i) const { return this->m_data[i]; }
 
    public:
     /** Gpu buffer that holds the draw data. */

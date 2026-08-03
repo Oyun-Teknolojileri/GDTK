@@ -5,6 +5,8 @@
     <include name = "materialCacheInc.shader" />
     <include name = "drawDataInc.shader" />
     <include name = "perDrawDataInc.shader" />
+    <include name = "instanceDataInc.shader" />
+    <define name = "TK_INSTANCED" val="0,1" />
 	<source>
 	<!--
   
@@ -44,10 +46,22 @@
 			  }
 	  }
 
+	  // World-space transform matrices. TK_INSTANCED reads them from the instance data
+	  // texture via LoadInstance (Phase 2a transport); the legacy path reads them from
+	  // the per-draw UBO. Both hold identical PerDrawUboLayout bytes -> identical result.
+#if TK_INSTANCED
+	  InstanceRecord inst = LoadInstance(TK_INSTANCE_ID);
+	  mat4 model                 = inst.model;
+	  mat4 inverseTransposeModel = inst.inverseTransposeModel;
+#else
+	  mat4 model                 = perDraw._model;
+	  mat4 inverseTransposeModel = perDraw._inverseTransposeModel;
+#endif
+
 	  // World-space normal / TBN
 		if (normalMapInUse)
 		{
-			mat3 normalMatrix = mat3(perDraw._inverseTransposeModel);
+			mat3 normalMatrix = mat3(inverseTransposeModel);
 
 			vec3 wN = normalize(normalMatrix * N);
 			vec3 wT = normalize(normalMatrix * T);
@@ -57,10 +71,10 @@
 		}
 	    else
 	    {
-		    v_worldNormal = normalize(mat3(perDraw._inverseTransposeModel) * N);
+		    v_worldNormal = normalize(mat3(inverseTransposeModel) * N);
 	    }
 
-      vec4 worldPos = perDraw._model * localPos;
+      vec4 worldPos = model * localPos;
       v_worldPos = worldPos.xyz;
       v_viewDepth = (camera.view * worldPos).z;
       v_texture = vTexture;
