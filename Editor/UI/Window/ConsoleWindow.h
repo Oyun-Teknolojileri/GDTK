@@ -101,6 +101,9 @@ namespace ToolKit
     const String g_selectSimilar("SelectSimilar");
     TK_EDITOR_API void SelectSimilar(TagArgArray tagArgs);
 
+    const String g_instancedTransportCmd("InstancedTransport");
+    TK_EDITOR_API void InstancedTransportExec(TagArgArray tagArgs);
+
     // Command errors
     const String g_noValidEntity("No valid entity");
 

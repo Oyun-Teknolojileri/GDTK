@@ -16,6 +16,7 @@
 #include <DirectionComponent.h>
 #include <Drawable.h>
 #include <Mesh.h>
+#include <Pass.h>
 #include <PluginManager.h>
 
 namespace ToolKit
@@ -517,6 +518,11 @@ namespace ToolKit
 
     void ShowShadowFrustum(TagArgArray tagArgs) { BoolCheck(tagArgs, &GetApp()->m_showDirectionalLightShadowFrustum); }
 
+    void InstancedTransportExec(TagArgArray tagArgs)
+    {
+      BoolCheck(tagArgs, &GetApp()->m_instancedTransportEnabled);
+    }
+
     void SelectAllEffectingLights(TagArgArray tagArgs) { BoolCheck(tagArgs, &GetApp()->m_selectEffectingLights); }
 
     void CheckSceneHealth(TagArgArray tagArgs)
@@ -746,6 +752,7 @@ namespace ToolKit
       CreateCommand(g_setWorkspaceDir, SetWorkspaceDir);
       CreateCommand(g_loadPlugin, LoadPlugin);
       CreateCommand(g_showShadowFrustum, ShowShadowFrustum);
+      CreateCommand(g_instancedTransportCmd, InstancedTransportExec);
       CreateCommand(g_selectEffectingLights, SelectAllEffectingLights);
       CreateCommand(g_checkSceneHealth, CheckSceneHealth);
       CreateCommand(g_showSceneBoundary, ShowSceneBoundary);

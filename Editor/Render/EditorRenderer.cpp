@@ -50,6 +50,9 @@ namespace ToolKit
 
     void EditorRenderer::Render(Renderer* renderer)
     {
+      // Phase 2a instanced-transport toggle (console: "InstancedTransport 1"/"0").
+      renderer->SetInstancedTransportEnabled(GetApp()->m_instancedTransportEnabled);
+
       PreRender(renderer);
       SetLitMode(renderer, m_params.LitMode);
 

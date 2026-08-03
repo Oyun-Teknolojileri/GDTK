@@ -247,6 +247,7 @@ namespace ToolKit
       bool m_importSlient                      = false;
       bool m_showSelectionBoundary             = false;
       bool m_showDirectionalLightShadowFrustum = false;
+      bool m_instancedTransportEnabled         = false;
       bool m_showSceneBoundary                 = false;
       bool m_showBVHNodes                      = false;
       bool m_selectEffectingLights             = false;
