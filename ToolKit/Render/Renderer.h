@@ -529,6 +529,10 @@ namespace ToolKit
     /** Phase 2a instance-data transport toggle (off = legacy per-draw UBO, byte-identical). */
     bool IsInstancedTransportEnabled() const { return m_instancedTransportEnabled; }
 
+    /** Flip the instance-data transport on/off. Step 6: set true for the A/B verification; false
+     *  (the default) keeps every draw on the legacy per-draw UBO path. */
+    void SetInstancedTransportEnabled(bool enable) { m_instancedTransportEnabled = enable; }
+
     GpuProgramManager* GetGpuProgramManager() { return m_gpuProgramManager; }
 
    private:

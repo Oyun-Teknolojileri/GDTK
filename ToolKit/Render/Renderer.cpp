@@ -354,6 +354,17 @@ namespace ToolKit
         !job.Material->IsShaderMaterial())
     {
       m_instanceBuffer->Write(0, m_globalGpuBuffers->perDrawBuffer.m_data);
+
+      // CPU-side transport proof: the bytes written to the instance texture must be identical
+      // to the UBO bytes the fragment shader reads (both hold the same PerDrawUboLayout struct
+      // — one memcpy'd to slot 0 of the RGBA32F texture, one bound as a std140 UBO at slot 2).
+      // If this fires, the texture/UBO byte layouts have drifted (e.g. a compiler-padding change
+      // that only affects one path, or `Write` wrote to a different offset than `FeedUniforms`).
+      assert(memcmp(&m_globalGpuBuffers->perDrawBuffer.m_data,
+                    &m_instanceBuffer->Record(0),
+                    sizeof(InstanceRecord2a)) == 0 &&
+             "Phase 2a transport: instance-texture bytes differ from per-draw UBO");
+
       m_instanceBuffer->Flush();
       SetTexture(14, m_instanceBuffer->GetTexture());
     }

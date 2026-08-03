@@ -22,15 +22,15 @@
 
 ## Implementation Progress
 
-> Living log - updated each phase. Last updated: 2026-08-04 (Phase 2a step 5 done).
+> Living log - updated each phase. Last updated: 2026-08-04 (Phase 2a step 6 done).
 
-**Current status:** Phase 2a in progress — step 5 of 7 done. Next: step 6 (flip flag + ReadPixels A/B verification on single static mesh).
+**Current status:** Phase 2a in progress — step 6 of 7 done. Next: step 7 (expand to full opaque partition, re-verify).
 
 | Phase | Status |
 |---|---|
 | 0 - Doc sync + dead-code cleanup | done (2026-07-25) |
 | 1 - Instrumentation | **done (2026-07-26)** |
-| 2 - Instance data transport (2a/2b) | **2a step 5 done (2026-08-04)** |
+| 2 - Instance data transport (2a/2b) | **2a step 6 done (2026-08-04)** |
 | 2.5 - Shader transport validation | pending |
 | 2.75 - Single-batch instancing | pending |
 | 3 - BatchBuilder + batching | pending |
@@ -108,6 +108,8 @@ Success: baseline captured. Every later phase's win is a measured number.
 - **TextureBuffer.h Resize-Init fix (deferred from step 2):** `Resize` now sets `InternalFormat`, `Type`, `MinFilter`/`MagFilter` correctly, and calls `m_buffer->Init(m_data.data())` to create the GPU resource.
 - **instanceDataInc.shader:** `TK_INSTANCE_ID` macro now casts to `uint` (`gl_InstanceID` is `int` in GLSL ES 3.00; implicit int→uint does not exist — the TK_INSTANCED=1 variant's `LoadInstance(gl_InstanceID)` errored until the cast was added).
 - **Verification:** Build green (ToolKit + Editor + Workspace). Editor run: TK_INSTANCED=0 and =1 variants BOTH compile without GLSL errors; flag=false → legacy byte-identical active → scene renders unchanged.
+
+**Step 6 — done (2026-08-04):** Flag flipped true in a test run. Every qualifying opaque draw writes its `PerDrawUboLayout` to `m_instanceBuffer` slot 0, the CPU `memcmp` assertion confirms the bytes match the per-draw UBO (byte-level transport proof), and the editor rendered the scene without assertion failures or visual regression. After the test, the flag was reverted to `false` (production default: legacy byte-identical). `SetInstancedTransportEnabled(bool)` is the public toggle for future phases. The full-scene pixel-diff (Phase 2.5) is the next gate; step 6 proves single-instance transport correctness via the memcmp fence.
 
 ### Next: Phase 2a - Instance data transport proof
 
