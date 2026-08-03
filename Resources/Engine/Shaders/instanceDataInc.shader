@@ -32,10 +32,12 @@
   // (which already includes the base instance); GL ES 3.00 exposes gl_InstanceID (which does
   // not). TK_INSTANCE_ID is the caller's spelling; the desktop-GL gl_InstanceID-excludes-base
   // gotcha is absorbed here.
+// gl_InstanceID (GLES) / gl_InstanceIndex (Vulkan) are int; LoadInstance expects uint.
+// Cast here so call sites don't each need one.
 #ifdef VULKAN
-  #define TK_INSTANCE_ID gl_InstanceIndex
+  #define TK_INSTANCE_ID uint(gl_InstanceIndex)
 #else
-  #define TK_INSTANCE_ID gl_InstanceID
+  #define TK_INSTANCE_ID uint(gl_InstanceID)
 #endif
 
   // Texel stride per instance, in RGBA32F texels. MUST match the C++ value

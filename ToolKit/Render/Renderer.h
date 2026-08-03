@@ -526,6 +526,9 @@ namespace ToolKit
      *  use this to skip the pancake shader path when the rasterizer can clamp natively. */
     bool IsDepthClampSupported() { return m_backend != nullptr && m_backend->IsDepthClampSupported(); }
 
+    /** Phase 2a instance-data transport toggle (off = legacy per-draw UBO, byte-identical). */
+    bool IsInstancedTransportEnabled() const { return m_instancedTransportEnabled; }
+
     GpuProgramManager* GetGpuProgramManager() { return m_gpuProgramManager; }
 
    private:
@@ -574,6 +577,20 @@ namespace ToolKit
     int m_activePointLightCount   = 0;
     int m_activeSpotLightCount    = 0;
     bool m_ambientOcculusionInUse = false;
+
+    // Phase 2a instance-data transport (see rendering-roadmap.md §Phase 2a).
+    // When false (default), every draw uses the legacy per-draw UBO path — byte-identical.
+    // Step 6 flips this to true for the single-instance A/B verification.
+    bool m_instancedTransportEnabled = false;
+
+    /** Instance-data buffer for the GL/WebGL VTF transport (2a single-instance proof).
+     *  The underlying RGBA32F texture carries one InstanceRecord2a (= PerDrawUboLayout) row;
+     *  each flagged draw overwrites slot 0, Flushes, and binds s_instanceData before
+     *  glDrawElements (gl_InstanceID=0 -> LoadInstance(0)). 2b replaces with per-batch /
+     *  lean-record send.  Held by pointer to avoid a circular include between Renderer.h
+     *  and InstanceDataBuffer.h (InstanceDataBuffer needs InstanceRecord2a which lives
+     *  above in this file). */
+    std::unique_ptr<class InstanceDataBuffer> m_instanceBuffer;
 
     FramebufferPtr m_framebuffer  = nullptr;
     TexturePtr m_shadowAtlas      = nullptr;

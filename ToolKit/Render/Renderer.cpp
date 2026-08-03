@@ -6,6 +6,7 @@
  */
 
 #include "Renderer.h"
+#include "InstanceDataBuffer.h"
 
 #include "AABBOverrideComponent.h"
 #include "Camera.h"
@@ -115,6 +116,10 @@ namespace ToolKit
 
     m_backend->SetSrgbAutoEncoding(GetRenderSystem()->m_backbufferFormatIsSRGB);
     m_backend->SetDefaultClearColor(Vec4(0.0f, 0.0f, 0.0f, 1.0f));
+
+    // Phase 2a instance-data buffer — 1024-slot budget (per-profile sizing = Phase 3).
+    m_instanceBuffer = std::make_unique<InstanceDataBuffer>();
+    m_instanceBuffer->Init(1024);
   }
 
   Renderer::~Renderer()
@@ -337,6 +342,21 @@ namespace ToolKit
     }
 
     FeedUniforms(m_currentProgram, job);
+
+    // Phase 2a instance-data transport proof (see rendering-roadmap.md §Phase 2a).
+    // When the flag is on and the draw qualifies (default-PBR vertex shader), write the
+    // same PerDrawUboLayout to the instance texture at slot 0, flush, and bind.
+    // The vertex shader's TK_INSTANCED=1 variant reads it via LoadInstance(gl_InstanceID=0).
+    // Skinned meshes (own skinning vertex path) and shader materials (own program) stay on
+    // the legacy per-draw path until Phase 7 / tracked separately.
+    if (m_instancedTransportEnabled &&
+        !job.Mesh->IsSkinned() &&
+        !job.Material->IsShaderMaterial())
+    {
+      m_instanceBuffer->Write(0, m_globalGpuBuffers->perDrawBuffer.m_data);
+      m_instanceBuffer->Flush();
+      SetTexture(14, m_instanceBuffer->GetTexture());
+    }
 
     const Mesh* mesh = job.Mesh;
     DrawDesc desc;

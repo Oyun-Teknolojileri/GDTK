@@ -139,7 +139,17 @@ namespace ToolKit
     ShaderPtr frag = m_programConfigMat->GetFragmentShaderVal();
     frag->SetDefine("DrawAlphaMasked", "0");
 
-    ShaderPtr vert           = m_programConfigMat->GetVertexShaderVal();
+    ShaderPtr vert = m_programConfigMat->GetVertexShaderVal();
+
+    // Phase 2a instance-data transport. TK_INSTANCED selects the program variant
+    // compiled by the `<define val="0,1">` in defaultVertex.shader:
+    //   0 = legacy per-draw UBO path (byte-identical);
+    //   1 = LoadInstance(TK_INSTANCE_ID) from the instance-data texture.
+    if (renderer->IsInstancedTransportEnabled())
+      vert->SetDefine("TK_INSTANCED", "1");
+    else
+      vert->SetDefine("TK_INSTANCED", "0");
+
     GpuProgramPtr gpuProgram = renderer->GetGpuProgramManager()->CreateProgram(vert, frag);
 
     RenderJobItr begin       = renderData->GetForwardOpaqueBegin();

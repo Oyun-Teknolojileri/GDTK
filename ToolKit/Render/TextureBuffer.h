@@ -56,8 +56,16 @@ namespace ToolKit
 
       // Create a texture
       TextureSettings sets;
-      sets.Format = format;
-      m_buffer    = MakeNewPtr<DataTexture>(width, height, sets, "DrawBuffer");
+      sets.Format         = format;
+      sets.InternalFormat = format;            // e.g. FormatRGBA32F — must match Format for data textures
+      sets.Type           = GraphicTypes::TypeFloat;
+      sets.MinFilter      = GraphicTypes::SampleNearest; // texelFetch ignores filtering, but safe
+      sets.MagFilter      = GraphicTypes::SampleNearest;
+      m_buffer            = MakeNewPtr<DataTexture>(width, height, sets, "DrawBuffer");
+
+      // Init the GPU resource with the initial CPU data so m_initiated is true and
+      // subsequent Map() calls upload correctly (Map no-ops when m_initiated == false).
+      m_buffer->Init(this->m_data.data());
     }
 
     /** Indexed access to the CPU-side row (write/mutate before `Map()`). */
