@@ -366,6 +366,22 @@ namespace ToolKit
              "Phase 2a transport: instance-texture bytes differ from per-draw UBO");
 
       m_instanceBuffer->Flush();
+
+      // Per-frame diagnostic: dump model[3] (world translation) from both UBO and instance
+      // texture so we can verify the GPU sees the same values. Fires once per session.
+      static bool s_dumpedOnce = false;
+      if (!s_dumpedOnce)
+      {
+        s_dumpedOnce = true;
+        const PerDrawUboLayout& ubo = m_globalGpuBuffers->perDrawBuffer.m_data;
+        const InstanceRecord2a&  tex = m_instanceBuffer->Record(0);
+        GetLogger()->Log(
+            "[Phase 2a diag] ubo.model[3]=" + std::to_string(ubo.model[3].x) + "," +
+            std::to_string(ubo.model[3].y) + "," + std::to_string(ubo.model[3].z) +
+            " | tex.model[3]=" + std::to_string(tex.model[3].x) + "," +
+            std::to_string(tex.model[3].y) + "," + std::to_string(tex.model[3].z));
+      }
+
       SetTexture(14, m_instanceBuffer->GetTexture());
     }
 
