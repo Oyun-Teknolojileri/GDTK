@@ -56,6 +56,9 @@ namespace ToolKit
     Settings m_settings;
     Vec3 m_worldLocation;
     EntityPtr m_entity = nullptr;
+
+   private:
+    bool m_worldLocationInitialized = false;
   };
 
   class TK_API Cube final : public Entity

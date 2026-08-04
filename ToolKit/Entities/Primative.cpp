@@ -37,6 +37,13 @@ namespace ToolKit
 
   void Billboard::LookAt(CameraPtr cam, float scale)
   {
+    // Lazy-init m_worldLocation from the node's current translation on first call.
+    if (!m_worldLocationInitialized)
+    {
+      m_worldLocation            = m_node->GetTranslation();
+      m_worldLocationInitialized = true;
+    }
+
     // Billboard placement.
     if (m_settings.distanceToCamera > 0.0f)
     {
@@ -99,9 +106,10 @@ namespace ToolKit
   Entity* Billboard::CopyTo(Entity* copyTo) const
   {
     Super::CopyTo(copyTo);
-    Billboard* ntt       = static_cast<Billboard*>(copyTo);
-    ntt->m_settings      = m_settings;
-    ntt->m_worldLocation = m_worldLocation;
+    Billboard* ntt              = static_cast<Billboard*>(copyTo);
+    ntt->m_settings             = m_settings;
+    ntt->m_worldLocation        = m_worldLocation;
+    ntt->m_worldLocationInitialized = m_worldLocationInitialized;
     return ntt;
   }
 
