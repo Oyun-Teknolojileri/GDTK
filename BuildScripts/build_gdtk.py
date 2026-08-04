@@ -53,7 +53,7 @@ from _common import (  # noqa: E402  -- intentional import after sys.path tweak
     detect_platform, detect_generator, detect_parallel_jobs,
     _run_cmake, clean_platform,
     # Pre-flight checks shared with build_dependencies.py -- see _common.py.
-    tool_preflight, system_package_preflight,
+    tool_preflight, system_package_preflight, vulkan_sdk_check,
 )
 
 
@@ -298,6 +298,14 @@ def main() -> int:
     )
     if preflight_rc != 0:
         return preflight_rc
+
+    # Windows Vulkan SDK check -- only when --vulkan, because the default
+    # GL backend compiles without it. Linux Vulkan packages are handled
+    # above by system_package_preflight.
+    if args.vulkan:
+        vulkan_rc = vulkan_sdk_check(platform)
+        if vulkan_rc != 0:
+            return vulkan_rc
 
     if not args.no_deps_check:
         section("Checking dependencies")

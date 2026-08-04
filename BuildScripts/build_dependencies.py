@@ -151,10 +151,7 @@ def build_windows(
             f"-DCMAKE_CXX_COMPILER={cl_path}",
         ]
 
-    # When --target is given, build only the requested dep target(s). The
-    # CopyDependencies step (multi-config only) is skipped in that case
-    # because it DEPENDS on SDL2 + imgui and would force-build deps the
-    # user explicitly excluded.
+    # When --target is given, build only the requested dep target(s).
     target_arg: List[str] = ["--target", *targets] if targets else []
 
     if is_multiconfig:
@@ -180,18 +177,10 @@ def build_windows(
 
         for config in configs:
             section(f"Windows / {config}")
-            # Build every dependency in the tree, then run
-            # CopyDependencies on top of that to stage the runtime
-            # DLLs next to Bin/ and Utils/. The two invocations
-            # are separate because CopyDependencies' `DEPENDS`
-            # list only mentions SDL2 + imgui -- building only
-            # that target would skip minizip, zstd and assimp
-            # (the static libs are link-time only, the assimp
-            # DLL is staged by the engine's Import/CMakeLists
-            # POST_BUILD, not by us). Building the default
-            # target (ALL_BUILD) first ensures every
-            # `add_subdirectory` from Dependency/CMakeLists.txt
-            # is materialized before CopyDependencies runs.
+            # Build every dependency in the tree. Runtime DLL staging
+            # (SDL2, imgui, assimp) is handled by install() rules in
+            # the root CMakeLists.txt -- there is no CopyDependencies
+            # target any more.
             try:
                 _run_cmake([
                     "cmake", "--build", str(build_dir),
@@ -199,17 +188,6 @@ def build_windows(
                     "--parallel", str(parallel),
                     *target_arg,
                 ])
-                # CopyDependencies stages the SDL2 / imgui runtime DLLs
-                # next to the tools; only run it for a full build, since
-                # it DEPENDS on SDL2 + imgui and would otherwise rebuild
-                # the deps a --target selection excluded.
-                if not targets:
-                    _run_cmake([
-                        "cmake", "--build", str(build_dir),
-                        "--config", config,
-                        "--target", "CopyDependencies",
-                        "--parallel", str(parallel),
-                    ])
                 # Stage the Dependency/Config/*.cmake wrappers next to
                 # the artifacts so the root CMakeLists can find them
                 # via `find_package(<dep> REQUIRED CONFIG)`.
@@ -290,9 +268,8 @@ def build_linux_or_mac(
             continue
         section(f"{platform} / {config} (build)")
         try:
-            # No --target CopyDependencies here: that target is only defined
-            # in Dependency/CMakeLists.txt for Windows. On Linux the binaries
-            # already land in DEP_INT/.../<Config> via CMAKE_*_OUTPUT_DIRECTORY.
+            # Runtime DLL staging is handled by install() rules in the root
+            # CMakeLists.txt.
             _run_cmake([
                 "cmake", "--build", str(build_dir),
                 "--parallel", str(parallel),
@@ -330,9 +307,7 @@ def main() -> int:
         help=(
             "Dependency target to build (SDL2, minizip, imgui, assimp). "
             "May be passed multiple times. Default: build everything "
-            "(no --target). When set, the Windows CopyDependencies step "
-            "is skipped because it DEPENDS on SDL2 + imgui and would "
-            "force-build the deps you excluded."
+            "(no --target)."
         ),
     )
     parser.add_argument(

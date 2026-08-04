@@ -72,7 +72,10 @@ if(TK_VULKAN)
       set(VULKAN_SDK $ENV{VULKAN_SDK})
     endif()
     if(VULKAN_SDK)
+      # VULKAN_SDK/Include        vulkan/vulkan.h        (all platforms)
+      # VULKAN_SDK/Include/vma    vk_mem_alloc.h         (Windows)
       target_include_directories(ToolKit SYSTEM PUBLIC
+        ${VULKAN_SDK}/Include
         ${VULKAN_SDK}/Include/vma
       )
     else()
@@ -227,7 +230,25 @@ if(UNIX)
 elseif(WIN32)
   target_link_libraries(ToolKit PUBLIC OpenGL32)
   if(TK_VULKAN)
+    # VULKAN_SDK/Lib contains vulkan-1.lib (the import library). The
+    # VS linker does NOT automatically search VULKAN_SDK/Lib even
+    # when the env var is set, so add it explicitly.
+    target_link_directories(ToolKit PUBLIC "${VULKAN_SDK}/Lib")
     target_link_libraries(ToolKit PUBLIC vulkan-1)
+    # shaderc: the LunarG SDK ships shaderc_combined[d].lib (a static
+    # amalgamation of shaderc + glslang + SPIRV-Tools + SPIRV-Tools-opt).
+    # Pick the Debug-suffixed variant for Debug configs so the CRT
+    # (/MD vs /MDd + _ITERATOR_DEBUG_LEVEL) matches the rest of the tree.
+    target_link_libraries(ToolKit PUBLIC
+        shaderc_combined$<$<CONFIG:Debug>:d>)
+    # The LunarG SDK ships prebuilt shaderc_combined[d].lib without the
+    # matching .pdb files. The embedded PDB paths (glslangd.pdb,
+    # SPIRV-Toolsd.pdb, ...) reference the builder's machine and the
+    # linker warns (LNK4099) on every object -- an informational warning,
+    # harmless, but noisy. Suppress it.
+    if(MSVC)
+      target_link_options(ToolKit PRIVATE "/ignore:4099")
+    endif()
   endif()
 endif()
 
