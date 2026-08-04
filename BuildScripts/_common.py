@@ -652,6 +652,38 @@ def tool_preflight(platform: str) -> None:
             warn("build toolset is genuinely missing.")
 
 
+def vulkan_sdk_check(platform: str) -> int:
+    """Verify the Vulkan SDK is reachable when --vulkan is passed.
+
+    On Windows the LunarG Vulkan SDK is the only way to get the Vulkan
+    loader headers + import library; the installer sets the VULKAN_SDK
+    env var (or the user sets it manually after an offline install).
+
+    On Linux the Vulkan loader + shaderc dev packages are handled by
+    system_package_preflight (distro packages), so this check is a no-op.
+
+    Returns 0 when the SDK is present (or not applicable), 2 when the
+    platform requires it and it is missing -- the caller then aborts the
+    build with a clear install-link message.
+    """
+    if platform != "Windows":
+        return 0
+
+    sdk = os.environ.get("VULKAN_SDK", "")
+    if sdk:
+        ok(f"Vulkan SDK: {sdk}")
+        return 0
+
+    err("--vulkan on Windows requires the LunarG Vulkan SDK.")
+    err("Download the installer from https://vulkan.lunarg.com,")
+    err("install it, then reopen your terminal (the installer")
+    err("sets the VULKAN_SDK environment variable).")
+    err("If you installed the SDK without the installer, set")
+    err('  set VULKAN_SDK=C:\\VulkanSDK\\<version>')
+    err("before re-running the build.")
+    return 2
+
+
 def system_package_preflight(
     platform: str,
     *,
