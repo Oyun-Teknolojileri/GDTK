@@ -20,7 +20,7 @@ file(GLOB_RECURSE EDITOR_SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
 )
 
-add_executable(Editor ${EDITOR_SOURCES})
+add_executable(Editor WIN32 ${EDITOR_SOURCES})
 
 # Windows: embed the app icon (.rc compiled to .res by the MSVC resource
 # compiler, linked into the executable). The .rc references the icon at

@@ -114,7 +114,7 @@ else()
             endif()
             set(_d "${TOOLKIT_DIR}/Bin${_cfg}")
             install(FILES
-                    "${_d}/libToolKit${_s}.dll"
+                    "${_d}/ToolKit${_s}.dll"
                     "${_d}/SDL2${_s}.dll"
                     "${_d}/imgui${_s}.dll"
                 DESTINATION Bin
