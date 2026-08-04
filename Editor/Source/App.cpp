@@ -902,16 +902,16 @@ namespace ToolKit
         return -1;
       }
 
-      bool importFileExist          = CheckFile(fullPath);
+      bool importFileExist = CheckFile(fullPath);
 
       // Import now lives alongside Editor in Bin<Config>/, so we resolve it
       // as a sibling executable. No chdir needed -- out.txt and importList.txt
       // are written to CWD (Bin<Config>/) directly.
-      std::filesystem::path pathBck = std::filesystem::current_path();
-      String importExePath         = PathToString(std::filesystem::absolute(PathToString(pathBck) +
-                                                                       ConcatPaths({"", "Import"})));
+      Path pathBck         = GetCurrentPath();
+      String importExePath =
+          PathToString(ToAbsolutePath(PathToString(pathBck) + ConcatPaths({"", "Import" TK_EXE_EXT})));
 
-      std::filesystem::path cpyDir = ".";
+      Path cpyDir = ".";
       if (!subDir.empty())
       {
         cpyDir += GetPathSeparator() + subDir;
@@ -1028,7 +1028,7 @@ namespace ToolKit
               const String sourceFile = line;
               if (line.rfind(tempPrefix) == 0)
               {
-                line = line.substr(tempPrefix.size(), -1);
+                line             = line.substr(tempPrefix.size(), -1);
                 const size_t sep = line.find(GetPathSeparator());
                 if (sep != String::npos)
                 {

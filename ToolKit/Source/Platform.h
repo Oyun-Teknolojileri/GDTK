@@ -74,10 +74,12 @@ namespace ToolKit
 // Debug (CMAKE_DEBUG_POSTFIX on the game / OUTPUT_NAME "ToolKit$<...:d>" on
 // the engine), so a Debug editor finds the Debug plugin.
 #ifdef TK_WIN
-  #define TK_PLUGIN_EXT ".dll"
+  #define TK_EXE_EXT          ".exe"
+  #define TK_PLUGIN_EXT       ".dll"
   #define TK_PLUGIN_DEBUG_EXT "d.dll"
 #else
-  #define TK_PLUGIN_EXT ".so"
+  #define TK_EXE_EXT          ""
+  #define TK_PLUGIN_EXT       ".so"
   #define TK_PLUGIN_DEBUG_EXT "d.so"
 #endif
 

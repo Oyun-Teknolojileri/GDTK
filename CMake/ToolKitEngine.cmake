@@ -134,7 +134,7 @@ foreach(_cfg IN LISTS _TK_CONFIGS)
         set(_sfx "")
     endif()
     if(WIN32)
-        set(_engine_lib_${_cfg}   "${TOOLKIT_DIR}/Bin${_cfg}/libToolKit${_sfx}.dll")
+        set(_engine_lib_${_cfg}   "${TOOLKIT_DIR}/Bin${_cfg}/ToolKit${_sfx}.dll")
         set(_engine_implib_${_cfg} "${TOOLKIT_DIR}/Bin${_cfg}/ToolKit${_sfx}.lib")
     else()
         set(_engine_lib_${_cfg} "${TOOLKIT_DIR}/Bin${_cfg}/libToolKit${_sfx}.so")
@@ -155,7 +155,7 @@ if(_tk_lib_missing)
     message(FATAL_ERROR
         "ToolKit engine library not found under '${TOOLKIT_DIR}/Bin<Config>' "
         "(looked in BinDebug/, BinRelease/, BinRelWithDebInfo/, BinMinSizeRel/ "
-        "for libToolKit[d].so / libToolKit[d].dll). Build the engine first, e.g.:\n"
+        "for libToolKit[d].so / ToolKit[d].dll). Build the engine first, e.g.:\n"
         "  python3 ${TOOLKIT_DIR}/BuildScripts/build_dependencies.py --configs ${CMAKE_BUILD_TYPE}\n"
         "  cmake -S ${TOOLKIT_DIR} -B ${TOOLKIT_DIR}/Intermediate/${TK_PLATFORM}/${CMAKE_BUILD_TYPE} -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}\n"
         "  cmake --build ${TOOLKIT_DIR}/Intermediate/${TK_PLATFORM}/${CMAKE_BUILD_TYPE}")

@@ -18,7 +18,7 @@ file(GLOB_RECURSE LAUNCHER_SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
 )
 
-add_executable(Launcher ${LAUNCHER_SOURCES})
+add_executable(Launcher WIN32 ${LAUNCHER_SOURCES})
 
 # The Launcher reuses headers from Editor/ (EditorTypes.h, IconsFontAwesome.h)
 # and from Workspace/ (Workspace.h, WorkspaceTypes.h). The latter is already
