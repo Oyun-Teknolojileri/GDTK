@@ -325,22 +325,12 @@ namespace ToolKit
 
     m_backend->BindPipeline(m_currentProgram, &state);
 
-    // Bind textures AFTER BindPipeline. On Vulkan, BindPipeline resets the per-draw descriptor
-    // set, so texture writes before it would be lost. On GL the order is irrelevant (driver slots
-    // are independent of the program binding), so this order is safe for both backends.
     updateAndBindSkinningTextures();
-    SetMaterial(job.Material);
-    SetDataTextures(job);
 
-    // Apply post-pipeline explicit binding for utility passes. Must happen AFTER
-    // SetMaterial / SetDataTextures so it can't be overwritten, but BEFORE Draw()
-    // where FlushDescriptorState reads the state.
-    for (const auto& pair : m_postPipelineTextures)
-    {
-      if (int slot = m_currentProgram->GetTextureSlot(pair.first.c_str()); slot != -1)
-        SetTexture((ubyte) slot, pair.second);
-    }
-
+    // Per-draw UBO (populated here, consumed by the legacy fragment path and — in 2a —
+    // mirrored into the instance-data texture below). Must run before the Phase 2a block
+    // (needs perDrawBuffer.m_data) and before SetMaterial (so SetMaterial can restore
+    // slot 0 after Flush() temporarily clobbers it via UpdateTextureRegion).
     FeedUniforms(m_currentProgram, job);
 
     // Phase 2a instance-data transport proof (see rendering-roadmap.md §Phase 2a).
@@ -349,6 +339,11 @@ namespace ToolKit
     // The vertex shader's TK_INSTANCED=1 variant reads it via LoadInstance(gl_InstanceID=0).
     // Skinned meshes (own skinning vertex path) and shader materials (own program) stay on
     // the legacy per-draw path until Phase 7 / tracked separately.
+    //
+    // IMPORTANT: Flush() → UpdateTextureRegion temporarily binds the instance texture to
+    // slot 0 (GL_TEXTURE0) for the glTexSubImage2D upload. This block must run BEFORE
+    // SetMaterial so the material texture bindings (which include s_diffuseColor at slot 0)
+    // overwrite this temporary binding before Draw().
     if (m_instancedTransportEnabled &&
         !job.Mesh->IsSkinned() &&
         !job.Material->IsShaderMaterial())
@@ -383,6 +378,23 @@ namespace ToolKit
       }
 
       SetTexture(14, m_instanceBuffer->GetTexture());
+    }
+
+    // Bind textures AFTER BindPipeline. On Vulkan, BindPipeline resets the per-draw descriptor
+    // set, so texture writes before it would be lost. On GL the order is irrelevant (driver slots
+    // are independent of the program binding), so this order is safe for both backends.
+    // Must also run AFTER the Phase 2a block so it can restore slot 0 (s_diffuseColor) after
+    // Flush() temporarily clobbered it via UpdateTextureRegion's BindTextureDirect(..., 0).
+    SetMaterial(job.Material);
+    SetDataTextures(job);
+
+    // Apply post-pipeline explicit binding for utility passes. Must happen AFTER
+    // SetMaterial / SetDataTextures so it can't be overwritten, but BEFORE Draw()
+    // where FlushDescriptorState reads the state.
+    for (const auto& pair : m_postPipelineTextures)
+    {
+      if (int slot = m_currentProgram->GetTextureSlot(pair.first.c_str()); slot != -1)
+        SetTexture((ubyte) slot, pair.second);
     }
 
     const Mesh* mesh = job.Mesh;

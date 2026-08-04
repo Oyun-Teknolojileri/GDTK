@@ -56,8 +56,9 @@ namespace ToolKit
 
       // Create a texture
       TextureSettings sets;
-      sets.Format         = format;
-      sets.InternalFormat = format;            // e.g. FormatRGBA32F — must match Format for data textures
+      sets.InternalFormat = format;            // sized internal format (e.g. FormatRGBA32F → GL_RGBA32F)
+      sets.Format         = GraphicTypes::FormatRGBA; // base format for glTexImage2D (must be unsized, e.g. GL_RGBA);
+                                                       // GLES rejects sized formats here (GL_INVALID_VALUE)
       sets.Type           = GraphicTypes::TypeFloat;
       sets.MinFilter      = GraphicTypes::SampleNearest; // texelFetch ignores filtering, but safe
       sets.MagFilter      = GraphicTypes::SampleNearest;
