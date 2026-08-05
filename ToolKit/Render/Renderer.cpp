@@ -341,18 +341,19 @@ namespace ToolKit
     FeedUniforms(m_currentProgram, job);
 
     // Phase 2a instance-data transport proof (see rendering-roadmap.md §Phase 2a).
-    // When the flag is on and the draw qualifies (default-PBR vertex shader), write the
-    // same PerDrawUboLayout to the instance texture at slot 0, flush, and bind.
-    // The vertex shader's TK_INSTANCED=1 variant reads it via LoadInstance(gl_InstanceID=0).
-    // Skinned meshes (own skinning vertex path) and shader materials (own program) stay on
-    // the legacy per-draw path until Phase 7 / tracked separately.
+    // When the flag is on and the draw uses the default-PBR vertex shader (which has
+    // the TK_INSTANCED=1 variant), write the same PerDrawUboLayout to the instance
+    // texture at slot 0, flush, and bind. The vertex shader reads it via
+    // LoadInstance(gl_InstanceID=0).
+    //
+    // Shader materials (own program, no TK_INSTANCED variant) stay on the legacy
+    // per-draw path until Phase 7 / tracked separately.
     //
     // IMPORTANT: Flush() → UpdateTextureRegion temporarily binds the instance texture to
     // slot 0 (GL_TEXTURE0) for the glTexSubImage2D upload. This block must run BEFORE
     // SetMaterial so the material texture bindings (which include s_diffuseColor at slot 0)
     // overwrite this temporary binding before Draw().
     if (m_instancedTransportEnabled &&
-        !job.Mesh->IsSkinned() &&
         !job.Material->IsShaderMaterial())
     {
       m_instanceBuffer->Write(0, m_globalGpuBuffers->perDrawBuffer.m_data);
