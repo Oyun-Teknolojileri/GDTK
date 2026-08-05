@@ -117,7 +117,7 @@ namespace ToolKit
     m_backend->SetSrgbAutoEncoding(GetRenderSystem()->m_backbufferFormatIsSRGB);
     m_backend->SetDefaultClearColor(Vec4(0.0f, 0.0f, 0.0f, 1.0f));
 
-    // Phase 2a instance-data buffer — 1024-slot budget (per-profile sizing = Phase 3).
+    // Phase 2b instance-data buffer — 1024-slot budget (per-profile sizing = Phase 3).
     m_instanceBuffer = std::make_unique<InstanceDataBuffer>();
     m_instanceBuffer->Init(1024);
   }
@@ -334,17 +334,17 @@ namespace ToolKit
     // draw's volume assignment.
     SetDataTextures(job);
 
-    // Per-draw UBO (populated here, consumed by the legacy fragment path and — in 2a —
-    // mirrored into the instance-data texture below). Must run before the Phase 2a block
+    // Per-draw UBO (populated here, consumed by the legacy fragment path and — in 2b —
+    // the source for the lean InstanceRecord written below). Must run before the Phase 2b block
     // (needs perDrawBuffer.m_data) and before SetMaterial (so SetMaterial can restore
     // slot 0 after Flush() temporarily clobbers it via UpdateTextureRegion).
     FeedUniforms(m_currentProgram, job);
 
-    // Phase 2a instance-data transport proof (see rendering-roadmap.md §Phase 2a).
+    // Phase 2b instanced transport (see rendering-roadmap.md §Phase 2b).
     // When the flag is on and the draw uses the default-PBR vertex shader (which has
-    // the TK_INSTANCED=1 variant), write the same PerDrawUboLayout to the instance
+    // the TK_INSTANCED=1 variant), write the lean InstanceRecord to the instance
     // texture at slot 0, flush, and bind. The vertex shader reads it via
-    // LoadInstance(gl_InstanceID=0).
+    // LoadInstance(gl_InstanceID=0). Fragment shader stays on perDraw UBO through step 6.
     //
     // Shader materials (own program, no TK_INSTANCED variant) stay on the legacy
     // per-draw path until Phase 7 / tracked separately.
@@ -356,25 +356,50 @@ namespace ToolKit
     if (m_instancedTransportEnabled &&
         !job.Material->IsShaderMaterial())
     {
-      m_instanceBuffer->Write(0, m_globalGpuBuffers->perDrawBuffer.m_data);
+      const PerDrawUboLayout& ubo = m_globalGpuBuffers->perDrawBuffer.m_data;
 
-      // CPU-side transport proof: the bytes written to the instance texture must be identical
-      // to the UBO bytes the fragment shader reads (both hold the same PerDrawUboLayout struct
-      // — one memcpy'd to slot 0 of the RGBA32F texture, one bound as a std140 UBO at slot 2).
-      // If this fires, the texture/UBO byte layouts have drifted (e.g. a compiler-padding change
-      // that only affects one path, or `Write` wrote to a different offset than `FeedUniforms`).
-      assert(memcmp(&m_globalGpuBuffers->perDrawBuffer.m_data,
-                    &m_instanceBuffer->Record(0),
-                    sizeof(InstanceRecord2a)) == 0 &&
-             "Phase 2a transport: instance-texture bytes differ from per-draw UBO");
+      // Build the lean InstanceRecord from the per-draw UBO.
+      InstanceRecord rec;
+      rec.model         = ubo.model;
+      rec.lightListIndex = 0; // step 5
+      rec.animKeyIndex   = 0; // step 6
+      rec.flags          = 0;
+      rec._pad           = 0;
+
+      // Uniform-scale heuristic: compare column vector lengths of the model matrix.
+      // If all three axes have equal length (within epsilon), the scale is uniform.
+      {
+        float lenX = glm::length(glm::vec3(rec.model[0]));
+        float lenY = glm::length(glm::vec3(rec.model[1]));
+        float lenZ = glm::length(glm::vec3(rec.model[2]));
+        const float eps = 1e-5f;
+        if (glm::abs(lenX - lenY) < eps && glm::abs(lenX - lenZ) < eps)
+        {
+          rec.flags |= InstanceFlags::UNIFORM_SCALE;
+        }
+      }
+
+      if (job.Mesh->IsSkinned())
+      {
+        rec.flags |= InstanceFlags::IS_SKINNED;
+      }
+
+      m_instanceBuffer->Write(0, rec);
+
+      // CPU-side transport proof: the model field in the instance texture must match
+      // the UBO model field byte-for-byte. The remainder of InstanceRecord (light/anim/flags)
+      // is validated by step 3-6 parity checks as those fields are filled in.
+      assert(memcmp(&ubo.model,
+                    &m_instanceBuffer->Record(0).model,
+                    sizeof(Mat4)) == 0 &&
+             "Phase 2b transport: instance-texture model differs from per-draw UBO model");
 
       m_instanceBuffer->Flush();
 
-      // Phase 2a: full-buffer upload — track the actual bytes sent to the GPU so the
-      // UploadedBytes stat reflects the true cost (slot 0 write + full texture re-upload).
-      // The per-draw UBO bytes are tracked separately in FeedUniforms.
+      // Phase 2b: full-buffer upload (until step 2 region-scoped upload lands).
+      // Track the actual bytes sent to the GPU.
       Stats::AddStat(FrameStatType::UploadedBytes,
-                     static_cast<uint64>(InstanceRecord2aStride) * 16u * 1024u);
+                     static_cast<uint64>(InstanceRecordStride) * 16u * 1024u);
 
       // Per-frame diagnostic: dump model[3] (world translation) from both UBO and instance
       // texture so we can verify the GPU sees the same values. Fires once per session.
@@ -382,13 +407,13 @@ namespace ToolKit
       if (!s_dumpedOnce)
       {
         s_dumpedOnce = true;
-        const PerDrawUboLayout& ubo = m_globalGpuBuffers->perDrawBuffer.m_data;
-        const InstanceRecord2a&  tex = m_instanceBuffer->Record(0);
+        const InstanceRecord& tex = m_instanceBuffer->Record(0);
         GetLogger()->Log(
-            "[Phase 2a diag] ubo.model[3]=" + std::to_string(ubo.model[3].x) + "," +
+            "[Phase 2b diag] ubo.model[3]=" + std::to_string(ubo.model[3].x) + "," +
             std::to_string(ubo.model[3].y) + "," + std::to_string(ubo.model[3].z) +
             " | tex.model[3]=" + std::to_string(tex.model[3].x) + "," +
-            std::to_string(tex.model[3].y) + "," + std::to_string(tex.model[3].z));
+            std::to_string(tex.model[3].y) + "," + std::to_string(tex.model[3].z) +
+            " flags=" + std::to_string(tex.flags));
       }
 
       SetTexture(14, m_instanceBuffer->GetTexture());
@@ -397,7 +422,7 @@ namespace ToolKit
     // Bind textures AFTER BindPipeline. On Vulkan, BindPipeline resets the per-draw descriptor
     // set, so texture writes before it would be lost. On GL the order is irrelevant (driver slots
     // are independent of the program binding), so this order is safe for both backends.
-    // Must also run AFTER the Phase 2a block so it can restore slot 0 (s_diffuseColor) after
+    // Must also run AFTER the Phase 2b block so it can restore slot 0 (s_diffuseColor) after
     // Flush() temporarily clobbered it via UpdateTextureRegion's BindTextureDirect(..., 0).
     // SetDataTextures already ran before FeedUniforms — only SetMaterial is needed here.
     SetMaterial(job.Material);

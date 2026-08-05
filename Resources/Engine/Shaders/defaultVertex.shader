@@ -51,8 +51,19 @@
 	  // the per-draw UBO. Both hold identical PerDrawUboLayout bytes -> identical result.
 #if TK_INSTANCED
 	  InstanceRecord inst = LoadInstance(TK_INSTANCE_ID);
-	  mat4 model                 = inst.model;
-	  mat4 inverseTransposeModel = inst.inverseTransposeModel;
+	  mat4 model = inst.model;
+	  // Inverse heuristic (roadmap Phase 2b): uniform scale -> cheap mat3(model)
+	  // (proportional to the true inverse-transpose; normalize() cancels the scale
+	  // factor). Non-uniform scale -> full GPU inverse-transpose.
+	  mat4 inverseTransposeModel;
+	  if ((int(inst.packedRow.z) & TK_INSTFLAG_UNIFORM_SCALE) != 0)
+	  {
+	      inverseTransposeModel = mat4(mat3(model));
+	  }
+	  else
+	  {
+	      inverseTransposeModel = transpose(inverse(model));
+	  }
 #else
 	  mat4 model                 = perDraw._model;
 	  mat4 inverseTransposeModel = perDraw._inverseTransposeModel;

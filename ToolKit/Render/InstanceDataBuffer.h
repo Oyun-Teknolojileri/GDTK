@@ -7,46 +7,43 @@
 
 #pragma once
 
-#include "Renderer.h"      // InstanceRecord2a (= PerDrawUboLayout), InstanceRecord2aStride
+#include "Renderer.h"      // InstanceRecord, InstanceRecordStride, InstanceFlags
 #include "TextureBuffer.h" // TextureBuffer<> (RGBA32F-backed struct array)
 
 namespace ToolKit
 {
 
   /**
-   * Instance data transport — Phase 2a (see `rendering-roadmap.md` §Phase 2a + §5).
+   * Instance data transport — Phase 2b (see `rendering-roadmap.md` §Phase 2b).
    *
-   * Renderer-side wrapper around a `TextureBuffer<InstanceRecord2a, FormatRGBA32F>`: the CPU-side
-   * array of instance records plus the RGBA32F GPU texture that the GL/WebGL `LoadInstance(id)`
-   * path (see `Resources/Engine/Shaders/instanceDataInc.shader`) reads via `texelFetch`. Adds no
-   * new `IGraphicsBackend` virtual — the transport reuses the existing `DataTexture` create/map /
-   * `UpdateTextureRegion` + `BindTexture` path (the same one GPU skinning uses). SSBO (native
-   * GLES 3.2 + Vulkan) swaps in behind the same `LoadInstance` interface in 2b / Phase 8.
+   * Renderer-side wrapper around a `TextureBuffer<InstanceRecord, FormatRGBA32F>`: the CPU-side
+   * array of lean instance records (5 RGBA32F texels = 80 B each) plus the GPU texture that the
+   * GL/WebGL `LoadInstance(id)` path (see `Resources/Engine/Shaders/instanceDataInc.shader`) reads
+   * via `texelFetch`. Adds no new `IGraphicsBackend` virtual — the transport reuses the existing
+   * `DataTexture` create/map / `UpdateTextureRegion` + `BindTexture` path.
    *
-   * 2a scope: full-record, full-buffer upload — `Flush()` re-uploads every row each call. The
-   * 2a vertex shader consumes only `_model` / `_inverseTransposeModel`; the fragment shader stays
-   * on the per-draw UBO, so the instance texture and the UBO hold identical `PerDrawUboLayout`
-   * bytes in one frame (pixel-identical guarantee). Incremental / region-scoped uploads and the
-   * lean `InstanceRecord` + `RenderObject` split arrive in 2b / Phase 4. `InstanceRecord2a` is the
-   * throwaway 1:1 mirror of `PerDrawUboLayout` (Renderer.h).
+   * 2a scope was full-record, full-buffer upload. 2b switches to the lean `InstanceRecord`
+   * (~80 B, 5 texel) + `RenderObject` (on perDraw UBO through step 6, then mini-UBO in step 7).
+   * Region-scoped uploads (step 2) reduce per-flush bytes; global tables (steps 3-6) move shared
+   * data out of the per-instance record.
    */
   class TK_API InstanceDataBuffer
   {
    public:
     /** Allocate the CPU array and the backing RGBA32F texture for up to `maxInstances` records.
-     *  The 2a budget is 1024; per-profile sizing arrives in Phase 3. */
+     *  The 2b budget is 1024; per-profile sizing arrives in Phase 3. */
     void Init(int maxInstances) { m_texBuffer.Resize(maxInstances); }
 
     /** Write one record at `index` (CPU-side; upload it to the GPU with `Flush()`). */
-    void Write(int index, const InstanceRecord2a& record) { m_texBuffer[index] = record; }
+    void Write(int index, const InstanceRecord& record) { m_texBuffer[index] = record; }
 
     /** CPU-side record at `index` (write target for `FeedUniforms`, and the `memcmp` source the
-     *  2a verification compares against the per-draw UBO). */
-    InstanceRecord2a& Record(int index) { return m_texBuffer[index]; }
-    const InstanceRecord2a& Record(int index) const { return m_texBuffer[index]; }
+     *  2b verification compares against the per-draw UBO model field). */
+    InstanceRecord& Record(int index) { return m_texBuffer[index]; }
+    const InstanceRecord& Record(int index) const { return m_texBuffer[index]; }
 
-    /** Full re-upload of every CPU row to the GPU texture. Cheap for the 2a single-instance case;
-     *  incremental uploads arrive with the Phase 4 generation graph. */
+    /** Full re-upload of every CPU row to the GPU texture. Step 2 replaces with region-scoped
+     *  `Flush(usedRows)`. */
     void Flush() { m_texBuffer.Map(); }
 
     /** The GPU texture the renderer binds to the `s_instanceData` slot (`TK_SAMPLER_BINDING(14)`),
@@ -54,7 +51,7 @@ namespace ToolKit
     DataTexturePtr GetTexture() const { return m_texBuffer.m_buffer; }
 
    private:
-    TextureBuffer<InstanceRecord2a, GraphicTypes::FormatRGBA32F> m_texBuffer;
+    TextureBuffer<InstanceRecord, GraphicTypes::FormatRGBA32F> m_texBuffer;
   };
 
 } // namespace ToolKit

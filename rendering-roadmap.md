@@ -24,9 +24,9 @@
 
 ## Implementation Progress
 
-> Living log - updated each phase. Last updated: 2026-08-05 (Phase 2a complete).
+> Living log - updated each phase. Last updated: 2026-08-05 (Phase 2b step 1 complete).
 
-**Current status:** Phase 2a done. Next: Phase 2b (lean split + global tables).
+**Current status:** Phase 2b step 1 done (lean InstanceRecord + inverse heuristic). Next: step 2 (region-scoped upload).
 
 | Phase | Status |
 |---|---|

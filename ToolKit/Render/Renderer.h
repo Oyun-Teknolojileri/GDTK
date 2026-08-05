@@ -19,7 +19,7 @@
 #include "Types.h"
 #include "Viewport.h"
 
-#include <cstddef> // offsetof (InstanceRecord2a static_asserts)
+#include <cstddef> // offsetof (InstanceRecord static_asserts)
 #include <unordered_map>
 
 namespace ToolKit
@@ -184,35 +184,43 @@ namespace ToolKit
 
   typedef GpuBufferBase<PerDrawUboLayout> PerDrawUboBuffer;
 
-  // Instanced transport — Phase 2a (see `rendering-roadmap.md` §Phase 2a + §5).
+  // Instanced transport — Phase 2b lean record (see `rendering-roadmap.md` §Phase 2b).
   //
-  // 2a proves the instance-data-buffer transport with a *throwaway, byte-for-byte mirror* of
-  // `PerDrawUboLayout`: the same struct is written to both the per-draw UBO and the instance
-  // texture in one frame, so the (UBO-bound) fragment shader reads bytes identical to legacy
-  // and any divergence isolates to the new transport. The lean `InstanceRecord` + `RenderObject`
-  // + global-table split replaces this alias in 2b.
-  using InstanceRecord2a = PerDrawUboLayout;
+  // Phase 2a proved the transport with a throwaway 1:1 PerDrawUboLayout mirror (70 texel).
+  // Phase 2b replaces it with the v3 lean split: InstanceRecord (per-instance, ~80 B = 5 texel)
+  // + RenderObject (shared per-batch) + global tables. The fragment shader still reads from the
+  // per-draw UBO through steps 1-6; step 7 retires it to a 64 B InstancedDrawData mini-UBO.
+  //
+  // Mirroring rule (roadmap §5): field order/offset must stay byte-identical to the GLSL
+  // `InstanceRecord` in `instanceDataInc.shader`. The static_asserts anchor this.
+  struct alignas(16) InstanceRecord
+  {
+    Mat4 model;          // 4 texels — world matrix (always per-instance)
+    uint lightListIndex; // -> fixed-stride light-index table (position-dependent)
+    uint animKeyIndex;   // -> animation keyframe params (skinned; 0 = none)
+    uint flags;          // bit0: uniformScale, bit1: isSkinned, bit2: envOverride, ...
+    uint _pad;           // texel alignment (5th texel = 4×uint packed as RGBA32F)
+  };
+  // 64 (Mat4) + 16 (4×uint) = 80 bytes → 5 RGBA32F texels.
 
-  // RGBA32F texel stride of one instance record. Anchors the GLSL texel layout declared in
-  // `Resources/Engine/Shaders/instanceDataInc.shader` (`TK_INSTANCE_STRIDE`) to this C++ layout
-  // — a future compiler-padding change cannot drift silently (GLSL texel layouts are unforgiving;
-  // see roadmap §5 mirroring rule).
-  //
-  // These three guards are the ones the 2a *texture/memcpy* transport needs: we copy
-  // `InstanceRecord2a` bytes into an RGBA32F texture and the GPU reads them as texels, so only
-  // the byte layout matters — C++ alignment is irrelevant here. glm's gentypes use natural
-  // 4-byte alignment in this project (verified: `alignof(glm::mat4) == 4`), so `InstanceRecord2a`
-  // — a typedef of the existing `PerDrawUboLayout` — is 4-byte aligned, which is correct for
-  // texel transport. The `alignof >= 16` SSBO/Vulkan-binding guard (roadmap v8) belongs on the
-  // *lean* 2b `InstanceRecord`, which will be authored with explicit `alignas(16)`; it is
-  // intentionally not asserted against this reuse alias.
-  static_assert(sizeof(InstanceRecord2a) % 16 == 0,
-                "InstanceRecord2a stride must be a whole number of RGBA32F texels.");
-  static_assert(offsetof(InstanceRecord2a, model) == 0,
-                "InstanceRecord2a.model must be the first field (texel offset 0).");
-  static_assert(sizeof(InstanceRecord2a) == 70 * 16,
-                "InstanceRecord2a must be 70 RGBA32F texels (1120 bytes) — mirrors PerDrawUboLayout.");
-  static constexpr uint InstanceRecord2aStride = sizeof(InstanceRecord2a) / 16; // == 70
+  // GLSL texel-layout anchors (see roadmap §5 mirroring rule).
+  static_assert(alignof(InstanceRecord) >= 16,
+                "InstanceRecord must be 16-byte aligned for SSBO/Vulkan binding.");
+  static_assert(sizeof(InstanceRecord) % 16 == 0,
+                "InstanceRecord stride must be a whole number of RGBA32F texels.");
+  static_assert(offsetof(InstanceRecord, model) == 0,
+                "InstanceRecord.model must be the first field (texel offset 0).");
+  static_assert(sizeof(InstanceRecord) == 5 * 16,
+                "InstanceRecord must be 5 RGBA32F texels (80 bytes).");
+  static constexpr uint InstanceRecordStride = sizeof(InstanceRecord) / 16; // == 5
+
+  // Instance flags (mirrored in instanceDataInc.shader as TK_INSTFLAG_*).
+  namespace InstanceFlags
+  {
+    static constexpr uint UNIFORM_SCALE = 1u << 0;
+    static constexpr uint IS_SKINNED    = 1u << 1;
+    static constexpr uint ENV_OVERRIDE  = 1u << 2;
+  } // namespace InstanceFlags
 
   // Pass-specific UBOs (slot 7)
   //////////////////////////////////////////
@@ -582,17 +590,17 @@ namespace ToolKit
     int m_activeSpotLightCount    = 0;
     bool m_ambientOcculusionInUse = false;
 
-    // Phase 2a instance-data transport (see rendering-roadmap.md §Phase 2a).
+    // Phase 2b instanced transport (see rendering-roadmap.md §Phase 2b).
     // When false (default), every draw uses the legacy per-draw UBO path — byte-identical.
-    // Step 6 flips this to true for the single-instance A/B verification.
+    // Toggled via console command `InstancedTransport 1/0`.
     bool m_instancedTransportEnabled = false;
 
-    /** Instance-data buffer for the GL/WebGL VTF transport (2a single-instance proof).
-     *  The underlying RGBA32F texture carries one InstanceRecord2a (= PerDrawUboLayout) row;
-     *  each flagged draw overwrites slot 0, Flushes, and binds s_instanceData before
-     *  glDrawElements (gl_InstanceID=0 -> LoadInstance(0)). 2b replaces with per-batch /
-     *  lean-record send.  Held by pointer to avoid a circular include between Renderer.h
-     *  and InstanceDataBuffer.h (InstanceDataBuffer needs InstanceRecord2a which lives
+    /** Instance-data buffer for the GL/WebGL VTF transport (Phase 2b lean record).
+     *  The underlying RGBA32F texture carries one InstanceRecord row (5 texel, 80 B);
+     *  each flagged draw writes slot 0, flushes, and binds s_instanceData before
+     *  glDrawElements (gl_InstanceID=0 -> LoadInstance(0)). Phase 3 batches will write
+     *  per-batch rows.  Held by pointer to avoid a circular include between Renderer.h
+     *  and InstanceDataBuffer.h (InstanceDataBuffer needs InstanceRecord which lives
      *  above in this file). */
     std::unique_ptr<class InstanceDataBuffer> m_instanceBuffer;
 
