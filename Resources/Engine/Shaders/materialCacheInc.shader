@@ -7,8 +7,11 @@
 	#define MATERIAL_CACHE
 
 	// Material accessors — backing storage is now `perDraw._materialData` (PerDrawData UBO,
-	// slot 6). `MaterialDataLayout` in perDrawDataInc.shader matches MaterialCacheItem::Data
+	// slot 2). `MaterialDataLayout` in perDrawDataInc.shader matches MaterialCacheItem::Data
 	// in Material.h byte-for-byte.
+	//
+	// Phase 2b step 3: instanced path (TK_INSTANCED=1) reads from the global material table
+	// (s_materialTable, slot 15) via LoadMaterial(idx); legacy path stays on perDraw UBO.
 	//////////////////////////////////////////
 
 	struct Material

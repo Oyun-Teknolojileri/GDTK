@@ -16,10 +16,13 @@
 #include "RHI.h"
 #include "RenderState.h"
 #include "Sky.h"
+#include "TextureBuffer.h"
 #include "Types.h"
 #include "Viewport.h"
 
 #include <cstddef> // offsetof (InstanceRecord static_asserts)
+#include <unordered_map>
+#include <vector>
 #include <unordered_map>
 
 namespace ToolKit
@@ -180,6 +183,11 @@ namespace ToolKit
     Vec4 skinParams;
     /** .x = animationBlendFactor. Padded to vec4 for std140 alignment. */
     Vec4 animBlendFactorAndPad;
+
+    /** Phase 2b: render-object table indices packed into one ivec4.
+     *  .x = materialIndex, .y = envVolumeIndex, .z = secondaryEnvVolumeIndex, .w = skeletonIndex.
+     *  Written by FeedUniforms; read by the instanced path via perDraw._renderObjectIndices. */
+    IVec4 renderObjectIndices;
   };
 
   typedef GpuBufferBase<PerDrawUboLayout> PerDrawUboBuffer;
@@ -603,6 +611,13 @@ namespace ToolKit
      *  and InstanceDataBuffer.h (InstanceDataBuffer needs InstanceRecord which lives
      *  above in this file). */
     std::unique_ptr<class InstanceDataBuffer> m_instanceBuffer;
+
+    // Phase 2b step 3: material table (global, persistent, dirty-on-version-change).
+    // Maps Material* → row index in the RGBA32F texture; rows are re-uploaded only when
+    // the material's CacheItem::version changes.
+    std::unordered_map<const Material*, int> m_materialRowMap;
+    std::vector<int> m_materialRowVersions; // cached version per row
+    TextureBuffer<MaterialCacheItem::Data, GraphicTypes::FormatRGBA32F> m_materialTable;
 
     FramebufferPtr m_framebuffer  = nullptr;
     TexturePtr m_shadowAtlas      = nullptr;

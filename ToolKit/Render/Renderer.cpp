@@ -120,6 +120,9 @@ namespace ToolKit
     // Phase 2b instance-data buffer — 1024-slot budget (per-profile sizing = Phase 3).
     m_instanceBuffer = std::make_unique<InstanceDataBuffer>();
     m_instanceBuffer->Init(1024);
+
+    // Phase 2b step 3: material table — 256-material budget, 4 texels each.
+    m_materialTable.Resize(256);
   }
 
   Renderer::~Renderer()
@@ -416,6 +419,7 @@ namespace ToolKit
       }
 
       SetTexture(14, m_instanceBuffer->GetTexture());
+      SetTexture(15, m_materialTable.m_buffer);
     }
 
     // Bind textures AFTER BindPipeline. On Vulkan, BindPipeline resets the per-draw descriptor
@@ -1240,6 +1244,36 @@ namespace ToolKit
     }
     ubo.skinParams            = skinParams;
     ubo.animBlendFactorAndPad = Vec4(job.animData.animationBlendFactor, 0.0f, 0.0f, 0.0f);
+
+    // Phase 2b step 3: resolve material row for instanced path.
+    // The row index is written into the perDraw UBO so the shader can access
+    // the global material table via LoadMaterial(idx) when TK_INSTANCED=1.
+    int matRow = 0;
+    if (m_instancedTransportEnabled && !job.Material->IsShaderMaterial())
+    {
+      auto it = m_materialRowMap.find(job.Material);
+      if (it == m_materialRowMap.end())
+      {
+        matRow = (int) m_materialRowVersions.size();
+        m_materialRowMap[job.Material] = matRow;
+        m_materialRowVersions.push_back(job.Material->GetCacheItem().version);
+        m_materialTable[matRow] = job.Material->GetCacheItem().data;
+        m_materialTable.Map(matRow, 1);
+      }
+      else
+      {
+        matRow = it->second;
+        int& cachedVer = m_materialRowVersions[matRow];
+        int currentVer = job.Material->GetCacheItem().version;
+        if (cachedVer != currentVer)
+        {
+          cachedVer = currentVer;
+          m_materialTable[matRow] = job.Material->GetCacheItem().data;
+          m_materialTable.Map(matRow, 1);
+        }
+      }
+    }
+    ubo.renderObjectIndices = IVec4(matRow, 0, 0, 0);
 
     m_globalGpuBuffers->perDrawBuffer.Invalidate();
     m_globalGpuBuffers->perDrawBuffer.Map();

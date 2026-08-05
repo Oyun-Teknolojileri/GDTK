@@ -788,6 +788,21 @@ namespace ToolKit
     const ShaderPtr& vs = program->m_shaders[0];
     const ShaderPtr& fs = program->m_shaders[1];
 
+    if (!vs->m_gpuData)
+    {
+      TK_ERR("CreateGpuProgram: vertex shader has no GPU data — compilation failed for %s",
+             vs->GetFile().c_str());
+      assert(false && "Vertex shader compilation failed. Check the error log above for the GLSL error.");
+      return;
+    }
+    if (!fs->m_gpuData)
+    {
+      TK_ERR("CreateGpuProgram: fragment shader has no GPU data — compilation failed for %s",
+             fs->GetFile().c_str());
+      assert(false && "Fragment shader compilation failed. Check the error log above for the GLSL error.");
+      return;
+    }
+
     auto glData         = std::make_shared<GLProgramData>();
     glData->programId   = glCreateProgram();
     GLuint pid          = glData->programId;

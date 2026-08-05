@@ -1,6 +1,7 @@
 <shader>
 	<type name = "includeShader" />
 	<include name = "vulkanCompatInc.shader" />
+	<include name = "materialTableInc.shader" />
 	<texture slot = "14" name = "s_instanceData" />
 	<source>
 	<!--

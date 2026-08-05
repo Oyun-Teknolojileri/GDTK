@@ -81,6 +81,8 @@ TK_UBO_BINDING(2) uniform PerDrawData
 	vec4 _blendFrameData;
 	vec4 _skinParams;
 	vec4 _animBlendFactorAndPad;       // .x = animationBlendFactor
+
+	ivec4 _renderObjectIndices;        // Phase 2b: .x=materialIndex, .y=envIndex, .z=secEnvIndex, .w=skeletonIndex
 } perDraw;
 
 #endif // PER_DRAW_DATA
