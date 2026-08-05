@@ -7,6 +7,7 @@
 
 ### Changelog
 
+- **v12** - Phase 2b design locked, 8-step implementation plan. Five design decisions: (1) **RenderObject temporary transport** — `RenderObject` indices piggyback on perDraw UBO as `IVec4 renderObjectIndices` (layout 70→71 texel) through steps 1-6, then move to a 64 B `InstancedDrawData` mini-UBO in step 7, retiring the perDraw UBO from the instanced path. (2) **Normal matrix** — `uniformScale` flag (bit0) gates GPU `inverse(transpose(mat3(model)))` vs cheap `mat3(model)`; CPU precompute extension table deferred to Phase 3+. (3) **Region-scoped upload** — `DataTexture::Map` + `IGraphicsBackend::UpdateTextureRegion` gain rect parameters (GL: `glTexSubImage2D`; Vulkan: copy region; Null: no-op); enables "upload bytes < baseline" metric. (4) **Light data buffer** — persistent, id-indexed (ObjectId→row), no LRU eviction; LRU caches stay for legacy path. (5) **PerDraw UBO retirement** — step 7 swaps slot 2 to a 64 B `InstancedDrawData` block (same binding, different block — GL/Vulkan legal); legacy path byte-identical.
 - **v11** - Phase 2a complete (all 7 steps). Expanded to full opaque partition; bugs found and fixed during expansion: GLES texture format (sized vs unsized base format), slot-0 clobber (Flush overwriting s_diffuseColor), skinned object stale reads (IsSkinned guard removed), billboard stale reads (TK_INSTANCED=0 forced in BillboardPass), IBL stale UBO (SetDataTextures moved before FeedUniforms). Phase 2.5 (formal pixel-diff) skipped — manual testing across the full opaque partition sufficient; all regressions caught and fixed. Flag stays `false` in production; console toggle `InstancedTransport 1/0`. Next: Phase 2b (lean split + global tables).
 - **v10** - Phase 2a step 1 implemented; three plan corrections surfaced by the C++ static_asserts. (1) **Stride is 70, not 47** — `PerDrawUboLayout` is 70 RGBA32F texels (1120 B), not 47×16; the `sizeof == STRIDE*16` assert caught the miscount. `TK_INSTANCE_STRIDE` / `InstanceRecord2aStride` = 70. (2) **`alignof >= 16` assert is a 2b concern, not 2a** — glm gentypes use natural 4-byte alignment here (verified empirically: `alignof(glm::mat4)==4` under both `GLM_FORCE_ALIGNED_GENTYPES` and `_DEFAULT_ALIGNED_GENTYPES`), so it cannot hold for `InstanceRecord2a` (a `PerDrawUboLayout` alias) and is irrelevant for 2a's texture/memcpy transport (the GPU reads texels; C++ alignment never enters). It moves to the 2b lean `InstanceRecord`, authored with explicit `alignas(16)`; §5's general mirroring rule (which targets that authored struct) is unchanged. (3) **`u_instanceBase` deferred to Phase 8** — no engine shader uses a block-extern loose uniform (all migrated to UBOs) and Vulkan/SPIR-V has no loose-`uniform` counterpart, so declaring `uniform uint u_instanceBase;` would break SPIR-V compilation. `LoadInstance(uint id)` takes the caller-composed id instead (call site passes `TK_INSTANCE_ID`, base 0 in 2a); baseInstance lands via the indirect draw's `firstInstance` in Phase 8 — day-one design preserved through the explicit-id API. Also: `<texture slot="14">` lives in the include itself (self-contained, matches the `skinning.shader` precedent), so step 4's `defaultVertex` no longer adds it.
 - **v9** - Light store redesign (correctness for instancing). The engine's **LRU-based light cache UBO** (`PointLightCache`/`SpotLightCache`, capacity 32) is incompatible with the instanced path: per-instance light indices are stored in instance data and must remain valid for the whole frame, but LRU evicts mid-frame. -> Replaced by a **persistent, frame-stable light data buffer** (id-indexed, no eviction, generation-dirty via `Light.gen`). Per-instance light-index lists point into it by stable id. Fixes the v8 §1.3 assumption ("reused directly") that was wrong. Also removes the 32-capacity UBO limit (texture/SSBO holds thousands). Lights do NOT need generational handles (per-instance index lists are frame-local, so no cross-frame staleness) - only frame-stability + generation-dirty update.
@@ -184,6 +185,42 @@ Batching (P3); lean `InstanceRecord`+`RenderObject` split (2b); global tables (2
 7. `FrameStatType::InstancedDrawCall` populated (each instanced draw = 1 for now; real batch count = Phase 3).
 
 **Success:** one object renders pixel-identically through the data-buffer transport path.
+
+---
+
+### Phase 2b - Lean split + global tables (in progress)
+
+**Goal:** Switch from the 2a 1:1 `PerDrawUboLayout` mirror (70 texel / 1120 B) to the v3 lean `InstanceRecord` (~80 B, 5 texel) + shared `RenderObject` + global tables. Per-instance data shrinks ~9×.
+
+**Design decisions (v12):**
+
+1. **RenderObject temporary transport:** `RenderObject` indices (materialIndex, envIndex, secondaryEnvIndex, skeletonIndex) ride the perDraw UBO as `IVec4 renderObjectIndices` (layout 70→71 texel) through steps 1-6. Step 7 swaps the instanced path to a 64 B `InstancedDrawData` mini-UBO on the same slot-2 binding, retiring the perDraw UBO from the instanced path. This matches the roadmap's "LoadRenderObject() = per-draw UBO today" decision — no new UBO slot/Vulkan descriptor change needed.
+
+2. **Normal matrix (inverse heuristic):** `uniformScale` flag (bit0) gates the path: uniform → shader uses `mat3(model)` directly (cheap); non-uniform → shader computes `transpose(inverse(mat3(model)))` per-instance. The CPU precompute extension table from the roadmap is deferred to Phase 3+. GPU inverse is mathematically exact; pixel-identity for non-uniform scale is visual-parity tolerance (consistent with Phase 2.5 practice).
+
+3. **Region-scoped upload:** `DataTexture::Map` + `IGraphicsBackend::UpdateTextureRegion` gain rect parameters (GL: `glTexSubImage2D`; Vulkan: copy region; Null: no-op). This is required for the "upload bytes < baseline" metric — without it, every flush uploads the full texture. Also paves the way for Phase 4's generation-graph per-region uploads.
+
+4. **Light data buffer (v9 redesign):** Persistent, id-indexed (ObjectId→row) point/spot light texture buffers. No LRU eviction — row stability across the frame is guaranteed. LRU caches (`PointLightCache`/`SpotLightCache`) stay for the legacy path; the instanced path uses the new persistent buffers.
+
+5. **PerDraw UBO retirement (instanced path):** Step 7 binds a 64 B `InstancedDrawData` block (`global0, global1, viewportSizeAndPad, renderObjectIndices`) to slot 2. GLSL: `perDrawDataInc.shader` TK_INSTANCED variant declares this smaller block on the same binding (different block, same binding = legal in GL/Vulkan). Legacy path stays byte-identical on the full `PerDrawUboLayout`.
+
+**Implementation plan (8 steps, each: build green → flag-off parity → flag-on parity → commit):**
+
+| Step | Description | Key files |
+|---|---|---|
+| 0 | Roadmap sync: changelog v12, design decisions, step plan | `rendering-roadmap.md` |
+| 1 | Lean `InstanceRecord` (80 B, 5 texel) + flags + inverse heuristic | `Renderer.h`, `instanceDataInc.shader`, `defaultVertex.shader`, `Renderer.cpp` |
+| 2 | Region-scoped texture upload (rect API) | `IGraphicsBackend.h`, `GLBackend.cpp`, `VulkanBackend.cpp`, `DataTexture.h`, `TextureBuffer.h`, `InstanceDataBuffer.h` |
+| 3 | Material table + `LoadMaterial` + perDraw `renderObjectIndices` | `Material.h`, `materialCacheInc.shader`, `instanceDataInc.shader`, `perDrawDataInc.shader`, `Renderer.cpp` |
+| 4 | Env-volume table + `LoadEnvVolume` | `drawDataInc.shader`, `ibl.shader`, `instanceDataInc.shader`, `Renderer.cpp` |
+| 5 | Light data buffer + light-index table (replaces LRU on instanced path) | `lighting.shader`, `instanceDataInc.shader`, `Renderer.cpp` |
+| 6 | Animation key table + `LoadAnim` | `skinning.shader`, `instanceDataInc.shader`, `Renderer.cpp` |
+| 7 | `InstancedDrawData` 64 B mini-UBO (perDraw retirement on instanced path) | `perDrawDataInc.shader`, `AO.shader`, `Renderer.cpp`, `Renderer.h` |
+| 8 | Final docs sync: v13 changelog, progress table, `gdtk-overview.md`, `AGENTS.md` | `rendering-roadmap.md`, `gdtk-overview.md`, `AGENTS.md` |
+
+**Scope guard (NOT in 2b):** Batching/sort/BatchBuilder (Phase 3), generation/dependency graph (Phase 4 — only simple version-dirty for table rows), shadow caching (Phase 5), double buffering (Phase 6), skinned instancing batches (Phase 7), MDI (Phase 8), texture arrays (Phase 9), mobile profile sizing, SSBO transport.
+
+**Success criteria:** Per-instance data ~80 bytes (down from 1120 B); visual parity with legacy path; upload bytes < baseline (measured via Phase 1 `UploadedBytes` stat); all 8 steps ship green.
 
 ---
 
