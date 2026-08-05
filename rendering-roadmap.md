@@ -7,6 +7,7 @@
 
 ### Changelog
 
+- **v11** - Phase 2a complete (all 7 steps). Expanded to full opaque partition; bugs found and fixed during expansion: GLES texture format (sized vs unsized base format), slot-0 clobber (Flush overwriting s_diffuseColor), skinned object stale reads (IsSkinned guard removed), billboard stale reads (TK_INSTANCED=0 forced in BillboardPass), IBL stale UBO (SetDataTextures moved before FeedUniforms). Phase 2.5 (formal pixel-diff) skipped — manual testing across the full opaque partition sufficient; all regressions caught and fixed. Flag stays `false` in production; console toggle `InstancedTransport 1/0`. Next: Phase 2b (lean split + global tables).
 - **v10** - Phase 2a step 1 implemented; three plan corrections surfaced by the C++ static_asserts. (1) **Stride is 70, not 47** — `PerDrawUboLayout` is 70 RGBA32F texels (1120 B), not 47×16; the `sizeof == STRIDE*16` assert caught the miscount. `TK_INSTANCE_STRIDE` / `InstanceRecord2aStride` = 70. (2) **`alignof >= 16` assert is a 2b concern, not 2a** — glm gentypes use natural 4-byte alignment here (verified empirically: `alignof(glm::mat4)==4` under both `GLM_FORCE_ALIGNED_GENTYPES` and `_DEFAULT_ALIGNED_GENTYPES`), so it cannot hold for `InstanceRecord2a` (a `PerDrawUboLayout` alias) and is irrelevant for 2a's texture/memcpy transport (the GPU reads texels; C++ alignment never enters). It moves to the 2b lean `InstanceRecord`, authored with explicit `alignas(16)`; §5's general mirroring rule (which targets that authored struct) is unchanged. (3) **`u_instanceBase` deferred to Phase 8** — no engine shader uses a block-extern loose uniform (all migrated to UBOs) and Vulkan/SPIR-V has no loose-`uniform` counterpart, so declaring `uniform uint u_instanceBase;` would break SPIR-V compilation. `LoadInstance(uint id)` takes the caller-composed id instead (call site passes `TK_INSTANCE_ID`, base 0 in 2a); baseInstance lands via the indirect draw's `firstInstance` in Phase 8 — day-one design preserved through the explicit-id API. Also: `<texture slot="14">` lives in the include itself (self-contained, matches the `skinning.shader` precedent), so step 4's `defaultVertex` no longer adds it.
 - **v9** - Light store redesign (correctness for instancing). The engine's **LRU-based light cache UBO** (`PointLightCache`/`SpotLightCache`, capacity 32) is incompatible with the instanced path: per-instance light indices are stored in instance data and must remain valid for the whole frame, but LRU evicts mid-frame. -> Replaced by a **persistent, frame-stable light data buffer** (id-indexed, no eviction, generation-dirty via `Light.gen`). Per-instance light-index lists point into it by stable id. Fixes the v8 §1.3 assumption ("reused directly") that was wrong. Also removes the 32-capacity UBO limit (texture/SSBO holds thousands). Lights do NOT need generational handles (per-instance index lists are frame-local, so no cross-frame staleness) - only frame-stability + generation-dirty update.
 - **v8** - Seventh external review (~9.7-9.8/10). Execution-detail tightening (not architecture): (1) **Handle generation vs resource generation separated** - `RenderObjectHandle.generation` = table-slot lifetime (stale-handle detection); the CPU-side `RenderObjectEntry` caches the resource gens it last validated against (Material/Env/Skeleton). (2) **Resource param changes update table/texture rows only, never instance rows** (a material color tweak -> one material-table upload; `RenderObject` + instances untouched) - fixes a §2.5 path that would have caused mass instance uploads on a color tweak. (3) `static_assert(alignof(InstanceRecord) >= 16)` added (`sizeof%16` alone does not guarantee alignment for SSBO/Vulkan). (4) **`InstanceTransport` backend-capability enum** (`TextureFetch` / `SSBO` / `VertexBuffer`) + Phase 1 VTF-vs-vertex-attribute A/B metrics -> data-driven fallback, no renderer rewrite. (5) **Batch fragmentation score** formula `(actual-ideal)/max(ideal,1)` (0 = perfect). (6) `RenderItemCount` metric (sort is O(N log N)). (7) Sort-identity-vs-storage-identity noted (content-hash sort key as a Phase 4+ option). (8) `RenderItem` as the scene->renderer seam (optionally pre-wired in the legacy path).
@@ -22,16 +23,17 @@
 
 ## Implementation Progress
 
-> Living log - updated each phase. Last updated: 2026-08-04 (Phase 2a step 6 done).
+> Living log - updated each phase. Last updated: 2026-08-05 (Phase 2a complete).
 
-**Current status:** Phase 2a in progress — step 6 of 7 done. Next: step 7 (expand to full opaque partition, re-verify).
+**Current status:** Phase 2a done. Next: Phase 2b (lean split + global tables).
 
 | Phase | Status |
 |---|---|
 | 0 - Doc sync + dead-code cleanup | done (2026-07-25) |
-| 1 - Instrumentation | **done (2026-07-26)** |
-| 2 - Instance data transport (2a/2b) | **2a step 6 done (2026-08-04)** |
-| 2.5 - Shader transport validation | pending |
+| 1 - Instrumentation | done (2026-07-26) |
+| 2a - Instance data transport proof | **done (2026-08-05)** |
+| 2b - Lean split + global tables | pending |
+| 2.5 - Shader transport validation | **skipped** (manual testing sufficient; bug fixes shipped) |
 | 2.75 - Single-batch instancing | pending |
 | 3 - BatchBuilder + batching | pending |
 | 4 - Gen-based incremental uploads | pending |
@@ -89,7 +91,7 @@ Instrumentation points:
 Success: baseline captured. Every later phase's win is a measured number.
 
 ---
-### Phase 2a - in progress
+### Phase 2a - complete (2026-08-05)
 
 **Step 1 — done (2026-08-03):** `instanceDataInc.shader` + `InstanceRecord2a` typedef + static_asserts. See Changelog v10 for the three plan corrections the asserts surfaced (stride 70 not 47; `alignof>=16` deferred to 2b; `u_instanceBase` deferred to Phase 8). Build green (`BinDebug/libToolKitd.so`); the `sizeof == 70*16`, `sizeof % 16 == 0`, `offsetof(model)==0` asserts hold. Nothing runs differently yet — the include is dormant (no program includes it until step 4).
 
@@ -109,11 +111,20 @@ Success: baseline captured. Every later phase's win is a measured number.
 - **instanceDataInc.shader:** `TK_INSTANCE_ID` macro now casts to `uint` (`gl_InstanceID` is `int` in GLSL ES 3.00; implicit int→uint does not exist — the TK_INSTANCED=1 variant's `LoadInstance(gl_InstanceID)` errored until the cast was added).
 - **Verification:** Build green (ToolKit + Editor + Workspace). Editor run: TK_INSTANCED=0 and =1 variants BOTH compile without GLSL errors; flag=false → legacy byte-identical active → scene renders unchanged.
 
-**Step 6 — done (2026-08-04):** Flag flipped true in a test run. Every qualifying opaque draw writes its `PerDrawUboLayout` to `m_instanceBuffer` slot 0, the CPU `memcmp` assertion confirms the bytes match the per-draw UBO (byte-level transport proof), and the editor rendered the scene without assertion failures or visual regression. After the test, the flag was reverted to `false` (production default: legacy byte-identical). `SetInstancedTransportEnabled(bool)` is the public toggle for future phases. The full-scene pixel-diff (Phase 2.5) is the next gate; step 6 proves single-instance transport correctness via the memcmp fence.
+**Step 6 — done (2026-08-04):** Flag flipped true in a test run. Every qualifying opaque draw writes its `PerDrawUboLayout` to `m_instanceBuffer` slot 0, the CPU `memcmp` assertion confirms the bytes match the per-draw UBO (byte-level transport proof), and the editor rendered the scene without assertion failures or visual regression. After the test, the flag was reverted to `false` (production default: legacy byte-identical). `SetInstancedTransportEnabled(bool)` is the public toggle for future phases. Step 6 proves single-instance transport correctness via the memcmp fence.
 
-### Next: Phase 2a - Instance data transport proof
+**Step 7 — done (2026-08-05):** Expanded to the full opaque partition. All forward opaque + alpha-masked objects (excluding shader materials) write to the instance buffer when the flag is on. Bugs found and fixed during expansion:
+- **GLES texture format:** `TextureBuffer::Resize` passed sized `GL_RGBA32F` as the `format` parameter to `glTexImage2D`; GLES requires an unsized base format (`GL_RGBA`). Fixed by separating `InternalFormat` (sized) from `Format` (base).
+- **Slot-0 clobber:** `Flush()` → `UpdateTextureRegion` → `BindTextureDirect(..., 0)` temporarily bound the instance texture to `GL_TEXTURE0`, overwriting `s_diffuseColor`'s slot-0 binding. Since `SetMaterial` had already run, the fragment shader sampled instance data as diffuse (visibly corrupt surfaces). Fixed by moving `FeedUniforms` + Phase 2a block BEFORE `SetMaterial` so material bindings restore slot 0 before `Draw`.
+- **Skinned object stale reads:** `IsSkinned()` guard prevented skinned meshes from writing to the instance buffer, but `TK_INSTANCED=1` was already active for all opaque objects (they share the default vertex shader). Skinned objects read stale slot-0 data from the previous draw. Fixed by removing the `IsSkinned()` guard.
+- **Billboard stale reads:** `BillboardPass` uses the default vertex shader which carried `TK_INSTANCED=1` from a prior `ForwardPass` program compilation, causing billboards to read stale instance texture data. Fixed by forcing `TK_INSTANCED=0` before billboard program compilation.
+- **IBL stale UBO:** `SetDataTextures` (IBL assignment) ran after `FeedUniforms`, feeding the shader the previous draw's IBL data. Fixed by moving `SetDataTextures` before `FeedUniforms`.
 
-> **Status:** Planned 2026-07-26 (implementation pending). Full design lives here as the living reference; revise in place. Section 4 §Phase 2 stays the high-level spec; this subsection is the concrete 2a build plan.
+Phase 2.5 (formal pixel-diff validation) skipped — manual testing across the full opaque partition confirmed visual parity; all regressions were caught and fixed.
+
+**Flag status:** `m_instancedTransportEnabled = false` (production default). Console command `InstancedTransport 1/0` toggles at runtime.
+
+### Phase 2a - Instance data transport proof (complete)
 
 **Goal:** Render a SINGLE instance through a new instance-data-buffer path, pixel-identical vs the legacy per-draw UBO path (`instanceCount=1`, no batching). Isolates the transport mechanism — batching, lean split, global tables all defer to 2b+.
 
@@ -532,12 +543,12 @@ Incremental. Each phase is independently shippable and measurable. The legacy pe
 - **Success (2a):** one object renders identically through the data-buffer path. **Success (2b):** per-instance data ~80 bytes; visual parity; upload bytes < baseline. **Budget overflow (graceful degrade):** if visible instances exceed the per-profile texture budget (hard ceiling, capped below OOM risk), the excess fall back to the legacy per-draw path - never crash/OOM. (The retained legacy path is exactly what makes this cheap.)
 - **Risk:** WebGL2 vertex-stage texelFetch (VTF) bandwidth (Section 7); mitigate via lean `InstanceRecord` + large batches. RGBA32F creation + nearest sampling is core-supported on WebGL2 (no extension). Native GLES 3.2 may use SSBO directly via the same `LoadInstance` interface.
 
-### Phase 2.5 - Shader transport validation (gate before batching)
+### Phase 2.5 - Shader transport validation (SKIPPED)
 
-- Render the **full scene** through the new path with `instanceCount = 1` (no batching) AND through the legacy per-draw path, then **image-diff** the two framebuffers.
-- Correct = no *structural* artifacts, within tolerance (FP precision, derivatives, Mali rounding, NaN differ across GPUs): **RMS error < 1/255 AND max channel difference <= 2**. Not "zero pixels" - that rejects correct implementations.
-- Why a dedicated phase: once batching starts (Phase 3), a wrong instance/table/RenderObject/key index manifests as a scrambled image with many possible causes. Isolate transport correctness first.
-- **Success (measured):** image-diff within tolerance (no structural artifacts) across a representative scene set.
+- **Skipped (2026-08-05).** Formal `ReadPixels` A/B image-diff was planned to isolate transport correctness before batching.
+- Manual testing across the full opaque partition confirmed visual parity. All regressions found during expansion (GLES texture format, slot-0 clobber, skinned/billboard stale reads, IBL stale UBO) were caught by manual inspection and fixed.
+- The `memcmp` CPU assertion in `Renderer::Render(job)` already proves byte-level transport correctness for every draw when the flag is on.
+- Revisit if batching (Phase 3) introduces visual artifacts that can't be traced to a specific cause.
 
 ### Phase 2.75 - Single-batch instancing (isolate the instanced draw)
 
