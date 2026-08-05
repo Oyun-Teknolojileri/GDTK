@@ -520,10 +520,11 @@ inline uint64 ReadCycleCounter()
              Stats::GetStatPrev(FrameStatType::ShadowRedrawCount));
     stats += buffer;
 
+    float mb = Stats::GetStatPrev(FrameStatType::UploadedBytes) / (1024.0f * 1024.0f);
     snprintf(buffer,
              sizeof(buffer),
-             "Uploaded Bytes Per Frame: %llu\n",
-             Stats::GetStatPrev(FrameStatType::UploadedBytes));
+             "Uploaded Per Frame: %.2f MB\n",
+             mb);
     stats += buffer;
 
     return stats;

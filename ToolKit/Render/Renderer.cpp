@@ -362,6 +362,12 @@ namespace ToolKit
 
       m_instanceBuffer->Flush();
 
+      // Phase 2a: full-buffer upload — track the actual bytes sent to the GPU so the
+      // UploadedBytes stat reflects the true cost (slot 0 write + full texture re-upload).
+      // The per-draw UBO bytes are tracked separately in FeedUniforms.
+      Stats::AddStat(FrameStatType::UploadedBytes,
+                     static_cast<uint64>(InstanceRecord2aStride) * 16u * 1024u);
+
       // Per-frame diagnostic: dump model[3] (world translation) from both UBO and instance
       // texture so we can verify the GPU sees the same values. Fires once per session.
       static bool s_dumpedOnce = false;
