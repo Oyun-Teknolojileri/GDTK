@@ -327,6 +327,13 @@ namespace ToolKit
 
     updateAndBindSkinningTextures();
 
+    // Set up IBL textures + per-volume data (m_drawCommand volume bounds/transforms,
+    // m_iblRotation, m_secondaryIblRotation) BEFORE FeedUniforms. FeedUniforms writes
+    // these into the per-draw UBO, so the shader sees the current frame's values —
+    // running it before SetDataTextures feeds the shader stale data from the previous
+    // draw's volume assignment.
+    SetDataTextures(job);
+
     // Per-draw UBO (populated here, consumed by the legacy fragment path and — in 2a —
     // mirrored into the instance-data texture below). Must run before the Phase 2a block
     // (needs perDrawBuffer.m_data) and before SetMaterial (so SetMaterial can restore
@@ -391,8 +398,8 @@ namespace ToolKit
     // are independent of the program binding), so this order is safe for both backends.
     // Must also run AFTER the Phase 2a block so it can restore slot 0 (s_diffuseColor) after
     // Flush() temporarily clobbered it via UpdateTextureRegion's BindTextureDirect(..., 0).
+    // SetDataTextures already ran before FeedUniforms — only SetMaterial is needed here.
     SetMaterial(job.Material);
-    SetDataTextures(job);
 
     // Apply post-pipeline explicit binding for utility passes. Must happen AFTER
     // SetMaterial / SetDataTextures so it can't be overwritten, but BEFORE Draw()
