@@ -27,8 +27,17 @@ namespace ToolKit
 
     GpuProgramManager* gpuProgramManager = renderer->GetGpuProgramManager();
 
-    auto renderBillboardsFn              = [this, cam, renderer, gpuProgramManager](EntityPtrArray& billboards,
-                                                                                    bool depthTest) -> void
+    // Phase 2a instance-data transport: billboards are not instanced draws — each
+    // billboard is rendered as a separate job with its own per-draw UBO. The vertex
+    // shader must read the model matrix from the UBO, not from the instance-data texture
+    // (which would contain stale data from a previous ForwardPass draw). Force the
+    // default-vertex-shader TK_INSTANCED define to 0 before any billboard program is
+    // compiled, matching the pass-level policy.
+    ShaderPtr defVert = GetShaderManager()->GetDefaultVertexShader();
+    defVert->SetDefine("TK_INSTANCED", "0");
+
+    auto renderBillboardsFn = [this, cam, renderer, gpuProgramManager](EntityPtrArray& billboards,
+                                                                       bool depthTest) -> void
     {
       m_renderData.jobs.clear();
 
