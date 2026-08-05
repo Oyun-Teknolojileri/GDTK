@@ -143,6 +143,8 @@ namespace ToolKit
     void Load() override;
     void Init(void* data);
     void Map(void* data);
+    /** Upload a rectangular region of texel data. */
+    void Map(void* data, int x, int y, int w, int h);
     void UnInit() override;
   };
 

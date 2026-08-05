@@ -42,9 +42,12 @@ namespace ToolKit
     InstanceRecord& Record(int index) { return m_texBuffer[index]; }
     const InstanceRecord& Record(int index) const { return m_texBuffer[index]; }
 
-    /** Full re-upload of every CPU row to the GPU texture. Step 2 replaces with region-scoped
-     *  `Flush(usedRows)`. */
+    /** Full re-upload of every CPU row to the GPU texture. */
     void Flush() { m_texBuffer.Map(); }
+
+    /** Upload only the first `usedRows` rows to the GPU (region-scoped, Phase 2b step 2).
+     *  Reduces per-draw upload from ~1.1 MB (2a full buffer) to Stride*16*usedRows bytes. */
+    void Flush(int usedRows) { m_texBuffer.Map(0, usedRows); }
 
     /** The GPU texture the renderer binds to the `s_instanceData` slot (`TK_SAMPLER_BINDING(14)`),
      *  via `Renderer::SetTexture`. */

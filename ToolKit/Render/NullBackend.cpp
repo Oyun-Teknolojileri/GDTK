@@ -61,7 +61,7 @@ namespace ToolKit
   void NullBackend::DestroyTexture(Texture*) {}
   void NullBackend::ApplyTextureSettings(Texture*) {}
   void NullBackend::GenerateMipmaps(Texture*) {}
-  void NullBackend::UpdateTextureRegion(Texture*, const void*) {}
+  void NullBackend::UpdateTextureRegion(Texture*, const void*, int, int, int, int) {}
   void NullBackend::SetTextureMaxMipLevel(Texture*, int) {}
   void NullBackend::AllocateCubemapMipStorage(Texture*) {}
   void NullBackend::CopyCubemapFaceFromFramebuffer(Texture*, int, int, int, int, Framebuffer*, Framebuffer*) {}

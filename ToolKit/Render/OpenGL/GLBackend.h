@@ -73,7 +73,12 @@ namespace ToolKit
     void DestroyTexture(Texture* tex) override;
     void ApplyTextureSettings(Texture* tex) override;
     void GenerateMipmaps(Texture* tex) override;
-    void UpdateTextureRegion(Texture* tex, const void* data) override;
+    void UpdateTextureRegion(Texture* tex,
+                             const void* data,
+                             int x,
+                             int y,
+                             int width,
+                             int height) override;
     void SetTextureMaxMipLevel(Texture* tex, int maxLevel) override;
     void AllocateCubemapMipStorage(Texture* tex) override;
     void CopyCubemapFaceFromFramebuffer(Texture* cubemap,

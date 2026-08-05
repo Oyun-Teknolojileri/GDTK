@@ -350,6 +350,20 @@ namespace ToolKit
     }
   }
 
+  void DataTexture::Map(void* data, int x, int y, int w, int h)
+  {
+    if (!m_initiated)
+    {
+      assert(false && "Texture must be initialized before mapping data.");
+      return;
+    }
+
+    if (IGraphicsBackend* backend = GetRenderSystem()->GetBackend())
+    {
+      backend->UpdateTextureRegion(this, data, x, y, w, h);
+    }
+  }
+
   void DataTexture::UnInit()
   {
     if (m_gpuData == nullptr || !m_initiated)

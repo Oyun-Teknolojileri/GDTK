@@ -37,6 +37,29 @@ namespace ToolKit
       }
     }
 
+    /** Upload a range of rows to the GPU texture (region-scoped, Phase 2b step 2).
+     *  `rowBegin` = first instance index, `rowCount` = number of instances.
+     *  Calculates the 2D texture region from the linear row layout. */
+    void Map(int rowBegin, int rowCount)
+    {
+      if (!m_buffer || !m_buffer->m_initiated)
+      {
+        TK_ERR("DrawBuffer is not initialized. Use Resize to get a valid buffer.");
+        return;
+      }
+      const int vec4PerStruct = (sizeof(Struct) + 15) / 16; // texels per instance
+      const int texWidth      = m_buffer->m_width;
+      const int pixelStart    = rowBegin * vec4PerStruct;
+      const int x             = pixelStart % texWidth;
+      const int y             = pixelStart / texWidth;
+      const int w             = vec4PerStruct;
+      const int h             = rowCount; // rows span vertically (no wrap in 2b: rowCount ≪ texWidth)
+
+      // Offset into the CPU array
+      const void* uploadData = &this->m_data[rowBegin];
+      m_buffer->Map(const_cast<void*>(uploadData), x, y, w, h);
+    }
+
     /** Initialize and sets the size of underlying buffer. */
     void Resize(int count)
     {

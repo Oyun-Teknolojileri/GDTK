@@ -2551,8 +2551,16 @@ namespace ToolKit
     vt->currentLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
   }
 
-  void VulkanBackend::UpdateTextureRegion(Texture* tex, const void* data)
+  void VulkanBackend::UpdateTextureRegion(Texture* tex,
+                                          const void* data,
+                                          int /*x*/,
+                                          int /*y*/,
+                                          int /*width*/,
+                                          int /*height*/)
   {
+    // Region-scoped upload (Phase 2b step 2): Vulkan path uploads the full buffer for now.
+    // The rect parameters are accepted but deferred — Vulkan is OFF in the current build
+    // and will receive a proper VkBufferImageCopy region when instancing reaches Vulkan parity.
     if (tex == nullptr || data == nullptr)
       return;
     auto* vt = static_cast<VulkanTexture*>(tex->m_gpuData.get());

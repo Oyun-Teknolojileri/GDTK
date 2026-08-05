@@ -121,7 +121,13 @@ namespace ToolKit
     virtual void DestroyTexture(Texture* tex)                                                               = 0;
     virtual void ApplyTextureSettings(Texture* tex)                                                         = 0;
     virtual void GenerateMipmaps(Texture* tex)                                                              = 0;
-    virtual void UpdateTextureRegion(Texture* tex, const void* data)                                        = 0;
+    /** Upload a rectangular region of pixel data. (x,y,w,h) = (0,0,0,0) means full texture. */
+    virtual void UpdateTextureRegion(Texture* tex,
+                                     const void* data,
+                                     int x      = 0,
+                                     int y      = 0,
+                                     int width  = 0,
+                                     int height = 0)                                                            = 0;
     virtual void SetTextureMaxMipLevel(Texture* tex, int maxLevel)                                          = 0;
     virtual void AllocateCubemapMipStorage(Texture* tex)                                                    = 0;
     virtual void CopyCubemapFaceFromFramebuffer(Texture* cubemap,

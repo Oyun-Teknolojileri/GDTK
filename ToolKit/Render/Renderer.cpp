@@ -394,12 +394,11 @@ namespace ToolKit
                     sizeof(Mat4)) == 0 &&
              "Phase 2b transport: instance-texture model differs from per-draw UBO model");
 
-      m_instanceBuffer->Flush();
+      m_instanceBuffer->Flush(1); // region-scoped: single row (step 2)
 
-      // Phase 2b: full-buffer upload (until step 2 region-scoped upload lands).
-      // Track the actual bytes sent to the GPU.
+      // Phase 2b step 2: region-scoped upload — track actual bytes sent (1 row × stride).
       Stats::AddStat(FrameStatType::UploadedBytes,
-                     static_cast<uint64>(InstanceRecordStride) * 16u * 1024u);
+                     static_cast<uint64>(InstanceRecordStride) * 16u);
 
       // Per-frame diagnostic: dump model[3] (world translation) from both UBO and instance
       // texture so we can verify the GPU sees the same values. Fires once per session.

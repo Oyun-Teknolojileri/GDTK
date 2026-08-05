@@ -1088,7 +1088,12 @@ namespace ToolKit
     glGenerateMipmap(ToGLGraphicType(tex->Settings().Target));
   }
 
-  void GLBackend::UpdateTextureRegion(Texture* tex, const void* data)
+  void GLBackend::UpdateTextureRegion(Texture* tex,
+                                      const void* data,
+                                      int x,
+                                      int y,
+                                      int width,
+                                      int height)
   {
     GLTextureData* gl = tex ? GetGLTextureData(tex) : nullptr;
     if (gl == nullptr || gl->textureId == 0)
@@ -1099,12 +1104,18 @@ namespace ToolKit
     const TextureSettings& s = tex->Settings();
     BindTextureDirect(ToGLGraphicType(s.Target), gl->textureId, 0);
 
+    // (0,0,0,0) = full texture (backward-compatible default).
+    int uploadX      = (width == 0 && height == 0) ? 0 : x;
+    int uploadY      = (width == 0 && height == 0) ? 0 : y;
+    int uploadW      = (width == 0 && height == 0) ? tex->m_width : width;
+    int uploadH      = (width == 0 && height == 0) ? tex->m_height : height;
+
     glTexSubImage2D(ToGLGraphicType(s.Target),
                     0,
-                    0,
-                    0,
-                    tex->m_width,
-                    tex->m_height,
+                    uploadX,
+                    uploadY,
+                    uploadW,
+                    uploadH,
                     ToGLGraphicType(s.Format),
                     ToGLGraphicType(s.Type),
                     data);
