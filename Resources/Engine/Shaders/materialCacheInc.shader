@@ -1,6 +1,7 @@
 <shader>
 	<type name = "includeShader" />
 	<include name = "perDrawDataInc.shader" />
+	<include name = "materialTableFSInc.shader" />
 	<source>
 	<!--
 	#ifndef MATERIAL_CACHE
@@ -37,6 +38,10 @@
 
 	Material GetMaterial()
 	{
+	#if TK_INSTANCED
+		// Phase 2b step 7: instanced path reads from the global material table.
+		return LoadMaterialFS(perDraw._renderObjectIndices.x);
+	#else
 		Material material;
 
 		vec4 colorAlpha         = perDraw._materialData.colorAlpha;
@@ -60,11 +65,18 @@
 		material.metallicRoughnessTextureInUse = int(textureFlags.z);
 
 		return material;
+	#endif
 	}
 
 	bool IsNormalMapInUse()
 	{
+	#if TK_INSTANCED
+		// Phase 2b step 7: instanced path reads from the global material table.
+		Material m = LoadMaterialFS(perDraw._renderObjectIndices.x);
+		return m.normalMapInUse > 0;
+	#else
 		return perDraw._materialData.textureFlags.y > 0.5;
+	#endif
 	}
 
 	#endif // MATERIAL_CACHE

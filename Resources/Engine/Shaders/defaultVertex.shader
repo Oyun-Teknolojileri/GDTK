@@ -33,18 +33,22 @@
 	  vec3 T = vTangent.xyz;
 	  float bitangentSign = vTangent.w;
 
-	  // Skinning
+	  // Skinning — Phase 2b step 7: skinned objects stay on legacy perDraw path
+	  // (TK_INSTANCED=0) until Phase 7. Gate the calls so the vertex shader compiles
+	  // with TK_INSTANCED=1 (skin() is compiled out by skinning.shader's !TK_INSTANCED guard).
+	#if !TK_INSTANCED
 	  if (isSkinned)
 	  {
 		  if (normalMapInUse)
 			  {
 				  skin(localPos, N, T, localPos, N, T);
-			  }    
+			  }
 		  else
 			  {
 			skin(localPos, N, localPos, N);
 			  }
 	  }
+	#endif
 
 	  // World-space transform matrices. TK_INSTANCED reads them from the instance data
 	  // texture via LoadInstance (Phase 2a transport); the legacy path reads them from

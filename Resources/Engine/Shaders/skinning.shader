@@ -21,10 +21,19 @@
   TK_SAMPLER_BINDING(2) uniform sampler2D s_blendWeights; // Blend animation texture
   TK_SAMPLER_BINDING(3) uniform sampler2D s_skinningPose; // Animation data texture
 
-  #define numBones        perDraw._skinParams.x
-  #define isSkinned       (perDraw._skinParams.y > 0.5)
-  #define isAnimated      (perDraw._skinParams.z > 0.5)
-  #define blendAnimation  (perDraw._skinParams.w > 0.5)
+  // Phase 2b step 7: TK_INSTANCED=1 uses safe defaults (skinCalc is never called
+  // in the fragment shader; skinned objects stay on the legacy perDraw path until Phase 7).
+  #if TK_INSTANCED
+    #define numBones        0.0
+    #define isSkinned       false
+    #define isAnimated      false
+    #define blendAnimation  false
+  #else
+    #define numBones        perDraw._skinParams.x
+    #define isSkinned       (perDraw._skinParams.y > 0.5)
+    #define isAnimated      (perDraw._skinParams.z > 0.5)
+    #define blendAnimation  (perDraw._skinParams.w > 0.5)
+  #endif
 
   struct SkinLookup
   {
@@ -158,6 +167,9 @@
 
   // -- skin() entry points ---------------------------------------------
 
+  // Phase 2b step 7: skin() entry points reference perDraw UBO fields and are never
+  // called when TK_INSTANCED=1 (skinned objects stay on legacy path until Phase 7).
+  #if !TK_INSTANCED
   void skin(in vec4 vertexPos, out vec4 skinnedPos)
   {
     skinCalc(s_skinningPose, perDraw._keyFrameData, vertexPos, skinnedPos);
@@ -204,6 +216,7 @@
       skinnedBiTangent = normalize(mix(skinnedBiTangent, bBiTan, perDraw._animBlendFactorAndPad.x));
     }
   }
+  #endif // !TK_INSTANCED
   #endif
 	-->
 	</source>

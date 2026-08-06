@@ -281,6 +281,21 @@ namespace ToolKit
   static_assert(sizeof(AnimKeyTableRow) == 4 * 16,
                 "AnimKeyTableRow must be 4 RGBA32F texels (64 bytes).");
 
+  // Phase 2b step 7: InstancedDrawData mini-UBO (slot 2, TK_INSTANCED=1 only).
+  // Replaces the full 1120 B PerDrawUboLayout on the instanced path with a lean 12-Vec4
+  // (192 B) block carrying only the fields not in global tables or instance texture.
+  struct InstancedDrawDataLayout
+  {
+    Vec4 global0;              // x: iblInUse, y: aoInUse, z: skyIntensity, w: pad
+    Vec4 global1;              // x: pointLightCount, y: spotLightCount, z: dirLightCount, w: pad
+    Vec4 viewportSizeAndPad;   // xy: viewportSize
+    IVec4 renderObjectIndices; // x: materialIndex, y: envIndex, z: secEnvIndex, w: skeletonIndex
+    Mat4 iblRotation;          // sky IBL rotation (or identity for local volumes)
+    Mat4 iblSecondaryRotation; // secondary IBL rotation (currently identity-only)
+  };
+  static_assert(sizeof(InstancedDrawDataLayout) == 12 * 16,
+                "InstancedDrawDataLayout must be 12 Vec4 (192 bytes).");
+
   // Pass-specific UBOs (slot 7)
   //////////////////////////////////////////
   //
@@ -644,6 +659,11 @@ namespace ToolKit
     std::array<int, RHIConstants::MaxPointLightPerObject> m_activePointLightIndices;
     std::array<int, RHIConstants::MaxSpotLightPerObject> m_activeSpotLightIndices;
     DrawCommand m_drawCommand;
+
+    /** Phase 2b step 7: lean InstancedDrawData UBO (slot 2 on the instanced path).
+     *  Replaces the full perDraw UBO for TK_INSTANCED=1 draws.  */
+    typedef GpuBufferBase<InstancedDrawDataLayout> InstancedDrawBuffer;
+    InstancedDrawBuffer m_instancedDrawBuffer;
 
     int m_activePointLightCount   = 0;
     int m_activeSpotLightCount    = 0;

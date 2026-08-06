@@ -146,9 +146,15 @@ namespace ToolKit
     //   0 = legacy per-draw UBO path (byte-identical);
     //   1 = LoadInstance(TK_INSTANCE_ID) from the instance-data texture.
     if (renderer->IsInstancedTransportEnabled())
+    {
       vert->SetDefine("TK_INSTANCED", "1");
+      frag->SetDefine("TK_INSTANCED", "1");
+    }
     else
+    {
       vert->SetDefine("TK_INSTANCED", "0");
+      frag->SetDefine("TK_INSTANCED", "0");
+    }
 
     GpuProgramPtr gpuProgram = renderer->GetGpuProgramManager()->CreateProgram(vert, frag);
 

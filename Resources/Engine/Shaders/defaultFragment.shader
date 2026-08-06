@@ -6,6 +6,7 @@
 	<include name = "AO.shader" />
 	<include name = "cameraDataInc.shader" />
 	<include name = "materialCacheInc.shader" />
+	<define name = "TK_INSTANCED" val="0,1" />
 	<define name = "DrawAlphaMasked" val="0,1" />
 	<define name = "ShadowPCF" val="0,4,9,16" />
 	<define name = "highlightCascades" val="0,1" />

@@ -137,6 +137,9 @@ namespace ToolKit
 
     // Phase 2b step 6: animation key table — frame-local, 256-row budget, 4 texels each.
     m_animKeyTable.Resize(256);
+
+    // Phase 2b step 7: InstancedDrawData UBO (slot 2 on the instanced path).
+    m_instancedDrawBuffer.Init();
   }
 
   Renderer::~Renderer()
@@ -370,8 +373,11 @@ namespace ToolKit
     // slot 0 (GL_TEXTURE0) for the glTexSubImage2D upload. This block must run BEFORE
     // SetMaterial so the material texture bindings (which include s_diffuseColor at slot 0)
     // overwrite this temporary binding before Draw().
+    // Phase 2b step 7: skinned objects stay on legacy perDraw path until Phase 7.
+    // Shader materials (own program) stay per-draw permanently.
     if (m_instancedTransportEnabled &&
-        !job.Material->IsShaderMaterial())
+        !job.Material->IsShaderMaterial() &&
+        !job.Mesh->IsSkinned())
     {
       const PerDrawUboLayout& ubo = m_globalGpuBuffers->perDrawBuffer.m_data;
 
@@ -448,6 +454,23 @@ namespace ToolKit
       Stats::AddStat(FrameStatType::UploadedBytes,
                      static_cast<uint64>(InstanceRecordStride) * 16u);
 
+      // Phase 2b step 7: replace the 1120 B perDraw UBO with a lean 192 B InstancedDrawData
+      // block on the same slot-2 binding. The perDraw UBO was already uploaded by FeedUniforms
+      // (needed for InstanceRecord population); this overrides it with the instanced variant.
+      {
+        InstancedDrawDataLayout& id = m_instancedDrawBuffer.m_data;
+        id.global0            = ubo.drawCommand.global0;
+        id.global1            = ubo.drawCommand.global1;
+        id.viewportSizeAndPad = ubo.viewportSizeAndPad;
+        id.renderObjectIndices = ubo.renderObjectIndices;
+        id.iblRotation         = ubo.iblRotation;
+        id.iblSecondaryRotation = ubo.iblSecondaryRotation;
+        m_instancedDrawBuffer.Invalidate();
+        m_instancedDrawBuffer.Map();
+        m_backend->BindUniformBuffer(&m_instancedDrawBuffer.GetBuffer(),
+                                     ReservedUniformBufferSlots::PerDrawData);
+      }
+
       // Per-frame diagnostic: dump model[3] (world translation) from both UBO and instance
       // texture so we can verify the GPU sees the same values. Fires once per session.
       static bool s_dumpedOnce = false;
@@ -469,6 +492,8 @@ namespace ToolKit
       SetTexture(19, m_pointLightTable.m_buffer);
       SetTexture(20, m_spotLightTable.m_buffer);
       SetTexture(21, m_animKeyTable.m_buffer);
+      SetTexture(22, m_materialTable.m_buffer);  // FS-safe material table (step 7)
+      SetTexture(23, m_envVolumeTable.m_buffer); // FS-safe env-volume table (step 7)
     }
 
     // Bind textures AFTER BindPipeline. On Vulkan, BindPipeline resets the per-draw descriptor

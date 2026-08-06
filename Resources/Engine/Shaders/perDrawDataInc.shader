@@ -1,6 +1,7 @@
 <shader>
 	<type name = "includeShader" />
 	<include name = "vulkanCompatInc.shader" />
+	<include name = "instancedDrawDataInc.shader" />
 	<uniform slot = "2" name = "PerDrawData" />
 	<source>
 	<!--
@@ -59,8 +60,14 @@ struct MaterialDataLayout
 	vec4 textureFlags;      // x=emissiveInUse, y=normalInUse, z=metallicRoughInUse, w=pad
 };
 
-TK_UBO_BINDING(2) uniform PerDrawData
-{
+// Phase 2b step 7: TK_INSTANCED=1 uses the lean InstancedDrawData block (slot 2);
+// TK_INSTANCED=0 uses the full PerDrawData block (legacy, byte-identical).
+#if TK_INSTANCED
+  // alias perDraw → instancedDrawData so existing call sites keep compiling.
+  #define perDraw instancedDrawData
+#else
+  TK_UBO_BINDING(2) uniform PerDrawData
+  {
 	mat4 _model;
 	mat4 _modelWithoutTranslate;
 	mat4 _inverseModel;
@@ -83,7 +90,8 @@ TK_UBO_BINDING(2) uniform PerDrawData
 	vec4 _animBlendFactorAndPad;       // .x = animationBlendFactor
 
 	ivec4 _renderObjectIndices;        // Phase 2b: .x=materialIndex, .y=envIndex, .z=secEnvIndex, .w=skeletonIndex
-} perDraw;
+  } perDraw;
+#endif
 
 #endif // PER_DRAW_DATA
 	-->

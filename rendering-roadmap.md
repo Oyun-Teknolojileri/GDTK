@@ -26,7 +26,7 @@
 
 > Living log - updated each phase. Last updated: 2026-08-05 (Phase 2b step 1 complete).
 
-**Current status:** Phase 2b step 6 done (animation key table). Next: step 7 (InstancedDrawData mini-UBO).
+**Current status:** Phase 2b step 7 done (InstancedDrawData mini-UBO). Next: step 8 (docs sync).
 
 | Phase | Status |
 |---|---|

@@ -2,6 +2,7 @@
 	<type name = "includeShader" />
 	<include name = "vulkanCompatInc.shader" />
 	<include name = "perDrawDataInc.shader" />
+	<include name = "envVolumeTableFSInc.shader" />
 	<uniform slot = "1" name = "GraphicConstatsData" />
 	<uniform slot = "3" name = "DirectionalLightBuffer" />
 	<uniform slot = "4" name = "PointLightCache" />
@@ -22,70 +23,130 @@
 
 	bool IsIBLInUse()
 	{
+	#if TK_INSTANCED
+		return perDraw._global0.x > 0.5;
+	#else
 		return perDraw._drawCommand.global0.x > 0.5;
+	#endif
 	}
 
 	bool IsAmbientOcculusionInUse()
 	{
+	#if TK_INSTANCED
+		return perDraw._global0.y > 0.5;
+	#else
 		return perDraw._drawCommand.global0.y > 0.5;
+	#endif
 	}
 
 	float GetSkyIntensity()
 	{
+	#if TK_INSTANCED
+		return perDraw._global0.z;
+	#else
 		return perDraw._drawCommand.global0.z;
+	#endif
 	}
 
 	int GetActivePointLightCount()
 	{
+	#if TK_INSTANCED
+		return int(perDraw._global1.x);
+	#else
 		return int(perDraw._drawCommand.global1.x);
+	#endif
 	}
 
 	int GetActiveSpotLightCount()
 	{
+	#if TK_INSTANCED
+		return int(perDraw._global1.y);
+	#else
 		return int(perDraw._drawCommand.global1.y);
+	#endif
 	}
 
 	int GetActiveDirectionalLightCount()
 	{
+	#if TK_INSTANCED
+		return int(perDraw._global1.z);
+	#else
 		return int(perDraw._drawCommand.global1.z);
+	#endif
 	}
 
 	// --- Per-volume accessors ---
 
+	// Phase 2b step 7 helper: load the env volume for index `vol` (0=primary, 1=secondary).
+	#if TK_INSTANCED
+	EnvVolumeDataFS _getEnvVolume(int vol)
+	{
+		int idx = (vol == 0) ? perDraw._renderObjectIndices.y : perDraw._renderObjectIndices.z;
+		return LoadEnvVolumeFS(idx);
+	}
+	#endif
+
 	float GetVolumeIntensity(int vol)
 	{
+	#if TK_INSTANCED
+		return _getEnvVolume(vol).params.x;
+	#else
 		return vol == 0 ? perDraw._drawCommand.vol0Params.x : perDraw._drawCommand.vol1Params.x;
+	#endif
 	}
 
 	float GetVolumeFadeDistance(int vol)
 	{
+	#if TK_INSTANCED
+		return _getEnvVolume(vol).params.y;
+	#else
 		return vol == 0 ? perDraw._drawCommand.vol0Params.y : perDraw._drawCommand.vol1Params.y;
+	#endif
 	}
 
 	bool IsVolumePccEnabled(int vol)
 	{
+	#if TK_INSTANCED
+		return _getEnvVolume(vol).params.w > 0.5;
+	#else
 		float v = vol == 0 ? perDraw._drawCommand.vol0Params.w : perDraw._drawCommand.vol1Params.w;
 		return v > 0.5;
+	#endif
 	}
 
 	bool IsVolumeInterior(int vol)
 	{
+	#if TK_INSTANCED
+		return _getEnvVolume(vol).params.z > 0.5;
+	#else
 		float v = vol == 0 ? perDraw._drawCommand.vol0Params.z : perDraw._drawCommand.vol1Params.z;
 		return v > 0.5;
+	#endif
 	}
 
 	vec3 GetVolumeMin(int vol)
 	{
+	#if TK_INSTANCED
+		return _getEnvVolume(vol).volMin.xyz;
+	#else
 		return (vol == 0 ? perDraw._drawCommand.vol0Min : perDraw._drawCommand.vol1Min).xyz;
+	#endif
 	}
 
 	vec3 GetVolumeMax(int vol)
 	{
+	#if TK_INSTANCED
+		return _getEnvVolume(vol).volMax.xyz;
+	#else
 		return (vol == 0 ? perDraw._drawCommand.vol0Max : perDraw._drawCommand.vol1Max).xyz;
+	#endif
 	}
 
 	mat4 GetVolumeInverseTransform(int vol)
 	{
+	#if TK_INSTANCED
+		return _getEnvVolume(vol).invTransform;
+	#else
 		if (vol == 0)
 		{
 			return mat4(perDraw._drawCommand.vol0InvT0,
@@ -97,10 +158,14 @@
 		            perDraw._drawCommand.vol1InvT1,
 		            perDraw._drawCommand.vol1InvT2,
 		            perDraw._drawCommand.vol1InvT3);
+	#endif
 	}
 
 	mat4 GetVolumeWorldTransform(int vol)
 	{
+	#if TK_INSTANCED
+		return _getEnvVolume(vol).worldTransform;
+	#else
 		if (vol == 0)
 		{
 			return mat4(perDraw._drawCommand.vol0WldT0,
@@ -112,6 +177,7 @@
 		            perDraw._drawCommand.vol1WldT1,
 		            perDraw._drawCommand.vol1WldT2,
 		            perDraw._drawCommand.vol1WldT3);
+	#endif
 	}
 
 	// Compute per-pixel blend factor for a local volume.
