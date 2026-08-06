@@ -5,6 +5,13 @@
 #ifndef TK_VULKAN_COMPAT
 #define TK_VULKAN_COMPAT
 
+// Phase 2b step 7: default TK_INSTANCED to 0 for shaders that don't participate
+// in instanced draws. defaultVertex/defaultFragment set this via <define> at the
+// program level (command-line -D), which takes precedence over this fallback.
+#ifndef TK_INSTANCED
+#define TK_INSTANCED 0
+#endif
+
 // Vulkan/GL single-source compatibility macros.
 //
 // GL ES 3.00 doesn't support layout(binding = N) on UBO blocks or samplers; in the GL path

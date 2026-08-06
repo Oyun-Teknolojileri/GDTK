@@ -62,6 +62,12 @@ struct MaterialDataLayout
 
 // Phase 2b step 7: TK_INSTANCED=1 uses the lean InstancedDrawData block (slot 2);
 // TK_INSTANCED=0 uses the full PerDrawData block (legacy, byte-identical).
+// Default to legacy path for shaders that don't define TK_INSTANCED (GLES requires
+// the macro to be defined before use in #if expressions).
+#ifndef TK_INSTANCED
+#define TK_INSTANCED 0
+#endif
+
 #if TK_INSTANCED
   // alias perDraw → instancedDrawData so existing call sites keep compiling.
   #define perDraw instancedDrawData
