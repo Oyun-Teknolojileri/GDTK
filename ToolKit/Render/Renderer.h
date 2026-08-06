@@ -244,6 +244,31 @@ namespace ToolKit
   static_assert(sizeof(EnvVolumeTableRow) == 11 * 16,
                 "EnvVolumeTableRow must be 11 RGBA32F texels (176 bytes).");
 
+  // Phase 2b step 5: light data buffer rows (replaces LRU PointLightCache/SpotLightCache on
+  // the instanced path). Layout matches the GLSL structs in pointLightTableInc.shader and
+  // spotLightTableInc.shader byte-for-byte — the first 4 Vec4s are a direct memcpy of
+  // LightCacheItem::CommonData.
+  struct PointLightTableRow
+  {
+    Vec4 common0;      // color.rgb, intensity
+    Vec4 common1;      // position.xyz, castShadow (as float)
+    Vec4 common2;      // shadowBias, bleedingReduction, pad0, pad1
+    Vec4 common3;      // shadowAtlasCoord.xy, shadowAtlasResRatio, shadowAtlasLayer (as float)
+    Vec4 radiusAndPad; // radius, 0, 0, 0
+  };
+  static_assert(sizeof(PointLightTableRow) == 5 * 16,
+                "PointLightTableRow must be 5 RGBA32F texels (80 bytes).");
+
+  struct SpotLightTableRow
+  {
+    Vec4 common0, common1, common2, common3; // same CommonData prefix as point light
+    Vec4 dirAndRadius;   // direction.xyz, radius
+    Vec4 anglesAndPad;   // outerAngle, innerAngle, pad, pad
+    Vec4 pvm0, pvm1, pvm2, pvm3; // projectionViewMatrix columns
+  };
+  static_assert(sizeof(SpotLightTableRow) == 10 * 16,
+                "SpotLightTableRow must be 10 RGBA32F texels (160 bytes).");
+
   // Pass-specific UBOs (slot 7)
   //////////////////////////////////////////
   //
@@ -639,6 +664,17 @@ namespace ToolKit
     std::unordered_map<const EnvironmentComponent*, int> m_envVolumeRowMap;
     std::vector<EnvVolumeTableRow> m_envVolumeRowCache; // last-written row per index
     TextureBuffer<EnvVolumeTableRow, GraphicTypes::FormatRGBA32F> m_envVolumeTable;
+
+    // Phase 2b step 5: light data buffers (persistent, id-indexed, no eviction).
+    // Replaces the LRU PointLightCache/SpotLightCache on the instanced path.
+    // Maps ObjectId → sequential row index; dirty detection via CacheItem::version.
+    std::unordered_map<ObjectId, int> m_pointLightRowMap;
+    std::vector<int> m_pointLightRowVersions; // cached CacheItem::version per row
+    TextureBuffer<PointLightTableRow, GraphicTypes::FormatRGBA32F> m_pointLightTable;
+
+    std::unordered_map<ObjectId, int> m_spotLightRowMap;
+    std::vector<int> m_spotLightRowVersions; // cached CacheItem::version per row
+    TextureBuffer<SpotLightTableRow, GraphicTypes::FormatRGBA32F> m_spotLightTable;
 
     FramebufferPtr m_framebuffer  = nullptr;
     TexturePtr m_shadowAtlas      = nullptr;

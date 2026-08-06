@@ -126,6 +126,10 @@ namespace ToolKit
 
     // Phase 2b step 4: env-volume table — 64-volume budget, 11 texels each.
     m_envVolumeTable.Resize(64);
+
+    // Phase 2b step 5: light data buffers — 256-light budget each, 5/10 texels per row.
+    m_pointLightTable.Resize(256);
+    m_spotLightTable.Resize(256);
   }
 
   Renderer::~Renderer()
@@ -424,6 +428,8 @@ namespace ToolKit
       SetTexture(14, m_instanceBuffer->GetTexture());
       SetTexture(15, m_materialTable.m_buffer);
       SetTexture(18, m_envVolumeTable.m_buffer);
+      SetTexture(19, m_pointLightTable.m_buffer);
+      SetTexture(20, m_spotLightTable.m_buffer);
     }
 
     // Bind textures AFTER BindPipeline. On Vulkan, BindPipeline resets the per-draw descriptor
@@ -945,6 +951,41 @@ namespace ToolKit
         const PointLightCacheItem& cache = pl->GetCacheItem();
         pointCache.AddOrUpdateItem(cache);
         activePoint.push_back(cache.id);
+
+        // Phase 2b step 5: persistent light data buffer (instanced path).
+        if (m_instancedTransportEnabled)
+        {
+          ObjectId id  = cache.id;
+          auto    it   = m_pointLightRowMap.find(id);
+          int     row  = 0;
+          bool    write = false;
+          if (it == m_pointLightRowMap.end())
+          {
+            row = (int) m_pointLightRowVersions.size();
+            m_pointLightRowMap[id] = row;
+            m_pointLightRowVersions.push_back(cache.version);
+            write = true;
+          }
+          else
+          {
+            row = it->second;
+            int& cachedVer = m_pointLightRowVersions[row];
+            if (cachedVer != cache.version)
+            {
+              cachedVer = cache.version;
+              write     = true;
+            }
+          }
+          if (write)
+          {
+            PointLightTableRow& rowData = m_pointLightTable[row];
+            std::memcpy(&rowData.common0, cache.GetData(), sizeof(LightCacheItem::CommonData));
+            const auto& ptData =
+                *static_cast<const PointLightCacheItem::Data*>(cache.GetData());
+            rowData.radiusAndPad = Vec4(ptData.radius, 0.0f, 0.0f, 0.0f);
+            m_pointLightTable.Map(row, 1);
+          }
+        }
       }
       else if (light->GetLightType() == Light::Spot)
       {
@@ -952,6 +993,47 @@ namespace ToolKit
         const SpotLightCacheItem& cache = sl->GetCacheItem();
         spotCache.AddOrUpdateItem(cache);
         activeSpot.push_back(cache.id);
+
+        // Phase 2b step 5: persistent light data buffer (instanced path).
+        if (m_instancedTransportEnabled)
+        {
+          ObjectId id  = cache.id;
+          auto    it   = m_spotLightRowMap.find(id);
+          int     row  = 0;
+          bool    write = false;
+          if (it == m_spotLightRowMap.end())
+          {
+            row = (int) m_spotLightRowVersions.size();
+            m_spotLightRowMap[id] = row;
+            m_spotLightRowVersions.push_back(cache.version);
+            write = true;
+          }
+          else
+          {
+            row = it->second;
+            int& cachedVer = m_spotLightRowVersions[row];
+            if (cachedVer != cache.version)
+            {
+              cachedVer = cache.version;
+              write     = true;
+            }
+          }
+          if (write)
+          {
+            SpotLightTableRow& rowData = m_spotLightTable[row];
+            std::memcpy(&rowData.common0, cache.GetData(), sizeof(LightCacheItem::CommonData));
+            const auto& spData =
+                *static_cast<const SpotLightCacheItem::Data*>(cache.GetData());
+            rowData.dirAndRadius = Vec4(spData.direction, spData.radius);
+            rowData.anglesAndPad = Vec4(spData.outerAngle, spData.innerAngle,
+                                        spData.pad0, spData.pad1);
+            rowData.pvm0 = Vec4(spData.projectionViewMatrix[0]);
+            rowData.pvm1 = Vec4(spData.projectionViewMatrix[1]);
+            rowData.pvm2 = Vec4(spData.projectionViewMatrix[2]);
+            rowData.pvm3 = Vec4(spData.projectionViewMatrix[3]);
+            m_spotLightTable.Map(row, 1);
+          }
+        }
       }
     }
 

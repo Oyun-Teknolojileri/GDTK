@@ -26,7 +26,7 @@
 
 > Living log - updated each phase. Last updated: 2026-08-05 (Phase 2b step 1 complete).
 
-**Current status:** Phase 2b step 4 done (env-volume table). Next: step 5 (light data buffer).
+**Current status:** Phase 2b step 5 done (light data buffer). Next: step 6 (animation key table).
 
 | Phase | Status |
 |---|---|

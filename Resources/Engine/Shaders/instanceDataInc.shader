@@ -3,6 +3,8 @@
 	<include name = "vulkanCompatInc.shader" />
 	<include name = "materialTableInc.shader" />
 	<include name = "envVolumeTableInc.shader" />
+	<include name = "pointLightTableInc.shader" />
+	<include name = "spotLightTableInc.shader" />
 	<texture slot = "14" name = "s_instanceData" />
 	<source>
 	<!--
