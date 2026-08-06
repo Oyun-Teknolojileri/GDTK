@@ -123,6 +123,9 @@ namespace ToolKit
 
     // Phase 2b step 3: material table — 256-material budget, 4 texels each.
     m_materialTable.Resize(256);
+
+    // Phase 2b step 4: env-volume table — 64-volume budget, 11 texels each.
+    m_envVolumeTable.Resize(64);
   }
 
   Renderer::~Renderer()
@@ -420,6 +423,7 @@ namespace ToolKit
 
       SetTexture(14, m_instanceBuffer->GetTexture());
       SetTexture(15, m_materialTable.m_buffer);
+      SetTexture(18, m_envVolumeTable.m_buffer);
     }
 
     // Bind textures AFTER BindPipeline. On Vulkan, BindPipeline resets the per-draw descriptor
@@ -1274,6 +1278,81 @@ namespace ToolKit
       }
     }
     ubo.renderObjectIndices = IVec4(matRow, 0, 0, 0);
+
+    // Phase 2b step 4: resolve env-volume rows for instanced path.
+    int envRow    = 0;
+    int secEnvRow = 0;
+    if (m_instancedTransportEnabled && !job.Material->IsShaderMaterial())
+    {
+      // Helper lambda: extract one env-volume row from m_drawCommand's per-volume fields.
+      auto buildEnvRow = [this](int vol) -> EnvVolumeTableRow
+      {
+        EnvVolumeTableRow row;
+        if (vol == 0)
+        {
+          row.params          = m_drawCommand.vol0Params;
+          row.volMin          = m_drawCommand.vol0Min;
+          row.volMax          = m_drawCommand.vol0Max;
+          row.invTransform0   = m_drawCommand.vol0InvTransform0;
+          row.invTransform1   = m_drawCommand.vol0InvTransform1;
+          row.invTransform2   = m_drawCommand.vol0InvTransform2;
+          row.invTransform3   = m_drawCommand.vol0InvTransform3;
+          row.worldTransform0 = m_drawCommand.vol0WorldTransform0;
+          row.worldTransform1 = m_drawCommand.vol0WorldTransform1;
+          row.worldTransform2 = m_drawCommand.vol0WorldTransform2;
+          row.worldTransform3 = m_drawCommand.vol0WorldTransform3;
+        }
+        else
+        {
+          row.params          = m_drawCommand.vol1Params;
+          row.volMin          = m_drawCommand.vol1Min;
+          row.volMax          = m_drawCommand.vol1Max;
+          row.invTransform0   = m_drawCommand.vol1InvTransform0;
+          row.invTransform1   = m_drawCommand.vol1InvTransform1;
+          row.invTransform2   = m_drawCommand.vol1InvTransform2;
+          row.invTransform3   = m_drawCommand.vol1InvTransform3;
+          row.worldTransform0 = m_drawCommand.vol1WorldTransform0;
+          row.worldTransform1 = m_drawCommand.vol1WorldTransform1;
+          row.worldTransform2 = m_drawCommand.vol1WorldTransform2;
+          row.worldTransform3 = m_drawCommand.vol1WorldTransform3;
+        }
+        return row;
+      };
+
+      // Helper lambda: resolve one env-volume component to a table row.
+      auto resolveEnvRow = [this, &buildEnvRow](const EnvironmentComponent* envCom, int vol) -> int
+      {
+        if (envCom == nullptr) return 0;
+        auto it = m_envVolumeRowMap.find(envCom);
+        if (it == m_envVolumeRowMap.end())
+        {
+          int row                            = (int) m_envVolumeRowCache.size();
+          m_envVolumeRowMap[envCom]          = row;
+          EnvVolumeTableRow data             = buildEnvRow(vol);
+          m_envVolumeRowCache.push_back(data);
+          m_envVolumeTable[row] = data;
+          m_envVolumeTable.Map(row, 1);
+          return row;
+        }
+        else
+        {
+          int row                = it->second;
+          EnvVolumeTableRow data = buildEnvRow(vol);
+          // memcmp detects transform/param changes (data-driven dirty, no version field needed).
+          if (std::memcmp(&m_envVolumeRowCache[row], &data, sizeof(EnvVolumeTableRow)) != 0)
+          {
+            m_envVolumeRowCache[row] = data;
+            m_envVolumeTable[row]    = data;
+            m_envVolumeTable.Map(row, 1);
+          }
+          return row;
+        }
+      };
+
+      envRow    = resolveEnvRow(job.EnvironmentVolume, 0);
+      secEnvRow = resolveEnvRow(job.SecondaryEnvironmentVolume, 1);
+    }
+    ubo.renderObjectIndices = IVec4(matRow, envRow, secEnvRow, 0);
 
     m_globalGpuBuffers->perDrawBuffer.Invalidate();
     m_globalGpuBuffers->perDrawBuffer.Map();

@@ -28,6 +28,7 @@
 namespace ToolKit
 {
 
+  class EnvironmentComponent;
   class ForwardSceneRenderPath;
 
   // DrawCommand
@@ -229,6 +230,19 @@ namespace ToolKit
     static constexpr uint IS_SKINNED    = 1u << 1;
     static constexpr uint ENV_OVERRIDE  = 1u << 2;
   } // namespace InstanceFlags
+
+  // Phase 2b step 4: env-volume table row (11 RGBA32F texels per EnvironmentComponent).
+  // Mirrors the GLSL EnvVolumeData in envVolumeTableInc.shader; field order must stay byte-identical.
+  struct EnvVolumeTableRow
+  {
+    Vec4 params;     // x: intensity, y: fadeDistance, z: interior, w: pccEnabled
+    Vec4 volMin;     // xyz: volume min (local space)
+    Vec4 volMax;     // xyz: volume max (local space)
+    Vec4 invTransform0, invTransform1, invTransform2, invTransform3;
+    Vec4 worldTransform0, worldTransform1, worldTransform2, worldTransform3;
+  };
+  static_assert(sizeof(EnvVolumeTableRow) == 11 * 16,
+                "EnvVolumeTableRow must be 11 RGBA32F texels (176 bytes).");
 
   // Pass-specific UBOs (slot 7)
   //////////////////////////////////////////
@@ -618,6 +632,13 @@ namespace ToolKit
     std::unordered_map<const Material*, int> m_materialRowMap;
     std::vector<int> m_materialRowVersions; // cached version per row
     TextureBuffer<MaterialCacheItem::Data, GraphicTypes::FormatRGBA32F> m_materialTable;
+
+    // Phase 2b step 4: env-volume table (global, persistent, dirty-on-data-change).
+    // Maps EnvironmentComponent* → row index in the RGBA32F texture; rows are re-uploaded only
+    // when the env-volume data changes (detected via memcmp against the cached row).
+    std::unordered_map<const EnvironmentComponent*, int> m_envVolumeRowMap;
+    std::vector<EnvVolumeTableRow> m_envVolumeRowCache; // last-written row per index
+    TextureBuffer<EnvVolumeTableRow, GraphicTypes::FormatRGBA32F> m_envVolumeTable;
 
     FramebufferPtr m_framebuffer  = nullptr;
     TexturePtr m_shadowAtlas      = nullptr;
