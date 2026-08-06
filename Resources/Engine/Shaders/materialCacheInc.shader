@@ -15,6 +15,8 @@
 	// (s_materialTable, slot 15) via LoadMaterial(idx); legacy path stays on perDraw UBO.
 	//////////////////////////////////////////
 
+	#ifndef MATERIAL_STRUCT_DEFINED
+	#define MATERIAL_STRUCT_DEFINED
 	struct Material
 	{
 		vec3 color;
@@ -32,6 +34,7 @@
 		int normalMapInUse;
 		int metallicRoughnessTextureInUse;
 	};
+	#endif // MATERIAL_STRUCT_DEFINED
 
 	// Material Utility
 	//////////////////////////////////////////
