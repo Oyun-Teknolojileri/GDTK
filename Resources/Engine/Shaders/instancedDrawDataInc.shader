@@ -31,6 +31,9 @@
     ivec4 _renderObjectIndices;  // x: materialIndex, y: envIndex, z: secEnvIndex, w: skeletonIndex
     mat4  _iblRotation;          // sky IBL rotation (or identity for local volumes)
     mat4  _iblSecondaryRotation; // secondary IBL rotation (currently identity-only)
+    ivec4 _activePointLightIndices[6]; // 24 ints packed
+    ivec4 _activeSpotLightIndices[6];  // 24 ints packed
+    ivec4 _lightCounts;          // x: pointCount, y: spotCount
   };
 
   TK_UBO_BINDING(2) uniform InstancedDrawDataBlock

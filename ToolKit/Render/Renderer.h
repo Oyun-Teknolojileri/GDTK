@@ -282,8 +282,10 @@ namespace ToolKit
                 "AnimKeyTableRow must be 4 RGBA32F texels (64 bytes).");
 
   // Phase 2b step 7: InstancedDrawData mini-UBO (slot 2, TK_INSTANCED=1 only).
-  // Replaces the full 1120 B PerDrawUboLayout on the instanced path with a lean 12-Vec4
-  // (192 B) block carrying only the fields not in global tables or instance texture.
+  // Replaces the full 1120 B PerDrawUboLayout on the instanced path with a lean 25-Vec4
+  // (400 B) block. Light index arrays are kept in the UBO until the light-index table
+  // is fully wired (Phase 3+); other heavy data (material, env, IBL rotation, viewport)
+  // is already in global tables or stays compact.
   struct InstancedDrawDataLayout
   {
     Vec4 global0;              // x: iblInUse, y: aoInUse, z: skyIntensity, w: pad
@@ -292,9 +294,12 @@ namespace ToolKit
     IVec4 renderObjectIndices; // x: materialIndex, y: envIndex, z: secEnvIndex, w: skeletonIndex
     Mat4 iblRotation;          // sky IBL rotation (or identity for local volumes)
     Mat4 iblSecondaryRotation; // secondary IBL rotation (currently identity-only)
+    IVec4 activePointLightIndices[6]; // 24 ints packed
+    IVec4 activeSpotLightIndices[6];  // 24 ints packed
+    IVec4 lightCounts;         // x: pointCount, y: spotCount
   };
-  static_assert(sizeof(InstancedDrawDataLayout) == 12 * 16,
-                "InstancedDrawDataLayout must be 12 Vec4 (192 bytes).");
+  static_assert(sizeof(InstancedDrawDataLayout) == 25 * 16,
+                "InstancedDrawDataLayout must be 25 Vec4 (400 bytes).");
 
   // Pass-specific UBOs (slot 7)
   //////////////////////////////////////////

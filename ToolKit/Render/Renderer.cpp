@@ -465,6 +465,9 @@ namespace ToolKit
         id.renderObjectIndices = ubo.renderObjectIndices;
         id.iblRotation         = ubo.iblRotation;
         id.iblSecondaryRotation = ubo.iblSecondaryRotation;
+        std::memcpy(id.activePointLightIndices, ubo.activePointLightIndices, sizeof(IVec4) * 6);
+        std::memcpy(id.activeSpotLightIndices, ubo.activeSpotLightIndices, sizeof(IVec4) * 6);
+        id.lightCounts = ubo.lightCounts;
         m_instancedDrawBuffer.Invalidate();
         m_instancedDrawBuffer.Map();
         m_backend->BindUniformBuffer(&m_instancedDrawBuffer.GetBuffer(),
