@@ -58,6 +58,10 @@ namespace ToolKit
     m_globalGpuBuffers->graphicConstantBuffer.Map();
     m_drawnFrameBufferStats.clear();
 
+    // Phase 2b step 6: reset frame-local animation key table.
+    m_animKeyNextRow = 0;
+    m_animKeyRowMap.clear();
+
     m_backend->BeginFrame();
   }
 
@@ -130,6 +134,9 @@ namespace ToolKit
     // Phase 2b step 5: light data buffers — 256-light budget each, 5/10 texels per row.
     m_pointLightTable.Resize(256);
     m_spotLightTable.Resize(256);
+
+    // Phase 2b step 6: animation key table — frame-local, 256-row budget, 4 texels each.
+    m_animKeyTable.Resize(256);
   }
 
   Renderer::~Renderer()
@@ -372,9 +379,40 @@ namespace ToolKit
       InstanceRecord rec;
       rec.model         = ubo.model;
       rec.lightListIndex = 0; // step 5
-      rec.animKeyIndex   = 0; // step 6
+      rec.animKeyIndex   = 0;
       rec.flags          = 0;
       rec._pad           = 0;
+
+      // Phase 2b step 6: resolve animation key table row (frame-local).
+      // The perDraw UBO animation fields were just populated by FeedUniforms — read them
+      // back and write to the global anim-key table if the object is skinned.
+      // (Don't check rec.flags yet — IS_SKINNED is set below.)
+      if (job.Mesh->IsSkinned())
+      {
+        AnimKeyTableRow animRow;
+        animRow.keyFrameData          = ubo.keyFrameData;
+        animRow.blendFrameData        = ubo.blendFrameData;
+        animRow.skinParams            = ubo.skinParams;
+        animRow.animBlendFactorAndPad = ubo.animBlendFactorAndPad;
+
+        // Simple hash: XOR all uint64 words of the 4-Vec4 row (64 bytes = 8 uint64s).
+        uint64 hash = 0;
+        const uint64* words = reinterpret_cast<const uint64*>(&animRow);
+        for (int i = 0; i < 8; ++i) hash ^= words[i];
+
+        auto it = m_animKeyRowMap.find(hash);
+        if (it == m_animKeyRowMap.end())
+        {
+          rec.animKeyIndex          = m_animKeyNextRow++;
+          m_animKeyRowMap[hash]     = rec.animKeyIndex;
+          m_animKeyTable[rec.animKeyIndex] = animRow;
+          m_animKeyTable.Map(rec.animKeyIndex, 1);
+        }
+        else
+        {
+          rec.animKeyIndex = it->second;
+        }
+      }
 
       // Uniform-scale heuristic: compare column vector lengths of the model matrix.
       // If all three axes have equal length (within epsilon), the scale is uniform.
@@ -430,6 +468,7 @@ namespace ToolKit
       SetTexture(18, m_envVolumeTable.m_buffer);
       SetTexture(19, m_pointLightTable.m_buffer);
       SetTexture(20, m_spotLightTable.m_buffer);
+      SetTexture(21, m_animKeyTable.m_buffer);
     }
 
     // Bind textures AFTER BindPipeline. On Vulkan, BindPipeline resets the per-draw descriptor

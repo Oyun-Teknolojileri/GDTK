@@ -269,6 +269,18 @@ namespace ToolKit
   static_assert(sizeof(SpotLightTableRow) == 10 * 16,
                 "SpotLightTableRow must be 10 RGBA32F texels (160 bytes).");
 
+  // Phase 2b step 6: animation key table row (4 RGBA32F texels, frame-local).
+  // Mirrors the GLSL AnimKeyData in animKeyTableInc.shader.
+  struct AnimKeyTableRow
+  {
+    Vec4 keyFrameData;          // x: kf1, y: kf2, z: interpTime, w: kfCount
+    Vec4 blendFrameData;        // x: blendKf1, y: blendKf2, z: blendInterpTime, w: blendKfCount
+    Vec4 skinParams;            // x: numBones, y: isSkinned, z: isAnimated, w: blendAnimation
+    Vec4 animBlendFactorAndPad; // x: blendFactor, yzw: pad
+  };
+  static_assert(sizeof(AnimKeyTableRow) == 4 * 16,
+                "AnimKeyTableRow must be 4 RGBA32F texels (64 bytes).");
+
   // Pass-specific UBOs (slot 7)
   //////////////////////////////////////////
   //
@@ -675,6 +687,12 @@ namespace ToolKit
     std::unordered_map<ObjectId, int> m_spotLightRowMap;
     std::vector<int> m_spotLightRowVersions; // cached CacheItem::version per row
     TextureBuffer<SpotLightTableRow, GraphicTypes::FormatRGBA32F> m_spotLightTable;
+
+    // Phase 2b step 6: animation key table (frame-local, rebuilt each frame).
+    // Monotonic row allocator; counter resets at frame start via ResetAnimKeyTable().
+    int m_animKeyNextRow = 0;
+    std::unordered_map<uint64, int> m_animKeyRowMap; // hash(4 Vec4) → row index (frame-local)
+    TextureBuffer<AnimKeyTableRow, GraphicTypes::FormatRGBA32F> m_animKeyTable;
 
     FramebufferPtr m_framebuffer  = nullptr;
     TexturePtr m_shadowAtlas      = nullptr;
