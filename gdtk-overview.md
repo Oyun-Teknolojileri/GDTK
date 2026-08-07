@@ -4,7 +4,7 @@
 > It captures the high-level architecture so we can dive straight into specific tasks.
 >
 > Repo path: `C:\Users\Cihan\Desktop\GDTK`
-> Solution: `C:\Users\Cihan\Desktop\GDTK\ToolKit.sln`
+> Build: CMake only (no .sln / .vcxproj in repo) — `python BuildScripts/build_gdtk.py`
 > C++ style: see `~/.mavis/memory/programming-rules.md` (`m_mymember`, `MyLittleFunction()`, `/** */`, `mystructmember`, **always** curly braces).
 
 ---
@@ -22,18 +22,15 @@ Philosophy: minimal, modular, lightweight, bloat-free — alternative to Unity/U
 
 ---
 
-## 2. Solution Layout (`ToolKit.sln`)
+## 2. Repository Layout
 
 ```
 GDTK/
-├── Engine/                      # Engine filter (ToolKit.vcxproj)
-│   ├── ToolKit/                 # Core engine (ToolKit.vcxproj) — most of the code lives here
-│   │   ├── Common/              # Cross-platform utils (UTF-8, base64, SDL event pool, Win32, splash)
-│   │   ├── Vulkan/              # Vulkan backend (VulkanBackend, Shader, Swapchain, Pipeline cache, etc.)
-│   │   ├── x64/                 # Build output
-│   │   └── *.h / *.cpp          # Headers at root for fast discovery
-│   ├── Editor/                  # Editor.vcxproj — ImGui-based 3D editor application
-│   └── ...
+├── ToolKit/                     # Core engine (shared library target) — most of the code lives here
+│   ├── Common/                  # Cross-platform utils (UTF-8, base64, SDL event pool, Win32, Linux)
+│   ├── Render/                  # Renderer, passes, GL/Vulkan backends
+│   └── *.h / *.cpp              # Headers at root for fast discovery
+├── Editor/                      # Editor executable — ImGui-based 3D editor application
 ├── Utils/
 │   ├── Import/                  # Asset import CLI (assimp-based, into engine format)
 │   ├── Packer/                  # Release / publish CLI (.tk bundle, platform packages)
@@ -48,7 +45,6 @@ GDTK/
 ├── Config/                      # Default engine config files
 ├── Bin<Config>/                 # Self-contained output: binaries + shared deps
 │                                # (per config: BinDebug/, BinRelease/)
-├── Templates/                   # Project templates
 ├── CMakeLists.txt               # Top-level CMake
 ├── BuildScripts/                # Cross-platform build scripts
 └── .clang-format                # Project formatting rules
@@ -563,11 +559,11 @@ All binaries and shared dependencies land in `Bin<Config>/` (e.g. `BinDebug/`).
 After `cmake --install`, the directory is self-contained — `$ORIGIN` RPATH
 covers every shared library.
 
-**Windows / Visual Studio:**
-```bat
-start ToolKit.sln
-```
-Set **Editor** as the startup project. **Debug|x64** or **Release|x64**. **Build -> Build Solution** (Ctrl+Shift+B).
+**Windows:** same `build_gdtk.py` command. From a VS developer prompt (or when
+`cl.exe` is resolvable via `vswhere`) it picks the matching Visual Studio
+generator automatically; otherwise Ninja. With the MSVC generator the
+solution/projects are generated under `Intermediate/Windows/` and can be
+opened in Visual Studio from there. There is no checked-in `ToolKit.sln`.
 
 ### 12.3 First run
 Editor asks for a workspace dir (e.g. `C:\Users\Cihan\Documents\TK-Workspace`). It writes to `%appdata%/ToolKit/Config/`. Delete that folder to reset.
@@ -579,7 +575,13 @@ Menu bar -> New project (name must be ASCII alphanumeric, no whitespace).
 VSCode opens `Workspace/Project/Codes` with template code. `F7` in VSCode compiles, "Build" button in editor also compiles, "Play" runs simulation in editor, attach VSCode to ToolKit for debugging.
 
 ### 12.6 CMake
-Top-level `CMakeLists.txt` requires CMake >= 3.6. `add_definitions(-DTK_GL_ES_3_0 -DTK_DLL_EXPORT)`. `add_subdirectory(${TOOLKIT_DIR}/ToolKit ...)`. The `TOOLKIT_DIR` env var / cache var points to the engine module.
+Top-level `CMakeLists.txt` requires CMake >= 3.16 and pins C++17
+(`CMAKE_CXX_STANDARD 17`) for every target. `TK_PLATFORM` is auto-detected
+(Windows/Linux/Mac). Prebuilt dependencies are consumed via
+`find_package(<dep> REQUIRED CONFIG)` against wrapper configs
+(`Dependency/Config/*-config.cmake`) that `build_dependencies.py` stages
+under `Dependency/Intermediate/<Platform>/<Config>/<dep>/`. Engine binaries
+are installed into `Bin<Config>/` via `cmake --install ... --prefix .`.
 
 ---
 
