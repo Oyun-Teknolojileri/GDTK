@@ -110,6 +110,7 @@ namespace ToolKit
       Vec3 m_initialLoc;
       Quaternion m_initialRot;
       Vec3 m_initialRotAxis;
+      Vec3 m_initialGrabDir;
       float m_totalAngle = 0.0f;
       Vec3 m_initialScale;
 

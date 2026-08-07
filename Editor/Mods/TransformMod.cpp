@@ -394,6 +394,10 @@ namespace ToolKit
       {
         int axisInd      = (int) (m_gizmo->GetGrabbedAxis());
         m_initialRotAxis = m_gizmo->m_normalVectors[axisInd];
+
+        // Store the grab direction at grab start. Rotation is measured absolutely
+        // against this direction instead of accumulating per frame deltas.
+        m_initialGrabDir = m_gizmo->m_grabDir;
       }
 
       SDL_GetGlobalMouseState(&m_mouseInitialLoc.x, &m_mouseInitialLoc.y);
@@ -464,38 +468,32 @@ namespace ToolKit
 
       if (m_type == TransformType::Rotate)
       {
-        // Calculate angular offset.
+        // Calculate the total angle absolutely, between the initial grab
+        // direction and the current direction on the intersection plane.
         if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
         {
-          Ray ray0         = vp->RayFromScreenSpacePoint(m_mouseData[0]);
-          Ray ray1         = vp->RayFromScreenSpacePoint(m_mouseData[1]);
-
+          Ray ray          = vp->RayFromScreenSpacePoint(m_mouseData[1]);
           Vec3 gizmoCenter = m_gizmo->m_worldLocation;
 
           float t          = 0.0f;
-          Vec3 p0; // Point 0 on gizmo.
-          if (RayPlaneIntersection(ray0, m_intersectionPlane, t))
+          if (RayPlaneIntersection(ray, m_intersectionPlane, t))
           {
-            p0 = PointOnRay(ray0, t);
-            p0 = glm::normalize(p0 - gizmoCenter);
-          }
-
-          Vec3 p1; // Point 1 on gizmo.
-          if (RayPlaneIntersection(ray0, m_intersectionPlane, t))
-          {
-            Vec3 rawP1         = PointOnRay(ray1, t) - gizmoCenter;
-            p1                 = glm::normalize(rawP1);
+            Vec3 rawP1         = PointOnRay(ray, t) - gizmoCenter;
+            Vec3 p1            = glm::normalize(rawP1);
             m_gizmo->m_grabDir = p1;
             m_gizmo->m_grabPnt = rawP1;
+
+            if (glm::dot(m_initialGrabDir, m_initialGrabDir) > 0.0f)
+            {
+              m_delta       = ZERO;
+              m_delta.z     = AngleBetweenVectors(m_initialGrabDir, p1);
+
+              // Detect signature.
+              Vec3 rotNorm  = glm::cross(m_initialGrabDir, p1);
+              float sig     = glm::sign(glm::dot(rotNorm, m_intersectionPlane.normal));
+              m_delta.z    *= sig;
+            }
           }
-
-          m_delta       = ZERO;
-          m_delta.z     = AngleBetweenVectors(p0, p1);
-
-          // Detect signature.
-          Vec3 rotNorm  = glm::cross(p0, p1);
-          float sig     = glm::sign(glm::dot(rotNorm, m_intersectionPlane.normal));
-          m_delta.z    *= sig;
         }
       }
       else
@@ -689,11 +687,12 @@ namespace ToolKit
 
     void StateTransformTo::Rotate(EntityPtr ntt)
     {
-      float delta    = m_delta.z;
-      m_totalAngle  += delta;
+      // Absolute rotation: m_delta.z is the total angle measured from the grab
+      // start, applied on top of the initial orientation each frame.
+      m_totalAngle         = m_delta.z;
 
-      float angle    = m_totalAngle;
-      float spacing  = glm::radians(GetApp()->m_rotateDelta);
+      float angle          = m_totalAngle;
+      float spacing        = glm::radians(GetApp()->m_rotateDelta);
       if (GetApp()->m_snapsEnabled)
       {
         angle = glm::round(angle / spacing) * spacing;
