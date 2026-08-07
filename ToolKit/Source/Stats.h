@@ -121,8 +121,8 @@ namespace ToolKit
     /** Get the number of frames recorded. */
     uint GetFrameCount() const { return m_frameCount; }
 
-    /** Enable or disable profiling. */
-    void SetEnabled(bool enabled) { m_enabled = enabled; }
+    /** Enable or disable profiling. Disabling discards the in-flight frame. */
+    void SetEnabled(bool enabled);
 
     /** Check if profiling is enabled. */
     bool IsEnabled() const { return m_enabled; }
@@ -130,16 +130,13 @@ namespace ToolKit
    private:
     void DeleteNodeRecursive(ProfilerNode* node);
     void SwapNodeFrameData(ProfilerNode* node);
+    void ResetFrameCounters(ProfilerNode* node);
     void EnsureCalibrated();
-
-    // Outlier detection: returns true and replaces value with avg of previous 2
-    // if value > 3x the average.
-    static float FilterOutlier(float value, const float* history, uint8 pos, uint8 count);
 
    private:
     ProfilerNodeArray m_rootNodes;          //!< Root level nodes.
     ProfilerNode* m_currentNode  = nullptr; //!< Currently active scope.
-    float m_frameBeginTime       = 0.0f;    //!< Time when frame began.
+    uint64 m_frameBeginCycles    = 0;       //!< Cycle count when the frame began.
     float m_frameTime            = 0.0f;    //!< Last frame's total time.
     float m_accumulatedFrameTime = 0.0f;    //!< Accumulated frame time.
     // Sliding-window frame time history (~1s).
