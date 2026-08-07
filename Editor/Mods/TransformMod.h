@@ -111,6 +111,7 @@ namespace ToolKit
       Quaternion m_initialRot;
       Vec3 m_initialRotAxis;
       Vec3 m_initialGrabDir;
+      Vec3 m_initialGrabPoint;
       float m_totalAngle = 0.0f;
       Vec3 m_initialScale;
 

@@ -400,6 +400,13 @@ namespace ToolKit
         m_initialGrabDir = m_gizmo->m_grabDir;
       }
 
+      // Store the grab point at grab start so scale delta can be measured
+      // absolutely from this point instead of accumulating per frame deltas.
+      if (m_type == TransformType::Scale)
+      {
+        m_initialGrabPoint = m_gizmo->m_grabDir;
+      }
+
       SDL_GetGlobalMouseState(&m_mouseInitialLoc.x, &m_mouseInitialLoc.y);
     }
 
@@ -507,16 +514,28 @@ namespace ToolKit
             // This point.
             Vec3 p = PointOnRay(ray, t);
 
-            // Previous. point.
-            ray    = vp->RayFromScreenSpacePoint(m_mouseData[0]);
-            RayPlaneIntersection(ray, m_intersectionPlane, t);
-            Vec3 p0 = PointOnRay(ray, t);
-            m_delta = p - p0;
+            if (m_type == TransformType::Scale)
+            {
+              // Absolute: total delta measured from the initial grab point.
+              m_delta = p - m_initialGrabPoint;
+            }
+            else
+            {
+              // Previous point.
+              ray    = vp->RayFromScreenSpacePoint(m_mouseData[0]);
+              RayPlaneIntersection(ray, m_intersectionPlane, t);
+              Vec3 p0 = PointOnRay(ray, t);
+              m_delta = p - p0;
+            }
           }
           else
           {
             assert(false && "Intersection expected.");
-            m_delta = ZERO;
+            if (m_type != TransformType::Scale)
+            {
+              // For scale, keep the last absolute delta on intersection failure.
+              m_delta = ZERO;
+            }
           }
         }
       }
@@ -718,6 +737,11 @@ namespace ToolKit
       const BoundingBox& box           = ntt->GetBoundingBox();
       Vec3 aabbSize                    = box.max - box.min;
 
+      // Normalize by the initial world size (local size * initial scale) so
+      // the elongation along the axis matches the mouse travel in world space,
+      // independent of how big the entity already is.
+      aabbSize                        *= glm::abs(m_initialScale);
+
       int axisIndex                    = int(m_gizmo->GetGrabbedAxis());
       Vec3 axis                        = scaleAxes[axisIndex];
 
@@ -753,9 +777,9 @@ namespace ToolKit
         delta *= mas;
       }
 
-      m_deltaAccum    += delta;
-
-      Vec3 totalDelta  = m_deltaAccum;
+      // Absolute scale: m_delta is the total world delta from the grab start,
+      // so the computed delta is the total scale factor. No accumulation.
+      Vec3 totalDelta  = delta;
       float spacing    = GetApp()->m_scaleDelta;
       if (GetApp()->m_snapsEnabled)
       {
