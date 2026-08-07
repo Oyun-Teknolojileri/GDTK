@@ -2,13 +2,13 @@
 	<type name = "fragmentShader" />
 	<include name = "vulkanCompatInc.shader" />
 	<include name = "cubemapEquirectPassDataInc.shader" />
-	<texture slot = "6" name = "s_texture6" viewType = "cube" />
+	<texture slot = "6" name = "s_cubeMap" viewType = "cube" />
 	<source>
 	<!--
   
   precision highp float;
 
-  TK_SAMPLER_BINDING(6) uniform samplerCube s_texture6;
+  TK_SAMPLER_BINDING(6) uniform samplerCube s_cubeMap;
   TK_LOC(2) in vec2 v_texture;
   out vec4 fragColor;
 
@@ -35,7 +35,7 @@
       vec3 direction = uvToXYZ(uv);
     
       // Sample the cubemap using the direction vector
-	    vec3 color = textureLod(s_texture6, direction, float(cubemapEquirect.lodLevelAndPad.x)).rgb;
+	    vec3 color = textureLod(s_cubeMap, direction, float(cubemapEquirect.lodLevelAndPad.x)).rgb;
     
       // TODO: Inverse cubemapEquirect.exposureAndPad.x
       color = -log(1.0 - color) / cubemapEquirect.exposureAndPad.x;

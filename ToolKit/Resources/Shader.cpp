@@ -1,0 +1,553 @@
+/*
+ * Copyright (c) 2019-2026 OtSoftware
+ * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
+ * For more information, including options for a more permissive commercial license,
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
+ */
+
+#include "Shader.h"
+
+#include "EngineSettings.h"
+#include "FileManager.h"
+#include "GpuProgram.h"
+#include "Logger.h"
+#include "RenderSystem.h"
+#include "Renderer.h"
+#include "TKAssert.h"
+#include "ToolKit.h"
+#include "Util.h"
+
+#include <regex>
+#include <sstream>
+#include <unordered_set>
+
+#include "DebugNew.h"
+
+namespace ToolKit
+{
+
+  // Duplicate Include Prune Utility
+  //////////////////////////////////////////
+
+  void PruneDuplicateIncludes(String& source)
+  {
+    std::istringstream in(source);
+    std::ostringstream out;
+
+    // Regexes to detect include begin/end with the include name in group 1
+    const std::regex beginRegex(R"(^\s*//\s*@include\s+begin:(\S+))");
+    const std::regex endRegex(R"(^\s*//\s*@include\s+end:(\S+))");
+
+    std::string line;
+    // Keep track of which include names we've already output
+    std::unordered_set<String> seen;
+    // Stack of (include name, skip flag) for nested scopes
+    std::vector<std::pair<String, bool>> includeStack;
+
+    while (std::getline(in, line))
+    {
+      std::smatch match;
+      if (std::regex_match(line, match, beginRegex))
+      {
+        // Found a begin scope
+        String name = match[1].str();
+        bool skip   = seen.count(name) > 0;
+        includeStack.emplace_back(name, skip);
+
+        if (!skip)
+        {
+          seen.insert(name);
+          out << line << "\n";
+        }
+      }
+      else if (std::regex_match(line, match, endRegex))
+      {
+        // Found an end scope
+        String name = match[1].str();
+        if (!includeStack.empty())
+        {
+          auto [topName, skip] = includeStack.back();
+          includeStack.pop_back();
+          // Only output the end marker if we weren't skipping this block
+          if (!skip)
+          {
+            out << line << "\n";
+          }
+        }
+      }
+      else
+      {
+        // Regular line: output only if not inside a skipped block
+        if (includeStack.empty() || !includeStack.back().second)
+        {
+          out << line << "\n";
+        }
+      }
+    }
+
+    // Replace the source with the pruned result
+    source = out.str();
+  }
+
+  // Shader
+  //////////////////////////////////////////
+
+#define TK_DEFAULT_FORWARD_FRAG  "defaultFragment.shader"
+#define TK_DEFAULT_VERTEX_SHADER "defaultVertex.shader"
+
+  TKDefineClass(Shader, Resource);
+
+  Shader::Shader() {}
+
+  Shader::Shader(const String& file) : Shader() { SetFile(file); }
+
+  Shader::~Shader() { UnInit(); }
+
+  void Shader::Load()
+  {
+    if (!m_loaded)
+    {
+      ParseDocument("shader", true);
+      m_loaded = true;
+    }
+  }
+
+  void Shader::Init(bool flushClientSideArray)
+  {
+    if (m_initiated)
+    {
+      return;
+    }
+
+    if (!m_defineArray.empty())
+    {
+      // Try syncing presets.
+      GetEngineSettings().m_shaderSettings->SyncDefinesForShader(GetFile(), m_defineArray);
+
+      ShaderDefineCombinaton defineCombo;
+      ComplieShaderCombinations(m_defineArray, 0, defineCombo);
+    }
+    else
+    {
+      Compile(m_source);
+    }
+
+    if (flushClientSideArray)
+    {
+      m_source.clear();
+    }
+
+    m_initiated = true;
+  }
+
+  void Shader::UnInit()
+  {
+    IGraphicsBackend* backend = GetRenderSystem()->GetBackend();
+
+    // Destroy all compiled variants.
+    bool handleInMap          = false;
+    for (auto& [key, data] : m_shaderVariantMap)
+    {
+      if (data.get() == m_gpuData.get())
+      {
+        handleInMap = true;
+      }
+      backend->DestroyShader(data.get());
+    }
+    m_shaderVariantMap.clear();
+
+    // If m_gpuData was not part of a variant (base compile without defines), destroy it too.
+    if (!handleInMap)
+    {
+      backend->DestroyShader(m_gpuData.get());
+    }
+
+    m_gpuData.reset();
+    m_initiated = false;
+  }
+
+  void Shader::Save(bool onlyIfDirty)
+  {
+    // Shaders are created from code. So don't get saved.
+    m_dirty = false;
+  }
+
+  void Shader::SetDefine(const StringView name, const StringView val)
+  {
+    // Sanity checks.
+    if (!m_initiated)
+    {
+      // TK_ERR("Initialize the shader before setting a value for a define.");
+      TK_ERR("Initialize the shader before setting a value for a define. (%s)", GetFile().c_str());
+
+      return;
+    }
+
+    // Construct the key.
+    String key;
+    bool defineFound = false;
+    for (int i = 0; i < (int) m_currentDefineValues.size(); i++)
+    {
+      int defineIndx  = m_currentDefineValues[i].define;
+      int variantIndx = m_currentDefineValues[i].variant;
+
+      // If define found
+      if (m_defineArray[defineIndx].define == name)
+      {
+        defineFound = true;
+
+        // find the variant.
+        variantIndx = -1;
+        for (int ii = 0; ii < (int) m_defineArray[defineIndx].variants.size(); ii++)
+        {
+          if (m_defineArray[defineIndx].variants[ii] == val)
+          {
+            variantIndx                      = ii;
+            m_currentDefineValues[i].variant = ii; // update current define variant.
+            break;
+          }
+        }
+
+        if (variantIndx == -1)
+        {
+          // Push a new define variant.
+          m_defineArray[defineIndx].variants.push_back(val.data());
+          variantIndx                      = (int) m_defineArray[defineIndx].variants.size() - 1;
+          m_currentDefineValues[i].variant = variantIndx;
+        }
+      }
+
+      const String& defName  = m_defineArray[defineIndx].define;
+      const String& defVal   = m_defineArray[defineIndx].variants[variantIndx];
+      key                   += defName + ":" + defVal + "|";
+    }
+
+    // Check if define was found.
+    if (!defineFound)
+    {
+      // In this case, shader must be updated, because the define is not present in the shader.
+      TK_ERR("Define: %s not found in shader: %s", name.data(), GetFile().data());
+      return;
+    }
+
+    key.pop_back();
+
+    // Set the shader variant.
+    auto handle = m_shaderVariantMap.find(key);
+    if (handle != m_shaderVariantMap.end())
+    {
+      m_gpuData = m_shaderVariantMap[key];
+    }
+    else
+    {
+      TK_WRN("Compiling shader during runtime for a new variant. Define: %s for Variant: %s", name.data(), val.data());
+      ShaderDefineCombinaton defineCombo;
+      ComplieShaderCombinations(m_defineArray, 0, defineCombo);
+      m_gpuData = m_shaderVariantMap[key];
+    }
+  }
+
+  XmlNode* Shader::SerializeImp(XmlDocument* doc, XmlNode* parent) const { return nullptr; }
+
+  XmlNode* Shader::DeSerializeImp(const SerializationFileInfo& info, XmlNode* parent)
+  {
+    m_includeFiles.clear();
+    m_resources.clear();
+
+    XmlNode* rootNode = parent;
+    for (XmlNode* node = rootNode->first_node(); node; node = node->next_sibling())
+    {
+      if (strcmp("type", node->name()) == 0)
+      {
+        XmlAttribute* attr = node->first_attribute("name");
+        if (strcmp("vertexShader", attr->value()) == 0)
+        {
+          m_shaderType = ShaderType::VertexShader;
+        }
+        else if (strcmp("fragmentShader", attr->value()) == 0)
+        {
+          m_shaderType = ShaderType::FragmentShader;
+        }
+        else if (strcmp("includeShader", attr->value()) == 0)
+        {
+          m_shaderType = ShaderType::IncludeShader;
+        }
+        else
+        {
+          TK_ERR("Unrecognized shader type: %s Shader: %s", attr->value(), info.File.c_str());
+        }
+      }
+
+      if (strcmp("include", node->name()) == 0)
+      {
+        m_includeFiles.push_back(node->first_attribute("name")->value());
+      }
+
+      if (strcmp("define", node->name()) == 0)
+      {
+        ShaderDefine def;
+        def.define = node->first_attribute("name")->value();
+
+        String val = node->first_attribute("val")->value();
+        Split(val, ",", def.variants);
+
+        m_defineArray.push_back(def);
+      }
+
+      if (strcmp("texture", node->name()) == 0)
+      {
+        ShaderResource res;
+        res.type = ShaderResource::Type::Texture;
+
+        if (XmlAttribute* slotAttr = node->first_attribute("slot"))
+        {
+          res.slot = std::atoi(slotAttr->value());
+        }
+        if (XmlAttribute* nameAttr = node->first_attribute("name"))
+        {
+          res.name = nameAttr->value();
+        }
+        if (XmlAttribute* vtAttr = node->first_attribute("viewType"))
+        {
+          StringView vt = vtAttr->value();
+          if (vt == "2darray")
+            res.viewType = ShaderResource::ViewType::Tex2DArray;
+          else if (vt == "cube")
+            res.viewType = ShaderResource::ViewType::TexCube;
+        }
+
+        m_resources.push_back(res);
+      }
+
+      if (strcmp("uniform", node->name()) == 0)
+      {
+        ShaderResource res;
+        res.type = ShaderResource::Type::UniformBuffer;
+
+        if (XmlAttribute* slotAttr = node->first_attribute("slot"))
+        {
+          res.slot = std::atoi(slotAttr->value());
+        }
+        if (XmlAttribute* nameAttr = node->first_attribute("name"))
+        {
+          res.name = nameAttr->value();
+        }
+
+        m_resources.push_back(res);
+      }
+
+      if (strcmp("source", node->name()) == 0)
+      {
+        m_source = node->first_node()->value();
+      }
+    }
+
+    // Iterate back to forth
+    for (auto i = m_includeFiles.rbegin(); i != m_includeFiles.rend(); ++i)
+    {
+      HandleShaderIncludes(*i);
+    }
+
+    if (m_shaderType != ShaderType::IncludeShader)
+    {
+      PruneDuplicateIncludes(m_source);
+
+      // Inject the version directive. .shader sources no longer carry their own #version line —
+      // one source must compile on both backends, so the right line is picked here based on the
+      // active backend. Goes to the very top because GLSL requires #version as the first
+      // statement (anything before it is a compile error). HandleShaderIncludes already strips
+      // any stray #version/precision from included files, so prepending here can't double up.
+      // Note: VulkanShader.cpp additionally forces shaderc to 450 core via SetForcedVersionProfile,
+      // so even older shaders with a leftover #version would still compile on the VK path; we
+      // still emit the matching line here for consistency and so SPIR-V disasm shows the right
+      // header.
+#ifdef TK_VULKAN
+      m_source.insert(0, "#version 450 core\n");
+#else
+      m_source.insert(0, "#version 300 es\n");
+#endif
+    }
+
+    return nullptr;
+  }
+
+  void Shader::HandleShaderIncludes(const String& file)
+  {
+    size_t mergeLoc    = FindShaderMergeLocation(m_source);
+
+    // Mark the file beginning of include file.
+    String includeMark = "// @include begin:" + file + "\n";
+    m_source.replace(mergeLoc, 0, includeMark);
+    mergeLoc                += includeMark.length();
+
+    // Perform the include.
+    ShaderPtr includeShader  = GetShaderManager()->Create<Shader>(ShaderPath(file, true));
+
+    // CLEANUP: We must strip #version and precision from the included file
+    // to prevent multiple definitions in the final output.
+    String includeContent    = includeShader->m_source;
+    includeContent           = std::regex_replace(includeContent, std::regex(R"(^\s*#version.*|^\s*precision.*)"), "");
+
+    // Ensure the included content ends with a newline to avoid "gluing" lines together
+    if (!includeContent.empty() && includeContent.back() != '\n')
+    {
+      includeContent += "\n";
+    }
+
+    m_source.replace(mergeLoc, 0, includeContent);
+
+    // Mark the end of include file.
+    mergeLoc    += includeContent.length();
+    includeMark  = "// @include end:" + file + "\n";
+    m_source.replace(mergeLoc, 0, includeMark);
+
+    // Handle m_defineArray
+    m_defineArray.insert(m_defineArray.end(), includeShader->m_defineArray.begin(), includeShader->m_defineArray.end());
+    std::sort(m_defineArray.begin(), m_defineArray.end());
+    m_defineArray.erase(std::unique(m_defineArray.begin(), m_defineArray.end()), m_defineArray.end());
+
+    // Inherit resource declarations from the included shader, deduplicated by (type, slot, name).
+    for (const ShaderResource& incRes : includeShader->m_resources)
+    {
+      auto same = [&incRes](const ShaderResource& r)
+      { return r.type == incRes.type && r.slot == incRes.slot && r.name == incRes.name; };
+
+      if (std::find_if(m_resources.begin(), m_resources.end(), same) == m_resources.end())
+      {
+        m_resources.push_back(incRes);
+      }
+    }
+  }
+
+  uint Shader::FindShaderMergeLocation(const String& source)
+  {
+    // Put included file after precision and version defines
+    size_t includeLoc = 0;
+
+    // Find the end of #version line
+    size_t versionLoc = source.find("#version");
+    if (versionLoc != String::npos)
+    {
+      size_t lineEnd = source.find('\n', versionLoc);
+      if (lineEnd != String::npos)
+      {
+        includeLoc = std::max(includeLoc, lineEnd + 1);
+      }
+    }
+
+    // Find the end of the last precision line
+    size_t precisionLoc = 0;
+    while ((precisionLoc = source.find("precision", precisionLoc)) != String::npos)
+    {
+      size_t statementEnd = source.find(';', precisionLoc);
+      if (statementEnd != String::npos)
+      {
+        // Find the actual line end to avoid inserting in the middle of a line
+        size_t lineEnd = source.find('\n', statementEnd);
+        if (lineEnd != String::npos)
+        {
+          includeLoc = std::max(includeLoc, lineEnd + 1);
+        }
+        else
+        {
+          includeLoc = std::max(includeLoc, statementEnd + 1);
+        }
+      }
+      precisionLoc += 9; // Move past current "precision"
+    }
+
+    return (uint) includeLoc;
+  }
+
+  bool Shader::Compile(String source)
+  {
+    TK_LOG("Shader in compile %s", GetFile().c_str());
+
+    m_gpuData = GetRenderSystem()->GetBackend()->CreateShader(this, source);
+    return m_gpuData != nullptr;
+  }
+
+  void Shader::CompileWithDefines(String source, const ShaderDefineCombinaton& defineCombo)
+  {
+    String key; // Hash key for the shader variant.
+    String defineText;
+    for (const ShaderDefineIndex& def : defineCombo)
+    {
+      String defName  = m_defineArray[def.define].define;
+      String defVal   = m_defineArray[def.define].variants[def.variant];
+      key            += defName + ":" + defVal + "|";
+
+      defineText     += "#define " + defName + " " + defVal + "\n";
+    }
+
+    key.pop_back(); // remove last "|"
+
+    // Check if the key exist before.
+    // New variants causes recompile, so we can skip existing variants.
+    if (m_shaderVariantMap.find(key) != m_shaderVariantMap.end())
+    {
+      return;
+    }
+
+    // Insert defines.
+    uint mergeLoc = FindShaderMergeLocation(source);
+    source.insert(mergeLoc, defineText);
+
+    TK_LOG("Compiling shader with defines: %s", key.c_str());
+
+    if (Compile(source))
+    {
+      m_currentDefineValues   = defineCombo;
+      m_shaderVariantMap[key] = m_gpuData;
+    }
+  }
+
+  void Shader::ComplieShaderCombinations(const ShaderDefineArray& defineArray,
+                                         int index,
+                                         ShaderDefineCombinaton& currentCombinaiton)
+  {
+    if (index == defineArray.size())
+    {
+      // Compile the final combo.
+      CompileWithDefines(m_source, currentCombinaiton);
+      return;
+    }
+
+    const ShaderDefine& currentDefine = defineArray[index];
+    for (int vi = (int) currentDefine.variants.size() - 1; vi >= 0; vi--)
+    {
+      currentCombinaiton.push_back({index, vi});
+
+      // Recursively generate combinations
+      ComplieShaderCombinations(defineArray, index + 1, currentCombinaiton);
+      currentCombinaiton.pop_back();
+    }
+  }
+
+  // ShaderManager
+  //////////////////////////////////////////
+
+  ShaderManager::ShaderManager() { m_baseType = Shader::StaticClass(); }
+
+  ShaderManager::~ShaderManager() {}
+
+  void ShaderManager::Init()
+  {
+    ResourceManager::Init();
+
+    m_pbrForwardShaderFile    = ShaderPath(TK_DEFAULT_FORWARD_FRAG, true);
+    m_defaultVertexShaderFile = ShaderPath(TK_DEFAULT_VERTEX_SHADER, true);
+
+    Create<Shader>(m_pbrForwardShaderFile);
+    Create<Shader>(m_defaultVertexShaderFile);
+  }
+
+  bool ShaderManager::CanStore(ClassMeta* Class) { return Class == Shader::StaticClass(); }
+
+  ShaderPtr ShaderManager::GetDefaultVertexShader() { return Cast<Shader>(m_storage[m_defaultVertexShaderFile]); }
+
+  ShaderPtr ShaderManager::GetPbrForwardShader() { return Cast<Shader>(m_storage[m_pbrForwardShaderFile]); }
+
+  const String& ShaderManager::PbrForwardShaderFile() { return m_pbrForwardShaderFile; }
+
+} // namespace ToolKit

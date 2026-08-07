@@ -2,7 +2,7 @@
 	<type name = "fragmentShader" />
 	<include name = "vulkanCompatInc.shader" />
 	<include name = "ssaoBlurPassDataInc.shader" />
-	<texture slot = "0" name = "s_texture0" />
+	<texture slot = "0" name = "s_diffuseColor" />
 	<source>
 	<!--
 
@@ -11,7 +11,7 @@ precision highp float;
 out vec4 fragColor;
 TK_LOC(2) in vec2 v_texture;
 
-TK_SAMPLER_BINDING(0) uniform sampler2D s_texture0; // SSAO texture (must have bilinear filtering)
+TK_SAMPLER_BINDING(0) uniform sampler2D s_diffuseColor; // SSAO texture (must have bilinear filtering)
 
 void main()
 {
@@ -40,19 +40,19 @@ void main()
 	vec2 uv = v_texture;
 
 	// 4 corner samples (each approximates a 2x2 block)
-	float tl = texture(s_texture0, uv + ssaoBlur.texelSizeAndPad.xy * vec2(-o, -o)).r;
-	float tr = texture(s_texture0, uv + ssaoBlur.texelSizeAndPad.xy * vec2( o, -o)).r;
-	float bl = texture(s_texture0, uv + ssaoBlur.texelSizeAndPad.xy * vec2(-o,  o)).r;
-	float br = texture(s_texture0, uv + ssaoBlur.texelSizeAndPad.xy * vec2( o,  o)).r;
+	float tl = texture(s_diffuseColor, uv + ssaoBlur.texelSizeAndPad.xy * vec2(-o, -o)).r;
+	float tr = texture(s_diffuseColor, uv + ssaoBlur.texelSizeAndPad.xy * vec2( o, -o)).r;
+	float bl = texture(s_diffuseColor, uv + ssaoBlur.texelSizeAndPad.xy * vec2(-o,  o)).r;
+	float br = texture(s_diffuseColor, uv + ssaoBlur.texelSizeAndPad.xy * vec2( o,  o)).r;
 
 	// 4 edge samples (each approximates a 2x1 block)
-	float t  = texture(s_texture0, uv + ssaoBlur.texelSizeAndPad.xy * vec2( 0.0, -e)).r;
-	float b  = texture(s_texture0, uv + ssaoBlur.texelSizeAndPad.xy * vec2( 0.0,  e)).r;
-	float l  = texture(s_texture0, uv + ssaoBlur.texelSizeAndPad.xy * vec2(-e,  0.0)).r;
-	float r  = texture(s_texture0, uv + ssaoBlur.texelSizeAndPad.xy * vec2( e,  0.0)).r;
+	float t  = texture(s_diffuseColor, uv + ssaoBlur.texelSizeAndPad.xy * vec2( 0.0, -e)).r;
+	float b  = texture(s_diffuseColor, uv + ssaoBlur.texelSizeAndPad.xy * vec2( 0.0,  e)).r;
+	float l  = texture(s_diffuseColor, uv + ssaoBlur.texelSizeAndPad.xy * vec2(-e,  0.0)).r;
+	float r  = texture(s_diffuseColor, uv + ssaoBlur.texelSizeAndPad.xy * vec2( e,  0.0)).r;
 
 	// Center sample
-	float c  = texture(s_texture0, uv).r;
+	float c  = texture(s_diffuseColor, uv).r;
 
 	// Weighted sum approximating 5x5 Gaussian
 	// Corners: 25/256 each, Edges: 30/256 each, Center: 36/256

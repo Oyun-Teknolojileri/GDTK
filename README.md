@@ -67,7 +67,25 @@ cd .\GDTK\
 .\BuildDependencies.bat
 ```
 
-After this point ToolKit/ToolKit.sln file can be open and build.
+After this point, the project is ready to build:
+
+```bash
+# Build all targets (Linux / macOS)
+python3 BuildScripts/build_gdtk.py --configs Debug
+
+# Or manually via cmake
+cmake -S . -B Intermediate/Linux/Debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
+cmake --build Intermediate/Linux/Debug --parallel $(nproc)
+cmake --install Intermediate/Linux/Debug --prefix .
+```
+
+Binaries and shared dependencies land in `Bin<Config>/` (e.g. `BinDebug/`):
+- `Editor`, `Launcher`, `Import`, `Packer` — executables
+- `libToolKitd.so`, `libWorkspace.a` — engine libraries
+- `libSDL2-*.so`, `libimguid.so`, `libassimpd.so` — shared dependencies
+
+After a successful build + install, `Bin<Config>/` is self-contained — all binaries
+find their dependencies via `$ORIGIN` RPATH, no `LD_LIBRARY_PATH` needed.
 
 #### Visual Studio Project Overview
 
@@ -79,7 +97,7 @@ There are cmake files all around the repository and .bat files. They are used to
 
 ## Setup
 
-After compiling the ToolKit solution, it creates the editor.exe in the Bin folder. When running the editor for the first time it asks a folder to use as a workspace directory. Its reasonable to give it a folder in the documents where you have full read & write access. All projects and related files get stored under the workspace / project folder. A sample path for workspace 
+After compiling the ToolKit solution, it creates the editor.exe in the Bin<Config> folder (e.g. BinDebug/ or BinRelease/). When running the editor for the first time it asks a folder to use as a workspace directory. Its reasonable to give it a folder in the documents where you have full read & write access. All projects and related files get stored under the workspace / project folder. A sample path for workspace 
 > "C:/Users/**YourUserName**/Documents/TK-Workspace"
 
 ![ToolKit setting a workspace](Images/tk_workspace.png)

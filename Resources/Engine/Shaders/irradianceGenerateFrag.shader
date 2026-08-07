@@ -1,13 +1,13 @@
 <shader>
 	<type name = "fragmentShader" />
 	<include name = "vulkanCompatInc.shader" />
-	<texture slot = "6" name = "s_texture6" viewType = "cube" />
+	<texture slot = "6" name = "s_cubeMap" viewType = "cube" />
 	<source>
 	<!--
 		
 		precision highp float;
 
-		TK_SAMPLER_BINDING(6) uniform samplerCube s_texture6;
+		TK_SAMPLER_BINDING(6) uniform samplerCube s_cubeMap;
 
 		in vec3 v_pos;
 		out vec4 fragColor;
@@ -39,7 +39,7 @@
 	            // tangent space to world
 	            vec3 sampleVec = tangentSample.x * right + tangentSample.y * up + tangentSample.z * N; 
 
-	            vec3 _irradiance = texture(s_texture6, sampleVec).rgb;
+	            vec3 _irradiance = texture(s_cubeMap, sampleVec).rgb;
 							_irradiance = clamp(_irradiance, vec3(0.0), vec3(FLT_MAX));
 							irradiance += _irradiance * cos(theta) * sin(theta);
 	            nrSamples += 1.0;

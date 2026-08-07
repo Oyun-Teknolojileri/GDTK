@@ -1,0 +1,62 @@
+/*
+ * Copyright (c) 2019-2026 OtSoftware
+ * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
+ * For more information, including options for a more permissive commercial license,
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
+ */
+
+#pragma once
+
+#include "Pass.h"
+#include "RenderState.h"
+
+namespace ToolKit
+{
+
+  struct FullQuadPassParams
+  {
+    FramebufferPtr frameBuffer        = nullptr;
+    BlendFunction blendFunc           = BlendFunction::NONE;
+    GraphicBitFields clearFrameBuffer = GraphicBitFields::AllBits;
+    /** Stencil op applied to the pass's passive state. Caller-controlled now that material no
+     *  longer carries stencil state. */
+    StencilOperation stencilOp        = StencilOperation::None;
+  };
+
+  /**
+   * Draws a full quad that covers entire FrameBuffer with given fragment
+   * shader.
+   */
+  class TK_API FullQuadPass : public Pass
+  {
+   public:
+    FullQuadPass();
+
+    void Render() override;
+    void PreRender() override;
+    void PostRender() override;
+
+    /**
+     * This function should be called in order to create material and program of quad render
+     */
+    void SetFragmentShader(ShaderPtr fragmentShader, Renderer* renderer);
+
+    /** Populate m_requirements from m_params + the assigned fragment shader.
+     *  The default RenderState (depth off, FuncAlways) lives here too. */
+    void GatherRequirements(PassRequirements& reqs) override;
+
+   public:
+    FullQuadPassParams m_params;
+    MaterialPtr m_material = nullptr;
+
+   private:
+    QuadPtr m_quad;
+
+    /** Pass-owned passive RenderState. Disables depth test/write and uses FuncAlways so the
+     *  fullscreen quad always covers the framebuffer regardless of the depth buffer state. */
+    RenderState m_passState;
+  };
+
+  typedef std::shared_ptr<FullQuadPass> FullQuadPassPtr;
+
+} // namespace ToolKit

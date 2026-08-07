@@ -5,17 +5,17 @@
 	<include name = "shadow.shader" />
 	<include name = "perDrawDataInc.shader" />
 	<define name = "highlightCascades" val="0,1" />
-	<texture slot = "8" name = "s_texture8" viewType = "2darray" />
-	<texture slot = "13" name = "s_texture13" />
+	<texture slot = "8" name = "s_shadowAtlas" viewType = "2darray" />
+	<texture slot = "13" name = "s_lightData" />
 	<source>
 	<!--
 #ifndef LIGHTING_SHADER
 #define LIGHTING_SHADER
 
-TK_SAMPLER_BINDING(8)  uniform sampler2DArray s_texture8; // Shadow atlas
+TK_SAMPLER_BINDING(8)  uniform sampler2DArray s_shadowAtlas; // Shadow atlas
 
 /// Deferred rendering uniforms
-TK_SAMPLER_BINDING(13) uniform sampler2D s_texture13; // Light data
+TK_SAMPLER_BINDING(13) uniform sampler2D s_lightData; // Light data
 
 const float shadowFadeOutDistanceNorm = 0.9;
 
@@ -84,7 +84,7 @@ float CalculateDirectionalShadow
 
 	float shadow = SampleShadow2D
 	(
-		s_texture8,
+		s_shadowAtlas,
 		sampleCoord,
 		startCoord,
 		endCoord,
@@ -130,7 +130,7 @@ float CalculateSpotShadow
 
 	return SampleShadow2D
 	(
-		s_texture8,
+		s_shadowAtlas,
 		coord,
 		startCoord,
 		startCoord + shadowAtlasResRatio,
@@ -161,7 +161,7 @@ float CalculatePointShadow
 
 	return SampleShadowOmni
 	(
-		s_texture8,
+		s_shadowAtlas,
 		shadowAtlasCoord,
 		shadowAtlasResRatio,
 		shadowAtlasLayer,

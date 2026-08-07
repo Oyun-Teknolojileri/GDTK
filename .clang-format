@@ -25,7 +25,7 @@ AlignConsecutiveMacros:
   PadOperators: true
 AllowAllArgumentsOnNextLine: false
 AllowAllParametersOfDeclarationOnNextLine: false
-AllowShortBlocksOnASingleLine: Always
+AllowShortBlocksOnASingleLine: Empty
 AllowShortFunctionsOnASingleLine: All
 AlwaysBreakTemplateDeclarations: Yes
 BinPackArguments: false

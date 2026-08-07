@@ -5,13 +5,13 @@
 	<include name = "fxaaFunctions.shader" />
 	<include name = "tonemapFunctions.shader" />
 	<include name = "gammaFunctions.shader" />
-	<texture slot = "0" name = "s_texture0" />
+	<texture slot = "0" name = "s_diffuseColor" />
 	<source>
 	<!--
 		
 		precision highp float;
 
-		TK_SAMPLER_BINDING(0) uniform sampler2D s_texture0;
+		TK_SAMPLER_BINDING(0) uniform sampler2D s_diffuseColor;
 		in vec3 v_pos;
 		in vec3 v_normal;
 TK_LOC(2) in vec2 v_texture;
@@ -24,11 +24,11 @@ TK_LOC(2) in vec2 v_texture;
 
 			if (gtf.enableFlags.x != 0)
 			{
-				fragColor = Fxaa(uv, s_texture0);
+				fragColor = Fxaa(uv, s_diffuseColor);
 			}
 			else
 			{
-				fragColor = texture(s_texture0, uv);
+				fragColor = texture(s_diffuseColor, uv);
 			}
 
 			if (gtf.enableFlags.y != 0)

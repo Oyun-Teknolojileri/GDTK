@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #pragma once
@@ -10,6 +10,8 @@
 #ifdef _WIN32
   #define NOMINMAX
   #define WIN32_LEAN_AND_MEAN
+  #include "Types.h"
+
   #include <Windows.h>
   #include <shellapi.h>
   #include <shlobj.h>
@@ -19,6 +21,7 @@
   #include <filesystem>
   #include <fstream>
   #include <thread>
+  #include <vector>
 
 namespace ToolKit
 {
@@ -27,7 +30,7 @@ namespace ToolKit
     namespace UTF8Util
     {
       // Function to convert UTF-8 to UTF-16
-      std::wstring ConvertUTF8ToUTF16(const std::string& utf8String)
+      inline std::wstring ConvertUTF8ToUTF16(const std::string& utf8String)
       {
         // Calculate the length of the UTF-16 string
         int utf16Length = MultiByteToWideChar(CP_UTF8, 0, utf8String.c_str(), -1, NULL, 0);
@@ -57,9 +60,304 @@ namespace ToolKit
       }
     } // namespace UTF8Util
 
-    // Win32 console command execution callback.
-    int SysComExec(StringView cmd, bool async, bool showConsole, std::function<void(int)> callback)
+    // Returns the absolute path of the running executable via
+    // GetModuleFileNameW, converted to UTF-8 and normalized.
+    // Implementation detail for GetExecutableDirectory() /
+    // GetSiblingExecutablePath().
+    inline String GetExecutablePath()
     {
+      wchar_t buf[MAX_PATH] = {0};
+      DWORD len             = ::GetModuleFileNameW(nullptr, buf, MAX_PATH);
+      if (len == 0 || len >= MAX_PATH)
+      {
+        return String();
+      }
+      return std::filesystem::path(buf).lexically_normal().u8string();
+    }
+
+    // Returns the directory containing the running executable
+    // (with trailing separator). Use to resolve sibling binaries
+    // that ship next to the current process.
+    inline String GetExecutableDirectory()
+    {
+      String exePath = GetExecutablePath();
+      if (exePath.empty())
+      {
+        return String();
+      }
+      std::filesystem::path p(exePath);
+      String dir = p.parent_path().u8string();
+      if (!dir.empty() && dir.back() != '\\' && dir.back() != '/')
+      {
+        dir += '\\';
+      }
+      return dir;
+    }
+
+    // Returns the absolute path of `name` interpreted as a binary
+    // that lives next to the current process (e.g. Editor.exe
+    // next to Launcher.exe, both in Bin/).
+    inline String GetSiblingExecutablePath(const String& name) { return GetExecutableDirectory() + name; }
+
+    // Returns the absolute path of the editor binary. The editor
+    // is expected to ship next to the current process (both live
+    // in Bin/), so this is just a sibling lookup.
+    inline String GetEditorExecutablePath() { return GetSiblingExecutablePath(GetEditorExecutableName()); }
+
+    // Returns the absolute path of the packer binary. Same sibling
+    // semantics as GetEditorExecutablePath().
+    inline String GetPackerExecutablePath() { return GetSiblingExecutablePath(GetPackerExecutableName()); }
+
+    // Quote a single argv entry per the Microsoft "Parsing C++
+    // Command-Line Arguments" rules so it survives a round trip
+    // through CreateProcessW's lpCommandLine parser. Empty strings
+    // become ""; strings with no whitespace / quotes pass through
+    // untouched; everything else is wrapped in double quotes with
+    // backslashes doubled appropriately.
+    inline std::wstring Win32QuoteArg(const std::wstring& arg)
+    {
+      if (arg.empty())
+      {
+        return L"\"\"";
+      }
+
+      bool needsQuoting = false;
+      for (wchar_t c : arg)
+      {
+        if (c == L' ' || c == L'\t' || c == L'"')
+        {
+          needsQuoting = true;
+          break;
+        }
+      }
+      if (!needsQuoting)
+      {
+        return arg;
+      }
+
+      std::wstring result;
+      result.push_back(L'"');
+      size_t backslashes = 0;
+      for (wchar_t c : arg)
+      {
+        if (c == L'\\')
+        {
+          backslashes++;
+        }
+        else if (c == L'"')
+        {
+          // N backslashes + literal quote -> 2N+1 backslashes + quote.
+          result.append(backslashes * 2 + 1, L'\\');
+          result.push_back(L'"');
+          backslashes = 0;
+        }
+        else
+        {
+          if (backslashes > 0)
+          {
+            result.append(backslashes, L'\\');
+            backslashes = 0;
+          }
+          result.push_back(c);
+        }
+      }
+      // Trailing backslashes: double them so they don't escape the
+      // closing quote we are about to append.
+      result.append(backslashes * 2, L'\\');
+      result.push_back(L'"');
+      return result;
+    }
+
+    // Case-insensitive suffix test for a std::wstring against a C string.
+    // Kept dependency-free (no <cwctype>) because everything else in this
+    // header leans only on the Windows SDK.
+    inline bool EndsWithI(const std::wstring& s, const wchar_t* suffix)
+    {
+      size_t slen = s.size();
+      size_t plen = wcslen(suffix);
+      if (plen > slen)
+      {
+        return false;
+      }
+      for (size_t i = 0; i < plen; ++i)
+      {
+        wchar_t a = s[slen - plen + i];
+        wchar_t b = suffix[i];
+        if (a >= L'A' && a <= L'Z')
+        {
+          a += L'a' - L'A';
+        }
+        if (b >= L'A' && b <= L'Z')
+        {
+          b += L'a' - L'A';
+        }
+        if (a != b)
+        {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    // Resolve argv[0] into a real on-disk executable path.
+    //
+    // CreateProcessW with a non-NULL lpApplicationName does NOT consult
+    // %PATH% -- it only looks at the literal string (plus the current
+    // directory). That is fine when argv[0] is already an absolute path
+    // (the GetEditorExecutablePath / sibling-binary case) but silently
+    // breaks bare names like "code" or "adb", which on Linux resolve via
+    // posix_spawnp's $PATH lookup. This helper closes that gap so the two
+    // platforms behave the same:
+    //
+    //   1. If argv[0] already names an existing file (absolute path or a
+    //      file in the current directory), return it verbatim.
+    //   2. Otherwise, if it is a bare name (no drive / separator), walk
+    //      every %PATH% directory appending each %PATHEXT% extension in
+    //      turn and return the first match.
+    //   3. If nothing is found, return an empty wstring (caller surfaces
+    //      an ERROR_FILE_NOT_FOUND-style message).
+    inline std::wstring ResolveExecutable(const std::wstring& arg0)
+    {
+      // 1. As-is: a path that already points at a file.
+      DWORD attr = GetFileAttributesW(arg0.c_str());
+      if (attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY))
+      {
+        return arg0;
+      }
+
+      // 2. Only bare names get a %PATH search. If arg0 already carried a
+      // drive letter or separator, it was meant to be a path -- and that
+      // path does not exist, so we fail rather than guessing.
+      if (arg0.find_first_of(L"\\/:") != std::wstring::npos)
+      {
+        return std::wstring();
+      }
+
+      wchar_t pathExt[1024] = {0};
+      if (GetEnvironmentVariableW(L"PATHEXT", pathExt, 1024) == 0)
+      {
+        // Conservative default mirroring a stock Windows install.
+        wcscpy_s(pathExt, L".COM;.EXE;.BAT;.CMD;.VBS;.JS;.WS;.MSC");
+      }
+
+      // %PATH can grow well past MAX_PATH; 32K is the UNICODE_STRING cap.
+      wchar_t pathEnv[32768] = {0};
+      if (GetEnvironmentVariableW(L"PATH", pathEnv, 32768) == 0)
+      {
+        return std::wstring();
+      }
+
+      wchar_t* pathCtx  = nullptr;
+      wchar_t* dirToken = wcstok_s(pathEnv, L";", &pathCtx);
+      while (dirToken != nullptr)
+      {
+        std::wstring dir(dirToken);
+        if (!dir.empty() && dir.back() != L'\\' && dir.back() != L'/')
+        {
+          dir.push_back(L'\\');
+        }
+
+        // PATHEXT is re-tokenized per directory, so take a scratch copy.
+        wchar_t extCopy[1024]  = {0};
+        wcscpy_s(extCopy, pathExt);
+        wchar_t* extCtx  = nullptr;
+        wchar_t* extTok  = wcstok_s(extCopy, L";", &extCtx);
+        while (extTok != nullptr)
+        {
+          std::wstring candidate = dir + arg0 + extTok;
+          DWORD a                = GetFileAttributesW(candidate.c_str());
+          if (a != INVALID_FILE_ATTRIBUTES && !(a & FILE_ATTRIBUTE_DIRECTORY))
+          {
+            return candidate;
+          }
+          extTok = wcstok_s(nullptr, L";", &extCtx);
+        }
+        dirToken = wcstok_s(nullptr, L";", &pathCtx);
+      }
+      return std::wstring();
+    }
+
+    // Win32 console command execution callback.
+    //
+    // Takes a tokenized argv (argv[0] is the executable, typically
+    // an absolute path returned by GetEditorExecutablePath). No
+    // cmd.exe shell is involved -- CreateProcessW receives a
+    // properly quoted command line so each argv entry reaches the
+    // child verbatim, with no PATH-lookup side effects and no
+    // shell-escaping pitfalls (paths with spaces, quotes, $vars).
+    //
+    // async=true  -> spawn child, fire `callback` from a detached thread
+    //                once the child exits; the call returns 0 immediately.
+    // async=false -> wait for the child synchronously and return its
+    //                exit status.
+    inline int SysComExec(const StringArray& argv, bool async, bool showConsole, std::function<void(int)> callback)
+    {
+      if (argv.empty())
+      {
+        TK_ERR("SysComExec: empty argv.");
+        return -1;
+      }
+
+      // Resolve argv[0] to a real executable on disk. Absolute paths
+      // (the sibling-binary case) come back unchanged; bare names like
+      // "code" / "adb" are looked up in %PATH% + %PATHEXT% so they work
+      // the same way posix_spawnp makes them work on Linux -- without
+      // this, CreateProcessW returns ERROR_FILE_NOT_FOUND (2) because a
+      // non-NULL lpApplicationName skips %PATH entirely.
+      std::wstring wArg0   = UTF8Util::ConvertUTF8ToUTF16(argv[0]);
+      std::wstring resolved = ResolveExecutable(wArg0);
+      if (resolved.empty())
+      {
+        TK_ERR("SysComExec: executable not found: %s", argv[0].c_str());
+        return 2; // ERROR_FILE_NOT_FOUND
+      }
+
+      // Windows ships many CLI tools (notably VS Code's `code`) as
+      // .cmd / .bat batch wrappers rather than real PE images.
+      // CreateProcessW cannot launch a batch file directly, so we run
+      // those through cmd.exe instead. /S /C plus an outer pair of
+      // quotes is the documented idiom that preserves every inner
+      // quote verbatim (cmd strips only the outermost pair).
+      std::wstring wExePath;
+      std::wstring cmdLine;
+      const bool isBatch = EndsWithI(resolved, L".cmd") || EndsWithI(resolved, L".bat");
+
+      if (isBatch)
+      {
+        wchar_t comspec[MAX_PATH] = {0};
+        if (GetEnvironmentVariableW(L"ComSpec", comspec, MAX_PATH) == 0 || comspec[0] == L'\0')
+        {
+          GetSystemDirectoryW(comspec, MAX_PATH);
+          wcscat_s(comspec, MAX_PATH, L"\\cmd.exe");
+        }
+        wExePath = comspec;
+
+        cmdLine  = L"\"";
+        cmdLine += comspec;
+        cmdLine += L"\" /S /C \"";
+        cmdLine += Win32QuoteArg(resolved);
+        for (size_t i = 1; i < argv.size(); ++i)
+        {
+          cmdLine.push_back(L' ');
+          cmdLine += Win32QuoteArg(UTF8Util::ConvertUTF8ToUTF16(argv[i]));
+        }
+        cmdLine += L"\"";
+      }
+      else
+      {
+        // lpApplicationName = the resolved path; the command line mirrors
+        // it as argv[0] (what CommandLineToArgvW and most children expect)
+        // so spaces-in-paths quoting still survives a round trip.
+        wExePath = resolved;
+
+        cmdLine  = Win32QuoteArg(resolved);
+        for (size_t i = 1; i < argv.size(); ++i)
+        {
+          cmdLine.push_back(L' ');
+          cmdLine += Win32QuoteArg(UTF8Util::ConvertUTF8ToUTF16(argv[i]));
+        }
+      }
+
       // https://learn.microsoft.com/en-us/windows/win32/procthread/creating-processes
       STARTUPINFOW si;
       PROCESS_INFORMATION pi;
@@ -71,19 +369,29 @@ namespace ToolKit
 
       ZeroMemory(&pi, sizeof(pi));
 
-      std::wstring wCmd = UTF8Util::ConvertUTF8ToUTF16("cmd /C ") + UTF8Util::ConvertUTF8ToUTF16(cmd.data());
+      // showConsole opens a dedicated console window for the child. The
+      // Editor / Launcher are GUI apps (SUBSYSTEM:WINDOWS) with no console
+      // of their own, so with the default flags the child inherits no
+      // console: its stdout/stdin go nowhere, its output is invisible, and
+      // any prompt it emits (a "continue? [y/n]", a password request, an
+      // interactive tool) blocks forever -- the call never returns.
+      // CREATE_NEW_CONSOLE gives the child a real, visible window the user
+      // can read from and type into; SW_SHOWNORMAL makes sure it is shown.
+      DWORD creationFlags = showConsole ? CREATE_NEW_CONSOLE : 0;
 
-      // Start the child process.
-      if (!CreateProcessW(NULL,        // No module name (use command line)
-                          wCmd.data(), // Command line
-                          NULL,        // Process handle not inheritable
-                          NULL,        // Thread handle not inheritable
-                          FALSE,       // Set handle inheritance to FALSE
-                          0,           // No creation flags
-                          NULL,        // Use parent's environment block
-                          NULL,        // Use parent's starting directory
-                          &si,         // Pointer to STARTUPINFO structure
-                          &pi)         // Pointer to PROCESS_INFORMATION structure
+      // Start the child process. CreateProcessW may modify the
+      // command line buffer in place (it rewrites argv[0] to the
+      // full path), so we pass a mutable wstring's data().
+      if (!CreateProcessW(wExePath.data(), // module name (already resolved above)
+                          cmdLine.empty() ? nullptr : cmdLine.data(),
+                          NULL,  // Process handle not inheritable
+                          NULL,  // Thread handle not inheritable
+                          FALSE, // Set handle inheritance to FALSE
+                          creationFlags,
+                          NULL,  // Use parent's environment block
+                          NULL,  // Use parent's starting directory
+                          &si,   // Pointer to STARTUPINFO structure
+                          &pi)   // Pointer to PROCESS_INFORMATION structure
       )
       {
         DWORD errCode = GetLastError();
@@ -91,7 +399,14 @@ namespace ToolKit
         return (int) errCode;
       }
 
-      SetWindowPos((HWND) pi.hProcess, HWND_TOPMOST, 0, 0, 0, 0, 0);
+      // Grant the child process permission to bring its windows to the
+      // foreground. Without this the OS may block SetForegroundWindow
+      // calls from the child (especially when the caller is a GUI app
+      // that currently holds foreground). Using the child's PID rather
+      // than ASFW_ANY keeps the grant scoped and lets multi-window
+      // children (e.g. splash → main window transitions) retain the
+      // right across window lifecycles.
+      ::AllowSetForegroundWindow(pi.dwProcessId);
 
       auto finalizeFn = [pi, callback](DWORD stat) -> int
       {
@@ -151,7 +466,7 @@ namespace ToolKit
       return 0;
     };
 
-    void OutputLog(int logType, const char* szFormat, ...)
+    inline void OutputLog(int logType, const char* szFormat, ...)
     {
       static const char* logNames[] = {"[Memo]", "[Error]", "[Warning]", "[Command]"};
 
@@ -170,7 +485,7 @@ namespace ToolKit
       OutputDebugStringW(wOutput.data());
     }
 
-    void OpenExplorer(const StringView utf8Path)
+    inline void OpenExplorer(const StringView utf8Path)
     {
       std::filesystem::path systemPath = utf8Path;
       String systemPathStr             = systemPath.lexically_normal().u8string(); // Windows style path normalization.
@@ -186,7 +501,7 @@ namespace ToolKit
       }
     }
 
-    void HideConsoleWindow()
+    inline void HideConsoleWindow()
     {
       HWND handle = GetConsoleWindow();
       ShowWindow(handle, SW_HIDE);
@@ -194,7 +509,7 @@ namespace ToolKit
 
     // Fix working directory when launched from shortcut (shortcut's working dir is Desktop).
     // Set it to exe directory (Bin/) so Resources/Config relative paths work.
-    void SetWorkingDirectoryToBinFolder()
+    inline void SetWorkingDirectoryToBinFolder()
     {
       wchar_t exePathW[MAX_PATH] = {0};
       DWORD len                  = ::GetModuleFileNameW(nullptr, exePathW, MAX_PATH);
@@ -210,7 +525,24 @@ namespace ToolKit
       }
     }
 
-    String GetCreationTime(const String& fullPath)
+    // Returns the per-user config directory to use for engine config
+    // files (Workspace.settings, Editor.settings, etc.). On Windows
+    // that's %APPDATA% (e.g. C:/Users/<u>/AppData/Roaming), which is
+    // always set for an interactive session. Returns an empty String
+    // when APPDATA is missing or empty; the caller should treat that
+    // as a soft failure and skip the config bootstrap rather than
+    // abort.
+    inline String GetUserConfigDir()
+    {
+      const char* raw = getenv("APPDATA");
+      if (raw == nullptr || raw[0] == '\0')
+      {
+        return String();
+      }
+      return raw;
+    }
+
+    inline String GetCreationTime(const String& fullPath)
     {
       std::wstring wFile = UTF8Util::ConvertUTF8ToUTF16(fullPath.c_str());
 
@@ -223,7 +555,7 @@ namespace ToolKit
       return time;
     }
 
-    void* TKLoadModule(StringView fullPath)
+    inline void* TKLoadModule(StringView fullPath)
     {
       std::wstring wFile = UTF8Util::ConvertUTF8ToUTF16(fullPath.data());
       HMODULE module     = LoadLibraryW(wFile.data());
@@ -231,11 +563,14 @@ namespace ToolKit
       return (void*) module;
     }
 
-    void TKFreeModule(void* module) { FreeLibrary((HMODULE) module); }
+    inline void TKFreeModule(void* module) { FreeLibrary((HMODULE) module); }
 
-    void* TKGetFunction(void* module, StringView func) { return (void*) GetProcAddress((HMODULE) module, func.data()); }
+    inline void* TKGetFunction(void* module, StringView func)
+    {
+      return (void*) GetProcAddress((HMODULE) module, func.data());
+    }
 
-    void UpdateAppIcon()
+    inline void UpdateAppIcon()
     {
       HINSTANCE handle = ::GetModuleHandle(nullptr);
 
@@ -259,9 +594,9 @@ namespace ToolKit
     // - arguments   : Optional argument string passed to the executable.
     //
     // Returns true on success, false otherwise.
-    bool CreateProjectShortcutOnDesktop(const String& shortcutName,
-                                        const String& arguments,
-                                        const String& exePathOverride = "")
+    inline bool CreateProjectShortcutOnDesktop(const String& shortcutName,
+                                               const String& arguments,
+                                               const String& exePathOverride = "")
     {
       std::wstring exePathW;
       if (exePathOverride.empty())
@@ -340,7 +675,6 @@ namespace ToolKit
       }
 
       hr = persistFile->Save(shortcutPathFs.c_str(), TRUE);
-
       persistFile->Release();
       shellLink->Release();
 

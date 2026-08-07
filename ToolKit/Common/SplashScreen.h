@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #pragma once
@@ -95,7 +95,7 @@ namespace ToolKit
       return;
 
     // Load image on the calling thread to avoid stbi global state races
-    int comp = 0;
+    int comp      = 0;
     ubyte* pixels = ImageLoad(m_splashFile.c_str(), &m_imgW, &m_imgH, &comp, 4);
     if (!pixels)
     {
@@ -280,8 +280,12 @@ namespace ToolKit
       return;
     }
 
-    SDL_Surface* imgSurf = SDL_CreateRGBSurfaceWithFormatFrom(
-        m_splashPixels.data(), m_imgW, m_imgH, 32, m_imgW * 4, SDL_PIXELFORMAT_RGBA32);
+    SDL_Surface* imgSurf = SDL_CreateRGBSurfaceWithFormatFrom(m_splashPixels.data(),
+                                                              m_imgW,
+                                                              m_imgH,
+                                                              32,
+                                                              m_imgW * 4,
+                                                              SDL_PIXELFORMAT_RGBA32);
     if (!imgSurf)
     {
       TK_ERR("SplashScreen: Failed to create surface: %s", SDL_GetError());

@@ -2,8 +2,8 @@
 	<type name = "includeShader" />
 	<include name = "vulkanCompatInc.shader" />
 	<include name = "perDrawDataInc.shader" />
-	<texture slot = "2" name = "s_texture2" />
-	<texture slot = "3" name = "s_texture3" />
+	<texture slot = "2" name = "s_blendWeights" />
+	<texture slot = "3" name = "s_skinningPose" />
 	<source>
 	<!--
   #ifndef SKIN_SHADER
@@ -18,8 +18,8 @@
   //   perDraw._blendFrameData       (blendKf1, blendKf2, blendInterpTime, blendKfCount)
   //   perDraw._animBlendFactorAndPad.x  // animationBlendFactor
 
-  TK_SAMPLER_BINDING(2) uniform sampler2D s_texture2; // Blend animation texture
-  TK_SAMPLER_BINDING(3) uniform sampler2D s_texture3; // Animation data texture
+  TK_SAMPLER_BINDING(2) uniform sampler2D s_blendWeights; // Blend animation texture
+  TK_SAMPLER_BINDING(3) uniform sampler2D s_skinningPose; // Animation data texture
 
   #define numBones        perDraw._skinParams.x
   #define isSkinned       (perDraw._skinParams.y > 0.5)
@@ -160,12 +160,12 @@
 
   void skin(in vec4 vertexPos, out vec4 skinnedPos)
   {
-    skinCalc(s_texture3, perDraw._keyFrameData, vertexPos, skinnedPos);
+    skinCalc(s_skinningPose, perDraw._keyFrameData, vertexPos, skinnedPos);
 
     if (blendAnimation)
     {
       vec4 blendResult;
-      skinCalc(s_texture2, perDraw._blendFrameData, vertexPos, blendResult);
+      skinCalc(s_blendWeights, perDraw._blendFrameData, vertexPos, blendResult);
       skinnedPos = mix(skinnedPos, blendResult, perDraw._animBlendFactorAndPad.x);
     }
   }
@@ -173,13 +173,13 @@
   void skin(in vec4 vertexPos, in vec3 vertexNormal,
             out vec4 skinnedPos, out vec3 skinnedNormal)
   {
-    skinCalc(s_texture3, perDraw._keyFrameData, vertexPos, vertexNormal, skinnedPos, skinnedNormal);
+    skinCalc(s_skinningPose, perDraw._keyFrameData, vertexPos, vertexNormal, skinnedPos, skinnedNormal);
 
     if (blendAnimation)
     {
       vec4 bPos;
       vec3 bNrm;
-      skinCalc(s_texture2, perDraw._blendFrameData, vertexPos, vertexNormal, bPos, bNrm);
+      skinCalc(s_blendWeights, perDraw._blendFrameData, vertexPos, vertexNormal, bPos, bNrm);
       skinnedPos    = mix(skinnedPos, bPos, perDraw._animBlendFactorAndPad.x);
       skinnedNormal = normalize(mix(skinnedNormal, bNrm, perDraw._animBlendFactorAndPad.x));
     }
@@ -188,7 +188,7 @@
   void skin(in vec4 vertexPos, in vec3 vertexNormal, in vec3 vertexBiTangent,
             out vec4 skinnedPos, out vec3 skinnedNormal, out vec3 skinnedBiTangent)
   {
-    skinCalc(s_texture3, perDraw._keyFrameData,
+    skinCalc(s_skinningPose, perDraw._keyFrameData,
              vertexPos, vertexNormal, vertexBiTangent,
              skinnedPos, skinnedNormal, skinnedBiTangent);
 
@@ -196,7 +196,7 @@
     {
       vec4 bPos;
       vec3 bNrm, bBiTan;
-      skinCalc(s_texture2, perDraw._blendFrameData,
+      skinCalc(s_blendWeights, perDraw._blendFrameData,
                vertexPos, vertexNormal, vertexBiTangent,
                bPos, bNrm, bBiTan);
       skinnedPos       = mix(skinnedPos, bPos, perDraw._animBlendFactorAndPad.x);

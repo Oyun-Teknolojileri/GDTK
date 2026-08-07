@@ -3,7 +3,7 @@
 	<include name = "vulkanCompatInc.shader" />
 	<include name = "normalEncodingInc.shader" />
 	<include name = "ssaoCalcPassDataInc.shader" />
-	<texture slot = "1" name = "s_texture1" />
+	<texture slot = "1" name = "s_normalDepth" />
 	<define name = "KERNEL_SIZE" val = "16,8,32" />
 	<source>
 	<!--
@@ -16,7 +16,7 @@ in vec3 v_pos;
 in vec3 v_normal;
 in vec2 v_texture;
 
-TK_SAMPLER_BINDING(1) uniform sampler2D s_texture1; // packed normal (RG) + linear depth (B)
+TK_SAMPLER_BINDING(1) uniform sampler2D s_normalDepth; // packed normal (RG) + linear depth (B)
 
 vec3 reconstructViewPos(vec2 uv, float linearDepth)
 {
@@ -37,7 +37,7 @@ vec3 reconstructViewPos(vec2 uv, float linearDepth)
 void main()
 {
 	vec2 texCoord = v_texture;
-	vec4 normalDepthData = texture(s_texture1, texCoord);
+	vec4 normalDepthData = texture(s_normalDepth, texCoord);
 
 	vec3 normal = decodeNormal(normalDepthData.rg);
 	float linearDepth = normalDepthData.b;
@@ -79,13 +79,13 @@ void main()
 		                     ssaoCalc.projParams.y * samplePos.y + ssaoCalc.projParams.w * samplePos.z) * invW * 0.5 + 0.5;
 #ifdef VULKAN
 		// Mirror of the reconstruction flip: NDC.y → tex-space UV.y must invert to match the
-		// flipped v_texture used to sample s_texture1 (top-of-screen geometry was rendered to
+		// flipped v_texture used to sample s_normalDepth (top-of-screen geometry was rendered to
 		// memory v=0 under Vulkan's tex coord convention).
 		sampleUV.y = 1.0 - sampleUV.y;
 #endif
 
 		// get sample depth
-		float sampleDepth = -texture(s_texture1, sampleUV).b; // get linear depth and negate to match view space z
+		float sampleDepth = -texture(s_normalDepth, sampleUV).b; // get linear depth and negate to match view space z
 
 		// range check & accumulate with smooth falloff instead of hard binary test
 		float rangeCheck = smoothstep(0.0, 1.0, radius / abs(fragPos.z - sampleDepth));

@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #include "EngineSettings.h"
@@ -76,7 +76,7 @@ namespace ToolKit
     mkdir(ConcatPaths({internalDataPath, "Resources"}).c_str(), 0777);
     mkdir(ConcatPaths({internalDataPath, "Config"}).c_str(), 0777);
 
-    CopyFileToDataPath(internalDataPath, "MinResources.pak");
+    CopyFileToDataPath(internalDataPath, TKResourcePak);
     CopyFileToDataPath(internalDataPath, ConcatPaths({"Config", "Engine.settings"}).c_str());
   }
 

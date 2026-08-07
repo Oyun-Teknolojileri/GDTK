@@ -2,20 +2,51 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Game Plugin Build",
+            "label": "Configure",
             "type": "shell",
-            "command": "cmd",
-            "args": [
-                "/c",
-                "%APPDATA%/ToolKit/Config/GamePluginBuild.bat",
-                "${workspaceFolder}",                        // -S
-                "${workspaceFolder}/Intermediate/Plugin"   // -B
-            ],
+            "group": "build",
+            "problemMatcher": [],
+            "detail": "CMake configure (run after CMakeLists changes or first checkout).",
+            "windows": {
+                "command": "cmd",
+                "args": [
+                    "/c",
+                    "cmake -S \"${workspaceFolder}\" -B \"${workspaceFolder}/Intermediate/Standalone/Windows\" -DTK_PLATFORM=Windows -DCMAKE_BUILD_TYPE=Debug"
+                ]
+            },
+            "linux": {
+                "command": "bash",
+                "args": [
+                    "-c",
+                    "cmake -S \"${workspaceFolder}\" -B \"${workspaceFolder}/Intermediate/Standalone/Linux\" -DTK_PLATFORM=Linux -DCMAKE_BUILD_TYPE=Debug"
+                ]
+            }
+        },
+        {
+            "label": "Build",
+            "type": "shell",
             "group": {
                 "kind": "build",
                 "isDefault": true
             },
-            "problemMatcher": []
+            "dependsOn": ["Configure"],
+            "dependsOrder": "sequence",
+            "problemMatcher": [],
+            "detail": "F7 / F5: Build standalone executable. Windows also copies engine DLLs next to the exe.",
+            "windows": {
+                "command": "cmd",
+                "args": [
+                    "/c",
+                    "cmake --build \"${workspaceFolder}/Intermediate/Standalone/Windows\" --config Debug && powershell -ExecutionPolicy Bypass -File \"${workspaceFolder}/.vscode/CopyEngineDlls.ps1\" -OutputDir \"${workspaceFolder}/Codes/Bin\" -Config Debug"
+                ]
+            },
+            "linux": {
+                "command": "bash",
+                "args": [
+                    "-c",
+                    "cmake --build \"${workspaceFolder}/Intermediate/Standalone/Linux\" --config Debug"
+                ]
+            }
         }
     ]
 }

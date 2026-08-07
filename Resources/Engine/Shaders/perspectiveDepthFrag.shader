@@ -4,7 +4,7 @@
 	<include name = "VSMCommon.shader" />
 	<include name = "materialCacheInc.shader" />
 	<define name = "DrawAlphaMasked" val="0,1" />
-	<texture slot = "0" name = "s_texture0" />
+	<texture slot = "0" name = "s_diffuseColor" />
 	<source>
 	<!--
     
@@ -19,7 +19,7 @@
 
     out vec2 fragColor;
 
-    TK_SAMPLER_BINDING(0) uniform sampler2D s_texture0;
+    TK_SAMPLER_BINDING(0) uniform sampler2D s_diffuseColor;
 
     void main()
     {
@@ -29,7 +29,7 @@
         float alpha;
         if (material.diffuseTextureInUse == 1)
         {
-            alpha = texture(s_texture0, v_texture).a;
+            alpha = texture(s_diffuseColor, v_texture).a;
         }
         else
         {

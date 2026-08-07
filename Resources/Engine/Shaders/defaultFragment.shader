@@ -10,10 +10,10 @@
 	<define name = "ShadowPCF" val="0,4,9,16" />
 	<define name = "highlightCascades" val="0,1" />
 	<define name = "ShadingMode" val="0,1,2,3,4,5" />
-	<texture slot = "0" name = "s_texture0" />
-	<texture slot = "1" name = "s_texture1" />
-	<texture slot = "4" name = "s_texture4" />
-	<texture slot = "9" name = "s_texture9" />
+	<texture slot = "0" name = "s_diffuseColor" />
+	<texture slot = "1" name = "s_emissiveColor" />
+	<texture slot = "4" name = "s_metallicRoughness" />
+	<texture slot = "9" name = "s_normalMap" />
 	<source>
 	<!--
 	
@@ -23,10 +23,10 @@
 	precision mediump samplerCube;
 	precision highp sampler2DArray;
 
-	TK_SAMPLER_BINDING(0) uniform sampler2D s_texture0; // color
-	TK_SAMPLER_BINDING(1) uniform sampler2D s_texture1; // emissive
-	TK_SAMPLER_BINDING(4) uniform sampler2D s_texture4; // metallic-roughness
-	TK_SAMPLER_BINDING(9) uniform sampler2D s_texture9; // normal
+	TK_SAMPLER_BINDING(0) uniform sampler2D s_diffuseColor; // color
+	TK_SAMPLER_BINDING(1) uniform sampler2D s_emissiveColor; // emissive
+	TK_SAMPLER_BINDING(4) uniform sampler2D s_metallicRoughness; // metallic-roughness
+	TK_SAMPLER_BINDING(9) uniform sampler2D s_normalMap; // normal
 
 	#define SHADE_LIGHTING_ONLY 1
 	#define SHADE_ALBEDO_ONLY 2
@@ -49,7 +49,7 @@
 		vec4 color;
 		if(material.diffuseTextureInUse > 0)
 		{
-			color = texture(s_texture0, v_texture);
+			color = texture(s_diffuseColor, v_texture);
 		}
 		else
 		{
@@ -59,7 +59,7 @@
 		vec3 emissive;
 		if(material.emissiveTextureInUse > 0)
 		{
-			emissive = texture(s_texture1, v_texture).xyz;
+			emissive = texture(s_emissiveColor, v_texture).xyz;
 		}
 		else
 		{
@@ -71,7 +71,7 @@
 		{
 			// Texture Holds Occulussion Roughness Metallic values in rgb.
 			// Occulusion is not supported at the moment. ( No Value )
-			vec3 orm = texture(s_texture4, v_texture).rgb;
+			vec3 orm = texture(s_metallicRoughness, v_texture).rgb;
 			metallic = orm.b;
 			roughness = orm.g;
 		}
@@ -112,7 +112,7 @@
 		vec3 n;
 		if (material.normalMapInUse > 0)
 		{
-			n = texture(s_texture9, v_texture).xyz;
+			n = texture(s_normalMap, v_texture).xyz;
 			n = n * 2.0 - 1.0;
 			n = TBN * n;
 			n = normalize(n);
@@ -135,7 +135,7 @@
 		// Compute energy compensation for multiscattering
 		vec3 f0 = BaseReflectivityPBR(vec3(0.04), color.xyz, metallic);
 		float NdotV = max(dot(n, e), 0.0);
-		vec2 dfg = texture(s_texture10, vec2(NdotV, perceptualRoughness)).rg;
+		vec2 dfg = texture(s_brdfLut, vec2(NdotV, perceptualRoughness)).rg;
 		vec3 energyComp = EnergyCompensation(dfg, f0);
 
 		vec3 irradiance = PBRLighting(v_worldPos, v_viewDepth, n, e, camera.position, color.xyz, metallic, roughness, energyComp);

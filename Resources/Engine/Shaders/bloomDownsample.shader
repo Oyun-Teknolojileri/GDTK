@@ -2,7 +2,7 @@
 	<type name = "fragmentShader" />
 	<include name = "vulkanCompatInc.shader" />
 	<include name = "bloomPassDataInc.shader" />
-	<texture slot = "0" name = "s_texture0" />
+	<texture slot = "0" name = "s_diffuseColor" />
 	<source>
 	<!--
 		
@@ -20,7 +20,7 @@
 		// Remember to add bilinear minification filter for this texture!
 		// Remember to use a floating-point texture format (for HDR)!
 		// Remember to use edge clamping for this texture!
-		TK_SAMPLER_BINDING(0) uniform sampler2D s_texture0;
+		TK_SAMPLER_BINDING(0) uniform sampler2D s_diffuseColor;
 		TK_LOC(2) in vec2 v_texture;
 		layout (location = 0) out vec3 downsample;
 		// bloom.passIndxAndPad.x, bloom.downsampleParams.z come from BloomPassData UBO (bloomPassDataInc.shader).
@@ -65,22 +65,22 @@
 				// - l - m -
 				// g - h - i
 				// === ('e' is the current texel) ===
-				vec3 a = texture(s_texture0, vec2(v_texture.x - 2.0f*x, v_texture.y + 2.0f*y)).rgb;
-				vec3 b = texture(s_texture0, vec2(v_texture.x,       v_texture.y + 2.0f*y)).rgb;
-				vec3 c = texture(s_texture0, vec2(v_texture.x + 2.0f*x, v_texture.y + 2.0f*y)).rgb;
+				vec3 a = texture(s_diffuseColor, vec2(v_texture.x - 2.0f*x, v_texture.y + 2.0f*y)).rgb;
+				vec3 b = texture(s_diffuseColor, vec2(v_texture.x,       v_texture.y + 2.0f*y)).rgb;
+				vec3 c = texture(s_diffuseColor, vec2(v_texture.x + 2.0f*x, v_texture.y + 2.0f*y)).rgb;
 
-				vec3 d = texture(s_texture0, vec2(v_texture.x - 2.0f*x, v_texture.y)).rgb;
-				vec3 e = texture(s_texture0, vec2(v_texture.x,       v_texture.y)).rgb;
-				vec3 f = texture(s_texture0, vec2(v_texture.x + 2.0f*x, v_texture.y)).rgb;
+				vec3 d = texture(s_diffuseColor, vec2(v_texture.x - 2.0f*x, v_texture.y)).rgb;
+				vec3 e = texture(s_diffuseColor, vec2(v_texture.x,       v_texture.y)).rgb;
+				vec3 f = texture(s_diffuseColor, vec2(v_texture.x + 2.0f*x, v_texture.y)).rgb;
 
-				vec3 g = texture(s_texture0, vec2(v_texture.x - 2.0f*x, v_texture.y - 2.0f*y)).rgb;
-				vec3 h = texture(s_texture0, vec2(v_texture.x,       v_texture.y - 2.0f*y)).rgb;
-				vec3 i = texture(s_texture0, vec2(v_texture.x + 2.0f*x, v_texture.y - 2.0f*y)).rgb;
+				vec3 g = texture(s_diffuseColor, vec2(v_texture.x - 2.0f*x, v_texture.y - 2.0f*y)).rgb;
+				vec3 h = texture(s_diffuseColor, vec2(v_texture.x,       v_texture.y - 2.0f*y)).rgb;
+				vec3 i = texture(s_diffuseColor, vec2(v_texture.x + 2.0f*x, v_texture.y - 2.0f*y)).rgb;
 
-				vec3 j = texture(s_texture0, vec2(v_texture.x - x, v_texture.y + y)).rgb;
-				vec3 k = texture(s_texture0, vec2(v_texture.x + x, v_texture.y + y)).rgb;
-				vec3 l = texture(s_texture0, vec2(v_texture.x - x, v_texture.y - y)).rgb;
-				vec3 m = texture(s_texture0, vec2(v_texture.x + x, v_texture.y - y)).rgb;
+				vec3 j = texture(s_diffuseColor, vec2(v_texture.x - x, v_texture.y + y)).rgb;
+				vec3 k = texture(s_diffuseColor, vec2(v_texture.x + x, v_texture.y + y)).rgb;
+				vec3 l = texture(s_diffuseColor, vec2(v_texture.x - x, v_texture.y - y)).rgb;
+				vec3 m = texture(s_diffuseColor, vec2(v_texture.x + x, v_texture.y - y)).rgb;
 
 				vec3 groups[5];
 				switch (bloom.passIndxAndPad.x)

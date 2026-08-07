@@ -1,0 +1,287 @@
+/*
+ * Copyright (c) 2019-2026 OtSoftware
+ * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
+ * For more information, including options for a more permissive commercial license,
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
+ */
+
+#include "ForwardPass.h"
+
+#include "EngineSettings.h"
+#include "Material.h"
+#include "Mesh.h"
+#include "Pass.h"
+#include "Shader.h"
+#include "Stats.h"
+#include "ToolKit.h"
+
+#include "DebugNew.h"
+
+namespace ToolKit
+{
+
+  ForwardRenderPass::ForwardRenderPass() : Pass("ForwardRenderPass")
+  {
+    ShadowSettingsPtr shadows = GetEngineSettings().m_graphics->m_shadows;
+    m_shadowPCF               = shadows->GetShadowPCFVal().GetValue<int>();
+
+    m_programConfigMat        = GetMaterialManager()->GetCopyOfDefaultMaterial();
+
+    ShaderPtr fragmentShader  = m_programConfigMat->GetFragmentShaderVal();
+    fragmentShader->SetDefine("ShadowPCF", std::to_string(m_shadowPCF));
+
+    // Opaque + alpha-masked passive defaults. Lequal so a z-prepassed depth buffer keeps
+    // exactly the visible fragments; depth write on so non-prepassed scenes still build
+    // a correct z buffer.
+    m_opaquePassState.depthFunction          = CompareFunctions::FuncLequal;
+    m_opaquePassState.depthWriteEnabled      = true;
+    m_opaquePassState.depthTestEnabled       = true;
+
+    // Translucent passive defaults. Lequal matches the opaque path; depth write off so
+    // back-to-front draws don't self-occlude.
+    m_translucentPassState.depthFunction     = CompareFunctions::FuncLequal;
+    m_translucentPassState.depthWriteEnabled = false;
+    m_translucentPassState.depthTestEnabled  = true;
+  }
+
+  void ForwardRenderPass::Render()
+  {
+    TK_PROFILE_FUNCTION();
+
+    // Pre-bind the slot-7 custom UBO (if any — set via m_requirements.customUbos by the
+    // caller's onPreRender callback, typically the Grid's UBO). Doing this once at the
+    // top of Render() means every subsequent renderer->Render(job) sees a descriptor set
+    // already pointed at the right VkBuffer, so the grid material's draw picks up its
+    // GridPassData without needing per-job rebinds.
+    //
+    // Pass-level passive state is also stamped in once; per-job bits (cull, blend,
+    // alphaMask) are merged from the job's material inside Renderer::Render.
+    m_requirements.frameBuffer    = m_params.FrameBuffer;
+    m_requirements.clearBits      = m_params.clearBuffer;
+    m_requirements.passState      = m_opaquePassState;
+    m_requirements.program        = nullptr; // let Apply build from vert/frag below
+
+    // We don't have a single vert/frag here (ForwardRenderPass builds programs
+    // dynamically per-config-material). Pull vert/frag from m_programConfigMat so
+    // ApplyRequirements has a valid program. For jobs that override the material
+    // (shader materials, two-sided translucent), the per-job renderer->Render path
+    // rebinds with the right program internally — the customUbos binding we set
+    // here survives across those rebinds.
+    m_requirements.fragmentShader = m_programConfigMat->GetFragmentShaderVal();
+    m_requirements.vertexShader   = m_programConfigMat->GetVertexShaderVal();
+
+    ApplyRequirements(GetRenderer());
+
+    RenderOpaque(m_params.renderData);
+    RenderTranslucent(m_params.renderData);
+  }
+
+  void ForwardRenderPass::PreRender()
+  {
+    TK_PROFILE_FUNCTION();
+
+    Pass::PreRender();
+
+    // Set self data.
+    Renderer* renderer           = GetRenderer();
+
+    GraphicBitFields discardBits = GraphicBitFields::None;
+    if (m_params.invalidateDepthBuffer)
+    {
+      if (m_params.FrameBuffer->IsMultiSampled() && m_params.resolveFrameBuffer != nullptr)
+      {
+        discardBits = GraphicBitFields::AllBits;
+      }
+      else
+      {
+        discardBits = GraphicBitFields::DepthBits;
+      }
+    }
+
+    renderer->SetFramebuffer(m_params.FrameBuffer, m_params.clearBuffer, Vec4(0.0f), discardBits);
+    renderer->SetCamera(m_params.Cam, true);
+
+    if (m_params.onPreRender)
+    {
+      m_params.onPreRender();
+    }
+  }
+
+  void ForwardRenderPass::PostRender()
+  {
+    TK_PROFILE_FUNCTION();
+
+    Pass::PostRender();
+
+    Renderer* renderer = GetRenderer();
+
+    // Resolve render target if necessary.
+    if (m_params.FrameBuffer->IsMultiSampled() && m_params.resolveFrameBuffer != nullptr)
+    {
+      renderer->ResolveFramebuffer(m_params.FrameBuffer,
+                                   m_params.resolveFrameBuffer,
+                                   {(int) Framebuffer::Attachment::ColorAttachment0});
+    }
+
+    renderer->FinishPass();
+  }
+
+  void ForwardRenderPass::RenderOpaque(RenderData* renderData)
+  {
+    TK_PROFILE_FUNCTION();
+
+    Renderer* renderer = GetRenderer();
+
+    // Adjust program configuration.
+    ConfigureProgram();
+
+    // Render opaque.
+    ShaderPtr frag = m_programConfigMat->GetFragmentShaderVal();
+    frag->SetDefine("DrawAlphaMasked", "0");
+
+    ShaderPtr vert           = m_programConfigMat->GetVertexShaderVal();
+    GpuProgramPtr gpuProgram = renderer->GetGpuProgramManager()->CreateProgram(vert, frag);
+
+    RenderJobItr begin       = renderData->GetForwardOpaqueBegin();
+    RenderJobItr end         = renderData->GetForwardAlphaMaskedBegin();
+    RenderOpaqueHelper(renderData, begin, end, gpuProgram);
+
+    // Render alpha masked.
+    frag->SetDefine("DrawAlphaMasked", "1");
+    gpuProgram = renderer->GetGpuProgramManager()->CreateProgram(vert, frag);
+
+    begin      = renderData->GetForwardAlphaMaskedBegin();
+    end        = renderData->GetForwardTranslucentBegin();
+    RenderOpaqueHelper(renderData, begin, end, gpuProgram);
+  }
+
+  void ForwardRenderPass::RenderTranslucent(RenderData* renderData)
+  {
+    TK_PROFILE_FUNCTION();
+
+    ConfigureProgram();
+
+    // Disable SSAO for translucent objects. The SSAO texture contains occlusion
+    // from opaque geometry only, applying it to translucent surfaces causes
+    // background AO to bleed onto transparent objects (e.g. glass).
+    Renderer* renderer = GetRenderer();
+    renderer->SetAmbientOcclusionTexture(nullptr);
+
+    ShaderPtr frag = m_programConfigMat->GetFragmentShaderVal();
+    frag->SetDefine("DrawAlphaMasked", "0");
+
+    ShaderPtr vert        = m_programConfigMat->GetVertexShaderVal();
+
+    GpuProgramPtr program = renderer->GetGpuProgramManager()->CreateProgram(vert, frag);
+
+    renderer->BindProgram(program);
+
+    RenderJobItr begin = renderData->GetForwardTranslucentBegin();
+    RenderJobItr end   = renderData->jobs.end();
+    RenderJobProcessor::SortByDistanceToCamera(begin, end, m_params.Cam);
+
+    if (begin != end)
+    {
+      renderer->SetPassState(m_translucentPassState);
+
+      RenderState twoSidedState  = m_translucentPassState;
+      twoSidedState.cullOverride = true;
+
+      for (RenderJobArray::iterator job = begin; job != end; job++)
+      {
+        if (job->Material->IsShaderMaterial())
+        {
+          renderer->RenderWithProgramFromMaterial(*job);
+        }
+        else
+        {
+          renderer->BindProgram(program);
+
+          if (job->Material->cullMode == CullingType::TwoSided)
+          {
+            // Two-sided translucent: draw back faces first then front. cullOverride forces the
+            // cull mode without touching the shared material — the pass state restores itself at
+            // the end of the iteration so the next job sees the standard translucent state.
+            twoSidedState.cullOverrideMode = CullingType::Front;
+            renderer->SetPassState(twoSidedState);
+            renderer->Render(*job);
+
+            twoSidedState.cullOverrideMode = CullingType::Back;
+            renderer->SetPassState(twoSidedState);
+            renderer->Render(*job);
+
+            renderer->SetPassState(m_translucentPassState);
+          }
+          else
+          {
+            renderer->Render(*job);
+          }
+        }
+      }
+    }
+  }
+
+  void ForwardRenderPass::RenderOpaqueHelper(RenderData* renderData,
+                                             RenderJobItr begin,
+                                             RenderJobItr end,
+                                             GpuProgramPtr defaultGpuProgram)
+  {
+    TK_PROFILE_FUNCTION();
+
+    Renderer* renderer = GetRenderer();
+    renderer->SetAmbientOcclusionTexture(m_params.SsaoTexture);
+
+    renderer->SetPassState(m_opaquePassState);
+
+    for (RenderJobItr job = begin; job != end; job++)
+    {
+      if (job->Material->IsShaderMaterial())
+      {
+        renderer->RenderWithProgramFromMaterial(*job);
+      }
+      else
+      {
+        renderer->BindProgram(defaultGpuProgram);
+        renderer->Render(*job);
+      }
+    }
+  }
+
+  void ForwardRenderPass::ConfigureProgram()
+  {
+    const ShadowSettingsPtr shadows = GetEngineSettings().m_graphics->m_shadows;
+    ShaderPtr frag                  = m_programConfigMat->GetFragmentShaderVal();
+
+    int shadowPCF                   = shadows->GetShadowPCFVal().GetValue<int>();
+    if (shadowPCF != m_shadowPCF)
+    {
+      m_shadowPCF = shadowPCF;
+      frag->SetDefine("ShadowPCF", std::to_string(m_shadowPCF));
+    }
+
+    Renderer* renderer = GetRenderer();
+    switch (renderer->m_shadingMode)
+    {
+      case ShadingMode::Lighting:
+        frag->SetDefine("ShadingMode", "1");
+        break;
+      case ShadingMode::Albedo:
+        frag->SetDefine("ShadingMode", "2");
+        break;
+      case ShadingMode::Normal:
+        frag->SetDefine("ShadingMode", "3");
+        break;
+      case ShadingMode::Metallic:
+        frag->SetDefine("ShadingMode", "4");
+        break;
+      case ShadingMode::Roughness:
+        frag->SetDefine("ShadingMode", "5");
+        break;
+      default:
+      case ShadingMode::None:
+        frag->SetDefine("ShadingMode", "0");
+        break;
+    }
+  }
+
+} // namespace ToolKit

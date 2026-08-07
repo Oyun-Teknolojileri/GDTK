@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2019-2025 OtSoftware
+ * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
- * please visit [otyazilim.com] or contact us at [info@otyazilim.com].
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
 #include "Platform.h"
@@ -16,16 +16,18 @@
 #ifdef TK_ANDROID
   #include "Platform/android_main.h"
 #endif
+#ifdef TK_LINUX
+  #include "Platform/linux_main.h"
+#endif
 
 #include "Common/SDLEventPool.h"
 #include "EngineSettings.h"
 #include "GameRenderer.h"
 #include "GameViewport.h"
+#include "OpenGL/TKOpenGL.h"
 #include "Plugin.h"
 #include "SDL.h"
 #include "Scene.h"
-#include "SplashScreenRenderPath.h"
-#include "TKOpenGL.h"
 #include "ToolKit.h"
 #include "Types.h"
 #include "UIManager.h"
@@ -37,7 +39,6 @@ namespace ToolKit
   SDL_Window* g_window                      = nullptr;
   SDL_GLContext g_context                   = nullptr;
   Main* g_proxy                             = nullptr;
-  ViewportPtr g_viewport                    = nullptr;
   EngineSettings* g_engineSettings          = nullptr;
   SDLEventPool<TK_PLATFORM>* g_sdlEventPool = nullptr;
   GameRenderer* g_gameRenderer              = nullptr;
@@ -171,76 +172,47 @@ namespace ToolKit
         ProcessEvent(sdlEvent);
       }
 
-      // Initiate splash screen drawing.
-      static bool showSplashScreen                    = true;
-      static float elapsedTime                        = 0.0f;
-      static SplashScreenRenderPathPtr splashRenderer = nullptr;
-
-      if (showSplashScreen)
+      // One-time app initialization (viewport + game) on the first frame.
+      static ViewportPtr g_viewport = nullptr;
+      if (g_viewport == nullptr)
       {
-        // Draw splash screen.
         uint width  = g_engineSettings->m_window->GetWidthVal();
         uint height = g_engineSettings->m_window->GetHeightVal();
 
-        if (splashRenderer == nullptr)
-        {
-          splashRenderer = MakeNewPtr<SplashScreenRenderPath>();
-          splashRenderer->Init(UVec2(width, height));
-        }
+        // Init viewport and window size.
+        g_viewport  = MakeNewPtr<GameViewport>((float) width, (float) height);
+        GetUIManager()->RegisterViewport(g_viewport);
+        GetRenderSystem()->SetAppWindowSize(width, height);
 
-        RenderSystem* rsys = GetRenderSystem();
+        // Update window.
+        SDL_SetWindowSize(g_window, width, height);
+        SDL_SetWindowBordered(g_window, SDL_TRUE);
+        SDL_SetWindowResizable(g_window, SDL_TRUE);
 
-        if (elapsedTime < 1000.0f)
-        {
-          elapsedTime += deltaTime;
-          rsys->AddRenderTask({[](Renderer* renderer) -> void { splashRenderer->Render(renderer); }});
-        }
-        else
-        {
-          // At the end of splash drawing, initiate the app.
-          rsys->AddRenderTask({[](Renderer* renderer) -> void
-                               {
-                                 renderer->SetFramebuffer(nullptr, GraphicBitFields::AllBits);
-                                 g_proxy->m_renderSys->Present();
-                               }});
-          rsys->FlushRenderTasks();
-
-          showSplashScreen = false;
-          splashRenderer   = nullptr;
-
-          // Init viewport and window size
-          g_viewport       = MakeNewPtr<GameViewport>((float) width, (float) height);
-          GetUIManager()->RegisterViewport(g_viewport);
-          GetRenderSystem()->SetAppWindowSize(width, height);
-
-          // Update widnow
-          SDL_SetWindowSize(g_window, width, height);
-          SDL_SetWindowBordered(g_window, SDL_TRUE);
-          SDL_SetWindowResizable(g_window, SDL_TRUE);
-
-          // Init game
-          g_game = new Game();
-          g_game->SetViewport(g_viewport);
-          g_game->Init(g_proxy);
-          g_game->m_currentState = PluginState::Running;
-          g_gameRenderer         = new GameRenderer();
-          g_game->OnPlay();
-        }
+        // Init game.
+        g_game = new Game();
+        g_game->SetViewport(g_viewport);
+        g_game->Init(g_proxy);
+        g_game->m_currentState = PluginState::Running;
+        g_gameRenderer         = new GameRenderer();
+        g_game->OnPlay();
       }
       else
       {
-        // After splash shown, execute and display the app frames.
+        // Execute and display the app frames.
         g_viewport->Update(deltaTime);
         g_game->Frame(deltaTime);
 
+        GameRendererParams params;
+        params.viewport = g_viewport;
+
         if (ScenePtr scene = GetSceneManager()->GetCurrentScene())
         {
-          GameRendererParams params;
           params.postProcessSettings = scene->m_postProcessSettings;
           params.scene               = scene;
-          params.viewport            = g_viewport;
-          g_gameRenderer->SetParams(params);
         }
+
+        g_gameRenderer->SetParams(params);
 
         GetRenderSystem()->AddRenderTask(
             {[deltaTime](Renderer* renderer) -> void { g_gameRenderer->Render(renderer); }});

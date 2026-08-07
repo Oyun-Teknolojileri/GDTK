@@ -2,10 +2,6 @@
     "configurations": [
         {
             "name": "ToolKit",
-            "includePath": [
-                "${workspaceFolder}/**",
-                __tk_includes__
-            ],
             "configurationProvider": "ms-vscode.cmake-tools"
         }
     ],

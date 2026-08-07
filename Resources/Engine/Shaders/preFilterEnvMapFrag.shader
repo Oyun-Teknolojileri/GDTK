@@ -3,13 +3,13 @@
 	<include name = "vulkanCompatInc.shader" />
 	<include name = "pbrPrecompute.shader" />
 	<include name = "preFilterEnvMapPassDataInc.shader" />
-	<texture slot = "6" name = "s_texture6" viewType = "cube" />
+	<texture slot = "6" name = "s_cubeMap" viewType = "cube" />
 	<source>
 	<!--
 		
 		precision highp float;
 
-		TK_SAMPLER_BINDING(6) uniform samplerCube s_texture6;
+		TK_SAMPLER_BINDING(6) uniform samplerCube s_cubeMap;
 
 		in vec3 v_pos;
 		out vec4 fragColor;
@@ -18,7 +18,9 @@
 
 		void main()
 		{		
-			const uint SAMPLE_COUNT = 1024u;
+			// Was 1024; lowered to 256 so a 512² specular env map (editor cap) stays under the amdgpu
+			// gfx-ring watchdog. Quality cost is minor after tonemap. See Hdri::GenerateIrradianceCaches.
+			const uint SAMPLE_COUNT = 256u;
 
 			vec3 N = normalize(v_pos);
 			
@@ -53,7 +55,7 @@
 
 					float mipLevel = preFilterEnvMap.params.y == 0.0 ? 0.0 : 0.5 * log2(saSample / saTexel); 
 					
-					vec3 texel = textureLod(s_texture6, L, mipLevel).rgb;
+					vec3 texel = textureLod(s_cubeMap, L, mipLevel).rgb;
 					texel = clamp(texel, vec3(0.0), vec3(FLT_MAX));
 					prefilteredColor += texel * NdotL;
 					
