@@ -173,18 +173,30 @@ namespace ToolKit
       for (size_t i = 0; i < mesh->m_clientSideVertices.size(); i += 6)
       {
         Vertex* faceVertices = &mesh->m_clientSideVertices[i];
-        Vec3 norm            = glm::abs(faceVertices[0].norm);
+        Vec3 norm            = faceVertices[0].norm;
 
         Vec2 tileScl(1.0f);
-        if (norm.x > 0.5f)
+        if (norm.x > 0.5f) // Right (+X)
         {
           tileScl = Vec2(totalScl.z, totalScl.y);
         }
-        else if (norm.y > 0.5f)
+        else if (norm.x < -0.5f) // Left (-X)
+        {
+          tileScl = Vec2(totalScl.z, totalScl.y);
+        }
+        else if (norm.y > 0.5f) // Top (+Y)
         {
           tileScl = Vec2(totalScl.x, totalScl.z);
         }
-        else if (norm.z > 0.5f)
+        else if (norm.y < -0.5f) // Bottom (-Y): UV U→Z, V→X, swap axes
+        {
+          tileScl = Vec2(totalScl.z, totalScl.x);
+        }
+        else if (norm.z > 0.5f) // Front (+Z)
+        {
+          tileScl = Vec2(totalScl.x, totalScl.y);
+        }
+        else if (norm.z < -0.5f) // Back (-Z)
         {
           tileScl = Vec2(totalScl.x, totalScl.y);
         }
