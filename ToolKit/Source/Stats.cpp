@@ -125,61 +125,7 @@ inline uint64 ReadCycleCounter()
 
   TKProfiler::~TKProfiler() { Reset(); }
 
-  void TKProfiler::SetEnabled(bool enabled)
-  {
-    if (m_enabled == enabled)
-    {
-      return;
-    }
-
-    m_enabled = enabled;
-
-    if (!enabled)
-    {
-      // Scopes that are open right now will no-op their EndScope from now on,
-      // which would leave the tree unbalanced and corrupt the measurements.
-      // Drop the context and discard the partial frame so that re-enabling
-      // starts from a clean state.
-      m_currentNode = nullptr;
-      for (ProfilerNode* root : m_rootNodes)
-      {
-        ResetFrameCounters(root);
-      }
-    }
-    else
-    {
-      // Re-anchor the frame clock: BeginFrame calls that ran while disabled
-      // were skipped, so the stored begin cycle is stale and would produce a
-      // huge frame time if EndFrame runs before the next BeginFrame.
-      m_frameBeginCycles = ReadCycleCounter();
-    }
-  }
-
-  void TKProfiler::ResetFrameCounters(ProfilerNode* node)
-  {
-    if (node == nullptr)
-    {
-      return;
-    }
-
-    node->inclusiveCycles       = 0;
-    node->exclusiveCycles       = 0;
-    node->childrenCyclesAtBegin = 0;
-    node->childrenInclusiveSum  = 0;
-    node->hitCount              = 0;
-
-    for (ProfilerNode* child : node->children)
-    {
-      ResetFrameCounters(child);
-    }
-  }
-
-  void TKProfiler::BeginScope(StringView name)
-  {
-    // Use the same FNV-1a as TK_PROFILE_FUNCTION so scopes with the same name
-    // map to a single node instead of duplicate siblings.
-    BeginScope(TKConstexprHash(name.data(), name.size()), name);
-  }
+  void TKProfiler::BeginScope(StringView name) { BeginScope(std::hash<StringView> {}(name), name); }
 
   void TKProfiler::BeginScope(uint64_t nameHash, StringView name)
   {
@@ -232,10 +178,7 @@ inline uint64 ReadCycleCounter()
     }
 
     uint64 endCycle                 = ReadCycleCounter();
-    // Guard against the counter moving backwards (e.g. thread migrated to a
-    // core with an unsynchronized TSC): an underflowed uint64 elapsed would
-    // explode into an astronomical measurement.
-    uint64 elapsed                  = (endCycle > m_currentNode->beginCycle) ? endCycle - m_currentNode->beginCycle : 0;
+    uint64 elapsed                  = endCycle - m_currentNode->beginCycle;
 
     m_currentNode->inclusiveCycles += elapsed;
     m_currentNode->hitCount++;
@@ -264,19 +207,7 @@ inline uint64 ReadCycleCounter()
       return;
     }
 
-    // Recover from unbalanced scopes: a scope left open by the previous frame
-    // would corrupt the tree and double-count. Drop the context and the
-    // partial measurements.
-    if (m_currentNode != nullptr)
-    {
-      m_currentNode = nullptr;
-      for (ProfilerNode* root : m_rootNodes)
-      {
-        ResetFrameCounters(root);
-      }
-    }
-
-    m_frameBeginCycles = ReadCycleCounter();
+    m_frameBeginTime = GetElapsedMilliSeconds();
     // Don't reset here - we reset at EndFrame after swapping values
   }
 
@@ -287,34 +218,24 @@ inline uint64 ReadCycleCounter()
       return;
     }
 
-    // Read before calibrating so the one-time calibration sleep is not counted.
-    uint64 frameEndCycles       = ReadCycleCounter();
-
-    // Ensure calibration is done once before we convert cycles to ms.
-    EnsureCalibrated();
-    if (m_cyclesToMs <= 0.0)
-    {
-      return; // Calibration failed, retry next frame.
-    }
-
-    // Frame time uses the same clock as the scopes, so percentages of frame
-    // time can not drift apart due to clock skew. Guard against the counter
-    // moving backwards: an underflowed uint64 would poison every average.
-    uint64 frameCycles        = (frameEndCycles > m_frameBeginCycles) ? frameEndCycles - m_frameBeginCycles : 0;
-
-    m_frameTime             = static_cast<float>(frameCycles * m_cyclesToMs);
+    m_frameTime             = GetElapsedMilliSeconds() - m_frameBeginTime;
     m_accumulatedFrameTime += m_frameTime;
     m_frameCount++;
 
+    // Ensure calibration is done once before we convert cycles to ms.
+    EnsureCalibrated();
+
     // Sliding-window frame time history (~1s).
+    float filteredFt = FilterOutlier(m_frameTime, m_frameTimeHistory, m_frameTimePos, m_frameTimeCount);
+
     // Remove oldest entry if buffer is full.
     if (m_frameTimeCount == ProfilerNode::WINDOW_SIZE)
     {
       m_frameTimeSum -= m_frameTimeHistory[m_frameTimePos];
     }
 
-    m_frameTimeHistory[m_frameTimePos] = m_frameTime;
-    m_frameTimeSum                    += m_frameTime;
+    m_frameTimeHistory[m_frameTimePos] = filteredFt;
+    m_frameTimeSum                    += filteredFt;
     m_frameTimePos                     = (m_frameTimePos + 1) % ProfilerNode::WINDOW_SIZE;
     if (m_frameTimeCount < ProfilerNode::WINDOW_SIZE)
     {
@@ -366,6 +287,26 @@ inline uint64 ReadCycleCounter()
     delete node;
   }
 
+  float TKProfiler::FilterOutlier(float value, const float* history, uint8 pos, uint8 count)
+  {
+    if (count < 2)
+    {
+      return value; // Not enough history for outlier detection.
+    }
+
+    // Average of the previous 2 entries in the ring buffer.
+    uint8 prev1 = (pos == 0) ? ProfilerNode::WINDOW_SIZE - 1 : pos - 1;
+    uint8 prev2 = (prev1 == 0) ? ProfilerNode::WINDOW_SIZE - 1 : prev1 - 1;
+    float avg   = (history[prev1] + history[prev2]) * 0.5f;
+
+    // If > 3x the trailing average, it's a context-switch spike — suppress.
+    if (value > avg * 3.0f)
+    {
+      return avg;
+    }
+    return value;
+  }
+
   void TKProfiler::SwapNodeFrameData(ProfilerNode* node)
   {
     if (node == nullptr)
@@ -373,18 +314,17 @@ inline uint64 ReadCycleCounter()
       return;
     }
 
-    // Nodes not hit this frame still push zeroes into the ring buffer. This is
-    // deliberate: every node and the frame time itself average over the same
-    // per-frame basis, which keeps the displayed percentages consistent
-    // (child <= parent, scopes <= frame). Averaging only over hit frames would
-    // let a rarely-hit scope keep stale heavy samples and exceed its parent.
     // Convert cycles to milliseconds for display.
     float rawInclMs = static_cast<float>(node->inclusiveCycles * m_cyclesToMs);
     float rawExclMs = static_cast<float>(node->exclusiveCycles * m_cyclesToMs);
 
-    // Accumulate values over all frames (ms).
-    node->accumulatedIncl += rawInclMs;
-    node->accumulatedExcl += rawExclMs;
+    // Outlier rejection: compare against trailing 2 frames.
+    float filtInclMs = FilterOutlier(rawInclMs, node->inclHistory, node->historyPos, node->historyCount);
+    float filtExclMs = FilterOutlier(rawExclMs, node->exclHistory, node->historyPos, node->historyCount);
+
+    // Accumulate filtered values over all frames (ms).
+    node->accumulatedIncl += filtInclMs;
+    node->accumulatedExcl += filtExclMs;
 
     // Sliding-window ring buffer update (O(1)).
     if (node->historyCount == ProfilerNode::WINDOW_SIZE)
@@ -394,10 +334,10 @@ inline uint64 ReadCycleCounter()
       node->exclWindowSum -= node->exclHistory[node->historyPos];
     }
 
-    node->inclHistory[node->historyPos] = rawInclMs;
-    node->exclHistory[node->historyPos] = rawExclMs;
-    node->inclWindowSum                += rawInclMs;
-    node->exclWindowSum                += rawExclMs;
+    node->inclHistory[node->historyPos] = filtInclMs;
+    node->exclHistory[node->historyPos] = filtExclMs;
+    node->inclWindowSum                += filtInclMs;
+    node->exclWindowSum                += filtExclMs;
     node->historyPos                   = (node->historyPos + 1) % ProfilerNode::WINDOW_SIZE;
     if (node->historyCount < ProfilerNode::WINDOW_SIZE)
     {
@@ -429,28 +369,17 @@ inline uint64 ReadCycleCounter()
       return; // Already calibrated.
     }
 
-    // Multi-sample calibration: measure cycles over several known intervals
-    // and keep the smallest ms-per-cycle ratio. The cycle reads are bracketed
-    // by the clock reads, so scheduling noise only inflates a sample; the
-    // minimum is the cleanest estimate.
-    constexpr int sampleCount = 5;
-    for (int i = 0; i < sampleCount; i++)
-    {
-      auto t1   = std::chrono::steady_clock::now();
-      uint64 c1 = ReadCycleCounter();
-      std::this_thread::sleep_for(std::chrono::milliseconds(3));
-      uint64 c2 = ReadCycleCounter();
-      auto t2   = std::chrono::steady_clock::now();
+    // One-time calibration: measure cycles over a known time interval.
+    auto t1   = std::chrono::high_resolution_clock::now();
+    uint64 c1 = ReadCycleCounter();
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    uint64 c2 = ReadCycleCounter();
+    auto t2   = std::chrono::high_resolution_clock::now();
 
-      double ms = std::chrono::duration<double, std::milli>(t2 - t1).count();
-      if (c2 > c1 && ms > 0.0)
-      {
-        double ratio = ms / static_cast<double>(c2 - c1);
-        if (m_cyclesToMs == 0.0 || ratio < m_cyclesToMs)
-        {
-          m_cyclesToMs = ratio;
-        }
-      }
+    double ms = std::chrono::duration<double, std::milli>(t2 - t1).count();
+    if (c2 > c1)
+    {
+      m_cyclesToMs = ms / static_cast<double>(c2 - c1);
     }
   }
 

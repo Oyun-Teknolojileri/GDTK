@@ -25,20 +25,6 @@ namespace ToolKit
 
     StatsWindow::~StatsWindow() {}
 
-    // Draws a millisecond value, showing "<0.001" for sub-microsecond scopes
-    // instead of a misleading "0.000".
-    static void DrawTimeText(float timeMs)
-    {
-      if (timeMs > 0.0f && timeMs < 0.0005f)
-      {
-        ImGui::Text("<0.001");
-      }
-      else
-      {
-        ImGui::Text("%.3f", timeMs);
-      }
-    }
-
     // Helper function to recursively draw profiler nodes in the table.
     static void DrawProfilerNode(ProfilerNode* node, float frameTime, int depth = 0)
     {
@@ -88,11 +74,11 @@ namespace ToolKit
 
       // Column 1: Inclusive Time (ms).
       ImGui::TableNextColumn();
-      DrawTimeText(inclTime);
+      ImGui::Text("%.3f", inclTime);
 
       // Column 2: Exclusive Time (ms).
       ImGui::TableNextColumn();
-      DrawTimeText(exclTime);
+      ImGui::Text("%.3f", exclTime);
 
       // Column 3: Inclusive %.
       ImGui::TableNextColumn();
