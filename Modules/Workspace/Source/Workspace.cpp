@@ -231,14 +231,13 @@ namespace ToolKit
       if (currentScene)
       {
         String sceneFile = currentScene->GetFile();
-        if (GetSceneManager()->Exist(sceneFile))
+        if (!sceneFile.empty())
         {
-          String sceneRoot = ScenePath("");
-          // Don't save anything as current scene,
-          // if its not in scene root folder.
-          if (sceneFile.find(sceneRoot) != String::npos)
+          String scenePath = GetRelativeResourcePath(sceneFile);
+          // Only save if the path is under a known resource root
+          // (GetRelativeResourcePath returns a different string on success).
+          if (scenePath != sceneFile)
           {
-            String scenePath = GetRelativeResourcePath(sceneFile);
             WriteAttr(setNode, lclDoc, XmlNodeScene.data(), scenePath);
           }
         }

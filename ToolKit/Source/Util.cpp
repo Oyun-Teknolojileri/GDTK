@@ -313,7 +313,17 @@ namespace ToolKit
     }
   }
 
-  void NormalizePathInplace(String& path) { UnixifyPath(path); }
+  void NormalizePathInplace(String& path)
+  {
+    UnixifyPath(path);
+
+    // Remove consecutive path separators.
+    size_t pos = 0;
+    while ((pos = path.find("//", pos)) != String::npos)
+    {
+      path.erase(pos, 1);
+    }
+  }
 
   String NormalizePath(String path)
   {
@@ -349,8 +359,8 @@ namespace ToolKit
       path += "/";
     }
 
-    path += entries.back(); // Add the last entry
-    UnixifyPath(path);      // Make sure all path is unixified.
+    path += entries.back();   // Add the last entry
+    NormalizePathInplace(path); // Make sure all path is normalized.
 
     return path;
   }

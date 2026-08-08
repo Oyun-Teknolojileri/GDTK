@@ -498,7 +498,6 @@ namespace ToolKit
     }
 
     String path = ConcatPaths({ResourcePath(def), prefix, file});
-    NormalizePathInplace(path);
     return path;
   }
 
