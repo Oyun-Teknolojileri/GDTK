@@ -158,14 +158,12 @@ namespace ToolKit
           {
             const ProfilerNodeArray& roots = profiler->GetRootNodes();
 
-            float frameTime                = profiler->GetSmoothedFrameTime();
-            float rawFrameTime              = profiler->GetFrameTime();
+            float frameTime                = profiler->GetFrameTime();
             float avgFrameTime             = profiler->GetAverageFrameTime();
             uint frameCount                = profiler->GetFrameCount();
 
             // Profiler summary header.
-            ImGui::Text("Profiler: Frame: %.3f ms | Smooth: %.3f ms | Avg: %.3f ms | Frames: %u",
-                        rawFrameTime, frameTime, avgFrameTime, frameCount);
+            ImGui::Text("Profiler: Frame: %.3f ms | Avg: %.3f ms | Frames: %u", frameTime, avgFrameTime, frameCount);
 
             ImGui::Separator();
 

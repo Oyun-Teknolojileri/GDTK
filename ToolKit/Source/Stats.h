@@ -28,25 +28,17 @@ namespace ToolKit
     uint64 exclusiveCycles     = 0;       //!< Cycles excluding children - current frame.
     uint64 childrenCyclesAtBegin = 0;     //!< Snapshot of children's inclusiveCycles sum at BeginScope.
     uint64 childrenInclusiveSum = 0;      //!< Running sum of children's inclusiveCycles (avoids O(n) loop).
-    // Sliding-window display values (~1s = WINDOW_SIZE frames at 60fps).
-    static constexpr uint8 WINDOW_SIZE = 15;
-    float inclHistory[WINDOW_SIZE]      = {};  //!< Ring buffer of inclusive ms per frame.
-    float exclHistory[WINDOW_SIZE]      = {};  //!< Ring buffer of exclusive ms per frame.
-    float inclWindowSum                 = 0.0f; //!< Running sum of inclHistory (O(1) average).
-    float exclWindowSum                 = 0.0f; //!< Running sum of exclHistory (O(1) average).
-    uint8 historyPos                    = 0;    //!< Next write position in the ring buffer.
-    uint8 historyCount                  = 0;    //!< Number of entries in the buffer (0..WINDOW_SIZE).
-    float inclusiveTimePrev             = 0.0f; //!< Window average of inclusive time for display (ms).
-    float exclusiveTimePrev             = 0.0f; //!< Window average of exclusive time for display (ms).
-    float accumulatedIncl               = 0.0f; //!< Accumulated inclusive time over frames (ms).
-    float accumulatedExcl               = 0.0f; //!< Accumulated exclusive time over frames (ms).
-    uint hitCount                       = 0;    //!< Number of times this scope was hit.
-    uint hitCountPrev                   = 0;    //!< Previous frame hit count for display.
-    uint depth                          = 0;    //!< Depth in the tree (0 = root).
-    ProfilerNode* parent                = nullptr; //!< Parent node.
-    ProfilerNodeArray children;                 //!< Child nodes.
-    bool expanded                       = false; //!< UI expansion state.
-    bool enabled                        = true;  //!< Whether to display this node.
+    float inclusiveTimePrev    = 0.0f;    //!< Previous frame inclusive time for display (ms).
+    float exclusiveTimePrev    = 0.0f;    //!< Previous frame exclusive time for display (ms).
+    float accumulatedIncl      = 0.0f;    //!< Accumulated inclusive time over frames (ms).
+    float accumulatedExcl      = 0.0f;    //!< Accumulated exclusive time over frames (ms).
+    uint hitCount              = 0;       //!< Number of times this scope was hit.
+    uint hitCountPrev          = 0;       //!< Previous frame hit count for display.
+    uint depth                 = 0;       //!< Depth in the tree (0 = root).
+    ProfilerNode* parent       = nullptr; //!< Parent node.
+    ProfilerNodeArray children;           //!< Child nodes.
+    bool expanded = false;                //!< UI expansion state.
+    bool enabled  = true;                 //!< Whether to display this node.
 
     /** Get average inclusive time. */
     float GetAverageInclusive() const { return hitCount > 0 ? accumulatedIncl / hitCount : 0.0f; }
@@ -61,22 +53,12 @@ namespace ToolKit
       exclusiveCycles       = 0;
       childrenCyclesAtBegin = 0;
       childrenInclusiveSum  = 0;
-      // Reset sliding window.
-      for (uint8 i = 0; i < WINDOW_SIZE; ++i)
-      {
-        inclHistory[i] = 0.0f;
-        exclHistory[i] = 0.0f;
-      }
-      inclWindowSum     = 0.0f;
-      exclWindowSum     = 0.0f;
-      historyPos        = 0;
-      historyCount      = 0;
-      inclusiveTimePrev = 0.0f;
-      exclusiveTimePrev = 0.0f;
-      accumulatedIncl   = 0.0f;
-      accumulatedExcl   = 0.0f;
-      hitCount          = 0;
-      hitCountPrev      = 0;
+      inclusiveTimePrev     = 0.0f;
+      exclusiveTimePrev     = 0.0f;
+      accumulatedIncl       = 0.0f;
+      accumulatedExcl       = 0.0f;
+      hitCount              = 0;
+      hitCountPrev          = 0;
     }
   };
 
@@ -112,12 +94,6 @@ namespace ToolKit
     /** Get average frame time over accumulated frames. */
     float GetAverageFrameTime() const { return m_frameCount > 0 ? m_accumulatedFrameTime / m_frameCount : 0.0f; }
 
-    /** Get sliding-window average frame time for stable display. */
-    float GetSmoothedFrameTime() const
-    {
-      return m_frameTimeCount > 0 ? m_frameTimeSum / m_frameTimeCount : 0.0f;
-    }
-
     /** Get the number of frames recorded. */
     uint GetFrameCount() const { return m_frameCount; }
 
@@ -132,21 +108,12 @@ namespace ToolKit
     void SwapNodeFrameData(ProfilerNode* node);
     void EnsureCalibrated();
 
-    // Outlier detection: returns true and replaces value with avg of previous 2
-    // if value > 3x the average.
-    static float FilterOutlier(float value, const float* history, uint8 pos, uint8 count);
-
    private:
     ProfilerNodeArray m_rootNodes;          //!< Root level nodes.
     ProfilerNode* m_currentNode  = nullptr; //!< Currently active scope.
     float m_frameBeginTime       = 0.0f;    //!< Time when frame began.
     float m_frameTime            = 0.0f;    //!< Last frame's total time.
     float m_accumulatedFrameTime = 0.0f;    //!< Accumulated frame time.
-    // Sliding-window frame time history (~1s).
-    float m_frameTimeHistory[ProfilerNode::WINDOW_SIZE] = {};
-    float m_frameTimeSum                                = 0.0f;
-    uint8 m_frameTimePos                                = 0;
-    uint8 m_frameTimeCount                              = 0;
     uint m_frameCount            = 0;       //!< Number of frames recorded.
     bool m_enabled               = true;    //!< Whether profiling is active.
     double m_cyclesToMs          = 0.0;     //!< Calibration: cycles to milliseconds.
