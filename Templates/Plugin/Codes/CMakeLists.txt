@@ -76,6 +76,11 @@ project(${PLUGIN_PROJECT_NAME})
 # warnings, and the IMPORTED target TK::ToolKit).
 include("${TOOLKIT_DIR}/CMake/ToolKitEngine.cmake")
 
+# Consume the editor headers (sets TK_EDITOR and provides the INTERFACE target
+# TK::Editor with editor include directories). Editor symbols are resolved at
+# runtime by the host editor process.
+include("${TOOLKIT_DIR}/CMake/ToolKitEditor.cmake")
+
 string(TOLOWER ${CMAKE_CXX_COMPILER_ID} TK_COMPILER)
 message("Compiling ${PLUGIN_PROJECT_NAME} with ${TK_COMPILER} for platform ${TK_PLATFORM} (${TK_BUILD_TYPE})")
 
@@ -90,7 +95,7 @@ add_library(${PLUGIN_PROJECT_NAME} SHARED PluginMain.cpp ${HEADERS})
 # The editor loads the plugin name verbatim -- strip the default "lib" prefix.
 set_target_properties(${PLUGIN_PROJECT_NAME} PROPERTIES PREFIX "")
 
-target_link_libraries(${PLUGIN_PROJECT_NAME} PRIVATE TK::ToolKit)
+target_link_libraries(${PLUGIN_PROJECT_NAME} PRIVATE TK::ToolKit TK::Editor)
 
 target_include_directories(${PLUGIN_PROJECT_NAME} PRIVATE ${PLUGIN_CODE_DIR})
 

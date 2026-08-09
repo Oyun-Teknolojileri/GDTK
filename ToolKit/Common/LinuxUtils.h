@@ -493,7 +493,19 @@ namespace ToolKit
       std::string pathStr(fullPath.data(), fullPath.size());
       // RTLD_NOW forces all symbols to resolve at load time, matching
       // the Windows LoadLibraryW behaviour the editor assumes.
-      return dlopen(pathStr.c_str(), RTLD_NOW);
+
+      // Clear any previous error so dlerror() is reliable.
+      dlerror();
+
+      void* handle = dlopen(pathStr.c_str(), RTLD_NOW);
+      if (handle == nullptr)
+      {
+        const char* err = dlerror();
+        TK_ERR("dlopen failed for \"%s\": %s",
+               pathStr.c_str(),
+               err ? err : "unknown error");
+      }
+      return handle;
     }
 
     inline void TKFreeModule(void* module) { dlclose(module); }

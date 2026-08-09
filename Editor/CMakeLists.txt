@@ -22,6 +22,10 @@ file(GLOB_RECURSE EDITOR_SOURCES
 
 add_executable(Editor WIN32 ${EDITOR_SOURCES})
 
+# Export dynamic symbols so dlopen()'d editor plugins can resolve
+# editor-side symbols (Window, App, EditorTypes, etc.) at runtime.
+set_target_properties(Editor PROPERTIES ENABLE_EXPORTS TRUE)
+
 # Windows: embed the app icon (.rc compiled to .res by the MSVC resource
 # compiler, linked into the executable). The .rc references the icon at
 #   ../Resources/Engine/Textures/Icons/app.ico
