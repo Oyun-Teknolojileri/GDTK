@@ -76,9 +76,9 @@ project(${PLUGIN_PROJECT_NAME})
 # warnings, and the IMPORTED target TK::ToolKit).
 include("${TOOLKIT_DIR}/CMake/ToolKitEngine.cmake")
 
-# Consume the editor headers (sets TK_EDITOR and provides the INTERFACE target
-# TK::Editor with editor include directories). Editor symbols are resolved at
-# runtime by the host editor process.
+# Consume the editor headers (sets TK_EDITOR and provides the target TK::Editor
+# with editor include directories and, on Windows, the Editor + imgui import
+# libraries). Editor symbols are resolved at runtime by the host editor process.
 include("${TOOLKIT_DIR}/CMake/ToolKitEditor.cmake")
 
 string(TOLOWER ${CMAKE_CXX_COMPILER_ID} TK_COMPILER)
