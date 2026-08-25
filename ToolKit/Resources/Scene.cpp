@@ -383,7 +383,9 @@ namespace ToolKit
 
   void Scene::_RemoveChildren(EntityPtr removed)
   {
-    NodeRawPtrArray& children = removed->m_node->m_children;
+    // Copy the child list: RemoveEntity now orphans each removed node, which
+    // mutates m_children while we iterate it.
+    NodeRawPtrArray children = removed->m_node->m_children;
 
     for (size_t i = 0; i < children.size(); i++)
     {
@@ -438,6 +440,13 @@ namespace ToolKit
       m_aabbTree.RemoveNode(removed->m_aabbTreeNodeProxy);
       removed->m_scene.reset();
     }
+
+    // Detach the removed entity from its parent so the hierarchy reflects the
+    // removal immediately. Previously this relied on the entity being destroyed
+    // (Node::~Node orphans), which never happens while another owner holds a
+    // strong reference (e.g. the undo stack or a plugin), leaving the removed
+    // node lingering under its parent.
+    removed->m_node->OrphanSelf();
 
     return removed;
   }
