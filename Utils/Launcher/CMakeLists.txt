@@ -32,6 +32,9 @@ target_include_directories(Launcher PRIVATE
 
 target_compile_definitions(Launcher PRIVATE
   TK_EDITOR
+  # Same rationale as the Editor: Launcher TUs include Workspace.h and must
+  # see dllexport (matching the Workspace static lib) rather than dllimport.
+  TK_WORKSPACE_DLL_EXPORT
   TK_DLL_IMPORT
   TK_GL_3_0
   $<$<CONFIG:Debug>:TK_DEBUG>

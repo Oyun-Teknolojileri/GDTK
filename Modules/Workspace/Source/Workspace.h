@@ -21,7 +21,7 @@ namespace ToolKit
     String scene;
   };
 
-  class Workspace : public Serializable
+  class TK_WORKSPACE_API Workspace : public Serializable
   {
    public:
     Workspace();

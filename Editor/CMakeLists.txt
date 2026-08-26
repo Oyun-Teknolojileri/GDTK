@@ -63,6 +63,10 @@ target_include_directories(Editor PRIVATE
 target_compile_definitions(Editor PRIVATE
   TK_EDITOR
   TK_EDITOR_DLL_EXPORT
+  # Editor TUs that include Workspace.h must see the same dllexport as the
+  # Workspace static lib, or they would generate dllimport references that
+  # the static library cannot satisfy. Editor.exe ends up exporting them.
+  TK_WORKSPACE_DLL_EXPORT
   TK_GL_3_0
   TK_DLL_IMPORT
   $<$<CONFIG:Debug>:TK_DEBUG>

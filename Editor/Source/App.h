@@ -19,7 +19,7 @@ namespace ToolKit
   namespace Editor
   {
 
-    class App : Serializable
+    class TK_EDITOR_API App : Serializable
     {
      public:
       App(int windowWidth, int windowHeight);

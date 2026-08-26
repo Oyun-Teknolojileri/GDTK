@@ -32,6 +32,9 @@ target_include_directories(Workspace PUBLIC
 target_compile_definitions(Workspace PRIVATE
   TK_DLL_IMPORT
   TK_GL_3_0
+  # Export Workspace's API from the host executable so editor plugins can
+  # consume it (TK_WORKSPACE_API == dllexport here; consumers see dllimport).
+  TK_WORKSPACE_DLL_EXPORT
   $<$<CONFIG:Debug>:TK_DEBUG>
 )
 

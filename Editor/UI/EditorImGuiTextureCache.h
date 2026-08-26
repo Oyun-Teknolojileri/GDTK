@@ -10,6 +10,23 @@
 #include <Texture.h>
 #include <Types.h>
 
+// TK_EDITOR_API is normally defined in EditorTypes.h, but this header is
+// included by EditorTypes.h before the macro is defined. Define it here
+// (idempotently) so the free functions below can be exported to editor
+// plugins. Same expansion as EditorTypes.h: dllexport in the editor build,
+// dllimport for consumers, default ELF visibility on Linux.
+#ifndef TK_EDITOR_API
+  #ifdef TK_WIN
+    #if defined(TK_EDITOR_DLL_EXPORT)
+      #define TK_EDITOR_API __declspec(dllexport)
+    #else
+      #define TK_EDITOR_API __declspec(dllimport)
+    #endif
+  #else
+    #define TK_EDITOR_API __attribute__((visibility("default")))
+  #endif
+#endif
+
 namespace ToolKit
 {
   namespace Editor
@@ -37,21 +54,21 @@ namespace ToolKit
        *
        * Returns 0 if the texture is null or has no GPU data yet.
        */
-      uint64 Acquire(const TexturePtr& tex);
+      uint64 TK_EDITOR_API Acquire(const TexturePtr& tex);
 
       /**
        * Frame-start sweep: removes cache entries whose backing GpuResourceData has expired
        * (texture destroyed). Calls ImGui_ImplVulkan_RemoveTexture on each removed entry.
        * No-op on the GL build.
        */
-      void Sweep();
+      void TK_EDITOR_API Sweep();
 
       /**
        * Tears down all cached descriptors. Must be called before ImGui_ImplVulkan_Shutdown
        * because the descriptors are owned by the ImGui Vulkan backend's pool.
        * No-op on the GL build.
        */
-      void Clear();
+      void TK_EDITOR_API Clear();
 
     } // namespace EditorImGuiTextureCache
 
