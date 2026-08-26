@@ -38,27 +38,42 @@ namespace ToolKit
     {
       DirectoryEntry dirEnt;
 
-      bool fileExist                        = GetFileManager()->CheckFileFromResources(file);
-      FolderWindowRawPtrArray folderWindows = GetApp()->GetAssetBrowsers();
-      for (FolderWindow* folderWnd : folderWindows)
+      // A drop zone can be passed an empty file when it is used purely as a
+      // drop target with no asset set yet (e.g. the bricks placement zone).
+      // In that state there is no file to look up and no thumbnail to show, so
+      // skip the whole existing-asset path: it would otherwise run filesystem
+      // checks on an empty path and risks feeding ImGui an empty id. The
+      // caller-supplied icon is used as-is.
+      bool hasFile = !file.empty();
+      bool fileExist = false;
+
+      if (hasFile)
       {
-        if (folderWnd->GetFileEntry(file, dirEnt))
+        fileExist = GetFileManager()->CheckFileFromResources(file);
+        FolderWindowRawPtrArray folderWindows = GetApp()->GetAssetBrowsers();
+        for (FolderWindow* folderWnd : folderWindows)
         {
-          fileExist = true;
+          if (folderWnd->GetFileEntry(file, dirEnt))
+          {
+            fileExist = true;
+          }
         }
       }
 
       uint64 iconId                      = fallbackIcon;
       ThumbnailManager* thumbnailManager = GetThumbnailManager();
 
-      if (dirEnt.m_ext.length())
+      if (hasFile)
       {
-        thumbnailManager->TryGetThumbnail(iconId, dirEnt);
-      }
-      else if (fileExist)
-      {
-        DecomposePath(file, &dirEnt.m_rootPath, &dirEnt.m_fileName, &dirEnt.m_ext);
-        thumbnailManager->TryGetThumbnail(iconId, dirEnt);
+        if (dirEnt.m_ext.length())
+        {
+          thumbnailManager->TryGetThumbnail(iconId, dirEnt);
+        }
+        else if (fileExist)
+        {
+          DecomposePath(file, &dirEnt.m_rootPath, &dirEnt.m_fileName, &dirEnt.m_ext);
+          thumbnailManager->TryGetThumbnail(iconId, dirEnt);
+        }
       }
 
       if (!dropName.empty())
@@ -66,7 +81,16 @@ namespace ToolKit
         ImGui::Text(dropName.c_str());
       }
 
-      UI::ImageButton(file.c_str(), ConvertUIntImGuiTexture(iconId), ImVec2(48.0f, 48.0f));
+      // The ImGui id doubles as the widget's identity. With no file the raw
+      // file string is empty, which would leave every empty drop zone sharing
+      // one id; fall back to the drop name so each stays addressable.
+      String imgId = file;
+      if (imgId.empty())
+      {
+        imgId = dropName.empty() ? String("DropZone") : dropName;
+      }
+
+      UI::ImageButton(imgId.c_str(), ConvertUIntImGuiTexture(iconId), ImVec2(48.0f, 48.0f));
 
       bool clicked  = ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
       clicked      &= ImGui::IsItemHovered();
