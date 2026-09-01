@@ -54,6 +54,11 @@ GLMtype convertAssimpColorToGlm(AiType source)
 
 void TrunckToFileName(string& fullPath)
 {
+  // Normalize separators first. FBX texture references often carry Windows
+  // paths from the authoring machine (e.g. "U:\...\Tex.png") and backslash
+  // is not a path separator on Linux, so fs::path::filename() would keep
+  // the whole string as the "file name" otherwise.
+  ToolKit::NormalizePathInplace(fullPath);
   fs::path patify = fullPath;
   fullPath        = ToolKit::PathToString(patify.filename());
 }
@@ -556,10 +561,21 @@ namespace ToolKit
 
         if (!embedded && !CheckSystemFile(textPath))
         {
-          // Try copying texture.
-          fs::path fullPath = pathOrg;
-          fullPath.append(tName);
+          // Try copying the texture next to the imported assets. FBX files
+          // commonly store the absolute texture path of the authoring machine
+          // (e.g. "U:\...\Tex.png"), so try the reference as-is first and
+          // fall back to the bare file name inside the source folder.
+          fs::path fullPath(NormalizePath(tName));
+          if (!fullPath.is_absolute())
+          {
+            fullPath = pathOrg / fullPath;
+          }
           fullPath = fullPath.lexically_normal();
+
+          if (!CheckSystemFile(PathToString(fullPath)))
+          {
+            fullPath = (pathOrg / fileName).lexically_normal();
+          }
 
           ifstream isGoodFile;
           isGoodFile.open(fullPath, ios::binary | ios::in);
@@ -576,6 +592,12 @@ namespace ToolKit
             }
 
             fs::copy(fullPath, target, fs::copy_options::overwrite_existing);
+          }
+          else
+          {
+            Assimp::DefaultLogger::get()->warn(
+                "Texture not found: '" + fileName + "' (referenced as '" + tName +
+                "'). Locate it with the search window when the editor asks for the missing file.");
           }
           isGoodFile.close();
         }

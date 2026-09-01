@@ -1251,8 +1251,11 @@ namespace ToolKit
         ImGui::BeginChild("MissingFilesChild", ImVec2(0, 400), true, ImGuiWindowFlags_HorizontalScrollbar);
         for (size_t i = 0; i < SearchFileData.missingFiles.size(); i++)
         {
-          String* s = &SearchFileData.missingFiles[i];
-          ImGui::Text("%s", s->c_str());
+          // Show the bare file name only. The list entry is an importer
+          // output path (Temp/...) which is not what the user searches for.
+          String name, ext;
+          DecomposePath(SearchFileData.missingFiles[i], nullptr, &name, &ext);
+          ImGui::Text("%s", (name + ext).c_str());
         }
         ImGui::EndChild();
 

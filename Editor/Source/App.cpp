@@ -887,6 +887,116 @@ namespace ToolKit
       ConstructDynamicMenu(m_customComponentMetaValues, m_customComponentsMenu);
     }
 
+    /** Lower-cased alphanumeric key of a file name for lenient matching. */
+    String MatchKeyFromName(const String& name)
+    {
+      String key;
+      key.reserve(name.length());
+      for (char c : name)
+      {
+        if (std::isalnum((unsigned char) c))
+        {
+          key += (char) std::tolower((unsigned char) c);
+        }
+      }
+
+      return key;
+    }
+
+    /**
+     * Removes common texture name tokens from a MatchKeyFromName() result so a
+     * renamed asset can still match its reference. E.g. the importer looks
+     * for "PolygonCity_Texture_01_C.png" while the file on disk is
+     * "PolygonCity_01_C.png".
+     */
+    String StripNameTokens(String key)
+    {
+      static const String tokens[] = {"basecolor", "combined", "diffuse", "texture", "albedo", "color", "tex", "map"};
+      for (const String& token : tokens)
+      {
+        size_t pos = 0;
+        while ((pos = key.find(token, pos)) != String::npos)
+        {
+          key.erase(pos, token.length());
+        }
+      }
+
+      return key;
+    }
+
+    /**
+     * Tries to locate name + ext under searchDir. Falls back to a lenient
+     * match that ignores case, separators and common texture name tokens,
+     * because repackaged assets are often renamed. Returns an empty string
+     * if nothing plausible is found.
+     */
+    String LocateSearchFile(const String& searchDir, const String& name, const String& ext)
+    {
+      const String targetKey    = MatchKeyFromName(name);
+      const String targetExtKey = MatchKeyFromName(ext);
+      const String fuzzyKey     = StripNameTokens(targetKey);
+
+      std::error_code dirErr;
+      std::filesystem::recursive_directory_iterator it(
+          searchDir,
+          std::filesystem::directory_options::skip_permission_denied,
+          dirErr);
+      const std::filesystem::recursive_directory_iterator end;
+      if (dirErr)
+      {
+        return String();
+      }
+
+      String fuzzyHit;
+      for (; it != end; it.increment(dirErr))
+      {
+        if (dirErr)
+        {
+          break;
+        }
+
+        const std::filesystem::directory_entry& entry = *it;
+        std::error_code entryErr;
+
+        // Keep the scan bounded: search the given folder and its immediate
+        // sub-folders only.
+        if (entry.is_directory(entryErr) && it.depth() >= 1)
+        {
+          it.disable_recursion_pending();
+          continue;
+        }
+
+        if (!entry.is_regular_file(entryErr))
+        {
+          continue;
+        }
+
+        String entryName, entryExt;
+        DecomposePath(PathToString(entry.path()), nullptr, &entryName, &entryExt);
+        if (MatchKeyFromName(entryExt) != targetExtKey)
+        {
+          continue;
+        }
+
+        if (MatchKeyFromName(entryName) == targetKey)
+        {
+          // Exact match wins immediately.
+          return PathToString(entry.path());
+        }
+
+        if (fuzzyHit.empty() && !fuzzyKey.empty())
+        {
+          const String entryFuzzy = StripNameTokens(MatchKeyFromName(entryName));
+          if (!entryFuzzy.empty() && entryFuzzy == fuzzyKey)
+          {
+            fuzzyHit = PathToString(entry.path());
+          }
+        }
+      }
+
+      return fuzzyHit;
+    }
+
     int App::Import(const String& fullPath, const String& subDir, bool overwrite)
     {
       bool doSearch = !UI::SearchFileData.missingFiles.empty();
@@ -910,12 +1020,6 @@ namespace ToolKit
       Path pathBck         = GetCurrentPath();
       String importExePath =
           PathToString(ToAbsolutePath(PathToString(pathBck) + ConcatPaths({"", "Import" TK_EXE_EXT})));
-
-      Path cpyDir = ".";
-      if (!subDir.empty())
-      {
-        cpyDir += GetPathSeparator() + subDir;
-      }
 
       // Try reimport after search paths provided.
       bool reImport = doSearch || UI::SearchFileData.showSearchFileWindow;
@@ -979,23 +1083,62 @@ namespace ToolKit
 
               // Try search.
               size_t numFound = 0;
-              for (String& searchPath : UI::SearchFileData.searchPaths)
+              StringArray stillMissing;
+              for (String& missingFile : missingFiles)
               {
-                for (String& missingFile : missingFiles)
+                String name, ext;
+                DecomposePath(missingFile, nullptr, &name, &ext);
+
+                String missingFullPath;
+                for (String& searchPath : UI::SearchFileData.searchPaths)
                 {
-                  String name, ext;
-                  DecomposePath(missingFile, nullptr, &name, &ext);
-                  String missingFullPath = ConcatPaths({searchPath, name + ext});
-                  if (CheckFile(missingFullPath))
+                  // Exact name first, then a lenient match that tolerates
+                  // renamed assets (e.g. "PolygonCity_Texture_01_C.png" vs
+                  // "PolygonCity_01_C.png").
+                  missingFullPath = LocateSearchFile(searchPath, name, ext);
+                  if (!missingFullPath.empty())
                   {
-                    numFound++;
-                    std::filesystem::copy(missingFullPath, cpyDir, std::filesystem::copy_options::overwrite_existing);
+                    break;
                   }
+                }
+
+                if (missingFullPath.empty())
+                {
+                  stillMissing.push_back(name + ext);
+                  continue;
+                }
+
+                numFound++;
+
+                // Drop the located file where the importer recorded it
+                // (Temp/<layer>/<target>/...) so the asset-move pass below
+                // copies it into Resources together with the rest. The
+                // importer's recorded name is kept so serialized references
+                // stay valid even when the found file had a different name.
+                std::error_code fileOpErr;
+                String destDir;
+                DecomposePath(missingFile, &destDir, nullptr, nullptr);
+                std::filesystem::create_directories(destDir, fileOpErr);
+                std::filesystem::copy(missingFullPath,
+                                      missingFile,
+                                      std::filesystem::copy_options::overwrite_existing,
+                                      fileOpErr);
+                if (fileOpErr)
+                {
+                  TK_ERR("File copy failed: %s", fileOpErr.message().c_str());
                 }
               }
 
               if (numFound < missingFiles.size())
               {
+                if (ConsoleWindowPtr console = GetConsole())
+                {
+                  for (const String& fileName : stillMissing)
+                  {
+                    console->AddLog("Import: file not found in search paths: " + fileName, LogType::Warning);
+                  }
+                }
+
                 // Retry.
                 UI::SearchFileData.missingFiles = missingFiles;
                 goto Retry;
