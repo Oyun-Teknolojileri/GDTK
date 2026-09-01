@@ -38,6 +38,7 @@ using std::ofstream;
 using std::string;
 using std::to_string;
 using std::unordered_map;
+using std::unordered_set;
 using std::vector;
 namespace fs = std::filesystem;
 
@@ -1252,16 +1253,35 @@ namespace ToolKit
     CreateFileAndSerializeObject(tScene.get(), fullPath);
   }
 
+  // NOTE: bones are keyed by node name. Assimp exposes no unique id for scene
+  // nodes (FBX object ids are dropped during conversion, and even
+  // aiProcess_PopulateArmatureData resolves aiBone::mNode by name), so
+  // duplicated node names cannot be told apart -- not here and not by assimp.
+  // When the same name appears on multiple nodes (e.g. a DCC exporting
+  // "LHand" and "RHand" both named "Hand"), only the first occurrence becomes
+  // a bone; the other occurrences collapse onto it (their weights sum onto it,
+  // one animation channel drives both). Such names are detected in
+  // addBoneNodeFn and logged as a warning below. Unique bone names in the DCC
+  // are the real remedy; a persistent per-bone id on the engine side is the
+  // long-term design fix.
   void ImportSkeleton(string& filePath)
   {
     auto addBoneNodeFn = [](aiNode* node, aiBone* bone) -> void
     {
+      string nodeName = node->mName.C_Str();
+      if (g_skeletonMap.find(nodeName) != g_skeletonMap.end())
+      {
+        // Duplicate node name. Keep the first occurrence so every consumer
+        // (indices, hierarchy, transforms) agrees on the same node.
+        return;
+      }
+
       BoneNode bn(node, 0);
       if (node->mName == bone->mName)
       {
         bn.bone = bone;
       }
-      g_skeletonMap[node->mName.C_Str()] = bn;
+      g_skeletonMap[nodeName] = bn;
     };
 
     // Collect skeleton parts
@@ -1328,12 +1348,32 @@ namespace ToolKit
       return;
     }
 
-    // Assign indices
-    std::function<void(aiNode*, uint&)> assignBoneIndexFn = [&assignBoneIndexFn](aiNode* node, uint& index) -> void
+    // Assign indices. Duplicated node names (FBX rigs commonly reuse the same
+    // bone name for multiple characters / mirrored chains) share one index
+    // per unique name. Otherwise the mesh's vertex bone indices would exceed
+    // the serialized skeleton's bone count and crash the skinning lookups.
+    unordered_set<string> indexedNames;
+    unordered_set<string> duplicatedNames;
+    std::function<void(aiNode*, uint&)> assignBoneIndexFn = [&assignBoneIndexFn, &indexedNames, &duplicatedNames](
+                                                                aiNode* node,
+                                                                uint& index) -> void
     {
-      if (g_skeletonMap.find(node->mName.C_Str()) != g_skeletonMap.end())
+      const string nodeName = node->mName.C_Str();
+      auto mapIter          = g_skeletonMap.find(nodeName);
+      if (mapIter != g_skeletonMap.end())
       {
-        g_skeletonMap[node->mName.C_Str()].boneIndex = index++;
+        if (mapIter->second.boneNode != node)
+        {
+          // A different node carries a bone's name. Track it for the warning
+          // below; the first occurrence wins.
+          duplicatedNames.insert(nodeName);
+        }
+
+        if (indexedNames.find(nodeName) == indexedNames.end())
+        {
+          indexedNames.insert(nodeName);
+          g_skeletonMap[nodeName].boneIndex = index++;
+        }
       }
 
       for (uint i = 0; i < node->mNumChildren; i++)
@@ -1345,6 +1385,31 @@ namespace ToolKit
     uint boneIndex = 0;
     assignBoneIndexFn(g_scene->mRootNode, boneIndex);
 
+    if (!duplicatedNames.empty())
+    {
+      string names;
+      size_t shown = 0;
+      for (const string& duplicatedName : duplicatedNames)
+      {
+        if (shown++ >= 8)
+        {
+          names += "...";
+          break;
+        }
+
+        if (!names.empty())
+        {
+          names += ", ";
+        }
+        names += "'" + duplicatedName + "'";
+      }
+
+      Assimp::DefaultLogger::get()->warn(
+          "Duplicated bone node names detected: " + names +
+          ". Assimp provides no unique node id, so only the first occurrence is kept as a bone and the others are "
+          "merged onto it (see ImportSkeleton notes). Rename the bones in the DCC to import them separately.");
+    }
+
     string name, path;
     DecomposePath(filePath, &path, &name, nullptr);
     string fullPath = ConcatPaths({path, name + SKELETON});
@@ -1353,23 +1418,28 @@ namespace ToolKit
     g_skeleton->SetFile(fullPath);
 
     // Print
+    // Only the first occurrence of a duplicated node name becomes a bone;
+    // later occurrences act as pass-through nodes so the serialized skeleton
+    // keeps exactly one bone per name, matching the indices assigned above.
+    unordered_set<string> addedBones;
     std::function<void(aiNode * node, DynamicBoneMap::DynamicBone*)> setBoneHierarchyFn =
-        [&setBoneHierarchyFn](aiNode* node, DynamicBoneMap::DynamicBone* parentBone) -> void
+        [&setBoneHierarchyFn, &addedBones](aiNode* node, DynamicBoneMap::DynamicBone* parentBone) -> void
     {
       DynamicBoneMap::DynamicBone* searchDBone = parentBone;
-      if (g_skeletonMap.find(node->mName.C_Str()) != g_skeletonMap.end())
+      const string nodeName                    = node->mName.C_Str();
+      if (g_skeletonMap.find(nodeName) != g_skeletonMap.end() && addedBones.find(nodeName) == addedBones.end())
       {
+        addedBones.insert(nodeName);
         assert(node->mName.length);
-        g_skeleton->m_Tpose.m_boneMap.insert(
-            std::make_pair(String(node->mName.C_Str()), DynamicBoneMap::DynamicBone()));
+        g_skeleton->m_Tpose.m_boneMap.insert(std::make_pair(String(nodeName), DynamicBoneMap::DynamicBone()));
 
-        searchDBone                       = &g_skeleton->m_Tpose.m_boneMap.find(node->mName.C_Str())->second;
+        searchDBone                       = &g_skeleton->m_Tpose.m_boneMap.find(nodeName)->second;
         searchDBone->node                 = new Node();
         searchDBone->node->m_inheritScale = true;
         searchDBone->boneIndx             = (uint) g_skeleton->m_bones.size();
-        g_skeleton->m_Tpose.AddDynamicBone(node->mName.C_Str(), *searchDBone, parentBone);
+        g_skeleton->m_Tpose.AddDynamicBone(nodeName, *searchDBone, parentBone);
 
-        StaticBone* sBone = new StaticBone(node->mName.C_Str());
+        StaticBone* sBone = new StaticBone(nodeName);
         g_skeleton->m_bones.push_back(sBone);
       }
       for (uint i = 0; i < node->mNumChildren; i++)
@@ -1378,15 +1448,20 @@ namespace ToolKit
       }
     };
 
-    std::function<void(aiNode * node)> setTransformationsFn = [&setTransformationsFn](aiNode* node) -> void
+    unordered_set<string> transformedBones;
+    std::function<void(aiNode * node)> setTransformationsFn = [&setTransformationsFn,
+                                                               &transformedBones](aiNode* node) -> void
     {
-      if (g_skeletonMap.find(node->mName.C_Str()) != g_skeletonMap.end())
+      const string nodeName = node->mName.C_Str();
+      if (g_skeletonMap.find(nodeName) != g_skeletonMap.end() &&
+          transformedBones.find(nodeName) == transformedBones.end())
       {
-        StaticBone* sBone = g_skeleton->GetBone(node->mName.C_Str());
+        transformedBones.insert(nodeName);
+        StaticBone* sBone = g_skeleton->GetBone(nodeName);
 
         // Set bone node transformation
         {
-          DynamicBoneMap::DynamicBone& dBone = g_skeleton->m_Tpose.m_boneMap[node->mName.C_Str()];
+          DynamicBoneMap::DynamicBone& dBone = g_skeleton->m_Tpose.m_boneMap[nodeName];
 
           // Set translation directly
           Vec3 t, s;
@@ -1400,7 +1475,7 @@ namespace ToolKit
 
         // Set bind pose transformation
         {
-          aiBone* bone = g_skeletonMap[node->mName.C_Str()].bone;
+          aiBone* bone = g_skeletonMap[nodeName].bone;
 
           if (bone)
           {
