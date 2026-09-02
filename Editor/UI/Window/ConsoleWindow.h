@@ -127,9 +127,21 @@ namespace ToolKit
       int TextEditCallback(ImGuiInputTextCallbackData* data);
       void CreateCommand(const String& command, std::function<void(TagArgArray)> executor);
 
+      // Log selection helpers (notepad style selection on the log text).
+      void SelectAllLog();
+      void CopySelectedLog();
+
      private:
       // States.
       bool m_scrollToBottom = false;
+
+      // Log selection state. Stored as raw item indices + char offsets so the
+      // copied text always matches the unfiltered log.
+      int m_selAnchorLine = -1;
+      int m_selAnchorChar = 0;
+      int m_selEndLine    = -1;
+      int m_selEndChar    = 0;
+      bool m_selecting    = false;
 
       // Buffers.
       StringArray m_items;

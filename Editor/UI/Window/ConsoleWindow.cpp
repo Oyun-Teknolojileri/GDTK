@@ -756,18 +756,6 @@ namespace ToolKit
 
     ConsoleWindow::~ConsoleWindow() {}
 
-    // 1   :
-    // 12  :
-    // 123 :
-    // 1234:
-    static String GetLineNumString(size_t line)
-    {
-      String lineNum   = std::to_string(++line);
-      size_t numDigits = (size_t) std::log10(line);
-      lineNum.append(std::max<size_t>(4, numDigits) - numDigits, ' ');
-      return lineNum + ": ";
-    }
-
     void ConsoleWindow::Show()
     {
       if (ImGui::Begin(m_name.c_str(), &m_visible, ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoScrollbar))
@@ -777,80 +765,256 @@ namespace ToolKit
         // Output window.
         ImGuiStyle& style               = ImGui::GetStyle();
         const float footerHeightReserve = style.ItemSpacing.y + ImGui::GetFrameHeightWithSpacing() + 2;
-        ImGui::BeginChild("ScrollingRegion",
-                          ImVec2(0, -footerHeightReserve),
-                          false,
-                          ImGuiWindowFlags_HorizontalScrollbar);
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4, 1));
 
-        m_filter              = ToLower(m_filter);
-        char itemBuffer[1024] = {0};
+        m_filter = ToLower(m_filter);
 
-        m_itemLock.Lock();
-        for (size_t i = 0; i < m_items.size(); i++)
+        // Snapshot the visible lines under the lock. The console is written
+        // from logger threads, so the strings must not be measured or drawn
+        // while another thread can shrink/grow the container.
+        struct ConsoleLine
         {
-          const String item = m_items[i];
+          int number;  //!< Index of the line in the full log.
+          String text; //!< Single line display copy (newlines flattened).
+        };
+        std::vector<ConsoleLine> lines;
+        size_t totalLineCount = 0;
+        m_itemLock.Lock();
+        totalLineCount = m_items.size();
+        lines.reserve(totalLineCount);
+        for (size_t i = 0; i < totalLineCount; i++)
+        {
+          const String& item = m_items[i];
           if (m_filter.size() > 0 && !Utf8CaseInsensitiveSearch(item, m_filter))
           {
             continue;
           }
 
-          String lineNum = GetLineNumString(i);
-          ImGui::TextUnformatted(lineNum.c_str());
-          ImGui::SameLine();
-
-          bool popColor = false;
-          if (item.find(g_memoStr) != String::npos)
-          {
-            ImGui::PushStyleColor(ImGuiCol_Text, g_consoleMemoColor);
-            popColor = true;
-          }
-          else if (item.find(g_commandStr) != String::npos)
-          {
-            ImGui::PushStyleColor(ImGuiCol_Text, g_consoleCommandColor);
-            popColor = true;
-          }
-          else if (item.find(g_warningStr) != String::npos)
-          {
-            ImGui::PushStyleColor(ImGuiCol_Text, g_consoleWarningColor);
-            popColor = true;
-          }
-          else if (item.find(g_errorStr) != String::npos)
-          {
-            ImGui::PushStyleColor(ImGuiCol_Text, g_consoleErrorColor);
-            popColor = true;
-          }
-          else // Than its a success.
-          {
-            ImGui::PushStyleColor(ImGuiCol_Text, g_consoleSuccessColor);
-            popColor = true;
-          }
-
-          ImGui::PushID((int) i);
-          ImGui::PushItemWidth(-1.0f);
-
-          int itemLength = glm::min((int) item.length(), (int) sizeof(itemBuffer));
-          strncpy(itemBuffer, item.c_str(), itemLength - 1);
-          itemBuffer[itemLength - 1] = '\0';
-
-          ImGui::InputText("##txt", itemBuffer, item.size(), ImGuiInputTextFlags_ReadOnly);
-          ImGui::PopItemWidth();
-          ImGui::PopID();
-
-          if (popColor)
-          {
-            ImGui::PopStyleColor();
-          }
+          // The renderer draws one row per log line; flatten embedded line
+          // breaks so they do not cascade into the next row.
+          String display = item;
+          std::replace(display.begin(), display.end(), '\n', ' ');
+          std::replace(display.begin(), display.end(), '\r', ' ');
+          lines.push_back({(int) i, display});
         }
         m_itemLock.Unlock();
 
-        if (m_scrollToBottom || ImGui::GetScrollY() >= ImGui::GetScrollMaxY())
+        ImFont* font = ImGui::GetFont();
+        const float fsize  = ImGui::GetFontSize();
+
+        // Fixed width gutter. Reserve space for at least four digits so the
+        // log text never shifts when the line counter goes past 999.
+        const size_t gutterDigits = std::max<size_t>(4, std::to_string(totalLineCount).size());
+        const String gutterSample(gutterDigits, '8');
+        const float gutterW = ImGui::CalcTextSize((gutterSample + ": ").c_str()).x;
+        const float lineH   = ImGui::GetTextLineHeightWithSpacing();
+
+        float maxTextW = 0.0f;
+        for (const ConsoleLine& line : lines)
         {
-          ImGui::SetScrollHereY(1.0f);
-          m_scrollToBottom = false;
+          maxTextW = glm::max(maxTextW, ImGui::CalcTextSize(line.text.c_str()).x);
         }
 
-        ImGui::PopStyleVar();
+        // Keep both scroll bars proportional to the content.
+        ImGui::SetNextWindowContentSize(ImVec2(gutterW + maxTextW, lines.size() * lineH));
+
+        ImGui::BeginChild("ScrollingRegion",
+                          ImVec2(0, -footerHeightReserve),
+                          false,
+                          ImGuiWindowFlags_HorizontalScrollbar);
+
+        {
+          // Origin is scroll compensated (GetCursorScreenPos returns the
+          // content top-left in screen space), so text positions and mouse
+          // hit-tests below are done in the same space.
+          const ImVec2 origin  = ImGui::GetCursorScreenPos();
+          ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+          // Normalize the selection so (selA, selC) <= (selB, selD).
+          int selA = m_selAnchorLine, selC = m_selAnchorChar;
+          int selB = m_selEndLine, selD = m_selEndChar;
+          if (selA >= 0 && selB >= 0 && (selA > selB || (selA == selB && selC > selD)))
+          {
+            std::swap(selA, selB);
+            std::swap(selC, selD);
+          }
+
+          // X offset of the given char count inside a line.
+          auto charX = [font, fsize](const String& text, int chars) -> float
+          {
+            chars = glm::clamp(chars, 0, (int) text.size());
+            return chars == 0 ? 0.0f
+                              : font->CalcTextSizeA(fsize, FLT_MAX, 0.0f, text.c_str(), text.c_str() + chars).x;
+          };
+
+          // Nearest char index to a local x offset inside a line.
+          auto charAtX = [&charX](const String& text, float x) -> int
+          {
+            if (x <= 0.0f || text.empty())
+            {
+              return 0;
+            }
+
+            int lo = 0;
+            int hi = (int) text.size();
+            while (lo < hi)
+            {
+              int mid = (lo + hi) / 2;
+              if (charX(text, mid) <= x)
+              {
+                lo = mid + 1;
+              }
+              else
+              {
+                hi = mid;
+              }
+            }
+            return lo;
+          };
+
+          for (size_t dIdx = 0; dIdx < lines.size(); dIdx++)
+          {
+            const ConsoleLine& line = lines[dIdx];
+            const float yTop        = origin.y + dIdx * lineH;
+            if (!ImGui::IsRectVisible(ImVec2(origin.x, yTop),
+                                      ImVec2(origin.x + gutterW + maxTextW, yTop + lineH)))
+            {
+              continue;
+            }
+
+            // Line number, right aligned against the fixed gutter width.
+            const String numStr = std::to_string(line.number + 1) + ":";
+            const float numW    = ImGui::CalcTextSize(numStr.c_str()).x;
+            drawList->AddText(ImVec2(origin.x + gutterW - numW, yTop),
+                              IM_COL32(120, 120, 120, 255),
+                              numStr.c_str());
+
+            const ImVec2 textPos(origin.x + gutterW, yTop);
+
+            // Selected range background.
+            if (selA >= 0 && selB >= 0)
+            {
+              float selX0 = 0.0f;
+              float selX1 = -1.0f;
+
+              if (line.number > selA && line.number < selB)
+              {
+                selX1 = maxTextW;
+              }
+              else if (line.number == selA && line.number == selB)
+              {
+                selX0 = charX(line.text, glm::min(selC, selD));
+                selX1 = charX(line.text, glm::max(selC, selD));
+              }
+              else if (line.number == selA)
+              {
+                selX0 = charX(line.text, selC);
+                selX1 = maxTextW;
+              }
+              else if (line.number == selB)
+              {
+                selX1 = charX(line.text, selD);
+              }
+
+              if (selX1 > selX0)
+              {
+                drawList->AddRectFilled(ImVec2(textPos.x + selX0, yTop),
+                                        ImVec2(textPos.x + selX1, yTop + lineH),
+                                        ImGui::GetColorU32(ImGuiCol_TextSelectedBg));
+              }
+            }
+
+            // Per severity color.
+            ImVec4 color = g_consoleSuccessColor;
+            if (line.text.find(g_memoStr) != String::npos)
+            {
+              color = g_consoleMemoColor;
+            }
+            else if (line.text.find(g_commandStr) != String::npos)
+            {
+              color = g_consoleCommandColor;
+            }
+            else if (line.text.find(g_warningStr) != String::npos)
+            {
+              color = g_consoleWarningColor;
+            }
+            else if (line.text.find(g_errorStr) != String::npos)
+            {
+              color = g_consoleErrorColor;
+            }
+
+            drawList->AddText(textPos, ImGui::ColorConvertFloat4ToU32(color), line.text.c_str());
+          }
+
+          // Move the layout cursor to the end of the content and submit a
+          // zero-size item so the parent/window boundaries grow legally
+          // (SetCursorPosY alone would trigger the boundaries assert).
+          ImGui::SetCursorPosY((float) (lines.size() * lineH));
+          ImGui::Dummy(ImVec2(0.0f, 0.0f));
+          // Selection interaction: a click places the caret, dragging
+          // extends the range. Coordinates are screen space (scroll already
+          // compensated by the origin).
+          if (m_selecting && !ImGui::IsMouseDown(ImGuiMouseButton_Left))
+          {
+            m_selecting = false;
+          }
+
+          if (!lines.empty())
+          {
+            ImGuiIO& io = ImGui::GetIO();
+            const ImVec2 winMin     = ImGui::GetWindowPos();
+            const ImVec2 winSize    = ImGui::GetWindowSize();
+            const ImVec2 winMax     = ImVec2(winMin.x + winSize.x, winMin.y + winSize.y);
+            const float textStartX  = origin.x + gutterW;
+            const bool mouseOverWin = ImGui::IsMouseHoveringRect(winMin, winMax);
+
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && mouseOverWin)
+            {
+              int lineIdx = (int) ((io.MousePos.y - origin.y) / lineH);
+              lineIdx     = glm::clamp(lineIdx, 0, (int) lines.size() - 1);
+              const ConsoleLine& line = lines[lineIdx];
+
+              const int charIdx = charAtX(line.text, io.MousePos.x - textStartX);
+              m_selAnchorLine   = line.number;
+              m_selAnchorChar   = charIdx;
+              m_selEndLine      = m_selAnchorLine;
+              m_selEndChar      = charIdx;
+              m_selecting       = true;
+            }
+            else if (m_selecting && ImGui::IsMouseDown(ImGuiMouseButton_Left) && mouseOverWin)
+            {
+              int lineIdx = (int) ((io.MousePos.y - origin.y) / lineH);
+              lineIdx     = glm::clamp(lineIdx, 0, (int) lines.size() - 1);
+              const ConsoleLine& line = lines[lineIdx];
+
+              const int charIdx = charAtX(line.text, io.MousePos.x - textStartX);
+              m_selEndLine      = line.number;
+              m_selEndChar      = charIdx;
+            }
+          }
+
+          // Keyboard shortcuts (notepad style) while the log is focused.
+          {
+            ImGuiIO& io = ImGui::GetIO();
+            if (!io.WantTextInput && (ImGui::IsWindowHovered() || ImGui::IsWindowFocused()))
+            {
+              if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_A))
+              {
+                SelectAllLog();
+              }
+
+              if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_C))
+              {
+                CopySelectedLog();
+              }
+            }
+          }
+
+          if (m_scrollToBottom || ImGui::GetScrollY() >= ImGui::GetScrollMaxY())
+          {
+            ImGui::SetScrollHereY(1.0f);
+            m_scrollToBottom = false;
+          }
+        }
         ImGui::EndChild();
 
         ImGui::Separator();
@@ -958,6 +1122,73 @@ namespace ToolKit
     {
       SpinlockGuard lock(m_itemLock);
       m_items.clear();
+      m_selAnchorLine = m_selEndLine = -1;
+      m_selAnchorChar = m_selEndChar = 0;
+      m_selecting                    = false;
+    }
+
+    void ConsoleWindow::SelectAllLog()
+    {
+      SpinlockGuard lock(m_itemLock);
+      if (!m_items.empty())
+      {
+        m_selAnchorLine = 0;
+        m_selAnchorChar = 0;
+        m_selEndLine    = (int) m_items.size() - 1;
+        m_selEndChar    = (int) m_items.back().size();
+      }
+      else
+      {
+        m_selAnchorLine = m_selEndLine = -1;
+        m_selecting                    = false;
+      }
+    }
+
+    void ConsoleWindow::CopySelectedLog()
+    {
+      if (m_selAnchorLine < 0 || m_selEndLine < 0)
+      {
+        return;
+      }
+
+      m_itemLock.Lock();
+      int a = m_selAnchorLine, c = m_selAnchorChar;
+      int b = m_selEndLine, d = m_selEndChar;
+      if (a > b || (a == b && c > d))
+      {
+        std::swap(a, b);
+        std::swap(c, d);
+      }
+
+      String copy;
+      for (int i = a; i <= b && i < (int) m_items.size(); i++)
+      {
+        if (i < 0)
+        {
+          continue;
+        }
+
+        const String& lineText = m_items[i];
+        const int start        = (i == a) ? glm::clamp(c, 0, (int) lineText.size()) : 0;
+        const int end          = (i == b) ? glm::clamp(d, 0, (int) lineText.size()) : (int) lineText.size();
+        if (end > start)
+        {
+          copy += lineText.substr(start, end - start);
+          copy += "\n";
+        }
+      }
+      m_itemLock.Unlock();
+
+      // Trim the trailing newline.
+      if (!copy.empty() && copy.back() == '\n')
+      {
+        copy.pop_back();
+      }
+
+      if (!copy.empty())
+      {
+        ImGui::SetClipboardText(copy.c_str());
+      }
     }
 
     void ConsoleWindow::ExecCommand(const String& commandLine)
