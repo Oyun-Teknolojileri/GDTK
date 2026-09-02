@@ -449,6 +449,7 @@ namespace ToolKit
             {
               state->m_animation->SerializeRef(doc, elementNode);
             }
+            WriteAttr(elementNode, doc, "ApplyRootMotion", std::to_string(state->m_applyRootMotion));
           }
         }
         break;
@@ -708,6 +709,9 @@ namespace ToolKit
               file                = AnimationPath(file);
               record->m_animation = GetAnimationManager()->Create<Animation>(file);
             }
+            bool applyRootMotion = false;
+            ReadAttr(elementNode, "ApplyRootMotion", applyRootMotion);
+            record->m_applyRootMotion = applyRootMotion;
             list.insert(std::make_pair(signalName, record));
           }
           pVar->m_var = list;

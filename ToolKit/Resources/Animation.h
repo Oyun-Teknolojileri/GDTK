@@ -21,6 +21,9 @@
 
 namespace ToolKit
 {
+  /** Suffix appended to animation keys that target a scene node instead of a skeleton bone. */
+  constexpr const char* g_nodeKeySuffix = "#nodekey";
+
   /**
    * A transformation key that is part of an Animation resource.
    */
@@ -171,6 +174,7 @@ namespace ToolKit
     float m_currentTime    = 0.0f;
     bool m_loop            = false; //!< States if the animation mean to be looped.
     float m_timeMultiplier = 1.0f;  //!< Speed multiplier for animation.
+    bool m_applyRootMotion = false; //!< Apply #nodekey displacement to matching scene nodes.
     AnimationPtr m_animation;       //!< Animation to play.
     EntityWeakPtr m_entity;
 
@@ -191,6 +195,7 @@ namespace ToolKit
 
    protected:
     BlendingData m_blendingData;
+    float m_prevRootMotionTime = 0.0f; //!< Last applied root motion sample time (seconds).
   };
 
   /**
@@ -253,6 +258,11 @@ namespace ToolKit
      * Clears all animation records.
      */
     void ClearAnimRecords();
+
+    /**
+     * Applies root motion (node key displacement) to the record's entity nodes.
+     */
+    void ApplyRootMotion(AnimRecordPtr record);
 
     /**
      * Add data texture of animation for skeleton

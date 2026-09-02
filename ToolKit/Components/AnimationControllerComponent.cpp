@@ -130,6 +130,7 @@ namespace ToolKit
       activeRecord->m_state = AnimRecord::State::Stop;
     }
     rec->m_currentTime                    = 0.0f;
+    rec->m_prevRootMotionTime             = 0.0f;
     rec->m_state                          = AnimRecord::State::Play;
     rec->m_loop                           = true;
     rec->m_blendingData.recordToBlend     = nullptr;

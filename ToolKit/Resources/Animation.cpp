@@ -425,7 +425,8 @@ namespace ToolKit
 
       if (state == AnimRecord::State::Rewind)
       {
-        record->m_currentTime = 0.0f;
+        record->m_currentTime        = 0.0f;
+        record->m_prevRootMotionTime = 0.0f;
       }
 
       if (state == AnimRecord::State::Rewind)
@@ -519,6 +520,104 @@ namespace ToolKit
         }
       }
     }
+
+    // Apply root motion for records that request it.
+    for (AnimRecordPtr record : m_records)
+    {
+      if (record->m_state == AnimRecord::State::Play && record->m_applyRootMotion)
+      {
+        ApplyRootMotion(record);
+      }
+    }
+  }
+
+  void AnimationPlayer::ApplyRootMotion(AnimRecordPtr record)
+  {
+    AnimationPtr anim = record->m_animation;
+    if (anim == nullptr)
+    {
+      return;
+    }
+
+    EntityPtr ntt = record->m_entity.lock();
+    if (ntt == nullptr)
+    {
+      return;
+    }
+
+    auto sampleKey = [anim](const KeyArray& keys, float time, Vec3& pos, Quaternion& rot, Vec3& scale) -> void
+    {
+      int key1, key2;
+      float ratio;
+      anim->GetNearestKeys(keys, key1, key2, ratio, time);
+
+      if (key1 < 0 || key2 < 0)
+      {
+        return;
+      }
+
+      Key k1 = keys[key1];
+      Key k2 = keys[key2];
+      pos    = Interpolate(k1.m_position, k2.m_position, ratio);
+      rot    = glm::slerp(k1.m_rotation, k2.m_rotation, ratio);
+      scale  = Interpolate(k1.m_scale, k2.m_scale, ratio);
+    };
+
+    const String suffix = g_nodeKeySuffix;
+    for (const auto& [keyName, keys] : anim->m_keys)
+    {
+      // Only node keys drive root motion.
+      if (keyName.size() <= suffix.size() ||
+          keyName.compare(keyName.size() - suffix.size(), suffix.size(), suffix) != 0)
+      {
+        continue;
+      }
+
+      const String nodeName = keyName.substr(0, keyName.size() - suffix.size());
+
+      // Walk up from the entity node and pick the first matching node.
+      Node* targetNode = nullptr;
+      for (Node* n = ntt->m_node; n != nullptr; n = n->m_parent)
+      {
+        if (EntityPtr owner = n->OwnerEntity())
+        {
+          if (owner->GetNameVal() == nodeName)
+          {
+            targetNode = n;
+            break;
+          }
+        }
+      }
+
+      if (targetNode == nullptr)
+      {
+        continue;
+      }
+
+      Vec3 curPos, prevPos, curScale, prevScale;
+      Quaternion curRot, prevRot;
+      sampleKey(keys, record->m_currentTime, curPos, curRot, curScale);
+      sampleKey(keys, record->m_prevRootMotionTime, prevPos, prevRot, prevScale);
+
+      Vec3 deltaPos = curPos - prevPos;
+
+      Quaternion deltaRot = curRot * glm::inverse(prevRot);
+
+      Vec3 deltaScale(1.0f);
+      for (int i = 0; i < 3; i++)
+      {
+        if (glm::abs(prevScale[i]) > 0.0001f)
+        {
+          deltaScale[i] = curScale[i] / prevScale[i];
+        }
+      }
+
+      targetNode->Translate(deltaPos, TransformationSpace::TS_WORLD);
+      targetNode->Rotate(deltaRot, TransformationSpace::TS_WORLD);
+      targetNode->Scale(deltaScale);
+    }
+
+    record->m_prevRootMotionTime = record->m_currentTime;
   }
 
   int AnimationPlayer::Exist(ObjectId id) const

@@ -111,7 +111,7 @@ namespace ToolKit
       }
 
       if (ImGui::BeginTable("Animation Records and Signals",
-                            4,
+                            5,
                             ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable |
                                 ImGuiTableFlags_Reorderable | ImGuiTableFlags_ScrollY,
                             ImVec2(ImGui::GetWindowSize().x - 15, 200)))
@@ -120,6 +120,7 @@ namespace ToolKit
         ImGui::TableSetupColumn("Animation", ImGuiTableColumnFlags_WidthStretch, tableWdth / 5.0f);
         ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, tableWdth / 2.5f);
         ImGui::TableSetupColumn("Preview", ImGuiTableColumnFlags_WidthStretch, tableWdth / 4.0f);
+        ImGui::TableSetupColumn("Apply Root Motion", ImGuiTableColumnFlags_WidthStretch, tableWdth / 4.0f);
         ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch, tableWdth / 20.0f);
         ImGui::TableHeadersRow();
 
@@ -210,6 +211,15 @@ namespace ToolKit
             {
               animPlayerComp->Stop();
             }
+          }
+
+          // Apply Root Motion
+          ImGui::TableSetColumnIndex(columnIndx++);
+          ImGui::SetCursorPosY(ImGui::GetCursorPos().y + (ImGui::GetItemRectSize().y / 4.0f));
+          bool applyRootMotion = it->second->m_applyRootMotion;
+          if (ImGui::Checkbox("##applyRootMotion", &applyRootMotion))
+          {
+            it->second->m_applyRootMotion = applyRootMotion;
           }
 
           ImGui::BeginDisabled(!var->m_editable);
