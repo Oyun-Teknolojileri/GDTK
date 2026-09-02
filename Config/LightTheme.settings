@@ -48,8 +48,8 @@ PlotHistogramHovered 0.00,0.40,1.00,1.00
 TableHeaderBg 0.81,0.81,0.80,1.00
 TableBorderStrong 0.69,0.69,0.65,1.00
 TableBorderLight 0.77,0.77,0.75,1.00
-TableRowBg 1.00,1.00,1.00,1.00
-TableRowBgAlt 0.00,0.00,0.00,1.00
+TableRowBg 0.00,0.00,0.00,0.00
+TableRowBgAlt 0.00,0.00,0.00,0.06
 TextLink 0.74,0.41,0.02,1.00
 TextSelectedBg 0.74,0.41,0.02,1.00
 TreeLines 0.77,0.77,0.80,1.00
@@ -58,5 +58,5 @@ DragDropTargetBg 1.00,1.00,1.00,1.00
 UnsavedMarker 0.00,0.00,0.00,1.00
 NavCursor 0.74,0.41,0.02,1.00
 NavWindowingHighlight 0.00,0.00,0.00,1.00
-NavWindowingDimBg 0.20,0.20,0.20,1.00
-ModalWindowDimBg 0.20,0.20,0.20,1.00
+NavWindowingDimBg 0.20,0.20,0.20,0.20
+ModalWindowDimBg 0.20,0.20,0.20,0.35

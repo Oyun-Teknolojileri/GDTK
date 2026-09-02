@@ -173,6 +173,41 @@ namespace ToolKit
     const Vec4 g_consoleSuccessColor           = Vec4(0.4f, 0.94f, 0.4f, 1.0f);
     const Vec4 g_consoleMemoColor              = Vec4(0.7f, 0.7f, 0.7f, 1.0f);
 
+    // Light theme variants. The defaults above are tuned for dark themes
+    // (bright text on a dark background); these are dark text on white.
+    const Vec4 g_consoleErrorColorLight        = Vec4(0.72f, 0.12f, 0.12f, 1.0f);
+    const Vec4 g_consoleCommandColorLight      = Vec4(0.62f, 0.33f, 0.08f, 1.0f);
+    const Vec4 g_consoleWarningColorLight      = Vec4(0.62f, 0.50f, 0.00f, 1.0f);
+    const Vec4 g_consoleSuccessColorLight      = Vec4(0.05f, 0.48f, 0.05f, 1.0f);
+    const Vec4 g_consoleMemoColorLight         = Vec4(0.30f, 0.30f, 0.30f, 1.0f);
+
+    // Profiler / stats heat-map mid threshold. Sits between the warning
+    // (yellow) and error (red) severities and has no console equivalent, so
+    // it keeps its own pair of theme variants.
+    const Vec4 g_consoleOrangeColor          = Vec4(1.0f, 0.5f, 0.0f, 1.0f);
+    const Vec4 g_consoleOrangeColorLight     = Vec4(0.70f, 0.33f, 0.0f, 1.0f);
+
+    // Fixed line number gutter of the console log.
+    const Vec4 g_consoleGutterColor          = Vec4(0.55f, 0.55f, 0.55f, 1.0f);
+    const Vec4 g_consoleGutterColorLight     = Vec4(0.35f, 0.35f, 0.35f, 1.0f);
+
+    /**
+     * Semantic editor colors. UI::GetColor() resolves the theme aware
+     * variant for the current theme, so callers never pick dark/light
+     * variants themselves.
+     */
+    enum class EditorColor
+    {
+      ConsoleError,
+      ConsoleCommand,
+      ConsoleWarning,
+      ConsoleSuccess,
+      ConsoleMemo,
+      ConsoleOrange,
+      ConsoleGutter,
+      Count
+    };
+
     const Vec4 g_blueTintButtonColor           = Vec4(0.043f, 0.173f, 0.325f, 1.0f);
     const Vec4 g_blueTintButtonHoverColor      = Vec4(0.032f, 0.208f, 0.456f, 1.0f);
     const Vec4 g_blueTintButtonActiveColor     = Vec4(0.018f, 0.247f, 0.612f, 1.0f);

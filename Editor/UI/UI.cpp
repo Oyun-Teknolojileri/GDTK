@@ -376,6 +376,31 @@ namespace ToolKit
       }*/
     }
 
+    Vec4 UI::GetColor(EditorColor semanticColor)
+    {
+      const bool lightTheme = m_currentTheme == Theme::Light;
+      switch (semanticColor)
+      {
+        case EditorColor::ConsoleError:
+          return lightTheme ? g_consoleErrorColorLight : g_consoleErrorColor;
+        case EditorColor::ConsoleCommand:
+          return lightTheme ? g_consoleCommandColorLight : g_consoleCommandColor;
+        case EditorColor::ConsoleWarning:
+          return lightTheme ? g_consoleWarningColorLight : g_consoleWarningColor;
+        case EditorColor::ConsoleSuccess:
+          return lightTheme ? g_consoleSuccessColorLight : g_consoleSuccessColor;
+        case EditorColor::ConsoleMemo:
+          return lightTheme ? g_consoleMemoColorLight : g_consoleMemoColor;
+        case EditorColor::ConsoleOrange:
+          return lightTheme ? g_consoleOrangeColorLight : g_consoleOrangeColor;
+        case EditorColor::ConsoleGutter:
+          return lightTheme ? g_consoleGutterColorLight : g_consoleGutterColor;
+        default:
+          assert(false && "Unknown EditorColor.");
+          return Vec4(1.0f);
+      }
+    }
+
     void DarkTheme()
     {
       ImGuiStyle& style                        = ImGui::GetStyle();

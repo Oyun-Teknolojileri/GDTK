@@ -48,6 +48,13 @@ namespace ToolKit
 
       static inline Theme GetCurrentTheme() { return m_currentTheme; }
 
+      /**
+       * Resolves the theme aware color for the given semantic color.
+       * @param semanticColor semantic color to resolve.
+       * @return The dark or light variant matching the current theme.
+       */
+      static Vec4 GetColor(EditorColor semanticColor);
+
       static void InitSettings();
       static void ShowUI();
       static void BeginUI();

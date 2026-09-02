@@ -80,22 +80,24 @@ namespace ToolKit
       ImGui::TableNextColumn();
       ImGui::Text("%.3f", exclTime);
 
-      // Column 3: Inclusive %.
+      // Column 3: Inclusive % and Column 4: Exclusive %.
       ImGui::TableNextColumn();
 
-      // Color code based on percentage.
-      ImVec4 color = ImVec4(0.0f, 1.0f, 0.0f, 1.0f); // Green.
+      // Color code based on percentage. Reuses the console severity palette
+      // (green = success, yellow = warning, red = error); orange is the
+      // profiler specific mid threshold. Resolved per theme.
+      ImVec4 color = UI::GetColor(EditorColor::ConsoleSuccess);
       if (inclPercent > 50.0f)
       {
-        color = ImVec4(1.0f, 0.0f, 0.0f, 1.0f); // Red.
+        color = UI::GetColor(EditorColor::ConsoleError);
       }
       else if (inclPercent > 25.0f)
       {
-        color = ImVec4(1.0f, 0.5f, 0.0f, 1.0f); // Orange.
+        color = UI::GetColor(EditorColor::ConsoleOrange);
       }
       else if (inclPercent > 10.0f)
       {
-        color = ImVec4(1.0f, 1.0f, 0.0f, 1.0f); // Yellow.
+        color = UI::GetColor(EditorColor::ConsoleWarning);
       }
 
       ImGui::TextColored(color, "%.2f%%", inclPercent);
@@ -199,14 +201,15 @@ namespace ToolKit
             }
             else
             {
-              ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f),
+              ImGui::TextColored(UI::GetColor(EditorColor::ConsoleWarning),
                                  "No profiling data. Use TK_PROFILE_SCOPE(\"name\") or Stats::BeginProfileScope().");
             }
           }
         }
         else
         {
-          ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "Profiler is disabled. Enable it to see timing data.");
+          ImGui::TextColored(UI::GetColor(EditorColor::ConsoleMemo),
+                            "Profiler is disabled. Enable it to see timing data.");
         }
       }
       ImGui::End();

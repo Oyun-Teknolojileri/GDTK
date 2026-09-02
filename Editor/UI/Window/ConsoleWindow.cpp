@@ -829,6 +829,11 @@ namespace ToolKit
           const ImVec2 origin  = ImGui::GetCursorScreenPos();
           ImDrawList* drawList = ImGui::GetWindowDrawList();
 
+          // Console line numbers use the semantic gutter color resolved by the
+          // current theme.
+          const ImU32 gutterColor =
+              ImGui::ColorConvertFloat4ToU32(UI::GetColor(EditorColor::ConsoleGutter));
+
           // Normalize the selection so (selA, selC) <= (selB, selD).
           int selA = m_selAnchorLine, selC = m_selAnchorChar;
           int selB = m_selEndLine, selD = m_selEndChar;
@@ -885,7 +890,7 @@ namespace ToolKit
             const String numStr = std::to_string(line.number + 1) + ":";
             const float numW    = ImGui::CalcTextSize(numStr.c_str()).x;
             drawList->AddText(ImVec2(origin.x + gutterW - numW, yTop),
-                              IM_COL32(120, 120, 120, 255),
+                              gutterColor,
                               numStr.c_str());
 
             const ImVec2 textPos(origin.x + gutterW, yTop);
@@ -924,22 +929,22 @@ namespace ToolKit
             }
 
             // Per severity color.
-            ImVec4 color = g_consoleSuccessColor;
+            ImVec4 color = UI::GetColor(EditorColor::ConsoleSuccess);
             if (line.text.find(g_memoStr) != String::npos)
             {
-              color = g_consoleMemoColor;
+              color = UI::GetColor(EditorColor::ConsoleMemo);
             }
             else if (line.text.find(g_commandStr) != String::npos)
             {
-              color = g_consoleCommandColor;
+              color = UI::GetColor(EditorColor::ConsoleCommand);
             }
             else if (line.text.find(g_warningStr) != String::npos)
             {
-              color = g_consoleWarningColor;
+              color = UI::GetColor(EditorColor::ConsoleWarning);
             }
             else if (line.text.find(g_errorStr) != String::npos)
             {
-              color = g_consoleErrorColor;
+              color = UI::GetColor(EditorColor::ConsoleError);
             }
 
             drawList->AddText(textPos, ImGui::ColorConvertFloat4ToU32(color), line.text.c_str());
