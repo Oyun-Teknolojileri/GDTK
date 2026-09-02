@@ -28,6 +28,7 @@
 #include <assimp/scene.h>
 
 #include <iostream>
+#include <limits>
 
 using std::cout;
 using std::endl;
@@ -83,6 +84,13 @@ namespace ToolKit
 
   const float g_desiredFps = 30.0f;
   const float g_animEps    = 0.001f;
+  // Max element diff between a node's bind transform and the transform
+  // reconstructed from a bone's inverse bind matrix. Used to match bones to
+  // scene nodes when several nodes share the same name.
+  const float g_boneMatrixMatchEps = 0.001f;
+  // Max distance between an animation channel's initial values and a node's
+  // bind transform when a channel name matches multiple bone nodes.
+  const float g_animChannelMatchEps = 0.01f;
   String g_currentExt;
 
   class BoneNode
@@ -99,9 +107,18 @@ namespace ToolKit
     aiNode* boneNode = nullptr;
     aiBone* bone     = nullptr;
     uint boneIndex   = 0;
+    String name; //!< Unique name assigned by the importer.
   };
 
   unordered_map<string, BoneNode> g_skeletonMap;
+  // Bones resolved to their skeleton entries (aiBone* -> map entry). aiBone
+  // names are not unique, so meshes must use this instead of a name lookup to
+  // fetch vertex weight indices.
+  unordered_map<const aiBone*, BoneNode*> g_aiBoneToEntry;
+  // Scene nodes that became bones -> their skeleton entry.
+  unordered_map<const aiNode*, BoneNode*> g_nodeToEntry;
+  // Scene nodes indexed by their original name (duplicates included).
+  unordered_map<string, vector<aiNode*>> g_nameToNodes;
 
   // Importer helper functions.
   ////////////////////////////////////////////////////////////////
@@ -488,7 +505,65 @@ namespace ToolKit
           keys.push_back(tKey);
         }
 
-        tAnim->m_keys.insert(std::make_pair(nodeAnim->mNodeName.C_Str(), keys));
+        // Resolve the channel to a skeleton bone when possible. Duplicated
+        // node names are disambiguated with the channel's initial values
+        // against the candidates' bind transforms.
+        String boneKeyName = nodeAnim->mNodeName.C_Str();
+        auto candidatesIt  = g_nameToNodes.find(boneKeyName);
+        if (candidatesIt != g_nameToNodes.end())
+        {
+          vector<const aiNode*> boneCandidates;
+          for (const aiNode* candidate : candidatesIt->second)
+          {
+            if (g_nodeToEntry.find(candidate) != g_nodeToEntry.end())
+            {
+              boneCandidates.push_back(candidate);
+            }
+          }
+
+          if (boneCandidates.size() == 1)
+          {
+            boneKeyName = g_nodeToEntry[boneCandidates[0]]->name;
+          }
+          else if (boneCandidates.size() > 1)
+          {
+            // Multiple bones share the channel name (FBX also merges their
+            // curves into this one channel, so the values may already be
+            // conflated). Pick the bone whose bind transform matches the
+            // channel's initial values and report it.
+            float bestDist     = std::numeric_limits<float>::max();
+            const aiNode* best = nullptr;
+            for (const aiNode* candidate : boneCandidates)
+            {
+              Vec3 t, s;
+              Quaternion r;
+              DecomposeAssimpMatrix(candidate->mTransformation, &t, &r, &s);
+
+              float tDist = glm::length2(t - Vec3(initPos.x, initPos.y, initPos.z));
+              float sDist = glm::length2(s - Vec3(initScl.x, initScl.y, initScl.z));
+              float rDist = 1.0f - glm::abs(glm::dot(r, Quaternion(initRot.x, initRot.y, initRot.z, initRot.w)));
+              float dist  = tDist + sDist + rDist;
+              if (dist < bestDist)
+              {
+                bestDist = dist;
+                best     = candidate;
+              }
+            }
+
+            if (best != nullptr)
+            {
+              boneKeyName = g_nodeToEntry[best]->name;
+              if (bestDist > g_animChannelMatchEps)
+              {
+                Assimp::DefaultLogger::get()->warn("Ambiguous animation channel '" + boneKeyName +
+                                                   "' matches no bone bind transform; it is assigned to the closest "
+                                                   "bone.");
+              }
+            }
+          }
+        }
+
+        tAnim->m_keys.insert(std::make_pair(boneKeyName, keys));
       }
 
       // For skeleton bones that have no animation channel, write their T-pose transform
@@ -794,8 +869,18 @@ namespace ToolKit
       for (unsigned int i = 0; i < mesh->mNumBones; i++)
       {
         aiBone* bone = mesh->mBones[i];
-        assert(g_skeletonMap.find(bone->mName.C_Str()) != g_skeletonMap.end());
-        BoneNode bn = g_skeletonMap[bone->mName.C_Str()];
+        auto entryIt = g_aiBoneToEntry.find(bone);
+        if (entryIt == g_aiBoneToEntry.end())
+        {
+          // The bone could not be matched to a scene node (see
+          // ImportSkeleton). Drop its weights instead of pointing them at a
+          // wrong bone.
+          Assimp::DefaultLogger::get()->warn(string("Bone '") + bone->mName.C_Str() +
+                                             "' has no matching scene node; its weights are dropped.");
+          continue;
+        }
+
+        const BoneNode& bn = *entryIt->second;
         for (unsigned int j = 0; j < bone->mNumWeights; j++)
         {
           aiVertexWeight vw = bone->mWeights[j];
@@ -1253,143 +1338,161 @@ namespace ToolKit
     CreateFileAndSerializeObject(tScene.get(), fullPath);
   }
 
-  // NOTE: bones are keyed by node name. Assimp exposes no unique id for scene
-  // nodes (FBX object ids are dropped during conversion, and even
-  // aiProcess_PopulateArmatureData resolves aiBone::mNode by name), so
-  // duplicated node names cannot be told apart -- not here and not by assimp.
-  // When the same name appears on multiple nodes (e.g. a DCC exporting
-  // "LHand" and "RHand" both named "Hand"), only the first occurrence becomes
-  // a bone; the other occurrences collapse onto it (their weights sum onto it,
-  // one animation channel drives both). Such names are detected in
-  // addBoneNodeFn and logged as a warning below. Unique bone names in the DCC
-  // are the real remedy; a persistent per-bone id on the engine side is the
-  // long-term design fix.
+  aiMatrix4x4 GetAiNodeWorldTransform(const aiNode* node, unordered_map<const aiNode*, aiMatrix4x4>& cache)
+  {
+    auto cachedIt = cache.find(node);
+    if (cachedIt != cache.end())
+    {
+      return cachedIt->second;
+    }
+
+    aiMatrix4x4 world = node->mTransformation;
+    if (node->mParent != nullptr)
+    {
+      world = GetAiNodeWorldTransform(node->mParent, cache) * world;
+    }
+
+    cache[node] = world;
+    return world;
+  }
+
+  float AiMatrixDistance(const aiMatrix4x4& a, const aiMatrix4x4& b)
+  {
+    float maxDist   = 0.0f;
+    const float* ap = &a.a1;
+    const float* bp = &b.a1;
+    for (int i = 0; i < 16; i++)
+    {
+      maxDist = glm::max(maxDist, glm::abs(ap[i] - bp[i]));
+    }
+
+    return maxDist;
+  }
+
+  // NOTE: aiBone carries no link to its aiNode (assimp drops FBX object ids,
+  // and even aiProcess_PopulateArmatureData resolves aiBone::mNode by name),
+  // so bones are matched to scene nodes by name plus -- when several nodes
+  // share the name -- the inverse bind matrix:
+  //   nodeWorldAtBind == meshWorld * inverse(aiBone::mOffsetMatrix)
+  // holds for both FBX and glTF2. Every distinct bone node then receives a
+  // unique name ("finger", "finger_1", "finger_2", ... in scene DFS order),
+  // which keeps the engine's unique-bone-name assumption intact. Two assimp
+  // internal merges cannot be recovered here and are only warned about:
+  // same-name clusters on one mesh collapse into a single aiBone, and
+  // same-name FBX animation channels collapse into a single aiNodeAnim.
   void ImportSkeleton(string& filePath)
   {
-    auto addBoneNodeFn = [](aiNode* node, aiBone* bone) -> void
+    // Index every scene node by its original name (duplicates included).
+    g_nameToNodes.clear();
+    std::function<void(aiNode*)> indexNodesFn = [&indexNodesFn](aiNode* node) -> void
     {
-      string nodeName = node->mName.C_Str();
-      if (g_skeletonMap.find(nodeName) != g_skeletonMap.end())
+      g_nameToNodes[node->mName.C_Str()].push_back(node);
+      for (uint i = 0; i < node->mNumChildren; i++)
       {
-        // Duplicate node name. Keep the first occurrence so every consumer
-        // (indices, hierarchy, transforms) agrees on the same node.
-        return;
+        indexNodesFn(node->mChildren[i]);
       }
-
-      BoneNode bn(node, 0);
-      if (node->mName == bone->mName)
-      {
-        bn.bone = bone;
-      }
-      g_skeletonMap[nodeName] = bn;
     };
+    indexNodesFn(g_scene->mRootNode);
 
-    // Collect skeleton parts
-    vector<aiBone*> bones;
-    for (unsigned int i = 0; i < g_scene->mNumMeshes; i++)
+    // Map every aiMesh to the aiNode that carries it. FindNode would return
+    // the first node with the mesh's name, which is wrong when several nodes
+    // share a name.
+    unordered_map<const aiMesh*, aiNode*> meshNodes;
+    std::function<void(aiNode*)> indexMeshesFn = [&indexMeshesFn, &meshNodes](aiNode* node) -> void
     {
-      aiMesh* mesh     = g_scene->mMeshes[i];
-      aiNode* meshNode = g_scene->mRootNode->FindNode(mesh->mName);
-      for (unsigned int j = 0; j < mesh->mNumBones; j++)
+      for (uint i = 0; i < node->mNumMeshes; i++)
       {
-        aiBone* bone = mesh->mBones[j];
-        bones.push_back(bone);
-        aiNode* node = g_scene->mRootNode->FindNode(bone->mName);
-        while (node) // Go Up
-        {
-          if (node == meshNode)
-          {
-            break;
-          }
+        meshNodes[g_scene->mMeshes[node->mMeshes[i]]] = node;
+      }
+      for (uint i = 0; i < node->mNumChildren; i++)
+      {
+        indexMeshesFn(node->mChildren[i]);
+      }
+    };
+    indexMeshesFn(g_scene->mRootNode);
 
+    // Resolve every aiBone to the exact aiNode it belongs to.
+    struct BoneResolution
+    {
+      aiBone* bone     = nullptr;
+      aiNode* node     = nullptr;
+      aiNode* meshNode = nullptr;
+    };
+    vector<BoneResolution> resolutions;
+    unordered_set<string> unresolvedBoneNames;
+
+    unordered_map<const aiNode*, aiMatrix4x4> worldCache;
+    for (uint meshIndx = 0; meshIndx < g_scene->mNumMeshes; meshIndx++)
+    {
+      aiMesh* mesh     = g_scene->mMeshes[meshIndx];
+      auto meshNodeIt  = meshNodes.find(mesh);
+      aiNode* meshNode = (meshNodeIt != meshNodes.end()) ? meshNodeIt->second : nullptr;
+
+      for (uint boneIndx = 0; boneIndx < mesh->mNumBones; boneIndx++)
+      {
+        aiBone* bone = mesh->mBones[boneIndx];
+
+        aiNode* resolvedNode              = nullptr;
+        auto candsIt                      = g_nameToNodes.find(bone->mName.C_Str());
+        if (candsIt != g_nameToNodes.end() && candsIt->second.size() == 1)
+        {
+          resolvedNode = candsIt->second[0];
+        }
+        else if (candsIt != g_nameToNodes.end() && !candsIt->second.empty())
+        {
+          // Several nodes share the bone's name. Assimp merges same-name
+          // clusters per mesh, so candidates only collide across meshes and
+          // their inverse bind matrices tell them apart.
+          aiMatrix4x4 offsetInv = bone->mOffsetMatrix;
+          offsetInv.Inverse();
+          aiMatrix4x4 expectedWorld = offsetInv;
           if (meshNode != nullptr)
           {
-            if (node == meshNode->mParent)
+            expectedWorld = GetAiNodeWorldTransform(meshNode, worldCache) * offsetInv;
+          }
+
+          float bestDist = std::numeric_limits<float>::max();
+          for (aiNode* cand : candsIt->second)
+          {
+            float dist = AiMatrixDistance(GetAiNodeWorldTransform(cand, worldCache), expectedWorld);
+            if (dist < bestDist)
             {
-              break;
+              bestDist     = dist;
+              resolvedNode = cand;
             }
           }
 
-          addBoneNodeFn(node, bone);
-          node = node->mParent;
+          if (bestDist > g_boneMatrixMatchEps)
+          {
+            // No candidate matches the bind pose. Fall back to the first
+            // candidate; the assignment may be wrong, so report it.
+            Assimp::DefaultLogger::get()->warn("Bone '" + string(bone->mName.C_Str()) +
+                                               "' matches no scene node by bind pose; the first same-name node is "
+                                               "used.");
+            resolvedNode = candsIt->second[0];
+          }
         }
 
-        node                                     = g_scene->mRootNode->FindNode(bone->mName);
-
-        // Go Down
-        std::function<void(aiNode*)> checkDownFn = [&checkDownFn, &bone, &addBoneNodeFn](aiNode* node) -> void
+        if (resolvedNode == nullptr)
         {
-          if (node == nullptr)
-          {
-            return;
-          }
+          unresolvedBoneNames.insert(bone->mName.C_Str());
+          continue;
+        }
 
-          addBoneNodeFn(node, bone);
-
-          for (unsigned int i = 0; i < node->mNumChildren; i++)
-          {
-            checkDownFn(node->mChildren[i]);
-          }
-        };
-        checkDownFn(node);
+        resolutions.push_back({bone, resolvedNode, meshNode});
       }
     }
 
-    for (auto& bone : bones)
-    {
-      if (g_skeletonMap.find(bone->mName.C_Str()) != g_skeletonMap.end())
-      {
-        g_skeletonMap[bone->mName.C_Str()].bone = bone;
-      }
-    }
-
-    if (bones.size() == 0)
+    if (resolutions.empty())
     {
       return;
     }
 
-    // Assign indices. Duplicated node names (FBX rigs commonly reuse the same
-    // bone name for multiple characters / mirrored chains) share one index
-    // per unique name. Otherwise the mesh's vertex bone indices would exceed
-    // the serialized skeleton's bone count and crash the skinning lookups.
-    unordered_set<string> indexedNames;
-    unordered_set<string> duplicatedNames;
-    std::function<void(aiNode*, uint&)> assignBoneIndexFn = [&assignBoneIndexFn, &indexedNames, &duplicatedNames](
-                                                                aiNode* node,
-                                                                uint& index) -> void
-    {
-      const string nodeName = node->mName.C_Str();
-      auto mapIter          = g_skeletonMap.find(nodeName);
-      if (mapIter != g_skeletonMap.end())
-      {
-        if (mapIter->second.boneNode != node)
-        {
-          // A different node carries a bone's name. Track it for the warning
-          // below; the first occurrence wins.
-          duplicatedNames.insert(nodeName);
-        }
-
-        if (indexedNames.find(nodeName) == indexedNames.end())
-        {
-          indexedNames.insert(nodeName);
-          g_skeletonMap[nodeName].boneIndex = index++;
-        }
-      }
-
-      for (uint i = 0; i < node->mNumChildren; i++)
-      {
-        assignBoneIndexFn(node->mChildren[i], index);
-      }
-    };
-
-    uint boneIndex = 0;
-    assignBoneIndexFn(g_scene->mRootNode, boneIndex);
-
-    if (!duplicatedNames.empty())
+    if (!unresolvedBoneNames.empty())
     {
       string names;
       size_t shown = 0;
-      for (const string& duplicatedName : duplicatedNames)
+      for (const string& boneName : unresolvedBoneNames)
       {
         if (shown++ >= 8)
         {
@@ -1401,14 +1504,182 @@ namespace ToolKit
         {
           names += ", ";
         }
-        names += "'" + duplicatedName + "'";
+        names += "'" + boneName + "'";
+      }
+
+      Assimp::DefaultLogger::get()->warn("Bones with no matching scene node: " + names +
+                                         ". Their weights are dropped and they are not added to the skeleton.");
+    }
+
+    // Collect every node that becomes a bone. Node identity is the key here;
+    // names may still collide at this point.
+    unordered_set<const aiNode*> boneNodes;
+    auto addBoneNodeFn = [&boneNodes](const aiNode* node) -> void { boneNodes.insert(node); };
+
+    for (const BoneResolution& res : resolutions)
+    {
+      const aiNode* node = res.node;
+      while (node) // Go Up
+      {
+        if (node == res.meshNode)
+        {
+          break;
+        }
+
+        if (res.meshNode != nullptr)
+        {
+          if (node == res.meshNode->mParent)
+          {
+            break;
+          }
+        }
+
+        addBoneNodeFn(node);
+        node = node->mParent;
+      }
+
+      // Go Down
+      std::function<void(const aiNode*)> checkDownFn = [&checkDownFn, &addBoneNodeFn](const aiNode* node) -> void
+      {
+        if (node == nullptr)
+        {
+          return;
+        }
+
+        addBoneNodeFn(node);
+
+        for (uint i = 0; i < node->mNumChildren; i++)
+        {
+          checkDownFn(node->mChildren[i]);
+        }
+      };
+      checkDownFn(res.node);
+    }
+
+    // A node named after a bone keeps the bind pose of the bone that resolved
+    // to it. Last resolution wins, same as the old name-keyed lookup.
+    unordered_map<const aiNode*, aiBone*> nodeBindBones;
+    for (const BoneResolution& res : resolutions)
+    {
+      nodeBindBones[res.node] = res.bone;
+    }
+
+    // Assign a unique name to every bone node. The first occurrence keeps the
+    // original name; later occurrences get "_1", "_2", ... suffixes. Names of
+    // non-bone scene nodes are reserved so generated names never collide with
+    // them.
+    unordered_set<string> takenNames;
+    std::function<void(const aiNode*)> reserveNodeNamesFn = [&reserveNodeNamesFn, &takenNames, &boneNodes](
+                                                                const aiNode* node) -> void
+    {
+      if (boneNodes.find(node) == boneNodes.end())
+      {
+        takenNames.insert(node->mName.C_Str());
+      }
+      for (uint i = 0; i < node->mNumChildren; i++)
+      {
+        reserveNodeNamesFn(node->mChildren[i]);
+      }
+    };
+    reserveNodeNamesFn(g_scene->mRootNode);
+
+    unordered_map<string, uint> nameCounters;
+    vector<std::pair<string, string>> renamedBones;
+    g_skeletonMap.clear();
+    g_nodeToEntry.clear();
+    g_aiBoneToEntry.clear();
+
+    std::function<void(aiNode*)> nameBonesFn =
+        [&nameBonesFn, &boneNodes, &nameCounters, &takenNames, &renamedBones, &nodeBindBones](aiNode* node) -> void
+    {
+      if (boneNodes.find(node) != boneNodes.end())
+      {
+        const string originalName = node->mName.C_Str();
+        uint& counter             = nameCounters[originalName];
+        string uniqueName         = (counter == 0) ? originalName : originalName + "_" + to_string(counter);
+        while (takenNames.find(uniqueName) != takenNames.end())
+        {
+          counter++;
+          uniqueName = originalName + "_" + to_string(counter);
+        }
+        takenNames.insert(uniqueName);
+
+        if (uniqueName != originalName)
+        {
+          renamedBones.push_back({originalName, uniqueName});
+        }
+
+        BoneNode bn(node, 0);
+        bn.name = uniqueName;
+        auto bindBoneIt = nodeBindBones.find(node);
+        if (bindBoneIt != nodeBindBones.end())
+        {
+          bn.bone = bindBoneIt->second;
+        }
+
+        g_skeletonMap[uniqueName] = bn;
+        g_nodeToEntry[node]       = &g_skeletonMap[uniqueName];
+      }
+
+      for (uint i = 0; i < node->mNumChildren; i++)
+      {
+        nameBonesFn(node->mChildren[i]);
+      }
+    };
+    nameBonesFn(g_scene->mRootNode);
+
+    // Map every aiBone to its (renamed) skeleton entry so meshes can read the
+    // right bone index per bone instead of looking the bone's name up.
+    for (const BoneResolution& res : resolutions)
+    {
+      auto entryIt = g_nodeToEntry.find(res.node);
+      assert(entryIt != g_nodeToEntry.end());
+      g_aiBoneToEntry[res.bone] = entryIt->second;
+    }
+
+    if (!renamedBones.empty())
+    {
+      string names;
+      size_t shown = 0;
+      for (const auto& rename : renamedBones)
+      {
+        if (shown++ >= 8)
+        {
+          names += "...";
+          break;
+        }
+
+        if (!names.empty())
+        {
+          names += ", ";
+        }
+        names += "'" + rename.first + "' -> '" + rename.second + "'";
       }
 
       Assimp::DefaultLogger::get()->warn(
           "Duplicated bone node names detected: " + names +
-          ". Assimp provides no unique node id, so only the first occurrence is kept as a bone and the others are "
-          "merged onto it (see ImportSkeleton notes). Rename the bones in the DCC to import them separately.");
+          ". Distinct bones that share a name are renamed with _N suffixes so every bone is imported separately.");
     }
+
+    // Assign indices. Every bone node now has a unique name, so there is one
+    // index per bone. Indices follow the same DFS order used below to build
+    // m_bones, so mesh vertex bone indices match the serialized skeleton.
+    std::function<void(aiNode*, uint&)> assignBoneIndexFn = [&assignBoneIndexFn](aiNode* node, uint& index) -> void
+    {
+      auto entryIt = g_nodeToEntry.find(node);
+      if (entryIt != g_nodeToEntry.end())
+      {
+        entryIt->second->boneIndex = index++;
+      }
+
+      for (uint i = 0; i < node->mNumChildren; i++)
+      {
+        assignBoneIndexFn(node->mChildren[i], index);
+      }
+    };
+
+    uint boneIndex = 0;
+    assignBoneIndexFn(g_scene->mRootNode, boneIndex);
 
     string name, path;
     DecomposePath(filePath, &path, &name, nullptr);
@@ -1417,29 +1688,25 @@ namespace ToolKit
     g_skeleton      = MakeNewPtr<Skeleton>();
     g_skeleton->SetFile(fullPath);
 
-    // Print
-    // Only the first occurrence of a duplicated node name becomes a bone;
-    // later occurrences act as pass-through nodes so the serialized skeleton
-    // keeps exactly one bone per name, matching the indices assigned above.
-    unordered_set<string> addedBones;
-    std::function<void(aiNode * node, DynamicBoneMap::DynamicBone*)> setBoneHierarchyFn =
-        [&setBoneHierarchyFn, &addedBones](aiNode* node, DynamicBoneMap::DynamicBone* parentBone) -> void
+    // Build the bone hierarchy and T-pose map from the renamed entries.
+    std::function<void(aiNode*, DynamicBoneMap::DynamicBone*)> setBoneHierarchyFn =
+        [&setBoneHierarchyFn](aiNode* node, DynamicBoneMap::DynamicBone* parentBone) -> void
     {
       DynamicBoneMap::DynamicBone* searchDBone = parentBone;
-      const string nodeName                    = node->mName.C_Str();
-      if (g_skeletonMap.find(nodeName) != g_skeletonMap.end() && addedBones.find(nodeName) == addedBones.end())
+      auto entryIt                             = g_nodeToEntry.find(node);
+      if (entryIt != g_nodeToEntry.end())
       {
-        addedBones.insert(nodeName);
+        BoneNode* entry = entryIt->second;
         assert(node->mName.length);
-        g_skeleton->m_Tpose.m_boneMap.insert(std::make_pair(String(nodeName), DynamicBoneMap::DynamicBone()));
+        g_skeleton->m_Tpose.m_boneMap.insert(std::make_pair(entry->name, DynamicBoneMap::DynamicBone()));
 
-        searchDBone                       = &g_skeleton->m_Tpose.m_boneMap.find(nodeName)->second;
+        searchDBone                       = &g_skeleton->m_Tpose.m_boneMap.find(entry->name)->second;
         searchDBone->node                 = new Node();
         searchDBone->node->m_inheritScale = true;
-        searchDBone->boneIndx             = (uint) g_skeleton->m_bones.size();
-        g_skeleton->m_Tpose.AddDynamicBone(nodeName, *searchDBone, parentBone);
+        searchDBone->boneIndx             = entry->boneIndex;
+        g_skeleton->m_Tpose.AddDynamicBone(entry->name, *searchDBone, parentBone);
 
-        StaticBone* sBone = new StaticBone(nodeName);
+        StaticBone* sBone = new StaticBone(entry->name);
         g_skeleton->m_bones.push_back(sBone);
       }
       for (uint i = 0; i < node->mNumChildren; i++)
@@ -1448,20 +1715,17 @@ namespace ToolKit
       }
     };
 
-    unordered_set<string> transformedBones;
-    std::function<void(aiNode * node)> setTransformationsFn = [&setTransformationsFn,
-                                                               &transformedBones](aiNode* node) -> void
+    std::function<void(aiNode*)> setTransformationsFn = [&setTransformationsFn](aiNode* node) -> void
     {
-      const string nodeName = node->mName.C_Str();
-      if (g_skeletonMap.find(nodeName) != g_skeletonMap.end() &&
-          transformedBones.find(nodeName) == transformedBones.end())
+      auto entryIt = g_nodeToEntry.find(node);
+      if (entryIt != g_nodeToEntry.end())
       {
-        transformedBones.insert(nodeName);
-        StaticBone* sBone = g_skeleton->GetBone(nodeName);
+        BoneNode* entry   = entryIt->second;
+        StaticBone* sBone = g_skeleton->GetBone(entry->name);
 
         // Set bone node transformation
         {
-          DynamicBoneMap::DynamicBone& dBone = g_skeleton->m_Tpose.m_boneMap[nodeName];
+          DynamicBoneMap::DynamicBone& dBone = g_skeleton->m_Tpose.m_boneMap[entry->name];
 
           // Set translation directly
           Vec3 t, s;
@@ -1475,7 +1739,7 @@ namespace ToolKit
 
         // Set bind pose transformation
         {
-          aiBone* bone = g_skeletonMap[nodeName].bone;
+          aiBone* bone = entry->bone;
 
           if (bone)
           {
@@ -1713,6 +1977,9 @@ namespace ToolKit
       // Uninit globals
       g_skeleton = nullptr;
       g_skeletonMap.clear();
+      g_aiBoneToEntry.clear();
+      g_nodeToEntry.clear();
+      g_nameToNodes.clear();
       tMaterials.clear();
       g_meshes.clear();
       mainSkinMesh = nullptr;

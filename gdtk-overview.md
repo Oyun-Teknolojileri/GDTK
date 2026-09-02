@@ -505,6 +505,15 @@ alongside the engine.
 Asset import CLI (assimp-based). Editor uses it via `App::Import`. Links
 assimp, SDL2, ToolKit.
 
+Skeleton import: bones are matched to scene nodes by name, and when several
+nodes share a name the match is disambiguated with the inverse bind matrix
+(`nodeWorldAtBind == meshWorld * inverse(aiBone::mOffsetMatrix)`). Distinct
+bones that share a name are renamed with `_N` suffixes (first occurrence keeps
+the original name), so the engine's unique-bone-name assumption holds. assimp
+internal merges that cannot be recovered (same-name clusters on one mesh
+collapse into one `aiBone`; same-name FBX animation channels collapse into one
+`aiNodeAnim`) are logged as warnings.
+
 ### 11.2 Packer (`Utils/Packer/`)
 Release / publish CLI. Bundles projects for Windows, Web, Android. Links
 SDL2, ToolKit (no assimp).
