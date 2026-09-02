@@ -15,6 +15,7 @@
 #include <AABBOverrideComponent.h>
 #include <AnimationControllerComponent.h>
 #include <EnvironmentComponent.h>
+#include <FileManager.h>
 #include <Material.h>
 #include <Mesh.h>
 
@@ -110,18 +111,25 @@ namespace ToolKit
         ImGui::Text(text.c_str());
       }
 
-      if (ImGui::BeginTable("Animation Records and Signals",
-                            5,
-                            ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable |
-                                ImGuiTableFlags_Reorderable | ImGuiTableFlags_ScrollY,
-                            ImVec2(ImGui::GetWindowSize().x - 15, 200)))
+      // Small breathing room under the component header.
+      ImGui::Dummy(ImVec2(0.0f, 2.0f));
+
+      // Resize the record table vertically by dragging its bottom border.
+      if (ImGui::BeginChild("AnimationRecordsResizable", ImVec2(-FLT_MIN, 200.0f), ImGuiChildFlags_ResizeY))
+      {
+        const ImVec2 tableSize = ImGui::GetContentRegionAvail();
+        if (ImGui::BeginTable("Animation Records and Signals",
+                              5,
+                              ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable |
+                                  ImGuiTableFlags_Reorderable | ImGuiTableFlags_ScrollY,
+                              tableSize))
       {
         float tableWdth = ImGui::GetItemRectSize().x;
         ImGui::TableSetupColumn("Animation", ImGuiTableColumnFlags_WidthStretch, tableWdth / 5.0f);
         ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, tableWdth / 2.5f);
         ImGui::TableSetupColumn("Preview", ImGuiTableColumnFlags_WidthStretch, tableWdth / 4.0f);
         ImGui::TableSetupColumn("Apply Root Motion", ImGuiTableColumnFlags_WidthStretch, tableWdth / 4.0f);
-        ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch, tableWdth / 20.0f);
+        ImGui::TableSetupColumn("Remove", ImGuiTableColumnFlags_WidthStretch, tableWdth / 12.0f);
         ImGui::TableHeadersRow();
 
         uint rowIndx                                       = 0;
@@ -131,43 +139,104 @@ namespace ToolKit
 
         static std::pair<String, AnimRecordPtr> extraTrack = std::make_pair("", MakeNewPtr<AnimRecord>());
 
-        // Animation DropZone
-        auto showAnimationDropzone = [tableWdth, file](uint& columnIndx, const std::pair<String, AnimRecordPtr>& pair)
+        // Animation DropZone. Returns the drawn dropzone height so callers can
+        // vertically center the rest of the row's cells against it.
+        auto showAnimationDropzone =
+            [file, &mref](uint& columnIndx, const std::pair<String, AnimRecordPtr>& pair) -> float
         {
           ImGui::TableSetColumnIndex(columnIndx++);
-          ImGui::SetCursorPosX(tableWdth / 25.0f);
+
+          // Center the dropzone horizontally in its cell. It is the tallest
+          // item of the row, so it defines the row height and needs no
+          // vertical centering.
+          const float dzSize = 48.0f;
+          float availX       = ImGui::GetContentRegionAvail().x;
+          ImGui::SetCursorPosX(ImGui::GetCursorPosX() + glm::max(0.0f, (availX - dzSize) * 0.5f));
+
           DropZone(EditorImGuiTextureCache::Acquire(UI::m_clipIcon),
                    file,
-                   [&pair](const DirectoryEntry& entry) -> void
+                   [&pair, &mref](const DirectoryEntry& entry) -> void
                    {
-                     if (GetResourceType(entry.m_ext) == Animation::StaticClass())
+                     if (GetResourceType(entry.m_ext) != Animation::StaticClass())
                      {
-                       pair.second->m_animation = GetAnimationManager()->Create<Animation>(entry.GetFullPath());
-                       if (pair.first.empty())
+                       GetApp()->SetStatusMsg(g_statusFailed);
+                       TK_ERR("Only animations are accepted.");
+                       return;
+                     }
+
+                     // Normalize both sides to a resource-relative key so the
+                     // same file can not be assigned to two different tracks
+                     // even when one path is absolute and the other relative.
+                     String dropped = entry.GetFullPath();
+                     UnixifyPath(dropped);
+                     GetFileManager()->GetRelativeResourcesPath(dropped);
+                     size_t first = dropped.find_first_not_of('/');
+                     if (first != String::npos)
+                     {
+                       dropped = dropped.substr(first);
+                     }
+
+                     for (const auto& rec : mref)
+                     {
+                       if (rec.second == pair.second)
                        {
-                         extraTrack.first = entry.m_fileName;
+                         continue; // Re-dropping the same file onto its own track.
+                       }
+
+                       const AnimationPtr anim = rec.second->m_animation;
+                       if (anim == nullptr)
+                       {
+                         continue;
+                       }
+
+                       String existing = anim->GetFile();
+                       UnixifyPath(existing);
+                       GetFileManager()->GetRelativeResourcesPath(existing);
+                       first = existing.find_first_not_of('/');
+                       if (first != String::npos)
+                       {
+                         existing = existing.substr(first);
+                       }
+
+                       if (existing == dropped)
+                       {
+                         GetApp()->SetStatusMsg(g_statusFailed);
+                         TK_ERR("Animation %s is already used by track '%s'.",
+                                entry.m_fileName.c_str(),
+                                rec.first.c_str());
+                         return;
                        }
                      }
-                     else
+
+                     pair.second->m_animation = GetAnimationManager()->Create<Animation>(entry.GetFullPath());
+                     if (pair.first.empty())
                      {
-                       TK_ERR("Only animations are accepted.");
+                       extraTrack.first = entry.m_fileName;
                      }
                    });
+
+          return ImGui::GetItemRectSize().y;
         };
 
-        auto showSignalName =
-            [&nameUpdated, &nameUpdatedPair, tableWdth](uint& columnIndx, const std::pair<String, AnimRecordPtr>& pair)
+        auto showSignalName = [&nameUpdated, &nameUpdatedPair](uint& columnIndx,
+                                                               const std::pair<String, AnimRecordPtr>& pair,
+                                                               float cellContentH)
         {
           ImGui::TableSetColumnIndex(columnIndx++);
-          ImGui::SetCursorPosY(ImGui::GetCursorPos().y + (ImGui::GetItemRectSize().y / 4.0f));
-          ImGui::PushItemWidth((tableWdth / 2.5f) - 5.0f);
+
+          // Center vertically and fill the cell width so the box grows and
+          // shrinks with the column; extra long names are clipped by the box.
+          float frameH = ImGui::GetFrameHeight();
+          float availX = ImGui::GetContentRegionAvail().x;
+          ImGui::SetCursorPosY(ImGui::GetCursorPosY() + glm::max(0.0f, (cellContentH - frameH) * 0.5f));
+          ImGui::SetNextItemWidth(availX);
+
           String readOnly = pair.first;
           if (ImGui::InputText("##", &readOnly, ImGuiInputTextFlags_EnterReturnsTrue) && readOnly.length())
           {
             nameUpdated     = readOnly;
             nameUpdatedPair = pair;
           }
-          ImGui::PopItemWidth();
         };
         for (auto it = mref.begin(); it != mref.end(); ++it, rowIndx++)
         {
@@ -175,64 +244,83 @@ namespace ToolKit
           ImGui::TableNextRow();
           ImGui::PushID(rowIndx);
 
-          showAnimationDropzone(columnIndx, *it);
+          const float cellContentH = showAnimationDropzone(columnIndx, *it);
 
           // Signal Name
-          showSignalName(columnIndx, *it);
+          showSignalName(columnIndx, *it, cellContentH);
 
           ImGui::EndDisabled();
 
           // Play, Pause & Stop Buttons
-          ImGui::TableSetColumnIndex(columnIndx++);
-          if (it->second->m_animation)
           {
-            ImGui::SetCursorPosX(ImGui::GetCursorPos().x + (ImGui::GetItemRectSize().x / 10.0f));
+            const float btnH = 24.0f;
+            ImGui::TableSetColumnIndex(columnIndx++);
 
-            ImGui::SetCursorPosY(ImGui::GetCursorPos().y + (ImGui::GetItemRectSize().y / 5.0f));
-
-            AnimRecordPtr activeRecord = animPlayerComp->GetActiveRecord();
-
-            // Alternate between Play - Pause buttons.
-            if (activeRecord == it->second && activeRecord->m_state == AnimRecord::State::Play)
+            if (it->second->m_animation)
             {
-              if (UI::ImageButtonDecorless(EditorImGuiTextureCache::Acquire(UI::m_pauseIcon), Vec2(24, 24)))
+              float availX = ImGui::GetContentRegionAvail().x;
+              float totalW = btnH + ImGui::GetStyle().ItemSpacing.x + btnH;
+              ImGui::SetCursorPosX(ImGui::GetCursorPosX() + glm::max(0.0f, (availX - totalW) * 0.5f));
+              ImGui::SetCursorPosY(ImGui::GetCursorPosY() + glm::max(0.0f, (cellContentH - btnH) * 0.5f));
+
+              AnimRecordPtr activeRecord = animPlayerComp->GetActiveRecord();
+
+              // Alternate between Play - Pause buttons.
+              if (activeRecord == it->second && activeRecord->m_state == AnimRecord::State::Play)
               {
-                animPlayerComp->Pause();
+                if (UI::ImageButtonDecorless(EditorImGuiTextureCache::Acquire(UI::m_pauseIcon), Vec2(24, 24)))
+                {
+                  animPlayerComp->Pause();
+                }
               }
-            }
-            else if (UI::ImageButtonDecorless(EditorImGuiTextureCache::Acquire(UI::m_playIcon), Vec2(24, 24)))
-            {
-              animPlayerComp->Play(it->first.c_str());
-            }
+              else if (UI::ImageButtonDecorless(EditorImGuiTextureCache::Acquire(UI::m_playIcon), Vec2(24, 24)))
+              {
+                animPlayerComp->Play(it->first.c_str());
+              }
 
-            // Draw stop button always.
-            ImGui::SameLine();
-            if (UI::ImageButtonDecorless(EditorImGuiTextureCache::Acquire(UI::m_stopIcon), Vec2(24, 24)))
-            {
-              animPlayerComp->Stop();
+              // Draw stop button always.
+              ImGui::SameLine();
+              if (UI::ImageButtonDecorless(EditorImGuiTextureCache::Acquire(UI::m_stopIcon), Vec2(24, 24)))
+              {
+                animPlayerComp->Stop();
+              }
             }
           }
 
           // Apply Root Motion
-          ImGui::TableSetColumnIndex(columnIndx++);
-          ImGui::SetCursorPosY(ImGui::GetCursorPos().y + (ImGui::GetItemRectSize().y / 4.0f));
-          bool applyRootMotion = it->second->m_applyRootMotion;
-          if (ImGui::Checkbox("##applyRootMotion", &applyRootMotion))
           {
-            it->second->m_applyRootMotion = applyRootMotion;
+            const float checkH = ImGui::GetFrameHeight();
+            ImGui::TableSetColumnIndex(columnIndx++);
+
+            float availX = ImGui::GetContentRegionAvail().x;
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + glm::max(0.0f, (availX - checkH) * 0.5f));
+            ImGui::SetCursorPosY(ImGui::GetCursorPosY() + glm::max(0.0f, (cellContentH - checkH) * 0.5f));
+
+            bool applyRootMotion = it->second->m_applyRootMotion;
+            if (ImGui::Checkbox("##applyRootMotion", &applyRootMotion))
+            {
+              it->second->m_applyRootMotion = applyRootMotion;
+            }
           }
 
           ImGui::BeginDisabled(!var->m_editable);
 
           // Remove Button
           {
+            const float rmSize = 18.0f;
             ImGui::TableSetColumnIndex(columnIndx++);
-            ImGui::SetCursorPosY(ImGui::GetCursorPos().y + (ImGui::GetItemRectSize().y / 4.0f));
 
-            if (UI::ImageButtonDecorless(EditorImGuiTextureCache::Acquire(UI::m_closeIcon), Vec2(15, 15)))
+            float availX = ImGui::GetContentRegionAvail().x;
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + glm::max(0.0f, (availX - rmSize) * 0.5f));
+            ImGui::SetCursorPosY(ImGui::GetCursorPosY() + glm::max(0.0f, (cellContentH - rmSize) * 0.5f));
+
+            // Same X glyph used by the component header row, white to match it.
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+            if (UI::ButtonDecorless(ICON_FA_TIMES, ImVec2(rmSize, rmSize)))
             {
               removedSignalName = it->first;
             }
+            ImGui::PopStyleColor();
           }
 
           ImGui::PopID();
@@ -243,10 +331,10 @@ namespace ToolKit
         ImGui::TableNextRow();
         ImGui::PushID(rowIndx);
 
-        showAnimationDropzone(columnIndx, extraTrack);
+        const float cellContentH = showAnimationDropzone(columnIndx, extraTrack);
 
         // Signal Name
-        showSignalName(columnIndx, extraTrack);
+        showSignalName(columnIndx, extraTrack, cellContentH);
         ImGui::PopID();
 
         if (removedSignalName.length())
@@ -284,6 +372,9 @@ namespace ToolKit
         }
 
         ImGui::EndTable();
+        }
+
+        ImGui::EndChild();
       }
     }
 
