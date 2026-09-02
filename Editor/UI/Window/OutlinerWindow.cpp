@@ -82,6 +82,24 @@ namespace ToolKit
         {
           return 0;
         }
+
+        // Snapshot the pre-search open state once so clearing the search can
+        // restore the exact expansion the tree had before the search.
+        bool hasChildren = !ntt->m_node->m_children.empty() && !ntt->IsA<Prefab>();
+        if (hasChildren && m_searchOpenBackup.count(ntt->GetIdVal()) == 0)
+        {
+          const String sId = "##" + std::to_string(ntt->GetIdVal());
+          bool wasOpen     = ImGui::GetStateStorage()->GetInt(ImGui::GetID(sId.c_str()), 0) != 0;
+          m_searchOpenBackup[ntt->GetIdVal()] = wasOpen;
+        }
+
+        // Force open any branch that is part of the search result so all
+        // matching descendants become visible regardless of their collapsed
+        // state when the search started.
+        if (hasChildren)
+        {
+          ImGui::SetNextItemOpen(true);
+        }
       }
 
       ImGuiTreeNodeFlags nodeFlags = g_treeNodeFlags;
@@ -105,9 +123,27 @@ namespace ToolKit
         {
           ImVec2 rectMin = ImGui::GetItemRectMin();
 
+          int hiddenSiblingCount = 0;
           for (Node* node : ntt->m_node->m_children)
           {
-            numNodes += ShowNode(node->OwnerEntity(), depth + 1);
+            EntityPtr childNtt = node->OwnerEntity();
+
+            // During a search only the branches that lead to a match are
+            // drawn; the skipped siblings collapse into a single placeholder.
+            if (m_stringSearchMode && m_shownEntities.count(childNtt) == 0)
+            {
+              ++hiddenSiblingCount;
+              continue;
+            }
+
+            numNodes += ShowNode(childNtt, depth + 1);
+          }
+
+          if (m_stringSearchMode && hiddenSiblingCount > 0)
+          {
+            DrawRowBackground(depth + 1);
+            ImGui::Text("...");
+            numNodes++;
           }
 
           DrawTreeNodeLine(numNodes, rectMin);
@@ -267,9 +303,15 @@ namespace ToolKit
       }
     }
 
-    bool OutlinerWindow::FindShownEntities(EntityPtr ntt, const String& str)
+    bool OutlinerWindow::FindShownEntities(EntityPtr ntt)
     {
-      bool self     = Utf8CaseInsensitiveSearch(ntt->GetNameVal(), str);
+      // Honor the case sensitivity toggle of the search bar.
+      bool self = ntt->GetNameVal().find(m_searchString) != String::npos;
+      if (!m_searchCaseSens)
+      {
+        self = Utf8CaseInsensitiveSearch(ntt->GetNameVal(), m_searchString);
+      }
+
       bool children = false;
 
       if (!ntt->IsA<Prefab>())
@@ -278,7 +320,7 @@ namespace ToolKit
         {
           if (EntityPtr childNtt = node->OwnerEntity())
           {
-            bool child = FindShownEntities(childNtt, str);
+            bool child = FindShownEntities(childNtt);
             children   = child || children;
           }
         }
@@ -288,6 +330,11 @@ namespace ToolKit
       if (isShown)
       {
         m_shownEntities.insert(ntt);
+      }
+
+      if (self)
+      {
+        m_searchMatches.insert(ntt);
       }
 
       return isShown;
@@ -702,33 +749,61 @@ namespace ToolKit
 
       // algorithm will search only if we type.
       // if string is empty search mode is of
-      if (ImGui::InputTextWithHint(" SearchString", "Search", &searchString))
-      {
-        m_stringSearchMode    = searchString.size() > 0ull;
-        bool searchStrChanged = m_searchStringSize != (int) searchString.size();
-        m_searchStringSize    = (int) searchString.size();
-
-        if (searchStrChanged && m_stringSearchMode)
-        {
-          m_shownEntities.clear();
-          // Find which entities should be shown
-          for (EntityPtr ntt : m_roots)
-          {
-            FindShownEntities(ntt, m_searchString);
-          }
-        }
-      }
-      m_stringSearchMode = searchString.size() > 0ull;
+      String prevSearchString = searchString;
+      ImGui::InputTextWithHint(" SearchString", "Search", &searchString);
 
       ImGui::PopItemWidth();
 
       ImGui::TableNextColumn();
 
-      m_searchCaseSens = UI::ToggleButton("Aa", Vec2(24.0f, 24.f), m_searchCaseSens);
+      bool prevCaseSens = m_searchCaseSens;
+      m_searchCaseSens  = UI::ToggleButton("Aa", Vec2(24.0f, 24.f), m_searchCaseSens);
 
       UI::HelpMarker(TKLoc, "Case Sensitivity");
 
       ImGui::EndTable();
+
+      // Rebuild the search result whenever the query text or the case
+      // sensitivity changed (not only when the string length changed, that
+      // would miss edits like "abc" -> "abd").
+      bool searchChanged = searchString != prevSearchString || m_searchCaseSens != prevCaseSens;
+      if (searchChanged)
+      {
+        m_shownEntities.clear();
+        m_searchMatches.clear();
+
+        if (!searchString.empty())
+        {
+          // A new search session starts from a fresh expansion snapshot.
+          m_searchOpenBackup.clear();
+          for (EntityPtr ntt : m_roots)
+          {
+            FindShownEntities(ntt);
+          }
+        }
+        else
+        {
+          // Search cleared. If something is selected keep its path expanded
+          // (focus behavior); otherwise restore the exact pre-search tree
+          // expansion.
+          if (EntityPtr selected = GetApp()->GetCurrentScene()->GetCurrentSelection())
+          {
+            m_searchOpenBackup.clear();
+            Focus(selected);
+          }
+          else
+          {
+            for (const auto& [id, wasOpen] : m_searchOpenBackup)
+            {
+              const String sId = "##" + std::to_string(id);
+              ImGui::GetStateStorage()->SetInt(ImGui::GetID(sId.c_str()), wasOpen ? 1 : 0);
+            }
+            m_searchOpenBackup.clear();
+          }
+        }
+      }
+
+      m_stringSearchMode = !searchString.empty();
     }
 
     // customized version of this: https://github.com/ocornut/imgui/issues/2668
@@ -758,15 +833,11 @@ namespace ToolKit
       // Get the draw list
       ImDrawList* draw_list  = ImGui::GetWindowDrawList();
 
-      // Adjust the color based on the odd-even pattern
-      ImGuiStyle& style      = ImGui::GetStyle();
-      ImVec4 v4Color         = style.Colors[ImGuiCol_TabHovered];
-      v4Color.x             *= 0.62f;
-      v4Color.y             *= 0.62f;
-      v4Color.z             *= 0.62f;
-
-      // static int odd         = 0;
-      ImU32 col              = ImGui::ColorConvertFloat4ToU32(v4Color) * (m_oddAlternatingPattern++ & 1);
+      // Use the same theme alternating colors as the table rows (e.g. the
+      // stats table): even rows stay transparent, odd rows get the subtle
+      // themed tint (TableRowBgAlt). This keeps the outliner consistent with
+      // every other table in both dark and light themes.
+      ImU32 col = ImGui::GetColorU32(ImGuiCol_TableRowBgAlt) * (m_oddAlternatingPattern++ & 1);
 
       // Only draw if the color is non-zero (i.e., it's an odd row)
       if (col != 0)
@@ -860,7 +931,20 @@ namespace ToolKit
       SetItemState(ntt);
 
       // show name, open and slash eye, lock and unlock.
+      // During a search, entities that only bridge to a match (ancestors)
+      // are dimmed so matches stand out.
+      bool dimmed = m_stringSearchMode && m_searchMatches.count(ntt) == 0;
+      if (dimmed)
+      {
+        ImVec4 dimColor = UI::GetColor(EditorColor::ConsoleMemo);
+        dimColor.w      = 0.5f;
+        ImGui::PushStyleColor(ImGuiCol_Text, dimColor);
+      }
       UI::ShowEntityTreeNodeContent(ntt);
+      if (dimmed)
+      {
+        ImGui::PopStyleColor();
+      }
 
       return isOpen;
     }

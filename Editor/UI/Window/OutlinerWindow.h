@@ -45,7 +45,7 @@ namespace ToolKit
 
       void SelectEntitiesBetweenNodes(EditorScenePtr scene, EntityPtr a, EntityPtr b);
 
-      bool FindShownEntities(EntityPtr ntt, const String& str);
+      bool FindShownEntities(EntityPtr ntt);
       void PushSelectedEntitiesToReparentQueue(EntityPtr parent);
 
       void SortDraggedEntitiesByNodeIndex();
@@ -75,13 +75,22 @@ namespace ToolKit
       bool m_searchCaseSens       = true;
       bool m_anyEntityHovered     = false;
 
+      // Entities whose name directly matches the active search string.
+      // m_shownEntities additionally holds their ancestors so the tree can
+      // reveal the matches.
+      std::unordered_set<EntityPtr> m_searchMatches;
+
+      // Snapshot of the pre-search expanded state (node id -> was open).
+      // When a search is cleared without a selection this is written back so
+      // the tree returns exactly to where it was.
+      std::unordered_map<ObjectId, bool> m_searchOpenBackup;
+
       // for even odd pattern
       int m_oddAlternatingPattern = 0;
 
       // the objects that we want to reorder will inserted at this index
       int m_insertSelectedIndex   = TK_INT_MAX;
       float m_treeStartY          = 0.0;
-      int m_searchStringSize      = 0;
     };
 
   } // namespace Editor
