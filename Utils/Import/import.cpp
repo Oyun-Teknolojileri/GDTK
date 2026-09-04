@@ -509,7 +509,6 @@ namespace ToolKit
         // node names are disambiguated with the channel's initial values
         // against the candidates' bind transforms.
         String boneKeyName = nodeAnim->mNodeName.C_Str();
-        bool isBoneChannel = false;
         auto candidatesIt  = g_nameToNodes.find(boneKeyName);
         if (candidatesIt != g_nameToNodes.end())
         {
@@ -524,8 +523,7 @@ namespace ToolKit
 
           if (boneCandidates.size() == 1)
           {
-            boneKeyName   = g_nodeToEntry[boneCandidates[0]]->name;
-            isBoneChannel = true;
+            boneKeyName = g_nodeToEntry[boneCandidates[0]]->name;
           }
           else if (boneCandidates.size() > 1)
           {
@@ -554,8 +552,7 @@ namespace ToolKit
 
             if (best != nullptr)
             {
-              boneKeyName   = g_nodeToEntry[best]->name;
-              isBoneChannel = true;
+              boneKeyName = g_nodeToEntry[best]->name;
               if (bestDist > g_animChannelMatchEps)
               {
                 Assimp::DefaultLogger::get()->warn("Ambiguous animation channel '" + boneKeyName +
@@ -564,15 +561,6 @@ namespace ToolKit
               }
             }
           }
-        }
-
-        // Channels that do not resolve to a skeleton bone (e.g. the armature
-        // root / empty object carrying root motion) are written under
-        // "<nodeName>#nodekey" so the data is preserved and can be told
-        // apart from bone channels at runtime.
-        if (!isBoneChannel)
-        {
-          boneKeyName += g_nodeKeySuffix;
         }
 
         tAnim->m_keys.insert(std::make_pair(boneKeyName, keys));

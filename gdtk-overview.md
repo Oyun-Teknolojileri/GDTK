@@ -454,6 +454,14 @@ Manages the user's project directory inside the editor's app data. Stores projec
 ### 9.3 Editor windows
 All ImGui-based: `OutlinerWindow`, `FolderWindow` (asset browser), `ConsoleWindow`, `MaterialView`, `MeshView`, `EntityView`, `ComponentView`, `EngineSettingsWindow`, `MultiChoiceWindow`, `Anchor` / `AnchorMod`, `BoxEditGizmo` / `BoxEditMod` (transform gizmos), `ConsoleWindow`, `FolderWindow`, `Gizmo`, `Grid` (editor grid), `LightMeshGenerator`, `OverlayLighting`, `AndroidBuildWindow`, `CustomDataView`, `Thumbnail`, `SimulationWindow`.
 
+Double-clicking a resource in the asset browser opens a volatile view window:
+`MaterialView`, `SkeletonView` (read-only hierarchical bone tree), `AnimationView`
+(key grid with search/sort; the `IsRoot` checkbox writes the animation's root
+key used for root motion). Root motion lives on the animation
+(`Animation::m_rootKey`, serialized as `<anim rootKey="...">`), and
+`AnimationPlayer::ApplyRootMotion` applies that key's displacement to the
+entity node.
+
 ### 9.4 EditorRenderer (Editor/EditorRenderer.h)
 Editor version of `Renderer` path. Adds `GizmoPass` and editor grid pass. Multiple viewports (4-up default).
 

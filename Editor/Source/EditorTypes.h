@@ -39,6 +39,10 @@ namespace ToolKit
     typedef std::vector<class EditorViewport*> EditorViewportRawPtrArray;
     typedef std::shared_ptr<class MaterialView> MaterialViewPtr;
     typedef std::shared_ptr<class MaterialWindow> MaterialWindowPtr;
+    typedef std::shared_ptr<class SkeletonView> SkeletonViewPtr;
+    typedef std::shared_ptr<class SkeletonWindow> SkeletonWindowPtr;
+    typedef std::shared_ptr<class AnimationView> AnimationViewPtr;
+    typedef std::shared_ptr<class AnimationWindow> AnimationWindowPtr;
     typedef std::shared_ptr<class ConsoleWindow> ConsoleWindowPtr;
     typedef std::shared_ptr<class EditorBillboardBase> EditorBillboardPtr;
     typedef std::vector<EditorBillboardPtr> BillboardPtrArray;

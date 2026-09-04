@@ -140,6 +140,12 @@ namespace ToolKit
     XmlAttribute* durAttrib = doc->allocate_attribute("duration", durationValueStr);
     container->append_attribute(durAttrib);
 
+    if (!m_rootKey.empty())
+    {
+      XmlAttribute* rootAttrib = doc->allocate_attribute("rootKey", m_rootKey.c_str());
+      container->append_attribute(rootAttrib);
+    }
+
     BoneKeyArrayMap::const_iterator iterator;
     for (const auto& [boneName, keys] : m_keys)
     {
@@ -186,6 +192,15 @@ namespace ToolKit
 
     attr               = parent->first_attribute("duration");
     m_duration         = (float) (std::atof(attr->value()));
+
+    if (XmlAttribute* rootKeyAttr = parent->first_attribute("rootKey"))
+    {
+      m_rootKey = rootKeyAttr->value();
+    }
+    else
+    {
+      m_rootKey.clear();
+    }
 
     for (XmlNode* animNode = parent->first_node("node"); animNode; animNode = animNode->next_sibling())
     {
@@ -234,6 +249,7 @@ namespace ToolKit
   {
     m_initiated = false;
     m_keys.clear();
+    m_rootKey.clear();
   }
 
   void Animation::CopyTo(Resource* other)
@@ -243,6 +259,7 @@ namespace ToolKit
     cpy->m_keys     = m_keys;
     cpy->m_fps      = m_fps;
     cpy->m_duration = m_duration;
+    cpy->m_rootKey  = m_rootKey;
   }
 
   void Animation::GetNearestKeys(const KeyArray& keys, int& key1, int& key2, float& ratio, float t)
@@ -545,6 +562,19 @@ namespace ToolKit
       return;
     }
 
+    const String& rootKey = anim->m_rootKey;
+    if (rootKey.empty())
+    {
+      return;
+    }
+
+    auto keyIt = anim->m_keys.find(rootKey);
+    if (keyIt == anim->m_keys.end())
+    {
+      return;
+    }
+    const KeyArray& keys = keyIt->second;
+
     auto sampleKey = [anim](const KeyArray& keys, float time, Vec3& pos, Quaternion& rot, Vec3& scale) -> void
     {
       int key1, key2;
@@ -563,59 +593,28 @@ namespace ToolKit
       scale  = Interpolate(k1.m_scale, k2.m_scale, ratio);
     };
 
-    const String suffix = g_nodeKeySuffix;
-    for (const auto& [keyName, keys] : anim->m_keys)
+    Vec3 curPos, prevPos, curScale, prevScale;
+    Quaternion curRot, prevRot;
+    sampleKey(keys, record->m_currentTime, curPos, curRot, curScale);
+    sampleKey(keys, record->m_prevRootMotionTime, prevPos, prevRot, prevScale);
+
+    Vec3 deltaPos = curPos - prevPos;
+
+    Quaternion deltaRot = curRot * glm::inverse(prevRot);
+
+    Vec3 deltaScale(1.0f);
+    for (int i = 0; i < 3; i++)
     {
-      // Only node keys drive root motion.
-      if (keyName.size() <= suffix.size() ||
-          keyName.compare(keyName.size() - suffix.size(), suffix.size(), suffix) != 0)
+      if (glm::abs(prevScale[i]) > 0.0001f)
       {
-        continue;
+        deltaScale[i] = curScale[i] / prevScale[i];
       }
-
-      const String nodeName = keyName.substr(0, keyName.size() - suffix.size());
-
-      // Walk up from the entity node and pick the first matching node.
-      Node* targetNode = nullptr;
-      for (Node* n = ntt->m_node; n != nullptr; n = n->m_parent)
-      {
-        if (EntityPtr owner = n->OwnerEntity())
-        {
-          if (owner->GetNameVal() == nodeName)
-          {
-            targetNode = n;
-            break;
-          }
-        }
-      }
-
-      if (targetNode == nullptr)
-      {
-        continue;
-      }
-
-      Vec3 curPos, prevPos, curScale, prevScale;
-      Quaternion curRot, prevRot;
-      sampleKey(keys, record->m_currentTime, curPos, curRot, curScale);
-      sampleKey(keys, record->m_prevRootMotionTime, prevPos, prevRot, prevScale);
-
-      Vec3 deltaPos = curPos - prevPos;
-
-      Quaternion deltaRot = curRot * glm::inverse(prevRot);
-
-      Vec3 deltaScale(1.0f);
-      for (int i = 0; i < 3; i++)
-      {
-        if (glm::abs(prevScale[i]) > 0.0001f)
-        {
-          deltaScale[i] = curScale[i] / prevScale[i];
-        }
-      }
-
-      targetNode->Translate(deltaPos, TransformationSpace::TS_WORLD);
-      targetNode->Rotate(deltaRot, TransformationSpace::TS_WORLD);
-      targetNode->Scale(deltaScale);
     }
+
+    // Apply the root key's displacement directly to the entity node.
+    ntt->m_node->Translate(deltaPos, TransformationSpace::TS_WORLD);
+    ntt->m_node->Rotate(deltaRot, TransformationSpace::TS_WORLD);
+    ntt->m_node->Scale(deltaScale);
 
     record->m_prevRootMotionTime = record->m_currentTime;
   }

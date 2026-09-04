@@ -21,9 +21,6 @@
 
 namespace ToolKit
 {
-  /** Suffix appended to animation keys that target a scene node instead of a skeleton bone. */
-  constexpr const char* g_nodeKeySuffix = "#nodekey";
-
   /**
    * A transformation key that is part of an Animation resource.
    */
@@ -120,6 +117,13 @@ namespace ToolKit
     BoneKeyArrayMap m_keys;
     float m_fps      = 30.0f; //!< Frames to display per second.
     float m_duration = 0.0f;  //!< Duration of the animation.
+
+    /**
+     * Name of the key that carries root motion. When set, its displacement
+     * is applied to the entity itself (see AnimationPlayer::ApplyRootMotion).
+     * Empty means this animation carries no root motion.
+     */
+    String m_rootKey;
   };
 
   /**
@@ -174,7 +178,7 @@ namespace ToolKit
     float m_currentTime    = 0.0f;
     bool m_loop            = false; //!< States if the animation mean to be looped.
     float m_timeMultiplier = 1.0f;  //!< Speed multiplier for animation.
-    bool m_applyRootMotion = false; //!< Apply #nodekey displacement to matching scene nodes.
+    bool m_applyRootMotion = false; //!< Apply the skeleton's root bone displacement to the entity.
     AnimationPtr m_animation;       //!< Animation to play.
     EntityWeakPtr m_entity;
 

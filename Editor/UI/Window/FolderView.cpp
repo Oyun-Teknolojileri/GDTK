@@ -6,15 +6,19 @@
  */
 
 #include "App.h"
+#include "AnimationView.h"
 #include "ConsoleWindow.h"
 #include "EditorScene.h"
 #include "FolderWindow.h"
 #include "MaterialView.h"
 #include "PopupWindows.h"
 #include "PropInspectorWindow.h"
+#include "SkeletonView.h"
 
+#include <Animation.h>
 #include <Material.h>
 #include <Mesh.h>
+#include <Skeleton.h>
 
 namespace ToolKit
 {
@@ -434,6 +438,20 @@ namespace ToolKit
               else if (rm->m_baseType == SkinMesh::StaticClass())
               {
                 GetApp()->GetPropInspector()->SetMeshView(rm->Create<SkinMesh>(dirEnt.GetFullPath()));
+              }
+              else if (rm->m_baseType == Skeleton::StaticClass())
+              {
+                SkeletonPtr skeleton             = rm->Create<Skeleton>(dirEnt.GetFullPath());
+                SkeletonWindowPtr skeletonWindow = MakeNewPtr<SkeletonWindow>();
+                skeletonWindow->SetSkeleton(skeleton);
+                skeletonWindow->AddToUI();
+              }
+              else if (rm->m_baseType == Animation::StaticClass())
+              {
+                AnimationPtr anim               = rm->Create<Animation>(dirEnt.GetFullPath());
+                AnimationWindowPtr animWindow   = MakeNewPtr<AnimationWindow>();
+                animWindow->SetAnimation(anim);
+                animWindow->AddToUI();
               }
             }
           }

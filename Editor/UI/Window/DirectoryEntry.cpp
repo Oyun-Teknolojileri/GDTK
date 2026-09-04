@@ -43,6 +43,7 @@ namespace ToolKit
           {MATERIAL, GetMaterialManager },
           {MESH,     GetMeshManager     },
           {SKINMESH, GetMeshManager     },
+          {SKELETON, GetSkeletonManager },
           {SHADER,   GetShaderManager   },
           {HDR,      GetTextureManager  },
           {SCENE,    GetSceneManager    }
