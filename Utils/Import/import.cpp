@@ -1808,6 +1808,11 @@ namespace ToolKit
 
       Assimp::Importer importer;
       importer.SetPropertyInteger(AI_CONFIG_PP_SBP_REMOVE, aiPrimitiveType_LINE | aiPrimitiveType_POINT);
+      // Do not split FBX pivots (PreRotation, RotationOffset, ...) into
+      // separate _$AssimpFbx$_* chain nodes. Both the skeleton and the
+      // animation-only exports then use the plain bone names, so animation
+      // channels match the skeleton regardless of how the DCC exported them.
+      importer.SetPropertyBool(AI_CONFIG_IMPORT_FBX_PRESERVE_PIVOTS, false);
 
       int optimizationLevel = 0; // 0 or 1
       string dest, file = argv[1];

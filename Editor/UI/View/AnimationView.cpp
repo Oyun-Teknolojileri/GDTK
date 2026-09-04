@@ -78,13 +78,13 @@ namespace ToolKit
                                   ImGuiTableFlags_Sortable))
         {
           ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoSort, 30.0f);
-          ImGui::TableSetupColumn("KeyName",
-                                  ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_DefaultSort);
+          ImGui::TableSetupColumn("KeyName", ImGuiTableColumnFlags_WidthStretch);
           ImGui::TableSetupColumn("KeyCount", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoSort, 60.0f);
           ImGui::TableSetupColumn("IsRoot", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoSort, 70.0f);
           ImGui::TableHeadersRow();
 
-          // Collect keys sorted by the current sort spec (KeyName column).
+          // Key names in map (read) order; sorted only when the user clicks a
+          // sortable column header (KeyName).
           std::vector<String> sortedKeys;
           sortedKeys.reserve(m_animation->m_keys.size());
           for (const auto& kv : m_animation->m_keys)
@@ -92,21 +92,27 @@ namespace ToolKit
             sortedKeys.push_back(kv.first);
           }
 
+          bool doSort = false;
           bool sortAscending = true;
           if (ImGuiTableSortSpecs* sortSpecs = ImGui::TableGetSortSpecs())
           {
             if (sortSpecs->SpecsCount > 0 && sortSpecs->Specs[0].ColumnIndex == 1)
             {
+              doSort        = true;
               sortAscending = (sortSpecs->Specs[0].SortDirection == ImGuiSortDirection_Ascending);
             }
           }
 
-          std::sort(sortedKeys.begin(), sortedKeys.end(), [sortAscending](const String& a, const String& b) -> bool
-                    {
-                      const int cmp = a.compare(b);
-                      return sortAscending ? (cmp < 0) : (cmp > 0);
-                    });
+          if (doSort)
+          {
+            std::sort(sortedKeys.begin(), sortedKeys.end(), [sortAscending](const String& a, const String& b) -> bool
+                      {
+                        const int cmp = a.compare(b);
+                        return sortAscending ? (cmp < 0) : (cmp > 0);
+                      });
+          }
 
+          int rowNo = 1;
           for (const String& keyName : sortedKeys)
           {
             if (!filter.empty())
@@ -125,7 +131,7 @@ namespace ToolKit
             ImGui::TableNextRow();
 
             ImGui::TableSetColumnIndex(0);
-            ImGui::Text("%d", ImGui::TableGetRowIndex() + 1);
+            ImGui::Text("%d", rowNo++);
 
             ImGui::TableSetColumnIndex(1);
             ImGui::Text("%s", keyName.c_str());
@@ -146,6 +152,7 @@ namespace ToolKit
               {
                 m_animation->m_rootKey.clear();
               }
+              m_animation->m_dirty = true;
               m_animation->Save(true);
             }
           }
