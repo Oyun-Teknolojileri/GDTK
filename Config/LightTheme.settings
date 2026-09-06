@@ -54,7 +54,7 @@ TextLink 0.74,0.41,0.02,1.00
 TextSelectedBg 0.74,0.41,0.02,1.00
 TreeLines 0.77,0.77,0.80,1.00
 DragDropTarget 0.89,0.36,0.08,1.00
-DragDropTargetBg 1.00,1.00,1.00,1.00
+DragDropTargetBg 0.00,0.00,0.00,0.00
 UnsavedMarker 0.00,0.00,0.00,1.00
 NavCursor 0.74,0.41,0.02,1.00
 NavWindowingHighlight 0.00,0.00,0.00,1.00
