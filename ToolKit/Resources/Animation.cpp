@@ -595,8 +595,22 @@ namespace ToolKit
 
     Vec3 curPos, prevPos, curScale, prevScale;
     Quaternion curRot, prevRot;
-    sampleKey(keys, record->m_currentTime, curPos, curRot, curScale);
-    sampleKey(keys, record->m_prevRootMotionTime, prevPos, prevRot, prevScale);
+
+    const float curTime = record->m_currentTime;
+    float prevTime      = record->m_prevRootMotionTime;
+
+    // At the loop boundary the root curve jumps back to the start of the cycle
+    // (e.g. from x 30 back to x 0). That jump is not real motion; measuring the
+    // delta between the cycle end and the cycle start would reverse all
+    // accumulated displacement. Measure against the cycle start pose instead so
+    // the character keeps accumulating forward from there.
+    if (curTime < prevTime)
+    {
+      prevTime = 0.0f;
+    }
+
+    sampleKey(keys, curTime, curPos, curRot, curScale);
+    sampleKey(keys, prevTime, prevPos, prevRot, prevScale);
 
     Vec3 deltaPos = curPos - prevPos;
 
@@ -616,7 +630,7 @@ namespace ToolKit
     ntt->m_node->Rotate(deltaRot, TransformationSpace::TS_WORLD);
     ntt->m_node->Scale(deltaScale);
 
-    record->m_prevRootMotionTime = record->m_currentTime;
+    record->m_prevRootMotionTime = curTime;
   }
 
   int AnimationPlayer::Exist(ObjectId id) const
