@@ -75,7 +75,8 @@ namespace ToolKit
         if (ImGui::BeginTable("##animKeyTable",
                               4,
                               ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable |
-                                  ImGuiTableFlags_Sortable))
+                                  ImGuiTableFlags_Sortable | ImGuiTableFlags_SortTristate |
+                                  ImGuiTableFlags_NoSavedSettings))
         {
           ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoSort, 30.0f);
           ImGui::TableSetupColumn("KeyName", ImGuiTableColumnFlags_WidthStretch);
@@ -83,8 +84,9 @@ namespace ToolKit
           ImGui::TableSetupColumn("IsRoot", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoSort, 70.0f);
           ImGui::TableHeadersRow();
 
-          // Key names in map (read) order; sorted only when the user clicks a
-          // sortable column header (KeyName).
+          // Key names in their original (read) order. Sorting never touches
+          // m_keys: it only sorts this transient copy while the KeyName header
+          // is clicked (asc -> desc -> original order) and is not persisted.
           std::vector<String> sortedKeys;
           sortedKeys.reserve(m_animation->m_keys.size());
           for (const auto& kv : m_animation->m_keys)
