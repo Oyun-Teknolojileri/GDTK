@@ -12,6 +12,7 @@
  * and related structures.
  */
 
+#include "OrderedStringMap.h"
 #include "Serialize.h"
 #include "Types.h"
 

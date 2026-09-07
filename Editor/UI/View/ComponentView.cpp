@@ -225,17 +225,7 @@ namespace ToolKit
           };
 
           // Signal names (record keys) must stay unique across the tracks.
-          auto signalExists = [&mref](const String& signal) -> bool
-          {
-            for (const auto& record : mref)
-            {
-              if (record.first == signal)
-              {
-                return true;
-              }
-            }
-            return false;
-          };
+          auto signalExists = [&mref](const String& signal) -> bool { return mref.Contains(signal); };
 
           // Animation DropZone. Returns the drawn dropzone height so callers can
           // vertically center the rest of the row's cells against it.
@@ -562,14 +552,7 @@ namespace ToolKit
             }
             else
             {
-              for (auto& track : mref)
-              {
-                if (track.first == renameSource.first)
-                {
-                  track.first = renamedSignal;
-                  break;
-                }
-              }
+              mref.Rename(renameSource.first, renamedSignal);
             }
           }
 
@@ -583,7 +566,7 @@ namespace ToolKit
             }
             else
             {
-              mref.push_back(extraTrack);
+              mref.Insert(extraTrack.first, extraTrack.second);
               extraTrack.first  = "";
               extraTrack.second = MakeNewPtr<AnimRecord>();
             }

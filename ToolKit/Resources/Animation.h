@@ -12,6 +12,7 @@
  * and related structures.
  */
 
+#include "OrderedStringMap.h"
 #include "Resource.h"
 #include "SkeletonComponent.h"
 #include "Texture.h"
@@ -33,7 +34,9 @@ namespace ToolKit
   };
 
   typedef std::vector<Key> KeyArray;
-  typedef std::unordered_map<String, KeyArray> BoneKeyArrayMap;
+  // Ordered by insertion; each bone key track keeps the order it was loaded or
+  // added with. See OrderedStringMap.
+  typedef OrderedStringMap<KeyArray> BoneKeyArrayMap;
 
   /**
    * The class that represents animations which can be played with

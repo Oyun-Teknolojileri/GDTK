@@ -563,7 +563,11 @@ namespace ToolKit
           }
         }
 
-        tAnim->m_keys.insert(std::make_pair(boneKeyName, keys));
+        // Keep the resolved order of the bone tracks; keys are unique by name.
+        if (!tAnim->m_keys.Contains(boneKeyName))
+        {
+          tAnim->m_keys.Insert(boneKeyName, keys);
+        }
       }
 
       // For skeleton bones that have no animation channel, write their T-pose transform
@@ -573,7 +577,7 @@ namespace ToolKit
         for (auto& skelEntry : g_skeletonMap)
         {
           const string& boneName = skelEntry.first;
-          if (tAnim->m_keys.find(boneName) == tAnim->m_keys.end())
+          if (!tAnim->m_keys.Contains(boneName))
           {
             // Get T-pose local transform from the scene node.
             aiNode* boneNode = skelEntry.second.boneNode;
@@ -591,7 +595,7 @@ namespace ToolKit
               tKey.m_scale    = s;
               keys.push_back(tKey);
             }
-            tAnim->m_keys.insert(std::make_pair(boneName, keys));
+            tAnim->m_keys.Insert(boneName, keys);
           }
         }
       }
@@ -1893,7 +1897,7 @@ namespace ToolKit
       g_proxy->SetConfigPath(ConcatPaths({"..", "Config"}));
 
       // Headless mode: use NullBackend (no GPU), dummy SDL video driver.
-      // Import only serializes resources — it never renders.
+      // Import only serializes resources, it never renders.
       SDL_SetHint(SDL_HINT_VIDEODRIVER, "dummy");
       RenderSystem::UseNullBackend();
 

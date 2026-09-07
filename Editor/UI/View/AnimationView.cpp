@@ -128,7 +128,11 @@ namespace ToolKit
               }
             }
 
-            const KeyArray& keys = m_animation->m_keys.at(keyName);
+            const KeyArray* keys = m_animation->m_keys.Find(keyName);
+            if (keys == nullptr)
+            {
+              continue;
+            }
 
             ImGui::TableNextRow();
 
@@ -139,7 +143,7 @@ namespace ToolKit
             ImGui::Text("%s", keyName.c_str());
 
             ImGui::TableSetColumnIndex(2);
-            ImGui::Text("%zu", keys.size());
+            ImGui::Text("%zu", keys->size());
 
             ImGui::TableSetColumnIndex(3);
             bool isRoot = (m_animation->m_rootKey == keyName);

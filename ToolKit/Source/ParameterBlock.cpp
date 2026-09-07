@@ -712,7 +712,7 @@ namespace ToolKit
             bool applyRootMotion = false;
             ReadAttr(elementNode, "ApplyRootMotion", applyRootMotion);
             record->m_applyRootMotion = applyRootMotion;
-            list.push_back(std::make_pair(signalName, record)); // Keep the saved track order.
+            list.Insert(signalName, record); // Keep the saved track order.
           }
           pVar->m_var = list;
         }

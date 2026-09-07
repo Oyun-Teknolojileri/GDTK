@@ -82,16 +82,16 @@ namespace ToolKit
     EntityPtr owner = skeleton->OwnerEntity();
     for (auto& dBoneIter : skeleton->m_map->m_boneMap)
     {
-      auto entry = m_keys.find(dBoneIter.first);
-      if (entry == m_keys.end())
+      KeyArray* keys = m_keys.Find(dBoneIter.first);
+      if (keys == nullptr)
       {
         continue;
       }
 
-      GetNearestKeys(entry->second, key1, key2, ratio, time);
+      GetNearestKeys(*keys, key1, key2, ratio, time);
 
       // Sanity checks
-      int keySize = static_cast<int>(entry->second.size());
+      int keySize = static_cast<int>(keys->size());
       if (keySize <= key1 || keySize <= key2)
       {
         continue;
@@ -102,8 +102,8 @@ namespace ToolKit
         continue;
       }
 
-      Key k1                             = entry->second[key1];
-      Key k2                             = entry->second[key2];
+      Key k1                             = (*keys)[key1];
+      Key k2                             = (*keys)[key2];
       DynamicBoneMap::DynamicBone& dBone = dBoneIter.second;
 
       translation                        = Interpolate(k1.m_position, k2.m_position, ratio);
@@ -146,11 +146,9 @@ namespace ToolKit
       container->append_attribute(rootAttrib);
     }
 
-    BoneKeyArrayMap::const_iterator iterator;
     for (const auto& [boneName, keys] : m_keys)
     {
       XmlNode* boneNode = CreateXmlNode(doc, "node", container);
-
       boneNode->append_attribute(doc->allocate_attribute(XmlNodeName.data(), boneName.c_str()));
 
       if constexpr (SERIALIZE_ANIMATION_AS_BINARY)
@@ -207,15 +205,22 @@ namespace ToolKit
       attr            = animNode->first_attribute(XmlNodeName.data());
       String boneName = attr->value();
 
+      // Keep the file order of the bone tracks on load.
+      KeyArray* keys = m_keys.Find(boneName);
+      if (keys == nullptr)
+      {
+        m_keys.Insert(boneName, KeyArray());
+        keys = m_keys.Find(boneName);
+      }
+
       // Serialized as base64
       if (XmlAttribute* keyCountAttr = animNode->first_attribute("KeyCount"))
       {
         uint keyCount = 0;
         ReadAttr(animNode, "KeyCount", keyCount);
-        KeyArray& keys = m_keys[boneName];
-        keys.resize(keyCount);
+        keys->resize(keyCount);
         XmlNode* b64Node = animNode->first_node("Base64");
-        b64tobin(keys.data(), b64Node->value());
+        b64tobin(keys->data(), b64Node->value());
       }
       else
       {
@@ -235,7 +240,7 @@ namespace ToolKit
           subNode = keyNode->first_node("rotation");
           ReadVec(subNode, key.m_rotation);
 
-          m_keys[boneName].push_back(key);
+          keys->push_back(key);
         }
       }
     }
@@ -568,12 +573,11 @@ namespace ToolKit
       return;
     }
 
-    auto keyIt = anim->m_keys.find(rootKey);
-    if (keyIt == anim->m_keys.end())
+    const KeyArray* keys = anim->m_keys.Find(rootKey);
+    if (keys == nullptr)
     {
       return;
     }
-    const KeyArray& keys = keyIt->second;
 
     auto sampleKey = [anim](const KeyArray& keys, float time, Vec3& pos, Quaternion& rot, Vec3& scale) -> void
     {
@@ -609,8 +613,8 @@ namespace ToolKit
       prevTime = 0.0f;
     }
 
-    sampleKey(keys, curTime, curPos, curRot, curScale);
-    sampleKey(keys, prevTime, prevPos, prevRot, prevScale);
+    sampleKey(*keys, curTime, curPos, curRot, curScale);
+    sampleKey(*keys, prevTime, prevPos, prevRot, prevScale);
 
     Vec3 deltaPos = curPos - prevPos;
 
@@ -752,28 +756,29 @@ namespace ToolKit
         const String& name                 = dBoneIter.first;
         DynamicBoneMap::DynamicBone& dBone = dBoneIter.second;
 
-        if (anim->m_keys.find(name) == anim->m_keys.end())
+        KeyArray* keys = anim->m_keys.Find(name);
+        if (keys == nullptr)
         {
           dBone.node->SetLocalTransforms(Vec3(), Quaternion(), Vec3(1.0f));
           boneNodes.push_back(std::make_pair(dBone.node, dBone.boneIndx));
           continue;
         }
 
-        std::vector<Key>& keys = anim->m_keys[name];
-        if (keys.size() <= keyframeIndex)
+        std::vector<Key>& keyArray = *keys;
+        if (keyArray.size() <= keyframeIndex)
         {
           continue;
         }
         else
         {
-          if (maxKeyCount < keys.size())
+          if (maxKeyCount < keyArray.size())
           {
-            maxKeyCount = (uint) keys.size();
+            maxKeyCount = (uint) keyArray.size();
           }
 
           keysframesLeft = true;
 
-          Key& key       = keys[keyframeIndex];
+          Key& key       = keyArray[keyframeIndex];
           dBone.node->SetLocalTransforms(key.m_position, key.m_rotation, key.m_scale);
           boneNodes.push_back(std::make_pair(dBone.node, dBone.boneIndx));
         }

@@ -80,36 +80,17 @@ namespace ToolKit
   void AnimControllerComponent::AddSignal(const String& signalName, AnimRecordPtr record)
   {
     AnimRecordPtrMap& list = ParamRecords().GetVar<AnimRecordPtrMap>();
-    for (const auto& item : list)
-    {
-      if (item.first == signalName)
-      {
-        return; // Signal names must stay unique.
-      }
-    }
-
-    list.push_back(std::make_pair(signalName, record));
+    list.Insert(signalName, record); // Ignores duplicate signal names.
   }
 
   void AnimControllerComponent::RemoveSignal(const String& signalName)
   {
     AnimRecordPtrMap& list = ParamRecords().GetVar<AnimRecordPtrMap>();
-    auto signal            = list.end();
-    for (auto iter = list.begin(); iter != list.end(); ++iter)
+    if (AnimRecordPtr* record = list.Find(signalName))
     {
-      if (iter->first == signalName)
-      {
-        signal = iter;
-        break;
-      }
+      GetAnimationPlayer()->RemoveRecord((*record)->m_id);
     }
-    if (signal == list.end())
-    {
-      return;
-    }
-
-    GetAnimationPlayer()->RemoveRecord(signal->second->m_id);
-    list.erase(signal);
+    list.Erase(signalName);
   }
 
   void AnimControllerComponent::SmoothTransition(const String& nextAnimName, float transitionDuration)
@@ -137,20 +118,13 @@ namespace ToolKit
   void AnimControllerComponent::Play(const String& signalName, bool stopPrevAnim)
   {
     AnimRecordPtrMap& list = ParamRecords().GetVar<AnimRecordPtrMap>();
-    AnimRecordPtr rec;
-    for (const auto& record : list)
-    {
-      if (record.first == signalName)
-      {
-        rec = record.second;
-        break;
-      }
-    }
-    if (rec == nullptr)
+    AnimRecordPtr* recPtr  = list.Find(signalName);
+    if (recPtr == nullptr)
     {
       return;
     }
 
+    AnimRecordPtr rec = *recPtr;
     if (activeRecord && stopPrevAnim)
     {
       activeRecord->m_state = AnimRecord::State::Stop;
@@ -195,12 +169,9 @@ namespace ToolKit
   AnimRecordPtr AnimControllerComponent::GetAnimRecord(const String& signalName)
   {
     AnimRecordPtrMap& records = ParamRecords().GetVar<AnimRecordPtrMap>();
-    for (const auto& record : records)
+    if (AnimRecordPtr* record = records.Find(signalName))
     {
-      if (record.first == signalName)
-      {
-        return record.second;
-      }
+      return *record;
     }
     return nullptr;
   }
