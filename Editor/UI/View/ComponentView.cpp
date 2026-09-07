@@ -26,6 +26,59 @@ namespace ToolKit
   namespace Editor
   {
 
+    // Editor only root motion preview support. Root motion is applied to the
+    // entity node by the engine every frame; the preview remembers the node
+    // transform when it starts so Stop (or switching to another clip) can put
+    // the entity back, keeping the edited pose intact in the scene.
+    namespace
+    {
+      struct AnimPreviewState
+      {
+        bool hasBase = false;
+        Mat4 baseLocal = Mat4(1.0f);
+      };
+
+      std::unordered_map<ObjectId, AnimPreviewState> g_animPreviewStates;
+
+      AnimPreviewState& GetPreviewState(AnimControllerComponent* comp)
+      {
+        return g_animPreviewStates[comp->GetIdVal()];
+      }
+
+      void StorePreviewBase(AnimControllerComponent* comp)
+      {
+        if (EntityPtr ntt = comp->OwnerEntity())
+        {
+          AnimPreviewState& state = GetPreviewState(comp);
+          state.baseLocal         = ntt->m_node->GetTransform(TransformationSpace::TS_LOCAL);
+          state.hasBase           = true;
+        }
+      }
+
+      void RestorePreviewBase(AnimControllerComponent* comp, bool clear)
+      {
+        auto it = g_animPreviewStates.find(comp->GetIdVal());
+        if (it == g_animPreviewStates.end())
+        {
+          return;
+        }
+
+        AnimPreviewState& state = it->second;
+        if (state.hasBase)
+        {
+          if (EntityPtr ntt = comp->OwnerEntity())
+          {
+            ntt->m_node->SetTransform(state.baseLocal, TransformationSpace::TS_LOCAL);
+          }
+        }
+
+        if (clear)
+        {
+          g_animPreviewStates.erase(it);
+        }
+      }
+    }
+
     void ShowMultiMaterialComponent(ComponentPtr& comp,
                                     std::function<bool(const String&)> showCompFunc,
                                     bool modifiableComp)
@@ -364,10 +417,17 @@ namespace ToolKit
 
               if (track.second->m_animation)
               {
+                // Image buttons grow by the frame padding; measure the actual
+                // drawn sizes so the play/pause-stop group is centered on its
+                // real footprint.
+                const ImVec2 framePad = ImGui::GetStyle().FramePadding;
+                const float iconW     = btnH + 2.0f * framePad.x;
+                const float iconH     = btnH + 2.0f * framePad.y;
+
                 float availX = ImGui::GetContentRegionAvail().x;
-                float totalW = btnH + ImGui::GetStyle().ItemSpacing.x + btnH;
+                float totalW = iconW + ImGui::GetStyle().ItemSpacing.x + iconW;
                 ImGui::SetCursorPosX(ImGui::GetCursorPosX() + glm::max(0.0f, (availX - totalW) * 0.5f));
-                ImGui::SetCursorPosY(ImGui::GetCursorPosY() + glm::max(0.0f, (cellContentH - btnH) * 0.5f));
+                ImGui::SetCursorPosY(ImGui::GetCursorPosY() + glm::max(0.0f, (cellContentH - iconH) * 0.5f));
 
                 AnimRecordPtr activeRecord = animPlayerComp->GetActiveRecord();
 
@@ -381,13 +441,43 @@ namespace ToolKit
                 }
                 else if (UI::ImageButtonDecorless(EditorImGuiTextureCache::Acquire(UI::m_playIcon), Vec2(24, 24)))
                 {
-                  animPlayerComp->Play(track.first.c_str());
+                  if (activeRecord == track.second && activeRecord->m_state == AnimRecord::State::Pause)
+                  {
+                    // Editor preview only: resume the paused clip from the same
+                    // time and place; root motion keeps accumulating from the
+                    // paused position.
+                    animPlayerComp->Resume();
+                  }
+                  else if (activeRecord != nullptr)
+                  {
+                    // Editor preview only: another clip is playing. Stop it and
+                    // revert its root motion first so displacements never stack
+                    // and the edited pose is preserved.
+                    animPlayerComp->Stop();
+                    RestorePreviewBase(animPlayerComp, false);
+                    if (!GetPreviewState(animPlayerComp).hasBase)
+                    {
+                      StorePreviewBase(animPlayerComp);
+                    }
+
+                    animPlayerComp->Play(track.first.c_str());
+                  }
+                  else
+                  {
+                    // Editor preview only: remember the entity transform before
+                    // root motion starts.
+                    StorePreviewBase(animPlayerComp);
+                    animPlayerComp->Play(track.first.c_str());
+                  }
                 }
 
                 // Draw stop button always.
                 ImGui::SameLine();
                 if (UI::ImageButtonDecorless(EditorImGuiTextureCache::Acquire(UI::m_stopIcon), Vec2(24, 24)))
                 {
+                  // Editor preview only: revert the accumulated root motion and
+                  // forget the stored base pose.
+                  RestorePreviewBase(animPlayerComp, true);
                   animPlayerComp->Stop();
                 }
               }

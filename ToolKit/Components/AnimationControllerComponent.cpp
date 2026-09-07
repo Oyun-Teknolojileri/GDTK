@@ -177,6 +177,19 @@ namespace ToolKit
 
   void AnimControllerComponent::Pause() { activeRecord->m_state = AnimRecord::State::Pause; }
 
+  void AnimControllerComponent::Resume()
+  {
+    if (activeRecord == nullptr || activeRecord->m_state != AnimRecord::State::Pause)
+    {
+      return;
+    }
+
+    // Keep the current clip time and pose; only resume the playback state.
+    activeRecord->m_state  = AnimRecord::State::Play;
+    activeRecord->m_entity = OwnerEntity();
+    GetAnimationPlayer()->AddRecord(activeRecord);
+  }
+
   AnimRecordPtr AnimControllerComponent::GetActiveRecord() { return activeRecord; }
 
   AnimRecordPtr AnimControllerComponent::GetAnimRecord(const String& signalName)

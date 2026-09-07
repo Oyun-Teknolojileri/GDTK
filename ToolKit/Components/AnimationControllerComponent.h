@@ -34,6 +34,7 @@ namespace ToolKit
     void Play(const String& recordName, bool stopPrevAnim = true);
     void Stop();
     void Pause();
+    void Resume();
     AnimRecordPtr GetActiveRecord();
     AnimRecordPtr GetAnimRecord(const String& signalName);
     void AddSignal(const String& signalName, AnimRecordPtr record);
