@@ -164,7 +164,9 @@ namespace ToolKit
   typedef std::vector<MeshPtr> MeshPtrArray;
   typedef std::vector<class Mesh*> MeshRawPtrArray;
   typedef std::shared_ptr<class AnimRecord> AnimRecordPtr;
-  typedef std::unordered_map<String, AnimRecordPtr> AnimRecordPtrMap;
+  // Ordered by insertion. Each element stores the record key (signal name) as
+  // its first element. Kept as a list so track order survives save/load.
+  typedef std::vector<std::pair<String, AnimRecordPtr>> AnimRecordPtrMap;
   typedef std::unordered_map<String, bool> StringBoolMap;
   typedef class AnimRecord* AnimRecordRawPtr;
   typedef std::vector<AnimRecordRawPtr> AnimRecordRawPtrArray;

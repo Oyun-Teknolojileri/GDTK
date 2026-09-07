@@ -19,6 +19,8 @@
 #include <Material.h>
 #include <Mesh.h>
 
+#include <algorithm>
+
 namespace ToolKit
 {
   namespace Editor
@@ -87,7 +89,7 @@ namespace ToolKit
     void ComponentView::ShowAnimControllerComponent(ParameterVariant* var, ComponentPtr comp)
     {
       AnimRecordPtrMap& mref = var->GetVar<AnimRecordPtrMap>();
-      String file, id;
+      String file;
 
       AnimControllerComponent* animPlayerComp = comp->As<AnimControllerComponent>();
 
@@ -119,259 +121,385 @@ namespace ToolKit
       {
         const ImVec2 tableSize = ImGui::GetContentRegionAvail();
         if (ImGui::BeginTable("Animation Records and Signals",
-                              5,
+                              6,
                               ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable |
-                                  ImGuiTableFlags_Reorderable | ImGuiTableFlags_ScrollY,
+                                  ImGuiTableFlags_Reorderable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Sortable |
+                                  ImGuiTableFlags_SortTristate | ImGuiTableFlags_NoSavedSettings,
                               tableSize))
-      {
-        float tableWdth = ImGui::GetItemRectSize().x;
-        ImGui::TableSetupColumn("Animation", ImGuiTableColumnFlags_WidthStretch, tableWdth / 5.0f);
-        ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, tableWdth / 2.5f);
-        ImGui::TableSetupColumn("Preview", ImGuiTableColumnFlags_WidthStretch, tableWdth / 4.0f);
-        ImGui::TableSetupColumn("Apply Root Motion", ImGuiTableColumnFlags_WidthStretch, tableWdth / 4.0f);
-        ImGui::TableSetupColumn("Remove", ImGuiTableColumnFlags_WidthStretch, tableWdth / 12.0f);
-        ImGui::TableHeadersRow();
-
-        uint rowIndx                                       = 0;
-        String removedSignalName                           = "";
-        String nameUpdated                                 = "";
-        std::pair<String, AnimRecordPtr> nameUpdatedPair   = {};
-
-        static std::pair<String, AnimRecordPtr> extraTrack = std::make_pair("", MakeNewPtr<AnimRecord>());
-
-        // Animation DropZone. Returns the drawn dropzone height so callers can
-        // vertically center the rest of the row's cells against it.
-        auto showAnimationDropzone =
-            [file, &mref](uint& columnIndx, const std::pair<String, AnimRecordPtr>& pair) -> float
         {
-          ImGui::TableSetColumnIndex(columnIndx++);
+          float tableWdth = ImGui::GetItemRectSize().x;
+          // Name shows the animation file and is read only. Signal is the
+          // unique record key used to trigger the track (Play(signal)) and may
+          // be edited by the user. Rows keep their insertion order; sorting is
+          // applied only when the Name or Signal header is clicked.
+          ImGui::TableSetupColumn("Animation",
+                                  ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_NoSort,
+                                  tableWdth / 6.0f);
+          ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, tableWdth / 3.0f);
+          ImGui::TableSetupColumn("Signal", ImGuiTableColumnFlags_WidthStretch, tableWdth / 3.0f);
+          ImGui::TableSetupColumn("Preview",
+                                  ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_NoSort,
+                                  tableWdth / 6.0f);
+          ImGui::TableSetupColumn("Apply Root Motion",
+                                  ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_NoSort,
+                                  tableWdth / 6.0f);
+          ImGui::TableSetupColumn("Remove",
+                                  ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_NoSort,
+                                  tableWdth / 12.0f);
+          // Freeze the header row like an Excel frozen top row; body rows scroll
+          // under it when the table overflows.
+          ImGui::TableSetupScrollFreeze(0, 1);
+          ImGui::TableHeadersRow();
 
-          // Center the dropzone horizontally in its cell. It is the tallest
-          // item of the row, so it defines the row height and needs no
-          // vertical centering.
-          const float dzSize = 48.0f;
-          float availX       = ImGui::GetContentRegionAvail().x;
-          ImGui::SetCursorPosX(ImGui::GetCursorPosX() + glm::max(0.0f, (availX - dzSize) * 0.5f));
+          uint rowIndx          = 0;
+          String removedSignal  = "";
+          String renamedSignal  = "";
+          std::pair<String, AnimRecordPtr> renameSource; // Old key of the edited track.
 
-          DropZone(EditorImGuiTextureCache::Acquire(UI::m_clipIcon),
-                   file,
-                   [&pair, &mref](const DirectoryEntry& entry) -> void
-                   {
-                     if (GetResourceType(entry.m_ext) != Animation::StaticClass())
+          static std::pair<String, AnimRecordPtr> extraTrack = std::make_pair("", MakeNewPtr<AnimRecord>());
+
+          // Animation file name of a record. Read only "Name" column content.
+          auto trackDisplayName = [](const AnimRecordPtr& record) -> String
+          {
+            if (record == nullptr || record->m_animation == nullptr)
+            {
+              return "";
+            }
+
+            String path, fileName, ext;
+            DecomposePath(record->m_animation->GetFile(), &path, &fileName, &ext);
+            return fileName + ext;
+          };
+
+          // Signal names (record keys) must stay unique across the tracks.
+          auto signalExists = [&mref](const String& signal) -> bool
+          {
+            for (const auto& record : mref)
+            {
+              if (record.first == signal)
+              {
+                return true;
+              }
+            }
+            return false;
+          };
+
+          // Animation DropZone. Returns the drawn dropzone height so callers can
+          // vertically center the rest of the row's cells against it.
+          auto showAnimationDropzone =
+              [file, &mref](uint& columnIndx, std::pair<String, AnimRecordPtr>& pair) -> float
+          {
+            ImGui::TableSetColumnIndex(columnIndx++);
+
+            // Center the dropzone horizontally in its cell. It is the tallest
+            // item of the row, so it defines the row height and needs no
+            // vertical centering.
+            const float dzSize = 48.0f;
+            float availX       = ImGui::GetContentRegionAvail().x;
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + glm::max(0.0f, (availX - dzSize) * 0.5f));
+
+            DropZone(EditorImGuiTextureCache::Acquire(UI::m_clipIcon),
+                     file,
+                     [&pair, &mref](const DirectoryEntry& entry) -> void
                      {
-                       GetApp()->SetStatusMsg(g_statusFailed);
-                       TK_ERR("Only animations are accepted.");
-                       return;
-                     }
-
-                     // Normalize both sides to a resource-relative key so the
-                     // same file can not be assigned to two different tracks
-                     // even when one path is absolute and the other relative.
-                     String dropped = entry.GetFullPath();
-                     UnixifyPath(dropped);
-                     GetFileManager()->GetRelativeResourcesPath(dropped);
-                     size_t first = dropped.find_first_not_of('/');
-                     if (first != String::npos)
-                     {
-                       dropped = dropped.substr(first);
-                     }
-
-                     for (const auto& rec : mref)
-                     {
-                       if (rec.second == pair.second)
-                       {
-                         continue; // Re-dropping the same file onto its own track.
-                       }
-
-                       const AnimationPtr anim = rec.second->m_animation;
-                       if (anim == nullptr)
-                       {
-                         continue;
-                       }
-
-                       String existing = anim->GetFile();
-                       UnixifyPath(existing);
-                       GetFileManager()->GetRelativeResourcesPath(existing);
-                       first = existing.find_first_not_of('/');
-                       if (first != String::npos)
-                       {
-                         existing = existing.substr(first);
-                       }
-
-                       if (existing == dropped)
+                       if (GetResourceType(entry.m_ext) != Animation::StaticClass())
                        {
                          GetApp()->SetStatusMsg(g_statusFailed);
-                         TK_ERR("Animation %s is already used by track '%s'.",
-                                entry.m_fileName.c_str(),
-                                rec.first.c_str());
+                         TK_ERR("Only animations are accepted.");
                          return;
                        }
-                     }
 
-                     pair.second->m_animation = GetAnimationManager()->Create<Animation>(entry.GetFullPath());
-                     if (pair.first.empty())
-                     {
-                       extraTrack.first = entry.m_fileName;
-                     }
-                   });
+                       // Normalize both sides to a resource-relative key so the
+                       // same file can not be assigned to two different tracks
+                       // even when one path is absolute and the other relative.
+                       String dropped = entry.GetFullPath();
+                       UnixifyPath(dropped);
+                       GetFileManager()->GetRelativeResourcesPath(dropped);
+                       size_t first = dropped.find_first_not_of('/');
+                       if (first != String::npos)
+                       {
+                         dropped = dropped.substr(first);
+                       }
 
-          return ImGui::GetItemRectSize().y;
-        };
+                       for (const auto& rec : mref)
+                       {
+                         if (rec.second == pair.second)
+                         {
+                           continue; // Re-dropping the same file onto its own track.
+                         }
 
-        auto showSignalName = [&nameUpdated, &nameUpdatedPair](uint& columnIndx,
-                                                               const std::pair<String, AnimRecordPtr>& pair,
-                                                               float cellContentH)
-        {
-          ImGui::TableSetColumnIndex(columnIndx++);
+                         const AnimationPtr anim = rec.second->m_animation;
+                         if (anim == nullptr)
+                         {
+                           continue;
+                         }
 
-          // Center vertically and fill the cell width so the box grows and
-          // shrinks with the column; extra long names are clipped by the box.
-          float frameH = ImGui::GetFrameHeight();
-          float availX = ImGui::GetContentRegionAvail().x;
-          ImGui::SetCursorPosY(ImGui::GetCursorPosY() + glm::max(0.0f, (cellContentH - frameH) * 0.5f));
-          ImGui::SetNextItemWidth(availX);
+                         String existing = anim->GetFile();
+                         UnixifyPath(existing);
+                         GetFileManager()->GetRelativeResourcesPath(existing);
+                         first = existing.find_first_not_of('/');
+                         if (first != String::npos)
+                         {
+                           existing = existing.substr(first);
+                         }
 
-          String readOnly = pair.first;
-          if (ImGui::InputText("##", &readOnly, ImGuiInputTextFlags_EnterReturnsTrue) && readOnly.length())
+                         if (existing == dropped)
+                         {
+                           GetApp()->SetStatusMsg(g_statusFailed);
+                           TK_ERR("Animation %s is already used by track '%s'.",
+                                  entry.m_fileName.c_str(),
+                                  rec.first.c_str());
+                           return;
+                         }
+                       }
+
+                       pair.second->m_animation = GetAnimationManager()->Create<Animation>(entry.GetFullPath());
+                       if (pair.first.empty())
+                       {
+                         // New track: default the signal to the animation name.
+                         pair.first = entry.m_fileName;
+                       }
+                     });
+
+            return ImGui::GetItemRectSize().y;
+          };
+
+          // Read only animation file name cell.
+          auto showNameCell = [&trackDisplayName](uint& columnIndx,
+                                                  const std::pair<String, AnimRecordPtr>& pair,
+                                                  float cellContentH)
           {
-            nameUpdated     = readOnly;
-            nameUpdatedPair = pair;
-          }
-        };
-        for (auto it = mref.begin(); it != mref.end(); ++it, rowIndx++)
-        {
-          uint columnIndx = 0;
-          ImGui::TableNextRow();
-          ImGui::PushID(rowIndx);
-
-          const float cellContentH = showAnimationDropzone(columnIndx, *it);
-
-          // Signal Name
-          showSignalName(columnIndx, *it, cellContentH);
-
-          ImGui::EndDisabled();
-
-          // Play, Pause & Stop Buttons
-          {
-            const float btnH = 24.0f;
             ImGui::TableSetColumnIndex(columnIndx++);
 
-            if (it->second->m_animation)
+            String name  = trackDisplayName(pair.second);
+            float txtH   = ImGui::GetTextLineHeight();
+            ImGui::SetCursorPosY(ImGui::GetCursorPosY() + glm::max(0.0f, (cellContentH - txtH) * 0.5f));
+            ImGui::TextUnformatted(name.c_str());
+          };
+
+          // Editable signal cell. The new key is remembered on enter and applied
+          // after the rows are drawn, so the table order stays stable.
+          auto showSignalCell = [&renamedSignal, &renameSource](uint& columnIndx,
+                                                                const std::pair<String, AnimRecordPtr>& pair,
+                                                                float cellContentH)
+          {
+            ImGui::TableSetColumnIndex(columnIndx++);
+
+            float frameH = ImGui::GetFrameHeight();
+            float availX = ImGui::GetContentRegionAvail().x;
+            ImGui::SetCursorPosY(ImGui::GetCursorPosY() + glm::max(0.0f, (cellContentH - frameH) * 0.5f));
+            ImGui::SetNextItemWidth(availX);
+
+            String signal = pair.first;
+            if (ImGui::InputText("##Signal", &signal, ImGuiInputTextFlags_EnterReturnsTrue) && signal.length())
             {
-              float availX = ImGui::GetContentRegionAvail().x;
-              float totalW = btnH + ImGui::GetStyle().ItemSpacing.x + btnH;
-              ImGui::SetCursorPosX(ImGui::GetCursorPosX() + glm::max(0.0f, (availX - totalW) * 0.5f));
-              ImGui::SetCursorPosY(ImGui::GetCursorPosY() + glm::max(0.0f, (cellContentH - btnH) * 0.5f));
+              renamedSignal = signal;
+              renameSource  = std::make_pair(pair.first, pair.second);
+            }
+          };
 
-              AnimRecordPtr activeRecord = animPlayerComp->GetActiveRecord();
+          // Render rows in insertion order. Sorting only kicks in when the Name
+          // or Signal header is clicked; it sorts a transient index copy.
+          std::vector<uint> rowOrder;
+          rowOrder.reserve(mref.size());
+          for (uint i = 0; i < (uint) mref.size(); i++)
+          {
+            rowOrder.push_back(i);
+          }
 
-              // Alternate between Play - Pause buttons.
-              if (activeRecord == it->second && activeRecord->m_state == AnimRecord::State::Play)
+          bool sortRows   = false;
+          bool sortByName = false;
+          bool sortAsc    = true;
+          if (ImGuiTableSortSpecs* sortSpecs = ImGui::TableGetSortSpecs())
+          {
+            if (sortSpecs->SpecsCount > 0 &&
+                (sortSpecs->Specs[0].ColumnIndex == 1 || sortSpecs->Specs[0].ColumnIndex == 2))
+            {
+              sortRows   = true;
+              sortByName = (sortSpecs->Specs[0].ColumnIndex == 1);
+              sortAsc    = (sortSpecs->Specs[0].SortDirection == ImGuiSortDirection_Ascending);
+            }
+          }
+
+          if (sortRows)
+          {
+            std::sort(rowOrder.begin(),
+                      rowOrder.end(),
+                      [&mref, &trackDisplayName, sortByName, sortAsc](uint a, uint b) -> bool
+                      {
+                        const String valA = sortByName ? trackDisplayName(mref[a].second) : mref[a].first;
+                        const String valB = sortByName ? trackDisplayName(mref[b].second) : mref[b].first;
+                        if (valA == valB)
+                        {
+                          return a < b; // Stable tie breaker.
+                        }
+                        return sortAsc ? (valA < valB) : (valA > valB);
+                      });
+          }
+
+          for (uint displayIndx = 0; displayIndx < (uint) rowOrder.size(); displayIndx++, rowIndx++)
+          {
+            std::pair<String, AnimRecordPtr>& track = mref[rowOrder[displayIndx]];
+            uint columnIndx                         = 0;
+            ImGui::TableNextRow();
+            ImGui::PushID(rowIndx);
+
+            // Animation file cell. Disabled when the parameter is read only.
+            ImGui::BeginDisabled(!var->m_editable);
+            const float cellContentH = showAnimationDropzone(columnIndx, track);
+            ImGui::EndDisabled();
+
+            // Read only animation file name.
+            showNameCell(columnIndx, track, cellContentH);
+
+            // Editable, unique signal (record key).
+            ImGui::BeginDisabled(!var->m_editable);
+            showSignalCell(columnIndx, track, cellContentH);
+            ImGui::EndDisabled();
+
+            // Play, Pause & Stop Buttons. Always usable.
+            {
+              const float btnH = 24.0f;
+              ImGui::TableSetColumnIndex(columnIndx++);
+
+              if (track.second->m_animation)
               {
-                if (UI::ImageButtonDecorless(EditorImGuiTextureCache::Acquire(UI::m_pauseIcon), Vec2(24, 24)))
+                float availX = ImGui::GetContentRegionAvail().x;
+                float totalW = btnH + ImGui::GetStyle().ItemSpacing.x + btnH;
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + glm::max(0.0f, (availX - totalW) * 0.5f));
+                ImGui::SetCursorPosY(ImGui::GetCursorPosY() + glm::max(0.0f, (cellContentH - btnH) * 0.5f));
+
+                AnimRecordPtr activeRecord = animPlayerComp->GetActiveRecord();
+
+                // Alternate between Play - Pause buttons.
+                if (activeRecord == track.second && activeRecord->m_state == AnimRecord::State::Play)
                 {
-                  animPlayerComp->Pause();
+                  if (UI::ImageButtonDecorless(EditorImGuiTextureCache::Acquire(UI::m_pauseIcon), Vec2(24, 24)))
+                  {
+                    animPlayerComp->Pause();
+                  }
+                }
+                else if (UI::ImageButtonDecorless(EditorImGuiTextureCache::Acquire(UI::m_playIcon), Vec2(24, 24)))
+                {
+                  animPlayerComp->Play(track.first.c_str());
+                }
+
+                // Draw stop button always.
+                ImGui::SameLine();
+                if (UI::ImageButtonDecorless(EditorImGuiTextureCache::Acquire(UI::m_stopIcon), Vec2(24, 24)))
+                {
+                  animPlayerComp->Stop();
                 }
               }
-              else if (UI::ImageButtonDecorless(EditorImGuiTextureCache::Acquire(UI::m_playIcon), Vec2(24, 24)))
-              {
-                animPlayerComp->Play(it->first.c_str());
-              }
-
-              // Draw stop button always.
-              ImGui::SameLine();
-              if (UI::ImageButtonDecorless(EditorImGuiTextureCache::Acquire(UI::m_stopIcon), Vec2(24, 24)))
-              {
-                animPlayerComp->Stop();
-              }
             }
-          }
 
-          // Apply Root Motion
-          {
-            const float checkH = ImGui::GetFrameHeight();
-            ImGui::TableSetColumnIndex(columnIndx++);
-
-            float availX = ImGui::GetContentRegionAvail().x;
-            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + glm::max(0.0f, (availX - checkH) * 0.5f));
-            ImGui::SetCursorPosY(ImGui::GetCursorPosY() + glm::max(0.0f, (cellContentH - checkH) * 0.5f));
-
-            bool applyRootMotion = it->second->m_applyRootMotion;
-            if (ImGui::Checkbox("##applyRootMotion", &applyRootMotion))
+            // Apply Root Motion
             {
-              it->second->m_applyRootMotion = applyRootMotion;
+              const float checkH = ImGui::GetFrameHeight();
+              ImGui::TableSetColumnIndex(columnIndx++);
+
+              float availX = ImGui::GetContentRegionAvail().x;
+              ImGui::SetCursorPosX(ImGui::GetCursorPosX() + glm::max(0.0f, (availX - checkH) * 0.5f));
+              ImGui::SetCursorPosY(ImGui::GetCursorPosY() + glm::max(0.0f, (cellContentH - checkH) * 0.5f));
+
+              ImGui::BeginDisabled(!var->m_editable);
+              bool applyRootMotion = track.second->m_applyRootMotion;
+              if (ImGui::Checkbox("##applyRootMotion", &applyRootMotion))
+              {
+                track.second->m_applyRootMotion = applyRootMotion;
+              }
+              ImGui::EndDisabled();
             }
-          }
 
-          ImGui::BeginDisabled(!var->m_editable);
-
-          // Remove Button
-          {
-            const float rmSize = 18.0f;
-            ImGui::TableSetColumnIndex(columnIndx++);
-
-            float availX = ImGui::GetContentRegionAvail().x;
-            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + glm::max(0.0f, (availX - rmSize) * 0.5f));
-            ImGui::SetCursorPosY(ImGui::GetCursorPosY() + glm::max(0.0f, (cellContentH - rmSize) * 0.5f));
-
-            // Same X glyph used by the component header row, white to match it.
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
-            if (UI::ButtonDecorless(ICON_FA_TIMES, ImVec2(rmSize, rmSize)))
+            // Remove Button
             {
-              removedSignalName = it->first;
+              const float rmSize = 18.0f;
+              ImGui::TableSetColumnIndex(columnIndx++);
+
+              float availX = ImGui::GetContentRegionAvail().x;
+              ImGui::SetCursorPosX(ImGui::GetCursorPosX() + glm::max(0.0f, (availX - rmSize) * 0.5f));
+              ImGui::SetCursorPosY(ImGui::GetCursorPosY() + glm::max(0.0f, (cellContentH - rmSize) * 0.5f));
+
+              // Same X glyph used by the component header row, white to match it.
+              ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+              ImGui::BeginDisabled(!var->m_editable);
+              if (UI::ButtonDecorless(ICON_FA_TIMES, ImVec2(rmSize, rmSize)))
+              {
+                removedSignal = track.first;
+              }
+              ImGui::EndDisabled();
+              ImGui::PopStyleColor();
             }
-            ImGui::PopStyleColor();
+
+            ImGui::PopID();
           }
 
-          ImGui::PopID();
-        }
-
-        // Show last extra track.
-        uint columnIndx = 0;
-        ImGui::TableNextRow();
-        ImGui::PushID(rowIndx);
-
-        const float cellContentH = showAnimationDropzone(columnIndx, extraTrack);
-
-        // Signal Name
-        showSignalName(columnIndx, extraTrack, cellContentH);
-        ImGui::PopID();
-
-        if (removedSignalName.length())
-        {
-          animPlayerComp->RemoveSignal(removedSignalName);
-        }
-
-        if (nameUpdated.length() && nameUpdatedPair.first != nameUpdated)
-        {
-          if (mref.find(nameUpdated) != mref.end())
+          // Show last extra track.
           {
-            TK_ERR("SignalName exists.");
+            uint columnIndx = 0;
+            ImGui::TableNextRow();
+            ImGui::PushID(rowIndx);
+
+            ImGui::BeginDisabled(!var->m_editable);
+            const float cellContentH = showAnimationDropzone(columnIndx, extraTrack);
+            ImGui::EndDisabled();
+
+            // Read only animation file name.
+            showNameCell(columnIndx, extraTrack, cellContentH);
+
+            // Editable, unique signal (record key).
+            ImGui::BeginDisabled(!var->m_editable);
+            showSignalCell(columnIndx, extraTrack, cellContentH);
+            ImGui::EndDisabled();
+
+            ImGui::PopID();
           }
-          else if (nameUpdatedPair.first == extraTrack.first)
+
+          if (removedSignal.length())
           {
-            extraTrack.first = nameUpdated;
+            animPlayerComp->RemoveSignal(removedSignal);
           }
-          else
+
+          if (renamedSignal.length() && renameSource.first != renamedSignal)
           {
-            auto node  = mref.extract(nameUpdatedPair.first);
-            node.key() = nameUpdated;
-            mref.insert(std::move(node));
-
-            nameUpdated     = "";
-            nameUpdatedPair = {};
+            if (signalExists(renamedSignal))
+            {
+              TK_ERR("SignalName exists.");
+            }
+            else if (renameSource.first == extraTrack.first)
+            {
+              extraTrack.first = renamedSignal;
+            }
+            else
+            {
+              for (auto& track : mref)
+              {
+                if (track.first == renameSource.first)
+                {
+                  track.first = renamedSignal;
+                  break;
+                }
+              }
+            }
           }
-        }
 
-        // If extra track is filled properly, add it to the list
-        if (extraTrack.first != "" && extraTrack.second->m_animation != nullptr)
-        {
-          mref.insert(extraTrack);
-          extraTrack.first  = "";
-          extraTrack.second = MakeNewPtr<AnimRecord>();
-        }
+          // If the extra track is filled properly, add it to the list.
+          if (extraTrack.first != "" && extraTrack.second->m_animation != nullptr)
+          {
+            if (signalExists(extraTrack.first))
+            {
+              TK_ERR("SignalName exists.");
+              extraTrack.first = ""; // Let the user pick another signal.
+            }
+            else
+            {
+              mref.push_back(extraTrack);
+              extraTrack.first  = "";
+              extraTrack.second = MakeNewPtr<AnimRecord>();
+            }
+          }
 
-        ImGui::EndTable();
+          ImGui::EndTable();
         }
 
         ImGui::EndChild();

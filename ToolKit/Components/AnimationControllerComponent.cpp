@@ -79,19 +79,37 @@ namespace ToolKit
 
   void AnimControllerComponent::AddSignal(const String& signalName, AnimRecordPtr record)
   {
-    ParamRecords().GetVar<AnimRecordPtrMap>().insert(std::make_pair(signalName, record));
+    AnimRecordPtrMap& list = ParamRecords().GetVar<AnimRecordPtrMap>();
+    for (const auto& item : list)
+    {
+      if (item.first == signalName)
+      {
+        return; // Signal names must stay unique.
+      }
+    }
+
+    list.push_back(std::make_pair(signalName, record));
   }
 
   void AnimControllerComponent::RemoveSignal(const String& signalName)
   {
-    const auto& signal = GetRecordsVal().find(signalName);
-    if (signal == GetRecordsVal().end())
+    AnimRecordPtrMap& list = ParamRecords().GetVar<AnimRecordPtrMap>();
+    auto signal            = list.end();
+    for (auto iter = list.begin(); iter != list.end(); ++iter)
+    {
+      if (iter->first == signalName)
+      {
+        signal = iter;
+        break;
+      }
+    }
+    if (signal == list.end())
     {
       return;
     }
 
     GetAnimationPlayer()->RemoveRecord(signal->second->m_id);
-    ParamRecords().GetVar<AnimRecordPtrMap>().erase(signalName);
+    list.erase(signal);
   }
 
   void AnimControllerComponent::SmoothTransition(const String& nextAnimName, float transitionDuration)
@@ -119,7 +137,15 @@ namespace ToolKit
   void AnimControllerComponent::Play(const String& signalName, bool stopPrevAnim)
   {
     AnimRecordPtrMap& list = ParamRecords().GetVar<AnimRecordPtrMap>();
-    AnimRecordPtr& rec     = list[signalName];
+    AnimRecordPtr rec;
+    for (const auto& record : list)
+    {
+      if (record.first == signalName)
+      {
+        rec = record.second;
+        break;
+      }
+    }
     if (rec == nullptr)
     {
       return;
@@ -156,10 +182,12 @@ namespace ToolKit
   AnimRecordPtr AnimControllerComponent::GetAnimRecord(const String& signalName)
   {
     AnimRecordPtrMap& records = ParamRecords().GetVar<AnimRecordPtrMap>();
-    const auto& recordIter    = records.find(signalName);
-    if (recordIter != records.end())
+    for (const auto& record : records)
     {
-      return recordIter->second;
+      if (record.first == signalName)
+      {
+        return record.second;
+      }
     }
     return nullptr;
   }
