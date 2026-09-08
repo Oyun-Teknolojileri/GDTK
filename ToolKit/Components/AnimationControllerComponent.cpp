@@ -132,7 +132,11 @@ namespace ToolKit
     rec->m_currentTime                    = 0.0f;
     rec->m_prevRootMotionTime             = 0.0f;
     rec->m_state                          = AnimRecord::State::Play;
-    rec->m_loop                           = true;
+    // Respect the record's own loop flag: callers mark looping clips (idle,
+    // walk cycles) with m_loop = true and one-shot clips (walk_f_start,
+    // walk_f_end) with m_loop = false, which play once and hold their final
+    // frame (see AnimationPlayer::Update). Forcing m_loop here used to make
+    // every clip -- including one-shots -- wrap back to its first frame.
     rec->m_blendingData.recordToBlend     = nullptr;
     rec->m_blendingData.recordToBeBlended = nullptr;
     rec->m_entity                         = OwnerEntity();

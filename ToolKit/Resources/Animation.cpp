@@ -430,25 +430,18 @@ namespace ToolKit
           float leftOver = record->m_currentTime - duration;
           if (leftOver > 0.0)
           {
-            // A clip that is fading out must not wrap back to its first frame:
-            // the crossfade source pose would jump mid-fade (e.g. a walk-stop
-            // clip suddenly restarting its first stride). Hold its final pose
-            // instead until the blend countdown removes it.
-            if (record->m_blendingData.recordToBeBlended != nullptr)
-            {
-              record->m_currentTime = duration;
-            }
-            else
-            {
-              record->m_currentTime = leftOver;
-            }
+            record->m_currentTime = leftOver;
           }
         }
         else
         {
+          // One-shot clip: play once, then hold its final frame. The record
+          // stays registered (no further root motion once the pose holds)
+          // until another Play replaces it or Stop is called -- it never wraps
+          // back to its first frame and never vanishes mid-blend.
           if (record->m_currentTime > duration)
           {
-            record->m_state = AnimRecord::State::Stop;
+            record->m_currentTime = duration;
           }
         }
 
