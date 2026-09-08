@@ -48,19 +48,6 @@ namespace ToolKit
   /** Create an xml node with given name.Append it to parent if not null else append it to doc. */
   TK_API XmlNode* CreateXmlNode(XmlDocument* doc, const StringView& name, XmlNode* parent = nullptr);
 
-  /**
-   * DEPRECATED: Use Resource::SerializeRef.
-   * Serializes a material node in to the parent.
-   */
-  TK_API void WriteMaterial(XmlNode* parent, XmlDocument* doc, const String& file);
-
-  /**
-   * DEPRECATED: Use Resource::DeserializeRef.
-   * Reads a material node from the parent.
-   * @return MaterialPtr if the material is found, nullptr otherwise.
-   */
-  TK_API MaterialPtr ReadMaterial(XmlNode* parent);
-
   // File path operations.
   //////////////////////////////////////////
 
