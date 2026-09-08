@@ -332,7 +332,10 @@ namespace ToolKit
       meshNode = CreateXmlNode(doc, "mesh", parent);
     }
 
-    WriteMaterial(meshNode, doc, mesh->m_material->GetSerializeFile());
+    if (mesh->m_material)
+    {
+      mesh->m_material->SerializeRef(doc, meshNode);
+    }
 
     // Write Skeleton file reference
     if constexpr (std::is_same<T, ToolKit::SkinMesh>::value)
@@ -439,17 +442,21 @@ namespace ToolKit
         mainMesh->m_subMeshes.push_back(meshPtr);
       }
 
-      mesh->m_material = ReadMaterial(node);
+      String path = Resource::DeserializeRef<Material>(node);
+      if (path.length() > 0)
+      {
+        String matFile = MaterialPath(path);
+        mesh->m_material = GetMaterialManager()->Create<Material>(matFile);
+      }
 
       if constexpr (std::is_same<T, SkinMesh>())
       {
-        String path = Skeleton::DeserializeRef(node);
+        String path = Resource::DeserializeRef<Skeleton>(node);
         if (path.length() == 0)
         {
           assert(0 && "SkinMesh has no skeleton!");
         }
 
-        NormalizePath(path);
         String skelFile  = SkeletonPath(path);
         mesh->m_skeleton = GetSkeletonManager()->Create<Skeleton>(skelFile);
       }

@@ -10,6 +10,7 @@
 #include "Object.h"
 #include "ObjectFactory.h"
 #include "Types.h"
+#include "Util.h"
 
 namespace ToolKit
 {
@@ -48,6 +49,35 @@ namespace ToolKit
      * @returns File path to the resource to be referenced.
      */
     static String DeserializeRef(XmlNode* parent);
+
+    /**
+     * Extracts the File attribute from the ResourceRef whose Class attribute
+     * matches T::StaticClass()->Name. Use this when a parent node holds more
+     * than one resource reference of different types, so each reference is
+     * resolved by its own class instead of blindly picking the first one.
+     * @param parent Parent xml node that contains the reference nodes.
+     * @returns File path to the resource whose type matches T.
+     */
+    template <typename T>
+    static String DeserializeRef(XmlNode* parent)
+    {
+      String val;
+      const String className = T::StaticClass()->Name;
+      for (XmlNode* refNode = parent->first_node(XmlResRefElement.c_str()); refNode;
+           refNode              = refNode->next_sibling(XmlResRefElement.c_str()))
+      {
+        String cls;
+        ReadAttr(refNode, "Class", cls);
+        if (cls == className)
+        {
+          ReadAttr(refNode, "File", val);
+          NormalizePathInplace(val);
+          break;
+        }
+      }
+
+      return val;
+    }
 
     const String& GetFile() const;
     /**
