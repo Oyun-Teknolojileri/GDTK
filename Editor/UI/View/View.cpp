@@ -44,12 +44,12 @@ namespace ToolKit
       // skip the whole existing-asset path: it would otherwise run filesystem
       // checks on an empty path and risks feeding ImGui an empty id. The
       // caller-supplied icon is used as-is.
-      bool hasFile = !file.empty();
+      bool hasFile   = !file.empty();
       bool fileExist = false;
 
       if (hasFile)
       {
-        fileExist = GetFileManager()->CheckFileFromResources(file);
+        fileExist                             = GetFileManager()->CheckFileFromResources(file);
         FolderWindowRawPtrArray folderWindows = GetApp()->GetAssetBrowsers();
         for (FolderWindow* folderWnd : folderWindows)
         {
@@ -129,39 +129,44 @@ namespace ToolKit
 
           if (man->m_baseType == Material::StaticClass())
           {
-            MaterialPtr mr = man->Create<Material>(file);
-            if (clicked)
+            if (MaterialPtr mr = man->Create<Material>(file))
             {
-              PropInspectorWindowPtr propInspector = GetApp()->GetPropInspector();
-              propInspector->GetMaterialView()->SetSelectedMaterial(mr);
-              propInspector->SetActiveView(ViewType::Material);
-            }
+              if (clicked)
+              {
+                PropInspectorWindowPtr propInspector = GetApp()->GetPropInspector();
+                propInspector->GetMaterialView()->SetSelectedMaterial(mr);
+                propInspector->SetActiveView(ViewType::Material);
+              }
 
-            info += "File: " + dirEnt.m_fileName + dirEnt.m_ext + "\n";
-            textureRepFn(mr->GetDiffuseTextureVal());
+              info += "File: " + dirEnt.m_fileName + dirEnt.m_ext + "\n";
+              textureRepFn(mr->GetDiffuseTextureVal());
+            }
           }
 
           if (man->m_baseType == Texture::StaticClass())
           {
-            TexturePtr t = man->Create<Texture>(file);
-            textureRepFn(t);
+            if (TexturePtr t = man->Create<Texture>(file))
+            {
+              textureRepFn(t);
+            }
           }
 
           if (man->m_baseType->IsSublcassOf(Mesh::StaticClass()))
           {
-            MeshPtr mesh = man->Create<Mesh>(file);
-
-            if (clicked)
+            if (MeshPtr mesh = man->Create<Mesh>(file))
             {
-              GetApp()->GetPropInspector()->SetMeshView(mesh);
-            }
+              if (clicked)
+              {
+                GetApp()->GetPropInspector()->SetMeshView(mesh);
+              }
 
-            info += "File: " + dirEnt.m_fileName + dirEnt.m_ext + "\n";
-            info += "Vertex Count: " + std::to_string(mesh->m_vertexCount) + "\n";
-            info += "Index Count: " + std::to_string(mesh->m_indexCount) + "\n";
-            if (mesh->m_faces.size())
-            {
-              info += "Face Count: " + std::to_string(mesh->m_faces.size()) + "\n";
+              info += "File: " + dirEnt.m_fileName + dirEnt.m_ext + "\n";
+              info += "Vertex Count: " + std::to_string(mesh->m_vertexCount) + "\n";
+              info += "Index Count: " + std::to_string(mesh->m_indexCount) + "\n";
+              if (mesh->m_faces.size())
+              {
+                info += "Face Count: " + std::to_string(mesh->m_faces.size()) + "\n";
+              }
             }
           }
         }
