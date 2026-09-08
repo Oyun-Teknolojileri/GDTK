@@ -88,6 +88,11 @@ namespace ToolKit
 
       if (dirEnt.m_ext == MESH || dirEnt.m_ext == SKINMESH)
       {
+        // m_entity is reused across RenderThumbnail calls. Drop the skeleton component added
+        // for a previous skin mesh thumbnail so that it is not added twice (AddComponent asserts
+        // on duplicates) and does not linger on static mesh renders.
+        m_entity->RemoveComponent<SkeletonComponent>();
+
         MeshPtr mesh = nullptr;
         if (dirEnt.m_ext == MESH)
         {
