@@ -386,7 +386,11 @@ namespace ToolKit
         return;
       }
 
-      ImGui::BeginDisabled(!var->m_editable);
+      // The animation records table manages its own per cell edit gating, so
+      // the play/pause/stop preview buttons stay usable in read only (e.g.
+      // prefab) mode while the cells remain locked.
+      const bool isAnimRecords = (var->GetType() == ParameterVariant::VariantType::AnimRecordPtrMap);
+      ImGui::BeginDisabled(!var->m_editable && !isAnimRecords);
 
       static bool lastValActive = false;
       if (callback)
