@@ -629,9 +629,14 @@ namespace ToolKit
       }
     }
 
-    // Apply the root key's displacement directly to the entity node.
-    ntt->m_node->Translate(deltaPos, TransformationSpace::TS_WORLD);
-    ntt->m_node->Rotate(deltaRot, TransformationSpace::TS_WORLD);
+    // Apply the root key's displacement to the entity node in its local
+    // space. The root curve is authored along the character's own axes, so the
+    // displacement must follow the node's (and its ancestors') orientation:
+    // rotating the actor -- e.g. the prefab's top root -- points the root
+    // motion at the direction the actor should walk, instead of always pushing
+    // it along the fixed world axis the curve was baked on.
+    ntt->m_node->Translate(deltaPos, TransformationSpace::TS_LOCAL);
+    ntt->m_node->Rotate(deltaRot, TransformationSpace::TS_LOCAL);
     ntt->m_node->Scale(deltaScale);
 
     record->m_prevRootMotionTime = curTime;
