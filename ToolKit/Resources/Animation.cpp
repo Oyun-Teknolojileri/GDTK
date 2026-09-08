@@ -407,6 +407,14 @@ namespace ToolKit
     // Updates all the records in the player and returns true if record needs to be removed.
     auto updateRecordsFn = [&](AnimRecordPtr record) -> bool
     {
+      // File name only (no folder) for readable debug logs.
+      auto animName = [record]() -> String
+      {
+        const String& file = (record->m_animation != nullptr) ? record->m_animation->GetFile() : String();
+        size_t sep         = file.find_last_of('/');
+        return (sep != String::npos) ? file.substr(sep + 1) : file;
+      };
+
       if (record->m_state == AnimRecord::State::Pause)
       {
         return false;
@@ -422,7 +430,18 @@ namespace ToolKit
           float leftOver = record->m_currentTime - duration;
           if (leftOver > 0.0)
           {
-            record->m_currentTime = leftOver;
+            // A clip that is fading out must not wrap back to its first frame:
+            // the crossfade source pose would jump mid-fade (e.g. a walk-stop
+            // clip suddenly restarting its first stride). Hold its final pose
+            // instead until the blend countdown removes it.
+            if (record->m_blendingData.recordToBeBlended != nullptr)
+            {
+              record->m_currentTime = duration;
+            }
+            else
+            {
+              record->m_currentTime = leftOver;
+            }
           }
         }
         else
@@ -440,8 +459,20 @@ namespace ToolKit
 
           if (record->m_blendingData.blendCurrentDurationInSec < 0.0)
           {
+            // Debug aid: the outgoing clip finished its fade-out and is being
+            // dropped from the player. Confirms a smooth transition actually
+            // ran for its full configured duration.
+            TK_LOG("AnimBlend: '%s' faded out after %.2f s.",
+                   animName().c_str(),
+                   record->m_blendingData.blendTotalDurationInSec);
             return true;
           }
+
+          // Debug aid: log the fade-out progress every frame so the walk clip
+          // transitions can be verified to crossfade with the right duration.
+          TK_LOG("AnimBlend: fading out '%s', remaining %.2f s.",
+                 animName().c_str(),
+                 record->m_blendingData.blendCurrentDurationInSec);
         }
       }
 
