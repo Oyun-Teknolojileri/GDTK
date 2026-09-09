@@ -1440,5 +1440,7 @@ namespace ToolKit
       m_commandExecutors[command] = executor;
     }
 
+    const StringArray& ConsoleWindow::GetCommandList() const { return m_commands; }
+
   } // namespace Editor
 } // namespace ToolKit

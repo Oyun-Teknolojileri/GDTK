@@ -122,6 +122,13 @@ namespace ToolKit
       void ExecCommand(const String& commandLine);
       void ParseCommandLine(const String& commandLine, String& command, TagArgArray& tagArgs);
 
+      /**
+       * Returns the names of the commands that are registered for execution.
+       * The list is populated by CreateCommand and shared with other UI that
+       * offers command line entry (e.g. the viewport command palette).
+       */
+      const StringArray& GetCommandList() const;
+
      private:
       // Command line word processing. Auto-complete and history lookups.
       int TextEditCallback(ImGuiInputTextCallbackData* data);

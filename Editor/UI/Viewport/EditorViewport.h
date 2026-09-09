@@ -90,6 +90,16 @@ namespace ToolKit
                           EntityPtr* dwMesh,
                           LineBatchPtr* boundingBox);
 
+      // Command palette. Space opens a command line popup over the viewport,
+      // a lightweight alternative to the console window.
+      bool ShouldOpenCommandPalette() const;
+      void OpenCommandPalette();
+      void CloseCommandPalette();
+      void ShowCommandPalette();
+      void RunCommandPalette();
+      int CommandPaletteTextCallback(ImGuiInputTextCallbackData* data);
+      StringArray FilterCommandPaletteMatches(const String& token) const;
+
      public:
       // Window properties.
       static std::vector<class OverlayUI*> m_overlays;
@@ -114,6 +124,14 @@ namespace ToolKit
      private:
       // States.
       bool m_relMouseModBegin = true;
+
+      // Command palette states.
+      bool m_commandPaletteOpen        = false;
+      bool m_commandPaletteNeedsFocus  = false;
+      bool m_commandPaletteScrollToSel = false;
+      String m_commandPaletteText;
+      String m_commandPaletteLastToken;
+      int m_commandPaletteSelection = 0;
     };
 
   } // namespace Editor
