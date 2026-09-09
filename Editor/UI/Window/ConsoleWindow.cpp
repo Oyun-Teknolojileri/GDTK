@@ -688,6 +688,78 @@ namespace ToolKit
       }
     }
 
+    void AlignToView(TagArgArray tagArgs)
+    {
+      // The camera of the active viewport defines the view to align to.
+      EditorViewportPtr viewport = GetApp()->GetActiveViewport();
+      if (viewport == nullptr)
+      {
+        return;
+      }
+
+      CameraPtr cam = viewport->GetCamera();
+      if (cam == nullptr)
+      {
+        return;
+      }
+
+      EditorScenePtr scene = GetApp()->GetCurrentScene();
+      if (scene == nullptr)
+      {
+        return;
+      }
+
+      EntityPtrArray selected, roots;
+      scene->GetSelectedEntities(selected);
+      GetRootEntities(selected, roots);
+      if (roots.empty())
+      {
+        GetApp()->GetConsole()->AddLog(g_noValidEntity, LogType::Error);
+        return;
+      }
+
+      // Copy the camera pose (position & orientation) onto the root entities of
+      // the selection, like Unity's Align With View. Scale is preserved.
+      const Vec3 translation  = cam->m_node->GetTranslation(TransformationSpace::TS_WORLD);
+      const Quaternion orient = cam->m_node->GetOrientation(TransformationSpace::TS_WORLD);
+
+      int actionCount = 0;
+      for (EntityPtr ntt : roots)
+      {
+        if (!ntt->GetTransformLockVal())
+        {
+          actionCount++;
+        }
+      }
+
+      if (actionCount == 0)
+      {
+        return;
+      }
+
+      if (roots.size() > 1)
+      {
+        ActionManager::GetInstance()->BeginActionGroup();
+      }
+
+      for (EntityPtr ntt : roots)
+      {
+        if (ntt->GetTransformLockVal())
+        {
+          continue;
+        }
+
+        ActionManager::GetInstance()->AddAction(new TransformAction(ntt));
+        ntt->m_node->SetTranslation(translation, TransformationSpace::TS_WORLD);
+        ntt->m_node->SetOrientation(orient, TransformationSpace::TS_WORLD);
+      }
+
+      if (roots.size() > 1)
+      {
+        ActionManager::GetInstance()->GroupLastActions(actionCount);
+      }
+    }
+
     // ImGui ripoff. Portable helpers.
     static int Stricmp(const char* str1, const char* str2)
     {
@@ -752,6 +824,7 @@ namespace ToolKit
       CreateCommand(g_showBVHNodes, ShowBVHNodes);
       CreateCommand(g_deleteSelection, DeleteSelection);
       CreateCommand(g_selectSimilar, SelectSimilar);
+      CreateCommand(g_alignToViewCmd, AlignToView);
     }
 
     ConsoleWindow::~ConsoleWindow() {}
