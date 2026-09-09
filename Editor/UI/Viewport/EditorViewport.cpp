@@ -106,7 +106,17 @@ namespace ToolKit
       }
 
       // Update viewport mods.
-      if (GetApp()->m_gameMod != GameMod::Playing)
+      bool applyMods = true;
+      if (GetApp()->m_gameMod == GameMod::Playing)
+      {
+        // Apply mods only if the active viewport is not the simulation viewport.
+        if (GetApp()->GetActiveViewport() == GetApp()->GetSimulationViewport())
+        {
+          applyMods = false;
+        }
+      }
+
+      if (applyMods)
       {
         FpsNavigationMod(deltaTime);
         OrbitPanMod(deltaTime);

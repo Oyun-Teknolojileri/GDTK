@@ -162,6 +162,15 @@ namespace ToolKit
       App* app                            = m_params.App;
       m_camera                            = m_params.Viewport->GetCamera();
 
+      // Override lit mode for simulation.
+      if (app->m_gameMod == GameMod::Playing)
+      {
+        if (m_params.Viewport == app->GetSimulationViewport().get())
+        {
+          m_params.LitMode = EditorLitMode::Game;
+        }
+      }
+
       const PostProcessingSettingsPtr pps = GetEngineSettings().m_postProcessing;
 
       // Adjust scene lights.
