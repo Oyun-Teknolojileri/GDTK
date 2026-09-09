@@ -407,14 +407,6 @@ namespace ToolKit
     // Updates all the records in the player and returns true if record needs to be removed.
     auto updateRecordsFn = [&](AnimRecordPtr record) -> bool
     {
-      // File name only (no folder) for readable debug logs.
-      auto animName = [record]() -> String
-      {
-        const String& file = (record->m_animation != nullptr) ? record->m_animation->GetFile() : String();
-        size_t sep         = file.find_last_of('/');
-        return (sep != String::npos) ? file.substr(sep + 1) : file;
-      };
-
       if (record->m_state == AnimRecord::State::Pause)
       {
         return false;
@@ -452,20 +444,10 @@ namespace ToolKit
 
           if (record->m_blendingData.blendCurrentDurationInSec < 0.0)
           {
-            // Debug aid: the outgoing clip finished its fade-out and is being
-            // dropped from the player. Confirms a smooth transition actually
-            // ran for its full configured duration.
-            TK_LOG("AnimBlend: '%s' faded out after %.2f s.",
-                   animName().c_str(),
-                   record->m_blendingData.blendTotalDurationInSec);
+            // The outgoing clip finished its fade-out and is dropped from the
+            // player.
             return true;
           }
-
-          // Debug aid: log the fade-out progress every frame so the walk clip
-          // transitions can be verified to crossfade with the right duration.
-          TK_LOG("AnimBlend: fading out '%s', remaining %.2f s.",
-                 animName().c_str(),
-                 record->m_blendingData.blendCurrentDurationInSec);
         }
       }
 
