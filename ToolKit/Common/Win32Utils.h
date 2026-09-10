@@ -404,7 +404,7 @@ namespace ToolKit
       // calls from the child (especially when the caller is a GUI app
       // that currently holds foreground). Using the child's PID rather
       // than ASFW_ANY keeps the grant scoped and lets multi-window
-      // children (e.g. splash → main window transitions) retain the
+      // children (e.g. splash -> main window transitions) retain the
       // right across window lifecycles.
       ::AllowSetForegroundWindow(pi.dwProcessId);
 
@@ -570,8 +570,20 @@ namespace ToolKit
       return (void*) GetProcAddress((HMODULE) module, func.data());
     }
 
-    inline void UpdateAppIcon()
+    // Re-applies the icon embedded in the executable (Editor.rc ->
+    // MAIN_ICON, id 102) to the window SDL created, which drops the icon
+    // the Win32 window class registered.
+    //
+    // nativeWindow carries the SDL_Window* the host created and is unused
+    // here: Win32 reads the icon from the module's resource section and
+    // resolves the HWND itself, while the Linux implementation needs the
+    // window handle to publish the PNG through SDL. The parameter exists
+    // so the single call site in main.cpp reads the same on both
+    // platforms.
+    inline void UpdateAppIcon(void* nativeWindow = nullptr)
     {
+      (void) nativeWindow;
+
       HINSTANCE handle = ::GetModuleHandle(nullptr);
 
       // MAIN_ICON is defined as 102 in Editor.rc

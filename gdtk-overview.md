@@ -545,6 +545,37 @@ Editor version of `Renderer` path. Adds `GizmoPass` and editor grid pass. Multip
 ### 9.5 EditorScene (Editor/EditorScene.h)
 Subclass of `Scene` with editor-specific additions (e.g. handles entity picking + gizmo update each frame).
 
+### 9.6 Application icon
+
+The window / task bar icon is applied by one `PlatformHelpers::UpdateAppIcon(g_window)` call in
+`Editor/Source/main.cpp`, right after SDL shows the window (SDL owns the window on both
+platforms, so the icon has to be re-applied through SDL). Only the image source differs:
+
+| Platform | Source | Mechanism |
+|---|---|---|
+| Windows | `Resources/Engine/Textures/Icons/app.ico` | Embedded in the executable by `Editor/Editor.rc` (`MAIN_ICON`, id 102), re-sent with `WM_SETICON` (`ToolKit/Common/Win32Utils.h`) |
+| Linux | `Resources/Engine/Textures/Icons/app_big.png` (270x248) | Loaded at runtime with `ImageLoadTopDown` and published through `SDL_SetWindowIcon` as `_NET_WM_ICON` (`ToolKit/Common/LinuxUtils.h`) |
+
+The Linux path loads through `ImageLoadTopDown` (`ToolKit/Render/Image.h`) rather than `ImageLoad`:
+`RenderSystem::InitGraphics` turns the engine's vertical flip switch on for the GL texture path
+(texture origin is bottom-left, see `ImageSetVerticalOnLoad`), so a plain `ImageLoad` hands back
+bottom-up rows and the task bar would render the icon upside down. `ImageLoadTopDown` turns the
+switch off for its own load and restores it immediately, so the GL path is unaffected.
+
+`PlatformHelpers::GetAppIconFile()` resolves the PNG relative to the executable
+(`<exe dir>/../Resources/Engine/Textures/Icons/app_big.png`) instead of the working directory, so
+the icon also resolves when the editor is started from a `.desktop` entry or a file manager.
+`CreateProjectShortcutOnDesktop` writes that same path into the `Icon=` key of the desktop entry
+it generates. `app_big.png` and `app.png` are the same artwork; `app_big.png` is 2.8x the
+resolution but a tight crop (aspect 1.089), while `app.png` is the same logo padded into a square
+96x96 canvas. The higher resolution is what the 64-256 px sizes of a HiDPI task bar need, so
+`app_big.png` is the one wired up; swapping the file name in `GetAppIconFile()` switches back.
+
+Linux runs on X11 by design: SDL2 is configured with the X11 video driver and Wayland
+intentionally off (see `Dependency/CMakeLists.txt`), which is what makes `SDL_SetWindowIcon`
+work at all -- a Wayland native build would have to take the icon from a `.desktop` file matched
+by app id instead.
+
 ---
 
 ## 10. Threading (Threads.h)
@@ -723,6 +754,7 @@ When writing/editing any `.h`/`.cpp` in this repo:
 | Threads / Worker | `ToolKit/Threads.h` |
 | Editor app | `Editor/App.h` |
 | Editor renderer | `Editor/EditorRenderer.h` |
+| Host / platform glue (exec paths, shortcuts, app icon) | `ToolKit/Common/PlatformHelper.h` |
 | Workspace | `Workspace/Workspace.vcxproj` |
 | Build deps | `BuildScripts/build_dependencies.py` |
 | Dep wrapper (assimp name fix, output dirs) | `Dependency/CMakeLists.txt` |

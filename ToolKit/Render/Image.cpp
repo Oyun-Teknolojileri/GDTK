@@ -24,10 +24,38 @@
 
 namespace ToolKit
 {
+  namespace
+  {
+    // stb_image keeps its flip switch private, so the engine mirrors it here to
+    // know which row order ImageLoad is producing. Only
+    // ImageSetVerticalOnLoad may write it.
+    bool s_verticalFlipOnLoad = false;
+  } // namespace
 
   ubyte* ImageLoad(StringView filename, int* x, int* y, int* comp, int req_comp)
   {
     return stbi_load(filename.data(), x, y, comp, req_comp);
+  }
+
+  ubyte* ImageLoadTopDown(StringView filename, int* x, int* y, int* comp, int req_comp)
+  {
+    // Load with the engine's flip switch off, then put it back: the switch is a
+    // property of the GL texture path (bottom-left origin), while the caller
+    // wants the row order the file has.
+    const bool flipOnLoad = s_verticalFlipOnLoad;
+    if (flipOnLoad)
+    {
+      ImageSetVerticalOnLoad(false);
+    }
+
+    ubyte* pixels = ImageLoad(filename, x, y, comp, req_comp);
+
+    if (flipOnLoad)
+    {
+      ImageSetVerticalOnLoad(true);
+    }
+
+    return pixels;
   }
 
   float* ImageLoadF(StringView filename, int* x, int* y, int* comp, int req_comp)
@@ -76,7 +104,11 @@ namespace ToolKit
     return stbi_write_hdr(filename.data(), x, y, comp, data);
   }
 
-  void ImageSetVerticalOnLoad(bool val) { stbi_set_flip_vertically_on_load(val); }
+  void ImageSetVerticalOnLoad(bool val)
+  {
+    s_verticalFlipOnLoad = val;
+    stbi_set_flip_vertically_on_load(val);
+  }
 
   void ImageFree(void* img) { stbi_image_free(img); }
 

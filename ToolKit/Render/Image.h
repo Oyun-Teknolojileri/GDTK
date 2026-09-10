@@ -13,6 +13,14 @@ namespace ToolKit
 {
 
   TK_API ubyte* ImageLoad(StringView filename, int* x, int* y, int* comp, int reqComp);
+
+  // Same as ImageLoad, but the returned rows keep the order the file has (top
+  // row first) instead of following the engine's vertical flip switch that
+  // ImageSetVerticalOnLoad toggles. That switch exists for the GL texture path,
+  // whose origin is bottom-left; consumers outside it (a window icon, a UI
+  // thumbnail) want the file's own row order.
+  TK_API ubyte* ImageLoadTopDown(StringView filename, int* x, int* y, int* comp, int reqComp);
+
   TK_API float* ImageLoadF(StringView filename, int* x, int* y, int* comp, int reqComp);
   TK_API ubyte* ImageLoadFromMemory(const ubyte* buffer, int len, int* x, int* y, int* comp, int reqComp);
   TK_API float* ImageLoadFromMemoryF(const ubyte* buffer, int len, int* x, int* y, int* comp, int reqComp);

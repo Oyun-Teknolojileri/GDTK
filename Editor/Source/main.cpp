@@ -383,7 +383,15 @@ namespace ToolKit
             SDL_ShowWindow(g_window);
             SDL_SetWindowBordered(g_window, SDL_TRUE);
             SDL_SetWindowResizable(g_window, SDL_TRUE);
-            PlatformHelpers::UpdateAppIcon(); // Sdl wipes the editor icon. This fixes it.
+            // SDL owns the window on both platforms, so the application
+            // icon has to be applied through SDL once the window exists.
+            // Windows re-sends WM_SETICON with the icon Editor.rc embeds
+            // in the executable; Linux publishes the engine's app.png as
+            // _NET_WM_ICON, which is what the title bar and the task bar
+            // render. The window is passed for the Linux side and ignored
+            // by the Win32 one -- see Common/LinuxUtils.h and
+            // Common/Win32Utils.h.
+            PlatformHelpers::UpdateAppIcon(g_window);
 
             // Register update functions
             TKUpdateFn preUpdateFn = [](float deltaTime)

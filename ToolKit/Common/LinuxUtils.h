@@ -17,8 +17,10 @@
   #error "LinuxUtils.h is the non-Windows implementation; do not include on _WIN32."
 #endif
 
+#include "Image.h"
 #include "Types.h"
 
+#include <SDL.h>
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <spawn.h>
@@ -516,10 +518,92 @@ namespace ToolKit
       return dlsym(module, funcStr.c_str());
     }
 
-    // SDL drives the editor window on Linux; there is no separate Win32
-    // HWND icon to set after SDL wipes ours. Kept as a no-op for API
-    // symmetry.
-    inline void UpdateAppIcon() {}
+    // Absolute path of the PNG used as the application icon: the Linux
+    // counterpart of the icon Windows embeds in the executable through
+    // Editor.rc (MAIN_ICON / app.ico).
+    //
+    // Resolved from the running executable instead of the process
+    // working directory so it keeps working when the editor is started
+    // from a .desktop entry or a file manager:
+    //   <exe dir>/../Resources/Engine/Textures/Icons/app_big.png
+    // which is the engine asset root in both the build tree (Bin<Config>
+    // next to Resources/) and a staged `cmake --install` tree.
+    //
+    // app_big.png is the same artwork as app.png at 2.8x the resolution
+    // (270x248 against 96x96), which is what keeps the icon sharp at the
+    // sizes a task bar or a dock asks for (64 to 256 px on a HiDPI
+    // desktop). It is a tight crop rather than a padded square, so its
+    // aspect is 1.089; window managers scale a window icon with the
+    // aspect kept, so that only costs a sliver of transparent pixels on
+    // one axis. app.png next to it is the same logo padded into a square
+    // 96x96 canvas -- swap the name here if the padded framing is worth
+    // more than the resolution.
+    inline String GetAppIconFile()
+    {
+      std::filesystem::path icon = std::filesystem::path(GetExecutableDirectory()) / ".." / "Resources" / "Engine" /
+                                   "Textures" / "Icons" / "app_big.png";
+      return PathToString(icon.lexically_normal());
+    }
+
+    // Publishes the application icon on the SDL window the host created.
+    //
+    // Windows carries the icon in the executable's resource section, so
+    // re-sending WM_SETICON is enough. A Linux executable has no icon in
+    // the ELF image: the icon is a runtime window property
+    // (_NET_WM_ICON), which is what both the window manager's title bar
+    // decoration and the task bar render. SDL_SetWindowIcon is the API
+    // that writes it, so the PNG is loaded here and handed to SDL.
+    //
+    // nativeWindow is the SDL_Window* the host created. SDL copies the
+    // icon data into the window, so the surface and the pixel buffer are
+    // released right after the call.
+    //
+    // Wayland note: xdg-shell has no window icon request, so on a Wayland
+    // session SDL ignores the call and the compositor matches the window
+    // against a .desktop file instead. That is a protocol limitation, not
+    // a failure of this helper, so no warning is emitted.
+    inline void UpdateAppIcon(void* nativeWindow = nullptr)
+    {
+      SDL_Window* window = static_cast<SDL_Window*>(nativeWindow);
+      if (window == nullptr)
+      {
+        return;
+      }
+
+      const String iconFile = GetAppIconFile();
+      int width             = 0;
+      int height            = 0;
+      int channels          = 0;
+
+      // 4 channels: ImageLoad always hands back tightly packed, non
+      // premultiplied RGBA data.
+      // ImageLoadTopDown, not ImageLoad: RenderSystem::InitGraphics turns the
+      // engine's vertical flip switch on for the GL texture path (bottom-left
+      // origin), and an icon published on a window has to keep the top row the
+      // file starts with.
+      ubyte* pixels         = ImageLoadTopDown(iconFile.c_str(), &width, &height, &channels, 4);
+      if (pixels == nullptr)
+      {
+        TK_WRN("UpdateAppIcon: cannot load the application icon \"%s\".", iconFile.c_str());
+        return;
+      }
+
+      // SDL_PIXELFORMAT_RGBA32 is the format whose byte order matches the
+      // R,G,B,A sequence ImageLoad produces, on both endiannesses.
+      SDL_Surface* icon =
+          SDL_CreateRGBSurfaceWithFormatFrom(pixels, width, height, 32, width * 4, SDL_PIXELFORMAT_RGBA32);
+      if (icon != nullptr)
+      {
+        SDL_SetWindowIcon(window, icon);
+        SDL_FreeSurface(icon);
+      }
+      else
+      {
+        TK_WRN("UpdateAppIcon: cannot create an SDL surface for \"%s\": %s.", iconFile.c_str(), SDL_GetError());
+      }
+
+      ImageFree(pixels);
+    }
 
     // Create a desktop entry that launches the current editor
     // executable. On Linux the "shortcut" is a freedesktop.org .desktop
@@ -570,6 +654,16 @@ namespace ToolKit
         file << " " << arguments;
       }
       file << "\n";
+      // Icon= replaces the icon the Windows shortcut (.lnk) inherits from
+      // the executable. It has to be an absolute path: a bare name is
+      // looked up in the XDG icon theme, where the editor is not
+      // installed. Only written when the PNG actually exists so the
+      // desktop entry never points at a missing file.
+      const String iconFile = GetAppIconFile();
+      if (std::filesystem::exists(iconFile))
+      {
+        file << "Icon=" << iconFile << "\n";
+      }
       file << "Terminal=false\n";
       file.close();
 
