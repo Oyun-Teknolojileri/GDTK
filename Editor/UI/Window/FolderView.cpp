@@ -5,8 +5,8 @@
  * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
-#include "App.h"
 #include "AnimationView.h"
+#include "App.h"
 #include "ConsoleWindow.h"
 #include "EditorScene.h"
 #include "FolderWindow.h"
@@ -121,11 +121,15 @@ namespace ToolKit
 
     void FolderView::PasteFiles(const String& path)
     {
+      bool pastedDirectory = false;
+
       for (size_t i = 0ull; i < g_coppiedFiles.size(); ++i)
       {
-        DirectoryEntry* entry = g_coppiedFiles[i];
-        String src            = entry->GetFullPath();
-        String dst            = ConcatPaths({path, entry->m_fileName + entry->m_ext});
+        DirectoryEntry* entry  = g_coppiedFiles[i];
+        String src             = entry->GetFullPath();
+        String dst             = ConcatPaths({path, entry->m_fileName + entry->m_ext});
+
+        pastedDirectory       |= entry->m_isDirectory;
 
         if (g_copyingFiles)
         {
@@ -154,6 +158,12 @@ namespace ToolKit
       for (FolderWindow* window : GetApp()->GetAssetBrowsers())
       {
         window->SetViewsDirty();
+
+        // A pasted folder adds a whole branch to the hierarchy.
+        if (pastedDirectory)
+        {
+          window->SetTreeDirty();
+        }
       }
     }
 
@@ -448,8 +458,8 @@ namespace ToolKit
               }
               else if (rm->m_baseType == Animation::StaticClass())
               {
-                AnimationPtr anim               = rm->Create<Animation>(dirEnt.GetFullPath());
-                AnimationWindowPtr animWindow   = MakeNewPtr<AnimationWindow>();
+                AnimationPtr anim             = rm->Create<Animation>(dirEnt.GetFullPath());
+                AnimationWindowPtr animWindow = MakeNewPtr<AnimationWindow>();
                 animWindow->SetAnimation(anim);
                 animWindow->AddToUI();
               }
@@ -576,6 +586,13 @@ namespace ToolKit
         root         = m_path.substr(0, resourceLoc);
       }
 
+      // The resources folder itself is a root, there is no folder one level
+      // under Resources that could be returned for it.
+      if (root.empty())
+      {
+        root = m_path;
+      }
+
       return root;
     }
 
@@ -601,7 +618,7 @@ namespace ToolKit
       }
 
       // Non-throwing iterator: an unreadable entry (e.g. broken symlink, perm
-      // denied) yields error_code set and e == end() — we simply skip it.
+      // denied) yields error_code set and e == end(), so we simply skip it.
       std::error_code iterEc;
       for (auto it = std::filesystem::directory_iterator(m_path, iterEc); !iterEc && it != std::filesystem::end(it);
            it.increment(iterEc))
@@ -820,7 +837,9 @@ namespace ToolKit
           {
             view->m_dirty = true;
           }
-          thisView->m_parent->ReconstructFolderTree();
+          // Folders can be added / removed outside of the editor, the tree has
+          // to be read back from the file system.
+          thisView->m_parent->SetTreeDirty();
           ImGui::CloseCurrentPopup();
         }
       };
@@ -849,10 +868,11 @@ namespace ToolKit
             {
               view->m_dirty = true;
             }
+            // The directory exists now, add it to the hierarchy as well.
+            views[0]->m_parent->SetTreeDirty();
           };
           inputWnd->AddToUI();
 
-          thisView->m_parent->ReconstructFolderTree();
           ImGui::CloseCurrentPopup();
         }
       };
@@ -920,7 +940,7 @@ namespace ToolKit
           if (entry->m_isDirectory)
           {
             deleteDirFn(entry->GetFullPath(), thisView);
-            thisView->m_parent->ReconstructFolderTree();
+            thisView->m_parent->SetTreeDirty();
           }
           else
           {
@@ -959,7 +979,7 @@ namespace ToolKit
           String fullPath = entry->GetFullPath();
           String cpyPath  = CreateIncrementalFileFullPath(fullPath);
           std::filesystem::copy(fullPath, cpyPath);
-          thisView->m_parent->ReconstructFolderTree();
+          thisView->m_parent->SetTreeDirty();
 
           for (FolderView* view : views)
           {
@@ -995,7 +1015,7 @@ namespace ToolKit
         if (ImGui::MenuItem("Paste"))
         {
           PasteFiles(thisView->m_path);
-          thisView->m_parent->ReconstructFolderTree();
+          thisView->m_parent->SetTreeDirty();
           ImGui::CloseCurrentPopup();
         }
       };
@@ -1035,7 +1055,7 @@ namespace ToolKit
               }
             }
           };
-          thisView->m_parent->ReconstructFolderTree();
+          thisView->m_parent->SetTreeDirty();
           ImGui::CloseCurrentPopup();
         }
       };
@@ -1097,7 +1117,7 @@ namespace ToolKit
                 materialManager->Manage(material);
               }
             };
-            thisView->m_parent->ReconstructFolderTree();
+            thisView->m_parent->SetTreeDirty();
             ImGui::CloseCurrentPopup();
           };
 
@@ -1149,6 +1169,12 @@ namespace ToolKit
             m_parent->GetView(indx).m_dirty = true;
           }
           m_dirty = true;
+
+          // Moving a folder relocates a whole branch of the hierarchy.
+          if (entry.m_isDirectory)
+          {
+            m_parent->SetTreeDirty();
+          }
         }
       }
 

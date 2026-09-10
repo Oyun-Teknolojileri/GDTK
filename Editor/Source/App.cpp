@@ -1141,12 +1141,17 @@ namespace ToolKit
           {
             mesh = GetMeshManager()->Create<Mesh>(meshFile);
           }
+        }
 
-          FolderWindowRawPtrArray folderWindows = g_app->GetAssetBrowsers();
-          for (FolderWindow* folderWnd : folderWindows)
-          {
-            folderWnd->UpdateContent();
-          }
+        // The importer creates a folder per resource type (Textures, Materials,
+        // Meshes, Prefabs) plus the sub directory it was given. Re-list the
+        // folders that are already known and rebuild the hierarchies so that the
+        // new ones show up in the asset browsers without a manual refresh.
+        FolderWindowRawPtrArray folderWindows = g_app->GetAssetBrowsers();
+        for (FolderWindow* folderWnd : folderWindows)
+        {
+          folderWnd->UpdateContent();
+          folderWnd->SetTreeDirty();
         }
 
         UI::SearchFileData.showSearchFileWindow = false;

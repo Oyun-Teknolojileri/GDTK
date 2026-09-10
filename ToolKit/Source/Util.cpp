@@ -331,7 +331,7 @@ namespace ToolKit
       path += "/";
     }
 
-    path += entries.back();   // Add the last entry
+    path += entries.back();     // Add the last entry
     NormalizePathInplace(path); // Make sure all path is normalized.
 
     return path;
@@ -375,9 +375,16 @@ namespace ToolKit
       }
       else
       {
-        String rel = path.substr(root.length() + 1);
+        // A path that is the root itself has nothing relative to it. Taking the
+        // substring one character past the end would throw.
+        String rel;
+        if (path.length() > root.length())
+        {
+          rel = path.substr(root.length() + 1);
+        }
+
         // Extract the root layer. Mesh, Texture ect...
-        exist      = rel.find(GetPathSeparator());
+        exist = rel.find(GetPathSeparator());
         if (exist != String::npos)
         {
           if (rootFolder != nullptr)
@@ -387,7 +394,7 @@ namespace ToolKit
           rel = rel.substr(exist + 1);
         }
 
-        if (toolKit)
+        if (toolKit && !rel.empty())
         {
           //  Any relative path starting with ToolKit root directory
           //  will be search in the default path.

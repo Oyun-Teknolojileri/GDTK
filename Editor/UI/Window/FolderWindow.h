@@ -40,7 +40,11 @@ namespace ToolKit
       void SetPath(const String& path);
       const String& GetPath() const;
 
-      /** Root part of the path is returned. Root is one level after Resource. Ex: ".../Resource/Audio" */
+      /**
+       * Root part of the path is returned. Root is one level after Resource.
+       * Ex: ".../Resource/Audio". For the resources folder itself there is no
+       * level after Resources, so its own path is returned.
+       */
       String GetRoot() const;
 
       void Iterate();
@@ -48,7 +52,9 @@ namespace ToolKit
       void ShowContextMenu(DirectoryEntry* entry = nullptr);
       void Refresh();
       float GetThumbnailZoomPercent(float thumbnailZoom);
-      int SelectFolder(FolderWindow* window, const String& path);
+
+      /** Selects the given folder, creates a folder view for it if it has none yet. */
+      static int SelectFolder(FolderWindow* window, const String& path);
       void DropFiles(const String& dst); //!< drop selectedFiles
 
       static const FileDragData& GetFileDragData();
@@ -129,6 +135,12 @@ namespace ToolKit
       void AddEntry(FolderView& view);
       /** Invalidates all views which causes them to be re filled with file content. */
       void SetViewsDirty();
+      /**
+       * Marks the folder hierarchy dirty. The tree is rebuilt from the file system
+       * right before it is drawn next time, which makes it safe to call while the
+       * tree or a folder view is still being iterated over.
+       */
+      void SetTreeDirty();
       /** Reconstructs hierarchic folder tree. */
       void ReconstructFolderTree();
       /** Iterates the folders in the resource path. */
@@ -147,7 +159,8 @@ namespace ToolKit
       void UpdateCurrentRoot();
 
       void ShowFolderTree();
-      int CreateTreeRec(int parent, const String& path);
+      /** Adds the folder hierarchy under the given path to the tree, returns the index of its root node. */
+      int CreateTreeRec(const String& path);
       void DrawTreeRec(int index, float depth);
       void Iterate(const String& path, bool clear, bool addEngine = true);
 
@@ -174,7 +187,10 @@ namespace ToolKit
       float m_maxTreeNodeWidth = 160.0f;
       /**  Whether show the tree structure of the resource. */
       bool m_showStructure     = true;
-      int m_resourcesTreeIndex = 0;
+      /** Root nodes of m_folderNodes in display order, the project resources next to the engine ones. */
+      IntArray m_treeRoots;
+      /** States if the hierarchy needs to be rebuilt before it is drawn next time. */
+      bool m_treeDirty = false;
     };
 
   } // namespace Editor

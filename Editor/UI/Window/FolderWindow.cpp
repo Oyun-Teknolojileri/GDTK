@@ -67,31 +67,99 @@ namespace ToolKit
     // destroy old one and create new tree
     void FolderWindow::ReconstructFolderTree()
     {
+      // A pending rebuild request is satisfied by this one.
+      m_treeDirty = false;
+
       m_folderNodes.clear();
-      CreateTreeRec(-1, DefaultPath());
-      m_resourcesTreeIndex = (int) m_folderNodes.size();
-      CreateTreeRec(int(m_folderNodes.size()) - 1, ResourcePath());
+      m_treeRoots.clear();
+
+      // Engine resources.
+      int engineRoot   = CreateTreeRec(DefaultPath());
+
+      // Project resources. Without an active workspace ResourcePath() falls back
+      // to DefaultPath(), adding it again would list the engine folders twice.
+      int resourceRoot = -1;
+      if (ResourcePath() != DefaultPath())
+      {
+        resourceRoot = CreateTreeRec(ResourcePath());
+      }
+
+      // Project resources are shown above the engine ones. A root that isn't a
+      // readable directory is left out of the tree completely.
+      if (resourceRoot != -1)
+      {
+        m_treeRoots.push_back(resourceRoot);
+      }
+
+      if (engineRoot != -1)
+      {
+        m_treeRoots.push_back(engineRoot);
+      }
     }
 
-    void FolderWindow::IterateFolders(bool includeEngine) { Iterate(ResourcePath(), true, includeEngine); }
-
-    // parent will start with -1
-    int FolderWindow::CreateTreeRec(int parent, const String& path)
+    void FolderWindow::IterateFolders(bool includeEngine)
     {
+      // Keep showing the folder the user is in. Iterate() rebuilds the entries
+      // and resets the active folder, so it has to be restored by path.
+      String activePath;
+      if (FolderView* activeView = GetActiveView())
+      {
+        activePath = activeView->GetPath();
+      }
+
+      Iterate(ResourcePath(), true, includeEngine);
+
+      if (!activePath.empty())
+      {
+        int indx = Exist(activePath);
+        if (indx != -1)
+        {
+          m_activeFolder = indx;
+        }
+      }
+    }
+
+    // Adds the folder hierarchy under the given path, returns its root's node index.
+    // Returns -1 when the path isn't a readable directory.
+    int FolderWindow::CreateTreeRec(const String& path)
+    {
+      std::error_code pathEc;
+      if (!std::filesystem::is_directory(path, pathEc) || pathEc)
+      {
+        TK_ERR("FolderWindow::CreateTreeRec: '%s' is not a directory (%s).",
+               path.c_str(),
+               pathEc ? pathEc.message().c_str() : "path missing");
+        return -1;
+      }
+
       String folderName = GetFileName(path);
       int index         = (int) m_folderNodes.size();
       m_folderNodes.emplace_back(index, ToAbsolutePath(path), folderName);
 
-      for (const std::filesystem::directory_entry& directory : std::filesystem::directory_iterator(path))
+      // Non-throwing iterator, a single unreadable entry won't kill the tree.
+      std::error_code iterEc;
+      for (auto it = std::filesystem::directory_iterator(path, iterEc); !iterEc && it != std::filesystem::end(it);
+           it.increment(iterEc))
       {
-        if (!directory.is_directory())
+        const std::filesystem::directory_entry& directory = *it;
+
+        std::error_code entEc;
+        if (!directory.is_directory(entEc) || entEc)
         {
           continue;
         }
 
         String subDir = NormalizePath(PathToString(directory.path()));
-        int childIdx  = CreateTreeRec(parent + 1, subDir);
-        m_folderNodes[index].childs.push_back(childIdx);
+        int childIdx  = CreateTreeRec(subDir);
+        if (childIdx != -1)
+        {
+          m_folderNodes[index].childs.push_back(childIdx);
+        }
+      }
+
+      if (iterEc)
+      {
+        TK_ERR("FolderWindow::CreateTreeRec failed to iterate '%s': %s", path.c_str(), iterEc.message().c_str());
       }
 
       return index;
@@ -101,12 +169,15 @@ namespace ToolKit
 
     void FolderWindow::DrawTreeRec(int index, float depth)
     {
-      if (index == -1)
+      // A node is missing when the tree is empty or when the folder vanished
+      // with the last rebuild. Guards against a stale index as well.
+      if (index < 0 || index >= (int) m_folderNodes.size())
       {
-        return; // shouldn't happen
+        return;
       }
 
       FolderNode& node        = m_folderNodes[index];
+      FolderView* activeView  = GetActiveView();
       IntArray ascendantViews = GetAscendants();
 
       // Check all ascendants to set their icons open.
@@ -115,7 +186,11 @@ namespace ToolKit
       {
         folderOpen |= node.path == m_entries[i].GetPath();
       }
-      folderOpen             |= node.path == m_entries[m_activeFolder].GetRoot(); // Include current root as well.
+
+      if (activeView != nullptr)
+      {
+        folderOpen |= node.path == activeView->GetRoot(); // Include current root as well.
+      }
 
       String icon             = folderOpen ? ICON_FA_FOLDER_OPEN_A : ICON_FA_FOLDER_A;
       String nodeHeader       = icon + ICON_SPACE + node.name;
@@ -126,12 +201,11 @@ namespace ToolKit
 
       const auto onClickedFn  = [&]() -> void
       {
-        // find clicked entity
-        int selected = Exist(node.path);
-        if (selected != -1)
-        {
-          SetActiveView(selected);
-        }
+        // SelectFolder creates a view for the clicked folder when it has none
+        // yet. Folders that came to existence after the last full iteration
+        // (an import target, a new directory, a paste) have a tree node but no
+        // view, without this a click on them would silently do nothing.
+        FolderView::SelectFolder(this, node.path);
       };
 
       const auto acceptDrop = [&]() -> void
@@ -150,7 +224,9 @@ namespace ToolKit
       };
 
       ImGuiTreeNodeFlags nodeFlags = g_treeNodeFlags;
-      String stdId                 = "##" + std::to_string(index);
+      // Ids are derived from the folder path instead of the node index, so the
+      // expanded / collapsed state survives a rebuild of the tree.
+      String stdId                 = "##" + node.path;
 
       if (node.childs.size() == 0)
       {
@@ -204,8 +280,10 @@ namespace ToolKit
       // reset tree node default size
       m_maxTreeNodeWidth = 160.0f;
       // draw tree of folders
-      DrawTreeRec(m_resourcesTreeIndex, 0.0f);
-      DrawTreeRec(0, 0.0f);
+      for (int root : m_treeRoots)
+      {
+        DrawTreeRec(root, 0.0f);
+      }
 
       ImGui::EndChild();
 
@@ -217,11 +295,16 @@ namespace ToolKit
     IntArray FolderWindow::GetAscendants()
     {
       // Find all the sub folders up to the active folder.
-      FolderView& activeFolder = GetView(m_activeFolder);
-      String fullPath          = activeFolder.GetPath();
-      String rootPath          = activeFolder.GetRoot();
+      FolderView* activeFolder = GetActiveView();
+      if (activeFolder == nullptr)
+      {
+        return {};
+      }
 
-      String intermediatePath  = fullPath.substr(rootPath.size());
+      String fullPath         = activeFolder->GetPath();
+      String rootPath         = activeFolder->GetRoot();
+
+      String intermediatePath = fullPath.substr(rootPath.size());
 
       StringArray subDirs;
       Split(intermediatePath, GetPathSeparatorAsStr(), subDirs);
@@ -348,6 +431,16 @@ namespace ToolKit
           return;
         }
 
+        // Rebuild the hierarchy before it is drawn. The rebuild is deferred up
+        // to this point because the request can come from a tree node drop or
+        // from a folder view while it is being drawn, and replacing the nodes
+        // during either of those would invalidate the references in use.
+        if (m_treeDirty)
+        {
+          m_treeDirty = false;
+          ReconstructFolderTree();
+        }
+
         if (m_showStructure)
         {
           ShowFolderTree();
@@ -391,13 +484,6 @@ namespace ToolKit
 
     void FolderWindow::Iterate(const String& path, bool clear, bool addEngine)
     {
-      if (clear)
-      {
-        m_activeFolder = 0;
-        m_entries.clear();
-        ReconstructFolderTree();
-      }
-
       String resourceRoot = ResourcePath();
       char pathSep        = GetPathSeparator();
       int baseCount       = CountChar(resourceRoot, pathSep);
@@ -408,7 +494,9 @@ namespace ToolKit
       String absPath      = ToAbsolutePath(path);
 
       // Guard: directory_iterator throws on a missing/non-directory path.
-      // Bail with a clear log instead of crashing the editor.
+      // Bail with a clear log instead of crashing the editor. This has to run
+      // before the entries are cleared, an early out afterwards would leave the
+      // window without entries while the active folder still points into them.
       std::error_code pathEc;
       if (!std::filesystem::is_directory(absPath, pathEc) || pathEc)
       {
@@ -417,6 +505,13 @@ namespace ToolKit
                absPath.c_str(),
                pathEc ? pathEc.message().c_str() : "path missing");
         return;
+      }
+
+      if (clear)
+      {
+        m_activeFolder = 0;
+        m_entries.clear();
+        ReconstructFolderTree();
       }
 
       // Non-throwing iterator: a single unreadable entry won't kill the loop.
@@ -488,11 +583,15 @@ namespace ToolKit
       }
     }
 
+    void FolderWindow::SetTreeDirty() { m_treeDirty = true; }
+
     FolderView& FolderWindow::GetView(int indx) { return m_entries[indx]; }
 
     FolderView* FolderWindow::GetActiveView()
     {
-      if (m_activeFolder == -1)
+      // m_activeFolder can outlive the entry it points to, a failed iteration
+      // leaves the entries empty for example.
+      if (m_activeFolder < 0 || m_activeFolder >= (int) m_entries.size())
       {
         return nullptr;
       }
