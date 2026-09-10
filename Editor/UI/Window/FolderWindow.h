@@ -61,6 +61,15 @@ namespace ToolKit
 
       static const FileDragData& GetFileDragData();
 
+      /**
+       * Drops the process wide file operation state (selection, clipboard, drag payload).
+       *
+       * The state holds DirectoryEntry* into the m_entries of the FolderViews a FolderWindow owns,
+       * so a FolderWindow must call this from its destructor, otherwise closing an asset browser
+       * leaves dangling pointers behind for every other one to dereference.
+       */
+      static void ReleaseFileOperationState();
+
      private:
       void HandleCopyPasteDelete();
       static void PasteFiles(const String& path);

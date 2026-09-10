@@ -14,6 +14,8 @@ namespace ToolKit
   namespace Editor
   {
 
+    class TransformAction;
+
     class TK_EDITOR_API EntityView : public View
     {
      public:
@@ -24,6 +26,15 @@ namespace ToolKit
 
      protected:
       void ShowAnchorSettings();
+
+     private:
+      /**
+       * Transform action for the widget currently being dragged. Ownership is handed over to the
+       * ActionManager when the edit is committed, which is the only owner from that point on.
+       * Kept as a member instead of a function local static so it cannot keep an Entity alive
+       * past the view, nor leak when the editor is closed mid drag.
+       */
+      TransformAction* m_dragAction = nullptr;
     };
 
   } // namespace Editor

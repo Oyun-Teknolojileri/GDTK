@@ -43,6 +43,11 @@ namespace ToolKit
   SDLEventPool<TK_PLATFORM>* g_sdlEventPool = nullptr;
   GameRenderer* g_gameRenderer              = nullptr;
 
+  // Owned by the game loop, released in Exit() before the engine tears down. It must not be a
+  // function local static: a viewport owns a render target and a framebuffer, so letting process
+  // exit destroy it would release engine resources after ToolKit is gone.
+  ViewportPtr g_viewport                    = nullptr;
+
   // Setup.
   const char* g_appName                     = "ToolKit";
   const uint g_targetFps                    = 120;
@@ -173,7 +178,6 @@ namespace ToolKit
       }
 
       // One-time app initialization (viewport + game) on the first frame.
-      static ViewportPtr g_viewport = nullptr;
       if (g_viewport == nullptr)
       {
         uint width  = g_engineSettings->m_window->GetWidthVal();
@@ -237,11 +241,25 @@ namespace ToolKit
   {
     SafeDel(g_gameRenderer);
 
-    g_game->Destroy();
-    Main::GetInstance()->Uninit();
-    SafeDel(g_proxy);
+    if (g_game != nullptr)
+    {
+      // Game holds the viewport (GamePlugin::SetViewport), so it has to go before the engine.
+      g_game->Destroy();
+      SafeDel(g_game);
+    }
 
+    // Release everything the game keeps alive that owns engine resources. Only the engine
+    // teardown below may outlive them.
+    g_viewport       = nullptr;
+    g_engineSettings = nullptr;
+
+    g_proxy->PreUninit();
+    g_proxy->Uninit();
+    g_proxy->PostUninit();
+
+    SafeDel(g_proxy);
     SafeDel(g_sdlEventPool);
+
     SDL_DestroyWindow(g_window);
     SDL_Quit();
 

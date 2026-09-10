@@ -8,10 +8,12 @@
 #include "App.h"
 
 #include "AndroidBuildWindow.h"
+#include "ComponentView.h"
 #include "ConsoleWindow.h"
 #include "EditorBackendBindings.h"
 #include "EditorCamera.h"
 #include "EditorMetaKeys.h"
+#include "EditorViewport.h"
 #include "EditorViewport2d.h"
 #include "EngineSettingsWindow.h"
 #include "Grid.h"
@@ -227,6 +229,10 @@ namespace ToolKit
       SafeDel(m_publishManager);
       SafeDel(m_thumbnailManager);
 
+      // Release engine resources the editor caches in file scope or class scope statics before
+      // ToolKit tears down, otherwise their destructors run after the engine is gone.
+      EditorViewport::ReleaseDragDropState();
+      ComponentView::ReleaseViewState();
       UI::UnInit();
     }
 

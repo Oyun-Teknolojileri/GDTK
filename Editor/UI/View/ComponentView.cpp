@@ -30,6 +30,11 @@ namespace ToolKit
     // entity node by the engine every frame; the preview remembers the node
     // transform when it starts so Stop (or switching to another clip) can put
     // the entity back, keeping the edited pose intact in the scene.
+    //
+    // The state is file scope rather than a function local static so that
+    // ComponentView::ReleaseViewState() can drop it while the engine is still alive.
+    // It holds an AnimRecordPtr, which in turn owns an AnimationPtr, so letting the
+    // process exit clean up after it would release an engine resource after ToolKit is gone.
     namespace
     {
       struct AnimPreviewState
@@ -38,11 +43,45 @@ namespace ToolKit
         Mat4 baseLocal = Mat4(1.0f);
       };
 
-      std::unordered_map<ObjectId, AnimPreviewState> g_animPreviewStates;
+      struct AnimControllerViewState
+      {
+        // The "add a new track" row. Holds the animation the user dropped and the signal
+        // name until the row is committed, so it has to survive between frames.
+        std::pair<String, AnimRecordPtr> extraTrack;
+
+        std::unordered_map<ObjectId, AnimPreviewState> previewStates;
+
+        /** Lazily allocates the scratch record, which needs a live handle manager. */
+        void EnsureExtraTrack()
+        {
+          if (extraTrack.second == nullptr)
+          {
+            extraTrack.second = MakeNewPtr<AnimRecord>();
+          }
+        }
+
+        void Release()
+        {
+          extraTrack.first  = "";
+          extraTrack.second = nullptr;
+          previewStates.clear();
+        }
+      };
+
+      AnimControllerViewState& GetViewState()
+      {
+        static AnimControllerViewState state;
+        return state;
+      }
+
+      void ReleaseViewStateImp()
+      {
+        GetViewState().Release();
+      }
 
       AnimPreviewState& GetPreviewState(AnimControllerComponent* comp)
       {
-        return g_animPreviewStates[comp->GetIdVal()];
+        return GetViewState().previewStates[comp->GetIdVal()];
       }
 
       void StorePreviewBase(AnimControllerComponent* comp)
@@ -57,8 +96,9 @@ namespace ToolKit
 
       void RestorePreviewBase(AnimControllerComponent* comp, bool clear)
       {
-        auto it = g_animPreviewStates.find(comp->GetIdVal());
-        if (it == g_animPreviewStates.end())
+        auto& previewStates = GetViewState().previewStates;
+        auto it             = previewStates.find(comp->GetIdVal());
+        if (it == previewStates.end())
         {
           return;
         }
@@ -74,10 +114,12 @@ namespace ToolKit
 
         if (clear)
         {
-          g_animPreviewStates.erase(it);
+          previewStates.erase(it);
         }
       }
     }
+
+    void ComponentView::ReleaseViewState() { ReleaseViewStateImp(); }
 
     void ShowMultiMaterialComponent(ComponentPtr& comp,
                                     std::function<bool(const String&)> showCompFunc,
@@ -209,7 +251,10 @@ namespace ToolKit
           String renamedSignal  = "";
           std::pair<String, AnimRecordPtr> renameSource; // Old key of the edited track.
 
-          static std::pair<String, AnimRecordPtr> extraTrack = std::make_pair("", MakeNewPtr<AnimRecord>());
+          // View state kept across frames, released by ComponentView::ReleaseViewState().
+          AnimControllerViewState& viewState = GetViewState();
+          viewState.EnsureExtraTrack();
+          std::pair<String, AnimRecordPtr>& extraTrack = viewState.extraTrack;
 
           // Animation file name of a record. Read only "Name" column content.
           auto trackDisplayName = [](const AnimRecordPtr& record) -> String

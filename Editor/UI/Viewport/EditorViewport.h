@@ -50,6 +50,13 @@ namespace ToolKit
       void OnResizeContentArea(float width, float height) override;
       virtual void ResizeWindow(uint width, uint height);
 
+      /**
+       * Drops the entity and debug objects cached for an in flight asset drag and drop.
+       * Must be called while the engine is still alive (App::Destroy), otherwise a drag that
+       * was interrupted by shutdown keeps engine resources alive until process exit.
+       */
+      static void ReleaseDragDropState();
+
       // Editor functions
       void GetContentAreaScreenCoordinates(Vec2* min, Vec2* max) const;
       void SetCamera(CameraPtr cam) override;

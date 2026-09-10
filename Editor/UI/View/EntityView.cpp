@@ -31,7 +31,11 @@ namespace ToolKit
       m_viewIcn = UI::m_arrowsIcon;
     }
 
-    EntityView::~EntityView() {}
+    EntityView::~EntityView()
+    {
+      // A drag that was never committed still owns its transform action.
+      SafeDel(m_dragAction);
+    }
 
     void EntityView::ShowAnchorSettings()
     {
@@ -357,8 +361,8 @@ namespace ToolKit
         ImGui::BeginDisabled(ntt->GetTransformLockVal());
 
         // Continuous edit utils.
-        static TransformAction* dragMem = nullptr;
-        const auto saveDragMemFn        = [ntt]() -> void
+        TransformAction*& dragMem = m_dragAction;
+        const auto saveDragMemFn  = [ntt, &dragMem]() -> void
         {
           if (dragMem == nullptr)
           {
@@ -366,7 +370,7 @@ namespace ToolKit
           }
         };
 
-        const auto saveTransformActionFn = [this]() -> void
+        const auto saveTransformActionFn = [&dragMem]() -> void
         {
           if (ImGui::IsItemDeactivatedAfterEdit())
           {

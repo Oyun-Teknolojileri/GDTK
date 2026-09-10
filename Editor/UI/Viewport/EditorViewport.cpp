@@ -32,6 +32,33 @@ namespace ToolKit
   namespace Editor
   {
 
+    namespace
+    {
+      /**
+       * Drag and drop state shared by all viewports. ImGui delivers the drag payload
+       * globally and the viewport queries it every frame, so the mesh being dragged is
+       * cached between frames.
+       *
+       * The cache is file scope instead of a function local static so that
+       * EditorViewport::ReleaseDragDropState() can drop the references it holds. A function
+       * local static would keep the dragged entity alive until process exit, which is after
+       * ToolKit is gone, and its destructor would then reach into a destroyed engine.
+       */
+      struct DragDropCache
+      {
+        LineBatchPtr boundingBox = nullptr;
+        EntityPtr draggedMesh    = nullptr;
+        bool meshLoaded          = false;
+        bool meshAddedToScene    = false;
+      };
+
+      DragDropCache& GetDragDropCache()
+      {
+        static DragDropCache cache;
+        return cache;
+      }
+    } // namespace
+
     // EditorViewport
     //////////////////////////////////////////
 
@@ -960,16 +987,26 @@ namespace ToolKit
       }
     }
 
+    void EditorViewport::ReleaseDragDropState()
+    {
+      DragDropCache& cache   = GetDragDropCache();
+      cache.boundingBox      = nullptr;
+      cache.draggedMesh      = nullptr;
+      cache.meshLoaded       = false;
+      cache.meshAddedToScene = false;
+    }
+
     void EditorViewport::HandleDrop()
     {
       // Current scene
-      EditorScenePtr currScene        = GetApp()->GetCurrentScene();
+      EditorScenePtr currScene = GetApp()->GetCurrentScene();
 
       // Asset drag and drop loading variables
-      static LineBatchPtr boundingBox = nullptr;
-      static bool meshLoaded          = false;
-      static bool meshAddedToScene    = false;
-      static EntityPtr dwMesh         = nullptr;
+      DragDropCache& cache      = GetDragDropCache();
+      LineBatchPtr& boundingBox = cache.boundingBox;
+      EntityPtr& dwMesh         = cache.draggedMesh;
+      bool& meshLoaded          = cache.meshLoaded;
+      bool& meshAddedToScene    = cache.meshAddedToScene;
 
       // Check if asset drop is activated.
       const ImGuiPayload* dragPayload = ImGui::GetDragDropPayload();
@@ -1301,14 +1338,11 @@ namespace ToolKit
         currScene->RemoveEntity((*boundingBox)->GetIdVal());
         meshLoaded = false;
 
-        if (!meshAddedToScene)
-        {
-          *dwMesh = nullptr;
-        }
-        else
-        {
-          meshAddedToScene = false;
-        }
+        // The drag session is over either way: when the mesh made it into the scene the scene
+        // owns it now, otherwise it is discarded. Keeping a reference here would leak the
+        // entity past the lifetime of the engine.
+        *dwMesh          = nullptr;
+        meshAddedToScene = false;
 
         // Unload bounding box mesh
         *boundingBox = nullptr;

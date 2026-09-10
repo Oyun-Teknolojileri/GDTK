@@ -62,7 +62,12 @@ namespace ToolKit
 
     FolderWindow::FolderWindow() {}
 
-    FolderWindow::~FolderWindow() {}
+    FolderWindow::~FolderWindow()
+    {
+      // The file operation state points into this window's folder views, which are gone by the
+      // time this destructor returns.
+      FolderView::ReleaseFileOperationState();
+    }
 
     // destroy old one and create new tree
     void FolderWindow::ReconstructFolderTree()

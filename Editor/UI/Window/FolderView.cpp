@@ -31,6 +31,13 @@ namespace ToolKit
 
     FolderView::FolderView(class FolderWindow* parent) : FolderView() { m_parent = parent; }
 
+    // File operation state shared by every asset browser. The drag payload is process wide
+    // because a file can be dragged out of a folder view into a viewport, so these cannot be
+    // FolderView members.
+    //
+    // g_selectedFiles and g_coppiedFiles hold DirectoryEntry* into the m_entries of a FolderView
+    // owned by a FolderWindow. They are raw pointers, so they must never outlive that storage:
+    // FolderWindow::~FolderWindow calls ReleaseFileOperationState() to guarantee that.
     static FileDragData g_fileDragData {};
     static std::vector<DirectoryEntry*> g_selectedFiles {};
     static std::vector<DirectoryEntry*> g_coppiedFiles {};
@@ -40,6 +47,17 @@ namespace ToolKit
     FolderView* g_dragBeginView = nullptr;
 
     const FileDragData& FolderView::GetFileDragData() { return g_fileDragData; }
+
+    void FolderView::ReleaseFileOperationState()
+    {
+      g_fileDragData   = FileDragData{};
+      g_carryingFiles  = false;
+      g_copyingFiles   = false;
+      g_cuttingFiles   = false;
+      g_dragBeginView  = nullptr;
+      g_selectedFiles.clear();
+      g_coppiedFiles.clear();
+    }
 
     void FolderView::DrawSearchBar()
     {
