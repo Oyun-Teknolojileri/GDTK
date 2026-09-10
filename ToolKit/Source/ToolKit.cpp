@@ -23,8 +23,11 @@
 #include "Scene.h"
 #include "Shader.h"
 #include "Stats.h"
+#include "TKAssert.h"
 #include "Threads.h"
 #include "UIManager.h"
+
+#include <map>
 
 #include "DebugNew.h"
 
@@ -69,6 +72,44 @@ namespace ToolKit
     SpinlockGuard lock(m_uniqueIdWriteLock);
     m_uniqueIDs.erase(val);
   }
+
+  void HandleManager::ObjectCreated() { m_liveObjectCount.fetch_add(1, std::memory_order_relaxed); }
+
+  void HandleManager::ObjectDestroyed() { m_liveObjectCount.fetch_sub(1, std::memory_order_relaxed); }
+
+  uint64 HandleManager::LiveObjectCount() const { return m_liveObjectCount.load(std::memory_order_relaxed); }
+
+#ifdef TK_DEBUG
+  void HandleManager::TrackObject(const Object* object, const String& className)
+  {
+    std::lock_guard<std::mutex> guard(m_liveObjectLock);
+    m_liveObjects[object] = className;
+  }
+
+  void HandleManager::UntrackObject(const Object* object)
+  {
+    std::lock_guard<std::mutex> guard(m_liveObjectLock);
+    m_liveObjects.erase(object);
+  }
+
+  String HandleManager::DescribeLiveObjects() const
+  {
+    std::lock_guard<std::mutex> guard(m_liveObjectLock);
+
+    std::map<String, uint64> byClass;
+    for (const auto& entry : m_liveObjects)
+    {
+      byClass[entry.second]++;
+    }
+
+    String out = "  live objects by class (total=" + std::to_string(m_liveObjects.size()) + "):";
+    for (const auto& entry : byClass)
+    {
+      out += " " + entry.first + "=" + std::to_string(entry.second);
+    }
+    return out;
+  }
+#endif
 
   Main* Main::m_proxy = nullptr;
 
@@ -216,9 +257,28 @@ namespace ToolKit
     // after all resource managers whose destructors call backend.
     SafeDel(m_renderSys);
 
+    // Everything the engine handed out has to be gone by now. A non zero count means an
+    // application static, global or cache is still holding engine objects: they will be
+    // released after the engine, during exit()'s static destructors, and their UnInit can no
+    // longer reach the backend. Loud in debug builds so the leak gets found, and reported in
+    // release builds so a shipped game keeps exiting cleanly.
+    const uint64 liveObjects = m_handleManager.LiveObjectCount();
+    if (liveObjects > 0)
+    {
+      m_logger->Log("Main PostUninit: " + std::to_string(liveObjects) +
+                    " engine objects outlived the engine. See AGENTS.md, "
+                    "Object Lifetime & Shutdown Order.");
+#ifdef TK_DEBUG
+      m_logger->Log(m_handleManager.DescribeLiveObjects());
+#endif
+    }
+
+    TK_ASSERT_ONCE(liveObjects == 0 && "Engine objects outlived the engine. See AGENTS.md, "
+                                       "Object Lifetime & Shutdown Order.");
+
     // The engine is gone from this point on. Objects that outlive it (application level
     // statics, globals and caches holding engine resources) must release what they own
-    // through the _noexcep() accessors, which return nullptr here instead of asserting.
+    // through the _noexcep() accessors, which return nullptr here and report the violation.
     m_proxy = nullptr;
   }
 
@@ -333,14 +393,32 @@ namespace ToolKit
 
   RenderSystem* GetRenderSystem() { return Main::GetInstance()->m_renderSys; }
 
+  namespace
+  {
+    /**
+     * Reports that something reached for the engine after Main::PostUninit tore it down, which
+     * means an engine object outlived the engine. Loud in debug builds so the offending static
+     * or cache is found, tolerated in release builds so a shipped game does not crash while
+     * exiting. Main::PostUninit reports the same violation by object count.
+     */
+    void ReportEngineOutlived()
+    {
+      TK_ASSERT_ONCE(false && "An engine object was destroyed after ToolKit was torn down. "
+                              "See AGENTS.md, Object Lifetime & Shutdown Order.");
+    }
+  } // namespace
+
   RenderSystem* GetRenderSystem_noexcep()
   {
-    if (Main* main = Main::GetInstance_noexcep())
+    Main* main              = Main::GetInstance_noexcep();
+    RenderSystem* renderSys = main != nullptr ? main->m_renderSys : nullptr;
+
+    if (renderSys == nullptr)
     {
-      return main->m_renderSys;
+      ReportEngineOutlived();
     }
 
-    return nullptr;
+    return renderSys;
   }
 
   IGraphicsBackend* GetBackend_noexcep()
@@ -361,12 +439,15 @@ namespace ToolKit
 
   AudioManager* GetAudioManager_noexcep()
   {
-    if (Main* main = Main::GetInstance_noexcep())
+    Main* main             = Main::GetInstance_noexcep();
+    AudioManager* audioMan = main != nullptr ? main->m_audioMan : nullptr;
+
+    if (audioMan == nullptr)
     {
-      return main->m_audioMan;
+      ReportEngineOutlived();
     }
 
-    return nullptr;
+    return audioMan;
   }
 
   MaterialManager* GetMaterialManager() { return Main::GetInstance()->m_materialManager; }

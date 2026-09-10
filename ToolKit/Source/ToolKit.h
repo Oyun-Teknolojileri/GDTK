@@ -17,6 +17,11 @@
 #include "Threads.h"
 #include "Types.h"
 
+#include <atomic>
+#include <mutex>
+#include <unordered_map>
+#include <unordered_set>
+
 /**
  * Base name space for all the ToolKit functionalities.
  */
@@ -27,6 +32,8 @@ namespace ToolKit
    * Use Main::RegisterPreUpdateFunction and Main::RegisterPostUpdateFunction for receiving updates.
    */
   typedef std::function<void(float deltaTime)> TKUpdateFn;
+
+  class Object;
 
   /** A class that Provides a unique handle when needed. */
   class TK_API HandleManager
@@ -44,10 +51,47 @@ namespace ToolKit
     void ReleaseHandle(ObjectId val);  //!< Free the id for reuse.
     bool IsHandleUnique(ObjectId val); //!< Test if id acquired.
 
+    /**
+     * Records that an Object instance became alive and drops that record again in the
+     * destructor. The count is separate from the handle set on purpose: handles are also taken
+     * by non Object types (Node, Viewport, UILayer, AnimRecord), so the handle set can not be
+     * used to tell whether engine objects are still alive.
+     */
+    void ObjectCreated();
+    void ObjectDestroyed();
+
+    /**
+     * Number of live Object instances. Main::PostUninit asserts on it to verify that no engine
+     * object outlived the engine.
+     */
+    uint64 LiveObjectCount() const;
+
+#ifdef TK_DEBUG
+    /**
+     * Debug only bookkeeping behind Main::PostUninit's leak report, so a violation names the
+     * classes that were left behind instead of only counting them.
+     *
+     * Keyed by address, which is stable for the lifetime of an object. Ids can not be used:
+     * deserialization reassigns them, so the id an object was created with is not the id it is
+     * destroyed with.
+     */
+    void TrackObject(const Object* object, const String& className);
+    void UntrackObject(const Object* object);
+
+    /** Debug only: class distribution of the objects that are still alive. */
+    String DescribeLiveObjects() const;
+#endif
+
    private:
-    ObjectId m_randomXor[2];                  //!< Random seed.
-    std::unordered_set<ObjectId> m_uniqueIDs; //!< Container for all acquired handles.
-    Spinlock m_uniqueIdWriteLock;             //!< Guaranties thread safety for modifying handle manager's state.
+    ObjectId m_randomXor[2];                   //!< Random seed.
+    std::unordered_set<ObjectId> m_uniqueIDs;  //!< Container for all acquired handles.
+    Spinlock m_uniqueIdWriteLock;              //!< Guaranties thread safety for modifying handle manager's state.
+    std::atomic<uint64> m_liveObjectCount {0}; //!< Live Object instances, see ObjectCreated().
+
+#ifdef TK_DEBUG
+    mutable std::mutex m_liveObjectLock;                     //!< Guards m_liveObjects.
+    std::unordered_map<const Object*, String> m_liveObjects; //!< Live objects and their class. See TrackObject().
+#endif
   };
 
   /**
@@ -289,3 +333,22 @@ namespace ToolKit
   TK_API String PluginConfigPath(const String& file, bool def = false);
 
 } // namespace ToolKit
+
+/**
+ * Debug only live object bookkeeping, wrapped in macros for the same reason TK_ASSERT_ONCE is:
+ * the HandleManager methods behind them and the registry they fill only exist in debug builds.
+ *
+ * They compile to nothing without TK_DEBUG and do not evaluate their arguments, so neither the
+ * call nor the Class() lookup they need is paid for in release builds. This is deliberately not
+ * an `if constexpr`: a discarded branch still has to name existing members, and the point here
+ * is that they do not exist outside debug builds.
+ *
+ * See HandleManager::TrackObject and Main::PostUninit.
+ */
+#ifdef TK_DEBUG
+  #define TK_TRACK_LIVE_OBJECT(handleMan, object) (handleMan)->TrackObject((object), (object)->Class()->Name)
+  #define TK_UNTRACK_LIVE_OBJECT(handleMan, object) (handleMan)->UntrackObject(object)
+#else
+  #define TK_TRACK_LIVE_OBJECT(handleMan, object) ((void) 0)
+  #define TK_UNTRACK_LIVE_OBJECT(handleMan, object) ((void) 0)
+#endif

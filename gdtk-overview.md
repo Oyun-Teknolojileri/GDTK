@@ -120,6 +120,18 @@ Rules:
   `GetAudioManager_noexcep()`. They return `nullptr` once the engine is gone, and GPU
   destruction is skipped because the backend no longer exists. `Object::~Object` already
   did this via `GetHandleManager()`.
+- Violations are diagnosed twice. `GetRenderSystem_noexcep()` / `GetAudioManager_noexcep()`
+  raise `TK_ASSERT_ONCE` when they are reached after teardown, which catches an object whose
+  destructor runs too late. `Main::PostUninit` additionally reads
+  `HandleManager::LiveObjectCount()` after destroying the render system, logs a non zero
+  count and raises `TK_ASSERT_ONCE`, which catches objects that are still alive even when
+  their destructor never runs. Debug builds also log the class distribution of the leftovers
+  (`live objects by class (total=N): Mesh=1 Entity=1 ...`) from a registry keyed by object
+  address, reached through the `TK_TRACK_LIVE_OBJECT()` / `TK_UNTRACK_LIVE_OBJECT()` macros so
+  the registry and the `Class()` lookup it needs are compiled out of release builds. Both hosts are measured clean at that point (editor and Game
+  template report 0), so a report is always a real leak. The count is maintained by
+  `Object::Object()` / `Object::~Object()`, not by `ParameterConstructor()`, which derived
+  classes may call twice.
 - Hardened paths: `Mesh::UnInit`, `Shader::UnInit`, `Texture::UnInit` and its overrides
   (`DepthTexture`, `DataTexture`, `CubeMap`, `Hdri`), `Framebuffer::UnInit`,
   `UniformBuffer::~UniformBuffer` / `UniformBuffer::Destroy`, `Audio::UnInit` (the

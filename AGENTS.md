@@ -455,6 +455,11 @@ this on*.
    once the engine is gone and must be checked. Skip GPU destruction in that case: the
    backend no longer exists, so there is nothing left to destroy.
 
+   Reaching one of them after teardown is a contract violation, so it does not pass
+   silently: `GetRenderSystem_noexcep()` and `GetAudioManager_noexcep()` raise
+   `TK_ASSERT_ONCE`. Debug builds abort with a message; release builds log and continue,
+   because a shipped game must not crash while exiting.
+
    ```cpp
    void Mesh::UnInit()
    {
@@ -478,6 +483,49 @@ this on*.
    miniaudio engine owns the sound data, so `ma_sound_uninit` is skipped once
    `AudioManager` is gone). `Object::~Object`, `GpuProgram::~GpuProgram` and
    `AnimRecord::~AnimRecord` already follow the pattern.
+
+3b. **The same violation is also counted at its source.** `Main::PostUninit` reads
+   `HandleManager::LiveObjectCount()` right after the render system is destroyed and reports a
+   non zero result: it logs the count and raises `TK_ASSERT_ONCE`, so a leaking static is named
+   even when the objects it holds never run a destructor. Debug builds also log the class
+   distribution, which is what tells you where the leak lives:
+
+   ```
+   Main PostUninit: 7 engine objects outlived the engine. See AGENTS.md, ...
+     live objects by class (total=7): Entity=1 Material=1 Mesh=1 MeshComponent=1 Shader=2 Texture=1
+   ```
+
+   The count is maintained by `Object::Object()` and `Object::~Object()`, which run exactly
+   once per object. Do **not** move that bookkeeping into `Object::ParameterConstructor()`:
+   a derived class may call it a second time on an already constructed object (see
+   `EditorCamera::Copy()`), which counts one object twice and leaks the first generated handle.
+   The debug class registry does live in `ParameterConstructor()`, because `Class()` still
+   reports the base type while `Object::Object()` runs; it is keyed by address, so the repeat
+   call cannot register the same object twice.
+
+   That registry is reached through `TK_TRACK_LIVE_OBJECT()` and `TK_UNTRACK_LIVE_OBJECT()`.
+   They are macros like `TK_ASSERT_ONCE`, not `if constexpr` statements, and that is not a
+   style preference: `TK_DEBUG` is only defined by CMake for the Debug configuration, so
+   `if constexpr (TK_DEBUG)` does not even compile in release, and a discarded `if constexpr`
+   branch still has to name existing members -- while the point here is that
+   `TrackObject` / `UntrackObject` / `DescribeLiveObjects` and the map and mutex behind them do
+   not exist outside debug builds. Without `TK_DEBUG` the macros expand to `((void) 0)` and do
+   not evaluate their arguments, so no `Class()` lookup is paid for in release.
+
+   For the same reason `HandleManager::m_uniqueIDs` is not a liveness metric. It also holds
+   ids for `Node`, `Viewport`, `UILayer` and `AnimRecord`, and `ViewportBase::m_viewportId`
+   and `UILayer::m_id` are never released at all.
+
+   Both hosts are measured clean, so any non zero report is a real leak: the editor and the
+   Game template both reach `Main PostUninit` with 0 live objects.
+
+   ```
+   # Game template, real GL backend, normal exit
+   Main Uninit -> Main PostUninit -> Main Destructed     (no "outlived" line)
+
+   # Editor, normal exit
+   Main Uninit -> Main PostUninit -> Main Destructed     (no "outlived" line)
+   ```
 
 4. **Keep the asserting accessors for creation, loading and render paths.**
    `GetRenderSystem()`, `GetMaterialManager()`, `GetMeshManager()` and friends must keep

@@ -22,13 +22,26 @@ namespace ToolKit
 
   TKDefineClass(Object, Object);
 
-  Object::Object() { _idBeforeCollision = NullHandle; }
+  Object::Object()
+  {
+    _idBeforeCollision = NullHandle;
+
+    // The live object count lives in the constructor and the destructor, which run exactly once
+    // per object. ParameterConstructor() is not a safe place for the count: derived classes may
+    // call it again, which would count the same object twice.
+    if (HandleManager* handleMan = GetHandleManager())
+    {
+      handleMan->ObjectCreated();
+    }
+  }
 
   Object::~Object()
   {
     if (HandleManager* handleMan = GetHandleManager())
     {
       handleMan->ReleaseHandle(GetIdVal());
+      handleMan->ObjectDestroyed();
+      TK_UNTRACK_LIVE_OBJECT(handleMan, this);
     }
   }
 
@@ -45,8 +58,15 @@ namespace ToolKit
 
   void Object::ParameterConstructor()
   {
-    ObjectId id = GetHandleManager()->GenerateHandle();
+    HandleManager* handleMan = GetHandleManager();
+    ObjectId id              = handleMan->GenerateHandle();
     Id_Define(id, EntityCategory.Name, EntityCategory.Priority, true, false);
+
+    // Debug only class registry, so Main::PostUninit can name what was left behind. This has to
+    // run here, not in Object::Object(), because Class() still reports the base type while the
+    // base constructor runs. Recording is idempotent (keyed by address), so a derived class
+    // calling this a second time does not register the same object twice.
+    TK_TRACK_LIVE_OBJECT(handleMan, this);
   }
 
   void Object::ParameterEventConstructor() {}
