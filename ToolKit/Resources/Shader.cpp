@@ -142,26 +142,31 @@ namespace ToolKit
 
   void Shader::UnInit()
   {
-    IGraphicsBackend* backend = GetRenderSystem()->GetBackend();
+    // A shader can outlive the engine when an application static or global keeps a reference
+    // to it. In that case the backend is already gone and there is nothing left to destroy.
+    IGraphicsBackend* backend = GetBackend_noexcep();
 
-    // Destroy all compiled variants.
-    bool handleInMap          = false;
-    for (auto& [key, data] : m_shaderVariantMap)
+    if (backend != nullptr)
     {
-      if (data.get() == m_gpuData.get())
+      // Destroy all compiled variants.
+      bool handleInMap = false;
+      for (auto& [key, data] : m_shaderVariantMap)
       {
-        handleInMap = true;
+        if (data.get() == m_gpuData.get())
+        {
+          handleInMap = true;
+        }
+        backend->DestroyShader(data.get());
       }
-      backend->DestroyShader(data.get());
+
+      // If m_gpuData was not part of a variant (base compile without defines), destroy it too.
+      if (!handleInMap)
+      {
+        backend->DestroyShader(m_gpuData.get());
+      }
     }
+
     m_shaderVariantMap.clear();
-
-    // If m_gpuData was not part of a variant (base compile without defines), destroy it too.
-    if (!handleInMap)
-    {
-      backend->DestroyShader(m_gpuData.get());
-    }
-
     m_gpuData.reset();
     m_initiated = false;
   }

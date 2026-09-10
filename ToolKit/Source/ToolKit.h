@@ -228,9 +228,28 @@ namespace ToolKit
   // Accessors.
   TK_API class Logger* GetLogger();
   TK_API class RenderSystem* GetRenderSystem();
+
+  /**
+   * Null safe variant of GetRenderSystem(). Returns nullptr once the engine is gone.
+   * Destructors that can run after Main::PostUninit (resources kept alive by application
+   * statics, globals or caches) must use this instead of the asserting accessor, because
+   * the backend is already destroyed at that point and there is nothing left to release.
+   */
+  TK_API class RenderSystem* GetRenderSystem_noexcep();
+
+  /**
+   * Returns the active graphics backend, or nullptr when the engine is already gone.
+   * Convenience wrapper around GetRenderSystem_noexcep() for GPU teardown paths.
+   */
+  TK_API class IGraphicsBackend* GetBackend_noexcep();
+
   TK_API class AnimationManager* GetAnimationManager();
   TK_API class AnimationPlayer* GetAnimationPlayer();
   TK_API class AudioManager* GetAudioManager();
+
+  /** Null safe variant of GetAudioManager(). See GetRenderSystem_noexcep(). */
+  TK_API class AudioManager* GetAudioManager_noexcep();
+
   TK_API class MaterialManager* GetMaterialManager();
   TK_API class MeshManager* GetMeshManager();
   TK_API class ShaderManager* GetShaderManager();

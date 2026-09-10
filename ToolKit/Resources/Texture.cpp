@@ -148,7 +148,10 @@ namespace ToolKit
     }
 
     uint64 pixelCount = (uint64) m_width * (uint64) m_height;
-    if (IGraphicsBackend* backend = GetRenderSystem()->GetBackend())
+
+    // A texture can outlive the engine when an application static or global keeps a reference
+    // to it. In that case the backend is already gone and there is nothing left to destroy.
+    if (IGraphicsBackend* backend = GetBackend_noexcep())
     {
       backend->DestroyTexture(this);
     }
@@ -291,7 +294,7 @@ namespace ToolKit
 
     Stats::RemoveVRAMUsageInBytes((uint64) (m_width * m_height) * GetFormatSize());
 
-    if (IGraphicsBackend* backend = GetRenderSystem()->GetBackend())
+    if (IGraphicsBackend* backend = GetBackend_noexcep())
     {
       backend->DestroyTexture(this);
     }
@@ -359,7 +362,7 @@ namespace ToolKit
 
     Stats::RemoveVRAMUsageInBytes((uint64) (m_width * m_height) * BytesOfFormat(m_settings.InternalFormat));
 
-    if (IGraphicsBackend* backend = GetRenderSystem()->GetBackend())
+    if (IGraphicsBackend* backend = GetBackend_noexcep())
     {
       backend->DestroyTexture(this);
     }

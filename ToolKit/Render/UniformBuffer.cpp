@@ -26,7 +26,11 @@ namespace ToolKit
   {
     if (m_gpuData)
     {
-      GetRenderSystem()->GetBackend()->DestroyUniformBuffer(this);
+      // The backend may already be gone when a static or global keeps the buffer alive.
+      if (IGraphicsBackend* backend = GetBackend_noexcep())
+      {
+        backend->DestroyUniformBuffer(this);
+      }
     }
   }
 
@@ -34,7 +38,10 @@ namespace ToolKit
   {
     if (m_gpuData)
     {
-      GetRenderSystem()->GetBackend()->DestroyUniformBuffer(this);
+      if (IGraphicsBackend* backend = GetBackend_noexcep())
+      {
+        backend->DestroyUniformBuffer(this);
+      }
       m_gpuData.reset();
     }
     m_slot = -1;

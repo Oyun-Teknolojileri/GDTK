@@ -215,6 +215,11 @@ namespace ToolKit
     // RenderSystem (and backend) must be destroyed last,
     // after all resource managers whose destructors call backend.
     SafeDel(m_renderSys);
+
+    // The engine is gone from this point on. Objects that outlive it (application level
+    // statics, globals and caches holding engine resources) must release what they own
+    // through the _noexcep() accessors, which return nullptr here instead of asserting.
+    m_proxy = nullptr;
   }
 
   void Main::SetConfigPath(StringView cfgPath) { m_cfgPath = cfgPath; }
@@ -328,11 +333,41 @@ namespace ToolKit
 
   RenderSystem* GetRenderSystem() { return Main::GetInstance()->m_renderSys; }
 
+  RenderSystem* GetRenderSystem_noexcep()
+  {
+    if (Main* main = Main::GetInstance_noexcep())
+    {
+      return main->m_renderSys;
+    }
+
+    return nullptr;
+  }
+
+  IGraphicsBackend* GetBackend_noexcep()
+  {
+    if (RenderSystem* renderSys = GetRenderSystem_noexcep())
+    {
+      return renderSys->GetBackend();
+    }
+
+    return nullptr;
+  }
+
   AnimationManager* GetAnimationManager() { return Main::GetInstance()->m_animationMan; }
 
   AnimationPlayer* GetAnimationPlayer() { return Main::GetInstance()->m_animationPlayer; }
 
   AudioManager* GetAudioManager() { return Main::GetInstance()->m_audioMan; }
+
+  AudioManager* GetAudioManager_noexcep()
+  {
+    if (Main* main = Main::GetInstance_noexcep())
+    {
+      return main->m_audioMan;
+    }
+
+    return nullptr;
+  }
 
   MaterialManager* GetMaterialManager() { return Main::GetInstance()->m_materialManager; }
 

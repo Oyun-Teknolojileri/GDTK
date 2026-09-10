@@ -98,7 +98,10 @@ namespace ToolKit
       m_colorAtchs[i] = nullptr;
     }
 
-    if (IGraphicsBackend* backend = GetRenderSystem()->GetBackend())
+    // A framebuffer can outlive the engine when an application static or global keeps a
+    // reference to it (e.g. a viewport cached for the process lifetime). In that case the
+    // backend is already gone and there is nothing left to destroy.
+    if (IGraphicsBackend* backend = GetBackend_noexcep())
     {
       backend->DestroyFramebuffer(this);
     }

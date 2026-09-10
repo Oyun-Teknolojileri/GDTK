@@ -96,7 +96,12 @@ namespace ToolKit
         Stats::RemoveVRAMUsageInBytes(sizeof(uint) * m_indexCount);
       }
 
-      GetRenderSystem()->GetBackend()->DestroyMesh(this);
+      // A mesh can outlive the engine when an application static or global keeps a reference
+      // to it. In that case the backend is already gone and there is nothing left to destroy.
+      if (IGraphicsBackend* backend = GetBackend_noexcep())
+      {
+        backend->DestroyMesh(this);
+      }
     }
 
     m_subMeshes.clear();

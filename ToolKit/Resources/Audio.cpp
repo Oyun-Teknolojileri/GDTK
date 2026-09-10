@@ -43,8 +43,21 @@ namespace ToolKit
   void Audio::UnInit()
   {
     ma_sound* sound = (ma_sound*) m_sound;
-    ma_sound_uninit(sound);
+    if (sound == nullptr)
+    {
+      return;
+    }
+
+    // The miniaudio engine owns the decoded sound data. When the engine is already gone
+    // (an application static or global held this resource past AudioManager::Uninit) the
+    // engine side cleanup has already happened, only the struct we allocated is left.
+    if (GetAudioManager_noexcep() != nullptr)
+    {
+      ma_sound_uninit(sound);
+    }
+
     SafeDel(sound);
+    m_sound = nullptr;
   }
 
   // Audio Manager

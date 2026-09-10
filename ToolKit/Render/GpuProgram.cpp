@@ -58,6 +58,16 @@ namespace ToolKit
     }
   }
 
+  /**
+   * Empty program returned when a shader declares an invalid uniform buffer slot. Shared instead
+   * of a function local static per error path. It is deliberately never assigned a real program,
+   * so it holds no backend pointer and can be destroyed during process exit safely.
+   */
+  namespace
+  {
+    const GpuProgramPtr g_nullProgram;
+  }
+
   // GpuProgramManager
   //////////////////////////////////////////
 
@@ -109,8 +119,7 @@ namespace ToolKit
                    "Add layout(binding = X) to the UBO declaration.",
                    vertexShader->GetFile().c_str(),
                    res.name.c_str());
-            static GpuProgramPtr s_null;
-            return s_null;
+            return g_nullProgram;
           }
 
           if (res.slot < ReservedUniformBufferSlots::FirstCustomSlot)
@@ -121,8 +130,7 @@ namespace ToolKit
                    res.slot,
                    ReservedUniformBufferSlots::FirstCustomSlot,
                    ReservedUniformBufferSlots::FirstCustomSlot);
-            static GpuProgramPtr s_null;
-            return s_null;
+            return g_nullProgram;
           }
         }
       }
