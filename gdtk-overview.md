@@ -93,6 +93,58 @@ Frame loop: `FrameBegin -> FrameUpdate -> FrameEnd`. `FrameUpdate` fires `m_preU
 
 Free accessors in `ToolKit.h`: `GetLogger()`, `GetRenderSystem()`, `GetMaterialManager()`, etc.
 
+#### Shutdown order and outliving resources
+
+Host teardown order (`Editor::Exit`, `Launcher::Exit`):
+
+```
+App::Destroy              release application caches and statics holding engine objects
+Main::PreUninit           engine still fully alive
+App::Uninit  (game)       app specific teardown
+Main::Uninit              managers release their resources, backend still alive
+Main::PostUninit          destroys managers + RenderSystem, then sets m_proxy = nullptr
+delete Main               ~Main asserts m_initiated == false
+exit()                    static destructors run -- the engine is already gone here
+```
+
+`Main::PostUninit` nulls `m_proxy`, so from that point on `Main::GetInstance()` asserts by
+design. Anything releasing engine objects after it (resources cached in file scope
+statics, globals or application containers) used to abort during `exit()`'s static
+destructors with `Main::GetInstance() -> GetRenderSystem() -> Mesh::UnInit ->
+Mesh::~Mesh`.
+
+Rules:
+
+- Teardown paths reachable from a destructor must use the null safe accessors:
+  `Main::GetInstance_noexcep()`, `GetRenderSystem_noexcep()`, `GetBackend_noexcep()`,
+  `GetAudioManager_noexcep()`. They return `nullptr` once the engine is gone, and GPU
+  destruction is skipped because the backend no longer exists. `Object::~Object` already
+  did this via `GetHandleManager()`.
+- Hardened paths: `Mesh::UnInit`, `Shader::UnInit`, `Texture::UnInit` and its overrides
+  (`DepthTexture`, `DataTexture`, `CubeMap`, `Hdri`), `Framebuffer::UnInit`,
+  `UniformBuffer::~UniformBuffer` / `UniformBuffer::Destroy`, `Audio::UnInit` (the
+  miniaudio engine owns the sound data, so the engine side teardown is skipped once
+  `AudioManager` is gone).
+- The asserting accessors (`GetRenderSystem()`, `GetMaterialManager()`, ...) stay as they
+  are for `Init`, `Load` and render paths, where a missing engine is a real bug.
+- Process lifetime state that holds engine objects lives at file scope behind an accessor
+  and has an explicit release entry point called from the host teardown, so it never
+  reaches `exit()`. Editor hooks, all called from `App::Destroy` while the backend is
+  alive: `UI::UnInit()` (toolbar icon textures, anchor preset icons),
+  `EditorViewport::ReleaseDragDropState()` (asset drag and drop cache, which otherwise
+  kept the dropped entity alive forever), `ComponentView::ReleaseViewState()` (pending
+  animation track and root motion preview cache). `App::DeleteWindows()` clears
+  `UI::m_volatileWindows`, `EditorImGuiTextureCache::Clear()` drops the Vulkan descriptor
+  cache before `ImGui_ImplVulkan_Shutdown`, and `FolderWindow::~FolderWindow()` calls
+  `FolderView::ReleaseFileOperationState()` because that state holds `DirectoryEntry*`
+  into the folder views the window owns.
+- The Game template (`Templates/Game/Codes/Main.cpp`) owns its viewport at file scope and
+  releases it, together with the game plugin that holds another reference to it, before
+  `Main::PostUninit`.
+
+See `AGENTS.md` "Object Lifetime & Shutdown Order" for the full rules and the headless
+verification recipe.
+
 ### 3.2 EngineSettings (EngineSettings.h)
 
 Serializable, loaded from `%appdata%/ToolKit/Config`. Sub-objects:
@@ -447,6 +499,11 @@ Key entry points:
 
 `ClearSession(flushRenderTasks)` — must be called between project switches or when stopping PIE.
 `ClearPlayInEditorSession()` — only PIE-created objects.
+
+`Destroy()` is the editor's teardown entry point and must run before `Main::Uninit`. Besides
+`DeleteWindows()` and the mod/action manager shutdown it releases every editor cache that holds
+engine resources: `EditorViewport::ReleaseDragDropState()`, `ComponentView::ReleaseViewState()`
+and `UI::UnInit()`. See "Shutdown order and outliving resources" in Section 3.
 
 ### 9.2 Workspace (Editor/ via `Workspace.h` project)
 Manages the user's project directory inside the editor's app data. Stores project list, last opened project, workspace root.

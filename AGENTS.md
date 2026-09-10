@@ -193,7 +193,7 @@ namespace ToolKit
 - Non-English comments must be reported and fixed.
 - **Formatting**: Visual Studio picks up the project's `.clang-format`
   automatically. After editing any C/C++ file the agent must trigger
-  "Format Document" (Ctrl+K, Ctrl+D) on the touched file(s) — VS's
+  "Format Document" (Ctrl+K, Ctrl+D) on the touched file(s) -- VS's
   built-in clang-format is the formatter, no extra tooling required.
   Apply per-file, not per-folder, to keep diffs tight.
   - Edit > Advanced > "Format Document" applies the project rules to the
@@ -231,12 +231,12 @@ This replaces the older ad-hoc pattern of calling `renderer->SetTexture` /
 | `vertexShader`    | Always (must be non-null before ApplyRequirements)             |
 | `program`         | Only if you already have a built `GpuProgramPtr` to reuse       |
 | `frameBuffer`     | Where the pass writes color/depth                              |
-| `clearBits`       | Color/depth/stencil mask — defaults to `None`                  |
+| `clearBits`       | Color/depth/stencil mask -- defaults to `None`                  |
 | `textures`        | Slot-indexed sampler bindings (`std::unordered_map<int, TexturePtr>`) |
-| `semanticTextures`| Name-indexed sampler bindings (`std::unordered_map<String, TexturePtr>`). Resolved to slot AFTER program is bound — safer than `textures` for unknown binding order. |
+| `semanticTextures`| Name-indexed sampler bindings (`std::unordered_map<String, TexturePtr>`). Resolved to slot AFTER program is bound -- safer than `textures` for unknown binding order. |
 | `customUbos`      | Slot-indexed pass-specific UBO bindings (`std::unordered_map<int, UniformBuffer*>`) |
 | `defines`         | `std::unordered_map<String, String>` of `#define`s applied to fragment shader before program build |
-| `passState`       | Passive pipeline state (`RenderState` — depth, blend override, stencil, scissor) |
+| `passState`       | Passive pipeline state (`RenderState` -- depth, blend override, stencil, scissor) |
 | `scissorEnabled` / `scissor` | Per-pass scissor rectangle                          |
 
 ### Standard pass template (sub-pass pattern, like SSAOPass)
@@ -271,7 +271,7 @@ MyPass::MyPass() : Pass("MyPass")
   m_shaderB = GetShaderManager()->Create<Shader>(ShaderPath("b.shader", true));
 
   // Pin each quad to its own shader ONCE in the constructor (renderer not alive
-  // yet is fine — SetFragmentShader only stages the program, BindProgram is no-op).
+  // yet is fine -- SetFragmentShader only stages the program, BindProgram is no-op).
   // Or do this once in PreRender if the renderer must be live.
   m_subPass  = MakeNewPtr<FullQuadPass>();
   m_subPass2 = MakeNewPtr<FullQuadPass>();
@@ -328,7 +328,7 @@ void MyPass::PreRender()
    carries its own `Material->GetProgram()` with its own uniforms. If you call
    `ApplyRequirements` with `m_requirements.program = m_program` (the solidOverride
    material's program), every job gets the wrong program and the wrong uniform
-   layout — visible symptom: outline goes missing on Vulkan because the outline
+   layout -- visible symptom: outline goes missing on Vulkan because the outline
    pass's stencil-mask reads stale values. The write phase is one of the few places
    that stays on the older `renderer->SetPassState + renderer->Render(jobs)` flow.
    See "Exceptions to the declarative flow" below.
@@ -348,7 +348,7 @@ void MyPass::PreRender()
 - Inside `RenderSubPass(subPass)` (via `FullQuadPass::PreRender`), so nested passes
   get a fresh descriptor-set flush before their draw.
 - NOT called from `RenderSubPass` for `Pass`-derived sub-passes that don't extend
-  `FullQuadPass` — those must call `ApplyRequirements` themselves.
+  `FullQuadPass` -- those must call `ApplyRequirements` themselves.
 
 ### Exceptions to the declarative flow
 
@@ -362,7 +362,7 @@ flow:
    single program via `ApplyRequirements` would shadow the per-job programs and break
    the entire draw.
    ```cpp
-   // StencilRenderPass::Render — known exception, do not migrate.
+   // StencilRenderPass::Render -- known exception, do not migrate.
    renderer->SetPassState(m_writePassState);
    renderer->Render(*m_params.RenderJobs);
    ```
@@ -380,6 +380,159 @@ If you find a new third exception, document it here with the failing symptom.
 
 ---
 
+## Object Lifetime & Shutdown Order
+
+ToolKit owns every manager and the graphics backend inside the `Main` singleton. Host
+applications tear it down in a fixed order, and **anything that holds an engine object
+must be released before the host destroys the engine**. Getting this wrong does not fail
+loudly at the point of the mistake: the offending object is destroyed later, during
+`exit()`'s static destructors, and reaches into a `Main` that no longer exists.
+
+The reported symptom of a violation is an abort on exit such as:
+
+```
+Main::GetInstance()   ToolKit.cpp    assert 'm_proxy && "ToolKit is not initialized."'
+GetRenderSystem()     ToolKit.cpp
+Mesh::UnInit          Mesh.cpp
+Mesh::~Mesh           Mesh.cpp
+std::_Sp_counted_ptr<Object*>::_M_dispose
+__run_exit_handlers
+```
+
+### The teardown contract
+
+```
+App::Destroy            release application statics/caches holding engine objects
+Main::PreUninit         engine still fully alive
+Main::Uninit            managers release their resources, backend still alive
+Main::PostUninit        destroys managers + RenderSystem, then sets m_proxy = nullptr
+delete Main             ~Main asserts m_initiated == false
+exit()                  static destructors run -- the engine is already gone here
+```
+
+`Main::PostUninit` nulls `m_proxy`, so from that point on `Main::GetInstance()` asserts by
+design. `Main::PostUninit`'s own doc comment states the rule: *nothing is accessible from
+this on*.
+
+### Rules
+
+1. **Never store engine objects in a static, global, or long lived cache.**
+   Engine objects are `Object` derivatives (`Resource`, `Entity`, `Component`) plus the
+   GPU types (`Framebuffer`, `UniformBuffer`, `GpuProgram`). A `shared_ptr` to any of them
+   in a static keeps CPU and GPU state alive until process exit, which is after the engine
+   is gone.
+
+   ```cpp
+   // WRONG: destroyed during exit(), after ToolKit is gone.
+   void EditorViewport::HandleDrop()
+   {
+     static EntityPtr dwMesh = nullptr; // owns a MeshComponent, which owns a Mesh
+   }
+
+   // RIGHT: process lifetime state lives at file scope behind an accessor, so it can be
+   // released on demand while the engine is still alive.
+   namespace
+   {
+     struct DragDropCache { EntityPtr draggedMesh = nullptr; };
+     DragDropCache& GetDragDropCache() { static DragDropCache cache; return cache; }
+   }
+
+   void EditorViewport::ReleaseDragDropState() { GetDragDropCache().draggedMesh = nullptr; }
+   ```
+
+   If the cached state genuinely has to outlive a single class instance, give it a
+   `static void Release<Something>State()` entry point and call it from the host teardown.
+
+2. **Prefer a member over a static.** Widget and window state (drag in progress, action
+   being accumulated, pending selection) belongs to the class that draws it. Members die
+   with the window, which is destroyed in `App::Destroy` / `DeleteWindows`, i.e. before
+   `Main::Uninit`. A `static` in a member function is a process lifetime object no matter
+   where it is written.
+
+3. **Destructors reachable after `Main::PostUninit` must use the null safe accessors.**
+   `Main::GetInstance_noexcep()`, `GetRenderSystem_noexcep()`, `GetBackend_noexcep()`,
+   `GetAudioManager_noexcep()`, `GetHandleManager()` and `GetTKStats()` return `nullptr`
+   once the engine is gone and must be checked. Skip GPU destruction in that case: the
+   backend no longer exists, so there is nothing left to destroy.
+
+   ```cpp
+   void Mesh::UnInit()
+   {
+     if (m_initiated)
+     {
+       // May run after the engine is gone (resource kept alive by an application cache).
+       if (IGraphicsBackend* backend = GetBackend_noexcep())
+       {
+         backend->DestroyMesh(this);
+       }
+     }
+
+     m_subMeshes.clear();
+     m_initiated = false;
+   }
+   ```
+
+   Hardened today: `Mesh::UnInit`, `Shader::UnInit`, `Texture::UnInit` and its overrides
+   (`DepthTexture`, `DataTexture`, `CubeMap`, `Hdri`), `Framebuffer::UnInit`,
+   `UniformBuffer::~UniformBuffer` / `UniformBuffer::Destroy`, `Audio::UnInit` (the
+   miniaudio engine owns the sound data, so `ma_sound_uninit` is skipped once
+   `AudioManager` is gone). `Object::~Object`, `GpuProgram::~GpuProgram` and
+   `AnimRecord::~AnimRecord` already follow the pattern.
+
+4. **Keep the asserting accessors for creation, loading and render paths.**
+   `GetRenderSystem()`, `GetMaterialManager()`, `GetMeshManager()` and friends must keep
+   asserting there: a missing engine during `Init` / `Load` / `Render` is a real bug and
+   must not be swallowed. Only destructor reachable cleanup uses the `_noexcep()` variants.
+
+5. **Never hand a raw pointer to something you do not own into a static.**
+   `FolderView`'s file operation state holds `DirectoryEntry*` into the `m_entries` of the
+   folder views a `FolderWindow` owns; `FolderWindow::~FolderWindow` therefore calls
+   `FolderView::ReleaseFileOperationState()`. Store an owning handle, an id, or a
+   `weak_ptr` when the target can die first.
+
+6. **When a class-scope static table of engine objects is unavoidable** (the editor
+   toolbar icon table in `UI::m_*Icon`, `UI::m_volatileWindows`), it MUST have a single
+   documented release point that the host teardown calls while the engine is alive:
+   `UI::UnInit()` for the icons, `App::DeleteWindows()` for the volatile windows,
+   `EditorImGuiTextureCache::Clear()` for the Vulkan descriptor cache. Adding a new entry
+   to such a table without extending its release point is a bug.
+
+### Checklist for a new cache, static or host side manager
+
+- Does the stored type transitively own an `Object` / GPU resource? Check nested types:
+  `MeshComponent` owns a `Mesh`, `AnimRecord` owns an `Animation`, `TransformAction` owns
+  an `Entity`, `GamePlugin` owns a `Viewport` (which owns a render target and a
+  framebuffer).
+- Can it be a member of the owning class instead?
+- If it must be static: where is it released, and is that called from `App::Destroy`,
+  `Main::PreUninit` or `Main::Uninit` -- in other words, while the backend is alive?
+- If it is released from a destructor that can run after `PostUninit`: does every engine
+  access in that path go through a `_noexcep()` accessor?
+
+### Verification
+
+A shutdown order regression is cheapest to catch with a headless harness:
+
+```cpp
+SDL_SetHint(SDL_HINT_VIDEODRIVER, "dummy");
+RenderSystem::UseNullBackend();       // no window or GPU needed
+Main* proxy = new Main();
+Main::SetProxy(proxy);
+proxy->PreInit();
+proxy->Init();
+// ... build the offending cache while the engine is alive ...
+proxy->PreUninit();
+proxy->Uninit();
+proxy->PostUninit();
+delete proxy;                        // m_proxy is now gone
+// release the cache here: this must not abort
+```
+
+With the `NullBackend` the crash reproduces identically, because the failing assert is
+about the missing `Main`, not about the backend.
+
+---
+
 ## Documentation Maintenance (`gdtk-overview.md`)
 
 `gdtk-overview.md` is the project's architectural / context file. It is the first
@@ -391,23 +544,23 @@ it after every meaningful change.
 
 Update `gdtk-overview.md` after a change that affects any of:
 
-- **Project layout / solution structure** — new folder, new vcxproj, file moved
+- **Project layout / solution structure** -- new folder, new vcxproj, file moved
   out of its old module, project renamed, new template added.
-- **Build / dependency pipeline** — new vendored dep, dep swapped, build script
+- **Build / dependency pipeline** -- new vendored dep, dep swapped, build script
   behavior change (e.g. `BuildScripts/build_dependencies.py` flow, output
   naming, generator flags), toolchain version bump, new compile define that
   changes the public surface (`-DTK_GL_ES_3_0` etc.).
-- **Core engine architecture** — new manager on the `Main` singleton, new
+- **Core engine architecture** -- new manager on the `Main` singleton, new
   subsystem, new render path, new pass, new UBO slot, new RHI backend, new
   resource type, new scene/ECS concept, new threading primitive.
-- **Editor / tool surface** — new editor window, new command, new plugin type,
+- **Editor / tool surface** -- new editor window, new command, new plugin type,
   new project template, new import format, new packer mode.
-- **Public API breakage or rename** — class/function/file renamed or removed,
+- **Public API breakage or rename** -- class/function/file renamed or removed,
   serialization format version bump, behavior contract change for an existing
   API.
-- **Section 14 (Quick File Lookup) drift** — a header listed there moved or no
+- **Section 14 (Quick File Lookup) drift** -- a header listed there moved or no
   longer exists, or a new key header is missing from the table.
-- **Section 13 / Section 1 paths or facts** — repo path, solution path, license,
+- **Section 13 / Section 1 paths or facts** -- repo path, solution path, license,
   supported platforms / publish targets, primary build environment.
 
 ### When NOT to update
@@ -422,7 +575,7 @@ single-file optimizations.
 1. Read the current `gdtk-overview.md` and locate the section(s) affected
    (Section 2 layout, Section 3 engine core, Section 4 rendering, Section 14
    file lookup, etc.).
-2. Apply the minimal edit — adjust the existing prose or table row, do not
+2. Apply the minimal edit -- adjust the existing prose or table row, do not
    duplicate content into a new section if it belongs in an existing one.
 3. If a new area is introduced that no current section covers, add a new
    subsection in the right place and link it from Section 14 if a key file
@@ -466,7 +619,7 @@ the correct ninja, but a clean PATH is still recommended.
 ### Prerequisites (Fedora)
 
 ```bash
-# X11 dev headers (SDL2 video backend — required)
+# X11 dev headers (SDL2 video backend -- required)
 sudo dnf install -y libX11-devel libXext-devel libXrandr-devel \
   libXcursor-devel libXi-devel libXinerama-devel libxkbcommon-devel
 
@@ -483,7 +636,7 @@ sudo dnf install -y xterm
 # From the GDTK root inside WSL:
 rm -rf Dependency/Intermediate/Linux Intermediate/Linux
 
-# Clean PATH — strip Windows directories so CMake never sees host binaries.
+# Clean PATH -- strip Windows directories so CMake never sees host binaries.
 # /usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin is the safe subset.
 PATH='/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin' \
   python3 BuildScripts/build_gdtk.py --configs Debug --generator ninja
@@ -491,11 +644,11 @@ PATH='/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin' \
 
 ### Generator notes
 
-| Generator | WSL safe? | Notes |
-|-----------|-----------|-------|
-| `ninja` | ✅ (with fix) | Fastest. Scripts pin `-DCMAKE_MAKE_PROGRAM` so CMake uses the right one. |
-| `make` | ✅ | Slower but immune to the ninja PATH problem. Fallback if ninja acts up. |
-| `auto` | ⚠️ | Avoid on WSL — `detect_generator` picks ninja but PATH may resolve the Windows wrapper. Pass `--generator ninja` or `--generator make` explicitly. |
+| Generator | WSL safe?      | Notes |
+|-----------|----------------|-------|
+| `ninja`   | Yes (with fix) | Fastest. Scripts pin `-DCMAKE_MAKE_PROGRAM` so CMake uses the right one. |
+| `make`    | Yes            | Slower but immune to the ninja PATH problem. Fallback if ninja acts up. |
+| `auto`    | Caution        | Avoid on WSL -- `detect_generator` picks ninja but PATH may resolve the Windows wrapper. Pass `--generator ninja` or `--generator make` explicitly. |
 
 ### Quick incremental build (after first clean build)
 
@@ -513,10 +666,10 @@ commands in a terminal emulator window. WSLg provides `DISPLAY=:0` and
 `WAYLAND_DISPLAY=wayland-0` automatically on Windows 11. Install a terminal
 emulator that `ResolveTerminal()` knows about:
 
-- `xterm` — lightweight, always available (`sudo dnf install xterm`)
-- `gnome-terminal`, `konsole`, `kitty`, `alacritty` — also supported
+- `xterm` -- lightweight, always available (`sudo dnf install xterm`)
+- `gnome-terminal`, `konsole`, `kitty`, `alacritty` -- also supported
 
 The `ResolveTerminal()` function checks `$TERMINAL` first, then probes the
 common emulators in order (see `LinuxUtils.h` for the full list).
 Without any emulator installed, `showConsole` falls back to running the
-command hidden — the same as `showConsole=false`.
+command hidden -- the same as `showConsole=false`.
