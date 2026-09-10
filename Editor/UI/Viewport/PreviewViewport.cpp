@@ -62,21 +62,9 @@ namespace ToolKit
 
       ImGui::Dummy(imageSize);
 
-      TexturePtr texture = m_renderTarget;
-      if (texture != nullptr && texture->IsMultiSampled())
-      {
-        TexturePtr resolved = m_renderTarget->GetResolvedTexture();
-        if (resolved)
-        {
-          texture = resolved;
-        }
-      }
-      if (texture == nullptr)
-      {
-        texture = GetTextureManager()->GetBlackTexture();
-      }
+      uint64 texId = GetImGuiTextureId();
 
-      ImGui::GetWindowDrawList()->AddImageRounded(Convert2ImGuiTexture(texture),
+      ImGui::GetWindowDrawList()->AddImageRounded(ConvertUIntImGuiTexture(texId),
                                                   currentCursorPos,
                                                   currentCursorPos + imageSize,
                                                   UI::GetUVLL(),

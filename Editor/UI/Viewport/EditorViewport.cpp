@@ -631,6 +631,35 @@ namespace ToolKit
       m_lastMousePosRelContentArea = absMousePos - m_contentAreaMin;
     }
 
+    uint64 EditorViewport::GetImGuiTextureId() const
+    {
+      // ImGui samples m_renderTarget within the same cb after the render task's FinishPass -
+      // within-cb subpass deps handle the layout / write->read transition. Cross-cb hazards
+      // are eliminated by FRAMES_IN_FLIGHT=1 in the swapchain.
+      TexturePtr texture = m_renderTarget;
+      if (texture != nullptr && texture->IsMultiSampled())
+      {
+        // MSAA: ImGui can only sample the resolved (single-sample) attachment.
+        if (TexturePtr resolved = texture->GetResolvedTexture())
+        {
+          texture = resolved;
+        }
+        else
+        {
+          // TODO: We should provide a fallback image ( previous resolved image ) if resolved image is not ready.
+          // This would look much better than black screen.
+          texture = GetTextureManager()->GetBlackTexture();
+        }
+      }
+
+      if (texture == nullptr)
+      {
+        texture = GetTextureManager()->GetBlackTexture();
+      }
+
+      return EditorImGuiTextureCache::Acquire(texture);
+    }
+
     void EditorViewport::UpdateWindow()
     {
       if (!ImGui::IsWindowCollapsed())
@@ -644,26 +673,7 @@ namespace ToolKit
 
         if (m_wndContentAreaSize.x > 0 && m_wndContentAreaSize.y > 0)
         {
-          // ImGui samples m_renderTarget within the same cb after the render task's FinishPass —
-          // within-cb subpass deps handle the layout / write→read transition. Cross-cb hazards
-          // are eliminated by FRAMES_IN_FLIGHT=1 in the swapchain.
-          TexturePtr texture = m_renderTarget;
-          if (texture != nullptr && texture->IsMultiSampled())
-          {
-            // MSAA: ImGui can only sample the resolved (single-sample) attachment.
-            if (TexturePtr resolved = m_renderTarget->GetResolvedTexture())
-            {
-              texture = resolved;
-            }
-            else
-            {
-              // TODO: We should provide a fallback image ( previous resolved image ) if resolved image is not ready.
-              // This would look much better than black screen.
-              texture = GetTextureManager()->GetBlackTexture();
-            }
-          }
-
-          uint64 texId = EditorImGuiTextureCache::Acquire(texture);
+          uint64 texId = GetImGuiTextureId();
 
           UI::Image(ConvertUIntImGuiTexture(texId), m_wndContentAreaSize);
 

@@ -62,6 +62,16 @@ namespace ToolKit
       virtual void UpdateContentArea();
       virtual void UpdateWindow();
       virtual void DrawCommands();
+
+      /**
+       * Resolves the viewport's render target into an ImGui ready texture handle.
+       * An MSAA render target is resolved to its single sample attachment, which is the only
+       * one ImGui can sample. Falls back to the black texture when the render target is missing
+       * or when its resolved attachment is not available yet.
+       * @return Texture id, convertible to ImTextureID via ConvertUIntImGuiTexture.
+       */
+      uint64 GetImGuiTextureId() const;
+
       virtual void HandleDrop();
       virtual void DrawOverlays();
       virtual void ComitResize();
