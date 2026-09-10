@@ -29,7 +29,15 @@ namespace ToolKit
     m_scene->Load();
   }
 
-  UILayer::~UILayer() {}
+  UILayer::~UILayer()
+  {
+    // While a layer is registered the viewport's layer array holds the last reference, so nothing
+    // is keyed by this id by the time the destructor runs.
+    if (HandleManager* handleMan = GetHandleManager())
+    {
+      handleMan->ReleaseHandle(m_id);
+    }
+  }
 
   void UILayer::Init() {}
 
@@ -226,6 +234,8 @@ namespace ToolKit
       }
     }
   }
+
+  void UIManager::RemoveViewportLayers(ObjectId viewportId) { m_viewportIdLayerArrayMap.erase(viewportId); }
 
   void UIManager::ClearViewportsToUpdateLayers() { m_viewportsToUpdateLayers.clear(); }
 

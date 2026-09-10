@@ -14,6 +14,7 @@
 #include "Renderer.h"
 #include "Scene.h"
 #include "ToolKit.h"
+#include "UIManager.h"
 #include "Util.h"
 
 #include "DebugNew.h"
@@ -75,7 +76,26 @@ namespace ToolKit
     m_attachedCamera = NullHandle;
   }
 
-  ViewportBase::~ViewportBase() {}
+  ViewportBase::~ViewportBase()
+  {
+    // The id goes back to the handle manager for reuse, so whatever is keyed by it has to be
+    // dropped first. The UI manager is the only persistent store of viewport ids, and it is safe
+    // to reach during teardown: ~UIManager clears its viewport array before any of its members are
+    // destroyed, so every registered viewport dies while the layer map is still alive. Once the
+    // manager itself is gone the layer map went with it, and m_uiManager reads as null.
+    if (Main* main = Main::GetInstance_noexcep())
+    {
+      if (UIManager* uiMan = main->m_uiManager)
+      {
+        uiMan->RemoveViewportLayers(m_viewportId);
+      }
+    }
+
+    if (HandleManager* handleMan = GetHandleManager())
+    {
+      handleMan->ReleaseHandle(m_viewportId);
+    }
+  }
 
   Viewport::Viewport() {}
 

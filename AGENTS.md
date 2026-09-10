@@ -512,9 +512,19 @@ this on*.
    not exist outside debug builds. Without `TK_DEBUG` the macros expand to `((void) 0)` and do
    not evaluate their arguments, so no `Class()` lookup is paid for in release.
 
+   Class names in the dump follow the renames `ObjectFactory::Override()` applies. The editor
+   renames `EditorCamera` to `Camera`, so an editor camera is reported as `Camera`.
+
+   `TrackObject()` also asserts that the same address is not registered twice, which means
+   `ParameterConstructor()` ran twice on one object and wasted the handle the first run
+   generated. That is not theoretical: `EditorCamera::Copy()` re-ran it just to re-bind its
+   `Poses` callback, and `DirectionalLight` copies a camera for every shadow cascade, so an
+   editor session allocated hundreds of handles it never used. The guard is what found it and
+   it stays as a regression check.
+
    For the same reason `HandleManager::m_uniqueIDs` is not a liveness metric. It also holds
-   ids for `Node`, `Viewport`, `UILayer` and `AnimRecord`, and `ViewportBase::m_viewportId`
-   and `UILayer::m_id` are never released at all.
+   ids for `Node`, `Viewport`, `UILayer` and `AnimRecord`, which are not `Object`s, so a non
+   zero handle set says nothing about live objects.
 
    Both hosts are measured clean, so any non zero report is a real leak: the editor and the
    Game template both reach `Main PostUninit` with 0 live objects.
@@ -537,6 +547,13 @@ this on*.
    folder views a `FolderWindow` owns; `FolderWindow::~FolderWindow` therefore calls
    `FolderView::ReleaseFileOperationState()`. Store an owning handle, an id, or a
    `weak_ptr` when the target can die first.
+
+   An id counts as such a reference, because handle ids go back to the handle manager for
+   reuse. `ViewportBase` releases `m_viewportId` and `UILayer` releases `m_id` in their
+   destructors, so anything keyed by one of them has to be dropped first:
+   `ViewportBase::~ViewportBase()` calls `UIManager::RemoveViewportLayers()` before it releases
+   the id, otherwise a viewport that later reuses the id would inherit the layers of the one
+   that is gone. When you start storing an id somewhere new, ask where it is erased.
 
 6. **When a class-scope static table of engine objects is unavoidable** (the editor
    toolbar icon table in `UI::m_*Icon`, `UI::m_volatileWindows`), it MUST have a single

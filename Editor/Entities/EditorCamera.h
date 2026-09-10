@@ -34,6 +34,15 @@ namespace ToolKit
 
      private:
       void CreateGizmo();
+
+      /**
+       * Binds the Poses callback to this camera. Split out of ParameterConstructor() because a
+       * copy has to re-bind it after Camera::CopyTo() replaced its parameter block with the
+       * source's, and re-running ParameterConstructor() would leak a handle and reset the copied
+       * Name, Tag, Visible and TransformLock parameters.
+       */
+      void DefinePoses();
+
       void ParameterConstructor() override;
 
      public:

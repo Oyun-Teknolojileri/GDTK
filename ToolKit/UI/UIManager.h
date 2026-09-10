@@ -76,6 +76,14 @@ namespace ToolKit
     /** Unregister a viewport to stop update layers. */
     void UnRegisterViewport(ViewportPtr viewport);
 
+    /**
+     * Drops the layer array registered for a viewport that is going away.
+     *
+     * ViewportBase calls this from its destructor before it releases its id, so a viewport that
+     * later reuses the id does not inherit the layers of the one that is gone.
+     */
+    void RemoveViewportLayers(ObjectId viewportId);
+
     /** Clears viewports to that updates layers. */
     void ClearViewportsToUpdateLayers();
 

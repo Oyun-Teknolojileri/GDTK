@@ -37,7 +37,13 @@ namespace ToolKit
       EditorCameraPtr cpy = MakeNewPtr<EditorCamera>();
       Camera::CopyTo(cpy.get());
       cpy->CreateGizmo();
-      cpy->ParameterConstructor();
+
+      // Camera::CopyTo() ends in Entity::WeakCopy(), which replaces the whole parameter block with
+      // the source's, so the copy would keep a Poses callback bound to this camera. Re-bind only
+      // that callback. Re-running ParameterConstructor() would also generate a second handle,
+      // leaving the first one allocated for the rest of the session, and would reset the copied
+      // Name, Tag, Visible and TransformLock parameters to their defaults.
+      cpy->DefinePoses();
 
       return cpy;
     }
@@ -119,7 +125,11 @@ namespace ToolKit
     void EditorCamera::ParameterConstructor()
     {
       Super::ParameterConstructor();
+      DefinePoses();
+    }
 
+    void EditorCamera::DefinePoses()
+    {
       Poses_Define(
           [this]() -> void
           {

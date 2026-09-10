@@ -128,7 +128,15 @@ Rules:
   their destructor never runs. Debug builds also log the class distribution of the leftovers
   (`live objects by class (total=N): Mesh=1 Entity=1 ...`) from a registry keyed by object
   address, reached through the `TK_TRACK_LIVE_OBJECT()` / `TK_UNTRACK_LIVE_OBJECT()` macros so
-  the registry and the `Class()` lookup it needs are compiled out of release builds. Both hosts are measured clean at that point (editor and Game
+  the registry and the `Class()` lookup it needs are compiled out of release builds. The same
+  registry asserts when one address is registered twice, which catches a second
+  `ParameterConstructor()` run on an already constructed object -- the bug that used to waste a
+  handle per `EditorCamera::Copy()` call.
+- Handle ids go back to the handle manager for reuse, so an id is a reference like any other:
+  `ViewportBase` releases `m_viewportId` and `UILayer` releases `m_id` in their destructors, and
+  anything keyed by an id must be dropped first. `ViewportBase::~ViewportBase()` calls
+  `UIManager::RemoveViewportLayers()` before releasing, otherwise a viewport that reuses the id
+  would inherit the layers of the one that is gone. Both hosts are measured clean at that point (editor and Game
   template report 0), so a report is always a real leak. The count is maintained by
   `Object::Object()` / `Object::~Object()`, not by `ParameterConstructor()`, which derived
   classes may call twice.

@@ -83,6 +83,13 @@ namespace ToolKit
   void HandleManager::TrackObject(const Object* object, const String& className)
   {
     std::lock_guard<std::mutex> guard(m_liveObjectLock);
+
+    // Tracking is keyed by address and only Object::ParameterConstructor() calls it, so seeing
+    // an address twice means ParameterConstructor() ran twice on one object. The second run
+    // generates a second handle and leaves the first one allocated forever.
+    TK_ASSERT_ONCE(m_liveObjects.find(object) == m_liveObjects.end() &&
+                   "ParameterConstructor() ran twice on one object.");
+
     m_liveObjects[object] = className;
   }
 
