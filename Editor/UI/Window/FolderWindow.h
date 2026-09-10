@@ -11,6 +11,8 @@
 #include "MaterialView.h"
 #include "Window.h"
 
+#include <deque>
+
 namespace ToolKit
 {
   namespace Editor
@@ -77,7 +79,7 @@ namespace ToolKit
 
       // Indicates this is a root folder (one level under Resources) and currently selected in the FolderWindow.
       bool m_currRoot        = false;
-      // Indicates this is a root folder (one level under Resources)
+      // Indicates this is a root folder (one level under Resources or the resources folder itself)
       bool m_root            = false;
       // States if the tab is visible. Doesn't necessarily mean active, its just a tab in the FolderView.
       bool m_visible         = false;
@@ -129,6 +131,11 @@ namespace ToolKit
       void SetActiveView(FolderView* view);
       /** Checks if the given path exist in folder views. */
       int Exist(const String& path);
+      /**
+       * Returns the folder paths from the tree root (the resources or the engine
+       * folder) down to the given folder, the root first.
+       */
+      StringArray GetFolderChain(const String& path) const;
       /** Returns the DirectoryEntry for the given path. */
       bool GetFileEntry(const String& fullPath, DirectoryEntry& entry);
       /** Adds a folder view to entries. */
@@ -151,7 +158,10 @@ namespace ToolKit
       XmlNode* DeSerializeImp(const SerializationFileInfo& info, XmlNode* parent) override;
 
      private:
-      /** Returns active folder's ascendants views. */
+      /**
+       * Returns the views from the tree root down to the active folder, so every
+       * depth of the open path keeps its tab and the parent tabs stay reachable.
+       */
       IntArray GetAscendants();
       /** Returns active folder's sibling views. */
       IntArray GetSiblings();
@@ -177,8 +187,12 @@ namespace ToolKit
         int index = -1;
       };
 
-      /** Flat resource content. */
-      std::vector<FolderView> m_entries;
+      /**
+       * Flat resource content. A deque, because a folder view can create the
+       * views of its parents while it is being drawn, and an entry list that
+       * moved its elements would invalidate the reference in use.
+       */
+      std::deque<FolderView> m_entries;
       /** Hierarchic resource content. */
       std::vector<FolderNode> m_folderNodes;
       /**  Active folder whose contents get shown. */

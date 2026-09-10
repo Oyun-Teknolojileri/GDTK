@@ -212,6 +212,24 @@ namespace ToolKit
 
     int FolderView::SelectFolder(FolderWindow* parent, const String& path)
     {
+      // Create the views of the folders leading to the target as well: the tab
+      // bar lists the whole path from the tree root down to it, and a parent tab
+      // is the way back up the hierarchy.
+      StringArray chainPaths = parent->GetFolderChain(path);
+      for (const String& chainPath : chainPaths)
+      {
+        if (parent->Exist(chainPath) != -1)
+        {
+          continue;
+        }
+
+        FolderView view(parent);
+        view.SetPath(chainPath);
+        view.Iterate();
+        view.Refresh();
+        parent->AddEntry(view);
+      }
+
       int selected = parent->Exist(path);
       if (selected == -1)
       {

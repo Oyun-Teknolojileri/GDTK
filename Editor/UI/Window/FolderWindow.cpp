@@ -292,64 +292,57 @@ namespace ToolKit
       ImGui::PopID();
     }
 
+    StringArray FolderWindow::GetFolderChain(const String& path) const
+    {
+      const String sep          = GetPathSeparatorAsStr();
+      const String resourceRoot = ToAbsolutePath(ResourcePath());
+      const String engineRoot   = ToAbsolutePath(DefaultPath());
+
+      // Find the tree root the folder belongs to. The project resources come
+      // first, they can be nested inside the engine ones.
+      String rootPath           = engineRoot;
+      if (resourceRoot != engineRoot && (path == resourceRoot || StartsWith(path, resourceRoot + sep)))
+      {
+        rootPath = resourceRoot;
+      }
+
+      StringArray chainPaths;
+      chainPaths.push_back(rootPath);
+
+      if (path.size() > rootPath.size() && StartsWith(path, rootPath))
+      {
+        StringArray subDirs;
+        Split(path.substr(rootPath.size()), sep, subDirs);
+
+        String chainPath = rootPath;
+        for (const String& subDir : subDirs)
+        {
+          chainPath = ConcatPaths({chainPath, subDir});
+          chainPaths.push_back(chainPath);
+        }
+      }
+
+      return chainPaths;
+    }
+
     IntArray FolderWindow::GetAscendants()
     {
-      // Find all the sub folders up to the active folder.
+      // Find all the folders from the tree root down to the active folder. Every
+      // one of them keeps its tab, so the parents stay reachable while the user
+      // goes deeper into the hierarchy.
       FolderView* activeFolder = GetActiveView();
       if (activeFolder == nullptr)
       {
         return {};
       }
 
-      String fullPath         = activeFolder->GetPath();
-      String rootPath         = activeFolder->GetRoot();
-
-      String intermediatePath = fullPath.substr(rootPath.size());
-
-      StringArray subDirs;
-      Split(intermediatePath, GetPathSeparatorAsStr(), subDirs);
-
-      if (subDirs.empty())
-      {
-        return {m_activeFolder};
-      }
-
-      // Construct all sub directory paths.
-      StringArray subDirPaths;
-      for (int i = 0; i < (int) subDirs.size(); i++)
-      {
-        StringArray subFolders;
-        subFolders.push_back(rootPath);
-
-        for (int ii = 0; ii <= i; ii++)
-        {
-          subFolders.push_back(subDirs[ii]);
-        }
-
-        subDirPaths.push_back(ConcatPaths(subFolders));
-      }
-
       IntArray views;
-      for (int i = 0; i < (int) m_entries.size(); i++)
+      for (const String& chainPath : GetFolderChain(activeFolder->GetPath()))
       {
-        FolderView& view = m_entries[i];
-        String candidate = view.GetPath();
-
-        for (int ii = 0; ii < (int) subDirPaths.size(); ii++)
+        int indx = Exist(chainPath);
+        if (indx != -1)
         {
-          String& subDir = subDirPaths[ii];
-          if (candidate == subDir)
-          {
-            views.push_back(i);
-            subDirPaths.erase(subDirPaths.begin() + ii);
-            break;
-          }
-        }
-
-        // Break if no next path remains.
-        if (subDirPaths.empty())
-        {
-          break;
+          views.push_back(indx);
         }
       }
 
@@ -512,6 +505,14 @@ namespace ToolKit
         m_activeFolder = 0;
         m_entries.clear();
         ReconstructFolderTree();
+
+        // The resources folder itself is part of the hierarchy, the tab bar of
+        // every folder below it starts with it.
+        FolderView rootView(this);
+        rootView.SetPath(absPath);
+        rootView.m_root = true;
+        rootView.Iterate();
+        AddEntry(rootView);
       }
 
       // Non-throwing iterator: a single unreadable entry won't kill the loop.
