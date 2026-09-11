@@ -158,6 +158,10 @@ namespace ToolKit
       // of its own yet.
       PlatformHelpers::UpdateAppIcon(g_window, PlatformHelpers::LauncherAppIconFile);
 
+      // The dock and the application menu read the icon from a .desktop entry
+      // rather than from the window, so the launcher publishes one too.
+      PlatformHelpers::RegisterAppDesktopEntry("ToolKit Launcher", PlatformHelpers::LauncherAppIconFile);
+
       int srgbFlag = 0;
       SDL_GL_GetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, &srgbFlag);
       g_proxy->m_renderSys->m_backbufferFormatIsSRGB = (srgbFlag == 1);

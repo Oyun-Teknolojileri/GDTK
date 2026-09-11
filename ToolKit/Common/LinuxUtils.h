@@ -29,13 +29,17 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <algorithm>
+#include <cctype>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <future>
+#include <sstream>
 #include <string>
 #include <thread>
 
@@ -607,6 +611,113 @@ namespace ToolKit
       }
 
       ImageFree(pixels);
+    }
+
+    // Publishes a desktop entry for the running host, so the desktop
+    // environment can tie the application to its icon.
+    //
+    // An ELF executable carries no icon: SDL_SetWindowIcon puts one on the
+    // window (see UpdateAppIcon), but the dock, the application menu and the
+    // file manager read Icon= from a .desktop entry instead, and they tie a
+    // running window to that entry through WM_CLASS. SDL derives WM_CLASS from
+    // the executable name (SDL_x11video.c, get_classname), so the entry is
+    // named after the executable and repeats the class in StartupWMClass.
+    //
+    // The entry name is lowercased: GNOME canonicalizes the window's WM_CLASS
+    // before it looks the entry up (Shell.AppSystem.lookup_desktop_wmclass:
+    // "the .desktop file, without the extension and properly canonicalized,
+    // matches wmclass"), while StartupWMClass carries the class as SDL
+    // registered it, which is what KDE matches on.
+    //
+    // XDG_DATA_HOME/applications holds per user entries; without an installer
+    // step this is the only place a build tree can put one, which is why the
+    // hosts publish it at startup. The file is rewritten only when its content
+    // actually changed -- a rewrite on every launch would churn the mtime and
+    // re-trigger the desktop database and the file managers watching the
+    // folder. Two builds of the same host (BinDebug and BinRelWithDebInfo)
+    // share one entry name, so the last one launched is the one that stays;
+    // that is the trade-off for not needing an installer.
+    //
+    // Returns true when the entry is present and current, false when it could
+    // not be written (no HOME, no permissions). The result is informational:
+    // a host that cannot publish the entry still runs, it just shows the
+    // generic icon where the desktop environment matches by entry.
+    inline bool RegisterAppDesktopEntry(const String& appName, const String& iconName = EditorAppIconFile)
+    {
+      std::string dataDir;
+      if (const char* xdg = std::getenv("XDG_DATA_HOME"); xdg != nullptr && xdg[0] != '\0')
+      {
+        dataDir = xdg;
+      }
+      else if (const char* home = std::getenv("HOME"); home != nullptr && home[0] != '\0')
+      {
+        dataDir = std::string(home) + "/.local/share";
+      }
+      else
+      {
+        return false;
+      }
+
+      const std::string exePath = GetExecutablePath();
+      if (exePath.empty())
+      {
+        return false;
+      }
+
+      // SDL registers this exact string as WM_CLASS.
+      const std::string wmClass = PathToString(std::filesystem::path(exePath).stem());
+
+      std::string entryName     = wmClass;
+      std::transform(entryName.begin(),
+                     entryName.end(),
+                     entryName.begin(),
+                     [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+      std::ostringstream entry;
+      entry << "[Desktop Entry]\n";
+      entry << "Type=Application\n";
+      entry << "Version=1.0\n";
+      entry << "Name=" << appName << "\n";
+      entry << "Exec=" << exePath << "\n";
+      entry << "Icon=" << GetAppIconFile(iconName) << "\n";
+      entry << "Terminal=false\n";
+      entry << "StartupNotify=false\n";
+      entry << "StartupWMClass=" << wmClass << "\n";
+      entry << "Categories=Development;\n";
+
+      std::error_code ec;
+      const std::filesystem::path dir = std::filesystem::path(dataDir) / "applications";
+      std::filesystem::create_directories(dir, ec);
+      if (ec)
+      {
+        TK_WRN("RegisterAppDesktopEntry: cannot create \"%s\": %s.", dir.string().c_str(), ec.message().c_str());
+        return false;
+      }
+
+      const std::filesystem::path file = dir / (entryName + ".desktop");
+
+      {
+        std::ifstream current(file);
+        if (current.is_open())
+        {
+          std::stringstream buffer;
+          buffer << current.rdbuf();
+          if (buffer.str() == entry.str())
+          {
+            return true;
+          }
+        }
+      }
+
+      std::ofstream out(file, std::ios::trunc);
+      if (!out.is_open())
+      {
+        TK_WRN("RegisterAppDesktopEntry: cannot write \"%s\".", file.string().c_str());
+        return false;
+      }
+
+      out << entry.str();
+      return out.good();
     }
 
     // Create a desktop entry that launches the current editor

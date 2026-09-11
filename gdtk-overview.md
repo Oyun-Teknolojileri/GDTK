@@ -570,6 +570,19 @@ The names live in `ToolKit/Common/PlatformHelper.h` so both call sites read the 
 `EditorAppIconFile` = `app_big.png` (270x248), `LauncherAppIconFile` = `app_big_blue.png` (270x270,
 the blue variant, square).
 
+A window icon alone does not tell a desktop environment which application it is looking at: the
+dock, the application menu and the file manager read `Icon=` from a `.desktop` entry and tie a
+running window to that entry through `WM_CLASS`. `PlatformHelpers::RegisterAppDesktopEntry(appName,
+iconName)`, called next to `UpdateAppIcon` by both hosts, writes
+`$XDG_DATA_HOME/applications/<canonicalized exe name>.desktop` (`editor.desktop`,
+`launcher.desktop`) with `Exec=` pointing at the running executable, `Icon=` at the engine PNG and
+`StartupWMClass=` at the name SDL registers as `WM_CLASS` (`Editor`, `Launcher`). SDL derives that
+name from the executable name (`Dependency/SDL2/src/video/x11/SDL_x11video.c`, `get_classname`), so
+the entry is named after the executable as well -- lowercased, because GNOME canonicalizes the
+window's `WM_CLASS` before it looks the entry up (`Shell.AppSystem.lookup_desktop_wmclass`). The
+file is rewritten only when its content changed. On Windows the call is a no-op: the executable
+carries its icon and a `.lnk` inherits it.
+
 The Linux path loads through `ImageLoadTopDown` (`ToolKit/Render/Image.h`) rather than `ImageLoad`:
 `RenderSystem::InitGraphics` turns the engine's vertical flip switch on for the GL texture path
 (texture origin is bottom-left, see `ImageSetVerticalOnLoad`), so a plain `ImageLoad` hands back

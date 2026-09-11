@@ -393,6 +393,12 @@ namespace ToolKit
             // Common/Win32Utils.h.
             PlatformHelpers::UpdateAppIcon(g_window);
 
+            // A window icon is not enough on Linux: the dock, the
+            // application menu and the file manager read the icon from a
+            // .desktop entry, and tie the running window to it through
+            // WM_CLASS. Windows needs nothing here.
+            PlatformHelpers::RegisterAppDesktopEntry("ToolKit Editor", PlatformHelpers::EditorAppIconFile);
+
             // Register update functions
             TKUpdateFn preUpdateFn = [](float deltaTime)
             {

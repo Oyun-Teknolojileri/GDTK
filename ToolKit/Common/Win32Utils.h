@@ -605,6 +605,21 @@ namespace ToolKit
       }
     }
 
+    // No-op on Windows, kept so the host call sites read the same on both
+    // platforms. There is no per application entry to publish here: a Win32
+    // executable carries its icon in the resource section, the shell and the
+    // task bar read it from there, and a shortcut (.lnk) inherits it from the
+    // target, so nothing has to be written at startup.
+    //
+    // Returns false: nothing was published, the caller has nothing to do with
+    // the result on this platform.
+    inline bool RegisterAppDesktopEntry(const String& appName, const String& iconName = EditorAppIconFile)
+    {
+      (void) appName;
+      (void) iconName;
+      return false;
+    }
+
     // Create a desktop shortcut (.lnk) that launches the current editor executable
     // with optional command-line arguments.
     //
