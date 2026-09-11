@@ -19,7 +19,7 @@ namespace ToolKit
 
   Node::Node() : m_scale(Vec3(1.0f))
   {
-    m_id           = GetHandleManager()->GenerateHandle();
+    m_id           = GetObjectRegistry()->GenerateId();
     m_parent       = nullptr;
     m_inheritScale = false;
     m_dirty        = true;
@@ -33,9 +33,9 @@ namespace ToolKit
       Orphan(m_children[i], true);
     }
 
-    if (HandleManager* handleManager = GetHandleManager())
+    if (ObjectRegistry* registry = GetObjectRegistry())
     {
-      handleManager->ReleaseHandle(m_id);
+      registry->ReleaseId(m_id);
     }
   }
 

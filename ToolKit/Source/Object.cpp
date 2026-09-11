@@ -29,19 +29,18 @@ namespace ToolKit
     // The live object count lives in the constructor and the destructor, which run exactly once
     // per object. ParameterConstructor() is not a safe place for the count: derived classes may
     // call it again, which would count the same object twice.
-    if (HandleManager* handleMan = GetHandleManager())
+    if (ObjectRegistry* registry = GetObjectRegistry())
     {
-      handleMan->ObjectCreated();
+      registry->ObjectCreated();
     }
   }
 
   Object::~Object()
   {
-    if (HandleManager* handleMan = GetHandleManager())
+    if (ObjectRegistry* registry = GetObjectRegistry())
     {
-      handleMan->ReleaseHandle(GetIdVal());
-      handleMan->ObjectDestroyed();
-      TK_UNTRACK_LIVE_OBJECT(handleMan, this);
+      registry->ReleaseId(GetIdVal());
+      registry->ObjectDestroyed(this);
     }
   }
 
@@ -58,15 +57,17 @@ namespace ToolKit
 
   void Object::ParameterConstructor()
   {
-    HandleManager* handleMan = GetHandleManager();
-    ObjectId id              = handleMan->GenerateHandle();
+    ObjectRegistry* registry = GetObjectRegistry();
+    ObjectId id              = registry->GenerateId();
     Id_Define(id, EntityCategory.Name, EntityCategory.Priority, true, false);
 
     // Debug only class registry, so Main::PostUninit can name what was left behind. This has to
     // run here, not in Object::Object(), because Class() still reports the base type while the
-    // base constructor runs. Recording is idempotent (keyed by address), so a derived class
-    // calling this a second time does not register the same object twice.
-    TK_TRACK_LIVE_OBJECT(handleMan, this);
+    // base constructor runs. It also asserts on a repeated address, which is how a second run of
+    // this function on one object gets reported instead of silently wasting the id it generates.
+#ifdef TK_DEBUG
+    registry->TrackObject(this, Class()->Name);
+#endif
   }
 
   void Object::ParameterEventConstructor() {}
@@ -89,7 +90,7 @@ namespace ToolKit
     assert(parent != nullptr && "Root of the object can't be null.");
 
     ObjectId id = GetIdVal();
-    GetHandleManager()->ReleaseHandle(id);
+    GetObjectRegistry()->ReleaseId(id);
     m_localData.m_version = m_version;
     m_localData.DeSerialize(info, parent);
     PreventIdCollision();
@@ -117,17 +118,17 @@ namespace ToolKit
 
   void Object::PreventIdCollision()
   {
-    HandleManager* handleMan = GetHandleManager();
+    ObjectRegistry* registry = GetObjectRegistry();
     ObjectId idInFile        = GetIdVal();
 
-    if (!handleMan->IsHandleUnique(idInFile))
+    if (!registry->IsIdAvailable(idInFile))
     {
       _idBeforeCollision = idInFile;
-      SetIdVal(handleMan->GenerateHandle());
+      SetIdVal(registry->GenerateId());
     }
     else
     {
-      handleMan->AddHandle(idInFile);
+      registry->RegisterId(idInFile);
     }
   }
 

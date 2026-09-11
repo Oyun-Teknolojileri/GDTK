@@ -311,9 +311,9 @@ namespace ToolKit
     }
 
     // Release the generated id.
-    HandleManager* handleMan = GetHandleManager();
+    ObjectRegistry* registry = GetObjectRegistry();
     ObjectId id              = GetIdVal();
-    handleMan->ReleaseHandle(id);
+    registry->ReleaseId(id);
 
     // Read id and other parameters.
     m_localData.DeSerialize(info, parent);

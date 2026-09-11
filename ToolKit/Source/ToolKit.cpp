@@ -34,13 +34,13 @@
 namespace ToolKit
 {
 
-  HandleManager::HandleManager()
+  ObjectRegistry::ObjectRegistry()
   {
     ObjectId seed = time(nullptr) + ((ObjectId) (this) ^ m_randomXor[0]);
     Xoroshiro128PlusSeed(m_randomXor, seed);
   }
 
-  ObjectId HandleManager::GenerateHandle()
+  ObjectId ObjectRegistry::GenerateId()
   {
     ObjectId id;
     SpinlockGuard lock(m_uniqueIdWriteLock);
@@ -48,58 +48,60 @@ namespace ToolKit
     do
     {
       id = Xoroshiro128Plus(m_randomXor);
-    } while (m_uniqueIDs.find(id) != m_uniqueIDs.end() || id == NullHandle);
+    } while (m_uniqueIds.find(id) != m_uniqueIds.end() || id == NullHandle);
 
-    m_uniqueIDs.insert(id);
+    m_uniqueIds.insert(id);
     return id;
   }
 
-  void HandleManager::AddHandle(ObjectId val)
+  void ObjectRegistry::RegisterId(ObjectId val)
   {
     SpinlockGuard lock(m_uniqueIdWriteLock);
-    m_uniqueIDs.insert(val);
+    m_uniqueIds.insert(val);
   }
 
-  bool HandleManager::IsHandleUnique(ObjectId val)
+  bool ObjectRegistry::IsIdAvailable(ObjectId val)
   {
     SpinlockGuard lock(m_uniqueIdWriteLock);
-    bool unique = (m_uniqueIDs.find(val) == m_uniqueIDs.end());
-    return unique;
+    bool available = (m_uniqueIds.find(val) == m_uniqueIds.end());
+    return available;
   }
 
-  void HandleManager::ReleaseHandle(ObjectId val)
+  void ObjectRegistry::ReleaseId(ObjectId val)
   {
     SpinlockGuard lock(m_uniqueIdWriteLock);
-    m_uniqueIDs.erase(val);
+    m_uniqueIds.erase(val);
   }
 
-  void HandleManager::ObjectCreated() { m_liveObjectCount.fetch_add(1, std::memory_order_relaxed); }
+  void ObjectRegistry::ObjectCreated() { m_liveObjectCount.fetch_add(1, std::memory_order_relaxed); }
 
-  void HandleManager::ObjectDestroyed() { m_liveObjectCount.fetch_sub(1, std::memory_order_relaxed); }
-
-  uint64 HandleManager::LiveObjectCount() const { return m_liveObjectCount.load(std::memory_order_relaxed); }
+  void ObjectRegistry::ObjectDestroyed(const Object* object)
+  {
+    m_liveObjectCount.fetch_sub(1, std::memory_order_relaxed);
 
 #ifdef TK_DEBUG
-  void HandleManager::TrackObject(const Object* object, const String& className)
+    std::lock_guard<std::mutex> guard(m_liveObjectLock);
+    m_liveObjects.erase(object);
+#endif
+  }
+
+  uint64 ObjectRegistry::LiveObjectCount() const { return m_liveObjectCount.load(std::memory_order_relaxed); }
+
+#ifdef TK_DEBUG
+  void ObjectRegistry::TrackObject(const Object* object, const String& className)
   {
     std::lock_guard<std::mutex> guard(m_liveObjectLock);
 
     // Tracking is keyed by address and only Object::ParameterConstructor() calls it, so seeing
     // an address twice means ParameterConstructor() ran twice on one object. The second run
-    // generates a second handle and leaves the first one allocated forever.
+    // generates a second id and leaves the first one allocated forever.
     TK_ASSERT_ONCE(m_liveObjects.find(object) == m_liveObjects.end() &&
                    "ParameterConstructor() ran twice on one object.");
 
     m_liveObjects[object] = className;
   }
 
-  void HandleManager::UntrackObject(const Object* object)
-  {
-    std::lock_guard<std::mutex> guard(m_liveObjectLock);
-    m_liveObjects.erase(object);
-  }
-
-  String HandleManager::DescribeLiveObjects() const
+  String ObjectRegistry::DescribeLiveObjects() const
   {
     std::lock_guard<std::mutex> guard(m_liveObjectLock);
 
@@ -269,14 +271,14 @@ namespace ToolKit
     // released after the engine, during exit()'s static destructors, and their UnInit can no
     // longer reach the backend. Loud in debug builds so the leak gets found, and reported in
     // release builds so a shipped game keeps exiting cleanly.
-    const uint64 liveObjects = m_handleManager.LiveObjectCount();
+    const uint64 liveObjects = m_objectRegistry.LiveObjectCount();
     if (liveObjects > 0)
     {
       m_logger->Log("Main PostUninit: " + std::to_string(liveObjects) +
                     " engine objects outlived the engine. See AGENTS.md, "
                     "Object Lifetime & Shutdown Order.");
 #ifdef TK_DEBUG
-      m_logger->Log(m_handleManager.DescribeLiveObjects());
+      m_logger->Log(m_objectRegistry.DescribeLiveObjects());
 #endif
     }
 
@@ -523,11 +525,11 @@ namespace ToolKit
 
   UIManager* GetUIManager() { return Main::GetInstance()->m_uiManager; }
 
-  HandleManager* GetHandleManager()
+  ObjectRegistry* GetObjectRegistry()
   {
     if (Main* instance = Main::GetInstance_noexcep())
     {
-      return &instance->m_handleManager;
+      return &instance->m_objectRegistry;
     }
 
     return nullptr;
@@ -569,8 +571,8 @@ namespace ToolKit
     return res;
   }
 
-  TK_API String EngineSettingsPath() 
-  { 
+  TK_API String EngineSettingsPath()
+  {
     static const String res = ToAbsolutePath(ConcatPaths({ConfigPath(), "Engine.settings"}));
     return res;
   }

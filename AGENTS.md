@@ -451,7 +451,7 @@ this on*.
 
 3. **Destructors reachable after `Main::PostUninit` must use the null safe accessors.**
    `Main::GetInstance_noexcep()`, `GetRenderSystem_noexcep()`, `GetBackend_noexcep()`,
-   `GetAudioManager_noexcep()`, `GetHandleManager()` and `GetTKStats()` return `nullptr`
+   `GetAudioManager_noexcep()`, `GetObjectRegistry()` and `GetTKStats()` return `nullptr`
    once the engine is gone and must be checked. Skip GPU destruction in that case: the
    backend no longer exists, so there is nothing left to destroy.
 
@@ -485,7 +485,7 @@ this on*.
    `AnimRecord::~AnimRecord` already follow the pattern.
 
 3b. **The same violation is also counted at its source.** `Main::PostUninit` reads
-   `HandleManager::LiveObjectCount()` right after the render system is destroyed and reports a
+   `ObjectRegistry::LiveObjectCount()` right after the render system is destroyed and reports a
    non zero result: it logs the count and raises `TK_ASSERT_ONCE`, so a leaking static is named
    even when the objects it holds never run a destructor. Debug builds also log the class
    distribution, which is what tells you where the leak lives:
@@ -498,33 +498,42 @@ this on*.
    The count is maintained by `Object::Object()` and `Object::~Object()`, which run exactly
    once per object. Do **not** move that bookkeeping into `Object::ParameterConstructor()`:
    a derived class may call it a second time on an already constructed object (see
-   `EditorCamera::Copy()`), which counts one object twice and leaks the first generated handle.
+   `EditorCamera::Copy()`), which counts one object twice and leaks the first generated id.
    The debug class registry does live in `ParameterConstructor()`, because `Class()` still
    reports the base type while `Object::Object()` runs; it is keyed by address, so the repeat
    call cannot register the same object twice.
 
-   That registry is reached through `TK_TRACK_LIVE_OBJECT()` and `TK_UNTRACK_LIVE_OBJECT()`.
-   They are macros like `TK_ASSERT_ONCE`, not `if constexpr` statements, and that is not a
-   style preference: `TK_DEBUG` is only defined by CMake for the Debug configuration, so
-   `if constexpr (TK_DEBUG)` does not even compile in release, and a discarded `if constexpr`
-   branch still has to name existing members -- while the point here is that
-   `TrackObject` / `UntrackObject` / `DescribeLiveObjects` and the map and mutex behind them do
-   not exist outside debug builds. Without `TK_DEBUG` the macros expand to `((void) 0)` and do
-   not evaluate their arguments, so no `Class()` lookup is paid for in release.
+   **The two halves sit on opposite sides of `TK_DEBUG`, and the split is about cost.**
+   `m_liveObjectCount` is a plain relaxed atomic, effectively free, so it survives into
+   release builds and a shipped game still logs that it leaked. The registry behind the class
+   distribution needs a mutex, an `unordered_map` node and a `String` copy per object --
+   roughly 200-350 ns per object on the create/destroy pair, measured against a `GenerateId()`
+   that costs a fraction of that -- so it exists in debug builds only. Keeping the map in
+   release would also turn every object construction into a global serialization point,
+   because `Object`s are created from worker threads.
+
+   Because of that split there is no macro layer any more. `ObjectDestroyed(const Object*)`
+   takes the address and both decrements the count and (in debug) erases the registry entry,
+   and `Object::ParameterConstructor()` calls `TrackObject()` under a single local `#ifdef`.
+   The old `TK_TRACK_LIVE_OBJECT()` / `TK_UNTRACK_LIVE_OBJECT()` pair is gone: a macro resolves
+   `TK_DEBUG` at the **call site**, and the call sites are spread over ToolKit, `Modules/` and
+   the templates, so a module built with a different debug switch would reference a
+   `TrackObject` that does not exist and fail to link. An `#ifdef` inside the class keeps the
+   decision in one translation unit.
 
    Class names in the dump follow the renames `ObjectFactory::Override()` applies. The editor
    renames `EditorCamera` to `Camera`, so an editor camera is reported as `Camera`.
 
    `TrackObject()` also asserts that the same address is not registered twice, which means
-   `ParameterConstructor()` ran twice on one object and wasted the handle the first run
+   `ParameterConstructor()` ran twice on one object and wasted the id the first run
    generated. That is not theoretical: `EditorCamera::Copy()` re-ran it just to re-bind its
    `Poses` callback, and `DirectionalLight` copies a camera for every shadow cascade, so an
-   editor session allocated hundreds of handles it never used. The guard is what found it and
+   editor session allocated hundreds of ids it never used. The guard is what found it and
    it stays as a regression check.
 
-   For the same reason `HandleManager::m_uniqueIDs` is not a liveness metric. It also holds
+   For the same reason `ObjectRegistry::m_uniqueIds` is not a liveness metric. It also holds
    ids for `Node`, `Viewport`, `UILayer` and `AnimRecord`, which are not `Object`s, so a non
-   zero handle set says nothing about live objects.
+   zero id set says nothing about live objects.
 
    Both hosts are measured clean, so any non zero report is a real leak: the editor and the
    Game template both reach `Main PostUninit` with 0 live objects.
@@ -548,7 +557,7 @@ this on*.
    `FolderView::ReleaseFileOperationState()`. Store an owning handle, an id, or a
    `weak_ptr` when the target can die first.
 
-   An id counts as such a reference, because handle ids go back to the handle manager for
+   An id counts as such a reference, because ids go back to the object registry for
    reuse. `ViewportBase` releases `m_viewportId` and `UILayer` releases `m_id` in their
    destructors, so anything keyed by one of them has to be dropped first:
    `ViewportBase::~ViewportBase()` calls `UIManager::RemoveViewportLayers()` before it releases

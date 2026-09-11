@@ -19,7 +19,7 @@
 namespace ToolKit
 {
 
-  UILayer::UILayer() { m_id = GetHandleManager()->GenerateHandle(); }
+  UILayer::UILayer() { m_id = GetObjectRegistry()->GenerateId(); }
 
   UILayer::UILayer(const String& file) : UILayer() { m_scene = GetSceneManager()->Create<Scene>(file); }
 
@@ -33,9 +33,9 @@ namespace ToolKit
   {
     // While a layer is registered the viewport's layer array holds the last reference, so nothing
     // is keyed by this id by the time the destructor runs.
-    if (HandleManager* handleMan = GetHandleManager())
+    if (ObjectRegistry* registry = GetObjectRegistry())
     {
-      handleMan->ReleaseHandle(m_id);
+      registry->ReleaseId(m_id);
     }
   }
 

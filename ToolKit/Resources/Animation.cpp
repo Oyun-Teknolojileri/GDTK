@@ -321,7 +321,7 @@ namespace ToolKit
     }
   }
 
-  AnimRecord::AnimRecord() { m_id = GetHandleManager()->GenerateHandle(); }
+  AnimRecord::AnimRecord() { m_id = GetObjectRegistry()->GenerateId(); }
 
   void AnimRecord::Construct(EntityPtr entity, AnimationPtr anim)
   {
@@ -331,9 +331,9 @@ namespace ToolKit
 
   AnimRecord::~AnimRecord()
   {
-    if (HandleManager* handleMan = GetHandleManager())
+    if (ObjectRegistry* registry = GetObjectRegistry())
     {
-      handleMan->ReleaseHandle(m_id);
+      registry->ReleaseId(m_id);
     }
   }
 

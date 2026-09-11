@@ -51,7 +51,7 @@ namespace ToolKit
 
         std::unordered_map<ObjectId, AnimPreviewState> previewStates;
 
-        /** Lazily allocates the scratch record, which needs a live handle manager. */
+        /** Lazily allocates the scratch record, which needs a live object registry. */
         void EnsureExtraTrack()
         {
           if (extraTrack.second == nullptr)

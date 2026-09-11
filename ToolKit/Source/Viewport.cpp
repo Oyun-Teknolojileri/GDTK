@@ -72,13 +72,13 @@ namespace ToolKit
   ViewportBase::ViewportBase()
   {
     m_camera         = MakeNewPtr<Camera>();
-    m_viewportId     = GetHandleManager()->GenerateHandle();
+    m_viewportId     = GetObjectRegistry()->GenerateId();
     m_attachedCamera = NullHandle;
   }
 
   ViewportBase::~ViewportBase()
   {
-    // The id goes back to the handle manager for reuse, so whatever is keyed by it has to be
+    // The id goes back to the object registry for reuse, so whatever is keyed by it has to be
     // dropped first. The UI manager is the only persistent store of viewport ids, and it is safe
     // to reach during teardown: ~UIManager clears its viewport array before any of its members are
     // destroyed, so every registered viewport dies while the layer map is still alive. Once the
@@ -91,9 +91,9 @@ namespace ToolKit
       }
     }
 
-    if (HandleManager* handleMan = GetHandleManager())
+    if (ObjectRegistry* registry = GetObjectRegistry())
     {
-      handleMan->ReleaseHandle(m_viewportId);
+      registry->ReleaseId(m_viewportId);
     }
   }
 

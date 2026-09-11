@@ -138,7 +138,7 @@ namespace ToolKit
     void PostDeSerializeImp(const SerializationFileInfo& info, XmlNode* parent) override;
 
     /**
-     * Utility function that checks if the current id is colliding with anything currently in the handle manager.
+     * Utility function that checks if the current id is colliding with anything currently in the object registry.
      * If a collision happens, it sets _idBeforeCollision with the colliding id to resolve parent - child relations
      * and assigns a new non colliding id.
      */

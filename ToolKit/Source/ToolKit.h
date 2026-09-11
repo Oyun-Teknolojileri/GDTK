@@ -35,30 +35,43 @@ namespace ToolKit
 
   class Object;
 
-  /** A class that Provides a unique handle when needed. */
-  class TK_API HandleManager
+  /**
+   * Provides unique ids and keeps the record of the live engine objects.
+   *
+   * The two jobs are split on cost, not on subject. Id generation is needed in every build
+   * (the id is serialized), and the live object count is a plain atomic that pays for itself as
+   * a teardown diagnostic. The class distribution behind Main::PostUninit's leak report needs a
+   * mutex, a heap node and a String copy per object, and exists in debug builds only: the
+   * counter tells a shipped game that it leaked, the registry tells a developer what leaked.
+   *
+   * The set of assigned ids is not a liveness metric even so: Node, Viewport, UILayer and
+   * AnimRecord take ids without being Objects.
+   */
+  class TK_API ObjectRegistry
   {
    public:
-    HandleManager(); //!< Default constructor, initializes the handle manager with a random seed.
+    ObjectRegistry(); //!< Default constructor, initializes the registry with a random seed.
 
     /**
      * Random id that guarantees uniqueness on runtime. Collisions are resolved during deserialize, if any.
      * These ids, freed when using of it completed. So ids are reused and do not overflow.
      */
-    ObjectId GenerateHandle();
+    ObjectId GenerateId();
 
-    void AddHandle(ObjectId val); //!< Add record for the random id. Prevent it from getting acquired multiple times.
-    void ReleaseHandle(ObjectId val);  //!< Free the id for reuse.
-    bool IsHandleUnique(ObjectId val); //!< Test if id acquired.
+    void RegisterId(ObjectId val);    //!< Record the id, preventing it from being acquired again.
+    void ReleaseId(ObjectId val);     //!< Free the id for reuse.
+    bool IsIdAvailable(ObjectId val); //!< Test if the id is free.
 
     /**
      * Records that an Object instance became alive and drops that record again in the
-     * destructor. The count is separate from the handle set on purpose: handles are also taken
-     * by non Object types (Node, Viewport, UILayer, AnimRecord), so the handle set can not be
-     * used to tell whether engine objects are still alive.
+     * destructor. The count is separate from the id set on purpose: ids are also taken by non
+     * Object types (Node, Viewport, UILayer, AnimRecord), so the id set can not be used to tell
+     * whether engine objects are still alive.
      */
     void ObjectCreated();
-    void ObjectDestroyed();
+
+    /** Drops the record of the object. Debug builds also erase it from the leak report registry. */
+    void ObjectDestroyed(const Object* object);
 
     /**
      * Number of live Object instances. Main::PostUninit asserts on it to verify that no engine
@@ -76,17 +89,22 @@ namespace ToolKit
      * destroyed with.
      */
     void TrackObject(const Object* object, const String& className);
-    void UntrackObject(const Object* object);
 
     /** Debug only: class distribution of the objects that are still alive. */
     String DescribeLiveObjects() const;
 #endif
 
    private:
-    ObjectId m_randomXor[2];                   //!< Random seed.
-    std::unordered_set<ObjectId> m_uniqueIDs;  //!< Container for all acquired handles.
-    Spinlock m_uniqueIdWriteLock;              //!< Guaranties thread safety for modifying handle manager's state.
-    std::atomic<uint64> m_liveObjectCount {0}; //!< Live Object instances, see ObjectCreated().
+    ObjectId m_randomXor[2];                  //!< Random seed.
+    std::unordered_set<ObjectId> m_uniqueIds; //!< Container for all acquired ids.
+    Spinlock m_uniqueIdWriteLock;             //!< Guaranties thread safety for modifying the registry's state.
+
+    /**
+     * Live Object instances, see ObjectCreated(). Relaxed atomic on purpose: it is a diagnostic
+     * counter, and objects are created from worker threads. It is the only part of the live
+     * object bookkeeping that survives into release builds.
+     */
+    std::atomic<uint64> m_liveObjectCount {0};
 
 #ifdef TK_DEBUG
     mutable std::mutex m_liveObjectLock;                     //!< Guards m_liveObjects.
@@ -252,7 +270,7 @@ namespace ToolKit
     class TKStats* m_tkStats                   = nullptr;
     class WorkerManager* m_workerManager       = nullptr;
     struct GlobalGpuBuffers* m_gpuBuffers      = nullptr;
-    HandleManager m_handleManager;
+    ObjectRegistry m_objectRegistry;
 
     bool m_preInitiated = false;
     bool m_initiated    = false;
@@ -302,7 +320,7 @@ namespace ToolKit
   TK_API class SceneManager* GetSceneManager();
   TK_API class PluginManager* GetPluginManager();
   TK_API class UIManager* GetUIManager();
-  TK_API class HandleManager* GetHandleManager();
+  TK_API class ObjectRegistry* GetObjectRegistry();
   TK_API class SkeletonManager* GetSkeletonManager();
   TK_API class FileManager* GetFileManager();
   TK_API class EngineSettings& GetEngineSettings();
@@ -333,22 +351,3 @@ namespace ToolKit
   TK_API String PluginConfigPath(const String& file, bool def = false);
 
 } // namespace ToolKit
-
-/**
- * Debug only live object bookkeeping, wrapped in macros for the same reason TK_ASSERT_ONCE is:
- * the HandleManager methods behind them and the registry they fill only exist in debug builds.
- *
- * They compile to nothing without TK_DEBUG and do not evaluate their arguments, so neither the
- * call nor the Class() lookup they need is paid for in release builds. This is deliberately not
- * an `if constexpr`: a discarded branch still has to name existing members, and the point here
- * is that they do not exist outside debug builds.
- *
- * See HandleManager::TrackObject and Main::PostUninit.
- */
-#ifdef TK_DEBUG
-  #define TK_TRACK_LIVE_OBJECT(handleMan, object) (handleMan)->TrackObject((object), (object)->Class()->Name)
-  #define TK_UNTRACK_LIVE_OBJECT(handleMan, object) (handleMan)->UntrackObject(object)
-#else
-  #define TK_TRACK_LIVE_OBJECT(handleMan, object) ((void) 0)
-  #define TK_UNTRACK_LIVE_OBJECT(handleMan, object) ((void) 0)
-#endif

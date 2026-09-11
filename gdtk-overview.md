@@ -82,7 +82,7 @@ Main
 ├── m_tkStats             TKStats
 ├── m_workerManager       WorkerManager          (thread pool)
 ├── m_gpuBuffers          GlobalGpuBuffers        (UBO bundle)
-├── m_handleManager       HandleManager           (unique ObjectId generator, thread-safe)
+├── m_objectRegistry      ObjectRegistry          (unique ObjectId generator + live object registry)
 ├── m_timing              Timing                  (delta time, FPS lock)
 ├── m_eventPool           EventPool               (event bus)
 ├── m_threaded            bool                    (toggles all threading)
@@ -119,20 +119,28 @@ Rules:
   `Main::GetInstance_noexcep()`, `GetRenderSystem_noexcep()`, `GetBackend_noexcep()`,
   `GetAudioManager_noexcep()`. They return `nullptr` once the engine is gone, and GPU
   destruction is skipped because the backend no longer exists. `Object::~Object` already
-  did this via `GetHandleManager()`.
+  did this via `GetObjectRegistry()`.
 - Violations are diagnosed twice. `GetRenderSystem_noexcep()` / `GetAudioManager_noexcep()`
   raise `TK_ASSERT_ONCE` when they are reached after teardown, which catches an object whose
   destructor runs too late. `Main::PostUninit` additionally reads
-  `HandleManager::LiveObjectCount()` after destroying the render system, logs a non zero
+  `ObjectRegistry::LiveObjectCount()` after destroying the render system, logs a non zero
   count and raises `TK_ASSERT_ONCE`, which catches objects that are still alive even when
   their destructor never runs. Debug builds also log the class distribution of the leftovers
   (`live objects by class (total=N): Mesh=1 Entity=1 ...`) from a registry keyed by object
-  address, reached through the `TK_TRACK_LIVE_OBJECT()` / `TK_UNTRACK_LIVE_OBJECT()` macros so
-  the registry and the `Class()` lookup it needs are compiled out of release builds. The same
-  registry asserts when one address is registered twice, which catches a second
-  `ParameterConstructor()` run on an already constructed object -- the bug that used to waste a
-  handle per `EditorCamera::Copy()` call.
-- Handle ids go back to the handle manager for reuse, so an id is a reference like any other:
+  address, filled from `Object::ParameterConstructor()` so the `Class()` lookup sees the
+  derived type. The same registry asserts when one address is registered twice, which catches a
+  second `ParameterConstructor()` run on an already constructed object -- the bug that used to
+  waste an id per `EditorCamera::Copy()` call.
+- The live object bookkeeping is split across `TK_DEBUG` by cost, not by subject. The plain
+  relaxed atomic count is effectively free, so it survives into release builds and a shipped
+  game still logs that it leaked. The class registry behind it needs a mutex, an
+  `unordered_map` node and a `String` copy per object (~200-350 ns per object on the
+  create/destroy pair, against a `GenerateId()` that costs a fraction of that) and would turn
+  every object construction into a global serialization point, so it exists in debug builds
+  only. It is gated with an `#ifdef` inside the class rather than with macros at the call
+  sites: the call sites spread over ToolKit, `Modules/` and the templates, and a module built
+  with a different debug switch would reference a method that does not exist.
+- Ids go back to the object registry for reuse, so an id is a reference like any other:
   `ViewportBase` releases `m_viewportId` and `UILayer` releases `m_id` in their destructors, and
   anything keyed by an id must be dropped first. `ViewportBase::~ViewportBase()` calls
   `UIManager::RemoveViewportLayers()` before releasing, otherwise a viewport that reuses the id
@@ -604,8 +612,8 @@ TKAsyncTask(BackgroundPool, Func, arg1, ...)  // fire-and-forget async
 - `Spinlock` (rigtorp's), `SpinlockGuard` (RAII), `SpinWaitBarrier(cond)` — for low-contention quick locks.
 - `HyperThreadPause()` macro: `_mm_pause` on MSVC, `__builtin_ia32_pause` on GCC, `yield` on ARM, no-op on Emscripten.
 
-### 10.4 HandleManager
-`GenerateHandle()` is thread-safe via `Spinlock m_uniqueIdWriteLock`. Returns random `ObjectId` from `m_randomXor[2]` seed; recycled on `ReleaseHandle`.
+### 10.4 ObjectRegistry
+`GenerateId()` is thread-safe via `Spinlock m_uniqueIdWriteLock`. Returns a random `ObjectId` from the `m_randomXor[2]` seed; recycled on `ReleaseId()`. The same class keeps the live object bookkeeping for the teardown leak report (`LiveObjectCount()`, plus a debug only class registry behind `DescribeLiveObjects()`); the id set itself is not a liveness metric because `Node`, `Viewport`, `UILayer` and `AnimRecord` take ids without being `Object`s.
 
 ### 10.5 RenderSystem
 `AddRenderTask` enqueues; `ExecuteRenderTasks` drains high queue then low queue. Tasks can be `High` or `Low` priority. `RenderTask::Callback` fires after.

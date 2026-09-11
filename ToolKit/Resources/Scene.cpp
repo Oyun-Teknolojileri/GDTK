@@ -200,10 +200,10 @@ namespace ToolKit
 
   void Scene::Merge(ScenePtr other)
   {
-    HandleManager* handleMan = GetHandleManager();
+    ObjectRegistry* registry = GetObjectRegistry();
     for (EntityPtr otherNtt : other->GetEntities())
     {
-      otherNtt->SetIdVal(handleMan->GenerateHandle());
+      otherNtt->SetIdVal(registry->GenerateId());
       AddEntity(otherNtt);
     }
 
@@ -837,8 +837,8 @@ namespace ToolKit
     // Solve the parent-child relations
     for (EntityPtr ntt : deserializedEntities)
     {
-      // Generate new handle for old version scene entities
-      ntt->SetIdVal(GetHandleManager()->GenerateHandle());
+      // Generate new id for old version scene entities
+      ntt->SetIdVal(GetObjectRegistry()->GenerateId());
       AddEntity(ntt);
     }
 
