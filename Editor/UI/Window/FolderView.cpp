@@ -20,6 +20,8 @@
 #include <Mesh.h>
 #include <Skeleton.h>
 
+#include <algorithm>
+
 namespace ToolKit
 {
   namespace Editor
@@ -204,27 +206,65 @@ namespace ToolKit
 
       if (ImGui::IsKeyPressed(ImGuiKey_Delete))
       {
-        for (size_t i = 0ull; i < g_selectedFiles.size(); ++i)
+        for (DirectoryEntry* entry : g_selectedFiles)
         {
-          String path = g_selectedFiles[i]->GetFullPath();
-          if (!CheckFile(path))
-          {
-            continue;
-          }
-          std::filesystem::remove(path);
+          DeleteEntry(entry);
         }
+
         g_selectedFiles.clear();
-        // refresh all folder views
-        for (FolderWindow* window : GetApp()->GetAssetBrowsers())
-        {
-          window->SetViewsDirty();
-        }
       }
 
       if (ImGui::IsKeyPressed(ImGuiKey_V) && g_dragBeginView != nullptr &&
           g_dragBeginView != this) // be sure we are not dropping to same file
       {
         PasteFiles(m_path);
+      }
+    }
+
+    void FolderView::DeleteEntry(DirectoryEntry* entry)
+    {
+      const String path = entry->GetFullPath();
+      if (!CheckFile(path))
+      {
+        return;
+      }
+
+      // A directory goes away with its content, a file is dropped from the resource manager
+      // that owns it first. Both removals use the error_code overload: the throwing
+      // std::filesystem::remove() aborted the editor with "Directory not empty" as soon as
+      // Delete was pressed on a folder that had content, which is exactly what the key path
+      // used to call.
+      std::error_code ec;
+      if (entry->m_isDirectory)
+      {
+        std::filesystem::remove_all(path, ec);
+      }
+      else
+      {
+        if (ResourceManager* rm = entry->GetManager())
+        {
+          rm->Remove(path);
+        }
+
+        std::filesystem::remove(path, ec);
+      }
+
+      if (ec)
+      {
+        TK_ERR("Delete failed for \"%s\": %s", path.c_str(), ec.message().c_str());
+        GetApp()->SetStatusMsg(g_statusFailed);
+      }
+
+      // Folders can be added and removed outside of the editor, so the tree of the asset
+      // browser has to be read back from the file system.
+      if (entry->m_isDirectory && m_parent != nullptr)
+      {
+        m_parent->SetTreeDirty();
+      }
+
+      for (FolderWindow* window : GetApp()->GetAssetBrowsers())
+      {
+        window->SetViewsDirty();
       }
     }
 
@@ -825,22 +865,6 @@ namespace ToolKit
         return list;
       };
 
-      auto deleteDirFn = [getSameViewsFn](const String& path, FolderView* thisView) -> void
-      {
-        std::error_code ec;
-        std::filesystem::remove_all(path, ec);
-        if (ec)
-        {
-          TK_ERR("Delete failed: %s", ec.message().c_str());
-          GetApp()->SetStatusMsg(g_statusFailed);
-        }
-
-        for (FolderView* view : getSameViewsFn(thisView))
-        {
-          view->m_dirty = true;
-        }
-      };
-
       // Copy file path.
       m_itemActions["FileSystem/Show In Explorer"] = [getSameViewsFn](DirectoryEntry* entry,
                                                                       FolderView* thisView) -> void
@@ -962,8 +986,7 @@ namespace ToolKit
       };
 
       // FileSystem/Delete.
-      m_itemActions["FileSystem/Delete"] = [getSameViewsFn, deleteDirFn](DirectoryEntry* entry,
-                                                                         FolderView* thisView) -> void
+      m_itemActions["FileSystem/Delete"] = [getSameViewsFn](DirectoryEntry* entry, FolderView* thisView) -> void
       {
         FolderViewRawPtrArray views = getSameViewsFn(thisView);
         if (views.size() == 0)
@@ -973,28 +996,21 @@ namespace ToolKit
 
         if (ImGui::MenuItem("Delete"))
         {
-          if (entry->m_isDirectory)
+          // Delete acts on the selection, the same unit the Delete key works on. Right
+          // clicking an entry that is not part of the selection removes just that entry.
+          if (std::find(g_selectedFiles.begin(), g_selectedFiles.end(), entry) != g_selectedFiles.end())
           {
-            deleteDirFn(entry->GetFullPath(), thisView);
-            thisView->m_parent->SetTreeDirty();
+            std::vector<DirectoryEntry*> selection = g_selectedFiles;
+            g_selectedFiles.clear();
+
+            for (DirectoryEntry* selected : selection)
+            {
+              thisView->DeleteEntry(selected);
+            }
           }
           else
           {
-            for (size_t i = 0ull; i < g_selectedFiles.size(); ++i)
-            {
-              DirectoryEntry* selected = g_selectedFiles[i];
-              if (ResourceManager* rm = selected->GetManager())
-              {
-                rm->Remove(selected->GetFullPath());
-              }
-
-              std::filesystem::remove(selected->GetFullPath());
-            }
-
-            for (FolderView* view : views)
-            {
-              view->SetDirty();
-            }
+            thisView->DeleteEntry(entry);
           }
 
           ImGui::CloseCurrentPopup();

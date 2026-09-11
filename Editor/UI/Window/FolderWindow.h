@@ -72,6 +72,14 @@ namespace ToolKit
 
      private:
       void HandleCopyPasteDelete();
+
+      /**
+       * Removes an entry: a directory goes away with its content, a file is dropped from the
+       * resource manager that owns it first. Failures are reported, not thrown, so a folder
+       * that cannot be removed leaves the editor running.
+       */
+      void DeleteEntry(DirectoryEntry* entry);
+
       static void PasteFiles(const String& path);
       void DrawSearchBar();
       void CreateItemActions();
