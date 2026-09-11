@@ -10,6 +10,7 @@
 #include "GeometryTypes.h"
 #include "Types.h"
 
+#include <algorithm>
 #include <filesystem>
 
 namespace ToolKit
@@ -154,6 +155,24 @@ namespace ToolKit
    * @returns true if file path root is ToolKit.
    */
   TK_API bool HasToolKitRoot(const String& path);
+
+  /**
+   * Removes the resource layer folder from a path relative to a resource root, so the
+   * folder inside the layer can be addressed on its own. Importer style tools own the
+   * layer: they write every asset type into its own layer and take the folder inside it
+   * as their target (Utils/Import/import.cpp, makeDest), which nests the layer twice when
+   * a path that already names it is passed along.
+   *
+   * A leading ToolKit marker is kept, it is what selects the engine tree over the project
+   * tree (see HasToolKitRoot): "ToolKit/Meshes" becomes "ToolKit", "Meshes" becomes "",
+   * "Meshes/Props" becomes "Props". A path that carries no layer ("MyStuff",
+   * "ToolKit/MyStuff") is returned unchanged.
+   *
+   * @param relativePath Path relative to a resource root, as GetRelativeResourcePath
+   * returns it.
+   * @returns The path without its layer folder.
+   */
+  TK_API String StripResourceLayer(const String& relativePath);
 
   /** Extracts the file name with the extension from a path. */
   TK_API String GetFileName(const String& path);

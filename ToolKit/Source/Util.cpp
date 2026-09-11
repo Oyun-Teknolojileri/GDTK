@@ -426,6 +426,63 @@ namespace ToolKit
 
   bool HasToolKitRoot(const String& path) { return StartsWith(path, "ToolKit\\") || StartsWith(path, "ToolKit/"); }
 
+  String StripResourceLayer(const String& relativePath)
+  {
+    // The typed folders of a resource tree. The engine resolves every asset through one of
+    // them (ProcessPath), so a new layer belongs in this list.
+    static const StringArray layers = {"Animations",
+                                       "Audio",
+                                       "Fonts",
+                                       "Layers",
+                                       "Materials",
+                                       "Meshes",
+                                       "Prefabs",
+                                       "Scenes",
+                                       "Shaders",
+                                       "Sprites",
+                                       "Textures"};
+
+    StringArray parts;
+    Split(relativePath, GetPathSeparatorAsStr(), parts);
+    if (parts.empty())
+    {
+      return relativePath;
+    }
+
+    // The ToolKit marker is never the layer that has to go, the layer sits behind it.
+    size_t layerIndex = 0;
+    if (parts[0] == "ToolKit")
+    {
+      layerIndex = 1;
+    }
+
+    if (layerIndex >= parts.size() || std::find(layers.begin(), layers.end(), parts[layerIndex]) == layers.end())
+    {
+      return relativePath;
+    }
+
+    StringArray kept;
+    for (size_t i = 0; i < parts.size(); ++i)
+    {
+      if (i != layerIndex)
+      {
+        kept.push_back(parts[i]);
+      }
+    }
+
+    String stripped;
+    for (size_t i = 0; i < kept.size(); ++i)
+    {
+      stripped += kept[i];
+      if (i + 1 < kept.size())
+      {
+        stripped += GetPathSeparatorAsStr();
+      }
+    }
+
+    return stripped;
+  }
+
   String GetFileName(const String& path)
   {
     char sep = GetPathSeparator();

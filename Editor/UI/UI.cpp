@@ -26,6 +26,7 @@
 #include <SDL.h>
 #include <Sky.h>
 #include <TKOpenGL.h>
+#include <Util.h>
 #include <Workspace.h>
 #include <imgui/backends/imgui_impl_sdl2.h>
 
@@ -1155,17 +1156,30 @@ namespace ToolKit
           ImGui::Separator();
         }
 
+        // The import tool writes every asset type into its own layer and reads -t as the folder
+        // inside that layer (Utils/Import/import.cpp, makeDest), while a "ToolKit" marker in
+        // front of it selects the engine tree over the project tree (ToolKit::ProcessPath). Both
+        // parts come from the view path, so the target is derived from it. A view opened on the
+        // engine tree's own layer root carries the marker even when it is the current root, and
+        // it has to keep targeting the engine: without that, dropping into the engine's Meshes
+        // node asked for "-t Meshes" and nested Meshes/Meshes, Materials/Meshes, Prefabs/Meshes,
+        // or fell back to the project tree.
+        const String viewPath = ImportData.ActiveView->GetPath();
+        const bool engineView = viewPath.rfind(DefaultPath(), 0) == 0;
         String importFolder;
-        if (!ImportData.ActiveView->m_currRoot)
+        if (!ImportData.ActiveView->m_currRoot || engineView)
         {
-          importFolder = ImportData.ActiveView->GetPath();
-          importFolder = GetRelativeResourcePath(importFolder);
-          if (ImportData.SubDir.length())
+          importFolder = StripResourceLayer(GetRelativeResourcePath(viewPath));
+        }
+
+        if (!ImportData.SubDir.empty())
+        {
+          if (!importFolder.empty())
           {
             importFolder += GetPathSeparatorAsStr();
           }
+          importFolder += ImportData.SubDir;
         }
-        importFolder += ImportData.SubDir;
 
         ImportData.ActiveView->Refresh();
         for (int i = static_cast<int>(ImportData.Files.size()) - 1; i >= 0; --i)
