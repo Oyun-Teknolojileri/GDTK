@@ -1317,7 +1317,7 @@ namespace ToolKit
         if (!CanMoveEntry(entry, dstLayer, &refusal))
         {
           TK_WRN("Move refused: %s", refusal.c_str());
-          GetApp()->SetStatusMsg(refusal);
+          GetApp()->SetStatusMsg(g_statusFailed);
           continue;
         }
 
@@ -1330,7 +1330,7 @@ namespace ToolKit
           // Say which entry was going where and why it failed: a silent failure here is
           // indistinguishable from a drop that never happened.
           TK_ERR("Move failed: \"%s\" -> \"%s\": %s", src.c_str(), newPath.c_str(), errCode.message().c_str());
-          GetApp()->SetStatusMsg(Format("Move failed: %s (%s)", entry.m_fileName.c_str(), errCode.message().c_str()));
+          GetApp()->SetStatusMsg(g_statusFailed);
         }
         else
         {
