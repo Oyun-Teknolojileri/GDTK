@@ -1019,7 +1019,17 @@ namespace ToolKit
       if (ImGui::BeginDragDropTarget())
       {
         const FileDragData& dragData = FolderView::GetFileDragData();
-        DirectoryEntry& entry        = *dragData.Entries[0]; // get first entry
+        if (dragData.Entries == nullptr || dragData.NumFiles <= 0)
+        {
+          // The payload points into the entries of the view it came from. When that view let them go
+          // while the drag was still alive there is nothing to drop, and dereferencing the empty
+          // pointer here used to take the editor down with it.
+          TK_WRN("Drop ignored: the dragged entries are not available anymore.");
+          ImGui::EndDragDropTarget();
+          return;
+        }
+
+        DirectoryEntry& entry = *dragData.Entries[0]; // get first entry
 
         // Check if the drag object is a mesh
         Vec3 lastDragMeshPos         = Vec3(0.0f);
@@ -1033,6 +1043,10 @@ namespace ToolKit
         }
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("BrowserDragZone"))
         {
+          // One line per drop so the console shows which view took it: the asset browsers log their
+          // own refusals, and without this a drop that lands here looks like a drop that got lost.
+          // The path is relative to the resource root, the full path is mostly the same prefix.
+          TK_LOG("Drop on viewport: %s", GetRelativeResourcePath(entry.GetFullPath()).c_str());
 
           if (entry.m_ext == MESH || entry.m_ext == SKINMESH)
           {

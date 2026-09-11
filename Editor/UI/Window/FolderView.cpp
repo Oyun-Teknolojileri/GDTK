@@ -697,16 +697,27 @@ namespace ToolKit
       const bool dragging      = drag != nullptr && drag->IsDataType("BrowserDragZone");
       const bool carrying      = dragging && g_carryingFiles;
 
+      const bool hovered       = ImGui::IsWindowHovered(hoverFlags);
+      const bool released      = ImGui::IsMouseReleased(ImGuiMouseButton_Left);
+
       if (!dragging)
       {
-        g_carryingFiles = false;
-        g_dragBeginView = nullptr;
-        g_fileDragData  = FileDragData {};
+        // The selection and the drag data are released here, once the payload is gone, and not on
+        // the release frame: the payload points into g_selectedFiles and the viewport reads it when
+        // the drop lands there. Freeing it on the release frame handed the viewport a stale entry.
+        const bool carried = g_carryingFiles;
+        g_carryingFiles    = false;
+        g_dragBeginView    = nullptr;
+        g_fileDragData     = FileDragData {};
+
+        if ((carried || (released && hovered)) && !ImGui::IsKeyDown(ImGuiKey_LeftShift) &&
+            !ImGui::IsKeyDown(ImGuiKey_LeftCtrl))
+        {
+          g_selectedFiles.clear();
+        }
+
         return;
       }
-
-      const bool hovered  = ImGui::IsWindowHovered(hoverFlags);
-      const bool released = ImGui::IsMouseReleased(ImGuiMouseButton_Left);
 
       String refusal;
       const bool acceptable = CanMoveDraggedEntries(m_path, &refusal);
@@ -735,11 +746,6 @@ namespace ToolKit
         else if (!anyButtonClicked && carrying)
         {
           DropFiles(m_path);
-        }
-
-        if (!ImGui::IsKeyDown(ImGuiKey_LeftShift) && !ImGui::IsKeyDown(ImGuiKey_LeftCtrl))
-        {
-          g_selectedFiles.clear();
         }
       }
     }
@@ -1307,7 +1313,7 @@ namespace ToolKit
         DirectoryEntry& entry = *g_fileDragData.Entries[i];
         if (!CheckFile(entry.GetFullPath()))
         {
-          TK_WRN("Move skipped: \"%s\" is not there anymore.", entry.GetFullPath().c_str());
+          TK_WRN("Move skipped: \"%s\" is not there anymore.", GetRelativeResourcePath(entry.GetFullPath()).c_str());
           continue;
         }
 
@@ -1329,7 +1335,10 @@ namespace ToolKit
         {
           // Say which entry was going where and why it failed: a silent failure here is
           // indistinguishable from a drop that never happened.
-          TK_ERR("Move failed: \"%s\" -> \"%s\": %s", src.c_str(), newPath.c_str(), errCode.message().c_str());
+          TK_ERR("Move failed: \"%s\" -> \"%s\": %s",
+                 GetRelativeResourcePath(src).c_str(),
+                 GetRelativeResourcePath(newPath).c_str(),
+                 errCode.message().c_str());
           GetApp()->SetStatusMsg(g_statusFailed);
         }
         else
