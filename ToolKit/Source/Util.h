@@ -174,6 +174,26 @@ namespace ToolKit
    */
   TK_API String StripResourceLayer(const String& relativePath);
 
+  /**
+   * The layers a file may live in, empty when it is not a typed resource and can sit anywhere.
+   *
+   * The engine resolves every asset through one layer (ProcessPath): MeshPath looks under Meshes,
+   * MaterialPath under Materials, TexturePath under Textures, and animations and skeletons resolve
+   * under Meshes as well. A type can own more than one layer: a .scene is a level under Scenes and
+   * a prefab under Prefabs.
+   *
+   * @param ext File extension including the dot.
+   * @returns Layer folder names the extension can live in.
+   */
+  TK_API StringArray GetResourceLayers(const String& ext);
+
+  /**
+   * The layer folder a resource path sits in, with the ToolKit marker skipped.
+   * @param path A resource path, relative to a resource root or absolute.
+   * @returns Layer folder name, empty when the path has none.
+   */
+  TK_API String GetResourceLayer(const String& path);
+
   /** Extracts the file name with the extension from a path. */
   TK_API String GetFileName(const String& path);
 

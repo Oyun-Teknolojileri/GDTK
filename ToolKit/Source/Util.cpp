@@ -483,6 +483,76 @@ namespace ToolKit
     return stripped;
   }
 
+  StringArray GetResourceLayers(const String& ext)
+  {
+    if (ext.empty())
+    {
+      return {};
+    }
+
+    if (ext == MESH || ext == SKINMESH || ext == SKELETON || ext == ANIM || SupportedMeshFormat(ext))
+    {
+      return {"Meshes"};
+    }
+
+    if (ext == MATERIAL)
+    {
+      return {"Materials"};
+    }
+
+    if (SupportedImageFormat(ext))
+    {
+      return {"Textures"};
+    }
+
+    if (ext == SHADER)
+    {
+      return {"Shaders"};
+    }
+
+    if (SupportedAudioFormat(ext))
+    {
+      return {"Audio"};
+    }
+
+    if (ext == SCENE)
+    {
+      return {"Scenes", "Prefabs"};
+    }
+
+    if (ext == LAYER)
+    {
+      return {"Layers"};
+    }
+
+    return {};
+  }
+
+  String GetResourceLayer(const String& path)
+  {
+    // GetRelativeResourcePath cuts the layer off the path and reports it through rootFolder, so
+    // the returned path does not carry it anymore. The out parameter is only filled when a segment
+    // sits behind the layer, which leaves the path that ends at the layer itself to the fallback
+    // below ("ToolKit/Meshes" answers "Meshes").
+    String layer;
+    const String relative = GetRelativeResourcePath(path, &layer);
+    if (!layer.empty())
+    {
+      return layer;
+    }
+
+    StringArray parts;
+    Split(relative, GetPathSeparatorAsStr(), parts);
+
+    size_t index = (!parts.empty() && parts[0] == "ToolKit") ? 1 : 0;
+    if (index < parts.size())
+    {
+      return parts[index];
+    }
+
+    return String();
+  }
+
   String GetFileName(const String& path)
   {
     char sep = GetPathSeparator();
