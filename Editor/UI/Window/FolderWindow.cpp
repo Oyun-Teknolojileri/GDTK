@@ -591,6 +591,19 @@ namespace ToolKit
 
     void FolderWindow::SetTreeDirty() { m_treeDirty = true; }
 
+    void FolderWindow::RefreshAllAssetBrowsers(bool includeTrees)
+    {
+      for (FolderWindow* window : GetApp()->GetAssetBrowsers())
+      {
+        window->SetViewsDirty();
+
+        if (includeTrees)
+        {
+          window->SetTreeDirty();
+        }
+      }
+    }
+
     FolderView& FolderWindow::GetView(int indx) { return m_entries[indx]; }
 
     FolderView* FolderWindow::GetActiveView()

@@ -50,6 +50,62 @@ namespace ToolKit
 
     const FileDragData& FolderView::GetFileDragData() { return g_fileDragData; }
 
+    /**
+     * Whether an entry can be moved into the layer a destination lives in, filling reason with the
+     * refusal. A folder carries whatever the user keeps in it and an untyped file has no layer, so
+     * both are always movable.
+     */
+    static bool CanMoveEntry(const DirectoryEntry& entry, const String& dstLayer, String* reason)
+    {
+      if (entry.m_isDirectory)
+      {
+        return true;
+      }
+
+      const StringArray layers = GetResourceLayers(entry.m_ext);
+      if (layers.empty())
+      {
+        return true;
+      }
+
+      if (!dstLayer.empty() && std::find(layers.begin(), layers.end(), dstLayer) != layers.end())
+      {
+        return true;
+      }
+
+      if (reason != nullptr)
+      {
+        String allowed;
+        for (size_t i = 0; i < layers.size(); ++i)
+        {
+          allowed += layers[i];
+          if (i + 1 < layers.size())
+          {
+            allowed += " or ";
+          }
+        }
+
+        *reason = Format("%s can only be moved to %s.", entry.m_fileName.c_str(), allowed.c_str());
+      }
+
+      return false;
+    }
+
+    /** Whether every entry of the current drag can be moved to dst, filling reason when it cannot. */
+    static bool CanMoveDraggedEntries(const String& dst, String* reason)
+    {
+      const String dstLayer = GetResourceLayer(dst);
+      for (int i = 0; i < g_fileDragData.NumFiles; ++i)
+      {
+        if (!CanMoveEntry(*g_fileDragData.Entries[i], dstLayer, reason))
+        {
+          return false;
+        }
+      }
+
+      return true;
+    }
+
     void FolderView::ReleaseFileOperationState()
     {
       g_fileDragData   = FileDragData{};
@@ -174,17 +230,9 @@ namespace ToolKit
       g_copyingFiles = g_cuttingFiles = false;
       g_coppiedFiles.clear();
 
-      // refresh all folder views
-      for (FolderWindow* window : GetApp()->GetAssetBrowsers())
-      {
-        window->SetViewsDirty();
-
-        // A pasted folder adds a whole branch to the hierarchy.
-        if (pastedDirectory)
-        {
-          window->SetTreeDirty();
-        }
-      }
+      // A paste can land in another asset browser than the one that cut or copied, and a pasted
+      // folder adds a whole branch to the hierarchy of every tree.
+      FolderWindow::RefreshAllAssetBrowsers(pastedDirectory);
     }
 
     void FolderView::HandleCopyPasteDelete()
@@ -255,17 +303,9 @@ namespace ToolKit
         GetApp()->SetStatusMsg(g_statusFailed);
       }
 
-      // Folders can be added and removed outside of the editor, so the tree of the asset
-      // browser has to be read back from the file system.
-      if (entry->m_isDirectory && m_parent != nullptr)
-      {
-        m_parent->SetTreeDirty();
-      }
-
-      for (FolderWindow* window : GetApp()->GetAssetBrowsers())
-      {
-        window->SetViewsDirty();
-      }
+      // Folders can be added and removed outside of the editor, so the hierarchies of every
+      // asset browser are rebuilt from the file system.
+      FolderWindow::RefreshAllAssetBrowsers(entry->m_isDirectory);
     }
 
     int FolderView::SelectFolder(FolderWindow* parent, const String& path)
@@ -405,6 +445,12 @@ namespace ToolKit
         {
           // Handle context menu based on path / content type of the folder.
           ShowContextMenu();
+
+          // An empty folder still has to take a drop: returning here without it left no way to
+          // move a file back into the folder it was dragged out of, because the view it came from
+          // was empty by then.
+          HandleDropOnBackground(false);
+
           ImGui::EndChild();
           ImGui::EndTabItem();
           return;
@@ -614,26 +660,87 @@ namespace ToolKit
           }
         } // Tab item handling ends(for loop).
 
-        bool mouseReleased = ImGui::IsMouseReleased(ImGuiMouseButton_Left);
-
-        // mouse released on empty position in this window
-        if (!anyButtonClicked && mouseReleased)
-        {
-          if (g_carryingFiles == true && g_dragBeginView != nullptr)
-          {
-            g_dragBeginView->DropFiles(m_path);
-          }
-          if (!ImGui::IsKeyDown(ImGuiKey_LeftShift) && !ImGui::IsKeyDown(ImGuiKey_LeftCtrl))
-          {
-            g_selectedFiles.clear();
-          }
-        }
-
-        g_carryingFiles = mouseReleased ? false : g_carryingFiles;
+        // Mouse released on an empty position of this view. The carrying flag is process wide and
+        // this block runs for every view that draws, so without the hover test the files went to
+        // whichever asset browser happened to draw first instead of the one under the pointer:
+        // dragging from the second browser to the first worked, the other direction silently
+        // renamed the files into their own folder. AllowWhenBlockedByActiveItem is required
+        // because the dragged item is the active one while the drop happens.
+        HandleDropOnBackground(anyButtonClicked);
 
         ImGui::EndChild();
 
         ImGui::EndTabItem();
+      }
+    }
+
+    /**
+     * Handles a drop on the background of this view, and the feedback for a payload it cannot take.
+     *
+     * The carrying flag is process wide and this runs for every view that draws, so without the
+     * hover test the files went to whichever asset browser happened to draw first instead of the one
+     * under the pointer. AllowWhenBlockedByActiveItem is required because the dragged item is the
+     * active one while the drop happens.
+     *
+     * Called with anyButtonClicked false from the empty folder path as well: a folder the user just
+     * dragged the last file out of has to accept it back.
+     */
+    void FolderView::HandleDropOnBackground(bool anyButtonClicked)
+    {
+      const ImGuiHoveredFlags hoverFlags =
+          ImGuiHoveredFlags_ChildWindows | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem;
+
+      // ImGui owns the payload lifecycle, so the drag ends when ImGui says it does. The old code
+      // cleared the carrying flag on the mouse release for every view that drew, which let the
+      // first one to draw cancel the drop before the view under the pointer could take it.
+      const ImGuiPayload* drag = ImGui::GetDragDropPayload();
+      const bool dragging      = drag != nullptr && drag->IsDataType("BrowserDragZone");
+      const bool carrying      = dragging && g_carryingFiles;
+
+      if (!dragging)
+      {
+        g_carryingFiles = false;
+        g_dragBeginView = nullptr;
+        g_fileDragData  = FileDragData {};
+        return;
+      }
+
+      const bool hovered  = ImGui::IsWindowHovered(hoverFlags);
+      const bool released = ImGui::IsMouseReleased(ImGuiMouseButton_Left);
+
+      String refusal;
+      const bool acceptable = CanMoveDraggedEntries(m_path, &refusal);
+
+      // A destination that cannot take the payload is marked red while the pointer is over it, so a
+      // refused drop is visible before the button comes up. No text here: the reason is reported
+      // through the console and the status bar when the drop is attempted.
+      if (carrying && hovered && !acceptable)
+      {
+        const ImVec2 min  = ImGui::GetWindowPos();
+        const ImVec2 size = ImGui::GetWindowSize();
+        const ImVec2 max  = ImVec2(min.x + size.x, min.y + size.y);
+
+        ImGui::GetForegroundDrawList()->AddRect(min, max, IM_COL32(226, 74, 74, 255), 6.0f, 0, 2.5f);
+      }
+
+      if (released && hovered)
+      {
+        if (!acceptable)
+        {
+          // Refused: the folder the engine cannot resolve the asset from stays unreachable, and the
+          // reason goes to the console and the status bar.
+          TK_ERR("Move refused: %s", refusal.c_str());
+          GetApp()->SetStatusMsg(g_statusFailed);
+        }
+        else if (!anyButtonClicked && carrying)
+        {
+          DropFiles(m_path);
+        }
+
+        if (!ImGui::IsKeyDown(ImGuiKey_LeftShift) && !ImGui::IsKeyDown(ImGuiKey_LeftCtrl))
+        {
+          g_selectedFiles.clear();
+        }
       }
     }
 
@@ -897,9 +1004,9 @@ namespace ToolKit
           {
             view->m_dirty = true;
           }
-          // Folders can be added / removed outside of the editor, the tree has
-          // to be read back from the file system.
-          thisView->m_parent->SetTreeDirty();
+          // Folders can be added / removed outside of the editor, so every asset browser
+          // reads its content and its hierarchy back from the file system.
+          FolderWindow::RefreshAllAssetBrowsers(true);
           ImGui::CloseCurrentPopup();
         }
       };
@@ -928,8 +1035,8 @@ namespace ToolKit
             {
               view->m_dirty = true;
             }
-            // The directory exists now, add it to the hierarchy as well.
-            views[0]->m_parent->SetTreeDirty();
+            // The directory exists now, add it to the hierarchy of every asset browser.
+            FolderWindow::RefreshAllAssetBrowsers(true);
           };
           inputWnd->AddToUI();
 
@@ -1031,7 +1138,7 @@ namespace ToolKit
           String fullPath = entry->GetFullPath();
           String cpyPath  = CreateIncrementalFileFullPath(fullPath);
           std::filesystem::copy(fullPath, cpyPath);
-          thisView->m_parent->SetTreeDirty();
+          FolderWindow::RefreshAllAssetBrowsers(true);
 
           for (FolderView* view : views)
           {
@@ -1066,8 +1173,9 @@ namespace ToolKit
       {
         if (ImGui::MenuItem("Paste"))
         {
+          // PasteFiles refreshes every asset browser itself, and the hierarchies too when it
+          // pasted a folder, so there is nothing left to do here.
           PasteFiles(thisView->m_path);
-          thisView->m_parent->SetTreeDirty();
           ImGui::CloseCurrentPopup();
         }
       };
@@ -1107,7 +1215,7 @@ namespace ToolKit
               }
             }
           };
-          thisView->m_parent->SetTreeDirty();
+          FolderWindow::RefreshAllAssetBrowsers(true);
           ImGui::CloseCurrentPopup();
         }
       };
@@ -1169,7 +1277,7 @@ namespace ToolKit
                 materialManager->Manage(material);
               }
             };
-            thisView->m_parent->SetTreeDirty();
+            FolderWindow::RefreshAllAssetBrowsers(true);
             ImGui::CloseCurrentPopup();
           };
 
@@ -1189,45 +1297,54 @@ namespace ToolKit
 
     void FolderView::DropFiles(const String& dst)
     {
+      bool moved    = false;
+      bool movedDir = false;
+
+      const String dstLayer = GetResourceLayer(dst);
+
       for (int i = 0; i < g_fileDragData.NumFiles; ++i)
       {
         DirectoryEntry& entry = *g_fileDragData.Entries[i];
         if (!CheckFile(entry.GetFullPath()))
         {
+          TK_WRN("Move skipped: \"%s\" is not there anymore.", entry.GetFullPath().c_str());
           continue;
         }
 
-        String newPath = ConcatPaths({dst, entry.m_fileName + entry.m_ext});
+        // Last line of defence: a typed resource only goes into a layer the engine resolves it
+        // through, so it never ends up somewhere no path can reach it.
+        String refusal;
+        if (!CanMoveEntry(entry, dstLayer, &refusal))
+        {
+          TK_WRN("Move refused: %s", refusal.c_str());
+          GetApp()->SetStatusMsg(refusal);
+          continue;
+        }
+
+        const String src = entry.GetFullPath();
+        String newPath   = ConcatPaths({dst, entry.m_fileName + entry.m_ext});
         std::error_code errCode;
-        std::filesystem::rename(entry.GetFullPath(), newPath, errCode);
+        std::filesystem::rename(src, newPath, errCode);
         if (errCode)
         {
-          TK_ERR("Rename failed: %s", errCode.message().c_str());
-          GetApp()->SetStatusMsg(g_statusFailed);
+          // Say which entry was going where and why it failed: a silent failure here is
+          // indistinguishable from a drop that never happened.
+          TK_ERR("Move failed: \"%s\" -> \"%s\": %s", src.c_str(), newPath.c_str(), errCode.message().c_str());
+          GetApp()->SetStatusMsg(Format("Move failed: %s (%s)", entry.m_fileName.c_str(), errCode.message().c_str()));
         }
         else
         {
-          // Update src & dst views.
-          String src = entry.m_rootPath;
-          if (src == m_path)
-          {
-            // Item moved across tabs.
-            src = dst;
-          }
-
-          int indx = m_parent->Exist(src);
-          if (indx != -1)
-          {
-            m_parent->GetView(indx).m_dirty = true;
-          }
-          m_dirty = true;
-
-          // Moving a folder relocates a whole branch of the hierarchy.
-          if (entry.m_isDirectory)
-          {
-            m_parent->SetTreeDirty();
-          }
+          moved     = true;
+          movedDir |= entry.m_isDirectory;
         }
+      }
+
+      // A drag can move the entry between two asset browsers, so both ends are refreshed: only
+      // marking the views of this window left the browser the entry came from showing a file
+      // that is no longer there. Moving a folder relocates a whole branch for every tree too.
+      if (moved)
+      {
+        FolderWindow::RefreshAllAssetBrowsers(movedDir);
       }
 
       g_dragBeginView = nullptr;
@@ -1239,10 +1356,40 @@ namespace ToolKit
     {
       if (ImGui::BeginDragDropTarget())
       {
-        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("BrowserDragZone"))
+        String reason;
+        bool acceptable = true;
+
+        // Peek at the payload before accepting it: an incompatible destination has to stay
+        // unaccepted, otherwise ImGui highlights it as a valid target and the drop moves an asset
+        // to a folder the engine cannot resolve it from (a mesh under Prefabs is unreachable for
+        // MeshPath, and the browser offers no way back).
+        if (const ImGuiPayload* drag = ImGui::GetDragDropPayload())
+        {
+          if (drag->IsDataType("BrowserDragZone"))
+          {
+            acceptable = CanMoveDraggedEntries(dst, &reason);
+          }
+        }
+
+        if (!acceptable)
+        {
+          // The destination stays unaccepted, so ImGui never marks it as a valid target: the item is
+          // marked red instead, and the reason is reported once, when the button comes up.
+          const ImVec2 min = ImGui::GetItemRectMin();
+          const ImVec2 max = ImGui::GetItemRectMax();
+          ImGui::GetForegroundDrawList()->AddRect(min, max, IM_COL32(226, 74, 74, 255), 6.0f, 0, 2.5f);
+
+          if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))
+          {
+            TK_ERR("Move refused: %s", reason.c_str());
+            GetApp()->SetStatusMsg(g_statusFailed);
+          }
+        }
+        else if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("BrowserDragZone"))
         {
           DropFiles(dst);
         }
+
         ImGui::EndDragDropTarget();
       }
     }

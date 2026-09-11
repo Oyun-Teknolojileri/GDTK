@@ -74,6 +74,12 @@ namespace ToolKit
       void HandleCopyPasteDelete();
 
       /**
+       * Handles a drop on the background of the view, plus the feedback for a payload the view
+       * cannot take. anyButtonClicked tells whether an item of this view was clicked this frame.
+       */
+      void HandleDropOnBackground(bool anyButtonClicked);
+
+      /**
        * Removes an entry: a directory goes away with its content, a file is dropped from the
        * resource manager that owns it first. Failures are reported, not thrown, so a folder
        * that cannot be removed leaves the editor running.
@@ -159,6 +165,18 @@ namespace ToolKit
       void AddEntry(FolderView& view);
       /** Invalidates all views which causes them to be re filled with file content. */
       void SetViewsDirty();
+
+      /**
+       * Marks the views of every asset browser dirty so they read their folder again, and their
+       * folder hierarchies as well when the change touched the hierarchy.
+       *
+       * A file operation is never local to the window that ran it: a drag can move an entry
+       * between two asset browsers, a paste can drop it into one that another cut it from, and a
+       * folder that appears or disappears belongs to the hierarchy every browser's tree draws.
+       * Refreshing only the window that ran the operation leaves the other one showing files that
+       * are not there anymore.
+       */
+      static void RefreshAllAssetBrowsers(bool includeTrees = false);
       /**
        * Marks the folder hierarchy dirty. The tree is rebuilt from the file system
        * right before it is drawn next time, which makes it safe to call while the
