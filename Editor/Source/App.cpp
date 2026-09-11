@@ -71,16 +71,18 @@ namespace ToolKit
       ModManager::GetInstance()->SetMod(true, ModId::Select);
       ActionManager::GetInstance()->Init();
 
-      // Load the last scene or create a new scene.
-      String lastScene = m_workspace->GetActiveProject().scene;
-      if (lastScene.empty())
+      // The scene of a project is recorded inside the project, in its own
+      // Config/Editor.settings, which ApplyProjectSettings reads below. So the scene is
+      // not known yet at this point: for a project show the dummy scene and let the
+      // recorded scene load async, then fall back to a new scene when the project has
+      // none recorded. Without a project there is nothing to restore.
+      const bool hasProject = !m_workspace->GetActiveProject().name.empty();
+      if (!hasProject)
       {
         CreateNewScene();
       }
       else
       {
-        // ApplyProjectSettings uses OpenSceneAsync to load the last open scene,
-        // In the mean time, we have to show a dummy scene.
         if (SceneManager* sceneMan = GetSceneManager())
         {
           ScenePtr defaultScene = sceneMan->Create<Scene>(ScenePath("Empty" + SCENE, true));
@@ -89,6 +91,11 @@ namespace ToolKit
       }
 
       ApplyProjectSettings(false);
+
+      if (hasProject && m_workspace->GetActiveProject().scene.empty())
+      {
+        CreateNewScene();
+      }
 
       if (!CheckFile(m_workspace->GetActiveWorkspace()))
       {
@@ -1600,6 +1607,27 @@ namespace ToolKit
         WriteAttr(setNode, docPtr, "maximized", std::to_string(m_windowMaximized));
         WriteAttr(setNode, docPtr, "theme", std::to_string((int) UI::GetCurrentTheme()));
 
+        // The scene this project was left on. It belongs here, in the project's own
+        // Config/Editor.settings, and not in the user's Workspace.settings: that file
+        // only records which workspace and project are open, and the editor rewrites it
+        // when it starts with --workspace / --project-name (Editor/Source/main.cpp),
+        // which used to drop the scene and open a blank one.
+        if (ScenePtr currentScene = GetSceneManager()->GetCurrentScene())
+        {
+          String sceneFile = currentScene->GetFile();
+          if (!sceneFile.empty())
+          {
+            String scenePath = GetRelativeResourcePath(sceneFile);
+            // Only save if the path is under a known resource root
+            // (GetRelativeResourcePath returns a different string on success).
+            if (scenePath != sceneFile)
+            {
+              XmlNode* sceneNode = CreateXmlNode(docPtr, "Scene", settings);
+              WriteAttr(sceneNode, docPtr, "path", scenePath);
+            }
+          }
+        }
+
         XmlNode* windowsNode = CreateXmlNode(docPtr, "Windows", app);
         for (WindowPtr wnd : m_windows)
         {
@@ -1669,6 +1697,17 @@ namespace ToolKit
             {
               UI::SetTheme(static_cast<Theme>(theme));
             }
+          }
+
+          // The scene this project was left on, written by App::SerializeImp. It is
+          // opened by the block at the end of this function. A settings file without the
+          // node keeps whatever Workspace::DeSerializeImp read from the legacy scene
+          // attribute, so an installation that predates this keeps its last scene once.
+          if (XmlNode* sceneNode = settings->first_node("Scene"))
+          {
+            String scene;
+            ReadAttr(sceneNode, "path", scene);
+            m_workspace->SetScene(scene);
           }
         }
 

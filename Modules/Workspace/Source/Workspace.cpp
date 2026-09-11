@@ -227,21 +227,12 @@ namespace ToolKit
       setNode = CreateXmlNode(lclDoc, XmlNodeProject.data(), settings);
       WriteAttr(setNode, lclDoc, XmlNodeName.data(), m_activeProject.name);
 
-      ScenePtr currentScene = GetSceneManager()->GetCurrentScene();
-      if (currentScene)
-      {
-        String sceneFile = currentScene->GetFile();
-        if (!sceneFile.empty())
-        {
-          String scenePath = GetRelativeResourcePath(sceneFile);
-          // Only save if the path is under a known resource root
-          // (GetRelativeResourcePath returns a different string on success).
-          if (scenePath != sceneFile)
-          {
-            WriteAttr(setNode, lclDoc, XmlNodeScene.data(), scenePath);
-          }
-        }
-      }
+      // The scene of the active project is deliberately not written here. This file only
+      // records which workspace and project are open, and the editor rewrites it when it
+      // starts with --workspace / --project-name, so a scene stored next to the project
+      // name was thrown away by exactly that path. The scene now lives in the project's
+      // own Config/Editor.settings (App::SerializeImp). DeSerializeImp still reads the
+      // attribute below for settings files written before the move.
 
       std::string xml;
       rapidxml::print(std::back_inserter(xml), *lclDoc);
