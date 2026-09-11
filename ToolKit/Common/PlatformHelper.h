@@ -58,6 +58,18 @@ namespace ToolKit
 #endif
     }
 
+    // Application icons, named relative to the engine's Textures/Icons
+    // folder. Each host publishes its own: the editor keeps the orange
+    // logo, the launcher uses the blue variant.
+    //
+    // These live here rather than in the platform headers because the
+    // host call sites are platform neutral. On Windows the icon is baked
+    // into the executable's resource section, so the name only selects
+    // the file on Linux -- but the argument has to exist on both, and
+    // both call sites should read the same.
+    static const String EditorAppIconFile   = "app_big.png";
+    static const String LauncherAppIconFile = "app_big_blue.png";
+
   } // namespace PlatformHelpers
 } // namespace ToolKit
 

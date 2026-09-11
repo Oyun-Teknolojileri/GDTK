@@ -151,6 +151,13 @@ namespace ToolKit
 
       SDL_SetWindowHitTest(g_window, LauncherHitTest, nullptr);
 
+      // SDL owns the window, so the launcher publishes its own icon through the
+      // same helper the editor uses. On Linux this is what fills the task bar
+      // and the window decoration with app_big_blue.png; on Windows the helper
+      // re-applies the executable's compiled icon, and the launcher has no .rc
+      // of its own yet.
+      PlatformHelpers::UpdateAppIcon(g_window, PlatformHelpers::LauncherAppIconFile);
+
       int srgbFlag = 0;
       SDL_GL_GetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, &srgbFlag);
       g_proxy->m_renderSys->m_backbufferFormatIsSRGB = (srgbFlag == 1);

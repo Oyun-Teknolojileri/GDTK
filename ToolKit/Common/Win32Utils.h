@@ -578,11 +578,17 @@ namespace ToolKit
     // here: Win32 reads the icon from the module's resource section and
     // resolves the HWND itself, while the Linux implementation needs the
     // window handle to publish the PNG through SDL. The parameter exists
-    // so the single call site in main.cpp reads the same on both
-    // platforms.
-    inline void UpdateAppIcon(void* nativeWindow = nullptr)
+    // so the single call site reads the same on both platforms.
+    //
+    // iconName selects a PNG on Linux and is unused here for the same
+    // reason: a Win32 executable's icon is a compiled resource, not a
+    // file. A host that has no .rc (the launcher, for now) therefore
+    // loads nothing and keeps the default icon on Windows, while it gets
+    // its own PNG on Linux.
+    inline void UpdateAppIcon(void* nativeWindow = nullptr, const String& iconName = EditorAppIconFile)
     {
       (void) nativeWindow;
+      (void) iconName;
 
       HINSTANCE handle = ::GetModuleHandle(nullptr);
 

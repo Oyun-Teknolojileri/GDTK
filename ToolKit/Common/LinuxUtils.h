@@ -523,12 +523,14 @@ namespace ToolKit
     // Editor.rc (MAIN_ICON / app.ico).
     //
     // Resolved from the running executable instead of the process
-    // working directory so it keeps working when the editor is started
-    // from a .desktop entry or a file manager:
-    //   <exe dir>/../Resources/Engine/Textures/Icons/app_big.png
+    // working directory so it keeps working when a host is started from
+    // a .desktop entry or a file manager:
+    //   <exe dir>/../Resources/Engine/Textures/Icons/<iconName>
     // which is the engine asset root in both the build tree (Bin<Config>
     // next to Resources/) and a staged `cmake --install` tree.
     //
+    // The names come from PlatformHelper.h: the editor publishes
+    // app_big.png, the launcher the blue variant app_big_blue.png.
     // app_big.png is the same artwork as app.png at 2.8x the resolution
     // (270x248 against 96x96), which is what keeps the icon sharp at the
     // sizes a task bar or a dock asks for (64 to 256 px on a HiDPI
@@ -536,12 +538,12 @@ namespace ToolKit
     // aspect is 1.089; window managers scale a window icon with the
     // aspect kept, so that only costs a sliver of transparent pixels on
     // one axis. app.png next to it is the same logo padded into a square
-    // 96x96 canvas -- swap the name here if the padded framing is worth
-    // more than the resolution.
-    inline String GetAppIconFile()
+    // 96x96 canvas -- swap the name if the padded framing is worth more
+    // than the resolution.
+    inline String GetAppIconFile(const String& iconName = EditorAppIconFile)
     {
       std::filesystem::path icon = std::filesystem::path(GetExecutableDirectory()) / ".." / "Resources" / "Engine" /
-                                   "Textures" / "Icons" / "app_big.png";
+                                   "Textures" / "Icons" / iconName;
       return PathToString(icon.lexically_normal());
     }
 
@@ -556,13 +558,15 @@ namespace ToolKit
     //
     // nativeWindow is the SDL_Window* the host created. SDL copies the
     // icon data into the window, so the surface and the pixel buffer are
-    // released right after the call.
+    // released right after the call. iconName selects which PNG of the
+    // engine's Icons folder is published, so each host can carry its own
+    // (see PlatformHelper.h).
     //
     // Wayland note: xdg-shell has no window icon request, so on a Wayland
     // session SDL ignores the call and the compositor matches the window
     // against a .desktop file instead. That is a protocol limitation, not
     // a failure of this helper, so no warning is emitted.
-    inline void UpdateAppIcon(void* nativeWindow = nullptr)
+    inline void UpdateAppIcon(void* nativeWindow = nullptr, const String& iconName = EditorAppIconFile)
     {
       SDL_Window* window = static_cast<SDL_Window*>(nativeWindow);
       if (window == nullptr)
@@ -570,7 +574,7 @@ namespace ToolKit
         return;
       }
 
-      const String iconFile = GetAppIconFile();
+      const String iconFile = GetAppIconFile(iconName);
       int width             = 0;
       int height            = 0;
       int channels          = 0;
