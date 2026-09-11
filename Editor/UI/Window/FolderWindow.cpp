@@ -416,7 +416,10 @@ namespace ToolKit
 
     void FolderWindow::Show()
     {
-      ImGui::SetNextWindowSize(ImVec2(300, 150), ImGuiCond_Once);
+      // No fixed size: ImGui keeps the size and the position the layout file holds for a window it
+      // already knows, and fits a window that is opened for the first time to its content. The
+      // constraints only keep that first fit usable.
+      ImGui::SetNextWindowSizeConstraints(ImVec2(320.0f, 240.0f), ImVec2(TK_FLT_MAX, TK_FLT_MAX));
       if (ImGui::Begin(m_name.c_str(), &m_visible))
       {
         HandleStates();

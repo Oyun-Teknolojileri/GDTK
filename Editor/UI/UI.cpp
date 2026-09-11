@@ -907,6 +907,11 @@ namespace ToolKit
         {
           EditorViewportPtr vp = MakeNewPtr<EditorViewport>();
           vp->Init({640.0f, 480.0f});
+
+          // A fresh Window starts hidden and the entry of this menu starts unchecked, so a window
+          // added from here has to be made visible or it only appears once the user ticks it.
+          vp->SetVisibility(true);
+
           GetApp()->m_windows.push_back(vp);
         }
 
@@ -922,6 +927,10 @@ namespace ToolKit
           FolderWindowPtr wnd = MakeNewPtr<FolderWindow>();
           wnd->m_name         = g_assetBrowserStr + "##" + std::to_string(wnd->m_id);
           wnd->IterateFolders(true);
+
+          // Same as the viewport above: an added browser shows up right away.
+          wnd->SetVisibility(true);
+
           GetApp()->m_windows.push_back(wnd);
         }
 
