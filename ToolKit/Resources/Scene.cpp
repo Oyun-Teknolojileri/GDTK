@@ -780,7 +780,7 @@ namespace ToolKit
     String path = GetSerializeFile();
     m_name      = GetFileName(path);
 
-    TK_SYSLOG("Loading scene %s", path.c_str());
+    TK_SYSLOG("Loading scene %s", GetRelativeResourcePath(path).c_str());
 
     if (m_version >= TKV045)
     {

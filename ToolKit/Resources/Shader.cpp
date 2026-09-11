@@ -167,6 +167,7 @@ namespace ToolKit
     }
 
     m_shaderVariantMap.clear();
+    m_compileLogged = false;
     m_gpuData.reset();
     m_initiated = false;
   }
@@ -464,9 +465,26 @@ namespace ToolKit
     return (uint) includeLoc;
   }
 
-  bool Shader::Compile(String source)
+  bool Shader::Compile(String source, const String& variantKey)
   {
-    TK_LOG("Shader in compile %s", GetFile().c_str());
+    // One line per shader and not one per variant: the whole combination set is compiled on first
+    // use, so the variants only repeated the file name and filled the console. A variant that fails
+    // to compile still reports through the backend's own error log. The path is relative to the
+    // resource root, the workspace prefix is the same on every line.
+    if (!m_compileLogged)
+    {
+      m_compileLogged      = true;
+      const String relPath = GetRelativeResourcePath(GetFile());
+
+      if (variantKey.empty())
+      {
+        TK_LOG("Shader in compile %s", relPath.c_str());
+      }
+      else
+      {
+        TK_LOG("Shader in compile %s [%s]", relPath.c_str(), variantKey.c_str());
+      }
+    }
 
     m_gpuData = GetRenderSystem()->GetBackend()->CreateShader(this, source);
     return m_gpuData != nullptr;
@@ -498,9 +516,7 @@ namespace ToolKit
     uint mergeLoc = FindShaderMergeLocation(source);
     source.insert(mergeLoc, defineText);
 
-    TK_LOG("Compiling shader with defines: %s", key.c_str());
-
-    if (Compile(source))
+    if (Compile(source, key))
     {
       m_currentDefineValues   = defineCombo;
       m_shaderVariantMap[key] = m_gpuData;

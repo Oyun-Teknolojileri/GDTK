@@ -108,9 +108,11 @@ namespace ToolKit
 
     /**
      * Compiles the given source string.
+     * @param source Shader source to compile.
+     * @param variantKey Defines of the variant that is being compiled, for the log line.
      * @return true if compilation succeeded.
      */
-    bool Compile(String source);
+    bool Compile(String source, const String& variantKey = "");
 
     /** Internally used structure to point to a define variant. */
     struct ShaderDefineIndex
@@ -160,6 +162,13 @@ namespace ToolKit
 
     /** Current define value pairs in an array. */
     ShaderDefineCombinaton m_currentDefineValues;
+
+    /**
+     * States whether the compile of this shader has been reported in the console. The whole
+     * combination set is compiled on first use, so a line per variant only repeated the file name;
+     * the flag is cleared with the variant cache so a reload reports again.
+     */
+    bool m_compileLogged = false;
   };
 
   class TK_API ShaderManager : public ResourceManager
