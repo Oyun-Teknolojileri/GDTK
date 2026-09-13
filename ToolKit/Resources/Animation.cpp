@@ -402,8 +402,23 @@ namespace ToolKit
 
   void AnimationPlayer::RemoveRecord(const AnimRecord& rec) { RemoveRecord(rec.m_id); }
 
+  void AnimationPlayer::Pause() { m_paused = true; }
+
+  void AnimationPlayer::Resume() { m_paused = false; }
+
+  bool AnimationPlayer::IsPaused() const { return m_paused; }
+
   void AnimationPlayer::Update(float deltaTimeSec)
   {
+    // While paused, Update advances no record at all: record times, blend
+    // countdowns and root motion stay exactly where they are, and the animation
+    // data of the last update is kept untouched, so whatever reads it does not
+    // change. No time is skipped while paused and none is replayed on resume.
+    if (m_paused)
+    {
+      return;
+    }
+
     // Updates all the records in the player and returns true if record needs to be removed.
     auto updateRecordsFn = [&](AnimRecordPtr record) -> bool
     {

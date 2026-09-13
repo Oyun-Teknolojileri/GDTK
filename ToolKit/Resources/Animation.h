@@ -241,8 +241,30 @@ namespace ToolKit
      * to corresponding entities.
      * @param deltaTimeSec The delta time in seconds for
      * increment for each record.
+     * While the records are paused, none of them is advanced (see Pause).
      */
     void Update(float deltaTimeSec);
+
+    /**
+     * Pauses every record: while paused, Update advances none of them -- record
+     * times, blend countdowns and root motion all stay as they are -- and the
+     * animation data filled by the last update is kept, so everything that
+     * reads it keeps its current state. Time is neither skipped nor replayed,
+     * so Resume carries on from the exact time the records were paused at.
+     */
+    void Pause();
+
+    /**
+     * Resumes the paused records from the time they were paused at.
+     * No effect when they are not paused.
+     */
+    void Resume();
+
+    /**
+     * States if the records are paused (see Pause).
+     * @return True while no record advances.
+     */
+    bool IsPaused() const;
 
     /**
      * Checks if the record exist.
@@ -301,6 +323,9 @@ namespace ToolKit
 
     // Storage for animation data (skeleton id - animation id pair)
     std::map<std::pair<ObjectId, ObjectId>, DataTexturePtr> m_animTextures;
+
+    // True while Pause holds every record: Update advances none in this state.
+    bool m_paused = false;
   };
 
 } // namespace ToolKit
