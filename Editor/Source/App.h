@@ -202,6 +202,15 @@ namespace ToolKit
       void DeserializeWindows(XmlNode* parent);
 
      private:
+      /**
+       * Applies the engine wide consequences of a simulation state: the work
+       * that is the same for every project and therefore belongs to no plugin.
+       * Engine services that run on their own (the animation player) follow the
+       * simulation state from here, so a project's OnPlay / OnPause / OnResume /
+       * OnStop handlers stay free for its own, game specific work.
+       */
+      void ApplySimulationServices(GameMod state);
+
       void CreateSimulationViewport();
       void AssignManagerReporters();
       void CreateAndSetNewScene(const String& name);

@@ -466,6 +466,26 @@ namespace ToolKit
       m_statusMsg = g_statusFailed;
     }
 
+    void App::ApplySimulationServices(GameMod state)
+    {
+      // Animation playback is part of the simulation: it advances while the
+      // simulation runs and holds every record -- no time skipped, none
+      // replayed -- while it is paused. Stopping releases it again, because the
+      // editor keeps animating its own scene outside a play session.
+      //
+      // Anything else the engine drives by itself while a project plays belongs
+      // here too, next to the state it follows, instead of being repeated in
+      // every plugin.
+      if (state == GameMod::Paused)
+      {
+        GetAnimationPlayer()->Pause();
+      }
+      else
+      {
+        GetAnimationPlayer()->Resume();
+      }
+    }
+
     void App::SetGameMod(const GameMod mod)
     {
       if (!IsWorkspaceSane(true, true))
@@ -477,6 +497,11 @@ namespace ToolKit
       {
         return;
       }
+
+      // The engine services that follow the simulation state are applied before
+      // any plugin is told about the change: this work is the same for every
+      // project, so it is not a plugin's business.
+      ApplySimulationServices(mod);
 
       GamePlugin* gamePlugin = nullptr;
       PluginRegisterArray projectPlugins;
