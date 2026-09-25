@@ -50,6 +50,13 @@ namespace ToolKit
     const float g_scrollMargin      = 24.0f;   //!< Slack after the last frame when panning.
     const int g_defaultFps          = 30;      //!< fps of a clip created by the sheet.
     const int g_defaultEndFrame     = 60;      //!< Frame range of a clip created by the sheet.
+    const float g_fitPaddingPx      = 14.0f;   //!< Slack the Fit zoom leaves inside the lane.
+    const float g_trackColumnTint   = 0.06f;   //!< Faint tint that sets the track name column apart.
+    const float g_columnLineTint    = 0.18f;   //!< Alpha of the line between the name column and the lanes.
+
+    // Wash over the frames past the last one. A mid gray reads as "inactive" on a dark and on a light
+    // theme alike, while a theme background colour would blend into the sheet and show nothing.
+    const ImVec4 g_outOfRangeVeil(0.5f, 0.5f, 0.5f, 0.22f);
 
     // DopeSheetView
     //////////////////////////////////////////
@@ -783,8 +790,12 @@ namespace ToolKit
 
     void DopeSheetView::FitView(float laneWidth)
     {
-      const float frames = glm::max(1.0f, (float) m_endFrame);
-      m_pxPerFrame       = glm::clamp(laneWidth / frames, g_minPxPerFrame, g_maxPxPerFrame);
+      // One frame past the range plus a little slack, so the last frame and its key diamond sit
+      // inside the lane instead of on the edge of the window.
+      const float frames = glm::max(1.0f, (float) m_endFrame + 1.0f);
+      const float usable = glm::max(40.0f, laneWidth) - g_fitPaddingPx;
+
+      m_pxPerFrame       = glm::clamp(usable / frames, g_minPxPerFrame, g_maxPxPerFrame);
       m_scrollX          = 0.0f;
     }
 
@@ -957,9 +968,10 @@ namespace ToolKit
       }
 
       ImGui::SameLine();
+      // Font icons for the whole transport: the texture based buttons used to sit at a different
+      // height than the step buttons next to them, a text button of the same size lines up with them.
       const bool playing = m_playState == PlayState::Playing;
-      if (UI::ImageButtonDecorless(EditorImGuiTextureCache::Acquire(playing ? UI::m_pauseIcon : UI::m_playIcon),
-                                   Vec2(24.0f, 24.0f)))
+      if (UI::ButtonDecorless(playing ? ICON_FA_PAUSE : ICON_FA_PLAY, btnSize))
       {
         if (playing)
         {
@@ -972,7 +984,7 @@ namespace ToolKit
       }
 
       ImGui::SameLine();
-      if (UI::ImageButtonDecorless(EditorImGuiTextureCache::Acquire(UI::m_stopIcon), Vec2(24.0f, 24.0f)))
+      if (UI::ButtonDecorless(ICON_FA_STOP, btnSize))
       {
         Stop();
       }
@@ -1005,9 +1017,6 @@ namespace ToolKit
 
       ImGui::SameLine();
       ImGui::Checkbox("Loop", &m_loop);
-
-      ImGui::SameLine();
-      ImGui::Checkbox("Snap", &m_snapToFrames);
       ImGui::PopItemWidth();
 
       ImGui::EndDisabled();
@@ -1130,13 +1139,18 @@ namespace ToolKit
         ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
       }
 
-      const ImU32 barColor   = ImGui::GetColorU32(ImGuiCol_MenuBarBg);
-      const ImU32 tickColor  = ImGui::GetColorU32(ImGuiCol_TextDisabled);
-      const ImU32 labelColor = ImGui::GetColorU32(ImGuiCol_Text);
-      const ImU32 outOfRange = ImGui::GetColorU32(ImGuiCol_WindowBg, 0.65f);
-      const ImU32 cursorColor = ImGui::GetColorU32(ImVec4(g_selectHighLightPrimaryColor));
+      const ImU32 barColor     = ImGui::GetColorU32(ImGuiCol_MenuBarBg);
+      const ImU32 trackColumnTint = ImGui::GetColorU32(ImGuiCol_Text, g_trackColumnTint);
+      const ImU32 columnLine   = ImGui::GetColorU32(ImGuiCol_Text, g_columnLineTint);
+      const ImU32 tickColor    = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+      const ImU32 labelColor   = ImGui::GetColorU32(ImGuiCol_Text);
+      const ImU32 outOfRange   = ImGui::GetColorU32(g_outOfRangeVeil);
+      const ImU32 cursorColor  = ImGui::GetColorU32(ImVec4(g_selectHighLightPrimaryColor));
 
       dl->AddRectFilled(origin, ImVec2(origin.x + size.x, rulerBottom), barColor);
+
+      // The strip above the track names carries the same tint as the column below it.
+      dl->AddRectFilled(origin, ImVec2(laneLeft, rulerBottom), trackColumnTint);
 
       // Everything past the last frame is outside the clip.
       const float endX = FrameToX(m_endFrame, laneLeft);
@@ -1185,6 +1199,8 @@ namespace ToolKit
       dl->AddLine(ImVec2(laneLeft - g_splitterWidth, origin.y),
                   ImVec2(laneLeft - g_splitterWidth, rulerBottom),
                   tickColor);
+
+      dl->AddLine(ImVec2(laneLeft, origin.y), ImVec2(laneLeft, rulerBottom), columnLine);
 
       // Keep the next section below the ruler.
       ImGui::SetCursorScreenPos(ImVec2(origin.x, rulerBottom));
@@ -1238,14 +1254,19 @@ namespace ToolKit
 
       ImGui::PushClipRect(origin, ImVec2(origin.x + avail.x, origin.y + viewHeight), true);
 
-      const ImU32 nameBg   = ImGui::GetColorU32(ImGuiCol_MenuBarBg);
-      const ImU32 rowEven  = ImGui::GetColorU32(ImGuiCol_FrameBg, 0.28f);
-      const ImU32 rowOdd   = ImGui::GetColorU32(ImGuiCol_FrameBg, 0.14f);
-      const ImU32 rowHover = ImGui::GetColorU32(ImGuiCol_HeaderHovered, 0.35f);
-      const ImU32 keyColor = ImGui::GetColorU32(ImGuiCol_Text);
-      const ImU32 cursorColor = ImGui::GetColorU32(ImVec4(g_selectHighLightPrimaryColor));
+      const ImU32 trackColumnTint = ImGui::GetColorU32(ImGuiCol_Text, g_trackColumnTint);
+      const ImU32 columnLine      = ImGui::GetColorU32(ImGuiCol_Text, g_columnLineTint);
+      const ImU32 rowEven         = ImGui::GetColorU32(ImGuiCol_FrameBg, 0.28f);
+      const ImU32 rowOdd          = ImGui::GetColorU32(ImGuiCol_FrameBg, 0.14f);
+      const ImU32 rowHover        = ImGui::GetColorU32(ImGuiCol_HeaderHovered, 0.35f);
+      const ImU32 keyColor        = ImGui::GetColorU32(ImGuiCol_Text);
+      const ImU32 cursorColor     = ImGui::GetColorU32(ImVec4(g_selectHighLightPrimaryColor));
+      const ImU32 outOfRange      = ImGui::GetColorU32(g_outOfRangeVeil);
 
-      dl->AddRectFilled(origin, ImVec2(laneLeft, origin.y + viewHeight), nameBg);
+      // The track column is only tinted, the row stripes stay in the lane area, so the two do not
+      // read as one surface.
+      dl->AddRectFilled(origin, ImVec2(laneLeft, origin.y + viewHeight), trackColumnTint);
+      dl->AddLine(ImVec2(laneLeft, origin.y), ImVec2(laneLeft, origin.y + viewHeight), columnLine);
 
       const float lineHeight = ImGui::GetTextLineHeight();
 
@@ -1275,7 +1296,9 @@ namespace ToolKit
           background = rowHover;
         }
 
-        dl->AddRectFilled(ImVec2(origin.x, rowY), ImVec2(origin.x + avail.x, rowY + g_rowHeight), background);
+        dl->AddRectFilled(ImVec2(laneLeft, rowY),
+                          ImVec2(origin.x + avail.x, rowY + g_rowHeight),
+                          background);
 
         // Keys.
         const float keyY      = rowY + g_rowHeight * 0.5f;
@@ -1428,6 +1451,16 @@ namespace ToolKit
       // Frame grid and playhead over the rows.
       const float endX      = FrameToX(m_endFrame, laneLeft);
       const float playheadX = FrameToX(m_frame, laneLeft);
+
+      // Everything past the last frame is outside the clip: it is dimmed so the inactive part of the
+      // timeline reads as inactive, keys sitting there included. The name column is left alone, it
+      // belongs to no frame.
+      if (endX < laneLeft + laneWidth)
+      {
+        dl->AddRectFilled(ImVec2(glm::max(endX, laneLeft), origin.y),
+                          ImVec2(laneLeft + laneWidth, origin.y + viewHeight),
+                          outOfRange);
+      }
 
       if (endX > laneLeft && endX < laneLeft + laneWidth)
       {

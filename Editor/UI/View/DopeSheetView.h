@@ -140,7 +140,6 @@ namespace ToolKit
       int m_endFrame        = 60;          //!< Last frame of the sheet range, drives clip duration.
       float m_speed         = 1.0f;        //!< Playback speed multiplier.
       bool m_loop           = true;        //!< Wraps playback at the last frame.
-      bool m_snapToFrames   = true;        //!< Scrubbing and dragging land on whole frames.
       PlayState m_playState = PlayState::Stopped;
 
       /** Horizontal timeline transform. The sheet owns it so ruler and lanes always agree. */

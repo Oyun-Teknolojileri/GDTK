@@ -207,10 +207,13 @@ No engine (`ToolKit/`) change in Phase 1.
   whole sheet.
 * Scrub: left-drag anywhere on the ruler or on empty timeline space sets the frame
   (`ImGui::InvisibleButton` + `IsItemActive()/IsItemHovered()` inside a `PushClipRect`).
-* Zoom: `Ctrl+wheel` zooms around the frame under the cursor (clamped px/frame);
-  plain `wheel` pans horizontally; `Fit` recomputes px/frame for the visible width.
+* Zoom: `Ctrl+wheel` zooms around the frame under the cursor (clamped px/per frame);
+  plain `wheel` scrolls the rows, `Shift+wheel` pans horizontally; `Fit` recomputes px/frame for the
+  visible width plus one frame of slack, so the last frame does not sit on the edge.
   Horizontal panning is my own `m_scrollX` (pixels), so no ImGui horizontal scrollbar is used.
-* Snap toggle (`Snap` checkbox, default on) keeps later key dragging on whole frames.
+* There is no snap toggle: the sheet is frame based end to end (the playhead is an int, `XToFrame()`
+  rounds, keys carry an int frame), so there is nothing left to snap. It was removed after it sat in
+  the toolbar doing nothing. Sub-frame scrubbing would be the way to give such a toggle a meaning.
 
 ### 3.6 Track rows
 
@@ -327,12 +330,14 @@ Delivered behavior:
   `fps` / `end` fields, `Save`, unsaved marker. A press always makes a clip and binds it: a taken
   name goes through `CreateIncrementalFileFullPath()` with an empty postfix (`NewAnimation(1).anim`),
   and a replaced clip with unsaved keys is reported in the console.
-* Transport: first / previous / play-pause / stop / next / last, frame field, speed, `Loop`,
-  `Snap`, seconds readout. Shortcuts (window focused, no text input active): `Space`, `K`,
-  arrows, `Home`, `End`. The window deliberately does not call `Window::ModShortCutSignals()`.
+* Transport: first / previous / play-pause / stop / next / last (font icons, so the whole group
+  shares one button size), frame field, speed, `Loop`, seconds readout. Shortcuts (window focused, no
+  text input active): `Space`, `K`, arrows, `Home`, `End`. The window deliberately does not call
+  `Window::ModShortCutSignals()`.
 * Timeline: ruler with adaptive ticks and labels, draggable playhead, drag-to-scrub on any lane,
-  `Ctrl+wheel` zoom around the cursor, `Shift+wheel` pan, wheel scrolls rows, `Fit`, draggable
-  name column splitter, out-of-range shading past `End`, frame grid + playhead over the rows.
+  `Ctrl+wheel` zoom around the cursor, `Shift+wheel` pan, wheel scrolls rows, `Fit` with a frame of
+  slack, draggable name column splitter, a wash over the frames past `End` in ruler and lanes, frame
+  grid + playhead over the rows.
 * Rows: one per track, name / key count / `[no entity]` / `[skinned]` markers, keys as diamonds
   (the key at the playhead is highlighted), key tooltip with frame and seconds, right-click
   context menu with `Delete Key` / `Delete Track`.
@@ -413,8 +418,8 @@ Still open from Phase 3: multi key selection, box select, copy/paste, and bulk m
   `Delete` removes the selection (undoable).
 * Bulk move: drag a selected key horizontally; every selected key moves by the same frame delta,
   clamped so no key goes below frame 0 and no two keys in a track collide (collision policy:
-  the moved key overwrites the target, like most dope sheets). Snapped to whole frames when
-  `Snap` is on.
+  the moved key overwrites the target, like most dope sheets). Keys always land on whole frames,
+  the sheet has no sub-frame resolution to snap away from.
 * Copy/paste: internal clipboard of `(trackName, Key)` pairs; copy `Ctrl+C`, paste `Ctrl+V`
   places keys at the playhead, preserving relative frame offsets clamped at 0; pasting into a
   track that does not exist creates it.
