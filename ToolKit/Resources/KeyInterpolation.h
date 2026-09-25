@@ -164,13 +164,24 @@ namespace ToolKit
     //////////////////////////////////////////
 
     /**
-     * Angle between two quaternions in radians. They are hemisphere aligned first (the
-     * shorter arc), which is the convention glm::slerp applies internally.
+     * Angle between two quaternions in radians.
+     *
+     * Computed as 2 * atan2(|v|, w) of the relative rotation rather than 2 * acos(dot): a dot
+     * product near 1 keeps only a fraction of its precision, and the neighbouring keys of a track
+     * are usually close, so acos would report a sizeable speed for a segment that barely rotates.
+     * The relative rotation is hemisphere aligned first (the shorter arc), the convention
+     * glm::slerp applies internally.
      */
     inline float QuatAngle(const glm::quat& start, const glm::quat& end)
     {
-      const float cosine = std::fabs(glm::dot(start, end));
-      return 2.0f * std::acos(glm::clamp(cosine, 0.0f, 1.0f));
+      glm::quat relative = start * glm::inverse(end);
+
+      if (relative.w < 0.0f)
+      {
+        relative = -relative;
+      }
+
+      return 2.0f * std::atan2(glm::length(glm::vec3(relative.x, relative.y, relative.z)), relative.w);
     }
 
     /** Angular speed of a segment if it runs straight: radians per second. */

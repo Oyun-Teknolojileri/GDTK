@@ -317,8 +317,8 @@ The parameter of the slerp is eased instead of linear, and the easing is derived
 without touching quaternion tangents:
 
 ```
-angle_i = angle(q_i, q_i+1)          // hemisphere aligned first: if dot(q_i, q_i+1) < 0, use -q_i+1
-                                     // (the same convention glm::slerp applies internally)
+angle_i = angle(q_i, q_i+1)          // 2*atan2(|v|, w) of the hemisphere aligned relative rotation
+                                     // (the angle convention glm::slerp applies internally)
 w_i     = angle_i / d_i              // this segment's linear angular speed, rad/s
 W_i     = (w_i-1 + w_i) / 2          // the key's auto angular speed (single neighbour at the ends)
 W_i     = min(W_i, 3 * min(w_i-1, w_i))   // the same per key limit as the position tangents
@@ -332,6 +332,11 @@ segment i:  a = W_i   / w_i          // de/dtau at tau = 0
 e(tau) = h10*a + h01 + h11*b;
 rot    = slerp(q_i, q_i+1, e(tau));
 ```
+
+The angle comes from `2 * atan2(|v|, w)` of the relative rotation, not from `2 * acos(dot)`: a dot
+product near 1 keeps only a fraction of its precision, which is the normal case for the neighbouring
+keys of a track, and it reports a sizeable speed for a segment that does not rotate at all. That
+spurious speed then starves the per key limit of the keys on either side of it.
 
 The speed limit applies to `W_i`, so both sides of the key read the same speed and the angular
 velocity is continuous there. Clamping each segment's slope on its own (the obvious first
