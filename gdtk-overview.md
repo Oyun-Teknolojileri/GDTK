@@ -408,7 +408,7 @@ Single header for cross-backend constants (`TextureSlotCount`, `MaxPointLightPer
 
 ### 6.1 Resource (Resource.h)
 
-Base class for every loadable asset. Inherits Object. Has lifecycle: `Load()` (CPU memory), `Init()` (GPU memory), `UnInit()`, `Reload()`, `Save(onlyIfDirty)`. Has `m_dirty`/`m_loaded`/`m_initiated` flags and `m_file`/`_missingFile` (the latter is set when a file is missing and a default is used — prevents overwriting the original file with default content on save).
+Base class for every loadable asset. Inherits Object. Has lifecycle: `Load()` (CPU memory), `Init()` (GPU memory), `UnInit()`, `Reload()`, `Save(onlyIfDirty)`. Has `m_dirty`/`m_loaded`/`m_initiated` flags and `m_file`/`_missingFile` (the latter is set when a file is missing and a default is used, which keeps the original file path intact on save). Serialization reads through `GetSerializeFile()`, which prefers `_missingFile`, and `Save()` refuses to write at all while `_missingFile` is set: a resource running on an engine default can not overwrite that default with fallback content.
 
 `SerializeRef` / `DeserializeRef` write/read a `<ResourceRef Type=... File=... />` node.
 
@@ -553,6 +553,10 @@ Key entry points:
 - `Import(fullPath, subDir, overwrite)` — via assimp
 - `OpenSceneAsync`, `MergeScene`, `LinkScene`
 - `OpenProject(Project)`, `PackResources`, `SaveAllResources`
+  (*Save All Resources* walks the mesh, material and animation managers and writes every resource
+  that owns a project file. It skips resources with no file at all -- runtime objects -- resources
+  that fell back to an engine default (`Resource::_missingFile`) and anything under the engine root
+  (`IsDefaultResource`), so the engine tree stays read only)
 - `ExecSysCommand(argv, async, showConsole, callback)` — spawns a child process directly from a tokenized `std::vector<String>` argv (no shell); platform backends are `posix_spawn` (Linux) and `CreateProcessW` with proper Microsoft command-line quoting (Windows); completion callback receives the exit code
 - `IsWorkspaceSane`, `IsValidCppLibraryName`
 

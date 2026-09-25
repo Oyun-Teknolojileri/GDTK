@@ -144,7 +144,11 @@ namespace ToolKit
   TK_API String GetRelativeResourcePath(const String& path, String* rootFolder = nullptr);
 
   /**
-   * Checks if a resource has default path.
+   * Checks if a resource belongs to the engine's resource tree, which the editor treats as read
+   * only. Both the engine root and the path are compared in an absolute, unixified and case
+   * insensitive form, so a relative path or a differing separator can not pass an engine asset off
+   * as a project resource.
+   * @param path Path of the resource file.
    * @return true if the resource is from Engine's directory.
    */
   TK_API bool IsDefaultResource(const String& path);

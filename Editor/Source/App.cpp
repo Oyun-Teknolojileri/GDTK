@@ -1416,15 +1416,32 @@ namespace ToolKit
       {
         for (auto& resource : GetResourceManager(t)->m_storage)
         {
-          if (!resource.second->IsDynamic())
+          ResourcePtr res = resource.second;
+
+          // A resource without a file is a runtime object (created in memory by a game or by the
+          // editor) and there is nothing to write to, so it is left alone.
+          if (res->IsDynamic())
           {
-            String file = resource.second->GetFile();
-            if (!IsDefaultResource(file))
-            {
-              resource.second->m_dirty = true;
-              resource.second->Save(true);
-            }
+            continue;
           }
+
+          // A resource whose file was missing runs on an engine default. Saving it would write the
+          // fallback content over that default, which is what Resource::Save() refuses as well; it is
+          // skipped here too so the pass stays quiet about it.
+          if (!res->_missingFile.empty())
+          {
+            continue;
+          }
+
+          // Engine assets are read only for the editor: the workspace owns the project resources and
+          // nothing under the engine root is written from here.
+          if (IsDefaultResource(res->GetFile()))
+          {
+            continue;
+          }
+
+          res->m_dirty = true;
+          res->Save(true);
         }
       }
     }

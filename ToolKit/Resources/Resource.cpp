@@ -37,6 +37,19 @@ namespace ToolKit
       return;
     }
 
+    // A resource whose file was missing fell back to an engine default, so m_file points at that
+    // default: writing here would overwrite an engine asset with fallback content. The path the
+    // resource really belongs to lives in _missingFile and is what serialization keeps writing
+    // (GetSerializeFile), the asset itself is not saved until its own file exists again.
+    if (!_missingFile.empty())
+    {
+      TK_WRN("Not saving %s: its file %s is missing, the resource runs on %s.",
+             m_name.c_str(),
+             _missingFile.c_str(),
+             m_file.c_str());
+      return;
+    }
+
     if (m_file.empty())
     {
       m_file = m_name + GetExtFromType(Class());

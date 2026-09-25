@@ -21,6 +21,9 @@
 
 #include "DebugNew.h"
 
+#include <algorithm>
+#include <cctype>
+
 namespace ToolKit
 {
 
@@ -410,18 +413,37 @@ namespace ToolKit
 
   bool IsDefaultResource(const String& path)
   {
+    if (path.empty())
+    {
+      return false;
+    }
+
     if (HasToolKitRoot(path))
     {
       return true;
     }
 
-    static const String defPath = DefaultPath();
-    if (StartsWith(path, defPath))
-    {
-      return true;
-    }
+    // Both sides are normalized to an absolute, unixified form and compared without case. The engine
+    // root comes from the host or falls back to a path relative to the working directory, while a
+    // resource stores whatever SetFile() unixified: a separator, a relative form or a case difference
+    // must not let an engine asset pass as a project resource. The editor writes project resources
+    // only, an engine asset is read only for it.
+    static const String defPath = ToAbsolutePath(DefaultPath());
 
-    return false;
+    String engineRoot           = defPath;
+    String candidate            = ToAbsolutePath(path);
+
+    std::transform(engineRoot.begin(),
+                   engineRoot.end(),
+                   engineRoot.begin(),
+                   [](unsigned char c) -> char { return (char) std::tolower(c); });
+
+    std::transform(candidate.begin(),
+                   candidate.end(),
+                   candidate.begin(),
+                   [](unsigned char c) -> char { return (char) std::tolower(c); });
+
+    return StartsWith(candidate, engineRoot);
   }
 
   bool HasToolKitRoot(const String& path) { return StartsWith(path, "ToolKit\\") || StartsWith(path, "ToolKit/"); }
