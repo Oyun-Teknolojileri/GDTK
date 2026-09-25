@@ -88,6 +88,12 @@ namespace ToolKit
       /** Writes keys for every selected entity at the current frame. */
       void SetKeyOnSelection();
 
+      /** States if a key is selected in the sheet. */
+      bool HasSelectedKey() const;
+
+      /** Removes the selected key through an undoable action. */
+      void DeleteSelectedKey();
+
       /** Applies the clip pose at the given time to every entity matched by a track. */
       void ApplyPoseAt(float time);
 
@@ -109,7 +115,6 @@ namespace ToolKit
       EntityPtr EntityForTrack(const String& trackName) const;
       String TrackNameForEntity(EntityPtr ntt, bool create);
       bool SampleTrack(const KeyArray& keys, float time, Vec3& pos, Quaternion& rot, Vec3& scale);
-      static void InsertKey(KeyArray& keys, const Key& key);
       static bool IsSkinned(EntityPtr ntt);
       static int TickStep(float pxPerFrame);
       void BeginPreviewSession();
@@ -118,6 +123,15 @@ namespace ToolKit
       void CreateClip(const String& name);
       float FrameToX(int frame, float laneLeft) const;
       int XToFrame(float x, float laneLeft) const;
+
+      /** Applies a finished key drag, undoably. */
+      void CommitKeyDrag();
+
+      /** States if the clip holds a key on the given frame of the given track. */
+      bool TrackHasKey(const String& trackName, int frame) const;
+
+      /** Drops the selection when the selected key is not part of the clip anymore. */
+      void ValidateSelection();
 
      public:
       AnimationPtr m_clip = nullptr;       //!< Clip the sheet edits.
@@ -147,6 +161,15 @@ namespace ToolKit
       std::unordered_map<String, EntityPtr> m_trackEntities; //!< Track name -> entity.
       std::unordered_map<ObjectId, String> m_entityTracks;   //!< Entity id -> track name.
       std::unordered_map<ObjectId, Mat4> m_baseTransforms;   //!< Pre preview local transforms.
+
+      // Key selection and dragging. Phase 1.5 selects a single key; later phases extend this to a
+      // set with copy/paste and bulk moves.
+      String m_selectedTrack;      //!< Track of the selected key, empty when nothing is selected.
+      int m_selectedFrame = -1;    //!< Frame of the selected key.
+      bool m_dragging     = false; //!< True while a selected key is dragged in time.
+      String m_dragTrack;          //!< Track the drag started on.
+      int m_dragFromFrame = -1;    //!< Frame the dragged key came from.
+      int m_dragToFrame   = -1;    //!< Frame the dragged key would land on.
 
       // Right click context, deferred until the row has been drawn.
       String m_ctxTrack;

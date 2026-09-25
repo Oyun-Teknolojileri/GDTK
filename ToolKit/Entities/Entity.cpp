@@ -83,18 +83,27 @@ namespace ToolKit
 
   void Entity::SetPose(const AnimationPtr& anim, float time)
   {
+    if (anim == nullptr)
+    {
+      return;
+    }
+
     MeshComponentPtr meshComp = GetMeshComponent();
-    if (meshComp)
+    if (meshComp != nullptr)
     {
       MeshPtr mesh                  = meshComp->GetMeshVal();
       SkeletonComponentPtr skelComp = GetComponent<SkeletonComponent>();
-      if (mesh->IsSkinned() && skelComp)
+      if (mesh != nullptr && mesh->IsSkinned() && skelComp != nullptr)
       {
+        // Skinned meshes are posed through their skeleton, the animation data texture feeds the
+        // GPU skinning path.
         anim->GetPose(skelComp, time);
         return;
       }
     }
-    anim->GetPose(m_node, time);
+
+    // Plain entity: the clip's track named after this entity holds its node curve.
+    anim->GetPose(m_node, time, GetNameVal());
   }
 
   const BoundingBox& Entity::GetBoundingBox(bool inWorld)

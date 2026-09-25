@@ -7,6 +7,7 @@
 
 #include "DopeSheetView.h"
 
+#include "Action.h"
 #include "App.h"
 #include "EditorScene.h"
 #include "FolderWindow.h"
@@ -79,6 +80,11 @@ namespace ToolKit
 
       m_clip = anim;
 
+      // A selection or a drag from the previous clip does not belong to the new one.
+      m_dragging = false;
+      m_selectedTrack.clear();
+      m_selectedFrame = -1;
+
       m_trackEntities.clear();
       m_entityTracks.clear();
 
@@ -136,6 +142,7 @@ namespace ToolKit
       // is needed and playback stops when the window is hidden.
       Update(ImGui::GetIO().DeltaTime);
       ResolveTracks();
+      ValidateSelection();
 
       ShowClipHeader();
       ShowTransport();
@@ -143,6 +150,20 @@ namespace ToolKit
 
       ImGui::Separator();
       ShowSheet();
+
+      // A key drag ends on the mouse release even when it happens outside the sheet, so the drag is
+      // finished here rather than inside the lane that started it.
+      if (m_dragging)
+      {
+        if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))
+        {
+          CommitKeyDrag();
+        }
+        else if (ImGui::IsKeyPressed(ImGuiKey_Escape, false))
+        {
+          m_dragging = false; // Cancelled, the key stays where it was.
+        }
+      }
     }
 
     void DopeSheetView::Update(float deltaTime)
@@ -248,6 +269,7 @@ namespace ToolKit
       // resource and survives the switch, so it stays bound to the sheet.
       m_sceneId       = sceneId;
       m_sessionActive = false;
+      m_dragging      = false;
       m_trackEntities.clear();
       m_entityTracks.clear();
       m_baseTransforms.clear();
@@ -387,24 +409,6 @@ namespace ToolKit
       rot   = glm::slerp(k1.m_rotation, k2.m_rotation, ratio);
       scale = Interpolate(k1.m_scale, k2.m_scale, ratio);
       return true;
-    }
-
-    void DopeSheetView::InsertKey(KeyArray& keys, const Key& key)
-    {
-      // Keys stay ascending by frame: Animation::GetNearestKeys walks the array in order and the
-      // engine's anim data texture path indexes it by keyframe.
-      auto it = std::lower_bound(keys.begin(),
-                                 keys.end(),
-                                 key.m_frame,
-                                 [](const Key& k, int frame) -> bool { return k.m_frame < frame; });
-
-      if (it != keys.end() && it->m_frame == key.m_frame)
-      {
-        *it = key;
-        return;
-      }
-
-      keys.insert(it, key);
     }
 
     bool DopeSheetView::IsSkinned(EntityPtr ntt)
@@ -563,7 +567,8 @@ namespace ToolKit
       const float fps  = glm::max(1.0f, m_clip->m_fps);
       const float time = m_frame / fps;
 
-      int keyed          = 0;
+      // Skinned meshes carry their keys on bone tracks, which the sheet does not edit yet.
+      EntityPtrArray keyable;
       int skippedSkinned = 0;
 
       for (EntityPtr ntt : selection)
@@ -571,9 +576,33 @@ namespace ToolKit
         if (IsSkinned(ntt))
         {
           skippedSkinned++;
-          continue;
         }
+        else
+        {
+          keyable.push_back(ntt);
+        }
+      }
 
+      if (keyable.empty())
+      {
+        editor->SetStatusMsg(g_statusFailed);
+        TK_WRN("Dope sheet skips skinned meshes, their tracks are not editable yet: %d skipped.",
+               skippedSkinned);
+        return;
+      }
+
+      // One key press is one undo step, even when several entities are keyed: the per entity edits
+      // are added as a group.
+      const bool groupEdits = keyable.size() > 1;
+      if (groupEdits)
+      {
+        ActionManager::GetInstance()->BeginActionGroup();
+      }
+
+      int keyed = 0;
+
+      for (EntityPtr ntt : keyable)
+      {
         const String trackName = TrackNameForEntity(ntt, true);
         if (trackName.empty())
         {
@@ -604,13 +633,22 @@ namespace ToolKit
         key.m_rotation = m_keyRotation ? rot : curveRot;
         key.m_scale    = m_keyScale ? scale : curveScale;
 
-        InsertKey(*keys, key);
+        // Undoable: the action replaces the key that may already sit on this frame.
+        KeyEditAction::SetKey(m_clip, trackName, key);
+
+        // A fresh key becomes the selection, so it can be dragged right away.
+        m_selectedTrack = trackName;
+        m_selectedFrame = m_frame;
         keyed++;
+      }
+
+      if (groupEdits && keyed > 0)
+      {
+        ActionManager::GetInstance()->GroupLastActions(keyed);
       }
 
       if (keyed > 0)
       {
-        m_clip->m_dirty    = true;
         m_endFrame         = glm::max(m_endFrame, m_frame);
         m_clip->m_duration = glm::max(m_clip->m_duration, m_endFrame / fps);
 
@@ -623,6 +661,102 @@ namespace ToolKit
         TK_WRN("Dope sheet skips skinned meshes, their tracks are not editable yet: %d skipped.",
                skippedSkinned);
       }
+    }
+
+    bool DopeSheetView::HasSelectedKey() const
+    {
+      return m_clip != nullptr && !m_selectedTrack.empty() && m_selectedFrame >= 0;
+    }
+
+    void DopeSheetView::DeleteSelectedKey()
+    {
+      if (!HasSelectedKey() || !CanEdit())
+      {
+        return;
+      }
+
+      const String track = m_selectedTrack;
+      const int frame    = m_selectedFrame;
+
+      m_selectedTrack.clear();
+      m_selectedFrame = -1;
+
+      if (!TrackHasKey(track, frame))
+      {
+        // Undo already removed it, nothing left to delete.
+        return;
+      }
+
+      KeyEditAction::DeleteKey(m_clip, track, frame);
+      TK_LOG("Dope sheet: key deleted at frame %d on track %s.", frame, track.c_str());
+    }
+
+    bool DopeSheetView::TrackHasKey(const String& trackName, int frame) const
+    {
+      if (m_clip == nullptr || frame < 0)
+      {
+        return false;
+      }
+
+      const KeyArray* keys = m_clip->m_keys.Find(trackName);
+      if (keys == nullptr)
+      {
+        return false;
+      }
+
+      for (const Key& key : *keys)
+      {
+        if (key.m_frame == frame)
+        {
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    void DopeSheetView::ValidateSelection()
+    {
+      if (!HasSelectedKey())
+      {
+        return;
+      }
+
+      if (!TrackHasKey(m_selectedTrack, m_selectedFrame))
+      {
+        // An undo removed the key under the selection.
+        m_selectedTrack.clear();
+        m_selectedFrame = -1;
+      }
+    }
+
+    void DopeSheetView::CommitKeyDrag()
+    {
+      if (!m_dragging)
+      {
+        return;
+      }
+
+      const int fromFrame = m_dragFromFrame;
+      const int toFrame   = m_dragToFrame;
+
+      m_dragging = false;
+
+      if (fromFrame < 0 || toFrame < 0 || fromFrame == toFrame)
+      {
+        return;
+      }
+
+      // The action moves the key and replaces whatever sat on the target frame.
+      KeyEditAction::MoveKey(m_clip, m_dragTrack, fromFrame, toFrame);
+
+      m_selectedTrack = m_dragTrack;
+      m_selectedFrame = toFrame;
+
+      TK_LOG("Dope sheet: key moved from frame %d to %d on track %s.",
+             fromFrame,
+             toFrame,
+             m_dragTrack.c_str());
     }
 
     float DopeSheetView::FrameToX(int frame, float laneLeft) const
@@ -1148,18 +1282,67 @@ namespace ToolKit
             continue;
           }
 
-          const bool current = key.m_frame == m_frame;
-          dl->AddQuadFilled(ImVec2(keyX, keyY - g_keyRadius),
-                            ImVec2(keyX + g_keyRadius, keyY),
-                            ImVec2(keyX, keyY + g_keyRadius),
-                            ImVec2(keyX - g_keyRadius, keyY),
-                            current ? cursorColor : keyColor);
-
           if (rowHovered && glm::abs(io.MousePos.x - keyX) <= g_keyRadius &&
               glm::abs(io.MousePos.y - keyY) <= g_keyRadius)
           {
             hoveredKeyFrame = key.m_frame;
           }
+
+          const bool draggingSource = m_dragging && trackName == m_dragTrack && key.m_frame == m_dragFromFrame;
+          if (draggingSource)
+          {
+            // While it is being dragged, the key is drawn as a ghost on the target frame below.
+            dl->AddQuad(ImVec2(keyX, keyY - g_keyRadius),
+                        ImVec2(keyX + g_keyRadius, keyY),
+                        ImVec2(keyX, keyY + g_keyRadius),
+                        ImVec2(keyX - g_keyRadius, keyY),
+                        cursorColor,
+                        1.0f);
+            continue;
+          }
+
+          const bool selected = (trackName == m_selectedTrack && key.m_frame == m_selectedFrame);
+          const bool current  = key.m_frame == m_frame;
+
+          dl->AddQuadFilled(ImVec2(keyX, keyY - g_keyRadius),
+                            ImVec2(keyX + g_keyRadius, keyY),
+                            ImVec2(keyX, keyY + g_keyRadius),
+                            ImVec2(keyX - g_keyRadius, keyY),
+                            (selected || current) ? cursorColor : keyColor);
+
+          if (selected)
+          {
+            dl->AddQuad(ImVec2(keyX, keyY - g_keyRadius),
+                        ImVec2(keyX + g_keyRadius, keyY),
+                        ImVec2(keyX, keyY + g_keyRadius),
+                        ImVec2(keyX - g_keyRadius, keyY),
+                        ImGui::GetColorU32(ImGuiCol_Text),
+                        1.0f);
+          }
+        }
+
+        // Ghost of the key being dragged, drawn on the frame it would land on.
+        if (m_dragging && trackName == m_dragTrack && m_dragToFrame >= 0)
+        {
+          const float ghostX = FrameToX(m_dragToFrame, laneLeft);
+
+          dl->AddQuadFilled(ImVec2(ghostX, keyY - g_keyRadius),
+                            ImVec2(ghostX + g_keyRadius, keyY),
+                            ImVec2(ghostX, keyY + g_keyRadius),
+                            ImVec2(ghostX - g_keyRadius, keyY),
+                            cursorColor);
+
+          dl->AddQuad(ImVec2(ghostX, keyY - g_keyRadius),
+                      ImVec2(ghostX + g_keyRadius, keyY),
+                      ImVec2(ghostX, keyY + g_keyRadius),
+                      ImVec2(ghostX - g_keyRadius, keyY),
+                      ImGui::GetColorU32(ImGuiCol_Text),
+                      2.0f);
+
+          const String frameLabel = Format("%d", m_dragToFrame);
+          dl->AddText(ImVec2(ghostX + g_keyRadius + 4.0f, rowY + 2.0f),
+                      ImGui::GetColorU32(ImGuiCol_Text),
+                      frameLabel.c_str());
         }
 
         // Name column.
@@ -1199,7 +1382,29 @@ namespace ToolKit
           openCtx    = true;
         }
 
-        if (rowActive)
+        // Left click on a key selects it and starts a time drag; a click anywhere else scrubs the
+        // playhead and drops the selection.
+        if (rowHovered && hoveredKeyFrame >= 0 && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+        {
+          m_selectedTrack = trackName;
+          m_selectedFrame = hoveredKeyFrame;
+          m_dragTrack     = trackName;
+          m_dragFromFrame = hoveredKeyFrame;
+          m_dragToFrame   = hoveredKeyFrame;
+          m_dragging      = true;
+        }
+        else if (rowActive && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !m_dragging)
+        {
+          m_selectedTrack.clear();
+          m_selectedFrame = -1;
+        }
+
+        if (m_dragging && m_dragTrack == trackName)
+        {
+          // The row that owns the drag keeps following the mouse, even when it leaves the row.
+          m_dragToFrame = glm::clamp(XToFrame(io.MousePos.x, laneLeft), 0, m_endFrame);
+        }
+        else if (rowActive)
         {
           SetFrame(XToFrame(io.MousePos.x, laneLeft), true);
         }
@@ -1252,14 +1457,12 @@ namespace ToolKit
         ImGui::BeginDisabled(!CanEdit());
         if (ImGui::MenuItem("Delete Key", nullptr, false, ctxFrame >= 0))
         {
-          if (KeyArray* keys = m_clip->m_keys.Find(m_ctxTrack))
-          {
-            erase_if(*keys, [ctxFrame](const Key& key) -> bool { return key.m_frame == ctxFrame; });
-            m_clip->m_dirty = true;
-            ResolveTracks();
-          }
+          m_selectedTrack.clear();
+          m_selectedFrame = -1;
+          KeyEditAction::DeleteKey(m_clip, m_ctxTrack, ctxFrame);
         }
 
+        // Track removal is not undoable yet; it drops every key of the track.
         if (ImGui::MenuItem("Delete Track"))
         {
           // Stop first: the preview snapshot of the track that is going away must be restored
@@ -1269,6 +1472,8 @@ namespace ToolKit
           if (m_clip->m_keys.Erase(m_ctxTrack))
           {
             m_clip->m_dirty = true;
+            m_selectedTrack.clear();
+            m_selectedFrame = -1;
             ResolveTracks();
           }
         }
@@ -1343,6 +1548,11 @@ namespace ToolKit
       if (ImGui::IsKeyPressed(ImGuiKey_K, false))
       {
         m_view->SetKeyOnSelection();
+      }
+
+      if (ImGui::IsKeyPressed(ImGuiKey_Delete, false) || ImGui::IsKeyPressed(ImGuiKey_Backspace, false))
+      {
+        m_view->DeleteSelectedKey();
       }
 
       if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, true))

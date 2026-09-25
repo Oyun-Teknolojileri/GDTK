@@ -20,6 +20,8 @@
 
 #include "DebugNew.h"
 
+#include <algorithm>
+
 static constexpr bool SERIALIZE_ANIMATION_AS_BINARY = true;
 
 namespace ToolKit
@@ -33,31 +35,38 @@ namespace ToolKit
 
   Animation::~Animation() { UnInit(); }
 
-  void Animation::GetPose(Node* node, float time)
+  void Animation::GetPose(Node* node, float time, const String& keyName)
   {
-    if (m_keys.empty())
+    if (m_keys.empty() || node == nullptr)
+    {
+      return;
+    }
+
+    // A clip carries one track per animated node, named after it, so a multi node clip has to be
+    // asked for the curve that belongs to this node. Clips with a single unnamed curve keep working
+    // through the fallback.
+    const KeyArray* keys = keyName.empty() ? nullptr : m_keys.Find(keyName);
+    if (keys == nullptr)
+    {
+      keys = &m_keys.begin()->second;
+    }
+
+    if (keys->empty())
     {
       return;
     }
 
     float ratio;
     int key1, key2;
-    std::vector<Key>& keys = m_keys.begin()->second;
-    GetNearestKeys(keys, key1, key2, ratio, time);
+    GetNearestKeys(*keys, key1, key2, ratio, time);
 
-    int keySize = static_cast<int>(keys.size());
-    if (keys.size() <= key1 || key1 == -1)
+    if (key1 < 0 || key2 < 0 || key1 >= (int) keys->size() || key2 >= (int) keys->size())
     {
       return;
     }
 
-    if (keys.size() <= key2 || key2 == -1)
-    {
-      return;
-    }
-
-    Key k1              = keys[key1];
-    Key k2              = keys[key2];
+    Key k1              = (*keys)[key1];
+    Key k2              = (*keys)[key2];
 
     Vec3 positon        = Interpolate(k1.m_position, k2.m_position, ratio);
     Quaternion rotation = glm::slerp(k1.m_rotation, k2.m_rotation, ratio);
@@ -118,6 +127,54 @@ namespace ToolKit
   }
 
   void Animation::GetPose(Node* node, int frame) { GetPose(node, frame * 1.0f / m_fps); }
+
+  bool Animation::SetKey(const String& keyName, int frame, const Key* key)
+  {
+    if (keyName.empty())
+    {
+      return false;
+    }
+
+    KeyArray* keys = m_keys.Find(keyName);
+    if (keys == nullptr)
+    {
+      if (key == nullptr)
+      {
+        return false;
+      }
+
+      m_keys.Insert(keyName, KeyArray());
+      keys = m_keys.Find(keyName);
+    }
+
+    // Keys stay ascending by frame: GetNearestKeys walks the array in order and the anim data
+    // texture path indexes it by keyframe, so a key is inserted at its sorted position.
+    auto it = std::lower_bound(keys->begin(),
+                               keys->end(),
+                               frame,
+                               [](const Key& k, int f) -> bool { return k.m_frame < f; });
+
+    const bool found = (it != keys->end() && it->m_frame == frame);
+
+    if (key == nullptr)
+    {
+      if (found)
+      {
+        keys->erase(it);
+      }
+    }
+    else if (found)
+    {
+      *it = *key;
+    }
+    else
+    {
+      keys->insert(it, *key);
+    }
+
+    m_dirty = true;
+    return true;
+  }
 
   void Animation::Load()
   {
@@ -519,7 +576,7 @@ namespace ToolKit
       UpdateAnimationData();
     }
 
-    // Fill skeleton components with anim data
+    // Fill skeleton components with anim data and pose plain entity nodes.
     for (auto it = m_records.begin(); it != m_records.end(); it++)
     {
       AnimRecordPtr record = *it;
@@ -528,7 +585,9 @@ namespace ToolKit
       {
         MeshComponentPtr meshComp   = ntt->GetMeshComponent();
         SkeletonComponentPtr skComp = ntt->GetComponent<SkeletonComponent>();
-        if (meshComp->GetMeshVal()->IsSkinned() && skComp != nullptr)
+        MeshPtr mesh                = meshComp != nullptr ? meshComp->GetMeshVal() : nullptr;
+
+        if (mesh != nullptr && mesh->IsSkinned() && skComp != nullptr)
         {
           assert(record->m_animation->m_keys.size() > 0);
           KeyArray& keys = (*(record->m_animation->m_keys.begin())).second;
@@ -560,6 +619,16 @@ namespace ToolKit
           {
             skComp->m_animData.blendAnimation = nullptr;
           }
+        }
+        else if (!record->m_applyRootMotion)
+        {
+          // Node animation: the clip's track named after the entity carries its curve, so the
+          // entity node is posed directly. Records that ask for root motion stay under root motion
+          // control (applied below), which accumulates deltas on the node instead of setting it.
+          //
+          // Node tracks are not pose blended: when two records overlap during a fade, the one
+          // played last owns the node.
+          ntt->SetPose(record->m_animation, record->m_currentTime);
         }
       }
     }

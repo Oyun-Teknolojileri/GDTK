@@ -180,6 +180,139 @@ namespace ToolKit
       }
     }
 
+    // KeyEditAction
+    //////////////////////////////////////////
+
+    KeyEditAction::KeyEditAction(AnimationPtr clip, const String& trackName)
+        : m_clip(clip),
+          m_trackName(trackName)
+    {
+    }
+
+    KeyEditAction::~KeyEditAction() { m_clip = nullptr; }
+
+    KeyEditAction::FrameState KeyEditAction::Read(int frame) const
+    {
+      FrameState state;
+      state.frame = frame;
+
+      if (m_clip == nullptr || frame < 0)
+      {
+        return state;
+      }
+
+      const KeyArray* keys = m_clip->m_keys.Find(m_trackName);
+      if (keys == nullptr)
+      {
+        return state;
+      }
+
+      for (const Key& key : *keys)
+      {
+        if (key.m_frame == frame)
+        {
+          state.hasKey = true;
+          state.key    = key;
+          break;
+        }
+      }
+
+      return state;
+    }
+
+    void KeyEditAction::Write(const FrameState& state)
+    {
+      if (m_clip == nullptr || state.frame < 0)
+      {
+        return;
+      }
+
+      // The stored frame is forced to match the sort position the track keeps, the sampler walks
+      // the keys in order and would read a mismatched frame as a corrupt curve.
+      Key key     = state.key;
+      key.m_frame = state.frame;
+
+      // Animation::SetKey keeps the track sorted by frame and creates it when it is missing.
+      m_clip->SetKey(m_trackName, state.frame, state.hasKey ? &key : nullptr);
+    }
+
+    void KeyEditAction::Undo()
+    {
+      Write(m_beforeFrom);
+      Write(m_beforeTo);
+    }
+
+    void KeyEditAction::Redo()
+    {
+      Write(m_afterFrom);
+      Write(m_afterTo);
+    }
+
+    void KeyEditAction::SetKey(AnimationPtr clip, const String& trackName, const Key& key)
+    {
+      KeyEditAction* action = new KeyEditAction(clip, trackName);
+
+      action->m_beforeFrom = action->Read(key.m_frame);
+      action->m_beforeTo   = action->m_beforeFrom;
+
+      action->m_afterFrom        = action->m_beforeFrom;
+      action->m_afterFrom.hasKey = true;
+      action->m_afterFrom.key    = key;
+      action->m_afterTo          = action->m_afterFrom;
+
+      action->Redo();
+      ActionManager::GetInstance()->AddAction(action);
+    }
+
+    void KeyEditAction::DeleteKey(AnimationPtr clip, const String& trackName, int frame)
+    {
+      KeyEditAction* action = new KeyEditAction(clip, trackName);
+
+      action->m_beforeFrom = action->Read(frame);
+      if (!action->m_beforeFrom.hasKey)
+      {
+        SafeDel(action); // Nothing to remove, do not pollute the undo stack.
+        return;
+      }
+
+      action->m_beforeTo         = action->m_beforeFrom;
+      action->m_afterFrom        = action->m_beforeFrom;
+      action->m_afterFrom.hasKey = false;
+      action->m_afterTo          = action->m_afterFrom;
+
+      action->Redo();
+      ActionManager::GetInstance()->AddAction(action);
+    }
+
+    void KeyEditAction::MoveKey(AnimationPtr clip, const String& trackName, int fromFrame, int toFrame)
+    {
+      if (fromFrame == toFrame)
+      {
+        return;
+      }
+
+      KeyEditAction* action = new KeyEditAction(clip, trackName);
+
+      action->m_beforeFrom = action->Read(fromFrame);
+      if (!action->m_beforeFrom.hasKey)
+      {
+        SafeDel(action);
+        return;
+      }
+
+      action->m_beforeTo = action->Read(toFrame);
+
+      // The key leaves its old frame and lands on the new one, replacing whatever was there.
+      action->m_afterFrom        = action->m_beforeFrom;
+      action->m_afterFrom.hasKey = false;
+      action->m_afterTo          = action->m_beforeFrom;
+      action->m_afterTo.frame    = toFrame;
+      action->m_afterTo.key.m_frame = toFrame;
+
+      action->Redo();
+      ActionManager::GetInstance()->AddAction(action);
+    }
+
     // ActionManager
     //////////////////////////////////////////
 

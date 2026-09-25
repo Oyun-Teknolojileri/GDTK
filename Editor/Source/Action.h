@@ -86,6 +86,79 @@ namespace ToolKit
       ComponentPtr m_com;
     };
 
+    // KeyEditAction
+    //////////////////////////////////////////
+
+    /**
+     * One undoable edit of a single animation key.
+     *
+     * A key edit touches at most two frames: the frame the key came from and the frame it went to
+     * (the same frame for an insert, an update or a removal). The action remembers what sat on both
+     * frames before and after the edit, so undo and redo replay it exactly -- including a key that
+     * was replaced on the target frame.
+     *
+     * The editor action convention applies here: the constructor performs the edit (through Redo()),
+     * so a caller mutates the clip and pushes the action in one step.
+     */
+    class TK_EDITOR_API KeyEditAction : public Action
+    {
+     public:
+      /**
+       * Inserts or updates a key on a track.
+       * @param clip Clip that owns the track.
+       * @param trackName Track to edit.
+       * @param key Key to write at its own frame.
+       */
+      static void SetKey(AnimationPtr clip, const String& trackName, const Key& key);
+
+      /**
+       * Removes the key at the given frame.
+       * @param clip Clip that owns the track.
+       * @param trackName Track to edit.
+       * @param frame Frame of the key to remove.
+       */
+      static void DeleteKey(AnimationPtr clip, const String& trackName, int frame);
+
+      /**
+       * Moves a key in time. Whatever sits on the target frame is replaced.
+       * @param clip Clip that owns the track.
+       * @param trackName Track to edit.
+       * @param fromFrame Frame the key is on now.
+       * @param toFrame Frame the key moves to.
+       */
+      static void MoveKey(AnimationPtr clip, const String& trackName, int fromFrame, int toFrame);
+
+      void Undo() override;
+      void Redo() override;
+
+     private:
+      /** Content of one of the two frames an edit touches. */
+      struct FrameState
+      {
+        int frame   = -1;
+        bool hasKey = false;
+        Key key;
+      };
+
+      KeyEditAction(AnimationPtr clip, const String& trackName);
+      virtual ~KeyEditAction();
+
+      /** Reads the key that currently sits on the given frame. */
+      FrameState Read(int frame) const;
+
+      /** Writes a frame state back to the track. */
+      void Write(const FrameState& state);
+
+     private:
+      AnimationPtr m_clip;
+      String m_trackName;
+
+      FrameState m_beforeFrom; //!< Source frame before the edit.
+      FrameState m_afterFrom;  //!< Source frame after the edit.
+      FrameState m_beforeTo;   //!< Target frame before the edit.
+      FrameState m_afterTo;    //!< Target frame after the edit.
+    };
+
     // ActionManager
     //////////////////////////////////////////
 

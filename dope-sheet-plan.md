@@ -1,8 +1,8 @@
 # Dope Sheet Editor -- Implementation Plan
 
 > Working plan for the GDTK Dope Sheet (keyframe timeline) editor.
-> Status: Phase 1 implemented and building (see 3.11); a manual pass in the editor is pending.
-> Phases 2-4 are the agreed follow-ups.
+> Status: Phase 1 delivered and the 3.12 follow-up (node playback restore, key selection with drag
+> and delete, undo/redo) is in. Phases 2-4 are the agreed follow-ups.
 > Keep this file in sync while the work is in progress; delete it once the feature lands
 > and the permanent description lives in `gdtk-overview.md`.
 
@@ -17,7 +17,7 @@ Delivered in phases, each one usable on its own:
 
 | Phase | Content | State |
 |---|---|---|
-| 1 | Frame timeline, Set Key (T/R/S), clip/track creation, Play/Pause/Stop, timeline scrubbing | implemented, manual pass pending |
+| 1 | Frame timeline, Set Key (T/R/S), clip/track creation, Play/Pause/Stop, timeline scrubbing | implemented, plus the key editing of 3.12 |
 | 2 | Auto key (capture gizmo / inspector movement) | later |
 | 3 | Key selection, bulk move in time, copy/paste, delete, undo/redo | later |
 | 4 | Skeleton/bone rows, curve view, runtime node playback, easing modes | later |
@@ -342,7 +342,46 @@ Delivered behavior:
 
 Known Phase 1 limits, intentional: no key selection / bulk move / copy-paste, no auto key, no
 skeleton rows, no undo of key edits, one sheet instance at a time, and clicking a row's name column
-scrubs like the rest of the row.
+scrubs like the rest of the row. The first two of those were addressed by 3.12.
+
+### 3.12 Follow-up pass: node playback restore and key editing
+
+Done after the user tested Phase 1 and asked for the node playback path back plus basic key
+editing.
+
+Engine (this is the "runtime node animation" item that used to sit in Phase 4, restored early
+because a refactor had dropped it):
+
+* `AnimationPlayer::Update` poses non skinned entity nodes again: for a record whose entity has no
+  skinned mesh, `ntt->SetPose(record->m_animation, record->m_currentTime)` runs every frame, so a
+  clip that reaches an entity through an `AnimControllerComponent` moves it without plugin code.
+  Records that request root motion are skipped there -- they stay under root motion control, which
+  accumulates deltas on the node instead of setting it. Node tracks are not pose blended: when two
+  records overlap during a fade, the one played last owns the node.
+* `Animation::GetPose(Node*, time, keyName)` resolves the track by name and falls back to the first
+  track, so a multi entity clip drives each node from its own curve while single curve clips keep
+  their old behavior. `Entity::SetPose` passes the entity name, which the importer already uses as
+  the track name.
+* The entity loop no longer dereferences a missing `MeshComponent` (an entity without a mesh
+  component and a record used to be a null dereference).
+* Note for prefab instances: the runtime resolves the track by name, so two entities that share a
+  name both play the same track. The sheet gives the second entity a suffixed track (`Cube_1`),
+  which only the editor preview uses -- an open point if prefab instances should share one curve.
+
+Sheet:
+
+* `Animation::SetKey(trackName, frame, key)` (engine) is the single place that inserts, replaces or
+  removes a key, so a track is always ascending by frame -- what `GetNearestKeys` assumes.
+* `KeyEditAction` (`Editor/Source/Action.h`) makes key edits undoable: it records what sat on the
+  source and target frames before and after the edit, so insert, update, delete and a move that
+  replaced another key all replay in both directions. A `Set Key` press over several entities is
+  grouped into one undo step (`BeginActionGroup` / `GroupLastActions`).
+* Single key selection (click a key), drag in time (the key follows the mouse as a ghost, `Esc`
+  cancels), `Delete` / `Backspace` removes the selection, and the row context menu deletes through
+  the same action. Dragging is clamped to `[0, End]`, so it never extends the clip range.
+* `Delete Track` is still not undoable; it drops every key of the track.
+
+Still open from Phase 3: multi key selection, box select, copy/paste, and bulk moves.
 
 ---
 
@@ -377,19 +416,18 @@ scrubs like the rest of the row.
 * Copy/paste: internal clipboard of `(trackName, Key)` pairs; copy `Ctrl+C`, paste `Ctrl+V`
   places keys at the playhead, preserving relative frame offsets clamped at 0; pasting into a
   track that does not exist creates it.
-* Undo/redo: a `KeyEditAction : Action` (`Editor/Source/Action.h`) capturing the affected
-  track's before/after `KeyArray` (plus duration), pushed through
-  `ActionManager::GetInstance()->AddAction()`, so `Ctrl+Z` works with the existing stack.
-  One action per completed gesture (drag end, paste, delete), not per frame.
+* Undo/redo: a `KeyEditAction : Action` (`Editor/Source/Action.h`) captures the source and target
+  frames of the edit and replays it in both directions. Shipped early, see 3.12 -- what is left
+  here is extending it from one key to a whole selection (one action per completed gesture).
 
 ## 6. Phase 4 -- later work
 
 * Skeleton/bone rows: bone names come from `SkeletonComponent::m_map->m_boneMap`; the preview
   must drive `DynamicBone::node` instead of the entity node. Needs a row tree per entity.
-* Runtime node animation: make `Animation::GetPose(Node*, time)` resolve the track by the
-  entity/node name (fall back to the first track, which keeps today's behavior for existing
-  clips), or apply node tracks inside `AnimationPlayer::Update`. Without this, a multi-entity
-  clip authored in the dope sheet is only previewable in the editor.
+* Runtime node animation: **done early, see 3.12** -- `AnimationPlayer::Update` poses non skinned
+  entity nodes and `Animation::GetPose(Node*, time, keyName)` resolves the track by name.
+  What is left here is pose blending for node tracks (fades currently let the last record own the
+  node) and a decision on whether prefab instances should share one track.
 * Curve view / easing: `Key` has no tangent or interpolation mode today (linear + slerp only);
   adding modes is an engine + serialization change.
 * Root motion: the `m_rootKey` checkbox stays in `AnimationView`; the dope sheet only needs to

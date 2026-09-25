@@ -425,6 +425,37 @@ Base class for every loadable asset. Inherits Object. Has lifecycle: `Load()` (C
 - **Shader** (Shader.h): supports `VertexShader`, `FragmentShader`, `IncludeShader`. Has `ShaderDefine` + `ShaderDefineArray` for variants. Master vs include shader concept: master defines the entry + variant defines; include has no entry. Each shader has `ShaderResourceArray m_resources` declaring texture/UBO bindings with `ViewType` (`Tex2D`, `Tex2DArray`, `TexCube`) — used by Vulkan to pick the right dummy texture for unbound slots.
 - **Texture** (Texture.h), **CubeMap** (Texture.h subclass), **RenderTarget** (offscreen target), **Audio**, **Animation** (`Animation.h` + `AnimationControllerComponent`), **Skeleton** (`Skeleton.h` + `SkeletonComponent`), **SpriteSheet**, **Prefab**, **Plugin**.
 
+### 6.3.1 Animation playback
+
+An `Animation` (`.anim`) holds named `KeyArray` tracks, a `Key` being `{frame, position, rotation,
+scale}`. One track belongs to one animated node and is named after it, which is what the importer
+writes (assimp node name) and what the dope sheet authors.
+
+Reaching an entity at runtime needs an `AnimControllerComponent` on it: the component keeps a
+signal -> `AnimRecord` map (one record = one entity + one clip + `ApplyRootMotion`), and `Play`
+hands the record to `AnimationPlayer`, which `Main::Frame` updates every frame. The component is
+per entity: several entities playing the same clip carry one component and one record each, they
+are not driven from a single place.
+
+`AnimationPlayer::Update` then fills two kinds of target:
+
+- **Skinned mesh** with a `SkeletonComponent`: `skComp->m_animData` (key frame indices, current and
+  blend animation) feeds the animation data texture, which the shader uses to skin the mesh on the
+  GPU. Blending of two clips happens there as well.
+- **Any other entity**: `ntt->SetPose(record->m_animation, record->m_currentTime)` poses the entity
+  node from its own track. `Entity::SetPose` routes skinned entities to the skeleton path and plain
+  entities to `Animation::GetPose(Node*, time, keyName)`, which resolves the track **by name** and
+  falls back to the first track for clips that carry a single curve. Records that request root
+  motion are skipped in this branch: they stay under `ApplyRootMotion`, which accumulates deltas on
+  the node (from the track named in `Animation::m_rootKey`) instead of setting it. Node tracks are
+  not pose blended -- during a fade the record played last owns the node.
+
+Two entities that share a name (prefab instances) resolve to the same track by name.
+
+`Animation::SetKey(trackName, frame, key)` is the one entry point that inserts, replaces or removes
+a key, so a track stays ascending by frame, which both `GetNearestKeys` and the anim data texture
+path assume.
+
 ### 6.4 ObjectFactory (ObjectFactory.h)
 Reflection: given a `ClassMeta*`, creates instances. Used for serialization round-trips.
 
@@ -612,8 +643,8 @@ by app id instead.
 ### 9.7 Dope Sheet editor (Editor/UI/View/DopeSheetView.*)
 
 `DopeSheetView` + `DopeSheetWindow` (`g_dopeSheetStr`, opened from the Windows menu) are the
-frame based keyframe editor for entity node transforms. Phase 1 covers non skinned entity nodes;
-skeleton / bone rows, auto key, key selection with bulk move and copy/paste are later phases
+frame based keyframe editor for entity node transforms. Non skinned entity nodes are covered;
+skeleton / bone rows, auto key, multi key selection with bulk move and copy/paste are later phases
 (see `dope-sheet-plan.md`).
 
 Model:
@@ -625,18 +656,24 @@ Model:
 - Tracks are linked to entities **by name** (`ResolveTracks`), the convention the importer already
   uses (track name == assimp node name == entity name). An entity claims one track, so two
   entities that share a name are disambiguated with a numeric suffix (`Cube_1`) instead of sharing
-  a track.
+  a track. The runtime resolves by name too, so those instances play the same track (see 6.3).
 - `Set Key` (`K`) writes the local transform of every selected entity into its track at the
   playhead frame, creating the track on first use and growing the clip duration. Channels the mask
-  leaves out keep the value the curve already holds at that frame. `KeyArray`s stay ascending by
-  frame because `Animation::GetNearestKeys` walks them in order.
+  leaves out keep the value the curve already holds at that frame. Every write goes through
+  `Animation::SetKey`, which keeps a track ascending by frame -- what `Animation::GetNearestKeys`
+  and the anim data texture path assume -- and creates the track on demand.
+- Key editing is undoable through `KeyEditAction` (`Editor/Source/Action.h`): it records what sat
+  on the source and target frames before and after the edit, so insert, update, delete and a move
+  that replaced another key all replay both ways. `Delete` / `Backspace` removes the selected key,
+  dragging it moves it in time (clamped to `[0, End]`, `Esc` cancels), and one `Set Key` press over
+  several entities is grouped into a single undo step.
 - `New Clip` creates a clip under `Resources/Meshes` (`AnimationPath`), registers it with
   `AnimationManager::Manage` and refreshes the asset browsers; `Save` writes the keys.
 
-Playback is **editor side**: the engine has no path that applies node tracks
-(`Animation::GetPose(Node*)` samples the first track only, and nothing calls it for plain
-entities), so `ApplyPoseAt` samples the clip with the engine's own `GetNearestKeys` and writes the
-pose to the matching entity nodes. Play advances the playhead with the frame delta and loops over
+Playback in the sheet is **editor side** on purpose: it samples the clip with the engine's own
+`GetNearestKeys` and writes the pose to the matching entity nodes, so the sheet previews a clip
+without wiring an `AnimControllerComponent` first (the component path is how a game plays it, see
+6.3). Play advances the playhead with the frame delta and loops over
 `[0, End]`, Pause freezes the pose so the gizmo can still move the entity, and Stop restores the
 transforms snapshotted when the preview session started (`BeginPreviewSession`). Scrub on the
 ruler or by dragging a lane; the wheel scrolls the rows, `Shift+wheel` pans, `Ctrl+wheel` zooms.
@@ -820,6 +857,8 @@ When writing/editing any `.h`/`.cpp` in this repo:
 | Scene | `ToolKit/Scene.h` |
 | Threads / Worker | `ToolKit/Threads.h` |
 | Editor app | `Editor/App.h` |
+| Animation resource / tracks / player | `ToolKit/Resources/Animation.h` |
+| Undoable editor actions (incl. key edits) | `Editor/Source/Action.h` |
 | Dope sheet editor (view + window) | `Editor/UI/View/DopeSheetView.h` |
 | Editor renderer | `Editor/EditorRenderer.h` |
 | Host / platform glue (exec paths, shortcuts, app icon) | `ToolKit/Common/PlatformHelper.h` |

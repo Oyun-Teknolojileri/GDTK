@@ -68,8 +68,11 @@ namespace ToolKit
      * Sets the Node's transform from the animation based on time.
      * @param node Node to be transformed.
      * @param time Time to fetch the transformation from.
+     * @param keyName Track to sample. A clip stores one track per animated node, named after it,
+     * so a multi node clip drives each node from its own curve. Empty or unknown names fall back
+     * to the first track, which keeps single curve clips working.
      */
-    void GetPose(Node* node, float time);
+    void GetPose(Node* node, float time, const String& keyName = "");
 
     /**
      * Sets the Skeleton's transform from the animation based on time.
@@ -105,6 +108,16 @@ namespace ToolKit
      * @param t time to search keys for.
      */
     void GetNearestKeys(const KeyArray& keys, int& key1, int& key2, float& ratio, float t);
+
+    /**
+     * Writes or removes the key at the given frame on a track, keeping the track sorted by frame.
+     * The track is created when it does not exist yet and a key is given.
+     * @param keyName Name of the track to edit.
+     * @param frame Frame of the key.
+     * @param key Key to write, or nullptr to remove the key at that frame.
+     * @return True when the edit was applied.
+     */
+    bool SetKey(const String& keyName, int frame, const Key* key);
 
    protected:
     void CopyTo(Resource* other) override;
