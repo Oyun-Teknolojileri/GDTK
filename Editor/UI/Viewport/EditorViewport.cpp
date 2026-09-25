@@ -9,6 +9,7 @@
 
 #include "App.h"
 #include "ConsoleWindow.h"
+#include "DopeSheetView.h"
 #include "Grid.h"
 #include "LeftBar.h"
 #include "Mod.h"
@@ -203,6 +204,23 @@ namespace ToolKit
       if (ImGui::IsKeyPressed(ImGuiKey_Delete, false))
       {
         ModManager::GetInstance()->DispatchSignal(BaseMod::m_delete);
+      }
+
+      // K drops a key on the selected entities at the dope sheet playhead, so keys can be placed
+      // while working in the viewport. The sheet owns the clip and the playhead, so it has to be
+      // open; SetKeyOnSelection() reports the missing clip on its own.
+      if (ImGui::IsKeyPressed(ImGuiKey_K, false))
+      {
+        DopeSheetWindowPtr dopeSheet = GetApp()->GetDopeSheet();
+        if (dopeSheet != nullptr && dopeSheet->IsVisible())
+        {
+          dopeSheet->SetKeyOnSelection();
+        }
+        else
+        {
+          GetApp()->SetStatusMsg(g_statusFailed);
+          TK_WRN("Open the Dope Sheet and bind a clip before keying.");
+        }
       }
 
       ModShortCutSignals();

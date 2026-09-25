@@ -10,6 +10,7 @@
 #include "AndroidBuildWindow.h"
 #include "ComponentView.h"
 #include "ConsoleWindow.h"
+#include "DopeSheetView.h"
 #include "EditorBackendBindings.h"
 #include "EditorCamera.h"
 #include "EditorMetaKeys.h"
@@ -1510,6 +1511,8 @@ namespace ToolKit
     }
 
     StatsWindowPtr App::GetStatsWindow() { return GetWindow<StatsWindow>(g_statsView); }
+
+    DopeSheetWindowPtr App::GetDopeSheet() { return GetWindow<DopeSheetWindow>(g_dopeSheetStr); }
 
     PluginWindowPtr App::GetPluginWindow() { return GetWindow<PluginWindow>(g_pluginWindow); }
 

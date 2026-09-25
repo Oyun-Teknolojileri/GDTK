@@ -666,7 +666,13 @@ Model:
   on the source and target frames before and after the edit, so insert, update, delete and a move
   that replaced another key all replay both ways. `Delete` / `Backspace` removes the selected key,
   dragging it moves it in time (clamped to `[0, End]`, `Esc` cancels), and one `Set Key` press over
-  several entities is grouped into a single undo step.
+  several entities is grouped into a single undo step. `Ctrl+Z` / `Ctrl+Shift+Z` work while the
+  sheet is hovered: the sheet handles its own keys instead of calling `Window::ModShortCutSignals()`,
+  and it steps the editor wide `ActionManager` stack, so an undo may also step back an edit made
+  elsewhere.
+- `K` also works from the editor viewport (`EditorViewport::DispatchSignals`), which keys the
+  selected entities at the sheet's playhead through `App::GetDopeSheet()`; the frame and the clip
+  live in the sheet, so the shortcut reports through the status bar when the sheet is not open.
 - `New Clip` creates a clip under `Resources/Meshes` (`AnimationPath`), registers it with
   `AnimationManager::Manage` and refreshes the asset browsers; `Save` writes the keys.
 

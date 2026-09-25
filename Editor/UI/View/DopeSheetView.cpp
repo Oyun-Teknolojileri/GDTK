@@ -1503,6 +1503,14 @@ namespace ToolKit
       }
     }
 
+    void DopeSheetWindow::SetKeyOnSelection()
+    {
+      if (m_view != nullptr)
+      {
+        m_view->SetKeyOnSelection();
+      }
+    }
+
     void DopeSheetWindow::Show()
     {
       const String windowId = m_name + "##" + std::to_string(GetIdVal());
@@ -1553,6 +1561,21 @@ namespace ToolKit
       if (ImGui::IsKeyPressed(ImGuiKey_Delete, false) || ImGui::IsKeyPressed(ImGuiKey_Backspace, false))
       {
         m_view->DeleteSelectedKey();
+      }
+
+      // Undo / redo of the key edits. The sheet does not call Window::ModShortCutSignals(), which is
+      // where the other windows pick these up, so they are handled here. The stack is the editor
+      // wide one, so an undo may also step back an edit made elsewhere.
+      if (ImGui::IsKeyPressed(ImGuiKey_Z, false) && ImGui::IsKeyDown(ImGuiMod_Ctrl))
+      {
+        if (ImGui::IsKeyDown(ImGuiMod_Shift))
+        {
+          ActionManager::GetInstance()->Redo();
+        }
+        else
+        {
+          ActionManager::GetInstance()->Undo();
+        }
       }
 
       if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, true))

@@ -190,6 +190,12 @@ namespace ToolKit
       /** Binds the clip the sheet edits. */
       void SetAnimation(AnimationPtr anim);
 
+      /**
+       * Writes keys for the selected entities at the playhead frame. Exposed so the viewport's
+       * shortcut can key without the sheet being hovered.
+       */
+      void SetKeyOnSelection();
+
       void Show() override;
       void DispatchSignals() const override;
 

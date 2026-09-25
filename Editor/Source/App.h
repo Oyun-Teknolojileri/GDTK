@@ -123,6 +123,9 @@ namespace ToolKit
       StatsWindowPtr GetStatsWindow();
       PluginWindowPtr GetPluginWindow();
 
+      /** Returns the dope sheet window, or nullptr when it has not been opened yet. */
+      DopeSheetWindowPtr GetDopeSheet();
+
       template <typename T>
       std::shared_ptr<T> GetWindow(const String& name)
       {
