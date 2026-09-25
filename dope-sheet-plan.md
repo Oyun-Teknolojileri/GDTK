@@ -324,7 +324,9 @@ Delivered behavior:
 
 * Clip slot: drop zone for an `.anim`, `New Clip` (creates under `Resources/Meshes` via
   `AnimationPath`, registers with `AnimationManager::Manage`, refreshes the asset browsers),
-  `fps` / `end` fields, `Save`, unsaved marker.
+  `fps` / `end` fields, `Save`, unsaved marker. A press always makes a clip and binds it: a taken
+  name goes through `CreateIncrementalFileFullPath()` with an empty postfix (`NewAnimation(1).anim`),
+  and a replaced clip with unsaved keys is reported in the console.
 * Transport: first / previous / play-pause / stop / next / last, frame field, speed, `Loop`,
   `Snap`, seconds readout. Shortcuts (window focused, no text input active): `Space`, `K`,
   arrows, `Home`, `End`. The window deliberately does not call `Window::ModShortCutSignals()`.

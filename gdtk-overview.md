@@ -674,7 +674,11 @@ Model:
   selected entities at the sheet's playhead through `App::GetDopeSheet()`; the frame and the clip
   live in the sheet, so the shortcut reports through the status bar when the sheet is not open.
 - `New Clip` creates a clip under `Resources/Meshes` (`AnimationPath`), registers it with
-  `AnimationManager::Manage` and refreshes the asset browsers; `Save` writes the keys.
+  `AnimationManager::Manage` and refreshes the asset browsers; `Save` writes the keys. It stays
+  available while a clip is loaded and binds the new one, so a taken name goes through
+  `CreateIncrementalFileFullPath()` with an empty postfix (`NewAnimation(1).anim`) instead of
+  overwriting a file; a replaced clip with unsaved keys is reported in the console (it stays in the
+  animation manager, the drop zone brings it back).
 
 Playback in the sheet is **editor side** on purpose: it samples the clip with the engine's own
 `GetNearestKeys` and writes the pose to the matching entity nodes, so the sheet previews a clip

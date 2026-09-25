@@ -790,7 +790,7 @@ namespace ToolKit
 
     void DopeSheetView::CreateClip(const String& name)
     {
-      if (name.empty() || m_clip != nullptr)
+      if (name.empty())
       {
         return;
       }
@@ -800,13 +800,18 @@ namespace ToolKit
       const String clipName = name.size() > ANIM.size() && name.compare(name.size() - ANIM.size(), ANIM.size(), ANIM) == 0
                                   ? name.substr(0, name.size() - ANIM.size())
                                   : name;
-      const String path     = AnimationPath(clipName + ANIM);
 
-      if (CheckFile(path))
+      // Every press makes a clip. CreateIncrementalFileFullPath() returns the path untouched when it
+      // is free and appends "(n)" when a file is already there, so an existing clip is never
+      // overwritten. No postfix: this is a new clip, not a copy.
+      const String path = CreateIncrementalFileFullPath(AnimationPath(clipName + ANIM), "");
+
+      // The clip that is being replaced keeps its unsaved keys in memory (it stays in the animation
+      // manager), but leaving it behind is worth a warning.
+      if (m_clip != nullptr && m_clip->m_dirty)
       {
-        GetApp()->SetStatusMsg(g_statusFailed);
-        TK_ERR("Animation already exists: %s", GetRelativeResourcePath(path).c_str());
-        return;
+        TK_WRN("Dope sheet: the clip being replaced has unsaved keys (%s).",
+               GetRelativeResourcePath(m_clip->GetFile()).c_str());
       }
 
       AnimationPtr clip = MakeNewPtr<Animation>();
@@ -903,7 +908,9 @@ namespace ToolKit
       ImGui::EndDisabled();
 
       ImGui::SameLine();
-      ImGui::BeginDisabled(!CanEdit() || m_clip != nullptr);
+      // Always available while the sheet may write: a press makes a new clip and binds it, replacing
+      // whatever clip is loaded.
+      ImGui::BeginDisabled(!CanEdit());
       if (ImGui::Button("New Clip"))
       {
         StringInputWindowPtr inputWnd = MakeNewPtr<StringInputWindow>("NewClip##DopeSheetNewClip", true);
