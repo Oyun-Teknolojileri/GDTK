@@ -58,6 +58,106 @@ namespace ToolKit
     // theme alike, while a theme background colour would blend into the sheet and show nothing.
     const ImVec4 g_outOfRangeVeil(0.5f, 0.5f, 0.5f, 0.22f);
 
+    // Key markers, one shape per interpolation mode, so the sheet reads at a glance: a diamond for
+    // the cubic Smooth key (what the sheet has always drawn), a circle for Linear, a square for
+    // Stepped and a diamond with a bar for Flat ("no speed at this key").
+    // DrawKeyMarker is the only place that maps a mode to a shape, both the key and the drag ghost
+    // go through it.
+    namespace
+    {
+      const char* InterpLabel(KeyInterp interp)
+      {
+        switch (interp)
+        {
+        case KeyInterp::Stepped:
+          return "Stepped";
+        case KeyInterp::Smooth:
+          return "Smooth (Auto)";
+        case KeyInterp::Flat:
+          return "Flat";
+        case KeyInterp::Linear:
+        default:
+          return "Linear";
+        }
+      }
+
+      /** The four modes in menu and combo order. */
+      const KeyInterp g_keyInterps[] = {KeyInterp::Stepped, KeyInterp::Linear, KeyInterp::Smooth, KeyInterp::Flat};
+
+      void DrawKeyMarker(ImDrawList* dl,
+                         const ImVec2& center,
+                         float radius,
+                         KeyInterp interp,
+                         ImU32 color,
+                         bool filled)
+      {
+        const float thickness = filled ? 1.0f : 2.0f;
+
+        switch (interp)
+        {
+        case KeyInterp::Linear:
+          if (filled)
+          {
+            dl->AddCircleFilled(center, radius * 0.85f, color);
+          }
+          else
+          {
+            dl->AddCircle(center, radius * 0.85f, color, 0, thickness);
+          }
+          break;
+
+        case KeyInterp::Stepped:
+          if (filled)
+          {
+            dl->AddRectFilled(ImVec2(center.x - radius * 0.8f, center.y - radius * 0.8f),
+                              ImVec2(center.x + radius * 0.8f, center.y + radius * 0.8f),
+                              color);
+          }
+          else
+          {
+            dl->AddRect(ImVec2(center.x - radius * 0.8f, center.y - radius * 0.8f),
+                        ImVec2(center.x + radius * 0.8f, center.y + radius * 0.8f),
+                        color,
+                        0.0f,
+                        0,
+                        thickness);
+          }
+          break;
+
+        case KeyInterp::Flat:
+        case KeyInterp::Smooth:
+        default:
+          if (filled)
+          {
+            dl->AddQuadFilled(ImVec2(center.x, center.y - radius),
+                              ImVec2(center.x + radius, center.y),
+                              ImVec2(center.x, center.y + radius),
+                              ImVec2(center.x - radius, center.y),
+                              color);
+          }
+          else
+          {
+            dl->AddQuad(ImVec2(center.x, center.y - radius),
+                        ImVec2(center.x + radius, center.y),
+                        ImVec2(center.x, center.y + radius),
+                        ImVec2(center.x - radius, center.y),
+                        color,
+                        thickness);
+          }
+
+          if (interp == KeyInterp::Flat)
+          {
+            // The bar reads as "velocity is zero here", on top of the diamond of the cubic modes.
+            dl->AddLine(ImVec2(center.x - radius, center.y),
+                        ImVec2(center.x + radius, center.y),
+                        color,
+                        filled ? 1.5f : thickness);
+          }
+          break;
+        }
+      }
+    } // namespace
+
     // DopeSheetView
     //////////////////////////////////////////
 
@@ -623,6 +723,7 @@ namespace ToolKit
         key.m_position = m_keyTranslation ? pos : curvePos;
         key.m_rotation = m_keyRotation ? rot : curveRot;
         key.m_scale    = m_keyScale ? scale : curveScale;
+        key.m_interp   = m_newKeyInterp;
 
         // Undoable: the action replaces the key that may already sit on this frame.
         KeyEditAction::SetKey(m_clip, trackName, key);
@@ -682,8 +783,115 @@ namespace ToolKit
       TK_LOG("Dope sheet: key deleted at frame %d on track %s.", frame, track.c_str());
     }
 
-    bool DopeSheetView::TrackHasKey(const String& trackName, int frame) const
+    void DopeSheetView::SetKeyInterp(const String& trackName, int frame, KeyInterp interp)
     {
+      if (m_clip == nullptr || !CanEdit() || frame < 0)
+      {
+        return;
+      }
+
+      // The action reads the key, changes its mode and writes it back, so undo restores the key as
+      // a whole. It refuses to stack anything when the mode is already the one asked for.
+      KeyEditAction::SetInterp(m_clip, trackName, frame, interp);
+
+      if (m_sessionActive)
+      {
+        // Rewrite the pose so the new curve is visible without having to scrub.
+        ApplyPoseAt(CurrentTime());
+      }
+
+      TK_LOG("Dope sheet: key at frame %d on track %s is %s.",
+             frame,
+             trackName.c_str(),
+             InterpLabel(interp));
+    }
+
+    void DopeSheetView::SmoothAllKeys()
+    {
+      if (m_clip == nullptr || !CanEdit())
+      {
+        return;
+      }
+
+      // Counted first: an untouched key stacks nothing, and a group is only opened when more than
+      // one key is going to change (the same rule Set Key follows for several entities).
+      int pending = 0;
+      for (const auto& track : m_clip->m_keys)
+      {
+        for (const Key& key : track.second)
+        {
+          if (key.m_interp != KeyInterp::Smooth)
+          {
+            pending++;
+          }
+        }
+      }
+
+      if (pending == 0)
+      {
+        GetApp()->SetStatusMsg("Every key is already Smooth.");
+        return;
+      }
+
+      ActionManager* actionManager = ActionManager::GetInstance();
+      const bool group             = pending > 1;
+      if (group)
+      {
+        actionManager->BeginActionGroup();
+      }
+
+      for (const auto& track : m_clip->m_keys)
+      {
+        // SetInterp replaces the key in place and the track vector keeps its size, so walking it
+        // here is safe.
+        for (const Key& key : track.second)
+        {
+          if (key.m_interp != KeyInterp::Smooth)
+          {
+            KeyEditAction::SetInterp(m_clip, track.first, key.m_frame, KeyInterp::Smooth);
+          }
+        }
+      }
+
+      if (group)
+      {
+        actionManager->GroupLastActions(pending);
+      }
+
+      if (m_sessionActive)
+      {
+        ApplyPoseAt(CurrentTime());
+      }
+
+      TK_LOG("Dope sheet: %d keys set to Smooth.", pending);
+      GetApp()->SetStatusMsg(g_statusSucceeded);
+    }
+
+    KeyInterp DopeSheetView::KeyInterpAt(const String& trackName, int frame) const
+    {
+      if (m_clip == nullptr || frame < 0)
+      {
+        return KeyInterp::Linear;
+      }
+
+      const KeyArray* keys = m_clip->m_keys.Find(trackName);
+      if (keys == nullptr)
+      {
+        return KeyInterp::Linear;
+      }
+
+      for (const Key& key : *keys)
+      {
+        if (key.m_frame == frame)
+        {
+          return key.m_interp;
+        }
+      }
+
+      return KeyInterp::Linear;
+    }
+
+    bool DopeSheetView::TrackHasKey(const String& trackName, int frame) const    {
       if (m_clip == nullptr || frame < 0)
       {
         return false;
@@ -1027,6 +1235,48 @@ namespace ToolKit
       }
       ImGui::EndDisabled();
 
+      // Mode a key created by the sheet gets. It defaults to Linear, the engine default, so keying
+      // never changes how a clip plays unless the animator asks for a mode.
+      ImGui::SameLine();
+      ImGui::TextUnformatted("|  New key:");
+      ImGui::SameLine();
+      ImGui::SetNextItemWidth(130.0f);
+
+      if (ImGui::BeginCombo("##dopeSheetNewKeyInterp", InterpLabel(m_newKeyInterp)))
+      {
+        for (KeyInterp interp : g_keyInterps)
+        {
+          const bool selected = interp == m_newKeyInterp;
+          if (ImGui::Selectable(InterpLabel(interp), selected))
+          {
+            m_newKeyInterp = interp;
+          }
+
+          if (selected)
+          {
+            ImGui::SetItemDefaultFocus();
+          }
+        }
+
+        ImGui::EndCombo();
+      }
+
+      UI::HelpMarker("DopeSheetNewKeyInterp",
+                     "Interpolation mode written with every new key. Linear leaves the curve as it "
+                     "is; Smooth blends through the key, Flat eases into it and Stepped holds the "
+                     "value until the next key. Existing keys are changed from the row context menu.");
+
+      ImGui::SameLine();
+      ImGui::BeginDisabled(m_clip == nullptr || !CanEdit());
+      if (ImGui::Button("Smooth All Keys"))
+      {
+        SmoothAllKeys();
+      }
+      UI::HelpMarker("DopeSheetSmoothAll",
+                     "Sets every key of every track to Smooth as one undo step. This is the way to "
+                     "smooth a clip that was keyed before interpolation modes existed.");
+      ImGui::EndDisabled();
+
       ImGui::SameLine();
       ImGui::BeginDisabled(m_clip == nullptr);
       if (ImGui::Button("Fit"))
@@ -1285,12 +1535,26 @@ namespace ToolKit
                           background);
 
         // Keys.
-        const float keyY      = rowY + g_rowHeight * 0.5f;
-        int hoveredKeyFrame   = -1;
+        const float keyY           = rowY + g_rowHeight * 0.5f;
+        int hoveredKeyFrame        = -1;
+        KeyInterp hoveredKeyInterp = KeyInterp::Linear;
+        const ImU32 holdColor      = ImGui::GetColorU32(ImGuiCol_Text, 0.35f);
 
-        for (const Key& key : keys)
+        for (size_t keyIndex = 0; keyIndex < keys.size(); keyIndex++)
         {
+          const Key& key   = keys[keyIndex];
           const float keyX = FrameToX(key.m_frame, laneLeft);
+
+          // A held segment draws a bar to the next key, the classic "this does not move until
+          // here" read. Which segment is held is the engine's rule, not a guess: either endpoint
+          // being Stepped holds it, so the sheet cannot disagree with playback.
+          if (keyIndex + 1 < keys.size() &&
+              Interpolation::ResolveSegment(key.m_interp, keys[keyIndex + 1].m_interp) == SegmentKind::Hold)
+          {
+            const float holdX = FrameToX(keys[keyIndex + 1].m_frame, laneLeft);
+            dl->AddLine(ImVec2(keyX, keyY), ImVec2(glm::min(holdX, laneLeft + laneWidth), keyY), holdColor, 2.0f);
+          }
+
           if (keyX < laneLeft - g_keyRadius || keyX > laneLeft + laneWidth + g_keyRadius)
           {
             continue;
@@ -1299,39 +1563,32 @@ namespace ToolKit
           if (rowHovered && glm::abs(io.MousePos.x - keyX) <= g_keyRadius &&
               glm::abs(io.MousePos.y - keyY) <= g_keyRadius)
           {
-            hoveredKeyFrame = key.m_frame;
+            hoveredKeyFrame  = key.m_frame;
+            hoveredKeyInterp = key.m_interp;
           }
 
           const bool draggingSource = m_dragging && trackName == m_dragTrack && key.m_frame == m_dragFromFrame;
           if (draggingSource)
           {
             // While it is being dragged, the key is drawn as a ghost on the target frame below.
-            dl->AddQuad(ImVec2(keyX, keyY - g_keyRadius),
-                        ImVec2(keyX + g_keyRadius, keyY),
-                        ImVec2(keyX, keyY + g_keyRadius),
-                        ImVec2(keyX - g_keyRadius, keyY),
-                        cursorColor,
-                        1.0f);
+            DrawKeyMarker(dl, ImVec2(keyX, keyY), g_keyRadius, key.m_interp, cursorColor, false);
             continue;
           }
 
           const bool selected = (trackName == m_selectedTrack && key.m_frame == m_selectedFrame);
           const bool current  = key.m_frame == m_frame;
 
-          dl->AddQuadFilled(ImVec2(keyX, keyY - g_keyRadius),
-                            ImVec2(keyX + g_keyRadius, keyY),
-                            ImVec2(keyX, keyY + g_keyRadius),
-                            ImVec2(keyX - g_keyRadius, keyY),
-                            (selected || current) ? cursorColor : keyColor);
+          DrawKeyMarker(dl,
+                        ImVec2(keyX, keyY),
+                        g_keyRadius,
+                        key.m_interp,
+                        (selected || current) ? cursorColor : keyColor,
+                        true);
 
           if (selected)
           {
-            dl->AddQuad(ImVec2(keyX, keyY - g_keyRadius),
-                        ImVec2(keyX + g_keyRadius, keyY),
-                        ImVec2(keyX, keyY + g_keyRadius),
-                        ImVec2(keyX - g_keyRadius, keyY),
-                        ImGui::GetColorU32(ImGuiCol_Text),
-                        1.0f);
+            DrawKeyMarker(dl, ImVec2(keyX, keyY), g_keyRadius, key.m_interp,
+                          ImGui::GetColorU32(ImGuiCol_Text), false);
           }
         }
 
@@ -1340,18 +1597,8 @@ namespace ToolKit
         {
           const float ghostX = FrameToX(m_dragToFrame, laneLeft);
 
-          dl->AddQuadFilled(ImVec2(ghostX, keyY - g_keyRadius),
-                            ImVec2(ghostX + g_keyRadius, keyY),
-                            ImVec2(ghostX, keyY + g_keyRadius),
-                            ImVec2(ghostX - g_keyRadius, keyY),
-                            cursorColor);
-
-          dl->AddQuad(ImVec2(ghostX, keyY - g_keyRadius),
-                      ImVec2(ghostX + g_keyRadius, keyY),
-                      ImVec2(ghostX, keyY + g_keyRadius),
-                      ImVec2(ghostX - g_keyRadius, keyY),
-                      ImGui::GetColorU32(ImGuiCol_Text),
-                      2.0f);
+          DrawKeyMarker(dl, ImVec2(ghostX, keyY), g_keyRadius, m_dragInterp, cursorColor, true);
+          DrawKeyMarker(dl, ImVec2(ghostX, keyY), g_keyRadius, m_dragInterp, ImGui::GetColorU32(ImGuiCol_Text), false);
 
           const String frameLabel = Format("%d", m_dragToFrame);
           dl->AddText(ImVec2(ghostX + g_keyRadius + 4.0f, rowY + 2.0f),
@@ -1383,10 +1630,11 @@ namespace ToolKit
         // drag.
         if (hoveredKeyFrame >= 0 && !rowActive)
         {
-          ImGui::SetTooltip("%s\nframe %d  (%.3f s)",
+          ImGui::SetTooltip("%s\nframe %d  (%.3f s)\n%s",
                             trackName.c_str(),
                             hoveredKeyFrame,
-                            hoveredKeyFrame / glm::max(1.0f, m_clip->m_fps));
+                            hoveredKeyFrame / glm::max(1.0f, m_clip->m_fps),
+                            InterpLabel(hoveredKeyInterp));
         }
 
         if (rowHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
@@ -1405,6 +1653,7 @@ namespace ToolKit
           m_dragTrack     = trackName;
           m_dragFromFrame = hoveredKeyFrame;
           m_dragToFrame   = hoveredKeyFrame;
+          m_dragInterp    = hoveredKeyInterp;
           m_dragging      = true;
         }
         else if (rowActive && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !m_dragging)
@@ -1485,7 +1734,33 @@ namespace ToolKit
           m_selectedFrame = -1;
           KeyEditAction::DeleteKey(m_clip, m_ctxTrack, ctxFrame);
         }
+        ImGui::EndDisabled();
 
+        // Interpolation of the key under the cursor. The menu stays open while the sheet is only
+        // previewing, so the mode can still be read; the modes themselves are disabled then.
+        if (ctxFrame >= 0 && ImGui::BeginMenu("Interpolation"))
+        {
+          const KeyInterp current = KeyInterpAt(m_ctxTrack, ctxFrame);
+
+          ImGui::BeginDisabled(!CanEdit());
+          for (KeyInterp interp : g_keyInterps)
+          {
+            if (ImGui::MenuItem(InterpLabel(interp), nullptr, interp == current))
+            {
+              m_selectedTrack = m_ctxTrack;
+              m_selectedFrame = ctxFrame;
+              SetKeyInterp(m_ctxTrack, ctxFrame, interp);
+            }
+          }
+          ImGui::EndDisabled();
+
+          ImGui::Separator();
+          ImGui::TextDisabled("Smooth blends through the key,\nFlat eases into it, Stepped holds.");
+
+          ImGui::EndMenu();
+        }
+
+        ImGui::BeginDisabled(!CanEdit());
         // Track removal is not undoable yet; it drops every key of the track.
         if (ImGui::MenuItem("Delete Track"))
         {
