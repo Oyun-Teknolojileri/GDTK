@@ -12,6 +12,7 @@
  * and related structures.
  */
 
+#include "KeyInterpolation.h"
 #include "OrderedStringMap.h"
 #include "Resource.h"
 #include "SkeletonComponent.h"
@@ -24,6 +25,11 @@ namespace ToolKit
 {
   /**
    * A transformation key that is part of an Animation resource.
+   *
+   * A key carries all three channels, and it also states how the segments around it are
+   * interpolated (see KeyInterp). New members must be appended at the end: the key array is
+   * serialized as a raw struct dump, and the reader relies on the existing prefix keeping its
+   * layout so files written by an older build keep loading (see Animation::DeSerializeImp).
    */
   struct Key
   {
@@ -31,6 +37,9 @@ namespace ToolKit
     Vec3 m_position;       //!< Position of the transform.
     Quaternion m_rotation; //!< Rotation of the transform.
     Vec3 m_scale;          //!< Scale of the transform.
+
+    /** Interpolation of this key with its neighbours. Linear is the default. */
+    KeyInterp m_interp = KeyInterp::Linear;
   };
 
   typedef std::vector<Key> KeyArray;
@@ -79,6 +88,19 @@ namespace ToolKit
      * @param skeleton SkeletonPtr to be transformed.
      */
     void GetPose(const SkeletonComponentPtr& skeleton, float time);
+
+    /**
+     * Samples one track at the given time, honouring the interpolation mode of its keys.
+     * This is the single sampling path of a node track: the runtime pose, root motion and the
+     * editor's dope sheet preview all go through it, so preview and playback cannot drift.
+     * @param keys Track to sample.
+     * @param time Time to fetch the transformation from.
+     * @param pos Output position.
+     * @param rot Output rotation.
+     * @param scale Output scale.
+     * @return False when the track is empty, the inputs are untouched in that case.
+     */
+    bool SampleTrack(const KeyArray& keys, float time, Vec3& pos, Quaternion& rot, Vec3& scale) const;
 
     /**
      * Sets the Node's transform from the animation based on frame.

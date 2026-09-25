@@ -21,8 +21,19 @@
 #include "DebugNew.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstring>
 
 static constexpr bool SERIALIZE_ANIMATION_AS_BINARY = true;
+
+// Used when a clip carries no usable frame rate, so a malformed file cannot divide by zero.
+static constexpr float FallbackFps = 30.0f;
+
+// The key array is written as a raw struct dump, so reading a file from an older build depends
+// on the prefix of Key keeping its layout. Real files hold 44 bytes per key (KeyCount * sizeof
+// of the legacy record), and Key::m_interp was appended right after it.
+static_assert(offsetof(ToolKit::Key, m_interp) == 44,
+              "Key::m_interp must stay appended, the legacy key record is 44 bytes.");
 
 namespace ToolKit
 {
@@ -34,6 +45,36 @@ namespace ToolKit
   Animation::Animation(const String& file) : Animation() { SetFile(file); }
 
   Animation::~Animation() { UnInit(); }
+
+  bool Animation::SampleTrack(const KeyArray& keys, float time, Vec3& pos, Quaternion& rot, Vec3& scale) const
+  {
+    if (keys.empty())
+    {
+      return false;
+    }
+
+    const int count = static_cast<int>(keys.size());
+    const float fps = m_fps > 0.0f ? m_fps : FallbackFps;
+
+    // A Key keeps its time as a frame, the interpolation math works in seconds. The lambdas are
+    // trivial, so the shared sampler walks the KeyArray in place instead of copying it.
+    auto timeAt = [&keys, fps](int i) -> float { return keys[i].m_frame / fps; };
+    auto modeAt = [&keys](int i) -> KeyInterp { return keys[i].m_interp; };
+
+    auto positionAt = [&keys](int i) -> const Vec3& { return keys[i].m_position; };
+    auto scaleAt    = [&keys](int i) -> const Vec3& { return keys[i].m_scale; };
+    auto rotationAt = [&keys](int i) -> const Quaternion& { return keys[i].m_rotation; };
+
+    if (!Interpolation::SampleVec3(count, time, timeAt, modeAt, positionAt, pos))
+    {
+      return false;
+    }
+
+    Interpolation::SampleVec3(count, time, timeAt, modeAt, scaleAt, scale);
+    Interpolation::SampleQuat(count, time, timeAt, modeAt, rotationAt, rot);
+
+    return true;
+  }
 
   void Animation::GetPose(Node* node, float time, const String& keyName)
   {
@@ -51,28 +92,14 @@ namespace ToolKit
       keys = &m_keys.begin()->second;
     }
 
-    if (keys->empty())
+    Vec3 position;
+    Quaternion rotation;
+    Vec3 scale;
+
+    if (SampleTrack(*keys, time, position, rotation, scale))
     {
-      return;
+      node->SetLocalTransforms(position, rotation, scale);
     }
-
-    float ratio;
-    int key1, key2;
-    GetNearestKeys(*keys, key1, key2, ratio, time);
-
-    if (key1 < 0 || key2 < 0 || key1 >= (int) keys->size() || key2 >= (int) keys->size())
-    {
-      return;
-    }
-
-    Key k1              = (*keys)[key1];
-    Key k2              = (*keys)[key2];
-
-    Vec3 positon        = Interpolate(k1.m_position, k2.m_position, ratio);
-    Quaternion rotation = glm::slerp(k1.m_rotation, k2.m_rotation, ratio);
-    Vec3 scale          = Interpolate(k1.m_scale, k2.m_scale, ratio);
-
-    node->SetLocalTransforms(positon, rotation, scale);
   }
 
   void Animation::GetPose(const SkeletonComponentPtr& skeleton, float time)
@@ -228,6 +255,10 @@ namespace ToolKit
           char* frameIndexValueStr = doc->allocate_string(std::to_string(keyIndex).c_str());
           keyNode->append_attribute(doc->allocate_attribute("frame", frameIndexValueStr));
 
+          // The interpolation mode of the key. Written as an attribute so a reader that does not
+          // know it (an older build, or the legacy XML path) falls back to Linear.
+          WriteAttr(keyNode, doc, "interp", std::to_string(static_cast<int>(key.m_interp)));
+
           WriteVec(CreateXmlNode(doc, "translation", keyNode), doc, key.m_position);
 
           WriteVec(CreateXmlNode(doc, "scale", keyNode), doc, key.m_scale);
@@ -275,9 +306,49 @@ namespace ToolKit
       {
         uint keyCount = 0;
         ReadAttr(animNode, "KeyCount", keyCount);
-        keys->resize(keyCount);
+
         XmlNode* b64Node = animNode->first_node("Base64");
-        b64tobin(keys->data(), b64Node->value());
+        if (b64Node == nullptr)
+        {
+          TK_ERR("Animation track \"%s\" has no key block.", boneName.c_str());
+          continue;
+        }
+
+        // The block is a raw dump of the Key array, and its record size is the only thing that says
+        // which build wrote it: a file from before Key::m_interp holds 44 bytes per key, this build
+        // holds sizeof(Key). b64tobin() writes, so the decoded size has to come from the string:
+        // 4 base64 digits are 3 bytes, minus one byte per trailing padding '='.
+        const char* base64      = b64Node->value();
+        const size_t base64Size = base64 != nullptr ? strlen(base64) : 0;
+
+        size_t padding = 0;
+        if (base64Size > 0 && base64[base64Size - 1] == '=')
+        {
+          padding = (base64Size > 1 && base64[base64Size - 2] == '=') ? 2 : 1;
+        }
+
+        const size_t decoded    = ((base64Size / 4) * 3) - padding;
+        const size_t recordSize = keyCount > 0 ? decoded / keyCount : 0;
+
+        if (keyCount == 0 || decoded % keyCount != 0 || recordSize > sizeof(Key))
+        {
+          TK_ERR("Animation track \"%s\" holds a key block this build cannot read (%u keys, %u bytes).",
+                 boneName.c_str(),
+                 keyCount,
+                 (unsigned) decoded);
+          continue;
+        }
+
+        std::vector<char> raw(decoded);
+        b64tobin(raw.data(), base64);
+
+        // Only the bytes the file holds are copied, so members a newer build appended keep their
+        // defaults, and a legacy key comes out Linear: exactly the behaviour it had before modes.
+        keys->resize(keyCount);
+        for (uint i = 0; i < keyCount; i++)
+        {
+          memcpy(&(*keys)[i], raw.data() + (i * recordSize), recordSize);
+        }
       }
       else
       {
@@ -287,6 +358,17 @@ namespace ToolKit
           Key key;
           attr             = keyNode->first_attribute("frame");
           key.m_frame      = std::atoi(attr->value());
+
+          // Optional, a key written before interpolation modes existed carries no attribute and
+          // stays Linear, which is the behaviour it was authored with.
+          if (XmlAttribute* interpAttr = keyNode->first_attribute("interp"))
+          {
+            const int interp = std::atoi(interpAttr->value());
+            if (interp >= 0 && interp <= static_cast<int>(KeyInterp::Flat))
+            {
+              key.m_interp = static_cast<KeyInterp>(interp);
+            }
+          }
 
           XmlNode* subNode = keyNode->first_node("translation");
           ReadVec(subNode, key.m_position);
@@ -669,24 +751,6 @@ namespace ToolKit
       return;
     }
 
-    auto sampleKey = [anim](const KeyArray& keys, float time, Vec3& pos, Quaternion& rot, Vec3& scale) -> void
-    {
-      int key1, key2;
-      float ratio;
-      anim->GetNearestKeys(keys, key1, key2, ratio, time);
-
-      if (key1 < 0 || key2 < 0)
-      {
-        return;
-      }
-
-      Key k1 = keys[key1];
-      Key k2 = keys[key2];
-      pos    = Interpolate(k1.m_position, k2.m_position, ratio);
-      rot    = glm::slerp(k1.m_rotation, k2.m_rotation, ratio);
-      scale  = Interpolate(k1.m_scale, k2.m_scale, ratio);
-    };
-
     Vec3 curPos, prevPos, curScale, prevScale;
     Quaternion curRot, prevRot;
 
@@ -703,8 +767,11 @@ namespace ToolKit
       prevTime = 0.0f;
     }
 
-    sampleKey(*keys, curTime, curPos, curRot, curScale);
-    sampleKey(*keys, prevTime, prevPos, prevRot, prevScale);
+    // The same sampler the pose uses, so a root curve follows the interpolation modes of its keys.
+    // A cubic keeps the end values, so the displacement accumulated over a finished segment is the
+    // same as it was with a straight line, only its distribution inside the segment changes.
+    anim->SampleTrack(*keys, curTime, curPos, curRot, curScale);
+    anim->SampleTrack(*keys, prevTime, prevPos, prevRot, prevScale);
 
     Vec3 deltaPos = curPos - prevPos;
 

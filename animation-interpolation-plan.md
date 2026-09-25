@@ -288,17 +288,25 @@ what the packages do for a single sided derivative. A `Flat` key overrides this 
 regardless of how many neighbours it has, which is what makes a soft start / stop possible at all
 (2.3) -- `Smooth` on an end key cannot produce one.
 
-Clamping (Fritsch-Carlson monotonicity filter, the exact form of "no overshoot"): for segment `i`
-and component `c`, with `delta = (p_i+1 - p_i)/d_i` per second:
+Clamping (the exact form of "no overshoot"): a cubic whose two end slopes are both inside
+`[0, 3]`, measured in units of the segment's secant, cannot leave the value range of its endpoints.
+So for interior key `i`, per component, with the two neighbouring secants `a` (incoming) and `b`
+(outgoing):
 
 ```
-if delta == 0                      -> both tangents of that component become 0
-alpha = T_i[c]   / delta;
-beta  = T_i+1[c] / delta;
-if (alpha*alpha + beta*beta) > 9   -> scale both by f = 3 / sqrt(alpha*alpha + beta*beta)
+a*b <= 0                        -> T = 0            // flattened, as above
+else       T = (a + b) / 2
+           |T| <= 3 * min(|a|, |b|)                 // the monotonicity limit
 ```
 
-The clamp is applied **per component**, like the DCC packages do per channel: a key that peaks on
+**The limit is applied to the key, not to the segment.** That matters: a key carries one tangent and
+it has to be valid for the segment on either side of it, so the cap comes from the smaller of the two
+secants. Limiting a segment's two tangents independently (the textbook per-interval form of the
+Fritsch-Carlson filter, which scales the pair of a segment) would let one side clamp while the other
+does not, and the velocity would jump at the key -- exactly what this feature exists to remove. The
+check program covers this with an uneven key spacing case.
+
+The limit is applied **per component**, like the DCC packages do per channel: a key that peaks on
 X while Y keeps rising flattens X only. (Rejected alternative: one shared scale factor across the
 three components, which would freeze an axis that is still moving.)
 
@@ -313,6 +321,7 @@ angle_i = angle(q_i, q_i+1)          // hemisphere aligned first: if dot(q_i, q_
                                      // (the same convention glm::slerp applies internally)
 w_i     = angle_i / d_i              // this segment's linear angular speed, rad/s
 W_i     = (w_i-1 + w_i) / 2          // the key's auto angular speed (single neighbour at the ends)
+W_i     = min(W_i, 3 * min(w_i-1, w_i))   // the same per key limit as the position tangents
 
 segment i:  a = W_i   / w_i          // de/dtau at tau = 0
             b = W_i+1 / w_i          // de/dtau at tau = 1
@@ -324,10 +333,17 @@ e(tau) = h10*a + h01 + h11*b;
 rot    = slerp(q_i, q_i+1, e(tau));
 ```
 
+The speed limit applies to `W_i`, so both sides of the key read the same speed and the angular
+velocity is continuous there. Clamping each segment's slope on its own (the obvious first
+implementation) makes the two sides disagree whenever the segments have very different speed, and
+that is a visible rotation snap.
+
 Properties:
 
-- Uniform case (`w_i-1 == w_i == w_i+1`): `a = b = 1`, `e(tau) = tau`, i.e. plain slerp -- the
-  `Linear` result, so nothing changes when nothing unusually uneven is going on.
+- Uniform case (`w_i-1 == w_i == w_i+1`): `a = b = 1`, `e(tau) = tau`, i.e. plain slerp. The
+  segment speeds come out of an `acos` of a dot product, so "uniform" can still differ by an ULP and
+  the parameter is then `tau` plus a rounding step; the result matches plain slerp to within float
+  rounding rather than bit for bit (legacy clips are all `Linear` and do match bit for bit).
 - Slow approach (`w_i-1 < w_i`): `a < 1`, the parameter lags behind the diagonal and catches up;
   a fast exit (`w_i+1 > w_i`) does the same at the far end (`b > 1`). That is exactly the "blend
   through the key" this feature is for.
@@ -435,6 +451,8 @@ The program builds small `KeyArray`s in memory and asserts, with no engine and n
 |---|---|
 | Decision 3, old clips | A track of `Linear` keys sampled at 100 sub frame times matches the old `Interpolate` / `glm::slerp` result exactly (same floats) |
 | C1 at an interior key | Finite difference of the sampled position just before and just after a `Smooth` key agrees within 1e-3 |
+| C1 with uneven spacing | Same test on a track whose segment lengths differ by 25x, where a per segment limit would break down and a per key one holds |
+| Rotation C1 | The same finite difference on the angular speed of a `Smooth` rotation track, and a uniform one reproduces plain slerp within 1e-6 |
 | C1 for rotation | Same, on the angular distance between consecutive samples |
 | No overshoot | The sampled position never leaves `[min(p_i, p_i+1), max(...)]` per component on a `Smooth` segment |
 | Local extremum | A key that peaks on one component gets a zero tangent on that component (flat) while the other components keep the averaged tangent |

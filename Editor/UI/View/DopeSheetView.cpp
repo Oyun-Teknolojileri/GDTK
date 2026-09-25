@@ -392,30 +392,14 @@ namespace ToolKit
 
     bool DopeSheetView::SampleTrack(const KeyArray& keys, float time, Vec3& pos, Quaternion& rot, Vec3& scale)
     {
-      if (m_clip == nullptr || keys.empty())
+      if (m_clip == nullptr)
       {
         return false;
       }
 
-      int key1    = -1;
-      int key2    = -1;
-      float ratio = 0.0f;
-
-      // Same sampler the engine plays clips with, so the preview matches playback.
-      m_clip->GetNearestKeys(keys, key1, key2, ratio, time);
-
-      if (key1 < 0 || key2 < 0 || key1 >= (int) keys.size() || key2 >= (int) keys.size())
-      {
-        return false;
-      }
-
-      const Key& k1 = keys[key1];
-      const Key& k2 = keys[key2];
-
-      pos   = Interpolate(k1.m_position, k2.m_position, ratio);
-      rot   = glm::slerp(k1.m_rotation, k2.m_rotation, ratio);
-      scale = Interpolate(k1.m_scale, k2.m_scale, ratio);
-      return true;
+      // The engine's own sampler, so the sheet previews the curve playback plays, interpolation
+      // modes included, instead of keeping a second copy of the math in step with it.
+      return m_clip->SampleTrack(keys, time, pos, rot, scale);
     }
 
     bool DopeSheetView::IsSkinned(EntityPtr ntt)
