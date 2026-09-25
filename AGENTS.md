@@ -185,6 +185,28 @@ namespace ToolKit
 
 ---
 
+## Version Control (Git)
+
+1. **Never commit without being asked.** Writing code, editing files and running builds is the
+   agent's job; `git commit` is not. A commit is made only when the user asks for that commit in
+   the current task ("commit this", "komitle"), and only for the work the user pointed at. When a
+   chunk of work is finished, report what changed and let the user decide when it becomes a commit.
+2. **Staging counts as committing.** Do not run `git add` on its own either: staging is only done
+   as part of a commit that was requested.
+3. **No history rewriting on the agent's own initiative.** `git reset`, `git rebase`,
+   `git commit --amend`, `git checkout -- <file>`, `git restore`, `git stash` and `git push` are
+   run only when asked. Pushing is a separate request from committing: "commit" never means "push".
+4. **Read-only git stays free.** `git status`, `git diff`, `git log`, `git show`, `git blame` and
+   `git ls-files` are how the agent inspects the repository; use them freely.
+5. **When a commit is requested**, follow the style already in the log: a `type(scope): subject`
+   first line (`feat:`, `fix(editor):`, `chore(logs):`, ...), then a body explaining why the change
+   was needed and what it does. Mention a `gdtk-overview.md` update in the message when one was
+   made (see "Documentation Maintenance").
+6. **Report the state afterwards**: commit hash, subject, files, and whether anything is still
+   uncommitted or unpushed.
+
+---
+
 ## Enforcement
 
 - All rules in this file are enforced via Visual Studio's built-in formatter
