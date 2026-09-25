@@ -43,6 +43,8 @@ namespace ToolKit
     typedef std::shared_ptr<class SkeletonWindow> SkeletonWindowPtr;
     typedef std::shared_ptr<class AnimationView> AnimationViewPtr;
     typedef std::shared_ptr<class AnimationWindow> AnimationWindowPtr;
+    typedef std::shared_ptr<class DopeSheetView> DopeSheetViewPtr;
+    typedef std::shared_ptr<class DopeSheetWindow> DopeSheetWindowPtr;
     typedef std::shared_ptr<class ConsoleWindow> ConsoleWindowPtr;
     typedef std::shared_ptr<class EditorBillboardBase> EditorBillboardPtr;
     typedef std::vector<EditorBillboardPtr> BillboardPtrArray;
@@ -101,6 +103,7 @@ namespace ToolKit
     const String g_engineSettingsStr("Engine Settings");
     const String g_statsView("Statistics");
     const String g_matInspector("Material Inspector");
+    const String g_dopeSheetStr("Dope Sheet");
     const String g_simulationWindowStr("Simulation");
     const String g_pluginWindow("Plugins");
     const String g_memoStr("Mem");

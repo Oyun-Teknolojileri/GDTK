@@ -7,6 +7,8 @@
 
 #include "AnimationView.h"
 
+#include "App.h"
+#include "DopeSheetView.h"
 #include "UI.h"
 
 #include <Animation.h>
@@ -53,6 +55,16 @@ namespace ToolKit
                   m_animation->m_fps,
                   m_animation->m_duration,
                   rootKey.empty() ? "(none)" : rootKey.c_str());
+
+      // The key grid below is read only; keys are placed and moved in the dope sheet.
+      if (ImGui::Button("Open in Dope Sheet"))
+      {
+        if (DopeSheetWindowPtr dopeSheet = GetApp()->CreateOrRetrieveWindow<DopeSheetWindow>(g_dopeSheetStr))
+        {
+          dopeSheet->SetAnimation(m_animation);
+          dopeSheet->SetVisibility(true);
+        }
+      }
 
       ImGui::InputText("Search", m_searchBuf, sizeof(m_searchBuf));
 

@@ -10,6 +10,7 @@
 #include "AndroidBuildWindow.h"
 #include "App.h"
 #include "ConsoleWindow.h"
+#include "DopeSheetView.h"
 #include "EditorBackendBindings.h"
 #include "EditorViewport2d.h"
 #include "EngineSettingsWindow.h"
@@ -946,6 +947,7 @@ namespace ToolKit
       ShowPersistentWindow<EngineSettingsWindow>(g_engineSettingsStr);
       ShowPersistentWindow<StatsWindow>(g_statsView);
       ShowPersistentWindow<PluginWindow>(g_pluginWindow);
+      ShowPersistentWindow<DopeSheetWindow>(g_dopeSheetStr);
 
       ImGui::Separator();
 

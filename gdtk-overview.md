@@ -547,6 +547,12 @@ key used for root motion). Root motion lives on the animation
 `AnimationPlayer::ApplyRootMotion` applies that key's displacement to the
 entity node.
 
+Persistent windows are the ones a user opens from the Windows menu
+(`ShowPersistentWindow<T>` in `UI::ShowMenuWindows`): they are created on demand through
+`App::CreateOrRetrieveWindow<T>` and serialized into the project's
+`Config/Editor.settings`, so the class needs `TKDeclareClass` / `TKDefineClass` to be
+restorable through `ObjectFactory` in `App::DeserializeWindows`.
+
 ### 9.4 EditorRenderer (Editor/EditorRenderer.h)
 Editor version of `Renderer` path. Adds `GizmoPass` and editor grid pass. Multiple viewports (4-up default).
 
@@ -602,6 +608,38 @@ Linux runs on X11 by design: SDL2 is configured with the X11 video driver and Wa
 intentionally off (see `Dependency/CMakeLists.txt`), which is what makes `SDL_SetWindowIcon`
 work at all -- a Wayland native build would have to take the icon from a `.desktop` file matched
 by app id instead.
+
+### 9.7 Dope Sheet editor (Editor/UI/View/DopeSheetView.*)
+
+`DopeSheetView` + `DopeSheetWindow` (`g_dopeSheetStr`, opened from the Windows menu) are the
+frame based keyframe editor for entity node transforms. Phase 1 covers non skinned entity nodes;
+skeleton / bone rows, auto key, key selection with bulk move and copy/paste are later phases
+(see `dope-sheet-plan.md`).
+
+Model:
+
+- The sheet edits one clip (an `AnimationPtr`, an `.anim` file). **One track belongs to one
+  entity** and stores translation, rotation and scale together, because `Key` carries the three
+  channels in a single entry. The `T` / `R` / `S` toggles are a write mask for `Set Key`, not a
+  storage layout.
+- Tracks are linked to entities **by name** (`ResolveTracks`), the convention the importer already
+  uses (track name == assimp node name == entity name). An entity claims one track, so two
+  entities that share a name are disambiguated with a numeric suffix (`Cube_1`) instead of sharing
+  a track.
+- `Set Key` (`K`) writes the local transform of every selected entity into its track at the
+  playhead frame, creating the track on first use and growing the clip duration. Channels the mask
+  leaves out keep the value the curve already holds at that frame. `KeyArray`s stay ascending by
+  frame because `Animation::GetNearestKeys` walks them in order.
+- `New Clip` creates a clip under `Resources/Meshes` (`AnimationPath`), registers it with
+  `AnimationManager::Manage` and refreshes the asset browsers; `Save` writes the keys.
+
+Playback is **editor side**: the engine has no path that applies node tracks
+(`Animation::GetPose(Node*)` samples the first track only, and nothing calls it for plain
+entities), so `ApplyPoseAt` samples the clip with the engine's own `GetNearestKeys` and writes the
+pose to the matching entity nodes. Play advances the playhead with the frame delta and loops over
+`[0, End]`, Pause freezes the pose so the gizmo can still move the entity, and Stop restores the
+transforms snapshotted when the preview session started (`BeginPreviewSession`). Scrub on the
+ruler or by dragging a lane; the wheel scrolls the rows, `Shift+wheel` pans, `Ctrl+wheel` zooms.
 
 ---
 
@@ -782,6 +820,7 @@ When writing/editing any `.h`/`.cpp` in this repo:
 | Scene | `ToolKit/Scene.h` |
 | Threads / Worker | `ToolKit/Threads.h` |
 | Editor app | `Editor/App.h` |
+| Dope sheet editor (view + window) | `Editor/UI/View/DopeSheetView.h` |
 | Editor renderer | `Editor/EditorRenderer.h` |
 | Host / platform glue (exec paths, shortcuts, app icon) | `ToolKit/Common/PlatformHelper.h` |
 | Workspace | `Workspace/Workspace.vcxproj` |
