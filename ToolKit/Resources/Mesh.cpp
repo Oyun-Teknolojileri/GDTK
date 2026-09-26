@@ -119,17 +119,19 @@ namespace ToolKit
 
   void Mesh::Save(bool onlyIfDirty)
   {
-    if (onlyIfDirty)
-    {
-      // if the mesh is dirty, false needs to be send to save always.
-      Resource::Save(!m_dirty && !m_material->m_dirty);
-    }
-    else
-    {
-      Resource::Save(false);
-    }
+    // The mesh file records the mesh, so the mesh's own dirty flag decides whether it is written.
+    // m_material->m_dirty is deliberately not part of this: the local material a mesh starts with is
+    // the engine's runtime default material, dirty from the moment it is created, and letting it force
+    // a write rewrote the mesh asset of any entity a scene or prefab save reached, serializing the
+    // material reference empty on the way.
+    Resource::Save(onlyIfDirty);
 
-    m_material->Save(onlyIfDirty);
+    // A dynamic material lives in memory only, the same rule MaterialComponent follows. Writing one
+    // would invent a file for the engine default material and drop it into the project.
+    if (!m_material->IsDynamic())
+    {
+      m_material->Save(onlyIfDirty);
+    }
   }
 
   void Mesh::CopyTo(Resource* other)
