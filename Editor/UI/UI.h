@@ -55,7 +55,20 @@ namespace ToolKit
        */
       static Vec4 GetColor(EditorColor semanticColor);
 
+      /**
+       * Reads the ImGui layout (dock arrangement, tab order, the tab that is in front) into the
+       * context. The layout of the active project is preferred over the stock one, so a project
+       * opens with the panels it was left with.
+       */
       static void InitSettings();
+
+      /**
+       * Writes the current ImGui layout into the config directory of the active project. ImGui's
+       * automatic save is turned off in UI::Init, the editor owns when and where a layout is
+       * written, and the layout belongs to a project.
+       */
+      static void SaveSettings();
+
       static void ShowUI();
       static void BeginUI();
       static void EndUI();

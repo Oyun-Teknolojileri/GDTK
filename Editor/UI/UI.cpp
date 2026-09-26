@@ -31,6 +31,7 @@
 #include <Workspace.h>
 #include <imgui/backends/imgui_impl_sdl2.h>
 
+#include <filesystem>
 #include <fstream>
 
 namespace ToolKit
@@ -133,6 +134,11 @@ namespace ToolKit
       ImGuiIO& io                           = ImGui::GetIO();
       io.ConfigFlags                       |= ImGuiConfigFlags_DockingEnable | ImGuiConfigFlags_ViewportsEnable;
       io.ConfigWindowsMoveFromTitleBarOnly  = true;
+
+      // The editor keeps one layout per project (UI::InitSettings / UI::SaveSettings) and decides
+      // itself when it is written. ImGui must therefore neither read "./imgui.ini" on its first
+      // frame nor write the layout of whatever project happens to be open into that shared file.
+      io.IniFilename                        = nullptr;
 
       if (RenderSystem* rsys = GetRenderSystem())
       {
@@ -640,22 +646,94 @@ namespace ToolKit
       style.Colors[ImGuiCol_ModalWindowDimBg]          = ImVec4(colors[61]);
     }
 
+    namespace
+    {
+      /**
+       * Returns the layout file of the active project, or an empty string when no project is open.
+       * The layouts live next to the Editor.settings files they belong to.
+       */
+      String GetProjectLayoutPath()
+      {
+        App* app = GetApp();
+        if (app == nullptr || app->m_workspace == nullptr)
+        {
+          return String();
+        }
+
+        // Without a project there is nothing the layout could belong to: the workspace root is not
+        // a place the editor keeps editor state in.
+        if (app->m_workspace->GetActiveProject().name.empty())
+        {
+          return String();
+        }
+
+        return ConcatPaths({app->m_workspace->GetConfigDirectory(), g_uiLayoutFile});
+      }
+
+      /**
+       * Returns true when the file is a layout the editor wrote. "./imgui.ini" used to be the
+       * editor's only layout, but the launcher keeps its own layout in the same file, and its
+       * windows say nothing about the editor panels. Every layout the editor saves carries its dock
+       * host, the "MainDock" window, which is what tells the two apart.
+       */
+      bool IsEditorLayout(const String& path)
+      {
+        std::ifstream file(path.c_str());
+        if (!file.is_open())
+        {
+          return false;
+        }
+
+        for (String line; std::getline(file, line);)
+        {
+          if (line.find("MainDock") != String::npos)
+          {
+            return true;
+          }
+        }
+
+        return false;
+      }
+    } // namespace
+
     void UI::InitSettings()
     {
-      String path = "./imgui.ini";
-      if (CheckFile(path))
+      // The layout follows the active project, so the dock arrangement, the order of the tabs and
+      // the tab that is in front come back the way the project was left. A project that has no
+      // layout of its own, and a session without a project, fall back to the stock layout.
+      String path = GetProjectLayoutPath();
+      if (path.empty() || !CheckSystemFile(path))
+      {
+        // "./imgui.ini" is where the editor kept its single global layout before the layout became
+        // per project, so an installation that predates this keeps the panels it has.
+        path = "./imgui.ini";
+        if (!IsEditorLayout(path))
+        {
+          path = ConcatPaths({ConfigPath(), g_uiLayoutFile});
+        }
+      }
+
+      if (CheckSystemFile(path))
       {
         ImGui::LoadIniSettingsFromDisk(path.c_str());
       }
-      else
-      {
-        path = ConcatPaths({ConfigPath(), g_uiLayoutFile});
+    }
 
-        if (CheckFile(path))
-        {
-          ImGui::LoadIniSettingsFromDisk(path.c_str());
-        }
+    void UI::SaveSettings()
+    {
+      String path = GetProjectLayoutPath();
+      if (path.empty())
+      {
+        return;
       }
+
+      String cfgPath = GetApp()->m_workspace->GetConfigDirectory();
+      if (!CheckSystemFile(cfgPath))
+      {
+        std::filesystem::create_directories(cfgPath);
+      }
+
+      ImGui::SaveIniSettingsToDisk(path.c_str());
     }
 
     void UI::ShowUI()
@@ -730,6 +808,17 @@ namespace ToolKit
       ImGui::Render();
       EditorBackendBindings::ImGuiRenderDrawData();
       ImGui::EndFrame();
+
+      // ImGui asks for a save with a delay after the layout changed, and it is the editor that has
+      // to take it because IO::IniFilename is not set. Writing it here keeps the project's layout
+      // current, so a session that ends without the editor saving its settings -- a crash, a killed
+      // process -- still opens with the layout it was left with.
+      ImGuiIO& io = ImGui::GetIO();
+      if (io.WantSaveIniSettings)
+      {
+        SaveSettings();
+        io.WantSaveIniSettings = false;
+      }
 
       if (m_firstFrame)
       {

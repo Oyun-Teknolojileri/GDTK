@@ -2431,14 +2431,16 @@ namespace ToolKit
 
     void DopeSheetWindow::Show()
     {
-      const String windowId = m_name + "##" + std::to_string(GetIdVal());
-
       ImGuiIO& io           = ImGui::GetIO();
       ImGui::SetNextWindowSize(Vec2(900.0f, 420.0f), ImGuiCond_FirstUseEver);
       ImGui::SetNextWindowPos(Vec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f), ImGuiCond_FirstUseEver,
                               Vec2(0.5f, 0.5f));
 
-      if (ImGui::Begin(windowId.c_str(), &m_visible))
+      // The window name is what the layout file matches a window by, so it stays the plain name the
+      // menu and App::GetDopeSheet() address the window with. A name carrying a generated id made
+      // every session a first use: the size and the position above were applied again and the
+      // window never came back where it was docked.
+      if (ImGui::Begin(m_name.c_str(), &m_visible))
       {
         HandleStates();
 
@@ -2527,6 +2529,60 @@ namespace ToolKit
       {
         m_view->SetFrame(m_view->m_endFrame, true);
       }
+    }
+
+    XmlNode* DopeSheetWindow::SerializeImp(XmlDocument* doc, XmlNode* parent) const
+    {
+      XmlNode* wndNode = Window::SerializeImp(doc, parent);
+      XmlNode* sheet   = CreateXmlNode(doc, "DopeSheetWindow", wndNode);
+
+      // The clip the sheet edits, so the window opens on the animation it was left on. It is stored
+      // relative to the resource root, the same way the editor stores the scene it was left on.
+      if (m_view != nullptr && m_view->m_clip != nullptr)
+      {
+        const String clipFile = m_view->m_clip->GetFile();
+        if (!clipFile.empty())
+        {
+          // GetRelativeResourcePath returns a different string on success: a clip that lives
+          // outside the resource roots has no relative form and is not restored.
+          String clipPath = GetRelativeResourcePath(clipFile);
+          if (clipPath != clipFile)
+          {
+            WriteAttr(sheet, doc, "clip", clipPath);
+          }
+        }
+      }
+
+      return sheet;
+    }
+
+    XmlNode* DopeSheetWindow::DeSerializeImp(const SerializationFileInfo& info, XmlNode* parent)
+    {
+      // The settings of this window hang under the <Window> node that Window::DeSerializeImp
+      // returns, while the node the caller passes in is the <Object> element wrapping it.
+      XmlNode* wndNode = Window::DeSerializeImp(info, parent);
+      XmlNode* sheet   = wndNode != nullptr ? wndNode->first_node("DopeSheetWindow") : nullptr;
+
+      if (sheet != nullptr)
+      {
+        String clip;
+        ReadAttr(sheet, "clip", clip);
+
+        if (!clip.empty())
+        {
+          const String clipFile = AnimationPath(clip);
+          if (CheckSystemFile(clipFile))
+          {
+            SetAnimation(GetAnimationManager()->Create<Animation>(clipFile));
+          }
+          else
+          {
+            TK_WRN("Dope sheet: the clip it was left on is missing (%s).", clip.c_str());
+          }
+        }
+      }
+
+      return nullptr;
     }
 
   } // namespace Editor

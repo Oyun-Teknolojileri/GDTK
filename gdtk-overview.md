@@ -622,6 +622,73 @@ Persistent windows are the ones a user opens from the Windows menu
 `Config/Editor.settings`, so the class needs `TKDeclareClass` / `TKDefineClass` to be
 restorable through `ObjectFactory` in `App::DeserializeWindows`.
 
+The dock arrangement is stored **per project** as well, in the project's own
+`Config/UILayout.ini` next to its `Editor.settings`. `UI::Init()` turns ImGui's automatic
+ini handling off (`io.IniFilename = nullptr`), `UI::InitSettings()` reads the layout of
+the active project and falls back to the stock `Config/UILayout.ini` (a `./imgui.ini` that
+is an editor layout is still honoured, so an installation that predates the per project
+layout keeps its panels), and `UI::SaveSettings()` writes it back -- from
+`App::SerializeImp` whenever the project settings are saved, and from `UI::EndUI` for the
+deferred save ImGui raises after the layout changed, so a killed session does not lose it.
+The dock arrangement, the tab order and the tab that is in front are ImGui state, not a
+window's: this file is what brings a project back with the same panels, and the same one
+of them in front, as it was left. `App::ApplyProjectSettings` applies that state together
+with the window set from `Editor.settings`; it runs at startup and again from
+`App::OpenProject`, which saves the state of the project it is leaving first and defers
+the apply to the end of the frame (the same reason Windows -> Reset Layout is deferred:
+it rebuilds ImGui windows and dock nodes). It calls `App::DeleteWindows` before
+deserializing, because `DeserializeWindows` appends to `App::m_windows` and a switch would
+otherwise leave two of every panel behind. `App::ResetUI` (Windows -> Reset Layout)
+deliberately loads the stock layout instead.
+
+The asset browser restores the folder it was left on: `FolderWindow::SerializeImp` writes
+it relative to the resource root that owns it and tags which root that is (project or
+engine), and `DeSerializeImp` looks it up again after `Iterate`. The tab bar of a browser
+is built from the path of the active folder down to its tree root, so that one path also
+brings back the open tabs and the one in front. The folder tree is stored the same way, as
+one `<OpenFolder root=.. path=..>` entry per expanded folder (`FolderWindow::m_openFolders`,
+handed to ImGui with `SetNextItemOpen` on the first draw of each node after a load), because
+an expanded tree node is ImGui state that no layout file holds. `showStructure` and the
+legacy index of the active folder are still written alongside.
+
+Not every piece of editor state is ImGui's, and the ones that are not are stored by the
+window that owns them, into the same `Editor.settings`:
+
+| State | Where |
+|---|---|
+| Dock arrangement, tab order, tab in front | ImGui, in the project's `Config/UILayout.ini` |
+| Window set, size, visibility, theme, recorded scene | `App::SerializeImp` |
+| Folder the asset browser is on, expanded tree folders | `FolderWindow::SerializeImp` |
+| Tab that is in front of the Engine Settings tabs | `EngineSettingsWindow::SerializeImp` (ImGui keeps the selected tab of a *docked* tab bar only) |
+| Sections (collapsing headers) that are open | `EngineSettingsWindow::SerializeImp`, one `<OpenSection name=..>` per open section |
+| Clip the Dope Sheet edits | `DopeSheetWindow::SerializeImp` (resource relative, like the scene) |
+
+A window's own settings node is a child of the `<Window>` node, so a `DeSerializeImp`
+override has to read it from the node `Window::DeSerializeImp` **returns** and not from the
+node the caller passed in (that one is the `<Object>` wrapping the window). `FolderWindow`
+searched the wrong one, so the folder a browser was left on was written but never read --
+the shape `EditorViewport` and `SimulationWindow` use is the correct one.
+
+The folder a browser is on only moves on a real click. ImGui hands out a tab's contents on
+its own as well: the first tab of a tab bar that has just appeared is shown for one frame
+(`TabItemEx`, "on the very first frame of a tab bar we let first tab contents be visible"),
+and a bar that was rebuilt picks a tab again. `FolderView::Show` used to read that as the
+user activating the tab and moved the active folder to the resources root the first time a
+browser was drawn, which threw away the folder the browser had just been restored to.
+`FolderView::m_clicked` keeps a click for the frame ImGui applies the queued focus, which is
+where the tab comes up selected, and that is what separates a click from ImGui's own pick.
+
+Collapsing headers are the same kind of state: ImGui holds a header's open state for the
+session only. `EngineSettingsWindow::ShowSection` wraps the section headers of the window
+(Post Processing draws all five of them), stores the ones that are open and hands each of
+them back with `SetNextItemOpen` the first time it is drawn after a load, so a section that
+sits in a tab that was not open yet keeps its state until it is.
+
+`DopeSheetWindow::Show` deliberately names its ImGui window `m_name` and not a name with a
+generated id: the layout file matches a window by name, and a name that changes every
+session made the window a first use every time, which kept it floating and growing the
+layout file with one stale entry per session.
+
 ### 9.4 EditorRenderer (Editor/EditorRenderer.h)
 Editor version of `Renderer` path. Adds `GizmoPass` and editor grid pass. Multiple viewports (4-up default).
 

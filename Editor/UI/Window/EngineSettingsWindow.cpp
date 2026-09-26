@@ -62,9 +62,16 @@ namespace ToolKit
         ImGui::BeginChild("RenderSettingsTabsChild", ImVec2(0, childHeight), false, ImGuiWindowFlags_None);
         if (ImGui::BeginTabBar("RenderSettingsTabs", ImGuiTabBarFlags_None))
         {
-          ShowGraphicsTab();
-          ShowShadowsTab();
-          ShowPostProcessingTab();
+          // ImGui keeps the selected tab of a docked window's tab bar, not of a plain one, so the
+          // window stores it and asks for it to be selected the first time the bar is drawn after a
+          // load. From then on ImGui owns the selection, which is what keeps the tabs clickable.
+          const Tab activeTab     = m_activeTab;
+          const bool selectStored = m_restoreActiveTab;
+          m_restoreActiveTab      = false;
+
+          ShowGraphicsTab(selectStored && activeTab == Tab::Graphics);
+          ShowShadowsTab(selectStored && activeTab == Tab::Shadows);
+          ShowPostProcessingTab(selectStored && activeTab == Tab::PostProcessing);
           ImGui::EndTabBar();
         }
         ImGui::EndChild();
@@ -156,14 +163,43 @@ namespace ToolKit
       ImGui::End();
     }
 
-    void EngineSettingsWindow::ShowGraphicsTab()
+    bool EngineSettingsWindow::ShowSection(const char* label)
+    {
+      // ImGui keeps the open state of a collapsing header for the session only, so it is handed back
+      // the first time a section is drawn after a load; from then on the user owns it. A section
+      // that is inside a closed one is not drawn yet, so its stored state waits for its parent.
+      if (m_restoredSections.find(label) == m_restoredSections.end())
+      {
+        m_restoredSections.insert(label);
+        ImGui::SetNextItemOpen(m_openSections.find(label) != m_openSections.end(), ImGuiCond_Always);
+      }
+
+      const bool open = ImGui::CollapsingHeader(label);
+
+      // Track the state the window is left in. Only the open sections are stored, a closed one is
+      // what ImGui starts a header with.
+      if (open)
+      {
+        m_openSections.insert(label);
+      }
+      else
+      {
+        m_openSections.erase(label);
+      }
+
+      return open;
+    }
+
+    void EngineSettingsWindow::ShowGraphicsTab(bool select)
     {
       EngineSettings& engineSettings = GetEngineSettings();
       GraphicSettingsPtr graphics    = engineSettings.m_graphics;
 
       // Graphics Tab
-      if (ImGui::BeginTabItem("Graphics"))
+      if (ImGui::BeginTabItem("Graphics", nullptr, select ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None))
       {
+        m_activeTab         = Tab::Graphics;
+
         static bool lockFps = true;
         if (ImGui::Checkbox("FPS Lock##1", &lockFps))
         {
@@ -209,15 +245,17 @@ namespace ToolKit
       }
     }
 
-    void EngineSettingsWindow::ShowShadowsTab()
+    void EngineSettingsWindow::ShowShadowsTab(bool select)
     {
       EngineSettings& engineSettings = GetEngineSettings();
       GraphicSettingsPtr graphics    = engineSettings.m_graphics;
       ShadowSettingsPtr shadows      = graphics->m_shadows;
 
       // Shadows Tab
-      if (ImGui::BeginTabItem("Shadows"))
+      if (ImGui::BeginTabItem("Shadows", nullptr, select ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None))
       {
+        m_activeTab = Tab::Shadows;
+
         // VSM Blur settings.
         ImGui::SeparatorText("VSM Blur");
 
@@ -380,15 +418,19 @@ namespace ToolKit
       }
     }
 
-    void EngineSettingsWindow::ShowPostProcessingTab()
+    void EngineSettingsWindow::ShowPostProcessingTab(bool select)
     {
       EngineSettings& engineSettings = GetEngineSettings();
       PostProcessingSettingsPtr pps  = engineSettings.m_postProcessing;
 
       // Post Processing Tab
-      if (ImGui::BeginTabItem("Post Processing", nullptr))
+      if (ImGui::BeginTabItem("Post Processing",
+                              nullptr,
+                              select ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None))
       {
-        if (ImGui::CollapsingHeader("ToneMapping"))
+        m_activeTab = Tab::PostProcessing;
+
+        if (ShowSection("ToneMapping"))
         {
           bool tonemappingEnabled = pps->GetTonemappingEnabledVal();
           if (ImGui::Checkbox("Enable Tonemapping", &tonemappingEnabled))
@@ -398,7 +440,7 @@ namespace ToolKit
           CustomDataView::ShowVariant(&pps->ParamTonemapperMode(), nullptr);
         }
 
-        if (ImGui::CollapsingHeader("Bloom"))
+        if (ShowSection("Bloom"))
         {
           bool bloomEnabled = pps->GetBloomEnabledVal();
           if (ImGui::Checkbox("Bloom##1", &bloomEnabled))
@@ -425,7 +467,7 @@ namespace ToolKit
           }
         }
 
-        if (ImGui::CollapsingHeader("Depth of Field"))
+        if (ShowSection("Depth of Field"))
         {
           bool dofEnabled = pps->GetDepthOfFieldEnabledVal();
           if (ImGui::Checkbox("Depth of Field##1", &dofEnabled))
@@ -468,7 +510,7 @@ namespace ToolKit
           ImGui::EndDisabled();
         }
 
-        if (ImGui::CollapsingHeader("Ambient Occlusion"))
+        if (ShowSection("Ambient Occlusion"))
         {
           bool ssaoEnabled = pps->GetSSAOEnabledVal();
           if (ImGui::Checkbox("SSAO##1", &ssaoEnabled))
@@ -506,7 +548,7 @@ namespace ToolKit
           ImGui::EndDisabled();
         }
 
-        if (ImGui::CollapsingHeader("Anti Aliasing"))
+        if (ShowSection("Anti Aliasing"))
         {
           bool fxaaEnabled = pps->GetFXAAEnabledVal();
           if (ImGui::Checkbox("FXAA##1", &fxaaEnabled))
@@ -517,6 +559,60 @@ namespace ToolKit
 
         ImGui::EndTabItem(); // End Post Processing Tab
       }
+    }
+
+    XmlNode* EngineSettingsWindow::SerializeImp(XmlDocument* doc, XmlNode* parent) const
+    {
+      XmlNode* wndNode = Window::SerializeImp(doc, parent);
+      XmlNode* wnd     = CreateXmlNode(doc, "EngineSettingsWindow", wndNode);
+
+      WriteAttr(wnd, doc, "activeTab", std::to_string((int) m_activeTab));
+
+      // The sections that are open. A collapsing header holds its open state for the session only,
+      // so without this every section comes back closed. The set is ordered, so the same window
+      // always produces the same file.
+      for (const String& openSection : m_openSections)
+      {
+        XmlNode* sectionNode = CreateXmlNode(doc, "OpenSection", wnd);
+        WriteAttr(sectionNode, doc, "name", openSection);
+      }
+
+      return wnd;
+    }
+
+    XmlNode* EngineSettingsWindow::DeSerializeImp(const SerializationFileInfo& info, XmlNode* parent)
+    {
+      // The settings of this window hang under the <Window> node that Window::DeSerializeImp
+      // returns, while the node the caller passes in is the <Object> element wrapping it.
+      XmlNode* wndNode      = Window::DeSerializeImp(info, parent);
+      XmlNode* settingsNode = wndNode != nullptr ? wndNode->first_node("EngineSettingsWindow") : nullptr;
+
+      if (settingsNode != nullptr)
+      {
+        int activeTab = (int) Tab::Graphics;
+        ReadAttr(settingsNode, "activeTab", activeTab);
+
+        if (activeTab >= (int) Tab::Graphics && activeTab <= (int) Tab::PostProcessing)
+        {
+          m_activeTab        = (Tab) activeTab;
+          m_restoreActiveTab = true;
+        }
+
+        m_openSections.clear();
+        m_restoredSections.clear();
+        for (XmlNode* sectionNode = settingsNode->first_node("OpenSection"); sectionNode;
+             sectionNode          = sectionNode->next_sibling("OpenSection"))
+        {
+          String name;
+          ReadAttr(sectionNode, "name", name);
+          if (!name.empty())
+          {
+            m_openSections.insert(name);
+          }
+        }
+      }
+
+      return nullptr;
     }
 
   } // namespace Editor

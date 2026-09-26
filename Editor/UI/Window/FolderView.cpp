@@ -406,19 +406,33 @@ namespace ToolKit
     void FolderView::Show()
     {
       ImGuiTabItemFlags flags = m_active ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
-      if (ImGui::BeginTabItem(m_folder.c_str(), nullptr, flags))
+
+      const bool open         = ImGui::BeginTabItem(m_folder.c_str(), nullptr, flags);
+
+      // ImGui queues the focus of a clicked tab and applies it on the next frame, so the click is
+      // read here, where the tab item exists, and kept for the frame the tab comes up selected.
+      const bool clicked      = ImGui::IsItemClicked();
+      const bool clickedTab   = clicked || m_clicked;
+      m_clicked               = clicked;
+
+      if (open)
       {
         if (!m_active) // If this view is not active and imgui try to show it,
         {
-          if (m_visible) // Either this window lost its activity via tree view
+          // ImGui hands out a tab's contents on its own as well: the first tab of a tab bar that
+          // has just appeared is shown for one frame, and a bar that was rebuilt picks a tab again.
+          // Reading that as a click moved the active folder to the resources root the first time
+          // the window was drawn, which threw away the folder the browser had been restored to.
+          // Only a click moves the active folder.
+          if (clickedTab)
+          {
+            m_parent->SetActiveView(this);
+          }
+          else
           {
             m_visible = false;
             ImGui::EndTabItem();
             return;
-          }
-          else // Or Activated via clicking on tab
-          {
-            m_parent->SetActiveView(this);
           }
         }
 

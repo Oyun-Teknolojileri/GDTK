@@ -58,6 +58,95 @@ namespace ToolKit
       return DefaultPath();
     }
 
+    namespace
+    {
+      // The resource root a stored folder path was written against. A browser lists the project
+      // resources next to the engine ones, so a restored path has to say which of the two it
+      // belongs to: the same relative path means a different folder under each root.
+      const String g_projectRootTag = "Project";
+      const String g_engineRootTag  = "Engine";
+
+      /**
+       * Returns the tag of the resource root the folder lives under, or an empty string when it is
+       * under neither the project nor the engine resources. Folder paths are absolute, so the
+       * comparison is too.
+       */
+      String GetFolderRootTag(const String& folder)
+      {
+        const String sep         = GetPathSeparatorAsStr();
+
+        const String projectRoot = ToAbsolutePath(ResourcePath());
+        if (folder == projectRoot || StartsWith(folder, projectRoot + sep))
+        {
+          return g_projectRootTag;
+        }
+
+        const String engineRoot = ToAbsolutePath(DefaultPath());
+        if (folder == engineRoot || StartsWith(folder, engineRoot + sep))
+        {
+          return g_engineRootTag;
+        }
+
+        return String();
+      }
+
+      /** Returns the absolute path of the resource root a tag stands for. */
+      String GetFolderRootPath(const String& rootTag)
+      {
+        if (rootTag == g_projectRootTag)
+        {
+          return ToAbsolutePath(ResourcePath());
+        }
+
+        if (rootTag == g_engineRootTag)
+        {
+          return ToAbsolutePath(DefaultPath());
+        }
+
+        return String();
+      }
+
+      /**
+       * Splits a folder path into the tag of the resource root it belongs to and its path relative
+       * to that root, which is how the editor stores a folder. A folder that is under neither root
+       * keeps its absolute path and gets an empty tag.
+       */
+      void SplitFolderPath(const String& folder, String& rootTag, String& relativePath)
+      {
+        rootTag      = GetFolderRootTag(folder);
+        relativePath = folder;
+
+        if (rootTag.empty())
+        {
+          return;
+        }
+
+        const String root = GetFolderRootPath(rootTag);
+        relativePath      = folder.length() > root.length() ? folder.substr(root.length() + 1) : String();
+      }
+
+      /**
+       * Rebuilds a folder path from a root tag and a path relative to it. An empty tag means the
+       * stored path was absolute, an unknown tag means the entry cannot be resolved at all.
+       */
+      String JoinFolderPath(const String& rootTag, const String& relativePath)
+      {
+        if (rootTag.empty())
+        {
+          return relativePath;
+        }
+
+        const String root = GetFolderRootPath(rootTag);
+        if (root.empty())
+        {
+          return String();
+        }
+
+        // An empty relative path is the root of that resource tree itself.
+        return relativePath.empty() ? root : ConcatPaths({root, relativePath});
+      }
+    } // namespace
+
     TKDefineClass(FolderWindow, Window);
 
     FolderWindow::FolderWindow() {}
@@ -233,6 +322,16 @@ namespace ToolKit
       // expanded / collapsed state survives a rebuild of the tree.
       String stdId                 = "##" + node.path;
 
+      // Whether a tree node is expanded is ImGui state that no layout file holds for a plain tree
+      // node, so the window carries it (see SerializeImp). The first time a node is drawn after a
+      // load, the stored state is handed to ImGui; from then on the user owns it. A node that is
+      // inside a collapsed parent is not drawn yet, so its stored state waits for the parent.
+      if (node.childs.size() > 0 && m_restoredFolders.find(node.path) == m_restoredFolders.end())
+      {
+        m_restoredFolders.insert(node.path);
+        ImGui::SetNextItemOpen(m_openFolders.find(node.path) != m_openFolders.end(), ImGuiCond_Always);
+      }
+
       if (node.childs.size() == 0)
       {
         nodeFlags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
@@ -248,8 +347,13 @@ namespace ToolKit
       }
       else
       {
-        if (ImGui::TreeNodeEx(stdId.c_str(), nodeFlags, nodeHeader.c_str()))
+        const bool open = ImGui::TreeNodeEx(stdId.c_str(), nodeFlags, nodeHeader.c_str());
+
+        if (open)
         {
+          // Track the state the tree is left in.
+          m_openFolders.insert(node.path);
+
           if (ImGui::IsItemClicked())
           {
             onClickedFn();
@@ -261,6 +365,12 @@ namespace ToolKit
           }
           ImGui::TreePop();
         }
+        else
+        {
+          // A collapsed folder drops out, so collapsing is what gets saved for it.
+          m_openFolders.erase(node.path);
+        }
+
         acceptDrop();
       }
     }
@@ -672,22 +782,99 @@ namespace ToolKit
       XmlNode* wndNode = Window::SerializeImp(doc, parent);
       XmlNode* folder  = CreateXmlNode(doc, "FolderWindow", wndNode);
 
+      // The index is written for an editor that predates the path below. It is not a reliable way
+      // to find the folder again -- it depends on the order the file system was iterated in, which
+      // differs between sessions -- so the path is what a restore uses.
       WriteAttr(folder, doc, "activeFolder", std::to_string(m_activeFolder));
       WriteAttr(folder, doc, "showStructure", std::to_string(m_showStructure));
+
+      // The folder the browser was left on. The tab bar, the tabs it shows and the tab in front
+      // all follow from this path, so storing it is what makes a browser come back as it was.
+      String rootTag, folderPath;
+      if (m_activeFolder >= 0 && m_activeFolder < (int) m_entries.size())
+      {
+        SplitFolderPath(m_entries[m_activeFolder].GetPath(), rootTag, folderPath);
+      }
+
+      WriteAttr(folder, doc, "activeFolderRoot", rootTag);
+      WriteAttr(folder, doc, "activeFolderPath", folderPath);
+
+      // The folders the tree is open on. Which tree node is expanded is ImGui state that no layout
+      // file carries, so without this the tree comes back fully collapsed. The set is ordered, so
+      // the same tree always produces the same file.
+      for (const String& openFolder : m_openFolders)
+      {
+        // A folder that is gone does not get an entry again.
+        if (!std::filesystem::is_directory(openFolder))
+        {
+          continue;
+        }
+
+        String openRootTag, openFolderPath;
+        SplitFolderPath(openFolder, openRootTag, openFolderPath);
+
+        XmlNode* openNode = CreateXmlNode(doc, "OpenFolder", folder);
+        WriteAttr(openNode, doc, "root", openRootTag);
+        WriteAttr(openNode, doc, "path", openFolderPath);
+      }
 
       return folder;
     }
 
     XmlNode* FolderWindow::DeSerializeImp(const SerializationFileInfo& info, XmlNode* parent)
     {
-      Window::DeSerializeImp(info, parent);
-      if (XmlNode* node = parent->first_node("FolderWindow"))
+      // The settings of this window hang under the <Window> node that Window::DeSerializeImp
+      // returns, while the node the caller passes in is the <Object> element wrapping it. Reading
+      // them from the latter found nothing, so the folder the browser was left on never came back.
+      XmlNode* wndNode          = Window::DeSerializeImp(info, parent);
+      XmlNode* folderWindowNode = wndNode != nullptr ? wndNode->first_node("FolderWindow") : nullptr;
+
+      // The index is what an editor that predates the path below wrote, and it is all a settings
+      // file from that version has to offer.
+      int legacyActiveFolder    = 0;
+      String activePath;
+      if (folderWindowNode != nullptr)
       {
-        ReadAttr(node, "activeFolder", m_activeFolder);
-        ReadAttr(node, "showStructure", m_showStructure);
+        ReadAttr(folderWindowNode, "activeFolder", legacyActiveFolder);
+        ReadAttr(folderWindowNode, "showStructure", m_showStructure);
+
+        String rootTag, folderPath;
+        ReadAttr(folderWindowNode, "activeFolderRoot", rootTag);
+        ReadAttr(folderWindowNode, "activeFolderPath", folderPath);
+        activePath = JoinFolderPath(rootTag, folderPath);
+
+        m_openFolders.clear();
+        m_restoredFolders.clear();
+        for (XmlNode* openNode = folderWindowNode->first_node("OpenFolder"); openNode;
+             openNode          = openNode->next_sibling("OpenFolder"))
+        {
+          String openRootTag, openFolderPath;
+          ReadAttr(openNode, "root", openRootTag);
+          ReadAttr(openNode, "path", openFolderPath);
+
+          const String openFolder = JoinFolderPath(openRootTag, openFolderPath);
+          if (!openFolder.empty())
+          {
+            m_openFolders.insert(openFolder);
+          }
+        }
       }
 
+      // Iterate() resets the active folder, so the remembered one is applied once the entries of
+      // the project and of the engine tree exist and can be looked up by path.
       Iterate(ResourcePath(), true);
+
+      // A folder that was deleted while the editor was closed, or a path that no longer belongs to
+      // the workspace, leaves the browser on the resources root instead of opening a tab for a
+      // folder that is not there.
+      if (!activePath.empty() && !GetFolderRootTag(activePath).empty() && std::filesystem::is_directory(activePath))
+      {
+        FolderView::SelectFolder(this, activePath);
+      }
+      else
+      {
+        SetActiveView(legacyActiveFolder);
+      }
 
       return nullptr;
     }

@@ -333,6 +333,11 @@ namespace ToolKit
       void Show() override;
       void DispatchSignals() const override;
 
+     protected:
+      /** Stores the clip the sheet edits, so the window opens with the animation it was left on. */
+      XmlNode* SerializeImp(XmlDocument* doc, XmlNode* parent) const override;
+      XmlNode* DeSerializeImp(const SerializationFileInfo& info, XmlNode* parent) override;
+
      private:
       DopeSheetViewPtr m_view;
     };

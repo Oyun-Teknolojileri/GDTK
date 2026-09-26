@@ -12,6 +12,7 @@
 #include "Window.h"
 
 #include <deque>
+#include <set>
 
 namespace ToolKit
 {
@@ -106,6 +107,12 @@ namespace ToolKit
       bool m_root            = false;
       // States if the tab is visible. Doesn't necessarily mean active, its just a tab in the FolderView.
       bool m_visible         = false;
+      /**
+       * States that the tab was clicked on the previous frame. ImGui queues the focus of a clicked
+       * tab and applies it on the next one, so the click has to be remembered for the frame the tab
+       * comes up selected to tell it apart from ImGui picking a tab on its own.
+       */
+      bool m_clicked         = false;
       // Active tab, whose content is being displayed.
       bool m_active          = false;
 
@@ -240,6 +247,13 @@ namespace ToolKit
       IntArray m_treeRoots;
       /** States if the hierarchy needs to be rebuilt before it is drawn next time. */
       bool m_treeDirty = false;
+      /**
+       * Folders the tree is drawn with open. A tree node is ImGui state that no layout file holds,
+       * so the window persists it and hands it back on the first draw after a load.
+       */
+      std::set<String> m_openFolders;
+      /** Open folders whose stored state has already been handed to ImGui. */
+      std::set<String> m_restoredFolders;
     };
 
   } // namespace Editor

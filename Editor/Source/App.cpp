@@ -844,6 +844,7 @@ namespace ToolKit
         DeSerialize(serializeInfo, nullptr);
         m_workspace->SetScene(project.scene);
 
+        // Resetting the layout means the stock one, not the layout the project was left with.
         String settingsFile = ConcatPaths({ConfigPath(), g_uiLayoutFile});
         ImGui::LoadIniSettingsFromDisk(settingsFile.c_str());
       }
@@ -898,6 +899,10 @@ namespace ToolKit
         m_windows.push_back(MakeNewPtr<SimulationWindow>());
 
         CreateSimulationViewport();
+
+        // ImGui no longer reads a layout on its own (see UI::Init), so the stock layout is applied
+        // here as well, otherwise the default windows would come up with no docking at all.
+        UI::InitSettings();
       }
     }
 
@@ -1333,6 +1338,11 @@ namespace ToolKit
     {
       if (CheckFile(ConcatPaths({ConfigPath(), g_editorSettingsFile})) && !setDefaults)
       {
+        // The saved window set replaces whatever the editor is showing. A project switch lands
+        // here with the windows of the project that was open, and deserializing next to them would
+        // leave a second copy of every panel behind.
+        DeleteWindows();
+
         DeSerialize(SerializationFileInfo(), nullptr);
         m_workspace->DeSerializeEngineSettings();
         UI::InitSettings();
@@ -1373,6 +1383,14 @@ namespace ToolKit
         return false;
       }
 
+      // Everything the editor is showing belongs to the project that is open right now, so it goes
+      // back into that project's own Config directory before the active project changes:
+      // Config/Editor.settings and the dock layout both resolve against the outgoing project here.
+      if (!m_workspace->GetActiveProject().name.empty())
+      {
+        Serialize(nullptr, nullptr);
+      }
+
       ClearSession();
       GetPluginManager()->UnloadGamePlugin();
 
@@ -1380,17 +1398,20 @@ namespace ToolKit
 
       m_workspace->SetActiveProject(project);
       m_workspace->Serialize(nullptr, nullptr);
+
+      // A blank scene keeps the rest of the frame that opened this project drawable. The scene the
+      // project was left on, when it has one, is opened by the state apply below.
       CreateNewScene();
 
-      pluginWindow->LoadPluginSettings();
-      LoadGamePlugin();
-      LoadProjectPlugins();
-
-      FolderWindowRawPtrArray browsers = GetAssetBrowsers();
-      for (FolderWindow* browser : browsers)
-      {
-        browser->IterateFolders(true);
-      }
+      // Opening a project replaces the editor state of the previous one: the window set comes from
+      // the new project's Config/Editor.settings and the dock arrangement with the tab that is in
+      // front from its Config/UILayout.ini. This is the same path App::Init takes, so a project
+      // opens the same way whether it is launched or switched to.
+      //
+      // It runs at the end of the frame for the same reason Windows -> Reset Layout does: it
+      // rebuilds the ImGui windows and dock nodes, which must not happen while the frame that
+      // opened the project is still being recorded.
+      TKAsyncTask(WorkerManager::MainThread, [this]() -> void { ApplyProjectSettings(false); });
 
       return true;
     }
@@ -1680,6 +1701,10 @@ namespace ToolKit
         file.close();
         lclDoc->clear();
       }
+
+      // The dock arrangement, the tab order and the tab that is in front are ImGui's state, not a
+      // window's, so they are written next to the Editor.settings of the project being saved.
+      UI::SaveSettings();
 
       return nullptr;
     }
