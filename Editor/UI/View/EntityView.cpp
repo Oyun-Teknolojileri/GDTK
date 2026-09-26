@@ -502,6 +502,9 @@ namespace ToolKit
           ParameterVariantRawPtrArray vars;
           ntt->m_localData.GetByCategory(category.Name, vars);
 
+          // The parameters of the entity itself: key diamonds address "<entity>.<param>".
+          CustomDataView::PushKeyOwner(ntt->GetNameVal());
+
           ParameterVariantRawPtrArray varCallbacks;
           for (ParameterVariant* var : vars)
           {
@@ -528,6 +531,8 @@ namespace ToolKit
               CustomDataView::ShowVariant(var, nullptr);
             }
           }
+
+          CustomDataView::PopKeyOwner();
         }
 
         if (category.Name == PrefabCategory.Name)

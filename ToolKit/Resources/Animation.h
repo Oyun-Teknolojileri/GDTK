@@ -13,6 +13,7 @@
  */
 
 #include "OrderedStringMap.h"
+#include "ParameterBlock.h"
 #include "Resource.h"
 #include "SkeletonComponent.h"
 #include "Texture.h"
@@ -37,6 +38,23 @@ namespace ToolKit
   // Ordered by insertion; each bone key track keeps the order it was loaded or
   // added with. See OrderedStringMap.
   typedef OrderedStringMap<KeyArray> BoneKeyArrayMap;
+
+  /**
+   * A key that drives one parameter value instead of a node transform.
+   *
+   * A parameter is a ParameterVariant (float, int, uint, bool, vec2, vec3, vec4), and its value is
+   * carried here in four floats whatever the type is, so a track stores and serializes uniformly.
+   * m_type says how to read them back and whether the value steps or interpolates.
+   */
+  struct ParamKey
+  {
+    int m_frame                       = 0;
+    ParameterVariant::VariantType m_type = ParameterVariant::VariantType::Float;
+    Vec4 m_value;
+  };
+
+  typedef std::vector<ParamKey> ParamKeyArray;
+  typedef OrderedStringMap<ParamKeyArray> ParamKeyArrayMap;
 
   /**
    * The class that represents animations which can be played with
@@ -119,6 +137,63 @@ namespace ToolKit
      */
     bool SetKey(const String& keyName, int frame, const Key* key);
 
+    // Parameter tracks.
+    //////////////////////////////////////////
+
+    /**
+     * Writes or removes a parameter key, the counterpart of SetKey() for parameter tracks.
+     * @param trackName Track id, see ResolveParamTrack() for the accepted forms.
+     * @param frame Frame of the key.
+     * @param key Key to write, or nullptr to remove the key at that frame.
+     * @return True when the edit was applied.
+     */
+    bool SetParamKey(const String& trackName, int frame, const ParamKey* key);
+
+    /**
+     * Samples a parameter track at the given time. Float and vector types interpolate, everything
+     * else holds the previous key.
+     * @param trackName Track id.
+     * @param time Time to sample at, in seconds.
+     * @param value Output, the four floats carrying the value.
+     * @param type Output, the variant type the value belongs to.
+     * @return False when the track does not exist or holds no keys.
+     */
+    bool GetParamValue(const String& trackName,
+                       float time,
+                       Vec4& value,
+                       ParameterVariant::VariantType& type) const;
+
+    /**
+     * Resolves the parameter a track id addresses on an entity. Accepted forms:
+     * "<entity>.<param>", "<entity>.<componentClass>.<param>" and
+     * "<entity>.MaterialComponent.<materialIndex>.<param>".
+     * @param entity Entity the track belongs to.
+     * @param trackName Track id.
+     * @return The variant to read or write, or nullptr when the id addresses nothing on the entity.
+     */
+    ParameterVariant* ResolveParamTrack(EntityPtr entity, const String& trackName);
+
+    /**
+     * Applies every parameter track of the entity at the given time, writing each value through its
+     * variant so the parameter's change callbacks run.
+     */
+    void ApplyParamTracks(EntityPtr entity, float time);
+
+    /** States if a variant type can be keyed at all. */
+    static bool IsParamTypeAnimatable(ParameterVariant::VariantType type);
+
+    /** Packs a variant value into the four floats a ParamKey carries. */
+    static bool PackParamValue(const ParameterVariant& var, Vec4& value);
+
+    /**
+     * Writes a packed value back through the variant, which fires the change callbacks of the
+     * parameter (material caches, light buffers) exactly like an edit in the inspector would.
+     * @return False when the type does not match the variant.
+     */
+    static bool UnpackParamValue(ParameterVariant& var,
+                                 ParameterVariant::VariantType type,
+                                 const Vec4& value);
+
    protected:
     void CopyTo(Resource* other) override;
 
@@ -131,6 +206,14 @@ namespace ToolKit
      * for this animation.
      */
     BoneKeyArrayMap m_keys;
+
+    /**
+     * Parameter tracks, keyed by track id ("<entity>.<param>", "<entity>.<component>.<param>" or
+     * "<entity>.MaterialComponent.<index>.<param>"). Kept apart from m_keys so a node curve and a
+     * parameter curve never share a name space.
+     */
+    ParamKeyArrayMap m_paramKeys;
+
     float m_fps      = 30.0f; //!< Frames to display per second.
     float m_duration = 0.0f;  //!< Duration of the animation.
 

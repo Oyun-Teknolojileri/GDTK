@@ -678,6 +678,12 @@ namespace ToolKit
               ParameterVariantRawPtrArray vars;
               comp->m_localData.GetByCategory(category.Name, vars);
 
+              // Component parameters: key diamonds address "<entity>.<componentClass>.<param>".
+              if (EntityPtr owner = comp->OwnerEntity())
+              {
+                CustomDataView::PushKeyOwner(owner->GetNameVal() + "." + comp->Class()->Name);
+              }
+
               for (ParameterVariant* var : vars)
               {
                 bool editable = var->m_editable;
@@ -693,6 +699,11 @@ namespace ToolKit
                 {
                   var->m_editable = true;
                 }
+              }
+
+              if (comp->OwnerEntity() != nullptr)
+              {
+                CustomDataView::PopKeyOwner();
               }
             }
           }

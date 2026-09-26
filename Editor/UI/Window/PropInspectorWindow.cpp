@@ -103,7 +103,8 @@ namespace ToolKit
 
       if (MaterialComponentPtr mat = curEntity->GetMaterialComponent())
       {
-        matView->SetMaterials(mat->GetMaterialList());
+        // The entity travels along so the material rows can address their slot in a key track.
+        matView->SetMaterials(mat->GetMaterialList(), curEntity);
       }
       else
       {

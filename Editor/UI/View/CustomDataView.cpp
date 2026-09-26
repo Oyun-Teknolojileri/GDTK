@@ -9,6 +9,7 @@
 
 #include "App.h"
 #include "ComponentView.h"
+#include "DopeSheetView.h"
 #include "EditorScene.h"
 #include "MultiChoiceWindow.h"
 
@@ -16,10 +17,145 @@
 #include <Mesh.h>
 #include <Prefab.h>
 
+#include <variant>
+
 namespace ToolKit
 {
   namespace Editor
   {
+
+    namespace
+    {
+      // Owner prefixes of the rows being drawn. The inspector pushes one per block of rows (entity,
+      // component, material slot) and the key diamond appends the parameter name to it, which is how a
+      // track id is built without every call site passing its owner through.
+      StringArray& GetKeyOwnerStack()
+      {
+        static StringArray stack;
+        return stack;
+      }
+    } // namespace
+
+    void CustomDataView::PushKeyOwner(const String& owner)
+    {
+      if (owner.empty())
+      {
+        return;
+      }
+
+      GetKeyOwnerStack().push_back(owner);
+    }
+
+    void CustomDataView::PopKeyOwner()
+    {
+      StringArray& stack = GetKeyOwnerStack();
+      if (!stack.empty())
+      {
+        stack.pop_back();
+      }
+    }
+
+    void CustomDataView::ShowKeyDiamond(ParameterVariant* var)
+    {
+      StringArray& stack = GetKeyOwnerStack();
+      if (var == nullptr || stack.empty())
+      {
+        // No owner: the row can not be addressed by a track id, so there is nothing to key.
+        return;
+      }
+
+      const String trackId = stack.back() + "." + var->m_name;
+
+      DopeSheetWindowPtr sheet = GetApp()->GetDopeSheet();
+      if (sheet == nullptr)
+      {
+        return;
+      }
+
+      const DopeSheetView::ParamKeyState state = sheet->GetParamKeyState(trackId);
+      if (state == DopeSheetView::ParamKeyState::NoClip)
+      {
+        // Without a clip there is no key state to show, and the sheet is where a clip is bound.
+        return;
+      }
+
+      const float size = ImGui::GetFrameHeight();
+      const ImVec2 pos = ImGui::GetCursorScreenPos();
+
+      // The track id is unique, a parameter name is not: two rows named "Color" (an entity color and
+      // a material color) can sit in the same window.
+      ImGui::PushID(trackId.c_str());
+      ImGui::InvisibleButton("##keyDiamond", Vec2(size, size));
+      const bool clicked      = ImGui::IsItemClicked(ImGuiMouseButton_Left);
+      const bool rightClicked = ImGui::IsItemClicked(ImGuiMouseButton_Right);
+      const bool hovered      = ImGui::IsItemHovered();
+
+      // The diamond mirrors the key markers of the sheet, so a key reads the same in both places.
+      const ImVec2 center(pos.x + size * 0.5f, pos.y + size * 0.5f);
+      const float radius  = glm::max(3.0f, size * 0.26f);
+      const ImU32 filled  = ImGui::GetColorU32(ImVec4(g_selectHighLightPrimaryColor));
+      const ImU32 dim     = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+      const ImU32 outline = ImGui::GetColorU32(ImGuiCol_Text);
+      ImDrawList* dl      = ImGui::GetWindowDrawList();
+
+      const ImVec2 top(center.x, center.y - radius);
+      const ImVec2 right(center.x + radius, center.y);
+      const ImVec2 bottom(center.x, center.y + radius);
+      const ImVec2 left(center.x - radius, center.y);
+
+      if (state == DopeSheetView::ParamKeyState::KeyAtFrame)
+      {
+        dl->AddQuadFilled(top, right, bottom, left, filled);
+        dl->AddQuad(top, right, bottom, left, outline, 1.5f);
+      }
+      else if (state == DopeSheetView::ParamKeyState::Animated)
+      {
+        dl->AddQuadFilled(top, right, bottom, left, filled);
+      }
+      else
+      {
+        dl->AddQuad(top, right, bottom, left, dim, 1.5f);
+      }
+
+      if (hovered)
+      {
+        const char* stateText = state == DopeSheetView::ParamKeyState::KeyAtFrame ? "key on this frame"
+                                : state == DopeSheetView::ParamKeyState::Animated     ? "animated"
+                                                                                      : "not animated";
+        ImGui::SetTooltip("%s\n%s (frame %d)\nClick: set key   Right click: menu",
+                          trackId.c_str(),
+                          stateText,
+                          sheet->GetFrame());
+      }
+
+      if (rightClicked || (clicked && state == DopeSheetView::ParamKeyState::KeyAtFrame))
+      {
+        ImGui::OpenPopup("##keyDiamondCtx");
+      }
+
+      if (clicked && state != DopeSheetView::ParamKeyState::KeyAtFrame)
+      {
+        sheet->SetParamKey(trackId);
+      }
+
+      if (ImGui::BeginPopup("##keyDiamondCtx"))
+      {
+        if (ImGui::MenuItem("Set Key"))
+        {
+          sheet->SetParamKey(trackId);
+        }
+
+        const bool hasKeyHere = sheet->GetParamKeyState(trackId) == DopeSheetView::ParamKeyState::KeyAtFrame;
+        if (ImGui::MenuItem("Delete Key", nullptr, false, hasKeyHere))
+        {
+          sheet->DeleteParamKey(trackId, sheet->GetFrame());
+        }
+
+        ImGui::EndPopup();
+      }
+
+      ImGui::PopID();
+    }
 
     void CustomDataView::ShowMaterialPtr(const String& uniqueName,
                                          const String& file,
@@ -101,7 +237,10 @@ namespace ToolKit
           ParameterVariant* vLookUp = nullptr;
           if (paramBlock->LookUp(var->m_category.Name, var->m_name, &vLookUp))
           {
-            vLookUp->SetValue(newVal);
+            // Assign through the variant's typed setters instead of SetValue(): SetValue() writes the
+            // variant storage directly and skips m_onValueChangedFn, so the other entities of the
+            // selection kept a stale cache (a light kept its old color on the GPU).
+            std::visit([vLookUp](auto&& value) -> void { *vLookUp = value; }, newVal);
           }
         }
       };
@@ -391,6 +530,14 @@ namespace ToolKit
       // prefab) mode while the cells remain locked.
       const bool isAnimRecords = (var->GetType() == ParameterVariant::VariantType::AnimRecordPtrMap);
       ImGui::BeginDisabled(!var->m_editable && !isAnimRecords);
+
+      // Animatable parameters carry a key diamond in front of their widget. The diamond decides on its
+      // own whether there is anything to show (owner pushed and a clip bound).
+      if (var->m_hint.animatable)
+      {
+        ShowKeyDiamond(var);
+        ImGui::SameLine();
+      }
 
       static bool lastValActive = false;
       if (callback)

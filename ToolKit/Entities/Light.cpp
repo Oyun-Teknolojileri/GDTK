@@ -50,9 +50,9 @@ namespace ToolKit
   {
     Super::ParameterConstructor();
 
-    Color_Define(Vec3(1.0f), "Light", 0, true, true, {true});
-    Intensity_Define(1.0f, "Light", 90, true, true, {false, true, 0.0f, 100000.0f, 0.1f});
-    CastShadow_Define(false, "Light", 90, true, true);
+    Color_Define(Vec3(1.0f), "Light", 0, true, true, Animatable({true}));
+    Intensity_Define(1.0f, "Light", 90, true, true, Animatable({false, true, 0.0f, 100000.0f, 0.1f}));
+    CastShadow_Define(false, "Light", 90, true, true, Animatable({true}));
     ShadowBias_Define(0.2f, "Light", 90, true, true, {false, true, 0.0f, 10.0f, 0.01f});
     BleedingReduction_Define(0.1f, "Light", 90, true, true, {false, true, 0.0f, 1.0f, 0.001f});
   }

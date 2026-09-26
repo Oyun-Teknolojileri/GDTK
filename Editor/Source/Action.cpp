@@ -183,9 +183,10 @@ namespace ToolKit
     // KeyEditAction
     //////////////////////////////////////////
 
-    KeyEditAction::KeyEditAction(AnimationPtr clip, const String& trackName)
+    KeyEditAction::KeyEditAction(AnimationPtr clip, const String& trackName, bool paramTrack)
         : m_clip(clip),
-          m_trackName(trackName)
+          m_trackName(trackName),
+          m_paramTrack(paramTrack)
     {
     }
 
@@ -198,6 +199,27 @@ namespace ToolKit
 
       if (m_clip == nullptr || frame < 0)
       {
+        return state;
+      }
+
+      if (m_paramTrack)
+      {
+        const ParamKeyArray* keys = m_clip->m_paramKeys.Find(m_trackName);
+        if (keys == nullptr)
+        {
+          return state;
+        }
+
+        for (const ParamKey& key : *keys)
+        {
+          if (key.m_frame == frame)
+          {
+            state.hasKey   = true;
+            state.paramKey = key;
+            break;
+          }
+        }
+
         return state;
       }
 
@@ -227,6 +249,13 @@ namespace ToolKit
         return;
       }
 
+      if (m_paramTrack)
+      {
+        // SetParamKey keeps the track sorted by frame and creates it when it is missing.
+        m_clip->SetParamKey(m_trackName, state.frame, state.hasKey ? &state.paramKey : nullptr);
+        return;
+      }
+
       // The stored frame is forced to match the sort position the track keeps, the sampler walks
       // the keys in order and would read a mismatched frame as a corrupt curve.
       Key key     = state.key;
@@ -250,7 +279,7 @@ namespace ToolKit
 
     void KeyEditAction::SetKey(AnimationPtr clip, const String& trackName, const Key& key)
     {
-      KeyEditAction* action = new KeyEditAction(clip, trackName);
+      KeyEditAction* action = new KeyEditAction(clip, trackName, false);
 
       action->m_beforeFrom = action->Read(key.m_frame);
       action->m_beforeTo   = action->m_beforeFrom;
@@ -266,7 +295,7 @@ namespace ToolKit
 
     void KeyEditAction::DeleteKey(AnimationPtr clip, const String& trackName, int frame)
     {
-      KeyEditAction* action = new KeyEditAction(clip, trackName);
+      KeyEditAction* action = new KeyEditAction(clip, trackName, false);
 
       action->m_beforeFrom = action->Read(frame);
       if (!action->m_beforeFrom.hasKey)
@@ -291,7 +320,7 @@ namespace ToolKit
         return;
       }
 
-      KeyEditAction* action = new KeyEditAction(clip, trackName);
+      KeyEditAction* action = new KeyEditAction(clip, trackName, false);
 
       action->m_beforeFrom = action->Read(fromFrame);
       if (!action->m_beforeFrom.hasKey)
@@ -308,6 +337,74 @@ namespace ToolKit
       action->m_afterTo          = action->m_beforeFrom;
       action->m_afterTo.frame    = toFrame;
       action->m_afterTo.key.m_frame = toFrame;
+
+      action->Redo();
+      ActionManager::GetInstance()->AddAction(action);
+    }
+
+    void KeyEditAction::SetParamKey(AnimationPtr clip, const String& trackName, const ParamKey& key)
+    {
+      KeyEditAction* action = new KeyEditAction(clip, trackName, true);
+
+      action->m_beforeFrom = action->Read(key.m_frame);
+      action->m_beforeTo   = action->m_beforeFrom;
+
+      action->m_afterFrom             = action->m_beforeFrom;
+      action->m_afterFrom.hasKey      = true;
+      action->m_afterFrom.paramKey    = key;
+      action->m_afterTo               = action->m_afterFrom;
+
+      action->Redo();
+      ActionManager::GetInstance()->AddAction(action);
+    }
+
+    void KeyEditAction::DeleteParamKey(AnimationPtr clip, const String& trackName, int frame)
+    {
+      KeyEditAction* action = new KeyEditAction(clip, trackName, true);
+
+      action->m_beforeFrom = action->Read(frame);
+      if (!action->m_beforeFrom.hasKey)
+      {
+        SafeDel(action); // Nothing to remove, do not pollute the undo stack.
+        return;
+      }
+
+      action->m_beforeTo         = action->m_beforeFrom;
+      action->m_afterFrom        = action->m_beforeFrom;
+      action->m_afterFrom.hasKey = false;
+      action->m_afterTo          = action->m_afterFrom;
+
+      action->Redo();
+      ActionManager::GetInstance()->AddAction(action);
+    }
+
+    void KeyEditAction::MoveParamKey(AnimationPtr clip,
+                                    const String& trackName,
+                                    int fromFrame,
+                                    int toFrame)
+    {
+      if (fromFrame == toFrame)
+      {
+        return;
+      }
+
+      KeyEditAction* action = new KeyEditAction(clip, trackName, true);
+
+      action->m_beforeFrom = action->Read(fromFrame);
+      if (!action->m_beforeFrom.hasKey)
+      {
+        SafeDel(action);
+        return;
+      }
+
+      action->m_beforeTo = action->Read(toFrame);
+
+      // The key leaves its old frame and lands on the new one, replacing whatever was there.
+      action->m_afterFrom             = action->m_beforeFrom;
+      action->m_afterFrom.hasKey      = false;
+      action->m_afterTo               = action->m_beforeFrom;
+      action->m_afterTo.frame         = toFrame;
+      action->m_afterTo.paramKey.m_frame = toFrame;
 
       action->Redo();
       ActionManager::GetInstance()->AddAction(action);

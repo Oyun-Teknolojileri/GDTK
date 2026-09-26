@@ -25,7 +25,15 @@ namespace ToolKit
       virtual ~MaterialView();
 
       void Show() override;
-      void SetMaterials(const MaterialPtrArray& mat);
+
+      /**
+       * Sets the materials to show.
+       * @param mat Materials to inspect, usually the list of an entity's material component.
+       * @param owner Entity the materials belong to, when the view was opened from an entity. Its
+       * material component and the index of each material in the list are what a key diamond
+       * addresses, so without an owner (an asset browser window) there are no diamonds.
+       */
+      void SetMaterials(const MaterialPtrArray& mat, EntityPtr owner = nullptr);
       void ResetCamera();
       void SetSelectedMaterial(MaterialPtr mat);
 
@@ -36,6 +44,7 @@ namespace ToolKit
      private:
       PreviewViewportPtr m_viewport = nullptr;
       MaterialPtrArray m_materials;
+      EntityWeakPtr m_owner;
       uint m_activeObjectIndx    = 0;
       int m_currentMaterialIndex = 0;
       ScenePtr m_scenes[3];

@@ -8,6 +8,7 @@
 #include "MaterialView.h"
 
 #include "App.h"
+#include "CustomDataView.h"
 #include "EditorScene.h"
 #include "EditorViewport.h"
 #include "PreviewViewport.h"
@@ -54,7 +55,11 @@ namespace ToolKit
       }
     }
 
-    void MaterialView::SetMaterials(const MaterialPtrArray& mat) { m_materials = mat; }
+    void MaterialView::SetMaterials(const MaterialPtrArray& mat, EntityPtr owner)
+    {
+      m_materials = mat;
+      m_owner     = owner;
+    }
 
     void MaterialView::ResetCamera()
     {
@@ -123,6 +128,15 @@ namespace ToolKit
       {
         ImGui::Text("\nSelect a material");
         return;
+      }
+
+      // Key diamonds of the animatable rows address the material slot this material sits in, which
+      // is only known when the view was opened from an entity.
+      const bool hasOwner = m_owner.lock() != nullptr;
+      if (hasOwner)
+      {
+        CustomDataView::PushKeyOwner(m_owner.lock()->GetNameVal() + ".MaterialComponent." +
+                                     std::to_string(m_currentMaterialIndex));
       }
 
       String name, ext, path;
@@ -292,6 +306,8 @@ namespace ToolKit
       {
         if (mat->GetDiffuseTextureVal() == nullptr)
         {
+          CustomDataView::ShowKeyDiamond(&mat->ParamColor());
+          ImGui::SameLine();
           Vec3 color = mat->GetColorVal();
           if (UI::SRGBColorEdit3("Diffuse Color", color))
           {
@@ -299,6 +315,8 @@ namespace ToolKit
             updateThumbFn();
           }
 
+          CustomDataView::ShowKeyDiamond(&mat->ParamAlpha());
+          ImGui::SameLine();
           float alpha = mat->GetAlphaVal();
           if (ImGui::DragFloat("Alpha", &alpha, 1.0f / 256.0f, 0.0f, 1.0f))
           {
@@ -309,6 +327,8 @@ namespace ToolKit
 
         if (mat->GetEmissiveTextureVal() == nullptr)
         {
+          CustomDataView::ShowKeyDiamond(&mat->ParamEmissiveColor());
+          ImGui::SameLine();
           Vec3 color = mat->GetEmissiveColorVal();
           if (UI::SRGBColorEdit3("Emissivity Color Multiplier##1",
                                  color,
@@ -323,6 +343,8 @@ namespace ToolKit
 
         if (mat->IsPBR() && mat->GetMetallicRoughnessTextureVal() == nullptr)
         {
+          CustomDataView::ShowKeyDiamond(&mat->ParamMetallic());
+          ImGui::SameLine();
           float val = mat->GetMetallicVal();
           if (ImGui::DragFloat("Metallic", &val, 0.001f, 0.0f, 1.0f))
           {
@@ -330,6 +352,8 @@ namespace ToolKit
             updateThumbFn();
           }
 
+          CustomDataView::ShowKeyDiamond(&mat->ParamRoughness());
+          ImGui::SameLine();
           val = mat->GetRoughnessVal();
           if (ImGui::DragFloat("Roughness", &val, 0.001f, 0.0f, 1.0f))
           {
@@ -374,6 +398,11 @@ namespace ToolKit
         {
           ImGui::Spacing();
         }
+      }
+
+      if (hasOwner)
+      {
+        CustomDataView::PopKeyOwner();
       }
     }
 

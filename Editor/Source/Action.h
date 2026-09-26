@@ -90,12 +90,13 @@ namespace ToolKit
     //////////////////////////////////////////
 
     /**
-     * One undoable edit of a single animation key.
+     * One undoable edit of a single animation key, on a transform track or on a parameter track.
      *
      * A key edit touches at most two frames: the frame the key came from and the frame it went to
      * (the same frame for an insert, an update or a removal). The action remembers what sat on both
      * frames before and after the edit, so undo and redo replay it exactly -- including a key that
-     * was replaced on the target frame.
+     * was replaced on the target frame. A parameter key follows the same model, only the payload
+     * differs.
      *
      * The editor action convention applies here: the constructor performs the edit (through Redo()),
      * so a caller mutates the clip and pushes the action in one step.
@@ -128,6 +129,31 @@ namespace ToolKit
        */
       static void MoveKey(AnimationPtr clip, const String& trackName, int fromFrame, int toFrame);
 
+      /**
+       * Inserts or updates a parameter key on a parameter track.
+       * @param clip Clip that owns the track.
+       * @param trackName Parameter track id.
+       * @param key Key to write at its own frame.
+       */
+      static void SetParamKey(AnimationPtr clip, const String& trackName, const ParamKey& key);
+
+      /**
+       * Removes the parameter key at the given frame.
+       * @param clip Clip that owns the track.
+       * @param trackName Parameter track id.
+       * @param frame Frame of the key to remove.
+       */
+      static void DeleteParamKey(AnimationPtr clip, const String& trackName, int frame);
+
+      /**
+       * Moves a parameter key in time, replacing whatever sits on the target frame.
+       * @param clip Clip that owns the track.
+       * @param trackName Parameter track id.
+       * @param fromFrame Frame the key is on now.
+       * @param toFrame Frame the key moves to.
+       */
+      static void MoveParamKey(AnimationPtr clip, const String& trackName, int fromFrame, int toFrame);
+
       void Undo() override;
       void Redo() override;
 
@@ -137,10 +163,11 @@ namespace ToolKit
       {
         int frame   = -1;
         bool hasKey = false;
-        Key key;
+        Key key;           //!< Payload of a transform track edit.
+        ParamKey paramKey; //!< Payload of a parameter track edit.
       };
 
-      KeyEditAction(AnimationPtr clip, const String& trackName);
+      KeyEditAction(AnimationPtr clip, const String& trackName, bool paramTrack);
       virtual ~KeyEditAction();
 
       /** Reads the key that currently sits on the given frame. */
@@ -152,6 +179,7 @@ namespace ToolKit
      private:
       AnimationPtr m_clip;
       String m_trackName;
+      bool m_paramTrack = false; //!< The edit addresses a parameter track, not a transform track.
 
       FrameState m_beforeFrom; //!< Source frame before the edit.
       FrameState m_afterFrom;  //!< Source frame after the edit.

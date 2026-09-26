@@ -51,6 +51,15 @@ namespace ToolKit
         Paused
       };
 
+      /** What the clip the sheet edits holds for one parameter track. */
+      enum class ParamKeyState
+      {
+        NoClip,      //!< no clip bound, nothing can be keyed
+        NotAnimated, //!< no track, or a track without keys
+        Animated,    //!< the track has keys, none on the playhead frame
+        KeyAtFrame   //!< a key sits on the playhead frame
+      };
+
       DopeSheetView();
       virtual ~DopeSheetView();
 
@@ -64,6 +73,9 @@ namespace ToolKit
 
       /** Playhead position in seconds, the value the pose applier samples. */
       float CurrentTime() const;
+
+      /** Playhead position in frames, the frame a new key lands on. */
+      int GetFrame() const { return m_frame; }
 
       /**
        * Moves the playhead to the given frame, clamped to the sheet range. A manual scrub pauses
@@ -94,11 +106,44 @@ namespace ToolKit
       /** Removes the selected key through an undoable action. */
       void DeleteSelectedKey();
 
+      // Parameter tracks.
+      //////////////////////////////////////////
+
+      /**
+       * Reports what the clip holds for a parameter track, which is what the inspector diamond
+       * shows. The track id is "<entity>.<param>", "<entity>.<componentClass>.<param>" or
+       * "<entity>.MaterialComponent.<index>.<param>".
+       */
+      ParamKeyState GetParamKeyState(const String& trackId) const;
+
+      /**
+       * Keys the parameter the track id addresses at the playhead frame, undoably. The value that is
+       * written is the one the parameter holds right now, so an edit in the inspector followed by a
+       * Set Key records exactly what is on screen.
+       * @return False when the track does not address a parameter of the current scene.
+       */
+      bool SetParamKey(const String& trackId);
+
+      /** Removes the parameter key at the given frame, undoably. */
+      void DeleteParamKey(const String& trackId, int frame);
+
+      /** States if the clip holds a param key on the given frame of the track. */
+      bool ParamTrackHasKey(const String& trackId, int frame) const;
+
       /** Applies the clip pose at the given time to every entity matched by a track. */
       void ApplyPoseAt(float time);
 
-      /** Restores the transforms snapshotted when the preview session started. */
-      void RestoreBaseTransforms();
+      /**
+       * Applies the parameter tracks of the clip at the given time. They are independent of the node
+       * tracks, a light color or a material parameter is not posed by a transform.
+       */
+      void ApplyParamTracksAt(float time);
+
+      /**
+       * Restores the transforms and the parameter values the preview session overwrote and rewinds
+       * the playhead.
+       */
+      void RestorePreviewState();
 
      private:
       // Sheet sections, drawn top to bottom.
@@ -128,10 +173,16 @@ namespace ToolKit
       void CommitKeyDrag();
 
       /** States if the clip holds a key on the given frame of the given track. */
-      bool TrackHasKey(const String& trackName, int frame) const;
+      bool TrackHasKey(const String& trackName, int frame, bool paramTrack) const;
 
       /** Drops the selection when the selected key is not part of the clip anymore. */
       void ValidateSelection();
+
+      /**
+       * Finds the entity a parameter track id belongs to. Entity names may contain dots, so the
+       * longest name that prefixes the track wins.
+       */
+      EntityPtr EntityForParamTrack(const String& trackId) const;
 
      public:
       AnimationPtr m_clip = nullptr;       //!< Clip the sheet edits.
@@ -161,18 +212,31 @@ namespace ToolKit
       std::unordered_map<ObjectId, String> m_entityTracks;   //!< Entity id -> track name.
       std::unordered_map<ObjectId, Mat4> m_baseTransforms;   //!< Pre preview local transforms.
 
+      /** A parameter value as the preview session found it, packed like a ParamKey. */
+      struct ParamSnapshot
+      {
+        ParameterVariant::VariantType type = ParameterVariant::VariantType::Float;
+        Vec4 value;
+      };
+
+      std::unordered_map<String, ParamSnapshot> m_baseParams; //!< Pre preview parameter values.
+
       // Key selection and dragging. Phase 1.5 selects a single key; later phases extend this to a
-      // set with copy/paste and bulk moves.
-      String m_selectedTrack;      //!< Track of the selected key, empty when nothing is selected.
-      int m_selectedFrame = -1;    //!< Frame of the selected key.
-      bool m_dragging     = false; //!< True while a selected key is dragged in time.
-      String m_dragTrack;          //!< Track the drag started on.
-      int m_dragFromFrame = -1;    //!< Frame the dragged key came from.
-      int m_dragToFrame   = -1;    //!< Frame the dragged key would land on.
+      // set with copy/paste and bulk moves. A selected key belongs either to a transform track or to
+      // a parameter track, which the two flags below record.
+      String m_selectedTrack;             //!< Track of the selected key, empty when nothing is selected.
+      int m_selectedFrame      = -1;      //!< Frame of the selected key.
+      bool m_selectedParam     = false;   //!< The selected key is a parameter key.
+      bool m_dragging          = false;   //!< True while a selected key is dragged in time.
+      String m_dragTrack;                 //!< Track the drag started on.
+      bool m_dragParam         = false;   //!< The drag moves a parameter key.
+      int m_dragFromFrame      = -1;      //!< Frame the dragged key came from.
+      int m_dragToFrame        = -1;      //!< Frame the dragged key would land on.
 
       // Right click context, deferred until the row has been drawn.
       String m_ctxTrack;
-      int m_ctxFrame = -1;
+      int m_ctxFrame  = -1;
+      bool m_ctxParam = false; //!< The row under the cursor is a parameter track.
     };
 
     // DopeSheetWindow
@@ -194,6 +258,21 @@ namespace ToolKit
        * shortcut can key without the sheet being hovered.
        */
       void SetKeyOnSelection();
+
+      // Parameter tracks, forwarded for the inspector's key diamonds.
+      //////////////////////////////////////////
+
+      /** What the clip holds for a parameter track, see DopeSheetView::GetParamKeyState. */
+      DopeSheetView::ParamKeyState GetParamKeyState(const String& trackId);
+
+      /** Keys the addressed parameter at the playhead frame. */
+      bool SetParamKey(const String& trackId);
+
+      /** Removes the parameter key at the given frame. */
+      void DeleteParamKey(const String& trackId, int frame);
+
+      /** Playhead frame of the sheet. */
+      int GetFrame();
 
       void Show() override;
       void DispatchSignals() const override;

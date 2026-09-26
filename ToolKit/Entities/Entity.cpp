@@ -88,6 +88,10 @@ namespace ToolKit
       return;
     }
 
+    // Parameter tracks address this entity by name, so they are applied the same way whichever path
+    // poses the entity: the animation player or a caller like a game plugin.
+    anim->ApplyParamTracks(Self<Entity>(), time);
+
     MeshComponentPtr meshComp = GetMeshComponent();
     if (meshComp != nullptr)
     {
@@ -172,7 +176,7 @@ namespace ToolKit
 
     Name_Define(Class()->Name, EntityCategory.Name, EntityCategory.Priority, true, true);
     Tag_Define("", EntityCategory.Name, EntityCategory.Priority, true, true);
-    Visible_Define(true, EntityCategory.Name, EntityCategory.Priority, true, true);
+    Visible_Define(true, EntityCategory.Name, EntityCategory.Priority, true, true, Animatable({}));
     TransformLock_Define(false, EntityCategory.Name, EntityCategory.Priority, true, true);
   }
 

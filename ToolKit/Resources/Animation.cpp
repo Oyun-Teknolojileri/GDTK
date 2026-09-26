@@ -10,6 +10,8 @@
 #include "AnimationControllerComponent.h"
 #include "Entity.h"
 #include "FileManager.h"
+#include "Material.h"
+#include "MaterialComponent.h"
 #include "MathUtil.h"
 #include "Mesh.h"
 #include "Node.h"
@@ -26,6 +28,91 @@ static constexpr bool SERIALIZE_ANIMATION_AS_BINARY = true;
 
 namespace ToolKit
 {
+  namespace
+  {
+    /** Finds a parameter of a block by name, nullptr when the block has no such parameter. */
+    ParameterVariant* FindParam(ParameterBlock& block, const String& name)
+    {
+      for (ParameterVariant& var : block.m_variants)
+      {
+        if (var.m_name == name)
+        {
+          return &var;
+        }
+      }
+
+      return nullptr;
+    }
+
+    /**
+     * Nearest parameter keys around a time. Mirrors GetNearestKeys(), which works on transform keys.
+     * The track has to stay ascending by frame for this to hold, which SetParamKey() guarantees.
+     */
+    void FindParamKeys(const ParamKeyArray& keys, float fps, float t, int& key1, int& key2, float& ratio)
+    {
+      key1  = -1;
+      key2  = -1;
+      ratio = 0.0f;
+
+      const int count = static_cast<int>(keys.size());
+      if (count == 0)
+      {
+        return;
+      }
+
+      if (count == 1)
+      {
+        key1 = 0;
+        key2 = 0;
+        return;
+      }
+
+      // Earlier than the first key or later than the last one: hold the boundary key.
+      if (keys.front().m_frame / fps > t)
+      {
+        key1 = 0;
+        key2 = 1;
+        return;
+      }
+
+      if (t > keys.back().m_frame / fps)
+      {
+        key1  = count - 2;
+        key2  = count - 1;
+        ratio = 1.0f;
+        return;
+      }
+
+      for (int i = 1; i < count; i++)
+      {
+        const float keyTime2 = keys[i].m_frame / fps;
+        const float keyTime1 = keys[i - 1].m_frame / fps;
+
+        if (t >= keyTime1 && keyTime2 >= t)
+        {
+          ratio = (t - keyTime1) / (keyTime2 - keyTime1);
+          key1  = i - 1;
+          key2  = i;
+          return;
+        }
+      }
+    }
+
+    /** States if a parameter type blends between keys instead of holding the previous one. */
+    bool IsInterpolatedParam(ParameterVariant::VariantType type)
+    {
+      switch (type)
+      {
+        case ParameterVariant::VariantType::Float:
+        case ParameterVariant::VariantType::Vec2:
+        case ParameterVariant::VariantType::Vec3:
+        case ParameterVariant::VariantType::Vec4:
+          return true;
+        default:
+          return false;
+      }
+    }
+  } // namespace
 
   TKDefineClass(Animation, Resource);
 
@@ -34,6 +121,328 @@ namespace ToolKit
   Animation::Animation(const String& file) : Animation() { SetFile(file); }
 
   Animation::~Animation() { UnInit(); }
+
+  // Parameter tracks
+  //////////////////////////////////////////
+
+  bool Animation::IsParamTypeAnimatable(ParameterVariant::VariantType type)
+  {
+    switch (type)
+    {
+      case ParameterVariant::VariantType::Float:
+      case ParameterVariant::VariantType::Int:
+      case ParameterVariant::VariantType::UInt:
+      case ParameterVariant::VariantType::Byte:
+      case ParameterVariant::VariantType::Ubyte:
+      case ParameterVariant::VariantType::Bool:
+      case ParameterVariant::VariantType::Vec2:
+      case ParameterVariant::VariantType::Vec3:
+      case ParameterVariant::VariantType::Vec4:
+        return true;
+      default:
+        // Resource pointers, callbacks, record maps, matrices and multi choice parameters are not
+        // keyframable: a choice is a discrete state, not a curve.
+        return false;
+    }
+  }
+
+  bool Animation::PackParamValue(const ParameterVariant& var, Vec4& value)
+  {
+    value = Vec4(0.0f);
+
+    switch (var.GetType())
+    {
+      case ParameterVariant::VariantType::Float:
+        value.x = var.GetCVar<float>();
+        break;
+      case ParameterVariant::VariantType::Int:
+        value.x = (float) var.GetCVar<int>();
+        break;
+      case ParameterVariant::VariantType::UInt:
+        value.x = (float) var.GetCVar<uint>();
+        break;
+      case ParameterVariant::VariantType::Byte:
+        value.x = (float) var.GetCVar<byte>();
+        break;
+      case ParameterVariant::VariantType::Ubyte:
+        value.x = (float) var.GetCVar<ubyte>();
+        break;
+      case ParameterVariant::VariantType::Bool:
+        value.x = var.GetCVar<bool>() ? 1.0f : 0.0f;
+        break;
+      case ParameterVariant::VariantType::Vec2:
+      {
+        const Vec2 vec = var.GetCVar<Vec2>();
+        value          = Vec4(vec.x, vec.y, 0.0f, 0.0f);
+      }
+      break;
+      case ParameterVariant::VariantType::Vec3:
+      {
+        const Vec3 vec = var.GetCVar<Vec3>();
+        value          = Vec4(vec, 0.0f);
+      }
+      break;
+      case ParameterVariant::VariantType::Vec4:
+        value = var.GetCVar<Vec4>();
+        break;
+      default:
+        return false;
+    }
+
+    return true;
+  }
+
+  bool Animation::UnpackParamValue(ParameterVariant& var,
+                                   ParameterVariant::VariantType type,
+                                   const Vec4& value)
+  {
+    if (var.GetType() != type)
+    {
+      // A key that does not match the parameter it addresses is a corrupted or hand edited clip,
+      // writing it would change the type of the parameter.
+      return false;
+    }
+
+    // Assigning through the variant is what fires its change callbacks, which is how a material
+    // cache or a light buffer learns about an animated value.
+    switch (type)
+    {
+      case ParameterVariant::VariantType::Float:
+        var = value.x;
+        break;
+      case ParameterVariant::VariantType::Int:
+        var = (int) glm::round(value.x);
+        break;
+      case ParameterVariant::VariantType::UInt:
+        var = (uint) glm::max(0.0f, glm::round(value.x));
+        break;
+      case ParameterVariant::VariantType::Byte:
+        var = (byte) glm::round(value.x);
+        break;
+      case ParameterVariant::VariantType::Ubyte:
+        var = (ubyte) glm::max(0.0f, glm::round(value.x));
+        break;
+      case ParameterVariant::VariantType::Bool:
+        var = value.x != 0.0f;
+        break;
+      case ParameterVariant::VariantType::Vec2:
+        var = Vec2(value.x, value.y);
+        break;
+      case ParameterVariant::VariantType::Vec3:
+        var = Vec3(value.x, value.y, value.z);
+        break;
+      case ParameterVariant::VariantType::Vec4:
+        var = value;
+        break;
+      default:
+        return false;
+    }
+
+    return true;
+  }
+
+  bool Animation::SetParamKey(const String& trackName, int frame, const ParamKey* key)
+  {
+    if (trackName.empty())
+    {
+      return false;
+    }
+
+    ParamKeyArray* keys = m_paramKeys.Find(trackName);
+    if (keys == nullptr)
+    {
+      if (key == nullptr)
+      {
+        return false;
+      }
+
+      m_paramKeys.Insert(trackName, ParamKeyArray());
+      keys = m_paramKeys.Find(trackName);
+    }
+
+    auto it = std::lower_bound(keys->begin(),
+                               keys->end(),
+                               frame,
+                               [](const ParamKey& k, int f) -> bool { return k.m_frame < f; });
+
+    const bool found = (it != keys->end() && it->m_frame == frame);
+
+    if (key == nullptr)
+    {
+      if (found)
+      {
+        keys->erase(it);
+      }
+    }
+    else
+    {
+      // The stored frame is forced to match the sort position, a mismatched frame would read as a
+      // corrupt curve.
+      ParamKey newKey = *key;
+      newKey.m_frame  = frame;
+
+      if (found)
+      {
+        *it = newKey;
+      }
+      else
+      {
+        keys->insert(it, newKey);
+      }
+    }
+
+    m_dirty = true;
+    return true;
+  }
+
+  bool Animation::GetParamValue(const String& trackName,
+                                float time,
+                                Vec4& value,
+                                ParameterVariant::VariantType& type) const
+  {
+    const ParamKeyArray* keys = m_paramKeys.Find(trackName);
+    if (keys == nullptr || keys->empty())
+    {
+      return false;
+    }
+
+    int key1    = -1;
+    int key2    = -1;
+    float ratio = 0.0f;
+    FindParamKeys(*keys, glm::max(1.0f, m_fps), time, key1, key2, ratio);
+
+    if (key1 < 0 || key2 < 0)
+    {
+      return false;
+    }
+
+    const ParamKey& k1 = (*keys)[key1];
+    const ParamKey& k2 = (*keys)[key2];
+
+    type = k1.m_type;
+
+    if (k1.m_type != k2.m_type || !IsInterpolatedParam(k1.m_type))
+    {
+      // A step type holds the key at or before the sampled time. Past the last key that is the last
+      // key itself, which the sampler marks with ratio 1: holding k1 there would keep the value of
+      // the key before it, so a bool track never reached its final state and a flag looked like it
+      // was not animated at all.
+      value = ratio >= 1.0f ? k2.m_value : k1.m_value;
+      return true;
+    }
+
+    // glm::mix covers the four floats a ParamKey carries, whatever type they hold.
+    value = glm::mix(k1.m_value, k2.m_value, ratio);
+    return true;
+  }
+
+  ParameterVariant* Animation::ResolveParamTrack(EntityPtr entity, const String& trackName)
+  {
+    if (entity == nullptr || trackName.empty())
+    {
+      return nullptr;
+    }
+
+    // Every track id starts with the entity it belongs to, which is also how a transform track is
+    // matched to its node.
+    const String prefix = entity->GetNameVal() + ".";
+    if (!StartsWith(trackName, prefix))
+    {
+      return nullptr;
+    }
+
+    const String rest = trackName.substr(prefix.length());
+    if (rest.empty())
+    {
+      return nullptr;
+    }
+
+    // "<entity>.<param>": the entity's own parameter block.
+    if (ParameterVariant* var = FindParam(entity->m_localData, rest))
+    {
+      return var;
+    }
+
+    // "<entity>.<componentClass>.<param>" and "<entity>.MaterialComponent.<index>.<param>".
+    const size_t dot = rest.find('.');
+    if (dot == String::npos)
+    {
+      return nullptr;
+    }
+
+    const String compName = rest.substr(0, dot);
+    const String compRest = rest.substr(dot + 1);
+    if (compRest.empty())
+    {
+      return nullptr;
+    }
+
+    for (ComponentPtr comp : entity->GetComponentPtrArray())
+    {
+      if (comp == nullptr || comp->Class()->Name != compName)
+      {
+        continue;
+      }
+
+      if (MaterialComponent* matComp = comp->As<MaterialComponent>())
+      {
+        // The material list index is the mesh / submesh index, so a slot is addressed by it.
+        const size_t slotDot = compRest.find('.');
+        if (slotDot == String::npos)
+        {
+          return nullptr;
+        }
+
+        const String slot   = compRest.substr(0, slotDot);
+        const String paramN = compRest.substr(slotDot + 1);
+        if (paramN.empty() || slot.empty() || slot.find_first_not_of("0123456789") != String::npos)
+        {
+          return nullptr;
+        }
+
+        const int index          = std::atoi(slot.c_str());
+        MaterialPtrArray& mats   = matComp->GetMaterialList();
+        if (index < 0 || index >= (int) mats.size() || mats[index] == nullptr)
+        {
+          return nullptr;
+        }
+
+        return FindParam(mats[index]->m_localData, paramN);
+      }
+
+      return FindParam(comp->m_localData, compRest);
+    }
+
+    return nullptr;
+  }
+
+  void Animation::ApplyParamTracks(EntityPtr entity, float time)
+  {
+    if (entity == nullptr || m_paramKeys.empty())
+    {
+      return;
+    }
+
+    for (const auto& track : m_paramKeys)
+    {
+      if (track.second.empty())
+      {
+        continue;
+      }
+
+      Vec4 value;
+      ParameterVariant::VariantType type;
+      if (!GetParamValue(track.first, time, value, type))
+      {
+        continue;
+      }
+
+      if (ParameterVariant* var = ResolveParamTrack(entity, track.first))
+      {
+        UnpackParamValue(*var, type, value);
+      }
+    }
+  }
 
   void Animation::GetPose(Node* node, float time, const String& keyName)
   {
@@ -237,6 +646,27 @@ namespace ToolKit
       }
     }
 
+    // Parameter tracks: one node per track, one child per key. Written as text rather than a packed
+    // blob, a parameter track holds a handful of keys and the values stay readable in the file.
+    for (const auto& [trackName, keys] : m_paramKeys)
+    {
+      if (keys.empty())
+      {
+        continue;
+      }
+
+      XmlNode* paramNode = CreateXmlNode(doc, "param", container);
+      paramNode->append_attribute(doc->allocate_attribute(XmlNodeName.data(), trackName.c_str()));
+
+      for (const ParamKey& key : keys)
+      {
+        XmlNode* keyNode = CreateXmlNode(doc, "key", paramNode);
+        WriteAttr(keyNode, doc, "frame", std::to_string(key.m_frame));
+        WriteAttr(keyNode, doc, "type", std::to_string((int) key.m_type));
+        WriteVec(CreateXmlNode(doc, "value", keyNode), doc, key.m_value);
+      }
+    }
+
     return container;
   }
 
@@ -302,6 +732,42 @@ namespace ToolKit
       }
     }
 
+    // Parameter tracks. Clips that predate them simply have no <param> nodes.
+    for (XmlNode* paramNode = parent->first_node("param"); paramNode; paramNode = paramNode->next_sibling("param"))
+    {
+      XmlAttribute* nameAttr = paramNode->first_attribute(XmlNodeName.data());
+      if (nameAttr == nullptr)
+      {
+        continue;
+      }
+
+      const String trackName = nameAttr->value();
+
+      ParamKeyArray* keys = m_paramKeys.Find(trackName);
+      if (keys == nullptr)
+      {
+        m_paramKeys.Insert(trackName, ParamKeyArray());
+        keys = m_paramKeys.Find(trackName);
+      }
+
+      for (XmlNode* keyNode = paramNode->first_node("key"); keyNode; keyNode = keyNode->next_sibling("key"))
+      {
+        ParamKey key;
+        ReadAttr(keyNode, "frame", key.m_frame);
+
+        int type = (int) ParameterVariant::VariantType::Float;
+        ReadAttr(keyNode, "type", type);
+        key.m_type = (ParameterVariant::VariantType) type;
+
+        if (XmlNode* valueNode = keyNode->first_node("value"))
+        {
+          ReadVec(valueNode, key.m_value);
+        }
+
+        keys->push_back(key);
+      }
+    }
+
     return nullptr;
   }
 
@@ -311,17 +777,19 @@ namespace ToolKit
   {
     m_initiated = false;
     m_keys.clear();
+    m_paramKeys.clear();
     m_rootKey.clear();
   }
 
   void Animation::CopyTo(Resource* other)
   {
     Super::CopyTo(other);
-    Animation* cpy  = static_cast<Animation*>(other);
-    cpy->m_keys     = m_keys;
-    cpy->m_fps      = m_fps;
-    cpy->m_duration = m_duration;
-    cpy->m_rootKey  = m_rootKey;
+    Animation* cpy      = static_cast<Animation*>(other);
+    cpy->m_keys         = m_keys;
+    cpy->m_paramKeys    = m_paramKeys;
+    cpy->m_fps          = m_fps;
+    cpy->m_duration     = m_duration;
+    cpy->m_rootKey      = m_rootKey;
   }
 
   void Animation::GetNearestKeys(const KeyArray& keys, int& key1, int& key2, float& ratio, float t)
@@ -587,6 +1055,9 @@ namespace ToolKit
         SkeletonComponentPtr skComp = ntt->GetComponent<SkeletonComponent>();
         MeshPtr mesh                = meshComp != nullptr ? meshComp->GetMeshVal() : nullptr;
 
+        // Parameter tracks of the clip are applied for the record's entity, next to the pose below.
+        record->m_animation->ApplyParamTracks(ntt, record->m_currentTime);
+
         if (mesh != nullptr && mesh->IsSkinned() && skComp != nullptr)
         {
           assert(record->m_animation->m_keys.size() > 0);
@@ -626,9 +1097,9 @@ namespace ToolKit
           // entity node is posed directly. Records that ask for root motion stay under root motion
           // control (applied below), which accumulates deltas on the node instead of setting it.
           //
-          // Node tracks are not pose blended: when two records overlap during a fade, the one
-          // played last owns the node.
-          ntt->SetPose(record->m_animation, record->m_currentTime);
+          // Entity::SetPose() would do the same, but it also applies the parameter tracks, which
+          // this loop already did above for every record.
+          record->m_animation->GetPose(ntt->m_node, record->m_currentTime, ntt->GetNameVal());
         }
       }
     }

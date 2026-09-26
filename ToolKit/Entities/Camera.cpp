@@ -272,21 +272,21 @@ namespace ToolKit
                CameraCategory.Priority,
                true,
                true,
-               {false, true, 10.0f, 175.0f, 5.0f});
+               Animatable({false, true, 10.0f, 175.0f, 5.0f}));
 
     NearClip_Define(m_near,
                     CameraCategory.Name,
                     CameraCategory.Priority,
                     true,
                     true,
-                    {false, true, 0.1f, 100.0f, 0.1f});
+                    Animatable({false, true, 0.1f, 100.0f, 0.1f}));
 
     FarClip_Define(m_far,
                    CameraCategory.Name,
                    CameraCategory.Priority,
                    true,
                    true,
-                   {false, true, 100.1f, 5000.0f, 10.0f});
+                   Animatable({false, true, 100.1f, 5000.0f, 10.0f}));
 
     Orthographic_Define(m_ortographic, CameraCategory.Name, CameraCategory.Priority, true, true);
 
@@ -295,7 +295,7 @@ namespace ToolKit
                              CameraCategory.Priority,
                              true,
                              true,
-                             {false, true, 0.001f, 100.0f, 0.001f});
+                             Animatable({false, true, 0.001f, 100.0f, 0.001f}));
   }
 
   void Camera::ParameterEventConstructor()

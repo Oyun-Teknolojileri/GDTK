@@ -431,6 +431,16 @@ An `Animation` (`.anim`) holds named `KeyArray` tracks, a `Key` being `{frame, p
 scale}`. One track belongs to one animated node and is named after it, which is what the importer
 writes (assimp node name) and what the dope sheet authors.
 
+A clip also carries **parameter tracks** (`ParamKeyArrayMap m_paramKeys`), for the `ParameterVariant`s
+of an entity, a component or a material slot. They are a separate track space because a parameter is
+not a transform: a light color, a material alpha or a visibility flag would otherwise only change in
+the sheet's own readout. Track ids are `"<entity>.<param>"`, `"<entity>.<componentClass>.<param>"` or
+`"<entity>.MaterialComponent.<index>.<param>"`, `Animation::ResolveParamTrack` resolves one against an
+entity and `ApplyParamTracks` writes the sampled value through the variant, so the parameter's change
+callbacks run. Only parameters a `UIHint` marks `animatable` are keyable, and the variant type decides
+whether a curve interpolates (float, vec2, vec3, vec4) or steps (everything else). See
+`parameter-animation-plan.md` for the full design.
+
 Reaching an entity at runtime needs an `AnimControllerComponent` on it: the component keeps a
 signal -> `AnimRecord` map (one record = one entity + one clip + `ApplyRootMotion`), and `Play`
 hands the record to `AnimationPlayer`, which `Main::Frame` updates every frame. The component is
@@ -443,9 +453,10 @@ are not driven from a single place.
   blend animation) feeds the animation data texture, which the shader uses to skin the mesh on the
   GPU. Blending of two clips happens there as well.
 - **Any other entity**: `ntt->SetPose(record->m_animation, record->m_currentTime)` poses the entity
-  node from its own track. `Entity::SetPose` routes skinned entities to the skeleton path and plain
-  entities to `Animation::GetPose(Node*, time, keyName)`, which resolves the track **by name** and
-  falls back to the first track for clips that carry a single curve. Records that request root
+  node from its own track, and the parameter tracks of the clip are applied for the record's entity
+  next to it (`ApplyParamTracks`). `Entity::SetPose` routes skinned entities to the skeleton path and
+  plain entities to `Animation::GetPose(Node*, time, keyName)`, which resolves the track **by name**
+  and falls back to the first track for clips that carry a single curve. Records that request root
   motion are skipped in this branch: they stay under `ApplyRootMotion`, which accumulates deltas on
   the node (from the track named in `Animation::m_rootKey`) instead of setting it. Node tracks are
   not pose blended -- during a fade the record played last owns the node.
@@ -685,11 +696,14 @@ Model:
   animation manager, the drop zone brings it back).
 
 Playback in the sheet is **editor side** on purpose: it samples the clip with the engine's own
-`GetNearestKeys` and writes the pose to the matching entity nodes, so the sheet previews a clip
-without wiring an `AnimControllerComponent` first (the component path is how a game plays it, see
-6.3). Play advances the playhead with the frame delta and loops over
-`[0, End]`, Pause freezes the pose so the gizmo can still move the entity, and Stop restores the
-transforms snapshotted when the preview session started (`BeginPreviewSession`). Scrub on the
+`GetNearestKeys` and writes the pose to the matching entity nodes, and it applies the clip's parameter
+tracks as well (`ApplyParamTracksAt` hands the work to `Animation::ApplyParamTracks`), so a light color
+or a material parameter animates in the preview too -- a parameter track is not a transform and would
+otherwise only change in the sheet's own value readout. The component path is how a game plays a clip,
+see 6.3. Play advances the playhead with the frame delta and loops over
+`[0, End]`, Pause freezes the pose so the gizmo can still move the entity, and Stop restores what the
+preview session overwrote (`BeginPreviewSession` snapshots the local transforms and the parameter
+values, `RestorePreviewState` writes both back). Scrub on the
 ruler or by dragging a lane; the wheel scrolls the rows, `Shift+wheel` pans, `Ctrl+wheel` zooms.
 
 ---
@@ -872,6 +886,7 @@ When writing/editing any `.h`/`.cpp` in this repo:
 | Threads / Worker | `ToolKit/Threads.h` |
 | Editor app | `Editor/App.h` |
 | Animation resource / tracks / player | `ToolKit/Resources/Animation.h` |
+| Parameter animation plan | `parameter-animation-plan.md` |
 | Undoable editor actions (incl. key edits) | `Editor/Source/Action.h` |
 | Dope sheet editor (view + window) | `Editor/UI/View/DopeSheetView.h` |
 | Editor renderer | `Editor/EditorRenderer.h` |

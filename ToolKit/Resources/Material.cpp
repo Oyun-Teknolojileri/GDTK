@@ -348,11 +348,16 @@ namespace ToolKit
     NormalTexture_Define(nullptr, MaterialCategory.Name, MaterialCategory.Priority, false, false);
     MetallicRoughnessTexture_Define(nullptr, MaterialCategory.Name, MaterialCategory.Priority, false, false);
 
-    Alpha_Define(1.0f, MaterialCategory.Name, MaterialCategory.Priority, true, false);
-    Metallic_Define(0.2f, MaterialCategory.Name, MaterialCategory.Priority, true, false);
-    Roughness_Define(0.5f, MaterialCategory.Name, MaterialCategory.Priority, true, false);
-    Color_Define(Vec3(1.0f), MaterialCategory.Name, MaterialCategory.Priority, true, false);
-    EmissiveColor_Define(Vec3(0.0f), MaterialCategory.Name, MaterialCategory.Priority, true, false);
+    Alpha_Define(1.0f, MaterialCategory.Name, MaterialCategory.Priority, true, false, Animatable({}));
+    Metallic_Define(0.2f, MaterialCategory.Name, MaterialCategory.Priority, true, false, Animatable({}));
+    Roughness_Define(0.5f, MaterialCategory.Name, MaterialCategory.Priority, true, false, Animatable({}));
+    Color_Define(Vec3(1.0f), MaterialCategory.Name, MaterialCategory.Priority, true, false, Animatable({true}));
+    EmissiveColor_Define(Vec3(0.0f),
+                         MaterialCategory.Name,
+                         MaterialCategory.Priority,
+                         true,
+                         false,
+                         Animatable({true}));
   }
 
   void Material::ParameterEventConstructor()

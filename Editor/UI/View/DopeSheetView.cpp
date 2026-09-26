@@ -58,6 +58,31 @@ namespace ToolKit
     // theme alike, while a theme background colour would blend into the sheet and show nothing.
     const ImVec4 g_outOfRangeVeil(0.5f, 0.5f, 0.5f, 0.22f);
 
+    /** Compact textual form of a sampled parameter value, for the sheet rows. */
+    String FormatParamValue(ParameterVariant::VariantType type, const Vec4& value)
+    {
+      switch (type)
+      {
+        case ParameterVariant::VariantType::Float:
+          return Format("%.3g", value.x);
+        case ParameterVariant::VariantType::Int:
+        case ParameterVariant::VariantType::UInt:
+        case ParameterVariant::VariantType::Byte:
+        case ParameterVariant::VariantType::Ubyte:
+          return Format("%d", (int) glm::round(value.x));
+        case ParameterVariant::VariantType::Bool:
+          return value.x != 0.0f ? "true" : "false";
+        case ParameterVariant::VariantType::Vec2:
+          return Format("%.3g, %.3g", value.x, value.y);
+        case ParameterVariant::VariantType::Vec3:
+          return Format("%.3g, %.3g, %.3g", value.x, value.y, value.z);
+        case ParameterVariant::VariantType::Vec4:
+          return Format("%.3g, %.3g, %.3g, %.3g", value.x, value.y, value.z, value.w);
+        default:
+          return "";
+      }
+    }
+
     // DopeSheetView
     //////////////////////////////////////////
 
@@ -71,7 +96,7 @@ namespace ToolKit
     {
       // The clip and the preview snapshot hold engine objects; drop the snapshot so the node
       // transforms the sheet touched are restored before the window goes away.
-      RestoreBaseTransforms();
+      RestorePreviewState();
       m_clip = nullptr;
     }
 
@@ -91,6 +116,7 @@ namespace ToolKit
       m_dragging = false;
       m_selectedTrack.clear();
       m_selectedFrame = -1;
+      m_selectedParam = false;
 
       m_trackEntities.clear();
       m_entityTracks.clear();
@@ -251,7 +277,7 @@ namespace ToolKit
 
     void DopeSheetView::Stop()
     {
-      RestoreBaseTransforms();
+      RestorePreviewState();
       m_playState = PlayState::Stopped;
       m_frame     = 0;
       m_time      = 0.0f;
@@ -277,6 +303,7 @@ namespace ToolKit
       m_sceneId       = sceneId;
       m_sessionActive = false;
       m_dragging      = false;
+      m_selectedParam = false;
       m_trackEntities.clear();
       m_entityTracks.clear();
       m_baseTransforms.clear();
@@ -473,10 +500,41 @@ namespace ToolKit
         m_baseTransforms[ntt->GetIdVal()] = ntt->m_node->GetTransform(TransformationSpace::TS_LOCAL);
       }
 
+      // The parameter values the preview is about to overwrite, so Stop can put those back as well.
+      m_baseParams.clear();
+      for (const auto& track : m_clip->m_paramKeys)
+      {
+        if (track.second.empty())
+        {
+          continue;
+        }
+
+        EntityPtr ntt = EntityForParamTrack(track.first);
+        if (ntt == nullptr)
+        {
+          continue;
+        }
+
+        ParameterVariant* var = m_clip->ResolveParamTrack(ntt, track.first);
+        if (var == nullptr)
+        {
+          continue;
+        }
+
+        ParamSnapshot snapshot;
+        if (!Animation::PackParamValue(*var, snapshot.value))
+        {
+          continue;
+        }
+
+        snapshot.type        = var->GetType();
+        m_baseParams[track.first] = snapshot;
+      }
+
       m_sessionActive = true;
     }
 
-    void DopeSheetView::RestoreBaseTransforms()
+    void DopeSheetView::RestorePreviewState()
     {
       if (!m_sessionActive)
       {
@@ -494,7 +552,24 @@ namespace ToolKit
         }
       }
 
+      // Put the parameter values back the same way the transforms are: written through the variant,
+      // so the parameter's own change callbacks run again.
+      for (const auto& entry : m_baseParams)
+      {
+        EntityPtr ntt = EntityForParamTrack(entry.first);
+        if (ntt == nullptr)
+        {
+          continue;
+        }
+
+        if (ParameterVariant* var = m_clip->ResolveParamTrack(ntt, entry.first))
+        {
+          Animation::UnpackParamValue(*var, entry.second.type, entry.second.value);
+        }
+      }
+
       m_baseTransforms.clear();
+      m_baseParams.clear();
       m_sessionActive = false;
     }
 
@@ -527,6 +602,42 @@ namespace ToolKit
         {
           ntt->m_node->SetLocalTransforms(pos, rot, scale);
         }
+      }
+
+      // Parameter tracks are independent of the node tracks: a light color or a material parameter
+      // does not come from a transform, so the clip has to be applied to the scene for them too.
+      ApplyParamTracksAt(time);
+    }
+
+    void DopeSheetView::ApplyParamTracksAt(float time)
+    {
+      if (m_clip == nullptr || m_clip->m_paramKeys.empty() || !CanEdit())
+      {
+        return;
+      }
+
+      // Which entities the clip's parameter tracks address. The engine resolves and writes the
+      // values, the sheet only decides who is involved.
+      EntityPtrArray targets;
+      for (const auto& track : m_clip->m_paramKeys)
+      {
+        if (track.second.empty())
+        {
+          continue;
+        }
+
+        EntityPtr ntt = EntityForParamTrack(track.first);
+        if (ntt == nullptr || std::find(targets.begin(), targets.end(), ntt) != targets.end())
+        {
+          continue;
+        }
+
+        targets.push_back(ntt);
+      }
+
+      for (EntityPtr ntt : targets)
+      {
+        m_clip->ApplyParamTracks(ntt, time);
       }
     }
 
@@ -682,26 +793,55 @@ namespace ToolKit
         return;
       }
 
-      const String track = m_selectedTrack;
-      const int frame    = m_selectedFrame;
+      const String track     = m_selectedTrack;
+      const int frame        = m_selectedFrame;
+      const bool paramTrack  = m_selectedParam;
 
       m_selectedTrack.clear();
       m_selectedFrame = -1;
+      m_selectedParam = false;
 
-      if (!TrackHasKey(track, frame))
+      if (!TrackHasKey(track, frame, paramTrack))
       {
         // Undo already removed it, nothing left to delete.
         return;
       }
 
-      KeyEditAction::DeleteKey(m_clip, track, frame);
+      if (paramTrack)
+      {
+        KeyEditAction::DeleteParamKey(m_clip, track, frame);
+      }
+      else
+      {
+        KeyEditAction::DeleteKey(m_clip, track, frame);
+      }
+
       TK_LOG("Dope sheet: key deleted at frame %d on track %s.", frame, track.c_str());
     }
 
-    bool DopeSheetView::TrackHasKey(const String& trackName, int frame) const
+    bool DopeSheetView::TrackHasKey(const String& trackName, int frame, bool paramTrack) const
     {
       if (m_clip == nullptr || frame < 0)
       {
+        return false;
+      }
+
+      if (paramTrack)
+      {
+        const ParamKeyArray* keys = m_clip->m_paramKeys.Find(trackName);
+        if (keys == nullptr)
+        {
+          return false;
+        }
+
+        for (const ParamKey& key : *keys)
+        {
+          if (key.m_frame == frame)
+          {
+            return true;
+          }
+        }
+
         return false;
       }
 
@@ -722,6 +862,144 @@ namespace ToolKit
       return false;
     }
 
+    // Parameter tracks
+    //////////////////////////////////////////
+
+    EntityPtr DopeSheetView::EntityForParamTrack(const String& trackId) const
+    {
+      EditorScenePtr scene = GetApp()->GetCurrentScene();
+      if (scene == nullptr || trackId.empty())
+      {
+        return nullptr;
+      }
+
+      // Entity names may contain dots, so the longest name that prefixes the track owns it.
+      EntityPtr best    = nullptr;
+      size_t bestLength = 0;
+
+      for (const EntityPtr& ntt : scene->GetEntities())
+      {
+        if (ntt == nullptr)
+        {
+          continue;
+        }
+
+        const String name = ntt->GetNameVal();
+        if (name.empty() || name.length() <= bestLength)
+        {
+          continue;
+        }
+
+        if (StartsWith(trackId, name + "."))
+        {
+          best       = ntt;
+          bestLength = name.length();
+        }
+      }
+
+      return best;
+    }
+
+    DopeSheetView::ParamKeyState DopeSheetView::GetParamKeyState(const String& trackId) const
+    {
+      if (m_clip == nullptr)
+      {
+        return ParamKeyState::NoClip;
+      }
+
+      const ParamKeyArray* keys = m_clip->m_paramKeys.Find(trackId);
+      if (keys == nullptr || keys->empty())
+      {
+        return ParamKeyState::NotAnimated;
+      }
+
+      for (const ParamKey& key : *keys)
+      {
+        if (key.m_frame == m_frame)
+        {
+          return ParamKeyState::KeyAtFrame;
+        }
+      }
+
+      return ParamKeyState::Animated;
+    }
+
+    bool DopeSheetView::ParamTrackHasKey(const String& trackId, int frame) const
+    {
+      if (m_clip == nullptr || frame < 0)
+      {
+        return false;
+      }
+
+      const ParamKeyArray* keys = m_clip->m_paramKeys.Find(trackId);
+      if (keys == nullptr)
+      {
+        return false;
+      }
+
+      for (const ParamKey& key : *keys)
+      {
+        if (key.m_frame == frame)
+        {
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    bool DopeSheetView::SetParamKey(const String& trackId)
+    {
+      if (m_clip == nullptr || !CanEdit())
+      {
+        return false;
+      }
+
+      EntityPtr ntt = EntityForParamTrack(trackId);
+      if (ntt == nullptr)
+      {
+        return false;
+      }
+
+      ParameterVariant* var = m_clip->ResolveParamTrack(ntt, trackId);
+      if (var == nullptr)
+      {
+        return false;
+      }
+
+      // The value on screen right now becomes the key, so a Set Key after an edit in the inspector
+      // records exactly that.
+      ParamKey key;
+      key.m_frame = m_frame;
+
+      if (!Animation::PackParamValue(*var, key.m_value))
+      {
+        TK_WRN("Dope sheet: %s is not a keyframable parameter.", trackId.c_str());
+        return false;
+      }
+
+      key.m_type = var->GetType();
+      KeyEditAction::SetParamKey(m_clip, trackId, key);
+
+      m_endFrame         = glm::max(m_endFrame, m_frame);
+      m_clip->m_duration = glm::max(m_clip->m_duration, m_endFrame / glm::max(1.0f, m_clip->m_fps));
+
+      GetApp()->SetStatusMsg(g_statusSucceeded);
+      TK_LOG("Dope sheet: parameter key set at frame %d for %s.", m_frame, trackId.c_str());
+      return true;
+    }
+
+    void DopeSheetView::DeleteParamKey(const String& trackId, int frame)
+    {
+      if (m_clip == nullptr || !CanEdit() || !ParamTrackHasKey(trackId, frame))
+      {
+        return;
+      }
+
+      KeyEditAction::DeleteParamKey(m_clip, trackId, frame);
+      TK_LOG("Dope sheet: parameter key deleted at frame %d for %s.", frame, trackId.c_str());
+    }
+
     void DopeSheetView::ValidateSelection()
     {
       if (!HasSelectedKey())
@@ -729,11 +1007,12 @@ namespace ToolKit
         return;
       }
 
-      if (!TrackHasKey(m_selectedTrack, m_selectedFrame))
+      if (!TrackHasKey(m_selectedTrack, m_selectedFrame, m_selectedParam))
       {
         // An undo removed the key under the selection.
         m_selectedTrack.clear();
         m_selectedFrame = -1;
+        m_selectedParam = false;
       }
     }
 
@@ -755,10 +1034,18 @@ namespace ToolKit
       }
 
       // The action moves the key and replaces whatever sat on the target frame.
-      KeyEditAction::MoveKey(m_clip, m_dragTrack, fromFrame, toFrame);
+      if (m_dragParam)
+      {
+        KeyEditAction::MoveParamKey(m_clip, m_dragTrack, fromFrame, toFrame);
+      }
+      else
+      {
+        KeyEditAction::MoveKey(m_clip, m_dragTrack, fromFrame, toFrame);
+      }
 
       m_selectedTrack = m_dragTrack;
       m_selectedFrame = toFrame;
+      m_selectedParam = m_dragParam;
 
       TK_LOG("Dope sheet: key moved from frame %d to %d on track %s.",
              fromFrame,
@@ -1055,8 +1342,9 @@ namespace ToolKit
       }
       ImGui::EndDisabled();
 
-      // What the clip currently matches in the scene. Tracks without an entity are listed in the
-      // sheet, they just never drive anything.
+      // What the clip currently addresses in the scene. Tracks that resolve to nothing are listed in
+      // the sheet, they just never drive anything. Parameter tracks count when the id still names a
+      // parameter of an entity in the scene.
       int matched   = 0;
       int unmatched = 0;
 
@@ -1065,6 +1353,19 @@ namespace ToolKit
         for (const auto& track : m_clip->m_keys)
         {
           if (EntityForTrack(track.first) != nullptr)
+          {
+            matched++;
+          }
+          else
+          {
+            unmatched++;
+          }
+        }
+
+        for (const auto& track : m_clip->m_paramKeys)
+        {
+          EntityPtr ntt = EntityForParamTrack(track.first);
+          if (ntt != nullptr && m_clip->ResolveParamTrack(ntt, track.first) != nullptr)
           {
             matched++;
           }
@@ -1213,9 +1514,25 @@ namespace ToolKit
       const ImVec2 origin     = ImGui::GetCursorScreenPos();
       const ImVec2 avail      = ImGui::GetContentRegionAvail();
       const float viewHeight  = avail.y;
-      const float contentH    = m_clip->m_keys.size() * g_rowHeight;
+
+      // Rows: the transform tracks first, then the parameter tracks of the clip.
+      const int transformRows = (int) m_clip->m_keys.size();
+      const int paramRows     = (int) m_clip->m_paramKeys.size();
+      const int rowCount      = transformRows + paramRows;
+      const float contentH    = rowCount * g_rowHeight;
       const float maxScrollY  = glm::max(0.0f, contentH - viewHeight);
-      const int rowCount      = (int) m_clip->m_keys.size();
+
+      auto rowIsParam = [transformRows](int row) -> bool { return row >= transformRows; };
+
+      auto rowName = [this, transformRows](int row) -> const String&
+      {
+        if (row < transformRows)
+        {
+          return m_clip->m_keys[row].first;
+        }
+
+        return m_clip->m_paramKeys[row - transformRows].first;
+      };
 
       // Plain wheel scrolls the rows, shift pans the timeline, ctrl zooms around the cursor.
       if (ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) && io.MouseWheel != 0.0f)
@@ -1272,23 +1589,30 @@ namespace ToolKit
 
       for (int row = firstRow; row < lastRow; row++)
       {
-        const String& trackName = m_clip->m_keys[row].first;
-        const KeyArray& keys    = m_clip->m_keys[row].second;
-        const float rowY        = origin.y + row * g_rowHeight - m_scrollY;
+        const String& trackName = rowName(row);
+        const bool paramRow     = rowIsParam(row);
+
+        const KeyArray* keys        = paramRow ? nullptr : m_clip->m_keys.Find(trackName);
+        const ParamKeyArray* pKeys  = paramRow ? m_clip->m_paramKeys.Find(trackName) : nullptr;
+        const int keyCount          = paramRow ? (int) pKeys->size() : (int) keys->size();
+
+        const float rowY = origin.y + row * g_rowHeight - m_scrollY;
 
         ImGui::PushID(row);
 
-        // One hit area per row. Phase 1 uses it to scrub the playhead; key selection and dragging
-        // arrive with the later phases.
+        // One hit area per row: it scrubs the playhead, selects a key and carries a key drag.
         ImGui::SetCursorScreenPos(ImVec2(origin.x, rowY));
         ImGui::InvisibleButton("##dopeSheetLane", ImVec2(avail.x, g_rowHeight));
 
         const bool rowHovered = ImGui::IsItemHovered();
         const bool rowActive  = ImGui::IsItemActive();
 
-        const EntityPtr ntt = EntityForTrack(trackName);
-        const bool skinned  = IsSkinned(ntt);
-        bool openCtx        = false;
+        // A parameter track addresses an entity, component or material slot instead of a node.
+        const EntityPtr ntt      = paramRow ? EntityForParamTrack(trackName) : EntityForTrack(trackName);
+        const bool skinned       = paramRow ? false : IsSkinned(ntt);
+        const bool resolvedParam = paramRow ? (ntt != nullptr && m_clip->ResolveParamTrack(ntt, trackName) != nullptr)
+                                            : (ntt != nullptr);
+        bool openCtx             = false;
 
         ImU32 background    = (row % 2 == 0) ? rowEven : rowOdd;
         if (rowHovered)
@@ -1300,25 +1624,32 @@ namespace ToolKit
                           ImVec2(origin.x + avail.x, rowY + g_rowHeight),
                           background);
 
-        // Keys.
-        const float keyY      = rowY + g_rowHeight * 0.5f;
-        int hoveredKeyFrame   = -1;
-
-        for (const Key& key : keys)
+        // The first parameter row is separated from the transform rows above it.
+        if (paramRow && row == transformRows && row > firstRow)
         {
-          const float keyX = FrameToX(key.m_frame, laneLeft);
+          dl->AddLine(ImVec2(laneLeft, rowY), ImVec2(origin.x + avail.x, rowY), columnLine);
+        }
+
+        // Keys.
+        const float keyY    = rowY + g_rowHeight * 0.5f;
+        int hoveredKeyFrame = -1;
+
+        // Both key kinds draw the same marker, they only differ in where the frame comes from.
+        auto drawKey = [&](int keyFrame) -> void
+        {
+          const float keyX = FrameToX(keyFrame, laneLeft);
           if (keyX < laneLeft - g_keyRadius || keyX > laneLeft + laneWidth + g_keyRadius)
           {
-            continue;
+            return;
           }
 
           if (rowHovered && glm::abs(io.MousePos.x - keyX) <= g_keyRadius &&
               glm::abs(io.MousePos.y - keyY) <= g_keyRadius)
           {
-            hoveredKeyFrame = key.m_frame;
+            hoveredKeyFrame = keyFrame;
           }
 
-          const bool draggingSource = m_dragging && trackName == m_dragTrack && key.m_frame == m_dragFromFrame;
+          const bool draggingSource = m_dragging && trackName == m_dragTrack && keyFrame == m_dragFromFrame;
           if (draggingSource)
           {
             // While it is being dragged, the key is drawn as a ghost on the target frame below.
@@ -1328,11 +1659,11 @@ namespace ToolKit
                         ImVec2(keyX - g_keyRadius, keyY),
                         cursorColor,
                         1.0f);
-            continue;
+            return;
           }
 
-          const bool selected = (trackName == m_selectedTrack && key.m_frame == m_selectedFrame);
-          const bool current  = key.m_frame == m_frame;
+          const bool selected = (trackName == m_selectedTrack && keyFrame == m_selectedFrame);
+          const bool current  = keyFrame == m_frame;
 
           dl->AddQuadFilled(ImVec2(keyX, keyY - g_keyRadius),
                             ImVec2(keyX + g_keyRadius, keyY),
@@ -1348,6 +1679,21 @@ namespace ToolKit
                         ImVec2(keyX - g_keyRadius, keyY),
                         ImGui::GetColorU32(ImGuiCol_Text),
                         1.0f);
+          }
+        };
+
+        if (paramRow)
+        {
+          for (const ParamKey& key : *pKeys)
+          {
+            drawKey(key.m_frame);
+          }
+        }
+        else
+        {
+          for (const Key& key : *keys)
+          {
+            drawKey(key.m_frame);
           }
         }
 
@@ -1376,12 +1722,28 @@ namespace ToolKit
         }
 
         // Name column.
-        const ImU32 nameColor = ntt == nullptr ? ImGui::GetColorU32(ImGuiCol_TextDisabled)
-                                              : ImGui::GetColorU32(ImGuiCol_Text);
+        const ImU32 nameColor = (ntt == nullptr) ? ImGui::GetColorU32(ImGuiCol_TextDisabled)
+                                                 : ImGui::GetColorU32(ImGuiCol_Text);
         dl->AddText(ImVec2(origin.x + 6.0f, rowY + (g_rowHeight - lineHeight) * 0.5f), nameColor, trackName.c_str());
 
-        String info = Format("%d key%s", (int) keys.size(), keys.size() == 1 ? "" : "s");
-        if (skinned)
+        String info = Format("%d key%s", keyCount, keyCount == 1 ? "" : "s");
+        if (paramRow)
+        {
+          // Param rows report the value the track holds at the playhead, and whether the id still
+          // addresses something in the scene.
+          Vec4 value;
+          ParameterVariant::VariantType type;
+          if (m_clip->GetParamValue(trackName, CurrentTime(), value, type))
+          {
+            info += "  = " + FormatParamValue(type, value);
+          }
+
+          if (!resolvedParam)
+          {
+            info += "  [no owner]";
+          }
+        }
+        else if (skinned)
         {
           info += "  [skinned]";
         }
@@ -1409,6 +1771,7 @@ namespace ToolKit
         {
           m_ctxTrack = trackName;
           m_ctxFrame = hoveredKeyFrame;
+          m_ctxParam = paramRow;
           openCtx    = true;
         }
 
@@ -1418,7 +1781,9 @@ namespace ToolKit
         {
           m_selectedTrack = trackName;
           m_selectedFrame = hoveredKeyFrame;
+          m_selectedParam = paramRow;
           m_dragTrack     = trackName;
+          m_dragParam     = paramRow;
           m_dragFromFrame = hoveredKeyFrame;
           m_dragToFrame   = hoveredKeyFrame;
           m_dragging      = true;
@@ -1427,6 +1792,7 @@ namespace ToolKit
         {
           m_selectedTrack.clear();
           m_selectedFrame = -1;
+          m_selectedParam = false;
         }
 
         if (m_dragging && m_dragTrack == trackName)
@@ -1492,14 +1858,24 @@ namespace ToolKit
         ImGui::TextUnformatted(m_ctxTrack.c_str());
         ImGui::Separator();
 
-        const int ctxFrame = m_ctxFrame;
+        const int ctxFrame   = m_ctxFrame;
+        const bool ctxIsParam = m_ctxParam;
 
         ImGui::BeginDisabled(!CanEdit());
         if (ImGui::MenuItem("Delete Key", nullptr, false, ctxFrame >= 0))
         {
           m_selectedTrack.clear();
           m_selectedFrame = -1;
-          KeyEditAction::DeleteKey(m_clip, m_ctxTrack, ctxFrame);
+          m_selectedParam = false;
+
+          if (ctxIsParam)
+          {
+            KeyEditAction::DeleteParamKey(m_clip, m_ctxTrack, ctxFrame);
+          }
+          else
+          {
+            KeyEditAction::DeleteKey(m_clip, m_ctxTrack, ctxFrame);
+          }
         }
 
         // Track removal is not undoable yet; it drops every key of the track.
@@ -1509,11 +1885,14 @@ namespace ToolKit
           // before its keys are gone.
           Stop();
 
-          if (m_clip->m_keys.Erase(m_ctxTrack))
+          const bool removed = ctxIsParam ? m_clip->m_paramKeys.Erase(m_ctxTrack)
+                                          : m_clip->m_keys.Erase(m_ctxTrack);
+          if (removed)
           {
             m_clip->m_dirty = true;
             m_selectedTrack.clear();
             m_selectedFrame = -1;
+            m_selectedParam = false;
             ResolveTracks();
           }
         }
@@ -1549,6 +1928,34 @@ namespace ToolKit
       {
         m_view->SetKeyOnSelection();
       }
+    }
+
+    DopeSheetView::ParamKeyState DopeSheetWindow::GetParamKeyState(const String& trackId)
+    {
+      if (m_view == nullptr)
+      {
+        return DopeSheetView::ParamKeyState::NoClip;
+      }
+
+      return m_view->GetParamKeyState(trackId);
+    }
+
+    bool DopeSheetWindow::SetParamKey(const String& trackId)
+    {
+      return m_view != nullptr && m_view->SetParamKey(trackId);
+    }
+
+    void DopeSheetWindow::DeleteParamKey(const String& trackId, int frame)
+    {
+      if (m_view != nullptr)
+      {
+        m_view->DeleteParamKey(trackId, frame);
+      }
+    }
+
+    int DopeSheetWindow::GetFrame()
+    {
+      return m_view != nullptr ? m_view->GetFrame() : 0;
     }
 
     void DopeSheetWindow::Show()

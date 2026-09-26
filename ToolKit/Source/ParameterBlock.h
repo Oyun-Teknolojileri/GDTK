@@ -157,7 +157,27 @@ namespace ToolKit
     float rangeMax            = 100.0f;
     float increment           = 0.1f;
     bool waitForTheEndOfInput = false;
+
+    /**
+     * Opts a parameter in to keyframing: the editor draws a key diamond next to it and the dope
+     * sheet can hold keys for it. Off by default, because the type alone would expose parameters
+     * that must not be animated (an id, a prefab path). Whether a keyed value steps or interpolates
+     * is decided by the variant type, not by a second flag.
+     *
+     * Kept last so the existing UIHint brace initializers at the _Define calls stay valid.
+     */
+    bool animatable = false;
   };
+
+  /**
+   * Marks a parameter as keyframable, for the _Define calls that opt in:
+   * @code Animatable({true}) @endcode or @code Animatable({false, true, 0.0f, 1.0f, 0.01f}) @endcode
+   */
+  inline UIHint Animatable(UIHint hint)
+  {
+    hint.animatable = true;
+    return hint;
+  }
 
   /**
    * The category to group / access / sort and display the ParameterVariant.
