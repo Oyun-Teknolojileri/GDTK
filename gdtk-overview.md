@@ -681,9 +681,9 @@ by app id instead.
 ### 9.7 Dope Sheet editor (Editor/UI/View/DopeSheetView.*)
 
 `DopeSheetView` + `DopeSheetWindow` (`g_dopeSheetStr`, opened from the Windows menu) are the
-frame based keyframe editor for entity node transforms. Non skinned entity nodes are covered;
-skeleton / bone rows, auto key, multi key selection with bulk move and copy/paste are later phases
-(see `dope-sheet-plan.md`).
+frame based keyframe editor for entity node transforms. Non skinned entity nodes are covered; one key
+is selected and copied at a time, and skeleton / bone rows, auto key and multi key selection with bulk
+move are later phases (see `dope-sheet-plan.md`).
 
 Model:
 
@@ -708,6 +708,13 @@ Model:
   sheet is hovered: the sheet handles its own keys instead of calling `Window::ModShortCutSignals()`,
   and it steps the editor wide `ActionManager` stack, so an undo may also step back an edit made
   elsewhere.
+- One key travels through the sheet's clipboard. `Ctrl+C` copies the selected key, `Ctrl+V` writes it
+  at the playhead on the selected row -- or back on the row it came from when nothing is selected --
+  so a key is duplicated in place or sent to another entity. The row context menu copies the key
+  under the pointer and pastes onto that row, which needs no selection at all. Both key kinds travel
+  (the transform payload or the parameter payload): a transform key and a parameter key cannot be
+  mixed, and a parameter key has to match the type of the parameter it addresses. A paste is one
+  `KeyEditAction` step and replaces whatever sits on the target frame.
 - `K` also works from the editor viewport (`EditorViewport::DispatchSignals`), which keys the
   selected entities at the sheet's playhead through `App::GetDopeSheet()`; the frame and the clip
   live in the sheet, so the shortcut reports through the status bar when the sheet is not open.

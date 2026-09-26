@@ -904,6 +904,182 @@ namespace ToolKit
       TK_LOG("Dope sheet: key deleted at frame %d on track %s.", frame, track.c_str());
     }
 
+    bool DopeSheetView::KeyAt(const String& trackName, int frame, Key& key) const
+    {
+      if (m_clip == nullptr)
+      {
+        return false;
+      }
+
+      const KeyArray* keys = m_clip->m_keys.Find(trackName);
+      if (keys == nullptr)
+      {
+        return false;
+      }
+
+      for (const Key& candidate : *keys)
+      {
+        if (candidate.m_frame == frame)
+        {
+          key = candidate;
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    bool DopeSheetView::ParamKeyAt(const String& trackName, int frame, ParamKey& key) const
+    {
+      if (m_clip == nullptr)
+      {
+        return false;
+      }
+
+      const ParamKeyArray* keys = m_clip->m_paramKeys.Find(trackName);
+      if (keys == nullptr)
+      {
+        return false;
+      }
+
+      for (const ParamKey& candidate : *keys)
+      {
+        if (candidate.m_frame == frame)
+        {
+          key = candidate;
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    void DopeSheetView::CopyKey(const String& trackName, int frame, bool paramTrack)
+    {
+      if (m_clip == nullptr || trackName.empty() || frame < 0)
+      {
+        return;
+      }
+
+      KeyClipboard clipboard;
+      if (paramTrack)
+      {
+        if (!ParamKeyAt(trackName, frame, clipboard.m_param))
+        {
+          return;
+        }
+      }
+      else if (!KeyAt(trackName, frame, clipboard.m_key))
+      {
+        return;
+      }
+
+      clipboard.m_valid    = true;
+      clipboard.m_paramKey = paramTrack;
+      clipboard.m_track    = trackName;
+      clipboard.m_frame    = frame;
+
+      m_keyClipboard = clipboard;
+
+      // The copied key becomes the selection, so Ctrl+V lands back on the same row without the
+      // animator having to select it first.
+      m_selectedTrack = trackName;
+      m_selectedFrame = frame;
+      m_selectedParam = paramTrack;
+
+      GetApp()->SetStatusMsg(Format("Key copied from frame %d.", frame));
+      TK_LOG("Dope sheet: key copied from track %s at frame %d.", trackName.c_str(), frame);
+    }
+
+    void DopeSheetView::CopySelectedKey()
+    {
+      if (!HasSelectedKey())
+      {
+        GetApp()->SetStatusMsg("Select a key to copy.");
+        return;
+      }
+
+      CopyKey(m_selectedTrack, m_selectedFrame, m_selectedParam);
+    }
+
+    void DopeSheetView::PasteKeyOn(const String& trackName, bool paramTrack)
+    {
+      if (!m_keyClipboard.m_valid || m_clip == nullptr || trackName.empty() || !CanEdit())
+      {
+        return;
+      }
+
+      // A transform key and a parameter key do not describe the same thing, so a paste across the two
+      // is refused instead of writing a key no code path would ever read.
+      if (paramTrack != m_keyClipboard.m_paramKey)
+      {
+        GetApp()->SetStatusMsg("A transform key cannot be pasted on a parameter track, or the other "
+                               "way around.");
+        return;
+      }
+
+      if (paramTrack)
+      {
+        // The key has to match the parameter it addresses: a Float key on a Vec3 track would sit in
+        // the clip and never drive anything.
+        ParameterVariant* var = nullptr;
+        if (EntityPtr ntt = EntityForParamTrack(trackName))
+        {
+          var = m_clip->ResolveParamTrack(ntt, trackName);
+        }
+
+        if (var != nullptr && var->GetType() != m_keyClipboard.m_param.m_type)
+        {
+          GetApp()->SetStatusMsg("The copied key does not match the type of this parameter.");
+          return;
+        }
+
+        ParamKey key = m_keyClipboard.m_param;
+        key.m_frame  = m_frame;
+        KeyEditAction::SetParamKey(m_clip, trackName, key);
+      }
+      else
+      {
+        Key key     = m_keyClipboard.m_key;
+        key.m_frame = m_frame;
+        KeyEditAction::SetKey(m_clip, trackName, key);
+      }
+
+      // The pasted key becomes the selection, so a repeated paste keeps hitting the same row.
+      m_selectedTrack = trackName;
+      m_selectedFrame = m_frame;
+      m_selectedParam = paramTrack;
+
+      if (m_sessionActive)
+      {
+        // Rewrite the pose so the pasted key shows without having to scrub.
+        ApplyPoseAt(CurrentTime());
+      }
+
+      GetApp()->SetStatusMsg(g_statusSucceeded);
+      TK_LOG("Dope sheet: key pasted on track %s at frame %d.", trackName.c_str(), m_frame);
+    }
+
+    void DopeSheetView::PasteKey()
+    {
+      if (!m_keyClipboard.m_valid)
+      {
+        GetApp()->SetStatusMsg("Copy a key first.");
+        return;
+      }
+
+      // The selected row wins, otherwise the key goes back to the row it came from, which makes
+      // Ctrl+C followed by Ctrl+V on another frame a duplicate in place.
+      if (!m_selectedTrack.empty())
+      {
+        PasteKeyOn(m_selectedTrack, m_selectedParam);
+      }
+      else
+      {
+        PasteKeyOn(m_keyClipboard.m_track, m_keyClipboard.m_paramKey);
+      }
+    }
+
     void DopeSheetView::SetKeyInterp(const String& trackName, int frame, KeyInterp interp)
     {
       if (m_clip == nullptr || !CanEdit() || frame < 0)
@@ -2133,6 +2309,20 @@ namespace ToolKit
         }
         ImGui::EndDisabled();
 
+        // Copy takes the key under the cursor. Paste drops the clipboard key at the playhead on the
+        // row under the cursor, so a key can be sent to another entity without selecting anything.
+        ImGui::BeginDisabled(!CanEdit());
+        if (ImGui::MenuItem("Copy Key", nullptr, false, ctxFrame >= 0))
+        {
+          CopyKey(m_ctxTrack, ctxFrame, ctxIsParam);
+        }
+
+        if (ImGui::MenuItem("Paste Key", nullptr, false, m_keyClipboard.m_valid))
+        {
+          PasteKeyOn(m_ctxTrack, ctxIsParam);
+        }
+        ImGui::EndDisabled();
+
         // Interpolation of the key under the cursor. The menu stays open while the sheet is only
         // previewing, so the mode can still be read; the modes themselves are disabled then. A
         // parameter key carries no mode, its type decides how it blends, so the menu stays away.
@@ -2289,6 +2479,18 @@ namespace ToolKit
       if (ImGui::IsKeyPressed(ImGuiKey_Delete, false) || ImGui::IsKeyPressed(ImGuiKey_Backspace, false))
       {
         m_view->DeleteSelectedKey();
+      }
+
+      // Copy and paste of the selected key. The sheet does not call ModShortCutSignals, so Ctrl+C and
+      // Ctrl+V are free here and are not read as the transform mode shortcuts.
+      if (ImGui::IsKeyPressed(ImGuiKey_C, false) && ImGui::IsKeyDown(ImGuiMod_Ctrl))
+      {
+        m_view->CopySelectedKey();
+      }
+
+      if (ImGui::IsKeyPressed(ImGuiKey_V, false) && ImGui::IsKeyDown(ImGuiMod_Ctrl))
+      {
+        m_view->PasteKey();
       }
 
       // Undo / redo of the key edits. The sheet does not call Window::ModShortCutSignals(), which is

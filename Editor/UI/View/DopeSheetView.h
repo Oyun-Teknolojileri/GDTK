@@ -106,6 +106,15 @@ namespace ToolKit
       /** Removes the selected key through an undoable action. */
       void DeleteSelectedKey();
 
+      /** Copies the selected key into the sheet's clipboard. Undo does not touch the clipboard. */
+      void CopySelectedKey();
+
+      /**
+       * Writes the clipboard key at the playhead, undoably. The target is the selected row, or the
+       * row the key was copied from when nothing is selected.
+       */
+      void PasteKey();
+
       // Parameter tracks.
       //////////////////////////////////////////
 
@@ -189,6 +198,18 @@ namespace ToolKit
       /** Interpolation mode of the key on a frame. Linear when there is no key there. */
       KeyInterp KeyInterpAt(const String& trackName, int frame) const;
 
+      /** Reads the key on a frame of a transform track. False when the track has none there. */
+      bool KeyAt(const String& trackName, int frame, Key& key) const;
+
+      /** Reads the key on a frame of a parameter track. False when the track has none there. */
+      bool ParamKeyAt(const String& trackName, int frame, ParamKey& key) const;
+
+      /** Copies the key on a frame of a track into the clipboard. */
+      void CopyKey(const String& trackName, int frame, bool paramTrack);
+
+      /** Writes the clipboard key at the playhead on the given row, undoably. */
+      void PasteKeyOn(const String& trackName, bool paramTrack);
+
       /** Drops the selection when the selected key is not part of the clip anymore. */
       void ValidateSelection();
 
@@ -242,9 +263,9 @@ namespace ToolKit
 
       std::unordered_map<String, ParamSnapshot> m_baseParams; //!< Pre preview parameter values.
 
-      // Key selection and dragging. Phase 1.5 selects a single key; later phases extend this to a
-      // set with copy/paste and bulk moves. A selected key belongs either to a transform track or to
-      // a parameter track, which the two flags below record.
+      // Key selection and dragging. One key is selected at a time and the clipboard holds a single
+      // key too, a later phase extends both to a set with bulk moves. A selected key belongs either
+      // to a transform track or to a parameter track, which the two flags below record.
       String m_selectedTrack;             //!< Track of the selected key, empty when nothing is selected.
       int m_selectedFrame      = -1;      //!< Frame of the selected key.
       bool m_selectedParam     = false;   //!< The selected key is a parameter key.
@@ -259,6 +280,19 @@ namespace ToolKit
       String m_ctxTrack;
       int m_ctxFrame  = -1;
       bool m_ctxParam = false; //!< The row under the cursor is a parameter track.
+
+      /** One key held by the clipboard, either the transform or the parameter payload. */
+      struct KeyClipboard
+      {
+        bool m_valid    = false; //!< False until a key is copied.
+        bool m_paramKey = false; //!< The copied key belongs to a parameter track.
+        String m_track;          //!< Track the key came from.
+        int m_frame = 0;         //!< Frame it was copied from.
+        Key m_key;               //!< Transform payload.
+        ParamKey m_param;        //!< Parameter payload.
+      };
+
+      KeyClipboard m_keyClipboard; //!< Pasted as often as the animator needs it.
     };
 
     // DopeSheetWindow
