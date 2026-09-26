@@ -718,7 +718,10 @@ namespace ToolKit
       m_rootKey.clear();
     }
 
-    for (XmlNode* animNode = parent->first_node("node"); animNode; animNode = animNode->next_sibling())
+    // Only "node" children are bone tracks: parameter tracks are siblings of them in the same
+    // container, and an unfiltered walk would read the first <param> as a bone track and then
+    // look for translation/scale/rotation children it does not have.
+    for (XmlNode* animNode = parent->first_node("node"); animNode; animNode = animNode->next_sibling("node"))
     {
       attr            = animNode->first_attribute(XmlNodeName.data());
       String boneName = attr->value();
@@ -783,7 +786,7 @@ namespace ToolKit
       else
       {
         // Serialized as xml
-        for (XmlNode* keyNode = animNode->first_node("key"); keyNode; keyNode = keyNode->next_sibling())
+        for (XmlNode* keyNode = animNode->first_node("key"); keyNode; keyNode = keyNode->next_sibling("key"))
         {
           Key key;
           attr             = keyNode->first_attribute("frame");
@@ -800,14 +803,23 @@ namespace ToolKit
             }
           }
 
-          XmlNode* subNode = keyNode->first_node("translation");
-          ReadVec(subNode, key.m_position);
+          // ReadVec dereferences the node, so a hand edited or truncated key is reported and
+          // skipped instead of taking the loader down.
+          XmlNode* translationNode = keyNode->first_node("translation");
+          XmlNode* scaleNode       = keyNode->first_node("scale");
+          XmlNode* rotationNode    = keyNode->first_node("rotation");
 
-          subNode = keyNode->first_node("scale");
-          ReadVec(subNode, key.m_scale);
+          if (translationNode == nullptr || scaleNode == nullptr || rotationNode == nullptr)
+          {
+            TK_ERR("Animation track \"%s\": key at frame %d is incomplete, skipped.",
+                   boneName.c_str(),
+                   key.m_frame);
+            continue;
+          }
 
-          subNode = keyNode->first_node("rotation");
-          ReadVec(subNode, key.m_rotation);
+          ReadVec(translationNode, key.m_position);
+          ReadVec(scaleNode, key.m_scale);
+          ReadVec(rotationNode, key.m_rotation);
 
           keys->push_back(key);
         }
