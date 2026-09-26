@@ -25,7 +25,16 @@ namespace ToolKit
   {
    public:
     Workspace();
-    void Init();
+
+    /**
+     * Reads the user's Workspace.settings and refreshes the project list.
+     * @param loadEngineSettings When true, the active project's Config/Engine.settings is
+     * loaded into the engine settings as well. That is what the editor wants, because the
+     * project owns its graphics and loaded plugin settings. A host that only browses the
+     * workspace and the projects in it passes false and keeps the engine settings it loaded
+     * from the user config, since the project's settings describe an editor session.
+     */
+    void Init(bool loadEngineSettings = true);
 
     // Defaults read / writes to installment directory.
     XmlNode* GetDefaultWorkspaceNode(XmlDocBundle& bundle) const;
@@ -71,5 +80,8 @@ namespace ToolKit
    private:
     String m_activeWorkspace;
     Project m_activeProject;
+
+    /** Set by Init(), read by DeSerializeImp() to decide the project settings load. */
+    bool m_loadEngineSettings = true;
   };
 } // namespace ToolKit

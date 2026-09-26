@@ -22,9 +22,10 @@ namespace ToolKit
 
   Workspace::Workspace() {}
 
-  void Workspace::Init()
+  void Workspace::Init(bool loadEngineSettings)
   {
-    m_activeWorkspace = GetDefaultWorkspace();
+    m_loadEngineSettings = loadEngineSettings;
+    m_activeWorkspace    = GetDefaultWorkspace();
     DeSerialize(SerializationFileInfo(), nullptr);
   }
 
@@ -319,7 +320,11 @@ namespace ToolKit
       assert(0 && "Workspace.settings file is faulty.");
     }
 
-    DeSerializeEngineSettings();
+    if (m_loadEngineSettings)
+    {
+      DeSerializeEngineSettings();
+    }
+
     return nullptr;
   }
 

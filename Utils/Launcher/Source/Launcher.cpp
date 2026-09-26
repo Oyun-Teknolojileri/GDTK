@@ -143,8 +143,14 @@ namespace ToolKit
       m_folderIconPath       = "/Icons/folder.png";
       m_shortcutIconPath     = "/Icons/file.png";
 
+      // The launcher only browses the workspace and the projects in it. The active project's
+      // Config/Engine.settings describes an editor session -- the plugins to load, the graphics
+      // settings of that project -- and the launcher has no surface for either: it never assigns
+      // PluginManager's platform hooks (the editor does, Editor/Source/main.cpp) and its renderer
+      // is already initialized by the time this runs. So it keeps the engine settings it read
+      // from the user config and skips the project ones.
       m_workspace            = std::make_shared<Workspace>();
-      m_workspace->Init();
+      m_workspace->Init(false);
 
       m_logoTexture = GetTextureManager()->Create<Texture>(TexturePath(m_logoPath.c_str(), true));
       if (m_logoTexture)

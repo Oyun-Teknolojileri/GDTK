@@ -605,6 +605,13 @@ and `UI::UnInit()`. See "Shutdown order and outliving resources" in Section 3.
 ### 9.2 Workspace (Editor/ via `Workspace.h` project)
 Manages the user's project directory inside the editor's app data. Stores project list, last opened project, workspace root.
 
+`Workspace::Init(loadEngineSettings)` reads `Workspace.settings` from the user config
+dir and, when the flag is `true` (the default), also pulls the active project's
+`Config/Engine.settings` into the engine settings via `DeSerializeEngineSettings()`.
+The editor wants that load -- the project owns its graphics and loaded plugin
+settings -- while the launcher passes `false`, because it only browses the workspace
+and the projects in it. See Section 11.3.
+
 ### 9.3 Editor windows
 All ImGui-based: `OutlinerWindow`, `FolderWindow` (asset browser), `ConsoleWindow`, `MaterialView`, `MeshView`, `EntityView`, `ComponentView`, `EngineSettingsWindow`, `MultiChoiceWindow`, `Anchor` / `AnchorMod`, `BoxEditGizmo` / `BoxEditMod` (transform gizmos), `ConsoleWindow`, `FolderWindow`, `Gizmo`, `Grid` (editor grid), `LightMeshGenerator`, `OverlayLighting`, `AndroidBuildWindow`, `CustomDataView`, `Thumbnail`, `SimulationWindow`.
 
@@ -880,6 +887,19 @@ callback takes that image through a flip (GL hands the pixels back bottom up), a
 center crop and a scale to `ProjectThumbnailSize` (512) before writing the PNG.
 Reading in a render task is what makes it a one shot command: the pixels are only
 reachable while the graphics context the engine renders with is current.
+
+Settings: the launcher reads the user config dir only -- `Engine.settings` before the
+window is created, so the renderer comes up with the user's FPS / HDR / MSAA values,
+`DarkTheme.settings` for the ImGui style, and `Workspace.settings` for the workspace
+root, the active project and the project list (`RefreshProjects`). It deliberately
+does **not** read the project's `Config/Engine.settings`: `Workspace::Init(false)`
+skips the `DeSerializeEngineSettings()` inside the workspace deserializer, because
+that file describes an editor session (the plugins to load, that project's graphics
+settings) and the launcher has no surface for either. It never assigns
+`PluginManager`'s platform hooks -- `LoadModule`, `FreeModule`, `GetFunction`,
+`GetCreationTime`, set by `Editor/Source/main.cpp` -- so a project plugin list
+reaching the `PluginManager::Init()` call in `Main::PostInit` used to abort on an
+empty `std::function` (`std::bad_function_call`).
 
 ---
 
