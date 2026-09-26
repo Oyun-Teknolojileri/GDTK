@@ -899,7 +899,10 @@ settings) and the launcher has no surface for either. It never assigns
 `PluginManager`'s platform hooks -- `LoadModule`, `FreeModule`, `GetFunction`,
 `GetCreationTime`, set by `Editor/Source/main.cpp` -- so a project plugin list
 reaching the `PluginManager::Init()` call in `Main::PostInit` used to abort on an
-empty `std::function` (`std::bad_function_call`).
+empty `std::function` (`std::bad_function_call`). `PluginManager::Load` now checks the
+hooks before it uses them: it names the missing ones in a `TK_ERR` and raises
+`TK_ASSERT_ONCE`, so a host that forgets the assignment gets a message in debug builds
+and a skipped plugin in release builds instead of an anonymous abort.
 
 ---
 

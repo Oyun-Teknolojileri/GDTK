@@ -10,6 +10,7 @@
 #include "EngineSettings.h"
 #include "Logger.h"
 #include "ObjectFactory.h"
+#include "TKAssert.h"
 #include "ToolKit.h"
 #include "Util.h"
 
@@ -20,6 +21,27 @@ namespace ToolKit
 
   PluginRegister* PluginManager::Load(const String& file)
   {
+    // The host owns the platform hooks and assigns them in its PreInit
+    // (PlatformHelpers::TKLoadModule and friends, see Editor/Source/main.cpp). A host that did not
+    // would call an empty std::function below and abort in std::bad_function_call, which names
+    // neither the hook nor the caller. Report the missing ones instead: loud in debug builds, a
+    // skipped plugin with a named reason in release builds.
+    if (LoadModule == nullptr || FreeModule == nullptr || GetFunction == nullptr || GetCreationTime == nullptr)
+    {
+      TK_ERR("PluginManager can not load \"%s\". The host must assign the platform hooks. "
+             "LoadModule: %s, FreeModule: %s, GetFunction: %s, GetCreationTime: %s.",
+             file.c_str(),
+             LoadModule == nullptr ? "missing" : "set",
+             FreeModule == nullptr ? "missing" : "set",
+             GetFunction == nullptr ? "missing" : "set",
+             GetCreationTime == nullptr ? "missing" : "set");
+
+      TK_ASSERT_ONCE(LoadModule && FreeModule && GetFunction && GetCreationTime &&
+                     "PluginManager platform hooks are not assigned by the host.");
+
+      return nullptr;
+    }
+
     String fullPath = file + m_pluginExtention;
 
     if (!CheckSystemFile(fullPath))
