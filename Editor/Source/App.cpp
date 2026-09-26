@@ -1433,14 +1433,8 @@ namespace ToolKit
             continue;
           }
 
-          // Engine assets are read only for the editor: the workspace owns the project resources and
-          // nothing under the engine root is written from here.
-          if (IsDefaultResource(res->GetFile()))
-          {
-            continue;
-          }
-
-          res->m_dirty = true;
+          // Save All writes what changed: a resource is written when its own dirty flag is set, so an
+          // engine asset edited in the editor is persisted and an untouched one is left alone.
           res->Save(true);
         }
       }

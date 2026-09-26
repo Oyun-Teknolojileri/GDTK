@@ -587,9 +587,10 @@ Key entry points:
 - `OpenSceneAsync`, `MergeScene`, `LinkScene`
 - `OpenProject(Project)`, `PackResources`, `SaveAllResources`
   (*Save All Resources* walks the mesh, material and animation managers and writes every resource
-  that owns a project file. It skips resources with no file at all -- runtime objects -- resources
-  that fell back to an engine default (`Resource::_missingFile`) and anything under the engine root
-  (`IsDefaultResource`), so the engine tree stays read only)
+  whose dirty flag is set, so an engine asset edited in the editor is persisted by the same pass
+  while an untouched one is left alone. Resources with no file at all -- runtime objects -- and
+  resources that fell back to an engine default (`Resource::_missingFile`) are skipped, the latter
+  because its fallback content would otherwise be written over that default)
 - `ExecSysCommand(argv, async, showConsole, callback)` — spawns a child process directly from a tokenized `std::vector<String>` argv (no shell); platform backends are `posix_spawn` (Linux) and `CreateProcessW` with proper Microsoft command-line quoting (Windows); completion callback receives the exit code
 - `IsWorkspaceSane`, `IsValidCppLibraryName`
 
