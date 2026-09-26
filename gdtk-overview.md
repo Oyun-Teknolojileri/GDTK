@@ -870,6 +870,17 @@ blue artwork `app_big_blue.png` on Linux and `app_blue.ico` compiled into
 `Launcher.exe` by `Utils/Launcher/Launcher.rc` on Windows, both through the one
 `PlatformHelpers::UpdateAppIcon()` helper -- see Section 9.6.
 
+A project's card shows `<workspace>/<project>/thumbnail.png` when that file
+exists and `/splash.png` otherwise (cached per project in `m_thumbnailCache`).
+The editor writes it with the `SaveThumbnail` console command:
+`SaveProjectThumbnail()` (`Editor/Source/ProjectThumbnail.*`) reads the image the
+active viewport was last drawn into -- the resolved texture when the viewport is
+multisampled, the one the editor shows -- back in a render task, and the task's
+callback takes that image through a flip (GL hands the pixels back bottom up), a
+center crop and a scale to `ProjectThumbnailSize` (512) before writing the PNG.
+Reading in a render task is what makes it a one shot command: the pixels are only
+reachable while the graphics context the engine renders with is current.
+
 ---
 
 ## 12. Build & Run

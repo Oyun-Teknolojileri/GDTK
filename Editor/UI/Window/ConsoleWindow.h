@@ -104,6 +104,9 @@ namespace ToolKit
     const String g_alignToViewCmd("AlignToView");
     TK_EDITOR_API void AlignToView(TagArgArray tagArgs);
 
+    const String g_saveThumbnail("SaveThumbnail");
+    TK_EDITOR_API void SaveThumbnail(TagArgArray tagArgs);
+
     // Command errors
     const String g_noValidEntity("No valid entity");
 

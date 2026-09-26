@@ -10,6 +10,7 @@
 #include "Action.h"
 #include "App.h"
 #include "EditorViewport.h"
+#include "ProjectThumbnail.h"
 #include "TransformMod.h"
 #include "WorkspaceTypes.h"
 
@@ -760,6 +761,14 @@ namespace ToolKit
       }
     }
 
+    // Writes the thumbnail the launcher shows on the active project's card. It is the image the
+    // active viewport was last drawn into, so it needs no tags: the viewport on screen decides.
+    void SaveThumbnail(TagArgArray tagArgs)
+    {
+      (void) tagArgs;
+      SaveProjectThumbnail();
+    }
+
     // ImGui ripoff. Portable helpers.
     static int Stricmp(const char* str1, const char* str2)
     {
@@ -825,6 +834,7 @@ namespace ToolKit
       CreateCommand(g_deleteSelection, DeleteSelection);
       CreateCommand(g_selectSimilar, SelectSimilar);
       CreateCommand(g_alignToViewCmd, AlignToView);
+      CreateCommand(g_saveThumbnail, SaveThumbnail);
     }
 
     ConsoleWindow::~ConsoleWindow() {}
