@@ -885,6 +885,12 @@ active viewport was last drawn into -- the resolved texture when the viewport is
 multisampled, the one the editor shows -- back in a render task, and the task's
 callback takes that image through a flip (GL hands the pixels back bottom up), a
 center crop and a scale to `ProjectThumbnailSize` (512) before writing the PNG.
+When `RenderSystem::IsGammaCorrectionNeeded()` reports that the backbuffer is not an
+sRGB capable format, the task first runs `GammaTonemapFxaaPass` over the image, gamma
+only (the scene render path already tonemapped and a thumbnail has no use for FXAA),
+because the editor then leaves gamma out of the scene render path and lets the ImGui
+backend encode the whole frame. That pass encodes in place, so it works on a copy and
+the viewport image stays untouched.
 Reading in a render task is what makes it a one shot command: the pixels are only
 reachable while the graphics context the engine renders with is current.
 

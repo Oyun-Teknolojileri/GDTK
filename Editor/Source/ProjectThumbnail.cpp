@@ -12,7 +12,9 @@
 #include "EditorTypes.h"
 #include "EditorViewport.h"
 
+#include <EngineSettings.h>
 #include <Framebuffer.h>
+#include <GammaTonemapFxaaPass.h>
 #include <Image.h>
 #include <RenderSystem.h>
 #include <Renderer.h>
@@ -75,6 +77,54 @@ namespace ToolKit
 
         return square;
       }
+
+      /** A framebuffer that carries one image, which is all a read back needs. */
+      FramebufferPtr MakeReadFramebuffer(const RenderTargetPtr& image)
+      {
+        FramebufferSettings settings;
+        settings.width           = image->m_width;
+        settings.height          = image->m_height;
+        settings.useDefaultDepth = false;
+
+        FramebufferPtr buffer    = MakeNewPtr<Framebuffer>(settings, "ProjectThumbnailReadFB");
+        buffer->Init();
+        buffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, image);
+
+        return buffer;
+      }
+
+      /**
+       * Gamma encodes an image on the GPU and returns the texture that holds the result. The input
+       * is left alone: the pass works in place on the color attachment of the framebuffer it is
+       * given, and the viewport image is still on screen, so the pass gets a copy of it.
+       *
+       * Only gamma runs. The scene render path has already tonemapped, and a thumbnail has no use
+       * for FXAA on top of a downscale to ProjectThumbnailSize.
+       */
+      RenderTargetPtr GammaEncode(Renderer* renderer, const RenderTargetPtr& source, float gamma)
+      {
+        RenderTargetPtr encoded = MakeNewPtr<RenderTarget>();
+        encoded->ReconstructIfNeeded(source->m_width, source->m_height, &source->Settings());
+        renderer->CopyTexture(source, encoded);
+
+        FramebufferPtr buffer                = MakeReadFramebuffer(encoded);
+
+        GammaTonemapFxaaPassPtr pass         = MakeNewPtr<GammaTonemapFxaaPass>();
+        pass->m_params.frameBuffer           = buffer;
+        pass->m_params.enableGammaCorrection = true;
+        pass->m_params.enableTonemapping     = false;
+        pass->m_params.enableFxaa            = false;
+        pass->m_params.gamma                 = gamma;
+        pass->m_params.screenSize            = Vec2(float(encoded->m_width), float(encoded->m_height));
+
+        // The three calls RenderPath::Render makes for every pass it runs.
+        pass->SetRenderer(renderer);
+        pass->PreRender();
+        pass->Render();
+        pass->PostRender();
+
+        return encoded;
+      }
     } // namespace
 
     void SaveProjectThumbnail()
@@ -130,31 +180,28 @@ namespace ToolKit
       const int height = source->m_height;
       const String projectFolder =
           ConcatPaths({app->m_workspace->GetActiveWorkspace(), app->m_workspace->GetActiveProject().name});
-      const String file = ConcatPaths({projectFolder, g_thumbnailFileName});
+      const String file      = ConcatPaths({projectFolder, g_thumbnailFileName});
 
       // Shared with the callback: the task fills it, the callback turns it into a file.
-      auto pixels       = std::make_shared<std::vector<ubyte>>(size_t(width) * size_t(height) * g_channels);
+      auto pixels            = std::make_shared<std::vector<ubyte>>(size_t(width) * size_t(height) * g_channels);
+
+      // When the backbuffer is not an sRGB capable format the editor leaves gamma out of the scene
+      // render path and lets the ImGui backend encode the whole frame (see EditorRenderer::Render),
+      // so the viewport image is linear and the read back pixels need that encoding before they
+      // become a file a PNG reader shows.
+      const bool gammaNeeded = GetRenderSystem()->IsGammaCorrectionNeeded();
+      const float gamma      = GetEngineSettings().m_postProcessing->GetGammaVal();
 
       RenderTask task;
-      task.Task = [source, pixels, width, height](Renderer* renderer) -> void
+      task.Task = [source, pixels, width, height, gammaNeeded, gamma](Renderer* renderer) -> void
       {
+        RenderTargetPtr image     = gammaNeeded ? GammaEncode(renderer, source, gamma) : source;
+
         // Reading goes through the framebuffer binding and the texture the engine rendered into is
         // not attached to one at this point, so it gets a framebuffer of its own for the read.
-        FramebufferSettings settings;
-        settings.width            = width;
-        settings.height           = height;
-        settings.useDefaultDepth  = false;
+        FramebufferPtr readBuffer = MakeReadFramebuffer(image);
 
-        FramebufferPtr readBuffer = MakeNewPtr<Framebuffer>(settings, "ProjectThumbnailReadFB");
-        if (readBuffer == nullptr)
-        {
-          return;
-        }
-
-        readBuffer->Init();
-        readBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, source);
-
-        FramebufferPtr previous = renderer->GetFrameBuffer();
+        FramebufferPtr previous   = renderer->GetFrameBuffer();
         renderer->SetFramebuffer(readBuffer, GraphicBitFields::None);
         renderer->GetBackend()
             ->ReadPixels(0, 0, width, height, GraphicTypes::FormatRGBA, GraphicTypes::TypeUnsignedByte, pixels->data());

@@ -25,7 +25,9 @@ namespace ToolKit
      *
      * The image is the last one the active viewport was drawn into -- the resolved texture when the
      * viewport is multisampled, which is the one the editor shows -- cropped to its center square so
-     * the thumbnail is not distorted, and scaled to ProjectThumbnailSize.
+     * the thumbnail is not distorted, and scaled to ProjectThumbnailSize. When the backbuffer is
+     * not an sRGB capable format the image is gamma encoded first, because the editor leaves that
+     * step to the ImGui backend then, and a file written to disk never goes through it.
      *
      * The pixels are read back in a render task, where the graphics context is the one the engine
      * renders with, and the file is written from that task's callback. The call itself only queues
