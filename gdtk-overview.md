@@ -428,8 +428,30 @@ Base class for every loadable asset. Inherits Object. Has lifecycle: `Load()` (C
 ### 6.3.1 Animation playback
 
 An `Animation` (`.anim`) holds named `KeyArray` tracks, a `Key` being `{frame, position, rotation,
-scale}`. One track belongs to one animated node and is named after it, which is what the importer
-writes (assimp node name) and what the dope sheet authors.
+scale, interp}`. One track belongs to one animated node and is named after it, which is what the
+importer writes (assimp node name) and what the dope sheet authors.
+
+`Key::m_interp` (`KeyInterp`: `Stepped` / `Linear` / `Smooth` / `Flat`, default `Linear`) states how
+the key takes part in the interpolation of the segments around it. A segment is shaped by **both** of
+its endpoints and the hard modes win: `Stepped` beats `Linear`, `Linear` beats the cubic modes, and
+two cubic endpoints use a Hermite whose tangents come from the neighbouring keys (`Smooth`), or are
+pinned to zero (`Flat`, a settle or a soft start / stop). The math lives in `KeyInterpolation.h`,
+free of engine types, so it can be compiled and asserted on its own.
+
+`Animation::SampleTrack(keys, time, pos, rot, scale)` is the single sampling path of a node track:
+the runtime pose, root motion and the editor's dope sheet preview all call it, so the preview and
+playback cannot drift. Rotation uses `slerp` with an eased parameter whose end slopes are matched to
+the angular speed of the neighbouring segments, so no quaternion tangents are needed.
+
+Key modes are node track only. The skeleton path (`Animation::GetPose(SkeletonComponentPtr)`) and the
+animation data texture that feeds GPU skinning are still straight two key interpolation, so a mode is
+ignored there.
+
+The key array is serialized as a raw struct dump, so `DeSerializeImp` derives the record size from the
+block itself (a file written before `Key::m_interp` holds 44 bytes per key, this build 48) and copies
+only the bytes the file holds: the members a newer build appended keep their defaults. `Key` members
+are therefore only ever appended, never reordered -- a `static_assert` in `Animation.cpp` guards the
+legacy prefix.
 
 A clip also carries **parameter tracks** (`ParamKeyArrayMap m_paramKeys`), for the `ParameterVariant`s
 of an entity, a component or a material slot. They are a separate track space because a parameter is
@@ -887,6 +909,7 @@ When writing/editing any `.h`/`.cpp` in this repo:
 | Editor app | `Editor/App.h` |
 | Animation resource / tracks / player | `ToolKit/Resources/Animation.h` |
 | Parameter animation plan | `parameter-animation-plan.md` |
+| Key interpolation modes + sampling math | `ToolKit/Resources/KeyInterpolation.h` |
 | Undoable editor actions (incl. key edits) | `Editor/Source/Action.h` |
 | Dope sheet editor (view + window) | `Editor/UI/View/DopeSheetView.h` |
 | Editor renderer | `Editor/EditorRenderer.h` |

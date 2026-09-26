@@ -154,6 +154,16 @@ namespace ToolKit
        */
       static void MoveParamKey(AnimationPtr clip, const String& trackName, int fromFrame, int toFrame);
 
+      /**
+       * Changes the interpolation mode of the key on a frame. Nothing is stacked when the key is
+       * missing or already carries that mode.
+       * @param clip Clip that owns the track.
+       * @param trackName Track to edit.
+       * @param frame Frame of the key.
+       * @param interp Interpolation mode to set.
+       */
+      static void SetInterp(AnimationPtr clip, const String& trackName, int frame, KeyInterp interp);
+
       void Undo() override;
       void Redo() override;
 

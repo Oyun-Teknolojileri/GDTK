@@ -400,11 +400,38 @@ namespace ToolKit
       action->m_beforeTo = action->Read(toFrame);
 
       // The key leaves its old frame and lands on the new one, replacing whatever was there.
-      action->m_afterFrom             = action->m_beforeFrom;
-      action->m_afterFrom.hasKey      = false;
-      action->m_afterTo               = action->m_beforeFrom;
-      action->m_afterTo.frame         = toFrame;
+      action->m_afterFrom                = action->m_beforeFrom;
+      action->m_afterFrom.hasKey         = false;
+      action->m_afterTo                  = action->m_beforeFrom;
+      action->m_afterTo.frame            = toFrame;
       action->m_afterTo.paramKey.m_frame = toFrame;
+
+      action->Redo();
+      ActionManager::GetInstance()->AddAction(action);
+    }
+
+    void KeyEditAction::SetInterp(AnimationPtr clip, const String& trackName, int frame, KeyInterp interp)
+    {
+      if (frame < 0)
+      {
+        return;
+      }
+
+      KeyEditAction* action = new KeyEditAction(clip, trackName, false);
+
+      action->m_beforeFrom = action->Read(frame);
+      if (!action->m_beforeFrom.hasKey || action->m_beforeFrom.key.m_interp == interp)
+      {
+        // Nothing to change: an unchanged key must not push an undo step.
+        SafeDel(action);
+        return;
+      }
+
+      // Only the mode changes, the frame the key sits on and its values are left alone.
+      action->m_beforeTo               = action->m_beforeFrom;
+      action->m_afterFrom              = action->m_beforeFrom;
+      action->m_afterFrom.key.m_interp = interp;
+      action->m_afterTo                = action->m_afterFrom;
 
       action->Redo();
       ActionManager::GetInstance()->AddAction(action);

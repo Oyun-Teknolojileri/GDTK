@@ -436,7 +436,9 @@ Still open from Phase 3: multi key selection, box select, copy/paste, and bulk m
   What is left here is pose blending for node tracks (fades currently let the last record own the
   node) and a decision on whether prefab instances should share one track.
 * Curve view / easing: `Key` has no tangent or interpolation mode today (linear + slerp only);
-  adding modes is an engine + serialization change.
+  adding modes is an engine + serialization change. Planned separately, for node tracks only, in
+  `animation-interpolation-plan.md` (per key `Stepped` / `Linear` / `Smooth` / `Flat`, auto clamped
+  tangents); the curve view with draggable handles is that plan's later phase.
 * Root motion: the `m_rootKey` checkbox stays in `AnimationView`; the dope sheet only needs to
   show which track is the root key.
 

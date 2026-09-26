@@ -130,6 +130,17 @@ namespace ToolKit
       /** States if the clip holds a param key on the given frame of the track. */
       bool ParamTrackHasKey(const String& trackId, int frame) const;
 
+      /**
+       * Changes the interpolation mode of one key, undoably, and refreshes the preview pose.
+       * @param trackName Track that owns the key.
+       * @param frame Frame of the key.
+       * @param interp Mode to set.
+       */
+      void SetKeyInterp(const String& trackName, int frame, KeyInterp interp);
+
+      /** Sets every key of the clip to Smooth as one undo step. */
+      void SmoothAllKeys();
+
       /** Applies the clip pose at the given time to every entity matched by a track. */
       void ApplyPoseAt(float time);
 
@@ -175,6 +186,9 @@ namespace ToolKit
       /** States if the clip holds a key on the given frame of the given track. */
       bool TrackHasKey(const String& trackName, int frame, bool paramTrack) const;
 
+      /** Interpolation mode of the key on a frame. Linear when there is no key there. */
+      KeyInterp KeyInterpAt(const String& trackName, int frame) const;
+
       /** Drops the selection when the selected key is not part of the clip anymore. */
       void ValidateSelection();
 
@@ -201,6 +215,13 @@ namespace ToolKit
       bool m_keyTranslation = true;
       bool m_keyRotation    = true;
       bool m_keyScale       = true;
+
+      /**
+       * Mode a key the sheet creates gets. Linear is the engine default and this default follows
+       * it: a key becomes Smooth, Stepped or Flat only when the animator says so, either by
+       * switching this combo before keying or by changing the key afterwards.
+       */
+      KeyInterp m_newKeyInterp = KeyInterp::Linear;
 
      private:
       float m_time            = 0.0f;        //!< Continuous playhead time in seconds.
@@ -232,6 +253,7 @@ namespace ToolKit
       bool m_dragParam         = false;   //!< The drag moves a parameter key.
       int m_dragFromFrame      = -1;      //!< Frame the dragged key came from.
       int m_dragToFrame        = -1;      //!< Frame the dragged key would land on.
+      KeyInterp m_dragInterp = KeyInterp::Linear; //!< Mode of the dragged key, for the ghost marker.
 
       // Right click context, deferred until the row has been drawn.
       String m_ctxTrack;
