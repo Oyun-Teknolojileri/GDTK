@@ -524,7 +524,8 @@ namespace ToolKit
 
     // Absolute path of the PNG used as the application icon: the Linux
     // counterpart of the icon Windows embeds in the executable through
-    // Editor.rc (MAIN_ICON / app.ico).
+    // Editor.rc (MAIN_ICON / app.ico) for the editor and Launcher.rc
+    // (MAIN_ICON / app_blue.ico) for the launcher.
     //
     // Resolved from the running executable instead of the process
     // working directory so it keeps working when a host is started from

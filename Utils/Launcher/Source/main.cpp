@@ -152,10 +152,9 @@ namespace ToolKit
       SDL_SetWindowHitTest(g_window, LauncherHitTest, nullptr);
 
       // SDL owns the window, so the launcher publishes its own icon through the
-      // same helper the editor uses. On Linux this is what fills the task bar
-      // and the window decoration with app_big_blue.png; on Windows the helper
-      // re-applies the executable's compiled icon, and the launcher has no .rc
-      // of its own yet.
+      // same helper the editor uses. On Windows that re-applies the icon
+      // Launcher.rc compiled into the executable (the blue .ico); on Linux it
+      // fills the task bar and the window decoration with app_big_blue.png.
       PlatformHelpers::UpdateAppIcon(g_window, PlatformHelpers::LauncherAppIconFile);
 
       // The dock and the application menu read the icon from a .desktop entry

@@ -570,9 +570,10 @@ namespace ToolKit
       return (void*) GetProcAddress((HMODULE) module, func.data());
     }
 
-    // Re-applies the icon embedded in the executable (Editor.rc ->
-    // MAIN_ICON, id 102) to the window SDL created, which drops the icon
-    // the Win32 window class registered.
+    // Re-applies the icon embedded in the executable (Editor.rc for the
+    // editor, Launcher.rc for the launcher -- both declare it as MAIN_ICON,
+    // id 102) to the window SDL created, which drops the icon the Win32
+    // window class registered.
     //
     // nativeWindow carries the SDL_Window* the host created and is unused
     // here: Win32 reads the icon from the module's resource section and
@@ -581,10 +582,9 @@ namespace ToolKit
     // so the single call site reads the same on both platforms.
     //
     // iconName selects a PNG on Linux and is unused here for the same
-    // reason: a Win32 executable's icon is a compiled resource, not a
-    // file. A host that has no .rc (the launcher, for now) therefore
-    // loads nothing and keeps the default icon on Windows, while it gets
-    // its own PNG on Linux.
+    // reason: a Win32 executable's icon is a compiled resource, not a file.
+    // Every host that calls this has to carry a .rc with MAIN_ICON in it,
+    // which is why the id is the shared part of the contract.
     inline void UpdateAppIcon(void* nativeWindow = nullptr, const String& iconName = EditorAppIconFile)
     {
       (void) nativeWindow;
@@ -592,7 +592,7 @@ namespace ToolKit
 
       HINSTANCE handle = ::GetModuleHandle(nullptr);
 
-      // MAIN_ICON is defined as 102 in Editor.rc
+      // MAIN_ICON is defined as 102 in Editor.rc and in Launcher.rc
       HICON icon       = ::LoadIcon(handle, MAKEINTRESOURCE(102));
       if (icon != nullptr)
       {

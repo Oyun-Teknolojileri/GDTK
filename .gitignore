@@ -1,4 +1,4 @@
-﻿################################################################################
+################################################################################
 # This .gitignore file was automatically created by Microsoft(R) Visual Studio.
 ################################################################################
 
@@ -25,6 +25,9 @@
 /enc_temp_folder
 /Test/x64
 /Editor/editor.aps
+# Resource-editor cache the MSVC resource compiler leaves next to a .rc
+# (Editor/Editor.rc, Utils/Launcher/Launcher.rc). Never a source file.
+*.aps
 /Resources/Engine/workspace.settings
 /Web
 Resources/Engine/workspace.settings

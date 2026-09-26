@@ -705,12 +705,14 @@ created. Only the image source differs:
 
 | Platform | Source | Mechanism |
 |---|---|---|
-| Windows | `Resources/Engine/Textures/Icons/app.ico` | Embedded in the executable by `Editor/Editor.rc` (`MAIN_ICON`, id 102), re-sent with `WM_SETICON` (`ToolKit/Common/Win32Utils.h`). The launcher has no `.rc`, so it keeps the default icon on Windows |
+| Windows | `Resources/Engine/Textures/Icons/app.ico` (editor), `app_blue.ico` (launcher) | Embedded in the executable by `Editor/Editor.rc` and `Utils/Launcher/Launcher.rc`, re-sent with `WM_SETICON` (`ToolKit/Common/Win32Utils.h`). Both `.rc` files declare the icon as `MAIN_ICON`, id 102, because `UpdateAppIcon` loads that id from the running executable, so one implementation serves both hosts and the binary name is what decides the artwork |
 | Linux | `Resources/Engine/Textures/Icons/<iconName>` | Loaded at runtime with `ImageLoadTopDown` and published through `SDL_SetWindowIcon` as `_NET_WM_ICON` (`ToolKit/Common/LinuxUtils.h`) |
 
 The names live in `ToolKit/Common/PlatformHelper.h` so both call sites read the same:
 `EditorAppIconFile` = `app_big.png` (270x248), `LauncherAppIconFile` = `app_big_blue.png` (270x270,
-the blue variant, square).
+the blue variant, square). `app_blue.ico` is that same blue artwork converted for the Windows
+resource: 32bpp DIB entries at 128, 64, 48, 32 and 16 px, the set `app.ico` carries minus the 256 px
+entry the 270 px source does not need.
 
 A window icon alone does not tell a desktop environment which application it is looking at: the
 dock, the application menu and the file manager read `Icon=` from a `.desktop` entry and tie a
@@ -863,9 +865,10 @@ SDL2, ToolKit (no assimp).
 
 ### 11.3 Launcher (`Utils/Launcher/`)
 Project browser / entry point (ImGui-based GUI). Links SDL2, imgui, ToolKit,
-reuses Editor types. Publishes its own window icon (`app_big_blue.png`, the blue
-variant of the editor logo) through the same `PlatformHelpers::UpdateAppIcon()`
-helper -- see Section 9.6.
+reuses Editor types. Publishes its own icon the same way the editor does: the
+blue artwork `app_big_blue.png` on Linux and `app_blue.ico` compiled into
+`Launcher.exe` by `Utils/Launcher/Launcher.rc` on Windows, both through the one
+`PlatformHelpers::UpdateAppIcon()` helper -- see Section 9.6.
 
 ---
 

@@ -1,0 +1,7 @@
+// Launcher.rc -- the icon the launcher's executable carries. Mirror of Editor/Editor.rc:
+// MAIN_ICON is the id the Win32 helper loads (ToolKit/Common/Win32Utils.h, UpdateAppIcon),
+// so both hosts share one implementation and only the .ico file differs. app_blue.ico is the
+// blue variant of the editor's app.ico, generated from app_big_blue.png the launcher uses on
+// Linux (PlatformHelpers::LauncherAppIconFile).
+#define MAIN_ICON 102
+MAIN_ICON ICON "../../Resources/Engine/Textures/Icons/app_blue.ico"

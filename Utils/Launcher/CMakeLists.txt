@@ -20,6 +20,17 @@ file(GLOB_RECURSE LAUNCHER_SOURCES
 
 add_executable(Launcher WIN32 ${LAUNCHER_SOURCES})
 
+# Windows: embed the app icon (.rc compiled to .res by the MSVC resource
+# compiler, linked into the executable), the same way Editor/CMakeLists.txt
+# does it for the editor. The .rc references the icon at
+#   ../../Resources/Engine/Textures/Icons/app_blue.ico
+# relative to Utils/Launcher/Launcher.rc, which resolves to the engine asset
+# tree. Both .rc files declare MAIN_ICON as 102 because one Win32
+# UpdateAppIcon() implementation loads that id from the running executable.
+if(WIN32)
+  target_sources(Launcher PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Launcher.rc)
+endif()
+
 # The Launcher reuses headers from Editor/ (EditorTypes.h, IconsFontAwesome.h)
 # and from Workspace/ (Workspace.h, WorkspaceTypes.h). The latter is already
 # in GDTK_INCLUDE_DIRS; Editor/ is not, so we add it explicitly.
