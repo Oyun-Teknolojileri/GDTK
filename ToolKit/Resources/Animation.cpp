@@ -283,6 +283,12 @@ namespace ToolKit
       if (found)
       {
         keys->erase(it);
+
+        // Same rule as SetKey: a track without keys is not a track.
+        if (keys->empty())
+        {
+          m_paramKeys.Erase(trackName);
+        }
       }
     }
     else
@@ -597,6 +603,14 @@ namespace ToolKit
       if (found)
       {
         keys->erase(it);
+
+        // A track exists while it holds keys. Dropping the last key removes the track, so the sheet
+        // never keeps a row that can not be animated and the file never carries an empty track. Undo
+        // writes the key back, which creates the track again.
+        if (keys->empty())
+        {
+          m_keys.Erase(keyName);
+        }
       }
     }
     else if (found)
@@ -641,6 +655,15 @@ namespace ToolKit
 
     for (const auto& [boneName, keys] : m_keys)
     {
+      // A track whose keys were all deleted holds nothing, so it is not written and no empty node ends
+      // up in the file. The check has to happen before the base64 block below: bintob64() always
+      // appends a terminator, so an empty key buffer would be a one byte write into a zero byte
+      // allocation.
+      if (keys.empty())
+      {
+        continue;
+      }
+
       XmlNode* boneNode = CreateXmlNode(doc, "node", container);
       boneNode->append_attribute(doc->allocate_attribute(XmlNodeName.data(), boneName.c_str()));
 
@@ -725,6 +748,20 @@ namespace ToolKit
     {
       attr            = animNode->first_attribute(XmlNodeName.data());
       String boneName = attr->value();
+
+      // A track with no keys holds nothing to read, and creating one would leave a row that can not
+      // be animated in the sheet. A build that wrote an empty node when the last key of a track was
+      // deleted leaves such a node behind, so it is dropped here instead of being reported as a key
+      // block that can not be read.
+      if (XmlAttribute* keyCountAttr = animNode->first_attribute("KeyCount"))
+      {
+        uint keyCount = 0;
+        ReadAttr(animNode, "KeyCount", keyCount);
+        if (keyCount == 0)
+        {
+          continue;
+        }
+      }
 
       // Keep the file order of the bone tracks on load.
       KeyArray* keys = m_keys.Find(boneName);

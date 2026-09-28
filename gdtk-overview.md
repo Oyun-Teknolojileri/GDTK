@@ -771,6 +771,10 @@ Model:
   uses (track name == assimp node name == entity name). An entity claims one track, so two
   entities that share a name are disambiguated with a numeric suffix (`Cube_1`) instead of sharing
   a track. The runtime resolves by name too, so those instances play the same track (see 6.3).
+  **A track exists while it holds keys**: deleting the last key of a track drops the track itself
+  (`Animation::SetKey` / `SetParamKey` with a null key), so the sheet never keeps a row that can not
+  be animated and the file never carries an empty track. Undo writes the key back, which creates the
+  track again.
 - `Set Key` (`K`) writes the local transform of every selected entity into its track at the
   playhead frame, creating the track on first use and growing the clip duration. Channels the mask
   leaves out keep the value the curve already holds at that frame. Every write goes through
