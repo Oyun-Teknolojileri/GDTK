@@ -791,6 +791,16 @@ Model:
   (the transform payload or the parameter payload): a transform key and a parameter key cannot be
   mixed, and a parameter key has to match the type of the parameter it addresses. A paste is one
   `KeyEditAction` step and replaces whatever sits on the target frame.
+- The sheet area has two views, switched by the `Curves` button (it always names the view it
+  switches to). The curve view is **read only**: the name column lists the transform tracks and picks
+  one, and the lane area plots three bands -- translation, rotation in degrees, scale -- each with the
+  x / y / z curves of that track and its own value range, so lengths and angles do not share a scale.
+  The pose is sampled through `Animation::SampleTrack`, the call the preview plays, so the shape shows
+  what the key modes do: Stepped holds, Smooth blends through the key, Flat eases into it. Rotating a
+  track through the poles makes the euler angles wrap, which is what the plotted angle curves show.
+  The timeline (`Ctrl+wheel` zoom, `Shift+wheel` pan, scrub, playhead) is shared with the lanes, and
+  the frame under the pointer is read out in a tooltip. Nothing is editable here and parameter tracks
+  are not plotted.
 - `K` also works from the editor viewport (`EditorViewport::DispatchSignals`), which keys the
   selected entities at the sheet's playhead through `App::GetDopeSheet()`; the frame and the clip
   live in the sheet, so the shortcut reports through the status bar when the sheet is not open.

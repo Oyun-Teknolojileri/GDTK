@@ -174,6 +174,22 @@ namespace ToolKit
       void ShowRuler(float laneLeft, float laneWidth);
       void ShowLanes(float laneLeft, float laneWidth);
 
+      /**
+       * Draws the sheet area as read only curves instead of key lanes: translation, rotation and
+       * scale of one transform track, x / y / z per channel group. The pose is sampled through the
+       * engine's own interpolation, so a Stepped, Smooth or Flat key shows in the shape.
+       */
+      void ShowCurves(float laneLeft, float laneWidth);
+
+      /** Name of the track the curve view plots, empty when the clip has no transform track. */
+      String CurveTrackName() const;
+
+      /**
+       * Ctrl + wheel zooms and shift + wheel pans the timeline. The lane and the curve view share it
+       * so switching the view never moves the timeline.
+       */
+      void HandleTimelineWheel(float laneLeft);
+
       // Sheet helpers.
       void HandleSceneChange();
       void ResolveTracks();
@@ -280,6 +296,9 @@ namespace ToolKit
       String m_ctxTrack;
       int m_ctxFrame  = -1;
       bool m_ctxParam = false; //!< The row under the cursor is a parameter track.
+
+      bool m_curveView = false;    //!< The sheet area plots curves instead of drawing key lanes.
+      String m_curveTrack;         //!< Track the curve view plots, picked in the name column.
 
       /** One key held by the clipboard, either the transform or the parameter payload. */
       struct KeyClipboard
