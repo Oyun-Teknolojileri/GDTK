@@ -670,9 +670,28 @@ namespace ToolKit
       if constexpr (SERIALIZE_ANIMATION_AS_BINARY)
       {
         WriteAttr(boneNode, doc, "KeyCount", std::to_string(keys.size()));
-        size_t keyBufferSize = keys.size() * sizeof(keys[0]);
-        char* b64Data        = new char[keyBufferSize * 2];
-        bintob64(b64Data, keys.data(), keyBufferSize);
+
+        // The keys travel as a block of records, so the padding a Key carries after its one byte
+        // interpolation mode would travel with them: it holds whatever the allocator left in that
+        // memory, which copies heap content into the file and lets the same clip serialize differently
+        // between runs. The records are assembled field by field into a zeroed buffer instead, and the
+        // record size stays sizeof(Key) so a reader can still tell the build that wrote the file from
+        // the block size.
+        std::vector<char> records(keys.size() * sizeof(Key), 0);
+        for (size_t i = 0; i < keys.size(); i++)
+        {
+          const Key& key = keys[i];
+          char* record   = records.data() + (i * sizeof(Key));
+
+          memcpy(record + offsetof(Key, m_frame), &key.m_frame, sizeof(key.m_frame));
+          memcpy(record + offsetof(Key, m_position), &key.m_position, sizeof(key.m_position));
+          memcpy(record + offsetof(Key, m_rotation), &key.m_rotation, sizeof(key.m_rotation));
+          memcpy(record + offsetof(Key, m_scale), &key.m_scale, sizeof(key.m_scale));
+          memcpy(record + offsetof(Key, m_interp), &key.m_interp, sizeof(key.m_interp));
+        }
+
+        char* b64Data = new char[records.size() * 2];
+        bintob64(b64Data, records.data(), records.size());
         XmlNode* base64XML = CreateXmlNode(doc, "Base64", boneNode);
         base64XML->value(doc->allocate_string(b64Data));
         SafeDelArray(b64Data);

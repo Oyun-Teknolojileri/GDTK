@@ -451,7 +451,10 @@ The key array is serialized as a raw struct dump, so `DeSerializeImp` derives th
 block itself (a file written before `Key::m_interp` holds 44 bytes per key, this build 48) and copies
 only the bytes the file holds: the members a newer build appended keep their defaults. `Key` members
 are therefore only ever appended, never reordered -- a `static_assert` in `Animation.cpp` guards the
-legacy prefix.
+legacy prefix. The record is assembled field by field into a zeroed buffer on write: the one byte
+interpolation mode leaves padding in `Key`, and dumping the struct as it lies in memory would put
+whatever the allocator left in that padding into the file and make the same clip serialize differently
+between runs.
 
 A clip also carries **parameter tracks** (`ParamKeyArrayMap m_paramKeys`), for the `ParameterVariant`s
 of an entity, a component or a material slot. They are a separate track space because a parameter is
