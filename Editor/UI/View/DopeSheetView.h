@@ -147,9 +147,6 @@ namespace ToolKit
        */
       void SetKeyInterp(const String& trackName, int frame, KeyInterp interp);
 
-      /** Sets every key of the clip to Smooth as one undo step. */
-      void SmoothAllKeys();
-
       /** Applies the clip pose at the given time to every entity matched by a track. */
       void ApplyPoseAt(float time);
 
@@ -254,11 +251,12 @@ namespace ToolKit
       bool m_keyScale       = true;
 
       /**
-       * Mode a key the sheet creates gets. Linear is the engine default and this default follows
-       * it: a key becomes Smooth, Stepped or Flat only when the animator says so, either by
-       * switching this combo before keying or by changing the key afterwards.
+       * Mode a key the sheet creates gets. Smooth is the one an animator expects from a fresh key,
+       * the curve blends through it instead of arriving and leaving on straight lines. The engine's
+       * own default stays Linear, so a clip authored by code or by an older build keeps the motion it
+       * was made with; the combo switches the sheet to Linear, Stepped or Flat when a key needs it.
        */
-      KeyInterp m_newKeyInterp = KeyInterp::Linear;
+      KeyInterp m_newKeyInterp = KeyInterp::Smooth;
 
      private:
       float m_time            = 0.0f;        //!< Continuous playhead time in seconds.

@@ -1116,67 +1116,6 @@ namespace ToolKit
              InterpLabel(interp));
     }
 
-    void DopeSheetView::SmoothAllKeys()
-    {
-      if (m_clip == nullptr || !CanEdit())
-      {
-        return;
-      }
-
-      // Counted first: an untouched key stacks nothing, and a group is only opened when more than
-      // one key is going to change (the same rule Set Key follows for several entities).
-      int pending = 0;
-      for (const auto& track : m_clip->m_keys)
-      {
-        for (const Key& key : track.second)
-        {
-          if (key.m_interp != KeyInterp::Smooth)
-          {
-            pending++;
-          }
-        }
-      }
-
-      if (pending == 0)
-      {
-        GetApp()->SetStatusMsg("Every key is already Smooth.");
-        return;
-      }
-
-      ActionManager* actionManager = ActionManager::GetInstance();
-      const bool group             = pending > 1;
-      if (group)
-      {
-        actionManager->BeginActionGroup();
-      }
-
-      for (const auto& track : m_clip->m_keys)
-      {
-        // SetInterp replaces the key in place and the track vector keeps its size, so walking it
-        // here is safe.
-        for (const Key& key : track.second)
-        {
-          if (key.m_interp != KeyInterp::Smooth)
-          {
-            KeyEditAction::SetInterp(m_clip, track.first, key.m_frame, KeyInterp::Smooth);
-          }
-        }
-      }
-
-      if (group)
-      {
-        actionManager->GroupLastActions(pending);
-      }
-
-      if (m_sessionActive)
-      {
-        ApplyPoseAt(CurrentTime());
-      }
-
-      TK_LOG("Dope sheet: %d keys set to Smooth.", pending);
-      GetApp()->SetStatusMsg(g_statusSucceeded);
-    }
-
     KeyInterp DopeSheetView::KeyInterpAt(const String& trackName, int frame) const
     {
       if (m_clip == nullptr || frame < 0)
@@ -1739,20 +1678,10 @@ namespace ToolKit
       }
 
       UI::HelpMarker("DopeSheetNewKeyInterp",
-                     "Interpolation mode written with every new key. Linear leaves the curve as it "
-                     "is; Smooth blends through the key, Flat eases into it and Stepped holds the "
-                     "value until the next key. Existing keys are changed from the row context menu.");
-
-      ImGui::SameLine();
-      ImGui::BeginDisabled(m_clip == nullptr || !CanEdit());
-      if (ImGui::Button("Smooth All Keys"))
-      {
-        SmoothAllKeys();
-      }
-      UI::HelpMarker("DopeSheetSmoothAll",
-                     "Sets every key of every track to Smooth as one undo step. This is the way to "
-                     "smooth a clip that was keyed before interpolation modes existed.");
-      ImGui::EndDisabled();
+                     "Interpolation mode written with every new key, Smooth by default. Smooth blends "
+                     "through the key, Flat eases into it, Stepped holds the value until the next key "
+                     "and Linear leaves the curve as it is. An existing key is changed from the row "
+                     "context menu.");
 
       ImGui::SameLine();
       ImGui::BeginDisabled(m_clip == nullptr);
@@ -2455,7 +2384,10 @@ namespace ToolKit
       HandleTimelineWheel(laneLeft);
       ClampScroll(laneWidth);
 
-      ImGui::PushClipRect(origin, ImVec2(origin.x + avail.x, origin.y + viewHeight), true);
+      // The two columns are clipped apart. A panned curve belongs to the lane area, it must not draw
+      // over the name column, and the ruler keeps its ticks out of the column the same way, by
+      // skipping the ones that land left of it.
+      ImGui::PushClipRect(origin, ImVec2(laneLeft, origin.y + viewHeight), true);
 
       const ImU32 trackColumnTint = ImGui::GetColorU32(ImGuiCol_Text, g_trackColumnTint);
       const ImU32 columnLine      = ImGui::GetColorU32(ImGuiCol_Text, g_columnLineTint);
@@ -2468,7 +2400,6 @@ namespace ToolKit
       const ImU32 outOfRange      = ImGui::GetColorU32(g_outOfRangeVeil);
 
       dl->AddRectFilled(origin, ImVec2(laneLeft, origin.y + viewHeight), trackColumnTint);
-      dl->AddLine(ImVec2(laneLeft, origin.y), ImVec2(laneLeft, origin.y + viewHeight), columnLine);
 
       // The name column lists the transform tracks, the curve view plots one of them at a time, so
       // the column doubles as the picker.
@@ -2516,6 +2447,12 @@ namespace ToolKit
                     trackName.c_str());
       }
 
+      ImGui::PopClipRect();
+
+      // The divider sits on the boundary of the two clips, so it is drawn once the column clip is
+      // gone and reads on top of both.
+      dl->AddLine(ImVec2(laneLeft, origin.y), ImVec2(laneLeft, origin.y + viewHeight), columnLine);
+
       // Scrub area: the curve view has no keys to pick, so the lane area only moves the playhead.
       ImGui::SetCursorScreenPos(ImVec2(laneLeft, origin.y));
       ImGui::InvisibleButton("##dopeSheetCurveScrub", ImVec2(laneWidth, viewHeight));
@@ -2530,6 +2467,7 @@ namespace ToolKit
       const KeyArray* keys = m_clip->m_keys.Find(plotted);
       if (keys == nullptr || keys->size() < 2)
       {
+        ImGui::PushClipRect(ImVec2(laneLeft, origin.y), ImVec2(bandRight, origin.y + viewHeight), true);
         dl->AddText(ImVec2(laneLeft + g_curveLabelInset, origin.y + g_curveLabelInset),
                     labelColor,
                     "Two keys are needed to plot a curve.");
@@ -2572,6 +2510,10 @@ namespace ToolKit
 
       const float bandHeight =
           glm::max(20.0f, (viewHeight - (g_curveBandCount - 1) * g_curveBandGap) / g_curveBandCount);
+
+      // The plot lives in the lane area only: a curve panned past the left edge stops at the name
+      // column instead of running over the track names.
+      ImGui::PushClipRect(ImVec2(laneLeft, origin.y), ImVec2(bandRight, origin.y + viewHeight), true);
 
       for (int band = 0; band < g_curveBandCount; band++)
       {

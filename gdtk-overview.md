@@ -775,7 +775,11 @@ Model:
   playhead frame, creating the track on first use and growing the clip duration. Channels the mask
   leaves out keep the value the curve already holds at that frame. Every write goes through
   `Animation::SetKey`, which keeps a track ascending by frame -- what `Animation::GetNearestKeys`
-  and the anim data texture path assume -- and creates the track on demand.
+  and the anim data texture path assume -- and creates the track on demand. A key the sheet writes is
+  `Smooth`, the mode that blends through it, so a freshly keyed move does not arrive and leave on
+  straight lines; the `New key` combo switches the next keys to `Linear`, `Stepped` or `Flat`, and an
+  existing key is changed from the row context menu. The engine's own `Key::m_interp` default stays
+  `Linear`, so clips authored by code or by an older build keep the motion they were made with.
 - Key editing is undoable through `KeyEditAction` (`Editor/Source/Action.h`): it records what sat
   on the source and target frames before and after the edit, so insert, update, delete and a move
   that replaced another key all replay both ways. `Delete` / `Backspace` removes the selected key,
