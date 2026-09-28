@@ -804,8 +804,12 @@ Model:
   one, and the lane area plots three bands -- translation, rotation in degrees, scale -- each with the
   x / y / z curves of that track and its own value range, so lengths and angles do not share a scale.
   The pose is sampled through `Animation::SampleTrack`, the call the preview plays, so the shape shows
-  what the key modes do: Stepped holds, Smooth blends through the key, Flat eases into it. Rotating a
-  track through the poles makes the euler angles wrap, which is what the plotted angle curves show.
+  what the key modes do: Stepped holds, Smooth blends through the key, Flat eases into it. Rotation is
+  read out as euler degrees and made continuous with the sample before it (`ContinuousEuler`): the
+  angles wrap, and the same rotation can be written by two angle triples, so the one closer to the
+  previous sample is taken. A track that sits at yaw +- 90 degrees stays ill conditioned there, because
+  pitch and roll are not separately defined at that orientation. The motion itself is quaternion and
+  gimbal free, only the three angle readout has that singularity.
   The timeline (`Ctrl+wheel` zoom, `Shift+wheel` pan, scrub, playhead) is shared with the lanes, and
   the frame under the pointer is read out in a tooltip. Nothing is editable here and parameter tracks
   are not plotted.

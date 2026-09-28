@@ -194,6 +194,54 @@ namespace ToolKit
           break;
         }
       }
+
+      /**
+       * Euler degrees of a rotation, made continuous with the sample before it. A rotation read as
+       * three angles needs two corrections to be usable as a curve:
+       *
+       * - The angles wrap, so a component that lands a full turn away from the previous sample is
+       *   brought back next to it, which is what turns a spinning track into a readable ramp instead
+       *   of a sawtooth.
+       * - The same rotation can be written by two triples, (x, y, z) and (x + 180, 180 - y, z + 180),
+       *   and the one closer to the previous sample is taken. Without this a track that passes through
+       *   yaw +- 90 degrees, where pitch and roll are not separately defined, jumps by half a turn in
+       *   the middle of a smooth turn and reads as a broken curve.
+       *
+       * @param rotation Sampled rotation.
+       * @param previous Sample before it, null for the first sample of a track.
+       */
+      Vec3 ContinuousEuler(const Quaternion& rotation, const Vec3* previous)
+      {
+        const Vec3 euler = glm::degrees(glm::eulerAngles(rotation));
+        if (previous == nullptr)
+        {
+          return euler;
+        }
+
+        Vec3 candidates[2] = {euler, Vec3(euler.x + 180.0f, 180.0f - euler.y, euler.z + 180.0f)};
+
+        Vec3 best      = candidates[0];
+        float bestCost = -1.0f;
+
+        for (Vec3& candidate : candidates)
+        {
+          float cost = 0.0f;
+          for (int axis = 0; axis < 3; axis++)
+          {
+            // Next to the sample before it first, then how far it had to move to get there.
+            candidate[axis] -= 360.0f * glm::round((candidate[axis] - (*previous)[axis]) / 360.0f);
+            cost += glm::abs(candidate[axis] - (*previous)[axis]);
+          }
+
+          if (bestCost < 0.0f || cost < bestCost)
+          {
+            best     = candidate;
+            bestCost = cost;
+          }
+        }
+
+        return best;
+      }
     } // namespace
 
     // DopeSheetView
@@ -2500,8 +2548,8 @@ namespace ToolKit
 
         samples[0][i] = pos;
         // Euler degrees: a rotation curve has to be readable and a quaternion component is not. The
-        // angles wrap around the poles, which is the price of reading a rotation as three curves.
-        samples[1][i] = glm::degrees(glm::eulerAngles(rot));
+        // readout is kept continuous along the track, see ContinuousEuler.
+        samples[1][i] = ContinuousEuler(rot, i > 0 ? &samples[1][i - 1] : nullptr);
         samples[2][i] = scl;
       }
 
