@@ -71,6 +71,18 @@ namespace ToolKit
     // theme alike, while a theme background colour would blend into the sheet and show nothing.
     const ImVec4 g_outOfRangeVeil(0.5f, 0.5f, 0.5f, 0.22f);
 
+    // Key set gestures. A key drag is clamped to the sheet range, so a group can never be pushed past
+    // the last frame by accident; the rubber band is padded by the key marker width, because a click
+    // that only touches the tip of a diamond is still meant to take the key.
+    const float g_rubberBandPadding = 4.0f;  //!< Slack around the rubber band, so it grabs what it covers.
+    const float g_rubberBandBorder  = 2.0f;  //!< Width of the rubber band outline.
+
+    /** Rubber band fill: the cursor colour at a faint alpha, so the box reads as a selection. */
+    const ImVec4 g_rubberBandFill(g_selectHighLightPrimaryColor.x,
+                                  g_selectHighLightPrimaryColor.y,
+                                  g_selectHighLightPrimaryColor.z,
+                                  0.12f);
+
     /** Compact textual form of a sampled parameter value, for the sheet rows. */
     String FormatParamValue(ParameterVariant::VariantType type, const Vec4& value)
     {
@@ -274,10 +286,7 @@ namespace ToolKit
       m_clip = anim;
 
       // A selection or a drag from the previous clip does not belong to the new one.
-      m_dragging = false;
-      m_selectedTrack.clear();
-      m_selectedFrame = -1;
-      m_selectedParam = false;
+      ClearSelection();
 
       m_trackEntities.clear();
       m_entityTracks.clear();
@@ -337,6 +346,7 @@ namespace ToolKit
       Update(ImGui::GetIO().DeltaTime);
       ResolveTracks();
       ValidateSelection();
+      HandleSelectionShortcuts();
 
       ShowClipHeader();
       ShowTransport();
@@ -460,14 +470,14 @@ namespace ToolKit
       }
 
       // The cached mapping and the preview snapshot belong to a scene that is gone. The clip is a
-      // resource and survives the switch, so it stays bound to the sheet.
+      // resource and survives the switch, so it stays bound to the sheet, but the selection does not:
+      // the tracks it names resolve against the scene that was replaced.
       m_sceneId       = sceneId;
       m_sessionActive = false;
-      m_dragging      = false;
-      m_selectedParam = false;
       m_trackEntities.clear();
       m_entityTracks.clear();
       m_baseTransforms.clear();
+      ClearSelection();
 
       if (m_playState == PlayState::Playing)
       {
@@ -900,9 +910,9 @@ namespace ToolKit
         // Undoable: the action replaces the key that may already sit on this frame.
         KeyEditAction::SetKey(m_clip, trackName, key);
 
-        // A fresh key becomes the selection, so it can be dragged right away.
-        m_selectedTrack = trackName;
-        m_selectedFrame = m_frame;
+        // A fresh key becomes the selection, so it can be dragged right away. The last keyed row wins,
+        // which keeps the gesture an animator expects: set a key, drag the key that just appeared.
+        SelectOnly(trackName, m_frame, false);
         keyed++;
       }
 
@@ -927,9 +937,95 @@ namespace ToolKit
       }
     }
 
-    bool DopeSheetView::HasSelectedKey() const
+    bool DopeSheetView::HasSelectedKey() const { return m_clip != nullptr && !m_selection.empty(); }
+
+    bool DopeSheetView::IsKeySelected(const String& track, int frame, bool param) const
     {
-      return m_clip != nullptr && !m_selectedTrack.empty() && m_selectedFrame >= 0;
+      for (const KeyRef& keyRef : m_selection)
+      {
+        if (keyRef.m_frame == frame && keyRef.m_param == param && keyRef.m_track == track)
+        {
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    void DopeSheetView::SelectOnly(const String& track, int frame, bool param)
+    {
+      KeyRef keyRef;
+      keyRef.m_track = track;
+      keyRef.m_frame = frame;
+      keyRef.m_param = param;
+
+      m_selection.clear();
+      m_selection.push_back(keyRef);
+    }
+
+    void DopeSheetView::ToggleSelection(const String& track, int frame, bool param)
+    {
+      for (auto it = m_selection.begin(); it != m_selection.end(); ++it)
+      {
+        if (it->m_frame == frame && it->m_param == param && it->m_track == track)
+        {
+          m_selection.erase(it);
+          return;
+        }
+      }
+
+      KeyRef keyRef;
+      keyRef.m_track = track;
+      keyRef.m_frame = frame;
+      keyRef.m_param = param;
+      m_selection.push_back(keyRef);
+    }
+
+    void DopeSheetView::ClearSelection()
+    {
+      m_selection.clear();
+
+      // A drag carries the keys it is moving, so a cleared selection must end it too, or the release
+      // would move keys the user can no longer see.
+      m_dragging      = false;
+      m_dragFromFrame = -1;
+      m_dragToFrame   = -1;
+      m_dragFromFrames.clear();
+    }
+
+    void DopeSheetView::SelectAllKeys()
+    {
+      if (m_clip == nullptr)
+      {
+        return;
+      }
+
+      m_selection.clear();
+
+      auto addTrackKeys = [this](const auto& tracks) -> void
+      {
+        for (const auto& track : tracks)
+        {
+          for (const auto& key : track.second)
+          {
+            KeyRef keyRef;
+            keyRef.m_track = track.first;
+            keyRef.m_frame = key.m_frame;
+            // The parameter flag is what tells the two key containers apart, and both Key and ParamKey
+            // carry their frame, so one walk serves both.
+            keyRef.m_param = std::is_same_v<std::decay_t<decltype(key)>, ParamKey>;
+            m_selection.push_back(keyRef);
+          }
+        }
+      };
+
+      addTrackKeys(m_clip->m_keys);
+      addTrackKeys(m_clip->m_paramKeys);
+    }
+
+    const DopeSheetView::KeyRef* DopeSheetView::PrimarySelection() const
+    {
+      return m_selection.empty() ? nullptr : &m_selection.back();
     }
 
     void DopeSheetView::DeleteSelectedKey()
@@ -939,30 +1035,83 @@ namespace ToolKit
         return;
       }
 
-      const String track     = m_selectedTrack;
-      const int frame        = m_selectedFrame;
-      const bool paramTrack  = m_selectedParam;
-
-      m_selectedTrack.clear();
-      m_selectedFrame = -1;
-      m_selectedParam = false;
-
-      if (!TrackHasKey(track, frame, paramTrack))
+      // The keys are bucketed per track first, then read out ascending. Bucketing keeps the delete
+      // actions of one track next to each other, which is what makes the undo group walk the clip in a
+      // readable order.
+      struct TrackFrames
       {
-        // Undo already removed it, nothing left to delete.
-        return;
+        String m_track;             //!< Track that owns the keys.
+        bool m_param = false;       //!< The keys belong to a parameter track.
+        std::vector<int> m_frames;  //!< Frames of the selected keys of that track.
+      };
+
+      std::vector<TrackFrames> tracks;
+
+      for (const KeyRef& keyRef : m_selection)
+      {
+        auto entry = std::find_if(tracks.begin(),
+                                  tracks.end(),
+                                  [&keyRef](const TrackFrames& candidate) -> bool
+                                  { return candidate.m_track == keyRef.m_track; });
+
+        if (entry == tracks.end())
+        {
+          TrackFrames bucket;
+          bucket.m_track = keyRef.m_track;
+          bucket.m_param = keyRef.m_param;
+          tracks.push_back(bucket);
+          entry = tracks.end() - 1;
+        }
+
+        entry->m_frames.push_back(keyRef.m_frame);
       }
 
-      if (paramTrack)
+      // One undo step for the whole selection, so the group is opened before the first action lands.
+      const bool groupEdits = m_selection.size() > 1;
+      if (groupEdits)
       {
-        KeyEditAction::DeleteParamKey(m_clip, track, frame);
-      }
-      else
-      {
-        KeyEditAction::DeleteKey(m_clip, track, frame);
+        ActionManager::GetInstance()->BeginActionGroup();
       }
 
-      TK_LOG("Dope sheet: key deleted at frame %d on track %s.", frame, track.c_str());
+      int removed = 0;
+
+      for (TrackFrames& track : tracks)
+      {
+        std::sort(track.m_frames.begin(), track.m_frames.end());
+
+        for (int frame : track.m_frames)
+        {
+          if (!TrackHasKey(track.m_track, frame, track.m_param))
+          {
+            continue; // Undo already removed it, nothing left to delete.
+          }
+
+          if (track.m_param)
+          {
+            KeyEditAction::DeleteParamKey(m_clip, track.m_track, frame);
+          }
+          else
+          {
+            KeyEditAction::DeleteKey(m_clip, track.m_track, frame);
+          }
+
+          removed++;
+        }
+      }
+
+      // Same rule as the move: the group is closed as soon as one action landed, and removed only counts
+      // the deletes that really pushed one.
+      if (groupEdits && removed > 0)
+      {
+        ActionManager::GetInstance()->GroupLastActions(removed);
+      }
+
+      ClearSelection();
+
+      if (removed > 1)
+      {
+        TK_LOG("Dope sheet: %d keys deleted as one undo step.", removed);
+      }
     }
 
     bool DopeSheetView::KeyAt(const String& trackName, int frame, Key& key) const
@@ -1043,10 +1192,8 @@ namespace ToolKit
       m_keyClipboard = clipboard;
 
       // The copied key becomes the selection, so Ctrl+V lands back on the same row without the
-      // animator having to select it first.
-      m_selectedTrack = trackName;
-      m_selectedFrame = frame;
-      m_selectedParam = paramTrack;
+      // animator having to select it first. The clipboard holds one key, so the rest of a group goes.
+      SelectOnly(trackName, frame, paramTrack);
 
       GetApp()->SetStatusMsg(Format("Key copied from frame %d.", frame));
       TK_LOG("Dope sheet: key copied from track %s at frame %d.", trackName.c_str(), frame);
@@ -1054,13 +1201,15 @@ namespace ToolKit
 
     void DopeSheetView::CopySelectedKey()
     {
-      if (!HasSelectedKey())
+      const KeyRef* selected = PrimarySelection();
+
+      if (selected == nullptr)
       {
         GetApp()->SetStatusMsg("Select a key to copy.");
         return;
       }
 
-      CopyKey(m_selectedTrack, m_selectedFrame, m_selectedParam);
+      CopyKey(selected->m_track, selected->m_frame, selected->m_param);
     }
 
     void DopeSheetView::PasteKeyOn(const String& trackName, bool paramTrack)
@@ -1107,9 +1256,7 @@ namespace ToolKit
       }
 
       // The pasted key becomes the selection, so a repeated paste keeps hitting the same row.
-      m_selectedTrack = trackName;
-      m_selectedFrame = m_frame;
-      m_selectedParam = paramTrack;
+      SelectOnly(trackName, m_frame, paramTrack);
 
       if (m_sessionActive)
       {
@@ -1130,10 +1277,13 @@ namespace ToolKit
       }
 
       // The selected row wins, otherwise the key goes back to the row it came from, which makes
-      // Ctrl+C followed by Ctrl+V on another frame a duplicate in place.
-      if (!m_selectedTrack.empty())
+      // Ctrl+C followed by Ctrl+V on another frame a duplicate in place. The clipboard holds a single
+      // key, so the primary selection is the one that decides where it lands.
+      const KeyRef* selected = PrimarySelection();
+
+      if (selected != nullptr)
       {
-        PasteKeyOn(m_selectedTrack, m_selectedParam);
+        PasteKeyOn(selected->m_track, selected->m_param);
       }
       else
       {
@@ -1371,18 +1521,58 @@ namespace ToolKit
 
     void DopeSheetView::ValidateSelection()
     {
-      if (!HasSelectedKey())
+      if (m_selection.empty())
       {
         return;
       }
 
-      if (!TrackHasKey(m_selectedTrack, m_selectedFrame, m_selectedParam))
+      if (m_clip == nullptr)
       {
-        // An undo removed the key under the selection.
-        m_selectedTrack.clear();
-        m_selectedFrame = -1;
-        m_selectedParam = false;
+        ClearSelection();
+        return;
       }
+
+      // An undo, a delete action or a clip edit elsewhere may have taken a selected key away. Both
+      // lists are walked backwards so an entry and its drag snapshot leave together: the drag reads
+      // the snapshot by index, and a half pruned pair would move the wrong key.
+      for (int i = (int) m_selection.size() - 1; i >= 0; i--)
+      {
+        const KeyRef& keyRef = m_selection[i];
+
+        if (TrackHasKey(keyRef.m_track, keyRef.m_frame, keyRef.m_param))
+        {
+          continue;
+        }
+
+        m_selection.erase(m_selection.begin() + i);
+
+        if (i < (int) m_dragFromFrames.size())
+        {
+          m_dragFromFrames.erase(m_dragFromFrames.begin() + i);
+        }
+      }
+
+      if (m_selection.empty())
+      {
+        m_dragging = false;
+        m_dragFromFrames.clear();
+      }
+    }
+
+    int DopeSheetView::DragDelta(const std::vector<int>& fromFrames) const
+    {
+      if (m_dragFromFrame < 0 || m_dragToFrame < 0 || fromFrames.empty())
+      {
+        return 0;
+      }
+
+      int lowest = fromFrames[0];
+      for (int frame : fromFrames)
+      {
+        lowest = glm::min(lowest, frame);
+      }
+
+      return glm::max(m_dragToFrame - m_dragFromFrame, -lowest);
     }
 
     void DopeSheetView::CommitKeyDrag()
@@ -1395,31 +1585,173 @@ namespace ToolKit
       const int fromFrame = m_dragFromFrame;
       const int toFrame   = m_dragToFrame;
 
-      m_dragging = false;
+      // The keys are copied out before the drag is closed: ClearSelection drops the snapshot and the
+      // selection is rebuilt from it further down. The frames are copied as well, because the member is
+      // cleared below and every later step of the commit has to work from this copy.
+      std::vector<KeyRef> movedKeys = m_selection;
+      std::vector<int> fromFrames   = m_dragFromFrames;
 
-      if (fromFrame < 0 || toFrame < 0 || fromFrame == toFrame)
+      m_dragging = false;
+      m_dragFromFrames.clear();
+
+      if (fromFrame < 0 || toFrame < 0 || fromFrame == toFrame || movedKeys.empty() ||
+          movedKeys.size() != fromFrames.size())
+      {
+        TK_WRN("Dope sheet: drag dropped, %d selected key(s), %d frame(s) snapshotted, %d -> %d.",
+               (int) movedKeys.size(),
+               (int) fromFrames.size(),
+               fromFrame,
+               toFrame);
+        return;
+      }
+
+      // The anchor can be gone when the selection changed while the drag was running.
+      const size_t anchor = m_dragAnchor < movedKeys.size() ? m_dragAnchor : 0;
+
+      const int delta = DragDelta(fromFrames);
+
+      if (delta == 0)
+      {
+        // The offset was clamped away: the group already sits on the lowest frame it may reach, or the
+        // drag came back to where it started. Nothing is written, and no undo step is opened for it --
+        // a per key move of zero frames pushes no action, so grouping would run on an empty stack.
+        TK_LOG("Dope sheet: drag of %d key(s) left the frames untouched (%d -> %d).",
+               (int) movedKeys.size(),
+               fromFrame,
+               toFrame);
+
+        m_selection = movedKeys;
+        return;
+      }
+
+      // One undo step for the whole group, so the group is opened before the first move lands.
+      const bool groupEdits = movedKeys.size() > 1;
+      if (groupEdits)
+      {
+        ActionManager::GetInstance()->BeginActionGroup();
+      }
+
+      // A key that moves towards another one would overwrite it before it has moved itself, so the
+      // group is walked away from the direction of travel: descending frames for a move to the right,
+      // ascending for a move to the left. Whatever sits inside the group therefore never gets
+      // overwritten, and only keys outside it are replaced, which is the point of a move.
+      std::vector<size_t> order(movedKeys.size());
+      for (size_t i = 0; i < order.size(); i++)
+      {
+        order[i] = i;
+      }
+
+      std::sort(order.begin(),
+                order.end(),
+                [&fromFrames, delta](size_t left, size_t right) -> bool
+                {
+                  return delta > 0 ? fromFrames[left] > fromFrames[right] : fromFrames[left] < fromFrames[right];
+                });
+
+      int moved = 0;
+
+      for (size_t indx : order)
+      {
+        KeyRef& keyRef   = movedKeys[indx];
+        const int frame  = fromFrames[indx];
+        const int target = frame + delta;
+
+        if (!TrackHasKey(keyRef.m_track, frame, keyRef.m_param))
+        {
+          continue; // Undo took it away while the drag was running.
+        }
+
+        // A key that would land on the frame it already sits on pushes no action of its own, so it must
+        // not be counted either: the count is what the undo group is built from.
+        if (target == frame)
+        {
+          continue;
+        }
+
+        if (keyRef.m_param)
+        {
+          KeyEditAction::MoveParamKey(m_clip, keyRef.m_track, frame, target);
+        }
+        else
+        {
+          KeyEditAction::MoveKey(m_clip, keyRef.m_track, frame, target);
+        }
+
+        keyRef.m_frame = target;
+        moved++;
+      }
+
+      // The group has to be closed even when one action landed, otherwise the grouping flag stays set
+      // and the next unrelated edit of the editor would be folded into it. moved counts only the moves
+      // that really pushed an action, so > 0 is the right test.
+      if (groupEdits && moved > 0)
+      {
+        ActionManager::GetInstance()->GroupLastActions(moved);
+      }
+
+      // The moved keys stay selected, on the frames they landed on, so the group can be dragged again.
+      m_selection.clear();
+      for (const KeyRef& keyRef : movedKeys)
+      {
+        m_selection.push_back(keyRef);
+      }
+
+      if (moved == 0)
+      {
+        TK_WRN("Dope sheet: none of the %d selected key(s) could be moved by %d frame(s).",
+               (int) movedKeys.size(),
+               delta);
+      }
+
+      if (moved > 0)
+      {
+        // The track of the anchor key names the row the drag was started on, which is what makes a
+        // bulk move of keys from several rows readable in the log.
+        const String anchorTrack = movedKeys[anchor].m_track;
+
+        TK_LOG("Dope sheet: %d key%s moved by %d frame%s in one undo step, starting on track %s.",
+               moved,
+               moved == 1 ? "" : "s",
+               delta,
+               delta == 1 || delta == -1 ? "" : "s",
+               anchorTrack.c_str());
+      }
+    }
+
+    void DopeSheetView::HandleSelectionShortcuts()
+    {
+      // The shortcuts are not driven through the lane buttons: a hidden button takes mouse ownership,
+      // not the keyboard, so the key set is read directly instead. A text field is left alone, it
+      // needs Escape and Ctrl + A for itself.
+      ImGuiIO& io = ImGui::GetIO();
+
+      if (m_clip == nullptr || io.WantTextInput)
       {
         return;
       }
 
-      // The action moves the key and replaces whatever sat on the target frame.
-      if (m_dragParam)
+      if (ImGui::IsKeyPressed(ImGuiKey_Escape, false))
       {
-        KeyEditAction::MoveParamKey(m_clip, m_dragTrack, fromFrame, toFrame);
-      }
-      else
-      {
-        KeyEditAction::MoveKey(m_clip, m_dragTrack, fromFrame, toFrame);
+        // Escape first cancels a drag that is running, which is what the sheet has always done with
+        // it, and only then clears the selection.
+        if (m_dragging)
+        {
+          m_dragging = false;
+          m_dragFromFrames.clear();
+        }
+        else
+        {
+          ClearSelection();
+        }
       }
 
-      m_selectedTrack = m_dragTrack;
-      m_selectedFrame = toFrame;
-      m_selectedParam = m_dragParam;
-
-      TK_LOG("Dope sheet: key moved from frame %d to %d on track %s.",
-             fromFrame,
-             toFrame,
-             m_dragTrack.c_str());
+      // Ctrl + A is read only while the sheet has the focus, so it cannot select all keys while the
+      // viewport is the window the animator is working in.
+      if (ImGui::IsKeyPressed(ImGuiKey_A, false) && io.KeyCtrl &&
+          ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows))
+      {
+        SelectAllKeys();
+      }
     }
 
     float DopeSheetView::FrameToX(int frame, float laneLeft) const
@@ -1793,6 +2125,17 @@ namespace ToolKit
 
       ImGui::SameLine();
       ImGui::TextDisabled("|  %d matched, %d unmatched", matched, unmatched);
+
+      ImGui::SameLine();
+      ImGui::TextDisabled("|  %d selected", (int) m_selection.size());
+
+      UI::HelpMarker("DopeSheetKeySelection",
+                     "Click a key to select it, Shift + click to add or remove one, Shift + drag in the "
+                     "lane area to box select a range of rows and frames and add it to the selection. "
+                     "Ctrl + drag is the same box, but it replaces the selection instead of adding to it. "
+                     "Drag any selected key to move the whole selection in time, Delete removes every "
+                     "selected key as one undo step and Ctrl + A selects all keys of the clip. Escape "
+                     "drops the selection.");
     }
 
     void DopeSheetView::ShowSheet()
@@ -1998,6 +2341,12 @@ namespace ToolKit
 
       const float lineHeight = ImGui::GetTextLineHeight();
 
+      // Only one row may consume the press, drag and release of the gesture that is running. The rows
+      // are drawn in one frame and each of them has its own hit area, so the two flags below are what
+      // keeps a rubber band and a key drag apart.
+      bool claimGesture = false;
+      bool pressHitKey  = false;
+
       for (int row = firstRow; row < lastRow; row++)
       {
         const String& trackName = rowName(row);
@@ -2017,6 +2366,11 @@ namespace ToolKit
 
         const bool rowHovered = ImGui::IsItemHovered();
         const bool rowActive  = ImGui::IsItemActive();
+
+        // Only the active row, the one the press landed on, may steer the gesture that is running.
+        // The rows are drawn in one frame and each of them reports the press, so the row that takes it
+        // remembers that it did.
+        const bool rowClaimedPress = rowActive && claimGesture;
 
         // A parameter track addresses an entity, component or material slot instead of a node.
         const EntityPtr ntt      = paramRow ? EntityForParamTrack(trackName) : EntityForTrack(trackName);
@@ -2066,15 +2420,15 @@ namespace ToolKit
             hoveredKeyInterp = interp;
           }
 
-          const bool draggingSource = m_dragging && trackName == m_dragTrack && keyFrame == m_dragFromFrame;
-          if (draggingSource)
+          // Every key of the group is dragged away at once, so each of them is drawn as a ghost on the
+          // frame it would land on, below.
+          if (m_dragging && IsKeySelected(trackName, keyFrame, paramRow))
           {
-            // While it is being dragged, the key is drawn as a ghost on the target frame below.
             DrawKeyMarker(dl, ImVec2(keyX, keyY), g_keyRadius, interp, cursorColor, false);
             return;
           }
 
-          const bool selected = (trackName == m_selectedTrack && keyFrame == m_selectedFrame);
+          const bool selected = IsKeySelected(trackName, keyFrame, paramRow);
           const bool current  = keyFrame == m_frame;
 
           DrawKeyMarker(dl,
@@ -2125,18 +2479,44 @@ namespace ToolKit
           }
         }
 
-        // Ghost of the key being dragged, drawn on the frame it would land on.
-        if (m_dragging && trackName == m_dragTrack && m_dragToFrame >= 0)
+        // Ghosts of the dragged keys, drawn on the frames they would land on. Every member of the
+        // group gets one, on its own row, so a group move reads as a group.
+        if (m_dragging && m_dragToFrame >= 0 && !m_dragFromFrames.empty())
         {
-          const float ghostX = FrameToX(m_dragToFrame, laneLeft);
+          const int delta = DragDelta(m_dragFromFrames);
+          int ghostFrame  = -1;
 
-          DrawKeyMarker(dl, ImVec2(ghostX, keyY), g_keyRadius, m_dragInterp, cursorColor, true);
-          DrawKeyMarker(dl, ImVec2(ghostX, keyY), g_keyRadius, m_dragInterp, ImGui::GetColorU32(ImGuiCol_Text), false);
+          for (size_t indx = 0; indx < m_selection.size() && indx < m_dragFromFrames.size(); indx++)
+          {
+            const KeyRef& keyRef = m_selection[indx];
+            if (keyRef.m_track != trackName || keyRef.m_param != paramRow)
+            {
+              continue;
+            }
 
-          const String frameLabel = Format("%d", m_dragToFrame);
-          dl->AddText(ImVec2(ghostX + g_keyRadius + 4.0f, rowY + 2.0f),
-                      ImGui::GetColorU32(ImGuiCol_Text),
-                      frameLabel.c_str());
+            ghostFrame = m_dragFromFrames[indx] + delta;
+
+            const float ghostX = FrameToX(ghostFrame, laneLeft);
+            const KeyInterp ghostInterp = indx == m_dragAnchor ? m_dragInterp : KeyInterp::Smooth;
+
+            DrawKeyMarker(dl, ImVec2(ghostX, keyY), g_keyRadius, ghostInterp, cursorColor, true);
+            DrawKeyMarker(dl,
+                          ImVec2(ghostX, keyY),
+                          g_keyRadius,
+                          ghostInterp,
+                          ImGui::GetColorU32(ImGuiCol_Text),
+                          false);
+          }
+
+          // One frame label per row, next to the last ghost of the row: a label on every ghost would
+          // sit on top of its neighbours once the group is dense.
+          if (ghostFrame >= 0)
+          {
+            const String frameLabel = Format("%d", ghostFrame);
+            dl->AddText(ImVec2(FrameToX(ghostFrame, laneLeft) + g_keyRadius + g_rubberBandPadding, rowY + 2.0f),
+                        ImGui::GetColorU32(ImGuiCol_Text),
+                        frameLabel.c_str());
+          }
         }
 
         // Name column.
@@ -2176,8 +2556,10 @@ namespace ToolKit
                     info.c_str());
 
         // Tooltip on a hovered key only; while the user is scrubbing the row it would follow the
-        // drag. Only a transform key has a mode to report, a parameter key blends by its type.
-        if (hoveredKeyFrame >= 0 && !rowActive)
+        // drag, and a key the running drag carries has left the row it is drawn on. Only a transform
+        // key has a mode to report, a parameter key blends by its type.
+        const bool keyMovingAway = m_dragging && IsKeySelected(trackName, hoveredKeyFrame, paramRow);
+        if (hoveredKeyFrame >= 0 && !rowActive && !keyMovingAway)
         {
           if (paramRow)
           {
@@ -2204,33 +2586,74 @@ namespace ToolKit
           openCtx    = true;
         }
 
-        // Left click on a key selects it and starts a time drag; a click anywhere else scrubs the
-        // playhead and drops the selection.
-        if (rowHovered && hoveredKeyFrame >= 0 && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+        // Left click on a key selects it, ctrl toggles it in the set, and a plain drag on a selected
+        // key moves the whole selection in time. The press is not a click yet, so the drag only starts
+        // following the mouse once it passes the drag threshold; a press that never moves collapses a
+        // group to the key under the cursor when it is released.
+        const bool pressClaimable = ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !claimGesture;
+
+        if (rowHovered && hoveredKeyFrame >= 0 && pressClaimable)
         {
-          m_selectedTrack = trackName;
-          m_selectedFrame = hoveredKeyFrame;
-          m_selectedParam = paramRow;
-          m_dragTrack     = trackName;
-          m_dragParam     = paramRow;
-          m_dragFromFrame = hoveredKeyFrame;
-          m_dragToFrame   = hoveredKeyFrame;
-          m_dragInterp    = hoveredKeyInterp;
-          m_dragging      = true;
+          claimGesture = true;
+          pressHitKey  = true;
+
+          if (io.KeyShift)
+          {
+            // Shift + click toggles the key and never selects a group away, and it leaves the lane free
+            // for the rubber band the same press may start.
+            ToggleSelection(trackName, hoveredKeyFrame, paramRow);
+          }
+          else
+          {
+            if (!IsKeySelected(trackName, hoveredKeyFrame, paramRow))
+            {
+              SelectOnly(trackName, hoveredKeyFrame, paramRow);
+            }
+
+            // The grabbed key is the anchor: its frame drives the delta and its mode shapes the ghost.
+            // The frames of the whole selection are snapshotted too, because the move is applied key by
+            // key on release and the frame a key leaves from must not be read after an earlier move of
+            // the same drag already changed the track.
+            m_dragAnchor = 0;
+            m_dragFromFrames.clear();
+            m_dragFromFrames.reserve(m_selection.size());
+
+            for (size_t i = 0; i < m_selection.size(); i++)
+            {
+              m_dragFromFrames.push_back(m_selection[i].m_frame);
+
+              if (m_selection[i].m_track == trackName && m_selection[i].m_frame == hoveredKeyFrame &&
+                  m_selection[i].m_param == paramRow)
+              {
+                m_dragAnchor = i;
+              }
+            }
+
+            m_dragFromFrame = hoveredKeyFrame;
+            m_dragToFrame   = hoveredKeyFrame;
+            m_dragInterp    = hoveredKeyInterp;
+            m_dragging      = true;
+          }
         }
-        else if (rowActive && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !m_dragging)
+        else if (rowActive && pressClaimable && !m_dragging && !m_boxSelecting)
         {
-          m_selectedTrack.clear();
-          m_selectedFrame = -1;
-          m_selectedParam = false;
+          // Empty lane space: the selection goes and the press scrubs the playhead, unless ctrl turns
+          // it into a rubber band below.
+          claimGesture = true;
+          ClearSelection();
         }
 
-        if (m_dragging && m_dragTrack == trackName)
+        // The row that took the press keeps following the mouse, even when it leaves the row. The
+        // condition is the active row rather than the row the drag started on, because the start row
+        // can scroll out of view, and then no row would be left to advance the ghost.
+        if (m_dragging && rowActive)
         {
-          // The row that owns the drag keeps following the mouse, even when it leaves the row.
           m_dragToFrame = glm::clamp(XToFrame(io.MousePos.x, laneLeft), 0, m_endFrame);
         }
-        else if (rowActive)
+
+        // Plain drag on empty lane space scrubs. A rubber band swallows the mouse, so the playhead
+        // stays where the drag started.
+        if (rowActive && rowClaimedPress && !m_dragging && !m_boxSelecting)
         {
           SetFrame(XToFrame(io.MousePos.x, laneLeft), true);
         }
@@ -2241,6 +2664,115 @@ namespace ToolKit
         if (openCtx)
         {
           ImGui::OpenPopup("##dopeSheetRowCtx");
+        }
+      }
+
+      // Rubber band. Shift + drag in the lane area adds every key the box covers to the selection, and
+      // Ctrl + drag is the same box that starts over instead. It cuts across rows, which the per row hit
+      // areas cannot reach, and it is the only gesture that may run without a row of its own, so the
+      // rows only report the press here.
+      const ImVec2 laneMin(laneLeft, origin.y);
+      const ImVec2 laneMax(laneLeft + laneWidth, origin.y + viewHeight);
+
+      if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !pressHitKey && (io.KeyShift || io.KeyCtrl) &&
+          ImGui::IsMouseHoveringRect(laneMin, laneMax))
+      {
+        m_boxSelecting = true;
+        m_boxAdditive  = io.KeyShift;
+        m_boxStart     = io.MousePos;
+        // The rows are matched against the scroll the box was started with, so panning the rows while
+        // the box is open does not slide the selection under it.
+        m_boxScrollY   = m_scrollY;
+      }
+
+      if (m_boxSelecting)
+      {
+        const ImVec2 boxMin(glm::min(m_boxStart.x, io.MousePos.x), glm::min(m_boxStart.y, io.MousePos.y));
+        const ImVec2 boxMax(glm::max(m_boxStart.x, io.MousePos.x), glm::max(m_boxStart.y, io.MousePos.y));
+
+        dl->AddRectFilled(boxMin, boxMax, ImGui::GetColorU32(g_rubberBandFill));
+        dl->AddRect(boxMin, boxMax, cursorColor, 0.0f, 0, g_rubberBandBorder);
+
+        if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))
+        {
+          // A box that never moved is a shift + click, which has already toggled its key.
+          const bool movedBox = glm::abs(boxMax.x - boxMin.x) > FLT_EPSILON ||
+                                glm::abs(boxMax.y - boxMin.y) > FLT_EPSILON;
+
+          m_boxSelecting = false;
+
+          if (movedBox)
+          {
+            if (!m_boxAdditive)
+            {
+              m_selection.clear();
+            }
+
+            const float framePad = g_keyRadius / glm::max(g_minPxPerFrame, m_pxPerFrame);
+
+            for (int row = 0; row < rowCount; row++)
+            {
+              const String& trackName = rowName(row);
+              const bool paramRow     = rowIsParam(row);
+
+              // The row is matched against the frozen scroll, so the box and the row layout agree
+              // even when the rows were scrolled while the box was open.
+              const float rowTop = origin.y + row * g_rowHeight - m_boxScrollY;
+
+              if (rowTop > boxMax.y || rowTop + g_rowHeight < boxMin.y)
+              {
+                continue;
+              }
+
+              // The horizontal test runs on frames instead of pixels, so a box edge that only touches
+              // the tip of a diamond still takes it, the same slack the key hover uses.
+              const float lowFrame  = (float) XToFrame(boxMin.x, laneLeft) - framePad;
+              const float highFrame = (float) XToFrame(boxMax.x, laneLeft) + framePad;
+
+              auto addKey = [&](int frame) -> void
+              {
+                const bool inside      = frame >= lowFrame && frame <= highFrame;
+                const bool alreadyInIt = IsKeySelected(trackName, frame, paramRow);
+
+                if (!inside || alreadyInIt)
+                {
+                  return;
+                }
+
+                KeyRef keyRef;
+                keyRef.m_track = trackName;
+                keyRef.m_frame = frame;
+                keyRef.m_param = paramRow;
+                m_selection.push_back(keyRef);
+              };
+
+              if (paramRow)
+              {
+                const ParamKeyArray* pKeys = m_clip->m_paramKeys.Find(trackName);
+                if (pKeys != nullptr)
+                {
+                  for (const ParamKey& key : *pKeys)
+                  {
+                    addKey(key.m_frame);
+                  }
+                }
+              }
+              else
+              {
+                const KeyArray* keys = m_clip->m_keys.Find(trackName);
+                if (keys != nullptr)
+                {
+                  for (const Key& key : *keys)
+                  {
+                    addKey(key.m_frame);
+                  }
+                }
+              }
+            }
+
+            TK_LOG("Dope sheet: rubber band selected %d key%s.", (int) m_selection.size(),
+                   m_selection.size() == 1 ? "" : "s");
+          }
         }
       }
 
@@ -2294,9 +2826,7 @@ namespace ToolKit
         ImGui::BeginDisabled(!CanEdit());
         if (ImGui::MenuItem("Delete Key", nullptr, false, ctxFrame >= 0))
         {
-          m_selectedTrack.clear();
-          m_selectedFrame = -1;
-          m_selectedParam = false;
+          ClearSelection();
 
           if (ctxIsParam)
           {
@@ -2335,8 +2865,7 @@ namespace ToolKit
           {
             if (ImGui::MenuItem(InterpLabel(interp), nullptr, interp == current))
             {
-              m_selectedTrack = m_ctxTrack;
-              m_selectedFrame = ctxFrame;
+              SelectOnly(m_ctxTrack, ctxFrame, false);
               SetKeyInterp(m_ctxTrack, ctxFrame, interp);
             }
           }
@@ -2361,9 +2890,7 @@ namespace ToolKit
           if (removed)
           {
             m_clip->m_dirty = true;
-            m_selectedTrack.clear();
-            m_selectedFrame = -1;
-            m_selectedParam = false;
+            ClearSelection();
             ResolveTracks();
           }
         }
@@ -2383,16 +2910,18 @@ namespace ToolKit
         return "";
       }
 
-      // The picked track wins, then the track of the selected key when it is a transform track, and
-      // the first track of the clip otherwise.
+      // The picked track wins, then the track of the primary selected key when it is a transform
+      // track, and the first track of the clip otherwise.
       if (m_clip->m_keys.Find(m_curveTrack) != nullptr)
       {
         return m_curveTrack;
       }
 
-      if (!m_selectedParam && m_clip->m_keys.Find(m_selectedTrack) != nullptr)
+      const KeyRef* selected = PrimarySelection();
+
+      if (selected != nullptr && !selected->m_param && m_clip->m_keys.Find(selected->m_track) != nullptr)
       {
-        return m_selectedTrack;
+        return selected->m_track;
       }
 
       return m_clip->m_keys[0].first;

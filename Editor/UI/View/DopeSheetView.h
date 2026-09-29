@@ -17,6 +17,7 @@
 #include <Animation.h>
 
 #include <unordered_map>
+#include <vector>
 
 namespace ToolKit
 {
@@ -60,6 +61,18 @@ namespace ToolKit
         KeyAtFrame   //!< a key sits on the playhead frame
       };
 
+      /**
+       * One key of the selection. A key is addressed by its track, its frame and which of the clip's
+       * two key containers it lives in, because a track name may name a transform track and a
+       * parameter track at the same time and a group is allowed to mix both kinds.
+       */
+      struct KeyRef
+      {
+        String m_track;       //!< Track that owns the key.
+        int m_frame = -1;     //!< Frame the key sits on.
+        bool m_param = false; //!< The key belongs to a parameter track.
+      };
+
       DopeSheetView();
       virtual ~DopeSheetView();
 
@@ -100,13 +113,13 @@ namespace ToolKit
       /** Writes keys for every selected entity at the current frame. */
       void SetKeyOnSelection();
 
-      /** States if a key is selected in the sheet. */
+      /** States if at least one key is selected in the sheet. */
       bool HasSelectedKey() const;
 
-      /** Removes the selected key through an undoable action. */
+      /** Removes every selected key through undoable actions, grouped into one undo step. */
       void DeleteSelectedKey();
 
-      /** Copies the selected key into the sheet's clipboard. Undo does not touch the clipboard. */
+      /** Copies the primary selected key into the sheet's clipboard. Undo does not touch the clipboard. */
       void CopySelectedKey();
 
       /**
@@ -205,6 +218,39 @@ namespace ToolKit
       /** Applies a finished key drag, undoably. */
       void CommitKeyDrag();
 
+      /**
+       * Frame offset a running drag applies to the whole selection. The lowest key of the group decides
+       * how far left the drag may go, so a bulk move can not push a key before frame zero, and the ghost
+       * markers are drawn from this same offset, so the preview and the release agree.
+       * @param fromFrames Frames the dragged keys started on. They are passed in rather than read from
+       * the member, because the commit clears that snapshot before it asks for the offset.
+       */
+      int DragDelta(const std::vector<int>& fromFrames) const;
+
+      /**
+       * Handles Ctrl + A and Escape. The sheet's other shortcuts live in DopeSheetWindow, these two
+       * belong to the lane area because the key set they act on is drawn there.
+       */
+      void HandleSelectionShortcuts();
+
+      /** States if the key is part of the selection. */
+      bool IsKeySelected(const String& track, int frame, bool param) const;
+
+      /** Makes the key the whole selection. */
+      void SelectOnly(const String& track, int frame, bool param);
+
+      /** Adds the key to the selection, or removes it when it is already part of it. */
+      void ToggleSelection(const String& track, int frame, bool param);
+
+      /** Drops the selection and the drag that is moving it. */
+      void ClearSelection();
+
+      /** Selects every key of the clip, transform tracks and parameter tracks alike. */
+      void SelectAllKeys();
+
+      /** Last selected key, which is the one the clipboard works on. Null when nothing is selected. */
+      const KeyRef* PrimarySelection() const;
+
       /** States if the clip holds a key on the given frame of the given track. */
       bool TrackHasKey(const String& trackName, int frame, bool paramTrack) const;
 
@@ -223,7 +269,7 @@ namespace ToolKit
       /** Writes the clipboard key at the playhead on the given row, undoably. */
       void PasteKeyOn(const String& trackName, bool paramTrack);
 
-      /** Drops the selection when the selected key is not part of the clip anymore. */
+      /** Drops every selected key that is no longer part of the clip. */
       void ValidateSelection();
 
       /**
@@ -277,18 +323,28 @@ namespace ToolKit
 
       std::unordered_map<String, ParamSnapshot> m_baseParams; //!< Pre preview parameter values.
 
-      // Key selection and dragging. One key is selected at a time and the clipboard holds a single
-      // key too, a later phase extends both to a set with bulk moves. A selected key belongs either
-      // to a transform track or to a parameter track, which the two flags below record.
-      String m_selectedTrack;             //!< Track of the selected key, empty when nothing is selected.
-      int m_selectedFrame      = -1;      //!< Frame of the selected key.
-      bool m_selectedParam     = false;   //!< The selected key is a parameter key.
-      bool m_dragging          = false;   //!< True while a selected key is dragged in time.
-      String m_dragTrack;                 //!< Track the drag started on.
-      bool m_dragParam         = false;   //!< The drag moves a parameter key.
-      int m_dragFromFrame      = -1;      //!< Frame the dragged key came from.
-      int m_dragToFrame        = -1;      //!< Frame the dragged key would land on.
+      // Key selection and dragging. Several keys can be selected at once and moved or deleted as a
+      // group, while the clipboard holds a single key: the primary (last selected) one, see KeyRef.
+      std::vector<KeyRef> m_selection; //!< Selected keys, in the order they were picked.
+
+      bool m_dragging     = false;  //!< True while the selection is dragged in time.
+      int m_dragFromFrame = -1;     //!< Frame the key the drag was started on came from.
+      int m_dragToFrame   = -1;     //!< Frame that key sits on right now, the drag delta and the ghost.
+      size_t m_dragAnchor = 0;      //!< Index of that key in m_selection, the one the mouse follows.
       KeyInterp m_dragInterp = KeyInterp::Linear; //!< Mode of the dragged key, for the ghost marker.
+
+      /**
+       * Frames the selected keys came from, one entry per selection entry in the same order, frozen
+       * when the drag starts. m_selection holds the frames the keys are on right now, which move with
+       * the drag, so the snapshot is what a repeated drag and the commit read from.
+       */
+      std::vector<int> m_dragFromFrames;
+
+      // Rubber-band box selection, started by Ctrl + drag in the lane area.
+      bool m_boxSelecting = false;      //!< True while a box is dragged.
+      bool m_boxAdditive  = false;      //!< Shift was held when the box started, so it adds to the set.
+      ImVec2 m_boxStart   = ImVec2();   //!< Where the box started, in screen space.
+      float m_boxScrollY  = 0.0f;       //!< Lane scroll the box was started with, in pixels.
 
       // Right click context, deferred until the row has been drawn.
       String m_ctxTrack;

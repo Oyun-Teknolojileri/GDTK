@@ -802,6 +802,15 @@ Model:
   (the transform payload or the parameter payload): a transform key and a parameter key cannot be
   mixed, and a parameter key has to match the type of the parameter it addresses. A paste is one
   `KeyEditAction` step and replaces whatever sits on the target frame.
+- The sheet selects a **set** of keys: a click selects one, `Shift+click` adds or removes one, and
+  `Shift+drag` in the lane area draws a rubber band that takes every key it covers, across rows, adding
+  it to the selection (`Ctrl+drag` is the same box that starts over instead). `Ctrl+A` takes the whole
+  clip and `Escape` drops the selection. A plain click still scrubs and a plain drag still moves the
+  playhead, so the set is additive to what the sheet did before. Dragging a selected key carries the
+  whole set: the frames are snapshotted on press, the moves are applied away from the direction of travel
+  so a member of the group never overwrites one that has not moved yet, the offset is limited by the
+  lowest frame of the group so nothing lands before frame 0, and the whole move is one undo step.
+  `Delete` removes the set the same way, and one ghost marker per key shows where a bulk move lands.
 - The sheet area has two views, switched by the `Curves` button (it always names the view it
   switches to). The curve view is **read only**: the name column lists the transform tracks and picks
   one, and the lane area plots three bands -- translation, rotation in degrees, scale -- each with the
