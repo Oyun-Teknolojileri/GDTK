@@ -57,10 +57,18 @@ namespace ToolKit
 
     void CustomDataView::ShowKeyDiamond(ParameterVariant* var)
     {
+      // The diamond anchors the row it belongs to: it is the first item on the line and every caller
+      // follows it with SameLine() before the widget it keys. A row that draws no diamond still has to
+      // occupy that slot, otherwise the SameLine() of several rows hangs them off the item before them
+      // and the whole block collapses onto one line.
+      const float size = ImGui::GetFrameHeight();
+      auto reserveSlot = [size]() -> void { ImGui::Dummy(Vec2(size, size)); };
+
       StringArray& stack = GetKeyOwnerStack();
       if (var == nullptr || stack.empty())
       {
         // No owner: the row can not be addressed by a track id, so there is nothing to key.
+        reserveSlot();
         return;
       }
 
@@ -69,17 +77,19 @@ namespace ToolKit
       DopeSheetWindowPtr sheet = GetApp()->GetDopeSheet();
       if (sheet == nullptr)
       {
+        reserveSlot();
         return;
       }
 
       const DopeSheetView::ParamKeyState state = sheet->GetParamKeyState(trackId);
       if (state == DopeSheetView::ParamKeyState::NoClip)
       {
-        // Without a clip there is no key state to show, and the sheet is where a clip is bound.
+        // Without a clip there is no key state to show, and the sheet is where a clip is bound. The
+        // slot stays, the diamond does not.
+        reserveSlot();
         return;
       }
 
-      const float size = ImGui::GetFrameHeight();
       const ImVec2 pos = ImGui::GetCursorScreenPos();
 
       // The track id is unique, a parameter name is not: two rows named "Color" (an entity color and
