@@ -54,6 +54,10 @@ namespace ToolKit
     const float g_trackColumnTint   = 0.06f;   //!< Faint tint that sets the track name column apart.
     const float g_columnLineTint    = 0.18f;   //!< Alpha of the line between the name column and the lanes.
 
+    // ImGui asserts on a zero sized InvisibleButton, and the sheet can be squeezed to nothing by a
+    // neighbouring window, which zeroes the available region the hit areas are built from.
+    const float g_minHitSize        = 1.0f;    //!< Smallest size a hit area may have.
+
     // Curve view. The plot is read only, it exists to show what the key modes do to the motion.
     const int g_curveBandCount      = 3;       //!< Translation, rotation and scale bands.
     const float g_curveThickness    = 2.0f;    //!< Width of a plotted curve.
@@ -2360,9 +2364,10 @@ namespace ToolKit
 
         ImGui::PushID(row);
 
-        // One hit area per row: it scrubs the playhead, selects a key and carries a key drag.
+        // One hit area per row: it scrubs the playhead, selects a key and carries a key drag. Its width
+        // follows the available region, which can be zero while the sheet is squeezed by a neighbour.
         ImGui::SetCursorScreenPos(ImVec2(origin.x, rowY));
-        ImGui::InvisibleButton("##dopeSheetLane", ImVec2(avail.x, g_rowHeight));
+        ImGui::InvisibleButton("##dopeSheetLane", ImVec2(glm::max(g_minHitSize, avail.x), g_rowHeight));
 
         const bool rowHovered = ImGui::IsItemHovered();
         const bool rowActive  = ImGui::IsItemActive();
@@ -3030,9 +3035,11 @@ namespace ToolKit
       // gone and reads on top of both.
       dl->AddLine(ImVec2(laneLeft, origin.y), ImVec2(laneLeft, origin.y + viewHeight), columnLine);
 
-      // Scrub area: the curve view has no keys to pick, so the lane area only moves the playhead.
+      // Scrub area: the curve view has no keys to pick, so the lane area only moves the playhead. The
+      // height follows the available region, which can be zero while the sheet is squeezed.
       ImGui::SetCursorScreenPos(ImVec2(laneLeft, origin.y));
-      ImGui::InvisibleButton("##dopeSheetCurveScrub", ImVec2(laneWidth, viewHeight));
+      ImGui::InvisibleButton("##dopeSheetCurveScrub",
+                             ImVec2(laneWidth, glm::max(g_minHitSize, viewHeight)));
 
       const bool areaHovered = ImGui::IsItemHovered();
       const bool areaActive  = ImGui::IsItemActive();
