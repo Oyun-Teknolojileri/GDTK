@@ -18,6 +18,26 @@ namespace ToolKit
   namespace Editor
   {
 
+    namespace
+    {
+      /*
+       * Smallest extent a scale reference can be normalized with. Anything below this counts
+       * as having no size, because Entity::UpdateLocalBoundingBox() fills the bounding box of
+       * a node without a volume with an infinitesimal box (plus/minus TK_FLT_MIN).
+       */
+      constexpr float g_minScaleReference     = 0.0001f;
+
+      /* Reference used when nothing in the sub tree has a measurable size. */
+      constexpr float g_defaultScaleReference = 1.0f;
+
+      /** Extent of an axis aligned box along the given direction, in world units. */
+      float ExtentAlongDirection(const Vec3& boxSize, const Vec3& dir)
+      {
+        const Vec3 absDir = glm::abs(dir);
+        return absDir.x * boxSize.x + absDir.y * boxSize.y + absDir.z * boxSize.z;
+      }
+    } // namespace
+
     // StateMoveBase
     //////////////////////////////////////////
 
@@ -405,9 +425,64 @@ namespace ToolKit
       if (m_type == TransformType::Scale)
       {
         m_initialGrabPoint = m_gizmo->m_grabDir;
+        m_scaleRefSize     = GetScaleReferenceSize(currScene->GetCurrentSelection());
       }
 
       SDL_GetGlobalMouseState(&m_mouseInitialLoc.x, &m_mouseInitialLoc.y);
+    }
+
+    Vec3 StateTransformTo::GetScaleReferenceSize(EntityPtr ntt) const
+    {
+      // The bounding box of an entity is local, the node scale is what turns it into world
+      // units. The scale of the grab start is used, so the reference stays fixed while the
+      // handle elongates the entity.
+      const BoundingBox& box = ntt->GetBoundingBox();
+      Vec3 refSize           = (box.max - box.min) * glm::abs(m_initialScale);
+
+      if (glm::length(refSize) >= g_minScaleReference)
+      {
+        return refSize;
+      }
+
+      // The node carries no volume of its own, it is a transform only parent. What the scale
+      // handle elongates are the children inheriting that scale, so their bounds are the
+      // reference. They are measured along the entity's own axes, in world units.
+      EntityPtrArray children;
+      GetChildren(ntt, children);
+
+      if (!children.empty())
+      {
+        BoundingBox subTreeBox;
+        for (EntityPtr child : children)
+        {
+          subTreeBox.UpdateBoundary(child->GetBoundingBox(true));
+        }
+
+        Vec3 axes[3];
+        ExtractAxes(ntt->m_node->GetTransformAxes(), axes[0], axes[1], axes[2]);
+
+        const Vec3 subTreeSize = subTreeBox.max - subTreeBox.min;
+        Vec3 refExtents        = ZERO;
+        for (int i = 0; i < 3; i++)
+        {
+          refExtents[i] = ExtentAlongDirection(subTreeSize, axes[i]);
+        }
+
+        if (glm::length(refExtents) >= g_minScaleReference)
+        {
+          return refExtents;
+        }
+      }
+
+      // Nothing under the entity has a size either. The gizmo keeps a constant screen space
+      // size, which gives the drag a stable, view relative scale as the last resort.
+      float gizmoSize = glm::abs(m_gizmo->m_node->GetScale().x);
+      if (gizmoSize < g_minScaleReference)
+      {
+        gizmoSize = g_defaultScaleReference;
+      }
+
+      return Vec3(gizmoSize);
     }
 
     void StateTransformTo::TransitionOut(State* prevState)
@@ -522,7 +597,7 @@ namespace ToolKit
             else
             {
               // Previous point.
-              ray    = vp->RayFromScreenSpacePoint(m_mouseData[0]);
+              ray = vp->RayFromScreenSpacePoint(m_mouseData[0]);
               RayPlaneIntersection(ray, m_intersectionPlane, t);
               Vec3 p0 = PointOnRay(ray, t);
               m_delta = p - p0;
@@ -708,10 +783,10 @@ namespace ToolKit
     {
       // Absolute rotation: m_delta.z is the total angle measured from the grab
       // start, applied on top of the initial orientation each frame.
-      m_totalAngle         = m_delta.z;
+      m_totalAngle  = m_delta.z;
 
-      float angle          = m_totalAngle;
-      float spacing        = glm::radians(GetApp()->m_rotateDelta);
+      float angle   = m_totalAngle;
+      float spacing = glm::radians(GetApp()->m_rotateDelta);
       if (GetApp()->m_snapsEnabled)
       {
         angle = glm::round(angle / spacing) * spacing;
@@ -726,31 +801,40 @@ namespace ToolKit
     void StateTransformTo::Scale(EntityPtr ntt)
     {
       Vec3 scaleAxes[7];
-      scaleAxes[(int) AxisLabel::X]    = X_AXIS;
-      scaleAxes[(int) AxisLabel::Y]    = Y_AXIS;
-      scaleAxes[(int) AxisLabel::Z]    = Z_AXIS;
-      scaleAxes[(int) AxisLabel::XY]   = XY_AXIS;
-      scaleAxes[(int) AxisLabel::YZ]   = YZ_AXIS;
-      scaleAxes[(int) AxisLabel::ZX]   = ZX_AXIS;
-      scaleAxes[(int) AxisLabel::XYZ]  = Vec3(1.0f);
+      scaleAxes[(int) AxisLabel::X]   = X_AXIS;
+      scaleAxes[(int) AxisLabel::Y]   = Y_AXIS;
+      scaleAxes[(int) AxisLabel::Z]   = Z_AXIS;
+      scaleAxes[(int) AxisLabel::XY]  = XY_AXIS;
+      scaleAxes[(int) AxisLabel::YZ]  = YZ_AXIS;
+      scaleAxes[(int) AxisLabel::ZX]  = ZX_AXIS;
+      scaleAxes[(int) AxisLabel::XYZ] = Vec3(1.0f);
 
-      const BoundingBox& box           = ntt->GetBoundingBox();
-      Vec3 aabbSize                    = box.max - box.min;
+      // Normalize by the world space size of what the handle elongates, so the elongation
+      // along the axis matches the mouse travel, independent of how big the entity already
+      // is. The size is the one captured at grab start, because a node without a volume of
+      // its own has no bounds to measure (see GetScaleReferenceSize).
+      int axisIndex                   = int(m_gizmo->GetGrabbedAxis());
+      Vec3 axis                       = scaleAxes[axisIndex];
 
-      // Normalize by the initial world size (local size * initial scale) so
-      // the elongation along the axis matches the mouse travel in world space,
-      // independent of how big the entity already is.
-      aabbSize                        *= glm::abs(m_initialScale);
+      Vec3 aabbSize                   = m_scaleRefSize * axis;
+      float refLength                 = glm::length(aabbSize);
 
-      int axisIndex                    = int(m_gizmo->GetGrabbedAxis());
-      Vec3 axis                        = scaleAxes[axisIndex];
+      // A flat entity (a plane grabbed along its thin axis) has no extent on the grabbed
+      // axes, its overall size is the only reference left.
+      if (refLength < g_minScaleReference)
+      {
+        refLength = glm::length(m_scaleRefSize);
+      }
 
-      aabbSize                        *= axis;
-      aabbSize                         = glm::max(aabbSize, 0.0001f);
-      Vec3 delta                       = Vec3(glm::length(m_delta) / glm::length(aabbSize));
+      // No reference was captured and the selection has no size at all.
+      if (refLength < g_minScaleReference)
+      {
+        refLength = glm::length(GetScaleReferenceSize(ntt));
+      }
 
-      delta                           *= glm::normalize(axis);
+      Vec3 delta  = Vec3(glm::length(m_delta) / refLength);
 
+      delta      *= glm::normalize(axis);
       // Transfer world space delta to local axis direction.
       if (axisIndex <= (int) AxisLabel::Z)
       {
@@ -779,8 +863,8 @@ namespace ToolKit
 
       // Absolute scale: m_delta is the total world delta from the grab start,
       // so the computed delta is the total scale factor. No accumulation.
-      Vec3 totalDelta  = delta;
-      float spacing    = GetApp()->m_scaleDelta;
+      Vec3 totalDelta = delta;
+      float spacing   = GetApp()->m_scaleDelta;
       if (GetApp()->m_snapsEnabled)
       {
         for (uint i = 0; i < 3; i++)

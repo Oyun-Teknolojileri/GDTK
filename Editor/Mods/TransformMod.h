@@ -104,6 +104,15 @@ namespace ToolKit
       void Rotate(EntityPtr ntt);
       void Scale(EntityPtr ntt);
 
+      /**
+       * World space size of the entity along its own axes, used to normalize the scale drag.
+       * A node that carries no volume of its own reports an infinitesimal bounding box, and
+       * normalizing the mouse travel with that size divides it by zero. Such a node is still
+       * scaled through the children inheriting its scale, so their bounds are the reference,
+       * falling back to the constant screen space size of the gizmo.
+       */
+      Vec3 GetScaleReferenceSize(EntityPtr ntt) const;
+
      public:
       Vec3 m_delta;
       Vec3 m_deltaAccum;
@@ -117,6 +126,7 @@ namespace ToolKit
 
      private:
       IVec2 m_mouseInitialLoc;
+      Vec3 m_scaleRefSize = ZERO; //!< Reference size captured at grab start, see GetScaleReferenceSize.
     };
 
     // StateTransformEnd
