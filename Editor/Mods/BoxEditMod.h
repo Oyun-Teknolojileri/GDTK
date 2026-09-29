@@ -53,6 +53,13 @@ namespace ToolKit
       /** Returns true if the current selection has a box-editable component. */
       bool TryUpdateGizmoFromSelection();
 
+      /**
+       * Reports the selection the tool can not work on, once per selection. The context is
+       * refused for an entity that has no volume to edit, which stays selected over many frames,
+       * so the status message and the log line are not repeated for the same entity.
+       */
+      void ReportUnavailableSelection();
+
      public:
       /** Tries to build a BoxEditContext from the entity's components or the entity itself. */
       static BoxEditContext BuildContextFromEntity(EntityPtr ntt);
@@ -78,7 +85,8 @@ namespace ToolKit
       Vec3 m_dragStartSize;
       Vec3 m_dragStartOffset;
       BoxEditContext m_dragContext;
-      Action* m_dragAction = nullptr;
+      Action* m_dragAction        = nullptr;
+      ObjectId m_reportedEntityId = NullHandle; //!< Selection the unavailable report was made for.
     };
 
     // BoxEditAction

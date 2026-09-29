@@ -23,6 +23,16 @@ namespace ToolKit
   namespace Editor
   {
 
+    namespace
+    {
+      /** Local space extent of the entity's own bounding box, without any flooring. */
+      Vec3 GetEntityLocalExtent(const EntityPtr& ntt)
+      {
+        const BoundingBox box = ntt->GetBoundingBox(false);
+        return box.max - box.min;
+      }
+    } // namespace
+
     BoxEditMod::BoxEditMod(ModId id) : BaseMod(id) {}
 
     BoxEditMod::~BoxEditMod()
@@ -69,6 +79,8 @@ namespace ToolKit
       // Try to set up gizmo from current selection.
       if (TryUpdateGizmoFromSelection())
       {
+        m_reportedEntityId = NullHandle;
+
         if (EditorViewportPtr vp = GetApp()->GetActiveViewport())
         {
           m_gizmo->LookAt(vp->GetCamera(), vp->GetBillboardScale());
@@ -85,6 +97,7 @@ namespace ToolKit
       else
       {
         GetApp()->m_gizmo = nullptr;
+        ReportUnavailableSelection();
       }
 
       // Normal state machine for picking.
@@ -193,13 +206,21 @@ namespace ToolKit
       // make it appear as single-face movement.
       // GetSize/SetSize work in world-space extents (localBBSize * scale) so that
       // delta from UpdateDrag (in world units) can be applied directly.
+      //
+      // A face drag becomes a node scale by dividing the new world extent by the local extent
+      // of the entity, so an entity without a volume of its own has nothing to edit: its box is
+      // infinitesimal, every handle lands on the node origin and any drag blows the scale up.
+      // An AABBOverrideComponent is what gives such a node an editable volume.
+      const Vec3 localExtent = GetEntityLocalExtent(ntt);
+      if (glm::max(glm::max(localExtent.x, localExtent.y), localExtent.z) <= g_boxEditMinExtent)
+      {
+        return BoxEditContext();
+      }
+
       ctx.GetBoundingBox = [ntt]()
       {
         // Return scaled local BB so handles appear at the correct world-space extents.
         BoundingBox localBB  = ntt->GetBoundingBox(false);
-        Vec3 localSize       = localBB.max - localBB.min;
-        localBB.max          = localBB.min + glm::max(localSize, Vec3(0.0001f));
-
         Vec3 scale           = ntt->m_node->GetScale();
         localBB.min         *= scale;
         localBB.max         *= scale;
@@ -221,7 +242,7 @@ namespace ToolKit
         Vec3 localSize      = localBB.max - localBB.min;
 
         // Prevent size from being exactly zero on any axis
-        localSize           = glm::max(localSize, Vec3(0.0001f));
+        localSize           = glm::max(localSize, Vec3(g_boxEditMinExtent));
 
         Vec3 scale          = ntt->m_node->GetScale();
         return localSize * scale;
@@ -229,12 +250,19 @@ namespace ToolKit
       ctx.GetPositionOffset = [ntt]() { return ntt->m_node->GetTranslation(TransformationSpace::TS_WORLD); };
       ctx.SetSize           = [ntt](const Vec3& worldSize)
       {
-        // Convert world-space extents back to scale.
-        BoundingBox localBB = ntt->GetBoundingBox(false);
-        Vec3 localSize      = localBB.max - localBB.min;
-        localSize           = glm::max(localSize, Vec3(0.0001f));
+        // Convert world-space extents back to scale. An axis the mesh has no extent on (a flat
+        // mesh, where no scale can give it a thickness) keeps the scale it already has.
+        const Vec3 localExtent = GetEntityLocalExtent(ntt);
+        Vec3 newScale          = ntt->m_node->GetScale();
 
-        Vec3 newScale       = worldSize / localSize;
+        for (int i = 0; i < 3; i++)
+        {
+          if (localExtent[i] > g_boxEditMinExtent)
+          {
+            newScale[i] = worldSize[i] / localExtent[i];
+          }
+        }
+
         ntt->m_node->SetScale(newScale);
       };
       ctx.SetPositionOffset = [ntt](const Vec3& o) { ntt->m_node->SetTranslation(o, TransformationSpace::TS_WORLD); };
@@ -268,6 +296,30 @@ namespace ToolKit
       m_gizmo->SetWorldTransform(ctx.GetWorldTransform());
 
       return true;
+    }
+
+    void BoxEditMod::ReportUnavailableSelection()
+    {
+      EditorScenePtr scene = GetApp()->GetCurrentScene();
+      if (scene->GetSelectedEntityCount() == 0)
+      {
+        // An empty selection is the normal state of the tool, not a failure.
+        m_reportedEntityId = NullHandle;
+        return;
+      }
+
+      EntityPtr ntt = scene->GetCurrentSelection();
+      if (ntt == nullptr || ntt->GetIdVal() == m_reportedEntityId)
+      {
+        return;
+      }
+
+      // The selection stays the same over many frames, report it once.
+      m_reportedEntityId = ntt->GetIdVal();
+
+      GetApp()->SetStatusMsg(g_statusFailed);
+      TK_ERR("Box edit failed. %s has no volume to edit, add an AABBOverrideComponent to it.",
+             ntt->GetNameVal().c_str());
     }
 
     void BoxEditMod::BeginDrag(const Vec2& mousePos)

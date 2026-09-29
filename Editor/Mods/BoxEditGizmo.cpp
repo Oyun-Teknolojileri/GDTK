@@ -153,7 +153,8 @@ namespace ToolKit
     void BoxEditGizmo::GenerateHandles()
     {
       Vec3 boxCenter   = m_targetBox.GetCenter();
-      Vec3 halfSize    = (m_targetBox.max - m_targetBox.min) * 0.5f;
+      Vec3 boxSize     = m_targetBox.max - m_targetBox.min;
+      Vec3 halfSize    = boxSize * 0.5f;
 
       // Transform box center to world space.
       Vec3 worldCenter = Vec3(m_worldTransform * Vec4(boxCenter, 1.0f));
@@ -192,6 +193,14 @@ namespace ToolKit
 
       for (int i = 0; i < 6; i++)
       {
+        // A box without an extent on an axis has no face to drag on that axis. Scaling a mesh
+        // that is flat there can not give it a thickness, it would only inflate the node scale.
+        if (boxSize[i / 2] <= g_boxEditMinExtent)
+        {
+          m_handles[i]->m_mesh = nullptr;
+          continue;
+        }
+
         // Transform face center to world space.
         Vec3 worldFaceCenter = Vec3(m_worldTransform * Vec4(boxCenter + localOffsets[i], 1.0f));
 

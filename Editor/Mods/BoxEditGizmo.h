@@ -33,6 +33,15 @@ namespace ToolKit
       None
     };
 
+    /**
+     * Extents at or below this count as if the box has no size on that axis. A node without a
+     * volume of its own reports an infinitesimal bounding box: Entity::UpdateLocalBoundingBox
+     * falls back to it when the entity has no mesh component, and for a mesh that is not loaded
+     * yet, whose bounding box is still inverted. The extent a face drag is divided by has to be
+     * checked before it is used.
+     */
+    constexpr float g_boxEditMinExtent = 0.0001f;
+
     // BoxEditGizmo
     //////////////////////////////////////////
 
