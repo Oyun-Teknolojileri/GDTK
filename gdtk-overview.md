@@ -834,6 +834,11 @@ Model:
   `CreateIncrementalFileFullPath()` with an empty postfix (`NewAnimation(1).anim`) instead of
   overwriting a file; a replaced clip with unsaved keys is reported in the console (it stays in the
   animation manager, the drop zone brings it back).
+- The clip row closes the clip with the red X left of the drop zone, the same X the material slots use.
+  Closing unbinds the clip and stops the preview session first, so the entities go back to the pose they
+  had before the sheet moved them, and the sheet returns to its empty state where nothing plays and no
+  key can be written. The animation stays in the manager, so dropping it back in loads it again. The drop
+  zone's label carries the file name of the bound clip.
 
 Playback in the sheet is **editor side** on purpose: it samples the clip with the engine's own
 `GetNearestKeys` and writes the pose to the matching entity nodes, and it applies the clip's parameter

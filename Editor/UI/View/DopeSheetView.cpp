@@ -58,6 +58,11 @@ namespace ToolKit
     // neighbouring window, which zeroes the available region the hit areas are built from.
     const float g_minHitSize        = 1.0f;    //!< Smallest size a hit area may have.
 
+    // Red of the X that closes the clip. It is the same red the material slots use for their X, so the
+    // two read as the same gesture.
+    const ImVec4 g_clipCloseColor(1.0f, 0.2f, 0.2f, 1.0f);
+    const float g_clipCloseSize     = 15.0f;   //!< Size of that X.
+
     // Curve view. The plot is read only, it exists to show what the key modes do to the motion.
     const int g_curveBandCount      = 3;       //!< Translation, rotation and scale bands.
     const float g_curveThickness    = 2.0f;    //!< Width of a plotted curve.
@@ -1842,6 +1847,41 @@ namespace ToolKit
     {
       App* editor = GetApp();
 
+      // Closing the clip is a sheet action, not a project one: the animation stays in the animation
+      // manager and can be dropped back in, the sheet only stops editing it and returns to its empty
+      // state, where nothing is previewed and no key can be written.
+      if (m_clip != nullptr)
+      {
+        ImGui::PushStyleColor(ImGuiCol_Text, g_clipCloseColor);
+        const bool closeClip = UI::ButtonDecorless(ICON_FA_TIMES, Vec2(g_clipCloseSize));
+        ImGui::PopStyleColor();
+
+        if (ImGui::IsItemHovered())
+        {
+          ImGui::SetTooltip("Close the clip. The animation stays in the project.");
+        }
+
+        if (closeClip)
+        {
+          SetAnimation(nullptr);
+          editor->SetStatusMsg("Clip closed.");
+          TK_LOG("Dope sheet: clip closed, the sheet is empty.");
+        }
+
+        ImGui::SameLine();
+      }
+
+      // The zone's label carries the clip name once one is loaded, so the row does not read "Clip" next
+      // to the very name it is about. The empty state keeps the plain label, which is also the drop
+      // zone's identity while it has no file.
+      String clipLabel = "Clip";
+      if (m_clip != nullptr)
+      {
+        String name, ext, path;
+        DecomposePath(m_clip->GetFile(), &path, &name, &ext);
+        clipLabel = name + ext;
+      }
+
       // Clip slot: drop an .anim here or create one. The drop zone is reused from the material and
       // animation inspectors.
       View::DropZone(EditorImGuiTextureCache::Acquire(UI::m_clipIcon),
@@ -1857,7 +1897,7 @@ namespace ToolKit
 
                        SetAnimation(GetAnimationManager()->Create<Animation>(entry.GetFullPath()));
                      },
-                     "Clip",
+                     clipLabel,
                      CanEdit());
 
       ImGui::SameLine();
@@ -1869,11 +1909,7 @@ namespace ToolKit
       }
       else
       {
-        String name, ext, path;
-        DecomposePath(m_clip->GetFile(), &path, &name, &ext);
-        ImGui::Text("%s%s   |   %d track%s   |   %.3f s",
-                    name.c_str(),
-                    ext.c_str(),
+        ImGui::Text("%d track%s   |   %.3f s",
                     (int) m_clip->m_keys.size(),
                     m_clip->m_keys.size() == 1 ? "" : "s",
                     m_endFrame / glm::max(1.0f, m_clip->m_fps));
