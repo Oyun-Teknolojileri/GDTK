@@ -629,6 +629,79 @@ about the missing `Main`, not about the backend.
 
 ---
 
+## Prefabs at runtime
+
+`Prefab` is an `Entity` that loads a prefab scene and instantiates its root entities into
+the current scene. It can be used while a scene is already initiated, but it has a strict
+call order and two asserts guard it.
+
+### Instantiating
+
+```cpp
+PrefabPtr prefab = MakeNewPtr<Prefab>();
+prefab->SetPrefabPathVal("Folder/name.scene"); // Relative to the Prefabs resource root.
+prefab->Load();                                // Loads the prefab scene.
+prefab->Init(scene);                           // Deep copies the roots into an instance.
+scene->AddEntity(prefab);                      // Adds it AND links the instance.
+```
+
+- `SetPrefabPathVal` takes the path relative to the Prefabs resource folder -- the same
+  value `PrefabPath` builds -- not a full path.
+- `Init` requires the prefab to be loaded; it loads it itself with a warning otherwise, so
+  a stall is the least that a missing `Load` costs.
+- The instance is readable from `GetInstancedEntities()`, or per entity with
+  `GetFirstByName` / `GetFirstByTag` (both only answer once the prefab is linked).
+- With no live scene `Link` still marks itself linked and attaches the instanced roots to
+  the prefab entity, but adds nothing to a scene, so an instance that never shows up means
+  the prefab was not initiated against a live scene.
+
+### Linking
+
+- `Scene::AddEntity` LINKS a prefab by itself whenever the scene is loaded: linking is
+  handled by the deserialization path only while a scene is being loaded ("Don't link
+  prefabs if the scene is in loading phase"). `AddEntity` is therefore the link step, and
+  calling `Link` on top of it trips
+  `assert(!m_linked && "Don't relink the same prefab. Create a new one.")`.
+- `Link` is idempotent against itself (`m_linked`), but a prefab is linked ONCE: a second
+  instance means a second `Prefab` object, never a second `Link` on the same one.
+- Linking adds every instanced entity to the scene and parents the instanced ROOTS under
+  the prefab entity's own node. Deleting, re-parenting or re-adding the prefab entity
+  afterwards therefore moves the whole instance with it.
+
+### Re-parenting an instanced entity
+
+- An instanced entity can be taken out of its prefab and hung anywhere in the scene: the
+  prefab keeps listing it, but `Unlink`'s removal is a no-op for an entity that has
+  already left the scene, so nothing has to be un-registered by hand.
+- `Node::InsertChild` asserts `child->m_parent == nullptr`, and `Link` already parented the
+  instanced roots, so such a node has to be `OrphanSelf()`-ed before `AddChild`; calling
+  `AddChild` on a still-parented node asserts instead of re-parenting.
+- `AddChild` keeps the child's LOCAL transform (the default `preserveTransform = false`),
+  so a node re-parented this way lands at the new parent's origin unless its local
+  transform is set explicitly.
+
+### Releasing
+
+- `Scene::RemoveEntity(prefab)` unlinks the instance and removes the prefab entity in one
+  step; `Prefab::Unlink` also runs from `Entity::As<Prefab>`-aware paths such as
+  `RemoveEntity` itself and from `~Prefab` -> `UnInit`.
+- Removing an entity that is not in the scene is a safe no-op (`RemoveEntity` returns
+  null), so a child removed by hand first needs no bookkeeping.
+- Dropping the last `PrefabPtr` frees the prefab entity and its instance; the entities only
+  survive while something (the scene, or the prefab's own instance list) holds them.
+
+### Animating an instance
+
+- A clip whose track is named after an ENTITY (a node animation, no skeleton in the
+  hierarchy) is applied to that entity's own node by the `AnimationPlayer`
+  (`GetPose(entityNode, time, entityName)`), so an instanced prop animates with no rig as
+  long as the clip's track name matches the entity name.
+- `AnimControllerComponent::Play` needs the record to exist on the instanced copy's
+  component: prefab records are copied with the instance, which is why the clip can be
+  played by signal name right after spawning.
+
+---
+
 ## Documentation Maintenance (`gdtk-overview.md`)
 
 `gdtk-overview.md` is the project's architectural / context file. It is the first
