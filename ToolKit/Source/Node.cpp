@@ -533,14 +533,18 @@ namespace ToolKit
 
   void Node::InvalitadeSpatialCaches()
   {
+    // The entity callback is per node, but a world transform change of this node moves every
+    // descendant. Nodes without an owner entity sit in that chain too (ThreePointLightSystem's
+    // shared parent node, canvas and gizmo helper nodes), so the walk can not stop on them:
+    // everything below would keep stale DirectionComponent, light and bounding box caches.
     if (EntityPtr ntt = m_entity.lock())
     {
       ntt->InvalidateSpatialCaches();
+    }
 
-      for (Node* node : m_children)
-      {
-        node->InvalitadeSpatialCaches();
-      }
+    for (Node* node : m_children)
+    {
+      node->InvalitadeSpatialCaches();
     }
   }
 
