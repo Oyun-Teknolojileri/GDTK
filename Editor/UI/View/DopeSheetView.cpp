@@ -70,6 +70,9 @@ namespace ToolKit
     const float g_curveRangePad     = 0.08f;   //!< Share of the value range kept as head room.
     const float g_curveMinRange     = 1.0f;    //!< Value range a flat curve is drawn in.
     const float g_curveLabelInset   = 6.0f;    //!< Inset of the band labels from the band edge.
+    const float g_curveSamplePixels = 3.0f;    //!< Screen distance two curve samples aim for.
+    const float g_curveMinStep      = 0.05f;   //!< Finest sample step, in frames.
+    const int g_curveMaxSamples     = 4096;    //!< Cap on the samples one track is plotted with.
 
     /** Colours of the plotted curves, x / y / z in that order. */
     const ImU32 g_curveAxisColors[] = {IM_COL32(235, 96, 96, 255),
@@ -1763,7 +1766,9 @@ namespace ToolKit
       }
     }
 
-    float DopeSheetView::FrameToX(int frame, float laneLeft) const
+    float DopeSheetView::FrameToX(int frame, float laneLeft) const { return FrameToX((float) frame, laneLeft); }
+
+    float DopeSheetView::FrameToX(float frame, float laneLeft) const
     {
       return laneLeft + frame * m_pxPerFrame - m_scrollX;
     }
@@ -3096,10 +3101,31 @@ namespace ToolKit
       }
 
       // The keys are ascending, so the first and the last one bound the plot.
-      const int firstFrame  = keys->front().m_frame;
-      const int lastFrame   = keys->back().m_frame;
-      const int sampleCount = lastFrame - firstFrame + 1;
-      const float fps       = glm::max(1.0f, m_clip->m_fps);
+      const int firstFrame = keys->front().m_frame;
+      const int lastFrame  = keys->back().m_frame;
+      const float fps      = glm::max(1.0f, m_clip->m_fps);
+
+      // One sample per frame is too coarse to draw a curve: a cubic segment bends inside a frame, and at
+      // the zoomed in end a frame is dozens of pixels wide, which is what makes the plot read as a chain
+      // of straight pieces. The step therefore follows the zoom, aiming at one sample every few pixels,
+      // and the total is capped so a long clip cannot ask for an unbounded number of samples.
+      const float frames = (float) (lastFrame - firstFrame);
+      float step         = glm::max(g_curveMinStep, g_curveSamplePixels / glm::max(1.0f, m_pxPerFrame));
+      step               = glm::max(step, frames / (float) g_curveMaxSamples);
+
+      std::vector<float> sampleFrames;
+      sampleFrames.reserve((size_t) (frames / step) + 2);
+
+      for (float frame = (float) firstFrame; frame < (float) lastFrame; frame += step)
+      {
+        sampleFrames.push_back(frame);
+      }
+
+      // The last key is plotted exactly on its frame, so the end of a held or eased segment stays where
+      // the animator put it.
+      sampleFrames.push_back((float) lastFrame);
+
+      const int sampleCount = (int) sampleFrames.size();
 
       // Sampling the interpolated pose is exactly what the preview plays, so the plot shows what the
       // key modes do: Stepped holds the value, Smooth blends through the key, Flat eases into it.
@@ -3111,12 +3137,10 @@ namespace ToolKit
 
       for (int i = 0; i < sampleCount; i++)
       {
-        const int frame = firstFrame + i;
-
         Vec3 pos(0.0f);
         Vec3 scl(1.0f);
         Quaternion rot(1.0f, 0.0f, 0.0f, 0.0f);
-        SampleTrack(*keys, frame / fps, pos, rot, scl);
+        SampleTrack(*keys, sampleFrames[i] / fps, pos, rot, scl);
 
         samples[0][i] = pos;
         // Euler degrees: a rotation curve has to be readable and a quaternion component is not. The
@@ -3187,7 +3211,7 @@ namespace ToolKit
 
           for (int i = 0; i < sampleCount; i++)
           {
-            points.push_back(ImVec2(FrameToX(firstFrame + i, laneLeft), valueToY(samples[band][i][axis])));
+            points.push_back(ImVec2(FrameToX(sampleFrames[i], laneLeft), valueToY(samples[band][i][axis])));
           }
 
           dl->AddPolyline(points.data(), (int) points.size(), g_curveAxisColors[axis], 0, g_curveThickness);
@@ -3243,7 +3267,11 @@ namespace ToolKit
         const int frame = XToFrame(io.MousePos.x, laneLeft);
         if (frame >= firstFrame && frame <= lastFrame)
         {
-          const int i = frame - firstFrame;
+          // The samples sit on a fractional step, so the frame under the pointer is read from the sample
+          // nearest to it: the readout then matches the curve that is drawn.
+          const int i = glm::clamp((int) glm::round(((float) frame - (float) firstFrame) / step),
+                                   0,
+                                   sampleCount - 1);
           ImGui::SetTooltip("frame %d\nT  %.3f  %.3f  %.3f\nR  %.1f  %.1f  %.1f\nS  %.3f  %.3f  %.3f",
                             frame,
                             samples[0][i].x,

@@ -213,6 +213,9 @@ namespace ToolKit
       void FitView(float laneWidth);
       void CreateClip(const String& name);
       float FrameToX(int frame, float laneLeft) const;
+
+      /** Same mapping for a fractional frame, which is what the curve plot samples on. */
+      float FrameToX(float frame, float laneLeft) const;
       int XToFrame(float x, float laneLeft) const;
 
       /** Applies a finished key drag, undoably. */
