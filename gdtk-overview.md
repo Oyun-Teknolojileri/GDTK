@@ -598,6 +598,17 @@ keeps are worth knowing:
   yet (`WIN_MaximizeWindow` checks `SDL_WINDOW_RESIZABLE`), and the window the editor
   creates only becomes resizable at that point, so maximizing it earlier (from
   `App::Init`) did nothing and the editor always came back at its un-maximized size.
+- The editor window also has to **come to the front** once the splash screen is gone.
+  The splash is a window of its own on its own thread and `SplashScreen::Hide` joins
+  that thread, so it is already destroyed when `SDL_ShowWindow` runs for the editor
+  window: Windows gives the foreground to some other window at that moment, which is
+  why the editor used to come up behind it. `Editor/Source/main.cpp` raises the window
+  with `SDL_HINT_FORCE_RAISEWINDOW` set for that one call, because a plain raise only
+  reaches `SetForegroundWindow`, which Windows refuses while the calling process is not
+  the foreground process; the forceful path attaches to the foreground thread, moves the
+  window to the top and back, then focuses it. The raise runs **before** the maximize of
+  the bullet above, because the forceful path calls `ShowWindow(SW_RESTORE)`, which
+  would undo a maximize that had just been applied.
 - Like every other setting, the geometry is written when the editor saves its settings,
   that is on a clean quit. A session that is killed leaves the last geometry unsaved.
 

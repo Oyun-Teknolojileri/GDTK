@@ -384,6 +384,30 @@ namespace ToolKit
             SDL_SetWindowBordered(g_window, SDL_TRUE);
             SDL_SetWindowResizable(g_window, SDL_TRUE);
 
+            // The editor window has to end up in front of whatever is on the screen: the user waits
+            // for the splash screen to leave and the editor to appear, and it used to appear behind
+            // the window that took the foreground when the splash closed.
+            //
+            // The splash screen is a window of its own on its own thread, and SplashScreen::Hide
+            // joins that thread, so it is already destroyed at this point. Windows hands the
+            // foreground to some other window the moment the splash goes away, which is why the
+            // editor does not inherit it, and SDL_ShowWindow only activates a window when nothing
+            // else holds the foreground.
+            //
+            // A plain SDL_RaiseWindow is not enough either: its Win32 implementation calls
+            // SetForegroundWindow and Windows refuses that while the calling process is not the
+            // foreground process. SDL_HINT_FORCE_RAISEWINDOW switches it to the forceful path for
+            // this one call -- attach to the foreground thread, move the window to the top and back,
+            // SetForegroundWindow, then SetFocus -- which is what actually brings the editor to the
+            // front. The hint is reset immediately because it would otherwise apply to every later
+            // raise, including the ones ImGui does for its own popup windows.
+            //
+            // This is the order the two calls have to keep: the forceful path calls
+            // ShowWindow(SW_RESTORE), so a maximize applied before it would be undone.
+            SDL_SetHint(SDL_HINT_FORCE_RAISEWINDOW, "1");
+            SDL_RaiseWindow(g_window);
+            SDL_SetHint(SDL_HINT_FORCE_RAISEWINDOW, "0");
+
             // Maximizing is what the project settings recorded, and it has to happen here, after
             // SDL_SetWindowResizable: SDL refuses to maximize a window that is not resizable yet
             // (WIN_MaximizeWindow checks SDL_WINDOW_RESIZABLE), and the window the editor creates
