@@ -1202,18 +1202,31 @@ namespace ToolKit
   {
     Stats::BeginGpuScope("GenerateCubemapFrom2DTexture");
 
-    const TextureSettings set = {GraphicTypes::TargetCubeMap,
-                                 GraphicTypes::UVClampToEdge,
-                                 GraphicTypes::UVClampToEdge,
-                                 GraphicTypes::UVClampToEdge,
-                                 minFilter,
-                                 GraphicTypes::SampleLinear,
-                                 GraphicTypes::FormatRGBA16F,
-                                 GraphicTypes::FormatRGBA,
-                                 GraphicTypes::TypeFloat,
-                                 MsaaSampleCount::x0,
-                                 0,
-                                 false};
+    // Mip maps are generated for this cubemap on purpose. Every consumer that filters it needs the
+    // mip chain: preFilterEnvMapFrag picks a source level per sample from the sample's solid angle,
+    // and cubemapToEquirectFrag reads a level for the irradiance cache bake. Without the chain both
+    // textureLod calls clamped to level 0, so the pre-filter sampled the full resolution source with
+    // a filter footprint far smaller than one output texel. That is what produced the mottled
+    // ("cloudy") irradiance, and it also made every fetch pull a high resolution texel instead of a
+    // cache resident mip. See Hdri::GenerateIrradianceCaches.
+    TextureSettings set = {GraphicTypes::TargetCubeMap,
+                           GraphicTypes::UVClampToEdge,
+                           GraphicTypes::UVClampToEdge,
+                           GraphicTypes::UVClampToEdge,
+                           GraphicTypes::SampleLinear,
+                           GraphicTypes::SampleLinear,
+                           GraphicTypes::FormatRGBA16F,
+                           GraphicTypes::FormatRGBA,
+                           GraphicTypes::TypeFloat,
+                           MsaaSampleCount::x0,
+                           0,
+                           true};
+
+    // Assigning minFilter inside the brace list above would land it on WarpS: both are GraphicTypes,
+    // so the mistake compiles. It left MinFilter at its UVRepeat default, i.e. GL_REPEAT on GL, which
+    // is not a filter mode at all -- that made the cubemap texture incomplete and every textureLod
+    // against it undefined.
+    set.MinFilter = minFilter;
 
     RenderTargetPtr cubeMapRt = MakeNewPtr<RenderTarget>(size, size, set, "EquirectToCubeMapRT");
     cubeMapRt->Init();
@@ -1282,6 +1295,15 @@ namespace ToolKit
       DrawCube(cam, mat);
       FinishPass();
     }
+
+    SetFramebuffer(nullptr, GraphicBitFields::None);
+    FinishPass();
+
+    // Fill the chain now that all six faces carry the rendered image. The chain was allocated at
+    // creation time (render targets do not generate mips in Init -- see RenderTarget::Init), so its
+    // upper levels held uninitialized storage until this point. Anything reading a non zero
+    // textureLod level off this cubemap (preFilterEnvMapFrag) sampled that storage.
+    cubeMapRt->GenerateMipMaps();
 
     CubeMapPtr cubeMap = MakeNewPtr<CubeMap>();
     cubeMap->Consume(cubeMapRt);
@@ -1494,7 +1516,9 @@ namespace ToolKit
     RenderTargetPtr cubemapRt  = MakeNewPtr<RenderTarget>(size, size, cubemapSet);
     cubemapRt->Init();
 
-    // Intentionally creating space to fill later. ( mip maps will be calculated for specular ibl )
+    // Allocates the chain the pre-filter writes into one level at a time via
+    // CopyCubemapFaceFromFramebuffer. Calling this is what keeps GenerateMipMaps from blurring the
+    // already baked levels into each other.
     cubemapRt->GenerateMipMaps();
 
     // Views for 6 different angles

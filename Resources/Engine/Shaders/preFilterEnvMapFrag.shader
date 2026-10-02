@@ -18,8 +18,12 @@
 
 		void main()
 		{		
-			// Was 1024; lowered to 256 so a 512² specular env map (editor cap) stays under the amdgpu
-			// gfx-ring watchdog. Quality cost is minor after tonemap. See Hdri::GenerateIrradianceCaches.
+			// Per output texel. At the coarse mips the GGX lobe is wider than the whole face, so the
+			// same count is doing far more work than the result can resolve. Lowering it is not the
+			// lever it looks like: those mips are a fraction of a percent of the total sample count
+			// (mip 0 of a 512 face is half of it) and they read a fully cache resident source. The
+			// lever is the source level picked below, which is why the input cubemap carries a mip
+			// chain. See Hdri::GenerateIrradianceCaches.
 			const uint SAMPLE_COUNT = 256u;
 
 			vec3 N = normalize(v_pos);
@@ -30,6 +34,10 @@
 
 			// Convert perceptual preFilterEnvMap.params.y to alpha for Filament's D_GGX
 			float alpha = preFilterEnvMap.params.y * preFilterEnvMap.params.y;
+
+			// Solid angle of one output texel at THIS mip. params.x is the mip face size, so the
+			// footprint shrinks as the mip coarsens and the source level below tracks it.
+			float saTexel = 4.0 * PI / (6.0 * preFilterEnvMap.params.x * preFilterEnvMap.params.x);
 
 			vec3 prefilteredColor = vec3(0.0);
 			float totalWeight = 0.0;
@@ -50,11 +58,15 @@
 					float D = distribution(alpha, NdotH, H);
 					float pdf = D * NdotH / (4.0 * HdotV) + 0.0001; 
 
-					float saTexel  = 4.0 * PI / (6.0 * preFilterEnvMap.params.x * preFilterEnvMap.params.x);
+					// Solid angle this one sample stands for. Filtering the source down to that
+					// footprint is what removes the sampling noise; keeping the raw level 0 taps was
+					// what left the mottled patches in the irradiance caches. Half a mip of bias
+					// trades a little sharpness for a noticeable drop in variance. A level past the
+					// end of the source chain is clamped by textureLod itself.
 					float saSample = 1.0 / (float(SAMPLE_COUNT) * pdf + 0.0001);
+					float mipLevel = preFilterEnvMap.params.y == 0.0 ? 0.0
+					               : max(0.5 * log2(saSample / saTexel) + 0.5, 0.0);
 
-					float mipLevel = preFilterEnvMap.params.y == 0.0 ? 0.0 : 0.5 * log2(saSample / saTexel); 
-					
 					vec3 texel = textureLod(s_cubeMap, L, mipLevel).rgb;
 					texel = clamp(texel, vec3(0.0), vec3(FLT_MAX));
 					prefilteredColor += texel * NdotL;

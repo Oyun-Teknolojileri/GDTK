@@ -368,11 +368,14 @@ namespace ToolKit
      *  currently bound program. No-op if the program does not declare that sampler. */
     void SetTexture(const char* semanticName, TexturePtr texture);
 
-    /** Reads an equirectengular hdr image and creates a cube map from it. */
+    /** Reads an equirectengular hdr image and creates a cube map from it.
+     *  minfilter defaults to a mipmapped linear filter because every caller of this performs a
+     *  minification (the output face is smaller than the source image), and the resulting cubemap
+     *  carries a mip chain. */
     CubeMapPtr GenerateCubemapFrom2DTexture(TexturePtr texture,
                                             uint size,
-                                            float exposure         = 1.0f,
-                                            GraphicTypes minfilter = GraphicTypes::SampleNearest);
+                                            float exposure                     = 1.0f,
+                                            GraphicTypes minfilter              = GraphicTypes::SampleLinearMipmapLinear);
 
     /**
      * Projects a cubemap to an 2d texture using equirectengular projection.
