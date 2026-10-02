@@ -383,6 +383,18 @@ namespace ToolKit
             SDL_ShowWindow(g_window);
             SDL_SetWindowBordered(g_window, SDL_TRUE);
             SDL_SetWindowResizable(g_window, SDL_TRUE);
+
+            // Maximizing is what the project settings recorded, and it has to happen here, after
+            // SDL_SetWindowResizable: SDL refuses to maximize a window that is not resizable yet
+            // (WIN_MaximizeWindow checks SDL_WINDOW_RESIZABLE), and the window the editor creates
+            // only becomes resizable at this point. The maximize the editor applied while the
+            // window was still hidden and non-resizable did nothing, so the editor always came
+            // back at its un-maximized size whatever the settings said.
+            if (g_app->m_windowMaximized)
+            {
+              SDL_MaximizeWindow(g_window);
+            }
+
             // SDL owns the window on both platforms, so the application
             // icon has to be applied through SDL once the window exists.
             // Windows re-sends WM_SETICON with the icon Editor.rc embeds

@@ -579,6 +579,28 @@ Params: `viewport`, `scene`, `postProcessSettings`.
 
 The editor application. Owns `EditorScenePtr m_scene` (current scene), the `EditorRenderer`, the `Workspace`, `SimulationWindow` (PIE — Play-In-Editor), `DynamicMenu`, thumbnail system.
 
+The editor window comes back with the geometry it was left with, and the rules that
+keeps are worth knowing:
+
+- `App::SerializeImp` writes the client size the window has **while it is not
+  maximized** (`App::m_windowSize`, kept by `App::OnResize`) plus the maximized flag,
+  read from SDL at save time. A maximized window reports the size of the screen, and
+  saving that made the editor come back as big as the screen the next time it was
+  un-maximized.
+- `App::DeSerializeImp` only records those values (`m_recordedWindowSize`,
+  `m_recordedWindowMaximized`); `App::RestoreWindowGeometry` (from `App::Init`) applies
+  them to the renderer and to the OS window, so **only a start moves the window**. A
+  project switch runs `App::ApplyProjectSettings` too and must not resize or re-center
+  the window the user is working in, which is why that geometry restore is not part of
+  it: the switch re-reads the running window's size for the renderer instead.
+- The **maximize** itself runs from `Editor/Source/main.cpp`, after
+  `SDL_SetWindowResizable`. `SDL_MaximizeWindow` refuses a window that is not resizable
+  yet (`WIN_MaximizeWindow` checks `SDL_WINDOW_RESIZABLE`), and the window the editor
+  creates only becomes resizable at that point, so maximizing it earlier (from
+  `App::Init`) did nothing and the editor always came back at its un-maximized size.
+- Like every other setting, the geometry is written when the editor saves its settings,
+  that is on a clean quit. A session that is killed leaves the last geometry unsaved.
+
 Key entry points:
 - `Init() / Destroy() / Frame(dt) / OnResize`
 - `OnNewScene`, `OnSaveScene`, `OnSaveAsScene`, `OnQuit`
@@ -1000,6 +1022,19 @@ covers every shared library.
 generator automatically; otherwise Ninja. With the MSVC generator the
 solution/projects are generated under `Intermediate/Windows/` and can be
 opened in Visual Studio from there. There is no checked-in `ToolKit.sln`.
+
+**Windows pitfall -- a Low integrity label on the checkout.** Windows starts a
+process at Low integrity when the image it runs carries a Low mandatory
+integrity label, and a Low integrity process may only write inside the Low
+labelled tree. When the checkout is labelled that way (the DSH sandbox labels
+its workspace, so everything under it, including `Bin<Config>/`, does), every
+binary built here inherits it: the editor runs Low, writes inside the checkout
+(such as `BinDebug/Log.txt`) and is refused with `Permission denied` anywhere
+else -- a project's `Config/Editor.settings`, a thumbnail, a plugin build into
+the project. That is an environment condition, not a code or an ACL problem:
+`icacls <path> /setintegritylevel (OI)(CI)Medium /T /C` raises the label of the
+output folder so new builds inherit Medium again, and a copy of the same
+executable placed outside the labelled tree runs Medium as expected.
 
 ### 12.3 First run
 Editor asks for a workspace dir (e.g. `C:\Users\Cihan\Documents\TK-Workspace`). It writes to `%appdata%/ToolKit/Config/`. Delete that folder to reset.

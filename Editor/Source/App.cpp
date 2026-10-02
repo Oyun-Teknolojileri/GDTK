@@ -56,6 +56,14 @@ namespace ToolKit
       m_cursor           = nullptr;
       RenderSystem* rsys = GetRenderSystem();
       rsys->SetAppWindowSize((uint) windowWidth, (uint) windowHeight);
+
+      // The size the window starts with, replaced by the one the project settings record as soon as
+      // App::RestoreWindowGeometry runs.
+      m_windowSize              = UVec2(windowWidth, windowHeight);
+      m_recordedWindowSize      = m_windowSize;
+      m_windowMaximized         = false;
+      m_recordedWindowMaximized = false;
+
       SetStatusMsg(g_statusOk);
       m_publishManager = new PublishManager();
     }
@@ -92,6 +100,10 @@ namespace ToolKit
       }
 
       ApplyProjectSettings(false);
+
+      // The editor window comes back with the geometry the project was left with. A project switch
+      // does not do this again: the window the user is working in stays where it is.
+      RestoreWindowGeometry();
 
       if (hasProject && m_workspace->GetActiveProject().scene.empty())
       {
@@ -326,6 +338,34 @@ namespace ToolKit
     {
       RenderSystem* rsys = GetRenderSystem();
       rsys->SetAppWindowSize(width, height);
+
+      // A maximized (or fullscreen) window reports the size of the screen, and saving that would
+      // bring the editor back as big as the screen the next time it is un-maximized. Only the
+      // windowed size is remembered; SDL is asked instead of the tracked flag, because the resize
+      // event of a maximize can arrive before the maximize event itself.
+      const bool maximized = (SDL_GetWindowFlags(g_window) & SDL_WINDOW_MAXIMIZED) != 0;
+      if (!maximized)
+      {
+        m_windowSize = UVec2(width, height);
+      }
+    }
+
+    void App::RestoreWindowGeometry()
+    {
+      if (m_recordedWindowSize.x > 0 && m_recordedWindowSize.y > 0)
+      {
+        m_windowSize = m_recordedWindowSize;
+      }
+
+      m_windowMaximized = m_recordedWindowMaximized;
+
+      // Both the renderer and the OS window follow the restored size, so the first frame is drawn
+      // at it. The maximize belongs to Editor/Source/main.cpp, after SDL_SetWindowResizable: SDL
+      // refuses to maximize a window that is not resizable yet, which is the state a window the
+      // editor has just created is in, so maximizing it here was silently ignored.
+      OnResize(m_windowSize.x, m_windowSize.y);
+      SDL_SetWindowSize(g_window, (int) m_windowSize.x, (int) m_windowSize.y);
+      SDL_SetWindowPosition(g_window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
     }
 
     void App::OnNewScene(const String& name)
@@ -1352,16 +1392,15 @@ namespace ToolKit
         ResetUI();
       }
 
-      // Restore app window.
-      UVec2 size = GetRenderSystem()->GetAppWindowSize();
-
-      // Resize window.
-      SDL_SetWindowSize(g_window, size.x, size.y);
-      SDL_SetWindowPosition(g_window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
-
-      if (m_windowMaximized)
+      // The loaded size is the project's record of the editor window, and App::Init applies it when
+      // the editor starts. A project switch runs this too, and it must not resize the window the
+      // user is working in, so the renderer follows the window that is on screen.
+      int windowWidth  = 0;
+      int windowHeight = 0;
+      SDL_GetWindowSize(g_window, &windowWidth, &windowHeight);
+      if (windowWidth > 0 && windowHeight > 0)
       {
-        SDL_MaximizeWindow(g_window);
+        GetRenderSystem()->SetAppWindowSize((uint) windowWidth, (uint) windowHeight);
       }
     }
 
@@ -1638,18 +1677,32 @@ namespace ToolKit
       m_workspace->Serialize(nullptr, nullptr);
 
       std::ofstream file;
-      String cfgPath              = m_workspace->GetConfigDirectory();
-      String fileName             = ConcatPaths({cfgPath, g_editorSettingsFile});
+      String cfgPath     = m_workspace->GetConfigDirectory();
+      String fileName    = ConcatPaths({cfgPath, g_editorSettingsFile});
 
-      // File or Config folder is missing.
-      std::ios::openmode openMode = std::ios::out;
-      if (!CheckSystemFile(fileName))
+      // A save that cannot open its file used to end a whole session in silence, so every failure
+      // below is reported twice: TK_ERR reaches the console the editor shows and the debugger
+      // output of a session that is still running, and Logger::Log is what lands in
+      // BinDebug/Log.txt for the same session once it is gone.
+      auto reportFailure = [](const String& reason) -> void
       {
-        std::filesystem::create_directories(cfgPath);
-        openMode = std::ios::app;
+        TK_ERR("%s", reason.c_str());
+        GetLogger()->Log(reason);
+      };
+
+      // The settings are rewritten from scratch, so the file is opened the same way whether or not
+      // it exists. The previous version opened a missing file in append mode and created its
+      // directory without looking at the result, which left the save with two silent ways to end
+      // up with no file at all: a refused open was swallowed, and so was a refused mkdir.
+      std::error_code dirError;
+      std::filesystem::create_directories(cfgPath, dirError);
+      if (dirError)
+      {
+        reportFailure("Editor settings: cannot create '" + cfgPath + "'. " + dirError.message());
       }
 
-      file.open(fileName.c_str(), openMode);
+      errno = 0;
+      file.open(fileName.c_str(), std::ios::out | std::ios::trunc);
       if (file.is_open())
       {
         XmlDocumentPtr lclDoc = MakeNewPtr<XmlDocument>();
@@ -1658,13 +1711,27 @@ namespace ToolKit
         XmlNode* app          = CreateXmlNode(docPtr, "App");
         WriteAttr(app, docPtr, XmlVersion.data(), TKVersionStr);
 
-        XmlNode* settings = CreateXmlNode(docPtr, "Settings", app);
-        XmlNode* setNode  = CreateXmlNode(docPtr, "Size", settings);
+        XmlNode* settings    = CreateXmlNode(docPtr, "Settings", app);
+        XmlNode* setNode     = CreateXmlNode(docPtr, "Size", settings);
 
-        UVec2 size        = GetRenderSystem()->GetAppWindowSize();
+        // The client size the window has while it is not maximized, and whether it is maximized
+        // right now. A maximized window reports the size of the screen, and saving that as the
+        // window size is what made the editor come back as big as the screen the next time it was
+        // un-maximized instead of returning to the size it was left with.
+        const bool maximized = (SDL_GetWindowFlags(g_window) & SDL_WINDOW_MAXIMIZED) != 0;
+        int windowWidth      = 0;
+        int windowHeight     = 0;
+        SDL_GetWindowSize(g_window, &windowWidth, &windowHeight);
+
+        UVec2 size = m_windowSize;
+        if (!maximized && windowWidth > 0 && windowHeight > 0)
+        {
+          size = UVec2((uint) windowWidth, (uint) windowHeight);
+        }
+
         WriteAttr(setNode, docPtr, "width", std::to_string(size.x));
         WriteAttr(setNode, docPtr, "height", std::to_string(size.y));
-        WriteAttr(setNode, docPtr, "maximized", std::to_string(m_windowMaximized));
+        WriteAttr(setNode, docPtr, "maximized", std::to_string(maximized));
         WriteAttr(setNode, docPtr, "theme", std::to_string((int) UI::GetCurrentTheme()));
 
         // The scene this project was left on. It belongs here, in the project's own
@@ -1699,7 +1766,23 @@ namespace ToolKit
 
         file << xml;
         file.close();
+
+        if (!file)
+        {
+          reportFailure("Editor settings: writing '" + fileName + "' failed. " + std::strerror(errno));
+        }
         lclDoc->clear();
+      }
+      else
+      {
+        // Everything below this point saves nothing, and doing it quietly is what made a whole
+        // session look forgotten: the reason belongs in the log next to the path that was refused.
+        reportFailure("Editor settings: cannot open '" + fileName + "' for writing. " + std::strerror(errno));
+      }
+
+      if (!CheckSystemFile(fileName))
+      {
+        reportFailure("Editor settings: '" + fileName + "' is not there after the save.");
       }
 
       // The dock arrangement, the tab order and the tab that is in front are ImGui's state, not a
@@ -1741,17 +1824,16 @@ namespace ToolKit
 
             uint height = 0;
             ReadAttr(setNode, "height", height);
-            ReadAttr(setNode, "maximized", m_windowMaximized);
+            ReadAttr(setNode, "maximized", m_recordedWindowMaximized);
 
-            width  = glm::min(width, m_displayBounds.x);
-            height = glm::min(height, m_displayBounds.y);
+            width                = glm::min(width, m_displayBounds.x);
+            height               = glm::min(height, m_displayBounds.y);
 
-            if (width > 0 && height > 0)
-            {
-              OnResize(width, height);
-            }
+            // Only recorded here. App::RestoreWindowGeometry applies it when the editor starts, so
+            // that a project switch leaves the window the user is working in alone.
+            m_recordedWindowSize = UVec2(width, height);
 
-            int theme = -1;
+            int theme            = -1;
             ReadAttr(setNode, "theme", theme);
             if (theme == -1)
             {

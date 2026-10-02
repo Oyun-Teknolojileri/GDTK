@@ -222,6 +222,14 @@ namespace ToolKit
       void CreateNewScene();
       void ImplementMetaKeys();
 
+      /**
+       * Sizes the editor window to the geometry the loaded project settings were left with: the
+       * client size the window had while it was not maximized, plus the maximized state, which
+       * Editor/Source/main.cpp applies once the window is shown and resizable. Only a start uses
+       * this; a project switch keeps the window the user is working in.
+       */
+      void RestoreWindowGeometry();
+
      public:
       // UI elements.
       WindowPtrArray m_windows; //!< Persistent windows that get serialized with editor.
@@ -263,13 +271,22 @@ namespace ToolKit
       bool m_showBVHNodes                      = false;
       bool m_selectEffectingLights             = false;
       bool m_windowMaximized                   = false;
-      byte m_showGraphicsApiErrors             = 0;
-      TransformationSpace m_transformSpace     = TransformationSpace::TS_WORLD;
-      GameMod m_gameMod                        = GameMod::Stop;
-      SysCommandExecutionFn m_sysComExecFn     = nullptr;
-      ShellOpenDirFn m_shellOpenDirFn          = nullptr;
-      EditorLitMode m_sceneLightingMode        = EditorLitMode::EditorLit;
-      EditorViewportPtr m_lastActiveViewport   = nullptr;
+      /**
+       * Client size the editor window has while it is not maximized. A maximized window reports the
+       * screen size, so this is the size the window comes back with and the one that gets saved.
+       */
+      UVec2 m_windowSize;
+      /** Client size the loaded project settings record, applied by App::RestoreWindowGeometry. */
+      UVec2 m_recordedWindowSize;
+      /** Whether the loaded project settings say the window was maximized. */
+      bool m_recordedWindowMaximized         = false;
+      byte m_showGraphicsApiErrors           = 0;
+      TransformationSpace m_transformSpace   = TransformationSpace::TS_WORLD;
+      GameMod m_gameMod                      = GameMod::Stop;
+      SysCommandExecutionFn m_sysComExecFn   = nullptr;
+      ShellOpenDirFn m_shellOpenDirFn        = nullptr;
+      EditorLitMode m_sceneLightingMode      = EditorLitMode::EditorLit;
+      EditorViewportPtr m_lastActiveViewport = nullptr;
       WorkspacePtr m_workspace;
 
       // Dynamic Entity Menus.
