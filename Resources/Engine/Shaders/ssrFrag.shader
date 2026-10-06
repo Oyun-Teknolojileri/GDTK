@@ -438,14 +438,12 @@ void main()
 	float screenFade = 1.0 - smoothstep(coverage * 0.5, coverage, rayPixels);
 	float rangeFade  = 1.0 - smoothstep(ssrPass.params.y * 0.6, ssrPass.params.y, hitDistance);
 
-	// Extreme grazing is where a depth buffer reflection has the least to work with: the crossing runs
-	// nearly parallel to the surface, the stored depth resolution spans more than the thickness and
-	// the reflected image is compressed the hardest. Hand those over to the environment / sky, which is
-	// what every screen space technique does at its own limit. The threshold is low enough that only
-	// near parallel surfaces are affected.
-	float grazingFade = smoothstep(0.02, 0.08, abs(incidence));
-
-	float weight     = clamp(ssrPass.params.x * gloss * confidence * EdgeFade(hitUV) * screenFade * rangeFade * grazingFade, 0.0, 1.0);
+	// No fade on the incidence angle. A shallow surface is exactly where a reflection is wanted, and a
+	// threshold there is a threshold on a camera dependent value: lowering the camera puts a large part
+	// of a floor below it at once, and the reflection disappears in a single frame. The hard part of a
+	// grazing angle is handled where it comes from instead, by the resolution of the depth the crossing
+	// is computed from in the pre process pass.
+	float weight     = clamp(ssrPass.params.x * gloss * confidence * EdgeFade(hitUV) * screenFade * rangeFade, 0.0, 1.0);
 
 	// Debug view: show what this pass produces at each stage, so a grazing angle artifact is told
 	// apart instead of guessed at. A miss, a rough surface or a pixel the ray budget did not reach
