@@ -30,10 +30,18 @@ namespace ToolKit
     m_linearMaterial->SetFragmentShaderVal(fragmentShader);
     m_linearMaterial->Init();
 
+    // 32F and filtered linearly rather than 16F and point sampled. This target carries the linear depth
+    // SSR and SSAO compare against: a half float leaves about two millimeters of resolution at five
+    // meters, and a point sampled depth is constant across a whole texel, so a reflection crossing
+    // computed from it snaps to the texel grid. A grazing crossing amplifies both by the secant of its
+    // incidence angle, which is where the row level stripes in a shallow reflection come from. The
+    // target costs a few megabytes.
     TextureSettings set           = {};
     set.WarpS                     = GraphicTypes::UVClampToEdge;
     set.WarpT                     = GraphicTypes::UVClampToEdge;
-    set.InternalFormat            = GraphicTypes::FormatRGBA16F;
+    set.MinFilter                 = GraphicTypes::SampleLinear;
+    set.MagFilter                 = GraphicTypes::SampleLinear;
+    set.InternalFormat            = GraphicTypes::FormatRGBA32F;
     set.Format                    = GraphicTypes::FormatRGBA;
     set.Type                      = GraphicTypes::TypeFloat;
     set.GenerateMipMap            = false;
