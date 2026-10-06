@@ -576,7 +576,7 @@ namespace ToolKit
           }
 
           int ssrStepCount = pps->GetSSRStepCountVal();
-          if (ImGui::DragInt("Steps", &ssrStepCount, 1.0f, 8, 64))
+          if (ImGui::DragInt("Steps", &ssrStepCount, 1.0f, 16, 512))
           {
             pps->SetSSRStepCountVal(ssrStepCount);
           }
@@ -585,6 +585,27 @@ namespace ToolKit
           if (ImGui::DragFloat("Roughness Cutoff", &ssrRoughnessCutoff, 0.01f, 0.0f, 1.0f))
           {
             pps->SetSSRRoughnessCutoffVal(ssrRoughnessCutoff);
+          }
+
+          bool ssrDebugView = pps->GetSSRDebugViewVal();
+          if (ImGui::Checkbox("Debug View##ssr", &ssrDebugView))
+          {
+            pps->SetSSRDebugViewVal(ssrDebugView);
+          }
+
+          if (ssrDebugView)
+          {
+            // Each mode isolates one stage of the pass: an artifact that looks the same in the
+            // composite can be told apart here instead of guessed at.
+            static const char* ssrDebugModes[] = {
+              "Reflection", "Confidence", "Mip Level", "Scene Depth", "Hit UV", "Ray Length", "Hit Error"};
+
+            int ssrDebugMode = pps->GetSSRDebugViewModeVal();
+            ImGui::SameLine();
+            if (ImGui::Combo("##ssrDebugMode", &ssrDebugMode, ssrDebugModes, IM_ARRAYSIZE(ssrDebugModes)))
+            {
+              pps->SetSSRDebugViewModeVal(ssrDebugMode);
+            }
           }
 
           ImGui::EndDisabled();

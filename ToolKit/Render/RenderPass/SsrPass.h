@@ -27,6 +27,9 @@ namespace ToolKit
     Vec4 params;
     /** .xy = 1 / size (texel size), .zw = size in pixels. */
     Vec4 screenParams;
+    /** .x = debug view, .y = march step count (used exactly as requested, never rounded),
+     *  .z = debug view mode (see SSR_DEBUG_* in ssrFrag.shader). */
+    Vec4 flags;
   };
 
   typedef GpuBufferBase<SsrPassDataLayout> SsrPassDataBuffer;
@@ -50,11 +53,17 @@ namespace ToolKit
     /** Depth window around a surface hit that still counts as the same surface. */
     float Thickness                    = 0.4f;
 
-    /** Requested march steps. Clamped to the shader's SSR_STEP_COUNT variants. */
+    /** March steps. Used exactly as given; the shader's SSR_MAX_STEPS only bounds the loop. */
     int StepCount                      = 32;
 
     /** Surfaces rougher than this keep the environment / sky reflection only. */
     float RoughnessCutoff              = 0.6f;
+
+    /** Output only what this pass contributes, instead of compositing it over the scene color. */
+    bool DebugView                     = false;
+
+    /** Which stage the debug view shows, see SSR_DEBUG_* in ssrFrag.shader. */
+    int DebugViewMode                  = 0;
   };
 
   /**
@@ -83,14 +92,27 @@ namespace ToolKit
     FullQuadPassPtr m_quadPass       = nullptr;
     ShaderPtr m_ssrShader            = nullptr;
 
+    /** Second phase: screen space filter and resolve of the trace result. */
+    FullQuadPassPtr m_filterPass     = nullptr;
+    ShaderPtr m_filterShader         = nullptr;
+
     /** Single sample copy of the scene color: the pass reads it while writing ColorRt in place. */
     RenderTargetPtr m_copyTexture    = nullptr;
+
+    /** Reflection and its weight, produced by the trace phase and filtered by the resolve phase. */
+    RenderTargetPtr m_traceTexture   = nullptr;
 
     SsrPassDataBuffer m_passDataBuffer;
     bool m_passDataBufferInitialized = false;
 
-    /** SSR_STEP_COUNT the fragment shader was last compiled with (-1 = never). */
-    int m_currentStepCount           = -1;
+    /** Set once the fragment shader is known to not compile, so the pass stays out of the frame. */
+    bool m_shaderUnavailable         = false;
+
+    /** Highest SSR_MAX_STEPS the fragment shader is compiled with. */
+    static constexpr int m_maxStepCount = 512;
+
+    /** SSR_MAX_STEPS the fragment shader was last compiled with (-1 = never). */
+    int m_currentMaxSteps            = -1;
   };
 
   typedef std::shared_ptr<SsrPass> SsrPassPtr;

@@ -183,6 +183,13 @@ Serializable, loaded from `%appdata%/ToolKit/Config`. Sub-objects:
 - **PostProcessingSettings**: tonemapping, bloom, gamma, SSAO, SSR, DOF, FXAA
 - **ShaderSettings**: per-shader define presets (e.g. "Low"/"High" graphics presets) so shader compile doesn't explode combinatorially
 
+A shader variant that fails to compile is not fatal: `Shader::Compile` keeps the last working
+`m_gpuData`, `Shader::SetDefine` leaves the current variant in place and names the missing one, and
+`GpuProgramManager::CreateProgram` refuses to build a program whose vertex or fragment shader has no
+compiled data. The backend logs the compile error, the frame keeps rendering with what is available.
+`Shader::FindShaderMergeLocation` only counts a `precision` statement that starts its line, so the word
+in a comment or an identifier can not move the include / define merge point into the middle of a shader.
+
 `ShadowSettings::ParameterEventConstructor` is the hook that pushes the values into the graphics constant buffer via `ValueUpdateFn`.
 
 ---
@@ -227,13 +234,20 @@ ForwardSceneRenderPath
 Inputs via `SceneRenderPathParams`: Scene, Camera, MainFramebuffer, grid, postProcessSettings, optional `overrideLights`.
 
 Pass order: shadow, forward pre process (g buffer, required by SSAO / DoF / SSR), SSAO, sky, forward,
-SSR, bloom, DoF, gamma/tonemap/FXAA. `SsrPass` marches one reflection ray per pixel against the
-pre process g buffer (world normal, linear depth, roughness) and blends the hit color over the
-forward shaded color. The march is jittered per pixel, the hits are validated against the geometric
-normal from the depth buffer plus the scene normal (backface rejection) and weighted by how close the
-ray got to the surface, and the hit color is gathered with a few taps. A miss leaves the pixel
-untouched, so the sky or the active environment volumes keep providing the reflection wherever screen
-space can not.
+SSR, bloom, DoF, gamma/tonemap/FXAA. `SsrPass` runs in two phases. The trace phase marches one
+reflection ray per pixel against the pre process g buffer (world normal, linear depth, roughness) and
+writes the reflection plus its confidence into its own target instead of compositing. The march steps
+in screen space, so the budget covers `steps * stepPixels` pixels whatever the ray angle, the hits are
+refined by intersecting the ray with the surface plane rebuilt from a wide depth baseline, and the hit
+color is gathered at a mip of the scene color copy chosen from the reflection cone. The resolve phase
+averages that target in screen space premultiplied by the confidence, which dilates the reflection past
+the silhouettes the trace can not see through and removes the row level stripes the hit leaves behind.
+A pixel with no screen space reflection keeps its forward shaded color, so the sky or the active
+environment volumes provide the reflection wherever screen space can not.
+
+`SSRDebugView` / `SSRDebugViewMode` (Post Processing settings) switch the pass to a debug view:
+reflection, confidence, mip level, scene depth, hit uv, ray length or hit error. The resolve phase hands
+debug views through unfiltered.
 
 ### 4.4 Pass (Pass.h)
 

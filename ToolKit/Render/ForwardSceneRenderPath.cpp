@@ -331,6 +331,8 @@ namespace ToolKit
     m_ssrPass->m_params.Thickness            = pps->GetSSRThicknessVal();
     m_ssrPass->m_params.StepCount            = pps->GetSSRStepCountVal();
     m_ssrPass->m_params.RoughnessCutoff      = pps->GetSSRRoughnessCutoffVal();
+    m_ssrPass->m_params.DebugView            = pps->GetSSRDebugViewVal();
+    m_ssrPass->m_params.DebugViewMode        = pps->GetSSRDebugViewModeVal();
 
     // Post Process Pass
     bool gammaNeeded                = GetRenderSystem()->IsGammaCorrectionNeeded();

@@ -226,6 +226,8 @@ namespace ToolKit
     TKDeclareParam(float, SSRThickness);
     TKDeclareParam(int, SSRStepCount);
     TKDeclareParam(float, SSRRoughnessCutoff);
+    TKDeclareParam(bool, SSRDebugView);
+    TKDeclareParam(int, SSRDebugViewMode);
 
     // DOF
     /////////////////////

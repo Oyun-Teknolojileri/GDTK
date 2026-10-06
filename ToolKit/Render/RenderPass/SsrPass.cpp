@@ -20,20 +20,24 @@ namespace ToolKit
 
   namespace
   {
-    /** SSR_STEP_COUNT variants the fragment shader is compiled for. */
-    int ClampStepCount(int steps)
+    /**
+     * SSR_MAX_STEPS variants the fragment shader is compiled with. Only the loop bound is picked
+     * from here; the requested step count itself travels as a uniform, so the setting stays
+     * continuous and a value between two bounds is not rounded away.
+     */
+    int ClampMaxSteps(int steps)
     {
-      if (steps <= 8)
+      if (steps <= 64)
       {
-        return 8;
+        return 64;
       }
 
-      if (steps <= 16)
+      if (steps <= 128)
       {
-        return 16;
+        return 128;
       }
 
-      return steps <= 32 ? 32 : 64;
+      return steps <= 256 ? 256 : 512;
     }
   } // namespace
 
@@ -43,13 +47,22 @@ namespace ToolKit
     m_quadPass->m_params.frameBuffer = MakeNewPtr<Framebuffer>("SsrFB");
     m_ssrShader                      = GetShaderManager()->Create<Shader>(ShaderPath("ssrFrag.shader", true));
     m_copyTexture                    = MakeNewPtr<RenderTarget>("SsrSceneCopyRT");
+
+    m_filterPass                       = MakeNewPtr<FullQuadPass>();
+    m_filterPass->m_params.frameBuffer = MakeNewPtr<Framebuffer>("SsrFilterFB");
+    m_filterShader                     = GetShaderManager()->Create<Shader>(ShaderPath("ssrFilterFrag.shader", true));
+    m_traceTexture                     = MakeNewPtr<RenderTarget>("SsrTraceRT");
   }
 
   SsrPass::~SsrPass()
   {
-    m_quadPass    = nullptr;
-    m_ssrShader   = nullptr;
-    m_copyTexture = nullptr;
+    m_quadPass     = nullptr;
+    m_ssrShader    = nullptr;
+    m_copyTexture  = nullptr;
+
+    m_filterPass   = nullptr;
+    m_filterShader = nullptr;
+    m_traceTexture = nullptr;
   }
 
   void SsrPass::PreRender()
@@ -63,15 +76,40 @@ namespace ToolKit
       return;
     }
 
+    // A fragment shader that failed to compile keeps a null GpuResourceData, and handing that to the
+    // program creation makes the backend dereference it. The backend has already logged the compile
+    // error, so disable the pass instead of taking the renderer down with it.
+    if (m_shaderUnavailable)
+    {
+      return;
+    }
+
+    m_ssrShader->Init();
+    if (m_ssrShader->m_gpuData == nullptr)
+    {
+      TK_ERR("SsrPass: the fragment shader did not compile, screen space reflections are disabled.");
+      m_shaderUnavailable = true;
+      return;
+    }
+
     // The pass reads the scene color and composites the result back into the same target, so it
-    // samples a single sample copy of it (the same trick DoFPass uses).
+    // samples a single sample copy of it (the same trick DoFPass uses). The copy carries a mip
+    // chain: the reflection is gathered from it, and a mip chosen from the reflection cone is what
+    // keeps a mirror reflection of a slanted surface from aliasing into stripes.
     TextureSettings copySet = m_params.ColorRt->Settings();
     copySet.msaaCount       = MsaaSampleCount::x0;
+    copySet.GenerateMipMap  = true;
+    copySet.MinFilter       = GraphicTypes::SampleLinearMipmapLinear;
+    copySet.MagFilter       = GraphicTypes::SampleLinear;
+    copySet.WarpS           = GraphicTypes::UVClampToEdge;
+    copySet.WarpT           = GraphicTypes::UVClampToEdge;
     m_copyTexture->ReconstructIfNeeded(m_params.ColorRt->m_width, m_params.ColorRt->m_height, &copySet);
 
     GetRenderer()->CopyTexture(m_params.ColorRt, m_copyTexture);
+    m_copyTexture->GenerateMipMaps();
 
     m_quadPass->SetFragmentShader(m_ssrShader, GetRenderer());
+    m_filterPass->SetFragmentShader(m_filterShader, GetRenderer());
 
     if (!m_passDataBufferInitialized)
     {
@@ -100,20 +138,53 @@ namespace ToolKit
                                                      float(size.x),
                                                      float(size.y));
 
-    // The step count lives in a shader define (like SSAO's KERNEL_SIZE), so a change recompiles.
-    const int steps                           = ClampStepCount(m_params.StepCount);
-    if (steps != m_currentStepCount)
+    // Step count: used exactly as requested (a uniform) so the setting is continuous. The shader
+    // define only picks the compile time loop bound above it, which is what keeps the loop legal
+    // without rounding the request away.
+    const int steps                           = glm::clamp(m_params.StepCount, 1, m_maxStepCount);
+
+    m_passDataBuffer.m_data.flags             = Vec4(m_params.DebugView ? 1.0f : 0.0f,
+                                                     float(steps),
+                                                     float(m_params.DebugViewMode),
+                                                     0.0f);
+
+    const int maxSteps                        = ClampMaxSteps(steps);
+    if (maxSteps != m_currentMaxSteps)
     {
       m_ssrShader->Init();
-      m_ssrShader->SetDefine("SSR_STEP_COUNT", std::to_string(steps));
-      m_currentStepCount = steps;
+
+      const void* variantBefore = m_ssrShader->m_gpuData.get();
+      m_ssrShader->SetDefine("SSR_MAX_STEPS", std::to_string(maxSteps));
+      const void* variantAfter = m_ssrShader->m_gpuData.get();
+
+      TK_LOG("SsrPass: steps %d (loop bound %d), shader variant %p -> %p",
+             steps,
+             maxSteps,
+             variantBefore,
+             variantAfter);
+
+      m_currentMaxSteps = maxSteps;
     }
 
+    // Trace target: the reflection and its weight, at the scene resolution. The resolve phase reads it
+    // back and composites, which is what lets the filter spread the reflection past the silhouettes it
+    // can not see through.
+    TextureSettings traceSet = copySet;
+    traceSet.GenerateMipMap  = false;
+    traceSet.MinFilter       = GraphicTypes::SampleLinear;
+    traceSet.MagFilter       = GraphicTypes::SampleLinear;
+    m_traceTexture->ReconstructIfNeeded(size.x, size.y, &traceSet);
+
     m_quadPass->m_params.frameBuffer->ReconstructIfNeeded({size.x, size.y, false, false});
-    m_quadPass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0,
-                                                         m_params.ColorRt);
+    m_quadPass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_traceTexture);
+
+    m_filterPass->m_params.frameBuffer->ReconstructIfNeeded({size.x, size.y, false, false});
+    m_filterPass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_params.ColorRt);
+
     m_quadPass->m_params.blendFunc        = BlendFunction::NONE;
     m_quadPass->m_params.clearFrameBuffer = GraphicBitFields::None;
+    m_filterPass->m_params.blendFunc      = BlendFunction::NONE;
+    m_filterPass->m_params.clearFrameBuffer = GraphicBitFields::None;
   }
 
   void SsrPass::Render()
@@ -136,20 +207,40 @@ namespace ToolKit
     }
 
     m_quadPass->SetFragmentShader(m_ssrShader, renderer);
-
-    GatherRequirements(m_requirements);
-    m_requirements.fragmentShader                   = m_ssrShader;
-    m_requirements.vertexShader                     = m_quadPass->m_material->GetVertexShaderVal();
-    m_requirements.program                          = m_quadPass->GetProgram();
-    m_requirements.semanticTextures["s_diffuseColor"] = m_copyTexture;
-    m_requirements.semanticTextures["s_normalDepth"]  = normalDepth;
-    m_requirements.customUbos[7]                    = &m_passDataBuffer.GetBuffer();
+    m_filterPass->SetFragmentShader(m_filterShader, renderer);
 
     m_passDataBuffer.Invalidate();
     m_passDataBuffer.Map();
 
+    // Phase 1: trace the reflection into its own target, carrying its weight in the alpha channel.
+    m_requirements = PassRequirements();
+    GatherRequirements(m_requirements);
+    m_requirements.fragmentShader                     = m_ssrShader;
+    m_requirements.vertexShader                       = m_quadPass->m_material->GetVertexShaderVal();
+    m_requirements.program                            = m_quadPass->GetProgram();
+    m_requirements.frameBuffer                        = m_quadPass->m_params.frameBuffer;
+    m_requirements.semanticTextures["s_diffuseColor"] = m_copyTexture;
+    m_requirements.semanticTextures["s_normalDepth"]  = normalDepth;
+    m_requirements.customUbos[7]                      = &m_passDataBuffer.GetBuffer();
+
     ApplyRequirements(renderer);
     RenderSubPass(m_quadPass);
+
+    // Phase 2: filter that result in screen space and composite it over the scene color. The
+    // requirements are rebuilt so the sampler names of the trace phase do not leak into this one.
+    m_requirements = PassRequirements();
+    GatherRequirements(m_requirements);
+    m_requirements.fragmentShader                     = m_filterShader;
+    m_requirements.vertexShader                       = m_filterPass->m_material->GetVertexShaderVal();
+    m_requirements.program                            = m_filterPass->GetProgram();
+    m_requirements.frameBuffer                        = m_filterPass->m_params.frameBuffer;
+    m_requirements.semanticTextures["s_trace"]        = m_traceTexture;
+    m_requirements.semanticTextures["s_sceneColor"]   = m_copyTexture;
+    m_requirements.semanticTextures["s_normalDepth"]  = normalDepth;
+    m_requirements.customUbos[7]                      = &m_passDataBuffer.GetBuffer();
+
+    ApplyRequirements(renderer);
+    RenderSubPass(m_filterPass);
   }
 
   void SsrPass::GatherRequirements(PassRequirements& reqs)
