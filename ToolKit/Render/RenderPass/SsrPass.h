@@ -65,6 +65,12 @@ namespace ToolKit
     /** Surfaces rougher than this keep the environment / sky reflection only. */
     float RoughnessCutoff              = 0.6f;
 
+    /** How much of the resolved reflection comes from the last frames rather than from this one. A
+     *  screen space reflection is one sample per pixel per frame, so a share of it carried over is
+     *  what keeps it from shimmering, but a reflection is view dependent: too large a share trails
+     *  behind the view. */
+    float TemporalBlend                = 0.9f;
+
     /** Output only what this pass contributes, instead of compositing it over the scene color. */
     bool DebugView                     = false;
 
@@ -146,9 +152,7 @@ namespace ToolKit
     /** SSR_MAX_STEPS the fragment shader was last compiled with (-1 = never). */
     int m_currentMaxSteps            = -1;
 
-    /** How much of the accumulated reflection the resolve keeps each frame. High enough to smooth the
-     *  per frame sampling, low enough that a moving reflection still follows in a few frames. */
-    static constexpr float m_temporalBlend = 0.85f;
+
   };
 
   typedef std::shared_ptr<SsrPass> SsrPassPtr;

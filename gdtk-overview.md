@@ -251,15 +251,70 @@ tests the tile the ray is in: when the tile's depth window (nearest and farthest
 the ray's own depth window over that tile do not meet, the ray steps over the whole tile and tries a
 coarser one; when they do meet, it descends, until a tile of `stepPixels` pixels decides. There the
 tile's nearest surface is the surface the ray runs into and the position along the ray where its depth
-reaches that surface is solved directly, then validated by the surface orientation, the distance to the
-reconstructed surface and the screen edge. Meeting windows is what keeps the march from walking over
+reaches that surface is solved directly, bounded by the ray and not by the tile: the crossing it is
+looking for is wherever the depth the surface has at the ray's own pixel equals the ray's depth, and
+that can be past the tile's exit, because a tile is one step of the traversal and not a bound on the
+geometry. Clamping it to the tile left the candidate sitting on the exit, as far off its surface as the
+tile was wide -- metres of view depth on a grazing floor -- which is what made a reflection look smeared
+along the ray. That solve only covers the tile the ray is in, and a ray that
+enters a tile already behind its surface is looking for a crossing that lies *before* the tile: its
+candidates there stand metres away from their surface, so the reflection those pixels should show is
+smeared along the ray or thrown away, whichever the thickness setting decides. That case is caught by the sign of the depth the
+surface visible at the ray's own pixel has against the ray, and the crossing between the two samples is
+then solved by halving the interval, which lands on the crossing itself: at a crossing the ray's point
+and the point of the surface visible at its pixel are the same point.
+
+The two ways a crossing is placed do not carry the same proof, and they are validated differently. A
+crossing solved between two samples is a crossing by construction, so its orientation is never tested:
+a visible surface faces the camera and the ray leaves it, the sign test can not fail there, and running
+it anyway rejects good hits on the geometric normal of a grazing surface, which is a two texel depth
+difference and flips sign from pixel to pixel (that is the speckle a mirror reflection shows along
+edges). A crossing read off a tile's nearest depth is up to a tile away from where the ray is, so it can
+land on a surface the ray is already behind: that one keeps the orientation test, which is what stops a
+surface being visible through another. What decides whether such a candidate is drawn is not the
+thickness test but whether it is a crossing at all. The solve starts from the tile's nearest depth: if
+that surface is already nearer than the ray where the ray stands, the ray is past it, this tile holds no
+crossing, and the solve can only clamp onto the entry and report the gap it stands in -- which is metres
+of view depth on a grazing floor, so a thick thickness setting drew the surface the ray was behind across
+the whole of its shadow and a pole or a lamp filled a band of the floor with its own colour. That is a
+wall of one colour, and it is not a hit at any tolerance. The candidate is skipped and the ray keeps
+marching, so the crossing it finds past the silhouette is on the surface behind the occluder, where the
+colour is the one the ray really reaches. The thickness test then fades a crossing whose placement is
+poor, which is all it should be deciding: how far off its own surface a hit may sit, not whether one
+happened. Godot 4 excludes the same case by construction, since its hit has to be the point where the
+ray's depth reaches the cell's depth in the marching direction. Both are validated by the distance to the reconstructed surface
+and the screen edge, and a hit within two pixels of the ray's own origin is rejected when the stored
+surface normal faces the ray, which is the self intersection guard Godot 4 uses as well. Meeting windows is what keeps the march from walking over
 geometry between two samples; tile sized steps are what keep a long ray from having to walk the screen
 pixel by pixel; and taking the finest tile from the step count keeps a grazing ray from spending the
 whole budget descending into the floor it skims. The finest tile is at least 4 pixels, and the plane
-refinement of the hit recovers the sub pixel placement. The hit color is gathered at a mip of the scene
-color copy chosen from the reflection cone. The resolve phase averages the trace target in screen space
+refinement of the hit recovers the sub pixel placement. The hit color is gathered from the scene
+color copy, and the gather is anisotropic. A reflection cone widens the footprint in every direction
+and picks the mip for it, but the grazing angle also *compresses* the reflected image, and it does so
+along the ray's own screen direction: the reflected scene packs the secant of the incidence angle into
+the same footprint along that axis and nothing extra across it. A mip is a square average and can only
+do one of the two, which is why a grazing mirror used to come out as stripes (filtered too little along
+the ray) or as mush (filtered too much across it). The gather therefore spreads its nine taps along the
+ray's screen direction at the mip level, and the level is raised just enough for those nine taps to
+reach across the compression; the direction across the ray keeps the cone's resolution. Nine rather than
+five: the taps sit one texel of the sampled level apart, so a longer line covers the compression at a
+lower level, which is a sharper reflection across the ray for a smoother one along it -- the axis the
+compressed image aliases in. The level that
+comes out is faded back at the end of the ray, where the widest footprint would otherwise land on the
+least reliable part of the screen and pile a rough reflection into a bright ring around it, the same
+fade Godot applies to its mip level. The resolve phase averages the trace target in screen space
 premultiplied by the confidence, which dilates the reflection past the silhouettes the trace can not see
-through, and accumulates that result over the last frames (`ssrAccumFrag.shader`, a ping pong of two
+through, and accumulates that result over the last frames. What the kernel is for decides how far it reaches. It fills the
+pixels the trace left empty with the reflection their neighbours hold, so a pixel that has weight of its
+own reaches no further than one texel: a reflection that is already there is not something to spread.
+That is what keeps a thin reflection thin -- a pole or a wire reflects as a line a few pixels wide, and a
+five texel kernel turned that line into a band of its colour lying across the floor. A pixel with nothing
+of its own reaches further, and how far follows the roughness, because that is the width the neighbours
+it borrows from are blurred by. How far it reaches is also filled in rather than stretched: nine points
+spread further apart are a sparser kernel, not a wider one, and the gaps between them draw a comb of a
+thin bright reflection's colour across the surface. Two rings of eight taps, at half the reach and at
+the reach, leave no gap in the disc at any radius. Filling only where there is a hole is also what keeps the reflection from
+widening past the silhouettes the trace can not see through, the halo a wider kernel shows everywhere (`ssrAccumFrag.shader`, a ping pong of two
 history targets, `HistoryBuffer`). The previous result is reprojected with the previous frame's view
 projection out of the camera UBO (`PreviousFrameUv` in `temporalInc.shader`), which is exact for
 geometry that did not move, and is clamped into the range this frame's reflection spans so a surface
@@ -272,8 +327,13 @@ sky or the active environment volumes provide the reflection wherever screen spa
 
 `SSRDebugView` / `SSRDebugViewMode` (Post Processing settings) switch the pass to a debug view:
 reflection, confidence, mip level, scene depth, hit uv, ray length, hit error, the coarsest pyramid
-level the march reached, or the fraction of the step budget it spent. The resolve phase hands debug
-views through unfiltered.
+level the march reached, the fraction of the step budget it spent, the tile the ray was in, or why a
+pixel has no reflection at all (one colour per cause: nothing to hit on screen, background, the surface
+facing away, the crossing too far off its surface, the step budget, the screen edge, a ray pointing back
+at the camera, or a ray that stood behind the surface where it was, which is the first reason a
+candidate can be rejected for). The hit error
+view reads the last candidate a pixel had, accepted or rejected, which is what says whether a crossing
+is a little off or nowhere near. The resolve phase hands debug views through unfiltered.
 
 ### 4.4 Pass (Pass.h)
 

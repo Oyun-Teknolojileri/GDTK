@@ -142,14 +142,81 @@ float EdgeFade(vec2 uv)
 #define SSR_DEBUG_HIZ_LEVEL   7
 #define SSR_DEBUG_ITERATIONS  8
 #define SSR_DEBUG_TILE_DEPTH  9
+#define SSR_DEBUG_MISS_REASON 10
+
+// Why a pixel without a reflection has none. The codes are what tells the causes apart: a pixel whose
+// code says the march never met a tile means the depth buffer does not hold the geometry where the
+// reflection should be, while one rejected by the orientation or the confidence means it was met but
+// refused. A palette, so the dominant cause in an artifact reads at a glance:
+//
+//   1 no tile ever met the ray (nothing on screen to hit)
+//   2 the crossing landed on the background (sky)
+//   3 the surface it reached faces away from the ray
+//   4 the ray ended too far from the surface it crossed (thickness)
+//   5 the ray ran out of step budget
+//   6 the ray left the screen before it hit anything
+//   7 the pixel was never traced (sky, rough surface, or a ray pointing back at the camera)
+//   8 the ray was already behind what is visible where it entered the tile
+#define SSR_MISS_NONE         0
+#define SSR_MISS_NO_TILE      1
+#define SSR_MISS_BACKGROUND   2
+#define SSR_MISS_ORIENTATION  3
+#define SSR_MISS_THICKNESS    4
+#define SSR_MISS_BUDGET       5
+#define SSR_MISS_OFFSCREEN    6
+#define SSR_MISS_NOT_TRACED   7
+#define SSR_MISS_OCCLUDED     8
+
+vec3 MissReasonColor(float reason)
+{
+	// one distinct colour per cause, dark for "no reason" so a hit reads as black
+	if (reason < 0.5)  return vec3(0.0);
+	if (reason < 1.5)  return vec3(0.15, 0.15, 0.6);   // no tile met: nothing to hit on screen
+	if (reason < 2.5)  return vec3(1.0, 0.0, 0.0);     // background
+	if (reason < 3.5)  return vec3(1.0, 0.6, 0.0);     // orientation
+	if (reason < 4.5)  return vec3(1.0, 1.0, 0.0);     // thickness / confidence
+	if (reason < 5.5)  return vec3(0.0, 1.0, 0.0);     // budget
+	if (reason < 6.5)  return vec3(0.0, 1.0, 1.0);     // left the screen
+	if (reason < 7.5)  return vec3(1.0, 0.0, 1.0);     // never traced
+	return vec3(1.0, 1.0, 1.0);                        // the ray is already behind the surface
+}
 
 // Depth a screen pixel spans, for the adaptive thickness of the hit test.
+// How many pixels worth of depth a crossing may sit off the surface and still count. The Thickness
+// setting is a distance in view space and is turned into pixels on top of this floor, so that it means
+// the same thing at every angle and distance: a fixed distance is a looser test far away and on a
+// shallow surface, which is the opposite of what the setting is for.
 #define SSR_THICKNESS_PIXELS 4.0
 // Baseline of the normal the hit plane is built from, in texels.
 #define SSR_PLANE_NORMAL_STEP 4.0
-// Baseline of the normal a hit is oriented by, in texels. Narrower than the plane fit: the
-// orientation has to stay readable next to a silhouette, where a wide baseline reads two surfaces.
+// Times the crossing is solved again against the depth the ray actually landed on. The tile's depth
+// is the depth of its own texel, and a grazing ray's projection can be a few texels away from it,
+// which is metres of depth: one more solve puts the crossing on the depth field itself.
+#define SSR_CROSSING_STEPS 3
+// How many times the interval between two samples is halved to place a crossing the ray entered from
+// behind. The count follows the interval's length on screen, because the interval is whatever the
+// traversal stepped over and can be a leaf tile or a coarse one: a fixed count leaves the crossing as
+// far off its surface as the coarse interval was, which is metres of view depth on a grazing floor and
+// is what the hit error of those pixels reads. Six halves are the floor (a leaf tile is already a few
+// pixels), and the count is capped so a coarse interval still costs a bounded number of fetches.
+#define SSR_CROSSING_BISECT_MIN 6
+#define SSR_CROSSING_BISECT_MAX 20
+
+// How close to the ray's own origin a self intersection guard applies, in pixels. Godot 4 tests the
+// surface normal inside two pixels of the origin for the same reason, and the stored normal is the
+// right thing to read there rather than a two texel geometric difference of the depth buffer.
+#define SSR_SELF_HIT_PIXELS 2.0
+
+// Baseline of the normal the crossing of a plain tile solve is oriented by, in texels. Narrower than
+// the plane fit: the orientation has to stay readable next to a silhouette, where a wide baseline
+// reads two surfaces.
 #define SSR_HIT_NORMAL_STEP 2.0
+
+// A pixel this pass never traced reads as black in every debug view, the same black a miss reads as,
+// and the two are different answers: a miss means the march looked and found nothing, not traced means
+// the surface was never a candidate at all (the sky, a surface above the roughness cutoff, a ray
+// pointing back at the camera). Debug views tint the second one so they can be told apart.
+#define SSR_DEBUG_NOT_TRACED vec4(0.4, 0.0, 0.45, 1.0)
 
 bool DebugViewEnabled()
 {
@@ -174,7 +241,16 @@ int DebugViewMode()
 // compresses the reflected image: the reflected scene packs the secant of that angle more content
 // into the same screen footprint. That compression is the dominant alias source on a shallow floor,
 // and it is independent of the march density: no step count fixes it, only the gather does.
-float ReflectionLod(float roughness, float rayLength, float incidenceCos)
+//
+// The compression is *along the ray's own screen direction*, not isotropic, and the two are filtered
+// differently: the cone widens the footprint in every direction, the compression stretches the
+// reflected image along the ray. A mip is a square average, so one mip can not do both. This returns
+// the cone's level and the compression's length in texels separately, and the gather below spreads
+// its taps along the ray to cover the second one.
+//
+// Returns a vec2: x the mip level for the cone, y the length in texels the reflected image is
+// compressed over.
+vec2 ReflectionFootprint(float roughness, float rayLength, float incidenceCos)
 {
 	float coneAngle = min(roughness, 0.999) * 3.14159265 * 0.5;
 	float coneLen   = max(rayLength, 0.0001);
@@ -192,27 +268,53 @@ float ReflectionLod(float roughness, float rayLength, float incidenceCos)
 	// cone, and a wider divisor keeps the reflection crisp.
 	float base      = log2(max(radius * maxScreen / 32.0, 1.0));
 
-	// sec(incidence) in mip levels, capped at 2: a grazing surface does compress the reflected image,
-	// but the full secant blurred a mirror into mush without removing the bands, which came from the
-	// hit position rather than from the gather.
-	float grazing   = min(log2(1.0 / max(abs(incidenceCos), 0.05)), 2.0);
-
-	return clamp(base + grazing, 0.0, maxLod);
+	return vec2(clamp(base, 0.0, maxLod), 1.0 / max(abs(incidenceCos), 0.05));
 }
 
-// Gathers the reflection at the given mip. The mip chain carries the cone blur, the cross of taps
-// only smooths the trilinear transition between levels so they do not show up as rings.
-vec3 SampleReflection(vec2 uv, float lod)
+// Gathers the reflection. The mip carries the cone blur. The compression is covered by spreading the
+// taps along the ray's screen direction instead of across the screen axes: the level is raised just
+// enough for SSR_GATHER_TAPS taps of that level to reach across the compression, the cheapest way to
+// filter one axis harder than the other that a mip chain can express. The perpendicular direction
+// then keeps the cone's resolution, so a grazing reflection stops being stripes without turning into
+// mush in the direction across them.
+// Taps the gather spreads along the ray. Nine rather than five: the taps sit one texel of the sampled
+// level apart, so the line they form covers as many texels as there are taps, and the level the line
+// needs is that much lower. A lower level is a sharper reflection across the ray, and the denser line
+// is a smoother one along it, which is the direction the compressed image aliases in.
+#define SSR_GATHER_TAPS 9.0
+
+float ReflectionGatherLod(float coneLod, float compression)
 {
-	vec2 offset = ssrPass.screenParams.xy * exp2(lod) * 0.5;
+	float texels = max(compression / SSR_GATHER_TAPS, 1.0);
+	float maxLod = log2(max(max(ssrPass.screenParams.z, ssrPass.screenParams.w), 2.0));
+
+	return clamp(max(coneLod, log2(texels)), 0.0, maxLod);
+}
+
+// The gather's blur is faded back where the ray ends on screen. The widest footprint sits at the end
+// of the ray, which is also the part of the screen a reflection is least sure about, and the level
+// there is what a rough reflection piles into a bright ring. Godot fades its mip level the same way
+// (`pow(clamp(1.25 - ray_len, 0.0, 1.0), 0.2)`).
+float ReflectionLodFade(float lod, float rayScreenLength)
+{
+	return lod * pow(clamp(1.25 - rayScreenLength, 0.0, 1.0), 0.2);
+}
+
+vec3 SampleReflection(vec2 uv, float lod, vec2 rayScreenDir)
+{
+	vec2 offset = rayScreenDir * exp2(lod) * ssrPass.screenParams.xy;
 
 	vec3 sum = textureLod(s_diffuseColor, uv, lod).rgb;
-	sum += textureLod(s_diffuseColor, uv + vec2(offset.x, 0.0), lod).rgb;
-	sum += textureLod(s_diffuseColor, uv - vec2(offset.x, 0.0), lod).rgb;
-	sum += textureLod(s_diffuseColor, uv + vec2(0.0, offset.y), lod).rgb;
-	sum += textureLod(s_diffuseColor, uv - vec2(0.0, offset.y), lod).rgb;
+	sum += textureLod(s_diffuseColor, uv + offset, lod).rgb;
+	sum += textureLod(s_diffuseColor, uv - offset, lod).rgb;
+	sum += textureLod(s_diffuseColor, uv + offset * 2.0, lod).rgb;
+	sum += textureLod(s_diffuseColor, uv - offset * 2.0, lod).rgb;
+	sum += textureLod(s_diffuseColor, uv + offset * 3.0, lod).rgb;
+	sum += textureLod(s_diffuseColor, uv - offset * 3.0, lod).rgb;
+	sum += textureLod(s_diffuseColor, uv + offset * 4.0, lod).rgb;
+	sum += textureLod(s_diffuseColor, uv - offset * 4.0, lod).rgb;
 
-	return sum * 0.2;
+	return sum * (1.0 / 9.0);
 }
 
 ////////////////////////////////////////
@@ -334,9 +436,17 @@ void main()
 	//
 	// No geometry here (sky, background) or a surface too rough to mirror anything: no reflection. What
 	// lights the pixel is the sky or the active environment volumes through the forward pass result.
-	if (linearDepth <= 0.0 || roughness >= ssrPass.params.w)
+	// Strictly above the cutoff, so a cutoff of 1 traces every surface there is: the setting is meant to
+	// be able to say "no cutoff", and with >= a surface of roughness exactly 1 stayed out of it.
+	if (linearDepth <= 0.0 || roughness > ssrPass.params.w)
 	{
-		fragColor = DebugViewEnabled() ? vec4(0.0, 0.0, 0.0, 1.0) : vec4(0.0);
+		if (DebugViewEnabled() && DebugViewMode() == SSR_DEBUG_MISS_REASON)
+		{
+			fragColor = vec4(MissReasonColor(float(SSR_MISS_NOT_TRACED)), 1.0);
+			return;
+		}
+
+		fragColor = DebugViewEnabled() ? SSR_DEBUG_NOT_TRACED : vec4(0.0);
 		return;
 	}
 
@@ -344,6 +454,12 @@ void main()
 	vec3 normal    = normalize(mat3(ssrPass.view) * decodeNormal(gBuffer.rg));
 	vec3 geoNormal = GeometricNormal(uv, linearDepth, 1.0);
 	vec3 rayDir    = reflect(normalize(viewPos), normal);
+
+	// How grazing the surface is, as the cosine between the view ray and the geometry it sits on. One
+	// screen pixel spans `pixelWorld * depth` of depth on a surface facing the camera, and the secant
+	// of this angle times that on a shallow one. The geometry normal is used rather than the shading
+	// one because this is about the slope the depth buffer holds, not about how the surface is lit.
+	float viewCos  = max(abs(dot(normalize(viewPos), geoNormal)), 0.02);
 
 	// Push the ray start above the reconstructed surface. The further the shading normal leans away
 	// from it, the bigger the push has to be, which is what keeps bumpy surfaces from self reflecting.
@@ -359,7 +475,13 @@ void main()
 	// Rays pointing back at the camera can not hit anything in front of the depth buffer.
 	if (rayDir.z > 0.0)
 	{
-		fragColor = DebugViewEnabled() ? vec4(0.0, 0.0, 0.0, 1.0) : vec4(0.0);
+		if (DebugViewEnabled() && DebugViewMode() == SSR_DEBUG_MISS_REASON)
+		{
+			fragColor = vec4(MissReasonColor(float(SSR_MISS_NOT_TRACED)), 1.0);
+			return;
+		}
+
+		fragColor = DebugViewEnabled() ? SSR_DEBUG_NOT_TRACED : vec4(0.0);
 		return;
 	}
 
@@ -444,14 +566,25 @@ void main()
 	float confidence  = 0.0;
 	float hitDistance = 0.0;
 	float hitError    = 0.0;
+	float hitResidual = 0.0;
+	float hitTolerance = 1.0;
 	float iterations  = 0.0;
 	float peakLevel   = 0.0;
+	float missReason  = 0.0;
+	float prevLambda  = 0.0;
 	vec2  hitUV       = vec2(0.0);
 
 	for (int i = 0; i < SSR_MAX_STEPS; ++i)
 	{
-		if (float(i) >= stepCount || lambda >= lambdaEnd)
+		if (float(i) >= stepCount)
 		{
+			missReason = missReason == 0.0 ? float(SSR_MISS_BUDGET) : missReason;
+			break;
+		}
+
+		if (lambda >= lambdaEnd)
+		{
+			missReason = missReason == 0.0 ? float(SSR_MISS_NO_TILE) : missReason;
 			break;
 		}
 
@@ -463,8 +596,79 @@ void main()
 
 		if (rayUV.x < 0.0 || rayUV.x > 1.0 || rayUV.y < 0.0 || rayUV.y > 1.0)
 		{
+			missReason = missReason == 0.0 ? float(SSR_MISS_OFFSCREEN) : missReason;
 			break;
 		}
+
+		// The ray's own view depth here. The crossing test below is a sign change of the depth the
+		// surface visible at the ray's pixel has against it, so the sign has to be read where the ray
+		// stands, at the ray's own pixel, not at the tile's texel.
+		float rayNear    = depthStart + depthSlope * lambda;
+		float entryDepth = SceneLinearDepth(rayUV);
+		bool  occluded   = entryDepth > 0.0 && entryDepth < rayNear;
+
+		// The ray is behind what is visible here, and it was in front of it at the previous sample:
+		// the crossing it is looking for sits between the two, and this tile's solve can not reach it,
+		// because a crossing inside this tile would have needed the ray to still be in front of the
+		// tile's own depth window at the entry. Until this is solved the ray only ever produced
+		// candidates that stood behind their surface, which is metres of depth: the thickness test either
+		// throws those away or, set that wide, draws a reflection smeared along the ray.
+		//
+		// Halving the interval on the sign of the same error lands on the crossing: at the crossing the
+		// ray's 3D point and the point of the surface visible at its pixel are the same point, so the
+		// result is a hit by construction and not a tolerance. The checks below judge it like any other
+		// candidate, orientation and the forward shaded normal included.
+		float lambdaHit = lambda;
+		bool  flip      = false;
+
+		if (occluded && prevLambda < lambda)
+		{
+			vec3  prevPos   = viewPos + segment * prevLambda;
+			float prevDepth = SceneLinearDepth(ViewToUv(prevPos));
+			float prevErr   = prevDepth > 0.0 ? prevDepth - (depthStart + depthSlope * prevLambda) : 1.0;
+
+			if (prevErr > 0.0)
+			{
+				float lo = prevLambda;
+				float hi = lambda;
+
+				// The bracket's length on screen decides the count: halving a bracket of N pixels leaves
+				// the crossing within a pixel of it after log2(N) steps, and the interval is measured
+				// between the two samples the traversal actually took.
+				vec2  loUv  = ViewToUv(viewPos + segment * lo);
+				vec2  hiUv  = ViewToUv(viewPos + segment * hi);
+				float span  = length((hiUv - loUv) * ssrPass.screenParams.zw);
+				int   count = int(clamp(ceil(log2(max(span, 1.0))),
+				                        float(SSR_CROSSING_BISECT_MIN),
+				                        float(SSR_CROSSING_BISECT_MAX)));
+
+				for (int k = 0; k < SSR_CROSSING_BISECT_MAX; ++k)
+				{
+					if (k >= count)
+					{
+						break;
+					}
+
+					float mid      = 0.5 * (lo + hi);
+					vec3  midPos   = viewPos + segment * mid;
+					float midDepth = SceneLinearDepth(ViewToUv(midPos));
+
+					if (midDepth > 0.0 && midDepth - (depthStart + depthSlope * mid) >= 0.0)
+					{
+						lo = mid;
+					}
+					else
+					{
+						hi = mid;
+					}
+				}
+
+				lambdaHit = hi;
+				flip      = true;
+			}
+		}
+
+		prevLambda = lambda;
 
 		vec2 cellSize   = cellPixels * ssrPass.screenParams.xy;
 
@@ -483,12 +687,11 @@ void main()
 
 		// Depth window the ray has while it is inside this tile, and the depth window of everything
 		// the tile holds. Empty tiles report a farthest depth of zero, which no ray window meets.
-		float rayNear  = depthStart + depthSlope * lambda;
-		float rayFar   = depthStart + depthSlope * cellExit;
+		float rayFar    = depthStart + depthSlope * cellExit;
 		vec2  tileRange = HiZRange(level, cellOrigin + cellSize * 0.5);
 		bool  meets     = tileRange.y > 0.0 && tileRange.x <= rayFar && tileRange.y >= rayNear;
 
-		if (meets && level > leafLevel)
+		if (meets && level > leafLevel && !flip)
 		{
 			// Something inside this tile is inside the ray's depth window: look at the tiles inside it.
 			level--;
@@ -496,18 +699,64 @@ void main()
 			continue;
 		}
 
-		if (meets)
+		if (meets || flip)
 		{
 			// The nearest surface this tile holds is the one the ray runs into. The view depth is
 			// linear in lambda, so where the ray reaches it solves directly instead of being searched
 			// for.
-			float lambdaHit = lambda;
-			if (rayFar > rayNear)
+			if (!flip && rayFar > rayNear)
 			{
 				lambdaHit = lambda + (cellExit - lambda) * ((tileRange.x - rayNear) / (rayFar - rayNear));
 			}
 
-			lambdaHit          = clamp(lambdaHit, lambda, cellExit);
+			// Solve again against the depth where that crossing actually landed. The tile's depth is
+			// the depth of its own texel, and at a grazing angle the few texels between it and the
+			// ray's own projection are metres of depth: the crossing would sit far from the surface it
+			// belongs to and the thickness test below would throw it away. The depth is linear in
+			// lambda, so each solve is exact and a handful converge on the depth field itself.
+			//
+			// The solve is bounded by the ray itself, not by the tile. The crossing it is looking for
+			// is wherever the depth the surface has at the ray's own pixel equals the ray's depth, and
+			// that can be past the tile's exit: a tile is one step of the traversal, not a bound on the
+			// geometry. Clamping to the tile left the candidate sitting on the exit, as far off its
+			// surface as the tile was wide -- metres of view depth on a grazing floor -- and the
+			// thickness test then decided whether that was drawn, which is why a large thickness drew a
+			// smeared reflection and a small one drew nothing at all in the same place.
+			// Whether this candidate is a crossing at all, which is not the thickness test's business.
+			// A tile solve starts from the tile's nearest depth; if that surface is already nearer than
+			// the ray where the ray stands, the ray is past it and this tile holds no crossing, so the
+			// solve can only clamp onto the entry and report the gap it stands in. Whether that gap is
+			// drawn then depends on the thickness setting, and a thick one draws the surface the ray is
+			// behind across the whole of its shadow: a pole or a lamp fills a band of the floor with its
+			// own colour, a wall of it. It is not a hit at any tolerance, and the crossing the ray is
+			// after is further along, on the surface behind the occluder, where the colour is the one
+			// the ray actually reaches. A crossing solved between two samples is one by construction.
+			bool crossing = flip;
+
+			for (int k = 0; k < SSR_CROSSING_STEPS && !flip && depthSlope > 0.0; ++k)
+			{
+				vec3  probePos    = viewPos + segment * lambdaHit;
+				vec2  probeUV     = ViewToUv(probePos);
+				float probeDepth  = SceneLinearDepth(probeUV);
+
+				if (probeDepth <= 0.0)
+				{
+					break;
+				}
+
+				if (k == 0)
+				{
+					crossing = probeDepth > rayNear;
+				}
+
+				// The ray's depth is linear in lambda, so this is the lambda at which the ray's own
+				// depth reaches the depth read there: exact wherever it is solved, and bounded by the
+				// part of the ray that is on screen rather than by the tile.
+				lambdaHit         = lambda + (probeDepth - rayNear) / max(depthSlope, 0.0001);
+				lambdaHit         = clamp(lambdaHit, lambda, lambdaEnd);
+			}
+
+			lambdaHit          = flip ? lambdaHit : clamp(lambdaHit, lambda, lambdaEnd);
 			vec3 hitViewPos    = viewPos + segment * lambdaHit;
 			vec2 candidateUV   = ViewToUv(hitViewPos);
 			float candidateDep = SceneLinearDepth(candidateUV);
@@ -515,14 +764,60 @@ void main()
 			// The surface the ray reached has to face the ray. A grazing ray leaves its own surface at
 			// a narrow angle and meets the depth of that same surface again along the row; the depth
 			// test can not tell that apart from a crossing, the orientation can.
+			if (candidateDep <= 0.0 && missReason == 0.0)
+			{
+				missReason = float(SSR_MISS_BACKGROUND);
+			}
+
+			if (candidateDep <= 0.0 && occluded && missReason == 0.0)
+			{
+				missReason = float(SSR_MISS_OCCLUDED);
+			}
+
 			if (candidateDep > 0.0)
 			{
-				vec2 refinedUV = candidateUV;
-				float hitDepth = candidateDep;
-				vec3 refinedPos = hitViewPos;
+				vec2  refinedUV  = candidateUV;
+				float hitDepth   = candidateDep;
+				vec3  refinedPos = hitViewPos;
 
-				vec3 hitNorm = GeometricNormal(refinedUV, hitDepth, SSR_HIT_NORMAL_STEP);
-				if (dot(rayDir, hitNorm) < 0.0)
+				// Two different guards, because the two ways a hit is placed here do not carry the same
+				// proof.
+				//
+				// A crossing solved between two samples is a crossing by construction: the depth the
+				// surface has at the ray's own pixel changes sign there, so the ray's point and the point
+				// of the visible surface are the same point, and a visible surface faces the camera while
+				// the ray leaves it. Its orientation can not be in question, and testing it anyway only
+				// added a second way to throw away a good hit: on a grazing surface the geometric normal
+				// is a two texel depth difference, noise that flips sign from one pixel to the next, and
+				// that is the speckle a mirror reflection showed along every edge.
+				//
+				// A crossing read off a tile's nearest depth does not carry that proof: the tile's texel
+				// is up to a tile away from where the ray actually is, so the solve can land the hit on a
+				// surface the ray is already behind. That one keeps the orientation test, and the test is
+				// what stops it: dropping it there let thousands of hits land behind the surface they
+				// sampled, which shows up as one surface being visible through another.
+				vec3 shadingNorm = normalize(mat3(ssrPass.view) * decodeNormal(texture(s_normalDepth, refinedUV).rg));
+				vec2 travel      = (refinedUV - uv) * ssrPass.screenParams.zw;
+				bool selfHit     = max(abs(travel.x), abs(travel.y)) < SSR_SELF_HIT_PIXELS &&
+				                   dot(rayDir, shadingNorm) >= 0.0;
+				bool behindSurf  = !flip && dot(rayDir, GeometricNormal(refinedUV, hitDepth, SSR_HIT_NORMAL_STEP)) >= 0.0;
+
+				if ((selfHit || behindSurf) && missReason == 0.0)
+				{
+					missReason = float(SSR_MISS_ORIENTATION);
+				}
+				else if (!crossing && missReason == 0.0)
+				{
+					missReason = float(SSR_MISS_OCCLUDED);
+				}
+
+				// A candidate that is not a crossing is not drawn; one that is, is, even where the ray
+				// stands behind something nearer. That pair is what matters on a street: the ray passes
+				// behind a pole or a lamp, the tile under the occluder is skipped, and the crossing it
+				// finds past the silhouette samples the colour of the surface it really reaches. The
+				// thickness test fades a crossing whose placement is poor, and that is all it should be
+				// deciding: how far off its own surface a hit may sit, not whether one happened.
+				if (!selfHit && !behindSurf && crossing)
 				{
 					// Refine onto the plane of the surface at the hit pixel, built from a wider depth
 					// neighbourhood than one texel so the stored depth quantization does not dominate
@@ -554,17 +849,54 @@ void main()
 						}
 					}
 
-					// How far the ray ended up from the surface it crossed.
+					// How far the crossing is off the surface it belongs to, measured in depth and in
+					// units of the depth one pixel spans there. Both are read at the same uv, which is
+					// what makes it stable: a world space distance between the crossing and the
+					// reconstructed surface compares two *different* screen positions, so at a grazing
+					// angle, where the depth field changes metres from one texel to the next, it reports
+					// far for a crossing that is exactly on the surface. The secant of the incidence angle
+					// is in the span for the same reason, a shallow surface packing that much more depth
+					// into one pixel.
+					float span         = max(pixelWorld * candidateDep / viewCos, 0.0001);
+					float residual     = abs(candidateDep + hitViewPos.z) / span;
+
+					float refinedSpan  = max(pixelWorld * hitDepth / viewCos, 0.0001);
+					float refinedResid = abs(hitDepth + refinedPos.z) / refinedSpan;
+
+					// The plane refinement is kept only while it puts the hit closer to the surface than
+					// the plain crossing already is: a plane fitted over a wide baseline on a rough or
+					// steeply sloped surface can be worse than what it replaces.
+					if (refinedResid < residual)
+					{
+						residual = refinedResid;
+					}
+					else
+					{
+						refinedUV  = candidateUV;
+						hitDepth   = candidateDep;
+						refinedPos = hitViewPos;
+					}
+
+					// Distance from the crossing to the surface, kept for the hit error debug view.
 					float miss         = length(refinedPos - ReconstructViewPos(refinedUV, hitDepth));
-					float thicknessNow = max(ssrPass.params.z, pixelWorld * hitDepth * SSR_THICKNESS_PIXELS);
-					float conf         = 1.0 - smoothstep(0.0, thicknessNow, miss);
+					float tolerance    = max(SSR_THICKNESS_PIXELS,
+					                         ssrPass.params.z / max(pixelWorld * hitDepth / viewCos, 0.0001));
+					float conf         = 1.0 - smoothstep(0.0, tolerance, residual);
 					conf              *= conf;
 
-					// The stored shading normal, kept for the frontal self hit rejection below.
-					vec3 shadingNorm = normalize(mat3(ssrPass.view) * decodeNormal(texture(s_normalDepth, refinedUV).rg));
-					bool frontal     = all(lessThan(abs(refinedUV - uv), ssrPass.screenParams.xy * 4.0));
+					// Recorded for every candidate rather than only for the accepted one, so the hit error
+					// debug view reads the numbers of a rejection too: that is the number that says
+					// whether a crossing is a little off or nowhere near.
+					hitResidual        = residual;
+					hitTolerance       = tolerance;
+					hitError           = miss;
 
-					if (conf > 0.0 && !(frontal && dot(rayDir, shadingNorm) >= 0.0))
+					if (conf <= 0.0 && missReason == 0.0)
+					{
+						missReason = float(occluded ? SSR_MISS_OCCLUDED : SSR_MISS_THICKNESS);
+					}
+
+					if (conf > 0.0)
 					{
 						hitUV       = refinedUV;
 						hitLambda   = lambdaHit;
@@ -602,6 +934,19 @@ void main()
 		if (DebugViewEnabled())
 		{
 			int mode = DebugViewMode();
+			if (mode == SSR_DEBUG_MISS_REASON)
+			{
+				fragColor = vec4(MissReasonColor(missReason == 0.0 ? float(SSR_MISS_NO_TILE) : missReason),
+				                 1.0);
+				return;
+			}
+			if (mode == SSR_DEBUG_HIT_ERROR)
+			{
+				// The last candidate this pixel had, in units of what was allowed there: 1.0 is where the
+				// confidence fades out. Zero means no candidate was ever reached.
+				fragColor = vec4(vec3(hitResidual / max(hitTolerance, 0.0001)), 1.0);
+				return;
+			}
 			if (mode == SSR_DEBUG_HIZ_LEVEL)
 			{
 				fragColor = vec4(vec3(peakLevel / max(maxLevel, 1.0)), 1.0);
@@ -621,11 +966,19 @@ void main()
 		return;
 	}
 
-	// The reflection cone picks the mip, the mip chain does the blur.
+	// The reflection cone and the compression the grazing angle puts on the reflected image pick the
+	// footprint; the gather is then spread along the ray to cover the second one.
 	float rayUV     = length(hitUV - uv);
 	float incidence = dot(normalize(viewPos), normal);
-	float lod       = ReflectionLod(roughness, rayUV / max(ssrPass.screenParams.z, ssrPass.screenParams.w), incidence);
-	vec3 reflection = SampleReflection(hitUV, lod);
+	vec2  footprint = ReflectionFootprint(roughness,
+	                                      rayUV / max(ssrPass.screenParams.z, ssrPass.screenParams.w),
+	                                      incidence);
+	vec2  rayPixel  = (hitUV - uv) * ssrPass.screenParams.zw;
+	float rayPixelLen = length(rayPixel);
+	vec2  rayDir2   = rayPixelLen > 0.0001 ? rayPixel / rayPixelLen : vec2(1.0, 0.0);
+	float lod       = ReflectionLodFade(ReflectionGatherLod(footprint.x, footprint.y),
+	                                    rayUV / max(ssrPass.screenParams.z, ssrPass.screenParams.w));
+	vec3  reflection = SampleReflection(hitUV, lod, rayDir2);
 
 	// Gloss, hit confidence, the screen border and the range limit all fade the reflection out, so the
 	// forward shaded environment reflection takes over exactly where this one is not trustworthy.
@@ -665,9 +1018,14 @@ void main()
 		}
 		if (mode == SSR_DEBUG_HIT_ERROR)
 		{
-			// How far the ray ended up from the surface it crossed, in units of the thickness. Bright
-			// bands here mean the depth the march compared against is wrong or too coarse.
-			fragColor = vec4(vec3(hitError / max(ssrPass.params.z, 0.001)), 1.0);
+			// How far the crossing is off the surface it belongs to, in units of what is allowed there:
+			// 1.0 is the limit the confidence fades out at, so a hit that just made it reads bright.
+			fragColor = vec4(vec3(hitResidual / max(hitTolerance, 0.0001)), 1.0);
+			return;
+		}
+		if (mode == SSR_DEBUG_MISS_REASON)
+		{
+			fragColor = vec4(MissReasonColor(0.0), 1.0);
 			return;
 		}
 		if (mode == SSR_DEBUG_HIZ_LEVEL)

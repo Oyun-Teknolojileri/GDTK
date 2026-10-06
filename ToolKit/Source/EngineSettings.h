@@ -226,6 +226,11 @@ namespace ToolKit
     TKDeclareParam(float, SSRThickness);
     TKDeclareParam(int, SSRStepCount);
     TKDeclareParam(float, SSRRoughnessCutoff);
+
+    /** How much of the reflection the resolve keeps from the last frames. High smooths the per frame
+     *  sampling, low follows the view. A reflection changes as soon as the camera moves, so this is a
+     *  trade between a shimmering reflection and one that trails behind the view. */
+    TKDeclareParam(float, SSRTemporalBlend);
     TKDeclareParam(bool, SSRDebugView);
     TKDeclareParam(int, SSRDebugViewMode);
 

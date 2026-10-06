@@ -587,6 +587,12 @@ namespace ToolKit
             pps->SetSSRRoughnessCutoffVal(ssrRoughnessCutoff);
           }
 
+          float ssrTemporalBlend = pps->GetSSRTemporalBlendVal();
+          if (ImGui::DragFloat("Temporal Blend", &ssrTemporalBlend, 0.01f, 0.0f, 0.95f))
+          {
+            pps->SetSSRTemporalBlendVal(ssrTemporalBlend);
+          }
+
           bool ssrDebugView = pps->GetSSRDebugViewVal();
           if (ImGui::Checkbox("Debug View##ssr", &ssrDebugView))
           {
@@ -608,7 +614,8 @@ namespace ToolKit
                                                   "Hit Error",
                                                   "Hi-Z Level",
                                                   "Iterations",
-                                                  "Tile Depth"};
+                                                  "Tile Depth",
+                                                  "Miss Reason"};
 
             int ssrDebugMode = pps->GetSSRDebugViewModeVal();
             ImGui::SameLine();

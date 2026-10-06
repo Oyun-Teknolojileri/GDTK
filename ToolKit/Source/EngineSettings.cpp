@@ -242,6 +242,7 @@ namespace ToolKit
     SSRIntensity_Define(0.5f, "PostProcessingSettings", 0, 0, 0);
     SSRMaxDistance_Define(50.0f, "PostProcessingSettings", 0, 0, 0);
     SSRThickness_Define(0.4f, "PostProcessingSettings", 0, 0, 0);
+    SSRTemporalBlend_Define(0.9f, "PostProcessingSettings", 0, 0, 0);
     SSRStepCount_Define(256, "PostProcessingSettings", 0, 0, 0);
     SSRRoughnessCutoff_Define(0.6f, "PostProcessingSettings", 0, 0, 0);
     SSRDebugView_Define(false, "PostProcessingSettings", 0, 0, 0);

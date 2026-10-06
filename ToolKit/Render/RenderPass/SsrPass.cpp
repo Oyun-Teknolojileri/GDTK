@@ -271,7 +271,8 @@ namespace ToolKit
 
     // Filled here, after the history targets are known, so a frame that changed the resolution does
     // not reproject into the history it just dropped.
-    m_passDataBuffer.m_data.temporal         = Vec4(m_history.IsValid() ? m_temporalBlend : 0.0f,
+    const float temporalBlend                = glm::clamp(m_params.TemporalBlend, 0.0f, 0.95f);
+    m_passDataBuffer.m_data.temporal         = Vec4(m_history.IsValid() ? temporalBlend : 0.0f,
                                                     m_history.IsValid() ? 1.0f : 0.0f,
                                                     0.0f,
                                                     0.0f);
