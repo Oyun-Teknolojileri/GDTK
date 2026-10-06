@@ -52,6 +52,35 @@ namespace ToolKit
     m_filterPass->m_params.frameBuffer = MakeNewPtr<Framebuffer>("SsrFilterFB");
     m_filterShader                     = GetShaderManager()->Create<Shader>(ShaderPath("ssrFilterFrag.shader", true));
     m_traceTexture                     = MakeNewPtr<RenderTarget>("SsrTraceRT");
+
+    // Min depth pyramid the march walks. One target per level: the levels are separate textures
+    // instead of the mips of one, because a level is built by reading the level below it, and a
+    // framebuffer that samples the texture it writes to is undefined on GL and a layout conflict on
+    // Vulkan.
+    m_hizDepthShader                   = GetShaderManager()->Create<Shader>(ShaderPath("hiZDepthFrag.shader", true));
+    m_hizReduceShader                  = GetShaderManager()->Create<Shader>(ShaderPath("hiZDownsampleFrag.shader", true));
+
+    TextureSettings hizSet             = {};
+    hizSet.WarpS                       = GraphicTypes::UVClampToEdge;
+    hizSet.WarpT                       = GraphicTypes::UVClampToEdge;
+    hizSet.MinFilter                   = GraphicTypes::SampleNearest;
+    hizSet.MagFilter                   = GraphicTypes::SampleNearest;
+
+    // 32F for the same reason the g buffer is: a rounded up nearest depth turns a tile into one the
+    // ray can not cross, and the crossing it then fails to find is a missing reflection.
+    hizSet.InternalFormat              = GraphicTypes::FormatRGBA32F;
+    hizSet.Format                      = GraphicTypes::FormatRGBA;
+    hizSet.Type                        = GraphicTypes::TypeFloat;
+    hizSet.GenerateMipMap              = false;
+
+    for (int i = 0; i < m_hizLevelCount; ++i)
+    {
+      m_hizLevels[i]                       = MakeNewPtr<RenderTarget>(128, 128, hizSet, "SsrHiZLevelRT");
+      m_hizPasses[i]                       = MakeNewPtr<FullQuadPass>();
+      m_hizPasses[i]->m_params.frameBuffer = MakeNewPtr<Framebuffer>("SsrHiZFB");
+      m_hizPasses[i]->m_params.blendFunc   = BlendFunction::NONE;
+      m_hizPasses[i]->m_params.clearFrameBuffer = GraphicBitFields::None;
+    }
   }
 
   SsrPass::~SsrPass()
@@ -63,6 +92,15 @@ namespace ToolKit
     m_filterPass   = nullptr;
     m_filterShader = nullptr;
     m_traceTexture = nullptr;
+
+    for (int i = 0; i < m_hizLevelCount; ++i)
+    {
+      m_hizLevels[i] = nullptr;
+      m_hizPasses[i] = nullptr;
+    }
+
+    m_hizDepthShader  = nullptr;
+    m_hizReduceShader = nullptr;
   }
 
   void SsrPass::PreRender()
@@ -88,6 +126,17 @@ namespace ToolKit
     if (m_ssrShader->m_gpuData == nullptr)
     {
       TK_ERR("SsrPass: the fragment shader did not compile, screen space reflections are disabled.");
+      m_shaderUnavailable = true;
+      return;
+    }
+
+    // The depth pyramid the march walks is built by two more shaders. Without them the trace phase
+    // would sample levels that were never written, so the pass stays out of the frame instead.
+    m_hizDepthShader->Init();
+    m_hizReduceShader->Init();
+    if (m_hizDepthShader->m_gpuData == nullptr || m_hizReduceShader->m_gpuData == nullptr)
+    {
+      TK_ERR("SsrPass: a depth pyramid shader did not compile, screen space reflections are disabled.");
       m_shaderUnavailable = true;
       return;
     }
@@ -148,6 +197,8 @@ namespace ToolKit
                                                      float(m_params.DebugViewMode),
                                                      0.0f);
 
+    m_passDataBuffer.m_data.hizParams         = Vec4(float(m_hizLevelCount), float(m_hizTilePixels), 0.0f, 0.0f);
+
     const int maxSteps                        = ClampMaxSteps(steps);
     if (maxSteps != m_currentMaxSteps)
     {
@@ -185,6 +236,27 @@ namespace ToolKit
     m_quadPass->m_params.clearFrameBuffer = GraphicBitFields::None;
     m_filterPass->m_params.blendFunc      = BlendFunction::NONE;
     m_filterPass->m_params.clearFrameBuffer = GraphicBitFields::None;
+
+    // The depth pyramid the trace phase walks: level 1 stands on the g buffer and every level above
+    // it on the level below, so a level covers m_hizTilePixels times the screen area of the previous
+    // one. Sizes are rounded up so the whole frame stays covered.
+    int divisor = 1;
+
+    for (int i = 0; i < m_hizLevelCount; ++i)
+    {
+      divisor *= m_hizTilePixels;
+
+      const int hizWidth  = glm::max(1, (size.x + divisor - 1) / divisor);
+      const int hizHeight = glm::max(1, (size.y + divisor - 1) / divisor);
+
+      TextureSettings hizSet = m_hizLevels[i]->Settings();
+      m_hizLevels[i]->ReconstructIfNeeded(hizWidth, hizHeight, &hizSet);
+
+      m_hizPasses[i]->m_params.frameBuffer->ReconstructIfNeeded({hizWidth, hizHeight, false, false});
+      m_hizPasses[i]->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0,
+                                                               m_hizLevels[i]);
+      m_hizPasses[i]->SetFragmentShader(i == 0 ? m_hizDepthShader : m_hizReduceShader, GetRenderer());
+    }
   }
 
   void SsrPass::Render()
@@ -212,6 +284,31 @@ namespace ToolKit
     m_passDataBuffer.Invalidate();
     m_passDataBuffer.Map();
 
+    // Phase 0: build the min depth pyramid the trace phase walks. Level by level, because every
+    // level is built from the one below it, and the source of a level is a different target than
+    // the one it writes to.
+    for (int i = 0; i < m_hizLevelCount; ++i)
+    {
+      m_requirements = PassRequirements();
+      GatherRequirements(m_requirements);
+      m_requirements.fragmentShader = i == 0 ? m_hizDepthShader : m_hizReduceShader;
+      m_requirements.vertexShader   = m_hizPasses[i]->m_material->GetVertexShaderVal();
+      m_requirements.program        = m_hizPasses[i]->GetProgram();
+      m_requirements.frameBuffer    = m_hizPasses[i]->m_params.frameBuffer;
+
+      if (i == 0)
+      {
+        m_requirements.semanticTextures["s_normalDepth"] = normalDepth;
+      }
+      else
+      {
+        m_requirements.semanticTextures["s_hiz"] = m_hizLevels[i - 1];
+      }
+
+      ApplyRequirements(renderer);
+      RenderSubPass(m_hizPasses[i]);
+    }
+
     // Phase 1: trace the reflection into its own target, carrying its weight in the alpha channel.
     m_requirements = PassRequirements();
     GatherRequirements(m_requirements);
@@ -221,6 +318,10 @@ namespace ToolKit
     m_requirements.frameBuffer                        = m_quadPass->m_params.frameBuffer;
     m_requirements.semanticTextures["s_diffuseColor"] = m_copyTexture;
     m_requirements.semanticTextures["s_normalDepth"]  = normalDepth;
+    m_requirements.semanticTextures["s_hiz1"]         = m_hizLevels[0];
+    m_requirements.semanticTextures["s_hiz2"]         = m_hizLevels[1];
+    m_requirements.semanticTextures["s_hiz3"]         = m_hizLevels[2];
+    m_requirements.semanticTextures["s_hiz4"]         = m_hizLevels[3];
     m_requirements.customUbos[7]                      = &m_passDataBuffer.GetBuffer();
 
     ApplyRequirements(renderer);

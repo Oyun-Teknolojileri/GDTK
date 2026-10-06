@@ -30,6 +30,8 @@ namespace ToolKit
     /** .x = debug view, .y = march step count (used exactly as requested, never rounded),
      *  .z = debug view mode (see SSR_DEBUG_* in ssrFrag.shader). */
     Vec4 flags;
+    /** .x = number of levels the min depth pyramid holds, .y = pixels a level 1 tile covers. */
+    Vec4 hizParams;
   };
 
   typedef GpuBufferBase<SsrPassDataLayout> SsrPassDataBuffer;
@@ -89,8 +91,25 @@ namespace ToolKit
     SsrPassParams m_params;
 
    private:
+    /** Levels the min depth pyramid holds. Level n covers m_hizTilePixels ^ n pixels of the screen. */
+    static constexpr int m_hizLevelCount = 4;
+
+    /** Pixels a level 1 tile covers along one edge. Four keeps the level count, the tap count of the
+     *  build passes and the sampler count low, while the march still resolves a single g buffer
+     *  texel: the finest level of the pyramid is the g buffer itself. */
+    static constexpr int m_hizTilePixels = 4;
+
     FullQuadPassPtr m_quadPass       = nullptr;
     ShaderPtr m_ssrShader            = nullptr;
+
+    /** Nearest depth pyramid of the g buffer, one target per level (`hiZDepthFrag.shader` for level
+     *  1, `hiZDownsampleFrag.shader` for the levels above it). The trace phase tests the ray against
+     *  a tile of this pyramid instead of against the single depth sample it lands on: a tile the ray
+     *  can not cross is stepped over whole, and a tile it can cross is descended into. */
+    RenderTargetPtr m_hizLevels[m_hizLevelCount];
+    FullQuadPassPtr m_hizPasses[m_hizLevelCount];
+    ShaderPtr m_hizDepthShader       = nullptr;
+    ShaderPtr m_hizReduceShader      = nullptr;
 
     /** Second phase: screen space filter and resolve of the trace result. */
     FullQuadPassPtr m_filterPass     = nullptr;

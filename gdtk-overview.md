@@ -234,20 +234,38 @@ ForwardSceneRenderPath
 Inputs via `SceneRenderPathParams`: Scene, Camera, MainFramebuffer, grid, postProcessSettings, optional `overrideLights`.
 
 Pass order: shadow, forward pre process (g buffer, required by SSAO / DoF / SSR), SSAO, sky, forward,
-SSR, bloom, DoF, gamma/tonemap/FXAA. `SsrPass` runs in two phases. The trace phase marches one
-reflection ray per pixel against the pre process g buffer (world normal, linear depth, roughness) and
-writes the reflection plus its confidence into its own target instead of compositing. The march steps
-in screen space, so the budget covers `steps * stepPixels` pixels whatever the ray angle, the hits are
-refined by intersecting the ray with the surface plane rebuilt from a wide depth baseline, and the hit
-color is gathered at a mip of the scene color copy chosen from the reflection cone. The resolve phase
-averages that target in screen space premultiplied by the confidence, which dilates the reflection past
-the silhouettes the trace can not see through and removes the row level stripes the hit leaves behind.
-A pixel with no screen space reflection keeps its forward shaded color, so the sky or the active
-environment volumes provide the reflection wherever screen space can not.
+SSR, bloom, DoF, gamma/tonemap/FXAA. `SsrPass` runs in three phases. The first builds a **min depth
+pyramid** of the g buffer (`hiZDepthFrag.shader` for level 1, `hiZDownsampleFrag.shader` for the levels
+above it): four separate targets, each holding the nearest linear view depth of a tile, level 1
+covering 4 x 4 texels, level 2 covering 4 x 4 tiles of level 1, and so on. A background texel holds no
+surface and is stored as a depth no ray reaches, so a tile that only covers the sky reads "nothing
+here". The levels are separate textures rather than the mips of one, because a level is built from the
+level below it and a framebuffer that samples the texture it writes to is undefined on GL and a layout
+conflict on Vulkan.
+
+The trace phase then marches one reflection ray per pixel against that pyramid and writes the
+reflection plus its confidence into its own target instead of compositing. The ray is a view space
+segment, its depth is linear in the position along it, and every screen border or tile edge it meets is
+solved for rather than stepped towards, so the march has no sampling phase to land badly. An iteration
+tests the tile the ray is in: when the tile's depth window (nearest and farthest surface it holds) and
+the ray's own depth window over that tile do not meet, the ray steps over the whole tile and tries a
+coarser one; when they do meet, it descends, until a tile of `stepPixels` pixels decides. There the
+tile's nearest surface is the surface the ray runs into and the position along the ray where its depth
+reaches that surface is solved directly, then validated by the surface orientation, the distance to the
+reconstructed surface and the screen edge. Meeting windows is what keeps the march from walking over
+geometry between two samples; tile sized steps are what keep a long ray from having to walk the screen
+pixel by pixel; and taking the finest tile from the step count keeps a grazing ray from spending the
+whole budget descending into the floor it skims. The finest tile is at least 4 pixels, and the plane
+refinement of the hit recovers the sub pixel placement. The hit color is gathered at a mip of the scene
+color copy chosen from the reflection cone. The resolve phase averages the trace target in screen space
+premultiplied by the confidence, which dilates the reflection past the silhouettes the trace can not see
+through. A pixel with no screen space reflection keeps its forward shaded color, so the sky or the
+active environment volumes provide the reflection wherever screen space can not.
 
 `SSRDebugView` / `SSRDebugViewMode` (Post Processing settings) switch the pass to a debug view:
-reflection, confidence, mip level, scene depth, hit uv, ray length or hit error. The resolve phase hands
-debug views through unfiltered.
+reflection, confidence, mip level, scene depth, hit uv, ray length, hit error, the coarsest pyramid
+level the march reached, or the fraction of the step budget it spent. The resolve phase hands debug
+views through unfiltered.
 
 ### 4.4 Pass (Pass.h)
 

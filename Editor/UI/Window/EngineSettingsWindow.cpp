@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
@@ -596,9 +596,19 @@ namespace ToolKit
           if (ssrDebugView)
           {
             // Each mode isolates one stage of the pass: an artifact that looks the same in the
-            // composite can be told apart here instead of guessed at.
-            static const char* ssrDebugModes[] = {
-              "Reflection", "Confidence", "Mip Level", "Scene Depth", "Hit UV", "Ray Length", "Hit Error"};
+            // composite can be told apart here instead of guessed at. The last two describe the
+            // depth pyramid march: how coarse a tile it was allowed to step over, and how much of
+            // the requested budget it spent.
+            static const char* ssrDebugModes[] = {"Reflection",
+                                                  "Confidence",
+                                                  "Mip Level",
+                                                  "Scene Depth",
+                                                  "Hit UV",
+                                                  "Ray Length",
+                                                  "Hit Error",
+                                                  "Hi-Z Level",
+                                                  "Iterations",
+                                                  "Tile Depth"};
 
             int ssrDebugMode = pps->GetSSRDebugViewModeVal();
             ImGui::SameLine();
