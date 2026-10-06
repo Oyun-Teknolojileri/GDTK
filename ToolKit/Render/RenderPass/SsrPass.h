@@ -32,6 +32,11 @@ namespace ToolKit
     Vec4 flags;
     /** .x = number of levels the min depth pyramid holds, .y = pixels a level 1 tile covers. */
     Vec4 hizParams;
+    /** View space -> the previous frame's clip. Reprojects this frame's surface to find last frame's
+     *  reflection for the same point. */
+    Mat4 prevReprojection;
+    /** .x = how much of the accumulated history the resolve keeps, .y = 1 when there is a history. */
+    Vec4 temporal;
   };
 
   typedef GpuBufferBase<SsrPassDataLayout> SsrPassDataBuffer;
@@ -111,9 +116,24 @@ namespace ToolKit
     ShaderPtr m_hizDepthShader       = nullptr;
     ShaderPtr m_hizReduceShader      = nullptr;
 
-    /** Second phase: screen space filter and resolve of the trace result. */
+    /** Second phase: resolve of the trace result, accumulated over the last frames. */
+    FullQuadPassPtr m_accumPass      = nullptr;
+    ShaderPtr m_accumShader          = nullptr;
+
+    /** Third phase: composite the resolved reflection over the scene color. */
     FullQuadPassPtr m_filterPass     = nullptr;
     ShaderPtr m_filterShader         = nullptr;
+
+    /** The resolved reflection of the frames before this one, ping ponged: a screen space reflection
+     *  is one sample per pixel per frame, so reusing the last frames is what keeps it from
+     *  shimmering as the camera or the geometry moves. */
+    RenderTargetPtr m_history[2];
+    int m_historyWrite               = 0;
+    bool m_historyValid              = false;
+
+    /** View projection and view of the frame before this one, for the reprojection. */
+    Mat4 m_prevViewProj              = Mat4(1.0f);
+    Mat4 m_prevView                  = Mat4(1.0f);
 
     /** Single sample copy of the scene color: the pass reads it while writing ColorRt in place. */
     RenderTargetPtr m_copyTexture    = nullptr;
@@ -132,6 +152,10 @@ namespace ToolKit
 
     /** SSR_MAX_STEPS the fragment shader was last compiled with (-1 = never). */
     int m_currentMaxSteps            = -1;
+
+    /** How much of the accumulated reflection the resolve keeps each frame. High enough to smooth the
+     *  per frame sampling, low enough that a moving reflection still follows in a few frames. */
+    static constexpr float m_temporalBlend = 0.85f;
   };
 
   typedef std::shared_ptr<SsrPass> SsrPassPtr;

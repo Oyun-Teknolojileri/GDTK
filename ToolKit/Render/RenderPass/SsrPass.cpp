@@ -48,10 +48,17 @@ namespace ToolKit
     m_ssrShader                      = GetShaderManager()->Create<Shader>(ShaderPath("ssrFrag.shader", true));
     m_copyTexture                    = MakeNewPtr<RenderTarget>("SsrSceneCopyRT");
 
+    m_accumPass                        = MakeNewPtr<FullQuadPass>();
+    m_accumPass->m_params.frameBuffer  = MakeNewPtr<Framebuffer>("SsrAccumFB");
+    m_accumShader                      = GetShaderManager()->Create<Shader>(ShaderPath("ssrAccumFrag.shader", true));
+
     m_filterPass                       = MakeNewPtr<FullQuadPass>();
     m_filterPass->m_params.frameBuffer = MakeNewPtr<Framebuffer>("SsrFilterFB");
     m_filterShader                     = GetShaderManager()->Create<Shader>(ShaderPath("ssrFilterFrag.shader", true));
     m_traceTexture                     = MakeNewPtr<RenderTarget>("SsrTraceRT");
+
+    m_history[0]                       = MakeNewPtr<RenderTarget>("SsrHistoryRT0");
+    m_history[1]                       = MakeNewPtr<RenderTarget>("SsrHistoryRT1");
 
     // Min depth pyramid the march walks. One target per level: the levels are separate textures
     // instead of the mips of one, because a level is built by reading the level below it, and a
@@ -89,9 +96,13 @@ namespace ToolKit
     m_ssrShader    = nullptr;
     m_copyTexture  = nullptr;
 
+    m_accumPass    = nullptr;
+    m_accumShader  = nullptr;
     m_filterPass   = nullptr;
     m_filterShader = nullptr;
     m_traceTexture = nullptr;
+    m_history[0]   = nullptr;
+    m_history[1]   = nullptr;
 
     for (int i = 0; i < m_hizLevelCount; ++i)
     {
@@ -158,7 +169,16 @@ namespace ToolKit
     m_copyTexture->GenerateMipMaps();
 
     m_quadPass->SetFragmentShader(m_ssrShader, GetRenderer());
+    m_accumPass->SetFragmentShader(m_accumShader, GetRenderer());
     m_filterPass->SetFragmentShader(m_filterShader, GetRenderer());
+
+    m_accumShader->Init();
+    if (m_accumShader->m_gpuData == nullptr)
+    {
+      TK_ERR("SsrPass: the resolve shader did not compile, screen space reflections are disabled.");
+      m_shaderUnavailable = true;
+      return;
+    }
 
     if (!m_passDataBufferInitialized)
     {
@@ -199,6 +219,8 @@ namespace ToolKit
 
     m_passDataBuffer.m_data.hizParams         = Vec4(float(m_hizLevelCount), float(m_hizTilePixels), 0.0f, 0.0f);
 
+    const Mat4& view                         = m_params.Cam->GetViewMatrix();
+
     const int maxSteps                        = ClampMaxSteps(steps);
     if (maxSteps != m_currentMaxSteps)
     {
@@ -228,6 +250,46 @@ namespace ToolKit
 
     m_quadPass->m_params.frameBuffer->ReconstructIfNeeded({size.x, size.y, false, false});
     m_quadPass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_traceTexture);
+
+    // The resolve writes its result into one history target and reads the other, so a frame that
+    // changes the resolution starts over instead of reprojecting a frame that no longer matches.
+    TextureSettings historySet = traceSet;
+    historySet.WarpS           = GraphicTypes::UVClampToEdge;
+    historySet.WarpT           = GraphicTypes::UVClampToEdge;
+    historySet.MinFilter       = GraphicTypes::SampleLinear;
+    historySet.MagFilter       = GraphicTypes::SampleLinear;
+
+    for (int i = 0; i < 2; ++i)
+    {
+      const bool sizeChanged = m_history[i]->m_width != size.x || m_history[i]->m_height != size.y;
+      m_history[i]->ReconstructIfNeeded(size.x, size.y, &historySet);
+
+      if (sizeChanged)
+      {
+        m_historyValid = false;
+      }
+    }
+
+    m_accumPass->m_params.frameBuffer->ReconstructIfNeeded({size.x, size.y, false, false});
+    m_accumPass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0,
+                                                          m_history[m_historyWrite]);
+    m_accumPass->m_params.blendFunc        = BlendFunction::NONE;
+    m_accumPass->m_params.clearFrameBuffer = GraphicBitFields::None;
+
+    m_historyValid                         = m_historyValid && !m_params.DebugView;
+
+    // Reprojection for the temporal accumulation: this frame's view space position to last frame's
+    // clip, which is exact for geometry that did not move. Depth is enough to find where a point was,
+    // so the camera matrices are the whole story. Filled here, after the history targets are known,
+    // so a frame that changed the resolution does not reproject into the history it just dropped.
+    m_passDataBuffer.m_data.prevReprojection = m_prevViewProj * glm::inverse(m_prevView) * glm::inverse(view);
+    m_passDataBuffer.m_data.temporal         = Vec4(m_historyValid ? m_temporalBlend : 0.0f,
+                                                    m_historyValid ? 1.0f : 0.0f,
+                                                    0.0f,
+                                                    0.0f);
+
+    m_prevViewProj                           = proj * view;
+    m_prevView                               = view;
 
     m_filterPass->m_params.frameBuffer->ReconstructIfNeeded({size.x, size.y, false, false});
     m_filterPass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_params.ColorRt);
@@ -327,17 +389,43 @@ namespace ToolKit
     ApplyRequirements(renderer);
     RenderSubPass(m_quadPass);
 
-    // Phase 2: filter that result in screen space and composite it over the scene color. The
-    // requirements are rebuilt so the sampler names of the trace phase do not leak into this one.
+    // Phase 2: resolve that result in screen space and accumulate it over the last frames. A screen
+    // space reflection is one sample per pixel per frame, so without reusing the last frames it is
+    // resampled from scratch whenever the camera or the geometry moves, which reads as noise and
+    // shimmer. Debug views are data rather than colour and are handed to the composite untouched.
+    RenderTargetPtr resolved = m_traceTexture;
+
+    if (!m_params.DebugView)
+    {
+      m_requirements = PassRequirements();
+      GatherRequirements(m_requirements);
+      m_requirements.fragmentShader                    = m_accumShader;
+      m_requirements.vertexShader                      = m_accumPass->m_material->GetVertexShaderVal();
+      m_requirements.program                           = m_accumPass->GetProgram();
+      m_requirements.frameBuffer                       = m_accumPass->m_params.frameBuffer;
+      m_requirements.semanticTextures["s_trace"]       = m_traceTexture;
+      m_requirements.semanticTextures["s_history"]     = m_history[m_historyWrite ^ 1];
+      m_requirements.semanticTextures["s_normalDepth"] = normalDepth;
+      m_requirements.customUbos[7]                     = &m_passDataBuffer.GetBuffer();
+
+      ApplyRequirements(renderer);
+      RenderSubPass(m_accumPass);
+
+      resolved       = m_history[m_historyWrite];
+      m_historyValid = true;
+      m_historyWrite ^= 1;
+    }
+
+    // Phase 3: composite the resolved reflection over the scene color. The requirements are rebuilt so
+    // the sampler names of the earlier phases do not leak into this one.
     m_requirements = PassRequirements();
     GatherRequirements(m_requirements);
     m_requirements.fragmentShader                     = m_filterShader;
     m_requirements.vertexShader                       = m_filterPass->m_material->GetVertexShaderVal();
     m_requirements.program                            = m_filterPass->GetProgram();
     m_requirements.frameBuffer                        = m_filterPass->m_params.frameBuffer;
-    m_requirements.semanticTextures["s_trace"]        = m_traceTexture;
+    m_requirements.semanticTextures["s_trace"]        = resolved;
     m_requirements.semanticTextures["s_sceneColor"]   = m_copyTexture;
-    m_requirements.semanticTextures["s_normalDepth"]  = normalDepth;
     m_requirements.customUbos[7]                      = &m_passDataBuffer.GetBuffer();
 
     ApplyRequirements(renderer);

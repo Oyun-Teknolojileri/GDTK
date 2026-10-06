@@ -259,8 +259,14 @@ whole budget descending into the floor it skims. The finest tile is at least 4 p
 refinement of the hit recovers the sub pixel placement. The hit color is gathered at a mip of the scene
 color copy chosen from the reflection cone. The resolve phase averages the trace target in screen space
 premultiplied by the confidence, which dilates the reflection past the silhouettes the trace can not see
-through. A pixel with no screen space reflection keeps its forward shaded color, so the sky or the
-active environment volumes provide the reflection wherever screen space can not.
+through, and accumulates that result over the last frames (`ssrAccumFrag.shader`, a ping pong of two
+history targets). The previous result is reprojected with the previous frame's view projection and this
+frame's depth, which is exact for geometry that did not move, and is clamped into the range this
+frame's reflection spans so a surface that has just appeared takes the new value instead of trailing the
+old one. Without it a screen space reflection is one sample per pixel per frame and shimmers as soon as
+the camera or the geometry moves. A third phase composites the resolved reflection over the scene color
+(`ssrFilterFrag.shader`). A pixel with no screen space reflection keeps its forward shaded color, so the
+sky or the active environment volumes provide the reflection wherever screen space can not.
 
 `SSRDebugView` / `SSRDebugViewMode` (Post Processing settings) switch the pass to a debug view:
 reflection, confidence, mip level, scene depth, hit uv, ray length, hit error, the coarsest pyramid

@@ -18,6 +18,8 @@ TK_UBO_BINDING(7) uniform SsrPassData
   vec4 screenParams;      // xy: 1 / size (texel size), zw: size in pixels
   vec4 flags;             // x: debug view, y: march step count, z: debug view mode
   vec4 hizParams;         // x: depth pyramid level count, y: pixels a level 1 tile covers
+  mat4 prevReprojection;  // View space -> the previous frame's clip, for reusing last frame's result
+  vec4 temporal;          // x: how much of the accumulated history to keep, y: history is usable
 } ssrPass;
 
 #endif
