@@ -239,7 +239,7 @@ This replaces the older ad-hoc pattern of calling `renderer->SetTexture` /
   once. `Render()` itself becomes a pure draw call.
 - **No manual `BindUniformBuffer` for slot 7 unless the pass does not use
   `ApplyRequirements`.** The descriptor-set binding for shared slots (slot 7 is the
-  pass-specific UBO slot shared by Bloom, DoF, SSAO, gamma, outline, grid, gradient
+  pass-specific UBO slot shared by Bloom, DoF, SSAO, SSR, gamma, outline, grid, gradient
   sky) is managed by `ApplyRequirements` reading `m_requirements.customUbos`.
 - **Two full-quad passes per phase** when a pass uses two fragment shaders that
   must stay attached to their programs (e.g. Bloom's `m_downPass` + `m_upPass`).

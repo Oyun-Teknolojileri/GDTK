@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
@@ -18,6 +18,7 @@
 #include "RenderSystem.h"
 #include "ShadowPass.h"
 #include "SsaoPass.h"
+#include "SsrPass.h"
 
 namespace ToolKit
 {
@@ -65,6 +66,7 @@ namespace ToolKit
     ForwardPreProcessPassPtr m_forwardPreProcessPass = nullptr;
     CubeMapPassPtr m_skyPass                         = nullptr;
     SSAOPassPtr m_ssaoPass                           = nullptr;
+    SsrPassPtr m_ssrPass                             = nullptr;
     BloomPassPtr m_bloomPass                         = nullptr;
     DoFPassPtr m_dofPass                             = nullptr;
     GammaTonemapFxaaPassPtr m_gammaTonemapFxaaPass   = nullptr;

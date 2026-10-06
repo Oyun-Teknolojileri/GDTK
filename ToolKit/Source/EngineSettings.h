@@ -218,6 +218,15 @@ namespace ToolKit
     TKDeclareParam(MultiChoiceVariant, SSAOKernelSize);
     TKDeclareParam(bool, SSAOHalfResolution);
 
+    // SSR
+    /////////////////////
+    TKDeclareParam(bool, SSREnabled);
+    TKDeclareParam(float, SSRIntensity);
+    TKDeclareParam(float, SSRMaxDistance);
+    TKDeclareParam(float, SSRThickness);
+    TKDeclareParam(int, SSRStepCount);
+    TKDeclareParam(float, SSRRoughnessCutoff);
+
     // DOF
     /////////////////////
     TKDeclareParam(bool, DepthOfFieldEnabled);

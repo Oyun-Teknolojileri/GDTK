@@ -237,6 +237,14 @@ namespace ToolKit
     };
     SSAOKernelSize_Define(ssaoKernelMcv, "PostProcessingSettings", 0, true, true);
     SSAOHalfResolution_Define(true, "PostProcessingSettings", 0, 0, 0);
+
+    SSREnabled_Define(false, "PostProcessingSettings", 0, 0, 0);
+    SSRIntensity_Define(0.5f, "PostProcessingSettings", 0, 0, 0);
+    SSRMaxDistance_Define(50.0f, "PostProcessingSettings", 0, 0, 0);
+    SSRThickness_Define(0.4f, "PostProcessingSettings", 0, 0, 0);
+    SSRStepCount_Define(32, "PostProcessingSettings", 0, 0, 0);
+    SSRRoughnessCutoff_Define(0.6f, "PostProcessingSettings", 0, 0, 0);
+
     DepthOfFieldEnabled_Define(false, "PostProcessingSettings", 0, 0, 0);
     FocusPoint_Define(10.5f, "PostProcessingSettings", 0, 0, 0);
     FocusScale_Define(1.5f, "PostProcessingSettings", 0, 0, 0);

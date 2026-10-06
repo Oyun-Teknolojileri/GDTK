@@ -548,6 +548,48 @@ namespace ToolKit
           ImGui::EndDisabled();
         }
 
+        if (ShowSection("Screen Space Reflections"))
+        {
+          bool ssrEnabled = pps->GetSSREnabledVal();
+          if (ImGui::Checkbox("SSR##1", &ssrEnabled))
+          {
+            pps->SetSSREnabledVal(ssrEnabled);
+          }
+          ImGui::BeginDisabled(!ssrEnabled);
+
+          float ssrIntensity = pps->GetSSRIntensityVal();
+          if (ImGui::DragFloat("Intensity", &ssrIntensity, 0.01f, 0.0f, 1.0f))
+          {
+            pps->SetSSRIntensityVal(ssrIntensity);
+          }
+
+          float ssrMaxDistance = pps->GetSSRMaxDistanceVal();
+          if (ImGui::DragFloat("Max Distance", &ssrMaxDistance, 0.1f, 0.1f, 500.0f))
+          {
+            pps->SetSSRMaxDistanceVal(ssrMaxDistance);
+          }
+
+          float ssrThickness = pps->GetSSRThicknessVal();
+          if (ImGui::DragFloat("Thickness", &ssrThickness, 0.01f, 0.01f, 5.0f))
+          {
+            pps->SetSSRThicknessVal(ssrThickness);
+          }
+
+          int ssrStepCount = pps->GetSSRStepCountVal();
+          if (ImGui::DragInt("Steps", &ssrStepCount, 1.0f, 8, 64))
+          {
+            pps->SetSSRStepCountVal(ssrStepCount);
+          }
+
+          float ssrRoughnessCutoff = pps->GetSSRRoughnessCutoffVal();
+          if (ImGui::DragFloat("Roughness Cutoff", &ssrRoughnessCutoff, 0.01f, 0.0f, 1.0f))
+          {
+            pps->SetSSRRoughnessCutoffVal(ssrRoughnessCutoff);
+          }
+
+          ImGui::EndDisabled();
+        }
+
         if (ShowSection("Anti Aliasing"))
         {
           bool fxaaEnabled = pps->GetFXAAEnabledVal();
