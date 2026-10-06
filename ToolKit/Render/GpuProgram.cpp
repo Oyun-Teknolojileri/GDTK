@@ -83,6 +83,17 @@ namespace ToolKit
     vertexShader->Init();
     fragmentShader->Init();
 
+    // A shader that failed to compile reports through the backend's log and keeps a null GpuResourceData.
+    // Creating a program out of it would dereference that null inside the backend, so stop here and
+    // name the shader instead: a compile error must not take the renderer down.
+    if (vertexShader->m_gpuData == nullptr || fragmentShader->m_gpuData == nullptr)
+    {
+      TK_ERR("Can not create a program, a shader failed to compile. Vertex: %s, Fragment: %s",
+             vertexShader->GetFile().c_str(),
+             fragmentShader->GetFile().c_str());
+      return g_nullProgram;
+    }
+
     const auto& progIter = m_programs.find(
         {(ObjectId) (uintptr_t) vertexShader->m_gpuData.get(), (ObjectId) (uintptr_t) fragmentShader->m_gpuData.get()});
     if (progIter == m_programs.end())

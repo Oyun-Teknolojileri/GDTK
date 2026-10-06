@@ -240,16 +240,24 @@ namespace ToolKit
 
     // Set the shader variant.
     auto handle = m_shaderVariantMap.find(key);
-    if (handle != m_shaderVariantMap.end())
-    {
-      m_gpuData = m_shaderVariantMap[key];
-    }
-    else
+    if (handle == m_shaderVariantMap.end())
     {
       TK_WRN("Compiling shader during runtime for a new variant. Define: %s for Variant: %s", name.data(), val.data());
       ShaderDefineCombinaton defineCombo;
       ComplieShaderCombinations(m_defineArray, 0, defineCombo);
-      m_gpuData = m_shaderVariantMap[key];
+
+      // Re-look the key up instead of indexing the map: an index would insert a default (null)
+      // entry and hand a null GpuResourceData to the program creation, which dereferences it.
+      handle = m_shaderVariantMap.find(key);
+    }
+
+    if (handle != m_shaderVariantMap.end())
+    {
+      m_gpuData = handle->second;
+    }
+    else
+    {
+      TK_ERR("Shader variant is not available, keeping the current one. %s [%s]", GetFile().data(), key.data());
     }
   }
 
@@ -441,24 +449,33 @@ namespace ToolKit
       }
     }
 
-    // Find the end of the last precision line
+    // Find the end of the last precision line. Only a statement counts: the word may appear in a
+    // comment or in an identifier further down the shader, and matching that would splice the
+    // includes and the variant defines into the middle of the file, which then fails to compile.
     size_t precisionLoc = 0;
     while ((precisionLoc = source.find("precision", precisionLoc)) != String::npos)
     {
-      size_t statementEnd = source.find(';', precisionLoc);
-      if (statementEnd != String::npos)
+      const size_t lineStart = source.rfind('\n', precisionLoc);
+      const size_t firstChar = source.find_first_not_of(" \t", lineStart == String::npos ? 0 : lineStart + 1);
+
+      if (firstChar == precisionLoc)
       {
-        // Find the actual line end to avoid inserting in the middle of a line
-        size_t lineEnd = source.find('\n', statementEnd);
-        if (lineEnd != String::npos)
+        size_t statementEnd = source.find(';', precisionLoc);
+        if (statementEnd != String::npos)
         {
-          includeLoc = std::max(includeLoc, lineEnd + 1);
-        }
-        else
-        {
-          includeLoc = std::max(includeLoc, statementEnd + 1);
+          // Find the actual line end to avoid inserting in the middle of a line
+          size_t lineEnd = source.find('\n', statementEnd);
+          if (lineEnd != String::npos)
+          {
+            includeLoc = std::max(includeLoc, lineEnd + 1);
+          }
+          else
+          {
+            includeLoc = std::max(includeLoc, statementEnd + 1);
+          }
         }
       }
+
       precisionLoc += 9; // Move past current "precision"
     }
 
@@ -486,8 +503,18 @@ namespace ToolKit
       }
     }
 
-    m_gpuData = GetRenderSystem()->GetBackend()->CreateShader(this, source);
-    return m_gpuData != nullptr;
+    GpuResourceDataPtr data = GetRenderSystem()->GetBackend()->CreateShader(this, source);
+
+    // Keep the last working variant on failure: a null here reaches the program creation, which
+    // dereferences it, so a shader that failed to compile would take the renderer down instead of
+    // reporting the compile error the backend already logged.
+    if (data == nullptr)
+    {
+      return false;
+    }
+
+    m_gpuData = data;
+    return true;
   }
 
   void Shader::CompileWithDefines(String source, const ShaderDefineCombinaton& defineCombo)
