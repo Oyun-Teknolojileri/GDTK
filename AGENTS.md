@@ -402,6 +402,31 @@ If you find a new third exception, document it here with the failing symptom.
 
 ---
 
+## Reusing a pass's own result across frames (temporal)
+
+A pass that accumulates its own result over the last frames (SSR's resolve, and any future TAA or SSGI)
+uses the shared pieces instead of rolling its own:
+
+- **Reprojection.** `camera.prevProjectionView` in the camera UBO carries the frame before this one,
+  filled by `Camera::GetCacheItem()` and kept current by the renderer while it differs from this
+  frame's camera. `PreviousFrameUv(viewPos, uv)` in `Resources/Engine/Shaders/temporalInc.shader`
+  turns a view space position into last frame's uv and answers whether it was on screen. It is exact
+  for geometry that did not move, which is what a moving camera sees; moving objects would need motion
+  vectors, which the engine does not have yet, so a pass that accumulates has to live with the trail a
+  moving object leaves (its clamp is what bounds it).
+- **History.** `HistoryBuffer` (`ToolKit/Render/HistoryBuffer.h`) is the ping pong of two targets: the
+  pass reads `Read()`, writes `Write()`, then calls `Swap()`. It drops itself when the target size
+  changes, because a frame that resized can not reproject into the frame it replaced.
+- **Clamp.** `ClampToNeighbourhood(history, rangeMin, rangeMax)` bounds a history sample to the range
+  this frame spans around the pixel, one component per channel of the history. The range is the pass's
+  own: SSR uses the colours and weights its resolve kernel spans. This is the only thing standing
+  between the accumulation and a surface that has just appeared trailing the old frame.
+- **No history yet.** The first frame, a pass that was just enabled, and debug views all have nothing
+  to reproject into. SSR gates on `HistoryBuffer::IsValid()` and on `DebugView`; a debug view is data
+  rather than colour and must never be accumulated.
+
+---
+
 ## Object Lifetime & Shutdown Order
 
 ToolKit owns every manager and the graphics backend inside the `Main` singleton. Host

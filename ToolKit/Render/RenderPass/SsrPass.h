@@ -8,6 +8,7 @@
 #pragma once
 
 #include "FullQuadPass.h"
+#include "HistoryBuffer.h"
 #include "Renderer.h"
 
 namespace ToolKit
@@ -32,10 +33,8 @@ namespace ToolKit
     Vec4 flags;
     /** .x = number of levels the min depth pyramid holds, .y = pixels a level 1 tile covers. */
     Vec4 hizParams;
-    /** View space -> the previous frame's clip. Reprojects this frame's surface to find last frame's
-     *  reflection for the same point. */
-    Mat4 prevReprojection;
-    /** .x = how much of the accumulated history the resolve keeps, .y = 1 when there is a history. */
+    /** .x = how much of the accumulated history the resolve keeps, .y = 1 when there is a history. The
+     *  reprojection that finds the history comes from the camera matrices (temporalInc.shader). */
     Vec4 temporal;
   };
 
@@ -124,16 +123,10 @@ namespace ToolKit
     FullQuadPassPtr m_filterPass     = nullptr;
     ShaderPtr m_filterShader         = nullptr;
 
-    /** The resolved reflection of the frames before this one, ping ponged: a screen space reflection
-     *  is one sample per pixel per frame, so reusing the last frames is what keeps it from
-     *  shimmering as the camera or the geometry moves. */
-    RenderTargetPtr m_history[2];
-    int m_historyWrite               = 0;
-    bool m_historyValid              = false;
-
-    /** View projection and view of the frame before this one, for the reprojection. */
-    Mat4 m_prevViewProj              = Mat4(1.0f);
-    Mat4 m_prevView                  = Mat4(1.0f);
+    /** The resolved reflection of the frames before this one: a screen space reflection is one sample
+     *  per pixel per frame, so reusing the last frames is what keeps it from shimmering as the camera
+     *  or the geometry moves. */
+    HistoryBuffer m_history;
 
     /** Single sample copy of the scene color: the pass reads it while writing ColorRt in place. */
     RenderTargetPtr m_copyTexture    = nullptr;

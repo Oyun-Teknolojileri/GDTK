@@ -2,6 +2,7 @@
 	<type name = "fragmentShader" />
 	<include name = "vulkanCompatInc.shader" />
 	<include name = "ssrPassDataInc.shader" />
+	<include name = "temporalInc.shader" />
 	<texture slot = "0" name = "s_trace" />
 	<texture slot = "1" name = "s_history" />
 	<texture slot = "2" name = "s_normalDepth" />
@@ -76,32 +77,19 @@ void main()
 	vec4  current = sum / max(sumKernel, 0.0001);
 	vec4  result  = current;
 
-	// Temporal accumulation. The reflection is a single sample per pixel per frame, so without
-	// reusing the last frames the estimate is resampled from scratch every time the camera or the
-	// geometry moves and the reflection shimmers. The previous result is reprojected with the
-	// previous frame's view projection and this frame's depth, which is exact for geometry that did
-	// not move, and is clamped into the range this frame's reflection spans so a surface that has
-	// just appeared, or one the camera has just uncovered, takes the new value instead of trailing
-	// the old one.
+	// Temporal accumulation, with the reprojection and the clamp shared with every other pass that
+	// reuses its own result (temporalInc.shader). The range the history is clamped into is this
+	// pass's own: the colours and weights the resolve kernel spans around the pixel.
 	if (ssrPass.temporal.y > 0.5 && depth > 0.0)
 	{
-		vec3  viewPos  = ReconstructViewPos(uv, depth);
-		vec4  prevClip = ssrPass.prevReprojection * vec4(viewPos, 1.0);
-
-		if (abs(prevClip.w) > 0.00001)
+		vec2 prevUv;
+		if (PreviousFrameUv(ReconstructViewPos(uv, depth), prevUv))
 		{
-			vec2 prevUv = prevClip.xy / prevClip.w * 0.5 + 0.5;
-#ifdef VULKAN
-			prevUv.y = 1.0 - prevUv.y;
-#endif
-			if (prevUv.x >= 0.0 && prevUv.x <= 1.0 && prevUv.y >= 0.0 && prevUv.y <= 1.0)
-			{
-				vec4 history = texture(s_history, prevUv);
-				history.rgb  = clamp(history.rgb, minC, maxC);
-				history.a    = clamp(history.a, minW, maxW);
+			vec4 history = ClampToNeighbourhood(texture(s_history, prevUv),
+			                                    vec4(minC, minW),
+			                                    vec4(maxC, maxW));
 
-				result       = mix(current, history, ssrPass.temporal.x);
-			}
+			result       = mix(current, history, ssrPass.temporal.x);
 		}
 	}
 

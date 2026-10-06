@@ -260,10 +260,12 @@ refinement of the hit recovers the sub pixel placement. The hit color is gathere
 color copy chosen from the reflection cone. The resolve phase averages the trace target in screen space
 premultiplied by the confidence, which dilates the reflection past the silhouettes the trace can not see
 through, and accumulates that result over the last frames (`ssrAccumFrag.shader`, a ping pong of two
-history targets). The previous result is reprojected with the previous frame's view projection and this
-frame's depth, which is exact for geometry that did not move, and is clamped into the range this
-frame's reflection spans so a surface that has just appeared takes the new value instead of trailing the
-old one. Without it a screen space reflection is one sample per pixel per frame and shimmers as soon as
+history targets, `HistoryBuffer`). The previous result is reprojected with the previous frame's view
+projection out of the camera UBO (`PreviousFrameUv` in `temporalInc.shader`), which is exact for
+geometry that did not move, and is clamped into the range this frame's reflection spans so a surface
+that has just appeared takes the new value instead of trailing the old one. The reprojection and the
+clamp are shared by any pass that reuses its own result; the camera's previous view projection is kept
+by `Camera::GetCacheItem()` and uploaded while it differs from this frame's. Without it a screen space reflection is one sample per pixel per frame and shimmers as soon as
 the camera or the geometry moves. A third phase composites the resolved reflection over the scene color
 (`ssrFilterFrag.shader`). A pixel with no screen space reflection keeps its forward shaded color, so the
 sky or the active environment volumes provide the reflection wherever screen space can not.

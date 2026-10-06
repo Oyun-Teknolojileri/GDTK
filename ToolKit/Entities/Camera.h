@@ -36,6 +36,10 @@ namespace ToolKit
       Mat4 view;
       Mat4 projectionView;
       Mat4 projectionViewNoTranslate;
+
+      /** What the last frame left behind, for the passes that reproject their own history with it
+       *  (see temporalInc.shader). Not serialized: it belongs to the frame, not to the camera. */
+      Mat4 prevProjectionView;
     } data;
 
     void* GetData() override { return (void*) &data; }

@@ -215,6 +215,12 @@ namespace ToolKit
     bool updateGpuBuffer                    = cameraCacheItem.id != m_cameraCacheItem.id;
     updateGpuBuffer                        |= cameraCacheItem.version != m_cameraCacheItem.version;
 
+    // Keep uploading while the frame before this one does not match this one. A camera that has just
+    // stopped stops changing, and the cached upload would then leave every pass that reprojects its
+    // own history with the motion of the frame it stopped in, trailing it forever.
+    updateGpuBuffer                        |= m_globalGpuBuffers->cameraGpuBuffer.m_data.prevProjectionView !=
+                                              cameraCacheItem.data.projectionView;
+
     if (updateGpuBuffer)
     {
       m_cameraCacheItem                = cameraCacheItem;

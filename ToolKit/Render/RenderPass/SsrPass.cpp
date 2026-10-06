@@ -57,8 +57,6 @@ namespace ToolKit
     m_filterShader                     = GetShaderManager()->Create<Shader>(ShaderPath("ssrFilterFrag.shader", true));
     m_traceTexture                     = MakeNewPtr<RenderTarget>("SsrTraceRT");
 
-    m_history[0]                       = MakeNewPtr<RenderTarget>("SsrHistoryRT0");
-    m_history[1]                       = MakeNewPtr<RenderTarget>("SsrHistoryRT1");
 
     // Min depth pyramid the march walks. One target per level: the levels are separate textures
     // instead of the mips of one, because a level is built by reading the level below it, and a
@@ -101,8 +99,6 @@ namespace ToolKit
     m_filterPass   = nullptr;
     m_filterShader = nullptr;
     m_traceTexture = nullptr;
-    m_history[0]   = nullptr;
-    m_history[1]   = nullptr;
 
     for (int i = 0; i < m_hizLevelCount; ++i)
     {
@@ -219,7 +215,6 @@ namespace ToolKit
 
     m_passDataBuffer.m_data.hizParams         = Vec4(float(m_hizLevelCount), float(m_hizTilePixels), 0.0f, 0.0f);
 
-    const Mat4& view                         = m_params.Cam->GetViewMatrix();
 
     const int maxSteps                        = ClampMaxSteps(steps);
     if (maxSteps != m_currentMaxSteps)
@@ -259,37 +254,27 @@ namespace ToolKit
     historySet.MinFilter       = GraphicTypes::SampleLinear;
     historySet.MagFilter       = GraphicTypes::SampleLinear;
 
-    for (int i = 0; i < 2; ++i)
-    {
-      const bool sizeChanged = m_history[i]->m_width != size.x || m_history[i]->m_height != size.y;
-      m_history[i]->ReconstructIfNeeded(size.x, size.y, &historySet);
+    m_history.Reconstruct(size.x, size.y, &historySet, "SsrHistoryRT");
 
-      if (sizeChanged)
-      {
-        m_historyValid = false;
-      }
+    // A debug view is data rather than colour, so nothing of what the last frame produced may be
+    // carried into it.
+    if (m_params.DebugView)
+    {
+      m_history.Invalidate();
     }
 
     m_accumPass->m_params.frameBuffer->ReconstructIfNeeded({size.x, size.y, false, false});
     m_accumPass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0,
-                                                          m_history[m_historyWrite]);
+                                                          m_history.Write());
     m_accumPass->m_params.blendFunc        = BlendFunction::NONE;
     m_accumPass->m_params.clearFrameBuffer = GraphicBitFields::None;
 
-    m_historyValid                         = m_historyValid && !m_params.DebugView;
-
-    // Reprojection for the temporal accumulation: this frame's view space position to last frame's
-    // clip, which is exact for geometry that did not move. Depth is enough to find where a point was,
-    // so the camera matrices are the whole story. Filled here, after the history targets are known,
-    // so a frame that changed the resolution does not reproject into the history it just dropped.
-    m_passDataBuffer.m_data.prevReprojection = m_prevViewProj * glm::inverse(m_prevView) * glm::inverse(view);
-    m_passDataBuffer.m_data.temporal         = Vec4(m_historyValid ? m_temporalBlend : 0.0f,
-                                                    m_historyValid ? 1.0f : 0.0f,
+    // Filled here, after the history targets are known, so a frame that changed the resolution does
+    // not reproject into the history it just dropped.
+    m_passDataBuffer.m_data.temporal         = Vec4(m_history.IsValid() ? m_temporalBlend : 0.0f,
+                                                    m_history.IsValid() ? 1.0f : 0.0f,
                                                     0.0f,
                                                     0.0f);
-
-    m_prevViewProj                           = proj * view;
-    m_prevView                               = view;
 
     m_filterPass->m_params.frameBuffer->ReconstructIfNeeded({size.x, size.y, false, false});
     m_filterPass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_params.ColorRt);
@@ -404,16 +389,15 @@ namespace ToolKit
       m_requirements.program                           = m_accumPass->GetProgram();
       m_requirements.frameBuffer                       = m_accumPass->m_params.frameBuffer;
       m_requirements.semanticTextures["s_trace"]       = m_traceTexture;
-      m_requirements.semanticTextures["s_history"]     = m_history[m_historyWrite ^ 1];
+      m_requirements.semanticTextures["s_history"]     = m_history.Read();
       m_requirements.semanticTextures["s_normalDepth"] = normalDepth;
       m_requirements.customUbos[7]                     = &m_passDataBuffer.GetBuffer();
 
       ApplyRequirements(renderer);
       RenderSubPass(m_accumPass);
 
-      resolved       = m_history[m_historyWrite];
-      m_historyValid = true;
-      m_historyWrite ^= 1;
+      resolved = m_history.Write();
+      m_history.Swap();
     }
 
     // Phase 3: composite the resolved reflection over the scene color. The requirements are rebuilt so

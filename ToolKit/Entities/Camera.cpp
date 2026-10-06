@@ -18,7 +18,15 @@ namespace ToolKit
 
   TKDefineClass(Camera, Entity);
 
-  Camera::Camera() { SetLens(glm::radians(90.0f), 640.0f / 480.0f, 0.01f, 1000.0f); }
+  Camera::Camera()
+  {
+    SetLens(glm::radians(90.0f), 640.0f / 480.0f, 0.01f, 1000.0f);
+
+    // Until the camera is used there is no frame before this one. A pass that has no history yet does
+    // not read it, and the identity reprojection is the honest answer for the frame it starts in.
+    m_cacheItem.data.projectionView            = Mat4(1.0f);
+    m_cacheItem.data.prevProjectionView        = Mat4(1.0f);
+  }
 
   Camera::~Camera() {}
 
@@ -217,6 +225,11 @@ namespace ToolKit
     {
       return m_cacheItem;
     }
+
+    // The frame before this one, taken from what this item held when it was last computed. A pass
+    // that reuses its own result reprojects its history with this pair, so it has to be the frame the
+    // last one was drawn with and not the frame before the last change of the camera.
+    m_cacheItem.data.prevProjectionView        = m_cacheItem.data.projectionView;
 
     m_cacheItem.id                             = GetIdVal();
     m_cacheItem.data.position                  = Position();
