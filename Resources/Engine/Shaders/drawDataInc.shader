@@ -13,7 +13,7 @@
 	#ifndef DRAW_DATA
 	#define DRAW_DATA
 
-	// DrawCommand accessors — back-end is now `perDraw._drawCommand` (PerDrawData UBO, slot 2).
+	// DrawCommand accessors - back-end is now `perDraw._drawCommand` (PerDrawData UBO, slot 2).
 	// Function signatures kept identical so every call site (lighting/ibl/AO) stays untouched.
 	// Volume index branches with a ternary; the GLSL compiler folds it when `vol` is constant.
 	//////////////////////////////////////////
@@ -116,6 +116,11 @@
 
 	// Compute per-pixel blend factor for a local volume.
 	// Returns 1.0 inside, fades to 0.0 at the edge, 0.0 outside.
+	//
+	// The fade distance is clamped per axis to that axis' own half extent: a volume can never
+	// fade over more than its size, so every volume keeps a full weight core (blend == 1) no
+	// matter how small, thin or how large its Fade is. Without the clamp a volume whose fade
+	// reaches past its center stays permanently mixed with the sky.
 	float ComputeVolumeBlendFactor(int vol, vec3 worldPos)
 	{
 		float intensity = GetVolumeIntensity(vol);
@@ -124,19 +129,20 @@
 			return 0.0;
 		}
 
-		float fadeDist = GetVolumeFadeDistance(vol);
-
 		vec3 localPos = (GetVolumeInverseTransform(vol) * vec4(worldPos, 1.0)).xyz;
 
 		vec3 vMin = GetVolumeMin(vol);
 		vec3 vMax = GetVolumeMax(vol);
 
+		vec3 halfExtent  = max((vMax - vMin) * 0.5, vec3(0.000001));
+		vec3 fadePerAxis = min(vec3(GetVolumeFadeDistance(vol)), halfExtent);
+
 		vec3 distToMin = localPos - vMin;
 		vec3 distToMax = vMax - localPos;
 		vec3 minDist = min(distToMin, distToMax);
-		float edgeDist = min(minDist.x, min(minDist.y, minDist.z));
+		vec3 ratio   = minDist / fadePerAxis;
 
-		return clamp(edgeDist / fadeDist, 0.0, 1.0);
+		return clamp(min(ratio.x, min(ratio.y, ratio.z)), 0.0, 1.0);
 	}
 
 	// Defines

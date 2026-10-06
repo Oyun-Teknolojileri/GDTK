@@ -360,6 +360,14 @@ The big per-object uniform block. Carries:
   - `vol[0|1]InvT[0..3]` (inverse world transform)
   - `vol[0|1]WldT[0..3]` (world transform)
 
+Both slots are filled by `RenderJobProcessor::AssignEnvironment` with the two smallest intersecting
+non-sky volumes (sky owned volumes are filtered out and contribute through the global sky instead).
+`ibl.shader` combines them as a weighted average: each volume's weight is its fade factor and the sky
+takes only the weight the strongest volume did not cover (`skyWeight = 1 - max(blend)`). A pixel fully
+covered by a volume therefore gets no sky at all, a pixel inside a fade band fades into the sky, and
+`Interior` volumes keep the sky out of the pixel entirely. The fade distance is clamped per axis to
+that axis' own half extent, so every volume keeps a full weight core however small or thin it is.
+
 ---
 
 ## 5. Graphics Backends

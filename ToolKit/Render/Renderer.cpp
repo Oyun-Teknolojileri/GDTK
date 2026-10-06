@@ -286,7 +286,7 @@ namespace ToolKit
 
     // Compose the draw-time rasterizer state: passive bits come from the per-pass state set via
     // SetPassState, active bits come from the material itself. RenderState is no longer stored
-    // on the material — it's transient pipeline data assembled here.
+    // on the material - it's transient pipeline data assembled here.
     RenderState state       = m_passiveState;
     state.cullMode          = job.Material->cullMode;
     state.blendFunction     = job.Material->blendFunction;
@@ -895,7 +895,7 @@ namespace ToolKit
   {
     TK_PROFILE_FUNCTION();
 
-    // BindProgram only stages the program — the actual VkPipeline / GL pipeline binding
+    // BindProgram only stages the program - the actual VkPipeline / GL pipeline binding
     // happens inside Render(job) where the per-job RenderState is known. Standalone draws
     // (e.g. DrawFullQuad) all go through Render(job) too.
     m_currentProgram = program;
@@ -927,12 +927,19 @@ namespace ToolKit
         SetTexture((ubyte) slot, mat->m_cubeMap);
     }
 
-    // Sky and Ibl data.
+    // Sky and Ibl data. Both volume slots are reset on every job so a stale slot from the
+    // previous draw can never keep contributing.
     m_drawCommand.SetIblInUse(false);
     m_drawCommand.SetSkyIntensity(0.0f);
     m_drawCommand.SetVolumeIntensity(0, 0.0f);
     m_drawCommand.SetVolumeIntensity(1, 0.0f);
     m_drawCommand.SetVolumeFadeDistance(0, 0.0f);
+    m_drawCommand.SetVolumeFadeDistance(1, 0.0f);
+
+    // `perDraw._iblRotation` only rotates the sky IBL lookup. A local volume carries its own
+    // orientation in the volume transform, so it must not clear the sky rotation here.
+    m_iblRotation          = Mat4(1.0f);
+    m_secondaryIblRotation = Mat4(1.0f);
 
     bool anyIbl = false;
 
@@ -959,8 +966,10 @@ namespace ToolKit
     }
 
     // --- Local volumes (per-object) ---
+    // A volume whose Hdri was cleared may still be referenced by an in-flight job, so the Hdri
+    // is checked before it is dereferenced (the sky branch below does the same).
     EnvironmentComponent* envCom = job.EnvironmentVolume;
-    if (envCom)
+    if (envCom && envCom->GetHdriVal() != nullptr)
     {
       const HdriPtr& hdriPtr     = envCom->GetHdriVal();
       CubeMapPtr& diffuseEnvMap  = hdriPtr->m_diffuseEnvMap;
@@ -975,44 +984,31 @@ namespace ToolKit
 
         anyIbl = true;
         m_drawCommand.SetVolumeIntensity(0, envCom->GetIntensityVal());
+        m_drawCommand.SetVolumeInterior(0, envCom->GetInteriorVal());
 
         // Pass primary volume local-space BB for OBB per-pixel blend and Parallax Corrected Cubemaps.
         Vec3 offset = envCom->GetPositionOffsetVal();
         Vec3 half   = envCom->GetSizeVal() * 0.5f;
-        bool isSky  = false;
-        if (const EntityPtr& env = envCom->OwnerEntity())
-        {
-          isSky = env->IsA<SkyBase>();
-        }
 
         m_drawCommand.SetVolumeMin(0, offset - half);
         m_drawCommand.SetVolumeMax(0, offset + half);
         m_drawCommand.SetVolumePccEnabled(0, envCom->GetParallaxCorrectionVal());
-        m_drawCommand.SetVolumeInterior(0, !isSky);
         m_drawCommand.SetVolumeFadeDistance(0, glm::max(envCom->GetFadeVal(), 0.001f));
 
-        // Sky: rotation applies to IBL image, no volume boundary.
-        // Non-Sky: rotation applies to OBB volume, IBL image stays fixed.
+        // A local volume carries its orientation in its OBB transform, the IBL image itself stays
+        // fixed, and the sky rotation in `m_iblRotation` is left untouched. Sky owned volumes
+        // never reach this point: AssignEnvironment keeps them out of the two volume slots and
+        // they contribute through the global sky instead.
         if (const EntityPtr& env = envCom->OwnerEntity())
         {
-          if (isSky)
-          {
-            m_iblRotation = Mat4(env->m_node->GetOrientation());
-            m_drawCommand.SetVolumeInverseTransform(0, Mat4(1.0f));
-            m_drawCommand.SetVolumeWorldTransform(0, Mat4(1.0f));
-          }
-          else
-          {
-            m_iblRotation       = Mat4(1.0f);
-            Mat4 worldTransform = env->m_node->GetTransform(TransformationSpace::TS_WORLD);
-            m_drawCommand.SetVolumeInverseTransform(0, glm::inverse(worldTransform));
-            m_drawCommand.SetVolumeWorldTransform(0, worldTransform);
-          }
+          Mat4 worldTransform = env->m_node->GetTransform(TransformationSpace::TS_WORLD);
+          m_drawCommand.SetVolumeInverseTransform(0, glm::inverse(worldTransform));
+          m_drawCommand.SetVolumeWorldTransform(0, worldTransform);
         }
 
         // Secondary IBL for per-pixel blending.
         EnvironmentComponent* secEnvCom = job.SecondaryEnvironmentVolume;
-        if (secEnvCom)
+        if (secEnvCom && secEnvCom->GetHdriVal() != nullptr)
         {
           const HdriPtr& secHdri  = secEnvCom->GetHdriVal();
           CubeMapPtr& secDiffuse  = secHdri->m_diffuseEnvMap;
@@ -1036,7 +1032,6 @@ namespace ToolKit
 
             if (const EntityPtr& secEnv = secEnvCom->OwnerEntity())
             {
-              m_secondaryIblRotation = Mat4(1.0f);
               Mat4 secWorldTransform = secEnv->m_node->GetTransform(TransformationSpace::TS_WORLD);
               m_drawCommand.SetVolumeInverseTransform(1, glm::inverse(secWorldTransform));
               m_drawCommand.SetVolumeWorldTransform(1, secWorldTransform);
@@ -1162,7 +1157,7 @@ namespace ToolKit
   {
     // The previous version silently no-op'd when m_currentProgram was null, which is exactly
     // what hid the SSAO bug: SetTexture("s_normalDepth", ...) ran before the program was
-    // bound and the call vanished. Now we fail loudly — the new entry point is
+    // bound and the call vanished. Now we fail loudly - the new entry point is
     // PassRequirements::semanticTextures, which guarantees program-bind happens first.
     if (m_currentProgram == nullptr)
     {
@@ -1696,18 +1691,23 @@ namespace ToolKit
 
     renderPath->m_params.postProcessSettings = capturePPS;
 
+    // `ibl.shader` samples the captured cubemap in the volume's local frame, so a face has to be
+    // the volume LOCAL axis of that face and not the world aligned one: the volume orientation is
+    // composed on top of the canonical (per backend) face rotation. Without that composition a
+    // rotated volume reads its own probe back rotated by the inverse of its orientation, because
+    // the capture would be world aligned while the lookup is not.
+    Quaternion volumeOrientation;
+    DecomposeMatrix(worldTransform, nullptr, &volumeOrientation, nullptr);
+
     for (int i = 0; i < 6; i++)
     {
-      Vec3 pos;
-      Quaternion rot;
-      Vec3 sca(1.0f);
+      Quaternion faceOrientation;
       Mat4 invView = glm::inverse(views[i]);
-      DecomposeMatrix(invView, &pos, &rot, &sca);
+      DecomposeMatrix(invView, nullptr, &faceOrientation, nullptr);
 
       Vec3 capturePos = Vec3(worldTransform * Vec4(originOffset, 1.0f));
       cam->m_node->SetTranslation(capturePos);
-      cam->m_node->SetOrientation(rot);
-      cam->m_node->SetScale(sca);
+      cam->m_node->SetOrientation(volumeOrientation * faceOrientation);
 
       // Set color attachment to the corresponding cubemap face.
       cubeFb->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0,

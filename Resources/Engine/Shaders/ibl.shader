@@ -30,15 +30,16 @@ TK_SAMPLER_BINDING(12) uniform samplerCube s_secondarySpecular;	// Pre-Filtered 
 TK_SAMPLER_BINDING(16) uniform samplerCube s_skyIrradiance;	// Sky Diffuse Map
 TK_SAMPLER_BINDING(17) uniform samplerCube s_skySpecular;	// Sky Pre-Filtered Specular Map
 
-// Sky rotation backed by perDraw._iblRotation (PerDrawData UBO, slot 6).
-// `iblSecondaryRotation` is reserved for local-volume rotations but currently identity-only —
-// reads come straight off `perDraw._iblSecondaryRotation` if/when needed.
+// Sky rotation backed by perDraw._iblRotation (PerDrawData UBO, slot 6). A local volume
+// carries its own orientation in the volume transform, so it never touches this matrix.
+// `perDraw._iblSecondaryRotation` stays reserved for per-volume rotations and identity-only;
+// nothing reads it today.
 
 // ---------------------------------------------------------------------------
 // Filament-style IBL helpers
 // ---------------------------------------------------------------------------
 
-vec3 GetParallaxCorrectedReflection(vec3 R, vec3 worldPos, mat4 inverseVolTransform, mat4 volTransform, vec3 volMin, vec3 volMax)
+vec3 GetParallaxCorrectedReflection(vec3 R, vec3 worldPos, mat4 inverseVolTransform, vec3 volMin, vec3 volMax)
 {
 	vec3 localPos = (inverseVolTransform * vec4(worldPos, 1.0)).xyz;
 	vec3 localDir = (inverseVolTransform * vec4(R, 0.0)).xyz;
@@ -128,8 +129,7 @@ vec3 EvalVolumeSpecular(int vol, vec3 normal, vec3 fragToEye, float perceptualRo
 	{
 		// PCC returns a local-space direction.
 		iblSamplerVec = GetParallaxCorrectedReflection(R, worldPos,
-			GetVolumeInverseTransform(vol), GetVolumeWorldTransform(vol),
-			GetVolumeMin(vol), GetVolumeMax(vol));
+			GetVolumeInverseTransform(vol), GetVolumeMin(vol), GetVolumeMax(vol));
 	}
 	else
 	{
@@ -150,21 +150,36 @@ vec3 EvalVolumeSpecular(int vol, vec3 normal, vec3 fragToEye, float perceptualRo
 }
 
 // ---------------------------------------------------------------------------
-// Premultiplied-alpha volume accumulation (Godot-style)
+// Premultiplied-alpha volume accumulation with the sky as a weighted participant.
 //
-// Each volume contributes vec4(rgb * blend, blend) into an accumulator.
-// - Exterior volumes: probe color is mixed towards sky at the fade boundary
-//   so the probe reveals sky at its edges.
-// - Interior volumes: no sky mix; probe color is used as-is everywhere
-//   inside the boundary.
-// Both use blend as alpha. After accumulation, dividing rgb by alpha gives
-// the weighted average. If any volume contributed (accum.a > 0), the result
-// fully replaces sky — no partial sky leak.
+// Each volume contributes weight * vec4(volumeColor, 1), where `blend` acts as
+// both its weight in the volume-to-volume average and the amount of sky it lets
+// through. The sky then takes only the weight the strongest volume did not cover
+// (skyWeight = 1 - max(blend)). Consequences:
+// - A pixel fully covered by any volume (blend == 1) gets no sky at all, so the
+//   old partial sky leak cannot happen.
+// - A pixel inside a fade band (0 < blend < 1) blends smoothly towards the sky
+//   instead of stepping to it, because the volume weight cancels out of the
+//   average only when nothing is left uncovered.
+// - Exterior and interior volumes therefore weigh the same in the average; the
+//   slot order of the two volumes does not change the result.
+//
+// `Interior` volumes never reveal sky: their presence at a pixel pins skyWeight
+// to 0, so an interior probe stays fully opaque up to its own box face and only
+// blends against the other volume. Such a box is expected to sit inside geometry.
 // ---------------------------------------------------------------------------
 
+struct VolumeAccum
+{
+	vec3 color;     // sum(volumeColor * blend)
+	float weight;   // sum(blend)
+	float maxBlend; // max(blend)
+	bool interior;  // true when any contributing volume is flagged interior
+};
+
 void AccumulateVolume(int vol, vec3 normal, vec3 fragToEye, vec3 albedo, float metallic,
-	float perceptualRoughness, vec3 E, vec3 energyComp, vec3 worldPos, vec3 skyColor,
-	inout vec4 accum)
+	float perceptualRoughness, vec3 E, vec3 energyComp, vec3 worldPos,
+	inout VolumeAccum accum)
 {
 	float blend = ComputeVolumeBlendFactor(vol, worldPos);
 	if (blend <= 0.0)
@@ -176,17 +191,15 @@ void AccumulateVolume(int vol, vec3 normal, vec3 fragToEye, vec3 albedo, float m
 	vec3 Fr = EvalVolumeSpecular(vol, normal, fragToEye, perceptualRoughness, E, energyComp, worldPos);
 	vec3 volumeColor = (Fd + Fr) * GetVolumeIntensity(vol);
 
-	// Exterior: blend towards sky at edges.  Interior: no sky mix.
-	if (!IsVolumeInterior(vol))
-	{
-		volumeColor = mix(skyColor, volumeColor, blend);
-	}
-
-	accum += vec4(volumeColor * blend, blend);
+	accum.color += volumeColor * blend;
+	accum.weight += blend;
+	accum.maxBlend = max(accum.maxBlend, blend);
+	accum.interior = accum.interior || IsVolumeInterior(vol);
 }
 
 // ---------------------------------------------------------------------------
-// Combined IBL: premultiplied accumulation of local volumes + sky fallback
+// Combined IBL: weighted average of the local volumes plus the sky that fills
+// whatever weight no volume covered.
 // ---------------------------------------------------------------------------
 
 vec3 IBLPBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float perceptualRoughness, vec2 dfg, vec3 energyComp, vec3 worldPos)
@@ -199,21 +212,30 @@ vec3 IBLPBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float perc
 	vec3 f0 = BaseReflectivityPBR(vec3(0.04), albedo, metallic);
 	vec3 E = SpecularDFG(dfg, f0);
 
-	// Evaluate sky once (used as fallback and for exterior volume edge blending).
+	// Evaluate sky once: it is both the outside fallback and the boundary blend target.
 	vec3 skyColor = EvalSky(normal, fragToEye, albedo, metallic, perceptualRoughness, E, energyComp);
 
-	// Accumulate local volumes with premultiplied alpha.
-	vec4 accum = vec4(0.0);
-	AccumulateVolume(0, normal, fragToEye, albedo, metallic, perceptualRoughness, E, energyComp, worldPos, skyColor, accum);
-	AccumulateVolume(1, normal, fragToEye, albedo, metallic, perceptualRoughness, E, energyComp, worldPos, skyColor, accum);
+	VolumeAccum accum;
+	accum.color    = vec3(0.0);
+	accum.weight   = 0.0;
+	accum.maxBlend = 0.0;
+	accum.interior = false;
 
-	// If any volume contributed, its weighted average fully replaces sky.
-	if (accum.a > 0.0)
+	AccumulateVolume(0, normal, fragToEye, albedo, metallic, perceptualRoughness, E, energyComp, worldPos, accum);
+	AccumulateVolume(1, normal, fragToEye, albedo, metallic, perceptualRoughness, E, energyComp, worldPos, accum);
+
+	// Outside every volume: pure sky.
+	if (accum.weight <= 0.0)
 	{
-		return accum.rgb / accum.a;
+		return skyColor;
 	}
 
-	return skyColor;
+	// Sky fills only the weight that no volume covered. Interior volumes keep the
+	// sky out of the pixel entirely, exterior ones fade into it over their fade
+	// distance.
+	float skyWeight = accum.interior ? 0.0 : (1.0 - accum.maxBlend);
+
+	return (accum.color + skyColor * skyWeight) / (accum.weight + skyWeight);
 }
 
 #endif

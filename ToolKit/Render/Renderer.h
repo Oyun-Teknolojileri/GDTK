@@ -33,7 +33,7 @@ namespace ToolKit
   {
     // --- Global data (2 Vec4) ---
 
-    /** x: iblInUse, y: ambientOcclusionInUse, z: unused, w: unused */
+    /** x: iblInUse, y: ambientOcclusionInUse, z: skyIntensity, w: unused */
     Vec4 global0;
 
     /** x: activePointLightCount, y: activeSpotLightCount, z: activeDirectionalLightCount, w: unused */
@@ -150,7 +150,7 @@ namespace ToolKit
    */
   struct PerDrawUboLayout
   {
-    // Transform matrices — 6×64 = 384 bytes
+    // Transform matrices - 6x64 = 384 bytes
     Mat4 model;
     Mat4 modelWithoutTranslate;
     Mat4 inverseModel;
@@ -162,13 +162,13 @@ namespace ToolKit
         16-byte boundary without an implicit gap. */
     Vec4 viewportSizeAndPad;
 
-    /** 24 vec4 — already std140-clean. */
+    /** 24 vec4 - already std140-clean. */
     DrawCommand drawCommand;
 
-    /** 4 vec4 — MaterialCacheItem::Data is documented std140 layout. */
+    /** 4 vec4 - MaterialCacheItem::Data is documented std140 layout. */
     MaterialCacheItem::Data materialData;
 
-    /** 24 ints packed as 6 ivec4 — std140 would otherwise waste 12 bytes per int. */
+    /** 24 ints packed as 6 ivec4 - std140 would otherwise waste 12 bytes per int. */
     IVec4 activePointLightIndices[6];
     IVec4 activeSpotLightIndices[6];
     /** .x = activePointLightCount, .y = activeSpotLightCount. */
@@ -188,7 +188,7 @@ namespace ToolKit
   //
   // Pass-specific UBOs all share GL slot 7. Each pass
   // owns its own buffer instance; no two passes are active simultaneously so the slot can be
-  // re-bound by whichever pass is rendering. Each layout is intentionally tiny — only the
+  // re-bound by whichever pass is rendering. Each layout is intentionally tiny - only the
   // values one pass writes per frame.
 
   /** Gaussian blur shader UBO. Used by `Renderer::ApplyGaussianBlur*` family with the shared
@@ -222,7 +222,7 @@ namespace ToolKit
   typedef GpuBufferBase<PreFilterEnvMapPassDataLayout> PreFilterEnvMapPassDataBuffer;
 
   /** GradientSky cubemap fragment UBO (`gradientSkyboxFrag.shader`). 3 vec3 colors + 1 float
-      exponent — packed into 4 vec4s. */
+      exponent - packed into 4 vec4s. */
   struct GradientSkyboxPassDataLayout
   {
     /** .xyz = top color, .w = unused. */
@@ -264,7 +264,7 @@ namespace ToolKit
     /** Cached spot lights in gpu. */
     SpotLightCache spotLightBuffer;
 
-    /** Per-draw UBO — fed each draw via SubmitPerDrawData. */
+    /** Per-draw UBO - fed each draw via SubmitPerDrawData. */
     PerDrawUboBuffer perDrawBuffer;
 
     void InitGlobalGpuBuffers();
@@ -361,7 +361,7 @@ namespace ToolKit
     void SetTexture(ubyte slotIndx, TexturePtr texture);
 
     /** Bind a pass-specific uniform buffer (custom slot, not a reserved global UBO).
-     *  Preferred entry point for new code — PassRequirements::customUbos drives this. */
+     *  Preferred entry point for new code - PassRequirements::customUbos drives this. */
     void BindUniformBuffer(int slot, UniformBuffer* ubo);
 
     /** Binds a texture to the slot declared for the given semantic sampler name in the

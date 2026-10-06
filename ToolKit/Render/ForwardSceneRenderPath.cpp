@@ -199,10 +199,12 @@ namespace ToolKit
     RenderJobProcessor::SeperateRenderData(m_renderData, true);
     RenderJobProcessor::SortByMaterial(m_renderData);
 
-    // Set CubeMapPass for sky.
-    m_drawSky         = false;
-    bool couldDrawSky = false;
-    if (m_sky = m_params.Scene->GetSky())
+    // Set CubeMapPass for sky. The sky is re-read unconditionally: `m_sky` lives as long as the
+    // render path, so leaving it untouched would keep the IBL of a sky that the scene no longer
+    // has (scene switch, deleted Sky entity) alive and lighting everything.
+    m_drawSky = false;
+    m_sky     = m_params.Scene->GetSky();
+    if (m_sky)
     {
       m_sky->Init();
       if (m_drawSky = m_sky->GetDrawSkyVal())
@@ -233,7 +235,7 @@ namespace ToolKit
               renderer->m_gradientSkyboxBuffer.Map();
 
               // CubeMapPass::Render now drives ApplyRequirements, so populating
-              // customUbos[7] is enough — the descriptor set picks up our VkBuffer
+              // customUbos[7] is enough - the descriptor set picks up our VkBuffer
               // without needing a manual BindUniformBuffer here.
               m_skyPass->GetRequirements().customUbos[7] = &renderer->m_gradientSkyboxBuffer.GetBuffer();
             };
@@ -298,7 +300,7 @@ namespace ToolKit
     // DoF runs after the forward pass's MSAA resolve, sitting on the same single-sample chain
     // as Bloom and GammaTonemap. Feeding it the MSAA color RT directly would (a) trip
     // VUID-RuntimeSpirv-samples-08725 (sampler2D fed an MSAA image) and (b) leave its output on
-    // the MSAA surface while subsequent passes read from the resolved one — i.e. DoF's effect
+    // the MSAA surface while subsequent passes read from the resolved one - i.e. DoF's effect
     // would silently drop on the floor.
     FramebufferPtr dofSourceFb =
         m_params.MainFramebuffer->IsMultiSampled() ? m_resolvedFramebuffer : m_params.MainFramebuffer;
@@ -318,7 +320,7 @@ namespace ToolKit
     // post chain (Bloom, DoF) operates on the resolved (single-sample) buffer, so this pass
     // must read from MainFramebuffer (where the forward pass wrote) and write to the
     // resolved framebuffer that the editor will copy back. Don't override to MainFramebuffer
-    // when MSAA is on — that would clobber the resolve and leave editor with pre-tonemap colors.
+    // when MSAA is on - that would clobber the resolve and leave editor with pre-tonemap colors.
     m_gammaTonemapFxaaPass->m_params.frameBuffer           = m_params.MainFramebuffer;
     m_gammaTonemapFxaaPass->m_params.tonemapMethod         = pps->GetTonemapperModeVal().GetEnum<TonemapMethod>();
     m_gammaTonemapFxaaPass->m_params.gamma                 = pps->GetGammaVal();

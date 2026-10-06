@@ -269,15 +269,19 @@ namespace ToolKit
     static const Vec3 faceNormals[6] =
         {Vec3(1, 0, 0), Vec3(-1, 0, 0), Vec3(0, 1, 0), Vec3(0, -1, 0), Vec3(0, 0, 1), Vec3(0, 0, -1)};
 
-    // Compute per-face far clip distance in local space.
-    // Distance from origin offset to the volume edge along each face normal.
+    // Compute the per-face far clip distance. The distance is measured in local space (from the
+    // origin offset to the volume edge along each face normal) and then taken to world units with
+    // the world length of that face axis, because the capture camera clips in world space: an
+    // unscaled entity keeps its current behaviour, a scaled one no longer clips its own volume.
+    // CaptureFar is an extra world-space distance on top of it.
     float minDist = 0.01f;
     float perFaceClipDist[6];
     for (int i = 0; i < 6; i++)
     {
       Vec3 edge          = faceNormals[i] * half;
       float dist         = glm::abs(glm::dot(faceNormals[i], edge) - glm::dot(faceNormals[i], offset));
-      perFaceClipDist[i] = glm::max(dist + extraFar, minDist);
+      float axisScale    = glm::length(Vec3(worldTransform * Vec4(faceNormals[i], 0.0f)));
+      perFaceClipDist[i] = glm::max(dist * axisScale + extraFar, minDist);
     }
 
     GetRenderSystem()->AddRenderTask(

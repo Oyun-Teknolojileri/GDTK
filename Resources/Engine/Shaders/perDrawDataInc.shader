@@ -7,18 +7,18 @@
 #ifndef PER_DRAW_DATA
 #define PER_DRAW_DATA
 
-// PerDrawData UBO — slot 2 (Vulkan binding 34 after UboBindingFor remap).
+// PerDrawData UBO - slot 2 (Vulkan binding 34 after UboBindingFor remap).
 //
-// Mirror of `PerDrawUboLayout` in Renderer.h. Add or reorder fields ONLY in lockstep — shader
+// Mirror of `PerDrawUboLayout` in Renderer.h. Add or reorder fields ONLY in lockstep - shader
 // and C++ are byte-identical std140 layouts.
 //
 // Migrated shaders read these fields directly: `perDraw._model * localPos`,
-// `perDraw._inverseTransposeModel`, etc. No accessor macros — those would clash with bare
+// `perDraw._inverseTransposeModel`, etc. No accessor macros - those would clash with bare
 // `uniform <type> <name>` declarations in not-yet-migrated includes (e.g. skinning.shader's
 // `uniform vec4 skinParams;` is hit if we `#define skinParams perDraw._skinParams`).
 // Migrate the include first, then call sites here can be tightened.
 //
-// Texture samplers stay outside the UBO — they cannot live in a uniform block.
+// Texture samplers stay outside the UBO - they cannot live in a uniform block.
 //////////////////////////////////////////
 
 struct DrawCommandLayout
