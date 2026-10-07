@@ -209,6 +209,20 @@ namespace ToolKit
     m_quadPass->SetFragmentShader(m_ssrShader, renderer);
     m_filterPass->SetFragmentShader(m_filterShader, renderer);
 
+    // Replacing the IBL specular only works when the forward pass actually produced the term to replace.
+    m_filterShader->Init();
+    m_filterShader->SetDefine("SSR_SPECULAR_SPLIT", m_params.IblSpecularRt != nullptr ? "1" : "0");
+
+    // Only msaa off reaches this with a target: a second colour attachment has to share the framebuffer's
+    // sample count, so the render path leaves the split off while msaa is on. Saying so once beats a
+    // reflection that looks unexplainably flat.
+    const bool specularSplit = m_params.IblSpecularRt != nullptr;
+    if (specularSplit != m_specularSplit)
+    {
+      TK_LOG("SsrPass: specular split %s", specularSplit ? "on" : "off");
+      m_specularSplit = specularSplit;
+    }
+
     m_passDataBuffer.Invalidate();
     m_passDataBuffer.Map();
 
@@ -237,6 +251,10 @@ namespace ToolKit
     m_requirements.semanticTextures["s_trace"]        = m_traceTexture;
     m_requirements.semanticTextures["s_sceneColor"]   = m_copyTexture;
     m_requirements.semanticTextures["s_normalDepth"]  = normalDepth;
+    if (m_params.IblSpecularRt != nullptr)
+    {
+      m_requirements.semanticTextures["s_iblSpecular"] = m_params.IblSpecularRt;
+    }
     m_requirements.customUbos[7]                      = &m_passDataBuffer.GetBuffer();
 
     ApplyRequirements(renderer);

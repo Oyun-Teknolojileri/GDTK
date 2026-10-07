@@ -72,6 +72,9 @@ namespace ToolKit
     GammaTonemapFxaaPassPtr m_gammaTonemapFxaaPass   = nullptr;
     FramebufferPtr m_resolvedFramebuffer             = nullptr;
 
+    /** Second colour target of the forward pass: the IBL specular the SSR pass replaces. */
+    RenderTargetPtr m_iblSpecularRt                  = nullptr;
+
    protected:
     bool m_drawSky   = false;
     SkyBasePtr m_sky = nullptr;

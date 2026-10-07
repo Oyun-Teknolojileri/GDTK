@@ -5,6 +5,8 @@
 	<texture slot = "0" name = "s_trace" />
 	<texture slot = "1" name = "s_sceneColor" />
 	<texture slot = "2" name = "s_normalDepth" />
+	<texture slot = "3" name = "s_iblSpecular" />
+	<define name = "SSR_SPECULAR_SPLIT" val = "0,1" />
 	<source>
 	<!--
 
@@ -18,6 +20,7 @@ layout (location = 0) out vec4 fragColor;
 TK_SAMPLER_BINDING(0) uniform sampler2D s_trace;       // rgb: reflection, a: its weight.
 TK_SAMPLER_BINDING(1) uniform sampler2D s_sceneColor;  // Scene color before this pass, the fallback.
 TK_SAMPLER_BINDING(2) uniform sampler2D s_normalDepth; // a: roughness.
+TK_SAMPLER_BINDING(3) uniform sampler2D s_iblSpecular; // rgb: IBL specular, a: its BRDF weight.
 
 // Taps per axis. A three by three kernel already covers the row level stripes the hit leaves behind,
 // and a wider one costs more than the edge it would soften.
@@ -30,9 +33,16 @@ void main()
 	vec4 trace = texture(s_trace, uv);
 
 	// Debug views are handed through exactly as the trace pass produced them, so they keep reading as
-	// data instead of being smoothed into a gradient.
+	// data instead of being smoothed into a gradient. The IBL specular view is the one exception: it is
+	// not something the trace phase produced, it is the term that phase replaces, so it is read here.
 	if (ssrPass.flags.x > 0.5)
 	{
+		if (int(ssrPass.flags.z + 0.5) == SSR_DEBUG_IBL_SPECULAR)
+		{
+			fragColor = vec4(texture(s_iblSpecular, uv).rgb, 1.0);
+			return;
+		}
+
 		fragColor = vec4(trace.rgb, scene.a);
 		return;
 	}
@@ -67,7 +77,22 @@ void main()
 	float weight = sumWeight / sumKernel;
 	vec3  color  = sumWeight > 0.0 ? sumColor / sumWeight : vec3(0.0);
 
-	fragColor = vec4(mix(scene.rgb, color, clamp(weight, 0.0, 1.0)), scene.a);
+	float blend = clamp(weight, 0.0, 1.0);
+
+#if SSR_SPECULAR_SPLIT
+	// The reflection replaces the share of the environment specular it covers, instead of blending over the
+	// whole colour. Both sides of the mix are then the same term: the environment specular as the forward
+	// pass added it, and the reflection weighted by the very BRDF factor that specular was built with. The
+	// roughness and Fresnel response therefore comes from the material rather than from a curve here, which
+	// is what keeps a surface next to an unreached pixel from reading as two different materials. At zero
+	// weight the two specular terms cancel and the scene colour is returned untouched.
+	vec4 specular = texture(s_iblSpecular, uv);
+	vec3 replaced = mix(specular.rgb, color * specular.a, blend);
+
+	fragColor = vec4(scene.rgb - specular.rgb + replaced, scene.a);
+#else
+	fragColor = vec4(mix(scene.rgb, color, blend), scene.a);
+#endif
 }
 
 	-->

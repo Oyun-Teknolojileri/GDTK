@@ -8,6 +8,17 @@
 #ifndef SSR_PASS_DATA
 #define SSR_PASS_DATA
 
+// Debug views, in the order the engine settings window offers them. They live here because both phases
+// read them: the trace phase produces most of them, the resolve phase reads the IBL specular one.
+#define SSR_DEBUG_REFLECTION     0
+#define SSR_DEBUG_CONFIDENCE     1
+#define SSR_DEBUG_MIP            2
+#define SSR_DEBUG_DEPTH          3
+#define SSR_DEBUG_HIT_UV         4
+#define SSR_DEBUG_LENGTH         5
+#define SSR_DEBUG_HIT_ERROR      6
+#define SSR_DEBUG_IBL_SPECULAR   7
+
 // Screen space reflection pass UBO. Mirrors `SsrPassDataLayout` in SsrPass.h byte for byte.
 TK_UBO_BINDING(7) uniform SsrPassData
 {

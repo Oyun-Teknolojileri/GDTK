@@ -72,12 +72,15 @@ vec3 SpecularDFG(vec2 dfg, vec3 f0)
 }
 
 // ---------------------------------------------------------------------------
-// Sky IBL evaluation (returns raw sky color, no weighting)
+// Sky IBL evaluation. `skySpecular` reports the specular part on its own, so a
+// screen space reflection can take that term over: it is `E * prefiltered`, the
+// same BRDF weight everything else in the reflection pipeline uses.
 // ---------------------------------------------------------------------------
 
-vec3 EvalSky(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float perceptualRoughness, vec3 E, vec3 energyComp)
+vec3 EvalSky(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float perceptualRoughness, vec3 E, vec3 energyComp, out vec3 skySpecular)
 {
 	vec3 color = vec3(0.0);
+	skySpecular = vec3(0.0);
 
 	float skyIntensity = GetSkyIntensity();
 	if (skyIntensity <= 0.0)
@@ -97,7 +100,10 @@ vec3 EvalSky(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float per
 	vec3 iblSpecVec = (perDraw._iblRotation * vec4(R, 0.0)).xyz;
 	float lod = RoughnessToLod(perceptualRoughness, float(graphicConstants.iblMaxReflectionLod));
 	vec3 preFilteredColor = textureLod(s_skySpecular, iblSpecVec, lod).rgb;
-	color += E * preFilteredColor * energyComp;
+
+	vec3 specular = E * preFilteredColor * energyComp;
+	color += specular;
+	skySpecular = specular * skyIntensity;
 
 	return color * skyIntensity;
 }
@@ -179,7 +185,7 @@ struct VolumeAccum
 
 void AccumulateVolume(int vol, vec3 normal, vec3 fragToEye, vec3 albedo, float metallic,
 	float perceptualRoughness, vec3 E, vec3 energyComp, vec3 worldPos,
-	inout VolumeAccum accum)
+	inout VolumeAccum accum, inout vec3 specularAccum)
 {
 	float blend = ComputeVolumeBlendFactor(vol, worldPos);
 	if (blend <= 0.0)
@@ -192,6 +198,10 @@ void AccumulateVolume(int vol, vec3 normal, vec3 fragToEye, vec3 albedo, float m
 	vec3 volumeColor = (Fd + Fr) * GetVolumeIntensity(vol);
 
 	accum.color += volumeColor * blend;
+
+	// The specular follows the same weighting as the colour, so the two averages stay consistent.
+	specularAccum += Fr * GetVolumeIntensity(vol) * blend;
+
 	accum.weight += blend;
 	accum.maxBlend = max(accum.maxBlend, blend);
 	accum.interior = accum.interior || IsVolumeInterior(vol);
@@ -200,20 +210,32 @@ void AccumulateVolume(int vol, vec3 normal, vec3 fragToEye, vec3 albedo, float m
 // ---------------------------------------------------------------------------
 // Combined IBL: weighted average of the local volumes plus the sky that fills
 // whatever weight no volume covered.
+//
+// `specularColor` reports the specular part of that result and `specularFactor`
+// the BRDF term it was built with (`E * energyComp`, independent of which
+// environment contributed). A screen space reflection is a replacement for that
+// specular, so it is weighted with the same factor and gets the roughness and
+// Fresnel response of the material for free. The factor is reported even when no
+// IBL is in use, so the replacement still has an energy to work with.
 // ---------------------------------------------------------------------------
 
-vec3 IBLPBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float perceptualRoughness, vec2 dfg, vec3 energyComp, vec3 worldPos)
+vec3 IBLPBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float perceptualRoughness, vec2 dfg, vec3 energyComp, vec3 worldPos,
+	out vec3 specularColor, out vec3 specularFactor)
 {
+	vec3 f0 = BaseReflectivityPBR(vec3(0.04), albedo, metallic);
+	vec3 E  = SpecularDFG(dfg, f0);
+
+	specularColor  = vec3(0.0);
+	specularFactor = E * energyComp;
+
 	if (!IsIBLInUse())
 	{
 		return vec3(0.0);
 	}
 
-	vec3 f0 = BaseReflectivityPBR(vec3(0.04), albedo, metallic);
-	vec3 E = SpecularDFG(dfg, f0);
-
 	// Evaluate sky once: it is both the outside fallback and the boundary blend target.
-	vec3 skyColor = EvalSky(normal, fragToEye, albedo, metallic, perceptualRoughness, E, energyComp);
+	vec3 skySpecular = vec3(0.0);
+	vec3 skyColor = EvalSky(normal, fragToEye, albedo, metallic, perceptualRoughness, E, energyComp, skySpecular);
 
 	VolumeAccum accum;
 	accum.color    = vec3(0.0);
@@ -221,12 +243,15 @@ vec3 IBLPBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float perc
 	accum.maxBlend = 0.0;
 	accum.interior = false;
 
-	AccumulateVolume(0, normal, fragToEye, albedo, metallic, perceptualRoughness, E, energyComp, worldPos, accum);
-	AccumulateVolume(1, normal, fragToEye, albedo, metallic, perceptualRoughness, E, energyComp, worldPos, accum);
+	vec3 specularAccum = vec3(0.0);
+
+	AccumulateVolume(0, normal, fragToEye, albedo, metallic, perceptualRoughness, E, energyComp, worldPos, accum, specularAccum);
+	AccumulateVolume(1, normal, fragToEye, albedo, metallic, perceptualRoughness, E, energyComp, worldPos, accum, specularAccum);
 
 	// Outside every volume: pure sky.
 	if (accum.weight <= 0.0)
 	{
+		specularColor = skySpecular;
 		return skyColor;
 	}
 
@@ -234,6 +259,8 @@ vec3 IBLPBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float perc
 	// sky out of the pixel entirely, exterior ones fade into it over their fade
 	// distance.
 	float skyWeight = accum.interior ? 0.0 : (1.0 - accum.maxBlend);
+
+	specularColor = (specularAccum + skySpecular * skyWeight) / (accum.weight + skyWeight);
 
 	return (accum.color + skyColor * skyWeight) / (accum.weight + skyWeight);
 }

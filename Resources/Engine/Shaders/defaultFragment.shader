@@ -41,9 +41,15 @@
 	TK_LOC(4) in mat3 TBN;
 
 	layout (location = 0) out vec4 fragColor;
+	// rgb: the IBL specular the colour above carries, a: the BRDF weight it was added with. The screen
+	// space reflection pass replaces that term, so it needs both. Writes zero where this shader takes an
+	// early out, which is what the pass reads as "nothing to replace".
+	layout (location = 1) out vec4 fragSpecular;
 
 	void main()
 	{
+		fragSpecular = vec4(0.0);
+
 		Material material = GetMaterial();
 
 		vec4 color;
@@ -141,9 +147,19 @@
 		vec3 irradiance = PBRLighting(v_worldPos, v_viewDepth, n, e, camera.position, color.xyz, metallic, roughness, energyComp);
 
 		float ambientOcclusion = AmbientOcclusion();
-		irradiance += IBLPBR(n, e, color.xyz, metallic, perceptualRoughness, dfg, energyComp, v_worldPos) * ambientOcclusion;
+
+		vec3 iblSpecular       = vec3(0.0);
+		vec3 iblSpecularFactor = vec3(0.0);
+		irradiance += IBLPBR(n, e, color.xyz, metallic, perceptualRoughness, dfg, energyComp, v_worldPos,
+		                     iblSpecular, iblSpecularFactor) * ambientOcclusion;
 
 		fragColor = vec4(irradiance, color.a) + vec4(emissive, 0.0);
+
+		// Occluded like the colour it belongs to, and the factor's luminance is enough to weight a
+		// replacement: it is the split sum term, which a dielectric keeps grey. A metal would tint it with
+		// its own F0, which this channel can only carry the magnitude of.
+		fragSpecular = vec4(iblSpecular * ambientOcclusion,
+		                    dot(iblSpecularFactor, vec3(0.2126, 0.7152, 0.0722)) * ambientOcclusion);
 	}
 	-->
 	</source>
