@@ -75,3 +75,6 @@ Log.txt
 .claude/settings.local.json
 Assimplog.txt
 BuildScripts/__pycache__/*
+/x64-Debug
+/CMakeSettings.json
+/out
