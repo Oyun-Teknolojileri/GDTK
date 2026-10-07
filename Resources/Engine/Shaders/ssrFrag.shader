@@ -251,6 +251,11 @@ void main()
 	// and `stepCount` selects the density. A world space step instead samples the near field finely
 	// and the far field coarsely, which is what slices a grazing reflection into bands.
 	//
+	// Only a floor on the step: the reach has to be the screen whatever the step count is, because the
+	// step count is a quality setting, not a range one. An upper clamp of 64 pixels used to cut the
+	// reach instead, so eight steps covered a fifth of the screen and the reflection ended in a curve
+	// that followed the step count rather than anything in the scene.
+	//
 	// The view plane projection of the ray direction is what turns a screen movement into a world
 	// step: a steep ray (a floor right in front of the camera) moves less screen distance per world
 	// unit, so without it such a ray covers only a fraction of the screen and the reflection drops to
@@ -261,7 +266,7 @@ void main()
 	float stepCount   = max(ssrPass.flags.y, 1.0);
 	float pixelWorld  = 2.0 / (ssrPass.projParams.y * ssrPass.screenParams.w);
 	float pixelScale  = pixelWorld / max(length(rayDir.xy), 0.05);
-	float stepPixels  = clamp(length(ssrPass.screenParams.zw) / stepCount, 2.0, 64.0);
+	float stepPixels  = max(length(ssrPass.screenParams.zw) / stepCount, 2.0);
 	float maxDistance = ssrPass.params.y;
 
 	vec3 rayPos      = viewPos + rayDir * (pixelScale * (-viewPos.z) * stepPixels) * jitter;
