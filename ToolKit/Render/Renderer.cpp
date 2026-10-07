@@ -1584,7 +1584,13 @@ namespace ToolKit
           m_preFilterEnvMapBuffer.Init(7);
           m_preFilterEnvMapBufferInitialized = true;
         }
-        m_preFilterEnvMapBuffer.m_data.params = Vec4((float) mipSize, (float) mip / (float) (mipMaps - 1), 0.0f, 0.0f);
+        // Each level stores the roughness it is prefiltred for. The lookup side reads the chain linearly
+        // in roughness (RoughnessToLod in ibl.shader), so a level's roughness is its linear share of the
+        // chain. The two are one rule: a level placed on a different curve would read back as a roughness
+        // the material does not have, and a surface of roughness 0.044 would blur as if it were 0.086.
+        const float levelRough = (float) mip / (float) (mipMaps - 1);
+
+        m_preFilterEnvMapBuffer.m_data.params = Vec4((float) mipSize, levelRough, 0.0f, 0.0f);
         m_preFilterEnvMapBuffer.Invalidate();
         m_preFilterEnvMapBuffer.Map();
 

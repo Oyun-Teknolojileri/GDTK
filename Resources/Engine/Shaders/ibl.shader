@@ -56,9 +56,15 @@ vec3 GetParallaxCorrectedReflection(vec3 R, vec3 worldPos, mat4 inverseVolTransf
 	return normalize(intersectLocal);
 }
 
+// Level of the prefiltered chain a roughness reads from. Linear in roughness, because the chain is
+// baked the same way (each level holds `mip / (mipMaps - 1)`, see Renderer::GenerateSpecularEnvMap):
+// read and write have to use one rule or the reflection shows a roughness the material does not have.
+// The perceptual `r * (2 - r)` curve this used to apply spends up to twice the mips on the low end
+// (`r * (2 - r)` is `r` plus `r * (1 - r)`, positive for every roughness in between), which is exactly
+// where a wet floor lives, so it stretched those reflections well before their roughness asked for it.
 float RoughnessToLod(float roughness, float maxLod)
 {
-	return maxLod * roughness * (2.0 - roughness);
+	return maxLod * roughness;
 }
 
 vec3 GetSpecularDominantDirection(vec3 n, vec3 r, float roughness)
