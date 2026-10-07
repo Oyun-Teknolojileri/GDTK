@@ -548,6 +548,89 @@ namespace ToolKit
           ImGui::EndDisabled();
         }
 
+        if (ShowSection("Screen Space Reflections"))
+        {
+          bool ssrEnabled = pps->GetSSREnabledVal();
+          if (ImGui::Checkbox("SSR##1", &ssrEnabled))
+          {
+            pps->SetSSREnabledVal(ssrEnabled);
+          }
+          ImGui::BeginDisabled(!ssrEnabled);
+
+          float ssrIntensity = pps->GetSSRIntensityVal();
+          if (ImGui::DragFloat("Intensity", &ssrIntensity, 0.01f, 0.0f, 1.0f))
+          {
+            pps->SetSSRIntensityVal(ssrIntensity);
+          }
+
+          float ssrMaxDistance = pps->GetSSRMaxDistanceVal();
+          if (ImGui::DragFloat("Max Distance", &ssrMaxDistance, 0.1f, 0.1f, 500.0f))
+          {
+            pps->SetSSRMaxDistanceVal(ssrMaxDistance);
+          }
+
+          float ssrThickness = pps->GetSSRThicknessVal();
+          if (ImGui::DragFloat("Thickness", &ssrThickness, 0.01f, 0.01f, 5.0f))
+          {
+            pps->SetSSRThicknessVal(ssrThickness);
+          }
+
+          // The fragment shader is compiled with a loop bound from {8, 16, 32, 64}, so the setting is one
+          // of those four. A dropdown keeps the two in step: a free value would be honoured by the march
+          // but the loop could only be bounded by the next variant above it.
+          static const char* ssrStepCountNames[] = {"8", "16", "32", "64"};
+          static const int ssrStepCountValues[]  = {8, 16, 32, 64};
+
+          int ssrStepCount = pps->GetSSRStepCountVal();
+          int ssrStepIndex = 0;
+          int ssrStepDelta = ssrStepCount > ssrStepCountValues[0] ? ssrStepCount - ssrStepCountValues[0]
+                                                                  : ssrStepCountValues[0] - ssrStepCount;
+          for (int i = 1; i < IM_ARRAYSIZE(ssrStepCountValues); ++i)
+          {
+            const int delta = ssrStepCount > ssrStepCountValues[i] ? ssrStepCount - ssrStepCountValues[i]
+                                                                   : ssrStepCountValues[i] - ssrStepCount;
+            if (delta < ssrStepDelta)
+            {
+              ssrStepDelta = delta;
+              ssrStepIndex = i;
+            }
+          }
+
+          if (ImGui::Combo("Steps", &ssrStepIndex, ssrStepCountNames, IM_ARRAYSIZE(ssrStepCountNames)))
+          {
+            pps->SetSSRStepCountVal(ssrStepCountValues[ssrStepIndex]);
+          }
+
+          float ssrRoughnessCutoff = pps->GetSSRRoughnessCutoffVal();
+          if (ImGui::DragFloat("Roughness Cutoff", &ssrRoughnessCutoff, 0.01f, 0.0f, 1.0f))
+          {
+            pps->SetSSRRoughnessCutoffVal(ssrRoughnessCutoff);
+          }
+
+          bool ssrDebugView = pps->GetSSRDebugViewVal();
+          if (ImGui::Checkbox("Debug View##ssr", &ssrDebugView))
+          {
+            pps->SetSSRDebugViewVal(ssrDebugView);
+          }
+
+          if (ssrDebugView)
+          {
+            // Each mode isolates one stage of the pass: an artifact that looks the same in the
+            // composite can be told apart here instead of guessed at.
+            static const char* ssrDebugModes[] = {
+              "Reflection", "Confidence", "Mip Level", "Scene Depth", "Hit UV", "Ray Length", "Hit Error"};
+
+            int ssrDebugMode = pps->GetSSRDebugViewModeVal();
+            ImGui::SameLine();
+            if (ImGui::Combo("##ssrDebugMode", &ssrDebugMode, ssrDebugModes, IM_ARRAYSIZE(ssrDebugModes)))
+            {
+              pps->SetSSRDebugViewModeVal(ssrDebugMode);
+            }
+          }
+
+          ImGui::EndDisabled();
+        }
+
         if (ShowSection("Anti Aliasing"))
         {
           bool fxaaEnabled = pps->GetFXAAEnabledVal();

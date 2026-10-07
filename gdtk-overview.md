@@ -180,8 +180,15 @@ Serializable, loaded from `%appdata%/ToolKit/Config`. Sub-objects:
 - **WindowSettings**: name, width, height, fullscreen
 - **GraphicSettings**: FPS, MSAA, HDR, MultiThreaded, RenderResolutionScale, AnisotropicTextureFiltering, plus a `m_shadows` member
 - **ShadowSettings** (nested in GraphicSettings): cascade count/distance, parallel split, stable shadow map, atlas resolution (1K/2K), PCF kernel, VSM blur
-- **PostProcessingSettings**: tonemapping, bloom, gamma, SSAO, DOF, FXAA
+- **PostProcessingSettings**: tonemapping, bloom, gamma, SSAO, SSR, DOF, FXAA
 - **ShaderSettings**: per-shader define presets (e.g. "Low"/"High" graphics presets) so shader compile doesn't explode combinatorially
+
+A shader variant that fails to compile is not fatal: `Shader::Compile` keeps the last working
+`m_gpuData`, `Shader::SetDefine` leaves the current variant in place and names the missing one, and
+`GpuProgramManager::CreateProgram` refuses to build a program whose vertex or fragment shader has no
+compiled data. The backend logs the compile error, the frame keeps rendering with what is available.
+`Shader::FindShaderMergeLocation` only counts a `precision` statement that starts its line, so the word
+in a comment or an identifier can not move the include / define merge point into the middle of a shader.
 
 `ShadowSettings::ParameterEventConstructor` is the hook that pushes the values into the graphics constant buffer via `ValueUpdateFn`.
 
@@ -217,6 +224,7 @@ ForwardSceneRenderPath
 ├── m_forwardRenderPass         ForwardRenderPass
 ├── m_skyPass                   CubeMapPass
 ├── m_ssaoPass                  SSAOPass
+├── m_ssrPass                   SsrPass
 ├── m_bloomPass                 BloomPass
 ├── m_dofPass                   DoFPass
 ├── m_gammaTonemapFxaaPass      GammaTonemapFxaaPass
@@ -224,6 +232,22 @@ ForwardSceneRenderPath
 ```
 
 Inputs via `SceneRenderPathParams`: Scene, Camera, MainFramebuffer, grid, postProcessSettings, optional `overrideLights`.
+
+Pass order: shadow, forward pre process (g buffer, required by SSAO / DoF / SSR), SSAO, sky, forward,
+SSR, bloom, DoF, gamma/tonemap/FXAA. `SsrPass` runs in two phases. The trace phase marches one
+reflection ray per pixel against the pre process g buffer (world normal, linear depth, roughness) and
+writes the reflection plus its confidence into its own target instead of compositing. The march steps
+in screen space, so the budget covers `steps * stepPixels` pixels whatever the ray angle, the hits are
+refined by intersecting the ray with the surface plane rebuilt from a wide depth baseline, and the hit
+color is gathered at a mip of the scene color copy chosen from the reflection cone. The resolve phase
+averages that target in screen space premultiplied by the confidence, which dilates the reflection past
+the silhouettes the trace can not see through and removes the row level stripes the hit leaves behind.
+A pixel with no screen space reflection keeps its forward shaded color, so the sky or the active
+environment volumes provide the reflection wherever screen space can not.
+
+`SSRDebugView` / `SSRDebugViewMode` (Post Processing settings) switch the pass to a debug view:
+reflection, confidence, mip level, scene depth, hit uv, ray length or hit error. The resolve phase hands
+debug views through unfiltered.
 
 ### 4.4 Pass (Pass.h)
 
@@ -322,31 +346,33 @@ Heavyweight class that drives the GPU. Key responsibilities:
 - **Cubemap utilities** (`GenerateCubemapFrom2DTexture`, `GenerateEquiRectengularProjection`, `CopyCubeMapToMipLevel`, `GenerateSpecularEnvMap`, `GenerateDiffuseEnvMap`, `RenderToCubeMap`).
 - **Gaussian blur helpers** (`ApplyGaussianBlur`, `ApplyGaussianBlurToArrayLayerSlot` — for shadow atlas slot blur).
 - **BRDF LUT** generation (`GenerateBRDFLutTexture`).
-- **Per-draw UBO** (`SubmitPerDrawData` to backend slot 6 — currently mostly empty, in active migration).
+- **Per-draw UBO** (`SubmitPerDrawData` to backend slot 2 - currently mostly empty, in active migration).
 - **Timer queries** (`StartTimerQuery`/`EndTimerQuery`/`GetElapsedTime` for CPU/GPU profiling).
 
 #### Renderer global UBO layout
 
-All bind at fixed slots (slot 5 = pass UBOs, slot 6 = per-draw UBO):
+All bind at fixed slots (0-6 are the global engine buffers, 7 and up are pass specific - see
+`ReservedUniformBufferSlots` in RHI.h):
 
 | Layout | Slot | Used by |
 |---|---|---|
-| `CameraGpuBuffer` | global | every pass |
-| `GraphicConstantsGpuBuffer` | global | every pass (shadow distance, atlas size, IBL lod, cascades) |
-| `DirectionalLightBuffer` | global | forward pass |
-| `PointLightCache` / `SpotLightCache` | global | forward pass |
-| `PerDrawUboBuffer` | 6 | per-draw (model matrix etc., mirror in `perDrawDataInc.shader`) |
-| `DilatePassDataLayout` | 5 | outline/dilate pass |
-| `GammaTonemapFxaaPassDataLayout` | 5 | gamma/tonemap/fxaa pass |
-| `BloomPassDataLayout` | 5 | bloom downsample/upsample chain |
-| `GaussBlurPassDataLayout` | 5 | shadow blur, gaussian passes |
-| `CubemapEquirectPassDataLayout` | 5 | equirect -> cubemap conversion |
-| `PreFilterEnvMapPassDataLayout` | 5 | specular IBL prefilter |
-| `GridPassDataLayout` | 5 | editor grid |
-| `SsaoBlurPassDataLayout` | 5 | SSAO blur |
-| `DofPassDataLayout` | 5 | DoF pass |
-| `GradientSkyboxPassDataLayout` | 5 | gradient skybox |
-| `SsaoCalcPassDataLayout` | 5 | SSAO calc |
+| `CameraGpuBuffer` | 0 | every pass |
+| `GraphicConstantsGpuBuffer` | 1 | every pass (shadow distance, atlas size, IBL lod, cascades) |
+| `DirectionalLightBuffer` | 3 | forward pass |
+| `PointLightCache` / `SpotLightCache` | 4 / 5 | forward pass |
+| `PerDrawUboBuffer` | 2 | per-draw (model matrix etc., mirror in `perDrawDataInc.shader`) |
+| `DilatePassDataLayout` | 7 | outline/dilate pass |
+| `GammaTonemapFxaaPassDataLayout` | 7 | gamma/tonemap/fxaa pass |
+| `BloomPassDataLayout` | 7 | bloom downsample/upsample chain |
+| `GaussBlurPassDataLayout` | 7 | shadow blur, gaussian passes |
+| `CubemapEquirectPassDataLayout` | 7 | equirect -> cubemap conversion |
+| `PreFilterEnvMapPassDataLayout` | 7 | specular IBL prefilter |
+| `GridPassDataLayout` | 7 | editor grid |
+| `SsaoBlurPassDataLayout` | 7 | SSAO blur |
+| `DofPassDataLayout` | 7 | DoF pass |
+| `GradientSkyboxPassDataLayout` | 7 | gradient skybox |
+| `SsaoCalcPassDataLayout` | 7 | SSAO calc |
+| `SsrPassDataLayout` | 7 | screen space reflections |
 
 > **Std140 mirroring rule**: every `*Layout` struct in C++ MUST match its GLSL counterpart byte-for-byte. If you add a field, add it in the matching `.shader` include in the same order.
 

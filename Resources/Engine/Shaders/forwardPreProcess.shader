@@ -58,7 +58,10 @@
 		}
 
 		vec2 encodedNormal = encodeNormal(normal);
-		fragNormalDepth = vec4(encodedNormal, v_linearDepth, 1.0);
+
+		// .a carried a constant 1.0 before; SSR reads the per pixel roughness from it to decide how
+		// much of the screen space reflection it may take over from the environment / sky.
+		fragNormalDepth = vec4(encodedNormal, v_linearDepth, material.roughness);
 	}
 	-->
 	</source>

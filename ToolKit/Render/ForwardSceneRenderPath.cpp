@@ -26,6 +26,7 @@ namespace ToolKit
     m_skyPass               = MakeNewPtr<CubeMapPass>();
     m_forwardPreProcessPass = MakeNewPtr<ForwardPreProcessPass>();
     m_ssaoPass              = MakeNewPtr<SSAOPass>();
+    m_ssrPass               = MakeNewPtr<SsrPass>();
     m_bloomPass             = MakeNewPtr<BloomPass>();
     m_dofPass               = MakeNewPtr<DoFPass>();
     m_gammaTonemapFxaaPass  = MakeNewPtr<GammaTonemapFxaaPass>();
@@ -38,6 +39,7 @@ namespace ToolKit
     m_forwardRenderPass     = nullptr;
     m_skyPass               = nullptr;
     m_ssaoPass              = nullptr;
+    m_ssrPass               = nullptr;
     m_forwardPreProcessPass = nullptr;
     m_bloomPass             = nullptr;
     m_dofPass               = nullptr;
@@ -77,6 +79,14 @@ namespace ToolKit
 
     // Forward pass
     m_passArray.push_back(m_forwardRenderPass);
+
+    // Screen space reflections. Runs on the forward shaded color, right before the post process
+    // chain, so a reflection miss simply keeps the sky / environment volume IBL the forward pass
+    // already wrote. The g buffer it marches against comes from the pre process pass.
+    if (m_params.postProcessSettings->GetSSREnabledVal())
+    {
+      m_passArray.push_back(m_ssrPass);
+    }
 
     // Bloom pass
     if (m_params.postProcessSettings->GetBloomEnabledVal())
@@ -311,6 +321,19 @@ namespace ToolKit
     m_dofPass->m_params.focusScale  = pps->GetFocusScaleVal();
     m_dofPass->m_params.blurQuality = pps->ParamDofBlurQuality().GetEnum<DoFQuality>();
 
+    // SSR composites into the same single sample color chain DoF and Bloom read from, and marches
+    // the rays against the pre process g buffer (normal + linear depth + roughness).
+    m_ssrPass->m_params.ColorRt              = dofSourceFb->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
+    m_ssrPass->m_params.GNormalDepthBuffer   = m_forwardPreProcessPass->m_normalDepthRt;
+    m_ssrPass->m_params.Cam                  = m_params.Cam;
+    m_ssrPass->m_params.Intensity            = pps->GetSSRIntensityVal();
+    m_ssrPass->m_params.MaxDistance          = pps->GetSSRMaxDistanceVal();
+    m_ssrPass->m_params.Thickness            = pps->GetSSRThicknessVal();
+    m_ssrPass->m_params.StepCount            = pps->GetSSRStepCountVal();
+    m_ssrPass->m_params.RoughnessCutoff      = pps->GetSSRRoughnessCutoffVal();
+    m_ssrPass->m_params.DebugView            = pps->GetSSRDebugViewVal();
+    m_ssrPass->m_params.DebugViewMode        = pps->GetSSRDebugViewModeVal();
+
     // Post Process Pass
     bool gammaNeeded                = GetRenderSystem()->IsGammaCorrectionNeeded();
     m_gammaTonemapFxaaPass->m_params.enableGammaCorrection = pps->GetGammaCorrectionEnabledVal() && gammaNeeded;
@@ -344,7 +367,8 @@ namespace ToolKit
   {
     bool ssaoEnabled = m_params.postProcessSettings->GetSSAOEnabledVal();
     bool dofEnabled  = m_params.postProcessSettings->GetDepthOfFieldEnabledVal();
-    return ssaoEnabled || dofEnabled;
+    bool ssrEnabled  = m_params.postProcessSettings->GetSSREnabledVal();
+    return ssaoEnabled || dofEnabled || ssrEnabled;
   }
 
 } // namespace ToolKit
