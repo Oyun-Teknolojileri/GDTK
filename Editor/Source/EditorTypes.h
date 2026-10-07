@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
@@ -101,6 +101,7 @@ namespace ToolKit
     const String g_outlinerStr("Outliner");
     const String g_propInspector("Property Inspector");
     const String g_engineSettingsStr("Engine Settings");
+const String g_worldSettingsStr("World Settings");
     const String g_statsView("Statistics");
     const String g_matInspector("Material Inspector");
     const String g_dopeSheetStr("Dope Sheet");

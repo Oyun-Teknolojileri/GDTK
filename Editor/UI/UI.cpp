@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
@@ -19,6 +19,7 @@
 #include "PopupWindows.h"
 #include "PropInspectorWindow.h"
 #include "StatsWindow.h"
+#include "WorldSettingsWindow.h"
 
 #include <Audio.h>
 #include <GradientSky.h>
@@ -1035,6 +1036,7 @@ namespace ToolKit
       ShowPersistentWindow<SimulationWindow>(g_simulationWindowStr);
       ShowPersistentWindow<EngineSettingsWindow>(g_engineSettingsStr);
       ShowPersistentWindow<StatsWindow>(g_statsView);
+        ShowPersistentWindow<WorldSettingsWindow>(g_worldSettingsStr);
       ShowPersistentWindow<PluginWindow>(g_pluginWindow);
       ShowPersistentWindow<DopeSheetWindow>(g_dopeSheetStr);
 

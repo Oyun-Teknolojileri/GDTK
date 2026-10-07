@@ -1,4 +1,4 @@
-# GDTK - Project Overview (Starting Point)
+﻿# GDTK - Project Overview (Starting Point)
 
 > This file is the FIRST thing to read at the start of every GDTK working session.
 > It captures the high-level architecture so we can dive straight into specific tasks.
@@ -683,7 +683,7 @@ settings -- while the launcher passes `false`, because it only browses the works
 and the projects in it. See Section 11.3.
 
 ### 9.3 Editor windows
-All ImGui-based: `OutlinerWindow`, `FolderWindow` (asset browser), `ConsoleWindow`, `MaterialView`, `MeshView`, `EntityView`, `ComponentView`, `EngineSettingsWindow`, `MultiChoiceWindow`, `Anchor` / `AnchorMod`, `BoxEditGizmo` / `BoxEditMod` (transform gizmos), `ConsoleWindow`, `FolderWindow`, `Gizmo`, `Grid` (editor grid), `LightMeshGenerator`, `OverlayLighting`, `AndroidBuildWindow`, `CustomDataView`, `Thumbnail`, `SimulationWindow`.
+All ImGui-based: `OutlinerWindow`, `FolderWindow` (asset browser), `ConsoleWindow`, `MaterialView`, `MeshView`, `EntityView`, `ComponentView`, `EngineSettingsWindow`, `WorldSettingsWindow` (scene level: post processing), `MultiChoiceWindow`, `Anchor` / `AnchorMod`, `BoxEditGizmo` / `BoxEditMod` (transform gizmos), `ConsoleWindow`, `FolderWindow`, `Gizmo`, `Grid` (editor grid), `LightMeshGenerator`, `OverlayLighting`, `AndroidBuildWindow`, `CustomDataView`, `Thumbnail`, `SimulationWindow`.
 
 Double-clicking a resource in the asset browser opens a volatile view window:
 `MaterialView`, `SkeletonView` (read-only hierarchical bone tree), `AnimationView`
