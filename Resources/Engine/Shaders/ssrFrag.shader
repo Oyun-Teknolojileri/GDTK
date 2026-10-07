@@ -112,8 +112,14 @@ float EdgeFade(vec2 uv)
 
 // Debug views. A grazing angle artifact has to be told apart by what the pass produces at each
 // stage, not by guessing: depth bands point at the stored depth, a striped hit uv points at the
-// march, a striped confidence points at the depth test, a low mip points at the gather. The modes
-// themselves live in ssrPassDataInc.shader, which the resolve phase reads as well.
+// march, a striped confidence points at the depth test, a low mip points at the gather.
+#define SSR_DEBUG_REFLECTION 0
+#define SSR_DEBUG_CONFIDENCE 1
+#define SSR_DEBUG_MIP        2
+#define SSR_DEBUG_DEPTH      3
+#define SSR_DEBUG_HIT_UV     4
+#define SSR_DEBUG_LENGTH     5
+#define SSR_DEBUG_HIT_ERROR  6
 
 // Depth a screen pixel spans, for the adaptive thickness of the hit test.
 #define SSR_THICKNESS_PIXELS 4.0

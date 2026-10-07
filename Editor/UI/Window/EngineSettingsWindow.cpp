@@ -616,16 +616,9 @@ namespace ToolKit
           if (ssrDebugView)
           {
             // Each mode isolates one stage of the pass: an artifact that looks the same in the
-            // composite can be told apart here instead of guessed at. Order and count must match the
-            // SSR_DEBUG_* defines in ssrPassDataInc.shader.
-            static const char* ssrDebugModes[] = {"Reflection",
-                                                  "Confidence",
-                                                  "Mip Level",
-                                                  "Scene Depth",
-                                                  "Hit UV",
-                                                  "Ray Length",
-                                                  "Hit Error",
-                                                  "IBL Specular"};
+            // composite can be told apart here instead of guessed at.
+            static const char* ssrDebugModes[] = {
+              "Reflection", "Confidence", "Mip Level", "Scene Depth", "Hit UV", "Ray Length", "Hit Error"};
 
             int ssrDebugMode = pps->GetSSRDebugViewModeVal();
             ImGui::SameLine();

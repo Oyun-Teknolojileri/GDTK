@@ -31,7 +31,6 @@ namespace ToolKit
     m_dofPass               = MakeNewPtr<DoFPass>();
     m_gammaTonemapFxaaPass  = MakeNewPtr<GammaTonemapFxaaPass>();
     m_resolvedFramebuffer   = MakeNewPtr<Framebuffer>("ForwardResolveFB");
-    m_iblSpecularRt         = MakeNewPtr<RenderTarget>("ForwardIblSpecularRT");
   }
 
   ForwardSceneRenderPath::~ForwardSceneRenderPath()
@@ -45,7 +44,6 @@ namespace ToolKit
     m_bloomPass             = nullptr;
     m_dofPass               = nullptr;
     m_gammaTonemapFxaaPass  = nullptr;
-    m_iblSpecularRt         = nullptr;
   }
 
   void ForwardSceneRenderPath::Render(Renderer* renderer)
@@ -141,29 +139,6 @@ namespace ToolKit
 
       m_bloomPass->m_params.FrameBuffer                = m_resolvedFramebuffer;
       m_gammaTonemapFxaaPass->m_params.frameBuffer     = m_resolvedFramebuffer;
-    }
-
-    // The IBL specular the forward pass adds goes to a second colour target, so the SSR pass can replace
-    // that term instead of blending over the whole colour: both sides then carry the same BRDF weight, and
-    // the roughness and Fresnel response match by construction. The target has to share the framebuffer's
-    // sample count, so the split stays off while msaa is on and the pass falls back to its own blend.
-    m_ssrPass->m_params.IblSpecularRt = nullptr;
-    if (!m_params.MainFramebuffer->IsMultiSampled())
-    {
-      FramebufferSettings specSettings = m_params.MainFramebuffer->GetSettings();
-
-      TextureSettings specTexture  = {};
-      specTexture.WarpS            = GraphicTypes::UVClampToEdge;
-      specTexture.WarpT            = GraphicTypes::UVClampToEdge;
-      specTexture.MinFilter        = GraphicTypes::SampleLinear;
-      specTexture.MagFilter        = GraphicTypes::SampleLinear;
-      specTexture.InternalFormat   = GraphicTypes::FormatRGBA16F;
-      specTexture.Format           = GraphicTypes::FormatRGBA;
-      specTexture.Type             = GraphicTypes::TypeFloat;
-      m_iblSpecularRt->ReconstructIfNeeded(specSettings.width, specSettings.height, &specTexture);
-
-      m_params.MainFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment1, m_iblSpecularRt);
-      m_ssrPass->m_params.IblSpecularRt = m_iblSpecularRt;
     }
   }
 

@@ -42,13 +42,6 @@ namespace ToolKit
     /** Scene color. Read through an internal single sample copy, composited back in place. */
     RenderTargetPtr ColorRt            = nullptr;
 
-    /**
-     * Second colour target of the forward pass: rgb is the IBL specular the scene colour carries, a is the
-     * BRDF weight it was added with. When it is set the resolve replaces that term with the screen space
-     * reflection, so both sides carry the same weight. Without it the pass blends over the colour instead.
-     */
-    RenderTargetPtr IblSpecularRt      = nullptr;
-
     CameraPtr Cam                      = nullptr;
 
     /** How much of the hit color replaces the forward shaded reflection. */
@@ -60,7 +53,7 @@ namespace ToolKit
     /** Depth window around a surface hit that still counts as the same surface. */
     float Thickness                    = 0.4f;
 
-    /** March steps. Used exactly as given; the shader's SSR_STEP_COUNT only bounds the loop. */
+    /** March steps. Used exactly as given; the shader's SSR_MAX_STEPS only bounds the loop. */
     int StepCount                      = 32;
 
     /** Surfaces rougher than this keep the environment / sky reflection only. */
@@ -120,9 +113,6 @@ namespace ToolKit
 
     /** SSR_MAX_STEPS the fragment shader was last compiled with (-1 = never). */
     int m_currentMaxSteps            = -1;
-
-    /** Reported once when it changes: with msaa on the render path withholds the specular target. */
-    bool m_specularSplit             = false;
   };
 
   typedef std::shared_ptr<SsrPass> SsrPassPtr;

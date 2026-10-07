@@ -242,22 +242,12 @@ refined by intersecting the ray with the surface plane rebuilt from a wide depth
 color is gathered at a mip of the scene color copy chosen from the reflection cone. The resolve phase
 averages that target in screen space premultiplied by the confidence, which dilates the reflection past
 the silhouettes the trace can not see through and removes the row level stripes the hit leaves behind.
-
-The forward pass writes a second colour attachment next to the scene colour: `rgb` is the IBL specular
-that colour carries and `a` the split sum BRDF weight it was added with (`ForwardSceneRenderPath`'s
-`m_iblSpecularRt`, RGBA16F, attached only while msaa is off, since a second attachment has to share the
-framebuffer's sample count). The resolve phase replaces that term with the reflection weighted by the
-same factor, instead of blending over the whole colour, so the roughness and Fresnel response is the
-material's on both sides. Without the attachment the pass falls back to blending over the colour and
-logs `SsrPass: specular split off` once.
-
 A pixel with no screen space reflection keeps its forward shaded color, so the sky or the active
 environment volumes provide the reflection wherever screen space can not.
 
 `SSRDebugView` / `SSRDebugViewMode` (Post Processing settings) switch the pass to a debug view:
-reflection, confidence, mip level, scene depth, hit uv, ray length, hit error or the IBL specular the
-pass replaces (the mode indices live in `ssrPassDataInc.shader`, both phases read them). The resolve
-phase hands debug views through unfiltered.
+reflection, confidence, mip level, scene depth, hit uv, ray length or hit error. The resolve phase hands
+debug views through unfiltered.
 
 ### 4.4 Pass (Pass.h)
 
