@@ -21,23 +21,23 @@ namespace ToolKit
   namespace
   {
     /**
-     * SSR_MAX_STEPS variants the fragment shader is compiled with. Only the loop bound is picked
+     * SSR_STEP_COUNT variants the fragment shader is compiled with. Only the loop bound is picked
      * from here; the requested step count itself travels as a uniform, so the setting stays
      * continuous and a value between two bounds is not rounded away.
      */
     int ClampMaxSteps(int steps)
     {
-      if (steps <= 64)
+      if (steps <= 8)
       {
-        return 64;
+        return 8;
       }
 
-      if (steps <= 128)
+      if (steps <= 16)
       {
-        return 128;
+        return 16;
       }
 
-      return steps <= 256 ? 256 : 512;
+      return steps <= 32 ? 32 : 64;
     }
   } // namespace
 
@@ -154,7 +154,7 @@ namespace ToolKit
       m_ssrShader->Init();
 
       const void* variantBefore = m_ssrShader->m_gpuData.get();
-      m_ssrShader->SetDefine("SSR_MAX_STEPS", std::to_string(maxSteps));
+      m_ssrShader->SetDefine("SSR_STEP_COUNT", std::to_string(maxSteps));
       const void* variantAfter = m_ssrShader->m_gpuData.get();
 
       TK_LOG("SsrPass: steps %d (loop bound %d), shader variant %p -> %p",

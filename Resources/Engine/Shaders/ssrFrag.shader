@@ -5,7 +5,7 @@
 	<include name = "ssrPassDataInc.shader" />
 	<texture slot = "0" name = "s_diffuseColor" />
 	<texture slot = "1" name = "s_normalDepth" />
-	<define name = "SSR_MAX_STEPS" val = "64,128,256,512" />
+	<define name = "SSR_STEP_COUNT" val = "8,16,32,64" />
 	<source>
 	<!--
 
@@ -256,7 +256,7 @@ void main()
 	// unit, so without it such a ray covers only a fraction of the screen and the reflection drops to
 	// the environment map with a hard edge. MaxDistance stays the range limit, checked per iteration.
 	//
-	// The requested step count is a uniform used exactly as given; SSR_MAX_STEPS is only the
+	// The requested step count is a uniform used exactly as given; SSR_STEP_COUNT is only the
 	// compile time bound of the loop, so the setting never gets rounded to a shader variant.
 	float stepCount   = max(ssrPass.flags.y, 1.0);
 	float pixelWorld  = 2.0 / (ssrPass.projParams.y * ssrPass.screenParams.w);
@@ -275,7 +275,7 @@ void main()
 	// happens at shallow angles and over thin geometry) is still recognized as a crossing.
 	float prevDelta  = -1.0;
 
-	for (int i = 0; i < SSR_MAX_STEPS; ++i)
+	for (int i = 0; i < SSR_STEP_COUNT; ++i)
 	{
 		if (float(i) >= stepCount)
 		{

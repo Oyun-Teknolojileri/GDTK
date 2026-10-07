@@ -575,10 +575,30 @@ namespace ToolKit
             pps->SetSSRThicknessVal(ssrThickness);
           }
 
+          // The fragment shader is compiled with a loop bound from {8, 16, 32, 64}, so the setting is one
+          // of those four. A dropdown keeps the two in step: a free value would be honoured by the march
+          // but the loop could only be bounded by the next variant above it.
+          static const char* ssrStepCountNames[] = {"8", "16", "32", "64"};
+          static const int ssrStepCountValues[]  = {8, 16, 32, 64};
+
           int ssrStepCount = pps->GetSSRStepCountVal();
-          if (ImGui::DragInt("Steps", &ssrStepCount, 1.0f, 16, 512))
+          int ssrStepIndex = 0;
+          int ssrStepDelta = ssrStepCount > ssrStepCountValues[0] ? ssrStepCount - ssrStepCountValues[0]
+                                                                  : ssrStepCountValues[0] - ssrStepCount;
+          for (int i = 1; i < IM_ARRAYSIZE(ssrStepCountValues); ++i)
           {
-            pps->SetSSRStepCountVal(ssrStepCount);
+            const int delta = ssrStepCount > ssrStepCountValues[i] ? ssrStepCount - ssrStepCountValues[i]
+                                                                   : ssrStepCountValues[i] - ssrStepCount;
+            if (delta < ssrStepDelta)
+            {
+              ssrStepDelta = delta;
+              ssrStepIndex = i;
+            }
+          }
+
+          if (ImGui::Combo("Steps", &ssrStepIndex, ssrStepCountNames, IM_ARRAYSIZE(ssrStepCountNames)))
+          {
+            pps->SetSSRStepCountVal(ssrStepCountValues[ssrStepIndex]);
           }
 
           float ssrRoughnessCutoff = pps->GetSSRRoughnessCutoffVal();
