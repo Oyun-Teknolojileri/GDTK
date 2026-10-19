@@ -26,32 +26,46 @@ Constraints that shape every decision below:
 
 ---
 
-## 2. Where the CPU time goes today
+## 2. Where the CPU time goes today (measured, Release build)
 
-Measured by reading the per-draw path, not by profiling yet. Bench (stage 0) replaces
-these estimates with numbers.
+Measured with `Utils/Bench` in a **Release** build and with the engine profiler on
+(`--profile`), 1280x720, 2025 visible props, 7570 draw calls per frame. The profiler adds
+roughly 30 percent to the absolute number, so the shares are what matter here, not the
+milliseconds; the profiler-free baseline is 9.2-9.9 ms.
 
-Every `Renderer::Render(const RenderJob&)` call currently does all of the following:
+| Where | ms | Share |
+|---|---|---|
+| `ShadowPass::Render` (4 directional cascades + 1 spot, 5645 caster draws) | 9.48 | 70% |
+| `ForwardPreProcessPass::Render` (~1000 draws) | 1.49 | 11% |
+| `ForwardRenderPass::Render` (~1000 draws) | 1.35 | 10% |
+| `ForwardSceneRenderPath::SetPassParams` (job creation, cull, light and env assignment) | 0.93 | 7% |
+| SSAO + sky + SSR + gamma + resolve | ~0.15 | 1% |
+| **Total** | **13.58** | |
 
-| # | Work | Evidence | Estimate |
-|---|---|---|---|
-| 1 | About 15 `GetTextureSlot("s_...")` calls, each a linear scan over ~23 `m_resources` entries doing `std::string::compare(const char*)` | `ToolKit/Render/GpuProgram.h:41` | 2-4 us |
-| 2 | `SetLights` per draw: two `IDArray` + two `IntArray` heap allocations, a hash lookup per light, `std::distance` walking a `std::list` inside `LRUCache::LookUp` (~1500 pointer hops at 24 lights) | `ToolKit/Render/Renderer.cpp:826`, `ToolKit/Source/GenericBuffers.h:135` | 1-3 us |
-| 3 | Two to three `glm::inverse` calls (model matrix in `SetTransforms`, environment volume world transform in `SetDataTextures`) | `Renderer.cpp:1067`, `Renderer.cpp:1005` | 0.3-0.6 us |
-| 4 | 1120 byte per-draw UBO upload every draw | `Renderer.cpp:1142`, `ToolKit/Render/UniformBuffer.h:71` | 1-3 us |
-| 5 | `BindPipeline` state diff plus ~15 cached texture binds plus the draw call | `Renderer.cpp:321` | 1-2 us |
+Per draw call, `Renderer::Render` costs **0.93 us of exclusive time** (7.19 ms over 7708
+calls), and that is what every one of those 7570 draws pays.
 
-Total estimate: 5-13 us per draw. At 2000 draws that is 10-26 ms per frame, which is
-enough to explain the reported bottleneck on its own.
+Three conclusions, and the first one reorders the whole plan:
 
-Two facts worth keeping in mind:
+1. **Shadow map rendering is the bottleneck, not the forward pass.** One caster is drawn up
+   to five times per frame (once per directional cascade plus the spot), so 2025 props turn
+   into 5645 shadow draws. Anything that reduces draw count, or that draws shadows without
+   one job per caster per cascade, attacks 70 percent of the cost.
+2. **The per-draw CPU bookkeeping is smaller than it looked in Debug.** Measured:
+   `SetMaterial` (the sampler slot lookups) 0.028 ms, `SetDataTextures` 0.065 ms,
+   `SetLights` 0.269 ms, `FeedUniforms` 0.169 ms per frame. The whole sampler-slot cache is
+   therefore worth under one percent, and the light hoist about two. They stay on the list
+   as cheap cleanups, not as the plan's spine. An earlier version of this table was written
+   from Debug figures and overestimated them by an order of magnitude: Debug keeps iterator
+   checks, does not inline, and inflates exactly those operations.
+3. **Shadow caster job creation is real:** `ShadowPass::RenderShadowCasters` spends 2.32 ms
+   of exclusive time per frame on its five AABB queries and the jobs they build, on top of
+   the draws themselves.
 
-- Items 1, 2 and 3 are pure waste. Most of the win is available without instancing.
-- `DrawDesc::instanceCount` already exists and the Vulkan backend honours it
-  (`ToolKit/Render/Vulkan/VulkanBackend.cpp:1603`), but the GL backend ignores it
-  (`ToolKit/Render/OpenGL/GLBackend.cpp:529` still calls `glDrawElements`). Nothing in
-  the engine sets it today, so instancing has never actually run.
-
+The estimate that "2000 draws cost 10-26 ms" was wrong: in Release a draw costs ~1.3 us, so
+the same 2000 draws cost about 2.6 ms. The reported CPU bottleneck at 7570 calls is real,
+but it lives in the shadow pass and in the sheer number of draw calls, not in string
+lookups or matrix inverses.
 ---
 
 ## 3. Decisions (locked)
@@ -158,6 +172,27 @@ Bench --update-reference            (create or refresh the reference set; never 
 Bench --results Bench/Results       (where the per run statistics go)
 ```
 
+### Measurement protocol
+
+**All performance numbers come from a Release build.** A Debug build is not usable here:
+MSVC keeps iterator debug checks, does not inline, and its `std::string` / `std::vector`
+operations cost several times what they cost in Release. That does not only inflate the
+absolute numbers, it distorts the *relative* ones: the string lookups and container churn
+that stages A1 and A2 remove are exactly the operations Debug penalises most, so a Debug
+comparison would report a win several times larger than the one a player sees.
+
+Rules that follow from that:
+
+1. `cmake --build Intermediate/Windows/Release --config Release --target Bench`, and the
+   numbers come from `BinRelease/Bench.exe`. `BinDebug` is for correctness only.
+2. The reference set is per build configuration: the manifest signature carries
+   `debug` / `release` as its first token, so a Debug run can never be compared against a
+   Release reference. The Release reference lives in `--baseline-set release`.
+3. Every stage reports `drawCalls`, `renderCpuMs` median and p95 from the same tag pair
+   (`--tag before` / `--tag a1`), on an idle machine, with at least 120 measured frames.
+
+The Debug numbers recorded in the first progress entry below are therefore diagnostic: they
+proved the harness works, nothing else.
 ### Where things live, and why
 
 | Artifact | Location | Versioned | Size |
@@ -195,26 +230,37 @@ measured natively transfers, usually larger.
 
 ## 6. Stages
 
-| Stage | Scope | Files touched | Status |
+The order changed after the Release measurement in section 2. The shadow pass owns 70
+percent of the render CPU, so batching is the spine of the plan and it starts there; the
+per-draw cleanups are kept as cheap complements, not as the main event.
+
+| Stage | Scope | Expected win | Status |
 |---|---|---|---|
-| 0 | `Utils/Bench` plus baseline capture | `Utils/Bench/*`, root `CMakeLists.txt`, `Bench/Baseline/` | **done**, awaiting commit approval |
-| A1 | Cache resolved sampler slots per program | `GpuProgram.h`, `Renderer.cpp` | pending |
-| A2 | Hoist light index computation out of the draw into the job | `Pass.h`, `Pass.cpp`, `Renderer.cpp`, `ForwardSceneRenderPath.cpp` | pending |
-| A3 | Precompute inverse transpose and environment volume inverses once per frame | `Pass.h`, `Pass.cpp`, `Renderer.cpp` | pending |
-| A4 | Move `Mesh::Init` / `Material::Init` to job build time | `Renderer.cpp` | pending |
-| M | Measurement gate: re-run Bench, decide whether stage B is worth it | - | pending |
-| B1 | Batch builder, sort by batch key, instanced draw path in the GL backend | `RenderCommand.h` or a batcher header, `GLBackend.cpp`, `Renderer.*` | pending |
-| B2 | Instance data texture plus the `PER_DRAW_MODEL` shader macros | `Renderer.*`, `Resources/Engine/Shaders/*` | pending |
-| B3 | Apply to `ShadowPass`, then `ForwardPreProcessPass`, then `ForwardRenderPass` | pass files | pending |
+| 0 | `Utils/Bench`, Release baseline, profiler mode | measurement only | **done**, awaiting commit approval |
+| S1 | Shadow pass, cheap half: reuse the caster job list across the cascades instead of rebuilding it five times a frame | up to 2.3 ms (17%) | pending |
+| S2 | Shadow pass, big half: batch the casters so four cascades plus the spot stop costing 5645 draws | up to 6 ms (53%) | pending |
+| F1 | Forward pass: same batching treatment for the ~1900 forward and prepass draws | up to 2.5 ms (20%) | pending |
+| A1 | Cache resolved sampler slots per program | measured at under 1%; do it while touching the code | pending |
+| A2 | Hoist light index computation out of the draw into the job | measured at about 2% | pending |
+| A3 | Precompute inverse transpose and environment volume inverses once per frame | about 1% | pending |
+| A4 | Move `Mesh::Init` / `Material::Init` to job build time | about 1% | pending |
 | D | Documentation: `gdtk-overview.md`, `AGENTS.md` if conventions changed | - | pending |
 
-Acceptance criteria for every stage that touches rendering: Bench PNG difference under
-threshold, `drawCalls` and `renderCpuMs` reported before and after, and the user's demo
-game project still builds and runs.
+Each stage is measured on its own with `--tag <stage>`, and its numbers are appended to the
+progress log. A stage that does not move the median beyond the 8 percent run to run spread
+is reported as "no measurable win" and is either dropped or kept only for clarity.
 
-Regression safety net: `EngineSettings` gets `EnableInstancing` and `MinInstancesToBatch`
-so any stage can be switched off at runtime.
+**Shadow cascade count is a lever worth naming**: with four cascades each caster is drawn up
+to four times, so a scene that is CPU bound in the shadow pass can trade shadow quality for
+draw calls without any engine change at all. The bench can measure that today by varying the
+cascade count and distances, and the finding belongs in the report either way.
 
+Acceptance criteria for every stage that touches rendering: Bench image difference under
+threshold, `drawCalls` and `renderCpuMs` reported before and after, and the user's demo game
+project still builds and runs.
+
+Regression safety net: `EngineSettings` gets `EnableInstancing` and `MinInstancesToBatch` so
+any stage can be switched off at runtime.
 ---
 
 ## 7. WebGL 2.0 (GL ES 3.0) checklist
@@ -297,6 +343,46 @@ Gamma cannot be switched off from `PostProcessingSettings` on this path:
 its own final pass, gated on `IsGammaCorrectionNeeded()`. The bench prints the state and
 reports it in the JSON instead of pretending to toggle it.
 
+### 2026-10-19 - Release measurement, and the plan it rewrote
+
+The user asked whether the numbers were being taken in Release. They were not: everything up
+to this point was `BinDebug`, which is not a usable measurement build. Fixed:
+
+- Release dependency and engine trees built (`Intermediate/Windows/Release`, `BinRelease`).
+- `Utils/Bench` gained `--profile`, which turns the engine profiler on and dumps its tree at
+  the end of the run. The profiler costs an rdtsc pair per scope and the draw path has one
+  per draw, so it is **off** by default and only enabled by that flag.
+- The build configuration is now the first token of the reference scene signature
+  (`release 1280x720 grid 45 ...`), so a Debug run can never be compared against a Release
+  reference. The Release reference lives in `--baseline-set release`.
+
+**Release baseline** (`--tag before-release`, profiler off): 7570 draw calls, `renderCpuMs`
+9.2-9.9 ms median across runs. That is **1.3 us per draw**, against 8.1 us measured in Debug
+for the same scene. Debug inflated the number by 6.4x.
+
+**Profile breakdown** (profiler on, totals inflated by about 30 percent):
+
+| Where | ms | Share |
+|---|---|---|
+| `ShadowPass::Render` | 9.48 | 70% |
+| `ForwardPreProcessPass::Render` | 1.49 | 11% |
+| `ForwardRenderPass::Render` | 1.35 | 10% |
+| `SetPassParams` | 0.93 | 7% |
+| everything else | 0.15 | 1% |
+
+Within a draw, `Renderer::Render` is 0.93 us of exclusive time. The items the plan was
+originally built around measured much smaller than the Debug figures suggested: sampler slot
+lookups 0.028 ms and data texture binding 0.065 ms per frame together (under 1 percent), the
+light index work 0.269 ms (2 percent), the UBO fill 0.169 ms.
+
+So the plan was reordered in section 6: shadow caster batching is the main stage now, and the
+per-draw cleanups are kept as cheap complements. One caster is drawn up to five times per
+frame (four directional cascades plus the spot), which is why 2025 props become 5645 shadow
+draws.
+
+Also recorded: the run to run spread in Release is about 8 percent (9.2 vs 9.9 ms), wider
+than the 2 percent seen in Debug because the absolute time is smaller. A stage has to move
+the median beyond that to count.
 ### 2026-10-19 - known limitation: the frame is not bit identical between processes
 
 Identical commands do not always produce an identical image. Six back to back runs against
@@ -357,21 +443,30 @@ Engine facts learned while writing the harness, all confirmed by reading the cod
 
 1. Read section 8 first, it says which stage is in flight.
 2. `git log --oneline -8` shows the last approved stage commit.
-3. Build: `cmake --build Intermediate/Windows/Debug --config Debug --target Bench`
-   (or `--target ToolKit` after an engine header change).
-4. Run the reference measurement:
-   `BinDebug\Bench.exe --tag before --out Bench/Out`
-5. Run a probe while iterating:
-   `BinDebug\Bench.exe --tag probe --frames 40 --warmup 10 --capture-frames 20 --baseline-set probe`
-6. Before approving a stage, compare `Bench/Out/<tag>.json` against the previous tag and
-   check the image diff, then ask the user for the commit decision.
+3. **Build Release, always, for numbers:**
+   `python BuildScripts/build_gdtk.py --configs Release --target Bench`
+   (or `cmake --build Intermediate/Windows/Release --config Release --target Bench` once the
+   tree exists). Debug is built with the same commands against `Intermediate/Windows/Debug`
+   and is used only for correctness work.
+4. Reference run:
+   `BinRelease\Bench.exe --tag before-release --baseline-set release --out Bench/Out`
+5. Where the time goes:
+   `BinRelease\Bench.exe --tag prof --profile --baseline-set release --out Bench/Out --frames 60`
+   and read the `Bench: prof` tree from the end of the output.
+6. A probe while iterating. Note `--results Bench/Out`: `Bench/Results` is versioned and
+   should only ever hold a stage's recorded number, not every experiment:
+   `BinRelease\Bench.exe --tag probe --frames 40 --warmup 10 --capture-frames 20 --baseline-set probe --results Bench/Out --out Bench/Out`
+7. Compare against the previous stage with `Bench/Results/<tag>.json`, check the image diff,
+   then ask the user for the commit decision.
 
 Known environment facts:
 
-- Build tree in use: `Intermediate/Windows/Debug`, generator `Visual Studio 18 2026`,
-  config `Debug`, binaries land in `BinDebug/`.
+- Release tree: `Intermediate/Windows/Release`, binaries in `BinRelease/`. Debug tree:
+  `Intermediate/Windows/Debug`, binaries in `BinDebug/`. Generator `Visual Studio 18 2026`.
+- The Release dependency tree did not exist before this work and was built by
+  `BuildScripts/build_gdtk.py`, which builds the missing dependency configurations itself.
 - The Vulkan backend is off by default (`TK_VULKAN` is OFF).
 - `Utils/Bench` compiles with `TK_GL_3_0` and `TK_DLL_IMPORT`, like `Packer`.
-- The demo game project lives at `C:\Users\Cihan\Documents\TKMyWorkSpace\Demo` and is
-  configured into its own `Intermediate\Windows` tree; it consumes ToolKit from
-  `BinDebug`/`BinRelease` through `TOOLKIT_DIR`.
+- Reference images: `C:\Users\Cihan\Desktop\GDTK-Bench-Reference\<set>\`, pointed at from
+  `Bench/bench.txt`. Set `release` holds the Release reference, `default` the older Debug one.
+- The demo game project lives at `C:\Users\Cihan\Documents\TKMyWorkSpace\Demo`.

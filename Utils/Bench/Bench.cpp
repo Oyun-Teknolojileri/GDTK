@@ -139,6 +139,11 @@ namespace ToolKit
         // Where the per-run statistics go. This one IS versioned: a few hundred bytes
         // per run, and the performance history is worth keeping with the code.
         String resultsDir = "Bench/Results";
+
+        // The engine profiler costs an rdtsc pair per scope, and the draw path has a
+        // scope per pass and per draw, so it stays off while timings are measured and
+        // is switched on only to explain where the time went.
+        bool profile     = false;
         String tag       = "run";
         String outDir    = "Bench/Out";
         String baseline; //!< Deprecated alias for --reference-root, resolved at startup.
@@ -193,6 +198,7 @@ namespace ToolKit
                "  --reference-scale F      reference image scale, 1.0 = full capture (default 1)\n"
                "  --update-reference       create / refresh the reference for this baseline set\n"
                "  --results DIR   where the run statistics go (default Bench/Results)\n"
+               "  --profile       enable the engine profiler and dump its tree at the end\n"
                "  --no-compare    write the capture but do not compare it\n");
       }
 
@@ -335,6 +341,10 @@ namespace ToolKit
           else if (arg == "--results")
           {
             nextString(opts.resultsDir);
+          }
+          else if (arg == "--profile")
+          {
+            opts.profile = true;
           }
           else if (arg == "--update-reference")
           {
@@ -1081,6 +1091,48 @@ namespace ToolKit
         stream << "}\n";
       }
 
+      /**
+       * Prints the engine profiler tree for the last frame.
+       *
+       * Every `TK_PROFILE_FUNCTION` in the engine becomes a node, so this is how the
+       * draw path is broken down without instrumenting the render path itself. A
+       * node's exclusive time excludes its children; inclusive includes them.
+       */
+      void DumpProfiler(int maxDepth)
+      {
+        TKProfiler* profiler = Profiler::GetProfiler();
+        if (profiler == nullptr)
+        {
+          return;
+        }
+
+        std::function<void(const ProfilerNode*, int)> walk = [&](const ProfilerNode* node, int depth)
+        {
+          if (node == nullptr || depth > maxDepth)
+          {
+            return;
+          }
+
+          printf("Bench: prof %*s%-34s excl %8.3f ms  incl %8.3f ms  hits %u\n",
+                 depth * 2,
+                 "",
+                 node->name.c_str(),
+                 node->exclusiveTimePrev,
+                 node->inclusiveTimePrev,
+                 node->hitCountPrev);
+
+          for (const ProfilerNode* child : node->children)
+          {
+            walk(child, depth + 1);
+          }
+        };
+
+        for (const ProfilerNode* root : profiler->GetRootNodes())
+        {
+          walk(root, 0);
+        }
+      }
+
       void EnsureDirectory(const String& dir)
       {
         std::error_code error;
@@ -1099,6 +1151,16 @@ namespace ToolKit
        * --spacing change has to use a different baseline set instead of silently
        * comparing against images from another scene.
        */
+      /** Build configuration the numbers and the reference belong to. */
+      const char* BuildConfigName()
+      {
+#if TK_DEBUG
+        return "debug";
+#else
+        return "release";
+#endif
+      }
+
       String SceneSignature(const Options& opts)
       {
         String frames;
@@ -1108,7 +1170,10 @@ namespace ToolKit
         }
 
         // Geometry and capture frames only: these define what the reference image is.
-        return std::to_string(opts.width) + "x" + std::to_string(opts.height) + " grid " +
+        // The build configuration changes the image as much as the scene does, so a
+        // Debug run must never be compared against a Release reference.
+        return String(BuildConfigName()) + " " + std::to_string(opts.width) + "x" +
+               std::to_string(opts.height) + " grid " +
                std::to_string(opts.grid) + " spacing " + std::to_string(opts.spacing).substr(0, 4) +
                " cluster " + std::to_string(opts.cluster) + " ref " +
                std::to_string(opts.referenceScale).substr(0, 4) + " capture " + frames;
@@ -1275,6 +1340,10 @@ namespace ToolKit
       // without the TK_ERR line that explains them.
       GetLogger()->SetWriteConsoleFn(
           [](LogType logType, String message) -> void { printf("%s\n", message.c_str()); });
+
+      // The profiler has a scope per pass and per draw; keep it out of the timings
+      // unless it was asked for.
+      Profiler::SetProfilerEnabled(opts.profile);
 
       ApplySettings(opts);
 
@@ -1554,6 +1623,12 @@ namespace ToolKit
           {
             printf("Bench: frame %d/%d\n", frame + 1, totalFrames);
           }
+        }
+
+        if (opts.profile)
+        {
+          printf("Bench: profiler tree for the last frame\n");
+          DumpProfiler(4);
         }
 
         // --- Output ---------------------------------------------------------

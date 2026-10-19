@@ -1,6 +1,6 @@
 {
-  "tag": "before",
-  "baselineSet": "default",
+  "tag": "before-release",
+  "baselineSet": "release",
   "frames": 120,
   "warmup": 20,
   "resolution": [1280, 720],
@@ -15,9 +15,9 @@
   "ssr": true,
   "tonemap": true,
   "gamma": true,
-  "renderCpuMs": {"median": 63.7384, "p95": 76.8568},
-  "frameCpuMs": {"median": 64.148, "p95": 78.3511},
+  "renderCpuMs": {"median": 9.9077, "p95": 13.0933},
+  "frameCpuMs": {"median": 9.9945, "p95": 14.0235},
   "drawCalls": 7570,
-  "captureHash": [1673263849584508477, 10235816107934352894, 14786834621241242411],
-  "worstImageDiff": 4.49285
+  "captureHash": [16663223537042043579, 10498187010175121568, 13854770079575045970],
+  "worstImageDiff": 15.6505
 }
