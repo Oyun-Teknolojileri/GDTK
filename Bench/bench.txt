@@ -1,0 +1,17 @@
+# Bench configuration.
+#
+# Reference images (the PNGs the render regression check compares against) live
+# outside the repository: they are large binaries and they change whenever a
+# stage legitimately changes the image, so versioning them only grows history.
+#
+# What IS versioned is Bench/Results/<tag>.json: a few hundred bytes per run with
+# the draw call count and the CPU timings, so the performance history travels with
+# the code. The scene signature of each reference set is stored next to the images.
+#
+# Resolution order for the reference root:
+#   1. --reference-root on the command line
+#   2. this file
+#   3. <repo>/../GDTK-Bench-Reference
+#
+# Relative paths resolve against the repository root.
+reference_root = ../GDTK-Bench-Reference

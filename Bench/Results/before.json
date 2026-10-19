@@ -1,0 +1,23 @@
+{
+  "tag": "before",
+  "baselineSet": "default",
+  "frames": 120,
+  "warmup": 20,
+  "resolution": [1280, 720],
+  "grid": 45,
+  "spacing": 2,
+  "envVolumes": 2,
+  "pointLights": 3,
+  "spotShadow": true,
+  "textures": true,
+  "msaa": true,
+  "ssao": true,
+  "ssr": true,
+  "tonemap": true,
+  "gamma": true,
+  "renderCpuMs": {"median": 63.7384, "p95": 76.8568},
+  "frameCpuMs": {"median": 64.148, "p95": 78.3511},
+  "drawCalls": 7570,
+  "captureHash": [1673263849584508477, 10235816107934352894, 14786834621241242411],
+  "worstImageDiff": 4.49285
+}

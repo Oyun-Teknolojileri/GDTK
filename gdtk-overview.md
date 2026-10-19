@@ -1,4 +1,4 @@
-﻿# GDTK - Project Overview (Starting Point)
+# GDTK - Project Overview (Starting Point)
 
 > This file is the FIRST thing to read at the start of every GDTK working session.
 > It captures the high-level architecture so we can dive straight into specific tasks.
@@ -34,6 +34,7 @@ GDTK/
 ├── Utils/
 │   ├── Import/                  # Asset import CLI (assimp-based, into engine format)
 │   ├── Packer/                  # Release / publish CLI (.tk bundle, platform packages)
+│   ├── Bench/                   # Deterministic render benchmark + image regression host
 │   └── Launcher/                # Project browser / entry point (ImGui-based GUI)
 ├── Modules/
 │   └── Workspace/               # Project workspace management (static library)
@@ -680,7 +681,7 @@ dir and, when the flag is `true` (the default), also pulls the active project's
 `Config/Engine.settings` into the engine settings via `DeSerializeEngineSettings()`.
 The editor wants that load -- the project owns its graphics and loaded plugin
 settings -- while the launcher passes `false`, because it only browses the workspace
-and the projects in it. See Section 11.3.
+and the projects in it. See Section 11.4.
 
 ### 9.3 Editor windows
 All ImGui-based: `OutlinerWindow`, `FolderWindow` (asset browser), `ConsoleWindow`, `MaterialView`, `MeshView`, `EntityView`, `ComponentView`, `EngineSettingsWindow`, `WorldSettingsWindow` (scene level: post processing), `MultiChoiceWindow`, `Anchor` / `AnchorMod`, `BoxEditGizmo` / `BoxEditMod` (transform gizmos), `ConsoleWindow`, `FolderWindow`, `Gizmo`, `Grid` (editor grid), `LightMeshGenerator`, `OverlayLighting`, `AndroidBuildWindow`, `CustomDataView`, `Thumbnail`, `SimulationWindow`.
@@ -954,9 +955,9 @@ TKAsyncTask(BackgroundPool, Func, arg1, ...)  // fire-and-forget async
 
 ---
 
-## 11. Utils — Import / Packer / Launcher
+## 11. Utils — Import / Packer / Bench / Launcher
 
-All three utility projects live under `Utils/` and output to `Bin<Config>/`
+All four utility projects live under `Utils/` and output to `Bin<Config>/`
 alongside the engine.
 
 ### 11.1 Import (`Utils/Import/`)
@@ -976,7 +977,51 @@ collapse into one `aiBone`; same-name FBX animation channels collapse into one
 Release / publish CLI. Bundles projects for Windows, Web, Android. Links
 SDL2, ToolKit (no assimp).
 
-### 11.3 Launcher (`Utils/Launcher/`)
+### 11.3 Bench (`Utils/Bench/`)
+Deterministic render benchmark and image regression host. Builds its test scene in code
+(sky IBL, two local environment volumes, a 2025 prop field over three texture sets, a clear
+white plaza with shadow pillars, a mirror slab for screen space reflections, an ambient
+occlusion cluster, a shadow casting directional light at 45 degrees, a shadow casting spot
+and point lights, tonemapping, gamma, MSAA), drives a camera path that is a pure function of
+the frame index, and renders a fixed number of frames with vsync off. Writes
+`<out>/<tag>.csv` per frame (`frameCpuMs`, `renderCpuMs`, `drawCalls`),
+`<results>/<tag>.json` with the median and p95, and reads the final composited frame back
+from the default framebuffer at three fixed frames. Each capture is written as a PNG and
+compared against `<reference root>/<set>/frame<N>.png` with a mean absolute difference
+threshold. Exit code 0 means the images match, 2 means they do not, 3 means the reference
+set is missing or was captured from a different scene. Links SDL2, ToolKit (no assimp). See
+`render-cpu-optimization-plan.md` for the plan it serves.
+
+Reference images live **outside** the repository, so the tree never carries multi megabyte
+PNGs. The root resolves from `--reference-root`, then the `reference_root` line of
+`Bench/bench.txt`, then `<repo>/../GDTK-Bench-Reference`. A missing reference is a failure,
+never a silent new baseline; `--update-reference` is the explicit way to create or refresh
+one. What is versioned is `Bench/Results/<tag>.json`, one small file per run with the draw
+call count and the CPU timings, plus a scene + feature signature stored next to the reference
+images that makes a run refuse to compare across a different grid, resolution or capture
+frame list. Feature switches (SSAO, SSR, MSAA, tonemap, lights, textures) are recorded but
+not enforced, because turning one off on purpose is how its effect is measured.
+
+- `Camera::SetLens` takes the field of view in radians, so a bench that works in degrees
+  has to convert (`glm::radians`).
+- The comparison must load the reference with `ImageLoadTopDown`: `ImageLoad` follows the
+  engine's vertical flip switch, which exists for the GL texture path.
+- The host sets `m_resourceRoot`, `m_cfgPath` and `SetDefaultPath` from the binary
+  location before `Main::PreInit`, otherwise the engine cannot find its default shaders.
+- `SceneManager::SetCurrentScene(nullptr)` is not a release path (it dereferences the
+  argument). The host drops its own references; `Main::Uninit` releases the scene.
+- `MaterialManager::GetCopyOfDefaultMaterial()` copies the default material's diffuse
+  texture too, so "no texture" has to be assigned explicitly with
+  `SetDiffuseTextureVal(nullptr)`.
+- The shipped shadow defaults degenerate for a large view range: parallel split partitioning
+  with `ShadowMinDistance = 1.0` puts the split's near plane on the far plane. The bench
+  sets manual world unit cascades instead, because the fragment shader compares world space
+  view depth against those numbers.
+- The frame is not bit identical between processes yet (same draw counts, a few discrete
+  image states), so the image check is currently a gross break detector with a documented
+  tolerance of 20.
+
+### 11.4 Launcher (`Utils/Launcher/`)
 Project browser / entry point (ImGui-based GUI). Links SDL2, imgui, ToolKit,
 reuses Editor types. Publishes its own icon the same way the editor does: the
 blue artwork `app_big_blue.png` on Linux and `app_blue.ico` compiled into

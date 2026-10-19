@@ -78,3 +78,20 @@ BuildScripts/__pycache__/*
 /x64-Debug
 *.json
 /out
+
+# Bench (Utils/Bench).
+#
+# /Bench/Out/ holds the per run CSV and the full resolution captures. Both are
+# regenerated on every run, so they are not tracked.
+#
+# /Bench/Results/ IS tracked: one small JSON per run with the draw call count and
+# the CPU timings, which is the performance history this work is measured against.
+#
+# Reference images live OUTSIDE the repository (see Bench/bench.txt), so the repo
+# never carries the multi megabyte PNGs; only the tiny scene signature next to
+# them. If a reference set is ever pointed inside the tree, keep it out of git.
+/Bench/Out/
+/Bench/Baseline/
+!/Bench/Results/
+!/Bench/Results/*.json
+/Temp/

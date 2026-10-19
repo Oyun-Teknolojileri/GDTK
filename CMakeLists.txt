@@ -314,6 +314,7 @@ add_subdirectory(Editor    ${GDTK_INTERMEDIATE_DIR}/build-Editor)
 add_subdirectory(Utils/Launcher ${GDTK_INTERMEDIATE_DIR}/build-Launcher)
 add_subdirectory(Utils/Import   ${GDTK_INTERMEDIATE_DIR}/build-Import)
 add_subdirectory(Utils/Packer   ${GDTK_INTERMEDIATE_DIR}/build-Packer)
+add_subdirectory(Utils/Bench    ${GDTK_INTERMEDIATE_DIR}/build-Bench)
 
 # --------------------------------------------------------------------------- #
 # Install rules                                                               #
