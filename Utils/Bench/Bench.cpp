@@ -144,6 +144,10 @@ namespace ToolKit
         // scope per pass and per draw, so it stays off while timings are measured and
         // is switched on only to explain where the time went.
         bool profile     = false;
+
+        // A previous run's result JSON to compare against, so old and new statistics and
+        // their deltas print in one table instead of being read out of two files by hand.
+        String diffWith;
         String tag       = "run";
         String outDir    = "Bench/Out";
         String baseline; //!< Deprecated alias for --reference-root, resolved at startup.
@@ -199,6 +203,7 @@ namespace ToolKit
                "  --update-reference       create / refresh the reference for this baseline set\n"
                "  --results DIR   where the run statistics go (default Bench/Results)\n"
                "  --profile       enable the engine profiler and dump its tree at the end\n"
+               "  --diff-with FILE  print this run against a previous <tag>.json with deltas\n"
                "  --no-compare    write the capture but do not compare it\n");
       }
 
@@ -341,6 +346,10 @@ namespace ToolKit
           else if (arg == "--results")
           {
             nextString(opts.resultsDir);
+          }
+          else if (arg == "--diff-with")
+          {
+            nextString(opts.diffWith);
           }
           else if (arg == "--profile")
           {
@@ -984,7 +993,11 @@ namespace ToolKit
        * missing baseline is not an error: it is created from this run so the
        * next run has something to compare against.
        */
-      float CompareWithBaseline(const String& baselineFile, int width, int height, const std::vector<ubyte>& current)
+      float CompareWithBaseline(const String& baselineFile,
+                                int width,
+                                int height,
+                                const std::vector<ubyte>& current,
+                                std::vector<ubyte>* baselineOut = nullptr)
       {
         if (!CheckSystemFile(baselineFile))
         {
@@ -1022,6 +1035,11 @@ namespace ToolKit
         for (size_t i = 0; i < current.size(); i++)
         {
           total += std::abs((double) current[i] - (double) basePixels[i]);
+        }
+
+        if (baselineOut != nullptr)
+        {
+          baselineOut->assign(basePixels, basePixels + current.size());
         }
 
         ImageFree(basePixels);
@@ -1136,6 +1154,157 @@ namespace ToolKit
         {
           walk(root, 0);
         }
+      }
+
+      /** Reads one string field out of the small JSON this tool writes. */
+      String JsonString(const String& text, const String& key)
+      {
+        const String token = "\"" + key + "\": \"";
+        size_t at          = text.find(token);
+        if (at == String::npos)
+        {
+          return String();
+        }
+
+        at += token.length();
+        const size_t end = text.find('"', at);
+        return end == String::npos ? String() : text.substr(at, end - at);
+      }
+
+      /** Reads one numeric field out of the small JSON this tool writes. */
+      double JsonNumber(const String& text, const String& key, double fallback = 0.0)
+      {
+        const String token = "\"" + key + "\":";
+        size_t at          = text.find(token);
+        if (at == String::npos)
+        {
+          return fallback;
+        }
+
+        at += token.length();
+        while (at < text.size() && (text[at] == ' ' || text[at] == '\t'))
+        {
+          at++;
+        }
+
+        char* end      = nullptr;
+        const double v = std::strtod(text.c_str() + at, &end);
+        return end != text.c_str() + at ? v : fallback;
+      }
+
+      /**
+       * Prints this run against a previous result file with the deltas spelled out.
+       *
+       * The whole point of the benchmark is the difference between two stages, so the
+       * difference is a command line option instead of a manual read of two JSON files.
+       */
+      void PrintComparison(const String& beforeFile, const Options& opts, const std::vector<FrameStats>& rows)
+      {
+        if (!CheckSystemFile(beforeFile))
+        {
+          TK_WRN("Bench: --diff-with file not found: %s", beforeFile.c_str());
+          return;
+        }
+
+        const String before = GetFileManager()->ReadAllText(beforeFile);
+
+        std::vector<double> renderTimes, frameTimes;
+        std::vector<uint64> drawCalls;
+        for (const FrameStats& row : rows)
+        {
+          renderTimes.push_back(row.renderMs);
+          frameTimes.push_back(row.frameMs);
+          drawCalls.push_back(row.drawCalls);
+        }
+
+        // "median" appears twice in the file, once per timing block, so the two blocks are
+        // read separately instead of searching for the key twice.
+        const size_t renderAt = before.find("\"renderCpuMs\"");
+        const size_t frameAt  = before.find("\"frameCpuMs\"");
+        const String renderBlock =
+            renderAt != String::npos && frameAt != String::npos && frameAt > renderAt
+                ? before.substr(renderAt, frameAt - renderAt)
+                : String();
+        const String frameBlock = frameAt != String::npos ? before.substr(frameAt) : String();
+
+        const double renderBefore  = JsonNumber(renderBlock, "median");
+        const double renderP95     = JsonNumber(renderBlock, "p95");
+        const double frameBefore   = JsonNumber(frameBlock, "median");
+        const double frameP95      = JsonNumber(frameBlock, "p95");
+        const double drawsBefore   = JsonNumber(before, "drawCalls");
+
+        const double renderAfter   = Percentile(renderTimes, 0.5f);
+        const double frameAfter    = Percentile(frameTimes, 0.5f);
+        const double drawsAfter    = double(MedianU64(drawCalls));
+        const double currRenderP95 = Percentile(renderTimes, 0.95f);
+        const double currFrameP95  = Percentile(frameTimes, 0.95f);
+
+        auto row = [](const char* name, double beforeVal, double afterVal, bool isCount)
+        {
+          const double delta = afterVal - beforeVal;
+          const double pct   = beforeVal != 0.0 ? (delta / beforeVal) * 100.0 : 0.0;
+          const char* unit   = isCount ? "" : " ms";
+          printf("Bench: %-20s %12.3f%-3s %12.3f%-3s %+9.3f (%+6.1f%%)\n",
+                 name,
+                 beforeVal,
+                 unit,
+                 afterVal,
+                 unit,
+                 delta,
+                 pct);
+        };
+
+        printf("Bench: comparison against %s\n", beforeFile.c_str());
+        printf("Bench: %-20s %15s %15s %18s\n", "metric", "before", "after", "delta");
+        row("draw calls", drawsBefore, drawsAfter, true);
+        row("renderCpuMs median", renderBefore, renderAfter, false);
+        row("renderCpuMs p95", renderP95, currRenderP95, false);
+        row("frameCpuMs median", frameBefore, frameAfter, false);
+        row("frameCpuMs p95", frameP95, currFrameP95, false);
+        printf("Bench: before tag \"%s\", after tag \"%s\"\n",
+               JsonString(before, "tag").c_str(),
+               opts.tag.c_str());
+      }
+      /**
+       * Writes one PNG holding the reference, the current capture and an amplified
+       * difference, side by side.
+       *
+       * A number is not a picture: this is the file to open when a stage must be judged
+       * visually. A neutral difference panel means the stage did not change the image.
+       */
+      bool WriteCompareImage(const String& file,
+                             int width,
+                             int height,
+                             const std::vector<ubyte>& reference,
+                             const std::vector<ubyte>& current,
+                             float amplify)
+      {
+        const int panels    = 3;
+        const int outWidth  = width * panels;
+        std::vector<ubyte> out(size_t(outWidth) * size_t(height) * g_channels, 0);
+        const size_t rowIn  = size_t(width) * g_channels;
+        const size_t rowOut = size_t(outWidth) * g_channels;
+
+        for (int y = 0; y < height; y++)
+        {
+          ubyte* dst = out.data() + size_t(y) * rowOut;
+          std::memcpy(dst, reference.data() + size_t(y) * rowIn, rowIn);
+          std::memcpy(dst + rowIn, current.data() + size_t(y) * rowIn, rowIn);
+
+          ubyte* diff = dst + rowIn * 2;
+          for (int x = 0; x < width; x++)
+          {
+            const size_t i = size_t(y) * rowIn + size_t(x) * g_channels;
+            for (int c = 0; c < 3; c++)
+            {
+              const int d    = std::abs(int(reference[i + c]) - int(current[i + c]));
+              diff[x * g_channels + c] = ubyte(glm::min(255, int(float(d) * amplify)));
+            }
+            diff[x * g_channels + 3] = 255;
+          }
+        }
+
+        return WritePNG(file, outWidth, height, g_channels, out.data(), outWidth * g_channels) != 0;
       }
 
       void EnsureDirectory(const String& dir)
@@ -1594,7 +1763,8 @@ namespace ToolKit
               return;
             }
 
-            float diff = CompareWithBaseline(baseFile, refWidth, refHeight, *reference);
+            std::vector<ubyte> baselinePixels;
+            float diff = CompareWithBaseline(baseFile, refWidth, refHeight, *reference, &baselinePixels);
             if (diff < 0.0f)
             {
               TK_ERR("Bench: reference image missing or unreadable for frame %d: %s", frame, baseFile.c_str());
@@ -1604,6 +1774,11 @@ namespace ToolKit
             comparedImages++;
             worstImageDiff = glm::max(worstImageDiff, diff);
             printf("Bench: frame %d image diff %.4f\n", frame, diff);
+
+            // One picture instead of three numbers: reference, current, and the difference
+            // amplified four times so a small change is still visible.
+            const String cmpFile = ConcatPaths({opts.outDir, opts.tag + suffix + "_compare.png"});
+            WriteCompareImage(cmpFile, refWidth, refHeight, baselinePixels, *reference, 4.0f);
           };
 
           GetRenderSystem()->AddRenderTask(task);
@@ -1665,6 +1840,11 @@ namespace ToolKit
         }
 
         printf("Bench: wrote %s and %s\n", csvFile.c_str(), jsonFile.c_str());
+
+        if (!opts.diffWith.empty())
+        {
+          PrintComparison(opts.diffWith, opts, rows);
+        }
 
         // --- Teardown (order matters, see AGENTS.md) -------------------------
         // Every engine object Bench owns has to go before the engine does. The

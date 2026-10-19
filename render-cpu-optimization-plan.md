@@ -169,6 +169,7 @@ Bench --capture-frames 40,80,120    (must match the reference set)
 Bench --tolerance 20                (image difference that still counts as a match)
 Bench --reference-root D:\refs      (override where the reference images live)
 Bench --update-reference            (create or refresh the reference set; never automatic)
+Bench --diff-with Bench/Results/before-release.json   (old vs new table with deltas)
 Bench --results Bench/Results       (where the per run statistics go)
 ```
 
@@ -202,6 +203,7 @@ proved the harness works, nothing else.
 | `reference_root` config | `Bench/bench.txt` | **yes** | 750 B |
 | Per run statistics (`<tag>.json`) | `Bench/Results/` | **yes** | ~570 B per run |
 | Per run CSV and full resolution captures | `Bench/Out/` | no | a few MB per run |
+| Reference vs current vs amplified diff, one PNG per capture | `Bench/Out/<tag>_frame<N>_compare.png` | no | ~4.7 MB per capture |
 
 The reference images are large binaries that change whenever a stage legitimately changes the
 image, so versioning them would grow history without adding information the manifest does not
@@ -220,7 +222,11 @@ volume count, lights, textures) are recorded in the same manifest but only repor
 turning one off on purpose is how its effect is measured.
 
 Numbers to compare between runs: `drawCalls`, `renderCpuMs`, `frameCpuMs`, plus the PNG
-difference.
+difference. Two things exist so the comparison is not a manual read of two files:
+`--diff-with <previous result.json>` prints a before / after / delta table for every
+metric, and each capture also writes `<tag>_frame<N>_compare.png`, which is the reference,
+the current frame and the difference amplified four times, side by side in one image. A
+neutral difference panel means the stage did not change the image.
 
 Note on transferability: the bench runs the native GL backend, but what it optimises is
 GL call count and CPU bookkeeping, and both are strictly worse on WebGL 2.0. A win
