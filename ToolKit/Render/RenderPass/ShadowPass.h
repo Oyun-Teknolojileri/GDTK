@@ -41,6 +41,17 @@ namespace ToolKit
     /** Renders all shadow casters to light's slot in the atlas. */
     void RenderShadowCasters(Light* light, CameraPtr shadowCamera, CameraPtr cullCamera);
 
+    /**
+     * Builds the caster job list for this frame, once.
+     *
+     * The jobs do not depend on the light or the cascade: mesh, material, transform and
+     * world bounding box are the same for every shadow map. Only the *set* of casters a
+     * cascade keeps differs, so the list is built once and each cascade is filtered with
+     * a bounding box test instead of rebuilding every job (five times a frame with four
+     * directional cascades plus a spot).
+     */
+    void PrepareShadowCasterJobs();
+
     /** Assigns shadow atlas slots to shadow casting lights using priority-based dynamic packing. */
     void PlaceShadowMapsToShadowAtlas(const LightRawPtrArray& lights);
 
@@ -89,6 +100,10 @@ namespace ToolKit
 
     /** Cached list of shadow casting lights with valid atlas slots, sorted by first atlas layer. */
     LightRawPtrArray m_lights;
+
+    /** Shadow caster jobs for this frame, partitioned opaque / alpha masked / translucent.
+     *  Built once in PrepareShadowCasterJobs and shared by every light and cascade. */
+    RenderData m_shadowRenderData;
 
     /** Rotations for each face of a cubemap used for point light shadows. */
     Quaternion m_cubeMapRotations[6];

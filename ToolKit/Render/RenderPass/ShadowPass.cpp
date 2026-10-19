@@ -173,6 +173,13 @@ namespace ToolKit
 
     erase_if(m_lights, [](Light* light) -> bool { return !light->HasValidShadowSlot(); });
 
+    // Build the caster jobs once for the whole frame; every light and cascade reuses them.
+    m_shadowRenderData.jobs.clear();
+    if (!m_lights.empty())
+    {
+      PrepareShadowCasterJobs();
+    }
+
     // Group lights by their first atlas layer and record layer switch indices.
     m_atlasLayerSwitchIndices.clear();
     auto it = m_lights.begin();
@@ -288,6 +295,35 @@ namespace ToolKit
     }
   }
 
+  void ShadowPass::PrepareShadowCasterJobs()
+  {
+    TK_PROFILE_FUNCTION();
+
+    m_shadowRenderData.jobs.clear();
+    if (m_params.scene == nullptr)
+    {
+      return;
+    }
+
+    EntityRawPtrArray entities = ToEntityRawPtrArray(m_params.scene->GetEntities());
+
+    // CreateRenderJobs drops everything that is not drawable on its own; the cast shadow
+    // flag is the one filter it does not know about.
+    erase_if(entities,
+             [](Entity* ntt) -> bool
+             {
+               if (MeshComponent* mc = ntt->GetComponentFast<MeshComponent>())
+               {
+                 return !mc->GetCastShadowVal();
+               }
+
+               return false;
+             });
+
+    RenderJobProcessor::CreateRenderJobs(m_shadowRenderData.jobs, entities);
+    RenderJobProcessor::SeperateRenderData(m_shadowRenderData, true);
+  }
+
   void ShadowPass::RenderShadowCasters(Light* light, CameraPtr shadowCamera, CameraPtr cullCamera)
   {
     TK_PROFILE_FUNCTION();
@@ -318,26 +354,19 @@ namespace ToolKit
       cullCamera->SetFarClipVal(glm::distance(outerPoint, pos) + cullCamera->Far());
     }
 
-    // Create render jobs for shadow map generation.
-    RenderData renderData;
+    // The caster jobs were built once for the whole frame in PrepareShadowCasterJobs; a
+    // cascade only decides which of them it keeps. Rebuilding them here cost five full job
+    // passes a frame (four directional cascades plus the spot) for data that does not
+    // depend on the light.
+    Frustum frustum = ExtractFrustum(cullCamera->GetProjectViewMatrix(), false);
 
-    Frustum frustum            = ExtractFrustum(cullCamera->GetProjectViewMatrix(), false);
-    EntityRawPtrArray entities = m_params.scene->m_aabbTree.VolumeQuery(frustum);
+    const RenderJobArray& jobs = m_shadowRenderData.jobs;
+    const int opaqueBegin      = m_shadowRenderData.forwardOpaqueStartIndex;
+    const int maskedBegin      = m_shadowRenderData.forwardAlphaMaskedJobsStartIndex;
+    const int translucentBegin = m_shadowRenderData.forwardTranslucentStartIndex;
 
-    // Remove non shadow casters.
-    erase_if(entities,
-             [](Entity* ntt) -> bool
-             {
-               if (MeshComponent* mc = ntt->GetComponentFast<MeshComponent>())
-               {
-                 return !mc->GetCastShadowVal();
-               }
-
-               return false;
-             });
-
-    RenderJobProcessor::CreateRenderJobs(renderData.jobs, entities);
-    RenderJobProcessor::SeperateRenderData(renderData, true);
+    const auto isVisible = [&frustum](const RenderJob& job) -> bool
+    { return FrustumBoxIntersection(frustum, job.BoundingBox) != IntersectResult::Outside; };
 
     // Set material and program.
     bool orthogonalShadowMap   = lightType == Light::LightType::Directional;
@@ -365,19 +394,19 @@ namespace ToolKit
       }
     }
 
-    RenderJobItr forwardBegin       = renderData.GetForwardOpaqueBegin();
-    RenderJobItr forwardMaskedBegin = renderData.GetForwardAlphaMaskedBegin();
-    RenderJobItr translucentBegin   = renderData.GetForwardTranslucentBegin();
-
     // Refresh the param-dependent passive field on the pass-owned state before the loop:
     // depth clamp is on only for orthogonal (directional) shadow cameras.
-    m_passState.depthClampEnabled   = orthogonalShadowMap;
+    m_passState.depthClampEnabled = orthogonalShadowMap;
     renderer->SetPassState(m_passState);
 
     // Draw opaque.
-    for (RenderJobItr jobItr = forwardBegin; jobItr < forwardMaskedBegin; jobItr++)
+    for (int i = opaqueBegin; i < maskedBegin; i++)
     {
-      renderer->Render(*jobItr);
+      const RenderJob& job = jobs[i];
+      if (isVisible(job))
+      {
+        renderer->Render(job);
+      }
     }
 
     // Draw alpha masked.
@@ -386,9 +415,13 @@ namespace ToolKit
     m_program = gpuProgramManager->CreateProgram(vert, frag);
     renderer->BindProgram(m_program);
 
-    for (RenderJobItr jobItr = forwardMaskedBegin; jobItr < translucentBegin; jobItr++)
+    for (int i = maskedBegin; i < translucentBegin; i++)
     {
-      renderer->Render(*jobItr);
+      const RenderJob& job = jobs[i];
+      if (isVisible(job))
+      {
+        renderer->Render(job);
+      }
     }
 
     // Translucent shadow is not supported.

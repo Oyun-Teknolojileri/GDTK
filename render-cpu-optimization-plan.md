@@ -237,7 +237,7 @@ per-draw cleanups are kept as cheap complements, not as the main event.
 | Stage | Scope | Expected win | Status |
 |---|---|---|---|
 | 0 | `Utils/Bench`, Release baseline, profiler mode | measurement only | **done**, awaiting commit approval |
-| S1 | Shadow pass, cheap half: reuse the caster job list across the cascades instead of rebuilding it five times a frame | up to 2.3 ms (17%) | pending |
+| S1 | Shadow pass, cheap half: reuse the caster job list across the cascades instead of rebuilding it five times a frame | measured: 0.45 ms (5%) | **done**, awaiting commit approval |
 | S2 | Shadow pass, big half: batch the casters so four cascades plus the spot stop costing 5645 draws | up to 6 ms (53%) | pending |
 | F1 | Forward pass: same batching treatment for the ~1900 forward and prepass draws | up to 2.5 ms (20%) | pending |
 | A1 | Cache resolved sampler slots per program | measured at under 1%; do it while touching the code | pending |
@@ -383,6 +383,38 @@ draws.
 Also recorded: the run to run spread in Release is about 8 percent (9.2 vs 9.9 ms), wider
 than the 2 percent seen in Debug because the absolute time is smaller. A stage has to move
 the median beyond that to count.
+### 2026-10-19 - S1 done: one caster job list per frame instead of five
+
+`ShadowPass` rebuilt the whole caster job list for every shadow map: four directional
+cascades plus the spot, so five full `CreateRenderJobs` passes a frame over the same
+entities. The jobs do not depend on the light or the cascade - mesh, material, transform and
+world bounding box are identical - so they are now built once in `PrepareShadowCasterJobs()`
+and each cascade only filters them with a bounding box test against its own frustum.
+
+```
+before  renderCpuMs 8.51 - 8.80   draw calls 7570
+after   renderCpuMs 8.14 - 8.16   draw calls 7570
+```
+
+A 5 percent win, and the draw call count is byte for byte the same, which is the check that
+the drawn set did not change. The three runs after the change are tightly clustered
+(8.14 / 8.15 / 8.16) while the three before spread 8.51 - 8.80, so the 0.45 ms is real even
+though it sits under the 8 percent run to run spread.
+
+Less than the profiled 2.3 ms of `RenderShadowCasters` suggested, because the profiler
+inflates that function's exclusive time, and because the new per cascade filter is a linear
+scan over the whole job list (2025 jobs times five) where the old code used the AABB tree's
+hierarchical query. On a much larger scene that scan would grow linearly, which is the next
+thing to fix if this path is touched again.
+
+**Scaling measurement, taken while checking whether the win could show up at all**: render
+CPU is linear in draw count, 1.05 - 1.34 us per draw from 822 to 7456 draws, with no knee at
+the high end. So the frame is CPU bound, not GPU bound, and removing draw calls is the lever
+that scales. That is what makes S2 (batching) worth doing rather than speculative.
+
+The shadow pass is now 5.3 ms of the 9.1 ms profiled total (was 9.5), and 3.2 ms of what is
+left is the 5645 caster draws themselves - one `Renderer::Render` per caster per cascade.
+That is precisely what S2 removes.
 ### 2026-10-19 - the image diff question: one bug found and fixed, one source still open
 
 The reference diff grew from 0.0002 (first scene) to 4.5-15.7, with one run at 157. The
