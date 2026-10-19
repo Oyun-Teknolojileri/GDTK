@@ -129,6 +129,8 @@ namespace ToolKit
 
     renderer->CopyFrameBuffer(mainBuffer, nullptr, GraphicBitFields::ColorBits);
 
+    m_outputFramebuffer = mainBuffer;
+
     PostRender(renderer);
   }
 

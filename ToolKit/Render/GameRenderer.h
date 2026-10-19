@@ -40,6 +40,14 @@ namespace ToolKit
     void SetParams(const GameRendererParams& gameRendererParams);
     void Render(Renderer* renderer) override;
 
+    /**
+     * Framebuffer the last Render() composited into, before the engine copies it to the
+     * back buffer. Hosts that read the frame back (the benchmark, a thumbnail renderer)
+     * read this one: back buffer content is undefined when the window is occluded or
+     * covered, which reads back as a blank or stale frame.
+     */
+    FramebufferPtr GetOutputFramebuffer() const { return m_outputFramebuffer; }
+
    private:
     void PreRender(Renderer* renderer) override;
     void PostRender(Renderer* renderer) override;
@@ -53,6 +61,9 @@ namespace ToolKit
 
     RenderJobArray m_uiRenderJobs;
     RenderData m_uiRenderData;
+
+    /** Last framebuffer Render() composited into; see GetOutputFramebuffer(). */
+    FramebufferPtr m_outputFramebuffer = nullptr;
   };
 
 } // namespace ToolKit

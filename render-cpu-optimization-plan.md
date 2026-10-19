@@ -383,62 +383,55 @@ draws.
 Also recorded: the run to run spread in Release is about 8 percent (9.2 vs 9.9 ms), wider
 than the 2 percent seen in Debug because the absolute time is smaller. A stage has to move
 the median beyond that to count.
-### 2026-10-19 - known limitation: the frame is not bit identical between processes
+### 2026-10-19 - the image diff question: one bug found and fixed, one source still open
 
-Identical commands do not always produce an identical image. Six back to back runs against
-one reference gave, in order: 4.51, 15.65, 0.0002, 4.51, 15.65, 15.65.
+The reference diff grew from 0.0002 (first scene) to 4.5-15.7, with one run at 157. The
+honest account of what that is:
 
-The important part is the shape of that series: the values are **discrete and repeat**, while
-`drawCalls` at the capture frames is **exactly equal** in every run (7454 at frame 40, 7570
-median). Same work, same geometry, same culling, different shading result. So this is not
-timing noise in the measurement and it is not the bench; it is a resource that is built once
-per process and does not always come out the same.
+**A real bug in the bench, found and fixed.** The capture read the **back buffer**. A run
+during this investigation returned a purely white frame (35 KB PNG against 2.4 MB for a real
+one), which is what the 157 diff was: a blank capture compared against a real reference.
+Back buffer content is undefined while the window is occluded or covered, and the benchmark
+is often run with a terminal in front of it. `GameRenderer` now exposes the framebuffer it
+composited into (`GetOutputFramebuffer()`), and the bench reads that, which is the same
+reason the editor's thumbnail code reads the viewport's resolved texture instead of the
+screen.
 
-The two candidates, in order of likelihood:
+**Why the number is larger than it used to be**, independent of the bug:
 
-1. **The HDRI environment bake.** `Hdri::LoadOrGenerateIrradianceCaches` queues a render
-   task that generates the diffuse and specular environment maps on the first frame. The sky
-   and both local volumes initialize the same shared `Hdri`, and the bake is deferred, so
-   what the map ends up containing depends on when the task ran relative to the scene passes
-   of that first frame.
-2. **A driver shader variant.** GL reports "Vertex shader in program N is being recompiled
-   based on GL state, and was not found in the disk cache" on these runs, so the first
-   process compiles a variant that later processes take from the driver cache.
+1. The metric is a mean over the whole image, and the scene now has a large plaza of white,
+   fully rough, non-metallic floor. That surface multiplies its albedo by the irradiance, so
+   any difference in the environment lighting shows up over a huge, bright area. The first
+   scene was mostly a mirror floor, where the diffuse term barely participates and a change
+   in irradiance is almost invisible.
+2. There are now more things whose state can differ per process: two environment volumes
+   sharing the sky HDRI, a shadow casting spot, and a shadowed directional light.
 
-Until one of them is fixed the image check is a gross-break detector, not a pixel gate: the
-default tolerance is 20, which clears the observed band (0.15 to 15.7) and still trips on a
-missing pass or a black frame. Lower it as soon as the variance source is found. This is its
-own task, separate from the CPU work; the numbers the bench reports (draw calls, CPU ms) are
-unaffected by it.
+**Ruled out, each by experiment** (paired runs, same configuration):
 
-Engine facts learned while writing the harness, all confirmed by reading the code:
+| Suspect | Test | Result |
+|---|---|---|
+| Window occlusion / composition | `--hidden` | still differs, so not the window |
+| The bench's back buffer read | new capture path | fixed the blank frame, but some pairs still differ |
+| Local environment volumes | `--env 0` | still differs |
+| SSAO / tonemap | `--no-ssao`, `--no-tonemap` | pairs matched in those runs |
+| Driver shader cache | file count, size and newest timestamp around runs | no writes during a run, no correlation |
+| Disk caches in the repo | newest files under Resources and Config | nothing written |
+| Different work between runs | `drawCalls` per frame | exactly equal, so the same passes draw the same geometry |
 
-- `Camera::SetLens` takes the field of view in **radians** (`Camera.cpp` constructs with
-  `glm::radians(90.0f)`). Passing degrees produces a mirrored, wild projection that still
-  renders geometry, so it fails visually rather than loudly.
-- `ImageLoad` follows the engine's vertical flip switch, which exists for the GL texture
-  path. Anything comparing against a PNG on disk wants `ImageLoadTopDown`.
-- `SceneManager::SetCurrentScene(nullptr)` is not a release path, it dereferences the new
-  scene unconditionally. The current scene is released by `SceneManager::Uninit` inside
-  `Main::Uninit`; the host must only drop its own references before that.
-- `Utils/Bench` needs three roots set before `Main::PreInit`, all derived from the binary
-  location: `m_resourceRoot`, `m_cfgPath`, and `SetDefaultPath` for the engine's default
-  resources. Without the third one the engine cannot find its own default shaders.
-- `MaterialManager::GetCopyOfDefaultMaterial()` copies the default material **including its
-  diffuse texture**. Assigning a texture is therefore not optional when the intent is "no
-  texture": pass through `SetDiffuseTextureVal(nullptr)` or the new material silently
-  inherits the engine's default image.
-- The shadow cascade split with the shipped defaults is degenerate for a large view range:
-  `UseParallelSplitPartitioning` is on with `ShadowMinDistance = 1.0`, and `ShadowPass`
-  derives `minZ = near + ShadowMinDistance * (far - near)`, which puts minZ on the far
-  plane and makes the split range negative. The fragment shader also compares world space
-  view depth against `graphicConstants.cascadeDistances`, so those numbers have to be world
-  units rather than the normalized fractions the PSSM path writes. The bench sets manual
-  world unit cascades (15 / 35 / 80 / 220) for that reason. Worth a separate look in the
-  engine; it is not part of the CPU work.
-- Cast shadows themselves work. A temporary roof slab above the plaza produced a clear,
-  correct shadow, which is how the shadow path was verified before the final scene was
-  settled on a white, fully rough plaza floor with a 45 degree sun.
+So: same draw work, discrete and sticky image states that flip every few processes, and no
+file or cache behind it. The remaining candidate worth a test is the **HDRI bake**:
+`Hdri::LoadOrGenerateIrradianceCaches` runs as a render task, and the sky plus both volumes
+initialize the same texture, so what the prefiltered chain ends up containing can depend on
+GPU work that is not fully ordered against the first frames. The experiment is to render the
+same scene with a procedural `GradientSky` (`--gradient-sky`, not implemented yet): if the
+states collapse, the bake is the source.
+
+**Consequence for the workflow, decided rather than deferred:** the image check is a
+**diagnostic** until that is settled, not the acceptance gate. It still catches what matters
+most (a blank frame, a missing pass, a broken capture - the 157 and 20-plus cases). Stage
+acceptance uses the thing that is reproducible: `renderCpuMs` and `drawCalls` from the same
+tag pair, plus a visual read of the PNGs by the agent.
 ## 9. How to resume
 
 1. Read section 8 first, it says which stage is in flight.

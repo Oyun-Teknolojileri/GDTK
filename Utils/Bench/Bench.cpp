@@ -907,17 +907,22 @@ namespace ToolKit
       }
 
       /**
-       * Reads the final composited frame back from the default framebuffer.
+       * Reads the final composited frame back from the framebuffer the render path wrote.
        *
-       * GameRenderer ends by copying its resolved image onto the backbuffer, so
-       * that copy is the exact image the user would see. Reading it here avoids
-       * depending on which internal framebuffer the scene path resolved into.
+       * Not the back buffer: its content is undefined while the window is occluded or
+       * covered, and reading it then returns a blank or stale frame. That is exactly how
+       * the "run to run variance" in an earlier version of this tool was produced - a
+       * white capture against a real reference. GameRenderer exposes the framebuffer it
+       * composited into for this purpose.
        */
-      bool CaptureBackbuffer(Renderer* renderer, int width, int height, std::vector<ubyte>& pixels)
+      bool CaptureOutput(Renderer* renderer,
+                         const FramebufferPtr& output,
+                         int width,
+                         int height,
+                         std::vector<ubyte>& pixels)
       {
         pixels.assign(size_t(width) * size_t(height) * g_channels, 0);
-
-        renderer->SetFramebuffer(nullptr, GraphicBitFields::None);
+        renderer->SetFramebuffer(output, GraphicBitFields::None);
         renderer->GetBackend()->ReadPixels(0,
                                            0,
                                            width,
@@ -1543,7 +1548,7 @@ namespace ToolKit
             }
 
             std::vector<ubyte> pixels;
-            CaptureBackbuffer(renderer, opts.width, opts.height, pixels);
+            CaptureOutput(renderer, gameRenderer.GetOutputFramebuffer(), opts.width, opts.height, pixels);
 
             // The full resolution capture goes to the output folder for eyeballing.
             const String suffix  = "_frame" + std::to_string(frame);

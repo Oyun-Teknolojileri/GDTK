@@ -15,9 +15,9 @@
   "ssr": true,
   "tonemap": true,
   "gamma": true,
-  "renderCpuMs": {"median": 9.9077, "p95": 13.0933},
-  "frameCpuMs": {"median": 9.9945, "p95": 14.0235},
+  "renderCpuMs": {"median": 8.507, "p95": 11.5473},
+  "frameCpuMs": {"median": 8.5116, "p95": 12.2277},
   "drawCalls": 7570,
-  "captureHash": [16663223537042043579, 10498187010175121568, 13854770079575045970],
-  "worstImageDiff": 15.6505
+  "captureHash": [3812757030621899322, 17164027622403483636, 9445099834729042288],
+  "worstImageDiff": 0
 }
