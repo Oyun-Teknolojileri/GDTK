@@ -378,6 +378,9 @@ namespace ToolKit
     m_batchFirstInstance = firstInstance;
     m_batchInstanceCount = instanceCount;
 
+    Stats::IncrementStat(FrameStatType::InstancedBatch);
+    Stats::AddStat(FrameStatType::InstancedObject, instanceCount);
+
     Render(job);
 
     m_batchFirstInstance = 0;

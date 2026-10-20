@@ -404,6 +404,15 @@ inline uint64 ReadCycleCounter()
     snprintf(buffer, sizeof(buffer), "Total Draw Call: %llu\n", Stats::GetStatPrev(FrameStatType::DrawCall));
     stats += buffer;
 
+    // Batched draws and the objects they covered: without the second number the first one only
+    // says how many calls were instanced, not whether batching is worth anything.
+    snprintf(buffer,
+             sizeof(buffer),
+             "Instanced Batches: %llu (%llu objects)\n",
+             Stats::GetStatPrev(FrameStatType::InstancedBatch),
+             Stats::GetStatPrev(FrameStatType::InstancedObject));
+    stats += buffer;
+
     snprintf(buffer,
              sizeof(buffer),
              "Total Hardware Render Pass ~ %llu\n",

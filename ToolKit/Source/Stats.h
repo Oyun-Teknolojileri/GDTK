@@ -149,6 +149,10 @@ namespace ToolKit
     CameraUpdate,
     DirectionalLightUpdate,
     DrawCall,
+    /** Draws that were submitted instanced, one call for many objects. */
+    InstancedBatch,
+    /** Objects covered by those instanced draws. */
+    InstancedObject,
     RenderPass,
     Count
   };
