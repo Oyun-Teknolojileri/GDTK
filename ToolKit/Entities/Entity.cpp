@@ -154,6 +154,14 @@ namespace ToolKit
       }
     }
 
+    // A transform, mesh or component change reports itself through here, so this is where the
+    // scene's cache version moves. Consumers that build per object data from the scene compare
+    // against it instead of rebuilding every frame.
+    if (ScenePtr scene = m_scene.lock())
+    {
+      scene->BumpCacheVersion();
+    }
+
     m_spatialCachesInvalidated = true;
   }
 

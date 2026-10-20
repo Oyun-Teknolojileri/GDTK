@@ -295,6 +295,20 @@ namespace ToolKit
      */
     void UpdateEntityCaches(const EntityPtr& ntt, bool add);
 
+   public:
+    /**
+     * Monotonic counter of everything that can change what a render job contains.
+     *
+     * It moves when an entity is added or removed, and on spatial invalidation, which is how a
+     * transform, mesh or component change reports itself. Consumers that build per object data
+     * from the scene compare it against the version they built with instead of rebuilding every
+     * frame.
+     */
+    uint64 GetCacheVersion() const { return m_cacheVersion; }
+
+    /** Marks everything derived from the scene as stale. */
+    void BumpCacheVersion() { ++m_cacheVersion; }
+
    private:
     /**
      * Internally used only.
@@ -318,6 +332,10 @@ namespace ToolKit
     EntityPtrArray m_entities; //!< The entities in the scene.
     bool m_isPrefab;           //!< Whether or not the scene is a prefab.
     bool m_isLayer;            //!< Whether or not the scene is a 2D layer.
+
+   private:
+    /** See GetCacheVersion(). Bumped from here and from Entity::InvalidateSpatialCaches. */
+    uint64 m_cacheVersion = 0;
 
     mutable LightRawPtrArray m_lightCache;                         //!< Cached light entities which is added to scene.
     mutable LightRawPtrArray m_directionalLightCache;              //!< Cached directional lights in the scene.

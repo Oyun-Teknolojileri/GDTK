@@ -646,6 +646,9 @@ namespace ToolKit
 
   void Scene::UpdateEntityCaches(const EntityPtr& ntt, bool add)
   {
+    // The entity set changed, so anything derived from it has to be rebuilt.
+    BumpCacheVersion();
+
     if (SkyBasePtr sky = SafeCast<SkyBase>(ntt))
     {
       if (add)
