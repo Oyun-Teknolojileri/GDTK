@@ -78,3 +78,6 @@ BuildScripts/__pycache__/*
 /x64-Debug
 *.json
 /out
+
+# Build logs written by BuildScripts/build_fast.ps1
+/Temp/
