@@ -210,15 +210,10 @@ namespace ToolKit
     {
       TK_PROFILE_SCOPE("SetPassParams: create jobs");
 
-      uint64 lightSignature = uint64(lights.size());
-      for (Light* light : lights)
-      {
-        lightSignature = lightSignature * 1099511628211ull ^ uint64(reinterpret_cast<uintptr_t>(light));
-      }
-
+      // Only structural changes rebuild the cache. Light assignment is not part of it: which lights
+      // reach an object depends on where the lights are, so it is recomputed when they move below.
       const uint64 version = m_params.Scene->GetCacheVersion();
-      const bool rebuild   = m_jobCacheUnusable || version != m_jobCacheVersion ||
-                           lightSignature != m_jobCacheLightSignature;
+      const bool rebuild   = m_jobCacheUnusable || version != m_jobCacheVersion;
 
       if (rebuild)
       {
@@ -235,8 +230,7 @@ namespace ToolKit
                                              lights,
                                              environments);
 
-        m_jobCacheVersion        = version;
-        m_jobCacheLightSignature = lightSignature;
+        m_jobCacheVersion = version;
 
         // Entity to job range, so a frame only has to walk the entities the AABB tree reports
         // instead of testing every cached job against the frustum.
@@ -373,6 +367,10 @@ namespace ToolKit
           {
             continue;
           }
+
+          // Light and environment assignment needs no work here: an entity whose job range is
+          // rebuilt runs through CreateRenderJobs, which reassigns both. A light that moves
+          // invalidates the entities around it, so they arrive with a new generation.
 
           for (uint i = range->second.begin; i < range->second.end; i++)
           {

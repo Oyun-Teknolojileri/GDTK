@@ -1,4 +1,4 @@
-﻿# GDTK - Project Overview (Starting Point)
+# GDTK - Project Overview (Starting Point)
 
 > This file is the FIRST thing to read at the start of every GDTK working session.
 > It captures the high-level architecture so we can dive straight into specific tasks.
@@ -332,6 +332,30 @@ deferredJobsStartIndex   deferredAlphaMaskedJobsStartIndex   forwardOpaqueStartI
 ```
 
 `RenderJobProcessor` provides: `CreateRenderJobs`, `SeperateRenderData`, `AssignLight`, `AssignEnvironment`, `PreSortLights` (puts directional lights first), `SortByDistanceToCamera`, `SortByMaterial`, `CalculateStdev`/`IsOutlier`.
+
+#### Render job cache and invalidation
+
+Building the jobs was 82 percent of `ForwardSceneRenderPath::SetPassParams` (1.8 ms of 2.2 ms on
+the city scene), and nothing in a job depends on the camera: only which of them are visible does.
+So the path builds the jobs once for the whole scene and keeps them in `m_cachedJobs`, mapped per
+entity through `m_jobRanges` (`[begin, end)` plus the spatial generation the range was built at).
+
+Two counters decide the rebuild:
+
+- `Scene::GetCacheVersion()` moves when an entity is added or removed. A change rebuilds everything.
+- `Entity::GetSpatialGeneration()` moves on `InvalidateSpatialCaches`, i.e. on a transform, mesh or
+  component change. Only the dirty entities' ranges are rebuilt, in one `CreateRenderJobs` call; a
+  quarter of the scene moving, or a submesh count change, falls back to a full rebuild.
+
+Per object light and environment assignment is **not** cached with the job in a way that survives a
+light move: a point or spot light that invalidates invalidates the entities within its radius at
+the position it is at and the one it left (`Light::InvalidateSpatialCaches`), so the touched
+entities rebuild their jobs and `AssignLight`/`AssignEnvironment` runs again for them. Directional
+lights reach everything from any position, so they skip that walk.
+
+Scenes with a skinned or animated job disable the cache (`m_jobCacheUnusable`): those transforms
+move without a spatial invalidation, which no counter can see.
+
 
 ### 4.5 Renderer (Renderer.h)
 

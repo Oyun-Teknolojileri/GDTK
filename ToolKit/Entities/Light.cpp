@@ -106,6 +106,64 @@ namespace ToolKit
   {
     Super::InvalidateSpatialCaches();
     InvalidateCacheItem();
+
+    // A light that moves changes which objects it reaches. An object's light assignment is cached
+    // with its render job, so the objects around the light have to be invalidated with it, at the
+    // position it is now and at the one it left, or an object it walked away from keeps the light
+    // and an object it walked up to never receives it.
+    //
+    // A directional light reaches everything from any position, so there is nothing positional to
+    // invalidate and the walk is skipped. So is a re-entry through another light, which would
+    // otherwise ping pong between two lights that sit close together.
+    const LightType type = GetLightType();
+    if (type == LightType::Directional || m_invalidatingNeighbours || m_node == nullptr)
+    {
+      return;
+    }
+
+    ScenePtr scene = m_scene.lock();
+    if (scene == nullptr)
+    {
+      return;
+    }
+
+    float radius = 0.0f;
+    if (type == LightType::Point)
+    {
+      radius = static_cast<PointLight*>(this)->GetRadiusVal();
+    }
+    else
+    {
+      radius = static_cast<SpotLight*>(this)->GetRadiusVal();
+    }
+
+    if (radius <= 0.0f)
+    {
+      return;
+    }
+
+    m_invalidatingNeighbours = true;
+
+    const Vec3 now = m_node->GetTranslation(TransformationSpace::TS_WORLD);
+    BoundingBox query(now - Vec3(radius), now + Vec3(radius));
+    if (m_lastInvalidationPosition != Vec3(TK_FLT_MAX))
+    {
+      query = BoundingBox::Union(query,
+                                 BoundingBox(m_lastInvalidationPosition - Vec3(radius),
+                                             m_lastInvalidationPosition + Vec3(radius)));
+    }
+
+    EntityRawPtrArray touched = scene->m_aabbTree.VolumeQuery(query, false);
+    for (Entity* ntt : touched)
+    {
+      if (ntt != this && ntt->As<Light>() == nullptr)
+      {
+        ntt->InvalidateSpatialCaches();
+      }
+    }
+
+    m_lastInvalidationPosition = now;
+    m_invalidatingNeighbours    = false;
   }
 
   void Light::UpdateShadowCameraTransform()

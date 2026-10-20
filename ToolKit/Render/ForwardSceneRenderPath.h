@@ -105,9 +105,10 @@ namespace ToolKit
     RenderJobArray m_dirtyJobs;
     EntityRawPtrArray m_dirtyEntities;
 
-    /** Signature of the light set the cached jobs were built with, per object light lists depend
-     *  on it. */
-    uint64 m_jobCacheLightSignature = 0;
+    /** Signature of the positions the cached per object light and environment assignment was built
+     *  with. It moves when a light or an environment volume does, and only then is the assignment
+     *  recomputed: doing that every frame measured 3.5 ms on the city. */
+    uint64 m_assignmentSignature = ~0ull;
 
     /** Set when the scene contains anything whose transform moves without an invalidation, such
      *  as a skinned or animated job: the cache is then not used at all and jobs are built per

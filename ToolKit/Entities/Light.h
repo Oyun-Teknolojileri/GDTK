@@ -99,6 +99,14 @@ namespace ToolKit
 
     IntArray m_shadowAtlasLayers;  //!< Layer index in the shadow atlas for each cascade.
     Vec2Array m_shadowAtlasCoords; //!< Coordinates for each cascade in the corresponding layer.
+
+    /** World position the neighbourhood was last invalidated at. A light that moves changes which
+     *  objects it reaches, and their light assignment is cached with their render jobs, so the
+     *  entities around the old and the new position have to be invalidated. */
+    Vec3 m_lastInvalidationPosition = Vec3(TK_FLT_MAX);
+
+    /** Guards the neighbourhood invalidation against re-entry through another light. */
+    bool m_invalidatingNeighbours = false;
   };
 
   // DirectionalLightCacheItem
