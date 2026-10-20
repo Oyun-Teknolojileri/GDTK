@@ -153,8 +153,13 @@ namespace ToolKit
   {
     TK_PROFILE_FUNCTION();
 
-    Frustum frustum            = ExtractFrustum(m_params.Cam->GetProjectViewMatrix(), false);
-    EntityRawPtrArray entities = m_params.Scene->m_aabbTree.VolumeQuery(frustum);
+    Frustum frustum;
+    EntityRawPtrArray entities;
+    {
+      TK_PROFILE_SCOPE("SetPassParams: cull");
+      frustum  = ExtractFrustum(m_params.Cam->GetProjectViewMatrix(), false);
+      entities = m_params.Scene->m_aabbTree.VolumeQuery(frustum);
+    }
 
     if (m_params.grid != nullptr)
     {
@@ -200,14 +205,20 @@ namespace ToolKit
 
     int dirEndIndx                                   = RenderJobProcessor::PreSortLights(lights);
     const EnvironmentComponentPtrArray& environments = m_params.Scene->GetEnvironmentVolumes();
-    RenderJobProcessor::CreateRenderJobs(m_renderData.jobs, entities, false, dirEndIndx, lights, environments);
+    {
+      TK_PROFILE_SCOPE("SetPassParams: create jobs");
+      RenderJobProcessor::CreateRenderJobs(m_renderData.jobs, entities, false, dirEndIndx, lights, environments);
+    }
 
     m_shadowPass->m_params.scene      = m_params.Scene;
     m_shadowPass->m_params.viewCamera = m_params.Cam;
     m_shadowPass->m_params.lights     = lights;
 
-    RenderJobProcessor::SeperateRenderData(m_renderData, true);
-    RenderJobProcessor::SortByMaterial(m_renderData);
+    {
+      TK_PROFILE_SCOPE("SetPassParams: partition");
+      RenderJobProcessor::SeperateRenderData(m_renderData, true);
+      RenderJobProcessor::SortByMaterial(m_renderData);
+    }
 
     // Set CubeMapPass for sky. The sky is re-read unconditionally: `m_sky` lives as long as the
     // render path, so leaving it untouched would keep the IBL of a sky that the scene no longer
