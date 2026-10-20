@@ -85,7 +85,7 @@ namespace ToolKit
     const Vec4 lastClearColor = renderer->m_clearColor;
 
     // Clear every atlas layer to the VSM neutral value. Per-layer FB + LOAD_OP_CLEAR variant
-    // — each iteration opens an empty render pass for that layer's view, the GPU clears at RP
+    // - each iteration opens an empty render pass for that layer's view, the GPU clears at RP
     // entry (free with HiZ/HiS), no SetColorAttachment churn.
     for (int layer = 0; layer < ShadowAtlas::LayerCount; ++layer)
     {
@@ -172,6 +172,13 @@ namespace ToolKit
     InitShadowAtlas();
 
     erase_if(m_lights, [](Light* light) -> bool { return !light->HasValidShadowSlot(); });
+
+    // Build the caster jobs once for the whole frame; every light and cascade reuses them.
+    m_shadowRenderData.jobs.clear();
+    if (!m_lights.empty())
+    {
+      PrepareShadowCasterJobs();
+    }
 
     // Group lights by their first atlas layer and record layer switch indices.
     m_atlasLayerSwitchIndices.clear();
@@ -288,6 +295,140 @@ namespace ToolKit
     }
   }
 
+  void ShadowPass::PrepareShadowCasterJobs()
+  {
+    TK_PROFILE_FUNCTION();
+
+    m_shadowRenderData.jobs.clear();
+    if (m_params.scene == nullptr)
+    {
+      return;
+    }
+
+    EntityRawPtrArray entities = ToEntityRawPtrArray(m_params.scene->GetEntities());
+
+    // CreateRenderJobs drops everything that is not drawable on its own; the cast shadow
+    // flag is the one filter it does not know about.
+    erase_if(entities,
+             [](Entity* ntt) -> bool
+             {
+               if (MeshComponent* mc = ntt->GetComponentFast<MeshComponent>())
+               {
+                 return !mc->GetCastShadowVal();
+               }
+
+               return false;
+             });
+
+    RenderJobProcessor::CreateRenderJobs(m_shadowRenderData.jobs, entities);
+    RenderJobProcessor::SeperateRenderData(m_shadowRenderData, true);
+
+    BuildShadowBatches();
+  }
+
+  void ShadowPass::BuildShadowBatches()
+  {
+    TK_PROFILE_FUNCTION();
+
+    m_shadowBatches.clear();
+
+    RenderJobArray& jobs          = m_shadowRenderData.jobs;
+    const int opaqueBegin         = m_shadowRenderData.forwardOpaqueStartIndex;
+    const int maskedBegin         = m_shadowRenderData.forwardAlphaMaskedJobsStartIndex;
+    const int translucentBegin    = m_shadowRenderData.forwardTranslucentStartIndex;
+
+    // Equal casters have to become neighbours for a batch to be a contiguous range. Sorting
+    // happens inside each partition so the opaque / masked split SeperateRenderData made is
+    // preserved.
+    const auto batchLess = [](const RenderJob& a, const RenderJob& b) -> bool
+    {
+      if (a.Mesh != b.Mesh)
+      {
+        return a.Mesh < b.Mesh;
+      }
+      if (a.Material != b.Material)
+      {
+        return a.Material < b.Material;
+      }
+      // A mirrored transform flips the winding, so it needs its own batch.
+      return a.requireCullFlip < b.requireCullFlip;
+    };
+
+    std::sort(jobs.begin() + opaqueBegin, jobs.begin() + maskedBegin, batchLess);
+    std::sort(jobs.begin() + maskedBegin, jobs.begin() + translucentBegin, batchLess);
+
+    const auto addBatches = [this, &jobs](int begin, int end, bool masked) -> void
+    {
+      int i = begin;
+      while (i < end)
+      {
+        ShadowBatch batch;
+        batch.mesh          = jobs[i].Mesh;
+        batch.material      = jobs[i].Material;
+        batch.masked        = masked;
+        batch.firstJob      = i;
+        batch.bbox          = jobs[i].BoundingBox;
+
+        int j               = i + 1;
+        while (j < end && jobs[j].Mesh == batch.mesh && jobs[j].Material == batch.material &&
+               jobs[j].requireCullFlip == jobs[i].requireCullFlip)
+        {
+          batch.bbox.min = glm::min(batch.bbox.min, jobs[j].BoundingBox.min);
+          batch.bbox.max = glm::max(batch.bbox.max, jobs[j].BoundingBox.max);
+          j++;
+        }
+
+        batch.jobCount = j - i;
+        m_shadowBatches.push_back(batch);
+        i = j;
+      }
+    };
+
+    addBatches(opaqueBegin, maskedBegin, false);
+    addBatches(maskedBegin, translucentBegin, true);
+
+
+
+    // Instance table: one model matrix per job, four texels each, in the layout the shader
+    // include declares.
+    const int jobCount   = (int) jobs.size();
+    const int texelCount = jobCount * 4;
+    const int rows       = glm::max(1, (texelCount + InstanceTexWidth - 1) / InstanceTexWidth);
+
+    m_instanceData.assign(size_t(rows) * size_t(InstanceTexWidth) * 4, 0.0f);
+
+    for (int i = 0; i < jobCount; i++)
+    {
+      const Mat4& m = jobs[i].WorldTransform;
+      float* out    = m_instanceData.data() + size_t(i) * 16;
+      for (int c = 0; c < 4; c++)
+      {
+        out[c * 4 + 0] = m[c].x;
+        out[c * 4 + 1] = m[c].y;
+        out[c * 4 + 2] = m[c].z;
+        out[c * 4 + 3] = m[c].w;
+      }
+    }
+
+    if (m_instanceTable == nullptr || m_instanceTable->m_height != rows)
+    {
+      TextureSettings settings;
+      settings.Target         = GraphicTypes::Target2D;
+      settings.WarpS          = GraphicTypes::UVClampToEdge;
+      settings.WarpT          = GraphicTypes::UVClampToEdge;
+      settings.InternalFormat = GraphicTypes::FormatRGBA32F;
+      settings.Format         = GraphicTypes::FormatRGBA;
+      settings.Type           = GraphicTypes::TypeFloat;
+
+      m_instanceTable = MakeNewPtr<DataTexture>(InstanceTexWidth, rows, settings, "ShadowInstanceTable");
+      m_instanceTable->Init(m_instanceData.data());
+    }
+    else
+    {
+      m_instanceTable->Map(m_instanceData.data());
+    }
+  }
+
   void ShadowPass::RenderShadowCasters(Light* light, CameraPtr shadowCamera, CameraPtr cullCamera)
   {
     TK_PROFILE_FUNCTION();
@@ -318,26 +459,15 @@ namespace ToolKit
       cullCamera->SetFarClipVal(glm::distance(outerPoint, pos) + cullCamera->Far());
     }
 
-    // Create render jobs for shadow map generation.
-    RenderData renderData;
+    // The caster jobs were built once for the whole frame in PrepareShadowCasterJobs; a
+    // cascade only decides which of them it keeps. Rebuilding them here cost five full job
+    // passes a frame (four directional cascades plus the spot) for data that does not
+    // depend on the light.
+    Frustum frustum = ExtractFrustum(cullCamera->GetProjectViewMatrix(), false);
 
-    Frustum frustum            = ExtractFrustum(cullCamera->GetProjectViewMatrix(), false);
-    EntityRawPtrArray entities = m_params.scene->m_aabbTree.VolumeQuery(frustum);
 
-    // Remove non shadow casters.
-    erase_if(entities,
-             [](Entity* ntt) -> bool
-             {
-               if (MeshComponent* mc = ntt->GetComponentFast<MeshComponent>())
-               {
-                 return !mc->GetCastShadowVal();
-               }
-
-               return false;
-             });
-
-    RenderJobProcessor::CreateRenderJobs(renderData.jobs, entities);
-    RenderJobProcessor::SeperateRenderData(renderData, true);
+    // The instance table built for this frame; every caster reads its model matrix from it.
+    renderer->SetInstanceData(m_instanceTable);
 
     // Set material and program.
     bool orthogonalShadowMap   = lightType == Light::LightType::Directional;
@@ -346,6 +476,10 @@ namespace ToolKit
     frag->SetDefine("DrawAlphaMasked", "0");
     ShaderPtr vert = shadowMaterial->GetVertexShaderVal();
     vert->SetDefine("DrawAlphaMasked", "0");
+
+    // Casters are drawn as instanced batches, so the vertex shader takes the model matrix
+    // from the instance table instead of the per draw block.
+    vert->SetDefine("INSTANCE_TABLE", "1");
 
     GpuProgramManager* gpuProgramManager = renderer->GetGpuProgramManager();
     m_program                            = gpuProgramManager->CreateProgram(vert, frag);
@@ -365,20 +499,36 @@ namespace ToolKit
       }
     }
 
-    RenderJobItr forwardBegin       = renderData.GetForwardOpaqueBegin();
-    RenderJobItr forwardMaskedBegin = renderData.GetForwardAlphaMaskedBegin();
-    RenderJobItr translucentBegin   = renderData.GetForwardTranslucentBegin();
-
     // Refresh the param-dependent passive field on the pass-owned state before the loop:
     // depth clamp is on only for orthogonal (directional) shadow cameras.
-    m_passState.depthClampEnabled   = orthogonalShadowMap;
+    m_passState.depthClampEnabled = orthogonalShadowMap;
     renderer->SetPassState(m_passState);
 
-    // Draw opaque.
-    for (RenderJobItr jobItr = forwardBegin; jobItr < forwardMaskedBegin; jobItr++)
+    // One draw per batch. The batch bounding box is the union of its casters, which is what the
+    // cascade culls against: a shadow camera is orthographic, so geometry that falls outside it
+    // is clipped anyway and drawing a few extra casters of a batch costs nothing on screen.
+    const auto drawBatches = [this, &frustum, renderer](bool maskedPass) -> void
     {
-      renderer->Render(*jobItr);
-    }
+      for (const ShadowBatch& batch : m_shadowBatches)
+      {
+        if (batch.masked != maskedPass)
+        {
+          continue;
+        }
+
+        if (FrustumBoxIntersection(frustum, batch.bbox) == IntersectResult::Outside)
+        {
+          continue;
+        }
+
+        renderer->RenderBatch(m_shadowRenderData.jobs[batch.firstJob],
+                              (uint) batch.jobCount,
+                              (uint) batch.firstJob);
+      }
+    };
+
+    // Draw opaque.
+    drawBatches(false);
 
     // Draw alpha masked.
     frag->SetDefine("DrawAlphaMasked", "1");
@@ -386,10 +536,7 @@ namespace ToolKit
     m_program = gpuProgramManager->CreateProgram(vert, frag);
     renderer->BindProgram(m_program);
 
-    for (RenderJobItr jobItr = forwardMaskedBegin; jobItr < translucentBegin; jobItr++)
-    {
-      renderer->Render(*jobItr);
-    }
+    drawBatches(true);
 
     // Translucent shadow is not supported.
   }
@@ -660,13 +807,13 @@ namespace ToolKit
 
       m_shadowAtlas->ReconstructIfNeeded(shadowAtlasSize, shadowAtlasSize, &set);
 
-      // Scratch FB used only by BlurShadowAtlas — keeps the old "one FB + SetColorAttachment"
+      // Scratch FB used only by BlurShadowAtlas - keeps the old "one FB + SetColorAttachment"
       // pattern intact for the blur path (backend FB cache absorbs that churn).
       FramebufferSettings scratchSettings = {shadowAtlasSize, shadowAtlasSize, false, true, MsaaSampleCount::x0};
       m_shadowFramebuffer->ReconstructIfNeeded(scratchSettings);
       m_shadowFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_shadowAtlas, 0, 0);
 
-      // Per-layer FBs for the main render path. Share one depth attachment across all layers —
+      // Per-layer FBs for the main render path. Share one depth attachment across all layers -
       // the original design relied on a single shared depth (cleared once per layer group, then
       // partitioned by viewport across cascades). We extract it from m_shadowFramebuffer and
       // attach the same DepthTexturePtr to every per-layer FB.

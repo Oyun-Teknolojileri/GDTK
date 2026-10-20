@@ -81,6 +81,11 @@ TK_UBO_BINDING(2) uniform PerDrawData
 	vec4 _blendFrameData;
 	vec4 _skinParams;
 	vec4 _animBlendFactorAndPad;       // .x = animationBlendFactor
+
+	// .x = first instance index in the instance texture, .y = 1 when the draw is instanced.
+	// Instanced vertex shaders read the model matrix of their own instance from there, so a
+	// batch of N objects becomes one draw call.
+	ivec4 _instanceParams;
 } perDraw;
 
 #endif // PER_DRAW_DATA

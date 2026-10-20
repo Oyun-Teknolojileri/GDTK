@@ -524,7 +524,24 @@ namespace ToolKit
 
     BindVAO(meshGl->vaoId);
 
-    if (desc.indexed)
+    // instanceCount above one is an instanced draw. The per instance data comes from a
+    // texture fetched in the vertex shader, so the vertex input is untouched.
+    if (desc.instanceCount > 1)
+    {
+      if (desc.indexed)
+      {
+        glDrawElementsInstanced(ToGLDrawType(desc.type),
+                                desc.elementCount,
+                                GL_UNSIGNED_INT,
+                                nullptr,
+                                desc.instanceCount);
+      }
+      else
+      {
+        glDrawArraysInstanced(ToGLDrawType(desc.type), 0, desc.elementCount, desc.instanceCount);
+      }
+    }
+    else if (desc.indexed)
     {
       glDrawElements(ToGLDrawType(desc.type), desc.elementCount, GL_UNSIGNED_INT, nullptr);
     }

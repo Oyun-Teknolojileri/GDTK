@@ -5,6 +5,8 @@
     <define name = "Pancake" val="0,1" />
     <define name = "DrawAlphaMasked" val="0,1" />
 	<include name = "perDrawDataInc.shader" />
+	<include name = "instanceDataInc.shader" />
+	<define name = "INSTANCE_TABLE" val = "0,1" />
 	<source>
 	<!--
 	
@@ -36,7 +38,7 @@
         skin(skinnedVPos, skinnedVPos);
       }
 
-      vec4 clipPos = camera.projectionView * perDraw._model * skinnedVPos;
+      vec4 clipPos = camera.projectionView * INSTANCE_MODEL_MATRIX * skinnedVPos;
 
     #if Pancake
       z = clipPos.z / clipPos.w * 0.5 + 0.5;

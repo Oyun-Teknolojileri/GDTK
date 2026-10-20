@@ -179,6 +179,10 @@ namespace ToolKit
     Vec4 skinParams;
     /** .x = animationBlendFactor. Padded to vec4 for std140 alignment. */
     Vec4 animBlendFactorAndPad;
+    /** .x = first instance in the instance table, .y = 1 when the draw is instanced.
+        The vertex shader then reads the model matrix of instance i from the instance
+        texture at (firstInstance + gl_InstanceID) instead of from this block. */
+    IVec4 instanceParams;
   };
 
   typedef GpuBufferBase<PerDrawUboLayout> PerDrawUboBuffer;
@@ -419,6 +423,20 @@ namespace ToolKit
     void SetShadowAtlas(TexturePtr shadowAtlas);
 
     void Render(const struct RenderJob& job);
+
+    /**
+     * Draws a batch of instances that share mesh, material and program, differing only in
+     * their model matrix.
+     *
+     * The per instance matrices come from the instance table set with SetInstanceData, at
+     * [firstInstance, firstInstance + instanceCount). Skinning is not handled here: skinned
+     * casters stay on the per object path.
+     */
+    void RenderBatch(const struct RenderJob& job, uint instanceCount, uint firstInstance);
+
+    /** Per instance model matrices, read in the vertex stage by instanced shaders. */
+    void SetInstanceData(const TexturePtr& data);
+
     void Render(const RenderJobArray& jobs);
 
     void RenderWithProgramFromMaterial(const RenderJobArray& jobs);
@@ -558,6 +576,13 @@ namespace ToolKit
      * sample from a slot the standard material / SetDataTextures flow does not bind.
      * The owning pass must clear its entry when done. */
     std::unordered_map<String, TexturePtr> m_postPipelineTextures;
+
+    /** Instance table bound for a batched draw; see RenderBatch. */
+    TexturePtr m_instanceData      = nullptr;
+
+    /** .x = first instance of the current batch; 0 count means "not instanced". */
+    uint m_batchFirstInstance      = 0;
+    uint m_batchInstanceCount      = 1;
 
     std::array<int, RHIConstants::TextureSlotCount> m_textureSlots;
 

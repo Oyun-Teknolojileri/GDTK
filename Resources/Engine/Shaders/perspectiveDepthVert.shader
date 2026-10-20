@@ -4,6 +4,8 @@
 	<include name = "cameraDataInc.shader" />
 	<define name = "DrawAlphaMasked" val="0,1" />
 	<include name = "perDrawDataInc.shader" />
+	<include name = "instanceDataInc.shader" />
+	<define name = "INSTANCE_TABLE" val = "0,1" />
 	<source>
 	<!--
 	
@@ -33,7 +35,7 @@
 					skin(skinnedVPos, skinnedVPos);
 			}
 
-			vec4 worldPos = perDraw._model * skinnedVPos;
+			vec4 worldPos = INSTANCE_MODEL_MATRIX * skinnedVPos;
 
 			// Precompute inverse far plane on CPU if possible.
 			v_pos       = (camera.view * worldPos) * (1.0 / camera.farPlane);

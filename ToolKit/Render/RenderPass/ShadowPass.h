@@ -9,6 +9,9 @@
 
 #include "Pass.h"
 #include "ShadowAtlas.h"
+#include "Texture.h"
+
+#include <vector>
 
 namespace ToolKit
 {
@@ -35,11 +38,40 @@ namespace ToolKit
     RenderTargetPtr GetShadowAtlas();
 
    private:
+    /**
+     * A run of caster jobs that share mesh, material and cull side, drawn as one instanced
+     * draw. irstJob is also the index of the batch's first entry in the instance table,
+     * because the table holds one entry per job in job order.
+     */
+    struct ShadowBatch
+    {
+      Mesh* mesh         = nullptr;
+      Material* material = nullptr;
+      bool masked        = false;
+      int firstJob       = 0;
+      int jobCount       = 0;
+      BoundingBox bbox   = BoundingBox(Vec3(FLT_MAX), Vec3(-FLT_MAX));
+    };
+
+    /** Sorts the caster jobs into batches, packs the instance table and uploads it. */
+    void BuildShadowBatches();
+
     /** Perform all renderings to generate all shadow maps for the given light. */
     void RenderShadowMaps(Light* light);
 
     /** Renders all shadow casters to light's slot in the atlas. */
     void RenderShadowCasters(Light* light, CameraPtr shadowCamera, CameraPtr cullCamera);
+
+    /**
+     * Builds the caster job list for this frame, once.
+     *
+     * The jobs do not depend on the light or the cascade: mesh, material, transform and
+     * world bounding box are the same for every shadow map. Only the *set* of casters a
+     * cascade keeps differs, so the list is built once and each cascade is filtered with
+     * a bounding box test instead of rebuilding every job (five times a frame with four
+     * directional cascades plus a spot).
+     */
+    void PrepareShadowCasterJobs();
 
     /** Assigns shadow atlas slots to shadow casting lights using priority-based dynamic packing. */
     void PlaceShadowMapsToShadowAtlas(const LightRawPtrArray& lights);
@@ -89,6 +121,20 @@ namespace ToolKit
 
     /** Cached list of shadow casting lights with valid atlas slots, sorted by first atlas layer. */
     LightRawPtrArray m_lights;
+
+    /** Shadow caster jobs for this frame, partitioned opaque / alpha masked / translucent.
+     *  Built once in PrepareShadowCasterJobs and shared by every light and cascade. */
+    RenderData m_shadowRenderData;
+
+    /** Batched runs of m_shadowRenderData.jobs; see ShadowBatch. */
+    std::vector<ShadowBatch> m_shadowBatches;
+
+    /** Per instance model matrices, four texels per job, in job order. */
+    DataTexturePtr m_instanceTable = nullptr;
+    std::vector<float> m_instanceData;
+
+    /** Must match INSTANCE_TEX_WIDTH in instanceDataInc.shader. */
+    static constexpr int InstanceTexWidth = 256;
 
     /** Rotations for each face of a cubemap used for point light shadows. */
     Quaternion m_cubeMapRotations[6];

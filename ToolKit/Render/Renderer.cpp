@@ -327,6 +327,16 @@ namespace ToolKit
     SetMaterial(job.Material);
     SetDataTextures(job);
 
+    // Instance table for a batched draw. Only programs that declare the sampler get it, so
+    // the per object path is untouched.
+    if (m_instanceData != nullptr)
+    {
+      if (int slot = m_currentProgram->GetTextureSlot("s_instanceData"); slot != -1)
+      {
+        SetTexture((ubyte) slot, m_instanceData);
+      }
+    }
+
     // Apply post-pipeline explicit binding for utility passes. Must happen AFTER
     // SetMaterial / SetDataTextures so it can't be overwritten, but BEFORE Draw()
     // where FlushDescriptorState reads the state.
@@ -339,14 +349,15 @@ namespace ToolKit
     FeedUniforms(m_currentProgram, job);
 
     const Mesh* mesh = job.Mesh;
-    DrawDesc desc;
-    desc.mesh         = mesh;
-    desc.vertexLayout = mesh->m_vertexLayout;
-    desc.indexed      = mesh->m_indexCount != 0;
-    desc.elementCount = desc.indexed ? mesh->m_indexCount : mesh->m_vertexCount;
-    desc.type         = state.drawType;
-    m_backend->Draw(desc);
 
+    DrawDesc desc;
+    desc.mesh          = mesh;
+    desc.vertexLayout  = mesh->m_vertexLayout;
+    desc.indexed       = mesh->m_indexCount != 0;
+    desc.elementCount  = desc.indexed ? mesh->m_indexCount : mesh->m_vertexCount;
+    desc.type          = state.drawType;
+    desc.instanceCount = glm::max(1u, m_batchInstanceCount);
+    m_backend->Draw(desc);
     if (m_framebuffer)
     {
       m_drawnFrameBufferStats[m_framebuffer->GetIdVal()]++;
@@ -355,6 +366,25 @@ namespace ToolKit
     Stats::IncrementStat(FrameStatType::DrawCall);
   }
 
+  void Renderer::RenderBatch(const RenderJob& job, uint instanceCount, uint firstInstance)
+  {
+    TK_PROFILE_FUNCTION();
+
+    if (instanceCount == 0)
+    {
+      return;
+    }
+
+    m_batchFirstInstance = firstInstance;
+    m_batchInstanceCount = instanceCount;
+
+    Render(job);
+
+    m_batchFirstInstance = 0;
+    m_batchInstanceCount = 1;
+  }
+
+  void Renderer::SetInstanceData(const TexturePtr& data) { m_instanceData = data; }
   void Renderer::RenderWithProgramFromMaterial(const RenderJobArray& jobs)
   {
     TK_PROFILE_FUNCTION();
@@ -1137,7 +1167,13 @@ namespace ToolKit
       }
     }
     ubo.skinParams            = skinParams;
+    // Instance base for a batched draw. A non instanced draw leaves the flag at zero and the
+    // shader takes the model matrix from this block.
     ubo.animBlendFactorAndPad = Vec4(job.animData.animationBlendFactor, 0.0f, 0.0f, 0.0f);
+    ubo.instanceParams        = IVec4((int) m_batchFirstInstance,
+                               m_batchInstanceCount > 0 ? 1 : 0,
+                               0,
+                               0);
 
     m_globalGpuBuffers->perDrawBuffer.Invalidate();
     m_globalGpuBuffers->perDrawBuffer.Map();
