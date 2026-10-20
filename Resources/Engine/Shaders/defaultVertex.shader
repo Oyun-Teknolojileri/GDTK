@@ -5,6 +5,8 @@
     <include name = "materialCacheInc.shader" />
     <include name = "drawDataInc.shader" />
     <include name = "perDrawDataInc.shader" />
+    <include name = "instanceDataInc.shader" />
+    <define name = "INSTANCE_TABLE" val = "0,1" />
 	<source>
 	<!--
   
@@ -47,7 +49,7 @@
 	  // World-space normal / TBN
 		if (normalMapInUse)
 		{
-			mat3 normalMatrix = mat3(perDraw._inverseTransposeModel);
+			mat3 normalMatrix = mat3(INSTANCE_NORMAL_MATRIX);
 
 			vec3 wN = normalize(normalMatrix * N);
 			vec3 wT = normalize(normalMatrix * T);
@@ -57,10 +59,10 @@
 		}
 	    else
 	    {
-		    v_worldNormal = normalize(mat3(perDraw._inverseTransposeModel) * N);
+		    v_worldNormal = normalize(mat3(INSTANCE_NORMAL_MATRIX) * N);
 	    }
 
-      vec4 worldPos = perDraw._model * localPos;
+      vec4 worldPos = INSTANCE_MODEL_MATRIX * localPos;
       v_worldPos = worldPos.xyz;
       v_viewDepth = (camera.view * worldPos).z;
       v_texture = vTexture;

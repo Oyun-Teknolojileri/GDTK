@@ -133,8 +133,9 @@ namespace ToolKit
     DataTexturePtr m_instanceTable = nullptr;
     std::vector<float> m_instanceData;
 
-    /** Must match INSTANCE_TEX_WIDTH in instanceDataInc.shader. */
-    static constexpr int InstanceTexWidth = 256;
+    /** Must match INSTANCE_TEX_WIDTH and INSTANCE_TEXELS_PER_ITEM in instanceDataInc.shader. */
+    static constexpr int InstanceTexWidth       = 256;
+    static constexpr int InstanceTexelsPerItem  = 8;
 
     /** Rotations for each face of a cubemap used for point light shadows. */
     Quaternion m_cubeMapRotations[6];

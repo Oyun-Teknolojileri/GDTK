@@ -8,6 +8,9 @@
 #pragma once
 
 #include "Pass.h"
+#include "Texture.h"
+
+#include <vector>
 
 #include <functional>
 
@@ -48,6 +51,18 @@ namespace ToolKit
     void RenderOpaque(RenderData* renderData);
     void RenderTranslucent(RenderData* renderData);
 
+    /**
+     * Draws a run of opaque jobs as instanced batches.
+     *
+     * Jobs are already sorted by material, so consecutive jobs with the same mesh, material,
+     * light set and environment volumes become one draw with their transforms in the instance
+     * table. Everything else falls back to the per object path.
+     */
+    void RenderOpaqueBatches(RenderData* renderData,
+                             RenderJobItr begin,
+                             RenderJobItr end,
+                             GpuProgramPtr defaultGpuProgram);
+
     void RenderOpaqueHelper(RenderData* renderData,
                             RenderJobItr begin,
                             RenderJobItr end,
@@ -68,6 +83,17 @@ namespace ToolKit
 
     /** Pass-owned passive RenderState for the translucent path. */
     RenderState m_translucentPassState;
+
+    /** Instanced variant of the forward program, built from a copy of the config material's
+     *  vertex shader with INSTANCE_TABLE set, and the table its transforms live in. */
+    GpuProgramPtr m_instancedProgram  = nullptr;
+    ShaderPtr m_instancedVertexShader = nullptr;
+    DataTexturePtr m_instanceTable    = nullptr;
+    std::vector<float> m_instanceData;
+
+    /** Must match INSTANCE_TEX_WIDTH and INSTANCE_TEXELS_PER_ITEM in instanceDataInc.shader. */
+    static constexpr int InstanceTexWidth      = 256;
+    static constexpr int InstanceTexelsPerItem = 8;
   };
 
   typedef std::shared_ptr<ForwardRenderPass> ForwardRenderPassPtr;

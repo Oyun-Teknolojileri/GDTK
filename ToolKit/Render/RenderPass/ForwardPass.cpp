@@ -233,6 +233,13 @@ namespace ToolKit
 
     renderer->SetPassState(m_opaquePassState);
 
+    // Batching needs the instanced program; without it the pass falls back to the per object path.
+    if (m_instancedProgram != nullptr)
+    {
+      RenderOpaqueBatches(renderData, begin, end, defaultGpuProgram);
+      return;
+    }
+
     for (RenderJobItr job = begin; job != end; job++)
     {
       if (job->Material->IsShaderMaterial())
@@ -243,6 +250,166 @@ namespace ToolKit
       {
         renderer->BindProgram(defaultGpuProgram);
         renderer->Render(*job);
+      }
+    }
+  }
+
+  namespace
+  {
+    /** Two jobs can share a draw when nothing but their transform differs. */
+    bool CanShareDraw(const RenderJob& a, const RenderJob& b)
+    {
+      if (a.Mesh != b.Mesh || a.Material != b.Material)
+      {
+        return false;
+      }
+      if (a.requireCullFlip != b.requireCullFlip)
+      {
+        return false;
+      }
+      if (a.EnvironmentVolume != b.EnvironmentVolume ||
+          a.SecondaryEnvironmentVolume != b.SecondaryEnvironmentVolume)
+      {
+        return false;
+      }
+      if (a.Material->IsShaderMaterial() || a.Mesh->IsSkinned())
+      {
+        return false;
+      }
+      if (a.lights.size() != b.lights.size())
+      {
+        return false;
+      }
+      for (size_t i = 0; i < a.lights.size(); i++)
+      {
+        if (a.lights[i] != b.lights[i])
+        {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    struct JobRun
+    {
+      int begin = 0;
+      int count = 0;
+    };
+  } // namespace
+
+  void ForwardRenderPass::RenderOpaqueBatches(RenderData* renderData,
+                                               RenderJobItr begin,
+                                               RenderJobItr end,
+                                               GpuProgramPtr defaultGpuProgram)
+  {
+    TK_PROFILE_FUNCTION();
+
+    Renderer* renderer    = GetRenderer();
+    RenderJobArray& jobs = renderData->jobs;
+    const int first      = int(begin - jobs.begin());
+    const int last       = int(end - jobs.begin());
+
+    // Runs of consecutive jobs that can share a draw. The jobs are sorted by material, so these
+    // runs are long for the usual case of many objects of one type.
+    std::vector<JobRun> runs;
+    std::vector<JobRun> singles;
+    int instanceCount = 0;
+    for (int i = first; i < last;)
+    {
+      int j = i + 1;
+      while (j < last && CanShareDraw(jobs[i], jobs[j]))
+      {
+        j++;
+      }
+
+      if (j - i > 1)
+      {
+        runs.push_back({i, j - i});
+        instanceCount += j - i;
+      }
+      else
+      {
+        singles.push_back({i, 1});
+      }
+      i = j;
+    }
+
+    // Pack every batched transform first, then upload once: the table is one texture for the
+    // whole pass, not one per run.
+
+    if (instanceCount > 0)
+    {
+      const int texelCount = instanceCount * InstanceTexelsPerItem;
+      const int rows       = glm::max(1, (texelCount + InstanceTexWidth - 1) / InstanceTexWidth);
+      m_instanceData.assign(size_t(rows) * size_t(InstanceTexWidth) * 4, 0.0f);
+
+      int instance = 0;
+      for (const JobRun& run : runs)
+      {
+        for (int k = 0; k < run.count; k++)
+        {
+          const Mat4& m     = jobs[run.begin + k].WorldTransform;
+          const Mat4 normal = glm::transpose(glm::inverse(m));
+          float* out        = m_instanceData.data() + size_t(instance) * InstanceTexelsPerItem * 4;
+
+          for (int c = 0; c < 4; c++)
+          {
+            out[c * 4 + 0]      = m[c].x;
+            out[c * 4 + 1]      = m[c].y;
+            out[c * 4 + 2]      = m[c].z;
+            out[c * 4 + 3]      = m[c].w;
+            out[16 + c * 4 + 0] = normal[c].x;
+            out[16 + c * 4 + 1] = normal[c].y;
+            out[16 + c * 4 + 2] = normal[c].z;
+            out[16 + c * 4 + 3] = normal[c].w;
+          }
+
+          instance++;
+        }
+      }
+
+      if (m_instanceTable == nullptr || m_instanceTable->m_height != rows)
+      {
+        TextureSettings settings;
+        settings.Target         = GraphicTypes::Target2D;
+        settings.WarpS          = GraphicTypes::UVClampToEdge;
+        settings.WarpT          = GraphicTypes::UVClampToEdge;
+        settings.InternalFormat = GraphicTypes::FormatRGBA32F;
+        settings.Format         = GraphicTypes::FormatRGBA;
+        settings.Type           = GraphicTypes::TypeFloat;
+
+        m_instanceTable = MakeNewPtr<DataTexture>(InstanceTexWidth, rows, settings, "ForwardInstanceTable");
+        m_instanceTable->Init(m_instanceData.data());
+      }
+      else
+      {
+        m_instanceTable->Map(m_instanceData.data());
+      }
+
+      renderer->SetInstanceData(m_instanceTable);
+      renderer->BindProgram(m_instancedProgram);
+
+      int firstInstance = 0;
+      for (const JobRun& run : runs)
+      {
+        renderer->RenderBatch(jobs[run.begin], (uint) run.count, (uint) firstInstance);
+        firstInstance += run.count;
+      }
+
+      renderer->SetInstanceData(nullptr);
+    }
+
+    for (const JobRun& single : singles)
+    {
+      RenderJob& job = jobs[single.begin];
+      if (job.Material->IsShaderMaterial())
+      {
+        renderer->RenderWithProgramFromMaterial(job);
+      }
+      else
+      {
+        renderer->BindProgram(defaultGpuProgram);
+        renderer->Render(job);
       }
     }
   }
@@ -260,6 +427,16 @@ namespace ToolKit
     }
 
     Renderer* renderer = GetRenderer();
+
+    // The instanced variant differs only in the vertex shader define. The define is flipped on the
+    // shared shader, the program is created (and cached under that state), and the define is put
+    // back so every other user still builds the per object program. This is the same pattern the
+    // fragment defines below already use for ShadowPCF and ShadingMode.
+    ShaderPtr vert = m_programConfigMat->GetVertexShaderVal();
+    vert->SetDefine("INSTANCE_TABLE", "1");
+    m_instancedProgram = renderer->GetGpuProgramManager()->CreateProgram(vert, frag);
+    vert->SetDefine("INSTANCE_TABLE", "0");
+
     switch (renderer->m_shadingMode)
     {
       case ShadingMode::Lighting:

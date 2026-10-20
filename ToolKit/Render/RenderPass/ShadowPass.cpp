@@ -389,24 +389,31 @@ namespace ToolKit
 
 
 
-    // Instance table: one model matrix per job, four texels each, in the layout the shader
-    // include declares.
+    // Instance table: eight texels per job, the model matrix and its inverse transpose, in the
+    // layout the shader include declares. The depth shaders only need the model matrix, but the
+    // stride is shared with the forward pass so there is one layout to keep right.
     const int jobCount   = (int) jobs.size();
-    const int texelCount = jobCount * 4;
+    const int texelCount = jobCount * InstanceTexelsPerItem;
     const int rows       = glm::max(1, (texelCount + InstanceTexWidth - 1) / InstanceTexWidth);
 
     m_instanceData.assign(size_t(rows) * size_t(InstanceTexWidth) * 4, 0.0f);
 
     for (int i = 0; i < jobCount; i++)
     {
-      const Mat4& m = jobs[i].WorldTransform;
-      float* out    = m_instanceData.data() + size_t(i) * 16;
+      const Mat4& m       = jobs[i].WorldTransform;
+      const Mat4 normal   = glm::transpose(glm::inverse(m));
+      float* out          = m_instanceData.data() + size_t(i) * InstanceTexelsPerItem * 4;
+
       for (int c = 0; c < 4; c++)
       {
-        out[c * 4 + 0] = m[c].x;
-        out[c * 4 + 1] = m[c].y;
-        out[c * 4 + 2] = m[c].z;
-        out[c * 4 + 3] = m[c].w;
+        out[c * 4 + 0]      = m[c].x;
+        out[c * 4 + 1]      = m[c].y;
+        out[c * 4 + 2]      = m[c].z;
+        out[c * 4 + 3]      = m[c].w;
+        out[16 + c * 4 + 0] = normal[c].x;
+        out[16 + c * 4 + 1] = normal[c].y;
+        out[16 + c * 4 + 2] = normal[c].z;
+        out[16 + c * 4 + 3] = normal[c].w;
       }
     }
 
