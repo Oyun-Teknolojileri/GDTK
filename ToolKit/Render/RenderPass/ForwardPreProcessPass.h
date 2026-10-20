@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
@@ -40,6 +40,25 @@ namespace ToolKit
     /** Pass-owned passive RenderState. Forces depth test/write on and FuncLess so a material
      *  with depth-write off cannot corrupt the prepass normal/depth output. */
     RenderState m_passState;
+
+   private:
+    /**
+     * Draws a run of jobs as instanced batches.
+     *
+     * This pass writes normals and linear depth only, so the material does not take part in the
+     * draw: for opaque jobs the batch key is just the mesh and the cull side, which is what lets
+     * a few hundred draws replace thousands.
+     */
+    void RenderBatches(RenderJobItr begin, RenderJobItr end, bool masked);
+
+    /** Instanced variant of the prepass program and the table its transforms live in. */
+    GpuProgramPtr m_instancedProgram = nullptr;
+    DataTexturePtr m_instanceTable    = nullptr;
+    std::vector<float> m_instanceData;
+
+    /** Must match INSTANCE_TEX_WIDTH and INSTANCE_TEXELS_PER_ITEM in instanceDataInc.shader. */
+    static constexpr int InstanceTexWidth      = 256;
+    static constexpr int InstanceTexelsPerItem = 8;
   };
 
   typedef std::shared_ptr<ForwardPreProcessPass> ForwardPreProcessPassPtr;

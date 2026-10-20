@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
@@ -9,8 +9,11 @@
 
 #include "ForwardPreProcessPass.h"
 
+#include "Mesh.h"
 #include "Shader.h"
 #include "Stats.h"
+
+#include <algorithm>
 
 #include "DebugNew.h"
 
@@ -95,12 +98,26 @@ namespace ToolKit
     GpuProgramManager* gpuProgramManager = renderer->GetGpuProgramManager();
     m_program                            = gpuProgramManager->CreateProgram(vert, frag);
 
+    // Instanced variant of the same program. The define is flipped on the shared shader only for
+    // the duration of the program build, then put back for everyone else, which is the same
+    // pattern the forward pass uses.
+    vert->SetDefine("INSTANCE_TABLE", "1");
+    m_instancedProgram = gpuProgramManager->CreateProgram(vert, frag);
+    vert->SetDefine("INSTANCE_TABLE", "0");
+
     renderer->SetPassState(m_passState);
     renderer->BindProgram(m_program);
 
-    for (RenderJobItr job = begin; job != end; job++)
+    if (m_instancedProgram != nullptr)
     {
-      renderer->Render(*job);
+      RenderBatches(begin, end, false);
+    }
+    else
+    {
+      for (RenderJobItr job = begin; job != end; job++)
+      {
+        renderer->Render(*job);
+      }
     }
 
     begin = m_params.renderData->GetForwardAlphaMaskedBegin();
@@ -110,9 +127,159 @@ namespace ToolKit
     m_program = gpuProgramManager->CreateProgram(vert, frag);
     renderer->BindProgram(m_program);
 
-    for (RenderJobItr job = begin; job != end; job++)
+    if (m_instancedProgram != nullptr)
     {
-      renderer->Render(*job);
+      // Alpha masked jobs sample their own material, so they can only share a draw when the
+      // material matches too.
+      RenderBatches(begin, end, true);
+    }
+    else
+    {
+      for (RenderJobItr job = begin; job != end; job++)
+      {
+        renderer->Render(*job);
+      }
+    }
+  }
+
+  namespace
+  {
+    /** A prepass draw only needs the geometry, the transform and the cull side. */
+    bool PreProcessCanShare(const RenderJob& a, const RenderJob& b, bool masked)
+    {
+      if (a.Mesh != b.Mesh || a.requireCullFlip != b.requireCullFlip || a.Mesh->IsSkinned())
+      {
+        return false;
+      }
+
+      // An alpha masked job reads its alpha mask from the material, so the material has to match.
+      return !masked || a.Material == b.Material;
+    }
+
+    struct PreProcessRun
+    {
+      int begin = 0;
+      int count = 0;
+    };
+  } // namespace
+
+  void ForwardPreProcessPass::RenderBatches(RenderJobItr begin, RenderJobItr end, bool masked)
+  {
+    TK_PROFILE_FUNCTION();
+
+    Renderer* renderer   = GetRenderer();
+    RenderJobArray& jobs = m_params.renderData->jobs;
+    const int first      = int(begin - jobs.begin());
+    const int last       = int(end - jobs.begin());
+
+    std::vector<PreProcessRun> runs;
+    for (int i = first; i < last;)
+    {
+      int j = i + 1;
+      while (j < last && PreProcessCanShare(jobs[i], jobs[j], masked))
+      {
+        j++;
+      }
+
+      if (j - i > 1)
+      {
+        runs.push_back({i, j - i});
+      }
+      i = j;
+    }
+
+    if (runs.empty())
+    {
+      for (int i = first; i < last; i++)
+      {
+        renderer->Render(jobs[i]);
+      }
+      return;
+    }
+
+    int instanceCount = 0;
+    for (const PreProcessRun& run : runs)
+    {
+      instanceCount += run.count;
+    }
+
+    const int texelCount = instanceCount * InstanceTexelsPerItem;
+    const int rows       = glm::max(1, (texelCount + InstanceTexWidth - 1) / InstanceTexWidth);
+    m_instanceData.assign(size_t(rows) * size_t(InstanceTexWidth) * 4, 0.0f);
+
+    int instance = 0;
+    for (const PreProcessRun& run : runs)
+    {
+      for (int k = 0; k < run.count; k++)
+      {
+        const Mat4& m     = jobs[run.begin + k].WorldTransform;
+        const Mat4 normal = glm::transpose(glm::inverse(m));
+        float* out        = m_instanceData.data() + size_t(instance) * InstanceTexelsPerItem * 4;
+
+        for (int c = 0; c < 4; c++)
+        {
+          out[c * 4 + 0]      = m[c].x;
+          out[c * 4 + 1]      = m[c].y;
+          out[c * 4 + 2]      = m[c].z;
+          out[c * 4 + 3]      = m[c].w;
+          out[16 + c * 4 + 0] = normal[c].x;
+          out[16 + c * 4 + 1] = normal[c].y;
+          out[16 + c * 4 + 2] = normal[c].z;
+          out[16 + c * 4 + 3] = normal[c].w;
+        }
+
+        instance++;
+      }
+    }
+
+    if (m_instanceTable == nullptr || m_instanceTable->m_height != rows)
+    {
+      TextureSettings settings;
+      settings.Target         = GraphicTypes::Target2D;
+      settings.WarpS          = GraphicTypes::UVClampToEdge;
+      settings.WarpT          = GraphicTypes::UVClampToEdge;
+      settings.InternalFormat = GraphicTypes::FormatRGBA32F;
+      settings.Format         = GraphicTypes::FormatRGBA;
+      settings.Type           = GraphicTypes::TypeFloat;
+
+      m_instanceTable = MakeNewPtr<DataTexture>(InstanceTexWidth, rows, settings, "PreProcessInstanceTable");
+      m_instanceTable->Init(m_instanceData.data());
+    }
+    else
+    {
+      m_instanceTable->Map(m_instanceData.data());
+    }
+
+    renderer->SetInstanceData(m_instanceTable);
+    renderer->BindProgram(m_instancedProgram);
+
+    int firstInstance = 0;
+    for (const PreProcessRun& run : runs)
+    {
+      renderer->RenderBatch(jobs[run.begin], (uint) run.count, (uint) firstInstance);
+      firstInstance += run.count;
+    }
+
+    renderer->SetInstanceData(nullptr);
+
+    // Jobs that could not join a run are drawn per object, so the per object program has to be
+    // bound again: the instanced one would read a table that is no longer there.
+    renderer->BindProgram(m_program);
+
+    // Jobs that could not join a run still have to be drawn.
+    for (int i = first; i < last;)
+    {
+      int j = i + 1;
+      while (j < last && PreProcessCanShare(jobs[i], jobs[j], masked))
+      {
+        j++;
+      }
+
+      if (j - i == 1)
+      {
+        renderer->Render(jobs[i]);
+      }
+      i = j;
     }
   }
 
