@@ -397,6 +397,7 @@ namespace ToolKit
     const int rows       = glm::max(1, (texelCount + InstanceTexWidth - 1) / InstanceTexWidth);
 
     m_instanceData.assign(size_t(rows) * size_t(InstanceTexWidth) * 4, 0.0f);
+    m_cascadeInstanceData.assign(m_instanceData.size(), 0.0f);
 
     for (int i = 0; i < jobCount; i++)
     {
@@ -436,6 +437,17 @@ namespace ToolKit
     }
   }
 
+  namespace
+  {
+    /** One instanced draw: which job supplies the state, and where its instances start. */
+    struct ShadowDrawRun
+    {
+      int firstJob      = 0;
+      int firstInstance = 0;
+      int count         = 0;
+    };
+  } // namespace
+
   void ShadowPass::RenderShadowCasters(Light* light, CameraPtr shadowCamera, CameraPtr cullCamera)
   {
     TK_PROFILE_FUNCTION();
@@ -473,8 +485,6 @@ namespace ToolKit
     Frustum frustum = ExtractFrustum(cullCamera->GetProjectViewMatrix(), false);
 
 
-    // The instance table built for this frame; every caster reads its model matrix from it.
-    renderer->SetInstanceData(m_instanceTable);
 
     // Set material and program.
     bool orthogonalShadowMap   = lightType == Light::LightType::Directional;
@@ -511,11 +521,22 @@ namespace ToolKit
     m_passState.depthClampEnabled = orthogonalShadowMap;
     renderer->SetPassState(m_passState);
 
-    // One draw per batch. The batch bounding box is the union of its casters, which is what the
-    // cascade culls against: a shadow camera is orthographic, so geometry that falls outside it
-    // is clipped anyway and drawing a few extra casters of a batch costs nothing on screen.
-    const auto drawBatches = [this, &frustum, renderer](bool maskedPass) -> void
+    // One draw per batch, but only the casters of that batch which survive this cascade are packed
+    // into the instance table. Culling on the batch bounding box instead drew whole batches whose
+    // union box merely touched the frustum, which was about seven times the geometry the per object
+    // path submitted.
+    std::vector<ShadowDrawRun> runs;
+
+    const auto drawBatches = [this, &frustum, renderer, &runs](bool maskedPass) -> void
     {
+      runs.clear();
+
+      const RenderJobArray& jobs = m_shadowRenderData.jobs;
+      std::fill(m_cascadeInstanceData.begin(), m_cascadeInstanceData.end(), 0.0f);
+
+      const size_t itemFloats = size_t(InstanceTexelsPerItem) * 4;
+      int instance            = 0;
+
       for (const ShadowBatch& batch : m_shadowBatches)
       {
         if (batch.masked != maskedPass)
@@ -523,14 +544,51 @@ namespace ToolKit
           continue;
         }
 
-        if (FrustumBoxIntersection(frustum, batch.bbox) == IntersectResult::Outside)
+        const IntersectResult batchHit = FrustumBoxIntersection(frustum, batch.bbox);
+        if (batchHit == IntersectResult::Outside)
         {
           continue;
         }
 
-        renderer->RenderBatch(m_shadowRenderData.jobs[batch.firstJob],
-                              (uint) batch.jobCount,
-                              (uint) batch.firstJob);
+        const int firstInstance = instance;
+
+        for (int k = 0; k < batch.jobCount; k++)
+        {
+          const int jobIndex = batch.firstJob + k;
+
+          // A batch entirely inside the frustum needs no per caster test.
+          if (batchHit != IntersectResult::Inside)
+          {
+            if (FrustumBoxIntersection(frustum, jobs[jobIndex].BoundingBox) == IntersectResult::Outside)
+            {
+              continue;
+            }
+          }
+
+          const float* src = m_instanceData.data() + size_t(jobIndex) * itemFloats;
+          float* dst       = m_cascadeInstanceData.data() + size_t(instance) * itemFloats;
+          std::memcpy(dst, src, itemFloats * sizeof(float));
+          instance++;
+        }
+
+        const int count = instance - firstInstance;
+        if (count > 0)
+        {
+          runs.push_back({batch.firstJob, firstInstance, count});
+        }
+      }
+
+      if (runs.empty())
+      {
+        return;
+      }
+
+      m_instanceTable->Map(m_cascadeInstanceData.data());
+      renderer->SetInstanceData(m_instanceTable);
+
+      for (const ShadowDrawRun& run : runs)
+      {
+        renderer->RenderBatch(jobs[run.firstJob], (uint) run.count, (uint) run.firstInstance);
       }
     };
 

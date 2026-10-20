@@ -129,9 +129,14 @@ namespace ToolKit
     /** Batched runs of m_shadowRenderData.jobs; see ShadowBatch. */
     std::vector<ShadowBatch> m_shadowBatches;
 
-    /** Per instance model matrices, four texels per job, in job order. */
+    /** Per instance model matrices, eight texels per job, in job order. */
     DataTexturePtr m_instanceTable = nullptr;
     std::vector<float> m_instanceData;
+
+    /** Same size as m_instanceData. Per cascade, only the casters that survive the cascade
+     *  frustum are packed into it and uploaded, so a batch no longer drags in its off screen
+     *  instances. */
+    std::vector<float> m_cascadeInstanceData;
 
     /** Must match INSTANCE_TEX_WIDTH and INSTANCE_TEXELS_PER_ITEM in instanceDataInc.shader. */
     static constexpr int InstanceTexWidth       = 256;
