@@ -154,13 +154,11 @@ namespace ToolKit
       }
     }
 
-    // A transform, mesh or component change reports itself through here, so this is where the
-    // scene's cache version moves. Consumers that build per object data from the scene compare
-    // against it instead of rebuilding every frame.
-    if (ScenePtr scene = m_scene.lock())
-    {
-      scene->BumpCacheVersion();
-    }
+    // A transform, mesh or component change reports itself through here. It bumps this entity's
+    // generation rather than the scene's version: a consumer that caches per object data can then
+    // rebuild just this entity instead of the whole scene, which matters as soon as one object
+    // moves. The scene version stays for structural changes, entities added or removed.
+    ++m_spatialGeneration;
 
     m_spatialCachesInvalidated = true;
   }

@@ -200,6 +200,14 @@ namespace ToolKit
     /** Bounding boxes, AABB tree are invalidated. */
     virtual void InvalidateSpatialCaches();
 
+    /**
+     * Monotonic counter of this entity's spatial changes.
+     *
+     * Consumers that cache per object data compare it against the generation they built with, so
+     * only the entities that actually moved are rebuilt. Resetting it is not supported; it wraps.
+     */
+    uint64 GetSpatialGeneration() const { return m_spatialGeneration; }
+
     /** Updates spatial caches related to entity. AABB tree is updated upon access. */
     virtual void UpdateSpatialCaches();
 
@@ -251,6 +259,9 @@ namespace ToolKit
 
     /** If true, transform related caches (aabb, abbtree etc...) are updated upon access. */
     bool m_spatialCachesInvalidated = true;
+
+    /** See GetSpatialGeneration(). Bumped by InvalidateSpatialCaches. */
+    uint64 m_spatialGeneration      = 0;
 
     /** If during creation of a the entity, a failure happens, its noted here. */
     int m_creationFailureFlags      = EntityCreateFailure::None;

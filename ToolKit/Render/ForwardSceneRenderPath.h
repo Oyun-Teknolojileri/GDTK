@@ -89,10 +89,21 @@ namespace ToolKit
     RenderJobArray m_cachedJobs;
     uint64 m_jobCacheVersion = ~0ull;
 
-    /** Half open [begin, end) range of m_cachedJobs that belongs to an entity. CreateRenderJobs
-     *  lays the submeshes of one entity out contiguously, so this maps the entity set the AABB
-     *  tree query returns onto the cached jobs without a frustum test per job. */
-    std::unordered_map<const Entity*, std::pair<uint, uint>> m_jobRanges;
+    /** Half open [begin, end) range of m_cachedJobs that belongs to an entity, with the spatial
+     *  generation the jobs were built at. CreateRenderJobs lays the submeshes of one entity out
+     *  contiguously, so this maps the entities the AABB tree query returns onto the cached jobs
+     *  without a frustum test per job, and it is what makes a rebuild per entity possible. */
+    struct JobSlot
+    {
+      uint64 generation = 0;
+      uint begin        = 0;
+      uint end          = 0;
+    };
+    std::unordered_map<const Entity*, JobSlot> m_jobRanges;
+
+    /** Scratch jobs for the entities that changed since the last frame. */
+    RenderJobArray m_dirtyJobs;
+    EntityRawPtrArray m_dirtyEntities;
 
     /** Signature of the light set the cached jobs were built with, per object light lists depend
      *  on it. */

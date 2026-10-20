@@ -252,7 +252,7 @@ namespace ToolKit
 
           if (owner != nullptr)
           {
-            m_jobRanges[owner] = {i, end};
+            m_jobRanges[owner] = {owner->GetSpatialGeneration(), i, end};
           }
           i = end;
         }
@@ -266,6 +266,81 @@ namespace ToolKit
           {
             m_jobCacheUnusable = true;
             break;
+          }
+        }
+      }
+      else
+      {
+        // The scene is unchanged structurally, but individual entities may have moved. Only their
+        // job ranges are rebuilt, which is what keeps a scene with a few animated objects cached.
+        m_dirtyEntities.clear();
+        for (const auto& [entity, slot] : m_jobRanges)
+        {
+          if (entity->GetSpatialGeneration() != slot.generation)
+          {
+            m_dirtyEntities.push_back(const_cast<Entity*>(entity));
+          }
+        }
+
+        if (!m_dirtyEntities.empty())
+        {
+          // A large share of the scene moving is cheaper as one rebuild than as a scatter of
+          // range copies, and a submesh count change moves the layout anyway.
+          const bool tooMany = m_dirtyEntities.size() * 4 > m_jobRanges.size();
+
+          bool layoutChanged = tooMany;
+          if (!tooMany)
+          {
+            TK_PROFILE_SCOPE("SetPassParams: rebuild dirty jobs");
+
+            m_dirtyJobs.clear();
+            RenderJobProcessor::CreateRenderJobs(m_dirtyJobs,
+                                                 m_dirtyEntities,
+                                                 false,
+                                                 dirEndIndx,
+                                                 lights,
+                                                 environments);
+
+            // CreateRenderJobs filters its input, so m_dirtyEntities now holds only the entities
+            // that produced jobs, in the same order. Walk both and patch the ranges.
+            uint job = 0;
+            for (Entity* entity : m_dirtyEntities)
+            {
+              const auto slotItr = m_jobRanges.find(entity);
+              if (slotItr == m_jobRanges.end())
+              {
+                continue;
+              }
+
+              JobSlot& slot      = slotItr->second;
+              const uint expected = slot.end - slot.begin;
+              uint count          = 0;
+              while (job + count < (uint) m_dirtyJobs.size() && m_dirtyJobs[job + count].Entity == entity)
+              {
+                count++;
+              }
+
+              if (count != expected)
+              {
+                layoutChanged = true;
+                break;
+              }
+
+              for (uint k = 0; k < count; k++)
+              {
+                m_cachedJobs[slot.begin + k] = m_dirtyJobs[job + k];
+              }
+
+              slot.generation = entity->GetSpatialGeneration();
+              job += count;
+            }
+          }
+
+          if (layoutChanged)
+          {
+            // Fall back to a full rebuild by invalidating the version and recursing through the
+            // next frame: simpler than duplicating the build here, and rare.
+            m_jobCacheVersion = ~0ull;
           }
         }
       }
@@ -299,7 +374,7 @@ namespace ToolKit
             continue;
           }
 
-          for (uint i = range->second.first; i < range->second.second; i++)
+          for (uint i = range->second.begin; i < range->second.end; i++)
           {
             const RenderJob& job = m_cachedJobs[i];
             const size_t index   = m_renderData.jobs.size();
