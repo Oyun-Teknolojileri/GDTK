@@ -204,7 +204,16 @@ namespace ToolKit
       renderer->SetDirectionalLights(directionalLights);
     }
 
-    int dirEndIndx                                   = RenderJobProcessor::PreSortLights(lights);
+    int dirEndIndx = RenderJobProcessor::PreSortLights(lights);
+
+    // Directional lights keep the front, everything else is ordered by id. The atlas hands out slots
+    // in list order, so a list whose order comes out of the threaded scene query differently on two
+    // frames makes the shadows jump between slots. The id order is stable for the lifetime of the
+    // session, which is all the atlas needs.
+    std::sort(lights.begin() + dirEndIndx,
+              lights.end(),
+              [](Light* a, Light* b) -> bool { return a->GetIdVal() < b->GetIdVal(); });
+
     const EnvironmentComponentPtrArray& environments = m_params.Scene->GetEnvironmentVolumes();
 
     {

@@ -405,10 +405,15 @@ namespace ToolKit
 
   int RenderJobProcessor::PreSortLights(LightRawPtrArray& lights)
   {
+    // Stable on purpose. The lights arrive in whatever order the AABB tree query produced, and that
+    // query is threaded, so the order is not guaranteed to be the same from frame to frame. The
+    // order decides the shadow atlas layout, which makes an unstable sort here show up as shadows,
+    // and through them screen space reflections, that flicker.
     auto dirEndItr =
-        std::partition(lights.begin(),
-                       lights.end(),
-                       [](Light* light) -> bool { return light->GetLightType() == Light::LightType::Directional; });
+        std::stable_partition(lights.begin(),
+                              lights.end(),
+                              [](Light* light) -> bool
+                              { return light->GetLightType() == Light::LightType::Directional; });
 
     return (int) std::distance(lights.begin(), dirEndItr);
   }
