@@ -208,6 +208,19 @@ namespace ToolKit
      */
     uint64 GetSpatialGeneration() const { return m_spatialGeneration; }
 
+    /**
+     * Marks the per object light assignment stale without touching the entity itself.
+     *
+     * A light that moves reaches a different set of objects, but nothing about those objects
+     * changed: their transform, their mesh and their bounding box are the same, only which lights
+     * touch them is different. This counts that separately from GetSpatialGeneration() so a
+     * consumer can refresh the light list instead of rebuilding the whole job.
+     */
+    void InvalidateLightAssignment() { ++m_lightAssignmentGeneration; }
+
+    /** See InvalidateLightAssignment(). */
+    uint64 GetLightAssignmentGeneration() const { return m_lightAssignmentGeneration; }
+
     /** Updates spatial caches related to entity. AABB tree is updated upon access. */
     virtual void UpdateSpatialCaches();
 
@@ -262,6 +275,9 @@ namespace ToolKit
 
     /** See GetSpatialGeneration(). Bumped by InvalidateSpatialCaches. */
     uint64 m_spatialGeneration      = 0;
+
+    /** See InvalidateLightAssignment(). */
+    uint64 m_lightAssignmentGeneration = 0;
 
     /** If during creation of a the entity, a failure happens, its noted here. */
     int m_creationFailureFlags      = EntityCreateFailure::None;

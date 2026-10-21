@@ -95,15 +95,20 @@ namespace ToolKit
      *  without a frustum test per job, and it is what makes a rebuild per entity possible. */
     struct JobSlot
     {
-      uint64 generation = 0;
-      uint begin        = 0;
-      uint end          = 0;
+      uint64 generation      = 0;
+      uint64 lightGeneration = 0;
+      uint begin             = 0;
+      uint end               = 0;
     };
     std::unordered_map<const Entity*, JobSlot> m_jobRanges;
 
     /** Scratch jobs for the entities that changed since the last frame. */
     RenderJobArray m_dirtyJobs;
     EntityRawPtrArray m_dirtyEntities;
+
+    /** Entities whose light list is stale because a light moved over them, without any change to
+     *  the entities themselves. */
+    EntityRawPtrArray m_lightDirtyEntities;
 
     /** Signature of the positions the cached per object light and environment assignment was built
      *  with. It moves when a light or an environment volume does, and only then is the assignment

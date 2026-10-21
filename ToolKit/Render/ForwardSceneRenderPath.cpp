@@ -246,7 +246,10 @@ namespace ToolKit
 
           if (owner != nullptr)
           {
-            m_jobRanges[owner] = {owner->GetSpatialGeneration(), i, end};
+            m_jobRanges[owner] = {owner->GetSpatialGeneration(),
+                                  owner->GetLightAssignmentGeneration(),
+                                  i,
+                                  end};
           }
           i = end;
         }
@@ -268,12 +271,39 @@ namespace ToolKit
         // The scene is unchanged structurally, but individual entities may have moved. Only their
         // job ranges are rebuilt, which is what keeps a scene with a few animated objects cached.
         m_dirtyEntities.clear();
+        m_lightDirtyEntities.clear();
         for (const auto& [entity, slot] : m_jobRanges)
         {
           if (entity->GetSpatialGeneration() != slot.generation)
           {
             m_dirtyEntities.push_back(const_cast<Entity*>(entity));
           }
+          else if (entity->GetLightAssignmentGeneration() != slot.lightGeneration)
+          {
+            // A light moved over it: its own transform and mesh did not change, so only the light
+            // list of its jobs is refreshed.
+            m_lightDirtyEntities.push_back(const_cast<Entity*>(entity));
+          }
+        }
+
+        for (Entity* entity : m_lightDirtyEntities)
+        {
+          const auto slotItr = m_jobRanges.find(entity);
+          if (slotItr == m_jobRanges.end() || slotItr->second.begin >= m_cachedJobs.size())
+          {
+            continue;
+          }
+
+          JobSlot& slot       = slotItr->second;
+          RenderJob& firstJob = m_cachedJobs[slot.begin];
+          firstJob.lights.clear();
+          RenderJobProcessor::AssignLight(firstJob, lights, dirEndIndx);
+          for (uint sub = slot.begin + 1; sub < slot.end; sub++)
+          {
+            m_cachedJobs[sub].lights = firstJob.lights;
+          }
+
+          slot.lightGeneration = entity->GetLightAssignmentGeneration();
         }
 
         if (!m_dirtyEntities.empty())
@@ -393,6 +423,11 @@ namespace ToolKit
     m_shadowPass->m_params.scene      = m_params.Scene;
     m_shadowPass->m_params.viewCamera = m_params.Cam;
     m_shadowPass->m_params.lights     = lights;
+
+    // The shadow pass keeps its caster jobs between frames, so it has to hear about the frames where
+    // an entity changed without the scene version moving: when the cache rebuilt some ranges (a
+    // transform, a light that moved) or when it could not be used at all.
+    m_shadowPass->m_params.castersDirty = m_jobCacheUnusable || !m_dirtyEntities.empty();
 
     {
       TK_PROFILE_SCOPE("SetPassParams: partition");

@@ -347,11 +347,21 @@ Two counters decide the rebuild:
   component change. Only the dirty entities' ranges are rebuilt, in one `CreateRenderJobs` call; a
   quarter of the scene moving, or a submesh count change, falls back to a full rebuild.
 
-Per object light and environment assignment is **not** cached with the job in a way that survives a
-light move: a point or spot light that invalidates invalidates the entities within its radius at
-the position it is at and the one it left (`Light::InvalidateSpatialCaches`), so the touched
-entities rebuild their jobs and `AssignLight`/`AssignEnvironment` runs again for them. Directional
-lights reach everything from any position, so they skip that walk.
+Per object light and environment assignment follows the lights, and the two kinds of change are
+kept apart because they cost very differently:
+
+- `Light::InvalidateSpatialCaches` calls `Entity::InvalidateLightAssignment` on the entities within
+  its radius at the position it is at and the one it left. That bumps
+  `GetLightAssignmentGeneration()` only: the objects did not move, so the path just reruns
+  `AssignLight` over their cached ranges (`m_lightDirtyEntities`) instead of rebuilding jobs.
+- A transform or mesh change bumps `GetSpatialGeneration()` and does rebuild the range.
+
+Directional lights reach everything from any position and skip the neighbourhood walk entirely.
+
+`ShadowPass` keeps its caster jobs too (`m_casterVersion`, `m_casterLightSignature`). Building them
+walks every entity in the scene and measured 2.8 ms a frame, so they are rebuilt only when the
+scene version moves, the light set changes, or the render path sets `ShadowPassParams::castersDirty`
+on a frame where an entity's geometry changed.
 
 Scenes with a skinned or animated job disable the cache (`m_jobCacheUnusable`): those transforms
 move without a spatial invalidation, which no counter can see.

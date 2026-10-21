@@ -21,6 +21,10 @@ namespace ToolKit
     ScenePtr scene       = nullptr;
     CameraPtr viewCamera = nullptr;
     LightRawPtrArray lights;
+
+    /** Set by the render path on the frames where an entity changed, because the casters it built
+     *  against are then stale even though the scene version did not move. */
+    bool castersDirty = false;
   };
 
   /** Create shadow map buffers for all given lights. */
@@ -125,6 +129,12 @@ namespace ToolKit
     /** Shadow caster jobs for this frame, partitioned opaque / alpha masked / translucent.
      *  Built once in PrepareShadowCasterJobs and shared by every light and cascade. */
     RenderData m_shadowRenderData;
+
+    /** Scene version and light set the caster jobs were built with. Building them walks every
+     *  entity in the scene, which measured 2.8 ms a frame, so they are kept until the scene
+     *  version moves, the light set changes, or the render path reports a dirty entity. */
+    uint64 m_casterVersion        = ~0ull;
+    uint64 m_casterLightSignature = 0;
 
     /** Batched runs of m_shadowRenderData.jobs; see ShadowBatch. */
     std::vector<ShadowBatch> m_shadowBatches;

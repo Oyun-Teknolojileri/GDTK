@@ -158,7 +158,10 @@ namespace ToolKit
     {
       if (ntt != this && ntt->As<Light>() == nullptr)
       {
-        ntt->InvalidateSpatialCaches();
+        // Only the light list of these objects is stale. Their transform, mesh and bounding box are
+        // untouched, so this is the cheap invalidation: rebuilding their render jobs, and the shadow
+        // casters built from them, would be work for nothing.
+        ntt->InvalidateLightAssignment();
       }
     }
 
