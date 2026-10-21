@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
@@ -216,6 +216,12 @@ namespace ToolKit
         if (ImGui::Checkbox("MultiThread##1", &multiThreaded))
         {
           graphics->SetMultiThreadedVal(multiThreaded);
+        }
+
+        bool instancedBatching = graphics->GetInstancedBatchingVal();
+        if (ImGui::Checkbox("Instanced Batching##1", &instancedBatching))
+        {
+          graphics->SetInstancedBatchingVal(instancedBatching);
         }
 
         bool hdrPipeline = graphics->GetHDRPipelineVal();

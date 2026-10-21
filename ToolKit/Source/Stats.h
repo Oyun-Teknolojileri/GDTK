@@ -141,6 +141,10 @@ namespace ToolKit
   //////////////////////////////////////////
 
   /** Indices for per-frame stat counters. */
+  /** Defined by the engine revisions that count instanced batches, so a host that is also built
+   *  against an older revision can tell at compile time instead of pinning the numbers to zero. */
+#define TK_HAS_INSTANCED_BATCH_STATS 1
+
   enum class FrameStatType
   {
     LightCacheInvalidation,

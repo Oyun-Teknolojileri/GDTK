@@ -97,6 +97,10 @@ namespace ToolKit
     MaterialPtr m_shadowMatOrtho = nullptr;
     MaterialPtr m_shadowMatPersp = nullptr;
 
+    /** The depth program without the instance table. Used on the frames where instanced batching is
+     *  switched off, where every caster is one draw and reads the per draw block again. */
+    GpuProgramPtr m_plainProgram = nullptr;
+
     Vec4 m_shadowClearColor      = Vec4(1.0f);
 
     /** Per-layer framebuffers for the main atlas render path. Each pinned to one atlas layer +

@@ -311,13 +311,15 @@ namespace ToolKit
 
     // Runs of consecutive jobs that can share a draw. The jobs are sorted by material, so these
     // runs are long for the usual case of many objects of one type.
+    const bool mayBatch = GetEngineSettings().m_graphics->GetInstancedBatchingVal();
+
     std::vector<JobRun> runs;
     std::vector<JobRun> singles;
     int instanceCount = 0;
     for (int i = first; i < last;)
     {
       int j = i + 1;
-      while (j < last && CanShareDraw(jobs[i], jobs[j]))
+      while (mayBatch && j < last && CanShareDraw(jobs[i], jobs[j]))
       {
         j++;
       }

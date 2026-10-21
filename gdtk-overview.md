@@ -178,7 +178,7 @@ verification recipe.
 Serializable, loaded from `%appdata%/ToolKit/Config`. Sub-objects:
 
 - **WindowSettings**: name, width, height, fullscreen
-- **GraphicSettings**: FPS, MSAA, HDR, MultiThreaded, RenderResolutionScale, AnisotropicTextureFiltering, plus a `m_shadows` member
+- **GraphicSettings**: FPS, MSAA, HDR, MultiThreaded, InstancedBatching (draws runs of objects that share a mesh and material as one instanced draw; off falls back to one draw per object), RenderResolutionScale, AnisotropicTextureFiltering, plus a `m_shadows` member
 - **ShadowSettings** (nested in GraphicSettings): cascade count/distance, parallel split, stable shadow map, atlas resolution (1K/2K), PCF kernel, VSM blur
 - **PostProcessingSettings**: tonemapping, bloom, gamma, SSAO, SSR, DOF, FXAA
 - **ShaderSettings**: per-shader define presets (e.g. "Low"/"High" graphics presets) so shader compile doesn't explode combinatorially

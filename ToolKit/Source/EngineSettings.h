@@ -162,6 +162,13 @@ namespace ToolKit
     TKDeclareParam(bool, MultiThreaded);
 
     /**
+     * Draws runs of objects that share a mesh and a material as one instanced draw. Turning it off
+     * falls back to one draw per object, which is what the engine does when a run cannot share a draw
+     * anyway, and makes the cost of the batching measurable from the editor.
+     */
+    TKDeclareParam(bool, InstancedBatching);
+
+    /**
      * Viewport render target multiplier that adjusts the resolution.
      * High DPI devices such as mobile phones benefits from this.
      */

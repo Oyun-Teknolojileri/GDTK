@@ -378,8 +378,13 @@ namespace ToolKit
     m_batchFirstInstance = firstInstance;
     m_batchInstanceCount = instanceCount;
 
-    Stats::IncrementStat(FrameStatType::InstancedBatch);
-    Stats::AddStat(FrameStatType::InstancedObject, instanceCount);
+    // A batch of one is not an instanced draw. The passes fall back to a one element run whenever
+    // they cannot share, so counting those made the instancing switch look like it did nothing.
+    if (instanceCount > 1)
+    {
+      Stats::IncrementStat(FrameStatType::InstancedBatch);
+      Stats::AddStat(FrameStatType::InstancedObject, instanceCount);
+    }
 
     Render(job);
 

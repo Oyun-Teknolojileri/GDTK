@@ -8,6 +8,7 @@
 // Purpose of this pass is exporting forward depths and normals before SSAO pass
 
 #include "ForwardPreProcessPass.h"
+#include "EngineSettings.h"
 
 #include "Mesh.h"
 #include "Shader.h"
@@ -172,11 +173,13 @@ namespace ToolKit
     const int first      = int(begin - jobs.begin());
     const int last       = int(end - jobs.begin());
 
+    const bool mayBatch = GetEngineSettings().m_graphics->GetInstancedBatchingVal();
+
     std::vector<PreProcessRun> runs;
     for (int i = first; i < last;)
     {
       int j = i + 1;
-      while (j < last && PreProcessCanShare(jobs[i], jobs[j], masked))
+      while (mayBatch && j < last && PreProcessCanShare(jobs[i], jobs[j], masked))
       {
         j++;
       }

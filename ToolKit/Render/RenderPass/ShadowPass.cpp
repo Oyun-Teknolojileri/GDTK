@@ -504,7 +504,9 @@ namespace ToolKit
     std::sort(jobs.begin() + opaqueBegin, jobs.begin() + maskedBegin, batchLess);
     std::sort(jobs.begin() + maskedBegin, jobs.begin() + translucentBegin, batchLess);
 
-    const auto addBatches = [this, &jobs](int begin, int end, bool masked) -> void
+    const bool mayBatch = GetEngineSettings().m_graphics->GetInstancedBatchingVal();
+
+    const auto addBatches = [this, &jobs, mayBatch](int begin, int end, bool masked) -> void
     {
       int i = begin;
       while (i < end)
@@ -523,6 +525,11 @@ namespace ToolKit
         // came first, or with the bind pose when the bones were not bound at all. The forward and the
         // prepass have always excluded them for the same reason; each skinned caster gets its own
         // batch, which is one instance and reads its own matrix out of the table.
+        //
+        // The batch groups are built the same way whether or not instanced batching is on, because the
+        // group is also the granularity the culling works at: a per caster batch is a per caster box,
+        // and a caster that stands behind the shadow camera still casts (the shader pancakes it), so
+        // culling it one at a time loses shadows that the coarser box keeps.
         const bool skinned = jobs[i].Mesh->IsSkinned();
         while (!skinned && j < end && jobs[j].Mesh == batch.mesh && jobs[j].Material == batch.material &&
                jobs[j].requireCullFlip == jobs[i].requireCullFlip)
@@ -598,6 +605,7 @@ namespace ToolKit
     {
       int firstJob      = 0;
       int firstInstance = 0;
+      int firstKept     = 0;
       int count         = 0;
     };
   } // namespace
@@ -638,10 +646,17 @@ namespace ToolKit
     // depend on the light.
     Frustum frustum = ExtractFrustum(cullCamera->GetProjectViewMatrix(), false);
 
-
+    // A directional light pancakes the casters that stand behind the shadow camera onto its near
+    // plane, so they still cast a shadow. Culling them with the near plane throws away exactly those
+    // casters, which loses shadows in the far cascades. The plane is pushed out of the way instead;
+    // a point is inside a plane when dot(normal, point) + d >= 0, so a huge d admits everything.
+    const bool orthogonalShadowMap = lightType == Light::LightType::Directional;
+    if (orthogonalShadowMap)
+    {
+      frustum.planes[4].d = std::numeric_limits<float>::max();
+    }
 
     // Set material and program.
-    bool orthogonalShadowMap   = lightType == Light::LightType::Directional;
     MaterialPtr shadowMaterial = orthogonalShadowMap ? m_shadowMatOrtho : m_shadowMatPersp;
     ShaderPtr frag             = shadowMaterial->GetFragmentShaderVal();
     frag->SetDefine("DrawAlphaMasked", "0");
@@ -649,11 +664,17 @@ namespace ToolKit
     vert->SetDefine("DrawAlphaMasked", "0");
 
     // Casters are drawn as instanced batches, so the vertex shader takes the model matrix
-    // from the instance table instead of the per draw block.
+    // from the instance table instead of the per draw block. The plain variant exists for the frames
+    // where the editor has instanced batching switched off: it reads the per draw block again, which
+    // is the path the batching replaced.
+    GpuProgramManager* gpuProgramManager = renderer->GetGpuProgramManager();
+
+    vert->SetDefine("INSTANCE_TABLE", "1");
+    m_program = gpuProgramManager->CreateProgram(vert, frag);
+    vert->SetDefine("INSTANCE_TABLE", "0");
+    m_plainProgram = gpuProgramManager->CreateProgram(vert, frag);
     vert->SetDefine("INSTANCE_TABLE", "1");
 
-    GpuProgramManager* gpuProgramManager = renderer->GetGpuProgramManager();
-    m_program                            = gpuProgramManager->CreateProgram(vert, frag);
     renderer->BindProgram(m_program);
 
     if (orthogonalShadowMap)
@@ -681,11 +702,16 @@ namespace ToolKit
     // path submitted.
     std::vector<ShadowDrawRun> runs;
 
-    const auto drawBatches = [this, &frustum, renderer, &runs](bool maskedPass) -> void
+    /** Job indices that survived the per caster test, in the order their matrices were packed. */
+    std::vector<int> keptJobs;
+
+    const auto drawBatches = [this, &frustum, renderer, &runs, &keptJobs](bool maskedPass) -> void
     {
       runs.clear();
+      keptJobs.clear();
 
       const RenderJobArray& jobs = m_shadowRenderData.jobs;
+      const bool mayBatch        = GetEngineSettings().m_graphics->GetInstancedBatchingVal();
       std::fill(m_cascadeInstanceData.begin(), m_cascadeInstanceData.end(), 0.0f);
 
       const size_t itemFloats = size_t(InstanceTexelsPerItem) * 4;
@@ -732,14 +758,46 @@ namespace ToolKit
           const float* src = m_instanceData.data() + size_t(jobIndex) * itemFloats;
           float* dst       = m_cascadeInstanceData.data() + size_t(instance) * itemFloats;
           std::memcpy(dst, src, itemFloats * sizeof(float));
+          keptJobs.push_back(jobIndex);
           instance++;
         }
 
         const int count = instance - firstInstance;
         if (count > 0)
         {
-          runs.push_back({batch.firstJob, firstInstance, count});
+          runs.push_back({batch.firstJob, firstInstance, int(keptJobs.size()) - count, count});
         }
+      }
+
+      // With instanced batching off the casters go out one draw each, with the plain program, which is
+      // the path the batches replaced. The ones that survived the test above are drawn from the list
+      // that recorded them: they are not a contiguous range of the job array, so drawing the first N
+      // of the batch would submit the wrong casters.
+      if (!mayBatch)
+      {
+        renderer->BindProgram(m_plainProgram);
+
+        for (const ShadowDrawRun& run : runs)
+        {
+          for (int k = 0; k < run.count; k++)
+          {
+            const size_t kept = size_t(run.firstKept) + size_t(k);
+            if (kept >= keptJobs.size())
+            {
+              continue;
+            }
+
+            const int jobIndex = keptJobs[kept];
+            if (jobIndex < 0 || jobIndex >= jobCount)
+            {
+              continue;
+            }
+
+            renderer->Render(jobs[jobIndex]);
+          }
+        }
+
+        return;
       }
 
       if (runs.empty())
@@ -759,6 +817,8 @@ namespace ToolKit
 
         renderer->RenderBatch(jobs[run.firstJob], (uint) run.count, (uint) run.firstInstance);
       }
+
+      renderer->SetInstanceData(nullptr);
     };
 
     // Draw opaque.
@@ -768,6 +828,9 @@ namespace ToolKit
     frag->SetDefine("DrawAlphaMasked", "1");
     vert->SetDefine("DrawAlphaMasked", "1");
     m_program = gpuProgramManager->CreateProgram(vert, frag);
+    vert->SetDefine("INSTANCE_TABLE", "0");
+    m_plainProgram = gpuProgramManager->CreateProgram(vert, frag);
+    vert->SetDefine("INSTANCE_TABLE", "1");
     renderer->BindProgram(m_program);
 
     drawBatches(true);
