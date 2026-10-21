@@ -517,7 +517,14 @@ namespace ToolKit
         batch.bbox          = jobs[i].BoundingBox;
 
         int j               = i + 1;
-        while (j < end && jobs[j].Mesh == batch.mesh && jobs[j].Material == batch.material &&
+
+        // A skinned mesh carries its own skeleton, and an instanced draw applies one bone set to every
+        // instance in it. Batching skinned casters therefore drew them with the pose of whichever one
+        // came first, or with the bind pose when the bones were not bound at all. The forward and the
+        // prepass have always excluded them for the same reason; each skinned caster gets its own
+        // batch, which is one instance and reads its own matrix out of the table.
+        const bool skinned = jobs[i].Mesh->IsSkinned();
+        while (!skinned && j < end && jobs[j].Mesh == batch.mesh && jobs[j].Material == batch.material &&
                jobs[j].requireCullFlip == jobs[i].requireCullFlip)
         {
           batch.bbox.min = glm::min(batch.bbox.min, jobs[j].BoundingBox.min);
