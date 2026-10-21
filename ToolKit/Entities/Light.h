@@ -105,6 +105,10 @@ namespace ToolKit
      *  entities around the old and the new position have to be invalidated. */
     Vec3 m_lastInvalidationPosition = Vec3(TK_FLT_MAX);
 
+    /** Radius the neighbourhood was last invalidated with, so a radius change invalidates even when
+     *  the light itself did not move. */
+    float m_lastInvalidationRadius = -1.0f;
+
     /** Guards the neighbourhood invalidation against re-entry through another light. */
     bool m_invalidatingNeighbours = false;
   };

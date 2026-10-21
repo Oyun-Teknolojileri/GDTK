@@ -145,8 +145,33 @@ namespace ToolKit
     m_invalidatingNeighbours = true;
 
     const Vec3 now = m_node->GetTranslation(TransformationSpace::TS_WORLD);
+
+    // A light that inches forward does not change which objects it reaches, and the walk below is
+    // the expensive part of a moving light. The step is relative to the radius so it scales with
+    // the light, and a radius change invalidates on its own even when the light stayed put.
+    constexpr float kInvalidationStep = 0.05f;
+    const bool radiusChanged          = m_lastInvalidationRadius != radius;
+    if (m_lastInvalidationPosition != Vec3(TK_FLT_MAX) && !radiusChanged)
+    {
+      const float moved = glm::distance(now, m_lastInvalidationPosition);
+      if (moved < radius * kInvalidationStep)
+      {
+        m_invalidatingNeighbours = false;
+        return;
+      }
+    }
+
+    // The tree query is a box, which covers about 1.7 times the volume of the sphere the light
+    // actually reaches, and the objects near the corners were invalidated for nothing.
     BoundingBox query(now - Vec3(radius), now + Vec3(radius));
-    if (m_lastInvalidationPosition != Vec3(TK_FLT_MAX))
+    BoundingSphere nowSphere;
+    nowSphere.pos    = now;
+    nowSphere.radius = radius;
+    const bool hasPrevious = m_lastInvalidationPosition != Vec3(TK_FLT_MAX);
+    BoundingSphere previousSphere;
+    previousSphere.pos    = m_lastInvalidationPosition;
+    previousSphere.radius = radius;
+    if (hasPrevious)
     {
       query = BoundingBox::Union(query,
                                  BoundingBox(m_lastInvalidationPosition - Vec3(radius),
@@ -156,17 +181,26 @@ namespace ToolKit
     EntityRawPtrArray touched = scene->m_aabbTree.VolumeQuery(query, false);
     for (Entity* ntt : touched)
     {
-      if (ntt != this && ntt->As<Light>() == nullptr)
+      if (ntt == this || ntt->As<Light>() != nullptr)
       {
-        // Only the light list of these objects is stale. Their transform, mesh and bounding box are
-        // untouched, so this is the cheap invalidation: rebuilding their render jobs, and the shadow
-        // casters built from them, would be work for nothing.
-        ntt->InvalidateLightAssignment();
+        continue;
       }
+
+      // An object has to be refreshed when it is in reach now, and also when it was in reach before
+      // this move: the light walked away from it and its light list still has to lose it.
+      const BoundingBox& box = ntt->GetBoundingBox(true);
+      if (!SphereBoxIntersection(nowSphere, box) &&
+          !(hasPrevious && SphereBoxIntersection(previousSphere, box)))
+      {
+        continue;
+      }
+
+      ntt->InvalidateLightAssignment();
     }
 
     m_lastInvalidationPosition = now;
-    m_invalidatingNeighbours    = false;
+    m_lastInvalidationRadius   = radius;
+    m_invalidatingNeighbours   = false;
   }
 
   void Light::UpdateShadowCameraTransform()
