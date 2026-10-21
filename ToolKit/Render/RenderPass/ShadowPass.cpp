@@ -185,6 +185,7 @@ namespace ToolKit
     {
       m_shadowRenderData.jobs.clear();
       m_shadowBatches.clear();
+      m_casterRanges.clear();
       m_casterVersion = ~0ull;
     }
 
@@ -311,6 +312,7 @@ namespace ToolKit
     {
       m_shadowRenderData.jobs.clear();
       m_shadowBatches.clear();
+      m_casterRanges.clear();
       m_casterVersion = ~0ull;
       return;
     }
@@ -333,10 +335,78 @@ namespace ToolKit
       return;
     }
 
+    const bool structural =
+        version != m_casterVersion || lightSignature != m_casterLightSignature || m_casterRanges.empty();
+
+    // Only the entities whose geometry changed are rebuilt. A scene with a handful of moving objects
+    // used to rebuild every caster in it, which put three milliseconds of a frame into a scene where
+    // the objects themselves answer for a fraction of that.
+    if (!structural)
+    {
+      m_dirtyCasterEntities.clear();
+      for (const auto& [entity, slot] : m_casterRanges)
+      {
+        if (entity->GetSpatialGeneration() != slot.generation)
+        {
+          m_dirtyCasterEntities.push_back(const_cast<Entity*>(entity));
+        }
+      }
+
+      bool layoutChanged = m_dirtyCasterEntities.size() * 4 > m_casterRanges.size();
+      if (!layoutChanged && !m_dirtyCasterEntities.empty())
+      {
+        m_dirtyCasterJobs.clear();
+        RenderJobProcessor::CreateRenderJobs(m_dirtyCasterJobs, m_dirtyCasterEntities);
+
+        uint job = 0;
+        for (Entity* entity : m_dirtyCasterEntities)
+        {
+          const auto slotItr = m_casterRanges.find(entity);
+          if (slotItr == m_casterRanges.end())
+          {
+            continue;
+          }
+
+          CasterSlot& slot    = slotItr->second;
+          const uint expected = slot.end - slot.begin;
+          uint count          = 0;
+          while (job + count < (uint) m_dirtyCasterJobs.size() && m_dirtyCasterJobs[job + count].Entity == entity)
+          {
+            count++;
+          }
+
+          // The submesh count changed, so this range no longer fits where it was.
+          if (count != expected || slot.end > (uint) m_shadowRenderData.jobs.size())
+          {
+            layoutChanged = true;
+            break;
+          }
+
+          for (uint k = 0; k < count; k++)
+          {
+            m_shadowRenderData.jobs[slot.begin + k] = m_dirtyCasterJobs[job + k];
+          }
+
+          slot.generation = entity->GetSpatialGeneration();
+          job += count;
+        }
+      }
+
+      if (!layoutChanged)
+      {
+        m_casterVersion        = version;
+        m_casterLightSignature = lightSignature;
+        BuildShadowBatches();
+        UpdateCasterRanges();
+        return;
+      }
+    }
+
     m_casterVersion        = version;
     m_casterLightSignature = lightSignature;
 
     m_shadowRenderData.jobs.clear();
+    m_casterRanges.clear();
     EntityRawPtrArray entities = ToEntityRawPtrArray(m_params.scene->GetEntities());
 
     // CreateRenderJobs drops everything that is not drawable on its own; the cast shadow
@@ -356,6 +426,30 @@ namespace ToolKit
     RenderJobProcessor::SeperateRenderData(m_shadowRenderData, true);
 
     BuildShadowBatches();
+    UpdateCasterRanges();
+  }
+
+  void ShadowPass::UpdateCasterRanges()
+  {
+    m_casterRanges.clear();
+
+    const RenderJobArray& jobs = m_shadowRenderData.jobs;
+    for (uint i = 0; i < (uint) jobs.size();)
+    {
+      const Entity* owner = jobs[i].Entity;
+      uint end            = i + 1;
+      while (end < (uint) jobs.size() && jobs[end].Entity == owner)
+      {
+        end++;
+      }
+
+      if (owner != nullptr)
+      {
+        m_casterRanges[owner] = {owner->GetSpatialGeneration(), i, end};
+      }
+
+      i = end;
+    }
   }
 
   void ShadowPass::BuildShadowBatches()
@@ -383,7 +477,15 @@ namespace ToolKit
         return a.Material < b.Material;
       }
       // A mirrored transform flips the winding, so it needs its own batch.
-      return a.requireCullFlip < b.requireCullFlip;
+      if (a.requireCullFlip != b.requireCullFlip)
+      {
+        return a.requireCullFlip < b.requireCullFlip;
+      }
+      // The entity ties the rest, so the submeshes of one entity stay adjacent however few distinct
+      // meshes and materials the scene has. Without it, a scene of identical objects (the spawned
+      // spheres share both) interleaves their submeshes and the per entity caster ranges the
+      // incremental rebuild depends on stop lining up.
+      return a.Entity < b.Entity;
     };
 
     std::sort(jobs.begin() + opaqueBegin, jobs.begin() + maskedBegin, batchLess);

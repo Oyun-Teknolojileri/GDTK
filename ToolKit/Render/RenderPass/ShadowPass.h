@@ -60,6 +60,10 @@ namespace ToolKit
     /** Sorts the caster jobs into batches, packs the instance table and uploads it. */
     void BuildShadowBatches();
 
+    /** Rebuilds m_casterRanges from the current job order. Called after the batch sort, which
+     *  reorders the jobs and would otherwise leave the ranges pointing at the wrong ones. */
+    void UpdateCasterRanges();
+
     /** Perform all renderings to generate all shadow maps for the given light. */
     void RenderShadowMaps(Light* light);
 
@@ -135,6 +139,21 @@ namespace ToolKit
      *  version moves, the light set changes, or the render path reports a dirty entity. */
     uint64 m_casterVersion        = ~0ull;
     uint64 m_casterLightSignature = 0;
+
+    /// Half open [begin, end) range of m_shadowRenderData.jobs that belongs to an entity, with the
+    /// spatial generation it was built at. This is what makes a caster rebuild incremental: a frame
+    /// where objects move rebuilds their ranges, not the whole scene.
+    struct CasterSlot
+    {
+      uint64 generation = 0;
+      uint begin        = 0;
+      uint end          = 0;
+    };
+    std::unordered_map<const Entity*, CasterSlot> m_casterRanges;
+
+    /// Scratch jobs for the casters that changed since the last frame.
+    RenderJobArray m_dirtyCasterJobs;
+    EntityRawPtrArray m_dirtyCasterEntities;
 
     /** Batched runs of m_shadowRenderData.jobs; see ShadowBatch. */
     std::vector<ShadowBatch> m_shadowBatches;
