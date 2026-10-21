@@ -50,39 +50,20 @@ namespace ToolKit
     /** Returns the texture slot declared for the given sampler name, or -1 if not found. */
     int GetTextureSlot(const char* samplerName) const
     {
-      // The renderer asks for the same handful of sampler names on every draw, and the scan below
-      // walks the resource list comparing strings each time: 7.5k draws times four samplers was
-      // 1.2 ms of a frame. The name pointer identifies the caller's literal, so a resolved answer
-      // is kept per pointer.
-      for (const SamplerSlotCacheEntry& entry : m_samplerSlotCache)
-      {
-        if (entry.name == samplerName)
-        {
-          return entry.slot;
-        }
-      }
-
-      int slot = -1;
+      // The name is compared by content. Keying a cache on the pointer looks tempting and was tried,
+      // and it is wrong: callers pass c_str() of strings that are not guaranteed to outlive the call,
+      // so the allocator can hand the same address to a different name later and the cache then
+      // answers with a slot that belongs to another sampler. The symptom is a texture bound to the
+      // wrong sampler, which shows up as reflections that jump between frames and an occasional frame
+      // that blooms out.
       for (const ShaderResource& res : m_resources)
       {
         if (res.type == ShaderResource::Type::Texture && res.name == samplerName)
         {
-          slot = res.slot;
-          break;
+          return res.slot;
         }
       }
-
-      for (SamplerSlotCacheEntry& entry : m_samplerSlotCache)
-      {
-        if (entry.name == nullptr)
-        {
-          entry.name = samplerName;
-          entry.slot = slot;
-          break;
-        }
-      }
-
-      return slot;
+      return -1;
     }
 
     IGraphicsBackend* m_backend = nullptr; //!< Set by GpuProgramManager on creation.
