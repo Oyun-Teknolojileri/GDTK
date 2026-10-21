@@ -214,6 +214,14 @@ namespace ToolKit
     m_invalidatingNeighbours   = false;
   }
 
+  void Light::InvalidateAssignment()
+  {
+    // The walk below skips itself when the light did not move far enough, which is exactly the case a
+    // turn is: the light stands still while its cone covers different objects.
+    m_forceNeighbourInvalidation = true;
+    InvalidateSpatialCaches();
+  }
+
   void Light::UpdateShadowCameraTransform()
   {
     Mat4 lightTs = m_node->GetTransform();
@@ -661,6 +669,17 @@ namespace ToolKit
     UpdateShadowCameraTransform();
 
     Light::UpdateShadowCamera();
+
+    // A turn moves the cone over different objects while the light itself stands still, so the objects
+    // it now covers only get the light if their assignment is refreshed. Measured once a frame here and
+    // not in the invalidation: that runs from inside the node's transform update, and asking the node
+    // for its orientation from there forces the update to run again.
+    const Quaternion orientation = m_node->GetOrientation(TransformationSpace::TS_WORLD);
+    if (glm::abs(glm::dot(orientation, m_lastAssignmentOrientation)) < 0.9999f)
+    {
+      m_lastAssignmentOrientation = orientation;
+      InvalidateAssignment();
+    }
 
     // Calculate frustum.
     m_frustumCache           = ExtractFrustum(m_shadowMapCameraProjectionViewMatrix, false);

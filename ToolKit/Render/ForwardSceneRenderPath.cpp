@@ -233,6 +233,20 @@ namespace ToolKit
     // coming into view did not correct it.
     renderer->UploadDirtyLights(lights);
 
+    // A different set of lights means the assignment the objects carry was built from a list that no
+    // longer exists. The editor switching between its own lights and the scene ones is the case that
+    // shows it: every object keeps the list it was given in the other mode, so no light reaches it
+    // until something unrelated happens to invalidate it.
+    uint64 lightSetSignature = 1469598103934665603ull;
+    for (Light* light : lights)
+    {
+      lightSetSignature =
+          (lightSetSignature ^ uint64(reinterpret_cast<uintptr_t>(light))) * 1099511628211ull;
+    }
+
+    const bool lightSetChanged = lightSetSignature != m_lightSetSignature;
+    m_lightSetSignature        = lightSetSignature;
+
     const EnvironmentComponentPtrArray& environments = m_params.Scene->GetEnvironmentVolumes();
 
     {
@@ -311,10 +325,10 @@ namespace ToolKit
           {
             m_dirtyEntities.push_back(const_cast<Entity*>(entity));
           }
-          else if (entity->GetLightAssignmentGeneration() != slot.lightGeneration)
+          else if (lightSetChanged || entity->GetLightAssignmentGeneration() != slot.lightGeneration)
           {
-            // A light moved over it: its own transform and mesh did not change, so only the light
-            // list of its jobs is refreshed.
+            // A light moved over it, or the whole light set changed under it: its own transform and
+            // mesh did not change, so only the light list of its jobs is refreshed.
             m_lightDirtyEntities.push_back(const_cast<Entity*>(entity));
           }
         }

@@ -74,6 +74,13 @@ namespace ToolKit
      *  in the GPU buffer until something draws with it. */
     virtual bool IsCacheItemDirty() const = 0;
 
+    /**
+     * Re-assigns the objects around the light to it, ignoring the movement threshold that keeps a
+     * light that inches forward from walking the scene every frame. A spot light that turns covers
+     * different objects without moving, so the callers that notice a turn use this instead.
+     */
+    void InvalidateAssignment();
+
    protected:
     void InvalidateSpatialCaches() override;
 
@@ -372,6 +379,11 @@ namespace ToolKit
    private:
     /** Gpu representation of the light. */
     SpotLightCacheItem m_lightCacheItem;
+
+    /** Orientation the objects around the light were last assigned with. A spot light reaches objects
+     *  by direction, so turning it covers different ones while the light itself stands still, and the
+     *  assignment walk is only entered on a change that this has to report. */
+    Quaternion m_lastAssignmentOrientation = Quaternion(1.0f, 0.0f, 0.0f, 0.0f);
   };
 
   typedef std::shared_ptr<SpotLight> SpotLightPtr;
