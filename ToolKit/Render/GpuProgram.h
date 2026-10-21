@@ -12,6 +12,8 @@
 #include "Shader.h"
 #include "Types.h"
 
+#include <array>
+
 namespace ToolKit
 {
 
@@ -37,15 +39,50 @@ namespace ToolKit
     /** Aggregated resource declarations from all stage shaders, deduplicated by (type, slot, name). */
     ShaderResourceArray m_resources;
 
+    /** Resolved sampler slots, keyed by the name pointer the caller passed. See GetTextureSlot. */
+    struct SamplerSlotCacheEntry
+    {
+      const char* name = nullptr;
+      int slot         = -1;
+    };
+    mutable std::array<SamplerSlotCacheEntry, 8> m_samplerSlotCache = {};
+
     /** Returns the texture slot declared for the given sampler name, or -1 if not found. */
     int GetTextureSlot(const char* samplerName) const
     {
+      // The renderer asks for the same handful of sampler names on every draw, and the scan below
+      // walks the resource list comparing strings each time: 7.5k draws times four samplers was
+      // 1.2 ms of a frame. The name pointer identifies the caller's literal, so a resolved answer
+      // is kept per pointer.
+      for (const SamplerSlotCacheEntry& entry : m_samplerSlotCache)
+      {
+        if (entry.name == samplerName)
+        {
+          return entry.slot;
+        }
+      }
+
+      int slot = -1;
       for (const ShaderResource& res : m_resources)
       {
         if (res.type == ShaderResource::Type::Texture && res.name == samplerName)
-          return res.slot;
+        {
+          slot = res.slot;
+          break;
+        }
       }
-      return -1;
+
+      for (SamplerSlotCacheEntry& entry : m_samplerSlotCache)
+      {
+        if (entry.name == nullptr)
+        {
+          entry.name = samplerName;
+          entry.slot = slot;
+          break;
+        }
+      }
+
+      return slot;
     }
 
     IGraphicsBackend* m_backend = nullptr; //!< Set by GpuProgramManager on creation.
