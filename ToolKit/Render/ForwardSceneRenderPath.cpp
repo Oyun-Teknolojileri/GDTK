@@ -399,6 +399,8 @@ namespace ToolKit
           m_renderData.jobs.reserve(m_cachedJobs.size());
         }
 
+        TK_PROFILE_SCOPE("SetPassParams: copy visible jobs");
+
         for (Entity* ntt : entities)
         {
           const auto range = m_jobRanges.find(ntt);

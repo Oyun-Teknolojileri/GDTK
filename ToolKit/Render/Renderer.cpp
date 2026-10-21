@@ -827,31 +827,31 @@ namespace ToolKit
     const MaterialCacheItem& cache = mat->GetCacheItem();
     if (cache.DiffuseTextureInUse())
     {
-      if (int slot = m_currentProgram->GetTextureSlot("s_diffuseColor"); slot != -1)
+      if (int slot = m_currentProgram->m_materialSamplers.diffuse; slot != -1)
         SetTexture((ubyte) slot, mat->GetDiffuseTextureVal());
     }
 
     if (cache.EmissiveTextureInUse())
     {
-      if (int slot = m_currentProgram->GetTextureSlot("s_emissiveColor"); slot != -1)
+      if (int slot = m_currentProgram->m_materialSamplers.emissive; slot != -1)
         SetTexture((ubyte) slot, mat->GetEmissiveTextureVal());
     }
 
     if (cache.MetallicRoughnessTextureInUse())
     {
-      if (int slot = m_currentProgram->GetTextureSlot("s_metallicRoughness"); slot != -1)
+      if (int slot = m_currentProgram->m_materialSamplers.metallicRoughness; slot != -1)
         SetTexture((ubyte) slot, mat->GetMetallicRoughnessTextureVal());
     }
 
     if (cache.NormalTextureInUse())
     {
-      if (int slot = m_currentProgram->GetTextureSlot("s_normalMap"); slot != -1)
+      if (int slot = m_currentProgram->m_materialSamplers.normal; slot != -1)
         SetTexture((ubyte) slot, mat->GetNormalTextureVal());
     }
 
     if (mat->IsPBR())
     {
-      if (int slot = m_currentProgram->GetTextureSlot("s_brdfLut"); slot != -1)
+      if (int slot = m_currentProgram->m_materialSamplers.brdfLut; slot != -1)
         SetTexture((ubyte) slot, m_brdfLut);
     }
   }
@@ -956,7 +956,7 @@ namespace ToolKit
     Material* mat = job.Material;
     if (mat && mat->m_cubeMap)
     {
-      if (int slot = m_currentProgram->GetTextureSlot("s_cubeMap"); slot != -1)
+      if (int slot = m_currentProgram->m_materialSamplers.cubeMap; slot != -1)
         SetTexture((ubyte) slot, mat->m_cubeMap);
     }
 
@@ -1078,7 +1078,7 @@ namespace ToolKit
     if (anyIbl)
     {
       m_drawCommand.SetIblInUse(true);
-      if (int slot = m_currentProgram->GetTextureSlot("s_brdfLut"); slot != -1)
+      if (int slot = m_currentProgram->m_materialSamplers.brdfLut; slot != -1)
         SetTexture((ubyte) slot, m_brdfLut);
     }
 

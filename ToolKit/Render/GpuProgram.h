@@ -39,31 +39,32 @@ namespace ToolKit
     /** Aggregated resource declarations from all stage shaders, deduplicated by (type, slot, name). */
     ShaderResourceArray m_resources;
 
-    /** Resolved sampler slots, keyed by the name pointer the caller passed. See GetTextureSlot. */
-    struct SamplerSlotCacheEntry
+    /** The samplers the renderer binds on every draw, resolved once when the program is built. The
+     *  hot path reads a field instead of looking a name up, and a missing one stays -1. */
+    struct MaterialSamplers
     {
-      const char* name = nullptr;
-      int slot         = -1;
-    };
-    mutable std::array<SamplerSlotCacheEntry, 8> m_samplerSlotCache = {};
+      int diffuse           = -1;
+      int emissive          = -1;
+      int metallicRoughness = -1;
+      int normal            = -1;
+      int brdfLut           = -1;
+      int cubeMap           = -1;
+    } m_materialSamplers;
+
+    /** Name to slot, built once from m_resources. GetTextureSlot answers from here instead of
+     *  walking the resource list and comparing strings on every call. */
+    std::unordered_map<String, int> m_textureSlotsByName;
 
     /** Returns the texture slot declared for the given sampler name, or -1 if not found. */
     int GetTextureSlot(const char* samplerName) const
     {
-      // The name is compared by content. Keying a cache on the pointer looks tempting and was tried,
-      // and it is wrong: callers pass c_str() of strings that are not guaranteed to outlive the call,
-      // so the allocator can hand the same address to a different name later and the cache then
-      // answers with a slot that belongs to another sampler. The symptom is a texture bound to the
-      // wrong sampler, which shows up as reflections that jump between frames and an occasional frame
-      // that blooms out.
-      for (const ShaderResource& res : m_resources)
+      if (samplerName == nullptr)
       {
-        if (res.type == ShaderResource::Type::Texture && res.name == samplerName)
-        {
-          return res.slot;
-        }
+        return -1;
       }
-      return -1;
+
+      const auto itr = m_textureSlotsByName.find(String(samplerName));
+      return itr != m_textureSlotsByName.end() ? itr->second : -1;
     }
 
     IGraphicsBackend* m_backend = nullptr; //!< Set by GpuProgramManager on creation.

@@ -48,6 +48,30 @@ namespace ToolKit
 
     mergeResources(vertex);
     mergeResources(fragment);
+
+    // Resolve the samplers once here rather than on the draw path, which asks for the same handful of
+    // names for every object it draws. The map is keyed by name content, so a caller that passes a
+    // temporary string still gets the right answer.
+    for (const ShaderResource& res : m_resources)
+    {
+      if (res.type == ShaderResource::Type::Texture)
+      {
+        m_textureSlotsByName[res.name] = res.slot;
+      }
+    }
+
+    const auto slotOf = [this](const char* name) -> int
+    {
+      const auto itr = m_textureSlotsByName.find(String(name));
+      return itr != m_textureSlotsByName.end() ? itr->second : -1;
+    };
+
+    m_materialSamplers.diffuse           = slotOf("s_diffuseColor");
+    m_materialSamplers.emissive          = slotOf("s_emissiveColor");
+    m_materialSamplers.metallicRoughness = slotOf("s_metallicRoughness");
+    m_materialSamplers.normal            = slotOf("s_normalMap");
+    m_materialSamplers.brdfLut           = slotOf("s_brdfLut");
+    m_materialSamplers.cubeMap           = slotOf("s_cubeMap");
   }
 
   GpuProgram::~GpuProgram()
