@@ -133,6 +133,12 @@ namespace ToolKit
   };
 
   /**
+   * Date and time the engine library that is loaded right now was compiled. Hosts put it in a window
+   * title or a log line so a stale copy of the library is obvious instead of looking like a bug.
+   */
+  TK_API const char* GetEngineBuildStamp();
+
+  /**
    * Main class that provides access to all sorts of manager and utility functionalities provided by the Engine.
    */
   class TK_API Main

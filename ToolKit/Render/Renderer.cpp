@@ -861,6 +861,50 @@ namespace ToolKit
     }
   }
 
+  void Renderer::UploadDirtyLights(const LightRawPtrArray& lights)
+  {
+    TK_PROFILE_FUNCTION();
+
+    SpotLightCache& spotCache   = m_globalGpuBuffers->spotLightBuffer;
+    PointLightCache& pointCache = m_globalGpuBuffers->pointLighBuffer;
+
+    bool pointDirty = false;
+    bool spotDirty  = false;
+
+    for (Light* light : lights)
+    {
+      if (light == nullptr || !light->IsCacheItemDirty())
+      {
+        continue;
+      }
+
+      switch (light->GetLightType())
+      {
+        case Light::LightType::Point:
+          pointCache.AddOrUpdateItem(static_cast<PointLight*>(light)->GetCacheItem());
+          pointDirty = true;
+          break;
+        case Light::LightType::Spot:
+          spotCache.AddOrUpdateItem(static_cast<SpotLight*>(light)->GetCacheItem());
+          spotDirty = true;
+          break;
+        case Light::LightType::Directional:
+          // The directional buffer is rebuilt from the frame's light list every frame.
+          break;
+      }
+    }
+
+    if (pointDirty && pointCache.Map())
+    {
+      Stats::IncrementStat(FrameStatType::LightCacheInvalidation);
+    }
+
+    if (spotDirty && spotCache.Map())
+    {
+      Stats::IncrementStat(FrameStatType::LightCacheInvalidation);
+    }
+  }
+
   void Renderer::SetLights(const LightRawPtrArray& lights)
   {
     TK_PROFILE_FUNCTION();

@@ -500,6 +500,12 @@ namespace ToolKit
     /** Sets active lights to be used in the render. Doesn't include directional lights. */
     void SetLights(const LightRawPtrArray& lights);
 
+    /** Packs every light that changed since it was last sent to the GPU, whether or not a draw this
+     *  frame uses it. The per draw path only refreshes the lights of the jobs it draws, so a light
+     *  edited while nothing it reaches is on screen would keep the old value until something drew with
+     *  it. Called once a frame, before the passes. */
+    void UploadDirtyLights(const LightRawPtrArray& lights);
+
     /**
      /** Sets directional lights to be used for render. Should be called once per pass because all objects effected from
       * directional lights. No need to set it per object.

@@ -68,6 +68,12 @@ namespace ToolKit
 
     virtual LightType GetLightType() const = 0;
 
+    /** True when the light changed since it was last packed for the GPU. The render path uses it to
+     *  upload edited lights on their own, instead of waiting for a draw that happens to use them: a
+     *  light that is edited while nothing it reaches is on screen would otherwise keep the old value
+     *  in the GPU buffer until something draws with it. */
+    virtual bool IsCacheItemDirty() const = 0;
+
    protected:
     void InvalidateSpatialCaches() override;
 
@@ -111,6 +117,12 @@ namespace ToolKit
 
     /** Guards the neighbourhood invalidation against re-entry through another light. */
     bool m_invalidatingNeighbours = false;
+
+    /** Set by the parameter callbacks that change what the light looks like rather than where it is.
+     *  Such an edit has to invalidate the objects around the light even though neither the position
+     *  nor the radius moved, or a light edited while its objects were out of view keeps the old value
+     *  in their cached assignment. */
+    bool m_forceNeighbourInvalidation = false;
   };
 
   // DirectionalLightCacheItem
@@ -179,6 +191,7 @@ namespace ToolKit
     const DirectionalLightCacheItem& GetCacheItem() override;
 
     void InvalidateCacheItem() override;
+    bool IsCacheItemDirty() const override;
 
    protected:
     XmlNode* SerializeImp(XmlDocument* doc, XmlNode* parent) const override;
@@ -256,6 +269,7 @@ namespace ToolKit
 
     const PointLightCacheItem& GetCacheItem() override;
     void InvalidateCacheItem() override;
+    bool IsCacheItemDirty() const override;
 
    protected:
     XmlNode* SerializeImp(XmlDocument* doc, XmlNode* parent) const override;
@@ -332,6 +346,7 @@ namespace ToolKit
 
     const SpotLightCacheItem& GetCacheItem() override;
     void InvalidateCacheItem() override;
+    bool IsCacheItemDirty() const override;
 
    protected:
     XmlNode* SerializeImp(XmlDocument* doc, XmlNode* parent) const override;

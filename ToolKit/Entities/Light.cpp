@@ -61,19 +61,22 @@ namespace ToolKit
   {
     Super::ParameterEventConstructor();
 
-    ParamColor().m_onValueChangedFn.push_back([this](Value& oldVal, Value& newVal) -> void { InvalidateCacheItem(); });
+    // A light edit invalidates the objects around it, not just its own cache entry. Their render job
+    // keeps the light list it was assigned, and the light's place in the GPU light buffer is only
+    // refreshed when a draw asks for it, so a light that changed while its objects were out of view
+    // would otherwise keep the old value the next time they are drawn.
+    const auto onLightEdited = [this](Value&, Value&) -> void
+    {
+      InvalidateCacheItem();
+      m_forceNeighbourInvalidation = true;
+      InvalidateSpatialCaches();
+    };
 
-    ParamIntensity().m_onValueChangedFn.push_back([this](Value& oldVal, Value& newVal) -> void
-                                                  { InvalidateCacheItem(); });
-
-    ParamCastShadow().m_onValueChangedFn.push_back([this](Value& oldVal, Value& newVal) -> void
-                                                   { InvalidateCacheItem(); });
-
-    ParamShadowBias().m_onValueChangedFn.push_back([this](Value& oldVal, Value& newVal) -> void
-                                                   { InvalidateCacheItem(); });
-
-    ParamBleedingReduction().m_onValueChangedFn.push_back([this](Value& oldVal, Value& newVal) -> void
-                                                          { InvalidateCacheItem(); });
+    ParamColor().m_onValueChangedFn.push_back(onLightEdited);
+    ParamIntensity().m_onValueChangedFn.push_back(onLightEdited);
+    ParamCastShadow().m_onValueChangedFn.push_back(onLightEdited);
+    ParamShadowBias().m_onValueChangedFn.push_back(onLightEdited);
+    ParamBleedingReduction().m_onValueChangedFn.push_back(onLightEdited);
   }
 
   void Light::UpdateShadowCamera() { m_shadowMapCameraProjectionViewMatrix = m_shadowCamera->GetProjectViewMatrix(); }
@@ -151,7 +154,9 @@ namespace ToolKit
     // the light, and a radius change invalidates on its own even when the light stayed put.
     constexpr float kInvalidationStep = 0.05f;
     const bool radiusChanged          = m_lastInvalidationRadius != radius;
-    if (m_lastInvalidationPosition != Vec3(TK_FLT_MAX) && !radiusChanged)
+    const bool forced                 = m_forceNeighbourInvalidation;
+    m_forceNeighbourInvalidation      = false;
+    if (!forced && m_lastInvalidationPosition != Vec3(TK_FLT_MAX) && !radiusChanged)
     {
       const float moved = glm::distance(now, m_lastInvalidationPosition);
       if (moved < radius * kInvalidationStep)
@@ -168,14 +173,20 @@ namespace ToolKit
     nowSphere.pos    = now;
     nowSphere.radius = radius;
     const bool hasPrevious = m_lastInvalidationPosition != Vec3(TK_FLT_MAX);
+
+    // The previous sphere is built with the previous radius, not the current one. Shrinking a light is
+    // the case that needs it: the objects it just lost sit outside the new sphere, so with the new
+    // radius they are never visited, they keep the light in their cached assignment, and nothing else
+    // would ever correct them because they do not move.
+    const float previousRadius = m_lastInvalidationRadius > 0.0f ? m_lastInvalidationRadius : radius;
     BoundingSphere previousSphere;
     previousSphere.pos    = m_lastInvalidationPosition;
-    previousSphere.radius = radius;
+    previousSphere.radius = previousRadius;
     if (hasPrevious)
     {
       query = BoundingBox::Union(query,
-                                 BoundingBox(m_lastInvalidationPosition - Vec3(radius),
-                                             m_lastInvalidationPosition + Vec3(radius)));
+                                 BoundingBox(m_lastInvalidationPosition - Vec3(previousRadius),
+                                             m_lastInvalidationPosition + Vec3(previousRadius)));
     }
 
     EntityRawPtrArray touched = scene->m_aabbTree.VolumeQuery(query, false);
@@ -413,6 +424,7 @@ namespace ToolKit
   }
 
   void DirectionalLight::InvalidateCacheItem() { m_lightCacheItem.Invalidate(); }
+  bool DirectionalLight::IsCacheItemDirty() const { return !m_lightCacheItem.isValid; }
 
   XmlNode* DirectionalLight::SerializeImp(XmlDocument* doc, XmlNode* parent) const
   {
@@ -576,6 +588,7 @@ namespace ToolKit
   }
 
   void PointLight::InvalidateCacheItem() { m_lightCacheItem.Invalidate(); };
+  bool PointLight::IsCacheItemDirty() const { return !m_lightCacheItem.isValid; }
 
   float PointLight::AffectDistance() { return GetRadiusVal(); }
 
@@ -685,6 +698,7 @@ namespace ToolKit
   }
 
   void SpotLight::InvalidateCacheItem() { m_lightCacheItem.Invalidate(); }
+  bool SpotLight::IsCacheItemDirty() const { return !m_lightCacheItem.isValid; }
 
   XmlNode* SpotLight::SerializeImp(XmlDocument* doc, XmlNode* parent) const
   {
@@ -767,6 +781,7 @@ namespace ToolKit
         {
           const float radius = std::get<float>(newVal);
           MeshGenerator::GenerateConeMesh(m_volumeMesh, radius, 32, GetOuterAngleVal());
+          m_forceNeighbourInvalidation = true;
           InvalidateSpatialCaches();
         });
   }

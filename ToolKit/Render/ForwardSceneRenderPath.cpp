@@ -173,6 +173,19 @@ namespace ToolKit
       // Select non culled scene lights.
       MoveByType(entities, lights);
 
+      // A light that is being edited belongs in the frame even when the camera does not see it. The
+      // list above is what the camera frustum returned, so a light edited off screen never reached the
+      // GPU: its cache entry was never packed, and the new value only appeared once something else
+      // happened to bring the light into view.
+      for (Light* light : m_params.Scene->GetLights())
+      {
+        if (light != nullptr && light->IsCacheItemDirty() &&
+            std::find(lights.begin(), lights.end(), light) == lights.end())
+        {
+          lights.push_back(light);
+        }
+      }
+
       // Collect directional lights.
       const LightRawPtrArray& directionalLights = m_params.Scene->GetDirectionalLights();
       renderer->SetDirectionalLights(directionalLights);
@@ -213,6 +226,12 @@ namespace ToolKit
     std::sort(lights.begin() + dirEndIndx,
               lights.end(),
               [](Light* a, Light* b) -> bool { return a->GetIdVal() < b->GetIdVal(); });
+
+    // An edited light is packed for the GPU here, before the passes, instead of waiting for a draw
+    // that happens to use it. The light buffers used to be refreshed only from the per draw path, so a
+    // light edited while nothing it reaches was on screen kept the old value in the GPU buffer, and
+    // coming into view did not correct it.
+    renderer->UploadDirtyLights(lights);
 
     const EnvironmentComponentPtrArray& environments = m_params.Scene->GetEnvironmentVolumes();
 

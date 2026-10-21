@@ -122,6 +122,8 @@ namespace ToolKit
 
   Main* Main::m_proxy = nullptr;
 
+  const char* GetEngineBuildStamp() { return __DATE__ " " __TIME__; }
+
   Main::Main()
   {
     // Start Timer.
