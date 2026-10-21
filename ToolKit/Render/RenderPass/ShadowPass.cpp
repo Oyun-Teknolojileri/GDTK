@@ -329,7 +329,7 @@ namespace ToolKit
     }
 
     const uint64 version = m_params.scene->GetCacheVersion();
-    if (!m_params.castersDirty && version == m_casterVersion &&
+    if (!m_params.castersDirty && m_animatedCasterEntities.empty() && version == m_casterVersion &&
         lightSignature == m_casterLightSignature && !m_shadowBatches.empty())
     {
       return;
@@ -346,7 +346,8 @@ namespace ToolKit
       m_dirtyCasterEntities.clear();
       for (const auto& [entity, slot] : m_casterRanges)
       {
-        if (entity->GetSpatialGeneration() != slot.generation)
+        if (entity->GetSpatialGeneration() != slot.generation ||
+            m_animatedCasterEntities.find(entity) != m_animatedCasterEntities.end())
         {
           m_dirtyCasterEntities.push_back(const_cast<Entity*>(entity));
         }
@@ -432,6 +433,7 @@ namespace ToolKit
   void ShadowPass::UpdateCasterRanges()
   {
     m_casterRanges.clear();
+    m_animatedCasterEntities.clear();
 
     const RenderJobArray& jobs = m_shadowRenderData.jobs;
     for (uint i = 0; i < (uint) jobs.size();)
@@ -446,6 +448,17 @@ namespace ToolKit
       if (owner != nullptr)
       {
         m_casterRanges[owner] = {owner->GetSpatialGeneration(), i, end};
+
+        // Their geometry moves while the entity stands still, so their ranges are rebuilt on every
+        // frame rather than when a counter moves.
+        for (uint k = i; k < end; k++)
+        {
+          if (jobs[k].Mesh->IsSkinned() || jobs[k].animData.currentAnimation != nullptr)
+          {
+            m_animatedCasterEntities.insert(owner);
+            break;
+          }
+        }
       }
 
       i = end;

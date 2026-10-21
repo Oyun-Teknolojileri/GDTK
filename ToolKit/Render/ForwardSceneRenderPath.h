@@ -115,10 +115,10 @@ namespace ToolKit
      *  recomputed: doing that every frame measured 3.5 ms on the city. */
     uint64 m_assignmentSignature = ~0ull;
 
-    /** Set when the scene contains anything whose transform moves without an invalidation, such
-     *  as a skinned or animated job: the cache is then not used at all and jobs are built per
-     *  frame as before. */
-    bool m_jobCacheUnusable = false;
+    /** Entities whose jobs have to be rebuilt every frame because their geometry moves without the
+     *  entity moving: a skinned mesh deforms, an animated one can be driven through its clip. Their
+     *  ranges are rebuilt while everything around them stays cached. */
+    std::unordered_set<const Entity*> m_animatedJobEntities;
   };
 
 } // namespace ToolKit

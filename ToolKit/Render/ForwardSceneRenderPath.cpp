@@ -222,7 +222,7 @@ namespace ToolKit
       // Only structural changes rebuild the cache. Light assignment is not part of it: which lights
       // reach an object depends on where the lights are, so it is recomputed when they move below.
       const uint64 version = m_params.Scene->GetCacheVersion();
-      const bool rebuild   = m_jobCacheUnusable || version != m_jobCacheVersion;
+      const bool rebuild   = version != m_jobCacheVersion;
 
       if (rebuild)
       {
@@ -263,15 +263,19 @@ namespace ToolKit
           i = end;
         }
 
-        // Animated and skinned jobs move without a spatial invalidation, which the version cannot
-        // see, so a scene with any of them keeps building per frame.
-        m_jobCacheUnusable = false;
+        // A skinned mesh deforms without its entity moving, and an animated one can be driven
+        // without a spatial invalidation, so neither is something the two counters can see. They are
+        // listed here and their ranges are rebuilt every frame, which keeps the cache useful for the
+        // static surroundings of an animated character instead of turning it off for the whole scene.
+        m_animatedJobEntities.clear();
         for (const RenderJob& job : m_cachedJobs)
         {
           if (job.Mesh->IsSkinned() || job.animData.currentAnimation != nullptr)
           {
-            m_jobCacheUnusable = true;
-            break;
+            if (job.Entity != nullptr)
+            {
+              m_animatedJobEntities.insert(job.Entity);
+            }
           }
         }
       }
@@ -283,7 +287,8 @@ namespace ToolKit
         m_lightDirtyEntities.clear();
         for (const auto& [entity, slot] : m_jobRanges)
         {
-          if (entity->GetSpatialGeneration() != slot.generation)
+          if (entity->GetSpatialGeneration() != slot.generation ||
+              m_animatedJobEntities.find(entity) != m_animatedJobEntities.end())
           {
             m_dirtyEntities.push_back(const_cast<Entity*>(entity));
           }
@@ -379,7 +384,7 @@ namespace ToolKit
       }
 
       m_renderData.jobs.clear();
-      if (m_jobCacheUnusable || m_cachedJobs.empty())
+      if (m_cachedJobs.empty())
       {
         RenderJobProcessor::CreateRenderJobs(m_renderData.jobs, entities, false, dirEndIndx, lights, environments);
       }
@@ -436,7 +441,7 @@ namespace ToolKit
     // The shadow pass keeps its caster jobs between frames, so it has to hear about the frames where
     // an entity changed without the scene version moving: when the cache rebuilt some ranges (a
     // transform, a light that moved) or when it could not be used at all.
-    m_shadowPass->m_params.castersDirty = m_jobCacheUnusable || !m_dirtyEntities.empty();
+    m_shadowPass->m_params.castersDirty = !m_dirtyEntities.empty();
 
     {
       TK_PROFILE_SCOPE("SetPassParams: partition");

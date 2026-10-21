@@ -155,6 +155,10 @@ namespace ToolKit
     RenderJobArray m_dirtyCasterJobs;
     EntityRawPtrArray m_dirtyCasterEntities;
 
+    /// Casters whose geometry moves without their entity moving: a skinned mesh deforms, an animated
+    /// one is driven through its clip. Their ranges are rebuilt every frame, the rest stays cached.
+    std::unordered_set<const Entity*> m_animatedCasterEntities;
+
     /** Batched runs of m_shadowRenderData.jobs; see ShadowBatch. */
     std::vector<ShadowBatch> m_shadowBatches;
 
