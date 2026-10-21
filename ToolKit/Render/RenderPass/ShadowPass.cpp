@@ -173,11 +173,19 @@ namespace ToolKit
 
     erase_if(m_lights, [](Light* light) -> bool { return !light->HasValidShadowSlot(); });
 
-    // Build the caster jobs once for the whole frame; every light and cascade reuses them.
-    m_shadowRenderData.jobs.clear();
+    // Build the caster jobs once for the whole frame; every light and cascade reuses them. The array
+    // belongs to PrepareShadowCasterJobs, which keeps it between frames, so it is not cleared here:
+    // clearing it and then taking the cache's early out left an empty array behind while the batches
+    // still indexed it, which read past the end and drew casters that were not in the scene.
     if (!m_lights.empty())
     {
       PrepareShadowCasterJobs();
+    }
+    else
+    {
+      m_shadowRenderData.jobs.clear();
+      m_shadowBatches.clear();
+      m_casterVersion = ~0ull;
     }
 
     // Group lights by their first atlas layer and record layer switch indices.
@@ -302,6 +310,8 @@ namespace ToolKit
     if (m_params.scene == nullptr)
     {
       m_shadowRenderData.jobs.clear();
+      m_shadowBatches.clear();
+      m_casterVersion = ~0ull;
       return;
     }
 
@@ -559,6 +569,12 @@ namespace ToolKit
       const size_t itemFloats = size_t(InstanceTexelsPerItem) * 4;
       int instance            = 0;
 
+      // The batches index into the job array they were built from. A frame where that array shrank
+      // (casters removed, the scene emptied) can leave a batch pointing past the end, and indexing
+      // with it reads a transform that is not there. The index is checked against the array it
+      // addresses, and nothing else.
+      const int jobCount = (int) jobs.size();
+
       for (const ShadowBatch& batch : m_shadowBatches)
       {
         if (batch.masked != maskedPass)
@@ -577,6 +593,10 @@ namespace ToolKit
         for (int k = 0; k < batch.jobCount; k++)
         {
           const int jobIndex = batch.firstJob + k;
+          if (jobIndex < 0 || jobIndex >= jobCount)
+          {
+            continue;
+          }
 
           // A batch entirely inside the frustum needs no per caster test.
           if (batchHit != IntersectResult::Inside)
@@ -610,6 +630,11 @@ namespace ToolKit
 
       for (const ShadowDrawRun& run : runs)
       {
+        if (run.firstJob < 0 || run.firstJob >= jobCount || run.count == 0)
+        {
+          continue;
+        }
+
         renderer->RenderBatch(jobs[run.firstJob], (uint) run.count, (uint) run.firstInstance);
       }
     };
