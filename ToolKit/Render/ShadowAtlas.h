@@ -38,6 +38,7 @@ namespace ToolKit
       Vec2 coordinate = Vec2(-1.0f); //!< Top-left coordinate in pixels.
       int layer       = -1;          //!< Layer index in the array texture.
       int resolution  = 0;           //!< Slot resolution in pixels.
+      int slotIndex   = -1;          //!< Index within its tier, for reserving the same slot again.
     };
 
     static constexpr int LayerCount       = 2;
@@ -68,8 +69,27 @@ namespace ToolKit
      */
     bool AllocateN(SlotSize size, int count, int atlasSize, SlotInfo* outSlots);
 
+    /**
+     * Allocates count slots that are consecutive in the tier's index order, or nothing at all. A point
+     * light's cube is sampled by deriving the slot of face 0 and stepping through the faces from there,
+     * so its slots have to be one run; a scatter of free slots would sample a neighbour's map.
+     */
+    bool AllocateContiguous(SlotSize size, int count, int atlasSize, SlotInfo* outSlots);
+
     /** Returns the resolution in pixels for a given slot size tier and atlas size. */
     static int GetSlotResolution(SlotSize size, int atlasSize);
+
+    /** Slot count of a tier. */
+    static int GetSlotCount(SlotSize size);
+
+    /** True when the indexed slot of that tier is still free. */
+    bool IsSlotFree(SlotSize size, int slotIndex) const;
+
+    /** Marks the indexed slot of that tier as used. Fails if it is out of range or already used. */
+    bool ReserveSlot(SlotSize size, int slotIndex);
+
+    /** Slot info for a known index, without allocating it. */
+    SlotInfo GetSlotInfo(SlotSize size, int slotIndex, int atlasSize) const;
 
    private:
     bool m_halfSlots[HalfSlotCount]       = {};

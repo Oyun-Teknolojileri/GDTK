@@ -985,65 +985,285 @@ namespace ToolKit
       light->m_shadowResolution = (float) ShadowAtlas::GetSlotResolution(ShadowAtlas::SlotSize::Half, atlasSize);
     }
 
-    // Step 2: Collect non-directional shadow casters, sort by priority score.
-    Vec3 camPos = m_params.viewCamera->Position();
+    // Step 2: rate the local lights by how much of the picture they contribute, and place the biggest
+    // ones first.
+    //
+    // The order used to be AffectDistance over the distance to the light's centre, which rates a large
+    // light whose centre is far below a small one nearby, and says nothing about the area the light
+    // covers. The score is now the area the light's volume projects onto the screen times its intensity,
+    // quantised into power of two buckets. Quantising is what keeps the order still: a small camera move
+    // changes the area by a few percent, the bucket does not move, and a light does not trade slots with
+    // its neighbour every frame, which is what made the shadows jump between resolutions.
+    const Vec3 camPos             = m_params.viewCamera->Position();
+    const float maxShadowDistance = shadows->GetShadowMaxDistance();
+    const float tanHalfFov        = glm::tan(glm::max(m_params.viewCamera->Fov() * 0.5f, 0.01f));
 
-    LightRawPtrArray localLights;
-    localLights.reserve(lights.size());
+    UVec2 viewSize = GetRenderer()->GetViewportSize();
+    if (viewSize.x == 0 || viewSize.y == 0)
+    {
+      viewSize = UVec2(1280, 720);
+    }
+
+    const float screenArea               = float(viewSize.x) * float(viewSize.y);
+    constexpr float kQuarterAreaFraction = 0.04f;
+
+    struct LocalCandidate
+    {
+      Light* light               = nullptr;
+      int bucket                 = 0;
+      int distBucket             = 0;
+      ShadowAtlas::SlotSize tier = ShadowAtlas::SlotSize::Eighth;
+
+      // Kept for the metric report, so the numbers behind a placement can be read back.
+      float distance             = 0.0f;
+      float radiusPx             = 0.0f;
+      float areaFraction         = 0.0f;
+      float intensity            = 0.0f;
+      float score                = 0.0f;
+    };
+
+    std::vector<LocalCandidate> candidates;
+    candidates.reserve(lights.size());
 
     for (Light* light : lights)
     {
-      if (light->GetLightType() != Light::LightType::Directional)
+      if (light->GetLightType() == Light::LightType::Directional || !light->GetCastShadowVal())
       {
-        localLights.push_back(light);
+        continue;
+      }
+
+      // Distance to the volume, not to the centre: a light whose centre sits behind the camera can still
+      // cover the view, and a large radius reaches much closer than its centre suggests.
+      const float radius = light->AffectDistance();
+      const Vec3 centre  = light->m_node->GetTranslation(TransformationSpace::TS_WORLD);
+      const float dist   = glm::max(glm::distance(camPos, centre) - radius, 0.01f);
+      if (dist > maxShadowDistance)
+      {
+        continue;
+      }
+
+      const float radiusPx = radius / (dist * tanHalfFov) * (float(viewSize.y) * 0.5f);
+      const float area     = glm::min(glm::pi<float>() * radiusPx * radiusPx, screenArea);
+      const float score    = glm::max(area * glm::max(light->GetIntensityVal(), 1.0f), 1.0f);
+
+      LocalCandidate candidate;
+      candidate.light        = light;
+      candidate.bucket       = int(glm::floor(glm::log2(score)));
+      // Ranking inside a bucket needs something that does not saturate. The area does: a light the
+      // camera stands inside covers the whole screen, and so do a dozen others around it, which left
+      // the order to the light id. Distance to the volume separates them, quantised in powers of two so
+      // a camera move does not reshuffle the ties.
+      candidate.distBucket   = int(glm::floor(glm::log2(glm::max(dist, 0.05f))));
+      candidate.tier         = area >= screenArea * kQuarterAreaFraction ? ShadowAtlas::SlotSize::Quarter
+                                                                        : ShadowAtlas::SlotSize::Eighth;
+      candidate.distance     = dist;
+      candidate.radiusPx     = radiusPx;
+      candidate.areaFraction = area / screenArea;
+      candidate.intensity    = light->GetIntensityVal();
+      candidate.score        = score;
+      candidates.push_back(candidate);
+    }
+
+    std::sort(candidates.begin(),
+              candidates.end(),
+              [](const LocalCandidate& a, const LocalCandidate& b)
+              {
+                if (a.bucket != b.bucket)
+                {
+                  return a.bucket > b.bucket;
+                }
+
+                if (a.distBucket != b.distBucket)
+                {
+                  return a.distBucket < b.distBucket; // Nearer to the camera first.
+                }
+
+                // Id keeps the order deterministic for equal scores, which the atlas needs.
+                return a.light->GetIdVal() < b.light->GetIdVal();
+              });
+
+    // Step 3: place them, keeping the slots a light already holds so the layout survives a light
+    // entering or leaving the view.
+    std::unordered_map<uint64, PlacedLight> previousPlacement;
+    previousPlacement.swap(m_placedLights);
+    m_placedLights.reserve(candidates.size());
+
+    for (const LocalCandidate& candidate : candidates)
+    {
+      Light* light     = candidate.light;
+      const int needed = (light->GetLightType() == Light::LightType::Point) ? 6 : 1;
+      const uint64 id  = light->GetIdVal();
+
+      ShadowAtlas::SlotInfo slots[6];
+      ShadowAtlas::SlotSize placedTier = candidate.tier;
+      int indices[6]                   = {-1, -1, -1, -1, -1, -1};
+      bool placed                      = false;
+
+      const auto previous = previousPlacement.find(id);
+      const auto floorTier = [](ShadowAtlas::SlotSize tier) -> ShadowAtlas::SlotSize
+      {
+        return tier == ShadowAtlas::SlotSize::Quarter ? ShadowAtlas::SlotSize::Eighth : tier;
+      };
+
+      // Same tier as last frame: take the exact slots back when they are still free and, for a light
+      // that needs a run of slots, when they are still one run. A record that is not a run can only come
+      // from an older build, so it is dropped and the light allocates again below.
+      if (previous != m_placedLights.end() && previous->second.count == needed)
+      {
+        const PlacedLight& prev = previous->second;
+        bool free               = true;
+        for (int i = 0; i < needed && free; i++)
+        {
+          free = m_atlas.IsSlotFree(prev.tier, prev.slotIndices[i]) &&
+                 (needed == 1 || prev.slotIndices[i] == prev.slotIndices[0] + i);
+        }
+
+        if (free)
+        {
+          for (int i = 0; i < needed; i++)
+          {
+            m_atlas.ReserveSlot(prev.tier, prev.slotIndices[i]);
+            slots[i]   = m_atlas.GetSlotInfo(prev.tier, prev.slotIndices[i], atlasSize);
+            indices[i] = prev.slotIndices[i];
+          }
+          placedTier = prev.tier;
+          placed     = true;
+        }
+      }
+
+      // A light that grew past the tier it held, or that is new: try the tier its area asks for, then
+      // the one below it.
+      if (!placed)
+      {
+        for (ShadowAtlas::SlotSize tier = candidate.tier; !placed; tier = floorTier(tier))
+        {
+          // Contiguous, because a point light's cube is sampled by walking the faces from face 0's slot.
+          if (m_atlas.AllocateContiguous(tier, needed, atlasSize, slots))
+          {
+            for (int i = 0; i < needed; i++)
+            {
+              indices[i] = slots[i].slotIndex;
+            }
+            placedTier = tier;
+            placed     = true;
+          }
+
+          if (tier == ShadowAtlas::SlotSize::Eighth)
+          {
+            break; // Nothing smaller to fall back to.
+          }
+        }
+      }
+
+      if (!placed)
+      {
+        // No room left. The light keeps its place in the table with no slots, so it does not push the
+        // others around while it waits for one.
+        m_placedLights[id] = PlacedLight();
+        continue;
+      }
+
+      for (int i = 0; i < needed; i++)
+      {
+        light->m_shadowAtlasCoords[i] = slots[i].coordinate;
+        light->m_shadowAtlasLayers[i] = slots[i].layer;
+      }
+      light->m_shadowResolution = (float) ShadowAtlas::GetSlotResolution(placedTier, atlasSize);
+
+      PlacedLight record;
+      record.tier  = placedTier;
+      record.count = needed;
+      for (int i = 0; i < needed; i++)
+      {
+        record.slotIndices[i] = indices[i];
+      }
+      m_placedLights[id] = record;
+
+      // The point light cube is sampled by deriving the slot of face 0 from its atlas coordinate and
+      // stepping through the faces from there (see SampleShadowOmni), so the six slots have to be
+      // consecutive. A gap means the shader reads a neighbouring light's map, which looks like a shadow
+      // that comes and goes with the placement order. Reported once a second with the metric.
+      if (needed > 1 && indices[0] >= 0)
+      {
+        for (int i = 1; i < needed; i++)
+        {
+          if (indices[i] != indices[0] + i)
+          {
+            TK_ERR("Shadow atlas: '%s' got non consecutive slots (%d, %d, %d, %d, %d, %d), its cube "
+                   "cannot be sampled correctly.",
+                   light->GetNameVal().c_str(),
+                   indices[0],
+                   indices[1],
+                   indices[2],
+                   indices[3],
+                   indices[4],
+                   indices[5]);
+            break;
+          }
+        }
       }
     }
 
-    std::sort(localLights.begin(),
-              localLights.end(),
-              [&camPos](Light* a, Light* b)
-              {
-                float distA =
-                    glm::max(glm::distance(a->m_node->GetTranslation(TransformationSpace::TS_WORLD), camPos), 0.01f);
-                float distB =
-                    glm::max(glm::distance(b->m_node->GetTranslation(TransformationSpace::TS_WORLD), camPos), 0.01f);
-                float scoreA = a->AffectDistance() / distA;
-                float scoreB = b->AffectDistance() / distB;
-                return scoreA > scoreB;
-              });
-
-    // Step 3: Place sorted lights. Try Quarter first, fallback to Eighth.
-    for (Light* light : localLights)
+    // Report the metric once a second so the ranking can be judged on a real scene: the numbers say why
+    // a light is placed where it is, and which ones the range cull rejected.
+    static uint metricFrame = 0;
+    if (metricFrame++ % 60 == 0)
     {
-      int needed = (light->GetLightType() == Light::LightType::Point) ? 6 : 1;
-
-      ShadowAtlas::SlotInfo slots[6];
-
-      // Try Quarter (larger, higher quality).
-      if (m_atlas.AllocateN(ShadowAtlas::SlotSize::Quarter, needed, atlasSize, slots))
+      for (const LocalCandidate& candidate : candidates)
       {
-        for (int s = 0; s < needed; s++)
+        const char* tierName = candidate.tier == ShadowAtlas::SlotSize::Quarter ? "Quarter" : "Eighth";
+        const auto placed    = m_placedLights.find(candidate.light->GetIdVal());
+        int slotIndex        = -1;
+        const char* placedTierName = "-";
+        if (placed != m_placedLights.end() && placed->second.count > 0)
         {
-          light->m_shadowAtlasCoords[s] = slots[s].coordinate;
-          light->m_shadowAtlasLayers[s] = slots[s].layer;
+          slotIndex      = placed->second.slotIndices[0];
+          placedTierName = placed->second.tier == ShadowAtlas::SlotSize::Quarter ? "Quarter" : "Eighth";
         }
-        light->m_shadowResolution = (float) ShadowAtlas::GetSlotResolution(ShadowAtlas::SlotSize::Quarter, atlasSize);
-        continue;
+
+        TK_LOG("LIGHTMETRIC '%s' d=%.2f rpx=%.0f area=%.2f%% I=%.2f score=%.0f bucket=%d wants=%s "
+               "placed=%s slot=%d",
+               candidate.light->GetNameVal().c_str(),
+               candidate.distance,
+               candidate.radiusPx,
+               candidate.areaFraction * 100.0f,
+               candidate.intensity,
+               candidate.score,
+               candidate.bucket,
+               tierName,
+               placedTierName,
+               slotIndex);
       }
 
-      // Fallback to Eighth (smaller).
-      if (m_atlas.AllocateN(ShadowAtlas::SlotSize::Eighth, needed, atlasSize, slots))
+      // How many lights changed slot since the previous frame: the number the sticky placement exists
+      // to keep at zero while nothing but the camera moves.
+      int moved = 0;
+      for (const auto& [id, record] : m_placedLights)
       {
-        for (int s = 0; s < needed; s++)
+        const auto prev = previousPlacement.find(id);
+        if (prev == previousPlacement.end() || prev->second.tier != record.tier ||
+            prev->second.count != record.count)
         {
-          light->m_shadowAtlasCoords[s] = slots[s].coordinate;
-          light->m_shadowAtlasLayers[s] = slots[s].layer;
+          moved++;
+          continue;
         }
-        light->m_shadowResolution = (float) ShadowAtlas::GetSlotResolution(ShadowAtlas::SlotSize::Eighth, atlasSize);
-        continue;
+
+        for (int i = 0; i < record.count; i++)
+        {
+          if (prev->second.slotIndices[i] != record.slotIndices[i])
+          {
+            moved++;
+            break;
+          }
+        }
       }
 
-      // No slots available. Light gets no shadow.
+      TK_LOG("LIGHTMETRIC frame: %d locals, range=%.0f, view=%dx%d, slots changed since last frame=%d",
+             int(candidates.size()),
+             maxShadowDistance,
+             viewSize.x,
+             viewSize.y,
+             moved);
     }
 
     // Invalidate cache for all lights to ensure GPU gets correct atlas data.

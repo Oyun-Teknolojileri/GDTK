@@ -131,6 +131,17 @@ namespace ToolKit
     /** Meta data used for storing all shadow map coordinates and layers. */
     ShadowAtlas m_atlas;
 
+    /** Where a local light was placed last frame. A light that still wants the same tier gets its old
+     *  slots back, so a light entering or leaving the view does not reshuffle the atlas under the
+     *  others and their shadows do not jump between resolutions. */
+    struct PlacedLight
+    {
+      ShadowAtlas::SlotSize tier = ShadowAtlas::SlotSize::Eighth;
+      int slotIndices[6]         = {-1, -1, -1, -1, -1, -1};
+      int count                  = 0;
+    };
+    std::unordered_map<uint64, PlacedLight> m_placedLights;
+
     /** Cached list of shadow casting lights with valid atlas slots, sorted by first atlas layer. */
     LightRawPtrArray m_lights;
 

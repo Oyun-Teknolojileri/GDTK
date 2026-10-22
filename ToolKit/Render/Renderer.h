@@ -356,6 +356,10 @@ namespace ToolKit
 
     void SetViewport(Viewport* viewport);
     void SetViewportRect(uint x, uint y, uint width, uint height);
+
+    /** Size of the viewport being rendered, in pixels. */
+    UVec2 GetViewportSize() const { return UVec2(m_viewportRect.x, m_viewportRect.y); }
+
     void SetScissor(uint x, uint y, uint width, uint height);
 
     void DrawFullQuad(ShaderPtr fragmentShader);

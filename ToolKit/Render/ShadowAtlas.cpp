@@ -38,6 +38,96 @@ namespace ToolKit
     }
   }
 
+  int ShadowAtlas::GetSlotCount(SlotSize size)
+  {
+    switch (size)
+    {
+      case SlotSize::Half:
+        return HalfSlotCount;
+      case SlotSize::Quarter:
+        return QuarterSlotCount;
+      case SlotSize::Eighth:
+        return EighthSlotCount;
+      default:
+        assert(false && "Unknown slot size");
+        return 0;
+    }
+  }
+
+  bool ShadowAtlas::IsSlotFree(SlotSize size, int slotIndex) const
+  {
+    switch (size)
+    {
+      case SlotSize::Half:
+        return slotIndex >= 0 && slotIndex < HalfSlotCount && !m_halfSlots[slotIndex];
+      case SlotSize::Quarter:
+        return slotIndex >= 0 && slotIndex < QuarterSlotCount && !m_quarterSlots[slotIndex];
+      case SlotSize::Eighth:
+        return slotIndex >= 0 && slotIndex < EighthSlotCount && !m_eighthSlots[slotIndex];
+      default:
+        return false;
+    }
+  }
+
+  bool ShadowAtlas::ReserveSlot(SlotSize size, int slotIndex)
+  {
+    if (!IsSlotFree(size, slotIndex))
+    {
+      return false;
+    }
+
+    switch (size)
+    {
+      case SlotSize::Half:
+        m_halfSlots[slotIndex] = true;
+        break;
+      case SlotSize::Quarter:
+        m_quarterSlots[slotIndex] = true;
+        break;
+      case SlotSize::Eighth:
+        m_eighthSlots[slotIndex] = true;
+        break;
+      default:
+        return false;
+    }
+
+    return true;
+  }
+
+  ShadowAtlas::SlotInfo ShadowAtlas::GetSlotInfo(SlotSize size, int slotIndex, int atlasSize) const
+  {
+    SlotInfo info;
+    if (slotIndex < 0 || slotIndex >= GetSlotCount(size))
+    {
+      return info;
+    }
+
+    info.resolution = GetSlotResolution(size, atlasSize);
+    info.slotIndex  = slotIndex;
+
+    if (size == SlotSize::Half)
+    {
+      info.layer      = 0;
+      info.coordinate = Vec2((float) ((slotIndex % 2) * info.resolution),
+                             (float) ((slotIndex / 2) * info.resolution));
+    }
+    else if (size == SlotSize::Quarter)
+    {
+      info.layer      = 1;
+      info.coordinate = Vec2((float) ((slotIndex % 4) * info.resolution),
+                             (float) ((slotIndex / 4) * info.resolution));
+    }
+    else
+    {
+      info.layer      = 1;
+      info.coordinate = Vec2((float) ((slotIndex % 8) * info.resolution),
+                             (float) ((6 + (slotIndex / 8)) * info.resolution));
+    }
+
+    return info;
+  }
+
+
   ShadowAtlas::SlotInfo ShadowAtlas::Allocate(SlotSize size, int atlasSize)
   {
     SlotInfo info;
@@ -61,6 +151,7 @@ namespace ToolKit
           info.coordinate = Vec2((float) (col * slotRes), (float) (row * slotRes));
           info.layer      = 0;
           info.resolution = slotRes;
+          info.slotIndex  = i;
           return info;
         }
       }
@@ -103,6 +194,7 @@ namespace ToolKit
           info.coordinate   = Vec2((float) (coords[i][0] * slotRes), (float) (coords[i][1] * slotRes));
           info.layer        = 1;
           info.resolution   = slotRes;
+          info.slotIndex    = i;
           return info;
         }
       }
@@ -129,6 +221,7 @@ namespace ToolKit
           info.coordinate  = Vec2((float) (col * slotRes), (float) (row * slotRes));
           info.layer       = 1;
           info.resolution  = slotRes;
+          info.slotIndex   = i;
           return info;
         }
       }
@@ -136,6 +229,39 @@ namespace ToolKit
 
     // Allocation failed.
     return info;
+  }
+
+  bool ShadowAtlas::AllocateContiguous(SlotSize size, int count, int atlasSize, SlotInfo* outSlots)
+  {
+    const int slotCount = GetSlotCount(size);
+    if (count <= 0 || count > slotCount)
+    {
+      return false;
+    }
+
+    for (int start = 0; start + count <= slotCount; start++)
+    {
+      bool free = true;
+      for (int i = 0; i < count && free; i++)
+      {
+        free = IsSlotFree(size, start + i);
+      }
+
+      if (!free)
+      {
+        continue;
+      }
+
+      for (int i = 0; i < count; i++)
+      {
+        ReserveSlot(size, start + i);
+        outSlots[i] = GetSlotInfo(size, start + i, atlasSize);
+      }
+
+      return true;
+    }
+
+    return false;
   }
 
   bool ShadowAtlas::AllocateN(SlotSize size, int count, int atlasSize, SlotInfo* outSlots)
