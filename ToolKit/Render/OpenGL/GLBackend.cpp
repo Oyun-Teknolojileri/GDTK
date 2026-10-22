@@ -1633,8 +1633,9 @@ namespace ToolKit
 
   void GLBackend::BlitDepth(Framebuffer* src, Framebuffer* dst)
   {
-    if (src == nullptr || dst == nullptr || src->GetDepthTexture() == nullptr ||
-        dst->GetDepthTexture() == nullptr)
+    // The destination only has to carry a depth attachment, and the engine default one is a renderbuffer
+    // with no texture behind it, so a texture is not required there.
+    if (src == nullptr || dst == nullptr || src->GetDepthTexture() == nullptr)
     {
       return;
     }

@@ -157,11 +157,6 @@ namespace ToolKit
       return;
     }
 
-    // The blit path below is not in use yet: it crashed on the first run, so the texture sampling version
-    // keeps the feature where it was until the depth target is set up correctly.
-    BuildDepthGridSampled(renderer);
-    return;
-
     // The depth is brought down to a small depth target with a blit and read from there, rather than
     // sampled as a texture. Sampling the attachment the frame rendered into came back as the clear value
     // no matter which framebuffer was asked for, while a depth blit is what the hardware is meant to do.
@@ -181,12 +176,12 @@ namespace ToolKit
 
     if (m_depthGridDepthFb == nullptr || m_depthGridSize != gridSize)
     {
-      m_depthGridDepth   = MakeNewPtr<DepthTexture>();
-      m_depthGridDepth->Init(gridSize.x, gridSize.y, false, MsaaSampleCount::x0);
-
+      // Depth only, with the engine's own depth attachment. Attaching a texture by hand and then
+      // reconstructing dropped it, and the blit wrote into a target that had no depth left.
       m_depthGridDepthFb = MakeNewPtr<Framebuffer>("DepthGridDepthFB");
-      m_depthGridDepthFb->AttachDepthTexture(m_depthGridDepth);
-      m_depthGridDepthFb->ReconstructIfNeeded({(int) gridSize.x, (int) gridSize.y, false, false});
+      // width, height, depthStencil, useDefaultDepth: the last flag is what gives the target a depth
+      // attachment at all, and the blit has nowhere to land without it.
+      m_depthGridDepthFb->ReconstructIfNeeded({(int) gridSize.x, (int) gridSize.y, false, true});
 
       m_depthGridSize = gridSize;
     }
