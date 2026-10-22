@@ -1007,6 +1007,10 @@ namespace ToolKit
     const float screenArea               = float(viewSize.x) * float(viewSize.y);
     constexpr float kQuarterAreaFraction = 0.04f;
 
+    // Closest a light is treated as being, so a camera sitting on a light's centre cannot divide the
+    // score by zero.
+    constexpr float kScoreMinDistance = 0.25f;
+
     struct LocalCandidate
     {
       Light* light               = nullptr;
@@ -1016,6 +1020,8 @@ namespace ToolKit
 
       // Kept for the metric report, so the numbers behind a placement can be read back.
       float distance             = 0.0f;
+      float centreDist           = 0.0f;
+      float irradiance           = 0.0f;
       float radiusPx             = 0.0f;
       float areaFraction         = 0.0f;
       float intensity            = 0.0f;
@@ -1034,17 +1040,30 @@ namespace ToolKit
 
       // Distance to the volume, not to the centre: a light whose centre sits behind the camera can still
       // cover the view, and a large radius reaches much closer than its centre suggests.
-      const float radius = light->AffectDistance();
-      const Vec3 centre  = light->m_node->GetTranslation(TransformationSpace::TS_WORLD);
-      const float dist   = glm::max(glm::distance(camPos, centre) - radius, 0.01f);
+      const float radius       = light->AffectDistance();
+      const Vec3 centre        = light->m_node->GetTranslation(TransformationSpace::TS_WORLD);
+      const float centreDist   = glm::distance(camPos, centre);
+      const float dist         = glm::max(centreDist - radius, 0.01f);
       if (dist > maxShadowDistance)
       {
         continue;
       }
 
       const float radiusPx = radius / (dist * tanHalfFov) * (float(viewSize.y) * 0.5f);
-      const float area     = glm::min(glm::pi<float>() * radiusPx * radiusPx, screenArea);
-      const float score    = glm::max(area * glm::max(light->GetIntensityVal(), 1.0f), 1.0f);
+      const float rawArea  = glm::pi<float>() * radiusPx * radiusPx;
+
+      // Three quantities that answer different questions.
+      // - area: how much of the screen the light covers, capped at the screen because past that it cannot
+      //   cover more. This decides the tier.
+      // - irradiance: what the light delivers per texel, which falls with the square of the distance from
+      //   its centre. Two lights can both cover the whole screen and still not matter equally.
+      // - score: the light the picture is actually made of, coverage weighted by irradiance. It is not
+      //   capped, and it is not the area alone: capping the area scored every light close to the camera
+      //   the same and left the order to the light id.
+      const float area       = glm::min(rawArea, screenArea);
+      const float irradiance = glm::max(light->GetIntensityVal(), 1.0f) /
+                               glm::max(centreDist * centreDist, kScoreMinDistance * kScoreMinDistance);
+      const float score      = glm::max(area * irradiance, 1.0f);
 
       LocalCandidate candidate;
       candidate.light        = light;
@@ -1053,10 +1072,16 @@ namespace ToolKit
       // camera stands inside covers the whole screen, and so do a dozen others around it, which left
       // the order to the light id. Distance to the volume separates them, quantised in powers of two so
       // a camera move does not reshuffle the ties.
-      candidate.distBucket   = int(glm::floor(glm::log2(glm::max(dist, 0.05f))));
+      // Quarter steps, not doubling: the lights that cover the whole screen are separated by how close
+      // they are, and doubling put three of them seven units out into the same bucket, where the id
+      // decided which one got the last free slots.
+      candidate.distBucket =
+          int(glm::floor(glm::log(glm::max(dist, 0.05f)) / glm::log(1.25f)));
       candidate.tier         = area >= screenArea * kQuarterAreaFraction ? ShadowAtlas::SlotSize::Quarter
                                                                         : ShadowAtlas::SlotSize::Eighth;
       candidate.distance     = dist;
+      candidate.centreDist   = centreDist;
+      candidate.irradiance   = irradiance;
       candidate.radiusPx     = radiusPx;
       candidate.areaFraction = area / screenArea;
       candidate.intensity    = light->GetIntensityVal();
@@ -1207,6 +1232,7 @@ namespace ToolKit
     // Report the metric once a second so the ranking can be judged on a real scene: the numbers say why
     // a light is placed where it is, and which ones the range cull rejected.
     static uint metricFrame = 0;
+    static std::unordered_map<uint64, PlacedLight> lastReported;
     if (metricFrame++ % 60 == 0)
     {
       for (const LocalCandidate& candidate : candidates)
@@ -1221,10 +1247,12 @@ namespace ToolKit
           placedTierName = placed->second.tier == ShadowAtlas::SlotSize::Quarter ? "Quarter" : "Eighth";
         }
 
-        TK_LOG("LIGHTMETRIC '%s' d=%.2f rpx=%.0f area=%.2f%% I=%.2f score=%.0f bucket=%d wants=%s "
-               "placed=%s slot=%d",
+        TK_LOG("LIGHTMETRIC '%s' d=%.2f dc=%.2f irr=%.4f rpx=%.0f area=%.2f%% I=%.2f score=%.0f "
+               "bucket=%d wants=%s placed=%s slot=%d",
                candidate.light->GetNameVal().c_str(),
                candidate.distance,
+               candidate.centreDist,
+               candidate.irradiance,
                candidate.radiusPx,
                candidate.areaFraction * 100.0f,
                candidate.intensity,
@@ -1235,16 +1263,38 @@ namespace ToolKit
                slotIndex);
       }
 
-      // How many lights changed slot since the previous frame: the number the sticky placement exists
-      // to keep at zero while nothing but the camera moves.
-      int moved = 0;
+      // What changed since the last report, not since the previous frame: the report prints once a
+      // second, so a per frame delta is always zero and told nobody anything. How many lights hold a
+      // slot, how many are waiting for one, and how many changed place since the last report - the last
+      // number is what the sticky placement exists to keep small while only the camera moves.
+      int placedCount = 0;
+      int unplaced    = 0;
+      int changed     = 0;
+
       for (const auto& [id, record] : m_placedLights)
       {
-        const auto prev = previousPlacement.find(id);
-        if (prev == previousPlacement.end() || prev->second.tier != record.tier ||
-            prev->second.count != record.count)
+        if (record.count > 0)
         {
-          moved++;
+          placedCount++;
+        }
+        else
+        {
+          unplaced++;
+        }
+
+        const auto prev = lastReported.find(id);
+        if (prev == lastReported.end())
+        {
+          if (record.count > 0)
+          {
+            changed++;
+          }
+          continue;
+        }
+
+        if (prev->second.tier != record.tier || prev->second.count != record.count)
+        {
+          changed++;
           continue;
         }
 
@@ -1252,18 +1302,31 @@ namespace ToolKit
         {
           if (prev->second.slotIndices[i] != record.slotIndices[i])
           {
-            moved++;
+            changed++;
             break;
           }
         }
       }
 
-      TK_LOG("LIGHTMETRIC frame: %d locals, range=%.0f, view=%dx%d, slots changed since last frame=%d",
+      for (const auto& [id, record] : lastReported)
+      {
+        if (record.count > 0 && m_placedLights.find(id) == m_placedLights.end())
+        {
+          changed++;
+        }
+      }
+
+      lastReported = m_placedLights;
+
+      TK_LOG("LIGHTMETRIC frame: %d locals, %d with a slot, %d without, range=%.0f, view=%dx%d, "
+             "slots changed since last report=%d",
              int(candidates.size()),
+             placedCount,
+             unplaced,
              maxShadowDistance,
              viewSize.x,
              viewSize.y,
-             moved);
+             changed);
     }
 
     // Invalidate cache for all lights to ensure GPU gets correct atlas data.
