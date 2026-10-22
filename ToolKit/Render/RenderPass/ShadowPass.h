@@ -97,6 +97,14 @@ namespace ToolKit
     MaterialPtr m_shadowMatOrtho = nullptr;
     MaterialPtr m_shadowMatPersp = nullptr;
 
+    /** Point lights project each hemisphere onto a paraboloid, two maps instead of six cube faces.
+     *  The projection cannot be a matrix, so it lives in its own vertex shader. */
+    MaterialPtr m_shadowMatParaboloid = nullptr;
+
+    /** Turns the shadow camera around for the second hemisphere of a point light: half a turn about Y.
+     *  (w, x, y, z) = (0, 0, 1, 0). */
+    Quaternion m_paraboloidBackRotation = Quaternion(0.0f, 0.0f, 1.0f, 0.0f);
+
     /** The depth program without the instance table. Used on the frames where instanced batching is
      *  switched off, where every caster is one draw and reads the per draw block again. */
     GpuProgramPtr m_plainProgram = nullptr;

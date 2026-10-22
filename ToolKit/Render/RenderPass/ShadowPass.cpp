@@ -56,6 +56,7 @@ namespace ToolKit
 
     m_shadowMatOrtho             = createShadowMaterialFn("orthogonalDepthVert.shader", "orthogonalDepthFrag.shader");
     m_shadowMatPersp             = createShadowMaterialFn("perspectiveDepthVert.shader", "perspectiveDepthFrag.shader");
+    m_shadowMatParaboloid = createShadowMaterialFn("paraboloidDepthVert.shader", "perspectiveDepthFrag.shader");
 
     // Pass-owned passive defaults. depthClampEnabled is refreshed per camera type before the
     // caster loop in RenderShadowCasters (true for directional, false otherwise).
@@ -275,12 +276,23 @@ namespace ToolKit
     else if (light->GetLightType() == Light::LightType::Point)
     {
       Stats::BeginGpuScope("Point Shadow Map");
-      for (int i = 0; i < 6; i++)
+
+      // Two hemispheres, not six cube faces. The camera looks along -Z for the half where a fragment's
+      // z is negative and is turned around for the other half, which is the split the lighting shader
+      // mirrors when it samples.
+      for (int i = 0; i < 2; i++)
       {
         switchToLayer(light->m_shadowAtlasLayers[i]);
 
         light->m_shadowCamera->m_node->SetTranslation(light->m_node->GetTranslation());
-        light->m_shadowCamera->m_node->SetOrientation(m_cubeMapRotations[i]);
+        light->m_shadowCamera->m_node->SetOrientation(i == 0 ? Quaternion(1.0f, 0.0f, 0.0f, 0.0f)
+                                                             : m_paraboloidBackRotation);
+
+        // The camera hands the renderer a cached view matrix and only rebuilds it once something has
+        // invalidated the cache, which the node update does - but too late, after SetCamera has already
+        // decided there is nothing new to upload. A light that moved, or the second hemisphere of the
+        // same light, would then render with the previous view.
+        light->m_shadowCamera->InvalidateCacheItem();
 
         UVec2 coord = light->m_shadowAtlasCoords[i];
         renderer->SetViewportRect(coord.x, coord.y, resolution, resolution);
@@ -656,8 +668,63 @@ namespace ToolKit
       frustum.planes[4].d = std::numeric_limits<float>::max();
     }
 
+    // A point light does not cover a cone, it covers a sphere, so the light camera's 90 degree frustum
+    // dropped the casters standing near the rim of its map. The sphere is too generous in the other
+    // direction though: each map only holds one hemisphere, and a caster behind the light projects into
+    // the other map through the stretched rim, where it occludes what the front half should show. So the
+    // test is the box around the hemisphere this map covers, which is the sphere cut in half along the
+    // axis the camera looks down.
+    const bool hemisphereCull = lightType == Light::LightType::Point;
+    BoundingBox hemisphereBox;
+    if (hemisphereCull)
+    {
+      const Vec3 pos    = light->m_node->GetTranslation(TransformationSpace::TS_WORLD);
+      const float reach = light->AffectDistance();
+      const Vec3 fwd    = shadowCamera->Direction();
+
+      hemisphereBox.min = pos - Vec3(reach);
+      hemisphereBox.max = pos + Vec3(reach);
+
+      // Cut the box in half along the dominant axis of the view. The equator disk has the full radius,
+      // so only the axis component is clipped.
+      const Vec3 absFwd = glm::abs(fwd);
+      if (absFwd.x >= absFwd.y && absFwd.x >= absFwd.z)
+      {
+        (fwd.x > 0.0f ? hemisphereBox.min.x : hemisphereBox.max.x) = pos.x;
+      }
+      else if (absFwd.y >= absFwd.x && absFwd.y >= absFwd.z)
+      {
+        (fwd.y > 0.0f ? hemisphereBox.min.y : hemisphereBox.max.y) = pos.y;
+      }
+      else
+      {
+        (fwd.z > 0.0f ? hemisphereBox.min.z : hemisphereBox.max.z) = pos.z;
+      }
+    }
+
+    const auto isVisible = [&](const BoundingBox& box) -> bool
+    {
+      if (hemisphereCull)
+      {
+        return BoxBoxIntersection(hemisphereBox, box) != IntersectResult::Outside;
+      }
+
+      return FrustumBoxIntersection(frustum, box) != IntersectResult::Outside;
+    };
+
     // Set material and program.
-    MaterialPtr shadowMaterial = orthogonalShadowMap ? m_shadowMatOrtho : m_shadowMatPersp;
+    // A point light projects each hemisphere onto a paraboloid rather than rendering six cube faces,
+    // so it takes its own vertex shader: the projection is not a matrix the camera could supply.
+    const bool paraboloidShadowMap = lightType == Light::LightType::Point;
+    MaterialPtr shadowMaterial    = m_shadowMatOrtho;
+    if (paraboloidShadowMap)
+    {
+      shadowMaterial = m_shadowMatParaboloid;
+    }
+    else if (!orthogonalShadowMap)
+    {
+      shadowMaterial = m_shadowMatPersp;
+    }
     ShaderPtr frag             = shadowMaterial->GetFragmentShaderVal();
     frag->SetDefine("DrawAlphaMasked", "0");
     ShaderPtr vert = shadowMaterial->GetVertexShaderVal();
@@ -705,7 +772,7 @@ namespace ToolKit
     /** Job indices that survived the per caster test, in the order their matrices were packed. */
     std::vector<int> keptJobs;
 
-    const auto drawBatches = [this, &frustum, renderer, &runs, &keptJobs](bool maskedPass) -> void
+    const auto drawBatches = [this, &isVisible, renderer, &runs, &keptJobs](bool maskedPass) -> void
     {
       runs.clear();
       keptJobs.clear();
@@ -730,7 +797,8 @@ namespace ToolKit
           continue;
         }
 
-        const IntersectResult batchHit = FrustumBoxIntersection(frustum, batch.bbox);
+        const IntersectResult batchHit =
+            isVisible(batch.bbox) ? IntersectResult::Intersect : IntersectResult::Outside;
         if (batchHit == IntersectResult::Outside)
         {
           continue;
@@ -746,10 +814,10 @@ namespace ToolKit
             continue;
           }
 
-          // A batch entirely inside the frustum needs no per caster test.
+          // A batch entirely inside the volume needs no per caster test.
           if (batchHit != IntersectResult::Inside)
           {
-            if (FrustumBoxIntersection(frustum, jobs[jobIndex].BoundingBox) == IntersectResult::Outside)
+            if (!isVisible(jobs[jobIndex].BoundingBox))
             {
               continue;
             }
@@ -1106,7 +1174,7 @@ namespace ToolKit
     for (const LocalCandidate& candidate : candidates)
     {
       Light* light     = candidate.light;
-      const int needed = (light->GetLightType() == Light::LightType::Point) ? 6 : 1;
+      const int needed = (light->GetLightType() == Light::LightType::Point) ? 2 : 1;
       const uint64 id  = light->GetIdVal();
 
       ShadowAtlas::SlotInfo slots[6];
@@ -1123,7 +1191,8 @@ namespace ToolKit
       // Same tier as last frame: take the exact slots back when they are still free and, for a light
       // that needs a run of slots, when they are still one run. A record that is not a run can only come
       // from an older build, so it is dropped and the light allocates again below.
-      if (previous != m_placedLights.end() && previous->second.count == needed)
+      // previous belongs to previousPlacement, so it must be compared with that map's end.
+      if (previous != previousPlacement.end() && previous->second.count == needed)
       {
         const PlacedLight& prev = previous->second;
         bool free               = true;

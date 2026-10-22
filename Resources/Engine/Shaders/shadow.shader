@@ -181,9 +181,20 @@ float SampleShadow2D
 	);
 }
 
+// Paraboloid Shadow Sampling (Point lights)
+//
+// A point light renders one map per hemisphere instead of six cube faces: the scene is projected onto
+// a paraboloid, radii divided by 1.15 so the hemisphere sits inside about 87 percent of the map and the
+// stretched rim is never read. Two maps per light is a third of the atlas a cube needed.
+//
+// The render side puts the camera at the light looking along -Z and turns it half a turn about Y for the
+// other half, so the covered hemisphere always has a negative z in its view space. This mirrors that:
+// the half with a negative world z uses the direction as is, the other half negates x and z.
 // ---------------------------------------------------------------------------
-// Omnidirectional Shadow Sampling (Point lights)
-// ---------------------------------------------------------------------------
+
+// Radii are divided by this before projecting, so the hemisphere occupies about 87 percent of the map
+// and the rim, where the projection stretches without bound, stays outside the part that is sampled.
+const float ParaboloidRimInv = 0.98039216;
 
 float SampleShadowOmni
 (
@@ -201,23 +212,37 @@ float SampleShadowOmni
 	float halfPixel = (1.0 / graphicConstants.shadowAtlasSize) * 0.5;
 	float shadowMapSize = shadowAtlasResRatio * graphicConstants.shadowAtlasSize;
 
-	vec3 texCoord = UVWToUVLayer(dir);
-#ifdef VULKAN
-	// Vulkan textures are stored with V=0 at the top (negative viewport height trick flips
-	// the rendered image relative to OpenGL where V=0 is the bottom). UVWToUVLayer produces
-	// UVs in OpenGL convention, so the V axis must be flipped to match the stored texels.
-	texCoord.y = 1.0 - texCoord.y;
-#endif
-	int face = int(texCoord.z);
+	vec3 d = normalize(dir);
 
-	// Derive face 0's global slot index from its pixel coordinate,
-	// then look up the absolute atlas coordinate for (baseIndex + face).
+	// Which map holds this half, and what the direction looks like in that map's own frame.
+	//
+	// The engine camera looks along +Z when it has no rotation, and its view flips z, so slot 0 - drawn
+	// with no rotation - holds the half where the world z of the direction is positive, with z flipped.
+	// Slot 1 is drawn with the camera turned half a turn about Y, which flips x instead. Getting this
+	// backwards leaves x and y looking right while the shadow follows the light along z, because the
+	// wrong half only mirrors z.
+	int side = d.z >= 0.0 ? 0 : 1;
+	vec3 v = side == 0 ? vec3(d.x, d.y, -d.z) : vec3(-d.x, d.y, d.z);
+
+	// Same projection as the shadow vertex shader, rim scale included.
+	//
+	// The rows are read back mirrored: the shadow pass writes the map through the light's camera view,
+	// whose vertical axis is the reverse of the one this sampler builds its direction in (the same
+	// reversal the cube path had to compensate for). Without it the shadow follows the light when the
+	// light is moved up or down instead of sliding the other way along the wall.
+	float denom = max(1.0 - v.z, 1e-4);
+	vec2 proj = (v.xy / denom) * ParaboloidRimInv;
+	vec2 uvInMap = proj * 0.5 + 0.5;
+	uvInMap.y = 1.0 - uvInMap.y;
+
+	// Face 0's slot index from its pixel coordinate, then the absolute atlas coordinate of
+	// (baseIndex + side): the two hemispheres are consecutive slots.
 	float mapsPerRow = floor(graphicConstants.shadowAtlasSize / shadowMapSize);
 	int baseIndex = int(startCoord.y / shadowMapSize) * int(mapsPerRow) + int(startCoord.x / shadowMapSize);
 
 	int layer = 0;
 	vec2 coord = vec2(0.0);
-	ShadowAtlasLut(shadowMapSize, vec2(0.0), baseIndex + face, layer, coord);
+	ShadowAtlasLut(shadowMapSize, vec2(0.0), baseIndex + side, layer, coord);
 	coord /= graphicConstants.shadowAtlasSize;
 
 	layer += shadowAtlasLayer;
@@ -225,11 +250,11 @@ float SampleShadowOmni
 	vec2 beginCoord = coord;
 	vec2 endCoord = beginCoord + shadowAtlasResRatio;
 
-	texCoord.xy = beginCoord + (shadowAtlasResRatio * texCoord.xy);
-	texCoord.xy = clamp(texCoord.xy, beginCoord + halfPixel, endCoord - halfPixel);
+	vec2 texCoord = beginCoord + (shadowAtlasResRatio * uvInMap);
+	texCoord = clamp(texCoord, beginCoord + halfPixel, endCoord - halfPixel);
 
 	vec2 jitter = ShadowDitherJitter(texelSize);
-	vec2 jitteredXY = clamp(texCoord.xy + jitter, beginCoord + halfPixel, endCoord - halfPixel);
+	vec2 jitteredXY = clamp(texCoord + jitter, beginCoord + halfPixel, endCoord - halfPixel);
 
 	vec3 sampleCoord = vec3(jitteredXY, float(layer));
 

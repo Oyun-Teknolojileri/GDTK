@@ -366,6 +366,24 @@ on a frame where an entity's geometry changed.
 Scenes with a skinned or animated job disable the cache (`m_jobCacheUnusable`): those transforms
 move without a spatial invalidation, which no counter can see.
 
+**Shadow atlas placement.** Local lights take slots from a fixed atlas layout (4 Half for cascades, 12
+Quarter and 16 Eighth for locals). A light is ranked by the coverage it projects onto the screen weighted
+by the irradiance it delivers (`intensity` over the square of the distance to its centre), quantised into
+power-of-two buckets so camera drift does not reorder the list; ties resolve by distance and then id,
+neither of which moves on its own. A light whose volume reaches past the last cascade distance gets no
+slot. One that already holds a tier gets its exact slots back while they are still free, so a light
+entering or leaving the view does not shuffle the atlas under the others.
+
+**Point light shadows are paraboloid.** Instead of six cube faces a point light renders two maps, one per
+hemisphere, with the projection done in `paraboloidDepthVert.shader` (a projection, not a camera matrix).
+Radii are divided by 1.02 so the rim, where the projection stretches without bound, is barely sampled; a
+stronger crop leaves the last band of each map empty and opens a gap along the seam. Sampling in
+`shadow.shader` picks the map by the sign of the direction's z and mirrors the axis the render side
+turned. Culling for a point light uses the box around the hemisphere that map covers: a sphere lets the
+far side project into the near map and occlude it, and the light camera's frustum is narrower than a
+hemisphere and drops the casters near the rim. Two slots per light lets three times as many point lights
+into the atlas.
+
 
 ### 4.5 Renderer (Renderer.h)
 
