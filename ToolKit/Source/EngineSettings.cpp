@@ -158,6 +158,7 @@ namespace ToolKit
     FPS_Define(60, "GraphicSettings", 0, 0, 0);
     HDRPipeline_Define(true, "GraphicSettings", 0, 0, 0);
     InstancedBatching_Define(true, "GraphicSettings", 0, 0, 0);
+    HiZCulling_Define(true, "GraphicSettings", 0, 0, 0);
     RenderResolutionScale_Define(1.0f, "GraphicSettings", 0, 0, 0);
     MultiThreaded_Define(true, "GraphicSettings", 0, 0, 0);
   }

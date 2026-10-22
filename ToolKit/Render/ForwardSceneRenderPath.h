@@ -13,6 +13,7 @@
 #include "EngineSettings.h"
 #include "ForwardPass.h"
 #include "ForwardPreProcessPass.h"
+#include "FullQuadPass.h"
 #include "GammaTonemapFxaaPass.h"
 #include "Pass.h"
 #include "RenderSystem.h"
@@ -124,6 +125,44 @@ namespace ToolKit
      *  entity moving: a skinned mesh deforms, an animated one can be driven through its clip. Their
      *  ranges are rebuilt while everything around them stays cached. */
     std::unordered_set<const Entity*> m_animatedJobEntities;
+
+    //////////////////////////////////////////
+    // Light occlusion culling
+    //
+    // A coarse grid of the farthest depth per block is built from the depth buffer the previous frame
+    // left behind, before the passes of this frame overwrite it. A local light whose whole volume sits
+    // behind every block it covers contributes nothing to the picture, so it is dropped from the frame:
+    // no atlas slot and no shadow map. The grid is a frame behind by construction, so a light has to
+    // stay hidden for a few frames before it is dropped, and the counters reset when the camera jumps.
+
+    /** Builds the depth grid from the depth buffer as it stands and reads it back every few frames. */
+    void BuildDepthGrid(Renderer* renderer);
+
+    /** Drops the local lights the grid proves are occluded. */
+    void CullOccludedLights(LightRawPtrArray& lights);
+
+    /** Remembers the camera the current grid was rendered with, for the next frame to project into. */
+    void StoreOcclusionCamera();
+
+    RenderTargetPtr m_depthGridRt                        = nullptr;
+    FramebufferPtr m_depthGridFb                         = nullptr;
+    FullQuadPassPtr m_depthGridQuad                      = nullptr;
+    ShaderPtr m_depthGridShader                          = nullptr;
+
+    /** Row major max depth per block, as read back from the grid. */
+    std::vector<float> m_depthGrid;
+    UVec2 m_depthGridSize                                = UVec2(0);
+    bool m_depthGridValid                                = false;
+    uint m_depthGridFrame                                = 0;
+
+    Mat4 m_occlusionViewProj                             = Mat4(1.0f);
+    Vec3 m_occlusionCamPos                               = Vec3(0.0f);
+    float m_occlusionTanHalfFov                          = 1.0f;
+    float m_occlusionNear                                = 0.1f;
+    float m_occlusionFar                                 = 1000.0f;
+
+    /** Consecutive frames each light was found hidden behind the grid. */
+    std::unordered_map<uint64, int> m_lightOcclusionStreak;
   };
 
 } // namespace ToolKit

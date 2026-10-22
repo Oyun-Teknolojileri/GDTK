@@ -413,6 +413,13 @@ inline uint64 ReadCycleCounter()
              Stats::GetStatPrev(FrameStatType::InstancedObject));
     stats += buffer;
 
+    // Local lights the depth grid proved hidden and dropped, with the shadow maps they would have cost.
+    snprintf(buffer,
+             sizeof(buffer),
+             "HiZ Culled Lights: %llu\n",
+             Stats::GetStatPrev(FrameStatType::HiZCulledLight));
+    stats += buffer;
+
     snprintf(buffer,
              sizeof(buffer),
              "Total Hardware Render Pass ~ %llu\n",

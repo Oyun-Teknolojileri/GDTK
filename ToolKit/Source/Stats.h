@@ -157,6 +157,8 @@ namespace ToolKit
     InstancedBatch,
     /** Objects covered by those instanced draws. */
     InstancedObject,
+    /** Local lights the depth grid dropped this frame, with their shadow maps. */
+    HiZCulledLight,
     RenderPass,
     Count
   };

@@ -51,6 +51,10 @@ namespace ToolKit
   {
     TK_PROFILE_FUNCTION();
 
+    // Before anything writes to it: the depth buffer still holds the previous frame's depths, which is
+    // what the occlusion grid is built from. Doing it after the passes would need a copy of the buffer.
+    BuildDepthGrid(renderer);
+
     PreRender(renderer);
 
     m_passArray.clear();
@@ -110,7 +114,239 @@ namespace ToolKit
 
     renderer->SetShadowAtlas(nullptr);
 
+    // Remember the camera this frame used: next frame's grid is rendered with it, so the light volumes
+    // are projected into the view the depths belong to.
+    StoreOcclusionCamera();
+
     PostRender(renderer);
+  }
+
+  //////////////////////////////////////////
+  // Light occlusion culling
+
+  namespace
+  {
+    /** Blocks per side of the depth grid: the depth buffer is reduced by this in each direction. */
+    constexpr int DepthGridBlockSize = 8;
+
+    /** Grid reads happen every this many frames. A blocking read per frame costs more than it saves. */
+    constexpr uint DepthGridReadInterval = 4;
+
+    /** How many frames in a row a light has to look hidden before it is dropped. */
+    constexpr int OcclusionStreakToCull = 3;
+
+    /** Turns a hardware depth value into a distance along the view axis. */
+    float DepthToViewDistance(float depth, float nearClip, float farClip)
+    {
+      const float denom = farClip - depth * (farClip - nearClip);
+      if (denom <= 1e-6f)
+      {
+        return farClip;
+      }
+
+      return (nearClip * farClip) / denom;
+    }
+  } // namespace
+
+  void ForwardSceneRenderPath::BuildDepthGrid(Renderer* renderer)
+  {
+    if (!GetEngineSettings().m_graphics->GetHiZCullingVal())
+    {
+      m_depthGridValid = false;
+      m_lightOcclusionStreak.clear();
+      return;
+    }
+
+    TexturePtr depthBuffer = m_params.MainFramebuffer
+                                 ? m_params.MainFramebuffer->GetDepthTexture()
+                                 : nullptr;
+    if (depthBuffer == nullptr || depthBuffer->IsMultiSampled())
+    {
+      // Nothing to reduce, or the depth lives in a multisampled attachment that only a resolve can read.
+      m_depthGridValid = false;
+      return;
+    }
+
+    const UVec2 gridSize(glm::max(depthBuffer->m_width / DepthGridBlockSize, 1),
+                         glm::max(depthBuffer->m_height / DepthGridBlockSize, 1));
+
+    if (m_depthGridQuad == nullptr)
+    {
+      m_depthGridShader = GetShaderManager()->Create<Shader>(ShaderPath("hizDepthGridFrag.shader", true));
+      m_depthGridQuad   = MakeNewPtr<FullQuadPass>();
+      m_depthGridFb     = MakeNewPtr<Framebuffer>("DepthGridFB");
+      m_depthGridRt     = MakeNewPtr<RenderTarget>("DepthGridRT");
+
+      // The quad is driven from here rather than from the pass array, so nothing has handed it the
+      // renderer: its own PreRender asks for one to build the program and would dereference a null.
+      m_depthGridQuad->SetRenderer(renderer);
+    }
+
+    if (m_depthGridSize != gridSize)
+    {
+      TextureSettings settings;
+      settings.WarpS          = GraphicTypes::UVClampToEdge;
+      settings.WarpT          = GraphicTypes::UVClampToEdge;
+      settings.InternalFormat = GraphicTypes::FormatRGBA16F;
+      settings.Format         = GraphicTypes::FormatRGBA;
+      settings.Type           = GraphicTypes::TypeFloat;
+      settings.MinFilter      = GraphicTypes::SampleNearest;
+      settings.MagFilter      = GraphicTypes::SampleNearest;
+
+      m_depthGridRt->Settings(settings);
+      m_depthGridRt->ReconstructIfNeeded(gridSize.x, gridSize.y);
+
+      m_depthGridFb->ReconstructIfNeeded({(int) gridSize.x, (int) gridSize.y, false, false});
+      m_depthGridFb->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_depthGridRt);
+
+      m_depthGridSize = gridSize;
+    }
+
+    // The program is built from the fragment shader in the requirements, which this pass only fills in
+    // for fields the caller left empty - so the grid shader goes there and not on the material. The
+    // depth buffer is bound by slot rather than by name: the name lookup is resolved against whatever
+    // program is current when the texture is bound, which is not this one yet, and it reports a warning
+    // for a sampler the draw will have.
+    m_depthGridQuad->m_params.frameBuffer      = m_depthGridFb;
+    m_depthGridQuad->m_params.clearFrameBuffer = GraphicBitFields::ColorBits;
+    m_depthGridQuad->GetRequirements()         = PassRequirements();
+    m_depthGridQuad->GetRequirements().fragmentShader = m_depthGridShader;
+    m_depthGridQuad->GetRequirements().textures[0]    = depthBuffer;
+
+    m_depthGridQuad->PreRender();
+    m_depthGridQuad->Render();
+    m_depthGridQuad->PostRender();
+
+    // One blocking read every few frames, and only the first channel of each block matters.
+    if ((m_depthGridFrame++ % DepthGridReadInterval) == 0)
+    {
+      const size_t count = size_t(gridSize.x) * size_t(gridSize.y);
+      m_depthGrid.resize(count * 4);
+
+      renderer->GetBackend()->ReadPixels(0,
+                                         0,
+                                         gridSize.x,
+                                         gridSize.y,
+                                         GraphicTypes::FormatRGBA,
+                                         GraphicTypes::TypeFloat,
+                                         m_depthGrid.data());
+
+      m_depthGridValid = true;
+    }
+  }
+
+  void ForwardSceneRenderPath::StoreOcclusionCamera()
+  {
+    Camera* camera = m_params.Cam.get();
+    if (camera == nullptr)
+    {
+      return;
+    }
+
+    m_occlusionViewProj  = camera->GetProjectViewMatrix();
+    m_occlusionCamPos    = camera->Position();
+    m_occlusionTanHalfFov = glm::tan(glm::max(camera->Fov() * 0.5f, 1e-3f));
+    m_occlusionNear      = camera->Near();
+    m_occlusionFar       = camera->Far();
+  }
+
+  void ForwardSceneRenderPath::CullOccludedLights(LightRawPtrArray& lights)
+  {
+    if (!GetEngineSettings().m_graphics->GetHiZCullingVal() || !m_depthGridValid || m_depthGridSize.x == 0)
+    {
+      return;
+    }
+
+    const int gridW = int(m_depthGridSize.x);
+    const int gridH = int(m_depthGridSize.y);
+
+    int culled = 0;
+
+    LightRawPtrArray kept;
+    kept.reserve(lights.size());
+
+    for (Light* light : lights)
+    {
+      if (light->GetLightType() == Light::LightType::Directional)
+      {
+        kept.push_back(light);
+        continue;
+      }
+
+      const Vec3 centre  = light->m_node->GetTranslation(TransformationSpace::TS_WORLD);
+      const float radius = light->AffectDistance();
+      const float dist   = glm::distance(m_occlusionCamPos, centre);
+
+      bool occluded = false;
+
+      // A light close to the camera reaches the near plane, where the grid has nothing useful to say.
+      if (dist > radius * 2.0f)
+      {
+        const Vec4 clip = m_occlusionViewProj * Vec4(centre, 1.0f);
+        if (clip.w > 1e-4f)
+        {
+          const Vec3 ndc        = Vec3(clip) / clip.w;
+          const float tanHalf   = m_occlusionTanHalfFov;
+          const float ndcRadius = radius / (glm::max(dist - radius, 0.01f) * tanHalf);
+
+          // Area of the grid the sphere can possibly cover, kept inside the grid: a sphere that leaves it
+          // is not proven hidden, since the part outside was never tested.
+          const float x0 = (ndc.x * 0.5f + 0.5f) - ndcRadius * 0.5f;
+          const float x1 = (ndc.x * 0.5f + 0.5f) + ndcRadius * 0.5f;
+          const float y0 = (ndc.y * 0.5f + 0.5f) - ndcRadius * 0.5f;
+          const float y1 = (ndc.y * 0.5f + 0.5f) + ndcRadius * 0.5f;
+
+          const float nearestViewDepth = glm::max(dist - radius, m_occlusionNear);
+
+          if (x0 > 0.0f && x1 < 1.0f && y0 > 0.0f && y1 < 1.0f && nearestViewDepth > m_occlusionNear)
+          {
+            const int gx0 = glm::clamp(int(x0 * float(gridW)), 0, gridW - 1);
+            const int gx1 = glm::clamp(int(x1 * float(gridW)), 0, gridW - 1);
+            const int gy0 = glm::clamp(int(y0 * float(gridH)), 0, gridH - 1);
+            const int gy1 = glm::clamp(int(y1 * float(gridH)), 0, gridH - 1);
+
+            bool everyBlockInFront = true;
+            for (int y = gy0; y <= gy1 && everyBlockInFront; ++y)
+            {
+              for (int x = gx0; x <= gx1; ++x)
+              {
+                const float depth = m_depthGrid[(size_t(y) * size_t(gridW) + size_t(x)) * 4 + 0];
+                const float viewZ = DepthToViewDistance(depth, m_occlusionNear, m_occlusionFar);
+                if (viewZ > nearestViewDepth)
+                {
+                  everyBlockInFront = false;
+                  break;
+                }
+              }
+            }
+
+            occluded = everyBlockInFront;
+          }
+        }
+      }
+
+      int& streak = m_lightOcclusionStreak[light->GetIdVal()];
+      if (occluded)
+      {
+        streak++;
+      }
+      else
+      {
+        streak = 0;
+      }
+
+      if (streak >= OcclusionStreakToCull)
+      {
+        culled++;
+        continue;
+      }
+
+      kept.push_back(light);
+    }
+
+    lights.swap(kept);
+
+    Stats::AddStat(FrameStatType::HiZCulledLight, (uint64) culled);
   }
 
   void ForwardSceneRenderPath::PreRender(Renderer* renderer)
@@ -226,6 +462,10 @@ namespace ToolKit
     std::sort(lights.begin() + dirEndIndx,
               lights.end(),
               [](Light* a, Light* b) -> bool { return a->GetIdVal() < b->GetIdVal(); });
+
+    // Lights the depth grid proves are behind what is already drawn: dropped from the frame entirely, so
+    // the shadow pass neither gives them an atlas slot nor renders a map for them.
+    CullOccludedLights(lights);
 
     // An edited light is packed for the GPU here, before the passes, instead of waiting for a draw
     // that happens to use it. The light buffers used to be refreshed only from the per draw path, so a

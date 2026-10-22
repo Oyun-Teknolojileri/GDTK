@@ -169,6 +169,18 @@ namespace ToolKit
     TKDeclareParam(bool, InstancedBatching);
 
     /**
+     * Culls local lights against a coarse depth grid built from the previous frame's depth buffer. A
+     * light whose whole volume sits behind what was already drawn contributes nothing to the picture, so
+     * it is dropped from the frame: no slot in the shadow atlas, and no shadow map rendered for it.
+     *
+     * The grid lags a frame by design, since it is built from the depth buffer before that buffer gets
+     * overwritten, so a light is dropped only after it stayed hidden for three frames in a row and the
+     * counters reset when the camera jumps. Turning the setting off restores the unculled behaviour,
+     * which is what makes the cost measurable from the editor.
+     */
+    TKDeclareParam(bool, HiZCulling);
+
+    /**
      * Viewport render target multiplier that adjusts the resolution.
      * High DPI devices such as mobile phones benefits from this.
      */
