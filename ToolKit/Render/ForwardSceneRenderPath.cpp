@@ -294,14 +294,21 @@ namespace ToolKit
           // a light that was really beside it, and dropped lights whose volume was on screen.
           const float axialDepth = clip.w;
           const float tanHalf    = m_occlusionTanHalfFov;
-          const float ndcRadius  = radius / (glm::max(axialDepth - radius, 0.01f) * tanHalf);
 
-          // Area of the grid the sphere can possibly cover, kept inside the grid: a sphere that leaves it
-          // is not proven hidden, since the part outside was never tested.
-          const float x0 = (ndc.x * 0.5f + 0.5f) - ndcRadius * 0.5f;
-          const float x1 = (ndc.x * 0.5f + 0.5f) + ndcRadius * 0.5f;
-          const float y0 = (ndc.y * 0.5f + 0.5f) - ndcRadius * 0.5f;
-          const float y1 = (ndc.y * 0.5f + 0.5f) + ndcRadius * 0.5f;
+          // Radius of the sphere in NDC units, already covering the whole [-1, 1] range: the extent on
+          // screen is twice this in grid fractions. Halving it again tested only the middle of the
+          // light's footprint, so whatever stood behind the light near the edge of that footprint was
+          // never looked at and the light was declared hidden while its volume was on screen.
+          // One block of margin keeps the test conservative against a sphere seen at an angle.
+          const float ndcRadius = radius / (glm::max(axialDepth - radius, 0.01f) * tanHalf);
+          const float margin    = 1.0f / float(glm::min(gridW, gridH));
+
+          const float cx = ndc.x * 0.5f + 0.5f;
+          const float cy = ndc.y * 0.5f + 0.5f;
+          const float x0 = cx - ndcRadius - margin;
+          const float x1 = cx + ndcRadius + margin;
+          const float y0 = cy - ndcRadius - margin;
+          const float y1 = cy + ndcRadius + margin;
 
           const float nearestViewDepth = glm::max(axialDepth - radius, m_occlusionNear);
 
