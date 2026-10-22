@@ -139,7 +139,7 @@ namespace ToolKit
     GLuint shaderId = 0;
   };
 
-  // Helper accessors — safe static_cast from base.
+  // Helper accessors - safe static_cast from base.
   static GLTextureData* GetGLTextureData(Texture* tex) { return static_cast<GLTextureData*>(tex->m_gpuData.get()); }
 
   static GLFramebufferData* GetGLFramebufferData(Framebuffer* fb)
@@ -689,7 +689,7 @@ namespace ToolKit
     // Orphan the old allocation and upload into a fresh one to avoid implicit sync.
     glBufferData(GL_UNIFORM_BUFFER, (GLsizeiptr) size, data, GL_DYNAMIC_DRAW);
     // Also rebind to the buffer's UBO slot so Map() works as "upload + slot bind". Pass-specific
-    // UBOs (pass-specific slot) need this because CreateGpuProgram only writes their block binding — the
+    // UBOs (pass-specific slot) need this because CreateGpuProgram only writes their block binding - the
     // runtime per-program slot bind is owned by the pass via Map(). Global UBOs already get
     // their slot bind in CreateGpuProgram; the extra glBindBufferBase here is harmless
     // (idempotent) and keeps the code path uniform.
@@ -878,29 +878,63 @@ namespace ToolKit
     auto glData              = std::make_shared<GLTextureData>();
     const TextureSettings& s = tex->Settings();
 
-    // DepthTexture — backed by a renderbuffer
+    // DepthTexture. A single sample depth attachment is a real texture, because a pass may want to
+    // read it: the light occlusion grid reduces the frame's depth to one value per block, and a
+    // renderbuffer has no texture object for a sampler to fetch from. A renderbuffer name bound as a
+    // texture resolves to nothing, so the shader reads zeroes and the whole feature looks broken
+    // while every call in the path succeeds.
     if (DepthTexture* dt = tex->As<DepthTexture>())
     {
-      glGenRenderbuffers(1, &glData->textureId);
-      glBindRenderbuffer(GL_RENDERBUFFER, glData->textureId);
+      const GLenum internalFormat = ToGLGraphicType(dt->GetDepthFormat());
 
-      GLenum fmt = ToGLGraphicType(dt->GetDepthFormat());
+      // Multisampled depth stays a renderbuffer: a multisampled texture needs immutable storage, and
+      // nothing samples a depth attachment while it is multisampled.
       if (s.msaaCount > MsaaSampleCount::x0)
       {
-        glRenderbufferStorageMultisample(GL_RENDERBUFFER, (int) s.msaaCount, fmt, tex->m_width, tex->m_height);
+        glGenRenderbuffers(1, &glData->textureId);
+        glBindRenderbuffer(GL_RENDERBUFFER, glData->textureId);
+        glRenderbufferStorageMultisample(GL_RENDERBUFFER,
+                                         (int) s.msaaCount,
+                                         internalFormat,
+                                         tex->m_width,
+                                         tex->m_height);
+        glData->isRenderbuffer = true;
       }
       else
       {
-        glRenderbufferStorage(GL_RENDERBUFFER, fmt, tex->m_width, tex->m_height);
+        // The pixel format of a depth texture is not the internal format: GL_DEPTH_COMPONENT24 is
+        // only accepted where a texture is allocated. A stencil carrying attachment has to be
+        // allocated as the paired depth stencil format instead.
+        const GLenum format = dt->m_stencil ? GL_DEPTH_STENCIL : GL_DEPTH_COMPONENT;
+        const GLenum type   = dt->m_stencil ? GL_UNSIGNED_INT_24_8 : GL_UNSIGNED_INT;
+
+        glGenTextures(1, &glData->textureId);
+        BindTextureDirect(GL_TEXTURE_2D, glData->textureId, 0);
+        glTexImage2D(GL_TEXTURE_2D,
+                     0,
+                     (GLint) internalFormat,
+                     tex->m_width,
+                     tex->m_height,
+                     0,
+                     format,
+                     type,
+                     nullptr);
+
+        // A depth attachment is fetched, never filtered, and the default mipmap minification filter
+        // would leave the texture incomplete.
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
       }
 
-      glData->isRenderbuffer = true;
-      tex->m_gpuData         = std::move(glData);
+      tex->m_gpuData = std::move(glData);
       SetDebugLabel(tex);
       return;
     }
 
-    // RenderTarget MSAA — also a renderbuffer
+    // RenderTarget MSAA - also a renderbuffer
     if (s.msaaCount > MsaaSampleCount::x0 && s.Target == GraphicTypes::Target2D)
     {
       glGenRenderbuffers(1, &glData->textureId);
@@ -916,7 +950,7 @@ namespace ToolKit
       return;
     }
 
-    // All other textures — regular GL texture
+    // All other textures - regular GL texture
     glGenTextures(1, &glData->textureId);
     BindTextureDirect(ToGLGraphicType(s.Target), glData->textureId, 0);
 
@@ -936,7 +970,7 @@ namespace ToolKit
     }
     else if (s.Target == GraphicTypes::TargetCubeMap)
     {
-      // CubeMap — check if it has 6 loaded images
+      // CubeMap - check if it has 6 loaded images
       if (CubeMap* cm = tex->As<CubeMap>())
       {
         const auto& images = cm->m_images;
@@ -955,7 +989,7 @@ namespace ToolKit
         }
         else
         {
-          // RenderTarget cube map — allocate empty faces
+          // RenderTarget cube map - allocate empty faces
           for (uint i = 0; i < 6; i++)
           {
             glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
@@ -1266,7 +1300,19 @@ namespace ToolKit
 
     BindFramebuffer(GL_FRAMEBUFFER, GetGLFramebufferData(fb)->fboId);
     GLenum attachment = dt->m_stencil ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT;
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, attachment, GL_RENDERBUFFER, GetGLTextureData(dt.get())->textureId);
+    GLTextureData* gl = GetGLTextureData(dt.get());
+    if (gl != nullptr && !gl->isRenderbuffer)
+    {
+      glFramebufferTexture2D(GL_FRAMEBUFFER, attachment, GL_TEXTURE_2D, gl->textureId, 0);
+    }
+    else
+    {
+      glFramebufferRenderbuffer(GL_FRAMEBUFFER,
+                                attachment,
+                                GL_RENDERBUFFER,
+                                gl != nullptr ? gl->textureId : 0);
+    }
+
     CheckFramebufferComplete(fb);
   }
 
@@ -1278,9 +1324,11 @@ namespace ToolKit
     }
 
     BindFramebuffer(GL_FRAMEBUFFER, GetGLFramebufferData(fb)->fboId);
-    // Detach both possible depth attachment types
+    // Detach both possible depth attachment types, in both kinds of attachment object.
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, 0);
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, 0, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, 0, 0);
   }
 
   void GLBackend::SetDrawBuffers(Framebuffer* fb)
@@ -1628,7 +1676,17 @@ namespace ToolKit
       BindFramebuffer(GL_READ_FRAMEBUFFER, 0);
     }
 
-    glReadPixels(x, y, w, h, ToGLGraphicType(format), ToGLGraphicType(type), data);
+    // The pixel format of a read is not the internal format a texture is allocated with:
+    // GL_DEPTH_COMPONENT24 is not a pixel format at all, and asking for it makes the entire call a
+    // GL_INVALID_ENUM that leaves the destination buffer untouched. What comes back then is whatever
+    // the caller had, which reads as a depth map of zeroes.
+    GLenum readFormat = ToGLGraphicType(format);
+    if (format == GraphicTypes::FormatDepth24 || format == GraphicTypes::FormatDepth24Stencil8)
+    {
+      readFormat = GL_DEPTH_COMPONENT;
+    }
+
+    glReadPixels(x, y, w, h, readFormat, ToGLGraphicType(type), data);
   }
 
   void GLBackend::BlitDepth(Framebuffer* src, Framebuffer* dst)

@@ -40,7 +40,13 @@ namespace ToolKit
     m_quadPass->SetFragmentShader(m_postProcessShader, renderer);
 
     m_quadPass->m_params.frameBuffer      = m_params.frameBuffer;
-    m_quadPass->m_params.clearFrameBuffer = GraphicBitFields::AllBits;
+
+    // Color and stencil only. A full quad writes every color pixel of the target, so the depth of a
+    // composite pass is not in its way, and the frame's depth is still wanted after the pass: the light
+    // occlusion grid reduces it to one value per block at the start of the next frame, before any pass of
+    // that frame runs. Clearing depth here left the grid reading the clear value on every block, which is
+    // what a depth buffer of nothing but far plane looks like from the outside.
+    m_quadPass->m_params.clearFrameBuffer = GraphicBitFields::ColorStencilBits;
 
     // Push parameters through the pass-specific UBO. Lazy-init the buffer on the first PreRender
     //   the renderer/backend may not be live in the constructor.

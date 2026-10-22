@@ -133,13 +133,10 @@ namespace ToolKit
     // left behind, before the passes of this frame overwrite it. A local light whose whole volume sits
     // behind every block it covers contributes nothing to the picture, so it is dropped from the frame:
     // no atlas slot and no shadow map. The grid is a frame behind by construction, so a light has to
-    // stay hidden for a few frames before it is dropped, and the counters reset when the camera jumps.
+    // stay hidden for a few frames before it is dropped, and a camera that moves invalidates it.
 
-    /** Builds the depth grid from the depth buffer as it stands and reads it back every few frames. */
+    /** Reduces the depth buffer to one value per block and reads it back every few frames. */
     void BuildDepthGrid(Renderer* renderer);
-
-    /** The texture sampling version, kept until the blit path is verified. */
-    void BuildDepthGridSampled(Renderer* renderer);
 
     /** Drops the local lights the grid proves are occluded. */
     void CullOccludedLights(LightRawPtrArray& lights);
@@ -148,25 +145,32 @@ namespace ToolKit
     void StoreOcclusionCamera();
 
     RenderTargetPtr m_depthGridRt                        = nullptr;
-    DepthTexturePtr m_depthGridDepth                     = nullptr;
-    FramebufferPtr m_depthGridDepthFb                    = nullptr;
     FramebufferPtr m_depthGridFb                         = nullptr;
     FullQuadPassPtr m_depthGridQuad                      = nullptr;
     ShaderPtr m_depthGridShader                          = nullptr;
 
     /** Row major max depth per block, as read back from the grid. */
     std::vector<float> m_depthGrid;
+    /** Read back pixels of the grid, four floats per block. Kept so the read does not allocate. */
+    std::vector<float> m_depthGridScratch;
     UVec2 m_depthGridSize                                = UVec2(0);
     bool m_depthGridValid                                = false;
     uint m_depthGridFrame                                = 0;
 
     Mat4 m_occlusionViewProj                             = Mat4(1.0f);
-    Vec3 m_occlusionCamPos                               = Vec3(0.0f);
+    Mat4 m_occlusionView                                 = Mat4(1.0f);
     Mat4 m_occlusionProjection                          = Mat4(1.0f);
-    float m_occlusionTanHalfFov                          = 1.0f;
     bool m_occlusionReversedDepth                        = false;
     float m_occlusionNear                                = 0.1f;
     float m_occlusionFar                                 = 1000.0f;
+
+    /** Camera the grid in m_depthGrid was rendered with. A grid from another view says nothing about
+     *  this one, so culling waits for the grid to catch up after a camera change. */
+    uint64 m_occlusionCameraId                           = 0;
+
+    /** Last culling decision that was logged, so the log reports changes instead of every frame. */
+    uint64 m_loggedCullCameraId                          = 0;
+    int m_loggedCullCount                                = -1;
 
     /** Consecutive frames each light was found hidden behind the grid. */
     std::unordered_map<uint64, int> m_lightOcclusionStreak;
