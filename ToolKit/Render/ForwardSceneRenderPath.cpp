@@ -285,9 +285,15 @@ namespace ToolKit
         const Vec4 clip = m_occlusionViewProj * Vec4(centre, 1.0f);
         if (clip.w > 1e-4f)
         {
-          const Vec3 ndc        = Vec3(clip) / clip.w;
-          const float tanHalf   = m_occlusionTanHalfFov;
-          const float ndcRadius = radius / (glm::max(dist - radius, 0.01f) * tanHalf);
+          const Vec3 ndc = Vec3(clip) / clip.w;
+
+          // Depth along the view axis, which is what the grid stores - not the distance to the light.
+          // The two only agree on the centre of the screen: a light off to the side is further away than
+          // it is deep, so comparing a radial distance against axial depths called geometry in front of
+          // a light that was really beside it, and dropped lights whose volume was on screen.
+          const float axialDepth = clip.w;
+          const float tanHalf    = m_occlusionTanHalfFov;
+          const float ndcRadius  = radius / (glm::max(axialDepth - radius, 0.01f) * tanHalf);
 
           // Area of the grid the sphere can possibly cover, kept inside the grid: a sphere that leaves it
           // is not proven hidden, since the part outside was never tested.
@@ -296,7 +302,7 @@ namespace ToolKit
           const float y0 = (ndc.y * 0.5f + 0.5f) - ndcRadius * 0.5f;
           const float y1 = (ndc.y * 0.5f + 0.5f) + ndcRadius * 0.5f;
 
-          const float nearestViewDepth = glm::max(dist - radius, m_occlusionNear);
+          const float nearestViewDepth = glm::max(axialDepth - radius, m_occlusionNear);
 
           if (x0 > 0.0f && x1 < 1.0f && y0 > 0.0f && y1 < 1.0f && nearestViewDepth > m_occlusionNear)
           {
