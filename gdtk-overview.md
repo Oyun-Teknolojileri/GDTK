@@ -178,7 +178,7 @@ verification recipe.
 Serializable, loaded from `%appdata%/ToolKit/Config`. Sub-objects:
 
 - **WindowSettings**: name, width, height, fullscreen
-- **GraphicSettings**: FPS, MSAA, HDR, MultiThreaded, InstancedBatching (draws runs of objects that share a mesh and material as one instanced draw; off falls back to one draw per object), RenderResolutionScale, AnisotropicTextureFiltering, plus a `m_shadows` member
+- **GraphicSettings**: FPS, MSAA, HDR, MultiThreaded, InstancedBatching (draws runs of objects that share a mesh and material as one instanced draw; off falls back to one draw per object), RenderResolutionScale, AnisotropicTextureFiltering, HiZCulling (local light occlusion culling, off by default; see 4.3), plus a `m_shadows` member
 - **ShadowSettings** (nested in GraphicSettings): cascade count/distance, parallel split, stable shadow map, atlas resolution (1K/2K), PCF kernel, VSM blur
 - **PostProcessingSettings**: tonemapping, bloom, gamma, SSAO, SSR, DOF, FXAA
 - **ShaderSettings**: per-shader define presets (e.g. "Low"/"High" graphics presets) so shader compile doesn't explode combinatorially
@@ -248,6 +248,31 @@ environment volumes provide the reflection wherever screen space can not.
 `SSRDebugView` / `SSRDebugViewMode` (Post Processing settings) switch the pass to a debug view:
 reflection, confidence, mip level, scene depth, hit uv, ray length or hit error. The resolve phase hands
 debug views through unfiltered.
+
+#### Light occlusion culling (`HiZCulling` graphic setting, off by default)
+
+`BuildDepthGrid` runs at the top of `ForwardSceneRenderPath::Render`, before any pass of the frame, and
+reduces the depth attachment the forward pass left behind to one float per `DepthGridBlockSize` (8) block.
+The reduction is `hizDepthGridFrag.shader`, drawn with a `FullQuadPass` into an RGBA32F target the size of
+the grid (screen / 8); only the red channel, the block's farthest depth, is read back, and only every
+`DepthGridReadInterval` (4) frames, because the read blocks. `CullOccludedLights` then projects every local
+light's volume, and drops the light from the frame - no atlas slot, no shadow map - when every grid block
+inside its on-screen footprint holds a depth nearer than the light's nearest point. A light needs
+`OcclusionStreakToCull` (3) consecutive such frames before it is dropped, and a camera change invalidates
+the grid and the streaks, since a grid reduced from another view proves nothing about this one.
+
+Two invariants make this work and are easy to break:
+
+- **The frame's depth has to survive the frame.** The grid is reduced at the start of the *next* frame, so
+  nothing may clear or discard the depth after the forward pass. `ForwardRenderPass::m_params.invalidateDepthBuffer`
+  is the flag for the discard side, and `GammaTonemapFxaaPass` clears only `ColorStencilBits` for the clear
+  side. `ForwardSceneRenderPath::Render` clears depth + stencil itself right after the grid has taken them and
+  before any pass of the frame runs, which also keeps the forward pass's assumption intact (it skips its own
+  depth clear when a pre process pass exists, so a stale buffer would reject this frame's geometry against
+  last frame's).
+- **The grid has to be the farthest depth per block**, which is what `hizDepthGridFrag.shader` reduces. A
+  single sample per block (a nearest blit) is optimistic: it can report a block as in front of a light while
+  part of that block is beside or behind it, and a partly visible light then disappears.
 
 ### 4.4 Pass (Pass.h)
 
@@ -471,6 +496,13 @@ Core API:
 - Header: `ToolKit/GLBackend.h`
 - Defined in `TK_GL_ES_3_0` global define (set in top-level CMake)
 - Uses `TKOpenGL.h` + `GlErrorReporter`
+
+`DepthTexture` is a real `GL_TEXTURE_2D` in a depth format, so a pass can sample it (the light occlusion
+grid does); a multisampled depth attachment stays a renderbuffer, because a multisampled texture needs
+immutable storage and nothing samples one. `AttachDepthTarget` / `DetachDepthTarget` therefore handle both
+kinds of attachment object, and `ReadPixels` maps `FormatDepth24` / `FormatDepth24Stencil8` to
+`GL_DEPTH_COMPONENT`, because an internal format is not a pixel format and passing one makes the whole read
+a `GL_INVALID_ENUM` that leaves the destination untouched.
 
 ### 5.3 Vulkan Backend (Vulkan/ directory)
 - `VulkanBackend.h` (main implementation)
@@ -1178,6 +1210,7 @@ When writing/editing any `.h`/`.cpp` in this repo:
 | Renderer | `ToolKit/Renderer.h` |
 | Pass base | `ToolKit/Pass.h` |
 | Forward scene path | `ToolKit/ForwardSceneRenderPath.h` |
+| Light occlusion grid reduction shader | `Resources/Engine/Shaders/hizDepthGridFrag.shader` |
 | Game renderer | `ToolKit/GameRenderer.h` |
 | Backend iface | `ToolKit/IGraphicsBackend.h` |
 | GL backend | `ToolKit/GLBackend.h` |
