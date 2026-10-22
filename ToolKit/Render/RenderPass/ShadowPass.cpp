@@ -1017,15 +1017,6 @@ namespace ToolKit
       int bucket                 = 0;
       int distBucket             = 0;
       ShadowAtlas::SlotSize tier = ShadowAtlas::SlotSize::Eighth;
-
-      // Kept for the metric report, so the numbers behind a placement can be read back.
-      float distance             = 0.0f;
-      float centreDist           = 0.0f;
-      float irradiance           = 0.0f;
-      float radiusPx             = 0.0f;
-      float areaFraction         = 0.0f;
-      float intensity            = 0.0f;
-      float score                = 0.0f;
     };
 
     std::vector<LocalCandidate> candidates;
@@ -1066,8 +1057,14 @@ namespace ToolKit
       const float score      = glm::max(area * irradiance, 1.0f);
 
       LocalCandidate candidate;
-      candidate.light        = light;
-      candidate.bucket       = int(glm::floor(glm::log2(score)));
+      candidate.light = light;
+
+      // Doubling steps. Finer ones were tried and made the flicker worse, not better: with four steps per
+      // doubling two lights sitting a few percent apart swap places every time the camera drifts, and
+      // since they compete for the last free slots the shadow moves between them. The coarse bucket
+      // keeps a light where it is; the tie it leaves is settled once per placement by distance and id,
+      // which does not move.
+      candidate.bucket = int(glm::floor(glm::log2(score)));
       // Ranking inside a bucket needs something that does not saturate. The area does: a light the
       // camera stands inside covers the whole screen, and so do a dozen others around it, which left
       // the order to the light id. Distance to the volume separates them, quantised in powers of two so
@@ -1077,15 +1074,8 @@ namespace ToolKit
       // decided which one got the last free slots.
       candidate.distBucket =
           int(glm::floor(glm::log(glm::max(dist, 0.05f)) / glm::log(1.25f)));
-      candidate.tier         = area >= screenArea * kQuarterAreaFraction ? ShadowAtlas::SlotSize::Quarter
-                                                                        : ShadowAtlas::SlotSize::Eighth;
-      candidate.distance     = dist;
-      candidate.centreDist   = centreDist;
-      candidate.irradiance   = irradiance;
-      candidate.radiusPx     = radiusPx;
-      candidate.areaFraction = area / screenArea;
-      candidate.intensity    = light->GetIntensityVal();
-      candidate.score        = score;
+      candidate.tier = area >= screenArea * kQuarterAreaFraction ? ShadowAtlas::SlotSize::Quarter
+                                                                 : ShadowAtlas::SlotSize::Eighth;
       candidates.push_back(candidate);
     }
 
@@ -1227,106 +1217,6 @@ namespace ToolKit
           }
         }
       }
-    }
-
-    // Report the metric once a second so the ranking can be judged on a real scene: the numbers say why
-    // a light is placed where it is, and which ones the range cull rejected.
-    static uint metricFrame = 0;
-    static std::unordered_map<uint64, PlacedLight> lastReported;
-    if (metricFrame++ % 60 == 0)
-    {
-      for (const LocalCandidate& candidate : candidates)
-      {
-        const char* tierName = candidate.tier == ShadowAtlas::SlotSize::Quarter ? "Quarter" : "Eighth";
-        const auto placed    = m_placedLights.find(candidate.light->GetIdVal());
-        int slotIndex        = -1;
-        const char* placedTierName = "-";
-        if (placed != m_placedLights.end() && placed->second.count > 0)
-        {
-          slotIndex      = placed->second.slotIndices[0];
-          placedTierName = placed->second.tier == ShadowAtlas::SlotSize::Quarter ? "Quarter" : "Eighth";
-        }
-
-        TK_LOG("LIGHTMETRIC '%s' d=%.2f dc=%.2f irr=%.4f rpx=%.0f area=%.2f%% I=%.2f score=%.0f "
-               "bucket=%d wants=%s placed=%s slot=%d",
-               candidate.light->GetNameVal().c_str(),
-               candidate.distance,
-               candidate.centreDist,
-               candidate.irradiance,
-               candidate.radiusPx,
-               candidate.areaFraction * 100.0f,
-               candidate.intensity,
-               candidate.score,
-               candidate.bucket,
-               tierName,
-               placedTierName,
-               slotIndex);
-      }
-
-      // What changed since the last report, not since the previous frame: the report prints once a
-      // second, so a per frame delta is always zero and told nobody anything. How many lights hold a
-      // slot, how many are waiting for one, and how many changed place since the last report - the last
-      // number is what the sticky placement exists to keep small while only the camera moves.
-      int placedCount = 0;
-      int unplaced    = 0;
-      int changed     = 0;
-
-      for (const auto& [id, record] : m_placedLights)
-      {
-        if (record.count > 0)
-        {
-          placedCount++;
-        }
-        else
-        {
-          unplaced++;
-        }
-
-        const auto prev = lastReported.find(id);
-        if (prev == lastReported.end())
-        {
-          if (record.count > 0)
-          {
-            changed++;
-          }
-          continue;
-        }
-
-        if (prev->second.tier != record.tier || prev->second.count != record.count)
-        {
-          changed++;
-          continue;
-        }
-
-        for (int i = 0; i < record.count; i++)
-        {
-          if (prev->second.slotIndices[i] != record.slotIndices[i])
-          {
-            changed++;
-            break;
-          }
-        }
-      }
-
-      for (const auto& [id, record] : lastReported)
-      {
-        if (record.count > 0 && m_placedLights.find(id) == m_placedLights.end())
-        {
-          changed++;
-        }
-      }
-
-      lastReported = m_placedLights;
-
-      TK_LOG("LIGHTMETRIC frame: %d locals, %d with a slot, %d without, range=%.0f, view=%dx%d, "
-             "slots changed since last report=%d",
-             int(candidates.size()),
-             placedCount,
-             unplaced,
-             maxShadowDistance,
-             viewSize.x,
-             viewSize.y,
-             changed);
     }
 
     // Invalidate cache for all lights to ensure GPU gets correct atlas data.
