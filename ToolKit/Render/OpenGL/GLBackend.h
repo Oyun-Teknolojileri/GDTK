@@ -110,6 +110,7 @@ namespace ToolKit
     bool ValidateBackbufferSrgbEncoding() override;
     void EnableScissorTest(bool enable) override;
     void ReadPixels(int x, int y, int w, int h, GraphicTypes format, GraphicTypes type, void* data) override;
+    void BlitDepth(Framebuffer* src, Framebuffer* dst) override;
     void UpdateTextureSubRegion(Texture* tex, int x, int y, int w, int h, const void* data) override;
     void PushDebugGroup(StringView name) override;
     void PopDebugGroup() override;

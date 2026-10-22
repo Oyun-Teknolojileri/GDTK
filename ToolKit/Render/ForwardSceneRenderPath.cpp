@@ -157,6 +157,80 @@ namespace ToolKit
       return;
     }
 
+    // The blit path below is not in use yet: it crashed on the first run, so the texture sampling version
+    // keeps the feature where it was until the depth target is set up correctly.
+    BuildDepthGridSampled(renderer);
+    return;
+
+    // The depth is brought down to a small depth target with a blit and read from there, rather than
+    // sampled as a texture. Sampling the attachment the frame rendered into came back as the clear value
+    // no matter which framebuffer was asked for, while a depth blit is what the hardware is meant to do.
+    FramebufferPtr depthSource = m_forwardRenderPass && m_forwardRenderPass->m_params.FrameBuffer
+                                     ? m_forwardRenderPass->m_params.FrameBuffer
+                                     : m_params.MainFramebuffer;
+
+    if (depthSource == nullptr || depthSource->GetDepthTexture() == nullptr)
+    {
+      m_depthGridValid = false;
+      return;
+    }
+
+    const FramebufferSettings& srcSet = depthSource->GetSettings();
+    const UVec2 gridSize(glm::max(srcSet.width / DepthGridBlockSize, 1),
+                         glm::max(srcSet.height / DepthGridBlockSize, 1));
+
+    if (m_depthGridDepthFb == nullptr || m_depthGridSize != gridSize)
+    {
+      m_depthGridDepth   = MakeNewPtr<DepthTexture>();
+      m_depthGridDepth->Init(gridSize.x, gridSize.y, false, MsaaSampleCount::x0);
+
+      m_depthGridDepthFb = MakeNewPtr<Framebuffer>("DepthGridDepthFB");
+      m_depthGridDepthFb->AttachDepthTexture(m_depthGridDepth);
+      m_depthGridDepthFb->ReconstructIfNeeded({(int) gridSize.x, (int) gridSize.y, false, false});
+
+      m_depthGridSize = gridSize;
+    }
+
+    renderer->GetBackend()->BlitDepth(depthSource.get(), m_depthGridDepthFb.get());
+
+    // One blocking read every few frames: a read per frame costs more than the culling saves.
+    if ((m_depthGridFrame++ % DepthGridReadInterval) == 0)
+    {
+      const size_t count = size_t(gridSize.x) * size_t(gridSize.y);
+      m_depthGrid.assign(count, 0.0f);
+
+      renderer->SetFramebuffer(m_depthGridDepthFb, GraphicBitFields::None, Vec4(0.0f), GraphicBitFields::None);
+      renderer->GetBackend()->ReadPixels(0,
+                                         0,
+                                         gridSize.x,
+                                         gridSize.y,
+                                         GraphicTypes::FormatDepth24,
+                                         GraphicTypes::TypeFloat,
+                                         m_depthGrid.data());
+
+      m_depthGridValid = true;
+
+      float lo = 1e30f;
+      float hi = -1e30f;
+      for (size_t i = 0; i < count; ++i)
+      {
+        lo = glm::min(lo, m_depthGrid[i]);
+        hi = glm::max(hi, m_depthGrid[i]);
+      }
+      TK_LOG("HIZGRID %dx%d min=%.4f max=%.4f", gridSize.x, gridSize.y, lo, hi);
+    }
+    return;
+  }
+
+  void ForwardSceneRenderPath::BuildDepthGridSampled(Renderer* renderer)
+  {
+    if (!GetEngineSettings().m_graphics->GetHiZCullingVal())
+    {
+      m_depthGridValid = false;
+      m_lightOcclusionStreak.clear();
+      return;
+    }
+
     // The depth the forward pass actually wrote. The main framebuffer is the window side of it; a scene
     // that renders through its own target keeps the real depth there instead, and reading the window's
     // gives the clear value everywhere.

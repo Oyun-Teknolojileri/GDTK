@@ -138,6 +138,9 @@ namespace ToolKit
     /** Builds the depth grid from the depth buffer as it stands and reads it back every few frames. */
     void BuildDepthGrid(Renderer* renderer);
 
+    /** The texture sampling version, kept until the blit path is verified. */
+    void BuildDepthGridSampled(Renderer* renderer);
+
     /** Drops the local lights the grid proves are occluded. */
     void CullOccludedLights(LightRawPtrArray& lights);
 
@@ -145,6 +148,8 @@ namespace ToolKit
     void StoreOcclusionCamera();
 
     RenderTargetPtr m_depthGridRt                        = nullptr;
+    DepthTexturePtr m_depthGridDepth                     = nullptr;
+    FramebufferPtr m_depthGridDepthFb                    = nullptr;
     FramebufferPtr m_depthGridFb                         = nullptr;
     FullQuadPassPtr m_depthGridQuad                      = nullptr;
     ShaderPtr m_depthGridShader                          = nullptr;

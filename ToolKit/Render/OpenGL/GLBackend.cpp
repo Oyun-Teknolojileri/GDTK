@@ -1631,6 +1631,37 @@ namespace ToolKit
     glReadPixels(x, y, w, h, ToGLGraphicType(format), ToGLGraphicType(type), data);
   }
 
+  void GLBackend::BlitDepth(Framebuffer* src, Framebuffer* dst)
+  {
+    if (src == nullptr || dst == nullptr || src->GetDepthTexture() == nullptr ||
+        dst->GetDepthTexture() == nullptr)
+    {
+      return;
+    }
+
+    const FramebufferSettings& srcSet = src->GetSettings();
+    const FramebufferSettings& dstSet = dst->GetSettings();
+
+    BindFramebuffer(GL_READ_FRAMEBUFFER, GetGLFramebufferData(src)->fboId);
+    BindFramebuffer(GL_DRAW_FRAMEBUFFER, GetGLFramebufferData(dst)->fboId);
+
+    // Depth only, nearest: the destination is the reduced grid, and it wants one sample per block rather
+    // than an average, which would land in the middle of the geometry and hide the occluders.
+    glBlitFramebuffer(0,
+                      0,
+                      srcSet.width,
+                      srcSet.height,
+                      0,
+                      0,
+                      dstSet.width,
+                      dstSet.height,
+                      GL_DEPTH_BUFFER_BIT,
+                      GL_NEAREST);
+
+    m_currentReadFboId = GetGLFramebufferData(dst)->fboId;
+    m_currentDrawFboId = m_currentReadFboId;
+  }
+
   void GLBackend::UpdateTextureSubRegion(Texture* tex, int x, int y, int w, int h, const void* data)
   {
     GLTextureData* gl = tex ? GetGLTextureData(tex) : nullptr;

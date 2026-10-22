@@ -178,6 +178,13 @@ namespace ToolKit
 
     virtual void ReadPixels(int x, int y, int w, int h, GraphicTypes format, GraphicTypes type, void* data) = 0;
 
+    /**
+     * Copies the depth attachment of @p src into @p dst, scaled to the destination's size. This is how a
+     * frame's depth is brought down to a small target that can be read back. A backend that cannot do it
+     * leaves @p dst untouched, so a caller has to treat an empty destination as "no depth available".
+     */
+    virtual void BlitDepth(Framebuffer* src, Framebuffer* dst) {}
+
     virtual void UpdateTextureSubRegion(Texture* tex, int x, int y, int w, int h, const void* data)         = 0;
 
     virtual void PushDebugGroup(StringView name)                                                            = 0;
