@@ -243,7 +243,8 @@ namespace ToolKit
       return;
     }
 
-    m_occlusionViewProj  = camera->GetProjectViewMatrix();
+    m_occlusionViewProj   = camera->GetProjectViewMatrix();
+    m_occlusionProjection = camera->GetProjectionMatrix();
     m_occlusionCamPos    = camera->Position();
     m_occlusionTanHalfFov = glm::tan(glm::max(camera->Fov() * 0.5f, 1e-3f));
     m_occlusionNear      = camera->Near();
@@ -304,6 +305,13 @@ namespace ToolKit
 
           const float nearestViewDepth = glm::max(axialDepth - radius, m_occlusionNear);
 
+          // The light's nearest depth, expressed the way the grid stores depth, by running it through the
+          // same projection the frame rendered with. Deriving it from near and far instead assumed a
+          // standard depth range; a reversed or zero-to-one range then read a distant background as if it
+          // stood in front of the light, and dropped lights that were plainly on screen.
+          const Vec4 depthClip   = m_occlusionProjection * Vec4(0.0f, 0.0f, -nearestViewDepth, 1.0f);
+          const float lightDepth = (depthClip.z / depthClip.w) * 0.5f + 0.5f;
+
           if (x0 > 0.0f && x1 < 1.0f && y0 > 0.0f && y1 < 1.0f && nearestViewDepth > m_occlusionNear)
           {
             const int gx0 = glm::clamp(int(x0 * float(gridW)), 0, gridW - 1);
@@ -317,8 +325,7 @@ namespace ToolKit
               for (int x = gx0; x <= gx1; ++x)
               {
                 const float depth = m_depthGrid[(size_t(y) * size_t(gridW) + size_t(x)) * 4 + 0];
-                const float viewZ = DepthToViewDistance(depth, m_occlusionNear, m_occlusionFar);
-                if (viewZ > nearestViewDepth)
+                if (depth > lightDepth)
                 {
                   everyBlockInFront = false;
                   break;

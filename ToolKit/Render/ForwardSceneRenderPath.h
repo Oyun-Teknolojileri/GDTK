@@ -157,6 +157,7 @@ namespace ToolKit
 
     Mat4 m_occlusionViewProj                             = Mat4(1.0f);
     Vec3 m_occlusionCamPos                               = Vec3(0.0f);
+    Mat4 m_occlusionProjection                          = Mat4(1.0f);
     float m_occlusionTanHalfFov                          = 1.0f;
     float m_occlusionNear                                = 0.1f;
     float m_occlusionFar                                 = 1000.0f;
