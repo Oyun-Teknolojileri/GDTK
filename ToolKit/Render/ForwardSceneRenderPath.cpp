@@ -157,9 +157,28 @@ namespace ToolKit
       return;
     }
 
-    TexturePtr depthBuffer = m_params.MainFramebuffer
-                                 ? m_params.MainFramebuffer->GetDepthTexture()
-                                 : nullptr;
+    // The depth the forward pass actually wrote. The main framebuffer is the window side of it; a scene
+    // that renders through its own target keeps the real depth there instead, and reading the window's
+    // gives the clear value everywhere.
+    FramebufferPtr depthSource = m_forwardRenderPass && m_forwardRenderPass->m_params.FrameBuffer
+                                     ? m_forwardRenderPass->m_params.FrameBuffer
+                                     : m_params.MainFramebuffer;
+    TexturePtr depthBuffer     = depthSource ? depthSource->GetDepthTexture() : nullptr;
+
+    static bool depthLogged = false;
+    if (!depthLogged)
+    {
+      depthLogged                   = true;
+      const FramebufferSettings& fs = depthSource ? depthSource->GetSettings() : FramebufferSettings();
+      TK_LOG("HIZDEPTH fb=%p depth=%p tex=%ux%u msaa=%d fbSize=%dx%d",
+             (void*) depthSource.get(),
+             (void*) depthBuffer.get(),
+             depthBuffer ? depthBuffer->m_width : 0u,
+             depthBuffer ? depthBuffer->m_height : 0u,
+             depthBuffer ? (int) depthBuffer->IsMultiSampled() : -1,
+             fs.width,
+             fs.height);
+    }
     if (depthBuffer == nullptr || depthBuffer->IsMultiSampled())
     {
       // Nothing to reduce, or the depth lives in a multisampled attachment that only a resolve can read.
@@ -184,12 +203,16 @@ namespace ToolKit
 
     if (m_depthGridSize != gridSize)
     {
+      // Eight bits per channel, because that is what reads back reliably through the backend's read
+      // path: a float target came back as zeroes no matter what was drawn into it. One byte per depth is
+      // coarse, but this grid only has to tell "in front of the light" from "behind it", and the block
+      // reduction takes the largest sample either way.
       TextureSettings settings;
       settings.WarpS          = GraphicTypes::UVClampToEdge;
       settings.WarpT          = GraphicTypes::UVClampToEdge;
-      settings.InternalFormat = GraphicTypes::FormatRGBA16F;
+      settings.InternalFormat = GraphicTypes::FormatRGBA8;
       settings.Format         = GraphicTypes::FormatRGBA;
-      settings.Type           = GraphicTypes::TypeFloat;
+      settings.Type           = GraphicTypes::TypeUnsignedByte;
       settings.MinFilter      = GraphicTypes::SampleNearest;
       settings.MagFilter      = GraphicTypes::SampleNearest;
 
@@ -207,15 +230,76 @@ namespace ToolKit
     // depth buffer is bound by slot rather than by name: the name lookup is resolved against whatever
     // program is current when the texture is bound, which is not this one yet, and it reports a warning
     // for a sampler the draw will have.
+    // The quad draws into the grid framebuffer. It must keep that framebuffer as its own target: with
+    // none set, the pass falls back to the window and nothing is ever written where the read looks.
     m_depthGridQuad->m_params.frameBuffer      = m_depthGridFb;
     m_depthGridQuad->m_params.clearFrameBuffer = GraphicBitFields::ColorBits;
     m_depthGridQuad->GetRequirements()         = PassRequirements();
     m_depthGridQuad->GetRequirements().fragmentShader = m_depthGridShader;
     m_depthGridQuad->GetRequirements().textures[0]    = depthBuffer;
 
+    // The quad's own PreRender installs the material's fragment shader and builds the program from it, so
+    // the grid shader is installed on the material first; a fragment shader only present in the
+    // requirements is not what ends up compiled.
+    m_depthGridQuad->SetFragmentShader(m_depthGridShader, renderer);
+
+    // The quad's material carries a default white texture on slot 0, the slot this shader wants for the
+    // depth. Left there it is bound after the depth and the shader samples a one by one white texel, which
+    // is a grid that reads 1.0 everywhere - the clear value lookalike that hid the real problem.
+    if (m_depthGridQuad->m_material)
+    {
+      m_depthGridQuad->m_material->SetDiffuseTextureVal(nullptr);
+    }
+
     m_depthGridQuad->PreRender();
+
+    // Bound after the program is up: a texture bind resolves its sampler by name in the program that is
+    // current at that moment, so a bind made before the program is dropped without a word and texelFetch
+    // then reads zero everywhere - which is exactly the all zero grid that this test kept seeing.
+    renderer->SetTexture(ubyte(0), depthBuffer);
+
     m_depthGridQuad->Render();
+
+    // Read while the pass is still open. Closing it first discards the colour attachment, which is what a
+    // pass does by default with pixels that are only ever sampled later, and the read then saw zeroes.
+    const bool readGrid = (m_depthGridFrame++ % DepthGridReadInterval) == 0;
+    if (readGrid)
+    {
+      const size_t count = size_t(gridSize.x) * size_t(gridSize.y);
+      m_depthGrid.resize(count * 4);
+
+      std::vector<ubyte> bytes(count * 4, 0);
+      renderer->GetBackend()->ReadPixels(0,
+                                         0,
+                                         gridSize.x,
+                                         gridSize.y,
+                                         GraphicTypes::FormatRGBA,
+                                         GraphicTypes::TypeUnsignedByte,
+                                         bytes.data());
+
+      for (size_t i = 0; i < count; ++i)
+      {
+        m_depthGrid[i * 4 + 0] = float(bytes[i * 4 + 0]) / 255.0f;
+      }
+
+      m_depthGridValid = true;
+    }
+
     m_depthGridQuad->PostRender();
+
+    if (readGrid)
+    {
+      float lo = 1e30f;
+      float hi = -1e30f;
+      for (size_t i = 0, n = size_t(gridSize.x) * size_t(gridSize.y); i < n; ++i)
+      {
+        const float v = m_depthGrid[i * 4 + 0];
+        lo            = glm::min(lo, v);
+        hi            = glm::max(hi, v);
+      }
+      TK_LOG("HIZGRID %dx%d min=%.4f max=%.4f rev=%d", gridSize.x, gridSize.y, lo, hi,
+             (int) m_occlusionReversedDepth);
+    }
 
     // One blocking read every few frames, and only the first channel of each block matters.
     if ((m_depthGridFrame++ % DepthGridReadInterval) == 0)
@@ -223,15 +307,38 @@ namespace ToolKit
       const size_t count = size_t(gridSize.x) * size_t(gridSize.y);
       m_depthGrid.resize(count * 4);
 
+      // A read takes the currently bound framebuffer, and the quad pass has closed its own by now, so
+      // the grid is bound again here. Reading without this returned whatever the back buffer held - all
+      // zeroes - and every block then looked nearer than any light, which culled all of them.
+      std::vector<ubyte> bytes(count * 4, 0);
+      renderer->SetFramebuffer(m_depthGridFb, GraphicBitFields::None);
       renderer->GetBackend()->ReadPixels(0,
                                          0,
                                          gridSize.x,
                                          gridSize.y,
                                          GraphicTypes::FormatRGBA,
-                                         GraphicTypes::TypeFloat,
-                                         m_depthGrid.data());
+                                         GraphicTypes::TypeUnsignedByte,
+                                         bytes.data());
+
+      for (size_t i = 0; i < count; ++i)
+      {
+        m_depthGrid[i * 4 + 0] = float(bytes[i * 4 + 0]) / 255.0f;
+      }
 
       m_depthGridValid = true;
+
+      // Temporary: what the grid actually holds. All zeros or all ones means the read came from
+      // somewhere other than the grid, and every later comparison is meaningless.
+      float lo = 1e30f;
+      float hi = -1e30f;
+      for (size_t i = 0; i < count; ++i)
+      {
+        const float v = m_depthGrid[i * 4 + 0];
+        lo            = glm::min(lo, v);
+        hi            = glm::max(hi, v);
+      }
+      TK_LOG("HIZGRID %dx%d min=%.4f max=%.4f rev=%d", gridSize.x, gridSize.y, lo, hi,
+             (int) m_occlusionReversedDepth);
     }
   }
 
@@ -248,6 +355,15 @@ namespace ToolKit
     m_occlusionCamPos    = camera->Position();
     m_occlusionTanHalfFov = glm::tan(glm::max(camera->Fov() * 0.5f, 1e-3f));
     m_occlusionNear      = camera->Near();
+
+    // Which way the depth buffer runs. The grid keeps whatever the projection wrote, and a reversed
+    // range counts nearer as larger, so the comparison against a light's depth has to know the
+    // direction instead of assuming larger means farther.
+    const Vec4 nearClip = m_occlusionProjection * Vec4(0.0f, 0.0f, -m_occlusionNear, 1.0f);
+    const Vec4 farClip  = m_occlusionProjection * Vec4(0.0f, 0.0f, -m_occlusionFar, 1.0f);
+    const float nearDepth = (nearClip.z / nearClip.w) * 0.5f + 0.5f;
+    const float farDepth  = (farClip.z / farClip.w) * 0.5f + 0.5f;
+    m_occlusionReversedDepth = nearDepth > farDepth;
     m_occlusionFar       = camera->Far();
   }
 
@@ -261,7 +377,8 @@ namespace ToolKit
     const int gridW = int(m_depthGridSize.x);
     const int gridH = int(m_depthGridSize.y);
 
-    int culled = 0;
+    int culled            = 0;
+    const int totalLights = (int) lights.size();
 
     LightRawPtrArray kept;
     kept.reserve(lights.size());
@@ -332,7 +449,12 @@ namespace ToolKit
               for (int x = gx0; x <= gx1; ++x)
               {
                 const float depth = m_depthGrid[(size_t(y) * size_t(gridW) + size_t(x)) * 4 + 0];
-                if (depth > lightDepth)
+
+                // Is this block in front of the light? A normal depth range counts nearer as smaller, a
+                // reversed range counts nearer as larger, and the engine is free to use either.
+                const bool inFront =
+                    m_occlusionReversedDepth ? (depth > lightDepth) : (depth < lightDepth);
+                if (!inFront)
                 {
                   everyBlockInFront = false;
                   break;
@@ -367,6 +489,18 @@ namespace ToolKit
     lights.swap(kept);
 
     Stats::AddStat(FrameStatType::HiZCulledLight, (uint64) culled);
+
+    static uint hizLogFrame = 0;
+    if ((hizLogFrame++ % 30) == 0)
+    {
+      TK_LOG("HIZCULL cam='%s' culled=%d of %d kept=%d grid=%dx%d",
+             m_params.Cam ? m_params.Cam->GetNameVal().c_str() : "?",
+             culled,
+             totalLights,
+             int(lights.size()),
+             gridW,
+             gridH);
+    }
   }
 
   void ForwardSceneRenderPath::PreRender(Renderer* renderer)
@@ -797,6 +931,10 @@ namespace ToolKit
     m_forwardRenderPass->m_params.Cam               = m_params.Cam;
     m_forwardRenderPass->m_params.FrameBuffer       = m_params.MainFramebuffer;
     m_forwardRenderPass->m_params.clearBuffer       = GraphicBitFields::None;
+
+    // The forward pass throws its depth away when it ends, which is the right default: nothing else was
+    // reading it. The occlusion grid does, at the end of the frame, so it is kept while the test is on.
+    m_forwardRenderPass->m_params.invalidateDepthBuffer = !GetEngineSettings().m_graphics->GetHiZCullingVal();
 
     PostProcessingSettingsPtr pps                   = m_params.postProcessSettings;
     m_forwardRenderPass->m_params.SsaoTexture       = pps->GetSSAOEnabledVal() ? m_ssaoPass->m_ssaoTexture : nullptr;

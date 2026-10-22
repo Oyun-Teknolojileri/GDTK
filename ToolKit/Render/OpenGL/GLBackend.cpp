@@ -1615,6 +1615,19 @@ namespace ToolKit
 
   void GLBackend::ReadPixels(int x, int y, int w, int h, GraphicTypes format, GraphicTypes type, void* data)
   {
+    // glReadPixels takes its pixels from the READ framebuffer, not necessarily the one the caller set up:
+    // passes without a target fall back to the window, the binding is cached, and a read of a render
+    // target could quietly return the back buffer - all zeroes - instead. The pass described here is the
+    // one the caller bound, so the read is pointed at it explicitly.
+    if (m_activePassDesc.target != nullptr)
+    {
+      BindFramebuffer(GL_READ_FRAMEBUFFER, GetGLFramebufferData(m_activePassDesc.target.get())->fboId);
+    }
+    else
+    {
+      BindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+    }
+
     glReadPixels(x, y, w, h, ToGLGraphicType(format), ToGLGraphicType(type), data);
   }
 
