@@ -122,7 +122,22 @@ namespace ToolKit
 
   Main* Main::m_proxy = nullptr;
 
-  const char* GetEngineBuildStamp() { return __DATE__ " " __TIME__; }
+  static const char* (*g_engineBuildStampFn)() = nullptr;
+
+  void SetEngineBuildStampFn(const char* (*fn)()) { g_engineBuildStampFn = fn; }
+
+  const char* GetEngineBuildStamp()
+  {
+    // The host knows how to read the timestamp of the library it loaded; the core does not touch the
+    // platform for it. Without a hook this falls back to the compile time of this translation unit,
+    // which only moves when this file is rebuilt.
+    if (g_engineBuildStampFn != nullptr)
+    {
+      return g_engineBuildStampFn();
+    }
+
+    return __DATE__ " " __TIME__;
+  }
 
   Main::Main()
   {

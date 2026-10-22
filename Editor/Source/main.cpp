@@ -362,6 +362,10 @@ namespace ToolKit
 
             g_app = new App(settings.m_window->GetWidthVal(), settings.m_window->GetHeightVal());
 
+            // Tell the engine how to report its build: the platform layer reads the timestamp of the
+            // library that is actually loaded, the core stays free of module handles.
+            SetEngineBuildStampFn(&PlatformHelpers::GetModuleBuildStamp);
+
             HandleArguments(argv, argc);
             g_app->m_displayBounds  = UVec2(displayBounds.w, displayBounds.h);
             g_app->m_sysComExecFn   = &ToolKit::PlatformHelpers::SysComExec;

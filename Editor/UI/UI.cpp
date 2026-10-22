@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
@@ -924,6 +924,11 @@ namespace ToolKit
       ImGui::Separator();
 
       ImGui::Text(TKVersionStr.c_str());
+
+      // The engine library's build time, not the editor's: several copies of both live side by side in
+      // a worktree setup, and a stale one looks exactly like a bug in new code. Primary text colour so
+      // it stays readable in every theme instead of blending into the menu background.
+      ImGui::Text("engine built %s", GetEngineBuildStamp());
     }
 
     template <typename T>

@@ -25,6 +25,10 @@
 
 namespace ToolKit
 {
+  // Cross reference, defined in ToolKit.h. Only the address is used here, to ask the loader which module
+  // the engine came from, so this header stays free of the engine's own headers.
+  TK_API const char* GetEngineBuildStamp();
+
   namespace PlatformHelpers
   {
     namespace UTF8Util
@@ -553,6 +557,67 @@ namespace ToolKit
                     std::to_string(attrData.ftLastWriteTime.dwLowDateTime);
 
       return time;
+    }
+
+    // Timestamp of the engine library that is loaded right now, which is what a host wants to show to
+    // tell one build from another: rebuilding the library leaves the executable untouched, so the
+    // executable's own timestamp would keep pointing at an older build. Reads the file time of the
+    // loaded module rather than a compile time constant for the same reason.
+    inline const char* GetModuleBuildStamp()
+    {
+      static String stamp;
+      if (!stamp.empty())
+      {
+        return stamp.c_str();
+      }
+
+      // The engine ships as a shared library next to the host, and its file name carries a configuration
+      // suffix (ToolKit.dll in release, ToolKitd.dll in debug), so it is found by the address of one of
+      // its own functions instead of by name. Falls back to the host module when the engine is linked
+      // statically, where the host's own timestamp is the build.
+      HMODULE engine = nullptr;
+      if (!::GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                    GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                reinterpret_cast<LPCSTR>(&ToolKit::GetEngineBuildStamp),
+                                &engine) ||
+          engine == nullptr)
+      {
+        engine = ::GetModuleHandleA(nullptr);
+      }
+
+      char path[MAX_PATH] = {0};
+      if (::GetModuleFileNameA(engine, path, MAX_PATH) == 0)
+      {
+        return "unknown";
+      }
+
+      WIN32_FILE_ATTRIBUTE_DATA data;
+      if (!::GetFileAttributesExA(path, GetFileExInfoStandard, &data))
+      {
+        return "unknown";
+      }
+
+      FILETIME localTime;
+      SYSTEMTIME sysTime;
+      if (!::FileTimeToLocalFileTime(&data.ftLastWriteTime, &localTime) ||
+          !::FileTimeToSystemTime(&localTime, &sysTime))
+      {
+        return "unknown";
+      }
+
+      char buffer[64] = {0};
+      snprintf(buffer,
+               sizeof(buffer),
+               "%04d-%02d-%02d %02d:%02d:%02d",
+               sysTime.wYear,
+               sysTime.wMonth,
+               sysTime.wDay,
+               sysTime.wHour,
+               sysTime.wMinute,
+               sysTime.wSecond);
+      stamp = buffer;
+
+      return stamp.c_str();
     }
 
     inline void* TKLoadModule(StringView fullPath)

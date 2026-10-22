@@ -139,6 +139,13 @@ namespace ToolKit
   TK_API const char* GetEngineBuildStamp();
 
   /**
+   * Lets the host say how the engine should report which of its libraries is loaded, e.g. by reading the
+   * timestamp of the shared library at runtime. The core leaves that to the platform layer so it does not
+   * need to know about module handles at all.
+   */
+  TK_API void SetEngineBuildStampFn(const char* (*fn)());
+
+  /**
    * Main class that provides access to all sorts of manager and utility functionalities provided by the Engine.
    */
   class TK_API Main
