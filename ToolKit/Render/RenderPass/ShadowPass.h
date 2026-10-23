@@ -125,7 +125,7 @@ namespace ToolKit
     RenderTargetPtr m_shadowAtlas      = nullptr;
     RenderTargetPtr m_shadowBlurTempRT = nullptr;
     int m_activeCascadeCount           = 0;
-    bool m_use2KLayer                  = false;
+    int m_atlasResolution              = 0;
 
     /** Tracks which per-layer framebuffer is currently the active pass target inside the main
      *  render loop. Cascades may scatter across atlas layers within one light-group; this lets

@@ -1333,10 +1333,10 @@ namespace ToolKit
       needReconstruct      = true;
     }
 
-    if (m_use2KLayer != shadows->GetUse2KShadowAtlasLayerVal())
+    if (m_atlasResolution != shadows->GetShadowAtlasResolution())
     {
-      m_use2KLayer    = shadows->GetUse2KShadowAtlasLayerVal();
-      needReconstruct = true;
+      m_atlasResolution = shadows->GetShadowAtlasResolution();
+      needReconstruct   = true;
     }
 
     if (needReconstruct)

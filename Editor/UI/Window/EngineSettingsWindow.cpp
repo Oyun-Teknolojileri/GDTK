@@ -402,12 +402,26 @@ namespace ToolKit
 
         ImGui::SeparatorText("Other");
 
-        bool use2KLayer = shadows->GetUse2KShadowAtlasLayerVal();
-        if (ImGui::Checkbox("Use 2K Shadow Atlas Layer", &use2KLayer))
+        // Atlas layer resolution, the sizes largest first.
+        const int atlasResolutions[]       = {ShadowSettings::AtlasResolution4K,
+                                              ShadowSettings::AtlasResolution2K,
+                                              ShadowSettings::AtlasResolution1K};
+        const char* atlasResolutionNames[] = {"4K", "2K", "1K"};
+        const int atlasResolution          = shadows->GetShadowAtlasResolution();
+
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Atlas Resolution");
+        for (int i = 0; i < IM_ARRAYSIZE(atlasResolutions); i++)
         {
-          shadows->SetUse2KShadowAtlasLayerVal(use2KLayer);
+          ImGui::SameLine();
+          if (ImGui::RadioButton(atlasResolutionNames[i], atlasResolution == atlasResolutions[i]))
+          {
+            shadows->SetShadowAtlasResolutionVal(atlasResolutions[i]);
+          }
         }
-        UI::AddTooltipToLastItem("Uses 2048x2048 layers for the shadow atlas instead of 1024x1024");
+        UI::AddTooltipToLastItem("Layer resolution of the shadow atlas.\n"
+                                 "The two RG16F layers with their depth and blur targets cost about 16 MB at 1K, "
+                                 "64 MB at 2K and 256 MB at 4K.");
 
         bool use2XSlots = shadows->GetUse2XShadowAtlasSlotsVal();
         if (ImGui::Checkbox("Use 2x Shadow Atlas Slots", &use2XSlots))
@@ -419,7 +433,8 @@ namespace ToolKit
                                  "Half / Quarter / Eighth slots go from 4 / 12 / 16 to 16 / 48 / 64.\n"
                                  "The atlas keeps its size, so this trades sharpness for more shadow casting "
                                  "lights.\n"
-                                 "Combined with 2K layers, the slots are as sharp as the default 1K layout.");
+                                 "Slots end up as sharp as the next atlas size down, so 2K with 2x slots matches "
+                                 "the default 1K layout.");
 
         bool stableShadowMap = shadows->GetStableShadowMapVal();
         if (ImGui::Checkbox("Stabilize Shadows", &stableShadowMap))

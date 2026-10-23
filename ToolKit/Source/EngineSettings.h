@@ -69,8 +69,21 @@ namespace ToolKit
       SetCascadeDistancesVal(dist);
     }
 
-    /** Returns shadow atlas resolution based on Use2KShadowAtlasLayer setting. */
-    int GetShadowAtlasResolution() const { return GetUse2KShadowAtlasLayerVal() ? 2048 : 1024; }
+    /** Shadow atlas layer resolutions the editor offers. */
+    static constexpr int AtlasResolution1K = 1024;
+    static constexpr int AtlasResolution2K = 2048;
+    static constexpr int AtlasResolution4K = 4096;
+
+    /** Returns the shadow atlas layer resolution, kept within the offered choices. */
+    int GetShadowAtlasResolution() const
+    {
+      const int resolution = GetShadowAtlasResolutionVal();
+      if (resolution == AtlasResolution2K || resolution == AtlasResolution4K)
+      {
+        return resolution;
+      }
+      return AtlasResolution1K;
+    }
 
     /**
      * Returns the slot density of the shadow atlas. Scale 1 is the default layout, scale 2 halves
@@ -110,8 +123,8 @@ namespace ToolKit
     /** Prevents shimmering effects by preventing sub-pixel movement with the cost of wasted shadow map resolution. */
     TKDeclareParam(bool, StableShadowMap);
 
-    /** Uses 2K resolution for shadow atlas layers instead of 1K. */
-    TKDeclareParam(bool, Use2KShadowAtlasLayer);
+    /** Layer resolution of the shadow atlas: 1K, 2K or 4K. See GetShadowAtlasResolution. */
+    TKDeclareParam(int, ShadowAtlasResolution);
 
     /**
      * Halves the resolution of every shadow atlas slot, which doubles the slot grid on each axis:
