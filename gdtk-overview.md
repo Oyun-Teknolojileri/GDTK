@@ -179,7 +179,7 @@ Serializable, loaded from `%appdata%/ToolKit/Config`. Sub-objects:
 
 - **WindowSettings**: name, width, height, fullscreen
 - **GraphicSettings**: FPS, MSAA, HDR, MultiThreaded, InstancedBatching (draws runs of objects that share a mesh and material as one instanced draw; off falls back to one draw per object), RenderResolutionScale, AnisotropicTextureFiltering, HiZCulling (drops local lights and meshes the depth grid proves hidden, off by default; see 4.3), plus a `m_shadows` member
-- **ShadowSettings** (nested in GraphicSettings): cascade count/distance, parallel split, stable shadow map, atlas resolution (1K/2K), PCF kernel, VSM blur
+- **ShadowSettings** (nested in GraphicSettings): cascade count/distance, parallel split, stable shadow map, atlas resolution (1K/2K), slot density (the 2x slots option halves every slot's resolution for four times the slots), PCF kernel, VSM blur
 - **PostProcessingSettings**: tonemapping, bloom, gamma, SSAO, SSR, DOF, FXAA
 - **ShaderSettings**: per-shader define presets (e.g. "Low"/"High" graphics presets) so shader compile doesn't explode combinatorially
 
@@ -440,7 +440,13 @@ Scenes with a skinned or animated job disable the cache (`m_jobCacheUnusable`): 
 move without a spatial invalidation, which no counter can see.
 
 **Shadow atlas placement.** Local lights take slots from a fixed atlas layout (4 Half for cascades, 12
-Quarter and 16 Eighth for locals). A light is ranked by the coverage it projects onto the screen weighted
+Quarter and 16 Eighth for locals). The layout is ratio based (`ShadowAtlas`), so it follows the atlas size
+and a slot scale: the 2x slots setting (`ShadowSettings::Use2XShadowAtlasSlots`) halves every slot's
+resolution, which doubles the slot grid on each axis at the same atlas size and turns the layout into
+16 Half, 48 Quarter and 64 Eighth slots. Slot coordinates are a row major grid because
+`ShadowAtlasLut` in `shadow.shader` rebuilds a slot from its index; cascade runs are allocated as one
+run that stays inside a row (`ShadowAtlas::AllocateRowRun`), since the shader finds cascade k by stepping
+the grid from cascade 0. A light is ranked by the coverage it projects onto the screen weighted
 by the irradiance it delivers (`intensity` over the square of the distance to its centre), quantised into
 power-of-two buckets so camera drift does not reorder the list; ties resolve by distance and then id,
 neither of which moves on its own. A light whose volume reaches past the last cascade distance gets no

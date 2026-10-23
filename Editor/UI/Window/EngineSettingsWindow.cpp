@@ -409,6 +409,18 @@ namespace ToolKit
         }
         UI::AddTooltipToLastItem("Uses 2048x2048 layers for the shadow atlas instead of 1024x1024");
 
+        bool use2XSlots = shadows->GetUse2XShadowAtlasSlotsVal();
+        if (ImGui::Checkbox("Use 2x Shadow Atlas Slots", &use2XSlots))
+        {
+          shadows->SetUse2XShadowAtlasSlotsVal(use2XSlots);
+        }
+        UI::AddTooltipToLastItem("Halves the resolution of every shadow atlas slot, which doubles the slot grid "
+                                 "on each axis: four slots fit where one used to.\n"
+                                 "Half / Quarter / Eighth slots go from 4 / 12 / 16 to 16 / 48 / 64.\n"
+                                 "The atlas keeps its size, so this trades sharpness for more shadow casting "
+                                 "lights.\n"
+                                 "Combined with 2K layers, the slots are as sharp as the default 1K layout.");
+
         bool stableShadowMap = shadows->GetStableShadowMapVal();
         if (ImGui::Checkbox("Stabilize Shadows", &stableShadowMap))
         {

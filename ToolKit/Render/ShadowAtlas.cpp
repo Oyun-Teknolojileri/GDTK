@@ -8,65 +8,81 @@
 #include "ShadowAtlas.h"
 
 #include <cassert>
-#include <cstring>
 
 #include "DebugNew.h"
 
 namespace ToolKit
 {
 
-  void ShadowAtlas::Reset()
+  namespace
   {
-    memset(m_halfSlots, 0, sizeof(m_halfSlots));
-    memset(m_quarterSlots, 0, sizeof(m_quarterSlots));
-    memset(m_eighthSlots, 0, sizeof(m_eighthSlots));
+
+    //! Atlas size over these is the slot resolution at slot scale 1.
+    constexpr int HalfDivisor     = 2;
+    constexpr int QuarterDivisor  = 4;
+    constexpr int EighthDivisor   = 8;
+
+    //! Slot rows each tier occupies at slot scale 1.
+    constexpr int HalfRows        = 2; //!< Layer 0 is a 2x2 grid of half slots.
+    constexpr int QuarterRows     = 3; //!< Rows 0-2 of layer 1.
+    constexpr int EighthRows      = 2; //!< Bottom quarter row of layer 1, two eighth rows.
+
+    //! First row of the eighth slots, in eighth slot units: the three quarter rows above them.
+    constexpr int EighthRowOffset = 6;
+
+  } // namespace
+
+  void ShadowAtlas::Reset(int slotScale)
+  {
+    m_slotScale = slotScale < 1 ? 1 : (slotScale > MaxSlotScale ? MaxSlotScale : slotScale);
+    m_slots     = {};
   }
 
-  int ShadowAtlas::GetSlotResolution(SlotSize size, int atlasSize)
+  int ShadowAtlas::GetSlotScale() const { return m_slotScale; }
+
+  ShadowAtlas::TierLayout ShadowAtlas::GetTierLayout(SlotSize size)
   {
     switch (size)
     {
       case SlotSize::Half:
-        return atlasSize / 2;
+        return {HalfDivisor, HalfRows, 0};
       case SlotSize::Quarter:
-        return atlasSize / 4;
+        return {QuarterDivisor, QuarterRows, 0};
       case SlotSize::Eighth:
-        return atlasSize / 8;
+        return {EighthDivisor, EighthRows, EighthRowOffset};
       default:
         assert(false && "Unknown slot size");
-        return 0;
+        return {HalfDivisor, HalfRows, 0};
     }
   }
 
-  int ShadowAtlas::GetSlotCount(SlotSize size)
+  int ShadowAtlas::GetColumnCount(SlotSize size) const { return GetTierLayout(size).divisor * m_slotScale; }
+
+  int ShadowAtlas::GetRowCount(SlotSize size) const { return GetTierLayout(size).rows * m_slotScale; }
+
+  int ShadowAtlas::GetRowOffset(SlotSize size) const { return GetTierLayout(size).rowOffset * m_slotScale; }
+
+  bool* ShadowAtlas::GetSlotTable(SlotSize size)
   {
-    switch (size)
-    {
-      case SlotSize::Half:
-        return HalfSlotCount;
-      case SlotSize::Quarter:
-        return QuarterSlotCount;
-      case SlotSize::Eighth:
-        return EighthSlotCount;
-      default:
-        assert(false && "Unknown slot size");
-        return 0;
-    }
+    const int tier = static_cast<int>(size);
+    assert(tier >= 0 && tier < TierCount && "Unknown slot size");
+    return m_slots[tier].data();
   }
+
+  const bool* ShadowAtlas::GetSlotTable(SlotSize size) const
+  {
+    const int tier = static_cast<int>(size);
+    assert(tier >= 0 && tier < TierCount && "Unknown slot size");
+    return m_slots[tier].data();
+  }
+
+  int ShadowAtlas::GetSlotCount(SlotSize size) const { return GetColumnCount(size) * GetRowCount(size); }
+
+  int ShadowAtlas::GetSlotResolution(SlotSize size, int atlasSize) const { return atlasSize / GetColumnCount(size); }
 
   bool ShadowAtlas::IsSlotFree(SlotSize size, int slotIndex) const
   {
-    switch (size)
-    {
-      case SlotSize::Half:
-        return slotIndex >= 0 && slotIndex < HalfSlotCount && !m_halfSlots[slotIndex];
-      case SlotSize::Quarter:
-        return slotIndex >= 0 && slotIndex < QuarterSlotCount && !m_quarterSlots[slotIndex];
-      case SlotSize::Eighth:
-        return slotIndex >= 0 && slotIndex < EighthSlotCount && !m_eighthSlots[slotIndex];
-      default:
-        return false;
-    }
+    return slotIndex >= 0 && slotIndex < GetSlotCount(size) && !GetSlotTable(size)[slotIndex];
   }
 
   bool ShadowAtlas::ReserveSlot(SlotSize size, int slotIndex)
@@ -76,21 +92,7 @@ namespace ToolKit
       return false;
     }
 
-    switch (size)
-    {
-      case SlotSize::Half:
-        m_halfSlots[slotIndex] = true;
-        break;
-      case SlotSize::Quarter:
-        m_quarterSlots[slotIndex] = true;
-        break;
-      case SlotSize::Eighth:
-        m_eighthSlots[slotIndex] = true;
-        break;
-      default:
-        return false;
-    }
-
+    GetSlotTable(size)[slotIndex] = true;
     return true;
   }
 
@@ -102,136 +104,50 @@ namespace ToolKit
       return info;
     }
 
-    info.resolution = GetSlotResolution(size, atlasSize);
-    info.slotIndex  = slotIndex;
+    const int columns = GetColumnCount(size);
 
-    if (size == SlotSize::Half)
-    {
-      info.layer      = 0;
-      info.coordinate = Vec2((float) ((slotIndex % 2) * info.resolution),
-                             (float) ((slotIndex / 2) * info.resolution));
-    }
-    else if (size == SlotSize::Quarter)
-    {
-      info.layer      = 1;
-      info.coordinate = Vec2((float) ((slotIndex % 4) * info.resolution),
-                             (float) ((slotIndex / 4) * info.resolution));
-    }
-    else
-    {
-      info.layer      = 1;
-      info.coordinate = Vec2((float) ((slotIndex % 8) * info.resolution),
-                             (float) ((6 + (slotIndex / 8)) * info.resolution));
-    }
+    info.resolution   = GetSlotResolution(size, atlasSize);
+    info.slotIndex    = slotIndex;
+    // Cascades share layer 0, the local light tiers share layer 1.
+    info.layer        = size == SlotSize::Half ? 0 : 1;
+    info.coordinate   = Vec2((float) ((slotIndex % columns) * info.resolution),
+                             (float) ((GetRowOffset(size) + slotIndex / columns) * info.resolution));
 
     return info;
   }
 
-
   ShadowAtlas::SlotInfo ShadowAtlas::Allocate(SlotSize size, int atlasSize)
   {
-    SlotInfo info;
-
-    if (size == SlotSize::Half)
+    // Layer 0: 2x2 Half slots for cascades, 4x4 in a dense layout. Layer 1 at scale 1:
+    //
+    //   +----+----+----+----+
+    //   | Q0 | Q1 | Q2 | Q3 |    rows 0-2 of the atlas in quarter slots
+    //   +----+----+----+----+
+    //   | Q4 | Q5 | Q6 | Q7 |
+    //   +----+----+----+----+
+    //   | Q8 | Q9 |Q10 |Q11 |
+    //   +--+--+--+--+--+--+--+--+
+    //   |E0|E1|E2|E3|E4|E5|E6|E7|    bottom quarter row in eighth slots
+    //   +--+--+--+--+--+--+--+--+
+    //   |E8|E9|EA|EB|EC|ED|EE|EF|
+    //   +--+--+--+--+--+--+--+--+
+    //
+    // A dense layout halves the slot size, so every grid above holds twice as many slots per axis.
+    const int slotCount = GetSlotCount(size);
+    for (int i = 0; i < slotCount; i++)
     {
-      // Layer 0: 4 Half slots in a 2x2 grid.
-      // +-------+-------+
-      // |  H0   |  H1   |
-      // +-------+-------+
-      // |  H2   |  H3   |
-      // +-------+-------+
-      int slotRes = atlasSize / 2;
-      for (int i = 0; i < HalfSlotCount; i++)
+      if (IsSlotFree(size, i))
       {
-        if (!m_halfSlots[i])
-        {
-          m_halfSlots[i]  = true;
-          int col         = i % 2;
-          int row         = i / 2;
-          info.coordinate = Vec2((float) (col * slotRes), (float) (row * slotRes));
-          info.layer      = 0;
-          info.resolution = slotRes;
-          info.slotIndex  = i;
-          return info;
-        }
-      }
-    }
-    else if (size == SlotSize::Quarter)
-    {
-      // Layer 1: 12 Quarter slots in a regular 4x3 grid (rows 0-2).
-      //
-      // +----+----+----+----+
-      // | Q0 | Q1 | Q2 | Q3 |
-      // +----+----+----+----+
-      // | Q4 | Q5 | Q6 | Q7 |
-      // +----+----+----+----+
-      // | Q8 | Q9 |Q10 |Q11 |
-      // +----+----+----+----+
-      // |   Eighth slots    |
-      // +-------------------+
-      int slotRes                                  = atlasSize / 4;
-
-      static const int coords[QuarterSlotCount][2] = {
-          {0, 0},
-          {1, 0},
-          {2, 0},
-          {3, 0}, // row 0
-          {0, 1},
-          {1, 1},
-          {2, 1},
-          {3, 1}, // row 1
-          {0, 2},
-          {1, 2},
-          {2, 2},
-          {3, 2}  // row 2
-      };
-
-      for (int i = 0; i < QuarterSlotCount; i++)
-      {
-        if (!m_quarterSlots[i])
-        {
-          m_quarterSlots[i] = true;
-          info.coordinate   = Vec2((float) (coords[i][0] * slotRes), (float) (coords[i][1] * slotRes));
-          info.layer        = 1;
-          info.resolution   = slotRes;
-          info.slotIndex    = i;
-          return info;
-        }
-      }
-    }
-    else if (size == SlotSize::Eighth)
-    {
-      // Layer 1: 16 Eighth slots in the bottom row (row 3 of quarter-grid = rows 6-7 of eighth-grid).
-      // 8 slots per eighth-row, 2 eighth-rows fit in one quarter-row.
-      //
-      // +--+--+--+--+--+--+--+--+
-      // |E0|E1|E2|E3|E4|E5|E6|E7|
-      // +--+--+--+--+--+--+--+--+
-      // |E8|E9|EA|EB|EC|ED|EE|EF|
-      // +--+--+--+--+--+--+--+--+
-      int slotRes = atlasSize / 8;
-
-      for (int i = 0; i < EighthSlotCount; i++)
-      {
-        if (!m_eighthSlots[i])
-        {
-          m_eighthSlots[i] = true;
-          int col          = i % 8;
-          int row          = 6 + (i / 8);
-          info.coordinate  = Vec2((float) (col * slotRes), (float) (row * slotRes));
-          info.layer       = 1;
-          info.resolution  = slotRes;
-          info.slotIndex   = i;
-          return info;
-        }
+        ReserveSlot(size, i);
+        return GetSlotInfo(size, i, atlasSize);
       }
     }
 
     // Allocation failed.
-    return info;
+    return SlotInfo();
   }
 
-  bool ShadowAtlas::AllocateContiguous(SlotSize size, int count, int atlasSize, SlotInfo* outSlots)
+  bool ShadowAtlas::AllocateRun(SlotSize size, int count, int atlasSize, SlotInfo* outSlots, bool keepInRow)
   {
     const int slotCount = GetSlotCount(size);
     if (count <= 0 || count > slotCount)
@@ -239,8 +155,19 @@ namespace ToolKit
       return false;
     }
 
+    const int columns = GetColumnCount(size);
+
     for (int start = 0; start + count <= slotCount; start++)
     {
+      // A run that starts mid row has to end inside that row, because the shader steps the grid
+      // from the first slot of the run. A run at a row start may span rows, the step then wraps
+      // exactly the way the atlas stores the slots.
+      const int column = start % columns;
+      if (keepInRow && column != 0 && column + count > columns)
+      {
+        continue;
+      }
+
       bool free = true;
       for (int i = 0; i < count && free; i++)
       {
@@ -264,28 +191,32 @@ namespace ToolKit
     return false;
   }
 
+  bool ShadowAtlas::AllocateContiguous(SlotSize size, int count, int atlasSize, SlotInfo* outSlots)
+  {
+    return AllocateRun(size, count, atlasSize, outSlots, false);
+  }
+
+  bool ShadowAtlas::AllocateRowRun(SlotSize size, int count, int atlasSize, SlotInfo* outSlots)
+  {
+    return AllocateRun(size, count, atlasSize, outSlots, true);
+  }
+
   bool ShadowAtlas::AllocateN(SlotSize size, int count, int atlasSize, SlotInfo* outSlots)
   {
-    // Quick check: enough free slots before attempting allocation.
-    int free = 0;
-    if (size == SlotSize::Quarter)
+    const int slotCount = GetSlotCount(size);
+    if (count <= 0 || count > slotCount)
     {
-      for (int i = 0; i < QuarterSlotCount; i++)
-      {
-        if (!m_quarterSlots[i])
-        {
-          free++;
-        }
-      }
+      return false;
     }
-    else if (size == SlotSize::Eighth)
+
+    // Quick check: enough free slots before attempting allocation.
+    const bool* table = GetSlotTable(size);
+    int free          = 0;
+    for (int i = 0; i < slotCount && free < count; i++)
     {
-      for (int i = 0; i < EighthSlotCount; i++)
+      if (!table[i])
       {
-        if (!m_eighthSlots[i])
-        {
-          free++;
-        }
+        free++;
       }
     }
 
@@ -300,6 +231,7 @@ namespace ToolKit
       outSlots[i] = Allocate(size, atlasSize);
       assert(outSlots[i].layer >= 0);
     }
+
     return true;
   }
 

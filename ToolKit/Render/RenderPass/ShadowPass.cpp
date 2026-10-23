@@ -1027,8 +1027,17 @@ namespace ToolKit
     ShadowSettingsPtr shadows = GetEngineSettings().m_graphics->m_shadows;
     const int cascadeCount    = shadows->GetCascadeCountVal();
     const int atlasSize       = shadows->GetShadowAtlasResolution();
+    const int slotScale       = shadows->GetShadowAtlasSlotScale();
 
-    m_atlas.Reset();
+    // A slot index only means something within the grid it was allocated from, so a density change
+    // drops the records instead of letting a light claim someone else's slot.
+    if (m_atlasSlotScale != slotScale)
+    {
+      m_atlasSlotScale = slotScale;
+      m_placedLights.clear();
+    }
+
+    m_atlas.Reset(slotScale);
 
     // Invalidate all lights' atlas slots first.
     for (Light* light : lights)
@@ -1044,13 +1053,21 @@ namespace ToolKit
         continue;
       }
 
+      // The cascades are one run of slots, because the shader finds cascade k by stepping the tier
+      // grid from cascade 0. Allocated as a whole so a light that cannot fit keeps no slots instead
+      // of a partial set that would sample the wrong row.
+      ShadowAtlas::SlotInfo slots[RHIConstants::MaxCascadeCount];
+      if (!m_atlas.AllocateRowRun(ShadowAtlas::SlotSize::Half, cascadeCount, atlasSize, slots))
+      {
+        continue;
+      }
+
       for (int ii = 0; ii < cascadeCount; ii++)
       {
-        ShadowAtlas::SlotInfo slot     = m_atlas.Allocate(ShadowAtlas::SlotSize::Half, atlasSize);
-        light->m_shadowAtlasCoords[ii] = slot.coordinate;
-        light->m_shadowAtlasLayers[ii] = slot.layer;
+        light->m_shadowAtlasCoords[ii] = slots[ii].coordinate;
+        light->m_shadowAtlasLayers[ii] = slots[ii].layer;
       }
-      light->m_shadowResolution = (float) ShadowAtlas::GetSlotResolution(ShadowAtlas::SlotSize::Half, atlasSize);
+      light->m_shadowResolution = (float) m_atlas.GetSlotResolution(ShadowAtlas::SlotSize::Half, atlasSize);
     }
 
     // Step 2: rate the local lights by how much of the picture they contribute, and place the biggest
@@ -1252,7 +1269,7 @@ namespace ToolKit
         light->m_shadowAtlasCoords[i] = slots[i].coordinate;
         light->m_shadowAtlasLayers[i] = slots[i].layer;
       }
-      light->m_shadowResolution = (float) ShadowAtlas::GetSlotResolution(placedTier, atlasSize);
+      light->m_shadowResolution = (float) m_atlas.GetSlotResolution(placedTier, atlasSize);
 
       PlacedLight record;
       record.tier  = placedTier;

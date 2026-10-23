@@ -72,6 +72,14 @@ namespace ToolKit
     /** Returns shadow atlas resolution based on Use2KShadowAtlasLayer setting. */
     int GetShadowAtlasResolution() const { return GetUse2KShadowAtlasLayerVal() ? 2048 : 1024; }
 
+    /**
+     * Returns the slot density of the shadow atlas. Scale 1 is the default layout, scale 2 halves
+     * every slot's resolution and therefore doubles the slot grid on each axis, which fits four
+     * slots where one used to while the atlas texture keeps its size. Must stay within
+     * ShadowAtlas::MaxSlotScale.
+     */
+    int GetShadowAtlasSlotScale() const { return GetUse2XShadowAtlasSlotsVal() ? TwoXSlotScale : DefaultSlotScale; }
+
    protected:
     void ParameterConstructor() override;
     void ParameterEventConstructor() override;
@@ -104,6 +112,20 @@ namespace ToolKit
 
     /** Uses 2K resolution for shadow atlas layers instead of 1K. */
     TKDeclareParam(bool, Use2KShadowAtlasLayer);
+
+    /**
+     * Halves the resolution of every shadow atlas slot, which doubles the slot grid on each axis:
+     * four slots fit where one used to (16 half, 48 quarter and 64 eighth instead of 4, 12 and 16).
+     * The atlas keeps its size, so this trades shadow sharpness for the number of lights that can
+     * cast a shadow.
+     */
+    TKDeclareParam(bool, Use2XShadowAtlasSlots);
+
+    /** Slot density of the default layout. */
+    static constexpr int DefaultSlotScale = 1;
+
+    /** Slot density of the dense layout that Use2XShadowAtlasSlots selects. */
+    static constexpr int TwoXSlotScale    = 2;
 
     /**
      * Shadow PCF filtering sample count. Controls shadow softness.

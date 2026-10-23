@@ -117,7 +117,7 @@ namespace ToolKit
      *  Vulkan. Built once in InitShadowAtlas, alive for the atlas's lifetime. */
     std::array<FramebufferPtr, ShadowAtlas::LayerCount> m_shadowFramebuffers;
 
-    /** Scratch framebuffer used by the blur path only — BlurShadowAtlas / ApplyGaussianBlur*
+    /** Scratch framebuffer used by the blur path only - BlurShadowAtlas / ApplyGaussianBlur*
      *  swap its color attachment between the temp RT and an atlas layer per slot. Backend FB
      *  cache absorbs the churn; not worth restructuring blur for now. */
     FramebufferPtr m_shadowFramebuffer = nullptr;
@@ -135,6 +135,10 @@ namespace ToolKit
 
     /** At each index, a layer switch occurs in the shadow atlas. */
     IntArray m_atlasLayerSwitchIndices;
+
+    /** Slot density the atlas was placed with last frame. A change rebuilds the layout, and the
+     *  slot indices in m_placedLights name the old grid, so the placement starts over. */
+    int m_atlasSlotScale = 1;
 
     /** Meta data used for storing all shadow map coordinates and layers. */
     ShadowAtlas m_atlas;
