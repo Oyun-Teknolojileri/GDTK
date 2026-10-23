@@ -178,7 +178,7 @@ verification recipe.
 Serializable, loaded from `%appdata%/ToolKit/Config`. Sub-objects:
 
 - **WindowSettings**: name, width, height, fullscreen
-- **GraphicSettings**: FPS, MSAA, HDR, MultiThreaded, InstancedBatching (draws runs of objects that share a mesh and material as one instanced draw; off falls back to one draw per object), RenderResolutionScale, AnisotropicTextureFiltering, HiZCulling (local light occlusion culling, off by default; see 4.3), plus a `m_shadows` member
+- **GraphicSettings**: FPS, MSAA, HDR, MultiThreaded, InstancedBatching (draws runs of objects that share a mesh and material as one instanced draw; off falls back to one draw per object), RenderResolutionScale, AnisotropicTextureFiltering, HiZCulling (drops local lights and meshes the depth grid proves hidden, off by default; see 4.3), plus a `m_shadows` member
 - **ShadowSettings** (nested in GraphicSettings): cascade count/distance, parallel split, stable shadow map, atlas resolution (1K/2K), PCF kernel, VSM blur
 - **PostProcessingSettings**: tonemapping, bloom, gamma, SSAO, SSR, DOF, FXAA
 - **ShaderSettings**: per-shader define presets (e.g. "Low"/"High" graphics presets) so shader compile doesn't explode combinatorially
@@ -249,19 +249,34 @@ environment volumes provide the reflection wherever screen space can not.
 reflection, confidence, mip level, scene depth, hit uv, ray length or hit error. The resolve phase hands
 debug views through unfiltered.
 
-#### Light occlusion culling (`HiZCulling` graphic setting, off by default)
+#### Depth grid occlusion culling (`HiZCulling` graphic setting, off by default)
 
 `BuildDepthGrid` runs at the top of `ForwardSceneRenderPath::Render`, before any pass of the frame, and
 reduces the depth attachment the forward pass left behind to one float per `DepthGridBlockSize` (8) block.
 The reduction is `hizDepthGridFrag.shader`, drawn with a `FullQuadPass` into an RGBA32F target the size of
 the grid (screen / 8); only the red channel, the block's farthest depth, is read back, and only every
-`DepthGridReadInterval` (4) frames, because the read blocks. `CullOccludedLights` then projects every local
-light's volume, and drops the light from the frame - no atlas slot, no shadow map - when every grid block
-inside its on-screen footprint holds a depth nearer than the light's nearest point. A light needs
-`OcclusionStreakToCull` (3) consecutive such frames before it is dropped, and a camera change invalidates
-the grid and the streaks, since a grid reduced from another view proves nothing about this one.
+`DepthGridReadInterval` (4) frames, because the read blocks. Two cullers read that grid, both through
+`IsOccludedByGrid`, which projects a world space box, takes the volume's nearest depth along the view, and
+answers true only when every grid block inside the on-screen footprint holds a depth nearer than that point:
 
-Two invariants make this work and are easy to break:
+- **Lights** (`CullOccludedLights`) drop a local light from the frame entirely - no atlas slot, no shadow
+  map. The box is the light's radius, and the nearest depth comes from the sphere that box encloses, which
+  is nearer than any corner of it.
+- **Meshes** (`CullOccludedEntities`) drop an entity from the visible entity list before its jobs are copied
+  out of the cache, so it is neither batched nor drawn. The box is the entity's world bounding box and the
+  nearest depth is the box's own nearest corner. Testing per entity is exact rather than approximate because
+  `CreateRenderJobs` gives every submesh of an entity the same world box. Four things are never dropped: a
+  skinned or animated entity (its geometry moves without the box following), an entity whose material is a
+  shader material (its vertices are wherever its own code puts them), the editor's grid entity, and anything
+  with an invalid box. An entity that straddles an occluder edge survives on its own: the test needs every
+  block it covers to be nearer, and the block holding its visible part is not.
+
+Both need `OcclusionStreakToCull` (3) consecutive such frames before the drop, and a camera change
+invalidates the grid and the streaks, since a grid reduced from another view proves nothing about this one.
+The entity streak lives in its `JobSlot`, so a rebuilt range - the entity moved, or became something else -
+starts over without a second container to keep in step.
+
+Three invariants make this work and are easy to break:
 
 - **The frame's depth has to survive the frame.** The grid is reduced at the start of the *next* frame, so
   nothing may clear or discard the depth after the forward pass. `ForwardRenderPass::m_params.invalidateDepthBuffer`
@@ -273,6 +288,15 @@ Two invariants make this work and are easy to break:
 - **The grid has to be the farthest depth per block**, which is what `hizDepthGridFrag.shader` reduces. A
   single sample per block (a nearest blit) is optimistic: it can report a block as in front of a light while
   part of that block is beside or behind it, and a partly visible light then disappears.
+- **A grid older than the picture it describes proves nothing.** The read interval is the steady state only:
+  while nothing changes, an old copy names the same geometry a fresh one would. A frame that moved the camera
+  (`m_occlusionViewProj` no longer matches the camera's own) or changed the scene (`m_sceneChangedLastFrame`,
+  set by the frame that rebuilt a range) forces a read on the next frame, which keeps the CPU copy at most one
+  frame behind whatever moved. Without that, a mesh behind an occluder that walked away stayed dropped for the
+  rest of the interval, which reads as geometry flickering in and out.
+
+The grid needs a sampleable, non multisampled depth attachment, so this culling does nothing while MSAA is on
+(see 5.2).
 
 ### 4.4 Pass (Pass.h)
 
@@ -1210,7 +1234,7 @@ When writing/editing any `.h`/`.cpp` in this repo:
 | Renderer | `ToolKit/Renderer.h` |
 | Pass base | `ToolKit/Pass.h` |
 | Forward scene path | `ToolKit/ForwardSceneRenderPath.h` |
-| Light occlusion grid reduction shader | `Resources/Engine/Shaders/hizDepthGridFrag.shader` |
+| Depth grid reduction shader (light and mesh occlusion) | `Resources/Engine/Shaders/hizDepthGridFrag.shader` |
 | Game renderer | `ToolKit/GameRenderer.h` |
 | Backend iface | `ToolKit/IGraphicsBackend.h` |
 | GL backend | `ToolKit/GLBackend.h` |

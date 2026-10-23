@@ -100,6 +100,11 @@ namespace ToolKit
       uint64 lightGeneration = 0;
       uint begin             = 0;
       uint end               = 0;
+
+      /** Frames in a row the depth grid found this entity hidden. Kept here rather than in a map of
+       *  its own because it has the same lifetime as the range: a rebuilt range means the entity
+       *  moved or was replaced, and a moved entity starts its count over. */
+      int occlusionStreak = 0;
     };
     std::unordered_map<const Entity*, JobSlot> m_jobRanges;
 
@@ -127,13 +132,15 @@ namespace ToolKit
     std::unordered_set<const Entity*> m_animatedJobEntities;
 
     //////////////////////////////////////////
-    // Light occlusion culling
+    // Depth grid occlusion culling
     //
     // A coarse grid of the farthest depth per block is built from the depth buffer the previous frame
-    // left behind, before the passes of this frame overwrite it. A local light whose whole volume sits
-    // behind every block it covers contributes nothing to the picture, so it is dropped from the frame:
-    // no atlas slot and no shadow map. The grid is a frame behind by construction, so a light has to
-    // stay hidden for a few frames before it is dropped, and a camera that moves invalidates it.
+    // left behind, before the passes of this frame overwrite it. Anything the grid proves is behind the
+    // geometry already drawn contributes nothing to the picture, so it is dropped from the frame: a local
+    // light leaves it entirely - no atlas slot and no shadow map - and a mesh is left out of the visible
+    // job list, so it is neither culled, batched, nor drawn. The grid is a frame behind by construction,
+    // so a light or a mesh has to stay hidden for a few frames before it is dropped, and a camera that
+    // moves invalidates it.
 
     /** Reduces the depth buffer to one value per block and reads it back every few frames. */
     void BuildDepthGrid(Renderer* renderer);
@@ -141,8 +148,39 @@ namespace ToolKit
     /** Drops the local lights the grid proves are occluded. */
     void CullOccludedLights(LightRawPtrArray& lights);
 
+    /** Drops the entities the grid proves are occluded, from this frame's visible entity list. */
+    void CullOccludedEntities(EntityRawPtrArray& entities);
+
     /** Remembers the camera the current grid was rendered with, for the next frame to project into. */
     void StoreOcclusionCamera();
+
+    /**
+     * True when the grid in hand holds depths that were reduced from the view this frame draws. A camera
+     * change drops the grid and every streak, since a grid from another view proves nothing about this
+     * one, and the frame after a change culls nothing.
+     */
+    bool OcclusionCullingReady();
+
+    /**
+     * Projects the world space box and tests the grid blocks it can cover. The volume counts as occluded
+     * when every one of those blocks is entirely nearer than the volume's nearest point, which the caller
+     * passes because the box can only ever enclose the volume it is asked about: a light's nearest point
+     * is on its sphere, not on a corner of the box around it.
+     * @param boxMin is the minimum corner of the world space box.
+     * @param boxMax is the maximum corner of the world space box.
+     * @param nearestDepth is the nearest distance of the volume from the camera along the view direction.
+     * @return True only when the volume provably contributes no pixel to the frame.
+     */
+    bool IsOccludedByGrid(const Vec3& boxMin, const Vec3& boxMax, float nearestDepth) const;
+
+    /** Same test for a box, using the box's own nearest point as the volume's. */
+    bool IsOccludedByGrid(const BoundingBox& box) const;
+
+    /** Drops the grid and every streak: whatever the grid proved about the last frame is now worthless. */
+    void InvalidateDepthGrid();
+
+    /** Clears the per entity streak of every cached range. */
+    void ResetEntityOcclusionStreaks();
 
     RenderTargetPtr m_depthGridRt                        = nullptr;
     FramebufferPtr m_depthGridFb                         = nullptr;
@@ -168,9 +206,16 @@ namespace ToolKit
      *  this one, so culling waits for the grid to catch up after a camera change. */
     uint64 m_occlusionCameraId                           = 0;
 
+    /** Set by the frame that changed what is on screen - a moved camera, an entity that moved, a scene
+     *  that was edited - and read by the next one, which then re-reads the grid instead of waiting for
+     *  the read interval: a mesh behind an occluder that just moved away would otherwise stay dropped
+     *  for up to DepthGridReadInterval frames. */
+    bool m_sceneChangedLastFrame                         = false;
+
     /** Last culling decision that was logged, so the log reports changes instead of every frame. */
     uint64 m_loggedCullCameraId                          = 0;
     int m_loggedCullCount                                = -1;
+    int m_loggedCulledEntityCount                        = -1;
 
     /** Consecutive frames each light was found hidden behind the grid. */
     std::unordered_map<uint64, int> m_lightOcclusionStreak;

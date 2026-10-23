@@ -413,11 +413,13 @@ inline uint64 ReadCycleCounter()
              Stats::GetStatPrev(FrameStatType::InstancedObject));
     stats += buffer;
 
-    // Local lights the depth grid proved hidden and dropped, with the shadow maps they would have cost.
+    // Local lights and meshes the depth grid proved hidden and dropped, with the shadow maps the
+    // lights would have cost and the draws the meshes would have issued.
     snprintf(buffer,
              sizeof(buffer),
-             "HiZ Culled Lights: %llu\n",
-             Stats::GetStatPrev(FrameStatType::HiZCulledLight));
+             "HiZ Culled Lights: %llu (Meshes: %llu)\n",
+             Stats::GetStatPrev(FrameStatType::HiZCulledLight),
+             Stats::GetStatPrev(FrameStatType::HiZCulledEntity));
     stats += buffer;
 
     snprintf(buffer,

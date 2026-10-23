@@ -28,8 +28,12 @@ namespace ToolKit
     /** Grid reads happen every this many frames. A blocking read per frame costs more than it saves. */
     constexpr uint DepthGridReadInterval = 4;
 
-    /** How many frames in a row a light has to look hidden before it is dropped. */
+    /** How many frames in a row a light or a mesh has to look hidden before it is dropped. */
     constexpr int OcclusionStreakToCull = 3;
+
+    /** NDC depths closer than this count as sitting on the near plane, which no volume can be hidden
+     *  behind: a corner that lands on it has no depth of its own to compare. */
+    constexpr float OcclusionNearEpsilon = 1e-4f;
   } // namespace
 
   ForwardSceneRenderPath::ForwardSceneRenderPath()
@@ -145,14 +149,17 @@ namespace ToolKit
   }
 
   //////////////////////////////////////////
-  // Light occlusion culling
+  // Depth grid occlusion culling
 
   void ForwardSceneRenderPath::BuildDepthGrid(Renderer* renderer)
   {
+    // Read by the next frame, which then re-reads the grid instead of waiting for the interval.
+    const bool sceneChanged = m_sceneChangedLastFrame;
+    m_sceneChangedLastFrame = false;
+
     if (!GetEngineSettings().m_graphics->GetHiZCullingVal())
     {
-      m_depthGridValid = false;
-      m_lightOcclusionStreak.clear();
+      InvalidateDepthGrid();
       return;
     }
 
@@ -166,7 +173,7 @@ namespace ToolKit
     TexturePtr depthBuffer = depthSource ? depthSource->GetDepthTexture() : nullptr;
     if (depthBuffer == nullptr || depthBuffer->m_width == 0 || depthBuffer->m_height == 0)
     {
-      m_depthGridValid = false;
+      InvalidateDepthGrid();
       return;
     }
 
@@ -174,7 +181,7 @@ namespace ToolKit
     // the depth buffer through a resolve here, so culling is simply off in that configuration.
     if (depthBuffer->IsMultiSampled())
     {
-      m_depthGridValid = false;
+      InvalidateDepthGrid();
       return;
     }
 
@@ -243,7 +250,35 @@ namespace ToolKit
 
     // Read while the pass is still open: the read takes the pass's own target, and closing a pass
     // with no discard bits set is what a read after it would have to work around.
-    if ((m_depthGridFrame % DepthGridReadInterval) == 0)
+    //
+    // The interval is the steady state only. The depths in the grid were written with the previous
+    // frame's view of a scene that has not changed since, so an old copy describes the picture exactly
+    // as well as a fresh one would. A frame that did change something - a camera that moved, so the
+    // blocks no longer name the same geometry, or a scene edit, so something is now in front of what it
+    // was behind - is what makes the copy in hand worthless, and that is what is read here.
+    bool viewMoved = sceneChanged;
+    if (Camera* camera = m_params.Cam.get())
+    {
+      if (camera->GetIdVal() != m_occlusionCameraId)
+      {
+        // The grid was reduced from another camera's depths. Reading now means it becomes usable one
+        // frame after the switch instead of up to a read interval later.
+        viewMoved = true;
+      }
+      else
+      {
+        const float* currentView = glm::value_ptr(camera->GetProjectViewMatrix());
+        const float* gridView    = glm::value_ptr(m_occlusionViewProj);
+        for (int i = 0; i < 16 && !viewMoved; ++i)
+        {
+          const float scale = glm::max(1.0f, glm::abs(gridView[i]));
+          viewMoved         = glm::abs(currentView[i] - gridView[i]) > 1e-6f * scale;
+        }
+      }
+    }
+
+    const bool readNow = viewMoved || (m_depthGridFrame % DepthGridReadInterval) == 0;
+    if (readNow)
     {
       const size_t count = size_t(gridSize.x) * size_t(gridSize.y);
       if (m_depthGridScratch.size() != count * 4)
@@ -308,11 +343,19 @@ namespace ToolKit
     m_occlusionCameraId = camera->GetIdVal();
   }
 
-  void ForwardSceneRenderPath::CullOccludedLights(LightRawPtrArray& lights)
+  void ForwardSceneRenderPath::InvalidateDepthGrid()
+  {
+    m_depthGridValid = false;
+    m_lightOcclusionStreak.clear();
+    ResetEntityOcclusionStreaks();
+  }
+
+  bool ForwardSceneRenderPath::OcclusionCullingReady()
   {
     if (!GetEngineSettings().m_graphics->GetHiZCullingVal())
     {
-      return;
+      m_depthGridValid = false;
+      return false;
     }
 
     Camera* camera     = m_params.Cam.get();
@@ -323,18 +366,136 @@ namespace ToolKit
     // otherwise the first frames of a new view are culled against the old view's geometry.
     if (camId != m_occlusionCameraId)
     {
-      m_lightOcclusionStreak.clear();
-      m_depthGridValid = false;
-      return;
+      InvalidateDepthGrid();
+      return false;
     }
 
-    if (!m_depthGridValid || m_depthGridSize.x == 0)
+    return m_depthGridValid && m_depthGridSize.x > 0 && m_depthGridSize.y > 0;
+  }
+
+  bool ForwardSceneRenderPath::IsOccludedByGrid(const Vec3& boxMin, const Vec3& boxMax, float nearestDepth) const
+  {
+    if (!m_depthGridValid || m_depthGridSize.x == 0 || m_depthGridSize.y == 0)
     {
-      return;
+      return false;
     }
 
     const int gridW = int(m_depthGridSize.x);
     const int gridH = int(m_depthGridSize.y);
+
+    float ndcMinX = 1e30f;
+    float ndcMaxX = -1e30f;
+    float ndcMinY = 1e30f;
+    float ndcMaxY = -1e30f;
+
+    for (int corner = 0; corner < 8; ++corner)
+    {
+      const Vec3 p((corner & 1) ? boxMax.x : boxMin.x,
+                   (corner & 2) ? boxMax.y : boxMin.y,
+                   (corner & 4) ? boxMax.z : boxMin.z);
+
+      const Vec4 clip = m_occlusionViewProj * Vec4(p, 1.0f);
+
+      // A corner at or behind the camera has no projection, and the part of the box that is behind
+      // the near plane is not what the frame drew. Giving up is the only safe answer.
+      if (clip.w <= OcclusionNearEpsilon)
+      {
+        return false;
+      }
+
+      const Vec3 ndc = Vec3(clip) / clip.w;
+
+      ndcMinX = glm::min(ndcMinX, ndc.x);
+      ndcMaxX = glm::max(ndcMaxX, ndc.x);
+      ndcMinY = glm::min(ndcMinY, ndc.y);
+      ndcMaxY = glm::max(ndcMaxY, ndc.y);
+    }
+
+    // A volume that starts behind the near plane has nothing in the frame to be compared against.
+    if (nearestDepth <= m_occlusionNear)
+    {
+      return false;
+    }
+
+    // The volume's nearest depth, in the same encoding the grid holds. Projecting it, rather than
+    // inverting near and far, is what keeps this right for a zero to one depth range, a reversed one
+    // and an orthographic camera.
+    const Vec4 volumeClip    = m_occlusionProjection * Vec4(0.0f, 0.0f, -nearestDepth, 1.0f);
+    const float volumeDepth = (volumeClip.z / volumeClip.w) * 0.5f + 0.5f;
+
+    // Only the part of the footprint that is on screen is tested. Off screen there is no depth to
+    // compare against and no pixel of the volume that could be shown, so the overlap is all that has
+    // anything to prove; a footprint that is entirely outside is left to the frustum test.
+    const float u0 = glm::clamp(ndcMinX * 0.5f + 0.5f, 0.0f, 1.0f);
+    const float u1 = glm::clamp(ndcMaxX * 0.5f + 0.5f, 0.0f, 1.0f);
+    const float v0 = glm::clamp(ndcMinY * 0.5f + 0.5f, 0.0f, 1.0f);
+    const float v1 = glm::clamp(ndcMaxY * 0.5f + 0.5f, 0.0f, 1.0f);
+
+    if (u1 <= u0 || v1 <= v0)
+    {
+      return false;
+    }
+
+    const int gx0 = glm::clamp(int(u0 * float(gridW)), 0, gridW - 1);
+    const int gx1 = glm::clamp(int(u1 * float(gridW)), 0, gridW - 1);
+    const int gy0 = glm::clamp(int(v0 * float(gridH)), 0, gridH - 1);
+    const int gy1 = glm::clamp(int(v1 * float(gridH)), 0, gridH - 1);
+
+    for (int y = gy0; y <= gy1; ++y)
+    {
+      for (int x = gx0; x <= gx1; ++x)
+      {
+        // The block holds the farthest depth it covers, so "in front of the volume" means every
+        // sample under it is nearer than the volume's nearest point. One block that reaches past
+        // the volume means part of that block is beside or behind it, and the volume can still
+        // reach the picture through it.
+        const float depth = m_depthGrid[size_t(y) * size_t(gridW) + size_t(x)];
+
+        const bool inFront = m_occlusionReversedDepth ? (depth > volumeDepth) : (depth < volumeDepth);
+        if (!inFront)
+        {
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }
+
+  bool ForwardSceneRenderPath::IsOccludedByGrid(const BoundingBox& box) const
+  {
+    // Only the box's own nearest point is used here: unlike a light, whose box encloses a smaller
+    // sphere, the box is the volume the caller is asking about.
+    float nearestDepth = std::numeric_limits<float>::max();
+    for (int corner = 0; corner < 8; ++corner)
+    {
+      const Vec3 p((corner & 1) ? box.max.x : box.min.x,
+                   (corner & 2) ? box.max.y : box.min.y,
+                   (corner & 4) ? box.max.z : box.min.z);
+
+      nearestDepth = glm::min(nearestDepth, -(m_occlusionView * Vec4(p, 1.0f)).z);
+    }
+
+    return IsOccludedByGrid(box.min, box.max, nearestDepth);
+  }
+
+  void ForwardSceneRenderPath::ResetEntityOcclusionStreaks()
+  {
+    for (auto& [entity, slot] : m_jobRanges)
+    {
+      slot.occlusionStreak = 0;
+    }
+  }
+
+  void ForwardSceneRenderPath::CullOccludedLights(LightRawPtrArray& lights)
+  {
+    if (!OcclusionCullingReady())
+    {
+      return;
+    }
+
+    Camera* camera = m_params.Cam.get();
+    const uint64 camId = camera ? camera->GetIdVal() : 0;
 
     int culled            = 0;
     const int totalLights = (int) lights.size();
@@ -362,36 +523,6 @@ namespace ToolKit
       const Vec3 boxMin = centre - Vec3(radius);
       const Vec3 boxMax = centre + Vec3(radius);
 
-      bool onScreen = true;
-      float ndcMinX = 1e30f;
-      float ndcMaxX = -1e30f;
-      float ndcMinY = 1e30f;
-      float ndcMaxY = -1e30f;
-
-      for (int corner = 0; corner < 8; ++corner)
-      {
-        const Vec3 p((corner & 1) ? boxMax.x : boxMin.x,
-                     (corner & 2) ? boxMax.y : boxMin.y,
-                     (corner & 4) ? boxMax.z : boxMin.z);
-
-        const Vec4 clip = m_occlusionViewProj * Vec4(p, 1.0f);
-
-        // A corner at or behind the camera has no projection, and the part of the box that is behind
-        // the near plane is not what the frame drew. Giving up is the only safe answer.
-        if (clip.w <= 1e-4f)
-        {
-          onScreen = false;
-          break;
-        }
-
-        const Vec3 ndc = Vec3(clip) / clip.w;
-
-        ndcMinX = glm::min(ndcMinX, ndc.x);
-        ndcMaxX = glm::max(ndcMaxX, ndc.x);
-        ndcMinY = glm::min(ndcMinY, ndc.y);
-        ndcMaxY = glm::max(ndcMaxY, ndc.y);
-      }
-
       // The nearest point of the volume itself, and not of its box. A box's nearest corner sits a radius
       // times the square root of three from the centre - well over a radius nearer the camera than the
       // sphere it encloses - and a light that looked that much deeper had the geometry standing in front
@@ -399,51 +530,7 @@ namespace ToolKit
       const float centreDepth  = -(m_occlusionView * Vec4(centre, 1.0f)).z;
       const float nearestDepth = centreDepth - radius;
 
-      bool occluded = false;
-      if (onScreen && nearestDepth > m_occlusionNear)
-      {
-        // The light's nearest depth, in the same encoding the grid holds. Projecting it, rather than
-        // inverting near and far, is what keeps this right for a zero to one depth range, a reversed one
-        // and an orthographic camera.
-        const Vec4 lightClip  = m_occlusionProjection * Vec4(0.0f, 0.0f, -nearestDepth, 1.0f);
-        const float lightNear = (lightClip.z / lightClip.w) * 0.5f + 0.5f;
-
-        // Only the part of the footprint that is on screen is tested. Off screen there is no depth to
-        // compare against and no pixel of the light that could be shown, so the overlap is all that has
-        // anything to prove; a footprint that is entirely outside is left to the frustum test.
-        const float u0 = glm::clamp(ndcMinX * 0.5f + 0.5f, 0.0f, 1.0f);
-        const float u1 = glm::clamp(ndcMaxX * 0.5f + 0.5f, 0.0f, 1.0f);
-        const float v0 = glm::clamp(ndcMinY * 0.5f + 0.5f, 0.0f, 1.0f);
-        const float v1 = glm::clamp(ndcMaxY * 0.5f + 0.5f, 0.0f, 1.0f);
-
-        if (u1 > u0 && v1 > v0)
-        {
-          const int gx0 = glm::clamp(int(u0 * float(gridW)), 0, gridW - 1);
-          const int gx1 = glm::clamp(int(u1 * float(gridW)), 0, gridW - 1);
-          const int gy0 = glm::clamp(int(v0 * float(gridH)), 0, gridH - 1);
-          const int gy1 = glm::clamp(int(v1 * float(gridH)), 0, gridH - 1);
-
-          occluded = true;
-          for (int y = gy0; y <= gy1 && occluded; ++y)
-          {
-            for (int x = gx0; x <= gx1; ++x)
-            {
-              // The block holds the farthest depth it covers, so "in front of the light" means every
-              // sample under it is nearer than the light's nearest point. One block that reaches past
-              // the light means part of that block is beside or behind the light's volume, and the light
-              // can still reach the picture through it.
-              const float depth = m_depthGrid[size_t(y) * size_t(gridW) + size_t(x)];
-
-              const bool inFront = m_occlusionReversedDepth ? (depth > lightNear) : (depth < lightNear);
-              if (!inFront)
-              {
-                occluded = false;
-                break;
-              }
-            }
-          }
-        }
-      }
+      const bool occluded      = IsOccludedByGrid(boxMin, boxMax, nearestDepth);
 
       const uint64 lightId = light->GetIdVal();
       seenIds.push_back(lightId);
@@ -498,6 +585,100 @@ namespace ToolKit
              camera ? camera->GetNameVal().c_str() : "?",
              culled,
              totalLights);
+    }
+  }
+
+  void ForwardSceneRenderPath::CullOccludedEntities(EntityRawPtrArray& entities)
+  {
+    if (!OcclusionCullingReady())
+    {
+      return;
+    }
+
+    const int totalEntities = (int) entities.size();
+
+    EntityRawPtrArray kept;
+    kept.reserve(entities.size());
+
+    int culled = 0;
+    int hidden = 0;
+
+    for (Entity* ntt : entities)
+    {
+      if (ntt == nullptr)
+      {
+        continue;
+      }
+
+      // The editor's grid is a helper drawn over the scene, not something the scene's depths describe.
+      if (m_params.grid != nullptr && ntt == m_params.grid.get())
+      {
+        kept.push_back(ntt);
+        continue;
+      }
+
+      const auto slotItr = m_jobRanges.find(ntt);
+      if (slotItr == m_jobRanges.end() || !ntt->IsVisible())
+      {
+        // Nothing cached to test against, or nothing this frame draws anyway.
+        kept.push_back(ntt);
+        continue;
+      }
+
+      JobSlot& slot = slotItr->second;
+
+      // A skinned mesh deforms and an animated one can be driven without the entity moving, so the box
+      // the test projects is not the geometry that would be drawn.
+      if (m_animatedJobEntities.find(ntt) != m_animatedJobEntities.end())
+      {
+        slot.occlusionStreak = 0;
+        kept.push_back(ntt);
+        continue;
+      }
+
+      // A shader material can place its vertices wherever its own code says, so neither is its box the
+      // geometry on screen. The default and the PBR materials are the ones this test is sound for.
+      bool customShaded = false;
+      for (uint i = slot.begin; i < slot.end && !customShaded; ++i)
+      {
+        Material* material = m_cachedJobs[i].Material;
+        customShaded       = material == nullptr || material->IsShaderMaterial();
+      }
+
+      const BoundingBox& box = ntt->GetBoundingBox(true);
+      if (customShaded || !box.IsValid() || !IsOccludedByGrid(box))
+      {
+        slot.occlusionStreak = 0;
+        kept.push_back(ntt);
+        continue;
+      }
+
+      hidden++;
+
+      // The grid is a frame behind, so a single frame that looks hidden is not enough to take a mesh
+      // out of the frame. Only a volume that kept its whole footprint behind the drawn depths for
+      // OcclusionStreakToCull frames in a row is dropped.
+      if (++slot.occlusionStreak >= OcclusionStreakToCull)
+      {
+        culled++;
+        continue;
+      }
+
+      kept.push_back(ntt);
+    }
+
+    entities.swap(kept);
+
+    Stats::AddStat(FrameStatType::HiZCulledEntity, (uint64) culled);
+
+    if (culled != m_loggedCulledEntityCount)
+    {
+      m_loggedCulledEntityCount = culled;
+
+      TK_LOG("HiZ culling: %d of %d visible entities found hidden, %d of them dropped.",
+             hidden,
+             totalEntities,
+             culled);
     }
   }
 
@@ -648,6 +829,7 @@ namespace ToolKit
       // reach an object depends on where the lights are, so it is recomputed when they move below.
       const uint64 version = m_params.Scene->GetCacheVersion();
       const bool rebuild   = version != m_jobCacheVersion;
+      bool rebuiltRanges   = false;
 
       if (rebuild)
       {
@@ -725,6 +907,10 @@ namespace ToolKit
           }
         }
 
+        // A range that was rebuilt is an entity that moved, and moving geometry is what makes the grid
+        // read by the next frame stale. The light only lists are not: a light does not change depth.
+        rebuiltRanges = !m_dirtyEntities.empty();
+
         for (Entity* entity : m_lightDirtyEntities)
         {
           const auto slotItr = m_jobRanges.find(entity);
@@ -795,6 +981,11 @@ namespace ToolKit
               }
 
               slot.generation = entity->GetSpatialGeneration();
+
+              // The entity moved, or its geometry changed: whatever the grid proved about where it
+              // used to be says nothing about it now, so the count starts over.
+              slot.occlusionStreak = 0;
+
               job += count;
             }
           }
@@ -808,6 +999,12 @@ namespace ToolKit
         }
       }
 
+      // The next frame re-reads the grid instead of waiting for the read interval. The depth the grid
+      // reduces is a frame old to begin with, and anything that moved since the last read - an entity
+      // that just did, or the occluder in front of it - is a picture the CPU copy no longer describes.
+      // Without this a mesh behind a wall that moved away stays dropped for the rest of the interval.
+      m_sceneChangedLastFrame = rebuild || rebuiltRanges;
+
       m_renderData.jobs.clear();
       if (m_cachedJobs.empty())
       {
@@ -815,6 +1012,10 @@ namespace ToolKit
       }
       else
       {
+        // Entities the grid proves are behind what this frame can already show are taken out before
+        // their jobs are copied, so an occluded entity costs neither a copied job nor a draw.
+        CullOccludedEntities(entities);
+
         // The visible jobs are copied out of the cache. Two things make this affordable: the
         // visible entities come from the AABB tree query instead of a frustum test per job (which
         // measured four times slower for 6800 jobs), and the destination keeps its capacity,
