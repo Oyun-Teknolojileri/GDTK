@@ -887,8 +887,10 @@ namespace ToolKit
     {
       const GLenum internalFormat = ToGLGraphicType(dt->GetDepthFormat());
 
-      // Multisampled depth stays a renderbuffer: a multisampled texture needs immutable storage, and
-      // nothing samples a depth attachment while it is multisampled.
+      // Multisampled depth stays a renderbuffer, the one case where it is not readable in place. Neither
+      // GL ES 3.0 nor WebGL 2 has a multisample sampler, so an MSAA depth attachment has no texture
+      // behind it to fetch from in any case, and the frame's depth is resolved into a single sample
+      // texture by a depth blit before anything reads it.
       if (s.msaaCount > MsaaSampleCount::x0)
       {
         glGenRenderbuffers(1, &glData->textureId);
@@ -1701,11 +1703,30 @@ namespace ToolKit
     const FramebufferSettings& srcSet = src->GetSettings();
     const FramebufferSettings& dstSet = dst->GetSettings();
 
+    // A multisampled source is resolved, not scaled: GL ES 3.0 allows such a blit only when the two
+    // rectangles are the same size, and it is what the occlusion grid uses this for - the frame's depth
+    // is copied into a single sample texture of the same size. A depth blit is also restricted to
+    // matching depth formats, which the caller sets up.
+    const bool srcMultiSampled = src->IsMultiSampled();
+    if (srcMultiSampled && (srcSet.width != dstSet.width || srcSet.height != dstSet.height))
+    {
+      TK_ERR("BlitDepth: a multisampled depth can only be resolved one to one. Source %dx%d, destination %dx%d.",
+             srcSet.width,
+             srcSet.height,
+             dstSet.width,
+             dstSet.height);
+      return;
+    }
+
+    // The destination is usually a depth only framebuffer, whose draw buffer state still names a color
+    // attachment it does not have. Setting the draw buffers explicitly keeps a blit into it independent
+    // of that state. This binds the framebuffer as a whole, so it comes before the read binding.
+    SetDrawBuffers(dst);
     BindFramebuffer(GL_READ_FRAMEBUFFER, GetGLFramebufferData(src)->fboId);
     BindFramebuffer(GL_DRAW_FRAMEBUFFER, GetGLFramebufferData(dst)->fboId);
 
-    // Depth only, nearest: the destination is the reduced grid, and it wants one sample per block rather
-    // than an average, which would land in the middle of the geometry and hide the occluders.
+    // Depth only, nearest: filter modes are not a choice for depth, and an average would land in the
+    // middle of the geometry instead of on the occluder.
     glBlitFramebuffer(0,
                       0,
                       srcSet.width,
@@ -1717,8 +1738,10 @@ namespace ToolKit
                       GL_DEPTH_BUFFER_BIT,
                       GL_NEAREST);
 
-    m_currentReadFboId = GetGLFramebufferData(dst)->fboId;
-    m_currentDrawFboId = m_currentReadFboId;
+    // Both bindings still hold the framebuffers the blit used - the read one is the source, not the
+    // destination - so the cache is set to what is actually bound.
+    m_currentReadFboId = GetGLFramebufferData(src)->fboId;
+    m_currentDrawFboId = GetGLFramebufferData(dst)->fboId;
   }
 
   void GLBackend::UpdateTextureSubRegion(Texture* tex, int x, int y, int w, int h, const void* data)

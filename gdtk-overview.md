@@ -255,7 +255,8 @@ debug views through unfiltered.
 reduces the depth attachment the forward pass left behind to one float per `DepthGridBlockSize` (8) block.
 The reduction is `hizDepthGridFrag.shader`, drawn with a `FullQuadPass` into an RGBA32F target the size of
 the grid (screen / 8); only the red channel, the block's farthest depth, is read back, and only every
-`DepthGridReadInterval` (4) frames, because the read blocks. Two cullers read that grid, both through
+`DepthGridReadInterval` (4) frames, because the read blocks. The resolve, the reduction and the read all sit
+on that read frame, so the three quarters in between cost nothing. Two cullers read that grid, both through
 `IsOccludedByGrid`, which projects a world space box, takes the volume's nearest depth along the view, and
 answers true only when every grid block inside the on-screen footprint holds a depth nearer than that point:
 
@@ -295,8 +296,15 @@ Three invariants make this work and are easy to break:
   frame behind whatever moved. Without that, a mesh behind an occluder that walked away stayed dropped for the
   rest of the interval, which reads as geometry flickering in and out.
 
-The grid needs a sampleable, non multisampled depth attachment, so this culling does nothing while MSAA is on
-(see 5.2).
+With MSAA on, the depth attachment is a multisampled renderbuffer: it has no texture behind it, and neither
+GL ES 3.0 nor WebGL 2 has a multisample sampler (`sampler2DMS` is ES 3.1) to fetch it with. `ResolveDepthBuffer`
+therefore copies it into a single sample depth texture with one `BlitDepth` and the grid reduces that copy. The
+blit has to be one to one with matching depth formats, because a multisampled source can be resolved but not
+scaled, and `GLBackend::BlitDepth` refuses a scaled one instead of leaving the driver to report it
+asynchronously. The copy is cleared to the far plane first, so a resolve that a driver refuses leaves a grid of
+"behind everything" - no volume is found in front of it and the frame is drawn as if culling were off - rather
+than whatever the allocation held. It carries one sample per pixel rather than all of them, so the block
+maximum can differ from the per sample depths only within a pixel that a silhouette crosses.
 
 ### 4.4 Pass (Pass.h)
 
@@ -522,11 +530,14 @@ Core API:
 - Uses `TKOpenGL.h` + `GlErrorReporter`
 
 `DepthTexture` is a real `GL_TEXTURE_2D` in a depth format, so a pass can sample it (the light occlusion
-grid does); a multisampled depth attachment stays a renderbuffer, because a multisampled texture needs
-immutable storage and nothing samples one. `AttachDepthTarget` / `DetachDepthTarget` therefore handle both
-kinds of attachment object, and `ReadPixels` maps `FormatDepth24` / `FormatDepth24Stencil8` to
-`GL_DEPTH_COMPONENT`, because an internal format is not a pixel format and passing one makes the whole read
-a `GL_INVALID_ENUM` that leaves the destination untouched.
+grid does); a multisampled depth attachment stays a renderbuffer, because GL ES 3.0 / WebGL 2 has no
+multisample texture and nothing samples one, and the grid resolves it into a single sample copy instead
+(see 4.3). `AttachDepthTarget` / `DetachDepthTarget` therefore handle both kinds of attachment object, and
+`ReadPixels` maps `FormatDepth24` / `FormatDepth24Stencil8` to `GL_DEPTH_COMPONENT`, because an internal
+format is not a pixel format and passing one makes the whole read a `GL_INVALID_ENUM` that leaves the
+destination untouched. `BlitDepth` copies a depth attachment into another framebuffer's, one to one, and
+rejects a scaled copy of a multisampled source; it sets the destination's draw buffers first so a depth only
+target can be blitted into regardless of the draw buffer state it was created with.
 
 ### 5.3 Vulkan Backend (Vulkan/ directory)
 - `VulkanBackend.h` (main implementation)

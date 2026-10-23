@@ -145,6 +145,17 @@ namespace ToolKit
     /** Reduces the depth buffer to one value per block and reads it back every few frames. */
     void BuildDepthGrid(Renderer* renderer);
 
+    /**
+     * Resolves a multisampled depth attachment into a single sample depth texture, the only form a
+     * shader can read it in on GL ES 3.0 / WebGL 2, where a depth attachment that is multisampled is a
+     * renderbuffer and there is no multisample sampler to fetch it with.
+     * @param renderer is the renderer the blit goes through.
+     * @param depthSource is the framebuffer whose depth attachment is resolved.
+     * @param depthBuffer is that attachment, read for its size and its stencil flag.
+     * @return The single sample depth texture, or null when the resolve is not possible.
+     */
+    TexturePtr ResolveDepthBuffer(Renderer* renderer, Framebuffer* depthSource, TexturePtr depthBuffer);
+
     /** Drops the local lights the grid proves are occluded. */
     void CullOccludedLights(LightRawPtrArray& lights);
 
@@ -187,6 +198,14 @@ namespace ToolKit
     FullQuadPassPtr m_depthGridQuad                      = nullptr;
     ShaderPtr m_depthGridShader                          = nullptr;
 
+    /** Holds the single sample copy of a multisampled frame depth, which is what the grid reduces while
+     *  MSAA is on. Built on first use and kept, because the resolve happens every read interval. */
+    FramebufferPtr m_depthResolveFb                      = nullptr;
+    /** Size and depth format m_depthResolveFb was built for. The attachment is rebuilt when either moves,
+     *  which is a viewport resize or a framebuffer that switched between stencil and depth only. */
+    UVec2 m_depthResolveSize                             = UVec2(0);
+    bool m_depthResolveStencil                           = false;
+
     /** Row major max depth per block, as read back from the grid. */
     std::vector<float> m_depthGrid;
     /** Read back pixels of the grid, four floats per block. Kept so the read does not allocate. */
@@ -216,6 +235,13 @@ namespace ToolKit
     uint64 m_loggedCullCameraId                          = 0;
     int m_loggedCullCount                                = -1;
     int m_loggedCulledEntityCount                        = -1;
+
+    /** Whether the depth buffer the grid reduced was multisampled, as last logged. -1 before the first
+     *  read, so the first grid build always says which path it took. */
+    int m_loggedDepthSource                              = -1;
+
+    /** Whether the empty grid read was last logged as empty, so the recovery is reported too. */
+    bool m_loggedEmptyGrid                               = false;
 
     /** Consecutive frames each light was found hidden behind the grid. */
     std::unordered_map<uint64, int> m_lightOcclusionStreak;

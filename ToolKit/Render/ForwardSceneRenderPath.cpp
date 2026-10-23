@@ -177,12 +177,76 @@ namespace ToolKit
       return;
     }
 
-    // A multisampled depth attachment has to be resolved before it can be read, and nothing samples
-    // the depth buffer through a resolve here, so culling is simply off in that configuration.
-    if (depthBuffer->IsMultiSampled())
+    // The interval is the steady state only. The depths in the grid were written with the previous
+    // frame's view of a scene that has not changed since, so an old copy describes the picture exactly
+    // as well as a fresh one would. A frame that did change something - a camera that moved, so the
+    // blocks no longer name the same geometry, or a scene edit, so something is now in front of what it
+    // was behind - is what makes the copy in hand worthless, and that is what is read here. Everything
+    // below, the resolve included, is skipped on the frames between two reads.
+    bool viewMoved = sceneChanged;
+    if (Camera* camera = m_params.Cam.get())
     {
-      InvalidateDepthGrid();
+      if (camera->GetIdVal() != m_occlusionCameraId)
+      {
+        // The grid was reduced from another camera's depths. Reading now means it becomes usable one
+        // frame after the switch instead of up to a read interval later.
+        viewMoved = true;
+      }
+      else
+      {
+        const float* currentView = glm::value_ptr(camera->GetProjectViewMatrix());
+        const float* gridView    = glm::value_ptr(m_occlusionViewProj);
+        for (int i = 0; i < 16 && !viewMoved; ++i)
+        {
+          const float scale = glm::max(1.0f, glm::abs(gridView[i]));
+          viewMoved         = glm::abs(currentView[i] - gridView[i]) > 1e-6f * scale;
+        }
+      }
+    }
+
+    // InvalidateDepthGrid resets the counter, so a grid that was dropped is rebuilt on the next frame
+    // rather than up to an interval later.
+    const bool readNow = viewMoved || (m_depthGridFrame % DepthGridReadInterval) == 0;
+    m_depthGridFrame++;
+
+    if (!readNow)
+    {
       return;
+    }
+
+    // A multisampled depth attachment cannot be read in place. It is a renderbuffer, because neither
+    // GL ES 3.0 nor WebGL 2 has a multisample sampler to fetch it with, so the frame's depth is resolved
+    // into a single sample depth texture first: one depth blit, which the hardware does, and the grid
+    // reduces that copy exactly as it reduces a single sample frame. The blit is one to one, because a
+    // multisampled source can be resolved but not scaled.
+    //
+    // The resolve picks one sample per pixel, so the copy is the picture the frame shows at pixel
+    // centers rather than every sample of it. That can differ from the per sample depths only inside a
+    // pixel that a silhouette crosses, which costs at most a fraction of one pixel of an edge - the
+    // reason it is acceptable where a nearest downscale of the whole buffer would not be: that one lost
+    // eight by eight blocks of depth at once, not one pixel's worth.
+    const bool msaaDepth = depthBuffer->IsMultiSampled();
+
+    // Reported when the source changes rather than per read: which depth buffer the grid reduces decides
+    // whether a multisampled frame can be culled at all, and a line every interval would bury the rest.
+    if (int(msaaDepth) != m_loggedDepthSource)
+    {
+      m_loggedDepthSource = msaaDepth ? 1 : 0;
+      TK_LOG("HiZ culling: the frame's depth is %s (%dx%d), the grid reduces %s.",
+             msaaDepth ? "multisampled" : "single sample",
+             depthBuffer->m_width,
+             depthBuffer->m_height,
+             msaaDepth ? "a single sample resolve of it" : "it directly");
+    }
+
+    if (msaaDepth)
+    {
+      depthBuffer = ResolveDepthBuffer(renderer, depthSource.get(), depthBuffer);
+      if (depthBuffer == nullptr)
+      {
+        InvalidateDepthGrid();
+        return;
+      }
     }
 
     const UVec2 gridSize(glm::max(depthBuffer->m_width / DepthGridBlockSize, 1),
@@ -250,69 +314,101 @@ namespace ToolKit
 
     // Read while the pass is still open: the read takes the pass's own target, and closing a pass
     // with no discard bits set is what a read after it would have to work around.
-    //
-    // The interval is the steady state only. The depths in the grid were written with the previous
-    // frame's view of a scene that has not changed since, so an old copy describes the picture exactly
-    // as well as a fresh one would. A frame that did change something - a camera that moved, so the
-    // blocks no longer name the same geometry, or a scene edit, so something is now in front of what it
-    // was behind - is what makes the copy in hand worthless, and that is what is read here.
-    bool viewMoved = sceneChanged;
-    if (Camera* camera = m_params.Cam.get())
+    const size_t count = size_t(gridSize.x) * size_t(gridSize.y);
+    if (m_depthGridScratch.size() != count * 4)
     {
-      if (camera->GetIdVal() != m_occlusionCameraId)
-      {
-        // The grid was reduced from another camera's depths. Reading now means it becomes usable one
-        // frame after the switch instead of up to a read interval later.
-        viewMoved = true;
-      }
-      else
-      {
-        const float* currentView = glm::value_ptr(camera->GetProjectViewMatrix());
-        const float* gridView    = glm::value_ptr(m_occlusionViewProj);
-        for (int i = 0; i < 16 && !viewMoved; ++i)
-        {
-          const float scale = glm::max(1.0f, glm::abs(gridView[i]));
-          viewMoved         = glm::abs(currentView[i] - gridView[i]) > 1e-6f * scale;
-        }
-      }
+      m_depthGridScratch.resize(count * 4);
+    }
+    if (m_depthGrid.size() != count)
+    {
+      m_depthGrid.resize(count, 0.0f);
     }
 
-    const bool readNow = viewMoved || (m_depthGridFrame % DepthGridReadInterval) == 0;
-    if (readNow)
+    renderer->GetBackend()->ReadPixels(0,
+                                       0,
+                                       (int) gridSize.x,
+                                       (int) gridSize.y,
+                                       GraphicTypes::FormatRGBA,
+                                       GraphicTypes::TypeFloat,
+                                       m_depthGridScratch.data());
+
+    // A real depth buffer cannot be zero everywhere - the nearest surface a frame can show sits at the
+    // near plane, which is half the depth range on a zero to one projection - so an all zero read means
+    // the grid never arrived. Culling against it would call every block nearer than every light and drop
+    // all of them, which is exactly what a broken read looks like from the outside.
+    bool anyDepth = false;
+    for (size_t i = 0; i < count; ++i)
     {
-      const size_t count = size_t(gridSize.x) * size_t(gridSize.y);
-      if (m_depthGridScratch.size() != count * 4)
-      {
-        m_depthGridScratch.resize(count * 4);
-      }
-      if (m_depthGrid.size() != count)
-      {
-        m_depthGrid.resize(count, 0.0f);
-      }
+      m_depthGrid[i] = m_depthGridScratch[i * 4 + 0];
+      anyDepth       = anyDepth || (m_depthGrid[i] > 0.0f);
+    }
+    m_depthGridValid = anyDepth;
 
-      renderer->GetBackend()->ReadPixels(0,
-                                         0,
-                                         (int) gridSize.x,
-                                         (int) gridSize.y,
-                                         GraphicTypes::FormatRGBA,
-                                         GraphicTypes::TypeFloat,
-                                         m_depthGridScratch.data());
-
-      // A real depth buffer cannot be zero everywhere - the nearest surface a frame can show sits at
-      // the near plane, which is half the depth range on a zero to one projection - so an all zero
-      // read means the grid never arrived. Culling against it would call every block nearer than every
-      // light and drop all of them, which is exactly what a broken read looks like from the outside.
-      bool anyDepth = false;
-      for (size_t i = 0; i < count; ++i)
-      {
-        m_depthGrid[i] = m_depthGridScratch[i * 4 + 0];
-        anyDepth       = anyDepth || (m_depthGrid[i] > 0.0f);
-      }
-      m_depthGridValid = anyDepth;
+    // One line per transition, because an empty grid is silent otherwise: it turns culling off in the
+    // frame that reads it, and nothing else in the log would say so.
+    if (!anyDepth && !m_loggedEmptyGrid)
+    {
+      m_loggedEmptyGrid = true;
+      TK_LOG("HiZ culling: the depth grid read came back empty, nothing is culled until it has depths.");
+    }
+    else if (anyDepth && m_loggedEmptyGrid)
+    {
+      m_loggedEmptyGrid = false;
+      TK_LOG("HiZ culling: the depth grid has depths again.");
     }
 
     m_depthGridQuad->PostRender();
-    m_depthGridFrame++;
+  }
+
+  TexturePtr ForwardSceneRenderPath::ResolveDepthBuffer(Renderer* renderer,
+                                                        Framebuffer* depthSource,
+                                                        TexturePtr depthBuffer)
+  {
+    if (renderer == nullptr || depthSource == nullptr || depthBuffer == nullptr)
+    {
+      return nullptr;
+    }
+
+    if (m_depthResolveFb == nullptr)
+    {
+      m_depthResolveFb = MakeNewPtr<Framebuffer>("DepthResolveFB");
+    }
+
+    // The destination of a depth blit has to carry the same depth format as the source - a depth
+    // attachment that carries stencil is a different format - and it has to be single sample, which is
+    // what the resolve is for. The size is the source's, because a multisampled source can be resolved
+    // but not scaled.
+    DepthTexture* srcDepth = depthBuffer->As<DepthTexture>();
+    const bool stencil     = srcDepth != nullptr && srcDepth->m_stencil;
+    const UVec2 size(depthBuffer->m_width, depthBuffer->m_height);
+
+    // The target is rebuilt only when the frame it copies changes size or depth format. The check is
+    // made on those two values rather than by handing the settings struct back to ReconstructIfNeeded,
+    // which compares it with memcmp: the struct has padding that its constructor does not write, so two
+    // equal settings can compare unequal and rebuild the attachment on every read.
+    if (m_depthResolveSize != size || m_depthResolveStencil != stencil)
+    {
+      FramebufferSettings settings;
+      settings.width           = size.x;
+      settings.height          = size.y;
+      settings.depthStencil    = stencil;
+      settings.useDefaultDepth = true;
+
+      m_depthResolveFb->ReconstructIfNeeded(settings);
+
+      m_depthResolveSize    = size;
+      m_depthResolveStencil = stencil;
+    }
+
+    // Cleared to the far plane before the copy. A blit that a driver refuses then leaves the grid with
+    // one value everywhere instead of with whatever the allocation happened to hold: the whole buffer
+    // reads as "behind everything", no volume is found in front of it, and the frame is drawn as if
+    // culling were off, which is the only acceptable outcome for a resolve that did not happen.
+    renderer->SetFramebuffer(m_depthResolveFb, GraphicBitFields::DepthStencilBits);
+
+    renderer->GetBackend()->BlitDepth(depthSource, m_depthResolveFb.get());
+
+    return m_depthResolveFb->GetDepthTexture();
   }
 
   void ForwardSceneRenderPath::StoreOcclusionCamera()
@@ -348,6 +444,10 @@ namespace ToolKit
     m_depthGridValid = false;
     m_lightOcclusionStreak.clear();
     ResetEntityOcclusionStreaks();
+
+    // A dropped grid is rebuilt on the next frame instead of up to a read interval later: the read is
+    // what brings a new one, and there is nothing to cull with until it happens.
+    m_depthGridFrame = 0;
   }
 
   bool ForwardSceneRenderPath::OcclusionCullingReady()
