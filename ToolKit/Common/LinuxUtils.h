@@ -23,6 +23,7 @@
 #include <SDL.h>
 #include <dlfcn.h>
 #include <fcntl.h>
+#include <link.h>
 #include <spawn.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -35,6 +36,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -489,6 +491,110 @@ namespace ToolKit
         return String();
       }
       return std::to_string((long long) st.st_mtime);
+    }
+
+    // dl_iterate_phdr callback that catches the loaded object whose file name is the engine library.
+    // A file name is used as the discriminator because Linux has no equivalent of the Win32
+    // GetModuleHandleExA(FROM_ADDRESS) lookup: taking the address of an exported engine function only
+    // yields the host's PLT stub, and dladdr on that stub reports the host executable, not the library.
+    // The engine library is the only object named "libToolKit*.so" (see ToolKit/CMakeLists.txt), so the
+    // prefix match cannot pick up a dependency.
+    inline int CatchEngineModule(struct dl_phdr_info* info, size_t infoSize, void* data)
+    {
+      static_cast<void>(infoSize);
+
+      if (info->dlpi_name == nullptr || info->dlpi_name[0] == '\0')
+      {
+        // The main executable is the first object and carries no name of its own.
+        return 0;
+      }
+
+      StringView name    = info->dlpi_name;
+      const size_t slash = name.find_last_of('/');
+      if (slash != StringView::npos)
+      {
+        name = name.substr(slash + 1);
+      }
+
+      static const StringView enginePrefix = "libToolKit";
+      static const StringView sharedSuffix = ".so";
+      if (name.rfind(enginePrefix, 0) != 0 || name.find(sharedSuffix) == StringView::npos)
+      {
+        return 0;
+      }
+
+      *static_cast<const char**>(data) = info->dlpi_name;
+
+      // Non-zero stops the walk, the engine module is already found.
+      return 1;
+    }
+
+    // Absolute path of the loaded engine library, or of the running executable when the engine is
+    // linked statically and no such library is loaded. Empty when neither can be resolved.
+    inline String GetEngineModulePath()
+    {
+      const char* moduleName = nullptr;
+      dl_iterate_phdr(CatchEngineModule, &moduleName);
+
+      String path = moduleName != nullptr ? String(moduleName) : GetExecutablePath();
+      if (path.empty())
+      {
+        return String();
+      }
+
+      // The loader may hand back the name the library was opened with, which is only meaningful
+      // relative to the process working directory, so it is resolved before anything queries the file.
+      std::error_code ec;
+      std::filesystem::path absolute = std::filesystem::absolute(path, ec);
+      if (ec)
+      {
+        return path;
+      }
+      return PathToString(absolute.lexically_normal());
+    }
+
+    // Reads the modification time of the engine library that is loaded right now and formats it the
+    // same way the Win32 helper does. Returns "unknown" when the module cannot be resolved or its file
+    // time cannot be read.
+    inline String ResolveModuleBuildStamp()
+    {
+      const String path = GetEngineModulePath();
+      if (path.empty())
+      {
+        return "unknown";
+      }
+
+      struct stat fileStat;
+      if (stat(path.c_str(), &fileStat) != 0)
+      {
+        return "unknown";
+      }
+
+      struct tm localTime;
+      if (localtime_r(&fileStat.st_mtime, &localTime) == nullptr)
+      {
+        return "unknown";
+      }
+
+      char buffer[64] = {0};
+      if (strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &localTime) == 0)
+      {
+        return "unknown";
+      }
+
+      return buffer;
+    }
+
+    // Timestamp of the engine library that is loaded right now, which is what a host wants to show to
+    // tell one build from another: rebuilding the library leaves the executable untouched, so the
+    // executable's own timestamp would keep pointing at an older build. Reads the file time of the
+    // loaded module rather than a compile time constant for the same reason. The module cannot change
+    // during a run, so the value is resolved on the first call and kept.
+    inline const char* GetModuleBuildStamp()
+    {
+      static const String stamp = ResolveModuleBuildStamp();
+
+      return stamp.c_str();
     }
 
     // dlopen-based plugin loader. Returns the opaque module handle
