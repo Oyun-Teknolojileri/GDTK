@@ -453,15 +453,24 @@ neither of which moves on its own. A light whose volume reaches past the last ca
 slot. One that already holds a tier gets its exact slots back while they are still free, so a light
 entering or leaving the view does not shuffle the atlas under the others.
 
-**Point light shadows are paraboloid.** Instead of six cube faces a point light renders two maps, one per
-hemisphere, with the projection done in `paraboloidDepthVert.shader` (a projection, not a camera matrix).
-Radii are divided by 1.02 so the rim, where the projection stretches without bound, is barely sampled; a
-stronger crop leaves the last band of each map empty and opens a gap along the seam. Sampling in
-`shadow.shader` picks the map by the sign of the direction's z and mirrors the axis the render side
-turned. Culling for a point light uses the box around the hemisphere that map covers: a sphere lets the
-far side project into the near map and occlude it, and the light camera's frustum is narrower than a
-hemisphere and drops the casters near the rim. Two slots per light lets three times as many point lights
-into the atlas.
+**Point light shadows are six cube faces.** A point light takes six atlas slots in a run and renders each
+face with the light camera turned to `m_cubeMapRotations[face]`, through the ordinary depth material and
+the 90 degree perspective lens `PointLight::UpdateShadowCamera` sets. `SampleShadowOmni` in `shadow.shader`
+maps the light-to-fragment direction to a face with `UVWToUVLayer`, finds that face's slot with the same
+`ShadowAtlasLut` the 2D path uses, and compares the distance to the light against it.
+
+The projection being a matrix is what makes this layout correct. The hardware interpolates a fragment's
+depth across a triangle exactly under a perspective projection, whatever the triangle's size. Two
+paraboloid maps per light - two slots instead of six, two shadow draws instead of six - were tried and
+removed again: the projection is not a matrix, so the depth of a large quad is interpolated across its
+screen footprint as if the map were linear, and a wall or a floor built from one quad stores a depth that
+is off by metres. The result leaked light through the wall it should have blocked, and no choice of axis
+or bias fixed it, because the error is in the interpolation and not in the comparison. Culling for a point
+light is the light camera's frustum, which is exactly the 90 degree pyramid of the face being rendered.
+
+`ShadowPass` invalidates the camera's cache item before each face: `SetCamera` only uploads when the
+cached view is invalid, and a node transform set in the same frame is applied too late for it to notice,
+so a light that moved would render every face with the previous view.
 
 
 ### 4.5 Renderer (Renderer.h)
