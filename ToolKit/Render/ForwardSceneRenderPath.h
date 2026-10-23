@@ -221,6 +221,11 @@ namespace ToolKit
     float m_occlusionNear                                = 0.1f;
     float m_occlusionFar                                 = 1000.0f;
 
+    /** True while m_depthGrid holds view space distances out of the pre process pass's G buffer instead of
+     *  depths out of the frame's depth attachment. The two are not comparable, so a change of source drops
+     *  the grid and the streaks. */
+    bool m_occlusionLinearDepth                          = false;
+
     /** Camera the grid in m_depthGrid was rendered with. A grid from another view says nothing about
      *  this one, so culling waits for the grid to catch up after a camera change. */
     uint64 m_occlusionCameraId                           = 0;

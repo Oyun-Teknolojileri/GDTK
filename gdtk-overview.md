@@ -251,12 +251,12 @@ debug views through unfiltered.
 
 #### Depth grid occlusion culling (`HiZCulling` graphic setting, off by default)
 
-`BuildDepthGrid` runs at the top of `ForwardSceneRenderPath::Render`, before any pass of the frame, and
-reduces the depth attachment the forward pass left behind to one float per `DepthGridBlockSize` (8) block.
-The reduction is `hizDepthGridFrag.shader`, drawn with a `FullQuadPass` into an RGBA32F target the size of
-the grid (screen / 8); only the red channel, the block's farthest depth, is read back, and only every
-`DepthGridReadInterval` (4) frames, because the read blocks. The resolve, the reduction and the read all sit
-on that read frame, so the three quarters in between cost nothing. Two cullers read that grid, both through
+`BuildDepthGrid` runs at the end of `ForwardSceneRenderPath::Render`, after the pass array, and reduces one
+depth buffer of the frame to one float per `DepthGridBlockSize` (8) block. The reduction is
+`hizDepthGridFrag.shader`, drawn with a `FullQuadPass` into an RGBA32F target the size of the grid (screen /
+8); only the first channel, the block's farthest depth, is read back, and only every `DepthGridReadInterval`
+(4) frames, because the read blocks. The source pick, the resolve, the reduction and the read all sit on
+that read frame, so the three quarters in between cost nothing. Two cullers read that grid, both through
 `IsOccludedByGrid`, which projects a world space box, takes the volume's nearest depth along the view, and
 answers true only when every grid block inside the on-screen footprint holds a depth nearer than that point:
 
@@ -279,13 +279,14 @@ starts over without a second container to keep in step.
 
 Three invariants make this work and are easy to break:
 
-- **The frame's depth has to survive the frame.** The grid is reduced at the start of the *next* frame, so
-  nothing may clear or discard the depth after the forward pass. `ForwardRenderPass::m_params.invalidateDepthBuffer`
-  is the flag for the discard side, and `GammaTonemapFxaaPass` clears only `ColorStencilBits` for the clear
-  side. `ForwardSceneRenderPath::Render` clears depth + stencil itself right after the grid has taken them and
-  before any pass of the frame runs, which also keeps the forward pass's assumption intact (it skips its own
-  depth clear when a pre process pass exists, so a stale buffer would reject this frame's geometry against
-  last frame's).
+- **The depth the grid reduces has to survive the path.** The grid is reduced at the end of the frame, so
+  nothing may clear or discard the depth between the forward pass and that point. `GammaTonemapFxaaPass`
+  clears only `ColorStencilBits`, and the post process passes write their own targets, so the scene's depth is
+  intact when the grid takes it. `ForwardSceneRenderPath::Render` clears depth + stencil itself at the top of
+  the frame, which keeps the forward pass's assumption intact (it skips its own depth clear when a pre process
+  pass exists, so a stale buffer would reject this frame's geometry against last frame's). Reducing at the end
+  rather than at the start of the next frame is what keeps the editor out of this: its gizmo pass clears depth
+  for the overlays it draws afterwards, and that used to erase the depths the next frame's grid needed.
 - **The grid has to be the farthest depth per block**, which is what `hizDepthGridFrag.shader` reduces. A
   single sample per block (a nearest blit) is optimistic: it can report a block as in front of a light while
   part of that block is beside or behind it, and a partly visible light then disappears.
@@ -296,15 +297,30 @@ Three invariants make this work and are easy to break:
   frame behind whatever moved. Without that, a mesh behind an occluder that walked away stayed dropped for the
   rest of the interval, which reads as geometry flickering in and out.
 
-With MSAA on, the depth attachment is a multisampled renderbuffer: it has no texture behind it, and neither
-GL ES 3.0 nor WebGL 2 has a multisample sampler (`sampler2DMS` is ES 3.1) to fetch it with. `ResolveDepthBuffer`
-therefore copies it into a single sample depth texture with one `BlitDepth` and the grid reduces that copy. The
-blit has to be one to one with matching depth formats, because a multisampled source can be resolved but not
-scaled, and `GLBackend::BlitDepth` refuses a scaled one instead of leaving the driver to report it
-asynchronously. The copy is cleared to the far plane first, so a resolve that a driver refuses leaves a grid of
-"behind everything" - no volume is found in front of it and the frame is drawn as if culling were off - rather
-than whatever the allocation held. It carries one sample per pixel rather than all of them, so the block
-maximum can differ from the per sample depths only within a pixel that a silhouette crosses.
+There are two sources, and `hizDepthGridFrag.shader` reads a different channel of each behind its
+`HiZLinearDepth` define:
+
+- **The pre process pass's G buffer** (blue channel, view space distance) whenever that pass runs, which it
+  does for SSAO, SSR or DoF. The pass already resolves its color target for those effects, so the grid reads a
+  copy that cost nothing, needs no target of its own and compares in view space units - no projection, no
+  reversed depth range. Its empty texels are zero, which in view space means "at the camera", so the shader
+  pushes them to a distance past anything the frame can show: a block that is partly sky can never prove that
+  a volume behind the sky is hidden. RGBA16F carries about eleven bits of mantissa, so `LinearDepthSlack`
+  gives up a two thousandth of the volume's depth to keep a rounding error from flipping the decision.
+- **The forward pass's depth attachment**, which is what is left when no post process effect asks for the
+  pre process pass. While MSAA is on that attachment is a multisampled renderbuffer: it has no texture behind
+  it, and neither GL ES 3.0 nor WebGL 2 has a multisample sampler (`sampler2DMS` is ES 3.1) to fetch it with.
+  `ResolveDepthBuffer` therefore copies it into a single sample depth texture with one `BlitDepth` and the grid
+  reduces that copy. The blit has to be one to one with matching depth formats, because a multisampled source
+  can be resolved but not scaled, and `GLBackend::BlitDepth` refuses a scaled one instead of leaving the driver
+  to report it asynchronously. The copy is cleared to the far plane first, so a resolve that a driver refuses
+  leaves a grid of "behind everything" - no volume is found in front of it and the frame is drawn as if culling
+  were off - rather than whatever the allocation held. It carries one sample per pixel rather than all of them,
+  so the block maximum can differ from the per sample depths only within a pixel that a silhouette crosses.
+
+The two do not answer in the same units, so `m_occlusionLinearDepth` records which one built the grid in hand
+and a change of source - a post process effect switched on or off in the middle of a session - drops the grid
+and the streaks instead of comparing a view space distance with a projected depth.
 
 ### 4.4 Pass (Pass.h)
 

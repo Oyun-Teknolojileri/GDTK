@@ -34,6 +34,13 @@ namespace ToolKit
     /** NDC depths closer than this count as sitting on the near plane, which no volume can be hidden
      *  behind: a corner that lands on it has no depth of its own to compare. */
     constexpr float OcclusionNearEpsilon = 1e-4f;
+
+    /** The fraction of its own magnitude a view space depth read out of the pre process G buffer is
+     *  allowed to be wrong by. That buffer is RGBA16F, and a half float carries about eleven bits of
+     *  mantissa, so a stored distance of d can be off by roughly d / 2048. The grid comparison gives up
+     *  that much so a rounding error cannot turn a volume that is in front of the geometry into one that
+     *  is behind it. */
+    constexpr float LinearDepthSlack = 5e-4f;
   } // namespace
 
   ForwardSceneRenderPath::ForwardSceneRenderPath()
@@ -67,16 +74,11 @@ namespace ToolKit
   {
     TK_PROFILE_FUNCTION();
 
-    // Before anything writes to it: the depth buffer still holds the previous frame's depths, which is
-    // what the occlusion grid is built from. Doing it after the passes would need a copy of the buffer.
-    BuildDepthGrid(renderer);
-
-    // The grid has taken what it needs, so the frame starts with a clean depth buffer. It has to be
-    // cleared here rather than by the composite pass at the end of the frame, which no longer clears the
-    // depth because the grid needs it to survive that far. Every pass of a frame assumes it starts from a
-    // clear buffer - the forward pass skips its own depth clear whenever a pre process pass exists, so a
-    // camera that moved would otherwise be testing this frame's geometry against last frame's - and the
-    // stencil comes along because the composite pass used to clear it in the same call.
+    // The frame starts with a clean depth buffer. It has to be cleared here rather than by the composite
+    // pass at the end of the frame, which no longer clears the depth. Every pass of a frame assumes it
+    // starts from a clear buffer - the forward pass skips its own depth clear whenever a pre process pass
+    // exists, so a camera that moved would otherwise be testing this frame's geometry against last
+    // frame's - and the stencil comes along because the composite pass used to clear it in the same call.
     if (m_params.MainFramebuffer != nullptr)
     {
       renderer->SetFramebuffer(m_params.MainFramebuffer, GraphicBitFields::DepthStencilBits);
@@ -141,8 +143,23 @@ namespace ToolKit
 
     renderer->SetShadowAtlas(nullptr);
 
-    // Remember the camera this frame used: next frame's grid is rendered with it, so the light volumes
-    // are projected into the view the depths belong to.
+    // The grid is built at the end of the frame, not at the start of the next one, so the depth it reduces
+    // is this frame's own and nothing has to keep that depth alive across a frame boundary. The editor
+    // draws its gizmos and billboards into the same depth buffer after this path returns, and a gizmo pass
+    // that clears depth used to destroy the depths the next frame's grid needed; taking them here, before
+    // any of that runs, removes the reason to save and restore the buffer around the editor's drawing.
+    BuildDepthGrid(renderer);
+
+    // The grid pass leaves its own target bound and its viewport at the grid's size, which is not what the
+    // rest of the frame expects - the editor draws its overlays into the scene's framebuffer right after
+    // this returns. Nothing is cleared here, the scene's color is still the picture.
+    if (m_params.MainFramebuffer != nullptr)
+    {
+      renderer->SetFramebuffer(m_params.MainFramebuffer, GraphicBitFields::None);
+    }
+
+    // Remember the camera this frame used: next frame's volumes are projected into the view the depths
+    // belong to, and a camera that moved is what makes the grid in hand stale.
     StoreOcclusionCamera();
 
     PostRender(renderer);
@@ -163,26 +180,60 @@ namespace ToolKit
       return;
     }
 
-    // Before any pass of this frame runs, so the forward pass's depth attachment still holds the
-    // depths the previous frame left in it. Waiting until after the passes would need a copy of the
-    // whole depth buffer every frame.
-    FramebufferPtr depthSource = m_forwardRenderPass && m_forwardRenderPass->m_params.FrameBuffer
-                                     ? m_forwardRenderPass->m_params.FrameBuffer
-                                     : m_params.MainFramebuffer;
+    // Which depth the grid reduces, and both sources answer the same question. The pre process pass, when
+    // the post processing settings ask for it, has already written the frame's view-space depth into the
+    // blue channel of its G buffer and resolved it for SSAO / SSR / DoF, so reading it needs no copy and no
+    // extra target: that is the source this prefers. Without the pass, the forward pass's own depth
+    // attachment is what is left, and while MSAA is on that attachment is a renderbuffer which has to be
+    // resolved into a single sample copy first.
+    FramebufferPtr depthSource = nullptr;
+    TexturePtr depthBuffer     = nullptr;
 
-    TexturePtr depthBuffer = depthSource ? depthSource->GetDepthTexture() : nullptr;
-    if (depthBuffer == nullptr || depthBuffer->m_width == 0 || depthBuffer->m_height == 0)
+    if (RequiresForwardPreProcessPass() && m_forwardPreProcessPass != nullptr)
     {
-      InvalidateDepthGrid();
-      return;
+      TexturePtr gBuffer = m_forwardPreProcessPass->m_normalDepthRt;
+      if (gBuffer != nullptr && gBuffer->IsMultiSampled())
+      {
+        gBuffer = gBuffer->GetResolvedTexture();
+      }
+
+      if (gBuffer != nullptr && gBuffer->m_width > 0 && gBuffer->m_height > 0)
+      {
+        depthBuffer = gBuffer;
+      }
     }
 
-    // The interval is the steady state only. The depths in the grid were written with the previous
-    // frame's view of a scene that has not changed since, so an old copy describes the picture exactly
-    // as well as a fresh one would. A frame that did change something - a camera that moved, so the
-    // blocks no longer name the same geometry, or a scene edit, so something is now in front of what it
-    // was behind - is what makes the copy in hand worthless, and that is what is read here. Everything
-    // below, the resolve included, is skipped on the frames between two reads.
+    if (depthBuffer == nullptr)
+    {
+      depthSource = m_forwardRenderPass && m_forwardRenderPass->m_params.FrameBuffer
+                        ? m_forwardRenderPass->m_params.FrameBuffer
+                        : m_params.MainFramebuffer;
+
+      depthBuffer = depthSource ? depthSource->GetDepthTexture() : nullptr;
+      if (depthBuffer == nullptr || depthBuffer->m_width == 0 || depthBuffer->m_height == 0)
+      {
+        InvalidateDepthGrid();
+        return;
+      }
+    }
+
+    // The two sources do not answer in the same units: the G buffer holds a view space distance, the depth
+    // attachment whatever encoding the projection wrote. A grid built from one says nothing about the
+    // other, so a change of source - SSAO or SSR switched on or off in the middle of a session - drops the
+    // grid and the streaks instead of comparing one unit against the other.
+    const bool linearDepth = depthSource == nullptr;
+    if (linearDepth != m_occlusionLinearDepth)
+    {
+      m_occlusionLinearDepth = linearDepth;
+      InvalidateDepthGrid();
+    }
+
+    // The interval is the steady state only. The depths in the grid were written for a view of a scene that
+    // has not changed since, so an old copy describes the picture exactly as well as a fresh one would. A
+    // frame that did change something - a camera that moved, so the blocks no longer name the same
+    // geometry, or a scene edit, so something is now in front of what it was behind - is what makes the
+    // copy in hand worthless, and that is what is read here. Everything below, the resolve included, is
+    // skipped on the frames between two reads.
     bool viewMoved = sceneChanged;
     if (Camera* camera = m_params.Cam.get())
     {
@@ -225,18 +276,30 @@ namespace ToolKit
     // pixel that a silhouette crosses, which costs at most a fraction of one pixel of an edge - the
     // reason it is acceptable where a nearest downscale of the whole buffer would not be: that one lost
     // eight by eight blocks of depth at once, not one pixel's worth.
-    const bool msaaDepth = depthBuffer->IsMultiSampled();
+    const bool msaaDepth = depthSource != nullptr && depthBuffer->IsMultiSampled();
 
-    // Reported when the source changes rather than per read: which depth buffer the grid reduces decides
-    // whether a multisampled frame can be culled at all, and a line every interval would bury the rest.
-    if (int(msaaDepth) != m_loggedDepthSource)
+    // Reported when the source changes rather than per read: which depth the grid reduces decides both what
+    // it costs and whether a multisampled frame can be culled at all, and a line every interval would bury
+    // the rest.
+    const int depthSourceKind = linearDepth ? 2 : (msaaDepth ? 1 : 0);
+    if (depthSourceKind != m_loggedDepthSource)
     {
-      m_loggedDepthSource = msaaDepth ? 1 : 0;
-      TK_LOG("HiZ culling: the frame's depth is %s (%dx%d), the grid reduces %s.",
-             msaaDepth ? "multisampled" : "single sample",
-             depthBuffer->m_width,
-             depthBuffer->m_height,
-             msaaDepth ? "a single sample resolve of it" : "it directly");
+      m_loggedDepthSource = depthSourceKind;
+
+      if (linearDepth)
+      {
+        TK_LOG("HiZ culling: the grid reduces the pre process pass's view-space depth (%dx%d), no copy.",
+               depthBuffer->m_width,
+               depthBuffer->m_height);
+      }
+      else
+      {
+        TK_LOG("HiZ culling: the frame's depth is %s (%dx%d), the grid reduces %s.",
+               msaaDepth ? "multisampled" : "single sample",
+               depthBuffer->m_width,
+               depthBuffer->m_height,
+               msaaDepth ? "a single sample resolve of it" : "it directly");
+      }
     }
 
     if (msaaDepth)
@@ -255,9 +318,14 @@ namespace ToolKit
     if (m_depthGridQuad == nullptr)
     {
       m_depthGridShader = GetShaderManager()->Create<Shader>(ShaderPath("hizDepthGridFrag.shader", true));
-      m_depthGridQuad   = MakeNewPtr<FullQuadPass>();
-      m_depthGridFb     = MakeNewPtr<Framebuffer>("DepthGridFB");
-      m_depthGridRt     = MakeNewPtr<RenderTarget>("DepthGridRT");
+
+      // Compiled here rather than on the first program build, because the channel the reduction reads is
+      // picked by a define and a define can only be set on an initialized shader.
+      m_depthGridShader->Init();
+
+      m_depthGridQuad = MakeNewPtr<FullQuadPass>();
+      m_depthGridFb   = MakeNewPtr<Framebuffer>("DepthGridFB");
+      m_depthGridRt   = MakeNewPtr<RenderTarget>("DepthGridRT");
 
       // The quad is drawn from here rather than from the pass array, so nothing else hands it a
       // renderer, and its own PreRender would build the program through a null one.
@@ -293,6 +361,12 @@ namespace ToolKit
     // the grid shader goes on the material: a shader that only sits in the requirements is not what
     // ends up compiled. The depth buffer is then bound by slot, which ApplyRequirements resolves
     // after the program is up, when a slot can still turn into a sampler.
+    //
+    // The define comes before the shader is installed: it picks the channel the reduction reads, and the
+    // program is built from the variant the shader holds at that moment. Both variants are compiled
+    // together on first use, so switching source does not stall on a runtime compile.
+    m_depthGridShader->SetDefine("HiZLinearDepth", linearDepth ? "1" : "0");
+
     m_depthGridQuad->m_params.frameBuffer      = m_depthGridFb;
     m_depthGridQuad->m_params.clearFrameBuffer = GraphicBitFields::None;
     m_depthGridQuad->SetFragmentShader(m_depthGridShader, renderer);
@@ -517,11 +591,23 @@ namespace ToolKit
       return false;
     }
 
-    // The volume's nearest depth, in the same encoding the grid holds. Projecting it, rather than
-    // inverting near and far, is what keeps this right for a zero to one depth range, a reversed one
+    // The volume's nearest point in the same units the grid holds. The G buffer already stores a view
+    // space distance, so it is the number itself; the depth attachment needs the projection, which rather
+    // than inverting near and far is what keeps this right for a zero to one depth range, a reversed one
     // and an orthographic camera.
-    const Vec4 volumeClip    = m_occlusionProjection * Vec4(0.0f, 0.0f, -nearestDepth, 1.0f);
-    const float volumeDepth = (volumeClip.z / volumeClip.w) * 0.5f + 0.5f;
+    float volumeDepth = nearestDepth;
+    if (!m_occlusionLinearDepth)
+    {
+      const Vec4 volumeClip = m_occlusionProjection * Vec4(0.0f, 0.0f, -nearestDepth, 1.0f);
+      volumeDepth           = (volumeClip.z / volumeClip.w) * 0.5f + 0.5f;
+    }
+    else
+    {
+      // The G buffer holds its depth as a half float, so a stored value can be off by about a two
+      // thousandth of its own magnitude. The comparison gives up that much, which keeps a rounding error
+      // from turning a volume that is only just in front of the geometry into one that is behind it.
+      volumeDepth *= 1.0f - LinearDepthSlack;
+    }
 
     // Only the part of the footprint that is on screen is tested. Off screen there is no depth to
     // compare against and no pixel of the volume that could be shown, so the overlap is all that has
@@ -548,10 +634,13 @@ namespace ToolKit
         // The block holds the farthest depth it covers, so "in front of the volume" means every
         // sample under it is nearer than the volume's nearest point. One block that reaches past
         // the volume means part of that block is beside or behind it, and the volume can still
-        // reach the picture through it.
+        // reach the picture through it. A view space distance counts up with distance like an ordinary
+        // depth range does; only the depth attachment can be reversed.
         const float depth = m_depthGrid[size_t(y) * size_t(gridW) + size_t(x)];
 
-        const bool inFront = m_occlusionReversedDepth ? (depth > volumeDepth) : (depth < volumeDepth);
+        const bool inFront = m_occlusionLinearDepth
+                                 ? (depth < volumeDepth)
+                                 : (m_occlusionReversedDepth ? (depth > volumeDepth) : (depth < volumeDepth));
         if (!inFront)
         {
           return false;
