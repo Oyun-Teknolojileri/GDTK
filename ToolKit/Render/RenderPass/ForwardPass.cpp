@@ -126,32 +126,50 @@ namespace ToolKit
     renderer->FinishPass();
   }
 
+  void ForwardRenderPass::BuildPrograms(GpuProgramPtr& perObjectProgram)
+  {
+    Renderer* renderer = GetRenderer();
+    ShaderPtr frag     = m_programConfigMat->GetFragmentShaderVal();
+    ShaderPtr vert     = m_programConfigMat->GetVertexShaderVal();
+
+    perObjectProgram = renderer->GetGpuProgramManager()->CreateProgram(vert, frag);
+
+    // The instanced variant differs only in the vertex shader define: the define is flipped on the shared
+    // shader, the program is created (and cached under that state), and the define is put back so every
+    // other user still builds the per object program. It is built here, next to the fragment program and
+    // therefore with the same defines, because the two are used interchangeably for the SAME range: the
+    // opaque range and the alpha masked range each draw through both. Building it once in ConfigureProgram
+    // left the masked range batched with DrawAlphaMasked = 0, so an instanced masked mesh filled the holes
+    // its mask cuts and wrote depth where it is transparent.
+    vert->SetDefine("INSTANCE_TABLE", "1");
+    m_instancedProgram = renderer->GetGpuProgramManager()->CreateProgram(vert, frag);
+    vert->SetDefine("INSTANCE_TABLE", "0");
+  }
+
   void ForwardRenderPass::RenderOpaque(RenderData* renderData)
   {
     TK_PROFILE_FUNCTION();
-
-    Renderer* renderer = GetRenderer();
 
     // Adjust program configuration.
     ConfigureProgram();
 
     // Render opaque.
-    ShaderPtr frag = m_programConfigMat->GetFragmentShaderVal();
+    ShaderPtr frag           = m_programConfigMat->GetFragmentShaderVal();
+    GpuProgramPtr gpuProgram = nullptr;
+
     frag->SetDefine("DrawAlphaMasked", "0");
+    BuildPrograms(gpuProgram);
 
-    ShaderPtr vert           = m_programConfigMat->GetVertexShaderVal();
-    GpuProgramPtr gpuProgram = renderer->GetGpuProgramManager()->CreateProgram(vert, frag);
-
-    RenderJobItr begin       = renderData->GetForwardOpaqueBegin();
-    RenderJobItr end         = renderData->GetForwardAlphaMaskedBegin();
+    RenderJobItr begin = renderData->GetForwardOpaqueBegin();
+    RenderJobItr end   = renderData->GetForwardAlphaMaskedBegin();
     RenderOpaqueHelper(renderData, begin, end, gpuProgram);
 
     // Render alpha masked.
     frag->SetDefine("DrawAlphaMasked", "1");
-    gpuProgram = renderer->GetGpuProgramManager()->CreateProgram(vert, frag);
+    BuildPrograms(gpuProgram);
 
-    begin      = renderData->GetForwardAlphaMaskedBegin();
-    end        = renderData->GetForwardTranslucentBegin();
+    begin = renderData->GetForwardAlphaMaskedBegin();
+    end   = renderData->GetForwardTranslucentBegin();
     RenderOpaqueHelper(renderData, begin, end, gpuProgram);
   }
 
@@ -429,15 +447,6 @@ namespace ToolKit
     }
 
     Renderer* renderer = GetRenderer();
-
-    // The instanced variant differs only in the vertex shader define. The define is flipped on the
-    // shared shader, the program is created (and cached under that state), and the define is put
-    // back so every other user still builds the per object program. This is the same pattern the
-    // fragment defines below already use for ShadowPCF and ShadingMode.
-    ShaderPtr vert = m_programConfigMat->GetVertexShaderVal();
-    vert->SetDefine("INSTANCE_TABLE", "1");
-    m_instancedProgram = renderer->GetGpuProgramManager()->CreateProgram(vert, frag);
-    vert->SetDefine("INSTANCE_TABLE", "0");
 
     switch (renderer->m_shadingMode)
     {

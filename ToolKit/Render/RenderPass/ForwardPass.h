@@ -52,6 +52,15 @@ namespace ToolKit
     void RenderTranslucent(RenderData* renderData);
 
     /**
+     * Builds the per object and the instanced program from the defines the configuration material carries
+     * at this moment. Both are used for the same job range - opaque and alpha masked each draw through the
+     * two - so they have to be built together, per range, or the batched draws of a range run with another
+     * range's fragment defines.
+     * @param perObjectProgram receives the program the per object path draws with.
+     */
+    void BuildPrograms(GpuProgramPtr& perObjectProgram);
+
+    /**
      * Draws a run of opaque jobs as instanced batches.
      *
      * Jobs are already sorted by material, so consecutive jobs with the same mesh, material,

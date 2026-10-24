@@ -126,6 +126,15 @@ namespace ToolKit
     frag->SetDefine("DrawAlphaMasked", "1");
 
     m_program = gpuProgramManager->CreateProgram(vert, frag);
+
+    // The instanced variant is rebuilt with the same define for the same reason the forward pass does it:
+    // the masked range draws through both programs, and the one built above carries DrawAlphaMasked = 0.
+    // Batched with that, a masked mesh fills the holes its mask cuts and writes the depth of alpha it does
+    // not have.
+    vert->SetDefine("INSTANCE_TABLE", "1");
+    m_instancedProgram = gpuProgramManager->CreateProgram(vert, frag);
+    vert->SetDefine("INSTANCE_TABLE", "0");
+
     renderer->BindProgram(m_program);
 
     if (m_instancedProgram != nullptr)
