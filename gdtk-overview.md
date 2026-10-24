@@ -190,6 +190,20 @@ compiled data. The backend logs the compile error, the frame keeps rendering wit
 `Shader::FindShaderMergeLocation` only counts a `precision` statement that starts its line, so the word
 in a comment or an identifier can not move the include / define merge point into the middle of a shader.
 
+**Precision is stated, not inherited.** GLSL ES defaults a sampler to `lowp`, and a `lowp` fetch does not
+return what the texture holds: it comes back rounded to about eleven bits, which is half float on a desktop
+driver. That is enough for albedo and not for anything else this engine samples - an instanced model matrix
+out of the instance table lands the object a fraction of a unit from its transform, two instances that stand
+close together round onto each other and fight for the depth, and the occlusion grid's depths come back
+quantized to 1/2048 of the window range, which near the far plane is metres. `Shader::Load` therefore writes
+`precision highp sampler2D / sampler2DArray / samplerCube;` directly after the `#version` line, which is the
+one place that sees every shader whole - `HandleShaderIncludes` strips `precision` statements out of included
+files, so a default declared in an include would be lost, and one declared in a shader would not reach the
+samplers its includes declare. `precision highp int` matters for the same reason: a `lowp` int is only
+guaranteed to reach 2^9, and texel coordinates (an instance table row, a HiZ block index) go further. Half
+precision is where a mobile GPU actually pays, so lowering anything back to `lowp` / `mediump` is a
+measurement to make per fetch, not a default to inherit.
+
 `ShadowSettings::ParameterEventConstructor` is the hook that pushes the values into the graphics constant buffer via `ValueUpdateFn`.
 
 ---

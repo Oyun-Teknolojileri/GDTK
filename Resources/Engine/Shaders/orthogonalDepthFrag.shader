@@ -10,7 +10,7 @@
 	<!--
 	
 	precision highp float;
-	precision lowp int;
+	precision highp int;
 
 #if DrawAlphaMasked
 	in vec2 v_texture;

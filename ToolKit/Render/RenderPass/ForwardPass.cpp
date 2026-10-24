@@ -19,7 +19,6 @@
 
 namespace ToolKit
 {
-
   ForwardRenderPass::ForwardRenderPass() : Pass("ForwardRenderPass")
   {
     ShadowSettingsPtr shadows = GetEngineSettings().m_graphics->m_shadows;
@@ -307,12 +306,6 @@ namespace ToolKit
       }
       return true;
     }
-
-    struct JobRun
-    {
-      int begin = 0;
-      int count = 0;
-    };
   } // namespace
 
   void ForwardRenderPass::RenderOpaqueBatches(RenderData* renderData,
@@ -331,9 +324,20 @@ namespace ToolKit
     // runs are long for the usual case of many objects of one type.
     const bool mayBatch = GetEngineSettings().m_graphics->GetInstancedBatchingVal();
 
-    std::vector<JobRun> runs;
-    std::vector<JobRun> singles;
-    int instanceCount = 0;
+    // Every draw the range produces, in the order the jobs are in. Batching is allowed to make a run of
+    // them cheaper, never to move them: the order decides which surface wins where two of them meet at the
+    // same depth, and the scene query that fills the job array does not promise the same order on two
+    // frames. Drawing the runs first and the leftover jobs afterwards reordered the frame, so a pair of
+    // surfaces at equal depth swapped winners whenever the order moved under it.
+    struct DrawRun
+    {
+      int begin          = 0; //!< First job, as an index into jobs.
+      int count          = 0; //!< 1 for a job that could not share a draw.
+      uint firstInstance = 0; //!< Row in the instance table, for a shared draw.
+    };
+
+    std::vector<DrawRun> draws;
+    uint instanceCount = 0;
     for (int i = first; i < last;)
     {
       int j = i + 1;
@@ -342,14 +346,15 @@ namespace ToolKit
         j++;
       }
 
-      if (j - i > 1)
+      const int count = j - i;
+      if (count > 1)
       {
-        runs.push_back({i, j - i});
-        instanceCount += j - i;
+        draws.push_back({i, count, instanceCount});
+        instanceCount += (uint) count;
       }
       else
       {
-        singles.push_back({i, 1});
+        draws.push_back({i, 1, 0u});
       }
       i = j;
     }
@@ -363,14 +368,21 @@ namespace ToolKit
       const int rows       = glm::max(1, (texelCount + InstanceTexWidth - 1) / InstanceTexWidth);
       m_instanceData.assign(size_t(rows) * size_t(InstanceTexWidth) * 4, 0.0f);
 
-      int instance = 0;
-      for (const JobRun& run : runs)
+      for (const DrawRun& draw : draws)
       {
-        for (int k = 0; k < run.count; k++)
+        // Only a shared draw owns rows. A lone job is drawn per object and reads its transform from the
+        // per draw block, so packing it here would overwrite the first shared draw's row with it.
+        if (draw.count < 2)
         {
-          const Mat4& m     = jobs[run.begin + k].WorldTransform;
+          continue;
+        }
+
+        for (int k = 0; k < draw.count; k++)
+        {
+          const Mat4& m     = jobs[draw.begin + k].WorldTransform;
           const Mat4 normal = glm::transpose(glm::inverse(m));
-          float* out        = m_instanceData.data() + size_t(instance) * InstanceTexelsPerItem * 4;
+          const uint instance = draw.firstInstance + (uint) k;
+          float* out          = m_instanceData.data() + size_t(instance) * InstanceTexelsPerItem * 4;
 
           for (int c = 0; c < 4; c++)
           {
@@ -383,8 +395,6 @@ namespace ToolKit
             out[16 + c * 4 + 2] = normal[c].z;
             out[16 + c * 4 + 3] = normal[c].w;
           }
-
-          instance++;
         }
       }
 
@@ -407,21 +417,23 @@ namespace ToolKit
       }
 
       renderer->SetInstanceData(m_instanceTable);
-      renderer->BindProgram(m_instancedProgram);
 
-      int firstInstance = 0;
-      for (const JobRun& run : runs)
-      {
-        renderer->RenderBatch(jobs[run.begin], (uint) run.count, (uint) firstInstance);
-        firstInstance += run.count;
-      }
-
-      renderer->SetInstanceData(nullptr);
     }
 
-    for (const JobRun& single : singles)
+
+    // The range is drawn in the order it is in, one draw per entry: a shared draw through the instanced
+    // program and the table, a lone job through the per object one. Switching program instead of order is
+    // what keeps the frame identical to the one the per object path would have produced.
+    for (const DrawRun& draw : draws)
     {
-      RenderJob& job = jobs[single.begin];
+      if (draw.count > 1)
+      {
+        renderer->BindProgram(m_instancedProgram);
+        renderer->RenderBatch(jobs[draw.begin], (uint) draw.count, draw.firstInstance);
+        continue;
+      }
+
+      RenderJob& job = jobs[draw.begin];
       if (job.Material->IsShaderMaterial())
       {
         renderer->RenderWithProgramFromMaterial(job);
@@ -431,6 +443,11 @@ namespace ToolKit
         renderer->BindProgram(defaultGpuProgram);
         renderer->Render(job);
       }
+    }
+
+    if (instanceCount > 0)
+    {
+      renderer->SetInstanceData(nullptr);
     }
   }
 

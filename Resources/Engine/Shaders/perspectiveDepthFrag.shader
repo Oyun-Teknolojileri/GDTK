@@ -9,7 +9,7 @@
 	<!--
     
     precision highp float;
-    precision lowp int;
+    precision highp int;
 
     in vec4 v_pos;
 

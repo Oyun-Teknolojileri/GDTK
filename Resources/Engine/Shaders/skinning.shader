@@ -44,15 +44,15 @@
 
   // Fetch single bone matrix (non-animated or bind pose)
   mat4 fetchBoneMatrix(sampler2D tex, float boneIdx,
-                       mediump float keyframe, mediump float invFrameCount,
+                       highp float keyframe, highp float invFrameCount,
                        const SkinLookup lk)
   {
-    mediump float u0 = boneIdx * lk.invBoneCount + lk.halfStepX;
-    mediump float v  = keyframe + invFrameCount * 0.5;
+    highp float u0 = boneIdx * lk.invBoneCount + lk.halfStepX;
+    highp float v  = keyframe + invFrameCount * 0.5;
     float s = lk.stepX;
-    mediump float u1 = u0 + s;
-    mediump float u2 = u1 + s;
-    mediump float u3 = u2 + s;
+    highp float u1 = u0 + s;
+    highp float u2 = u1 + s;
+    highp float u3 = u2 + s;
 
     return mat4(
       texture(tex, vec2(u0, v)),
@@ -64,18 +64,18 @@
 
   // Fetch & interpolate two keyframes in one pass — halves register pressure
   mat4 fetchBoneMatrixLerp(sampler2D tex, float boneIdx,
-                           mediump float kf1, mediump float kf2,
-                           mediump float t, mediump float invFrameCount,
+                           highp float kf1, highp float kf2,
+                           highp float t, highp float invFrameCount,
                            const SkinLookup lk)
   {
-    mediump float u0 = boneIdx * lk.invBoneCount + lk.halfStepX;
-    mediump float halfInv = invFrameCount * 0.5;
-    mediump float v1 = kf1 + halfInv;
-    mediump float v2 = kf2 + halfInv;
+    highp float u0 = boneIdx * lk.invBoneCount + lk.halfStepX;
+    highp float halfInv = invFrameCount * 0.5;
+    highp float v1 = kf1 + halfInv;
+    highp float v2 = kf2 + halfInv;
     float s = lk.stepX;
-    mediump float u1 = u0 + s;
-    mediump float u2 = u1 + s;
-    mediump float u3 = u2 + s;
+    highp float u1 = u0 + s;
+    highp float u2 = u1 + s;
+    highp float u3 = u2 + s;
 
     return mat4(
       mix(texture(tex, vec2(u0, v1)), texture(tex, vec2(u0, v2)), t),
@@ -88,7 +88,7 @@
   // Resolve bone matrix — unified path, no isAnimated branch
   mat4 resolveBoneMatrix(sampler2D tex, float boneIdx, vec4 kd, const SkinLookup lk)
   {
-    mediump float invFC = 1.0 / kd.w;
+    highp float invFC = 1.0 / kd.w;
     if (!isAnimated)
       return fetchBoneMatrix(tex, boneIdx, 0.5, invFC, lk);
     else

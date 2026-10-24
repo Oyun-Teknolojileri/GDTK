@@ -6,7 +6,7 @@
 	<source>
 	<!--
 	
-	precision mediump float;
+	precision highp float;
 
 	// Pass-specific UBO (slot 7). Mirrors `DilatePassDataLayout` in Renderer.h byte-for-byte.
 	TK_UBO_BINDING(7) uniform DilatePassData

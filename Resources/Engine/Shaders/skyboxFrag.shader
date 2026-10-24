@@ -5,8 +5,8 @@
 	<source>
 	<!--
 		
-		precision lowp float;
-		precision lowp sampler2D;
+		precision highp float;
+		precision highp sampler2D;
 
 		out vec4 fragColor;
 		in vec3 v_pos;

@@ -233,6 +233,15 @@ namespace ToolKit
   {
     TK_PROFILE_FUNCTION();
 
+    // A program that failed to compile comes back as a null program, and every step below reads it: the
+    // sampler slots, the uniforms, the pipeline. Drawing without one used to walk into a null pointer, so a
+    // shader error took the process down instead of leaving the object out of the frame. The compile failure
+    // itself is reported by CreateProgram.
+    if (m_currentProgram == nullptr)
+    {
+      return;
+    }
+
     // Skeleton Component is used by all meshes of an entity.
     const auto& updateAndBindSkinningTextures = [&]()
     {

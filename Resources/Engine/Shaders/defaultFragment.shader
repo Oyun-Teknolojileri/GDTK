@@ -18,10 +18,10 @@
 	<!--
 	
 	precision highp float;
-	precision lowp int;
-	precision mediump sampler2D;
-	precision mediump samplerCube;
+	precision highp sampler2D;
 	precision highp sampler2DArray;
+	precision highp samplerCube;
+	precision highp int;
 
 	TK_SAMPLER_BINDING(0) uniform sampler2D s_diffuseColor; // color
 	TK_SAMPLER_BINDING(1) uniform sampler2D s_emissiveColor; // emissive

@@ -30,7 +30,7 @@
 		// This shader
 		
 		precision highp float;
-		precision mediump int;
+		precision highp int;
 
 		in vec2 o_gridPos;
 		in vec2 o_cameraGridPos;

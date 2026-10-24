@@ -6,7 +6,7 @@
 	<source>
 	<!--
 		
-		precision lowp float;
+		precision highp float;
 
 		// Fixed Attributes.
 		layout (location = 0) in vec3 vPosition;

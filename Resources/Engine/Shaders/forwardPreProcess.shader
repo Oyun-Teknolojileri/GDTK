@@ -11,7 +11,7 @@
 	<!--
 	
 	precision highp float;
-	precision lowp int;
+	precision highp int;
 
 	TK_LOC(0) in float v_linearDepth;
 	TK_LOC(1) in vec3 v_normal;

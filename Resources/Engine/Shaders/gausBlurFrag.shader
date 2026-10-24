@@ -11,7 +11,7 @@
 	<!--
 		
 		precision highp float;
-		precision highp sampler2DArray;
+		precision highp sampler2D;
 		TK_SAMPLER_BINDING(0) uniform sampler2D s_diffuseColor;
 		TK_SAMPLER_BINDING(1) uniform sampler2DArray s_sourceArray;
 	TK_LOC(2) in vec3 v_texture;

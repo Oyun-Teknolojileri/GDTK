@@ -6,9 +6,9 @@
 	<source>
 	<!--
 		
-		precision mediump float;
-		precision lowp sampler2D;
-		precision lowp int;
+		precision highp float;
+		precision highp sampler2D;
+		precision highp int;
 
 		// From https://learnopengl.com/Guest-Articles/2022/Phys.-Based-Bloom
 

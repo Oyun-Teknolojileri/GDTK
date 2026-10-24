@@ -11,7 +11,7 @@
 	<!--
   
   precision highp float;
-  precision lowp int;
+  precision highp int;
 
   layout(location = 0) in vec3 vPosition;
   layout(location = 1) in vec3 vNormal;
@@ -21,8 +21,8 @@
   TK_LOC(0) out vec3 v_worldPos;
   TK_LOC(1) out vec3 v_worldNormal;
   TK_LOC(3) out float v_viewDepth;
-  TK_LOC(2) out mediump vec2 v_texture;
-  TK_LOC(4) out mediump mat3 TBN;
+  TK_LOC(2) out highp vec2 v_texture;
+  TK_LOC(4) out highp mat3 TBN;
 
     void main()
     {

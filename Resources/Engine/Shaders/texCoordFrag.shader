@@ -4,7 +4,7 @@
 	<source>
 	<!--
 		
-		precision mediump float;
+		precision highp float;
 TK_LOC(2) in vec2 v_texture;		
 		out vec4 v_fragColor;
 		

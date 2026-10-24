@@ -375,10 +375,20 @@ namespace ToolKit
       // so even older shaders with a leftover #version would still compile on the VK path; we
       // still emit the matching line here for consistency and so SPIR-V disasm shows the right
       // header.
+      // A sampler defaults to lowp in GLSL ES, and a lowp fetch does not return what the texture holds: it
+      // comes back rounded to about eleven bits, which is half float on this driver. That is not enough for
+      // the data this engine samples - an instanced model matrix read out of the instance table lands the
+      // object a fraction of a unit from where its transform says it is, and the occlusion grid's depths
+      // come back quantized to 1/2048 of the window range, which is metres wide near the far plane. The
+      // default is raised here rather than in each shader because HandleShaderIncludes strips precision
+      // statements out of included files, so the one place that sees every shader whole is this one.
+      // Written after the version line and before any sampler declaration, which is where a default has to
+      // be. Desktop GLSL takes no precision statements, so the Vulkan path keeps its own line.
 #ifdef TK_VULKAN
       m_source.insert(0, "#version 450 core\n");
 #else
-      m_source.insert(0, "#version 300 es\n");
+      m_source.insert(0, "#version 300 es\nprecision highp sampler2D;\nprecision highp sampler2DArray;\n"
+                         "precision highp samplerCube;\n");
 #endif
     }
 

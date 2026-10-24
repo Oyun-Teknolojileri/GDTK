@@ -9,7 +9,7 @@
 	<!--
 
 precision highp float;
-precision lowp int;
+precision highp int;
 
 TK_LOC(2) in vec2 v_texture;
 

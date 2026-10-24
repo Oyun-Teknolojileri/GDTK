@@ -5,7 +5,7 @@
 	<source>
 	<!--
 		
-		precision mediump float;
+		precision highp float;
 
 		TK_LOC(0) in vec3 v_pos;
 
