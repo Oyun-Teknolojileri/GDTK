@@ -322,6 +322,17 @@ The two do not answer in the same units, so `m_occlusionLinearDepth` records whi
 and a change of source - a post process effect switched on or off in the middle of a session - drops the grid
 and the streaks instead of comparing a view space distance with a projected depth.
 
+**Both sources are read back with less precision than the comparison is made in**, and the comparison gives
+up what the read back loses instead of trusting it. A volume's own depth is computed exactly from the
+projection, while the grid holds a sampled copy, so a surface sitting exactly at the volume's nearest point
+can read back as being in front of it - and a flat volume that fills its own footprint (a wall panel, a shelf
+front) then proves it is hidden by itself. `LinearDepthSlack` gives up the half float round trip of the G
+buffer, and `DepthReadbackQuantum` with `DepthReadbackSlackSteps` gives up two steps of the 1/2048 the window
+depths are quantized by, in the direction the test compares: down the range for a normal depth buffer and up
+it for a reversed one. Two steps because a block holds the maximum of sixty four independently rounded
+samples. The margin is what the grid's own resolution costs at distance - one step of a window depth near
+the far end is metres - so it is the honest limit of the test, not a fudge.
+
 ### 4.4 Pass (Pass.h)
 
 Base render pass. Holds a `GpuProgramPtr m_program` and a `StringView m_name` (RenderDoc label).

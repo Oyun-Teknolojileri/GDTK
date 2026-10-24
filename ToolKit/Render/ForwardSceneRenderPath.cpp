@@ -41,6 +41,16 @@ namespace ToolKit
      *  that much so a rounding error cannot turn a volume that is in front of the geometry into one that
      *  is behind it. */
     constexpr float LinearDepthSlack = 5e-4f;
+
+    /** One step of the depth the grid reads back. The window depths come back quantized to 1/2048 of the
+     *  range the projection writes, so a surface sitting at a volume's own distance can read a step nearer
+     *  than the projection says it is. A flat volume that fills its own footprint then proves it is in front
+     *  of itself and hides itself - the wall panel that disappears while the sky shows through it. */
+    constexpr float DepthReadbackQuantum = 1.0f / 2048.0f;
+
+    /** How many of those steps the comparison gives up. Two: the block holds the maximum of sixty four
+     *  samples, each of them rounded on its own, so the margin has to cover more than a single step. */
+    constexpr int DepthReadbackSlackSteps = 2;
   } // namespace
 
   ForwardSceneRenderPath::ForwardSceneRenderPath()
@@ -600,6 +610,13 @@ namespace ToolKit
     {
       const Vec4 volumeClip = m_occlusionProjection * Vec4(0.0f, 0.0f, -nearestDepth, 1.0f);
       volumeDepth           = (volumeClip.z / volumeClip.w) * 0.5f + 0.5f;
+
+      // The read back quantization is given up here, the way LinearDepthSlack gives up the half float one
+      // in the branch below: toward "not proven hidden", which is down the window depth range for a normal
+      // projection and up it for a reversed one, since the test asks for a depth nearer than this one
+      // either way. Without it a surface at the volume's own distance counts as being in front of it.
+      const float slack = DepthReadbackQuantum * float(DepthReadbackSlackSteps);
+      volumeDepth       = m_occlusionReversedDepth ? volumeDepth + slack : volumeDepth - slack;
     }
     else
     {
