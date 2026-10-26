@@ -440,12 +440,13 @@ namespace ToolKit
   static const String TKResourcePak           = "MinResources.pak";
 
   // Version defines.
-  static const String TKVersionStr            = "v0.4.9";
+  static const String TKVersionStr            = "v0.5.0";
   static const String TKV044                  = "v0.4.4";
   static const String TKV045                  = "v0.4.5";
   static const String TKV046                  = "v0.4.6";
   static const String TKV047                  = "v0.4.7";
   static const String TKV048                  = "v0.4.8";
   static const String TKV049                  = "v0.4.9";
+  static const String TKV050                  = "v0.5.0";
 
 } // namespace ToolKit
