@@ -1016,9 +1016,14 @@ namespace ToolKit
 
       // Only structural changes rebuild the cache. Light assignment is not part of it: which lights
       // reach an object depends on where the lights are, so it is recomputed when they move below.
-      const uint64 version = m_params.Scene->GetCacheVersion();
-      const bool rebuild   = version != m_jobCacheVersion;
-      bool rebuiltRanges   = false;
+      //
+      // A replaced material counts as structural even though the scene itself barely changed: a cached
+      // job carries the material pointer it was built with, so without folding the mesh material revision
+      // in, the substituted material shows in the editor while the objects keep drawing the old one.
+      const uint64 version =
+          TKMixHash(m_params.Scene->GetCacheVersion(), Material::GetAssignmentRevision());
+      const bool rebuild = version != m_jobCacheVersion;
+      bool rebuiltRanges = false;
 
       if (rebuild)
       {

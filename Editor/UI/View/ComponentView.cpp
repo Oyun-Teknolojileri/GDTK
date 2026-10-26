@@ -156,7 +156,18 @@ namespace ToolKit
 
           ImGui::SameLine();
           ImGui::EndDisabled();
+
+          // The widget writes the dropped material straight into the list element, so none of the
+          // component's own add / remove / update calls run and the render cache never hears about it. The
+          // pointer is compared around the call and the revision is bumped here, which is the only place
+          // that can see this edit.
+          MaterialPtr materialBeforeDrop = mat;
           CustomDataView::ShowMaterialPtr(uniqueName, mat->GetFile(), mat, modifiableComp);
+          if (mat != materialBeforeDrop)
+          {
+            Material::TouchAssignmentRevision();
+          }
+
           ImGui::BeginDisabled(!modifiableComp);
           ImGui::PopID();
         }

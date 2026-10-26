@@ -26,6 +26,16 @@ namespace ToolKit
 
   TKDefineClass(Material, Resource);
 
+  namespace
+  {
+    /** See Material::GetAssignmentRevision. */
+    uint64 g_materialAssignmentRevision = 0;
+  } // namespace
+
+  uint64 Material::GetAssignmentRevision() { return g_materialAssignmentRevision; }
+
+  void Material::TouchAssignmentRevision() { ++g_materialAssignmentRevision; }
+
   Material::Material() { m_usingDefaultShaders = true; }
 
   Material::Material(const String& file) : Material() { SetFile(file); }

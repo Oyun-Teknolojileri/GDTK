@@ -324,6 +324,10 @@ namespace ToolKit
     m_material = material;
     m_material->Init();
     m_dirty = true;
+
+    // Render jobs hold this pointer and they outlive the frame that built them, so the substitution has
+    // to reach whoever cached those jobs.
+    Material::TouchAssignmentRevision();
   }
 
   template <typename T>

@@ -138,12 +138,20 @@ namespace ToolKit
     return matNode;
   }
 
-  void MaterialComponent::AddMaterial(MaterialPtr mat) { m_materialList.push_back(mat); }
+  void MaterialComponent::AddMaterial(MaterialPtr mat)
+  {
+    m_materialList.push_back(mat);
+
+    // A job caches the material it was built with, so any edit to this list has to reach the paths that
+    // cached those jobs - a drop in the inspector would otherwise show up here and nowhere on screen.
+    Material::TouchAssignmentRevision();
+  }
 
   void MaterialComponent::RemoveMaterial(uint index)
   {
     assert(m_materialList.size() >= index && "Material List overflow");
     m_materialList.erase(m_materialList.begin() + index);
+    Material::TouchAssignmentRevision();
   }
 
   const MaterialPtrArray& MaterialComponent::GetMaterialList() const { return m_materialList; }
@@ -169,6 +177,10 @@ namespace ToolKit
         }
       }
     }
+
+    // The inspector rebuilds this list after a drop, so this is where most material edits end up: the
+    // revision is bumped here as well, otherwise a change made only here never reaches the render cache.
+    Material::TouchAssignmentRevision();
   }
 
   MaterialPtr MaterialComponent::GetFirstMaterial()
@@ -207,6 +219,9 @@ namespace ToolKit
     {
       m_materialList[0] = material;
     }
+
+    // A drop on an object in the viewport ends here, and the cached job still holds the old pointer.
+    Material::TouchAssignmentRevision();
   }
 
 } // namespace ToolKit

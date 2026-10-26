@@ -59,6 +59,15 @@ namespace ToolKit
     void Load() override;
     void Save(bool onlyIfDirty) override;
     void Init(bool flushClientSideArray = false) override;
+
+    /**
+     * Counts material substitutions across the whole scene. A render job keeps the material pointer it
+     * was built with and render paths cache their jobs across frames, so swapping a material anywhere - a
+     * drop on a mesh in the viewport, a drop on a material component, a list update in the inspector -
+     * has to reach whoever cached those jobs. Callers bump it, paths fold it into their cache key.
+     */
+    static uint64 GetAssignmentRevision();
+    static void TouchAssignmentRevision();
     void UnInit() override;
 
     /**

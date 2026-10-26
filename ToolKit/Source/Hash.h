@@ -85,5 +85,16 @@ namespace ToolKit
     }
     return hash;
   }
+  /**
+   * Folds another value into a hash. Two counters used together as a cache key have to move that key when
+   * either of them changes, and a plain xor lets two that happen to change together cancel out. The
+   * multiplier is the 64 bit golden ratio constant from splitmix64, which spreads the value over the key.
+   */
+  constexpr uint64 TKMixHash(uint64 hash, uint64 value)
+  {
+    constexpr uint64 goldenRatio64 = 0x9E3779B97F4A7C15ull;
+    return hash ^ (value * goldenRatio64);
+  }
+
 
 } // namespace ToolKit

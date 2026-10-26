@@ -1170,6 +1170,10 @@ namespace ToolKit
                   if (submeshIndx != TK_UINT_MAX && t != TK_FLT_MAX)
                   {
                     mmPtr->GetMaterialList()[submeshIndx] = material;
+
+                    // Written straight into the list, so nothing in the component learns about it and the
+                    // render cache would keep drawing the material it was built with.
+                    Material::TouchAssignmentRevision();
                   }
                 }
                 else
