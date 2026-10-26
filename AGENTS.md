@@ -191,6 +191,13 @@ namespace ToolKit
    agent's job; `git commit` is not. A commit is made only when the user asks for that commit in
    the current task ("commit this", "komitle"), and only for the work the user pointed at. When a
    chunk of work is finished, report what changed and let the user decide when it becomes a commit.
+   
+   **Ask first, and once per chunk of work.** When a piece of work is done, say what changed and wait
+   for the user to answer before running `git commit` - even if an earlier commit in the same session
+   was requested. One request covers one commit: a fix that turns out to need three more edits is still
+   one chunk, so either fold the extra work into a single commit or ask again. Committing each
+   intermediate step leaves a trail of five commits for one change, which is the thing this rule exists
+   to prevent.
 2. **Staging counts as committing.** Do not run `git add` on its own either: staging is only done
    as part of a commit that was requested.
 3. **No history rewriting on the agent's own initiative.** `git reset`, `git rebase`,
