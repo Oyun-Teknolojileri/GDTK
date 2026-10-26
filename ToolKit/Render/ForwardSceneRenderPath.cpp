@@ -14,6 +14,9 @@
 #include "Scene.h"
 #include "Shader.h"
 #include "Stats.h"
+#include "Threads.h"
+
+#include <algorithm>
 
 #include "DebugNew.h"
 
@@ -30,6 +33,14 @@ namespace ToolKit
 
     /** How many frames in a row a light or a mesh has to look hidden before it is dropped. */
     constexpr int OcclusionStreakToCull = 3;
+
+    /** Below this many candidates the grid test stays on the calling thread: handing a few boxes to the pool
+     *  costs more in dispatch than the tests themselves take, and a small scene would pay that every frame.
+     *  Above it the pool splits the list and the verdicts are gathered back. Measured on the city scene by
+     *  sweeping the candidate count, the two lines cross at about 64 boxes in a release build and about 16 in
+     *  a debug one, so 128 leaves a margin on the release side while still letting the editor - which runs a
+     *  debug build, where the test is three times dearer - use the pool for mid sized scenes. */
+    constexpr size_t OcclusionParallelThreshold = 128;
 
     /** NDC depths closer than this count as sitting on the near plane, which no volume can be hidden
      *  behind: a corner that lands on it has no depth of its own to compare. */
@@ -780,14 +791,14 @@ namespace ToolKit
 
     const int totalEntities = (int) entities.size();
 
-    EntityRawPtrArray kept;
-    kept.reserve(entities.size());
+    // Pass one, on this thread: the decisions that are about an entity rather than about the grid. Reading
+    // the bounding box belongs here and not in the test below, because GetBoundingBox can rebuild an
+    // entity's spatial caches and the test has to stay a pure read of the grid and the stored camera.
+    m_occlusionCandidates.clear();
 
-    int culled = 0;
-    int hidden = 0;
-
-    for (Entity* ntt : entities)
+    for (uint i = 0; i < (uint) entities.size(); ++i)
     {
+      Entity* ntt = entities[i];
       if (ntt == nullptr)
       {
         continue;
@@ -796,7 +807,6 @@ namespace ToolKit
       // The editor's grid is a helper drawn over the scene, not something the scene's depths describe.
       if (m_params.grid != nullptr && ntt == m_params.grid.get())
       {
-        kept.push_back(ntt);
         continue;
       }
 
@@ -804,32 +814,83 @@ namespace ToolKit
       if (slotItr == m_jobRanges.end() || !ntt->IsVisible())
       {
         // Nothing cached to test against, or nothing this frame draws anyway.
-        kept.push_back(ntt);
         continue;
       }
-
-      JobSlot& slot = slotItr->second;
 
       // A skinned mesh deforms and an animated one can be driven without the entity moving, so the box
       // the test projects is not the geometry that would be drawn.
       if (m_animatedJobEntities.find(ntt) != m_animatedJobEntities.end())
       {
         m_entityOcclusionStreak.erase(ntt);
-        kept.push_back(ntt);
         continue;
       }
 
       // A shader material can place its vertices wherever its own code says, so neither is its box the
       // geometry on screen. The default and the PBR materials are the ones this test is sound for.
-      bool customShaded = false;
-      for (uint i = slot.begin; i < slot.end && !customShaded; ++i)
+      const JobSlot& slot = slotItr->second;
+      bool customShaded   = false;
+      for (uint job = slot.begin; job < slot.end && !customShaded; ++job)
       {
-        Material* material = m_cachedJobs[i].Material;
+        Material* material = m_cachedJobs[job].Material;
         customShaded       = material == nullptr || material->IsShaderMaterial();
       }
 
       const BoundingBox& box = ntt->GetBoundingBox(true);
-      if (customShaded || !box.IsValid() || !IsOccludedByGrid(box))
+      if (customShaded || !box.IsValid())
+      {
+        m_entityOcclusionStreak.erase(ntt);
+        continue;
+      }
+
+      OcclusionCandidate candidate;
+      candidate.entity = ntt;
+      candidate.box    = box;
+      candidate.index  = i;
+      m_occlusionCandidates.push_back(candidate);
+    }
+
+    // Pass two, on the frame pool: the grid test itself. It only reads - the grid, its size, the units it is
+    // in, the stored view and projection - and each candidate owns its own verdict, so the pool needs no
+    // lock and the result does not depend on how the work was split.
+    {
+      TK_PROFILE_SCOPE("CullOccludedEntities: grid test");
+
+      using poolstl::iota_iter;
+      std::for_each(TKExecByConditional(m_occlusionCandidates.size() > OcclusionParallelThreshold,
+                                        WorkerManager::FramePool),
+                    iota_iter<size_t>(0),
+                    iota_iter<size_t>(m_occlusionCandidates.size()),
+                    [&](size_t i)
+                    {
+                      OcclusionCandidate& candidate = m_occlusionCandidates[i];
+                      candidate.verdict             = IsOccludedByGrid(candidate.box) ? 1 : 0;
+                    });
+    }
+
+    // Pass three, back on this thread: the bookkeeping, in the order the entities came in. The streak is a
+    // shared map and the kept list has to keep the frame's original ordering, which is why neither moved
+    // into the parallel part.
+    EntityRawPtrArray kept;
+    kept.reserve(entities.size());
+
+    size_t candidateIdx = 0;
+    int culled          = 0;
+    int hidden          = 0;
+
+    for (uint i = 0; i < (uint) entities.size(); ++i)
+    {
+      Entity* ntt = entities[i];
+
+      if (candidateIdx >= m_occlusionCandidates.size() || m_occlusionCandidates[candidateIdx].index != i)
+      {
+        // Skipped above, and a skipped entity is one this frame still draws.
+        kept.push_back(ntt);
+        continue;
+      }
+
+      const OcclusionCandidate& candidate = m_occlusionCandidates[candidateIdx++];
+
+      if (candidate.verdict == 0)
       {
         m_entityOcclusionStreak.erase(ntt);
         kept.push_back(ntt);
@@ -838,8 +899,8 @@ namespace ToolKit
 
       hidden++;
 
-      // The grid is a frame behind, so a single frame that looks hidden is not enough to take a mesh
-      // out of the frame. Only a volume that kept its whole footprint behind the drawn depths for
+      // The grid is a frame behind, so a single frame that looks hidden is not enough to take a mesh out of
+      // the frame. Only a volume that kept its whole footprint behind the drawn depths for
       // OcclusionStreakToCull frames in a row is dropped.
       if (++m_entityOcclusionStreak[ntt] >= OcclusionStreakToCull)
       {

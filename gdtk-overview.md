@@ -297,6 +297,29 @@ key, so the cache rebuilt every frame - re-paying the build (1.8 ms on a city) a
 left mesh culling with nothing it could ever drop. An entity that really moved is erased from the map by the
 rebuild that renumbers it.
 
+The mesh test runs on the frame pool. `CullOccludedEntities` is three passes: the cheap per entity decisions and
+the bounding box read on the calling thread (the box read can rebuild an entity's spatial caches, and that is a
+write), the grid test itself on `TKExecByConditional(size > OcclusionParallelThreshold, FramePool)` with
+`poolstl::iota_iter`, and then the streaks and the kept list back on the calling thread, walking the entities in
+their original order. The grid test only reads - the read back grid, its size and units, the stored camera - and
+each candidate owns its own verdict, so the pool needs no lock and the result does not depend on how the list was
+split. Below `OcclusionParallelThreshold` (128) candidates the loop stays serial, because dispatching a few boxes
+costs more than testing them; sweeping the candidate count on the city scene puts the crossover at about 64 boxes
+in a release build and about 16 in a debug one, so 128 leaves a margin without shutting the pool out of mid sized
+scenes. Lights are a handful per frame and stay on the calling thread.
+
+The cost is measured by a `TK_PROFILE_SCOPE("CullOccludedEntities: grid test")` around the pool loop, not inferred
+from frame deltas. City scene, 2729 candidates, 1280x720:
+
+| build | test, calling thread | test, frame pool | frame | meshes dropped |
+|-------|----------------------|------------------|-------|----------------|
+| Debug (the editor) | 8.25 ms | 2.21 ms | 53.2 -> 46.1 ms | 1487, same either way |
+| Release (a game)   | 0.13 ms | 0.07 ms | 6.29 -> 5.96 ms | 1487, same either way |
+
+So the parallel loop is worth about 6 ms of a 53 ms editor frame, where a debug build makes the grid's bounds
+checked reads expensive, and about sixty microseconds of a 6 ms release frame, which is inside that build's frame
+to frame noise. Both builds drop the same 1487 meshes, so the scheduling changes the cost and not the answer.
+
 Three invariants make this work and are easy to break:
 
 - **The depth the grid reduces has to survive the path.** The grid is reduced at the end of the frame, so

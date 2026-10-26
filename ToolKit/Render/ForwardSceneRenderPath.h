@@ -169,6 +169,21 @@ namespace ToolKit
     /** Drops the entities the grid proves are occluded, from this frame's visible entity list. */
     void CullOccludedEntities(EntityRawPtrArray& entities);
 
+    /**
+     * One entity the grid is about to test, with the box to test it against and where it sat in the frame's
+     * entity list. The grid test is pure - it reads the grid and the stored camera and writes nothing - so
+     * the verdicts are filled on the worker pool, while everything that writes (the streaks, the kept list)
+     * stays on the calling thread and walks these in the same order the entities came in.
+     */
+    struct OcclusionCandidate
+    {
+      Entity* entity  = nullptr;
+      BoundingBox box;
+      uint index      = 0; //!< Position in the entity list the frame started with.
+      uint8 verdict   = 0; //!< 1 when the grid proved this entity hidden.
+    };
+    std::vector<OcclusionCandidate> m_occlusionCandidates;
+
     /** Remembers the camera the current grid was rendered with, for the next frame to project into. */
     void StoreOcclusionCamera();
 
