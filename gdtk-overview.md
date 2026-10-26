@@ -178,7 +178,7 @@ verification recipe.
 Serializable, loaded from `%appdata%/ToolKit/Config`. Sub-objects:
 
 - **WindowSettings**: name, width, height, fullscreen
-- **GraphicSettings**: FPS, MSAA, HDR, MultiThreaded, InstancedBatching (draws runs of objects that share a mesh and material as one instanced draw; off falls back to one draw per object), RenderResolutionScale, AnisotropicTextureFiltering, HiZCulling (drops local lights and meshes the depth grid proves hidden, off by default; see 4.3), plus a `m_shadows` member
+- **GraphicSettings**: FPS, MSAA, HDR, MultiThreaded, InstancedBatching (draws runs of objects that share a mesh and material as one instanced draw; off falls back to one draw per object), RenderResolutionScale, AnisotropicTextureFiltering, OcclusionCulling (drops local lights and meshes the depth grid proves hidden, off by default; see 4.3), plus a `m_shadows` member
 - **ShadowSettings** (nested in GraphicSettings): cascade count/distance, parallel split, stable shadow map, atlas resolution (a 1K/2K/4K choice), slot density (the 2x slots option halves every slot's resolution for four times the slots), PCF kernel, VSM blur
 - **PostProcessingSettings**: tonemapping, bloom, gamma, SSAO, SSR, DOF, FXAA
 - **ShaderSettings**: per-shader define presets (e.g. "Low"/"High" graphics presets) so shader compile doesn't explode combinatorially
@@ -200,7 +200,7 @@ quantized to 1/2048 of the window range, which near the far plane is metres. `Sh
 one place that sees every shader whole - `HandleShaderIncludes` strips `precision` statements out of included
 files, so a default declared in an include would be lost, and one declared in a shader would not reach the
 samplers its includes declare. `precision highp int` matters for the same reason: a `lowp` int is only
-guaranteed to reach 2^9, and texel coordinates (an instance table row, a HiZ block index) go further. Half
+guaranteed to reach 2^9, and texel coordinates (an instance table row, a depth grid block index) go further. Half
 precision is where a mobile GPU actually pays, so lowering anything back to `lowp` / `mediump` is a
 measurement to make per fetch, not a default to inherit.
 
@@ -263,11 +263,11 @@ environment volumes provide the reflection wherever screen space can not.
 reflection, confidence, mip level, scene depth, hit uv, ray length or hit error. The resolve phase hands
 debug views through unfiltered.
 
-#### Depth grid occlusion culling (`HiZCulling` graphic setting, off by default)
+#### Depth grid occlusion culling (`OcclusionCulling` graphic setting, off by default)
 
 `BuildDepthGrid` runs at the end of `ForwardSceneRenderPath::Render`, after the pass array, and reduces one
 depth buffer of the frame to one float per `DepthGridBlockSize` (8) block. The reduction is
-`hizDepthGridFrag.shader`, drawn with a `FullQuadPass` into an RGBA32F target the size of the grid (screen /
+`depthGridFrag.shader`, drawn with a `FullQuadPass` into an RGBA32F target the size of the grid (screen /
 8); only the first channel, the block's farthest depth, is read back, and only every `DepthGridReadInterval`
 (4) frames, because the read blocks. The source pick, the resolve, the reduction and the read all sit on
 that read frame, so the three quarters in between cost nothing. Two cullers read that grid, both through
@@ -288,8 +288,14 @@ answers true only when every grid block inside the on-screen footprint holds a d
 
 Both need `OcclusionStreakToCull` (3) consecutive such frames before the drop, and a camera change
 invalidates the grid and the streaks, since a grid reduced from another view proves nothing about this one.
-The entity streak lives in its `JobSlot`, so a rebuilt range - the entity moved, or became something else -
-starts over without a second container to keep in step.
+The entity streak lives in `m_entityOcclusionStreak`, keyed by entity and deliberately outside the job ranges:
+a range is a position in the cached job array, so any rebuild of that array - a material edit, a prefab
+linked - renumbers every range while the entities did not move a pixel, and holding the count in the slot
+reset the whole scene's history on such a rebuild. That is not theoretical: `CubeMapPass` used to assign its
+sky material on every frame, which bumped `Material::GetAssignmentRevision`, which is part of the job cache
+key, so the cache rebuilt every frame - re-paying the build (1.8 ms on a city) and wiping every streak, which
+left mesh culling with nothing it could ever drop. An entity that really moved is erased from the map by the
+rebuild that renumbers it.
 
 Three invariants make this work and are easy to break:
 
@@ -301,7 +307,7 @@ Three invariants make this work and are easy to break:
   pass exists, so a stale buffer would reject this frame's geometry against last frame's). Reducing at the end
   rather than at the start of the next frame is what keeps the editor out of this: its gizmo pass clears depth
   for the overlays it draws afterwards, and that used to erase the depths the next frame's grid needed.
-- **The grid has to be the farthest depth per block**, which is what `hizDepthGridFrag.shader` reduces. A
+- **The grid has to be the farthest depth per block**, which is what `depthGridFrag.shader` reduces. A
   single sample per block (a nearest blit) is optimistic: it can report a block as in front of a light while
   part of that block is beside or behind it, and a partly visible light then disappears.
 - **A grid older than the picture it describes proves nothing.** The read interval is the steady state only:
@@ -311,8 +317,8 @@ Three invariants make this work and are easy to break:
   frame behind whatever moved. Without that, a mesh behind an occluder that walked away stayed dropped for the
   rest of the interval, which reads as geometry flickering in and out.
 
-There are two sources, and `hizDepthGridFrag.shader` reads a different channel of each behind its
-`HiZLinearDepth` define:
+There are two sources, and `depthGridFrag.shader` reads a different channel of each behind its
+`DepthGridLinearDepth` define:
 
 - **The pre process pass's G buffer** (blue channel, view space distance) whenever that pass runs, which it
   does for SSAO, SSR or DoF. The pass already resolves its color target for those effects, so the grid reads a
@@ -571,7 +577,7 @@ Core API:
 `BackendInitParams` = `{ getProcAddress, windowHandle, errorCallback, vkInstanceExtensions, vkCreateSurface }` — both backends, the editor fills platform-specific bits.
 
 ### 5.2 OpenGL Backend (GLBackend.h)
-- Header: `ToolKit/GLBackend.h`
+- Header: `ToolKit/Render/OpenGL/GLBackend.h`
 - Defined in `TK_GL_ES_3_0` global define (set in top-level CMake)
 - Uses `TKOpenGL.h` + `GlErrorReporter`
 
@@ -1202,7 +1208,7 @@ The dependency build produces **flat** output names for assimp — `assimp.lib` 
 `CMAKE_DEBUG_POSTFIX=d`). This is enforced from the wrapper in
 `Dependency/CMakeLists.txt` (overrides `assimp` target's `OUTPUT_NAME` /
 `ARCHIVE/LIBRARY/RUNTIME_OUTPUT_NAME` after `add_subdirectory`); assimp's own
-CMake is NOT modified. The flat name is what `Import/Import.vcxproj` links
+CMake is NOT modified. The flat name is what the Import tool links
 against (`assimp.lib` / `assimpd.lib` in `AdditionalDependencies`), and it is
 stable across MSVC toolsets (vc142 / vc143 / vc145 all produce the same name).
 Upstream assimp's compiler-suffixed name (`assimp-vc143-mt.lib`) is no longer
@@ -1285,50 +1291,50 @@ When writing/editing any `.h`/`.cpp` in this repo:
 
 | What | File |
 |---|---|
-| Global access | `ToolKit/ToolKit.h` |
-| Engine settings | `ToolKit/EngineSettings.h` |
-| Render system | `ToolKit/RenderSystem.h` |
-| Renderer | `ToolKit/Renderer.h` |
-| Pass base | `ToolKit/Pass.h` |
-| Forward scene path | `ToolKit/ForwardSceneRenderPath.h` |
-| Depth grid reduction shader (light and mesh occlusion) | `Resources/Engine/Shaders/hizDepthGridFrag.shader` |
-| Game renderer | `ToolKit/GameRenderer.h` |
-| Backend iface | `ToolKit/IGraphicsBackend.h` |
-| GL backend | `ToolKit/GLBackend.h` |
-| Vulkan backend | `ToolKit/Vulkan/VulkanBackend.h` |
-| Resource base | `ToolKit/Resource.h` |
-| Resource manager | `ToolKit/ResourceManager.h` |
-| Mesh | `ToolKit/Mesh.h` |
-| Material | `ToolKit/Material.h` |
-| Shader | `ToolKit/Shader.h` |
-| GpuProgram | `ToolKit/GpuProgram.h` |
-| Framebuffer | `ToolKit/Framebuffer.h` |
-| Viewport | `ToolKit/Viewport.h` |
-| Entity | `ToolKit/Entity.h` |
-| Node | `ToolKit/Node.h` |
-| Component | `ToolKit/Component.h` |
-| Scene | `ToolKit/Scene.h` |
-| Threads / Worker | `ToolKit/Threads.h` |
-| Editor app | `Editor/App.h` |
+| Global access | `ToolKit/Source/ToolKit.h` |
+| Engine settings | `ToolKit/Source/EngineSettings.h` |
+| Render system | `ToolKit/Render/RenderSystem.h` |
+| Renderer | `ToolKit/Render/Renderer.h` |
+| Pass base | `ToolKit/Render/Pass.h` |
+| Forward scene path | `ToolKit/Render/ForwardSceneRenderPath.h` |
+| Depth grid reduction shader (light and mesh occlusion) | `Resources/Engine/Shaders/depthGridFrag.shader` |
+| Game renderer | `ToolKit/Render/GameRenderer.h` |
+| Backend iface | `ToolKit/Render/IGraphicsBackend.h` |
+| GL backend | `ToolKit/Render/OpenGL/GLBackend.h` |
+| Vulkan backend | `ToolKit/Render/Vulkan/VulkanBackend.h` |
+| Resource base | `ToolKit/Resources/Resource.h` |
+| Resource manager | `ToolKit/Resources/ResourceManager.h` |
+| Mesh | `ToolKit/Resources/Mesh.h` |
+| Material | `ToolKit/Resources/Material.h` |
+| Shader | `ToolKit/Resources/Shader.h` |
+| GpuProgram | `ToolKit/Render/GpuProgram.h` |
+| Framebuffer | `ToolKit/Render/Framebuffer.h` |
+| Viewport | `ToolKit/Source/Viewport.h` |
+| Entity | `ToolKit/Entities/Entity.h` |
+| Node | `ToolKit/Source/Node.h` |
+| Component | `ToolKit/Components/Component.h` |
+| Scene | `ToolKit/Resources/Scene.h` |
+| Threads / Worker | `ToolKit/Source/Threads.h` |
+| Editor app | `Editor/Source/App.h` |
 | Animation resource / tracks / player | `ToolKit/Resources/Animation.h` |
 | Parameter animation plan | `parameter-animation-plan.md` |
 | Key interpolation modes + sampling math | `ToolKit/Resources/KeyInterpolation.h` |
 | Undoable editor actions (incl. key edits) | `Editor/Source/Action.h` |
 | Dope sheet editor (view + window) | `Editor/UI/View/DopeSheetView.h` |
-| Editor renderer | `Editor/EditorRenderer.h` |
+| Editor renderer | `Editor/Render/EditorRenderer.h` |
 | Host / platform glue (exec paths, shortcuts, app icon) | `ToolKit/Common/PlatformHelper.h` |
-| Workspace | `Workspace/Workspace.vcxproj` |
+| Workspace (project and workspace management) | `Modules/Workspace/Source/Workspace.h` |
 | Build deps | `BuildScripts/build_dependencies.py` |
 | Dep wrapper (assimp name fix, output dirs) | `Dependency/CMakeLists.txt` |
-| Solution | `ToolKit.sln` |
+| Solution (generated by CMake, not checked in) | `Intermediate/<Platform>/<Config>/GDTK.slnx` |
 
 ---
 
 ## 15. First Reads in Any New Session
 
 Before changing anything, open these in order:
-1. `ToolKit/ToolKit.h` — manager layout (the `Main` singleton is the map of the engine).
+1. `ToolKit/Source/ToolKit.h` — manager layout (the `Main` singleton is the map of the engine).
 2. The relevant subsystem header for the task (e.g. `RenderSystem.h`, `Material.h`, `Scene.h`).
 3. The corresponding `.cpp` in the same folder (use `Get-ChildItem -Filter *.cpp` if the impl file is named differently from the header).
-4. If touching the editor: `Editor/App.h` + the relevant `Editor/Editor*.h`.
+4. If touching the editor: `Editor/Source/App.h` + the relevant `Editor/Editor*.h`.
 5. If touching shaders: matching `.shader` file in `Resources/Engine/Shaders/`.

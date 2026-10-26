@@ -158,9 +158,9 @@ namespace ToolKit
     /** Objects covered by those instanced draws. */
     InstancedObject,
     /** Local lights the depth grid dropped this frame, with their shadow maps. */
-    HiZCulledLight,
+    DepthGridCulledLight,
     /** Meshes the depth grid dropped this frame, which cost neither a draw nor a batch slot. */
-    HiZCulledEntity,
+    DepthGridCulledEntity,
     RenderPass,
     Count
   };

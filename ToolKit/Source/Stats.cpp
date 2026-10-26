@@ -22,7 +22,7 @@
 namespace ToolKit
 {
 
-// Portable cycle counter — rdtsc on x86/64, CNTVCT on ARM64, chrono fallback.
+// Portable cycle counter: rdtsc on x86/64, CNTVCT on ARM64, chrono fallback.
 inline uint64 ReadCycleCounter()
 {
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
@@ -275,7 +275,7 @@ inline uint64 ReadCycleCounter()
     node->accumulatedIncl += inclMs;
     node->accumulatedExcl += exclMs;
 
-    // Swap current → prev for display.
+    // Swap current to prev for display.
     node->inclusiveTimePrev = inclMs;
     node->exclusiveTimePrev = exclMs;
     node->hitCountPrev      = node->hitCount;
@@ -417,9 +417,9 @@ inline uint64 ReadCycleCounter()
     // lights would have cost and the draws the meshes would have issued.
     snprintf(buffer,
              sizeof(buffer),
-             "HiZ Culled Lights: %llu (Meshes: %llu)\n",
-             Stats::GetStatPrev(FrameStatType::HiZCulledLight),
-             Stats::GetStatPrev(FrameStatType::HiZCulledEntity));
+             "Depth Grid Culled Lights: %llu (Meshes: %llu)\n",
+             Stats::GetStatPrev(FrameStatType::DepthGridCulledLight),
+             Stats::GetStatPrev(FrameStatType::DepthGridCulledEntity));
     stats += buffer;
 
     snprintf(buffer,

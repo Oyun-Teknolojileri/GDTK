@@ -21,8 +21,8 @@ namespace ToolKit
 {
   namespace
   {
-    /** Blocks per side of the depth grid. This is HiZBlockSize in hizDepthGridFrag.shader, which does the
-     *  reduction: the two have to agree or the grid the CPU indexes is not the grid the shader wrote. */
+    /** Blocks per side of the depth grid. This is DepthGridBlockSize in depthGridFrag.shader, which does
+     *  the reduction: the two have to agree or the grid the CPU indexes is not the grid the shader wrote. */
     constexpr int DepthGridBlockSize = 8;
 
     /** Grid reads happen every this many frames. A blocking read per frame costs more than it saves. */
@@ -174,7 +174,7 @@ namespace ToolKit
     const bool sceneChanged = m_sceneChangedLastFrame;
     m_sceneChangedLastFrame = false;
 
-    if (!GetEngineSettings().m_graphics->GetHiZCullingVal())
+    if (!GetEngineSettings().m_graphics->GetOcclusionCullingVal())
     {
       InvalidateDepthGrid();
       return;
@@ -288,13 +288,13 @@ namespace ToolKit
 
       if (linearDepth)
       {
-        TK_LOG("HiZ culling: the grid reduces the pre process pass's view-space depth (%dx%d), no copy.",
+        TK_LOG("Occlusion culling: the grid reduces the pre process pass's view-space depth (%dx%d), no copy.",
                depthBuffer->m_width,
                depthBuffer->m_height);
       }
       else
       {
-        TK_LOG("HiZ culling: the frame's depth is %s (%dx%d), the grid reduces %s.",
+        TK_LOG("Occlusion culling: the frame's depth is %s (%dx%d), the grid reduces %s.",
                msaaDepth ? "multisampled" : "single sample",
                depthBuffer->m_width,
                depthBuffer->m_height,
@@ -317,7 +317,7 @@ namespace ToolKit
 
     if (m_depthGridQuad == nullptr)
     {
-      m_depthGridShader = GetShaderManager()->Create<Shader>(ShaderPath("hizDepthGridFrag.shader", true));
+      m_depthGridShader = GetShaderManager()->Create<Shader>(ShaderPath("depthGridFrag.shader", true));
 
       // Compiled here rather than on the first program build, because the channel the reduction reads is
       // picked by a define and a define can only be set on an initialized shader.
@@ -365,7 +365,7 @@ namespace ToolKit
     // The define comes before the shader is installed: it picks the channel the reduction reads, and the
     // program is built from the variant the shader holds at that moment. Both variants are compiled
     // together on first use, so switching source does not stall on a runtime compile.
-    m_depthGridShader->SetDefine("HiZLinearDepth", linearDepth ? "1" : "0");
+    m_depthGridShader->SetDefine("DepthGridLinearDepth", linearDepth ? "1" : "0");
 
     m_depthGridQuad->m_params.frameBuffer      = m_depthGridFb;
     m_depthGridQuad->m_params.clearFrameBuffer = GraphicBitFields::None;
@@ -423,12 +423,12 @@ namespace ToolKit
     if (!anyDepth && !m_loggedEmptyGrid)
     {
       m_loggedEmptyGrid = true;
-      TK_LOG("HiZ culling: the depth grid read came back empty, nothing is culled until it has depths.");
+      TK_LOG("Occlusion culling: the depth grid read came back empty, nothing is culled until it has depths.");
     }
     else if (anyDepth && m_loggedEmptyGrid)
     {
       m_loggedEmptyGrid = false;
-      TK_LOG("HiZ culling: the depth grid has depths again.");
+      TK_LOG("Occlusion culling: the depth grid has depths again.");
     }
 
     m_depthGridQuad->PostRender();
@@ -526,7 +526,7 @@ namespace ToolKit
 
   bool ForwardSceneRenderPath::OcclusionCullingReady()
   {
-    if (!GetEngineSettings().m_graphics->GetHiZCullingVal())
+    if (!GetEngineSettings().m_graphics->GetOcclusionCullingVal())
     {
       m_depthGridValid = false;
       return false;
@@ -668,13 +668,7 @@ namespace ToolKit
     return IsOccludedByGrid(box.min, box.max, nearestDepth);
   }
 
-  void ForwardSceneRenderPath::ResetEntityOcclusionStreaks()
-  {
-    for (auto& [entity, slot] : m_jobRanges)
-    {
-      slot.occlusionStreak = 0;
-    }
-  }
+  void ForwardSceneRenderPath::ResetEntityOcclusionStreaks() { m_entityOcclusionStreak.clear(); }
 
   void ForwardSceneRenderPath::CullOccludedLights(LightRawPtrArray& lights)
   {
@@ -761,7 +755,7 @@ namespace ToolKit
       }
     }
 
-    Stats::AddStat(FrameStatType::HiZCulledLight, (uint64) culled);
+    Stats::AddStat(FrameStatType::DepthGridCulledLight, (uint64) culled);
 
     // Reported when the decision changes rather than every frame: a camera that holds still has nothing
     // new to say, and one that moves would bury the rest of the log.
@@ -770,7 +764,7 @@ namespace ToolKit
       m_loggedCullCount    = culled;
       m_loggedCullCameraId = camId;
 
-      TK_LOG("HiZ culling: camera '%s' dropped %d of %d local lights.",
+      TK_LOG("Occlusion culling: camera '%s' dropped %d of %d local lights.",
              camera ? camera->GetNameVal().c_str() : "?",
              culled,
              totalLights);
@@ -820,7 +814,7 @@ namespace ToolKit
       // the test projects is not the geometry that would be drawn.
       if (m_animatedJobEntities.find(ntt) != m_animatedJobEntities.end())
       {
-        slot.occlusionStreak = 0;
+        m_entityOcclusionStreak.erase(ntt);
         kept.push_back(ntt);
         continue;
       }
@@ -837,7 +831,7 @@ namespace ToolKit
       const BoundingBox& box = ntt->GetBoundingBox(true);
       if (customShaded || !box.IsValid() || !IsOccludedByGrid(box))
       {
-        slot.occlusionStreak = 0;
+        m_entityOcclusionStreak.erase(ntt);
         kept.push_back(ntt);
         continue;
       }
@@ -847,7 +841,7 @@ namespace ToolKit
       // The grid is a frame behind, so a single frame that looks hidden is not enough to take a mesh
       // out of the frame. Only a volume that kept its whole footprint behind the drawn depths for
       // OcclusionStreakToCull frames in a row is dropped.
-      if (++slot.occlusionStreak >= OcclusionStreakToCull)
+      if (++m_entityOcclusionStreak[ntt] >= OcclusionStreakToCull)
       {
         culled++;
         continue;
@@ -858,13 +852,13 @@ namespace ToolKit
 
     entities.swap(kept);
 
-    Stats::AddStat(FrameStatType::HiZCulledEntity, (uint64) culled);
+    Stats::AddStat(FrameStatType::DepthGridCulledEntity, (uint64) culled);
 
     if (culled != m_loggedCulledEntityCount)
     {
       m_loggedCulledEntityCount = culled;
 
-      TK_LOG("HiZ culling: %d of %d visible entities found hidden, %d of them dropped.",
+      TK_LOG("Occlusion culling: %d of %d visible entities found hidden, %d of them dropped.",
              hidden,
              totalEntities,
              culled);
@@ -1178,7 +1172,7 @@ namespace ToolKit
 
               // The entity moved, or its geometry changed: whatever the grid proved about where it
               // used to be says nothing about it now, so the count starts over.
-              slot.occlusionStreak = 0;
+              m_entityOcclusionStreak.erase(entity);
 
               job += count;
             }
@@ -1327,7 +1321,7 @@ namespace ToolKit
 
     // The forward pass throws its depth away when it ends, which is the right default: nothing else was
     // reading it. The occlusion grid does, at the end of the frame, so it is kept while the test is on.
-    m_forwardRenderPass->m_params.invalidateDepthBuffer = !GetEngineSettings().m_graphics->GetHiZCullingVal();
+    m_forwardRenderPass->m_params.invalidateDepthBuffer = !GetEngineSettings().m_graphics->GetOcclusionCullingVal();
 
     PostProcessingSettingsPtr pps                   = m_params.postProcessSettings;
     m_forwardRenderPass->m_params.SsaoTexture       = pps->GetSSAOEnabledVal() ? m_ssaoPass->m_ssaoTexture : nullptr;

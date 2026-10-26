@@ -224,10 +224,10 @@ namespace ToolKit
           graphics->SetInstancedBatchingVal(instancedBatching);
         }
 
-        bool hizCulling = graphics->GetHiZCullingVal();
-        if (ImGui::Checkbox("HiZ Culling##1", &hizCulling))
+        bool occlusionCulling = graphics->GetOcclusionCullingVal();
+        if (ImGui::Checkbox("Occlusion Culling##1", &occlusionCulling))
         {
-          graphics->SetHiZCullingVal(hizCulling);
+          graphics->SetOcclusionCullingVal(occlusionCulling);
         }
 
         bool hdrPipeline = graphics->GetHDRPipelineVal();

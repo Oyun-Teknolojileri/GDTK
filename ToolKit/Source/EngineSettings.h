@@ -204,21 +204,22 @@ namespace ToolKit
     TKDeclareParam(bool, InstancedBatching);
 
     /**
-     * Culls local lights and meshes against a coarse depth grid built from the previous frame's depth
-     * buffer. A light whose whole volume sits behind what was already drawn contributes nothing to the
-     * picture, so it is dropped from the frame: no slot in the shadow atlas, and no shadow map rendered
-     * for it. A mesh whose whole bounding box sits behind what was already drawn is left out of the
-     * visible job list, so it is neither batched nor drawn.
+     * Culls local lights and meshes against a coarse depth grid built from the frame's depth buffer. A
+     * light whose whole volume sits behind what was already drawn contributes nothing to the picture, so
+     * it is dropped from the frame: no slot in the shadow atlas, and no shadow map rendered for it. A mesh
+     * whose whole bounding box sits behind what was already drawn is left out of the visible job list, so
+     * it is neither batched nor drawn.
      *
-     * The grid lags a frame by design, since it is built from the depth buffer before that buffer gets
-     * overwritten, so a light or a mesh is dropped only after it stayed hidden for three frames in a row
-     * and the counters reset when the camera jumps. Geometry that deforms without its bounds following -
-     * a skinned mesh, a shader material that places its own vertices - is never dropped.
+     * The grid is one level: a maximum depth per eight by eight block, with no mip chain. It lags a frame
+     * by design, since it is reduced from a depth buffer the frame cannot keep writing to, so a light or a
+     * mesh is dropped only after it stayed hidden for three frames in a row and the counters reset when
+     * the camera jumps. Geometry that deforms without its bounds following - a skinned mesh, a shader
+     * material that places its own vertices - is never dropped.
      *
      * Turning the setting off restores the unculled behaviour, which is what makes the cost measurable
      * from the editor.
      */
-    TKDeclareParam(bool, HiZCulling);
+    TKDeclareParam(bool, OcclusionCulling);
 
     /**
      * Viewport render target multiplier that adjusts the resolution.

@@ -100,13 +100,20 @@ namespace ToolKit
       uint64 lightGeneration = 0;
       uint begin             = 0;
       uint end               = 0;
-
-      /** Frames in a row the depth grid found this entity hidden. Kept here rather than in a map of
-       *  its own because it has the same lifetime as the range: a rebuilt range means the entity
-       *  moved or was replaced, and a moved entity starts its count over. */
-      int occlusionStreak = 0;
     };
     std::unordered_map<const Entity*, JobSlot> m_jobRanges;
+
+    /**
+     * Frames in a row the depth grid found an entity hidden.
+     *
+     * Keyed by entity and kept outside the job ranges on purpose: a range is a position in the cached job
+     * array, so any rebuild of that array - a material edit, a prefab linked, an entity added - renumbers
+     * every range while the entities themselves did not move a pixel. Holding the count in the slot reset
+     * the whole scene's history on such a rebuild, and a cache that rebuilt every frame (the sky pass used
+     * to bump the material revision each frame) could never reach the three frames in a row it takes to
+     * drop anything. An entity that actually moved is erased from here by the rebuild that renumbers it.
+     */
+    std::unordered_map<const Entity*, int> m_entityOcclusionStreak;
 
     /** Scratch jobs for the entities that changed since the last frame. */
     RenderJobArray m_dirtyJobs;

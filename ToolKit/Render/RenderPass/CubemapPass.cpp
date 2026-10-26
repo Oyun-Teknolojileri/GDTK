@@ -63,8 +63,16 @@ namespace ToolKit
 
     m_cube->m_node->SetTransform(m_params.Transform);
 
+    // Only when it actually changed. Assigning the same sky material again every frame bumped the material
+    // assignment revision, and that revision is part of the render job cache key: every frame then rebuilt
+    // the whole job cache, which both re-paid the build (1.8 ms on a city) and wiped the occlusion streaks
+    // the depth grid culling needs three of in a row, so no mesh was ever culled while a sky was drawn.
     MaterialComponentPtr matCom = m_cube->GetMaterialComponent();
-    matCom->SetFirstMaterial(m_params.Material);
+    const MaterialPtrArray& materials = matCom->GetMaterialList();
+    if (materials.empty() || materials.front() != m_params.Material)
+    {
+      matCom->SetFirstMaterial(m_params.Material);
+    }
 
     Renderer* renderer = GetRenderer();
     renderer->SetCamera(m_params.Cam, false);
