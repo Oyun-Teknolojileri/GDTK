@@ -179,6 +179,32 @@ namespace ToolKit
     virtual void ReadPixels(int x, int y, int w, int h, GraphicTypes format, GraphicTypes type, void* data) = 0;
 
     /**
+     * Starts a read of the active pass's target that does not stop the caller, and returns a handle to poll.
+     *
+     * The pixels go into a buffer the backend owns rather than into client memory, so the call returns while
+     * the transfer is still in flight. A blocking read costs whatever the GPU still had queued when it was
+     * issued - the whole frame, when the read sits at the end of one - and a caller that only needs the data a
+     * frame later (the depth grid, which compares it against the camera the frame was drawn with) has no reason
+     * to pay that. A backend without an asynchronous form may do the read here and hand the pixels over on the
+     * first poll; callers must not be able to tell the difference, only the cost.
+     *
+     * @param x,y,w,h is the rectangle to read, in the target's pixels.
+     * @param format,type are the pixel layout, as in ReadPixels.
+     * @return An opaque handle for EndReadPixels, or null when the read could not be started - in which case
+     * nothing was read and the caller must not treat the destination as filled.
+     */
+    virtual void* BeginReadPixels(int x, int y, int w, int h, GraphicTypes format, GraphicTypes type) = 0;
+
+    /**
+     * Polls a read started with BeginReadPixels.
+     * @param handle is the handle BeginReadPixels returned.
+     * @param data receives the pixels once they have arrived. Pass null to discard the read.
+     * @return True when the pixels were copied and the handle released, false while the transfer is still in
+     * flight - in which case the handle stays valid and the caller polls again on a later frame.
+     */
+    virtual bool EndReadPixels(void* handle, void* data) = 0;
+
+    /**
      * Copies the depth attachment of @p src into @p dst, scaled to the destination's size. This is how a
      * frame's depth is brought down to a small target that can be read back. A backend that cannot do it
      * leaves @p dst untouched, so a caller has to treat an empty destination as "no depth available".

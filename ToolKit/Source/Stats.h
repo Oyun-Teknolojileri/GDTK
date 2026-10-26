@@ -132,10 +132,17 @@ namespace ToolKit
   };
 
 // Convenience macros for profiling.
-#define TK_PROFILE_SCOPE(name) ToolKit::ProfileScope _tkProfileScope##__LINE__(name)
+//
+// The two step paste is not decoration: pasting __LINE__ directly onto a token leaves it unexpanded, so every
+// scope in a function ended up named _tkProfileScope__LINE__ and a second one in the same function did not
+// compile. Going through TK_PROFILE_CONCAT expands the line number first, so scopes can be nested.
+#define TK_PROFILE_CONCAT_IMPL(a, b) a##b
+#define TK_PROFILE_CONCAT(a, b) TK_PROFILE_CONCAT_IMPL(a, b)
+#define TK_PROFILE_SCOPE(name)                                                                                         \
+  ToolKit::ProfileScope TK_PROFILE_CONCAT(_tkProfileScope, __LINE__)(name)
 #define TK_PROFILE_FUNCTION()                                                                                          \
-  ToolKit::ProfileScope _tkProfileScope##__LINE__(ToolKit::TKConstexprHash(__FUNCTION__, sizeof(__FUNCTION__) - 1),    \
-                                                  __FUNCTION__)
+  ToolKit::ProfileScope TK_PROFILE_CONCAT(_tkProfileScope, __LINE__)(                                                  \
+      ToolKit::TKConstexprHash(__FUNCTION__, sizeof(__FUNCTION__) - 1), __FUNCTION__)
 
   // Per-Frame Counter
   //////////////////////////////////////////

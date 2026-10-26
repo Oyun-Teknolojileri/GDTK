@@ -171,7 +171,6 @@ namespace ToolKit
 
     // Remember the camera this frame used: next frame's volumes are projected into the view the depths
     // belong to, and a camera that moved is what makes the grid in hand stale.
-    StoreOcclusionCamera();
 
     PostRender(renderer);
   }
@@ -181,6 +180,8 @@ namespace ToolKit
 
   void ForwardSceneRenderPath::BuildDepthGrid(Renderer* renderer)
   {
+    TK_PROFILE_SCOPE("BuildDepthGrid");
+
     // Read by the next frame, which then re-reads the grid instead of waiting for the interval.
     const bool sceneChanged = m_sceneChangedLastFrame;
     m_sceneChangedLastFrame = false;
@@ -343,7 +344,9 @@ namespace ToolKit
       m_depthGridQuad->SetRenderer(renderer);
     }
 
-    if (m_depthGridSize != gridSize)
+    // The target is sized for whatever the read is about to reduce, which is independent of the grid in hand:
+    // that one keeps the size it was installed with, so the two are tracked apart.
+    if (m_depthGridRt->m_width != (int) gridSize.x || m_depthGridRt->m_height != (int) gridSize.y)
     {
       // One float per block, thirty two bits wide. The depth read back here is compared against a
       // depth taken from the projection, and on a scene with a far plane in the thousands an eight bit
@@ -364,7 +367,9 @@ namespace ToolKit
       m_depthGridFb->ReconstructIfNeeded({(int) gridSize.x, (int) gridSize.y, false, false});
       m_depthGridFb->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_depthGridRt);
 
-      m_depthGridSize  = gridSize;
+      // The grid in hand belongs to the old size, so it is dropped but not reinstated with data of the new
+      // one: the size and the validity flag now travel with the pixels that were installed, which happens in
+      // ConsumeDepthGridReads once a read of this size lands.
       m_depthGridValid = false;
     }
 
@@ -394,54 +399,56 @@ namespace ToolKit
     reqs.fragmentShader    = m_depthGridShader;
     reqs.textures[0]       = depthBuffer;
 
-    m_depthGridQuad->PreRender();
-    m_depthGridQuad->Render();
+    {
+      // Split from the read back on purpose: the reduction is a pass over the depth, the read back is a
+      // transfer plus whatever the CPU waits for at the end of it, and only one of the two can be made
+      // asynchronous. Profiling them together cannot tell which is which.
+      TK_PROFILE_SCOPE("BuildDepthGrid: grid pass");
 
-    // Read while the pass is still open: the read takes the pass's own target, and closing a pass
-    // with no discard bits set is what a read after it would have to work around.
-    const size_t count = size_t(gridSize.x) * size_t(gridSize.y);
-    if (m_depthGridScratch.size() != count * 4)
-    {
-      m_depthGridScratch.resize(count * 4);
-    }
-    if (m_depthGrid.size() != count)
-    {
-      m_depthGrid.resize(count, 0.0f);
+      m_depthGridQuad->PreRender();
+      m_depthGridQuad->Render();
     }
 
-    renderer->GetBackend()->ReadPixels(0,
-                                       0,
-                                       (int) gridSize.x,
-                                       (int) gridSize.y,
-                                       GraphicTypes::FormatRGBA,
-                                       GraphicTypes::TypeFloat,
-                                       m_depthGridScratch.data());
-
-    // A real depth buffer cannot be zero everywhere - the nearest surface a frame can show sits at the
-    // near plane, which is half the depth range on a zero to one projection - so an all zero read means
-    // the grid never arrived. Culling against it would call every block nearer than every light and drop
-    // all of them, which is exactly what a broken read looks like from the outside.
-    bool anyDepth = false;
-    for (size_t i = 0; i < count; ++i)
+    // Start the read instead of waiting for it. What the build used to cost was the wait for the GPU to finish
+    // the frame before the pixels came back; they are only needed by the next frame's culling, which projects
+    // against the very camera this frame drew with, so the transfer can run while the rest of the frame is drawn
+    // and be picked up at the top of the next one.
+    //
+    // Read while the pass is still open, because the read takes the pass's own target.
+    DepthGridRead* slot = nullptr;
+    for (DepthGridRead& read : m_depthGridReads)
     {
-      m_depthGrid[i] = m_depthGridScratch[i * 4 + 0];
-      anyDepth       = anyDepth || (m_depthGrid[i] > 0.0f);
-    }
-    m_depthGridValid = anyDepth;
-
-    // One line per transition, because an empty grid is silent otherwise: it turns culling off in the
-    // frame that reads it, and nothing else in the log would say so.
-    if (!anyDepth && !m_loggedEmptyGrid)
-    {
-      m_loggedEmptyGrid = true;
-      TK_LOG("Occlusion culling: the depth grid read came back empty, nothing is culled until it has depths.");
-    }
-    else if (anyDepth && m_loggedEmptyGrid)
-    {
-      m_loggedEmptyGrid = false;
-      TK_LOG("Occlusion culling: the depth grid has depths again.");
+      if (read.handle == nullptr)
+      {
+        slot = &read;
+        break;
+      }
     }
 
+    if (slot != nullptr)
+    {
+      TK_PROFILE_SCOPE("BuildDepthGrid: start read");
+
+      void* handle = renderer->GetBackend()->BeginReadPixels(0,
+                                                             0,
+                                                             (int) gridSize.x,
+                                                             (int) gridSize.y,
+                                                             GraphicTypes::FormatRGBA,
+                                                             GraphicTypes::TypeFloat);
+      if (handle != nullptr)
+      {
+        slot->camera      = CaptureOcclusionCamera(m_params.Cam.get());
+        slot->handle      = handle;
+        slot->size        = gridSize;
+        slot->linearDepth = linearDepth;
+        slot->discard     = false;
+        slot->issue       = ++m_depthGridIssue;
+      }
+    }
+
+    // Both slots are still transferring. Two frames in flight is what the interval and the two slots are sized
+    // for, so this only happens when the driver is late; the grid in hand keeps serving until one frees up and
+    // nothing is dropped or waited for on account of it.
     m_depthGridQuad->PostRender();
   }
 
@@ -496,32 +503,43 @@ namespace ToolKit
     return m_depthResolveFb->GetDepthTexture();
   }
 
-  void ForwardSceneRenderPath::StoreOcclusionCamera()
+  ForwardSceneRenderPath::OcclusionCamera ForwardSceneRenderPath::CaptureOcclusionCamera(Camera* camera)
   {
-    Camera* camera = m_params.Cam.get();
+    OcclusionCamera view;
     if (camera == nullptr)
     {
-      return;
+      return view;
     }
 
-    m_occlusionViewProj   = camera->GetProjectViewMatrix();
-    m_occlusionView       = camera->GetViewMatrix();
-    m_occlusionProjection = camera->GetProjectionMatrix();
-    m_occlusionNear       = camera->Near();
-    m_occlusionFar        = camera->Far();
+    view.viewProj   = camera->GetProjectViewMatrix();
+    view.view       = camera->GetViewMatrix();
+    view.projection = camera->GetProjectionMatrix();
+    view.nearClip   = camera->Near();
+    view.farClip    = camera->Far();
+    view.id         = camera->GetIdVal();
 
-    // Which way the depth buffer runs. The grid keeps whatever the projection wrote, and a reversed
-    // range counts nearer as larger, so the comparison against a light's depth has to know the
-    // direction instead of assuming larger means farther. Far has to be read before the two clips are
-    // projected, or the first call measures against the previous camera's far plane.
-    const Vec4 nearClip      = m_occlusionProjection * Vec4(0.0f, 0.0f, -m_occlusionNear, 1.0f);
-    const Vec4 farClip       = m_occlusionProjection * Vec4(0.0f, 0.0f, -m_occlusionFar, 1.0f);
+    // Which way the depth buffer runs. The grid keeps whatever the projection wrote, and a reversed range counts
+    // nearer as larger, so the comparison against a light's depth has to know the direction instead of assuming
+    // larger means farther. Far is read before the two clips are projected, or the first call measures against
+    // the previous camera's far plane.
+    const Vec4 nearClip      = view.projection * Vec4(0.0f, 0.0f, -view.nearClip, 1.0f);
+    const Vec4 farClip       = view.projection * Vec4(0.0f, 0.0f, -view.farClip, 1.0f);
     const float nearDepth    = (nearClip.z / nearClip.w) * 0.5f + 0.5f;
     const float farDepth     = (farClip.z / farClip.w) * 0.5f + 0.5f;
-    m_occlusionReversedDepth = nearDepth > farDepth;
+    view.reversedDepth       = nearDepth > farDepth;
 
-    // The depths the next frame reduces were written by this camera.
-    m_occlusionCameraId = camera->GetIdVal();
+    return view;
+  }
+
+  void ForwardSceneRenderPath::ApplyOcclusionCamera(const OcclusionCamera& camera)
+  {
+    m_occlusionViewProj    = camera.viewProj;
+    m_occlusionView        = camera.view;
+    m_occlusionProjection  = camera.projection;
+    m_occlusionNear        = camera.nearClip;
+    m_occlusionFar         = camera.farClip;
+    m_occlusionReversedDepth = camera.reversedDepth;
+    m_occlusionCameraId    = camera.id;
   }
 
   void ForwardSceneRenderPath::InvalidateDepthGrid()
@@ -530,9 +548,115 @@ namespace ToolKit
     m_lightOcclusionStreak.clear();
     ResetEntityOcclusionStreaks();
 
+    // A read that is still in flight belongs to the grid being dropped, so it is marked rather than released
+    // here: releasing needs the backend, and this runs from places that do not have a renderer. The next
+    // consume, which does, throws it away instead of installing it.
+    for (DepthGridRead& read : m_depthGridReads)
+    {
+      if (read.handle != nullptr)
+      {
+        read.discard = true;
+      }
+    }
+
     // A dropped grid is rebuilt on the next frame instead of up to a read interval later: the read is
     // what brings a new one, and there is nothing to cull with until it happens.
     m_depthGridFrame = 0;
+  }
+
+  namespace
+  {
+    /** Exact equality, which is what the grid needs: the matrix a read was issued with is taken from the very
+     *  camera the frame drew with, so it either comes back bit for bit or the camera moved. */
+  } // namespace
+
+  void ForwardSceneRenderPath::ConsumeDepthGridReads(Renderer* renderer)
+  {
+    IGraphicsBackend* backend = renderer ? renderer->GetBackend() : nullptr;
+    if (backend == nullptr)
+    {
+      return;
+    }
+
+    for (DepthGridRead& read : m_depthGridReads)
+    {
+      if (read.handle == nullptr)
+      {
+        continue;
+      }
+
+      // Either the grid was dropped while this was in flight, or it was issued for a view the grid set in hand
+      // no longer describes. Both mean the pixels are worthless, and holding the buffer would only delay the
+      // next read.
+      const bool wanted = !read.discard;
+      const size_t count = (size_t) read.size.x * (size_t) read.size.y;
+
+      if (!wanted || count == 0)
+      {
+        backend->EndReadPixels(read.handle, nullptr);
+        read = DepthGridRead();
+        continue;
+      }
+
+      if (m_depthGridScratch.size() != count * 4)
+      {
+        m_depthGridScratch.resize(count * 4);
+      }
+
+      // Still in flight is the normal answer on the frame that issued the read, and not an error.
+      if (!backend->EndReadPixels(read.handle, m_depthGridScratch.data()))
+      {
+        continue;
+      }
+
+      const uint64 issue     = read.issue;
+      const OcclusionCamera readCamera = read.camera;
+      const UVec2 gridSize   = read.size;
+      const bool linearDepth = read.linearDepth;
+      read                   = DepthGridRead();
+
+      // Two reads can land in one frame after a stall. Installing the older one last would move the grid
+      // backwards in time.
+      if (issue < m_depthGridInstalled)
+      {
+        continue;
+      }
+      m_depthGridInstalled = issue;
+
+      if (m_depthGrid.size() != count)
+      {
+        m_depthGrid.resize(count, 0.0f);
+      }
+
+      // A real depth buffer cannot be zero everywhere - the nearest surface a frame can show sits at the near
+      // plane, which is half the depth range on a zero to one projection - so an all zero read means the grid
+      // never arrived. Culling against it would call every block nearer than every light and drop all of them,
+      // which is exactly what a broken read looks like from the outside.
+      bool anyDepth = false;
+      for (size_t i = 0; i < count; ++i)
+      {
+        m_depthGrid[i] = m_depthGridScratch[i * 4 + 0];
+        anyDepth       = anyDepth || (m_depthGrid[i] > 0.0f);
+      }
+
+      ApplyOcclusionCamera(readCamera);
+      m_depthGridSize        = gridSize;
+      m_occlusionLinearDepth = linearDepth;
+      m_depthGridValid       = anyDepth;
+
+      // One line per transition, because an empty grid is silent otherwise: it turns culling off in the frame
+      // that reads it, and nothing else in the log would say so.
+      if (!anyDepth && !m_loggedEmptyGrid)
+      {
+        m_loggedEmptyGrid = true;
+        TK_LOG("Occlusion culling: the depth grid read came back empty, nothing is culled until it has depths.");
+      }
+      else if (anyDepth && m_loggedEmptyGrid)
+      {
+        m_loggedEmptyGrid = false;
+        TK_LOG("Occlusion culling: the depth grid has depths again.");
+      }
+    }
   }
 
   bool ForwardSceneRenderPath::OcclusionCullingReady()
@@ -546,11 +670,15 @@ namespace ToolKit
     Camera* camera     = m_params.Cam.get();
     const uint64 camId = camera ? camera->GetIdVal() : 0;
 
-    // The grid in hand was reduced from another view's depths, so it proves nothing about this one.
-    // A camera that just changed therefore gets a frame with no culling, and the streaks start over:
-    // otherwise the first frames of a new view are culled against the old view's geometry.
-    if (camId != m_occlusionCameraId)
+    // A camera that just changed gets a frame with no culling, and its streaks start over: the grid in hand was
+    // reduced from another view's depths, so it proves nothing about this one. A camera that merely has no grid
+    // installed YET is a different case - the startup frame, and every frame a read is still in flight - and it
+    // must not invalidate: that marks the very read which is about to bring the grid as discarded, which is a
+    // grid that can never arrive. A release build hits exactly that, because its frames are short enough for the
+    // poll to still find the transfer in flight, where a debug build waits long enough for it to land.
+    if (camId != m_lastFrameCameraId)
     {
+      m_lastFrameCameraId = camId;
       InvalidateDepthGrid();
       return false;
     }
@@ -931,6 +1059,10 @@ namespace ToolKit
     TK_PROFILE_FUNCTION();
 
     RenderPath::PreRender(renderer);
+
+    // Before the frame culls: a read started a frame ago is polled here, so the depths it carried are in hand
+    // for the culling below instead of arriving after it.
+    ConsumeDepthGridReads(renderer);
 
     SetPassParams(renderer);
 

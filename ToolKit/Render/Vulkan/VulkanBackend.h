@@ -119,6 +119,17 @@ namespace ToolKit
     bool ValidateBackbufferSrgbEncoding() override;
     void EnableScissorTest(bool enable) override;
     void ReadPixels(int x, int y, int w, int h, GraphicTypes format, GraphicTypes type, void* data) override;
+
+    /**
+     * Vulkan has no asynchronous read path yet: ReadPixels itself is still a TODO, so there is nothing to hand
+     * to a fence. Both calls answer the way an unsupported backend should - a null handle and an immediate
+     * "nothing arrived" - which leaves the caller's grid empty instead of filling it with pixels nobody read.
+     * When the Vulkan read lands (vkCmdCopyImageToBuffer into a host visible staging buffer), the fence that
+     * comes with it is what these two need to poll.
+     */
+    void* BeginReadPixels(int x, int y, int w, int h, GraphicTypes format, GraphicTypes type) override;
+    bool EndReadPixels(void* handle, void* data) override;
+
     void UpdateTextureSubRegion(Texture* tex, int x, int y, int w, int h, const void* data) override;
     void PushDebugGroup(StringView name) override;
     void PopDebugGroup() override;

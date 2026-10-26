@@ -184,8 +184,27 @@ namespace ToolKit
     };
     std::vector<OcclusionCandidate> m_occlusionCandidates;
 
-    /** Remembers the camera the current grid was rendered with, for the next frame to project into. */
-    void StoreOcclusionCamera();
+    /**
+     * What the grid test needs to project a volume into the frame the grid was reduced from, together with the
+     * direction that frame's depth runs. It travels as one piece: a grid compared against a camera other than the
+     * one it was reduced with would place every block in the wrong spot.
+     */
+    struct OcclusionCamera
+    {
+      Mat4 viewProj      = Mat4(1.0f);
+      Mat4 view          = Mat4(1.0f);
+      Mat4 projection    = Mat4(1.0f);
+      bool reversedDepth = false;
+      float nearClip     = 0.1f;
+      float farClip      = 1000.0f;
+      uint64 id          = 0;
+    };
+
+    /** Reads a camera into the form the grid test projects with. */
+    static OcclusionCamera CaptureOcclusionCamera(Camera* camera);
+
+    /** Makes the grid test project into @p camera, which is what a grid install does. */
+    void ApplyOcclusionCamera(const OcclusionCamera& camera);
 
     /**
      * True when the grid in hand holds depths that were reduced from the view this frame draws. A camera
@@ -214,6 +233,35 @@ namespace ToolKit
 
     /** Clears the per entity streak of every cached range. */
     void ResetEntityOcclusionStreaks();
+
+    /**
+     * A grid read the backend is still transferring.
+     *
+     * The pixels arrive a frame or two after the frame that asked for them, so the view they were reduced with
+     * travels with them: comparing them against whichever camera happens to be current when they land would
+     * compare two different views.
+     */
+    struct DepthGridRead
+    {
+      void* handle        = nullptr;      //!< Backend owned, null when the slot is free.
+      UVec2 size          = UVec2(0);     //!< Blocks across and down.
+      OcclusionCamera camera;             //!< The view those depths were reduced with.
+      bool linearDepth    = false;        //!< True when the pixels are view space distances.
+      bool discard        = false;        //!< Set when the grid was dropped while this read was in flight.
+      uint64 issue        = 0;            //!< Read counter, so an older read cannot overwrite a newer grid.
+    };
+
+    /** Two slots: one transferring while the other is being consumed, which is what keeps a read in flight
+     *  every frame the grid is refreshed instead of a read every other frame. */
+    DepthGridRead m_depthGridReads[2];
+    uint64 m_depthGridIssue         = 0;
+    uint64 m_depthGridInstalled     = 0;
+
+    /**
+     * Polls the reads in flight and installs the newest one that has landed as the grid in hand. Called before
+     * the frame culls, so the depths are in hand for the frame that uses them.
+     */
+    void ConsumeDepthGridReads(Renderer* renderer);
 
     RenderTargetPtr m_depthGridRt                        = nullptr;
     FramebufferPtr m_depthGridFb                         = nullptr;
@@ -251,6 +299,11 @@ namespace ToolKit
     /** Camera the grid in m_depthGrid was rendered with. A grid from another view says nothing about
      *  this one, so culling waits for the grid to catch up after a camera change. */
     uint64 m_occlusionCameraId                           = 0;
+
+    /** The camera the last frame drew with, kept only to notice a switch. Not the camera the grid in hand was
+     *  reduced with - that one travels with the read and is applied when it lands - because the frame after a
+     *  read is issued legitimately has a grid from an older camera and must not be treated as a switch. */
+    uint64 m_lastFrameCameraId = 0;
 
     /** Set by the frame that changed what is on screen - a moved camera, an entity that moved, a scene
      *  that was edited - and read by the next one, which then re-reads the grid instead of waiting for

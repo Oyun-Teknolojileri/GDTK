@@ -108,6 +108,16 @@ namespace ToolKit
   bool NullBackend::ValidateBackbufferSrgbEncoding() { return false; }
   void NullBackend::EnableScissorTest(bool) {}
   void NullBackend::ReadPixels(int, int, int, int, GraphicTypes, GraphicTypes, void*) {}
+
+  void* NullBackend::BeginReadPixels(int, int, int, int, GraphicTypes, GraphicTypes)
+  {
+    // There is no target to read, so there is nothing to make asynchronous. Null is the honest answer: the
+    // caller treats it as a read that never arrived and keeps whatever it had.
+    return nullptr;
+  }
+
+  bool NullBackend::EndReadPixels(void*, void*) { return true; }
+
   void NullBackend::UpdateTextureSubRegion(Texture*, int, int, int, int, const void*) {}
 
   void NullBackend::PushDebugGroup(StringView) {}

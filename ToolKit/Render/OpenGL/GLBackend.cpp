@@ -1691,6 +1691,153 @@ namespace ToolKit
     glReadPixels(x, y, w, h, readFormat, ToGLGraphicType(type), data);
   }
 
+  namespace
+  {
+    /** One read in flight: the buffer object holding the pixels, and the fence that says they landed. */
+    struct AsyncRead
+    {
+      GLuint pbo    = 0;
+      GLsync fence  = nullptr;
+      size_t bytes  = 0;
+    };
+
+    /** Bytes per pixel of a read, from the pixel format and the channel type it asks for. */
+    size_t PixelByteSize(GraphicTypes format, GraphicTypes type)
+    {
+      size_t channels = 4;
+      switch (format)
+      {
+      case GraphicTypes::FormatRed:
+      case GraphicTypes::FormatDepth24:
+        channels = 1;
+        break;
+      case GraphicTypes::FormatRG:
+        channels = 2;
+        break;
+      case GraphicTypes::FormatRGB:
+        channels = 3;
+        break;
+      default:
+        channels = 4;
+        break;
+      }
+
+      // A depth read is asked for as floats or as unsigned bytes, never as half floats, so the type switch only
+      // has to cover what the formats here can be paired with.
+      size_t perChannel = 1;
+      switch (type)
+      {
+      case GraphicTypes::TypeHalfFloat:
+        perChannel = 2;
+        break;
+      case GraphicTypes::TypeFloat:
+        perChannel = 4;
+        break;
+      default:
+        perChannel = 1;
+        break;
+      }
+
+      return channels * perChannel;
+    }
+  } // namespace
+
+  void* GLBackend::BeginReadPixels(int x, int y, int w, int h, GraphicTypes format, GraphicTypes type)
+  {
+    if (w <= 0 || h <= 0)
+    {
+      return nullptr;
+    }
+
+    GLenum readFormat = ToGLGraphicType(format);
+    if (format == GraphicTypes::FormatDepth24 || format == GraphicTypes::FormatDepth24Stencil8)
+    {
+      readFormat = GL_DEPTH_COMPONENT;
+    }
+
+    const size_t bytes = (size_t) w * (size_t) h * PixelByteSize(format, type);
+    if (bytes == 0)
+    {
+      return nullptr;
+    }
+
+    // The read framebuffer rule is the same as the blocking path above: the target is the one the caller bound,
+    // not necessarily the window.
+    if (m_activePassDesc.target != nullptr)
+    {
+      BindFramebuffer(GL_READ_FRAMEBUFFER, GetGLFramebufferData(m_activePassDesc.target.get())->fboId);
+    }
+    else
+    {
+      BindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+    }
+
+    AsyncRead* read = new AsyncRead();
+    read->bytes     = bytes;
+
+    glGenBuffers(1, &read->pbo);
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, read->pbo);
+    glBufferData(GL_PIXEL_PACK_BUFFER, (GLsizeiptr) bytes, nullptr, GL_STREAM_READ);
+
+    // The null data pointer is the whole trick: with a buffer bound as the pack target the pixels are written
+    // by the GPU into the buffer object, and the call returns without waiting for them. With a client pointer
+    // there is nowhere for them to go but memory the CPU is about to touch, which is what forces the wait.
+    glReadPixels(x, y, w, h, readFormat, ToGLGraphicType(type), nullptr);
+
+    read->fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+
+    if (read->fence == nullptr)
+    {
+      // Without a fence there is no way to tell when the pixels are there, so the read is given up rather than
+      // handed to the caller as if it were pollable.
+      TK_ERR("GLBackend::BeginReadPixels - the fence could not be created, the read is dropped.");
+      glDeleteBuffers(1, &read->pbo);
+      SafeDel(read);
+      return nullptr;
+    }
+
+    return read;
+  }
+
+  bool GLBackend::EndReadPixels(void* handle, void* data)
+  {
+    AsyncRead* read = static_cast<AsyncRead*>(handle);
+    if (read == nullptr)
+    {
+      return true;
+    }
+
+    if (data != nullptr)
+    {
+      // A zero timeout is the point of the whole path: waiting here would be exactly the stall the asynchronous
+      // read exists to avoid. Still in flight is a legitimate answer, not an error.
+      const GLenum state = glClientWaitSync(read->fence, GL_SYNC_FLUSH_COMMANDS_BIT, 0);
+      if (state == GL_TIMEOUT_EXPIRED || state == GL_WAIT_FAILED)
+      {
+        return false;
+      }
+
+      glBindBuffer(GL_PIXEL_PACK_BUFFER, read->pbo);
+      void* mapped = glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0, (GLsizeiptr) read->bytes, GL_MAP_READ_BIT);
+      if (mapped != nullptr)
+      {
+        memcpy(data, mapped, read->bytes);
+        glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+      }
+      else
+      {
+        TK_ERR("GLBackend::EndReadPixels - the finished read could not be mapped, the pixels are lost.");
+      }
+      glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+    }
+
+    glDeleteSync(read->fence);
+    glDeleteBuffers(1, &read->pbo);
+    SafeDel(read);
+    return true;
+  }
+
   void GLBackend::BlitDepth(Framebuffer* src, Framebuffer* dst)
   {
     // The destination only has to carry a depth attachment, and the engine default one is a renderbuffer

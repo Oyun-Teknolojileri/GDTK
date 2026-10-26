@@ -320,6 +320,23 @@ So the parallel loop is worth about 6 ms of a 53 ms editor frame, where a debug 
 checked reads expensive, and about sixty microseconds of a 6 ms release frame, which is inside that build's frame
 to frame noise. Both builds drop the same 1487 meshes, so the scheduling changes the cost and not the answer.
 
+The read itself is asynchronous, and that was the bigger half of the build. `BuildDepthGrid` starts the read with
+`BeginReadPixels` into one of two slots and stops there; `PreRender` polls both slots with `ConsumeDepthGridReads`
+before the frame culls, and installs the newest one that landed together with the view it was reduced with - the
+pixels are a frame or two old by then, and comparing them against whichever camera is current would compare two
+views. A read whose view no longer matches the grid set in hand is thrown away rather than installed, and
+`InvalidateDepthGrid` marks the ones in flight so they cannot land later and reinstate a dropped grid. What that
+buys, same scene, measured with a scope around the issue and the old blocking call:
+
+| build | blocking read, per read | starting the read, per read |
+|-------|------------------------|-----------------------------|
+| Debug | 1.4 to 7 ms, depending on how much the GPU still had queued | 35 to 60 us |
+| Release | 0.13 ms | 33 to 41 us |
+
+The Debug spread is the point of the change more than its average is: a blocking read costs whatever the GPU has
+left to do, which on a heavier scene or a slower card is unbounded, and it lands as a spike in the frame that
+issues it.
+
 Three invariants make this work and are easy to break:
 
 - **The depth the grid reduces has to survive the path.** The grid is reduced at the end of the frame, so
@@ -594,6 +611,16 @@ Core API:
 - Queries: `StartTimerQuery`, `EndTimerQuery`, `GetElapsedTime`
 - Texture mgmt: `CreateTexture`, `DestroyTexture`, `ApplyTextureSettings`, `GenerateMipmaps`, `UpdateTextureRegion`, `SetTextureMaxMipLevel`, `AllocateCubemapMipStorage`, `CopyCubemapFaceFromFramebuffer`, `SetTextureSwizzleAlpha`
 - Mesh mgmt: `CreateMesh`, `DestroyMesh`
+- Read back: `ReadPixels` (blocking) and `BeginReadPixels` / `EndReadPixels`, the polled pair the depth grid uses
+
+`ReadPixels` is the easy call and the wrong one whenever the data is not needed right away: it takes its pixels
+from the GPU and does not return until they are in client memory, which means waiting for every command queued
+before it - a whole frame, when the read sits at the end of one. `BeginReadPixels` binds a pixel pack buffer and
+issues the same read with no client pointer, so the transfer runs on the GPU's own time, and returns a handle
+that `EndReadPixels` polls with a zero timeout: false means still in flight, and the caller asks again on a later
+frame. `EndReadPixels(handle, nullptr)` discards a read instead of waiting for it. Vulkan implements the pair as
+"nothing read" because its `ReadPixels` is still a TODO, and the null backend has nothing to read at all
+(see 5.3).
 
 `PassDesc` = `{ target framebuffer, clearBits, discardBits, clearColor, loadColor, loadDepth }`
 `DrawDesc` = `{ mesh, vertexLayout, indexed, elementCount, instanceCount, drawType }`

@@ -3542,6 +3542,17 @@ namespace ToolKit
     // TODO: vkCmdCopyImageToBuffer + map staging.
   }
 
+  void* VulkanBackend::BeginReadPixels(int x, int y, int w, int h, GraphicTypes format, GraphicTypes type)
+  {
+    // TODO: the read itself does not exist yet - see ReadPixels above. Once it does, the copy goes into a host
+    // visible staging buffer and the handle carries that buffer together with the fence that says the copy
+    // finished, so EndReadPixels only has to poll the fence and memcpy. Until then a null handle keeps the
+    // caller from culling against pixels nobody read.
+    return nullptr;
+  }
+
+  bool VulkanBackend::EndReadPixels(void* handle, void* data) { return true; }
+
   void VulkanBackend::UpdateTextureSubRegion(Texture* tex, int x, int y, int w, int h, const void* data)
   {
     if (tex == nullptr || data == nullptr || w <= 0 || h <= 0)
