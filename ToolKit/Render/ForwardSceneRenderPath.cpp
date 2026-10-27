@@ -70,6 +70,24 @@ namespace ToolKit
 
   ForwardSceneRenderPath::~ForwardSceneRenderPath()
   {
+    // A read that is still in flight belongs to the backend, and the consume that gives it back runs from
+    // PreRender. A path destroyed before one - viewport closed, render path swapped, editor shutting down - never
+    // reaches a consume, and the pixel buffer, its fence and the small record behind this handle are then never
+    // released. That is a leak of a few dozen bytes per teardown, which is the kind that hides for a year. The
+    // accessor is the null safe one: during teardown the backend may already be gone, and there is nothing left
+    // to hand the buffer back to at that point.
+    if (IGraphicsBackend* backend = GetBackend_noexcep())
+    {
+      for (DepthGridRead& read : m_depthGridReads)
+      {
+        if (read.handle != nullptr)
+        {
+          backend->EndReadPixels(read.handle, nullptr);
+          read = DepthGridRead();
+        }
+      }
+    }
+
     m_shadowPass            = nullptr;
     m_forwardRenderPass     = nullptr;
     m_skyPass               = nullptr;
