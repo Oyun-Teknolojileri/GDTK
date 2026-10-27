@@ -34,6 +34,11 @@ namespace ToolKit
     /** How many frames in a row a light or a mesh has to look hidden before it is dropped. */
     constexpr int OcclusionStreakToCull = 3;
 
+    /** How close the depths around an empty cell have to be for it to count as a rounding hole of one surface
+     *  rather than the edge of a disocclusion. A silhouette has a near and a far side, and filling it would put a
+     *  depth where the old frame had none - which is the culling that shows sky through the hole it just made. */
+    constexpr float WarpFillDepthTolerance = 0.25f;
+
     /** Below this many candidates the grid test stays on the calling thread: handing a few boxes to the pool
      *  costs more in dispatch than the tests themselves take, and a small scene would pay that every frame.
      *  Above it the pool splits the list and the verdicts are gathered back. Measured on the city scene by
@@ -270,6 +275,7 @@ namespace ToolKit
     // InvalidateDepthGrid resets the counter, so a grid that was dropped is rebuilt on the next frame
     // rather than up to an interval later.
     const bool readNow = viewMoved || (m_depthGridFrame % DepthGridReadInterval) == 0;
+
     m_depthGridFrame++;
 
     if (!readNow)
@@ -640,6 +646,7 @@ namespace ToolKit
       }
 
       ApplyOcclusionCamera(readCamera);
+      m_depthGridGeneration++;
       m_depthGridSize        = gridSize;
       m_occlusionLinearDepth = linearDepth;
       m_depthGridValid       = anyDepth;
@@ -670,12 +677,25 @@ namespace ToolKit
     Camera* camera     = m_params.Cam.get();
     const uint64 camId = camera ? camera->GetIdVal() : 0;
 
+    // distance between the two is the screen space drift the test has to allow for (see IsOccludedByGrid).
+    // Reprojection carries the grid into this frame; with it off the grid is trusted where it was reduced, which is
+    // the old behaviour: cheaper, one frame stale, and it can drop what the camera has just revealed.
+    if (GetEngineSettings().m_graphics->GetOcclusionReprojectionVal())
+    {
+      m_occlusionTestViewProj = camera ? camera->GetProjectViewMatrix() : m_occlusionViewProj;
+      m_occlusionTestView     = camera ? camera->GetViewMatrix() : m_occlusionView;
+    }
+    else
+    {
+      m_occlusionTestViewProj = m_occlusionViewProj;
+      m_occlusionTestView     = m_occlusionView;
+    }
+
     // A camera that just changed gets a frame with no culling, and its streaks start over: the grid in hand was
     // reduced from another view's depths, so it proves nothing about this one. A camera that merely has no grid
     // installed YET is a different case - the startup frame, and every frame a read is still in flight - and it
     // must not invalidate: that marks the very read which is about to bring the grid as discarded, which is a
-    // grid that can never arrive. A release build hits exactly that, because its frames are short enough for the
-    // poll to still find the transfer in flight, where a debug build waits long enough for it to land.
+    // grid that can never arrive.
     if (camId != m_lastFrameCameraId)
     {
       m_lastFrameCameraId = camId;
@@ -683,7 +703,20 @@ namespace ToolKit
       return false;
     }
 
-    return m_depthGridValid && m_depthGridSize.x > 0 && m_depthGridSize.y > 0;
+    if (!m_depthGridValid || m_depthGridSize.x == 0 || m_depthGridSize.y == 0)
+    {
+      return false;
+    }
+
+    // The grid in hand was reduced in another frame's screen space. Carrying it into this frame's view is what
+    // makes it usable again: the depths land where their geometry now is, and the blocks nothing lands on are the
+    // regions the old frame cannot speak for. Without a warp there is nothing to test against.
+    if (!WarpDepthGrid())
+    {
+      return false;
+    }
+
+    return true;
   }
 
   bool ForwardSceneRenderPath::IsOccludedByGrid(const Vec3& boxMin, const Vec3& boxMax, float nearestDepth) const
@@ -693,8 +726,25 @@ namespace ToolKit
       return false;
     }
 
+    const int warpW = int(m_depthGridWarpSize.x);
+    const int warpH = int(m_depthGridWarpSize.y);
+    if (warpW == 0 || warpH == 0 || m_depthGridWarped.size() != size_t(warpW) * size_t(warpH))
+    {
+      return false;
+    }
     const int gridW = int(m_depthGridSize.x);
+
     const int gridH = int(m_depthGridSize.y);
+
+    // A volume that starts behind the near plane has nothing in the frame to be compared against.
+    if (nearestDepth <= m_occlusionNear)
+    {
+      return false;
+    }
+
+    // The depth the occluders have to beat, in the same view space distance the warped grid holds, with the slack the
+    // G buffer's half float needs.
+    const float volumeDepth = nearestDepth * (1.0f - LinearDepthSlack);
 
     float ndcMinX = 1e30f;
     float ndcMaxX = -1e30f;
@@ -707,7 +757,9 @@ namespace ToolKit
                    (corner & 2) ? boxMax.y : boxMin.y,
                    (corner & 4) ? boxMax.z : boxMin.z);
 
-      const Vec4 clip = m_occlusionViewProj * Vec4(p, 1.0f);
+      // The view this frame draws with, not the one the grid was reduced with: the grid has been warped into this
+      // view, so it is here that the volume and the depths have to meet.
+      const Vec4 clip = m_occlusionTestViewProj * Vec4(p, 1.0f);
 
       // A corner at or behind the camera has no projection, and the part of the box that is behind
       // the near plane is not what the frame drew. Giving up is the only safe answer.
@@ -722,30 +774,6 @@ namespace ToolKit
       ndcMaxX = glm::max(ndcMaxX, ndc.x);
       ndcMinY = glm::min(ndcMinY, ndc.y);
       ndcMaxY = glm::max(ndcMaxY, ndc.y);
-    }
-
-    // A volume that starts behind the near plane has nothing in the frame to be compared against.
-    if (nearestDepth <= m_occlusionNear)
-    {
-      return false;
-    }
-
-    // The volume's nearest point in the same units the grid holds. The G buffer already stores a view
-    // space distance, so it is the number itself; the depth attachment needs the projection, which rather
-    // than inverting near and far is what keeps this right for a zero to one depth range, a reversed one
-    // and an orthographic camera.
-    float volumeDepth = nearestDepth;
-    if (!m_occlusionLinearDepth)
-    {
-      const Vec4 volumeClip = m_occlusionProjection * Vec4(0.0f, 0.0f, -nearestDepth, 1.0f);
-      volumeDepth           = (volumeClip.z / volumeClip.w) * 0.5f + 0.5f;
-    }
-    else
-    {
-      // The G buffer holds its depth as a half float, so a stored value can be off by about a two
-      // thousandth of its own magnitude. The comparison gives up that much, which keeps a rounding error
-      // from turning a volume that is only just in front of the geometry into one that is behind it.
-      volumeDepth *= 1.0f - LinearDepthSlack;
     }
 
     // Only the part of the footprint that is on screen is tested. Off screen there is no depth to
@@ -770,17 +798,19 @@ namespace ToolKit
     {
       for (int x = gx0; x <= gx1; ++x)
       {
-        // The block holds the farthest depth it covers, so "in front of the volume" means every
-        // sample under it is nearer than the volume's nearest point. One block that reaches past
-        // the volume means part of that block is beside or behind it, and the volume can still
-        // reach the picture through it. A view space distance counts up with distance like an ordinary
-        // depth range does; only the depth attachment can be reversed.
-        const float depth = m_depthGrid[size_t(y) * size_t(gridW) + size_t(x)];
+        const size_t idx = size_t(y) * size_t(gridW) + size_t(x);
 
-        const bool inFront = m_occlusionLinearDepth
-                                 ? (depth < volumeDepth)
-                                 : (m_occlusionReversedDepth ? (depth > volumeDepth) : (depth < volumeDepth));
-        if (!inFront)
+        // A block no source block landed on is a place the grid says nothing about: whatever was there in the frame it
+        // was reduced from has moved out of the way, and this volume may be what is behind it. That is the whole point
+        // of the warp - it turns "the old picture disagrees" into "the old picture has no opinion".
+        if (!m_depthGridCovered[idx])
+        {
+          return false;
+        }
+
+        // The cell holds the farthest depth that landed on it, so "in front of the volume" means every contributing
+        // surface was nearer than the volume's nearest point.
+        if (!(m_depthGridWarped[idx] < volumeDepth))
         {
           return false;
         }
@@ -789,7 +819,6 @@ namespace ToolKit
 
     return true;
   }
-
   bool ForwardSceneRenderPath::IsOccludedByGrid(const BoundingBox& box) const
   {
     // Only the box's own nearest point is used here: unlike a light, whose box encloses a smaller
@@ -801,10 +830,225 @@ namespace ToolKit
                    (corner & 2) ? box.max.y : box.min.y,
                    (corner & 4) ? box.max.z : box.min.z);
 
-      nearestDepth = glm::min(nearestDepth, -(m_occlusionView * Vec4(p, 1.0f)).z);
+      nearestDepth = glm::min(nearestDepth, -(m_occlusionTestView * Vec4(p, 1.0f)).z);
     }
 
     return IsOccludedByGrid(box.min, box.max, nearestDepth);
+  }
+
+  bool ForwardSceneRenderPath::WarpDepthGrid()
+  {
+    TK_PROFILE_SCOPE("WarpDepthGrid");
+
+    if (!m_depthGridValid || m_depthGridSize.x == 0 || m_depthGridSize.y == 0)
+    {
+      return false;
+    }
+
+    const int gridW = int(m_depthGridSize.x);
+    const int gridH = int(m_depthGridSize.y);
+    if (m_depthGrid.size() != size_t(gridW) * size_t(gridH))
+    {
+      return false;
+    }
+
+    // Half the grid: the warp is a scatter, so a coarser target costs a quarter and lets one write stand for a 2x2 block.
+    // A camera move leaves disocclusion that is tens of blocks wide, so shrinking the target does not hide it.
+    const UVec2 warpSize(gridW, gridH);
+    const int warpW    = int(warpSize.x);
+    const int warpH    = int(warpSize.y);
+    const size_t count = size_t(warpW) * size_t(warpH);
+
+    if (m_depthGridWarpSize != warpSize || m_depthGridWarped.size() != count)
+    {
+      m_depthGridWarpSize = warpSize;
+      m_depthGridWarped.assign(count, 0.0f);
+      m_depthGridCovered.assign(count, 0);
+    }
+
+    // The warp depends on the grid and on the view it is carried into, so a still camera - the common case, and the one
+    // where culling earns the most - pays nothing after the first frame.
+    if (WarpedDepthGridReady(m_occlusionTestView))
+    {
+      return true;
+    }
+
+    m_depthGridWarpView       = m_occlusionTestView;
+    m_depthGridWarpGeneration = m_depthGridGeneration;
+    m_depthGridWarpCount++;
+
+    std::fill(m_depthGridWarped.begin(), m_depthGridWarped.end(), 0.0f);
+    std::fill(m_depthGridCovered.begin(), m_depthGridCovered.end(), 0);
+
+    // Everything the compute below needs is folded once: a block becomes a point in the view the grid was reduced
+    // with, and that point is carried straight into the clip space of the view being culled.
+    const Mat4 invView    = glm::inverse(m_occlusionView);
+    const Mat4 gridToClip = m_occlusionTestViewProj * invView;
+    const float proj22       = m_occlusionProjection[2][2];
+    const float proj32       = m_occlusionProjection[3][2];
+    const float proj00       = m_occlusionProjection[0][0];
+    const float proj11       = m_occlusionProjection[1][1];
+
+    // The per block math is a pure function of the block and the transforms, so it runs on the frame pool and each
+    // block writes its own result - the fold into the depth map below is the serial part, because two blocks can
+    const size_t blocks = size_t(gridW) * size_t(gridH);
+    if (m_depthGridWarpTarget.size() != blocks)
+    {
+      m_depthGridWarpTarget.resize(blocks);
+      m_depthGridWarpDepth.resize(blocks);
+    }
+
+    {
+      TK_PROFILE_SCOPE("WarpDepthGrid: project");
+
+      using poolstl::iota_iter;
+      std::for_each(TKExecByConditional(blocks > OcclusionParallelThreshold, WorkerManager::FramePool),
+                    iota_iter<size_t>(0),
+                    iota_iter<size_t>(blocks),
+                    [&](size_t index)
+                    {
+                      m_depthGridWarpTarget[index] = -1;
+                      m_depthGridWarpDepth[index]  = 0.0f;
+
+                      const float depth = m_depthGrid[index];
+                      if (depth <= 0.0f)
+                      {
+                        return;
+                      }
+
+                      const int x = int(index % size_t(gridW));
+                      const int y = int(index / size_t(gridW));
+
+                      const Vec2 ndc((float(x) + 0.5f) / float(gridW) * 2.0f - 1.0f,
+                                     (float(y) + 0.5f) / float(gridH) * 2.0f - 1.0f);
+
+                      // The block as a point in the frame it was reduced from, at the distance along that frame's
+                      // view axis. The pre process G buffer already holds that distance; a depth attachment has to be
+                      // turned back into it, and the projection's own third row does that in one division - for a
+                      // perspective projection ndcZ = P[3][2] / d - P[2][2], so d = P[3][2] / (ndcZ + P[2][2]). No
+                      // inverse matrix and no matrix product per block.
+                      float viewDepth = depth;
+                      if (!m_occlusionLinearDepth)
+                      {
+                        const float ndcZ = depth * 2.0f - 1.0f;
+                        if (glm::abs(ndcZ + proj22) < 1e-6f)
+                        {
+                          return;
+                        }
+
+                        viewDepth = proj32 / (ndcZ + proj22);
+                        if (viewDepth <= 0.0f)
+                        {
+                          return;
+                        }
+                      }
+
+                      const Vec4 gridViewPoint(ndc.x / proj00 * viewDepth, ndc.y / proj11 * viewDepth, -viewDepth, 1.0f);
+
+                      const Vec4 clip = gridToClip * gridViewPoint;
+                      if (clip.w <= OcclusionNearEpsilon)
+                      {
+                        // Behind the camera being culled, which draws nothing there.
+                        return;
+                      }
+
+                      const Vec3 testNdc = Vec3(clip) / clip.w;
+                      if (testNdc.x < -1.0f || testNdc.x > 1.0f || testNdc.y < -1.0f || testNdc.y > 1.0f)
+                      {
+                        // Off screen in the view being culled.
+                        return;
+                      }
+
+                      const int bx = glm::clamp(int((testNdc.x * 0.5f + 0.5f) * float(warpW)), 0, warpW - 1);
+                      const int by = glm::clamp(int((testNdc.y * 0.5f + 0.5f) * float(warpH)), 0, warpH - 1);
+
+                      // A perspective projection writes the view depth into w, so the distance comes for free.
+                      m_depthGridWarpTarget[index] = by * warpW + bx;
+                      m_depthGridWarpDepth[index]  = clip.w;
+                    });
+    }
+
+    for (size_t index = 0; index < blocks; ++index)
+    {
+      const int target = m_depthGridWarpTarget[index];
+      if (target < 0)
+      {
+        continue;
+      }
+
+      const float testDepth = m_depthGridWarpDepth[index];
+      if (testDepth <= 0.0f)
+      {
+        continue;
+      }
+
+      // Farthest wins: a block is only proven in front of a volume when it is nearer than the volume's nearest point, so
+      // the farthest depth that lands on a cell is the reading that can only make culling more careful.
+      if (!m_depthGridCovered[size_t(target)] || m_depthGridWarped[size_t(target)] < testDepth)
+      {
+        m_depthGridWarped[size_t(target)]  = testDepth;
+        m_depthGridCovered[size_t(target)] = 1;
+      }
+    }
+    // The warp is a scatter, so a block that stretches or rounds leaves cells empty that were never disocclusion. Filling
+    // them keeps culling alive while the camera moves, but only where the neighbourhood says it is safe: the covered
+    // neighbours have to sit at one depth, which is what a hole inside a surface looks like. Where they straddle a
+    // silhouette - a near side and a far side - the cell stays empty, because that is the edge a disocclusion starts at
+    // and a depth invented there is a volume dropped that the camera has just revealed.
+    //
+    // A filled cell never writes over a cell a block actually landed on, and takes the FARTHEST neighbour, so it can
+    // never claim more occlusion than the cells around it already did.
+    for (int y = 0; y < warpH; ++y)
+    {
+      for (int x = 0; x < warpW; ++x)
+      {
+        const size_t index = size_t(y) * size_t(warpW) + size_t(x);
+        if (m_depthGridCovered[index])
+        {
+          continue;
+        }
+
+        float nearest = 0.0f;
+        float farthest = 0.0f;
+        bool filled    = false;
+        for (int dy = -1; dy <= 1; ++dy)
+        {
+          const int ny = y + dy;
+          if (ny < 0 || ny >= warpH)
+          {
+            continue;
+          }
+
+          for (int dx = -1; dx <= 1; ++dx)
+          {
+            const int nx = x + dx;
+            if (nx < 0 || nx >= warpW)
+            {
+              continue;
+            }
+
+            const size_t neighbour = size_t(ny) * size_t(warpW) + size_t(nx);
+            if (!m_depthGridCovered[neighbour])
+            {
+              continue;
+            }
+
+            const float depth = m_depthGridWarped[neighbour];
+            nearest  = filled ? glm::min(nearest, depth) : depth;
+            farthest = filled ? glm::max(farthest, depth) : depth;
+            filled   = true;
+          }
+        }
+
+        // The spread decides: one surface rounds and stretches, a silhouette does not.
+        if (filled && farthest <= nearest * (1.0f + WarpFillDepthTolerance))
+        {
+          m_depthGridWarped[index]  = farthest;
+          m_depthGridCovered[index] = 1;
+        }
+      }
+    }
+    return true;
   }
 
   void ForwardSceneRenderPath::ResetEntityOcclusionStreaks() { m_entityOcclusionStreak.clear(); }
@@ -849,9 +1093,11 @@ namespace ToolKit
       // times the square root of three from the centre - well over a radius nearer the camera than the
       // sphere it encloses - and a light that looked that much deeper had the geometry standing in front
       // of it fail to count, which is exactly a light that stays lit when it should not.
-      const float centreDepth  = -(m_occlusionView * Vec4(centre, 1.0f)).z;
-      const float nearestDepth = centreDepth - radius;
+      // The nearest point is measured in the view being culled, the same one the warped grid and the footprint use:
+      // the grid's own view would put the light's depth in different units the moment the camera moved.
+      const float centreDepth  = -(m_occlusionTestView * Vec4(centre, 1.0f)).z;
 
+      const float nearestDepth = centreDepth - radius;
       const bool occluded      = IsOccludedByGrid(boxMin, boxMax, nearestDepth);
 
       const uint64 lightId = light->GetIdVal();

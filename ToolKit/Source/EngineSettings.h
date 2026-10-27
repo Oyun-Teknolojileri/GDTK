@@ -222,6 +222,17 @@ namespace ToolKit
     TKDeclareParam(bool, OcclusionCulling);
 
     /**
+     * Whether the depth grid is carried into the frame's own view before it is tested, instead of being trusted in the
+     * screen space of the frame that produced it. A grid is at least one frame old, so without this a camera that moved
+     * slides the picture across the blocks and volumes are dropped while the sky shows through where they were. With it,
+     * the blocks that no reprojected depth lands on are treated as unknown and the volume is kept.
+     *
+     * Turning it off restores the cheaper, stale grid behaviour - useful to see the difference, and to fall back to if a
+     * scene ever reprojects badly.
+     */
+    TKDeclareParam(bool, OcclusionReprojection);
+
+    /**
      * Viewport render target multiplier that adjusts the resolution.
      * High DPI devices such as mobile phones benefits from this.
      */

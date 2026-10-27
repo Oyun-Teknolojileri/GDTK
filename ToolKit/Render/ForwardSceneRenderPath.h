@@ -228,6 +228,53 @@ namespace ToolKit
     /** Same test for a box, using the box's own nearest point as the volume's. */
     bool IsOccludedByGrid(const BoundingBox& box) const;
 
+    /**
+     * The grid, carried into the frame's own view, and the blocks of it a source block actually landed on.
+     *
+     * The grid is reduced in the screen space of the frame that produced it, so a camera that moves between that
+     * frame and this one slides the whole picture across the blocks: a block that held a near occluder can end up
+     * under a volume that is in front of nothing. Reprojecting each block with its depth into this frame's view
+     * puts the depths back where their geometry now is, and leaves a block empty wherever the source blocks do not
+     * cover it - which is exactly the region the old frame said nothing about, because whatever used to be there has
+     * moved out of the way. A volume that lands on an empty block cannot be proven hidden.
+     */
+    std::vector<float> m_depthGridWarped;
+    std::vector<uint8> m_depthGridCovered;
+
+    /** Size of the warped pair above: half the grid, so the warp costs a quarter and a splat covers more blocks per
+     *  write - the disocclusion a camera move leaves behind is far wider than a cell, so it stays a gap either way. */
+    UVec2 m_depthGridWarpSize = UVec2(0);
+
+    /** Per block result of the warp's projection: the cell it lands on, and the distance it landed with. Written by
+     *  the pool, one index per block, and folded into the pair above on the calling thread. */
+    std::vector<int> m_depthGridWarpTarget;
+    std::vector<float> m_depthGridWarpDepth;
+
+    /** The view the warped grid was built for, so the warp only runs when the view has actually changed. */
+    Mat4 m_depthGridWarpView         = Mat4(1.0f);
+
+    /** Which install of the grid the warp above was built from, so a new grid always rebuilds it. */
+    uint64 m_depthGridWarpGeneration = 0;
+
+    /** Bumped every time a read is installed, so the warp can tell a new grid from the one it already warped. */
+    uint64 m_depthGridGeneration     = 0;
+
+    /** Counts the warp rebuilds, so the cost is attributable instead of guessed. */
+    uint64 m_depthGridWarpCount      = 0;
+
+    /** The view and projection being culled. The grid carries the ones it was reduced with. */
+    Mat4 m_occlusionTestView         = Mat4(1.0f);
+
+    /**
+     * Carries the grid into the frame's own view: one entry per block, in view space distance, and the mask of the
+     * blocks a source block landed on. Cached against the view and the grid it was built from, so a still camera
+     * pays nothing for it. Returns false when the grid is not in hand.
+     */
+    bool WarpDepthGrid();
+
+    /** True when the warped grid in hand describes @p view and the grid generation it was built from. */
+    bool WarpedDepthGridReady(const Mat4& view) const { return m_depthGridWarpGeneration == m_depthGridGeneration && m_depthGridWarpView == view; }
+
     /** Drops the grid and every streak: whatever the grid proved about the last frame is now worthless. */
     void InvalidateDepthGrid();
 
@@ -299,6 +346,10 @@ namespace ToolKit
     /** Camera the grid in m_depthGrid was rendered with. A grid from another view says nothing about
      *  this one, so culling waits for the grid to catch up after a camera change. */
     uint64 m_occlusionCameraId                           = 0;
+
+    /** The view being culled, next to m_occlusionViewProj which is the view the grid was reduced from. The
+     *  distance between the two is how far a volume may have drifted on screen since the grid was read. */
+    Mat4 m_occlusionTestViewProj = Mat4(1.0f);
 
     /** The camera the last frame drew with, kept only to notice a switch. Not the camera the grid in hand was
      *  reduced with - that one travels with the read and is applied when it lands - because the frame after a

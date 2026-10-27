@@ -160,6 +160,7 @@ namespace ToolKit
     HDRPipeline_Define(true, "GraphicSettings", 0, 0, 0);
     InstancedBatching_Define(true, "GraphicSettings", 0, 0, 0);
     OcclusionCulling_Define(false, "GraphicSettings", 0, 0, 0);
+    OcclusionReprojection_Define(true, "GraphicSettings", 0, 0, 0);
     RenderResolutionScale_Define(1.0f, "GraphicSettings", 0, 0, 0);
     MultiThreaded_Define(true, "GraphicSettings", 0, 0, 0);
   }

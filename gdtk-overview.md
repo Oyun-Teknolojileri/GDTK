@@ -178,7 +178,7 @@ verification recipe.
 Serializable, loaded from `%appdata%/ToolKit/Config`. Sub-objects:
 
 - **WindowSettings**: name, width, height, fullscreen
-- **GraphicSettings**: FPS, MSAA, HDR, MultiThreaded, InstancedBatching (draws runs of objects that share a mesh and material as one instanced draw; off falls back to one draw per object), RenderResolutionScale, AnisotropicTextureFiltering, OcclusionCulling (drops local lights and meshes the depth grid proves hidden, off by default; see 4.3), plus a `m_shadows` member
+- **GraphicSettings**: FPS, MSAA, HDR, MultiThreaded, InstancedBatching (draws runs of objects that share a mesh and material as one instanced draw; off falls back to one draw per object), RenderResolutionScale, AnisotropicTextureFiltering, OcclusionCulling (drops local lights and meshes the depth grid proves hidden, off by default; see 4.3), OcclusionReprojection (carries that grid into the frame being drawn before it is tested, on by default and only meaningful with culling on; see 4.3), plus a `m_shadows` member
 - **ShadowSettings** (nested in GraphicSettings): cascade count/distance, parallel split, stable shadow map, atlas resolution (a 1K/2K/4K choice), slot density (the 2x slots option halves every slot's resolution for four times the slots), PCF kernel, VSM blur
 - **PostProcessingSettings**: tonemapping, bloom, gamma, SSAO, SSR, DOF, FXAA
 - **ShaderSettings**: per-shader define presets (e.g. "Low"/"High" graphics presets) so shader compile doesn't explode combinatorially
@@ -286,8 +286,11 @@ answers true only when every grid block inside the on-screen footprint holds a d
   with an invalid box. An entity that straddles an occluder edge survives on its own: the test needs every
   block it covers to be nearer, and the block holding its visible part is not.
 
-Both need `OcclusionStreakToCull` (3) consecutive such frames before the drop, and a camera change
-invalidates the grid and the streaks, since a grid reduced from another view proves nothing about this one.
+Both need `OcclusionStreakToCull` (3) consecutive such frames before the drop, and a camera *switch* (a
+different camera looks through this path) invalidates the grid and the streaks, since a grid reduced from another view
+proves nothing about this one. A camera that merely *moved* is handled by the reprojection described below: the grid is
+carried into the frame being drawn, and the blocks that no depth lands on are treated as unknown.
+
 The entity streak lives in `m_entityOcclusionStreak`, keyed by entity and deliberately outside the job ranges:
 a range is a position in the cached job array, so any rebuild of that array - a material edit, a prefab
 linked - renumbers every range while the entities did not move a pixel, and holding the count in the slot
@@ -382,6 +385,36 @@ The two do not answer in the same units, so `m_occlusionLinearDepth` records whi
 and a change of source - a post process effect switched on or off in the middle of a session - drops the grid
 and the streaks instead of comparing a view space distance with a projected depth.
 
+**The grid is in the screen space of the frame it was reduced from, so it is carried into the frame being drawn
+before it is tested** (`OcclusionReprojection`, on by default; off restores the older behaviour). A grid is at least
+one frame old, and a camera that moved in between slides the whole picture across the blocks: a block that held a near
+occluder can end up under a volume that is in front of nothing, and dropping that volume leaves a hole the next frame
+fills with sky. `WarpDepthGrid` reprojects every block with its depth - back through the projection's third row into a
+view space distance (`d = P[3][2] / (ndcZ + P[2][2])`, one division, no inverse matrix), into the frame's view, and
+into that view's clip space - and keeps, per cell, the farthest depth that lands on it. It runs on the frame pool with
+one result per block and a serial fold, because two blocks can land on the same cell and the farthest has to win, and
+it is cached against the view and the read it was built from, so a still camera pays nothing after the first frame.
+
+What the warp adds beyond moving the depths is the **answer for what it could not carry**: a cell no block lands on is
+a place the grid says nothing about, and a volume whose footprint touches one is kept. That is the whole point - a
+column that has moved off what it covered leaves exactly that region empty, so the geometry behind it is drawn on the
+frame it becomes visible, while the surfaces the warp did place still cull. A still camera covers every cell and drops
+the same meshes as before; a pan trades culls for the places the picture genuinely lost. Measured on the city scene,
+2729 candidates, a pan of 0.6 units per frame: 1411 to 1558 meshes dropped without reprojection (and holes where the
+camera uncovered geometry), 881 to 1440 with it, and 1539 either way under a smooth motion that keeps the blocks
+overlapping.
+
+The scatter rounds and stretches, so cells inside one surface can come up empty without being disocclusion.
+`WarpDepthGrid` fills those from their neighbours only when the covered neighbours sit within `WarpFillDepthTolerance`
+(25%) of each other - one surface rounds, a silhouette does not - and takes the farthest neighbour, so a filled cell can
+never claim more occlusion than the cells beside it already did. On the same pan that recovered roughly 300 meshes per
+frame while leaving the cells that straddle a silhouette empty, which is where a disocclusion starts.
+
+The test itself now works in the frame's own view: `m_occlusionTestView` and `m_occlusionTestViewProj` hold it,
+`IsOccludedByGrid` projects the volume into it, and the comparison is in view space distance for both sources, so the
+`m_occlusionLinearDepth` branch left the block loop and only the warp decodes the source. With the option off the two
+are set to the grid's own view and the warp degenerates to a copy, which is the older behaviour: the grid is trusted
+where it was reduced, culling keeps more of the scene, and a volume the camera has just revealed can stay dropped.
 **The G buffer source is read back with less precision than the comparison is made in**, and the comparison
 gives up what it loses instead of trusting it: a volume's own depth is computed exactly from the projection
 while the grid holds a sampled copy, so a surface sitting exactly at the volume's nearest point can read back

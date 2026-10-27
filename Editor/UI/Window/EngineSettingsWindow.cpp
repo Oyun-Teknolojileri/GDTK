@@ -230,6 +230,17 @@ namespace ToolKit
           graphics->SetOcclusionCullingVal(occlusionCulling);
         }
 
+        // Only meaningful with culling on: without it there is no grid to carry into the frame.
+        ImGui::BeginDisabled(!occlusionCulling);
+
+        bool occlusionReprojection = graphics->GetOcclusionReprojectionVal();
+        if (ImGui::Checkbox("Occlusion Reprojection##1", &occlusionReprojection))
+        {
+          graphics->SetOcclusionReprojectionVal(occlusionReprojection);
+        }
+
+        ImGui::EndDisabled();
+
         bool hdrPipeline = graphics->GetHDRPipelineVal();
         if (ImGui::Checkbox("HDR Pipeline##1", &hdrPipeline))
         {
