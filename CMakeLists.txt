@@ -8,7 +8,16 @@
 # incremental.
 #
 # Supported target platforms: Linux (primary), Windows (best-effort).
-# Emscripten / Android are out of scope for this phase.
+# Emscripten (Web) builds only ToolKit and its runtime dependencies -- see the
+# "Web (Emscripten)" blocks below. Android is out of scope for this file.
+#
+# The root file is consumed in two ways:
+#   1. Standalone: `cmake -S . -B Intermediate/<Plat>/<Cfg>` (desktop default).
+#   2. As a subproject: a web game project does
+#      `add_subdirectory(${TOOLKIT_DIR} <build>/GDTK)` so the engine is compiled
+#      by the same emscripten toolchain pass as the game. Every path in this
+#      file therefore uses CMAKE_CURRENT_SOURCE_DIR / CMAKE_CURRENT_BINARY_DIR
+#      instead of CMAKE_SOURCE_DIR / CMAKE_BINARY_DIR.
 
 cmake_minimum_required(VERSION 3.16)
 project(GDTK LANGUAGES C CXX)
@@ -41,7 +50,12 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Platform detection                                                          #
 # --------------------------------------------------------------------------- #
 
-if(WIN32)
+# Emscripten is checked first: its CMake platform module reports UNIX=1 and
+# WIN32=0, so the generic branches below would otherwise classify a web build
+# as "Linux".
+if(EMSCRIPTEN)
+  set(TK_PLATFORM "Web")
+elseif(WIN32)
   set(TK_PLATFORM "Windows")
 elseif(APPLE)
   set(TK_PLATFORM "Mac")
@@ -129,8 +143,17 @@ message(STATUS "GDTK: building for ${TK_PLATFORM} (config: ${CMAKE_BUILD_TYPE})"
 #     ├── build-Launcher/
 #     ├── build-Import/
 #     └── build-Packer/
-set(GDTK_BIN_DIR "${CMAKE_SOURCE_DIR}/Bin$<CONFIG>")
-set(GDTK_INTERMEDIATE_DIR "${CMAKE_SOURCE_DIR}/Intermediate/${TK_PLATFORM}/${CMAKE_BUILD_TYPE}")
+#
+# Web (Emscripten) builds are always a subproject of a game project, so their
+# artifacts stay inside the caller's build tree instead of touching the engine
+# source tree: <build>/GDTK/bin and <build>/GDTK/build-<module>.
+if(EMSCRIPTEN)
+  set(GDTK_BIN_DIR "${CMAKE_CURRENT_BINARY_DIR}/bin")
+  set(GDTK_INTERMEDIATE_DIR "${CMAKE_CURRENT_BINARY_DIR}/build")
+else()
+  set(GDTK_BIN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/Bin$<CONFIG>")
+  set(GDTK_INTERMEDIATE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/Intermediate/${TK_PLATFORM}/${CMAKE_BUILD_TYPE}")
+endif()
 # Default output directories for any targets added by add_subdirectory
 # below. These directory-scope variables are plain text and cannot expand
 # the $<CONFIG> generator expression that GDTK_BIN_DIR carries, so they
@@ -140,9 +163,9 @@ set(GDTK_INTERMEDIATE_DIR "${CMAKE_SOURCE_DIR}/Intermediate/${TK_PLATFORM}/${CMA
 # expand $<CONFIG>), so this default is never actually consulted today --
 # it exists only so a future target that forgets the override still lands
 # somewhere sensible instead of under a literal "$<CONFIG>" folder.
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/Bin")
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/Bin")
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/Bin")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}")
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}")
 
 # All engine binaries and utility tools land in Bin<Config>/ (per-config).
 # On Linux, RPATH ($ORIGIN) lets each binary find libToolKitd.so next to
@@ -152,7 +175,7 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/Bin")
 # Each consumer declares `add_dependencies(... ToolKit)` in its own
 # CMakeLists -- when ToolKit is rebuilt, Import / Packer / Editor /
 # Launcher re-link to stay in sync with the new import library.
-if(UNIX)
+if(UNIX AND NOT EMSCRIPTEN)
   set(CMAKE_INSTALL_RPATH "$ORIGIN")
   set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
 endif()
@@ -160,10 +183,18 @@ endif()
 # --------------------------------------------------------------------------- #
 # Dependency lookup                                                            #
 # --------------------------------------------------------------------------- #
+#
+# Desktop builds consume dependencies that build_dependencies.py prebuilt into
+# Dependency/Intermediate/<Plat>/<Cfg>. The web build has no prebuilt
+# dependency tree (emscripten artifacts cannot be shared with the desktop
+# ones), so it compiles the two runtime libraries it needs -- minizip and zstd
+# -- from source in the same pass; SDL2 comes from emscripten's own port.
 
-set(TK_DEPS_DIR "${CMAKE_SOURCE_DIR}/Dependency/Intermediate/${TK_PLATFORM}/${CMAKE_BUILD_TYPE}")
+set(TK_DEPS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/Dependency/Intermediate/${TK_PLATFORM}/${CMAKE_BUILD_TYPE}")
 
-if(NOT EXISTS "${TK_DEPS_DIR}")
+if(EMSCRIPTEN)
+  add_subdirectory(Dependency ${CMAKE_CURRENT_BINARY_DIR}/deps)
+elseif(NOT EXISTS "${TK_DEPS_DIR}")
   message(FATAL_ERROR
     "GDTK dependencies not found at:\n"
     "  ${TK_DEPS_DIR}\n"
@@ -189,73 +220,73 @@ endfunction()
 # Common) so unqualified `#include "Material.h"` etc. from any
 # downstream target needs every subfolder on the include path.
 set(GDTK_INCLUDE_DIRS
-  ${CMAKE_SOURCE_DIR}
-  ${CMAKE_SOURCE_DIR}/ToolKit
-  ${CMAKE_SOURCE_DIR}/ToolKit/Source
-  ${CMAKE_SOURCE_DIR}/ToolKit/Resources
-  ${CMAKE_SOURCE_DIR}/ToolKit/UI
-  ${CMAKE_SOURCE_DIR}/ToolKit/Entities
-  ${CMAKE_SOURCE_DIR}/ToolKit/Components
-  ${CMAKE_SOURCE_DIR}/ToolKit/Render
-  ${CMAKE_SOURCE_DIR}/ToolKit/Render/RenderPass
-  ${CMAKE_SOURCE_DIR}/ToolKit/Render/PostProcessPass
-  ${CMAKE_SOURCE_DIR}/ToolKit/Render/OpenGL
-  ${CMAKE_SOURCE_DIR}/ToolKit/Common
-  ${CMAKE_SOURCE_DIR}/Modules/Workspace
-  ${CMAKE_SOURCE_DIR}/Modules/Workspace/Source
-  ${CMAKE_SOURCE_DIR}/Editor
-  ${CMAKE_SOURCE_DIR}/Editor/Source
-  ${CMAKE_SOURCE_DIR}/Editor/Mods
-  ${CMAKE_SOURCE_DIR}/Editor/UI
-  ${CMAKE_SOURCE_DIR}/Editor/UI/Overlay
-  ${CMAKE_SOURCE_DIR}/Editor/UI/Viewport
-  ${CMAKE_SOURCE_DIR}/Editor/UI/Window
-  ${CMAKE_SOURCE_DIR}/Editor/UI/View
-  ${CMAKE_SOURCE_DIR}/Editor/Entities
-  ${CMAKE_SOURCE_DIR}/Editor/Entities/Light
-  ${CMAKE_SOURCE_DIR}/Editor/Entities/UI
-  ${CMAKE_SOURCE_DIR}/Editor/Render
-  ${CMAKE_SOURCE_DIR}/Editor/Render/Pass
-  ${CMAKE_SOURCE_DIR}/Editor/Components
-  ${CMAKE_SOURCE_DIR}/Dependency
-  ${CMAKE_SOURCE_DIR}/Dependency/glm
-  ${CMAKE_SOURCE_DIR}/Dependency/glad
-  ${CMAKE_SOURCE_DIR}/Dependency/RapidXml
-  ${CMAKE_SOURCE_DIR}/Dependency/stb
-  ${CMAKE_SOURCE_DIR}/Dependency/miniaudio
-  ${CMAKE_SOURCE_DIR}/Dependency/poolSTL/include
-  ${CMAKE_SOURCE_DIR}/Dependency/tkimgui
-  ${CMAKE_SOURCE_DIR}/Dependency/tkimgui/imgui
-  ${CMAKE_SOURCE_DIR}/Dependency/SDL2/include
-  ${CMAKE_SOURCE_DIR}/Dependency/minizip-ng
-  ${CMAKE_SOURCE_DIR}/Dependency/minizip-ng/compat
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/ToolKit
+  ${CMAKE_CURRENT_SOURCE_DIR}/ToolKit/Source
+  ${CMAKE_CURRENT_SOURCE_DIR}/ToolKit/Resources
+  ${CMAKE_CURRENT_SOURCE_DIR}/ToolKit/UI
+  ${CMAKE_CURRENT_SOURCE_DIR}/ToolKit/Entities
+  ${CMAKE_CURRENT_SOURCE_DIR}/ToolKit/Components
+  ${CMAKE_CURRENT_SOURCE_DIR}/ToolKit/Render
+  ${CMAKE_CURRENT_SOURCE_DIR}/ToolKit/Render/RenderPass
+  ${CMAKE_CURRENT_SOURCE_DIR}/ToolKit/Render/PostProcessPass
+  ${CMAKE_CURRENT_SOURCE_DIR}/ToolKit/Render/OpenGL
+  ${CMAKE_CURRENT_SOURCE_DIR}/ToolKit/Common
+  ${CMAKE_CURRENT_SOURCE_DIR}/Modules/Workspace
+  ${CMAKE_CURRENT_SOURCE_DIR}/Modules/Workspace/Source
+  ${CMAKE_CURRENT_SOURCE_DIR}/Editor
+  ${CMAKE_CURRENT_SOURCE_DIR}/Editor/Source
+  ${CMAKE_CURRENT_SOURCE_DIR}/Editor/Mods
+  ${CMAKE_CURRENT_SOURCE_DIR}/Editor/UI
+  ${CMAKE_CURRENT_SOURCE_DIR}/Editor/UI/Overlay
+  ${CMAKE_CURRENT_SOURCE_DIR}/Editor/UI/Viewport
+  ${CMAKE_CURRENT_SOURCE_DIR}/Editor/UI/Window
+  ${CMAKE_CURRENT_SOURCE_DIR}/Editor/UI/View
+  ${CMAKE_CURRENT_SOURCE_DIR}/Editor/Entities
+  ${CMAKE_CURRENT_SOURCE_DIR}/Editor/Entities/Light
+  ${CMAKE_CURRENT_SOURCE_DIR}/Editor/Entities/UI
+  ${CMAKE_CURRENT_SOURCE_DIR}/Editor/Render
+  ${CMAKE_CURRENT_SOURCE_DIR}/Editor/Render/Pass
+  ${CMAKE_CURRENT_SOURCE_DIR}/Editor/Components
+  ${CMAKE_CURRENT_SOURCE_DIR}/Dependency
+  ${CMAKE_CURRENT_SOURCE_DIR}/Dependency/glm
+  ${CMAKE_CURRENT_SOURCE_DIR}/Dependency/glad
+  ${CMAKE_CURRENT_SOURCE_DIR}/Dependency/RapidXml
+  ${CMAKE_CURRENT_SOURCE_DIR}/Dependency/stb
+  ${CMAKE_CURRENT_SOURCE_DIR}/Dependency/miniaudio
+  ${CMAKE_CURRENT_SOURCE_DIR}/Dependency/poolSTL/include
+  ${CMAKE_CURRENT_SOURCE_DIR}/Dependency/tkimgui
+  ${CMAKE_CURRENT_SOURCE_DIR}/Dependency/tkimgui/imgui
+  ${CMAKE_CURRENT_SOURCE_DIR}/Dependency/SDL2/include
+  ${CMAKE_CURRENT_SOURCE_DIR}/Dependency/minizip-ng
+  ${CMAKE_CURRENT_SOURCE_DIR}/Dependency/minizip-ng/compat
 )
 
 # ---- Header-only INTERFACE libraries ---- #
 
 add_library(glm INTERFACE)
-target_include_directories(glm INTERFACE ${CMAKE_SOURCE_DIR}/Dependency/glm)
+target_include_directories(glm INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/Dependency/glm)
 
 add_library(glad INTERFACE)
-target_include_directories(glad INTERFACE ${CMAKE_SOURCE_DIR}/Dependency/glad)
+target_include_directories(glad INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/Dependency/glad)
 
 add_library(RapidXml INTERFACE)
-target_include_directories(RapidXml INTERFACE ${CMAKE_SOURCE_DIR}/Dependency/RapidXml)
+target_include_directories(RapidXml INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/Dependency/RapidXml)
 
 add_library(stb INTERFACE)
-target_include_directories(stb INTERFACE ${CMAKE_SOURCE_DIR}/Dependency/stb)
+target_include_directories(stb INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/Dependency/stb)
 
 add_library(miniaudio INTERFACE)
-target_include_directories(miniaudio INTERFACE ${CMAKE_SOURCE_DIR}/Dependency/miniaudio)
+target_include_directories(miniaudio INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/Dependency/miniaudio)
 
 add_library(poolstl INTERFACE)
-target_include_directories(poolstl INTERFACE ${CMAKE_SOURCE_DIR}/Dependency/poolSTL/include)
+target_include_directories(poolstl INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/Dependency/poolSTL/include)
 
 # tkimgui ships imgui + some GDTK-specific bindings in one static lib.
 add_library(tkimgui INTERFACE)
 target_include_directories(tkimgui INTERFACE
-  ${CMAKE_SOURCE_DIR}/Dependency/tkimgui
-  ${CMAKE_SOURCE_DIR}/Dependency/tkimgui/imgui
+  ${CMAKE_CURRENT_SOURCE_DIR}/Dependency/tkimgui
+  ${CMAKE_CURRENT_SOURCE_DIR}/Dependency/tkimgui/imgui
 )
 
 # ---- Prebuild dependency imports ---- #
@@ -281,12 +312,20 @@ set(CMAKE_PREFIX_PATH "${TK_DEPS_DIR}")
 # the project was expecting to find). NO_DEFAULT_PATH keeps us from
 # accidentally picking up a system-installed SDL2 / minizip with a
 # mismatched version.
-find_package(SDL2     REQUIRED CONFIG)
-find_package(SDL2main REQUIRED CONFIG)
-find_package(minizip  REQUIRED CONFIG)
-find_package(zstd     REQUIRED CONFIG)
-find_package(assimp   REQUIRED CONFIG)
-find_package(imgui    REQUIRED CONFIG)
+#
+# The web build skips this block: its only runtime dependencies (minizip +
+# zstd) are compiled from source by the Dependency add_subdirectory above and
+# SDL2 comes from the emscripten port. The desktop-only shared libraries
+# (assimp, imgui) and their consumers (Editor, Workspace, Import, Packer,
+# Launcher) are not part of a web build.
+if(NOT EMSCRIPTEN)
+  find_package(SDL2     REQUIRED CONFIG)
+  find_package(SDL2main REQUIRED CONFIG)
+  find_package(minizip  REQUIRED CONFIG)
+  find_package(zstd     REQUIRED CONFIG)
+  find_package(assimp   REQUIRED CONFIG)
+  find_package(imgui    REQUIRED CONFIG)
+endif()
 
 # --------------------------------------------------------------------------- #
 # Engine + tools                                                              #
@@ -309,11 +348,17 @@ find_package(imgui    REQUIRED CONFIG)
 # write to "." (a directory). The `build-` prefix is purely cosmetic
 # for organizing intermediate state; it does not affect the build.
 add_subdirectory(ToolKit   ${GDTK_INTERMEDIATE_DIR}/build-ToolKit)
-add_subdirectory(Modules/Workspace ${GDTK_INTERMEDIATE_DIR}/build-Workspace)
-add_subdirectory(Editor    ${GDTK_INTERMEDIATE_DIR}/build-Editor)
-add_subdirectory(Utils/Launcher ${GDTK_INTERMEDIATE_DIR}/build-Launcher)
-add_subdirectory(Utils/Import   ${GDTK_INTERMEDIATE_DIR}/build-Import)
-add_subdirectory(Utils/Packer   ${GDTK_INTERMEDIATE_DIR}/build-Packer)
+
+# Web builds ship only the engine: the editor, the workspace helper library and
+# the command line tools are host executables that do not compile for
+# emscripten (they need assimp, imgui and a real window).
+if(NOT EMSCRIPTEN)
+  add_subdirectory(Modules/Workspace ${GDTK_INTERMEDIATE_DIR}/build-Workspace)
+  add_subdirectory(Editor    ${GDTK_INTERMEDIATE_DIR}/build-Editor)
+  add_subdirectory(Utils/Launcher ${GDTK_INTERMEDIATE_DIR}/build-Launcher)
+  add_subdirectory(Utils/Import   ${GDTK_INTERMEDIATE_DIR}/build-Import)
+  add_subdirectory(Utils/Packer   ${GDTK_INTERMEDIATE_DIR}/build-Packer)
+endif()
 
 # --------------------------------------------------------------------------- #
 # Install rules                                                               #
@@ -323,56 +368,63 @@ add_subdirectory(Utils/Packer   ${GDTK_INTERMEDIATE_DIR}/build-Packer)
 # Bin<Config>/ carries every shared library the binaries need, so RPATH
 # only requires $ORIGIN.
 #
-#   cmake --install <build_dir> --prefix ${CMAKE_SOURCE_DIR}
+#   cmake --install <build_dir> --prefix ${CMAKE_CURRENT_SOURCE_DIR}
 #
 # build_gdtk.py runs this automatically after a successful build.
-
-# GDTK targets -- install alongside the build output (idempotent since
-# RUNTIME_OUTPUT_DIRECTORY already points at Bin<Config>/).
-install(TARGETS ToolKit Editor Launcher Import Packer Workspace
-  RUNTIME DESTINATION "Bin$<CONFIG>"
-  LIBRARY DESTINATION "Bin$<CONFIG>"
-  ARCHIVE DESTINATION "Bin$<CONFIG>"
-)
-
-# Vendored shared runtime dependencies.
 #
-# install(DIRECTORY ...) and install(FILES ...) both resolve symlinks
-# during install, which breaks the SONAME chain (libSDL2-2.0d.so ->
-# .so.0 -> .so.0.3200.8). install(CODE ...) lets us recreate the
-# symlink tree so the dynamic loader can find libraries by SONAME in
-# the self-contained Bin<Config>/ directory.
-if(UNIX)
-  install(CODE "
-    set(_SRC  \"${TK_DEPS_DIR}\")
-    set(_DEST \"\${CMAKE_INSTALL_PREFIX}/Bin$<CONFIG>\")
-    file(MAKE_DIRECTORY \"\${_DEST}\")
-    foreach(_pat \"libSDL2-*\" \"libimgui*\" \"libassimp*\")
-      file(GLOB _files \"\${_SRC}/\${_pat}\")
-      foreach(_f \${_files})
-        get_filename_component(_name \"\${_f}\" NAME)
-        if(IS_SYMLINK \"\${_f}\")
-          file(READ_SYMLINK \"\${_f}\" _target)
-          execute_process(COMMAND ln -sf \"\${_target}\" \"\${_DEST}/\${_name}\")
-        else()
+# Web builds skip the whole install block: there is nothing to stage next to a
+# host executable, and the targets it references (Editor, Workspace, ...) do
+# not exist there. The game project's own packaging step emits the .js/.wasm/
+# .data bundle instead.
+
+if(NOT EMSCRIPTEN)
+  # GDTK targets -- install alongside the build output (idempotent since
+  # RUNTIME_OUTPUT_DIRECTORY already points at Bin<Config>/).
+  install(TARGETS ToolKit Editor Launcher Import Packer Workspace
+    RUNTIME DESTINATION "Bin$<CONFIG>"
+    LIBRARY DESTINATION "Bin$<CONFIG>"
+    ARCHIVE DESTINATION "Bin$<CONFIG>"
+  )
+
+  # Vendored shared runtime dependencies.
+  #
+  # install(DIRECTORY ...) and install(FILES ...) both resolve symlinks
+  # during install, which breaks the SONAME chain (libSDL2-2.0d.so ->
+  # .so.0 -> .so.0.3200.8). install(CODE ...) lets us recreate the
+  # symlink tree so the dynamic loader can find libraries by SONAME in
+  # the self-contained Bin<Config>/ directory.
+  if(UNIX)
+    install(CODE "
+      set(_SRC  \"${TK_DEPS_DIR}\")
+      set(_DEST \"\${CMAKE_INSTALL_PREFIX}/Bin$<CONFIG>\")
+      file(MAKE_DIRECTORY \"\${_DEST}\")
+      foreach(_pat \"libSDL2-*\" \"libimgui*\" \"libassimp*\")
+        file(GLOB _files \"\${_SRC}/\${_pat}\")
+        foreach(_f \${_files})
+          get_filename_component(_name \"\${_f}\" NAME)
+          if(IS_SYMLINK \"\${_f}\")
+            file(READ_SYMLINK \"\${_f}\" _target)
+            execute_process(COMMAND ln -sf \"\${_target}\" \"\${_DEST}/\${_name}\")
+          else()
+            execute_process(COMMAND \${CMAKE_COMMAND} -E copy_if_different
+              \"\${_f}\" \"\${_DEST}/\")
+          endif()
+        endforeach()
+      endforeach()
+    ")
+  elseif(WIN32)
+    install(CODE "
+      set(_SRC  \"${TK_DEPS_DIR}\")
+      set(_DEST \"\${CMAKE_INSTALL_PREFIX}/Bin$<CONFIG>\")
+      file(MAKE_DIRECTORY \"\${_DEST}\")
+      foreach(_pat \"SDL2*.dll\" \"imgui*.dll\" \"assimp*.dll\")
+        file(GLOB _files \"\${_SRC}/\${_pat}\")
+        foreach(_f \${_files})
+          get_filename_component(_name \"\${_f}\" NAME)
           execute_process(COMMAND \${CMAKE_COMMAND} -E copy_if_different
             \"\${_f}\" \"\${_DEST}/\")
-        endif()
+        endforeach()
       endforeach()
-    endforeach()
-  ")
-elseif(WIN32)
-  install(CODE "
-    set(_SRC  \"${TK_DEPS_DIR}\")
-    set(_DEST \"\${CMAKE_INSTALL_PREFIX}/Bin$<CONFIG>\")
-    file(MAKE_DIRECTORY \"\${_DEST}\")
-    foreach(_pat \"SDL2*.dll\" \"imgui*.dll\" \"assimp*.dll\")
-      file(GLOB _files \"\${_SRC}/\${_pat}\")
-      foreach(_f \${_files})
-        get_filename_component(_name \"\${_f}\" NAME)
-        execute_process(COMMAND \${CMAKE_COMMAND} -E copy_if_different
-          \"\${_f}\" \"\${_DEST}/\")
-      endforeach()
-    endforeach()
-  ")
+    ")
+  endif()
 endif()

@@ -866,11 +866,13 @@ namespace ToolKit
     String projectName      = activeProjectName;
     String publishDirectory = ConcatPaths({ResourcePath(), "..", "Publish", "Web"});
     String firstPart        = ConcatPaths({ResourcePath(), "..", "Codes", "Bin", projectName}) + ".";
-    String files[]          = {firstPart + "data",
-                               firstPart + "html",
-                               firstPart + "js",
-                               firstPart + "wasm",
-                               firstPart + "worker.js"};
+
+    // What emscripten emits depends on its version: the pthread worker bootstrap
+    // used to be its own <name>.worker.js while current releases reuse the main
+    // <name>.js as the worker script. Require the four files every emscripten
+    // bundle has, and take the worker script only when it was emitted.
+    String requiredFiles[] = {firstPart + "data", firstPart + "html", firstPart + "js", firstPart + "wasm"};
+    String optionalFiles[] = {firstPart + "worker.js"};
 
     std::filesystem::create_directories(publishDirectory, m_errorCode);
     if (CheckErrorReturn("Create directories " + publishDirectory))
@@ -878,14 +880,32 @@ namespace ToolKit
       return -1;
     }
 
-    for (int i = 0; i < ArraySize(files); i++)
+    for (int i = 0; i < ArraySize(requiredFiles); i++)
     {
-      std::filesystem::copy(files[i].c_str(),
+      std::filesystem::copy(requiredFiles[i].c_str(),
                             publishDirectory,
                             std::filesystem::copy_options::overwrite_existing,
                             m_errorCode);
 
-      if (CheckErrorReturn("Copy " + files[i] + " to " + publishDirectory))
+      if (CheckErrorReturn("Copy " + requiredFiles[i] + " to " + publishDirectory))
+      {
+        return -1;
+      }
+    }
+
+    for (int i = 0; i < ArraySize(optionalFiles); i++)
+    {
+      if (!std::filesystem::exists(optionalFiles[i]))
+      {
+        continue;
+      }
+
+      std::filesystem::copy(optionalFiles[i].c_str(),
+                            publishDirectory,
+                            std::filesystem::copy_options::overwrite_existing,
+                            m_errorCode);
+
+      if (CheckErrorReturn("Copy " + optionalFiles[i] + " to " + publishDirectory))
       {
         return -1;
       }

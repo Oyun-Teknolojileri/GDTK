@@ -24,7 +24,81 @@ message("Compiling ${GAME_PROJECT_NAME} with ${TK_COMPILER} for platform ${TK_PL
 
 set(HEADERS Game.h)
 
-if(${PLUGIN_BUILD})
+if("${TK_PLATFORM}" STREQUAL "${TK_WEB}")
+    # ----------------------------------------------------------------------- #
+    # Web build (Emscripten): executable that hosts the engine inside one .wasm.
+    #
+    # The engine is a STATIC library here (see the engine's ToolKit/CMakeLists),
+    # so the whole engine links into this executable. SDL2 comes from the
+    # emscripten port instead of the vendored desktop SDL2, and there is no
+    # imgui -- a game target does not use it.
+    #
+    # Emscripten names the bundle after the -o argument, so the executable
+    # suffix is switched to .html. The Packer collects
+    # Codes/Bin/<Project>.{html,js,wasm,data,worker.js} afterwards.
+    # ----------------------------------------------------------------------- #
+    set(CMAKE_EXECUTABLE_SUFFIX ".html")
+
+    add_executable(${GAME_PROJECT_NAME} Game.cpp Main.cpp ${HEADERS})
+
+    target_link_libraries(${GAME_PROJECT_NAME} PRIVATE TK::ToolKit)
+
+    # SDL2 from the emscripten port (both header lookup and the port archive).
+    target_compile_options(${GAME_PROJECT_NAME} PRIVATE -sUSE_SDL=2)
+    target_link_options(${GAME_PROJECT_NAME} PRIVATE -sUSE_SDL=2)
+
+    # Bundle layout. The engine resolves its config from "../Config/Web" and its
+    # pak from "./MinResources.pak" relative to the virtual filesystem root, so
+    # the preload targets must stay /Config and /MinResources.pak.
+    set(_web_project_root "${GAME_CODE_DIR}/..")
+    file(TO_CMAKE_PATH "${_web_project_root}" _web_project_root)
+    set(_web_shell "${GAME_BIN_DIR}/shell_minimal.html")
+    file(TO_CMAKE_PATH "${_web_shell}" _web_shell)
+
+    # target_link_options() drops duplicate items, so both preloads cannot be
+    # listed as the same "--preload-file" option twice. Group them in one
+    # SHELL: option instead, which also keeps each "source@target" pair in a
+    # single argv entry.
+    set(_web_preload "SHELL:--preload-file \"${_web_project_root}/Config@Config\"")
+    if(EXISTS "${_web_project_root}/MinResources.pak")
+        string(APPEND _web_preload " --preload-file \"${_web_project_root}/MinResources.pak@MinResources.pak\"")
+    else()
+        # No pak yet (a bare `cmake --build` without the Packer). Preloading the
+        # loose folder keeps the build runnable, at the cost of a very large
+        # .data file; `Publish Web` builds the pak first and takes the branch
+        # above.
+        message(WARNING
+            "MinResources.pak not found under '${_web_project_root}'. "
+            "Preloading the loose Resources folder instead -- the .data bundle "
+            "will be large. Run the Packer (Publish -> Web) to build the pak.")
+        string(APPEND _web_preload " --preload-file \"${_web_project_root}/Resources@Resources\"")
+    endif()
+
+    # The link command embeds the preloaded files into the bundle, but the build
+    # system only tracks the object files as inputs: an edited Engine.settings or
+    # a rebuilt pak would keep linking the previous data. Declare them as link
+    # dependencies so the bundle is regenerated when they change.
+    set(_web_link_deps "${_web_project_root}/Config/Engine.settings" "${_web_shell}")
+    if(EXISTS "${_web_project_root}/MinResources.pak")
+        list(APPEND _web_link_deps "${_web_project_root}/MinResources.pak")
+    endif()
+    set_property(TARGET ${GAME_PROJECT_NAME} APPEND PROPERTY LINK_DEPENDS ${_web_link_deps})
+
+    # PTHREAD_POOL_SIZE matches the thread pool the engine requests; the pool
+    # size also makes emscripten emit <Project>.worker.js, which the Packer
+    # expects next to the .html.
+    target_link_options(${GAME_PROJECT_NAME} PRIVATE
+        --shell-file "${_web_shell}"
+        "${_web_preload}"
+        -sALLOW_MEMORY_GROWTH=1
+        -sMIN_WEBGL_VERSION=2
+        -sMAX_WEBGL_VERSION=2
+        -sFULL_ES3
+        -sINITIAL_MEMORY=268435456
+        -sSTACK_SIZE=1048576
+        -sPTHREAD_POOL_SIZE=8
+    )
+elseif(${PLUGIN_BUILD})
     # ----------------------------------------------------------------------- #
     # Plugin build: SHARED library loaded by the editor.
     # The editor resolves it at <project>/Codes/Bin/<name><ext> via

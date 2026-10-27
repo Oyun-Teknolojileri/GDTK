@@ -3,6 +3,54 @@ cmake_minimum_required(VERSION 3.16)
 # Builds all dependencies for the ToolKit.
 project(ToolKitDependencies)
 
+#---- WEB (EMSCRIPTEN) ----
+#
+# A web build needs exactly two compiled dependencies: minizip (zip / pak
+# access) and the zstd it decompresses with. SDL2 comes from emscripten's own
+# port (-sUSE_SDL=2), and the desktop-only libraries below (imgui, assimp) are
+# not part of a web game: ToolKit does not reference them, only the editor /
+# launcher / importer do.
+#
+# The web tree is always configured as a subproject of a game project, so the
+# artifacts stay in that project's build tree instead of the engine's
+# Dependency/Intermediate tree, which only holds prebuilt desktop artifacts.
+if(EMSCRIPTEN)
+    set(TK_DEPENDECY_OUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/lib")
+    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${TK_DEPENDECY_OUT_DIR}")
+    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${TK_DEPENDECY_OUT_DIR}")
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${TK_DEPENDECY_OUT_DIR}")
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+    set(MZ_COMPAT ON)
+    set(ZSTD_BUILD_STATIC ON)
+    set(ZSTD_BUILD_SHARED OFF)
+    set(ZSTD_BUILD_PROGRAMS OFF)
+    set(BUILD_SHARED_LIBS OFF)
+    set(MZ_ZLIB OFF)
+    set(MZ_BZIP2 OFF)
+    set(MZ_LZMA OFF)
+    set(MZ_FETCH_LIBS ON)
+    set(MZ_FORCE_FETCH_LIBS ON)
+    set(MZ_PKCRYPT OFF)
+    set(MZ_WZAES OFF)
+    set(MZ_ICONV OFF)
+    set(MZ_OPENSSL OFF CACHE BOOL "" FORCE)
+    # zstd is fetched by minizip-ng into this build tree on the first configure.
+    set(FETCHCONTENT_BASE_DIR "${CMAKE_CURRENT_BINARY_DIR}/minizip-ng/_deps" CACHE STRING "" FORCE)
+    # Emscripten builds are single config; the "d" postfix only exists so the
+    # desktop tree can host four configurations side by side.
+    set(CMAKE_DEBUG_POSTFIX "")
+    add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/minizip-ng ${CMAKE_CURRENT_BINARY_DIR}/minizip-ng)
+
+    # minizip-ng pulls zstd in as `libzstd_static`; the engine links a plain
+    # `zstd` target on every platform, so alias it here.
+    if(TARGET libzstd_static AND NOT TARGET zstd)
+        add_library(zstd ALIAS libzstd_static)
+    endif()
+
+    return()
+endif()
+
 #---- COMMON OUTPUT DIR ----#
 if(CMAKE_BUILD_TYPE)
     set(TK_DEPENDECY_OUT_DIR "${TOOLKIT_DIR}/Dependency/Intermediate/${TK_PLATFORM}/${CMAKE_BUILD_TYPE}")

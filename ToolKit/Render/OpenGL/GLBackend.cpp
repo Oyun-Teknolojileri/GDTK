@@ -1749,6 +1749,21 @@ namespace ToolKit
       return nullptr;
     }
 
+#ifdef TK_WEB
+    // WebGL 2 rejects glMapBufferRange with MAP_READ_BIT, so the pixels a pack
+    // buffer collected can never be handed back to the caller. Reporting that
+    // the read could not be started (the caller keeps its previous data) is the
+    // honest answer; the alternative was an error log per read on every frame.
+    static bool warned = false;
+    if (!warned)
+    {
+      warned = true;
+      TK_LOG("GLBackend::BeginReadPixels - asynchronous read back is not supported on WebGL, "
+             "the depth grid reads are skipped.");
+    }
+    return nullptr;
+#endif
+
     GLenum readFormat = ToGLGraphicType(format);
     if (format == GraphicTypes::FormatDepth24 || format == GraphicTypes::FormatDepth24Stencil8)
     {
@@ -1922,7 +1937,7 @@ namespace ToolKit
 
   void GLBackend::SetDebugLabel(Texture* tex)
   {
-    if (glObjectLabel == nullptr || tex == nullptr || tex->m_label.empty())
+    if (!HasObjectLabel() || tex == nullptr || tex->m_label.empty())
     {
       return;
     }
@@ -1932,12 +1947,12 @@ namespace ToolKit
       return;
     }
     const GLenum identifier = gl->isRenderbuffer ? GL_RENDERBUFFER : GL_TEXTURE;
-    glObjectLabel(identifier, gl->textureId, (GLsizei) tex->m_label.size(), tex->m_label.data());
+    SetObjectLabel(identifier, gl->textureId, (GLsizei) tex->m_label.size(), tex->m_label.data());
   }
 
   void GLBackend::SetDebugLabel(Framebuffer* fb)
   {
-    if (glObjectLabel == nullptr || fb == nullptr || fb->m_label.empty())
+    if (!HasObjectLabel() || fb == nullptr || fb->m_label.empty())
     {
       return;
     }
@@ -1946,7 +1961,7 @@ namespace ToolKit
     {
       return;
     }
-    glObjectLabel(GL_FRAMEBUFFER, gl->fboId, (GLsizei) fb->m_label.size(), fb->m_label.data());
+    SetObjectLabel(GL_FRAMEBUFFER, gl->fboId, (GLsizei) fb->m_label.size(), fb->m_label.data());
   }
 
   bool GLBackend::SupportsFloatTextureLinearFilter() { return TK_GL_OES_texture_float_linear != 0; }

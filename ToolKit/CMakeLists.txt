@@ -26,7 +26,14 @@ if(NOT TK_VULKAN)
   list(FILTER TOOLKIT_SOURCES EXCLUDE REGEX ".*/Render/Vulkan/.*\\.cpp$")
 endif()
 
-add_library(ToolKit SHARED ${TOOLKIT_SOURCES})
+# Emscripten has no dynamic library support without side modules, and a web
+# game links the engine into the single .wasm anyway. Static keeps the whole
+# engine in one link unit with the game project.
+if(EMSCRIPTEN)
+  add_library(ToolKit STATIC ${TOOLKIT_SOURCES})
+else()
+  add_library(ToolKit SHARED ${TOOLKIT_SOURCES})
+endif()
 
 # Each subfolder is added to the public include path so legacy unqualified
 # `#include "X.h"` keeps resolving after the move into subfolders. PUBLIC
@@ -143,7 +150,7 @@ target_precompile_headers(ToolKit PRIVATE
 # Both are noise for this phase; the code is otherwise well-behaved.
 # These flags are GCC/Clang-only -- MSVC has its own /W<level> family
 # and rejects unknown command-line arguments with D8021.
-if(NOT MSVC)
+if(NOT MSVC AND NOT EMSCRIPTEN)
   target_compile_options(ToolKit PRIVATE
     -Wno-changes-meaning
     -Wno-delete-incomplete
@@ -156,11 +163,20 @@ endif()
 # building on a modern compiler without rewriting the UTF-8 helpers.
 # -fpermissive is GCC/Clang-only; MSVC has /permissive- which is the
 # inverse and applied via CMAKE_CXX_EXTENSIONS / CMAKE_CXX_STANDARD
-# elsewhere in the tree.
-if(NOT MSVC)
+# elsewhere in the tree. Emscripten's clang does not know the flag.
+if(NOT MSVC AND NOT EMSCRIPTEN)
   target_compile_options(ToolKit PRIVATE
     -fpermissive
   )
+endif()
+
+# Emscripten: thread support (pthreads) has to be requested on both the compile
+# and the link line. PUBLIC because the game project links ToolKit and must
+# carry the same flag through to its own link step, otherwise emscripten emits
+# a single threaded bundle while the engine was compiled for threads.
+if(EMSCRIPTEN)
+  target_compile_options(ToolKit PUBLIC -pthread)
+  target_link_options(ToolKit PUBLIC -pthread)
 endif()
 
 # Vendored dependency libraries.
@@ -193,7 +209,10 @@ target_link_libraries(ToolKit PRIVATE
 # libGL would force every consumer (Editor) to pull in the system OpenGL
 # ABI, which is unnecessary and complicates distributions without
 # mesa-libGL-devel installed.
-if(UNIX)
+if(EMSCRIPTEN)
+  # Emscripten provides threads through the -pthread flag (see above); there is
+  # no separate pthread / dl library to link against.
+elseif(UNIX)
   target_link_libraries(ToolKit PUBLIC pthread dl)
   if(TK_VULKAN)
     # Linux distro packaging for Vulkan + shaderc is wildly

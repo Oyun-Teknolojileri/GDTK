@@ -19,7 +19,10 @@ if(NOT DEFINED TOOLKIT_DIR)
         set(TOOLKIT_DIR "$ENV{TOOLKIT_DIR}")
     else()
         # Locate the per-user config directory in a platform-agnostic way.
-        if(WIN32)
+        # CMAKE_HOST_WIN32 (not WIN32) because a web build cross compiles from
+        # the host: on the emscripten toolchain WIN32 is false, so the Windows
+        # %APPDATA% config would never be consulted.
+        if(CMAKE_HOST_WIN32)
             if(DEFINED ENV{APPDATA})
                 set(TOOLKIT_CONFIG_DIR "$ENV{APPDATA}/ToolKit/Config")
             endif()
@@ -65,6 +68,42 @@ set(PLUGIN_BUILD FALSE)
 if(NOT DEFINED TK_PLATFORM)
     set(PLUGIN_BUILD TRUE)
     message("Preparing for plugin build.")
+endif()
+
+# --------------------------------------------------------------------------- #
+# Web (Emscripten) build                                                      #
+# --------------------------------------------------------------------------- #
+#
+# A web build is one emscripten pass: the engine, its two runtime dependencies
+# (minizip + zstd) and the game all end up in a single .wasm, so there is no
+# prebuilt engine library to import (that is what ToolKitEngine.cmake does for
+# the desktop targets). The engine root is added as a subproject instead; it
+# detects EMSCRIPTEN on its own and builds only ToolKit plus the web deps.
+#
+# Driven by the Packer (`Publish Web`) with:
+#   emcmake cmake -S . -B ./Intermediate/Web -DTK_PLATFORM=Web -DCMAKE_BUILD_TYPE=<cfg>
+if("${TK_PLATFORM}" STREQUAL "Web")
+    set(TK_WINDOWS "Windows")
+    set(TK_LINUX   "Linux")
+    set(TK_WEB     "Web")
+
+    if(NOT CMAKE_BUILD_TYPE)
+        set(CMAKE_BUILD_TYPE Debug CACHE STRING "" FORCE)
+    endif()
+    set(TK_BUILD_TYPE "${CMAKE_BUILD_TYPE}")
+
+    set(CMAKE_CXX_STANDARD 17)
+    set(CMAKE_CXX_STANDARD_REQUIRED ON)
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+    add_subdirectory("${TOOLKIT_DIR}" "${CMAKE_BINARY_DIR}/GDTK")
+
+    # Same name the desktop path exposes, so Codes/CMakeLists.txt links the
+    # engine the same way in both cases.
+    add_library(TK::ToolKit ALIAS ToolKit)
+
+    add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/Codes ${CMAKE_CURRENT_LIST_DIR}/Codes/Intermediate/${TK_PLATFORM})
+    return()
 endif()
 
 # Consume the pre-built GDTK engine. The helper is the single source of truth

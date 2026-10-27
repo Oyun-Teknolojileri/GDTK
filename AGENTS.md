@@ -849,3 +849,79 @@ The `ResolveTerminal()` function checks `$TERMINAL` first, then probes the
 common emulators in order (see `LinuxUtils.h` for the full list).
 Without any emulator installed, `showConsole` falls back to running the
 command hidden -- the same as `showConsole=false`.
+
+---
+
+## Web (Emscripten) Build
+
+A web build is a single emscripten pass driven from the game project, not a
+variant of the desktop build: `Packer::WebPublish` runs
+`emcmake cmake -S . -B ./Intermediate/Web -DTK_PLATFORM=Web
+-DCMAKE_BUILD_TYPE=<Debug|RelWithDebInfo>` and then `emmake cmake --build`.
+The project root adds the engine root as a subproject, the engine detects
+`EMSCRIPTEN` and builds `ToolKit` as a STATIC library plus minizip/zstd from
+source, and the game links the whole engine into one `.wasm`.
+
+### Environment
+
+`emcmake` / `emmake` / `emcc` must be on `PATH`. The session that runs the
+Packer needs them too, because the Packer shells out with `std::system`:
+
+```powershell
+$emsdk = "C:\Users\Cihan\Documents\emsdk"
+$env:EM_CONFIG = "$emsdk\.emscripten"
+$env:PATH = "$emsdk;$emsdk\upstream\emscripten;$emsdk\node\20.18.0_64bit\bin;$emsdk\python\3.9.2-nuget_64bit;$env:PATH"
+```
+
+### Publishing
+
+Write `PublishArguments.txt` (project name, workspace, app name, deploy flag,
+min/max sdk, orientation, ABI, platform, icon, config, pack-only) and run
+`Bin<Config>/Packer.exe` **from that Bin<Config> directory**: the process
+resolves its default resources as `../Resources/Engine` relative to the working
+directory, and a missing default resource asserts in Debug and logs
+`No default for Class ...`.
+
+- platform `0` = Web, config `0` = Debug, `1` = Develop (RelWithDebInfo),
+  `2` = Deploy (Release, forces a repack).
+- Use the **Release** Packer for packing. A Debug packer asserts in
+  `Framebuffer::SetColorAttachment` while loading a scene, because a null
+  backend render target has no GPU data.
+- Output: `<project>/Publish/Web/` with `<Project>.html/.js/.wasm/.data` and
+  `Run.bat`. The pak it preloads (`MinResources.pak`) is built into the project
+  root when missing.
+
+### Serving the bundle
+
+The bundle is built with pthreads, so it needs a cross origin isolated context.
+`emrun` (what `Run.bat` uses) sends
+`Cross-Origin-Opener-Policy: same-origin` and
+`Cross-Origin-Embedder-Policy: require-corp`; a plain static server or
+`file://` does not, and the page fails on `SharedArrayBuffer`.
+
+### Headless verification
+
+Chrome runs the bundle with a software rasterizer, which is enough to boot the
+engine, compile every shader and capture a frame:
+
+```powershell
+chrome --headless=new --remote-debugging-port=9222 --use-angle=swiftshader ^
+       --enable-unsafe-swiftshader --user-data-dir=<tmp> about:blank
+```
+
+Then drive it over the DevTools protocol (a page per `PUT /json/new?<url>`,
+`Runtime.enable` + `Log.enable`, `Page.captureScreenshot`). The engine's
+`Logger` on web prints through `printf`, so every `TK_LOG` lands in the console
+and a boot problem is visible without a GPU.
+
+### Known engine-side constraints
+
+- `-sPTHREAD_POOL_SIZE` must cover every thread the engine spawns (two frame
+  plus two background workers on the web branch, plus audio/render threads);
+  a short pool logs "thread pool is exhausted" and can deadlock.
+- `glObjectLabel` does not exist on WebGL 2 / GL ES 3.0; use
+  `HasObjectLabel()` / `SetObjectLabel()` from `TKOpenGL.h` instead.
+- `glGetString(GL_EXTENSIONS)` returns null there; extension probing goes
+  through `GL_NUM_EXTENSIONS` + `glGetStringi`.
+- `RenderSystem::AddRenderTask` is a no-op on the `NullBackend`; do not depend
+  on render tasks running in a headless host (Packer, benchmarks).

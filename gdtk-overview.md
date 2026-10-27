@@ -214,6 +214,7 @@ measurement to make per fetch, not a default to inherit.
 
 - Owns the `IGraphicsBackend*` (OpenGL or Vulkan).
 - Maintains **two render task queues** — `m_highQueue` and `m_lowQueue` — and `ExecuteRenderTasks()` drains them in order. Tasks are pushed via `AddRenderTask(RenderTask{ Task, Callback, Priority })`.
+- `AddRenderTask` is a no-op on the `NullBackend` (`RenderSystem::UseNullBackend()`): a headless host has no programs, framebuffers or render targets, so running a task there reaches into uninitialized GPU state. The Packer describes whole scenes through this path.
 - Frame pacing: `StartFrame()`, `EndFrame()`, `Present()`.
 - Hosts the `GpuProgramManager*` (cache of `GpuProgram` = vertex+fragment pair, deduped by stage-shader-id hash).
 - `SetPresentCallback` lets the host (Editor) hook into present for screen capture etc.
@@ -675,6 +676,13 @@ format is not a pixel format and passing one makes the whole read a `GL_INVALID_
 destination untouched. `BlitDepth` copies a depth attachment into another framebuffer's, one to one, and
 rejects a scaled copy of a multisampled source; it sets the destination's draw buffers first so a depth only
 target can be blitted into regardless of the draw buffer state it was created with.
+
+**WebGL 2 is GL ES 3.0, and two entry points the desktop backend takes for granted do not exist there.**
+`glObjectLabel` (GL 4.3 / ES 3.2) has no symbol at all, so referencing it -- even only to compare it with
+`nullptr` -- is a link error; `HasObjectLabel()` / `SetObjectLabel()` in `TKOpenGL.h` hide the split and
+route the web build through the `GL_EXT_debug_label` pointer the loader already resolves. `glGetString(
+GL_EXTENSIONS)` returns null on ES 3.0 as well, so `LoadGlFunctions` enumerates `GL_NUM_EXTENSIONS` with
+`glGetStringi` and matches names with or without the `GL_` prefix (WebGL reports the bare name).
 
 ### 5.3 Vulkan Backend (Vulkan/ directory)
 - `VulkanBackend.h` (main implementation)
@@ -1230,7 +1238,24 @@ collapse into one `aiBone`; same-name FBX animation channels collapse into one
 
 ### 11.2 Packer (`Utils/Packer/`)
 Release / publish CLI. Bundles projects for Windows, Web, Android. Links
-SDL2, ToolKit (no assimp).
+SDL2, ToolKit (no assimp). The editor's Publish dialog drives it through
+`PublishArguments.txt` (project, workspace, app name, platform, config, ...).
+
+`Packer::WebPublish` is the web path: it runs `emcmake cmake -S . -B
+./Intermediate/Web -DTK_PLATFORM=Web -DCMAKE_BUILD_TYPE=<cfg>` then `emmake cmake
+--build ./Intermediate/Web` in the project directory, and copies
+`Codes/Bin/<Project>.{html,js,wasm,data}` (plus `<Project>.worker.js` when the
+installed emscripten emits a separate worker script -- current releases reuse the
+main `.js`) into `Publish/Web`, together with a `Run.bat` that starts `emrun`.
+The `PublishConfig` names map to `Debug` -> `Debug`, `Develop` ->
+`RelWithDebInfo`, `Deploy` -> `Release`. Packing runs first when
+`MinResources.pak` is missing or the config is `Deploy`.
+
+The packer process itself is headless (`RenderSystem::UseNullBackend()` plus the
+dummy SDL video driver), which is why `RenderSystem::AddRenderTask` drops its
+tasks there -- the HDRI bake a scene load schedules used to fault while packing.
+A Debug packer cannot pack the same scenes: `Framebuffer::SetColorAttachment`
+asserts on a render target with no GPU data, which every null backend target has.
 
 ### 11.3 Launcher (`Utils/Launcher/`)
 Project browser / entry point (ImGui-based GUI). Links SDL2, imgui, ToolKit,
@@ -1349,11 +1374,77 @@ VSCode opens `Workspace/Project/Codes` with template code. `F7` in VSCode compil
 ### 12.6 CMake
 Top-level `CMakeLists.txt` requires CMake >= 3.16 and pins C++17
 (`CMAKE_CXX_STANDARD 17`) for every target. `TK_PLATFORM` is auto-detected
-(Windows/Linux/Mac). Prebuilt dependencies are consumed via
+(Windows/Linux/Mac), and `EMSCRIPTEN` is checked first so a web configure is
+classified as `Web` rather than `Linux` (the emscripten platform module reports
+`UNIX=1`, `WIN32=0`). Prebuilt dependencies are consumed via
 `find_package(<dep> REQUIRED CONFIG)` against wrapper configs
 (`Dependency/Config/*-config.cmake`) that `build_dependencies.py` stages
 under `Dependency/Intermediate/<Platform>/<Config>/<dep>/`. Engine binaries
 are installed into `Bin<Config>/` via `cmake --install ... --prefix .`.
+
+The root file is written to be usable as a subproject (`add_subdirectory`), which
+is what the web path does: every source/build path in it is expressed with
+`CMAKE_CURRENT_SOURCE_DIR` / `CMAKE_CURRENT_BINARY_DIR`, not `CMAKE_SOURCE_DIR`.
+
+### 12.7 Web build (Emscripten)
+
+There is no prebuilt web engine: emscripten artifacts cannot be shared with the
+desktop `Bin<Config>/` libraries, so a web build compiles everything in one
+toolchain pass and links one `.wasm`.
+
+```
+project CMakeLists (TK_PLATFORM=Web)
+  add_subdirectory(${TOOLKIT_DIR})        engine root, EMSCRIPTEN branch
+    add_subdirectory(Dependency)          minizip + zstd from source (static)
+    add_subdirectory(ToolKit)             engine as a STATIC library
+  add_subdirectory(Codes)                 game executable, -sUSE_SDL=2
+```
+
+- `Dependency/CMakeLists.txt` keeps a web branch that builds only `minizip` and
+  the `zstd` it fetches (SDL2 comes from the emscripten port, imgui and assimp
+  are desktop-only), and returns before the SDL2/assimp/imgui subprojects.
+- `ToolKit/CMakeLists.txt` builds `ToolKit` as a STATIC library on emscripten and
+  carries `-pthread` on its PUBLIC compile/link interface, so the game inherits
+  the threaded ABI. The engine, editor, workspace helper and CLI tools are not
+  built for web (the root file guards them with `if(NOT EMSCRIPTEN)`).
+- The game project adds a `TK_WEB` branch to its `Codes/CMakeLists.txt`: it sets
+  `CMAKE_EXECUTABLE_SUFFIX ".html"`, links `TK::ToolKit`, pulls SDL2 in with
+  `-sUSE_SDL=2`, preloads `Config@Config` and `MinResources.pak@MinResources.pak`,
+  and passes the bundle flags (`-sMIN/MAX_WEBGL_VERSION=2 -sFULL_ES3
+  -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=268435456 -sSTACK_SIZE=1048576
+  -sPTHREAD_POOL_SIZE=8`, `--shell-file Codes/Bin/shell_minimal.html`). When
+  `MinResources.pak` is absent it falls back to preloading the loose `Resources`
+  folder and warns, so a bare `cmake --build` still produces a runnable bundle.
+- `-sPTHREAD_POOL_SIZE` has to cover every thread the engine spawns (the web
+  branch of `WorkerManager` allocates two frame plus two background workers, plus
+  audio and render system threads). A smaller pool logs "thread pool is
+  exhausted" and can deadlock.
+
+Build and publish:
+
+```bash
+# What Packer::WebPublish runs, from the project directory:
+emcmake cmake -S . -B ./Intermediate/Web -DTK_PLATFORM=Web -DCMAKE_BUILD_TYPE=Debug
+emmake cmake --build ./Intermediate/Web
+```
+
+In the editor: File -> Publish with platform `Web` and config `Debug` or
+`Develop` (RelWithDebInfo). In a terminal: write `PublishArguments.txt` with
+platform `0` and config `0` (Debug) / `1` (Develop) and run `Packer.exe` from
+`Bin<Config>/` (its `../Resources/Engine` must resolve, which is how the engine
+finds its default resources). Everything lands in the project's
+`Publish/Web/`: `<Project>.html`, `.js`, `.wasm`, `.data` and `Run.bat`.
+
+Serving: the bundle is built with pthreads, so it needs a cross origin isolated
+context (`Cross-Origin-Opener-Policy: same-origin` and
+`Cross-Origin-Embedder-Policy: require-corp`). `emrun` sets both; a plain static
+file server or `file://` does not, and the page then fails on `SharedArrayBuffer`.
+
+A standalone build has no editor to choose a startup scene, so the game's
+`Main.cpp` has to load one itself (`Game::OnPlay` logs "no current scene to
+play." otherwise); the game's `Config/Web/Engine.settings` has to be in the
+current serialized format (`<Settings version="v0.5.0">` with `<Object Cl="...">`
+blocks) or the engine reports "No settings node found" and boots on defaults.
 
 ---
 

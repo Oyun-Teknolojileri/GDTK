@@ -73,6 +73,16 @@ namespace ToolKit
 
   void RenderSystem::AddRenderTask(RenderTask task)
   {
+    // A null backend never created a single GPU object, so a render task cannot
+    // run: its programs, framebuffers and render targets are all missing. Drop
+    // the task instead of letting a headless host (the Packer describing a whole
+    // scene) walk into the renderer with uninitialized GPU state -- that used to
+    // fault while packing a scene whose HDRI wanted its irradiance caches baked.
+    if (m_useNullBackend)
+    {
+      return;
+    }
+
     switch (task.Priority)
     {
       case RenderTaskPriority::High:

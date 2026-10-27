@@ -132,4 +132,19 @@ namespace ToolKit
 
   extern void LoadGlFunctions(void* glGetProcAddres);
 
+  // Object debug labels
+  //////////////////////////////////////////
+  //
+  // glObjectLabel() is desktop GL 4.3 / GL ES 3.2. WebGL 2 is GL ES 3.0, where
+  // the entry point does not exist at all -- referencing it is a link error, not
+  // a null pointer. These two wrappers keep the call sites free of the platform
+  // split: on the web the label goes through the GL_EXT_debug_label function
+  // pointer the engine already resolves in LoadGlFunctions().
+
+  /** True when the driver exposes an entry point that can label GL objects. */
+  TK_API bool HasObjectLabel();
+
+  /** Labels a GL object with the entry point the active driver provides. */
+  TK_API void SetObjectLabel(GLenum identifier, GLuint object, GLsizei length, const GLchar* label);
+
 } // namespace ToolKit

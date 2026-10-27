@@ -145,12 +145,62 @@ namespace ToolKit
     tk_glLabelObjectEXT       = (TKGL_LabelObject) emscripten_webgl_get_proc_address("glLabelObjectEXT");
     tk_glGetObjectLabelEXT    = (TKGL_GetObjectLabel) emscripten_webgl_get_proc_address("glGetObjectLabelEXT");
 
-    // Check for extensions directly using WebGL's getExtension function
-    auto extensionsStr        = std::string((const char*) glGetString(GL_EXTENSIONS));
+    // WebGL 2 is GL ES 3.0, where GL_EXTENSIONS is not a valid argument for
+    // glGetString (it returns null there). Query the enumeration instead, and
+    // accept the name with or without the "GL_" prefix: WebGL reports
+    // extensions as "EXT_texture_filter_anisotropic", the GL headers use
+    // "GL_EXT_texture_filter_anisotropic".
+    auto HasExtension = [](const char* name) -> bool
+    {
+      GLint extensionCount = 0;
+      glGetIntegerv(GL_NUM_EXTENSIONS, &extensionCount);
+      for (GLint i = 0; i < extensionCount; ++i)
+      {
+        const char* extension = (const char*) glGetStringi(GL_EXTENSIONS, i);
+        if (extension == nullptr)
+        {
+          continue;
+        }
+        const char* plainName = extension;
+        if (std::strncmp(plainName, "GL_", 3) == 0)
+        {
+          plainName += 3;
+        }
+        if (std::strcmp(plainName, name) == 0)
+        {
+          return true;
+        }
+      }
+      return false;
+    };
 
-    TK_GL_OES_texture_float_linear       = extensionsStr.find("GL_OES_texture_float_linear") != std::string::npos;
-    TK_GL_EXT_texture_filter_anisotropic = extensionsStr.find("GL_EXT_texture_filter_anisotropic") != std::string::npos;
-    TK_GL_EXT_depth_clamp                = extensionsStr.find("GL_EXT_depth_clamp") != String::npos;
+    TK_GL_OES_texture_float_linear       = HasExtension("OES_texture_float_linear");
+    TK_GL_EXT_texture_filter_anisotropic = HasExtension("EXT_texture_filter_anisotropic");
+    TK_GL_EXT_depth_clamp                = HasExtension("EXT_depth_clamp");
+#endif
+  }
+
+  bool HasObjectLabel()
+  {
+#ifdef TK_WEB
+    return tk_glLabelObjectEXT != nullptr;
+#else
+    return glObjectLabel != nullptr;
+#endif
+  }
+
+  void SetObjectLabel(GLenum identifier, GLuint object, GLsizei length, const GLchar* label)
+  {
+#ifdef TK_WEB
+    if (tk_glLabelObjectEXT != nullptr)
+    {
+      tk_glLabelObjectEXT(identifier, object, length, label);
+    }
+#else
+    if (glObjectLabel != nullptr)
+    {
+      glObjectLabel(identifier, object, length, label);
+    }
 #endif
   }
 
