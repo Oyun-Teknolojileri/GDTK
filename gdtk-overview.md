@@ -732,6 +732,16 @@ Base class for every loadable asset. Inherits Object. Has lifecycle: `Load()` (C
 
 - **Mesh** (Mesh.h): `Vertex{pos, norm, tex, tan}` (tangent.w is bitangent sign), `Face{Vertex* v[3]}`, indices, AABB, optional skinning data. `Init` uploads to GPU via backend's `CreateMesh`.
 - **Material** (Material.h): holds `VertexShader` + `FragmentShader` (`ShaderPtr`), references to textures, `RenderState`, `MaterialCacheItem::Data` (std140: colorAlpha, emissiveThreshold, metallicRoughness, textureFlags). Implements `ICacheable` (cached data uploaded via `GetCacheItem()`).
+
+  A material file has two shapes and the reader picks by **shape, not version**:
+  `<Material version><Object Cl="Material"><PB>..</PB><Material><renderState/></Material></Object></Material>`
+  (everything written from v0.4.9 on; every parameter is a `PB` entry, textures as `<ResourceRef>`) and the
+  pre v0.4.9 flat shape, where the material element itself carries `<diffuseTexture>` / `<shader>` children.
+  `Material::DeSerializeImp` keys off the presence of the `<Object>` child and hands the wrapped shape to
+  `DeSerializeImpWrapped`, which runs `Resource::DeSerializeImp` (the `<PB>`) before `ReadRenderStateXml`.
+  Version is the wrong discriminator here: a `m_version == TKV049` check sent every v0.5.0 file into the
+  flat reader, which met the `<Object>` element, warned `Unknown material param: Object` and dropped the
+  whole param block -- a freshly imported material loaded with nothing but its id and name.
 - **Shader** (Shader.h): supports `VertexShader`, `FragmentShader`, `IncludeShader`. Has `ShaderDefine` + `ShaderDefineArray` for variants. Master vs include shader concept: master defines the entry + variant defines; include has no entry. Each shader has `ShaderResourceArray m_resources` declaring texture/UBO bindings with `ViewType` (`Tex2D`, `Tex2DArray`, `TexCube`) — used by Vulkan to pick the right dummy texture for unbound slots.
 - **Texture** (Texture.h), **CubeMap** (Texture.h subclass), **RenderTarget** (offscreen target), **Audio**, **Animation** (`Animation.h` + `AnimationControllerComponent`), **Skeleton** (`Skeleton.h` + `SkeletonComponent`), **SpriteSheet**, **Prefab**, **Plugin**.
 

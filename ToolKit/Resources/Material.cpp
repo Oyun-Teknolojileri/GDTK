@@ -190,12 +190,20 @@ namespace ToolKit
 
   XmlNode* Material::DeSerializeImp(const SerializationFileInfo& info, XmlNode* parent)
   {
-    if (m_version == TKV049)
+    // Assets written from v0.4.9 on wrap the object node:
+    //   <Resource version=".."><Object Cl="Material"><PB>..</PB><Material><renderState/></Material></Object></Resource>
+    // Every material parameter lives in that <PB>, so the base deserialize has to run before the
+    // rasterizer state is read. This check is on the shape and not on the version: a v0.5.0 asset has
+    // exactly the same layout, and the old "everything that is not v0.4.9 is the flat format" split
+    // sent those files into the branch below, which only ever saw the <Object> element and dropped the
+    // whole param block (a freshly imported material loaded with nothing but its id and name).
+    if (parent->first_node(Object::StaticClass()->Name.c_str()) != nullptr)
     {
-      DeSerializeImpV049(info, parent);
+      DeSerializeImpWrapped(info, parent);
       return nullptr;
     }
 
+    // Pre v0.4.9 flat shape: the material element itself carries the texture and shader nodes.
     XmlNode* rootNode = parent;
     for (XmlNode* node = rootNode->first_node(); node; node = node->next_sibling())
     {
@@ -275,18 +283,31 @@ namespace ToolKit
     CheckDefaultShaders();
   }
 
-  void Material::DeSerializeImpV049(const SerializationFileInfo& info, XmlNode* parent)
+  void Material::DeSerializeImpWrapped(const SerializationFileInfo& info, XmlNode* parent)
   {
-    parent            = Super::DeSerializeImp(info, parent);
-    XmlNode* rootNode = parent->first_node(StaticClass()->Name.c_str());
-    for (XmlNode* node = rootNode->first_node(); node; node = node->next_sibling())
+    XmlNode* objectNode = Super::DeSerializeImp(info, parent);
+    if (objectNode == nullptr)
+    {
+      return;
+    }
+
+    // The rasterizer state has its own <Material><renderState/> wrapper inside the object node; a file
+    // written without that wrapper carries the state on the object node itself.
+    XmlNode* container = objectNode->first_node(StaticClass()->Name.c_str());
+    if (container == nullptr)
+    {
+      container = objectNode;
+    }
+
+    for (XmlNode* node = container->first_node(); node; node = node->next_sibling())
     {
       if (strcmp("renderState", node->name()) == 0)
       {
         ReadRenderStateXml(node);
       }
-      else
+      else if (strcmp("PB", node->name()) != 0)
       {
+        // <PB> was already consumed by the base deserialize above.
         TK_WRN("Unknown material param: %s", node->name());
       }
     }
@@ -295,7 +316,7 @@ namespace ToolKit
   void Material::ReadRenderStateXml(XmlNode* renderStateNode)
   {
     // Reads the active rasterizer fields from a <renderState ... /> attribute block. Legacy passive
-    // attributes (depthTest, depthFunc) that may exist on old assets are intentionally ignored —
+    // attributes (depthTest, depthFunc) that may exist on old assets are intentionally ignored --
     // passive state is now owned by the pass, not the material.
     int cullModeInt = (int) cullMode;
     ReadAttr(renderStateNode, "cullMode", cullModeInt);
@@ -507,8 +528,8 @@ namespace ToolKit
     dataSet.GenerateMipMap         = true;
     // Normal map / metallic-roughness textures hold numeric data, not perceptual color: sample
     // values must reach the shader in linear space. The default texture pipeline tags everything
-    // as FormatSRGB8_A8, which makes the GPU apply an sRGB→linear curve on sample and warps
-    // both the (x,y,z) of the normal and the metallic/roughness scalars — observed as bogus
+    // as FormatSRGB8_A8, which makes the GPU apply an sRGB -> linear curve on sample and warps
+    // both the (x,y,z) of the normal and the metallic/roughness scalars, observed as bogus
     // specular highlights on imported PBR models (worse on Vulkan because its sampler applies
     // the curve in hardware strictly; some GL drivers were forgiving). Force linear RGBA8 here.
     // This is a one-shot re-init triggered by Material::Init, mirroring the GL main-branch

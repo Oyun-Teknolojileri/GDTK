@@ -103,8 +103,9 @@ namespace ToolKit
     XmlNode* DeSerializeImp(const SerializationFileInfo& info, XmlNode* parent) override;
     void PostDeSerializeImp(const SerializationFileInfo& info, XmlNode* parent) override;
 
-    /** Deserialize files with version v0.4.9 */
-    void DeSerializeImpV049(const SerializationFileInfo& info, XmlNode* parent);
+    /** Deserialize the object wrapped asset shape, shared by v0.4.9 and current materials: the
+     *  parameters come from the object's <PB>, the rasterizer state from <Material><renderState/>. */
+    void DeSerializeImpWrapped(const SerializationFileInfo& info, XmlNode* parent);
 
     /** Reads the active rasterizer fields from a <renderState> XML element. Used by both the
      *  current and legacy v0.4.9 deserializers; legacy passive attributes are ignored. */
