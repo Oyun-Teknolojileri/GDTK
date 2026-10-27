@@ -404,11 +404,13 @@ the same meshes as before; a pan trades culls for the places the picture genuine
 camera uncovered geometry), 881 to 1440 with it, and 1539 either way under a smooth motion that keeps the blocks
 overlapping.
 
-The scatter rounds and stretches, so cells inside one surface can come up empty without being disocclusion.
-`WarpDepthGrid` fills those from their neighbours only when the covered neighbours sit within `WarpFillDepthTolerance`
-(25%) of each other - one surface rounds, a silhouette does not - and takes the farthest neighbour, so a filled cell can
-never claim more occlusion than the cells beside it already did. On the same pan that recovered roughly 300 meshes per
-frame while leaving the cells that straddle a silhouette empty, which is where a disocclusion starts.
+The scatter also rounds and stretches, so cells inside a single surface can come up empty without being disocclusion,
+and culling loses those. Filling them from their neighbours was implemented and measured, both unconditionally and with
+a depth-consistency gate, and both times it brought the artifact back: on a thin occluder - a railing, a ladder - the gap
+a pan opens is one or two cells wide, and a fill closes it and hands the grid an opinion it does not have. The
+unconditional fill recovered about 300 meshes per frame on the pan and cost 12% of the still camera's drops; the gated
+one recovered most of that back and still closed the thin gaps. Nothing is filled today: the cells stay unknown, and a
+volume that lands on one is drawn.
 
 The test itself now works in the frame's own view: `m_occlusionTestView` and `m_occlusionTestViewProj` hold it,
 `IsOccludedByGrid` projects the volume into it, and the comparison is in view space distance for both sources, so the

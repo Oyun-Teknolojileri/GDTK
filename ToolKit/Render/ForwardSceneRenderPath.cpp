@@ -34,11 +34,6 @@ namespace ToolKit
     /** How many frames in a row a light or a mesh has to look hidden before it is dropped. */
     constexpr int OcclusionStreakToCull = 3;
 
-    /** How close the depths around an empty cell have to be for it to count as a rounding hole of one surface
-     *  rather than the edge of a disocclusion. A silhouette has a near and a far side, and filling it would put a
-     *  depth where the old frame had none - which is the culling that shows sky through the hole it just made. */
-    constexpr float WarpFillDepthTolerance = 0.25f;
-
     /** Below this many candidates the grid test stays on the calling thread: handing a few boxes to the pool
      *  costs more in dispatch than the tests themselves take, and a small scene would pay that every frame.
      *  Above it the pool splits the list and the verdicts are gathered back. Measured on the city scene by
@@ -990,64 +985,12 @@ namespace ToolKit
         m_depthGridCovered[size_t(target)] = 1;
       }
     }
-    // The warp is a scatter, so a block that stretches or rounds leaves cells empty that were never disocclusion. Filling
-    // them keeps culling alive while the camera moves, but only where the neighbourhood says it is safe: the covered
-    // neighbours have to sit at one depth, which is what a hole inside a surface looks like. Where they straddle a
-    // silhouette - a near side and a far side - the cell stays empty, because that is the edge a disocclusion starts at
-    // and a depth invented there is a volume dropped that the camera has just revealed.
-    //
-    // A filled cell never writes over a cell a block actually landed on, and takes the FARTHEST neighbour, so it can
-    // never claim more occlusion than the cells around it already did.
-    for (int y = 0; y < warpH; ++y)
-    {
-      for (int x = 0; x < warpW; ++x)
-      {
-        const size_t index = size_t(y) * size_t(warpW) + size_t(x);
-        if (m_depthGridCovered[index])
-        {
-          continue;
-        }
 
-        float nearest = 0.0f;
-        float farthest = 0.0f;
-        bool filled    = false;
-        for (int dy = -1; dy <= 1; ++dy)
-        {
-          const int ny = y + dy;
-          if (ny < 0 || ny >= warpH)
-          {
-            continue;
-          }
-
-          for (int dx = -1; dx <= 1; ++dx)
-          {
-            const int nx = x + dx;
-            if (nx < 0 || nx >= warpW)
-            {
-              continue;
-            }
-
-            const size_t neighbour = size_t(ny) * size_t(warpW) + size_t(nx);
-            if (!m_depthGridCovered[neighbour])
-            {
-              continue;
-            }
-
-            const float depth = m_depthGridWarped[neighbour];
-            nearest  = filled ? glm::min(nearest, depth) : depth;
-            farthest = filled ? glm::max(farthest, depth) : depth;
-            filled   = true;
-          }
-        }
-
-        // The spread decides: one surface rounds and stretches, a silhouette does not.
-        if (filled && farthest <= nearest * (1.0f + WarpFillDepthTolerance))
-        {
-          m_depthGridWarped[index]  = farthest;
-          m_depthGridCovered[index] = 1;
-        }
-      }
-    }
+    // Nothing is filled here on purpose. A scatter leaves single cell holes that are not disocclusion, and
+    // closing them from the neighbours - even only where the neighbours agree on a depth - was measured to
+    // bring back the very artifact the warp exists for: on a thin occluder, a railing or a ladder, the gap a
+    // pan opens is a cell or two wide, and a fill closes it and hands the grid an opinion it does not have.
+    // The cells stay unknown, and a volume that lands on one is drawn.
     return true;
   }
 
