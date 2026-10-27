@@ -1463,12 +1463,16 @@ namespace ToolKit
         TK_PROFILE_SCOPE("SetPassParams: rebuild jobs");
 
         // Built from every drawable entity, not from the visible ones: the camera only decides
-        // which of these survive the filter below, so the list can outlive a camera move.
+        // which of these survive the filter below, so the list can outlive a camera move. It has
+        // to outlive visibility too, because visibility is not part of the cache key: building
+        // only the visible entities left an entity that was hidden at that moment without a range,
+        // and making it visible again asked for jobs the cache never made, so it drew nothing until
+        // something else forced a rebuild - an object staying invisible for no reason on screen.
         EntityRawPtrArray allEntities = ToEntityRawPtrArray(m_params.Scene->GetEntities());
         m_cachedJobs.clear();
         RenderJobProcessor::CreateRenderJobs(m_cachedJobs,
                                              allEntities,
-                                             false,
+                                             true,
                                              dirEndIndx,
                                              lights,
                                              environments);
@@ -1569,10 +1573,13 @@ namespace ToolKit
           {
             TK_PROFILE_SCOPE("SetPassParams: rebuild dirty jobs");
 
+            // Same reasoning as the full rebuild: a dirty entity that happens to be hidden right now
+            // still needs its jobs, or its range would shrink to nothing and the visibility filter in
+            // the assembly loop would have nothing to hand back when it is shown again.
             m_dirtyJobs.clear();
             RenderJobProcessor::CreateRenderJobs(m_dirtyJobs,
                                                  m_dirtyEntities,
-                                                 false,
+                                                 true,
                                                  dirEndIndx,
                                                  lights,
                                                  environments);
