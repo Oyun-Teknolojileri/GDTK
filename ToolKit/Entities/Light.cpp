@@ -460,7 +460,27 @@ namespace ToolKit
     }
     center /= 8.0f;
 
-    lightCamera->m_node->SetOrientation(m_node->GetOrientation()); // shadow camera direction aligned with light.
+    if (stableFit)
+    {
+      // Derive the light camera from the light direction and a fixed world up instead of copying the
+      // light node orientation. The node may carry roll, and any roll rotates the shadow map in world
+      // space, which is the motion the stable fit exists to remove. Falling back to +X when the light
+      // points straight up or down keeps the cross product out of its degenerate case.
+      Vec3 forward = m_node->GetOrientation() * Vec3(0.0f, 0.0f, 1.0f);
+      Vec3 upRef   = Vec3(0.0f, 1.0f, 0.0f);
+      if (glm::abs(glm::dot(forward, upRef)) > 0.999f)
+      {
+        upRef = Vec3(1.0f, 0.0f, 0.0f);
+      }
+
+      Vec3 right = glm::normalize(glm::cross(upRef, forward));
+      Vec3 up    = glm::cross(forward, right);
+      lightCamera->m_node->SetOrientation(glm::quat_cast(Mat3(right, up, forward)));
+    }
+    else
+    {
+      lightCamera->m_node->SetOrientation(m_node->GetOrientation()); // shadow camera direction aligned with light.
+    }
     lightCamera->m_node->SetTranslation(center);                   // shadow camera is at the frustum center.
 
     EngineSettings& settings = GetEngineSettings();
