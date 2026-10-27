@@ -479,8 +479,11 @@ namespace ToolKit
         radius = glm::max(radius, glm::distance(center, frustum[i]));
       }
 
-      // Quantize radius to absorb floating point noise.
-      radius                = glm::ceil(radius * 2.0f) / 2.0f;
+      // Quantize the radius to 1/16 of a world unit so that float noise in the centroid can not
+      // change the volume. The step has to stay fine: the near cascade is only a few units wide, so
+      // a coarse step (half a unit) would spend a double digit percentage of its extent on slack
+      // and blur the cascade the player looks at most.
+      radius                = glm::ceil(radius * 16.0f) / 16.0f;
       tightShadowVolume.min = Vec3(-radius);
       tightShadowVolume.max = Vec3(radius);
     }
@@ -493,6 +496,16 @@ namespace ToolKit
         Vec4 vertex = lightView * Vec4(frustum[i], 1.0f); // Move the view camera frustum to light's view.
         tightShadowVolume.UpdateBoundary(vertex);         // Calculate its boundary.
       }
+
+      // Pad X and Y so the filter footprint stays inside the map. Only this branch pads: the stable
+      // branch already carries slack from the sphere, and padding it as well would spend resolution
+      // twice for the same reason.
+      const float mapSize   = glm::max(1.0f, float(m_shadowResolution));
+      const float kernelPad = (mapSize + 9.0f) / mapSize;
+      tightShadowVolume.min.x *= kernelPad;
+      tightShadowVolume.max.x *= kernelPad;
+      tightShadowVolume.min.y *= kernelPad;
+      tightShadowVolume.max.y *= kernelPad;
     }
 
     // Now frustum is sitting at the origin in light's view. Since the light was placed at the frustum center,
