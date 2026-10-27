@@ -60,8 +60,10 @@ if("${TK_PLATFORM}" STREQUAL "${TK_WEB}")
     # SHELL: option instead, which also keeps each "source@target" pair in a
     # single argv entry.
     set(_web_preload "SHELL:--preload-file \"${_web_project_root}/Config@Config\"")
+    set(_web_link_deps "")
     if(EXISTS "${_web_project_root}/MinResources.pak")
         string(APPEND _web_preload " --preload-file \"${_web_project_root}/MinResources.pak@MinResources.pak\"")
+        list(APPEND _web_link_deps "${_web_project_root}/MinResources.pak")
     else()
         # No pak yet (a bare `cmake --build` without the Packer). Preloading the
         # loose folder keeps the build runnable, at the cost of a very large
@@ -72,16 +74,18 @@ if("${TK_PLATFORM}" STREQUAL "${TK_WEB}")
             "Preloading the loose Resources folder instead -- the .data bundle "
             "will be large. Run the Packer (Publish -> Web) to build the pak.")
         string(APPEND _web_preload " --preload-file \"${_web_project_root}/Resources@Resources\"")
+        file(GLOB_RECURSE _web_resource_files CONFIGURE_DEPENDS "${_web_project_root}/Resources/*")
+        list(APPEND _web_link_deps ${_web_resource_files})
     endif()
 
     # The link command embeds the preloaded files into the bundle, but the build
     # system only tracks the object files as inputs: an edited Engine.settings or
-    # a rebuilt pak would keep linking the previous data. Declare them as link
-    # dependencies so the bundle is regenerated when they change.
-    set(_web_link_deps "${_web_project_root}/Config/Engine.settings" "${_web_shell}")
-    if(EXISTS "${_web_project_root}/MinResources.pak")
-        list(APPEND _web_link_deps "${_web_project_root}/MinResources.pak")
-    endif()
+    # a rebuilt pak would keep linking the previous data. Declare every preloaded
+    # file as a link dependency, so tuning Config/Web/Engine.settings and running
+    # the build only (no Packer, no repack) regenerates the bundle. The glob is
+    # recursive because the whole Config tree is preloaded, not just the one file.
+    file(GLOB_RECURSE _web_config_files CONFIGURE_DEPENDS "${_web_project_root}/Config/*")
+    list(APPEND _web_link_deps ${_web_config_files} "${_web_shell}")
     set_property(TARGET ${GAME_PROJECT_NAME} APPEND PROPERTY LINK_DEPENDS ${_web_link_deps})
 
     # PTHREAD_POOL_SIZE matches the thread pool the engine requests; the pool
