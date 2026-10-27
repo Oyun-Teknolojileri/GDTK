@@ -658,6 +658,16 @@ frame. `EndReadPixels(handle, nullptr)` discards a read instead of waiting for i
 "nothing read" because its `ReadPixels` is still a TODO, and the null backend has nothing to read at all
 (see 5.3).
 
+**WebGL 2 cannot run the polled pair as designed**, because it has no way to read a pack buffer back into client
+memory: `glMapBufferRange` is not exposed, so the pixels a pack buffer collected can never be handed over. There
+the pair is still the interface the caller uses, but the work moves: `BeginReadPixels` only records the target,
+rectangle and format - no pack buffer, no fence - and `EndReadPixels` fetches the pixels with one `glReadPixels`
+into the caller's pointer, rebinding the remembered framebuffer for the call and restoring the binding after it.
+A null destination still just discards. The polled semantics survive unchanged, because the consume runs a frame
+later, when the target has been rendered and the GPU has caught up, so what is lost is the overlap and not the
+result: the depth grid arrives on the same frame it does on the desktop, one read of 240 x 135 x 16 bytes every
+read interval. The cost is a stall at the top of that frame instead of a transfer behind the frame that issued it.
+
 `PassDesc` = `{ target framebuffer, clearBits, discardBits, clearColor, loadColor, loadDepth }`
 `DrawDesc` = `{ mesh, vertexLayout, indexed, elementCount, instanceCount, drawType }`
 `BackendInitParams` = `{ getProcAddress, windowHandle, errorCallback, vkInstanceExtensions, vkCreateSurface }` — both backends, the editor fills platform-specific bits.
@@ -677,12 +687,14 @@ destination untouched. `BlitDepth` copies a depth attachment into another frameb
 rejects a scaled copy of a multisampled source; it sets the destination's draw buffers first so a depth only
 target can be blitted into regardless of the draw buffer state it was created with.
 
-**WebGL 2 is GL ES 3.0, and two entry points the desktop backend takes for granted do not exist there.**
+**WebGL 2 is GL ES 3.0, and three entry points the desktop backend takes for granted are missing or different there.**
 `glObjectLabel` (GL 4.3 / ES 3.2) has no symbol at all, so referencing it -- even only to compare it with
 `nullptr` -- is a link error; `HasObjectLabel()` / `SetObjectLabel()` in `TKOpenGL.h` hide the split and
 route the web build through the `GL_EXT_debug_label` pointer the loader already resolves. `glGetString(
 GL_EXTENSIONS)` returns null on ES 3.0 as well, so `LoadGlFunctions` enumerates `GL_NUM_EXTENSIONS` with
 `glGetStringi` and matches names with or without the `GL_` prefix (WebGL reports the bare name).
+`glMapBufferRange` is the third: a pack buffer can be filled on the web but never mapped for reading, which is why
+the polled read pair defers its `glReadPixels` to `EndReadPixels` there (see 5.1).
 
 ### 5.3 Vulkan Backend (Vulkan/ directory)
 - `VulkanBackend.h` (main implementation)
