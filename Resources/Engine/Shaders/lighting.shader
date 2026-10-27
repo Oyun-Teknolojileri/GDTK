@@ -302,6 +302,53 @@ vec3 PBRLighting
 				light.bleedingReduction,
 				light.shadowBias
 			);
+
+#if CascadeBlend
+			// Fade into the next cascade across the far end of this one, so the split does not show
+			// as a line across the ground. The band is a fraction of this cascade's own depth span
+			// and not a world distance, so it scales with the cascade.
+			//
+			// The weight is a plain smoothstep and deliberately not dithered: a dithered weight
+			// would put a different blend on neighbouring pixels every frame, which is the temporal
+			// shimmer the stable cascade fit exists to remove.
+			if (cascadeOfThisPixel != numCascade - 1)
+			{
+				const float CascadeBlendBand = 0.15;
+				float splitNear              = cascadeOfThisPixel == 0
+				                                   ? 0.0
+				                                   : graphicConstants.cascadeDistances[cascadeOfThisPixel - 1];
+				float splitFar               = graphicConstants.cascadeDistances[cascadeOfThisPixel];
+				float span                   = max(splitFar - splitNear, 1e-4);
+				float fadeFactor             = (splitFar - depth) / span;
+
+				if (fadeFactor < CascadeBlendBand)
+				{
+					int nextLayer    = 0;
+					vec2 nextCoord   = vec2(0.0);
+					ShadowAtlasLut(shadowMapSize,
+					               light.shadowAtlasCoord,
+					               cascadeOfThisPixel + 1,
+					               nextLayer,
+					               nextCoord);
+
+					nextLayer += light.shadowAtlasLayer;
+
+					float nextShadow = CalculateDirectionalShadow
+					(
+						fragPos,
+						viewCamPos,
+						directionalLightPVMArray[i].projectionViewMatrices[cascadeOfThisPixel + 1],
+						nextCoord / graphicConstants.shadowAtlasSize,
+						resRatio,
+						nextLayer,
+						light.bleedingReduction,
+						light.shadowBias
+					);
+
+					shadow = mix(nextShadow, shadow, smoothstep(0.0, CascadeBlendBand, fadeFactor));
+				}
+			}
+#endif
 		}
 
 		// Directional lights have no distance attenuation

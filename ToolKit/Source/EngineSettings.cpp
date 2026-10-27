@@ -59,6 +59,8 @@ namespace ToolKit
     UseParallelSplitPartitioning_Define(true, "ShadowSettings", 0, 0, 0);
     ParallelSplitLambda_Define(0.5f, "ShadowSettings", 0, 0, 0);
     StableShadowMap_Define(false, "ShadowSettings", 0, 0, 0);
+
+    CascadeBlend_Define(false, "ShadowSettings", 0, 1, 1);
     ShadowAtlasResolution_Define(AtlasResolution1K, "ShadowSettings", 0, 0, 0);
     Use2XShadowAtlasSlots_Define(false, "ShadowSettings", 0, 0, 0);
 

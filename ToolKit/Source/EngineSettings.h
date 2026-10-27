@@ -123,6 +123,15 @@ namespace ToolKit
     /** Prevents shimmering effects by preventing sub-pixel movement with the cost of wasted shadow map resolution. */
     TKDeclareParam(bool, StableShadowMap);
 
+    /**
+     * Blends the two directional cascades across the far end of the nearer one, so a split does not
+     * read as a straight line across the ground. The band is a fixed fraction of the cascade depth
+     * span, set inside lighting.shader, and the weight is not dithered: a dithered weight would
+     * reintroduce the temporal shimmer the stable fit removes. Costs a second shadow lookup inside
+     * the band only, and compiles out entirely when off.
+     */
+    TKDeclareParam(bool, CascadeBlend);
+
     /** Layer resolution of the shadow atlas: 1K, 2K or 4K. See GetShadowAtlasResolution. */
     TKDeclareParam(int, ShadowAtlasResolution);
 

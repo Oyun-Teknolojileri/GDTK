@@ -8,6 +8,7 @@
 	<include name = "materialCacheInc.shader" />
 	<define name = "DrawAlphaMasked" val="0,1" />
 	<define name = "ShadowPCF" val="0,4,9,16" />
+	<define name = "CascadeBlend" val="0,1" />
 	<define name = "highlightCascades" val="0,1" />
 	<define name = "ShadingMode" val="0,1,2,3,4,5" />
 	<texture slot = "0" name = "s_diffuseColor" />

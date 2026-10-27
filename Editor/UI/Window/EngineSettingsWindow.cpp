@@ -320,6 +320,10 @@ namespace ToolKit
           }
         }
 
+        CustomDataView::ShowVariant(&shadows->ParamCascadeBlend(), nullptr);
+        UI::AddTooltipToLastItem("Blends the two neighbouring directional cascades near the split.\n"
+                                 "Hides the seam line across the ground.");
+
         Vec4 data            = shadows->GetCascadeDistancesVal();
         int lastCascadeIndex = shadows->GetCascadeCountVal() - 1;
         Vec2 contentSize     = ImGui::GetContentRegionAvail();
