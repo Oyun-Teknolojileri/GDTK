@@ -119,6 +119,16 @@ namespace ToolKit
     bool ValidateBackbufferSrgbEncoding() override;
     void EnableScissorTest(bool enable) override;
     void ReadPixels(int x, int y, int w, int h, GraphicTypes format, GraphicTypes type, void* data) override;
+    void ReadPixels(Framebuffer* target,
+                    int x,
+                    int y,
+                    int w,
+                    int h,
+                    GraphicTypes format,
+                    GraphicTypes type,
+                    void* data) override;
+
+    bool SupportsAsyncReadPixels() const override;
 
     /**
      * Vulkan has no asynchronous read path yet: ReadPixels itself is still a TODO, so there is nothing to hand

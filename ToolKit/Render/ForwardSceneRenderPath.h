@@ -291,6 +291,8 @@ namespace ToolKit
     struct DepthGridRead
     {
       void* handle        = nullptr;      //!< Backend owned, null when the slot is free.
+      bool pending        = false;        //!< Set when the pixels are still to be read on a backend without async.
+      FramebufferPtr target = nullptr;    //!< The target a pending read takes its pixels from.
       UVec2 size          = UVec2(0);     //!< Blocks across and down.
       OcclusionCamera camera;             //!< The view those depths were reduced with.
       bool linearDepth    = false;        //!< True when the pixels are view space distances.

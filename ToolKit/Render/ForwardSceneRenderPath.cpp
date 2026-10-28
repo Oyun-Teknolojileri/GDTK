@@ -434,10 +434,17 @@ namespace ToolKit
     // and be picked up at the top of the next one.
     //
     // Read while the pass is still open, because the read takes the pass's own target.
-    DepthGridRead* slot = nullptr;
+
+    // A backend without the asynchronous form cannot start anything: the request is parked instead, together with
+    // the target it has to read, and the consume a frame later does the blocking read. That is the cheap point to
+    // read at anyway - the frame that filled the target is behind the GPU by then - while a read started here would
+    // wait for everything this frame has queued.
+    IGraphicsBackend* backend   = renderer->GetBackend();
+    const bool supportsAsync    = backend->SupportsAsyncReadPixels();
+    DepthGridRead* slot         = nullptr;
     for (DepthGridRead& read : m_depthGridReads)
     {
-      if (read.handle == nullptr)
+      if (read.handle == nullptr && !read.pending)
       {
         slot = &read;
         break;
@@ -448,23 +455,27 @@ namespace ToolKit
     {
       TK_PROFILE_SCOPE("BuildDepthGrid: start read");
 
-      void* handle = renderer->GetBackend()->BeginReadPixels(0,
-                                                             0,
-                                                             (int) gridSize.x,
-                                                             (int) gridSize.y,
-                                                             GraphicTypes::FormatRGBA,
-                                                             GraphicTypes::TypeFloat);
-      if (handle != nullptr)
+      void* handle = supportsAsync ? backend->BeginReadPixels(0,
+                                                              0,
+                                                              (int) gridSize.x,
+                                                              (int) gridSize.y,
+                                                              GraphicTypes::FormatRGBA,
+                                                              GraphicTypes::TypeFloat)
+                                   : nullptr;
+
+      if (handle != nullptr || !supportsAsync)
       {
         slot->camera      = CaptureOcclusionCamera(m_params.Cam.get());
         slot->handle      = handle;
+        slot->pending     = !supportsAsync;
+        slot->target      = supportsAsync ? nullptr : m_depthGridFb;
         slot->size        = gridSize;
         slot->linearDepth = linearDepth;
         slot->discard     = false;
         slot->issue       = ++m_depthGridIssue;
       }
-    }
 
+    }
     // Both slots are still transferring. Two frames in flight is what the interval and the two slots are sized
     // for, so this only happens when the driver is late; the grid in hand keeps serving until one frees up and
     // nothing is dropped or waited for on account of it.
@@ -572,7 +583,7 @@ namespace ToolKit
     // consume, which does, throws it away instead of installing it.
     for (DepthGridRead& read : m_depthGridReads)
     {
-      if (read.handle != nullptr)
+      if (read.handle != nullptr || read.pending)
       {
         read.discard = true;
       }
@@ -599,7 +610,7 @@ namespace ToolKit
 
     for (DepthGridRead& read : m_depthGridReads)
     {
-      if (read.handle == nullptr)
+      if (read.handle == nullptr && !read.pending)
       {
         continue;
       }
@@ -607,7 +618,7 @@ namespace ToolKit
       // Either the grid was dropped while this was in flight, or it was issued for a view the grid set in hand
       // no longer describes. Both mean the pixels are worthless, and holding the buffer would only delay the
       // next read.
-      const bool wanted = !read.discard;
+      const bool wanted  = !read.discard;
       const size_t count = (size_t) read.size.x * (size_t) read.size.y;
 
       if (!wanted || count == 0)
@@ -622,9 +633,30 @@ namespace ToolKit
         m_depthGridScratch.resize(count * 4);
       }
 
-      // Still in flight is the normal answer on the frame that issued the read, and not an error.
-      if (!backend->EndReadPixels(read.handle, m_depthGridScratch.data()))
+      if (read.pending)
       {
+        // The backend has no asynchronous form, so nothing was started when the grid was drawn: the pixels are
+        // fetched here, a frame later, which is the point where the frame that filled the target is behind the GPU.
+        // Reading there instead - at the end of the frame that drew it - would wait for that whole frame to finish.
+        {
+          TK_PROFILE_SCOPE("ConsumeDepthGridReads: blocking read");
+
+          backend->ReadPixels(read.target.get(),
+                              0,
+                              0,
+                              (int) read.size.x,
+                              (int) read.size.y,
+                              GraphicTypes::FormatRGBA,
+                              GraphicTypes::TypeFloat,
+                              m_depthGridScratch.data());
+        }
+
+        read.pending = false;
+        read.target  = nullptr;
+      }
+      else if (!backend->EndReadPixels(read.handle, m_depthGridScratch.data()))
+      {
+        // Still in flight is the normal answer on the frame that issued the read, and not an error.
         continue;
       }
 

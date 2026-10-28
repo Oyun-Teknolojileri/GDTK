@@ -179,14 +179,42 @@ namespace ToolKit
     virtual void ReadPixels(int x, int y, int w, int h, GraphicTypes format, GraphicTypes type, void* data) = 0;
 
     /**
+     * Reads pixels from a framebuffer that is not the active pass's target.
+     *
+     * A read on a later frame has no pass to take its target from: the depth grid's is a render target the path
+     * owns, so the framebuffer travels with the request rather than being looked up from the pass state. The
+     * pixels land in @p data before the call returns, i.e. this is the blocking form and the caller is
+     * responsible for calling it at a point where the wait is short.
+     */
+    virtual void ReadPixels(Framebuffer* target,
+                            int x,
+                            int y,
+                            int w,
+                            int h,
+                            GraphicTypes format,
+                            GraphicTypes type,
+                            void* data)                                            = 0;
+
+    /**
+     * Whether BeginReadPixels can hand pixels back a frame later without blocking.
+     *
+     * A backend that answers false is not broken: it simply has no way to collect the pixels on the GPU and map
+     * them afterwards, so a caller that wants the pixels on a later frame does the blocking read with ReadPixels
+     * at that point instead. Asking first is what keeps that decision in one place - otherwise every caller has
+     * to know which platform it is on, and a backend whose asynchronous form silently returns null turns the
+     * feature off without anything saying so.
+     */
+    virtual bool SupportsAsyncReadPixels() const                                         = 0;
+
+    /**
      * Starts a read of the active pass's target that does not stop the caller, and returns a handle to poll.
      *
      * The pixels go into a buffer the backend owns rather than into client memory, so the call returns while
      * the transfer is still in flight. A blocking read costs whatever the GPU still had queued when it was
      * issued - the whole frame, when the read sits at the end of one - and a caller that only needs the data a
      * frame later (the depth grid, which compares it against the camera the frame was drawn with) has no reason
-     * to pay that. A backend without an asynchronous form may do the read here and hand the pixels over on the
-     * first poll; callers must not be able to tell the difference, only the cost.
+     * to pay that. A backend that answers false to SupportsAsyncReadPixels may do the read here and hand the
+     * pixels over on the first poll; callers must not be able to tell the difference, only the cost.
      *
      * @param x,y,w,h is the rectangle to read, in the target's pixels.
      * @param format,type are the pixel layout, as in ReadPixels.

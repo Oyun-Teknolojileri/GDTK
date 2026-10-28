@@ -110,6 +110,16 @@ namespace ToolKit
     bool ValidateBackbufferSrgbEncoding() override;
     void EnableScissorTest(bool enable) override;
     void ReadPixels(int x, int y, int w, int h, GraphicTypes format, GraphicTypes type, void* data) override;
+    void ReadPixels(Framebuffer* target,
+                    int x,
+                    int y,
+                    int w,
+                    int h,
+                    GraphicTypes format,
+                    GraphicTypes type,
+                    void* data) override;
+
+    bool SupportsAsyncReadPixels() const override;
     void* BeginReadPixels(int x, int y, int w, int h, GraphicTypes format, GraphicTypes type) override;
     bool EndReadPixels(void* handle, void* data) override;
     void BlitDepth(Framebuffer* src, Framebuffer* dst) override;

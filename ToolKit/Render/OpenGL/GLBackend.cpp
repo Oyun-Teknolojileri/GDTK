@@ -1669,9 +1669,21 @@ namespace ToolKit
     // passes without a target fall back to the window, the binding is cached, and a read of a render
     // target could quietly return the back buffer - all zeroes - instead. The pass described here is the
     // one the caller bound, so the read is pointed at it explicitly.
-    if (m_activePassDesc.target != nullptr)
+    ReadPixels(m_activePassDesc.target.get(), x, y, w, h, format, type, data);
+  }
+
+  void GLBackend::ReadPixels(Framebuffer* target,
+                             int x,
+                             int y,
+                             int w,
+                             int h,
+                             GraphicTypes format,
+                             GraphicTypes type,
+                             void* data)
+  {
+    if (target != nullptr)
     {
-      BindFramebuffer(GL_READ_FRAMEBUFFER, GetGLFramebufferData(m_activePassDesc.target.get())->fboId);
+      BindFramebuffer(GL_READ_FRAMEBUFFER, GetGLFramebufferData(target)->fboId);
     }
     else
     {
@@ -1696,23 +1708,9 @@ namespace ToolKit
     /** One read in flight: the buffer object holding the pixels, and the fence that says they landed. */
     struct AsyncRead
     {
-      GLuint pbo    = 0;
-      GLsync fence  = nullptr;
-      size_t bytes  = 0;
-
-#ifdef TK_WEB
-      // WebGL 2 cannot map a pack buffer for reading, so there is no way to collect the pixels on the GPU and
-      // hand them over later. The read is deferred to EndReadPixels instead, with the target it was asked for
-      // remembered: by the time it runs, the frame that rendered that target has finished, so the wait is for
-      // the pixels themselves rather than for a whole frame of queued commands.
-      GLuint fbo    = 0;
-      int x         = 0;
-      int y         = 0;
-      int w         = 0;
-      int h         = 0;
-      GLenum format = 0;
-      GLenum type   = 0;
-#endif
+      GLuint pbo   = 0;
+      GLsync fence = nullptr;
+      size_t bytes = 0;
     };
 
     /** Bytes per pixel of a read, from the pixel format and the channel type it asks for. */
@@ -1756,9 +1754,21 @@ namespace ToolKit
     }
   } // namespace
 
+  bool GLBackend::SupportsAsyncReadPixels() const
+  {
+#ifdef TK_WEB
+    // WebGL 2 has no way to read a pack buffer back into client memory: glMapBufferRange is not exposed, so the
+    // pixels a pack buffer collected could never be handed over. A caller that wants them later does the blocking
+    // read then, which is also the cheaper moment - the frame that filled the target has finished by then.
+    return false;
+#else
+    return true;
+#endif
+  }
+
   void* GLBackend::BeginReadPixels(int x, int y, int w, int h, GraphicTypes format, GraphicTypes type)
   {
-    if (w <= 0 || h <= 0)
+    if (!SupportsAsyncReadPixels() || w <= 0 || h <= 0)
     {
       return nullptr;
     }
@@ -1774,25 +1784,6 @@ namespace ToolKit
     {
       return nullptr;
     }
-
-#ifdef TK_WEB
-    // Nothing is read here: the request is only recorded, and EndReadPixels is where the pixels are fetched. The
-    // caller polls for the result on a later frame, which is exactly when that is cheap - the target has been
-    // rendered and the GPU has caught up by then - so the interface stays the same as the desktop path even
-    // though the transfer cannot be overlapped there.
-    AsyncRead* read = new AsyncRead();
-    read->bytes     = bytes;
-    read->fbo       = m_activePassDesc.target != nullptr
-                          ? GetGLFramebufferData(m_activePassDesc.target.get())->fboId
-                          : 0u;
-    read->x         = x;
-    read->y         = y;
-    read->w         = w;
-    read->h         = h;
-    read->format    = readFormat;
-    read->type      = ToGLGraphicType(type);
-    return read;
-#else
 
     // The read framebuffer rule is the same as the blocking path above: the target is the one the caller bound,
     // not necessarily the window.
@@ -1831,7 +1822,6 @@ namespace ToolKit
     }
 
     return read;
-#endif
   }
 
   bool GLBackend::EndReadPixels(void* handle, void* data)
@@ -1842,22 +1832,6 @@ namespace ToolKit
       return true;
     }
 
-#ifdef TK_WEB
-    // The deferred read: the target's pixels are still there, because nothing has rendered into the grid since
-    // the frame that filled it, and the GPU has finished that frame by now. A null destination is the discard
-    // the caller uses when it does not want the pixels at all, and then there is nothing to fetch.
-    if (data != nullptr)
-    {
-      GLint previous = 0;
-      glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &previous);
-      BindFramebuffer(GL_READ_FRAMEBUFFER, read->fbo);
-      glReadPixels(read->x, read->y, read->w, read->h, read->format, read->type, data);
-      BindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint) previous);
-    }
-
-    SafeDel(read);
-    return true;
-#else
     if (data != nullptr)
     {
       // A zero timeout is the point of the whole path: waiting here would be exactly the stall the asynchronous
@@ -1886,7 +1860,6 @@ namespace ToolKit
     glDeleteBuffers(1, &read->pbo);
     SafeDel(read);
     return true;
-#endif
   }
 
   void GLBackend::BlitDepth(Framebuffer* src, Framebuffer* dst)

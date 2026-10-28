@@ -108,6 +108,9 @@ namespace ToolKit
   bool NullBackend::ValidateBackbufferSrgbEncoding() { return false; }
   void NullBackend::EnableScissorTest(bool) {}
   void NullBackend::ReadPixels(int, int, int, int, GraphicTypes, GraphicTypes, void*) {}
+  void NullBackend::ReadPixels(Framebuffer*, int, int, int, int, GraphicTypes, GraphicTypes, void*) {}
+
+  bool NullBackend::SupportsAsyncReadPixels() const { return false; }
 
   void* NullBackend::BeginReadPixels(int, int, int, int, GraphicTypes, GraphicTypes)
   {

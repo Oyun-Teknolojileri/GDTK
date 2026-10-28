@@ -332,6 +332,10 @@ views. A read whose view no longer matches the grid set in hand is thrown away r
 `InvalidateDepthGrid` marks the ones in flight so they cannot land later and reinstate a dropped grid. What that
 buys, same scene, measured with a scope around the issue and the old blocking call:
 
+A backend without the asynchronous form does not skip the read, it moves it: the slot is parked with the target the
+grid was drawn into and the consume above does the blocking read, a frame after the frame that filled it (see 5.1).
+The camera travels with the request either way, so the answer is installed against the view it was reduced with.
+
 | build | blocking read, per read | starting the read, per read |
 |-------|------------------------|-----------------------------|
 | Debug | 1.4 to 7 ms, depending on how much the GPU still had queued | 35 to 60 us |
@@ -658,15 +662,19 @@ frame. `EndReadPixels(handle, nullptr)` discards a read instead of waiting for i
 "nothing read" because its `ReadPixels` is still a TODO, and the null backend has nothing to read at all
 (see 5.3).
 
-**WebGL 2 cannot run the polled pair as designed**, because it has no way to read a pack buffer back into client
-memory: `glMapBufferRange` is not exposed, so the pixels a pack buffer collected can never be handed over. There
-the pair is still the interface the caller uses, but the work moves: `BeginReadPixels` only records the target,
-rectangle and format - no pack buffer, no fence - and `EndReadPixels` fetches the pixels with one `glReadPixels`
-into the caller's pointer, rebinding the remembered framebuffer for the call and restoring the binding after it.
-A null destination still just discards. The polled semantics survive unchanged, because the consume runs a frame
-later, when the target has been rendered and the GPU has caught up, so what is lost is the overlap and not the
-result: the depth grid arrives on the same frame it does on the desktop, one read of 240 x 135 x 16 bytes every
-read interval. The cost is a stall at the top of that frame instead of a transfer behind the frame that issued it.
+**A backend that cannot do that says so, and the caller reads later instead.** `SupportsAsyncReadPixels()` answers
+whether `BeginReadPixels` can hand pixels over a frame after they were asked for. WebGL 2 cannot: it has no way to
+read a pack buffer back into client memory (`glMapBufferRange` is not exposed), so the pixels a pack buffer collected
+can never be handed over. The backend keeps one read path - `ReadPixels`, blocking, optionally from an explicit
+framebuffer - and the engine decides: when the capability is off, `BuildDepthGrid` does not start anything, it parks
+the request in its slot together with the target the grid was drawn into, and `ConsumeDepthGridReads` performs the
+blocking read a frame later. That is the cheap moment on such a platform: the frame that filled the target is behind
+the GPU by then, so the wait is a copy of 240 x 135 x 16 bytes rather than a whole frame of queued commands. Reading
+where the grid is drawn would be the expensive spot, and it is the spot a naive "just read it synchronously" lands on.
+
+The null backend answers false as well, and Vulkan's `ReadPixels` is still a TODO, so on those the grid silently
+never arrives - which is why the engine logs once when a grid read comes back empty rather than leaving culling off
+with nothing said.
 
 `PassDesc` = `{ target framebuffer, clearBits, discardBits, clearColor, loadColor, loadDepth }`
 `DrawDesc` = `{ mesh, vertexLayout, indexed, elementCount, instanceCount, drawType }`
@@ -693,9 +701,9 @@ target can be blitted into regardless of the draw buffer state it was created wi
 route the web build through the `GL_EXT_debug_label` pointer the loader already resolves. `glGetString(
 GL_EXTENSIONS)` returns null on ES 3.0 as well, so `LoadGlFunctions` enumerates `GL_NUM_EXTENSIONS` with
 `glGetStringi` and matches names with or without the `GL_` prefix (WebGL reports the bare name).
-`glMapBufferRange` is the third: a pack buffer can be filled on the web but never mapped for reading, which is why
-the polled read pair defers its `glReadPixels` to `EndReadPixels` there (see 5.1).
-
+`glMapBufferRange` is the third: a pack buffer can be filled on the web but never mapped for reading, which is
+why `SupportsAsyncReadPixels()` answers false there and the depth grid is read at the point it is consumed
+instead (see 5.1).
 ### 5.3 Vulkan Backend (Vulkan/ directory)
 - `VulkanBackend.h` (main implementation)
 - `VulkanBindings.h` (binding marshalling)

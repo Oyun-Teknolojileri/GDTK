@@ -3542,6 +3542,13 @@ namespace ToolKit
     // TODO: vkCmdCopyImageToBuffer + map staging.
   }
 
+  void VulkanBackend::ReadPixels(Framebuffer*, int, int, int, int, GraphicTypes, GraphicTypes, void*)
+  {
+    // TODO: vkCmdCopyImageToBuffer + map staging, from the given target.
+  }
+
+  bool VulkanBackend::SupportsAsyncReadPixels() const { return false; }
+
   void* VulkanBackend::BeginReadPixels(int x, int y, int w, int h, GraphicTypes format, GraphicTypes type)
   {
     // TODO: the read itself does not exist yet - see ReadPixels above. Once it does, the copy goes into a host
