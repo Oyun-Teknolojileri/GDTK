@@ -1085,7 +1085,16 @@ namespace ToolKit
     glTexParameteri(target, GL_TEXTURE_WRAP_S, (GLint) ToGLGraphicType(s.WarpS));
     glTexParameteri(target, GL_TEXTURE_WRAP_T, (GLint) ToGLGraphicType(s.WarpT));
 
-    glTexParameteri(target, GL_TEXTURE_SWIZZLE_A, s.SwizzleAlphaToOne ? GL_ONE : GL_ALPHA);
+    if (s.SwizzleAlphaToOne)
+    {
+      // TEXTURE_SWIZZLE_A is core in GL ES 3.0 but WebGL does not expose it: texParameteri
+      // answers "INVALID_ENUM: invalid parameter name" for every texture that sets it. Nothing in
+      // the engine asks for the swizzle today (SwizzleAlphaToOne defaults to false and no asset or
+      // code path turns it on), so the web build leaves the alpha channel as stored instead.
+#ifndef TK_WEB
+      glTexParameteri(target, GL_TEXTURE_SWIZZLE_A, GL_ONE);
+#endif
+    }
 
     if (s.Target == GraphicTypes::TargetCubeMap)
     {

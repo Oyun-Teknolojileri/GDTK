@@ -368,6 +368,16 @@ namespace ToolKit
 
     void SetTexture(ubyte slotIndx, TexturePtr texture);
 
+    /**
+     * Returns the 1x1 black texture to stand in for a sampler slot the draw does not fill. A slot
+     * with nothing bound reads black opaque in GL, and WebGL reports "there is no texture bound to
+     * the unit" on every draw that samples one, so the stand-in keeps the value the shader already
+     * saw while the unit becomes complete. Cube slots answer null: a 2D stand-in bound to a cube
+     * sampler raises INVALID_OPERATION at the draw, which is worse than the warning.
+     * @param slot is the texture unit, used to look up the view type the program declares for it.
+     */
+    TexturePtr GetDefaultTexture(int slot);
+
     /** Bind a pass-specific uniform buffer (custom slot, not a reserved global UBO).
      *  Preferred entry point for new code - PassRequirements::customUbos drives this. */
     void BindUniformBuffer(int slot, UniformBuffer* ubo);
@@ -579,6 +589,10 @@ namespace ToolKit
     TexturePtr m_shadowAtlas      = nullptr;
     RenderTargetPtr m_brdfLut     = nullptr;
     TexturePtr m_aoTexture        = nullptr;
+
+    /** 1x1 black textures bound to a sampler slot a draw leaves empty; see GetDefaultTexture. */
+    TexturePtr m_defaultTex2D     = nullptr;
+    TexturePtr m_defaultTexArray  = nullptr;
 
     /** Extra textures bound by Render(job) *after* BindPipeline so they survive the Vulkan
      * descriptor wipe in VulkanBackend::BindPipeline. Key is the shader-side sampler name

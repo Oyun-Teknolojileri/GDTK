@@ -102,17 +102,24 @@
           return canvas;
         })(),
         // Engine log level, see Logger.h: 0 everything, 1 warnings and errors, 2 errors only.
-        // The memo (info) lines are the expensive ones in a browser console, so the web build
-        // defaults to 1; ?loglevel=0 in the url restores the full log. The wasm export only touches
-        // an atomic, so it runs here, before the engine boots -- that is when boot's own memo lines
-        // are the noisiest.
-        preRun: [() => {
-          var params = new URLSearchParams(location.search);
-          var level = params.has('loglevel') ? parseInt(params.get('loglevel'), 10) : 1;
-          if (!Number.isNaN(level) && typeof Module._LogLevel === 'function') {
-            Module._LogLevel(level);
+        // The memo (info) lines are the most expensive thing a browser console can receive, so the
+        // web build defaults to 1; ?loglevel=0 in the url restores the full log. The wasm export
+        // only touches an atomic, so it is applied as soon as the runtime answers -- still before
+        // the engine's own main runs, which is when the boot's memo lines are the noisiest.
+        onRuntimeInitialized: () => {
+          try {
+            var params = new URLSearchParams(location.search);
+            var level = params.has('loglevel') ? parseInt(params.get('loglevel'), 10) : 1;
+            if (!Number.isNaN(level) && typeof Module._LogLevel === 'function') {
+              Module._LogLevel(level);
+            }
+          } catch (e) {
+            // A debug build asserts when a wasm export is called before its runtime is ready, and
+            // the log level is never worth taking the page down for.
+            console.warn('log level not applied: ' + e);
           }
-        }],        setStatus: (text) => {
+        },
+        setStatus: (text) => {
           Module.setStatus.last ??= { time: Date.now(), text: '' };
           if (text === Module.setStatus.last.text) return;
           var m = text.match(/([^(]+)\((\d+(\.\d+)?)\/(\d+)\)/);

@@ -1244,9 +1244,69 @@ namespace ToolKit
     m_backend->SubmitPerDrawData(&ubo, sizeof(ubo));
   }
 
+  TexturePtr Renderer::GetDefaultTexture(int slot)
+  {
+    ShaderResource::ViewType viewType = ShaderResource::ViewType::Tex2D;
+    if (m_currentProgram != nullptr)
+    {
+      for (const ShaderResource& res : m_currentProgram->m_resources)
+      {
+        if (res.slot == slot)
+        {
+          viewType = res.viewType;
+          break;
+        }
+      }
+    }
+
+    // A 2D stand-in bound to a cube sampler is INVALID_OPERATION at the draw, worse than the
+    // warning this exists to remove. Cube slots keep the old behaviour (unbound).
+    if (viewType == ShaderResource::ViewType::TexCube)
+    {
+      return nullptr;
+    }
+
+    const bool isArray = viewType == ShaderResource::ViewType::Tex2DArray;
+    TexturePtr& target = isArray ? m_defaultTexArray : m_defaultTex2D;
+    if (target == nullptr)
+    {
+      // Black opaque is what a sampler reads with nothing bound; matching that value keeps the
+      // rendered picture identical while the unit becomes complete.
+      uint8 pixel[4] = {0, 0, 0, 255};
+
+      TextureSettings settings;
+      settings.Target         = isArray ? GraphicTypes::Target2DArray : GraphicTypes::Target2D;
+      settings.WarpS          = GraphicTypes::UVClampToEdge;
+      settings.WarpT          = GraphicTypes::UVClampToEdge;
+      settings.WarpR          = GraphicTypes::UVClampToEdge;
+      settings.MinFilter      = GraphicTypes::SampleNearest;
+      settings.MagFilter      = GraphicTypes::SampleNearest;
+      settings.InternalFormat = GraphicTypes::FormatRGBA8;
+      settings.Format         = GraphicTypes::FormatRGBA;
+      settings.Type           = GraphicTypes::TypeUnsignedByte;
+      settings.Layers         = isArray ? 1 : 0;
+
+      DataTexturePtr tex = MakeNewPtr<DataTexture>();
+      tex->NativeConstruct(1, 1, settings, isArray ? "DefaultBlackArray" : "DefaultBlack");
+      tex->Init(pixel);
+      target = tex;
+    }
+
+    return target;
+  }
+
   void Renderer::SetTexture(ubyte slotIndx, TexturePtr texture)
   {
     assert(slotIndx < RHIConstants::TextureSlotCount && "You exceed texture slot count");
+
+    // A slot left empty does not sample as "nothing": GL hands the shader black opaque and WebGL
+    // logs a warning on every draw that samples it. Bind the black stand-in instead, which is the
+    // same value with a complete unit.
+    if (texture == nullptr)
+    {
+      texture = GetDefaultTexture(slotIndx);
+    }
+
     m_backend->BindTexture(slotIndx, texture);
   }
 

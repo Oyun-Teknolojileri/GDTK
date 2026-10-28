@@ -146,12 +146,17 @@ namespace ToolKit
     tk_glGetObjectLabelEXT    = (TKGL_GetObjectLabel) emscripten_webgl_get_proc_address("glGetObjectLabelEXT");
 
     // Listing an extension in GL_EXTENSIONS is not the same as having it: WebGL turns an
-    // extension's enums on only after the page asks for it, so TEXTURE_MAX_ANISOTROPY_EXT was
-    // rejected with INVALID_ENUM on every 2D texture that enabled the anisotropic filter. Ask for
-    // the ones the engine sets parameters with, before the probes below report on them.
+    // extension's enums on only after the page asks for it. Ask for the ones the engine depends on
+    // before the probes below can report them, or the probe answers "supported" and the call that
+    // uses the extension is rejected:
+    //   - EXT_texture_filter_anisotropic: TEXTURE_MAX_ANISOTROPY_EXT was rejected with INVALID_ENUM
+    //     on every 2D texture that enabled anisotropic filtering.
+    //   - OES_texture_float_linear: linear filtering of a float target (the shadow blur draws into
+    //     an RG16F target and asks for SampleLinear) is rejected the same way.
     if (EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context = emscripten_webgl_get_current_context())
     {
       emscripten_webgl_enable_extension(context, "EXT_texture_filter_anisotropic");
+      emscripten_webgl_enable_extension(context, "OES_texture_float_linear");
     }
 
     // WebGL 2 is GL ES 3.0, where GL_EXTENSIONS is not a valid argument for
