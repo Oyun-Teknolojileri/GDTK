@@ -28,6 +28,24 @@ namespace ToolKit
     Success
   };
 
+  /**
+   * Sets how much of the log reaches the sinks. Every sink is filtered, the log file included: what a
+   * log line costs is the formatting and the write, not only where it lands.
+   *
+   *   0 -- everything: memo, success, command output, warning, error
+   *   1 -- warnings and errors
+   *   2 -- errors only
+   *
+   * Command output always passes, it is the answer to something the user typed. The level lives in a
+   * free function rather than on the Logger because it has to be settable before the engine boots --
+   * the web export is called from the page -- and without a Main instance.
+   * @param level is clamped to 0..2.
+   */
+  TK_API void SetLogLevel(int level);
+
+  /** Returns the active log level. 0 (everything) by default. */
+  TK_API int GetLogLevel();
+
   typedef std::function<void(LogType, const String&)> ConsoleOutputFn;
   typedef std::function<void()> ClearConsoleFn;
 

@@ -925,3 +925,14 @@ and a boot problem is visible without a GPU.
   through `GL_NUM_EXTENSIONS` + `glGetStringi`.
 - `RenderSystem::AddRenderTask` is a no-op on the `NullBackend`; do not depend
   on render tasks running in a headless host (Packer, benchmarks).
+
+### Log noise on the web
+
+The browser console is the slowest sink the engine has, and a boot writes a few
+thousand memo lines into it. `SetLogLevel` (`Logger.h`) filters them: `0`
+everything, `1` warnings and errors, `2` errors only; command output always
+passes. From a page it is `LogLevel(1)` (the shell's helper, backed by the wasm
+export `Module._LogLevel`); the shell reads `?loglevel=` and defaults to `1`, so
+`?loglevel=0` restores the full log. In the editor it is the console command
+`LogLevel 0|1|2`. When a web run looks slow, check the level before blaming the
+renderer.

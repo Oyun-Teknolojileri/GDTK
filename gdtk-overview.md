@@ -206,6 +206,36 @@ measurement to make per fetch, not a default to inherit.
 
 `ShadowSettings::ParameterEventConstructor` is the hook that pushes the values into the graphics constant buffer via `ValueUpdateFn`.
 
+### 3.3 Logging (Logger.h)
+
+`TK_LOG` / `TK_WRN` / `TK_ERR` / `TK_SUCCESS` / `TK_SYSLOG` are the entry points; `Logger` writes to
+`Log.txt` and hands each line to the console sinks the host registers (`SetWriteConsoleFn`, and on the
+web the log goes through `printf`, i.e. the browser console).
+
+`SetLogLevel(int)` / `GetLogLevel()` (free functions in `ToolKit`) filter that stream:
+
+| level | what survives |
+|-------|---------------|
+| `0` | everything: memo, success, command output, warning, error |
+| `1` | warnings and errors |
+| `2` | errors only |
+
+Command output always passes -- it is the answer to something the user typed. The filter sits in front
+of the formatting in `WriteTKConsole` / `WritePlatformConsole` / `Log`, and applies to every sink, the
+file included: a browser console that receives a few thousand memo lines per boot is the slowest sink
+there is. The level is an atomic free variable rather than a `Logger` member so it can be set before
+the engine exists.
+
+Reachable from three places:
+
+- **Editor console**: `LogLevel 0|1|2` (`Editor/UI/Window/ConsoleWindow.*`, registered with the other
+  commands in `ConsoleWindow::ConsoleWindow`).
+- **Web page**: the wasm export `LogLevel` (`extern "C" EMSCRIPTEN_KEEPALIVE` in `Logger.cpp`) is
+  `Module._LogLevel`, wrapped by the shell's `LogLevel(level)` helper, and the shell's `preRun` reads
+  `?loglevel=` (default `1`) so a published bundle does not spam the console and `?loglevel=0` brings
+  the full log back.
+- **C++**: `ToolKit::SetLogLevel(n)` anywhere after the include.
+
 ---
 
 ## 4. Rendering Subsystem

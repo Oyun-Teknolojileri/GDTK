@@ -74,6 +74,9 @@ namespace ToolKit
     const String g_showGraphicsApiLogs("ShowGraphicsApiLogs");
     TK_EDITOR_API void ShowGraphicsApiLogs(TagArgArray tagArgs);
 
+    const String g_setLogLevelCmd("LogLevel");
+    TK_EDITOR_API void SetLogLevelExec(TagArgArray tagArgs);
+
     const String g_setWorkspaceDir("SetWorkspaceDir");
     TK_EDITOR_API void SetWorkspaceDir(TagArgArray tagArgs);
 

@@ -470,6 +470,23 @@ namespace ToolKit
       GetApp()->m_showGraphicsApiErrors = std::atoi(lvl.c_str());
     }
 
+    void SetLogLevelExec(TagArgArray tagArgs)
+    {
+      // LogLevel <0 everything | 1 warnings and errors | 2 errors>
+      if (tagArgs.empty() || tagArgs.front().second.empty())
+      {
+        GetLogger()->WriteTKConsole(
+            LogType::Command,
+            "usage: LogLevel <0 everything | 1 warnings and errors | 2 errors>");
+        return;
+      }
+
+      SetLogLevel(std::atoi(tagArgs.front().second.front().c_str()));
+
+      // Command output survives every level, so the answer stays visible whatever was just picked.
+      GetLogger()->WriteTKConsole(LogType::Command, "Log level: %d", GetLogLevel());
+    }
+
     void SetWorkspaceDir(TagArgArray tagArgs)
     {
       TagArgArray::const_iterator pathTag = GetTag(XmlNodePath.data(), tagArgs);
@@ -824,6 +841,7 @@ namespace ToolKit
       CreateCommand(g_saveMesh, SaveMesh);
       CreateCommand(g_showSelectionBoundary, ShowSelectionBoundary);
       CreateCommand(g_showGraphicsApiLogs, ShowGraphicsApiLogs);
+      CreateCommand(g_setLogLevelCmd, SetLogLevelExec);
       CreateCommand(g_setWorkspaceDir, SetWorkspaceDir);
       CreateCommand(g_loadPlugin, LoadPlugin);
       CreateCommand(g_showShadowFrustum, ShowShadowFrustum);

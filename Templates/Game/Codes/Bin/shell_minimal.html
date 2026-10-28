@@ -101,7 +101,18 @@
 
           return canvas;
         })(),
-        setStatus: (text) => {
+        // Engine log level, see Logger.h: 0 everything, 1 warnings and errors, 2 errors only.
+        // The memo (info) lines are the expensive ones in a browser console, so the web build
+        // defaults to 1; ?loglevel=0 in the url restores the full log. The wasm export only touches
+        // an atomic, so it runs here, before the engine boots -- that is when boot's own memo lines
+        // are the noisiest.
+        preRun: [() => {
+          var params = new URLSearchParams(location.search);
+          var level = params.has('loglevel') ? parseInt(params.get('loglevel'), 10) : 1;
+          if (!Number.isNaN(level) && typeof Module._LogLevel === 'function') {
+            Module._LogLevel(level);
+          }
+        }],        setStatus: (text) => {
           Module.setStatus.last ??= { time: Date.now(), text: '' };
           if (text === Module.setStatus.last.text) return;
           var m = text.match(/([^(]+)\((\d+(\.\d+)?)\/(\d+)\)/);
@@ -139,5 +150,21 @@
       };
     </script>
     {{{ SCRIPT }}}
+    <script>
+      // Engine log level from the page or the devtools console:
+      //   LogLevel(0)  everything
+      //   LogLevel(1)  warnings and errors (the default of this shell)
+      //   LogLevel(2)  errors only
+      function LogLevel(level) {
+        if (typeof Module === 'undefined') {
+          return;
+        }
+        if (typeof Module._LogLevel === 'function') {
+          Module._LogLevel(level);
+        } else if (typeof Module.ccall === 'function') {
+          Module.ccall('LogLevel', null, ['number'], [level]);
+        }
+      }
+    </script>
   </body>
 </html>
