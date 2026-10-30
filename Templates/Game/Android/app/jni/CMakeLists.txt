@@ -18,9 +18,9 @@ if(DEFINED ENV{APPDATA})
     endif()
 endif()
 
-if(NOT EXISTS "${TOOLKIT_DIR}/ToolKit/ToolKit.h")
+if(NOT EXISTS "${TOOLKIT_DIR}/ToolKit/Source/ToolKit.h")
     message(SEND_ERROR "Can't find ToolKit.h in '${TOOLKIT_DIR}'")
-    message(STATUS "Checked path: '${TOOLKIT_DIR}/ToolKit/ToolKit.h'")
+    message(STATUS "Checked path: '${TOOLKIT_DIR}/ToolKit/Source/ToolKit.h'")
     return()
 endif()
 
@@ -49,13 +49,17 @@ else()
 	return()
 endif()
 
-# ToolKit Dependencies.
+# The engine root adds Dependency itself (its Android branch builds minizip, zstd and SDL2 from
+# source, the same way the web branch does). Adding it here as well created every dependency target
+# twice and CMake refused the duplicates.
 set(SKIP_ASSIMP TRUE)
 set(SKIP_IMGUI TRUE)
-add_subdirectory(${TOOLKIT_DIR}/Dependency ${TOOLKIT_DIR}/Dependency/Intermediate/${TK_PLATFORM}/${TK_BUILD_TYPE})
-
-# ToolKit Engine
 add_subdirectory(${TOOLKIT_DIR} ${TOOLKIT_DIR}/Intermediate/${TK_PLATFORM}/ToolKit)
+
+# The game CMake links the engine through the same alias every other platform uses.
+if(TARGET ToolKit AND NOT TARGET TK::ToolKit)
+    add_library(TK::ToolKit ALIAS ToolKit)
+endif()
 
 # Android App project.
 add_subdirectory(src)

@@ -102,6 +102,29 @@ if("${TK_PLATFORM}" STREQUAL "${TK_WEB}")
         -sSTACK_SIZE=1048576
         -sPTHREAD_POOL_SIZE=8
     )
+elseif("${TK_PLATFORM}" STREQUAL "Android")
+    # ----------------------------------------------------------------------- #
+    # Android build: the activity lives in SDL2's Java sources, which load
+    # libSDL2.so and then libmain.so. SDL2main's JNI entry hands over to SDL_main,
+    # i.e. Main.cpp's entry point under SDL's rename, so the game is a SHARED
+    # library called "main" rather than an executable.
+    # ----------------------------------------------------------------------- #
+    add_library(${GAME_PROJECT_NAME} SHARED Game.cpp Main.cpp FpsNavigation.cpp ${HEADERS})
+
+    target_link_libraries(${GAME_PROJECT_NAME} PRIVATE TK::ToolKit SDL2::SDL2 SDL2::SDL2main)
+
+    # Platform libraries the NDK keeps out of the default link: the asset manager and the log
+    # macros (AAssetManager_*, __android_log_print) and the GL ES 3 entry points the engine calls
+    # directly when TK_GL_ES_3_0 is set.
+    target_link_libraries(${GAME_PROJECT_NAME} PRIVATE android log GLESv3 EGL)
+
+    # SDL2main exports the activity entry point, and nothing in this library calls it: without the
+    # explicit undefined reference the linker drops it and the activity finds no native entry.
+    target_link_options(${GAME_PROJECT_NAME} PRIVATE -u ANativeActivity_onCreate)
+
+    # The activity loads this library by the name "main", not by the project name.
+    set_target_properties(${GAME_PROJECT_NAME} PROPERTIES OUTPUT_NAME "main" PREFIX "lib")
+
 elseif(${PLUGIN_BUILD})
     # ----------------------------------------------------------------------- #
     # Plugin build: SHARED library loaded by the editor.

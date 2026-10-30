@@ -14,6 +14,51 @@ project(ToolKitDependencies)
 # The web tree is always configured as a subproject of a game project, so the
 # artifacts stay in that project's build tree instead of the engine's
 # Dependency/Intermediate tree, which only holds prebuilt desktop artifacts.
+if(ANDROID)
+    # An Android build needs the same two compiled libraries as the web one (minizip for the pak,
+    # zstd for the compression method it uses) plus SDL2 itself: the NDK has no emscripten style
+    # port, so the vendored source is compiled here with the Android backends SDL2 enables on its
+    # own (SDL_VIDEO_DRIVER_ANDROID, SDL_AUDIODRIVER_OPENSLES / AAUDIO). Everything else is header
+    # only (glm, stb, RapidXml, poolstl, glad) and needs no build step.
+    set(TK_DEPENDECY_OUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/lib")
+    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${TK_DEPENDECY_OUT_DIR}")
+    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${TK_DEPENDECY_OUT_DIR}")
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${TK_DEPENDECY_OUT_DIR}")
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+    set(MZ_COMPAT ON)
+    set(ZSTD_BUILD_STATIC ON)
+    set(ZSTD_BUILD_SHARED OFF)
+    set(ZSTD_BUILD_PROGRAMS OFF)
+    set(BUILD_SHARED_LIBS OFF)
+    set(MZ_ZLIB OFF)
+    set(MZ_BZIP2 OFF)
+    set(MZ_LZMA OFF)
+    set(MZ_FETCH_LIBS ON)
+    set(MZ_FORCE_FETCH_LIBS ON)
+    set(MZ_PKCRYPT OFF)
+    set(MZ_WZAES OFF)
+    set(MZ_ICONV OFF)
+    set(MZ_OPENSSL OFF CACHE BOOL "" FORCE)
+    set(FETCHCONTENT_BASE_DIR "${CMAKE_CURRENT_BINARY_DIR}/minizip-ng/_deps" CACHE STRING "" FORCE)
+    set(CMAKE_DEBUG_POSTFIX "")
+    add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/minizip-ng ${CMAKE_CURRENT_BINARY_DIR}/minizip-ng)
+
+    if(TARGET libzstd_static AND NOT TARGET zstd)
+        add_library(zstd ALIAS libzstd_static)
+    endif()
+
+    # SDL2 as a shared library: the Java SDLActivity loads libSDL2.so, and SDL2main hands the
+    # activity over to the game's libmain.so.
+    set(SDL_SHARED ON CACHE BOOL "" FORCE)
+    set(SDL_STATIC OFF CACHE BOOL "" FORCE)
+    set(SDL_TEST OFF CACHE BOOL "" FORCE)
+    set(SDL_TESTS OFF CACHE BOOL "" FORCE)
+    add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/SDL2 ${CMAKE_CURRENT_BINARY_DIR}/SDL2)
+
+    return()
+endif()
+
 if(EMSCRIPTEN)
     set(TK_DEPENDECY_OUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/lib")
     set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${TK_DEPENDECY_OUT_DIR}")

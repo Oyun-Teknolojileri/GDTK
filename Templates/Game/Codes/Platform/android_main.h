@@ -32,22 +32,25 @@ namespace ToolKit
 
   AAssetManager* assetManager = nullptr;
 
-  inline void CopyFileToDataPath(String& internalDataPath, const char* file)
+  inline void CopyFileToDataPath(String& internalDataPath, const String& file, bool overwrite = false)
   {
     String destinationPath = ConcatPaths({internalDataPath, file});
 
-    // Check if the file already exists
-    if (access(destinationPath.c_str(), F_OK) != -1)
+    // An existing file is normally kept: the pak is 15 MB and copying it on every start
+    // would be a visible stall. The settings are different: they change with every build,
+    // and a stale one from an older format parses to an empty document, so the caller asks
+    // for those to be refreshed.
+    if (!overwrite && access(destinationPath.c_str(), F_OK) != -1)
     {
-      ANDROID_LOG("File %s already exists, skipping copy.\n", file);
+      ANDROID_LOG("File %s already exists, skipping copy.\n", file.c_str());
       return;
     }
 
-    AAsset* asset = AAssetManager_open(assetManager, file, 0);
+    AAsset* asset = AAssetManager_open(assetManager, file.c_str(), 0);
 
     if (!asset)
     {
-      ANDROID_LOG("Cannot open %s!\n", file);
+      ANDROID_LOG("Cannot open %s!\n", file.c_str());
       return;
     }
 
@@ -67,7 +70,7 @@ namespace ToolKit
     fclose(fileHandle);
     AAsset_close(asset);
 
-    ANDROID_LOG("File %s copied successfully.\n", file);
+    ANDROID_LOG("File %s copied successfully.\n", file.c_str());
   }
 
   // copies all of the engine assets to internal data folder if already not copied
@@ -77,7 +80,7 @@ namespace ToolKit
     mkdir(ConcatPaths({internalDataPath, "Config"}).c_str(), 0777);
 
     CopyFileToDataPath(internalDataPath, TKResourcePak);
-    CopyFileToDataPath(internalDataPath, ConcatPaths({"Config", "Engine.settings"}).c_str());
+    CopyFileToDataPath(internalDataPath, ConcatPaths({"Config", "Engine.settings"}), true);
   }
 
   inline void PlatformPreInit(Main* g_proxy)

@@ -7,9 +7,10 @@
 # through IMPORTED targets so the editor/utils build is fast and
 # incremental.
 #
-# Supported target platforms: Linux (primary), Windows (best-effort).
-# Emscripten (Web) builds only ToolKit and its runtime dependencies -- see the
-# "Web (Emscripten)" blocks below. Android is out of scope for this file.
+# Supported target platforms: Linux (primary), Windows (best-effort), Web
+# (Emscripten) and Android (NDK). Web and Android build only ToolKit and its runtime
+# dependencies -- see the platform blocks below; the editor, the command line tools
+# and the prebuilt desktop dependency tree are desktop only.
 #
 # The root file is consumed in two ways:
 #   1. Standalone: `cmake -S . -B Intermediate/<Plat>/<Cfg>` (desktop default).
@@ -53,7 +54,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Emscripten is checked first: its CMake platform module reports UNIX=1 and
 # WIN32=0, so the generic branches below would otherwise classify a web build
 # as "Linux".
-if(EMSCRIPTEN)
+if(ANDROID)
+  set(TK_PLATFORM "Android")
+elseif(EMSCRIPTEN)
   set(TK_PLATFORM "Web")
 elseif(WIN32)
   set(TK_PLATFORM "Windows")
@@ -147,7 +150,7 @@ message(STATUS "GDTK: building for ${TK_PLATFORM} (config: ${CMAKE_BUILD_TYPE})"
 # Web (Emscripten) builds are always a subproject of a game project, so their
 # artifacts stay inside the caller's build tree instead of touching the engine
 # source tree: <build>/GDTK/bin and <build>/GDTK/build-<module>.
-if(EMSCRIPTEN)
+if(EMSCRIPTEN OR ANDROID)
   set(GDTK_BIN_DIR "${CMAKE_CURRENT_BINARY_DIR}/bin")
   set(GDTK_INTERMEDIATE_DIR "${CMAKE_CURRENT_BINARY_DIR}/build")
 else()
@@ -175,7 +178,7 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${GDTK_BIN_DIR}")
 # Each consumer declares `add_dependencies(... ToolKit)` in its own
 # CMakeLists -- when ToolKit is rebuilt, Import / Packer / Editor /
 # Launcher re-link to stay in sync with the new import library.
-if(UNIX AND NOT EMSCRIPTEN)
+if(UNIX AND NOT EMSCRIPTEN AND NOT ANDROID)
   set(CMAKE_INSTALL_RPATH "$ORIGIN")
   set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
 endif()
@@ -192,7 +195,7 @@ endif()
 
 set(TK_DEPS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/Dependency/Intermediate/${TK_PLATFORM}/${CMAKE_BUILD_TYPE}")
 
-if(EMSCRIPTEN)
+if(EMSCRIPTEN OR ANDROID)
   add_subdirectory(Dependency ${CMAKE_CURRENT_BINARY_DIR}/deps)
 elseif(NOT EXISTS "${TK_DEPS_DIR}")
   message(FATAL_ERROR
@@ -318,7 +321,7 @@ set(CMAKE_PREFIX_PATH "${TK_DEPS_DIR}")
 # SDL2 comes from the emscripten port. The desktop-only shared libraries
 # (assimp, imgui) and their consumers (Editor, Workspace, Import, Packer,
 # Launcher) are not part of a web build.
-if(NOT EMSCRIPTEN)
+if(NOT EMSCRIPTEN AND NOT ANDROID)
   find_package(SDL2     REQUIRED CONFIG)
   find_package(SDL2main REQUIRED CONFIG)
   find_package(minizip  REQUIRED CONFIG)
@@ -352,7 +355,7 @@ add_subdirectory(ToolKit   ${GDTK_INTERMEDIATE_DIR}/build-ToolKit)
 # Web builds ship only the engine: the editor, the workspace helper library and
 # the command line tools are host executables that do not compile for
 # emscripten (they need assimp, imgui and a real window).
-if(NOT EMSCRIPTEN)
+if(NOT EMSCRIPTEN AND NOT ANDROID)
   add_subdirectory(Modules/Workspace ${GDTK_INTERMEDIATE_DIR}/build-Workspace)
   add_subdirectory(Editor    ${GDTK_INTERMEDIATE_DIR}/build-Editor)
   add_subdirectory(Utils/Launcher ${GDTK_INTERMEDIATE_DIR}/build-Launcher)
@@ -377,7 +380,7 @@ endif()
 # not exist there. The game project's own packaging step emits the .js/.wasm/
 # .data bundle instead.
 
-if(NOT EMSCRIPTEN)
+if(NOT EMSCRIPTEN AND NOT ANDROID)
   # GDTK targets -- install alongside the build output (idempotent since
   # RUNTIME_OUTPUT_DIRECTORY already points at Bin<Config>/).
   install(TARGETS ToolKit Editor Launcher Import Packer Workspace
