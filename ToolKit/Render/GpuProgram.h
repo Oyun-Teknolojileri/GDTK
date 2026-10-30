@@ -67,6 +67,8 @@ namespace ToolKit
       return itr != m_textureSlotsByName.end() ? itr->second : -1;
     }
 
+    /** Set when the program came from the backend's binary cache, so nothing compiled it this run. */
+    bool m_loadedFromCache = false;
     IGraphicsBackend* m_backend = nullptr; //!< Set by GpuProgramManager on creation.
   };
 
@@ -128,6 +130,9 @@ namespace ToolKit
    private:
     /** Associative array that holds all the programs. */
     std::unordered_map<std::array<ObjectId, TKGpuPipelineStages>, GpuProgramPtr, IDArrayHash> m_programs;
+
+    /** The same programs keyed by their source hash, for a backend that keeps a binary cache. */
+    std::unordered_map<uint64, GpuProgramPtr> m_programsBySourceHash;
 
     /** Global gpu buffers used to set uniforms / buffers for each created program. */
     struct GlobalGpuBuffers* m_globalGpuBuffers = nullptr;

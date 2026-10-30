@@ -202,6 +202,35 @@ namespace ToolKit
     m_preInitiated    = true;
   }
 
+  void AndroidPhaseMarker(const char* phase)
+  {
+#ifdef TK_ANDROID
+    if (phase == nullptr || Main::GetInstance_noexcep() == nullptr)
+    {
+      return;
+    }
+
+    const String& resourceRoot = Main::GetInstance_noexcep()->m_resourceRoot;
+    if (resourceRoot.empty())
+    {
+      return;
+    }
+
+    std::ofstream boot(ConcatPaths({resourceRoot, "..", "boot.txt"}), std::ios::app);
+    if (!boot.is_open())
+    {
+      return;
+    }
+
+    boot << std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now().time_since_epoch())
+                .count()
+         << " " << phase << "\n";
+#else
+    (void) phase;
+#endif
+  }
+
   void Main::Init()
   {
     assert(m_preInitiated && "Preinitialize first");
@@ -225,6 +254,8 @@ namespace ToolKit
     m_sceneManager->Init();
     m_skeletonManager->Init();
     m_renderSys->Init();
+
+    AndroidPhaseMarker("engine init done");
     m_timing.Init(m_engineSettings->m_graphics->GetFPSVal());
 
     m_gpuBuffers->InitGlobalGpuBuffers();

@@ -16,6 +16,51 @@
 namespace ToolKit
 {
 
+  namespace
+  {
+    /** FNV-1a over both stages: the key of the program cache, see GpuProgramManager::CreateProgram. */
+    uint64 HashProgramSource(const String& vertexSource, const String& fragmentSource)
+    {
+      constexpr uint64 offset = 14695981039346656037ull;
+      constexpr uint64 prime  = 1099511628211ull;
+
+      uint64 hash = offset;
+      for (const String* source : {&vertexSource, &fragmentSource})
+      {
+        for (const char character : *source)
+        {
+          hash ^= (uint64) (unsigned char) character;
+          hash *= prime;
+        }
+      }
+      return hash;
+    }
+
+    /** Fills the binding list a backend needs to restore a program's sampler and UBO slots. */
+    void BuildResourceBindings(GpuProgram* program,
+                               const GlobalGpuBuffers* globalBuffers,
+                               std::vector<ShaderResourceBinding>& bindings)
+    {
+      bindings.reserve(program->m_resources.size());
+      for (const ShaderResource& res : program->m_resources)
+      {
+        ShaderResourceBinding b;
+        b.type = (res.type == ShaderResource::Type::Texture) ? ShaderResourceBinding::Type::Texture
+                                                             : ShaderResourceBinding::Type::UniformBuffer;
+        b.name = res.name.c_str();
+        b.slot = res.slot;
+
+        if (res.type == ShaderResource::Type::UniformBuffer && globalBuffers != nullptr)
+        {
+          if (const GlobalBufferInfo* info = globalBuffers->FindGlobalBufferInfo(res.name.c_str()))
+          {
+            b.buffer = info->buffer;
+          }
+        }
+        bindings.push_back(b);
+      }
+    }
+  } // namespace
   // GpuProgram
   //////////////////////////////////////////
 
@@ -103,6 +148,40 @@ namespace ToolKit
     assert(fragmentShader);
     assert(m_globalGpuBuffers != nullptr);
     assert(m_backend != nullptr);
+
+    // Android only: the program cache is consulted before anything compiles, because the compile is
+    // what a device start spends its time on. Every other backend answers false here and this stays
+    // the single path it always was.
+    const bool useProgramCache = m_backend->SupportsProgramBinary();
+    uint64 sourceHash          = 0;
+
+    if (useProgramCache)
+    {
+      sourceHash = HashProgramSource(vertexShader->m_source, fragmentShader->m_source);
+
+      const auto cached = m_programsBySourceHash.find(sourceHash);
+      if (cached != m_programsBySourceHash.end())
+      {
+        return cached->second;
+      }
+
+      // A hit restores the linked program and leaves both shaders uncompiled: a program that came
+      // from a binary needs no shader objects.
+      GpuProgramPtr loaded = MakeNewPtr<GpuProgram>(vertexShader, fragmentShader);
+      loaded->m_backend    = m_backend;
+
+      if (m_backend->LoadProgramBinary(loaded.get(), sourceHash))
+      {
+        loaded->m_loadedFromCache = true;
+
+        std::vector<ShaderResourceBinding> cacheBindings;
+        BuildResourceBindings(loaded.get(), m_globalGpuBuffers, cacheBindings);
+        m_backend->CreateGpuProgram(loaded.get(), cacheBindings.data(), (int) cacheBindings.size());
+
+        m_programsBySourceHash[sourceHash] = loaded;
+        return m_programsBySourceHash[sourceHash];
+      }
+    }
 
     vertexShader->Init();
     fragmentShader->Init();
@@ -195,6 +274,12 @@ namespace ToolKit
 
       m_backend->CreateGpuProgram(program.get(), bindings.data(), (int) bindings.size());
 
+      if (useProgramCache)
+      {
+        m_backend->SaveProgramBinary(program.get(), sourceHash);
+        m_programsBySourceHash[sourceHash] = program;
+      }
+
       auto key = std::array<ObjectId, TKGpuPipelineStages> {(ObjectId) (uintptr_t) vertexShader->m_gpuData.get(),
                                                             (ObjectId) (uintptr_t) fragmentShader->m_gpuData.get()};
       m_programs[key] = program;
@@ -204,6 +289,10 @@ namespace ToolKit
     return progIter->second;
   }
 
-  void GpuProgramManager::FlushPrograms() { m_programs.clear(); }
+  void GpuProgramManager::FlushPrograms()
+  {
+    m_programs.clear();
+    m_programsBySourceHash.clear();
+  }
 
 } // namespace ToolKit

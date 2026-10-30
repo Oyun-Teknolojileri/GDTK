@@ -96,6 +96,12 @@ namespace ToolKit
 
   void RenderSystem::ExecuteRenderTasks()
   {
+    static bool firstFrameMarker = true;
+    if (firstFrameMarker)
+    {
+      firstFrameMarker = false;
+      AndroidPhaseMarker("first frame");
+    }
     // Immediate execution.
     RenderTaskArray tasks = std::move(m_highQueue);
     for (RenderTask& rt : tasks)

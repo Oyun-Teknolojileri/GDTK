@@ -81,6 +81,13 @@ namespace ToolKit
   #define TK_EXE_EXT          ""
   #define TK_PLUGIN_EXT       ".so"
   #define TK_PLUGIN_DEBUG_EXT "d.so"
+  /**
+   * Appends a boot phase to <resources>/../boot.txt with a monotonic millisecond stamp. Android
+   * only: a phone's logcat does not reliably carry the app's lines, so the phases are written to a
+   * file that adb can pull. A no-op on every other platform.
+   */
+  TK_API void AndroidPhaseMarker(const char* phase);
+
 #endif
 
 } // namespace ToolKit

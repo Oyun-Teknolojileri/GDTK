@@ -66,6 +66,11 @@ namespace ToolKit
     // GpuProgram resource management
     void CreateGpuProgram(GpuProgram* program, const struct ShaderResourceBinding* bindings, int bindingCount) override;
     void DestroyGpuProgram(GpuProgram* program) override;
+
+    // Program binary cache. Only the Android build answers true; see GLProgramCache.h.
+    bool SupportsProgramBinary() const override;
+    bool LoadProgramBinary(GpuProgram* program, uint64 sourceHash) override;
+    void SaveProgramBinary(GpuProgram* program, uint64 sourceHash) override;
     int GetUniformLocation(GpuProgram* program, const char* name) override;
 
     // Texture resource management

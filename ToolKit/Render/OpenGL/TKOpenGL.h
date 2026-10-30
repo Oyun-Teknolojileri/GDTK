@@ -96,6 +96,13 @@ namespace ToolKit
 
   extern int TK_GL_EXT_texture_filter_anisotropic;
 
+  /**
+   * Resolves an entry point through the GL loader the host provided. Android needs it for the
+   * program binary extension (GL_OES_get_program_binary), which glad's generated header does not
+   * declare.
+   */
+  TK_API void* TKGetGlProcAddress(const char* name);
+
 #undef GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT
 #define GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT 0x84FF
 
