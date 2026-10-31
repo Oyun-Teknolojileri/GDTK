@@ -91,13 +91,13 @@ namespace ToolKit
     {
       for (int i = 0; i < m_currentIterationCount; i++)
       {
-        // Calculate current and previous resolutions
-
-        float powVal = glm::pow(2.0f, float(i + 1));
+        // Calculate current and previous resolutions. The chain starts at half of the frame (see
+        // BloomPass::PreRender), so step i writes 2^(i+2) down and reads what step i-1 wrote, 2^(i+1).
+        float powVal = glm::pow(2.0f, float(i + 2));
         const Vec2 factor(1.0f / powVal);
         const UVec2 curRes             = Vec2(mainRes) * factor;
 
-        powVal                         = glm::pow(2.0f, float(i));
+        powVal                         = glm::pow(2.0f, float(i + 1));
         const Vec2 prevRes             = Vec2(mainRes) * Vec2((1.0f / powVal));
 
         // Find previous framebuffer & RT
@@ -181,7 +181,8 @@ namespace ToolKit
 
     // Set to minimum iteration count
     Vec2 mainRes           = UVec2(mainRt->m_width, mainRt->m_height);
-    const IVec2 maxIterCounts(glm::log2(mainRes) - 1.0f);
+    // The chain ends one level below where it used to, so the cap follows it down.
+    const IVec2 maxIterCounts(glm::log2(mainRes) - 2.0f);
     int iterationCount = glm::min(m_params.iterationCount, glm::min(maxIterCounts.x, maxIterCounts.y));
 
     if (iterationCount < 0)
@@ -199,9 +200,14 @@ namespace ToolKit
       m_resampleRenderTargets.resize(iterationCount + 1);
       m_resampleFrameBuffers.resize(iterationCount + 1);
 
+      // The first target is half the frame, not the frame: bloom is a low frequency effect, and a
+      // threshold pass at full resolution plus a chain that starts there costs about three times what
+      // the same chain costs one level down (measured on a PowerVR BXM-8-256: bloom was 65 ms of a
+      // 160 ms frame, and this is most of it). The prefilter still reads the full resolution frame, so
+      // it averages a 2x2 box on the way in and the threshold result is the same, only softer.
       for (int i = 0; i < iterationCount + 1; i++)
       {
-        const Vec2 factor(1.0f / glm::pow(2.0f, float(i)));
+        const Vec2 factor(1.0f / glm::pow(2.0f, float(i + 1)));
         const UVec2 curRes    = Vec2(mainRes) * factor;
 
         m_invalidRenderParams = false;
