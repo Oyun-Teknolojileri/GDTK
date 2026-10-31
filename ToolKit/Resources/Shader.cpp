@@ -7,7 +7,6 @@
 
 #include "Shader.h"
 
-#include "BootStats.h"
 #include "EngineSettings.h"
 #include "FileManager.h"
 #include "GpuProgram.h"
@@ -18,7 +17,6 @@
 #include "ToolKit.h"
 #include "Util.h"
 
-#include <chrono>
 #include <unordered_set>
 
 #include "DebugNew.h"
@@ -256,10 +254,21 @@ namespace ToolKit
       // Try syncing presets.
       GetEngineSettings().m_shaderSettings->SyncDefinesForShader(GetFile(), m_defineArray);
 
-      // Nothing here. Compiling the whole combination set upfront walks every define against every
-      // other one -- the forward shader alone is over a hundred variants -- while a frame uses a
-      // handful. CreateProgram asks for the pair it needs: the program cache answers for a warm
+      // Compiling the whole combination set upfront walks every define against every other one -- the
+      // forward shader alone is over a hundred variants -- while a frame uses a handful. Instead the
+      // selection starts on the first variant of every define, which is what SetDefine edits from
+      // then on, and CreateProgram asks for the pair it needs: the program cache answers for a warm
       // start, and EnsureVariantCompiled compiles exactly one variant on a miss.
+      //
+      // The selection has to exist here, before anything is compiled: SetDefine and the program cache
+      // key both read it, and a program restored from a cache never reaches a compile that could have
+      // initialized it. Leaving it empty was what made every SetDefine fail on a warm start.
+      m_currentDefineValues.clear();
+      for (int i = 0; i < (int) m_defineArray.size(); i++)
+      {
+        m_currentDefineValues.push_back({i, 0});
+      }
+      m_currentVariantKey = VariantKey();
     }
     else
     {
@@ -313,6 +322,36 @@ namespace ToolKit
     m_dirty = false;
   }
 
+  String Shader::VariantKey() const
+  {
+    // The same "Define:Value|Define:Value" form the variant map is keyed by. Built from the current
+    // selection rather than cached: the passes flip a define per frame and ask for the program right
+    // after, so the key has to follow the selection exactly.
+    String key;
+    for (const ShaderDefineIndex& selection : m_currentDefineValues)
+    {
+      if (selection.define < 0 || selection.define >= (int) m_defineArray.size())
+      {
+        continue;
+      }
+
+      const ShaderDefine& definition = m_defineArray[selection.define];
+      if (selection.variant < 0 || selection.variant >= (int) definition.variants.size())
+      {
+        continue;
+      }
+
+      key += definition.define + ":" + definition.variants[selection.variant] + "|";
+    }
+
+    if (!key.empty())
+    {
+      key.pop_back();
+    }
+
+    return key;
+  }
+
   void Shader::SetDefine(const StringView name, const StringView val)
   {
     // Sanity checks.
@@ -324,72 +363,69 @@ namespace ToolKit
       return;
     }
 
-    // Construct the key.
-    String key;
-    bool defineFound = false;
-    for (int i = 0; i < (int) m_currentDefineValues.size(); i++)
+    // Look the define up in the shader's own list, not in the current selection: a selection entry
+    // that was never initialized made every SetDefine of a cache restored shader fail, and a failed
+    // SetDefine silently keeps the previous variant, which is how instanced draws ended up with the
+    // per object program.
+    int defineIndx = -1;
+    for (int i = 0; i < (int) m_defineArray.size(); i++)
     {
-      int defineIndx  = m_currentDefineValues[i].define;
-      int variantIndx = m_currentDefineValues[i].variant;
-
-      // If define found
-      if (m_defineArray[defineIndx].define == name)
+      if (m_defineArray[i].define == name)
       {
-        defineFound = true;
-
-        // find the variant.
-        variantIndx = -1;
-        for (int ii = 0; ii < (int) m_defineArray[defineIndx].variants.size(); ii++)
-        {
-          if (m_defineArray[defineIndx].variants[ii] == val)
-          {
-            variantIndx                      = ii;
-            m_currentDefineValues[i].variant = ii; // update current define variant.
-            break;
-          }
-        }
-
-        if (variantIndx == -1)
-        {
-          // Push a new define variant.
-          m_defineArray[defineIndx].variants.push_back(val.data());
-          variantIndx                      = (int) m_defineArray[defineIndx].variants.size() - 1;
-          m_currentDefineValues[i].variant = variantIndx;
-        }
+        defineIndx = i;
+        break;
       }
-
-      const String& defName  = m_defineArray[defineIndx].define;
-      const String& defVal   = m_defineArray[defineIndx].variants[variantIndx];
-      key                   += defName + ":" + defVal + "|";
     }
 
-    // Check if define was found.
-    if (!defineFound)
+    if (defineIndx < 0)
     {
       // In this case, shader must be updated, because the define is not present in the shader.
       TK_ERR("Define: %s not found in shader: %s", name.data(), GetFile().data());
       return;
     }
 
-    key.pop_back();
-
-    // Set the shader variant.
-    auto handle = m_shaderVariantMap.find(key);
-    if (handle == m_shaderVariantMap.end())
+    int variantIndx = -1;
+    for (int i = 0; i < (int) m_defineArray[defineIndx].variants.size(); i++)
     {
-      // Record the selection. The program that uses this variant is what knows it needs it: it loads
-      // from the program cache, or EnsureVariantCompiled compiles this one variant.
-      m_currentVariantKey = key;
-      return;
+      if (m_defineArray[defineIndx].variants[i] == val)
+      {
+        variantIndx = i;
+        break;
+      }
     }
 
+    if (variantIndx < 0)
+    {
+      // Push a new define variant.
+      m_defineArray[defineIndx].variants.push_back(val.data());
+      variantIndx = (int) m_defineArray[defineIndx].variants.size() - 1;
+    }
+
+    // Init sized the selection with the define list. A shader whose list grew since then (an include
+    // that declares more defines) gets the missing entries here, each on its first variant.
+    if (m_currentDefineValues.size() < m_defineArray.size())
+    {
+      const size_t known = m_currentDefineValues.size();
+      m_currentDefineValues.resize(m_defineArray.size());
+      for (size_t i = known; i < m_defineArray.size(); i++)
+      {
+        m_currentDefineValues[i].define  = (int) i;
+        m_currentDefineValues[i].variant = 0;
+      }
+    }
+
+    m_currentDefineValues[defineIndx].define  = defineIndx;
+    m_currentDefineValues[defineIndx].variant = variantIndx;
+
+    m_currentVariantKey = VariantKey();
+
+    // Point at the variant when it is already compiled. When it is not, the program that uses it is
+    // what brings it in: it restores the binary from the program cache, or EnsureVariantCompiled
+    // compiles this one variant.
+    const auto handle = m_shaderVariantMap.find(m_currentVariantKey);
     if (handle != m_shaderVariantMap.end())
     {
       m_gpuData = handle->second;
-    }
-    else
-    {
-      TK_ERR("Shader variant is not available, keeping the current one. %s [%s]", GetFile().data(), key.data());
     }
   }
 
@@ -397,8 +433,6 @@ namespace ToolKit
 
   XmlNode* Shader::DeSerializeImp(const SerializationFileInfo& info, XmlNode* parent)
   {
-    const auto parseBegin = std::chrono::steady_clock::now();
-
     m_includeFiles.clear();
     m_resources.clear();
 
@@ -526,12 +560,6 @@ namespace ToolKit
 #endif
     }
 
-    // Parsing, include merging and the duplicate prune are all string work on the source; on a
-    // device they cost seconds, which is why the boot report counts them apart from the compiles.
-    BootStats::ShaderSourceParsed((float) std::chrono::duration<double, std::milli>(
-                                    std::chrono::steady_clock::now() - parseBegin)
-                                    .count());
-
     return nullptr;
   }
 
@@ -634,16 +662,20 @@ namespace ToolKit
 
   bool Shader::Compile(String source, const String& variantKey)
   {
-    // Every compile is timed and counted. The lazy variant path compiles exactly the variants the
-    // programs ask for, so these lines are the record of what a start up needs; the totals and the
-    // per variant split are printed by BootStats::Report once the first frame is out.
-    const auto begin        = std::chrono::steady_clock::now();
-    GpuResourceDataPtr data = GetRenderSystem()->GetBackend()->CreateShader(this, source);
-    const float elapsedMs   = (float) std::chrono::duration<double, std::milli>(
-                                std::chrono::steady_clock::now() - begin)
-                                .count();
+    // One line per compile, with the variant: the lazy path compiles exactly the combinations the
+    // programs ask for, so this is the record of what a build needs. A variant that fails to compile
+    // reports through the backend's own error log.
+    const String relPath = GetRelativeResourcePath(GetFile());
+    if (variantKey.empty())
+    {
+      TK_LOG("Shader in compile %s", relPath.c_str());
+    }
+    else
+    {
+      TK_LOG("Shader in compile %s [%s]", relPath.c_str(), variantKey.c_str());
+    }
 
-    BootStats::StageCompiled(GetRelativeResourcePath(GetFile()), variantKey, elapsedMs);
+    GpuResourceDataPtr data = GetRenderSystem()->GetBackend()->CreateShader(this, source);
 
     // Keep the last working variant on failure: a null here reaches the program creation, which
     // dereferences it, so a shader that failed to compile would take the renderer down instead of
@@ -659,9 +691,20 @@ namespace ToolKit
 
   bool Shader::CompileVariantKey(const String& variantKey)
   {
-    if (variantKey.empty() || m_shaderVariantMap.find(variantKey) != m_shaderVariantMap.end())
+    if (variantKey.empty())
     {
       return false;
+    }
+
+    // Already compiled: point the current data at it and report it as ready. Returning false here
+    // used to leave m_gpuData on whichever variant was compiled last, so a program asking for a
+    // variant twice was built from the wrong stage.
+    const auto existing = m_shaderVariantMap.find(variantKey);
+    if (existing != m_shaderVariantMap.end())
+    {
+      m_gpuData           = existing->second;
+      m_currentVariantKey = variantKey;
+      return true;
     }
 
     // The key is the define list the variant is compiled with; rebuild the #define lines from it so
@@ -694,12 +737,13 @@ namespace ToolKit
 
   void Shader::EnsureVariantCompiled()
   {
-    if (!m_currentVariantKey.empty())
+    // The variant the shader is currently selecting, i.e. what a program built right now would use.
+    // Init seeds that selection, so this is never empty for a shader that declares defines.
+    const String key = VariantKey();
+
+    if (!key.empty() && CompileVariantKey(key))
     {
-      if (CompileVariantKey(m_currentVariantKey))
-      {
-        return;
-      }
+      return;
     }
 
     if (m_gpuData != nullptr)
@@ -710,71 +754,6 @@ namespace ToolKit
     if (m_defineArray.empty())
     {
       Compile(m_source);
-      return;
-    }
-
-    // No define was selected: an engine pass creates its program straight after Init. Compile the
-    // first combination so it has valid data; SetDefine picks a different one when it needs to.
-    ShaderDefineCombinaton firstCombo;
-    for (int i = 0; i < (int) m_defineArray.size(); i++)
-    {
-      firstCombo.push_back({i, 0});
-    }
-    CompileWithDefines(m_source, firstCombo);
-  }
-
-  void Shader::CompileWithDefines(String source, const ShaderDefineCombinaton& defineCombo)
-  {
-    String key; // Hash key for the shader variant.
-    String defineText;
-    for (const ShaderDefineIndex& def : defineCombo)
-    {
-      String defName  = m_defineArray[def.define].define;
-      String defVal   = m_defineArray[def.define].variants[def.variant];
-      key            += defName + ":" + defVal + "|";
-
-      defineText     += "#define " + defName + " " + defVal + "\n";
-    }
-
-    key.pop_back(); // remove last "|"
-
-    // Check if the key exist before.
-    // New variants causes recompile, so we can skip existing variants.
-    if (m_shaderVariantMap.find(key) != m_shaderVariantMap.end())
-    {
-      return;
-    }
-
-    // Insert defines.
-    uint mergeLoc = FindShaderMergeLocation(source);
-    source.insert(mergeLoc, defineText);
-
-    if (Compile(source, key))
-    {
-      m_currentDefineValues   = defineCombo;
-      m_shaderVariantMap[key] = m_gpuData;
-    }
-  }
-
-  void Shader::ComplieShaderCombinations(const ShaderDefineArray& defineArray,
-                                         int index,
-                                         ShaderDefineCombinaton& currentCombinaiton)
-  {
-    if (index == defineArray.size())
-    {
-      // Compile the final combo.
-      CompileWithDefines(m_source, currentCombinaiton);
-      return;
-    }
-
-    const ShaderDefine& currentDefine = defineArray[index];
-    for (int vi = (int) currentDefine.variants.size() - 1; vi >= 0; vi--)
-    {
-      currentCombinaiton.push_back({index, vi});
-
-      // Recursively generate combinations
-      ComplieShaderCombinations(defineArray, index + 1, currentCombinaiton);
-      currentCombinaiton.pop_back();
     }
   }
 
@@ -792,13 +771,8 @@ namespace ToolKit
     m_pbrForwardShaderFile    = ShaderPath(TK_DEFAULT_FORWARD_FRAG, true);
     m_defaultVertexShaderFile = ShaderPath(TK_DEFAULT_VERTEX_SHADER, true);
 
-    // The two default shaders pull in the whole include tree, so this is where a device spends its
-    // shader loading time. Marked apart from the manager total to show which of the two it is.
     Create<Shader>(m_pbrForwardShaderFile);
-    BootStats::Mark("forward shader loaded");
-
     Create<Shader>(m_defaultVertexShaderFile);
-    BootStats::Mark("default vertex shader loaded");
   }
 
   bool ShaderManager::CanStore(ClassMeta* Class) { return Class == Shader::StaticClass(); }

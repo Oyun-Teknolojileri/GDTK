@@ -8,7 +8,6 @@
 #include "ToolKit.h"
 
 #include "Audio.h"
-#include "BootStats.h"
 #include "EngineSettings.h"
 #include "FileManager.h"
 #include "GpuProgram.h"
@@ -175,10 +174,6 @@ namespace ToolKit
       return;
     }
 
-    // Everything measured on the boot timeline is measured from here. Logged before the first mark
-    // so a phase can never be reported as negative.
-    BootStats::Begin();
-
     m_logger->Log("Main PreInit");
 
     m_objectFactory = new ObjectFactory();
@@ -205,8 +200,6 @@ namespace ToolKit
     m_fileManager     = new FileManager();
 
     m_preInitiated    = true;
-
-    BootStats::Mark("main preinit done");
   }
 
   void Main::Init()
@@ -221,45 +214,23 @@ namespace ToolKit
 
     m_logger->Log("Main Init");
 
-    // One mark per step a slow start can be hiding in: a device spends seconds here and the total
-    // alone does not say which manager opened the pak and walked it.
     m_workerManager->Init();
     m_animationMan->Init();
-    BootStats::Mark("worker and animation managers init");
-
     m_textureMan->Init();
-    BootStats::Mark("texture manager init");
-
     m_meshMan->Init();
-    BootStats::Mark("mesh manager init");
-
     m_spriteSheetMan->Init();
     m_audioMan->Init();
-    BootStats::Mark("spritesheet and audio managers init");
-
     m_shaderMan->Init();
-    BootStats::Mark("shader manager init");
-
     m_materialManager->Init();
-    BootStats::Mark("material manager init");
-
     m_sceneManager->Init();
-    BootStats::Mark("scene manager init");
-
     m_skeletonManager->Init();
-    BootStats::Mark("managers init done");
-
     m_renderSys->Init();
-
-    BootStats::Mark("render system init done");
 
     m_timing.Init(m_engineSettings->m_graphics->GetFPSVal());
 
     m_gpuBuffers->InitGlobalGpuBuffers();
 
     m_initiated = true;
-
-    BootStats::Mark("engine init done");
   }
 
   void Main::PostInit() { m_pluginManager->Init(); }

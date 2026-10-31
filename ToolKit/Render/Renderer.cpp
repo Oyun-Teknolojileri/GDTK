@@ -8,7 +8,6 @@
 #include "Renderer.h"
 
 #include "AABBOverrideComponent.h"
-#include "BootStats.h"
 #include "Camera.h"
 #include "DirectionComponent.h"
 #include "Drawable.h"
@@ -826,8 +825,6 @@ namespace ToolKit
 
       SetFramebuffer(prevFrameBuffer, GraphicBitFields::None);
     }
-
-    BootStats::Mark("brdf lut ready");
   }
 
   void Renderer::SetAmbientOcclusionTexture(TexturePtr aoTexture)
@@ -1644,8 +1641,6 @@ namespace ToolKit
 
     Stats::EndGpuScope();
 
-    BootStats::Mark("diffuse env map ready");
-
     return newCubeMap;
   }
 
@@ -1784,8 +1779,6 @@ namespace ToolKit
     newCubeMap->Consume(cubemapRt);
 
     Stats::EndGpuScope();
-
-    BootStats::Mark("specular env map ready");
 
     return newCubeMap;
   }

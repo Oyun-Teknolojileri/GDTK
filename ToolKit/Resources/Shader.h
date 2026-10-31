@@ -94,9 +94,16 @@ namespace ToolKit
     void SetDefine(const StringView name, const StringView val);
 
     /**
-     * Compiles the variant m_currentVariantKey names, if it is not compiled yet. Android only in
-     * effect: the device build compiles the variants a program asks for instead of the whole
-     * combination set, so a program cache miss brings in exactly one.
+     * The define combination the shader is selecting right now, in the "Define:Value|Define:Value"
+     * form the variant map and the program cache are keyed by. Init seeds it with the first variant
+     * of every define, SetDefine moves it.
+     */
+    String VariantKey() const;
+
+    /**
+     * Compiles the selected variant, if it is not compiled yet. The device build compiles the
+     * variants a program asks for instead of the whole combination set, so a program cache miss
+     * brings in exactly one.
      */
     void EnsureVariantCompiled();
 
@@ -132,14 +139,6 @@ namespace ToolKit
     };
 
     typedef std::vector<ShaderDefineIndex> ShaderDefineCombinaton;
-
-    /** Update the source file with the given define combinations and compile the shader. */
-    void CompileWithDefines(String source, const ShaderDefineCombinaton& defineArray);
-
-    /** Constructs shader define combinations and compiles each combination. */
-    void ComplieShaderCombinations(const ShaderDefineArray& defineArray,
-                                   int index,
-                                   ShaderDefineCombinaton& currentCombination);
 
    public:
     /** Type of the shader. */

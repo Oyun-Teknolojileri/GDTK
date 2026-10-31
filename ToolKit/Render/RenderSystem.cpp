@@ -7,7 +7,6 @@
 
 #include "RenderSystem.h"
 
-#include "BootStats.h"
 #include "Image.h"
 #include "Logger.h"
 #include "NullBackend.h"
@@ -187,27 +186,6 @@ namespace ToolKit
 
   void RenderSystem::Present()
   {
-    // The boot report waits for the tenth present. The first one only pushes the frame the host
-    // prepared before the game had a render task, and the passes create the programs they need on
-    // the frames they first run in, so a report taken on the first frame would undercount: the
-    // instanced and alpha masked variants of the depth passes show up a couple of frames later.
-    constexpr uint reportAtPresent = 10;
-
-    static uint presentCount = 0;
-    if (presentCount < reportAtPresent)
-    {
-      presentCount++;
-
-      if (presentCount == 1)
-      {
-        BootStats::Mark("first frame");
-      }
-      else if (presentCount == reportAtPresent)
-      {
-        BootStats::Report();
-      }
-    }
-
     if (m_presentCallback)
     {
       m_presentCallback();

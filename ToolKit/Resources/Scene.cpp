@@ -8,7 +8,6 @@
 #include "Scene.h"
 
 #include "AABBOverrideComponent.h"
-#include "BootStats.h"
 #include "Component.h"
 #include "EngineSettings.h"
 #include "EnvironmentComponent.h"
@@ -59,10 +58,6 @@ namespace ToolKit
       ParseDocument(XmlSceneElement);
 
       m_loaded = true;
-
-      // The scene a start up opens is the point the boot timeline is read against; a prefab or a
-      // layer scene is loaded on top of it and is marked with its own path.
-      BootStats::Mark("scene loaded " + GetRelativeResourcePath(path));
     }
   }
 
