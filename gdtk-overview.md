@@ -963,6 +963,28 @@ Used by **runtime game apps** (not editor). Pipeline:
 
 Params: `viewport`, `scene`, `postProcessSettings`.
 
+**Present: the frame leaves through a copy, and that is settled.** `m_gammaPass` composites in place
+into the viewport target and `Renderer::CopyFrameBuffer` blows the finished frame up into the window.
+Drawing the composite straight into the window's back buffer instead - removing the copy, which is
+what the blit costs on a mobile GPU - was implemented, measured and reverted; do not redo it without
+reading `PerformanceDemo/PerfAnalysis/stage3-two-camera-report.md` first. The short version:
+
+- **SM-G950F / Mali-G71 / Android 9**: the copy costs about 110 ms of the frame (162 ms against 59 ms
+  with the composite drawing into the window), but the draw is not safe there. Measured with a two
+  camera test - one camera change, nothing else moving - the view from before the change came back on
+  screen 13 to 18 times per run with the draw and never with the copy. The app renders one correct
+  image per frame (verified per frame from inside the renderer); the display is handed an older buffer.
+  A `glReadPixels`, a `glFlush` or a `glFinish` before `SDL_GL_SwapWindow` each make it worse on that
+  driver - black or half drawn frames - so there is no app side fix.
+- **TECNO CL7 / PowerVR BXM-8-256 / Android 16**: both shapes present correctly, and the copy is free
+  (157.6-159.7 ms against 158.3-159.5 ms, inside the run to run spread). The optimisation therefore
+  buys nothing on a device that is not paying the Mali blit cost, and breaks the picture on the device
+  that is - which is why the copy is the only shape that was kept.
+
+Practical consequences for a host: ask for a real swap interval. `SDL_GL_SetSwapInterval(-1)`
+(adaptive) is a desktop concept that EGL clamps to 0, i.e. no vsync at all, and an unpaced swap is
+what lets the stale frame above reach the screen.
+
 `EditorRenderer` (Editor/) is the editor's renderer with gizmo passes (`GizmoPass`).
 
 ---
