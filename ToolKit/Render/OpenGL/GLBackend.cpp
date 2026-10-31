@@ -1600,55 +1600,159 @@ namespace ToolKit
 
   void GLBackend::BlitToScreen(FramebufferPtr src) {}
 
+  namespace
+  {
+    /**
+     * True when this driver can time a frame on the gpu.
+     *
+     * GL ES has no core timer query: GL_TIME_ELAPSED and the entry points that take it belong to
+     * GL_EXT_disjoint_timer_query, so a phone needs the extension plus its five functions. Desktop
+     * GL resolves the same enum through glad, where it is core 3.3 - the only platform that ever ran
+     * this path, and it stays the only one. Probed once, since every frame asks.
+     */
+    bool IsGpuTimerQuerySupported()
+    {
+      static int supported = -1;
+      if (supported >= 0)
+      {
+        return supported == 1;
+      }
+
+#if defined(TK_ANDROID)
+      supported = (TK_GL_EXT_disjoint_timer_query != 0 && tk_glGenQueriesEXT != nullptr &&
+                   tk_glDeleteQueriesEXT != nullptr && tk_glBeginQueryEXT != nullptr &&
+                   tk_glEndQueryEXT != nullptr && tk_glGetQueryObjectuivEXT != nullptr)
+                      ? 1
+                      : 0;
+#elif defined(GL_TIME_ELAPSED_EXT)
+      supported = (TK_PLATFORM == PLATFORM::TKWindows) ? 1 : 0;
+#else
+      supported = 0;
+#endif
+      return supported == 1;
+    }
+  } // namespace
+
   void GLBackend::StartTimerQuery()
   {
-    m_cpuTime = GetElapsedMilliSeconds();
-#ifdef GL_TIME_ELAPSED_EXT
-    if constexpr (TK_PLATFORM == PLATFORM::TKWindows)
+    // A frame opens the timer more than once - the game renderer wraps the scene path, which opens a
+    // pair of its own - and only the outermost pair may measure. Without this the inner pair
+    // overwrote the cpu time the outer one had just started from, and the stat came out negative on
+    // every frame that nested.
+    if (m_timerQueryDepth++ > 0)
     {
-      if (!m_timerQueryActive && !m_timerQueryWaiting)
-      {
-        if (!m_gpuTimerQuery)
-        {
-          glGenQueries(1, &m_gpuTimerQuery);
-        }
-        glBeginQuery(GL_TIME_ELAPSED_EXT, m_gpuTimerQuery);
-        m_timerQueryActive = true;
-      }
+      return;
     }
+
+    m_cpuTime = GetElapsedMilliSeconds();
+
+    // One query is in flight at a time: the previous frame's result is polled below before the next
+    // one starts, so a device that answers late reports the frame before last instead of stalling.
+    if (!IsGpuTimerQuerySupported() || m_timerQueryActive || m_timerQueryWaiting)
+    {
+      return;
+    }
+
+    if (!m_gpuTimerQuery)
+    {
+#if defined(TK_ANDROID)
+      tk_glGenQueriesEXT(1, &m_gpuTimerQuery);
+#else
+      glGenQueries(1, &m_gpuTimerQuery);
 #endif
+    }
+
+#if defined(TK_ANDROID)
+    tk_glBeginQueryEXT(GL_TIME_ELAPSED_EXT, m_gpuTimerQuery);
+#else
+    glBeginQuery(GL_TIME_ELAPSED_EXT, m_gpuTimerQuery);
+#endif
+    m_timerQueryActive = true;
   }
 
   void GLBackend::EndTimerQuery()
   {
-    float cpuTime = GetElapsedMilliSeconds();
-    m_cpuTime     = cpuTime - m_cpuTime;
-
-#ifdef GL_TIME_ELAPSED_EXT
-    if constexpr (TK_PLATFORM == PLATFORM::TKWindows)
+    if (m_timerQueryDepth == 0)
     {
-      if (m_timerQueryActive)
-      {
-        glEndQuery(GL_TIME_ELAPSED_EXT);
-        m_timerQueryActive  = false;
-        m_timerQueryWaiting = true;
-      }
-
-      if (m_timerQueryWaiting)
-      {
-        GLuint available = 0;
-        glGetQueryObjectuiv(m_gpuTimerQuery, GL_QUERY_RESULT_AVAILABLE, &available);
-
-        if (available)
-        {
-          GLuint elapsedTime;
-          glGetQueryObjectuiv(m_gpuTimerQuery, GL_QUERY_RESULT, &elapsedTime);
-          m_gpuTime           = glm::max(1.0f, (float) (elapsedTime) / 1000000.0f);
-          m_timerQueryWaiting = false;
-        }
-      }
+      return;
     }
+
+    if (--m_timerQueryDepth > 0)
+    {
+      return;
+    }
+
+    m_cpuTime = GetElapsedMilliSeconds() - m_cpuTime;
+
+    if (m_timerQueryActive)
+    {
+#if defined(TK_ANDROID)
+      tk_glEndQueryEXT(GL_TIME_ELAPSED_EXT);
+#else
+      glEndQuery(GL_TIME_ELAPSED_EXT);
 #endif
+      m_timerQueryActive  = false;
+      m_timerQueryWaiting = true;
+    }
+
+    if (!m_timerQueryWaiting)
+    {
+      return;
+    }
+
+    // A disjoint event - a clock change, a power collapse - invalidates the counter. The driver
+    // reports it as a flag to read back rather than as an error, and a value taken across one is
+    // meaningless.
+    GLint disjoint = 0;
+    glGetIntegerv(GL_GPU_DISJOINT_EXT, &disjoint);
+    if (disjoint)
+    {
+      m_timerQueryWaiting = false;
+      return;
+    }
+
+    GLuint available = 0;
+#if defined(TK_ANDROID)
+    tk_glGetQueryObjectuivEXT(m_gpuTimerQuery, GL_QUERY_RESULT_AVAILABLE, &available);
+#else
+    glGetQueryObjectuiv(m_gpuTimerQuery, GL_QUERY_RESULT_AVAILABLE, &available);
+#endif
+
+    if (!available)
+    {
+      // A driver that never answers would keep the query pending for the rest of the run, because a
+      // pending query is what blocks the next one from starting. After a few frames the slot is
+      // released instead, so the timer either recovers or stays at its last good value.
+      if (++m_timerQueryWaited > 4)
+      {
+        m_timerQueryWaiting = false;
+        m_timerQueryWaited  = 0;
+      }
+      return;
+    }
+
+    m_timerQueryWaited = 0;
+
+    GLuint elapsedNs = 0;
+#if defined(TK_ANDROID)
+    tk_glGetQueryObjectuivEXT(m_gpuTimerQuery, GL_QUERY_RESULT, &elapsedNs);
+#else
+    glGetQueryObjectuiv(m_gpuTimerQuery, GL_QUERY_RESULT, &elapsedNs);
+#endif
+
+    // A result of all ones - what Mali returns while the counter has no value yet - is not a frame
+    // duration, and neither is zero. Keeping the previous number is closer to the truth than
+    // reporting four seconds.
+    if (elapsedNs == 0u || elapsedNs == 0xFFFFFFFFu)
+    {
+      m_timerQueryWaiting = false;
+      return;
+    }
+
+    // Nanoseconds to milliseconds. The floor of one keeps the FPS derived from it finite before the
+    // first result arrives.
+    m_gpuTime           = glm::max(1.0f, (float) elapsedNs / 1000000.0f);
+    m_timerQueryWaiting = false;
   }
 
   void GLBackend::GetElapsedTime(float& cpu, float& gpu)

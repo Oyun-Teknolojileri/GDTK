@@ -42,11 +42,61 @@ namespace ToolKit
 
   int TK_GL_EXT_depth_clamp                                                    = 0;
 
+  int TK_GL_EXT_disjoint_timer_query                                           = 0;
+
+  TKGL_GenQueriesEXT tk_glGenQueriesEXT                                        = nullptr;
+
+  TKGL_DeleteQueriesEXT tk_glDeleteQueriesEXT                                  = nullptr;
+
+  TKGL_BeginQueryEXT tk_glBeginQueryEXT                                        = nullptr;
+
+  TKGL_EndQueryEXT tk_glEndQueryEXT                                            = nullptr;
+
+  TKGL_GetQueryObjectuivEXT tk_glGetQueryObjectuivEXT                          = nullptr;
+
   namespace
   {
     /** Kept so the program binary extension can be resolved on demand, after the host loaded GL. */
     typedef void* (*TKGLProcLoader)(const char*);
     TKGLProcLoader g_glGetProcAddress = nullptr;
+
+#if defined(TK_ANDROID)
+    /**
+     * Whether the driver lists an extension.
+     *
+     * GL ES 3.0 removes the GL_EXTENSIONS string: glGetString returns null for it on a 3.2 context,
+     * which silently turned every string probe below into "not supported". The list is enumerated
+     * instead, which is the form 3.x defines, and the name is matched with or without its GL_
+     * prefix.
+     */
+    bool HasGlExtension(const char* name)
+    {
+      GLint extensionCount = 0;
+      glGetIntegerv(GL_NUM_EXTENSIONS, &extensionCount);
+
+      for (GLint i = 0; i < extensionCount; ++i)
+      {
+        const GLubyte* extension = glGetStringi(GL_EXTENSIONS, (GLuint) i);
+        if (extension == nullptr)
+        {
+          continue;
+        }
+
+        const char* plainName = (const char*) extension;
+        if (std::strncmp(plainName, "GL_", 3) == 0)
+        {
+          plainName += 3;
+        }
+
+        if (std::strcmp(plainName, name) == 0)
+        {
+          return true;
+        }
+      }
+
+      return false;
+    }
+#endif
   } // namespace
 
   void* TKGetGlProcAddress(const char* name)
@@ -126,6 +176,21 @@ namespace ToolKit
     tk_glPushGroupMarkerEXT           = (TKGL_PushGroupMarker) glLoader("glPushGroupMarkerEXT");
     tk_glLabelObjectEXT               = (TKGL_LabelObject) glLoader("glLabelObjectEXT");
     tk_glGetObjectLabelEXT            = (TKGL_GetObjectLabel) glLoader("glGetObjectLabelEXT");
+
+    // GPU timing: GL_EXT_disjoint_timer_query, the only place GL ES defines GL_TIME_ELAPSED.
+    tk_glGenQueriesEXT          = (TKGL_GenQueriesEXT) glLoader("glGenQueriesEXT");
+    tk_glDeleteQueriesEXT       = (TKGL_DeleteQueriesEXT) glLoader("glDeleteQueriesEXT");
+    tk_glBeginQueryEXT          = (TKGL_BeginQueryEXT) glLoader("glBeginQueryEXT");
+    tk_glEndQueryEXT            = (TKGL_EndQueryEXT) glLoader("glEndQueryEXT");
+    tk_glGetQueryObjectuivEXT   = (TKGL_GetQueryObjectuivEXT) glLoader("glGetQueryObjectuivEXT");
+
+    TK_GL_EXT_disjoint_timer_query = HasGlExtension("EXT_disjoint_timer_query") &&
+                                     tk_glGenQueriesEXT != nullptr && tk_glDeleteQueriesEXT != nullptr &&
+                                     tk_glBeginQueryEXT != nullptr && tk_glEndQueryEXT != nullptr &&
+                                     tk_glGetQueryObjectuivEXT != nullptr;
+
+    TK_LOG("GPU timer query: %s",
+           TK_GL_EXT_disjoint_timer_query ? "GL_EXT_disjoint_timer_query" : "unavailable, gpu time stays synthetic");
 
     // String Checks for Extensions.
     PFNGLGETSTRINGPROC tk_glGetString = nullptr;

@@ -134,6 +134,37 @@ namespace ToolKit
 #undef glInvalidateFramebufferEXT
 #define glInvalidateFramebufferEXT tk_glInvalidateFramebufferEXT
 
+  // GL_EXT_disjoint_timer_query
+  //////////////////////////////////////////
+  //
+  // GL ES has no core timer query: GL_TIME_ELAPSED exists only as part of this extension, and the
+  // entry points that take it carry the EXT suffix. Desktop GL reaches the same enum through glad's
+  // core 3.3 (ARB_timer_query) declarations, which is why the backend keeps two call paths for one
+  // measurement. A query answers in nanoseconds; Stats::GetRenderTime reports it as a frame's gpu
+  // time.
+
+  extern int TK_GL_EXT_disjoint_timer_query;
+
+  typedef void(TK_STDCAL* TKGL_GenQueriesEXT)(GLsizei n, GLuint* ids);
+  typedef void(TK_STDCAL* TKGL_DeleteQueriesEXT)(GLsizei n, const GLuint* ids);
+  typedef void(TK_STDCAL* TKGL_BeginQueryEXT)(GLenum target, GLuint id);
+  typedef void(TK_STDCAL* TKGL_EndQueryEXT)(GLenum target);
+  typedef void(TK_STDCAL* TKGL_GetQueryObjectuivEXT)(GLuint id, GLenum pname, GLuint* params);
+
+  extern TKGL_GenQueriesEXT tk_glGenQueriesEXT;
+  extern TKGL_DeleteQueriesEXT tk_glDeleteQueriesEXT;
+  extern TKGL_BeginQueryEXT tk_glBeginQueryEXT;
+  extern TKGL_EndQueryEXT tk_glEndQueryEXT;
+  extern TKGL_GetQueryObjectuivEXT tk_glGetQueryObjectuivEXT;
+
+#ifndef GL_TIME_ELAPSED_EXT
+  #define GL_TIME_ELAPSED_EXT 0x88BF
+#endif
+
+#ifndef GL_GPU_DISJOINT_EXT
+  #define GL_GPU_DISJOINT_EXT 0x8FBB
+#endif
+
   // GL Loader function
   //////////////////////////////////////////
 

@@ -175,6 +175,17 @@ namespace ToolKit
     float m_gpuTime          = 1.0f;
     bool m_timerQueryActive  = false;
     bool m_timerQueryWaiting = false;
+
+    /**
+     * How deep the render path is nested in StartTimerQuery / EndTimerQuery. A frame opens the timer
+     * more than once - the game renderer wraps the scene path, which opens its own - and only the
+     * outermost pair may measure, or each inner pair overwrites the cpu time the outer one started
+     * with.
+     */
+    uint m_timerQueryDepth   = 0;
+
+    /** Frames spent waiting for a result that never arrives, to give up instead of stalling forever. */
+    uint m_timerQueryWaited  = 0;
   };
 
 } // namespace ToolKit

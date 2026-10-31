@@ -1,0 +1,291 @@
+10-31 14:32:38.481 25116 25147 I TK_LOG  : GPU timer query: GL_EXT_disjoint_timer_query
+10-31 14:32:38.867 25116 25147 I TK_LOG  : Shader in compile ToolKit/skyboxVert.shader
+10-31 14:32:38.867 25116 25147 I TK_LOG  : Shader in compile ToolKit/gradientSkyboxFrag.shader
+10-31 14:32:38.868 25116 25147 I TK_LOG  : PERF config window=1080x2220 render=540x1110 res=50% msaa=-1 hdr=-1 ssao=-1 bloom=-1 tm=-1 cull=-1 batch=-1 shadow=0 mesh=0
+10-31 14:32:38.881 25116 25147 I TK_LOG  : Shader in compile ToolKit/fullQuadVert.shader
+10-31 14:32:38.881 25116 25147 I TK_LOG  : Shader in compile ToolKit/BRDFLutFrag.shader
+10-31 14:32:38.897 25116 25147 I TK_LOG  : Shader in compile ToolKit/positionVert.shader
+10-31 14:32:38.897 25116 25147 I TK_LOG  : Shader in compile ToolKit/preFilterEnvMapFrag.shader
+10-31 14:32:39.956 25116 25147 I TK_LOG  : Shader in compile ToolKit/irradianceGenerateVert.shader
+10-31 14:32:39.957 25116 25147 I TK_LOG  : Shader in compile ToolKit/irradianceGenerateFrag.shader
+10-31 14:32:40.069 25116 25147 I TK_LOG  : Shader in compile ToolKit/ssaoBlurFrag.shader
+10-31 14:32:40.100 25116 25147 I TK_LOG  : Shader in compile ToolKit/bloomDownsample.shader
+10-31 14:32:40.101 25116 25147 I TK_LOG  : Shader in compile ToolKit/bloomUpsample.shader
+10-31 14:32:40.976 25116 25147 I TK_LOG  : Shader in compile ToolKit/copyTextureVert.shader
+10-31 14:32:40.979 25116 25147 I TK_LOG  : Shader in compile ToolKit/gammaTonemapFxaa.shader
+10-31 14:32:42.317 25116 25147 I TK_LOG  : PERF fps=60.00 period=16.67 work=11.25 swap=0.55 render=10.54 engcpu=9.96 gpu=13.17 max=16.67 draws=19 passes=11 inst=0/0 culled=0 vram=110MB res=540x1110
+10-31 14:32:43.333 25116 25147 I TK_LOG  : PERF fps=60.00 period=16.67 work=12.36 swap=0.76 render=11.44 engcpu=10.09 gpu=13.30 max=16.67 draws=19 passes=11 inst=0/0 culled=0 vram=110MB res=540x1110
+10-31 14:32:43.334 25116 25147 I TK_LOG  : PROF d4 SetFramebuffer                     inc    2.74 exc    2.74 ms/frame
+10-31 14:32:43.334 25116 25147 I TK_LOG  : PROF d7 Render                             inc   20.21 exc    2.51 ms/frame
+10-31 14:32:43.334 25116 25147 I TK_LOG  : PROF d3 CopyTexture                        inc    1.02 exc    0.73 ms/frame
+10-31 14:32:43.334 25116 25147 I TK_LOG  : PROF d3 RenderOpaque                       inc    1.12 exc    1.12 ms/frame
+10-31 14:32:43.334 25116 25147 I TK_LOG  : PROF d2 ResolveFramebuffer                 inc    0.58 exc    0.58 ms/frame
+10-31 14:32:43.334 25116 25147 I TK_LOG  : PROF d3 FullQuadPass                       inc    4.44 exc    0.79 ms/frame
+10-31 14:32:43.334 25116 25147 I TK_LOG  : PROF d0 CopyFrameBuffer                    inc    0.64 exc    0.64 ms/frame
+10-31 14:32:43.334 25116 25147 I TK_LOG  : PROF d8 FeedUniforms                       inc    0.38 exc    0.38 ms/frame
+10-31 14:32:43.334 25116 25147 I TK_LOG  : PROF d1 PreRender                          inc   10.24 exc    0.24 ms/frame
+10-31 14:32:43.334 25116 25147 I TK_LOG  : PROF d3 RenderTranslucent                  inc    0.29 exc    0.29 ms/frame
+10-31 14:32:43.334 25116 25147 I TK_LOG  : PROF d1 Gamma Pass                         inc    0.53 exc    0.13 ms/frame
+10-31 14:32:43.334 25116 25147 I TK_LOG  : PROF d6 RenderWithProgramFromMaterial      inc    0.51 exc    0.05 ms/frame
+10-31 14:32:43.334 25116 25147 I TK_LOG  : PROF d2 GammaTonemapFxaaPass               inc    0.69 exc    0.06 ms/frame
+10-31 14:32:43.334 25116 25147 I TK_LOG  : PROF d2 SetPassParams                      inc    0.37 exc    0.11 ms/frame
+10-31 14:32:43.334 25116 25147 I TK_LOG  : PROF d4 DrawFullQuad                       inc    0.28 exc    0.03 ms/frame
+10-31 14:32:44.334 25116 25147 I TK_LOG  : PERF fps=60.00 period=16.67 work=10.79 swap=0.53 render=10.11 engcpu=10.29 gpu=13.33 max=16.67 draws=19 passes=11 inst=0/0 culled=0 vram=110MB res=540x1110
+10-31 14:32:44.334 25116 25147 I TK_LOG  : PROF d4 SetFramebuffer                     inc    2.47 exc    2.47 ms/frame
+10-31 14:32:44.334 25116 25147 I TK_LOG  : PROF d7 Render                             inc   17.20 exc    2.13 ms/frame
+10-31 14:32:44.334 25116 25147 I TK_LOG  : PROF d3 CopyTexture                        inc    0.95 exc    0.68 ms/frame
+10-31 14:32:44.334 25116 25147 I TK_LOG  : PROF d3 RenderOpaque                       inc    0.91 exc    0.90 ms/frame
+10-31 14:32:44.334 25116 25147 I TK_LOG  : PROF d3 FullQuadPass                       inc    3.86 exc    0.65 ms/frame
+10-31 14:32:44.334 25116 25147 I TK_LOG  : PROF d2 ResolveFramebuffer                 inc    0.49 exc    0.49 ms/frame
+10-31 14:32:44.334 25116 25147 I TK_LOG  : PROF d0 CopyFrameBuffer                    inc    0.64 exc    0.64 ms/frame
+10-31 14:32:44.334 25116 25147 I TK_LOG  : PROF d8 FeedUniforms                       inc    0.31 exc    0.31 ms/frame
+10-31 14:32:44.334 25116 25147 I TK_LOG  : PROF d1 PreRender                          inc    8.80 exc    0.21 ms/frame
+10-31 14:32:44.334 25116 25147 I TK_LOG  : PROF d1 Gamma Pass                         inc    0.53 exc    0.13 ms/frame
+10-31 14:32:44.334 25116 25147 I TK_LOG  : PROF d6 RenderWithProgramFromMaterial      inc    0.48 exc    0.04 ms/frame
+10-31 14:32:44.334 25116 25147 I TK_LOG  : PROF d2 SetPassParams                      inc    0.30 exc    0.09 ms/frame
+10-31 14:32:44.334 25116 25147 I TK_LOG  : PROF d2 GammaTonemapFxaaPass               inc    0.61 exc    0.06 ms/frame
+10-31 14:32:44.334 25116 25147 I TK_LOG  : PROF d4 DrawFullQuad                       inc    0.27 exc    0.02 ms/frame
+10-31 14:32:45.334 25116 25147 I TK_LOG  : PERF fps=60.00 period=16.67 work=11.69 swap=0.64 render=10.90 engcpu=10.27 gpu=12.85 max=16.68 draws=19 passes=11 inst=0/0 culled=0 vram=110MB res=540x1110
+10-31 14:32:45.334 25116 25147 I TK_LOG  : PROF d4 SetFramebuffer                     inc    2.59 exc    2.59 ms/frame
+10-31 14:32:45.334 25116 25147 I TK_LOG  : PROF d7 Render                             inc   18.96 exc    2.38 ms/frame
+10-31 14:32:45.334 25116 25147 I TK_LOG  : PROF d3 CopyTexture                        inc    1.00 exc    0.71 ms/frame
+10-31 14:32:45.334 25116 25147 I TK_LOG  : PROF d3 RenderOpaque                       inc    1.02 exc    1.01 ms/frame
+10-31 14:32:45.334 25116 25147 I TK_LOG  : PROF d3 FullQuadPass                       inc    4.17 exc    0.70 ms/frame
+10-31 14:32:45.334 25116 25147 I TK_LOG  : PROF d0 CopyFrameBuffer                    inc    0.67 exc    0.67 ms/frame
+10-31 14:32:45.334 25116 25147 I TK_LOG  : PROF d2 ResolveFramebuffer                 inc    0.53 exc    0.53 ms/frame
+10-31 14:32:45.334 25116 25147 I TK_LOG  : PROF d8 FeedUniforms                       inc    0.39 exc    0.39 ms/frame
+10-31 14:32:45.334 25116 25147 I TK_LOG  : PROF d1 PreRender                          inc    9.60 exc    0.23 ms/frame
+10-31 14:32:45.334 25116 25147 I TK_LOG  : PROF d3 RenderTranslucent                  inc    0.26 exc    0.26 ms/frame
+10-31 14:32:45.334 25116 25147 I TK_LOG  : PROF d1 Gamma Pass                         inc    0.55 exc    0.13 ms/frame
+10-31 14:32:45.334 25116 25147 I TK_LOG  : PROF d2 SetPassParams                      inc    0.31 exc    0.08 ms/frame
+10-31 14:32:45.334 25116 25147 I TK_LOG  : PROF d6 RenderWithProgramFromMaterial      inc    0.51 exc    0.04 ms/frame
+10-31 14:32:45.334 25116 25147 I TK_LOG  : PROF d2 GammaTonemapFxaaPass               inc    0.65 exc    0.06 ms/frame
+10-31 14:32:45.334 25116 25147 I TK_LOG  : PROF d4 DrawFullQuad                       inc    0.28 exc    0.03 ms/frame
+10-31 14:32:46.334 25116 25147 I TK_LOG  : PERF fps=60.00 period=16.67 work=11.52 swap=0.64 render=10.72 engcpu=10.78 gpu=12.89 max=16.69 draws=19 passes=11 inst=0/0 culled=0 vram=110MB res=540x1110
+10-31 14:32:46.335 25116 25147 I TK_LOG  : PROF d4 SetFramebuffer                     inc    2.56 exc    2.56 ms/frame
+10-31 14:32:46.335 25116 25147 I TK_LOG  : PROF d7 Render                             inc   18.51 exc    2.33 ms/frame
+10-31 14:32:46.335 25116 25147 I TK_LOG  : PROF d3 CopyTexture                        inc    1.00 exc    0.72 ms/frame
+10-31 14:32:46.335 25116 25147 I TK_LOG  : PROF d3 RenderOpaque                       inc    1.01 exc    1.00 ms/frame
+10-31 14:32:46.335 25116 25147 I TK_LOG  : PROF d3 FullQuadPass                       inc    4.05 exc    0.69 ms/frame
+10-31 14:32:46.335 25116 25147 I TK_LOG  : PROF d0 CopyFrameBuffer                    inc    0.64 exc    0.64 ms/frame
+10-31 14:32:46.335 25116 25147 I TK_LOG  : PROF d2 ResolveFramebuffer                 inc    0.53 exc    0.53 ms/frame
+10-31 14:32:46.335 25116 25147 I TK_LOG  : PROF d8 FeedUniforms                       inc    0.34 exc    0.34 ms/frame
+10-31 14:32:46.335 25116 25147 I TK_LOG  : PROF d1 PreRender                          inc    9.45 exc    0.22 ms/frame
+10-31 14:32:46.335 25116 25147 I TK_LOG  : PROF d3 RenderTranslucent                  inc    0.28 exc    0.27 ms/frame
+10-31 14:32:46.335 25116 25147 I TK_LOG  : PROF d1 Gamma Pass                         inc    0.54 exc    0.13 ms/frame
+10-31 14:32:46.335 25116 25147 I TK_LOG  : PROF d2 SetPassParams                      inc    0.33 exc    0.10 ms/frame
+10-31 14:32:46.335 25116 25147 I TK_LOG  : PROF d6 RenderWithProgramFromMaterial      inc    0.51 exc    0.05 ms/frame
+10-31 14:32:46.335 25116 25147 I TK_LOG  : PROF d2 GammaTonemapFxaaPass               inc    0.66 exc    0.07 ms/frame
+10-31 14:32:46.335 25116 25147 I TK_LOG  : PROF d4 DrawFullQuad                       inc    0.28 exc    0.02 ms/frame
+10-31 14:32:47.351 25116 25147 I TK_LOG  : PERF fps=60.00 period=16.67 work=11.34 swap=0.66 render=10.52 engcpu=9.99 gpu=12.93 max=16.67 draws=20 passes=12 inst=0/0 culled=0 vram=110MB res=540x1110
+10-31 14:32:47.351 25116 25147 I TK_LOG  : PROF d4 SetFramebuffer                     inc    2.49 exc    2.49 ms/frame
+10-31 14:32:47.351 25116 25147 I TK_LOG  : PROF d7 Render                             inc   18.00 exc    2.23 ms/frame
+10-31 14:32:47.351 25116 25147 I TK_LOG  : PROF d3 CopyTexture                        inc    1.01 exc    0.72 ms/frame
+10-31 14:32:47.351 25116 25147 I TK_LOG  : PROF d3 RenderOpaque                       inc    1.00 exc    0.99 ms/frame
+10-31 14:32:47.351 25116 25147 I TK_LOG  : PROF d3 FullQuadPass                       inc    3.93 exc    0.68 ms/frame
+10-31 14:32:47.351 25116 25147 I TK_LOG  : PROF d0 CopyFrameBuffer                    inc    0.62 exc    0.62 ms/frame
+10-31 14:32:47.351 25116 25147 I TK_LOG  : PROF d2 ResolveFramebuffer                 inc    0.52 exc    0.52 ms/frame
+10-31 14:32:47.351 25116 25147 I TK_LOG  : PROF d8 FeedUniforms                       inc    0.33 exc    0.33 ms/frame
+10-31 14:32:47.351 25116 25147 I TK_LOG  : PROF d1 PreRender                          inc    9.24 exc    0.22 ms/frame
+10-31 14:32:47.351 25116 25147 I TK_LOG  : PROF d3 RenderTranslucent                  inc    0.25 exc    0.25 ms/frame
+10-31 14:32:47.351 25116 25147 I TK_LOG  : PROF d1 Gamma Pass                         inc    0.57 exc    0.14 ms/frame
+10-31 14:32:47.351 25116 25147 I TK_LOG  : PROF d2 SetPassParams                      inc    0.31 exc    0.09 ms/frame
+10-31 14:32:47.351 25116 25147 I TK_LOG  : PROF d2 GammaTonemapFxaaPass               inc    0.64 exc    0.06 ms/frame
+10-31 14:32:47.351 25116 25147 I TK_LOG  : PROF d6 RenderWithProgramFromMaterial      inc    0.51 exc    0.05 ms/frame
+10-31 14:32:47.351 25116 25147 I TK_LOG  : PROF d4 DrawFullQuad                       inc    0.28 exc    0.03 ms/frame
+10-31 14:32:48.353 25116 25147 I TK_LOG  : PERF fps=59.99 period=16.67 work=10.84 swap=0.57 render=10.10 engcpu=11.39 gpu=13.69 max=16.73 draws=20 passes=12 inst=0/0 culled=0 vram=110MB res=540x1110
+10-31 14:32:48.353 25116 25147 I TK_LOG  : PROF d4 SetFramebuffer                     inc    2.40 exc    2.40 ms/frame
+10-31 14:32:48.353 25116 25147 I TK_LOG  : PROF d7 Render                             inc   17.06 exc    2.11 ms/frame
+10-31 14:32:48.353 25116 25147 I TK_LOG  : PROF d3 RenderOpaque                       inc    0.96 exc    0.95 ms/frame
+10-31 14:32:48.353 25116 25147 I TK_LOG  : PROF d3 CopyTexture                        inc    0.94 exc    0.67 ms/frame
+10-31 14:32:48.353 25116 25147 I TK_LOG  : PROF d3 FullQuadPass                       inc    3.78 exc    0.64 ms/frame
+10-31 14:32:48.353 25116 25147 I TK_LOG  : PROF d0 CopyFrameBuffer                    inc    0.63 exc    0.63 ms/frame
+10-31 14:32:48.353 25116 25147 I TK_LOG  : PROF d2 ResolveFramebuffer                 inc    0.50 exc    0.50 ms/frame
+10-31 14:32:48.353 25116 25147 I TK_LOG  : PROF d8 FeedUniforms                       inc    0.32 exc    0.32 ms/frame
+10-31 14:32:48.353 25116 25147 I TK_LOG  : PROF d1 PreRender                          inc    8.82 exc    0.22 ms/frame
+10-31 14:32:48.353 25116 25147 I TK_LOG  : PROF d1 Gamma Pass                         inc    0.56 exc    0.13 ms/frame
+10-31 14:32:48.353 25116 25147 I TK_LOG  : PROF d2 SetPassParams                      inc    0.30 exc    0.08 ms/frame
+10-31 14:32:48.353 25116 25147 I TK_LOG  : PROF d2 GammaTonemapFxaaPass               inc    0.57 exc    0.06 ms/frame
+10-31 14:32:48.353 25116 25147 I TK_LOG  : PROF d6 RenderWithProgramFromMaterial      inc    0.48 exc    0.04 ms/frame
+10-31 14:32:48.353 25116 25147 I TK_LOG  : PROF d4 DrawFullQuad                       inc    0.26 exc    0.03 ms/frame
+10-31 14:32:49.368 25116 25147 I TK_LOG  : PERF fps=59.99 period=16.67 work=11.14 swap=0.67 render=10.32 engcpu=9.91 gpu=12.80 max=16.68 draws=19 passes=11 inst=0/0 culled=0 vram=110MB res=540x1110
+10-31 14:32:49.368 25116 25147 I TK_LOG  : PROF d4 SetFramebuffer                     inc    2.52 exc    2.52 ms/frame
+10-31 14:32:49.368 25116 25147 I TK_LOG  : PROF d7 Render                             inc   17.73 exc    2.17 ms/frame
+10-31 14:32:49.368 25116 25147 I TK_LOG  : PROF d3 RenderOpaque                       inc    1.00 exc    0.99 ms/frame
+10-31 14:32:49.368 25116 25147 I TK_LOG  : PROF d3 CopyTexture                        inc    0.95 exc    0.68 ms/frame
+10-31 14:32:49.368 25116 25147 I TK_LOG  : PROF d3 FullQuadPass                       inc    3.95 exc    0.67 ms/frame
+10-31 14:32:49.368 25116 25147 I TK_LOG  : PROF d0 CopyFrameBuffer                    inc    0.63 exc    0.63 ms/frame
+10-31 14:32:49.368 25116 25147 I TK_LOG  : PROF d2 ResolveFramebuffer                 inc    0.52 exc    0.52 ms/frame
+10-31 14:32:49.368 25116 25147 I TK_LOG  : PROF d8 FeedUniforms                       inc    0.31 exc    0.31 ms/frame
+10-31 14:32:49.368 25116 25147 I TK_LOG  : PROF d1 PreRender                          inc    9.12 exc    0.22 ms/frame
+10-31 14:32:49.368 25116 25147 I TK_LOG  : PROF d1 Gamma Pass                         inc    0.54 exc    0.14 ms/frame
+10-31 14:32:49.368 25116 25147 I TK_LOG  : PROF d2 SetPassParams                      inc    0.30 exc    0.09 ms/frame
+10-31 14:32:49.368 25116 25147 I TK_LOG  : PROF d2 GammaTonemapFxaaPass               inc    0.60 exc    0.06 ms/frame
+10-31 14:32:49.368 25116 25147 I TK_LOG  : PROF d6 RenderWithProgramFromMaterial      inc    0.48 exc    0.05 ms/frame
+10-31 14:32:49.368 25116 25147 I TK_LOG  : PROF d4 DrawFullQuad                       inc    0.27 exc    0.03 ms/frame
+10-31 14:32:50.384 25116 25147 I TK_LOG  : PERF fps=59.99 period=16.67 work=11.08 swap=0.65 render=10.28 engcpu=9.48 gpu=13.07 max=16.72 draws=19 passes=11 inst=0/0 culled=0 vram=110MB res=540x1110
+10-31 14:32:50.384 25116 25147 I TK_LOG  : PROF d4 SetFramebuffer                     inc    2.44 exc    2.44 ms/frame
+10-31 14:32:50.384 25116 25147 I TK_LOG  : PROF d7 Render                             inc   17.63 exc    2.18 ms/frame
+10-31 14:32:50.384 25116 25147 I TK_LOG  : PROF d3 RenderOpaque                       inc    1.00 exc    1.00 ms/frame
+10-31 14:32:50.384 25116 25147 I TK_LOG  : PROF d3 CopyTexture                        inc    0.90 exc    0.64 ms/frame
+10-31 14:32:50.384 25116 25147 I TK_LOG  : PROF d3 FullQuadPass                       inc    3.91 exc    0.68 ms/frame
+10-31 14:32:50.384 25116 25147 I TK_LOG  : PROF d0 CopyFrameBuffer                    inc    0.68 exc    0.68 ms/frame
+10-31 14:32:50.384 25116 25147 I TK_LOG  : PROF d2 ResolveFramebuffer                 inc    0.52 exc    0.52 ms/frame
+10-31 14:32:50.384 25116 25147 I TK_LOG  : PROF d8 FeedUniforms                       inc    0.32 exc    0.32 ms/frame
+10-31 14:32:50.384 25116 25147 I TK_LOG  : PROF d1 PreRender                          inc    9.02 exc    0.21 ms/frame
+10-31 14:32:50.384 25116 25147 I TK_LOG  : PROF d1 Gamma Pass                         inc    0.50 exc    0.13 ms/frame
+10-31 14:32:50.384 25116 25147 I TK_LOG  : PROF d2 SetPassParams                      inc    0.32 exc    0.10 ms/frame
+10-31 14:32:50.384 25116 25147 I TK_LOG  : PROF d2 GammaTonemapFxaaPass               inc    0.59 exc    0.06 ms/frame
+10-31 14:32:50.384 25116 25147 I TK_LOG  : PROF d6 RenderWithProgramFromMaterial      inc    0.46 exc    0.04 ms/frame
+10-31 14:32:50.384 25116 25147 I TK_LOG  : PROF d4 DrawFullQuad                       inc    0.25 exc    0.02 ms/frame
+10-31 14:32:51.400 25116 25147 I TK_LOG  : PERF fps=60.00 period=16.67 work=10.90 swap=0.63 render=10.11 engcpu=9.32 gpu=13.01 max=16.67 draws=19 passes=11 inst=0/0 culled=0 vram=110MB res=540x1110
+10-31 14:32:51.400 25116 25147 I TK_LOG  : PROF d4 SetFramebuffer                     inc    2.44 exc    2.44 ms/frame
+10-31 14:32:51.400 25116 25147 I TK_LOG  : PROF d7 Render                             inc   17.28 exc    2.11 ms/frame
+10-31 14:32:51.400 25116 25147 I TK_LOG  : PROF d3 RenderOpaque                       inc    0.96 exc    0.95 ms/frame
+10-31 14:32:51.400 25116 25147 I TK_LOG  : PROF d3 CopyTexture                        inc    0.90 exc    0.64 ms/frame
+10-31 14:32:51.400 25116 25147 I TK_LOG  : PROF d3 FullQuadPass                       inc    3.87 exc    0.66 ms/frame
+10-31 14:32:51.400 25116 25147 I TK_LOG  : PROF d0 CopyFrameBuffer                    inc    0.69 exc    0.69 ms/frame
+10-31 14:32:51.400 25116 25147 I TK_LOG  : PROF d2 ResolveFramebuffer                 inc    0.49 exc    0.49 ms/frame
+10-31 14:32:51.400 25116 25147 I TK_LOG  : PROF d8 FeedUniforms                       inc    0.32 exc    0.32 ms/frame
+10-31 14:32:51.400 25116 25147 I TK_LOG  : PROF d1 PreRender                          inc    8.81 exc    0.20 ms/frame
+10-31 14:32:51.400 25116 25147 I TK_LOG  : PROF d1 Gamma Pass                         inc    0.48 exc    0.12 ms/frame
+10-31 14:32:51.400 25116 25147 I TK_LOG  : PROF d2 SetPassParams                      inc    0.31 exc    0.09 ms/frame
+10-31 14:32:51.400 25116 25147 I TK_LOG  : PROF d2 GammaTonemapFxaaPass               inc    0.60 exc    0.05 ms/frame
+10-31 14:32:51.400 25116 25147 I TK_LOG  : PROF d6 RenderWithProgramFromMaterial      inc    0.45 exc    0.05 ms/frame
+10-31 14:32:51.400 25116 25147 I TK_LOG  : PROF d4 DrawFullQuad                       inc    0.25 exc    0.02 ms/frame
+10-31 14:32:52.401 25116 25147 I TK_LOG  : PERF fps=60.00 period=16.67 work=11.50 swap=0.74 render=10.60 engcpu=9.84 gpu=13.18 max=16.67 draws=19 passes=11 inst=0/0 culled=0 vram=110MB res=540x1110
+10-31 14:32:52.401 25116 25147 I TK_LOG  : PROF d4 SetFramebuffer                     inc    2.52 exc    2.52 ms/frame
+10-31 14:32:52.401 25116 25147 I TK_LOG  : PROF d7 Render                             inc   18.30 exc    2.26 ms/frame
+10-31 14:32:52.401 25116 25147 I TK_LOG  : PROF d3 RenderOpaque                       inc    1.02 exc    1.02 ms/frame
+10-31 14:32:52.401 25116 25147 I TK_LOG  : PROF d3 CopyTexture                        inc    0.92 exc    0.65 ms/frame
+10-31 14:32:52.401 25116 25147 I TK_LOG  : PROF d3 FullQuadPass                       inc    4.05 exc    0.71 ms/frame
+10-31 14:32:52.401 25116 25147 I TK_LOG  : PROF d0 CopyFrameBuffer                    inc    0.70 exc    0.70 ms/frame
+10-31 14:32:52.401 25116 25147 I TK_LOG  : PROF d2 ResolveFramebuffer                 inc    0.53 exc    0.53 ms/frame
+10-31 14:32:52.401 25116 25147 I TK_LOG  : PROF d8 FeedUniforms                       inc    0.33 exc    0.33 ms/frame
+10-31 14:32:52.401 25116 25147 I TK_LOG  : PROF d3 RenderTranslucent                  inc    0.26 exc    0.26 ms/frame
+10-31 14:32:52.401 25116 25147 I TK_LOG  : PROF d1 PreRender                          inc    9.33 exc    0.23 ms/frame
+10-31 14:32:52.401 25116 25147 I TK_LOG  : PROF d1 Gamma Pass                         inc    0.51 exc    0.13 ms/frame
+10-31 14:32:52.401 25116 25147 I TK_LOG  : PROF d2 SetPassParams                      inc    0.32 exc    0.09 ms/frame
+10-31 14:32:52.401 25116 25147 I TK_LOG  : PROF d2 GammaTonemapFxaaPass               inc    0.61 exc    0.06 ms/frame
+10-31 14:32:52.401 25116 25147 I TK_LOG  : PROF d6 RenderWithProgramFromMaterial      inc    0.47 exc    0.05 ms/frame
+10-31 14:32:52.401 25116 25147 I TK_LOG  : PROF d4 DrawFullQuad                       inc    0.26 exc    0.02 ms/frame
+10-31 14:32:53.401 25116 25147 I TK_LOG  : PERF fps=59.99 period=16.67 work=11.48 swap=0.75 render=10.56 engcpu=9.60 gpu=12.94 max=16.69 draws=19 passes=11 inst=0/0 culled=0 vram=110MB res=540x1110
+10-31 14:32:53.401 25116 25147 I TK_LOG  : PROF d4 SetFramebuffer                     inc    2.48 exc    2.48 ms/frame
+10-31 14:32:53.401 25116 25147 I TK_LOG  : PROF d7 Render                             inc   18.14 exc    2.25 ms/frame
+10-31 14:32:53.401 25116 25147 I TK_LOG  : PROF d3 RenderOpaque                       inc    1.03 exc    1.02 ms/frame
+10-31 14:32:53.401 25116 25147 I TK_LOG  : PROF d3 CopyTexture                        inc    0.95 exc    0.67 ms/frame
+10-31 14:32:53.401 25116 25147 I TK_LOG  : PROF d3 FullQuadPass                       inc    3.95 exc    0.69 ms/frame
+10-31 14:32:53.401 25116 25147 I TK_LOG  : PROF d0 CopyFrameBuffer                    inc    0.69 exc    0.69 ms/frame
+10-31 14:32:53.401 25116 25147 I TK_LOG  : PROF d2 ResolveFramebuffer                 inc    0.56 exc    0.56 ms/frame
+10-31 14:32:53.401 25116 25147 I TK_LOG  : PROF d8 FeedUniforms                       inc    0.34 exc    0.34 ms/frame
+10-31 14:32:53.402 25116 25147 I TK_LOG  : PROF d3 RenderTranslucent                  inc    0.26 exc    0.26 ms/frame
+10-31 14:32:53.402 25116 25147 I TK_LOG  : PROF d1 PreRender                          inc    9.28 exc    0.21 ms/frame
+10-31 14:32:53.402 25116 25147 I TK_LOG  : PROF d1 Gamma Pass                         inc    0.52 exc    0.13 ms/frame
+10-31 14:32:53.402 25116 25147 I TK_LOG  : PROF d2 SetPassParams                      inc    0.32 exc    0.08 ms/frame
+10-31 14:32:53.402 25116 25147 I TK_LOG  : PROF d2 GammaTonemapFxaaPass               inc    0.62 exc    0.06 ms/frame
+10-31 14:32:53.402 25116 25147 I TK_LOG  : PROF d6 RenderWithProgramFromMaterial      inc    0.48 exc    0.05 ms/frame
+10-31 14:32:53.402 25116 25147 I TK_LOG  : PROF d4 DrawFullQuad                       inc    0.27 exc    0.02 ms/frame
+10-31 14:32:54.418 25116 25147 I TK_LOG  : PERF fps=59.99 period=16.67 work=11.04 swap=0.70 render=10.18 engcpu=10.09 gpu=13.16 max=16.71 draws=20 passes=12 inst=0/0 culled=0 vram=110MB res=540x1110
+10-31 14:32:54.418 25116 25147 I TK_LOG  : PROF d4 SetFramebuffer                     inc    2.44 exc    2.44 ms/frame
+10-31 14:32:54.418 25116 25147 I TK_LOG  : PROF d7 Render                             inc   17.27 exc    2.12 ms/frame
+10-31 14:32:54.418 25116 25147 I TK_LOG  : PROF d3 RenderOpaque                       inc    0.95 exc    0.94 ms/frame
+10-31 14:32:54.418 25116 25147 I TK_LOG  : PROF d3 CopyTexture                        inc    0.87 exc    0.62 ms/frame
+10-31 14:32:54.418 25116 25147 I TK_LOG  : PROF d3 FullQuadPass                       inc    3.83 exc    0.65 ms/frame
+10-31 14:32:54.418 25116 25147 I TK_LOG  : PROF d0 CopyFrameBuffer                    inc    0.65 exc    0.65 ms/frame
+10-31 14:32:54.418 25116 25147 I TK_LOG  : PROF d2 ResolveFramebuffer                 inc    0.53 exc    0.53 ms/frame
+10-31 14:32:54.418 25116 25147 I TK_LOG  : PROF d8 FeedUniforms                       inc    0.31 exc    0.31 ms/frame
+10-31 14:32:54.418 25116 25147 I TK_LOG  : PROF d3 RenderTranslucent                  inc    0.25 exc    0.25 ms/frame
+10-31 14:32:54.418 25116 25147 I TK_LOG  : PROF d1 PreRender                          inc    8.89 exc    0.23 ms/frame
+10-31 14:32:54.418 25116 25147 I TK_LOG  : PROF d1 Gamma Pass                         inc    0.47 exc    0.13 ms/frame
+10-31 14:32:54.418 25116 25147 I TK_LOG  : PROF d2 SetPassParams                      inc    0.31 exc    0.09 ms/frame
+10-31 14:32:54.418 25116 25147 I TK_LOG  : PROF d2 GammaTonemapFxaaPass               inc    0.59 exc    0.06 ms/frame
+10-31 14:32:54.418 25116 25147 I TK_LOG  : PROF d6 RenderWithProgramFromMaterial      inc    0.44 exc    0.04 ms/frame
+10-31 14:32:55.418 25116 25147 I TK_LOG  : PERF fps=60.00 period=16.67 work=10.91 swap=0.66 render=10.10 engcpu=10.08 gpu=13.25 max=16.67 draws=20 passes=12 inst=0/0 culled=0 vram=110MB res=540x1110
+10-31 14:32:55.418 25116 25147 I TK_LOG  : PROF d4 SetFramebuffer                     inc    2.40 exc    2.40 ms/frame
+10-31 14:32:55.418 25116 25147 I TK_LOG  : PROF d7 Render                             inc   17.21 exc    2.12 ms/frame
+10-31 14:32:55.418 25116 25147 I TK_LOG  : PROF d3 RenderOpaque                       inc    0.95 exc    0.94 ms/frame
+10-31 14:32:55.418 25116 25147 I TK_LOG  : PROF d3 CopyTexture                        inc    0.88 exc    0.64 ms/frame
+10-31 14:32:55.418 25116 25147 I TK_LOG  : PROF d3 FullQuadPass                       inc    3.80 exc    0.65 ms/frame
+10-31 14:32:55.418 25116 25147 I TK_LOG  : PROF d0 CopyFrameBuffer                    inc    0.66 exc    0.66 ms/frame
+10-31 14:32:55.418 25116 25147 I TK_LOG  : PROF d2 ResolveFramebuffer                 inc    0.54 exc    0.54 ms/frame
+10-31 14:32:55.418 25116 25147 I TK_LOG  : PROF d8 FeedUniforms                       inc    0.30 exc    0.30 ms/frame
+10-31 14:32:55.418 25116 25147 I TK_LOG  : PROF d1 PreRender                          inc    8.83 exc    0.22 ms/frame
+10-31 14:32:55.418 25116 25147 I TK_LOG  : PROF d1 Gamma Pass                         inc    0.48 exc    0.12 ms/frame
+10-31 14:32:55.418 25116 25147 I TK_LOG  : PROF d2 SetPassParams                      inc    0.31 exc    0.10 ms/frame
+10-31 14:32:55.418 25116 25147 I TK_LOG  : PROF d2 GammaTonemapFxaaPass               inc    0.58 exc    0.05 ms/frame
+10-31 14:32:55.418 25116 25147 I TK_LOG  : PROF d6 RenderWithProgramFromMaterial      inc    0.41 exc    0.04 ms/frame
+10-31 14:32:56.420 25116 25147 I TK_LOG  : PERF fps=59.92 period=16.69 work=11.32 swap=0.72 render=10.45 engcpu=10.53 gpu=12.95 max=17.84 draws=20 passes=12 inst=0/0 culled=0 vram=110MB res=540x1110
+10-31 14:32:56.420 25116 25147 I TK_LOG  : PROF d4 SetFramebuffer                     inc    2.54 exc    2.54 ms/frame
+10-31 14:32:56.420 25116 25147 I TK_LOG  : PROF d7 Render                             inc   17.81 exc    2.19 ms/frame
+10-31 14:32:56.420 25116 25147 I TK_LOG  : PROF d3 RenderOpaque                       inc    1.00 exc    0.99 ms/frame
+10-31 14:32:56.420 25116 25147 I TK_LOG  : PROF d3 CopyTexture                        inc    0.89 exc    0.64 ms/frame
+10-31 14:32:56.420 25116 25147 I TK_LOG  : PROF d3 FullQuadPass                       inc    4.01 exc    0.68 ms/frame
+10-31 14:32:56.420 25116 25147 I TK_LOG  : PROF d0 CopyFrameBuffer                    inc    0.69 exc    0.69 ms/frame
+10-31 14:32:56.420 25116 25147 I TK_LOG  : PROF d2 ResolveFramebuffer                 inc    0.53 exc    0.53 ms/frame
+10-31 14:32:56.420 25116 25147 I TK_LOG  : PROF d8 FeedUniforms                       inc    0.32 exc    0.32 ms/frame
+10-31 14:32:56.420 25116 25147 I TK_LOG  : PROF d3 RenderTranslucent                  inc    0.25 exc    0.25 ms/frame
+10-31 14:32:56.420 25116 25147 I TK_LOG  : PROF d1 PreRender                          inc    9.15 exc    0.22 ms/frame
+10-31 14:32:56.420 25116 25147 I TK_LOG  : PROF d1 Gamma Pass                         inc    0.48 exc    0.13 ms/frame
+10-31 14:32:56.420 25116 25147 I TK_LOG  : PROF d2 SetPassParams                      inc    0.31 exc    0.09 ms/frame
+10-31 14:32:56.420 25116 25147 I TK_LOG  : PROF d2 GammaTonemapFxaaPass               inc    0.60 exc    0.06 ms/frame
+10-31 14:32:56.420 25116 25147 I TK_LOG  : PROF d6 RenderWithProgramFromMaterial      inc    0.45 exc    0.04 ms/frame
+10-31 14:32:57.423 25116 25147 I TK_LOG  : PERF fps=59.99 period=16.67 work=11.90 swap=0.78 render=10.95 engcpu=12.99 gpu=12.78 max=16.67 draws=20 passes=12 inst=0/0 culled=0 vram=110MB res=540x1110
+10-31 14:32:57.423 25116 25147 I TK_LOG  : PROF d4 SetFramebuffer                     inc    2.52 exc    2.52 ms/frame
+10-31 14:32:57.423 25116 25147 I TK_LOG  : PROF d7 Render                             inc   18.79 exc    2.36 ms/frame
+10-31 14:32:57.423 25116 25147 I TK_LOG  : PROF d3 RenderOpaque                       inc    1.07 exc    1.07 ms/frame
+10-31 14:32:57.423 25116 25147 I TK_LOG  : PROF d3 CopyTexture                        inc    0.95 exc    0.67 ms/frame
+10-31 14:32:57.423 25116 25147 I TK_LOG  : PROF d3 FullQuadPass                       inc    4.05 exc    0.73 ms/frame
+10-31 14:32:57.423 25116 25147 I TK_LOG  : PROF d0 CopyFrameBuffer                    inc    0.76 exc    0.76 ms/frame
+10-31 14:32:57.423 25116 25147 I TK_LOG  : PROF d2 ResolveFramebuffer                 inc    0.57 exc    0.57 ms/frame
+10-31 14:32:57.423 25116 25147 I TK_LOG  : PROF d8 FeedUniforms                       inc    0.34 exc    0.34 ms/frame
+10-31 14:32:57.423 25116 25147 I TK_LOG  : PROF d3 RenderTranslucent                  inc    0.27 exc    0.27 ms/frame
+10-31 14:32:57.423 25116 25147 I TK_LOG  : PROF d1 PreRender                          inc    9.61 exc    0.24 ms/frame
+10-31 14:32:57.423 25116 25147 I TK_LOG  : PROF d1 Gamma Pass                         inc    0.52 exc    0.14 ms/frame
+10-31 14:32:57.423 25116 25147 I TK_LOG  : PROF d2 SetPassParams                      inc    0.32 exc    0.09 ms/frame
+10-31 14:32:57.423 25116 25147 I TK_LOG  : PROF d2 GammaTonemapFxaaPass               inc    0.64 exc    0.07 ms/frame
+10-31 14:32:57.423 25116 25147 I TK_LOG  : PROF d6 RenderWithProgramFromMaterial      inc    0.51 exc    0.05 ms/frame
+10-31 14:32:57.423 25116 25147 I TK_LOG  : PROF d4 DrawFullQuad                       inc    0.28 exc    0.02 ms/frame
+10-31 14:32:58.435 25116 25147 I TK_LOG  : PERF fps=60.00 period=16.67 work=11.18 swap=0.75 render=10.27 engcpu=8.90 gpu=12.89 max=16.67 draws=19 passes=11 inst=0/0 culled=0 vram=110MB res=540x1110
+10-31 14:32:58.435 25116 25147 I TK_LOG  : PROF d4 SetFramebuffer                     inc    2.42 exc    2.42 ms/frame
+10-31 14:32:58.435 25116 25147 I TK_LOG  : PROF d7 Render                             inc   17.64 exc    2.21 ms/frame
+10-31 14:32:58.435 25116 25147 I TK_LOG  : PROF d3 RenderOpaque                       inc    0.98 exc    0.97 ms/frame
+10-31 14:32:58.435 25116 25147 I TK_LOG  : PROF d3 CopyTexture                        inc    0.91 exc    0.66 ms/frame
+10-31 14:32:58.435 25116 25147 I TK_LOG  : PROF d3 FullQuadPass                       inc    3.84 exc    0.65 ms/frame
+10-31 14:32:58.435 25116 25147 I TK_LOG  : PROF d0 CopyFrameBuffer                    inc    0.65 exc    0.65 ms/frame
+10-31 14:32:58.435 25116 25147 I TK_LOG  : PROF d2 ResolveFramebuffer                 inc    0.56 exc    0.56 ms/frame
+10-31 14:32:58.435 25116 25147 I TK_LOG  : PROF d8 FeedUniforms                       inc    0.31 exc    0.31 ms/frame
+10-31 14:32:58.435 25116 25147 I TK_LOG  : PROF d3 RenderTranslucent                  inc    0.25 exc    0.25 ms/frame
+10-31 14:32:58.435 25116 25147 I TK_LOG  : PROF d1 PreRender                          inc    9.02 exc    0.22 ms/frame
+10-31 14:32:58.435 25116 25147 I TK_LOG  : PROF d1 Gamma Pass                         inc    0.50 exc    0.13 ms/frame
+10-31 14:32:58.435 25116 25147 I TK_LOG  : PROF d2 SetPassParams                      inc    0.30 exc    0.10 ms/frame
+10-31 14:32:58.435 25116 25147 I TK_LOG  : PROF d2 GammaTonemapFxaaPass               inc    0.59 exc    0.05 ms/frame
+10-31 14:32:58.435 25116 25147 I TK_LOG  : PROF d6 RenderWithProgramFromMaterial      inc    0.44 exc    0.05 ms/frame
+10-31 14:32:59.435 25116 25147 I TK_LOG  : PERF fps=60.00 period=16.67 work=10.99 swap=0.64 render=10.19 engcpu=9.01 gpu=13.23 max=16.67 draws=19 passes=11 inst=0/0 culled=0 vram=110MB res=540x1110
+10-31 14:32:59.435 25116 25147 I TK_LOG  : PROF d4 SetFramebuffer                     inc    2.43 exc    2.43 ms/frame
+10-31 14:32:59.435 25116 25147 I TK_LOG  : PROF d7 Render                             inc   17.40 exc    2.17 ms/frame
+10-31 14:32:59.435 25116 25147 I TK_LOG  : PROF d3 RenderOpaque                       inc    0.95 exc    0.94 ms/frame
+10-31 14:32:59.435 25116 25147 I TK_LOG  : PROF d3 CopyTexture                        inc    0.87 exc    0.62 ms/frame
+10-31 14:32:59.435 25116 25147 I TK_LOG  : PROF d3 FullQuadPass                       inc    3.83 exc    0.66 ms/frame
+10-31 14:32:59.435 25116 25147 I TK_LOG  : PROF d0 CopyFrameBuffer                    inc    0.67 exc    0.67 ms/frame
+10-31 14:32:59.435 25116 25147 I TK_LOG  : PROF d2 ResolveFramebuffer                 inc    0.53 exc    0.53 ms/frame
+10-31 14:32:59.435 25116 25147 I TK_LOG  : PROF d8 FeedUniforms                       inc    0.31 exc    0.31 ms/frame
+10-31 14:32:59.435 25116 25147 I TK_LOG  : PROF d3 RenderTranslucent                  inc    0.25 exc    0.25 ms/frame
+10-31 14:32:59.435 25116 25147 I TK_LOG  : PROF d1 PreRender                          inc    8.89 exc    0.22 ms/frame
+10-31 14:32:59.435 25116 25147 I TK_LOG  : PROF d1 Gamma Pass                         inc    0.48 exc    0.13 ms/frame
+10-31 14:32:59.435 25116 25147 I TK_LOG  : PROF d2 SetPassParams                      inc    0.31 exc    0.09 ms/frame
+10-31 14:32:59.435 25116 25147 I TK_LOG  : PROF d2 GammaTonemapFxaaPass               inc    0.58 exc    0.05 ms/frame
+10-31 14:32:59.435 25116 25147 I TK_LOG  : PROF d6 RenderWithProgramFromMaterial      inc    0.45 exc    0.04 ms/frame
+10-31 14:33:00.435 25116 25147 I TK_LOG  : PERF fps=60.00 period=16.67 work=10.56 swap=0.57 render=9.84 engcpu=9.37 gpu=13.23 max=16.67 draws=19 passes=11 inst=0/0 culled=0 vram=110MB res=540x1110
+10-31 14:33:00.435 25116 25147 I TK_LOG  : PROF d4 SetFramebuffer                     inc    2.33 exc    2.33 ms/frame
+10-31 14:33:00.436 25116 25147 I TK_LOG  : PROF d7 Render                             inc   16.71 exc    2.06 ms/frame
+10-31 14:33:00.436 25116 25147 I TK_LOG  : PROF d3 RenderOpaque                       inc    0.91 exc    0.91 ms/frame
+10-31 14:33:00.436 25116 25147 I TK_LOG  : PROF d3 CopyTexture                        inc    0.84 exc    0.61 ms/frame
+10-31 14:33:00.436 25116 25147 I TK_LOG  : PROF d3 FullQuadPass                       inc    3.68 exc    0.64 ms/frame
+10-31 14:33:00.436 25116 25147 I TK_LOG  : PROF d0 CopyFrameBuffer                    inc    0.62 exc    0.62 ms/frame
+10-31 14:33:00.436 25116 25147 I TK_LOG  : PROF d2 ResolveFramebuffer                 inc    0.52 exc    0.52 ms/frame
+10-31 14:33:00.436 25116 25147 I TK_LOG  : PROF d8 FeedUniforms                       inc    0.30 exc    0.30 ms/frame
+10-31 14:33:00.436 25116 25147 I TK_LOG  : PROF d1 PreRender                          inc    8.54 exc    0.22 ms/frame
+10-31 14:33:00.436 25116 25147 I TK_LOG  : PROF d1 Gamma Pass                         inc    0.46 exc    0.12 ms/frame
+10-31 14:33:00.436 25116 25147 I TK_LOG  : PROF d2 SetPassParams                      inc    0.28 exc    0.09 ms/frame
+10-31 14:33:00.436 25116 25147 I TK_LOG  : PROF d2 GammaTonemapFxaaPass               inc    0.55 exc    0.05 ms/frame
+10-31 14:33:00.436 25116 25147 I TK_LOG  : PROF d6 RenderWithProgramFromMaterial      inc    0.40 exc    0.04 ms/frame

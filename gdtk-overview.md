@@ -47,6 +47,7 @@ GDTK/
 │                                # (per config: BinDebug/, BinRelease/)
 ├── CMakeLists.txt               # Top-level CMake
 ├── BuildScripts/                # Cross-platform build scripts
+├── PerfAnalysis/                # Device measurement snapshots (report + scripts + run logs)
 └── .clang-format                # Project formatting rules
 ```
 
@@ -90,6 +91,17 @@ Main
 ```
 
 Frame loop: `FrameBegin -> FrameUpdate -> FrameEnd`. `FrameUpdate` fires `m_preUpdateFns`, runs `Frame(dt)`, fires `m_postUpdateFns`.
+
+Frame timing lands in `Stats::GetRenderTime(cpu, gpu)`, which `RenderSystem::EndFrame` publishes once
+per frame; both halves come from the backend's timer query. The CPU span is the
+outermost `RenderPath::PreRender` to `RenderPath::PostRender` pair (a path nested inside another
+one does not restart it, which is what makes the number positive). The GPU span is
+`GL_TIME_ELAPSED_EXT` in nanoseconds: desktop reaches it through glad (core 3.3), GL ES through
+`GL_EXT_disjoint_timer_query`, whose five entry points `TKOpenGL.cpp` resolves at runtime. A driver
+without the extension leaves the value at its 1 ms floor, so a device that cannot answer reads as
+1.00 ms rather than as a plausible wrong number. `Pass::PreRender/PostRender` also open a
+`Profiler` scope named after the pass, next to the GPU debug group of the same name, so the
+hierarchical profiler in `Stats.h` reports a per-pass breakdown.
 
 Free accessors in `ToolKit.h`: `GetLogger()`, `GetRenderSystem()`, `GetMaterialManager()`, etc.
 
