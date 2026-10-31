@@ -29,6 +29,7 @@ namespace ToolKit
     m_sceneRenderPath = nullptr;
     m_uiPass          = nullptr;
     m_gammaPass       = nullptr;
+    m_presentTarget   = nullptr;
   }
 
   void GameRenderer::PreRender(Renderer* renderer)
@@ -67,11 +68,48 @@ namespace ToolKit
     // Gamma Pass.
     PostProcessingSettingsPtr pps               = m_params.postProcessSettings;
     m_gammaPass->m_params.enableGammaCorrection = GetRenderSystem()->IsGammaCorrectionNeeded();
-    m_gammaPass->m_params.frameBuffer           = m_params.viewport->m_framebuffer;
     m_gammaPass->m_params.gamma                 = pps->GetGammaVal();
   }
 
   void GameRenderer::PostRender(Renderer* renderer) { RenderPath::PostRender(renderer); }
+
+  void GameRenderer::PreparePresentTarget()
+  {
+    UVec2 size = GetRenderSystem()->GetAppWindowSize();
+    if (size.x == 0 || size.y == 0)
+    {
+      // A window that reports no size yet still has to present something: the viewport's own target is
+      // the closest thing to what the window will be.
+      const FramebufferSettings& vpSettings = m_params.viewport->m_framebuffer->GetSettings();
+      size                                  = UVec2((uint) vpSettings.width, (uint) vpSettings.height);
+    }
+
+    if (m_presentSize == size && m_presentTarget != nullptr && m_presentTarget->Initialized())
+    {
+      return;
+    }
+
+    if (m_presentTarget == nullptr)
+    {
+      m_presentTarget = MakeNewPtr<Framebuffer>("PresentTarget");
+    }
+
+    // No msaa and no depth: this is one quad over the finished image, nothing to resolve or test.
+    m_presentTarget->ReconstructIfNeeded({(int) size.x, (int) size.y, false, false, MsaaSampleCount::x0});
+
+    if (m_presentTarget->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0) == nullptr)
+    {
+      TextureSettings settings;
+      settings.InternalFormat = GraphicTypes::FormatRGBA8;
+      settings.Type           = GraphicTypes::TypeUnsignedByte;
+
+      RenderTargetPtr rt      = MakeNewPtr<RenderTarget>((int) size.x, (int) size.y, settings, "PresentTargetRT");
+      rt->Init();
+      m_presentTarget->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, rt);
+    }
+
+    m_presentSize = size;
+  }
 
   void GameRenderer::SetParams(const GameRendererParams& gameRendererParams) { m_params = gameRendererParams; }
 
@@ -118,16 +156,28 @@ namespace ToolKit
       mainBuffer = sceneRenderer->m_resolvedFramebuffer;
     }
 
-    // Post processings
-    if (m_gammaPass->IsEnabled())
-    {
-      m_gammaPass->m_params.frameBuffer = mainBuffer;
-      m_passArray.push_back(m_gammaPass);
-    }
+    // Post processings. The composite reads the rendered target and writes the window sized present
+    // target, so it scales the picture up on the way out: that is what puts a RenderResolutionScale
+    // below 1 across the whole window instead of in its corner (half resolution used to leave a half
+    // size picture in the bottom left of the screen), and it is also why the pass can sample the
+    // rendered attachment directly - a pass cannot read the attachment it writes, so compositing in
+    // place needs a copy of the whole target first.
+    //
+    // The pass runs even with every feature off, where it is a straight copy: that copy is the scale
+    // up, and the blit below cannot do it - a blit copies at its source's size.
+    PreparePresentTarget();
 
+    m_gammaPass->m_params.sourceFrameBuffer = mainBuffer;
+    m_gammaPass->m_params.frameBuffer       = m_presentTarget;
+    m_passArray.push_back(m_gammaPass);
     RenderPath::Render(renderer);
+    m_passArray.clear();
 
-    renderer->CopyFrameBuffer(mainBuffer, nullptr, GraphicBitFields::ColorBits);
+    // The window is filled by a copy and not by a draw. On the reference device a frame that is drawn
+    // into the window's back buffer can reach the display before the draw that fills it has landed, and
+    // the display then shows a buffer from an older frame; a copy never did, in the two camera test of
+    // PerformanceDemo/PerfAnalysis/stage3-two-camera-report.md. See gdtk-overview.md, 8.3.
+    renderer->CopyFrameBuffer(m_presentTarget, nullptr, GraphicBitFields::ColorBits);
 
     PostRender(renderer);
   }

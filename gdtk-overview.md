@@ -963,8 +963,16 @@ Used by **runtime game apps** (not editor). Pipeline:
 
 Params: `viewport`, `scene`, `postProcessSettings`.
 
-**Present: the frame leaves through a copy, and that is settled.** `m_gammaPass` composites in place
-into the viewport target and `Renderer::CopyFrameBuffer` blows the finished frame up into the window.
+**Present: the frame leaves through a copy, and that is settled.** `m_gammaPass` composites the rendered
+target into `m_presentTarget` - a window sized RGBA8 framebuffer, `PreparePresentTarget()` creates and
+resizes it - and `Renderer::CopyFrameBuffer` copies that into the window 1:1. The present target exists
+for two reasons: sampling the rendered target *across* a window sized one is what makes a
+`RenderResolutionScale` below 1 fill the window instead of leaving a reduced picture in its corner (the
+copy this replaces copies at its source's size), and writing a target the pass does not read lets the
+composite sample the rendered attachment directly, so the whole-target scratch copy an in-place
+composite needs is not made. `GammaTonemapFxaaPass` takes a `sourceFrameBuffer` next to its
+`frameBuffer` for that; a null source means the in-place case, which is what the editor's viewport and
+`ProjectThumbnail` still do.
 Drawing the composite straight into the window's back buffer instead - removing the copy, which is
 what the blit costs on a mobile GPU - was implemented, measured and reverted; do not redo it without
 reading `PerformanceDemo/PerfAnalysis/stage3-two-camera-report.md` first. The short version:

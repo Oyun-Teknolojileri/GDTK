@@ -29,17 +29,32 @@ namespace ToolKit
     Pass::PreRender();
 
     Renderer* renderer         = GetRenderer();
-    FramebufferPtr framebuffer = m_params.frameBuffer;
+    FramebufferPtr destination = m_params.frameBuffer;
+    FramebufferPtr source      = m_params.sourceFrameBuffer != nullptr ? m_params.sourceFrameBuffer : destination;
 
-    RenderTargetPtr srcTexture = framebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
-    m_processTexture->ReconstructIfNeeded(srcTexture->m_width, srcTexture->m_height, &srcTexture->Settings());
+    if (source == nullptr)
+    {
+      TK_ERR("GammaTonemapFxaaPass: no source framebuffer to composite.");
+      return;
+    }
 
-    renderer->CopyTexture(srcTexture, m_processTexture);
+    RenderTargetPtr srcTexture     = source->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
 
-    m_quadPass->m_material->SetDiffuseTextureVal(m_processTexture);
+    // Reading the attachment this pass writes is a feedback loop, so the in-place case composites
+    // through a copy of the whole target. A destination that is something else - the window sized
+    // target the game renderer composites into - is sampled directly and that copy is not made.
+    RenderTargetPtr sampledTexture = srcTexture;
+    if (destination == source)
+    {
+      m_processTexture->ReconstructIfNeeded(srcTexture->m_width, srcTexture->m_height, &srcTexture->Settings());
+      renderer->CopyTexture(srcTexture, m_processTexture);
+      sampledTexture = m_processTexture;
+    }
+
+    m_quadPass->m_material->SetDiffuseTextureVal(sampledTexture);
     m_quadPass->SetFragmentShader(m_postProcessShader, renderer);
 
-    m_quadPass->m_params.frameBuffer      = m_params.frameBuffer;
+    m_quadPass->m_params.frameBuffer      = destination;
 
     // Color and stencil only. A full quad writes every color pixel of the target, so the depth of a
     // composite pass is not in its way, and the frame's depth is still wanted after the pass: the light
