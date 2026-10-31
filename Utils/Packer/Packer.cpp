@@ -479,7 +479,14 @@ namespace ToolKit
   void Packer::AndroidRunOnPhone(bool isAPKUnsigned)
   {
     // adb path is in: 'android-sdk/platform-tools'
-    String sdkPath = String(getenv("ANDROID_HOME"));
+    const char* sdkEnv = getenv("ANDROID_HOME");
+    if (sdkEnv == nullptr)
+    {
+      // ANDROID_SDK_ROOT is the older name, still exported by some setups.
+      sdkEnv = getenv("ANDROID_SDK_ROOT");
+    }
+
+    String sdkPath = sdkEnv != nullptr ? String(sdkEnv) : String();
     if (sdkPath.empty())
     {
       TK_WRN("ANDROID_HOME environment variable is not set.\n ");
@@ -490,6 +497,16 @@ namespace ToolKit
     std::filesystem::current_path(ConcatPaths({sdkPath, "platform-tools"}), m_errorCode);
 
     TK_LOG("Trying to execute the app on your phone...\n");
+
+    // The working directory is platform-tools, so the binary is reachable
+    // without touching $PATH. cmd.exe searches the current directory for a
+    // bare name; posix_spawnp does not, so the POSIX branch names the binary
+    // relative to it.
+#ifdef _WIN32
+    const String adbExecutable = "adb";
+#else
+    const String adbExecutable = "./adb";
+#endif
 
     const auto checkIfFailedFn = [this](int execResult, const String& command) -> bool
     {
@@ -520,14 +537,14 @@ namespace ToolKit
     String packageName = "com.otyazilim.toolkit." + projectName + "/com.otyazilim.toolkit.ToolKitActivity";
 
     int execResult;
-    execResult = PlatformHelpers::SysComExec({String("adb"), String("install"), apkLocation}, false, true, nullptr);
+    execResult = PlatformHelpers::SysComExec({adbExecutable, String("install"), apkLocation}, false, true, nullptr);
     if (checkIfFailedFn(execResult, "adb install " + apkLocation))
     {
       return;
     }
 
     execResult = PlatformHelpers::SysComExec(
-        {String("adb"), String("shell"), String("am"), String("start"), String("-n"), packageName},
+        {adbExecutable, String("shell"), String("am"), String("start"), String("-n"), packageName},
         true,
         true,
         nullptr);
@@ -668,7 +685,18 @@ namespace ToolKit
     }
 
     // use "gradlew bundle" command to build .aab project or use "gradlew assemble" to release build
-    String command    = m_publishConfig == PublishConfig::Debug ? "gradlew assembleDebug" : "gradlew assembleRelease";
+    const String gradleTask = m_publishConfig == PublishConfig::Debug ? "assembleDebug" : "assembleRelease";
+
+    // The wrapper is a batch file on Windows and a POSIX shell script
+    // everywhere else. Windows keeps the bare name, which cmd.exe resolves
+    // from the current directory. Off Windows it goes through sh: the exec
+    // bit is not part of a checkout made on Windows, so "./gradlew" alone
+    // fails with "Permission denied" while "sh ./gradlew" always runs.
+#ifdef _WIN32
+    String command = "gradlew " + gradleTask;
+#else
+    String command = "sh ./gradlew " + gradleTask;
+#endif
 
     int compileResult = std::system(command.c_str());
     if (compileResult != 0)
@@ -936,7 +964,7 @@ namespace ToolKit
     Main::SetProxy(g_proxy);
 
     // Headless mode: use NullBackend (no GPU), dummy SDL video driver.
-    // The packer only serializes resources — it never renders.
+    // The packer only serializes resources -- it never renders.
     SDL_SetHint(SDL_HINT_VIDEODRIVER, "dummy");
     RenderSystem::UseNullBackend();
 
@@ -996,10 +1024,15 @@ namespace ToolKit
     int result = packer.Publish();
     packer.RestoreWorkingDirectory();
 
+#ifdef _WIN32
+    // Keep a failed publish's output readable in the console window the
+    // editor spawned. POSIX has no `pause`, and the binary is run from a
+    // terminal or a log capture there, so there is nothing to hold open.
     if (result != 0)
     {
       system("pause");
     }
+#endif
 
     return result;
   }

@@ -1347,6 +1347,38 @@ The `PublishConfig` names map to `Debug` -> `Debug`, `Develop` ->
 `RelWithDebInfo`, `Deploy` -> `Release`. Packing runs first when
 `MinResources.pak` is missing or the config is `Deploy`.
 
+`Packer::AndroidPublish` is the Android path: it packs, copies `MinResources.pak`
+into `Android/app/src/main/assets`, rewrites `Android/app/build.gradle` from the
+template (namespace, app name, `minSdkVersion`, orientation, ABI), replaces the
+launcher icons under `Android/app/src/main/res`, runs the Gradle wrapper from
+`Android/`, and copies the produced `app-{debug,release}.apk` to
+`Publish/Android/<AppName>_{debug,release}.apk`. The wrapper is started through
+the platform shell -- bare `gradlew` on Windows (cmd.exe resolves it from the
+working directory) and `sh ./gradlew` elsewhere, because a checkout made on
+Windows carries no exec bit and `./gradlew` then fails with "Permission denied".
+With `m_deployAfterBuild` the packer installs and starts the APK with `adb` from
+`$ANDROID_HOME/platform-tools` (`ANDROID_SDK_ROOT` is accepted as a fallback
+name); the binary is named `./adb` off Windows, since `posix_spawnp` does not
+search the working directory the way cmd.exe does.
+
+The native half is Gradle's `externalNativeBuild`, so the toolchain comes from
+the SDK rather than from the desktop build: AGP 8.1.1 wants JDK 17, NDK
+25.1.8937393 (what AGP 8.1 picks when none is pinned) and CMake 3.22.1.
+`Templates/Game/Android/app/jni/CMakeLists.txt` resolves the engine root from the
+`TOOLKIT_DIR` cache variable, the `TOOLKIT_DIR` environment variable, or
+`Path.txt` in the per-user config directory (`%APPDATA%` on Windows,
+`$XDG_CONFIG_HOME` / `~/.config` elsewhere) -- the same order the project's own
+`CMakeLists.txt` uses. Gradle passes no `-D` for it, and the file reads
+`CMAKE_HOST_WIN32` rather than `WIN32` because the Android build cross compiles
+from the host.
+
+Two toolchain constraints worth knowing before changing the SDK levels: the NDK
+ignores the template's `-DANDROID_APP_PLATFORM=android-19` (the modern
+`ANDROID_PLATFORM` decides, and AGP fills it from `minSdkVersion`), and
+`TKOpenGL::SetObjectLabel` calls `glObjectLabel` directly on Android, which the
+NDK only declares from API 24 (GL ES 3.2) -- a `minSdkVersion` below 24 fails at
+link time.
+
 The packer process itself is headless (`RenderSystem::UseNullBackend()` plus the
 dummy SDL video driver), which is why `RenderSystem::AddRenderTask` drops its
 tasks there -- the HDRI bake a scene load schedules used to fault while packing.

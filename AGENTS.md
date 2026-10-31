@@ -936,3 +936,88 @@ export `Module._LogLevel`); the shell reads `?loglevel=` and defaults to `1`, so
 `?loglevel=0` restores the full log. In the editor it is the console command
 `LogLevel 0|1|2`. When a web run looks slow, check the level before blaming the
 renderer.
+
+---
+
+## Android Build (Linux)
+
+Building an APK from Linux uses the SDK toolchain, not the desktop one: the
+native code is compiled by Gradle's `externalNativeBuild` through the NDK, so
+neither GCC nor the prebuilt `Dependency/Intermediate/Linux` tree is involved.
+`Packer` is the only engine binary needed, and it is headless.
+
+### Toolchain the templates expect
+
+| Piece | Version | Why |
+|-------|---------|-----|
+| JDK | 17 | AGP 8.1.1 / Gradle 8.1.1 reject newer JDKs |
+| NDK | 25.1.8937393 | AGP 8.1 default; API 21 is the lowest level it offers for `arm64-v8a` |
+| CMake | 3.22.1 | AGP 8.1 default for `externalNativeBuild` |
+| SDK platform | android-34 | `compileSdkVersion` / `targetSdkVersion` in the template |
+| Build tools | 34.0.0 (33.0.1 for AGP's own default) | packaging / signing |
+
+### Environment
+
+```bash
+export ANDROID_HOME=$HOME/Android/Sdk          # adb lives in $ANDROID_HOME/platform-tools
+export JAVA_HOME=$HOME/Android/jdk-17.0.21+9   # Gradle honours JAVA_HOME, so PATH stays on the system JDK
+export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+```
+
+`ANDROID_HOME` (or `ANDROID_SDK_ROOT`) has to be exported for the deploy step:
+`Packer::AndroidRunOnPhone` reads it to find `adb`.
+
+### Publishing
+
+From `Bin<Config>/` (its `../Resources/Engine` must resolve), with
+`PublishArguments.txt` in the working directory - line order matters:
+
+```
+<project name>          # folder under the workspace
+<workspace path>        # trailing separator included
+<app name>              # resValue app_name
+<deploy after build>    # 1 installs + starts on the attached device
+<min sdk>               # 27 in the shipped projects; below 24 fails to link glObjectLabel
+<max sdk>               # compile / target SDK
+<orientation>           # 0 fullSensor, 1 landscape, 2 portrait
+<abi>                   # 0 all, 1 armeabi-v7a, 2 arm64-v8a, 3 x86, 4 x86_64
+<platform>              # 0 Web, 1 Windows, 2 Linux, 3 Android, 4 GamePlugin, 5 EditorPlugin
+<icon path>             # absolute path to the source PNG
+<config>                # 0 Debug, 1 Develop (RelWithDebInfo), 2 Deploy (forces a repack)
+<only pack>             # 1 stops after packing
+```
+
+The project's `Android/` folder has to exist already - the packer rewrites
+`Android/app/build.gradle` from the template but does not scaffold the folder.
+Output lands in `<project>/Publish/Android/<AppName>_<config>.apk`.
+
+The engine root reaches the Gradle-driven CMake through `TOOLKIT_DIR` (env var or
+`Path.txt` under `$XDG_CONFIG_HOME/ToolKit/Config`), because Gradle passes no
+`-D` for it. A project scaffolded by an older ToolKit still carries an
+`Android/app/jni/CMakeLists.txt` that only looks in `%APPDATA%`; replace it with
+the current template copy before publishing on Linux.
+
+### Verifying without a device
+
+The native half can be driven directly, which is faster than a full publish:
+
+```bash
+cmake -S <project>/Android/app/jni -B /tmp/tk-android -G Ninja \
+  -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
+  -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-27 -DANDROID_STL=c++_static \
+  -DCMAKE_BUILD_TYPE=Release -DTOOLKIT_DIR=<engine root>
+cmake --build /tmp/tk-android
+```
+
+`-DANDROID_PLATFORM` is the one that counts; the template's
+`-DANDROID_APP_PLATFORM=android-19` is ignored by the modern NDK toolchain, and
+omitting `ANDROID_PLATFORM` falls back to API 21, where `glObjectLabel` does not
+exist yet.
+
+### adb
+
+`adb devices` must report `device`, not `unauthorized` - an unauthorized entry
+needs the RSA prompt accepted on the phone. `adb install` reports signature
+mismatches as `INSTALL_FAILED_UPDATE_INCOMPATIBLE`; uninstall the old package
+first.
+
