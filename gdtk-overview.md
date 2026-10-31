@@ -190,6 +190,14 @@ compiled data. The backend logs the compile error, the frame keeps rendering wit
 `Shader::FindShaderMergeLocation` only counts a `precision` statement that starts its line, so the word
 in a comment or an identifier can not move the include / define merge point into the middle of a shader.
 
+**Variants are compiled on demand, not up front.** `Shader::Init` merges the include tree and keeps the
+define list; the program that needs a combination asks for it, and `EnsureVariantCompiled` compiles that
+one variant (a program cache hit restores the binary and compiles nothing). The forward shader's
+combination set is over a hundred variants while a frame uses a handful. The include merge and the
+duplicate prune are plain string scans - reading the fixed `// @include begin:` marker shape by hand
+instead of matching a `std::regex` per line, which cost 14 s of a 15 s device start before it was
+replaced.
+
 **Precision is stated, not inherited.** GLSL ES defaults a sampler to `lowp`, and a `lowp` fetch does not
 return what the texture holds: it comes back rounded to about eleven bits, which is half float on a desktop
 driver. That is enough for albedo and not for anything else this engine samples - an instanced model matrix
@@ -219,6 +227,12 @@ web the log goes through `printf`, i.e. the browser console).
 | `0` | everything: memo, success, command output, warning, error |
 | `1` | warnings and errors |
 | `2` | errors only |
+
+A start up measures itself: `BootStats` (`ToolKit/Source/BootStats.h`) keeps one monotonic timeline from
+`Main::PreInit` and logs it as `BOOT <phase> at <ms>` lines, plus a shader summary (stage compiles, program
+links, cache restores, binaries written, sources parsed) at the tenth presented frame. Everything goes
+through `TK_LOG`, so a device run is read with `adb logcat -s TK_LOG:D` and a desktop run out of the
+console sink. A shader stage compile is logged with its variant key and its cost.
 
 Command output always passes -- it is the answer to something the user typed. The filter sits in front
 of the formatting in `WriteTKConsole` / `WritePlatformConsole` / `Log`, and applies to every sink, the

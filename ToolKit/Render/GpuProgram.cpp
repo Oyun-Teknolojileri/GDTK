@@ -7,9 +7,12 @@
 
 #include "GpuProgram.h"
 
+#include "BootStats.h"
 #include "Logger.h"
 #include "Renderer.h"
 #include "Shader.h"
+
+#include <chrono>
 
 #include "DebugNew.h"
 
@@ -34,6 +37,12 @@ namespace ToolKit
         }
       }
       return hash;
+    }
+
+    /** Milliseconds since a steady clock reading, for the boot stats. */
+    float ElapsedMilliseconds(std::chrono::steady_clock::time_point begin)
+    {
+      return (float) std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count();
     }
 
     /** Fills the binding list a backend needs to restore a program's sampler and UBO slots. */
@@ -170,6 +179,8 @@ namespace ToolKit
       GpuProgramPtr loaded = MakeNewPtr<GpuProgram>(vertexShader, fragmentShader);
       loaded->m_backend    = m_backend;
 
+      const auto restoreBegin = std::chrono::steady_clock::now();
+
       if (m_backend->LoadProgramBinary(loaded.get(), sourceHash))
       {
         loaded->m_loadedFromCache = true;
@@ -178,6 +189,8 @@ namespace ToolKit
         BuildResourceBindings(loaded.get(), m_globalGpuBuffers, cacheBindings);
         m_backend->CreateGpuProgram(loaded.get(), cacheBindings.data(), (int) cacheBindings.size());
 
+        BootStats::ProgramReady(true, ElapsedMilliseconds(restoreBegin));
+
         m_programsBySourceHash[sourceHash] = loaded;
         return m_programsBySourceHash[sourceHash];
       }
@@ -185,6 +198,11 @@ namespace ToolKit
 
     vertexShader->Init();
     fragmentShader->Init();
+
+    // Android compiles one variant per shader at start and the rest on demand, so the pair the cache
+    // missed is brought in here, right before the program is built from it.
+    vertexShader->EnsureVariantCompiled();
+    fragmentShader->EnsureVariantCompiled();
 
     // A shader that failed to compile reports through the backend's log and keeps a null GpuResourceData.
     // Creating a program out of it would dereference that null inside the backend, so stop here and
@@ -272,11 +290,18 @@ namespace ToolKit
         bindings.push_back(b);
       }
 
+      const auto linkBegin = std::chrono::steady_clock::now();
       m_backend->CreateGpuProgram(program.get(), bindings.data(), (int) bindings.size());
+      BootStats::ProgramReady(false, ElapsedMilliseconds(linkBegin));
 
       if (useProgramCache)
       {
+        // Timed on its own: reading a program back forces the driver to finish the program, so the
+        // save can cost more than the link it is trying to spare on the next start.
+        const auto saveBegin = std::chrono::steady_clock::now();
         m_backend->SaveProgramBinary(program.get(), sourceHash);
+        BootStats::ProgramStored(ElapsedMilliseconds(saveBegin));
+
         m_programsBySourceHash[sourceHash] = program;
       }
 

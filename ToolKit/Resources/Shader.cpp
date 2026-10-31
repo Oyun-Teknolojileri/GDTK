@@ -7,6 +7,7 @@
 
 #include "Shader.h"
 
+#include "BootStats.h"
 #include "EngineSettings.h"
 #include "FileManager.h"
 #include "GpuProgram.h"
@@ -17,8 +18,7 @@
 #include "ToolKit.h"
 #include "Util.h"
 
-#include <regex>
-#include <sstream>
+#include <chrono>
 #include <unordered_set>
 
 #include "DebugNew.h"
@@ -29,64 +29,196 @@ namespace ToolKit
   // Duplicate Include Prune Utility
   //////////////////////////////////////////
 
+  namespace
+  {
+    /** The characters a regular expression counted as \s, so the manual scans see the same lines. */
+    bool IsShaderSpace(char character)
+    {
+      return character == ' ' || character == '\t' || character == '\n' || character == '\r' ||
+             character == '\f' || character == '\v';
+    }
+
+    /**
+     * Reads a "// @include begin:<name>" or "// @include end:<name>" marker line.
+     *
+     * The engine writes these markers itself, so their shape is fixed: optional whitespace, "//",
+     * optional whitespace, "@include", at least one whitespace, then "begin:" or "end:" followed by
+     * the name, which runs to the end of the line.
+     *
+     * A regular expression used to do this for every line of every shader. It was the largest
+     * single cost of a device start, because a std::regex is compiled once and then matched per
+     * line, so the fixed shape is read by hand instead.
+     *
+     * @param line The line without its terminating newline.
+     * @param isEnd Set to true when the marker closes a block.
+     * @return The include name, empty when the line carries no marker.
+     */
+    StringView ParseIncludeMarker(StringView line, bool& isEnd)
+    {
+      isEnd = false;
+
+      size_t pos = 0;
+      while (pos < line.size() && IsShaderSpace(line[pos]))
+      {
+        pos++;
+      }
+
+      if (pos + 1 >= line.size() || line[pos] != '/' || line[pos + 1] != '/')
+      {
+        return StringView();
+      }
+      pos += 2;
+
+      while (pos < line.size() && IsShaderSpace(line[pos]))
+      {
+        pos++;
+      }
+
+      if (line.compare(pos, 8, "@include") != 0)
+      {
+        return StringView();
+      }
+      pos += 8;
+
+      // At least one whitespace separates "@include" from the name.
+      if (pos >= line.size() || !IsShaderSpace(line[pos]))
+      {
+        return StringView();
+      }
+      while (pos < line.size() && IsShaderSpace(line[pos]))
+      {
+        pos++;
+      }
+
+      if (line.compare(pos, 6, "begin:") == 0)
+      {
+        pos += 6;
+      }
+      else if (line.compare(pos, 4, "end:") == 0)
+      {
+        pos   += 4;
+        isEnd  = true;
+      }
+      else
+      {
+        return StringView();
+      }
+
+      const size_t nameBegin = pos;
+      while (pos < line.size() && !IsShaderSpace(line[pos]))
+      {
+        pos++;
+      }
+
+      // The name has to run to the end of the line: anything after it means this is not a marker.
+      if (pos == nameBegin || pos != line.size())
+      {
+        return StringView();
+      }
+
+      return line.substr(nameBegin);
+    }
+
+    /**
+     * Removes a "#version" or "precision" statement from the top of an included source.
+     *
+     * The including shader writes both, so an included file must not carry its own. This is the
+     * same single statement the regular expression replaced (it was anchored at the start of the
+     * text), done by hand because the expression was built per include.
+     */
+    void StripLeadingVersionDirective(String& source)
+    {
+      size_t pos = 0;
+      while (pos < source.size() && IsShaderSpace(source[pos]))
+      {
+        pos++;
+      }
+
+      const bool version   = source.compare(pos, 8, "#version") == 0;
+      const bool precision = source.compare(pos, 9, "precision") == 0;
+
+      if (!version && !precision)
+      {
+        return;
+      }
+
+      // The statement runs to the end of its line. The newline stays, so the lines around it do not
+      // shift in a compiler error.
+      const size_t lineEnd = source.find('\n', pos);
+      source.erase(0, lineEnd == String::npos ? source.size() : lineEnd);
+    }
+  } // namespace
+
   void PruneDuplicateIncludes(String& source)
   {
-    std::istringstream in(source);
-    std::ostringstream out;
-
-    // Regexes to detect include begin/end with the include name in group 1
-    const std::regex beginRegex(R"(^\s*//\s*@include\s+begin:(\S+))");
-    const std::regex endRegex(R"(^\s*//\s*@include\s+end:(\S+))");
-
-    std::string line;
     // Keep track of which include names we've already output
     std::unordered_set<String> seen;
     // Stack of (include name, skip flag) for nested scopes
     std::vector<std::pair<String, bool>> includeStack;
 
-    while (std::getline(in, line))
-    {
-      std::smatch match;
-      if (std::regex_match(line, match, beginRegex))
-      {
-        // Found a begin scope
-        String name = match[1].str();
-        bool skip   = seen.count(name) > 0;
-        includeStack.emplace_back(name, skip);
+    String pruned;
+    pruned.reserve(source.size());
 
-        if (!skip)
-        {
-          seen.insert(name);
-          out << line << "\n";
-        }
-      }
-      else if (std::regex_match(line, match, endRegex))
+    const StringView text(source);
+    size_t lineBegin = 0;
+
+    while (lineBegin < text.size())
+    {
+      size_t lineEnd        = text.find('\n', lineBegin);
+      const bool terminated = lineEnd != StringView::npos;
+      if (!terminated)
       {
-        // Found an end scope
-        String name = match[1].str();
-        if (!includeStack.empty())
+        lineEnd = text.size();
+      }
+
+      const StringView line = text.substr(lineBegin, lineEnd - lineBegin);
+      lineBegin             = terminated ? lineEnd + 1 : text.size();
+
+      bool isEnd;
+      const StringView name = ParseIncludeMarker(line, isEnd);
+
+      if (!name.empty())
+      {
+        if (!isEnd)
         {
-          auto [topName, skip] = includeStack.back();
-          includeStack.pop_back();
-          // Only output the end marker if we weren't skipping this block
+          // Found a begin scope.
+          const String includeName(name);
+          const bool skip = seen.count(includeName) > 0;
+          includeStack.emplace_back(includeName, skip);
+
           if (!skip)
           {
-            out << line << "\n";
+            seen.insert(includeName);
+            pruned.append(line.data(), line.size());
+            pruned += '\n';
           }
         }
-      }
-      else
-      {
-        // Regular line: output only if not inside a skipped block
-        if (includeStack.empty() || !includeStack.back().second)
+        else if (!includeStack.empty())
         {
-          out << line << "\n";
+          // Found an end scope: close the innermost one, and keep its line when it was kept.
+          const bool skip = includeStack.back().second;
+          includeStack.pop_back();
+
+          if (!skip)
+          {
+            pruned.append(line.data(), line.size());
+            pruned += '\n';
+          }
         }
+
+        continue;
+      }
+
+      // Regular line: output only if not inside a skipped block.
+      if (includeStack.empty() || !includeStack.back().second)
+      {
+        pruned.append(line.data(), line.size());
+        pruned += '\n';
       }
     }
 
-    // Replace the source with the pruned result
-    source = out.str();
+    // Replace the source with the pruned result.
+    source = std::move(pruned);
   }
 
   // Shader
@@ -124,15 +256,19 @@ namespace ToolKit
       // Try syncing presets.
       GetEngineSettings().m_shaderSettings->SyncDefinesForShader(GetFile(), m_defineArray);
 
-      ShaderDefineCombinaton defineCombo;
-      ComplieShaderCombinations(m_defineArray, 0, defineCombo);
+      // Nothing here. Compiling the whole combination set upfront walks every define against every
+      // other one -- the forward shader alone is over a hundred variants -- while a frame uses a
+      // handful. CreateProgram asks for the pair it needs: the program cache answers for a warm
+      // start, and EnsureVariantCompiled compiles exactly one variant on a miss.
     }
     else
     {
       Compile(m_source);
     }
 
-    if (flushClientSideArray)
+    // A shader with defines keeps its text: a variant compiled later needs it, and dropping it here
+    // is what made an on-demand compile produce nothing.
+    if (flushClientSideArray && m_defineArray.empty())
     {
       m_source.clear();
     }
@@ -167,7 +303,6 @@ namespace ToolKit
     }
 
     m_shaderVariantMap.clear();
-    m_compileLogged = false;
     m_gpuData.reset();
     m_initiated = false;
   }
@@ -242,13 +377,10 @@ namespace ToolKit
     auto handle = m_shaderVariantMap.find(key);
     if (handle == m_shaderVariantMap.end())
     {
-      TK_WRN("Compiling shader during runtime for a new variant. Define: %s for Variant: %s", name.data(), val.data());
-      ShaderDefineCombinaton defineCombo;
-      ComplieShaderCombinations(m_defineArray, 0, defineCombo);
-
-      // Re-look the key up instead of indexing the map: an index would insert a default (null)
-      // entry and hand a null GpuResourceData to the program creation, which dereferences it.
-      handle = m_shaderVariantMap.find(key);
+      // Record the selection. The program that uses this variant is what knows it needs it: it loads
+      // from the program cache, or EnsureVariantCompiled compiles this one variant.
+      m_currentVariantKey = key;
+      return;
     }
 
     if (handle != m_shaderVariantMap.end())
@@ -265,6 +397,8 @@ namespace ToolKit
 
   XmlNode* Shader::DeSerializeImp(const SerializationFileInfo& info, XmlNode* parent)
   {
+    const auto parseBegin = std::chrono::steady_clock::now();
+
     m_includeFiles.clear();
     m_resources.clear();
 
@@ -366,7 +500,7 @@ namespace ToolKit
     {
       PruneDuplicateIncludes(m_source);
 
-      // Inject the version directive. .shader sources no longer carry their own #version line —
+      // Inject the version directive. .shader sources no longer carry their own #version line -
       // one source must compile on both backends, so the right line is picked here based on the
       // active backend. Goes to the very top because GLSL requires #version as the first
       // statement (anything before it is a compile error). HandleShaderIncludes already strips
@@ -392,6 +526,12 @@ namespace ToolKit
 #endif
     }
 
+    // Parsing, include merging and the duplicate prune are all string work on the source; on a
+    // device they cost seconds, which is why the boot report counts them apart from the compiles.
+    BootStats::ShaderSourceParsed((float) std::chrono::duration<double, std::milli>(
+                                    std::chrono::steady_clock::now() - parseBegin)
+                                    .count());
+
     return nullptr;
   }
 
@@ -410,7 +550,7 @@ namespace ToolKit
     // CLEANUP: We must strip #version and precision from the included file
     // to prevent multiple definitions in the final output.
     String includeContent    = includeShader->m_source;
-    includeContent           = std::regex_replace(includeContent, std::regex(R"(^\s*#version.*|^\s*precision.*)"), "");
+    StripLeadingVersionDirective(includeContent);
 
     // Ensure the included content ends with a newline to avoid "gluing" lines together
     if (!includeContent.empty() && includeContent.back() != '\n')
@@ -494,26 +634,16 @@ namespace ToolKit
 
   bool Shader::Compile(String source, const String& variantKey)
   {
-    // One line per shader and not one per variant: the whole combination set is compiled on first
-    // use, so the variants only repeated the file name and filled the console. A variant that fails
-    // to compile still reports through the backend's own error log. The path is relative to the
-    // resource root, the workspace prefix is the same on every line.
-    if (!m_compileLogged)
-    {
-      m_compileLogged      = true;
-      const String relPath = GetRelativeResourcePath(GetFile());
-
-      if (variantKey.empty())
-      {
-        TK_LOG("Shader in compile %s", relPath.c_str());
-      }
-      else
-      {
-        TK_LOG("Shader in compile %s [%s]", relPath.c_str(), variantKey.c_str());
-      }
-    }
-
+    // Every compile is timed and counted. The lazy variant path compiles exactly the variants the
+    // programs ask for, so these lines are the record of what a start up needs; the totals and the
+    // per variant split are printed by BootStats::Report once the first frame is out.
+    const auto begin        = std::chrono::steady_clock::now();
     GpuResourceDataPtr data = GetRenderSystem()->GetBackend()->CreateShader(this, source);
+    const float elapsedMs   = (float) std::chrono::duration<double, std::milli>(
+                                std::chrono::steady_clock::now() - begin)
+                                .count();
+
+    BootStats::StageCompiled(GetRelativeResourcePath(GetFile()), variantKey, elapsedMs);
 
     // Keep the last working variant on failure: a null here reaches the program creation, which
     // dereferences it, so a shader that failed to compile would take the renderer down instead of
@@ -525,6 +655,72 @@ namespace ToolKit
 
     m_gpuData = data;
     return true;
+  }
+
+  bool Shader::CompileVariantKey(const String& variantKey)
+  {
+    if (variantKey.empty() || m_shaderVariantMap.find(variantKey) != m_shaderVariantMap.end())
+    {
+      return false;
+    }
+
+    // The key is the define list the variant is compiled with; rebuild the #define lines from it so
+    // exactly that variant comes back, without walking the combination space.
+    String defineText;
+    StringArray parts;
+    Split(variantKey, "|", parts);
+    for (const String& part : parts)
+    {
+      const size_t separator = part.find(':');
+      if (separator == String::npos)
+      {
+        continue;
+      }
+      defineText += "#define " + part.substr(0, separator) + " " + part.substr(separator + 1) + "\n";
+    }
+
+    String source      = m_source;
+    const uint mergeAt = FindShaderMergeLocation(source);
+    source.insert(mergeAt, defineText);
+
+    if (Compile(source, variantKey))
+    {
+      m_currentVariantKey            = variantKey;
+      m_shaderVariantMap[variantKey] = m_gpuData;
+      return true;
+    }
+    return false;
+  }
+
+  void Shader::EnsureVariantCompiled()
+  {
+    if (!m_currentVariantKey.empty())
+    {
+      if (CompileVariantKey(m_currentVariantKey))
+      {
+        return;
+      }
+    }
+
+    if (m_gpuData != nullptr)
+    {
+      return; // Something usable is already compiled.
+    }
+
+    if (m_defineArray.empty())
+    {
+      Compile(m_source);
+      return;
+    }
+
+    // No define was selected: an engine pass creates its program straight after Init. Compile the
+    // first combination so it has valid data; SetDefine picks a different one when it needs to.
+    ShaderDefineCombinaton firstCombo;
+    for (int i = 0; i < (int) m_defineArray.size(); i++)
+    {
+      firstCombo.push_back({i, 0});
+    }
+    CompileWithDefines(m_source, firstCombo);
   }
 
   void Shader::CompileWithDefines(String source, const ShaderDefineCombinaton& defineCombo)
@@ -596,8 +792,13 @@ namespace ToolKit
     m_pbrForwardShaderFile    = ShaderPath(TK_DEFAULT_FORWARD_FRAG, true);
     m_defaultVertexShaderFile = ShaderPath(TK_DEFAULT_VERTEX_SHADER, true);
 
+    // The two default shaders pull in the whole include tree, so this is where a device spends its
+    // shader loading time. Marked apart from the manager total to show which of the two it is.
     Create<Shader>(m_pbrForwardShaderFile);
+    BootStats::Mark("forward shader loaded");
+
     Create<Shader>(m_defaultVertexShaderFile);
+    BootStats::Mark("default vertex shader loaded");
   }
 
   bool ShaderManager::CanStore(ClassMeta* Class) { return Class == Shader::StaticClass(); }

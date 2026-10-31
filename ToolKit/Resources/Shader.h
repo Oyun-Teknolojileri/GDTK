@@ -93,6 +93,16 @@ namespace ToolKit
      */
     void SetDefine(const StringView name, const StringView val);
 
+    /**
+     * Compiles the variant m_currentVariantKey names, if it is not compiled yet. Android only in
+     * effect: the device build compiles the variants a program asks for instead of the whole
+     * combination set, so a program cache miss brings in exactly one.
+     */
+    void EnsureVariantCompiled();
+
+    /** Compiles one variant named by its "Define:Value|Define:Value" key. */
+    bool CompileVariantKey(const String& variantKey);
+
     XmlNode* SerializeImp(XmlDocument* doc, XmlNode* parent) const override;
     XmlNode* DeSerializeImp(const SerializationFileInfo& info, XmlNode* parent) override;
 
@@ -147,6 +157,9 @@ namespace ToolKit
     /** Shader defines are stored in this array. */
     ShaderDefineArray m_defineArray;
 
+    /** Variant of m_gpuData, in the "Define:Value|Define:Value" form the variant map uses. */
+    String m_currentVariantKey;
+
     /** Resource bindings (textures + UBOs) declared in the shader XML metadata. */
     ShaderResourceArray m_resources;
 
@@ -162,13 +175,6 @@ namespace ToolKit
 
     /** Current define value pairs in an array. */
     ShaderDefineCombinaton m_currentDefineValues;
-
-    /**
-     * States whether the compile of this shader has been reported in the console. The whole
-     * combination set is compiled on first use, so a line per variant only repeated the file name;
-     * the flag is cleared with the variant cache so a reload reports again.
-     */
-    bool m_compileLogged = false;
   };
 
   class TK_API ShaderManager : public ResourceManager
