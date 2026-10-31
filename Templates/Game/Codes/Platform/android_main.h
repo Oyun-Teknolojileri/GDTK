@@ -21,7 +21,11 @@
 #include <chrono>
 #include <iostream>
 
-#define ANDROID_LOG(format, ...) __android_log_print(ANDROID_LOG_DEBUG, "TK_LOG", format, ##__VA_ARGS__)
+// Info, not debug: a phone sets its own minimum log priority, and an OEM image that pins it to Info
+// drops every DEBUG line, which took the whole TK_LOG stream with it (measured on a TECNO CL7,
+// Android 16, where log.tag and persist.log.tag are both "I"). Info clears that floor; the engine's
+// own level filter (SetLogLevel) is a separate gate and still applies.
+#define ANDROID_LOG(format, ...) __android_log_print(ANDROID_LOG_INFO, "TK_LOG", format, ##__VA_ARGS__)
 
 #define PLATFORM_SDL_FLAGS       (SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_FULLSCREEN)
 

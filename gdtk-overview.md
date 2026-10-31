@@ -230,7 +230,11 @@ measurement to make per fetch, not a default to inherit.
 
 `TK_LOG` / `TK_WRN` / `TK_ERR` / `TK_SUCCESS` / `TK_SYSLOG` are the entry points; `Logger` writes to
 `Log.txt` and hands each line to the console sinks the host registers (`SetWriteConsoleFn`, and on the
-web the log goes through `printf`, i.e. the browser console).
+web the log goes through `printf`, i.e. the browser console). On Android the host binds the platform sink
+(`SetPlatformConsoleFn`) to `__android_log_print` with the tag `TK_LOG`, and at **INFO** priority: a phone
+sets its own minimum log priority, and an OEM image that pins it to Info drops every DEBUG line, which
+takes the whole `TK_LOG` stream with it (measured on a TECNO CL7, Android 16, `log.tag` and
+`persist.log.tag` both `I`). Info clears that floor; the engine's own level below is a separate gate.
 
 `SetLogLevel(int)` / `GetLogLevel()` (free functions in `ToolKit`) filter that stream:
 
