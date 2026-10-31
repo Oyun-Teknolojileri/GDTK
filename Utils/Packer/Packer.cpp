@@ -245,8 +245,8 @@ namespace ToolKit
     }
 
     int winBuildCompileResult = -1;
-    String cmd                = "cmake -S . -B ./Intermediate/Windows -A x64 -DTK_PLATFORM=Windows -DCMAKE_BUILD_TYPE=" + buildConfig;
-    winBuildCompileResult     = std::system(cmd.c_str());
+    String cmd = "cmake -S . -B ./Intermediate/Windows -A x64 -DTK_PLATFORM=Windows -DCMAKE_BUILD_TYPE=" + buildConfig;
+    winBuildCompileResult = std::system(cmd.c_str());
     if (winBuildCompileResult != 0)
     {
       TK_ERR("Cmake configure failed: %s\n", cmd.c_str());
@@ -314,7 +314,7 @@ namespace ToolKit
   int Packer::LinuxPublish()
   {
     TK_LOG("Building for Linux\n");
-    m_workingDirectory            = std::filesystem::current_path();
+    m_workingDirectory = std::filesystem::current_path();
 
     // Run cmake for Linux build
     String buildConfig;
@@ -331,12 +331,12 @@ namespace ToolKit
       buildConfig = "Release";
     }
 
-    Path projectDir                = Path(ConcatPaths({ResourcePath(), ".."})).lexically_normal();
-    String projectDirStr           = projectDir.string();
-    projectDirStr                  = projectDirStr.substr(0, projectDirStr.size() - 1);
+    Path projectDir               = Path(ConcatPaths({ResourcePath(), ".."})).lexically_normal();
+    String projectDirStr          = projectDir.string();
+    projectDirStr                 = projectDirStr.substr(0, projectDirStr.size() - 1);
 
-    const String publishDirectory  = ConcatPaths({projectDirStr, "Publish", "Linux"});
-    const String publishConfigDir  = ConcatPaths({publishDirectory, "Config"});
+    const String publishDirectory = ConcatPaths({projectDirStr, "Publish", "Linux"});
+    const String publishConfigDir = ConcatPaths({publishDirectory, "Config"});
 
     // Create directories. publishDirectory is the cmake --install --prefix; the
     // Bin/ subdir under it is created by the install rules (DESTINATION Bin), so
@@ -383,7 +383,7 @@ namespace ToolKit
     // SONAME, all with $ORIGIN RPATH) into <publishDirectory>/Bin. The install
     // rules live in the game's CMakeLists.txt. Single-config generator, so no
     // --config. Run while cwd is still the project root.
-    cmd = "cmake --install ./Intermediate/Linux --prefix \"" + publishDirectory + "\"";
+    cmd        = "cmake --install ./Intermediate/Linux --prefix \"" + publishDirectory + "\"";
     compileRes = std::system(cmd.c_str());
     if (compileRes != 0)
     {
@@ -397,9 +397,9 @@ namespace ToolKit
       return -1;
     }
 
-    const String pakFile             = ConcatPaths({projectDirStr, TKResourcePak});
-    const String engineSettingsPath  = ConcatPaths({projectDirStr, "Config", "Linux", "Engine.settings"});
-    const String destEngineSettings  = ConcatPaths({publishConfigDir, "Engine.settings"});
+    const String pakFile            = ConcatPaths({projectDirStr, TKResourcePak});
+    const String engineSettingsPath = ConcatPaths({projectDirStr, "Config", "Linux", "Engine.settings"});
+    const String destEngineSettings = ConcatPaths({publishConfigDir, "Engine.settings"});
 
     TK_LOG("Linux build done, moving files\n");
 
@@ -614,11 +614,20 @@ namespace ToolKit
       return -1;
     }
 
-    const String assetsPath             = NormalizePath("Android/app/src/main/assets");
-    const String projectLocation        = ConcatPaths({workspacePath, projectName});
-    const String sceneResourcesPath     = ConcatPaths({projectLocation, TKResourcePak});
-    const String androidResourcesPath   = ConcatPaths({projectLocation, assetsPath, TKResourcePak});
-    const String engineSettingsPath     = ConcatPaths({ResourcePath(), "..", "Config", "Android", "Engine.settings"});
+    const String assetsPath           = NormalizePath("Android/app/src/main/assets");
+    const String projectLocation      = ConcatPaths({workspacePath, projectName});
+    const String sceneResourcesPath   = ConcatPaths({projectLocation, TKResourcePak});
+    const String androidResourcesPath = ConcatPaths({projectLocation, assetsPath, TKResourcePak});
+    // The project's own Config/Android/Engine.settings wins over the engine's default, the way the
+    // Windows and Linux publishes already work. Taking only the engine's copy meant a project could not
+    // change its graphics settings at all on Android - msaa, shadows, texture quality all came from the
+    // engine's defaults no matter what the project asked for, and nothing said so.
+    String engineSettingsPath         = ConcatPaths({projectLocation, "Config", "Android", "Engine.settings"});
+    if (!CheckSystemFile(engineSettingsPath))
+    {
+      engineSettingsPath = ConcatPaths({ResourcePath(), "..", "Config", "Android", "Engine.settings"});
+    }
+
     const String destEngineSettingsPath = ConcatPaths({projectLocation, assetsPath, "Config", "Engine.settings"});
 
     const std::filesystem::copy_options copyOption = std::filesystem::copy_options::overwrite_existing;
@@ -803,9 +812,9 @@ namespace ToolKit
     // Always tell the project where the engine is (Packer already resolved it
     // from Path.txt), so the project CMake does not need TOOLKIT_DIR in its env.
 #ifdef _WIN32
-    String cmd     = "cmake -S . -B ./Intermediate/Plugin -A x64 -DCMAKE_BUILD_TYPE=" + buildConfig;
+    String cmd = "cmake -S . -B ./Intermediate/Plugin -A x64 -DCMAKE_BUILD_TYPE=" + buildConfig;
 #else
-    String cmd     = "cmake -S . -B ./Intermediate/Plugin -DCMAKE_BUILD_TYPE=" + buildConfig;
+    String cmd = "cmake -S . -B ./Intermediate/Plugin -DCMAKE_BUILD_TYPE=" + buildConfig;
 #endif
     if (!m_toolkitPath.empty())
     {
@@ -899,8 +908,8 @@ namespace ToolKit
     // used to be its own <name>.worker.js while current releases reuse the main
     // <name>.js as the worker script. Require the four files every emscripten
     // bundle has, and take the worker script only when it was emitted.
-    String requiredFiles[] = {firstPart + "data", firstPart + "html", firstPart + "js", firstPart + "wasm"};
-    String optionalFiles[] = {firstPart + "worker.js"};
+    String requiredFiles[]  = {firstPart + "data", firstPart + "html", firstPart + "js", firstPart + "wasm"};
+    String optionalFiles[]  = {firstPart + "worker.js"};
 
     std::filesystem::create_directories(publishDirectory, m_errorCode);
     if (CheckErrorReturn("Create directories " + publishDirectory))
@@ -1001,8 +1010,8 @@ namespace ToolKit
     String toolkitPath;
     if (!configDir.empty())
     {
-      String pathFile         = ConcatPaths({configDir, "ToolKit", "Config", "Path.txt"});
-      toolkitPath             = GetFileManager()->ReadAllText(pathFile);
+      String pathFile = ConcatPaths({configDir, "ToolKit", "Config", "Path.txt"});
+      toolkitPath     = GetFileManager()->ReadAllText(pathFile);
       NormalizePathInplace(toolkitPath);
     }
     packer.m_toolkitPath            = toolkitPath;
