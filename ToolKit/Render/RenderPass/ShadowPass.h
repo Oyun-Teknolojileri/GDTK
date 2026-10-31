@@ -94,12 +94,12 @@ namespace ToolKit
     ShadowPassParams m_params;
 
    private:
-    MaterialPtr m_shadowMatOrtho = nullptr;
-    MaterialPtr m_shadowMatPersp = nullptr;
+    MaterialPtr m_shadowMatOrtho        = nullptr;
+    MaterialPtr m_shadowMatPersp        = nullptr;
 
     /** Point lights project each hemisphere onto a paraboloid, two maps instead of six cube faces.
      *  The projection cannot be a matrix, so it lives in its own vertex shader. */
-    MaterialPtr m_shadowMatParaboloid = nullptr;
+    MaterialPtr m_shadowMatParaboloid   = nullptr;
 
     /** Turns the shadow camera around for the second hemisphere of a point light: half a turn about Y.
      *  (w, x, y, z) = (0, 0, 1, 0). */
@@ -107,9 +107,9 @@ namespace ToolKit
 
     /** The depth program without the instance table. Used on the frames where instanced batching is
      *  switched off, where every caster is one draw and reads the per draw block again. */
-    GpuProgramPtr m_plainProgram = nullptr;
+    GpuProgramPtr m_plainProgram        = nullptr;
 
-    Vec4 m_shadowClearColor      = Vec4(1.0f);
+    Vec4 m_shadowClearColor             = Vec4(1.0f);
 
     /** Per-layer framebuffers for the main atlas render path. Each pinned to one atlas layer +
      *  the shared depth attachment. Replaces the old "one framebuffer + repeated
@@ -152,6 +152,7 @@ namespace ToolKit
       int slotIndices[6]         = {-1, -1, -1, -1, -1, -1};
       int count                  = 0;
     };
+
     std::unordered_map<uint64, PlacedLight> m_placedLights;
 
     /** Cached list of shadow casting lights with valid atlas slots, sorted by first atlas layer. */
@@ -176,6 +177,7 @@ namespace ToolKit
       uint begin        = 0;
       uint end          = 0;
     };
+
     std::unordered_map<const Entity*, CasterSlot> m_casterRanges;
 
     /// Scratch jobs for the casters that changed since the last frame.
@@ -189,6 +191,18 @@ namespace ToolKit
     /** Batched runs of m_shadowRenderData.jobs; see ShadowBatch. */
     std::vector<ShadowBatch> m_shadowBatches;
 
+    /**
+     * Signature of everything the atlas content depends on, and whether the atlas currently holds it.
+     *
+     * The pass clears every atlas layer and draws every shadow map again each frame. For a still light,
+     * still casters and a still view camera - the cascades are fitted to that camera - that reproduces the
+     * images already in the atlas, which is the whole 19 ms a static scene spends in here. The signature
+     * covers the light set, each light's transform and shadow resolution, the view camera and the casters
+     * (already versioned above); a mismatch, a dirty caster or an animated one redraws.
+     */
+    uint64 m_atlasSignature        = 0;
+    bool m_atlasDrawn              = false;
+
     /** Per instance model matrices, eight texels per job, in job order. */
     DataTexturePtr m_instanceTable = nullptr;
     std::vector<float> m_instanceData;
@@ -199,8 +213,8 @@ namespace ToolKit
     std::vector<float> m_cascadeInstanceData;
 
     /** Must match INSTANCE_TEX_WIDTH and INSTANCE_TEXELS_PER_ITEM in instanceDataInc.shader. */
-    static constexpr int InstanceTexWidth       = 256;
-    static constexpr int InstanceTexelsPerItem  = 8;
+    static constexpr int InstanceTexWidth      = 256;
+    static constexpr int InstanceTexelsPerItem = 8;
 
     /** Rotations for each face of a cubemap used for point light shadows. */
     Quaternion m_cubeMapRotations[6];
