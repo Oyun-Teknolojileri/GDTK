@@ -2,7 +2,7 @@
 
 <img src="Resources/Engine/Textures/Icons/app.png" width="48" align="left">ToolKit is a 3D editor and interactive application development platform. It lets you build 3D scenes and bring in the interactivity through C++ plug-ins. The editor, the launcher, the import and pack tools, and the engine library are all part of this repository and all build from one CMake tree.
 
-Current version: **v0.5.0** (`TKVersionStr` in `ToolKit/Source/Types.h`).
+Current version: **v0.5.1** (`TKVersionStr` in `ToolKit/Source/Types.h`).
 
 ## Motivation
 
