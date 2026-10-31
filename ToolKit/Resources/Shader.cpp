@@ -17,8 +17,6 @@
 #include "ToolKit.h"
 #include "Util.h"
 
-#include <regex>
-#include <sstream>
 #include <unordered_set>
 
 #include "DebugNew.h"
@@ -29,64 +27,196 @@ namespace ToolKit
   // Duplicate Include Prune Utility
   //////////////////////////////////////////
 
+  namespace
+  {
+    /** The characters a regular expression counted as \s, so the manual scans see the same lines. */
+    bool IsShaderSpace(char character)
+    {
+      return character == ' ' || character == '\t' || character == '\n' || character == '\r' ||
+             character == '\f' || character == '\v';
+    }
+
+    /**
+     * Reads a "// @include begin:<name>" or "// @include end:<name>" marker line.
+     *
+     * The engine writes these markers itself, so their shape is fixed: optional whitespace, "//",
+     * optional whitespace, "@include", at least one whitespace, then "begin:" or "end:" followed by
+     * the name, which runs to the end of the line.
+     *
+     * A regular expression used to do this for every line of every shader. It was the largest
+     * single cost of a device start, because a std::regex is compiled once and then matched per
+     * line, so the fixed shape is read by hand instead.
+     *
+     * @param line The line without its terminating newline.
+     * @param isEnd Set to true when the marker closes a block.
+     * @return The include name, empty when the line carries no marker.
+     */
+    StringView ParseIncludeMarker(StringView line, bool& isEnd)
+    {
+      isEnd = false;
+
+      size_t pos = 0;
+      while (pos < line.size() && IsShaderSpace(line[pos]))
+      {
+        pos++;
+      }
+
+      if (pos + 1 >= line.size() || line[pos] != '/' || line[pos + 1] != '/')
+      {
+        return StringView();
+      }
+      pos += 2;
+
+      while (pos < line.size() && IsShaderSpace(line[pos]))
+      {
+        pos++;
+      }
+
+      if (line.compare(pos, 8, "@include") != 0)
+      {
+        return StringView();
+      }
+      pos += 8;
+
+      // At least one whitespace separates "@include" from the name.
+      if (pos >= line.size() || !IsShaderSpace(line[pos]))
+      {
+        return StringView();
+      }
+      while (pos < line.size() && IsShaderSpace(line[pos]))
+      {
+        pos++;
+      }
+
+      if (line.compare(pos, 6, "begin:") == 0)
+      {
+        pos += 6;
+      }
+      else if (line.compare(pos, 4, "end:") == 0)
+      {
+        pos   += 4;
+        isEnd  = true;
+      }
+      else
+      {
+        return StringView();
+      }
+
+      const size_t nameBegin = pos;
+      while (pos < line.size() && !IsShaderSpace(line[pos]))
+      {
+        pos++;
+      }
+
+      // The name has to run to the end of the line: anything after it means this is not a marker.
+      if (pos == nameBegin || pos != line.size())
+      {
+        return StringView();
+      }
+
+      return line.substr(nameBegin);
+    }
+
+    /**
+     * Removes a "#version" or "precision" statement from the top of an included source.
+     *
+     * The including shader writes both, so an included file must not carry its own. This is the
+     * same single statement the regular expression replaced (it was anchored at the start of the
+     * text), done by hand because the expression was built per include.
+     */
+    void StripLeadingVersionDirective(String& source)
+    {
+      size_t pos = 0;
+      while (pos < source.size() && IsShaderSpace(source[pos]))
+      {
+        pos++;
+      }
+
+      const bool version   = source.compare(pos, 8, "#version") == 0;
+      const bool precision = source.compare(pos, 9, "precision") == 0;
+
+      if (!version && !precision)
+      {
+        return;
+      }
+
+      // The statement runs to the end of its line. The newline stays, so the lines around it do not
+      // shift in a compiler error.
+      const size_t lineEnd = source.find('\n', pos);
+      source.erase(0, lineEnd == String::npos ? source.size() : lineEnd);
+    }
+  } // namespace
+
   void PruneDuplicateIncludes(String& source)
   {
-    std::istringstream in(source);
-    std::ostringstream out;
-
-    // Regexes to detect include begin/end with the include name in group 1
-    const std::regex beginRegex(R"(^\s*//\s*@include\s+begin:(\S+))");
-    const std::regex endRegex(R"(^\s*//\s*@include\s+end:(\S+))");
-
-    std::string line;
     // Keep track of which include names we've already output
     std::unordered_set<String> seen;
     // Stack of (include name, skip flag) for nested scopes
     std::vector<std::pair<String, bool>> includeStack;
 
-    while (std::getline(in, line))
-    {
-      std::smatch match;
-      if (std::regex_match(line, match, beginRegex))
-      {
-        // Found a begin scope
-        String name = match[1].str();
-        bool skip   = seen.count(name) > 0;
-        includeStack.emplace_back(name, skip);
+    String pruned;
+    pruned.reserve(source.size());
 
-        if (!skip)
-        {
-          seen.insert(name);
-          out << line << "\n";
-        }
-      }
-      else if (std::regex_match(line, match, endRegex))
+    const StringView text(source);
+    size_t lineBegin = 0;
+
+    while (lineBegin < text.size())
+    {
+      size_t lineEnd        = text.find('\n', lineBegin);
+      const bool terminated = lineEnd != StringView::npos;
+      if (!terminated)
       {
-        // Found an end scope
-        String name = match[1].str();
-        if (!includeStack.empty())
+        lineEnd = text.size();
+      }
+
+      const StringView line = text.substr(lineBegin, lineEnd - lineBegin);
+      lineBegin             = terminated ? lineEnd + 1 : text.size();
+
+      bool isEnd;
+      const StringView name = ParseIncludeMarker(line, isEnd);
+
+      if (!name.empty())
+      {
+        if (!isEnd)
         {
-          auto [topName, skip] = includeStack.back();
-          includeStack.pop_back();
-          // Only output the end marker if we weren't skipping this block
+          // Found a begin scope.
+          const String includeName(name);
+          const bool skip = seen.count(includeName) > 0;
+          includeStack.emplace_back(includeName, skip);
+
           if (!skip)
           {
-            out << line << "\n";
+            seen.insert(includeName);
+            pruned.append(line.data(), line.size());
+            pruned += '\n';
           }
         }
-      }
-      else
-      {
-        // Regular line: output only if not inside a skipped block
-        if (includeStack.empty() || !includeStack.back().second)
+        else if (!includeStack.empty())
         {
-          out << line << "\n";
+          // Found an end scope: close the innermost one, and keep its line when it was kept.
+          const bool skip = includeStack.back().second;
+          includeStack.pop_back();
+
+          if (!skip)
+          {
+            pruned.append(line.data(), line.size());
+            pruned += '\n';
+          }
         }
+
+        continue;
+      }
+
+      // Regular line: output only if not inside a skipped block.
+      if (includeStack.empty() || !includeStack.back().second)
+      {
+        pruned.append(line.data(), line.size());
+        pruned += '\n';
       }
     }
 
-    // Replace the source with the pruned result
-    source = out.str();
+    // Replace the source with the pruned result.
+    source = std::move(pruned);
   }
 
   // Shader
@@ -124,15 +254,30 @@ namespace ToolKit
       // Try syncing presets.
       GetEngineSettings().m_shaderSettings->SyncDefinesForShader(GetFile(), m_defineArray);
 
-      ShaderDefineCombinaton defineCombo;
-      ComplieShaderCombinations(m_defineArray, 0, defineCombo);
+      // Compiling the whole combination set upfront walks every define against every other one -- the
+      // forward shader alone is over a hundred variants -- while a frame uses a handful. Instead the
+      // selection starts on the first variant of every define, which is what SetDefine edits from
+      // then on, and CreateProgram asks for the pair it needs: the program cache answers for a warm
+      // start, and EnsureVariantCompiled compiles exactly one variant on a miss.
+      //
+      // The selection has to exist here, before anything is compiled: SetDefine and the program cache
+      // key both read it, and a program restored from a cache never reaches a compile that could have
+      // initialized it. Leaving it empty was what made every SetDefine fail on a warm start.
+      m_currentDefineValues.clear();
+      for (int i = 0; i < (int) m_defineArray.size(); i++)
+      {
+        m_currentDefineValues.push_back({i, 0});
+      }
+      m_currentVariantKey = VariantKey();
     }
     else
     {
       Compile(m_source);
     }
 
-    if (flushClientSideArray)
+    // A shader with defines keeps its text: a variant compiled later needs it, and dropping it here
+    // is what made an on-demand compile produce nothing.
+    if (flushClientSideArray && m_defineArray.empty())
     {
       m_source.clear();
     }
@@ -167,7 +312,6 @@ namespace ToolKit
     }
 
     m_shaderVariantMap.clear();
-    m_compileLogged = false;
     m_gpuData.reset();
     m_initiated = false;
   }
@@ -176,6 +320,36 @@ namespace ToolKit
   {
     // Shaders are created from code. So don't get saved.
     m_dirty = false;
+  }
+
+  String Shader::VariantKey() const
+  {
+    // The same "Define:Value|Define:Value" form the variant map is keyed by. Built from the current
+    // selection rather than cached: the passes flip a define per frame and ask for the program right
+    // after, so the key has to follow the selection exactly.
+    String key;
+    for (const ShaderDefineIndex& selection : m_currentDefineValues)
+    {
+      if (selection.define < 0 || selection.define >= (int) m_defineArray.size())
+      {
+        continue;
+      }
+
+      const ShaderDefine& definition = m_defineArray[selection.define];
+      if (selection.variant < 0 || selection.variant >= (int) definition.variants.size())
+      {
+        continue;
+      }
+
+      key += definition.define + ":" + definition.variants[selection.variant] + "|";
+    }
+
+    if (!key.empty())
+    {
+      key.pop_back();
+    }
+
+    return key;
   }
 
   void Shader::SetDefine(const StringView name, const StringView val)
@@ -189,75 +363,69 @@ namespace ToolKit
       return;
     }
 
-    // Construct the key.
-    String key;
-    bool defineFound = false;
-    for (int i = 0; i < (int) m_currentDefineValues.size(); i++)
+    // Look the define up in the shader's own list, not in the current selection: a selection entry
+    // that was never initialized made every SetDefine of a cache restored shader fail, and a failed
+    // SetDefine silently keeps the previous variant, which is how instanced draws ended up with the
+    // per object program.
+    int defineIndx = -1;
+    for (int i = 0; i < (int) m_defineArray.size(); i++)
     {
-      int defineIndx  = m_currentDefineValues[i].define;
-      int variantIndx = m_currentDefineValues[i].variant;
-
-      // If define found
-      if (m_defineArray[defineIndx].define == name)
+      if (m_defineArray[i].define == name)
       {
-        defineFound = true;
-
-        // find the variant.
-        variantIndx = -1;
-        for (int ii = 0; ii < (int) m_defineArray[defineIndx].variants.size(); ii++)
-        {
-          if (m_defineArray[defineIndx].variants[ii] == val)
-          {
-            variantIndx                      = ii;
-            m_currentDefineValues[i].variant = ii; // update current define variant.
-            break;
-          }
-        }
-
-        if (variantIndx == -1)
-        {
-          // Push a new define variant.
-          m_defineArray[defineIndx].variants.push_back(val.data());
-          variantIndx                      = (int) m_defineArray[defineIndx].variants.size() - 1;
-          m_currentDefineValues[i].variant = variantIndx;
-        }
+        defineIndx = i;
+        break;
       }
-
-      const String& defName  = m_defineArray[defineIndx].define;
-      const String& defVal   = m_defineArray[defineIndx].variants[variantIndx];
-      key                   += defName + ":" + defVal + "|";
     }
 
-    // Check if define was found.
-    if (!defineFound)
+    if (defineIndx < 0)
     {
       // In this case, shader must be updated, because the define is not present in the shader.
       TK_ERR("Define: %s not found in shader: %s", name.data(), GetFile().data());
       return;
     }
 
-    key.pop_back();
-
-    // Set the shader variant.
-    auto handle = m_shaderVariantMap.find(key);
-    if (handle == m_shaderVariantMap.end())
+    int variantIndx = -1;
+    for (int i = 0; i < (int) m_defineArray[defineIndx].variants.size(); i++)
     {
-      TK_WRN("Compiling shader during runtime for a new variant. Define: %s for Variant: %s", name.data(), val.data());
-      ShaderDefineCombinaton defineCombo;
-      ComplieShaderCombinations(m_defineArray, 0, defineCombo);
-
-      // Re-look the key up instead of indexing the map: an index would insert a default (null)
-      // entry and hand a null GpuResourceData to the program creation, which dereferences it.
-      handle = m_shaderVariantMap.find(key);
+      if (m_defineArray[defineIndx].variants[i] == val)
+      {
+        variantIndx = i;
+        break;
+      }
     }
 
+    if (variantIndx < 0)
+    {
+      // Push a new define variant.
+      m_defineArray[defineIndx].variants.push_back(val.data());
+      variantIndx = (int) m_defineArray[defineIndx].variants.size() - 1;
+    }
+
+    // Init sized the selection with the define list. A shader whose list grew since then (an include
+    // that declares more defines) gets the missing entries here, each on its first variant.
+    if (m_currentDefineValues.size() < m_defineArray.size())
+    {
+      const size_t known = m_currentDefineValues.size();
+      m_currentDefineValues.resize(m_defineArray.size());
+      for (size_t i = known; i < m_defineArray.size(); i++)
+      {
+        m_currentDefineValues[i].define  = (int) i;
+        m_currentDefineValues[i].variant = 0;
+      }
+    }
+
+    m_currentDefineValues[defineIndx].define  = defineIndx;
+    m_currentDefineValues[defineIndx].variant = variantIndx;
+
+    m_currentVariantKey = VariantKey();
+
+    // Point at the variant when it is already compiled. When it is not, the program that uses it is
+    // what brings it in: it restores the binary from the program cache, or EnsureVariantCompiled
+    // compiles this one variant.
+    const auto handle = m_shaderVariantMap.find(m_currentVariantKey);
     if (handle != m_shaderVariantMap.end())
     {
       m_gpuData = handle->second;
-    }
-    else
-    {
-      TK_ERR("Shader variant is not available, keeping the current one. %s [%s]", GetFile().data(), key.data());
     }
   }
 
@@ -366,7 +534,7 @@ namespace ToolKit
     {
       PruneDuplicateIncludes(m_source);
 
-      // Inject the version directive. .shader sources no longer carry their own #version line —
+      // Inject the version directive. .shader sources no longer carry their own #version line -
       // one source must compile on both backends, so the right line is picked here based on the
       // active backend. Goes to the very top because GLSL requires #version as the first
       // statement (anything before it is a compile error). HandleShaderIncludes already strips
@@ -410,7 +578,7 @@ namespace ToolKit
     // CLEANUP: We must strip #version and precision from the included file
     // to prevent multiple definitions in the final output.
     String includeContent    = includeShader->m_source;
-    includeContent           = std::regex_replace(includeContent, std::regex(R"(^\s*#version.*|^\s*precision.*)"), "");
+    StripLeadingVersionDirective(includeContent);
 
     // Ensure the included content ends with a newline to avoid "gluing" lines together
     if (!includeContent.empty() && includeContent.back() != '\n')
@@ -494,23 +662,17 @@ namespace ToolKit
 
   bool Shader::Compile(String source, const String& variantKey)
   {
-    // One line per shader and not one per variant: the whole combination set is compiled on first
-    // use, so the variants only repeated the file name and filled the console. A variant that fails
-    // to compile still reports through the backend's own error log. The path is relative to the
-    // resource root, the workspace prefix is the same on every line.
-    if (!m_compileLogged)
+    // One line per compile, with the variant: the lazy path compiles exactly the combinations the
+    // programs ask for, so this is the record of what a build needs. A variant that fails to compile
+    // reports through the backend's own error log.
+    const String relPath = GetRelativeResourcePath(GetFile());
+    if (variantKey.empty())
     {
-      m_compileLogged      = true;
-      const String relPath = GetRelativeResourcePath(GetFile());
-
-      if (variantKey.empty())
-      {
-        TK_LOG("Shader in compile %s", relPath.c_str());
-      }
-      else
-      {
-        TK_LOG("Shader in compile %s [%s]", relPath.c_str(), variantKey.c_str());
-      }
+      TK_LOG("Shader in compile %s", relPath.c_str());
+    }
+    else
+    {
+      TK_LOG("Shader in compile %s [%s]", relPath.c_str(), variantKey.c_str());
     }
 
     GpuResourceDataPtr data = GetRenderSystem()->GetBackend()->CreateShader(this, source);
@@ -527,58 +689,71 @@ namespace ToolKit
     return true;
   }
 
-  void Shader::CompileWithDefines(String source, const ShaderDefineCombinaton& defineCombo)
+  bool Shader::CompileVariantKey(const String& variantKey)
   {
-    String key; // Hash key for the shader variant.
+    if (variantKey.empty())
+    {
+      return false;
+    }
+
+    // Already compiled: point the current data at it and report it as ready. Returning false here
+    // used to leave m_gpuData on whichever variant was compiled last, so a program asking for a
+    // variant twice was built from the wrong stage.
+    const auto existing = m_shaderVariantMap.find(variantKey);
+    if (existing != m_shaderVariantMap.end())
+    {
+      m_gpuData           = existing->second;
+      m_currentVariantKey = variantKey;
+      return true;
+    }
+
+    // The key is the define list the variant is compiled with; rebuild the #define lines from it so
+    // exactly that variant comes back, without walking the combination space.
     String defineText;
-    for (const ShaderDefineIndex& def : defineCombo)
+    StringArray parts;
+    Split(variantKey, "|", parts);
+    for (const String& part : parts)
     {
-      String defName  = m_defineArray[def.define].define;
-      String defVal   = m_defineArray[def.define].variants[def.variant];
-      key            += defName + ":" + defVal + "|";
-
-      defineText     += "#define " + defName + " " + defVal + "\n";
+      const size_t separator = part.find(':');
+      if (separator == String::npos)
+      {
+        continue;
+      }
+      defineText += "#define " + part.substr(0, separator) + " " + part.substr(separator + 1) + "\n";
     }
 
-    key.pop_back(); // remove last "|"
+    String source      = m_source;
+    const uint mergeAt = FindShaderMergeLocation(source);
+    source.insert(mergeAt, defineText);
 
-    // Check if the key exist before.
-    // New variants causes recompile, so we can skip existing variants.
-    if (m_shaderVariantMap.find(key) != m_shaderVariantMap.end())
+    if (Compile(source, variantKey))
     {
-      return;
+      m_currentVariantKey            = variantKey;
+      m_shaderVariantMap[variantKey] = m_gpuData;
+      return true;
     }
-
-    // Insert defines.
-    uint mergeLoc = FindShaderMergeLocation(source);
-    source.insert(mergeLoc, defineText);
-
-    if (Compile(source, key))
-    {
-      m_currentDefineValues   = defineCombo;
-      m_shaderVariantMap[key] = m_gpuData;
-    }
+    return false;
   }
 
-  void Shader::ComplieShaderCombinations(const ShaderDefineArray& defineArray,
-                                         int index,
-                                         ShaderDefineCombinaton& currentCombinaiton)
+  void Shader::EnsureVariantCompiled()
   {
-    if (index == defineArray.size())
+    // The variant the shader is currently selecting, i.e. what a program built right now would use.
+    // Init seeds that selection, so this is never empty for a shader that declares defines.
+    const String key = VariantKey();
+
+    if (!key.empty() && CompileVariantKey(key))
     {
-      // Compile the final combo.
-      CompileWithDefines(m_source, currentCombinaiton);
       return;
     }
 
-    const ShaderDefine& currentDefine = defineArray[index];
-    for (int vi = (int) currentDefine.variants.size() - 1; vi >= 0; vi--)
+    if (m_gpuData != nullptr)
     {
-      currentCombinaiton.push_back({index, vi});
+      return; // Something usable is already compiled.
+    }
 
-      // Recursively generate combinations
-      ComplieShaderCombinations(defineArray, index + 1, currentCombinaiton);
-      currentCombinaiton.pop_back();
+    if (m_defineArray.empty())
+    {
+      Compile(m_source);
     }
   }
 

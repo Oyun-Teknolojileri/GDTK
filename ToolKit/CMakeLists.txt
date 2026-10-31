@@ -27,9 +27,10 @@ if(NOT TK_VULKAN)
 endif()
 
 # Emscripten has no dynamic library support without side modules, and a web
-# game links the engine into the single .wasm anyway. Static keeps the whole
-# engine in one link unit with the game project.
-if(EMSCRIPTEN)
+# game links the engine into the single .wasm anyway. Android loads one library per
+# app (libmain.so) the same way. Static keeps the whole engine in one link unit with
+# the game project in both cases.
+if(EMSCRIPTEN OR ANDROID)
   add_library(ToolKit STATIC ${TOOLKIT_SOURCES})
 else()
   add_library(ToolKit SHARED ${TOOLKIT_SOURCES})
@@ -150,7 +151,7 @@ target_precompile_headers(ToolKit PRIVATE
 # Both are noise for this phase; the code is otherwise well-behaved.
 # These flags are GCC/Clang-only -- MSVC has its own /W<level> family
 # and rejects unknown command-line arguments with D8021.
-if(NOT MSVC AND NOT EMSCRIPTEN)
+if(NOT MSVC AND NOT EMSCRIPTEN AND NOT ANDROID)
   target_compile_options(ToolKit PRIVATE
     -Wno-changes-meaning
     -Wno-delete-incomplete
@@ -164,7 +165,7 @@ endif()
 # -fpermissive is GCC/Clang-only; MSVC has /permissive- which is the
 # inverse and applied via CMAKE_CXX_EXTENSIONS / CMAKE_CXX_STANDARD
 # elsewhere in the tree. Emscripten's clang does not know the flag.
-if(NOT MSVC AND NOT EMSCRIPTEN)
+if(NOT MSVC AND NOT EMSCRIPTEN AND NOT ANDROID)
   target_compile_options(ToolKit PRIVATE
     -fpermissive
   )
@@ -212,6 +213,11 @@ target_link_libraries(ToolKit PRIVATE
 if(EMSCRIPTEN)
   # Emscripten provides threads through the -pthread flag (see above); there is
   # no separate pthread / dl library to link against.
+elseif(ANDROID)
+  # Bionic carries pthread in libc and there is no separate dl library to ask for. The
+  # engine also renders through GL ES 3 on Android, which flips GLBackend onto the ES
+  # entry points (glInvalidateFramebuffer and friends).
+  target_compile_definitions(ToolKit PUBLIC TK_GL_ES_3_0)
 elseif(UNIX)
   target_link_libraries(ToolKit PUBLIC pthread dl)
   if(TK_VULKAN)

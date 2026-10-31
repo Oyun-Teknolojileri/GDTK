@@ -21,7 +21,11 @@
 #include <chrono>
 #include <iostream>
 
-#define ANDROID_LOG(format, ...) __android_log_print(ANDROID_LOG_DEBUG, "TK_LOG", format, ##__VA_ARGS__)
+// Info, not debug: a phone sets its own minimum log priority, and an OEM image that pins it to Info
+// drops every DEBUG line, which took the whole TK_LOG stream with it (measured on a TECNO CL7,
+// Android 16, where log.tag and persist.log.tag are both "I"). Info clears that floor; the engine's
+// own level filter (SetLogLevel) is a separate gate and still applies.
+#define ANDROID_LOG(format, ...) __android_log_print(ANDROID_LOG_INFO, "TK_LOG", format, ##__VA_ARGS__)
 
 #define PLATFORM_SDL_FLAGS       (SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_FULLSCREEN)
 
@@ -32,22 +36,25 @@ namespace ToolKit
 
   AAssetManager* assetManager = nullptr;
 
-  inline void CopyFileToDataPath(String& internalDataPath, const char* file)
+  inline void CopyFileToDataPath(String& internalDataPath, const String& file, bool overwrite = false)
   {
     String destinationPath = ConcatPaths({internalDataPath, file});
 
-    // Check if the file already exists
-    if (access(destinationPath.c_str(), F_OK) != -1)
+    // An existing file is normally kept: the pak is 15 MB and copying it on every start
+    // would be a visible stall. The settings are different: they change with every build,
+    // and a stale one from an older format parses to an empty document, so the caller asks
+    // for those to be refreshed.
+    if (!overwrite && access(destinationPath.c_str(), F_OK) != -1)
     {
-      ANDROID_LOG("File %s already exists, skipping copy.\n", file);
+      ANDROID_LOG("File %s already exists, skipping copy.\n", file.c_str());
       return;
     }
 
-    AAsset* asset = AAssetManager_open(assetManager, file, 0);
+    AAsset* asset = AAssetManager_open(assetManager, file.c_str(), 0);
 
     if (!asset)
     {
-      ANDROID_LOG("Cannot open %s!\n", file);
+      ANDROID_LOG("Cannot open %s!\n", file.c_str());
       return;
     }
 
@@ -67,7 +74,7 @@ namespace ToolKit
     fclose(fileHandle);
     AAsset_close(asset);
 
-    ANDROID_LOG("File %s copied successfully.\n", file);
+    ANDROID_LOG("File %s copied successfully.\n", file.c_str());
   }
 
   // copies all of the engine assets to internal data folder if already not copied
@@ -77,7 +84,7 @@ namespace ToolKit
     mkdir(ConcatPaths({internalDataPath, "Config"}).c_str(), 0777);
 
     CopyFileToDataPath(internalDataPath, TKResourcePak);
-    CopyFileToDataPath(internalDataPath, ConcatPaths({"Config", "Engine.settings"}).c_str());
+    CopyFileToDataPath(internalDataPath, ConcatPaths({"Config", "Engine.settings"}), true);
   }
 
   inline void PlatformPreInit(Main* g_proxy)

@@ -190,6 +190,26 @@ compiled data. The backend logs the compile error, the frame keeps rendering wit
 `Shader::FindShaderMergeLocation` only counts a `precision` statement that starts its line, so the word
 in a comment or an identifier can not move the include / define merge point into the middle of a shader.
 
+**Variants are compiled on demand, not up front.** `Shader::Init` merges the include tree and keeps the
+define list; the program that needs a combination asks for it, and `EnsureVariantCompiled` compiles that
+one variant (a program cache hit restores the binary and compiles nothing). The forward shader's
+combination set is over a hundred variants while a frame uses a handful. The include merge and the
+duplicate prune are plain string scans - reading the fixed `// @include begin:` marker shape by hand
+instead of matching a `std::regex` per line, which cost 14 s of a 15 s device start before it was
+replaced.
+
+Two invariants hold that path together:
+
+- `Shader::Init` seeds `m_currentDefineValues` with the first variant of every define, so `SetDefine`
+  has something to edit before anything compiled. It used to be filled by the first compile, which a
+  program restored from the cache never reaches, so every `SetDefine` of a warm start failed and the
+  passes silently kept the previous variant.
+- The program cache key covers both stage sources *and* both selected variant keys
+  (`Shader::VariantKey`). A shader's source carries no `#define` lines - they are spliced in at compile
+  time - so a key over the sources alone merges every variant of a pair into one program. On a device
+  that handed the instanced draws the per object program, which made the instanced objects collapse
+  onto the origin and flicker.
+
 **Precision is stated, not inherited.** GLSL ES defaults a sampler to `lowp`, and a `lowp` fetch does not
 return what the texture holds: it comes back rounded to about eleven bits, which is half float on a desktop
 driver. That is enough for albedo and not for anything else this engine samples - an instanced model matrix
@@ -210,7 +230,11 @@ measurement to make per fetch, not a default to inherit.
 
 `TK_LOG` / `TK_WRN` / `TK_ERR` / `TK_SUCCESS` / `TK_SYSLOG` are the entry points; `Logger` writes to
 `Log.txt` and hands each line to the console sinks the host registers (`SetWriteConsoleFn`, and on the
-web the log goes through `printf`, i.e. the browser console).
+web the log goes through `printf`, i.e. the browser console). On Android the host binds the platform sink
+(`SetPlatformConsoleFn`) to `__android_log_print` with the tag `TK_LOG`, and at **INFO** priority: a phone
+sets its own minimum log priority, and an OEM image that pins it to Info drops every DEBUG line, which
+takes the whole `TK_LOG` stream with it (measured on a TECNO CL7, Android 16, `log.tag` and
+`persist.log.tag` both `I`). Info clears that floor; the engine's own level below is a separate gate.
 
 `SetLogLevel(int)` / `GetLogLevel()` (free functions in `ToolKit`) filter that stream:
 

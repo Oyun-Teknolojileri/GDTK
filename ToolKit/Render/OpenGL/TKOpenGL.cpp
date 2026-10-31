@@ -42,8 +42,25 @@ namespace ToolKit
 
   int TK_GL_EXT_depth_clamp                                                    = 0;
 
+  namespace
+  {
+    /** Kept so the program binary extension can be resolved on demand, after the host loaded GL. */
+    typedef void* (*TKGLProcLoader)(const char*);
+    TKGLProcLoader g_glGetProcAddress = nullptr;
+  } // namespace
+
+  void* TKGetGlProcAddress(const char* name)
+  {
+    if (g_glGetProcAddress == nullptr || name == nullptr)
+    {
+      return nullptr;
+    }
+    return g_glGetProcAddress(name);
+  }
+
   void LoadGlFunctions(void* glGetProcAddres)
   {
+    g_glGetProcAddress = (TKGLProcLoader) glGetProcAddres;
     // glad fills in the GL function pointers. Without this every gl*
     // call is a NULL function pointer and the first glEnable inside
     // GLBackend::InitBackend segfaults. Windows and Linux use the same

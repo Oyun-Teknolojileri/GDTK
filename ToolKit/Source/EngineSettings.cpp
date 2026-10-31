@@ -267,7 +267,8 @@ namespace ToolKit
 
   void ShaderSettings::SyncDefinesForShader(const String& shaderPath, ShaderDefineArray& defines) const
   {
-    auto it = m_shaderDefines.find(shaderPath);
+    // Keyed by the path relative to the resource root, the same form the settings file stores.
+    const auto it = m_shaderDefines.find(GetRelativeResourcePath(shaderPath));
     if (it == m_shaderDefines.end())
     {
       return;
@@ -289,7 +290,7 @@ namespace ToolKit
 
   void ShaderSettings::SetShaderDefine(const String& shaderPath, const ShaderDefine& define)
   {
-    ShaderDefineArray& defines = m_shaderDefines[shaderPath];
+    ShaderDefineArray& defines = m_shaderDefines[GetRelativeResourcePath(shaderPath)];
     auto it                    = std::find(defines.begin(), defines.end(), define);
     if (it == defines.end())
     {
@@ -308,7 +309,10 @@ namespace ToolKit
     for (const auto& entry : m_shaderDefines)
     {
       XmlNode* shaderNode = CreateXmlNode(doc, "shader", settingsNode);
-      WriteAttr(shaderNode, doc, "file", entry.first);
+      // Relative to the resource root, not the absolute path the editor resolved it to. The same
+      // settings ship to a device whose root is somewhere else, and an absolute path there matches
+      // nothing, which silently turns the variant pruning off and compiles every combination.
+      WriteAttr(shaderNode, doc, "file", GetRelativeResourcePath(entry.first));
       for (const ShaderDefine& def : entry.second)
       {
         XmlNode* defineNode = CreateXmlNode(doc, "define", shaderNode);
@@ -353,7 +357,7 @@ namespace ToolKit
           Split(val, ", ", def.variants);
           defines.push_back(def);
         }
-        m_shaderDefines[file] = defines;
+        m_shaderDefines[GetRelativeResourcePath(file)] = defines;
       }
     }
 

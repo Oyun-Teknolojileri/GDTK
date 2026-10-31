@@ -146,6 +146,33 @@ namespace ToolKit
                                   const struct ShaderResourceBinding* bindings,
                                   int bindingCount)                                                         = 0;
     virtual void DestroyGpuProgram(GpuProgram* program)                                                     = 0;
+    /**
+     * States whether the backend can persist a linked program and restore it on a later start.
+     * Only the Android GL backend answers true: compiling the engine's programs is the slowest part
+     * of a device start, while the desktop boot is not dominated by it and WebGL has no program
+     * binaries at all.
+     */
+    virtual bool SupportsProgramBinary() const { return false; }
+
+    /**
+     * Tries to build the program from a cached binary, before any shader is compiled.
+     * @param program carries the shaders, whose sources identify the cache entry.
+     * @return True when the program is usable, in which case CreateGpuProgram only applies the
+     * program state (sampler slots, uniform block bindings) and skips the compile and the link.
+     */
+    virtual bool LoadProgramBinary(GpuProgram* program, uint64 sourceHash)
+    {
+      (void) program;
+      (void) sourceHash;
+      return false;
+    }
+
+    /** Stores a freshly linked program so the next start can load it. No-op when unsupported. */
+    virtual void SaveProgramBinary(GpuProgram* program, uint64 sourceHash)
+    {
+      (void) program;
+      (void) sourceHash;
+    }
     virtual int GetUniformLocation(GpuProgram* program, const char* name)                                   = 0;
 
     virtual void CreateFramebuffer(Framebuffer* fb)                                                         = 0;

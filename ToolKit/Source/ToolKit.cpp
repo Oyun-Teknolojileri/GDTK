@@ -225,6 +225,7 @@ namespace ToolKit
     m_sceneManager->Init();
     m_skeletonManager->Init();
     m_renderSys->Init();
+
     m_timing.Init(m_engineSettings->m_graphics->GetFPSVal());
 
     m_gpuBuffers->InitGlobalGpuBuffers();

@@ -8,6 +8,8 @@
 
 #include "GLBackend.h"
 
+#include "GLProgramCache.h"
+
 #include "EngineSettings.h"
 #include "Framebuffer.h"
 #include "GlErrorReporter.h"
@@ -776,37 +778,175 @@ namespace ToolKit
   // GpuProgram resource management
   // -----------------------------------------------------------------------
 
-  void GLBackend::CreateGpuProgram(GpuProgram* program, const ShaderResourceBinding* bindings, int bindingCount)
+  namespace
   {
-    const ShaderPtr& vs = program->m_shaders[0];
-    const ShaderPtr& fs = program->m_shaders[1];
+    // A linked program can be read back and restored with GL_OES_get_program_binary, which glad's
+    // generated header does not declare, so the two entry points are resolved through the loader the
+    // host gave us. Both are absent on a driver without the extension and on every desktop build.
+    constexpr GLenum TKGL_PROGRAM_BINARY_LENGTH_OES = 0x8741; // GL_PROGRAM_BINARY_LENGTH
 
-    auto glData         = std::make_shared<GLProgramData>();
-    glData->programId   = glCreateProgram();
-    GLuint pid          = glData->programId;
+    typedef void (*TKGLProgramBinaryFn)(GLuint, GLenum, const void*, GLsizei);
+    typedef void (*TKGLGetProgramBinaryFn)(GLuint, GLsizei, GLsizei*, GLenum*, void*);
 
-    glAttachShader(pid, static_cast<GLShaderData*>(vs->m_gpuData.get())->shaderId);
-    glAttachShader(pid, static_cast<GLShaderData*>(fs->m_gpuData.get())->shaderId);
-    glLinkProgram(pid);
+    struct TKProgramBinaryApi
+    {
+      TKGLProgramBinaryFn ProgramBinary       = nullptr;
+      TKGLGetProgramBinaryFn GetProgramBinary = nullptr;
+      bool Queried                            = false;
+    };
+
+    TKProgramBinaryApi& GetProgramBinaryApi()
+    {
+      static TKProgramBinaryApi api;
+      if (!api.Queried)
+      {
+        api.Queried          = true;
+        api.ProgramBinary    = (TKGLProgramBinaryFn) TKGetGlProcAddress("glProgramBinaryOES");
+        api.GetProgramBinary = (TKGLGetProgramBinaryFn) TKGetGlProcAddress("glGetProgramBinaryOES");
+      }
+      return api;
+    }
+  } // namespace
+
+  bool GLBackend::SupportsProgramBinary() const
+  {
+#ifdef TK_ANDROID
+    const TKProgramBinaryApi& api = GetProgramBinaryApi();
+    const bool supported          = api.ProgramBinary != nullptr && api.GetProgramBinary != nullptr;
+
+    static bool reported = false;
+    if (!reported)
+    {
+      reported = true;
+      TK_LOG("GLProgramCache: program binaries %s on this device.", supported ? "available" : "unavailable");
+    }
+
+    return supported;
+#else
+    return false;
+#endif
+  }
+
+  bool GLBackend::LoadProgramBinary(GpuProgram* program, uint64 sourceHash)
+  {
+#ifdef TK_ANDROID
+    if (!SupportsProgramBinary() || program == nullptr || program->m_shaders.size() != 2)
+    {
+      return false;
+    }
+
+    unsigned int format = 0;
+    std::vector<unsigned char> binary;
+    if (!ReadProgramBinary(sourceHash, format, binary))
+    {
+      return false;
+    }
+
+    GLuint pid = glCreateProgram();
+    GetProgramBinaryApi().ProgramBinary(pid, (GLenum) format, binary.data(), (GLsizei) binary.size());
 
     GLint linked = 0;
     glGetProgramiv(pid, GL_LINK_STATUS, &linked);
     if (!linked)
     {
-      GLint infoLen = 0;
-      glGetProgramiv(pid, GL_INFO_LOG_LENGTH, &infoLen);
-      if (infoLen > 1)
-      {
-        char* log = new char[infoLen];
-        glGetProgramInfoLog(pid, infoLen, nullptr, log);
-        TK_ERR("Linking failed.\nVertex: %s\nFragment: %s\n%s", vs->GetFile().c_str(), fs->GetFile().c_str(), log);
-        SafeDelArray(log);
-      }
+      // A binary the driver refuses is not fatal: drop it and let this run compile normally.
       glDeleteProgram(pid);
+      return false;
+    }
+
+    auto glData        = std::make_shared<GLProgramData>();
+    glData->programId  = pid;
+    program->m_gpuData = std::move(glData);
+    program->m_loadedFromCache = true;
+    return true;
+#else
+    (void) program;
+    return false;
+#endif
+  }
+
+  void GLBackend::SaveProgramBinary(GpuProgram* program, uint64 sourceHash)
+  {
+#ifdef TK_ANDROID
+    if (!SupportsProgramBinary() || program == nullptr || program->m_shaders.size() != 2)
+    {
       return;
     }
 
-    program->m_gpuData = std::move(glData);
+    const GLuint pid = GetGLProgramId(program);
+    if (pid == 0)
+    {
+      ReportProgramCacheEvent("save skipped: no program id");
+      return;
+    }
+
+    GLint binarySize = 0;
+    glGetProgramiv(pid, TKGL_PROGRAM_BINARY_LENGTH_OES, &binarySize);
+    if (binarySize <= 0)
+    {
+      char line[96];
+      snprintf(line, sizeof(line), "save skipped: binary length %d", binarySize);
+      ReportProgramCacheEvent(line);
+      return;
+    }
+
+    std::vector<unsigned char> binary((size_t) binarySize);
+    GLenum format     = 0;
+    GLsizei written   = 0;
+    GetProgramBinaryApi().GetProgramBinary(pid, binarySize, &written, &format, binary.data());
+    if (written <= 0)
+    {
+      ReportProgramCacheEvent("save skipped: driver returned no bytes");
+      return;
+    }
+
+    WriteProgramBinary(sourceHash, (unsigned int) format, binary.data(), (size_t) written);
+#else
+    (void) program;
+#endif
+  }
+
+  void GLBackend::CreateGpuProgram(GpuProgram* program, const ShaderResourceBinding* bindings, int bindingCount)
+  {
+    GLuint pid = 0;
+
+    if (program->m_loadedFromCache)
+    {
+      // LoadProgramBinary already created the program and stored its GL data: the compile, the
+      // attach and the link are exactly what the cache exists to skip.
+      pid = GetGLProgramId(program);
+    }
+    else
+    {
+      const ShaderPtr& vs = program->m_shaders[0];
+      const ShaderPtr& fs = program->m_shaders[1];
+
+      auto glData         = std::make_shared<GLProgramData>();
+      glData->programId   = glCreateProgram();
+      pid                 = glData->programId;
+      glAttachShader(pid, static_cast<GLShaderData*>(vs->m_gpuData.get())->shaderId);
+      glAttachShader(pid, static_cast<GLShaderData*>(fs->m_gpuData.get())->shaderId);
+      glLinkProgram(pid);
+
+      GLint linked = 0;
+      glGetProgramiv(pid, GL_LINK_STATUS, &linked);
+      if (!linked)
+      {
+        GLint infoLen = 0;
+        glGetProgramiv(pid, GL_INFO_LOG_LENGTH, &infoLen);
+        if (infoLen > 1)
+        {
+          char* log = new char[infoLen];
+          glGetProgramInfoLog(pid, infoLen, nullptr, log);
+          TK_ERR("Linking failed.\nVertex: %s\nFragment: %s\n%s", vs->GetFile().c_str(), fs->GetFile().c_str(), log);
+          SafeDelArray(log);
+        }
+        glDeleteProgram(pid);
+        return;
+      }
+
+      program->m_gpuData = std::move(glData);
+    }
 
     // Bind newly created program to set up samplers / UBO bindings.
     // No save/restore: we track current program internally, so just update the cache.

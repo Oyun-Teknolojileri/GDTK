@@ -81,6 +81,7 @@ namespace ToolKit
   #define TK_EXE_EXT          ""
   #define TK_PLUGIN_EXT       ".so"
   #define TK_PLUGIN_DEBUG_EXT "d.so"
+
 #endif
 
 } // namespace ToolKit
