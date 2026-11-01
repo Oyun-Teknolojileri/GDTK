@@ -199,6 +199,12 @@ namespace ToolKit
      * images already in the atlas, which is the whole 19 ms a static scene spends in here. The signature
      * covers the light set, each light's transform and shadow resolution, the view camera and the casters
      * (already versioned above); a mismatch, a dirty caster or an animated one redraws.
+     *
+     * What that buys depends on how much a frame changes: a moving camera re-fits the cascades, so with the
+     * tight fit this almost never hits and a static frame is the whole benefit - menus, pause, a cutscene, a
+     * tool view, a benchmark. With StableShadowMap on, the fit is a sphere around the view frustum snapped to
+     * shadow texels, so a rotation leaves every cascade camera identical and a translation invalidates only
+     * when it crosses a texel; the same signature then holds through normal play.
      */
     uint64 m_atlasSignature        = 0;
     bool m_atlasDrawn              = false;
