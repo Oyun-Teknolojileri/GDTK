@@ -56,7 +56,7 @@ namespace ToolKit
 
     m_shadowMatOrtho             = createShadowMaterialFn("orthogonalDepthVert.shader", "orthogonalDepthFrag.shader");
     m_shadowMatPersp             = createShadowMaterialFn("perspectiveDepthVert.shader", "perspectiveDepthFrag.shader");
-    m_shadowMatParaboloid        = createShadowMaterialFn("paraboloidDepthVert.shader", "perspectiveDepthFrag.shader");
+    m_shadowMatParaboloid = createShadowMaterialFn("paraboloidDepthVert.shader", "perspectiveDepthFrag.shader");
 
     // Pass-owned passive defaults. depthClampEnabled is refreshed per camera type before the
     // caster loop in RenderShadowCasters (true for directional, false otherwise).
@@ -81,51 +81,6 @@ namespace ToolKit
     {
       return;
     }
-
-    // Nothing the atlas holds has changed since it was drawn, see the member's note. Skipping the whole
-    // pass also skips the layer clears, which is where a still frame was spending most of it.
-    uint64 signature = 1469598103934665603ull;
-
-    const auto mix   = [&signature](const void* bytes, size_t size)
-    {
-      const uint8* p = static_cast<const uint8*>(bytes);
-      for (size_t i = 0; i < size; ++i)
-      {
-        signature = (signature ^ uint64(p[i])) * 1099511628211ull;
-      }
-    };
-
-    for (Light* light : m_lights)
-    {
-      const Mat4 transform = light->m_node->GetTransform();
-      const int resolution = light->m_shadowResolution;
-      mix(&light, sizeof(light));
-      mix(&transform, sizeof(transform));
-      mix(&resolution, sizeof(resolution));
-    }
-
-    if (m_params.viewCamera != nullptr)
-    {
-      const Mat4 viewProj = m_params.viewCamera->GetProjectViewMatrix();
-      mix(&viewProj, sizeof(viewProj));
-    }
-
-    if (m_params.scene != nullptr)
-    {
-      const BoundingBox& box = m_params.scene->GetSceneBoundary();
-      mix(&box.min, sizeof(box.min));
-      mix(&box.max, sizeof(box.max));
-    }
-
-    const bool reusable =
-        m_atlasDrawn && !m_params.castersDirty && m_animatedCasterEntities.empty() && signature == m_atlasSignature;
-    if (reusable)
-    {
-      return;
-    }
-
-    m_atlasSignature          = signature;
-    m_atlasDrawn              = true;
 
     Renderer* renderer        = GetRenderer();
     const Vec4 lastClearColor = renderer->m_clearColor;
@@ -445,8 +400,8 @@ namespace ToolKit
             m_shadowRenderData.jobs[slot.begin + k] = m_dirtyCasterJobs[job + k];
           }
 
-          slot.generation  = entity->GetSpatialGeneration();
-          job             += count;
+          slot.generation = entity->GetSpatialGeneration();
+          job += count;
         }
       }
 
@@ -528,15 +483,15 @@ namespace ToolKit
 
     m_shadowBatches.clear();
 
-    RenderJobArray& jobs       = m_shadowRenderData.jobs;
-    const int opaqueBegin      = m_shadowRenderData.forwardOpaqueStartIndex;
-    const int maskedBegin      = m_shadowRenderData.forwardAlphaMaskedJobsStartIndex;
-    const int translucentBegin = m_shadowRenderData.forwardTranslucentStartIndex;
+    RenderJobArray& jobs          = m_shadowRenderData.jobs;
+    const int opaqueBegin         = m_shadowRenderData.forwardOpaqueStartIndex;
+    const int maskedBegin         = m_shadowRenderData.forwardAlphaMaskedJobsStartIndex;
+    const int translucentBegin    = m_shadowRenderData.forwardTranslucentStartIndex;
 
     // Equal casters have to become neighbours for a batch to be a contiguous range. Sorting
     // happens inside each partition so the opaque / masked split SeperateRenderData made is
     // preserved.
-    const auto batchLess       = [](const RenderJob& a, const RenderJob& b) -> bool
+    const auto batchLess = [](const RenderJob& a, const RenderJob& b) -> bool
     {
       if (a.Mesh != b.Mesh)
       {
@@ -561,7 +516,7 @@ namespace ToolKit
     std::sort(jobs.begin() + opaqueBegin, jobs.begin() + maskedBegin, batchLess);
     std::sort(jobs.begin() + maskedBegin, jobs.begin() + translucentBegin, batchLess);
 
-    const bool mayBatch   = GetEngineSettings().m_graphics->GetInstancedBatchingVal();
+    const bool mayBatch = GetEngineSettings().m_graphics->GetInstancedBatchingVal();
 
     const auto addBatches = [this, &jobs, mayBatch](int begin, int end, bool masked) -> void
     {
@@ -569,13 +524,13 @@ namespace ToolKit
       while (i < end)
       {
         ShadowBatch batch;
-        batch.mesh         = jobs[i].Mesh;
-        batch.material     = jobs[i].Material;
-        batch.masked       = masked;
-        batch.firstJob     = i;
-        batch.bbox         = jobs[i].BoundingBox;
+        batch.mesh          = jobs[i].Mesh;
+        batch.material      = jobs[i].Material;
+        batch.masked        = masked;
+        batch.firstJob      = i;
+        batch.bbox          = jobs[i].BoundingBox;
 
-        int j              = i + 1;
+        int j               = i + 1;
 
         // A skinned mesh carries its own skeleton, and an instanced draw applies one bone set to every
         // instance in it. Batching skinned casters therefore drew them with the pose of whichever one
@@ -605,6 +560,8 @@ namespace ToolKit
     addBatches(opaqueBegin, maskedBegin, false);
     addBatches(maskedBegin, translucentBegin, true);
 
+
+
     // Instance table: eight texels per job, the model matrix and its inverse transpose, in the
     // layout the shader include declares. The depth shaders only need the model matrix, but the
     // stride is shared with the forward pass so there is one layout to keep right.
@@ -617,9 +574,9 @@ namespace ToolKit
 
     for (int i = 0; i < jobCount; i++)
     {
-      const Mat4& m     = jobs[i].WorldTransform;
-      const Mat4 normal = glm::transpose(glm::inverse(m));
-      float* out        = m_instanceData.data() + size_t(i) * InstanceTexelsPerItem * 4;
+      const Mat4& m       = jobs[i].WorldTransform;
+      const Mat4 normal   = glm::transpose(glm::inverse(m));
+      float* out          = m_instanceData.data() + size_t(i) * InstanceTexelsPerItem * 4;
 
       for (int c = 0; c < 4; c++)
       {
@@ -644,7 +601,7 @@ namespace ToolKit
       settings.Format         = GraphicTypes::FormatRGBA;
       settings.Type           = GraphicTypes::TypeFloat;
 
-      m_instanceTable         = MakeNewPtr<DataTexture>(InstanceTexWidth, rows, settings, "ShadowInstanceTable");
+      m_instanceTable = MakeNewPtr<DataTexture>(InstanceTexWidth, rows, settings, "ShadowInstanceTable");
       m_instanceTable->Init(m_instanceData.data());
     }
     else
@@ -699,7 +656,7 @@ namespace ToolKit
     // cascade only decides which of them it keeps. Rebuilding them here cost five full job
     // passes a frame (four directional cascades plus the spot) for data that does not
     // depend on the light.
-    Frustum frustum                = ExtractFrustum(cullCamera->GetProjectViewMatrix(), false);
+    Frustum frustum = ExtractFrustum(cullCamera->GetProjectViewMatrix(), false);
 
     // A directional light pancakes the casters that stand behind the shadow camera onto its near
     // plane, so they still cast a shadow. Culling them with the near plane throws away exactly those
@@ -759,7 +716,7 @@ namespace ToolKit
     // A point light projects each hemisphere onto a paraboloid rather than rendering six cube faces,
     // so it takes its own vertex shader: the projection is not a matrix the camera could supply.
     const bool paraboloidShadowMap = lightType == Light::LightType::Point;
-    MaterialPtr shadowMaterial     = m_shadowMatOrtho;
+    MaterialPtr shadowMaterial    = m_shadowMatOrtho;
     if (paraboloidShadowMap)
     {
       shadowMaterial = m_shadowMatParaboloid;
@@ -768,7 +725,7 @@ namespace ToolKit
     {
       shadowMaterial = m_shadowMatPersp;
     }
-    ShaderPtr frag = shadowMaterial->GetFragmentShaderVal();
+    ShaderPtr frag             = shadowMaterial->GetFragmentShaderVal();
     frag->SetDefine("DrawAlphaMasked", "0");
     ShaderPtr vert = shadowMaterial->GetVertexShaderVal();
     vert->SetDefine("DrawAlphaMasked", "0");
@@ -831,7 +788,7 @@ namespace ToolKit
       // (casters removed, the scene emptied) can leave a batch pointing past the end, and indexing
       // with it reads a transform that is not there. The index is checked against the array it
       // addresses, and nothing else.
-      const int jobCount      = (int) jobs.size();
+      const int jobCount = (int) jobs.size();
 
       for (const ShadowBatch& batch : m_shadowBatches)
       {
@@ -840,7 +797,8 @@ namespace ToolKit
           continue;
         }
 
-        const IntersectResult batchHit = isVisible(batch.bbox) ? IntersectResult::Intersect : IntersectResult::Outside;
+        const IntersectResult batchHit =
+            isVisible(batch.bbox) ? IntersectResult::Intersect : IntersectResult::Outside;
         if (batchHit == IntersectResult::Outside)
         {
           continue;
@@ -1125,7 +1083,7 @@ namespace ToolKit
     const float maxShadowDistance = shadows->GetShadowMaxDistance();
     const float tanHalfFov        = glm::tan(glm::max(m_params.viewCamera->Fov() * 0.5f, 0.01f));
 
-    UVec2 viewSize                = GetRenderer()->GetViewportSize();
+    UVec2 viewSize = GetRenderer()->GetViewportSize();
     if (viewSize.x == 0 || viewSize.y == 0)
     {
       viewSize = UVec2(1280, 720);
@@ -1136,7 +1094,7 @@ namespace ToolKit
 
     // Closest a light is treated as being, so a camera sitting on a light's centre cannot divide the
     // score by zero.
-    constexpr float kScoreMinDistance    = 0.25f;
+    constexpr float kScoreMinDistance = 0.25f;
 
     struct LocalCandidate
     {
@@ -1158,17 +1116,17 @@ namespace ToolKit
 
       // Distance to the volume, not to the centre: a light whose centre sits behind the camera can still
       // cover the view, and a large radius reaches much closer than its centre suggests.
-      const float radius     = light->AffectDistance();
-      const Vec3 centre      = light->m_node->GetTranslation(TransformationSpace::TS_WORLD);
-      const float centreDist = glm::distance(camPos, centre);
-      const float dist       = glm::max(centreDist - radius, 0.01f);
+      const float radius       = light->AffectDistance();
+      const Vec3 centre        = light->m_node->GetTranslation(TransformationSpace::TS_WORLD);
+      const float centreDist   = glm::distance(camPos, centre);
+      const float dist         = glm::max(centreDist - radius, 0.01f);
       if (dist > maxShadowDistance)
       {
         continue;
       }
 
-      const float radiusPx   = radius / (dist * tanHalfFov) * (float(viewSize.y) * 0.5f);
-      const float rawArea    = glm::pi<float>() * radiusPx * radiusPx;
+      const float radiusPx = radius / (dist * tanHalfFov) * (float(viewSize.y) * 0.5f);
+      const float rawArea  = glm::pi<float>() * radiusPx * radiusPx;
 
       // Three quantities that answer different questions.
       // - area: how much of the screen the light covers, capped at the screen because past that it cannot
@@ -1184,14 +1142,14 @@ namespace ToolKit
       const float score      = glm::max(area * irradiance, 1.0f);
 
       LocalCandidate candidate;
-      candidate.light      = light;
+      candidate.light = light;
 
       // Doubling steps. Finer ones were tried and made the flicker worse, not better: with four steps per
       // doubling two lights sitting a few percent apart swap places every time the camera drifts, and
       // since they compete for the last free slots the shadow moves between them. The coarse bucket
       // keeps a light where it is; the tie it leaves is settled once per placement by distance and id,
       // which does not move.
-      candidate.bucket     = int(glm::floor(glm::log2(score)));
+      candidate.bucket = int(glm::floor(glm::log2(score)));
       // Ranking inside a bucket needs something that does not saturate. The area does: a light the
       // camera stands inside covers the whole screen, and so do a dozen others around it, which left
       // the order to the light id. Distance to the volume separates them, quantised in powers of two so
@@ -1199,9 +1157,10 @@ namespace ToolKit
       // Quarter steps, not doubling: the lights that cover the whole screen are separated by how close
       // they are, and doubling put three of them seven units out into the same bucket, where the id
       // decided which one got the last free slots.
-      candidate.distBucket = int(glm::floor(glm::log(glm::max(dist, 0.05f)) / glm::log(1.25f)));
-      candidate.tier =
-          area >= screenArea * kQuarterAreaFraction ? ShadowAtlas::SlotSize::Quarter : ShadowAtlas::SlotSize::Eighth;
+      candidate.distBucket =
+          int(glm::floor(glm::log(glm::max(dist, 0.05f)) / glm::log(1.25f)));
+      candidate.tier = area >= screenArea * kQuarterAreaFraction ? ShadowAtlas::SlotSize::Quarter
+                                                                 : ShadowAtlas::SlotSize::Eighth;
       candidates.push_back(candidate);
     }
 
@@ -1240,9 +1199,11 @@ namespace ToolKit
       int indices[6]                   = {-1, -1, -1, -1, -1, -1};
       bool placed                      = false;
 
-      const auto previous              = previousPlacement.find(id);
-      const auto floorTier             = [](ShadowAtlas::SlotSize tier) -> ShadowAtlas::SlotSize
-      { return tier == ShadowAtlas::SlotSize::Quarter ? ShadowAtlas::SlotSize::Eighth : tier; };
+      const auto previous = previousPlacement.find(id);
+      const auto floorTier = [](ShadowAtlas::SlotSize tier) -> ShadowAtlas::SlotSize
+      {
+        return tier == ShadowAtlas::SlotSize::Quarter ? ShadowAtlas::SlotSize::Eighth : tier;
+      };
 
       // Same tier as last frame: take the exact slots back when they are still free and, for a light
       // that needs a run of slots, when they are still one run. A record that is not a run can only come
