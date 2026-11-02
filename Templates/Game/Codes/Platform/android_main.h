@@ -36,18 +36,26 @@ namespace ToolKit
 
   AAssetManager* assetManager = nullptr;
 
-  inline void CopyFileToDataPath(String& internalDataPath, const String& file, bool overwrite = false)
+  /**
+   * Copies one asset into the app's data folder. Returns true when the file is in place afterwards,
+   * whether it was copied now or already there.
+   *
+   * The copy streams in 1 MB chunks. It used to read the whole asset into one buffer, which was fine
+   * for the 15 MB pak this started with and would not be for a resource pak of a gigabyte: a 1:1
+   * memory cost on a phone that cannot pay it. AAsset_read also returns short reads like read(2), so
+   * the loop is what makes a large copy complete instead of silently short.
+   */
+  inline bool CopyFileToDataPath(String& internalDataPath, const String& file, bool overwrite = false)
   {
     String destinationPath = ConcatPaths({internalDataPath, file});
 
-    // An existing file is normally kept: the pak is 15 MB and copying it on every start
-    // would be a visible stall. The settings are different: they change with every build,
-    // and a stale one from an older format parses to an empty document, so the caller asks
-    // for those to be refreshed.
+    // An existing file is normally kept: the pak is large and copying it on every start would be a
+    // visible stall. The settings are different: they change with every build, and a stale one from
+    // an older format parses to an empty document, so the caller asks for those to be refreshed.
     if (!overwrite && access(destinationPath.c_str(), F_OK) != -1)
     {
       ANDROID_LOG("File %s already exists, skipping copy.\n", file.c_str());
-      return;
+      return true;
     }
 
     AAsset* asset = AAssetManager_open(assetManager, file.c_str(), 0);
@@ -55,7 +63,7 @@ namespace ToolKit
     if (!asset)
     {
       ANDROID_LOG("Cannot open %s!\n", file.c_str());
-      return;
+      return false;
     }
 
     FILE* fileHandle = fopen(destinationPath.c_str(), "wb");
@@ -63,18 +71,47 @@ namespace ToolKit
     {
       ANDROID_LOG("Cannot create file %s!\n", destinationPath.c_str());
       AAsset_close(asset);
-      return;
+      return false;
     }
 
-    off_t size = AAsset_getLength(asset);
-    std::vector<char> buffer(size);
-    AAsset_read(asset, buffer.data(), size);
-    fwrite(buffer.data(), 1, size, fileHandle);
+    constexpr size_t ChunkSize = 1 << 20;
+    std::vector<char> buffer(ChunkSize);
+    off_t remaining = AAsset_getLength(asset);
+    bool complete   = true;
+
+    while (remaining > 0)
+    {
+      const off_t want = remaining < (off_t) ChunkSize ? remaining : (off_t) ChunkSize;
+      const int read   = AAsset_read(asset, buffer.data(), (size_t) want);
+      if (read <= 0)
+      {
+        complete = false;
+        break;
+      }
+
+      if (fwrite(buffer.data(), 1, (size_t) read, fileHandle) != (size_t) read)
+      {
+        complete = false;
+        break;
+      }
+
+      remaining -= read;
+    }
 
     fclose(fileHandle);
     AAsset_close(asset);
 
+    if (!complete)
+    {
+      // A half written file would be worse than none: the caller's fingerprint check would think the
+      // pak is current and never copy it again.
+      ANDROID_LOG("Copy of %s did not complete, removing it.\n", file.c_str());
+      unlink(destinationPath.c_str());
+      return false;
+    }
+
     ANDROID_LOG("File %s copied successfully.\n", file.c_str());
+    return true;
   }
 
   /**
@@ -153,11 +190,10 @@ namespace ToolKit
                 installedHash.c_str(),
                 assetHash.c_str());
 
-    CopyFileToDataPath(internalDataPath, pakFile, true);
-
-    // Only after the copy: a fingerprint without the pak it describes would make the next start
-    // believe it is current.
-    if (!assetHash.empty())
+    // Only after a copy that completed: a fingerprint without the pak it describes - or beside a
+    // half written one - would make every later start believe it is current.
+    const bool copied = CopyFileToDataPath(internalDataPath, pakFile, true);
+    if (copied && !assetHash.empty())
     {
       if (FILE* hashFile = fopen(hashPath.c_str(), "w"))
       {
