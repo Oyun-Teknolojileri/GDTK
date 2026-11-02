@@ -139,6 +139,12 @@ namespace ToolKit
 
     static constexpr int m_maximumKernelSize = 32;
 
+    /**
+     * Pixel budget the world radius is clamped to, so the search stays local on screen and its sample
+     * density does not collapse with distance.
+     */
+    static constexpr float MaxRadiusPixels = 80.0f;
+
     // Used to detect if the spread has changed. If so, kernel updated.
     float m_prevSpread                       = -1.0f;
   };

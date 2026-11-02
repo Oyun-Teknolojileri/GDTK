@@ -99,6 +99,7 @@ namespace ToolKit
     blurReqs.frameBuffer                        = m_blurFramebuffer;
     blurReqs.clearBits                          = GraphicBitFields::None;
     blurReqs.semanticTextures["s_diffuseColor"] = m_rawSsaoRt;
+    blurReqs.semanticTextures["s_normalDepth"]  = normalDepthBuffer; // bilateral weights
     blurReqs.customUbos[7]                      = &m_blurPassDataBuffer.GetBuffer();
     m_blurPassDataBuffer.Invalidate();
     m_blurPassDataBuffer.Map();
@@ -227,7 +228,11 @@ namespace ToolKit
 
     // Stored as Mat4 (std140 mat3 padding would be 48 bytes anyway); shader extracts mat3().
     m_calcPassDataBuffer.m_data.normalToView      = Mat4(Mat3(m_params.Cam->GetViewMatrix()));
-    m_calcPassDataBuffer.m_data.radiusBiasAndPad  = Vec4(m_params.Radius, m_params.Bias, 0.0f, 0.0f);
+
+    // .z and .w carry what the shader needs to keep its sample count local on screen: the target
+    // height, and the pixel budget the world radius is clamped to.
+    m_calcPassDataBuffer.m_data.radiusBiasAndPad =
+        Vec4(m_params.Radius, m_params.Bias, (float) renderHeight, MaxRadiusPixels);
 
     // Setup blur pass
     m_blurPass->m_params.frameBuffer              = m_blurFramebuffer;

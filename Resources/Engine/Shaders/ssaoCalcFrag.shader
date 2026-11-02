@@ -73,6 +73,17 @@ void main()
 	float radius = ssaoCalc.radiusBiasAndPad.x;
 	float bias = ssaoCalc.radiusBiasAndPad.y;
 
+	// Keep the search local on screen. A world radius fixed in metres covers hundreds of pixels at
+	// distance and a handful up close, so the same 32 samples are dense on near geometry and sparse
+	// on far geometry - the map reads as broad soft patches near the camera and as fine noise in the
+	// distance, and at a radius of a metre in this scene it was mostly noise. The world radius a
+	// pixel budget allows grows linearly with depth, so clamping to it gives every surface the same
+	// sample density and lets a small radius do real work at any distance.
+	float screenHeight    = ssaoCalc.radiusBiasAndPad.z;
+	float maxRadiusPixels = ssaoCalc.radiusBiasAndPad.w;
+	float worldPerPixel   = (2.0 * (-fragPos.z)) / (ssaoCalc.projParams.y * screenHeight);
+	radius = min(radius, maxRadiusPixels * worldPerPixel);
+
 	// depth-scaled bias: surfaces further away need more bias to avoid acne
 	float depthBias = bias * (1.0 + abs(fragPos.z) * 0.1);
 

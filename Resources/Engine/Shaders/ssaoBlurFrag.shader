@@ -3,6 +3,7 @@
 	<include name = "vulkanCompatInc.shader" />
 	<include name = "ssaoBlurPassDataInc.shader" />
 	<texture slot = "0" name = "s_diffuseColor" />
+	<texture slot = "2" name = "s_normalDepth" />
 	<source>
 	<!--
 
@@ -12,6 +13,11 @@ out vec4 fragColor;
 TK_LOC(2) in vec2 v_texture;
 
 TK_SAMPLER_BINDING(0) uniform sampler2D s_diffuseColor; // SSAO texture (must have bilinear filtering)
+TK_SAMPLER_BINDING(2) uniform sampler2D s_normalDepth;  // packed normal (RG) + linear depth (B)
+
+// How fast a tap stops counting as the same surface, per world unit of depth difference. The depth
+// in the buffer is in the scene's own units, so a quarter of a unit halves a tap's weight.
+const float DepthFalloff = 8.0;
 
 void main()
 {
@@ -26,41 +32,39 @@ void main()
 	// [4 16 24 16  4]
 	// [1  4  6  4  1]  / 256
 	//
-	// Grouped into 2x2 blocks with bilinear offsets:
-	// Corner 2x2 blocks (weight sum = 1+4+4+16 = 25 each)
-	// Edge 2x1 blocks   (weight sum = 6+24 = 30 each)
-	// Center             (weight = 36)
+	// Grouped into 2x2 blocks with bilinear offsets: corner blocks weigh 25, edge blocks 30, the
+	// centre 36.
+	float o = 1.0 + (4.0 / 20.0);
+	float e = 1.0 + (6.0 / 30.0);
 
-	// Bilinear offsets: sample at weighted center of each 2x2 block.
-	// For corner blocks: offset = 1 + 16/(4+16) = 1.8, but simpler:
-	// offset = 1.0 + (weight_far / (weight_near + weight_far))
-	float o = 1.0 + (4.0 / 20.0); // = 1.2 texels from center for corners
-	float e = 1.0 + (6.0 / 30.0); // = 1.2 texels for edge pairs
+	vec2 uv        = v_texture;
+	vec2 texelSize = ssaoBlur.texelSizeAndPad.xy;
 
-	vec2 uv = v_texture;
+	vec2 offsets[9] = vec2[9](vec2(-o, -o), vec2(o, -o), vec2(-o, o), vec2(o, o),
+	                          vec2(0.0, -e), vec2(0.0, e), vec2(-e, 0.0), vec2(e, 0.0),
+	                          vec2(0.0, 0.0));
+	float weights[9] = float[9](25.0, 25.0, 25.0, 25.0, 30.0, 30.0, 30.0, 30.0, 36.0);
 
-	// 4 corner samples (each approximates a 2x2 block)
-	float tl = texture(s_diffuseColor, uv + ssaoBlur.texelSizeAndPad.xy * vec2(-o, -o)).r;
-	float tr = texture(s_diffuseColor, uv + ssaoBlur.texelSizeAndPad.xy * vec2( o, -o)).r;
-	float bl = texture(s_diffuseColor, uv + ssaoBlur.texelSizeAndPad.xy * vec2(-o,  o)).r;
-	float br = texture(s_diffuseColor, uv + ssaoBlur.texelSizeAndPad.xy * vec2( o,  o)).r;
+	// Bilateral: every tap is weighted by how close its depth is to the centre's. A plain Gaussian
+	// over the same taps averages the hemisphere noise together with the depth edges it sits on, so
+	// the result reads as a soft blur that has to be kept small to stay honest; weighting by depth
+	// lets the kernel average harder across a surface without crossing onto the thing behind it.
+	float centerDepth = texture(s_normalDepth, uv).b;
 
-	// 4 edge samples (each approximates a 2x1 block)
-	float t  = texture(s_diffuseColor, uv + ssaoBlur.texelSizeAndPad.xy * vec2( 0.0, -e)).r;
-	float b  = texture(s_diffuseColor, uv + ssaoBlur.texelSizeAndPad.xy * vec2( 0.0,  e)).r;
-	float l  = texture(s_diffuseColor, uv + ssaoBlur.texelSizeAndPad.xy * vec2(-e,  0.0)).r;
-	float r  = texture(s_diffuseColor, uv + ssaoBlur.texelSizeAndPad.xy * vec2( e,  0.0)).r;
+	float accumulated = 0.0;
+	float weightSum   = 0.0;
 
-	// Center sample
-	float c  = texture(s_diffuseColor, uv).r;
+	for (int i = 0; i < 9; ++i)
+	{
+		vec2 tapUv   = uv + texelSize * offsets[i];
+		float depth  = texture(s_normalDepth, tapUv).b;
+		float weight = weights[i] * exp2(-abs(depth - centerDepth) * DepthFalloff);
 
-	// Weighted sum approximating 5x5 Gaussian
-	// Corners: 25/256 each, Edges: 30/256 each, Center: 36/256
-	float result = (tl + tr + bl + br) * (25.0 / 256.0)
-	             + (t + b + l + r)     * (30.0 / 256.0)
-	             + c                   * (36.0 / 256.0);
+		accumulated += texture(s_diffuseColor, tapUv).r * weight;
+		weightSum   += weight;
+	}
 
-	fragColor = vec4(result, 0.0, 0.0, 1.0);
+	fragColor = vec4(accumulated / max(weightSum, 1e-4), 0.0, 0.0, 1.0);
 }
 
 	-->
