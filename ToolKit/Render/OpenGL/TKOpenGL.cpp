@@ -96,6 +96,14 @@ namespace ToolKit
 
       return false;
     }
+
+    /** How many extensions the driver lists, so a "not supported" answer can be read as one. */
+    int GlExtensionCount()
+    {
+      GLint extensionCount = 0;
+      glGetIntegerv(GL_NUM_EXTENSIONS, &extensionCount);
+      return (int) extensionCount;
+    }
 #endif
   } // namespace
 
@@ -192,21 +200,19 @@ namespace ToolKit
     TK_LOG("GPU timer query: %s",
            TK_GL_EXT_disjoint_timer_query ? "GL_EXT_disjoint_timer_query" : "unavailable, gpu time stays synthetic");
 
-    // String Checks for Extensions.
-    PFNGLGETSTRINGPROC tk_glGetString = nullptr;
-    tk_glGetString                    = (PFNGLGETSTRINGPROC) glLoader("glGetString");
+    // Extension flags the engine gates features on. GL ES 3.2 removes the GL_EXTENSIONS string
+    // (glGetString answers null for it), which silently turned all three of these into "not
+    // supported" on a device that has them - anisotropic filtering was off on a Mali-G71 whose
+    // driver lists the extension, and the engine never said so.
+    TK_GL_OES_texture_float_linear       = HasGlExtension("OES_texture_float_linear");
+    TK_GL_EXT_texture_filter_anisotropic = HasGlExtension("EXT_texture_filter_anisotropic");
+    TK_GL_EXT_depth_clamp                = HasGlExtension("EXT_depth_clamp");
 
-    if (tk_glGetString)
-    {
-      const GLubyte* extensions = tk_glGetString(GL_EXTENSIONS);
-      if (extensions != nullptr)
-      {
-        String extensionsStr((const char*) extensions);
-        TK_GL_OES_texture_float_linear       = extensionsStr.find("GL_OES_texture_float_linear") != String::npos;
-        TK_GL_EXT_texture_filter_anisotropic = extensionsStr.find("GL_EXT_texture_filter_anisotropic") != String::npos;
-        TK_GL_EXT_depth_clamp                = extensionsStr.find("GL_EXT_depth_clamp") != String::npos;
-      }
-    }
+    TK_LOG("Extensions: count=%d float_linear=%d aniso=%d depth_clamp=%d",
+           GlExtensionCount(),
+           TK_GL_OES_texture_float_linear,
+           TK_GL_EXT_texture_filter_anisotropic,
+           TK_GL_EXT_depth_clamp);
 
 #endif
 
