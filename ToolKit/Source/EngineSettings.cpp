@@ -14,6 +14,8 @@
 #include "RenderSystem.h"
 #include "ToolKit.h"
 
+#include <algorithm>
+
 #include "DebugNew.h"
 
 namespace ToolKit
@@ -461,7 +463,30 @@ namespace ToolKit
       }
     }
 
+    ApplyFrameRate();
+
     return settingsNode;
+  }
+
+  void EngineSettings::ApplyFrameRate()
+  {
+    // The gate that decides the frame rate lives in Timing, and this object is the only thing that
+    // knows what the target is, so every load has to hand it over. Main::Init does this once, from the
+    // settings the host loaded; the editor then loads the open project's Config/Engine.settings on top,
+    // which is a second load of the same object and used to leave the timer at the user config's value.
+    // A project that asks for no lock (FPS 0) therefore ran locked at 60 until somebody touched the FPS
+    // Lock checkbox, which is the one place that called Init - and that is what made it look like a
+    // stale setting rather than a missing handoff.
+    if (Main* proxy = Main::GetInstance_noexcep())
+    {
+      const uint fps = (uint) std::max(m_graphics->GetFPSVal(), 0);
+      proxy->m_timing.Init(fps);
+
+      // Logged because the value in the file and the value the session runs with are set at different
+      // times, and "the setting says unlocked but the app runs at 60" is otherwise only visible by
+      // toggling a checkbox and watching what changes.
+      TK_LOG("Frame rate target: %u (%s).", fps, fps == 0 ? "unlocked" : "locked");
+    }
   }
 
   void EngineSettings::Save(const String& path)

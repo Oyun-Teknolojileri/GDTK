@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2019-2026 OtSoftware
  * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
  * For more information, including options for a more permissive commercial license,
@@ -61,6 +61,13 @@ namespace ToolKit
 
       /** Open sections whose stored state has already been handed to ImGui. */
       std::set<String> m_restoredSections;
+
+      /**
+       * The frame rate to restore when the FPS lock is ticked again. The setting carries 0 while the
+       * lock is off, so the value it held has to be remembered here - the window, not a static in the
+       * draw function, is what owns it.
+       */
+      int m_lastLockedFps     = 60;
     };
 
   } // namespace Editor

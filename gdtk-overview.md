@@ -103,6 +103,15 @@ without the extension leaves the value at its 1 ms floor, so a device that canno
 `Profiler` scope named after the pass, next to the GPU debug group of the same name, so the
 hierarchical profiler in `Stats.h` reports a per-pass breakdown.
 
+The cpu side of that breakdown says where time is spent *submitting*, which is not where the gpu spends
+it: a pass that costs 6 ms of gpu shows up as a fraction of a millisecond of submit time and one long
+stall somewhere else. `Stats::EnablePassGpuTiming(true)` therefore brackets every pass with a pair of
+timestamp queries and `Stats::GetPassGpuTimes()` answers with the latest value per scope. It is off by
+default - cheap, but it is still a measurement - and a scope that has not answered yet reads as zero.
+Scopes nest (a sub pass inside its parent pass), so the sum is an upper bound, and clear / tile store /
+present are not inside any scope: the numbers rank the passes against each other, they do not add up to
+the frame.
+
 Free accessors in `ToolKit.h`: `GetLogger()`, `GetRenderSystem()`, `GetMaterialManager()`, etc.
 
 #### Shutdown order and outliving resources
@@ -190,10 +199,22 @@ verification recipe.
 Serializable, loaded from `%appdata%/ToolKit/Config`. Sub-objects:
 
 - **WindowSettings**: name, width, height, fullscreen
-- **GraphicSettings**: FPS, MSAA, HDR, MultiThreaded, InstancedBatching (draws runs of objects that share a mesh and material as one instanced draw; off falls back to one draw per object), RenderResolutionScale, AnisotropicTextureFiltering, OcclusionCulling (drops local lights and meshes the depth grid proves hidden, off by default; see 4.3), OcclusionReprojection (carries that grid into the frame being drawn before it is tested, on by default and only meaningful with culling on; see 4.3), plus a `m_shadows` member
+- **GraphicSettings**: FPS, MSAA, HDR, MultiThreaded, InstancedBatching (draws runs of objects that share a mesh and material as one instanced draw; off falls back to one draw per object), RenderResolutionScale, HalfResolutionForwardPreProcess (builds the normal and depth target - what ambient occlusion and depth of field read - at half the frame's size; screen space reflections force it back to full size, because they march against that depth), AnisotropicTextureFiltering, OcclusionCulling (drops local lights and meshes the depth grid proves hidden, off by default; see 4.3), OcclusionReprojection (carries that grid into the frame being drawn before it is tested, on by default and only meaningful with culling on; see 4.3), plus a `m_shadows` member
 - **ShadowSettings** (nested in GraphicSettings): cascade count/distance, parallel split, stable shadow map, cascade blend, atlas resolution (a 1K/2K/4K choice), slot density (the 2x slots option halves every slot's resolution for four times the slots), PCF kernel, VSM blur
 - **PostProcessingSettings**: tonemapping, bloom, gamma, SSAO, SSR, DOF, FXAA
 - **ShaderSettings**: per-shader define presets (e.g. "Low"/"High" graphics presets) so shader compile doesn't explode combinatorially
+
+**`FPS` is a gate, not a suggestion.** `Main::SyncFrameTime()` draws only when
+`CurrentTime > LastTime + TargetDeltaTime`, with `TargetDeltaTime = 1000 / FPS`, so the engine paces the
+frame on its own, independently of the display's swap interval: a run that asks EGL for no vsync still
+measures `FPS`. `FPS = 0` means unlocked - `TargetDeltaTime` is then zero and every iteration draws -
+which is what a measurement of the frame the app can produce needs; the division itself would yield an
+infinity and stop the app from drawing at all. The settings object outlives a load: the editor
+initializes the timer from the user config in `Main::Init` and then loads the open project's
+`Config/Engine.settings` on top of the same object, so `EngineSettings::DeSerializeImp` hands the value
+to `Timing` on every load (`ApplyFrameRate`). Without that handoff, a project that asked for no lock ran
+locked at the user config's frame rate until the settings window's FPS Lock checkbox - the only other
+caller of `Timing::Init` - was touched, which reads exactly like a stale setting.
 
 A shader variant that fails to compile is not fatal: `Shader::Compile` keeps the last working
 `m_gpuData`, `Shader::SetDefine` leaves the current variant in place and names the missing one, and

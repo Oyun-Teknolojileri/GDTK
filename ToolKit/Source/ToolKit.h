@@ -118,7 +118,11 @@ namespace ToolKit
    */
   struct TK_API Timing
   {
-    /** Initialize the timer for the engine. Locks the engine to given frame per seconds. */
+    /**
+     * Initialize the timer for the engine. Locks the engine to given frame per seconds.
+     * A target of zero unlocks it: the engine then draws every iteration and the frame rate is whatever
+     * the work costs, which is what a measurement of the frame the app can produce needs.
+     */
     void Init(uint fps);
 
     /** Returns the elapsed time for the last frame in milliseconds. */

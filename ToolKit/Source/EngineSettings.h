@@ -202,7 +202,11 @@ namespace ToolKit
     void PostDeSerializeImp(const SerializationFileInfo& info, XmlNode* parent) override;
 
    public:
-    /** Target fps for application. */
+    /**
+     * Target fps for application. The engine gates its frame on this value, independently of the
+     * display's swap interval, so a run that asks for no pacing still has to unlock it here. Zero means
+     * unlocked: every iteration draws and the frame rate is whatever the work costs.
+     */
     TKDeclareParam(int, FPS);
 
     /** Multi-sample count. MsaaSampleCount::x1 for non msaa render targets. */
@@ -412,6 +416,13 @@ namespace ToolKit
    protected:
     /** Sets shader defines for current graphics settings. */
     void SetShaderSettings();
+
+    /**
+     * Hands the frame rate in these settings to the engine's Timing, which is what actually gates the
+     * frame. Every load applies it, because the settings object outlives a load: the editor starts from
+     * the user config and then loads the open project's Config/Engine.settings on top.
+     */
+    void ApplyFrameRate();
 
    public:
     WindowSettingsPtr m_window;

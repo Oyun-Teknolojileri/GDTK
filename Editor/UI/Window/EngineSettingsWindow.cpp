@@ -200,17 +200,21 @@ namespace ToolKit
       {
         m_activeTab         = Tab::Graphics;
 
-        static bool lockFps = true;
+        // The lock is a setting, not a scratch checkbox. It used to be a static that started ticked and
+        // called Init(9999) to "unlock", so the state was lost with the window and no project could ship
+        // unlocked - while the engine gate is what decides the frame rate, independently of the display's
+        // swap interval. Zero in the setting now means unlocked, see Timing::Init.
+        const int lockedFps = graphics->GetFPSVal() > 0 ? graphics->GetFPSVal() : m_lastLockedFps;
+        bool lockFps        = graphics->GetFPSVal() > 0;
         if (ImGui::Checkbox("FPS Lock##1", &lockFps))
         {
-          if (lockFps)
-          {
-            Main::GetInstance()->m_timing.Init(graphics->GetFPSVal());
-          }
-          else
-          {
-            Main::GetInstance()->m_timing.Init(9999);
-          }
+          graphics->SetFPSVal(lockFps ? lockedFps : 0);
+          Main::GetInstance()->m_timing.Init(graphics->GetFPSVal());
+        }
+
+        if (graphics->GetFPSVal() > 0)
+        {
+          m_lastLockedFps = graphics->GetFPSVal();
         }
 
         bool multiThreaded = graphics->GetMultiThreadedVal();
