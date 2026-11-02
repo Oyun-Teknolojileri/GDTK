@@ -750,8 +750,17 @@ namespace ToolKit
       {
         char* log = new char[infoLen];
         glGetShaderInfoLog(handle, infoLen, nullptr, log);
-        TK_ERR(log);
+
+        // The info log is data, not a format string: a driver message that happens to contain a percent
+        // sign would otherwise be read as a conversion and print garbage, or nothing at all.
+        TK_ERR("Shader compile failed: %s\n%s", shader->GetFile().c_str(), log);
         SafeDelArray(log);
+      }
+      else
+      {
+        // Silence here is indistinguishable from a shader that was never reached: some drivers report a
+        // failure without writing a single character into the info log.
+        TK_ERR("Shader compile failed with an empty info log: %s", shader->GetFile().c_str());
       }
       glDeleteShader(handle);
       return nullptr;
@@ -940,6 +949,12 @@ namespace ToolKit
           glGetProgramInfoLog(pid, infoLen, nullptr, log);
           TK_ERR("Linking failed.\nVertex: %s\nFragment: %s\n%s", vs->GetFile().c_str(), fs->GetFile().c_str(), log);
           SafeDelArray(log);
+        }
+        else
+        {
+          TK_ERR("Linking failed with an empty info log.\nVertex: %s\nFragment: %s",
+                 vs->GetFile().c_str(),
+                 fs->GetFile().c_str());
         }
         glDeleteProgram(pid);
         return;
