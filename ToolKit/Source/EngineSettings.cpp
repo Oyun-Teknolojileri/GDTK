@@ -165,6 +165,7 @@ namespace ToolKit
     OcclusionCulling_Define(false, "GraphicSettings", 0, 0, 0);
     OcclusionReprojection_Define(true, "GraphicSettings", 0, 0, 0);
     RenderResolutionScale_Define(1.0f, "GraphicSettings", 0, 0, 0);
+    HalfResolutionForwardPreProcess_Define(true, "GraphicSettings", 0, 1, 1);
     MultiThreaded_Define(true, "GraphicSettings", 0, 0, 0);
   }
 

@@ -77,12 +77,16 @@ namespace ToolKit
     /**
      * Whether the normal and depth target is built at half the frame's size.
      *
-     * Ambient occlusion and depth of field read it at half resolution anyway, so a full size target
-     * is four times the fragments for the same picture; screen space reflections read it at full
-     * resolution and keep it. Derived from the settings rather than cached, because the pass params
-     * are written before the buffers are sized and the two have to agree.
+     * Driven by GraphicSettings::HalfResolutionForwardPreProcess, except that a screen space reflection
+     * pass reads the target at full resolution and forces it back off. Read from the settings rather
+     * than cached, because the pass params are written before the buffers are sized and the two have
+     * to agree.
      */
-    bool PreProcessHalfResolution() const { return !m_params.postProcessSettings->GetSSREnabledVal(); }
+    bool PreProcessHalfResolution() const
+    {
+      const bool wanted = GetEngineSettings().m_graphics->GetHalfResolutionForwardPreProcessVal();
+      return wanted && !m_params.postProcessSettings->GetSSREnabledVal();
+    }
 
     bool m_drawSky   = false;
     SkyBasePtr m_sky = nullptr;

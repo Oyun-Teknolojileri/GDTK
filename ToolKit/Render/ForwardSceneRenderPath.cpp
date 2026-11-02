@@ -1811,10 +1811,10 @@ namespace ToolKit
     m_ssaoPass->m_params.spread             = pps->GetSSAOSpreadVal();
     m_ssaoPass->m_params.Bias               = pps->GetSSAOBiasVal();
     m_ssaoPass->m_params.KernelSize         = pps->GetSSAOKernelSizeVal().GetValue<int>();
-    // Halving only once: when the pre process target is already half the frame, the occlusion pass
-    // works at that size and must not halve it a second time into a quarter resolution map.
-    m_ssaoPass->m_params.HalfResolution     = pps->GetSSAOHalfResolutionVal() &&
-                                             !PreProcessHalfResolution();
+    // The occlusion pass derives its size from the target it reads, so this halves whatever that is:
+    // half the frame with a half resolution target, a quarter of it when this is on as well. The setting
+    // is the project's own quality choice and is not masked here.
+    m_ssaoPass->m_params.HalfResolution     = pps->GetSSAOHalfResolutionVal();
 
     m_bloomPass->m_params.FrameBuffer       = m_params.MainFramebuffer;
     m_bloomPass->m_params.intensity         = pps->GetBloomIntensityVal();

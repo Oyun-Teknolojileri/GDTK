@@ -262,6 +262,17 @@ namespace ToolKit
     /** Anisotropic texture filtering value. It can be 0, 2 ,4, 8, 16. Clamped with gpu max anisotropy. */
     TKDeclareParam(MultiChoiceVariant, AnisotropicTextureFiltering);
 
+    /**
+     * Builds the normal and depth target - what ambient occlusion and depth of field read - at half
+     * the frame resolution.
+     *
+     * Both consumers work at half resolution anyway, so a full size target is four times the
+     * fragments for a picture neither of them can see. Screen space reflections read it at full
+     * resolution and force this off themselves. Worth trying the other way on a desktop gpu, where
+     * the target can also act as a depth prepass for the forward pass.
+     */
+    TKDeclareParam(bool, HalfResolutionForwardPreProcess);
+
     /** When set to true, graphics settings saved as shader defines. Preventing compiling all define configurations.  */
     bool m_saveShaderDefines = true;
 

@@ -224,6 +224,15 @@ namespace ToolKit
           graphics->SetInstancedBatchingVal(instancedBatching);
         }
 
+        // The normal and depth target ambient occlusion and depth of field read. Half size is four
+        // times fewer fragments for a picture neither of them can resolve; a desktop gpu may prefer full
+        // size, where the same target acts as a depth prepass for the forward pass.
+        bool halfResPreProcess = graphics->GetHalfResolutionForwardPreProcessVal();
+        if (ImGui::Checkbox("Half Resolution Normal Depth##1", &halfResPreProcess))
+        {
+          graphics->SetHalfResolutionForwardPreProcessVal(halfResPreProcess);
+        }
+
         bool occlusionCulling = graphics->GetOcclusionCullingVal();
         if (ImGui::Checkbox("Occlusion Culling##1", &occlusionCulling))
         {
