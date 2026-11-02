@@ -148,6 +148,14 @@ namespace ToolKit
           pps->SetSSAOBiasVal(ssaoBias);
         }
 
+        float ssaoStrength = pps->GetSSAOStrengthVal();
+        if (ImGui::DragFloat("Strength", &ssaoStrength, 0.01f, 0.0f, 4.0f))
+        {
+          pps->SetSSAOStrengthVal(ssaoStrength);
+        }
+        UI::AddTooltipToLastItem("How much of the occlusion map the lighting takes.\n"
+                                 "0: none, 1: the map as it is, 2 and up: darker.");
+
         CustomDataView::ShowVariant(&pps->ParamSSAOKernelSize(), nullptr);
 
         bool ssaoHalfRes = pps->GetSSAOHalfResolutionVal();

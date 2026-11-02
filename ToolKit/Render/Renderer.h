@@ -63,6 +63,9 @@ namespace ToolKit
 
     void SetAmbientOcclusionInUse(bool inUse) { global0.y = inUse ? 1.0f : 0.0f; }
 
+    /** How much of the occlusion map the lighting takes, see PostProcessingSettings::SSAOStrength. */
+    void SetAmbientOcclusionStrength(float strength) { global0.w = strength; }
+
     /** Sky intensity (0 = no sky). */
     void SetSkyIntensity(float intensity) { global0.z = intensity; }
 
@@ -506,7 +509,7 @@ namespace ToolKit
     void GenerateBRDFLutTexture();
 
     /** Ambient occlusion texture to be applied. If ao is not enabled, set this explicitly to null. */
-    void SetAmbientOcclusionTexture(TexturePtr aoTexture);
+    void SetAmbientOcclusionTexture(TexturePtr aoTexture, float strength = 1.0f);
 
     /** Sets the current material to use in render. */
     void SetMaterial(Material* mat);

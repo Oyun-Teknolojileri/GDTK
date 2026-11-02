@@ -307,6 +307,14 @@ namespace ToolKit
     TKDeclareParam(float, SSAORadius);
     TKDeclareParam(float, SSAOBias);
     TKDeclareParam(float, SSAOSpread);
+
+    /**
+     * How much of the occlusion map the lighting takes: 1 leaves it as it is, 0 turns the darkening
+     * off without recompiling, 2 doubles it. The map itself is rarely strong enough to read on its own
+     * - a pass that is correct can still be invisible - so the strength is a portrait knob, not part of
+     * the sampling.
+     */
+    TKDeclareParam(float, SSAOStrength);
     TKDeclareParam(MultiChoiceVariant, SSAOKernelSize);
     TKDeclareParam(bool, SSAOHalfResolution);
 

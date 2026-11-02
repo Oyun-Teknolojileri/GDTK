@@ -252,7 +252,7 @@ namespace ToolKit
     TK_PROFILE_FUNCTION();
 
     Renderer* renderer = GetRenderer();
-    renderer->SetAmbientOcclusionTexture(m_params.SsaoTexture);
+    renderer->SetAmbientOcclusionTexture(m_params.SsaoTexture, m_params.SsaoStrength);
 
     renderer->SetPassState(m_opaquePassState);
 

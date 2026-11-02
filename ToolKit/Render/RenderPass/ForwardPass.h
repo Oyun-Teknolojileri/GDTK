@@ -23,6 +23,9 @@ namespace ToolKit
     CameraPtr Cam                     = nullptr;
     FramebufferPtr FrameBuffer        = nullptr;
     RenderTargetPtr SsaoTexture       = nullptr;
+
+    /** How much of the occlusion map the lighting takes, see PostProcessingSettings::SSAOStrength. */
+    float SsaoStrength                = 1.0f;
     GraphicBitFields clearBuffer      = GraphicBitFields::AllBits;
     bool hasForwardPrePass            = false;
     uint activeDirectionalLightCount  = 0;

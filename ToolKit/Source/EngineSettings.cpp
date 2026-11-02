@@ -233,6 +233,7 @@ namespace ToolKit
     SSAORadius_Define(1.0f, "PostProcessingSettings", 0, 0, 0);
     SSAOBias_Define(0.025f, "PostProcessingSettings", 0, 0, 0);
     SSAOSpread_Define(1.0f, "PostProcessingSettings", 0, 0, 0);
+    SSAOStrength_Define(1.0f, "PostProcessingSettings", 0, 1, 1);
 
     MultiChoiceVariant ssaoKernelMcv = {
         {

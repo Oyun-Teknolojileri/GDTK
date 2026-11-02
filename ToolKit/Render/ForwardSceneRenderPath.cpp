@@ -1764,6 +1764,7 @@ namespace ToolKit
 
     PostProcessingSettingsPtr pps                   = m_params.postProcessSettings;
     m_forwardRenderPass->m_params.SsaoTexture       = pps->GetSSAOEnabledVal() ? m_ssaoPass->m_ssaoTexture : nullptr;
+    m_forwardRenderPass->m_params.SsaoStrength      = pps->GetSSAOStrengthVal();
 
     bool forwardPreProcessExist                     = RequiresForwardPreProcessPass();
     m_forwardRenderPass->m_params.hasForwardPrePass = forwardPreProcessExist;
