@@ -1375,7 +1375,19 @@ installed emscripten emits a separate worker script -- current releases reuse th
 main `.js`) into `Publish/Web`, together with a `Run.bat` that starts `emrun`.
 The `PublishConfig` names map to `Debug` -> `Debug`, `Develop` ->
 `RelWithDebInfo`, `Deploy` -> `Release`. Packing runs first when
-`MinResources.pak` is missing or the config is `Deploy`.
+`MinResources.pak` is missing or the config is `Deploy`, and also when the
+resource tree no longer matches the tree the pak on disk was built from.
+`Packer::HashResourceTree` folds every file under the project's `Resources/`
+(relative path, size, write time, sorted) into one 64 bit fingerprint and the
+packer keeps the last one in `MinResources.pak.hash` next to the pak; a mismatch
+repacks and rewrites it, a match keeps the existing pak. It compares the sources
+rather than the pak because a zip carries timestamps, so two packs of identical
+content differ byte for byte. `Packer.exe --repack` forces the pack regardless.
+The same fingerprint is copied into the Android assets beside the pak, where the
+app uses it to tell the pak it unpacked last time from the one the APK ships
+(`CopyPakToDataPath` in `Codes/Platform/android_main.h`): before that, the device
+copy was skipped whenever the file existed, which silently pinned the first pak a
+package name ever wrote and made every later publish invisible on the device.
 
 `Packer::AndroidPublish` is the Android path: it packs, copies `MinResources.pak`
 into `Android/app/src/main/assets`, rewrites `Android/app/build.gradle` from the

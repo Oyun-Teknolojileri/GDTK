@@ -81,6 +81,18 @@ namespace ToolKit
     void AndroidRunOnPhone(bool isAPKUnsigned);
     int PackResources();
 
+    /** Path of the file that remembers which resource tree the pak on disk was built from. */
+    String ResourceHashPath() const;
+
+    /** Fingerprint of the project's Resources folder, as it is now. */
+    uint64 HashResourceTreeNow() const;
+
+    /** The fingerprint stored next to the pak, or an empty string when there is none yet. */
+    String ReadStoredResourceHash() const;
+
+    /** Records the fingerprint of the tree a freshly built pak describes. */
+    void WriteResourceHash(uint64 hash) const;
+
     /**
      * Checks the error code and returns true if there is an error.
      * Also reports the message to console in case of error.
@@ -92,6 +104,10 @@ namespace ToolKit
    public:
     /** Just packs the resources. Does not perform publishing. */
     bool m_onlyPack = false;
+
+    /** Packs even when the pak already matches the resource tree. */
+    bool m_forceRepack = false;
+
     String m_icon;
     String m_appName;
     int m_minSdk            = 27;
@@ -107,6 +123,98 @@ namespace ToolKit
     std::error_code m_errorCode;
     Path m_workingDirectory;
   };
+
+  namespace
+  {
+    /**
+     * Fingerprint of the resource tree a pak was built from.
+     *
+     * A pak is a zip, so its bytes differ between two runs even when nothing changed (timestamps),
+     * and the decision to repack cannot be based on the pak itself. This walks the sources instead:
+     * every file's relative path, size and modification time, folded into one 64 bit value in a
+     * sorted order so two trees with the same content give the same number. A resource edit changes
+     * it, a rebuild of the same content does not.
+     */
+    uint64 HashResourceTree(const String& root)
+    {
+      std::error_code ec;
+      std::vector<std::filesystem::directory_entry> files;
+
+      for (auto it = std::filesystem::recursive_directory_iterator(root, ec);
+           it != std::filesystem::recursive_directory_iterator() && !ec;
+           it.increment(ec))
+      {
+        if (it->is_regular_file(ec))
+        {
+          files.push_back(*it);
+        }
+      }
+
+      std::sort(files.begin(),
+                files.end(),
+                [](const std::filesystem::directory_entry& a, const std::filesystem::directory_entry& b)
+                { return a.path().generic_string() < b.path().generic_string(); });
+
+      // FNV-1a, 64 bit.
+      uint64 hash = 1469598103934665603ull;
+      const auto fold = [&hash](const void* data, size_t size)
+      {
+        const ubyte* bytes = (const ubyte*) data;
+        for (size_t i = 0; i < size; i++)
+        {
+          hash ^= bytes[i];
+          hash *= 1099511628211ull;
+        }
+      };
+
+      for (const std::filesystem::directory_entry& file : files)
+      {
+        const String relative = file.path().generic_string().substr(root.size());
+        fold(relative.data(), relative.size());
+
+        const uint64 size = (uint64) file.file_size(ec);
+        fold(&size, sizeof(size));
+
+        // The write time is folded in its own clock's ticks rather than as a calendar timestamp:
+        // to_time_t is not portable across the standard libraries this builds with, and the value
+        // only has to be stable within one platform, which it is.
+        const int64 stamp = (int64) file.last_write_time(ec).time_since_epoch().count();
+        fold(&stamp, sizeof(stamp));
+      }
+
+      return hash;
+    }
+
+    String HexHash(uint64 hash)
+    {
+      char buffer[17] = {};
+      snprintf(buffer, sizeof(buffer), "%016llx", (unsigned long long) hash);
+      return String(buffer);
+    }
+  } // namespace
+
+  String Packer::ResourceHashPath() const
+  {
+    return ConcatPaths({ResourcePath(), "..", String(TKResourcePak) + ".hash"});
+  }
+
+  uint64 Packer::HashResourceTreeNow() const { return HashResourceTree(ResourcePath()); }
+
+  String Packer::ReadStoredResourceHash() const
+  {
+    const String path = ResourceHashPath();
+    if (!CheckSystemFile(path))
+    {
+      return "";
+    }
+
+    return GetFileManager()->ReadAllText(path);
+  }
+
+  void Packer::WriteResourceHash(uint64 hash) const
+  {
+    GetFileManager()->WriteAllText(ResourceHashPath(), HexHash(hash));
+  }
 
   int Packer::PackResources()
   {
@@ -155,20 +263,39 @@ namespace ToolKit
   {
     String packPath   = ConcatPaths({ResourcePath(), "..", TKResourcePak});
 
-    bool needPacking  = m_publishConfig == PublishConfig::Deploy;
-    needPacking      |= !CheckSystemFile(packPath);
-    needPacking      |= m_onlyPack;
+    // Whether the pak on disk still describes the resource tree. Comparing the sources, not the pak:
+    // a zip carries timestamps, so two packs of identical content differ byte for byte, while this
+    // fingerprint only changes when a resource actually does.
+    const uint64 resourceHash = HashResourceTreeNow();
+    const String storedHash   = ReadStoredResourceHash();
+    const bool stale          = storedHash != HexHash(resourceHash);
+
+    bool needPacking          = m_publishConfig == PublishConfig::Deploy;
+    needPacking              |= !CheckSystemFile(packPath);
+    needPacking              |= m_onlyPack;
+    needPacking              |= m_forceRepack;
+    needPacking              |= stale;
 
     // Prevent packing for plugins.
-    needPacking      &= (m_platform != PublishPlatform::EditorPlugin && m_platform != PublishPlatform::GamePlugin);
+    needPacking              &= (m_platform != PublishPlatform::EditorPlugin && m_platform != PublishPlatform::GamePlugin);
 
     if (needPacking)
     {
+      if (stale && CheckSystemFile(packPath) && !m_forceRepack)
+      {
+        TK_LOG("Resources changed since the last pack (%s -> %s), repacking.\n",
+               storedHash.empty() ? "no hash" : storedHash.c_str(),
+               HexHash(resourceHash).c_str());
+      }
+
       int packResult = PackResources();
       if (packResult != 0 || m_onlyPack)
       {
         return packResult;
       }
+
+      // The pak now describes exactly this tree, so the next run can tell whether it still does.
+      WriteResourceHash(resourceHash);
     }
 
     switch (m_platform)
@@ -638,6 +765,19 @@ namespace ToolKit
       return -1;
     }
 
+    // The fingerprint travels with the pak so the app can tell the pak it unpacked last time from the
+    // one this APK ships, without hashing 16 MB at every start.
+    const String sceneHashPath   = sceneResourcesPath + ".hash";
+    const String androidHashPath = androidResourcesPath + ".hash";
+    if (CheckSystemFile(sceneHashPath))
+    {
+      std::filesystem::copy(sceneHashPath, androidHashPath, copyOption, m_errorCode);
+      if (CheckErrorReturn("Copy " + sceneHashPath + " and " + androidHashPath))
+      {
+        return -1;
+      }
+    }
+
     std::filesystem::copy(engineSettingsPath, destEngineSettingsPath, copyOption, m_errorCode);
     if (CheckErrorReturn("Copy " + engineSettingsPath + " and " + destEngineSettingsPath))
     {
@@ -999,6 +1139,31 @@ namespace ToolKit
     packer.m_icon             = std::filesystem::absolute(packer.m_icon).string();
     packer.m_publishConfig    = (PublishConfig) std::atoi(arguments[10].c_str());
     packer.m_onlyPack         = std::atoi(arguments[11].c_str());
+
+    // Command line flags. PublishArguments.txt carries the settings, these carry the intent of this
+    // particular run.
+    //   --repack   pack the resources even when the pak already matches the tree
+    //   --help     print the flags and exit
+    for (int i = 1; i < argc; i++)
+    {
+      const String flag = argv[i];
+      if (flag == "--repack" || flag == "-r")
+      {
+        packer.m_forceRepack = true;
+      }
+      else if (flag == "--help" || flag == "-h")
+      {
+        TK_LOG("Usage: Packer [--repack]\n");
+        TK_LOG("  PublishArguments.txt in the working directory holds the publish settings.\n");
+        TK_LOG("  --repack  pack the resources even when the pak already matches the tree\n");
+        return 0;
+      }
+    }
+
+    if (packer.m_forceRepack)
+    {
+      TK_LOG("Repack requested on the command line.\n");
+    }
 
     // Set resource root to project's Resources folder
     g_proxy->m_resourceRoot   = ConcatPaths({workspacePath, activeProjectName, "Resources"});

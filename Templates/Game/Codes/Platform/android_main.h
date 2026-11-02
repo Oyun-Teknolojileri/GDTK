@@ -77,13 +77,103 @@ namespace ToolKit
     ANDROID_LOG("File %s copied successfully.\n", file.c_str());
   }
 
+  /**
+   * Reads a whole asset as text, or returns an empty string when it is not in the APK.
+   */
+  inline String ReadAssetText(const String& file)
+  {
+    AAsset* asset = AAssetManager_open(assetManager, file.c_str(), 0);
+    if (!asset)
+    {
+      return "";
+    }
+
+    const off_t size = AAsset_getLength(asset);
+    String text;
+    if (size > 0)
+    {
+      text.resize((size_t) size);
+      AAsset_read(asset, &text[0], size);
+    }
+    AAsset_close(asset);
+
+    // The file is a single token; a trailing newline would make two equal fingerprints compare
+    // unequal.
+    while (!text.empty() && (text.back() == '\n' || text.back() == '\r' || text.back() == ' '))
+    {
+      text.pop_back();
+    }
+
+    return text;
+  }
+
+  /**
+   * Unpacks the resource pak when the APK ships a different one than the copy already on the device.
+   *
+   * Skipping the copy on "the file exists" pins the first pak a package name ever wrote: every later
+   * publish ships a new pak in the assets and the app keeps rendering the old scene. The pak carries
+   * no self describing version, so the Packer writes <pak>.hash - the fingerprint of the resource
+   * tree it packed - and ships it next to the pak; the unpacked copy keeps the fingerprint it came
+   * from. Comparing two 16 character strings costs nothing next to a 15 MB copy, and hashing the pak
+   * at every start would cost more than the copy saves.
+   */
+  inline void CopyPakToDataPath(String& internalDataPath)
+  {
+    const String pakFile     = TKResourcePak;
+    const String assetHash   = ReadAssetText(pakFile + ".hash");
+    const String destination = ConcatPaths({internalDataPath, pakFile});
+    const String hashPath    = ConcatPaths({internalDataPath, pakFile + ".hash"});
+
+    String installedHash;
+    if (FILE* hashFile = fopen(hashPath.c_str(), "r"))
+    {
+      char buffer[64] = {};
+      if (fgets(buffer, sizeof(buffer), hashFile) != nullptr)
+      {
+        installedHash = String(buffer);
+      }
+      fclose(hashFile);
+      while (!installedHash.empty() &&
+             (installedHash.back() == '\n' || installedHash.back() == '\r' || installedHash.back() == ' '))
+      {
+        installedHash.pop_back();
+      }
+    }
+
+    const bool havePak  = access(destination.c_str(), F_OK) != -1;
+    const bool upToDate = havePak && !assetHash.empty() && installedHash == assetHash;
+    if (upToDate)
+    {
+      ANDROID_LOG("Pak %s is current (%s), skipping copy.\n", pakFile.c_str(), assetHash.c_str());
+      return;
+    }
+
+    ANDROID_LOG("Pak %s is stale or missing (have '%s', shipped '%s'), copying.\n",
+                pakFile.c_str(),
+                installedHash.c_str(),
+                assetHash.c_str());
+
+    CopyFileToDataPath(internalDataPath, pakFile, true);
+
+    // Only after the copy: a fingerprint without the pak it describes would make the next start
+    // believe it is current.
+    if (!assetHash.empty())
+    {
+      if (FILE* hashFile = fopen(hashPath.c_str(), "w"))
+      {
+        fwrite(assetHash.c_str(), 1, assetHash.size(), hashFile);
+        fclose(hashFile);
+      }
+    }
+  }
+
   // copies all of the engine assets to internal data folder if already not copied
   inline void CopyAllAssetsToDataPath(String& internalDataPath)
   {
     mkdir(ConcatPaths({internalDataPath, "Resources"}).c_str(), 0777);
     mkdir(ConcatPaths({internalDataPath, "Config"}).c_str(), 0777);
 
-    CopyFileToDataPath(internalDataPath, TKResourcePak);
+    CopyPakToDataPath(internalDataPath);
     CopyFileToDataPath(internalDataPath, ConcatPaths({"Config", "Engine.settings"}), true);
   }
 
