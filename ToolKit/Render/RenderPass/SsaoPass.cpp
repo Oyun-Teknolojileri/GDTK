@@ -63,6 +63,20 @@ namespace ToolKit
       normalDepthBuffer = m_params.GNormalDepthBuffer->GetResolvedTexture();
     }
 
+    // The occlusion math reads one texel per sample: the normal in RG and the linear depth in B are
+    // packed into the same target, so a filtered fetch averages a normal into a different normal and
+    // a depth into a different depth, and the comparison then means nothing. Worse, a mip filter on
+    // a target that has no mip chain makes the texture incomplete, which samples as zero - the pass
+    // then reads a depth of zero everywhere, every pixel gets the same handful of hits, and the
+    // result is a flat veil instead of occlusion. Both are sampler state, so it is stated here, on
+    // the pass that depends on it, rather than trusting whatever the target was left with.
+    TextureSettings ndSettings = normalDepthBuffer->Settings();
+    ndSettings.MinFilter       = GraphicTypes::SampleNearest;
+    ndSettings.MagFilter       = GraphicTypes::SampleNearest;
+    ndSettings.WarpS           = GraphicTypes::UVClampToEdge;
+    ndSettings.WarpT           = GraphicTypes::UVClampToEdge;
+    normalDepthBuffer->ApplyTextureSettings(ndSettings);
+
     // Build calc + blur requirements. Each gets its own framebuffer, custom UBO, and
     // semantic-named texture. SSAO shader's s_normalDepth is bound BEFORE the program is
     // bound in the old code, which made the SetTexture("s_normalDepth", ...) call a

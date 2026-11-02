@@ -40,6 +40,12 @@ namespace ToolKit
     void SetParams(const GameRendererParams& gameRendererParams);
     void Render(Renderer* renderer) override;
 
+    /**
+     * The scene path this renderer drives. A host that wants to look at what one of the passes
+     * produced - the ambient occlusion map, a shadow atlas - reads its targets through here.
+     */
+    const SceneRenderPathPtr& GetSceneRenderPath() const { return m_sceneRenderPath; }
+
    private:
     void PreRender(Renderer* renderer) override;
     void PostRender(Renderer* renderer) override;

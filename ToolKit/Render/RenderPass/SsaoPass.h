@@ -100,7 +100,18 @@ namespace ToolKit
 
    public:
     SSAOPassParams m_params;
+
+    /** The blurred map the forward pass multiplies into the lighting. */
     RenderTargetPtr m_ssaoTexture = nullptr;
+
+    /**
+     * The map as the pass wrote it, before the blur.
+     *
+     * Kept reachable so a host can read both halves out and look at them: the occlusion is
+     * multiplied into the lighting before anything reaches the screen, so a wrong map is only
+     * visible as "the scene got darker".
+     */
+    const RenderTargetPtr& GetRawSsaoTarget() const { return m_rawSsaoRt; }
 
    private:
     Vec3Array m_ssaoKernel;
