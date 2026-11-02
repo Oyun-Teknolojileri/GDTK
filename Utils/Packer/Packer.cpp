@@ -82,16 +82,25 @@ namespace ToolKit
     int PackResources();
 
     /** Path of the file that remembers which resource tree the pak on disk was built from. */
-    String ResourceHashPath() const;
+    String PakPath() const;
 
-    /** Fingerprint of the project's Resources folder, as it is now. */
-    uint64 HashResourceTreeNow() const;
+    /** Path of the file that carries the hash of the pak bytes, next to the pak and in the assets. */
+    String PakHashPath() const;
 
-    /** The fingerprint stored next to the pak, or an empty string when there is none yet. */
-    String ReadStoredResourceHash() const;
+    /** Path of the file that remembers the input trees the pak on disk was built from. */
+    String ResourceInputsPath() const;
 
-    /** Records the fingerprint of the tree a freshly built pak describes. */
-    void WriteResourceHash(uint64 hash) const;
+    /** Fingerprint of the inputs the pak is built from: the project's Resources and the engine's. */
+    uint64 HashResourceInputsNow() const;
+
+    /** The input fingerprint stored next to the pak, or an empty string when there is none yet. */
+    String ReadStoredInputs() const;
+
+    /** Records the input fingerprint a freshly built pak describes. */
+    void WriteStoredInputs(uint64 hash) const;
+
+    /** Rewrites the pak byte hash from the pak on disk. */
+    void WritePakHash() const;
 
     /**
      * Checks the error code and returns true if there is an error.
@@ -126,17 +135,30 @@ namespace ToolKit
 
   namespace
   {
+    /** FNV-1a, 64 bit, folded in place. */
+    void FoldHash(uint64& hash, const void* data, size_t size)
+    {
+      const ubyte* bytes = (const ubyte*) data;
+      for (size_t i = 0; i < size; i++)
+      {
+        hash ^= bytes[i];
+        hash *= 1099511628211ull;
+      }
+    }
+
     /**
-     * Fingerprint of the resource tree a pak was built from.
+     * Folds one resource tree into a hash: every file's relative path, size and write time, in a
+     * sorted order.
      *
      * A pak is a zip, so its bytes differ between two runs even when nothing changed (timestamps),
-     * and the decision to repack cannot be based on the pak itself. This walks the sources instead:
-     * every file's relative path, size and modification time, folded into one 64 bit value in a
-     * sorted order so two trees with the same content give the same number. A resource edit changes
-     * it, a rebuild of the same content does not.
+     * which is why the decision to repack cannot be based on the pak. This walks the sources instead.
+     * The tree is tagged with its name so the project's Resources and the engine's cannot cancel
+     * each other out.
      */
-    uint64 HashResourceTree(const String& root)
+    void HashResourceTree(uint64& hash, const String& tag, const String& root)
     {
+      FoldHash(hash, tag.data(), tag.size());
+
       std::error_code ec;
       std::vector<std::filesystem::directory_entry> files;
 
@@ -155,31 +177,42 @@ namespace ToolKit
                 [](const std::filesystem::directory_entry& a, const std::filesystem::directory_entry& b)
                 { return a.path().generic_string() < b.path().generic_string(); });
 
-      // FNV-1a, 64 bit.
-      uint64 hash = 1469598103934665603ull;
-      const auto fold = [&hash](const void* data, size_t size)
-      {
-        const ubyte* bytes = (const ubyte*) data;
-        for (size_t i = 0; i < size; i++)
-        {
-          hash ^= bytes[i];
-          hash *= 1099511628211ull;
-        }
-      };
-
       for (const std::filesystem::directory_entry& file : files)
       {
         const String relative = file.path().generic_string().substr(root.size());
-        fold(relative.data(), relative.size());
+        FoldHash(hash, relative.data(), relative.size());
 
         const uint64 size = (uint64) file.file_size(ec);
-        fold(&size, sizeof(size));
+        FoldHash(hash, &size, sizeof(size));
 
         // The write time is folded in its own clock's ticks rather than as a calendar timestamp:
         // to_time_t is not portable across the standard libraries this builds with, and the value
         // only has to be stable within one platform, which it is.
         const int64 stamp = (int64) file.last_write_time(ec).time_since_epoch().count();
-        fold(&stamp, sizeof(stamp));
+        FoldHash(hash, &stamp, sizeof(stamp));
+      }
+    }
+
+    /** Whole-file hash of the pak that is about to ship. */
+    uint64 HashFile(const String& path)
+    {
+      uint64 hash = 1469598103934665603ull;
+
+      std::ifstream file(path.c_str(), std::ios::binary);
+      if (!file)
+      {
+        return hash;
+      }
+
+      std::vector<char> buffer(1 << 20);
+      while (file)
+      {
+        file.read(buffer.data(), (std::streamsize) buffer.size());
+        const std::streamsize read = file.gcount();
+        if (read > 0)
+        {
+          FoldHash(hash, buffer.data(), (size_t) read);
+        }
       }
 
       return hash;
@@ -193,27 +226,55 @@ namespace ToolKit
     }
   } // namespace
 
-  String Packer::ResourceHashPath() const
+  String Packer::PakPath() const { return ConcatPaths({ResourcePath(), "..", TKResourcePak}); }
+
+  String Packer::PakHashPath() const { return PakPath() + ".hash"; }
+
+  String Packer::ResourceInputsPath() const { return PakPath() + ".inputs"; }
+
+  uint64 Packer::HashResourceInputsNow() const
   {
-    return ConcatPaths({ResourcePath(), "..", String(TKResourcePak) + ".hash"});
+    // Both trees go in: the pak carries the project's Resources and the engine's defaults (shaders,
+    // fonts, icons), so an engine shader edit has to force a repack exactly like a scene edit does.
+    uint64 hash = 1469598103934665603ull;
+    HashResourceTree(hash, "project", ResourcePath());
+
+    if (!m_toolkitPath.empty())
+    {
+      HashResourceTree(hash, "engine", ConcatPaths({m_toolkitPath, "Resources"}));
+    }
+
+    return hash;
   }
 
-  uint64 Packer::HashResourceTreeNow() const { return HashResourceTree(ResourcePath()); }
-
-  String Packer::ReadStoredResourceHash() const
+  String Packer::ReadStoredInputs() const
   {
-    const String path = ResourceHashPath();
+    const String path = ResourceInputsPath();
     if (!CheckSystemFile(path))
     {
       return "";
     }
 
-    return GetFileManager()->ReadAllText(path);
+    String stored = GetFileManager()->ReadAllText(path);
+    ReplaceStringInPlace(stored, "\r", "");
+    ReplaceStringInPlace(stored, "\n", "");
+    return stored;
   }
 
-  void Packer::WriteResourceHash(uint64 hash) const
+  void Packer::WriteStoredInputs(uint64 hash) const { GetFileManager()->WriteAllText(ResourceInputsPath(), HexHash(hash)); }
+
+  void Packer::WritePakHash() const
   {
-    GetFileManager()->WriteAllText(ResourceHashPath(), HexHash(hash));
+    const String pakPath = PakPath();
+    if (!CheckSystemFile(pakPath))
+    {
+      return;
+    }
+
+    // The hash of the bytes that ship, not of the inputs: the app compares this one against the pak
+    // it unpacked last time, and the app has no way to see the trees. Recomputed on every publish so
+    // it also heals a missing or stale file.
+    GetFileManager()->WriteAllText(PakHashPath(), HexHash(HashFile(pakPath)));
   }
 
   int Packer::PackResources()
@@ -263,12 +324,13 @@ namespace ToolKit
   {
     String packPath   = ConcatPaths({ResourcePath(), "..", TKResourcePak});
 
-    // Whether the pak on disk still describes the resource tree. Comparing the sources, not the pak:
-    // a zip carries timestamps, so two packs of identical content differ byte for byte, while this
-    // fingerprint only changes when a resource actually does.
-    const uint64 resourceHash = HashResourceTreeNow();
-    const String storedHash   = ReadStoredResourceHash();
-    const bool stale          = storedHash != HexHash(resourceHash);
+    // Whether the pak on disk still describes its inputs. Comparing the sources, not the pak: a zip
+    // carries timestamps, so two packs of identical content differ byte for byte, while this
+    // fingerprint only changes when a resource actually does. The inputs are the project's Resources
+    // and the engine's, because the pak carries both.
+    const uint64 inputsHash = HashResourceInputsNow();
+    const String storedInputs = ReadStoredInputs();
+    const bool stale          = storedInputs != HexHash(inputsHash);
 
     bool needPacking          = m_publishConfig == PublishConfig::Deploy;
     needPacking              |= !CheckSystemFile(packPath);
@@ -284,8 +346,8 @@ namespace ToolKit
       if (stale && CheckSystemFile(packPath) && !m_forceRepack)
       {
         TK_LOG("Resources changed since the last pack (%s -> %s), repacking.\n",
-               storedHash.empty() ? "no hash" : storedHash.c_str(),
-               HexHash(resourceHash).c_str());
+               storedInputs.empty() ? "no inputs" : storedInputs.c_str(),
+               HexHash(inputsHash).c_str());
       }
 
       int packResult = PackResources();
@@ -294,9 +356,14 @@ namespace ToolKit
         return packResult;
       }
 
-      // The pak now describes exactly this tree, so the next run can tell whether it still does.
-      WriteResourceHash(resourceHash);
+      // The pak now describes exactly these inputs, so the next run can tell whether it still does.
+      WriteStoredInputs(inputsHash);
     }
+
+    // The hash of the bytes that ship, whatever produced them: it is what the app compares against
+    // the pak it unpacked last time, and it is recomputed even when nothing was packed so a hand
+    // copied or stale file cannot survive a publish.
+    WritePakHash();
 
     switch (m_platform)
     {
