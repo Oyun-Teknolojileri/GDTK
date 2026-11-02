@@ -612,6 +612,15 @@ walks every entity in the scene and measured 2.8 ms a frame, so they are rebuilt
 scene version moves, the light set changes, or the render path sets `ShadowPassParams::castersDirty`
 on a frame where an entity's geometry changed.
 
+`ShadowSettings::CastShadow` is the master switch, off by default in a project that does not need
+shadows. Off, `ShadowPass::PreRender` clears its light list and `ShadowPass::Render` returns before
+touching the atlas, and `ForwardRenderPass` hands the fragment shader `CastShadow 0`, which compiles
+the sampling path in `shadow.shader` out entirely (it returns 1.0 from both samplers). The point is
+that the PCF and cascade blend settings keep their quality values while the feature is off: turning
+the switch back on restores the authored shadows with exactly the filtering the settings asked for,
+which hand-editing the PCF tap count to zero could not do. On the reference phone the difference is
+30.9 fps to 60 (vsync) at the demo scene's 65 % resolution.
+
 Scenes with a skinned or animated job disable the cache (`m_jobCacheUnusable`): those transforms
 move without a spatial invalidation, which no counter can see.
 

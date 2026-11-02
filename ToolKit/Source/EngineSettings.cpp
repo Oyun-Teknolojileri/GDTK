@@ -61,6 +61,7 @@ namespace ToolKit
     StableShadowMap_Define(false, "ShadowSettings", 0, 0, 0);
 
     CascadeBlend_Define(false, "ShadowSettings", 0, 1, 1);
+    CastShadow_Define(true, "ShadowSettings", 0, 1, 1);
     ShadowAtlasResolution_Define(AtlasResolution1K, "ShadowSettings", 0, 0, 0);
     Use2XShadowAtlasSlots_Define(false, "ShadowSettings", 0, 0, 0);
 

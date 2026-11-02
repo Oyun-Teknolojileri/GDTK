@@ -278,6 +278,13 @@ namespace ToolKit
       {
         m_activeTab = Tab::Shadows;
 
+        // Master switch. Off skips the shadow pass and compiles the sampling out of the shader.
+        CustomDataView::ShowVariant(&shadows->ParamCastShadow(), nullptr);
+        UI::AddTooltipToLastItem("Whether anything casts a shadow at all.\n"
+                                 "Off: the shadow pass renders nothing and the shader drops its\n"
+                                 "shadow sampling, so a scene that needs no shadows pays neither.\n"
+                                 "On: every light with its own Cast Shadow set still casts.");
+
         // VSM Blur settings.
         ImGui::SeparatorText("VSM Blur");
 

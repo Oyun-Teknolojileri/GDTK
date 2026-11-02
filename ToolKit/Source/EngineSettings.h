@@ -132,6 +132,18 @@ namespace ToolKit
      */
     TKDeclareParam(bool, CascadeBlend);
 
+    /**
+     * Master switch for shadow casting.
+     *
+     * Off means the shadow pass renders nothing at all and the forward shader compiles its shadow
+     * sampling out behind a CastShadow define, so a scene that needs no shadows pays neither the
+     * atlas render nor the per pixel cost. Before this the same result needed the per light
+     * CastShadow flags and the ShadowPCF and CascadeBlend settings edited by hand, which also
+     * changed what shadows looked like once they came back. On keeps the previous behaviour: a
+     * light casts when its own CastShadow is set.
+     */
+    TKDeclareParam(bool, CastShadow);
+
     /** Layer resolution of the shadow atlas: 1K, 2K or 4K. See GetShadowAtlasResolution. */
     TKDeclareParam(int, ShadowAtlasResolution);
 

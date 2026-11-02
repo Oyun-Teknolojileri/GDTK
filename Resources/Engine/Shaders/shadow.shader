@@ -4,10 +4,17 @@
 	<include name = "textureUtil.shader" />
 	<include name = "drawDataInc.shader" />
 	<define name = "ShadowPCF" val="0,4,9,16" />
+	<define name = "CastShadow" val="0,1" />
 	<source>
 	<!--
 #ifndef SHADOW_SHADER
 #define SHADOW_SHADER
+
+// ShadowSettings::CastShadow arrives as a define so the whole sampling path can be compiled out
+// when the scene casts no shadow. A caller that does not set it keeps the old behaviour.
+#ifndef CastShadow
+	#define CastShadow 1
+#endif
 
 #define TWO_PI 6.283185
 
@@ -164,11 +171,12 @@ float SampleShadow2D
 	vec2 jitter = ShadowDitherJitter(texelSize);
 	vec3 jitteredUV = vec3(clamp(uvLayer.xy + jitter, clampMin, clampMax), uvLayer.z);
 
-#if ShadowPCF >= 4
+#if CastShadow
+	#if ShadowPCF >= 4
 	vec2 moments = ShadowPCFFilter(shadowAtlas, jitteredUV, clampMin, clampMax, texelSize);
-#else
+	#else
 	vec2 moments = texture(shadowAtlas, jitteredUV).xy;
-#endif
+	#endif
 
 	float warpedDepth = WarpDepth(currDepth);
 
@@ -179,6 +187,10 @@ float SampleShadow2D
 		shadowBias,
 		LBR
 	);
+#else
+	// No shadow in this frame: nothing is sampled and the term is fully lit.
+	return 1.0;
+#endif
 }
 
 // Paraboloid Shadow Sampling (Point lights)
@@ -258,11 +270,12 @@ float SampleShadowOmni
 
 	vec3 sampleCoord = vec3(jitteredXY, float(layer));
 
-#if ShadowPCF >= 4
+#if CastShadow
+	#if ShadowPCF >= 4
 	vec2 moments = ShadowPCFFilter(shadowAtlas, sampleCoord, beginCoord + halfPixel, endCoord - halfPixel, texelSize);
-#else
+	#else
 	vec2 moments = texture(shadowAtlas, sampleCoord).xy;
-#endif
+	#endif
 
 	float warpedDepth = WarpDepth(currDepth);
 
@@ -273,6 +286,10 @@ float SampleShadowOmni
 		shadowBias,
 		LBR
 	);
+#else
+	// No shadow in this frame: nothing is sampled and the term is fully lit.
+	return 1.0;
+#endif
 }
 
 #endif

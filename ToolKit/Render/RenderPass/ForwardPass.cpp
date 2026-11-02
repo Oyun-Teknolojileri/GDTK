@@ -32,6 +32,9 @@ namespace ToolKit
     m_cascadeBlend = shadows->GetCascadeBlendVal() ? 1 : 0;
     fragmentShader->SetDefine("CascadeBlend", std::to_string(m_cascadeBlend));
 
+    m_castShadow = shadows->GetCastShadowVal() ? 1 : 0;
+    fragmentShader->SetDefine("CastShadow", std::to_string(m_castShadow));
+
     // Opaque + alpha-masked passive defaults. Lequal so a z-prepassed depth buffer keeps
     // exactly the visible fragments; depth write on so non-prepassed scenes still build
     // a correct z buffer.
@@ -471,6 +474,13 @@ namespace ToolKit
     {
       m_cascadeBlend = cascadeBlend;
       frag->SetDefine("CascadeBlend", std::to_string(m_cascadeBlend));
+    }
+
+    const int castShadow = shadows->GetCastShadowVal() ? 1 : 0;
+    if (castShadow != m_castShadow)
+    {
+      m_castShadow = castShadow;
+      frag->SetDefine("CastShadow", std::to_string(m_castShadow));
     }
 
     Renderer* renderer = GetRenderer();

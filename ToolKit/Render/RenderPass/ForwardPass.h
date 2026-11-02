@@ -88,6 +88,9 @@ namespace ToolKit
     /** Cascade blend state the fragment shader was built for. -1 so the first frame always sets it. */
     int m_cascadeBlend = -1;
 
+    /** Shadow master switch the fragment shader was built for. -1 so the first frame always sets it. */
+    int m_castShadow = -1;
+
     MaterialPtr m_programConfigMat;
 
     /** Pass-owned passive RenderState for the opaque + alpha-masked path. */
