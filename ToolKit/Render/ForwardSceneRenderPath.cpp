@@ -210,47 +210,29 @@ namespace ToolKit
       return;
     }
 
-    // Which depth the grid reduces, and both sources answer the same question. The pre process pass, when
-    // the post processing settings ask for it, has already written the frame's view-space depth into the
-    // blue channel of its G buffer and resolved it for SSAO / SSR / DoF, so reading it needs no copy and no
-    // extra target: that is the source this prefers. Without the pass, the forward pass's own depth
-    // attachment is what is left, and while MSAA is on that attachment is a renderbuffer which has to be
-    // resolved into a single sample copy first.
+    // The grid reduces the frame's own depth attachment, and only that. The pre process pass's G buffer holds a
+    // view space distance and used to be preferred here because reading it needed no copy, but that target is
+    // half the frame size by default: a block then covers sixteen frame pixels instead of eight, and a thin
+    // surface seen at a shallow angle slides inside a block whose farthest depth comes from the surface in
+    // front of it. The cull reads that as "behind what the frame shows" and drops a surface that is visible,
+    // which is what made thin geometry flicker out. The depth attachment is always the frame size.
     FramebufferPtr depthSource = nullptr;
     TexturePtr depthBuffer     = nullptr;
 
-    if (RequiresForwardPreProcessPass() && m_forwardPreProcessPass != nullptr)
-    {
-      TexturePtr gBuffer = m_forwardPreProcessPass->m_normalDepthRt;
-      if (gBuffer != nullptr && gBuffer->IsMultiSampled())
-      {
-        gBuffer = gBuffer->GetResolvedTexture();
-      }
+    depthSource = m_forwardRenderPass && m_forwardRenderPass->m_params.FrameBuffer
+                      ? m_forwardRenderPass->m_params.FrameBuffer
+                      : m_params.MainFramebuffer;
 
-      if (gBuffer != nullptr && gBuffer->m_width > 0 && gBuffer->m_height > 0)
-      {
-        depthBuffer = gBuffer;
-      }
+    depthBuffer = depthSource ? depthSource->GetDepthTexture() : nullptr;
+    if (depthBuffer == nullptr || depthBuffer->m_width == 0 || depthBuffer->m_height == 0)
+    {
+      InvalidateDepthGrid();
+      return;
     }
 
-    if (depthBuffer == nullptr)
-    {
-      depthSource = m_forwardRenderPass && m_forwardRenderPass->m_params.FrameBuffer
-                        ? m_forwardRenderPass->m_params.FrameBuffer
-                        : m_params.MainFramebuffer;
-
-      depthBuffer = depthSource ? depthSource->GetDepthTexture() : nullptr;
-      if (depthBuffer == nullptr || depthBuffer->m_width == 0 || depthBuffer->m_height == 0)
-      {
-        InvalidateDepthGrid();
-        return;
-      }
-    }
-
-    // The two sources do not answer in the same units: the G buffer holds a view space distance, the depth
-    // attachment whatever encoding the projection wrote. A grid built from one says nothing about the
-    // other, so a change of source - SSAO or SSR switched on or off in the middle of a session - drops the
-    // grid and the streaks instead of comparing one unit against the other.
+    // The unit never changes now that there is one source, so the grid is never dropped for a unit switch.
+    // The check stays because the reader below still carries the flag: a session that started on another
+    // source has to drop the grid once.
     const bool linearDepth = depthSource == nullptr;
     if (linearDepth != m_occlusionLinearDepth)
     {
