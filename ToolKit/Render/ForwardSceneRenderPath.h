@@ -74,6 +74,16 @@ namespace ToolKit
     FramebufferPtr m_resolvedFramebuffer             = nullptr;
 
    protected:
+    /**
+     * Whether the normal and depth target is built at half the frame's size.
+     *
+     * Ambient occlusion and depth of field read it at half resolution anyway, so a full size target
+     * is four times the fragments for the same picture; screen space reflections read it at full
+     * resolution and keep it. Derived from the settings rather than cached, because the pass params
+     * are written before the buffers are sized and the two have to agree.
+     */
+    bool PreProcessHalfResolution() const { return !m_params.postProcessSettings->GetSSREnabledVal(); }
+
     bool m_drawSky   = false;
     SkyBasePtr m_sky = nullptr;
 

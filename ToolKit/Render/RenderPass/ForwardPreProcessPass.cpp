@@ -53,12 +53,21 @@ namespace ToolKit
   void ForwardPreProcessPass::InitBuffers(int width, int height, MsaaSampleCount sampleCount)
   {
     const FramebufferSettings& fbs = m_framebuffer->GetSettings();
-    bool requiresReconstruct       = fbs.width != width || fbs.height != height || fbs.msaaCount != sampleCount;
+
+    // The frame's depth is worth sharing - it is what gives this pass its early z test - but only
+    // while the buffers agree with the frame in size: a framebuffer whose attachments differ in size
+    // is incomplete in GL ES. A reduced pre process target therefore gets a depth buffer of its own.
+    const FramebufferSettings& mainSettings = m_params.FrameBuffer->GetSettings();
+    const bool shareFrameDepth              = width == mainSettings.width && height == mainSettings.height;
+
+    bool requiresReconstruct                = fbs.width != width || fbs.height != height ||
+                                               fbs.msaaCount != sampleCount ||
+                                               fbs.useDefaultDepth == shareFrameDepth;
 
     if (requiresReconstruct)
     {
       m_framebuffer->DetachDepthTexture();
-      m_framebuffer->ReconstructIfNeeded({width, height, false, false, sampleCount});
+      m_framebuffer->ReconstructIfNeeded({width, height, false, !shareFrameDepth, sampleCount});
 
       if (m_framebuffer->IsMultiSampled())
       {
@@ -73,11 +82,14 @@ namespace ToolKit
     }
 
     // Pass incoming depth buffer to create z buffer for early z test.
-    if (DepthTexturePtr depth = m_params.FrameBuffer->GetDepthTexture())
+    if (shareFrameDepth)
     {
-      if (depth != m_framebuffer->GetDepthTexture())
+      if (DepthTexturePtr depth = m_params.FrameBuffer->GetDepthTexture())
       {
-        m_framebuffer->AttachDepthTexture(depth);
+        if (depth != m_framebuffer->GetDepthTexture())
+        {
+          m_framebuffer->AttachDepthTexture(depth);
+        }
       }
     }
   }

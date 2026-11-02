@@ -1309,6 +1309,17 @@ namespace ToolKit
     if (RequiresForwardPreProcessPass())
     {
       FramebufferSettings settings = m_params.MainFramebuffer->GetSettings();
+
+      // Screen space reflections read the normal and depth target at full resolution and keep it; the
+      // other two consumers, ambient occlusion and depth of field, work at half resolution anyway, so
+      // the target costs a quarter of the fragments for the same picture.
+      m_forwardPreProcessPass->m_params.HalfResolution   = PreProcessHalfResolution();
+      if (m_forwardPreProcessPass->m_params.HalfResolution)
+      {
+        settings.width  = glm::max(1, settings.width / 2);
+        settings.height = glm::max(1, settings.height / 2);
+      }
+
       m_forwardPreProcessPass->InitBuffers(settings.width, settings.height, settings.msaaCount);
     }
 
@@ -1800,7 +1811,10 @@ namespace ToolKit
     m_ssaoPass->m_params.spread             = pps->GetSSAOSpreadVal();
     m_ssaoPass->m_params.Bias               = pps->GetSSAOBiasVal();
     m_ssaoPass->m_params.KernelSize         = pps->GetSSAOKernelSizeVal().GetValue<int>();
-    m_ssaoPass->m_params.HalfResolution     = pps->GetSSAOHalfResolutionVal();
+    // Halving only once: when the pre process target is already half the frame, the occlusion pass
+    // works at that size and must not halve it a second time into a quarter resolution map.
+    m_ssaoPass->m_params.HalfResolution     = pps->GetSSAOHalfResolutionVal() &&
+                                             !PreProcessHalfResolution();
 
     m_bloomPass->m_params.FrameBuffer       = m_params.MainFramebuffer;
     m_bloomPass->m_params.intensity         = pps->GetBloomIntensityVal();

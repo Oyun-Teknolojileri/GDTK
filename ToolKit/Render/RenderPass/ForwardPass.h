@@ -26,6 +26,14 @@ namespace ToolKit
 
     /** How much of the occlusion map the lighting takes, see PostProcessingSettings::SSAOStrength. */
     float SsaoStrength                = 1.0f;
+
+    /**
+     * Forward pre process only: render the normal and depth target at half the frame's size. The
+     * passes that read it - ambient occlusion and depth of field - work at half resolution anyway, so
+     * this is four times fewer fragments for the same picture. Screen space reflections read it at
+     * full resolution and must keep it.
+     */
+    bool HalfResolution               = false;
     GraphicBitFields clearBuffer      = GraphicBitFields::AllBits;
     bool hasForwardPrePass            = false;
     uint activeDirectionalLightCount  = 0;
