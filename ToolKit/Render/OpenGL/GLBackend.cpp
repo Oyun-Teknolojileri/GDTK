@@ -1646,6 +1646,17 @@ namespace ToolKit
 
     m_cpuTime = GetElapsedMilliSeconds();
 
+    // The per pass timestamps and this elapsed query interfere on the reference driver: with both open the
+    // elapsed result comes back as a fraction of the frame - 1.2 ms for a frame that takes 19. The passes are
+    // the measurement while they are on, and their sum is the frame's gpu time, so this reports nothing
+    // rather than a wrong number.
+    if (m_scopeTiming)
+    {
+      m_timerQueryWaiting = false;
+      m_gpuTime           = 1.0f;
+      return;
+    }
+
     // One query is in flight at a time: the previous frame's result is polled below before the next
     // one starts, so a device that answers late reports the frame before last instead of stalling.
     if (!IsGpuTimerQuerySupported() || m_timerQueryActive || m_timerQueryWaiting)
