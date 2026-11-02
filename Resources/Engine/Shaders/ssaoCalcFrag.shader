@@ -41,6 +41,18 @@ void main()
 
 	vec3 normal = decodeNormal(normalDepthData.rg);
 	float linearDepth = normalDepthData.b;
+
+	// A pixel the prepass did not draw - the sky, and anything else that left the target at its
+	// clear value - has no depth to reconstruct a position from: the reconstruction would divide by
+	// a zero view z, land the position at the camera, and project every sample to infinity, which
+	// samples as an edge texel and comes out fully occluded. There is nothing there to occlude, so
+	// say so and leave the term at one.
+	if (linearDepth <= 0.0)
+	{
+		fragColor = vec4(1.0, 0.0, 0.0, 1.0);
+		return;
+	}
+
 	vec3 fragPos = reconstructViewPos(texCoord, linearDepth);
 
 	normal = normalize(mat3(ssaoCalc.normalToView) * normal); // World to View

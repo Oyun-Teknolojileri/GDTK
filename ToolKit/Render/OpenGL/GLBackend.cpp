@@ -1818,13 +1818,18 @@ namespace ToolKit
       return;
     }
 
-    if (m_textureSlotCache[slot].textureID != id || m_textureSlotCache[slot].target != target)
-    {
-      glActiveTexture(GL_TEXTURE0 + slot);
-      glBindTexture(target, id);
-      m_textureSlotCache[slot].textureID = id;
-      m_textureSlotCache[slot].target    = target;
-    }
+    // Always bind. This used to skip the call when the slot already held the same texture, and that
+    // cache could not be trusted: the binding is global GL state, so anything that touches it
+    // without going through here - a path that binds a unit directly, the driver itself, a capture
+    // tool - leaves the cache claiming a texture is bound while the unit holds another one. The
+    // symptom is the worst kind: the pass samples the wrong texture and reads zeroes, with no error
+    // anywhere. It cost a debugging session on SSAO, which read a depth of zero on the phone while
+    // the same build on the desktop read the real one. One glBindTexture per texture per draw is a
+    // driver call in the tens of nanoseconds; correctness is worth more.
+    glActiveTexture(GL_TEXTURE0 + slot);
+    glBindTexture(target, id);
+    m_textureSlotCache[slot].textureID = id;
+    m_textureSlotCache[slot].target    = target;
   }
 
   void GLBackend::BindVAO(uint vao)
