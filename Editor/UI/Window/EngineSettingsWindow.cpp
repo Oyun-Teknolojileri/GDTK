@@ -8,6 +8,7 @@
 #include "EngineSettingsWindow.h"
 
 #include "App.h"
+#include "EditorScene.h"
 #include "CustomDataView.h"
 #include "PopupWindows.h"
 #include "UI.h"
@@ -226,12 +227,31 @@ namespace ToolKit
 
         // The normal and depth target ambient occlusion and depth of field read. Half size is four
         // times fewer fragments for a picture neither of them can resolve; a desktop gpu may prefer full
-        // size, where the same target acts as a depth prepass for the forward pass.
+        // size, where the same target acts as a depth prepass for the forward pass. Screen space reflections
+        // are the exception: they march against that depth at full resolution, so the setting is disabled
+        // while they are on and the tooltip says so, instead of a checkbox that quietly does nothing.
+        bool ssrEnabled = false;
+        if (EditorScenePtr currentScene = GetApp()->GetCurrentScene())
+        {
+          if (currentScene->m_postProcessSettings != nullptr)
+          {
+            ssrEnabled = currentScene->m_postProcessSettings->GetSSREnabledVal();
+          }
+        }
+
+        ImGui::BeginDisabled(ssrEnabled);
         bool halfResPreProcess = graphics->GetHalfResolutionForwardPreProcessVal();
         if (ImGui::Checkbox("Half Resolution Normal Depth##1", &halfResPreProcess))
         {
           graphics->SetHalfResolutionForwardPreProcessVal(halfResPreProcess);
         }
+        ImGui::EndDisabled();
+
+        UI::AddTooltipToLastItem(ssrEnabled
+                                     ? "Disabled: screen space reflections need the normal and depth target at "
+                                       "full resolution to march against."
+                                     : "Ambient occlusion and depth of field read this target at half resolution, "
+                                       "which is four times fewer fragments for the same picture.");
 
         bool occlusionCulling = graphics->GetOcclusionCullingVal();
         if (ImGui::Checkbox("Occlusion Culling##1", &occlusionCulling))
