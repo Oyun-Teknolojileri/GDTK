@@ -168,16 +168,38 @@ namespace ToolKit
       m_passArray.push_back(m_gammaTonemapFxaaPass);
     }
 
-    RenderPath::Render(renderer);
+    // The passes run in order, and the forward pass is the last one that writes the frame's depth: the post
+    // chain behind it - reflections, bloom, depth of field, gamma - draws full screen quads into targets of its
+    // own but nothing stops one of them from touching the depth attachment, and a cleared or overwritten depth
+    // would leave the grid describing a frame nobody drew. Taking it right after the forward pass reads the
+    // depths the picture is made of.
+    for (PassPtr& pass : m_passArray)
+    {
+      pass->SetRenderer(renderer);
+      pass->PreRender();
+      pass->Render();
+      pass->PostRender();
+
+      if (pass == m_forwardRenderPass)
+      {
+        BuildDepthGrid(renderer);
+
+        // The grid pass leaves its own target bound and its viewport at the grid's size. The passes behind
+        // this one - reflections, bloom, depth of field, gamma - draw into the frame, so it is put back before
+        // they run. Nothing is cleared, the scene's color is still the picture.
+        if (m_params.MainFramebuffer != nullptr)
+        {
+          renderer->SetFramebuffer(m_params.MainFramebuffer, GraphicBitFields::None);
+        }
+      }
+    }
 
     renderer->SetShadowAtlas(nullptr);
 
-    // The grid is built at the end of the frame, not at the start of the next one, so the depth it reduces
-    // is this frame's own and nothing has to keep that depth alive across a frame boundary. The editor
-    // draws its gizmos and billboards into the same depth buffer after this path returns, and a gizmo pass
-    // that clears depth used to destroy the depths the next frame's grid needed; taking them here, before
-    // any of that runs, removes the reason to save and restore the buffer around the editor's drawing.
-    BuildDepthGrid(renderer);
+    // The grid was taken above, right after the forward pass. The editor draws its gizmos and billboards into
+    // the same depth buffer after this path returns, and a gizmo pass that clears depth would destroy the depths
+    // the grid needed; taking them before any of that runs removes the reason to save and restore the buffer
+    // around the editor's drawing.
 
     // The grid pass leaves its own target bound and its viewport at the grid's size, which is not what the
     // rest of the frame expects - the editor draws its overlays into the scene's framebuffer right after
