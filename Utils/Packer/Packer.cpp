@@ -102,6 +102,14 @@ namespace ToolKit
     /** Just packs the resources. Does not perform publishing. */
     bool m_onlyPack = false;
 
+    /**
+     * Packs the resources before publishing, whatever the config says. Pass --pack.
+     *
+     * Without it a Debug or Develop publish ships the pak already on disk, which keeps development
+     * iterations fast; Deploy and a missing pak pack either way.
+     */
+    bool m_forcePack = false;
+
     String m_icon;
     String m_appName;
     int m_minSdk            = 27;
@@ -226,30 +234,41 @@ namespace ToolKit
 
   int Packer::Publish()
   {
-    // Always pack. A publish is the moment the resources are declared to be this state of the
-    // project, and skipping the pack whenever a pak file happens to exist on disk is what let a
-    // build ship with a two day old scene in it - twice: once through a resource edit that was not
-    // deployed, and once through an engine shader change that a hash over the project could not
-    // see. Packing costs seconds against the minutes a build already takes, and doing it
-    // unconditionally removes the "is the pak stale?" question along with the fingerprints that
-    // were trying to answer it.
-    const bool isPlugin = m_platform == PublishPlatform::EditorPlugin || m_platform == PublishPlatform::GamePlugin;
+    // Packing is opt in, because a publish is also how a debug or develop build gets onto a device
+    // during development, and repacking 16 MB of resources on every one of those iterations is time
+    // nobody gets back.
+    //
+    // It is still not left to chance: --pack asks for it explicitly, a Deploy publish packs because
+    // that is the build that ships, and a publish with no pak at all packs because there would be
+    // nothing to run. Anything that must not ship a stale pak - scripts, automation - should pass
+    // --pack and stop thinking about it.
+    const bool isPlugin   = m_platform == PublishPlatform::EditorPlugin || m_platform == PublishPlatform::GamePlugin;
+    const bool pakMissing = !CheckSystemFile(PakPath());
+    const bool wantPack   = m_forcePack || m_publishConfig == PublishConfig::Deploy || pakMissing || m_onlyPack;
 
     if (!isPlugin)
     {
-      const int packResult = PackResources();
-      if (packResult != 0)
+      if (wantPack)
       {
-        return packResult;
+        const int packResult = PackResources();
+        if (packResult != 0)
+        {
+          return packResult;
+        }
+
+        if (m_onlyPack)
+        {
+          return 0;
+        }
+      }
+      else
+      {
+        TK_LOG("Packing skipped (Debug/Develop publish without --pack), shipping the existing pak.\n");
       }
 
-      if (m_onlyPack)
-      {
-        return 0;
-      }
-
-      // The pak is the identity of what ships. This hash goes into the assets beside it and the app
-      // compares it with the one it stored next to the pak it unpacked.
+      // The pak is the identity of what ships, packed this run or left over from an earlier one.
+      // This hash goes into the assets beside it and the app compares it with the one it stored next
+      // to the pak it unpacked, so a rebuild that changes nothing does not cost a 16 MB copy.
       WritePakHash();
     }
 
@@ -1095,19 +1114,32 @@ namespace ToolKit
     packer.m_publishConfig    = (PublishConfig) std::atoi(arguments[10].c_str());
     packer.m_onlyPack         = std::atoi(arguments[11].c_str());
 
-    // Command line flags. PublishArguments.txt carries the settings; a pack happens on every
-    // publish, so there is nothing here to force one.
+    // Command line flags. PublishArguments.txt carries the settings; these carry the intent of this
+    // particular run.
+    //   --pack     pack the resources before publishing
     //   --help     print the flags and exit
     for (int i = 1; i < argc; i++)
     {
       const String flag = argv[i];
-      if (flag == "--help" || flag == "-h")
+      if (flag == "--pack" || flag == "-p")
       {
-        TK_LOG("Usage: Packer\n");
-        TK_LOG("  PublishArguments.txt in the working directory holds the publish settings.\n");
-        TK_LOG("  Every publish repacks the resources and writes %s.hash beside the pak.\n", TKResourcePak);
+        packer.m_forcePack = true;
+      }
+      else if (flag == "--help" || flag == "-h")
+      {
+        // printf, not TK_LOG: the logger is not attached to the console this early, so anything
+        // logged here is swallowed.
+        printf("Usage: Packer [--pack]\n");
+        printf("  PublishArguments.txt in the working directory holds the publish settings.\n");
+        printf("  --pack  pack the resources before publishing, instead of shipping the pak on disk.\n");
+        printf("          A Deploy publish and a publish with no pak pack without it.\n");
         return 0;
       }
+    }
+
+    if (packer.m_forcePack)
+    {
+      printf("Packing requested on the command line.\n");
     }
 
     // Set resource root to project's Resources folder

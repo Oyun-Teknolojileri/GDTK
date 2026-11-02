@@ -1383,22 +1383,24 @@ SDL2, ToolKit (no assimp). The editor's Publish dialog drives it through
 installed emscripten emits a separate worker script -- current releases reuse the
 main `.js`) into `Publish/Web`, together with a `Run.bat` that starts `emrun`.
 The `PublishConfig` names map to `Debug` -> `Debug`, `Develop` ->
-`RelWithDebInfo`, `Deploy` -> `Release`. **Every publish repacks**, and that is
-deliberate: the pack used to be skipped whenever `MinResources.pak` already
-existed, and that rule shipped a two day old scene twice - once because a resource
-edit was not deployed, once because an engine shader is not part of the project.
-A pack costs seconds against the minutes a build takes, so `Packer::Publish` now
-packs unconditionally (plugins excepted) and there is no staleness question to
-answer.
+`RelWithDebInfo`, `Deploy` -> `Release`. **Packing is opt in**: `Packer.exe --pack`
+packs before publishing, and a Debug or Develop publish without the flag ships the
+pak already on disk, because most publishes during development are about the
+binary and a 16 MB repack on each of them is time nobody gets back. Two cases pack
+anyway - a `Deploy` publish, since that is the build that ships, and a publish
+with no pak at all, since there would be nothing to run. Anything that must not
+ship a stale pak (scripts, automation) passes `--pack` and stops thinking about
+it.
 
-The pak is then identified by one hash. `Packer::WritePakHash` hashes the finished
-`MinResources.pak` (FNV-1a over the bytes) into `MinResources.pak.hash`, which
-`AndroidPublish` copies into the assets beside the pak. The app compares it with
-the copy it keeps next to the pak it unpacked (`CopyPakToDataPath` in
-`Codes/Platform/android_main.h`) and re-copies only when the two differ, so a
-rebuild that produces the same pak does not re-unpack 16 MB. Before this, the
-device copy was skipped whenever the file existed, which pinned the first pak a
-package name ever wrote and made every later publish invisible on the device.
+The pak is identified by one hash. `Packer::WritePakHash` hashes the pak that
+publishes this run - freshly packed or left over - with FNV-1a over the bytes, and
+writes the result to `MinResources.pak.hash`, which `AndroidPublish` copies into
+the assets beside the pak. The app compares it with the copy it keeps next to the
+pak it unpacked (`CopyPakToDataPath` in `Codes/Platform/android_main.h`) and
+re-copies only when the two differ, so a rebuild that produces the same pak does
+not re-unpack 16 MB. Before this, the device copy was skipped whenever the file
+existed, which pinned the first pak a package name ever wrote and made every later
+publish invisible on the device.
 
 
 `Packer::AndroidPublish` is the Android path: it packs, copies `MinResources.pak`
