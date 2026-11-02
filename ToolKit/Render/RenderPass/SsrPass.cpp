@@ -84,8 +84,26 @@ namespace ToolKit
       return;
     }
 
+    // The step count is a compile time loop bound, so the variant has to be selected before the first
+    // compile. Setting it afterwards left the first Init with no SSR_STEP_COUNT chosen at all: the shader
+    // was never built, m_gpuData stayed null, and the pass reported a shader that "did not compile" while
+    // the offline compiler builds the same source without a complaint.
+    const int steps    = glm::clamp(m_params.StepCount, 1, m_maxStepCount);
+    const int maxSteps = ClampMaxSteps(steps);
+    if (maxSteps != m_currentMaxSteps)
+    {
+      m_ssrShader->SetDefine("SSR_STEP_COUNT", std::to_string(maxSteps));
+      m_currentMaxSteps = maxSteps;
+      TK_LOG("SsrPass: step count %d, compile time loop bound %d.", steps, maxSteps);
+    }
+
     m_ssrShader->Init();
-    if (m_ssrShader->m_gpuData == nullptr)
+
+    // A shader that carries defines leaves Init without gpu data on purpose: Init only sets up the variant
+    // selection, and the variant itself is compiled when a program first asks for it. Judging this one by its
+    // gpu data disabled the pass on every frame of every run, which is why screen space reflections never
+    // appeared while the shader itself was fine. Only a shader without defines compiles inside Init.
+    if (m_ssrShader->m_defineArray.empty() && m_ssrShader->m_gpuData == nullptr)
     {
       TK_ERR("SsrPass: the fragment shader did not compile, screen space reflections are disabled.");
       m_shaderUnavailable = true;
@@ -138,33 +156,12 @@ namespace ToolKit
                                                      float(size.x),
                                                      float(size.y));
 
-    // Step count: used exactly as requested (a uniform) so the setting is continuous. The shader
-    // define only picks the compile time loop bound above it, which is what keeps the loop legal
-    // without rounding the request away.
-    const int steps                           = glm::clamp(m_params.StepCount, 1, m_maxStepCount);
-
+    // Step count: used exactly as requested (a uniform) so the setting is continuous; the compile time
+    // loop bound was selected in PreRender, before the shader was built.
     m_passDataBuffer.m_data.flags             = Vec4(m_params.DebugView ? 1.0f : 0.0f,
                                                      float(steps),
                                                      float(m_params.DebugViewMode),
                                                      0.0f);
-
-    const int maxSteps                        = ClampMaxSteps(steps);
-    if (maxSteps != m_currentMaxSteps)
-    {
-      m_ssrShader->Init();
-
-      const void* variantBefore = m_ssrShader->m_gpuData.get();
-      m_ssrShader->SetDefine("SSR_STEP_COUNT", std::to_string(maxSteps));
-      const void* variantAfter = m_ssrShader->m_gpuData.get();
-
-      TK_LOG("SsrPass: steps %d (loop bound %d), shader variant %p -> %p",
-             steps,
-             maxSteps,
-             variantBefore,
-             variantAfter);
-
-      m_currentMaxSteps = maxSteps;
-    }
 
     // Trace target: the reflection and its weight, at the scene resolution. The resolve phase reads it
     // back and composites, which is what lets the filter spread the reflection past the silhouettes it
@@ -191,7 +188,12 @@ namespace ToolKit
   {
     TK_PROFILE_FUNCTION();
 
-    if (m_params.ColorRt == nullptr || m_params.GNormalDepthBuffer == nullptr || m_params.Cam == nullptr)
+    // PreRender is where the targets get their size, and it bails out when the shader did not compile or
+    // the params are missing. Drawing anyway hands the backend a framebuffer that was never given a size, and
+    // the pass start dereferences its null gpu data: that is the crash this guard removes. The shader failure
+    // itself is reported by PreRender.
+    if (m_shaderUnavailable || m_params.ColorRt == nullptr || m_params.GNormalDepthBuffer == nullptr ||
+        m_params.Cam == nullptr)
     {
       return;
     }
@@ -205,6 +207,18 @@ namespace ToolKit
     {
       normalDepth = m_params.GNormalDepthBuffer->GetResolvedTexture();
     }
+
+    // The sampler state the march needs, stated here rather than inherited. This target is a float render
+    // target with no mip chain, and a default sampler asks for mipmaps it does not have: the texture is then
+    // incomplete, every fetch returns zero, and the march runs against a depth of zero and finds nothing.
+    // That is why the reflections only showed up after ambient occlusion had been enabled - it applies the same
+    // state, once, on the pass that used to be the only one reading this target.
+    TextureSettings ndSettings = normalDepth->Settings();
+    ndSettings.MinFilter       = GraphicTypes::SampleNearest;
+    ndSettings.MagFilter       = GraphicTypes::SampleNearest;
+    ndSettings.WarpS           = GraphicTypes::UVClampToEdge;
+    ndSettings.WarpT           = GraphicTypes::UVClampToEdge;
+    normalDepth->ApplyTextureSettings(ndSettings);
 
     m_quadPass->SetFragmentShader(m_ssrShader, renderer);
     m_filterPass->SetFragmentShader(m_filterShader, renderer);
