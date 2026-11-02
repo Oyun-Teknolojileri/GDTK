@@ -22,7 +22,11 @@ namespace ToolKit
   ForwardRenderPass::ForwardRenderPass() : Pass("ForwardRenderPass")
   {
     ShadowSettingsPtr shadows = GetEngineSettings().m_graphics->m_shadows;
-    m_shadowPCF               = shadows->GetShadowPCFVal().GetValue<int>();
+
+    // The master switch wins over the filter setting: with nothing casting a shadow the whole
+    // sampling path is dead code, and it is not free dead code - it is twelve of this shader's
+    // twenty eight texture fetches and twenty of its eighty spill bytes on the reference phone.
+    m_shadowPCF = shadows->GetCastShadowVal() ? shadows->GetShadowPCFVal().GetValue<int>() : 0;
 
     m_programConfigMat        = GetMaterialManager()->GetCopyOfDefaultMaterial();
 
@@ -462,7 +466,9 @@ namespace ToolKit
     const ShadowSettingsPtr shadows = GetEngineSettings().m_graphics->m_shadows;
     ShaderPtr frag                  = m_programConfigMat->GetFragmentShaderVal();
 
-    int shadowPCF                   = shadows->GetShadowPCFVal().GetValue<int>();
+    // Same rule as the constructor, and it has to be re-derived every frame because the master
+    // switch can turn the path off after the filter was already compiled in.
+    int shadowPCF = shadows->GetCastShadowVal() ? shadows->GetShadowPCFVal().GetValue<int>() : 0;
     if (shadowPCF != m_shadowPCF)
     {
       m_shadowPCF = shadowPCF;
