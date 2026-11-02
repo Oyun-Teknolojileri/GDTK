@@ -81,25 +81,13 @@ namespace ToolKit
     void AndroidRunOnPhone(bool isAPKUnsigned);
     int PackResources();
 
-    /** Path of the file that remembers which resource tree the pak on disk was built from. */
+    /** Path of the pak this publish produces. */
     String PakPath() const;
 
-    /** Path of the file that carries the hash of the pak bytes, next to the pak and in the assets. */
+    /** Path of the file that carries the hash of the pak, next to the pak and in the assets. */
     String PakHashPath() const;
 
-    /** Path of the file that remembers the input trees the pak on disk was built from. */
-    String ResourceInputsPath() const;
-
-    /** Fingerprint of the inputs the pak is built from: the project's Resources and the engine's. */
-    uint64 HashResourceInputsNow() const;
-
-    /** The input fingerprint stored next to the pak, or an empty string when there is none yet. */
-    String ReadStoredInputs() const;
-
-    /** Records the input fingerprint a freshly built pak describes. */
-    void WriteStoredInputs(uint64 hash) const;
-
-    /** Rewrites the pak byte hash from the pak on disk. */
+    /** Hashes the finished pak and writes the result next to it, so it can travel with the assets. */
     void WritePakHash() const;
 
     /**
@@ -113,9 +101,6 @@ namespace ToolKit
    public:
     /** Just packs the resources. Does not perform publishing. */
     bool m_onlyPack = false;
-
-    /** Packs even when the pak already matches the resource tree. */
-    bool m_forceRepack = false;
 
     String m_icon;
     String m_appName;
@@ -135,68 +120,23 @@ namespace ToolKit
 
   namespace
   {
-    /** FNV-1a, 64 bit, folded in place. */
-    void FoldHash(uint64& hash, const void* data, size_t size)
-    {
-      const ubyte* bytes = (const ubyte*) data;
-      for (size_t i = 0; i < size; i++)
-      {
-        hash ^= bytes[i];
-        hash *= 1099511628211ull;
-      }
-    }
-
     /**
-     * Folds one resource tree into a hash: every file's relative path, size and write time, in a
-     * sorted order.
-     *
-     * A pak is a zip, so its bytes differ between two runs even when nothing changed (timestamps),
-     * which is why the decision to repack cannot be based on the pak. This walks the sources instead.
-     * The tree is tagged with its name so the project's Resources and the engine's cannot cancel
-     * each other out.
+     * Hash of the finished pak, which is the only thing that has to be identified: it is what ships
+     * and what the app compares against the pak it unpacked last time. FNV-1a, 64 bit, over the
+     * bytes - a 16 MB read per publish, against the seconds packing already costs.
      */
-    void HashResourceTree(uint64& hash, const String& tag, const String& root)
-    {
-      FoldHash(hash, tag.data(), tag.size());
-
-      std::error_code ec;
-      std::vector<std::filesystem::directory_entry> files;
-
-      for (auto it = std::filesystem::recursive_directory_iterator(root, ec);
-           it != std::filesystem::recursive_directory_iterator() && !ec;
-           it.increment(ec))
-      {
-        if (it->is_regular_file(ec))
-        {
-          files.push_back(*it);
-        }
-      }
-
-      std::sort(files.begin(),
-                files.end(),
-                [](const std::filesystem::directory_entry& a, const std::filesystem::directory_entry& b)
-                { return a.path().generic_string() < b.path().generic_string(); });
-
-      for (const std::filesystem::directory_entry& file : files)
-      {
-        const String relative = file.path().generic_string().substr(root.size());
-        FoldHash(hash, relative.data(), relative.size());
-
-        const uint64 size = (uint64) file.file_size(ec);
-        FoldHash(hash, &size, sizeof(size));
-
-        // The write time is folded in its own clock's ticks rather than as a calendar timestamp:
-        // to_time_t is not portable across the standard libraries this builds with, and the value
-        // only has to be stable within one platform, which it is.
-        const int64 stamp = (int64) file.last_write_time(ec).time_since_epoch().count();
-        FoldHash(hash, &stamp, sizeof(stamp));
-      }
-    }
-
-    /** Whole-file hash of the pak that is about to ship. */
     uint64 HashFile(const String& path)
     {
       uint64 hash = 1469598103934665603ull;
+      const auto fold = [&hash](const void* data, size_t size)
+      {
+        const ubyte* bytes = (const ubyte*) data;
+        for (size_t i = 0; i < size; i++)
+        {
+          hash ^= bytes[i];
+          hash *= 1099511628211ull;
+        }
+      };
 
       std::ifstream file(path.c_str(), std::ios::binary);
       if (!file)
@@ -211,7 +151,7 @@ namespace ToolKit
         const std::streamsize read = file.gcount();
         if (read > 0)
         {
-          FoldHash(hash, buffer.data(), (size_t) read);
+          fold(buffer.data(), (size_t) read);
         }
       }
 
@@ -230,39 +170,6 @@ namespace ToolKit
 
   String Packer::PakHashPath() const { return PakPath() + ".hash"; }
 
-  String Packer::ResourceInputsPath() const { return PakPath() + ".inputs"; }
-
-  uint64 Packer::HashResourceInputsNow() const
-  {
-    // Both trees go in: the pak carries the project's Resources and the engine's defaults (shaders,
-    // fonts, icons), so an engine shader edit has to force a repack exactly like a scene edit does.
-    uint64 hash = 1469598103934665603ull;
-    HashResourceTree(hash, "project", ResourcePath());
-
-    if (!m_toolkitPath.empty())
-    {
-      HashResourceTree(hash, "engine", ConcatPaths({m_toolkitPath, "Resources"}));
-    }
-
-    return hash;
-  }
-
-  String Packer::ReadStoredInputs() const
-  {
-    const String path = ResourceInputsPath();
-    if (!CheckSystemFile(path))
-    {
-      return "";
-    }
-
-    String stored = GetFileManager()->ReadAllText(path);
-    ReplaceStringInPlace(stored, "\r", "");
-    ReplaceStringInPlace(stored, "\n", "");
-    return stored;
-  }
-
-  void Packer::WriteStoredInputs(uint64 hash) const { GetFileManager()->WriteAllText(ResourceInputsPath(), HexHash(hash)); }
-
   void Packer::WritePakHash() const
   {
     const String pakPath = PakPath();
@@ -271,9 +178,6 @@ namespace ToolKit
       return;
     }
 
-    // The hash of the bytes that ship, not of the inputs: the app compares this one against the pak
-    // it unpacked last time, and the app has no way to see the trees. Recomputed on every publish so
-    // it also heals a missing or stale file.
     GetFileManager()->WriteAllText(PakHashPath(), HexHash(HashFile(pakPath)));
   }
 
@@ -322,48 +226,32 @@ namespace ToolKit
 
   int Packer::Publish()
   {
-    String packPath   = ConcatPaths({ResourcePath(), "..", TKResourcePak});
+    // Always pack. A publish is the moment the resources are declared to be this state of the
+    // project, and skipping the pack whenever a pak file happens to exist on disk is what let a
+    // build ship with a two day old scene in it - twice: once through a resource edit that was not
+    // deployed, and once through an engine shader change that a hash over the project could not
+    // see. Packing costs seconds against the minutes a build already takes, and doing it
+    // unconditionally removes the "is the pak stale?" question along with the fingerprints that
+    // were trying to answer it.
+    const bool isPlugin = m_platform == PublishPlatform::EditorPlugin || m_platform == PublishPlatform::GamePlugin;
 
-    // Whether the pak on disk still describes its inputs. Comparing the sources, not the pak: a zip
-    // carries timestamps, so two packs of identical content differ byte for byte, while this
-    // fingerprint only changes when a resource actually does. The inputs are the project's Resources
-    // and the engine's, because the pak carries both.
-    const uint64 inputsHash = HashResourceInputsNow();
-    const String storedInputs = ReadStoredInputs();
-    const bool stale          = storedInputs != HexHash(inputsHash);
-
-    bool needPacking          = m_publishConfig == PublishConfig::Deploy;
-    needPacking              |= !CheckSystemFile(packPath);
-    needPacking              |= m_onlyPack;
-    needPacking              |= m_forceRepack;
-    needPacking              |= stale;
-
-    // Prevent packing for plugins.
-    needPacking              &= (m_platform != PublishPlatform::EditorPlugin && m_platform != PublishPlatform::GamePlugin);
-
-    if (needPacking)
+    if (!isPlugin)
     {
-      if (stale && CheckSystemFile(packPath) && !m_forceRepack)
-      {
-        TK_LOG("Resources changed since the last pack (%s -> %s), repacking.\n",
-               storedInputs.empty() ? "no inputs" : storedInputs.c_str(),
-               HexHash(inputsHash).c_str());
-      }
-
-      int packResult = PackResources();
-      if (packResult != 0 || m_onlyPack)
+      const int packResult = PackResources();
+      if (packResult != 0)
       {
         return packResult;
       }
 
-      // The pak now describes exactly these inputs, so the next run can tell whether it still does.
-      WriteStoredInputs(inputsHash);
-    }
+      if (m_onlyPack)
+      {
+        return 0;
+      }
 
-    // The hash of the bytes that ship, whatever produced them: it is what the app compares against
-    // the pak it unpacked last time, and it is recomputed even when nothing was packed so a hand
-    // copied or stale file cannot survive a publish.
-    WritePakHash();
+      // The pak is the identity of what ships. This hash goes into the assets beside it and the app
+      // compares it with the one it stored next to the pak it unpacked.
+      WritePakHash();
+    }
 
     switch (m_platform)
     {
@@ -1207,29 +1095,19 @@ namespace ToolKit
     packer.m_publishConfig    = (PublishConfig) std::atoi(arguments[10].c_str());
     packer.m_onlyPack         = std::atoi(arguments[11].c_str());
 
-    // Command line flags. PublishArguments.txt carries the settings, these carry the intent of this
-    // particular run.
-    //   --repack   pack the resources even when the pak already matches the tree
+    // Command line flags. PublishArguments.txt carries the settings; a pack happens on every
+    // publish, so there is nothing here to force one.
     //   --help     print the flags and exit
     for (int i = 1; i < argc; i++)
     {
       const String flag = argv[i];
-      if (flag == "--repack" || flag == "-r")
+      if (flag == "--help" || flag == "-h")
       {
-        packer.m_forceRepack = true;
-      }
-      else if (flag == "--help" || flag == "-h")
-      {
-        TK_LOG("Usage: Packer [--repack]\n");
+        TK_LOG("Usage: Packer\n");
         TK_LOG("  PublishArguments.txt in the working directory holds the publish settings.\n");
-        TK_LOG("  --repack  pack the resources even when the pak already matches the tree\n");
+        TK_LOG("  Every publish repacks the resources and writes %s.hash beside the pak.\n", TKResourcePak);
         return 0;
       }
-    }
-
-    if (packer.m_forceRepack)
-    {
-      TK_LOG("Repack requested on the command line.\n");
     }
 
     // Set resource root to project's Resources folder

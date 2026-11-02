@@ -1383,29 +1383,22 @@ SDL2, ToolKit (no assimp). The editor's Publish dialog drives it through
 installed emscripten emits a separate worker script -- current releases reuse the
 main `.js`) into `Publish/Web`, together with a `Run.bat` that starts `emrun`.
 The `PublishConfig` names map to `Debug` -> `Debug`, `Develop` ->
-`RelWithDebInfo`, `Deploy` -> `Release`. Packing runs first when
-`MinResources.pak` is missing or the config is `Deploy`, and also when the
-inputs no longer match the ones the pak on disk was built from.
+`RelWithDebInfo`, `Deploy` -> `Release`. **Every publish repacks**, and that is
+deliberate: the pack used to be skipped whenever `MinResources.pak` already
+existed, and that rule shipped a two day old scene twice - once because a resource
+edit was not deployed, once because an engine shader is not part of the project.
+A pack costs seconds against the minutes a build takes, so `Packer::Publish` now
+packs unconditionally (plugins excepted) and there is no staleness question to
+answer.
 
-Two hashes, because two different questions get asked:
-
-- **Inputs** decide whether to repack. `Packer::HashResourceInputsNow` folds every
-  file under the project's `Resources/` *and* the engine's `Resources/Engine/`
-  (relative path, size, write time, sorted, each tree tagged) into one 64 bit
-  value, kept in `MinResources.pak.inputs` next to the pak. A mismatch repacks and
-  rewrites it, a match keeps the existing pak. The trees are hashed rather than
-  the pak because a zip carries timestamps, so two packs of identical content
-  differ byte for byte; the engine tree is in there because the pak carries the
-  engine's shaders and fonts too, so an engine shader edit has to force a repack
-  like a scene edit does. `Packer.exe --repack` forces it regardless.
-- **The shipped bytes** tell the device what it already has. After every publish,
-  packed or not, the packer hashes the finished pak and writes the result to
-  `MinResources.pak.hash`, which `AndroidPublish` copies into the assets beside
-  the pak. The app compares it with the copy it keeps next to the pak it unpacked
-  (`CopyPakToDataPath` in `Codes/Platform/android_main.h`) and refreshes only when
-  they differ. Before that, the device copy was skipped whenever the file existed,
-  which silently pinned the first pak a package name ever wrote and made every
-  later publish invisible on the device.
+The pak is then identified by one hash. `Packer::WritePakHash` hashes the finished
+`MinResources.pak` (FNV-1a over the bytes) into `MinResources.pak.hash`, which
+`AndroidPublish` copies into the assets beside the pak. The app compares it with
+the copy it keeps next to the pak it unpacked (`CopyPakToDataPath` in
+`Codes/Platform/android_main.h`) and re-copies only when the two differ, so a
+rebuild that produces the same pak does not re-unpack 16 MB. Before this, the
+device copy was skipped whenever the file existed, which pinned the first pak a
+package name ever wrote and made every later publish invisible on the device.
 
 
 `Packer::AndroidPublish` is the Android path: it packs, copies `MinResources.pak`
