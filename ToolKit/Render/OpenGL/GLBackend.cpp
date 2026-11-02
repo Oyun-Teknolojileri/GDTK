@@ -2186,12 +2186,95 @@ namespace ToolKit
     glTexSubImage2D(ToGLGraphicType(s.Target), 0, x, y, w, h, ToGLGraphicType(s.Format), ToGLGraphicType(s.Type), data);
   }
 
+  namespace
+  {
+    /**
+     * Timestamp queries for the per pass gpu times.
+     *
+     * One call path for both platforms: TKOpenGL loads the entry points by name and falls back from the
+     * EXT spelling to the core one, so the same pointers are the phone's glQueryCounterEXT and the
+     * desktop's glQueryCounter. A backend that could not load them reports no support instead of
+     * measuring nothing.
+     */
+    bool HasTimestampQueries()
+    {
+      return tk_glQueryCounterEXT != nullptr && tk_glGetQueryObjectui64vEXT != nullptr;
+    }
+
+    void GenScopeQueries(int count, GLuint* ids)
+    {
+#if defined(TK_ANDROID)
+      tk_glGenQueriesEXT(count, ids);
+#else
+      glGenQueries(count, ids);
+#endif
+    }
+
+    void WriteTimestamp(GLuint id) { tk_glQueryCounterEXT(id, GL_TIMESTAMP_EXT); }
+
+    bool IsTimestampAvailable(GLuint id)
+    {
+      // The core call, not the EXT one: GL_QUERY_RESULT_AVAILABLE is the same enum in both, and the
+      // core entry point is the one every platform has - the EXT spelling is null on a desktop
+      // context that does not list EXT_disjoint_timer_query, which is exactly where the timestamp
+      // itself still resolves.
+      GLuint available = 0;
+      glGetQueryObjectuiv(id, GL_QUERY_RESULT_AVAILABLE, &available);
+      return available != 0;
+    }
+
+    uint64 ReadTimestamp(GLuint id)
+    {
+      GLuint64 value = 0;
+      tk_glGetQueryObjectui64vEXT(id, GL_QUERY_RESULT_EXT, &value);
+      return (uint64) value;
+    }
+
+    /** Two query ids for a scope, taken from the pool or generated when it has fewer than two. */
+    void AcquireScopeQueries(std::vector<uint>& pool, uint& begin, uint& end)
+    {
+      if (pool.size() >= 2)
+      {
+        end = pool.back();
+        pool.pop_back();
+        begin = pool.back();
+        pool.pop_back();
+        return;
+      }
+
+      GLuint ids[2] = {0, 0};
+      GenScopeQueries(2, ids);
+      begin = ids[0];
+      end   = ids[1];
+    }
+  } // namespace
+
+  bool GLBackend::SetGpuScopeTiming(bool enable)
+  {
+    m_scopeTiming = enable && HasTimestampQueries();
+    return m_scopeTiming;
+  }
+
   void GLBackend::PushDebugGroup(StringView name)
   {
     if (glPushGroupMarkerEXT != nullptr)
     {
       glPushGroupMarkerEXT(-1, name.data());
     }
+
+    if (!m_scopeTiming)
+    {
+      return;
+    }
+
+    uint begin = 0, end = 0;
+    AcquireScopeQueries(m_scopeQueryPool, begin, end);
+
+    // A timestamp, not an interval: GL ES allows one GL_TIME_ELAPSED query at a time and the passes
+    // nest, while any number of timestamp counters can be in flight at once.
+    WriteTimestamp(begin);
+    m_scopeRecorded.push_back({String(name), begin, end, m_scopeFrame});
+    m_scopeOpen.push_back({begin});
   }
 
   void GLBackend::PopDebugGroup()
@@ -2199,6 +2282,72 @@ namespace ToolKit
     if (glPopGroupMarkerEXT != nullptr)
     {
       glPopGroupMarkerEXT();
+    }
+
+    if (!m_scopeTiming || m_scopeOpen.empty())
+    {
+      return;
+    }
+
+    const uint beginQuery = m_scopeOpen.back().beginQuery;
+    m_scopeOpen.pop_back();
+
+    for (auto it = m_scopeRecorded.rbegin(); it != m_scopeRecorded.rend(); ++it)
+    {
+      if (it->beginQuery == beginQuery)
+      {
+        WriteTimestamp(it->endQuery);
+        break;
+      }
+    }
+  }
+
+  void GLBackend::ResolveGpuScopes()
+  {
+    if (!m_scopeTiming)
+    {
+      return;
+    }
+
+    // This frame's pairs join the ones still waiting; the pairs read now were written a frame or more
+    // ago, so the read never waits on work that has only just been submitted.
+    m_scopeInFlight.insert(m_scopeInFlight.end(), m_scopeRecorded.begin(), m_scopeRecorded.end());
+    m_scopeRecorded.clear();
+    m_scopeFrame++;
+
+    // A device answers a timestamp within a few frames. Anything older than that is not coming, and
+    // holding its queries would only starve the pool.
+    constexpr uint maxAgeInFrames = 120;
+
+    for (size_t i = 0; i < m_scopeInFlight.size();)
+    {
+      GpuScopeRecord& record = m_scopeInFlight[i];
+
+      if (!IsTimestampAvailable(record.endQuery))
+      {
+        if (m_scopeFrame - record.frame > maxAgeInFrames)
+        {
+          m_scopeQueryPool.push_back(record.beginQuery);
+          m_scopeQueryPool.push_back(record.endQuery);
+          m_scopeInFlight.erase(m_scopeInFlight.begin() + i);
+          continue;
+        }
+
+        ++i;
+        continue;
+      }
+
+      const uint64 beginTime = ReadTimestamp(record.beginQuery);
+      const uint64 endTime   = ReadTimestamp(record.endQuery);
+
+      if (endTime > beginTime)
+      {
+        Stats::SetPassGpuMs(record.name, (float) ((endTime - beginTime) / 1000000.0));
+      }
+
+      m_scopeQueryPool.push_back(record.beginQuery);
+      m_scopeQueryPool.push_back(record.endQuery);
+      m_scopeInFlight.erase(m_scopeInFlight.begin() + i);
     }
   }
 

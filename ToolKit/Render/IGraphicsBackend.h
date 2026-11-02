@@ -269,6 +269,17 @@ namespace ToolKit
     virtual void UpdateTextureSubRegion(Texture* tex, int x, int y, int w, int h, const void* data)         = 0;
 
     virtual void PushDebugGroup(StringView name)                                                            = 0;
+
+    /**
+     * Per pass gpu timing. When enabled every PushDebugGroup / PopDebugGroup pair also brackets a
+     * pair of timestamp queries, and ResolveGpuScopes() reports the elapsed time of the pairs that
+     * have answered into Stats, keyed by the group name. Backends without timestamp queries answer
+     * false and do nothing.
+     */
+    virtual bool SetGpuScopeTiming(bool)                                                                    { return false; }
+
+    /** Reads the timestamps that became available and reports them; call once a frame. */
+    virtual void ResolveGpuScopes()                                                                         {}
     virtual void PopDebugGroup()                                                                            = 0;
 
     /**

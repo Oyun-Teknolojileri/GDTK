@@ -15,6 +15,7 @@
 #include "Util.h"
 
 #include <chrono>
+#include <unordered_map>
 #include <thread>
 
 #include "DebugNew.h"
@@ -575,7 +576,116 @@ inline uint64 ReadCycleCounter()
       }
     }
 
-    void SetRenderTime(float cpu, float gpu)
+  namespace
+  {
+    /**
+     * Samples a reported value averages over.
+     *
+     * A single timestamp pair is noisy - the gpu answers a frame or more late, and the frame it lands
+     * on can be longer or shorter than its neighbours - so a pass read once per frame jitters by a few
+     * tenths of a millisecond. Thirty frames is half a second at sixty: long enough to read a number
+     * off it, short enough to still follow a real change.
+     */
+    constexpr uint PassGpuWindow = 30;
+
+    /**
+     * One scope's gpu time and when it was last reported.
+     *
+     * The age is what lets a scope leave the table: a pass that ran once at load - the env map
+     * generation, a cube map bake - would otherwise keep its startup cost in a steady state table
+     * and skew every percentage in it, and nothing would ever remove the name.
+     */
+    struct PassGpuEntry
+    {
+      /** The last PassGpuWindow samples, oldest overwritten first. */
+      float samples[PassGpuWindow] = {};
+      uint count                   = 0;
+      uint next                    = 0;
+
+      /** Average of the samples above, which is what a reader gets. */
+      float ms                     = 0.0f;
+      double reportedAt            = 0.0;
+    };
+
+    std::unordered_map<String, PassGpuEntry>& PassGpuTimes()
+    {
+      static std::unordered_map<String, PassGpuEntry> times;
+      return times;
+    }
+
+    /** A scope that has not answered for this long is not part of the frame any more. */
+    constexpr double PassGpuMaxAgeMs = 2000.0;
+  } // namespace
+
+  bool EnablePassGpuTiming(bool enable)
+  {
+    RenderSystem* renderSystem = GetRenderSystem_noexcep();
+    if (IGraphicsBackend* backend = renderSystem != nullptr ? renderSystem->GetBackend() : nullptr)
+    {
+      return backend->SetGpuScopeTiming(enable);
+    }
+
+    return false;
+  }
+
+  std::unordered_map<String, float> GetPassGpuTimes()
+  {
+    const double now = GetElapsedMilliSeconds();
+    std::unordered_map<String, float> fresh;
+
+    auto& times = PassGpuTimes();
+    for (auto it = times.begin(); it != times.end();)
+    {
+      if (now - it->second.reportedAt > PassGpuMaxAgeMs)
+      {
+        it = times.erase(it);
+        continue;
+      }
+
+      fresh[it->first] = it->second.ms;
+      ++it;
+    }
+
+    return fresh;
+  }
+
+  void SetPassGpuMs(StringView name, float ms)
+  {
+    PassGpuEntry& entry = PassGpuTimes()[String(name)];
+
+    entry.samples[entry.next] = ms;
+    entry.next                = (entry.next + 1) % PassGpuWindow;
+    entry.count               = glm::min(entry.count + 1, PassGpuWindow);
+
+    float sum                 = 0.0f;
+    for (uint i = 0; i < entry.count; ++i)
+    {
+      sum += entry.samples[i];
+    }
+
+    entry.ms         = sum / (float) entry.count;
+    entry.reportedAt = GetElapsedMilliSeconds();
+  }
+
+  float GetPassGpuMs(StringView name)
+  {
+    const auto& times = PassGpuTimes();
+    auto it           = times.find(String(name));
+    if (it == times.end())
+    {
+      return 0.0f;
+    }
+
+    // Same window as the table: a scope that stopped running reads as zero, not as its last value.
+    if (GetElapsedMilliSeconds() - it->second.reportedAt > PassGpuMaxAgeMs)
+    {
+      return 0.0f;
+    }
+
+    return it->second.ms;
+  }
+
+  void SetRenderTime(float cpu, float gpu)
     {
       if (TKStats* tkStats = GetTKStats())
       {

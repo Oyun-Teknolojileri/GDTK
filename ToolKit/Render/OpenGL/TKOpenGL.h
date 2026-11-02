@@ -150,12 +150,16 @@ namespace ToolKit
   typedef void(TK_STDCAL* TKGL_BeginQueryEXT)(GLenum target, GLuint id);
   typedef void(TK_STDCAL* TKGL_EndQueryEXT)(GLenum target);
   typedef void(TK_STDCAL* TKGL_GetQueryObjectuivEXT)(GLuint id, GLenum pname, GLuint* params);
+  typedef void(TK_STDCAL* TKGL_QueryCounterEXT)(GLuint id, GLenum target);
+  typedef void(TK_STDCAL* TKGL_GetQueryObjectui64vEXT)(GLuint id, GLenum pname, GLuint64* params);
 
   extern TKGL_GenQueriesEXT tk_glGenQueriesEXT;
   extern TKGL_DeleteQueriesEXT tk_glDeleteQueriesEXT;
   extern TKGL_BeginQueryEXT tk_glBeginQueryEXT;
   extern TKGL_EndQueryEXT tk_glEndQueryEXT;
   extern TKGL_GetQueryObjectuivEXT tk_glGetQueryObjectuivEXT;
+  extern TKGL_QueryCounterEXT tk_glQueryCounterEXT;
+  extern TKGL_GetQueryObjectui64vEXT tk_glGetQueryObjectui64vEXT;
 
 #ifndef GL_TIME_ELAPSED_EXT
   #define GL_TIME_ELAPSED_EXT 0x88BF
@@ -163,6 +167,21 @@ namespace ToolKit
 
 #ifndef GL_GPU_DISJOINT_EXT
   #define GL_GPU_DISJOINT_EXT 0x8FBB
+#endif
+
+// A timestamp query writes the gpu clock into the query object instead of measuring an interval, so
+// any number of them can be open at once. That is what per pass timing needs: GL ES allows a single
+// GL_TIME_ELAPSED query at a time, and passes nest.
+#ifndef GL_TIMESTAMP_EXT
+  #define GL_TIMESTAMP_EXT 0x8E28
+#endif
+
+#ifndef GL_QUERY_RESULT_EXT
+  #define GL_QUERY_RESULT_EXT 0x8866
+#endif
+
+#ifndef GL_QUERY_RESULT_AVAILABLE_EXT
+  #define GL_QUERY_RESULT_AVAILABLE_EXT 0x8867
 #endif
 
   // GL Loader function
