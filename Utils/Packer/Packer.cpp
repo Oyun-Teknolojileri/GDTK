@@ -232,7 +232,6 @@ namespace ToolKit
       CheckErrorReturn("Copy " + PakHashPath() + " and " + assetsHashPath);
     }
   }
-  }
 
   int Packer::PackResources()
   {
