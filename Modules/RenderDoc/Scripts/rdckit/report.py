@@ -58,7 +58,9 @@ def markdown(model, out_dir):
             (engine.get("engineVersion", "?"), engine.get("config", "?")))
         add("| Project | %s |" % (engine.get("project") or "-"))
         add("| Scene | %s |" % (engine.get("scene") or "-"))
-        add("| Editor frame | %s |" % engine.get("editorFrame", "?"))
+        # hostFrame is what the engine core writes (host agnostic); editorFrame is
+        # what the old editor-only sidecar carried, kept so old captures still read.
+        add("| Frame | %s |" % engine.get("hostFrame", engine.get("editorFrame", "?")))
     add("| Analysed with | RenderDoc %s, %s |" %
         (capture.get("renderdocVersion", "?"), time.strftime("%Y-%m-%d %H:%M")))
     add("")

@@ -37,9 +37,8 @@ GDTK/
 │   └── Launcher/                # Project browser / entry point (ImGui-based GUI)
 ├── Modules/
 │   ├── Workspace/               # Project workspace management (static library)
-│   ├── RenderDoc/               # Frame capture module (static library, editor only)
-│   │   ├── Source/              # Module API, capture, console and menu entries
-│   │   ├── ThirdParty/          # Vendored renderdoc_app.h
+│   ├── RenderDoc/               # Editor glue for the capture core (static library)
+│   │   ├── Source/              # Editor capture directory, commands, menu entries
 │   │   └── Scripts/             # Report tooling: .rdc -> json / markdown / PNGs
 ├── Templates/
 │   ├── Plugin/                  # Plugin template
@@ -1344,32 +1343,53 @@ ruler or by dragging a lane; the wheel scrolls the rows, `Shift+wheel` pans, `Ct
 
 ---
 
-### 9.8 RenderDoc capture module (`Modules/RenderDoc`)
+### 9.8 RenderDoc capture (engine core + `Modules/RenderDoc`)
 
-Frame capture is a development tool, and it is the tree's first real module: a
-static library (`Modules/RenderDoc`) the editor links and calls through four
-entry points. Everything RenderDoc specific lives there - the API binding, the
-capture state machine, the capture directory, the console commands - so `Editor/`
-carries three calls in `main.cpp` and nothing else.
+Frame capture is split in two on purpose, because two hosts need it and they
+cannot share one implementation any other way:
 
 ```
+ToolKit/Source/RenderDocCapture.h/.cpp   the capture machinery: bind the injected
+                                         RenderDoc, drive the frame, write the .rdc
+                                         and its JSON sidecar, serve the request file
+Dependency/utilities/renderdoc_app.h     RenderDoc's in-application API header (MIT)
+
 Modules/RenderDoc/
-  Source/RenderDocModule.h/.cpp     host contract: Init/Shutdown/BeginFrame/EndFrame,
-                                    plus status, request and directory queries
-  Source/RenderDocCommands.h/.cpp   CaptureFrame / CaptureStatus / CaptureOpen
-  ThirdParty/renderdoc_app.h        RenderDoc's in-application API header (MIT)
+  Source/RenderDocModule.h/.cpp          editor glue: capture directory, sidecar
+                                         context, the four calls main.cpp makes
+  Source/RenderDocCommands.h/.cpp        CaptureFrame / CaptureStatus / CaptureOpen
+  Scripts/                              the python report tooling
 ```
 
-The module is a static library rather than a DLL on purpose: the capture hooks
-have to exist before the graphics device does, so the module has to come up with
-the host instead of being loaded from a `Plugins/` folder later. `main.cpp` calls
-`RenderDoc::Init()` from `PreInit()`, `RenderDoc::BeginFrame()`/`EndFrame()` around
-the frame, and `RenderDoc::Shutdown()` from `Exit()`.
+The core lives in the engine because a *published game* links only `TK::ToolKit`
+and a game may still want to capture: `RenderDocCapture::Init` plus the two frame
+hooks and `Shutdown` are all a host needs, and `ToolKit::RequestFrameCapture()`
+then works there exactly as it does in the editor. The game template deliberately
+does not call them - not every game wants capture - so opting in is documented in
+`Modules/RenderDoc/Scripts/README.md` rather than baked into every project. The
+engine knows nothing about projects, so `Init()` takes two callbacks: one that
+answers the capture directory (resolved per capture, so a project switch moves it)
+and one that returns the extra sidecar fields. The editor answers
+`<workspace>/<project>/Captures` plus workspace / project / scene; a game would
+answer `<cwd>/Captures` and nothing else.
 
-It is compiled into every editor config, Debug through MinSizeRel. What keeps
-RenderDoc out of a shipped build is that the editor is not part of one, not a
-preprocessor switch: no game target links `Modules/RenderDoc`, and the library is
-only ever looked up by name in the running process, never loaded.
+What stays host specific is everything the editor contributes on top: the console
+commands, the **Modules -> RenderDoc** menu, and the `App`-shaped callbacks above.
+That is `Modules/RenderDoc`, a static library the editor links (static, not a DLL,
+because the capture hooks have to exist before the graphics device does, so it has
+to come up with the host). Its TUs are built with `TK_EDITOR_DLL_EXPORT` so their
+calls into the editor API link directly instead of becoming import thunks a static
+library cannot satisfy - the same trick `Editor/CMakeLists.txt` uses for
+`TK_WORKSPACE_DLL_EXPORT`, mirrored; the editor is built with
+`TK_RENDERDOC_DLL_EXPORT` for the same reason.
+
+Both are compiled into every config, Debug through MinSizeRel. What keeps
+RenderDoc out of a shipped build is not a preprocessor switch: the library is only
+ever looked up by name in the running process (`GetModuleHandle` /
+`dlopen(RTLD_NOLOAD)`), never loaded, so a game that was not started through
+RenderDoc runs the same code and captures nothing. The browser has no dynamic
+libraries, so the module lookup compiles to "not found" there and the whole thing
+is inert.
 
 **The module talks back to the editor** through `Editor/Source/EditorApi.h`, the
 editor's exported surface for modules:
@@ -1405,51 +1425,45 @@ menus are built from ObjectFactory class meta values for the Add menu, while a
 module entry is a callback, not a class name. Keyboard shortcuts are still the
 editor's (`EditorMetaKeys.h`); the `shortcut` argument is display text only.
 
-Two compile definitions make the static library work, and both are the inverse of
-what a consumer normally sees:
-- the module's TUs are built with `TK_EDITOR_DLL_EXPORT`, so `TK_EDITOR_API`
-  resolves to dllexport and the module's calls into the editor link directly
-  instead of turning into import thunks a static library cannot satisfy. It is the
-  same trick `Editor/CMakeLists.txt` uses for `TK_WORKSPACE_DLL_EXPORT`, mirrored.
-- the editor's own TUs are built with `TK_RENDERDOC_DLL_EXPORT`, so `main.cpp`
-  sees the module's `TK_RENDERDOC_API` the way the module defines it, for the same
-  reason.
-
-The library is looked up by name (`renderdoc.dll` / `librenderdoc.so`), which is
-how an injected RenderDoc presents itself. The module never loads it: the capture
-hooks have to be in place before the graphics device is created, so the process
-has to be started through RenderDoc (`renderdoccmd capture -w Editor.exe ...`,
-or `renderdoccmd inject <pid>` for a running editor). `Init()` runs from
-`PreInit()`, before any graphics work; with RenderDoc absent it registers the
-commands anyway (so `CaptureStatus` can explain), reports false and every other
-entry point does nothing, which is what a normal editor start looks like.
+The library is looked up by name (`renderdoc.dll` / `librenderdoc.so`, and
+`libVkLayer_GLES_RenderDoc.so` on Android), which is how an injected RenderDoc
+presents itself. Nothing loads it: the capture hooks have to be in place before the
+graphics device is created, so the process has to be started through RenderDoc
+(`renderdoccmd capture -w <exe> ...`, or `renderdoccmd inject <pid>` for a running
+one - the API binds at startup, so an injected session keeps working only through
+RenderDoc's own hotkey). `Init()` runs from `PreInit()`, before any graphics work;
+with RenderDoc absent the editor still registers its commands (so `CaptureStatus`
+can explain), reports false and every other entry point does nothing, which is
+what a normal start looks like. In a game the same call reports false and
+`RequestFrameCapture()` stays a no-op.
 
 Four ways to ask for a capture, all funnelling into one queue:
 
 | From | Entry point |
 |---|---|
 | Game code / plugin | `ToolKit::RequestFrameCapture(label, frames)` (`ToolKit/Source/FrameCapture.h`) |
-| Editor code | `ToolKit::RenderDoc::RequestCapture(label, frames)` |
+| Editor code | `ToolKit::RenderDocCapture::RequestCapture(label, frames)` |
 | Console | `CaptureFrame <label> [frames]`, `CaptureStatus`, `CaptureOpen` |
 | Anything outside the process | write `<capture dir>/request` with `label [frameCount]` |
 
-The engine hook exists because a game build links only `TK::ToolKit`: routing the
-request through a host installed handler is what lets the same game code ask for a
-capture in the editor and compile to a no-op in a published build, without the
-game linking editor symbols or naming RenderDoc. `FrameCapture.cpp` holds one
-`std::function` behind a mutex for that, and the module's `Init` is what installs
-(and `Shutdown` what removes) the handler.
+The engine hook exists because a game build links only `TK::ToolKit` and the host
+is the one that knows how to capture: routing the request through an installed
+handler is what lets the same game code ask for a capture in the editor or in a
+game, and compile to a no-op where no host installed one, without the game linking
+host symbols or naming RenderDoc. `FrameCapture.cpp` holds one `std::function`
+behind a mutex for that, and `RenderDocCapture::Init` is what installs (and
+`Shutdown` what removes) the handler.
 
-A request is queued, never acted on inside the call: `RenderDoc::BeginFrame()`
-opens the capture at the top of the next frame and `RenderDoc::EndFrame()` closes
-it after the frame's present, both called from `TK_Loop` in
-`Editor/Source/main.cpp`. Starting a capture in the middle of a frame would record
-half of it, and RenderDoc needs the present inside the region. The queue is what
-makes a request from a game thread, a console command or the request file all land
-on the render thread.
+A request is queued, never acted on inside the call: `BeginFrame()` opens the
+capture at the top of the next frame and `EndFrame()` closes it after the frame's
+present, called from `TK_Loop` in `Editor/Source/main.cpp`. Starting a capture in
+the middle of a frame would record half of it, and RenderDoc needs the present
+inside the region. The queue is what makes a request from a game thread, a console
+command or the request file all land on the render thread.
 
-Captures and their metadata go to `<workspace>/<project>/Captures` (the user
-config directory when no project is open):
+Captures and their metadata go to `<workspace>/<project>/Captures` in the editor,
+and next to the game (`<cwd>/Captures`) in a standalone run; the editor passes the
+first as a callback, the game the second:
 
 ```
 <label>_<yyyymmdd-hhmmss>_capture.rdc      the capture
@@ -1849,8 +1863,9 @@ When writing/editing any `.h`/`.cpp` in this repo:
 | Undoable editor actions (incl. key edits) | `Editor/Source/Action.h` |
 | Dope sheet editor (view + window) | `Editor/UI/View/DopeSheetView.h` |
 | Editor renderer | `Editor/Render/EditorRenderer.h` |
-| RenderDoc capture module (host contract) | `Modules/RenderDoc/Source/RenderDocModule.h` |
-| RenderDoc in-application API header (vendored) | `Modules/RenderDoc/ThirdParty/renderdoc_app.h` |
+| RenderDoc capture core (engine, any host) | `ToolKit/Source/RenderDocCapture.h` |
+| RenderDoc editor glue (commands, menu, capture directory) | `Modules/RenderDoc/Source/RenderDocModule.h` |
+| RenderDoc in-application API header (vendored) | `Dependency/utilities/renderdoc_app.h` |
 | Editor API for modules (console commands, console output) | `Editor/Source/EditorApi.h` |
 | Frame capture request hook (game code) | `ToolKit/Source/FrameCapture.h` |
 | Capture report tool (.rdc -> json / markdown / PNGs) | `Modules/RenderDoc/Scripts/README.md` |

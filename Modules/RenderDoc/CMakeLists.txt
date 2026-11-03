@@ -1,22 +1,24 @@
-# RenderDoc -- frame capture for the editor, a static library the Editor links.
+# RenderDoc -- editor glue for the engine capture core, a static library the
+# Editor links.
 #
-# Source layout: RenderDoc/Source/ holds the module .cpp / .h,
-# RenderDoc/ThirdParty/ holds the vendored RenderDoc in-application API header,
-# RenderDoc/Scripts/ holds the python report tooling (not part of the build - the
-# glob below only takes *.cpp).
+# Source layout: RenderDoc/Source/ holds the module .cpp / .h, RenderDoc/Scripts/
+# holds the python report tooling (not part of the build - the glob below only
+# takes *.cpp).
 #
-# Why a module and not editor code: the capture tool is the only thing in the
-# tree that talks to RenderDoc, and it contributes its console commands and its
-# menu entries through the editor API (Editor/Source/EditorApi.h). Keeping it in
-# its own target is what makes that boundary reviewable - the editor side is four
-# calls in Editor/Source/main.cpp.
+# What is NOT here any more: the capture machinery. Binding RenderDoc, driving the
+# frame, writing the .rdc and serving the request file live in
+# ToolKit/Source/RenderDocCapture.{h,cpp}, because a game needs the same thing and
+# a game links only ToolKit. This module is the editor half: where captures go
+# (<workspace>/<project>/Captures), what the sidecar records, and the console
+# commands plus Modules menu entries it contributes through the editor API
+# (Editor/Source/EditorApi.h).
 #
-# This is a STATIC library linked INTO Editor.exe, on purpose: the RenderDoc
-# capture hooks have to be in place before the graphics device is created, so
-# the module has to come up with the host rather than be loaded later. The
-# module's own API is exported with TK_RENDERDOC_API so editor plugins can call
-# it too; the editor sets TK_RENDERDOC_DLL_EXPORT for its own translation units
-# for the same reason it sets TK_WORKSPACE_DLL_EXPORT (see Editor/CMakeLists.txt).
+# This is a STATIC library linked INTO Editor.exe, on purpose: the capture hooks
+# have to be in place before the graphics device is created, so the module comes
+# up with the host rather than being loaded later. Its API is exported with
+# TK_RENDERDOC_API so editor plugins can call it too; the editor sets
+# TK_RENDERDOC_DLL_EXPORT for its own translation units for the same reason it
+# sets TK_WORKSPACE_DLL_EXPORT (see Editor/CMakeLists.txt).
 
 file(GLOB_RECURSE RENDERDOC_SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
@@ -31,13 +33,6 @@ add_library(RenderDoc STATIC
 target_include_directories(RenderDoc PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/Source
   ${GDTK_INCLUDE_DIRS}
-)
-
-# ThirdParty/ holds renderdoc_app.h; it is included as
-# "ThirdParty/renderdoc_app.h" so the vendored origin stays visible at the
-# include site. PRIVATE: no consumer needs the RenderDoc API header.
-target_include_directories(RenderDoc PRIVATE
-  ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 target_compile_definitions(RenderDoc PRIVATE

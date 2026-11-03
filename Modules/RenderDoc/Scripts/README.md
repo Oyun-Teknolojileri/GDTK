@@ -12,23 +12,35 @@ command line away, instead of a trip through the RenderDoc UI.
 ## 1. How it is put together
 
 ```
-Modules/RenderDoc/                        the capture module (static library the
-  Source/RenderDocModule.{h,cpp}          editor links): RenderDoc in-application
-  Source/RenderDocCommands.{h,cpp}        API, capture state machine, request file
-  ThirdParty/renderdoc_app.h              and the console / menu entries
+ToolKit/Source/RenderDocCapture.{h,cpp}   the capture core: binds the injected
+                                          RenderDoc, drives the frame, writes the
+                                          .rdc and its sidecar, serves the request
+                                          file. Any host that links the engine gets it.
+Dependency/utilities/renderdoc_app.h      RenderDoc's in-application API header (MIT)
+Modules/RenderDoc/                        editor glue (static library the editor links)
+  Source/RenderDocModule.{h,cpp}          capture directory, sidecar context, the
+                                          four calls Editor/Source/main.cpp makes
+  Source/RenderDocCommands.{h,cpp}        console commands and Modules menu entries
   Scripts/                                the report tooling (this folder)
 Editor/Source/EditorApi.h                 the editor surface the module uses to
-                                          register those commands and menu entries
+                                          register its commands and menu entries
 ToolKit/Source/FrameCapture.{h,cpp}       engine side hook: RequestFrameCapture()
 ```
 
-Everything RenderDoc related - the module, the vendored API header and the
-report tooling - lives under `Modules/RenderDoc/`. The module's CMake globs
-`*.cpp` only, so `Scripts/` is invisible to the build.
+The core is in the engine so that a game *can* get it too: the engine knows
+nothing about projects, so `RenderDocCapture::Init` takes callbacks for the capture
+directory and for the extra sidecar fields; the editor answers
+`<workspace>/<project>/Captures` plus workspace / project / scene, a game would
+answer `<cwd>/Captures` and nothing else. Nothing in the game template calls it,
+because not every game wants capture - see "Capturing in a game" below for the
+four lines that opt in.
 
-The module is the only place that talks to RenderDoc. Game code reaches the
-capture tool through the engine hook, so a game never links an editor symbol and
-never names RenderDoc:
+Everything the editor contributes on top - the console commands, the
+`Modules -> RenderDoc` menu - lives in `Modules/RenderDoc`. The module's CMake
+globs `*.cpp` only, so this `Scripts/` folder of python is invisible to the build.
+
+Game code never links host symbols: it reaches the capture core through the engine
+hook and never names RenderDoc.
 
 ```cpp
 #include <FrameCapture.h>
@@ -37,7 +49,7 @@ void MyGame::Update(float deltaTime)
 {
   if (bossFightStarted)
   {
-    // No-op in a published build: nobody installed a capture handler there.
+    // No-op unless a host installed a capture handler and RenderDoc is present.
     ToolKit::RequestFrameCapture("boss_intro");
   }
 }
@@ -182,7 +194,42 @@ The mechanical findings at the end are deliberately conservative - an empty pass
 a draw with no indices, a draw with no colour output. They are hints, not a
 verdict.
 
-## 6. Known limits
+## 6. Capturing in a game (opt in)
+
+Nothing in the game template calls the capture core, because not every game wants
+it. A host that does want it needs four lines - the core is already inside
+`TK::ToolKit`, so there is no extra library to link:
+
+```cpp
+#include "RenderDocCapture.h"
+
+// PreInit(), before any graphics object exists: bind RenderDoc if it is in the
+// process and install the RequestFrameCapture() handler.
+RenderDocCapture::Init([]() -> String { return ConcatPaths({GetCurrentPath(), "Captures"}); });
+
+// TK_Loop(), around the frame, present included:
+RenderDocCapture::BeginFrame();
+g_proxy->FrameBegin();
+g_proxy->FrameUpdate();
+g_proxy->FrameEnd();
+RenderDocCapture::EndFrame();
+
+// Exit(), while the engine is still alive:
+RenderDocCapture::Shutdown();
+```
+
+Then the same three ways in work: `ToolKit::RequestFrameCapture("label")` from game
+code, a `Captures/request` file, or RenderDoc's own hotkey. Launch the game through
+RenderDoc so the hooks exist before the graphics device:
+
+```powershell
+renderdoccmd capture -w -d Codes/Bin -c Captures/game Codes/Bin/MyGame.exe
+```
+
+The sidecar lands next to the capture with no project or scene fields (a game has
+neither), and the report reads it the same way.
+
+## 7. Known limits
 
 - **OpenGL and Vulkan only in practice**: the capture control is API agnostic,
   but GDTK only renders through those two.
