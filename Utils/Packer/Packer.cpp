@@ -91,6 +91,16 @@ namespace ToolKit
     void WritePakHash() const;
 
     /**
+     * Refreshes the pak and its fingerprint where the Android build reads them, when the project has an
+     * Android folder at all.
+     *
+     * A pack that stops at the pak - the pack only mode scripts use - used to leave both behind, which is
+     * how an APK came to ship a current pak next to the previous fingerprint: the app compares the
+     * fingerprint, concluded it already had the pak, and kept rendering the scene from before the change.
+     */
+    void RefreshAndroidAssets();
+
+    /**
      * Checks the error code and returns true if there is an error.
      * Also reports the message to console in case of error.
      */
@@ -189,6 +199,40 @@ namespace ToolKit
     GetFileManager()->WriteAllText(PakHashPath(), HexHash(HashFile(pakPath)));
   }
 
+  void Packer::RefreshAndroidAssets()
+  {
+    const String projectName = activeProjectName;
+    if (projectName.empty())
+    {
+      return;
+    }
+
+    const String assetsPath = ConcatPaths({workspacePath, projectName, "Android/app/src/main/assets"});
+    if (!CheckSystemFile(assetsPath))
+    {
+      // No Android folder in this project: nothing to keep in step.
+      return;
+    }
+
+    const std::filesystem::copy_options copyOption = std::filesystem::copy_options::overwrite_existing;
+
+    const String pakPath          = PakPath();
+    const String assetsPakPath    = ConcatPaths({assetsPath, TKResourcePak});
+    const String assetsHashPath   = ConcatPaths({assetsPath, TKResourcePak + ".hash"});
+
+    std::filesystem::copy(pakPath, assetsPakPath, copyOption, m_errorCode);
+    if (CheckErrorReturn("Copy " + pakPath + " and " + assetsPakPath))
+    {
+      return;
+    }
+
+    if (CheckSystemFile(PakHashPath()))
+    {
+      std::filesystem::copy(PakHashPath(), assetsHashPath, copyOption, m_errorCode);
+      CheckErrorReturn("Copy " + PakHashPath() + " and " + assetsHashPath);
+    }
+  }
+
   int Packer::PackResources()
   {
     String projectName = activeProjectName;
@@ -256,8 +300,15 @@ namespace ToolKit
           return packResult;
         }
 
+        // The fingerprint is written here and not only after the publish: a pack that stops at the pak used to
+        // leave the previous one behind, and the app trusts it to decide whether the pak it unpacked is the
+        // one this build ships.
+        WritePakHash();
+
         if (m_onlyPack)
         {
+          // Nothing else runs in this mode, so the copy the Android build reads has to be refreshed here.
+          RefreshAndroidAssets();
           return 0;
         }
       }
