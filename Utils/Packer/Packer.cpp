@@ -216,9 +216,9 @@ namespace ToolKit
 
     const std::filesystem::copy_options copyOption = std::filesystem::copy_options::overwrite_existing;
 
-    const String pakPath          = PakPath();
-    const String assetsPakPath    = ConcatPaths({assetsPath, TKResourcePak});
-    const String assetsHashPath   = ConcatPaths({assetsPath, TKResourcePak + ".hash"});
+    const String pakPath                           = PakPath();
+    const String assetsPakPath                     = ConcatPaths({assetsPath, TKResourcePak});
+    const String assetsHashPath                    = ConcatPaths({assetsPath, TKResourcePak + ".hash"});
 
     std::filesystem::copy(pakPath, assetsPakPath, copyOption, m_errorCode);
     if (CheckErrorReturn("Copy " + pakPath + " and " + assetsPakPath))
@@ -231,6 +231,7 @@ namespace ToolKit
       std::filesystem::copy(PakHashPath(), assetsHashPath, copyOption, m_errorCode);
       CheckErrorReturn("Copy " + PakHashPath() + " and " + assetsHashPath);
     }
+  }
   }
 
   int Packer::PackResources()
