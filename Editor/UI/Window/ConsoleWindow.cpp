@@ -11,6 +11,7 @@
 #include "App.h"
 #include "EditorViewport.h"
 #include "ProjectThumbnail.h"
+#include "RenderDocCapture.h"
 #include "TransformMod.h"
 #include "WorkspaceTypes.h"
 
@@ -786,6 +787,83 @@ namespace ToolKit
       SaveProjectThumbnail();
     }
 
+    // RenderDoc capture commands. The frame itself is captured by the editor
+    // frame loop (see RenderDocCapture.h), these only queue the request and
+    // report on it. Format:
+    //   CaptureFrame <label> [<frames>]
+    //   CaptureStatus
+    //   CaptureOpen
+    void CaptureFrameExec(TagArgArray tagArgs)
+    {
+      String label   = "editor";
+      int frameCount = 1;
+
+      if (!tagArgs.empty() && tagArgs.front().first.empty() && !tagArgs.front().second.empty())
+      {
+        label = tagArgs.front().second.front();
+        if (tagArgs.front().second.size() > 1)
+        {
+          frameCount = std::atoi(tagArgs.front().second[1].c_str());
+        }
+      }
+
+      if (!RequestRenderDocCapture(label, frameCount))
+      {
+        const RenderDocStatus status = GetRenderDocStatus();
+        GetApp()->GetConsole()->AddLog("Capture failed: " + status.m_lastError, LogType::Error);
+        return;
+      }
+
+      GetApp()->GetConsole()->AddLog("Capture requested: " + label, LogType::Memo);
+    }
+
+    void CaptureStatusExec(TagArgArray tagArgs)
+    {
+      (void) tagArgs;
+
+      const RenderDocStatus status = GetRenderDocStatus();
+      ConsoleWindowPtr console     = GetApp()->GetConsole();
+
+      if (!status.m_available)
+      {
+        console->AddLog("RenderDoc: unavailable. " + status.m_lastError, LogType::Warning);
+        console->AddLog("  Start the editor through RenderDoc: renderdoccmd capture -w Editor.exe", LogType::Memo);
+        console->AddLog("  Or attach to a running editor:      renderdoccmd inject <pid>", LogType::Memo);
+        return;
+      }
+
+      console->AddLog(
+          Format("RenderDoc: available, API %d.%d.%d", status.m_apiMajor, status.m_apiMinor, status.m_apiPatch),
+          LogType::Memo);
+      console->AddLog("  Library:    " + status.m_modulePath, LogType::Memo);
+      console->AddLog("  Directory:  " + status.m_captureDir, LogType::Memo);
+      console->AddLog(Format("  Captures:   %d this session", status.m_captureCount), LogType::Memo);
+
+      if (!status.m_lastCapturePath.empty())
+      {
+        console->AddLog("  Last:       " + status.m_lastCapturePath, LogType::Memo);
+      }
+
+      if (status.m_capturing)
+      {
+        console->AddLog(Format("  Capturing now, %d frame(s) left", status.m_pendingFrames), LogType::Memo);
+      }
+      else if (!status.m_lastError.empty())
+      {
+        console->AddLog("  Last error: " + status.m_lastError, LogType::Warning);
+      }
+    }
+
+    void CaptureOpenExec(TagArgArray tagArgs)
+    {
+      (void) tagArgs;
+
+      if (!RenderDocOpenUI())
+      {
+        GetApp()->GetConsole()->AddLog("Could not open the RenderDoc UI.", LogType::Error);
+      }
+    }
+
     // ImGui ripoff. Portable helpers.
     static int Stricmp(const char* str1, const char* str2)
     {
@@ -853,6 +931,9 @@ namespace ToolKit
       CreateCommand(g_selectSimilar, SelectSimilar);
       CreateCommand(g_alignToViewCmd, AlignToView);
       CreateCommand(g_saveThumbnail, SaveThumbnail);
+      CreateCommand(g_captureFrameCmd, CaptureFrameExec);
+      CreateCommand(g_captureStatusCmd, CaptureStatusExec);
+      CreateCommand(g_captureOpenCmd, CaptureOpenExec);
     }
 
     ConsoleWindow::~ConsoleWindow() {}

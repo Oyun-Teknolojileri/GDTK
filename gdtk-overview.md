@@ -34,7 +34,8 @@ GDTK/
 ├── Utils/
 │   ├── Import/                  # Asset import CLI (assimp-based, into engine format)
 │   ├── Packer/                  # Release / publish CLI (.tk bundle, platform packages)
-│   └── Launcher/                # Project browser / entry point (ImGui-based GUI)
+│   ├── Launcher/                # Project browser / entry point (ImGui-based GUI)
+│   └── RenderDoc/               # Capture report tooling: .rdc -> json / markdown / PNGs
 ├── Modules/
 │   └── Workspace/               # Project workspace management (static library)
 ├── Templates/
@@ -1340,6 +1341,88 @@ ruler or by dragging a lane; the wheel scrolls the rows, `Shift+wheel` pans, `Ct
 
 ---
 
+### 9.8 RenderDoc capture
+
+Frame capture is a development tool, and it lives in the editor, not in the
+engine: `Editor/Source/RenderDocCapture.h/.cpp` binds RenderDoc's in-application
+API (`Dependency/utilities/renderdoc_app.h`, vendored next to `base64.h` and
+`utf8.h`) and drives it. Nothing of RenderDoc reaches `ToolKit/`.
+
+It is compiled into every editor config, Debug through MinSizeRel. The editor is
+a development tool and the code goes nowhere else: no game target links
+`RenderDocCapture.cpp`, and the library is only ever looked up by name in the
+running process, never loaded. What keeps RenderDoc out of a shipped build is
+that the editor is not part of one, not a preprocessor switch.
+
+The library is looked up by name (`renderdoc.dll` / `librenderdoc.so`), which is
+how an injected RenderDoc presents itself. The editor never loads it: the capture
+hooks have to be in place before the graphics device is created, so the process
+has to be started through RenderDoc (`renderdoccmd capture -w Editor.exe ...`,
+or `renderdoccmd inject <pid>` for a running editor). `RenderDocInit()` runs from
+`PreInit()`, before any graphics work; with RenderDoc absent it quietly does
+nothing, which is what a normal editor start looks like.
+
+Three ways to ask for a capture, all funnelling into one queue:
+
+| From | Entry point |
+|---|---|
+| Game code / plugin | `ToolKit::RequestFrameCapture(label, frames)` (`ToolKit/Source/FrameCapture.h`) |
+| Editor code | `ToolKit::Editor::RequestRenderDocCapture(label, frames)` |
+| Console / Debug menu | `CaptureFrame <label> [frames]`, `CaptureStatus`, `CaptureOpen` |
+| Anything outside the process | write `<capture dir>/request` with `label [frameCount]` |
+
+The engine hook exists because a game build links only `TK::ToolKit`: routing the
+request through a host installed handler is what lets the same game code ask for a
+capture in the editor and compile to a no-op in a published build, without the
+game linking editor symbols or naming RenderDoc. `FrameCapture.cpp` holds one
+`std::function` behind a mutex for that, and `RenderDocInit` is what installs (and
+`RenderDocUninit` what removes) the editor's handler.
+
+A request is queued, never acted on inside the call: `RenderDocBeginFrame()` opens
+the capture at the top of the next frame and `RenderDocEndFrame()` closes it after
+the frame's present, both called from `TK_Loop` in `Editor/Source/main.cpp`.
+Starting a capture in the middle of a frame would record half of it, and RenderDoc
+needs the present inside the region. The queue is what makes a request from a game
+thread, a console command or the request file all land on the render thread.
+
+Captures and their metadata go to `<workspace>/<project>/Captures` (the user
+config directory when no project is open):
+
+```
+<label>_<yyyymmdd-hhmmss>_capture.rdc      the capture
+<label>_<yyyymmdd-hhmmss>_capture.json     engine sidecar: project, scene, frame, config
+last_capture.json                          pointer to the capture that finished last
+request                                    consumed request file
+```
+
+The sidecar is what lets the report say which project and scene a capture is of,
+and the request file is what lets a tool that cannot call into the process (an AI
+agent, a CI job) trigger a capture: `RenderDocPollRequestFile()` checks it every
+few frames, deletes it before acting, and rejects a request while another capture
+is queued or running.
+
+The python side lives in `Utils/RenderDoc/` and is not part of the build (it has
+no CMakeLists.txt, so `Utils/` stays a folder of explicit `add_subdirectory`
+entries). A distributed RenderDoc does not ship the standalone `renderdoc`
+module, so the analysis runs inside the interpreter `qrenderdoc.exe` embeds:
+`rdc_report.py` locates `qrenderdoc`, sets `TK_RD_CAPTURE` / `TK_RD_OUTDIR` /
+`TK_RD_RDCKIT` and runs `rdc_analyze.py` with `--python`, which replays the frame
+and writes `<capture>.report/` - `capture.md` (pass table with images, one section
+per pass with its targets, shaders and sampled textures, largest textures,
+mechanical findings), `capture.json` (the full model) and `images/` + `shaders/`.
+The script ends with `sys.exit()` because that is what tells qrenderdoc to skip
+its UI and quit.
+
+Because the engine wraps every pass in a GPU debug group (`Pass::PreRender`
+opens one named after the pass), the pass table the report prints *is* the frame's
+render graph - `ShadowPass`, `ForwardPreProcessPass`, `SSAOPass`, `BloomPass`,
+`GammaTonemapFxaaPass`, `EditorUI` - which is the part that makes the report
+useful for "why does this frame look wrong". Per pass images are taken at the last
+action that wrote colour inside the region, not at the marker, because a pass that
+switches targets hands back its input at the marker position.
+
+---
+
 ## 10. Threading (Threads.h)
 
 ### 10.1 WorkerManager
@@ -1703,6 +1786,10 @@ When writing/editing any `.h`/`.cpp` in this repo:
 | Undoable editor actions (incl. key edits) | `Editor/Source/Action.h` |
 | Dope sheet editor (view + window) | `Editor/UI/View/DopeSheetView.h` |
 | Editor renderer | `Editor/Render/EditorRenderer.h` |
+| RenderDoc capture control (editor only) | `Editor/Source/RenderDocCapture.h` |
+| RenderDoc in-application API header (vendored) | `Dependency/utilities/renderdoc_app.h` |
+| Frame capture request hook (game code) | `ToolKit/Source/FrameCapture.h` |
+| Capture report tool (.rdc -> json / markdown / PNGs) | `Utils/RenderDoc/README.md` |
 | Host / platform glue (exec paths, shortcuts, app icon) | `ToolKit/Common/PlatformHelper.h` |
 | Workspace (project and workspace management) | `Modules/Workspace/Source/Workspace.h` |
 | Build deps | `BuildScripts/build_dependencies.py` |

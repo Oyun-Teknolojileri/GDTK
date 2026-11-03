@@ -19,6 +19,7 @@
 #include "Mod.h"
 #include "PopupWindows.h"
 #include "PreviewViewport.h"
+#include "RenderDocCapture.h"
 #include "Stats.h"
 #include "UI.h"
 
@@ -229,6 +230,13 @@ namespace ToolKit
       Main::SetProxy(g_proxy);
       CreateAppData();
       g_proxy->PreInit();
+
+      // Bind the RenderDoc API before any graphics object exists: capture
+      // options have to be set before the graphics API is initialised, and the
+      // editor only finds the library when the process was started through
+      // RenderDoc. A plain start leaves the capture tool unavailable, which is
+      // the normal case.
+      RenderDocInit();
 
       // Platform dependent function assignments.
       GetPluginManager()->FreeModule      = &PlatformHelpers::TKFreeModule;
@@ -471,6 +479,10 @@ namespace ToolKit
 
     void Exit()
     {
+      // Release the capture tool while the engine is still alive: it drops the
+      // engine request handler and the RenderDoc API it borrowed.
+      RenderDocUninit();
+
       g_app->Destroy();
 
       g_proxy->PreUninit();
@@ -496,9 +508,18 @@ namespace ToolKit
       {
         if (g_proxy->SyncFrameTime())
         {
+          // A capture has to bracket a whole frame, present included, so the
+          // request is picked up (including one an external tool dropped into
+          // the capture directory) and opened before the frame starts, then
+          // closed once the frame has been presented.
+          RenderDocPollRequestFile();
+          RenderDocBeginFrame();
+
           g_proxy->FrameBegin();
           g_proxy->FrameUpdate();
           g_proxy->FrameEnd();
+
+          RenderDocEndFrame();
 
           g_app->m_fps = g_proxy->GetCurrentFPS();
         }

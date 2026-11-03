@@ -75,6 +75,8 @@ Log.txt
 .claude/settings.local.json
 Assimplog.txt
 BuildScripts/__pycache__/*
+# Capture report tool: qrenderdoc's embedded python leaves bytecode here.
+Utils/RenderDoc/**/__pycache__/
 /x64-Debug
 *.json
 /out

@@ -110,6 +110,18 @@ namespace ToolKit
     const String g_saveThumbnail("SaveThumbnail");
     TK_EDITOR_API void SaveThumbnail(TagArgArray tagArgs);
 
+    // RenderDoc frame capture. Registered in every build; a capture is only
+    // possible when the editor was started through RenderDoc, so the executors
+    // report that instead of failing silently (see RenderDocCapture.h).
+    const String g_captureFrameCmd("CaptureFrame");
+    TK_EDITOR_API void CaptureFrameExec(TagArgArray tagArgs);
+
+    const String g_captureStatusCmd("CaptureStatus");
+    TK_EDITOR_API void CaptureStatusExec(TagArgArray tagArgs);
+
+    const String g_captureOpenCmd("CaptureOpen");
+    TK_EDITOR_API void CaptureOpenExec(TagArgArray tagArgs);
+
     // Command errors
     const String g_noValidEntity("No valid entity");
 
