@@ -177,7 +177,17 @@ namespace ToolKit
       m_fragmentsPinned = true;
     }
 
-    RenderTargetPtr mainRt = m_params.FrameBuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
+    RenderTargetPtr mainRt = m_params.FrameBuffer != nullptr
+                                 ? m_params.FrameBuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0)
+                                 : nullptr;
+
+    // Nothing to bloom on: say which half is missing instead of walking into it.
+    if (mainRt == nullptr)
+    {
+      TK_ERR("BloomPass: the source framebuffer has no colour attachment to bloom on.");
+      m_invalidRenderParams = true;
+      return;
+    }
 
     // Set to minimum iteration count
     Vec2 mainRes           = UVec2(mainRt->m_width, mainRt->m_height);
