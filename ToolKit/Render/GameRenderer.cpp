@@ -76,9 +76,9 @@ namespace ToolKit
     // This pass is the composite, not a second gamma: the scene path leaves the hdr buffer alone (see
     // SceneRenderPathParams::CompositeElsewhere) and the tone curve, the gamma and the edges are applied here,
     // once, after the frame is scaled up to the window. The settings are the scene's own.
-    m_gammaPass->m_params.enableTonemapping = pps->GetTonemappingEnabledVal();
-    m_gammaPass->m_params.enableFxaa        = pps->GetFXAAEnabledVal();
-    m_gammaPass->m_params.tonemapMethod     = pps->GetTonemapperModeVal().GetEnum<TonemapMethod>();
+    m_gammaPass->m_params.enableTonemapping     = pps->GetTonemappingEnabledVal();
+    m_gammaPass->m_params.enableFxaa            = pps->GetFXAAEnabledVal();
+    m_gammaPass->m_params.tonemapMethod         = pps->GetTonemapperModeVal().GetEnum<TonemapMethod>();
   }
 
   void GameRenderer::PostRender(Renderer* renderer) { RenderPath::PostRender(renderer); }
