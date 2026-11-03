@@ -11,6 +11,11 @@
 #include "EditorTypes.h"
 #include "EditorViewport.h"
 
+#include <algorithm>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #include <EngineSettings.h>
 #include <Stats.h>
 
@@ -121,6 +126,72 @@ namespace ToolKit
       }
     }
 
+    /**
+     * Draws the gpu time of each pass, biggest first.
+     *
+     * The gpu half of the frame is invisible to the cpu profiler above: a pass can submit in
+     * microseconds and still fill the frame on the device. These come from timestamp queries the
+     * backend records around every pass's debug group, so the table lists whatever the renderer runs,
+     * including the shadow and pre process passes that the cpu tree merges away.
+     */
+    static void DrawGpuPassTable()
+    {
+      const std::unordered_map<String, float> times = Stats::GetPassGpuTimes();
+      if (times.empty())
+      {
+        ImGui::TextColored(UI::GetColor(EditorColor::ConsoleMemo),
+                           "No gpu timing. Either no pass rendered yet or this backend has no "
+                           "timestamp queries.");
+        return;
+      }
+
+      std::vector<std::pair<String, float>> sorted(times.begin(), times.end());
+      std::sort(sorted.begin(),
+                sorted.end(),
+                [](const std::pair<String, float>& a, const std::pair<String, float>& b)
+                { return a.second > b.second; });
+
+      float frameCpu = 0.0f, frameGpu = 0.0f;
+      Stats::GetRenderTime(frameCpu, frameGpu);
+
+      float passesGpu = 0.0f;
+      for (const auto& entry : sorted)
+      {
+        passesGpu += entry.second;
+      }
+
+      // The frame time the renderer reports is what the percentages should be measured against, but a
+      // host that only renders a viewport can report less than the sum of the passes inside it. Then
+      // the sum is the honest denominator instead of a table full of numbers over a hundred percent.
+      const float frameBase = glm::max(frameGpu, passesGpu);
+
+      ImGui::Text("Gpu per pass: passes %.2f ms, frame %.2f ms", passesGpu, frameGpu);
+
+      const ImGuiTableFlags flags = ImGuiTableFlags_Resizable | ImGuiTableFlags_Borders |
+                                    ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp;
+      if (ImGui::BeginTable("GpuPassTable", 3, flags))
+      {
+        ImGui::TableSetupColumn("Pass", ImGuiTableColumnFlags_WidthStretch, 2.0f);
+        ImGui::TableSetupColumn("Gpu (ms)", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+        ImGui::TableSetupColumn("% of frame", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+        ImGui::TableHeadersRow();
+
+        for (const auto& entry : sorted)
+        {
+          ImGui::TableNextRow();
+          ImGui::TableNextColumn();
+          ImGui::TextUnformatted(entry.first.c_str());
+          ImGui::TableNextColumn();
+          ImGui::Text("%.2f", entry.second);
+          ImGui::TableNextColumn();
+          const float pct = frameBase > 0.0f ? (entry.second / frameBase) * 100.0f : 0.0f;
+          ImGui::Text("%.0f%%", glm::min(pct, 100.0f));
+        }
+
+        ImGui::EndTable();
+      }
+    }
+
     void StatsWindow::Show()
     {
       ImGui::SetNextWindowSize(ImVec2(750, 450), ImGuiCond_Once);
@@ -134,7 +205,14 @@ namespace ToolKit
         {
           Profiler::SetProfilerEnabled(profilerEnabled);
         }
-        UI::AddTooltipToLastItem("Enable CPU profiler.\nShows nested timing information.");
+
+        // The gpu half rides on the same switch and is refreshed every frame, not only when the
+        // checkbox moves: the window can open with the profiler already enabled, and switching it is
+        // a boolean assignment on the backend.
+        const bool gpuTimingOn = Stats::EnablePassGpuTiming(profilerEnabled);
+
+        UI::AddTooltipToLastItem("Enable the cpu profiler and the per pass gpu timings.\n"
+                                 "Shows nested timing information and what each pass costs the gpu.");
 
         ImGui::Separator();
 
@@ -152,45 +230,55 @@ namespace ToolKit
 
         ImGui::Separator();
 
-        // Profiler section.
+        // One section for the whole frame: the gpu half first, then the cpu tree. They answer the same
+        // question from two sides - what the frame costs, and how that cost was spent - so they read in
+        // that order, biggest first.
         if (profilerEnabled)
         {
-          TKProfiler* profiler = Profiler::GetProfiler();
-          if (profiler != nullptr)
+          if (gpuTimingOn)
+          {
+            DrawGpuPassTable();
+          }
+          else
+          {
+            ImGui::TextColored(UI::GetColor(EditorColor::ConsoleMemo),
+                               "Gpu timing is unavailable: this backend has no timestamp queries.");
+          }
+
+          ImGui::Separator();
+
+          if (TKProfiler* profiler = Profiler::GetProfiler())
           {
             const ProfilerNodeArray& roots = profiler->GetRootNodes();
 
-            float frameTime                = profiler->GetFrameTime();
-            float avgFrameTime             = profiler->GetAverageFrameTime();
-            uint frameCount                = profiler->GetFrameCount();
+            const float frameTime    = profiler->GetFrameTime();
+            const float avgFrameTime = profiler->GetAverageFrameTime();
+            const uint frameCount    = profiler->GetFrameCount();
 
-            // Profiler summary header.
             ImGui::Text("Profiler: Frame: %.3f ms | Avg: %.3f ms | Frames: %u", frameTime, avgFrameTime, frameCount);
 
             ImGui::Separator();
 
-            // Profiler table.
             if (!roots.empty())
             {
-              ImGuiTableFlags tableFlags = ImGuiTableFlags_Resizable | ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
-                                           ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingStretchProp;
+              const ImGuiTableFlags tableFlags = ImGuiTableFlags_Resizable | ImGuiTableFlags_Borders |
+                                                 ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
+                                                 ImGuiTableFlags_SizingStretchProp;
 
-              // Calculate available height for the table.
-              float availableHeight      = ImGui::GetContentRegionAvail().y;
+              // Whatever is left of the window goes to the tree, which is the part that scrolls.
+              const float availableHeight = ImGui::GetContentRegionAvail().y;
 
               if (ImGui::BeginTable("ProfilerTable", 6, tableFlags, ImVec2(0.0f, availableHeight)))
               {
-                // Setup columns.
                 ImGui::TableSetupColumn("Scope Name", ImGuiTableColumnFlags_WidthStretch, 2.0f);
                 ImGui::TableSetupColumn("Incl (ms)", ImGuiTableColumnFlags_WidthFixed, 70.0f);
                 ImGui::TableSetupColumn("Excl (ms)", ImGuiTableColumnFlags_WidthFixed, 70.0f);
                 ImGui::TableSetupColumn("Incl %", ImGuiTableColumnFlags_WidthFixed, 60.0f);
                 ImGui::TableSetupColumn("Excl %", ImGuiTableColumnFlags_WidthFixed, 60.0f);
                 ImGui::TableSetupColumn("Hits", ImGuiTableColumnFlags_WidthFixed, 50.0f);
-                ImGui::TableSetupScrollFreeze(0, 1); // Freeze header row.
+                ImGui::TableSetupScrollFreeze(0, 1);
                 ImGui::TableHeadersRow();
 
-                // Draw all root nodes.
                 for (ProfilerNode* root : roots)
                 {
                   DrawProfilerNode(root, frameTime);
@@ -209,7 +297,7 @@ namespace ToolKit
         else
         {
           ImGui::TextColored(UI::GetColor(EditorColor::ConsoleMemo),
-                            "Profiler is disabled. Enable it to see timing data.");
+                             "Profiler is disabled. Enable it to see timing data.");
         }
       }
       ImGui::End();

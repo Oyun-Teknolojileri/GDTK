@@ -357,6 +357,9 @@ add_subdirectory(ToolKit   ${GDTK_INTERMEDIATE_DIR}/build-ToolKit)
 # emscripten (they need assimp, imgui and a real window).
 if(NOT EMSCRIPTEN AND NOT ANDROID)
   add_subdirectory(Modules/Workspace ${GDTK_INTERMEDIATE_DIR}/build-Workspace)
+  # RenderDoc capture module: the editor links it and calls it through the few
+  # entry points in RenderDocModule.h.
+  add_subdirectory(Modules/RenderDoc ${GDTK_INTERMEDIATE_DIR}/build-RenderDoc)
   add_subdirectory(Editor    ${GDTK_INTERMEDIATE_DIR}/build-Editor)
   add_subdirectory(Utils/Launcher ${GDTK_INTERMEDIATE_DIR}/build-Launcher)
   add_subdirectory(Utils/Import   ${GDTK_INTERMEDIATE_DIR}/build-Import)

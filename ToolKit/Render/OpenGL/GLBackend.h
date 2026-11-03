@@ -130,6 +130,8 @@ namespace ToolKit
     void BlitDepth(Framebuffer* src, Framebuffer* dst) override;
     void UpdateTextureSubRegion(Texture* tex, int x, int y, int w, int h, const void* data) override;
     void PushDebugGroup(StringView name) override;
+    bool SetGpuScopeTiming(bool enable) override;
+    void ResolveGpuScopes() override;
     void PopDebugGroup() override;
     void SetDebugLabel(Texture* tex) override;
     void SetDebugLabel(Framebuffer* fb) override;
@@ -147,7 +149,7 @@ namespace ToolKit
     bool m_firstBind = true;
     PassDesc m_activePassDesc;
 
-    // Program cache — avoids glUseProgram no-ops and glGetIntegerv(GL_CURRENT_PROGRAM) roundtrips.
+    // Program cache - avoids glUseProgram no-ops and glGetIntegerv(GL_CURRENT_PROGRAM) roundtrips.
     uint m_currentProgramId      = 0;
     GpuProgram* m_currentProgram = nullptr;
 
@@ -173,8 +175,42 @@ namespace ToolKit
     uint m_gpuTimerQuery     = 0;
     float m_cpuTime          = 1.0f;
     float m_gpuTime          = 1.0f;
+    /** One debug group's timestamp pair, waiting for the gpu to answer. */
+    struct GpuScopeRecord
+    {
+      String name;
+      uint beginQuery = 0;
+      uint endQuery   = 0;
+      uint frame      = 0;
+    };
+
+    /** Pairs recorded this frame, and pairs from earlier frames still waiting to be read back. */
+    std::vector<GpuScopeRecord> m_scopeInFlight;
+    std::vector<GpuScopeRecord> m_scopeRecorded;
+    struct OpenGpuScope
+    {
+      uint beginQuery = 0;
+    };
+    std::vector<OpenGpuScope> m_scopeOpen;
+    std::vector<uint> m_scopeQueryPool;
+    bool m_scopeTiming = false;
+
+    /** Frames since the timing was enabled, so a scope whose answer never comes can be retired. */
+    uint m_scopeFrame = 0;
+
     bool m_timerQueryActive  = false;
     bool m_timerQueryWaiting = false;
+
+    /**
+     * How deep the render path is nested in StartTimerQuery / EndTimerQuery. A frame opens the timer
+     * more than once - the game renderer wraps the scene path, which opens its own - and only the
+     * outermost pair may measure, or each inner pair overwrites the cpu time the outer one started
+     * with.
+     */
+    uint m_timerQueryDepth   = 0;
+
+    /** Frames spent waiting for a result that never arrives, to give up instead of stalling forever. */
+    uint m_timerQueryWaited  = 0;
   };
 
 } // namespace ToolKit

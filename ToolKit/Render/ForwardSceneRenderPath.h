@@ -74,6 +74,20 @@ namespace ToolKit
     FramebufferPtr m_resolvedFramebuffer             = nullptr;
 
    protected:
+    /**
+     * Whether the normal and depth target is built at half the frame's size.
+     *
+     * Driven by GraphicSettings::HalfResolutionForwardPreProcess, except that a screen space reflection
+     * pass reads the target at full resolution and forces it back off. Read from the settings rather
+     * than cached, because the pass params are written before the buffers are sized and the two have
+     * to agree.
+     */
+    bool PreProcessHalfResolution() const
+    {
+      const bool wanted = GetEngineSettings().m_graphics->GetHalfResolutionForwardPreProcessVal();
+      return wanted && !m_params.postProcessSettings->GetSSREnabledVal();
+    }
+
     bool m_drawSky   = false;
     SkyBasePtr m_sky = nullptr;
 

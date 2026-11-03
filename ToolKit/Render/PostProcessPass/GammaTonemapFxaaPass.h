@@ -36,12 +36,24 @@ namespace ToolKit
 
   struct GammaTonemapFxaaPassParams
   {
-    FramebufferPtr frameBuffer  = nullptr;
-    bool enableGammaCorrection  = true;
-    bool enableTonemapping      = true;
-    bool enableFxaa             = true;
-    TonemapMethod tonemapMethod = TonemapMethod::Aces;
-    float gamma                 = 2.2f;
+    /** Where the composite writes. */
+    FramebufferPtr frameBuffer       = nullptr;
+
+    /**
+     * What the composite reads, when that is not the target it writes.
+     *
+     * A pass cannot read the attachment it writes, so an in-place composite copies the whole target to a
+     * scratch texture first. Naming a different source skips that copy and samples the attachment
+     * directly, which is what the game renderer does: it composites the rendered target into a window
+     * sized target. Null means "the same target", the in-place case.
+     */
+    FramebufferPtr sourceFrameBuffer = nullptr;
+
+    bool enableGammaCorrection       = true;
+    bool enableTonemapping           = true;
+    bool enableFxaa                  = true;
+    TonemapMethod tonemapMethod      = TonemapMethod::Aces;
+    float gamma                      = 2.2f;
     Vec2 screenSize;
   };
 

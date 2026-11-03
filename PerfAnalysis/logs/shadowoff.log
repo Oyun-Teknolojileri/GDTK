@@ -1,0 +1,447 @@
+10-31 14:33:50.791 25420 25451 I TK_LOG  : GPU timer query: GL_EXT_disjoint_timer_query
+10-31 14:33:51.179 25420 25451 I TK_LOG  : Shader in compile ToolKit/skyboxVert.shader
+10-31 14:33:51.179 25420 25451 I TK_LOG  : Shader in compile ToolKit/gradientSkyboxFrag.shader
+10-31 14:33:51.179 25420 25451 I TK_LOG  : PERF config window=1080x2220 render=1080x2220 res=-1% msaa=-1 hdr=-1 ssao=-1 bloom=-1 tm=-1 cull=-1 batch=-1 shadow=0 mesh=-1
+10-31 14:33:51.186 25420 25451 I TK_LOG  : Shader in compile ToolKit/fullQuadVert.shader
+10-31 14:33:51.186 25420 25451 I TK_LOG  : Shader in compile ToolKit/BRDFLutFrag.shader
+10-31 14:33:51.209 25420 25451 I TK_LOG  : Shader in compile ToolKit/positionVert.shader
+10-31 14:33:51.209 25420 25451 I TK_LOG  : Shader in compile ToolKit/preFilterEnvMapFrag.shader
+10-31 14:33:52.264 25420 25451 I TK_LOG  : Shader in compile ToolKit/irradianceGenerateVert.shader
+10-31 14:33:52.264 25420 25451 I TK_LOG  : Shader in compile ToolKit/irradianceGenerateFrag.shader
+10-31 14:33:52.463 25420 25451 I TK_LOG  : Shader in compile ToolKit/ssaoBlurFrag.shader
+10-31 14:33:52.525 25420 25451 I TK_LOG  : Shader in compile ToolKit/bloomDownsample.shader
+10-31 14:33:52.526 25420 25451 I TK_LOG  : Shader in compile ToolKit/bloomUpsample.shader
+10-31 14:33:53.304 25420 25451 I TK_LOG  : Shader in compile ToolKit/copyTextureVert.shader
+10-31 14:33:53.306 25420 25451 I TK_LOG  : Shader in compile ToolKit/gammaTonemapFxaa.shader
+10-31 14:33:56.587 25420 25451 I TK_LOG  : PERF fps=8.03 period=124.47 work=125.03 swap=13.10 render=111.60 engcpu=34.69 gpu=120.00 max=218.49 draws=93 passes=12 inst=6/16 culled=52 vram=256MB res=1080x2220
+10-31 14:33:57.794 25420 25451 I TK_LOG  : PERF fps=8.72 period=114.68 work=134.12 swap=14.56 render=119.22 engcpu=116.00 gpu=120.20 max=215.65 draws=93 passes=12 inst=6/16 culled=52 vram=256MB res=1080x2220
+10-31 14:33:57.795 25420 25451 I TK_LOG  : PROF d4 SetFramebuffer                     inc   31.25 exc   31.25 ms/frame
+10-31 14:33:57.795 25420 25451 I TK_LOG  : PROF d0 CopyFrameBuffer                    inc   16.73 exc   16.73 ms/frame
+10-31 14:33:57.795 25420 25451 I TK_LOG  : PROF d7 Render                             inc   93.53 exc    8.75 ms/frame
+10-31 14:33:57.795 25420 25451 I TK_LOG  : PROF d3 CopyTexture                        inc    6.43 exc    5.96 ms/frame
+10-31 14:33:57.795 25420 25451 I TK_LOG  : PROF d8 FeedUniforms                       inc    3.52 exc    3.52 ms/frame
+10-31 14:33:57.795 25420 25451 I TK_LOG  : PROF d2 ResolveFramebuffer                 inc    1.50 exc    1.50 ms/frame
+10-31 14:33:57.795 25420 25451 I TK_LOG  : PROF d1 PreRender                          inc   36.23 exc    1.35 ms/frame
+10-31 14:33:57.795 25420 25451 I TK_LOG  : PROF d3 RenderOpaque                       inc    6.89 exc    2.54 ms/frame
+10-31 14:33:57.795 25420 25451 I TK_LOG  : PROF d3 FullQuadPass                       inc    8.43 exc    1.41 ms/frame
+10-31 14:33:57.795 25420 25451 I TK_LOG  : PROF d2 SSAOPass                           inc    0.96 exc    0.96 ms/frame
+10-31 14:33:57.795 25420 25451 I TK_LOG  : PROF d1 Gamma Pass                         inc    4.71 exc    0.21 ms/frame
+10-31 14:33:57.795 25420 25451 I TK_LOG  : PROF d2 GammaTonemapFxaaPass               inc    2.04 exc    0.10 ms/frame
+10-31 14:33:57.795 25420 25451 I TK_LOG  : PROF d4 WarpDepthGrid: project             inc    0.79 exc    0.79 ms/frame
+10-31 14:33:57.795 25420 25451 I TK_LOG  : PROF d3 RenderTranslucent                  inc    0.63 exc    0.63 ms/frame
+10-31 14:33:57.795 25420 25451 I TK_LOG  : PROF d3 BuildDepthGrid: start read         inc    0.26 exc    0.26 ms/frame
+10-31 14:33:57.795 25420 25451 I TK_LOG  : PROF d8 SetDataTextures                    inc    0.47 exc    0.47 ms/frame
+10-31 14:33:57.795 25420 25451 I TK_LOG  : PROF d4 CullOccludedEntities: grid test    inc    0.41 exc    0.41 ms/frame
+10-31 14:33:57.796 25420 25451 I TK_LOG  : PROF d6 RenderWithProgramFromMaterial      inc    0.83 exc    0.09 ms/frame
+10-31 14:33:57.796 25420 25451 I TK_LOG  : PROF d8 SetMaterial                        inc    0.37 exc    0.37 ms/frame
+10-31 14:33:57.796 25420 25451 I TK_LOG  : PROF d5 RenderOpaqueBatches                inc    4.33 exc    0.27 ms/frame
+10-31 14:33:57.796 25420 25451 I TK_LOG  : PROF d8 SetLights                          inc    0.27 exc    0.27 ms/frame
+10-31 14:33:57.796 25420 25451 I TK_LOG  : PROF d2 CubeMapPass                        inc    0.27 exc    0.27 ms/frame
+10-31 14:33:57.796 25420 25451 I TK_LOG  : PROF d3 RenderBatches                      inc    4.02 exc    0.26 ms/frame
+10-31 14:33:57.796 25420 25451 I TK_LOG  : PROF d2 SetPassParams                      inc    1.96 exc    0.26 ms/frame
+10-31 14:33:57.796 25420 25451 I TK_LOG  : PROF d4 WarpDepthGrid                      inc    0.94 exc    0.14 ms/frame
+10-31 14:33:57.796 25420 25451 I TK_LOG  : PROF d3 SetPassParams: create jobs         inc    0.62 exc    0.16 ms/frame
+10-31 14:33:57.796 25420 25451 I TK_LOG  : PROF d1 BuildDepthGrid                     inc    0.45 exc    0.02 ms/frame
+10-31 14:33:57.796 25420 25451 I TK_LOG  : PROF d4 DrawFullQuad                       inc    0.46 exc    0.04 ms/frame
+10-31 14:33:57.796 25420 25451 I TK_LOG  : PROF d6 RenderBatch                        inc    0.85 exc    0.02 ms/frame
+10-31 14:33:57.796 25420 25451 I TK_LOG  : PROF d4 RenderOpaqueHelper                 inc    4.35 exc    0.01 ms/frame
+10-31 14:33:57.796 25420 25451 I TK_LOG  : PROF d2 ForwardPreProcessPass              inc    0.29 exc    0.01 ms/frame
+10-31 14:33:57.796 25420 25451 I TK_LOG  : PROF d2 BuildDepthGrid: grid pass          inc    0.43 exc    0.00 ms/frame
+10-31 14:33:58.888 25420 25451 I TK_LOG  : PERF fps=7.46 period=134.05 work=121.32 swap=11.76 render=109.28 engcpu=98.02 gpu=121.36 max=216.09 draws=93 passes=12 inst=6/16 culled=52 vram=256MB res=1080x2220
+10-31 14:33:58.888 25420 25451 I TK_LOG  : PROF d4 SetFramebuffer                     inc   23.27 exc   23.27 ms/frame
+10-31 14:33:58.889 25420 25451 I TK_LOG  : PROF d0 CopyFrameBuffer                    inc   24.72 exc   24.72 ms/frame
+10-31 14:33:58.889 25420 25451 I TK_LOG  : PROF d7 Render                             inc   83.59 exc    8.39 ms/frame
+10-31 14:33:58.889 25420 25451 I TK_LOG  : PROF d3 CopyTexture                        inc    5.29 exc    4.88 ms/frame
+10-31 14:33:58.889 25420 25451 I TK_LOG  : PROF d8 FeedUniforms                       inc    3.71 exc    3.71 ms/frame
+10-31 14:33:58.889 25420 25451 I TK_LOG  : PROF d2 ResolveFramebuffer                 inc    1.38 exc    1.38 ms/frame
+10-31 14:33:58.889 25420 25451 I TK_LOG  : PROF d1 PreRender                          inc   33.87 exc    1.28 ms/frame
+10-31 14:33:58.889 25420 25451 I TK_LOG  : PROF d3 RenderOpaque                       inc    6.80 exc    2.51 ms/frame
+10-31 14:33:58.889 25420 25451 I TK_LOG  : PROF d3 FullQuadPass                       inc    7.91 exc    1.38 ms/frame
+10-31 14:33:58.889 25420 25451 I TK_LOG  : PROF d2 SSAOPass                           inc    0.91 exc    0.91 ms/frame
+10-31 14:33:58.889 25420 25451 I TK_LOG  : PROF d1 Gamma Pass                         inc    3.74 exc    0.19 ms/frame
+10-31 14:33:58.889 25420 25451 I TK_LOG  : PROF d4 WarpDepthGrid: project             inc    0.51 exc    0.51 ms/frame
+10-31 14:33:58.889 25420 25451 I TK_LOG  : PROF d3 RenderTranslucent                  inc    0.61 exc    0.61 ms/frame
+10-31 14:33:58.889 25420 25451 I TK_LOG  : PROF d2 GammaTonemapFxaaPass               inc    1.85 exc    0.10 ms/frame
+10-31 14:33:58.889 25420 25451 I TK_LOG  : PROF d8 SetDataTextures                    inc    0.46 exc    0.46 ms/frame
+10-31 14:33:58.889 25420 25451 I TK_LOG  : PROF d4 CullOccludedEntities: grid test    inc    0.39 exc    0.39 ms/frame
+10-31 14:33:58.889 25420 25451 I TK_LOG  : PROF d8 SetMaterial                        inc    0.33 exc    0.33 ms/frame
+10-31 14:33:58.889 25420 25451 I TK_LOG  : PROF d6 RenderWithProgramFromMaterial      inc    0.74 exc    0.08 ms/frame
+10-31 14:33:58.889 25420 25451 I TK_LOG  : PROF d5 RenderOpaqueBatches                inc    4.28 exc    0.28 ms/frame
+10-31 14:33:58.889 25420 25451 I TK_LOG  : PROF d2 CubeMapPass                        inc    0.35 exc    0.35 ms/frame
+10-31 14:33:58.889 25420 25451 I TK_LOG  : PROF d3 RenderBatches                      inc    4.02 exc    0.24 ms/frame
+10-31 14:33:58.889 25420 25451 I TK_LOG  : PROF d2 SetPassParams                      inc    1.70 exc    0.19 ms/frame
+10-31 14:33:58.889 25420 25451 I TK_LOG  : PROF d4 WarpDepthGrid                      inc    0.69 exc    0.18 ms/frame
+10-31 14:33:58.889 25420 25451 I TK_LOG  : PROF d3 SetPassParams: create jobs         inc    0.63 exc    0.19 ms/frame
+10-31 14:33:58.890 25420 25451 I TK_LOG  : PROF d1 BuildDepthGrid                     inc    0.35 exc    0.03 ms/frame
+10-31 14:33:58.890 25420 25451 I TK_LOG  : PROF d4 DrawFullQuad                       inc    0.41 exc    0.04 ms/frame
+10-31 14:33:58.890 25420 25451 I TK_LOG  : PROF d6 RenderBatch                        inc    0.86 exc    0.02 ms/frame
+10-31 14:33:58.890 25420 25451 I TK_LOG  : PROF d4 RenderOpaqueHelper                 inc    4.29 exc    0.01 ms/frame
+10-31 14:33:58.890 25420 25451 I TK_LOG  : PROF d2 ForwardPreProcessPass              inc    0.28 exc    0.01 ms/frame
+10-31 14:33:58.890 25420 25451 I TK_LOG  : PROF d2 BuildDepthGrid: grid pass          inc    0.32 exc    0.00 ms/frame
+10-31 14:34:00.027 25420 25451 I TK_LOG  : PERF fps=8.26 period=121.09 work=126.30 swap=14.31 render=111.72 engcpu=51.22 gpu=120.92 max=215.94 draws=94 passes=13 inst=6/16 culled=52 vram=256MB res=1080x2220
+10-31 14:34:00.027 25420 25451 I TK_LOG  : PROF d4 SetFramebuffer                     inc   24.51 exc   24.51 ms/frame
+10-31 14:34:00.027 25420 25451 I TK_LOG  : PROF d0 CopyFrameBuffer                    inc   17.22 exc   17.22 ms/frame
+10-31 14:34:00.027 25420 25451 I TK_LOG  : PROF d7 Render                             inc   84.17 exc    8.18 ms/frame
+10-31 14:34:00.027 25420 25451 I TK_LOG  : PROF d3 CopyTexture                        inc    6.36 exc    5.97 ms/frame
+10-31 14:34:00.027 25420 25451 I TK_LOG  : PROF d8 FeedUniforms                       inc    3.47 exc    3.47 ms/frame
+10-31 14:34:00.027 25420 25451 I TK_LOG  : PROF d2 ResolveFramebuffer                 inc    1.64 exc    1.64 ms/frame
+10-31 14:34:00.027 25420 25451 I TK_LOG  : PROF d3 RenderOpaque                       inc    6.46 exc    2.38 ms/frame
+10-31 14:34:00.027 25420 25451 I TK_LOG  : PROF d1 PreRender                          inc   35.24 exc    1.12 ms/frame
+10-31 14:34:00.027 25420 25451 I TK_LOG  : PROF d3 FullQuadPass                       inc    8.40 exc    1.31 ms/frame
+10-31 14:34:00.027 25420 25451 I TK_LOG  : PROF d2 SSAOPass                           inc    1.16 exc    1.16 ms/frame
+10-31 14:34:00.027 25420 25451 I TK_LOG  : PROF d4 WarpDepthGrid: project             inc    0.58 exc    0.58 ms/frame
+10-31 14:34:00.028 25420 25451 I TK_LOG  : PROF d3 RenderTranslucent                  inc    0.60 exc    0.60 ms/frame
+10-31 14:34:00.028 25420 25451 I TK_LOG  : PROF d1 Gamma Pass                         inc    4.62 exc    0.19 ms/frame
+10-31 14:34:00.028 25420 25451 I TK_LOG  : PROF d2 GammaTonemapFxaaPass               inc    2.03 exc    0.09 ms/frame
+10-31 14:34:00.028 25420 25451 I TK_LOG  : PROF d8 SetDataTextures                    inc    0.46 exc    0.46 ms/frame
+10-31 14:34:00.028 25420 25451 I TK_LOG  : PROF d4 CullOccludedEntities: grid test    inc    0.48 exc    0.48 ms/frame
+10-31 14:34:00.028 25420 25451 I TK_LOG  : PROF d8 SetMaterial                        inc    0.33 exc    0.33 ms/frame
+10-31 14:34:00.028 25420 25451 I TK_LOG  : PROF d5 RenderOpaqueBatches                inc    4.07 exc    0.27 ms/frame
+10-31 14:34:00.028 25420 25451 I TK_LOG  : PROF d6 RenderWithProgramFromMaterial      inc    0.69 exc    0.08 ms/frame
+10-31 14:34:00.028 25420 25451 I TK_LOG  : PROF d2 CubeMapPass                        inc    0.26 exc    0.26 ms/frame
+10-31 14:34:00.028 25420 25451 I TK_LOG  : PROF d3 RenderBatches                      inc    3.86 exc    0.24 ms/frame
+10-31 14:34:00.028 25420 25451 I TK_LOG  : PROF d2 SetPassParams                      inc    1.74 exc    0.16 ms/frame
+10-31 14:34:00.028 25420 25451 I TK_LOG  : PROF d4 WarpDepthGrid                      inc    0.72 exc    0.14 ms/frame
+10-31 14:34:00.028 25420 25451 I TK_LOG  : PROF d3 SetPassParams: create jobs         inc    0.73 exc    0.19 ms/frame
+10-31 14:34:00.028 25420 25451 I TK_LOG  : PROF d1 BuildDepthGrid                     inc    0.34 exc    0.02 ms/frame
+10-31 14:34:00.028 25420 25451 I TK_LOG  : PROF d4 DrawFullQuad                       inc    0.38 exc    0.04 ms/frame
+10-31 14:34:00.028 25420 25451 I TK_LOG  : PROF d6 RenderBatch                        inc    0.86 exc    0.02 ms/frame
+10-31 14:34:00.028 25420 25451 I TK_LOG  : PROF d4 RenderOpaqueHelper                 inc    4.08 exc    0.01 ms/frame
+10-31 14:34:00.028 25420 25451 I TK_LOG  : PROF d2 ForwardPreProcessPass              inc    0.28 exc    0.01 ms/frame
+10-31 14:34:00.028 25420 25451 I TK_LOG  : PROF d2 BuildDepthGrid: grid pass          inc    0.32 exc    0.00 ms/frame
+10-31 14:34:01.027 25420 25451 I TK_LOG  : PERF fps=7.98 period=125.25 work=124.83 swap=13.01 render=111.50 engcpu=50.00 gpu=121.74 max=218.87 draws=94 passes=13 inst=6/16 culled=52 vram=256MB res=1080x2220
+10-31 14:34:01.027 25420 25451 I TK_LOG  : PROF d4 SetFramebuffer                     inc   25.90 exc   25.90 ms/frame
+10-31 14:34:01.027 25420 25451 I TK_LOG  : PROF d0 CopyFrameBuffer                    inc   19.29 exc   19.29 ms/frame
+10-31 14:34:01.028 25420 25451 I TK_LOG  : PROF d7 Render                             inc   86.83 exc    8.36 ms/frame
+10-31 14:34:01.028 25420 25451 I TK_LOG  : PROF d3 CopyTexture                        inc    6.44 exc    6.03 ms/frame
+10-31 14:34:01.028 25420 25451 I TK_LOG  : PROF d8 FeedUniforms                       inc    3.42 exc    3.42 ms/frame
+10-31 14:34:01.028 25420 25451 I TK_LOG  : PROF d2 ResolveFramebuffer                 inc    2.04 exc    2.04 ms/frame
+10-31 14:34:01.028 25420 25451 I TK_LOG  : PROF d3 RenderOpaque                       inc    6.31 exc    2.18 ms/frame
+10-31 14:34:01.028 25420 25451 I TK_LOG  : PROF d1 PreRender                          inc   35.87 exc    0.90 ms/frame
+10-31 14:34:01.028 25420 25451 I TK_LOG  : PROF d3 FullQuadPass                       inc    8.99 exc    1.36 ms/frame
+10-31 14:34:01.028 25420 25451 I TK_LOG  : PROF d2 SSAOPass                           inc    1.34 exc    1.34 ms/frame
+10-31 14:34:01.028 25420 25451 I TK_LOG  : PROF d4 WarpDepthGrid: project             inc    0.47 exc    0.47 ms/frame
+10-31 14:34:01.028 25420 25451 I TK_LOG  : PROF d3 RenderTranslucent                  inc    0.57 exc    0.57 ms/frame
+10-31 14:34:01.028 25420 25451 I TK_LOG  : PROF d1 Gamma Pass                         inc    4.03 exc    0.18 ms/frame
+10-31 14:34:01.028 25420 25451 I TK_LOG  : PROF d8 SetDataTextures                    inc    0.44 exc    0.44 ms/frame
+10-31 14:34:01.028 25420 25451 I TK_LOG  : PROF d2 GammaTonemapFxaaPass               inc    2.71 exc    0.11 ms/frame
+10-31 14:34:01.028 25420 25451 I TK_LOG  : PROF d4 CullOccludedEntities: grid test    inc    0.40 exc    0.40 ms/frame
+10-31 14:34:01.028 25420 25451 I TK_LOG  : PROF d8 SetMaterial                        inc    0.33 exc    0.33 ms/frame
+10-31 14:34:01.028 25420 25451 I TK_LOG  : PROF d5 RenderOpaqueBatches                inc    4.11 exc    0.28 ms/frame
+10-31 14:34:01.028 25420 25451 I TK_LOG  : PROF d6 RenderWithProgramFromMaterial      inc    0.72 exc    0.07 ms/frame
+10-31 14:34:01.028 25420 25451 I TK_LOG  : PROF d3 RenderBatches                      inc    3.94 exc    0.23 ms/frame
+10-31 14:34:01.029 25420 25451 I TK_LOG  : PROF d2 SetPassParams                      inc    1.58 exc    0.19 ms/frame
+10-31 14:34:01.029 25420 25451 I TK_LOG  : PROF d4 WarpDepthGrid                      inc    0.65 exc    0.18 ms/frame
+10-31 14:34:01.029 25420 25451 I TK_LOG  : PROF d3 SetPassParams: create jobs         inc    0.62 exc    0.17 ms/frame
+10-31 14:34:01.029 25420 25451 I TK_LOG  : PROF d1 BuildDepthGrid                     inc    0.32 exc    0.02 ms/frame
+10-31 14:34:01.029 25420 25451 I TK_LOG  : PROF d4 DrawFullQuad                       inc    0.40 exc    0.04 ms/frame
+10-31 14:34:01.029 25420 25451 I TK_LOG  : PROF d6 RenderBatch                        inc    0.75 exc    0.02 ms/frame
+10-31 14:34:01.029 25420 25451 I TK_LOG  : PROF d4 RenderOpaqueHelper                 inc    4.13 exc    0.02 ms/frame
+10-31 14:34:01.029 25420 25451 I TK_LOG  : PROF d2 ForwardPreProcessPass              inc    0.27 exc    0.01 ms/frame
+10-31 14:34:01.029 25420 25451 I TK_LOG  : PROF d2 BuildDepthGrid: grid pass          inc    0.30 exc    0.00 ms/frame
+10-31 14:34:02.058 25420 25451 I TK_LOG  : PERF fps=7.87 period=127.06 work=114.36 swap=11.83 render=102.20 engcpu=32.79 gpu=121.24 max=216.67 draws=93 passes=12 inst=6/16 culled=52 vram=256MB res=1080x2220
+10-31 14:34:02.059 25420 25451 I TK_LOG  : PROF d4 SetFramebuffer                     inc   23.64 exc   23.64 ms/frame
+10-31 14:34:02.059 25420 25451 I TK_LOG  : PROF d0 CopyFrameBuffer                    inc   16.81 exc   16.81 ms/frame
+10-31 14:34:02.059 25420 25451 I TK_LOG  : PROF d7 Render                             inc   84.47 exc    8.26 ms/frame
+10-31 14:34:02.059 25420 25451 I TK_LOG  : PROF d3 CopyTexture                        inc    5.27 exc    4.89 ms/frame
+10-31 14:34:02.059 25420 25451 I TK_LOG  : PROF d8 FeedUniforms                       inc    3.69 exc    3.69 ms/frame
+10-31 14:34:02.059 25420 25451 I TK_LOG  : PROF d3 RenderOpaque                       inc    7.06 exc    2.61 ms/frame
+10-31 14:34:02.059 25420 25451 I TK_LOG  : PROF d2 ResolveFramebuffer                 inc    1.57 exc    1.57 ms/frame
+10-31 14:34:02.059 25420 25451 I TK_LOG  : PROF d1 PreRender                          inc   34.66 exc    1.06 ms/frame
+10-31 14:34:02.059 25420 25451 I TK_LOG  : PROF d3 FullQuadPass                       inc    8.17 exc    1.41 ms/frame
+10-31 14:34:02.059 25420 25451 I TK_LOG  : PROF d2 SSAOPass                           inc    0.93 exc    0.92 ms/frame
+10-31 14:34:02.059 25420 25451 I TK_LOG  : PROF d4 WarpDepthGrid: project             inc    1.01 exc    1.01 ms/frame
+10-31 14:34:02.059 25420 25451 I TK_LOG  : PROF d3 RenderTranslucent                  inc    0.60 exc    0.60 ms/frame
+10-31 14:34:02.059 25420 25451 I TK_LOG  : PROF d8 SetDataTextures                    inc    0.50 exc    0.50 ms/frame
+10-31 14:34:02.059 25420 25451 I TK_LOG  : PROF d1 Gamma Pass                         inc    3.73 exc    0.18 ms/frame
+10-31 14:34:02.059 25420 25451 I TK_LOG  : PROF d4 CullOccludedEntities: grid test    inc    0.40 exc    0.40 ms/frame
+10-31 14:34:02.059 25420 25451 I TK_LOG  : PROF d2 GammaTonemapFxaaPass               inc    1.83 exc    0.11 ms/frame
+10-31 14:34:02.059 25420 25451 I TK_LOG  : PROF d8 SetMaterial                        inc    0.35 exc    0.35 ms/frame
+10-31 14:34:02.059 25420 25451 I TK_LOG  : PROF d5 RenderOpaqueBatches                inc    4.44 exc    0.33 ms/frame
+10-31 14:34:02.059 25420 25451 I TK_LOG  : PROF d2 CubeMapPass                        inc    0.27 exc    0.26 ms/frame
+10-31 14:34:02.059 25420 25451 I TK_LOG  : PROF d3 RenderBatches                      inc    3.91 exc    0.23 ms/frame
+10-31 14:34:02.059 25420 25451 I TK_LOG  : PROF d6 RenderWithProgramFromMaterial      inc    0.68 exc    0.07 ms/frame
+10-31 14:34:02.059 25420 25451 I TK_LOG  : PROF d2 SetPassParams                      inc    2.21 exc    0.17 ms/frame
+10-31 14:34:02.059 25420 25451 I TK_LOG  : PROF d4 WarpDepthGrid                      inc    1.24 exc    0.23 ms/frame
+10-31 14:34:02.059 25420 25451 I TK_LOG  : PROF d3 SetPassParams: create jobs         inc    0.63 exc    0.18 ms/frame
+10-31 14:34:02.059 25420 25451 I TK_LOG  : PROF d1 BuildDepthGrid                     inc    0.31 exc    0.02 ms/frame
+10-31 14:34:02.059 25420 25451 I TK_LOG  : PROF d4 DrawFullQuad                       inc    0.38 exc    0.04 ms/frame
+10-31 14:34:02.059 25420 25451 I TK_LOG  : PROF d6 RenderBatch                        inc    0.81 exc    0.02 ms/frame
+10-31 14:34:02.059 25420 25451 I TK_LOG  : PROF d4 RenderOpaqueHelper                 inc    4.46 exc    0.01 ms/frame
+10-31 14:34:02.059 25420 25451 I TK_LOG  : PROF d2 ForwardPreProcessPass              inc    0.28 exc    0.01 ms/frame
+10-31 14:34:02.059 25420 25451 I TK_LOG  : PROF d2 BuildDepthGrid: grid pass          inc    0.29 exc    0.00 ms/frame
+10-31 14:34:03.262 25420 25451 I TK_LOG  : PERF fps=8.80 period=113.67 work=133.60 swap=14.22 render=119.11 engcpu=118.63 gpu=119.69 max=214.59 draws=93 passes=12 inst=6/16 culled=52 vram=256MB res=1080x2220
+10-31 14:34:03.262 25420 25451 I TK_LOG  : PROF d4 SetFramebuffer                     inc   31.85 exc   31.85 ms/frame
+10-31 14:34:03.262 25420 25451 I TK_LOG  : PROF d0 CopyFrameBuffer                    inc   17.20 exc   17.20 ms/frame
+10-31 14:34:03.262 25420 25451 I TK_LOG  : PROF d7 Render                             inc   91.63 exc    8.14 ms/frame
+10-31 14:34:03.262 25420 25451 I TK_LOG  : PROF d3 CopyTexture                        inc    6.36 exc    5.92 ms/frame
+10-31 14:34:03.263 25420 25451 I TK_LOG  : PROF d8 FeedUniforms                       inc    3.56 exc    3.56 ms/frame
+10-31 14:34:03.263 25420 25451 I TK_LOG  : PROF d3 RenderOpaque                       inc    6.58 exc    2.35 ms/frame
+10-31 14:34:03.263 25420 25451 I TK_LOG  : PROF d2 ResolveFramebuffer                 inc    1.50 exc    1.50 ms/frame
+10-31 14:34:03.263 25420 25451 I TK_LOG  : PROF d1 PreRender                          inc   35.42 exc    1.51 ms/frame
+10-31 14:34:03.263 25420 25451 I TK_LOG  : PROF d3 FullQuadPass                       inc    8.32 exc    1.35 ms/frame
+10-31 14:34:03.263 25420 25451 I TK_LOG  : PROF d2 SSAOPass                           inc    1.13 exc    1.13 ms/frame
+10-31 14:34:03.263 25420 25451 I TK_LOG  : PROF d4 WarpDepthGrid: project             inc    0.56 exc    0.56 ms/frame
+10-31 14:34:03.263 25420 25451 I TK_LOG  : PROF d3 RenderTranslucent                  inc    0.57 exc    0.57 ms/frame
+10-31 14:34:03.263 25420 25451 I TK_LOG  : PROF d8 SetDataTextures                    inc    0.48 exc    0.48 ms/frame
+10-31 14:34:03.263 25420 25451 I TK_LOG  : PROF d1 Gamma Pass                         inc    4.63 exc    0.19 ms/frame
+10-31 14:34:03.263 25420 25451 I TK_LOG  : PROF d4 CullOccludedEntities: grid test    inc    0.40 exc    0.40 ms/frame
+10-31 14:34:03.263 25420 25451 I TK_LOG  : PROF d2 GammaTonemapFxaaPass               inc    2.02 exc    0.10 ms/frame
+10-31 14:34:03.263 25420 25451 I TK_LOG  : PROF d8 SetMaterial                        inc    0.34 exc    0.34 ms/frame
+10-31 14:34:03.263 25420 25451 I TK_LOG  : PROF d5 RenderOpaqueBatches                inc    4.21 exc    0.29 ms/frame
+10-31 14:34:03.263 25420 25451 I TK_LOG  : PROF d2 CubeMapPass                        inc    0.30 exc    0.30 ms/frame
+10-31 14:34:03.263 25420 25451 I TK_LOG  : PROF d3 RenderBatches                      inc    3.81 exc    0.22 ms/frame
+10-31 14:34:03.263 25420 25451 I TK_LOG  : PROF d6 RenderWithProgramFromMaterial      inc    0.78 exc    0.07 ms/frame
+10-31 14:34:03.263 25420 25451 I TK_LOG  : PROF d2 SetPassParams                      inc    1.65 exc    0.17 ms/frame
+10-31 14:34:03.263 25420 25451 I TK_LOG  : PROF d4 WarpDepthGrid                      inc    0.70 exc    0.14 ms/frame
+10-31 14:34:03.263 25420 25451 I TK_LOG  : PROF d3 SetPassParams: create jobs         inc    0.62 exc    0.17 ms/frame
+10-31 14:34:03.263 25420 25451 I TK_LOG  : PROF d1 BuildDepthGrid                     inc    0.36 exc    0.02 ms/frame
+10-31 14:34:03.263 25420 25451 I TK_LOG  : PROF d4 DrawFullQuad                       inc    0.43 exc    0.04 ms/frame
+10-31 14:34:03.263 25420 25451 I TK_LOG  : PROF d6 RenderBatch                        inc    0.87 exc    0.02 ms/frame
+10-31 14:34:03.264 25420 25451 I TK_LOG  : PROF d4 RenderOpaqueHelper                 inc    4.22 exc    0.01 ms/frame
+10-31 14:34:03.264 25420 25451 I TK_LOG  : PROF d2 ForwardPreProcessPass              inc    0.34 exc    0.01 ms/frame
+10-31 14:34:03.264 25420 25451 I TK_LOG  : PROF d2 BuildDepthGrid: grid pass          inc    0.34 exc    0.00 ms/frame
+10-31 14:34:04.354 25420 25451 I TK_LOG  : PERF fps=7.46 period=134.06 work=121.17 swap=11.89 render=109.01 engcpu=99.09 gpu=119.52 max=217.08 draws=93 passes=12 inst=6/16 culled=52 vram=256MB res=1080x2220
+10-31 14:34:04.355 25420 25451 I TK_LOG  : PROF d4 SetFramebuffer                     inc   22.27 exc   22.27 ms/frame
+10-31 14:34:04.355 25420 25451 I TK_LOG  : PROF d0 CopyFrameBuffer                    inc   24.40 exc   24.40 ms/frame
+10-31 14:34:04.355 25420 25451 I TK_LOG  : PROF d7 Render                             inc   84.55 exc    8.74 ms/frame
+10-31 14:34:04.355 25420 25451 I TK_LOG  : PROF d3 CopyTexture                        inc    6.01 exc    5.60 ms/frame
+10-31 14:34:04.355 25420 25451 I TK_LOG  : PROF d8 FeedUniforms                       inc    3.76 exc    3.76 ms/frame
+10-31 14:34:04.355 25420 25451 I TK_LOG  : PROF d3 RenderOpaque                       inc    6.66 exc    2.38 ms/frame
+10-31 14:34:04.355 25420 25451 I TK_LOG  : PROF d2 ResolveFramebuffer                 inc    1.48 exc    1.48 ms/frame
+10-31 14:34:04.355 25420 25451 I TK_LOG  : PROF d1 PreRender                          inc   35.11 exc    1.17 ms/frame
+10-31 14:34:04.355 25420 25451 I TK_LOG  : PROF d3 FullQuadPass                       inc    8.55 exc    1.39 ms/frame
+10-31 14:34:04.355 25420 25451 I TK_LOG  : PROF d2 SSAOPass                           inc    1.05 exc    1.04 ms/frame
+10-31 14:34:04.355 25420 25451 I TK_LOG  : PROF d4 WarpDepthGrid: project             inc    0.45 exc    0.45 ms/frame
+10-31 14:34:04.355 25420 25451 I TK_LOG  : PROF d3 RenderTranslucent                  inc    0.56 exc    0.55 ms/frame
+10-31 14:34:04.355 25420 25451 I TK_LOG  : PROF d8 SetDataTextures                    inc    0.48 exc    0.48 ms/frame
+10-31 14:34:04.355 25420 25451 I TK_LOG  : PROF d1 Gamma Pass                         inc    4.00 exc    0.22 ms/frame
+10-31 14:34:04.355 25420 25451 I TK_LOG  : PROF d4 CullOccludedEntities: grid test    inc    0.45 exc    0.45 ms/frame
+10-31 14:34:04.355 25420 25451 I TK_LOG  : PROF d8 SetMaterial                        inc    0.32 exc    0.32 ms/frame
+10-31 14:34:04.355 25420 25451 I TK_LOG  : PROF d2 GammaTonemapFxaaPass               inc    2.34 exc    0.11 ms/frame
+10-31 14:34:04.355 25420 25451 I TK_LOG  : PROF d3 BuildDepthGrid: start read         inc    0.27 exc    0.27 ms/frame
+10-31 14:34:04.355 25420 25451 I TK_LOG  : PROF d5 RenderOpaqueBatches                inc    4.26 exc    0.28 ms/frame
+10-31 14:34:04.356 25420 25451 I TK_LOG  : PROF d2 CubeMapPass                        inc    0.27 exc    0.27 ms/frame
+10-31 14:34:04.356 25420 25451 I TK_LOG  : PROF d3 RenderBatches                      inc    4.08 exc    0.22 ms/frame
+10-31 14:34:04.356 25420 25451 I TK_LOG  : PROF d6 RenderWithProgramFromMaterial      inc    0.73 exc    0.08 ms/frame
+10-31 14:34:04.356 25420 25451 I TK_LOG  : PROF d2 SetPassParams                      inc    1.64 exc    0.19 ms/frame
+10-31 14:34:04.356 25420 25451 I TK_LOG  : PROF d4 WarpDepthGrid                      inc    0.62 exc    0.17 ms/frame
+10-31 14:34:04.356 25420 25451 I TK_LOG  : PROF d3 SetPassParams: create jobs         inc    0.69 exc    0.19 ms/frame
+10-31 14:34:04.356 25420 25451 I TK_LOG  : PROF d1 BuildDepthGrid                     inc    0.48 exc    0.03 ms/frame
+10-31 14:34:04.356 25420 25451 I TK_LOG  : PROF d4 DrawFullQuad                       inc    0.40 exc    0.04 ms/frame
+10-31 14:34:04.356 25420 25451 I TK_LOG  : PROF d6 RenderBatch                        inc    0.85 exc    0.03 ms/frame
+10-31 14:34:04.356 25420 25451 I TK_LOG  : PROF d4 RenderOpaqueHelper                 inc    4.27 exc    0.01 ms/frame
+10-31 14:34:04.356 25420 25451 I TK_LOG  : PROF d2 ForwardPreProcessPass              inc    0.29 exc    0.01 ms/frame
+10-31 14:34:04.356 25420 25451 I TK_LOG  : PROF d2 BuildDepthGrid: grid pass          inc    0.45 exc    0.00 ms/frame
+10-31 14:34:05.494 25420 25451 I TK_LOG  : PERF fps=8.24 period=121.39 work=126.45 swap=14.49 render=111.65 engcpu=50.10 gpu=120.50 max=215.85 draws=94 passes=13 inst=6/16 culled=52 vram=256MB res=1080x2220
+10-31 14:34:05.495 25420 25451 I TK_LOG  : PROF d4 SetFramebuffer                     inc   24.26 exc   24.26 ms/frame
+10-31 14:34:05.495 25420 25451 I TK_LOG  : PROF d0 CopyFrameBuffer                    inc   17.60 exc   17.60 ms/frame
+10-31 14:34:05.495 25420 25451 I TK_LOG  : PROF d7 Render                             inc   83.41 exc    8.15 ms/frame
+10-31 14:34:05.495 25420 25451 I TK_LOG  : PROF d3 CopyTexture                        inc    6.28 exc    5.92 ms/frame
+10-31 14:34:05.495 25420 25451 I TK_LOG  : PROF d8 FeedUniforms                       inc    3.48 exc    3.48 ms/frame
+10-31 14:34:05.495 25420 25451 I TK_LOG  : PROF d3 RenderOpaque                       inc    6.48 exc    2.30 ms/frame
+10-31 14:34:05.495 25420 25451 I TK_LOG  : PROF d2 ResolveFramebuffer                 inc    1.45 exc    1.45 ms/frame
+10-31 14:34:05.495 25420 25451 I TK_LOG  : PROF d1 PreRender                          inc   34.82 exc    1.14 ms/frame
+10-31 14:34:05.495 25420 25451 I TK_LOG  : PROF d3 FullQuadPass                       inc    8.18 exc    1.23 ms/frame
+10-31 14:34:05.495 25420 25451 I TK_LOG  : PROF d2 SSAOPass                           inc    0.93 exc    0.93 ms/frame
+10-31 14:34:05.495 25420 25451 I TK_LOG  : PROF d4 WarpDepthGrid: project             inc    0.73 exc    0.73 ms/frame
+10-31 14:34:05.495 25420 25451 I TK_LOG  : PROF d3 RenderTranslucent                  inc    0.60 exc    0.59 ms/frame
+10-31 14:34:05.495 25420 25451 I TK_LOG  : PROF d8 SetDataTextures                    inc    0.49 exc    0.49 ms/frame
+10-31 14:34:05.495 25420 25451 I TK_LOG  : PROF d4 CullOccludedEntities: grid test    inc    0.47 exc    0.47 ms/frame
+10-31 14:34:05.495 25420 25451 I TK_LOG  : PROF d1 Gamma Pass                         inc    4.53 exc    0.16 ms/frame
+10-31 14:34:05.495 25420 25451 I TK_LOG  : PROF d8 SetMaterial                        inc    0.34 exc    0.34 ms/frame
+10-31 14:34:05.495 25420 25451 I TK_LOG  : PROF d2 GammaTonemapFxaaPass               inc    1.99 exc    0.08 ms/frame
+10-31 14:34:05.495 25420 25451 I TK_LOG  : PROF d5 RenderOpaqueBatches                inc    4.17 exc    0.27 ms/frame
+10-31 14:34:05.495 25420 25451 I TK_LOG  : PROF d2 CubeMapPass                        inc    0.28 exc    0.28 ms/frame
+10-31 14:34:05.496 25420 25451 I TK_LOG  : PROF d3 RenderBatches                      inc    3.96 exc    0.25 ms/frame
+10-31 14:34:05.496 25420 25451 I TK_LOG  : PROF d2 SetPassParams                      inc    1.95 exc    0.24 ms/frame
+10-31 14:34:05.496 25420 25451 I TK_LOG  : PROF d6 RenderWithProgramFromMaterial      inc    0.63 exc    0.07 ms/frame
+10-31 14:34:05.496 25420 25451 I TK_LOG  : PROF d3 SetPassParams: create jobs         inc    0.72 exc    0.20 ms/frame
+10-31 14:34:05.496 25420 25451 I TK_LOG  : PROF d4 WarpDepthGrid                      inc    0.86 exc    0.13 ms/frame
+10-31 14:34:05.496 25420 25451 I TK_LOG  : PROF d4 DrawFullQuad                       inc    0.35 exc    0.03 ms/frame
+10-31 14:34:05.496 25420 25451 I TK_LOG  : PROF d6 RenderBatch                        inc    0.82 exc    0.02 ms/frame
+10-31 14:34:05.496 25420 25451 I TK_LOG  : PROF d4 RenderOpaqueHelper                 inc    4.18 exc    0.01 ms/frame
+10-31 14:34:05.496 25420 25451 I TK_LOG  : PROF d2 ForwardPreProcessPass              inc    0.29 exc    0.01 ms/frame
+10-31 14:34:06.527 25420 25451 I TK_LOG  : PERF fps=7.85 period=127.40 work=114.60 swap=11.81 render=102.48 engcpu=32.85 gpu=121.06 max=215.67 draws=93 passes=12 inst=6/16 culled=52 vram=256MB res=1080x2220
+10-31 14:34:06.528 25420 25451 I TK_LOG  : PROF d4 SetFramebuffer                     inc   23.77 exc   23.77 ms/frame
+10-31 14:34:06.528 25420 25451 I TK_LOG  : PROF d0 CopyFrameBuffer                    inc   16.98 exc   16.98 ms/frame
+10-31 14:34:06.528 25420 25451 I TK_LOG  : PROF d7 Render                             inc   84.66 exc    8.41 ms/frame
+10-31 14:34:06.528 25420 25451 I TK_LOG  : PROF d3 CopyTexture                        inc    5.14 exc    4.72 ms/frame
+10-31 14:34:06.528 25420 25451 I TK_LOG  : PROF d8 FeedUniforms                       inc    3.65 exc    3.65 ms/frame
+10-31 14:34:06.528 25420 25451 I TK_LOG  : PROF d3 RenderOpaque                       inc    6.91 exc    2.44 ms/frame
+10-31 14:34:06.528 25420 25451 I TK_LOG  : PROF d2 ResolveFramebuffer                 inc    1.31 exc    1.31 ms/frame
+10-31 14:34:06.528 25420 25451 I TK_LOG  : PROF d1 PreRender                          inc   34.70 exc    1.37 ms/frame
+10-31 14:34:06.528 25420 25451 I TK_LOG  : PROF d3 FullQuadPass                       inc    8.35 exc    1.37 ms/frame
+10-31 14:34:06.528 25420 25451 I TK_LOG  : PROF d2 SSAOPass                           inc    0.76 exc    0.76 ms/frame
+10-31 14:34:06.528 25420 25451 I TK_LOG  : PROF d4 WarpDepthGrid: project             inc    0.96 exc    0.96 ms/frame
+10-31 14:34:06.528 25420 25451 I TK_LOG  : PROF d3 RenderTranslucent                  inc    0.63 exc    0.62 ms/frame
+10-31 14:34:06.528 25420 25451 I TK_LOG  : PROF d8 SetDataTextures                    inc    0.49 exc    0.49 ms/frame
+10-31 14:34:06.528 25420 25451 I TK_LOG  : PROF d4 CullOccludedEntities: grid test    inc    0.39 exc    0.39 ms/frame
+10-31 14:34:06.528 25420 25451 I TK_LOG  : PROF d1 Gamma Pass                         inc    3.74 exc    0.18 ms/frame
+10-31 14:34:06.528 25420 25451 I TK_LOG  : PROF d8 SetMaterial                        inc    0.33 exc    0.33 ms/frame
+10-31 14:34:06.528 25420 25451 I TK_LOG  : PROF d2 GammaTonemapFxaaPass               inc    1.67 exc    0.09 ms/frame
+10-31 14:34:06.528 25420 25451 I TK_LOG  : PROF d5 RenderOpaqueBatches                inc    4.41 exc    0.29 ms/frame
+10-31 14:34:06.528 25420 25451 I TK_LOG  : PROF d2 CubeMapPass                        inc    0.31 exc    0.31 ms/frame
+10-31 14:34:06.528 25420 25451 I TK_LOG  : PROF d8 SetLights                          inc    0.25 exc    0.25 ms/frame
+10-31 14:34:06.528 25420 25451 I TK_LOG  : PROF d3 RenderBatches                      inc    3.94 exc    0.24 ms/frame
+10-31 14:34:06.528 25420 25451 I TK_LOG  : PROF d2 SetPassParams                      inc    2.29 exc    0.29 ms/frame
+10-31 14:34:06.528 25420 25451 I TK_LOG  : PROF d4 WarpDepthGrid                      inc    1.20 exc    0.24 ms/frame
+10-31 14:34:06.528 25420 25451 I TK_LOG  : PROF d3 SetPassParams: create jobs         inc    0.65 exc    0.21 ms/frame
+10-31 14:34:06.528 25420 25451 I TK_LOG  : PROF d6 RenderWithProgramFromMaterial      inc    0.76 exc    0.08 ms/frame
+10-31 14:34:06.528 25420 25451 I TK_LOG  : PROF d1 BuildDepthGrid                     inc    0.29 exc    0.02 ms/frame
+10-31 14:34:06.528 25420 25451 I TK_LOG  : PROF d4 DrawFullQuad                       inc    0.42 exc    0.03 ms/frame
+10-31 14:34:06.528 25420 25451 I TK_LOG  : PROF d6 RenderBatch                        inc    0.81 exc    0.02 ms/frame
+10-31 14:34:06.528 25420 25451 I TK_LOG  : PROF d4 RenderOpaqueHelper                 inc    4.47 exc    0.06 ms/frame
+10-31 14:34:06.528 25420 25451 I TK_LOG  : PROF d2 ForwardPreProcessPass              inc    0.34 exc    0.01 ms/frame
+10-31 14:34:06.528 25420 25451 I TK_LOG  : PROF d2 BuildDepthGrid: grid pass          inc    0.27 exc    0.00 ms/frame
+10-31 14:34:07.731 25420 25451 I TK_LOG  : PERF fps=8.80 period=113.66 work=133.56 swap=14.38 render=118.92 engcpu=118.86 gpu=120.30 max=213.09 draws=93 passes=12 inst=6/16 culled=52 vram=256MB res=1080x2220
+10-31 14:34:07.731 25420 25451 I TK_LOG  : PROF d4 SetFramebuffer                     inc   31.28 exc   31.28 ms/frame
+10-31 14:34:07.731 25420 25451 I TK_LOG  : PROF d0 CopyFrameBuffer                    inc   17.22 exc   17.22 ms/frame
+10-31 14:34:07.731 25420 25451 I TK_LOG  : PROF d7 Render                             inc   92.19 exc    8.45 ms/frame
+10-31 14:34:07.731 25420 25451 I TK_LOG  : PROF d3 CopyTexture                        inc    6.28 exc    5.88 ms/frame
+10-31 14:34:07.731 25420 25451 I TK_LOG  : PROF d8 FeedUniforms                       inc    3.64 exc    3.64 ms/frame
+10-31 14:34:07.731 25420 25451 I TK_LOG  : PROF d3 RenderOpaque                       inc    6.82 exc    2.50 ms/frame
+10-31 14:34:07.731 25420 25451 I TK_LOG  : PROF d2 ResolveFramebuffer                 inc    1.56 exc    1.56 ms/frame
+10-31 14:34:07.731 25420 25451 I TK_LOG  : PROF d1 PreRender                          inc   35.57 exc    1.34 ms/frame
+10-31 14:34:07.731 25420 25451 I TK_LOG  : PROF d3 FullQuadPass                       inc    8.20 exc    1.36 ms/frame
+10-31 14:34:07.731 25420 25451 I TK_LOG  : PROF d2 SSAOPass                           inc    1.04 exc    1.04 ms/frame
+10-31 14:34:07.731 25420 25451 I TK_LOG  : PROF d4 WarpDepthGrid: project             inc    0.42 exc    0.42 ms/frame
+10-31 14:34:07.731 25420 25451 I TK_LOG  : PROF d3 RenderTranslucent                  inc    0.63 exc    0.62 ms/frame
+10-31 14:34:07.731 25420 25451 I TK_LOG  : PROF d8 SetDataTextures                    inc    0.53 exc    0.53 ms/frame
+10-31 14:34:07.731 25420 25451 I TK_LOG  : PROF d4 CullOccludedEntities: grid test    inc    0.50 exc    0.50 ms/frame
+10-31 14:34:07.731 25420 25451 I TK_LOG  : PROF d1 Gamma Pass                         inc    4.64 exc    0.19 ms/frame
+10-31 14:34:07.731 25420 25451 I TK_LOG  : PROF d8 SetMaterial                        inc    0.33 exc    0.33 ms/frame
+10-31 14:34:07.731 25420 25451 I TK_LOG  : PROF d5 RenderOpaqueBatches                inc    4.31 exc    0.28 ms/frame
+10-31 14:34:07.732 25420 25451 I TK_LOG  : PROF d2 GammaTonemapFxaaPass               inc    1.93 exc    0.10 ms/frame
+10-31 14:34:07.732 25420 25451 I TK_LOG  : PROF d2 CubeMapPass                        inc    0.31 exc    0.30 ms/frame
+10-31 14:34:07.732 25420 25451 I TK_LOG  : PROF d8 SetLights                          inc    0.25 exc    0.25 ms/frame
+10-31 14:34:07.732 25420 25451 I TK_LOG  : PROF d3 RenderBatches                      inc    3.97 exc    0.21 ms/frame
+10-31 14:34:07.732 25420 25451 I TK_LOG  : PROF d2 SetPassParams                      inc    1.61 exc    0.20 ms/frame
+10-31 14:34:07.732 25420 25451 I TK_LOG  : PROF d3 SetPassParams: create jobs         inc    0.71 exc    0.17 ms/frame
+10-31 14:34:07.732 25420 25451 I TK_LOG  : PROF d4 WarpDepthGrid                      inc    0.55 exc    0.13 ms/frame
+10-31 14:34:07.732 25420 25451 I TK_LOG  : PROF d6 RenderWithProgramFromMaterial      inc    0.71 exc    0.08 ms/frame
+10-31 14:34:07.732 25420 25451 I TK_LOG  : PROF d4 DrawFullQuad                       inc    0.39 exc    0.04 ms/frame
+10-31 14:34:07.732 25420 25451 I TK_LOG  : PROF d6 RenderBatch                        inc    0.86 exc    0.05 ms/frame
+10-31 14:34:07.732 25420 25451 I TK_LOG  : PROF d4 RenderOpaqueHelper                 inc    4.32 exc    0.01 ms/frame
+10-31 14:34:07.732 25420 25451 I TK_LOG  : PROF d2 ForwardPreProcessPass              inc    0.28 exc    0.01 ms/frame
+10-31 14:34:08.827 25420 25451 I TK_LOG  : PERF fps=7.42 period=134.85 work=121.67 swap=11.59 render=109.82 engcpu=97.14 gpu=120.17 max=219.90 draws=93 passes=12 inst=6/16 culled=52 vram=256MB res=1080x2220
+10-31 14:34:08.827 25420 25451 I TK_LOG  : PROF d4 SetFramebuffer                     inc   24.10 exc   24.10 ms/frame
+10-31 14:34:08.827 25420 25451 I TK_LOG  : PROF d0 CopyFrameBuffer                    inc   24.97 exc   24.97 ms/frame
+10-31 14:34:08.827 25420 25451 I TK_LOG  : PROF d7 Render                             inc   82.67 exc    7.74 ms/frame
+10-31 14:34:08.827 25420 25451 I TK_LOG  : PROF d3 CopyTexture                        inc    5.56 exc    5.19 ms/frame
+10-31 14:34:08.827 25420 25451 I TK_LOG  : PROF d8 FeedUniforms                       inc    3.48 exc    3.48 ms/frame
+10-31 14:34:08.827 25420 25451 I TK_LOG  : PROF d3 RenderOpaque                       inc    6.44 exc    2.34 ms/frame
+10-31 14:34:08.827 25420 25451 I TK_LOG  : PROF d2 ResolveFramebuffer                 inc    1.44 exc    1.44 ms/frame
+10-31 14:34:08.827 25420 25451 I TK_LOG  : PROF d1 PreRender                          inc   34.07 exc    1.46 ms/frame
+10-31 14:34:08.827 25420 25451 I TK_LOG  : PROF d3 FullQuadPass                       inc    8.32 exc    1.25 ms/frame
+10-31 14:34:08.827 25420 25451 I TK_LOG  : PROF d2 SSAOPass                           inc    0.96 exc    0.95 ms/frame
+10-31 14:34:08.828 25420 25451 I TK_LOG  : PROF d4 WarpDepthGrid: project             inc    0.86 exc    0.86 ms/frame
+10-31 14:34:08.828 25420 25451 I TK_LOG  : PROF d3 RenderTranslucent                  inc    0.52 exc    0.52 ms/frame
+10-31 14:34:08.828 25420 25451 I TK_LOG  : PROF d8 SetDataTextures                    inc    0.44 exc    0.44 ms/frame
+10-31 14:34:08.828 25420 25451 I TK_LOG  : PROF d4 CullOccludedEntities: grid test    inc    0.42 exc    0.42 ms/frame
+10-31 14:34:08.828 25420 25451 I TK_LOG  : PROF d1 Gamma Pass                         inc    3.54 exc    0.18 ms/frame
+10-31 14:34:08.828 25420 25451 I TK_LOG  : PROF d8 SetMaterial                        inc    0.33 exc    0.33 ms/frame
+10-31 14:34:08.828 25420 25451 I TK_LOG  : PROF d5 RenderOpaqueBatches                inc    4.08 exc    0.33 ms/frame
+10-31 14:34:08.828 25420 25451 I TK_LOG  : PROF d2 GammaTonemapFxaaPass               inc    2.30 exc    0.10 ms/frame
+10-31 14:34:08.828 25420 25451 I TK_LOG  : PROF d3 RenderBatches                      inc    3.72 exc    0.20 ms/frame
+10-31 14:34:08.828 25420 25451 I TK_LOG  : PROF d2 SetPassParams                      inc    2.01 exc    0.22 ms/frame
+10-31 14:34:08.828 25420 25451 I TK_LOG  : PROF d3 SetPassParams: create jobs         inc    0.62 exc    0.15 ms/frame
+10-31 14:34:08.828 25420 25451 I TK_LOG  : PROF d4 WarpDepthGrid                      inc    1.01 exc    0.15 ms/frame
+10-31 14:34:08.828 25420 25451 I TK_LOG  : PROF d6 RenderWithProgramFromMaterial      inc    0.66 exc    0.07 ms/frame
+10-31 14:34:08.828 25420 25451 I TK_LOG  : PROF d1 BuildDepthGrid                     inc    0.37 exc    0.02 ms/frame
+10-31 14:34:08.828 25420 25451 I TK_LOG  : PROF d4 DrawFullQuad                       inc    0.37 exc    0.03 ms/frame
+10-31 14:34:08.828 25420 25451 I TK_LOG  : PROF d6 RenderBatch                        inc    0.78 exc    0.02 ms/frame
+10-31 14:34:08.828 25420 25451 I TK_LOG  : PROF d4 RenderOpaqueHelper                 inc    4.09 exc    0.01 ms/frame
+10-31 14:34:08.828 25420 25451 I TK_LOG  : PROF d2 ForwardPreProcessPass              inc    0.27 exc    0.01 ms/frame
+10-31 14:34:08.828 25420 25451 I TK_LOG  : PROF d2 BuildDepthGrid: grid pass          inc    0.34 exc    0.00 ms/frame
+10-31 14:34:09.966 25420 25451 I TK_LOG  : PERF fps=8.25 period=121.19 work=126.42 swap=14.40 render=111.74 engcpu=49.79 gpu=120.46 max=214.88 draws=94 passes=13 inst=6/16 culled=52 vram=256MB res=1080x2220
+10-31 14:34:09.966 25420 25451 I TK_LOG  : PROF d4 SetFramebuffer                     inc   24.70 exc   24.70 ms/frame
+10-31 14:34:09.966 25420 25451 I TK_LOG  : PROF d0 CopyFrameBuffer                    inc   17.36 exc   17.36 ms/frame
+10-31 14:34:09.966 25420 25451 I TK_LOG  : PROF d7 Render                             inc   84.93 exc    8.24 ms/frame
+10-31 14:34:09.966 25420 25451 I TK_LOG  : PROF d3 CopyTexture                        inc    6.26 exc    5.85 ms/frame
+10-31 14:34:09.966 25420 25451 I TK_LOG  : PROF d8 FeedUniforms                       inc    3.62 exc    3.62 ms/frame
+10-31 14:34:09.966 25420 25451 I TK_LOG  : PROF d3 RenderOpaque                       inc    6.68 exc    2.45 ms/frame
+10-31 14:34:09.967 25420 25451 I TK_LOG  : PROF d2 ResolveFramebuffer                 inc    1.41 exc    1.41 ms/frame
+10-31 14:34:09.967 25420 25451 I TK_LOG  : PROF d1 PreRender                          inc   35.29 exc    1.23 ms/frame
+10-31 14:34:09.967 25420 25451 I TK_LOG  : PROF d3 FullQuadPass                       inc    8.47 exc    1.28 ms/frame
+10-31 14:34:09.967 25420 25451 I TK_LOG  : PROF d2 SSAOPass                           inc    0.98 exc    0.98 ms/frame
+10-31 14:34:09.967 25420 25451 I TK_LOG  : PROF d4 WarpDepthGrid: project             inc    0.49 exc    0.49 ms/frame
+10-31 14:34:09.967 25420 25451 I TK_LOG  : PROF d3 RenderTranslucent                  inc    0.65 exc    0.65 ms/frame
+10-31 14:34:09.967 25420 25451 I TK_LOG  : PROF d8 SetDataTextures                    inc    0.46 exc    0.46 ms/frame
+10-31 14:34:09.967 25420 25451 I TK_LOG  : PROF d4 CullOccludedEntities: grid test    inc    0.41 exc    0.41 ms/frame
+10-31 14:34:09.967 25420 25451 I TK_LOG  : PROF d8 SetMaterial                        inc    0.34 exc    0.34 ms/frame
+10-31 14:34:09.967 25420 25451 I TK_LOG  : PROF d1 Gamma Pass                         inc    4.64 exc    0.17 ms/frame
+10-31 14:34:09.967 25420 25451 I TK_LOG  : PROF d5 RenderOpaqueBatches                inc    4.22 exc    0.27 ms/frame
+10-31 14:34:09.967 25420 25451 I TK_LOG  : PROF d2 CubeMapPass                        inc    0.26 exc    0.26 ms/frame
+10-31 14:34:09.967 25420 25451 I TK_LOG  : PROF d2 GammaTonemapFxaaPass               inc    1.88 exc    0.09 ms/frame
+10-31 14:34:09.967 25420 25451 I TK_LOG  : PROF d3 RenderBatches                      inc    4.00 exc    0.30 ms/frame
+10-31 14:34:09.967 25420 25451 I TK_LOG  : PROF d2 SetPassParams                      inc    1.67 exc    0.18 ms/frame
+10-31 14:34:09.967 25420 25451 I TK_LOG  : PROF d3 SetPassParams: create jobs         inc    0.71 exc    0.23 ms/frame
+10-31 14:34:09.967 25420 25451 I TK_LOG  : PROF d4 WarpDepthGrid                      inc    0.63 exc    0.14 ms/frame
+10-31 14:34:09.967 25420 25451 I TK_LOG  : PROF d6 RenderWithProgramFromMaterial      inc    0.72 exc    0.08 ms/frame
+10-31 14:34:09.967 25420 25451 I TK_LOG  : PROF d4 DrawFullQuad                       inc    0.41 exc    0.05 ms/frame
+10-31 14:34:09.967 25420 25451 I TK_LOG  : PROF d6 RenderBatch                        inc    0.84 exc    0.02 ms/frame
+10-31 14:34:09.967 25420 25451 I TK_LOG  : PROF d4 RenderOpaqueHelper                 inc    4.23 exc    0.01 ms/frame
+10-31 14:34:09.967 25420 25451 I TK_LOG  : PROF d2 ForwardPreProcessPass              inc    0.30 exc    0.01 ms/frame
+10-31 14:34:10.990 25420 25451 I TK_LOG  : PERF fps=7.90 period=126.52 work=113.65 swap=11.84 render=101.53 engcpu=30.90 gpu=120.97 max=214.42 draws=93 passes=12 inst=6/16 culled=52 vram=256MB res=1080x2220
+10-31 14:34:10.991 25420 25451 I TK_LOG  : PROF d4 SetFramebuffer                     inc   22.88 exc   22.88 ms/frame
+10-31 14:34:10.991 25420 25451 I TK_LOG  : PROF d0 CopyFrameBuffer                    inc   17.03 exc   17.03 ms/frame
+10-31 14:34:10.991 25420 25451 I TK_LOG  : PROF d7 Render                             inc   83.14 exc    8.25 ms/frame
+10-31 14:34:10.991 25420 25451 I TK_LOG  : PROF d3 CopyTexture                        inc    5.72 exc    5.33 ms/frame
+10-31 14:34:10.991 25420 25451 I TK_LOG  : PROF d8 FeedUniforms                       inc    3.65 exc    3.65 ms/frame
+10-31 14:34:10.991 25420 25451 I TK_LOG  : PROF d3 RenderOpaque                       inc    6.61 exc    2.42 ms/frame
+10-31 14:34:10.991 25420 25451 I TK_LOG  : PROF d2 ResolveFramebuffer                 inc    1.26 exc    1.26 ms/frame
+10-31 14:34:10.991 25420 25451 I TK_LOG  : PROF d1 PreRender                          inc   34.62 exc    1.34 ms/frame
+10-31 14:34:10.991 25420 25451 I TK_LOG  : PROF d3 FullQuadPass                       inc    8.16 exc    1.29 ms/frame
+10-31 14:34:10.991 25420 25451 I TK_LOG  : PROF d2 SSAOPass                           inc    0.93 exc    0.93 ms/frame
+10-31 14:34:10.991 25420 25451 I TK_LOG  : PROF d4 WarpDepthGrid: project             inc    0.77 exc    0.77 ms/frame
+10-31 14:34:10.991 25420 25451 I TK_LOG  : PROF d3 RenderTranslucent                  inc    0.56 exc    0.56 ms/frame
+10-31 14:34:10.991 25420 25451 I TK_LOG  : PROF d8 SetDataTextures                    inc    0.46 exc    0.46 ms/frame
+10-31 14:34:10.991 25420 25451 I TK_LOG  : PROF d4 CullOccludedEntities: grid test    inc    0.43 exc    0.43 ms/frame
+10-31 14:34:10.991 25420 25451 I TK_LOG  : PROF d8 SetMaterial                        inc    0.33 exc    0.33 ms/frame
+10-31 14:34:10.991 25420 25451 I TK_LOG  : PROF d1 Gamma Pass                         inc    3.63 exc    0.19 ms/frame
+10-31 14:34:10.991 25420 25451 I TK_LOG  : PROF d5 RenderOpaqueBatches                inc    4.18 exc    0.26 ms/frame
+10-31 14:34:10.991 25420 25451 I TK_LOG  : PROF d2 CubeMapPass                        inc    0.28 exc    0.28 ms/frame
+10-31 14:34:10.991 25420 25451 I TK_LOG  : PROF d2 GammaTonemapFxaaPass               inc    2.40 exc    0.12 ms/frame
+10-31 14:34:10.991 25420 25451 I TK_LOG  : PROF d3 RenderBatches                      inc    3.97 exc    0.25 ms/frame
+10-31 14:34:10.991 25420 25451 I TK_LOG  : PROF d2 SetPassParams                      inc    2.00 exc    0.17 ms/frame
+10-31 14:34:10.991 25420 25451 I TK_LOG  : PROF d3 SetPassParams: create jobs         inc    0.64 exc    0.16 ms/frame
+10-31 14:34:10.991 25420 25451 I TK_LOG  : PROF d4 WarpDepthGrid                      inc    1.04 exc    0.26 ms/frame
+10-31 14:34:10.991 25420 25451 I TK_LOG  : PROF d6 RenderWithProgramFromMaterial      inc    0.68 exc    0.07 ms/frame
+10-31 14:34:10.991 25420 25451 I TK_LOG  : PROF d1 BuildDepthGrid                     inc    0.33 exc    0.02 ms/frame
+10-31 14:34:10.991 25420 25451 I TK_LOG  : PROF d4 DrawFullQuad                       inc    0.38 exc    0.04 ms/frame
+10-31 14:34:10.991 25420 25451 I TK_LOG  : PROF d6 RenderBatch                        inc    0.88 exc    0.03 ms/frame
+10-31 14:34:10.991 25420 25451 I TK_LOG  : PROF d4 RenderOpaqueHelper                 inc    4.19 exc    0.01 ms/frame
+10-31 14:34:10.991 25420 25451 I TK_LOG  : PROF d2 ForwardPreProcessPass              inc    0.34 exc    0.01 ms/frame
+10-31 14:34:10.991 25420 25451 I TK_LOG  : PROF d2 BuildDepthGrid: grid pass          inc    0.31 exc    0.00 ms/frame
+10-31 14:34:12.198 25420 25451 I TK_LOG  : PERF fps=8.78 period=113.86 work=134.04 swap=14.25 render=119.53 engcpu=119.02 gpu=118.97 max=217.34 draws=93 passes=12 inst=6/16 culled=52 vram=256MB res=1080x2220
+10-31 14:34:12.198 25420 25451 I TK_LOG  : PROF d4 SetFramebuffer                     inc   31.82 exc   31.82 ms/frame
+10-31 14:34:12.198 25420 25451 I TK_LOG  : PROF d0 CopyFrameBuffer                    inc   17.12 exc   17.12 ms/frame
+10-31 14:34:12.198 25420 25451 I TK_LOG  : PROF d7 Render                             inc   93.03 exc    8.57 ms/frame
+10-31 14:34:12.198 25420 25451 I TK_LOG  : PROF d3 CopyTexture                        inc    6.70 exc    6.28 ms/frame
+10-31 14:34:12.198 25420 25451 I TK_LOG  : PROF d8 FeedUniforms                       inc    3.47 exc    3.47 ms/frame
+10-31 14:34:12.198 25420 25451 I TK_LOG  : PROF d3 RenderOpaque                       inc    6.35 exc    2.24 ms/frame
+10-31 14:34:12.198 25420 25451 I TK_LOG  : PROF d2 ResolveFramebuffer                 inc    1.65 exc    1.65 ms/frame
+10-31 14:34:12.198 25420 25451 I TK_LOG  : PROF d1 PreRender                          inc   36.14 exc    1.24 ms/frame
+10-31 14:34:12.198 25420 25451 I TK_LOG  : PROF d3 FullQuadPass                       inc    8.85 exc    1.30 ms/frame
+10-31 14:34:12.198 25420 25451 I TK_LOG  : PROF d2 SSAOPass                           inc    1.31 exc    1.31 ms/frame
+10-31 14:34:12.199 25420 25451 I TK_LOG  : PROF d4 WarpDepthGrid: project             inc    0.60 exc    0.60 ms/frame
+10-31 14:34:12.199 25420 25451 I TK_LOG  : PROF d3 RenderTranslucent                  inc    0.54 exc    0.54 ms/frame
+10-31 14:34:12.199 25420 25451 I TK_LOG  : PROF d8 SetDataTextures                    inc    0.49 exc    0.49 ms/frame
+10-31 14:34:12.199 25420 25451 I TK_LOG  : PROF d4 CullOccludedEntities: grid test    inc    0.41 exc    0.41 ms/frame
+10-31 14:34:12.199 25420 25451 I TK_LOG  : PROF d8 SetMaterial                        inc    0.31 exc    0.31 ms/frame
+10-31 14:34:12.199 25420 25451 I TK_LOG  : PROF d1 Gamma Pass                         inc    4.48 exc    0.20 ms/frame
+10-31 14:34:12.199 25420 25451 I TK_LOG  : PROF d5 RenderOpaqueBatches                inc    4.11 exc    0.26 ms/frame
+10-31 14:34:12.199 25420 25451 I TK_LOG  : PROF d2 CubeMapPass                        inc    0.25 exc    0.25 ms/frame
+10-31 14:34:12.199 25420 25451 I TK_LOG  : PROF d3 RenderBatches                      inc    3.87 exc    0.25 ms/frame
+10-31 14:34:12.199 25420 25451 I TK_LOG  : PROF d2 GammaTonemapFxaaPass               inc    2.53 exc    0.10 ms/frame
+10-31 14:34:12.199 25420 25451 I TK_LOG  : PROF d2 SetPassParams                      inc    1.67 exc    0.16 ms/frame
+10-31 14:34:12.199 25420 25451 I TK_LOG  : PROF d3 SetPassParams: create jobs         inc    0.63 exc    0.17 ms/frame
+10-31 14:34:12.199 25420 25451 I TK_LOG  : PROF d4 WarpDepthGrid                      inc    0.74 exc    0.14 ms/frame
+10-31 14:34:12.199 25420 25451 I TK_LOG  : PROF d6 RenderWithProgramFromMaterial      inc    0.74 exc    0.09 ms/frame
+10-31 14:34:12.199 25420 25451 I TK_LOG  : PROF d1 BuildDepthGrid                     inc    0.35 exc    0.02 ms/frame
+10-31 14:34:12.199 25420 25451 I TK_LOG  : PROF d4 DrawFullQuad                       inc    0.42 exc    0.05 ms/frame
+10-31 14:34:12.199 25420 25451 I TK_LOG  : PROF d6 RenderBatch                        inc    0.91 exc    0.02 ms/frame
+10-31 14:34:12.199 25420 25451 I TK_LOG  : PROF d4 RenderOpaqueHelper                 inc    4.12 exc    0.01 ms/frame
+10-31 14:34:12.199 25420 25451 I TK_LOG  : PROF d2 ForwardPreProcessPass              inc    0.25 exc    0.01 ms/frame
+10-31 14:34:12.199 25420 25451 I TK_LOG  : PROF d2 BuildDepthGrid: grid pass          inc    0.33 exc    0.00 ms/frame

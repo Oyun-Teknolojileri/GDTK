@@ -77,6 +77,13 @@ namespace ToolKit
   {
     TK_PROFILE_FUNCTION();
 
+    // The master switch. Off means no atlas render at all: the forward shader is built without the
+    // CastShadow path in the same frame, so nothing would read what this pass wrote.
+    if (!GetEngineSettings().m_graphics->m_shadows->GetCastShadowVal())
+    {
+      return;
+    }
+
     if (m_lights.empty())
     {
       return;
@@ -135,6 +142,14 @@ namespace ToolKit
     Pass::PreRender();
 
     ShadowSettingsPtr shadows = GetEngineSettings().m_graphics->m_shadows;
+
+    // Same master switch as Render: with no shadow in the frame there is nothing to fit cascades to.
+    if (!shadows->GetCastShadowVal())
+    {
+      m_lights.clear();
+      return;
+    }
+
     if (shadows->GetUseParallelSplitPartitioningVal())
     {
       float minDistance     = shadows->GetShadowMinDistanceVal();

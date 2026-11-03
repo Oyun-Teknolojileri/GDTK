@@ -209,7 +209,13 @@ namespace ToolKit
     }
   }
 
-  void RenderSystem::StartFrame() { m_renderer->BeginRenderFrame(); }
+  void RenderSystem::StartFrame()
+  {
+    // Read the per pass gpu timestamps the previous frames wrote, before this frame records its own.
+    m_renderer->GetBackend()->ResolveGpuScopes();
+
+    m_renderer->BeginRenderFrame();
+  }
 
   void RenderSystem::EndFrame()
   {

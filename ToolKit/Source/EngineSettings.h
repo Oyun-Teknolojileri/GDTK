@@ -132,6 +132,18 @@ namespace ToolKit
      */
     TKDeclareParam(bool, CascadeBlend);
 
+    /**
+     * Master switch for shadow casting.
+     *
+     * Off means the shadow pass renders nothing at all and the forward shader compiles its shadow
+     * sampling out behind a CastShadow define, so a scene that needs no shadows pays neither the
+     * atlas render nor the per pixel cost. Before this the same result needed the per light
+     * CastShadow flags and the ShadowPCF and CascadeBlend settings edited by hand, which also
+     * changed what shadows looked like once they came back. On keeps the previous behaviour: a
+     * light casts when its own CastShadow is set.
+     */
+    TKDeclareParam(bool, CastShadow);
+
     /** Layer resolution of the shadow atlas: 1K, 2K or 4K. See GetShadowAtlasResolution. */
     TKDeclareParam(int, ShadowAtlasResolution);
 
@@ -190,7 +202,11 @@ namespace ToolKit
     void PostDeSerializeImp(const SerializationFileInfo& info, XmlNode* parent) override;
 
    public:
-    /** Target fps for application. */
+    /**
+     * Target fps for application. The engine gates its frame on this value, independently of the
+     * display's swap interval, so a run that asks for no pacing still has to unlock it here. Zero means
+     * unlocked: every iteration draws and the frame rate is whatever the work costs.
+     */
     TKDeclareParam(int, FPS);
 
     /** Multi-sample count. MsaaSampleCount::x1 for non msaa render targets. */
@@ -250,6 +266,17 @@ namespace ToolKit
     /** Anisotropic texture filtering value. It can be 0, 2 ,4, 8, 16. Clamped with gpu max anisotropy. */
     TKDeclareParam(MultiChoiceVariant, AnisotropicTextureFiltering);
 
+    /**
+     * Builds the normal and depth target - what ambient occlusion and depth of field read - at half
+     * the frame resolution.
+     *
+     * Both consumers work at half resolution anyway, so a full size target is four times the
+     * fragments for a picture neither of them can see. Screen space reflections read it at full
+     * resolution and force this off themselves. Worth trying the other way on a desktop gpu, where
+     * the target can also act as a depth prepass for the forward pass.
+     */
+    TKDeclareParam(bool, HalfResolutionForwardPreProcess);
+
     /** When set to true, graphics settings saved as shader defines. Preventing compiling all define configurations.  */
     bool m_saveShaderDefines = true;
 
@@ -295,6 +322,14 @@ namespace ToolKit
     TKDeclareParam(float, SSAORadius);
     TKDeclareParam(float, SSAOBias);
     TKDeclareParam(float, SSAOSpread);
+
+    /**
+     * How much of the occlusion map the lighting takes: 1 leaves it as it is, 0 turns the darkening
+     * off without recompiling, 2 doubles it. The map itself is rarely strong enough to read on its own
+     * - a pass that is correct can still be invisible - so the strength is a portrait knob, not part of
+     * the sampling.
+     */
+    TKDeclareParam(float, SSAOStrength);
     TKDeclareParam(MultiChoiceVariant, SSAOKernelSize);
     TKDeclareParam(bool, SSAOHalfResolution);
 
@@ -381,6 +416,13 @@ namespace ToolKit
    protected:
     /** Sets shader defines for current graphics settings. */
     void SetShaderSettings();
+
+    /**
+     * Hands the frame rate in these settings to the engine's Timing, which is what actually gates the
+     * frame. Every load applies it, because the settings object outlives a load: the editor starts from
+     * the user config and then loads the open project's Config/Engine.settings on top.
+     */
+    void ApplyFrameRate();
 
    public:
     WindowSettingsPtr m_window;

@@ -63,6 +63,20 @@ namespace ToolKit
       normalDepthBuffer = m_params.GNormalDepthBuffer->GetResolvedTexture();
     }
 
+    // The occlusion math reads one texel per sample: the normal in RG and the linear depth in B are
+    // packed into the same target, so a filtered fetch averages a normal into a different normal and
+    // a depth into a different depth, and the comparison then means nothing. Worse, a mip filter on
+    // a target that has no mip chain makes the texture incomplete, which samples as zero - the pass
+    // then reads a depth of zero everywhere, every pixel gets the same handful of hits, and the
+    // result is a flat veil instead of occlusion. Both are sampler state, so it is stated here, on
+    // the pass that depends on it, rather than trusting whatever the target was left with.
+    TextureSettings ndSettings = normalDepthBuffer->Settings();
+    ndSettings.MinFilter       = GraphicTypes::SampleNearest;
+    ndSettings.MagFilter       = GraphicTypes::SampleNearest;
+    ndSettings.WarpS           = GraphicTypes::UVClampToEdge;
+    ndSettings.WarpT           = GraphicTypes::UVClampToEdge;
+    normalDepthBuffer->ApplyTextureSettings(ndSettings);
+
     // Build calc + blur requirements. Each gets its own framebuffer, custom UBO, and
     // semantic-named texture. SSAO shader's s_normalDepth is bound BEFORE the program is
     // bound in the old code, which made the SetTexture("s_normalDepth", ...) call a
@@ -85,6 +99,7 @@ namespace ToolKit
     blurReqs.frameBuffer                        = m_blurFramebuffer;
     blurReqs.clearBits                          = GraphicBitFields::None;
     blurReqs.semanticTextures["s_diffuseColor"] = m_rawSsaoRt;
+    blurReqs.semanticTextures["s_normalDepth"]  = normalDepthBuffer; // bilateral weights
     blurReqs.customUbos[7]                      = &m_blurPassDataBuffer.GetBuffer();
     m_blurPassDataBuffer.Invalidate();
     m_blurPassDataBuffer.Map();
@@ -213,7 +228,11 @@ namespace ToolKit
 
     // Stored as Mat4 (std140 mat3 padding would be 48 bytes anyway); shader extracts mat3().
     m_calcPassDataBuffer.m_data.normalToView      = Mat4(Mat3(m_params.Cam->GetViewMatrix()));
-    m_calcPassDataBuffer.m_data.radiusBiasAndPad  = Vec4(m_params.Radius, m_params.Bias, 0.0f, 0.0f);
+
+    // .z and .w carry what the shader needs to keep its sample count local on screen: the target
+    // height, and the pixel budget the world radius is clamped to.
+    m_calcPassDataBuffer.m_data.radiusBiasAndPad =
+        Vec4(m_params.Radius, m_params.Bias, (float) renderHeight, MaxRadiusPixels);
 
     // Setup blur pass
     m_blurPass->m_params.frameBuffer              = m_blurFramebuffer;

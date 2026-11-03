@@ -42,11 +42,73 @@ namespace ToolKit
 
   int TK_GL_EXT_depth_clamp                                                    = 0;
 
+  int TK_GL_EXT_disjoint_timer_query                                           = 0;
+
+  TKGL_GenQueriesEXT tk_glGenQueriesEXT                                        = nullptr;
+
+  TKGL_DeleteQueriesEXT tk_glDeleteQueriesEXT                                  = nullptr;
+
+  TKGL_BeginQueryEXT tk_glBeginQueryEXT                                        = nullptr;
+
+  TKGL_EndQueryEXT tk_glEndQueryEXT                                            = nullptr;
+
+  TKGL_GetQueryObjectuivEXT tk_glGetQueryObjectuivEXT                          = nullptr;
+
+  TKGL_QueryCounterEXT tk_glQueryCounterEXT                                    = nullptr;
+
+  TKGL_GetQueryObjectui64vEXT tk_glGetQueryObjectui64vEXT                      = nullptr;
+
   namespace
   {
     /** Kept so the program binary extension can be resolved on demand, after the host loaded GL. */
     typedef void* (*TKGLProcLoader)(const char*);
     TKGLProcLoader g_glGetProcAddress = nullptr;
+
+#if defined(TK_ANDROID)
+    /**
+     * Whether the driver lists an extension.
+     *
+     * GL ES 3.0 removes the GL_EXTENSIONS string: glGetString returns null for it on a 3.2 context,
+     * which silently turned every string probe below into "not supported". The list is enumerated
+     * instead, which is the form 3.x defines, and the name is matched with or without its GL_
+     * prefix.
+     */
+    bool HasGlExtension(const char* name)
+    {
+      GLint extensionCount = 0;
+      glGetIntegerv(GL_NUM_EXTENSIONS, &extensionCount);
+
+      for (GLint i = 0; i < extensionCount; ++i)
+      {
+        const GLubyte* extension = glGetStringi(GL_EXTENSIONS, (GLuint) i);
+        if (extension == nullptr)
+        {
+          continue;
+        }
+
+        const char* plainName = (const char*) extension;
+        if (std::strncmp(plainName, "GL_", 3) == 0)
+        {
+          plainName += 3;
+        }
+
+        if (std::strcmp(plainName, name) == 0)
+        {
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    /** How many extensions the driver lists, so a "not supported" answer can be read as one. */
+    int GlExtensionCount()
+    {
+      GLint extensionCount = 0;
+      glGetIntegerv(GL_NUM_EXTENSIONS, &extensionCount);
+      return (int) extensionCount;
+    }
+#endif
   } // namespace
 
   void* TKGetGlProcAddress(const char* name)
@@ -69,6 +131,28 @@ namespace ToolKit
     // and the Web uses Emscripten's own WebGL headers.
 #if defined(TK_WIN) || defined(TK_LINUX)
     gladLoadGL((GLADloadfunc) glGetProcAddres);
+
+    // Timestamp queries for the per pass gpu times. They are core 3.3 in this header, and the same
+    // two pointers are what the phone fills from the EXT entry points, so the backend has one call
+    // path for both platforms.
+    tk_glQueryCounterEXT        = (TKGL_QueryCounterEXT) glad_glQueryCounter;
+    tk_glGetQueryObjectui64vEXT = (TKGL_GetQueryObjectui64vEXT) glad_glGetQueryObjectui64v;
+
+    // glad only loads the 3.3 entry points when the context reports 3.3 and every host here asks for
+    // 3.2, so they are also resolved by name: a driver exposes them as ARB_timer_query entry points
+    // whatever version the context was requested with. The Android block below does the same with the
+    // EXT spelling.
+    typedef void* (*TK_GL_PROC_ADDR)(const char*);
+    TK_GL_PROC_ADDR procLoader = (TK_GL_PROC_ADDR) glGetProcAddres;
+    if (tk_glQueryCounterEXT == nullptr)
+    {
+      tk_glQueryCounterEXT = (TKGL_QueryCounterEXT) procLoader("glQueryCounter");
+    }
+
+    if (tk_glGetQueryObjectui64vEXT == nullptr)
+    {
+      tk_glGetQueryObjectui64vEXT = (TKGL_GetQueryObjectui64vEXT) procLoader("glGetQueryObjectui64v");
+    }
 
   #ifdef GL_EXT_multisampled_render_to_texture
     if (GLAD_GL_EXT_multisampled_render_to_texture == 1)
@@ -127,23 +211,49 @@ namespace ToolKit
     tk_glLabelObjectEXT               = (TKGL_LabelObject) glLoader("glLabelObjectEXT");
     tk_glGetObjectLabelEXT            = (TKGL_GetObjectLabel) glLoader("glGetObjectLabelEXT");
 
-    // String Checks for Extensions.
-    PFNGLGETSTRINGPROC tk_glGetString = nullptr;
-    tk_glGetString                    = (PFNGLGETSTRINGPROC) glLoader("glGetString");
+    // GPU timing: GL_EXT_disjoint_timer_query, the only place GL ES defines GL_TIME_ELAPSED.
+    tk_glGenQueriesEXT          = (TKGL_GenQueriesEXT) glLoader("glGenQueriesEXT");
+    tk_glDeleteQueriesEXT       = (TKGL_DeleteQueriesEXT) glLoader("glDeleteQueriesEXT");
+    tk_glBeginQueryEXT          = (TKGL_BeginQueryEXT) glLoader("glBeginQueryEXT");
+    // Timestamp counters, for per pass gpu times. Not part of the support check below: a device may
+    // offer them without the interval query or the other way around, and the frame timer only needs
+    // one of the two.
+    tk_glQueryCounterEXT        = (TKGL_QueryCounterEXT) glLoader("glQueryCounterEXT");
+    tk_glGetQueryObjectui64vEXT = (TKGL_GetQueryObjectui64vEXT) glLoader("glGetQueryObjectui64vEXT");
+    tk_glEndQueryEXT            = (TKGL_EndQueryEXT) glLoader("glEndQueryEXT");
+    tk_glGetQueryObjectuivEXT   = (TKGL_GetQueryObjectuivEXT) glLoader("glGetQueryObjectuivEXT");
 
-    if (tk_glGetString)
-    {
-      const GLubyte* extensions = tk_glGetString(GL_EXTENSIONS);
-      if (extensions != nullptr)
-      {
-        String extensionsStr((const char*) extensions);
-        TK_GL_OES_texture_float_linear       = extensionsStr.find("GL_OES_texture_float_linear") != String::npos;
-        TK_GL_EXT_texture_filter_anisotropic = extensionsStr.find("GL_EXT_texture_filter_anisotropic") != String::npos;
-        TK_GL_EXT_depth_clamp                = extensionsStr.find("GL_EXT_depth_clamp") != String::npos;
-      }
-    }
+    TK_GL_EXT_disjoint_timer_query = HasGlExtension("EXT_disjoint_timer_query") &&
+                                     tk_glGenQueriesEXT != nullptr && tk_glDeleteQueriesEXT != nullptr &&
+                                     tk_glBeginQueryEXT != nullptr && tk_glEndQueryEXT != nullptr &&
+                                     tk_glGetQueryObjectuivEXT != nullptr;
+
+    TK_LOG("GPU timer query: %s",
+           TK_GL_EXT_disjoint_timer_query ? "GL_EXT_disjoint_timer_query" : "unavailable, gpu time stays synthetic");
+
+    // Extension flags the engine gates features on. GL ES 3.2 removes the GL_EXTENSIONS string
+    // (glGetString answers null for it), which silently turned all three of these into "not
+    // supported" on a device that has them - anisotropic filtering was off on a Mali-G71 whose
+    // driver lists the extension, and the engine never said so.
+    TK_GL_OES_texture_float_linear       = HasGlExtension("OES_texture_float_linear");
+    TK_GL_EXT_texture_filter_anisotropic = HasGlExtension("EXT_texture_filter_anisotropic");
+    TK_GL_EXT_depth_clamp                = HasGlExtension("EXT_depth_clamp");
+
+    TK_LOG("Extensions: count=%d float_linear=%d aniso=%d depth_clamp=%d",
+           GlExtensionCount(),
+           TK_GL_OES_texture_float_linear,
+           TK_GL_EXT_texture_filter_anisotropic,
+           TK_GL_EXT_depth_clamp);
 
 #endif
+
+    // Per pass gpu timing needs a timestamp counter and a wide result read, both of which the engine
+    // reaches through the same two pointers on every platform: core 3.3 on desktop, the EXT spelling
+    // on a phone. Reported once at context creation, next to the other capability lines.
+    TK_LOG("Per pass gpu timing: %s.",
+           (tk_glQueryCounterEXT != nullptr && tk_glGetQueryObjectui64vEXT != nullptr)
+               ? "available"
+               : "unavailable, no timestamp queries");
 
 #ifdef TK_WEB
 

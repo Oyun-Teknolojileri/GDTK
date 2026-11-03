@@ -30,9 +30,22 @@ namespace ToolKit
 
   Pass::~Pass() {}
 
-  void Pass::PreRender() { Stats::BeginGpuScope(m_name); }
+  void Pass::PreRender()
+  {
+    Stats::BeginGpuScope(m_name);
 
-  void Pass::PostRender() { Stats::EndGpuScope(); }
+    // The pass name also becomes a profiler scope, so a frame can be broken down to its passes from
+    // the stats API alone. It is the same bracket the gpu debug group uses: the inclusive time is
+    // what submitting the pass cost on the cpu, which is where a stall on a queued gpu buffer shows
+    // up first.
+    Profiler::BeginProfileScope(m_name);
+  }
+
+  void Pass::PostRender()
+  {
+    Profiler::EndProfileScope();
+    Stats::EndGpuScope();
+  }
 
   void Pass::RenderSubPass(const PassPtr& pass)
   {

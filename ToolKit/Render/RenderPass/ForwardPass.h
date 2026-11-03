@@ -23,6 +23,17 @@ namespace ToolKit
     CameraPtr Cam                     = nullptr;
     FramebufferPtr FrameBuffer        = nullptr;
     RenderTargetPtr SsaoTexture       = nullptr;
+
+    /** How much of the occlusion map the lighting takes, see PostProcessingSettings::SSAOStrength. */
+    float SsaoStrength                = 1.0f;
+
+    /**
+     * Forward pre process only: render the normal and depth target at half the frame's size. The
+     * passes that read it - ambient occlusion and depth of field - work at half resolution anyway, so
+     * this is four times fewer fragments for the same picture. Screen space reflections read it at
+     * full resolution and must keep it.
+     */
+    bool HalfResolution               = false;
     GraphicBitFields clearBuffer      = GraphicBitFields::AllBits;
     bool hasForwardPrePass            = false;
     uint activeDirectionalLightCount  = 0;
@@ -87,6 +98,9 @@ namespace ToolKit
 
     /** Cascade blend state the fragment shader was built for. -1 so the first frame always sets it. */
     int m_cascadeBlend = -1;
+
+    /** Shadow master switch the fragment shader was built for. -1 so the first frame always sets it. */
+    int m_castShadow = -1;
 
     MaterialPtr m_programConfigMat;
 

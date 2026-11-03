@@ -100,7 +100,18 @@ namespace ToolKit
 
    public:
     SSAOPassParams m_params;
+
+    /** The blurred map the forward pass multiplies into the lighting. */
     RenderTargetPtr m_ssaoTexture = nullptr;
+
+    /**
+     * The map as the pass wrote it, before the blur.
+     *
+     * Kept reachable so a host can read both halves out and look at them: the occlusion is
+     * multiplied into the lighting before anything reaches the screen, so a wrong map is only
+     * visible as "the scene got darker".
+     */
+    const RenderTargetPtr& GetRawSsaoTarget() const { return m_rawSsaoRt; }
 
    private:
     Vec3Array m_ssaoKernel;
@@ -127,6 +138,12 @@ namespace ToolKit
     int m_currentKernelSize                  = 0;
 
     static constexpr int m_maximumKernelSize = 32;
+
+    /**
+     * Pixel budget the world radius is clamped to, so the search stays local on screen and its sample
+     * density does not collapse with distance.
+     */
+    static constexpr float MaxRadiusPixels = 80.0f;
 
     // Used to detect if the spread has changed. If so, kernel updated.
     float m_prevSpread                       = -1.0f;

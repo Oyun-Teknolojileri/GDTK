@@ -76,6 +76,7 @@ namespace ToolKit
       static void ShowMenuFile();
       static void ShowMenuWindows();
       static void ShowMenuProjects();
+      static void ShowMenuModules();
       static void ShowImportWindow();
       static void ShowSearchForFilesWindow();
       static void HelpMarker(const String& key, const char* desc, float wait = m_hoverTimeForHelp);

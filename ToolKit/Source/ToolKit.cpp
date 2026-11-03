@@ -692,9 +692,14 @@ namespace ToolKit
 
   void Timing::Init(uint fps)
   {
-    LastTime        = GetElapsedMilliSeconds();
-    CurrentTime     = 0.0f;
-    TargetDeltaTime = 1000.0f / float(fps);
+    LastTime    = GetElapsedMilliSeconds();
+    CurrentTime = 0.0f;
+
+    // Zero unlocks the gate rather than dividing by it. SyncFrameTime() draws when
+    // CurrentTime > LastTime + TargetDeltaTime, and 1000 / 0 is an infinity, which would stop the app
+    // from drawing at all - the opposite of what "no target frame rate" means.
+    TargetDeltaTime = fps == 0 ? 0.0f : 1000.0f / float(fps);
+
     FramesPerSecond = fps;
     FrameCount      = 0;
     TimeAccum       = 0.0f;

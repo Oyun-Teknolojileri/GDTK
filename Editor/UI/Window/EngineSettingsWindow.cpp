@@ -8,6 +8,7 @@
 #include "EngineSettingsWindow.h"
 
 #include "App.h"
+#include "EditorScene.h"
 #include "CustomDataView.h"
 #include "PopupWindows.h"
 #include "UI.h"
@@ -199,17 +200,21 @@ namespace ToolKit
       {
         m_activeTab         = Tab::Graphics;
 
-        static bool lockFps = true;
+        // The lock is a setting, not a scratch checkbox. It used to be a static that started ticked and
+        // called Init(9999) to "unlock", so the state was lost with the window and no project could ship
+        // unlocked - while the engine gate is what decides the frame rate, independently of the display's
+        // swap interval. Zero in the setting now means unlocked, see Timing::Init.
+        const int lockedFps = graphics->GetFPSVal() > 0 ? graphics->GetFPSVal() : m_lastLockedFps;
+        bool lockFps        = graphics->GetFPSVal() > 0;
         if (ImGui::Checkbox("FPS Lock##1", &lockFps))
         {
-          if (lockFps)
-          {
-            Main::GetInstance()->m_timing.Init(graphics->GetFPSVal());
-          }
-          else
-          {
-            Main::GetInstance()->m_timing.Init(9999);
-          }
+          graphics->SetFPSVal(lockFps ? lockedFps : 0);
+          Main::GetInstance()->m_timing.Init(graphics->GetFPSVal());
+        }
+
+        if (graphics->GetFPSVal() > 0)
+        {
+          m_lastLockedFps = graphics->GetFPSVal();
         }
 
         bool multiThreaded = graphics->GetMultiThreadedVal();
@@ -223,6 +228,34 @@ namespace ToolKit
         {
           graphics->SetInstancedBatchingVal(instancedBatching);
         }
+
+        // The normal and depth target ambient occlusion and depth of field read. Half size is four
+        // times fewer fragments for a picture neither of them can resolve; a desktop gpu may prefer full
+        // size, where the same target acts as a depth prepass for the forward pass. Screen space reflections
+        // are the exception: they march against that depth at full resolution, so the setting is disabled
+        // while they are on and the tooltip says so, instead of a checkbox that quietly does nothing.
+        bool ssrEnabled = false;
+        if (EditorScenePtr currentScene = GetApp()->GetCurrentScene())
+        {
+          if (currentScene->m_postProcessSettings != nullptr)
+          {
+            ssrEnabled = currentScene->m_postProcessSettings->GetSSREnabledVal();
+          }
+        }
+
+        ImGui::BeginDisabled(ssrEnabled);
+        bool halfResPreProcess = graphics->GetHalfResolutionForwardPreProcessVal();
+        if (ImGui::Checkbox("Half Resolution Normal Depth##1", &halfResPreProcess))
+        {
+          graphics->SetHalfResolutionForwardPreProcessVal(halfResPreProcess);
+        }
+        ImGui::EndDisabled();
+
+        UI::AddTooltipToLastItem(ssrEnabled
+                                     ? "Disabled: screen space reflections need the normal and depth target at "
+                                       "full resolution to march against."
+                                     : "Ambient occlusion and depth of field read this target at half resolution, "
+                                       "which is four times fewer fragments for the same picture.");
 
         bool occlusionCulling = graphics->GetOcclusionCullingVal();
         if (ImGui::Checkbox("Occlusion Culling##1", &occlusionCulling))
@@ -277,6 +310,13 @@ namespace ToolKit
       if (ImGui::BeginTabItem("Shadows", nullptr, select ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None))
       {
         m_activeTab = Tab::Shadows;
+
+        // Master switch. Off skips the shadow pass and compiles the sampling out of the shader.
+        CustomDataView::ShowVariant(&shadows->ParamCastShadow(), nullptr);
+        UI::AddTooltipToLastItem("Whether anything casts a shadow at all.\n"
+                                 "Off: the shadow pass renders nothing and the shader drops its\n"
+                                 "shadow sampling, so a scene that needs no shadows pays neither.\n"
+                                 "On: every light with its own Cast Shadow set still casts.");
 
         // VSM Blur settings.
         ImGui::SeparatorText("VSM Blur");

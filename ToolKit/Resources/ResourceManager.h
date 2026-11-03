@@ -50,7 +50,21 @@ namespace ToolKit
           }
 
           String rel = GetRelativeResourcePath(file);
-          TK_WRN("File: %s is missing. Using default resource.", rel.c_str());
+
+          // A missing file has a sensible answer for a material or a shader - a default that still draws
+          // something - and none at all for a scene: the default scene is empty, so the caller gets a black
+          // frame from a load that reported success, and the one line saying the file was missing is a
+          // warning among a thousand others. A scene that is not there is an error, and null is the answer.
+          if constexpr (std::is_same_v<T, Scene>)
+          {
+            TK_ERR("Scene %s is missing from the resources, nothing was loaded.", rel.c_str());
+            return nullptr;
+          }
+          else
+          {
+            TK_WRN("File: %s is missing. Using default resource.", rel.c_str());
+          }
+
           resource->SetFile(def);
           resource->_missingFile = file;
           UnixifyPath(resource->_missingFile);

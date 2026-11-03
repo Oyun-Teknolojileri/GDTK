@@ -824,35 +824,49 @@ namespace ToolKit
     {
       m_name = g_consoleStr;
 
-      CreateCommand(g_showPickDebugCmd, ShowPickDebugExec);
-      CreateCommand(g_showOverlayUICmd, ShowOverlayExec);
-      CreateCommand(g_showOverlayUIAlwaysCmd, ShowOverlayAlwaysExec);
-      CreateCommand(g_showModTransitionsCmd, ShowModTransitionsExec);
-      CreateCommand(g_setTransformCmd, SetTransformExec);
-      CreateCommand(g_setCameraTransformCmd, SetCameraTransformExec);
-      CreateCommand(g_resetCameraCmd, ResetCameraExec);
-      CreateCommand(g_transformCmd, TransformExec);
-      CreateCommand(g_getTransformCmd, GetTransformExec);
-      CreateCommand(g_setTransformOrientationCmd, SetTransformOrientationExec);
-      CreateCommand(g_importSlientCmd, ImportSlient);
-      CreateCommand(g_selectByTag, SelectByTag);
-      CreateCommand(g_lookAt, LookAt);
-      CreateCommand(g_applyTransformToMesh, ApplyTransformToMesh);
-      CreateCommand(g_saveMesh, SaveMesh);
-      CreateCommand(g_showSelectionBoundary, ShowSelectionBoundary);
-      CreateCommand(g_showGraphicsApiLogs, ShowGraphicsApiLogs);
-      CreateCommand(g_setLogLevelCmd, SetLogLevelExec);
-      CreateCommand(g_setWorkspaceDir, SetWorkspaceDir);
-      CreateCommand(g_loadPlugin, LoadPlugin);
-      CreateCommand(g_showShadowFrustum, ShowShadowFrustum);
-      CreateCommand(g_selectEffectingLights, SelectAllEffectingLights);
-      CreateCommand(g_checkSceneHealth, CheckSceneHealth);
-      CreateCommand(g_showSceneBoundary, ShowSceneBoundary);
-      CreateCommand(g_showBVHNodes, ShowBVHNodes);
-      CreateCommand(g_deleteSelection, DeleteSelection);
-      CreateCommand(g_selectSimilar, SelectSimilar);
-      CreateCommand(g_alignToViewCmd, AlignToView);
-      CreateCommand(g_saveThumbnail, SaveThumbnail);
+      // The command table is editor wide (EditorApi.h) and outlives this window,
+      // while a project switch and Windows -> Reset Layout both destroy and
+      // recreate the console. Registering the built in commands once keeps the
+      // table from filling up with duplicate warnings, and the executors are
+      // plain functions, so holding them across a window lifetime is safe. A
+      // command a module added is untouched either way.
+      static bool commandsRegistered = false;
+      if (commandsRegistered)
+      {
+        return;
+      }
+
+      commandsRegistered = true;
+
+      RegisterConsoleCommand(g_showPickDebugCmd, ShowPickDebugExec);
+      RegisterConsoleCommand(g_showOverlayUICmd, ShowOverlayExec);
+      RegisterConsoleCommand(g_showOverlayUIAlwaysCmd, ShowOverlayAlwaysExec);
+      RegisterConsoleCommand(g_showModTransitionsCmd, ShowModTransitionsExec);
+      RegisterConsoleCommand(g_setTransformCmd, SetTransformExec);
+      RegisterConsoleCommand(g_setCameraTransformCmd, SetCameraTransformExec);
+      RegisterConsoleCommand(g_resetCameraCmd, ResetCameraExec);
+      RegisterConsoleCommand(g_transformCmd, TransformExec);
+      RegisterConsoleCommand(g_getTransformCmd, GetTransformExec);
+      RegisterConsoleCommand(g_setTransformOrientationCmd, SetTransformOrientationExec);
+      RegisterConsoleCommand(g_importSlientCmd, ImportSlient);
+      RegisterConsoleCommand(g_selectByTag, SelectByTag);
+      RegisterConsoleCommand(g_lookAt, LookAt);
+      RegisterConsoleCommand(g_applyTransformToMesh, ApplyTransformToMesh);
+      RegisterConsoleCommand(g_saveMesh, SaveMesh);
+      RegisterConsoleCommand(g_showSelectionBoundary, ShowSelectionBoundary);
+      RegisterConsoleCommand(g_showGraphicsApiLogs, ShowGraphicsApiLogs);
+      RegisterConsoleCommand(g_setLogLevelCmd, SetLogLevelExec);
+      RegisterConsoleCommand(g_setWorkspaceDir, SetWorkspaceDir);
+      RegisterConsoleCommand(g_loadPlugin, LoadPlugin);
+      RegisterConsoleCommand(g_showShadowFrustum, ShowShadowFrustum);
+      RegisterConsoleCommand(g_selectEffectingLights, SelectAllEffectingLights);
+      RegisterConsoleCommand(g_checkSceneHealth, CheckSceneHealth);
+      RegisterConsoleCommand(g_showSceneBoundary, ShowSceneBoundary);
+      RegisterConsoleCommand(g_showBVHNodes, ShowBVHNodes);
+      RegisterConsoleCommand(g_deleteSelection, DeleteSelection);
+      RegisterConsoleCommand(g_selectSimilar, SelectSimilar);
+      RegisterConsoleCommand(g_alignToViewCmd, AlignToView);
+      RegisterConsoleCommand(g_saveThumbnail, SaveThumbnail);
     }
 
     ConsoleWindow::~ConsoleWindow() {}
@@ -1317,12 +1331,14 @@ namespace ToolKit
       }
       m_history.push_back(commandLine);
 
-      // Process command.
+      // Process command. The table is the editor's, so a command a module
+      // registered through EditorApi.h runs exactly like a built in one.
       char buffer[256];
-      if (m_commandExecutors.find(cmd) != m_commandExecutors.end())
+      const ConsoleCommandFn executor = FindConsoleCommand(cmd);
+      if (executor != nullptr)
       {
         AddLog(commandLine, LogType::Command);
-        m_commandExecutors[cmd](tagArgs);
+        executor(tagArgs);
       }
       else
       {
@@ -1427,12 +1443,13 @@ namespace ToolKit
           }
 
           // Build a list of candidates
+          const StringArray commands = GetCommandList();
           StringArray candidates;
-          for (size_t i = 0; i < m_commands.size(); i++)
+          for (size_t i = 0; i < commands.size(); i++)
           {
-            if (Strnicmp(m_commands[i].c_str(), word_start, static_cast<int>(word_end - word_start)) == 0)
+            if (Strnicmp(commands[i].c_str(), word_start, static_cast<int>(word_end - word_start)) == 0)
             {
-              candidates.push_back(m_commands[i]);
+              candidates.push_back(commands[i]);
             }
           }
 
@@ -1535,13 +1552,7 @@ namespace ToolKit
       return 0;
     }
 
-    void ConsoleWindow::CreateCommand(const String& command, std::function<void(TagArgArray)> executor)
-    {
-      m_commands.push_back(command);
-      m_commandExecutors[command] = executor;
-    }
-
-    const StringArray& ConsoleWindow::GetCommandList() const { return m_commands; }
+    StringArray ConsoleWindow::GetCommandList() const { return GetConsoleCommandNames(); }
 
   } // namespace Editor
 } // namespace ToolKit

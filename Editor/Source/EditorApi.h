@@ -1,0 +1,131 @@
+/*
+ * Copyright (c) 2019-2026 OtSoftware
+ * This code is licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
+ * For more information, including options for a more permissive commercial license,
+ * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
+ */
+
+#pragma once
+
+/**
+ * @file EditorApi.h The surface the editor exports to its modules.
+ *
+ * A module links against the editor and calls these functions to plug itself
+ * into the running editor: register console commands, write into the console.
+ * Keeping the surface this small is the point - a module that needs more than a
+ * command table and a log line is usually a module that should have been editor
+ * code.
+ *
+ * The editor side of the contract is ConsoleWindow: it drains the same registry
+ * for its command list, its auto complete and its command execution, so a
+ * command a module registers behaves exactly like a built in one.
+ *
+ * Rules for the executors:
+ *   - they are called on the main thread, from the console or the frame loop;
+ *   - they must not capture engine objects. The registry outlives the windows
+ *     and the scene, so a captured Entity/Mesh/Viewport would keep it alive past
+ *     the engine teardown (see "Object Lifetime & Shutdown Order" in AGENTS.md).
+ *     A plain function or a lambda over numbers and strings is what belongs
+ *     here.
+ */
+
+#include "EditorTypes.h"
+
+#include <Logger.h>
+
+namespace ToolKit
+{
+  namespace Editor
+  {
+
+    // Command line word processing. "<Command> arg --tag value" is parsed into
+    // a named command and a list of tag/value pairs; a single argument without
+    // a tag lands under an empty tag name.
+    typedef std::pair<String, StringArray> TagArg;
+    typedef std::vector<TagArg> TagArgArray;
+    typedef std::function<void(TagArgArray)> ConsoleCommandFn;
+
+    /**
+     * Adds a command to the console, the command palette and the auto complete.
+     * @param name Command as the user types it, case sensitive.
+     * @param fn The executor. See the rules above for what it may capture.
+     * @return False when the name is already taken; the first registration wins,
+     * so a module cannot shadow a built in command.
+     */
+    TK_EDITOR_API bool RegisterConsoleCommand(const String& name, const ConsoleCommandFn& fn);
+
+    /**
+     * Removes a command. Modules call this from their shutdown so the console
+     * never holds a pointer into code that is going away.
+     * @return False when no command with that name is registered.
+     */
+    TK_EDITOR_API bool UnregisterConsoleCommand(const String& name);
+
+    /** Returns the executor for a command, or an empty function when there is none. */
+    TK_EDITOR_API ConsoleCommandFn FindConsoleCommand(const String& name);
+
+    /** Names of every registered command, sorted. */
+    TK_EDITOR_API StringArray GetConsoleCommandNames();
+
+    /**
+     * Writes a line into the editor console. Works before the console window
+     * exists and after it is gone - the line is dropped in the second case - so
+     * a module can report its own startup.
+     * @param message The text to show.
+     * @param type Severity, which picks the colour and the filter bucket.
+     */
+    TK_EDITOR_API void WriteConsoleLine(const String& message, LogType type = LogType::Memo);
+
+    // Modules menu
+    //////////////////////////////////////////
+
+    /** Runs when a module menu entry is picked. Called on the main thread. */
+    typedef std::function<void()> MenuActionFn;
+
+    /** Answers whether a module menu entry is enabled right now. Called per frame. */
+    typedef std::function<bool()> MenuEnabledFn;
+
+    /** One entry of the Modules menu, as the editor draws it. */
+    struct ModuleMenuItem
+    {
+      String m_module;         //!< Submenu it belongs to, the module name.
+      String m_label;          //!< Text of the entry.
+      String m_shortcut;       //!< Display only; the editor binds no key for it.
+      MenuActionFn m_action;   //!< What picking it runs.
+      MenuEnabledFn m_enabled; //!< Optional; empty means always enabled.
+    };
+
+    typedef std::vector<ModuleMenuItem> ModuleMenuItemArray;
+
+    /**
+     * Adds an entry under Modules -> <moduleName>, so a module gets a menu
+     * without the editor carrying a line of its UI code. The editor draws the
+     * top level Modules menu only when at least one entry is registered; a
+     * module that registers nothing contributes no submenu.
+     *
+     * `action` and `enabled` follow the same rule as a console command: they run
+     * on the main thread and must not capture engine objects, because the table
+     * outlives the windows and the scene (see "Object Lifetime & Shutdown Order"
+     * in AGENTS.md).
+     *
+     * @param moduleName Submenu label, e.g. the module name.
+     * @param label Text of the entry.
+     * @param action What picking the entry runs.
+     * @param enabled Optional predicate for greying the entry out.
+     * @param shortcut Optional text shown on the right; not a key binding.
+     * @return False when the module already registered an entry with that label.
+     */
+    TK_EDITOR_API bool RegisterModuleMenuItem(const String& moduleName,
+                                              const String& label,
+                                              const MenuActionFn& action,
+                                              const MenuEnabledFn& enabled = nullptr,
+                                              const String& shortcut       = "");
+
+    /** Removes every entry of a module. Called from the module's shutdown. */
+    TK_EDITOR_API void UnregisterModuleMenu(const String& moduleName);
+
+    /** The registered entries, in registration order. The editor draws from this. */
+    TK_EDITOR_API ModuleMenuItemArray GetModuleMenuItems();
+
+  } // namespace Editor
+} // namespace ToolKit

@@ -60,6 +60,17 @@ namespace ToolKit
     /** Sets the settings for the texture. Does not cause a re init. */
     void Settings(const TextureSettings& settings);
 
+    /**
+     * Applies current m_settings to the GPU resource (filter, wrap modes), or the passed ones after
+     * storing them.
+     *
+     * Public, because a texture that is already initialized can still need its sampler state
+     * restated: a pass that samples packed data - the normal and the linear depth in one target, for
+     * instance - has to know whether the fetch is a texel or a blend of four, and it cannot ask the
+     * producer to have got it right.
+     */
+    void ApplyTextureSettings(const TextureSettings& settings);
+
     /** Calculates the required number of mip levels. Mip levels not necessarily exist. */
     int CalculateMipmapLevels();
 
@@ -75,10 +86,6 @@ namespace ToolKit
    protected:
     /** Removes image data. */
     virtual void Clear();
-
-    /** Applies current m_settings to the GPU resource (filter, wrap modes).
-     *  If a new settings struct is passed the member is updated first. */
-    void ApplyTextureSettings(const TextureSettings& settings);
 
    public:
     GpuResourceDataPtr m_gpuData;

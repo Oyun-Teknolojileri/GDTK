@@ -28,6 +28,7 @@
 #include <FileManager.h>
 #include <Platform.h>
 #include <PluginManager.h>
+#include <RenderDocModule.h>
 #include <SDL.h>
 #include <Types.h>
 #include <imgui/backends/imgui_impl_sdl2.h>
@@ -229,6 +230,13 @@ namespace ToolKit
       Main::SetProxy(g_proxy);
       CreateAppData();
       g_proxy->PreInit();
+
+      // Arm the capture module before any graphics object exists: RenderDoc
+      // wants its capture options set before the graphics API is initialised,
+      // and the module only finds the library when the process was started
+      // through RenderDoc. A plain start leaves capture unavailable, which is
+      // the normal case.
+      RenderDoc::Init();
 
       // Platform dependent function assignments.
       GetPluginManager()->FreeModule      = &PlatformHelpers::TKFreeModule;
@@ -471,6 +479,11 @@ namespace ToolKit
 
     void Exit()
     {
+      // Release the capture module while the engine is still alive: it drops
+      // the engine request handler, its console commands and the RenderDoc API
+      // it borrowed.
+      RenderDoc::Shutdown();
+
       g_app->Destroy();
 
       g_proxy->PreUninit();
@@ -496,9 +509,17 @@ namespace ToolKit
       {
         if (g_proxy->SyncFrameTime())
         {
+          // A capture has to bracket a whole frame, present included, so the
+          // module picks up a queued request (or a request file an external tool
+          // dropped into the capture directory) and opens the capture before the
+          // frame starts, then closes it once the frame has been presented.
+          RenderDoc::BeginFrame();
+
           g_proxy->FrameBegin();
           g_proxy->FrameUpdate();
           g_proxy->FrameEnd();
+
+          RenderDoc::EndFrame();
 
           g_app->m_fps = g_proxy->GetCurrentFPS();
         }

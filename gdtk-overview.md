@@ -36,7 +36,10 @@ GDTK/
 │   ├── Packer/                  # Release / publish CLI (.tk bundle, platform packages)
 │   └── Launcher/                # Project browser / entry point (ImGui-based GUI)
 ├── Modules/
-│   └── Workspace/               # Project workspace management (static library)
+│   ├── Workspace/               # Project workspace management (static library)
+│   ├── RenderDoc/               # Editor glue for the capture core (static library)
+│   │   ├── Source/              # Editor capture directory, commands, menu entries
+│   │   └── Scripts/             # Report tooling: .rdc -> json / markdown / PNGs
 ├── Templates/
 │   ├── Plugin/                  # Plugin template
 │   └── Game/                    # Game template
@@ -47,6 +50,7 @@ GDTK/
 │                                # (per config: BinDebug/, BinRelease/)
 ├── CMakeLists.txt               # Top-level CMake
 ├── BuildScripts/                # Cross-platform build scripts
+├── PerfAnalysis/                # Device measurement snapshots (report + scripts + run logs)
 └── .clang-format                # Project formatting rules
 ```
 
@@ -90,6 +94,26 @@ Main
 ```
 
 Frame loop: `FrameBegin -> FrameUpdate -> FrameEnd`. `FrameUpdate` fires `m_preUpdateFns`, runs `Frame(dt)`, fires `m_postUpdateFns`.
+
+Frame timing lands in `Stats::GetRenderTime(cpu, gpu)`, which `RenderSystem::EndFrame` publishes once
+per frame; both halves come from the backend's timer query. The CPU span is the
+outermost `RenderPath::PreRender` to `RenderPath::PostRender` pair (a path nested inside another
+one does not restart it, which is what makes the number positive). The GPU span is
+`GL_TIME_ELAPSED_EXT` in nanoseconds: desktop reaches it through glad (core 3.3), GL ES through
+`GL_EXT_disjoint_timer_query`, whose five entry points `TKOpenGL.cpp` resolves at runtime. A driver
+without the extension leaves the value at its 1 ms floor, so a device that cannot answer reads as
+1.00 ms rather than as a plausible wrong number. `Pass::PreRender/PostRender` also open a
+`Profiler` scope named after the pass, next to the GPU debug group of the same name, so the
+hierarchical profiler in `Stats.h` reports a per-pass breakdown.
+
+The cpu side of that breakdown says where time is spent *submitting*, which is not where the gpu spends
+it: a pass that costs 6 ms of gpu shows up as a fraction of a millisecond of submit time and one long
+stall somewhere else. `Stats::EnablePassGpuTiming(true)` therefore brackets every pass with a pair of
+timestamp queries and `Stats::GetPassGpuTimes()` answers with the latest value per scope. It is off by
+default - cheap, but it is still a measurement - and a scope that has not answered yet reads as zero.
+Scopes nest (a sub pass inside its parent pass), so the sum is an upper bound, and clear / tile store /
+present are not inside any scope: the numbers rank the passes against each other, they do not add up to
+the frame.
 
 Free accessors in `ToolKit.h`: `GetLogger()`, `GetRenderSystem()`, `GetMaterialManager()`, etc.
 
@@ -178,10 +202,22 @@ verification recipe.
 Serializable, loaded from `%appdata%/ToolKit/Config`. Sub-objects:
 
 - **WindowSettings**: name, width, height, fullscreen
-- **GraphicSettings**: FPS, MSAA, HDR, MultiThreaded, InstancedBatching (draws runs of objects that share a mesh and material as one instanced draw; off falls back to one draw per object), RenderResolutionScale, AnisotropicTextureFiltering, OcclusionCulling (drops local lights and meshes the depth grid proves hidden, off by default; see 4.3), OcclusionReprojection (carries that grid into the frame being drawn before it is tested, on by default and only meaningful with culling on; see 4.3), plus a `m_shadows` member
+- **GraphicSettings**: FPS, MSAA, HDR, MultiThreaded, InstancedBatching (draws runs of objects that share a mesh and material as one instanced draw; off falls back to one draw per object), RenderResolutionScale, HalfResolutionForwardPreProcess (builds the normal and depth target - what ambient occlusion and depth of field read - at half the frame's size; screen space reflections force it back to full size, because they march against that depth), AnisotropicTextureFiltering, OcclusionCulling (drops local lights and meshes the depth grid proves hidden, off by default; see 4.3), OcclusionReprojection (carries that grid into the frame being drawn before it is tested, on by default and only meaningful with culling on; see 4.3), plus a `m_shadows` member
 - **ShadowSettings** (nested in GraphicSettings): cascade count/distance, parallel split, stable shadow map, cascade blend, atlas resolution (a 1K/2K/4K choice), slot density (the 2x slots option halves every slot's resolution for four times the slots), PCF kernel, VSM blur
 - **PostProcessingSettings**: tonemapping, bloom, gamma, SSAO, SSR, DOF, FXAA
 - **ShaderSettings**: per-shader define presets (e.g. "Low"/"High" graphics presets) so shader compile doesn't explode combinatorially
+
+**`FPS` is a gate, not a suggestion.** `Main::SyncFrameTime()` draws only when
+`CurrentTime > LastTime + TargetDeltaTime`, with `TargetDeltaTime = 1000 / FPS`, so the engine paces the
+frame on its own, independently of the display's swap interval: a run that asks EGL for no vsync still
+measures `FPS`. `FPS = 0` means unlocked - `TargetDeltaTime` is then zero and every iteration draws -
+which is what a measurement of the frame the app can produce needs; the division itself would yield an
+infinity and stop the app from drawing at all. The settings object outlives a load: the editor
+initializes the timer from the user config in `Main::Init` and then loads the open project's
+`Config/Engine.settings` on top of the same object, so `EngineSettings::DeSerializeImp` hands the value
+to `Timing` on every load (`ApplyFrameRate`). Without that handoff, a project that asked for no lock ran
+locked at the user config's frame rate until the settings window's FPS Lock checkbox - the only other
+caller of `Timing::Init` - was touched, which reads exactly like a stale setting.
 
 A shader variant that fails to compile is not fatal: `Shader::Compile` keeps the last working
 `m_gpuData`, `Shader::SetDefine` leaves the current variant in place and names the missing one, and
@@ -600,6 +636,15 @@ walks every entity in the scene and measured 2.8 ms a frame, so they are rebuilt
 scene version moves, the light set changes, or the render path sets `ShadowPassParams::castersDirty`
 on a frame where an entity's geometry changed.
 
+`ShadowSettings::CastShadow` is the master switch, off by default in a project that does not need
+shadows. Off, `ShadowPass::PreRender` clears its light list and `ShadowPass::Render` returns before
+touching the atlas, and `ForwardRenderPass` hands the fragment shader `CastShadow 0`, which compiles
+the sampling path in `shadow.shader` out entirely (it returns 1.0 from both samplers). The point is
+that the PCF and cascade blend settings keep their quality values while the feature is off: turning
+the switch back on restores the authored shadows with exactly the filtering the settings asked for,
+which hand-editing the PCF tap count to zero could not do. On the reference phone the difference is
+30.9 fps to 60 (vsync) at the demo scene's 65 % resolution.
+
 Scenes with a skinned or animated job disable the cache (`m_jobCacheUnusable`): those transforms
 move without a spatial invalidation, which no counter can see.
 
@@ -951,6 +996,36 @@ Used by **runtime game apps** (not editor). Pipeline:
 
 Params: `viewport`, `scene`, `postProcessSettings`.
 
+**Present: the frame leaves through a copy, and that is settled.** `m_gammaPass` composites the rendered
+target into `m_presentTarget` - a window sized RGBA8 framebuffer, `PreparePresentTarget()` creates and
+resizes it - and `Renderer::CopyFrameBuffer` copies that into the window 1:1. The present target exists
+for two reasons: sampling the rendered target *across* a window sized one is what makes a
+`RenderResolutionScale` below 1 fill the window instead of leaving a reduced picture in its corner (the
+copy this replaces copies at its source's size), and writing a target the pass does not read lets the
+composite sample the rendered attachment directly, so the whole-target scratch copy an in-place
+composite needs is not made. `GammaTonemapFxaaPass` takes a `sourceFrameBuffer` next to its
+`frameBuffer` for that; a null source means the in-place case, which is what the editor's viewport and
+`ProjectThumbnail` still do.
+Drawing the composite straight into the window's back buffer instead - removing the copy, which is
+what the blit costs on a mobile GPU - was implemented, measured and reverted; do not redo it without
+reading `PerformanceDemo/PerfAnalysis/stage3-two-camera-report.md` first. The short version:
+
+- **SM-G950F / Mali-G71 / Android 9**: the copy costs about 110 ms of the frame (162 ms against 59 ms
+  with the composite drawing into the window), but the draw is not safe there. Measured with a two
+  camera test - one camera change, nothing else moving - the view from before the change came back on
+  screen 13 to 18 times per run with the draw and never with the copy. The app renders one correct
+  image per frame (verified per frame from inside the renderer); the display is handed an older buffer.
+  A `glReadPixels`, a `glFlush` or a `glFinish` before `SDL_GL_SwapWindow` each make it worse on that
+  driver - black or half drawn frames - so there is no app side fix.
+- **TECNO CL7 / PowerVR BXM-8-256 / Android 16**: both shapes present correctly, and the copy is free
+  (157.6-159.7 ms against 158.3-159.5 ms, inside the run to run spread). The optimisation therefore
+  buys nothing on a device that is not paying the Mali blit cost, and breaks the picture on the device
+  that is - which is why the copy is the only shape that was kept.
+
+Practical consequences for a host: ask for a real swap interval. `SDL_GL_SetSwapInterval(-1)`
+(adaptive) is a desktop concept that EGL clamps to 0, i.e. no vsync at all, and an unpaced swap is
+what lets the stale frame above reach the screen.
+
 `EditorRenderer` (Editor/) is the editor's renderer with gizmo passes (`GizmoPass`).
 
 ---
@@ -1268,6 +1343,163 @@ ruler or by dragging a lane; the wheel scrolls the rows, `Shift+wheel` pans, `Ct
 
 ---
 
+### 9.8 RenderDoc capture (engine core + `Modules/RenderDoc`)
+
+Frame capture is split in two on purpose, because two hosts need it and they
+cannot share one implementation any other way:
+
+```
+ToolKit/Source/RenderDocCapture.h/.cpp   the capture machinery: bind the injected
+                                         RenderDoc, drive the frame, write the .rdc
+                                         and its JSON sidecar, serve the request file
+Dependency/utilities/renderdoc_app.h     RenderDoc's in-application API header (MIT)
+
+Modules/RenderDoc/
+  Source/RenderDocModule.h/.cpp          editor glue: capture directory, sidecar
+                                         context, the four calls main.cpp makes
+  Source/RenderDocCommands.h/.cpp        CaptureFrame / CaptureStatus / CaptureOpen
+  Scripts/                              the python report tooling
+```
+
+The core lives in the engine because a *published game* links only `TK::ToolKit`
+and a game may still want to capture: `RenderDocCapture::Init` plus the two frame
+hooks and `Shutdown` are all a host needs, and `ToolKit::RequestFrameCapture()`
+then works there exactly as it does in the editor. The game template deliberately
+does not call them - not every game wants capture - so opting in is documented in
+`Modules/RenderDoc/Scripts/README.md` rather than baked into every project. The
+engine knows nothing about projects, so `Init()` takes two callbacks: one that
+answers the capture directory (resolved per capture, so a project switch moves it)
+and one that returns the extra sidecar fields. The editor answers
+`<workspace>/<project>/Captures` plus workspace / project / scene; a game would
+answer `<cwd>/Captures` and nothing else.
+
+What stays host specific is everything the editor contributes on top: the console
+commands, the **Modules -> RenderDoc** menu, and the `App`-shaped callbacks above.
+That is `Modules/RenderDoc`, a static library the editor links (static, not a DLL,
+because the capture hooks have to exist before the graphics device does, so it has
+to come up with the host). Its TUs are built with `TK_EDITOR_DLL_EXPORT` so their
+calls into the editor API link directly instead of becoming import thunks a static
+library cannot satisfy - the same trick `Editor/CMakeLists.txt` uses for
+`TK_WORKSPACE_DLL_EXPORT`, mirrored; the editor is built with
+`TK_RENDERDOC_DLL_EXPORT` for the same reason.
+
+Both are compiled into every config, Debug through MinSizeRel. What keeps
+RenderDoc out of a shipped build is not a preprocessor switch: the library is only
+ever looked up by name in the running process (`GetModuleHandle` /
+`dlopen(RTLD_NOLOAD)`), never loaded, so a game that was not started through
+RenderDoc runs the same code and captures nothing. The browser has no dynamic
+libraries, so the module lookup compiles to "not found" there and the whole thing
+is inert.
+
+**The module talks back to the editor** through `Editor/Source/EditorApi.h`, the
+editor's exported surface for modules:
+
+```cpp
+TK_EDITOR_API bool RegisterConsoleCommand(const String& name, const ConsoleCommandFn& fn);
+TK_EDITOR_API bool UnregisterConsoleCommand(const String& name);
+TK_EDITOR_API ConsoleCommandFn FindConsoleCommand(const String& name);
+TK_EDITOR_API StringArray GetConsoleCommandNames();
+TK_EDITOR_API void WriteConsoleLine(const String& message, LogType type = LogType::Memo);
+
+TK_EDITOR_API bool RegisterModuleMenuItem(const String& moduleName, const String& label,
+                                          const MenuActionFn& action,
+                                          const MenuEnabledFn& enabled = nullptr,
+                                          const String& shortcut = "");
+TK_EDITOR_API void UnregisterModuleMenu(const String& moduleName);
+TK_EDITOR_API ModuleMenuItemArray GetModuleMenuItems();
+```
+
+The command table behind it is editor wide (a `std::map` behind a mutex) and lives
+outside `ConsoleWindow`, so a module can register before any window exists; the
+console drains the same table for its command list, its auto complete and its
+`ExecCommand`, which is why a module command behaves exactly like a built in one.
+
+The second half of the surface is the menu: `RegisterModuleMenuItem` adds an entry
+under **Modules -> `<moduleName>`** in the main menu bar, and
+`UI::ShowMenuModules` draws that menu from the registry. The top level `Modules`
+entry only exists while something is registered, a module that registers nothing
+gets no submenu, and the `enabled` predicate is what greys an entry out (the
+capture entries are disabled while RenderDoc is not in the process). Menus are
+deliberately a separate, action based table and not `DynamicMenu`: the dynamic
+menus are built from ObjectFactory class meta values for the Add menu, while a
+module entry is a callback, not a class name. Keyboard shortcuts are still the
+editor's (`EditorMetaKeys.h`); the `shortcut` argument is display text only.
+
+The library is looked up by name (`renderdoc.dll` / `librenderdoc.so`, and
+`libVkLayer_GLES_RenderDoc.so` on Android), which is how an injected RenderDoc
+presents itself. Nothing loads it: the capture hooks have to be in place before the
+graphics device is created, so the process has to be started through RenderDoc
+(`renderdoccmd capture -w <exe> ...`, or `renderdoccmd inject <pid>` for a running
+one - the API binds at startup, so an injected session keeps working only through
+RenderDoc's own hotkey). `Init()` runs from `PreInit()`, before any graphics work;
+with RenderDoc absent the editor still registers its commands (so `CaptureStatus`
+can explain), reports false and every other entry point does nothing, which is
+what a normal start looks like. In a game the same call reports false and
+`RequestFrameCapture()` stays a no-op.
+
+Four ways to ask for a capture, all funnelling into one queue:
+
+| From | Entry point |
+|---|---|
+| Game code / plugin | `ToolKit::RequestFrameCapture(label, frames)` (`ToolKit/Source/FrameCapture.h`) |
+| Editor code | `ToolKit::RenderDocCapture::RequestCapture(label, frames)` |
+| Console | `CaptureFrame <label> [frames]`, `CaptureStatus`, `CaptureOpen` |
+| Anything outside the process | write `<capture dir>/request` with `label [frameCount]` |
+
+The engine hook exists because a game build links only `TK::ToolKit` and the host
+is the one that knows how to capture: routing the request through an installed
+handler is what lets the same game code ask for a capture in the editor or in a
+game, and compile to a no-op where no host installed one, without the game linking
+host symbols or naming RenderDoc. `FrameCapture.cpp` holds one `std::function`
+behind a mutex for that, and `RenderDocCapture::Init` is what installs (and
+`Shutdown` what removes) the handler.
+
+A request is queued, never acted on inside the call: `BeginFrame()` opens the
+capture at the top of the next frame and `EndFrame()` closes it after the frame's
+present, called from `TK_Loop` in `Editor/Source/main.cpp`. Starting a capture in
+the middle of a frame would record half of it, and RenderDoc needs the present
+inside the region. The queue is what makes a request from a game thread, a console
+command or the request file all land on the render thread.
+
+Captures and their metadata go to `<workspace>/<project>/Captures` in the editor,
+and next to the game (`<cwd>/Captures`) in a standalone run; the editor passes the
+first as a callback, the game the second:
+
+```
+<label>_<yyyymmdd-hhmmss>_capture.rdc      the capture
+<label>_<yyyymmdd-hhmmss>_capture.json     engine sidecar: project, scene, frame, config
+last_capture.json                          pointer to the capture that finished last
+request                                    consumed request file
+```
+
+The sidecar is what lets the report say which project and scene a capture is of,
+and the request file is what lets a tool that cannot call into the process (an AI
+agent, a CI job) trigger a capture: `BeginFrame()` polls it first, deletes it
+before acting, and rejects a request while another capture is queued or running.
+
+The python side lives in `Modules/RenderDoc/Scripts/` and is not part of the
+build (the module's CMake globs `*.cpp` only, so a `Scripts/` folder of python
+is invisible to it). A distributed RenderDoc does not ship the standalone
+`renderdoc` module, so the analysis runs inside the interpreter `qrenderdoc.exe`
+embeds:
+`rdc_report.py` locates `qrenderdoc`, sets `TK_RD_CAPTURE` / `TK_RD_OUTDIR` /
+`TK_RD_RDCKIT` and runs `rdc_analyze.py` with `--python`, which replays the frame
+and writes `<capture>.report/` - `capture.md` (pass table with images, one section
+per pass with its targets, shaders and sampled textures, largest textures,
+mechanical findings), `capture.json` (the full model) and `images/` + `shaders/`.
+The script ends with `sys.exit()` because that is what tells qrenderdoc to skip
+its UI and quit.
+
+Because the engine wraps every pass in a GPU debug group (`Pass::PreRender`
+opens one named after the pass), the pass table the report prints *is* the frame's
+render graph - `ShadowPass`, `ForwardPreProcessPass`, `SSAOPass`, `BloomPass`,
+`GammaTonemapFxaaPass`, `EditorUI` - which is the part that makes the report
+useful for "why does this frame look wrong". Per pass images are taken at the last
+action that wrote colour inside the region, not at the marker, because a pass that
+switches targets hands back its input at the marker position.
+
+---
+
 ## 10. Threading (Threads.h)
 
 ### 10.1 WorkerManager
@@ -1332,8 +1564,57 @@ SDL2, ToolKit (no assimp). The editor's Publish dialog drives it through
 installed emscripten emits a separate worker script -- current releases reuse the
 main `.js`) into `Publish/Web`, together with a `Run.bat` that starts `emrun`.
 The `PublishConfig` names map to `Debug` -> `Debug`, `Develop` ->
-`RelWithDebInfo`, `Deploy` -> `Release`. Packing runs first when
-`MinResources.pak` is missing or the config is `Deploy`.
+`RelWithDebInfo`, `Deploy` -> `Release`. **Packing is opt in**: `Packer.exe --pack`
+packs before publishing, and a Debug or Develop publish without the flag ships the
+pak already on disk, because most publishes during development are about the
+binary and a 16 MB repack on each of them is time nobody gets back. Two cases pack
+anyway - a `Deploy` publish, since that is the build that ships, and a publish
+with no pak at all, since there would be nothing to run. Anything that must not
+ship a stale pak (scripts, automation) passes `--pack` and stops thinking about
+it.
+
+The pak is identified by one hash. `Packer::WritePakHash` hashes the pak that
+publishes this run - freshly packed or left over - with FNV-1a over the bytes, and
+writes the result to `MinResources.pak.hash`, which `AndroidPublish` copies into
+the assets beside the pak. The app compares it with the copy it keeps next to the
+pak it unpacked (`CopyPakToDataPath` in `Codes/Platform/android_main.h`) and
+re-copies only when the two differ, so a rebuild that produces the same pak does
+not re-unpack 16 MB. Before this, the device copy was skipped whenever the file
+existed, which pinned the first pak a package name ever wrote and made every later
+publish invisible on the device.
+
+
+`Packer::AndroidPublish` is the Android path: it packs, copies `MinResources.pak`
+into `Android/app/src/main/assets`, rewrites `Android/app/build.gradle` from the
+template (namespace, app name, `minSdkVersion`, orientation, ABI), replaces the
+launcher icons under `Android/app/src/main/res`, runs the Gradle wrapper from
+`Android/`, and copies the produced `app-{debug,release}.apk` to
+`Publish/Android/<AppName>_{debug,release}.apk`. The wrapper is started through
+the platform shell -- bare `gradlew` on Windows (cmd.exe resolves it from the
+working directory) and `sh ./gradlew` elsewhere, because a checkout made on
+Windows carries no exec bit and `./gradlew` then fails with "Permission denied".
+With `m_deployAfterBuild` the packer installs and starts the APK with `adb` from
+`$ANDROID_HOME/platform-tools` (`ANDROID_SDK_ROOT` is accepted as a fallback
+name); the binary is named `./adb` off Windows, since `posix_spawnp` does not
+search the working directory the way cmd.exe does.
+
+The native half is Gradle's `externalNativeBuild`, so the toolchain comes from
+the SDK rather than from the desktop build: AGP 8.1.1 wants JDK 17, NDK
+25.1.8937393 (what AGP 8.1 picks when none is pinned) and CMake 3.22.1.
+`Templates/Game/Android/app/jni/CMakeLists.txt` resolves the engine root from the
+`TOOLKIT_DIR` cache variable, the `TOOLKIT_DIR` environment variable, or
+`Path.txt` in the per-user config directory (`%APPDATA%` on Windows,
+`$XDG_CONFIG_HOME` / `~/.config` elsewhere) -- the same order the project's own
+`CMakeLists.txt` uses. Gradle passes no `-D` for it, and the file reads
+`CMAKE_HOST_WIN32` rather than `WIN32` because the Android build cross compiles
+from the host.
+
+Two toolchain constraints worth knowing before changing the SDK levels: the NDK
+ignores the template's `-DANDROID_APP_PLATFORM=android-19` (the modern
+`ANDROID_PLATFORM` decides, and AGP fills it from `minSdkVersion`), and
+`TKOpenGL::SetObjectLabel` calls `glObjectLabel` directly on Android, which the
+NDK only declares from API 24 (GL ES 3.2) -- a `minSdkVersion` below 24 fails at
+link time.
 
 The packer process itself is headless (`RenderSystem::UseNullBackend()` plus the
 dummy SDL video driver), which is why `RenderSystem::AddRenderTask` drops its
@@ -1582,6 +1863,12 @@ When writing/editing any `.h`/`.cpp` in this repo:
 | Undoable editor actions (incl. key edits) | `Editor/Source/Action.h` |
 | Dope sheet editor (view + window) | `Editor/UI/View/DopeSheetView.h` |
 | Editor renderer | `Editor/Render/EditorRenderer.h` |
+| RenderDoc capture core (engine, any host) | `ToolKit/Source/RenderDocCapture.h` |
+| RenderDoc editor glue (commands, menu, capture directory) | `Modules/RenderDoc/Source/RenderDocModule.h` |
+| RenderDoc in-application API header (vendored) | `Dependency/utilities/renderdoc_app.h` |
+| Editor API for modules (console commands, console output) | `Editor/Source/EditorApi.h` |
+| Frame capture request hook (game code) | `ToolKit/Source/FrameCapture.h` |
+| Capture report tool (.rdc -> json / markdown / PNGs) | `Modules/RenderDoc/Scripts/README.md` |
 | Host / platform glue (exec paths, shortcuts, app icon) | `ToolKit/Common/PlatformHelper.h` |
 | Workspace (project and workspace management) | `Modules/Workspace/Source/Workspace.h` |
 | Build deps | `BuildScripts/build_dependencies.py` |

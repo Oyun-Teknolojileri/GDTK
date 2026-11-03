@@ -9,6 +9,7 @@
 
 #include "Hash.h"
 #include "Types.h"
+#include <unordered_map>
 
 namespace ToolKit
 {
@@ -207,7 +208,24 @@ namespace ToolKit
     TK_API void ResetVRAMUsage();
 
     // Render Time
-    TK_API void GetRenderTime(float& cpu, float& gpu);
+    /**
+   * Gpu time of one debug scope (a pass, a shadow map, the ui), in milliseconds, as the backend
+   * reported it. A scope that has not answered yet reads as zero.
+   */
+  /**
+   * Turns per pass gpu timing on or off. Off by default: every pass then brackets itself with two
+   * timestamp queries, which is cheap but is still a measurement. Returns false when the backend has
+   * no timestamp queries.
+   */
+  TK_API bool EnablePassGpuTiming(bool enable);
+
+  /** Every scope that has answered, with its latest gpu time in milliseconds. */
+  TK_API std::unordered_map<String, float> GetPassGpuTimes();
+
+  TK_API void SetPassGpuMs(StringView name, float ms);
+  TK_API float GetPassGpuMs(StringView name);
+
+  TK_API void GetRenderTime(float& cpu, float& gpu);
     TK_API void GetRenderTimeAvg(float& cpu, float& gpu);
     TK_API void SetRenderTime(float cpu, float gpu);
     TK_API void SetRenderTimeAvg(float cpu, float gpu);

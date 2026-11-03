@@ -827,11 +827,12 @@ namespace ToolKit
     }
   }
 
-  void Renderer::SetAmbientOcclusionTexture(TexturePtr aoTexture)
+  void Renderer::SetAmbientOcclusionTexture(TexturePtr aoTexture, float strength)
   {
     m_aoTexture              = aoTexture;
     m_ambientOcculusionInUse = (aoTexture != nullptr);
     m_drawCommand.SetAmbientOcclusionInUse(m_ambientOcculusionInUse);
+    m_drawCommand.SetAmbientOcclusionStrength(strength);
   }
 
   void Renderer::SetMaterial(Material* mat)

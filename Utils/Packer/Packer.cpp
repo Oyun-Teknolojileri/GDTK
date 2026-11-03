@@ -81,6 +81,15 @@ namespace ToolKit
     void AndroidRunOnPhone(bool isAPKUnsigned);
     int PackResources();
 
+    /** Path of the pak this publish produces. */
+    String PakPath() const;
+
+    /** Path of the file that carries the hash of the pak, next to the pak and in the assets. */
+    String PakHashPath() const;
+
+    /** Hashes the finished pak and writes the result next to it, so it can travel with the assets. */
+    void WritePakHash() const;
+
     /**
      * Checks the error code and returns true if there is an error.
      * Also reports the message to console in case of error.
@@ -92,6 +101,15 @@ namespace ToolKit
    public:
     /** Just packs the resources. Does not perform publishing. */
     bool m_onlyPack = false;
+
+    /**
+     * Packs the resources before publishing, whatever the config says. Pass --pack.
+     *
+     * Without it a Debug or Develop publish ships the pak already on disk, which keeps development
+     * iterations fast; Deploy and a missing pak pack either way.
+     */
+    bool m_forcePack = false;
+
     String m_icon;
     String m_appName;
     int m_minSdk            = 27;
@@ -107,6 +125,69 @@ namespace ToolKit
     std::error_code m_errorCode;
     Path m_workingDirectory;
   };
+
+  namespace
+  {
+    /**
+     * Hash of the finished pak, which is the only thing that has to be identified: it is what ships
+     * and what the app compares against the pak it unpacked last time. FNV-1a, 64 bit, over the
+     * bytes - a 16 MB read per publish, against the seconds packing already costs.
+     */
+    uint64 HashFile(const String& path)
+    {
+      uint64 hash = 1469598103934665603ull;
+      const auto fold = [&hash](const void* data, size_t size)
+      {
+        const ubyte* bytes = (const ubyte*) data;
+        for (size_t i = 0; i < size; i++)
+        {
+          hash ^= bytes[i];
+          hash *= 1099511628211ull;
+        }
+      };
+
+      std::ifstream file(path.c_str(), std::ios::binary);
+      if (!file)
+      {
+        return hash;
+      }
+
+      std::vector<char> buffer(1 << 20);
+      while (file)
+      {
+        file.read(buffer.data(), (std::streamsize) buffer.size());
+        const std::streamsize read = file.gcount();
+        if (read > 0)
+        {
+          fold(buffer.data(), (size_t) read);
+        }
+      }
+
+      return hash;
+    }
+
+    String HexHash(uint64 hash)
+    {
+      char buffer[17] = {};
+      snprintf(buffer, sizeof(buffer), "%016llx", (unsigned long long) hash);
+      return String(buffer);
+    }
+  } // namespace
+
+  String Packer::PakPath() const { return ConcatPaths({ResourcePath(), "..", TKResourcePak}); }
+
+  String Packer::PakHashPath() const { return PakPath() + ".hash"; }
+
+  void Packer::WritePakHash() const
+  {
+    const String pakPath = PakPath();
+    if (!CheckSystemFile(pakPath))
+    {
+      return;
+    }
+
+    GetFileManager()->WriteAllText(PakHashPath(), HexHash(HashFile(pakPath)));
+  }
 
   int Packer::PackResources()
   {
@@ -153,22 +234,42 @@ namespace ToolKit
 
   int Packer::Publish()
   {
-    String packPath   = ConcatPaths({ResourcePath(), "..", TKResourcePak});
+    // Packing is opt in, because a publish is also how a debug or develop build gets onto a device
+    // during development, and repacking 16 MB of resources on every one of those iterations is time
+    // nobody gets back.
+    //
+    // It is still not left to chance: --pack asks for it explicitly, a Deploy publish packs because
+    // that is the build that ships, and a publish with no pak at all packs because there would be
+    // nothing to run. Anything that must not ship a stale pak - scripts, automation - should pass
+    // --pack and stop thinking about it.
+    const bool isPlugin   = m_platform == PublishPlatform::EditorPlugin || m_platform == PublishPlatform::GamePlugin;
+    const bool pakMissing = !CheckSystemFile(PakPath());
+    const bool wantPack   = m_forcePack || m_publishConfig == PublishConfig::Deploy || pakMissing || m_onlyPack;
 
-    bool needPacking  = m_publishConfig == PublishConfig::Deploy;
-    needPacking      |= !CheckSystemFile(packPath);
-    needPacking      |= m_onlyPack;
-
-    // Prevent packing for plugins.
-    needPacking      &= (m_platform != PublishPlatform::EditorPlugin && m_platform != PublishPlatform::GamePlugin);
-
-    if (needPacking)
+    if (!isPlugin)
     {
-      int packResult = PackResources();
-      if (packResult != 0 || m_onlyPack)
+      if (wantPack)
       {
-        return packResult;
+        const int packResult = PackResources();
+        if (packResult != 0)
+        {
+          return packResult;
+        }
+
+        if (m_onlyPack)
+        {
+          return 0;
+        }
       }
+      else
+      {
+        TK_LOG("Packing skipped (Debug/Develop publish without --pack), shipping the existing pak.\n");
+      }
+
+      // The pak is the identity of what ships, packed this run or left over from an earlier one.
+      // This hash goes into the assets beside it and the app compares it with the one it stored next
+      // to the pak it unpacked, so a rebuild that changes nothing does not cost a 16 MB copy.
+      WritePakHash();
     }
 
     switch (m_platform)
@@ -245,8 +346,8 @@ namespace ToolKit
     }
 
     int winBuildCompileResult = -1;
-    String cmd                = "cmake -S . -B ./Intermediate/Windows -A x64 -DTK_PLATFORM=Windows -DCMAKE_BUILD_TYPE=" + buildConfig;
-    winBuildCompileResult     = std::system(cmd.c_str());
+    String cmd = "cmake -S . -B ./Intermediate/Windows -A x64 -DTK_PLATFORM=Windows -DCMAKE_BUILD_TYPE=" + buildConfig;
+    winBuildCompileResult = std::system(cmd.c_str());
     if (winBuildCompileResult != 0)
     {
       TK_ERR("Cmake configure failed: %s\n", cmd.c_str());
@@ -314,7 +415,7 @@ namespace ToolKit
   int Packer::LinuxPublish()
   {
     TK_LOG("Building for Linux\n");
-    m_workingDirectory            = std::filesystem::current_path();
+    m_workingDirectory = std::filesystem::current_path();
 
     // Run cmake for Linux build
     String buildConfig;
@@ -331,12 +432,12 @@ namespace ToolKit
       buildConfig = "Release";
     }
 
-    Path projectDir                = Path(ConcatPaths({ResourcePath(), ".."})).lexically_normal();
-    String projectDirStr           = projectDir.string();
-    projectDirStr                  = projectDirStr.substr(0, projectDirStr.size() - 1);
+    Path projectDir               = Path(ConcatPaths({ResourcePath(), ".."})).lexically_normal();
+    String projectDirStr          = projectDir.string();
+    projectDirStr                 = projectDirStr.substr(0, projectDirStr.size() - 1);
 
-    const String publishDirectory  = ConcatPaths({projectDirStr, "Publish", "Linux"});
-    const String publishConfigDir  = ConcatPaths({publishDirectory, "Config"});
+    const String publishDirectory = ConcatPaths({projectDirStr, "Publish", "Linux"});
+    const String publishConfigDir = ConcatPaths({publishDirectory, "Config"});
 
     // Create directories. publishDirectory is the cmake --install --prefix; the
     // Bin/ subdir under it is created by the install rules (DESTINATION Bin), so
@@ -383,7 +484,7 @@ namespace ToolKit
     // SONAME, all with $ORIGIN RPATH) into <publishDirectory>/Bin. The install
     // rules live in the game's CMakeLists.txt. Single-config generator, so no
     // --config. Run while cwd is still the project root.
-    cmd = "cmake --install ./Intermediate/Linux --prefix \"" + publishDirectory + "\"";
+    cmd        = "cmake --install ./Intermediate/Linux --prefix \"" + publishDirectory + "\"";
     compileRes = std::system(cmd.c_str());
     if (compileRes != 0)
     {
@@ -397,9 +498,9 @@ namespace ToolKit
       return -1;
     }
 
-    const String pakFile             = ConcatPaths({projectDirStr, TKResourcePak});
-    const String engineSettingsPath  = ConcatPaths({projectDirStr, "Config", "Linux", "Engine.settings"});
-    const String destEngineSettings  = ConcatPaths({publishConfigDir, "Engine.settings"});
+    const String pakFile            = ConcatPaths({projectDirStr, TKResourcePak});
+    const String engineSettingsPath = ConcatPaths({projectDirStr, "Config", "Linux", "Engine.settings"});
+    const String destEngineSettings = ConcatPaths({publishConfigDir, "Engine.settings"});
 
     TK_LOG("Linux build done, moving files\n");
 
@@ -479,7 +580,14 @@ namespace ToolKit
   void Packer::AndroidRunOnPhone(bool isAPKUnsigned)
   {
     // adb path is in: 'android-sdk/platform-tools'
-    String sdkPath = String(getenv("ANDROID_HOME"));
+    const char* sdkEnv = getenv("ANDROID_HOME");
+    if (sdkEnv == nullptr)
+    {
+      // ANDROID_SDK_ROOT is the older name, still exported by some setups.
+      sdkEnv = getenv("ANDROID_SDK_ROOT");
+    }
+
+    String sdkPath = sdkEnv != nullptr ? String(sdkEnv) : String();
     if (sdkPath.empty())
     {
       TK_WRN("ANDROID_HOME environment variable is not set.\n ");
@@ -490,6 +598,16 @@ namespace ToolKit
     std::filesystem::current_path(ConcatPaths({sdkPath, "platform-tools"}), m_errorCode);
 
     TK_LOG("Trying to execute the app on your phone...\n");
+
+    // The working directory is platform-tools, so the binary is reachable
+    // without touching $PATH. cmd.exe searches the current directory for a
+    // bare name; posix_spawnp does not, so the POSIX branch names the binary
+    // relative to it.
+#ifdef _WIN32
+    const String adbExecutable = "adb";
+#else
+    const String adbExecutable = "./adb";
+#endif
 
     const auto checkIfFailedFn = [this](int execResult, const String& command) -> bool
     {
@@ -520,14 +638,14 @@ namespace ToolKit
     String packageName = "com.otyazilim.toolkit." + projectName + "/com.otyazilim.toolkit.ToolKitActivity";
 
     int execResult;
-    execResult = PlatformHelpers::SysComExec({String("adb"), String("install"), apkLocation}, false, true, nullptr);
+    execResult = PlatformHelpers::SysComExec({adbExecutable, String("install"), apkLocation}, false, true, nullptr);
     if (checkIfFailedFn(execResult, "adb install " + apkLocation))
     {
       return;
     }
 
     execResult = PlatformHelpers::SysComExec(
-        {String("adb"), String("shell"), String("am"), String("start"), String("-n"), packageName},
+        {adbExecutable, String("shell"), String("am"), String("start"), String("-n"), packageName},
         true,
         true,
         nullptr);
@@ -597,11 +715,20 @@ namespace ToolKit
       return -1;
     }
 
-    const String assetsPath             = NormalizePath("Android/app/src/main/assets");
-    const String projectLocation        = ConcatPaths({workspacePath, projectName});
-    const String sceneResourcesPath     = ConcatPaths({projectLocation, TKResourcePak});
-    const String androidResourcesPath   = ConcatPaths({projectLocation, assetsPath, TKResourcePak});
-    const String engineSettingsPath     = ConcatPaths({ResourcePath(), "..", "Config", "Android", "Engine.settings"});
+    const String assetsPath           = NormalizePath("Android/app/src/main/assets");
+    const String projectLocation      = ConcatPaths({workspacePath, projectName});
+    const String sceneResourcesPath   = ConcatPaths({projectLocation, TKResourcePak});
+    const String androidResourcesPath = ConcatPaths({projectLocation, assetsPath, TKResourcePak});
+    // The project's own Config/Android/Engine.settings wins over the engine's default, the way the
+    // Windows and Linux publishes already work. Taking only the engine's copy meant a project could not
+    // change its graphics settings at all on Android - msaa, shadows, texture quality all came from the
+    // engine's defaults no matter what the project asked for, and nothing said so.
+    String engineSettingsPath         = ConcatPaths({projectLocation, "Config", "Android", "Engine.settings"});
+    if (!CheckSystemFile(engineSettingsPath))
+    {
+      engineSettingsPath = ConcatPaths({ResourcePath(), "..", "Config", "Android", "Engine.settings"});
+    }
+
     const String destEngineSettingsPath = ConcatPaths({projectLocation, assetsPath, "Config", "Engine.settings"});
 
     const std::filesystem::copy_options copyOption = std::filesystem::copy_options::overwrite_existing;
@@ -610,6 +737,19 @@ namespace ToolKit
     if (CheckErrorReturn("Copy " + sceneResourcesPath + " and " + androidResourcesPath))
     {
       return -1;
+    }
+
+    // The fingerprint travels with the pak so the app can tell the pak it unpacked last time from the
+    // one this APK ships, without hashing 16 MB at every start.
+    const String sceneHashPath   = sceneResourcesPath + ".hash";
+    const String androidHashPath = androidResourcesPath + ".hash";
+    if (CheckSystemFile(sceneHashPath))
+    {
+      std::filesystem::copy(sceneHashPath, androidHashPath, copyOption, m_errorCode);
+      if (CheckErrorReturn("Copy " + sceneHashPath + " and " + androidHashPath))
+      {
+        return -1;
+      }
     }
 
     std::filesystem::copy(engineSettingsPath, destEngineSettingsPath, copyOption, m_errorCode);
@@ -668,7 +808,18 @@ namespace ToolKit
     }
 
     // use "gradlew bundle" command to build .aab project or use "gradlew assemble" to release build
-    String command    = m_publishConfig == PublishConfig::Debug ? "gradlew assembleDebug" : "gradlew assembleRelease";
+    const String gradleTask = m_publishConfig == PublishConfig::Debug ? "assembleDebug" : "assembleRelease";
+
+    // The wrapper is a batch file on Windows and a POSIX shell script
+    // everywhere else. Windows keeps the bare name, which cmd.exe resolves
+    // from the current directory. Off Windows it goes through sh: the exec
+    // bit is not part of a checkout made on Windows, so "./gradlew" alone
+    // fails with "Permission denied" while "sh ./gradlew" always runs.
+#ifdef _WIN32
+    String command = "gradlew " + gradleTask;
+#else
+    String command = "sh ./gradlew " + gradleTask;
+#endif
 
     int compileResult = std::system(command.c_str());
     if (compileResult != 0)
@@ -775,9 +926,9 @@ namespace ToolKit
     // Always tell the project where the engine is (Packer already resolved it
     // from Path.txt), so the project CMake does not need TOOLKIT_DIR in its env.
 #ifdef _WIN32
-    String cmd     = "cmake -S . -B ./Intermediate/Plugin -A x64 -DCMAKE_BUILD_TYPE=" + buildConfig;
+    String cmd = "cmake -S . -B ./Intermediate/Plugin -A x64 -DCMAKE_BUILD_TYPE=" + buildConfig;
 #else
-    String cmd     = "cmake -S . -B ./Intermediate/Plugin -DCMAKE_BUILD_TYPE=" + buildConfig;
+    String cmd = "cmake -S . -B ./Intermediate/Plugin -DCMAKE_BUILD_TYPE=" + buildConfig;
 #endif
     if (!m_toolkitPath.empty())
     {
@@ -871,8 +1022,8 @@ namespace ToolKit
     // used to be its own <name>.worker.js while current releases reuse the main
     // <name>.js as the worker script. Require the four files every emscripten
     // bundle has, and take the worker script only when it was emitted.
-    String requiredFiles[] = {firstPart + "data", firstPart + "html", firstPart + "js", firstPart + "wasm"};
-    String optionalFiles[] = {firstPart + "worker.js"};
+    String requiredFiles[]  = {firstPart + "data", firstPart + "html", firstPart + "js", firstPart + "wasm"};
+    String optionalFiles[]  = {firstPart + "worker.js"};
 
     std::filesystem::create_directories(publishDirectory, m_errorCode);
     if (CheckErrorReturn("Create directories " + publishDirectory))
@@ -936,7 +1087,7 @@ namespace ToolKit
     Main::SetProxy(g_proxy);
 
     // Headless mode: use NullBackend (no GPU), dummy SDL video driver.
-    // The packer only serializes resources — it never renders.
+    // The packer only serializes resources -- it never renders.
     SDL_SetHint(SDL_HINT_VIDEODRIVER, "dummy");
     RenderSystem::UseNullBackend();
 
@@ -963,6 +1114,34 @@ namespace ToolKit
     packer.m_publishConfig    = (PublishConfig) std::atoi(arguments[10].c_str());
     packer.m_onlyPack         = std::atoi(arguments[11].c_str());
 
+    // Command line flags. PublishArguments.txt carries the settings; these carry the intent of this
+    // particular run.
+    //   --pack     pack the resources before publishing
+    //   --help     print the flags and exit
+    for (int i = 1; i < argc; i++)
+    {
+      const String flag = argv[i];
+      if (flag == "--pack" || flag == "-p")
+      {
+        packer.m_forcePack = true;
+      }
+      else if (flag == "--help" || flag == "-h")
+      {
+        // printf, not TK_LOG: the logger is not attached to the console this early, so anything
+        // logged here is swallowed.
+        printf("Usage: Packer [--pack]\n");
+        printf("  PublishArguments.txt in the working directory holds the publish settings.\n");
+        printf("  --pack  pack the resources before publishing, instead of shipping the pak on disk.\n");
+        printf("          A Deploy publish and a publish with no pak pack without it.\n");
+        return 0;
+      }
+    }
+
+    if (packer.m_forcePack)
+    {
+      printf("Packing requested on the command line.\n");
+    }
+
     // Set resource root to project's Resources folder
     g_proxy->m_resourceRoot   = ConcatPaths({workspacePath, activeProjectName, "Resources"});
 
@@ -973,8 +1152,8 @@ namespace ToolKit
     String toolkitPath;
     if (!configDir.empty())
     {
-      String pathFile         = ConcatPaths({configDir, "ToolKit", "Config", "Path.txt"});
-      toolkitPath             = GetFileManager()->ReadAllText(pathFile);
+      String pathFile = ConcatPaths({configDir, "ToolKit", "Config", "Path.txt"});
+      toolkitPath     = GetFileManager()->ReadAllText(pathFile);
       NormalizePathInplace(toolkitPath);
     }
     packer.m_toolkitPath            = toolkitPath;
@@ -996,10 +1175,15 @@ namespace ToolKit
     int result = packer.Publish();
     packer.RestoreWorkingDirectory();
 
+#ifdef _WIN32
+    // Keep a failed publish's output readable in the console window the
+    // editor spawned. POSIX has no `pause`, and the binary is run from a
+    // terminal or a log capture there, so there is nothing to hold open.
     if (result != 0)
     {
       system("pause");
     }
+#endif
 
     return result;
   }

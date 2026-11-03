@@ -41,6 +41,18 @@ void main()
 
 	vec3 normal = decodeNormal(normalDepthData.rg);
 	float linearDepth = normalDepthData.b;
+
+	// A pixel the prepass did not draw - the sky, and anything else that left the target at its
+	// clear value - has no depth to reconstruct a position from: the reconstruction would divide by
+	// a zero view z, land the position at the camera, and project every sample to infinity, which
+	// samples as an edge texel and comes out fully occluded. There is nothing there to occlude, so
+	// say so and leave the term at one.
+	if (linearDepth <= 0.0)
+	{
+		fragColor = vec4(1.0, 0.0, 0.0, 1.0);
+		return;
+	}
+
 	vec3 fragPos = reconstructViewPos(texCoord, linearDepth);
 
 	normal = normalize(mat3(ssaoCalc.normalToView) * normal); // World to View
@@ -60,6 +72,17 @@ void main()
 
 	float radius = ssaoCalc.radiusBiasAndPad.x;
 	float bias = ssaoCalc.radiusBiasAndPad.y;
+
+	// Keep the search local on screen. A world radius fixed in metres covers hundreds of pixels at
+	// distance and a handful up close, so the same 32 samples are dense on near geometry and sparse
+	// on far geometry - the map reads as broad soft patches near the camera and as fine noise in the
+	// distance, and at a radius of a metre in this scene it was mostly noise. The world radius a
+	// pixel budget allows grows linearly with depth, so clamping to it gives every surface the same
+	// sample density and lets a small radius do real work at any distance.
+	float screenHeight    = ssaoCalc.radiusBiasAndPad.z;
+	float maxRadiusPixels = ssaoCalc.radiusBiasAndPad.w;
+	float worldPerPixel   = (2.0 * (-fragPos.z)) / (ssaoCalc.projParams.y * screenHeight);
+	radius = min(radius, maxRadiusPixels * worldPerPixel);
 
 	// depth-scaled bias: surfaces further away need more bias to avoid acne
 	float depthBias = bias * (1.0 + abs(fragPos.z) * 0.1);

@@ -750,8 +750,17 @@ namespace ToolKit
       {
         char* log = new char[infoLen];
         glGetShaderInfoLog(handle, infoLen, nullptr, log);
-        TK_ERR(log);
+
+        // The info log is data, not a format string: a driver message that happens to contain a percent
+        // sign would otherwise be read as a conversion and print garbage, or nothing at all.
+        TK_ERR("Shader compile failed: %s\n%s", shader->GetFile().c_str(), log);
         SafeDelArray(log);
+      }
+      else
+      {
+        // Silence here is indistinguishable from a shader that was never reached: some drivers report a
+        // failure without writing a single character into the info log.
+        TK_ERR("Shader compile failed with an empty info log: %s", shader->GetFile().c_str());
       }
       glDeleteShader(handle);
       return nullptr;
@@ -940,6 +949,12 @@ namespace ToolKit
           glGetProgramInfoLog(pid, infoLen, nullptr, log);
           TK_ERR("Linking failed.\nVertex: %s\nFragment: %s\n%s", vs->GetFile().c_str(), fs->GetFile().c_str(), log);
           SafeDelArray(log);
+        }
+        else
+        {
+          TK_ERR("Linking failed with an empty info log.\nVertex: %s\nFragment: %s",
+                 vs->GetFile().c_str(),
+                 fs->GetFile().c_str());
         }
         glDeleteProgram(pid);
         return;
@@ -1600,55 +1615,170 @@ namespace ToolKit
 
   void GLBackend::BlitToScreen(FramebufferPtr src) {}
 
+  namespace
+  {
+    /**
+     * True when this driver can time a frame on the gpu.
+     *
+     * GL ES has no core timer query: GL_TIME_ELAPSED and the entry points that take it belong to
+     * GL_EXT_disjoint_timer_query, so a phone needs the extension plus its five functions. Desktop
+     * GL resolves the same enum through glad, where it is core 3.3 - the only platform that ever ran
+     * this path, and it stays the only one. Probed once, since every frame asks.
+     */
+    bool IsGpuTimerQuerySupported()
+    {
+      static int supported = -1;
+      if (supported >= 0)
+      {
+        return supported == 1;
+      }
+
+#if defined(TK_ANDROID)
+      supported = (TK_GL_EXT_disjoint_timer_query != 0 && tk_glGenQueriesEXT != nullptr &&
+                   tk_glDeleteQueriesEXT != nullptr && tk_glBeginQueryEXT != nullptr &&
+                   tk_glEndQueryEXT != nullptr && tk_glGetQueryObjectuivEXT != nullptr)
+                      ? 1
+                      : 0;
+#elif defined(GL_TIME_ELAPSED_EXT)
+      supported = (TK_PLATFORM == PLATFORM::TKWindows) ? 1 : 0;
+#else
+      supported = 0;
+#endif
+      return supported == 1;
+    }
+  } // namespace
+
   void GLBackend::StartTimerQuery()
   {
-    m_cpuTime = GetElapsedMilliSeconds();
-#ifdef GL_TIME_ELAPSED_EXT
-    if constexpr (TK_PLATFORM == PLATFORM::TKWindows)
+    // A frame opens the timer more than once - the game renderer wraps the scene path, which opens a
+    // pair of its own - and only the outermost pair may measure. Without this the inner pair
+    // overwrote the cpu time the outer one had just started from, and the stat came out negative on
+    // every frame that nested.
+    if (m_timerQueryDepth++ > 0)
     {
-      if (!m_timerQueryActive && !m_timerQueryWaiting)
-      {
-        if (!m_gpuTimerQuery)
-        {
-          glGenQueries(1, &m_gpuTimerQuery);
-        }
-        glBeginQuery(GL_TIME_ELAPSED_EXT, m_gpuTimerQuery);
-        m_timerQueryActive = true;
-      }
+      return;
     }
+
+    m_cpuTime = GetElapsedMilliSeconds();
+
+    // The per pass timestamps and this elapsed query interfere on the reference driver: with both open the
+    // elapsed result comes back as a fraction of the frame - 1.2 ms for a frame that takes 19. The passes are
+    // the measurement while they are on, and their sum is the frame's gpu time, so this reports nothing
+    // rather than a wrong number.
+    if (m_scopeTiming)
+    {
+      m_timerQueryWaiting = false;
+      m_gpuTime           = 1.0f;
+      return;
+    }
+
+    // One query is in flight at a time: the previous frame's result is polled below before the next
+    // one starts, so a device that answers late reports the frame before last instead of stalling.
+    if (!IsGpuTimerQuerySupported() || m_timerQueryActive || m_timerQueryWaiting)
+    {
+      return;
+    }
+
+    if (!m_gpuTimerQuery)
+    {
+#if defined(TK_ANDROID)
+      tk_glGenQueriesEXT(1, &m_gpuTimerQuery);
+#else
+      glGenQueries(1, &m_gpuTimerQuery);
 #endif
+    }
+
+#if defined(TK_ANDROID)
+    tk_glBeginQueryEXT(GL_TIME_ELAPSED_EXT, m_gpuTimerQuery);
+#else
+    glBeginQuery(GL_TIME_ELAPSED_EXT, m_gpuTimerQuery);
+#endif
+    m_timerQueryActive = true;
   }
 
   void GLBackend::EndTimerQuery()
   {
-    float cpuTime = GetElapsedMilliSeconds();
-    m_cpuTime     = cpuTime - m_cpuTime;
-
-#ifdef GL_TIME_ELAPSED_EXT
-    if constexpr (TK_PLATFORM == PLATFORM::TKWindows)
+    if (m_timerQueryDepth == 0)
     {
-      if (m_timerQueryActive)
-      {
-        glEndQuery(GL_TIME_ELAPSED_EXT);
-        m_timerQueryActive  = false;
-        m_timerQueryWaiting = true;
-      }
-
-      if (m_timerQueryWaiting)
-      {
-        GLuint available = 0;
-        glGetQueryObjectuiv(m_gpuTimerQuery, GL_QUERY_RESULT_AVAILABLE, &available);
-
-        if (available)
-        {
-          GLuint elapsedTime;
-          glGetQueryObjectuiv(m_gpuTimerQuery, GL_QUERY_RESULT, &elapsedTime);
-          m_gpuTime           = glm::max(1.0f, (float) (elapsedTime) / 1000000.0f);
-          m_timerQueryWaiting = false;
-        }
-      }
+      return;
     }
+
+    if (--m_timerQueryDepth > 0)
+    {
+      return;
+    }
+
+    m_cpuTime = GetElapsedMilliSeconds() - m_cpuTime;
+
+    if (m_timerQueryActive)
+    {
+#if defined(TK_ANDROID)
+      tk_glEndQueryEXT(GL_TIME_ELAPSED_EXT);
+#else
+      glEndQuery(GL_TIME_ELAPSED_EXT);
 #endif
+      m_timerQueryActive  = false;
+      m_timerQueryWaiting = true;
+    }
+
+    if (!m_timerQueryWaiting)
+    {
+      return;
+    }
+
+    // A disjoint event - a clock change, a power collapse - invalidates the counter. The driver
+    // reports it as a flag to read back rather than as an error, and a value taken across one is
+    // meaningless.
+    GLint disjoint = 0;
+    glGetIntegerv(GL_GPU_DISJOINT_EXT, &disjoint);
+    if (disjoint)
+    {
+      m_timerQueryWaiting = false;
+      return;
+    }
+
+    GLuint available = 0;
+#if defined(TK_ANDROID)
+    tk_glGetQueryObjectuivEXT(m_gpuTimerQuery, GL_QUERY_RESULT_AVAILABLE, &available);
+#else
+    glGetQueryObjectuiv(m_gpuTimerQuery, GL_QUERY_RESULT_AVAILABLE, &available);
+#endif
+
+    if (!available)
+    {
+      // A driver that never answers would keep the query pending for the rest of the run, because a
+      // pending query is what blocks the next one from starting. After a few frames the slot is
+      // released instead, so the timer either recovers or stays at its last good value.
+      if (++m_timerQueryWaited > 4)
+      {
+        m_timerQueryWaiting = false;
+        m_timerQueryWaited  = 0;
+      }
+      return;
+    }
+
+    m_timerQueryWaited = 0;
+
+    GLuint elapsedNs = 0;
+#if defined(TK_ANDROID)
+    tk_glGetQueryObjectuivEXT(m_gpuTimerQuery, GL_QUERY_RESULT, &elapsedNs);
+#else
+    glGetQueryObjectuiv(m_gpuTimerQuery, GL_QUERY_RESULT, &elapsedNs);
+#endif
+
+    // A result of all ones - what Mali returns while the counter has no value yet - is not a frame
+    // duration, and neither is zero. Keeping the previous number is closer to the truth than
+    // reporting four seconds.
+    if (elapsedNs == 0u || elapsedNs == 0xFFFFFFFFu)
+    {
+      m_timerQueryWaiting = false;
+      return;
+    }
+
+    // Nanoseconds to milliseconds. The floor of one keeps the FPS derived from it finite before the
+    // first result arrives.
+    m_gpuTime           = glm::max(1.0f, (float) elapsedNs / 1000000.0f);
+    m_timerQueryWaiting = false;
   }
 
   void GLBackend::GetElapsedTime(float& cpu, float& gpu)
@@ -1714,13 +1844,18 @@ namespace ToolKit
       return;
     }
 
-    if (m_textureSlotCache[slot].textureID != id || m_textureSlotCache[slot].target != target)
-    {
-      glActiveTexture(GL_TEXTURE0 + slot);
-      glBindTexture(target, id);
-      m_textureSlotCache[slot].textureID = id;
-      m_textureSlotCache[slot].target    = target;
-    }
+    // Always bind. This used to skip the call when the slot already held the same texture, and that
+    // cache could not be trusted: the binding is global GL state, so anything that touches it
+    // without going through here - a path that binds a unit directly, the driver itself, a capture
+    // tool - leaves the cache claiming a texture is bound while the unit holds another one. The
+    // symptom is the worst kind: the pass samples the wrong texture and reads zeroes, with no error
+    // anywhere. It cost a debugging session on SSAO, which read a depth of zero on the phone while
+    // the same build on the desktop read the real one. One glBindTexture per texture per draw is a
+    // driver call in the tens of nanoseconds; correctness is worth more.
+    glActiveTexture(GL_TEXTURE0 + slot);
+    glBindTexture(target, id);
+    m_textureSlotCache[slot].textureID = id;
+    m_textureSlotCache[slot].target    = target;
   }
 
   void GLBackend::BindVAO(uint vao)
@@ -2077,12 +2212,95 @@ namespace ToolKit
     glTexSubImage2D(ToGLGraphicType(s.Target), 0, x, y, w, h, ToGLGraphicType(s.Format), ToGLGraphicType(s.Type), data);
   }
 
+  namespace
+  {
+    /**
+     * Timestamp queries for the per pass gpu times.
+     *
+     * One call path for both platforms: TKOpenGL loads the entry points by name and falls back from the
+     * EXT spelling to the core one, so the same pointers are the phone's glQueryCounterEXT and the
+     * desktop's glQueryCounter. A backend that could not load them reports no support instead of
+     * measuring nothing.
+     */
+    bool HasTimestampQueries()
+    {
+      return tk_glQueryCounterEXT != nullptr && tk_glGetQueryObjectui64vEXT != nullptr;
+    }
+
+    void GenScopeQueries(int count, GLuint* ids)
+    {
+#if defined(TK_ANDROID)
+      tk_glGenQueriesEXT(count, ids);
+#else
+      glGenQueries(count, ids);
+#endif
+    }
+
+    void WriteTimestamp(GLuint id) { tk_glQueryCounterEXT(id, GL_TIMESTAMP_EXT); }
+
+    bool IsTimestampAvailable(GLuint id)
+    {
+      // The core call, not the EXT one: GL_QUERY_RESULT_AVAILABLE is the same enum in both, and the
+      // core entry point is the one every platform has - the EXT spelling is null on a desktop
+      // context that does not list EXT_disjoint_timer_query, which is exactly where the timestamp
+      // itself still resolves.
+      GLuint available = 0;
+      glGetQueryObjectuiv(id, GL_QUERY_RESULT_AVAILABLE, &available);
+      return available != 0;
+    }
+
+    uint64 ReadTimestamp(GLuint id)
+    {
+      GLuint64 value = 0;
+      tk_glGetQueryObjectui64vEXT(id, GL_QUERY_RESULT_EXT, &value);
+      return (uint64) value;
+    }
+
+    /** Two query ids for a scope, taken from the pool or generated when it has fewer than two. */
+    void AcquireScopeQueries(std::vector<uint>& pool, uint& begin, uint& end)
+    {
+      if (pool.size() >= 2)
+      {
+        end = pool.back();
+        pool.pop_back();
+        begin = pool.back();
+        pool.pop_back();
+        return;
+      }
+
+      GLuint ids[2] = {0, 0};
+      GenScopeQueries(2, ids);
+      begin = ids[0];
+      end   = ids[1];
+    }
+  } // namespace
+
+  bool GLBackend::SetGpuScopeTiming(bool enable)
+  {
+    m_scopeTiming = enable && HasTimestampQueries();
+    return m_scopeTiming;
+  }
+
   void GLBackend::PushDebugGroup(StringView name)
   {
     if (glPushGroupMarkerEXT != nullptr)
     {
       glPushGroupMarkerEXT(-1, name.data());
     }
+
+    if (!m_scopeTiming)
+    {
+      return;
+    }
+
+    uint begin = 0, end = 0;
+    AcquireScopeQueries(m_scopeQueryPool, begin, end);
+
+    // A timestamp, not an interval: GL ES allows one GL_TIME_ELAPSED query at a time and the passes
+    // nest, while any number of timestamp counters can be in flight at once.
+    WriteTimestamp(begin);
+    m_scopeRecorded.push_back({String(name), begin, end, m_scopeFrame});
+    m_scopeOpen.push_back({begin});
   }
 
   void GLBackend::PopDebugGroup()
@@ -2090,6 +2308,72 @@ namespace ToolKit
     if (glPopGroupMarkerEXT != nullptr)
     {
       glPopGroupMarkerEXT();
+    }
+
+    if (!m_scopeTiming || m_scopeOpen.empty())
+    {
+      return;
+    }
+
+    const uint beginQuery = m_scopeOpen.back().beginQuery;
+    m_scopeOpen.pop_back();
+
+    for (auto it = m_scopeRecorded.rbegin(); it != m_scopeRecorded.rend(); ++it)
+    {
+      if (it->beginQuery == beginQuery)
+      {
+        WriteTimestamp(it->endQuery);
+        break;
+      }
+    }
+  }
+
+  void GLBackend::ResolveGpuScopes()
+  {
+    if (!m_scopeTiming)
+    {
+      return;
+    }
+
+    // This frame's pairs join the ones still waiting; the pairs read now were written a frame or more
+    // ago, so the read never waits on work that has only just been submitted.
+    m_scopeInFlight.insert(m_scopeInFlight.end(), m_scopeRecorded.begin(), m_scopeRecorded.end());
+    m_scopeRecorded.clear();
+    m_scopeFrame++;
+
+    // A device answers a timestamp within a few frames. Anything older than that is not coming, and
+    // holding its queries would only starve the pool.
+    constexpr uint maxAgeInFrames = 120;
+
+    for (size_t i = 0; i < m_scopeInFlight.size();)
+    {
+      GpuScopeRecord& record = m_scopeInFlight[i];
+
+      if (!IsTimestampAvailable(record.endQuery))
+      {
+        if (m_scopeFrame - record.frame > maxAgeInFrames)
+        {
+          m_scopeQueryPool.push_back(record.beginQuery);
+          m_scopeQueryPool.push_back(record.endQuery);
+          m_scopeInFlight.erase(m_scopeInFlight.begin() + i);
+          continue;
+        }
+
+        ++i;
+        continue;
+      }
+
+      const uint64 beginTime = ReadTimestamp(record.beginQuery);
+      const uint64 endTime   = ReadTimestamp(record.endQuery);
+
+      if (endTime > beginTime)
+      {
+        Stats::SetPassGpuMs(record.name, (float) ((endTime - beginTime) / 1000000.0));
+      }
+
+      m_scopeQueryPool.push_back(record.beginQuery);
+      m_scopeQueryPool.push_back(record.endQuery);
+      m_scopeInFlight.erase(m_scopeInFlight.begin() + i);
     }
   }
 

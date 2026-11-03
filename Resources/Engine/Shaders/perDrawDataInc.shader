@@ -23,7 +23,7 @@
 
 struct DrawCommandLayout
 {
-	vec4 global0;     // x: iblInUse, y: aoInUse, z: skyIntensity, w: pad
+	vec4 global0;     // x: iblInUse, y: aoInUse, z: skyIntensity, w: aoStrength
 	vec4 global1;     // x: pointLightCount, y: spotLightCount, z: directionalLightCount, w: pad
 
 	vec4 vol0Params;  // x: intensity, y: fadeDistance, z: interior, w: pccEnabled

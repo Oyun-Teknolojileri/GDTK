@@ -1,0 +1,99 @@
+baseline-1080x2220     win=1080x2220  fps=  6.07 (med   6.00)  frame=  164.8ms  min= 149.6  max= 183.9  cpu=343.3%  frames=126
+720x1480               win=720x1480   fps=  6.10 (med   6.00)  frame=  164.0ms  min= 149.8  max= 197.2  cpu= 35.7%  frames=126
+720x1480 (fresh launch) win=720x1480   fps= 10.64 (med  10.01)  frame=   94.0ms  min=  82.8  max= 116.8  cpu= 59.7%  frames=126
+base               win=1080x2220  sfFps=  6.16 frame= 162.4ms cpu= 37.4%
+PERF fps=6.76 period=148.01 work=163.37 swap=1.72 render=270.99 engcpu=161.69 gpu=4294.97 max=277.50 draws=186 passes=13 inst=57/168 culled=52 res=1080x2220
+PERF fps=5.60 period=178.56 work=146.72 swap=1.58 render=49.87 engcpu=49.84 gpu=4294.97 max=274.43 draws=186 passes=13 inst=57/168 culled=52 res=1080x2220
+PERF fps=6.16 period=162.31 work=181.37 swap=1.68 render=165.05 engcpu=165.02 gpu=4294.97 max=273.15 draws=186 passes=13 inst=57/168 culled=52 res=1080x2220
+base2              win=1080x2220  sfFps=  6.22 frame= 160.9ms cpu= 36.4%
+PERF fps=6.89 period=145.22 work=159.85 swap=1.42 render=265.39 engcpu=159.37 gpu=141.84 max=269.12 draws=186 passes=13 inst=57/168 culled=52 vram=271MB res=1080x2220
+PERF fps=5.66 period=176.80 work=145.54 swap=1.46 render=49.57 engcpu=49.55 gpu=141.84 max=272.81 draws=186 passes=13 inst=57/168 culled=52 vram=271MB res=1080x2220
+PERF fps=6.90 period=144.88 work=175.95 swap=1.40 render=267.60 engcpu=161.14 gpu=141.84 max=268.63 draws=187 passes=14 inst=57/168 culled=52 vram=271MB res=1080x2220
+res50              win=1080x2220  sfFps= 14.29 frame=  70.0ms cpu= 69.7%
+PERF fps=13.55 period=73.79 work=71.43 swap=1.30 render=67.41 engcpu=32.45 gpu=60.56 max=113.38 draws=185 passes=14 inst=57/168 culled=53 vram=126MB res=540x1110
+PERF fps=14.55 period=68.74 work=68.99 swap=1.36 render=72.04 engcpu=72.02 gpu=55.51 max=114.13 draws=184 passes=13 inst=57/168 culled=53 vram=126MB res=540x1110
+PERF fps=14.88 period=67.23 work=69.53 swap=1.22 render=107.83 engcpu=75.70 gpu=55.30 max=111.54 draws=184 passes=13 inst=57/168 culled=53 vram=126MB res=540x1110
+res25              win=1080x2220  sfFps= 18.34 frame=  54.5ms cpu= 86.2%
+PERF fps=19.01 period=52.60 work=53.35 swap=1.24 render=45.41 engcpu=28.28 gpu=41.71 max=80.31 draws=185 passes=14 inst=59/172 culled=52 vram=90MB res=270x555
+PERF fps=18.19 period=54.96 work=55.77 swap=1.28 render=61.37 engcpu=61.35 gpu=32.80 max=80.33 draws=184 passes=13 inst=59/172 culled=52 vram=90MB res=270x555
+PERF fps=18.79 period=53.22 work=54.07 swap=1.28 render=77.39 engcpu=49.81 gpu=32.51 max=84.80 draws=184 passes=13 inst=59/172 culled=52 vram=90MB res=270x555
+noaa               win=1080x2220  sfFps=  7.10 frame= 140.9ms cpu= 43.8%
+PERF fps=7.11 period=140.66 work=140.58 swap=1.27 render=140.81 engcpu=140.07 gpu=143.23 max=149.14 draws=269 passes=13 inst=75/206 culled=0 vram=184MB res=1080x2220
+PERF fps=7.11 period=140.63 work=140.76 swap=1.16 render=143.03 engcpu=142.28 gpu=143.23 max=145.87 draws=269 passes=13 inst=75/206 culled=0 vram=184MB res=1080x2220
+PERF fps=7.09 period=141.13 work=141.66 swap=1.24 render=148.02 engcpu=146.94 gpu=137.84 max=144.86 draws=269 passes=13 inst=75/206 culled=0 vram=184MB res=1080x2220
+nohdr              win=1080x2220  sfFps=  6.44 frame= 155.4ms cpu= 40.3%
+PERF fps=6.39 period=156.41 work=156.44 swap=1.70 render=265.94 engcpu=160.11 gpu=132.44 max=268.91 draws=186 passes=13 inst=57/168 culled=52 vram=225MB res=1080x2220
+PERF fps=6.41 period=156.00 work=155.39 swap=1.35 render=262.82 engcpu=154.79 gpu=132.44 max=269.55 draws=186 passes=13 inst=57/168 culled=52 vram=225MB res=1080x2220
+PERF fps=6.42 period=155.80 work=155.63 swap=1.57 render=263.00 engcpu=154.72 gpu=132.44 max=266.56 draws=186 passes=13 inst=57/168 culled=52 vram=225MB res=1080x2220
+nobloom            win=1080x2220  sfFps=  6.45 frame= 155.0ms cpu= 33.5%
+PERF fps=6.41 period=155.92 work=155.75 swap=69.73 render=140.85 engcpu=139.82 gpu=199.06 max=280.56 draws=174 passes=7 inst=57/168 culled=52 vram=247MB res=1080x2220
+PERF fps=6.41 period=156.00 work=155.60 swap=70.13 render=137.49 engcpu=136.15 gpu=201.58 max=281.04 draws=174 passes=7 inst=57/168 culled=52 vram=247MB res=1080x2220
+PERF fps=6.42 period=155.65 work=154.52 swap=69.63 render=132.39 engcpu=131.33 gpu=200.87 max=281.33 draws=174 passes=7 inst=57/168 culled=52 vram=247MB res=1080x2220
+nossao             win=1080x2220  sfFps=  6.64 frame= 150.6ms cpu= 35.4%
+PERF fps=6.60 period=151.52 work=151.03 swap=1.50 render=254.41 engcpu=142.54 gpu=152.33 max=262.92 draws=147 passes=10 inst=54/160 culled=52 vram=222MB res=1080x2220
+PERF fps=6.64 period=150.55 work=150.94 swap=1.49 render=259.06 engcpu=149.09 gpu=151.80 max=262.65 draws=147 passes=10 inst=54/160 culled=52 vram=222MB res=1080x2220
+PERF fps=6.62 period=151.12 work=151.28 swap=1.35 render=261.65 engcpu=149.53 gpu=150.00 max=266.90 draws=147 passes=10 inst=54/160 culled=52 vram=222MB res=1080x2220
+nopost             win=1080x2220  sfFps=  7.07 frame= 141.4ms cpu= 37.3%
+PERF fps=7.08 period=141.25 work=141.04 swap=1.33 render=135.96 engcpu=32.77 gpu=140.32 max=242.01 draws=148 passes=11 inst=54/160 culled=52 vram=222MB res=1080x2220
+PERF fps=7.08 period=141.32 work=141.25 swap=1.51 render=136.23 engcpu=34.19 gpu=141.51 max=243.70 draws=148 passes=11 inst=54/160 culled=52 vram=222MB res=1080x2220
+PERF fps=7.04 period=142.00 work=141.85 swap=1.40 render=137.53 engcpu=36.95 gpu=142.64 max=248.07 draws=148 passes=11 inst=54/160 culled=52 vram=222MB res=1080x2220
+nocull             win=1080x2220  sfFps=  5.95 frame= 168.1ms cpu= 37.9%
+PERF fps=5.93 period=168.56 work=168.40 swap=1.48 render=50.54 engcpu=50.52 gpu=173.67 max=285.79 draws=268 passes=13 inst=75/206 culled=0 vram=270MB res=1080x2220
+PERF fps=5.93 period=168.64 work=168.26 swap=1.45 render=49.31 engcpu=49.29 gpu=172.55 max=286.38 draws=268 passes=13 inst=75/206 culled=0 vram=270MB res=1080x2220
+PERF fps=5.95 period=168.21 work=168.50 swap=1.66 render=51.67 engcpu=51.65 gpu=169.68 max=285.80 draws=268 passes=13 inst=75/206 culled=0 vram=270MB res=1080x2220
+nobatch            win=1080x2220  sfFps=  6.19 frame= 161.5ms cpu= 43.1%
+PERF fps=6.22 period=160.70 work=179.13 swap=1.69 render=160.66 engcpu=160.63 gpu=139.77 max=267.60 draws=297 passes=13 inst=0/0 culled=52 vram=271MB res=1080x2220
+PERF fps=6.83 period=146.51 work=161.04 swap=1.76 render=263.70 engcpu=157.78 gpu=139.77 max=268.96 draws=297 passes=13 inst=0/0 culled=52 vram=271MB res=1080x2220
+PERF fps=5.65 period=177.07 work=146.13 swap=1.80 render=50.22 engcpu=50.20 gpu=139.77 max=270.26 draws=297 passes=13 inst=0/0 culled=52 vram=271MB res=1080x2220
+base3              win=1080x2220  sfFps=  6.17 frame= 162.1ms cpu= 36.4%
+PERF fps=6.75 period=148.19 work=163.51 swap=1.39 render=161.80 engcpu=163.08 gpu=139.34 max=279.08 draws=186 passes=13 inst=57/168 culled=52 vram=271MB res=1080x2220
+PERF fps=5.63 period=177.56 work=145.71 swap=1.57 render=143.86 engcpu=49.81 gpu=139.34 max=274.53 draws=186 passes=13 inst=57/168 culled=52 vram=271MB res=1080x2220
+PERF fps=6.20 period=161.30 work=179.41 swap=1.44 render=177.69 engcpu=160.60 gpu=139.34 max=271.80 draws=186 passes=13 inst=57/168 culled=52 vram=271MB res=1080x2220
+nomesh             win=1080x2220  sfFps= 18.35 frame=  54.5ms cpu= 77.3%
+PERF fps=18.23 period=54.87 work=53.80 swap=1.26 render=52.28 engcpu=43.15 gpu=37.16 max=64.33 draws=19 passes=11 inst=0/0 culled=0 vram=270MB res=1080x2220
+PERF fps=18.48 period=54.11 work=54.81 swap=1.54 render=52.98 engcpu=56.35 gpu=37.16 max=62.35 draws=20 passes=12 inst=0/0 culled=0 vram=270MB res=1080x2220
+PERF fps=18.36 period=54.48 work=54.06 swap=1.37 render=52.42 engcpu=50.53 gpu=37.16 max=63.09 draws=19 passes=11 inst=0/0 culled=0 vram=270MB res=1080x2220
+noshadow           win=1080x2220  sfFps= 18.24 frame=  54.8ms cpu= 73.3%
+PERF fps=18.10 period=55.25 work=54.40 swap=1.35 render=52.77 engcpu=45.30 gpu=36.72 max=62.86 draws=19 passes=11 inst=0/0 culled=0 vram=255MB res=1080x2220
+PERF fps=18.31 period=54.63 work=55.22 swap=1.44 render=53.52 engcpu=57.24 gpu=36.72 max=63.06 draws=20 passes=12 inst=0/0 culled=0 vram=255MB res=1080x2220
+PERF fps=18.18 period=55.02 work=54.63 swap=1.21 render=53.15 engcpu=52.41 gpu=36.72 max=62.86 draws=19 passes=11 inst=0/0 culled=0 vram=255MB res=1080x2220
+skyonly            win=1080x2220  sfFps= 49.34 frame=  20.3ms cpu= 86.0%
+PERF fps=49.81 period=20.08 work=19.01 swap=8.86 render=9.88 engcpu=7.80 gpu=14.26 max=31.14 draws=4 passes=4 inst=0/0 culled=0 vram=163MB res=1080x2220
+PERF fps=49.52 period=20.19 work=18.81 swap=9.05 render=9.52 engcpu=11.30 gpu=14.26 max=30.13 draws=3 passes=3 inst=0/0 culled=0 vram=163MB res=1080x2220
+PERF fps=49.09 period=20.37 work=18.73 swap=8.85 render=9.62 engcpu=4.85 gpu=14.26 max=31.22 draws=4 passes=4 inst=0/0 culled=0 vram=163MB res=1080x2220
+res50b             win=1080x2220  sfFps= 59.97 frame=  16.7ms cpu=134.3%
+PERF fps=60.00 period=16.67 work=11.18 swap=0.75 render=10.27 engcpu=8.90 gpu=12.89 max=16.67 draws=19 passes=11 inst=0/0 culled=0 vram=110MB res=540x1110
+PERF fps=60.00 period=16.67 work=10.99 swap=0.64 render=10.19 engcpu=9.01 gpu=13.23 max=16.67 draws=19 passes=11 inst=0/0 culled=0 vram=110MB res=540x1110
+PERF fps=60.00 period=16.67 work=10.56 swap=0.57 render=9.84 engcpu=9.37 gpu=13.23 max=16.67 draws=19 passes=11 inst=0/0 culled=0 vram=110MB res=540x1110
+base4              win=1080x2220  sfFps=  8.09 frame= 123.6ms cpu= 41.5%
+PERF fps=8.08 period=123.79 work=115.13 swap=1.51 render=113.34 engcpu=48.36 gpu=106.31 max=197.37 draws=93 passes=12 inst=6/16 culled=52 vram=256MB res=1080x2220
+PERF fps=8.66 period=115.47 work=131.72 swap=1.62 render=129.81 engcpu=120.85 gpu=106.31 max=195.50 draws=93 passes=12 inst=6/16 culled=52 vram=256MB res=1080x2220
+PERF fps=7.58 period=131.91 work=123.62 swap=1.57 render=121.76 engcpu=122.54 gpu=106.31 max=198.61 draws=93 passes=12 inst=6/16 culled=52 vram=256MB res=1080x2220
+shadowoff          win=1080x2220  sfFps=  8.06 frame= 124.1ms cpu= 41.5%
+PERF fps=8.25 period=121.19 work=126.42 swap=14.40 render=111.74 engcpu=49.79 gpu=120.46 max=214.88 draws=94 passes=13 inst=6/16 culled=52 vram=256MB res=1080x2220
+PERF fps=7.90 period=126.52 work=113.65 swap=11.84 render=101.53 engcpu=30.90 gpu=120.97 max=214.42 draws=93 passes=12 inst=6/16 culled=52 vram=256MB res=1080x2220
+PERF fps=8.78 period=113.86 work=134.04 swap=14.25 render=119.53 engcpu=119.02 gpu=118.97 max=217.34 draws=93 passes=12 inst=6/16 culled=52 vram=256MB res=1080x2220
+sceneoff           win=1080x2220  sfFps= 18.24 frame=  54.8ms cpu= 73.8%
+PERF fps=18.32 period=54.58 work=55.26 swap=1.35 render=53.63 engcpu=57.85 gpu=37.66 max=62.69 draws=20 passes=12 inst=0/0 culled=0 vram=255MB res=1080x2220
+PERF fps=18.19 period=54.99 work=54.47 swap=1.32 render=52.87 engcpu=50.13 gpu=37.66 max=62.93 draws=19 passes=11 inst=0/0 culled=0 vram=255MB res=1080x2220
+PERF fps=18.32 period=54.58 work=55.10 swap=1.36 render=53.47 engcpu=61.90 gpu=37.66 max=63.32 draws=19 passes=11 inst=0/0 culled=0 vram=255MB res=1080x2220
+msaa4              win=1080x2220  sfFps=  5.23 frame= 191.4ms cpu= 34.6%
+PERF fps=5.48 period=182.40 work=181.73 swap=12.98 render=168.47 engcpu=173.96 gpu=174.76 max=323.67 draws=186 passes=13 inst=57/168 culled=52 vram=358MB res=1080x2220
+PERF fps=5.57 period=179.60 work=179.81 swap=12.61 render=166.94 engcpu=296.89 gpu=175.71 max=321.60 draws=186 passes=13 inst=57/168 culled=52 vram=358MB res=1080x2220
+PERF fps=5.49 period=182.10 work=181.84 swap=12.11 render=169.46 engcpu=175.42 gpu=174.44 max=324.78 draws=186 passes=13 inst=57/168 culled=52 vram=358MB res=1080x2220
+msaa0b             win=1080x2220  sfFps=  7.23 frame= 138.4ms cpu= 44.3%
+PERF fps=7.22 period=138.56 work=138.74 swap=1.19 render=137.36 engcpu=131.84 gpu=142.20 max=143.45 draws=268 passes=12 inst=75/206 culled=0 vram=184MB res=1080x2220
+PERF fps=7.32 period=136.70 work=136.61 swap=1.24 render=135.17 engcpu=132.38 gpu=142.76 max=141.91 draws=268 passes=12 inst=75/206 culled=0 vram=184MB res=1080x2220
+PERF fps=7.23 period=138.33 work=138.06 swap=1.16 render=136.70 engcpu=131.24 gpu=143.10 max=146.53 draws=268 passes=12 inst=75/206 culled=0 vram=184MB res=1080x2220
+res50_nopost       win=1080x2220  sfFps= 18.11 frame=  55.2ms cpu= 56.5%
+PERF fps=17.90 period=55.85 work=55.83 swap=21.64 render=33.94 engcpu=24.49 gpu=73.55 max=87.84 draws=136 passes=5 inst=54/160 culled=52 vram=108MB res=540x1110
+PERF fps=18.90 period=52.91 work=55.97 swap=22.95 render=32.75 engcpu=40.76 gpu=73.83 max=86.43 draws=135 passes=4 inst=54/160 culled=52 vram=108MB res=540x1110
+PERF fps=17.68 period=56.57 work=53.35 swap=20.49 render=32.60 engcpu=24.30 gpu=73.16 max=86.76 draws=135 passes=4 inst=54/160 culled=52 vram=108MB res=540x1110
+res50_noshadow     win=1080x2220  sfFps= 21.05 frame=  47.5ms cpu= 82.6%
+PERF fps=20.91 period=47.82 work=49.26 swap=1.51 render=47.50 engcpu=38.30 gpu=43.20 max=71.52 draws=91 passes=12 inst=6/16 culled=53 vram=111MB res=540x1110
+PERF fps=20.93 period=47.77 work=47.23 swap=1.36 render=45.63 engcpu=29.85 gpu=43.20 max=71.29 draws=92 passes=13 inst=6/16 culled=53 vram=111MB res=540x1110
+PERF fps=21.92 period=45.62 work=46.18 swap=1.42 render=44.52 engcpu=38.74 gpu=43.20 max=70.64 draws=91 passes=12 inst=6/16 culled=53 vram=111MB res=540x1110
+res25_noshadow     win=1080x2220  sfFps= 29.64 frame=  33.7ms cpu= 99.9%
+PERF fps=28.72 period=34.82 work=34.96 swap=1.18 render=33.55 engcpu=27.05 gpu=37.39 max=50.29 draws=92 passes=13 inst=8/20 culled=52 vram=75MB res=270x555
+PERF fps=29.24 period=34.20 work=34.39 swap=1.13 render=33.04 engcpu=33.08 gpu=23.70 max=53.74 draws=91 passes=12 inst=8/20 culled=52 vram=75MB res=270x555
+PERF fps=30.98 period=32.27 work=32.06 swap=1.08 render=30.77 engcpu=26.46 gpu=22.30 max=45.44 draws=91 passes=12 inst=8/20 culled=52 vram=75MB res=270x555
