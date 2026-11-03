@@ -50,14 +50,23 @@ The same call works from an editor plugin, and from the editor console
 Editor::RegisterConsoleCommand("CaptureFrame", CaptureFrameExec);
 Editor::UnregisterConsoleCommand("CaptureFrame");
 Editor::WriteConsoleLine("Capture requested", LogType::Memo);
+
+Editor::RegisterModuleMenuItem("RenderDoc", "Capture Frame", captureAction,
+                               []() { return IsAvailable(); });
+Editor::UnregisterModuleMenu("RenderDoc");
 ```
 
 The command table is editor wide and lives outside `ConsoleWindow`, so a module
 registers from its own `Init()` before any window exists. The console drains the
 same table for its command list, its auto complete and its `ExecCommand`, so a
-module command behaves like a built in one. Menus are not part of the contract
-yet - a module contributed menu entry needs a module aware menu builder, which is
-the second stage of the modular editor work.
+module command behaves like a built in one.
+
+`RegisterModuleMenuItem` is what puts the module in the menu bar: entries land
+under **Modules -> RenderDoc**, and the editor draws that menu from the registry
+(`UI::ShowMenuModules`). The top level entry only exists while something is
+registered, and the optional `enabled` predicate greys an entry out - which is
+how `Capture Frame` and `Open Last Capture` disable themselves when the editor
+was not started through RenderDoc.
 
 ## 2. Build gating
 
@@ -97,7 +106,7 @@ Three ways to ask, all through the same queue:
 | From | How |
 |------|-----|
 | A tool / AI / CI | write `Captures/request` with `label [frameCount]` |
-| The console or the `Debug` menu | `CaptureFrame boss_intro 2`, `CaptureStatus`, `CaptureOpen` |
+| The console, or Modules -> RenderDoc in the menu bar | `CaptureFrame boss_intro 2`, `CaptureStatus`, `CaptureOpen` |
 | Game code | `ToolKit::RequestFrameCapture("boss_intro")` |
 
 The capture is not opened inside the call: the request is queued and the editor

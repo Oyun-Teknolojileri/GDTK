@@ -8,8 +8,8 @@
 #pragma once
 
 /**
- * @file RenderDocCommands.h Module internal: the console commands the module
- * contributes to the editor.
+ * @file RenderDocCommands.h Module internal: what the module contributes to the
+ * editor - its console commands and its Modules menu entries.
  */
 
 namespace ToolKit
@@ -18,13 +18,14 @@ namespace ToolKit
   {
 
     /**
-     * Registers CaptureFrame / CaptureStatus / CaptureOpen through the editor's
-     * console API. Idempotent, so Init() can call it on every attempt.
+     * Registers CaptureFrame / CaptureStatus / CaptureOpen and the matching
+     * Modules -> RenderDoc entries through the editor API. Idempotent, so Init()
+     * can call it on every attempt.
      */
-    void RegisterCommands();
+    void RegisterEditorContributions();
 
-    /** Takes the commands back out. Called from Shutdown(). */
-    void UnregisterCommands();
+    /** Takes the commands and the menu back out. Called from Shutdown(). */
+    void UnregisterEditorContributions();
 
   } // namespace RenderDoc
 } // namespace ToolKit

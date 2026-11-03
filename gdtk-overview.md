@@ -1378,14 +1378,30 @@ TK_EDITOR_API bool UnregisterConsoleCommand(const String& name);
 TK_EDITOR_API ConsoleCommandFn FindConsoleCommand(const String& name);
 TK_EDITOR_API StringArray GetConsoleCommandNames();
 TK_EDITOR_API void WriteConsoleLine(const String& message, LogType type = LogType::Memo);
+
+TK_EDITOR_API bool RegisterModuleMenuItem(const String& moduleName, const String& label,
+                                          const MenuActionFn& action,
+                                          const MenuEnabledFn& enabled = nullptr,
+                                          const String& shortcut = "");
+TK_EDITOR_API void UnregisterModuleMenu(const String& moduleName);
+TK_EDITOR_API ModuleMenuItemArray GetModuleMenuItems();
 ```
 
 The command table behind it is editor wide (a `std::map` behind a mutex) and lives
 outside `ConsoleWindow`, so a module can register before any window exists; the
 console drains the same table for its command list, its auto complete and its
 `ExecCommand`, which is why a module command behaves exactly like a built in one.
-`Edit >`-style menus are not part of the contract yet: the editor has no UI for
-module contributed entries, so the capture commands are typed.
+
+The second half of the surface is the menu: `RegisterModuleMenuItem` adds an entry
+under **Modules -> `<moduleName>`** in the main menu bar, and
+`UI::ShowMenuModules` draws that menu from the registry. The top level `Modules`
+entry only exists while something is registered, a module that registers nothing
+gets no submenu, and the `enabled` predicate is what greys an entry out (the
+capture entries are disabled while RenderDoc is not in the process). Menus are
+deliberately a separate, action based table and not `DynamicMenu`: the dynamic
+menus are built from ObjectFactory class meta values for the Add menu, while a
+module entry is a callback, not a class name. Keyboard shortcuts are still the
+editor's (`EditorMetaKeys.h`); the `shortcut` argument is display text only.
 
 Two compile definitions make the static library work, and both are the inverse of
 what a consumer normally sees:

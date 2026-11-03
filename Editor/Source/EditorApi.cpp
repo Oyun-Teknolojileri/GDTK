@@ -43,6 +43,27 @@ namespace ToolKit
         return commands;
       }
 
+      /**
+       * The Modules menu is drawn from this table by UI::ShowMenuModules. It is
+       * a flat list in registration order rather than a tree: grouping by module
+       * happens at draw time, so a module can register from wherever it comes up
+       * without the editor having to know the module set in advance.
+       *
+       * Same lifetime rule as the command table: the entries are `std::function`s
+       * over numbers and strings, never engine objects.
+       */
+      std::mutex& ModuleMenuMutex()
+      {
+        static std::mutex mutex;
+        return mutex;
+      }
+
+      ModuleMenuItemArray& ModuleMenuTable()
+      {
+        static ModuleMenuItemArray items;
+        return items;
+      }
+
     } // namespace
 
     bool RegisterConsoleCommand(const String& name, const ConsoleCommandFn& fn)
@@ -111,6 +132,63 @@ namespace ToolKit
       {
         console->AddLog(message, type);
       }
+    }
+
+    bool RegisterModuleMenuItem(const String& moduleName,
+                                const String& label,
+                                const MenuActionFn& action,
+                                const MenuEnabledFn& enabled,
+                                const String& shortcut)
+    {
+      if (moduleName.empty() || label.empty() || action == nullptr)
+      {
+        return false;
+      }
+
+      std::lock_guard<std::mutex> lock(ModuleMenuMutex());
+
+      for (const ModuleMenuItem& item : ModuleMenuTable())
+      {
+        if (item.m_module == moduleName && item.m_label == label)
+        {
+          TK_WRN("Module '%s' already registered the menu entry '%s'.", moduleName.c_str(), label.c_str());
+          return false;
+        }
+      }
+
+      ModuleMenuItem item;
+      item.m_module   = moduleName;
+      item.m_label    = label;
+      item.m_action   = action;
+      item.m_enabled  = enabled;
+      item.m_shortcut = shortcut;
+
+      ModuleMenuTable().push_back(item);
+      return true;
+    }
+
+    void UnregisterModuleMenu(const String& moduleName)
+    {
+      std::lock_guard<std::mutex> lock(ModuleMenuMutex());
+
+      ModuleMenuItemArray& items = ModuleMenuTable();
+      for (ModuleMenuItemArray::iterator it = items.begin(); it != items.end();)
+      {
+        if (it->m_module == moduleName)
+        {
+          it = items.erase(it);
+        }
+        else
+        {
+          ++it;
+        }
+      }
+    }
+
+    ModuleMenuItemArray GetModuleMenuItems()
+    {
+      std::lock_guard<std::mutex> lock(ModuleMenuMutex());
+      return ModuleMenuTable();
     }
 
   } // namespace Editor

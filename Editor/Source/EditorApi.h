@@ -76,5 +76,56 @@ namespace ToolKit
      */
     TK_EDITOR_API void WriteConsoleLine(const String& message, LogType type = LogType::Memo);
 
+    // Modules menu
+    //////////////////////////////////////////
+
+    /** Runs when a module menu entry is picked. Called on the main thread. */
+    typedef std::function<void()> MenuActionFn;
+
+    /** Answers whether a module menu entry is enabled right now. Called per frame. */
+    typedef std::function<bool()> MenuEnabledFn;
+
+    /** One entry of the Modules menu, as the editor draws it. */
+    struct ModuleMenuItem
+    {
+      String m_module;         //!< Submenu it belongs to, the module name.
+      String m_label;          //!< Text of the entry.
+      String m_shortcut;       //!< Display only; the editor binds no key for it.
+      MenuActionFn m_action;   //!< What picking it runs.
+      MenuEnabledFn m_enabled; //!< Optional; empty means always enabled.
+    };
+
+    typedef std::vector<ModuleMenuItem> ModuleMenuItemArray;
+
+    /**
+     * Adds an entry under Modules -> <moduleName>, so a module gets a menu
+     * without the editor carrying a line of its UI code. The editor draws the
+     * top level Modules menu only when at least one entry is registered; a
+     * module that registers nothing contributes no submenu.
+     *
+     * `action` and `enabled` follow the same rule as a console command: they run
+     * on the main thread and must not capture engine objects, because the table
+     * outlives the windows and the scene (see "Object Lifetime & Shutdown Order"
+     * in AGENTS.md).
+     *
+     * @param moduleName Submenu label, e.g. the module name.
+     * @param label Text of the entry.
+     * @param action What picking the entry runs.
+     * @param enabled Optional predicate for greying the entry out.
+     * @param shortcut Optional text shown on the right; not a key binding.
+     * @return False when the module already registered an entry with that label.
+     */
+    TK_EDITOR_API bool RegisterModuleMenuItem(const String& moduleName,
+                                              const String& label,
+                                              const MenuActionFn& action,
+                                              const MenuEnabledFn& enabled = nullptr,
+                                              const String& shortcut       = "");
+
+    /** Removes every entry of a module. Called from the module's shutdown. */
+    TK_EDITOR_API void UnregisterModuleMenu(const String& moduleName);
+
+    /** The registered entries, in registration order. The editor draws from this. */
+    TK_EDITOR_API ModuleMenuItemArray GetModuleMenuItems();
+
   } // namespace Editor
 } // namespace ToolKit

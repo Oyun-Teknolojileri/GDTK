@@ -880,6 +880,8 @@ namespace ToolKit
           ImGui::EndMenu();
         }
 
+        ShowMenuModules();
+
         ImGui::EndMainMenuBar();
       }
     }
@@ -1072,6 +1074,62 @@ namespace ToolKit
           }
         }
       }
+    }
+
+    void UI::ShowMenuModules()
+    {
+      const ModuleMenuItemArray items = GetModuleMenuItems();
+      if (items.empty())
+      {
+        return;
+      }
+
+      // Entries are grouped by module at draw time, in the order the modules
+      // registered them. A module that registers nothing contributes no submenu,
+      // and the top level menu does not exist when nothing is registered at all.
+      StringArray modules;
+      for (const ModuleMenuItem& item : items)
+      {
+        if (std::find(modules.begin(), modules.end(), item.m_module) == modules.end())
+        {
+          modules.push_back(item.m_module);
+        }
+      }
+
+      if (!ImGui::BeginMenu("Modules"))
+      {
+        return;
+      }
+
+      for (const String& module : modules)
+      {
+        if (!ImGui::BeginMenu(module.c_str()))
+        {
+          continue;
+        }
+
+        for (const ModuleMenuItem& item : items)
+        {
+          if (item.m_module != module)
+          {
+            continue;
+          }
+
+          // An enabled predicate is a cheap per frame call by contract; a module
+          // that needs something expensive has to cache it on its own side.
+          const bool enabled   = item.m_enabled == nullptr ? true : item.m_enabled();
+          const char* shortcut = item.m_shortcut.empty() ? nullptr : item.m_shortcut.c_str();
+
+          if (ImGui::MenuItem(item.m_label.c_str(), shortcut, false, enabled))
+          {
+            item.m_action();
+          }
+        }
+
+        ImGui::EndMenu();
+      }
+
+      ImGui::EndMenu();
     }
 
     void UI::ShowMenuProjects()

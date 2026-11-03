@@ -374,7 +374,7 @@ namespace ToolKit
 
       // The commands exist whether or not RenderDoc is in the process: a build
       // that cannot capture should still be able to say why.
-      RegisterCommands();
+      RegisterEditorContributions();
 
       void* module = FindRenderDocModule();
       if (module == nullptr)
@@ -465,7 +465,7 @@ namespace ToolKit
 
       // The commands go with the module: a console that outlives it must not
       // keep a pointer into code that is no longer there.
-      UnregisterCommands();
+      UnregisterEditorContributions();
 
       RenderDocApi* api = nullptr;
       bool capturing    = false;

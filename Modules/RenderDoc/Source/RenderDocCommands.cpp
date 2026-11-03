@@ -102,7 +102,7 @@ namespace ToolKit
 
     } // namespace
 
-    void RegisterCommands()
+    void RegisterEditorContributions()
     {
       static bool registered = false;
       if (registered)
@@ -111,16 +111,34 @@ namespace ToolKit
       }
 
       registered = true;
+
       Editor::RegisterConsoleCommand("CaptureFrame", CaptureFrameExec);
       Editor::RegisterConsoleCommand("CaptureStatus", CaptureStatusExec);
       Editor::RegisterConsoleCommand("CaptureOpen", CaptureOpenExec);
+
+      // The Modules menu mirrors the commands. The entries call the module
+      // directly instead of round tripping through the console - same queue, no
+      // string to parse - and the ones that need RenderDoc grey themselves out
+      // while the process has not been started through it.
+      Editor::RegisterModuleMenuItem(
+          "RenderDoc",
+          "Capture Frame",
+          []() { RequestCapture("editor"); },
+          []() { return IsAvailable(); });
+      Editor::RegisterModuleMenuItem("RenderDoc", "Capture Status", []() { CaptureStatusExec(Editor::TagArgArray()); });
+      Editor::RegisterModuleMenuItem(
+          "RenderDoc",
+          "Open Last Capture",
+          []() { OpenLastCapture(); },
+          []() { return IsAvailable(); });
     }
 
-    void UnregisterCommands()
+    void UnregisterEditorContributions()
     {
       Editor::UnregisterConsoleCommand("CaptureFrame");
       Editor::UnregisterConsoleCommand("CaptureStatus");
       Editor::UnregisterConsoleCommand("CaptureOpen");
+      Editor::UnregisterModuleMenu("RenderDoc");
     }
 
   } // namespace RenderDoc
