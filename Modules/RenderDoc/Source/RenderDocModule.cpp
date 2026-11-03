@@ -5,12 +5,13 @@
  * please visit [otsoftware.tr] or contact us at [info@otsoftare.tr].
  */
 
-#include "RenderDocCapture.h"
+#include "RenderDocModule.h"
 
 #include "App.h"
-#include "ConsoleWindow.h"
+#include "EditorApi.h"
+#include "RenderDocCommands.h"
+#include "ThirdParty/renderdoc_app.h"
 #include "Workspace.h"
-#include "utilities/renderdoc_app.h"
 
 #include <FrameCapture.h>
 #include <Logger.h>
@@ -35,7 +36,7 @@
 
 namespace ToolKit
 {
-  namespace Editor
+  namespace RenderDoc
   {
 
     namespace
@@ -80,10 +81,10 @@ namespace ToolKit
        */
       struct CaptureState
       {
-        RenderDocApi* api = nullptr; //!< Set once by RenderDocInit, never re-seated.
-        RenderDocStatus status;
+        RenderDocApi* api = nullptr; //!< Set once by Init, never re-seated.
+        Status status;
 
-        // Queued request, filled by RequestRenderDocCapture from any thread.
+        // Queued request, filled by RequestCapture from any thread.
         bool requestQueued = false;
         String queuedLabel;
         int queuedFrames = 1;
@@ -103,7 +104,7 @@ namespace ToolKit
        * Process lifetime state for the capture tool. It holds no engine object -
        * strings, an API table owned by the injected library and a mutex - so it
        * does not have to be released before the engine goes away.
-       * RenderDocUninit() still drops the handler and the API pointer while
+       * Shutdown() still drops the handler and the API pointer while
        * everything is alive, which is what the host teardown expects.
        */
       CaptureState& State()
@@ -112,19 +113,7 @@ namespace ToolKit
         return state;
       }
 
-      void LogToConsole(const String& message, LogType type)
-      {
-        App* app = GetApp();
-        if (app == nullptr)
-        {
-          return;
-        }
-
-        if (ConsoleWindowPtr console = app->GetConsole())
-        {
-          console->AddLog(message, type);
-        }
-      }
+      void LogToConsole(const String& message, LogType type) { Editor::WriteConsoleLine(message, type); }
 
       String TimeStampNow()
       {
@@ -230,7 +219,7 @@ namespace ToolKit
        */
       String ResolveCaptureDir()
       {
-        App* app = GetApp();
+        Editor::App* app = GetApp();
         if (app != nullptr && app->m_workspace != nullptr)
         {
           const String workspace = app->m_workspace->GetActiveWorkspace();
@@ -286,7 +275,7 @@ namespace ToolKit
       /** Writes the metadata an analysis tool needs to put a capture in context. */
       void WriteCaptureMeta(const String& capturePath, const String& label, int frameCount)
       {
-        App* app = GetApp();
+        Editor::App* app = GetApp();
 
         String projectName;
         String sceneName;
@@ -372,12 +361,20 @@ namespace ToolKit
 
     } // namespace
 
-    bool RenderDocInit()
+    // Consumes a request file an external tool dropped into the capture
+    // directory. Defined below; BeginFrame() is the only caller.
+    void PollRequestFile();
+
+    bool Init()
     {
       if (State().api != nullptr)
       {
         return true;
       }
+
+      // The commands exist whether or not RenderDoc is in the process: a build
+      // that cannot capture should still be able to say why.
+      RegisterCommands();
 
       void* module = FindRenderDocModule();
       if (module == nullptr)
@@ -454,17 +451,21 @@ namespace ToolKit
       // Game code and plugins reach the capture tool through the engine, so they
       // never link an editor symbol and never name RenderDoc.
       SetFrameCaptureRequestFn([](const String& label, int frameCount) -> bool
-                               { return RequestRenderDocCapture(label, frameCount); });
+                               { return RequestCapture(label, frameCount); });
 
       TK_LOG("RenderDoc %d.%d.%d attached, captures go to %s", major, minor, patch, captureDir.c_str());
       return true;
     }
 
-    void RenderDocUninit()
+    void Shutdown()
     {
       // Drop the engine hook first: a request that arrives while the editor
       // tears down must not reach a half dismantled capture state.
       SetFrameCaptureRequestFn(nullptr);
+
+      // The commands go with the module: a console that outlives it must not
+      // keep a pointer into code that is no longer there.
+      UnregisterCommands();
 
       RenderDocApi* api = nullptr;
       bool capturing    = false;
@@ -475,7 +476,7 @@ namespace ToolKit
         capturing             = State().status.m_capturing;
 
         State().api           = nullptr;
-        State().status        = RenderDocStatus();
+        State().status        = Status();
         State().requestQueued = false;
         State().queuedLabel.clear();
         State().activeLabel.clear();
@@ -492,9 +493,9 @@ namespace ToolKit
       }
     }
 
-    RenderDocStatus GetRenderDocStatus()
+    Status GetStatus()
     {
-      RenderDocStatus status;
+      Status status;
       {
         std::lock_guard<std::mutex> lock(State().mutex);
         status = State().status;
@@ -513,9 +514,9 @@ namespace ToolKit
       return status;
     }
 
-    bool IsRenderDocAvailable() { return State().api != nullptr; }
+    bool IsAvailable() { return State().api != nullptr; }
 
-    bool RequestRenderDocCapture(const String& label, int frameCount)
+    bool RequestCapture(const String& label, int frameCount)
     {
       if (State().api == nullptr)
       {
@@ -545,12 +546,16 @@ namespace ToolKit
       return true;
     }
 
-    void RenderDocBeginFrame()
+    void BeginFrame()
     {
       if (State().api == nullptr)
       {
         return;
       }
+
+      // A request file is the only way in for a tool that cannot call into the
+      // editor, so it is polled right before the queue is looked at.
+      PollRequestFile();
 
       String label;
       String prefix;
@@ -598,7 +603,7 @@ namespace ToolKit
       api->StartFrameCapture(nullptr, nullptr);
     }
 
-    void RenderDocEndFrame()
+    void EndFrame()
     {
       if (State().api == nullptr)
       {
@@ -679,7 +684,7 @@ namespace ToolKit
       LogToConsole("Capture written: " + report, LogType::Success);
     }
 
-    void RenderDocPollRequestFile()
+    void PollRequestFile()
     {
       if (State().api == nullptr)
       {
@@ -730,7 +735,7 @@ namespace ToolKit
         frameCount = std::atoi(words[1].c_str());
       }
 
-      if (!RequestRenderDocCapture(words.front(), frameCount))
+      if (!RequestCapture(words.front(), frameCount))
       {
         String error;
         {
@@ -741,7 +746,7 @@ namespace ToolKit
       }
     }
 
-    bool RenderDocOpenUI()
+    bool OpenLastCapture()
     {
       RenderDocApi* api = nullptr;
       String lastCapture;
@@ -764,7 +769,7 @@ namespace ToolKit
       return api->LaunchReplayUI(1, captureFile) != 0;
     }
 
-    String GetRenderDocCaptureDir() { return ResolveCaptureDir(); }
+    String GetCaptureDir() { return ResolveCaptureDir(); }
 
-  } // namespace Editor
+  } // namespace RenderDoc
 } // namespace ToolKit

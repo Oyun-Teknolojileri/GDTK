@@ -67,6 +67,10 @@ target_compile_definitions(Editor PRIVATE
   # Workspace static lib, or they would generate dllimport references that
   # the static library cannot satisfy. Editor.exe ends up exporting them.
   TK_WORKSPACE_DLL_EXPORT
+  # Same story for the RenderDoc module: Editor/Source/main.cpp is the one place
+  # in the editor that calls into it, and it has to see RenderDocModule.h the way
+  # the module defines it.
+  TK_RENDERDOC_DLL_EXPORT
   TK_GL_3_0
   TK_DLL_IMPORT
   $<$<CONFIG:Debug>:TK_DEBUG>
@@ -129,6 +133,7 @@ endif()
 target_link_libraries(Editor PRIVATE
   ToolKit
   Workspace
+  RenderDoc
   SDL2
   SDL2main
   imgui

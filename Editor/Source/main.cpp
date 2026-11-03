@@ -19,7 +19,6 @@
 #include "Mod.h"
 #include "PopupWindows.h"
 #include "PreviewViewport.h"
-#include "RenderDocCapture.h"
 #include "Stats.h"
 #include "UI.h"
 
@@ -29,6 +28,7 @@
 #include <FileManager.h>
 #include <Platform.h>
 #include <PluginManager.h>
+#include <RenderDocModule.h>
 #include <SDL.h>
 #include <Types.h>
 #include <imgui/backends/imgui_impl_sdl2.h>
@@ -231,12 +231,12 @@ namespace ToolKit
       CreateAppData();
       g_proxy->PreInit();
 
-      // Bind the RenderDoc API before any graphics object exists: capture
-      // options have to be set before the graphics API is initialised, and the
-      // editor only finds the library when the process was started through
-      // RenderDoc. A plain start leaves the capture tool unavailable, which is
+      // Arm the capture module before any graphics object exists: RenderDoc
+      // wants its capture options set before the graphics API is initialised,
+      // and the module only finds the library when the process was started
+      // through RenderDoc. A plain start leaves capture unavailable, which is
       // the normal case.
-      RenderDocInit();
+      RenderDoc::Init();
 
       // Platform dependent function assignments.
       GetPluginManager()->FreeModule      = &PlatformHelpers::TKFreeModule;
@@ -479,9 +479,10 @@ namespace ToolKit
 
     void Exit()
     {
-      // Release the capture tool while the engine is still alive: it drops the
-      // engine request handler and the RenderDoc API it borrowed.
-      RenderDocUninit();
+      // Release the capture module while the engine is still alive: it drops
+      // the engine request handler, its console commands and the RenderDoc API
+      // it borrowed.
+      RenderDoc::Shutdown();
 
       g_app->Destroy();
 
@@ -509,17 +510,16 @@ namespace ToolKit
         if (g_proxy->SyncFrameTime())
         {
           // A capture has to bracket a whole frame, present included, so the
-          // request is picked up (including one an external tool dropped into
-          // the capture directory) and opened before the frame starts, then
-          // closed once the frame has been presented.
-          RenderDocPollRequestFile();
-          RenderDocBeginFrame();
+          // module picks up a queued request (or a request file an external tool
+          // dropped into the capture directory) and opens the capture before the
+          // frame starts, then closes it once the frame has been presented.
+          RenderDoc::BeginFrame();
 
           g_proxy->FrameBegin();
           g_proxy->FrameUpdate();
           g_proxy->FrameEnd();
 
-          RenderDocEndFrame();
+          RenderDoc::EndFrame();
 
           g_app->m_fps = g_proxy->GetCurrentFPS();
         }

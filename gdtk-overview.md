@@ -37,7 +37,8 @@ GDTK/
 │   ├── Launcher/                # Project browser / entry point (ImGui-based GUI)
 │   └── RenderDoc/               # Capture report tooling: .rdc -> json / markdown / PNGs
 ├── Modules/
-│   └── Workspace/               # Project workspace management (static library)
+│   ├── Workspace/               # Project workspace management (static library)
+│   └── RenderDoc/               # Frame capture module (static library, editor only)
 ├── Templates/
 │   ├── Plugin/                  # Plugin template
 │   └── Game/                    # Game template
@@ -1341,49 +1342,93 @@ ruler or by dragging a lane; the wheel scrolls the rows, `Shift+wheel` pans, `Ct
 
 ---
 
-### 9.8 RenderDoc capture
+### 9.8 RenderDoc capture module (`Modules/RenderDoc`)
 
-Frame capture is a development tool, and it lives in the editor, not in the
-engine: `Editor/Source/RenderDocCapture.h/.cpp` binds RenderDoc's in-application
-API (`Dependency/utilities/renderdoc_app.h`, vendored next to `base64.h` and
-`utf8.h`) and drives it. Nothing of RenderDoc reaches `ToolKit/`.
+Frame capture is a development tool, and it is the tree's first real module: a
+static library (`Modules/RenderDoc`) the editor links and calls through four
+entry points. Everything RenderDoc specific lives there - the API binding, the
+capture state machine, the capture directory, the console commands - so `Editor/`
+carries three calls in `main.cpp` and nothing else.
 
-It is compiled into every editor config, Debug through MinSizeRel. The editor is
-a development tool and the code goes nowhere else: no game target links
-`RenderDocCapture.cpp`, and the library is only ever looked up by name in the
-running process, never loaded. What keeps RenderDoc out of a shipped build is
-that the editor is not part of one, not a preprocessor switch.
+```
+Modules/RenderDoc/
+  Source/RenderDocModule.h/.cpp     host contract: Init/Shutdown/BeginFrame/EndFrame,
+                                    plus status, request and directory queries
+  Source/RenderDocCommands.h/.cpp   CaptureFrame / CaptureStatus / CaptureOpen
+  ThirdParty/renderdoc_app.h        RenderDoc's in-application API header (MIT)
+```
+
+The module is a static library rather than a DLL on purpose: the capture hooks
+have to exist before the graphics device does, so the module has to come up with
+the host instead of being loaded from a `Plugins/` folder later. `main.cpp` calls
+`RenderDoc::Init()` from `PreInit()`, `RenderDoc::BeginFrame()`/`EndFrame()` around
+the frame, and `RenderDoc::Shutdown()` from `Exit()`.
+
+It is compiled into every editor config, Debug through MinSizeRel. What keeps
+RenderDoc out of a shipped build is that the editor is not part of one, not a
+preprocessor switch: no game target links `Modules/RenderDoc`, and the library is
+only ever looked up by name in the running process, never loaded.
+
+**The module talks back to the editor** through `Editor/Source/EditorApi.h`, the
+editor's exported surface for modules:
+
+```cpp
+TK_EDITOR_API bool RegisterConsoleCommand(const String& name, const ConsoleCommandFn& fn);
+TK_EDITOR_API bool UnregisterConsoleCommand(const String& name);
+TK_EDITOR_API ConsoleCommandFn FindConsoleCommand(const String& name);
+TK_EDITOR_API StringArray GetConsoleCommandNames();
+TK_EDITOR_API void WriteConsoleLine(const String& message, LogType type = LogType::Memo);
+```
+
+The command table behind it is editor wide (a `std::map` behind a mutex) and lives
+outside `ConsoleWindow`, so a module can register before any window exists; the
+console drains the same table for its command list, its auto complete and its
+`ExecCommand`, which is why a module command behaves exactly like a built in one.
+`Edit >`-style menus are not part of the contract yet: the editor has no UI for
+module contributed entries, so the capture commands are typed.
+
+Two compile definitions make the static library work, and both are the inverse of
+what a consumer normally sees:
+- the module's TUs are built with `TK_EDITOR_DLL_EXPORT`, so `TK_EDITOR_API`
+  resolves to dllexport and the module's calls into the editor link directly
+  instead of turning into import thunks a static library cannot satisfy. It is the
+  same trick `Editor/CMakeLists.txt` uses for `TK_WORKSPACE_DLL_EXPORT`, mirrored.
+- the editor's own TUs are built with `TK_RENDERDOC_DLL_EXPORT`, so `main.cpp`
+  sees the module's `TK_RENDERDOC_API` the way the module defines it, for the same
+  reason.
 
 The library is looked up by name (`renderdoc.dll` / `librenderdoc.so`), which is
-how an injected RenderDoc presents itself. The editor never loads it: the capture
+how an injected RenderDoc presents itself. The module never loads it: the capture
 hooks have to be in place before the graphics device is created, so the process
 has to be started through RenderDoc (`renderdoccmd capture -w Editor.exe ...`,
-or `renderdoccmd inject <pid>` for a running editor). `RenderDocInit()` runs from
-`PreInit()`, before any graphics work; with RenderDoc absent it quietly does
-nothing, which is what a normal editor start looks like.
+or `renderdoccmd inject <pid>` for a running editor). `Init()` runs from
+`PreInit()`, before any graphics work; with RenderDoc absent it registers the
+commands anyway (so `CaptureStatus` can explain), reports false and every other
+entry point does nothing, which is what a normal editor start looks like.
 
-Three ways to ask for a capture, all funnelling into one queue:
+Four ways to ask for a capture, all funnelling into one queue:
 
 | From | Entry point |
 |---|---|
 | Game code / plugin | `ToolKit::RequestFrameCapture(label, frames)` (`ToolKit/Source/FrameCapture.h`) |
-| Editor code | `ToolKit::Editor::RequestRenderDocCapture(label, frames)` |
-| Console / Debug menu | `CaptureFrame <label> [frames]`, `CaptureStatus`, `CaptureOpen` |
+| Editor code | `ToolKit::RenderDoc::RequestCapture(label, frames)` |
+| Console | `CaptureFrame <label> [frames]`, `CaptureStatus`, `CaptureOpen` |
 | Anything outside the process | write `<capture dir>/request` with `label [frameCount]` |
 
 The engine hook exists because a game build links only `TK::ToolKit`: routing the
 request through a host installed handler is what lets the same game code ask for a
 capture in the editor and compile to a no-op in a published build, without the
 game linking editor symbols or naming RenderDoc. `FrameCapture.cpp` holds one
-`std::function` behind a mutex for that, and `RenderDocInit` is what installs (and
-`RenderDocUninit` what removes) the editor's handler.
+`std::function` behind a mutex for that, and the module's `Init` is what installs
+(and `Shutdown` what removes) the handler.
 
-A request is queued, never acted on inside the call: `RenderDocBeginFrame()` opens
-the capture at the top of the next frame and `RenderDocEndFrame()` closes it after
-the frame's present, both called from `TK_Loop` in `Editor/Source/main.cpp`.
-Starting a capture in the middle of a frame would record half of it, and RenderDoc
-needs the present inside the region. The queue is what makes a request from a game
-thread, a console command or the request file all land on the render thread.
+A request is queued, never acted on inside the call: `RenderDoc::BeginFrame()`
+opens the capture at the top of the next frame and `RenderDoc::EndFrame()` closes
+it after the frame's present, both called from `TK_Loop` in
+`Editor/Source/main.cpp`. Starting a capture in the middle of a frame would record
+half of it, and RenderDoc needs the present inside the region. The queue is what
+makes a request from a game thread, a console command or the request file all land
+on the render thread.
 
 Captures and their metadata go to `<workspace>/<project>/Captures` (the user
 config directory when no project is open):
@@ -1397,9 +1442,8 @@ request                                    consumed request file
 
 The sidecar is what lets the report say which project and scene a capture is of,
 and the request file is what lets a tool that cannot call into the process (an AI
-agent, a CI job) trigger a capture: `RenderDocPollRequestFile()` checks it every
-few frames, deletes it before acting, and rejects a request while another capture
-is queued or running.
+agent, a CI job) trigger a capture: `BeginFrame()` polls it first, deletes it
+before acting, and rejects a request while another capture is queued or running.
 
 The python side lives in `Utils/RenderDoc/` and is not part of the build (it has
 no CMakeLists.txt, so `Utils/` stays a folder of explicit `add_subdirectory`
@@ -1786,8 +1830,9 @@ When writing/editing any `.h`/`.cpp` in this repo:
 | Undoable editor actions (incl. key edits) | `Editor/Source/Action.h` |
 | Dope sheet editor (view + window) | `Editor/UI/View/DopeSheetView.h` |
 | Editor renderer | `Editor/Render/EditorRenderer.h` |
-| RenderDoc capture control (editor only) | `Editor/Source/RenderDocCapture.h` |
-| RenderDoc in-application API header (vendored) | `Dependency/utilities/renderdoc_app.h` |
+| RenderDoc capture module (host contract) | `Modules/RenderDoc/Source/RenderDocModule.h` |
+| RenderDoc in-application API header (vendored) | `Modules/RenderDoc/ThirdParty/renderdoc_app.h` |
+| Editor API for modules (console commands, console output) | `Editor/Source/EditorApi.h` |
 | Frame capture request hook (game code) | `ToolKit/Source/FrameCapture.h` |
 | Capture report tool (.rdc -> json / markdown / PNGs) | `Utils/RenderDoc/README.md` |
 | Host / platform glue (exec paths, shortcuts, app icon) | `ToolKit/Common/PlatformHelper.h` |

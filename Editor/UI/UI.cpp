@@ -18,7 +18,6 @@
 #include "PluginWindow.h"
 #include "PopupWindows.h"
 #include "PropInspectorWindow.h"
-#include "RenderDocCapture.h"
 #include "StatsWindow.h"
 #include "WorldSettingsWindow.h"
 
@@ -876,31 +875,6 @@ namespace ToolKit
           if (ImGui::MenuItem("Light Theme"))
           {
             SetTheme(Theme::Light);
-          }
-
-          ImGui::EndMenu();
-        }
-
-        // RenderDoc frame capture. The menu is always there so the editor has one
-        // predictable place for it; the items that need RenderDoc are disabled
-        // when the process was not started through it. Everything here goes
-        // through the console commands, so the menu and the typed command cannot
-        // drift apart.
-        if (ImGui::BeginMenu("Debug"))
-        {
-          const bool captureAvailable = IsRenderDocAvailable();
-
-          if (ImGui::MenuItem("Capture Frame", nullptr, false, captureAvailable))
-          {
-            GetApp()->GetConsole()->ExecCommand(g_captureFrameCmd + " editor");
-          }
-          if (ImGui::MenuItem("Capture Status", nullptr, false, true))
-          {
-            GetApp()->GetConsole()->ExecCommand(g_captureStatusCmd);
-          }
-          if (ImGui::MenuItem("Open Last Capture", nullptr, false, captureAvailable))
-          {
-            GetApp()->GetConsole()->ExecCommand(g_captureOpenCmd);
           }
 
           ImGui::EndMenu();

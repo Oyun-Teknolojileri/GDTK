@@ -12,16 +12,17 @@ command line away, instead of a trip through the RenderDoc UI.
 ## 1. How it is put together
 
 ```
-Editor/Source/RenderDocCapture.{h,cpp}    RenderDoc in-application API, capture
-                                          state machine, request file, console
-                                          commands. Editor only.
-Dependency/utilities/renderdoc_app.h      the public API header, vendored next to
-                                          base64.h and utf8.h
+Modules/RenderDoc/                        the capture module (static library the
+  Source/RenderDocModule.{h,cpp}          editor links): RenderDoc in-application
+  Source/RenderDocCommands.{h,cpp}        API, capture state machine, request file
+  ThirdParty/renderdoc_app.h              and the three console commands
+Editor/Source/EditorApi.h                 the editor surface the module uses to
+                                          register those commands
 ToolKit/Source/FrameCapture.{h,cpp}       engine side hook: RequestFrameCapture()
 Utils/RenderDoc/                          the python report tool (this folder)
 ```
 
-The editor is the only place that talks to RenderDoc. Game code reaches the
+The module is the only place that talks to RenderDoc. Game code reaches the
 capture tool through the engine hook, so a game never links an editor symbol and
 never names RenderDoc:
 
@@ -38,18 +39,35 @@ void MyGame::Update(float deltaTime)
 }
 ```
 
-The same call works from an editor plugin, from the editor console
-(`CaptureFrame boss_intro`) and from the `Debug` menu.
+The same call works from an editor plugin, and from the editor console
+(`CaptureFrame boss_intro`), which is where the module registers its commands.
+
+### How the module plugs into the editor
+
+`Editor/Source/EditorApi.h` is the whole contract, and it is deliberately small:
+
+```cpp
+Editor::RegisterConsoleCommand("CaptureFrame", CaptureFrameExec);
+Editor::UnregisterConsoleCommand("CaptureFrame");
+Editor::WriteConsoleLine("Capture requested", LogType::Memo);
+```
+
+The command table is editor wide and lives outside `ConsoleWindow`, so a module
+registers from its own `Init()` before any window exists. The console drains the
+same table for its command list, its auto complete and its `ExecCommand`, so a
+module command behaves like a built in one. Menus are not part of the contract
+yet - a module contributed menu entry needs a module aware menu builder, which is
+the second stage of the modular editor work.
 
 ## 2. Build gating
 
-There is none: capture control is compiled into every editor config (Debug,
+There is none: the module is linked into every editor config (Debug,
 RelWithDebInfo, Release, MinSizeRel), because the editor is a development tool
 and the code goes nowhere else.
 
 RenderDoc still stays out of a shipped game, and for a stronger reason than a
-preprocessor switch: no game target links `RenderDocCapture.cpp`, and the library
-is only ever *looked up by name* in the running process - the editor never loads
+preprocessor switch: no game target links `Modules/RenderDoc`, and the library
+is only ever *looked up by name* in the running process - the module never loads
 it. A published game has no RenderDoc code, no RenderDoc dependency and no
 capture UI; the engine side it does link is the 60 line `FrameCapture` hook,
 which names no graphics API and does nothing when no host installed a handler.

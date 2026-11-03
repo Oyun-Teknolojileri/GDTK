@@ -9,6 +9,8 @@
 
 #include "Window.h"
 
+#include "EditorApi.h"
+
 #include <Threads.h>
 
 namespace ToolKit
@@ -16,8 +18,6 @@ namespace ToolKit
   namespace Editor
   {
 
-    typedef std::pair<String, StringArray> TagArg;
-    typedef std::vector<TagArg> TagArgArray;
     typedef TagArgArray::const_iterator TagArgCIt;
     TagArgCIt GetTag(const String& tag, const TagArgArray& tagArgs);
     void ParseVec(Vec3& vec, TagArgCIt tagIt);
@@ -110,18 +110,6 @@ namespace ToolKit
     const String g_saveThumbnail("SaveThumbnail");
     TK_EDITOR_API void SaveThumbnail(TagArgArray tagArgs);
 
-    // RenderDoc frame capture. Registered in every build; a capture is only
-    // possible when the editor was started through RenderDoc, so the executors
-    // report that instead of failing silently (see RenderDocCapture.h).
-    const String g_captureFrameCmd("CaptureFrame");
-    TK_EDITOR_API void CaptureFrameExec(TagArgArray tagArgs);
-
-    const String g_captureStatusCmd("CaptureStatus");
-    TK_EDITOR_API void CaptureStatusExec(TagArgArray tagArgs);
-
-    const String g_captureOpenCmd("CaptureOpen");
-    TK_EDITOR_API void CaptureOpenExec(TagArgArray tagArgs);
-
     // Command errors
     const String g_noValidEntity("No valid entity");
 
@@ -144,16 +132,15 @@ namespace ToolKit
       void ParseCommandLine(const String& commandLine, String& command, TagArgArray& tagArgs);
 
       /**
-       * Returns the names of the commands that are registered for execution.
-       * The list is populated by CreateCommand and shared with other UI that
-       * offers command line entry (e.g. the viewport command palette).
+       * Returns the names of the commands that are registered for execution,
+       * built in ones and ones a module added through EditorApi.h. Shared with
+       * other UI that offers command line entry (e.g. the command palette).
        */
-      const StringArray& GetCommandList() const;
+      StringArray GetCommandList() const;
 
      private:
       // Command line word processing. Auto-complete and history lookups.
       int TextEditCallback(ImGuiInputTextCallbackData* data);
-      void CreateCommand(const String& command, std::function<void(TagArgArray)> executor);
 
       // Log selection helpers (notepad style selection on the log text).
       void SelectAllLog();
@@ -174,9 +161,6 @@ namespace ToolKit
       // Buffers.
       StringArray m_items;
       Spinlock m_itemLock;
-
-      StringArray m_commands;
-      std::unordered_map<String, std::function<void(TagArgArray&)>> m_commandExecutors;
 
       // Command text
       String m_command    = "";
