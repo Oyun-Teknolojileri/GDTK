@@ -46,7 +46,7 @@ namespace ToolKit
     // frame up to the window. The scene path therefore leaves the hdr buffer as the bloom chain wrote it, so the
     // tone curve is applied once, after the scale. The settings object is not mutated here any more: the pass that
     // used to need gamma switched off no longer runs.
-    m_sceneRenderPath->m_params.CompositeElsewhere = true;
+    m_sceneRenderPath->m_params.CompositeElsewhere  = true;
 
     // UI params
     UILayerPtrArray layers;
