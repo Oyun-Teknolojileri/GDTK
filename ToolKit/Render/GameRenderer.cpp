@@ -42,8 +42,11 @@ namespace ToolKit
     m_sceneRenderPath->m_params.Scene               = m_params.scene;
     m_sceneRenderPath->m_params.postProcessSettings = m_params.postProcessSettings;
 
-    // Post process pass. Gamma will be applied in the final pass.
-    m_sceneRenderPath->m_params.postProcessSettings->SetGammaCorrectionEnabledVal(false);
+    // The last composite - tonemap, gamma, fxaa - is this renderer's present pass, which also scales the
+    // frame up to the window. The scene path therefore leaves the hdr buffer as the bloom chain wrote it, so the
+    // tone curve is applied once, after the scale. The settings object is not mutated here any more: the pass that
+    // used to need gamma switched off no longer runs.
+    m_sceneRenderPath->m_params.CompositeElsewhere = true;
 
     // UI params
     UILayerPtrArray layers;
@@ -69,6 +72,13 @@ namespace ToolKit
     PostProcessingSettingsPtr pps               = m_params.postProcessSettings;
     m_gammaPass->m_params.enableGammaCorrection = GetRenderSystem()->IsGammaCorrectionNeeded();
     m_gammaPass->m_params.gamma                 = pps->GetGammaVal();
+
+    // This pass is the composite, not a second gamma: the scene path leaves the hdr buffer alone (see
+    // SceneRenderPathParams::CompositeElsewhere) and the tone curve, the gamma and the edges are applied here,
+    // once, after the frame is scaled up to the window. The settings are the scene's own.
+    m_gammaPass->m_params.enableTonemapping = pps->GetTonemappingEnabledVal();
+    m_gammaPass->m_params.enableFxaa        = pps->GetFXAAEnabledVal();
+    m_gammaPass->m_params.tonemapMethod     = pps->GetTonemapperModeVal().GetEnum<TonemapMethod>();
   }
 
   void GameRenderer::PostRender(Renderer* renderer) { RenderPath::PostRender(renderer); }
@@ -169,6 +179,7 @@ namespace ToolKit
 
     m_gammaPass->m_params.sourceFrameBuffer = mainBuffer;
     m_gammaPass->m_params.frameBuffer       = m_presentTarget;
+    m_gammaPass->m_params.screenSize        = Vec2((float) m_presentSize.x, (float) m_presentSize.y);
     m_passArray.push_back(m_gammaPass);
     RenderPath::Render(renderer);
     m_passArray.clear();

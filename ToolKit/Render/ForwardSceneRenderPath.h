@@ -41,6 +41,16 @@ namespace ToolKit
     FramebufferPtr MainFramebuffer;
     EntityPtr grid;
     PostProcessingSettingsPtr postProcessSettings;
+
+    /**
+     * True when the host applies the last composite itself, after this path is done.
+     *
+     * The pass that turns the hdr buffer into a picture - tonemap, gamma, fxaa - then does not run here, and
+     * the buffer is left as the bloom chain wrote it for the host to read. A host that scales the frame up on its
+     * way to the window then gets one pass instead of two, and applies the tone curve after the scale, where it
+     * belongs. A host that composites nothing - the editor - leaves this false and keeps the pass.
+     */
+    bool CompositeElsewhere = false;
   };
 
   /** Forward scene render path. All objects are drawn in forward manner. Bandwidth optimized. */

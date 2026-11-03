@@ -163,7 +163,10 @@ namespace ToolKit
       m_passArray.push_back(m_dofPass);
     }
 
-    if (m_gammaTonemapFxaaPass->IsEnabled())
+    // A host that composites the frame itself - the game renderer, which also has to scale it up to the
+    // window - applies the tone curve and the edges in its own last pass. Then this one does not run at all
+    // and the hdr buffer goes out as the bloom chain left it.
+    if (m_gammaTonemapFxaaPass->IsEnabled() && !m_params.CompositeElsewhere)
     {
       m_passArray.push_back(m_gammaTonemapFxaaPass);
     }
