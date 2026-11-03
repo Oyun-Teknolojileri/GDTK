@@ -112,6 +112,12 @@ namespace ToolKit
   {
     GLuint textureId    = 0;
     bool isRenderbuffer = false;
+
+    /**
+     * Sample count this texture asks for when it is attached, through
+     * GL_EXT_multisampled_render_to_texture. Zero means the plain attachment path.
+     */
+    int multisampleSamples = 0;
   };
 
   struct GLFramebufferData : GpuResourceData
@@ -1050,11 +1056,24 @@ namespace ToolKit
       {
         glGenRenderbuffers(1, &glData->textureId);
         glBindRenderbuffer(GL_RENDERBUFFER, glData->textureId);
-        glRenderbufferStorageMultisample(GL_RENDERBUFFER,
-                                         (int) s.msaaCount,
-                                         internalFormat,
-                                         tex->m_width,
-                                         tex->m_height);
+        // A framebuffer whose colour side is multisampled in place has to take its depth the same way:
+        // mixed sample counts are GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE.
+        if (UsesMultisampledRenderToTexture() && tk_glRenderbufferStorageMultisampleEXT != nullptr)
+        {
+          glRenderbufferStorageMultisampleEXT(GL_RENDERBUFFER,
+                                              (int) s.msaaCount,
+                                              internalFormat,
+                                              tex->m_width,
+                                              tex->m_height);
+        }
+        else
+        {
+          glRenderbufferStorageMultisample(GL_RENDERBUFFER,
+                                           (int) s.msaaCount,
+                                           internalFormat,
+                                           tex->m_width,
+                                           tex->m_height);
+        }
         glData->isRenderbuffer = true;
       }
       else
@@ -1091,8 +1110,14 @@ namespace ToolKit
       return;
     }
 
-    // RenderTarget MSAA - also a renderbuffer
-    if (s.msaaCount > MsaaSampleCount::x0 && s.Target == GraphicTypes::Target2D)
+    // RenderTarget MSAA - a renderbuffer, unless this engine is built to multisample a plain texture in
+    // place through GL_EXT_multisampled_render_to_texture (or is told to pretend it can, which is how the
+    // path is captured on a desktop driver that does not have the extension).
+    const bool renderToTextureMsaa = s.msaaCount > MsaaSampleCount::x0 &&
+                                     s.Target == GraphicTypes::Target2D &&
+                                     UsesMultisampledRenderToTexture();
+
+    if (s.msaaCount > MsaaSampleCount::x0 && s.Target == GraphicTypes::Target2D && !renderToTextureMsaa)
     {
       glGenRenderbuffers(1, &glData->textureId);
       glBindRenderbuffer(GL_RENDERBUFFER, glData->textureId);
@@ -1105,6 +1130,16 @@ namespace ToolKit
       tex->m_gpuData         = std::move(glData);
       SetDebugLabel(tex);
       return;
+    }
+
+    if (renderToTextureMsaa)
+    {
+      glData->multisampleSamples = (int) s.msaaCount;
+
+      TK_LOG("MSAA: %dx%d at %d samples on the render-to-texture path.",
+             tex->m_width,
+             tex->m_height,
+             (int) s.msaaCount);
     }
 
     // All other textures - regular GL texture
@@ -1425,7 +1460,29 @@ namespace ToolKit
 
     if (rt->Settings().msaaCount > MsaaSampleCount::x0)
     {
-      glFramebufferRenderbuffer(GL_FRAMEBUFFER, glAttachment, GL_RENDERBUFFER, texId);
+      GLTextureData* glTextureData = GetGLTextureData(rt.get());
+      if (glTextureData != nullptr && glTextureData->multisampleSamples > 0)
+      {
+        if (tk_glFramebufferTexture2DMultisampleEXT != nullptr)
+        {
+          glFramebufferTexture2DMultisampleEXT(GL_FRAMEBUFFER,
+                                               glAttachment,
+                                               GL_TEXTURE_2D,
+                                               texId,
+                                               mip,
+                                               glTextureData->multisampleSamples);
+        }
+        else
+        {
+          // Simulated: a desktop driver without the extension still gets the plain attachment, so the
+          // engine side of the path can be captured and compared against the renderbuffer one.
+          glFramebufferTexture2D(GL_FRAMEBUFFER, glAttachment, GL_TEXTURE_2D, texId, mip);
+        }
+      }
+      else
+      {
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, glAttachment, GL_RENDERBUFFER, texId);
+      }
     }
     else if (face >= 0)
     {
@@ -2144,6 +2201,24 @@ namespace ToolKit
     glDeleteBuffers(1, &read->pbo);
     SafeDel(read);
     return true;
+  }
+
+  bool GLBackend::UsesMultisampledRenderToTexture() const
+  {
+    // The extension where the driver has it; TK_MSRT forces the path anyway so a desktop capture can show the
+    // engine side of it. Read once: the two never agree within a process.
+    static const bool enabled = []() -> bool
+    {
+      const char* forced = std::getenv("TK_MSRT");
+      if (forced != nullptr && forced[0] == '1')
+      {
+        return true;
+      }
+
+      return tk_glFramebufferTexture2DMultisampleEXT != nullptr;
+    }();
+
+    return enabled;
   }
 
   void GLBackend::BlitDepth(Framebuffer* src, Framebuffer* dst)

@@ -500,7 +500,38 @@ namespace ToolKit
     assert(source->Initialized() && "Source framebuffer is not initialized.");
     assert(target->Initialized() && "Target framebuffer is not initialized.");
 
-    m_backend->ResolveFramebuffer(source, target, attachments);
+    if (!m_backend->UsesMultisampledRenderToTexture())
+    {
+      m_backend->ResolveFramebuffer(source, target, attachments);
+      return;
+    }
+
+    // The attachments are plain textures the driver resolves when it writes the tile back, and a blit out
+    // of one reads nothing. The image is copied with a draw instead - what the blit used to be for.
+    for (int atc : attachments)
+    {
+      using Attachment   = Framebuffer::Attachment;
+      Attachment atcEnum = (Attachment) ((int) Attachment::ColorAttachment0 + atc);
+
+      RenderTargetPtr srcRt = source->GetColorAttachment(atcEnum);
+      if (srcRt == nullptr)
+      {
+        continue;
+      }
+
+      RenderTargetPtr dstRt = target->GetColorAttachment(atcEnum);
+      if (dstRt == nullptr)
+      {
+        TextureSettings settings = srcRt->Settings();
+        settings.msaaCount       = MsaaSampleCount::x0;
+        dstRt                    = MakeNewPtr<RenderTarget>();
+        dstRt->ReconstructIfNeeded(srcRt->m_width, srcRt->m_height, &settings);
+        target->SetColorAttachment(atcEnum, dstRt);
+      }
+
+      CopyTexture(srcRt, dstRt, false);
+      srcRt->m_resolvedTexture = dstRt;
+    }
   }
 
   void Renderer::SetViewport(Viewport* viewport) { SetFramebuffer(viewport->m_framebuffer, GraphicBitFields::AllBits); }
@@ -612,6 +643,16 @@ namespace ToolKit
       m_copyMaterial->SetVertexShaderVal(vert);
       m_copyMaterial->SetFragmentShaderVal(frag);
     }
+
+    // A render target handed to the copy is usually never sampled on its own, so its settings can still ask
+    // for mip filtering it does not have - an incomplete texture samples as zero, which is a black copy of a
+    // perfectly good image.
+    TextureSettings srcSettings = src->Settings();
+    srcSettings.MinFilter       = GraphicTypes::SampleNearest;
+    srcSettings.MagFilter       = GraphicTypes::SampleNearest;
+    srcSettings.WarpS           = GraphicTypes::UVClampToEdge;
+    srcSettings.WarpT           = GraphicTypes::UVClampToEdge;
+    src->ApplyTextureSettings(srcSettings);
 
     m_copyMaterial->SetDiffuseTextureVal(src);
     m_copyMaterial->Init();
