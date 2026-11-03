@@ -1,13 +1,15 @@
 # RenderDoc -- frame capture for the editor, a static library the Editor links.
 #
 # Source layout: RenderDoc/Source/ holds the module .cpp / .h,
-# RenderDoc/ThirdParty/ holds the vendored RenderDoc in-application API header.
+# RenderDoc/ThirdParty/ holds the vendored RenderDoc in-application API header,
+# RenderDoc/Scripts/ holds the python report tooling (not part of the build - the
+# glob below only takes *.cpp).
 #
 # Why a module and not editor code: the capture tool is the only thing in the
-# tree that talks to RenderDoc, and it contributes its console commands through
-# the editor API (Editor/Source/EditorApi.h). Keeping it in its own target is
-# what makes that boundary reviewable - the editor side is three calls in
-# Editor/Source/main.cpp.
+# tree that talks to RenderDoc, and it contributes its console commands and its
+# menu entries through the editor API (Editor/Source/EditorApi.h). Keeping it in
+# its own target is what makes that boundary reviewable - the editor side is four
+# calls in Editor/Source/main.cpp.
 #
 # This is a STATIC library linked INTO Editor.exe, on purpose: the RenderDoc
 # capture hooks have to be in place before the graphics device is created, so

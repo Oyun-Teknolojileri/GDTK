@@ -15,12 +15,16 @@ command line away, instead of a trip through the RenderDoc UI.
 Modules/RenderDoc/                        the capture module (static library the
   Source/RenderDocModule.{h,cpp}          editor links): RenderDoc in-application
   Source/RenderDocCommands.{h,cpp}        API, capture state machine, request file
-  ThirdParty/renderdoc_app.h              and the three console commands
+  ThirdParty/renderdoc_app.h              and the console / menu entries
+  Scripts/                                the report tooling (this folder)
 Editor/Source/EditorApi.h                 the editor surface the module uses to
-                                          register those commands
+                                          register those commands and menu entries
 ToolKit/Source/FrameCapture.{h,cpp}       engine side hook: RequestFrameCapture()
-Utils/RenderDoc/                          the python report tool (this folder)
 ```
+
+Everything RenderDoc related - the module, the vendored API header and the
+report tooling - lives under `Modules/RenderDoc/`. The module's CMake globs
+`*.cpp` only, so `Scripts/` is invisible to the build.
 
 The module is the only place that talks to RenderDoc. Game code reaches the
 capture tool through the engine hook, so a game never links an editor symbol and
@@ -128,7 +132,7 @@ without it: restart it under RenderDoc instead.
 ## 4. Reading a capture
 
 ```powershell
-python Utils/RenderDoc/rdc_report.py <workspace>/<project>/Captures/boss_intro_*.rdc
+python Modules/RenderDoc/Scripts/rdc_report.py <workspace>/<project>/Captures/boss_intro_*.rdc
 ```
 
 The report directory defaults to `<capture>.report/` next to the capture:

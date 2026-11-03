@@ -34,11 +34,13 @@ GDTK/
 ├── Utils/
 │   ├── Import/                  # Asset import CLI (assimp-based, into engine format)
 │   ├── Packer/                  # Release / publish CLI (.tk bundle, platform packages)
-│   ├── Launcher/                # Project browser / entry point (ImGui-based GUI)
-│   └── RenderDoc/               # Capture report tooling: .rdc -> json / markdown / PNGs
+│   └── Launcher/                # Project browser / entry point (ImGui-based GUI)
 ├── Modules/
 │   ├── Workspace/               # Project workspace management (static library)
-│   └── RenderDoc/               # Frame capture module (static library, editor only)
+│   ├── RenderDoc/               # Frame capture module (static library, editor only)
+│   │   ├── Source/              # Module API, capture, console and menu entries
+│   │   ├── ThirdParty/          # Vendored renderdoc_app.h
+│   │   └── Scripts/             # Report tooling: .rdc -> json / markdown / PNGs
 ├── Templates/
 │   ├── Plugin/                  # Plugin template
 │   └── Game/                    # Game template
@@ -1461,10 +1463,11 @@ and the request file is what lets a tool that cannot call into the process (an A
 agent, a CI job) trigger a capture: `BeginFrame()` polls it first, deletes it
 before acting, and rejects a request while another capture is queued or running.
 
-The python side lives in `Utils/RenderDoc/` and is not part of the build (it has
-no CMakeLists.txt, so `Utils/` stays a folder of explicit `add_subdirectory`
-entries). A distributed RenderDoc does not ship the standalone `renderdoc`
-module, so the analysis runs inside the interpreter `qrenderdoc.exe` embeds:
+The python side lives in `Modules/RenderDoc/Scripts/` and is not part of the
+build (the module's CMake globs `*.cpp` only, so a `Scripts/` folder of python
+is invisible to it). A distributed RenderDoc does not ship the standalone
+`renderdoc` module, so the analysis runs inside the interpreter `qrenderdoc.exe`
+embeds:
 `rdc_report.py` locates `qrenderdoc`, sets `TK_RD_CAPTURE` / `TK_RD_OUTDIR` /
 `TK_RD_RDCKIT` and runs `rdc_analyze.py` with `--python`, which replays the frame
 and writes `<capture>.report/` - `capture.md` (pass table with images, one section
@@ -1850,7 +1853,7 @@ When writing/editing any `.h`/`.cpp` in this repo:
 | RenderDoc in-application API header (vendored) | `Modules/RenderDoc/ThirdParty/renderdoc_app.h` |
 | Editor API for modules (console commands, console output) | `Editor/Source/EditorApi.h` |
 | Frame capture request hook (game code) | `ToolKit/Source/FrameCapture.h` |
-| Capture report tool (.rdc -> json / markdown / PNGs) | `Utils/RenderDoc/README.md` |
+| Capture report tool (.rdc -> json / markdown / PNGs) | `Modules/RenderDoc/Scripts/README.md` |
 | Host / platform glue (exec paths, shortcuts, app icon) | `ToolKit/Common/PlatformHelper.h` |
 | Workspace (project and workspace management) | `Modules/Workspace/Source/Workspace.h` |
 | Build deps | `BuildScripts/build_dependencies.py` |
