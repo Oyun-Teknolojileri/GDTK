@@ -266,12 +266,12 @@ namespace ToolKit
      */
     virtual void BlitDepth(Framebuffer* src, Framebuffer* dst) {}
 
-  /**
-   * True when multisampled colour targets are plain textures the driver multisamples in tile memory,
-   * resolved implicitly on writeback. A resolve then copies the image with a draw, because a blit from
-   * such a target reads nothing back.
-   */
-  virtual bool UsesMultisampledRenderToTexture() const { return false; }
+    /**
+     * True when multisampled colour targets are plain textures the driver multisamples in tile memory,
+     * resolved implicitly on writeback. A resolve then copies the image with a draw, because a blit from
+     * such a target reads nothing back.
+     */
+    virtual bool UsesMultisampledRenderToTexture() const { return false; }
 
     virtual void UpdateTextureSubRegion(Texture* tex, int x, int y, int w, int h, const void* data)         = 0;
 

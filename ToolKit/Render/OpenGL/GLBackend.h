@@ -129,7 +129,7 @@ namespace ToolKit
     bool EndReadPixels(void* handle, void* data) override;
     void BlitDepth(Framebuffer* src, Framebuffer* dst) override;
 
-  bool UsesMultisampledRenderToTexture() const override;
+    bool UsesMultisampledRenderToTexture() const override;
     void UpdateTextureSubRegion(Texture* tex, int x, int y, int w, int h, const void* data) override;
     void PushDebugGroup(StringView name) override;
     bool SetGpuScopeTiming(bool enable) override;

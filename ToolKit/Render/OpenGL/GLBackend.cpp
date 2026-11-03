@@ -110,8 +110,8 @@ namespace ToolKit
 
   struct GLTextureData : GpuResourceData
   {
-    GLuint textureId    = 0;
-    bool isRenderbuffer = false;
+    GLuint textureId       = 0;
+    bool isRenderbuffer    = false;
 
     /**
      * Sample count this texture asks for when it is attached, through
@@ -1113,9 +1113,8 @@ namespace ToolKit
     // RenderTarget MSAA - a renderbuffer, unless this engine is built to multisample a plain texture in
     // place through GL_EXT_multisampled_render_to_texture (or is told to pretend it can, which is how the
     // path is captured on a desktop driver that does not have the extension).
-    const bool renderToTextureMsaa = s.msaaCount > MsaaSampleCount::x0 &&
-                                     s.Target == GraphicTypes::Target2D &&
-                                     UsesMultisampledRenderToTexture();
+    const bool renderToTextureMsaa =
+        s.msaaCount > MsaaSampleCount::x0 && s.Target == GraphicTypes::Target2D && UsesMultisampledRenderToTexture();
 
     if (s.msaaCount > MsaaSampleCount::x0 && s.Target == GraphicTypes::Target2D && !renderToTextureMsaa)
     {
