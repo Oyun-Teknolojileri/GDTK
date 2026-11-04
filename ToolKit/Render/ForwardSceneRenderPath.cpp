@@ -29,7 +29,7 @@ namespace ToolKit
     constexpr int DepthGridBlockSize = 8;
 
     /** Grid reads happen every this many frames. A blocking read per frame costs more than it saves. */
-    constexpr uint DepthGridReadInterval = 4;
+    constexpr uint DepthGridReadInterval        = 1;
 
     /** How many frames in a row a light or a mesh has to look hidden before it is dropped. */
     constexpr int OcclusionStreakToCull = 3;
@@ -108,6 +108,22 @@ namespace ToolKit
     // starts from a clear buffer - the forward pass skips its own depth clear whenever a pre process pass
     // exists, so a camera that moved would otherwise be testing this frame's geometry against last
     // frame's - and the stencil comes along because the composite pass used to clear it in the same call.
+    // The grid is reduced from the depth the previous frame left in the buffer, here, before this frame
+    // clears it. Reducing it after this frame's forward pass meant resolving a depth buffer the gpu is
+    // still filling: the blit waits for the whole frame to finish, and that wait is what a moving camera paid
+    // for on every update. No post process pass writes depth - they are full quads with the depth mask off - so
+    // what is read here is the depth the forward pass drew, one frame late, which is what the grid always was.
+    if (m_forwardRenderPass != nullptr && m_forwardRenderPass->m_params.FrameBuffer != nullptr)
+    {
+      BuildDepthGrid(renderer);
+
+      // The grid pass leaves its own target bound and its viewport at the grid's size.
+      if (m_params.MainFramebuffer != nullptr)
+      {
+        renderer->SetFramebuffer(m_params.MainFramebuffer, GraphicBitFields::None);
+      }
+    }
+
     if (m_params.MainFramebuffer != nullptr)
     {
       renderer->SetFramebuffer(m_params.MainFramebuffer, GraphicBitFields::DepthStencilBits);
@@ -182,27 +198,14 @@ namespace ToolKit
       pass->PreRender();
       pass->Render();
       pass->PostRender();
-
-      if (pass == m_forwardRenderPass)
-      {
-        BuildDepthGrid(renderer);
-
-        // The grid pass leaves its own target bound and its viewport at the grid's size. The passes behind
-        // this one - reflections, bloom, depth of field, gamma - draw into the frame, so it is put back before
-        // they run. Nothing is cleared, the scene's color is still the picture.
-        if (m_params.MainFramebuffer != nullptr)
-        {
-          renderer->SetFramebuffer(m_params.MainFramebuffer, GraphicBitFields::None);
-        }
-      }
     }
 
-    renderer->SetShadowAtlas(nullptr);
+    // The depth this frame drew is what the next frame's grid is reduced from, so the camera that drew it travels
+    // with it: by the time the grid is built, the camera has moved again.
+    m_depthCamera      = CaptureOcclusionCamera(m_params.Cam.get());
+    m_depthCameraValid = true;
 
-    // The grid was taken above, right after the forward pass. The editor draws its gizmos and billboards into
-    // the same depth buffer after this path returns, and a gizmo pass that clears depth would destroy the depths
-    // the grid needed; taking them before any of that runs removes the reason to save and restore the buffer
-    // around the editor's drawing.
+    renderer->SetShadowAtlas(nullptr);
 
     // The grid pass leaves its own target bound and its viewport at the grid's size, which is not what the
     // rest of the frame expects - the editor draws its overlays into the scene's framebuffer right after
@@ -211,9 +214,6 @@ namespace ToolKit
     {
       renderer->SetFramebuffer(m_params.MainFramebuffer, GraphicBitFields::None);
     }
-
-    // Remember the camera this frame used: next frame's volumes are projected into the view the depths
-    // belong to, and a camera that moved is what makes the grid in hand stale.
 
     PostRender(renderer);
   }
@@ -472,7 +472,7 @@ namespace ToolKit
 
       if (handle != nullptr || !supportsAsync)
       {
-        slot->camera      = CaptureOcclusionCamera(m_params.Cam.get());
+        slot->camera      = m_depthCameraValid ? m_depthCamera : CaptureOcclusionCamera(m_params.Cam.get());
         slot->handle      = handle;
         slot->pending     = !supportsAsync;
         slot->target      = supportsAsync ? nullptr : m_depthGridFb;

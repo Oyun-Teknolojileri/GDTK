@@ -51,6 +51,7 @@ namespace ToolKit
      * belongs. A host that composites nothing - the editor - leaves this false and keeps the pass.
      */
     bool CompositeElsewhere = false;
+
   };
 
   /** Forward scene render path. All objects are drawn in forward manner. Bandwidth optimized. */
@@ -372,6 +373,15 @@ namespace ToolKit
     /** Camera the grid in m_depthGrid was rendered with. A grid from another view says nothing about
      *  this one, so culling waits for the grid to catch up after a camera change. */
     uint64 m_occlusionCameraId                           = 0;
+
+    /**
+     * The camera the depth in the frame buffer was drawn with. The grid is reduced from that depth at the top
+     * of the next frame, and the camera has moved by then: reducing it with the current one would label the
+     * previous frame's depths as this frame's, which makes the reprojection below a no op and the whole
+     * grid read as if it described a view it never saw.
+     */
+    OcclusionCamera m_depthCamera;
+    bool m_depthCameraValid       = false;
 
     /** The view being culled, next to m_occlusionViewProj which is the view the grid was reduced from. The
      *  distance between the two is how far a volume may have drifted on screen since the grid was read. */
