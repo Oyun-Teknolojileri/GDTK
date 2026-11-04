@@ -135,6 +135,9 @@ namespace ToolKit
     int iblMaxReflectionLod;
     int cascadeCount;
     Vec4 cascadeDistances;
+
+    /** x: variance scale of the geometric specular AA term, y: ceiling on the roughness it may add. */
+    Vec4 specularAntiAliasing;
   };
 
   typedef GpuBufferBase<GraphicConstatsDataLayout> GraphicConstantsGpuBuffer;

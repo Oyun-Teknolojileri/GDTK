@@ -132,26 +132,24 @@ float roughnessToPerceptualRoughness(float roughness)
 // Google Filament implementation
 // ---------------------------------------------------------------------------
 
-// The variance scale is what decides how far the sampled normal may vary inside one pixel before the
-// highlight stops being a point sample of a mirror. Filament's 0.15 is tuned for a normal map whose
-// detail is smooth; this engine's assets carry flat (128,128,255) islands with hard edged borders, and
-// a pixel crossing one of those borders sees a normal jump, which leaves a single pixel wide band of
-// over filtered highlight that crawls with the camera. Measured on the city scene with the frame to
-// frame difference of bright pixels (framebuffer 1088x612, 11 frame pairs): 0.15 gives 218 changed
-// bright pixels per pair, 2.0 gives 90, 4.0 gives 82 and a static camera drops from 6.1 outliers to
-// 0.1 at 2.0. Raising only SPECULAR_AA_THRESHOLD does nothing (0.25 to 1.0 measured -7%), the scale is
-// what matters, so the cap stays where Filament puts it.
-const float SPECULAR_AA_VARIANCE  = 2.00;
-const float SPECULAR_AA_THRESHOLD = 0.25;
-
-float specularAntiAliasing(float perceptualRoughness, const vec3 worldNormal)
+// The variance scale decides how far the sampled normal may vary inside one pixel before the highlight
+// stops being a point sample of a mirror, and the limit caps how much roughness one pixel may gain from
+// it. Both are authored in the graphics settings and arrive here as arguments, because this file is
+// included before the block that declares the graphics constants: the scale a project needs depends on
+// its normal maps, and the number renderers usually ship is well under what this engine's content asks.
+// Filament's 0.15 leaves the city scene at 218 changed bright pixels per frame pair, Godot's 0.25 at
+// 193, and the default the settings carry (2.0) at 102.
+float specularAntiAliasing(float perceptualRoughness,
+                           const vec3 worldNormal,
+                           float varianceScale,
+                           float kernelLimit)
 {
 	vec3 du = dFdx(worldNormal);
 	vec3 dv = dFdy(worldNormal);
 
-	float variance = SPECULAR_AA_VARIANCE * (dot(du, du) + dot(dv, dv));
+	float variance = varianceScale * (dot(du, du) + dot(dv, dv));
 	float roughness = perceptualRoughnessToRoughness(perceptualRoughness);
-	float kernelRoughness = min(2.0 * variance, SPECULAR_AA_THRESHOLD);
+	float kernelRoughness = min(2.0 * variance, kernelLimit);
 	float squareRoughness = clamp(roughness * roughness + kernelRoughness, 0.0, 1.0);
 
 	return roughnessToPerceptualRoughness(sqrt(squareRoughness));

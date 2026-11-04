@@ -296,6 +296,17 @@ namespace ToolKit
         UI::AddTooltipToLastItem("Apply anisotropic filtering if the value is greater than 0. \nOnly effects all "
                                  "textures after editor restarted.");
 
+        // How far the shading widens a specular lobe where the normal varies faster than a pixel, which
+        // is the screen space counterpart of the light source size. The right amount follows the normal
+        // maps a project uses, so it is a setting rather than a constant: zero turns the term off.
+        CustomDataView::ShowVariant(&graphics->ParamSpecularAAAmount(), nullptr);
+        UI::AddTooltipToLastItem("Scale of the normal variance the specular lobe is widened by.\n"
+                                 "Higher is steadier and softer, 0 disables the term. Applies immediately.");
+
+        CustomDataView::ShowVariant(&graphics->ParamSpecularAALimit(), nullptr);
+        UI::AddTooltipToLastItem("Ceiling on the roughness the term above may add, so one bad pixel cannot\n"
+                                 "turn a smooth surface rough. The amount is what decides; this bounds it.");
+
         ImGui::EndTabItem(); // End Graphics Tab
       }
     }

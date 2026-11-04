@@ -277,6 +277,27 @@ namespace ToolKit
      */
     TKDeclareParam(bool, HalfResolutionForwardPreProcess);
 
+    /**
+     * Scale of the variance the geometric specular anti-aliasing term builds from the screen space
+     * derivative of the shading normal. The term widens the specular lobe where the normal varies
+     * faster than a pixel can show, which is what keeps a highlight narrower than a pixel from
+     * blinking as the camera moves. Higher is steadier and softer, zero turns the term off.
+     *
+     * Two is what this engine's content needs, and the default: the city normal map is a flat field
+     * with hard edged detail islands, so a pixel crossing an island border sees a normal jump.
+     * Measured on that scene, eleven frame pairs with the camera animation playing, counting bright
+     * pixels that change by more than 35 steps between two frames: 0.15, Filament's number, leaves 218;
+     * 0.25, Godot's amount, 193; 2.0 gives 102, and 4.0 only takes a further 19.
+     */
+    TKDeclareParam(float, SpecularAAAmount);
+
+    /**
+     * Ceiling on the squared roughness the term above may add, so a normal jump cannot turn an
+     * arbitrary amount of a smooth surface rough. Raising this on its own changes little (0.25 to 1.0
+     * measured -7%), the amount is what decides; this bounds the damage one bad pixel can do.
+     */
+    TKDeclareParam(float, SpecularAALimit);
+
     /** When set to true, graphics settings saved as shader defines. Preventing compiling all define configurations.  */
     bool m_saveShaderDefines = true;
 

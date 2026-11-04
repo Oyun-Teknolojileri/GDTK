@@ -697,7 +697,7 @@ All bind at fixed slots (0-6 are the global engine buffers, 7 and up are pass sp
 | Layout | Slot | Used by |
 |---|---|---|
 | `CameraGpuBuffer` | 0 | every pass |
-| `GraphicConstantsGpuBuffer` | 1 | every pass (shadow distance, atlas size, IBL lod, cascades) |
+| `GraphicConstantsGpuBuffer` | 1 | every pass (shadow distance, atlas size, IBL lod, cascades, specular AA amount and limit) |
 | `DirectionalLightBuffer` | 3 | forward pass |
 | `PointLightCache` / `SpotLightCache` | 4 / 5 | forward pass |
 | `PerDrawUboBuffer` | 2 | per-draw (model matrix etc., mirror in `perDrawDataInc.shader`) |

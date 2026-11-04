@@ -168,6 +168,13 @@ namespace ToolKit
     OcclusionReprojection_Define(true, "GraphicSettings", 0, 0, 0);
     RenderResolutionScale_Define(1.0f, "GraphicSettings", 0, 0, 0);
     HalfResolutionForwardPreProcess_Define(true, "GraphicSettings", 0, 1, 1);
+
+    // The two specular anti-aliasing values the shading reads out of the graphics constants buffer.
+    // Both are exposed, because the amount a project needs depends on its normal maps and the numbers
+    // renderers usually ship (Filament 0.15, Godot 0.25) are under a fifth of what this content asks.
+    SpecularAAAmount_Define(2.0f, "GraphicSettings", 0, true, true, {false, true, 0.0f, 8.0f, 0.05f});
+    SpecularAALimit_Define(0.25f, "GraphicSettings", 0, true, true, {false, true, 0.0f, 1.0f, 0.01f});
+
     MultiThreaded_Define(true, "GraphicSettings", 0, 0, 0);
   }
 
@@ -179,6 +186,23 @@ namespace ToolKit
           bool multiThreaded              = std::get<bool>(newVal);
           Main::GetInstance()->m_threaded = multiThreaded;
         });
+
+    // The shading reads both values from the graphics constants buffer, so an edit has to land in it
+    // before the next frame draws. The render task the shadow settings use is the same path.
+    const auto updateGraphicConstants = [](Value&, Value&) -> void
+    {
+      RenderSystem* rsys = GetRenderSystem();
+      if (rsys == nullptr)
+      {
+        TK_ERR("Render system is not initialized, graphics constants can't be updated.");
+        return;
+      }
+
+      rsys->AddRenderTask({[](Renderer* renderer) -> void { renderer->InvalidateGraphicsConstants(); }});
+    };
+
+    ParamSpecularAAAmount().m_onValueChangedFn.push_back(updateGraphicConstants);
+    ParamSpecularAALimit().m_onValueChangedFn.push_back(updateGraphicConstants);
   }
 
   void GraphicSettings::PostDeSerializeImp(const SerializationFileInfo& info, XmlNode* parent)

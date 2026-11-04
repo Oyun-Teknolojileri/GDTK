@@ -167,6 +167,10 @@
 		int iblMaxReflectionLod;
 		int cascadeCount;
 		vec4 cascadeDistances;
+
+		// x: variance scale of the geometric specular AA term, y: ceiling on the squared roughness it
+		// may add. Authored in the graphics settings, so a project can tune it without a shader edit.
+		vec4 specularAntiAliasing;
 	};
 
 	TK_UBO_BINDING(1) uniform GraphicConstatsData
