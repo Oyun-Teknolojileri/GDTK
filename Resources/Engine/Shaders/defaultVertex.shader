@@ -46,21 +46,21 @@
 			  }
 	  }
 
-	  // World-space normal / TBN
+	  // World-space normal / TBN. The normal is resolved on both paths: an out that is never written
+	  // is undefined to the spec, and the branch that samples the normal map used to leave this one
+	  // alone, because the map supplied the normal the fragment shader used.
+	  mat3 normalMatrix = mat3(INSTANCE_NORMAL_MATRIX);
+
+	  vec3 wN       = normalize(normalMatrix * N);
+	  v_worldNormal = wN;
+
 		if (normalMapInUse)
 		{
-			mat3 normalMatrix = mat3(INSTANCE_NORMAL_MATRIX);
-
-			vec3 wN = normalize(normalMatrix * N);
 			vec3 wT = normalize(normalMatrix * T);
 			wT = normalize(wT - dot(wT, wN) * wN); // Re orthogonalize.
 			vec3 wB = cross(wN, wT) * bitangentSign;
 			TBN = mat3(wT, wB, wN);
 		}
-	    else
-	    {
-		    v_worldNormal = normalize(mat3(INSTANCE_NORMAL_MATRIX) * N);
-	    }
 
       vec4 worldPos = INSTANCE_MODEL_MATRIX * localPos;
       v_worldPos = worldPos.xyz;

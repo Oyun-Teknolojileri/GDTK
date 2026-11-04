@@ -132,7 +132,16 @@ float roughnessToPerceptualRoughness(float roughness)
 // Google Filament implementation
 // ---------------------------------------------------------------------------
 
-const float SPECULAR_AA_VARIANCE  = 0.15;
+// The variance scale is what decides how far the sampled normal may vary inside one pixel before the
+// highlight stops being a point sample of a mirror. Filament's 0.15 is tuned for a normal map whose
+// detail is smooth; this engine's assets carry flat (128,128,255) islands with hard edged borders, and
+// a pixel crossing one of those borders sees a normal jump, which leaves a single pixel wide band of
+// over filtered highlight that crawls with the camera. Measured on the city scene with the frame to
+// frame difference of bright pixels (framebuffer 1088x612, 11 frame pairs): 0.15 gives 218 changed
+// bright pixels per pair, 2.0 gives 90, 4.0 gives 82 and a static camera drops from 6.1 outliers to
+// 0.1 at 2.0. Raising only SPECULAR_AA_THRESHOLD does nothing (0.25 to 1.0 measured -7%), the scale is
+// what matters, so the cap stays where Filament puts it.
+const float SPECULAR_AA_VARIANCE  = 2.00;
 const float SPECULAR_AA_THRESHOLD = 0.25;
 
 float specularAntiAliasing(float perceptualRoughness, const vec3 worldNormal)

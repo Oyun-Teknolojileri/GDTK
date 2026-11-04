@@ -96,6 +96,14 @@ namespace ToolKit
     /** Fills cache items common light data. */
     void UpdateCommonLightData(LightCacheItem::CommonData* data);
 
+    /**
+     * Marks the light's cached gpu data and the objects around it stale. Bound to every parameter that
+     * changes what the light looks like rather than where it is: the cache item only reaches the gpu
+     * buffer when something invalidates it, and the objects already assigned to the light keep the
+     * value they were drawn with.
+     */
+    void ParameterEdited();
+
    public:
     TKDeclareParam(Vec3, Color);
     TKDeclareParam(float, Intensity);
@@ -189,7 +197,6 @@ namespace ToolKit
     virtual ~DirectionalLight();
 
     void NativeConstruct() override;
-    void ParameterConstructor() override;
     void UpdateShadowFrustum(CameraPtr cameraView, ScenePtr scene);
 
     void UpdateShadowCamera() override;
@@ -203,6 +210,8 @@ namespace ToolKit
 
    protected:
     XmlNode* SerializeImp(XmlDocument* doc, XmlNode* parent) const override;
+    void ParameterConstructor() override;
+    void ParameterEventConstructor() override;
 
    private:
     /** Adjust the light frustum such that, it covers entire view camera frustum. */

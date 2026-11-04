@@ -65,18 +65,20 @@ namespace ToolKit
     // keeps the light list it was assigned, and the light's place in the GPU light buffer is only
     // refreshed when a draw asks for it, so a light that changed while its objects were out of view
     // would otherwise keep the old value the next time they are drawn.
-    const auto onLightEdited = [this](Value&, Value&) -> void
-    {
-      InvalidateCacheItem();
-      m_forceNeighbourInvalidation = true;
-      InvalidateSpatialCaches();
-    };
+    const auto onLightEdited = [this](Value&, Value&) -> void { ParameterEdited(); };
 
     ParamColor().m_onValueChangedFn.push_back(onLightEdited);
     ParamIntensity().m_onValueChangedFn.push_back(onLightEdited);
     ParamCastShadow().m_onValueChangedFn.push_back(onLightEdited);
     ParamShadowBias().m_onValueChangedFn.push_back(onLightEdited);
     ParamBleedingReduction().m_onValueChangedFn.push_back(onLightEdited);
+  }
+
+  void Light::ParameterEdited()
+  {
+    InvalidateCacheItem();
+    m_forceNeighbourInvalidation = true;
+    InvalidateSpatialCaches();
   }
 
   void Light::UpdateShadowCamera() { m_shadowMapCameraProjectionViewMatrix = m_shadowCamera->GetProjectViewMatrix(); }
@@ -360,9 +362,19 @@ namespace ToolKit
   {
     Super::ParameterConstructor();
 
-    // The sun subtends about half a degree. Half of that is the angular radius the specular lobe widens by,
-    // which is what keeps a mirror like surface from carrying a highlight narrower than a pixel.
+    // The sun subtends about half a degree, so 0.265 is its angular radius. The specular lobe widens by
+    // this angle, which is what keeps a mirror like surface from carrying a highlight narrower than the
+    // emitter that produces it.
     SourceAngle_Define(0.265f, "Light", 90, true, true, {false, true, 0.0f, 45.0f, 0.01f});
+  }
+
+  void DirectionalLight::ParameterEventConstructor()
+  {
+    Super::ParameterEventConstructor();
+
+    // The emitter size is baked into the light's gpu data, so an edit has to reach the cache item the
+    // buffer is filled from, exactly like a colour or an intensity change does.
+    ParamSourceAngle().m_onValueChangedFn.push_back([this](Value&, Value&) -> void { ParameterEdited(); });
   }
 
   void DirectionalLight::NativeConstruct()
@@ -434,8 +446,9 @@ namespace ToolKit
     UpdateCommonLightData(&m_lightCacheItem.data);
 
     m_lightCacheItem.data.direction   = GetComponentFast<DirectionComponent>()->GetDirection();
-    // Half of the emitter angle, in radians, which is the width the specular lobe has to widen by.
-    m_lightCacheItem.data.sourceAngle = glm::radians(GetSourceAngleVal() * 0.5f);
+    // GetSourceAngleVal() is already the emitter's angular radius, which is the width the specular lobe
+    // widens by. Halving it here as well would put half of the sun in the shader for a full one.
+    m_lightCacheItem.data.sourceAngle = glm::radians(GetSourceAngleVal());
 
     m_lightCacheItem.Validate();
 
@@ -631,7 +644,7 @@ namespace ToolKit
 
     UpdateCommonLightData(&m_lightCacheItem.data);
 
-    m_lightCacheItem.id          = GetIdVal();
+    m_lightCacheItem.id                = GetIdVal();
     m_lightCacheItem.data.radius       = GetRadiusVal();
     m_lightCacheItem.data.sourceRadius = GetSourceRadiusVal();
 
@@ -658,7 +671,7 @@ namespace ToolKit
     Super::ParameterConstructor();
 
     Radius_Define(3.0f, "Light", 90, true, true, {false, true, 0.1f, 100000.0f, 0.3f});
-  SourceRadius_Define(0.0f, "Light", 90, true, true, {false, true, 0.0f, 1000.0f, 0.01f});
+    SourceRadius_Define(0.0f, "Light", 90, true, true, {false, true, 0.0f, 1000.0f, 0.01f});
   }
 
   void PointLight::ParameterEventConstructor()
@@ -667,6 +680,11 @@ namespace ToolKit
 
     ParamRadius().m_onValueChangedFn.push_back([this](Value& oldVal, Value& newVal) -> void
                                                { InvalidateSpatialCaches(); });
+
+    // Radius decides which objects the light reaches, the emitter size only decides how wide its
+    // highlight is, so this one goes through the edit path: the cache item has to be rebuilt before the
+    // next draw reads it.
+    ParamSourceRadius().m_onValueChangedFn.push_back([this](Value&, Value&) -> void { ParameterEdited(); });
   }
 
   void PointLight::UpdateLocalBoundingBox()
@@ -795,7 +813,7 @@ namespace ToolKit
     Super::ParameterConstructor();
 
     Radius_Define(10.0f, "Light", 90, true, true, {false, true, 0.1f, 100000.0f, 0.5f});
-  SourceRadius_Define(0.0f, "Light", 90, true, true, {false, true, 0.0f, 1000.0f, 0.01f});
+    SourceRadius_Define(0.0f, "Light", 90, true, true, {false, true, 0.0f, 1000.0f, 0.01f});
     OuterAngle_Define(35.0f, "Light", 90, true, true, {false, true, 1.0f, 179.8f, 1.0f});
     InnerAngle_Define(30.0f, "Light", 90, true, true, {false, true, 0.5f, 179.8f, 1.0f});
   }
@@ -803,6 +821,8 @@ namespace ToolKit
   void SpotLight::ParameterEventConstructor()
   {
     Super::ParameterEventConstructor();
+
+    ParamSourceRadius().m_onValueChangedFn.push_back([this](Value&, Value&) -> void { ParameterEdited(); });
 
     ParamOuterAngle().m_onValueChangedFn.push_back(
         [this](Value& oldVal, Value& newVal) -> void
