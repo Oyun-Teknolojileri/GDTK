@@ -356,6 +356,15 @@ namespace ToolKit
     m_shadowMapCascadeCameraProjectionViewMatrices.clear();
   }
 
+  void DirectionalLight::ParameterConstructor()
+  {
+    Super::ParameterConstructor();
+
+    // The sun subtends about half a degree. Half of that is the angular radius the specular lobe widens by,
+    // which is what keeps a mirror like surface from carrying a highlight narrower than a pixel.
+    SourceAngle_Define(0.265f, "Light", 90, true, true, {false, true, 0.0f, 45.0f, 0.01f});
+  }
+
   void DirectionalLight::NativeConstruct()
   {
     Super::NativeConstruct();
@@ -424,7 +433,9 @@ namespace ToolKit
     m_lightCacheItem.id = GetIdVal();
     UpdateCommonLightData(&m_lightCacheItem.data);
 
-    m_lightCacheItem.data.direction = GetComponentFast<DirectionComponent>()->GetDirection();
+    m_lightCacheItem.data.direction   = GetComponentFast<DirectionComponent>()->GetDirection();
+    // Half of the emitter angle, in radians, which is the width the specular lobe has to widen by.
+    m_lightCacheItem.data.sourceAngle = glm::radians(GetSourceAngleVal() * 0.5f);
 
     m_lightCacheItem.Validate();
 
@@ -621,7 +632,8 @@ namespace ToolKit
     UpdateCommonLightData(&m_lightCacheItem.data);
 
     m_lightCacheItem.id          = GetIdVal();
-    m_lightCacheItem.data.radius = GetRadiusVal();
+    m_lightCacheItem.data.radius       = GetRadiusVal();
+    m_lightCacheItem.data.sourceRadius = GetSourceRadiusVal();
 
     m_lightCacheItem.Validate();
 
@@ -646,6 +658,7 @@ namespace ToolKit
     Super::ParameterConstructor();
 
     Radius_Define(3.0f, "Light", 90, true, true, {false, true, 0.1f, 100000.0f, 0.3f});
+  SourceRadius_Define(0.0f, "Light", 90, true, true, {false, true, 0.0f, 1000.0f, 0.01f});
   }
 
   void PointLight::ParameterEventConstructor()
@@ -740,6 +753,7 @@ namespace ToolKit
     m_lightCacheItem.id                        = GetIdVal();
     m_lightCacheItem.data.radius               = GetRadiusVal();
     m_lightCacheItem.data.outerAngle           = glm::cos(glm::radians(GetOuterAngleVal() * 0.5f));
+    m_lightCacheItem.data.sourceRadius         = GetSourceRadiusVal();
     m_lightCacheItem.data.innerAngle           = glm::cos(glm::radians(GetInnerAngleVal() * 0.5f));
     m_lightCacheItem.data.direction            = GetComponentFast<DirectionComponent>()->GetDirection();
     m_lightCacheItem.data.projectionViewMatrix = m_shadowMapCameraProjectionViewMatrix;
@@ -781,6 +795,7 @@ namespace ToolKit
     Super::ParameterConstructor();
 
     Radius_Define(10.0f, "Light", 90, true, true, {false, true, 0.1f, 100000.0f, 0.5f});
+  SourceRadius_Define(0.0f, "Light", 90, true, true, {false, true, 0.0f, 1000.0f, 0.01f});
     OuterAngle_Define(35.0f, "Light", 90, true, true, {false, true, 1.0f, 179.8f, 1.0f});
     InnerAngle_Define(30.0f, "Light", 90, true, true, {false, true, 0.5f, 179.8f, 1.0f});
   }
