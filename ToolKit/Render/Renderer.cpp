@@ -78,7 +78,8 @@ namespace ToolKit
 
   void Renderer::InvalidateGraphicsConstants()
   {
-    const ShadowSettingsPtr shadows                   = GetEngineSettings().m_graphics->m_shadows;
+    const GraphicSettingsPtr graphics                 = GetEngineSettings().m_graphics;
+    const ShadowSettingsPtr shadows                   = graphics->m_shadows;
 
     GraphicConstantsGpuBuffer& graphicConstantsBuffer = m_globalGpuBuffers->graphicConstantBuffer;
     graphicConstantsBuffer.m_data.shadowDistance      = shadows->GetShadowMaxDistance();
@@ -86,6 +87,8 @@ namespace ToolKit
     graphicConstantsBuffer.m_data.shadowAtlasSize     = (float) shadows->GetShadowAtlasResolution();
     graphicConstantsBuffer.m_data.iblMaxReflectionLod = RHIConstants::SpecularIBLLods - 1;
     graphicConstantsBuffer.m_data.cascadeDistances    = *((Vec4*) &shadows->GetCascadeDistancesVal());
+    graphicConstantsBuffer.m_data.specularAntiAliasing =
+        Vec4(graphics->GetSpecularAAAmountVal(), graphics->GetSpecularAALimitVal(), 0.0f, 0.0f);
     graphicConstantsBuffer.Invalidate();
   }
 

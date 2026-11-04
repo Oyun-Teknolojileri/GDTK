@@ -128,7 +128,10 @@
 		return;
 	#endif
 
-		perceptualRoughness = specularAntiAliasing(perceptualRoughness, n);
+		perceptualRoughness = specularAntiAliasing(perceptualRoughness,
+		                                           n,
+		                                           graphicConstants.specularAntiAliasing.x,
+		                                           graphicConstants.specularAntiAliasing.y);
 		roughness = perceptualRoughnessToRoughness(perceptualRoughness);
 
 		vec3 e = normalize(camera.position - v_worldPos);

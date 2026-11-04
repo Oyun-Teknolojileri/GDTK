@@ -96,6 +96,14 @@ namespace ToolKit
     /** Fills cache items common light data. */
     void UpdateCommonLightData(LightCacheItem::CommonData* data);
 
+    /**
+     * Marks the light's cached gpu data and the objects around it stale. Bound to every parameter that
+     * changes what the light looks like rather than where it is: the cache item only reaches the gpu
+     * buffer when something invalidates it, and the objects already assigned to the light keep the
+     * value they were drawn with.
+     */
+    void ParameterEdited();
+
    public:
     TKDeclareParam(Vec3, Color);
     TKDeclareParam(float, Intensity);
@@ -140,7 +148,7 @@ namespace ToolKit
     struct Data : LightCacheItem::CommonData
     {
       Vec3 direction; //<! Direction for directional and spot lights.
-      float pad0;
+      float sourceAngle; //!< Angular radius of the emitter, in radians. Widens the specular lobe.
     } data;
 
     void* GetData() override { return &data; }
@@ -202,6 +210,8 @@ namespace ToolKit
 
    protected:
     XmlNode* SerializeImp(XmlDocument* doc, XmlNode* parent) const override;
+    void ParameterConstructor() override;
+    void ParameterEventConstructor() override;
 
    private:
     /** Adjust the light frustum such that, it covers entire view camera frustum. */
@@ -212,6 +222,9 @@ namespace ToolKit
                                         bool stableFit);
 
    public:
+    /** Angular radius of the emitter, in degrees. The sun is 0.265, which keeps its highlight physical. */
+    TKDeclareParam(float, SourceAngle);
+
     /** Cascades are rendered with these cameras, due to stable fit, frustum can be larger than actual coverage. */
     CameraPtrArray m_cascadeShadowCameras;
 
@@ -236,7 +249,8 @@ namespace ToolKit
     struct Data : LightCacheItem::CommonData
     {
       float radius;
-      float pad0, pad1, pad2;
+      float sourceRadius; //!< Radius of the emitting sphere, in world units. Feeds the specular lobe width.
+      float pad1, pad2;
     } data;
 
     void* GetData() override { return &data; }
@@ -286,6 +300,8 @@ namespace ToolKit
 
    public:
     TKDeclareParam(float, Radius);
+    /** Radius of the emitting sphere, in world units. Zero keeps a point light and its sharp highlight. */
+    TKDeclareParam(float, SourceRadius);
 
     /** World space Bounding volume, updated after call to UpdateShadowCamera(). */
     BoundingSphere m_boundingSphereCache;
@@ -309,7 +325,8 @@ namespace ToolKit
 
       float outerAngle; //!< Outer angle in degrees.
       float innerAngle; //!< Inner angle in degrees.
-      float pad0, pad1;
+      float sourceRadius; //!< Radius of the emitting sphere, in world units. Feeds the specular lobe width.
+      float pad1;
 
       Mat4 projectionViewMatrix;
     } data;
@@ -363,6 +380,8 @@ namespace ToolKit
 
    public:
     TKDeclareParam(float, Radius);
+    /** Radius of the emitting sphere, in world units. Zero keeps a point light and its sharp highlight. */
+    TKDeclareParam(float, SourceRadius);
     TKDeclareParam(float, OuterAngle); //!< Outer angle in degrees.
     TKDeclareParam(float, InnerAngle); //!< Inner angle in degrees.
 

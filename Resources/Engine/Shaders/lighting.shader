@@ -190,7 +190,8 @@ vec3 SurfaceShading
 	float lightIntensity,
 	float attenuation,
 	float shadow,
-	vec3 energyCompensation
+	vec3 energyCompensation,
+	float lightAlpha
 )
 {
 	vec3 F0 = BaseReflectivityPBR(vec3(0.04), albedo, metallic);
@@ -203,10 +204,16 @@ vec3 SurfaceShading
 	float NoH = clamp(dot(normal, halfway), 0.0, 1.0);
 	float LoH = clamp(dot(lightDir, halfway), 0.0, 1.0);
 
+	// The emitter is not a point: a sun has a disc and a bulb has a sphere, and a highlight narrower than that
+	// cannot be drawn at any resolution. Widening the lobe by the emitter's angular radius is what keeps a mirror
+	// like surface from carrying a highlight smaller than a pixel, which is the source of the flicker a moving
+	// camera sees. Reflection and normal detail are filtered separately, by specularAntiAliasing().
+	float alpha = sqrt(roughness * roughness + lightAlpha * lightAlpha);
+
 	// Specular BRDF
 	vec3 h = halfway;
-	float D = distribution(roughness, NoH, h);
-	float V = visibility(roughness, NoV, NoL);
+	float D = distribution(alpha, NoH, h);
+	float V = visibility(alpha, NoV, NoL);
 	vec3 F = fresnel(F0, LoH);
 	vec3 Fr = (D * V) * F;
 
@@ -353,7 +360,7 @@ vec3 PBRLighting
 
 		// Directional lights have no distance attenuation
 		vec3 Lo = SurfaceShading(normal, fragToEye, albedo, metallic, roughness,
-			lightDir, light.color, light.intensity, 1.0, shadow, energyCompensation);
+			lightDir, light.color, light.intensity, 1.0, shadow, energyCompensation, light.sourceAngle);
 
 		irradiance += Lo * cascadeMultiplier;
 	}
@@ -400,8 +407,10 @@ vec3 PBRLighting
 			shadow = clamp(shadow + fade, 0.0, 1.0);
 		}
 
+		// A sphere of world radius r at distance d subtends r / d radians, which is the lobe widening.
+		float pointAlpha = light.sourceRadius > 0.0 ? light.sourceRadius / max(lightDistance, 1e-4) : 0.0;
 		vec3 Lo = SurfaceShading(normal, fragToEye, albedo, metallic, roughness,
-			lightDir, light.color, light.intensity, attenuation, shadow, energyCompensation);
+			lightDir, light.color, light.intensity, attenuation, shadow, energyCompensation, pointAlpha);
 
 		irradiance += Lo;
 	}
@@ -453,8 +462,9 @@ vec3 PBRLighting
 			shadow = clamp(shadow + fade, 0.0, 1.0);
 		}
 
+		float spotAlpha = light.sourceRadius > 0.0 ? light.sourceRadius / max(lightDistance, 1e-4) : 0.0;
 		vec3 Lo = SurfaceShading(normal, fragToEye, albedo, metallic, roughness,
-			lightDirNorm, light.color, light.intensity, attenuation, shadow, energyCompensation);
+			lightDirNorm, light.color, light.intensity, attenuation, shadow, energyCompensation, spotAlpha);
 
 		irradiance += Lo;
 	}
