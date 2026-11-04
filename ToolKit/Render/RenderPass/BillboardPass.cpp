@@ -21,7 +21,10 @@ namespace ToolKit
     Renderer* renderer = GetRenderer();
     Viewport* vp       = m_params.Viewport;
 
-    renderer->SetFramebuffer(vp->m_framebuffer, GraphicBitFields::None);
+    // The overlay target the editor hands in, or the viewport's own frame buffer.
+    FramebufferPtr target = m_params.FrameBuffer ? m_params.FrameBuffer : vp->m_framebuffer;
+
+    renderer->SetFramebuffer(target, GraphicBitFields::None);
     CameraPtr cam = vp->GetCamera();
     renderer->SetCamera(cam, true);
 

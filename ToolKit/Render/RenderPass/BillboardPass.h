@@ -14,8 +14,15 @@ namespace ToolKit
 
   struct BillboardPassParams
   {
-    Viewport* Viewport = nullptr;
+    Viewport* Viewport      = nullptr;
     EntityPtrArray Billboards;
+
+    /**
+     * Where the billboards are drawn. Null means the viewport's own framebuffer, which is what the
+     * editor used before its overlays moved to a target of their own: they clear the depth buffer to stay in
+     * front of the scene, and clearing the scene's depth is what the occlusion grid reads.
+     */
+    FramebufferPtr FrameBuffer = nullptr;
   };
 
   class TK_API BillboardPass : public Pass

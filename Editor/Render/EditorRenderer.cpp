@@ -48,6 +48,91 @@ namespace ToolKit
       m_outlinePass     = nullptr;
     }
 
+    void EditorRenderer::PrepareOverlay(Renderer* renderer, Viewport* viewport)
+    {
+      if (viewport == nullptr || viewport->m_framebuffer == nullptr)
+      {
+        return;
+      }
+
+      const FramebufferSettings vpSettings = viewport->m_framebuffer->GetSettings();
+
+      if (m_overlayFramebuffer == nullptr)
+      {
+        m_overlayFramebuffer = MakeNewPtr<Framebuffer>("EditorOverlayFB");
+        m_overlayRt          = MakeNewPtr<RenderTarget>("EditorOverlayRT");
+      }
+
+      // Same size as the viewport and a single sample: the overlay is composited as color, so it needs no
+      // coverage of its own, and its depth buffer only has to rank the overlays against each other.
+      if (m_overlayRt->m_width != vpSettings.width || m_overlayRt->m_height != vpSettings.height)
+      {
+        TextureSettings colorSettings;
+        colorSettings.InternalFormat = GraphicTypes::FormatRGBA8;
+        colorSettings.Format         = GraphicTypes::FormatRGBA;
+        colorSettings.Type           = GraphicTypes::TypeUnsignedByte;
+        colorSettings.WarpS          = GraphicTypes::UVClampToEdge;
+        colorSettings.WarpT          = GraphicTypes::UVClampToEdge;
+        colorSettings.MinFilter      = GraphicTypes::SampleNearest;
+        colorSettings.MagFilter      = GraphicTypes::SampleNearest;
+
+        m_overlayRt->Settings(colorSettings);
+        m_overlayRt->ReconstructIfNeeded(vpSettings.width, vpSettings.height);
+
+        FramebufferSettings overlaySettings;
+        overlaySettings.width     = vpSettings.width;
+        overlaySettings.height    = vpSettings.height;
+        overlaySettings.msaaCount = MsaaSampleCount::x0;
+
+        m_overlayFramebuffer->ReconstructIfNeeded(overlaySettings);
+        m_overlayFramebuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_overlayRt);
+      }
+
+      // Cleared to nothing for the color, so what the composite blends in is exactly what the overlays drew,
+      // and to the far plane for the depth, which is what orders them against one another.
+      renderer->SetFramebuffer(m_overlayFramebuffer, GraphicBitFields::AllBits);
+    }
+
+    void EditorRenderer::CompositeOverlay(Renderer* renderer, Viewport* viewport)
+    {
+      if (m_overlayFramebuffer == nullptr || m_overlayRt == nullptr || viewport == nullptr)
+      {
+        return;
+      }
+
+      if (m_overlayMaterial == nullptr)
+      {
+        m_overlayMaterial = MakeNewPtr<Material>();
+        m_overlayMaterial->SetVertexShaderVal(
+            GetShaderManager()->Create<Shader>(ShaderPath("copyTextureVert.shader", true)));
+        m_overlayMaterial->SetFragmentShaderVal(
+            GetShaderManager()->Create<Shader>(ShaderPath("copyTextureFrag.shader", true)));
+      }
+
+      // A render target only ever written by a pass can carry mip filtering it does not have, and an
+      // incomplete texture samples as zero: a black overlay rather than a transparent one.
+      TextureSettings rtSettings = m_overlayRt->Settings();
+      rtSettings.MinFilter       = GraphicTypes::SampleNearest;
+      rtSettings.MagFilter       = GraphicTypes::SampleNearest;
+      m_overlayRt->ApplyTextureSettings(rtSettings);
+
+      m_overlayMaterial->SetDiffuseTextureVal(m_overlayRt);
+
+      // Blend is an active bit and comes from the material, not from the pass state: the quad has to carry
+      // the alpha blend itself, or it writes its cleared black over the scene as an opaque full screen copy.
+      m_overlayMaterial->blendFunction = BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA;
+      m_overlayMaterial->Init();
+
+      RenderState state;
+      state.depthTestEnabled  = false;
+      state.depthWriteEnabled = false;
+      state.blendOverride     = true;
+      state.blendOverrideFunc = BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA;
+
+      renderer->SetFramebuffer(viewport->m_framebuffer, GraphicBitFields::None);
+      renderer->SetPassState(state);
+      renderer->DrawFullQuad(m_overlayMaterial);
+    }
     void EditorRenderer::Render(Renderer* renderer)
     {
       PreRender(renderer);
@@ -117,19 +202,39 @@ namespace ToolKit
           m_passArray.push_back(m_editorPass);
         }
 
-        if (!m_gizmoPass->m_params.GizmoArray.empty())
-        {
-          // Clears depth buffer to draw remaining entities always on top.
-          m_passArray.push_back(m_gizmoPass);
-        }
+        // Gizmos and editor billboards go to an overlay target of their own. They clear depth to stay in
+        // front of the scene, and the scene's depth is what the occlusion grid is reduced from at the top of
+        // the next frame, so clearing it here is what used to leave the editor with a grid it could not use.
+        const bool hasOverlay =
+            !m_gizmoPass->m_params.GizmoArray.empty() || !m_billboardPass->m_params.Billboards.empty();
 
-        if (!m_billboardPass->m_params.Billboards.empty())
+        if (hasOverlay)
         {
-          // Scene meshes can't block editor billboards. Desired for this case.
-          m_passArray.push_back(m_billboardPass);
+          PrepareOverlay(renderer, m_params.Viewport);
+
+          m_gizmoPass->m_params.FrameBuffer     = m_overlayFramebuffer;
+          m_billboardPass->m_params.FrameBuffer = m_overlayFramebuffer;
+
+          if (!m_gizmoPass->m_params.GizmoArray.empty())
+          {
+            // Clears depth buffer to draw remaining entities always on top.
+            m_passArray.push_back(m_gizmoPass);
+          }
+
+          if (!m_billboardPass->m_params.Billboards.empty())
+          {
+            // Scene meshes can't block editor billboards. Desired for this case.
+            m_passArray.push_back(m_billboardPass);
+          }
         }
 
         RenderPath::Render(renderer);
+
+        if (hasOverlay)
+        {
+          CompositeOverlay(renderer, m_params.Viewport);
+        }
+
       }
 
       // Finally resolve the multi sampled main buffer if needed.

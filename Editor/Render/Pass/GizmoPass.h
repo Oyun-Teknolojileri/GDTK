@@ -18,8 +18,15 @@ namespace ToolKit
 
     struct TK_EDITOR_API GizmoPassParams
     {
-      Viewport* Viewport = nullptr;
+      Viewport* Viewport      = nullptr;
       BillboardPtrArray GizmoArray;
+
+      /**
+       * Where the gizmos are drawn. Null means the viewport's own framebuffer. The pass clears depth
+       * before it draws so gizmos sit in front of the scene, and clearing the scene's depth is exactly
+       * what the occlusion grid needs intact, so the editor hands it a target of its own.
+       */
+      FramebufferPtr FrameBuffer = nullptr;
     };
 
     class TK_EDITOR_API GizmoPass : public Pass

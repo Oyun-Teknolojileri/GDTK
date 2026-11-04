@@ -98,6 +98,30 @@ namespace ToolKit
       /** Internal render job array for rendering selected entities. */
       RenderJobArray m_unCulledRenderJobs;
 
+      /**
+       * The overlay target the gizmos and the editor billboards draw into, with a depth buffer of its own.
+       *
+       * They clear depth so they sit in front of the scene, and the scene's depth is what the occlusion grid
+       * is reduced from at the top of the next frame. Clearing it left the grid describing a cleared buffer - which
+       * silently turns culling off at best, and at worst has the depth mask sphere's near depths culling scene
+       * objects away. Drawing them apart and compositing the color keeps the scene depth untouched.
+       */
+      FramebufferPtr m_overlayFramebuffer = nullptr;
+      RenderTargetPtr m_overlayRt         = nullptr;
+      MaterialPtr m_overlayMaterial       = nullptr;
+
+      /** Sizes and clears the overlay target the gizmos and billboards draw into.
+       *  @param renderer is the renderer to size the target with.
+       *  @param viewport supplies the size.
+       */
+      void PrepareOverlay(Renderer* renderer, Viewport* viewport);
+
+      /** Blends the overlay target over the viewport frame buffer, color only, no depth.
+       *  @param renderer is the renderer to draw with.
+       *  @param viewport is the viewport whose frame buffer receives the overlay.
+       */
+      void CompositeOverlay(Renderer* renderer, Viewport* viewport);
+
       /** Resolved viewport frame buffer is stored here. */
       FramebufferPtr m_resolvedFramebuffer = nullptr;
     };
