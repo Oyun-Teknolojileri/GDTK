@@ -238,6 +238,12 @@ vec3 PBRLighting
 {
 	vec3 irradiance = vec3(0.0);
 
+	// A lobe that is narrower than a pixel cannot be sampled. The highlight either lands on the pixel or it
+	// misses it, and a camera that moves turns that into an on off flicker that nothing downstream can undo:
+	// bloom spreads whatever it is given, so a missed pixel stays a hole. Materials that are close to a mirror
+	// are the ones that show it, and this is the floor that stops them.
+	roughness = max(roughness, 0.15);
+
 	// ----- Directional Lights -----
 	for (int i = 0; i < GetActiveDirectionalLightCount(); i++)
 	{
