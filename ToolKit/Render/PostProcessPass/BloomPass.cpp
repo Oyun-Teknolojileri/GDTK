@@ -18,159 +18,31 @@ namespace ToolKit
 
   namespace
   {
-    /**
-     * How much of each upsampled level lands in the level below it.
-     *
-     * This is a radius knob, not an energy one: a level scaled down here is a halo scale that
-     * disappears, so a geometric falloff pulls the whole bloom in against the surface that emits
-     * it and leaves the wide part of the chain with nothing to say. Every level carrying full
-     * weight keeps the spread; the total is then shaped in one place by BloomIntensity at the
-     * merge.
-     */
-    constexpr float BloomChainWeight = 1.0f;
+    /** Levels the composite can weight. The pyramid always carries this many, because every level
+        is a halving of the one below and level zero is a quarter of the frame. */
+    constexpr int BloomLevelCount = 6;
+
+    /** How much of each mip level goes into the composite. An iteration count of n keeps levels
+        0..n-1 at full weight and turns the rest off, which trades reach against cost. */
+    void GlowWeights(int levelCount, float weights[BloomLevelCount])
+    {
+      for (int i = 0; i < BloomLevelCount; ++i)
+      {
+        weights[i] = i < levelCount ? 1.0f : 0.0f;
+      }
+    }
   } // namespace
 
   BloomPass::BloomPass() : Pass("BloomPass")
   {
-    m_downsampleShader = GetShaderManager()->Create<Shader>(ShaderPath("bloomDownsample.shader", true));
-    m_upsampleShader   = GetShaderManager()->Create<Shader>(ShaderPath("bloomUpsample.shader", true));
+    m_glowShader      = GetShaderManager()->Create<Shader>(ShaderPath("bloomGlow.shader", true));
+    m_compositeShader = GetShaderManager()->Create<Shader>(ShaderPath("bloomComposite.shader", true));
 
-    // Two full-quad passes — one for the downsample chain, one for the upsample chain.
-    // Each binds its own fragment shader in PreRender (not the constructor — the
-    // backend isn't alive yet, so GetRenderer() returns null and SetFragmentShader
-    // would crash). After that the program attached to m_downPass is always the
-    // downsample program and m_upPass always carries the upsample program. Sharing
-    // one quad across both phases let downsample state leak into the upsample draw
-    // under the refactor.
-    m_downPass         = MakeNewPtr<FullQuadPass>();
-    m_upPass           = MakeNewPtr<FullQuadPass>();
+    m_glowPass        = MakeNewPtr<FullQuadPass>();
+    m_compositePass   = MakeNewPtr<FullQuadPass>();
 
-    // Cache initialization
-    m_cachedMainRes    = UVec2(0, 0);
-    m_cachedIterCount  = -1;
-    m_resourcesValid   = false;
-  }
-
-  void BloomPass::Render()
-  {
-    TK_PROFILE_FUNCTION();
-
-    RenderTargetPtr mainRt = m_params.FrameBuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
-
-    if (m_invalidRenderParams)
-    {
-      return;
-    }
-
-    UVec2 mainRes      = UVec2(mainRt->m_width, mainRt->m_height);
-
-    Renderer* renderer = GetRenderer();
-
-    // Lazy-init the pass UBO on first render   backend is alive by now.
-    if (!m_passDataBufferInitialized)
-    {
-      m_passDataBuffer.Init(7);
-      m_passDataBufferInitialized = true;
-    }
-
-    // Helper: stamp the relevant UBO fields and push to GPU. Each iteration calls this with
-    // freshly computed values so the shader sees per-pass data. The PassRequirements'
-    // customUbos[7] is kept in sync at every step so ApplyRequirements re-binds the
-    // descriptor set to our buffer (instead of a stale VkBuffer left by an earlier
-    // pass sharing the slot — gradient sky, SSAO, DoF, gamma, etc.).
-    auto pushUbo = [&]()
-    {
-      m_passDataBuffer.Invalidate();
-      m_passDataBuffer.Map();
-      m_downPass->GetRequirements().customUbos[7] = &m_passDataBuffer.GetBuffer();
-      m_upPass->GetRequirements().customUbos[7]   = &m_passDataBuffer.GetBuffer();
-    };
-
-    // Filter pass
-    {
-      m_passDataBuffer.m_data.passIndxAndPad.x = 0;
-      m_passDataBuffer.m_data.downsampleParams =
-          Vec4((float) mainRes.x, (float) mainRes.y, m_params.minThreshold, m_params.luminanceCap);
-      pushUbo();
-
-      renderer->SetTexture((ubyte) 0, mainRt);
-      m_downPass->m_params.frameBuffer      = m_resampleFrameBuffers[0];
-      m_downPass->m_params.blendFunc        = BlendFunction::NONE;
-      m_downPass->m_params.clearFrameBuffer = GraphicBitFields::None;
-
-      RenderSubPass(m_downPass);
-    }
-
-    // Downsample Pass
-    {
-      for (int i = 0; i < m_currentIterationCount; i++)
-      {
-        // Calculate current and previous resolutions. The chain starts at a quarter of the frame (see
-        // BloomPass::PreRender), so step i writes 2^(i+3) down and reads what step i-1 wrote, 2^(i+2).
-        float powVal = glm::pow(2.0f, float(i + 3));
-        const Vec2 factor(1.0f / powVal);
-        const UVec2 curRes             = Vec2(mainRes) * factor;
-
-        powVal                         = glm::pow(2.0f, float(i + 2));
-        const Vec2 prevRes             = Vec2(mainRes) * Vec2((1.0f / powVal));
-
-        // Find previous framebuffer & RT
-        FramebufferPtr prevFramebuffer = m_resampleFrameBuffers[i];
-        RenderTargetPtr prevRt         = prevFramebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
-
-        m_passDataBuffer.m_data.passIndxAndPad.x = i + 1;
-        m_passDataBuffer.m_data.downsampleParams =
-            Vec4(prevRes.x, prevRes.y, m_passDataBuffer.m_data.downsampleParams.z, m_params.luminanceCap);
-        pushUbo();
-
-        renderer->SetTexture((ubyte) 0, prevRt);
-
-        // Set pass parameters
-        m_downPass->m_params.clearFrameBuffer = GraphicBitFields::None;
-        m_downPass->m_params.frameBuffer      = m_resampleFrameBuffers[i + 1];
-        m_downPass->m_params.blendFunc        = BlendFunction::NONE;
-
-        RenderSubPass(m_downPass);
-      }
-    }
-
-    // Upsample Pass
-    {
-      const float filterRadius               = 0.002f;
-      m_passDataBuffer.m_data.upsampleParams = Vec4(filterRadius, BloomChainWeight, 0.0f, 0.0f);
-      pushUbo();
-
-      for (int i = m_currentIterationCount; i > 0; i--)
-      {
-
-        FramebufferPtr prevFramebuffer = m_resampleFrameBuffers[i];
-        RenderTargetPtr prevRt         = prevFramebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
-        renderer->SetTexture((ubyte) 0, prevRt);
-
-        m_upPass->m_params.blendFunc        = BlendFunction::ONE_TO_ONE;
-        m_upPass->m_params.clearFrameBuffer = GraphicBitFields::None;
-        m_upPass->m_params.frameBuffer      = m_resampleFrameBuffers[i - 1];
-
-        RenderSubPass(m_upPass);
-      }
-    }
-
-    // Merge Pass
-    {
-      FramebufferPtr prevFramebuffer = m_resampleFrameBuffers[0];
-      RenderTargetPtr prevRt         = prevFramebuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
-      renderer->SetTexture((ubyte) 0, prevRt);
-
-      m_upPass->m_params.blendFunc             = BlendFunction::ONE_TO_ONE;
-      m_upPass->m_params.clearFrameBuffer      = GraphicBitFields::None;
-      m_upPass->m_params.frameBuffer           = m_params.FrameBuffer;
-
-      // Final merge uses the user-set intensity instead of 1.0.
-      m_passDataBuffer.m_data.upsampleParams.y = m_params.intensity;
-      pushUbo();
-
-      RenderSubPass(m_upPass);
-    }
+    m_glowRt          = MakeNewPtr<RenderTarget>("BloomGlowRT");
+    m_glowFb          = MakeNewPtr<Framebuffer>("BloomGlowFB");
   }
 
   void BloomPass::PreRender()
@@ -179,107 +51,110 @@ namespace ToolKit
 
     Pass::PreRender();
 
-    // Pin each quad to its fragment shader exactly once — the backend is now alive.
-    // After this point, m_downPass and m_upPass carry their respective programs
-    // and never swap them, so the program can never accidentally drift between
-    // downsample and upsample draws.
-    if (!m_fragmentsPinned)
+    if (m_params.FrameBuffer == nullptr)
     {
-      Renderer* pinRenderer = GetRenderer();
-      m_downPass->SetFragmentShader(m_downsampleShader, pinRenderer);
-      m_upPass->SetFragmentShader(m_upsampleShader, pinRenderer);
-      m_fragmentsPinned = true;
-    }
-
-    RenderTargetPtr mainRt = m_params.FrameBuffer != nullptr
-                                 ? m_params.FrameBuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0)
-                                 : nullptr;
-
-    // Nothing to bloom on: say which half is missing instead of walking into it.
-    if (mainRt == nullptr)
-    {
-      TK_ERR("BloomPass: the source framebuffer has no colour attachment to bloom on.");
-      m_invalidRenderParams = true;
       return;
     }
 
-    // Set to minimum iteration count
-    Vec2 mainRes           = UVec2(mainRt->m_width, mainRt->m_height);
-    // The chain ends one level below where it used to, so the cap follows it down.
-    const IVec2 maxIterCounts(glm::log2(mainRes) - 3.0f);
-    int iterationCount = glm::min(m_params.iterationCount, glm::min(maxIterCounts.x, maxIterCounts.y));
-
-    if (iterationCount < 0)
+    RenderTargetPtr src = m_params.FrameBuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
+    if (src == nullptr)
     {
-      m_invalidRenderParams = true;
       return;
     }
 
-    // Check if we need to recreate resources
-    bool needsRecreation =
-        (m_cachedMainRes != UVec2(mainRes)) || (m_cachedIterCount != iterationCount) || !m_resourcesValid;
-
-    if (needsRecreation)
+    if (!m_passDataBufferInitialized)
     {
-      m_resampleRenderTargets.resize(iterationCount + 1);
-      m_resampleFrameBuffers.resize(iterationCount + 1);
-
-      // The first target is a quarter of the frame, not the frame: bloom is a low frequency effect, and a
-      // threshold pass at full resolution plus a chain that starts there costs several times what the same
-      // chain costs two levels down (measured on a PowerVR BXM-8-256: bloom was 65 ms of a 160 ms frame at
-      // full resolution, 30 ms starting at half and 22 ms starting at a quarter). The prefilter still reads
-      // the full resolution frame and averages a 4x4 box into the quarter sized target, which is what keeps
-      // the threshold result equivalent rather than aliased.
-      for (int i = 0; i < iterationCount + 1; i++)
-      {
-        const Vec2 factor(1.0f / glm::pow(2.0f, float(i + 2)));
-        const UVec2 curRes    = Vec2(mainRes) * factor;
-
-        m_invalidRenderParams = false;
-        if (curRes.x == 1 || curRes.y == 1)
-        {
-          m_invalidRenderParams = true;
-          return;
-        }
-
-        TextureSettings set;
-        set.InternalFormat = GraphicTypes::FormatRGBA16F;
-        set.Format         = GraphicTypes::FormatRGBA;
-        set.Type           = GraphicTypes::TypeFloat;
-        set.MagFilter      = GraphicTypes::SampleLinear;
-        set.MinFilter      = GraphicTypes::SampleLinear;
-        set.WarpR          = GraphicTypes::UVClampToEdge;
-        set.WarpS          = GraphicTypes::UVClampToEdge;
-        set.WarpT          = GraphicTypes::UVClampToEdge;
-        set.GenerateMipMap = false;
-
-        RenderTargetPtr rt = MakeNewPtr<RenderTarget>(curRes.x, curRes.y, set);
-        rt->Init();
-
-        FramebufferPtr& frameBuffer = m_resampleFrameBuffers[i];
-        if (frameBuffer == nullptr)
-        {
-          FramebufferSettings fbSettings;
-          fbSettings.depthStencil    = false;
-          fbSettings.useDefaultDepth = false;
-          fbSettings.width           = curRes.x;
-          fbSettings.height          = curRes.y;
-
-          frameBuffer                = MakeNewPtr<Framebuffer>(fbSettings, "BloomDownSampleFB");
-          frameBuffer->Init();
-        }
-
-        frameBuffer->ReconstructIfNeeded(curRes.x, curRes.y);
-        frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, rt);
-      }
-
-      // Update cache
-      m_cachedMainRes   = UVec2(mainRes);
-      m_cachedIterCount = iterationCount;
-      m_resourcesValid  = true;
+      m_passDataBuffer.Init(7);
+      m_passDataBufferInitialized = true;
     }
 
-    m_currentIterationCount = iterationCount;
+    // Level zero is a quarter of the frame in each axis. The glow wants the broad shape of what is
+    // bright, not its detail, and the bright pass averages a 4x4 block of the frame into each
+    // texel here - so the detail is folded in once, by the pass, instead of being sampled and
+    // missed by the chain.
+    const UVec2 glowRes(glm::max(1, src->m_width / 4), glm::max(1, src->m_height / 4));
+
+    if (glowRes != m_cachedGlowRes || m_glowFb->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0) == nullptr)
+    {
+      // Half float so a highlight above one survives into the glow, and a mip chain so level i is
+      // the box average of level i-1 without a pass per level.
+      TextureSettings set;
+      set.InternalFormat = GraphicTypes::FormatRGBA16F;
+      set.Format         = GraphicTypes::FormatRGBA;
+      set.Type           = GraphicTypes::TypeFloat;
+      set.MagFilter      = GraphicTypes::SampleLinear;
+      set.MinFilter      = GraphicTypes::SampleLinearMipmapLinear;
+      set.WarpS          = GraphicTypes::UVClampToEdge;
+      set.WarpT          = GraphicTypes::UVClampToEdge;
+      set.GenerateMipMap = true;
+
+      m_glowRt->ReconstructIfNeeded(glowRes.x, glowRes.y, &set);
+
+      m_glowFb->ReconstructIfNeeded({(int) glowRes.x, (int) glowRes.y, false, false});
+      m_glowFb->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_glowRt);
+      m_cachedGlowRes = glowRes;
+    }
+
+    const int levels = glm::clamp(m_params.iterationCount, 1, BloomLevelCount);
+    float weights[BloomLevelCount];
+    GlowWeights(levels, weights);
+
+    m_passDataBuffer.m_data.params    = Vec4(m_params.minThreshold, m_params.luminanceCap, 0.0f, 0.0f);
+    // The sum is divided by the number of levels it carries, so Intensity means the same thing at
+    // two levels and at six: without it every extra level brightened the whole halo, and a project
+    // that raised the level count to widen the bloom got a blowout instead.
+    m_passDataBuffer.m_data.composite = Vec4(glm::max(m_params.intensity, 0.0f),
+                                             1.0f / float(levels),
+                                             1.0f / float(glowRes.x),
+                                             1.0f / float(glowRes.y));
+    m_passDataBuffer.m_data.weightsA  = Vec4(weights[0], weights[1], weights[2], weights[3]);
+    m_passDataBuffer.m_data.weightsB  = Vec4(weights[4], weights[5], 0.0f, 0.0f);
+    m_passDataBuffer.Invalidate();
+    m_passDataBuffer.Map();
+
+    m_glowPass->m_params.frameBuffer      = m_glowFb;
+    m_glowPass->m_params.clearFrameBuffer = GraphicBitFields::None;
+    m_glowPass->m_params.blendFunc        = BlendFunction::NONE;
+
+    m_compositePass->m_params.frameBuffer      = m_params.FrameBuffer;
+    m_compositePass->m_params.clearFrameBuffer = GraphicBitFields::None;
+    m_compositePass->m_params.blendFunc        = BlendFunction::ONE_TO_ONE;
+  }
+
+  void BloomPass::Render()
+  {
+    TK_PROFILE_FUNCTION();
+
+    if (m_params.FrameBuffer == nullptr || m_cachedGlowRes == UVec2(0, 0))
+    {
+      return;
+    }
+
+    Renderer* renderer  = GetRenderer();
+    RenderTargetPtr src = m_params.FrameBuffer->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
+
+    if (src == nullptr)
+    {
+      return;
+    }
+
+    // Level zero: the bright pass over the frame.
+    m_glowPass->m_material->SetDiffuseTextureVal(src);
+    m_glowPass->SetFragmentShader(m_glowShader, renderer);
+    m_glowPass->GetRequirements().customUbos[7] = &m_passDataBuffer.GetBuffer();
+    RenderSubPass(m_glowPass);
+
+    // Every level above zero is the box average of the level below, and the driver builds the
+    // whole chain from what the pass just wrote. Binding the destination first keeps the pyramid
+    // texture out of the framebuffer it is attached to while it is read for the mip generation.
+    renderer->SetFramebuffer(m_params.FrameBuffer, GraphicBitFields::None);
+    m_glowRt->GenerateMipMaps();
+
+    // Composite: the weighted sum of the levels, added over the frame.
+    m_compositePass->m_material->SetDiffuseTextureVal(m_glowRt);
+    m_compositePass->SetFragmentShader(m_compositeShader, renderer);
+    m_compositePass->GetRequirements().customUbos[7] = &m_passDataBuffer.GetBuffer();
+    RenderSubPass(m_compositePass);
   }
 
   void BloomPass::PostRender()
