@@ -254,10 +254,18 @@ namespace ToolKit
     // The merge is additive, so the intensity is the fraction of the bloom chain that lands on the
     // frame. At 1.0 the chain's whole energy was added on top of the picture and everything bright
     // read as blown out; 0.2 keeps a highlight's halo instead of letting it become one, while the
-    // chain itself still carries every level (see BloomChainWeight) so the halo keeps its spread.
+    // glow pyramid still carries every level (see the level weights in BloomPass) so the halo keeps
+    // its spread.
     BloomIntensity_Define(0.2f, "PostProcessingSettings", 0, 0, 0);
     BloomThreshold_Define(1.0f, "PostProcessingSettings", 0, 0, 0);
     BloomIterationCount_Define(5, "PostProcessingSettings", 0, 0, 0);
+    // Full radius is the flat weighting the pyramid always had: every level the iteration count
+    // selects contributes equally. Lowering it shapes the same levels with a Gaussian falloff, so the
+    // halo tightens without the level count moving and nothing pops at a level boundary.
+    BloomRadius_Define(1.0f, "PostProcessingSettings", 0, 0, 0);
+    // A B-spline fetch at the composite. Four bilinear taps either way, so the cost is a few extra
+    // multiply-adds per level; on means the halo widens smoothly instead of showing the level's texels.
+    BloomBicubicUpscale_Define(true, "PostProcessingSettings", 0, 0, 0);
     GammaCorrectionEnabled_Define(true, "PostProcessingSettings", 0, 0, 0);
     Gamma_Define(2.2f, "PostProcessingSettings", 0, 0, 0);
     SSAOEnabled_Define(false, "PostProcessingSettings", 0, 0, 0);

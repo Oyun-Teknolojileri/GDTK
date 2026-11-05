@@ -93,8 +93,14 @@ namespace ToolKit
     m_passState.stencilOperation = m_params.stencilOp;
     reqs.passState               = m_passState;
 
-    // Inherit any textures the outer pass pushed into the material (e.g. diffuse slot 0).
-    if (m_material->GetDiffuseTextureVal() != nullptr && reqs.textures.find(0) == reqs.textures.end())
+    // Inherit the texture the outer pass pushed into the material (e.g. diffuse slot 0). The inheritance
+    // is refreshed on every draw, not only when the slot is empty: reqs lives as long as the quad does,
+    // so filling slot 0 once pinned it for the rest of the quad's life, and a pass whose source changes
+    // - the frame's colour attachment after an MSAA toggle, a post process's copy target - kept sampling
+    // the texture it bound first. Bloom did exactly that: after MSAA was switched on or off the bright
+    // pass read the previous frame's target forever, and the stale glow was composited over the live
+    // frame.
+    if (m_material->GetDiffuseTextureVal() != nullptr)
     {
       reqs.textures[0] = m_material->GetDiffuseTextureVal();
     }

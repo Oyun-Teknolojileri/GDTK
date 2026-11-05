@@ -204,7 +204,7 @@ Serializable, loaded from `%appdata%/ToolKit/Config`. Sub-objects:
 - **WindowSettings**: name, width, height, fullscreen
 - **GraphicSettings**: FPS, MSAA, HDR, MultiThreaded, InstancedBatching (draws runs of objects that share a mesh and material as one instanced draw; off falls back to one draw per object), RenderResolutionScale, HalfResolutionForwardPreProcess (builds the normal and depth target - what ambient occlusion and depth of field read - at half the frame's size; screen space reflections force it back to full size, because they march against that depth), AnisotropicTextureFiltering, OcclusionCulling (drops local lights and meshes the depth grid proves hidden, off by default; see 4.3), OcclusionReprojection (carries that grid into the frame being drawn before it is tested, on by default and only meaningful with culling on; see 4.3), plus a `m_shadows` member
 - **ShadowSettings** (nested in GraphicSettings): cascade count/distance, parallel split, stable shadow map, cascade blend, atlas resolution (a 1K/2K/4K choice), slot density (the 2x slots option halves every slot's resolution for four times the slots), PCF kernel, VSM blur
-- **PostProcessingSettings**: tonemapping, bloom, gamma, SSAO, SSR, DOF, FXAA
+- **PostProcessingSettings**: tonemapping, bloom (intensity, threshold, level count for the reach, radius for how the levels are weighted, bicubic or box gather), gamma, SSAO, SSR, DOF, FXAA
 - **ShaderSettings**: per-shader define presets (e.g. "Low"/"High" graphics presets) so shader compile doesn't explode combinatorially
 
 **`FPS` is a gate, not a suggestion.** `Main::SyncFrameTime()` draws only when
@@ -585,6 +585,14 @@ class MyPass : public Pass {
 See `AGENTS.md` section "Pass / PassRequirements Conventions" for the full pattern,
 including the two-quad rule for passes that use two fragment shaders (Bloom, etc.).
 
+A `FullQuadPass` merges its own state into the requirements on **every** draw:
+`GatherRequirements` re-reads the material's diffuse texture into slot 0, so a quad whose source
+changes (the frame's colour attachment after an MSAA toggle, a post process's copy target) picks the
+new texture up as soon as the pass calls `material->SetDiffuseTextureVal(...)`. Slot 0 used to be
+filled only while the map did not hold it yet, which pinned the first texture a quad ever bound:
+Bloom kept sampling the resolved framebuffer MSAA had created, and after the viewport target was
+rebuilt the previous frame's glow was composited over the live frame.
+
 #### RenderJob & RenderData
 
 #### RenderJob & RenderData
@@ -703,7 +711,7 @@ All bind at fixed slots (0-6 are the global engine buffers, 7 and up are pass sp
 | `PerDrawUboBuffer` | 2 | per-draw (model matrix etc., mirror in `perDrawDataInc.shader`) |
 | `DilatePassDataLayout` | 7 | outline/dilate pass |
 | `GammaTonemapFxaaPassDataLayout` | 7 | gamma/tonemap/fxaa pass |
-| `BloomPassDataLayout` | 7 | bloom downsample/upsample chain |
+| `BloomPassDataLayout` | 7 | bloom glow pass and composite (glow pyramid) |
 | `GaussBlurPassDataLayout` | 7 | shadow blur, gaussian passes |
 | `CubemapEquirectPassDataLayout` | 7 | equirect -> cubemap conversion |
 | `PreFilterEnvMapPassDataLayout` | 7 | specular IBL prefilter |

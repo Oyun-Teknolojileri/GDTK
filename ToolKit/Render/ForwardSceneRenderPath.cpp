@@ -1827,6 +1827,8 @@ namespace ToolKit
     m_bloomPass->m_params.intensity         = pps->GetBloomIntensityVal();
     m_bloomPass->m_params.minThreshold      = pps->GetBloomThresholdVal();
     m_bloomPass->m_params.iterationCount    = pps->GetBloomIterationCountVal();
+    m_bloomPass->m_params.radius            = pps->GetBloomRadiusVal();
+    m_bloomPass->m_params.bicubicUpscale    = pps->GetBloomBicubicUpscaleVal();
 
     // DoF runs after the forward pass's MSAA resolve, sitting on the same single-sample chain
     // as Bloom and GammaTonemap. Feeding it the MSAA color RT directly would (a) trip

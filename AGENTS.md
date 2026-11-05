@@ -361,6 +361,24 @@ void MyPass::PreRender()
    pass's stencil-mask reads stale values. The write phase is one of the few places
    that stays on the older `renderer->SetPassState + renderer->Render(jobs)` flow.
    See "Exceptions to the declarative flow" below.
+7. **Pinning `m_requirements` state across draws.** `PassRequirements` lives on the
+   quad for its whole life, so anything that is only written when "not set yet" keeps
+   the value it had on the first draw. Slot 0 is exactly that trap: a `FullQuadPass`
+   re-reads the material's diffuse texture into it on every draw, which is what lets a
+   pass change its source by calling `material->SetDiffuseTextureVal(newSource)`. A
+   pass that leaves the material diffuse alone and writes `reqs.textures[0]` by hand
+   keeps that texture until something overwrites it. The bug that found this: with
+   MSAA on, Bloom's bright pass sampled the resolved framebuffer; toggling MSAA off
+   rebuilt the viewport target, but slot 0 still held the old resolved texture, so the
+   glow of the frame before the toggle was composited over the live frame. A pass that
+   has to own the requirements per draw (see the depth grid) resets them with
+   `reqs = PassRequirements()` first.
+
+   `program` is pinned the same way (`if (reqs.program == nullptr) reqs.program = m_program`),
+   so a pass that switches a fragment shader **define** - which builds a different program
+   variant - has to write the new program into the requirements itself. `BloomPass` does that
+   for its `BLOOM_BICUBIC` filter switch; without it the composite kept drawing the variant it
+   compiled first and the setting looked dead.
 
 ### When to override `GatherRequirements` vs. populate manually
 
