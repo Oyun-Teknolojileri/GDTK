@@ -62,6 +62,7 @@ namespace ToolKit
     m_forwardPreProcessPass = MakeNewPtr<ForwardPreProcessPass>();
     m_ssaoPass              = MakeNewPtr<SSAOPass>();
     m_ssrPass               = MakeNewPtr<SsrPass>();
+    m_taaPass               = MakeNewPtr<TaaPass>();
     m_bloomPass             = MakeNewPtr<BloomPass>();
     m_dofPass               = MakeNewPtr<DoFPass>();
     m_gammaTonemapFxaaPass  = MakeNewPtr<GammaTonemapFxaaPass>();
@@ -93,6 +94,7 @@ namespace ToolKit
     m_skyPass               = nullptr;
     m_ssaoPass              = nullptr;
     m_ssrPass               = nullptr;
+    m_taaPass               = nullptr;
     m_forwardPreProcessPass = nullptr;
     m_bloomPass             = nullptr;
     m_dofPass               = nullptr;
@@ -128,6 +130,33 @@ namespace ToolKit
     {
       renderer->SetFramebuffer(m_params.MainFramebuffer, GraphicBitFields::DepthStencilBits);
     }
+
+    // Temporal anti-aliasing decides its sub-pixel offset here, before anything is drawn: the
+    // offset has to be part of the projection the frame is rendered with, and it is not a
+    // property of the frame that has been drawn.
+    const bool taaEnabled = TaaEnabled();
+    if (taaEnabled)
+    {
+      // Turning the setting back on meets a history that describes an older frame, so the pass is
+      // told to start over instead of blending across the gap.
+      if (!m_taaWasEnabled)
+      {
+        m_taaPass->Reset();
+      }
+
+      renderer->SetProjectionJitter(m_taaPass->BeginFrame(m_params.Cam));
+    }
+    else
+    {
+      if (m_taaWasEnabled)
+      {
+        m_taaPass->Reset();
+      }
+
+      renderer->SetProjectionJitter(Vec2(0.0f));
+    }
+
+    m_taaWasEnabled = taaEnabled;
 
     PreRender(renderer);
 
@@ -167,6 +196,15 @@ namespace ToolKit
       m_passArray.push_back(m_ssrPass);
     }
 
+    // Temporal anti-aliasing. Sits behind the reflections so their noise is averaged too, and in
+    // front of bloom and depth of field, which need the resolved picture rather than the jittered
+    // samples behind it: a bloom chain fed the raw frame flickers, because its threshold picks a
+    // different edge every frame.
+    if (taaEnabled)
+    {
+      m_passArray.push_back(m_taaPass);
+    }
+
     // Bloom pass
     if (m_params.postProcessSettings->GetBloomEnabledVal())
     {
@@ -199,6 +237,11 @@ namespace ToolKit
       pass->Render();
       pass->PostRender();
     }
+
+    // The jitter belongs to this frame's scene, not to whatever runs behind the path: the editor
+    // draws its overlays into the same target right after this returns, and an overlay that
+    // lands half a pixel off its own geometry every frame is exactly what it is trying to fix.
+    renderer->SetProjectionJitter(Vec2(0.0f));
 
     // The depth this frame drew is what the next frame's grid is reduced from, so the camera that drew it travels
     // with it: by the time the grid is built, the camera has moved again.
@@ -1777,8 +1820,10 @@ namespace ToolKit
     m_forwardRenderPass->m_params.clearBuffer       = GraphicBitFields::None;
 
     // The forward pass throws its depth away when it ends, which is the right default: nothing else was
-    // reading it. The occlusion grid does, at the end of the frame, so it is kept while the test is on.
-    m_forwardRenderPass->m_params.invalidateDepthBuffer = !GetEngineSettings().m_graphics->GetOcclusionCullingVal();
+    // reading it. The occlusion grid does, at the end of the frame, so it is kept while the test is on,
+    // and temporal anti-aliasing reprojects through it right after the pass.
+    m_forwardRenderPass->m_params.invalidateDepthBuffer =
+        !GetEngineSettings().m_graphics->GetOcclusionCullingVal() && !TaaEnabled();
 
     PostProcessingSettingsPtr pps                   = m_params.postProcessSettings;
     m_forwardRenderPass->m_params.SsaoTexture       = pps->GetSSAOEnabledVal() ? m_ssaoPass->m_ssaoTexture : nullptr;
@@ -1855,6 +1900,11 @@ namespace ToolKit
     m_ssrPass->m_params.DebugView            = pps->GetSSRDebugViewVal();
     m_ssrPass->m_params.DebugViewMode        = pps->GetSSRDebugViewModeVal();
 
+    // Temporal anti-aliasing resolves the frame the forward pass drew and writes it back, so it
+    // reads the same single sample color chain the post passes behind it read.
+    m_taaPass->m_params.ForwardFrameBuffer   = m_forwardRenderPass->m_params.FrameBuffer;
+    m_taaPass->m_params.Cam                  = m_params.Cam;
+
     // Post Process Pass
     bool gammaNeeded                = GetRenderSystem()->IsGammaCorrectionNeeded();
     m_gammaTonemapFxaaPass->m_params.enableGammaCorrection = pps->GetGammaCorrectionEnabledVal() && gammaNeeded;
@@ -1890,6 +1940,37 @@ namespace ToolKit
     bool dofEnabled  = m_params.postProcessSettings->GetDepthOfFieldEnabledVal();
     bool ssrEnabled  = m_params.postProcessSettings->GetSSREnabledVal();
     return ssaoEnabled || dofEnabled || ssrEnabled;
+  }
+
+  bool ForwardSceneRenderPath::TaaEnabled()
+  {
+    if (m_params.postProcessSettings == nullptr || m_params.MainFramebuffer == nullptr ||
+        m_params.Cam == nullptr)
+    {
+      return false;
+    }
+
+    if (!m_params.postProcessSettings->GetTAAEnabledVal())
+    {
+      return false;
+    }
+
+    // A multisampled frame keeps its depth in a renderbuffer, and neither GL ES 3.0 nor WebGL 2 can
+    // sample one. Resolving it would cost a full resolution copy every frame for no gain: the pass
+    // supersamples across frames, which is the part MSAA can not do.
+    if (m_params.MainFramebuffer->IsMultiSampled())
+    {
+      if (!m_reportedTaaMsaa)
+      {
+        TK_WRN("TAA is enabled but the frame is multisampled, so temporal anti-aliasing does not run. "
+               "Turn MSAA off: the pass supersamples across frames, which MSAA can not do.");
+        m_reportedTaaMsaa = true;
+      }
+
+      return false;
+    }
+
+    return true;
   }
 
 } // namespace ToolKit

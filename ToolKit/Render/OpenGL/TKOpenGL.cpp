@@ -280,10 +280,15 @@ namespace ToolKit
     //     on every 2D texture that enabled anisotropic filtering.
     //   - OES_texture_float_linear: linear filtering of a float target (the shadow blur draws into
     //     an RG16F target and asks for SampleLinear) is rejected the same way.
+    //   - EXT_color_buffer_float: without it no float format is color-renderable, so a half float
+    //     render target - the HDR frame, bloom's chain, the temporal anti-aliasing history - comes
+    //     back FRAMEBUFFER_INCOMPLETE_ATTACHMENT (0x8CD6) and every draw into it is dropped. WebGL 2
+    //     makes the format filterable on its own, so the sampling side needs nothing else.
     if (EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context = emscripten_webgl_get_current_context())
     {
       emscripten_webgl_enable_extension(context, "EXT_texture_filter_anisotropic");
       emscripten_webgl_enable_extension(context, "OES_texture_float_linear");
+      emscripten_webgl_enable_extension(context, "EXT_color_buffer_float");
     }
 
     // WebGL 2 is GL ES 3.0, where GL_EXTENSIONS is not a valid argument for

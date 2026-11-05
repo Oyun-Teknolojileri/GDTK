@@ -286,6 +286,7 @@ namespace ToolKit
     FocusPoint_Define(10.5f, "PostProcessingSettings", 0, 0, 0);
     FocusScale_Define(1.5f, "PostProcessingSettings", 0, 0, 0);
     DofBlurQuality_Define((int) DoFQuality::High, "PostProcessingSettings", 0, 0, 0);
+    TAAEnabled_Define(false, "PostProcessingSettings", 0, 0, 0);
     FXAAEnabled_Define(true, "PostProcessingSettings", 0, 0, 0);
   }
 

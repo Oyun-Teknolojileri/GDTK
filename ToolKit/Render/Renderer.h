@@ -493,8 +493,26 @@ namespace ToolKit
      * viewTransform etc...
      * if setLense is true sets the lens to fit aspect ratio to frame buffer.
      * Invalidates gpu program's related caches.
+     * @param jitter Sub-pixel offset in pixels, applied to the projection before it reaches the
+     * gpu. The camera object itself is never modified: a pass that has to know the offset gets it
+     * from GetProjectionJitter, and culling keeps using the unjittered matrices.
      */
-    void SetCamera(CameraPtr camera, bool setLens);
+    void SetCamera(CameraPtr camera, bool setLens, const Vec2& jitter = Vec2(0.0f));
+
+    /**
+     * Sub-pixel offset the scene passes hand to SetCamera. Set once per frame by the render path
+     * that drives temporal anti-aliasing, read by the passes that draw the scene.
+     */
+    void SetProjectionJitter(const Vec2& jitter) { m_projectionJitter = jitter; }
+    const Vec2& GetProjectionJitter() const { return m_projectionJitter; }
+
+    /**
+     * Applies a sub-pixel offset to a projection, the way SetCamera does before the frame is
+     * drawn. A pass that has to rebuild the exact matrix the frame was rendered with - temporal
+     * anti-aliasing unprojects its depth buffer - calls this instead of repeating the arithmetic,
+     * so the two can not drift apart.
+     */
+    Mat4 BuildJitteredProjection(const Mat4& projection, const Vec2& jitter) const;
 
     int GetMaxArrayTextureLayers();
 
@@ -573,6 +591,10 @@ namespace ToolKit
 
     /** Current camera cache item. */
     CameraCacheItem m_cameraCacheItem;
+
+    /** Sub-pixel projection offset for this frame, and the one the cache item currently carries. */
+    Vec2 m_projectionJitter           = Vec2(0.0f);
+    Vec2 m_cameraCacheProjectionJitter = Vec2(-1.0f);
 
     // Transform matrices.
     Mat4 m_model;

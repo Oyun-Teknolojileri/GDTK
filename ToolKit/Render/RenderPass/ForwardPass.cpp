@@ -108,7 +108,7 @@ namespace ToolKit
     }
 
     renderer->SetFramebuffer(m_params.FrameBuffer, m_params.clearBuffer, Vec4(0.0f), discardBits);
-    renderer->SetCamera(m_params.Cam, true);
+    renderer->SetCamera(m_params.Cam, true, renderer->GetProjectionJitter());
 
     if (m_params.onPreRender)
     {

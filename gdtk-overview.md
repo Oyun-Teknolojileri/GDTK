@@ -204,7 +204,7 @@ Serializable, loaded from `%appdata%/ToolKit/Config`. Sub-objects:
 - **WindowSettings**: name, width, height, fullscreen
 - **GraphicSettings**: FPS, MSAA, HDR, MultiThreaded, InstancedBatching (draws runs of objects that share a mesh and material as one instanced draw; off falls back to one draw per object), RenderResolutionScale, HalfResolutionForwardPreProcess (builds the normal and depth target - what ambient occlusion and depth of field read - at half the frame's size; screen space reflections force it back to full size, because they march against that depth), AnisotropicTextureFiltering, OcclusionCulling (drops local lights and meshes the depth grid proves hidden, off by default; see 4.3), OcclusionReprojection (carries that grid into the frame being drawn before it is tested, on by default and only meaningful with culling on; see 4.3), plus a `m_shadows` member
 - **ShadowSettings** (nested in GraphicSettings): cascade count/distance, parallel split, stable shadow map, cascade blend, atlas resolution (a 1K/2K/4K choice), slot density (the 2x slots option halves every slot's resolution for four times the slots), PCF kernel, VSM blur
-- **PostProcessingSettings**: tonemapping, bloom, gamma, SSAO, SSR, DOF, FXAA
+- **PostProcessingSettings**: tonemapping, bloom, gamma, SSAO, SSR, DOF, FXAA, TAA (temporal anti-aliasing, off by default; needs MSAA off - a multisampled depth attachment can not be sampled - and keeps the frame's depth alive for the pass behind the forward one)
 - **ShaderSettings**: per-shader define presets (e.g. "Low"/"High" graphics presets) so shader compile doesn't explode combinatorially
 
 **`FPS` is a gate, not a suggestion.** `Main::SyncFrameTime()` draws only when
@@ -330,6 +330,7 @@ ForwardSceneRenderPath
 ├── m_skyPass                   CubeMapPass
 ├── m_ssaoPass                  SSAOPass
 ├── m_ssrPass                   SsrPass
+├── m_taaPass                   TaaPass
 ├── m_bloomPass                 BloomPass
 ├── m_dofPass                   DoFPass
 ├── m_gammaTonemapFxaaPass      GammaTonemapFxaaPass
@@ -339,7 +340,7 @@ ForwardSceneRenderPath
 Inputs via `SceneRenderPathParams`: Scene, Camera, MainFramebuffer, grid, postProcessSettings, optional `overrideLights`.
 
 Pass order: shadow, forward pre process (g buffer, required by SSAO / DoF / SSR), SSAO, sky, forward,
-SSR, bloom, DoF, gamma/tonemap/FXAA. `SsrPass` runs in two phases. The trace phase marches one
+SSR, TAA, bloom, DoF, gamma/tonemap/FXAA. `SsrPass` runs in two phases. The trace phase marches one
 reflection ray per pixel against the pre process g buffer (world normal, linear depth, roughness) and
 writes the reflection plus its confidence into its own target instead of compositing. The march steps
 in screen space, so the budget covers `steps * stepPixels` pixels whatever the ray angle, the hits are
@@ -353,6 +354,24 @@ environment volumes provide the reflection wherever screen space can not.
 `SSRDebugView` / `SSRDebugViewMode` (Post Processing settings) switch the pass to a debug view:
 reflection, confidence, mip level, scene depth, hit uv, ray length or hit error. The resolve phase hands
 debug views through unfiltered.
+
+`TaaPass` (`TAAEnabled`, off by default) resolves the frame against a history buffer. Every frame is
+drawn with the camera projection nudged by a sub-pixel offset from an eight phase Halton sequence - the
+jitter is applied to the projection inside `Renderer::SetCamera`, never to the camera object, and the
+forward, sky and pre process passes read it back with `Renderer::GetProjectionJitter` - then the resolve
+reprojects each pixel through `prevViewProjection * inverse(jitteredViewProjection)`, rejects a sample whose
+predicted depth does not match the depth stored at the reprojected texel, clamps the history into the
+pixel's own 3x3 color range and blends at 10 percent. The unprojection has to use the jittered matrix
+the frame was drawn with (the depth buffer holds those samples) while the projection into the previous
+frame uses its unjittered matrix (the history is a pixel grid); mixing the two puts the surface point
+back by up to the jitter every frame, which reads as the image swimming. The reprojection is camera
+only: a surface that
+moved on its own has no motion vector, so it is clamped away instead of carried. The history is two
+half float targets that swap every frame (a pass can not sample the attachment it draws into), and the
+resolved color is copied back over the frame's color attachment, which keeps the post chain behind the
+pass reading the target it always read. MSAA and TAA do not combine: a multisampled depth attachment is
+a renderbuffer with no texture behind it, so `TaaEnabled()` answers false (and warns once) while the
+frame is multisampled, and the forward pass keeps its depth instead of discarding it when TAA runs.
 
 #### Depth grid occlusion culling (`OcclusionCulling` graphic setting, off by default)
 
@@ -709,6 +728,7 @@ All bind at fixed slots (0-6 are the global engine buffers, 7 and up are pass sp
 | `PreFilterEnvMapPassDataLayout` | 7 | specular IBL prefilter |
 | `GridPassDataLayout` | 7 | editor grid |
 | `SsaoBlurPassDataLayout` | 7 | SSAO blur |
+| `TaaPassDataLayout` | 7 | temporal anti-aliasing resolve |
 | `DofPassDataLayout` | 7 | DoF pass |
 | `GradientSkyboxPassDataLayout` | 7 | gradient skybox |
 | `SsaoCalcPassDataLayout` | 7 | SSAO calc |
@@ -803,6 +823,13 @@ GL_EXTENSIONS)` returns null on ES 3.0 as well, so `LoadGlFunctions` enumerates 
 `glMapBufferRange` is the third: a pack buffer can be filled on the web but never mapped for reading, which is
 why `SupportsAsyncReadPixels()` answers false there and the depth grid is read at the point it is consumed
 instead (see 5.1).
+
+**Three extensions are requested on the web context at startup**, because listing a name in `GL_EXTENSIONS` is
+not the same as having it: `EXT_texture_filter_anisotropic` (texture max anisotropy), `OES_texture_float_linear`
+(linear filtering of a float target) and `EXT_color_buffer_float` (without it no float format is color-renderable,
+so a half float target - the HDR frame, the bloom chain, the TAA history - comes back
+`FRAMEBUFFER_INCOMPLETE_ATTACHMENT` and every draw into it is dropped). The debug label entry points come from
+`emscripten_webgl_get_proc_address` instead, see the `glObjectLabel` note above.
 ### 5.3 Vulkan Backend (Vulkan/ directory)
 - `VulkanBackend.h` (main implementation)
 - `VulkanBindings.h` (binding marshalling)

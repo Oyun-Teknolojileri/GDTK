@@ -182,7 +182,7 @@ namespace ToolKit
     m_passiveState.cullOverrideMode  = state.cullOverrideMode;
   }
 
-  void Renderer::SetCamera(CameraPtr camera, bool setLens)
+  void Renderer::SetCamera(CameraPtr camera, bool setLens, const Vec2& jitter)
   {
     TK_PROFILE_FUNCTION();
 
@@ -214,13 +214,37 @@ namespace ToolKit
 
     const CameraCacheItem& cameraCacheItem  = camera->GetCacheItem();
 
-    // Check if buffer update is needed.
+    // Check if buffer update is needed. The jitter moves every frame while temporal anti-aliasing
+    // is on, and the camera's own version does not move with it, so it takes part in the test.
     bool updateGpuBuffer                    = cameraCacheItem.id != m_cameraCacheItem.id;
     updateGpuBuffer                        |= cameraCacheItem.version != m_cameraCacheItem.version;
+    updateGpuBuffer                        |= jitter != m_cameraCacheProjectionJitter;
 
     if (updateGpuBuffer)
     {
-      m_cameraCacheItem                = cameraCacheItem;
+      m_cameraCacheItem                 = cameraCacheItem;
+      m_cameraCacheProjectionJitter     = jitter;
+
+      if (jitter != Vec2(0.0f))
+      {
+        // A sub-pixel offset has to reach the projection, not the camera: the third column is
+        // what shifts x and y after the perspective divide, so adding there moves the sample by
+        // exactly the requested fraction of a pixel and leaves everything else alone.
+        m_cameraCacheItem.data.projection = BuildJitteredProjection(cameraCacheItem.data.projection, jitter);
+
+        m_cameraCacheItem.data.projectionView = m_cameraCacheItem.data.projection * m_cameraCacheItem.data.view;
+
+        Mat4 viewNoTr        = m_cameraCacheItem.data.view;
+        viewNoTr[0][3]       = 0.0f;
+        viewNoTr[1][3]       = 0.0f;
+        viewNoTr[2][3]       = 0.0f;
+        viewNoTr[3][3]       = 1.0f;
+        viewNoTr[3][0]       = 0.0f;
+        viewNoTr[3][1]       = 0.0f;
+        viewNoTr[3][2]       = 0.0f;
+
+        m_cameraCacheItem.data.projectionViewNoTranslate = m_cameraCacheItem.data.projection * viewNoTr;
+      }
 
       // Update gpu buffer.
       CameraGpuBuffer& cameraGpuBuffer = m_globalGpuBuffers->cameraGpuBuffer;
@@ -230,6 +254,21 @@ namespace ToolKit
 
       Stats::IncrementStat(FrameStatType::CameraUpdate);
     }
+  }
+
+  Mat4 Renderer::BuildJitteredProjection(const Mat4& projection, const Vec2& jitter) const
+  {
+    Mat4 jittered = projection;
+
+    if (jitter == Vec2(0.0f) || m_viewportRect.x == 0 || m_viewportRect.y == 0)
+    {
+      return jittered;
+    }
+
+    jittered[2][0] += 2.0f * jitter.x / float(m_viewportRect.x);
+    jittered[2][1] += 2.0f * jitter.y / float(m_viewportRect.y);
+
+    return jittered;
   }
 
   void Renderer::Render(const RenderJob& job)

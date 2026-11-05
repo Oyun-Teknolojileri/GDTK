@@ -374,6 +374,12 @@ namespace ToolKit
 
     // Anti-aliasing
     /////////////////////
+    /**
+     * Temporal anti-aliasing. Off by default: it needs a history buffer (two more frame sized
+     * targets), it keeps the frame's depth alive for the pass behind the forward one, and it is
+     * the only anti-aliasing here that changes the projection the scene is drawn with.
+     */
+    TKDeclareParam(bool, TAAEnabled);
     TKDeclareParam(bool, FXAAEnabled);
 
    protected:

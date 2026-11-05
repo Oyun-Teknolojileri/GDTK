@@ -20,6 +20,7 @@
 #include "ShadowPass.h"
 #include "SsaoPass.h"
 #include "SsrPass.h"
+#include "TaaPass.h"
 
 namespace ToolKit
 {
@@ -69,6 +70,13 @@ namespace ToolKit
     void SetPassParams(Renderer* renderer);
     bool RequiresForwardPreProcessPass();
 
+    /**
+     * Whether the frame runs temporal anti-aliasing: the setting is on, the target is single
+     * sampled (a multisampled depth attachment can not be sampled, and the pass reprojects through
+     * it), and there is a camera to reproject with.
+     */
+    bool TaaEnabled();
+
    public:
     SceneRenderPathParams m_params;
 
@@ -79,6 +87,7 @@ namespace ToolKit
     CubeMapPassPtr m_skyPass                         = nullptr;
     SSAOPassPtr m_ssaoPass                           = nullptr;
     SsrPassPtr m_ssrPass                             = nullptr;
+    TaaPassPtr m_taaPass                             = nullptr;
     BloomPassPtr m_bloomPass                         = nullptr;
     DoFPassPtr m_dofPass                             = nullptr;
     GammaTonemapFxaaPassPtr m_gammaTonemapFxaaPass   = nullptr;
@@ -382,6 +391,12 @@ namespace ToolKit
      */
     OcclusionCamera m_depthCamera;
     bool m_depthCameraValid       = false;
+
+    /** Whether the previous frame ran temporal anti-aliasing, so a toggle can throw the history away. */
+    bool m_taaWasEnabled          = false;
+
+    /** Set once the MSAA / TAA conflict is reported, so the console is not told every frame. */
+    bool m_reportedTaaMsaa        = false;
 
     /** The view being culled, next to m_occlusionViewProj which is the view the grid was reduced from. The
      *  distance between the two is how far a volume may have drifted on screen since the grid was read. */

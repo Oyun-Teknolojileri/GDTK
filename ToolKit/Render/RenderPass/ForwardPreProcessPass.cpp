@@ -322,7 +322,7 @@ namespace ToolKit
     }
 
     renderer->SetFramebuffer(m_framebuffer, GraphicBitFields::AllBits, Vec4(0.0f), discardBits);
-    renderer->SetCamera(m_params.Cam, true);
+    renderer->SetCamera(m_params.Cam, true, renderer->GetProjectionJitter());
   }
 
   void ForwardPreProcessPass::PostRender()

@@ -75,7 +75,7 @@ namespace ToolKit
     }
 
     Renderer* renderer = GetRenderer();
-    renderer->SetCamera(m_params.Cam, false);
+    renderer->SetCamera(m_params.Cam, false, renderer->GetProjectionJitter());
 
     if (m_params.onPreRender)
     {

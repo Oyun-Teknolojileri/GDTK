@@ -252,6 +252,15 @@ namespace ToolKit
 
       if (ShowSection("Anti Aliasing"))
       {
+        bool taaEnabled = pps->GetTAAEnabledVal();
+        if (ImGui::Checkbox("TAA##1", &taaEnabled))
+        {
+          pps->SetTAAEnabledVal(taaEnabled);
+        }
+
+        UI::AddTooltipToLastItem("Temporal anti-aliasing. Removes the shimmer a moving camera leaves on\n"
+                                 "specular highlights, and needs MSAA off.");
+
         bool fxaaEnabled = pps->GetFXAAEnabledVal();
         if (ImGui::Checkbox("FXAA##1", &fxaaEnabled))
         {
