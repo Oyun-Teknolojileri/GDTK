@@ -62,12 +62,16 @@ namespace ToolKit
    *
    * A bright pass reduces the frame to a quarter of its size in each axis and writes level zero.
    * The texture's mip chain holds every level above it, each one the box average of the level
-   * below, and the composite sums a few of those levels at the frame's resolution: level zero is
-   * the tight halo against the source, the wide levels carry the spread. The iteration count is the
-   * reach of that sum, the radius shapes how much of the energy each level carries, and the composite
-   * reads its levels with a bicubic filter so a wide level does not show its texels. There is no
-   * downsample and upsample chain, so the cost is one small pass and one full screen pass instead of
-   * two passes per level.
+   * below. The composite sums a few of those levels into a half resolution glow target, where level
+   * zero is the tight halo against the source and the wide levels carry the spread, and one last pass
+   * adds that target over the frame with a single bilinear tap per pixel. The iteration count is the
+   * reach of the sum, the radius shapes how much of the energy each level carries, and the composite
+   * reads its levels with a bicubic filter so a wide level does not show its texels.
+   *
+   * The sum runs at half resolution because the glow is a low frequency signal - level zero only
+   * carries one texel per 4x4 block of the frame - so sampling it per frame pixel was four times the
+   * fetch work for detail the halo does not have. There is no downsample and upsample chain, so the
+   * cost is two small passes and one full screen pass instead of two passes per level.
    */
   class TK_API BloomPass : public Pass
   {
@@ -89,16 +93,27 @@ namespace ToolKit
     FullQuadPassPtr m_glowPass       = nullptr;
     ShaderPtr m_glowShader           = nullptr;
 
-    /** The weighted sum of the glow pyramid, added over the frame. */
+    /** The weighted sum of the glow pyramid, into the half resolution glow target. */
     FullQuadPassPtr m_compositePass  = nullptr;
     ShaderPtr m_compositeShader      = nullptr;
+
+    /** Adds the glow target over the frame, one bilinear tap per pixel. */
+    FullQuadPassPtr m_addPass        = nullptr;
+    ShaderPtr m_addShader            = nullptr;
 
     /** Level zero of the pyramid and the framebuffer it is drawn into. */
     RenderTargetPtr m_glowRt         = nullptr;
     FramebufferPtr m_glowFb          = nullptr;
 
+    /** Half resolution sum of the pyramid, and the framebuffer it is drawn into. */
+    RenderTargetPtr m_gatherRt       = nullptr;
+    FramebufferPtr m_gatherFb        = nullptr;
+
     /** Size of level zero, so a resize rebuilds the pyramid. */
     UVec2 m_cachedGlowRes            = UVec2(0, 0);
+
+    /** Size of the half resolution sum, so a resize rebuilds it as well. */
+    UVec2 m_cachedGatherRes          = UVec2(0, 0);
 
     /** Pass-specific UBO (slot 7): bright pass and composite parameters. */
     BloomPassDataBuffer m_passDataBuffer;

@@ -57,12 +57,17 @@ namespace ToolKit
   {
     m_glowShader      = GetShaderManager()->Create<Shader>(ShaderPath("bloomGlow.shader", true));
     m_compositeShader = GetShaderManager()->Create<Shader>(ShaderPath("bloomComposite.shader", true));
+    m_addShader       = GetShaderManager()->Create<Shader>(ShaderPath("bloomAdd.shader", true));
 
     m_glowPass        = MakeNewPtr<FullQuadPass>();
     m_compositePass   = MakeNewPtr<FullQuadPass>();
+    m_addPass         = MakeNewPtr<FullQuadPass>();
 
     m_glowRt          = MakeNewPtr<RenderTarget>("BloomGlowRT");
     m_glowFb          = MakeNewPtr<Framebuffer>("BloomGlowFB");
+
+    m_gatherRt        = MakeNewPtr<RenderTarget>("BloomGatherRT");
+    m_gatherFb        = MakeNewPtr<Framebuffer>("BloomGatherFB");
   }
 
   void BloomPass::PreRender()
@@ -115,6 +120,32 @@ namespace ToolKit
       m_cachedGlowRes = glowRes;
     }
 
+    // The weighted sum is a low frequency signal: level zero already carries one texel per 4x4 block of
+    // the frame, so sampling it once per frame pixel was four times the fetch work for detail the halo
+    // does not have. Half the frame is still twice the density of level zero, and the one tap that adds
+    // it back to the frame is bilinear, so the halo loses no visible shape.
+    const UVec2 gatherRes(glm::max(1, src->m_width / 2), glm::max(1, src->m_height / 2));
+
+    if (gatherRes != m_cachedGatherRes || m_gatherFb->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0) == nullptr)
+    {
+      // Half float as well: the weighted sum carries the highlight energy the bright pass kept.
+      TextureSettings set;
+      set.InternalFormat = GraphicTypes::FormatRGBA16F;
+      set.Format         = GraphicTypes::FormatRGBA;
+      set.Type           = GraphicTypes::TypeFloat;
+      set.MagFilter      = GraphicTypes::SampleLinear;
+      set.MinFilter      = GraphicTypes::SampleLinear;
+      set.WarpS          = GraphicTypes::UVClampToEdge;
+      set.WarpT          = GraphicTypes::UVClampToEdge;
+      set.GenerateMipMap = false;
+
+      m_gatherRt->ReconstructIfNeeded(gatherRes.x, gatherRes.y, &set);
+
+      m_gatherFb->ReconstructIfNeeded({(int) gatherRes.x, (int) gatherRes.y, false, false});
+      m_gatherFb->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_gatherRt);
+      m_cachedGatherRes = gatherRes;
+    }
+
     const int levels = glm::clamp(m_params.iterationCount, 1, BloomLevelCount);
     float weights[BloomLevelCount];
     GlowWeights(levels, m_params.radius, weights);
@@ -148,16 +179,20 @@ namespace ToolKit
     m_glowPass->m_params.clearFrameBuffer = GraphicBitFields::None;
     m_glowPass->m_params.blendFunc        = BlendFunction::NONE;
 
-    m_compositePass->m_params.frameBuffer      = m_params.FrameBuffer;
+    m_compositePass->m_params.frameBuffer      = m_gatherFb;
     m_compositePass->m_params.clearFrameBuffer = GraphicBitFields::None;
-    m_compositePass->m_params.blendFunc        = BlendFunction::ONE_TO_ONE;
+    m_compositePass->m_params.blendFunc        = BlendFunction::NONE;
+
+    m_addPass->m_params.frameBuffer      = m_params.FrameBuffer;
+    m_addPass->m_params.clearFrameBuffer = GraphicBitFields::None;
+    m_addPass->m_params.blendFunc        = BlendFunction::ONE_TO_ONE;
   }
 
   void BloomPass::Render()
   {
     TK_PROFILE_FUNCTION();
 
-    if (m_params.FrameBuffer == nullptr || m_cachedGlowRes == UVec2(0, 0))
+    if (m_params.FrameBuffer == nullptr || m_cachedGlowRes == UVec2(0, 0) || m_cachedGatherRes == UVec2(0, 0))
     {
       return;
     }
@@ -182,7 +217,7 @@ namespace ToolKit
     renderer->SetFramebuffer(m_params.FrameBuffer, GraphicBitFields::None);
     m_glowRt->GenerateMipMaps();
 
-    // Composite: the weighted sum of the levels, added over the frame.
+    // Composite: the weighted sum of the levels, into the half resolution glow target.
     m_compositePass->m_material->SetDiffuseTextureVal(m_glowRt);
     m_compositePass->SetFragmentShader(m_compositeShader, renderer);
 
@@ -193,6 +228,12 @@ namespace ToolKit
     m_compositePass->GetRequirements().customUbos[7] = &m_passDataBuffer.GetBuffer();
 
     RenderSubPass(m_compositePass);
+
+    // Add: the glow target over the frame, one bilinear tap per pixel. Additive, and the shader writes
+    // an alpha of zero so the frame's own alpha is left to the host.
+    m_addPass->m_material->SetDiffuseTextureVal(m_gatherRt);
+    m_addPass->SetFragmentShader(m_addShader, renderer);
+    RenderSubPass(m_addPass);
   }
 
   void BloomPass::PostRender()
