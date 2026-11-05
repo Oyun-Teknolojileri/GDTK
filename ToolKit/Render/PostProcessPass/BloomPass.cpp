@@ -16,6 +16,20 @@
 namespace ToolKit
 {
 
+  namespace
+  {
+    /**
+     * How much of each upsampled level lands in the level below it.
+     *
+     * This is a radius knob, not an energy one: a level scaled down here is a halo scale that
+     * disappears, so a geometric falloff pulls the whole bloom in against the surface that emits
+     * it and leaves the wide part of the chain with nothing to say. Every level carrying full
+     * weight keeps the spread; the total is then shaped in one place by BloomIntensity at the
+     * merge.
+     */
+    constexpr float BloomChainWeight = 1.0f;
+  } // namespace
+
   BloomPass::BloomPass() : Pass("BloomPass")
   {
     m_downsampleShader = GetShaderManager()->Create<Shader>(ShaderPath("bloomDownsample.shader", true));
@@ -76,7 +90,7 @@ namespace ToolKit
     {
       m_passDataBuffer.m_data.passIndxAndPad.x = 0;
       m_passDataBuffer.m_data.downsampleParams =
-          Vec4((float) mainRes.x, (float) mainRes.y, m_params.minThreshold, 0.0f);
+          Vec4((float) mainRes.x, (float) mainRes.y, m_params.minThreshold, m_params.luminanceCap);
       pushUbo();
 
       renderer->SetTexture((ubyte) 0, mainRt);
@@ -106,7 +120,7 @@ namespace ToolKit
 
         m_passDataBuffer.m_data.passIndxAndPad.x = i + 1;
         m_passDataBuffer.m_data.downsampleParams =
-            Vec4(prevRes.x, prevRes.y, m_passDataBuffer.m_data.downsampleParams.z, 0.0f);
+            Vec4(prevRes.x, prevRes.y, m_passDataBuffer.m_data.downsampleParams.z, m_params.luminanceCap);
         pushUbo();
 
         renderer->SetTexture((ubyte) 0, prevRt);
@@ -123,7 +137,7 @@ namespace ToolKit
     // Upsample Pass
     {
       const float filterRadius               = 0.002f;
-      m_passDataBuffer.m_data.upsampleParams = Vec4(filterRadius, 1.0f, 0.0f, 0.0f);
+      m_passDataBuffer.m_data.upsampleParams = Vec4(filterRadius, BloomChainWeight, 0.0f, 0.0f);
       pushUbo();
 
       for (int i = m_currentIterationCount; i > 0; i--)

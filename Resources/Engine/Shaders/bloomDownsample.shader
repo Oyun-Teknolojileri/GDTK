@@ -27,8 +27,15 @@
 
 		vec3 Prefilter (vec3 c) {
 			float brightness = max(c.r, max(c.g, c.b));
-			float contribution = max(0.0f, brightness - bloom.downsampleParams.z);
-			contribution /= max(brightness, 0.00001);
+			float threshold  = bloom.downsampleParams.z;
+
+			// A hard cut at the threshold draws its own boundary into the bloom wherever a gradient
+			// crosses it - a sky, a light falloff, a large soft highlight - which reads as a band
+			// around every bright thing. The knee fades the contribution in over a band instead, so
+			// the same content produces the same halo whatever the threshold is set to.
+			float knee         = max(threshold * 0.5, 0.0001);
+			float contribution = smoothstep(threshold - knee, threshold + knee, brightness);
+
 			return c * contribution;
 		}
 
@@ -86,8 +93,31 @@
 				switch (bloom.passIndxAndPad.x)
 				{
 					case 0:
-					downsample = Prefilter(e);
+					{
+					// This pass writes a quarter resolution target, so one texel here covers a 4x4
+					// block of the frame. Average the whole block: a single sample made a thin
+					// highlight (a specular glint, a lamp) land on one texel and miss the next,
+					// which is what made the bloom pop as the camera moved.
+					vec2 srcTexel = 1.0 / vec2(textureSize(s_diffuseColor, 0));
+					vec2 base     = v_texture - srcTexel * 1.5;
+					vec3 sum      = vec3(0.0);
+
+					for (int y = 0; y < 4; ++y)
+					{
+						for (int x = 0; x < 4; ++x)
+						{
+							vec3 c = texture(s_diffuseColor, base + vec2(float(x), float(y)) * srcTexel).rgb;
+
+							// One very bright pixel would otherwise own the whole halo around it and
+							// the frame reads as blown out. Clamping before the average keeps the
+							// bloom local to what actually emits it.
+							sum += min(c, vec3(bloom.downsampleParams.w));
+						}
+					}
+
+					downsample = Prefilter(sum * (1.0 / 16.0));
 					break;
+					}
 					case 1:
 					// We are writing to mip 0, so we need to apply Karis average to each block
 					// of 4 samples to prevent fireflies (very bright subpixels, leads to pulsating

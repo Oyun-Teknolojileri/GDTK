@@ -251,7 +251,11 @@ namespace ToolKit
     TonemappingEnabled_Define(true, "PostProcessingSettings", 0, 0, 0);
 
     BloomEnabled_Define(false, "PostProcessingSettings", 0, 0, 0);
-    BloomIntensity_Define(1.0f, "PostProcessingSettings", 0, 0, 0);
+    // The merge is additive, so the intensity is the fraction of the bloom chain that lands on the
+    // frame. At 1.0 the chain's whole energy was added on top of the picture and everything bright
+    // read as blown out; 0.2 keeps a highlight's halo instead of letting it become one, while the
+    // chain itself still carries every level (see BloomChainWeight) so the halo keeps its spread.
+    BloomIntensity_Define(0.2f, "PostProcessingSettings", 0, 0, 0);
     BloomThreshold_Define(1.0f, "PostProcessingSettings", 0, 0, 0);
     BloomIterationCount_Define(5, "PostProcessingSettings", 0, 0, 0);
     GammaCorrectionEnabled_Define(true, "PostProcessingSettings", 0, 0, 0);

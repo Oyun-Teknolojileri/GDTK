@@ -19,7 +19,7 @@ namespace ToolKit
       needs. Pass fills the relevant fields per iteration and re-Map()s the buffer. */
   struct BloomPassDataLayout
   {
-    /** .xy = srcResolution (downsample), .z = threshold, .w = pad. */
+    /** .xy = srcResolution (downsample), .z = threshold, .w = luminance cap. */
     Vec4 downsampleParams;
     /** .x = filterRadius, .y = intensity (upsample). */
     Vec4 upsampleParams;
@@ -36,6 +36,11 @@ namespace ToolKit
     int iterationCount         = 6;
     float minThreshold         = 1.0f;
     float intensity            = 1.0f;
+
+    /** HDR luminance ceiling applied before the bright pass averages its samples. Without it a
+        single very bright pixel (a specular glint, an emissive surface) owns the whole halo
+        around it and the frame looks blown out. */
+    float luminanceCap         = 10.0f;
   };
 
   class TK_API BloomPass : public Pass
