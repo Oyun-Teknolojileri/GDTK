@@ -76,6 +76,18 @@ namespace ToolKit
         {
           pps->SetBloomIterationCountVal(bloomIterationCount);
         }
+
+        float bloomRadius = pps->GetBloomRadiusVal();
+        if (ImGui::SliderFloat("Bloom Radius", &bloomRadius, 0.0f, 1.0f, "%.2f"))
+        {
+          pps->SetBloomRadiusVal(bloomRadius);
+        }
+
+        bool bloomBicubic = pps->GetBloomBicubicUpscaleVal();
+        if (ImGui::Checkbox("Bloom Bicubic Upscale", &bloomBicubic))
+        {
+          pps->SetBloomBicubicUpscaleVal(bloomBicubic);
+        }
       }
 
       if (ShowSection("Depth of Field"))

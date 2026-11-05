@@ -19,11 +19,11 @@ namespace ToolKit
   {
     /** .x = threshold, .y = HDR luminance ceiling. */
     Vec4 params;
-    /** .x = intensity of the glow added to the frame. */
+    /** .x = intensity of the glow added to the frame, .y = 1 / sum of the level weights. */
     Vec4 composite;
-    /** Weight of mip level 0, 1, 2 and 3 of the glow pyramid. */
+    /** Radius shaped weight of mip level 0, 1, 2 and 3 of the glow pyramid. */
     Vec4 weightsA;
-    /** Weight of mip level 4 and 5. */
+    /** Radius shaped weight of mip level 4 and 5. */
     Vec4 weightsB;
   };
 
@@ -37,6 +37,16 @@ namespace ToolKit
     /** Number of glow levels the composite sums, 1 to 6. Each level is a factor of two wider
         than the one below, so this is the reach of the halo. */
     int iterationCount         = 5;
+
+    /** How the energy is distributed over those levels. 1 gives every level the same weight, which is
+        the widest halo the count allows; lower values pull the energy toward the tight levels with a
+        Gaussian falloff, so the halo shrinks without the reach changing and no level pops on or off at
+        a boundary. Weights are normalized, so the radius moves the shape and not the brightness. */
+    float radius               = 1.0f;
+
+    /** Bicubic reconstruction of a level in the composite. Four bilinear taps either way, so the cost
+        is the extra arithmetic; off falls back to the 2x2 box the pyramid used before. */
+    bool bicubicUpscale        = true;
 
     float minThreshold         = 1.0f;
     float intensity            = 1.0f;
@@ -53,9 +63,11 @@ namespace ToolKit
    * A bright pass reduces the frame to a quarter of its size in each axis and writes level zero.
    * The texture's mip chain holds every level above it, each one the box average of the level
    * below, and the composite sums a few of those levels at the frame's resolution: level zero is
-   * the tight halo against the source, the wide levels carry the spread. There is no downsample
-   * and upsample chain, so the cost is one small pass and one full screen pass instead of two
-   * passes per level.
+   * the tight halo against the source, the wide levels carry the spread. The iteration count is the
+   * reach of that sum, the radius shapes how much of the energy each level carries, and the composite
+   * reads its levels with a bicubic filter so a wide level does not show its texels. There is no
+   * downsample and upsample chain, so the cost is one small pass and one full screen pass instead of
+   * two passes per level.
    */
   class TK_API BloomPass : public Pass
   {

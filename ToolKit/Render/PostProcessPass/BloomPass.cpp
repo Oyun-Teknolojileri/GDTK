@@ -22,13 +22,33 @@ namespace ToolKit
         is a halving of the one below and level zero is a quarter of the frame. */
     constexpr int BloomLevelCount = 6;
 
-    /** How much of each mip level goes into the composite. An iteration count of n keeps levels
-        0..n-1 at full weight and turns the rest off, which trades reach against cost. */
-    void GlowWeights(int levelCount, float weights[BloomLevelCount])
+    /**
+     * Tightness the radius can reach.
+     *
+     * A level's weight is exp(-tightness * t * t) where t runs from 0 at the tight level to 1 at the
+     * widest one. At the full radius tightness is zero and every level weighs one, which is the flat
+     * sum the composite always had; at zero the widest level weighs exp(-8), so the energy sits almost
+     * entirely on the levels against the source. The curve is smooth on purpose: switching a level on
+     * and off at a boundary is what made the halo pop when the level count moved.
+     */
+    constexpr float BloomRadiusMaxTightness = 8.0f;
+
+    /** Weight of every glow level for the given reach and radius. The sum is what the composite
+        divides by, so the radius changes the shape of the halo and not how bright it is. */
+    void GlowWeights(int levelCount, float radius, float weights[BloomLevelCount])
     {
+      const float tightness = (1.0f - glm::clamp(radius, 0.0f, 1.0f)) * BloomRadiusMaxTightness;
+
       for (int i = 0; i < BloomLevelCount; ++i)
       {
-        weights[i] = i < levelCount ? 1.0f : 0.0f;
+        if (i >= levelCount)
+        {
+          weights[i] = 0.0f;
+          continue;
+        }
+
+        const float t = levelCount > 1 ? float(i) / float(levelCount - 1) : 0.0f;
+        weights[i]    = glm::exp(-tightness * t * t);
       }
     }
   } // namespace
@@ -97,20 +117,32 @@ namespace ToolKit
 
     const int levels = glm::clamp(m_params.iterationCount, 1, BloomLevelCount);
     float weights[BloomLevelCount];
-    GlowWeights(levels, weights);
+    GlowWeights(levels, m_params.radius, weights);
+
+    float weightSum = 0.0f;
+    for (int i = 0; i < BloomLevelCount; ++i)
+    {
+      weightSum += weights[i];
+    }
 
     m_passDataBuffer.m_data.params    = Vec4(m_params.minThreshold, m_params.luminanceCap, 0.0f, 0.0f);
-    // The sum is divided by the number of levels it carries, so Intensity means the same thing at
-    // two levels and at six: without it every extra level brightened the whole halo, and a project
-    // that raised the level count to widen the bloom got a blowout instead.
+    // The sum is divided by the total weight, so Intensity means the same thing whatever the reach and
+    // the radius are: the radius would otherwise dim the halo as it makes it tighter, and every extra
+    // level would brighten it, which is what a project that widened the bloom used to get a blowout for.
     m_passDataBuffer.m_data.composite = Vec4(glm::max(m_params.intensity, 0.0f),
-                                             1.0f / float(levels),
+                                             weightSum > 0.0f ? 1.0f / weightSum : 0.0f,
                                              1.0f / float(glowRes.x),
                                              1.0f / float(glowRes.y));
     m_passDataBuffer.m_data.weightsA  = Vec4(weights[0], weights[1], weights[2], weights[3]);
     m_passDataBuffer.m_data.weightsB  = Vec4(weights[4], weights[5], 0.0f, 0.0f);
     m_passDataBuffer.Invalidate();
     m_passDataBuffer.Map();
+
+    // Picks the composite variant. A define rather than a uniform: the two filters fetch at different
+    // offsets, so the choice has to reach the shader as a compile time constant. The shader is shared
+    // with every other bloom pass, and they all read this one setting, so the last writer wins with the
+    // value everybody wanted.
+    m_compositeShader->SetDefine("BLOOM_BICUBIC", m_params.bicubicUpscale ? "1" : "0");
 
     m_glowPass->m_params.frameBuffer      = m_glowFb;
     m_glowPass->m_params.clearFrameBuffer = GraphicBitFields::None;
@@ -153,7 +185,13 @@ namespace ToolKit
     // Composite: the weighted sum of the levels, added over the frame.
     m_compositePass->m_material->SetDiffuseTextureVal(m_glowRt);
     m_compositePass->SetFragmentShader(m_compositeShader, renderer);
+
+    // The program depends on the BLOOM_BICUBIC variant, and the quad keeps the program it built on the
+    // first draw, so it is refreshed here instead of once. Without this the filter switch would keep
+    // drawing the variant that was compiled first.
+    m_compositePass->GetRequirements().program       = m_compositePass->GetProgram();
     m_compositePass->GetRequirements().customUbos[7] = &m_passDataBuffer.GetBuffer();
+
     RenderSubPass(m_compositePass);
   }
 

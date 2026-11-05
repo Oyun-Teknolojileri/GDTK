@@ -332,6 +332,13 @@ namespace ToolKit
     TKDeclareParam(float, BloomThreshold);
     TKDeclareParam(int, BloomIterationCount);
 
+    /** How the glow levels are weighted: 1 spreads the energy evenly over every level, lower values
+        pull it toward the tight ones. The reach of the halo stays the iteration count's job. */
+    TKDeclareParam(float, BloomRadius);
+
+    /** Bicubic reconstruction of the glow level the composite reads. Off samples it with a 2x2 box. */
+    TKDeclareParam(bool, BloomBicubicUpscale);
+
     // Gamma
     /////////////////////
     TKDeclareParam(bool, GammaCorrectionEnabled);

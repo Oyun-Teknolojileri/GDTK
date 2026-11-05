@@ -374,6 +374,12 @@ void MyPass::PreRender()
    has to own the requirements per draw (see the depth grid) resets them with
    `reqs = PassRequirements()` first.
 
+   `program` is pinned the same way (`if (reqs.program == nullptr) reqs.program = m_program`),
+   so a pass that switches a fragment shader **define** - which builds a different program
+   variant - has to write the new program into the requirements itself. `BloomPass` does that
+   for its `BLOOM_BICUBIC` filter switch; without it the composite kept drawing the variant it
+   compiled first and the setting looked dead.
+
 ### When to override `GatherRequirements` vs. populate manually
 
 - **Sub-class populates `m_requirements` in `PreRender()` or `Render()`** when the

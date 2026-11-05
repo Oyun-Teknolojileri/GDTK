@@ -204,7 +204,7 @@ Serializable, loaded from `%appdata%/ToolKit/Config`. Sub-objects:
 - **WindowSettings**: name, width, height, fullscreen
 - **GraphicSettings**: FPS, MSAA, HDR, MultiThreaded, InstancedBatching (draws runs of objects that share a mesh and material as one instanced draw; off falls back to one draw per object), RenderResolutionScale, HalfResolutionForwardPreProcess (builds the normal and depth target - what ambient occlusion and depth of field read - at half the frame's size; screen space reflections force it back to full size, because they march against that depth), AnisotropicTextureFiltering, OcclusionCulling (drops local lights and meshes the depth grid proves hidden, off by default; see 4.3), OcclusionReprojection (carries that grid into the frame being drawn before it is tested, on by default and only meaningful with culling on; see 4.3), plus a `m_shadows` member
 - **ShadowSettings** (nested in GraphicSettings): cascade count/distance, parallel split, stable shadow map, cascade blend, atlas resolution (a 1K/2K/4K choice), slot density (the 2x slots option halves every slot's resolution for four times the slots), PCF kernel, VSM blur
-- **PostProcessingSettings**: tonemapping, bloom, gamma, SSAO, SSR, DOF, FXAA
+- **PostProcessingSettings**: tonemapping, bloom (intensity, threshold, level count for the reach, radius for how the levels are weighted, bicubic or box gather), gamma, SSAO, SSR, DOF, FXAA
 - **ShaderSettings**: per-shader define presets (e.g. "Low"/"High" graphics presets) so shader compile doesn't explode combinatorially
 
 **`FPS` is a gate, not a suggestion.** `Main::SyncFrameTime()` draws only when
