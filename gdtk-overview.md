@@ -585,6 +585,14 @@ class MyPass : public Pass {
 See `AGENTS.md` section "Pass / PassRequirements Conventions" for the full pattern,
 including the two-quad rule for passes that use two fragment shaders (Bloom, etc.).
 
+A `FullQuadPass` merges its own state into the requirements on **every** draw:
+`GatherRequirements` re-reads the material's diffuse texture into slot 0, so a quad whose source
+changes (the frame's colour attachment after an MSAA toggle, a post process's copy target) picks the
+new texture up as soon as the pass calls `material->SetDiffuseTextureVal(...)`. Slot 0 used to be
+filled only while the map did not hold it yet, which pinned the first texture a quad ever bound:
+Bloom kept sampling the resolved framebuffer MSAA had created, and after the viewport target was
+rebuilt the previous frame's glow was composited over the live frame.
+
 #### RenderJob & RenderData
 
 #### RenderJob & RenderData
@@ -703,7 +711,7 @@ All bind at fixed slots (0-6 are the global engine buffers, 7 and up are pass sp
 | `PerDrawUboBuffer` | 2 | per-draw (model matrix etc., mirror in `perDrawDataInc.shader`) |
 | `DilatePassDataLayout` | 7 | outline/dilate pass |
 | `GammaTonemapFxaaPassDataLayout` | 7 | gamma/tonemap/fxaa pass |
-| `BloomPassDataLayout` | 7 | bloom downsample/upsample chain |
+| `BloomPassDataLayout` | 7 | bloom glow pass and composite (glow pyramid) |
 | `GaussBlurPassDataLayout` | 7 | shadow blur, gaussian passes |
 | `CubemapEquirectPassDataLayout` | 7 | equirect -> cubemap conversion |
 | `PreFilterEnvMapPassDataLayout` | 7 | specular IBL prefilter |
