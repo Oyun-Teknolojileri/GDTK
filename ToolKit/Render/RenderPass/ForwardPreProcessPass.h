@@ -24,7 +24,16 @@ namespace ToolKit
    public:
     ForwardPreProcessPass();
 
-    void InitBuffers(int width, int height, MsaaSampleCount sampleCount);
+    /**
+     * (Re)builds the normal and depth target for a frame of the given size.
+     * @param width is the target's width in pixels.
+     * @param height is the target's height in pixels.
+     * @param sampleCount is the sample count the frame is drawn with, so the two agree.
+     * @param shareDepth is whether the frame's own depth attachment may be borrowed for the early z test.
+     *        False makes the pass build one of its own; see the implementation for when that has to happen.
+     */
+    void InitBuffers(int width, int height, MsaaSampleCount sampleCount, bool shareDepth);
+
     void Render() override;
     void PreRender() override;
     void PostRender() override;

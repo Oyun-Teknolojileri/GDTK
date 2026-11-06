@@ -333,13 +333,16 @@ ForwardSceneRenderPath
 ├── m_bloomPass                 BloomPass
 ├── m_dofPass                   DoFPass
 ├── m_gammaTonemapFxaaPass      GammaTonemapFxaaPass
-└── m_resolvedFramebuffer       FramebufferPtr (for MSAA resolve)
+├── m_resolvedFramebuffer       FramebufferPtr (for MSAA resolve)
+└── m_frameColorFb              FramebufferPtr (the target the frame's color is in, see GetOutputFramebuffer)
 ```
 
 Inputs via `SceneRenderPathParams`: Scene, Camera, MainFramebuffer, grid, postProcessSettings, optional `overrideLights`.
 
 Pass order: shadow, forward pre process (g buffer, required by SSAO / DoF / SSR), SSAO, sky, forward,
-SSR, bloom, DoF, gamma/tonemap/FXAA. `SsrPass` runs in two phases. The trace phase marches one
+bloom, SSR, DoF, gamma/tonemap/FXAA. Bloom runs before the reflections on purpose: the reflection pass
+copies the shaded frame, so the glow has to be in it or a reflected highlight comes back flat. `SsrPass`
+runs in two phases. The trace phase marches one
 reflection ray per pixel against the pre process g buffer (world normal, linear depth, roughness) and
 writes the reflection plus its confidence into its own target instead of compositing. The march steps
 in screen space, so the budget covers `steps * stepPixels` pixels whatever the ray angle, the hits are
@@ -350,9 +353,31 @@ the silhouettes the trace can not see through and removes the row level stripes 
 A pixel with no screen space reflection keeps its forward shaded color, so the sky or the active
 environment volumes provide the reflection wherever screen space can not.
 
+The resolve phase composites into a target of the pass's own (`SsrPass::GetOutputFramebuffer`), not back
+into the frame it read: the frame is read only for the rest of the frame, and DoF, the tone curve and a
+host that composites the frame itself all follow the reflection target instead. That target is what
+`ForwardSceneRenderPath::GetOutputFramebuffer` reports, because the path no longer always writes the
+framebuffer it was handed - a host that reads the viewport framebuffer after this path gets the frame from
+before the reflections.
+
 `SSRDebugView` / `SSRDebugViewMode` (Post Processing settings) switch the pass to a debug view:
 reflection, confidence, mip level, scene depth, hit uv, ray length or hit error. The resolve phase hands
 debug views through unfiltered.
+
+#### Depth sharing between the pre process pass and the frame
+
+The pre process pass borrows the frame's depth attachment, which is what gives it its early z test: it
+draws the opaque geometry before the forward pass, and the forward pass then rejects what is behind it
+without shading it. That only holds for a depth attachment two framebuffers may share. The pass builds a
+depth buffer of its own when the pre process target is a different size (a framebuffer whose attachments
+disagree is incomplete in GL ES), and also when the backend keeps the samples of a multisampled target in
+a shadow buffer beside the texture - `IGraphicsBackend::UsesMultisampledRenderToTexture`, which is
+`GL_EXT_multisampled_render_to_texture` on Mali. There the driver resolves that attachment when the
+framebuffer that wrote it is unbound, so one depth attachment written by two framebuffers is resolved
+twice, in an order the driver picks. On the Mali reference device (SM-G950F, MSAA on) the two resolves
+alternate and every other frame is lit as if the environment were a low resolution capture of the scene
+instead of the sky, over the whole picture - the g buffer keeps its own depth buffer instead
+(`ForwardPreProcessPass::InitBuffers` takes the decision). Nothing else about the frame changes.
 
 #### Depth grid occlusion culling (`OcclusionCulling` graphic setting, off by default)
 
@@ -1003,6 +1028,11 @@ Used by **runtime game apps** (not editor). Pipeline:
 3. `GammaTonemapFxaaPassPtr m_gammaPass`
 
 Params: `viewport`, `scene`, `postProcessSettings`.
+
+The composite reads `ForwardSceneRenderPath::GetOutputFramebuffer`, not the viewport's framebuffer: with
+screen space reflections on, the path leaves the picture in the reflection target and the viewport's
+framebuffer still holds the frame from before them. The UI pass needs the picture in the buffer it draws
+into for the same reason, so it is copied there first when the two differ.
 
 **Present: the frame leaves through a copy, and that is settled.** `m_gammaPass` composites the rendered
 target into `m_presentTarget` - a window sized RGBA8 framebuffer, `PreparePresentTarget()` creates and

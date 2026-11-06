@@ -48,21 +48,40 @@ namespace ToolKit
     m_ssrShader                      = GetShaderManager()->Create<Shader>(ShaderPath("ssrFrag.shader", true));
     m_copyTexture                    = MakeNewPtr<RenderTarget>("SsrSceneCopyRT");
 
+    // The resolve phase composites into a target of the pass's own, so the frame it copied stays read
+    // only for the rest of the frame. The path reads that target through GetOutputFramebuffer.
+    m_reflectionRt                   = MakeNewPtr<RenderTarget>("SsrReflectionRT");
+    m_reflectionFb                   = MakeNewPtr<Framebuffer>("SsrReflectionFB");
+
     m_filterPass                       = MakeNewPtr<FullQuadPass>();
-    m_filterPass->m_params.frameBuffer = MakeNewPtr<Framebuffer>("SsrFilterFB");
+    m_filterPass->m_params.frameBuffer = m_reflectionFb;
     m_filterShader                     = GetShaderManager()->Create<Shader>(ShaderPath("ssrFilterFrag.shader", true));
     m_traceTexture                     = MakeNewPtr<RenderTarget>("SsrTraceRT");
   }
 
   SsrPass::~SsrPass()
   {
-    m_quadPass     = nullptr;
-    m_ssrShader    = nullptr;
-    m_copyTexture  = nullptr;
+    m_quadPass      = nullptr;
+    m_ssrShader     = nullptr;
+    m_copyTexture   = nullptr;
 
-    m_filterPass   = nullptr;
-    m_filterShader = nullptr;
-    m_traceTexture = nullptr;
+    m_filterPass    = nullptr;
+    m_filterShader  = nullptr;
+    m_traceTexture  = nullptr;
+
+    m_reflectionRt  = nullptr;
+    m_reflectionFb  = nullptr;
+  }
+
+  FramebufferPtr SsrPass::GetOutputFramebuffer() const
+  {
+    if (!m_outputWritten || m_reflectionFb == nullptr ||
+        m_reflectionFb->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0) == nullptr)
+    {
+      return nullptr;
+    }
+
+    return m_reflectionFb;
   }
 
   void SsrPass::PreRender()
@@ -73,6 +92,7 @@ namespace ToolKit
 
     if (m_params.ColorRt == nullptr || m_params.GNormalDepthBuffer == nullptr || m_params.Cam == nullptr)
     {
+      m_outputWritten = false;
       return;
     }
 
@@ -81,6 +101,7 @@ namespace ToolKit
     // error, so disable the pass instead of taking the renderer down with it.
     if (m_shaderUnavailable)
     {
+      m_outputWritten = false;
       return;
     }
 
@@ -107,13 +128,14 @@ namespace ToolKit
     {
       TK_ERR("SsrPass: the fragment shader did not compile, screen space reflections are disabled.");
       m_shaderUnavailable = true;
+      m_outputWritten     = false;
       return;
     }
 
-    // The pass reads the scene color and composites the result back into the same target, so it
-    // samples a single sample copy of it (the same trick DoFPass uses). The copy carries a mip
-    // chain: the reflection is gathered from it, and a mip chosen from the reflection cone is what
-    // keeps a mirror reflection of a slanted surface from aliasing into stripes.
+    // The pass reads the scene color and writes a target of its own, so it samples a single sample copy
+    // of the frame (the same trick DoFPass uses). Beyond keeping the read and the write apart, the copy
+    // carries a mip chain: the reflection is gathered from it, and a mip chosen from the reflection cone
+    // is what keeps a mirror reflection of a slanted surface from aliasing into stripes.
     TextureSettings copySet = m_params.ColorRt->Settings();
     copySet.msaaCount       = MsaaSampleCount::x0;
     copySet.GenerateMipMap  = true;
@@ -175,8 +197,17 @@ namespace ToolKit
     m_quadPass->m_params.frameBuffer->ReconstructIfNeeded({size.x, size.y, false, false});
     m_quadPass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_traceTexture);
 
+    // The composite target: the frame with the reflections in it, at the frame's resolution and format so
+    // everything behind this pass reads it instead of the frame. No mip chain and no multisampling, because
+    // it is written by one full quad and then sampled one to one.
+    TextureSettings reflectionSet = copySet;
+    reflectionSet.GenerateMipMap  = false;
+    reflectionSet.MinFilter       = GraphicTypes::SampleLinear;
+    reflectionSet.MagFilter       = GraphicTypes::SampleLinear;
+    m_reflectionRt->ReconstructIfNeeded(size.x, size.y, &reflectionSet);
+
     m_filterPass->m_params.frameBuffer->ReconstructIfNeeded({size.x, size.y, false, false});
-    m_filterPass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_params.ColorRt);
+    m_filterPass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_reflectionRt);
 
     m_quadPass->m_params.blendFunc        = BlendFunction::NONE;
     m_quadPass->m_params.clearFrameBuffer = GraphicBitFields::None;
@@ -240,8 +271,9 @@ namespace ToolKit
     ApplyRequirements(renderer);
     RenderSubPass(m_quadPass);
 
-    // Phase 2: filter that result in screen space and composite it over the scene color. The
-    // requirements are rebuilt so the sampler names of the trace phase do not leak into this one.
+    // Phase 2: filter that result in screen space and composite the scene copy with it into the pass's
+    // own target. The requirements are rebuilt so the sampler names of the trace phase do not leak into
+    // this one.
     m_requirements = PassRequirements();
     GatherRequirements(m_requirements);
     m_requirements.fragmentShader                     = m_filterShader;
@@ -255,6 +287,10 @@ namespace ToolKit
 
     ApplyRequirements(renderer);
     RenderSubPass(m_filterPass);
+
+    // The quad above wrote every pixel of the target, so it now holds this frame's picture and the passes
+    // behind this one may read it.
+    m_outputWritten = true;
   }
 
   void SsrPass::GatherRequirements(PassRequirements& reqs)

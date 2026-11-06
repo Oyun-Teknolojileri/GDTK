@@ -142,17 +142,27 @@ namespace ToolKit
 
       SceneRenderPathPtr sceneRenderer = m_sceneRenderPath;
       FramebufferPtr mainBuffer        = m_params.Viewport->m_framebuffer;
-      auto copyToMultiSampleBuffer     = [this, renderer, mainBuffer, sceneRenderer]()
+      auto copySceneToViewportBuffer   = [renderer, mainBuffer, sceneRenderer]()
       {
-        // Draw resolved framebuffer on to msaa buffer if needed.
+        // The scene path may leave the picture somewhere other than the viewport's buffer: screen space
+        // reflections composite into a target of their own and the passes behind them follow it. The
+        // editor continues drawing over that picture, so the buffer it draws into is filled from the
+        // path's output rather than from a target the path may not have written.
+        //
         // Resolved frame buffer contains correct scene rendering with post processings.
-        // To continue msaa rendering for editor objects, we need to copy resolved buffer to main msaa buffer.
+        // To continue rendering for editor objects, the scene is copied onto the main buffer.
         using Attachment = Framebuffer::Attachment;
-        if (mainBuffer->IsMultiSampled() && sceneRenderer->m_resolvedFramebuffer)
+        FramebufferPtr sceneOutput = sceneRenderer->GetOutputFramebuffer();
+        if (sceneOutput == nullptr || sceneOutput == mainBuffer)
         {
-          RenderTargetPtr rRT = sceneRenderer->m_resolvedFramebuffer->GetColorAttachment(Attachment::ColorAttachment0);
-          RenderTargetPtr mRT = mainBuffer->GetColorAttachment(Attachment::ColorAttachment0);
-          renderer->CopyTexture(rRT, mRT);
+          return;
+        }
+
+        RenderTargetPtr sceneColor = sceneOutput->GetColorAttachment(Attachment::ColorAttachment0);
+        RenderTargetPtr mainColor  = mainBuffer->GetColorAttachment(Attachment::ColorAttachment0);
+        if (sceneColor != nullptr && mainColor != nullptr)
+        {
+          renderer->CopyTexture(sceneColor, mainColor);
         }
       };
 
@@ -170,7 +180,8 @@ namespace ToolKit
         sceneRenderer->m_forwardRenderPass->m_params.onPreRender = nullptr;
         sceneRenderer->Render(renderer);
 
-        copyToMultiSampleBuffer(); // Resolved buffer may need to be drawn to msaa buffer.
+        // The scene the path produced may need to be drawn into the buffer the viewport draws into.
+        copySceneToViewportBuffer();
 
         if (!m_uiRenderData.jobs.empty())
         {
@@ -190,7 +201,7 @@ namespace ToolKit
 
         SetLitMode(renderer, EditorLitMode::EditorLit);
 
-        copyToMultiSampleBuffer();
+        copySceneToViewportBuffer();
 
         // Draw outlines.
         OutlineSelecteds(renderer);
