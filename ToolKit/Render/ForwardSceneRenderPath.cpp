@@ -159,18 +159,21 @@ namespace ToolKit
     // Forward pass
     m_passArray.push_back(m_forwardRenderPass);
 
+    // Bloom pass. It runs before the reflections on purpose: the reflection pass copies the shaded frame
+    // and marches its rays against that copy, so whatever is not in the frame when the copy is made is not
+    // in the mirror. Bloom adds the glow to the frame, the copy carries it into the reflection, and a
+    // bright window reflected in another window comes back glowing instead of flat.
+    if (m_params.postProcessSettings->GetBloomEnabledVal())
+    {
+      m_passArray.push_back(m_bloomPass);
+    }
+
     // Screen space reflections. Runs on the forward shaded color, right before the post process
     // chain, so a reflection miss simply keeps the sky / environment volume IBL the forward pass
     // already wrote. The g buffer it marches against comes from the pre process pass.
     if (m_params.postProcessSettings->GetSSREnabledVal())
     {
       m_passArray.push_back(m_ssrPass);
-    }
-
-    // Bloom pass
-    if (m_params.postProcessSettings->GetBloomEnabledVal())
-    {
-      m_passArray.push_back(m_bloomPass);
     }
 
     // Depth of field pass
