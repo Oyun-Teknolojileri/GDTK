@@ -138,32 +138,45 @@ namespace ToolKit
 
     m_passArray.clear();
 
+    // The frame the scene path produced. It does not always end up in the viewport's buffer: screen space
+    // reflections composite into a target of their own, and everything behind them follows it, so the path
+    // is asked which target the picture is in rather than assuming it is the one that was handed to it.
+    FramebufferPtr compositeSource = sceneRenderer->GetOutputFramebuffer();
+
     // Draw UI on top of scene.
     FramebufferPtr mainBuffer = m_params.viewport->m_framebuffer;
     if (!m_uiPass->m_params.renderData->jobs.empty())
     {
       m_uiPass->m_params.resolveFrameBuffer = nullptr;
 
+      // The UI draws over the picture, so the picture has to be in the buffer the UI renders into. The
+      // copy is what brings it there; without one, the UI pass would draw over the forward pass's samples
+      // (MSAA) or over a frame the reflections never reached.
+      using Attachment = Framebuffer::Attachment;
+      if (compositeSource != nullptr && compositeSource != mainBuffer)
+      {
+        RenderTargetPtr sceneRt = compositeSource->GetColorAttachment(Attachment::ColorAttachment0);
+        RenderTargetPtr mainRt  = mainBuffer->GetColorAttachment(Attachment::ColorAttachment0);
+        if (sceneRt != nullptr && mainRt != nullptr)
+        {
+          renderer->CopyTexture(sceneRt, mainRt);
+        }
+      }
+
       // Draw resolved framebuffer on to msaa buffer if needed.
-      using Attachment                      = Framebuffer::Attachment;
       if (mainBuffer->IsMultiSampled() && sceneRenderer->m_resolvedFramebuffer)
       {
-        RenderTargetPtr rRT = sceneRenderer->m_resolvedFramebuffer->GetColorAttachment(Attachment::ColorAttachment0);
-        RenderTargetPtr mRT = mainBuffer->GetColorAttachment(Attachment::ColorAttachment0);
-        renderer->CopyTexture(rRT, mRT);
-
         m_uiPass->m_params.resolveFrameBuffer = sceneRenderer->m_resolvedFramebuffer;
       }
 
       m_passArray.push_back(m_uiPass);
       RenderPath::Render(renderer);
       m_passArray.clear();
-    }
 
-    // Continue from resolved buffer if msaa is enabled.
-    if (mainBuffer->IsMultiSampled() && sceneRenderer->m_resolvedFramebuffer)
-    {
-      mainBuffer = sceneRenderer->m_resolvedFramebuffer;
+      // Drawn over the picture, the UI is now part of it: the pass left scene and UI in the target it
+      // resolved into, or in the viewport's own buffer when there was nothing to resolve.
+      compositeSource = m_uiPass->m_params.resolveFrameBuffer != nullptr ? m_uiPass->m_params.resolveFrameBuffer
+                                                                        : mainBuffer;
     }
 
     // Post processings. The composite reads the rendered target and writes the window sized present
@@ -177,7 +190,7 @@ namespace ToolKit
     // up, and the blit below cannot do it - a blit copies at its source's size.
     PreparePresentTarget();
 
-    m_gammaPass->m_params.sourceFrameBuffer = mainBuffer;
+    m_gammaPass->m_params.sourceFrameBuffer = compositeSource;
     m_gammaPass->m_params.frameBuffer       = m_presentTarget;
     m_gammaPass->m_params.screenSize        = Vec2((float) m_presentSize.x, (float) m_presentSize.y);
     m_passArray.push_back(m_gammaPass);

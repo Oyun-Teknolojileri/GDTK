@@ -39,7 +39,10 @@ namespace ToolKit
     /** G buffer the reflection rays are marched against: world normal + linear depth + roughness. */
     RenderTargetPtr GNormalDepthBuffer = nullptr;
 
-    /** Scene color. Read through an internal single sample copy, composited back in place. */
+    /**
+     * Scene color, the input of the pass only. It is read through an internal single sample copy and
+     * never written: the composite goes to a target of the pass's own, see GetOutputFramebuffer.
+     */
     RenderTargetPtr ColorRt            = nullptr;
 
     CameraPtr Cam                      = nullptr;
@@ -67,10 +70,10 @@ namespace ToolKit
   };
 
   /**
-   * Screen space reflections. Marching a reflection ray per pixel against the g buffer and blending
-   * the hit color over the scene color. A miss leaves the pixel exactly as the forward pass shaded
-   * it, so the sky or the active environment volumes keep providing the reflection wherever screen
-   * space can not: background pixels, off screen rays and rough surfaces.
+   * Screen space reflections. Marching a reflection ray per pixel against the g buffer and compositing
+   * the hit color over the scene color into a target of the pass's own. A miss leaves the pixel exactly
+   * as the forward pass shaded it, so the sky or the active environment volumes keep providing the
+   * reflection wherever screen space can not: background pixels, off screen rays and rough surfaces.
    */
   class TK_API SsrPass : public Pass
   {
@@ -85,6 +88,22 @@ namespace ToolKit
     /** Populates the passive render state every requirement set of this pass shares. */
     void GatherRequirements(PassRequirements& reqs) override;
 
+    /**
+     * Where the composite of this pass goes: the frame's color with the reflections in it.
+     *
+     * A target of the pass's own, instead of the frame ColorRt names. Compositing back into that frame
+     * makes the pass read the very target it writes, and a driver that resolves a multisampled render to
+     * texture with a draw (Mali) can hand the copy a frame old content: whatever the previous frame left
+     * there then comes back as a reflection of itself, alternating frame by frame. With the composite in
+     * a target of its own the frame stays read only for the rest of the frame, and everything behind this
+     * pass reads this target instead.
+     *
+     * Null while the target has no picture of this frame in it: the first frames, where nothing has been
+     * sized yet, and a frame the pass skipped because its shader or its parameters were missing. A caller
+     * then has to fall back to the frame it gave the pass.
+     */
+    FramebufferPtr GetOutputFramebuffer() const;
+
    public:
     SsrPassParams m_params;
 
@@ -96,11 +115,18 @@ namespace ToolKit
     FullQuadPassPtr m_filterPass     = nullptr;
     ShaderPtr m_filterShader         = nullptr;
 
-    /** Single sample copy of the scene color: the pass reads it while writing ColorRt in place. */
+    /** Single sample copy of the scene color: the pass reads it while writing a target of its own. */
     RenderTargetPtr m_copyTexture    = nullptr;
 
     /** Reflection and its weight, produced by the trace phase and filtered by the resolve phase. */
     RenderTargetPtr m_traceTexture   = nullptr;
+
+    /** The color the resolve phase writes: the frame with the reflections composited in. */
+    RenderTargetPtr m_reflectionRt   = nullptr;
+    FramebufferPtr m_reflectionFb    = nullptr;
+
+    /** Set once the resolve phase left a composite of this frame in m_reflectionFb. */
+    bool m_outputWritten             = false;
 
     SsrPassDataBuffer m_passDataBuffer;
     bool m_passDataBufferInitialized = false;

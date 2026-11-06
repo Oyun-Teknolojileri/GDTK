@@ -159,18 +159,21 @@ namespace ToolKit
     // Forward pass
     m_passArray.push_back(m_forwardRenderPass);
 
+    // Bloom pass. It runs before the reflections on purpose: the reflection pass copies the shaded frame
+    // and marches its rays against that copy, so whatever is not in the frame when the copy is made is not
+    // in the mirror. Bloom adds the glow to the frame, the copy carries it into the reflection, and a
+    // bright window reflected in another window comes back glowing instead of flat.
+    if (m_params.postProcessSettings->GetBloomEnabledVal())
+    {
+      m_passArray.push_back(m_bloomPass);
+    }
+
     // Screen space reflections. Runs on the forward shaded color, right before the post process
     // chain, so a reflection miss simply keeps the sky / environment volume IBL the forward pass
     // already wrote. The g buffer it marches against comes from the pre process pass.
     if (m_params.postProcessSettings->GetSSREnabledVal())
     {
       m_passArray.push_back(m_ssrPass);
-    }
-
-    // Bloom pass
-    if (m_params.postProcessSettings->GetBloomEnabledVal())
-    {
-      m_passArray.push_back(m_bloomPass);
     }
 
     // Depth of field pass
@@ -1327,7 +1330,11 @@ namespace ToolKit
         settings.height = glm::max(1, settings.height / 2);
       }
 
-      m_forwardPreProcessPass->InitBuffers(settings.width, settings.height, settings.msaaCount);
+      // A backend that resolves a multisampled render to texture keeps the g buffer off the frame's depth
+      // attachment: two framebuffers writing that one attachment is what makes the frame alternate on
+      // Mali, see ForwardPreProcessPass::InitBuffers.
+      const bool shareDepth = !renderer->GetBackend()->UsesMultisampledRenderToTexture();
+      m_forwardPreProcessPass->InitBuffers(settings.width, settings.height, settings.msaaCount, shareDepth);
     }
 
     // Apply multi-sample resolve if needed.
@@ -1339,9 +1346,6 @@ namespace ToolKit
 
       m_resolvedFramebuffer->ReconstructIfNeeded(settings);
       m_forwardRenderPass->m_params.resolveFrameBuffer = m_resolvedFramebuffer;
-
-      m_bloomPass->m_params.FrameBuffer                = m_resolvedFramebuffer;
-      m_gammaTonemapFxaaPass->m_params.frameBuffer     = m_resolvedFramebuffer;
     }
   }
 
@@ -1823,67 +1827,75 @@ namespace ToolKit
     // is the project's own quality choice and is not masked here.
     m_ssaoPass->m_params.HalfResolution     = pps->GetSSAOHalfResolutionVal();
 
-    m_bloomPass->m_params.FrameBuffer       = m_params.MainFramebuffer;
+    // The single sample target the color chain starts from: the frame the forward pass resolved, or the
+    // frame itself when there is nothing to resolve. The post chain reads single sample textures, and an
+    // MSAA color RT fed to a sampler2D both trips VUID-RuntimeSpirv-samples-08725 and puts the result
+    // somewhere nothing behind it looks.
+    //
+    // The reflections copy this target and then composite into one of their own, and everything behind
+    // them follows that one instead, so this frame is never written again in the frame it was read in.
+    // A frame that is read and written in the same frame is the shape a driver can hand a stale copy, so
+    // the reflection composite sits on a target no other pass touches.
+    FramebufferPtr sceneColorFb =
+        m_params.MainFramebuffer->IsMultiSampled() ? m_resolvedFramebuffer : m_params.MainFramebuffer;
+
+    FramebufferPtr frameColorFb = sceneColorFb;
+    if (m_params.postProcessSettings->GetSSREnabledVal())
+    {
+      // Null until the pass has sized its target, which is the first frame it draws.
+      if (FramebufferPtr ssrOutput = m_ssrPass->GetOutputFramebuffer())
+      {
+        frameColorFb = ssrOutput;
+      }
+    }
+    m_frameColorFb = frameColorFb;
+
+    // Bloom runs before the reflections and writes the glow into the frame they copy, so a bright surface
+    // reflected in another one comes back glowing. That makes its target the scene color, not the frame's
+    // current one: the copy would otherwise carry a glow it never got.
+    m_bloomPass->m_params.FrameBuffer       = sceneColorFb;
     m_bloomPass->m_params.intensity         = pps->GetBloomIntensityVal();
     m_bloomPass->m_params.minThreshold      = pps->GetBloomThresholdVal();
     m_bloomPass->m_params.iterationCount    = pps->GetBloomIterationCountVal();
     m_bloomPass->m_params.radius            = pps->GetBloomRadiusVal();
     m_bloomPass->m_params.bicubicUpscale    = pps->GetBloomBicubicUpscaleVal();
 
-    // DoF runs after the forward pass's MSAA resolve, sitting on the same single-sample chain
-    // as Bloom and GammaTonemap. Feeding it the MSAA color RT directly would (a) trip
-    // VUID-RuntimeSpirv-samples-08725 (sampler2D fed an MSAA image) and (b) leave its output on
-    // the MSAA surface while subsequent passes read from the resolved one - i.e. DoF's effect
-    // would silently drop on the floor.
-    FramebufferPtr dofSourceFb =
-        m_params.MainFramebuffer->IsMultiSampled() ? m_resolvedFramebuffer : m_params.MainFramebuffer;
-    m_dofPass->m_params.ColorRt     = dofSourceFb->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
-
+    // DoF composites in place, so this is the target the frame's color is in from here on: the
+    // reflections' composite while they are enabled, the scene color otherwise.
+    m_dofPass->m_params.ColorRt     = frameColorFb->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
     m_dofPass->m_params.DepthRt     = m_forwardPreProcessPass->m_normalDepthRt;
     m_dofPass->m_params.focusPoint  = pps->GetFocusPointVal();
     m_dofPass->m_params.focusScale  = pps->GetFocusScaleVal();
     m_dofPass->m_params.blurQuality = pps->ParamDofBlurQuality().GetEnum<DoFQuality>();
 
-    // SSR composites into the same single sample color chain DoF and Bloom read from, and marches
-    // the rays against the pre process g buffer (normal + linear depth + roughness).
-    m_ssrPass->m_params.ColorRt              = dofSourceFb->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
-    m_ssrPass->m_params.GNormalDepthBuffer   = m_forwardPreProcessPass->m_normalDepthRt;
-    m_ssrPass->m_params.Cam                  = m_params.Cam;
-    m_ssrPass->m_params.Intensity            = pps->GetSSRIntensityVal();
-    m_ssrPass->m_params.MaxDistance          = pps->GetSSRMaxDistanceVal();
-    m_ssrPass->m_params.Thickness            = pps->GetSSRThicknessVal();
-    m_ssrPass->m_params.StepCount            = pps->GetSSRStepCountVal();
-    m_ssrPass->m_params.RoughnessCutoff      = pps->GetSSRRoughnessCutoffVal();
-    m_ssrPass->m_params.DebugView            = pps->GetSSRDebugViewVal();
-    m_ssrPass->m_params.DebugViewMode        = pps->GetSSRDebugViewModeVal();
+    // SSR reads the shaded frame and writes a target of its own, marching the rays against the pre process
+    // g buffer (normal + linear depth + roughness). Its ColorRt is the input only, never a render target.
+    m_ssrPass->m_params.ColorRt =
+        sceneColorFb->GetColorAttachment(Framebuffer::Attachment::ColorAttachment0);
+    m_ssrPass->m_params.GNormalDepthBuffer = m_forwardPreProcessPass->m_normalDepthRt;
+    m_ssrPass->m_params.Cam                = m_params.Cam;
+    m_ssrPass->m_params.Intensity          = pps->GetSSRIntensityVal();
+    m_ssrPass->m_params.MaxDistance        = pps->GetSSRMaxDistanceVal();
+    m_ssrPass->m_params.Thickness          = pps->GetSSRThicknessVal();
+    m_ssrPass->m_params.StepCount          = pps->GetSSRStepCountVal();
+    m_ssrPass->m_params.RoughnessCutoff    = pps->GetSSRRoughnessCutoffVal();
+    m_ssrPass->m_params.DebugView          = pps->GetSSRDebugViewVal();
+    m_ssrPass->m_params.DebugViewMode      = pps->GetSSRDebugViewModeVal();
 
     // Post Process Pass
     bool gammaNeeded                = GetRenderSystem()->IsGammaCorrectionNeeded();
     m_gammaTonemapFxaaPass->m_params.enableGammaCorrection = pps->GetGammaCorrectionEnabledVal() && gammaNeeded;
     m_gammaTonemapFxaaPass->m_params.enableFxaa            = pps->GetFXAAEnabledVal();
     m_gammaTonemapFxaaPass->m_params.enableTonemapping     = pps->GetTonemappingEnabledVal();
-    // GammaTonemapFxaa writes the final composited color. When MSAA is on, the rest of the
-    // post chain (Bloom, DoF) operates on the resolved (single-sample) buffer, so this pass
-    // must read from MainFramebuffer (where the forward pass wrote) and write to the
-    // resolved framebuffer that the editor will copy back. Don't override to MainFramebuffer
-    // when MSAA is on - that would clobber the resolve and leave editor with pre-tonemap colors.
-    m_gammaTonemapFxaaPass->m_params.frameBuffer           = m_params.MainFramebuffer;
+
+    // The tone curve composites in place, so it writes the frame's color where the frame's color already
+    // is: the reflections' target while they are enabled, the resolved frame otherwise.
+    m_gammaTonemapFxaaPass->m_params.frameBuffer           = frameColorFb;
     m_gammaTonemapFxaaPass->m_params.tonemapMethod         = pps->GetTonemapperModeVal().GetEnum<TonemapMethod>();
     m_gammaTonemapFxaaPass->m_params.gamma                 = pps->GetGammaVal();
 
     FramebufferSettings fbs                                = m_params.MainFramebuffer->GetSettings();
     m_gammaTonemapFxaaPass->m_params.screenSize            = Vec2(fbs.width, fbs.height);
-
-    // Final override: when MSAA is on, the post-process chain (Bloom + GammaTonemapFxaa) must
-    // operate on the resolved single-sample framebuffer, NOT the MSAA one. The earlier
-    // `m_params.MainFramebuffer` assignments below are the source-of-truth defaults; the
-    // MSAA branch in PreRender sets the resolve target, and we re-apply it here so the
-    // later assignments don't clobber it.
-    if (m_params.MainFramebuffer->IsMultiSampled())
-    {
-      m_bloomPass->m_params.FrameBuffer            = m_resolvedFramebuffer;
-      m_gammaTonemapFxaaPass->m_params.frameBuffer = m_resolvedFramebuffer;
-    }
   }
 
   bool ForwardSceneRenderPath::RequiresForwardPreProcessPass()

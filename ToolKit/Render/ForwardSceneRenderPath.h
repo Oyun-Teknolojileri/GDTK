@@ -65,6 +65,17 @@ namespace ToolKit
     void PreRender(Renderer* renderer) override;
     void PostRender(Renderer* renderer) override;
 
+    /**
+     * The framebuffer holding the frame's color when this path returns.
+     *
+     * The path does not always write the frame it is given. Screen space reflections composite into a
+     * target of their own, and everything behind them - depth of field, the tone curve - follows that
+     * target, so a host that composites the frame itself reads this instead of the viewport framebuffer,
+     * which still holds the shaded frame from before the reflections. Null before the first frame, when
+     * no pass has decided yet where the color lives.
+     */
+    FramebufferPtr GetOutputFramebuffer() const { return m_frameColorFb; }
+
    protected:
     void SetPassParams(Renderer* renderer);
     bool RequiresForwardPreProcessPass();
@@ -83,6 +94,13 @@ namespace ToolKit
     DoFPassPtr m_dofPass                             = nullptr;
     GammaTonemapFxaaPassPtr m_gammaTonemapFxaaPass   = nullptr;
     FramebufferPtr m_resolvedFramebuffer             = nullptr;
+
+    /**
+     * The target the frame's color is in at this point of the frame, and the one every color pass behind
+     * the reflections writes: the resolved frame by default, the reflections' own composite target while
+     * they are enabled. See GetOutputFramebuffer.
+     */
+    FramebufferPtr m_frameColorFb                    = nullptr;
 
    protected:
     /**
