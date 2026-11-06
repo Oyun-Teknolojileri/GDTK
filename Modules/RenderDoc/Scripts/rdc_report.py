@@ -97,16 +97,47 @@ def run(capture_path, out_dir, qrenderdoc, images=True, shaders=True, timeout=90
     if verbose:
         print("running: %s" % " ".join(command))
 
-    try:
-        completed = subprocess.run(
-            command, env=env, cwd=out_dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            timeout=timeout)
-        stdout = completed.stdout.decode("utf-8", "replace")
-        stderr = completed.stderr.decode("utf-8", "replace")
-    except subprocess.TimeoutExpired:
-        raise SystemExit("qrenderdoc did not finish within %d seconds. A large capture can need "
-                         "more time, pass --timeout to raise the limit." % timeout)
+    # The analyzer writes its status file when it is done and then asks qrenderdoc to quit, but the UI
+    # loop does not always end: a capture window that is open, a modal, or a slow teardown keeps the
+    # process alive with the report already on disk. Waiting for the process then burns the whole
+    # timeout for nothing, so the status file is what is waited on, and the process is stopped once it
+    # is there. A process that dies on its own is still handled - the status file decides, not the
+    # exit code.
+    process = subprocess.Popen(
+        command, env=env, cwd=out_dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
+    def _read_output():
+        try:
+            out, err = process.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            out, err = b"", b""
+        return out.decode("utf-8", "replace"), err.decode("utf-8", "replace")
+
+    while True:
+        if os.path.isfile(status_path):
+            # Give the writer a moment to finish closing the file before it is read.
+            time.sleep(0.25)
+            break
+
+        if process.poll() is not None:
+            break
+
+        if time.time() - started > timeout:
+            process.kill()
+            _read_output()
+            raise SystemExit("qrenderdoc did not finish within %d seconds. A large capture can need "
+                             "more time, pass --timeout to raise the limit." % timeout)
+
+        time.sleep(0.25)
+
+    if process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+
+    stdout, stderr = _read_output()
     elapsed = time.time() - started
 
     if verbose and stdout.strip():
@@ -118,7 +149,7 @@ def run(capture_path, out_dir, qrenderdoc, images=True, shaders=True, timeout=90
         raise SystemExit(
             "The analyzer produced no status file. qrenderdoc exited with %s after %.1fs.\n"
             "stdout:\n%s\nstderr:\n%s"
-            % (completed.returncode, elapsed, stdout.strip(), stderr.strip()))
+            % (process.returncode, elapsed, stdout.strip(), stderr.strip()))
 
     with open(status_path) as handle:
         status = json.load(handle)
