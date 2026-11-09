@@ -900,8 +900,26 @@ free of engine types, so it can be compiled and asserted on its own.
 
 `Animation::SampleTrack(keys, time, pos, rot, scale)` is the single sampling path of a node track:
 the runtime pose, root motion and the editor's dope sheet preview all call it, so the preview and
-playback cannot drift. Rotation uses `slerp` with an eased parameter whose end slopes are matched to
-the angular speed of the neighbouring segments, so no quaternion tangents are needed.
+playback cannot drift.
+
+**Rotation is four component curves**, the way Blender interpolates a quaternion property: a cubic
+segment runs `x` / `y` / `z` / `w` as four Hermites and normalises the result, and `Stepped` / `Linear`
+stay a hold and a plain `slerp`. Position and scale keep the local auto tangent of `AutoTangent`; the
+rotation components use the same one, clamped and flattened per component. Slerp with an eased
+parameter was what the engine did before, and it cannot be fixed by tuning: slerp keeps the angular
+*speed* continuous at a key but not its *direction*, because the segment before a key and the one after
+it are different geodesics, so the rotation axis jumps where they meet. On
+`PerformanceDemo/Resources/Meshes/roller.anim` (five Camera keys, all `Smooth`) that jump was 84 to 120
+degrees per key, 100 to 450 rad/s^2 of jerk - the hard hit a fly through showed between keys. Four
+component curves are C1 across a key, so the whole angular velocity vector stays continuous: the same
+keys measure 3 to 15 degrees of axis turn and about 7 to 12 rad/s^2. A two key track keeps the plain
+slerp, since there is no key between two segments and nothing to smooth.
+
+The cost of a sample is unchanged - a handful of dot products, no allocation, nothing solved over the
+track - which is deliberate. Blender's own formulation also solves the tangents of the whole track with
+a tridiagonal system for continuous acceleration; that alignment lives on the
+`feature/blender-like-key-interpolation` branch and was not merged, because the per segment cost of the
+solve is not worth it when the rotation fix is what removes the visible hit.
 
 Key modes are node track only. The skeleton path (`Animation::GetPose(SkeletonComponentPtr)`) and the
 animation data texture that feeds GPU skinning are still straight two key interpolation, so a mode is

@@ -312,6 +312,9 @@ three components, which would freeze an axis that is still moving.)
 
 ### 5.4 Rotation: slerp with an angular speed matched parameter
 
+> **Replaced by 11.** Slerp keeps the angular speed continuous but not its direction, so the axis
+> jumps at a key; rotation is now four component curves.
+
 The parameter of the slerp is eased instead of linear, and the easing is derived from the
 **angular** budget of the neighbouring segments, so the angular velocity is continuous at the key
 without touching quaternion tangents:
@@ -508,3 +511,50 @@ end key set to `Flat`, and that is the whole feature (decisions 8 and 9).
    flag, the button and the preset library all stay out (decision 9).
 5. **Clip ends under `Smooth`:** the first and last key keep the single neighbour's secant (5.3),
    so `Smooth` alone never eases the ends -- which is exactly why `Flat` exists.
+
+## 11. Rotation: four component curves (landed)
+
+The eased slerp of 5.4 was replaced. It only ever controlled the angular *speed*: the segment before a
+key and the segment after it are different geodesics, so the rotation axis - and with it the whole
+angular velocity vector - jumps where they meet, no matter how the parameter is shaped.
+
+Measured on `PerformanceDemo/Resources/Meshes/roller.anim`, five Camera keys at frames 0 / 20 / 41 / 60
+/ 81, all `Smooth`. The columns are the angle the angular velocity vector turns by at a key, and the
+size of the vector's change over the sampling window (the jerk a viewer feels):
+
+| key | eased slerp: axis turn | eased slerp: jerk | four curves: axis turn | four curves: jerk |
+|---|---|---|---|---|
+| 20 | 89.2 deg | 257 rad/s^2 | 3.5 deg | 7.3 rad/s^2 |
+| 41 | 119.9 deg | 376 rad/s^2 | 104.5 deg | 12.1 rad/s^2 |
+| 60 | 83.6 deg | 100 rad/s^2 | 15.3 deg | 9.7 rad/s^2 |
+
+The key at frame 41 still turns the axis, but at 0.04 rad/s: all four components peak there, so the
+auto tangent flattens every component and the rotation comes to a near stop, which is why the jerk
+stays low.
+
+What was implemented (`SampleQuat` in `KeyInterpolation.h`):
+
+- A `Curve` segment evaluates `x` / `y` / `z` / `w` as four Hermites and normalises the result. The
+  end key is negated into the segment's hemisphere first, and that sign is applied to its tangent too,
+  so the curve and its derivative still describe the same rotation.
+- Each component takes the **local** auto tangent the position and scale channels use (`AutoTangent`):
+  average of the two neighbouring secants, limited so the segment cannot overshoot, flattened where the
+  component peaks. A key that is `Flat` pins its component tangents to zero.
+- A two key track stays a plain `slerp`. There is no key between two segments, so there is no axis jump
+  to remove, and keeping slerp keeps old two key clips playing exactly as they did.
+- `Hold` and `Straight` segments are untouched, so a clip of `Linear` keys is bit identical.
+
+Rejected: Blender's own formulation, which also solves the tangents of the whole track with a
+tridiagonal system for continuous acceleration (and eases the first and last key). It produces a
+slightly smoother curve (axis turn 3.2 / 99.7 / 10.3 degrees on the same clip, i.e. within a couple of
+degrees of the four component curves here) but every sample would pay for a solve over the track. It
+lives on `feature/blender-like-key-interpolation` and stays unmerged.
+
+The eased slerp helpers left the header with the formulation (`AngularSpeed`, `EaseSlope`,
+`EaseParameter`, `ClampEaseSlope`, `LimitAngularSpeed`, `QuatAngle`). `QuatRotationVector` replaces the
+angle helper: its length is the arc speed and its direction is the axis, which is what the check
+program measures.
+
+The graph: `Intermediate/anim_rotation_samples.cpp` samples the Camera track of `roller.anim` (the
+engine, plus the eased slerp it replaced) and `Intermediate/plot_roller_rotation.py` draws the euler
+readout, the angular speed, the angular acceleration and the axis turn per key.
