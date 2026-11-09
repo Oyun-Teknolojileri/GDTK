@@ -1469,7 +1469,7 @@ and a game may still want to capture: `RenderDocCapture::Init` plus the two fram
 hooks and `Shutdown` are all a host needs, and `ToolKit::RequestFrameCapture()`
 then works there exactly as it does in the editor. The game template deliberately
 does not call them - not every game wants capture - so opting in is documented in
-`Modules/RenderDoc/Scripts/README.md` rather than baked into every project. The
+`Modules/RenderDoc/README.md` rather than baked into every project. The
 engine knows nothing about projects, so `Init()` takes two callbacks: one that
 answers the capture directory (resolved per capture, so a project switch moves it)
 and one that returns the extra sidecar fields. The editor answers
@@ -1539,6 +1539,15 @@ with RenderDoc absent the editor still registers its commands (so `CaptureStatus
 can explain), reports false and every other entry point does nothing, which is
 what a normal start looks like. In a game the same call reports false and
 `RequestFrameCapture()` stays a no-op.
+
+**A GL capture needs a frame without legacy fixed function.** RenderDoc drops the whole GL device
+when it sees a call it cannot hook (`glMatrixMode`, `glOrtho`, the client state array functions):
+every capture after that fails with "Couldn't find matching frame capturer". SDL's accelerated
+window surface path is exactly such a caller, and the editor's splash screen was using it, which
+made editor captures fail on a machine where SDL chose that renderer. `SplashScreen::Run()` pins
+`SDL_HINT_FRAMEBUFFER_ACCELERATION` to `0` for that reason - the splash blits in software, and the
+GL device survives. Symptoms to look for: `RenderDoc refused the capture` in the host log and
+`Unsupported function ...` in `/tmp/RenderDoc/RenderDoc_<stamp>.log`.
 
 Four ways to ask for a capture, all funnelling into one queue:
 
@@ -1971,7 +1980,7 @@ When writing/editing any `.h`/`.cpp` in this repo:
 | RenderDoc in-application API header (vendored) | `Dependency/utilities/renderdoc_app.h` |
 | Editor API for modules (console commands, console output) | `Editor/Source/EditorApi.h` |
 | Frame capture request hook (game code) | `ToolKit/Source/FrameCapture.h` |
-| Capture report tool (.rdc -> json / markdown / PNGs) | `Modules/RenderDoc/Scripts/README.md` |
+| Capture and its report tool (capture -> .rdc -> json / markdown / PNGs) | `Modules/RenderDoc/README.md` |
 | Host / platform glue (exec paths, shortcuts, app icon) | `ToolKit/Common/PlatformHelper.h` |
 | Workspace (project and workspace management) | `Modules/Workspace/Source/Workspace.h` |
 | Build deps | `BuildScripts/build_dependencies.py` |

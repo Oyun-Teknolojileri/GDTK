@@ -427,6 +427,68 @@ If you find a new third exception, document it here with the failing symptom.
 
 ---
 
+## Frame Capture (RenderDoc)
+
+When a rendering problem is not explainable from the code - wrong colour, missing pass output,
+a texture bound where another belongs - capture a frame instead of guessing. The module is
+described in full in `Modules/RenderDoc/README.md`; this is the workflow and the pitfalls.
+
+### Taking a capture (editor)
+
+RenderDoc has to be in the process **before** the graphics device is created, so start the
+editor through it (`renderdoccmd inject <pid>` afterwards leaves the API unbound):
+
+```bash
+cd <engine root>
+renderdoccmd capture -w -d BinDebug \
+  -c "$HOME/Documents/TKWorkspace/<Project>/Captures/tk" \
+  "$PWD/BinDebug/Editor"
+```
+
+Then ask for a capture - the request file is the one an agent can drive:
+
+```bash
+printf 'tk_single 1' > "$HOME/Documents/TKWorkspace/<Project>/Captures/request"
+```
+
+Captures land in `<workspace>/<project>/Captures/` as `<label>_<timestamp>_capture.rdc` plus a
+`.json` sidecar and `last_capture.json`. Inside the editor, the same queue is reachable with the
+console commands `CaptureFrame <label> [frames]`, `CaptureStatus` and `CaptureOpen`, or the
+**Modules -> RenderDoc** menu. `frameCount` (clamped to 1..60) spans several frames in one file.
+
+### Reading it
+
+```bash
+python3 Modules/RenderDoc/Scripts/rdc_report.py <capture>.rdc [--out DIR] [--no-images]
+```
+
+`capture.md` is the file to open first: a frame summary, the pass table (the engine's debug marker
+regions, i.e. the frame's render graph) with one PNG per pass, a section per pass with its targets,
+shaders and sampled textures, and mechanical findings. Compare the pass images in recording order -
+the first pass whose output is wrong is where the frame goes bad. `capture.json` has the full model
+when a machine is reading it rather than a human.
+
+`--no-images` skips the replay-heavy image export; a Debug frame of `unity-city.scene` is around
+105 MB and the report itself takes 10-20 s for a few thousand draws.
+
+### Pitfalls
+
+- **`RenderDoc refused the capture. Was a frame presented inside it?`** means RenderDoc has no
+  frame capturer left, which happens when the process called legacy fixed-function GL
+  (`glMatrixMode`, `glOrtho`, client state arrays) - nothing in the engine does, but SDL's
+  accelerated window surface path does, and the splash screen used it. `SplashScreen::Run()` pins
+  `SDL_HINT_FRAMEBUFFER_ACCELERATION` to `0` for exactly this reason; if the symptom returns, check
+  `/tmp/RenderDoc/RenderDoc_<stamp>.log` for `Unsupported function ... used` and look for a new
+  surface or renderer based path.
+- **A capture has to bracket the whole frame, present included.** `RenderDoc::BeginFrame()` /
+  `EndFrame()` already do; a pass must never open a capture of its own.
+- **A game host opts in explicitly** (`RenderDocCapture::Init` in `PreInit`, `BeginFrame` /
+  `EndFrame` around the frame, `Shutdown` on exit). The game template does not call them, so a game
+  started without that wiring captures only through RenderDoc's own hotkey, with no sidecar.
+- **Replay needs a GPU** of the same family as the capture; a headless box cannot produce images.
+
+---
+
 ## Object Lifetime & Shutdown Order
 
 ToolKit owns every manager and the graphics backend inside the `Main` singleton. Host
