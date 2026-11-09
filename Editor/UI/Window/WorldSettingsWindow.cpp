@@ -238,6 +238,26 @@ namespace ToolKit
           pps->SetSSRRoughnessCutoffVal(ssrRoughnessCutoff);
         }
 
+        // The three fades the composite applies. Each one is where a reflection stop being trustworthy, so
+        // they trade reflection area for the artifacts at the edges of that area.
+        float ssrEdgeFade = pps->GetSSREdgeFadeVal();
+        if (ImGui::DragFloat("Edge Fade", &ssrEdgeFade, 0.005f, 0.0f, 0.5f))
+        {
+          pps->SetSSREdgeFadeVal(ssrEdgeFade);
+        }
+
+        float ssrScreenFadeStart = pps->GetSSRScreenFadeStartVal();
+        if (ImGui::DragFloat("Screen Fade Start", &ssrScreenFadeStart, 0.01f, 0.0f, 0.95f))
+        {
+          pps->SetSSRScreenFadeStartVal(ssrScreenFadeStart);
+        }
+
+        float ssrRangeFadeStart = pps->GetSSRRangeFadeStartVal();
+        if (ImGui::DragFloat("Range Fade Start", &ssrRangeFadeStart, 0.01f, 0.0f, 0.95f))
+        {
+          pps->SetSSRRangeFadeStartVal(ssrRangeFadeStart);
+        }
+
         bool ssrDebugView = pps->GetSSRDebugViewVal();
         if (ImGui::Checkbox("Debug View##ssr", &ssrDebugView))
         {

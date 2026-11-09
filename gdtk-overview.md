@@ -360,6 +360,15 @@ host that composites the frame itself all follow the reflection target instead. 
 framebuffer it was handed - a host that reads the viewport framebuffer after this path gets the frame from
 before the reflections.
 
+The step count selects *density*, never reach: the shader sizes a step so that the requested count crosses
+the screen diagonal, and the loop bound is a compile time `SSR_STEP_COUNT` variant from {8, 16, 32, 64}
+(`SsrPass::PreRender` picks the variant, then hands the count the bound can honor). The two disagreeing is
+what made a higher count shorten the reflections instead of refining them - `Shader::Init` has to run before
+`SetDefine`, because Init is what builds the define selection. The three fades around that march are settings
+now (`SSREdgeFade`, `SSRScreenFadeStart`, `SSRRangeFadeStart`, in `SsrPassData.fades`): the screen border
+margin, where the fade along the ray's screen length starts (as a fraction of the reachable length), and
+where the hit distance fade starts (as a fraction of `SSRMaxDistance`).
+
 `SSRDebugView` / `SSRDebugViewMode` (Post Processing settings) switch the pass to a debug view:
 reflection, confidence, mip level, scene depth, hit uv, ray length or hit error. The resolve phase hands
 debug views through unfiltered.

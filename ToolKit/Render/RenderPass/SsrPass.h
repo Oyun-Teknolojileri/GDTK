@@ -27,9 +27,11 @@ namespace ToolKit
     Vec4 params;
     /** .xy = 1 / size (texel size), .zw = size in pixels. */
     Vec4 screenParams;
-    /** .x = debug view, .y = march step count (used exactly as requested, never rounded),
+    /** .x = debug view, .y = march step count (the requested count clamped to the loop bound),
      *  .z = debug view mode (see SSR_DEBUG_* in ssrFrag.shader). */
     Vec4 flags;
+    /** .x = screen border fade, .y = screen length fade start, .z = hit distance fade start. */
+    Vec4 fades;
   };
 
   typedef GpuBufferBase<SsrPassDataLayout> SsrPassDataBuffer;
@@ -61,6 +63,15 @@ namespace ToolKit
 
     /** Surfaces rougher than this keep the environment / sky reflection only. */
     float RoughnessCutoff              = 0.6f;
+
+    /** Screen border the reflections fade out across, as a fraction of the frame's width plus height. */
+    float EdgeFade                     = 0.05f;
+
+    /** Where the fade along the ray's screen length starts, as a fraction of the length it can reach. */
+    float ScreenFadeStart              = 0.5f;
+
+    /** Where the fade along the hit distance starts, as a fraction of MaxDistance. */
+    float RangeFadeStart               = 0.6f;
 
     /** Output only what this pass contributes, instead of compositing it over the scene color. */
     bool DebugView                     = false;

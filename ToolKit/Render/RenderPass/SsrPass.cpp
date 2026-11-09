@@ -193,6 +193,10 @@ namespace ToolKit
     m_passDataBuffer.m_data.flags =
         Vec4(m_params.DebugView ? 1.0f : 0.0f, float(marchedSteps), float(m_params.DebugViewMode), 0.0f);
 
+    // The three fades, each with the fraction it starts at. They live in the pass data rather than in the
+    // shader so the border and the two lengths can be tuned per project without a recompile.
+    m_passDataBuffer.m_data.fades = Vec4(m_params.EdgeFade, m_params.ScreenFadeStart, m_params.RangeFadeStart, 0.0f);
+
     // Trace target: the reflection and its weight, at the scene resolution. The resolve phase reads it
     // back and composites, which is what lets the filter spread the reflection past the silhouettes it
     // can not see through.

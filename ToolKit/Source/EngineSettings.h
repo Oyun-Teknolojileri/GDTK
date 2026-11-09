@@ -369,6 +369,22 @@ namespace ToolKit
     TKDeclareParam(float, SSRThickness);
     TKDeclareParam(int, SSRStepCount);
     TKDeclareParam(float, SSRRoughnessCutoff);
+    /**
+     * Width of the screen border the reflections fade out across, as a fraction of the frame's width plus
+     * height. The depth buffer stops holding the geometry a ray needs at the border, so a hit there is not
+     * worth trusting.
+     */
+    TKDeclareParam(float, SSREdgeFade);
+    /**
+     * Where the fade along the ray's screen length starts, as a fraction of the length the march can reach.
+     * The last reachable pixel of a ray ends in a hard edge without it.
+     */
+    TKDeclareParam(float, SSRScreenFadeStart);
+    /**
+     * Where the fade along the hit distance starts, as a fraction of SSRMaxDistance. Distance is the length
+     * the ray travelled in view space, so this keeps the far end of the range from ending in a hard edge.
+     */
+    TKDeclareParam(float, SSRRangeFadeStart);
     TKDeclareParam(bool, SSRDebugView);
     TKDeclareParam(int, SSRDebugViewMode);
 

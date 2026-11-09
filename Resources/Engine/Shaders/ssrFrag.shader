@@ -105,7 +105,8 @@ float InterleavedGradientNoise(vec2 pixel)
 // geometry the ray would need.
 float EdgeFade(vec2 uv)
 {
-	vec2 margin = ssrPass.screenParams.xy * (ssrPass.screenParams.z + ssrPass.screenParams.w) * 0.05;
+	vec2 margin = ssrPass.screenParams.xy * (ssrPass.screenParams.z + ssrPass.screenParams.w) *
+	              max(ssrPass.fades.x, 0.0);
 	vec2 dist   = min(uv, vec2(1.0) - uv);
 	return smoothstep(0.0, margin.x, dist.x) * smoothstep(0.0, margin.y, dist.y);
 }
@@ -443,10 +444,14 @@ void main()
 	// The march can only reach `stepCount * stepPixels` pixels, and past that the pixel keeps the
 	// forward shaded environment reflection. Fading towards that limit is what keeps the last reachable
 	// row from ending in a hard edge: without it a hit sits directly next to a miss, which is a visible
-	// cut in the middle of the floor.
-	float coverage   = stepCount * stepPixels;
-	float screenFade = 1.0 - smoothstep(coverage * 0.5, coverage, rayPixels);
-	float rangeFade  = 1.0 - smoothstep(ssrPass.params.y * 0.6, ssrPass.params.y, hitDistance);
+	// cut in the middle of the floor. Where each fade starts is a setting, so both are kept off the
+	// unreachable end: a start equal to the limit is a smoothstep between two equal edges, undefined.
+	float coverage         = stepCount * stepPixels;
+	float screenFadeStart  = clamp(ssrPass.fades.y, 0.0, 0.95);
+	float rangeFadeStart   = clamp(ssrPass.fades.z, 0.0, 0.95);
+
+	float screenFade = 1.0 - smoothstep(coverage * screenFadeStart, coverage, rayPixels);
+	float rangeFade  = 1.0 - smoothstep(ssrPass.params.y * rangeFadeStart, ssrPass.params.y, hitDistance);
 
 	// No fade on the incidence angle. A shallow surface is exactly where a reflection is wanted, and a
 	// threshold there is a threshold on a camera dependent value: lowering the camera puts a large part

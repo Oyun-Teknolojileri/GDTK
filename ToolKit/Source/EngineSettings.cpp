@@ -289,8 +289,13 @@ namespace ToolKit
     SSRIntensity_Define(0.5f, "PostProcessingSettings", 0, 0, 0);
     SSRMaxDistance_Define(50.0f, "PostProcessingSettings", 0, 0, 0);
     SSRThickness_Define(0.4f, "PostProcessingSettings", 0, 0, 0);
-    SSRStepCount_Define(256, "PostProcessingSettings", 0, 0, 0);
+    // The widest loop bound the shader has a variant for. A larger count used to make the shader divide the
+    // screen into more steps than the loop could walk, which cut the reflections short.
+    SSRStepCount_Define(64, "PostProcessingSettings", 0, 0, 0);
     SSRRoughnessCutoff_Define(0.6f, "PostProcessingSettings", 0, 0, 0);
+    SSREdgeFade_Define(0.05f, "PostProcessingSettings", 0, 0, 0);
+    SSRScreenFadeStart_Define(0.5f, "PostProcessingSettings", 0, 0, 0);
+    SSRRangeFadeStart_Define(0.6f, "PostProcessingSettings", 0, 0, 0);
     SSRDebugView_Define(false, "PostProcessingSettings", 0, 0, 0);
     SSRDebugViewMode_Define(0, "PostProcessingSettings", 0, 0, 0);
 
