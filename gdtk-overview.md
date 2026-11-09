@@ -1340,9 +1340,18 @@ Model:
   lowest frame of the group so nothing lands before frame 0, and the whole move is one undo step.
   `Delete` removes the set the same way, and one ghost marker per key shows where a bulk move lands.
 - The sheet area has two views, switched by the `Curves` button (it always names the view it
-  switches to). The curve view is **read only**: the name column lists the transform tracks and picks
-  one, and the lane area plots three bands -- translation, rotation in degrees, scale -- each with the
-  x / y / z curves of that track and its own value range, so lengths and angles do not share a scale.
+  switches to). The curve view is **read only**. Its name column is a tree: one row per transform
+  track, with a check box that plots that track and an arrow that unfolds it into one row per
+  transform group (`Translation`, `Rotation (deg)`, `Scale`), each with a check box of its own. A
+  track's box stands for its three groups -- it reads as a dash while only some of them are checked --
+  and a group row plots just that group. Everything that is checked is drawn **in one area, overlaid**:
+  there are no per channel strips, so two objects, or a translation and a scale curve, read against
+  each other. Each checked group takes three colours in a row from a nine colour palette (the first
+  three are x / y / z, the colours the sheet always plotted one group with), and a legend in the
+  plot's top right names the track, the group and the value range it is mapped to.
+  `Normalize` (on by default) maps every group onto the full height of the plot with its own value
+  range, so lengths, degrees and scale factors are all readable at once; off, the plotted groups share
+  one auto range and the axis is labelled with it, which is what comparing their values needs.
   The pose is sampled through `Animation::SampleTrack`, the call the preview plays, so the shape shows
   what the key modes do: Stepped holds, Smooth blends through the key, Flat eases into it. Rotation is
   read out as euler degrees and made continuous with the sample before it (`ContinuousEuler`): the
@@ -1350,9 +1359,10 @@ Model:
   previous sample is taken. A track that sits at yaw +- 90 degrees stays ill conditioned there, because
   pitch and roll are not separately defined at that orientation. The motion itself is quaternion and
   gimbal free, only the three angle readout has that singularity.
-  The timeline (`Ctrl+wheel` zoom, `Shift+wheel` pan, scrub, playhead) is shared with the lanes, and
-  the frame under the pointer is read out in a tooltip. Nothing is editable here and parameter tracks
-  are not plotted.
+  The timeline (`Ctrl+wheel` zoom, `Shift+wheel` pan, scrub, playhead) is shared with the lanes, a
+  plain wheel scrolls the tree rows, and the frame under the pointer is read out in a tooltip that
+  lists the value of every plotted curve. The check boxes and the unfolded rows belong to the clip and
+  are reset when another clip is bound. Nothing is editable here and parameter tracks are not plotted.
 - `K` also works from the editor viewport (`EditorViewport::DispatchSignals`), which keys the
   selected entities at the sheet's playhead through `App::GetDopeSheet()`; the frame and the clip
   live in the sheet, so the shortcut reports through the status bar when the sheet is not open.
