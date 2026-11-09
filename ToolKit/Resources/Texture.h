@@ -31,7 +31,18 @@ namespace ToolKit
     bool GenerateMipMap         = false; //!< Generates mipmaps for the texture automatically.
     bool SwizzleAlphaToOne      = false; //!< Sets the alpha channel to 1.0 when sampled from the texture.
 
-    bool operator==(const TextureSettings& other) const { return memcmp(this, &other, sizeof(TextureSettings)) == 0; }
+    /**
+     * Compares the settings field by field, not byte for byte. Trailing padding is never assigned, so a byte
+     * comparison can report two copies that agree in every field as different - and a render target that
+     * reconstructs itself on that comparison replaces its gpu texture under a handle already handed out.
+     */
+    bool operator==(const TextureSettings& other) const
+    {
+      return Target == other.Target && WarpS == other.WarpS && WarpT == other.WarpT && WarpR == other.WarpR &&
+             MinFilter == other.MinFilter && MagFilter == other.MagFilter && InternalFormat == other.InternalFormat &&
+             Format == other.Format && Type == other.Type && msaaCount == other.msaaCount && Layers == other.Layers &&
+             GenerateMipMap == other.GenerateMipMap && SwizzleAlphaToOne == other.SwizzleAlphaToOne;
+    }
 
     bool operator!=(const TextureSettings& other) const { return !(*this == other); }
   };

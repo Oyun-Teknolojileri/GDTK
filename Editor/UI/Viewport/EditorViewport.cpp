@@ -115,6 +115,7 @@ namespace ToolKit
       {
         UpdateContentArea();
         ComitResize();
+
         UpdateWindow();
         HandleStates();
         HandleDrop();
@@ -676,31 +677,49 @@ namespace ToolKit
       m_lastMousePosRelContentArea = absMousePos - m_contentAreaMin;
     }
 
-    uint64 EditorViewport::GetImGuiTextureId() const
+    uint64 EditorViewport::GetImGuiTextureId()
     {
       // ImGui samples m_renderTarget within the same cb after the render task's FinishPass -
       // within-cb subpass deps handle the layout / write->read transition. Cross-cb hazards
       // are eliminated by FRAMES_IN_FLIGHT=1 in the swapchain.
-      TexturePtr texture = m_renderTarget;
-      if (texture != nullptr && texture->IsMultiSampled())
+      const RenderTargetPtr target = m_renderTarget;
+
+      // What this frame's own target can show. A single sample one is drawn straight: this frame's render
+      // task fills it, and the handle recorded here names the target it fills.
+      TexturePtr texture = nullptr;
+      if (target != nullptr && !target->IsMultiSampled())
       {
-        // MSAA: ImGui can only sample the resolved (single-sample) attachment.
-        if (TexturePtr resolved = texture->GetResolvedTexture())
+        texture = target;
+      }
+      else if (target != nullptr)
+      {
+        // A multisampled target is only sampleable through its resolved attachment, and a resize builds both
+        // from scratch. The resolve that fills it runs later in this frame, so the target is asked for here:
+        // the handle recorded below then names the texture that resolve writes, and the viewport shows the
+        // frame it is drawing instead of the one from before the resize.
+        texture = target->GetResolvedTexture();
+        if (texture == nullptr && m_lastPresentedTexture != nullptr && m_editorRenderer != nullptr)
         {
-          texture = resolved;
+          texture = m_editorRenderer->PrepareViewportResolveTarget(target);
         }
-        else
-        {
-          // TODO: We should provide a fallback image ( previous resolved image ) if resolved image is not ready.
-          // This would look much better than black screen.
-          texture = GetTextureManager()->GetBlackTexture();
-        }
+      }
+
+      // The frames of a resize have nothing of their own to show: a multisampled viewport has no resolve
+      // target yet, and a single sample one is drawn straight only once it has been drawn into. The image
+      // the viewport presented last stands in, scaled to the new area, instead of the clear color for the
+      // length of a drag. It is held here because the draw list carries only the handle, and the target it
+      // came from may be released before that list is rendered.
+      if (texture == nullptr)
+      {
+        texture = m_lastPresentedTexture;
       }
 
       if (texture == nullptr)
       {
         texture = GetTextureManager()->GetBlackTexture();
       }
+
+      m_lastPresentedTexture = texture;
 
       return EditorImGuiTextureCache::Acquire(texture);
     }

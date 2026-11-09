@@ -62,6 +62,19 @@ namespace ToolKit
       void PreRender(Renderer* renderer) override;
       void PostRender(Renderer* renderer) override;
 
+      /**
+       * Builds the single sample target the viewport's frames are resolved into, sized to the viewport's
+       * render target, and assigns it to that target as its resolved texture.
+       *
+       * The viewport calls this from the resize, while it is recording the frame's image - earlier than the
+       * resolve that fills it, which is the point: the handle recorded there is what ImGui samples when the
+       * frame is submitted, so the target it names has to exist and has to be the one this frame's resolve
+       * writes. Idempotent, a matching target is left alone.
+       * @param viewportColor The viewport's render target, a multisampled one to resolve.
+       * @return The resolved target, or null when there is nothing to resolve.
+       */
+      RenderTargetPtr PrepareViewportResolveTarget(RenderTargetPtr viewportColor);
+
      private:
       void SetLitMode(Renderer* renderer, EditorLitMode mode);
       void InitRenderer();

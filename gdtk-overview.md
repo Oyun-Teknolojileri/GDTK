@@ -1051,6 +1051,19 @@ Standard projection camera. Fov, near, far, aspect, orthographic, is2D. `SetLens
 
 `EditorViewport` (Editor/) + `EditorViewport2d` are editor versions with gizmos, picking, etc.
 
+The image an editor viewport shows for a frame is recorded while the UI runs and rendered by the render task
+that follows it, so the texture ImGui samples has to exist before that task runs.
+`EditorViewport::GetImGuiTextureId` returns the resolved attachment of the viewport's multisampled target,
+and on the frame a resize replaced that target it asks `EditorRenderer::PrepareViewportResolveTarget` for
+one, which builds it and assigns it as the target's resolved texture right there. That is what keeps a
+resizing viewport showing the frame it is drawing, at the new size, instead of the black texture the old
+code fell back to, or the frame from before the resize stretched over the new area. Nothing may rebuild the
+target afterwards: its handle is already in the draw list, which is why the resolve target is only created
+when it is missing.
+`FramebufferSettings` and `TextureSettings` compare field by field for the same reason - the byte comparison
+they used to do also compared the padding their layout leaves, so two copies equal in every field could
+report as different and make `ReconstructIfNeeded` replace a target under a handle already handed out.
+
 `SwapCamera` for swapping attached camera (preserves ID).
 
 ### 8.3 GameRenderer (GameRenderer.h)

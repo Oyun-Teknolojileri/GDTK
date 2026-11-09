@@ -251,10 +251,11 @@ namespace ToolKit
       // Finally resolve the multi sampled main buffer if needed.
       if (mainBuffer->IsMultiSampled())
       {
-        FramebufferSettings settings = mainBuffer->GetSettings();
-        settings.msaaCount           = MsaaSampleCount::x0;
-        m_resolvedFramebuffer->ReconstructIfNeeded(settings);
-        renderer->ResolveFramebuffer(mainBuffer, m_resolvedFramebuffer, {0});
+        using Attachment = Framebuffer::Attachment;
+        if (PrepareViewportResolveTarget(mainBuffer->GetColorAttachment(Attachment::ColorAttachment0)))
+        {
+          renderer->ResolveFramebuffer(mainBuffer, m_resolvedFramebuffer, {0});
+        }
       }
 
       // We need to fill the alpha channel with one, imgui insist on blending alpha with window background.
@@ -553,6 +554,41 @@ namespace ToolKit
       m_outlinePass         = MakeNewPtr<OutlinePass>();
       m_skipFramePass       = MakeNewPtr<FullQuadPass>();
       m_resolvedFramebuffer = MakeNewPtr<Framebuffer>();
+    }
+
+    RenderTargetPtr EditorRenderer::PrepareViewportResolveTarget(RenderTargetPtr viewportColor)
+    {
+      using Attachment = Framebuffer::Attachment;
+
+      if (viewportColor == nullptr || !viewportColor->IsMultiSampled())
+      {
+        return nullptr;
+      }
+
+      const int width  = viewportColor->m_width;
+      const int height = viewportColor->m_height;
+
+      // The frame the viewport just built, at the size the resolve has to write. Nothing here may replace the
+      // color attachment once it exists: the handle ImGui already recorded names it, so a reconstruction
+      // between the two would leave that handle pointing at a texture nothing writes.
+      m_resolvedFramebuffer->ReconstructIfNeeded({width, height, false, true, MsaaSampleCount::x0});
+
+      RenderTargetPtr resolvedRt = m_resolvedFramebuffer->GetColorAttachment(Attachment::ColorAttachment0);
+      if (resolvedRt == nullptr)
+      {
+        // Same target the resolve builds for itself when it finds none: the viewport's format without the
+        // samples. Built here, in the frame the image is recorded, it can be sampled above.
+        TextureSettings rtSettings = viewportColor->Settings();
+        rtSettings.msaaCount       = MsaaSampleCount::x0;
+
+        resolvedRt                 = MakeNewPtr<RenderTarget>();
+        resolvedRt->ReconstructIfNeeded(width, height, &rtSettings);
+
+        m_resolvedFramebuffer->SetColorAttachment(Attachment::ColorAttachment0, resolvedRt);
+      }
+
+      viewportColor->m_resolvedTexture = resolvedRt;
+      return resolvedRt;
     }
 
     void EditorRenderer::OutlineSelecteds(Renderer* renderer)
