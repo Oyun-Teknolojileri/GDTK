@@ -105,10 +105,16 @@ namespace ToolKit
       return;
     }
 
-    // The step count is a compile time loop bound, so the variant has to be selected before the first
-    // compile. Setting it afterwards left the first Init with no SSR_STEP_COUNT chosen at all: the shader
-    // was never built, m_gpuData stayed null, and the pass reported a shader that "did not compile" while
-    // the offline compiler builds the same source without a complaint.
+    // Init first: it is what builds the define selection SetDefine edits, so a SetDefine that runs before it
+    // fails with "Initialize the shader before setting a value for a define" and leaves the shader on its
+    // first variant. The step count below was stored as if it had been applied, so the pass never asked
+    // again, and the march ran the first variant's loop bound while the shader divided the screen by the
+    // requested count: at 64 steps the reflection reached an eighth of the way to the screen edge and the
+    // surfaces looked unreflective, at 8 it covered the whole screen. Init also keeps the rest of this
+    // ordering: a shader with defines sets up its variants here and compiles them on demand, so the define
+    // is still selected before the first compile.
+    m_ssrShader->Init();
+
     const int steps    = glm::clamp(m_params.StepCount, 1, m_maxStepCount);
     const int maxSteps = ClampMaxSteps(steps);
     if (maxSteps != m_currentMaxSteps)
@@ -118,7 +124,11 @@ namespace ToolKit
       TK_LOG("SsrPass: step count %d, compile time loop bound %d.", steps, maxSteps);
     }
 
-    m_ssrShader->Init();
+    // The shader sizes a step so that `stepCount` of them cross the screen diagonal, so the count it marches
+    // by has to be one the loop can run. A request above the loop bound - the 256 default is above it -
+    // divides the screen into more steps than the loop has and the rays stop a fraction of the way to the
+    // edge; the marched count is the one the bound can honor.
+    const int marchedSteps = glm::min(steps, m_currentMaxSteps);
 
     // A shader that carries defines leaves Init without gpu data on purpose: Init only sets up the variant
     // selection, and the variant itself is compiled when a program first asks for it. Judging this one by its
@@ -178,12 +188,10 @@ namespace ToolKit
                                                      float(size.x),
                                                      float(size.y));
 
-    // Step count: used exactly as requested (a uniform) so the setting is continuous; the compile time
-    // loop bound was selected in PreRender, before the shader was built.
-    m_passDataBuffer.m_data.flags             = Vec4(m_params.DebugView ? 1.0f : 0.0f,
-                                                     float(steps),
-                                                     float(m_params.DebugViewMode),
-                                                     0.0f);
+    // Step count: the count the loop bound can honor, as a uniform, because the shader divides the screen
+    // diagonal by it. The bound itself was selected in PreRender, before the shader was built.
+    m_passDataBuffer.m_data.flags =
+        Vec4(m_params.DebugView ? 1.0f : 0.0f, float(marchedSteps), float(m_params.DebugViewMode), 0.0f);
 
     // Trace target: the reflection and its weight, at the scene resolution. The resolve phase reads it
     // back and composites, which is what lets the filter spread the reflection past the silhouettes it
