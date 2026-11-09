@@ -1313,6 +1313,49 @@ namespace ToolKit
     // for the culling below instead of arriving after it.
     ConsumeDepthGridReads(renderer);
 
+    // Apply multi-sample resolve if needed.
+    //
+    // This has to stay above SetPassParams, which is where the frame's color target is handed to the post
+    // chain. A reconstruction drops the resolve target's color attachment and builds a new one, so a pointer
+    // taken from it before the reconstruction keeps the previous frame's render target, an orphan of the old
+    // size that nothing writes this frame: the reflections copied and sized from it, the depth of field and
+    // the tone curve followed its framebuffer, and the path reported it as the frame's output - which made a
+    // host that copies that output into the viewport's buffer hand CopyTexture two textures of different
+    // sizes on the frame of a resize. The size the post chain sees is therefore settled before it looks.
+    m_forwardRenderPass->m_params.resolveFrameBuffer = nullptr;
+    if (m_params.MainFramebuffer != nullptr && m_params.MainFramebuffer->IsMultiSampled())
+    {
+      using Attachment             = Framebuffer::Attachment;
+
+      FramebufferSettings settings = m_params.MainFramebuffer->GetSettings();
+      settings.msaaCount           = MsaaSampleCount::x0;
+
+      m_resolvedFramebuffer->ReconstructIfNeeded(settings);
+
+      // A reconstructed framebuffer comes back without a color attachment: the resolve used to create one
+      // lazily, on the frame it first resolved into it. That is one frame too late for the pointers taken
+      // below, which is the stale size this block exists to avoid. Sizing it here keeps every one of them
+      // valid for the whole frame, on a resize frame as well.
+      if (m_resolvedFramebuffer->GetColorAttachment(Attachment::ColorAttachment0) == nullptr)
+      {
+        RenderTargetPtr mainRt = m_params.MainFramebuffer->GetColorAttachment(Attachment::ColorAttachment0);
+        if (mainRt != nullptr)
+        {
+          // The resolved frame carries the color of the multisampled one it comes from, in the same format
+          // and without the samples - the same target the backend would have created for the resolve.
+          TextureSettings resolvedSettings = mainRt->Settings();
+          resolvedSettings.msaaCount       = MsaaSampleCount::x0;
+
+          RenderTargetPtr resolvedRt       = MakeNewPtr<RenderTarget>();
+          resolvedRt->ReconstructIfNeeded(settings.width, settings.height, &resolvedSettings);
+
+          m_resolvedFramebuffer->SetColorAttachment(Attachment::ColorAttachment0, resolvedRt);
+        }
+      }
+
+      m_forwardRenderPass->m_params.resolveFrameBuffer = m_resolvedFramebuffer;
+    }
+
     SetPassParams(renderer);
 
     // Init / ReInit forward pre process.
@@ -1335,17 +1378,6 @@ namespace ToolKit
       // Mali, see ForwardPreProcessPass::InitBuffers.
       const bool shareDepth = !renderer->GetBackend()->UsesMultisampledRenderToTexture();
       m_forwardPreProcessPass->InitBuffers(settings.width, settings.height, settings.msaaCount, shareDepth);
-    }
-
-    // Apply multi-sample resolve if needed.
-    m_forwardRenderPass->m_params.resolveFrameBuffer = nullptr;
-    if (m_params.MainFramebuffer->IsMultiSampled())
-    {
-      FramebufferSettings settings = m_params.MainFramebuffer->GetSettings();
-      settings.msaaCount           = MsaaSampleCount::x0;
-
-      m_resolvedFramebuffer->ReconstructIfNeeded(settings);
-      m_forwardRenderPass->m_params.resolveFrameBuffer = m_resolvedFramebuffer;
     }
   }
 

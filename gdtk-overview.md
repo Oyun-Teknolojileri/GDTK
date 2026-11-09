@@ -364,6 +364,16 @@ before the reflections.
 reflection, confidence, mip level, scene depth, hit uv, ray length or hit error. The resolve phase hands
 debug views through unfiltered.
 
+`ForwardSceneRenderPath::PreRender` settles the MSAA resolve target **before** `SetPassParams` runs, and
+creates its color attachment when a reconstruction dropped it. `SetPassParams` is where the post chain
+collects the pointers it sizes itself from (SSR and DoF `ColorRt`, the bloom and tone curve framebuffers,
+`m_frameColorFb`), while `Framebuffer::ReconstructIfNeeded` on the resolve target builds a new render
+target: a pointer taken before it keeps the previous frame's object, an orphan of the old size that
+nothing writes that frame. On a resize frame that orphan still has the size the viewport used to have, so
+the reflections sized their targets from it, `GetOutputFramebuffer` reported it, and the copy the editor
+and the game renderer make into the viewport framebuffer tripped `Renderer::CopyTexture`'s size assert.
+Anything that resizes a target the post chain points at belongs in that block, above `SetPassParams`.
+
 #### Depth sharing between the pre process pass and the frame
 
 The pre process pass borrows the frame's depth attachment, which is what gives it its early z test: it
