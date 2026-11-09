@@ -945,10 +945,15 @@ whether a curve interpolates (float, vec2, vec3, vec4) or steps (everything else
 `parameter-animation-plan.md` for the full design.
 
 Reaching an entity at runtime needs an `AnimControllerComponent` on it: the component keeps a
-signal -> `AnimRecord` map (one record = one entity + one clip + `ApplyRootMotion`), and `Play`
-hands the record to `AnimationPlayer`, which `Main::Frame` updates every frame. The component is
+signal -> `AnimRecord` map (one record = one entity + one clip + `ApplyRootMotion` + `m_loop`), and
+`Play` hands the record to `AnimationPlayer`, which `Main::Frame` updates every frame. The component is
 per entity: several entities playing the same clip carry one component and one record each, they
-are not driven from a single place.
+are not driven from a single place. Both per record flags are editable in the component's inspector,
+as the `Root` and `Loop` columns of the record table: `Loop` wraps the record's time at the end of the
+clip, while a record that does not loop holds its last frame (the curve of a one shot therefore ends
+flat, which is what an animator expects from a walk-end clip). Both are saved with the scene
+(`ParameterBlock` writes `ApplyRootMotion` and `Loop` per record; a scene written before `Loop` existed
+reads back as one shot).
 
 `AnimationPlayer::Update` then fills two kinds of target:
 
