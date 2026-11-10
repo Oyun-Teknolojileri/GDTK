@@ -1664,6 +1664,16 @@ internal merges that cannot be recovered (same-name clusters on one mesh
 collapse into one `aiBone`; same-name FBX animation channels collapse into one
 `aiNodeAnim`) are logged as warnings.
 
+Texture references are copied next to the imported asset and referenced from
+the material. Decoding goes through stb_image, which has no DDS reader, so a
+DDS reference is converted to PNG on the way in (`Utils/Import/DdsLoader.*`,
+BC1 / BC3 / BC5) and the material points at the converted file. A DDS the
+loader cannot decode is reported once per file and skipped, so the material
+imports without that map instead of carrying a path the engine can never load.
+The same rule keeps `Material::MakeSureItsDataTexture` from initializing a
+texture that has no pixel data; that path warns and keeps the linear data
+settings.
+
 ### 11.2 Packer (`Utils/Packer/`)
 Release / publish CLI. Bundles projects for Windows, Web, Android. Links
 SDL2, ToolKit (no assimp). The editor's Publish dialog drives it through

@@ -558,6 +558,19 @@ namespace ToolKit
     }
 
     texture->Settings(dataSet);
+
+    // A texture whose file could not be loaded has no client side data and Texture::Init aborts on
+    // it. The settings above still have to survive: they are what makes the material sample the map
+    // in linear space, and the texture applies them when it finally loads. "Could not load" covers a
+    // missing file as well as a format the image loader does not decode (DDS, for instance), so this
+    // has to stay a warning and not a crash.
+    if (texture->m_image == nullptr && texture->m_imagef == nullptr)
+    {
+      TK_WRN("'%s' has no image data; keeping its data texture settings without initializing it.",
+             texture->GetFile().c_str());
+      return;
+    }
+
     texture->Init(flush);
   }
 

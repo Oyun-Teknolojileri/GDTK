@@ -7,6 +7,7 @@
 
 #include <Animation.h>
 #include <Common/PlatformHelper.h>
+#include <DdsLoader.h>
 #include <DirectionComponent.h>
 #include <Image.h>
 #include <Material.h>
@@ -29,6 +30,7 @@
 
 #include <iostream>
 #include <limits>
+#include <unordered_set>
 
 using std::cout;
 using std::endl;
@@ -71,6 +73,9 @@ namespace ToolKit
   // Global variables for import process.
   ////////////////////////////////////////////////////////////////
   vector<string> g_usedFiles;
+  // Texture references dropped because the importer could not decode them. Kept to report each one
+  // once instead of once per material that points at it.
+  unordered_set<string> g_skippedTextures;
   bool isSkeletonEntityCreated = false;
   const aiScene* g_scene       = nullptr;
 
@@ -167,6 +172,16 @@ namespace ToolKit
     {
       g_usedFiles.push_back(file);
     }
+  }
+
+  // The engine decodes images through stb_image, which has no DDS reader. A DDS reference is
+  // decoded to PNG on the way in (see DdsLoader.h) so the material points at a file the engine can
+  // actually load.
+  bool NeedsDdsConversion(const string& fileName)
+  {
+    String ext;
+    DecomposePath(fileName, nullptr, nullptr, &ext);
+    return ToLower(ext) == ".dds";
   }
 
   void ClearForbidden(string& str)
@@ -637,29 +652,46 @@ namespace ToolKit
 
         string fileName = tName;
         TrunckToFileName(fileName);
+
+        // A DDS reference is decoded into a PNG next to the imported assets, see DdsLoader.h.
+        const bool needsDecode  = NeedsDdsConversion(fileName);
+        const string sourceName = fileName;
+        if (needsDecode)
+        {
+          String name, ext;
+          DecomposePath(fileName, nullptr, &name, &ext);
+          fileName = name + PNG;
+        }
+
         string textPath = NormalizePath(PathToString(fs::path(texDir + fileName).lexically_normal()));
 
-        if (!embedded && !CheckSystemFile(textPath))
+        if (!CheckSystemFile(textPath))
         {
-          // Try copying the texture next to the imported assets. FBX files
-          // commonly store the absolute texture path of the authoring machine
+          // Resolve the file the reference points at: an embedded texture was written straight into
+          // the texture folder by ImportTextures, an external one is read from the FBX folder.
+          // FBX files commonly store the absolute texture path of the authoring machine
           // (e.g. "U:\...\Tex.png"), so try the reference as-is first and
           // fall back to the bare file name inside the source folder.
-          fs::path fullPath(NormalizePath(tName));
-          if (!fullPath.is_absolute())
+          string sourcePath = NormalizePath(PathToString(fs::path(texDir + sourceName).lexically_normal()));
+          if (!embedded)
           {
-            fullPath = pathOrg / fullPath;
-          }
-          fullPath = fullPath.lexically_normal();
+            fs::path fullPath(NormalizePath(tName));
+            if (!fullPath.is_absolute())
+            {
+              fullPath = pathOrg / fullPath;
+            }
+            fullPath = fullPath.lexically_normal();
 
-          if (!CheckSystemFile(PathToString(fullPath)))
-          {
-            fullPath = (pathOrg / fileName).lexically_normal();
+            if (!CheckSystemFile(PathToString(fullPath)))
+            {
+              fullPath = (pathOrg / sourceName).lexically_normal();
+            }
+            sourcePath = PathToString(fullPath);
           }
 
-          ifstream isGoodFile;
-          isGoodFile.open(fullPath, ios::binary | ios::in);
-          if (isGoodFile.good())
+          ifstream sourceFile;
+          sourceFile.open(sourcePath, ios::binary | ios::in);
+          if (sourceFile.good())
           {
             fs::path target = fs::path(textPath);
             if (target.has_parent_path())
@@ -671,15 +703,32 @@ namespace ToolKit
               }
             }
 
-            fs::copy(fullPath, target, fs::copy_options::overwrite_existing);
+            if (needsDecode)
+            {
+              if (!ConvertDdsToPng(sourcePath, textPath))
+              {
+                if (g_skippedTextures.insert(sourceName).second)
+                {
+                  Assimp::DefaultLogger::get()->warn("Texture '" + sourceName +
+                                                     "' uses a DDS format the importer can not "
+                                                     "decode, so the material imports without it.");
+                }
+                sourceFile.close();
+                return nullptr;
+              }
+            }
+            else
+            {
+              fs::copy(sourcePath, target, fs::copy_options::overwrite_existing);
+            }
           }
           else
           {
             Assimp::DefaultLogger::get()->warn(
-                "Texture not found: '" + fileName + "' (referenced as '" + tName +
+                "Texture not found: '" + sourceName + "' (referenced as '" + tName +
                 "'). Locate it with the search window when the editor asks for the missing file.");
           }
-          isGoodFile.close();
+          sourceFile.close();
         }
 
         AddToUsedFiles(textPath);
@@ -1928,6 +1977,7 @@ namespace ToolKit
         file = files[i];
         // Clear global materials for each scene to prevent wrong referencing
         tMaterials.clear();
+        g_skippedTextures.clear();
 
         int optFlags = aiProcess_GlobalScale | aiProcess_Triangulate;
         if (optimizationLevel == 1)
