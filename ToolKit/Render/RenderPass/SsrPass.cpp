@@ -56,6 +56,7 @@ namespace ToolKit
     // Phase one writes the samples of this frame, phase two resolves them and accumulates the history,
     // phase three composites the accumulation over the frame.
     m_traceTexture                      = MakeNewPtr<RenderTarget>("SsrTraceRT");
+    m_hitTexture                        = MakeNewPtr<RenderTarget>("SsrHitRT");
     m_history[0]                        = MakeNewPtr<RenderTarget>("SsrHistory0RT");
     m_history[1]                        = MakeNewPtr<RenderTarget>("SsrHistory1RT");
 
@@ -82,6 +83,7 @@ namespace ToolKit
     m_compositeShader = nullptr;
 
     m_traceTexture  = nullptr;
+    m_hitTexture    = nullptr;
     m_history[0]    = nullptr;
     m_history[1]    = nullptr;
 
@@ -264,6 +266,7 @@ namespace ToolKit
     traceSet.MinFilter       = GraphicTypes::SampleLinear;
     traceSet.MagFilter       = GraphicTypes::SampleLinear;
     m_traceTexture->ReconstructIfNeeded(size.x, size.y, &traceSet);
+    m_hitTexture->ReconstructIfNeeded(size.x, size.y, &traceSet);
 
     // The accumulation is sampled at an arbitrary reprojected position, so it is filtered linearly and
     // clamped at the border.
@@ -297,6 +300,7 @@ namespace ToolKit
 
     m_quadPass->m_params.frameBuffer->ReconstructIfNeeded({size.x, size.y, false, false});
     m_quadPass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_traceTexture);
+    m_quadPass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment1, m_hitTexture);
 
     m_compositePass->m_params.frameBuffer->ReconstructIfNeeded({size.x, size.y, false, false});
     m_compositePass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0,
@@ -390,6 +394,7 @@ namespace ToolKit
     m_requirements.program                           = m_resolvePass->GetProgram();
     m_requirements.frameBuffer                       = m_resolvePass->m_params.frameBuffer;
     m_requirements.semanticTextures["s_trace"]       = m_traceTexture;
+    m_requirements.semanticTextures["s_hit"]         = m_hitTexture;
     m_requirements.semanticTextures["s_history"]     = m_history[readIndex];
     m_requirements.semanticTextures["s_normalDepth"] = normalDepth;
     m_requirements.customUbos[7]                     = &m_passDataBuffer.GetBuffer();

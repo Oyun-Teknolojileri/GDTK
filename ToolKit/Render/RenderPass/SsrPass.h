@@ -160,6 +160,10 @@ namespace ToolKit
     /** This frame's reflection and its weight, produced by the trace phase. */
     RenderTargetPtr m_traceTexture    = nullptr;
 
+    /** Depth of the hit each trace sample found, in the red channel. The resolve needs it to follow the
+        reflected content instead of the surface while the view moves. */
+    RenderTargetPtr m_hitTexture      = nullptr;
+
     /** Accumulated reflection, one is read and the other is written, and they swap. */
     RenderTargetPtr m_history[2];
 

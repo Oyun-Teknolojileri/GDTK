@@ -16,6 +16,10 @@ TK_LOC(2) in vec2 v_texture;
 
 layout (location = 0) out vec4 fragColor;
 
+// .x = positive view depth of the hit, zero when the ray missed. The resolve projects that depth along
+// the surface pixel's ray to find where the reflected content was on screen last frame.
+layout (location = 1) out vec4 fragHit;
+
 TK_SAMPLER_BINDING(0) uniform sampler2D s_diffuseColor; // Scene color, HDR and pre tonemap.
 TK_SAMPLER_BINDING(1) uniform sampler2D s_normalDepth;  // rg: world normal, b: linear depth, a: roughness.
 
@@ -103,8 +107,9 @@ vec3 SampleGgxVndf(vec3 Ve, float alpha, vec2 Xi)
 	return normalize(vec3(alpha * Nh.x, alpha * Nh.y, max(1e-6, Nh.z)));
 }
 
-// Half vector of a microfacet, in view space, for a surface with normal `N`.
-vec3 SampleReflectionHalf(vec3 V, vec3 N, float alpha, vec2 Xi)
+// Half vector of a microfacet, in view space, for a surface with normal `N`. `bias` bends the sample
+// towards the mirror direction: at 1 the half vector is the normal exactly, at 0 it is the plain lobe.
+vec3 SampleReflectionHalf(vec3 V, vec3 N, float alpha, vec2 Xi, float bias)
 {
 	// Tangent frame around the shading normal.
 	vec3 up = abs(N.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
@@ -114,8 +119,13 @@ vec3 SampleReflectionHalf(vec3 V, vec3 N, float alpha, vec2 Xi)
 	// V points from the eye to the surface, the sampler wants the direction towards the eye.
 	vec3 Ve = vec3(dot(-V, T), dot(-V, B), dot(-V, N));
 	vec3 Nh = SampleGgxVndf(Ve, alpha, Xi);
+	vec3 H  = normalize(T * Nh.x + B * Nh.y + N * Nh.z);
 
-	return normalize(T * Nh.x + B * Nh.y + N * Nh.z);
+	// The bias is applied to the sampled direction, not to the random sequence. Pinning the second
+	// random number to zero (the usual short cut) fixes the azimuth of every sample to one side of the
+	// normal, which slides the whole reflection sideways as the bias goes to 1; bending the half vector
+	// towards the normal converges on the mirror direction instead, which is what the bias is for.
+	return normalize(mix(H, N, clamp(bias, 0.0, 1.0)));
 }
 
 // Fades the reflection out towards the screen border, where the depth buffer stops holding the
@@ -188,6 +198,9 @@ void main()
 	vec2 uv      = v_texture;
 	vec4 gBuffer = texture(s_normalDepth, uv);
 
+	// Every path that leaves without a hit reports a zero depth, so a stale hit is never reprojected.
+	fragHit = vec4(0.0);
+
 	float linearDepth = gBuffer.b;
 	float roughness   = gBuffer.a;
 
@@ -217,12 +230,11 @@ void main()
 	// One sample of the reflection lobe per pixel instead of the mirror direction. A rough surface
 	// reflects a cone, not a ray: sampling the visible normal distribution is what turns roughness
 	// into a real blur instead of a mip level picked by hand, and the temporal resolve integrates
-	// the samples over the frames.
+	// the samples over the frames. The bias bends the sample back towards the mirror direction.
 	vec3 V      = normalize(viewPos);
 	vec2 Xi     = SampleSequence(gl_FragCoord.xy, ssrPass.flags.w);
-	Xi.y        = mix(Xi.y, 0.0, clamp(ssrPass.temporal.z, 0.0, 1.0));
 	float alpha = max(roughness * roughness, 0.0001);
-	vec3 H      = SampleReflectionHalf(V, normal, alpha, Xi);
+	vec3 H      = SampleReflectionHalf(V, normal, alpha, Xi, clamp(ssrPass.temporal.z, 0.0, 1.0));
 	vec3 rayDir = reflect(V, H);
 
 	// Push the ray start above the reconstructed surface. The further the shading normal leans away
@@ -270,6 +282,7 @@ void main()
 	vec3 prevPos     = rayPos;
 	vec2 hitUV       = vec2(0.0);
 	float hitDistance = 0.0;
+	float hitDepthOut = 0.0;
 	float hitError    = 0.0;
 	float confidence  = 0.0;
 
@@ -408,10 +421,11 @@ void main()
 			continue;
 		}
 
-		hitUV       = refinedUV;
-		hitDistance = length(hi - viewPos);
-		hitError    = miss;
-		confidence  = conf;
+		hitUV        = refinedUV;
+		hitDistance  = length(hi - viewPos);
+		hitDepthOut  = hitDepth;
+		hitError     = miss;
+		confidence   = conf;
 		break;
 	}
 
@@ -422,6 +436,10 @@ void main()
 		fragColor = DebugViewEnabled() ? vec4(0.0, 0.0, 0.0, 1.0) : vec4(0.0);
 		return;
 	}
+
+	// The depth the resolve reprojects. The reflected content sits at this depth along the surface
+	// pixel's ray, which is what puts the history where the reflection will be next frame.
+	fragHit = vec4(hitDepthOut);
 
 	// The reflection cone picks the mip, the mip chain does the blur.
 	float rayPixels = length(hitUV - uv) * max(ssrPass.screenParams.z, ssrPass.screenParams.w);

@@ -5,6 +5,7 @@
 	<texture slot = "0" name = "s_trace" />
 	<texture slot = "1" name = "s_history" />
 	<texture slot = "2" name = "s_normalDepth" />
+<texture slot = "3" name = "s_hit" />
 	<source>
 	<!--
 
@@ -18,6 +19,7 @@ layout (location = 0) out vec4 fragColor;
 TK_SAMPLER_BINDING(0) uniform sampler2D s_trace;       // rgb: this frame's reflection, a: its weight.
 TK_SAMPLER_BINDING(1) uniform sampler2D s_history;     // rgb: accumulated reflection, a: its weight.
 TK_SAMPLER_BINDING(2) uniform sampler2D s_normalDepth; // b: linear depth.
+TK_SAMPLER_BINDING(3) uniform sampler2D s_hit;         // r: view depth of the reflected content, 0 on a miss.
 
 // Taps per axis. The trace gives one sample per pixel, so the resolve is what turns the individual
 // samples of neighbouring pixels into a single value; three by three is the smallest kernel that
@@ -132,9 +134,15 @@ void main()
 		maximum = current;
 	}
 
-	// Reprojection: where this surface was on screen in the previous frame. The reflection is
-	// accumulated at the surface pixel, so the surface's own motion is what the history follows.
-	vec3 viewPos  = SsrViewPos(uv, depth);
+	// Reprojection: where the reflected content was on screen in the previous frame. A reflection moves
+	// with the geometry it shows, not with the surface it lands on, so the history is followed through
+	// the depth of the hit: the point at that depth along this pixel's ray is what the reflection is
+	// showing, and that point is what moved. Reprojecting the surface instead leaves the history
+	// behind the reflection whenever the camera moves, and the mismatch reads as shimmer.
+	float hitDepth = texture(s_hit, uv).r;
+	float followDepth = hitDepth > 0.0 ? hitDepth : depth;
+
+	vec3 viewPos  = SsrViewPos(uv, followDepth);
 	vec4 worldPos = ssrPass.inverseView * vec4(viewPos, 1.0);
 	vec4 prevClip = ssrPass.prevViewProjection * worldPos;
 	vec2 prevUV   = prevClip.xy / max(prevClip.w, 1e-6) * 0.5 + 0.5;
