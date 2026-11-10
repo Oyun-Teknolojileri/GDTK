@@ -1664,6 +1664,13 @@ internal merges that cannot be recovered (same-name clusters on one mesh
 collapse into one `aiBone`; same-name FBX animation channels collapse into one
 `aiNodeAnim`) are logged as warnings.
 
+Tangents are calculated during import (`aiProcess_CalcTangentSpace`). Most FBX
+exports carry none, and the engine's normal mapped shader path builds its TBN
+from them: a zero tangent makes `normalize()` return NaN, which turns every
+normal mapped surface black in the lit view and in the normal debug view.
+Meshes without UVs get no tangents, which is fine because they have no normal
+map to sample.
+
 Texture references are copied next to the imported asset and referenced from
 the material. Decoding goes through stb_image, which has no DDS reader, so a
 DDS reference is converted to PNG on the way in (`Utils/Import/DdsLoader.*`,

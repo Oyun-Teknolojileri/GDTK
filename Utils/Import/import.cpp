@@ -1979,7 +1979,11 @@ namespace ToolKit
         tMaterials.clear();
         g_skippedTextures.clear();
 
-        int optFlags = aiProcess_GlobalScale | aiProcess_Triangulate;
+        // Tangents are not part of most FBX exports (Bistro ships none), but the engine's
+        // normal mapped shader path builds its TBN from them. A zero tangent makes
+        // normalize() return NaN, which turns every normal mapped surface black - in the
+        // lit view and in the normal debug view alike. Calculate them from the UVs.
+        int optFlags = aiProcess_GlobalScale | aiProcess_Triangulate | aiProcess_CalcTangentSpace;
         if (optimizationLevel == 1)
         {
           optFlags |= aiProcessPreset_TargetRealtime_MaxQuality;
