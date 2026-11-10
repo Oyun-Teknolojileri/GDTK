@@ -54,15 +54,20 @@ namespace ToolKit
     m_reflectionFb                   = MakeNewPtr<Framebuffer>("SsrReflectionFB");
 
     // Phase one writes the samples of this frame, phase two resolves them and accumulates the history,
-    // phase three composites the accumulation over the frame.
+    // phase three pulls the fireflies out of the accumulation, phase four composites it over the frame.
     m_traceTexture                      = MakeNewPtr<RenderTarget>("SsrTraceRT");
     m_hitTexture                        = MakeNewPtr<RenderTarget>("SsrHitRT");
+    m_denoiseTexture                    = MakeNewPtr<RenderTarget>("SsrDenoiseRT");
     m_history[0]                        = MakeNewPtr<RenderTarget>("SsrHistory0RT");
     m_history[1]                        = MakeNewPtr<RenderTarget>("SsrHistory1RT");
 
     m_resolvePass                       = MakeNewPtr<FullQuadPass>();
     m_resolvePass->m_params.frameBuffer = MakeNewPtr<Framebuffer>("SsrResolveFB");
     m_resolveShader                     = GetShaderManager()->Create<Shader>(ShaderPath("ssrResolveFrag.shader", true));
+
+    m_denoisePass                       = MakeNewPtr<FullQuadPass>();
+    m_denoisePass->m_params.frameBuffer = MakeNewPtr<Framebuffer>("SsrDenoiseFB");
+    m_denoiseShader                     = GetShaderManager()->Create<Shader>(ShaderPath("ssrDenoiseFrag.shader", true));
 
     m_compositePass                       = MakeNewPtr<FullQuadPass>();
     m_compositePass->m_params.frameBuffer = m_reflectionFb;
@@ -79,13 +84,17 @@ namespace ToolKit
     m_resolvePass   = nullptr;
     m_resolveShader = nullptr;
 
+    m_denoisePass   = nullptr;
+    m_denoiseShader = nullptr;
+
     m_compositePass   = nullptr;
     m_compositeShader = nullptr;
 
-    m_traceTexture  = nullptr;
-    m_hitTexture    = nullptr;
-    m_history[0]    = nullptr;
-    m_history[1]    = nullptr;
+    m_traceTexture   = nullptr;
+    m_hitTexture     = nullptr;
+    m_denoiseTexture = nullptr;
+    m_history[0]     = nullptr;
+    m_history[1]     = nullptr;
 
     m_reflectionRt  = nullptr;
     m_reflectionFb  = nullptr;
@@ -135,6 +144,7 @@ namespace ToolKit
     // is still selected before the first compile.
     m_ssrShader->Init();
     m_resolveShader->Init();
+    m_denoiseShader->Init();
     m_compositeShader->Init();
 
     const int steps    = glm::clamp(m_params.StepCount, 1, m_maxStepCount);
@@ -167,7 +177,8 @@ namespace ToolKit
 
     // The resolve and the composite carry no defines, so Init compiled them above and a null gpu data
     // here is a real compile error. Same rule as the trace: report once, keep the pass out of the frame.
-    if (m_resolveShader->m_gpuData == nullptr || m_compositeShader->m_gpuData == nullptr)
+    if (m_resolveShader->m_gpuData == nullptr || m_denoiseShader->m_gpuData == nullptr ||
+        m_compositeShader->m_gpuData == nullptr)
     {
       TK_ERR("SsrPass: the resolve or composite shader did not compile, screen space reflections are "
              "disabled.");
@@ -195,6 +206,7 @@ namespace ToolKit
 
     m_quadPass->SetFragmentShader(m_ssrShader, GetRenderer());
     m_resolvePass->SetFragmentShader(m_resolveShader, GetRenderer());
+    m_denoisePass->SetFragmentShader(m_denoiseShader, GetRenderer());
     m_compositePass->SetFragmentShader(m_compositeShader, GetRenderer());
 
     if (!m_passDataBufferInitialized)
@@ -266,6 +278,7 @@ namespace ToolKit
     traceSet.MinFilter       = GraphicTypes::SampleLinear;
     traceSet.MagFilter       = GraphicTypes::SampleLinear;
     m_traceTexture->ReconstructIfNeeded(size.x, size.y, &traceSet);
+    m_denoiseTexture->ReconstructIfNeeded(size.x, size.y, &traceSet);
     m_hitTexture->ReconstructIfNeeded(size.x, size.y, &traceSet);
 
     // The accumulation is sampled at an arbitrary reprojected position, so it is filtered linearly and
@@ -293,10 +306,17 @@ namespace ToolKit
     reflectionSet.MagFilter       = GraphicTypes::SampleLinear;
     m_reflectionRt->ReconstructIfNeeded(size.x, size.y, &reflectionSet);
 
+    // The accumulation runs while the view moves and for a settle window after it stops. Holding it the
+    // moment the camera stops would freeze the first sample the still frame happens to shoot, and the
+    // reflection would sharpen as the averaged lobe stops being integrated; running it forever leaves
+    // the residual noise visible as a slow drift. The settle window is what converges the lobe one last
+    // time, after which the accumulation is held (see the seed below).
+    const bool accumulate = m_viewMoved || m_settleFrames < m_settleLimit;
+
     m_passDataBuffer.m_data.temporal = Vec4(glm::clamp(m_params.HistoryWeight, 0.0f, 0.98f),
                                             resetHistory ? 1.0f : 0.0f,
                                             glm::clamp(m_params.BrdfBias, 0.0f, 1.0f),
-                                            m_params.HistoryWeight > 0.0f ? 1.0f : 0.0f);
+                                            (m_params.HistoryWeight > 0.0f && accumulate) ? 1.0f : 0.0f);
 
     m_quadPass->m_params.frameBuffer->ReconstructIfNeeded({size.x, size.y, false, false});
     m_quadPass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_traceTexture);
@@ -306,6 +326,10 @@ namespace ToolKit
     m_compositePass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0,
                                                               m_reflectionRt);
 
+    m_denoisePass->m_params.frameBuffer->ReconstructIfNeeded({size.x, size.y, false, false});
+    m_denoisePass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0,
+                                                            m_denoiseTexture);
+
     // The resolve draws into one of the history targets, and which one swaps every frame. Only the size
     // is settled here, the attachment follows in Render.
     m_resolvePass->m_params.frameBuffer->ReconstructIfNeeded({size.x, size.y, false, false});
@@ -314,6 +338,8 @@ namespace ToolKit
     m_quadPass->m_params.clearFrameBuffer     = GraphicBitFields::None;
     m_resolvePass->m_params.blendFunc         = BlendFunction::NONE;
     m_resolvePass->m_params.clearFrameBuffer  = GraphicBitFields::None;
+    m_denoisePass->m_params.blendFunc         = BlendFunction::NONE;
+    m_denoisePass->m_params.clearFrameBuffer  = GraphicBitFields::None;
     m_compositePass->m_params.blendFunc       = BlendFunction::NONE;
     m_compositePass->m_params.clearFrameBuffer = GraphicBitFields::None;
   }
@@ -356,6 +382,7 @@ namespace ToolKit
 
     m_quadPass->SetFragmentShader(m_ssrShader, renderer);
     m_resolvePass->SetFragmentShader(m_resolveShader, renderer);
+    m_denoisePass->SetFragmentShader(m_denoiseShader, renderer);
     m_compositePass->SetFragmentShader(m_compositeShader, renderer);
 
     m_passDataBuffer.Invalidate();
@@ -402,14 +429,29 @@ namespace ToolKit
     ApplyRequirements(renderer);
     RenderSubPass(m_resolvePass);
 
-    // Phase 3: composite the accumulated reflection over the scene copy into the pass's own target.
+    // Phase 3: median filter the accumulation. The average the resolve does spreads an isolated bright
+    // sample into a streak that the history then keeps for about a second; the median drops it instead.
+    m_requirements = PassRequirements();
+    GatherRequirements(m_requirements);
+    m_requirements.fragmentShader                    = m_denoiseShader;
+    m_requirements.vertexShader                      = m_denoisePass->m_material->GetVertexShaderVal();
+    m_requirements.program                           = m_denoisePass->GetProgram();
+    m_requirements.frameBuffer                       = m_denoisePass->m_params.frameBuffer;
+    m_requirements.semanticTextures["s_accum"]       = m_history[writeIndex];
+    m_requirements.semanticTextures["s_normalDepth"] = normalDepth;
+    m_requirements.customUbos[7]                     = &m_passDataBuffer.GetBuffer();
+
+    ApplyRequirements(renderer);
+    RenderSubPass(m_denoisePass);
+
+    // Phase 4: composite the filtered reflection over the scene copy into the pass's own target.
     m_requirements = PassRequirements();
     GatherRequirements(m_requirements);
     m_requirements.fragmentShader                     = m_compositeShader;
     m_requirements.vertexShader                       = m_compositePass->m_material->GetVertexShaderVal();
     m_requirements.program                            = m_compositePass->GetProgram();
     m_requirements.frameBuffer                        = m_compositePass->m_params.frameBuffer;
-    m_requirements.semanticTextures["s_trace"]        = m_history[writeIndex];
+    m_requirements.semanticTextures["s_trace"]        = m_denoiseTexture;
     m_requirements.semanticTextures["s_sceneColor"]   = m_copyTexture;
     m_requirements.customUbos[7]                      = &m_passDataBuffer.GetBuffer();
 
@@ -426,17 +468,19 @@ namespace ToolKit
     // comparison against it is what told the resolve (in PreRender) whether this frame is a moving one.
     m_prevViewProjection = m_params.Cam->GetProjectionMatrix() * m_params.Cam->GetViewMatrix();
 
-    // The sample sequence only advances when the view does. Re-rolling the lobe at a still camera never
-    // stops: every frame samples a different part of the cone, the accumulation keeps chasing it, and
-    // the reflection drifts as if it sat on moving water. A still view integrates to a still image; a
-    // moving one re-rolls every frame, which is exactly where the drift is hidden.
+    // The sample sequence keeps rolling while the view moves and through the settle window, then stops:
+    // re-rolling the lobe forever at a still camera never converges, and the accumulation keeps chasing
+    // it, which reads as a reflection that drifts like water. Once the window is over the history is held
+    // as well (temporal.w was cleared in PreRender), so the last averaged lobe stays on screen untouched.
     //
     // The seed walks a bounded range, so the offset stays exact in a float and the sequence repeats
     // (which is invisible: it is a sample sequence, not a state).
-    if (m_viewMoved)
+    if (m_viewMoved || m_settleFrames < m_settleLimit)
     {
       m_frameIndex = m_frameIndex >= 32.0f ? 0.0f : m_frameIndex + 1.0f;
     }
+
+    m_settleFrames = m_viewMoved ? 0.0f : m_settleFrames + 1.0f;
   }
 
   void SsrPass::GatherRequirements(PassRequirements& reqs)

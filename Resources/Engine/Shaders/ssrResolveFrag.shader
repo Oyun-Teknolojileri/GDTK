@@ -34,10 +34,10 @@ TK_SAMPLER_BINDING(3) uniform sampler2D s_hit;         // r: view depth of the r
 // Extra kernel width while the view moves, in texels. A reprojected reflection follows the surface it
 // belongs to, not the reflected content, so the history is stale exactly when the camera moves. The
 // resolve covers that with its own average instead of with the history.
-#define SSR_RESOLVE_MOTION_SPREAD 2.0
+#define SSR_RESOLVE_MOTION_SPREAD 1.0
 
 // Fraction of the history kept while the view moves.
-#define SSR_RESOLVE_MOTION_HISTORY 0.4
+#define SSR_RESOLVE_MOTION_HISTORY 0.05
 
 float Luminance(vec3 c)
 {
@@ -74,6 +74,15 @@ void main()
 	if (depth <= 0.0)
 	{
 		fragColor = vec4(0.0);
+		return;
+	}
+
+	// The view has settled and the accumulation is over: carry the history over untouched. Re-running the
+	// resolve here would replace the averaged lobe with the one sample this frame happens to shoot, and
+	// the reflection would sharpen the moment the camera stops instead of keeping its blur.
+	if (ssrPass.temporal.w < 0.5 && ssrPass.temporal.y < 0.5)
+	{
+		fragColor = texture(s_history, uv);
 		return;
 	}
 

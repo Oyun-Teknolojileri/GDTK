@@ -150,7 +150,11 @@ namespace ToolKit
     FullQuadPassPtr m_resolvePass     = nullptr;
     ShaderPtr m_resolveShader         = nullptr;
 
-    /** Phase three: composite the accumulated reflection over the scene color. */
+    /** Phase three: median filter that removes the fireflies the accumulation kept. */
+    FullQuadPassPtr m_denoisePass     = nullptr;
+    ShaderPtr m_denoiseShader         = nullptr;
+
+    /** Phase four: composite the accumulated reflection over the scene color. */
     FullQuadPassPtr m_compositePass   = nullptr;
     ShaderPtr m_compositeShader       = nullptr;
 
@@ -159,6 +163,9 @@ namespace ToolKit
 
     /** This frame's reflection and its weight, produced by the trace phase. */
     RenderTargetPtr m_traceTexture    = nullptr;
+
+    /** The accumulation after the median filter, read by the composite. */
+    RenderTargetPtr m_denoiseTexture  = nullptr;
 
     /** Depth of the hit each trace sample found, in the red channel. The resolve needs it to follow the
         reflected content instead of the surface while the view moves. */
@@ -188,6 +195,13 @@ namespace ToolKit
 
     /** Set when the view changed since the last accumulated frame: re-rolls the samples and widens the resolve. */
     bool m_viewMoved                  = false;
+
+    /** Frames since the view last moved. The accumulation runs while the view moves and for this many
+        frames after it stops, so a still view still converges to the averaged lobe before it is held. */
+    float m_settleFrames              = 0.0f;
+
+    /** Length of that settle window, in frames. */
+    static constexpr float m_settleLimit = 32.0f;
 
     /** Seed of this frame's sample sequence. Wraps, so the offset stays exact in a float. */
     float m_frameIndex                = 0.0f;
