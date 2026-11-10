@@ -342,20 +342,29 @@ Inputs via `SceneRenderPathParams`: Scene, Camera, MainFramebuffer, grid, postPr
 Pass order: shadow, forward pre process (g buffer, required by SSAO / DoF / SSR), SSAO, sky, forward,
 bloom, SSR, DoF, gamma/tonemap/FXAA. Bloom runs before the reflections on purpose: the reflection pass
 copies the shaded frame, so the glow has to be in it or a reflected highlight comes back flat. `SsrPass`
-runs in two phases. The trace phase marches one
-reflection ray per pixel against the pre process g buffer (world normal, linear depth, roughness) and
-writes the reflection plus its confidence into its own target instead of compositing. The march steps
-in screen space, so the budget covers `steps * stepPixels` pixels whatever the ray angle, the hits are
-refined by intersecting the ray with the surface plane rebuilt from a wide depth baseline, and the hit
-color is gathered at a mip of the scene color copy chosen from the reflection cone. The resolve phase
-averages that target in screen space premultiplied by the confidence, which dilates the reflection past
-the silhouettes the trace can not see through and removes the row level stripes the hit leaves behind.
-A pixel with no screen space reflection keeps its forward shaded color, so the sky or the active
-environment volumes provide the reflection wherever screen space can not.
+runs in three phases. The trace phase shoots one ray per pixel sampled from the surface's reflection lobe
+(GGX visible normal distribution, bent towards the mirror direction by `SSRBRDFBias`) instead of the mirror
+direction, marches it in screen space against the pre process g buffer (world normal, linear depth,
+roughness), refines the hit by intersecting the ray with the surface plane rebuilt from a wide depth
+baseline, and writes the reflection plus its confidence into a target of its own. The resolve phase
+averages that target in screen space premultiplied by the confidence - a depth aware 3x3 kernel that
+widens with roughness and with camera motion, with each sample compressed before the average so a single
+specular firefly can not pulse - and accumulates it over frames: the history is reprojected through the
+camera motion of the surface, clamped to the range the current frame produced, and dropped where a pixel
+flips between hit and miss. The composite phase blends the accumulation over the scene color copy. A pixel
+with no screen space reflection keeps its forward shaded color, so the sky or the active environment
+volumes provide the reflection wherever screen space can not.
 
-The resolve phase composites into a target of the pass's own (`SsrPass::GetOutputFramebuffer`), not back
-into the frame it read: the frame is read only for the rest of the frame, and DoF, the tone curve and a
-host that composites the frame itself all follow the reflection target instead. That target is what
+The sample sequence only advances while the view does. Re-rolling the lobe at a still camera never
+converges: every frame samples another part of the cone, the accumulation keeps chasing it, and the
+reflection drifts as if it sat on moving water. A still view therefore integrates to a still image, while
+a moving one re-rolls every frame and leans on the widened kernel instead of the stale history.
+`SSRHistoryWeight` sets how much of the previous frame the accumulation keeps, `SSRBRDFBias` how far the
+sampled lobe leans towards the mirror direction.
+
+The composite goes into a target of the pass's own (`SsrPass::GetOutputFramebuffer`), not back into the
+frame it read: the frame is read only for the rest of the frame, and DoF, the tone curve and a host that
+composites the frame itself all follow the reflection target instead. That target is what
 `ForwardSceneRenderPath::GetOutputFramebuffer` reports, because the path no longer always writes the
 framebuffer it was handed - a host that reads the viewport framebuffer after this path gets the frame from
 before the reflections.

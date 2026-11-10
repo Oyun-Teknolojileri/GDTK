@@ -2,7 +2,7 @@
 	<type name = "fragmentShader" />
 	<include name = "vulkanCompatInc.shader" />
 	<include name = "normalEncodingInc.shader" />
-	<include name = "ssrPassDataInc.shader" />
+	<include name = "ssrCommonInc.shader" />
 	<texture slot = "0" name = "s_diffuseColor" />
 	<texture slot = "1" name = "s_normalDepth" />
 	<define name = "SSR_STEP_COUNT" val = "8,16,32,64" />
@@ -19,37 +19,7 @@ layout (location = 0) out vec4 fragColor;
 TK_SAMPLER_BINDING(0) uniform sampler2D s_diffuseColor; // Scene color, HDR and pre tonemap.
 TK_SAMPLER_BINDING(1) uniform sampler2D s_normalDepth;  // rg: world normal, b: linear depth, a: roughness.
 
-// View space position of a pixel from its positive linear view depth. Mirrors the reconstruction
-// SSAOPass does, Vulkan's flipped texture v included.
-vec3 ReconstructViewPos(vec2 uv, float linearDepth)
-{
-	vec2 ndc = uv * 2.0 - 1.0;
-#ifdef VULKAN
-	ndc.y = -ndc.y;
-#endif
-	vec4 viewPos = ssrPass.inverseProjection * vec4(ndc, 0.0, 1.0);
-	vec3 viewDir = viewPos.xyz / viewPos.w;
-	return viewDir * (linearDepth / -viewDir.z);
-}
-
-// Project a view space position to a scene UV. False when it can not be sampled: behind the camera
-// or outside the screen. Same projection parameter trick SSAOPass uses.
-bool ProjectToUV(vec3 viewPos, out vec2 uv)
-{
-	if (viewPos.z >= 0.0)
-	{
-		uv = vec2(0.0);
-		return false;
-	}
-
-	float invW = -1.0 / viewPos.z;
-	uv = vec2(ssrPass.projParams.x * viewPos.x + ssrPass.projParams.z * viewPos.z,
-	          ssrPass.projParams.y * viewPos.y + ssrPass.projParams.w * viewPos.z) * invW * 0.5 + 0.5;
-#ifdef VULKAN
-	uv.y = 1.0 - uv.y;
-#endif
-	return uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0;
-}
+#define SSR_PI 3.14159265359
 
 // Positive linear view depth the g buffer holds for a scene UV. Zero means background (sky).
 float SceneLinearDepth(vec2 uv)
@@ -80,8 +50,8 @@ vec3 GeometricNormal(vec2 uv, float linearDepth, float texelStep)
 	bottom = bottom > 0.0 ? bottom : linearDepth;
 	top    = top    > 0.0 ? top    : linearDepth;
 
-	vec3 dx = ReconstructViewPos(uv + vec2(texel.x, 0.0), right) - ReconstructViewPos(uv - vec2(texel.x, 0.0), left);
-	vec3 dy = ReconstructViewPos(uv + vec2(0.0, texel.y), top) - ReconstructViewPos(uv - vec2(0.0, texel.y), bottom);
+	vec3 dx = SsrViewPos(uv + vec2(texel.x, 0.0), right) - SsrViewPos(uv - vec2(texel.x, 0.0), left);
+	vec3 dy = SsrViewPos(uv + vec2(0.0, texel.y), top) - SsrViewPos(uv - vec2(0.0, texel.y), bottom);
 
 	vec3 normal = normalize(cross(dx, dy));
 
@@ -91,7 +61,7 @@ vec3 GeometricNormal(vec2 uv, float linearDepth, float texelStep)
 	// level value flips the normal from scanline to scanline. A flipped normal points the ray start
 	// into the surface it just left, the march then compares the ray against the wrong side of the
 	// geometry and whole scanlines drop their reflection.
-	vec3 toSurface = ReconstructViewPos(uv, linearDepth);
+	vec3 toSurface = SsrViewPos(uv, linearDepth);
 	return dot(normal, toSurface) < 0.0 ? normal : -normal;
 }
 
@@ -99,6 +69,53 @@ vec3 GeometricNormal(vec2 uv, float linearDepth, float texelStep)
 float InterleavedGradientNoise(vec2 pixel)
 {
 	return fract(52.9829189 * fract(dot(pixel, vec2(0.06711056, 0.00583715))));
+}
+
+// Two random numbers for this pixel and frame. The gradient noise gives them a screen space
+// distribution that does not clump, and the frame offset walks the sequence with the two irrational
+// steps of the R2 sequence, so consecutive frames sample different parts of the lobe.
+vec2 SampleSequence(vec2 pixel, float frame)
+{
+	float ign = InterleavedGradientNoise(pixel);
+	return fract(vec2(ign, ign * 1.61803398875) + frame * vec2(0.7548776662, 0.5698402910));
+}
+
+// Visible normal distribution sampling (Heitz 2018). Returns the half vector of a microfacet that
+// reflects `Ve` (unit vector towards the eye, tangent space with N = +z) for the given roughness.
+vec3 SampleGgxVndf(vec3 Ve, float alpha, vec2 Xi)
+{
+	vec3 Vh = normalize(vec3(alpha * Ve.x, alpha * Ve.y, Ve.z));
+
+	float lensq = Vh.x * Vh.x + Vh.y * Vh.y;
+	vec3 T1 = lensq > 0.0 ? vec3(-Vh.y, Vh.x, 0.0) * inversesqrt(lensq) : vec3(1.0, 0.0, 0.0);
+	vec3 T2 = cross(Vh, T1);
+
+	float r = sqrt(Xi.x);
+	float phi = 2.0 * SSR_PI * Xi.y;
+	float t1 = r * cos(phi);
+	float t2 = r * sin(phi);
+
+	// The distribution is stretched towards the horizon by the visible normal term.
+	float s = 0.5 * (1.0 + Vh.z);
+	t2 = (1.0 - s) * sqrt(max(0.0, 1.0 - t1 * t1)) + s * t2;
+
+	vec3 Nh = t1 * T1 + t2 * T2 + sqrt(max(0.0, 1.0 - t1 * t1 - t2 * t2)) * Vh;
+	return normalize(vec3(alpha * Nh.x, alpha * Nh.y, max(1e-6, Nh.z)));
+}
+
+// Half vector of a microfacet, in view space, for a surface with normal `N`.
+vec3 SampleReflectionHalf(vec3 V, vec3 N, float alpha, vec2 Xi)
+{
+	// Tangent frame around the shading normal.
+	vec3 up = abs(N.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+	vec3 T  = normalize(cross(up, N));
+	vec3 B  = cross(N, T);
+
+	// V points from the eye to the surface, the sampler wants the direction towards the eye.
+	vec3 Ve = vec3(dot(-V, T), dot(-V, B), dot(-V, N));
+	vec3 Nh = SampleGgxVndf(Ve, alpha, Xi);
+
+	return normalize(T * Nh.x + B * Nh.y + N * Nh.z);
 }
 
 // Fades the reflection out towards the screen border, where the depth buffer stops holding the
@@ -137,43 +154,18 @@ int DebugViewMode()
 	return int(ssrPass.flags.z + 0.5);
 }
 
-// Mip level the reflection is gathered from. A reflection cone widens with roughness and with the
-// length of the ray, and the scene color mip chain is what turns that cone into a blur: without it a
-// mirror reflection of a slanted surface aliases into stripes, and the step jitter stays visible as
-// dithering instead of averaging out.
+// Mip level the hit color is gathered from. The lobe is sampled stochastically, so the directions
+// already cover the cone; what the gather has to cover is the part of the cone the BRDF bias left
+// out plus the footprint the surface has at the hit distance. Without that the residual spread of
+// the samples stays in the image as noise the temporal resolve can only partly average out.
 //
-// `rayLength` is the length of the ray in screen space, normalized so that 1.0 spans the larger
-// screen dimension: the footprint that matters for aliasing is the screen space one, not the world
-// space one. A world space cone would blur even a mirror by several mips.
-//
-// `incidenceCos` is the cosine between the view direction and the surface normal. A grazing surface
-// compresses the reflected image: the reflected scene packs the secant of that angle more content
-// into the same screen footprint. That compression is the dominant alias source on a shallow floor,
-// and it is independent of the march density: no step count fixes it, only the gather does.
-float ReflectionLod(float roughness, float rayLength, float incidenceCos)
+// `rayPixels` is the screen space length of the ray: the footprint grows with it.
+float ReflectionLod(float roughness, float rayPixels, float brdfBias)
 {
-	float coneAngle = min(roughness, 0.999) * 3.14159265 * 0.5;
-	float coneLen   = max(rayLength, 0.0001);
-	float opLen     = 2.0 * tan(coneAngle) * coneLen;
+	float cone   = max(roughness * roughness * (1.0 - clamp(brdfBias, 0.0, 0.99)) * 0.5, 0.0001);
+	float maxLod = log2(max(max(ssrPass.screenParams.z, ssrPass.screenParams.w), 2.0));
 
-	// Sphere fitted inside the cone, ending at the end of the cone (the same fit cone traced
-	// reflections use).
-	float radius    = (opLen * (sqrt(opLen * opLen + 4.0 * coneLen * coneLen) - opLen)) / (4.0 * coneLen);
-
-	float maxScreen = max(ssrPass.screenParams.z, ssrPass.screenParams.w);
-	float maxLod    = log2(max(maxScreen, 2.0));
-
-	// The divisor sets how much blur a given cone radius buys. The hit is refined onto the surface
-	// plane, so the gather does not have to hide a quantized hit any more: it only has to cover the
-	// cone, and a wider divisor keeps the reflection crisp.
-	float base      = log2(max(radius * maxScreen / 32.0, 1.0));
-
-	// sec(incidence) in mip levels, capped at 2: a grazing surface does compress the reflected image,
-	// but the full secant blurred a mirror into mush without removing the bands, which came from the
-	// hit position rather than from the gather.
-	float grazing   = min(log2(1.0 / max(abs(incidenceCos), 0.05)), 2.0);
-
-	return clamp(base + grazing, 0.0, maxLod);
+	return clamp(log2(max(cone * rayPixels, 1.0)), 0.0, maxLod);
 }
 
 // Gathers the reflection at the given mip. The mip chain carries the cone blur, the cross of taps
@@ -207,22 +199,31 @@ void main()
 		return;
 	}
 
-	// This pass only produces the reflection and its weight; the filter pass that follows averages them
-	// in screen space and composites the result over the scene color. A pixel this pass leaves alone
-	// therefore writes a zero weight, not a colour: the filter keeps the forward shaded pixel for it.
+	// This pass only produces one sample of the reflection and its weight; the resolve pass that
+	// follows averages the samples, accumulates them over frames and composites the result over the
+	// scene color. A pixel this pass leaves alone therefore writes a zero weight, not a colour.
 	//
-	// No geometry here (sky, background) or a surface too rough to mirror anything: no reflection. What
-	// lights the pixel is the sky or the active environment volumes through the forward pass result.
+	// No geometry here (sky, background) or a surface too rough to mirror anything: no reflection.
 	if (linearDepth <= 0.0 || roughness >= ssrPass.params.w)
 	{
 		fragColor = DebugViewEnabled() ? vec4(0.0, 0.0, 0.0, 1.0) : vec4(0.0);
 		return;
 	}
 
-	vec3 viewPos   = ReconstructViewPos(uv, linearDepth);
+	vec3 viewPos   = SsrViewPos(uv, linearDepth);
 	vec3 normal    = normalize(mat3(ssrPass.view) * decodeNormal(gBuffer.rg));
 	vec3 geoNormal = GeometricNormal(uv, linearDepth, 1.0);
-	vec3 rayDir    = reflect(normalize(viewPos), normal);
+
+	// One sample of the reflection lobe per pixel instead of the mirror direction. A rough surface
+	// reflects a cone, not a ray: sampling the visible normal distribution is what turns roughness
+	// into a real blur instead of a mip level picked by hand, and the temporal resolve integrates
+	// the samples over the frames.
+	vec3 V      = normalize(viewPos);
+	vec2 Xi     = SampleSequence(gl_FragCoord.xy, ssrPass.flags.w);
+	Xi.y        = mix(Xi.y, 0.0, clamp(ssrPass.temporal.z, 0.0, 1.0));
+	float alpha = max(roughness * roughness, 0.0001);
+	vec3 H      = SampleReflectionHalf(V, normal, alpha, Xi);
+	vec3 rayDir = reflect(V, H);
 
 	// Push the ray start above the reconstructed surface. The further the shading normal leans away
 	// from it, the bigger the push has to be, which is what keeps bumpy surfaces from self reflecting.
@@ -242,7 +243,7 @@ void main()
 		return;
 	}
 
-	// Per pixel jitter of the first step. The marching error becomes noise that the mip gather below
+	// Per pixel jitter of the first step. The marching error becomes noise that the resolve below
 	// averages out, instead of a stable banding pattern along the surface. Kept well under a full
 	// step so what is left is small enough to be filtered.
 	float jitter      = InterleavedGradientNoise(gl_FragCoord.xy) * 0.35;
@@ -251,11 +252,6 @@ void main()
 	// whole budget covers `stepCount * stepPixels` pixels (the screen diagonal) whatever the angle,
 	// and `stepCount` selects the density. A world space step instead samples the near field finely
 	// and the far field coarsely, which is what slices a grazing reflection into bands.
-	//
-	// Only a floor on the step: the reach has to be the screen whatever the step count is, because the
-	// step count is a quality setting, not a range one. An upper clamp of 64 pixels used to cut the
-	// reach instead, so eight steps covered a fifth of the screen and the reflection ended in a curve
-	// that followed the step count rather than anything in the scene.
 	//
 	// The view plane projection of the ray direction is what turns a screen movement into a world
 	// step: a steep ray (a floor right in front of the camera) moves less screen distance per world
@@ -298,7 +294,7 @@ void main()
 		}
 
 		vec2 rayUV;
-		if (!ProjectToUV(rayPos, rayUV))
+		if (!SsrProjectToUV(rayPos, rayUV))
 		{
 			break;
 		}
@@ -332,7 +328,7 @@ void main()
 		{
 			vec3 mid = (lo + hi) * 0.5;
 			vec2 midUV;
-			if (!ProjectToUV(mid, midUV))
+			if (!SsrProjectToUV(mid, midUV))
 			{
 				break;
 			}
@@ -348,7 +344,7 @@ void main()
 		}
 
 		vec2 refinedUV;
-		if (!ProjectToUV(hi, refinedUV))
+		if (!SsrProjectToUV(hi, refinedUV))
 		{
 			continue;
 		}
@@ -360,7 +356,7 @@ void main()
 		}
 
 		// How far the bisected crossing is from the surface it belongs to.
-		float miss = length(hi - ReconstructViewPos(refinedUV, hitDepth));
+		float miss = length(hi - SsrViewPos(refinedUV, hitDepth));
 
 		// The stored shading normal, used to reject backfaces below.
 		vec3 hitNormal   = normalize(mat3(ssrPass.view) * decodeNormal(texture(s_normalDepth, refinedUV).rg));
@@ -375,19 +371,19 @@ void main()
 		float planeDenom = dot(surfaceNorm, rayDir);
 		if (abs(planeDenom) > 0.0001)
 		{
-			float planeT = dot(surfaceNorm, ReconstructViewPos(refinedUV, hitDepth) - viewPos) / planeDenom;
+			float planeT = dot(surfaceNorm, SsrViewPos(refinedUV, hitDepth) - viewPos) / planeDenom;
 			if (planeT > 0.0)
 			{
 				vec3 planePos = viewPos + rayDir * planeT;
 				vec2 planeUV;
-				if (ProjectToUV(planePos, planeUV))
+				if (SsrProjectToUV(planePos, planeUV))
 				{
 					float planeDepth = SceneLinearDepth(planeUV);
 					if (planeDepth > 0.0)
 					{
 						refinedUV = planeUV;
 						hitDepth  = planeDepth;
-						miss      = length(planePos - ReconstructViewPos(planeUV, planeDepth));
+						miss      = length(planePos - SsrViewPos(planeUV, planeDepth));
 					}
 				}
 			}
@@ -421,26 +417,20 @@ void main()
 
 	if (confidence <= 0.0)
 	{
-		// No screen space reflection found: the pixel keeps the forward shaded colour, and the filter
+		// No screen space reflection found: the pixel keeps the forward shaded colour, and the resolve
 		// pass sees the zero weight. The debug view keeps such pixels black.
 		fragColor = DebugViewEnabled() ? vec4(0.0, 0.0, 0.0, 1.0) : vec4(0.0);
 		return;
 	}
 
 	// The reflection cone picks the mip, the mip chain does the blur.
-	float rayUV     = length(hitUV - uv);
-	float incidence = dot(normalize(viewPos), normal);
-	float lod       = ReflectionLod(roughness, rayUV / max(ssrPass.screenParams.z, ssrPass.screenParams.w), incidence);
+	float rayPixels = length(hitUV - uv) * max(ssrPass.screenParams.z, ssrPass.screenParams.w);
+	float lod       = ReflectionLod(roughness, rayPixels, ssrPass.temporal.z);
 	vec3 reflection = SampleReflection(hitUV, lod);
 
-	// Gloss, hit confidence, the screen border and the two ray length limits all fade the reflection
-	// out, so the forward shaded environment reflection takes over exactly where this one is not
-	// trustworthy. The screen length fade only starts past the screen diagonal: the reflection cone
-	// already blurs the long rays, and fading them earlier cut the reflection off in the middle of the
-	// screen.
-	float gloss      = 1.0 - roughness / max(ssrPass.params.w, 0.0001);
-	float rayPixels  = rayUV * max(ssrPass.screenParams.z, ssrPass.screenParams.w);
-
+	// Hit confidence, the screen border and the two ray length limits all fade the reflection out, so
+	// the forward shaded environment reflection takes over exactly where this one is not trustworthy.
+	//
 	// The march can only reach `stepCount * stepPixels` pixels, and past that the pixel keeps the
 	// forward shaded environment reflection. Fading towards that limit is what keeps the last reachable
 	// row from ending in a hard edge: without it a hit sits directly next to a miss, which is a visible
@@ -458,11 +448,14 @@ void main()
 	// of a floor below it at once, and the reflection disappears in a single frame. The hard part of a
 	// grazing angle is handled where it comes from instead, by the resolution of the depth the crossing
 	// is computed from in the pre process pass.
-	float weight     = clamp(ssrPass.params.x * gloss * confidence * EdgeFade(hitUV) * screenFade * rangeFade, 0.0, 1.0);
+	//
+	// No gloss fade either: a rough surface keeps its reflection, the blur it needs comes from the
+	// sampled direction and the cone mip above, not from fading the whole reflection out.
+	float weight = clamp(confidence * EdgeFade(hitUV) * screenFade * rangeFade, 0.0, 1.0);
 
-	// Debug view: show what this pass produces at each stage, so a grazing angle artifact is told
-	// apart instead of guessed at. A miss, a rough surface or a pixel the ray budget did not reach
-	// stays black. The filter pass hands these through unchanged.
+	// Debug view: show what this pass produces at each stage, so an artifact is told apart instead
+	// of guessed at. A miss, a rough surface or a pixel the ray budget did not reach stays black.
+	// The resolve pass hands these through unchanged.
 	if (DebugViewEnabled())
 	{
 		int mode = DebugViewMode();
@@ -498,7 +491,7 @@ void main()
 		return;
 	}
 
-	// The filter pass averages this with its neighbours, premultiplied by the weight.
+	// The resolve pass averages this with its neighbours, premultiplied by the weight.
 	fragColor = vec4(reflection, weight);
 }
 

@@ -296,6 +296,8 @@ namespace ToolKit
     SSREdgeFade_Define(0.05f, "PostProcessingSettings", 0, 0, 0);
     SSRScreenFadeStart_Define(0.5f, "PostProcessingSettings", 0, 0, 0);
     SSRRangeFadeStart_Define(0.6f, "PostProcessingSettings", 0, 0, 0);
+    SSRHistoryWeight_Define(0.95f, "PostProcessingSettings", 0, 0, 0);
+    SSRBRDFBias_Define(0.7f, "PostProcessingSettings", 0, 0, 0);
     SSRDebugView_Define(false, "PostProcessingSettings", 0, 0, 0);
     SSRDebugViewMode_Define(0, "PostProcessingSettings", 0, 0, 0);
 

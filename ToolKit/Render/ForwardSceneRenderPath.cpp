@@ -1914,6 +1914,8 @@ namespace ToolKit
     m_ssrPass->m_params.EdgeFade           = pps->GetSSREdgeFadeVal();
     m_ssrPass->m_params.ScreenFadeStart    = pps->GetSSRScreenFadeStartVal();
     m_ssrPass->m_params.RangeFadeStart     = pps->GetSSRRangeFadeStartVal();
+    m_ssrPass->m_params.HistoryWeight      = pps->GetSSRHistoryWeightVal();
+    m_ssrPass->m_params.BrdfBias           = pps->GetSSRBRDFBiasVal();
     m_ssrPass->m_params.DebugView          = pps->GetSSRDebugViewVal();
     m_ssrPass->m_params.DebugViewMode      = pps->GetSSRDebugViewModeVal();
 

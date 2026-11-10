@@ -471,6 +471,13 @@ when a machine is reading it rather than a human.
 `--no-images` skips the replay-heavy image export; a Debug frame of `unity-city.scene` is around
 105 MB and the report itself takes 10-20 s for a few thousand draws.
 
+A multi-frame capture (`request` with `label <n>`) records `n` frames in one file, but the report
+bounds the images it writes: `MAX_IMAGES` (48) overall and `MAX_IMAGES_PER_ROOT` (4) per marker
+root, both in `Scripts/rdckit/capture.py`. Comparing one pass across the frames of a ten frame
+capture - the way a flicker in a single pass is measured - therefore silently exports only the
+first frame or two. Raise both constants for the run and restore them after; the image names carry
+the pass sequence number, so the same pass in frame `k` is `start + 24 * k` for a 24 pass frame.
+
 ### Pitfalls
 
 - **`RenderDoc refused the capture. Was a frame presented inside it?`** means RenderDoc has no
@@ -859,6 +866,48 @@ At the start of a session, if the agent spots that `gdtk-overview.md` no
 longer matches the codebase (e.g. a listed file no longer exists, a manager
 on `Main` is missing, a referenced vcxproj is gone), it MUST fix the overview
 in the same pass instead of silently working around the drift.
+
+---
+
+## Windows Build (one tree per configuration)
+
+The build tree is **per configuration**: `build_gdtk.py --configs <Cfg>` configures
+`Intermediate/Windows/<Cfg>`, and the root `CMakeLists.txt` bakes `TK_DEPS_DIR` in at configure
+time as `Dependency/Intermediate/Windows/<Cfg>`. The Visual Studio generator is multi-config, so
+`cmake --build Intermediate/Windows/Debug --config Release` succeeds - and links the **Debug**
+dependency import libraries, because the dependency path was fixed by the Debug configure.
+
+### Symptom
+
+The resulting "Release" binary imports `SDL2d.dll` / `imguid.dll` / `assimpd.dll`
+(`dumpbin /dependents BinRelease/Editor.exe`) and dies at startup with `0xC0000135`
+(`STATUS_DLL_NOT_FOUND`) once those debug-named DLLs are not next to it. Copying them in makes it
+start but mixes the debug and release CRT in one process (linker warning `LNK4098`), which is not a
+release build and can fail later on heap ownership.
+
+### Rule
+
+Configure one tree per configuration and never build a configuration from another configuration's
+tree:
+
+```bash
+python BuildScripts/build_gdtk.py --configs Release   # Intermediate/Windows/Release + Release deps
+python BuildScripts/build_gdtk.py --configs Debug     # Intermediate/Windows/Debug + Debug deps
+```
+
+`build_fast.ps1 -Config <Cfg>` is safe because it targets `Intermediate/Windows/<Cfg>` itself; the
+trap is calling `cmake --build` by hand on the wrong tree with `--config`.
+
+### Verify
+
+```bash
+dumpbin /dependents BinRelease/Editor.exe    # SDL2.dll / imgui.dll, no "d" suffix
+dumpbin /dependents BinDebug/Editor.exe      # SDL2d.dll / imguid.dll
+```
+
+A debug-named import in a release binary is the signature of this mistake. The correct release
+runtime comes from `Dependency/Intermediate/Windows/Release/` (`SDL2.dll`, `imgui.dll`,
+`assimp.dll`), which the install step of the same configuration copies into `BinRelease`.
 
 ---
 

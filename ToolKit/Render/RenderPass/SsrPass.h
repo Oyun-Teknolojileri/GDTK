@@ -21,6 +21,10 @@ namespace ToolKit
     Mat4 view;
     /** Clip -> view, used to rebuild the view position from the stored linear depth. */
     Mat4 inverseProjection;
+    /** View -> world, used to carry the surface pixel back to where it was last frame. */
+    Mat4 inverseView;
+    /** Previous frame's view projection, for the reprojection of the reflection history. */
+    Mat4 prevViewProjection;
     /** (P00, P11, P20, P21) - turns a view position into a UV without a matrix multiply. */
     Vec4 projParams;
     /** .x = intensity, .y = maxDistance, .z = thickness, .w = roughness cutoff. */
@@ -28,10 +32,13 @@ namespace ToolKit
     /** .xy = 1 / size (texel size), .zw = size in pixels. */
     Vec4 screenParams;
     /** .x = debug view, .y = march step count (the requested count clamped to the loop bound),
-     *  .z = debug view mode (see SSR_DEBUG_* in ssrFrag.shader). */
+     *  .z = debug view mode (see SSR_DEBUG_* in ssrFrag.shader), .w = frame index (sample seed). */
     Vec4 flags;
     /** .x = screen border fade, .y = screen length fade start, .z = hit distance fade start. */
     Vec4 fades;
+    /** .x = history weight, .y = 1 when the history must be dropped,
+     *  .z = brdf bias (how far the sampled lobe is bent towards the mirror), .w = temporal enabled. */
+    Vec4 temporal;
   };
 
   typedef GpuBufferBase<SsrPassDataLayout> SsrPassDataBuffer;
@@ -73,6 +80,12 @@ namespace ToolKit
     /** Where the fade along the hit distance starts, as a fraction of MaxDistance. */
     float RangeFadeStart               = 0.6f;
 
+    /** Weight the previous frame keeps in the accumulation. 0 turns the temporal resolve off. */
+    float HistoryWeight                = 0.95f;
+
+    /** How far the sampled lobe is bent towards the mirror direction. 0 = pure GGX, 1 = mirror. */
+    float BrdfBias                     = 0.7f;
+
     /** Output only what this pass contributes, instead of compositing it over the scene color. */
     bool DebugView                     = false;
 
@@ -81,10 +94,20 @@ namespace ToolKit
   };
 
   /**
-   * Screen space reflections. Marching a reflection ray per pixel against the g buffer and compositing
-   * the hit color over the scene color into a target of the pass's own. A miss leaves the pixel exactly
-   * as the forward pass shaded it, so the sky or the active environment volumes keep providing the
-   * reflection wherever screen space can not: background pixels, off screen rays and rough surfaces.
+   * Screen space reflections with stochastic sampling. Every pixel shoots one ray sampled from the
+   * surface's reflection lobe instead of the mirror direction, so roughness becomes a real blur: the
+   * lobe the sample lands in is what the pixel reflects, not a mip of the mirror image. The samples
+   * are averaged in screen space and accumulated over frames against a history that follows the
+   * surface through the camera motion.
+   *
+   * A miss leaves the pixel exactly as the forward pass shaded it, so the sky or the active
+   * environment volumes keep providing the reflection wherever screen space can not: background
+   * pixels, off screen rays and surfaces whose lobe points away from the screen.
+   *
+   * The composite goes to a target of the pass's own (see GetOutputFramebuffer): compositing back
+   * into the frame makes the pass read the target it writes, which a driver that resolves a
+   * multisampled render with a draw (Mali) can hand a frame old content, and the previous frame's
+   * reflections then alternate with the current one.
    */
   class TK_API SsrPass : public Pass
   {
@@ -119,37 +142,66 @@ namespace ToolKit
     SsrPassParams m_params;
 
    private:
-    FullQuadPassPtr m_quadPass       = nullptr;
-    ShaderPtr m_ssrShader            = nullptr;
+    /** Phase one: one stochastic ray per pixel, gathered into the scene color mip chain. */
+    FullQuadPassPtr m_quadPass        = nullptr;
+    ShaderPtr m_ssrShader             = nullptr;
 
-    /** Second phase: screen space filter and resolve of the trace result. */
-    FullQuadPassPtr m_filterPass     = nullptr;
-    ShaderPtr m_filterShader         = nullptr;
+    /** Phase two: screen space resolve of the samples plus the temporal accumulation. */
+    FullQuadPassPtr m_resolvePass     = nullptr;
+    ShaderPtr m_resolveShader         = nullptr;
+
+    /** Phase three: composite the accumulated reflection over the scene color. */
+    FullQuadPassPtr m_compositePass   = nullptr;
+    ShaderPtr m_compositeShader       = nullptr;
 
     /** Single sample copy of the scene color: the pass reads it while writing a target of its own. */
-    RenderTargetPtr m_copyTexture    = nullptr;
+    RenderTargetPtr m_copyTexture     = nullptr;
 
-    /** Reflection and its weight, produced by the trace phase and filtered by the resolve phase. */
-    RenderTargetPtr m_traceTexture   = nullptr;
+    /** This frame's reflection and its weight, produced by the trace phase. */
+    RenderTargetPtr m_traceTexture    = nullptr;
 
-    /** The color the resolve phase writes: the frame with the reflections composited in. */
-    RenderTargetPtr m_reflectionRt   = nullptr;
-    FramebufferPtr m_reflectionFb    = nullptr;
+    /** Accumulated reflection, one is read and the other is written, and they swap. */
+    RenderTargetPtr m_history[2];
 
-    /** Set once the resolve phase left a composite of this frame in m_reflectionFb. */
-    bool m_outputWritten             = false;
+    /** The color the composite phase writes: the frame with the reflections in it. */
+    RenderTargetPtr m_reflectionRt    = nullptr;
+    FramebufferPtr m_reflectionFb     = nullptr;
+
+    /** Index of the history texture the previous frame left its accumulation in. */
+    int m_historyIndex                = 0;
+
+    /** Set once a frame was accumulated, so the first frame after a reset starts clean. */
+    bool m_hasHistory                 = false;
+
+    /** The camera the history belongs to; a different camera can not reuse it. */
+    ObjectId m_historyCameraId        = 0;
+
+    /** Size the history targets were last built for. */
+    IVec2 m_historySize               = IVec2(0);
+
+    /** View projection of the last frame that accumulated, for the reprojection. */
+    Mat4 m_prevViewProjection         = Mat4(1.0f);
+
+    /** Set when the view changed since the last accumulated frame: re-rolls the samples and widens the resolve. */
+    bool m_viewMoved                  = false;
+
+    /** Seed of this frame's sample sequence. Wraps, so the offset stays exact in a float. */
+    float m_frameIndex                = 0.0f;
+
+    /** Set once the composite phase left a composite of this frame in m_reflectionFb. */
+    bool m_outputWritten              = false;
 
     SsrPassDataBuffer m_passDataBuffer;
-    bool m_passDataBufferInitialized = false;
+    bool m_passDataBufferInitialized  = false;
 
-    /** Set once the fragment shader is known to not compile, so the pass stays out of the frame. */
-    bool m_shaderUnavailable         = false;
+    /** Set once a fragment shader is known to not compile, so the pass stays out of the frame. */
+    bool m_shaderUnavailable          = false;
 
     /** Highest SSR_MAX_STEPS the fragment shader is compiled with. */
     static constexpr int m_maxStepCount = 512;
 
     /** SSR_MAX_STEPS the fragment shader was last compiled with (-1 = never). */
-    int m_currentMaxSteps            = -1;
+    int m_currentMaxSteps             = -1;
   };
 
   typedef std::shared_ptr<SsrPass> SsrPassPtr;

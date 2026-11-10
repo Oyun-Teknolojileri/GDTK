@@ -385,6 +385,18 @@ namespace ToolKit
      * the ray travelled in view space, so this keeps the far end of the range from ending in a hard edge.
      */
     TKDeclareParam(float, SSRRangeFadeStart);
+    /**
+     * Weight the previous frame keeps in the reflection accumulation. The trace shoots one stochastic
+     * sample per pixel, so a rough surface converges over the frames; 0 drops the history and leaves the
+     * single sample of this frame in place.
+     */
+    TKDeclareParam(float, SSRHistoryWeight);
+    /**
+     * How far the sampled reflection direction is bent towards the mirror direction, 0 leaves the pure
+     * GGX lobe and 1 makes every pixel shoot the mirror ray. A bias trades the width of the blur for a
+     * lower sample count.
+     */
+    TKDeclareParam(float, SSRBRDFBias);
     TKDeclareParam(bool, SSRDebugView);
     TKDeclareParam(int, SSRDebugViewMode);
 

@@ -258,6 +258,21 @@ namespace ToolKit
           pps->SetSSRRangeFadeStartVal(ssrRangeFadeStart);
         }
 
+        // The temporal side of the stochastic trace: how much of the previous frame survives, and how far
+        // the sampled lobe is bent towards the mirror direction. A high bias is quieter but loses the blur
+        // a rough surface needs.
+        float ssrHistoryWeight = pps->GetSSRHistoryWeightVal();
+        if (ImGui::DragFloat("History Weight", &ssrHistoryWeight, 0.005f, 0.0f, 0.98f))
+        {
+          pps->SetSSRHistoryWeightVal(ssrHistoryWeight);
+        }
+
+        float ssrBrdfBias = pps->GetSSRBRDFBiasVal();
+        if (ImGui::DragFloat("BRDF Bias", &ssrBrdfBias, 0.01f, 0.0f, 1.0f))
+        {
+          pps->SetSSRBRDFBiasVal(ssrBrdfBias);
+        }
+
         bool ssrDebugView = pps->GetSSRDebugViewVal();
         if (ImGui::Checkbox("Debug View##ssr", &ssrDebugView))
         {

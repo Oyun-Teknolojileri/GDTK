@@ -48,15 +48,25 @@ namespace ToolKit
     m_ssrShader                      = GetShaderManager()->Create<Shader>(ShaderPath("ssrFrag.shader", true));
     m_copyTexture                    = MakeNewPtr<RenderTarget>("SsrSceneCopyRT");
 
-    // The resolve phase composites into a target of the pass's own, so the frame it copied stays read
-    // only for the rest of the frame. The path reads that target through GetOutputFramebuffer.
+    // The composite goes into a target of the pass's own, so the frame it copied stays read only for
+    // the rest of the frame. The path reads that target through GetOutputFramebuffer.
     m_reflectionRt                   = MakeNewPtr<RenderTarget>("SsrReflectionRT");
     m_reflectionFb                   = MakeNewPtr<Framebuffer>("SsrReflectionFB");
 
-    m_filterPass                       = MakeNewPtr<FullQuadPass>();
-    m_filterPass->m_params.frameBuffer = m_reflectionFb;
-    m_filterShader                     = GetShaderManager()->Create<Shader>(ShaderPath("ssrFilterFrag.shader", true));
-    m_traceTexture                     = MakeNewPtr<RenderTarget>("SsrTraceRT");
+    // Phase one writes the samples of this frame, phase two resolves them and accumulates the history,
+    // phase three composites the accumulation over the frame.
+    m_traceTexture                      = MakeNewPtr<RenderTarget>("SsrTraceRT");
+    m_history[0]                        = MakeNewPtr<RenderTarget>("SsrHistory0RT");
+    m_history[1]                        = MakeNewPtr<RenderTarget>("SsrHistory1RT");
+
+    m_resolvePass                       = MakeNewPtr<FullQuadPass>();
+    m_resolvePass->m_params.frameBuffer = MakeNewPtr<Framebuffer>("SsrResolveFB");
+    m_resolveShader                     = GetShaderManager()->Create<Shader>(ShaderPath("ssrResolveFrag.shader", true));
+
+    m_compositePass                       = MakeNewPtr<FullQuadPass>();
+    m_compositePass->m_params.frameBuffer = m_reflectionFb;
+    m_compositeShader                     =
+        GetShaderManager()->Create<Shader>(ShaderPath("ssrCompositeFrag.shader", true));
   }
 
   SsrPass::~SsrPass()
@@ -65,9 +75,15 @@ namespace ToolKit
     m_ssrShader     = nullptr;
     m_copyTexture   = nullptr;
 
-    m_filterPass    = nullptr;
-    m_filterShader  = nullptr;
+    m_resolvePass   = nullptr;
+    m_resolveShader = nullptr;
+
+    m_compositePass   = nullptr;
+    m_compositeShader = nullptr;
+
     m_traceTexture  = nullptr;
+    m_history[0]    = nullptr;
+    m_history[1]    = nullptr;
 
     m_reflectionRt  = nullptr;
     m_reflectionFb  = nullptr;
@@ -93,6 +109,7 @@ namespace ToolKit
     if (m_params.ColorRt == nullptr || m_params.GNormalDepthBuffer == nullptr || m_params.Cam == nullptr)
     {
       m_outputWritten = false;
+      m_hasHistory    = false;
       return;
     }
 
@@ -102,6 +119,7 @@ namespace ToolKit
     if (m_shaderUnavailable)
     {
       m_outputWritten = false;
+      m_hasHistory    = false;
       return;
     }
 
@@ -114,6 +132,8 @@ namespace ToolKit
     // ordering: a shader with defines sets up its variants here and compiles them on demand, so the define
     // is still selected before the first compile.
     m_ssrShader->Init();
+    m_resolveShader->Init();
+    m_compositeShader->Init();
 
     const int steps    = glm::clamp(m_params.StepCount, 1, m_maxStepCount);
     const int maxSteps = ClampMaxSteps(steps);
@@ -139,6 +159,19 @@ namespace ToolKit
       TK_ERR("SsrPass: the fragment shader did not compile, screen space reflections are disabled.");
       m_shaderUnavailable = true;
       m_outputWritten     = false;
+      m_hasHistory        = false;
+      return;
+    }
+
+    // The resolve and the composite carry no defines, so Init compiled them above and a null gpu data
+    // here is a real compile error. Same rule as the trace: report once, keep the pass out of the frame.
+    if (m_resolveShader->m_gpuData == nullptr || m_compositeShader->m_gpuData == nullptr)
+    {
+      TK_ERR("SsrPass: the resolve or composite shader did not compile, screen space reflections are "
+             "disabled.");
+      m_shaderUnavailable = true;
+      m_outputWritten     = false;
+      m_hasHistory        = false;
       return;
     }
 
@@ -159,7 +192,8 @@ namespace ToolKit
     m_copyTexture->GenerateMipMaps();
 
     m_quadPass->SetFragmentShader(m_ssrShader, GetRenderer());
-    m_filterPass->SetFragmentShader(m_filterShader, GetRenderer());
+    m_resolvePass->SetFragmentShader(m_resolveShader, GetRenderer());
+    m_compositePass->SetFragmentShader(m_compositeShader, GetRenderer());
 
     if (!m_passDataBufferInitialized)
     {
@@ -167,11 +201,15 @@ namespace ToolKit
       m_passDataBufferInitialized = true;
     }
 
-    const Mat4& proj                          = m_params.Cam->GetProjectionMatrix();
+    const Mat4& proj                           = m_params.Cam->GetProjectionMatrix();
+    const Mat4& view                           = m_params.Cam->GetViewMatrix();
+    const Mat4 viewProjection                  = proj * view;
     const IVec2 size(m_copyTexture->m_width, m_copyTexture->m_height);
 
-    m_passDataBuffer.m_data.view              = m_params.Cam->GetViewMatrix();
-    m_passDataBuffer.m_data.inverseProjection = glm::inverse(proj);
+    m_passDataBuffer.m_data.view               = view;
+    m_passDataBuffer.m_data.inverseProjection  = glm::inverse(proj);
+    m_passDataBuffer.m_data.inverseView        = glm::inverse(view);
+    m_passDataBuffer.m_data.prevViewProjection = m_prevViewProjection;
 
     // clip.x = P00 * x + P20 * z, clip.y = P11 * y + P21 * z, clip.w = -z
     m_passDataBuffer.m_data.projParams        = Vec4(proj[0][0], proj[1][1], proj[2][0], proj[2][1]);
@@ -184,30 +222,64 @@ namespace ToolKit
     // Texel and screen size: the shader needs both for the hit gather, the screen edge fade and the
     // ray length fade in pixels.
     m_passDataBuffer.m_data.screenParams      = Vec4(1.0f / float(size.x),
-                                                     1.0f / float(size.y),
-                                                     float(size.x),
-                                                     float(size.y));
+                                                      1.0f / float(size.y),
+                                                      float(size.x),
+                                                      float(size.y));
 
     // Step count: the count the loop bound can honor, as a uniform, because the shader divides the screen
-    // diagonal by it. The bound itself was selected in PreRender, before the shader was built.
+    // diagonal by it. The bound itself was selected in PreRender, before the shader was built. The frame
+    // index seeds the sample sequence, so consecutive frames sample different parts of the lobe.
     m_passDataBuffer.m_data.flags =
-        Vec4(m_params.DebugView ? 1.0f : 0.0f, float(marchedSteps), float(m_params.DebugViewMode), 0.0f);
+        Vec4(m_params.DebugView ? 1.0f : 0.0f, float(marchedSteps), float(m_params.DebugViewMode), m_frameIndex);
 
     // The three fades, each with the fraction it starts at. They live in the pass data rather than in the
-    // shader so the border and the two lengths can be tuned per project without a recompile.
-    m_passDataBuffer.m_data.fades = Vec4(m_params.EdgeFade, m_params.ScreenFadeStart, m_params.RangeFadeStart, 0.0f);
+    // shader so the border and the two lengths can be tuned per project without a recompile. The fourth
+    // component flags a moving view, which the resolve reads to widen its kernel and lean on the history
+    // less: a reprojected reflection follows the surface, not the reflected content, so it is stale exactly
+    // while the camera moves.
+    m_viewMoved = false;
+    for (int column = 0; column < 4 && !m_viewMoved; ++column)
+    {
+      for (int row = 0; row < 4; ++row)
+      {
+        if (glm::abs(viewProjection[column][row] - m_prevViewProjection[column][row]) > 1e-6f)
+        {
+          m_viewMoved = true;
+          break;
+        }
+      }
+    }
 
-    // Trace target: the reflection and its weight, at the scene resolution. The resolve phase reads it
-    // back and composites, which is what lets the filter spread the reflection past the silhouettes it
-    // can not see through.
+    m_passDataBuffer.m_data.fades =
+        Vec4(m_params.EdgeFade, m_params.ScreenFadeStart, m_params.RangeFadeStart, m_viewMoved ? 1.0f : 0.0f);
+
+    // History lifetime: a different camera, a resize or the first frame of the pass can not reuse the
+    // accumulation, and neither can a frame that skipped the pass.
+    const ObjectId cameraId = m_params.Cam->GetIdVal();
+    bool resetHistory       = !m_hasHistory || m_historyCameraId != cameraId;
+
+    // Trace target: this frame's samples and their weight, at the scene resolution.
     TextureSettings traceSet = copySet;
     traceSet.GenerateMipMap  = false;
     traceSet.MinFilter       = GraphicTypes::SampleLinear;
     traceSet.MagFilter       = GraphicTypes::SampleLinear;
     m_traceTexture->ReconstructIfNeeded(size.x, size.y, &traceSet);
 
-    m_quadPass->m_params.frameBuffer->ReconstructIfNeeded({size.x, size.y, false, false});
-    m_quadPass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_traceTexture);
+    // The accumulation is sampled at an arbitrary reprojected position, so it is filtered linearly and
+    // clamped at the border.
+    TextureSettings historySet = traceSet;
+    historySet.WarpS           = GraphicTypes::UVClampToEdge;
+    historySet.WarpT           = GraphicTypes::UVClampToEdge;
+    m_history[0]->ReconstructIfNeeded(size.x, size.y, &historySet);
+    m_history[1]->ReconstructIfNeeded(size.x, size.y, &historySet);
+
+    if (m_historySize != size)
+    {
+      m_historySize = size;
+      resetHistory  = true;
+    }
+
+    m_historyCameraId = cameraId;
 
     // The composite target: the frame with the reflections in it, at the frame's resolution and format so
     // everything behind this pass reads it instead of the frame. No mip chain and no multisampling, because
@@ -218,13 +290,28 @@ namespace ToolKit
     reflectionSet.MagFilter       = GraphicTypes::SampleLinear;
     m_reflectionRt->ReconstructIfNeeded(size.x, size.y, &reflectionSet);
 
-    m_filterPass->m_params.frameBuffer->ReconstructIfNeeded({size.x, size.y, false, false});
-    m_filterPass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_reflectionRt);
+    m_passDataBuffer.m_data.temporal = Vec4(glm::clamp(m_params.HistoryWeight, 0.0f, 0.98f),
+                                            resetHistory ? 1.0f : 0.0f,
+                                            glm::clamp(m_params.BrdfBias, 0.0f, 1.0f),
+                                            m_params.HistoryWeight > 0.0f ? 1.0f : 0.0f);
 
-    m_quadPass->m_params.blendFunc        = BlendFunction::NONE;
-    m_quadPass->m_params.clearFrameBuffer = GraphicBitFields::None;
-    m_filterPass->m_params.blendFunc      = BlendFunction::NONE;
-    m_filterPass->m_params.clearFrameBuffer = GraphicBitFields::None;
+    m_quadPass->m_params.frameBuffer->ReconstructIfNeeded({size.x, size.y, false, false});
+    m_quadPass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_traceTexture);
+
+    m_compositePass->m_params.frameBuffer->ReconstructIfNeeded({size.x, size.y, false, false});
+    m_compositePass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0,
+                                                              m_reflectionRt);
+
+    // The resolve draws into one of the history targets, and which one swaps every frame. Only the size
+    // is settled here, the attachment follows in Render.
+    m_resolvePass->m_params.frameBuffer->ReconstructIfNeeded({size.x, size.y, false, false});
+
+    m_quadPass->m_params.blendFunc            = BlendFunction::NONE;
+    m_quadPass->m_params.clearFrameBuffer     = GraphicBitFields::None;
+    m_resolvePass->m_params.blendFunc         = BlendFunction::NONE;
+    m_resolvePass->m_params.clearFrameBuffer  = GraphicBitFields::None;
+    m_compositePass->m_params.blendFunc       = BlendFunction::NONE;
+    m_compositePass->m_params.clearFrameBuffer = GraphicBitFields::None;
   }
 
   void SsrPass::Render()
@@ -264,12 +351,22 @@ namespace ToolKit
     normalDepth->ApplyTextureSettings(ndSettings);
 
     m_quadPass->SetFragmentShader(m_ssrShader, renderer);
-    m_filterPass->SetFragmentShader(m_filterShader, renderer);
+    m_resolvePass->SetFragmentShader(m_resolveShader, renderer);
+    m_compositePass->SetFragmentShader(m_compositeShader, renderer);
 
     m_passDataBuffer.Invalidate();
     m_passDataBuffer.Map();
 
-    // Phase 1: trace the reflection into its own target, carrying its weight in the alpha channel.
+    // One history target is read and the other is written, and they swap at the end of the frame: a pass
+    // can not sample the attachment it draws into.
+    const int readIndex  = m_historyIndex;
+    const int writeIndex = 1 - m_historyIndex;
+
+    m_resolvePass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0,
+                                                            m_history[writeIndex]);
+
+    // Phase 1: trace one sample of the reflection lobe per pixel into its own target, carrying its weight
+    // in the alpha channel.
     m_requirements = PassRequirements();
     GatherRequirements(m_requirements);
     m_requirements.fragmentShader                     = m_ssrShader;
@@ -283,26 +380,58 @@ namespace ToolKit
     ApplyRequirements(renderer);
     RenderSubPass(m_quadPass);
 
-    // Phase 2: filter that result in screen space and composite the scene copy with it into the pass's
-    // own target. The requirements are rebuilt so the sampler names of the trace phase do not leak into
-    // this one.
+    // Phase 2: resolve the samples in screen space and accumulate them into the history, reprojected
+    // through the camera motion. The requirements are rebuilt so the sampler names of the trace phase do
+    // not leak into this one.
     m_requirements = PassRequirements();
     GatherRequirements(m_requirements);
-    m_requirements.fragmentShader                     = m_filterShader;
-    m_requirements.vertexShader                       = m_filterPass->m_material->GetVertexShaderVal();
-    m_requirements.program                            = m_filterPass->GetProgram();
-    m_requirements.frameBuffer                        = m_filterPass->m_params.frameBuffer;
-    m_requirements.semanticTextures["s_trace"]        = m_traceTexture;
+    m_requirements.fragmentShader                    = m_resolveShader;
+    m_requirements.vertexShader                      = m_resolvePass->m_material->GetVertexShaderVal();
+    m_requirements.program                           = m_resolvePass->GetProgram();
+    m_requirements.frameBuffer                       = m_resolvePass->m_params.frameBuffer;
+    m_requirements.semanticTextures["s_trace"]       = m_traceTexture;
+    m_requirements.semanticTextures["s_history"]     = m_history[readIndex];
+    m_requirements.semanticTextures["s_normalDepth"] = normalDepth;
+    m_requirements.customUbos[7]                     = &m_passDataBuffer.GetBuffer();
+
+    ApplyRequirements(renderer);
+    RenderSubPass(m_resolvePass);
+
+    // Phase 3: composite the accumulated reflection over the scene copy into the pass's own target.
+    m_requirements = PassRequirements();
+    GatherRequirements(m_requirements);
+    m_requirements.fragmentShader                     = m_compositeShader;
+    m_requirements.vertexShader                       = m_compositePass->m_material->GetVertexShaderVal();
+    m_requirements.program                            = m_compositePass->GetProgram();
+    m_requirements.frameBuffer                        = m_compositePass->m_params.frameBuffer;
+    m_requirements.semanticTextures["s_trace"]        = m_history[writeIndex];
     m_requirements.semanticTextures["s_sceneColor"]   = m_copyTexture;
-    m_requirements.semanticTextures["s_normalDepth"]  = normalDepth;
     m_requirements.customUbos[7]                      = &m_passDataBuffer.GetBuffer();
 
     ApplyRequirements(renderer);
-    RenderSubPass(m_filterPass);
+    RenderSubPass(m_compositePass);
 
     // The quad above wrote every pixel of the target, so it now holds this frame's picture and the passes
     // behind this one may read it.
     m_outputWritten = true;
+    m_hasHistory    = true;
+    m_historyIndex  = writeIndex;
+
+    // The reprojection of the next frame needs the view projection this frame was drawn with, and the
+    // comparison against it is what told the resolve (in PreRender) whether this frame is a moving one.
+    m_prevViewProjection = m_params.Cam->GetProjectionMatrix() * m_params.Cam->GetViewMatrix();
+
+    // The sample sequence only advances when the view does. Re-rolling the lobe at a still camera never
+    // stops: every frame samples a different part of the cone, the accumulation keeps chasing it, and
+    // the reflection drifts as if it sat on moving water. A still view integrates to a still image; a
+    // moving one re-rolls every frame, which is exactly where the drift is hidden.
+    //
+    // The seed walks a bounded range, so the offset stays exact in a float and the sequence repeats
+    // (which is invisible: it is a sample sequence, not a state).
+    if (m_viewMoved)
+    {
+      m_frameIndex = m_frameIndex >= 32.0f ? 0.0f : m_frameIndex + 1.0f;
+    }
   }
 
   void SsrPass::GatherRequirements(PassRequirements& reqs)
