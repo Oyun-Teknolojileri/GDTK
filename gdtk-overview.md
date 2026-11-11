@@ -341,50 +341,59 @@ Inputs via `SceneRenderPathParams`: Scene, Camera, MainFramebuffer, grid, postPr
 
 Pass order: shadow, forward pre process (g buffer, required by SSAO / DoF / SSR), SSAO, sky, forward,
 bloom, SSR, DoF, gamma/tonemap/FXAA. Bloom runs before the reflections on purpose: the reflection pass
-copies the shaded frame, so the glow has to be in it or a reflected highlight comes back flat. `SsrPass`
-runs in three phases. The trace phase shoots one ray per pixel sampled from the surface's reflection lobe
-(GGX visible normal distribution, bent towards the mirror direction by `SSRBRDFBias`) instead of the mirror
-direction, marches it in screen space against the pre process g buffer (world normal, linear depth,
-roughness), refines the hit by intersecting the ray with the surface plane rebuilt from a wide depth
-baseline, and writes the reflection plus its confidence into a target of its own. The resolve phase
-averages that target in screen space premultiplied by the confidence - a depth aware 3x3 kernel that
-widens with roughness and with camera motion, with each sample compressed before the average so a single
-specular firefly can not pulse - and accumulates it over frames: the history is reprojected through the
-camera motion of the surface, clamped to the range the current frame produced, and dropped where a pixel
-flips between hit and miss. The composite phase blends the accumulation over the scene color copy. A pixel
-with no screen space reflection keeps its forward shaded color, so the sky or the active environment
-volumes provide the reflection wherever screen space can not.
+copies the shaded frame, so the glow has to be in it or a reflected highlight comes back flat.
 
-The accumulation runs on every frame. There is no freeze and no motion tracking: the scenes this ships
-with are dynamic, so a reflection has to stay current even when the camera is still - holding the
-history left the reflection of a car on the ground after it had driven off, and telling that change
-apart from sampling noise needs more than a per frame test. What keeps a still view from crawling is the
-window, and the window is adaptive: the resolve chooses the share of the history it keeps between
-`SSRTemporalResponseMin` and `SSRTemporalResponseMax` by how well the current frame and the accumulation
-agree on the luminance, so a reflection that changes lets the new frame through while a still one stays
-quiet. The history is pulled into the range the frame produced (an AABB clip, not a hard clamp) before it
-is blended, which is what keeps the long window from ghosting. The median pass drops the samples that
-would streak, and the resolve widens its kernel with roughness and with camera motion.
-`SSRBRDFBias` sets how far the sampled lobe leans towards the mirror direction.
+`SsrPass` follows the FidelityFX SSSR / Denoiser Reflections arrangement, rewritten as fragment passes
+because the backend has neither compute nor shader storage (see `Resources/Engine/Shaders/ssr*.shader`).
+It runs in four phases. The trace phase shoots one ray per pixel sampled from the reflection lobe (GGX
+visible normal distribution, bent towards the mirror direction by `SSRBRDFBias`), marches it against the
+pre process g buffer, refines the hit by intersecting the ray with the surface plane, and writes
+`rgb = reflection, a = coverage` plus a second target holding where the ray ended (`xy` uv, `z` depth,
+`w` length). The reflection it writes is *complete*: the confidence of the hit blends the hit radiance
+with the sky's pre filtered specular cubemap (`s_envSpecular`, the same IBL image the forward pass
+shades with, sampled at the mip the roughness selects), so a ray that leaves the screen or finds nothing
+still carries the environment's answer. There is no "no data" state for the accumulation to paper over,
+which is what a previous version needed and what left old reflections on a mirror. The average phase
+writes a 1/8 resolution, luminance weighted average of the trace - the low frequency anchor the temporal
+clip leans on. The resolve phase is the denoiser: a 15 tap Halton window with normal/depth/radiance edge
+stopping, the *two* candidate reprojections the reference uses (the surface through the frame's motion,
+and the point the ray ended at, projected with the previous view projection) picked by how well the
+history g buffer's normal and roughness match, a smooth disocclusion factor from the same history, a
+sample count carried across frames, and a variance clipped blend weighted by that count (`1 - 1/n`, with
+the sample cap following the roughness). The composite phase mixes the accumulation over the scene copy
+towards the reflection by the trace's coverage times `SSRIntensity`.
 
-A pixel whose ray missed is the exception to the window: a miss leaves the hit depth at zero on both
-frames, so the hit/miss flip test can not see it, and holding its history is what left a moving
-camera's old reflections on a mirror - the accumulation kept a reflection the ray no longer found, in
-strips that followed the reprojection error. A miss therefore caps the response (`SSR_MISS_RESPONSE`),
-which fades the stale reflection out over a handful of frames and hands the pixel back to the forward
-shaded colour, instead of keeping it until the ray finds something again. The two response bounds are
-a range, not a direction: the pass clamps each into [0, 1] and orders the pair, because clamping the
-upper bound up to the lower one turned a project that wrote them the other way round into a constant
-window with no sign of it.
+The march itself is hierarchical. A min depth pyramid (ssrDepthPyramidFrag.shader) is built every frame
+from the g buffer's linear depth, level 0 half the screen and each level after it half of the one before,
+background counting as the far plane. While the tile the ray is in holds nothing in front of it, the step
+covers a whole tile of the current level and the ray climbs; when the tile does hold something, the ray
+descends before stepping. The hit test stays against the exact g buffer, so the pyramid only decides how far
+a step may jump - it never declares a hit. Measured on the reflective scene the step budget this consumes
+drops from 0.54 to 0.51 of the requested count for the same picture; SSR_USE_PYRAMID 0 turns the march
+back into a flat one, which is how that is measured, and debug view 10 shows the fraction of the budget each
+pixel spent. The flat march already covers the screen in the requested count on this scene, so the hierarchy
+buys cost headroom rather than reach: it is what keeps a low step count usable on a phone.
 
-A reflection of something that moves on its own cannot be found in the history, and no amount of clipping
-recovers it: the stored value is of a thing that is no longer there. VelocityPass writes the screen
-motion of the objects whose transform changed - it draws the same geometry twice, once with this
-frame's transform and once with the one it had a frame ago, both with the current camera, into two
-targets that are cleared to zero every frame, alpha marking that an object was drawn. The resolve reads
-those two and drops the history for a pixel when the point the previous ray hit has moved, when that
-point appeared or left, or when the hit distance changed; a motion small enough to stay on the same
-content is followed with a shifted lookup instead. Debug view 9 shows that mask.
+The two numbers the sampler draws per pixel come from a 128x128 void and cluster blue noise tile
+(Resources/Engine/Textures/blueNoise.png, generated by 	mp/gen_bluenoise.py and checksummed into the
+engine resources like any other). Blue noise is what keeps the samples of one frame evenly spread: an
+uncorrelated random sequence leaves clumps and holes at the tile's scale, and at one sample per pixel those
+clumps are what the denoiser then has to average away. The tile is walked by the frame index with the R2
+steps, so consecutive frames draw from cells far apart in the tile while each frame stays uniform. On the
+mirror path the sampler barely matters - the lobe is a delta and the sample is deterministic - which is
+exactly why the measurement there shows no difference; it is the glossy path that consumes it.
+
+Mirrors are the exception, and it is the reference's split: below `SSR_MIRROR_ROUGHNESS` the trace is the
+exact mirror direction, so there is nothing to average and nothing to ghost. Those pixels take this
+frame's sample as it is and keep a sample count of one; the spatial filter and the temporal accumulation
+only run for glossy surfaces. A mirror therefore cannot shimmer or ghost by construction - it can only
+alias, which is a sampling problem the trace has to answer, not the denoiser.
+
+`VelocityPass` writes the screen motion of the objects whose transform changed - it draws the same
+geometry twice, once with this frame's transform and once with the one it had a frame ago, both with the
+current camera, into two targets cleared to zero every frame, alpha marking that an object was drawn.
+The resolve subtracts that motion from the surface reprojection, so an object's own movement is followed
+in the history instead of being read as a disocclusion.
 
 The composite goes into a target of the pass's own (`SsrPass::GetOutputFramebuffer`), not back into the
 frame it read: the frame is read only for the rest of the frame, and DoF, the tone curve and a host that
@@ -392,7 +401,6 @@ composites the frame itself all follow the reflection target instead. That targe
 `ForwardSceneRenderPath::GetOutputFramebuffer` reports, because the path no longer always writes the
 framebuffer it was handed - a host that reads the viewport framebuffer after this path gets the frame from
 before the reflections.
-
 The step count selects *density*, never reach: the shader sizes a step so that the requested count crosses
 the screen diagonal, and the loop bound is a compile time `SSR_STEP_COUNT` variant from {8, 16, 32, 64}
 (`SsrPass::PreRender` picks the variant, then hands the count the bound can honor). The two disagreeing is

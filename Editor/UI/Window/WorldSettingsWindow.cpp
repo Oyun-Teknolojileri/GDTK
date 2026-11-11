@@ -258,22 +258,13 @@ namespace ToolKit
           pps->SetSSRRangeFadeStartVal(ssrRangeFadeStart);
         }
 
-        // The temporal side of the stochastic trace: the two ends of the response, and how far the
-        // sampled lobe is bent towards the mirror direction. The accumulation keeps the upper share of
-        // the history where this frame agrees with it and drops to the lower one where it does not; a
-        // high bias is quieter but loses the blur a rough surface needs.
-        float ssrResponseMin = pps->GetSSRTemporalResponseMinVal();
-        if (ImGui::DragFloat("Response Min", &ssrResponseMin, 0.005f, 0.0f, 1.0f))
-        {
-          pps->SetSSRTemporalResponseMinVal(ssrResponseMin);
-        }
-
-        float ssrResponseMax = pps->GetSSRTemporalResponseMaxVal();
-        if (ImGui::DragFloat("Response Max", &ssrResponseMax, 0.005f, 0.0f, 1.0f))
-        {
-          pps->SetSSRTemporalResponseMaxVal(ssrResponseMax);
-        }
-
+        // How far the sampled lobe is bent towards the mirror direction: a high bias is quieter, a low one
+        // keeps the blur a rough surface needs.
+        //
+        // The two response bounds a scene still carries are no longer shown: the accumulation is driven by
+        // how many samples a pixel holds now, not by a fixed share of the history, and a control that does
+        // nothing is worse than one that is not there. The parameters stay in the settings so existing
+        // scenes keep loading and the pass keeps accepting them.
         float ssrBrdfBias = pps->GetSSRBRDFBiasVal();
         if (ImGui::DragFloat("BRDF Bias", &ssrBrdfBias, 0.01f, 0.0f, 1.0f))
         {
@@ -290,8 +281,19 @@ namespace ToolKit
         {
           // Each mode isolates one stage of the pass: an artifact that looks the same in the
           // composite can be told apart here instead of guessed at.
-          static const char* ssrDebugModes[] = {
-            "Reflection", "Confidence", "Mip Level", "Scene Depth", "Hit UV", "Ray Length", "Hit Error"};
+          // Index is the mode the shader switches on, so the unused slots are listed as such instead of
+          // being compacted: the list and SSR_DEBUG_* in ssrFrag.shader have to stay aligned.
+          static const char* ssrDebugModes[] = {"Reflection",
+                                               "Confidence",
+                                               "Mip Level",
+                                               "Scene Depth",
+                                               "Hit UV",
+                                               "Ray Length",
+                                               "Hit Error",
+                                               "-",
+                                               "-",
+                                               "-",
+                                               "March Cost"};
 
           int ssrDebugMode = pps->GetSSRDebugViewModeVal();
           ImGui::SameLine();

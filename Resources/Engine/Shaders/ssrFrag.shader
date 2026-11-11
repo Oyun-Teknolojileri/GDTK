@@ -5,6 +5,14 @@
 	<include name = "ssrCommonInc.shader" />
 	<texture slot = "0" name = "s_diffuseColor" />
 	<texture slot = "1" name = "s_normalDepth" />
+	<texture slot = "2" name = "s_envSpecular" />
+	<texture slot = "3" name = "s_pyramid0" />
+	<texture slot = "4" name = "s_pyramid1" />
+	<texture slot = "5" name = "s_pyramid2" />
+	<texture slot = "6" name = "s_pyramid3" />
+	<texture slot = "7" name = "s_pyramid4" />
+	<texture slot = "8" name = "s_pyramid5" />
+	<texture slot = "9" name = "s_blueNoise" />
 	<define name = "SSR_STEP_COUNT" val = "8,16,32,64" />
 	<source>
 	<!--
@@ -14,14 +22,71 @@ precision highp int;
 
 TK_LOC(2) in vec2 v_texture;
 
+// rg: the reflection radiance, a: coverage - one where this pixel is a reflective surface, zero where
+// it is not. The reflection itself is complete: a ray that misses its screen space target falls back to
+// the environment cubemap, so there is no such thing as a pixel the pass "knows nothing about".
 layout (location = 0) out vec4 fragColor;
 
-// .x = positive view depth of the hit, zero when the ray missed. The resolve projects that depth along
-// the surface pixel's ray to find where the reflected content was on screen last frame.
+// xy: where the ray ended on screen, z: its view depth there, w: how far along the ray that was. The
+// resolve reprojects the ray end for the parallax candidate, and a miss ends at the last position it
+// reached rather than at zero: that is the direction the environment sample stands in for.
 layout (location = 1) out vec4 fragHit;
 
 TK_SAMPLER_BINDING(0) uniform sampler2D s_diffuseColor; // Scene color, HDR and pre tonemap.
 TK_SAMPLER_BINDING(1) uniform sampler2D s_normalDepth;  // rg: world normal, b: linear depth, a: roughness.
+TK_SAMPLER_BINDING(2) uniform samplerCube s_envSpecular; // Pre filtered sky radiance, roughness in the mips.
+
+// The min depth hierarchy, level 0 half the screen and each level after it half of the one before. The
+// march reads it to skip whole tiles at once; separate samplers because a fragment shader can not index
+// a sampler array dynamically on the targets this ships to.
+TK_SAMPLER_BINDING(3) uniform sampler2D s_pyramid0;
+TK_SAMPLER_BINDING(4) uniform sampler2D s_pyramid1;
+TK_SAMPLER_BINDING(5) uniform sampler2D s_pyramid2;
+TK_SAMPLER_BINDING(6) uniform sampler2D s_pyramid3;
+TK_SAMPLER_BINDING(7) uniform sampler2D s_pyramid4;
+TK_SAMPLER_BINDING(8) uniform sampler2D s_pyramid5;
+
+// Two blue noise values per pixel, one tile of 128x128 texels. The sampler below walks it with the
+// frame index, so consecutive frames draw from different cells of the same tile instead of from a new
+// random sequence each time.
+TK_SAMPLER_BINDING(9) uniform sampler2D s_blueNoise;
+
+// Levels the pyramid carries.
+#define SSR_PYRAMID_MIP_COUNT 6
+
+// Set to 0 to march every step at full resolution against the g buffer, which is what the pass did before
+// the hierarchy existed. Kept as a switch because it is the only way to measure what the hierarchy buys at
+// a given step count: with the step budget covering the whole screen the two are close, and below that the
+// hierarchy is what lets a few steps still reach the far side of the frame.
+#ifndef SSR_USE_PYRAMID
+#define SSR_USE_PYRAMID 1
+#endif
+
+// Nearest surface the tile at `mip` holds under `uv`, or the far plane when the tile has no geometry.
+float PyramidDepth(vec2 uv, int mip)
+{
+	if (mip <= 0)
+	{
+		return texture(s_pyramid0, uv).b;
+	}
+	if (mip == 1)
+	{
+		return texture(s_pyramid1, uv).b;
+	}
+	if (mip == 2)
+	{
+		return texture(s_pyramid2, uv).b;
+	}
+	if (mip == 3)
+	{
+		return texture(s_pyramid3, uv).b;
+	}
+	if (mip == 4)
+	{
+		return texture(s_pyramid4, uv).b;
+	}
+	return texture(s_pyramid5, uv).b;
+}
 
 
 // Positive linear view depth the g buffer holds for a scene UV. Zero means background (sky).
@@ -74,13 +139,16 @@ float InterleavedGradientNoise(vec2 pixel)
 	return fract(52.9829189 * fract(dot(pixel, vec2(0.06711056, 0.00583715))));
 }
 
-// Two random numbers for this pixel and frame. The gradient noise gives them a screen space
-// distribution that does not clump, and the frame offset walks the sequence with the two irrational
-// steps of the R2 sequence, so consecutive frames sample different parts of the lobe.
+// Two random numbers for this pixel and frame, from the blue noise tile.
+//
+// Blue noise is what keeps the samples of one frame evenly spread: an uncorrelated random sequence leaves
+// clumps and holes at 128x128 scale, and at one sample per pixel those clumps are what the denoiser then
+// has to average away. The tile is walked by the frame index with the R2 steps, so consecutive frames draw
+// from cells far apart in the tile while each frame stays spatially uniform.
 vec2 SampleSequence(vec2 pixel, float frame)
 {
-	float ign = InterleavedGradientNoise(pixel);
-	return fract(vec2(ign, ign * 1.61803398875) + frame * vec2(0.7548776662, 0.5698402910));
+	vec2 offset = fract(frame * vec2(0.7548776662, 0.5698402910));
+	return texture(s_blueNoise, (pixel + offset * 128.0) / 128.0).rg;
 }
 
 // Visible normal distribution sampling (Heitz 2018). Returns the half vector of a microfacet that
@@ -167,6 +235,7 @@ float EdgeFade(vec2 uv)
 #define SSR_DEBUG_HIT_UV     4
 #define SSR_DEBUG_LENGTH     5
 #define SSR_DEBUG_HIT_ERROR  6
+#define SSR_DEBUG_MARCH_COST 10
 
 // Depth a screen pixel spans, for the adaptive thickness of the hit test.
 #define SSR_THICKNESS_PIXELS 4.0
@@ -212,6 +281,23 @@ vec3 SampleReflection(vec2 uv, float lod)
 	return sum * 0.2;
 }
 
+// Radiance the environment provides along a world space direction, at the mip that matches the lobe the
+// sample stands for. The sky cubemap is pre filtered exactly the way the material IBL uses it, so
+// roughness selects the mip here too. This is where a ray that leaves the screen ends up: the reflection
+// keeps a value it can be accumulated instead of falling back to "no data".
+vec3 EnvironmentRadiance(vec3 worldDir, float roughness)
+{
+	if (ssrPass.environment.z < 0.5)
+	{
+		return vec3(0.0);
+	}
+
+	vec3  envDir = mat3(ssrPass.envRotation) * worldDir;
+	float mip    = clamp(roughness, 0.0, 1.0) * ssrPass.environment.y;
+
+	return textureLod(s_envSpecular, envDir, mip).rgb * ssrPass.environment.x;
+}
+
 void main()
 {
 	vec2 uv      = v_texture;
@@ -231,9 +317,9 @@ void main()
 		return;
 	}
 
-	// This pass only produces one sample of the reflection and its weight; the resolve pass that
-	// follows averages the samples, accumulates them over frames and composites the result over the
-	// scene color. A pixel this pass leaves alone therefore writes a zero weight, not a colour.
+	// This pass produces one sample of the reflection per pixel and the coverage the resolve needs. The
+	// sample is complete: where the screen space march finds nothing the environment cubemap stands in,
+	// so a pixel is either not reflective at all (coverage zero) or carries a reflection.
 	//
 	// No geometry here (sky, background) or a surface too rough to mirror anything: no reflection.
 	if (linearDepth <= 0.0 || roughness >= ssrPass.params.w)
@@ -268,10 +354,14 @@ void main()
 		rayDir = normalize(reflect(rayDir, geoNormal));
 	}
 
-	// Rays pointing back at the camera can not hit anything in front of the depth buffer.
+	// Rays pointing back at the camera can not hit anything the depth buffer holds: what they reflect is
+	// behind the viewer. The environment is the whole answer for them, and writing it here - rather than a
+	// zero - is what keeps the middle of a mirror from turning black.
 	if (rayDir.z > 0.0)
 	{
-		fragColor = DebugViewEnabled() ? vec4(0.0, 0.0, 0.0, 1.0) : vec4(0.0);
+		vec3 worldDir = mat3(ssrPass.inverseView) * rayDir;
+		fragColor     = vec4(EnvironmentRadiance(worldDir, roughness), 1.0);
+		fragHit       = vec4(0.0);
 		return;
 	}
 
@@ -310,6 +400,17 @@ void main()
 	// happens at shallow angles and over thin geometry) is still recognized as a crossing.
 	float prevDelta  = -1.0;
 
+	// Iterations the march consumed. A hierarchical march is supposed to spend fewer of them for the
+	// same picture, which is what the debug view below reports: it is the only honest measure of what
+	// the depth hierarchy buys, since the picture itself is the same either way.
+	float marchedIterations = 0.0;
+
+	// Hierarchical march. The pyramid answers one question per step: does the tile the ray is in hold
+	// anything in front of the ray? If not, the step is a whole tile of that level and the ray climbs to a
+	// coarser one; if it does, the ray descends to look closer. The hit test itself stays against the exact
+	// depth of the g buffer, so the pyramid only decides how far a step may jump - it never says "hit".
+	int mip = 0;
+
 	for (int i = 0; i < SSR_STEP_COUNT; ++i)
 	{
 		if (float(i) >= stepCount)
@@ -317,8 +418,29 @@ void main()
 			break;
 		}
 
+		vec2 probeUV;
+		if (SSR_USE_PYRAMID == 1 && SsrProjectToUV(rayPos, probeUV))
+		{
+			float tileDepth = PyramidDepth(probeUV, mip);
+
+			if (-rayPos.z >= tileDepth && mip > 0)
+			{
+				// Something this level holds is in front of the ray: the tile is not empty at this
+				// resolution, so look at the finer one before stepping.
+				mip -= 1;
+				continue;
+			}
+
+			if (mip < SSR_PYRAMID_MIP_COUNT - 1 && -rayPos.z < tileDepth * 0.5)
+			{
+				// Far in front of everything this level holds: the next step may cover a bigger tile.
+				mip += 1;
+			}
+		}
+
+		marchedIterations += 1.0;
 		prevPos = rayPos;
-		rayPos += rayDir * (pixelScale * (-rayPos.z) * stepPixels);
+		rayPos += rayDir * (pixelScale * (-rayPos.z) * stepPixels * exp2(float(mip)));
 
 		vec3 rayOffset = rayPos - viewPos;
 		if (dot(rayOffset, rayOffset) > maxDistance * maxDistance)
@@ -449,58 +571,81 @@ void main()
 		break;
 	}
 
-	if (confidence <= 0.0)
+	// Where the ray ended, crossed a surface or not. A miss ends at the last position the march reached:
+	// the environment sample stands in for the reflection in that direction, and the reprojection needs a
+	// position to carry the history with, exactly as a hit does.
+	vec2  rayEndUV    = uv;
+	float rayEndDepth = max(-rayPos.z, 0.001);
+	float rayLength   = ssrPass.params.y;
 	{
-		// No screen space reflection found: the pixel keeps the forward shaded colour, and the resolve
-		// pass sees the zero weight. The debug view keeps such pixels black.
-		fragColor = DebugViewEnabled() ? vec4(0.0, 0.0, 0.0, 1.0) : vec4(0.0);
-		return;
+		vec2 projected;
+		if (SsrProjectToUV(rayPos, projected))
+		{
+			rayEndUV = projected;
+		}
+		rayLength = max(length(rayPos - viewPos), 0.001);
 	}
 
-	// What the resolve needs from this sample: where the ray landed (so the reflection can be reprojected
-	// and its BRDF evaluated), how far away it was, and how likely the direction was, which is what the
-	// resolve divides the BRDF by.
-	fragHit = vec4(hitUV, hitDepthOut, pdf);
+	// The reflection direction in world space. Both the environment sample and the checker of the
+	// reflection stand along it, so it is what the pixel reflects whichever branch below is taken.
+	vec3 worldRayDir = mat3(ssrPass.inverseView) * normalize(rayDir);
 
-	// The reflection cone picks the mip, the mip chain does the blur.
-	float rayPixels = length(hitUV - uv) * max(ssrPass.screenParams.z, ssrPass.screenParams.w);
-	float lod       = ReflectionLod(roughness, rayPixels, ssrPass.temporal.z);
-	vec3 reflection = SampleReflection(hitUV, lod);
-
-	// Hit confidence, the screen border and the two ray length limits all fade the reflection out, so
-	// the forward shaded environment reflection takes over exactly where this one is not trustworthy.
+	// The march can only reach `stepCount * stepPixels` pixels, and past that the reflection is the
+	// environment's. Fading between the two instead of cutting is what keeps the last reachable row from
+	// ending in a hard edge: without it a hit sits directly next to a miss, which is a visible cut in the
+	// middle of the floor. Where each fade starts is a setting, so both are kept off the unreachable end
+	// (a start equal to the limit is a smoothstep between two equal edges, undefined).
 	//
-	// The march can only reach `stepCount * stepPixels` pixels, and past that the pixel keeps the
-	// forward shaded environment reflection. Fading towards that limit is what keeps the last reachable
-	// row from ending in a hard edge: without it a hit sits directly next to a miss, which is a visible
-	// cut in the middle of the floor. Where each fade starts is a setting, so both are kept off the
-	// unreachable end: a start equal to the limit is a smoothstep between two equal edges, undefined.
-	float coverage         = stepCount * stepPixels;
-	float screenFadeStart  = clamp(ssrPass.fades.y, 0.0, 0.95);
-	float rangeFadeStart   = clamp(ssrPass.fades.z, 0.0, 0.95);
-
-	float screenFade = 1.0 - smoothstep(coverage * screenFadeStart, coverage, rayPixels);
-	float rangeFade  = 1.0 - smoothstep(ssrPass.params.y * rangeFadeStart, ssrPass.params.y, hitDistance);
-
 	// No fade on the incidence angle. A shallow surface is exactly where a reflection is wanted, and a
-	// threshold there is a threshold on a camera dependent value: lowering the camera puts a large part
-	// of a floor below it at once, and the reflection disappears in a single frame. The hard part of a
-	// grazing angle is handled where it comes from instead, by the resolution of the depth the crossing
-	// is computed from in the pre process pass.
-	//
-	// No gloss fade either: a rough surface keeps its reflection, the blur it needs comes from the
-	// sampled direction and the cone mip above, not from fading the whole reflection out.
-	float weight = clamp(confidence * EdgeFade(hitUV) * screenFade * rangeFade, 0.0, 1.0);
+	// threshold there is a threshold on a camera dependent value: lowering the camera puts a large part of
+	// a floor below it at once, and the reflection disappears in a single frame. No gloss fade either: a
+	// rough surface keeps its reflection, the blur it needs comes from the sampled direction and the cone
+	// mip, not from fading the whole reflection out.
+	float reachable       = stepCount * stepPixels;
+	float hitPixels       = length(hitUV - uv) * max(ssrPass.screenParams.z, ssrPass.screenParams.w);
+	float screenFadeStart = clamp(ssrPass.fades.y, 0.0, 0.95);
+	float rangeFadeStart  = clamp(ssrPass.fades.z, 0.0, 0.95);
+	float screenFade      = 1.0 - smoothstep(reachable * screenFadeStart, reachable, hitPixels);
+	float rangeFade       = 1.0 - smoothstep(ssrPass.params.y * rangeFadeStart, ssrPass.params.y, hitDistance);
+
+	// A hit on the pixel's own neighbourhood is the surface reflecting itself: the march starts a fraction
+	// of a step along the ray, so an immediate crossing is a depth test artifact and not a reflection.
+	float minAdvance = smoothstep(0.0, 2.0, hitPixels);
+
+	float trust = 0.0;
+	if (confidence > 0.0)
+	{
+		trust = clamp(confidence * EdgeFade(hitUV) * screenFade * rangeFade * minAdvance, 0.0, 1.0);
+	}
+
+	// Confidence, the screen border and the two ray length limits all move the pixel's reflection towards
+	// the environment, which is what the forward pass shaded it with anyway. Losing the screen space hit
+	// never loses the reflection: it only makes it coarser.
+	float lod         = 0.0;
+	vec3  hitRadiance = vec3(0.0);
+	if (confidence > 0.0)
+	{
+		// The reflection cone picks the mip, the mip chain does the blur.
+		lod         = ReflectionLod(roughness, hitPixels, ssrPass.temporal.z);
+		hitRadiance = SampleReflection(hitUV, lod);
+		fragHit     = vec4(hitUV, hitDepthOut, hitDistance);
+	}
+	else
+	{
+		fragHit = vec4(rayEndUV, rayEndDepth, rayLength);
+	}
+
+	vec3 envRadiance = EnvironmentRadiance(worldRayDir, roughness);
+	vec3 radiance    = mix(envRadiance, hitRadiance, trust);
 
 	// Debug view: show what this pass produces at each stage, so an artifact is told apart instead
-	// of guessed at. A miss, a rough surface or a pixel the ray budget did not reach stays black.
-	// The resolve pass hands these through unchanged.
+	// of guessed at. The resolve pass hands these through unchanged.
 	if (DebugViewEnabled())
 	{
 		int mode = DebugViewMode();
 		if (mode == SSR_DEBUG_CONFIDENCE)
 		{
-			fragColor = vec4(vec3(confidence), 1.0);
+			fragColor = vec4(vec3(trust), 1.0);
 			return;
 		}
 		if (mode == SSR_DEBUG_MIP)
@@ -510,12 +655,19 @@ void main()
 		}
 		if (mode == SSR_DEBUG_HIT_UV)
 		{
-			fragColor = vec4(hitUV, 0.0, 1.0);
+			fragColor = vec4(fragHit.xy, 0.0, 1.0);
 			return;
 		}
 		if (mode == SSR_DEBUG_LENGTH)
 		{
 			fragColor = vec4(vec3(hitDistance / max(maxDistance, 0.001)), 1.0);
+			return;
+		}
+		if (mode == SSR_DEBUG_MARCH_COST)
+		{
+			// Fraction of the step budget this pixel spent. Bright means the march ran out of iterations,
+			// which on a phone is the number that matters: it is what a lower budget would truncate.
+			fragColor = vec4(vec3(marchedIterations / max(stepCount, 1.0)), 1.0);
 			return;
 		}
 		if (mode == SSR_DEBUG_HIT_ERROR)
@@ -526,12 +678,13 @@ void main()
 			return;
 		}
 
-		fragColor = vec4(reflection * weight, 1.0);
+		fragColor = vec4(radiance, 1.0);
 		return;
 	}
 
-	// The resolve pass averages this with its neighbours, premultiplied by the weight.
-	fragColor = vec4(reflection, weight);
+	// rgb: the complete reflection, a: coverage - one where this pixel is a reflective surface. A miss is
+	// not "no data" any more: it is the environment's reflection, which accumulates just as well as a hit.
+	fragColor = vec4(radiance, 1.0);
 }
 
 	-->

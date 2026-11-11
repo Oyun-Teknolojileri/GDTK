@@ -1939,6 +1939,26 @@ namespace ToolKit
     m_ssrPass->m_params.DebugView          = pps->GetSSRDebugViewVal();
     m_ssrPass->m_params.DebugViewMode      = pps->GetSSRDebugViewModeVal();
 
+    // The environment the reflection falls back to when screen space can not answer it: the same pre
+    // filtered sky cubemap the forward pass shades its IBL reflections from, so a fallback and a hit are
+    // the same kind of value. Read from the sky here rather than from the renderer's per draw state
+    // because the reflection is not a property of one draw.
+    m_ssrPass->m_params.EnvSpecular  = nullptr;
+    m_ssrPass->m_params.EnvIntensity = 0.0f;
+    if (m_sky != nullptr)
+    {
+      if (EnvironmentComponentPtr skyEnv = m_sky->GetComponent<EnvironmentComponent>())
+      {
+        if (const HdriPtr& skyHdri = skyEnv->GetHdriVal())
+        {
+          m_ssrPass->m_params.EnvSpecular = skyHdri->m_specularEnvMap;
+        }
+
+        m_ssrPass->m_params.EnvIntensity = skyEnv->GetIlluminateVal() ? skyEnv->GetIntensityVal() : 0.0f;
+        m_ssrPass->m_params.EnvRotation  = Mat4(m_sky->m_node->GetOrientation());
+      }
+    }
+
     // Post Process Pass
     bool gammaNeeded                = GetRenderSystem()->IsGammaCorrectionNeeded();
     m_gammaTonemapFxaaPass->m_params.enableGammaCorrection = pps->GetGammaCorrectionEnabledVal() && gammaNeeded;

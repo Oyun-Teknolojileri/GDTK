@@ -39,6 +39,12 @@ namespace ToolKit
 
       return steps <= 32 ? 32 : 64;
     }
+
+    /** Texels of the full resolution target one texel of the average carries. */
+    constexpr int SSR_AVG_RADIANCE_DIVISOR = 8;
+
+    /** Variance a pixel starts with when it has no usable history. */
+    constexpr float SSR_DEFAULT_VARIANCE   = 1.0f;
   } // namespace
 
   SsrPass::SsrPass() : Pass("SsrPass")
@@ -48,27 +54,49 @@ namespace ToolKit
     m_ssrShader                      = GetShaderManager()->Create<Shader>(ShaderPath("ssrFrag.shader", true));
     m_copyTexture                    = MakeNewPtr<RenderTarget>("SsrSceneCopyRT");
 
+    // The blue noise tile the sampler walks. It is an engine resource, so it is loaded like a shader and
+    // lives next to them in the engine resource tree. Loaded by hand instead of through the manager: the
+    // manager substitutes the class default when the file is not found, which would silently replace the
+    // tile with the default image and leave the sampler reading a 1024 square of something else.
+    m_blueNoise = MakeNewPtr<Texture>();
+    m_blueNoise->SetFile(TexturePath("blueNoise.png", true));
+    m_blueNoise->Load();
+    m_blueNoise->Init();
+
     // The composite goes into a target of the pass's own, so the frame it copied stays read only for
     // the rest of the frame. The path reads that target through GetOutputFramebuffer.
     m_reflectionRt                   = MakeNewPtr<RenderTarget>("SsrReflectionRT");
     m_reflectionFb                   = MakeNewPtr<Framebuffer>("SsrReflectionFB");
 
-    // Phase one writes the samples of this frame, phase two resolves them and accumulates the history,
-    // phase three pulls the fireflies out of the accumulation, phase four composites it over the frame.
+    // Phase one writes one sample per pixel, phase two its 1/8 resolution average, phase three filters
+    // it in screen space and accumulates it, phase four composites it over the frame.
     m_traceTexture                      = MakeNewPtr<RenderTarget>("SsrTraceRT");
     m_hitTexture[0]                     = MakeNewPtr<RenderTarget>("SsrHit0RT");
-m_hitTexture[1]                     = MakeNewPtr<RenderTarget>("SsrHit1RT");
-    m_denoiseTexture                    = MakeNewPtr<RenderTarget>("SsrDenoiseRT");
+    m_hitTexture[1]                     = MakeNewPtr<RenderTarget>("SsrHit1RT");
+    m_avgRadiance                       = MakeNewPtr<RenderTarget>("SsrAvgRadianceRT");
     m_history[0]                        = MakeNewPtr<RenderTarget>("SsrHistory0RT");
     m_history[1]                        = MakeNewPtr<RenderTarget>("SsrHistory1RT");
+    m_historyCount[0]                   = MakeNewPtr<RenderTarget>("SsrHistoryCount0RT");
+    m_historyCount[1]                   = MakeNewPtr<RenderTarget>("SsrHistoryCount1RT");
+    m_prevNormalDepth                   = MakeNewPtr<RenderTarget>("SsrPrevNormalDepthRT");
+
+    m_avgPass                           = MakeNewPtr<FullQuadPass>();
+    m_avgPass->m_params.frameBuffer     = MakeNewPtr<Framebuffer>("SsrAvgFB");
+    m_avgShader                         = GetShaderManager()->Create<Shader>(ShaderPath("ssrAvgRadianceFrag.shader", true));
+
+    m_pyramidPass                       = MakeNewPtr<FullQuadPass>();
+    m_pyramidPass->m_params.frameBuffer = MakeNewPtr<Framebuffer>("SsrPyramidFB");
+    m_pyramidShader                     =
+        GetShaderManager()->Create<Shader>(ShaderPath("ssrDepthPyramidFrag.shader", true));
+
+    for (int level = 0; level < m_pyramidLevels; ++level)
+    {
+      m_depthPyramid[level] = MakeNewPtr<RenderTarget>("SsrDepthPyramid" + std::to_string(level));
+    }
 
     m_resolvePass                       = MakeNewPtr<FullQuadPass>();
     m_resolvePass->m_params.frameBuffer = MakeNewPtr<Framebuffer>("SsrResolveFB");
     m_resolveShader                     = GetShaderManager()->Create<Shader>(ShaderPath("ssrResolveFrag.shader", true));
-
-    m_denoisePass                       = MakeNewPtr<FullQuadPass>();
-    m_denoisePass->m_params.frameBuffer = MakeNewPtr<Framebuffer>("SsrDenoiseFB");
-    m_denoiseShader                     = GetShaderManager()->Create<Shader>(ShaderPath("ssrDenoiseFrag.shader", true));
 
     m_compositePass                       = MakeNewPtr<FullQuadPass>();
     m_compositePass->m_params.frameBuffer = m_reflectionFb;
@@ -81,22 +109,34 @@ m_hitTexture[1]                     = MakeNewPtr<RenderTarget>("SsrHit1RT");
     m_quadPass      = nullptr;
     m_ssrShader     = nullptr;
     m_copyTexture   = nullptr;
+    m_blueNoise     = nullptr;
+
+    m_avgPass       = nullptr;
+    m_avgShader     = nullptr;
+
+    m_pyramidPass   = nullptr;
+    m_pyramidShader = nullptr;
+
+    for (int level = 0; level < m_pyramidLevels; ++level)
+    {
+      m_depthPyramid[level] = nullptr;
+    }
 
     m_resolvePass   = nullptr;
     m_resolveShader = nullptr;
 
-    m_denoisePass   = nullptr;
-    m_denoiseShader = nullptr;
-
     m_compositePass   = nullptr;
     m_compositeShader = nullptr;
 
-    m_traceTexture   = nullptr;
-    m_hitTexture[0]  = nullptr;
-    m_hitTexture[1]  = nullptr;
-    m_denoiseTexture = nullptr;
-    m_history[0]     = nullptr;
-    m_history[1]     = nullptr;
+    m_traceTexture       = nullptr;
+    m_hitTexture[0]      = nullptr;
+    m_hitTexture[1]      = nullptr;
+    m_avgRadiance        = nullptr;
+    m_history[0]         = nullptr;
+    m_history[1]         = nullptr;
+    m_historyCount[0]    = nullptr;
+    m_historyCount[1]    = nullptr;
+    m_prevNormalDepth    = nullptr;
 
     m_reflectionRt  = nullptr;
     m_reflectionFb  = nullptr;
@@ -145,8 +185,9 @@ m_hitTexture[1]                     = MakeNewPtr<RenderTarget>("SsrHit1RT");
     // ordering: a shader with defines sets up its variants here and compiles them on demand, so the define
     // is still selected before the first compile.
     m_ssrShader->Init();
+    m_avgShader->Init();
+    m_pyramidShader->Init();
     m_resolveShader->Init();
-    m_denoiseShader->Init();
     m_compositeShader->Init();
 
     const int steps    = glm::clamp(m_params.StepCount, 1, m_maxStepCount);
@@ -177,13 +218,13 @@ m_hitTexture[1]                     = MakeNewPtr<RenderTarget>("SsrHit1RT");
       return;
     }
 
-    // The resolve and the composite carry no defines, so Init compiled them above and a null gpu data
-    // here is a real compile error. Same rule as the trace: report once, keep the pass out of the frame.
-    if (m_resolveShader->m_gpuData == nullptr || m_denoiseShader->m_gpuData == nullptr ||
-        m_compositeShader->m_gpuData == nullptr)
+    // The rest of the shaders carry no defines, so Init compiled them above and a null gpu data here is a
+    // real compile error. Same rule as the trace: report once, keep the pass out of the frame.
+    if (m_avgShader->m_gpuData == nullptr || m_resolveShader->m_gpuData == nullptr ||
+        m_pyramidShader->m_gpuData == nullptr || m_compositeShader->m_gpuData == nullptr)
     {
-      TK_ERR("SsrPass: the resolve or composite shader did not compile, screen space reflections are "
-             "disabled.");
+      TK_ERR("SsrPass: the pyramid, average, resolve or composite shader did not compile, screen space "
+             "reflections are disabled.");
       m_shaderUnavailable = true;
       m_outputWritten     = false;
       m_hasHistory        = false;
@@ -207,8 +248,9 @@ m_hitTexture[1]                     = MakeNewPtr<RenderTarget>("SsrHit1RT");
     m_copyTexture->GenerateMipMaps();
 
     m_quadPass->SetFragmentShader(m_ssrShader, GetRenderer());
+    m_avgPass->SetFragmentShader(m_avgShader, GetRenderer());
+    m_pyramidPass->SetFragmentShader(m_pyramidShader, GetRenderer());
     m_resolvePass->SetFragmentShader(m_resolveShader, GetRenderer());
-    m_denoisePass->SetFragmentShader(m_denoiseShader, GetRenderer());
     m_compositePass->SetFragmentShader(m_compositeShader, GetRenderer());
 
     if (!m_passDataBufferInitialized)
@@ -226,6 +268,7 @@ m_hitTexture[1]                     = MakeNewPtr<RenderTarget>("SsrHit1RT");
     m_passDataBuffer.m_data.inverseProjection  = glm::inverse(proj);
     m_passDataBuffer.m_data.inverseView        = glm::inverse(view);
     m_passDataBuffer.m_data.prevViewProjection = m_prevViewProjection;
+    m_passDataBuffer.m_data.envRotation        = m_params.EnvRotation;
 
     // clip.x = P00 * x + P20 * z, clip.y = P11 * y + P21 * z, clip.w = -z
     m_passDataBuffer.m_data.projParams        = Vec4(proj[0][0], proj[1][1], proj[2][0], proj[2][1]);
@@ -260,7 +303,7 @@ m_hitTexture[1]                     = MakeNewPtr<RenderTarget>("SsrHit1RT");
     // never holds and a still surface keeps crawling.
     const float viewMotionEpsilon = 1e-4f;
 
-    m_viewMoved = false;
+    m_viewMoved                   = false;
     for (int column = 0; column < 4 && !m_viewMoved; ++column)
     {
       for (int row = 0; row < 4; ++row)
@@ -281,24 +324,6 @@ m_hitTexture[1]                     = MakeNewPtr<RenderTarget>("SsrHit1RT");
     const ObjectId cameraId = m_params.Cam->GetIdVal();
     bool resetHistory       = !m_hasHistory || m_historyCameraId != cameraId;
 
-    // Trace target: this frame's samples and their weight, at the scene resolution.
-    TextureSettings traceSet = copySet;
-    traceSet.GenerateMipMap  = false;
-    traceSet.MinFilter       = GraphicTypes::SampleLinear;
-    traceSet.MagFilter       = GraphicTypes::SampleLinear;
-    m_traceTexture->ReconstructIfNeeded(size.x, size.y, &traceSet);
-    m_denoiseTexture->ReconstructIfNeeded(size.x, size.y, &traceSet);
-    m_hitTexture[0]->ReconstructIfNeeded(size.x, size.y, &traceSet);
-    m_hitTexture[1]->ReconstructIfNeeded(size.x, size.y, &traceSet);
-
-    // The accumulation is sampled at an arbitrary reprojected position, so it is filtered linearly and
-    // clamped at the border.
-    TextureSettings historySet = traceSet;
-    historySet.WarpS           = GraphicTypes::UVClampToEdge;
-    historySet.WarpT           = GraphicTypes::UVClampToEdge;
-    m_history[0]->ReconstructIfNeeded(size.x, size.y, &historySet);
-    m_history[1]->ReconstructIfNeeded(size.x, size.y, &historySet);
-
     if (m_historySize != size)
     {
       m_historySize = size;
@@ -306,6 +331,54 @@ m_hitTexture[1]                     = MakeNewPtr<RenderTarget>("SsrHit1RT");
     }
 
     m_historyCameraId = cameraId;
+
+    // The reflection targets: the trace carries one sample per pixel, the average the low frequency the
+    // temporal clip leans on, and the history the accumulation with its sample count.
+    TextureSettings traceSet = copySet;
+    traceSet.GenerateMipMap  = false;
+    traceSet.MinFilter       = GraphicTypes::SampleNearest;
+    traceSet.MagFilter       = GraphicTypes::SampleNearest;
+
+    m_traceTexture->ReconstructIfNeeded(size.x, size.y, &traceSet);
+    m_hitTexture[0]->ReconstructIfNeeded(size.x, size.y, &traceSet);
+    m_hitTexture[1]->ReconstructIfNeeded(size.x, size.y, &traceSet);
+    m_history[0]->ReconstructIfNeeded(size.x, size.y, &traceSet);
+    m_history[1]->ReconstructIfNeeded(size.x, size.y, &traceSet);
+    m_historyCount[0]->ReconstructIfNeeded(size.x, size.y, &traceSet);
+    m_historyCount[1]->ReconstructIfNeeded(size.x, size.y, &traceSet);
+
+    // The min depth hierarchy the march climbs. Level 0 is half the screen and every level after it half
+    // of the one before, so a step taken at level k covers 2^k of level 0's tiles at once.
+    TextureSettings pyramidSet = traceSet;
+    pyramidSet.MinFilter       = GraphicTypes::SampleNearest;
+    pyramidSet.MagFilter       = GraphicTypes::SampleNearest;
+    pyramidSet.WarpS           = GraphicTypes::UVClampToEdge;
+    pyramidSet.WarpT           = GraphicTypes::UVClampToEdge;
+
+    for (int level = 0; level < m_pyramidLevels; ++level)
+    {
+      const int divisor = 1 << (level + 1);
+      m_depthPyramid[level]->ReconstructIfNeeded(glm::max(size.x / divisor, 1),
+                                                 glm::max(size.y / divisor, 1),
+                                                 &pyramidSet);
+    }
+
+    const int avgWidth  = glm::max(size.x / SSR_AVG_RADIANCE_DIVISOR, 1);
+    const int avgHeight = glm::max(size.y / SSR_AVG_RADIANCE_DIVISOR, 1);
+    m_avgRadiance->ReconstructIfNeeded(avgWidth, avgHeight, &traceSet);
+
+    // The g buffer the history was written for. Its format follows the source, so the disocclusion test
+    // compares like with like whether the g buffer is 16 bit float or not.
+    TextureSettings historySet = m_params.GNormalDepthBuffer->Settings();
+    historySet.msaaCount       = MsaaSampleCount::x0;
+    historySet.GenerateMipMap  = false;
+    historySet.MinFilter       = GraphicTypes::SampleNearest;
+    historySet.MagFilter       = GraphicTypes::SampleNearest;
+    historySet.WarpS           = GraphicTypes::UVClampToEdge;
+    historySet.WarpT           = GraphicTypes::UVClampToEdge;
+    m_prevNormalDepth->ReconstructIfNeeded(m_params.GNormalDepthBuffer->m_width,
+                                           m_params.GNormalDepthBuffer->m_height,
+                                           &historySet);
 
     // The composite target: the frame with the reflections in it, at the frame's resolution and format so
     // everything behind this pass reads it instead of the frame. No mip chain and no multisampling, because
@@ -316,54 +389,54 @@ m_hitTexture[1]                     = MakeNewPtr<RenderTarget>("SsrHit1RT");
     reflectionSet.MagFilter       = GraphicTypes::SampleLinear;
     m_reflectionRt->ReconstructIfNeeded(size.x, size.y, &reflectionSet);
 
-    // The accumulation runs on every frame, with no freeze: the scenes this ships with are dynamic, and a
-    // reflection has to stay current even when the camera is still - a hold leaves the reflection of a
-    // car on the ground after it has driven off. The window is what keeps a still surface from crawling,
-    // and how long it is follows the agreement between the accumulation and the frame: the resolve picks
-    // its weight between the two bounds below.
-    // The two bounds are the ends of the range the resolve picks its response from, so each one is
-    // clamped into [0, 1] and then the pair is ordered: the settings describe a range, not a direction.
-    // Clamping the upper end *up* to the lower one instead silently turned a project that set its bounds
-    // the other way round into a constant response - the resolve then kept the same fraction of the
-    // history whatever the frame did, which reads as a reflection that ignores the camera moving.
-    const float responseLo  = glm::clamp(m_params.TemporalResponseMin, 0.0f, 1.0f);
-    const float responseHi  = glm::clamp(m_params.TemporalResponseMax, 0.0f, 1.0f);
-    const float responseMin = glm::min(responseLo, responseHi);
-    const float responseMax = glm::max(responseLo, responseHi);
-
-    m_passDataBuffer.m_data.temporal = Vec4(responseMin,
-                                            responseMax,
+    // The accumulation runs on every frame. What keeps a still surface from crawling is no longer a fixed
+    // response: the resolve blends by how many samples a pixel holds, and the sample cap follows the
+    // roughness. A reset (a different camera, a resize) travels as the fourth component and drops the
+    // history for this frame.
+    m_passDataBuffer.m_data.temporal = Vec4(glm::clamp(m_params.TemporalResponseMin, 0.0f, 1.0f),
+                                            glm::clamp(m_params.TemporalResponseMax, 0.0f, 1.0f),
                                             glm::clamp(m_params.BrdfBias, 0.0f, 1.0f),
                                             resetHistory ? 1.0f : 0.0f);
 
     const bool hasVelocity = m_params.VelocityCurrent != nullptr && m_params.VelocityPrevious != nullptr;
     m_passDataBuffer.m_data.velocity = Vec4(hasVelocity ? 1.0f : 0.0f, float(size.y), 0.0f, 0.0f);
 
+    // Environment: the sky's pre filtered radiance. The mip a sample reads is roughness scaled, so the
+    // shader needs the highest mip the cubemap carries and whether it is there at all.
+    const float envIntensity = m_params.EnvSpecular != nullptr ? glm::max(m_params.EnvIntensity, 0.0f) : 0.0f;
+    const float envMaxMip    = float(RHIConstants::SpecularIBLLods - 1);
+    m_passDataBuffer.m_data.environment = Vec4(envIntensity, envMaxMip, envIntensity > 0.0f ? 1.0f : 0.0f, 0.0f);
+
+    m_passDataBuffer.m_data.denoiser = Vec4(glm::max(m_params.MaxSamples, 1.0f),
+                                            glm::clamp(m_params.DisocclusionThreshold, 0.0f, 1.0f),
+                                            glm::max(m_params.HistoryClipWeight, 0.0f),
+                                            SSR_DEFAULT_VARIANCE);
+
     m_quadPass->m_params.frameBuffer->ReconstructIfNeeded({size.x, size.y, false, false});
     m_quadPass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_traceTexture);
     m_quadPass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment1,
                                                              m_hitTexture[m_hitIndex]);
 
+    m_avgPass->m_params.frameBuffer->ReconstructIfNeeded({avgWidth, avgHeight, false, false});
+    m_avgPass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_avgRadiance);
+
+    m_resolvePass->m_params.frameBuffer->ReconstructIfNeeded({size.x, size.y, false, false});
+
     m_compositePass->m_params.frameBuffer->ReconstructIfNeeded({size.x, size.y, false, false});
     m_compositePass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0,
                                                               m_reflectionRt);
 
-    m_denoisePass->m_params.frameBuffer->ReconstructIfNeeded({size.x, size.y, false, false});
-    m_denoisePass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0,
-                                                            m_denoiseTexture);
-
-    // The resolve draws into one of the history targets, and which one swaps every frame. Only the size
-    // is settled here, the attachment follows in Render.
-    m_resolvePass->m_params.frameBuffer->ReconstructIfNeeded({size.x, size.y, false, false});
-
     m_quadPass->m_params.blendFunc            = BlendFunction::NONE;
     m_quadPass->m_params.clearFrameBuffer     = GraphicBitFields::None;
+    m_avgPass->m_params.blendFunc             = BlendFunction::NONE;
+    m_avgPass->m_params.clearFrameBuffer      = GraphicBitFields::None;
     m_resolvePass->m_params.blendFunc         = BlendFunction::NONE;
     m_resolvePass->m_params.clearFrameBuffer  = GraphicBitFields::None;
-    m_denoisePass->m_params.blendFunc         = BlendFunction::NONE;
-    m_denoisePass->m_params.clearFrameBuffer  = GraphicBitFields::None;
     m_compositePass->m_params.blendFunc       = BlendFunction::NONE;
     m_compositePass->m_params.clearFrameBuffer = GraphicBitFields::None;
+
+    m_passDataBuffer.Invalidate();
+    m_passDataBuffer.Map();
   }
 
   void SsrPass::Render()
@@ -403,12 +476,9 @@ m_hitTexture[1]                     = MakeNewPtr<RenderTarget>("SsrHit1RT");
     normalDepth->ApplyTextureSettings(ndSettings);
 
     m_quadPass->SetFragmentShader(m_ssrShader, renderer);
+    m_avgPass->SetFragmentShader(m_avgShader, renderer);
     m_resolvePass->SetFragmentShader(m_resolveShader, renderer);
-    m_denoisePass->SetFragmentShader(m_denoiseShader, renderer);
     m_compositePass->SetFragmentShader(m_compositeShader, renderer);
-
-    m_passDataBuffer.Invalidate();
-    m_passDataBuffer.Map();
 
     // One history target is read and the other is written, and they swap at the end of the frame: a pass
     // can not sample the attachment it draws into.
@@ -417,9 +487,35 @@ m_hitTexture[1]                     = MakeNewPtr<RenderTarget>("SsrHit1RT");
 
     m_resolvePass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0,
                                                             m_history[writeIndex]);
+    m_resolvePass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment1,
+                                                            m_historyCount[writeIndex]);
 
-    // Phase 1: trace one sample of the reflection lobe per pixel into its own target, carrying its weight
-    // in the alpha channel.
+    // Phase 0: the min depth hierarchy the march climbs. One draw per level, each reading the level below
+    // it - the g buffer for the first - so a level costs a quarter of the one below in pixels.
+    for (int level = 0; level < m_pyramidLevels; ++level)
+    {
+      TexturePtr pyramidSource = level == 0 ? normalDepth : m_depthPyramid[level - 1];
+
+      m_pyramidPass->m_params.frameBuffer->ReconstructIfNeeded(
+          {m_depthPyramid[level]->m_width, m_depthPyramid[level]->m_height, false, false});
+      m_pyramidPass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0,
+                                                              m_depthPyramid[level]);
+
+      m_requirements = PassRequirements();
+      GatherRequirements(m_requirements);
+      m_requirements.fragmentShader                     = m_pyramidShader;
+      m_requirements.vertexShader                       = m_pyramidPass->m_material->GetVertexShaderVal();
+      m_requirements.program                            = m_pyramidPass->GetProgram();
+      m_requirements.frameBuffer                        = m_pyramidPass->m_params.frameBuffer;
+      m_requirements.semanticTextures["s_pyramidDepth"] = pyramidSource;
+      m_requirements.customUbos[7]                      = &m_passDataBuffer.GetBuffer();
+
+      ApplyRequirements(renderer);
+      RenderSubPass(m_pyramidPass);
+    }
+
+    // Phase 1: one ray per pixel. Where the march finds nothing the environment fills in, so every
+    // reflective pixel leaves with a complete reflection and a coverage of one.
     m_requirements = PassRequirements();
     GatherRequirements(m_requirements);
     m_requirements.fragmentShader                     = m_ssrShader;
@@ -428,60 +524,75 @@ m_hitTexture[1]                     = MakeNewPtr<RenderTarget>("SsrHit1RT");
     m_requirements.frameBuffer                        = m_quadPass->m_params.frameBuffer;
     m_requirements.semanticTextures["s_diffuseColor"] = m_copyTexture;
     m_requirements.semanticTextures["s_normalDepth"]  = normalDepth;
+    if (m_params.EnvSpecular != nullptr)
+    {
+      m_requirements.semanticTextures["s_envSpecular"] = m_params.EnvSpecular;
+    }
+    if (m_blueNoise != nullptr)
+    {
+      m_requirements.semanticTextures["s_blueNoise"] = m_blueNoise;
+    }
+    for (int level = 0; level < m_pyramidLevels; ++level)
+    {
+      m_requirements.semanticTextures["s_pyramid" + std::to_string(level)] = m_depthPyramid[level];
+    }
     m_requirements.customUbos[7]                      = &m_passDataBuffer.GetBuffer();
 
     ApplyRequirements(renderer);
     RenderSubPass(m_quadPass);
 
-    // Phase 2: resolve the samples in screen space and accumulate them into the history, reprojected
-    // through the camera motion. The requirements are rebuilt so the sampler names of the trace phase do
-    // not leak into this one.
+    // Phase 2: the 1/8 resolution average of the trace, which is the low frequency the temporal clip
+    // leans on and what a pixel with few samples borrows its radiance from.
     m_requirements = PassRequirements();
     GatherRequirements(m_requirements);
-    m_requirements.fragmentShader                    = m_resolveShader;
-    m_requirements.vertexShader                      = m_resolvePass->m_material->GetVertexShaderVal();
-    m_requirements.program                           = m_resolvePass->GetProgram();
-    m_requirements.frameBuffer                       = m_resolvePass->m_params.frameBuffer;
+    m_requirements.fragmentShader                    = m_avgShader;
+    m_requirements.vertexShader                      = m_avgPass->m_material->GetVertexShaderVal();
+    m_requirements.program                           = m_avgPass->GetProgram();
+    m_requirements.frameBuffer                       = m_avgPass->m_params.frameBuffer;
     m_requirements.semanticTextures["s_trace"]       = m_traceTexture;
-    m_requirements.semanticTextures["s_hit"]         = m_hitTexture[m_hitIndex];
-    m_requirements.semanticTextures["s_hitPrev"]     = m_hitTexture[1 - m_hitIndex];
+    m_requirements.customUbos[7]                     = &m_passDataBuffer.GetBuffer();
+
+    ApplyRequirements(renderer);
+    RenderSubPass(m_avgPass);
+
+    // Phase 3: spatial filter, reprojection and the variance clipped accumulation. The requirements are
+    // rebuilt so the sampler names of the trace phase do not leak into this one.
+    m_requirements = PassRequirements();
+    GatherRequirements(m_requirements);
+    m_requirements.fragmentShader                        = m_resolveShader;
+    m_requirements.vertexShader                          = m_resolvePass->m_material->GetVertexShaderVal();
+    m_requirements.program                               = m_resolvePass->GetProgram();
+    m_requirements.frameBuffer                           = m_resolvePass->m_params.frameBuffer;
+    m_requirements.semanticTextures["s_trace"]           = m_traceTexture;
+    m_requirements.semanticTextures["s_avgRadiance"]     = m_avgRadiance;
+    m_requirements.semanticTextures["s_history"]         = m_history[readIndex];
+    m_requirements.semanticTextures["s_historyCount"]    = m_historyCount[readIndex];
+    m_requirements.semanticTextures["s_normalDepth"]     = normalDepth;
+    m_requirements.semanticTextures["s_normalDepthPrev"] = m_prevNormalDepth;
+    m_requirements.semanticTextures["s_hit"]             = m_hitTexture[m_hitIndex];
 
     if (m_params.VelocityCurrent != nullptr && m_params.VelocityPrevious != nullptr)
     {
       m_requirements.semanticTextures["s_velCur"]  = m_params.VelocityCurrent;
       m_requirements.semanticTextures["s_velPrev"] = m_params.VelocityPrevious;
     }
-    m_requirements.semanticTextures["s_history"]     = m_history[readIndex];
-    m_requirements.semanticTextures["s_normalDepth"] = normalDepth;
-    m_requirements.customUbos[7]                     = &m_passDataBuffer.GetBuffer();
+    m_requirements.customUbos[7] = &m_passDataBuffer.GetBuffer();
 
     ApplyRequirements(renderer);
     RenderSubPass(m_resolvePass);
 
-    // Phase 3: median filter the accumulation. The average the resolve does spreads an isolated bright
-    // sample into a streak that the history then keeps for about a second; the median drops it instead.
-    m_requirements = PassRequirements();
-    GatherRequirements(m_requirements);
-    m_requirements.fragmentShader                    = m_denoiseShader;
-    m_requirements.vertexShader                      = m_denoisePass->m_material->GetVertexShaderVal();
-    m_requirements.program                           = m_denoisePass->GetProgram();
-    m_requirements.frameBuffer                       = m_denoisePass->m_params.frameBuffer;
-    m_requirements.semanticTextures["s_accum"]       = m_history[writeIndex];
-    m_requirements.semanticTextures["s_normalDepth"] = normalDepth;
-    m_requirements.customUbos[7]                     = &m_passDataBuffer.GetBuffer();
-
-    ApplyRequirements(renderer);
-    RenderSubPass(m_denoisePass);
-
-    // Phase 4: composite the filtered reflection over the scene copy into the pass's own target.
+    // Phase 4: composite the accumulation over the scene copy into the pass's own target. The coverage of
+    // the trace decides which pixels take it: a reflective pixel takes the reflection, everything else
+    // keeps the forward shaded colour.
     m_requirements = PassRequirements();
     GatherRequirements(m_requirements);
     m_requirements.fragmentShader                     = m_compositeShader;
     m_requirements.vertexShader                       = m_compositePass->m_material->GetVertexShaderVal();
     m_requirements.program                            = m_compositePass->GetProgram();
     m_requirements.frameBuffer                        = m_compositePass->m_params.frameBuffer;
-    m_requirements.semanticTextures["s_trace"]        = m_denoiseTexture;
+    m_requirements.semanticTextures["s_trace"]        = m_history[writeIndex];
     m_requirements.semanticTextures["s_sceneColor"]   = m_copyTexture;
+    m_requirements.semanticTextures["s_coverage"]     = m_traceTexture;
     m_requirements.customUbos[7]                      = &m_passDataBuffer.GetBuffer();
 
     ApplyRequirements(renderer);
@@ -493,6 +604,10 @@ m_hitTexture[1]                     = MakeNewPtr<RenderTarget>("SsrHit1RT");
     m_hasHistory    = true;
     m_historyIndex  = writeIndex;
     m_hitIndex      = 1 - m_hitIndex;
+
+    // The g buffer this frame reprojected against becomes the one the next frame compares to. A copy
+    // after the resolve, so the frame that was just drawn is the history and not the other way around.
+    renderer->CopyTexture(normalDepth, m_prevNormalDepth);
 
     // The reprojection of the next frame needs the view projection this frame was drawn with, and the
     // comparison against it is what told the resolve (in PreRender) whether this frame is a moving one.

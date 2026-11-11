@@ -109,7 +109,7 @@ namespace ToolKit
     int m_numChannels = 0;
 
     /** Debug label which appears in the gpu debuggers. */
-    StringView m_label;
+    String m_label;
 
     /** If an msaa texture is created, resolved single sample texture is assigned to this texture. */
     TexturePtr m_resolvedTexture;

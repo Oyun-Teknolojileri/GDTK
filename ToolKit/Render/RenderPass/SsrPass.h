@@ -13,8 +13,8 @@
 namespace ToolKit
 {
 
-  /** Screen space reflection pass UBO (`ssrFrag.shader`). Mirrors the block in
-      `ssrPassDataInc.shader` byte for byte. */
+  /** Screen space reflection pass UBO (`ssrPassDataInc.shader`). Mirrors the block in that include
+      byte for byte. */
   struct SsrPassDataLayout
   {
     /** World -> view. The g buffer stores world space normals, the march happens in view space. */
@@ -25,6 +25,8 @@ namespace ToolKit
     Mat4 inverseView;
     /** Previous frame's view projection, for the reprojection of the reflection history. */
     Mat4 prevViewProjection;
+    /** World -> environment space: the sky cubemap's orientation, inverted. */
+    Mat4 envRotation;
     /** (P00, P11, P20, P21) - turns a view position into a UV without a matrix multiply. */
     Vec4 projParams;
     /** .x = intensity, .y = maxDistance, .z = thickness, .w = roughness cutoff. */
@@ -36,12 +38,15 @@ namespace ToolKit
     Vec4 flags;
     /** .x = screen border fade, .y = screen length fade start, .z = hit distance fade start. */
     Vec4 fades;
-    /** .x = lower end of the temporal response, .y = upper end,
-     *  .z = brdf bias (how far the sampled lobe is bent towards the mirror), .w = 1 when the history
-     *  must be dropped. */
+    /** .x/.y = unused since the sample count drives the temporal blend, .z = brdf bias (how far the
+     *  sampled lobe is bent towards the mirror), .w = 1 when the history must be dropped. */
     Vec4 temporal;
     /** .x = 1 when the object motion targets are bound, .y = screen height. */
     Vec4 velocity;
+    /** .x = environment intensity, .y = highest mip the cubemap carries, .z = 1 when it is bound. */
+    Vec4 environment;
+    /** .x = sample cap, .y = disocclusion threshold, .z = history clip weight, .w = default variance. */
+    Vec4 denoiser;
   };
 
   typedef GpuBufferBase<SsrPassDataLayout> SsrPassDataBuffer;
@@ -84,19 +89,40 @@ namespace ToolKit
     float RangeFadeStart               = 0.6f;
 
     /**
-     * The two ends of the temporal response: the share of the history the accumulation keeps when this
-     * frame disagrees with it (min) and when the two agree on the luminance (max). 0 for both turns the
-     * temporal resolve off.
+     * The two ends of the temporal response. Unused since the accumulation is driven by how many samples
+     * a pixel holds, kept so existing scene settings keep loading.
      */
     float TemporalResponseMin          = 0.85f;
     float TemporalResponseMax          = 1.0f;
 
     /** Screen space motion of the objects, from the velocity pass. Null when the frame has none. */
-    TexturePtr VelocityCurrent  = nullptr;
-    TexturePtr VelocityPrevious = nullptr;
+    TexturePtr VelocityCurrent         = nullptr;
+    TexturePtr VelocityPrevious        = nullptr;
 
     /** How far the sampled lobe is bent towards the mirror direction. 0 = pure GGX, 1 = mirror. */
     float BrdfBias                     = 0.7f;
+
+    /**
+     * Pre filtered sky radiance, the reflection a ray falls back to when screen space can not answer it.
+     * Without it every miss is a hole the accumulation has to work around; with it the reflection is
+     * complete and a miss is simply a coarser answer.
+     */
+    TexturePtr EnvSpecular             = nullptr;
+
+    /** Orientation of the environment cubemap, as the sky entity carries it. */
+    Mat4 EnvRotation                   = Mat4(1.0f);
+
+    /** Intensity of the environment contribution; 0 skips the cubemap. */
+    float EnvIntensity                 = 1.0f;
+
+    /** Cap on the samples the accumulation holds, before the roughness scaling. */
+    float MaxSamples                   = 32.0f;
+
+    /** How far a history sample may sit from this frame's local statistics before it is faded. */
+    float DisocclusionThreshold        = 0.9f;
+
+    /** Multiplier on the clip box the history is pulled into. 0 disables the accumulation. */
+    float HistoryClipWeight            = 1.0f;
 
     /** Output only what this pass contributes, instead of compositing it over the scene color. */
     bool DebugView                     = false;
@@ -106,20 +132,23 @@ namespace ToolKit
   };
 
   /**
-   * Screen space reflections with stochastic sampling. Every pixel shoots one ray sampled from the
-   * surface's reflection lobe instead of the mirror direction, so roughness becomes a real blur: the
-   * lobe the sample lands in is what the pixel reflects, not a mip of the mirror image. The samples
-   * are averaged in screen space and accumulated over frames against a history that follows the
-   * surface through the camera motion.
+   * Screen space reflections: one ray per pixel, sampled from the surface's reflection lobe, marched
+   * against the pre process g buffer.
    *
-   * A miss leaves the pixel exactly as the forward pass shaded it, so the sky or the active
-   * environment volumes keep providing the reflection wherever screen space can not: background
-   * pixels, off screen rays and surfaces whose lobe points away from the screen.
+   * The reflection a pixel ends up with is complete. A ray that finds a surface takes that surface's
+   * radiance, a ray that leaves the screen or finds nothing falls back to the environment cubemap, and
+   * the confidence of the hit decides how much of each. That is the reference's (FidelityFX SSSR)
+   * arrangement and it is what a pixel that misses needs: there is no "no data" state the history has to
+   * paper over, so an old reflection can not be kept alive by a ray that no longer finds anything.
    *
-   * The composite goes to a target of the pass's own (see GetOutputFramebuffer): compositing back
-   * into the frame makes the pass read the target it writes, which a driver that resolves a
-   * multisampled render with a draw (Mali) can hand a frame old content, and the previous frame's
-   * reflections then alternate with the current one.
+   * The accumulation follows the same split as the reference. A mirror is traced along the exact mirror
+   * direction and takes this frame's sample as it is - nothing to average, nothing to ghost. A glossy
+   * surface goes through the spatial filter, the reprojected history and a variance clipped blend whose
+   * weight is how many samples the pixel holds.
+   *
+   * The composite goes to a target of the pass's own (see GetOutputFramebuffer): compositing back into
+   * the frame makes the pass read the target it writes, which a driver that resolves a multisampled
+   * render with a draw (Mali) can hand a frame old content.
    */
   class TK_API SsrPass : public Pass
   {
@@ -137,13 +166,6 @@ namespace ToolKit
     /**
      * Where the composite of this pass goes: the frame's color with the reflections in it.
      *
-     * A target of the pass's own, instead of the frame ColorRt names. Compositing back into that frame
-     * makes the pass read the very target it writes, and a driver that resolves a multisampled render to
-     * texture with a draw (Mali) can hand the copy a frame old content: whatever the previous frame left
-     * there then comes back as a reflection of itself, alternating frame by frame. With the composite in
-     * a target of its own the frame stays read only for the rest of the frame, and everything behind this
-     * pass reads this target instead.
-     *
      * Null while the target has no picture of this frame in it: the first frames, where nothing has been
      * sized yet, and a frame the pass skipped because its shader or its parameters were missing. A caller
      * then has to fall back to the frame it gave the pass.
@@ -154,17 +176,21 @@ namespace ToolKit
     SsrPassParams m_params;
 
    private:
-    /** Phase one: one stochastic ray per pixel, gathered into the scene color mip chain. */
+    /** Phase one: one ray per pixel, with the environment filling in whatever the march did not find. */
     FullQuadPassPtr m_quadPass        = nullptr;
     ShaderPtr m_ssrShader             = nullptr;
 
-    /** Phase two: screen space resolve of the samples plus the temporal accumulation. */
+    /** Build pass for the min depth hierarchy: one draw per level, all with the same shader. */
+    FullQuadPassPtr m_pyramidPass     = nullptr;
+    ShaderPtr m_pyramidShader         = nullptr;
+
+    /** Phase two: the 1/8 resolution average of the trace, the anchor the temporal clip leans on. */
+    FullQuadPassPtr m_avgPass         = nullptr;
+    ShaderPtr m_avgShader             = nullptr;
+
+    /** Phase three: spatial filter, reprojection and the variance clipped accumulation. */
     FullQuadPassPtr m_resolvePass     = nullptr;
     ShaderPtr m_resolveShader         = nullptr;
-
-    /** Phase three: median filter that removes the fireflies the accumulation kept. */
-    FullQuadPassPtr m_denoisePass     = nullptr;
-    ShaderPtr m_denoiseShader         = nullptr;
 
     /** Phase four: composite the accumulated reflection over the scene color. */
     FullQuadPassPtr m_compositePass   = nullptr;
@@ -173,21 +199,33 @@ namespace ToolKit
     /** Single sample copy of the scene color: the pass reads it while writing a target of its own. */
     RenderTargetPtr m_copyTexture     = nullptr;
 
-    /** This frame's reflection and its weight, produced by the trace phase. */
+    /** Blue noise tile the trace draws its sample from. */
+    TexturePtr m_blueNoise            = nullptr;
+
+    /** This frame's reflection and its coverage, produced by the trace phase. */
     RenderTargetPtr m_traceTexture    = nullptr;
 
-    /** The accumulation after the median filter, read by the composite. */
-    RenderTargetPtr m_denoiseTexture  = nullptr;
+    /** Where each ray ended, for the reprojection of the reflected content. */
+    RenderTargetPtr m_hitTexture[2]   = {nullptr, nullptr};
 
-    /** Depth of the hit each trace sample found, in the red channel. The resolve needs it to follow the
-        reflected content instead of the surface while the view moves. */
-    RenderTargetPtr m_hitTexture[2]  = {nullptr, nullptr};
+    /** Levels of the min depth hierarchy the march climbs, level 0 half the screen. */
+    static constexpr int m_pyramidLevels = 6;
+    RenderTargetPtr m_depthPyramid[m_pyramidLevels];
 
     /** Which of the two hit targets this frame writes; the other holds the frame before it. */
-    int m_hitIndex                   = 0;
+    int m_hitIndex                    = 0;
 
-    /** Accumulated reflection, one is read and the other is written, and they swap. */
-    RenderTargetPtr m_history[2];
+    /** 1/8 resolution average of the trace. */
+    RenderTargetPtr m_avgRadiance     = nullptr;
+
+    /** Accumulated reflection (rgb) and its variance (a), one read and one written. */
+    RenderTargetPtr m_history[2]      = {nullptr, nullptr};
+
+    /** How many samples the accumulation holds, per pixel, carried next to the radiance. */
+    RenderTargetPtr m_historyCount[2] = {nullptr, nullptr};
+
+    /** The g buffer of the frame the history was written for, for the reprojection's disocclusion test. */
+    RenderTargetPtr m_prevNormalDepth = nullptr;
 
     /** The color the composite phase writes: the frame with the reflections in it. */
     RenderTargetPtr m_reflectionRt    = nullptr;

@@ -2,14 +2,16 @@
 	<type name = "fragmentShader" />
 	<include name = "vulkanCompatInc.shader" />
 	<include name = "ssrCommonInc.shader" />
-<include name = "normalEncodingInc.shader" />
+	<include name = "normalEncodingInc.shader" />
 	<texture slot = "0" name = "s_trace" />
-	<texture slot = "1" name = "s_history" />
-	<texture slot = "2" name = "s_normalDepth" />
-<texture slot = "3" name = "s_hit" />
-<texture slot = "4" name = "s_velCur" />
-<texture slot = "5" name = "s_velPrev" />
-<texture slot = "6" name = "s_hitPrev" />
+	<texture slot = "1" name = "s_avgRadiance" />
+	<texture slot = "2" name = "s_history" />
+	<texture slot = "3" name = "s_historyCount" />
+	<texture slot = "4" name = "s_normalDepth" />
+	<texture slot = "5" name = "s_normalDepthPrev" />
+	<texture slot = "6" name = "s_hit" />
+	<texture slot = "7" name = "s_velCur" />
+	<texture slot = "8" name = "s_velPrev" />
 	<source>
 	<!--
 
@@ -18,342 +20,284 @@ precision highp int;
 
 TK_LOC(2) in vec2 v_texture;
 
+// rgb: the accumulated reflection, a: its variance. The composite reads the rgb, the temporal resolve of
+// the next frame reads both.
 layout (location = 0) out vec4 fragColor;
 
-TK_SAMPLER_BINDING(0) uniform sampler2D s_trace;       // rgb: this frame's reflection, a: its weight.
-TK_SAMPLER_BINDING(1) uniform sampler2D s_history;     // rgb: accumulated reflection, a: its weight.
-TK_SAMPLER_BINDING(2) uniform sampler2D s_normalDepth; // rg: world normal, b: linear depth, a: roughness.
-TK_SAMPLER_BINDING(3) uniform sampler2D s_hit;         // xy: hit uv, z: view depth of the hit, w: pdf of the sample.
-TK_SAMPLER_BINDING(4) uniform sampler2D s_velCur;     // xy: this frame's screen position of the object, in UV.
-TK_SAMPLER_BINDING(5) uniform sampler2D s_velPrev;    // xy: the previous frame's screen position of it.
-TK_SAMPLER_BINDING(6) uniform sampler2D s_hitPrev;    // xy: where the previous frame's ray landed.
+// r: how many samples the accumulation holds for this pixel. It decides how much of a new frame comes
+// through, in place of a fixed response.
+layout (location = 1) out vec4 fragCount;
 
-// Taps per axis. The trace gives one sample per pixel, so the resolve is what turns the individual
-// samples of neighbouring pixels into a single value; three by three is the smallest kernel that
-// does that without erasing the contact hardening the per pixel lobe produced.
-#define SSR_RESOLVE_TAPS 1
+TK_SAMPLER_BINDING(0) uniform sampler2D s_trace;           // rgb: this frame's reflection, a: coverage.
+TK_SAMPLER_BINDING(1) uniform sampler2D s_avgRadiance;     // 1/8 resolution average of the trace.
+TK_SAMPLER_BINDING(2) uniform sampler2D s_history;         // rgb: accumulated reflection, a: variance.
+TK_SAMPLER_BINDING(3) uniform sampler2D s_historyCount;    // r: accumulated sample count.
+TK_SAMPLER_BINDING(4) uniform sampler2D s_normalDepth;     // rg: world normal, b: depth, a: roughness.
+TK_SAMPLER_BINDING(5) uniform sampler2D s_normalDepthPrev; // The same g buffer, one frame ago.
+TK_SAMPLER_BINDING(6) uniform sampler2D s_hit;             // xy: ray end uv, z: its depth, w: ray length.
+TK_SAMPLER_BINDING(7) uniform sampler2D s_velCur;          // xy: this frame's screen position of the object.
+TK_SAMPLER_BINDING(8) uniform sampler2D s_velPrev;         // xy: the previous frame's screen position of it.
 
-// Width of the kernel at zero roughness, in texels. A rough surface reflects a cone and its samples
-// are noisier, so the kernel widens with it: the reflection is low frequency there anyway, and a
-// wider average is what keeps the per frame noise out of the accumulation the temporal resolve does.
-#define SSR_RESOLVE_ROUGH_SPREAD 2.0
+// Samples the accumulation may hold, as a share of the configured maximum. A rough surface needs many
+// samples to settle and a smooth one settles in a couple, so the cap follows the roughness: without it a
+// rough surface carries a long history it can not use, and a smooth one takes too long to converge.
+#define SSR_SAMPLES_FOR_ROUGHNESS(r) (1.0 - exp(-(r) * 100.0))
 
-// Extra kernel width while the view moves, in texels. A reprojected reflection follows the surface it
-// belongs to, not the reflected content, so the history is stale exactly when the camera moves. The
-// resolve covers that with its own average instead of with the history.
-#define SSR_RESOLVE_MOTION_SPREAD 1.0
+// Below this roughness the reflection is the mirror direction, sampled deterministically. There is
+// nothing to average out, so the pixel takes this frame's sample as it is: that is what keeps a mirror
+// free of both shimmer and ghosting, and it is the reference's mirror/glossy split.
+#define SSR_MIRROR_ROUGHNESS 0.0001
 
-// Response when this frame's ray missed. The history holds a reflection the ray no longer finds - either
-// the content left the screen or it was never found from this view - and keeping it is what leaves a
-// camera's old reflections behind on a mirror. Dropping it in one frame makes a pixel that alternates
-// between hit and miss flicker instead, so it is faded out at this rate: half of the stale weight goes
-// per frame, and the pixel hands itself back to the forward shading within a handful of frames.
-#define SSR_MISS_RESPONSE 0.5
+// The spatial filter's window: the first few Halton(2,3) offsets stretched to +-3 texels, with the centre
+// left out because it is accounted for separately. The reference filters with the same taps.
+#define SSR_FILTER_TAPS 15
+
+// Multiplier on the standard deviation of the local statistics. The reference uses 1.4; below 1 the clip
+// is so tight that the accumulation can never hold anything this frame did not produce.
+#define SSR_CLIP_SCALE 1.4
+
+// Share of the 1/8 resolution average in the clipped box. It carries the low frequency the local window
+// can not see, so a neighbourhood that happens to agree on a wrong value is still pulled back.
+#define SSR_AVG_RADIANCE_WEIGHT 0.2
+
+// Variance assumed for a pixel with no usable history: high enough that the filter trusts a single sample
+// less, low enough that it does not reject the frame outright.
+#define SSR_DEFAULT_VARIANCE 1.0
+
+const vec2 HALTON_OFFSETS[SSR_FILTER_TAPS] = vec2[SSR_FILTER_TAPS](
+	vec2(0.0, 1.0), vec2(-2.0, 1.0), vec2(2.0, -3.0), vec2(-3.0, 0.0), vec2(1.0, 2.0),
+	vec2(-1.0, -2.0), vec2(3.0, 0.0), vec2(-3.0, 3.0), vec2(0.0, -3.0), vec2(-1.0, -1.0),
+	vec2(2.0, 1.0), vec2(-2.0, -2.0), vec2(1.0, 0.0), vec2(0.0, 2.0), vec2(3.0, -1.0));
 
 float Luminance(vec3 c)
 {
-	return dot(c, vec3(0.2126, 0.7152, 0.0722));
+	return max(dot(c, vec3(0.299, 0.587, 0.114)), 0.001);
 }
 
-// Bounded version of a sample, used for the average. A single sample that caught a specular
-// highlight of the reflected scene is orders of magnitude brighter than its neighbours; averaging it
-// in raw makes the reflection pulse. The compression is undone after the average, so a neighbour
-// hood of equal samples still averages to exactly that value.
-vec3 Compress(vec3 c)
+vec3 WorldNormal(vec4 gBuffer)
 {
-	return c / (1.0 + Luminance(c));
+	return normalize(mat3(ssrPass.view) * decodeNormal(gBuffer.rg));
 }
 
-vec3 Expand(vec3 c)
+// How much a neighbouring pixel is the same surface. The normal has to agree and the depth has to be
+// within what a hole of this distance spans; both terms are ratios, so nothing is tuned per scene scale.
+float SurfaceWeight(vec4 center, vec4 neighbour)
 {
-	return c / max(1.0 - Luminance(c), 0.05);
+	if (neighbour.b <= 0.0)
+	{
+		return 0.0;
+	}
+
+	vec3  normal      = WorldNormal(center);
+	vec3  otherNormal = WorldNormal(neighbour);
+	float normalTerm  = pow(max(dot(normal, otherNormal), 0.0), 128.0);
+	float depthTerm   = exp(-abs(center.b - neighbour.b) / max(center.b, 0.001) * 8.0);
+
+	return normalTerm * depthTerm;
 }
 
-// Specular BRDF term a tap is weighted by, in Unity's normalisation: D * G * pi / 4. The reference
-// resolves with the same term divided by the pdf the sample was drawn with, which turns the taps into a
-// proper estimate of the lobe instead of an average of whatever the rays happened to hit.
-float BrdfWeight(vec3 V, vec3 L, vec3 N, float roughness)
+// Distance between two radiance values. The exponential bounds a firefly's vote instead of letting it
+// drag the average on its own.
+float RadianceWeight(vec3 center, vec3 other, float variance)
 {
-	vec3  H     = normalize(L + V);
-	float NdotH = clamp(dot(N, H), 0.0, 1.0);
-	float NdotL = clamp(dot(N, L), 0.0, 1.0);
-	float NdotV = clamp(dot(N, V), 0.0, 1.0);
-
-	float lambdaV = NdotL * (NdotV * (1.0 - roughness) + roughness);
-	float lambdaL = NdotV * (NdotL * (1.0 - roughness) + roughness);
-	float G       = 0.5 / (lambdaV + lambdaL + 1e-5);
-
-	float a2 = roughness * roughness;
-	float d  = (NdotH * a2 - NdotH) * NdotH + 1.0;
-	float D  = a2 / (SSR_PI * d * d + 1e-7);
-
-	return (D * G) * (SSR_PI * 0.25);
+	return max(exp(-(0.6 + variance * 0.1) * length(center - other)), 0.01);
 }
 
-// Pulls the history into the range this frame produced instead of clamping it onto the border of that
-// range: a hard clamp parks the stale value on the edge of the box and shows up as a rim travelling with
-// the change, while moving the point along the line to the box centre keeps the contrast of what is left.
-vec4 ClipAabb(vec3 aabbMin, vec3 aabbMax, vec4 value)
+// Pulls a value into the box around `centre` with the given extent, along the line to the centre. Used to
+// clip the history into what this frame produced.
+vec3 ClipAabb(vec3 centre, vec3 extent, vec3 value)
 {
-	vec3 boxCenter = 0.5 * (aabbMax + aabbMin);
-	vec3 boxExtent = max(0.5 * (aabbMax - aabbMin), vec3(1e-6));
-
-	vec3  offset = value.rgb - boxCenter;
-	vec3  unit   = offset / boxExtent;
+	vec3  offset = value - centre;
+	vec3  unit   = offset / extent;
 	float reach  = max(abs(unit.x), max(abs(unit.y), abs(unit.z)));
 
-	if (reach > 1.0)
-	{
-		return vec4(boxCenter + offset / reach, value.a);
-	}
-
-	return value;
+	return reach > 1.0 ? centre + offset / reach : value;
 }
 
-
-// True when the reflection this pixel now carries is not the one the history holds. Three things can
-// change it: the ray stopped hitting anything or started to, it hit at a very different distance, or the
-// object it hit moved since the frame the history was written. The last one is what the velocity pass is
-// for; all three mean the stored value belongs to something that is not there any more.
-bool ReflectionChanged(vec2 uv, float hitDepth)
+void main()
 {
-	float previousHitDepth = texture(s_hitPrev, uv).z;
+	vec2  uv    = v_texture;
+	vec4  gBuf  = texture(s_normalDepth, uv);
+	float depth = gBuf.b;
 
-	if ((hitDepth > 0.0) != (previousHitDepth > 0.0))
+	fragColor = vec4(0.0);
+	fragCount = vec4(0.0);
+
+	// Not a reflective surface: nothing to accumulate, and the composite leaves the pixel to the forward
+	// shading.
+	if (depth <= 0.0 || gBuf.a >= ssrPass.params.w)
 	{
-		return true;
+		return;
 	}
 
-	if (hitDepth > 0.0 && abs(hitDepth - previousHitDepth) / max(hitDepth, 0.01) > 0.1)
-	{
-		return true;
-	}
+	float roughness = gBuf.a;
+	vec4  center    = texture(s_trace, uv);
+
+	// A mirror is sampled along the exact mirror direction, so there is no stochastic noise to accumulate
+	// and nothing to ghost: keeping a history for it is what put bands on a moving mirror. It is filtered
+	// in screen space only, which is what removes the single pixel hit/miss speckle a mirror shows at a
+	// grazing silhouette while leaving the reflection itself sharp.
+	bool isMirror = roughness < SSR_MIRROR_ROUGHNESS;
+
+	// --- reprojection --------------------------------------------------------------------------------
+	// Surface candidate: where this pixel was last frame, plus the object's own motion.
+	vec3 viewPos     = SsrViewPos(uv, depth);
+	vec4 worldPos    = ssrPass.inverseView * vec4(viewPos, 1.0);
+	vec4 prevClip    = ssrPass.prevViewProjection * worldPos;
+	vec2 surfacePrevUV = prevClip.xy / max(abs(prevClip.w), 1e-6) * 0.5 + 0.5;
+#ifdef VULKAN
+	surfacePrevUV.y = 1.0 - surfacePrevUV.y;
+#endif
 
 	if (ssrPass.velocity.x > 0.5)
 	{
-		vec2 previousHitUV = texture(s_hitPrev, uv).xy;
-
-		vec4 hitNow        = texture(s_velCur, previousHitUV);
-		vec4 hitBefore     = texture(s_velPrev, previousHitUV);
-		vec4 surfaceNow    = texture(s_velCur, uv);
-		vec4 surfaceBefore = texture(s_velPrev, uv);
-
-		// Zero means nothing was drawn there, so the pair only carries a motion when both frames drew the
-		// object. An object that appeared or left is a change of its own.
-		bool hitDrawn     = hitNow.a > 0.5;
-		bool hitWasDrawn  = hitBefore.a > 0.5;
-		bool surfDrawn    = surfaceNow.a > 0.5;
-		bool surfWasDrawn = surfaceBefore.a > 0.5;
-
-		if (hitDrawn != hitWasDrawn || surfDrawn != surfWasDrawn)
-		{
-			return true;
-		}
-
-		float motionLimit  = ssrPass.velocity.y * 0.5;
-		float hitMotion    = hitDrawn ? length(hitNow.xy - hitBefore.xy) : 0.0;
-		float surfaceMotion = surfDrawn ? length(surfaceNow.xy - surfaceBefore.xy) : 0.0;
-
-		if (hitMotion > motionLimit || surfaceMotion > motionLimit)
-		{
-			return true;
-		}
+		surfacePrevUV -= texture(s_velCur, uv).xy - texture(s_velPrev, uv).xy;
 	}
 
-	return false;
-}
-
-void main(){
-	vec2 uv     = v_texture;
-	float depth = texture(s_normalDepth, uv).b;
-
-	// Debug view 9: the mask that decides whether the history is trusted, red where it is dropped. The
-	// guard can only be tuned by looking at what it actually marks, and this shows it as a picture.
-	if (ssrPass.flags.x > 0.5 && abs(ssrPass.flags.z - 9.0) < 0.5)
-	{
-		bool dropped = ReflectionChanged(uv, texture(s_hit, uv).z);
-
-		fragColor = vec4(dropped ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 0.35, 0.0), 1.0);
-		return;
-	}
-
-	// Debug views are single samples of the trace, hand them through untouched so they keep reading
-	// as data instead of being averaged into a gradient.
-	if (ssrPass.flags.x > 0.5)
-	{
-		fragColor = texture(s_trace, uv);
-		return;
-	}
-
-	if (depth <= 0.0)
-	{
-		fragColor = vec4(0.0);
-		return;
-	}
-
-	float motion    = ssrPass.fades.w;
-	float roughness = texture(s_normalDepth, uv).a;
-	vec2  texel     = ssrPass.screenParams.xy *
-	                  (1.0 + roughness * SSR_RESOLVE_ROUGH_SPREAD + motion * SSR_RESOLVE_MOTION_SPREAD);
-
-	// What every tap is weighted against: the view position and normal of this pixel, and the direction
-	// towards the eye.
-	vec3 surfaceViewPos = SsrViewPos(uv, depth);
-	vec3 surfaceNormal  = normalize(mat3(ssrPass.view) * decodeNormal(texture(s_normalDepth, uv).rg));
-	vec3 towardEye      = normalize(-surfaceViewPos);
-	float brdfRoughness = max(roughness, 0.05);
-
-	vec4  sumColor    = vec4(0.0);
-	float sumColorW   = 0.0;
-	float sumAlphaW   = 0.0;
-	float sumKernel   = 0.0;
-	vec4  minimum     = vec4(1e6);
-	vec4  maximum     = vec4(-1e6);
-
-	for (int y = -SSR_RESOLVE_TAPS; y <= SSR_RESOLVE_TAPS; ++y)
-	{
-		for (int x = -SSR_RESOLVE_TAPS; x <= SSR_RESOLVE_TAPS; ++x)
-		{
-			vec2 offset = vec2(float(x), float(y));
-			vec2 tapUV  = uv + offset * texel;
-
-			vec4  tap      = texture(s_trace, tapUV);
-			vec4  hit      = texture(s_hit, tapUV);
-			float tapDepth = texture(s_normalDepth, tapUV).b;
-
-			float kernel = max(0.0, 1.0 - length(offset) * 0.5);
-			sumKernel   += kernel;
-
-			if (tapDepth <= 0.0)
-			{
-				continue;
-			}
-
-			// A tap across a silhouette belongs to another surface: its reflection would smear over
-			// the edge that surface sits on.
-			float agree = 1.0 / (1.0 + abs(tapDepth - depth) * 8.0);
-			float w     = kernel * agree;
-
-			// The BRDF over pdf weighting the reference uses does not transfer as it stands: its pdf
-			// belongs to the plain GGX sampler, this one draws the visible normal distribution, and the
-			// ratio it produces swings far enough between neighbouring taps to ring the accumulation
-			// into concentric bands. The taps are left equally weighted, which is the average the spatial
-			// pass has always been, until the estimator is derived for this sampler.
-			sumColor.rgb += Compress(tap.rgb) * tap.a * w;
-			sumColorW    += tap.a * w;
-			sumAlphaW    += tap.a * w;
-
-			minimum = min(minimum, tap);
-			maximum = max(maximum, tap);
-		}
-	}
-
-	// Premultiplied average with dilation: dividing the accumulated weight by the whole kernel
-	// spreads the weight of a hit outwards, so a reflection fades into its surroundings instead of
-	// ending on the silhouette of the geometry that produced it. The sum is in the compressed space
-	// above, so it comes back to linear here.
-	float weight  = sumAlphaW > 0.0 ? sumAlphaW / sumKernel : 0.0;
-	vec3  color   = sumColorW > 0.0 ? Expand(sumColor.rgb / sumColorW) : vec3(0.0);
-	vec4  current = vec4(color, clamp(weight, 0.0, 1.0));
-
-	if (sumColorW <= 0.0)
-	{
-		minimum = current;
-		maximum = current;
-	}
-
-	// Reprojection: where the reflected content was on screen in the previous frame. A reflection moves
-	// with the geometry it shows, not with the surface it lands on, so the history is followed through
-	// the depth of the hit: the point at that depth along this pixel's ray is what the reflection is
-	// showing, and that point is what moved. Reprojecting the surface instead leaves the history
-	// behind the reflection whenever the camera moves, and the mismatch reads as shimmer.
+	// Hit candidate: the point the ray ended at, projected with the previous frame's view projection. A
+	// miss ends at the last position the march reached, so it has a candidate too - the environment sample
+	// stands along that direction.
 	vec4  hitSample = texture(s_hit, uv);
-	float hitDepth  = hitSample.z;
-
-	// The point the history holds the reflection of is where the ray landed, not where this surface pixel
-	// sits: the two are at different depths and the camera moves them by different amounts. Reprojecting
-	// the surface ray's point at the hit distance is an approximation of that, and the gap it leaves is
-	// what trails a moving camera; rebuilding the hit point and projecting it is the exact position.
-	vec3 viewPos  = hitDepth > 0.0 ? SsrViewPos(hitSample.xy, hitDepth) : SsrViewPos(uv, depth);
-	vec4 worldPos = ssrPass.inverseView * vec4(viewPos, 1.0);
-	vec4 prevClip = ssrPass.prevViewProjection * worldPos;
-	vec2 prevUV   = prevClip.xy / max(prevClip.w, 1e-6) * 0.5 + 0.5;
-#ifdef VULKAN
-	prevUV.y = 1.0 - prevUV.y;
-#endif
-
-	// Object motion: the reprojection above only knows where the camera put the point, so a reflection of
-	// something that moved on its own stays behind the thing that left it. The velocity pass writes the
-	// screen motion of the objects whose transform changed.
-	//
-	// The history is only warped for a motion small enough to land on the same content. Warping a large
-	// one lands on screen where the reflection never was, and the empty sample it returns is what read as
-	// a black shape left behind the moving object; a reflection whose content moved that much is not in
-	// the history at all, so the history is dropped for the pixel for this frame instead.
-	// Whether the reflection this pixel carries now is the one the history holds. When it is not, the
-	// stored value is dropped for this frame instead of averaged in - that is what keeps a moving object
-	// from leaving its old reflection behind.
-	bool historyUntrusted = ssrPass.temporal.w < 0.5 && ReflectionChanged(uv, hitDepth);
-
-	// Sub pixel motion of the object is still followed with the lookup: the reflection slides with the
-	// thing it shows, and only a motion large enough to leave the content behind drops the history.
-	if (!historyUntrusted && ssrPass.velocity.x > 0.5 && hitDepth > 0.0)
+	vec2  hitPrevUV = surfacePrevUV;
+	vec4  hitPrev   = vec4(0.0);
+	bool  hitValid  = false;
+	if (hitSample.z > 0.0)
 	{
-		vec2  previousHitUV = texture(s_hitPrev, uv).xy;
-		vec2  surfaceObject = texture(s_velCur, uv).xy - texture(s_velPrev, uv).xy;
-		vec2  hitObject     = texture(s_velCur, previousHitUV).xy - texture(s_velPrev, previousHitUV).xy;
-		float motionPixels  = length(hitObject) * ssrPass.velocity.y;
+		vec3 hitView  = SsrViewPos(hitSample.xy, hitSample.z);
+		vec4 hitWorld = ssrPass.inverseView * vec4(hitView, 1.0);
+		vec4 hitClip  = ssrPass.prevViewProjection * hitWorld;
+		hitPrevUV     = hitClip.xy / max(abs(hitClip.w), 1e-6) * 0.5 + 0.5;
+#ifdef VULKAN
+		hitPrevUV.y = 1.0 - hitPrevUV.y;
+#endif
+		hitPrev  = texture(s_normalDepthPrev, clamp(hitPrevUV, vec2(0.0), vec2(1.0)));
+		hitValid = hitClip.w > 0.0 && all(greaterThan(hitPrevUV, vec2(0.0))) &&
+		           all(lessThan(hitPrevUV, vec2(1.0)));
+	}
 
-		if (motionPixels > 0.01 && motionPixels <= 0.5)
+	// Which candidate the history agrees with. The surface candidate is the accumulator's own pixel, so it
+	// wins unless the hit candidate lands on a surface that is clearly the same thing - which is what
+	// carries the parallax of a reflection whose content moved across a still surface.
+	vec2 chosenUV   = surfacePrevUV;
+	vec4 chosenPrev = texture(s_normalDepthPrev, clamp(surfacePrevUV, vec2(0.0), vec2(1.0)));
+
+	if (hitValid)
+	{
+		vec3  normal   = WorldNormal(gBuf);
+		float hitSim   = dot(normal, WorldNormal(hitPrev));
+		float surfSim  = dot(normal, WorldNormal(chosenPrev));
+
+		if (hitSim > 0.9999 && hitSim + 1.0e-3 > surfSim &&
+		    abs(hitPrev.a - roughness) < abs(chosenPrev.a - roughness) + 1.0e-3)
 		{
-			prevUV -= mix(surfaceObject, hitObject, clamp(motionPixels * 4.0, 0.0, 1.0));
+			chosenUV   = hitPrevUV;
+			chosenPrev = hitPrev;
 		}
 	}
-	bool valid = prevClip.w > 0.0 && prevUV.x >= 0.0 && prevUV.x <= 1.0 && prevUV.y >= 0.0 && prevUV.y <= 1.0;
 
-	// The history is never read on the frame it is reset: its content is whatever the target held
-	// before, and a NaN in it would survive a mix with a zero weight (a value multiplied by zero is
-	// still a value). Starting from the current frame keeps that frame exact.
-	vec4 previous  = current;
-	bool hasHistory = ssrPass.temporal.w < 0.5;
-
-	if (hasHistory && valid)
+	// Disocclusion: how much the surface the history lands on is the surface this pixel is now. Both
+	// terms are smooth, so a mismatch weights the history down instead of cutting it. A reset (a different
+	// camera, a resize, the first frame) takes the history out of the picture for this frame.
+	bool  inside       = all(greaterThan(chosenUV, vec2(0.0))) && all(lessThan(chosenUV, vec2(1.0)));
+	float disocclusion = 0.0;
+	if (ssrPass.temporal.w > 0.5)
 	{
-		previous = texture(s_history, clamp(prevUV, vec2(0.0), vec2(1.0)));
-
-		// Neighbourhood clip: a reprojected value outside the range this frame produced is a stale
-		// reflection of something the camera no longer sees, and blending it in would ghost.
-		previous = ClipAabb(minimum.rgb, maximum.rgb, previous);
+		inside = false;
 	}
 
-	// Response: how much of the history survives follows how well this frame and the accumulation agree
-	// on the luminance. Where they agree the weight sits at the upper bound - up to a full hold, which is
-	// what keeps a still rough surface quiet - and where they disagree it falls to the lower bound and
-	// lets the new frame through. A reflection that changes is therefore never ghosted, and one that does
-	// not change is not re-averaged every frame just because the camera is still.
-	float lumCurrent  = Luminance(current.rgb);
-	float lumPrevious = Luminance(previous.rgb);
-	float unbiasedDiff   = abs(lumCurrent - lumPrevious) / max(lumCurrent, max(lumPrevious, 0.2));
-	float unbiasedWeight = 1.0 - unbiasedDiff;
-	float feedback       = mix(ssrPass.temporal.x, ssrPass.temporal.y, unbiasedWeight * unbiasedWeight);
-
-	// A missed ray has nothing to say about this pixel, and the reflection the accumulation holds for it
-	// was found from another view: on a mirror that keeps the whole stale image alive, because a miss
-	// leaves the depth at zero on both frames and the guard above sees "unchanged". Fading it out instead
-	// of keeping it is what stops the old reflections from following the camera around.
-	if (hitDepth <= 0.0)
+	if (inside && chosenPrev.b > 0.0)
 	{
-		feedback = min(feedback, SSR_MISS_RESPONSE);
+		vec3  normal       = WorldNormal(gBuf);
+		vec3  normalPrev   = WorldNormal(chosenPrev);
+		float normalTerm   = exp(-abs(1.0 - max(0.0, dot(normal, normalPrev))) * 1.4);
+		float depthTerm    = exp(-abs(chosenPrev.b - depth) / max(depth, 0.001));
+		disocclusion       = normalTerm * depthTerm;
 	}
 
-	if (!hasHistory || historyUntrusted)
+	vec4  history = vec4(0.0);
+	float count   = 1.0;
+	float variance = SSR_DEFAULT_VARIANCE;
+
+	if (disocclusion > ssrPass.denoiser.y)
 	{
-		// History dropped: a camera cut, a resize, the first frame of the pass, or a reflection whose
-		// content moved out of the history. The trace is all this frame has.
-		feedback = 0.0;
+		history   = texture(s_history, chosenUV);
+		float cap = max(8.0, ssrPass.denoiser.x * SSR_SAMPLES_FOR_ROUGHNESS(roughness));
+		count     = min(cap, texture(s_historyCount, chosenUV).r * disocclusion + 1.0);
+		variance  = history.a;
 	}
 
-	fragColor = mix(current, previous, clamp(feedback, 0.0, 1.0));
+	// --- spatial filter of this frame's sample --------------------------------------------------------
+	vec2 texel        = ssrPass.screenParams.xy;
+	vec3 avgRadiance  = texture(s_avgRadiance, uv).rgb;
+
+	float weightSum   = RadianceWeight(avgRadiance, center.rgb, variance);
+	vec3  filtered    = center.rgb * weightSum;
+	float squareSum   = dot(center.rgb, center.rgb) * weightSum;
+
+	for (int i = 0; i < SSR_FILTER_TAPS; ++i)
+	{
+		vec2 tapUV = uv + HALTON_OFFSETS[i] * texel;
+		vec4 tap   = texture(s_normalDepth, tapUV);
+
+		float weight = SurfaceWeight(gBuf, tap);
+		if (weight <= 0.0)
+		{
+			continue;
+		}
+
+		vec4 tapTrace = texture(s_trace, tapUV);
+		weight       *= RadianceWeight(avgRadiance, tapTrace.rgb, variance);
+
+		weightSum += weight;
+		filtered  += weight * tapTrace.rgb;
+		squareSum += dot(tapTrace.rgb, tapTrace.rgb) * weight;
+	}
+
+	vec3  localMean     = filtered / max(weightSum, 1e-4);
+	float localVariance = max(squareSum / max(weightSum, 1e-4) - dot(localMean, localMean), 0.0);
+	vec3  newSignal     = localMean;
+
+	// --- variance clipping and blend -----------------------------------------------------------------
+	// A mirror has nothing to average and nothing to ghost: it takes this frame's sample as it is. The
+	// filter above is built for the stochastic lobe and would smear a mirror reflection away.
+	if (isMirror)
+	{
+		fragColor = vec4(center.rgb, 0.0);
+		fragCount = vec4(1.0, 0.0, 0.0, 0.0);
+		return;
+	}
+
+	// The local statistics bound what the history may contribute, widened towards the frame's average
+	// radiance so the low frequency the window can not see is not clipped away. The mean leans the same
+	// way, which keeps a pixel that sits next to a large change from holding its old value.
+	vec3  mean     = mix(localMean, avgRadiance, SSR_AVG_RADIANCE_WEIGHT);
+	vec3  colorStd = (vec3(sqrt(localVariance)) + vec3(length(localMean - avgRadiance))) *
+	                 max(ssrPass.denoiser.z, 0.0) * SSR_CLIP_SCALE;
+	vec3  extent   = max(colorStd, vec3(1e-4));
+
+	// The history is clipped into that box, the new sample is clipped and pulled towards the average by how
+	// few samples the pixel holds, and the two are blended by the sample count.
+	vec3 clippedHistory = ClipAabb(mean, extent, history.rgb);
+
+	newSignal = mix(newSignal, avgRadiance, 1.0 / max(count + 1.0, 1.0));
+	newSignal = ClipAabb(avgRadiance, extent, newSignal);
+
+	float blend  = count <= 1.0 ? 0.0 : 1.0 - 1.0 / count;
+	vec3  result = mix(newSignal, clippedHistory, blend);
+
+	// Temporal variance: how far the accumulated value sits from what this frame produced. The reference
+	// uses it to decide which tiles need a new ray; here it feeds the debug view and stays available.
+	float temporalVariance = pow(Luminance(result) - Luminance(clippedHistory), 2.0);
+	float outVariance      = mix(temporalVariance, localVariance, 1.0 - blend);
+
+	if (any(isnan(result)) || any(isinf(result)))
+	{
+		result      = vec3(0.0);
+		outVariance = SSR_DEFAULT_VARIANCE;
+	}
+
+	fragColor = vec4(result, outVariance);
+	fragCount = vec4(count, 0.0, 0.0, 0.0);
 }
 
 	-->
