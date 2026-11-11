@@ -361,6 +361,11 @@ and the point the ray ended at, projected with the previous view projection) pic
 history g buffer's normal and roughness match, a smooth disocclusion factor from the same history, a
 sample count carried across frames, and a variance clipped blend weighted by that count (`1 - 1/n`, with
 the sample cap following the roughness). The composite phase mixes the accumulation over the scene copy
+The roughness in that g buffer is per pixel and comes from the material's metallic roughness texture when it
+carries one (glTF: green channel, multiplied by the material's roughness factor) and from the factor alone
+otherwise. Writing the factor for both cases is what kept a textured material out of the reflections: the
+factor is conventionally 1.0 when a texture is in use, which lands on the roughness cutoff and disables the
+pass for the whole surface.
 towards the reflection by the trace's coverage, the share of the pixel that a surface of that roughness
 reflects (specularShare, read from the g buffer's roughness) and SSRIntensity. The share is what keeps an
 albedo: the mix replaces the whole shaded pixel, the g buffer carries no albedo or metalness to tell a
