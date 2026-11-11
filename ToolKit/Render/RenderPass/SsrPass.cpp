@@ -593,6 +593,7 @@ namespace ToolKit
     m_requirements.semanticTextures["s_trace"]        = m_history[writeIndex];
     m_requirements.semanticTextures["s_sceneColor"]   = m_copyTexture;
     m_requirements.semanticTextures["s_coverage"]     = m_traceTexture;
+    m_requirements.semanticTextures["s_normalDepth"]  = normalDepth;
     m_requirements.customUbos[7]                      = &m_passDataBuffer.GetBuffer();
 
     ApplyRequirements(renderer);

@@ -361,7 +361,12 @@ and the point the ray ended at, projected with the previous view projection) pic
 history g buffer's normal and roughness match, a smooth disocclusion factor from the same history, a
 sample count carried across frames, and a variance clipped blend weighted by that count (`1 - 1/n`, with
 the sample cap following the roughness). The composite phase mixes the accumulation over the scene copy
-towards the reflection by the trace's coverage times `SSRIntensity`.
+towards the reflection by the trace's coverage, the share of the pixel that a surface of that roughness
+reflects (specularShare, read from the g buffer's roughness) and SSRIntensity. The share is what keeps an
+albedo: the mix replaces the whole shaded pixel, the g buffer carries no albedo or metalness to tell a
+specular contribution from a diffuse one, and at full strength every rough wall came out painted with the
+sky. It is not a Fresnel term and not metalness aware - it is what a roughness only g buffer allows, so a
+rough metal keeps more of its albedo than it should.
 
 The march itself is hierarchical. A min depth pyramid (ssrDepthPyramidFrag.shader) is built every frame
 from the g buffer's linear depth, level 0 half the screen and each level after it half of the one before,
