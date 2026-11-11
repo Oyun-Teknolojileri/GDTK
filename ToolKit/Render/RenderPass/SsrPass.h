@@ -36,9 +36,12 @@ namespace ToolKit
     Vec4 flags;
     /** .x = screen border fade, .y = screen length fade start, .z = hit distance fade start. */
     Vec4 fades;
-    /** .x = history weight, .y = 1 when the history must be dropped,
-     *  .z = brdf bias (how far the sampled lobe is bent towards the mirror), .w = temporal enabled. */
+    /** .x = lower end of the temporal response, .y = upper end,
+     *  .z = brdf bias (how far the sampled lobe is bent towards the mirror), .w = 1 when the history
+     *  must be dropped. */
     Vec4 temporal;
+    /** .x = 1 when the object motion targets are bound, .y = screen height. */
+    Vec4 velocity;
   };
 
   typedef GpuBufferBase<SsrPassDataLayout> SsrPassDataBuffer;
@@ -87,6 +90,10 @@ namespace ToolKit
      */
     float TemporalResponseMin          = 0.85f;
     float TemporalResponseMax          = 1.0f;
+
+    /** Screen space motion of the objects, from the velocity pass. Null when the frame has none. */
+    TexturePtr VelocityCurrent  = nullptr;
+    TexturePtr VelocityPrevious = nullptr;
 
     /** How far the sampled lobe is bent towards the mirror direction. 0 = pure GGX, 1 = mirror. */
     float BrdfBias                     = 0.7f;
@@ -174,7 +181,10 @@ namespace ToolKit
 
     /** Depth of the hit each trace sample found, in the red channel. The resolve needs it to follow the
         reflected content instead of the surface while the view moves. */
-    RenderTargetPtr m_hitTexture      = nullptr;
+    RenderTargetPtr m_hitTexture[2]  = {nullptr, nullptr};
+
+    /** Which of the two hit targets this frame writes; the other holds the frame before it. */
+    int m_hitIndex                   = 0;
 
     /** Accumulated reflection, one is read and the other is written, and they swap. */
     RenderTargetPtr m_history[2];

@@ -13,6 +13,7 @@
 #include "EngineSettings.h"
 #include "ForwardPass.h"
 #include "ForwardPreProcessPass.h"
+#include "VelocityPass.h"
 #include "FullQuadPass.h"
 #include "GammaTonemapFxaaPass.h"
 #include "Pass.h"
@@ -90,6 +91,7 @@ namespace ToolKit
     CubeMapPassPtr m_skyPass                         = nullptr;
     SSAOPassPtr m_ssaoPass                           = nullptr;
     SsrPassPtr m_ssrPass                             = nullptr;
+    VelocityPassPtr m_velocityPass                   = nullptr;
     BloomPassPtr m_bloomPass                         = nullptr;
     DoFPassPtr m_dofPass                             = nullptr;
     GammaTonemapFxaaPassPtr m_gammaTonemapFxaaPass   = nullptr;

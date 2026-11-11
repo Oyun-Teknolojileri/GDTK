@@ -23,7 +23,6 @@ layout (location = 1) out vec4 fragHit;
 TK_SAMPLER_BINDING(0) uniform sampler2D s_diffuseColor; // Scene color, HDR and pre tonemap.
 TK_SAMPLER_BINDING(1) uniform sampler2D s_normalDepth;  // rg: world normal, b: linear depth, a: roughness.
 
-#define SSR_PI 3.14159265359
 
 // Positive linear view depth the g buffer holds for a scene UV. Zero means background (sky).
 float SceneLinearDepth(vec2 uv)
@@ -105,6 +104,26 @@ vec3 SampleGgxVndf(vec3 Ve, float alpha, vec2 Xi)
 
 	vec3 Nh = t1 * T1 + t2 * T2 + sqrt(max(0.0, 1.0 - t1 * t1 - t2 * t2)) * Vh;
 	return normalize(vec3(alpha * Nh.x, alpha * Nh.y, max(1e-6, Nh.z)));
+}
+
+// Probability of the sampled reflection direction. The resolve divides the BRDF of a tap by the pdf of
+// the sample that produced it, so the taps are weighted by how likely each direction was: without it a
+// direction the sampler rarely shoots votes as loudly as one it shoots often, and the lobe comes out
+// tilted towards whatever the rare samples hit. The reference divides by the pdf of its own sample as
+// well; the sampler there is the plain GGX one, this is the visible normal distribution, whose pdf
+// carries the G1 term.
+float ReflectionPdf(vec3 Ve, vec3 N, vec3 H, float alpha)
+{
+	float NdotH = clamp(dot(N, H), 0.0, 1.0);
+	float NdotV = clamp(dot(N, Ve), 1e-4, 1.0);
+	float VdotH = clamp(dot(Ve, H), 1e-4, 1.0);
+
+	float a2 = alpha * alpha;
+	float d  = (NdotH * a2 - NdotH) * NdotH + 1.0;
+	float D  = a2 / (SSR_PI * d * d + 1e-7);
+	float G1 = 2.0 * NdotV / (NdotV + sqrt(a2 + (1.0 - a2) * NdotV * NdotV) + 1e-6);
+
+	return (D * G1 * VdotH / NdotV) / (4.0 * VdotH);
 }
 
 // Half vector of a microfacet, in view space, for a surface with normal `N`. `bias` bends the sample
@@ -236,6 +255,7 @@ void main()
 	float alpha = max(roughness * roughness, 0.0001);
 	vec3 H      = SampleReflectionHalf(V, normal, alpha, Xi, clamp(ssrPass.temporal.z, 0.0, 1.0));
 	vec3 rayDir = reflect(V, H);
+	float pdf   = ReflectionPdf(-V, normal, H, alpha);
 
 	// Push the ray start above the reconstructed surface. The further the shading normal leans away
 	// from it, the bigger the push has to be, which is what keeps bumpy surfaces from self reflecting.
@@ -437,9 +457,10 @@ void main()
 		return;
 	}
 
-	// The depth the resolve reprojects. The reflected content sits at this depth along the surface
-	// pixel's ray, which is what puts the history where the reflection will be next frame.
-	fragHit = vec4(hitDepthOut);
+	// What the resolve needs from this sample: where the ray landed (so the reflection can be reprojected
+	// and its BRDF evaluated), how far away it was, and how likely the direction was, which is what the
+	// resolve divides the BRDF by.
+	fragHit = vec4(hitUV, hitDepthOut, pdf);
 
 	// The reflection cone picks the mip, the mip chain does the blur.
 	float rayPixels = length(hitUV - uv) * max(ssrPass.screenParams.z, ssrPass.screenParams.w);

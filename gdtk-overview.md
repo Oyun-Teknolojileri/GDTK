@@ -367,6 +367,15 @@ is blended, which is what keeps the long window from ghosting. The median pass d
 would streak, and the resolve widens its kernel with roughness and with camera motion.
 `SSRBRDFBias` sets how far the sampled lobe leans towards the mirror direction.
 
+A reflection of something that moves on its own cannot be found in the history, and no amount of clipping
+recovers it: the stored value is of a thing that is no longer there. VelocityPass writes the screen
+motion of the objects whose transform changed - it draws the same geometry twice, once with this
+frame's transform and once with the one it had a frame ago, both with the current camera, into two
+targets that are cleared to zero every frame, alpha marking that an object was drawn. The resolve reads
+those two and drops the history for a pixel when the point the previous ray hit has moved, when that
+point appeared or left, or when the hit distance changed; a motion small enough to stay on the same
+content is followed with a shifted lookup instead. Debug view 9 shows that mask.
+
 The composite goes into a target of the pass's own (`SsrPass::GetOutputFramebuffer`), not back into the
 frame it read: the frame is read only for the rest of the frame, and DoF, the tone curve and a host that
 composites the frame itself all follow the reflection target instead. That target is what

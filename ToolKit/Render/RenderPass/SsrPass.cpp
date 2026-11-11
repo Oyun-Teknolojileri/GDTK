@@ -56,7 +56,8 @@ namespace ToolKit
     // Phase one writes the samples of this frame, phase two resolves them and accumulates the history,
     // phase three pulls the fireflies out of the accumulation, phase four composites it over the frame.
     m_traceTexture                      = MakeNewPtr<RenderTarget>("SsrTraceRT");
-    m_hitTexture                        = MakeNewPtr<RenderTarget>("SsrHitRT");
+    m_hitTexture[0]                     = MakeNewPtr<RenderTarget>("SsrHit0RT");
+m_hitTexture[1]                     = MakeNewPtr<RenderTarget>("SsrHit1RT");
     m_denoiseTexture                    = MakeNewPtr<RenderTarget>("SsrDenoiseRT");
     m_history[0]                        = MakeNewPtr<RenderTarget>("SsrHistory0RT");
     m_history[1]                        = MakeNewPtr<RenderTarget>("SsrHistory1RT");
@@ -91,7 +92,8 @@ namespace ToolKit
     m_compositeShader = nullptr;
 
     m_traceTexture   = nullptr;
-    m_hitTexture     = nullptr;
+    m_hitTexture[0]  = nullptr;
+    m_hitTexture[1]  = nullptr;
     m_denoiseTexture = nullptr;
     m_history[0]     = nullptr;
     m_history[1]     = nullptr;
@@ -286,7 +288,8 @@ namespace ToolKit
     traceSet.MagFilter       = GraphicTypes::SampleLinear;
     m_traceTexture->ReconstructIfNeeded(size.x, size.y, &traceSet);
     m_denoiseTexture->ReconstructIfNeeded(size.x, size.y, &traceSet);
-    m_hitTexture->ReconstructIfNeeded(size.x, size.y, &traceSet);
+    m_hitTexture[0]->ReconstructIfNeeded(size.x, size.y, &traceSet);
+    m_hitTexture[1]->ReconstructIfNeeded(size.x, size.y, &traceSet);
 
     // The accumulation is sampled at an arbitrary reprojected position, so it is filtered linearly and
     // clamped at the border.
@@ -326,9 +329,13 @@ namespace ToolKit
                                             glm::clamp(m_params.BrdfBias, 0.0f, 1.0f),
                                             resetHistory ? 1.0f : 0.0f);
 
+    const bool hasVelocity = m_params.VelocityCurrent != nullptr && m_params.VelocityPrevious != nullptr;
+    m_passDataBuffer.m_data.velocity = Vec4(hasVelocity ? 1.0f : 0.0f, float(size.y), 0.0f, 0.0f);
+
     m_quadPass->m_params.frameBuffer->ReconstructIfNeeded({size.x, size.y, false, false});
     m_quadPass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_traceTexture);
-    m_quadPass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment1, m_hitTexture);
+    m_quadPass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment1,
+                                                             m_hitTexture[m_hitIndex]);
 
     m_compositePass->m_params.frameBuffer->ReconstructIfNeeded({size.x, size.y, false, false});
     m_compositePass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0,
@@ -429,7 +436,14 @@ namespace ToolKit
     m_requirements.program                           = m_resolvePass->GetProgram();
     m_requirements.frameBuffer                       = m_resolvePass->m_params.frameBuffer;
     m_requirements.semanticTextures["s_trace"]       = m_traceTexture;
-    m_requirements.semanticTextures["s_hit"]         = m_hitTexture;
+    m_requirements.semanticTextures["s_hit"]         = m_hitTexture[m_hitIndex];
+    m_requirements.semanticTextures["s_hitPrev"]     = m_hitTexture[1 - m_hitIndex];
+
+    if (m_params.VelocityCurrent != nullptr && m_params.VelocityPrevious != nullptr)
+    {
+      m_requirements.semanticTextures["s_velCur"]  = m_params.VelocityCurrent;
+      m_requirements.semanticTextures["s_velPrev"] = m_params.VelocityPrevious;
+    }
     m_requirements.semanticTextures["s_history"]     = m_history[readIndex];
     m_requirements.semanticTextures["s_normalDepth"] = normalDepth;
     m_requirements.customUbos[7]                     = &m_passDataBuffer.GetBuffer();
@@ -471,6 +485,7 @@ namespace ToolKit
     m_outputWritten = true;
     m_hasHistory    = true;
     m_historyIndex  = writeIndex;
+    m_hitIndex      = 1 - m_hitIndex;
 
     // The reprojection of the next frame needs the view projection this frame was drawn with, and the
     // comparison against it is what told the resolve (in PreRender) whether this frame is a moving one.

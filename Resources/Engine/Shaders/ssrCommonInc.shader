@@ -7,6 +7,10 @@
 #ifndef SSR_COMMON
 #define SSR_COMMON
 
+#ifndef SSR_PI
+#define SSR_PI 3.14159265359
+#endif
+
 // View space position of a pixel from its positive linear view depth. Mirrors the reconstruction
 // SSAOPass does, Vulkan's flipped texture v included.
 vec3 SsrViewPos(vec2 uv, float linearDepth)
