@@ -77,15 +77,6 @@ void main()
 		return;
 	}
 
-	// The view has settled and the accumulation is over: carry the history over untouched. Re-running the
-	// resolve here would replace the averaged lobe with the one sample this frame happens to shoot, and
-	// the reflection would sharpen the moment the camera stops instead of keeping its blur.
-	if (ssrPass.temporal.w < 0.5 && ssrPass.temporal.y < 0.5)
-	{
-		fragColor = texture(s_history, uv);
-		return;
-	}
-
 	float motion    = ssrPass.fades.w;
 	float roughness = texture(s_normalDepth, uv).a;
 	vec2  texel     = ssrPass.screenParams.xy *
@@ -164,7 +155,7 @@ void main()
 	// before, and a NaN in it would survive a mix with a zero weight (a value multiplied by zero is
 	// still a value). Starting from the current frame keeps that frame exact.
 	vec4 previous = current;
-	if (ssrPass.temporal.y < 0.5 && ssrPass.temporal.w > 0.5 && valid)
+	if (ssrPass.temporal.y < 0.5 && valid)
 	{
 		previous = texture(s_history, clamp(prevUV, vec2(0.0), vec2(1.0)));
 
@@ -181,7 +172,7 @@ void main()
 
 	float blend = ssrPass.temporal.x * (valid ? 1.0 : 0.0) * agreement;
 	blend      *= 1.0 - motion * SSR_RESOLVE_MOTION_HISTORY;
-	if (ssrPass.temporal.y > 0.5 || ssrPass.temporal.w < 0.5)
+	if (ssrPass.temporal.y > 0.5)
 	{
 		// History dropped: a camera cut, a resize or the first frame of the pass. The trace is all
 		// this frame has.

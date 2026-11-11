@@ -196,13 +196,6 @@ namespace ToolKit
     /** Set when the view changed since the last accumulated frame: re-rolls the samples and widens the resolve. */
     bool m_viewMoved                  = false;
 
-    /** Frames since the view last moved. The accumulation runs while the view moves and for this many
-        frames after it stops, so a still view still converges to the averaged lobe before it is held. */
-    float m_settleFrames              = 0.0f;
-
-    /** Length of that settle window, in frames. */
-    static constexpr float m_settleLimit = 32.0f;
-
     /** Seed of this frame's sample sequence. Wraps, so the offset stays exact in a float. */
     float m_frameIndex                = 0.0f;
 

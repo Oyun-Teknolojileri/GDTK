@@ -251,12 +251,19 @@ namespace ToolKit
     // component flags a moving view, which the resolve reads to widen its kernel and lean on the history
     // less: a reprojected reflection follows the surface, not the reflected content, so it is stale exactly
     // while the camera moves.
+    //
+    // The tolerance is a tenth of a millimetre in world units, not the smallest float step a matrix cell
+    // can carry: a host that recomputes the camera from its transform every frame ends up with cells that
+    // differ in the last bits, and treating that as motion pins the flag on forever - the accumulation
+    // never holds and a still surface keeps crawling.
+    const float viewMotionEpsilon = 1e-4f;
+
     m_viewMoved = false;
     for (int column = 0; column < 4 && !m_viewMoved; ++column)
     {
       for (int row = 0; row < 4; ++row)
       {
-        if (glm::abs(viewProjection[column][row] - m_prevViewProjection[column][row]) > 1e-6f)
+        if (glm::abs(viewProjection[column][row] - m_prevViewProjection[column][row]) > viewMotionEpsilon)
         {
           m_viewMoved = true;
           break;
@@ -306,17 +313,14 @@ namespace ToolKit
     reflectionSet.MagFilter       = GraphicTypes::SampleLinear;
     m_reflectionRt->ReconstructIfNeeded(size.x, size.y, &reflectionSet);
 
-    // The accumulation runs while the view moves and for a settle window after it stops. Holding it the
-    // moment the camera stops would freeze the first sample the still frame happens to shoot, and the
-    // reflection would sharpen as the averaged lobe stops being integrated; running it forever leaves
-    // the residual noise visible as a slow drift. The settle window is what converges the lobe one last
-    // time, after which the accumulation is held (see the seed below).
-    const bool accumulate = m_viewMoved || m_settleFrames < m_settleLimit;
-
+    // The accumulation runs on every frame, with no freeze: the scenes this ships with are dynamic, and a
+    // reflection has to stay current even when the camera is still - a hold leaves the reflection of a
+    // car on the ground after it has driven off. A still view is kept from crawling by the window and by
+    // the median pass instead, not by stopping the integration.
     m_passDataBuffer.m_data.temporal = Vec4(glm::clamp(m_params.HistoryWeight, 0.0f, 0.98f),
                                             resetHistory ? 1.0f : 0.0f,
                                             glm::clamp(m_params.BrdfBias, 0.0f, 1.0f),
-                                            (m_params.HistoryWeight > 0.0f && accumulate) ? 1.0f : 0.0f);
+                                            m_params.HistoryWeight > 0.0f ? 1.0f : 0.0f);
 
     m_quadPass->m_params.frameBuffer->ReconstructIfNeeded({size.x, size.y, false, false});
     m_quadPass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_traceTexture);
@@ -468,19 +472,11 @@ namespace ToolKit
     // comparison against it is what told the resolve (in PreRender) whether this frame is a moving one.
     m_prevViewProjection = m_params.Cam->GetProjectionMatrix() * m_params.Cam->GetViewMatrix();
 
-    // The sample sequence keeps rolling while the view moves and through the settle window, then stops:
-    // re-rolling the lobe forever at a still camera never converges, and the accumulation keeps chasing
-    // it, which reads as a reflection that drifts like water. Once the window is over the history is held
-    // as well (temporal.w was cleared in PreRender), so the last averaged lobe stays on screen untouched.
-    //
-    // The seed walks a bounded range, so the offset stays exact in a float and the sequence repeats
-    // (which is invisible: it is a sample sequence, not a state).
-    if (m_viewMoved || m_settleFrames < m_settleLimit)
-    {
-      m_frameIndex = m_frameIndex >= 32.0f ? 0.0f : m_frameIndex + 1.0f;
-    }
-
-    m_settleFrames = m_viewMoved ? 0.0f : m_settleFrames + 1.0f;
+    // The sample sequence rolls every frame, whether the view moves or not, so a still camera keeps
+    // integrating the lobe it shows rather than freezing one sample of it. The seed walks a bounded range,
+    // so the offset stays exact in a float and the sequence repeats (which is invisible: it is a sample
+    // sequence, not a state).
+    m_frameIndex = m_frameIndex >= 32.0f ? 0.0f : m_frameIndex + 1.0f;
   }
 
   void SsrPass::GatherRequirements(PassRequirements& reqs)

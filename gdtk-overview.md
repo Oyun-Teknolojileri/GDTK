@@ -355,12 +355,14 @@ flips between hit and miss. The composite phase blends the accumulation over the
 with no screen space reflection keeps its forward shaded color, so the sky or the active environment
 volumes provide the reflection wherever screen space can not.
 
-The sample sequence only advances while the view does. Re-rolling the lobe at a still camera never
-converges: every frame samples another part of the cone, the accumulation keeps chasing it, and the
-reflection drifts as if it sat on moving water. A still view therefore integrates to a still image, while
-a moving one re-rolls every frame and leans on the widened kernel instead of the stale history.
-`SSRHistoryWeight` sets how much of the previous frame the accumulation keeps, `SSRBRDFBias` how far the
-sampled lobe leans towards the mirror direction.
+The accumulation runs on every frame. There is no freeze and no motion tracking: the scenes this ships
+with are dynamic, so a reflection has to stay current even when the camera is still - holding the
+history left the reflection of a car on the ground after it had driven off, and telling that change
+apart from sampling noise needs more than a per frame test. What keeps a still view from crawling is
+the window instead of a freeze: `SSRHistoryWeight` sets how much of the previous frame the accumulation
+keeps, the median pass drops the samples that would streak, and the resolve widens its kernel with
+roughness and with camera motion.
+`SSRBRDFBias` sets how far the sampled lobe leans towards the mirror direction.
 
 The composite goes into a target of the pass's own (`SsrPass::GetOutputFramebuffer`), not back into the
 frame it read: the frame is read only for the rest of the frame, and DoF, the tone curve and a host that
