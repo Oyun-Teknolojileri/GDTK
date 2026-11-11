@@ -367,6 +367,16 @@ is blended, which is what keeps the long window from ghosting. The median pass d
 would streak, and the resolve widens its kernel with roughness and with camera motion.
 `SSRBRDFBias` sets how far the sampled lobe leans towards the mirror direction.
 
+A pixel whose ray missed is the exception to the window: a miss leaves the hit depth at zero on both
+frames, so the hit/miss flip test can not see it, and holding its history is what left a moving
+camera's old reflections on a mirror - the accumulation kept a reflection the ray no longer found, in
+strips that followed the reprojection error. A miss therefore caps the response (`SSR_MISS_RESPONSE`),
+which fades the stale reflection out over a handful of frames and hands the pixel back to the forward
+shaded colour, instead of keeping it until the ray finds something again. The two response bounds are
+a range, not a direction: the pass clamps each into [0, 1] and orders the pair, because clamping the
+upper bound up to the lower one turned a project that wrote them the other way round into a constant
+window with no sign of it.
+
 A reflection of something that moves on its own cannot be found in the history, and no amount of clipping
 recovers it: the stored value is of a thing that is no longer there. VelocityPass writes the screen
 motion of the objects whose transform changed - it draws the same geometry twice, once with this

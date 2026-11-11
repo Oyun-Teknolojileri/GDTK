@@ -321,8 +321,15 @@ m_hitTexture[1]                     = MakeNewPtr<RenderTarget>("SsrHit1RT");
     // car on the ground after it has driven off. The window is what keeps a still surface from crawling,
     // and how long it is follows the agreement between the accumulation and the frame: the resolve picks
     // its weight between the two bounds below.
-    const float responseMin = glm::clamp(m_params.TemporalResponseMin, 0.0f, 1.0f);
-    const float responseMax = glm::clamp(m_params.TemporalResponseMax, responseMin, 1.0f);
+    // The two bounds are the ends of the range the resolve picks its response from, so each one is
+    // clamped into [0, 1] and then the pair is ordered: the settings describe a range, not a direction.
+    // Clamping the upper end *up* to the lower one instead silently turned a project that set its bounds
+    // the other way round into a constant response - the resolve then kept the same fraction of the
+    // history whatever the frame did, which reads as a reflection that ignores the camera moving.
+    const float responseLo  = glm::clamp(m_params.TemporalResponseMin, 0.0f, 1.0f);
+    const float responseHi  = glm::clamp(m_params.TemporalResponseMax, 0.0f, 1.0f);
+    const float responseMin = glm::min(responseLo, responseHi);
+    const float responseMax = glm::max(responseLo, responseHi);
 
     m_passDataBuffer.m_data.temporal = Vec4(responseMin,
                                             responseMax,

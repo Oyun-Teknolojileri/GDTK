@@ -43,6 +43,13 @@ TK_SAMPLER_BINDING(6) uniform sampler2D s_hitPrev;    // xy: where the previous 
 // resolve covers that with its own average instead of with the history.
 #define SSR_RESOLVE_MOTION_SPREAD 1.0
 
+// Response when this frame's ray missed. The history holds a reflection the ray no longer finds - either
+// the content left the screen or it was never found from this view - and keeping it is what leaves a
+// camera's old reflections behind on a mirror. Dropping it in one frame makes a pixel that alternates
+// between hit and miss flicker instead, so it is faded out at this rate: half of the stale weight goes
+// per frame, and the pixel hands itself back to the forward shading within a handful of frames.
+#define SSR_MISS_RESPONSE 0.5
+
 float Luminance(vec3 c)
 {
 	return dot(c, vec3(0.2126, 0.7152, 0.0722));
@@ -329,6 +336,15 @@ void main(){
 	float unbiasedDiff   = abs(lumCurrent - lumPrevious) / max(lumCurrent, max(lumPrevious, 0.2));
 	float unbiasedWeight = 1.0 - unbiasedDiff;
 	float feedback       = mix(ssrPass.temporal.x, ssrPass.temporal.y, unbiasedWeight * unbiasedWeight);
+
+	// A missed ray has nothing to say about this pixel, and the reflection the accumulation holds for it
+	// was found from another view: on a mirror that keeps the whole stale image alive, because a miss
+	// leaves the depth at zero on both frames and the guard above sees "unchanged". Fading it out instead
+	// of keeping it is what stops the old reflections from following the camera around.
+	if (hitDepth <= 0.0)
+	{
+		feedback = min(feedback, SSR_MISS_RESPONSE);
+	}
 
 	if (!hasHistory || historyUntrusted)
 	{
