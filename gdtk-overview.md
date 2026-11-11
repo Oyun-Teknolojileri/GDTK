@@ -358,10 +358,13 @@ volumes provide the reflection wherever screen space can not.
 The accumulation runs on every frame. There is no freeze and no motion tracking: the scenes this ships
 with are dynamic, so a reflection has to stay current even when the camera is still - holding the
 history left the reflection of a car on the ground after it had driven off, and telling that change
-apart from sampling noise needs more than a per frame test. What keeps a still view from crawling is
-the window instead of a freeze: `SSRHistoryWeight` sets how much of the previous frame the accumulation
-keeps, the median pass drops the samples that would streak, and the resolve widens its kernel with
-roughness and with camera motion.
+apart from sampling noise needs more than a per frame test. What keeps a still view from crawling is the
+window, and the window is adaptive: the resolve chooses the share of the history it keeps between
+`SSRTemporalResponseMin` and `SSRTemporalResponseMax` by how well the current frame and the accumulation
+agree on the luminance, so a reflection that changes lets the new frame through while a still one stays
+quiet. The history is pulled into the range the frame produced (an AABB clip, not a hard clamp) before it
+is blended, which is what keeps the long window from ghosting. The median pass drops the samples that
+would streak, and the resolve widens its kernel with roughness and with camera motion.
 `SSRBRDFBias` sets how far the sampled lobe leans towards the mirror direction.
 
 The composite goes into a target of the pass's own (`SsrPass::GetOutputFramebuffer`), not back into the

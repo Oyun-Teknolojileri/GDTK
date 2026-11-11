@@ -386,11 +386,16 @@ namespace ToolKit
      */
     TKDeclareParam(float, SSRRangeFadeStart);
     /**
-     * Weight the previous frame keeps in the reflection accumulation. The trace shoots one stochastic
-     * sample per pixel, so a rough surface converges over the frames; 0 drops the history and leaves the
-     * single sample of this frame in place.
+     * Lower bound of the temporal response: the share of the history the accumulation keeps when this
+     * frame disagrees with it. The upper bound takes over as the two agree, so the window is short where
+     * the reflection changes and long where it is stable.
      */
-    TKDeclareParam(float, SSRHistoryWeight);
+    TKDeclareParam(float, SSRTemporalResponseMin);
+    /**
+     * Upper bound of the temporal response, the share of the history kept when this frame and the
+     * accumulation agree on the luminance. 1 leaves the accumulation untouched once it has converged.
+     */
+    TKDeclareParam(float, SSRTemporalResponseMax);
     /**
      * How far the sampled reflection direction is bent towards the mirror direction, 0 leaves the pure
      * GGX lobe and 1 makes every pixel shoot the mirror ray. A bias trades the width of the blur for a

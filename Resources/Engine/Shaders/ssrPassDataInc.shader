@@ -20,7 +20,7 @@ TK_UBO_BINDING(7) uniform SsrPassData
   vec4 screenParams;       // xy: 1 / size (texel size), zw: size in pixels
   vec4 flags;              // x: debug view, y: march step count, z: debug view mode, w: frame index
   vec4 fades;              // x: screen border fade, y: screen length fade start, z: hit distance fade start
-  vec4 temporal;           // x: history weight, y: reset the history, z: brdf bias, w: temporal enabled
+  vec4 temporal;           // x/y: lower/upper temporal response, z: brdf bias, w: reset the history
 } ssrPass;
 
 #endif

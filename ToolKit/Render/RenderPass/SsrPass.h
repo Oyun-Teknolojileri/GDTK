@@ -80,8 +80,13 @@ namespace ToolKit
     /** Where the fade along the hit distance starts, as a fraction of MaxDistance. */
     float RangeFadeStart               = 0.6f;
 
-    /** Weight the previous frame keeps in the accumulation. 0 turns the temporal resolve off. */
-    float HistoryWeight                = 0.95f;
+    /**
+     * The two ends of the temporal response: the share of the history the accumulation keeps when this
+     * frame disagrees with it (min) and when the two agree on the luminance (max). 0 for both turns the
+     * temporal resolve off.
+     */
+    float TemporalResponseMin          = 0.85f;
+    float TemporalResponseMax          = 1.0f;
 
     /** How far the sampled lobe is bent towards the mirror direction. 0 = pure GGX, 1 = mirror. */
     float BrdfBias                     = 0.7f;

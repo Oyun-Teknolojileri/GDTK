@@ -315,12 +315,16 @@ namespace ToolKit
 
     // The accumulation runs on every frame, with no freeze: the scenes this ships with are dynamic, and a
     // reflection has to stay current even when the camera is still - a hold leaves the reflection of a
-    // car on the ground after it has driven off. A still view is kept from crawling by the window and by
-    // the median pass instead, not by stopping the integration.
-    m_passDataBuffer.m_data.temporal = Vec4(glm::clamp(m_params.HistoryWeight, 0.0f, 0.98f),
-                                            resetHistory ? 1.0f : 0.0f,
+    // car on the ground after it has driven off. The window is what keeps a still surface from crawling,
+    // and how long it is follows the agreement between the accumulation and the frame: the resolve picks
+    // its weight between the two bounds below.
+    const float responseMin = glm::clamp(m_params.TemporalResponseMin, 0.0f, 1.0f);
+    const float responseMax = glm::clamp(m_params.TemporalResponseMax, responseMin, 1.0f);
+
+    m_passDataBuffer.m_data.temporal = Vec4(responseMin,
+                                            responseMax,
                                             glm::clamp(m_params.BrdfBias, 0.0f, 1.0f),
-                                            m_params.HistoryWeight > 0.0f ? 1.0f : 0.0f);
+                                            resetHistory ? 1.0f : 0.0f);
 
     m_quadPass->m_params.frameBuffer->ReconstructIfNeeded({size.x, size.y, false, false});
     m_quadPass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_traceTexture);

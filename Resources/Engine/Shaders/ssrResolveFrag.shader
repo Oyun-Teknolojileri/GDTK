@@ -36,9 +36,6 @@ TK_SAMPLER_BINDING(3) uniform sampler2D s_hit;         // r: view depth of the r
 // resolve covers that with its own average instead of with the history.
 #define SSR_RESOLVE_MOTION_SPREAD 1.0
 
-// Fraction of the history kept while the view moves.
-#define SSR_RESOLVE_MOTION_HISTORY 0.05
-
 float Luminance(vec3 c)
 {
 	return dot(c, vec3(0.2126, 0.7152, 0.0722));
@@ -56,6 +53,26 @@ vec3 Compress(vec3 c)
 vec3 Expand(vec3 c)
 {
 	return c / max(1.0 - Luminance(c), 0.05);
+}
+
+// Pulls the history into the range this frame produced instead of clamping it onto the border of that
+// range: a hard clamp parks the stale value on the edge of the box and shows up as a rim travelling with
+// the change, while moving the point along the line to the box centre keeps the contrast of what is left.
+vec4 ClipAabb(vec3 aabbMin, vec3 aabbMax, vec4 value)
+{
+	vec3 boxCenter = 0.5 * (aabbMax + aabbMin);
+	vec3 boxExtent = max(0.5 * (aabbMax - aabbMin), vec3(1e-6));
+
+	vec3  offset = value.rgb - boxCenter;
+	vec3  unit   = offset / boxExtent;
+	float reach  = max(abs(unit.x), max(abs(unit.y), abs(unit.z)));
+
+	if (reach > 1.0)
+	{
+		return vec4(boxCenter + offset / reach, value.a);
+	}
+
+	return value;
 }
 
 void main()
@@ -154,32 +171,37 @@ void main()
 	// The history is never read on the frame it is reset: its content is whatever the target held
 	// before, and a NaN in it would survive a mix with a zero weight (a value multiplied by zero is
 	// still a value). Starting from the current frame keeps that frame exact.
-	vec4 previous = current;
-	if (ssrPass.temporal.y < 0.5 && valid)
+	vec4 previous  = current;
+	bool hasHistory = ssrPass.temporal.w < 0.5;
+
+	if (hasHistory && valid)
 	{
 		previous = texture(s_history, clamp(prevUV, vec2(0.0), vec2(1.0)));
 
-		// Neighbourhood clamp: a reprojected value outside the range this frame produced is a stale
+		// Neighbourhood clip: a reprojected value outside the range this frame produced is a stale
 		// reflection of something the camera no longer sees, and blending it in would ghost.
-		previous = clamp(previous, minimum, maximum);
+		previous = ClipAabb(minimum.rgb, maximum.rgb, previous);
 	}
 
-	// A pixel that flips between hit and miss has nothing to blend with: the old state would stay on
-	// screen as a shadow until the accumulation caught up with the new one - a miss where the camera
-	// now sees a reflection (or the reverse) reads as a dark patch that fades out over a second. The
-	// history is trusted only as far as the two frames agree that this pixel carries a reflection.
-	float agreement = 1.0 - abs(current.a - previous.a);
+	// Response: how much of the history survives follows how well this frame and the accumulation agree
+	// on the luminance. Where they agree the weight sits at the upper bound - up to a full hold, which is
+	// what keeps a still rough surface quiet - and where they disagree it falls to the lower bound and
+	// lets the new frame through. A reflection that changes is therefore never ghosted, and one that does
+	// not change is not re-averaged every frame just because the camera is still.
+	float lumCurrent  = Luminance(current.rgb);
+	float lumPrevious = Luminance(previous.rgb);
+	float unbiasedDiff   = abs(lumCurrent - lumPrevious) / max(lumCurrent, max(lumPrevious, 0.2));
+	float unbiasedWeight = 1.0 - unbiasedDiff;
+	float feedback       = mix(ssrPass.temporal.x, ssrPass.temporal.y, unbiasedWeight * unbiasedWeight);
 
-	float blend = ssrPass.temporal.x * (valid ? 1.0 : 0.0) * agreement;
-	blend      *= 1.0 - motion * SSR_RESOLVE_MOTION_HISTORY;
-	if (ssrPass.temporal.y > 0.5)
+	if (!hasHistory)
 	{
-		// History dropped: a camera cut, a resize or the first frame of the pass. The trace is all
-		// this frame has.
-		blend = 0.0;
+		// History dropped: a camera cut, a resize or the first frame of the pass. The trace is all this
+		// frame has.
+		feedback = 0.0;
 	}
 
-	fragColor = mix(current, previous, clamp(blend, 0.0, 0.98));
+	fragColor = mix(current, previous, clamp(feedback, 0.0, 1.0));
 }
 
 	-->

@@ -258,13 +258,20 @@ namespace ToolKit
           pps->SetSSRRangeFadeStartVal(ssrRangeFadeStart);
         }
 
-        // The temporal side of the stochastic trace: how much of the previous frame survives, and how far
-        // the sampled lobe is bent towards the mirror direction. A high bias is quieter but loses the blur
-        // a rough surface needs.
-        float ssrHistoryWeight = pps->GetSSRHistoryWeightVal();
-        if (ImGui::DragFloat("History Weight", &ssrHistoryWeight, 0.005f, 0.0f, 0.98f))
+        // The temporal side of the stochastic trace: the two ends of the response, and how far the
+        // sampled lobe is bent towards the mirror direction. The accumulation keeps the upper share of
+        // the history where this frame agrees with it and drops to the lower one where it does not; a
+        // high bias is quieter but loses the blur a rough surface needs.
+        float ssrResponseMin = pps->GetSSRTemporalResponseMinVal();
+        if (ImGui::DragFloat("Response Min", &ssrResponseMin, 0.005f, 0.0f, 1.0f))
         {
-          pps->SetSSRHistoryWeightVal(ssrHistoryWeight);
+          pps->SetSSRTemporalResponseMinVal(ssrResponseMin);
+        }
+
+        float ssrResponseMax = pps->GetSSRTemporalResponseMaxVal();
+        if (ImGui::DragFloat("Response Max", &ssrResponseMax, 0.005f, 0.0f, 1.0f))
+        {
+          pps->SetSSRTemporalResponseMaxVal(ssrResponseMax);
         }
 
         float ssrBrdfBias = pps->GetSSRBRDFBiasVal();
