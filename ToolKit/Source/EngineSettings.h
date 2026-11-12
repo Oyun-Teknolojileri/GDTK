@@ -402,6 +402,13 @@ namespace ToolKit
      * lower sample count.
      */
     TKDeclareParam(float, SSRBRDFBias);
+    /**
+     * Reflection quality: 1 traces and resolves at the frame resolution, 0 does both at half and
+     * upsamples in the composite. The half resolution path is what makes the pass affordable on a
+     * mobile GPU, where the full resolution targets are bandwidth bound; it costs the sharpness of a
+     * mirror reflection.
+     */
+    TKDeclareParam(int, SSRQuality);
     TKDeclareParam(bool, SSRDebugView);
     TKDeclareParam(int, SSRDebugViewMode);
 

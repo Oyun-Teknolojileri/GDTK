@@ -299,6 +299,7 @@ namespace ToolKit
     SSRTemporalResponseMin_Define(0.85f, "PostProcessingSettings", 0, 0, 0);
     SSRTemporalResponseMax_Define(1.0f, "PostProcessingSettings", 0, 0, 0);
     SSRBRDFBias_Define(0.7f, "PostProcessingSettings", 0, 0, 0);
+    SSRQuality_Define(1, "PostProcessingSettings", 0, 0, 0);
     SSRDebugView_Define(false, "PostProcessingSettings", 0, 0, 0);
     SSRDebugViewMode_Define(0, "PostProcessingSettings", 0, 0, 0);
 

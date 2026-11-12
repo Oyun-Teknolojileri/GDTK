@@ -362,6 +362,16 @@ history g buffer's normal and roughness match, a smooth disocclusion factor from
 sample count carried across frames, and a variance clipped blend weighted by that count (`1 - 1/n`, with
 the sample cap following the roughness). The composite phase mixes the accumulation over the scene copy
 The roughness in that g buffer is per pixel and comes from the material's metallic roughness texture when it
+The reflection has one quality setting, SSRQuality, next to the switch in the post processing panel. High
+traces and resolves at frame resolution; Low does both at half, builds the depth pyramid and the 1/8 average
+from that half size, writes the sample counter as an eight bit target and caps the spatial filter at six taps,
+then upsamples in the composite. On a Mali class mobile GPU it moves the pass from 242 ms a frame to about
+130, and it costs the sharpness of a mirror. Two things about it only show up on GL ES: a float render target
+can not be sampled with linear filtering there (OES_texture_float_linear is optional, and a device without
+it samples black), so the targets stay nearest and the composite does the upsample itself with four taps; and
+a render target narrowed to FormatRGBA8 has to have its Format and Type narrowed with it, or the
+framebuffer is incomplete on GL ES and the resolve writes nothing at all - a black reflection with no error
+anywhere.
 carries one (glTF: green channel, multiplied by the material's roughness factor) and from the factor alone
 otherwise. Writing the factor for both cases is what kept a textured material out of the reflections: the
 factor is conventionally 1.0 when a texture is in use, which lands on the roughness cutoff and disables the

@@ -25,6 +25,7 @@ TK_UBO_BINDING(7) uniform SsrPassData
   vec4 velocity;           // x: 1 when the object motion targets are bound, y: screen height
   vec4 environment;        // x: intensity, y: highest mip the cubemap carries, z: 1 when bound
   vec4 denoiser;           // x: max samples, y: disocclusion threshold, z: history clip weight, w: initial variance
+  vec4 quality;            // x: spatial filter taps, y: resolution scale the target is traced at
 } ssrPass;
 
 #endif

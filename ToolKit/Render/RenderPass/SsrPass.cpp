@@ -45,6 +45,10 @@ namespace ToolKit
 
     /** Variance a pixel starts with when it has no usable history. */
     constexpr float SSR_DEFAULT_VARIANCE   = 1.0f;
+
+    /** Taps the resolve's spatial window may use. The window is the reference's 15 tap Halton set. */
+    constexpr int SSR_FILTER_TAPS_HIGH     = 15;
+    constexpr int SSR_FILTER_TAPS_LOW      = 6;
   } // namespace
 
   SsrPass::SsrPass() : Pass("SsrPass")
@@ -319,14 +323,22 @@ namespace ToolKit
     m_passDataBuffer.m_data.fades =
         Vec4(m_params.EdgeFade, m_params.ScreenFadeStart, m_params.RangeFadeStart, m_viewMoved ? 1.0f : 0.0f);
 
+    // The resolution the reflection itself is built at. Half of it is what a mobile GPU can afford: the
+    // targets are the bandwidth, and a quarter of the pixels is a quarter of the traffic. The composite
+    // stays at frame resolution and upsamples what it reads, so the reflection keeps the full screen
+    // coverage - only its detail is coarser.
+    const IVec2 ssrSize = m_params.Quality >= 1
+                              ? size
+                              : IVec2(glm::max(size.x / 2, 1), glm::max(size.y / 2, 1));
+
     // History lifetime: a different camera, a resize or the first frame of the pass can not reuse the
     // accumulation, and neither can a frame that skipped the pass.
     const ObjectId cameraId = m_params.Cam->GetIdVal();
     bool resetHistory       = !m_hasHistory || m_historyCameraId != cameraId;
 
-    if (m_historySize != size)
+    if (m_historySize != ssrSize)
     {
-      m_historySize = size;
+      m_historySize = ssrSize;
       resetHistory  = true;
     }
 
@@ -339,13 +351,31 @@ namespace ToolKit
     traceSet.MinFilter       = GraphicTypes::SampleNearest;
     traceSet.MagFilter       = GraphicTypes::SampleNearest;
 
-    m_traceTexture->ReconstructIfNeeded(size.x, size.y, &traceSet);
-    m_hitTexture[0]->ReconstructIfNeeded(size.x, size.y, &traceSet);
-    m_hitTexture[1]->ReconstructIfNeeded(size.x, size.y, &traceSet);
-    m_history[0]->ReconstructIfNeeded(size.x, size.y, &traceSet);
-    m_history[1]->ReconstructIfNeeded(size.x, size.y, &traceSet);
-    m_historyCount[0]->ReconstructIfNeeded(size.x, size.y, &traceSet);
-    m_historyCount[1]->ReconstructIfNeeded(size.x, size.y, &traceSet);
+    // Nearest, always: GL ES 3.0 does not guarantee linear filtering of a float render target
+    // (OES_texture_float_linear is optional), and a device without it samples such a target as black. The
+    // composite does the upsample itself, in the shader, with four nearest taps.
+    TextureSettings historyTargetSet = traceSet;
+
+    // The sample count fits in 8 bits (the cap is well under 255), so the counter target can be a byte per
+    // channel instead of eight.
+    TextureSettings countSet = traceSet;
+    if (m_params.Quality < 1)
+    {
+      // All three, not just the internal format: the pixel format and the type describe the same storage,
+      // and a target whose internal format is a byte but whose type says float is an incomplete
+      // framebuffer on GL ES - the resolve then writes nothing and the accumulation stays black.
+      countSet.InternalFormat = GraphicTypes::FormatRGBA8;
+      countSet.Format         = GraphicTypes::FormatRGBA;
+      countSet.Type           = GraphicTypes::TypeUnsignedByte;
+    }
+
+    m_traceTexture->ReconstructIfNeeded(ssrSize.x, ssrSize.y, &traceSet);
+    m_hitTexture[0]->ReconstructIfNeeded(ssrSize.x, ssrSize.y, &traceSet);
+    m_hitTexture[1]->ReconstructIfNeeded(ssrSize.x, ssrSize.y, &traceSet);
+    m_history[0]->ReconstructIfNeeded(ssrSize.x, ssrSize.y, &historyTargetSet);
+    m_history[1]->ReconstructIfNeeded(ssrSize.x, ssrSize.y, &historyTargetSet);
+    m_historyCount[0]->ReconstructIfNeeded(ssrSize.x, ssrSize.y, &countSet);
+    m_historyCount[1]->ReconstructIfNeeded(ssrSize.x, ssrSize.y, &countSet);
 
     // The min depth hierarchy the march climbs. Level 0 is half the screen and every level after it half
     // of the one before, so a step taken at level k covers 2^k of level 0's tiles at once.
@@ -358,13 +388,13 @@ namespace ToolKit
     for (int level = 0; level < m_pyramidLevels; ++level)
     {
       const int divisor = 1 << (level + 1);
-      m_depthPyramid[level]->ReconstructIfNeeded(glm::max(size.x / divisor, 1),
-                                                 glm::max(size.y / divisor, 1),
+      m_depthPyramid[level]->ReconstructIfNeeded(glm::max(ssrSize.x / divisor, 1),
+                                                 glm::max(ssrSize.y / divisor, 1),
                                                  &pyramidSet);
     }
 
-    const int avgWidth  = glm::max(size.x / SSR_AVG_RADIANCE_DIVISOR, 1);
-    const int avgHeight = glm::max(size.y / SSR_AVG_RADIANCE_DIVISOR, 1);
+    const int avgWidth  = glm::max(ssrSize.x / SSR_AVG_RADIANCE_DIVISOR, 1);
+    const int avgHeight = glm::max(ssrSize.y / SSR_AVG_RADIANCE_DIVISOR, 1);
     m_avgRadiance->ReconstructIfNeeded(avgWidth, avgHeight, &traceSet);
 
     // The g buffer the history was written for. Its format follows the source, so the disocclusion test
@@ -412,7 +442,12 @@ namespace ToolKit
                                             glm::max(m_params.HistoryClipWeight, 0.0f),
                                             SSR_DEFAULT_VARIANCE);
 
-    m_quadPass->m_params.frameBuffer->ReconstructIfNeeded({size.x, size.y, false, false});
+    // Quality: how many taps the spatial filter may use, and the scale the reflection was traced at so a
+    // shader that needs to know the grid can ask.
+    const int taps = m_params.Quality >= 1 ? SSR_FILTER_TAPS_HIGH : SSR_FILTER_TAPS_LOW;
+    m_passDataBuffer.m_data.quality = Vec4(float(taps), m_params.Quality >= 1 ? 1.0f : 0.5f, 0.0f, 0.0f);
+
+    m_quadPass->m_params.frameBuffer->ReconstructIfNeeded({ssrSize.x, ssrSize.y, false, false});
     m_quadPass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_traceTexture);
     m_quadPass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment1,
                                                              m_hitTexture[m_hitIndex]);
@@ -420,7 +455,7 @@ namespace ToolKit
     m_avgPass->m_params.frameBuffer->ReconstructIfNeeded({avgWidth, avgHeight, false, false});
     m_avgPass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_avgRadiance);
 
-    m_resolvePass->m_params.frameBuffer->ReconstructIfNeeded({size.x, size.y, false, false});
+    m_resolvePass->m_params.frameBuffer->ReconstructIfNeeded({ssrSize.x, ssrSize.y, false, false});
 
     m_compositePass->m_params.frameBuffer->ReconstructIfNeeded({size.x, size.y, false, false});
     m_compositePass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0,

@@ -188,6 +188,19 @@ namespace ToolKit
         }
         ImGui::BeginDisabled(!ssrEnabled);
 
+        // The one control that changes how much the pass costs, so it sits next to the switch. Full
+        // resolution keeps a mirror sharp and is what a desktop GPU can afford; half resolution traces and
+        // resolves at a quarter of the pixels and is what makes the pass usable on a phone.
+        static const char* ssrQualityItems[] = {"Low", "High"};
+        int ssrQuality = pps->GetSSRQualityVal() > 0 ? 1 : 0;
+        if (ImGui::Combo("Quality##ssr", &ssrQuality, ssrQualityItems, IM_ARRAYSIZE(ssrQualityItems)))
+        {
+          pps->SetSSRQualityVal(ssrQuality);
+        }
+
+        // Everything below tunes the look; the switch and the quality above decide the cost.
+        ImGui::Separator();
+
         float ssrIntensity = pps->GetSSRIntensityVal();
         if (ImGui::DragFloat("Intensity", &ssrIntensity, 0.01f, 0.0f, 1.0f))
         {
@@ -279,10 +292,9 @@ namespace ToolKit
 
         if (ssrDebugView)
         {
-          // Each mode isolates one stage of the pass: an artifact that looks the same in the
-          // composite can be told apart here instead of guessed at.
-          // Index is the mode the shader switches on, so the unused slots are listed as such instead of
-          // being compacted: the list and SSR_DEBUG_* in ssrFrag.shader have to stay aligned.
+          // Each mode isolates one stage of the pass: an artifact that looks the same in the composite can
+          // be told apart here instead of guessed at. The index is the mode the shader switches on, so this
+          // list and the SSR_DEBUG_* defines in ssrFrag.shader have to stay aligned and equally long.
           static const char* ssrDebugModes[] = {"Reflection",
                                                "Confidence",
                                                "Mip Level",
@@ -290,9 +302,6 @@ namespace ToolKit
                                                "Hit UV",
                                                "Ray Length",
                                                "Hit Error",
-                                               "-",
-                                               "-",
-                                               "-",
                                                "March Cost"};
 
           int ssrDebugMode = pps->GetSSRDebugViewModeVal();

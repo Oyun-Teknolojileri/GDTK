@@ -235,7 +235,9 @@ float EdgeFade(vec2 uv)
 #define SSR_DEBUG_HIT_UV     4
 #define SSR_DEBUG_LENGTH     5
 #define SSR_DEBUG_HIT_ERROR  6
-#define SSR_DEBUG_MARCH_COST 10
+// The modes are the numbers the editor's list is indexed with, so they are consecutive: a gap here is a
+// slot the panel has to show as unavailable.
+#define SSR_DEBUG_MARCH_COST 7
 
 // Depth a screen pixel spans, for the adaptive thickness of the hit test.
 #define SSR_THICKNESS_PIXELS 4.0

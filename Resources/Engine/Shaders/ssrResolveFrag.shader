@@ -236,6 +236,13 @@ void main()
 
 	for (int i = 0; i < SSR_FILTER_TAPS; ++i)
 	{
+		// The quality setting caps the taps. The window is a fixed table, so a lower budget keeps the
+		// near taps in the same order instead of reshuffling the pattern.
+		if (float(i) >= ssrPass.quality.x)
+		{
+			break;
+		}
+
 		vec2 tapUV = uv + HALTON_OFFSETS[i] * texel;
 		vec4 tap   = texture(s_normalDepth, tapUV);
 

@@ -47,6 +47,8 @@ namespace ToolKit
     Vec4 environment;
     /** .x = sample cap, .y = disocclusion threshold, .z = history clip weight, .w = default variance. */
     Vec4 denoiser;
+    /** .x = spatial filter taps, .y = resolution the reflection is traced at (1 or 0.5). */
+    Vec4 quality;
   };
 
   typedef GpuBufferBase<SsrPassDataLayout> SsrPassDataBuffer;
@@ -123,6 +125,9 @@ namespace ToolKit
 
     /** Multiplier on the clip box the history is pulled into. 0 disables the accumulation. */
     float HistoryClipWeight            = 1.0f;
+
+    /** 1 traces and resolves at frame resolution, 0 at half with a bilinear upsample in the composite. */
+    int Quality                        = 1;
 
     /** Output only what this pass contributes, instead of compositing it over the scene color. */
     bool DebugView                     = false;

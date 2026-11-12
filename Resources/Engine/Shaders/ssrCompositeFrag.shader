@@ -21,11 +21,38 @@ TK_SAMPLER_BINDING(1) uniform sampler2D s_sceneColor; // Scene color before this
 TK_SAMPLER_BINDING(2) uniform sampler2D s_coverage;    // a: 1 where this pixel is a reflective surface.
 TK_SAMPLER_BINDING(3) uniform sampler2D s_normalDepth; // a: roughness of the surface under the pixel.
 
+// Reads the accumulated reflection. At half resolution the upsample is done here rather than by the
+// sampler: GL ES 3.0 does not guarantee linear filtering on a float render target, and a device without it
+// returns black for every tap - a reflection that is simply gone.
+vec4 SampleAccum(vec2 uv)
+{
+	if (ssrPass.quality.y >= 0.999)
+	{
+		return texture(s_trace, uv);
+	}
+
+	vec2 texel = ssrPass.screenParams.xy / max(ssrPass.quality.y, 0.001);
+	vec2 pos   = uv / texel - 0.5;
+	vec2 base  = floor(pos);
+	vec2 frac  = clamp(pos - base, 0.0, 1.0);
+	vec2 uv00  = clamp((base + 0.5) * texel, vec2(0.0), vec2(1.0));
+	vec2 uv10  = clamp(uv00 + vec2(texel.x, 0.0), vec2(0.0), vec2(1.0));
+	vec2 uv01  = clamp(uv00 + vec2(0.0, texel.y), vec2(0.0), vec2(1.0));
+	vec2 uv11  = clamp(uv00 + texel, vec2(0.0), vec2(1.0));
+
+	vec4 s00 = texture(s_trace, uv00);
+	vec4 s10 = texture(s_trace, uv10);
+	vec4 s01 = texture(s_trace, uv01);
+	vec4 s11 = texture(s_trace, uv11);
+
+	return mix(mix(s00, s10, frac.x), mix(s01, s11, frac.x), frac.y);
+}
+
 void main()
 {
 	vec2 uv    = v_texture;
 	vec4 scene = texture(s_sceneColor, uv);
-	vec4 accum = texture(s_trace, uv);
+	vec4 accum = SampleAccum(uv);
 
 	// Debug views are handed through exactly as the trace pass produced them, so they keep reading as
 	// data instead of being weighted into the frame.
