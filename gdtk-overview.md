@@ -359,29 +359,39 @@ clip leans on. The resolve phase is the denoiser: a 15 tap Halton window with no
 stopping, the *two* candidate reprojections the reference uses (the surface through the frame's motion,
 and the point the ray ended at, projected with the previous view projection) picked by how well the
 history g buffer's normal and roughness match, a smooth disocclusion factor from the same history, a
-sample count carried across frames, and a variance clipped blend weighted by that count (`1 - 1/n`, with
-the sample cap following the roughness). The composite phase mixes the accumulation over the scene copy
-The roughness in that g buffer is per pixel and comes from the material's metallic roughness texture when it
+sample count carried across frames, and a variance clipped blend whose history share comes from the
+disocclusion factor (0.98 at a perfect reprojection, none at a mismatch). The blend is *not* driven by the
+sample counter: the counter is read back from a target and it was measured stuck at one sample, which
+meant the history was never used and every frame showed a single sampled ray - the reflection crawled,
+and it crawled worst where roughness made the sampled cone widest. The disocclusion factor is computed
+from the frame's own g buffer, so it can not disagree with itself that way. Measured with the wobble split
+by the roughness of the surface: 0.00349 to 0.00044 frame to frame at roughness 0.2 to 0.3, and 0.00147 to
+0.00072 at 0.6 to 0.8, with no ghosting over a moving camera. The counter target is still written, for the
+debug views.
+The composite phase mixes the accumulation over the scene copy towards the reflection by the trace's
+coverage, the share of the pixel that a surface of that roughness reflects (specularShare, read from the g
+buffer's roughness) and SSRIntensity. The share is what keeps an albedo: the mix replaces the whole shaded
+pixel, the g buffer carries no albedo or metalness to tell a specular contribution from a diffuse one, and
+at full strength every rough wall came out painted with the sky. It is not a Fresnel term and not metalness
+aware - it is what a roughness only g buffer allows, so a rough metal keeps more of its albedo than it
+should.
+
+The roughness in that g buffer is per pixel and comes from the material's metallic roughness texture when
+it carries one (glTF: green channel, multiplied by the material's roughness factor) and from the factor
+alone otherwise. Writing the factor for both cases is what kept a textured material out of the reflections:
+the factor is conventionally 1.0 when a texture is in use, which lands on the roughness cutoff and disables
+the pass for the whole surface.
+
 The reflection has one quality setting, SSRQuality, next to the switch in the post processing panel. High
 traces and resolves at frame resolution; Low does both at half, builds the depth pyramid and the 1/8 average
-from that half size, writes the sample counter as an eight bit target and caps the spatial filter at six taps,
-then upsamples in the composite. On a Mali class mobile GPU it moves the pass from 242 ms a frame to about
-130, and it costs the sharpness of a mirror. Two things about it only show up on GL ES: a float render target
-can not be sampled with linear filtering there (OES_texture_float_linear is optional, and a device without
-it samples black), so the targets stay nearest and the composite does the upsample itself with four taps; and
-a render target narrowed to FormatRGBA8 has to have its Format and Type narrowed with it, or the
+from that half size, writes the sample counter as an eight bit target and caps the spatial filter at six
+taps, then upsamples in the composite. On a Mali class mobile GPU it moves the pass from 242 ms a frame to
+about 116, and it costs the sharpness of a mirror. Two things about it only show up on GL ES: a float render
+target can not be sampled with linear filtering there (OES_texture_float_linear is optional, and a device
+without it samples black), so the targets stay nearest and the composite does the upsample itself with four
+taps; and a render target narrowed to FormatRGBA8 has to have its Format and Type narrowed with it, or the
 framebuffer is incomplete on GL ES and the resolve writes nothing at all - a black reflection with no error
 anywhere.
-carries one (glTF: green channel, multiplied by the material's roughness factor) and from the factor alone
-otherwise. Writing the factor for both cases is what kept a textured material out of the reflections: the
-factor is conventionally 1.0 when a texture is in use, which lands on the roughness cutoff and disables the
-pass for the whole surface.
-towards the reflection by the trace's coverage, the share of the pixel that a surface of that roughness
-reflects (specularShare, read from the g buffer's roughness) and SSRIntensity. The share is what keeps an
-albedo: the mix replaces the whole shaded pixel, the g buffer carries no albedo or metalness to tell a
-specular contribution from a diffuse one, and at full strength every rough wall came out painted with the
-sky. It is not a Fresnel term and not metalness aware - it is what a roughness only g buffer allows, so a
-rough metal keeps more of its albedo than it should.
 
 The march itself is hierarchical. A min depth pyramid (ssrDepthPyramidFrag.shader) is built every frame
 from the g buffer's linear depth, level 0 half the screen and each level after it half of the one before,

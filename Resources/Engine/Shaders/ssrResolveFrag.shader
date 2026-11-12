@@ -64,6 +64,11 @@ TK_SAMPLER_BINDING(8) uniform sampler2D s_velPrev;         // xy: the previous f
 // less, low enough that it does not reject the frame outright.
 #define SSR_DEFAULT_VARIANCE 1.0
 
+// How much of the accumulated history a pixel keeps when its reprojection matches perfectly. It trades
+// convergence against how fast the reflection follows a change: 0.98 is a fifty frame equivalent, which is
+// what a single sampled ray needs before it stops crawling.
+#define SSR_HISTORY_RESPONSE_MAX 0.98
+
 const vec2 HALTON_OFFSETS[SSR_FILTER_TAPS] = vec2[SSR_FILTER_TAPS](
 	vec2(0.0, 1.0), vec2(-2.0, 1.0), vec2(2.0, -3.0), vec2(-3.0, 0.0), vec2(1.0, 2.0),
 	vec2(-1.0, -2.0), vec2(3.0, 0.0), vec2(-3.0, 3.0), vec2(0.0, -3.0), vec2(-1.0, -1.0),
@@ -214,17 +219,18 @@ void main()
 		disocclusion       = normalTerm * depthTerm;
 	}
 
-	vec4  history = vec4(0.0);
-	float count   = 1.0;
-	float variance = SSR_DEFAULT_VARIANCE;
-
-	if (disocclusion > ssrPass.denoiser.y)
-	{
-		history   = texture(s_history, chosenUV);
-		float cap = max(8.0, ssrPass.denoiser.x * SSR_SAMPLES_FOR_ROUGHNESS(roughness));
-		count     = min(cap, texture(s_historyCount, chosenUV).r * disocclusion + 1.0);
-		variance  = history.a;
-	}
+	// The history is read every frame and the disocclusion factor scales how fast it is replaced, instead of
+	// deciding whether it may be read at all. With the threshold the factor is a switch: a pixel whose
+	// factor sits around it drops its whole accumulation one frame and starts again from one sample the
+	// next, and since one sample per frame is all a stochastic ray has, that showed as a reflection that
+	// crawls. Scaled, a pixel converges to 1 / (1 - disocclusion) samples: a good match walks up to the cap,
+	// a poor one slides down to a single frame, and nothing is discontinuous in between - which is what the
+	// reference's own counter does, its threshold applies to a different decision.
+	float cap      = max(8.0, ssrPass.denoiser.x * SSR_SAMPLES_FOR_ROUGHNESS(roughness));
+	vec2  clampedUV = clamp(chosenUV, vec2(0.0), vec2(1.0));
+	vec4  history   = texture(s_history, clampedUV);
+	float count     = clamp(texture(s_historyCount, clampedUV).r * disocclusion + 1.0, 1.0, cap);
+	float variance  = mix(SSR_DEFAULT_VARIANCE, history.a, clamp(disocclusion, 0.0, 1.0));
 
 	// --- spatial filter of this frame's sample --------------------------------------------------------
 	vec2 texel        = ssrPass.screenParams.xy;
@@ -289,7 +295,11 @@ void main()
 	newSignal = mix(newSignal, avgRadiance, 1.0 / max(count + 1.0, 1.0));
 	newSignal = ClipAabb(avgRadiance, extent, newSignal);
 
-	float blend  = count <= 1.0 ? 0.0 : 1.0 - 1.0 / count;
+	// How much of the history the result keeps, from the disocclusion factor itself. The counter is written
+	// for the debug view but not trusted with the blend: it is a value read back from a target, and a target
+	// that reads as one sample while it holds thirty cannot be told apart from a rejected history from here,
+	// whereas the factor is computed from this frame's own g buffer.
+	float blend  = mix(0.0, SSR_HISTORY_RESPONSE_MAX, smoothstep(0.0, 1.0, clamp(disocclusion, 0.0, 1.0)));
 	vec3  result = mix(newSignal, clippedHistory, blend);
 
 	// Temporal variance: how far the accumulated value sits from what this frame produced. The reference
