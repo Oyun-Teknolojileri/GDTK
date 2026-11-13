@@ -191,8 +191,8 @@ namespace ToolKit
         // The one control that changes how much the pass costs, so it sits next to the switch. Full
         // resolution keeps a mirror sharp and is what a desktop GPU can afford; half resolution traces and
         // resolves at a quarter of the pixels and is what makes the pass usable on a phone.
-        static const char* ssrQualityItems[] = {"Low", "High"};
-        int ssrQuality = pps->GetSSRQualityVal() > 0 ? 1 : 0;
+        static const char* ssrQualityItems[] = {"Low", "Mid", "High"};
+        int ssrQuality = glm::clamp(pps->GetSSRQualityVal(), 0, 2);
         if (ImGui::Combo("Quality##ssr", &ssrQuality, ssrQualityItems, IM_ARRAYSIZE(ssrQualityItems)))
         {
           pps->SetSSRQualityVal(ssrQuality);

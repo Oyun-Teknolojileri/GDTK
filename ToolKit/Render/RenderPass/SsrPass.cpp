@@ -323,13 +323,12 @@ namespace ToolKit
     m_passDataBuffer.m_data.fades =
         Vec4(m_params.EdgeFade, m_params.ScreenFadeStart, m_params.RangeFadeStart, m_viewMoved ? 1.0f : 0.0f);
 
-    // The resolution the reflection itself is built at. Half of it is what a mobile GPU can afford: the
-    // targets are the bandwidth, and a quarter of the pixels is a quarter of the traffic. The composite
-    // stays at frame resolution and upsamples what it reads, so the reflection keeps the full screen
-    // coverage - only its detail is coarser.
-    const IVec2 ssrSize = m_params.Quality >= 1
-                              ? size
-                              : IVec2(glm::max(size.x / 2, 1), glm::max(size.y / 2, 1));
+    // The resolution the reflection itself is built at. The targets are the bandwidth, so a level down is
+    // a quarter of the traffic (a level is a halving in each axis). The composite stays at frame resolution
+    // and upsamples what it reads, so the reflection keeps the full screen coverage; only its detail gets
+    // coarser, and the mirror sharpness goes with it.
+    const int   divisor = m_params.Quality >= 2 ? 1 : (m_params.Quality == 1 ? 2 : 4);
+    const IVec2 ssrSize = IVec2(glm::max(size.x / divisor, 1), glm::max(size.y / divisor, 1));
 
     // History lifetime: a different camera, a resize or the first frame of the pass can not reuse the
     // accumulation, and neither can a frame that skipped the pass.
@@ -359,7 +358,7 @@ namespace ToolKit
     // The sample count fits in 8 bits (the cap is well under 255), so the counter target can be a byte per
     // channel instead of eight.
     TextureSettings countSet = traceSet;
-    if (m_params.Quality < 1)
+    if (m_params.Quality < 2)
     {
       // All three, not just the internal format: the pixel format and the type describe the same storage,
       // and a target whose internal format is a byte but whose type says float is an incomplete
@@ -444,8 +443,9 @@ namespace ToolKit
 
     // Quality: how many taps the spatial filter may use, and the scale the reflection was traced at so a
     // shader that needs to know the grid can ask.
-    const int taps = m_params.Quality >= 1 ? SSR_FILTER_TAPS_HIGH : SSR_FILTER_TAPS_LOW;
-    m_passDataBuffer.m_data.quality = Vec4(float(taps), m_params.Quality >= 1 ? 1.0f : 0.5f, 0.0f, 0.0f);
+    const int   taps  = m_params.Quality >= 1 ? SSR_FILTER_TAPS_HIGH : SSR_FILTER_TAPS_LOW;
+    const float scale = 1.0f / float(divisor);
+    m_passDataBuffer.m_data.quality = Vec4(float(taps), scale, 0.0f, 0.0f);
 
     m_quadPass->m_params.frameBuffer->ReconstructIfNeeded({ssrSize.x, ssrSize.y, false, false});
     m_quadPass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_traceTexture);

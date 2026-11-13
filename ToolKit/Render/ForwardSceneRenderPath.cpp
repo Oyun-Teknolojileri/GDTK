@@ -1938,7 +1938,7 @@ namespace ToolKit
     m_ssrPass->m_params.BrdfBias           = pps->GetSSRBRDFBiasVal();
     m_ssrPass->m_params.DebugView          = pps->GetSSRDebugViewVal();
     m_ssrPass->m_params.DebugViewMode      = pps->GetSSRDebugViewModeVal();
-    m_ssrPass->m_params.Quality            = pps->GetSSRQualityVal() > 0 ? 1 : 0;
+    m_ssrPass->m_params.Quality            = glm::clamp(pps->GetSSRQualityVal(), 0, 2);
 
     // The environment the reflection falls back to when screen space can not answer it: the same pre
     // filtered sky cubemap the forward pass shades its IBL reflections from, so a fallback and a hit are

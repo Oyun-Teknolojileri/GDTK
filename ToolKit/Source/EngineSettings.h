@@ -403,10 +403,10 @@ namespace ToolKit
      */
     TKDeclareParam(float, SSRBRDFBias);
     /**
-     * Reflection quality: 1 traces and resolves at the frame resolution, 0 does both at half and
-     * upsamples in the composite. The half resolution path is what makes the pass affordable on a
-     * mobile GPU, where the full resolution targets are bandwidth bound; it costs the sharpness of a
-     * mirror reflection.
+     * Reflection quality: 2 traces and resolves at the frame resolution, 1 does both at half and 0 at a
+     * quarter, with the composite upsampling. The reduced levels are what make the pass affordable on a
+     * mobile GPU, where the full resolution targets are bandwidth bound; each level down quarters the
+     * traffic and costs the sharpness of a mirror reflection.
      */
     TKDeclareParam(int, SSRQuality);
     TKDeclareParam(bool, SSRDebugView);

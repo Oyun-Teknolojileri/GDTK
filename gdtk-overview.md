@@ -382,16 +382,21 @@ alone otherwise. Writing the factor for both cases is what kept a textured mater
 the factor is conventionally 1.0 when a texture is in use, which lands on the roughness cutoff and disables
 the pass for the whole surface.
 
-The reflection has one quality setting, SSRQuality, next to the switch in the post processing panel. High
-traces and resolves at frame resolution; Low does both at half, builds the depth pyramid and the 1/8 average
-from that half size, writes the sample counter as an eight bit target and caps the spatial filter at six
-taps, then upsamples in the composite. On a Mali class mobile GPU it moves the pass from 242 ms a frame to
-about 116, and it costs the sharpness of a mirror. Two things about it only show up on GL ES: a float render
-target can not be sampled with linear filtering there (OES_texture_float_linear is optional, and a device
-without it samples black), so the targets stay nearest and the composite does the upsample itself with four
-taps; and a render target narrowed to FormatRGBA8 has to have its Format and Type narrowed with it, or the
-framebuffer is incomplete on GL ES and the resolve writes nothing at all - a black reflection with no error
-anywhere.
+The reflection has one quality setting, SSRQuality, next to the switch in the post processing panel, with
+three levels. High traces and resolves at frame resolution with fifteen filter taps; Mid does both at half
+(a quarter of the pixels) and Low at a quarter (a sixteenth), with the composite upsampling what it reads,
+the sample counter in an eight bit target below High and Low also cutting the filter to six taps. The
+numbers on a Mali G71 at 2220x1080, same scene and knobs, the pass costing what it costs over a frame with
+it switched off (47.6 ms): High 243.5 ms, Mid 120.8 ms, Low 84.0 ms, so 196, 73 and 36 ms for the pass
+itself. For reference, the simpler single pass reflection this replaced cost 23 ms and looked like a
+stochastic sample with no accumulation. What the levels buy is paid for in mirror sharpness: High keeps a
+silhouette sharp, Mid softens it, and Low shows the quarter resolution grid at the edge of a mirror.
+
+The composite's upsample is done in the shader, with four nearest taps, and the targets stay nearest:
+GL ES does not guarantee linear filtering of a float render target (OES_texture_float_linear is optional)
+and a device without it samples black. A target narrowed to FormatRGBA8 has to have Format and Type
+narrowed with it for the same class of reason: the internal format alone leaves the framebuffer incomplete
+on GL ES, the resolve's writes go nowhere and the accumulation stays black with no error logged.
 
 The march itself is hierarchical. A min depth pyramid (ssrDepthPyramidFrag.shader) is built every frame
 from the g buffer's linear depth, level 0 half the screen and each level after it half of the one before,

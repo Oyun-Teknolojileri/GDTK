@@ -126,8 +126,12 @@ namespace ToolKit
     /** Multiplier on the clip box the history is pulled into. 0 disables the accumulation. */
     float HistoryClipWeight            = 1.0f;
 
-    /** 1 traces and resolves at frame resolution, 0 at half with a bilinear upsample in the composite. */
-    int Quality                        = 1;
+    /**
+     * 2 traces and resolves at frame resolution, 1 at half and 0 at a quarter, with the composite doing
+     * the upsample. The two reduced levels are what make the pass affordable on a mobile GPU, and they
+     * cost the sharpness of a mirror in proportion.
+     */
+    int Quality                        = 2;
 
     /** Output only what this pass contributes, instead of compositing it over the scene color. */
     bool DebugView                     = false;
