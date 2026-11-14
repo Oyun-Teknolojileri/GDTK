@@ -892,16 +892,18 @@ frame. `EndReadPixels(handle, nullptr)` discards a read instead of waiting for i
 (see 5.3).
 
 **A backend that cannot do that says so, and the caller reads later instead.** `SupportsAsyncReadPixels()` answers
-whether `BeginReadPixels` can hand pixels over a frame after they were asked for. WebGL 2 cannot: it has no way to
-read a pack buffer back into client memory (`glMapBufferRange` is not exposed), so the pixels a pack buffer collected
-can never be handed over. The backend keeps one read path - `ReadPixels`, blocking, optionally from an explicit
-framebuffer - and the engine decides: when the capability is off, `BuildDepthGrid` does not start anything, it parks
-the request in its slot together with the target the grid was drawn into, and `ConsumeDepthGridReads` performs the
-blocking read a frame later. That is the cheap moment on such a platform: the frame that filled the target is behind
-the GPU by then, so the wait is a copy of 240 x 135 x 16 bytes rather than a whole frame of queued commands. Reading
-where the grid is drawn would be the expensive spot, and it is the spot a naive "just read it synchronously" lands on.
+whether `BeginReadPixels` can hand pixels over a frame after they were asked for. Both GL paths can. The desktop one
+maps the pack buffer once its fence signals; WebGL 2 has no buffer mapping, but it does have sync objects
+(`fenceSync` / `clientWaitSync`) and `getBufferSubData`, so its read is the same one-frame-later copy: the fence is
+polled, and once it says the transfer landed the pixels are copied out of the pack buffer without a GPU wait. Vulkan
+and the null backend cannot - Vulkan's `ReadPixels` is still a TODO - so there the engine decides: when the
+capability is off, `BuildDepthGrid` does not start anything, it parks the request in its slot together with the
+target the grid was drawn into, and `ConsumeDepthGridReads` performs the blocking read a frame later. That is the
+cheap moment there: the frame that filled the target is behind the GPU by then, so the wait is a copy of
+240 x 135 x 16 bytes rather than a whole frame of queued commands. Reading where the grid is drawn would be the
+expensive spot, and it is the spot a naive "just read it synchronously" lands on.
 
-The null backend answers false as well, and Vulkan's `ReadPixels` is still a TODO, so on those the grid silently
+The null backend answers false too, and Vulkan's `ReadPixels` is still a TODO, so on those the grid silently
 never arrives - which is why the engine logs once when a grid read comes back empty rather than leaving culling off
 with nothing said.
 
@@ -930,9 +932,10 @@ target can be blitted into regardless of the draw buffer state it was created wi
 route the web build through the `GL_EXT_debug_label` pointer the loader already resolves. `glGetString(
 GL_EXTENSIONS)` returns null on ES 3.0 as well, so `LoadGlFunctions` enumerates `GL_NUM_EXTENSIONS` with
 `glGetStringi` and matches names with or without the `GL_` prefix (WebGL reports the bare name).
-`glMapBufferRange` is the third: a pack buffer can be filled on the web but never mapped for reading, which is
-why `SupportsAsyncReadPixels()` answers false there and the depth grid is read at the point it is consumed
-instead (see 5.1).
+`glMapBufferRange` is the third: a pack buffer can be filled on the web but never mapped for reading, so the
+readback goes through `getBufferSubData` once the fence is polled - a frame later the transfer has landed and the
+copy does not wait for the GPU (see 5.1). Emscripten's GLES header does not declare `getBufferSubData` even though
+the WebGL 2 binding exists, so `GLBackend.cpp` declares the entry point itself.
 ### 5.3 Vulkan Backend (Vulkan/ directory)
 - `VulkanBackend.h` (main implementation)
 - `VulkanBindings.h` (binding marshalling)
