@@ -69,6 +69,10 @@ TK_SAMPLER_BINDING(8) uniform sampler2D s_velPrev;         // xy: the previous f
 // what a single sampled ray needs before it stops crawling.
 #define SSR_HISTORY_RESPONSE_MAX 0.98
 
+// Share of the 1/8 resolution average mixed into every new sample. It used to be 1 / (count + 1), which with
+// a counter stuck at one meant half; a fixed five percent holds a firefly without blurring the reflection.
+#define SSR_AVG_RADIANCE_PULL 0.05
+
 const vec2 HALTON_OFFSETS[SSR_FILTER_TAPS] = vec2[SSR_FILTER_TAPS](
 	vec2(0.0, 1.0), vec2(-2.0, 1.0), vec2(2.0, -3.0), vec2(-3.0, 0.0), vec2(1.0, 2.0),
 	vec2(-1.0, -2.0), vec2(3.0, 0.0), vec2(-3.0, 3.0), vec2(0.0, -3.0), vec2(-1.0, -1.0),
@@ -288,11 +292,19 @@ void main()
 	                 max(ssrPass.denoiser.z, 0.0) * SSR_CLIP_SCALE;
 	vec3  extent   = max(colorStd, vec3(1e-4));
 
-	// The history is clipped into that box, the new sample is clipped and pulled towards the average by how
-	// few samples the pixel holds, and the two are blended by the sample count.
+	// The history is clipped into that box and the new sample into the same one, and the two are blended by
+	// the disocclusion driven share below.
+	//
+	// The new sample used to be pulled towards the 1/8 average by 1 / (count + 1) first. That was written
+	// for a counter that grows towards the sample cap, where the pull is a few percent; the counter reads
+	// one, so the pull sat at its maximum of one half and half of every coarse average was smeared into
+	// every reflection sample. The clip below already keeps an outlier inside the local statistics, which is
+	// what the pull was for, so it is gone rather than re-tuned to a constant.
 	vec3 clippedHistory = ClipAabb(mean, extent, history.rgb);
 
-	newSignal = mix(newSignal, avgRadiance, 1.0 / max(count + 1.0, 1.0));
+	// A little of the low frequency every frame, as ballast for a single sample: enough to hold a firefly and
+	// not enough to smear the reflection the way the old count driven pull did.
+	newSignal = mix(newSignal, avgRadiance, SSR_AVG_RADIANCE_PULL);
 	newSignal = ClipAabb(avgRadiance, extent, newSignal);
 
 	// How much of the history the result keeps, from the disocclusion factor itself. The counter is written

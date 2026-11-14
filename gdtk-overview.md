@@ -360,14 +360,16 @@ stopping, the *two* candidate reprojections the reference uses (the surface thro
 and the point the ray ended at, projected with the previous view projection) picked by how well the
 history g buffer's normal and roughness match, a smooth disocclusion factor from the same history, a
 sample count carried across frames, and a variance clipped blend whose history share comes from the
-disocclusion factor (0.98 at a perfect reprojection, none at a mismatch). The blend is *not* driven by the
-sample counter: the counter is read back from a target and it was measured stuck at one sample, which
-meant the history was never used and every frame showed a single sampled ray - the reflection crawled,
-and it crawled worst where roughness made the sampled cone widest. The disocclusion factor is computed
-from the frame's own g buffer, so it can not disagree with itself that way. Measured with the wobble split
-by the roughness of the surface: 0.00349 to 0.00044 frame to frame at roughness 0.2 to 0.3, and 0.00147 to
-0.00072 at 0.6 to 0.8, with no ghosting over a moving camera. The counter target is still written, for the
-debug views.
+disocclusion factor (0.98 at a perfect reprojection, none at a mismatch), plus five percent of the 1/8
+resolution average mixed into every new sample as ballast against a firefly. That share is fixed, because
+a share computed from the sample counter sat at its maximum of one half and smeared half of a coarse
+average into every reflection. The blend is *not* driven by the sample counter: the counter is read back
+from a target and it was measured stuck at one sample, which meant the history was never used and every
+frame showed a single sampled ray - the reflection crawled, and it crawled worst where roughness made the
+sampled cone widest. The disocclusion factor is computed from the frame's own g buffer, so it can not
+disagree with itself that way. Measured with the wobble split by the roughness of the surface: 0.00349 to
+0.00044 frame to frame at roughness 0.2 to 0.3, and 0.00147 to 0.00072 at 0.6 to 0.8, with no ghosting over
+a moving camera. The counter target is still written, for the debug views.
 The composite phase mixes the accumulation over the scene copy towards the reflection by the trace's
 coverage, the share of the pixel that a surface of that roughness reflects (specularShare, read from the g
 buffer's roughness) and SSRIntensity. The share is what keeps an albedo: the mix replaces the whole shaded
