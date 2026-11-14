@@ -341,7 +341,7 @@ void main()
 	vec3 V      = normalize(viewPos);
 	vec2 Xi     = SampleSequence(gl_FragCoord.xy, ssrPass.flags.w);
 	float alpha = max(roughness * roughness, 0.0001);
-	vec3 H      = SampleReflectionHalf(V, normal, alpha, Xi, clamp(ssrPass.temporal.z, 0.0, 1.0));
+	vec3 H      = SampleReflectionHalf(V, normal, alpha, Xi, clamp(ssrPass.temporal.x, 0.0, 1.0));
 	vec3 rayDir = reflect(V, H);
 	float pdf   = ReflectionPdf(-V, normal, H, alpha);
 
@@ -628,7 +628,7 @@ void main()
 	if (confidence > 0.0)
 	{
 		// The reflection cone picks the mip, the mip chain does the blur.
-		lod         = ReflectionLod(roughness, hitPixels, ssrPass.temporal.z);
+		lod         = ReflectionLod(roughness, hitPixels, ssrPass.temporal.x);
 		hitRadiance = SampleReflection(hitUV, lod);
 		fragHit     = vec4(hitUV, hitDepthOut, hitDistance);
 	}

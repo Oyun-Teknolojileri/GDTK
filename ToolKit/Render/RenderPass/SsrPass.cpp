@@ -422,13 +422,11 @@ namespace ToolKit
     // response: the resolve blends by how many samples a pixel holds, and the sample cap follows the
     // roughness. A reset (a different camera, a resize) travels as the fourth component and drops the
     // history for this frame.
-    m_passDataBuffer.m_data.temporal = Vec4(glm::clamp(m_params.TemporalResponseMin, 0.0f, 1.0f),
-                                            glm::clamp(m_params.TemporalResponseMax, 0.0f, 1.0f),
-                                            glm::clamp(m_params.BrdfBias, 0.0f, 1.0f),
-                                            resetHistory ? 1.0f : 0.0f);
+    m_passDataBuffer.m_data.temporal =
+        Vec4(glm::clamp(m_params.BrdfBias, 0.0f, 1.0f), resetHistory ? 1.0f : 0.0f, 0.0f, 0.0f);
 
     const bool hasVelocity = m_params.VelocityCurrent != nullptr && m_params.VelocityPrevious != nullptr;
-    m_passDataBuffer.m_data.velocity = Vec4(hasVelocity ? 1.0f : 0.0f, float(size.y), 0.0f, 0.0f);
+    m_passDataBuffer.m_data.velocity = Vec4(hasVelocity ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f);
 
     // Environment: the sky's pre filtered radiance. The mip a sample reads is roughness scaled, so the
     // shader needs the highest mip the cubemap carries and whether it is there at all.
@@ -436,10 +434,8 @@ namespace ToolKit
     const float envMaxMip    = float(RHIConstants::SpecularIBLLods - 1);
     m_passDataBuffer.m_data.environment = Vec4(envIntensity, envMaxMip, envIntensity > 0.0f ? 1.0f : 0.0f, 0.0f);
 
-    m_passDataBuffer.m_data.denoiser = Vec4(glm::max(m_params.MaxSamples, 1.0f),
-                                            glm::clamp(m_params.DisocclusionThreshold, 0.0f, 1.0f),
-                                            glm::max(m_params.HistoryClipWeight, 0.0f),
-                                            SSR_DEFAULT_VARIANCE);
+    m_passDataBuffer.m_data.denoiser =
+        Vec4(glm::max(m_params.MaxSamples, 1.0f), glm::max(m_params.HistoryClipWeight, 0.0f), 0.0f, 0.0f);
 
     // Quality: how many taps the spatial filter may use, and the scale the reflection was traced at so a
     // shader that needs to know the grid can ask.

@@ -21,10 +21,10 @@ TK_UBO_BINDING(7) uniform SsrPassData
   vec4 screenParams;       // xy: 1 / size (texel size), zw: size in pixels
   vec4 flags;              // x: debug view, y: march step count, z: debug view mode, w: frame index
   vec4 fades;              // x: border fade, y: screen length fade start, z: hit distance fade start
-  vec4 temporal;           // x/y: unused, z: brdf bias, w: reset the history
-  vec4 velocity;           // x: 1 when the object motion targets are bound, y: screen height
+  vec4 temporal;           // x: brdf bias, y: reset the history
+  vec4 velocity;           // x: 1 when the object motion targets are bound
   vec4 environment;        // x: intensity, y: highest mip the cubemap carries, z: 1 when bound
-  vec4 denoiser;           // x: max samples, y: disocclusion threshold, z: history clip weight, w: initial variance
+  vec4 denoiser;           // x: sample cap, y: history clip weight
   vec4 quality;            // x: spatial filter taps, y: resolution scale the target is traced at
 } ssrPass;
 

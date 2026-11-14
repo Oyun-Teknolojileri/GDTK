@@ -38,14 +38,14 @@ namespace ToolKit
     Vec4 flags;
     /** .x = screen border fade, .y = screen length fade start, .z = hit distance fade start. */
     Vec4 fades;
-    /** .x/.y = unused since the sample count drives the temporal blend, .z = brdf bias (how far the
-     *  sampled lobe is bent towards the mirror), .w = 1 when the history must be dropped. */
+    /** .x = brdf bias (how far the sampled lobe is bent towards the mirror), .y = 1 when the history
+     *  must be dropped. */
     Vec4 temporal;
-    /** .x = 1 when the object motion targets are bound, .y = screen height. */
+    /** .x = 1 when the object motion targets are bound. */
     Vec4 velocity;
     /** .x = environment intensity, .y = highest mip the cubemap carries, .z = 1 when it is bound. */
     Vec4 environment;
-    /** .x = sample cap, .y = disocclusion threshold, .z = history clip weight, .w = default variance. */
+    /** .x = sample cap, .y = history clip weight. */
     Vec4 denoiser;
     /** .x = spatial filter taps, .y = resolution the reflection is traced at (1 or 0.5). */
     Vec4 quality;
@@ -90,13 +90,6 @@ namespace ToolKit
     /** Where the fade along the hit distance starts, as a fraction of MaxDistance. */
     float RangeFadeStart               = 0.6f;
 
-    /**
-     * The two ends of the temporal response. Unused since the accumulation is driven by how many samples
-     * a pixel holds, kept so existing scene settings keep loading.
-     */
-    float TemporalResponseMin          = 0.85f;
-    float TemporalResponseMax          = 1.0f;
-
     /** Screen space motion of the objects, from the velocity pass. Null when the frame has none. */
     TexturePtr VelocityCurrent         = nullptr;
     TexturePtr VelocityPrevious        = nullptr;
@@ -119,9 +112,6 @@ namespace ToolKit
 
     /** Cap on the samples the accumulation holds, before the roughness scaling. */
     float MaxSamples                   = 32.0f;
-
-    /** How far a history sample may sit from this frame's local statistics before it is faded. */
-    float DisocclusionThreshold        = 0.9f;
 
     /** Multiplier on the clip box the history is pulled into. 0 disables the accumulation. */
     float HistoryClipWeight            = 1.0f;

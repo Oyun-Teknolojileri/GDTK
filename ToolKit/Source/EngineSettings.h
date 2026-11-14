@@ -386,17 +386,6 @@ namespace ToolKit
      */
     TKDeclareParam(float, SSRRangeFadeStart);
     /**
-     * Lower bound of the temporal response: the share of the history the accumulation keeps when this
-     * frame disagrees with it. The upper bound takes over as the two agree, so the window is short where
-     * the reflection changes and long where it is stable.
-     */
-    TKDeclareParam(float, SSRTemporalResponseMin);
-    /**
-     * Upper bound of the temporal response, the share of the history kept when this frame and the
-     * accumulation agree on the luminance. 1 leaves the accumulation untouched once it has converged.
-     */
-    TKDeclareParam(float, SSRTemporalResponseMax);
-    /**
      * How far the sampled reflection direction is bent towards the mirror direction, 0 leaves the pure
      * GGX lobe and 1 makes every pixel shoot the mirror ray. A bias trades the width of the blur for a
      * lower sample count.

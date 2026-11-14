@@ -209,7 +209,7 @@ void main()
 	// camera, a resize, the first frame) takes the history out of the picture for this frame.
 	bool  inside       = all(greaterThan(chosenUV, vec2(0.0))) && all(lessThan(chosenUV, vec2(1.0)));
 	float disocclusion = 0.0;
-	if (ssrPass.temporal.w > 0.5)
+	if (ssrPass.temporal.y > 0.5)
 	{
 		inside = false;
 	}
@@ -289,7 +289,7 @@ void main()
 	// way, which keeps a pixel that sits next to a large change from holding its old value.
 	vec3  mean     = mix(localMean, avgRadiance, SSR_AVG_RADIANCE_WEIGHT);
 	vec3  colorStd = (vec3(sqrt(localVariance)) + vec3(length(localMean - avgRadiance))) *
-	                 max(ssrPass.denoiser.z, 0.0) * SSR_CLIP_SCALE;
+	                 max(ssrPass.denoiser.y, 0.0) * SSR_CLIP_SCALE;
 	vec3  extent   = max(colorStd, vec3(1e-4));
 
 	// The history is clipped into that box and the new sample into the same one, and the two are blended by

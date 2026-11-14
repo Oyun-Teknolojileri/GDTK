@@ -1933,8 +1933,6 @@ namespace ToolKit
     m_ssrPass->m_params.RangeFadeStart     = pps->GetSSRRangeFadeStartVal();
     m_ssrPass->m_params.VelocityCurrent     = m_velocityPass->GetCurrentVelocity();
     m_ssrPass->m_params.VelocityPrevious    = m_velocityPass->GetPreviousVelocity();
-    m_ssrPass->m_params.TemporalResponseMin = pps->GetSSRTemporalResponseMinVal();
-    m_ssrPass->m_params.TemporalResponseMax = pps->GetSSRTemporalResponseMaxVal();
     m_ssrPass->m_params.BrdfBias           = pps->GetSSRBRDFBiasVal();
     m_ssrPass->m_params.DebugView          = pps->GetSSRDebugViewVal();
     m_ssrPass->m_params.DebugViewMode      = pps->GetSSRDebugViewModeVal();
