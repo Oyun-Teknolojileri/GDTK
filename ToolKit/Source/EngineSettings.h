@@ -332,6 +332,13 @@ namespace ToolKit
     TKDeclareParam(float, BloomThreshold);
     TKDeclareParam(int, BloomIterationCount);
 
+    /** How the glow levels are weighted: 1 spreads the energy evenly over every level, lower values
+        pull it toward the tight ones. The reach of the halo stays the iteration count's job. */
+    TKDeclareParam(float, BloomRadius);
+
+    /** Bicubic reconstruction of the glow level the composite reads. Off samples it with a 2x2 box. */
+    TKDeclareParam(bool, BloomBicubicUpscale);
+
     // Gamma
     /////////////////////
     TKDeclareParam(bool, GammaCorrectionEnabled);
@@ -362,6 +369,35 @@ namespace ToolKit
     TKDeclareParam(float, SSRThickness);
     TKDeclareParam(int, SSRStepCount);
     TKDeclareParam(float, SSRRoughnessCutoff);
+    /**
+     * Width of the screen border the reflections fade out across, as a fraction of the frame's width plus
+     * height. The depth buffer stops holding the geometry a ray needs at the border, so a hit there is not
+     * worth trusting.
+     */
+    TKDeclareParam(float, SSREdgeFade);
+    /**
+     * Where the fade along the ray's screen length starts, as a fraction of the length the march can reach.
+     * The last reachable pixel of a ray ends in a hard edge without it.
+     */
+    TKDeclareParam(float, SSRScreenFadeStart);
+    /**
+     * Where the fade along the hit distance starts, as a fraction of SSRMaxDistance. Distance is the length
+     * the ray travelled in view space, so this keeps the far end of the range from ending in a hard edge.
+     */
+    TKDeclareParam(float, SSRRangeFadeStart);
+    /**
+     * How far the sampled reflection direction is bent towards the mirror direction, 0 leaves the pure
+     * GGX lobe and 1 makes every pixel shoot the mirror ray. A bias trades the width of the blur for a
+     * lower sample count.
+     */
+    TKDeclareParam(float, SSRBRDFBias);
+    /**
+     * Reflection quality: 2 traces and resolves at the frame resolution, 1 does both at half and 0 at a
+     * quarter, with the composite upsampling. The reduced levels are what make the pass affordable on a
+     * mobile GPU, where the full resolution targets are bandwidth bound; each level down quarters the
+     * traffic and costs the sharpness of a mirror reflection.
+     */
+    TKDeclareParam(int, SSRQuality);
     TKDeclareParam(bool, SSRDebugView);
     TKDeclareParam(int, SSRDebugViewMode);
 

@@ -64,20 +64,50 @@ namespace ToolKit
     const float g_clipCloseSize     = 15.0f;   //!< Size of that X.
 
     // Curve view. The plot is read only, it exists to show what the key modes do to the motion.
-    const int g_curveBandCount      = 3;       //!< Translation, rotation and scale bands.
-    const float g_curveThickness    = 2.0f;    //!< Width of a plotted curve.
-    const float g_curveBandGap      = 8.0f;    //!< Gap between two channel bands.
-    const float g_curveRangePad     = 0.08f;   //!< Share of the value range kept as head room.
-    const float g_curveMinRange     = 1.0f;    //!< Value range a flat curve is drawn in.
-    const float g_curveLabelInset   = 6.0f;    //!< Inset of the band labels from the band edge.
-    const float g_curveSamplePixels = 3.0f;    //!< Screen distance two curve samples aim for.
-    const float g_curveMinStep      = 0.05f;   //!< Finest sample step, in frames.
-    const int g_curveMaxSamples     = 4096;    //!< Cap on the samples one track is plotted with.
+    const float g_curveThickness    = 2.0f;  //!< Width of a plotted curve.
+    const float g_curveRangePad     = 0.08f; //!< Share of the value range kept as head room.
+    const float g_curveMinRange     = 1.0f;  //!< Value range a flat curve is drawn in.
+    const float g_curveLabelInset   = 6.0f;  //!< Inset of a label from the edge it sits on.
+    const float g_curveEdgeInset    = 4.0f;  //!< Inset of the plot area from its border.
+    const float g_curveSamplePixels = 3.0f;  //!< Screen distance two curve samples aim for.
+    const float g_curveMinStep      = 0.05f; //!< Finest sample step, in frames.
+    const int g_curveMaxSamples     = 4096;  //!< Cap on the samples one track is plotted with.
+    const float g_curveTreeIndent   = 20.0f; //!< Indent of a group row under its track row.
+    const int g_curveGridLines      = 4;     //!< Horizontal grid lines across the plot.
+    const int g_curveMaxLegendRows  = 12;    //!< Group entries the legend lists.
+    const int g_curveMaxReadoutRows = 10;    //!< Groups the hover readout lists.
+    const float g_curveLegendGap    = 5.0f;  //!< Gap between two labels of a legend line.
+    const float g_curveLegendRound  = 3.0f;  //!< Corner rounding of the legend box.
 
-    /** Colours of the plotted curves, x / y / z in that order. */
-    const ImU32 g_curveAxisColors[] = {IM_COL32(235, 96, 96, 255),
-                                       IM_COL32(126, 214, 106, 255),
-                                       IM_COL32(104, 160, 240, 255)};
+    /** Padding of the legend box, in pixels. */
+    const ImVec2 g_curveLegendPad(6.0f, 4.0f);
+
+    /** Names of the transform groups the curve view plots, indexed by DopeSheetView::CurveGroup. */
+    const char* g_curveGroupNames[]  = {"Translation", "Rotation (deg)", "Scale"};
+
+    /** Short form of the group names, which is what the legend and the readout have room for. */
+    const char* g_curveGroupShort[]  = {"T", "R", "S"};
+
+    /** Names of the three components of a group, x / y / z in that order. */
+    const char* g_curveAxisNames[]   = {"x", "y", "z"};
+
+    /**
+     * Colours the plotted curves are handed out in, three per plotted group. The first three are the
+     * classic x / y / z colours, so plotting a single group reads the way the sheet always plotted
+     * one, and every further group takes the next three, which keeps the nine curves of a track that
+     * plots its three groups apart.
+     */
+    const ImU32 g_curvePalette[]     = {IM_COL32(235, 96, 96, 255),
+                                        IM_COL32(126, 214, 106, 255),
+                                        IM_COL32(104, 160, 240, 255),
+                                        IM_COL32(238, 186, 88, 255),
+                                        IM_COL32(196, 128, 224, 255),
+                                        IM_COL32(96, 208, 208, 255),
+                                        IM_COL32(238, 132, 190, 255),
+                                        IM_COL32(168, 204, 96, 255),
+                                        IM_COL32(222, 160, 118, 255)};
+
+    const size_t g_curvePaletteCount = sizeof(g_curvePalette) / sizeof(g_curvePalette[0]);
 
     // Wash over the frames past the last one. A mid gray reads as "inactive" on a dark and on a light
     // theme alike, while a theme background colour would blend into the sheet and show nothing.
@@ -266,6 +296,54 @@ namespace ToolKit
 
         return best;
       }
+
+      /**
+       * Check box that also shows a dash when only part of what it stands for is checked, which is
+       * what a track whose three groups are partly plotted needs. ImGui's Checkbox has two states.
+       * @param label Hidden label, the caller draws the text next to the box.
+       * @param value State of the box, holds the new one once the box is clicked.
+       * @param partial True when some but not all of what the box stands for is checked.
+       * @return True when the click changed the value.
+       */
+      bool PartialCheckbox(const char* label, bool* value, bool partial)
+      {
+        const bool changed = ImGui::Checkbox(label, value);
+
+        if (partial)
+        {
+          const ImVec2 boxMin = ImGui::GetItemRectMin();
+          const ImVec2 boxMax = ImGui::GetItemRectMax();
+          const float inset   = ImGui::GetStyle().FramePadding.x;
+          const float midY    = (boxMin.y + boxMax.y) * 0.5f;
+
+          ImGui::GetWindowDrawList()->AddLine(ImVec2(boxMin.x + inset, midY),
+                                              ImVec2(boxMax.x - inset, midY),
+                                              ImGui::GetColorU32(ImGuiCol_CheckMark),
+                                              2.0f);
+        }
+
+        return changed;
+      }
+
+      /**
+       * Widens a value range so a curve never touches the edge of the plot and a flat curve still has
+       * a band to sit in.
+       * @param low Smallest value of the range, widened in place.
+       * @param high Largest value of the range, widened in place.
+       */
+      void PadValueRange(float& low, float& high)
+      {
+        if (high - low < g_curveMinRange)
+        {
+          const float mid = (high + low) * 0.5f;
+          low             = mid - g_curveMinRange * 0.5f;
+          high            = mid + g_curveMinRange * 0.5f;
+        }
+
+        const float pad  = (high - low) * g_curveRangePad;
+        low             -= pad;
+        high            += pad;
+      }
     } // namespace
 
     // DopeSheetView
@@ -297,8 +375,11 @@ namespace ToolKit
 
       m_clip = anim;
 
-      // A selection or a drag from the previous clip does not belong to the new one.
+      // A selection or a drag from the previous clip does not belong to the new one, and neither do
+      // the check boxes of the curve view: tracks are named per clip, so what was plotted is gone.
       ClearSelection();
+      m_curveStates.clear();
+      m_curveScrollY = 0.0f;
 
       m_trackEntities.clear();
       m_entityTracks.clear();
@@ -2129,10 +2210,24 @@ namespace ToolKit
       }
       UI::HelpMarker("DopeSheetCurveView",
                      "Alternates the sheet area between the key lanes and a read only plot of the "
-                     "translation, rotation and scale curves of one track. The pose is sampled "
-                     "through the engine's own interpolation, so a Stepped, Smooth or Flat key shows "
-                     "in the shape of the curve. The plotted track is picked in the name column; the "
-                     "curves cannot be edited here.");
+                     "translation, rotation and scale curves. The name column is a tree: the box left of "
+                     "an object plots its three transforms and the arrow unfolds them, so a single "
+                     "translation, rotation or scale curve is plotted by its own box. Everything that is "
+                     "checked is drawn in the same area and overlaid, and the pose is sampled through the "
+                     "engine's own interpolation, so a Stepped, Smooth or Flat key shows in the shape of "
+                     "the curve. The curves cannot be edited here.");
+
+      // The curve view maps every plotted group onto the full height of its own range by default,
+      // which is what lets translation, rotation and scale be read together.
+      ImGui::SameLine();
+      ImGui::BeginDisabled(!m_curveView);
+      ImGui::Checkbox("Normalize", &m_curveNormalize);
+      ImGui::EndDisabled();
+      UI::HelpMarker("DopeSheetCurveNormalize",
+                     "On, every checked transform is plotted against its own value range, so lengths, "
+                     "degrees and scale factors all use the full height of the plot. Off, the plotted "
+                     "curves share one range and the axis is labelled with it, which is what comparing "
+                     "their values needs. The legend always shows the range a group is mapped to.");
 
       // What the clip currently addresses in the scene. Tracks that resolve to nothing are listed in
       // the sheet, they just never drive anything. Parameter tracks count when the id still names a
@@ -2949,30 +3044,6 @@ namespace ToolKit
     // Curve view
     //////////////////////////////////////////
 
-    String DopeSheetView::CurveTrackName() const
-    {
-      if (m_clip == nullptr || m_clip->m_keys.empty())
-      {
-        return "";
-      }
-
-      // The picked track wins, then the track of the primary selected key when it is a transform
-      // track, and the first track of the clip otherwise.
-      if (m_clip->m_keys.Find(m_curveTrack) != nullptr)
-      {
-        return m_curveTrack;
-      }
-
-      const KeyRef* selected = PrimarySelection();
-
-      if (selected != nullptr && !selected->m_param && m_clip->m_keys.Find(selected->m_track) != nullptr)
-      {
-        return selected->m_track;
-      }
-
-      return m_clip->m_keys[0].first;
-    }
-
     void DopeSheetView::HandleTimelineWheel(float laneLeft)
     {
       ImGuiIO& io = ImGui::GetIO();
@@ -3002,85 +3073,147 @@ namespace ToolKit
       const ImVec2 origin    = ImGui::GetCursorScreenPos();
       const ImVec2 avail     = ImGui::GetContentRegionAvail();
       const float viewHeight = avail.y;
-      const float bandRight  = laneLeft + laneWidth;
+      const float areaRight  = laneLeft + laneWidth;
+      const float areaBottom = origin.y + viewHeight;
+
+      // Plain wheel scrolls the rows, shift pans and ctrl zooms the timeline, the same gestures the
+      // lane view answers to, so switching the view never changes how the wheel feels. Scrolling up
+      // stops at the first row here; the last one is clamped once the rows are laid out.
+      if (ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) && io.MouseWheel != 0.0f && !io.KeyCtrl &&
+          !io.KeyShift)
+      {
+        m_curveScrollY = glm::max(0.0f, m_curveScrollY - io.MouseWheel * g_rowHeight * g_scrollWheelRows);
+      }
 
       HandleTimelineWheel(laneLeft);
       ClampScroll(laneWidth);
 
-      // The two columns are clipped apart. A panned curve belongs to the lane area, it must not draw
-      // over the name column, and the ruler keeps its ticks out of the column the same way, by
-      // skipping the ones that land left of it.
-      ImGui::PushClipRect(origin, ImVec2(laneLeft, origin.y + viewHeight), true);
-
       const ImU32 trackColumnTint = ImGui::GetColorU32(ImGuiCol_Text, g_trackColumnTint);
       const ImU32 columnLine      = ImGui::GetColorU32(ImGuiCol_Text, g_columnLineTint);
-      const ImU32 bandFill        = ImGui::GetColorU32(ImGuiCol_FrameBg, 0.18f);
-      const ImU32 bandEdge        = ImGui::GetColorU32(ImGuiCol_Text, 0.10f);
-      const ImU32 zeroLine        = ImGui::GetColorU32(ImGuiCol_Text, 0.22f);
-      const ImU32 trackPick       = ImGui::GetColorU32(ImGuiCol_Header, 0.55f);
       const ImU32 labelColor      = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+      const ImU32 textColor       = ImGui::GetColorU32(ImGuiCol_Text);
       const ImU32 cursorColor     = ImGui::GetColorU32(ImVec4(g_selectHighLightPrimaryColor));
       const ImU32 outOfRange      = ImGui::GetColorU32(g_outOfRangeVeil);
+      const ImU32 plotFill        = ImGui::GetColorU32(ImGuiCol_FrameBg, 0.18f);
+      const ImU32 gridColor       = ImGui::GetColorU32(ImGuiCol_Text, 0.10f);
+      const ImU32 zeroColor       = ImGui::GetColorU32(ImGuiCol_Text, 0.24f);
+      const ImU32 plotBorder      = ImGui::GetColorU32(ImGuiCol_Text, 0.12f);
+      const ImU32 legendFill      = ImGui::GetColorU32(ImGuiCol_WindowBg, 0.78f);
 
-      dl->AddRectFilled(origin, ImVec2(laneLeft, origin.y + viewHeight), trackColumnTint);
+      dl->AddRectFilled(origin, ImVec2(laneLeft, areaBottom), trackColumnTint);
 
-      // The name column lists the transform tracks, the curve view plots one of them at a time, so
-      // the column doubles as the picker.
-      String plotted       = CurveTrackName();
-      const int trackCount = (int) m_clip->m_keys.size();
+      // Name column: one tree row per transform track, its group rows under it. The rows scroll with
+      // the wheel like the lane view's do, and only the ones inside the area are submitted as
+      // widgets, so a long clip does not pay a hit area for every row it can not show.
+      const int trackCount     = m_clip == nullptr ? 0 : (int) m_clip->m_keys.size();
+      const float lineHeight   = ImGui::GetTextLineHeight();
+      const float widgetOffset = (g_rowHeight - ImGui::GetFrameHeight()) * 0.5f;
+      float contentHeight      = 0.0f;
 
-      for (int row = 0; row < trackCount; row++)
+      ImGui::PushClipRect(origin, ImVec2(laneLeft, areaBottom), true);
+
+      if (trackCount == 0)
       {
-        const String& trackName = m_clip->m_keys[row].first;
-        const float rowY        = origin.y + row * g_rowHeight;
+        dl->AddText(ImVec2(origin.x + g_curveLabelInset, origin.y + g_curveLabelInset),
+                    labelColor,
+                    "The clip has no transform track.");
+      }
 
-        if (rowY > origin.y + viewHeight)
+      float rowY = origin.y - m_curveScrollY;
+
+      for (int track = 0; track < trackCount; track++)
+      {
+        const String& trackName = m_clip->m_keys[track].first;
+        CurveTrackState& state  = m_curveStates[trackName];
+
+        int checkedGroups       = 0;
+        for (int group = 0; group < CurveGroup_Count; group++)
         {
-          break;
+          checkedGroups += state.m_groups[group] ? 1 : 0;
         }
 
-        ImGui::PushID(row);
-        ImGui::SetCursorScreenPos(ImVec2(origin.x, rowY));
-        ImGui::InvisibleButton("##dopeSheetCurveTrack", ImVec2(m_nameColumnWidth, g_rowHeight));
-        const bool trackHovered = ImGui::IsItemHovered();
-        if (ImGui::IsItemClicked())
+        // The track name scopes the ids of its rows, so the group rows of two tracks stay apart.
+        ImGui::PushID(trackName.c_str());
+
+        if (rowY + g_rowHeight > origin.y && rowY < areaBottom)
         {
-          m_curveTrack = trackName;
-          plotted      = trackName;
+          ImGui::SetCursorScreenPos(ImVec2(origin.x + g_curveLabelInset, rowY + widgetOffset));
+
+          // The box stands for the whole track: it plots the three groups, and it reads as a dash
+          // while only some of them are plotted.
+          bool allPlotted = checkedGroups == CurveGroup_Count;
+          if (PartialCheckbox("##curveTrackCheck", &allPlotted, checkedGroups > 0 && !allPlotted))
+          {
+            for (int group = 0; group < CurveGroup_Count; group++)
+            {
+              state.m_groups[group] = allPlotted;
+            }
+          }
+
+          ImGui::SameLine();
+
+          // Clicking the name unfolds the group rows, the box is the plotting gesture. SpanLabelWidth
+          // keeps both the hover frame and the hit area on the name, the row must not answer a click
+          // that was meant for the plot.
+          ImGui::SetNextItemOpen(state.m_expanded, ImGuiCond_Always);
+
+          const bool resolved = EntityForTrack(trackName) != nullptr;
+          ImGui::PushStyleColor(ImGuiCol_Text, resolved ? textColor : labelColor);
+          ImGui::TreeNodeEx("##curveTrackNode",
+                            ImGuiTreeNodeFlags_NoTreePushOnOpen | ImGuiTreeNodeFlags_SpanLabelWidth,
+                            "%s",
+                            trackName.c_str());
+          ImGui::PopStyleColor();
+
+          if (ImGui::IsItemToggledOpen())
+          {
+            state.m_expanded = !state.m_expanded;
+          }
         }
+
+        rowY          += g_rowHeight;
+        contentHeight += g_rowHeight;
+
+        if (state.m_expanded)
+        {
+          for (int group = 0; group < CurveGroup_Count; group++)
+          {
+            if (rowY + g_rowHeight > origin.y && rowY < areaBottom)
+            {
+              ImGui::PushID(group);
+              ImGui::SetCursorScreenPos(ImVec2(origin.x + g_curveLabelInset + g_curveTreeIndent, rowY + widgetOffset));
+
+              // The check box carries its own label, so a click on the text plots the group too, and
+              // the item stops at the end of the name instead of reaching into the plot.
+              ImGui::PushStyleColor(ImGuiCol_Text, state.m_groups[group] ? textColor : labelColor);
+              ImGui::Checkbox(g_curveGroupNames[group], &state.m_groups[group]);
+              ImGui::PopStyleColor();
+
+              ImGui::PopID();
+            }
+
+            rowY          += g_rowHeight;
+            contentHeight += g_rowHeight;
+          }
+        }
+
         ImGui::PopID();
-
-        const bool isPlotted = trackName == plotted;
-        if (isPlotted)
-        {
-          dl->AddRectFilled(ImVec2(origin.x, rowY),
-                            ImVec2(origin.x + m_nameColumnWidth, rowY + g_rowHeight),
-                            trackPick);
-        }
-        else if (trackHovered)
-        {
-          dl->AddRectFilled(ImVec2(origin.x, rowY),
-                            ImVec2(origin.x + m_nameColumnWidth, rowY + g_rowHeight),
-                            ImGui::GetColorU32(ImGuiCol_HeaderHovered, 0.35f));
-        }
-
-        dl->AddText(ImVec2(origin.x + g_curveLabelInset,
-                           rowY + (g_rowHeight - ImGui::GetTextLineHeight()) * 0.5f),
-                    isPlotted ? ImGui::GetColorU32(ImGuiCol_Text) : labelColor,
-                    trackName.c_str());
       }
 
       ImGui::PopClipRect();
 
-      // The divider sits on the boundary of the two clips, so it is drawn once the column clip is
-      // gone and reads on top of both.
-      dl->AddLine(ImVec2(laneLeft, origin.y), ImVec2(laneLeft, origin.y + viewHeight), columnLine);
+      // The divider belongs to both columns, so it is drawn once the column clip is gone and reads on
+      // top of both.
+      dl->AddLine(ImVec2(laneLeft, origin.y), ImVec2(laneLeft, areaBottom), columnLine);
+
+      // The rows decide how far the wheel may scroll them, the plot never scrolls.
+      m_curveScrollY = glm::clamp(m_curveScrollY, 0.0f, glm::max(0.0f, contentHeight - viewHeight));
 
       // Scrub area: the curve view has no keys to pick, so the lane area only moves the playhead. The
       // height follows the available region, which can be zero while the sheet is squeezed.
       ImGui::SetCursorScreenPos(ImVec2(laneLeft, origin.y));
       ImGui::InvisibleButton("##dopeSheetCurveScrub",
-                             ImVec2(laneWidth, glm::max(g_minHitSize, viewHeight)));
+                             ImVec2(glm::max(g_minHitSize, laneWidth), glm::max(g_minHitSize, viewHeight)));
 
       const bool areaHovered = ImGui::IsItemHovered();
       const bool areaActive  = ImGui::IsItemActive();
@@ -3089,27 +3222,79 @@ namespace ToolKit
         SetFrame(XToFrame(io.MousePos.x, laneLeft), true);
       }
 
-      const KeyArray* keys = m_clip->m_keys.Find(plotted);
-      if (keys == nullptr || keys->size() < 2)
+      // A track is sampled once and its groups share the samples, so plotting all three costs one
+      // walk over the keys. The samples are owned here because the plotted groups point into them.
+      struct PlottedTrack
       {
-        ImGui::PushClipRect(ImVec2(laneLeft, origin.y), ImVec2(bandRight, origin.y + viewHeight), true);
-        dl->AddText(ImVec2(laneLeft + g_curveLabelInset, origin.y + g_curveLabelInset),
-                    labelColor,
-                    "Two keys are needed to plot a curve.");
-        ImGui::PopClipRect();
-        return;
+        const String* m_name   = nullptr;             //!< Name of the track, for the labels.
+        const KeyArray* m_keys = nullptr;             //!< Keys the track samples.
+        unsigned m_groups      = 0;                   //!< A bit per CurveGroup that is plotted.
+        std::vector<Vec3> m_values[CurveGroup_Count]; //!< Sampled values, one entry per sample frame.
+      };
+
+      std::vector<PlottedTrack> tracks;
+      tracks.reserve((size_t) trackCount);
+
+      bool haveRange = false;
+      int firstFrame = 0;
+      int lastFrame  = 0;
+
+      for (int track = 0; track < trackCount; track++)
+      {
+        const String& trackName      = m_clip->m_keys[track].first;
+        const KeyArray* keys         = m_clip->m_keys.Find(trackName);
+        const CurveTrackState& state = m_curveStates[trackName];
+
+        PlottedTrack plotted;
+        plotted.m_name = &trackName;
+        plotted.m_keys = keys;
+
+        for (int group = 0; group < CurveGroup_Count; group++)
+        {
+          if (state.m_groups[group])
+          {
+            plotted.m_groups |= 1u << group;
+          }
+        }
+
+        if (plotted.m_groups == 0 || keys == nullptr || keys->empty())
+        {
+          continue;
+        }
+
+        // Every plotted track widens the plot to its own key span, so a curve that starts later
+        // starts later instead of being cut at the first key of another track.
+        const int lowFrame  = keys->front().m_frame;
+        const int highFrame = keys->back().m_frame;
+
+        if (haveRange)
+        {
+          firstFrame = glm::min(firstFrame, lowFrame);
+          lastFrame  = glm::max(lastFrame, highFrame);
+        }
+        else
+        {
+          firstFrame = lowFrame;
+          lastFrame  = highFrame;
+          haveRange  = true;
+        }
+
+        tracks.push_back(plotted);
       }
 
-      // The keys are ascending, so the first and the last one bound the plot.
-      const int firstFrame = keys->front().m_frame;
-      const int lastFrame  = keys->back().m_frame;
-      const float fps      = glm::max(1.0f, m_clip->m_fps);
+      // A clip whose plotted tracks all sit on one frame still gets a frame wide plot to draw in.
+      if (lastFrame <= firstFrame)
+      {
+        lastFrame = firstFrame + 1;
+      }
 
-      // One sample per frame is too coarse to draw a curve: a cubic segment bends inside a frame, and at
-      // the zoomed in end a frame is dozens of pixels wide, which is what makes the plot read as a chain
-      // of straight pieces. The step therefore follows the zoom, aiming at one sample every few pixels,
-      // and the total is capped so a long clip cannot ask for an unbounded number of samples.
+      const float fps    = glm::max(1.0f, m_clip->m_fps);
       const float frames = (float) (lastFrame - firstFrame);
+
+      // One sample per frame is too coarse to draw a curve: a cubic segment bends inside a frame, and
+      // at the zoomed in end a frame is dozens of pixels wide, which is what makes a plot read as a
+      // chain of straight pieces. The step therefore follows the zoom, aiming at one sample every few
+      // pixels, and the total is capped so a long clip stays bounded.
       float step         = glm::max(g_curveMinStep, g_curveSamplePixels / glm::max(1.0f, m_pxPerFrame));
       step               = glm::max(step, frames / (float) g_curveMaxSamples);
 
@@ -3121,119 +3306,188 @@ namespace ToolKit
         sampleFrames.push_back(frame);
       }
 
-      // The last key is plotted exactly on its frame, so the end of a held or eased segment stays where
-      // the animator put it.
+      // The last key is plotted exactly on its frame, so the end of a held or eased segment stays
+      // where the animator put it.
       sampleFrames.push_back((float) lastFrame);
 
       const int sampleCount = (int) sampleFrames.size();
 
       // Sampling the interpolated pose is exactly what the preview plays, so the plot shows what the
       // key modes do: Stepped holds the value, Smooth blends through the key, Flat eases into it.
-      std::vector<Vec3> samples[g_curveBandCount];
-      for (std::vector<Vec3>& channel : samples)
+      for (PlottedTrack& plotted : tracks)
       {
-        channel.resize(sampleCount);
+        for (int group = 0; group < CurveGroup_Count; group++)
+        {
+          if ((plotted.m_groups & (1u << group)) != 0)
+          {
+            plotted.m_values[group].resize(sampleCount);
+          }
+        }
+
+        for (int i = 0; i < sampleCount; i++)
+        {
+          Vec3 pos(0.0f);
+          Vec3 scl(1.0f);
+          Quaternion rot(1.0f, 0.0f, 0.0f, 0.0f);
+          SampleTrack(*plotted.m_keys, sampleFrames[i] / fps, pos, rot, scl);
+
+          if ((plotted.m_groups & (1u << CurveGroup_Translation)) != 0)
+          {
+            plotted.m_values[CurveGroup_Translation][i] = pos;
+          }
+
+          if ((plotted.m_groups & (1u << CurveGroup_Rotation)) != 0)
+          {
+            // Euler degrees: a rotation curve has to be readable and a quaternion component is not.
+            // The readout is kept continuous along the track, see ContinuousEuler.
+            std::vector<Vec3>& rotation = plotted.m_values[CurveGroup_Rotation];
+            rotation[i]                 = ContinuousEuler(rot, i > 0 ? &rotation[i - 1] : nullptr);
+          }
+
+          if ((plotted.m_groups & (1u << CurveGroup_Scale)) != 0)
+          {
+            plotted.m_values[CurveGroup_Scale][i] = scl;
+          }
+        }
       }
 
-      for (int i = 0; i < sampleCount; i++)
+      // One plot per checked group: the three axis curves of a group share a value range and take
+      // three colours in a row from the palette, which is what the legend points at.
+      struct GroupPlot
       {
-        Vec3 pos(0.0f);
-        Vec3 scl(1.0f);
-        Quaternion rot(1.0f, 0.0f, 0.0f, 0.0f);
-        SampleTrack(*keys, sampleFrames[i] / fps, pos, rot, scl);
+        const PlottedTrack* m_track = nullptr;
+        int m_group                 = 0;
+        float m_low                 = 0.0f;
+        float m_high                = 0.0f;
+        ImU32 m_colors[3]           = {0, 0, 0};
+      };
 
-        samples[0][i] = pos;
-        // Euler degrees: a rotation curve has to be readable and a quaternion component is not. The
-        // readout is kept continuous along the track, see ContinuousEuler.
-        samples[1][i] = ContinuousEuler(rot, i > 0 ? &samples[1][i - 1] : nullptr);
-        samples[2][i] = scl;
+      std::vector<GroupPlot> plots;
+      plots.reserve(tracks.size() * CurveGroup_Count);
+
+      size_t colorIndex = 0;
+
+      for (const PlottedTrack& plotted : tracks)
+      {
+        for (int group = 0; group < CurveGroup_Count; group++)
+        {
+          const std::vector<Vec3>& values = plotted.m_values[group];
+          if ((plotted.m_groups & (1u << group)) == 0 || values.empty())
+          {
+            continue;
+          }
+
+          GroupPlot plot;
+          plot.m_track = &plotted;
+          plot.m_group = group;
+          plot.m_low   = glm::min(glm::min(values[0].x, values[0].y), values[0].z);
+          plot.m_high  = glm::max(glm::max(values[0].x, values[0].y), values[0].z);
+
+          for (const Vec3& value : values)
+          {
+            plot.m_low  = glm::min(plot.m_low, glm::min(value.x, glm::min(value.y, value.z)));
+            plot.m_high = glm::max(plot.m_high, glm::max(value.x, glm::max(value.y, value.z)));
+          }
+
+          PadValueRange(plot.m_low, plot.m_high);
+
+          for (int axis = 0; axis < 3; axis++)
+          {
+            plot.m_colors[axis] = g_curvePalette[colorIndex % g_curvePaletteCount];
+            colorIndex++;
+          }
+
+          plots.push_back(plot);
+        }
       }
 
-      const char* bandNames[g_curveBandCount] = {"Translation", "Rotation (deg)", "Scale"};
-      const char* axisNames[3]                = {"x", "y", "z"};
+      // The range the plot spans. Normalized mode maps every group onto the full height with its own
+      // range, otherwise the plotted groups share one range and the axis is labelled with it.
+      float sharedLow  = 0.0f;
+      float sharedHigh = 0.0f;
 
-      const float bandHeight =
-          glm::max(20.0f, (viewHeight - (g_curveBandCount - 1) * g_curveBandGap) / g_curveBandCount);
+      for (size_t i = 0; i < plots.size(); i++)
+      {
+        sharedLow  = i == 0 ? plots[i].m_low : glm::min(sharedLow, plots[i].m_low);
+        sharedHigh = i == 0 ? plots[i].m_high : glm::max(sharedHigh, plots[i].m_high);
+      }
+
+      const float plotTop    = origin.y + g_curveEdgeInset;
+      const float plotBottom = areaBottom - g_curveEdgeInset;
+      const float plotHeight = glm::max(1.0f, plotBottom - plotTop);
+
+      auto valueToY          = [&](const GroupPlot& plot, float value) -> float
+      {
+        const float low  = m_curveNormalize ? plot.m_low : sharedLow;
+        const float high = m_curveNormalize ? plot.m_high : sharedHigh;
+        const float span = glm::max(0.000001f, high - low);
+        return plotBottom - (value - low) / span * plotHeight;
+      };
 
       // The plot lives in the lane area only: a curve panned past the left edge stops at the name
       // column instead of running over the track names.
-      ImGui::PushClipRect(ImVec2(laneLeft, origin.y), ImVec2(bandRight, origin.y + viewHeight), true);
+      ImGui::PushClipRect(ImVec2(laneLeft, origin.y), ImVec2(areaRight, areaBottom), true);
 
-      for (int band = 0; band < g_curveBandCount; band++)
+      dl->AddRectFilled(ImVec2(laneLeft, origin.y), ImVec2(areaRight, areaBottom), plotFill);
+
+      // Grid. In shared range mode the lines carry their value, which is what comparing the plotted
+      // groups needs; in normalized mode every group is mapped its own way, so the lines only guide
+      // the eye and the legend carries the ranges.
+      for (int line = 0; line <= g_curveGridLines; line++)
       {
-        const float bandTop    = origin.y + band * (bandHeight + g_curveBandGap);
-        const float bandBottom = bandTop + bandHeight;
+        const float share = (float) line / (float) g_curveGridLines;
+        const float gridY = plotBottom - share * plotHeight;
 
-        // One value range per channel group: translation and scale are lengths, rotation is an angle,
-        // so the groups do not share a scale. The three axes share the range inside a group, which is
-        // what makes x / y / z comparable.
-        Vec3 rangeMin = samples[band][0];
-        Vec3 rangeMax = samples[band][0];
-        for (const Vec3& sample : samples[band])
+        dl->AddLine(ImVec2(laneLeft, gridY), ImVec2(areaRight, gridY), gridColor);
+
+        if (!m_curveNormalize)
         {
-          rangeMin = glm::min(rangeMin, sample);
-          rangeMax = glm::max(rangeMax, sample);
+          const String valueLabel = Format("%.4g", sharedLow + share * (sharedHigh - sharedLow));
+          dl->AddText(ImVec2(laneLeft + g_curveLabelInset, glm::clamp(gridY, origin.y, areaBottom - lineHeight)),
+                      labelColor,
+                      valueLabel.c_str());
+        }
+      }
+
+      const int tickStep     = TickStep(m_pxPerFrame);
+      const float leftFrame  = m_scrollX / m_pxPerFrame;
+      const float rightFrame = leftFrame + laneWidth / m_pxPerFrame;
+      const int firstTick    = (int) std::floor(leftFrame / tickStep) * tickStep;
+      const int lastTick     = (int) std::ceil(rightFrame / tickStep) * tickStep;
+
+      for (int frame = firstTick; frame <= lastTick; frame += tickStep)
+      {
+        const float tickX = FrameToX(frame, laneLeft);
+        if (tickX < laneLeft || tickX > areaRight)
+        {
+          continue;
         }
 
-        float low  = glm::min(glm::min(rangeMin.x, rangeMin.y), rangeMin.z);
-        float high = glm::max(glm::max(rangeMax.x, rangeMax.y), rangeMax.z);
+        dl->AddLine(ImVec2(tickX, origin.y), ImVec2(tickX, areaBottom), gridColor);
+      }
 
-        // A flat curve still gets a band to sit in, and the range is padded so a curve never touches
-        // the edge of its band.
-        if (high - low < g_curveMinRange)
-        {
-          const float mid = (high + low) * 0.5f;
-          low             = mid - g_curveMinRange * 0.5f;
-          high            = mid + g_curveMinRange * 0.5f;
-        }
+      if (!m_curveNormalize && sharedLow < 0.0f && sharedHigh > 0.0f)
+      {
+        const float zeroY = plotBottom - (0.0f - sharedLow) / (sharedHigh - sharedLow) * plotHeight;
+        dl->AddLine(ImVec2(laneLeft, zeroY), ImVec2(areaRight, zeroY), zeroColor);
+      }
 
-        const float pad = (high - low) * g_curveRangePad;
-        low -= pad;
-        high += pad;
-
-        const float range = high - low;
-        auto valueToY = [&](float value) -> float { return bandBottom - (value - low) / range * bandHeight; };
-
-        dl->AddRectFilled(ImVec2(laneLeft, bandTop), ImVec2(bandRight, bandBottom), bandFill);
-        dl->AddLine(ImVec2(laneLeft, bandTop), ImVec2(bandRight, bandTop), bandEdge);
-        dl->AddLine(ImVec2(laneLeft, bandBottom), ImVec2(bandRight, bandBottom), bandEdge);
-
-        if (low < 0.0f && high > 0.0f)
-        {
-          const float zeroY = valueToY(0.0f);
-          dl->AddLine(ImVec2(laneLeft, zeroY), ImVec2(bandRight, zeroY), zeroLine);
-        }
-
+      // The curves, every plotted group of every checked track in the same area.
+      for (const GroupPlot& plot : plots)
+      {
         for (int axis = 0; axis < 3; axis++)
         {
-          std::vector<ImVec2> points;
-          points.reserve(sampleCount);
+          const std::vector<Vec3>& values = plot.m_track->m_values[plot.m_group];
 
-          for (int i = 0; i < sampleCount; i++)
+          std::vector<ImVec2> points;
+          points.reserve(values.size());
+
+          for (size_t i = 0; i < values.size(); i++)
           {
-            points.push_back(ImVec2(FrameToX(sampleFrames[i], laneLeft), valueToY(samples[band][i][axis])));
+            points.push_back(ImVec2(FrameToX(sampleFrames[i], laneLeft), valueToY(plot, values[i][axis])));
           }
 
-          dl->AddPolyline(points.data(), (int) points.size(), g_curveAxisColors[axis], 0, g_curveThickness);
-        }
-
-        const String rangeLabel = Format("%.3g .. %.3g", low, high);
-        dl->AddText(ImVec2(laneLeft + g_curveLabelInset, bandTop + 2.0f), labelColor, bandNames[band]);
-
-        const float rangeLabelWidth = ImGui::CalcTextSize(rangeLabel.c_str()).x;
-        dl->AddText(ImVec2(bandRight - g_curveLabelInset - rangeLabelWidth, bandTop + 2.0f),
-                    labelColor,
-                    rangeLabel.c_str());
-
-        // Axis legend, right aligned on the bottom edge of the band.
-        float legendX = bandRight - g_curveLabelInset;
-        for (int axis = 2; axis >= 0; axis--)
-        {
-          legendX -= ImGui::CalcTextSize(axisNames[axis]).x;
-          dl->AddText(ImVec2(legendX, bandBottom - ImGui::GetTextLineHeight() - 2.0f),
-                      g_curveAxisColors[axis],
-                      axisNames[axis]);
-          legendX -= g_curveLabelInset;
+          dl->AddPolyline(points.data(), (int) points.size(), plot.m_colors[axis], 0, g_curveThickness);
         }
       }
 
@@ -3241,48 +3495,147 @@ namespace ToolKit
       const float endX      = FrameToX(m_endFrame, laneLeft);
       const float playheadX = FrameToX(m_frame, laneLeft);
 
-      if (endX < bandRight)
+      if (endX < areaRight)
       {
-        dl->AddRectFilled(ImVec2(glm::max(endX, laneLeft), origin.y),
-                          ImVec2(bandRight, origin.y + viewHeight),
-                          outOfRange);
+        dl->AddRectFilled(ImVec2(glm::max(endX, laneLeft), origin.y), ImVec2(areaRight, areaBottom), outOfRange);
       }
 
-      if (endX > laneLeft && endX < bandRight)
+      if (endX > laneLeft && endX < areaRight)
       {
-        dl->AddLine(ImVec2(endX, origin.y), ImVec2(endX, origin.y + viewHeight), cursorColor, 1.0f);
+        dl->AddLine(ImVec2(endX, origin.y), ImVec2(endX, areaBottom), cursorColor, 1.0f);
       }
 
-      if (playheadX >= laneLeft && playheadX <= bandRight)
+      if (playheadX >= laneLeft && playheadX <= areaRight)
       {
-        dl->AddLine(ImVec2(playheadX, origin.y), ImVec2(playheadX, origin.y + viewHeight), cursorColor, 1.0f);
+        dl->AddLine(ImVec2(playheadX, origin.y), ImVec2(playheadX, areaBottom), cursorColor, 1.0f);
+      }
+
+      if (plots.empty())
+      {
+        const char* hint      = "Check an object on the left to plot its curves.";
+        const ImVec2 hintSize = ImGui::CalcTextSize(hint);
+
+        dl->AddText(ImVec2(laneLeft + glm::max(g_curveLabelInset, (laneWidth - hintSize.x) * 0.5f),
+                           origin.y + glm::max(g_curveLabelInset, (viewHeight - hintSize.y) * 0.5f)),
+                    labelColor,
+                    hint);
+      }
+
+      // Legend, in the top right corner of the plot: the track and group a colour belongs to, with
+      // the value range the group is mapped to, which is the only way to read a value while every
+      // group is normalized. It sits on a frame of its own so a curve behind it does not eat the text.
+      struct LegendLine
+      {
+        String m_head;
+        String m_axis[3];
+        String m_range;
+        ImU32 m_colors[3] = {0, 0, 0};
+        float m_width     = 0.0f;
+      };
+
+      std::vector<LegendLine> legend;
+      float legendWidth = 0.0f;
+
+      for (const GroupPlot& plot : plots)
+      {
+        if ((int) legend.size() >= g_curveMaxLegendRows)
+        {
+          break;
+        }
+
+        LegendLine line;
+        line.m_head  = Format("%s  %s", plot.m_track->m_name->c_str(), g_curveGroupShort[plot.m_group]);
+        line.m_range = Format("%.4g .. %.4g", plot.m_low, plot.m_high);
+
+        line.m_width = ImGui::CalcTextSize(line.m_head.c_str()).x + ImGui::CalcTextSize(line.m_range.c_str()).x;
+
+        for (int axis = 0; axis < 3; axis++)
+        {
+          line.m_axis[axis]    = Format("%s.%s", g_curveGroupShort[plot.m_group], g_curveAxisNames[axis]);
+          line.m_colors[axis]  = plot.m_colors[axis];
+          line.m_width        += ImGui::CalcTextSize(line.m_axis[axis].c_str()).x + g_curveLegendGap;
+        }
+
+        // A line that does not fit the plot is dropped rather than clipped, and so is everything
+        // after it, so the box never runs under the ruler.
+        if (line.m_width > laneWidth - 4.0f * g_curveLabelInset)
+        {
+          break;
+        }
+
+        legendWidth = glm::max(legendWidth, line.m_width);
+        legend.push_back(line);
+      }
+
+      if (!legend.empty())
+      {
+        const float legendHeight = (float) legend.size() * lineHeight + 2.0f * g_curveLegendPad.y;
+
+        const ImVec2 boxMin(areaRight - legendWidth - 2.0f * g_curveLegendPad.x - g_curveLabelInset,
+                            origin.y + g_curveLabelInset);
+        const ImVec2 boxMax(areaRight - g_curveLabelInset, boxMin.y + legendHeight);
+
+        dl->AddRectFilled(boxMin, boxMax, legendFill, g_curveLegendRound);
+        dl->AddRect(boxMin, boxMax, plotBorder, g_curveLegendRound);
+
+        float legendY = boxMin.y + g_curveLegendPad.y;
+
+        for (const LegendLine& line : legend)
+        {
+          float legendX = boxMin.x + g_curveLegendPad.x;
+
+          dl->AddText(ImVec2(legendX, legendY), textColor, line.m_head.c_str());
+          legendX += ImGui::CalcTextSize(line.m_head.c_str()).x + g_curveLegendGap;
+
+          for (int axis = 0; axis < 3; axis++)
+          {
+            dl->AddText(ImVec2(legendX, legendY), line.m_colors[axis], line.m_axis[axis].c_str());
+            legendX += ImGui::CalcTextSize(line.m_axis[axis].c_str()).x + g_curveLegendGap;
+          }
+
+          dl->AddText(ImVec2(legendX, legendY), labelColor, line.m_range.c_str());
+
+          legendY += lineHeight;
+        }
       }
 
       ImGui::PopClipRect();
 
-      // Hover readout: the sampled pose on the frame under the cursor, the curve form of the lane
-      // tooltip.
-      if (areaHovered && !areaActive)
+      // Hover readout: the sampled value of every plotted curve on the frame under the cursor.
+      if (areaHovered && !areaActive && !plots.empty())
       {
         const int frame = XToFrame(io.MousePos.x, laneLeft);
         if (frame >= firstFrame && frame <= lastFrame)
         {
-          // The samples sit on a fractional step, so the frame under the pointer is read from the sample
-          // nearest to it: the readout then matches the curve that is drawn.
-          const int i = glm::clamp((int) glm::round(((float) frame - (float) firstFrame) / step),
-                                   0,
-                                   sampleCount - 1);
-          ImGui::SetTooltip("frame %d\nT  %.3f  %.3f  %.3f\nR  %.1f  %.1f  %.1f\nS  %.3f  %.3f  %.3f",
-                            frame,
-                            samples[0][i].x,
-                            samples[0][i].y,
-                            samples[0][i].z,
-                            samples[1][i].x,
-                            samples[1][i].y,
-                            samples[1][i].z,
-                            samples[2][i].x,
-                            samples[2][i].y,
-                            samples[2][i].z);
+          // The samples sit on a fractional step, so the frame under the pointer is read from the
+          // sample nearest to it: the readout then matches the curve that is drawn.
+          const int sample =
+              glm::clamp((int) glm::round(((float) frame - (float) firstFrame) / step), 0, sampleCount - 1);
+
+          ImGui::BeginTooltip();
+          ImGui::Text("frame %d  (%.3f s)", frame, frame / fps);
+
+          for (int plotIndx = 0; plotIndx < (int) plots.size(); plotIndx++)
+          {
+            if (plotIndx >= g_curveMaxReadoutRows)
+            {
+              ImGui::TextDisabled("...");
+              break;
+            }
+
+            const GroupPlot& plot = plots[plotIndx];
+            const Vec3& value     = plot.m_track->m_values[plot.m_group][sample];
+
+            ImGui::TextDisabled("%s  %s", plot.m_track->m_name->c_str(), g_curveGroupShort[plot.m_group]);
+
+            for (int axis = 0; axis < 3; axis++)
+            {
+              ImGui::SameLine();
+              ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(plot.m_colors[axis]), "%.4g", value[axis]);
+            }
+          }
+
+          ImGui::EndTooltip();
         }
       }
     }

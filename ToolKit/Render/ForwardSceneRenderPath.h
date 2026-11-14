@@ -13,6 +13,7 @@
 #include "EngineSettings.h"
 #include "ForwardPass.h"
 #include "ForwardPreProcessPass.h"
+#include "VelocityPass.h"
 #include "FullQuadPass.h"
 #include "GammaTonemapFxaaPass.h"
 #include "Pass.h"
@@ -66,6 +67,17 @@ namespace ToolKit
     void PreRender(Renderer* renderer) override;
     void PostRender(Renderer* renderer) override;
 
+    /**
+     * The framebuffer holding the frame's color when this path returns.
+     *
+     * The path does not always write the frame it is given. Screen space reflections composite into a
+     * target of their own, and everything behind them - depth of field, the tone curve - follows that
+     * target, so a host that composites the frame itself reads this instead of the viewport framebuffer,
+     * which still holds the shaded frame from before the reflections. Null before the first frame, when
+     * no pass has decided yet where the color lives.
+     */
+    FramebufferPtr GetOutputFramebuffer() const { return m_frameColorFb; }
+
    protected:
     void SetPassParams(Renderer* renderer);
     bool RequiresForwardPreProcessPass();
@@ -87,11 +99,19 @@ namespace ToolKit
     CubeMapPassPtr m_skyPass                         = nullptr;
     SSAOPassPtr m_ssaoPass                           = nullptr;
     SsrPassPtr m_ssrPass                             = nullptr;
+    VelocityPassPtr m_velocityPass                   = nullptr;
     TaaPassPtr m_taaPass                             = nullptr;
     BloomPassPtr m_bloomPass                         = nullptr;
     DoFPassPtr m_dofPass                             = nullptr;
     GammaTonemapFxaaPassPtr m_gammaTonemapFxaaPass   = nullptr;
     FramebufferPtr m_resolvedFramebuffer             = nullptr;
+
+    /**
+     * The target the frame's color is in at this point of the frame, and the one every color pass behind
+     * the reflections writes: the resolved frame by default, the reflections' own composite target while
+     * they are enabled. See GetOutputFramebuffer.
+     */
+    FramebufferPtr m_frameColorFb                    = nullptr;
 
    protected:
     /**
@@ -183,7 +203,7 @@ namespace ToolKit
     // so a light or a mesh has to stay hidden for a few frames before it is dropped, and a camera that
     // moves invalidates it.
 
-    /** Reduces the depth buffer to one value per block and reads it back every few frames. */
+    /** Reduces the depth buffer to one value per block and reads it back once per frame, asynchronously. */
     void BuildDepthGrid(Renderer* renderer);
 
     /**
@@ -219,18 +239,16 @@ namespace ToolKit
     std::vector<OcclusionCandidate> m_occlusionCandidates;
 
     /**
-     * What the grid test needs to project a volume into the frame the grid was reduced from, together with the
-     * direction that frame's depth runs. It travels as one piece: a grid compared against a camera other than the
-     * one it was reduced with would place every block in the wrong spot.
+     * What the grid test needs to project a volume into the frame the grid was reduced from. It travels as one
+     * piece: a grid compared against a camera other than the one it was reduced with would place every block in
+     * the wrong spot.
      */
     struct OcclusionCamera
     {
       Mat4 viewProj      = Mat4(1.0f);
       Mat4 view          = Mat4(1.0f);
       Mat4 projection    = Mat4(1.0f);
-      bool reversedDepth = false;
       float nearClip     = 0.1f;
-      float farClip      = 1000.0f;
       uint64 id          = 0;
     };
 
@@ -267,22 +285,34 @@ namespace ToolKit
      *
      * The grid is reduced in the screen space of the frame that produced it, so a camera that moves between that
      * frame and this one slides the whole picture across the blocks: a block that held a near occluder can end up
-     * under a volume that is in front of nothing. Reprojecting each block with its depth into this frame's view
-     * puts the depths back where their geometry now is, and leaves a block empty wherever the source blocks do not
-     * cover it - which is exactly the region the old frame said nothing about, because whatever used to be there has
-     * moved out of the way. A volume that lands on an empty block cannot be proven hidden.
+     * under a volume that is in front of nothing. Reprojecting each block into this frame's view puts the depths
+     * back where their geometry now is. The block is a square in the frame it was reduced from, and it is splatted
+     * as the quad its four corners make, so the cells it covers are the cells its surface now covers - a point per
+     * block left a gap wherever the grid stretched. A cell no block covers stays empty, which is the region the old
+     * frame said nothing about, because whatever used to be there has moved out of the way. A volume that lands on
+     * an empty block cannot be proven hidden.
      */
     std::vector<float> m_depthGridWarped;
     std::vector<uint8> m_depthGridCovered;
 
-    /** Size of the warped pair above: half the grid, so the warp costs a quarter and a splat covers more blocks per
-     *  write - the disocclusion a camera move leaves behind is far wider than a cell, so it stays a gap either way. */
+    /** Size of the warped pair above: the grid's own size, one cell per block, so the warp cannot lose a block
+     *  to a coarser target. */
     UVec2 m_depthGridWarpSize = UVec2(0);
 
-    /** Per block result of the warp's projection: the cell it lands on, and the distance it landed with. Written by
-     *  the pool, one index per block, and folded into the pair above on the calling thread. */
-    std::vector<int> m_depthGridWarpTarget;
-    std::vector<float> m_depthGridWarpDepth;
+    /**
+     * Per block result of the warp's projection: the cell rectangle the block's own quad covers in the view
+     * being culled, and the distance it landed with. Written by the pool, one entry per block, and folded into
+     * the pair above on the calling thread.
+     */
+    struct DepthGridWarpRect
+    {
+      int x0      = 0;
+      int y0      = 0;
+      int x1      = -1;
+      int y1      = -1;
+      float depth = 0.0f;
+    };
+    std::vector<DepthGridWarpRect> m_depthGridWarpRects;
 
     /** The view the warped grid was built for, so the warp only runs when the view has actually changed. */
     Mat4 m_depthGridWarpView         = Mat4(1.0f);
@@ -292,9 +322,6 @@ namespace ToolKit
 
     /** Bumped every time a read is installed, so the warp can tell a new grid from the one it already warped. */
     uint64 m_depthGridGeneration     = 0;
-
-    /** Counts the warp rebuilds, so the cost is attributable instead of guessed. */
-    uint64 m_depthGridWarpCount      = 0;
 
     /** The view and projection being culled. The grid carries the ones it was reduced with. */
     Mat4 m_occlusionTestView         = Mat4(1.0f);
@@ -329,7 +356,6 @@ namespace ToolKit
       FramebufferPtr target = nullptr;    //!< The target a pending read takes its pixels from.
       UVec2 size          = UVec2(0);     //!< Blocks across and down.
       OcclusionCamera camera;             //!< The view those depths were reduced with.
-      bool linearDepth    = false;        //!< True when the pixels are view space distances.
       bool discard        = false;        //!< Set when the grid was dropped while this read was in flight.
       uint64 issue        = 0;            //!< Read counter, so an older read cannot overwrite a newer grid.
     };
@@ -346,42 +372,34 @@ namespace ToolKit
      */
     void ConsumeDepthGridReads(Renderer* renderer);
 
-    RenderTargetPtr m_depthGridRt                        = nullptr;
-    FramebufferPtr m_depthGridFb                         = nullptr;
-    FullQuadPassPtr m_depthGridQuad                      = nullptr;
-    ShaderPtr m_depthGridShader                          = nullptr;
+    RenderTargetPtr m_depthGridRt   = nullptr;
+    FramebufferPtr m_depthGridFb    = nullptr;
+    FullQuadPassPtr m_depthGridQuad = nullptr;
+    ShaderPtr m_depthGridShader     = nullptr;
 
     /** Holds the single sample copy of a multisampled frame depth, which is what the grid reduces while
-     *  MSAA is on. Built on first use and kept, because the resolve happens every read interval. */
-    FramebufferPtr m_depthResolveFb                      = nullptr;
+     *  MSAA is on. Built on first use and kept, because the resolve happens on every read. */
+    FramebufferPtr m_depthResolveFb = nullptr;
     /** Size and depth format m_depthResolveFb was built for. The attachment is rebuilt when either moves,
      *  which is a viewport resize or a framebuffer that switched between stencil and depth only. */
-    UVec2 m_depthResolveSize                             = UVec2(0);
-    bool m_depthResolveStencil                           = false;
+    UVec2 m_depthResolveSize        = UVec2(0);
+    bool m_depthResolveStencil      = false;
 
     /** Row major max depth per block, as read back from the grid. */
     std::vector<float> m_depthGrid;
     /** Read back pixels of the grid, four floats per block. Kept so the read does not allocate. */
     std::vector<float> m_depthGridScratch;
-    UVec2 m_depthGridSize                                = UVec2(0);
-    bool m_depthGridValid                                = false;
-    uint m_depthGridFrame                                = 0;
+    UVec2 m_depthGridSize = UVec2(0);
+    bool m_depthGridValid = false;
 
-    Mat4 m_occlusionViewProj                             = Mat4(1.0f);
-    Mat4 m_occlusionView                                 = Mat4(1.0f);
-    Mat4 m_occlusionProjection                          = Mat4(1.0f);
-    bool m_occlusionReversedDepth                        = false;
-    float m_occlusionNear                                = 0.1f;
-    float m_occlusionFar                                 = 1000.0f;
-
-    /** True while m_depthGrid holds view space distances out of the pre process pass's G buffer instead of
-     *  depths out of the frame's depth attachment. The two are not comparable, so a change of source drops
-     *  the grid and the streaks. */
-    bool m_occlusionLinearDepth                          = false;
+    Mat4 m_occlusionViewProj   = Mat4(1.0f);
+    Mat4 m_occlusionView       = Mat4(1.0f);
+    Mat4 m_occlusionProjection = Mat4(1.0f);
+    float m_occlusionNear      = 0.1f;
 
     /** Camera the grid in m_depthGrid was rendered with. A grid from another view says nothing about
      *  this one, so culling waits for the grid to catch up after a camera change. */
-    uint64 m_occlusionCameraId                           = 0;
+    uint64 m_occlusionCameraId = 0;
 
     /**
      * The camera the depth in the frame buffer was drawn with. The grid is reduced from that depth at the top
@@ -390,7 +408,7 @@ namespace ToolKit
      * grid read as if it described a view it never saw.
      */
     OcclusionCamera m_depthCamera;
-    bool m_depthCameraValid       = false;
+    bool m_depthCameraValid = false;
 
     /** Whether the previous frame ran temporal anti-aliasing, so a toggle can throw the history away. */
     bool m_taaWasEnabled          = false;
@@ -407,23 +425,17 @@ namespace ToolKit
      *  read is issued legitimately has a grid from an older camera and must not be treated as a switch. */
     uint64 m_lastFrameCameraId = 0;
 
-    /** Set by the frame that changed what is on screen - a moved camera, an entity that moved, a scene
-     *  that was edited - and read by the next one, which then re-reads the grid instead of waiting for
-     *  the read interval: a mesh behind an occluder that just moved away would otherwise stay dropped
-     *  for up to DepthGridReadInterval frames. */
-    bool m_sceneChangedLastFrame                         = false;
-
     /** Last culling decision that was logged, so the log reports changes instead of every frame. */
-    uint64 m_loggedCullCameraId                          = 0;
-    int m_loggedCullCount                                = -1;
-    int m_loggedCulledEntityCount                        = -1;
+    uint64 m_loggedCullCameraId   = 0;
+    int m_loggedCullCount         = -1;
+    int m_loggedCulledEntityCount = -1;
 
     /** Whether the depth buffer the grid reduced was multisampled, as last logged. -1 before the first
      *  read, so the first grid build always says which path it took. */
-    int m_loggedDepthSource                              = -1;
+    int m_loggedDepthSource = -1;
 
     /** Whether the empty grid read was last logged as empty, so the recovery is reported too. */
-    bool m_loggedEmptyGrid                               = false;
+    bool m_loggedEmptyGrid = false;
 
     /** Consecutive frames each light was found hidden behind the grid. */
     std::unordered_map<uint64, int> m_lightOcclusionStreak;

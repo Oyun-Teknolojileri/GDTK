@@ -8,20 +8,23 @@
 #ifndef BLOOM_PASS_DATA
 #define BLOOM_PASS_DATA
 
-// Pass-specific UBO consumed by bloomDownsample.shader and bloomUpsample.shader.
-// Mirrors `BloomPassDataLayout` in Renderer.h byte-for-byte (std140).
+// Pass-specific UBO consumed by bloomGlow.shader and bloomComposite.shader.
+// Mirrors `BloomPassDataLayout` in BloomPass.h byte-for-byte (std140).
 //
 // Fields:
-//   downsampleParams.xy : srcResolution (px, downsample only)
-//   downsampleParams.z  : threshold (downsample only, prefilter pass)
-//   upsampleParams.x    : filterRadius (upsample only)
-//   upsampleParams.y    : intensity    (upsample only)
-//   passIndxAndPad.x    : passIndx (downsample switch: 0=filter, 1=karis, >=2=plain)
+//   params.x     : threshold (glow only)
+//   params.y     : HDR luminance ceiling (glow only)
+//   composite.x  : intensity of the glow added to the frame (composite only)
+//   composite.y  : 1 / level count, so the sum is an average rather than a pile (composite only)
+//   composite.zw : 1 / glow size in pixels, the texel size of level zero (composite only)
+//   weightsA.xyzw: weight of mip level 0, 1, 2, 3 (composite only)
+//   weightsB.xy  : weight of mip level 4, 5 (composite only)
 TK_UBO_BINDING(7) uniform BloomPassData
 {
-  vec4  downsampleParams;
-  vec4  upsampleParams;
-  ivec4 passIndxAndPad;
+  vec4 params;
+  vec4 composite;
+  vec4 weightsA;
+  vec4 weightsB;
 } bloom;
 
 #endif // BLOOM_PASS_DATA

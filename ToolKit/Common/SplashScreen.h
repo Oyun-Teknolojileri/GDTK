@@ -257,6 +257,14 @@ namespace ToolKit
 
   inline void SplashScreen::Run()
   {
+    // Blit the window surface in software on purpose. SDL's accelerated path builds a renderer for the
+    // window, and its OpenGL backend is fixed function: it calls glMatrixMode, glOrtho and the client state
+    // array functions, none of which a modern GL capture tool can hook. RenderDoc gives up on the whole GL
+    // device as soon as it sees one of them, and every capture after that fails with "no frame capturer" -
+    // the splash screen was what made a capture of the editor impossible on a machine where SDL chose that
+    // renderer. This is only a hint, so an explicit SDL_FRAMEBUFFER_ACCELERATION in the environment wins.
+    SDL_SetHint(SDL_HINT_FRAMEBUFFER_ACCELERATION, "0");
+
     m_window = SDL_CreateWindow("ToolKit",
                                 SDL_WINDOWPOS_CENTERED,
                                 SDL_WINDOWPOS_CENTERED,

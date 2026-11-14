@@ -27,9 +27,19 @@ namespace ToolKit
     /** Creates multi sample frame buffers if greater than x0. */
     MsaaSampleCount msaaCount = MsaaSampleCount::x0;
 
+    /**
+     * Compares the settings field by field, not byte for byte.
+     *
+     * The layout leaves padding between the two flags and the sample count, and padding is never assigned -
+     * a byte comparison therefore reports settings that agree in every field as different whenever the two
+     * copies inherited different padding. A framebuffer that is asked to reconstruct itself on such a
+     * comparison replaces its color attachments, which leaves a render target that something already holds a
+     * texture handle for behind. The field compares run a few times per frame, not per draw.
+     */
     bool operator==(const FramebufferSettings& other) const
     {
-      return memcmp(this, &other, sizeof(FramebufferSettings)) == 0;
+      return width == other.width && height == other.height && depthStencil == other.depthStencil &&
+             useDefaultDepth == other.useDefaultDepth && msaaCount == other.msaaCount;
     }
 
     bool operator!=(const FramebufferSettings& other) const { return !(*this == other); }
@@ -104,7 +114,7 @@ namespace ToolKit
 
    public:
     static const int m_maxColorAttachmentCount = 8;
-    StringView m_label; //!< Debug label which appears in the gpu debuggers.
+    String m_label; //!< Debug label which appears in the gpu debuggers.
     GpuResourceDataPtr m_gpuData;
 
    private:

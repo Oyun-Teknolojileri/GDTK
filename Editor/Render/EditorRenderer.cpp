@@ -142,17 +142,27 @@ namespace ToolKit
 
       SceneRenderPathPtr sceneRenderer = m_sceneRenderPath;
       FramebufferPtr mainBuffer        = m_params.Viewport->m_framebuffer;
-      auto copyToMultiSampleBuffer     = [this, renderer, mainBuffer, sceneRenderer]()
+      auto copySceneToViewportBuffer   = [renderer, mainBuffer, sceneRenderer]()
       {
-        // Draw resolved framebuffer on to msaa buffer if needed.
+        // The scene path may leave the picture somewhere other than the viewport's buffer: screen space
+        // reflections composite into a target of their own and the passes behind them follow it. The
+        // editor continues drawing over that picture, so the buffer it draws into is filled from the
+        // path's output rather than from a target the path may not have written.
+        //
         // Resolved frame buffer contains correct scene rendering with post processings.
-        // To continue msaa rendering for editor objects, we need to copy resolved buffer to main msaa buffer.
+        // To continue rendering for editor objects, the scene is copied onto the main buffer.
         using Attachment = Framebuffer::Attachment;
-        if (mainBuffer->IsMultiSampled() && sceneRenderer->m_resolvedFramebuffer)
+        FramebufferPtr sceneOutput = sceneRenderer->GetOutputFramebuffer();
+        if (sceneOutput == nullptr || sceneOutput == mainBuffer)
         {
-          RenderTargetPtr rRT = sceneRenderer->m_resolvedFramebuffer->GetColorAttachment(Attachment::ColorAttachment0);
-          RenderTargetPtr mRT = mainBuffer->GetColorAttachment(Attachment::ColorAttachment0);
-          renderer->CopyTexture(rRT, mRT);
+          return;
+        }
+
+        RenderTargetPtr sceneColor = sceneOutput->GetColorAttachment(Attachment::ColorAttachment0);
+        RenderTargetPtr mainColor  = mainBuffer->GetColorAttachment(Attachment::ColorAttachment0);
+        if (sceneColor != nullptr && mainColor != nullptr)
+        {
+          renderer->CopyTexture(sceneColor, mainColor);
         }
       };
 
@@ -170,7 +180,8 @@ namespace ToolKit
         sceneRenderer->m_forwardRenderPass->m_params.onPreRender = nullptr;
         sceneRenderer->Render(renderer);
 
-        copyToMultiSampleBuffer(); // Resolved buffer may need to be drawn to msaa buffer.
+        // The scene the path produced may need to be drawn into the buffer the viewport draws into.
+        copySceneToViewportBuffer();
 
         if (!m_uiRenderData.jobs.empty())
         {
@@ -190,7 +201,7 @@ namespace ToolKit
 
         SetLitMode(renderer, EditorLitMode::EditorLit);
 
-        copyToMultiSampleBuffer();
+        copySceneToViewportBuffer();
 
         // Draw outlines.
         OutlineSelecteds(renderer);
@@ -240,10 +251,11 @@ namespace ToolKit
       // Finally resolve the multi sampled main buffer if needed.
       if (mainBuffer->IsMultiSampled())
       {
-        FramebufferSettings settings = mainBuffer->GetSettings();
-        settings.msaaCount           = MsaaSampleCount::x0;
-        m_resolvedFramebuffer->ReconstructIfNeeded(settings);
-        renderer->ResolveFramebuffer(mainBuffer, m_resolvedFramebuffer, {0});
+        using Attachment = Framebuffer::Attachment;
+        if (PrepareViewportResolveTarget(mainBuffer->GetColorAttachment(Attachment::ColorAttachment0)))
+        {
+          renderer->ResolveFramebuffer(mainBuffer, m_resolvedFramebuffer, {0});
+        }
       }
 
       // We need to fill the alpha channel with one, imgui insist on blending alpha with window background.
@@ -542,6 +554,41 @@ namespace ToolKit
       m_outlinePass         = MakeNewPtr<OutlinePass>();
       m_skipFramePass       = MakeNewPtr<FullQuadPass>();
       m_resolvedFramebuffer = MakeNewPtr<Framebuffer>();
+    }
+
+    RenderTargetPtr EditorRenderer::PrepareViewportResolveTarget(RenderTargetPtr viewportColor)
+    {
+      using Attachment = Framebuffer::Attachment;
+
+      if (viewportColor == nullptr || !viewportColor->IsMultiSampled())
+      {
+        return nullptr;
+      }
+
+      const int width  = viewportColor->m_width;
+      const int height = viewportColor->m_height;
+
+      // The frame the viewport just built, at the size the resolve has to write. Nothing here may replace the
+      // color attachment once it exists: the handle ImGui already recorded names it, so a reconstruction
+      // between the two would leave that handle pointing at a texture nothing writes.
+      m_resolvedFramebuffer->ReconstructIfNeeded({width, height, false, true, MsaaSampleCount::x0});
+
+      RenderTargetPtr resolvedRt = m_resolvedFramebuffer->GetColorAttachment(Attachment::ColorAttachment0);
+      if (resolvedRt == nullptr)
+      {
+        // Same target the resolve builds for itself when it finds none: the viewport's format without the
+        // samples. Built here, in the frame the image is recorded, it can be sampled above.
+        TextureSettings rtSettings = viewportColor->Settings();
+        rtSettings.msaaCount       = MsaaSampleCount::x0;
+
+        resolvedRt                 = MakeNewPtr<RenderTarget>();
+        resolvedRt->ReconstructIfNeeded(width, height, &rtSettings);
+
+        m_resolvedFramebuffer->SetColorAttachment(Attachment::ColorAttachment0, resolvedRt);
+      }
+
+      viewportColor->m_resolvedTexture = resolvedRt;
+      return resolvedRt;
     }
 
     void EditorRenderer::OutlineSelecteds(Renderer* renderer)

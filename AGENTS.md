@@ -361,6 +361,24 @@ void MyPass::PreRender()
    pass's stencil-mask reads stale values. The write phase is one of the few places
    that stays on the older `renderer->SetPassState + renderer->Render(jobs)` flow.
    See "Exceptions to the declarative flow" below.
+7. **Pinning `m_requirements` state across draws.** `PassRequirements` lives on the
+   quad for its whole life, so anything that is only written when "not set yet" keeps
+   the value it had on the first draw. Slot 0 is exactly that trap: a `FullQuadPass`
+   re-reads the material's diffuse texture into it on every draw, which is what lets a
+   pass change its source by calling `material->SetDiffuseTextureVal(newSource)`. A
+   pass that leaves the material diffuse alone and writes `reqs.textures[0]` by hand
+   keeps that texture until something overwrites it. The bug that found this: with
+   MSAA on, Bloom's bright pass sampled the resolved framebuffer; toggling MSAA off
+   rebuilt the viewport target, but slot 0 still held the old resolved texture, so the
+   glow of the frame before the toggle was composited over the live frame. A pass that
+   has to own the requirements per draw (see the depth grid) resets them with
+   `reqs = PassRequirements()` first.
+
+   `program` is pinned the same way (`if (reqs.program == nullptr) reqs.program = m_program`),
+   so a pass that switches a fragment shader **define** - which builds a different program
+   variant - has to write the new program into the requirements itself. `BloomPass` does that
+   for its `BLOOM_BICUBIC` filter switch; without it the composite kept drawing the variant it
+   compiled first and the setting looked dead.
 
 ### When to override `GatherRequirements` vs. populate manually
 
@@ -406,6 +424,75 @@ flow:
    so the actual `Render()` stays imperative.
 
 If you find a new third exception, document it here with the failing symptom.
+
+---
+
+## Frame Capture (RenderDoc)
+
+When a rendering problem is not explainable from the code - wrong colour, missing pass output,
+a texture bound where another belongs - capture a frame instead of guessing. The module is
+described in full in `Modules/RenderDoc/README.md`; this is the workflow and the pitfalls.
+
+### Taking a capture (editor)
+
+RenderDoc has to be in the process **before** the graphics device is created, so start the
+editor through it (`renderdoccmd inject <pid>` afterwards leaves the API unbound):
+
+```bash
+cd <engine root>
+renderdoccmd capture -w -d BinDebug \
+  -c "$HOME/Documents/TKWorkspace/<Project>/Captures/tk" \
+  "$PWD/BinDebug/Editor"
+```
+
+Then ask for a capture - the request file is the one an agent can drive:
+
+```bash
+printf 'tk_single 1' > "$HOME/Documents/TKWorkspace/<Project>/Captures/request"
+```
+
+Captures land in `<workspace>/<project>/Captures/` as `<label>_<timestamp>_capture.rdc` plus a
+`.json` sidecar and `last_capture.json`. Inside the editor, the same queue is reachable with the
+console commands `CaptureFrame <label> [frames]`, `CaptureStatus` and `CaptureOpen`, or the
+**Modules -> RenderDoc** menu. `frameCount` (clamped to 1..60) spans several frames in one file.
+
+### Reading it
+
+```bash
+python3 Modules/RenderDoc/Scripts/rdc_report.py <capture>.rdc [--out DIR] [--no-images]
+```
+
+`capture.md` is the file to open first: a frame summary, the pass table (the engine's debug marker
+regions, i.e. the frame's render graph) with one PNG per pass, a section per pass with its targets,
+shaders and sampled textures, and mechanical findings. Compare the pass images in recording order -
+the first pass whose output is wrong is where the frame goes bad. `capture.json` has the full model
+when a machine is reading it rather than a human.
+
+`--no-images` skips the replay-heavy image export; a Debug frame of `unity-city.scene` is around
+105 MB and the report itself takes 10-20 s for a few thousand draws.
+
+A multi-frame capture (`request` with `label <n>`) records `n` frames in one file, but the report
+bounds the images it writes: `MAX_IMAGES` (48) overall and `MAX_IMAGES_PER_ROOT` (4) per marker
+root, both in `Scripts/rdckit/capture.py`. Comparing one pass across the frames of a ten frame
+capture - the way a flicker in a single pass is measured - therefore silently exports only the
+first frame or two. Raise both constants for the run and restore them after; the image names carry
+the pass sequence number, so the same pass in frame `k` is `start + 24 * k` for a 24 pass frame.
+
+### Pitfalls
+
+- **`RenderDoc refused the capture. Was a frame presented inside it?`** means RenderDoc has no
+  frame capturer left, which happens when the process called legacy fixed-function GL
+  (`glMatrixMode`, `glOrtho`, client state arrays) - nothing in the engine does, but SDL's
+  accelerated window surface path does, and the splash screen used it. `SplashScreen::Run()` pins
+  `SDL_HINT_FRAMEBUFFER_ACCELERATION` to `0` for exactly this reason; if the symptom returns, check
+  `/tmp/RenderDoc/RenderDoc_<stamp>.log` for `Unsupported function ... used` and look for a new
+  surface or renderer based path.
+- **A capture has to bracket the whole frame, present included.** `RenderDoc::BeginFrame()` /
+  `EndFrame()` already do; a pass must never open a capture of its own.
+- **A game host opts in explicitly** (`RenderDocCapture::Init` in `PreInit`, `BeginFrame` /
+  `EndFrame` around the frame, `Shutdown` on exit). The game template does not call them, so a game
+  started without that wiring captures only through RenderDoc's own hotkey, with no sidecar.
+- **Replay needs a GPU** of the same family as the capture; a headless box cannot produce images.
 
 ---
 
@@ -779,6 +866,48 @@ At the start of a session, if the agent spots that `gdtk-overview.md` no
 longer matches the codebase (e.g. a listed file no longer exists, a manager
 on `Main` is missing, a referenced vcxproj is gone), it MUST fix the overview
 in the same pass instead of silently working around the drift.
+
+---
+
+## Windows Build (one tree per configuration)
+
+The build tree is **per configuration**: `build_gdtk.py --configs <Cfg>` configures
+`Intermediate/Windows/<Cfg>`, and the root `CMakeLists.txt` bakes `TK_DEPS_DIR` in at configure
+time as `Dependency/Intermediate/Windows/<Cfg>`. The Visual Studio generator is multi-config, so
+`cmake --build Intermediate/Windows/Debug --config Release` succeeds - and links the **Debug**
+dependency import libraries, because the dependency path was fixed by the Debug configure.
+
+### Symptom
+
+The resulting "Release" binary imports `SDL2d.dll` / `imguid.dll` / `assimpd.dll`
+(`dumpbin /dependents BinRelease/Editor.exe`) and dies at startup with `0xC0000135`
+(`STATUS_DLL_NOT_FOUND`) once those debug-named DLLs are not next to it. Copying them in makes it
+start but mixes the debug and release CRT in one process (linker warning `LNK4098`), which is not a
+release build and can fail later on heap ownership.
+
+### Rule
+
+Configure one tree per configuration and never build a configuration from another configuration's
+tree:
+
+```bash
+python BuildScripts/build_gdtk.py --configs Release   # Intermediate/Windows/Release + Release deps
+python BuildScripts/build_gdtk.py --configs Debug     # Intermediate/Windows/Debug + Debug deps
+```
+
+`build_fast.ps1 -Config <Cfg>` is safe because it targets `Intermediate/Windows/<Cfg>` itself; the
+trap is calling `cmake --build` by hand on the wrong tree with `--config`.
+
+### Verify
+
+```bash
+dumpbin /dependents BinRelease/Editor.exe    # SDL2.dll / imgui.dll, no "d" suffix
+dumpbin /dependents BinDebug/Editor.exe      # SDL2d.dll / imguid.dll
+```
+
+A debug-named import in a release binary is the signature of this mistake. The correct release
+runtime comes from `Dependency/Intermediate/Windows/Release/` (`SDL2.dll`, `imgui.dll`,
+`assimp.dll`), which the install step of the same configuration copies into `BinRelease`.
 
 ---
 

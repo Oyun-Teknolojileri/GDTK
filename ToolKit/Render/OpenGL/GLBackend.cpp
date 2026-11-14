@@ -25,6 +25,13 @@
 
 #include "DebugNew.h"
 
+#ifdef TK_WEB
+// Emscripten's GLES headers do not declare glGetBufferSubData, although the WebGL 2 binding exists
+// (emscripten's src/lib/libwebgl2.js), so the readback path declares the entry point it uses. The
+// signature is the GLES 3.0 one.
+extern "C" void glGetBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, void* data);
+#endif
+
 namespace ToolKit
 {
 
@@ -2096,14 +2103,12 @@ namespace ToolKit
 
   bool GLBackend::SupportsAsyncReadPixels() const
   {
-#ifdef TK_WEB
-    // WebGL 2 has no way to read a pack buffer back into client memory: glMapBufferRange is not exposed, so the
-    // pixels a pack buffer collected could never be handed over. A caller that wants them later does the blocking
-    // read then, which is also the cheaper moment - the frame that filled the target has finished by then.
-    return false;
-#else
+    // Both GL paths carry the pair. WebGL 2 has no buffer mapping - glMapBufferRange is not exposed, and
+    // emscripten's emulation of it rejects GL_MAP_READ_BIT - but it does have sync objects and
+    // getBufferSubData, which is all a read that lands a frame later needs: the fence says when the
+    // transfer is done and the copy out of the pack buffer then runs on data that is already there.
+    // EndReadPixels takes the mapping path on the desktop and the copy path on the web.
     return true;
-#endif
   }
 
   void* GLBackend::BeginReadPixels(int x, int y, int w, int h, GraphicTypes format, GraphicTypes type)
@@ -2149,6 +2154,13 @@ namespace ToolKit
     glReadPixels(x, y, w, h, readFormat, ToGLGraphicType(type), nullptr);
 
     read->fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+
+    // Submit the read and its fence now instead of leaving them in the command buffer until this frame's
+    // next draw: the transfer then runs while the rest of the frame is drawn, which is the point of
+    // starting it here. The zero timeout poll in EndReadPixels would flush them too, but only at the
+    // moment it runs, which is a frame too late to overlap anything.
+    glFlush();
+
     glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 
     if (read->fence == nullptr)
@@ -2183,6 +2195,13 @@ namespace ToolKit
       }
 
       glBindBuffer(GL_PIXEL_PACK_BUFFER, read->pbo);
+#ifdef TK_WEB
+      // WebGL 2 has no buffer mapping, so the pixels are copied out of the pack buffer instead of mapped. The
+      // fence above has already said the transfer landed, so this copies data that is in the buffer and does
+      // not wait for the GPU. The entry point is missing from emscripten's GLES headers (the binding itself
+      // exists), hence the declaration at the top of this file.
+      glGetBufferSubData(GL_PIXEL_PACK_BUFFER, 0, (GLsizeiptr) read->bytes, data);
+#else
       void* mapped = glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0, (GLsizeiptr) read->bytes, GL_MAP_READ_BIT);
       if (mapped != nullptr)
       {
@@ -2193,6 +2212,7 @@ namespace ToolKit
       {
         TK_ERR("GLBackend::EndReadPixels - the finished read could not be mapped, the pixels are lost.");
       }
+#endif
       glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
     }
 

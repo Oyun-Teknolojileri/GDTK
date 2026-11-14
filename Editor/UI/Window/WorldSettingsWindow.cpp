@@ -76,6 +76,18 @@ namespace ToolKit
         {
           pps->SetBloomIterationCountVal(bloomIterationCount);
         }
+
+        float bloomRadius = pps->GetBloomRadiusVal();
+        if (ImGui::SliderFloat("Bloom Radius", &bloomRadius, 0.0f, 1.0f, "%.2f"))
+        {
+          pps->SetBloomRadiusVal(bloomRadius);
+        }
+
+        bool bloomBicubic = pps->GetBloomBicubicUpscaleVal();
+        if (ImGui::Checkbox("Bloom Bicubic Upscale", &bloomBicubic))
+        {
+          pps->SetBloomBicubicUpscaleVal(bloomBicubic);
+        }
       }
 
       if (ShowSection("Depth of Field"))
@@ -176,6 +188,19 @@ namespace ToolKit
         }
         ImGui::BeginDisabled(!ssrEnabled);
 
+        // The one control that changes how much the pass costs, so it sits next to the switch. Full
+        // resolution keeps a mirror sharp and is what a desktop GPU can afford; half resolution traces and
+        // resolves at a quarter of the pixels and is what makes the pass usable on a phone.
+        static const char* ssrQualityItems[] = {"Low", "Mid", "High"};
+        int ssrQuality = glm::clamp(pps->GetSSRQualityVal(), 0, 2);
+        if (ImGui::Combo("Quality##ssr", &ssrQuality, ssrQualityItems, IM_ARRAYSIZE(ssrQualityItems)))
+        {
+          pps->SetSSRQualityVal(ssrQuality);
+        }
+
+        // Everything below tunes the look; the switch and the quality above decide the cost.
+        ImGui::Separator();
+
         float ssrIntensity = pps->GetSSRIntensityVal();
         if (ImGui::DragFloat("Intensity", &ssrIntensity, 0.01f, 0.0f, 1.0f))
         {
@@ -226,6 +251,39 @@ namespace ToolKit
           pps->SetSSRRoughnessCutoffVal(ssrRoughnessCutoff);
         }
 
+        // The three fades the composite applies. Each one is where a reflection stop being trustworthy, so
+        // they trade reflection area for the artifacts at the edges of that area.
+        float ssrEdgeFade = pps->GetSSREdgeFadeVal();
+        if (ImGui::DragFloat("Edge Fade", &ssrEdgeFade, 0.005f, 0.0f, 0.5f))
+        {
+          pps->SetSSREdgeFadeVal(ssrEdgeFade);
+        }
+
+        float ssrScreenFadeStart = pps->GetSSRScreenFadeStartVal();
+        if (ImGui::DragFloat("Screen Fade Start", &ssrScreenFadeStart, 0.01f, 0.0f, 0.95f))
+        {
+          pps->SetSSRScreenFadeStartVal(ssrScreenFadeStart);
+        }
+
+        float ssrRangeFadeStart = pps->GetSSRRangeFadeStartVal();
+        if (ImGui::DragFloat("Range Fade Start", &ssrRangeFadeStart, 0.01f, 0.0f, 0.95f))
+        {
+          pps->SetSSRRangeFadeStartVal(ssrRangeFadeStart);
+        }
+
+        // How far the sampled lobe is bent towards the mirror direction: a high bias is quieter, a low one
+        // keeps the blur a rough surface needs.
+        //
+        // The two response bounds a scene still carries are no longer shown: the accumulation is driven by
+        // how many samples a pixel holds now, not by a fixed share of the history, and a control that does
+        // nothing is worse than one that is not there. The parameters stay in the settings so existing
+        // scenes keep loading and the pass keeps accepting them.
+        float ssrBrdfBias = pps->GetSSRBRDFBiasVal();
+        if (ImGui::DragFloat("BRDF Bias", &ssrBrdfBias, 0.01f, 0.0f, 1.0f))
+        {
+          pps->SetSSRBRDFBiasVal(ssrBrdfBias);
+        }
+
         bool ssrDebugView = pps->GetSSRDebugViewVal();
         if (ImGui::Checkbox("Debug View##ssr", &ssrDebugView))
         {
@@ -234,10 +292,17 @@ namespace ToolKit
 
         if (ssrDebugView)
         {
-          // Each mode isolates one stage of the pass: an artifact that looks the same in the
-          // composite can be told apart here instead of guessed at.
-          static const char* ssrDebugModes[] = {
-            "Reflection", "Confidence", "Mip Level", "Scene Depth", "Hit UV", "Ray Length", "Hit Error"};
+          // Each mode isolates one stage of the pass: an artifact that looks the same in the composite can
+          // be told apart here instead of guessed at. The index is the mode the shader switches on, so this
+          // list and the SSR_DEBUG_* defines in ssrFrag.shader have to stay aligned and equally long.
+          static const char* ssrDebugModes[] = {"Reflection",
+                                               "Confidence",
+                                               "Mip Level",
+                                               "Scene Depth",
+                                               "Hit UV",
+                                               "Ray Length",
+                                               "Hit Error",
+                                               "March Cost"};
 
           int ssrDebugMode = pps->GetSSRDebugViewModeVal();
           ImGui::SameLine();

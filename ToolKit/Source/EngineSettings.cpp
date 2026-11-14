@@ -251,9 +251,21 @@ namespace ToolKit
     TonemappingEnabled_Define(true, "PostProcessingSettings", 0, 0, 0);
 
     BloomEnabled_Define(false, "PostProcessingSettings", 0, 0, 0);
-    BloomIntensity_Define(1.0f, "PostProcessingSettings", 0, 0, 0);
+    // The merge is additive, so the intensity is the fraction of the bloom chain that lands on the
+    // frame. At 1.0 the chain's whole energy was added on top of the picture and everything bright
+    // read as blown out; 0.2 keeps a highlight's halo instead of letting it become one, while the
+    // glow pyramid still carries every level (see the level weights in BloomPass) so the halo keeps
+    // its spread.
+    BloomIntensity_Define(0.2f, "PostProcessingSettings", 0, 0, 0);
     BloomThreshold_Define(1.0f, "PostProcessingSettings", 0, 0, 0);
     BloomIterationCount_Define(5, "PostProcessingSettings", 0, 0, 0);
+    // Full radius is the flat weighting the pyramid always had: every level the iteration count
+    // selects contributes equally. Lowering it shapes the same levels with a Gaussian falloff, so the
+    // halo tightens without the level count moving and nothing pops at a level boundary.
+    BloomRadius_Define(1.0f, "PostProcessingSettings", 0, 0, 0);
+    // A B-spline fetch at the composite. Four bilinear taps either way, so the cost is a few extra
+    // multiply-adds per level; on means the halo widens smoothly instead of showing the level's texels.
+    BloomBicubicUpscale_Define(true, "PostProcessingSettings", 0, 0, 0);
     GammaCorrectionEnabled_Define(true, "PostProcessingSettings", 0, 0, 0);
     Gamma_Define(2.2f, "PostProcessingSettings", 0, 0, 0);
     SSAOEnabled_Define(false, "PostProcessingSettings", 0, 0, 0);
@@ -277,8 +289,15 @@ namespace ToolKit
     SSRIntensity_Define(0.5f, "PostProcessingSettings", 0, 0, 0);
     SSRMaxDistance_Define(50.0f, "PostProcessingSettings", 0, 0, 0);
     SSRThickness_Define(0.4f, "PostProcessingSettings", 0, 0, 0);
-    SSRStepCount_Define(256, "PostProcessingSettings", 0, 0, 0);
+    // The widest loop bound the shader has a variant for. A larger count used to make the shader divide the
+    // screen into more steps than the loop could walk, which cut the reflections short.
+    SSRStepCount_Define(64, "PostProcessingSettings", 0, 0, 0);
     SSRRoughnessCutoff_Define(0.6f, "PostProcessingSettings", 0, 0, 0);
+    SSREdgeFade_Define(0.05f, "PostProcessingSettings", 0, 0, 0);
+    SSRScreenFadeStart_Define(0.5f, "PostProcessingSettings", 0, 0, 0);
+    SSRRangeFadeStart_Define(0.6f, "PostProcessingSettings", 0, 0, 0);
+    SSRBRDFBias_Define(0.7f, "PostProcessingSettings", 0, 0, 0);
+    SSRQuality_Define(2, "PostProcessingSettings", 0, 0, 0);
     SSRDebugView_Define(false, "PostProcessingSettings", 0, 0, 0);
     SSRDebugViewMode_Define(0, "PostProcessingSettings", 0, 0, 0);
 

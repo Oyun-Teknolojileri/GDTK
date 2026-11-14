@@ -73,11 +73,13 @@ namespace ToolKit
       /**
        * Resolves the viewport's render target into an ImGui ready texture handle.
        * An MSAA render target is resolved to its single sample attachment, which is the only
-       * one ImGui can sample. Falls back to the black texture when the render target is missing
-       * or when its resolved attachment is not available yet.
+       * one ImGui can sample. The frames of a resize have neither - the target and its resolve are built
+       * during the UI pass, and the resolve only exists once that frame's render task has run - so the image
+       * the viewport presented last is handed out, scaled to the new area, until they do. Only a viewport
+       * that never presented anything falls back to the black texture.
        * @return Texture id, convertible to ImTextureID via ConvertUIntImGuiTexture.
        */
-      uint64 GetImGuiTextureId() const;
+      uint64 GetImGuiTextureId();
 
       virtual void HandleDrop();
       virtual void DrawOverlays();
@@ -137,6 +139,12 @@ namespace ToolKit
       IVec2 m_mousePosBegin;
       bool m_needsResize          = false;
       bool m_mouseOverContentArea = false;
+
+      // The image handed to ImGui last frame. A resize rebuilds the render target, and the frame the new
+      // one appears in has nothing to show yet, so this is what the viewport draws until it does. Held as a
+      // reference rather than as the handle the draw list carries, because the target it came from may be
+      // released before that list is rendered.
+      TexturePtr m_lastPresentedTexture = nullptr;
 
      private:
       // States.

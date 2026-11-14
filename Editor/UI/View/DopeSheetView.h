@@ -62,6 +62,26 @@ namespace ToolKit
       };
 
       /**
+       * The three transform groups a key carries, and the rows the curve view shows under a track.
+       * They are the rows of the curve view's tree, each one plots the three axis curves of its
+       * group.
+       */
+      enum CurveGroup
+      {
+        CurveGroup_Translation = 0,
+        CurveGroup_Rotation,
+        CurveGroup_Scale,
+        CurveGroup_Count
+      };
+
+      /** What the curve view plots of one track, keyed by track name. */
+      struct CurveTrackState
+      {
+        bool m_groups[CurveGroup_Count] = {false, false, false}; //!< Checked transform groups.
+        bool m_expanded                 = false;                 //!< Group rows are unfolded.
+      };
+
+      /**
        * One key of the selection. A key is addressed by its track, its frame and which of the clip's
        * two key containers it lives in, because a track name may name a transform track and a
        * parameter track at the same time and a group is allowed to mix both kinds.
@@ -185,14 +205,13 @@ namespace ToolKit
       void ShowLanes(float laneLeft, float laneWidth);
 
       /**
-       * Draws the sheet area as read only curves instead of key lanes: translation, rotation and
-       * scale of one transform track, x / y / z per channel group. The pose is sampled through the
-       * engine's own interpolation, so a Stepped, Smooth or Flat key shows in the shape.
+       * Draws the sheet area as read only curves instead of key lanes. The name column is a tree:
+       * one row per transform track carrying a check box that plots the track and an arrow that
+       * unfolds its three transform groups, one row per group with a check box of its own. Every
+       * checked group is plotted in the same area over the lanes' shared timeline, so several
+       * tracks and several channels read against each other instead of in separate strips.
        */
       void ShowCurves(float laneLeft, float laneWidth);
-
-      /** Name of the track the curve view plots, empty when the clip has no transform track. */
-      String CurveTrackName() const;
 
       /**
        * Ctrl + wheel zooms and shift + wheel pans the timeline. The lane and the curve view share it
@@ -354,8 +373,20 @@ namespace ToolKit
       int m_ctxFrame  = -1;
       bool m_ctxParam = false; //!< The row under the cursor is a parameter track.
 
-      bool m_curveView = false;    //!< The sheet area plots curves instead of drawing key lanes.
-      String m_curveTrack;         //!< Track the curve view plots, picked in the name column.
+      bool m_curveView = false; //!< The sheet area plots curves instead of drawing key lanes.
+
+      /**
+       * Maps every checked group onto the full height of the plot using the group's own value range,
+       * so translation (lengths), rotation (degrees) and scale read together. Off, the plotted groups
+       * share one auto range and the axis is labelled with it, which is what comparing their values
+       * needs.
+       */
+      bool m_curveNormalize = true;
+
+      float m_curveScrollY = 0.0f; //!< Vertical scroll of the curve view's track rows.
+
+      /** Checked groups and unfolded rows of the curve view, keyed by track name. */
+      std::unordered_map<String, CurveTrackState> m_curveStates;
 
       /** One key held by the clipboard, either the transform or the parameter payload. */
       struct KeyClipboard

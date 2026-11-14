@@ -50,15 +50,23 @@ namespace ToolKit
     m_passState.depthFunction     = CompareFunctions::FuncLess;
   }
 
-  void ForwardPreProcessPass::InitBuffers(int width, int height, MsaaSampleCount sampleCount)
+  void ForwardPreProcessPass::InitBuffers(int width, int height, MsaaSampleCount sampleCount, bool shareDepth)
   {
     const FramebufferSettings& fbs = m_framebuffer->GetSettings();
 
-    // The frame's depth is worth sharing - it is what gives this pass its early z test - but only
-    // while the buffers agree with the frame in size: a framebuffer whose attachments differ in size
-    // is incomplete in GL ES. A reduced pre process target therefore gets a depth buffer of its own.
+    // The frame's depth is worth sharing - it is what gives this pass its early z test - but only while
+    // the buffers agree with the frame in size: a framebuffer whose attachments differ in size is
+    // incomplete in GL ES. A reduced pre process target therefore gets a depth buffer of its own.
+    //
+    // A frame whose samples live in a shadow buffer gets its own depth buffer too, on top of that. A
+    // multisampled render to texture target keeps its samples beside the texture and resolves them when
+    // the framebuffer that wrote them is unbound, so one depth attachment written by two framebuffers -
+    // this one and the frame's - is resolved twice, in an order the driver picks. On Mali the two resolves
+    // alternate: every other frame is lit as if the environment were a low resolution capture of the
+    // scene instead of the sky, everywhere in the picture. The buffer this pass allocates instead is a
+    // plain single sample depth buffer and this pass is its only writer.
     const FramebufferSettings& mainSettings = m_params.FrameBuffer->GetSettings();
-    const bool shareFrameDepth              = width == mainSettings.width && height == mainSettings.height;
+    const bool shareFrameDepth = shareDepth && width == mainSettings.width && height == mainSettings.height;
 
     bool requiresReconstruct                = fbs.width != width || fbs.height != height ||
                                                fbs.msaaCount != sampleCount ||

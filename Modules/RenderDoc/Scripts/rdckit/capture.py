@@ -29,6 +29,20 @@ MAX_IMAGES_PER_ROOT = 4
 IMAGE_TYPE = "png"
 
 
+def _safe_resource_name(resource):
+    """RenderDoc label of a resource, or its id when the label is not valid UTF-8.
+
+    A label is whatever the host passed to glObjectLabel. A build that hands the driver a buffer
+    that is not a C string makes the replay hand back bytes that are not text, and a strict decode
+    takes the whole report down with it.
+    """
+    try:
+        return resource.name
+    except UnicodeDecodeError:
+        return str(int(resource.resourceId))
+
+
+
 class CaptureAnalysis(object):
     """Replays one capture and collects everything the report needs."""
 
@@ -156,7 +170,7 @@ class CaptureAnalysis(object):
 
     def _collect_resources(self, model):
         for resource in self.ctl.GetResources():
-            self.resource_names[int(resource.resourceId)] = resource.name
+            self.resource_names[int(resource.resourceId)] = _safe_resource_name(resource)
 
         for texture in self.ctl.GetTextures():
             entry = {

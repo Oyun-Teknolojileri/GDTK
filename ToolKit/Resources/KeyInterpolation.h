@@ -164,70 +164,29 @@ namespace ToolKit
     //////////////////////////////////////////
 
     /**
-     * Angle between two quaternions in radians.
-     *
-     * Computed as 2 * atan2(|v|, w) of the relative rotation rather than 2 * acos(dot): a dot
-     * product near 1 keeps only a fraction of its precision, and the neighbouring keys of a track
-     * are usually close, so acos would report a sizeable speed for a segment that barely rotates.
-     * The relative rotation is hemisphere aligned first (the shorter arc), the convention
-     * glm::slerp applies internally.
+     * Rotation vector that takes `from` to `to`, in world space: the axis times the angle, so its
+     * length is the arc speed of that step and its direction is the axis the rotation turns around.
+     * That direction is the quantity to measure when a rotation has to be checked for a whip at a
+     * key: the speed can stay continuous while this vector jumps.
      */
-    inline float QuatAngle(const glm::quat& start, const glm::quat& end)
+    inline glm::vec3 QuatRotationVector(const glm::quat& from, const glm::quat& to)
     {
-      glm::quat relative = start * glm::inverse(end);
+      glm::quat relative = to * glm::inverse(from);
 
       if (relative.w < 0.0f)
       {
         relative = -relative;
       }
 
-      return 2.0f * std::atan2(glm::length(glm::vec3(relative.x, relative.y, relative.z)), relative.w);
-    }
+      const glm::vec3 imaginary(relative.x, relative.y, relative.z);
+      const float magnitude = glm::length(imaginary);
 
-    /** Angular speed of a segment if it runs straight: radians per second. */
-    inline float AngularSpeed(const glm::quat& start, const glm::quat& end, float duration)
-    {
-      return duration > 0.0f ? QuatAngle(start, end) / duration : 0.0f;
-    }
-
-    /**
-     * Slope of the eased slerp parameter at a key: the key's angular speed expressed in
-     * parameter units, where 1.0 means "this segment runs at its own average speed".
-     */
-    inline float EaseSlope(float speed, float segmentSpeed) { return segmentSpeed > 0.0f ? speed / segmentSpeed : 1.0f; }
-
-    /**
-     * Angular speed a key may carry, limited the same way the position tangents are (LimitSlope):
-     * the cap comes from the slower of the two segments, so the speed the key leaves with is the
-     * speed it arrived with.
-     */
-    inline float LimitAngularSpeed(float speed, float previousSegmentSpeed, float nextSegmentSpeed)
-    {
-      return std::min(speed, MaxCubicSlope * std::min(previousSegmentSpeed, nextSegmentSpeed));
-    }
-
-    /** Keeps the parameter monotone, so the eased slerp never overshoots its target key. */
-    inline float ClampEaseSlope(float slope) { return glm::clamp(slope, 0.0f, MaxCubicSlope); }
-
-    /**
-     * Eased slerp parameter of a segment whose end slopes are given in parameter units.
-     * Slope 0 means "leaves from rest" (Flat), slope 1 is the segment's own average speed.
-     */
-    inline float EaseParameter(float startSlope, float endSlope, float tau)
-    {
-      // Clamped here as well, so no caller can hand in a parameter curve that overshoots the key
-      // it heads for or backtracks inside its segment.
-      startSlope = ClampEaseSlope(startSlope);
-      endSlope   = ClampEaseSlope(endSlope);
-
-      // Both ends at the segment's own speed is the linear parameter. Returned as is, so a track of
-      // evenly spaced rotations matches plain slerp to the last bit.
-      if (startSlope == 1.0f && endSlope == 1.0f)
+      if (magnitude < 0.0000001f)
       {
-        return tau;
+        return glm::vec3(0.0f);
       }
 
-      return (Hermite10(tau) * startSlope) + Hermite01(tau) + (Hermite11(tau) * endSlope);
+      return imaginary * (2.0f * std::atan2(magnitude, relative.w) / magnitude);
     }
 
     // Evaluation
@@ -403,9 +362,20 @@ namespace ToolKit
     }
 
     /**
-     * Samples a rotation track at the given time. The cubic modes use slerp with an eased
-     * parameter whose end slopes are matched to the angular speed of the neighbouring segments,
-     * so the angular velocity is continuous at a key without needing quaternion tangents.
+     * Samples a rotation track at the given time.
+     *
+     * A cubic segment runs the four quaternion components as four curves and normalises the result,
+     * the way Blender interpolates a quaternion property. That is not cosmetic: slerp keeps the
+     * angular *speed* continuous at a key but not its *direction*, because the segment before a key
+     * and the one after it are different geodesics, so the rotation axis jumps where they meet and
+     * the rotation whips. Measured on a five key camera fly through that jump was 84 to 120 degrees
+     * per key, 100 to 450 rad/s^2 of jerk. Four component curves are C1 across a key, so the whole
+     * angular velocity vector stays continuous and the motion reads as an S instead of a hit.
+     *
+     * Each component takes the same local auto tangent the position and scale channels use
+     * (AutoTangent): the average of the two neighbouring secants, limited so a key cannot make its
+     * segment overshoot, flattened where the component peaks. Nothing is solved over the track, so a
+     * sample costs what it always did, a few dot products and no allocation.
      *
      * @param count Number of keys.
      * @param time Sample time in seconds.
@@ -445,31 +415,85 @@ namespace ToolKit
         break;
       }
 
-      const float segmentSpeed = AngularSpeed(start, end, bracket.m_duration);
-
-      // The key's angular speed, averaged over the segment it arrives on and the one it leaves on,
-      // then limited so both sides stay monotone. Both sides read the same value, so the angular
-      // velocity is continuous at the key.
-      float startSpeed = segmentSpeed;
-      if (bracket.m_start > 0)
+      // A two key track has no key sitting between two segments, so there is no axis jump to remove
+      // and the curve stays the plain slerp it has always played.
+      if (count == 2)
       {
-        const float previousDuration = timeAt(bracket.m_start) - timeAt(bracket.m_start - 1);
-        const float previousSpeed    = AngularSpeed(valueAt(bracket.m_start - 1), start, previousDuration);
-        startSpeed = LimitAngularSpeed((previousSpeed + segmentSpeed) * 0.5f, previousSpeed, segmentSpeed);
+        out = glm::slerp(start, end, bracket.m_tau);
+        return true;
       }
 
-      float endSpeed = segmentSpeed;
-      if (bracket.m_end < count - 1)
+      // The four component curves run in one frame: an end key in the other hemisphere is negated
+      // (the same short way around glm::slerp takes), and the sign it was negated with applies to
+      // its tangent too, so the curve and its derivative still describe the same rotation.
+      const float endSign = glm::dot(end, start) < 0.0f ? -1.0f : 1.0f;
+
+      const glm::vec4 startComponents(start.x, start.y, start.z, start.w);
+      const glm::vec4 endComponents = endSign * glm::vec4(end.x, end.y, end.z, end.w);
+
+      // Local auto tangent of one component at the start key, in the frame of this segment.
+      auto startTangent = [&](int axis) -> float
       {
-        const float nextDuration = timeAt(bracket.m_end + 1) - timeAt(bracket.m_end);
-        const float nextSpeed    = AngularSpeed(end, valueAt(bracket.m_end + 1), nextDuration);
-        endSpeed = LimitAngularSpeed((segmentSpeed + nextSpeed) * 0.5f, segmentSpeed, nextSpeed);
+        const float current = startComponents[axis];
+        const float next    = endComponents[axis];
+
+        if (bracket.m_start == 0)
+        {
+          // A single neighbour: the segment's own secant, i.e. no implicit ease at the ends.
+          return Secant(current, next, bracket.m_duration);
+        }
+
+        const int previousIndex      = bracket.m_start - 1;
+        const glm::quat previousKey  = valueAt(previousIndex);
+        const glm::quat previous     = glm::dot(previousKey, start) < 0.0f ? -previousKey : previousKey;
+        const float previousDuration = timeAt(bracket.m_start) - timeAt(previousIndex);
+
+        return AutoTangent(previous[axis], current, next, previousDuration, bracket.m_duration);
+      };
+
+      // Local auto tangent of one component at the end key, in the frame of this segment.
+      auto endTangent = [&](int axis) -> float
+      {
+        const float current  = endComponents[axis];
+        const float previous = startComponents[axis];
+
+        if (bracket.m_end == count - 1)
+        {
+          return Secant(previous, current, bracket.m_duration);
+        }
+
+        const int nextIndex      = bracket.m_end + 1;
+        const float nextDuration = timeAt(nextIndex) - timeAt(bracket.m_end);
+
+        // The neighbour is aligned to the key it follows, then carried into this segment's frame by
+        // the sign the segment's end key was negated with.
+        const glm::quat& endKey = valueAt(bracket.m_end);
+        const glm::quat nextKey = valueAt(nextIndex);
+        const glm::quat next    = endSign * (glm::dot(nextKey, endKey) < 0.0f ? -nextKey : nextKey);
+
+        return AutoTangent(previous, current, next[axis], bracket.m_duration, nextDuration);
+      };
+
+      glm::vec4 components;
+      for (int axis = 0; axis < 4; axis++)
+      {
+        const float startSlope = startMode == KeyInterp::Flat ? 0.0f : startTangent(axis);
+        const float endSlope   = endMode == KeyInterp::Flat ? 0.0f : endTangent(axis);
+
+        components[axis] = HermiteValue(startComponents[axis],
+                                        endComponents[axis],
+                                        startSlope,
+                                        endSlope,
+                                        bracket.m_duration,
+                                        bracket.m_tau);
       }
 
-      const float startSlope = startMode == KeyInterp::Flat ? 0.0f : EaseSlope(startSpeed, segmentSpeed);
-      const float endSlope   = endMode == KeyInterp::Flat ? 0.0f : EaseSlope(endSpeed, segmentSpeed);
+      // glm is built with GLM_FORCE_QUAT_DATA_XYZW, so the four argument constructor takes
+      // (x, y, z, w), the order the engine stores and serializes a rotation in.
+      const glm::quat sampled(components.x, components.y, components.z, components.w);
+      const float length = glm::length(sampled);
 
-      out = glm::slerp(start, end, EaseParameter(startSlope, endSlope, bracket.m_tau));
+      out = length > 0.000001f ? sampled / length : start;
       return true;
     }
 

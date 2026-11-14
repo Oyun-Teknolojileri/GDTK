@@ -227,7 +227,7 @@ namespace ToolKit
       {
         const ImVec2 tableSize = ImGui::GetContentRegionAvail();
         if (ImGui::BeginTable("Animation Records and Signals",
-                              6,
+                              7,
                               ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable |
                                   ImGuiTableFlags_Reorderable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Sortable |
                                   ImGuiTableFlags_SortTristate | ImGuiTableFlags_NoSavedSettings,
@@ -240,15 +240,18 @@ namespace ToolKit
           // applied only when the Name or Signal header is clicked.
           ImGui::TableSetupColumn("Animation",
                                   ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_NoSort,
-                                  tableWdth / 6.0f);
-          ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, tableWdth / 3.0f);
-          ImGui::TableSetupColumn("Signal", ImGuiTableColumnFlags_WidthStretch, tableWdth / 3.0f);
+                                  tableWdth / 8.0f);
+          ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, tableWdth / 4.0f);
+          ImGui::TableSetupColumn("Signal", ImGuiTableColumnFlags_WidthStretch, tableWdth / 4.0f);
           ImGui::TableSetupColumn("Preview",
                                   ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_NoSort,
-                                  tableWdth / 6.0f);
-          ImGui::TableSetupColumn("Apply Root Motion",
+                                  tableWdth / 8.0f);
+          ImGui::TableSetupColumn("Root",
                                   ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_NoSort,
-                                  tableWdth / 6.0f);
+                                  tableWdth / 12.0f);
+          ImGui::TableSetupColumn("Loop",
+                                  ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_NoSort,
+                                  tableWdth / 12.0f);
           ImGui::TableSetupColumn("Remove",
                                   ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_NoSort,
                                   tableWdth / 12.0f);
@@ -529,7 +532,7 @@ namespace ToolKit
               }
             }
 
-            // Apply Root Motion
+            // Root motion
             {
               const float checkH = ImGui::GetFrameHeight();
               ImGui::TableSetColumnIndex(columnIndx++);
@@ -543,6 +546,24 @@ namespace ToolKit
               if (ImGui::Checkbox("##applyRootMotion", &applyRootMotion))
               {
                 track.second->m_applyRootMotion = applyRootMotion;
+              }
+              ImGui::EndDisabled();
+            }
+
+            // Loop: plays the record in a loop instead of holding its last frame once it ends.
+            {
+              const float checkH = ImGui::GetFrameHeight();
+              ImGui::TableSetColumnIndex(columnIndx++);
+
+              float availX = ImGui::GetContentRegionAvail().x;
+              ImGui::SetCursorPosX(ImGui::GetCursorPosX() + glm::max(0.0f, (availX - checkH) * 0.5f));
+              ImGui::SetCursorPosY(ImGui::GetCursorPosY() + glm::max(0.0f, (cellContentH - checkH) * 0.5f));
+
+              ImGui::BeginDisabled(!var->m_editable);
+              bool loop = track.second->m_loop;
+              if (ImGui::Checkbox("##loopRecord", &loop))
+              {
+                track.second->m_loop = loop;
               }
               ImGui::EndDisabled();
             }

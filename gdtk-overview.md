@@ -204,7 +204,7 @@ Serializable, loaded from `%appdata%/ToolKit/Config`. Sub-objects:
 - **WindowSettings**: name, width, height, fullscreen
 - **GraphicSettings**: FPS, MSAA, HDR, MultiThreaded, InstancedBatching (draws runs of objects that share a mesh and material as one instanced draw; off falls back to one draw per object), RenderResolutionScale, HalfResolutionForwardPreProcess (builds the normal and depth target - what ambient occlusion and depth of field read - at half the frame's size; screen space reflections force it back to full size, because they march against that depth), AnisotropicTextureFiltering, OcclusionCulling (drops local lights and meshes the depth grid proves hidden, off by default; see 4.3), OcclusionReprojection (carries that grid into the frame being drawn before it is tested, on by default and only meaningful with culling on; see 4.3), plus a `m_shadows` member
 - **ShadowSettings** (nested in GraphicSettings): cascade count/distance, parallel split, stable shadow map, cascade blend, atlas resolution (a 1K/2K/4K choice), slot density (the 2x slots option halves every slot's resolution for four times the slots), PCF kernel, VSM blur
-- **PostProcessingSettings**: tonemapping, bloom, gamma, SSAO, SSR, DOF, FXAA, TAA (temporal anti-aliasing, off by default; needs MSAA off - a multisampled depth attachment can not be sampled - and keeps the frame's depth alive for the pass behind the forward one)
+- **PostProcessingSettings**: tonemapping, bloom (intensity, threshold, level count for the reach, radius for how the levels are weighted, bicubic or box gather), gamma, SSAO, SSR, DOF, FXAA, TAA (temporal anti-aliasing, off by default; needs MSAA off - a multisampled depth attachment can not be sampled - and keeps the frame's depth alive for the pass behind the forward one)
 - **ShaderSettings**: per-shader define presets (e.g. "Low"/"High" graphics presets) so shader compile doesn't explode combinatorially
 
 **`FPS` is a gate, not a suggestion.** `Main::SyncFrameTime()` draws only when
@@ -330,59 +330,187 @@ ForwardSceneRenderPath
 ├── m_skyPass                   CubeMapPass
 ├── m_ssaoPass                  SSAOPass
 ├── m_ssrPass                   SsrPass
+├── m_velocityPass              VelocityPass
 ├── m_taaPass                   TaaPass
 ├── m_bloomPass                 BloomPass
 ├── m_dofPass                   DoFPass
 ├── m_gammaTonemapFxaaPass      GammaTonemapFxaaPass
-└── m_resolvedFramebuffer       FramebufferPtr (for MSAA resolve)
+├── m_resolvedFramebuffer       FramebufferPtr (for MSAA resolve)
+└── m_frameColorFb              FramebufferPtr (the target the frame's color is in, see GetOutputFramebuffer)
 ```
 
 Inputs via `SceneRenderPathParams`: Scene, Camera, MainFramebuffer, grid, postProcessSettings, optional `overrideLights`.
 
 Pass order: shadow, forward pre process (g buffer, required by SSAO / DoF / SSR), SSAO, sky, forward,
-SSR, TAA, bloom, DoF, gamma/tonemap/FXAA. `SsrPass` runs in two phases. The trace phase marches one
-reflection ray per pixel against the pre process g buffer (world normal, linear depth, roughness) and
-writes the reflection plus its confidence into its own target instead of compositing. The march steps
-in screen space, so the budget covers `steps * stepPixels` pixels whatever the ray angle, the hits are
-refined by intersecting the ray with the surface plane rebuilt from a wide depth baseline, and the hit
-color is gathered at a mip of the scene color copy chosen from the reflection cone. The resolve phase
-averages that target in screen space premultiplied by the confidence, which dilates the reflection past
-the silhouettes the trace can not see through and removes the row level stripes the hit leaves behind.
-A pixel with no screen space reflection keeps its forward shaded color, so the sky or the active
-environment volumes provide the reflection wherever screen space can not.
+TAA, bloom, SSR, DoF, gamma/tonemap/FXAA. Temporal anti-aliasing runs directly behind the forward pass and in
+front of bloom, because bloom thresholds the frame and a threshold taken on a jittered frame picks a
+different edge every frame; the reflections behind it denoise themselves, so they do not need the
+resolved image. Bloom runs before the reflections on purpose: the reflection pass
+copies the shaded frame, so the glow has to be in it or a reflected highlight comes back flat.
+
+`SsrPass` follows the FidelityFX SSSR / Denoiser Reflections arrangement, rewritten as fragment passes
+because the backend has neither compute nor shader storage (see `Resources/Engine/Shaders/ssr*.shader`).
+It runs in four phases. The trace phase shoots one ray per pixel sampled from the reflection lobe (GGX
+visible normal distribution, bent towards the mirror direction by `SSRBRDFBias`), marches it against the
+pre process g buffer, refines the hit by intersecting the ray with the surface plane, and writes
+`rgb = reflection, a = coverage` plus a second target holding where the ray ended (`xy` uv, `z` depth,
+`w` length). The reflection it writes is *complete*: the confidence of the hit blends the hit radiance
+with the sky's pre filtered specular cubemap (`s_envSpecular`, the same IBL image the forward pass
+shades with, sampled at the mip the roughness selects), so a ray that leaves the screen or finds nothing
+still carries the environment's answer. There is no "no data" state for the accumulation to paper over,
+which is what a previous version needed and what left old reflections on a mirror. The average phase
+writes a 1/8 resolution, luminance weighted average of the trace - the low frequency anchor the temporal
+clip leans on. The resolve phase is the denoiser: a 15 tap Halton window with normal/depth/radiance edge
+stopping, the *two* candidate reprojections the reference uses (the surface through the frame's motion,
+and the point the ray ended at, projected with the previous view projection) picked by how well the
+history g buffer's normal and roughness match, a smooth disocclusion factor from the same history, a
+sample count carried across frames, and a variance clipped blend whose history share comes from the
+disocclusion factor (0.98 at a perfect reprojection, none at a mismatch), plus five percent of the 1/8
+resolution average mixed into every new sample as ballast against a firefly. That share is fixed, because
+a share computed from the sample counter sat at its maximum of one half and smeared half of a coarse
+average into every reflection. The blend is *not* driven by the sample counter: the counter is read back
+from a target and it was measured stuck at one sample, which meant the history was never used and every
+frame showed a single sampled ray - the reflection crawled, and it crawled worst where roughness made the
+sampled cone widest. The disocclusion factor is computed from the frame's own g buffer, so it can not
+disagree with itself that way. Measured with the wobble split by the roughness of the surface: 0.00349 to
+0.00044 frame to frame at roughness 0.2 to 0.3, and 0.00147 to 0.00072 at 0.6 to 0.8, with no ghosting over
+a moving camera. The counter target is still written, for the debug views.
+The composite phase mixes the accumulation over the scene copy towards the reflection by the trace's
+coverage, the share of the pixel that a surface of that roughness reflects (specularShare, read from the g
+buffer's roughness) and SSRIntensity. The share is what keeps an albedo: the mix replaces the whole shaded
+pixel, the g buffer carries no albedo or metalness to tell a specular contribution from a diffuse one, and
+at full strength every rough wall came out painted with the sky. It is not a Fresnel term and not metalness
+aware - it is what a roughness only g buffer allows, so a rough metal keeps more of its albedo than it
+should.
+
+The roughness in that g buffer is per pixel and comes from the material's metallic roughness texture when
+it carries one (glTF: green channel, multiplied by the material's roughness factor) and from the factor
+alone otherwise. Writing the factor for both cases is what kept a textured material out of the reflections:
+the factor is conventionally 1.0 when a texture is in use, which lands on the roughness cutoff and disables
+the pass for the whole surface.
+
+The reflection has one quality setting, SSRQuality, next to the switch in the post processing panel, with
+three levels. High traces and resolves at frame resolution with fifteen filter taps; Mid does both at half
+(a quarter of the pixels) and Low at a quarter (a sixteenth), with the composite upsampling what it reads,
+the sample counter in an eight bit target below High and Low also cutting the filter to six taps. The
+numbers on a Mali G71 at 2220x1080, same scene and knobs, the pass costing what it costs over a frame with
+it switched off (47.6 ms): High 243.5 ms, Mid 120.8 ms, Low 84.0 ms, so 196, 73 and 36 ms for the pass
+itself. For reference, the simpler single pass reflection this replaced cost 23 ms and looked like a
+stochastic sample with no accumulation. What the levels buy is paid for in mirror sharpness: High keeps a
+silhouette sharp, Mid softens it, and Low shows the quarter resolution grid at the edge of a mirror.
+
+The composite's upsample is done in the shader, with four nearest taps, and the targets stay nearest:
+GL ES does not guarantee linear filtering of a float render target (OES_texture_float_linear is optional)
+and a device without it samples black. A target narrowed to FormatRGBA8 has to have Format and Type
+narrowed with it for the same class of reason: the internal format alone leaves the framebuffer incomplete
+on GL ES, the resolve's writes go nowhere and the accumulation stays black with no error logged.
+
+The march itself is hierarchical. A min depth pyramid (ssrDepthPyramidFrag.shader) is built every frame
+from the g buffer's linear depth, level 0 half the screen and each level after it half of the one before,
+background counting as the far plane. While the tile the ray is in holds nothing in front of it, the step
+covers a whole tile of the current level and the ray climbs; when the tile does hold something, the ray
+descends before stepping. The hit test stays against the exact g buffer, so the pyramid only decides how far
+a step may jump - it never declares a hit. Measured on the reflective scene the step budget this consumes
+drops from 0.54 to 0.51 of the requested count for the same picture; SSR_USE_PYRAMID 0 turns the march
+back into a flat one, which is how that is measured, and debug view 10 shows the fraction of the budget each
+pixel spent. The flat march already covers the screen in the requested count on this scene, so the hierarchy
+buys cost headroom rather than reach: it is what keeps a low step count usable on a phone.
+
+The two numbers the sampler draws per pixel come from a 128x128 void and cluster blue noise tile
+(Resources/Engine/Textures/blueNoise.png, generated by 	mp/gen_bluenoise.py and checksummed into the
+engine resources like any other). Blue noise is what keeps the samples of one frame evenly spread: an
+uncorrelated random sequence leaves clumps and holes at the tile's scale, and at one sample per pixel those
+clumps are what the denoiser then has to average away. The tile is walked by the frame index with the R2
+steps, so consecutive frames draw from cells far apart in the tile while each frame stays uniform. On the
+mirror path the sampler barely matters - the lobe is a delta and the sample is deterministic - which is
+exactly why the measurement there shows no difference; it is the glossy path that consumes it.
+
+Mirrors are the exception, and it is the reference's split: below `SSR_MIRROR_ROUGHNESS` the trace is the
+exact mirror direction, so there is nothing to average and nothing to ghost. Those pixels take this
+frame's sample as it is and keep a sample count of one; the spatial filter and the temporal accumulation
+only run for glossy surfaces. A mirror therefore cannot shimmer or ghost by construction - it can only
+alias, which is a sampling problem the trace has to answer, not the denoiser.
+
+`VelocityPass` writes the screen motion of the objects whose transform changed - it draws the same
+geometry twice, once with this frame's transform and once with the one it had a frame ago, both with the
+current camera, into two targets cleared to zero every frame, alpha marking that an object was drawn.
+The resolve subtracts that motion from the surface reprojection, so an object's own movement is followed
+in the history instead of being read as a disocclusion.
+
+The composite goes into a target of the pass's own (`SsrPass::GetOutputFramebuffer`), not back into the
+frame it read: the frame is read only for the rest of the frame, and DoF, the tone curve and a host that
+composites the frame itself all follow the reflection target instead. That target is what
+`ForwardSceneRenderPath::GetOutputFramebuffer` reports, because the path no longer always writes the
+framebuffer it was handed - a host that reads the viewport framebuffer after this path gets the frame from
+before the reflections.
+The step count selects *density*, never reach: the shader sizes a step so that the requested count crosses
+the screen diagonal, and the loop bound is a compile time `SSR_STEP_COUNT` variant from {8, 16, 32, 64}
+(`SsrPass::PreRender` picks the variant, then hands the count the bound can honor). The two disagreeing is
+what made a higher count shorten the reflections instead of refining them - `Shader::Init` has to run before
+`SetDefine`, because Init is what builds the define selection. The three fades around that march are settings
+now (`SSREdgeFade`, `SSRScreenFadeStart`, `SSRRangeFadeStart`, in `SsrPassData.fades`): the screen border
+margin, where the fade along the ray's screen length starts (as a fraction of the reachable length), and
+where the hit distance fade starts (as a fraction of `SSRMaxDistance`).
 
 `SSRDebugView` / `SSRDebugViewMode` (Post Processing settings) switch the pass to a debug view:
 reflection, confidence, mip level, scene depth, hit uv, ray length or hit error. The resolve phase hands
 debug views through unfiltered.
 
+`ForwardSceneRenderPath::PreRender` settles the MSAA resolve target **before** `SetPassParams` runs, and
+creates its color attachment when a reconstruction dropped it. `SetPassParams` is where the post chain
+collects the pointers it sizes itself from (SSR and DoF `ColorRt`, the bloom and tone curve framebuffers,
+`m_frameColorFb`), while `Framebuffer::ReconstructIfNeeded` on the resolve target builds a new render
+target: a pointer taken before it keeps the previous frame's object, an orphan of the old size that
+nothing writes that frame. On a resize frame that orphan still has the size the viewport used to have, so
+the reflections sized their targets from it, `GetOutputFramebuffer` reported it, and the copy the editor
+and the game renderer make into the viewport framebuffer tripped `Renderer::CopyTexture`'s size assert.
+Anything that resizes a target the post chain points at belongs in that block, above `SetPassParams`.
+
+#### Depth sharing between the pre process pass and the frame
+
+The pre process pass borrows the frame's depth attachment, which is what gives it its early z test: it
+draws the opaque geometry before the forward pass, and the forward pass then rejects what is behind it
+without shading it. That only holds for a depth attachment two framebuffers may share. The pass builds a
+depth buffer of its own when the pre process target is a different size (a framebuffer whose attachments
+disagree is incomplete in GL ES), and also when the backend keeps the samples of a multisampled target in
+a shadow buffer beside the texture - `IGraphicsBackend::UsesMultisampledRenderToTexture`, which is
+`GL_EXT_multisampled_render_to_texture` on Mali. There the driver resolves that attachment when the
+framebuffer that wrote it is unbound, so one depth attachment written by two framebuffers is resolved
+twice, in an order the driver picks. On the Mali reference device (SM-G950F, MSAA on) the two resolves
+alternate and every other frame is lit as if the environment were a low resolution capture of the scene
+instead of the sky, over the whole picture - the g buffer keeps its own depth buffer instead
+(`ForwardPreProcessPass::InitBuffers` takes the decision). Nothing else about the frame changes.
 `TaaPass` (`TAAEnabled`, off by default) resolves the frame against a history buffer. Every frame is
 drawn with the camera projection nudged by a sub-pixel offset from an eight phase Halton sequence - the
 jitter is applied to the projection inside `Renderer::SetCamera`, never to the camera object, and the
 forward, sky and pre process passes read it back with `Renderer::GetProjectionJitter` - then the resolve
-reprojects each pixel through `prevViewProjection * inverse(jitteredViewProjection)`, rejects a sample whose
-predicted depth does not match the depth stored at the reprojected texel, clamps the history into the
-pixel's own 3x3 color range and blends at 10 percent. The unprojection has to use the jittered matrix
-the frame was drawn with (the depth buffer holds those samples) while the projection into the previous
-frame uses its unjittered matrix (the history is a pixel grid); mixing the two puts the surface point
-back by up to the jitter every frame, which reads as the image swimming. The reprojection is camera
-only: a surface that
-moved on its own has no motion vector, so it is clamped away instead of carried. The history is two
-half float targets that swap every frame (a pass can not sample the attachment it draws into), and the
-resolved color is copied back over the frame's color attachment, which keeps the post chain behind the
-pass reading the target it always read. MSAA and TAA do not combine: a multisampled depth attachment is
-a renderbuffer with no texture behind it, so `TaaEnabled()` answers false (and warns once) while the
-frame is multisampled, and the forward pass keeps its depth instead of discarding it when TAA runs.
+reprojects each pixel through `prevViewProjection * inverse(jitteredViewProjection)`, blends a sample
+whose predicted depth does not match the depth stored at the reprojected texel at half weight instead of
+dropping it, clamps the history into the pixel's own 3x3 color range and mixes at 10 percent. The
+unprojection has to use the jittered matrix the frame was drawn with (the depth buffer holds those
+samples) while the projection into the previous frame uses its unjittered matrix (the history is a pixel
+grid); mixing the two puts the surface point back by up to the jitter every frame, which reads as the
+image swimming. The sky takes a rotation only matrix, because everything at the far plane is at infinity
+and a translation would slide it. The reprojection is camera only: a surface that moved on its own has no
+motion vector here, so it is clamped away instead of carried. The history is two half float targets that
+swap every frame (a pass can not sample the attachment it draws into), and the resolved color is copied
+back over the frame's color attachment, which keeps the post chain behind the pass reading the target it
+always read. MSAA and TAA do not combine: a multisampled depth attachment is a renderbuffer with no
+texture behind it, so `TaaEnabled()` answers false (and warns once) while the frame is multisampled, and
+the forward pass keeps its depth instead of discarding it when TAA runs.
+
 
 #### Depth grid occlusion culling (`OcclusionCulling` graphic setting, off by default)
 
-`BuildDepthGrid` runs at the end of `ForwardSceneRenderPath::Render`, after the pass array, and reduces one
-depth buffer of the frame to one float per `DepthGridBlockSize` (8) block. The reduction is
-`depthGridFrag.shader`, drawn with a `FullQuadPass` into an RGBA32F target the size of the grid (screen /
-8); only the first channel, the block's farthest depth, is read back, and only every `DepthGridReadInterval`
-(4) frames, because the read blocks. The source pick, the resolve, the reduction and the read all sit on
-that read frame, so the three quarters in between cost nothing. Two cullers read that grid, both through
-`IsOccludedByGrid`, which projects a world space box, takes the volume's nearest depth along the view, and
-answers true only when every grid block inside the on-screen footprint holds a depth nearer than that point:
+`BuildDepthGrid` runs at the top of `ForwardSceneRenderPath::Render`, before the frame clears its depth, and
+reduces the depth the previous frame left in the frame's depth attachment to one float per `DepthGridBlockSize`
+(8) block. The reduction is `depthGridFrag.shader`, drawn with a `FullQuadPass` into an RGBA32F target the size
+of the grid (screen / 8); only the first channel, the block's farthest depth, is read back. A read is issued
+once per frame and it is asynchronous - `BeginReadPixels` into one of two slots, polled by
+`ConsumeDepthGridReads` at the top of the next frame - so the frame overlaps the transfer instead of waiting for
+it. Two cullers read that grid, both through `IsOccludedByGrid`, which projects a world space box, takes the
+volume's nearest depth along the view, and answers true only when every grid block inside the on-screen
+footprint holds a depth nearer than that point:
 
 - **Lights** (`CullOccludedLights`) drop a local light from the frame entirely - no atlas slot, no shadow
   map. The box is the light's radius, and the nearest depth comes from the sphere that box encloses, which
@@ -414,7 +542,7 @@ The mesh test runs on the frame pool. `CullOccludedEntities` is three passes: th
 the bounding box read on the calling thread (the box read can rebuild an entity's spatial caches, and that is a
 write), the grid test itself on `TKExecByConditional(size > OcclusionParallelThreshold, FramePool)` with
 `poolstl::iota_iter`, and then the streaks and the kept list back on the calling thread, walking the entities in
-their original order. The grid test only reads - the read back grid, its size and units, the stored camera - and
+their original order. The grid test only reads - the read back grid, its size, the stored camera - and
 each candidate owns its own verdict, so the pool needs no lock and the result does not depend on how the list was
 split. Below `OcclusionParallelThreshold` (128) candidates the loop stays serial, because dispatching a few boxes
 costs more than testing them; sweeping the candidate count on the city scene puts the crossover at about 64 boxes
@@ -437,8 +565,9 @@ The read itself is asynchronous, and that was the bigger half of the build. `Bui
 `BeginReadPixels` into one of two slots and stops there; `PreRender` polls both slots with `ConsumeDepthGridReads`
 before the frame culls, and installs the newest one that landed together with the view it was reduced with - the
 pixels are a frame or two old by then, and comparing them against whichever camera is current would compare two
-views. A read whose view no longer matches the grid set in hand is thrown away rather than installed, and
-`InvalidateDepthGrid` marks the ones in flight so they cannot land later and reinstate a dropped grid. What that
+views. `InvalidateDepthGrid` marks the reads in flight so one cannot land later and reinstate a grid that was
+dropped. There is no interval between reads: the frame overlaps the transfer, two slots keep one in flight every
+frame, and a grid a frame old describes the picture as well as a fresher copy would. What the asynchronous read
 buys, same scene, measured with a scope around the issue and the old blocking call:
 
 A backend without the asynchronous form does not skip the read, it moves it: the slot is parked with the target the
@@ -456,48 +585,41 @@ issues it.
 
 Three invariants make this work and are easy to break:
 
-- **The depth the grid reduces has to survive the path.** The grid is reduced at the end of the frame, so
-  nothing may clear or discard the depth between the forward pass and that point. `GammaTonemapFxaaPass`
-  clears only `ColorStencilBits`, and the post process passes write their own targets, so the scene's depth is
-  intact when the grid takes it. `ForwardSceneRenderPath::Render` clears depth + stencil itself at the top of
-  the frame, which keeps the forward pass's assumption intact (it skips its own depth clear when a pre process
-  pass exists, so a stale buffer would reject this frame's geometry against last frame's). Reducing at the end
-  rather than at the start of the next frame is what keeps the editor out of this: its gizmo pass clears depth
-  for the overlays it draws afterwards, and that used to erase the depths the next frame's grid needed.
+- **The depth the grid reduces has to survive the frame.** The grid is reduced from the depth the previous frame
+  left behind, at the top of `Render` before this frame clears it, so nothing may clear or discard that depth
+  between the forward pass and the end of the frame. `GammaTonemapFxaaPass` clears only `ColorStencilBits`, and
+  the post process passes write their own targets, so the scene's depth is intact when the next frame's grid
+  takes it. The clear itself is why the read happens there: `ForwardSceneRenderPath::Render` clears depth +
+  stencil at the top of the frame, which keeps the forward pass's assumption intact (it skips its own depth
+  clear when a pre process pass exists, so a stale buffer would reject this frame's geometry against last
+  frame's). Reducing it there also keeps the editor out of this: its gizmo pass clears depth for the overlays
+  it draws afterwards, and a read taken later would pick those up instead of the scene.
 - **The grid has to be the farthest depth per block**, which is what `depthGridFrag.shader` reduces. A
   single sample per block (a nearest blit) is optimistic: it can report a block as in front of a light while
   part of that block is beside or behind it, and a partly visible light then disappears.
-- **A grid older than the picture it describes proves nothing.** The read interval is the steady state only:
-  while nothing changes, an old copy names the same geometry a fresh one would. A frame that moved the camera
-  (`m_occlusionViewProj` no longer matches the camera's own) or changed the scene (`m_sceneChangedLastFrame`,
-  set by the frame that rebuilt a range) forces a read on the next frame, which keeps the CPU copy at most one
-  frame behind whatever moved. Without that, a mesh behind an occluder that walked away stayed dropped for the
-  rest of the interval, which reads as geometry flickering in and out.
+- **A grid older than the picture it describes proves nothing.** The grid is a frame behind by construction,
+  because it is reduced from the depth the frame before drew, so the camera that drew that depth travels with
+  the read and the warp carries the blocks into the frame being culled (below). Whatever moved since is what
+  `OcclusionStreakToCull` covers: one frame that looks hidden is never enough to drop anything.
 
-There are two sources, and `depthGridFrag.shader` reads a different channel of each behind its
-`DepthGridLinearDepth` define:
+The source is the frame's depth attachment - the depth the projection encoded - and `depthGridFrag.shader` reads
+its red channel: farther is the larger number there, and a texel nothing was drawn on already holds the far
+plane, because that is what the attachment is cleared to, so the reduction is a plain max with no empty texel
+case. While MSAA is on that attachment is a multisampled renderbuffer: it has no texture behind it, and neither
+GL ES 3.0 nor WebGL 2 has a multisample sampler (`sampler2DMS` is ES 3.1) to fetch it with. `ResolveDepthBuffer`
+therefore copies it into a single sample depth texture with one `BlitDepth` and the grid reduces that copy. The
+blit has to be one to one with matching depth formats, because a multisampled source can be resolved but not
+scaled, and `GLBackend::BlitDepth` refuses a scaled one instead of leaving the driver to report it
+asynchronously. The copy is cleared to the far plane first, so a resolve that a driver refuses leaves a grid of
+"behind everything" - no volume is found in front of it and the frame is drawn as if culling were off - rather
+than whatever the allocation held. It carries one sample per pixel rather than all of them, so the block maximum
+can differ from the per sample depths only within a pixel that a silhouette crosses.
 
-- **The pre process pass's G buffer** (blue channel, view space distance) whenever that pass runs, which it
-  does for SSAO, SSR or DoF. The pass already resolves its color target for those effects, so the grid reads a
-  copy that cost nothing, needs no target of its own and compares in view space units - no projection, no
-  reversed depth range. Its empty texels are zero, which in view space means "at the camera", so the shader
-  pushes them to a distance past anything the frame can show: a block that is partly sky can never prove that
-  a volume behind the sky is hidden. RGBA16F carries about eleven bits of mantissa, so `LinearDepthSlack`
-  gives up a two thousandth of the volume's depth to keep a rounding error from flipping the decision.
-- **The forward pass's depth attachment**, which is what is left when no post process effect asks for the
-  pre process pass. While MSAA is on that attachment is a multisampled renderbuffer: it has no texture behind
-  it, and neither GL ES 3.0 nor WebGL 2 has a multisample sampler (`sampler2DMS` is ES 3.1) to fetch it with.
-  `ResolveDepthBuffer` therefore copies it into a single sample depth texture with one `BlitDepth` and the grid
-  reduces that copy. The blit has to be one to one with matching depth formats, because a multisampled source
-  can be resolved but not scaled, and `GLBackend::BlitDepth` refuses a scaled one instead of leaving the driver
-  to report it asynchronously. The copy is cleared to the far plane first, so a resolve that a driver refuses
-  leaves a grid of "behind everything" - no volume is found in front of it and the frame is drawn as if culling
-  were off - rather than whatever the allocation held. It carries one sample per pixel rather than all of them,
-  so the block maximum can differ from the per sample depths only within a pixel that a silhouette crosses.
-
-The two do not answer in the same units, so `m_occlusionLinearDepth` records which one built the grid in hand
-and a change of source - a post process effect switched on or off in the middle of a session - drops the grid
-and the streaks instead of comparing a view space distance with a projected depth.
+The pre process pass's G buffer (blue channel, view space distance) was the other candidate and is no longer
+read. That target is half the frame size by default, so a block covers sixteen frame pixels instead of eight,
+and a thin surface seen at a shallow angle slides inside a block whose farthest depth comes from the surface in
+front of it; the cull reads that as "behind what the frame shows" and drops a surface that is visible, which is
+what made thin geometry flicker out. The depth attachment is always the frame size.
 
 **The grid is in the screen space of the frame it was reduced from, so it is carried into the frame being drawn
 before it is tested** (`OcclusionReprojection`, on by default; off restores the older behaviour). A grid is at least
@@ -505,41 +627,51 @@ one frame old, and a camera that moved in between slides the whole picture acros
 occluder can end up under a volume that is in front of nothing, and dropping that volume leaves a hole the next frame
 fills with sky. `WarpDepthGrid` reprojects every block with its depth - back through the projection's third row into a
 view space distance (`d = P[3][2] / (ndcZ + P[2][2])`, one division, no inverse matrix), into the frame's view, and
-into that view's clip space - and keeps, per cell, the farthest depth that lands on it. It runs on the frame pool with
-one result per block and a serial fold, because two blocks can land on the same cell and the farthest has to win, and
-it is cached against the view and the read it was built from, so a still camera pays nothing after the first frame.
+into that view's clip space. The block is a square in the frame it was reduced from, so it is splatted as the quad
+its four corners make at the block's farthest depth, not as a point: adjacent blocks share an edge, the quads scale
+with the local stretch of the warp, and the cells between two block centres - which a point per block left empty
+whenever the grid stretched - are covered. Per cell the farthest depth that lands on it wins. It runs on the frame
+pool with one rectangle per block and a serial fold, because two blocks can land on the same cell and the farthest
+has to win, and it is cached against the view and the read it was built from, so a still camera pays nothing after
+the first frame.
 
 What the warp adds beyond moving the depths is the **answer for what it could not carry**: a cell no block lands on is
 a place the grid says nothing about, and a volume whose footprint touches one is kept. That is the whole point - a
 column that has moved off what it covered leaves exactly that region empty, so the geometry behind it is drawn on the
-frame it becomes visible, while the surfaces the warp did place still cull. A still camera covers every cell and drops
-the same meshes as before; a pan trades culls for the places the picture genuinely lost. Measured on the city scene,
-2729 candidates, a pan of 0.6 units per frame: 1411 to 1558 meshes dropped without reprojection (and holes where the
-camera uncovered geometry), 881 to 1440 with it, and 1539 either way under a smooth motion that keeps the blocks
-overlapping.
+frame it becomes visible, while the surfaces the warp did place still cull. A still camera covers every cell and
+drops within about a percent of what a point per block did; a pan trades culls for the places the picture
+genuinely lost. Measured on the city scene, 2729 candidates, a pan of 0.6 units per frame: 1411 to 1558 meshes
+dropped without reprojection (and holes where the camera uncovered geometry), 881 to 1440 with it, and 1539
+either way under a smooth motion that keeps the blocks overlapping. Those pan numbers are the point scatter's.
+Measured again with the quad on the insomnia city build (web, 1280x720, 4 s strafe): 185 to 682 meshes dropped
+during the move against 38 to 265 with the point, and 1386 on the still camera against 1406 - the corner depth
+and the block boundary cells are a little more conservative than a centre point.
 
-The scatter also rounds and stretches, so cells inside a single surface can come up empty without being disocclusion,
-and culling loses those. Filling them from their neighbours was implemented and measured, both unconditionally and with
-a depth-consistency gate, and both times it brought the artifact back: on a thin occluder - a railing, a ladder - the gap
-a pan opens is one or two cells wide, and a fill closes it and hands the grid an opinion it does not have. The
-unconditional fill recovered about 300 meshes per frame on the pan and cost 12% of the still camera's drops; the gated
-one recovered most of that back and still closed the thin gaps. Nothing is filled today: the cells stay unknown, and a
-volume that lands on one is drawn.
+The quad a block splats is the block's own, so the cells inside a single surface are covered by the quads of its
+blocks and only a depth discontinuity - a real disocclusion - is left between them. Nothing is filled from the
+neighbours: that was implemented and measured, both unconditionally and with a depth-consistency gate, and both
+times it brought the artifact back. On a thin occluder - a railing, a ladder - the gap a pan opens is one or two
+cells wide, and a fill closes it and hands the grid an opinion it does not have. The unconditional fill recovered
+about 300 meshes per frame on the pan and cost 12% of the still camera's drops; the gated one recovered most of
+that back and still closed the thin gaps. A cell no block covers stays unknown, and a volume that lands on one is
+drawn.
 
-The test itself now works in the frame's own view: `m_occlusionTestView` and `m_occlusionTestViewProj` hold it,
-`IsOccludedByGrid` projects the volume into it, and the comparison is in view space distance for both sources, so the
-`m_occlusionLinearDepth` branch left the block loop and only the warp decodes the source. With the option off the two
-are set to the grid's own view and the warp degenerates to a copy, which is the older behaviour: the grid is trusted
-where it was reduced, culling keeps more of the scene, and a volume the camera has just revealed can stay dropped.
-**The G buffer source is read back with less precision than the comparison is made in**, and the comparison
-gives up what it loses instead of trusting it: a volume's own depth is computed exactly from the projection
-while the grid holds a sampled copy, so a surface sitting exactly at the volume's nearest point can read back
-as being in front of it, and a flat volume that fills its own footprint (a wall panel, a shelf front) then
-proves it is hidden by itself. That buffer is RGBA16F, so `LinearDepthSlack` gives up the half float round
-trip. The depth attachment needs no such margin - it is exact once a sampler returns what the texture holds,
-which it only does with the highp default described in 3.2. Before that default, a `lowp` fetch quantized the
-window depths to 1/2048 of the range, which near a far plane of a thousand is metres wide, and the window
-depth path carried its own two step margin to cover it.
+The test itself works in the frame's own view: `m_occlusionTestView` and `m_occlusionTestViewProj` hold it,
+`IsOccludedByGrid` projects the volume into it, and the comparison is in view space distance, which the warp
+decodes from the depth the grid holds. With the option off the two are set to the grid's own view and the warp
+degenerates to a copy, which is the older behaviour: the grid is trusted where it was reduced, culling keeps more
+of the scene, and a volume the camera has just revealed can stay dropped.
+
+**The depth the comparison is made in is decoded rather than stored**, so it gives up a little instead of
+trusting it: a volume's own nearest depth is computed exactly from the box in the frame's view, while the grid
+holds depths that went through the frame's depth attachment and back out of the projection's third row, and the
+two are close rather than bit identical. A surface sitting exactly at the volume's nearest point can then read
+back as being in front of it, and a flat volume that fills its own footprint (a wall panel, a shelf front)
+proves it is hidden by itself. `LinearDepthSlack` gives up 5e-4 of the volume's own depth for that, and the read
+back target is RGBA32F for the same reason: an eight bit channel puts a decoded depth and a computed one inside
+one quantization step near a far plane of a thousand. A `lowp` fetch used to quantize a sampled depth to 1/2048
+of the range as well, and the window depth path carried its own two step margin for it, until the highp default
+described in 3.2.
 
 ### 4.4 Pass (Pass.h)
 
@@ -603,6 +735,14 @@ class MyPass : public Pass {
 
 See `AGENTS.md` section "Pass / PassRequirements Conventions" for the full pattern,
 including the two-quad rule for passes that use two fragment shaders (Bloom, etc.).
+
+A `FullQuadPass` merges its own state into the requirements on **every** draw:
+`GatherRequirements` re-reads the material's diffuse texture into slot 0, so a quad whose source
+changes (the frame's colour attachment after an MSAA toggle, a post process's copy target) picks the
+new texture up as soon as the pass calls `material->SetDiffuseTextureVal(...)`. Slot 0 used to be
+filled only while the map did not hold it yet, which pinned the first texture a quad ever bound:
+Bloom kept sampling the resolved framebuffer MSAA had created, and after the viewport target was
+rebuilt the previous frame's glow was composited over the live frame.
 
 #### RenderJob & RenderData
 
@@ -722,7 +862,7 @@ All bind at fixed slots (0-6 are the global engine buffers, 7 and up are pass sp
 | `PerDrawUboBuffer` | 2 | per-draw (model matrix etc., mirror in `perDrawDataInc.shader`) |
 | `DilatePassDataLayout` | 7 | outline/dilate pass |
 | `GammaTonemapFxaaPassDataLayout` | 7 | gamma/tonemap/fxaa pass |
-| `BloomPassDataLayout` | 7 | bloom downsample/upsample chain |
+| `BloomPassDataLayout` | 7 | bloom glow pass and composite (glow pyramid) |
 | `GaussBlurPassDataLayout` | 7 | shadow blur, gaussian passes |
 | `CubemapEquirectPassDataLayout` | 7 | equirect -> cubemap conversion |
 | `PreFilterEnvMapPassDataLayout` | 7 | specular IBL prefilter |
@@ -782,16 +922,18 @@ frame. `EndReadPixels(handle, nullptr)` discards a read instead of waiting for i
 (see 5.3).
 
 **A backend that cannot do that says so, and the caller reads later instead.** `SupportsAsyncReadPixels()` answers
-whether `BeginReadPixels` can hand pixels over a frame after they were asked for. WebGL 2 cannot: it has no way to
-read a pack buffer back into client memory (`glMapBufferRange` is not exposed), so the pixels a pack buffer collected
-can never be handed over. The backend keeps one read path - `ReadPixels`, blocking, optionally from an explicit
-framebuffer - and the engine decides: when the capability is off, `BuildDepthGrid` does not start anything, it parks
-the request in its slot together with the target the grid was drawn into, and `ConsumeDepthGridReads` performs the
-blocking read a frame later. That is the cheap moment on such a platform: the frame that filled the target is behind
-the GPU by then, so the wait is a copy of 240 x 135 x 16 bytes rather than a whole frame of queued commands. Reading
-where the grid is drawn would be the expensive spot, and it is the spot a naive "just read it synchronously" lands on.
+whether `BeginReadPixels` can hand pixels over a frame after they were asked for. Both GL paths can. The desktop one
+maps the pack buffer once its fence signals; WebGL 2 has no buffer mapping, but it does have sync objects
+(`fenceSync` / `clientWaitSync`) and `getBufferSubData`, so its read is the same one-frame-later copy: the fence is
+polled, and once it says the transfer landed the pixels are copied out of the pack buffer without a GPU wait. Vulkan
+and the null backend cannot - Vulkan's `ReadPixels` is still a TODO - so there the engine decides: when the
+capability is off, `BuildDepthGrid` does not start anything, it parks the request in its slot together with the
+target the grid was drawn into, and `ConsumeDepthGridReads` performs the blocking read a frame later. That is the
+cheap moment there: the frame that filled the target is behind the GPU by then, so the wait is a copy of
+240 x 135 x 16 bytes rather than a whole frame of queued commands. Reading where the grid is drawn would be the
+expensive spot, and it is the spot a naive "just read it synchronously" lands on.
 
-The null backend answers false as well, and Vulkan's `ReadPixels` is still a TODO, so on those the grid silently
+The null backend answers false too, and Vulkan's `ReadPixels` is still a TODO, so on those the grid silently
 never arrives - which is why the engine logs once when a grid read comes back empty rather than leaving culling off
 with nothing said.
 
@@ -820,10 +962,10 @@ target can be blitted into regardless of the draw buffer state it was created wi
 route the web build through the `GL_EXT_debug_label` pointer the loader already resolves. `glGetString(
 GL_EXTENSIONS)` returns null on ES 3.0 as well, so `LoadGlFunctions` enumerates `GL_NUM_EXTENSIONS` with
 `glGetStringi` and matches names with or without the `GL_` prefix (WebGL reports the bare name).
-`glMapBufferRange` is the third: a pack buffer can be filled on the web but never mapped for reading, which is
-why `SupportsAsyncReadPixels()` answers false there and the depth grid is read at the point it is consumed
-instead (see 5.1).
-
+`glMapBufferRange` is the third: a pack buffer can be filled on the web but never mapped for reading, so the
+readback goes through `getBufferSubData` once the fence is polled - a frame later the transfer has landed and the
+copy does not wait for the GPU (see 5.1). Emscripten's GLES header does not declare `getBufferSubData` even though
+the WebGL 2 binding exists, so `GLBackend.cpp` declares the entry point itself.
 **Three extensions are requested on the web context at startup**, because listing a name in `GL_EXTENSIONS` is
 not the same as having it: `EXT_texture_filter_anisotropic` (texture max anisotropy), `OES_texture_float_linear`
 (linear filtering of a float target) and `EXT_color_buffer_float` (without it no float format is color-renderable,
@@ -894,8 +1036,26 @@ free of engine types, so it can be compiled and asserted on its own.
 
 `Animation::SampleTrack(keys, time, pos, rot, scale)` is the single sampling path of a node track:
 the runtime pose, root motion and the editor's dope sheet preview all call it, so the preview and
-playback cannot drift. Rotation uses `slerp` with an eased parameter whose end slopes are matched to
-the angular speed of the neighbouring segments, so no quaternion tangents are needed.
+playback cannot drift.
+
+**Rotation is four component curves**, the way Blender interpolates a quaternion property: a cubic
+segment runs `x` / `y` / `z` / `w` as four Hermites and normalises the result, and `Stepped` / `Linear`
+stay a hold and a plain `slerp`. Position and scale keep the local auto tangent of `AutoTangent`; the
+rotation components use the same one, clamped and flattened per component. Slerp with an eased
+parameter was what the engine did before, and it cannot be fixed by tuning: slerp keeps the angular
+*speed* continuous at a key but not its *direction*, because the segment before a key and the one after
+it are different geodesics, so the rotation axis jumps where they meet. On
+`PerformanceDemo/Resources/Meshes/roller.anim` (five Camera keys, all `Smooth`) that jump was 84 to 120
+degrees per key, 100 to 450 rad/s^2 of jerk - the hard hit a fly through showed between keys. Four
+component curves are C1 across a key, so the whole angular velocity vector stays continuous: the same
+keys measure 3 to 15 degrees of axis turn and about 7 to 12 rad/s^2. A two key track keeps the plain
+slerp, since there is no key between two segments and nothing to smooth.
+
+The cost of a sample is unchanged - a handful of dot products, no allocation, nothing solved over the
+track - which is deliberate. Blender's own formulation also solves the tangents of the whole track with
+a tridiagonal system for continuous acceleration; that alignment lives on the
+`feature/blender-like-key-interpolation` branch and was not merged, because the per segment cost of the
+solve is not worth it when the rotation fix is what removes the visible hit.
 
 Key modes are node track only. The skeleton path (`Animation::GetPose(SkeletonComponentPtr)`) and the
 animation data texture that feeds GPU skinning are still straight two key interpolation, so a mode is
@@ -921,10 +1081,15 @@ whether a curve interpolates (float, vec2, vec3, vec4) or steps (everything else
 `parameter-animation-plan.md` for the full design.
 
 Reaching an entity at runtime needs an `AnimControllerComponent` on it: the component keeps a
-signal -> `AnimRecord` map (one record = one entity + one clip + `ApplyRootMotion`), and `Play`
-hands the record to `AnimationPlayer`, which `Main::Frame` updates every frame. The component is
+signal -> `AnimRecord` map (one record = one entity + one clip + `ApplyRootMotion` + `m_loop`), and
+`Play` hands the record to `AnimationPlayer`, which `Main::Frame` updates every frame. The component is
 per entity: several entities playing the same clip carry one component and one record each, they
-are not driven from a single place.
+are not driven from a single place. Both per record flags are editable in the component's inspector,
+as the `Root` and `Loop` columns of the record table: `Loop` wraps the record's time at the end of the
+clip, while a record that does not loop holds its last frame (the curve of a one shot therefore ends
+flat, which is what an animator expects from a walk-end clip). Both are saved with the scene
+(`ParameterBlock` writes `ApplyRootMotion` and `Loop` per record; a scene written before `Loop` existed
+reads back as one shot).
 
 `AnimationPlayer::Update` then fills two kinds of target:
 
@@ -1012,6 +1177,19 @@ Standard projection camera. Fov, near, far, aspect, orthographic, is2D. `SetLens
 
 `EditorViewport` (Editor/) + `EditorViewport2d` are editor versions with gizmos, picking, etc.
 
+The image an editor viewport shows for a frame is recorded while the UI runs and rendered by the render task
+that follows it, so the texture ImGui samples has to exist before that task runs.
+`EditorViewport::GetImGuiTextureId` returns the resolved attachment of the viewport's multisampled target,
+and on the frame a resize replaced that target it asks `EditorRenderer::PrepareViewportResolveTarget` for
+one, which builds it and assigns it as the target's resolved texture right there. That is what keeps a
+resizing viewport showing the frame it is drawing, at the new size, instead of the black texture the old
+code fell back to, or the frame from before the resize stretched over the new area. Nothing may rebuild the
+target afterwards: its handle is already in the draw list, which is why the resolve target is only created
+when it is missing.
+`FramebufferSettings` and `TextureSettings` compare field by field for the same reason - the byte comparison
+they used to do also compared the padding their layout leaves, so two copies equal in every field could
+report as different and make `ReconstructIfNeeded` replace a target under a handle already handed out.
+
 `SwapCamera` for swapping attached camera (preserves ID).
 
 ### 8.3 GameRenderer (GameRenderer.h)
@@ -1022,6 +1200,11 @@ Used by **runtime game apps** (not editor). Pipeline:
 3. `GammaTonemapFxaaPassPtr m_gammaPass`
 
 Params: `viewport`, `scene`, `postProcessSettings`.
+
+The composite reads `ForwardSceneRenderPath::GetOutputFramebuffer`, not the viewport's framebuffer: with
+screen space reflections on, the path leaves the picture in the reflection target and the viewport's
+framebuffer still holds the frame from before them. The UI pass needs the picture in the buffer it draws
+into for the same reason, so it is copied there first when the two differ.
 
 **Present: the frame leaves through a copy, and that is settled.** `m_gammaPass` composites the rendered
 target into `m_presentTarget` - a window sized RGBA8 framebuffer, `PreparePresentTarget()` creates and
@@ -1329,9 +1512,18 @@ Model:
   lowest frame of the group so nothing lands before frame 0, and the whole move is one undo step.
   `Delete` removes the set the same way, and one ghost marker per key shows where a bulk move lands.
 - The sheet area has two views, switched by the `Curves` button (it always names the view it
-  switches to). The curve view is **read only**: the name column lists the transform tracks and picks
-  one, and the lane area plots three bands -- translation, rotation in degrees, scale -- each with the
-  x / y / z curves of that track and its own value range, so lengths and angles do not share a scale.
+  switches to). The curve view is **read only**. Its name column is a tree: one row per transform
+  track, with a check box that plots that track and an arrow that unfolds it into one row per
+  transform group (`Translation`, `Rotation (deg)`, `Scale`), each with a check box of its own. A
+  track's box stands for its three groups -- it reads as a dash while only some of them are checked --
+  and a group row plots just that group. Everything that is checked is drawn **in one area, overlaid**:
+  there are no per channel strips, so two objects, or a translation and a scale curve, read against
+  each other. Each checked group takes three colours in a row from a nine colour palette (the first
+  three are x / y / z, the colours the sheet always plotted one group with), and a legend in the
+  plot's top right names the track, the group and the value range it is mapped to.
+  `Normalize` (on by default) maps every group onto the full height of the plot with its own value
+  range, so lengths, degrees and scale factors are all readable at once; off, the plotted groups share
+  one auto range and the axis is labelled with it, which is what comparing their values needs.
   The pose is sampled through `Animation::SampleTrack`, the call the preview plays, so the shape shows
   what the key modes do: Stepped holds, Smooth blends through the key, Flat eases into it. Rotation is
   read out as euler degrees and made continuous with the sample before it (`ContinuousEuler`): the
@@ -1339,9 +1531,10 @@ Model:
   previous sample is taken. A track that sits at yaw +- 90 degrees stays ill conditioned there, because
   pitch and roll are not separately defined at that orientation. The motion itself is quaternion and
   gimbal free, only the three angle readout has that singularity.
-  The timeline (`Ctrl+wheel` zoom, `Shift+wheel` pan, scrub, playhead) is shared with the lanes, and
-  the frame under the pointer is read out in a tooltip. Nothing is editable here and parameter tracks
-  are not plotted.
+  The timeline (`Ctrl+wheel` zoom, `Shift+wheel` pan, scrub, playhead) is shared with the lanes, a
+  plain wheel scrolls the tree rows, and the frame under the pointer is read out in a tooltip that
+  lists the value of every plotted curve. The check boxes and the unfolded rows belong to the clip and
+  are reset when another clip is bound. Nothing is editable here and parameter tracks are not plotted.
 - `K` also works from the editor viewport (`EditorViewport::DispatchSignals`), which keys the
   selected entities at the sheet's playhead through `App::GetDopeSheet()`; the frame and the clip
   live in the sheet, so the shortcut reports through the status bar when the sheet is not open.
@@ -1393,7 +1586,7 @@ and a game may still want to capture: `RenderDocCapture::Init` plus the two fram
 hooks and `Shutdown` are all a host needs, and `ToolKit::RequestFrameCapture()`
 then works there exactly as it does in the editor. The game template deliberately
 does not call them - not every game wants capture - so opting in is documented in
-`Modules/RenderDoc/Scripts/README.md` rather than baked into every project. The
+`Modules/RenderDoc/README.md` rather than baked into every project. The
 engine knows nothing about projects, so `Init()` takes two callbacks: one that
 answers the capture directory (resolved per capture, so a project switch moves it)
 and one that returns the extra sidecar fields. The editor answers
@@ -1463,6 +1656,15 @@ with RenderDoc absent the editor still registers its commands (so `CaptureStatus
 can explain), reports false and every other entry point does nothing, which is
 what a normal start looks like. In a game the same call reports false and
 `RequestFrameCapture()` stays a no-op.
+
+**A GL capture needs a frame without legacy fixed function.** RenderDoc drops the whole GL device
+when it sees a call it cannot hook (`glMatrixMode`, `glOrtho`, the client state array functions):
+every capture after that fails with "Couldn't find matching frame capturer". SDL's accelerated
+window surface path is exactly such a caller, and the editor's splash screen was using it, which
+made editor captures fail on a machine where SDL chose that renderer. `SplashScreen::Run()` pins
+`SDL_HINT_FRAMEBUFFER_ACCELERATION` to `0` for that reason - the splash blits in software, and the
+GL device survives. Symptoms to look for: `RenderDoc refused the capture` in the host log and
+`Unsupported function ...` in `/tmp/RenderDoc/RenderDoc_<stamp>.log`.
 
 Four ways to ask for a capture, all funnelling into one queue:
 
@@ -1578,6 +1780,23 @@ the original name), so the engine's unique-bone-name assumption holds. assimp
 internal merges that cannot be recovered (same-name clusters on one mesh
 collapse into one `aiBone`; same-name FBX animation channels collapse into one
 `aiNodeAnim`) are logged as warnings.
+
+Tangents are calculated during import (`aiProcess_CalcTangentSpace`). Most FBX
+exports carry none, and the engine's normal mapped shader path builds its TBN
+from them: a zero tangent makes `normalize()` return NaN, which turns every
+normal mapped surface black in the lit view and in the normal debug view.
+Meshes without UVs get no tangents, which is fine because they have no normal
+map to sample.
+
+Texture references are copied next to the imported asset and referenced from
+the material. Decoding goes through stb_image, which has no DDS reader, so a
+DDS reference is converted to PNG on the way in (`Utils/Import/DdsLoader.*`,
+BC1 / BC3 / BC5) and the material points at the converted file. A DDS the
+loader cannot decode is reported once per file and skipped, so the material
+imports without that map instead of carrying a path the engine can never load.
+The same rule keeps `Material::MakeSureItsDataTexture` from initializing a
+texture that has no pixel data; that path warns and keeps the linear data
+settings.
 
 ### 11.2 Packer (`Utils/Packer/`)
 Release / publish CLI. Bundles projects for Windows, Web, Android. Links
@@ -1895,7 +2114,7 @@ When writing/editing any `.h`/`.cpp` in this repo:
 | RenderDoc in-application API header (vendored) | `Dependency/utilities/renderdoc_app.h` |
 | Editor API for modules (console commands, console output) | `Editor/Source/EditorApi.h` |
 | Frame capture request hook (game code) | `ToolKit/Source/FrameCapture.h` |
-| Capture report tool (.rdc -> json / markdown / PNGs) | `Modules/RenderDoc/Scripts/README.md` |
+| Capture and its report tool (capture -> .rdc -> json / markdown / PNGs) | `Modules/RenderDoc/README.md` |
 | Host / platform glue (exec paths, shortcuts, app icon) | `ToolKit/Common/PlatformHelper.h` |
 | Workspace (project and workspace management) | `Modules/Workspace/Source/Workspace.h` |
 | Build deps | `BuildScripts/build_dependencies.py` |

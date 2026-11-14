@@ -79,10 +79,23 @@ def md_escape(text):
 
 
 def enum_name(value, fallback="?"):
-    """Last component of a SWIG enum repr: ``Topology.TriangleList`` -> ``TriangleList``."""
+    """Name of a SWIG enum member, without the enum type.
+
+    ``Topology.TriangleList`` -> ``TriangleList``. Newer RenderDoc bindings stringify an
+    enum to its integer (``GraphicsAPI.OpenGL`` comes out as ``2``) and keep the name in
+    the repr alone, as ``<GraphicsAPI.OpenGL: 2>``, so the name is read from there.
+    """
     if value is None:
         return fallback
-    text = str(value)
+
+    text = repr(value)
+    if text.startswith("<") and ":" in text:
+        # <GraphicsAPI.OpenGL: 2> -> GraphicsAPI.OpenGL
+        text = text[1 : text.rfind(":")]
+    if len(text) > 1 and text[0] == text[-1] and text[0] in "'\"":
+        text = text[1:-1]
+
     if "." in text:
         text = text.split(".")[-1]
+
     return text or fallback

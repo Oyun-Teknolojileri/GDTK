@@ -450,6 +450,7 @@ namespace ToolKit
               state->m_animation->SerializeRef(doc, elementNode);
             }
             WriteAttr(elementNode, doc, "ApplyRootMotion", std::to_string(state->m_applyRootMotion));
+            WriteAttr(elementNode, doc, "Loop", std::to_string(state->m_loop));
           }
         }
         break;
@@ -712,6 +713,11 @@ namespace ToolKit
             bool applyRootMotion = false;
             ReadAttr(elementNode, "ApplyRootMotion", applyRootMotion);
             record->m_applyRootMotion = applyRootMotion;
+
+            // A scene written before the flag existed keeps the one-shot playback it had.
+            bool loop = false;
+            ReadAttr(elementNode, "Loop", loop);
+            record->m_loop = loop;
             list.Insert(signalName, record); // Keep the saved track order.
           }
           pVar->m_var = list;
