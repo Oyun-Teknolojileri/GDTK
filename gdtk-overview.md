@@ -608,26 +608,34 @@ one frame old, and a camera that moved in between slides the whole picture acros
 occluder can end up under a volume that is in front of nothing, and dropping that volume leaves a hole the next frame
 fills with sky. `WarpDepthGrid` reprojects every block with its depth - back through the projection's third row into a
 view space distance (`d = P[3][2] / (ndcZ + P[2][2])`, one division, no inverse matrix), into the frame's view, and
-into that view's clip space - and keeps, per cell, the farthest depth that lands on it. It runs on the frame pool with
-one result per block and a serial fold, because two blocks can land on the same cell and the farthest has to win, and
-it is cached against the view and the read it was built from, so a still camera pays nothing after the first frame.
+into that view's clip space. The block is a square in the frame it was reduced from, so it is splatted as the quad
+its four corners make at the block's farthest depth, not as a point: adjacent blocks share an edge, the quads scale
+with the local stretch of the warp, and the cells between two block centres - which a point per block left empty
+whenever the grid stretched - are covered. Per cell the farthest depth that lands on it wins. It runs on the frame
+pool with one rectangle per block and a serial fold, because two blocks can land on the same cell and the farthest
+has to win, and it is cached against the view and the read it was built from, so a still camera pays nothing after
+the first frame.
 
 What the warp adds beyond moving the depths is the **answer for what it could not carry**: a cell no block lands on is
 a place the grid says nothing about, and a volume whose footprint touches one is kept. That is the whole point - a
 column that has moved off what it covered leaves exactly that region empty, so the geometry behind it is drawn on the
-frame it becomes visible, while the surfaces the warp did place still cull. A still camera covers every cell and drops
-the same meshes as before; a pan trades culls for the places the picture genuinely lost. Measured on the city scene,
-2729 candidates, a pan of 0.6 units per frame: 1411 to 1558 meshes dropped without reprojection (and holes where the
-camera uncovered geometry), 881 to 1440 with it, and 1539 either way under a smooth motion that keeps the blocks
-overlapping.
+frame it becomes visible, while the surfaces the warp did place still cull. A still camera covers every cell and
+drops within about a percent of what a point per block did; a pan trades culls for the places the picture
+genuinely lost. Measured on the city scene, 2729 candidates, a pan of 0.6 units per frame: 1411 to 1558 meshes
+dropped without reprojection (and holes where the camera uncovered geometry), 881 to 1440 with it, and 1539
+either way under a smooth motion that keeps the blocks overlapping. Those pan numbers are the point scatter's.
+Measured again with the quad on the insomnia city build (web, 1280x720, 4 s strafe): 185 to 682 meshes dropped
+during the move against 38 to 265 with the point, and 1386 on the still camera against 1406 - the corner depth
+and the block boundary cells are a little more conservative than a centre point.
 
-The scatter also rounds and stretches, so cells inside a single surface can come up empty without being disocclusion,
-and culling loses those. Filling them from their neighbours was implemented and measured, both unconditionally and with
-a depth-consistency gate, and both times it brought the artifact back: on a thin occluder - a railing, a ladder - the gap
-a pan opens is one or two cells wide, and a fill closes it and hands the grid an opinion it does not have. The
-unconditional fill recovered about 300 meshes per frame on the pan and cost 12% of the still camera's drops; the gated
-one recovered most of that back and still closed the thin gaps. Nothing is filled today: the cells stay unknown, and a
-volume that lands on one is drawn.
+The quad a block splats is the block's own, so the cells inside a single surface are covered by the quads of its
+blocks and only a depth discontinuity - a real disocclusion - is left between them. Nothing is filled from the
+neighbours: that was implemented and measured, both unconditionally and with a depth-consistency gate, and both
+times it brought the artifact back. On a thin occluder - a railing, a ladder - the gap a pan opens is one or two
+cells wide, and a fill closes it and hands the grid an opinion it does not have. The unconditional fill recovered
+about 300 meshes per frame on the pan and cost 12% of the still camera's drops; the gated one recovered most of
+that back and still closed the thin gaps. A cell no block covers stays unknown, and a volume that lands on one is
+drawn.
 
 The test itself now works in the frame's own view: `m_occlusionTestView` and `m_occlusionTestViewProj` hold it,
 `IsOccludedByGrid` projects the volume into it, and the comparison is in view space distance for both sources, so the

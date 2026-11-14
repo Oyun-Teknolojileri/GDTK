@@ -924,8 +924,9 @@ namespace ToolKit
       return false;
     }
 
-    // Half the grid: the warp is a scatter, so a coarser target costs a quarter and lets one write stand for a 2x2 block.
-    // A camera move leaves disocclusion that is tens of blocks wide, so shrinking the target does not hide it.
+    // The warp keeps the grid's own resolution. A coarser target would write one cell for a 2x2 block, and the
+    // splat already has to cover every cell a block's quad touches: shrinking it would only move the holes the
+    // warp exists to avoid.
     const UVec2 warpSize(gridW, gridH);
     const int warpW    = int(warpSize.x);
     const int warpH    = int(warpSize.y);
@@ -963,11 +964,11 @@ namespace ToolKit
 
     // The per block math is a pure function of the block and the transforms, so it runs on the frame pool and each
     // block writes its own result - the fold into the depth map below is the serial part, because two blocks can
+    // land on the same cell and the farthest has to win.
     const size_t blocks = size_t(gridW) * size_t(gridH);
-    if (m_depthGridWarpTarget.size() != blocks)
+    if (m_depthGridWarpRects.size() != blocks)
     {
-      m_depthGridWarpTarget.resize(blocks);
-      m_depthGridWarpDepth.resize(blocks);
+      m_depthGridWarpRects.resize(blocks);
     }
 
     {
@@ -979,8 +980,7 @@ namespace ToolKit
                     iota_iter<size_t>(blocks),
                     [&](size_t index)
                     {
-                      m_depthGridWarpTarget[index] = -1;
-                      m_depthGridWarpDepth[index]  = 0.0f;
+                      m_depthGridWarpRects[index] = DepthGridWarpRect();
 
                       const float depth = m_depthGrid[index];
                       if (depth <= 0.0f)
@@ -1015,59 +1015,97 @@ namespace ToolKit
                         }
                       }
 
-                      const Vec4 gridViewPoint(ndc.x / proj00 * viewDepth, ndc.y / proj11 * viewDepth, -viewDepth, 1.0f);
+                      // The block is a square in the frame it was reduced from, so it is splatted as the quad its
+                      // four corners make in the view being culled, all at the block's farthest depth. Adjacent
+                      // blocks share an edge, so their quads tile the surface and no cell is left between two
+                      // block centres - which a point per block did whenever the grid stretched.
+                      const float halfU = 1.0f / float(gridW);
+                      const float halfV = 1.0f / float(gridH);
 
-                      const Vec4 clip = gridToClip * gridViewPoint;
-                      if (clip.w <= OcclusionNearEpsilon)
+                      float minX = std::numeric_limits<float>::max();
+                      float maxX = -std::numeric_limits<float>::max();
+                      float minY = std::numeric_limits<float>::max();
+                      float maxY = -std::numeric_limits<float>::max();
+                      float testDepth = 0.0f;
+
+                      for (int corner = 0; corner < 4; ++corner)
                       {
-                        // Behind the camera being culled, which draws nothing there.
-                        return;
+                        const Vec2 cornerNdc(ndc.x + ((corner & 1) ? halfU : -halfU),
+                                             ndc.y + ((corner & 2) ? halfV : -halfV));
+
+                        const Vec4 gridViewPoint(cornerNdc.x / proj00 * viewDepth,
+                                                 cornerNdc.y / proj11 * viewDepth,
+                                                 -viewDepth,
+                                                 1.0f);
+
+                        const Vec4 clip = gridToClip * gridViewPoint;
+                        if (clip.w <= OcclusionNearEpsilon)
+                        {
+                          // A corner behind the camera being culled, so the quad has no projection there. The block
+                          // is left unknown rather than splatted from a part of it.
+                          m_depthGridWarpRects[index] = DepthGridWarpRect();
+                          return;
+                        }
+
+                        const Vec3 testNdc = Vec3(clip) / clip.w;
+                        minX              = glm::min(minX, testNdc.x);
+                        maxX              = glm::max(maxX, testNdc.x);
+                        minY              = glm::min(minY, testNdc.y);
+                        maxY              = glm::max(maxY, testNdc.y);
+
+                        // A perspective projection writes the view depth into w, so the distance comes for free. The
+                        // farthest corner is the reading that can only make culling more careful.
+                        testDepth = glm::max(testDepth, clip.w);
                       }
 
-                      const Vec3 testNdc = Vec3(clip) / clip.w;
-                      if (testNdc.x < -1.0f || testNdc.x > 1.0f || testNdc.y < -1.0f || testNdc.y > 1.0f)
+                      if (maxX < -1.0f || minX > 1.0f || maxY < -1.0f || minY > 1.0f)
                       {
                         // Off screen in the view being culled.
                         return;
                       }
 
-                      const int bx = glm::clamp(int((testNdc.x * 0.5f + 0.5f) * float(warpW)), 0, warpW - 1);
-                      const int by = glm::clamp(int((testNdc.y * 0.5f + 0.5f) * float(warpH)), 0, warpH - 1);
+                      const float u0 = glm::clamp(minX, -1.0f, 1.0f) * 0.5f + 0.5f;
+                      const float u1 = glm::clamp(maxX, -1.0f, 1.0f) * 0.5f + 0.5f;
+                      const float v0 = glm::clamp(minY, -1.0f, 1.0f) * 0.5f + 0.5f;
+                      const float v1 = glm::clamp(maxY, -1.0f, 1.0f) * 0.5f + 0.5f;
 
-                      // A perspective projection writes the view depth into w, so the distance comes for free.
-                      m_depthGridWarpTarget[index] = by * warpW + bx;
-                      m_depthGridWarpDepth[index]  = clip.w;
+                      DepthGridWarpRect& rect = m_depthGridWarpRects[index];
+                      rect.x0                 = glm::clamp(int(u0 * float(warpW)), 0, warpW - 1);
+                      rect.x1                 = glm::clamp(int(glm::ceil(u1 * float(warpW))) - 1, 0, warpW - 1);
+                      rect.y0                 = glm::clamp(int(v0 * float(warpH)), 0, warpH - 1);
+                      rect.y1                 = glm::clamp(int(glm::ceil(v1 * float(warpH))) - 1, 0, warpH - 1);
+                      rect.depth              = testDepth;
                     });
     }
 
     for (size_t index = 0; index < blocks; ++index)
     {
-      const int target = m_depthGridWarpTarget[index];
-      if (target < 0)
+      const DepthGridWarpRect& rect = m_depthGridWarpRects[index];
+      if (rect.depth <= 0.0f || rect.x1 < rect.x0 || rect.y1 < rect.y0)
       {
         continue;
       }
 
-      const float testDepth = m_depthGridWarpDepth[index];
-      if (testDepth <= 0.0f)
+      // Farthest wins: a block is only proven in front of a volume when it is nearer than the volume's nearest point,
+      // so the farthest depth that lands on a cell is the reading that can only make culling more careful.
+      for (int y = rect.y0; y <= rect.y1; ++y)
       {
-        continue;
-      }
-
-      // Farthest wins: a block is only proven in front of a volume when it is nearer than the volume's nearest point, so
-      // the farthest depth that lands on a cell is the reading that can only make culling more careful.
-      if (!m_depthGridCovered[size_t(target)] || m_depthGridWarped[size_t(target)] < testDepth)
-      {
-        m_depthGridWarped[size_t(target)]  = testDepth;
-        m_depthGridCovered[size_t(target)] = 1;
+        for (int x = rect.x0; x <= rect.x1; ++x)
+        {
+          const size_t target = size_t(y) * size_t(warpW) + size_t(x);
+          if (!m_depthGridCovered[target] || m_depthGridWarped[target] < rect.depth)
+          {
+            m_depthGridWarped[target]  = rect.depth;
+            m_depthGridCovered[target] = 1;
+          }
+        }
       }
     }
 
-    // Nothing is filled here on purpose. A scatter leaves single cell holes that are not disocclusion, and
-    // closing them from the neighbours - even only where the neighbours agree on a depth - was measured to
-    // bring back the very artifact the warp exists for: on a thin occluder, a railing or a ladder, the gap a
-    // pan opens is a cell or two wide, and a fill closes it and hands the grid an opinion it does not have.
-    // The cells stay unknown, and a volume that lands on one is drawn.
+    // Nothing is filled here from the neighbours on purpose. The rectangle a block splats is its own projected
+    // quad, so every cell it writes is a direction the block's surface covers; a cell no block covers stays
+    // unknown, and a volume that lands on one is drawn. Closing such a cell from the nearest covered neighbours
+    // was measured twice and brought the thin occluder artifact back: a fill invents coverage the grid never had.
     return true;
   }
 

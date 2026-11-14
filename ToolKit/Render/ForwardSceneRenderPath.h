@@ -278,22 +278,34 @@ namespace ToolKit
      *
      * The grid is reduced in the screen space of the frame that produced it, so a camera that moves between that
      * frame and this one slides the whole picture across the blocks: a block that held a near occluder can end up
-     * under a volume that is in front of nothing. Reprojecting each block with its depth into this frame's view
-     * puts the depths back where their geometry now is, and leaves a block empty wherever the source blocks do not
-     * cover it - which is exactly the region the old frame said nothing about, because whatever used to be there has
-     * moved out of the way. A volume that lands on an empty block cannot be proven hidden.
+     * under a volume that is in front of nothing. Reprojecting each block into this frame's view puts the depths
+     * back where their geometry now is. The block is a square in the frame it was reduced from, and it is splatted
+     * as the quad its four corners make, so the cells it covers are the cells its surface now covers - a point per
+     * block left a gap wherever the grid stretched. A cell no block covers stays empty, which is the region the old
+     * frame said nothing about, because whatever used to be there has moved out of the way. A volume that lands on
+     * an empty block cannot be proven hidden.
      */
     std::vector<float> m_depthGridWarped;
     std::vector<uint8> m_depthGridCovered;
 
-    /** Size of the warped pair above: half the grid, so the warp costs a quarter and a splat covers more blocks per
-     *  write - the disocclusion a camera move leaves behind is far wider than a cell, so it stays a gap either way. */
+    /** Size of the warped pair above: the grid's own size, one cell per block, so the warp cannot lose a block
+     *  to a coarser target. */
     UVec2 m_depthGridWarpSize = UVec2(0);
 
-    /** Per block result of the warp's projection: the cell it lands on, and the distance it landed with. Written by
-     *  the pool, one index per block, and folded into the pair above on the calling thread. */
-    std::vector<int> m_depthGridWarpTarget;
-    std::vector<float> m_depthGridWarpDepth;
+    /**
+     * Per block result of the warp's projection: the cell rectangle the block's own quad covers in the view
+     * being culled, and the distance it landed with. Written by the pool, one entry per block, and folded into
+     * the pair above on the calling thread.
+     */
+    struct DepthGridWarpRect
+    {
+      int x0      = 0;
+      int y0      = 0;
+      int x1      = -1;
+      int y1      = -1;
+      float depth = 0.0f;
+    };
+    std::vector<DepthGridWarpRect> m_depthGridWarpRects;
 
     /** The view the warped grid was built for, so the warp only runs when the view has actually changed. */
     Mat4 m_depthGridWarpView         = Mat4(1.0f);
