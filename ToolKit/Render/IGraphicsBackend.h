@@ -225,8 +225,8 @@ namespace ToolKit
     /**
      * Whether BeginReadPixels can hand pixels back a frame later without blocking.
      *
-     * A backend that answers false is not broken: it simply has no way to collect the pixels on the GPU and map
-     * them afterwards, so a caller that wants the pixels on a later frame does the blocking read with ReadPixels
+     * A backend that answers false is not broken: it simply has no way to collect the pixels on the GPU and hand
+     * them over afterwards, so a caller that wants the pixels on a later frame does the blocking read with ReadPixels
      * at that point instead. Asking first is what keeps that decision in one place - otherwise every caller has
      * to know which platform it is on, and a backend whose asynchronous form silently returns null turns the
      * feature off without anything saying so.

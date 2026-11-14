@@ -3,7 +3,6 @@
 	<include name = "vulkanCompatInc.shader" />
 	<texture slot = "0" name = "s_depth" />
 	<define name = "DepthGridBlockSize" val = "8" />
-	<define name = "DepthGridLinearDepth" val = "0,1" />
 	<source>
 	<!--
 
@@ -20,28 +19,20 @@ TK_SAMPLER_BINDING(0) uniform sampler2D s_depth;
  * The farthest depth is what an occlusion test needs: a light is hidden only when everything the block
  * covers is in front of it, so the block has to answer with its deepest sample. The block size is a
  * compile time define and the source size comes from the texture, so no uniforms are involved and the
- * shader works at any resolution. Half floats keep precision to about a ten thousandth of the depth
- * range, which is all a coarse test can use anyway.
+ * shader works at any resolution.
+ *
+ * The source is the frame's depth attachment - the depth the projection encoded - read through the red
+ * channel, and farther is the larger number, so the reduction is a max. A texel nothing was drawn on
+ * already holds the far plane, because that is what the attachment is cleared to, so an empty texel needs
+ * no special case: a block that is partly sky can never prove that a volume behind the sky is hidden.
+ * Nothing here decodes the depth or compares it against anything; the CPU does that on the pixels this
+ * pass wrote, and it needs them in the float range the target is allocated with, because an eight bit
+ * channel on a scene with a far plane in the thousands puts both depths inside one quantization step.
  *
  * This is a single level reduction: there is no mip chain and nothing walks one, the grid it writes is
  * the coarsest level and the only one. The CPU tests the blocks an object covers one by one, so the
  * hierarchy a real Hi-Z would carry has nothing to answer here.
- *
- * DepthGridLinearDepth picks the source, and both answer the same question. 0 reads the red channel of
- * the frame's depth attachment, the depth the projection encoded. 1 reads the blue channel of the pre
- * process pass's G buffer, which holds the view space distance of the surface, and is preferred when
- * that pass runs because it is already single sample and needs no copy. Farther is the larger number on
- * both, so the reduction is a max either way.
- *
- * The two differ in what an empty texel means. A depth attachment is cleared to the far plane, so a
- * texel with nothing drawn on it already reads as the farthest. The G buffer is cleared to zero, and a
- * view space distance of zero only says that no geometry was written there, which is not a distance at
- * all. It is taken as further away than anything the frame can show: a block that is partly sky must not
- * be able to prove that a volume behind the sky is hidden.
  */
-#if DepthGridLinearDepth
-const float DepthGridEmptyDepth = 1.0e9;
-#endif
 
 void main()
 {
@@ -54,13 +45,8 @@ void main()
 	{
 		for (int x = 0; x < DepthGridBlockSize; ++x)
 		{
-			ivec2 p = min(base + ivec2(x, y), last);
-#if DepthGridLinearDepth
-			float depth = texelFetch(s_depth, p, 0).b;
-			farthest    = max(farthest, depth > 0.0 ? depth : DepthGridEmptyDepth);
-#else
+			ivec2 p  = min(base + ivec2(x, y), last);
 			farthest = max(farthest, texelFetch(s_depth, p, 0).r);
-#endif
 		}
 	}
 
