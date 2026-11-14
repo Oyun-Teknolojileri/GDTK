@@ -385,6 +385,19 @@ namespace ToolKit
      * the ray travelled in view space, so this keeps the far end of the range from ending in a hard edge.
      */
     TKDeclareParam(float, SSRRangeFadeStart);
+    /**
+     * How far the sampled reflection direction is bent towards the mirror direction, 0 leaves the pure
+     * GGX lobe and 1 makes every pixel shoot the mirror ray. A bias trades the width of the blur for a
+     * lower sample count.
+     */
+    TKDeclareParam(float, SSRBRDFBias);
+    /**
+     * Reflection quality: 2 traces and resolves at the frame resolution, 1 does both at half and 0 at a
+     * quarter, with the composite upsampling. The reduced levels are what make the pass affordable on a
+     * mobile GPU, where the full resolution targets are bandwidth bound; each level down quarters the
+     * traffic and costs the sharpness of a mirror reflection.
+     */
+    TKDeclareParam(int, SSRQuality);
     TKDeclareParam(bool, SSRDebugView);
     TKDeclareParam(int, SSRDebugViewMode);
 

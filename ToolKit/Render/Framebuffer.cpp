@@ -36,14 +36,14 @@ namespace ToolKit
   void Framebuffer::NativeConstruct(StringView label)
   {
     Super::NativeConstruct();
-    m_label = label;
+    m_label.assign(label.data(), label.size());
   }
 
   void Framebuffer::NativeConstruct(const FramebufferSettings& settings, StringView label)
   {
     Super::NativeConstruct();
     m_settings = settings;
-    m_label    = label;
+    m_label.assign(label.data(), label.size());
   }
 
   void Framebuffer::Init(bool flushClientSideArray)

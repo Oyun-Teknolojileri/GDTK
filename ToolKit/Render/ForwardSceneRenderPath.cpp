@@ -62,6 +62,7 @@ namespace ToolKit
     m_forwardPreProcessPass = MakeNewPtr<ForwardPreProcessPass>();
     m_ssaoPass              = MakeNewPtr<SSAOPass>();
     m_ssrPass               = MakeNewPtr<SsrPass>();
+    m_velocityPass          = MakeNewPtr<VelocityPass>();
     m_bloomPass             = MakeNewPtr<BloomPass>();
     m_dofPass               = MakeNewPtr<DoFPass>();
     m_gammaTonemapFxaaPass  = MakeNewPtr<GammaTonemapFxaaPass>();
@@ -93,6 +94,7 @@ namespace ToolKit
     m_skyPass               = nullptr;
     m_ssaoPass              = nullptr;
     m_ssrPass               = nullptr;
+    m_velocityPass          = nullptr;
     m_forwardPreProcessPass = nullptr;
     m_bloomPass             = nullptr;
     m_dofPass               = nullptr;
@@ -141,6 +143,21 @@ namespace ToolKit
     if (RequiresForwardPreProcessPass())
     {
       m_passArray.push_back(m_forwardPreProcessPass);
+    }
+
+    // Object motion for the reflections. Runs on the same geometry right after the g buffer, and only
+    // draws the objects whose transform moved since the last frame, so a still scene costs nothing but
+    // a clear.
+    if (RequiresForwardPreProcessPass() && m_params.postProcessSettings->GetSSREnabledVal())
+    {
+      m_velocityPass->m_params.RenderJobs = &m_renderData.jobs;
+
+      if (TexturePtr normalDepth = m_forwardPreProcessPass->m_normalDepthRt)
+      {
+        m_velocityPass->m_params.RenderSize = UVec2(normalDepth->m_width, normalDepth->m_height);
+      }
+
+      m_passArray.push_back(m_velocityPass);
     }
 
     // SSAO pass
@@ -1914,8 +1931,32 @@ namespace ToolKit
     m_ssrPass->m_params.EdgeFade           = pps->GetSSREdgeFadeVal();
     m_ssrPass->m_params.ScreenFadeStart    = pps->GetSSRScreenFadeStartVal();
     m_ssrPass->m_params.RangeFadeStart     = pps->GetSSRRangeFadeStartVal();
+    m_ssrPass->m_params.VelocityCurrent     = m_velocityPass->GetCurrentVelocity();
+    m_ssrPass->m_params.VelocityPrevious    = m_velocityPass->GetPreviousVelocity();
+    m_ssrPass->m_params.BrdfBias           = pps->GetSSRBRDFBiasVal();
     m_ssrPass->m_params.DebugView          = pps->GetSSRDebugViewVal();
     m_ssrPass->m_params.DebugViewMode      = pps->GetSSRDebugViewModeVal();
+    m_ssrPass->m_params.Quality            = glm::clamp(pps->GetSSRQualityVal(), 0, 2);
+
+    // The environment the reflection falls back to when screen space can not answer it: the same pre
+    // filtered sky cubemap the forward pass shades its IBL reflections from, so a fallback and a hit are
+    // the same kind of value. Read from the sky here rather than from the renderer's per draw state
+    // because the reflection is not a property of one draw.
+    m_ssrPass->m_params.EnvSpecular  = nullptr;
+    m_ssrPass->m_params.EnvIntensity = 0.0f;
+    if (m_sky != nullptr)
+    {
+      if (EnvironmentComponentPtr skyEnv = m_sky->GetComponent<EnvironmentComponent>())
+      {
+        if (const HdriPtr& skyHdri = skyEnv->GetHdriVal())
+        {
+          m_ssrPass->m_params.EnvSpecular = skyHdri->m_specularEnvMap;
+        }
+
+        m_ssrPass->m_params.EnvIntensity = skyEnv->GetIlluminateVal() ? skyEnv->GetIntensityVal() : 0.0f;
+        m_ssrPass->m_params.EnvRotation  = Mat4(m_sky->m_node->GetOrientation());
+      }
+    }
 
     // Post Process Pass
     bool gammaNeeded                = GetRenderSystem()->IsGammaCorrectionNeeded();

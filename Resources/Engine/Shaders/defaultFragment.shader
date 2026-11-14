@@ -107,7 +107,10 @@
 	#endif
 
 	#if ShadingMode == SHADE_LIGHTING_ONLY
-		color.xyz = vec3(1.0);
+		// The albedo is replaced by the 18 percent grey card, the linear reference the tone curve is
+		// exposed for: white washed the frame out and left the reflection with no contrast to read
+		// against, and a darker grey still keeps the light response the mode exists to show.
+		color.xyz = vec3(0.18);
 	#endif
 
 		vec3 n;

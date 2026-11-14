@@ -7,7 +7,22 @@
 
 #include "RenderDocCapture.h"
 
+// The RenderDoc header only knows the desktop platforms, and the wasm toolchain matches none of its
+// branches: it stops with "Unknown platform" and leaves RENDERDOC_CC undefined, which turns every
+// prototype that follows into a parse error. The branch exists only to pick a calling convention, so
+// the browser is handed the empty one the Unix branch carries. There is no RenderDoc in a browser
+// anyway; the library lookup below compiles to "not found" there.
+#if defined(TK_WEB) && !defined(__linux__)
+  #define TK_RENDERDOC_BORROWED_LINUX
+  #define __linux__
+#endif
+
 #include "utilities/renderdoc_app.h"
+
+#if defined(TK_RENDERDOC_BORROWED_LINUX)
+  #undef __linux__
+  #undef TK_RENDERDOC_BORROWED_LINUX
+#endif
 
 #include <FrameCapture.h>
 #include <Logger.h>
@@ -434,8 +449,12 @@ namespace ToolKit
 #ifdef TK_WIN
       pRENDERDOC_GetAPI getAPI =
           reinterpret_cast<pRENDERDOC_GetAPI>(GetProcAddress(static_cast<HMODULE>(module), "RENDERDOC_GetAPI"));
-#else
+#elif !defined(TK_WEB)
       pRENDERDOC_GetAPI getAPI = reinterpret_cast<pRENDERDOC_GetAPI>(dlsym(module, "RENDERDOC_GetAPI"));
+#else
+      // The browser has no dynamic loading at all, and no module handle reaches this point: the
+      // lookup above answers "not loaded" before the API is asked for.
+      pRENDERDOC_GetAPI getAPI = nullptr;
 #endif
 
       String error;

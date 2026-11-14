@@ -54,7 +54,7 @@ namespace ToolKit
   void Texture::NativeConstruct(StringView label)
   {
     Super::NativeConstruct();
-    m_label = label;
+    m_label.assign(label.data(), label.size());
   }
 
   void Texture::NativeConstruct(int width, int height, const TextureSettings& settings, StringView label)
@@ -64,7 +64,7 @@ namespace ToolKit
     m_width    = width;
     m_height   = height;
     m_settings = settings;
-    m_label    = label;
+    m_label.assign(label.data(), label.size());
   }
 
   Texture::~Texture()

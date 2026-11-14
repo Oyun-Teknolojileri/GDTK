@@ -13,14 +13,20 @@
 namespace ToolKit
 {
 
-  /** Screen space reflection pass UBO (`ssrFrag.shader`). Mirrors the block in
-      `ssrPassDataInc.shader` byte for byte. */
+  /** Screen space reflection pass UBO (`ssrPassDataInc.shader`). Mirrors the block in that include
+      byte for byte. */
   struct SsrPassDataLayout
   {
     /** World -> view. The g buffer stores world space normals, the march happens in view space. */
     Mat4 view;
     /** Clip -> view, used to rebuild the view position from the stored linear depth. */
     Mat4 inverseProjection;
+    /** View -> world, used to carry the surface pixel back to where it was last frame. */
+    Mat4 inverseView;
+    /** Previous frame's view projection, for the reprojection of the reflection history. */
+    Mat4 prevViewProjection;
+    /** World -> environment space: the sky cubemap's orientation, inverted. */
+    Mat4 envRotation;
     /** (P00, P11, P20, P21) - turns a view position into a UV without a matrix multiply. */
     Vec4 projParams;
     /** .x = intensity, .y = maxDistance, .z = thickness, .w = roughness cutoff. */
@@ -28,10 +34,21 @@ namespace ToolKit
     /** .xy = 1 / size (texel size), .zw = size in pixels. */
     Vec4 screenParams;
     /** .x = debug view, .y = march step count (the requested count clamped to the loop bound),
-     *  .z = debug view mode (see SSR_DEBUG_* in ssrFrag.shader). */
+     *  .z = debug view mode (see SSR_DEBUG_* in ssrFrag.shader), .w = frame index (sample seed). */
     Vec4 flags;
     /** .x = screen border fade, .y = screen length fade start, .z = hit distance fade start. */
     Vec4 fades;
+    /** .x = brdf bias (how far the sampled lobe is bent towards the mirror), .y = 1 when the history
+     *  must be dropped. */
+    Vec4 temporal;
+    /** .x = 1 when the object motion targets are bound. */
+    Vec4 velocity;
+    /** .x = environment intensity, .y = highest mip the cubemap carries, .z = 1 when it is bound. */
+    Vec4 environment;
+    /** .x = sample cap, .y = history clip weight. */
+    Vec4 denoiser;
+    /** .x = spatial filter taps, .y = resolution the reflection is traced at (1 or 0.5). */
+    Vec4 quality;
   };
 
   typedef GpuBufferBase<SsrPassDataLayout> SsrPassDataBuffer;
@@ -73,6 +90,39 @@ namespace ToolKit
     /** Where the fade along the hit distance starts, as a fraction of MaxDistance. */
     float RangeFadeStart               = 0.6f;
 
+    /** Screen space motion of the objects, from the velocity pass. Null when the frame has none. */
+    TexturePtr VelocityCurrent         = nullptr;
+    TexturePtr VelocityPrevious        = nullptr;
+
+    /** How far the sampled lobe is bent towards the mirror direction. 0 = pure GGX, 1 = mirror. */
+    float BrdfBias                     = 0.7f;
+
+    /**
+     * Pre filtered sky radiance, the reflection a ray falls back to when screen space can not answer it.
+     * Without it every miss is a hole the accumulation has to work around; with it the reflection is
+     * complete and a miss is simply a coarser answer.
+     */
+    TexturePtr EnvSpecular             = nullptr;
+
+    /** Orientation of the environment cubemap, as the sky entity carries it. */
+    Mat4 EnvRotation                   = Mat4(1.0f);
+
+    /** Intensity of the environment contribution; 0 skips the cubemap. */
+    float EnvIntensity                 = 1.0f;
+
+    /** Cap on the samples the accumulation holds, before the roughness scaling. */
+    float MaxSamples                   = 32.0f;
+
+    /** Multiplier on the clip box the history is pulled into. 0 disables the accumulation. */
+    float HistoryClipWeight            = 1.0f;
+
+    /**
+     * 2 traces and resolves at frame resolution, 1 at half and 0 at a quarter, with the composite doing
+     * the upsample. The two reduced levels are what make the pass affordable on a mobile GPU, and they
+     * cost the sharpness of a mirror in proportion.
+     */
+    int Quality                        = 2;
+
     /** Output only what this pass contributes, instead of compositing it over the scene color. */
     bool DebugView                     = false;
 
@@ -81,10 +131,23 @@ namespace ToolKit
   };
 
   /**
-   * Screen space reflections. Marching a reflection ray per pixel against the g buffer and compositing
-   * the hit color over the scene color into a target of the pass's own. A miss leaves the pixel exactly
-   * as the forward pass shaded it, so the sky or the active environment volumes keep providing the
-   * reflection wherever screen space can not: background pixels, off screen rays and rough surfaces.
+   * Screen space reflections: one ray per pixel, sampled from the surface's reflection lobe, marched
+   * against the pre process g buffer.
+   *
+   * The reflection a pixel ends up with is complete. A ray that finds a surface takes that surface's
+   * radiance, a ray that leaves the screen or finds nothing falls back to the environment cubemap, and
+   * the confidence of the hit decides how much of each. That is the reference's (FidelityFX SSSR)
+   * arrangement and it is what a pixel that misses needs: there is no "no data" state the history has to
+   * paper over, so an old reflection can not be kept alive by a ray that no longer finds anything.
+   *
+   * The accumulation follows the same split as the reference. A mirror is traced along the exact mirror
+   * direction and takes this frame's sample as it is - nothing to average, nothing to ghost. A glossy
+   * surface goes through the spatial filter, the reprojected history and a variance clipped blend whose
+   * weight is how many samples the pixel holds.
+   *
+   * The composite goes to a target of the pass's own (see GetOutputFramebuffer): compositing back into
+   * the frame makes the pass read the target it writes, which a driver that resolves a multisampled
+   * render with a draw (Mali) can hand a frame old content.
    */
   class TK_API SsrPass : public Pass
   {
@@ -102,13 +165,6 @@ namespace ToolKit
     /**
      * Where the composite of this pass goes: the frame's color with the reflections in it.
      *
-     * A target of the pass's own, instead of the frame ColorRt names. Compositing back into that frame
-     * makes the pass read the very target it writes, and a driver that resolves a multisampled render to
-     * texture with a draw (Mali) can hand the copy a frame old content: whatever the previous frame left
-     * there then comes back as a reflection of itself, alternating frame by frame. With the composite in
-     * a target of its own the frame stays read only for the rest of the frame, and everything behind this
-     * pass reads this target instead.
-     *
      * Null while the target has no picture of this frame in it: the first frames, where nothing has been
      * sized yet, and a frame the pass skipped because its shader or its parameters were missing. A caller
      * then has to fall back to the frame it gave the pass.
@@ -119,37 +175,96 @@ namespace ToolKit
     SsrPassParams m_params;
 
    private:
-    FullQuadPassPtr m_quadPass       = nullptr;
-    ShaderPtr m_ssrShader            = nullptr;
+    /** Phase one: one ray per pixel, with the environment filling in whatever the march did not find. */
+    FullQuadPassPtr m_quadPass        = nullptr;
+    ShaderPtr m_ssrShader             = nullptr;
 
-    /** Second phase: screen space filter and resolve of the trace result. */
-    FullQuadPassPtr m_filterPass     = nullptr;
-    ShaderPtr m_filterShader         = nullptr;
+    /** Build pass for the min depth hierarchy: one draw per level, all with the same shader. */
+    FullQuadPassPtr m_pyramidPass     = nullptr;
+    ShaderPtr m_pyramidShader         = nullptr;
+
+    /** Phase two: the 1/8 resolution average of the trace, the anchor the temporal clip leans on. */
+    FullQuadPassPtr m_avgPass         = nullptr;
+    ShaderPtr m_avgShader             = nullptr;
+
+    /** Phase three: spatial filter, reprojection and the variance clipped accumulation. */
+    FullQuadPassPtr m_resolvePass     = nullptr;
+    ShaderPtr m_resolveShader         = nullptr;
+
+    /** Phase four: composite the accumulated reflection over the scene color. */
+    FullQuadPassPtr m_compositePass   = nullptr;
+    ShaderPtr m_compositeShader       = nullptr;
 
     /** Single sample copy of the scene color: the pass reads it while writing a target of its own. */
-    RenderTargetPtr m_copyTexture    = nullptr;
+    RenderTargetPtr m_copyTexture     = nullptr;
 
-    /** Reflection and its weight, produced by the trace phase and filtered by the resolve phase. */
-    RenderTargetPtr m_traceTexture   = nullptr;
+    /** Blue noise tile the trace draws its sample from. */
+    TexturePtr m_blueNoise            = nullptr;
 
-    /** The color the resolve phase writes: the frame with the reflections composited in. */
-    RenderTargetPtr m_reflectionRt   = nullptr;
-    FramebufferPtr m_reflectionFb    = nullptr;
+    /** This frame's reflection and its coverage, produced by the trace phase. */
+    RenderTargetPtr m_traceTexture    = nullptr;
 
-    /** Set once the resolve phase left a composite of this frame in m_reflectionFb. */
-    bool m_outputWritten             = false;
+    /** Where each ray ended, for the reprojection of the reflected content. */
+    RenderTargetPtr m_hitTexture[2]   = {nullptr, nullptr};
+
+    /** Levels of the min depth hierarchy the march climbs, level 0 half the screen. */
+    static constexpr int m_pyramidLevels = 6;
+    RenderTargetPtr m_depthPyramid[m_pyramidLevels];
+
+    /** Which of the two hit targets this frame writes; the other holds the frame before it. */
+    int m_hitIndex                    = 0;
+
+    /** 1/8 resolution average of the trace. */
+    RenderTargetPtr m_avgRadiance     = nullptr;
+
+    /** Accumulated reflection (rgb) and its variance (a), one read and one written. */
+    RenderTargetPtr m_history[2]      = {nullptr, nullptr};
+
+    /** How many samples the accumulation holds, per pixel, carried next to the radiance. */
+    RenderTargetPtr m_historyCount[2] = {nullptr, nullptr};
+
+    /** The g buffer of the frame the history was written for, for the reprojection's disocclusion test. */
+    RenderTargetPtr m_prevNormalDepth = nullptr;
+
+    /** The color the composite phase writes: the frame with the reflections in it. */
+    RenderTargetPtr m_reflectionRt    = nullptr;
+    FramebufferPtr m_reflectionFb     = nullptr;
+
+    /** Index of the history texture the previous frame left its accumulation in. */
+    int m_historyIndex                = 0;
+
+    /** Set once a frame was accumulated, so the first frame after a reset starts clean. */
+    bool m_hasHistory                 = false;
+
+    /** The camera the history belongs to; a different camera can not reuse it. */
+    ObjectId m_historyCameraId        = 0;
+
+    /** Size the history targets were last built for. */
+    IVec2 m_historySize               = IVec2(0);
+
+    /** View projection of the last frame that accumulated, for the reprojection. */
+    Mat4 m_prevViewProjection         = Mat4(1.0f);
+
+    /** Set when the view changed since the last accumulated frame: re-rolls the samples and widens the resolve. */
+    bool m_viewMoved                  = false;
+
+    /** Seed of this frame's sample sequence. Wraps, so the offset stays exact in a float. */
+    float m_frameIndex                = 0.0f;
+
+    /** Set once the composite phase left a composite of this frame in m_reflectionFb. */
+    bool m_outputWritten              = false;
 
     SsrPassDataBuffer m_passDataBuffer;
-    bool m_passDataBufferInitialized = false;
+    bool m_passDataBufferInitialized  = false;
 
-    /** Set once the fragment shader is known to not compile, so the pass stays out of the frame. */
-    bool m_shaderUnavailable         = false;
+    /** Set once a fragment shader is known to not compile, so the pass stays out of the frame. */
+    bool m_shaderUnavailable          = false;
 
     /** Highest SSR_MAX_STEPS the fragment shader is compiled with. */
     static constexpr int m_maxStepCount = 512;
 
     /** SSR_MAX_STEPS the fragment shader was last compiled with (-1 = never). */
-    int m_currentMaxSteps            = -1;
+    int m_currentMaxSteps             = -1;
   };
 
   typedef std::shared_ptr<SsrPass> SsrPassPtr;

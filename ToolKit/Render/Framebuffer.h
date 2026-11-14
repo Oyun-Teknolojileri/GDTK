@@ -114,7 +114,7 @@ namespace ToolKit
 
    public:
     static const int m_maxColorAttachmentCount = 8;
-    StringView m_label; //!< Debug label which appears in the gpu debuggers.
+    String m_label; //!< Debug label which appears in the gpu debuggers.
     GpuResourceDataPtr m_gpuData;
 
    private:

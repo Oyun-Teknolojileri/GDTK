@@ -341,25 +341,103 @@ Inputs via `SceneRenderPathParams`: Scene, Camera, MainFramebuffer, grid, postPr
 
 Pass order: shadow, forward pre process (g buffer, required by SSAO / DoF / SSR), SSAO, sky, forward,
 bloom, SSR, DoF, gamma/tonemap/FXAA. Bloom runs before the reflections on purpose: the reflection pass
-copies the shaded frame, so the glow has to be in it or a reflected highlight comes back flat. `SsrPass`
-runs in two phases. The trace phase marches one
-reflection ray per pixel against the pre process g buffer (world normal, linear depth, roughness) and
-writes the reflection plus its confidence into its own target instead of compositing. The march steps
-in screen space, so the budget covers `steps * stepPixels` pixels whatever the ray angle, the hits are
-refined by intersecting the ray with the surface plane rebuilt from a wide depth baseline, and the hit
-color is gathered at a mip of the scene color copy chosen from the reflection cone. The resolve phase
-averages that target in screen space premultiplied by the confidence, which dilates the reflection past
-the silhouettes the trace can not see through and removes the row level stripes the hit leaves behind.
-A pixel with no screen space reflection keeps its forward shaded color, so the sky or the active
-environment volumes provide the reflection wherever screen space can not.
+copies the shaded frame, so the glow has to be in it or a reflected highlight comes back flat.
 
-The resolve phase composites into a target of the pass's own (`SsrPass::GetOutputFramebuffer`), not back
-into the frame it read: the frame is read only for the rest of the frame, and DoF, the tone curve and a
-host that composites the frame itself all follow the reflection target instead. That target is what
+`SsrPass` follows the FidelityFX SSSR / Denoiser Reflections arrangement, rewritten as fragment passes
+because the backend has neither compute nor shader storage (see `Resources/Engine/Shaders/ssr*.shader`).
+It runs in four phases. The trace phase shoots one ray per pixel sampled from the reflection lobe (GGX
+visible normal distribution, bent towards the mirror direction by `SSRBRDFBias`), marches it against the
+pre process g buffer, refines the hit by intersecting the ray with the surface plane, and writes
+`rgb = reflection, a = coverage` plus a second target holding where the ray ended (`xy` uv, `z` depth,
+`w` length). The reflection it writes is *complete*: the confidence of the hit blends the hit radiance
+with the sky's pre filtered specular cubemap (`s_envSpecular`, the same IBL image the forward pass
+shades with, sampled at the mip the roughness selects), so a ray that leaves the screen or finds nothing
+still carries the environment's answer. There is no "no data" state for the accumulation to paper over,
+which is what a previous version needed and what left old reflections on a mirror. The average phase
+writes a 1/8 resolution, luminance weighted average of the trace - the low frequency anchor the temporal
+clip leans on. The resolve phase is the denoiser: a 15 tap Halton window with normal/depth/radiance edge
+stopping, the *two* candidate reprojections the reference uses (the surface through the frame's motion,
+and the point the ray ended at, projected with the previous view projection) picked by how well the
+history g buffer's normal and roughness match, a smooth disocclusion factor from the same history, a
+sample count carried across frames, and a variance clipped blend whose history share comes from the
+disocclusion factor (0.98 at a perfect reprojection, none at a mismatch), plus five percent of the 1/8
+resolution average mixed into every new sample as ballast against a firefly. That share is fixed, because
+a share computed from the sample counter sat at its maximum of one half and smeared half of a coarse
+average into every reflection. The blend is *not* driven by the sample counter: the counter is read back
+from a target and it was measured stuck at one sample, which meant the history was never used and every
+frame showed a single sampled ray - the reflection crawled, and it crawled worst where roughness made the
+sampled cone widest. The disocclusion factor is computed from the frame's own g buffer, so it can not
+disagree with itself that way. Measured with the wobble split by the roughness of the surface: 0.00349 to
+0.00044 frame to frame at roughness 0.2 to 0.3, and 0.00147 to 0.00072 at 0.6 to 0.8, with no ghosting over
+a moving camera. The counter target is still written, for the debug views.
+The composite phase mixes the accumulation over the scene copy towards the reflection by the trace's
+coverage, the share of the pixel that a surface of that roughness reflects (specularShare, read from the g
+buffer's roughness) and SSRIntensity. The share is what keeps an albedo: the mix replaces the whole shaded
+pixel, the g buffer carries no albedo or metalness to tell a specular contribution from a diffuse one, and
+at full strength every rough wall came out painted with the sky. It is not a Fresnel term and not metalness
+aware - it is what a roughness only g buffer allows, so a rough metal keeps more of its albedo than it
+should.
+
+The roughness in that g buffer is per pixel and comes from the material's metallic roughness texture when
+it carries one (glTF: green channel, multiplied by the material's roughness factor) and from the factor
+alone otherwise. Writing the factor for both cases is what kept a textured material out of the reflections:
+the factor is conventionally 1.0 when a texture is in use, which lands on the roughness cutoff and disables
+the pass for the whole surface.
+
+The reflection has one quality setting, SSRQuality, next to the switch in the post processing panel, with
+three levels. High traces and resolves at frame resolution with fifteen filter taps; Mid does both at half
+(a quarter of the pixels) and Low at a quarter (a sixteenth), with the composite upsampling what it reads,
+the sample counter in an eight bit target below High and Low also cutting the filter to six taps. The
+numbers on a Mali G71 at 2220x1080, same scene and knobs, the pass costing what it costs over a frame with
+it switched off (47.6 ms): High 243.5 ms, Mid 120.8 ms, Low 84.0 ms, so 196, 73 and 36 ms for the pass
+itself. For reference, the simpler single pass reflection this replaced cost 23 ms and looked like a
+stochastic sample with no accumulation. What the levels buy is paid for in mirror sharpness: High keeps a
+silhouette sharp, Mid softens it, and Low shows the quarter resolution grid at the edge of a mirror.
+
+The composite's upsample is done in the shader, with four nearest taps, and the targets stay nearest:
+GL ES does not guarantee linear filtering of a float render target (OES_texture_float_linear is optional)
+and a device without it samples black. A target narrowed to FormatRGBA8 has to have Format and Type
+narrowed with it for the same class of reason: the internal format alone leaves the framebuffer incomplete
+on GL ES, the resolve's writes go nowhere and the accumulation stays black with no error logged.
+
+The march itself is hierarchical. A min depth pyramid (ssrDepthPyramidFrag.shader) is built every frame
+from the g buffer's linear depth, level 0 half the screen and each level after it half of the one before,
+background counting as the far plane. While the tile the ray is in holds nothing in front of it, the step
+covers a whole tile of the current level and the ray climbs; when the tile does hold something, the ray
+descends before stepping. The hit test stays against the exact g buffer, so the pyramid only decides how far
+a step may jump - it never declares a hit. Measured on the reflective scene the step budget this consumes
+drops from 0.54 to 0.51 of the requested count for the same picture; SSR_USE_PYRAMID 0 turns the march
+back into a flat one, which is how that is measured, and debug view 10 shows the fraction of the budget each
+pixel spent. The flat march already covers the screen in the requested count on this scene, so the hierarchy
+buys cost headroom rather than reach: it is what keeps a low step count usable on a phone.
+
+The two numbers the sampler draws per pixel come from a 128x128 void and cluster blue noise tile
+(Resources/Engine/Textures/blueNoise.png, generated by 	mp/gen_bluenoise.py and checksummed into the
+engine resources like any other). Blue noise is what keeps the samples of one frame evenly spread: an
+uncorrelated random sequence leaves clumps and holes at the tile's scale, and at one sample per pixel those
+clumps are what the denoiser then has to average away. The tile is walked by the frame index with the R2
+steps, so consecutive frames draw from cells far apart in the tile while each frame stays uniform. On the
+mirror path the sampler barely matters - the lobe is a delta and the sample is deterministic - which is
+exactly why the measurement there shows no difference; it is the glossy path that consumes it.
+
+Mirrors are the exception, and it is the reference's split: below `SSR_MIRROR_ROUGHNESS` the trace is the
+exact mirror direction, so there is nothing to average and nothing to ghost. Those pixels take this
+frame's sample as it is and keep a sample count of one; the spatial filter and the temporal accumulation
+only run for glossy surfaces. A mirror therefore cannot shimmer or ghost by construction - it can only
+alias, which is a sampling problem the trace has to answer, not the denoiser.
+
+`VelocityPass` writes the screen motion of the objects whose transform changed - it draws the same
+geometry twice, once with this frame's transform and once with the one it had a frame ago, both with the
+current camera, into two targets cleared to zero every frame, alpha marking that an object was drawn.
+The resolve subtracts that motion from the surface reprojection, so an object's own movement is followed
+in the history instead of being read as a disocclusion.
+
+The composite goes into a target of the pass's own (`SsrPass::GetOutputFramebuffer`), not back into the
+frame it read: the frame is read only for the rest of the frame, and DoF, the tone curve and a host that
+composites the frame itself all follow the reflection target instead. That target is what
 `ForwardSceneRenderPath::GetOutputFramebuffer` reports, because the path no longer always writes the
 framebuffer it was handed - a host that reads the viewport framebuffer after this path gets the frame from
 before the reflections.
-
 The step count selects *density*, never reach: the shader sizes a step so that the requested count crosses
 the screen diagonal, and the loop bound is a compile time `SSR_STEP_COUNT` variant from {8, 16, 32, 64}
 (`SsrPass::PreRender` picks the variant, then hands the count the bound can honor). The two disagreeing is
