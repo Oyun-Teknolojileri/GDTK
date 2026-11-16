@@ -21,3 +21,6 @@
 [submodule "Dependency/minizip-ng"]
 	path = Dependency/minizip-ng
 	url = https://github.com/Oyun-Teknolojileri/minizip-ng.git
+[submodule "Dependency/basis_universal"]
+	path = Dependency/basis_universal
+	url = https://github.com/Oyun-Teknolojileri/basis_universal.git

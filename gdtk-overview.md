@@ -1890,8 +1890,9 @@ python3 BuildScripts/build_dependencies.py
 Use `--configs Debug Release` (default), `--skip-assimp` / `--skip-imgui` to
 drop deps you do not need right now, and `--clean` to wipe
 `Dependency/Intermediate/<Platform>/` before configuring. The script is
-cross-platform: on Windows it picks `Ninja` if available, otherwise
-`Visual Studio 17 2022`; on Linux it picks `Ninja` or `Unix Makefiles`.
+cross-platform: on Windows it uses the Visual Studio generator when `cl.exe` is
+reachable and falls back to `Ninja` otherwise; on Linux it picks `Ninja` or
+`Unix Makefiles`.
 
 The dependency build produces **flat** output names for assimp — `assimp.lib` /
 `assimpd.lib` and `assimp.dll` / `assimpd.dll` (Debug vs Release split is via
@@ -1903,6 +1904,25 @@ against (`assimp.lib` / `assimpd.lib` in `AdditionalDependencies`), and it is
 stable across MSVC toolsets (vc142 / vc143 / vc145 all produce the same name).
 Upstream assimp's compiler-suffixed name (`assimp-vc143-mt.lib`) is no longer
 emitted into the dependency output directory.
+
+**Basis Universal is the one dependency that builds a different library per
+platform** (`Dependency/basis_universal`, submodule pinned to the `v2_50` tag of
+the `Oyun-Teknolojileri` fork). Upstream ships a single static archive,
+`basisu_encoder`, and it already contains `transcoder/basisu_transcoder.cpp`, so
+a desktop build links that one archive and gets the KTX2 transcoder and the GPU
+texture encoder together — there is no second archive, and no way to end up with
+two copies of the `basist` symbols inside `libToolKit`. Web and Android build a
+transcoder-only target from `transcoder/basisu_transcoder.cpp` directly in
+`Dependency/CMakeLists.txt`; the encoder is a host tool feature and never enters
+a game payload. `BASISU_ZSTD=OFF` (desktop) and `BASISD_SUPPORT_KTX2_ZSTD=0`
+(everywhere) keep basisu's bundled zstd out of the tree: `ToolKit` already links
+zstd through minizip, the pak applies zstd to every entry, and a second copy of
+`ZSTD_*` inside one shared library is a duplicate symbol error on MSVC. The
+define travels through the imported target's INTERFACE definitions because
+`transcoder/basisu_transcoder.h` reads it at class-layout level, so a consumer
+built with the header default (1) would disagree with the archive about the KTX2
+classes. The CLI and the examples stay out of ALL and their runtime output is
+redirected, so building one never writes into the submodule working tree.
 
 ### 12.2 Build engine + tools
 
@@ -1975,14 +1995,15 @@ toolchain pass and links one `.wasm`.
 ```
 project CMakeLists (TK_PLATFORM=Web)
   add_subdirectory(${TOOLKIT_DIR})        engine root, EMSCRIPTEN branch
-    add_subdirectory(Dependency)          minizip + zstd from source (static)
+    add_subdirectory(Dependency)          minizip + zstd + basisu transcoder (static)
     add_subdirectory(ToolKit)             engine as a STATIC library
   add_subdirectory(Codes)                 game executable, -sUSE_SDL=2
 ```
 
-- `Dependency/CMakeLists.txt` keeps a web branch that builds only `minizip` and
-  the `zstd` it fetches (SDL2 comes from the emscripten port, imgui and assimp
-  are desktop-only), and returns before the SDL2/assimp/imgui subprojects.
+- `Dependency/CMakeLists.txt` keeps a web branch that builds only `minizip`, the
+  `zstd` it fetches and the Basis Universal transcoder target (SDL2 comes from
+  the emscripten port, imgui / assimp / the basisu encoder are desktop-only), and
+  returns before the SDL2/assimp/imgui subprojects.
 - `ToolKit/CMakeLists.txt` builds `ToolKit` as a STATIC library on emscripten and
   carries `-pthread` on its PUBLIC compile/link interface, so the game inherits
   the threaded ABI. The engine, editor, workspace helper and CLI tools are not

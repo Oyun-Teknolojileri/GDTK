@@ -204,6 +204,23 @@ target_link_libraries(ToolKit PRIVATE
   zstd
 )
 
+# Basis Universal -- KTX2 texture compression.
+#
+# Desktop links `basisu_encoder`, upstream's single archive that contains both
+# the encoder and the transcoder (Dependency/CMakeLists.txt documents why one
+# archive per platform rather than two libraries). Web/Android link the
+# transcoder-only target created in Dependency/CMakeLists.txt, so a game payload
+# never carries the encoder.
+#
+# BASISD_SUPPORT_KTX2_ZSTD=0 arrives through both targets' interface
+# definitions: the pak applies zstd to every entry, and a second zstd inside
+# ToolKit would collide with the copy minizip already links.
+if(EMSCRIPTEN OR ANDROID)
+  target_link_libraries(ToolKit PRIVATE basisu_transcoder)
+else()
+  target_link_libraries(ToolKit PRIVATE basisu_encoder)
+endif()
+
 # Platform-specific link libraries.
 # Note: GL is intentionally NOT linked here. ToolKit uses glad (vendored)
 # which resolves OpenGL entry points dynamically at runtime. Linking
