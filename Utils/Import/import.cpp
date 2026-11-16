@@ -2370,11 +2370,13 @@ namespace ToolKit
       g_proxy->m_resourceRoot = "Temp";
 
       // Encoding a scene's textures takes minutes; a pool turns that into a fraction of the wall
-      // clock while the importer keeps working. Two cores stay free for the rest of the pipeline.
+      // clock while the importer keeps working. Sixteen workers is the default on a machine that has
+      // the cores for it - each one peaks around 250 MB - and the clamp keeps a small laptop at
+      // cores - 2 instead of thrashing.
       {
         const int cores = (int) std::thread::hardware_concurrency();
         const int workers =
-            g_textureWorkers > 0 ? g_textureWorkers : std::max(1, std::min(8, cores - 2));
+            g_textureWorkers > 0 ? g_textureWorkers : std::max(1, std::min(16, cores - 2));
 
         g_encodePool.Start(workers);
         TK_LOG("Texture encoding: %d worker thread(s) of %d core(s).", workers, cores);

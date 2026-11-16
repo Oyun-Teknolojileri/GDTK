@@ -1835,7 +1835,7 @@ source image (tens of milliseconds, and it decides the fallback) and queues the 
 encodes while the importer keeps building materials, meshes and the scene. The queue is bounded
 because a decoded 2K image is 16 MB: the producer waits for a slot instead of growing memory without
 limit. A texture is still encoded single threaded, so the bytes do not depend on the pool size.
-`-j N` overrides the worker count (default `min(8, cores - 2)`).
+`-j N` overrides the worker count (default `min(16, cores - 2)`).
 
 Same asset, same machine: 251 textures in ~39 minutes without finishing before, 274 textures in
 364 s with 8 workers - the per texture CPU cost is unchanged at ~9 s, the win is entirely overlap.
