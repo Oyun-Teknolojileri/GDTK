@@ -251,6 +251,11 @@ namespace ToolKit
     TK_LOG("Getting all used paths\n");
     GetAllUsedResourcePaths();
 
+    // Which of those paths are data maps. The pack step has no material slot to look at, but the
+    // materials it just loaded know what they use a texture for, and a normal map compressed as
+    // colour is the one mistake this pipeline must not make on its own.
+    CollectDataTexturePaths();
+
     // Zip used resources
     if (!ZipPack(zipFile))
     {
@@ -527,7 +532,17 @@ namespace ToolKit
 
     if (ShouldCompressForPack(filename))
     {
-      if (CompressFileToMemory(filename, m_packCompression, encoded) && !encoded.empty())
+      // A data map takes the UASTC/linear settings: the pack step has no slot to read, but the
+      // materials it just loaded said which files are used as normal and metallic-roughness maps.
+      TextureCompressionOptions options = m_packCompression;
+      if (m_packDataTextures.count(ToLower(NormalizePath(String(filename)))) > 0)
+      {
+        options.Format    = TextureCompressionOptions::Codec::UASTC;
+        options.Srgb      = false;
+        options.NormalMap = false;
+      }
+
+      if (CompressFileToMemory(filename, options, encoded) && !encoded.empty())
       {
         data          = reinterpret_cast<const char*>(encoded.data());
         dataLength    = encoded.size();
@@ -630,6 +645,45 @@ namespace ToolKit
     const String resourceRoot = NormalizePath(ResourcePath());
     const String filePath     = NormalizePath(filename);
     return filePath.rfind(resourceRoot, 0) == 0;
+  }
+
+  void FileManager::CollectDataTexturePaths()
+  {
+    m_packDataTextures.clear();
+
+    auto add = [this](const TexturePtr& texture)
+    {
+      if (texture == nullptr)
+      {
+        return;
+      }
+
+      String path = texture->GetFile();
+      NormalizePathInplace(path);
+      UnixifyPath(path);
+      m_packDataTextures.insert(ToLower(path));
+    };
+
+    size_t materialCount = 0;
+    for (const auto& entry : GetMaterialManager()->m_storage)
+    {
+      MaterialPtr material = std::dynamic_pointer_cast<Material>(entry.second);
+      if (material == nullptr)
+      {
+        continue;
+      }
+
+      materialCount++;
+
+      // Normal and metallic-roughness maps hold numbers, not colour. Colour maps need no list:
+      // they are what the default options already describe.
+      add(material->GetNormalTextureVal());
+      add(material->GetMetallicRoughnessTextureVal());
+    }
+
+    TK_LOG("Packing: %zu data texture path(s) known from %zu material(s).",
+           m_packDataTextures.size(),
+           materialCount);
   }
 
   uint64 FileManager::GetFileSize(const String& filename)

@@ -144,6 +144,13 @@ namespace ToolKit
     /** True when the pack step should encode this file instead of storing it as it is. */
     bool ShouldCompressForPack(const String& filename);
 
+    /**
+     * Fills m_packDataTextures from the materials the pack just loaded, so a normal or
+     * metallic-roughness map is encoded as data (UASTC, linear) even though the pack step itself has
+     * no material slot to consult.
+     */
+    void CollectDataTexturePaths();
+
     /** Size on disk, for the pack summary. */
     uint64 GetFileSize(const String& filename);
 
@@ -157,6 +164,9 @@ namespace ToolKit
     TextureCompressionOptions m_packCompression;
     bool m_compressTexturesInPack = false;
     PackCompressionStats m_packStats;
+
+    /** Normalized, lower case paths the loaded materials use as normal / metallic-roughness maps. */
+    StringSet m_packDataTextures;
 
    public:
     bool m_ignorePakFile = false;
