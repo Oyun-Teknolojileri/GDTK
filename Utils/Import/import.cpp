@@ -18,6 +18,7 @@
 #include <SDL.h>
 #include <Scene.h>
 #include <Texture.h>
+#include <TextureCompression.h>
 #include <ToolKit.h>
 #include <Types.h>
 #include <Util.h>
@@ -97,6 +98,20 @@ namespace ToolKit
   // bind transform when a channel name matches multiple bone nodes.
   const float g_animChannelMatchEps = 0.01f;
   String g_currentExt;
+
+  // Texture compression settings, overridden from the command line (-tex, -tq).
+  enum class ImportTextureMode
+  {
+    /** Encode by material slot: ETC1S for colour, UASTC for data maps. The default. */
+    BySlot,
+    /** Force UASTC everywhere, for projects where the extra quality is worth the size. */
+    Uastc,
+    /** Copy the source image as it is, the pre KTX2 behaviour. */
+    Uncompressed
+  };
+
+  ImportTextureMode g_textureMode = ImportTextureMode::BySlot;
+  int g_textureQuality            = 75;
 
   class BoneNode
   {
@@ -182,6 +197,64 @@ namespace ToolKit
     String ext;
     DecomposePath(fileName, nullptr, nullptr, &ext);
     return ToLower(ext) == ".dds";
+  }
+
+  /** File extensions the importer encodes. HDRI keeps its float format and is only copied. */
+  bool NeedsKtx2Encoding(const string& fileName)
+  {
+    String ext;
+    DecomposePath(fileName, nullptr, nullptr, &ext);
+    ext = ToLower(ext);
+
+    if (ext == HDR)
+    {
+      return false;
+    }
+
+    return ext == PNG || ext == JPG || ext == JPEG || ext == TGA || ext == BMP || ext == PSD || NeedsDdsConversion(fileName);
+  }
+
+  /**
+   * Codec settings for a material slot.
+   *
+   * Colour maps are perceptual, so ETC1S is the right trade there. Normal and metallic-roughness
+   * maps hold numbers, not colour: they need UASTC, linear metrics and, for normals, mip
+   * renormalisation, or the surface shading is visibly wrong.
+   */
+  TextureCompressionOptions CompressionOptionsForSlot(aiTextureType type)
+  {
+    TextureCompressionOptions options;
+    options.Quality = g_textureQuality;
+
+    switch (type)
+    {
+      case aiTextureType_NORMALS:
+      case aiTextureType_NORMAL_CAMERA:
+        options.Format    = TextureCompressionOptions::Codec::UASTC;
+        options.Srgb      = false;
+        options.NormalMap = true;
+        break;
+      case aiTextureType_UNKNOWN:
+      case aiTextureType_METALNESS:
+      case aiTextureType_DIFFUSE_ROUGHNESS:
+      case aiTextureType_AMBIENT_OCCLUSION:
+        options.Format    = TextureCompressionOptions::Codec::UASTC;
+        options.Srgb      = false;
+        options.NormalMap = false;
+        break;
+      default:
+        options.Format    = TextureCompressionOptions::Codec::ETC1S;
+        options.Srgb      = true;
+        options.NormalMap = false;
+        break;
+    }
+
+    if (g_textureMode == ImportTextureMode::Uastc)
+    {
+      options.Format = TextureCompressionOptions::Codec::UASTC;
+    }
+
+    return options;
   }
 
   void ClearForbidden(string& str)
@@ -656,11 +729,22 @@ namespace ToolKit
         // A DDS reference is decoded into a PNG next to the imported assets, see DdsLoader.h.
         const bool needsDecode  = NeedsDdsConversion(fileName);
         const string sourceName = fileName;
+
+        // LDR images are encoded to KTX2 and the material points at the container; HDRI is copied
+        // as it is. `-tex none` restores the old copy behaviour.
+        const bool encode  = g_textureMode != ImportTextureMode::Uncompressed && NeedsKtx2Encoding(fileName);
+        String encodedExt;
         if (needsDecode)
         {
           String name, ext;
           DecomposePath(fileName, nullptr, &name, &ext);
-          fileName = name + PNG;
+          fileName = name + (encode ? KTX2 : PNG);
+        }
+        else if (encode)
+        {
+          String path, name, ext;
+          DecomposePath(fileName, &path, &name, &ext);
+          fileName = path + name + KTX2;
         }
 
         string textPath = NormalizePath(PathToString(fs::path(texDir + fileName).lexically_normal()));
@@ -689,6 +773,18 @@ namespace ToolKit
             sourcePath = PathToString(fullPath);
           }
 
+          // A previous import left the uncompressed image in the texture folder (this project was
+          // imported before KTX2 existed). Prefer it over hunting through the source folder.
+          if (encode && !CheckSystemFile(sourcePath))
+          {
+            const String legacyPath =
+                NormalizePath(PathToString(fs::path(texDir + sourceName).lexically_normal()));
+            if (CheckSystemFile(legacyPath))
+            {
+              sourcePath = legacyPath;
+            }
+          }
+
           ifstream sourceFile;
           sourceFile.open(sourcePath, ios::binary | ios::in);
           if (sourceFile.good())
@@ -703,7 +799,56 @@ namespace ToolKit
               }
             }
 
-            if (needsDecode)
+            if (encode)
+            {
+              // DDS has no decoder in stb, so it takes a detour through a PNG that only exists for
+              // as long as the encode needs it.
+              String encodeSource = sourcePath;
+              String tempPng;
+              if (needsDecode)
+              {
+                String name;
+                DecomposePath(fileName, nullptr, &name, nullptr);
+                tempPng     = NormalizePath(PathToString(fs::path(texDir + name + PNG).lexically_normal()));
+                encodeSource = tempPng;
+
+                if (!ConvertDdsToPng(sourcePath, tempPng))
+                {
+                  if (g_skippedTextures.insert(sourceName).second)
+                  {
+                    Assimp::DefaultLogger::get()->warn("Texture '" + sourceName +
+                                                       "' uses a DDS format the importer can not "
+                                                       "decode, so the material imports without it.");
+                  }
+                  sourceFile.close();
+                  return nullptr;
+                }
+              }
+
+              if (!CompressFileToKtx2(encodeSource, textPath, CompressionOptionsForSlot(textureAssimpType)))
+              {
+                // Compression is a size optimisation, not a correctness requirement: fall back to
+                // the plain image the engine has always loaded.
+                Assimp::DefaultLogger::get()->warn("Texture '" + sourceName +
+                                                   "' could not be compressed, importing it "
+                                                   "uncompressed.");
+                textPath = NormalizePath(PathToString(fs::path(texDir + sourceName).lexically_normal()));
+                fs::copy(encodeSource, textPath, fs::copy_options::overwrite_existing);
+              }
+
+              if (!tempPng.empty())
+              {
+                fs::remove(tempPng);
+              }
+
+              // An embedded texture's intermediate file only existed to be encoded.
+              if (embedded && !needsDecode && CheckSystemFile(sourcePath) && sourcePath != textPath)
+              {
+                std::error_code removeErr;
+                fs::remove(sourcePath, removeErr);
+              }
+            }
+            else if (needsDecode)
             {
               if (!ConvertDdsToPng(sourcePath, textPath))
               {
@@ -1855,7 +2000,8 @@ namespace ToolKit
     {
       if (argc < 2)
       {
-        cout << "usage: Import 'fileToImport.format' <op> -t 'importTo' <op> -s 1.0 <op> -o 0";
+        cout << "usage: Import 'fileToImport.format' <op> -t 'importTo' <op> -s 1.0 <op> -o 0 <op> "
+                "-tex etc1s|uastc|none <op> -tq 75";
         throw(-1);
       }
 
@@ -1889,6 +2035,30 @@ namespace ToolKit
         if (arg == "-o")
         {
           optimizationLevel = std::atoi(argv[i + 1]);
+        }
+
+        // Texture compression. The defaults produce the small, perceptual containers a project
+        // ships with; -tex none restores the pre KTX2 behaviour of copying the images.
+        if (arg == "-tex")
+        {
+          const string mode = ToLower(argv[i + 1]);
+          if (mode == "none")
+          {
+            g_textureMode = ImportTextureMode::Uncompressed;
+          }
+          else if (mode == "uastc")
+          {
+            g_textureMode = ImportTextureMode::Uastc;
+          }
+          else
+          {
+            g_textureMode = ImportTextureMode::BySlot;
+          }
+        }
+
+        if (arg == "-tq")
+        {
+          g_textureQuality = std::max(1, std::min(100, std::atoi(argv[i + 1])));
         }
       }
 

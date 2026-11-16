@@ -1799,15 +1799,31 @@ normal mapped surface black in the lit view and in the normal debug view.
 Meshes without UVs get no tangents, which is fine because they have no normal
 map to sample.
 
-Texture references are copied next to the imported asset and referenced from
-the material. Decoding goes through stb_image, which has no DDS reader, so a
-DDS reference is converted to PNG on the way in (`Utils/Import/DdsLoader.*`,
-BC1 / BC3 / BC5) and the material points at the converted file. A DDS the
-loader cannot decode is reported once per file and skipped, so the material
-imports without that map instead of carrying a path the engine can never load.
-The same rule keeps `Material::MakeSureItsDataTexture` from initializing a
-texture that has no pixel data; that path warns and keeps the linear data
-settings.
+Texture references are **encoded to KTX2** next to the imported asset and referenced
+from the material as `Textures/<target>/<name>.ktx2`. The codec follows the material
+slot: colour maps (diffuse / base colour / emissive) become ETC1S with sRGB metrics,
+normal and metallic-roughness maps become UASTC with linear metrics, and only normals
+get mip renormalisation - compressing a normal map as colour is what makes a surface
+shade wrong. HDRI keeps its float format and is copied. `-tex none` restores the old
+copy-the-image behaviour, `-tex uastc` forces UASTC everywhere and `-tq 1..100` sets
+the quality (default 75).
+
+Decoding still goes through stb_image, which has no DDS reader, so a DDS reference is
+converted to PNG first (`Utils/Import/DdsLoader.*`, BC1 / BC3 / BC5) and that PNG is
+the encode source; it is deleted once the container exists. An embedded glTF/FBX
+texture's intermediate file is deleted the same way. A DDS the loader cannot decode is
+reported once per file and skipped, so the material imports without that map instead of
+carrying a path the engine can never load.
+
+Compression is a size optimisation and never a correctness requirement: if an encode
+fails the source image is copied as before, the material points at the plain file and
+the importer warns. The same rule keeps `Material::MakeSureItsDataTexture` from
+initializing a texture that has no pixel data; that path warns and keeps the linear
+data settings.
+
+Re-importing a project that predates KTX2 finds the old `.png` in the texture folder and
+encodes from that when the source folder no longer has the image, so a re-import does
+not silently drop textures whose originals were moved into the project.
 
 ### 11.2 Packer (`Utils/Packer/`)
 Release / publish CLI. Bundles projects for Windows, Web, Android. Links

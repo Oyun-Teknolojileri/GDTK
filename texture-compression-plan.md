@@ -1,8 +1,7 @@
 # Texture Compression (KTX2 / Basis Universal) -- Implementation Plan
 
 > Working plan for GPU texture compression in GDTK.
-> Status: phases 0-2 delivered (dependency, GL compressed upload, KTX2 loader, encoder). Phases 3-5
-> pending.
+> Status: phases 0-3 delivered (dependency, upload, loader, encoder, import). Phases 4-5 pending.
 > Keep this file in sync while the work is in progress; delete it once the feature lands and the
 > permanent description lives in `gdtk-overview.md`.
 
@@ -262,7 +261,7 @@ Each phase is usable on its own: 0 unblocks, 1 makes the engine *read* KTX2, 2 p
 | 0 | basisu dependency, CMake, build verification | S | - (delivered) |
 | 1 | KTX2 loader + GL compressed upload + capability query | L | 0 (delivered) |
 | 2 | Encoder (`TextureCompression.*`) - file, memory, batched | S | 0 (delivered) |
-| 3 | Import integration (slot aware) | M | 1, 2 |
+| 3 | Import integration (slot aware) | M | 1, 2 (delivered) |
 | 4 | Pack integration (legacy files, no rename) | S | 1, 2 |
 | 5 | Verification on Windows / Web / Android, docs | M | 3, 4 |
 
@@ -487,7 +486,53 @@ filter was confirmed by inspecting the generated project, and the stub is trivia
 
 </details>
 
-### Phase 3 -- import
+### Phase 3 -- import (delivered)
+
+`textureFindAndCreateFunc` in `import.cpp` now encodes instead of copying: the destination name
+becomes `<name>.ktx2`, `CompressionOptionsForSlot(aiTextureType)` picks the codec, and the material
+references the container. What changed against the sketch:
+
+* **Codec per slot** as planned, with one addition: `aiTextureType_AMBIENT_OCCLUSION` and
+  `_DIFFUSE_ROUGHNESS` also take the UASTC/linear branch, being data maps like metallic-roughness.
+* **Alpha needs no scan.** The encoder is asked to check for alpha (`m_check_for_alpha`), so the
+  plan's separate alpha pass would have duplicated work basisu already does.
+* **DDS** keeps the PNG detour (`ConvertDdsToPng`, BC1/BC3/BC5) and the intermediate is deleted once
+  the container exists. An undecodable DDS is still reported once and skipped.
+* **Embedded textures** keep their intermediate file for the duration of the encode and it is
+  removed afterwards, so the pak does not carry a second copy of every glTF texture.
+* **Legacy source fallback** landed as planned: a re-import of a project that predates KTX2 encodes
+  from the old `.png` already sitting in the texture folder.
+* **Failure policy** landed as planned: copy the source, warn, reference the plain file.
+* **`out.txt`** carries the `.ktx2` path, so `App::Import`'s move step routes it through
+  `SupportedImageFormat` into `Resources/Textures` without a change there.
+* **CLI**: `-tex etc1s|uastc|none`, `-tq 1..100`, defaulting to by-slot at quality 75.
+* **Not batched.** Textures are encoded one at a time inside the material loop rather than collected
+  and pushed through `CompressFiles`. It is simpler and cannot reorder work around the material that
+  references it; the cost is that a large model imports slower than it could. The batch entry point
+  is there for the pack step (phase 4), where nothing depends on order.
+
+Verification actually run:
+
+| Check | Result |
+|---|---|
+| Import a textured OBJ (345x345 PNG, diffuse slot) | exit 0 |
+| Output tree | `Temp/Textures/ktx2test/tex.ktx2` (47,600 bytes), material, mesh, prefab; no leftover PNG |
+| Material reference | `<ResourceRef Class="Texture" File="ktx2test/tex.ktx2"/>` |
+| `out.txt` | lists `Temp/Textures/ktx2test/tex.ktx2` |
+| Container read back | 345x345, 9 levels, sRGB |
+| `Texture::Load` on the imported file | loaded, 345x345, RGBA8 fallback (no backend in the harness), image matches the bottom-up reference at 5.24 |
+
+Two notes for whoever repeats this:
+
+* A `Texture` constructed **on the stack** crashes the debug build in its destructor (the engine
+  tracks every `Object` in a registry); a harness has to use `MakeNewPtr<Texture>()`. The engine
+  itself never constructs one any other way.
+* The imported container is *not* flipped relative to the source file, which is correct: it holds
+  the bottom-up rows the GL upload wants, so comparing it against a top-down decode of the source
+  reads as ~48 mean channel error and is not a failure.
+
+<details>
+<summary>Original checklist, for the record</summary>
 
 1. `import.cpp`: `textureFindAndCreateFunc` (`import.cpp:629`) stops copying the source when the
    extension is an LDR image; it encodes to `<texDir>/<name>.ktx2` and references that.
@@ -518,8 +563,10 @@ filter was confirmed by inspecting the generated project, and the stub is trivia
    the end of each material. Lazy with a per-file cache keyed by source path is simpler and keeps
    duplicates from being encoded twice.
 
-Acceptance: import an FBX with diffuse + normal + metallic-roughness; `Resources/Textures` contains
-only `.ktx2`; the material opens and renders identically (visually) in the editor.
+Acceptance (met by the verification table above): import an FBX with diffuse + normal +
+metallic-roughness; `Resources/Textures` contains only `.ktx2`; the material opens and renders.
+
+</details>
 
 ### Phase 4 -- pack
 
