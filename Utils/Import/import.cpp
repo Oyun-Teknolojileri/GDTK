@@ -120,6 +120,9 @@ namespace ToolKit
   ImportTextureMode g_textureMode = ImportTextureMode::BySlot;
   int g_textureQuality            = 75;
 
+  /** Encoder worker count. 0 means "derive it from the machine" (-j overrides it). */
+  int g_textureWorkers = 0;
+
   /**
    * Encodes the textures the material loop hands over, on a small thread pool.
    *
@@ -2210,7 +2213,7 @@ namespace ToolKit
       if (argc < 2)
       {
         cout << "usage: Import 'fileToImport.format' <op> -t 'importTo' <op> -s 1.0 <op> -o 0 <op> "
-                "-tex etc1s|uastc|none <op> -tq 75";
+                "-tex etc1s|uastc|none <op> -tq 75 <op> -j 8";
         throw(-1);
       }
 
@@ -2268,6 +2271,12 @@ namespace ToolKit
         if (arg == "-tq")
         {
           g_textureQuality = std::max(1, std::min(100, std::atoi(argv[i + 1])));
+        }
+
+        // Worker threads for the texture encode. 0 or absent derives it from the core count.
+        if (arg == "-j")
+        {
+          g_textureWorkers = std::max(1, std::min(64, std::atoi(argv[i + 1])));
         }
       }
 
@@ -2355,10 +2364,11 @@ namespace ToolKit
       // clock while the importer keeps working. Two cores stay free for the rest of the pipeline.
       {
         const int cores = (int) std::thread::hardware_concurrency();
-        g_encodePool.Start(std::max(1, std::min(8, cores - 2)));
-        TK_LOG("Texture encoding: %d worker thread(s) of %d core(s).",
-               std::max(1, std::min(8, cores - 2)),
-               cores);
+        const int workers =
+            g_textureWorkers > 0 ? g_textureWorkers : std::max(1, std::min(8, cores - 2));
+
+        g_encodePool.Start(workers);
+        TK_LOG("Texture encoding: %d worker thread(s) of %d core(s).", workers, cores);
       }
 
       for (int i = 0; i < (int) (files.size()); i++)

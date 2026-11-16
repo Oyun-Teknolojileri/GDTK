@@ -1828,6 +1828,22 @@ Re-importing a project that predates KTX2 finds the old `.png` in the texture fo
 encodes from that when the source folder no longer has the image, so a re-import does
 not silently drop textures whose originals were moved into the project.
 
+**The encode runs on a thread pool, not inline.** Encoding a 2048x2048 normal map to UASTC is ten
+seconds, and a scene sized asset references hundreds of them; done one at a time inside the material
+loop, the Bistro exterior spent over forty minutes with one core busy. The loop now decodes each
+source image (tens of milliseconds, and it decides the fallback) and queues the pixels, and the pool
+encodes while the importer keeps building materials, meshes and the scene. The queue is bounded
+because a decoded 2K image is 16 MB: the producer waits for a slot instead of growing memory without
+limit. A texture is still encoded single threaded, so the bytes do not depend on the pool size.
+`-j N` overrides the worker count (default `min(8, cores - 2)`).
+
+Same asset, same machine: 251 textures in ~39 minutes without finishing before, 274 textures in
+364 s with 8 workers - the per texture CPU cost is unchanged at ~9 s, the win is entirely overlap.
+
+The importer also logs its phase timings (embedded images, materials, skeleton+animation, meshes,
+scene) and the pool reports encode seconds against wall seconds, so a slow run names the stage
+instead of leaving it to guesswork.
+
 ### 11.2 Packer (`Utils/Packer/`)
 Release / publish CLI. Bundles projects for Windows, Web, Android. Links
 SDL2, ToolKit (no assimp). The editor's Publish dialog drives it through
