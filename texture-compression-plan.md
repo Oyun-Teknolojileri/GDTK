@@ -1,8 +1,8 @@
 # Texture Compression (KTX2 / Basis Universal) -- Implementation Plan
 
 > Working plan for GPU texture compression in GDTK.
-> Status: phases 0-4 delivered (dependency, upload, loader, encoder, import, pack). Phase 5
-> (platform verification) pending.
+> Status: phases 0-4 delivered and committed; phase 5 verified on desktop and compiled for Web/Android,
+> with the browser and device runs still open (see the phase 5 section).
 > Keep this file in sync while the work is in progress; delete it once the feature lands and the
 > permanent description lives in `gdtk-overview.md`.
 
@@ -264,7 +264,7 @@ Each phase is usable on its own: 0 unblocks, 1 makes the engine *read* KTX2, 2 p
 | 2 | Encoder (`TextureCompression.*`) - file, memory, batched | S | 0 (delivered) |
 | 3 | Import integration (slot aware) | M | 1, 2 (delivered) |
 | 4 | Pack integration (legacy files, no rename) | S | 1, 2 (delivered) |
-| 5 | Verification on Windows / Web / Android, docs | M | 3, 4 |
+| 5 | Verification on Windows / Web / Android, docs | M | 3, 4 (desktop done, mobile open) |
 
 Size is relative effort, not a schedule.
 
@@ -621,7 +621,42 @@ replaced.
 
 </details>
 
-### Phase 5 -- verification and docs
+### Phase 5 -- verification and docs (partially delivered)
+
+What was verified, on this machine:
+
+| Platform | Check | Result |
+|---|---|---|
+| Desktop GL 4.3 | capability probe | reports BC7; BC1/BC3 are absent because this driver has S3TC without the sRGB enums, which the probe treats as "no BC" on purpose |
+| Desktop GL 4.3 | compressed upload of a real container | `compressed=1`, internal format `0x8E8D` (`GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM`), no GL error |
+| Desktop GL 4.3 | blocks the driver holds | `GL_TEXTURE_COMPRESSED_IMAGE_SIZE` is 121,104 bytes, exactly what the transcoder produced, and `glGetCompressedTexImage` returns identical bytes |
+| Desktop GL 4.3 | pixels the driver decodes | 2.05 mean channel error against the container's own RGBA8 decode - the BC7 quantization |
+| Web | transcoder compiles for wasm | `emcc 4.0.9` builds `basisu_transcoder.cpp` for `wasm32` with `-DBASISD_SUPPORT_KTX2=1 -DBASISD_SUPPORT_KTX2_ZSTD=0` |
+| Android | transcoder compiles for arm64 | NDK 25.1.8937393, `--target=aarch64-linux-android27 -Wall`, no warnings |
+| Desktop | importer | encodes a diffuse slot to `.ktx2`; material and `out.txt` reference the container |
+| Desktop | packer | encodes a leftover PNG into the pak under its own entry name; `--no-compress` stores it untouched |
+
+Still open, and why:
+
+* **No browser run.** `Packer::WebPublish` needs a game project to drive the emscripten pass; the
+  transcoder compiling for wasm is the part of the web path this change introduces, but the
+  extension probing (`emscripten_webgl_enable_extension` + `WEBGL_compressed_texture_*`) has never
+  executed. SwiftShader may well report no compressed format, which would make the RGBA8 fallback
+  the path a headless Chrome run exercises - worth knowing, not yet known.
+* **No device run.** The Android build of the engine itself (not just the transcoder) and the
+  ETC2/ASTC path are unverified; the NDK compile only proves the new dependency is portable.
+* **No visual regression.** The flip convention was verified numerically (decode vs a bottom-up
+  reference at 5.24, vs a file-order reference at 48.00), not by looking at a rendered frame. The
+  "up arrow" test image the plan asks for still has to be rendered in the editor on each platform.
+
+Docs are done and live in `gdtk-overview.md`: 5.2 (probe, enums, compressed upload), 6.3 (level
+layout and the encoder), 11.1 (import encodes by slot), 11.2 (pack converts in place),
+12.1 (the basisu dependency and why one archive per platform), 14 (file lookup rows). This file stays
+until the three items above are closed, because the overview now describes the shipped behaviour and
+this file still holds the open questions.
+
+<details>
+<summary>Original checklist, for the record</summary>
 
 1. Desktop GL: BC7 path, plus a forced fallback run (`--no-...`/env switch or a build without the
    extension) to exercise RGBA32.
@@ -635,6 +670,8 @@ replaced.
    (Texture / KTX2 levels), 11.1 (import encodes), 11.2 (pack converts), 12.1 (basisu dependency),
    14 (file lookup). Update both config wrappers notes in `Dependency/CMakeLists.txt` comments.
 6. Delete this file once the feature is described in the overview.
+
+</details>
 
 ---
 
