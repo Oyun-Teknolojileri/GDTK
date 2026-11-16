@@ -801,18 +801,20 @@ namespace ToolKit
 
             if (encode)
             {
-              // DDS has no decoder in stb, so it takes a detour through a PNG that only exists for
-              // as long as the encode needs it.
-              String encodeSource = sourcePath;
-              String tempPng;
+              const TextureCompressionOptions options = CompressionOptionsForSlot(textureAssimpType);
+              bool encoded                            = false;
+
               if (needsDecode)
               {
-                String name;
-                DecomposePath(fileName, nullptr, &name, nullptr);
-                tempPng     = NormalizePath(PathToString(fs::path(texDir + name + PNG).lexically_normal()));
-                encodeSource = tempPng;
+                // DDS is already block compressed and stb has no reader, so the importer decodes it
+                // to RGBA itself and hands those pixels straight to the encoder. There used to be a
+                // PNG detour here, which encoded and then decoded the same image again for a file
+                // that only existed to be read back immediately.
+                std::vector<ubyte> rgba;
+                int textureWidth  = 0;
+                int textureHeight = 0;
 
-                if (!ConvertDdsToPng(sourcePath, tempPng))
+                if (!DecodeDdsToRgba(sourcePath, rgba, textureWidth, textureHeight))
                 {
                   if (g_skippedTextures.insert(sourceName).second)
                   {
@@ -823,22 +825,52 @@ namespace ToolKit
                   sourceFile.close();
                   return nullptr;
                 }
+
+                std::vector<ubyte> ktx2;
+                encoded = CompressImageTopDownToKtx2(rgba.data(),
+                                                     textureWidth,
+                                                     textureHeight,
+                                                     options,
+                                                     ktx2) &&
+                          WriteKtx2(textPath, ktx2);
+              }
+              else
+              {
+                encoded = CompressFileToKtx2(sourcePath, textPath, options);
               }
 
-              if (!CompressFileToKtx2(encodeSource, textPath, CompressionOptionsForSlot(textureAssimpType)))
+              if (!encoded)
               {
                 // Compression is a size optimisation, not a correctness requirement: fall back to
-                // the plain image the engine has always loaded.
+                // the plain image the engine has always loaded. For DDS that is the PNG the
+                // importer writes, because the engine cannot read the DDS itself.
                 Assimp::DefaultLogger::get()->warn("Texture '" + sourceName +
                                                    "' could not be compressed, importing it "
                                                    "uncompressed.");
-                textPath = NormalizePath(PathToString(fs::path(texDir + sourceName).lexically_normal()));
-                fs::copy(encodeSource, textPath, fs::copy_options::overwrite_existing);
-              }
 
-              if (!tempPng.empty())
-              {
-                fs::remove(tempPng);
+                if (needsDecode)
+                {
+                  String plainName;
+                  DecomposePath(fileName, nullptr, &plainName, nullptr);
+                  textPath = NormalizePath(PathToString(fs::path(texDir + plainName + PNG).lexically_normal()));
+
+                  if (!ConvertDdsToPng(sourcePath, textPath))
+                  {
+                    if (g_skippedTextures.insert(sourceName).second)
+                    {
+                      Assimp::DefaultLogger::get()->warn("Texture '" + sourceName +
+                                                         "' uses a DDS format the importer can not "
+                                                         "decode, so the material imports without it.");
+                    }
+                    sourceFile.close();
+                    return nullptr;
+                  }
+                }
+                else
+                {
+                  textPath = NormalizePath(PathToString(fs::path(texDir + sourceName).lexically_normal()));
+                  fs::copy(sourcePath, textPath, fs::copy_options::overwrite_existing);
+                }
               }
 
               // An embedded texture's intermediate file only existed to be encoded.

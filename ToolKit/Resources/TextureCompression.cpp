@@ -190,6 +190,40 @@ namespace ToolKit
     return Encode(pixels, width, height, options, outKtx2);
   }
 
+  bool CompressImageTopDownToKtx2(const ubyte* rgba8,
+                                  int width,
+                                  int height,
+                                  const TextureCompressionOptions& options,
+                                  std::vector<ubyte>& outKtx2)
+  {
+    outKtx2.clear();
+    if (rgba8 == nullptr || width <= 0 || height <= 0)
+    {
+      return false;
+    }
+
+    const size_t byteCount = (size_t) width * (size_t) height * 4u;
+    std::vector<ubyte> pixels(rgba8, rgba8 + byteCount);
+    FlipRows(pixels, width, height);
+    return Encode(pixels, width, height, options, outKtx2);
+  }
+
+  bool WriteKtx2(const String& destKtx2, const std::vector<ubyte>& bytes)
+  {
+    if (bytes.empty())
+    {
+      return false;
+    }
+
+    if (!WriteFileBytes(destKtx2, bytes))
+    {
+      TK_ERR("Texture compression: could not write '%s'.", destKtx2.c_str());
+      return false;
+    }
+
+    return true;
+  }
+
   bool CompressFileToMemory(const String& sourceImage,
                             const TextureCompressionOptions& options,
                             std::vector<ubyte>& outKtx2)
@@ -229,13 +263,7 @@ namespace ToolKit
       return false;
     }
 
-    if (!WriteFileBytes(destKtx2, bytes))
-    {
-      TK_ERR("Texture compression: could not write '%s'.", destKtx2.c_str());
-      return false;
-    }
-
-    return true;
+    return WriteKtx2(destKtx2, bytes);
   }
 
   bool CompressFiles(const std::vector<TextureCompressionJob>& jobs, int threadCount)

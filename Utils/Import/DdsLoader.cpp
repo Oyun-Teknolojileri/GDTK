@@ -262,8 +262,12 @@ namespace ToolKit
 
   } // namespace
 
-  bool ConvertDdsToPng(const String& ddsFile, const String& pngFile)
+  bool DecodeDdsToRgba(const String& ddsFile, std::vector<ubyte>& rgba, int& width, int& height)
   {
+    rgba.clear();
+    width  = 0;
+    height = 0;
+
     std::ifstream file(ddsFile.c_str(), std::ios::binary | std::ios::ate);
     if (!file.is_open())
     {
@@ -387,7 +391,23 @@ namespace ToolKit
       }
     }
 
-    return WritePNG(pngFile.c_str(), (int) header.width, (int) header.height, Channels, pixels.data(), 0) != 0;
+    rgba   = std::move(pixels);
+    width  = (int) header.width;
+    height = (int) header.height;
+    return true;
+  }
+
+  bool ConvertDdsToPng(const String& ddsFile, const String& pngFile)
+  {
+    std::vector<ubyte> rgba;
+    int width  = 0;
+    int height = 0;
+    if (!DecodeDdsToRgba(ddsFile, rgba, width, height))
+    {
+      return false;
+    }
+
+    return WritePNG(pngFile.c_str(), width, height, (int) Channels, rgba.data(), 0) != 0;
   }
 
 } // namespace ToolKit

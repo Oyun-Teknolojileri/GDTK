@@ -1808,18 +1808,21 @@ shade wrong. HDRI keeps its float format and is copied. `-tex none` restores the
 copy-the-image behaviour, `-tex uastc` forces UASTC everywhere and `-tq 1..100` sets
 the quality (default 75).
 
-Decoding still goes through stb_image, which has no DDS reader, so a DDS reference is
-converted to PNG first (`Utils/Import/DdsLoader.*`, BC1 / BC3 / BC5) and that PNG is
-the encode source; it is deleted once the container exists. An embedded glTF/FBX
-texture's intermediate file is deleted the same way. A DDS the loader cannot decode is
-reported once per file and skipped, so the material imports without that map instead of
-carrying a path the engine can never load.
+stb_image has no DDS reader, so a DDS reference is decoded by the importer itself
+(`Utils/Import/DdsLoader.*`, BC1 / BC3 / BC5) and those pixels go **straight into the
+encoder** (`CompressImageTopDownToKtx2`, the variant that flips file order into the GL
+upload order). There used to be a PNG detour here - decode to PNG, then let the encoder
+decode that PNG again - which cost an encode and a decode of the same image for a file
+that only existed to be read back. The PNG is now only written by the fallback below.
+An embedded glTF/FBX texture's intermediate file is deleted once it has been encoded. A
+DDS the loader cannot decode is reported once per file and skipped, so the material
+imports without that map instead of carrying a path the engine can never load.
 
 Compression is a size optimisation and never a correctness requirement: if an encode
-fails the source image is copied as before, the material points at the plain file and
-the importer warns. The same rule keeps `Material::MakeSureItsDataTexture` from
-initializing a texture that has no pixel data; that path warns and keeps the linear
-data settings.
+fails the source image is copied (a DDS is written out as PNG, since the engine has no
+DDS reader), the material points at that plain file and the importer warns. The same
+rule keeps `Material::MakeSureItsDataTexture` from initializing a texture that has no
+pixel data; that path warns and keeps the linear data settings.
 
 Re-importing a project that predates KTX2 finds the old `.png` in the texture folder and
 encodes from that when the source folder no longer has the image, so a re-import does

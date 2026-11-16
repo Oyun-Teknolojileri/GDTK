@@ -47,6 +47,23 @@ namespace ToolKit
     return false;
   }
 
+  bool CompressImageTopDownToKtx2(const ubyte*,
+                                  int,
+                                  int,
+                                  const TextureCompressionOptions&,
+                                  std::vector<ubyte>& outKtx2)
+  {
+    outKtx2.clear();
+    WarnOnce();
+    return false;
+  }
+
+  bool WriteKtx2(const String&, const std::vector<ubyte>&)
+  {
+    WarnOnce();
+    return false;
+  }
+
   bool CompressFileToMemory(const String&, const TextureCompressionOptions&, std::vector<ubyte>& outKtx2)
   {
     outKtx2.clear();

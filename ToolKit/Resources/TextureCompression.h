@@ -66,6 +66,8 @@ namespace ToolKit
    *
    * The pixels are taken exactly as given: use `CompressFileToKtx2` / `CompressFileToMemory` when the
    * source is an image file, because those also flip the rows into the order the GL upload expects.
+   * A caller that decoded an image itself (the import tool's DDS reader) wants
+   * `CompressImageTopDownToKtx2` instead, which does that flip.
    *
    * @param rgba8 Source pixels, tightly packed, 4 bytes per texel.
    * @param width Image width in texels.
@@ -79,6 +81,26 @@ namespace ToolKit
                                   int height,
                                   const TextureCompressionOptions& options,
                                   std::vector<ubyte>& outKtx2);
+
+  /**
+   * Encodes pixels whose first row is the top row of the image, the order stb_image and the DDS
+   * reader hand back.
+   *
+   * The rows are flipped into the order glTexImage2D expects, exactly as the file based entry points
+   * do. This exists so a caller that already has decoded pixels - the importer's DDS path - does not
+   * have to write a PNG and read it back just to get the orientation right.
+   */
+  TK_API bool CompressImageTopDownToKtx2(const ubyte* rgba8,
+                                         int width,
+                                         int height,
+                                         const TextureCompressionOptions& options,
+                                         std::vector<ubyte>& outKtx2);
+
+  /**
+   * Writes an encoded container to disk.
+   * @return False when the file cannot be opened or written.
+   */
+  TK_API bool WriteKtx2(const String& destKtx2, const std::vector<ubyte>& bytes);
 
   /**
    * Decodes an image file and encodes it to a KTX2 container, returning the bytes.

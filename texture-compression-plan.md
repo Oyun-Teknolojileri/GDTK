@@ -497,8 +497,12 @@ references the container. What changed against the sketch:
   `_DIFFUSE_ROUGHNESS` also take the UASTC/linear branch, being data maps like metallic-roughness.
 * **Alpha needs no scan.** The encoder is asked to check for alpha (`m_check_for_alpha`), so the
   plan's separate alpha pass would have duplicated work basisu already does.
-* **DDS** keeps the PNG detour (`ConvertDdsToPng`, BC1/BC3/BC5) and the intermediate is deleted once
-  the container exists. An undecodable DDS is still reported once and skipped.
+* **DDS** used to keep a PNG detour; it no longer does. `DecodeDdsToRgba` hands the decoded pixels
+  to `CompressImageTopDownToKtx2`, which flips them into the GL upload order and encodes from
+  memory, so the PNG is written only by the fallback path now. Measured on a synthetic 8x8 BC1
+  container: decode gives file order (row 0 red, row 7 blue), the container read back has the rows
+  flipped as the upload expects, and the fallback PNG still keeps file order. An undecodable DDS is
+  still reported once and skipped.
 * **Embedded textures** keep their intermediate file for the duration of the encode and it is
   removed afterwards, so the pak does not carry a second copy of every glTF texture.
 * **Legacy source fallback** landed as planned: a re-import of a project that predates KTX2 encodes
