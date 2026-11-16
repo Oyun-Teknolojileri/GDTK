@@ -1744,10 +1744,14 @@ switches targets hands back its input at the marker position.
 
 ### 10.1 WorkerManager
 
-Three executors:
+Four executors:
 - `MainThread` — runs at end of current frame, in `WorkerManager::ExecuteTasks` tick (sync with main).
-- `FramePool` — for tasks that **must** complete in the current frame (uses `m_frameWorkers` thread pool).
-- `BackgroundPool` — for long-running async work (uses `m_backgroundWorkers` thread pool).
+- `FramePool` — for tasks that **must** complete in the current frame (uses `m_frameWorkers` thread pool, `min(cores, 4)`).
+- `BackgroundPool` — for long-running async work (uses `m_backgroundWorkers` thread pool, `min(cores, 2)`).
+- `BulkPool` - batch work that may take the whole machine (uses `m_bulkWorkers`, `min(16, cores - 2)`). The
+  tools encode textures on it (`Import`'s window and `FileManager::ZipPack`); the frame and background
+  pools stay small on purpose because they serve frames, not batch jobs. It does not exist on the web,
+  where the pthread pool is fixed size and `GetPool(BulkPool)` returns the background pool.
 
 `AsyncTask(Executor, F, args...)` returns a `std::future<R>`. If `Main::m_threaded == false`, falls back to MainThread regardless of choice.
 
@@ -1828,21 +1832,26 @@ Re-importing a project that predates KTX2 finds the old `.png` in the texture fo
 encodes from that when the source folder no longer has the image, so a re-import does
 not silently drop textures whose originals were moved into the project.
 
-**The encode runs on a thread pool, not inline.** Encoding a 2048x2048 normal map to UASTC is ten
-seconds, and a scene sized asset references hundreds of them; done one at a time inside the material
-loop, the Bistro exterior spent over forty minutes with one core busy. The loop now decodes each
-source image (tens of milliseconds, and it decides the fallback) and queues the pixels, and the pool
-encodes while the importer keeps building materials, meshes and the scene. The queue is bounded
-because a decoded 2K image is 16 MB: the producer waits for a slot instead of growing memory without
-limit. A texture is still encoded single threaded, so the bytes do not depend on the pool size.
-`-j N` overrides the worker count (default `min(16, cores - 2)`).
+**The encode runs on the engine's bulk pool, not inline.** Encoding a 2048x2048 normal map to UASTC is
+ten seconds, and a scene sized asset references hundreds of them; done one at a time inside the
+material loop, the Bistro exterior spent over forty minutes with one core busy. The loop now decodes
+each source image (tens of milliseconds, and it decides the fallback) and queues the pixels; the
+encodes run as one windowed `std::for_each(TKExecBy(WorkerManager::BulkPool), ...)` pass, so the width
+follows the machine instead of a hard coded number. The window is bounded because a decoded 2K image is
+16 MB: `EncodeWindowSize()` holds two images per pool thread. A texture is still encoded single
+threaded, so the bytes do not depend on the pool width.
+`-j N` overrides that width (`GetPool(BulkPool).set_num_threads(N)`); without it the pool runs at the
+size `WorkerManager::Init` picked.
 
-Same asset, same machine: 251 textures in ~39 minutes without finishing before, 274 textures in
-364 s with 8 workers - the per texture CPU cost is unchanged at ~9 s, the win is entirely overlap.
+Same asset, same machine: 251 textures in ~39 minutes without finishing before, 274 textures in 232 s
+on the bulk pool (16 threads by default) - the per texture CPU cost is unchanged at ~9 s, the win is entirely
+overlap. The pool is capped at 16 threads because more does not pay: at 30 threads the same asset measured the
+same wall clock at 5.2 GB peak RSS instead of 3 GB, the encode being memory bandwidth bound long before
+it is core bound.
 
 The importer also logs its phase timings (embedded images, materials, skeleton+animation, meshes,
-scene) and the pool reports encode seconds against wall seconds, so a slow run names the stage
-instead of leaving it to guesswork.
+scene) and reports the encode wall clock against the pool width, so a slow run names the stage instead
+of leaving it to guesswork.
 
 ### 11.2 Packer (`Utils/Packer/`)
 Release / publish CLI. Bundles projects for Windows, Web, Android. Links
@@ -1867,6 +1876,15 @@ On a project whose textures are already JPEG, the pak can grow (ETC1S at quality
 The win there is VRAM and load time, not download size: 1024x1024 RGBA8 is 4 MB on the GPU, the same
 texture is 1.4 MB as BC7/ASTC 4x4 and 0.5-0.9 MB as ETC2. For a project shipping raw PNG/TGA sources
 both numbers move in the right direction. Quality and RDO tuning per slot is the open follow-up.
+
+**The pack encodes in parallel too.** `ZipPack` takes the path set in windows of `PackEncodeWindow`
+(32), encodes each window on the engine's bulk pool (`std::for_each(TKExecBy(WorkerManager::BulkPool),
+...)`) and then writes it in order - the zip writer stays the only thread that touches the archive, and
+a window is the memory bound. `AddFileToZip` grew a `preEncoded` parameter for this: nullptr means
+"decide yourself", an empty vector means "tried and failed", which is what stops a fallback from paying
+for the same multi-second encode twice. A 22 texture project packs in 27 s serially and 11 s this way;
+the rest of the wall clock is the scene load and zstd of the pak, which stay serial. --threads N overrides
+the pool width for one run (4 threads measures 18 s on the same project).
 
 One FileManager fix came out of this: the pak offset table used to be marked complete even when no
 pak existed yet, so a lookup during packing poisoned every later read of the pak the pack had just

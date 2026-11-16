@@ -15,16 +15,31 @@
 #include "RenderSystem.h"
 #include "Scene.h"
 #include "Shader.h"
+#include "Threads.h"
 #include "ToolKit.h"
 
 #include <mz.h>
 #include <unzip.h>
 #include <zip.h>
 
+#include <algorithm>
+
 #include "DebugNew.h"
 
 namespace ToolKit
 {
+
+  namespace
+  {
+    /**
+     * Containers held in memory while the pack encodes a window of files.
+     *
+     * The window is the memory bound: an encoded 2K container is megabytes, and the writer only
+     * holds one window at a time.
+     */
+    constexpr size_t PackEncodeWindow = 32;
+  } // namespace
+
   FileManager::FileManager() {}
 
   FileManager::~FileManager()
@@ -489,12 +504,49 @@ namespace ToolKit
       return false;
     }
 
-    // Add files to zip
-    for (const String& path : m_allPaths)
+    // The pack loop cost is dominated by texture encoding, which is seconds per image and used to
+    // run inline: a project that still ships plain images spent all of its time with one core busy.
+    // Paths are taken in windows, the window is encoded on a pool, and the window is then written in
+    // order - the writer is the only thread that touches the zip, and memory stays bounded because a
+    // window holds at most PackEncodeWindow containers.
+    std::vector<String> paths(m_allPaths.begin(), m_allPaths.end());
+    std::vector<std::vector<ubyte>> encodedWindow(PackEncodeWindow);
+
+    for (size_t begin = 0; begin < paths.size(); begin += PackEncodeWindow)
     {
-      if (!AddFileToZip(zFile, path.c_str()))
+      const size_t end = std::min(begin + PackEncodeWindow, paths.size());
+
+      for (std::vector<ubyte>& slot : encodedWindow)
       {
-        TK_WRN("Failed to add this file to zip: %s\n", path.c_str());
+        slot.clear();
+      }
+
+      // The engine's bulk pool decides the width; the loop itself only walks the window.
+      std::for_each(TKExecBy(WorkerManager::BulkPool),
+                    paths.begin() + (std::ptrdiff_t) begin,
+                    paths.begin() + (std::ptrdiff_t) end,
+                    [this, begin, &paths, &encodedWindow](const String& path)
+                    {
+                      const size_t index = (size_t) (&path - paths.data());
+                      if (ShouldCompressForPack(path))
+                      {
+                        EncodeForPack(path, encodedWindow[index - begin]);
+                      }
+                    });
+
+      for (size_t index = begin; index < end; ++index)
+      {
+        // Only hand the window result over when this file was a compression candidate; nullptr means
+        // "decide for yourself", and an empty vector means "tried and failed", which must not be
+        // retried with a second multi second encode.
+        const std::vector<ubyte>* encoded = ShouldCompressForPack(paths[index])
+                                                ? &encodedWindow[index - begin]
+                                                : nullptr;
+
+        if (!AddFileToZip(zFile, paths[index].c_str(), encoded))
+        {
+          TK_WRN("Failed to add this file to zip: %s\n", paths[index].c_str());
+        }
       }
     }
 
@@ -503,7 +555,29 @@ namespace ToolKit
     return true;
   }
 
-  bool FileManager::AddFileToZip(ZipFile zfile, const char* filename)
+  bool FileManager::EncodeForPack(const String& filename, std::vector<ubyte>& encoded)
+  {
+    encoded.clear();
+
+    if (!ShouldCompressForPack(filename.c_str()))
+    {
+      return false;
+    }
+
+    // A data map takes the UASTC/linear settings: the pack step has no slot to read, but the
+    // materials it just loaded said which files are used as normal and metallic-roughness maps.
+    TextureCompressionOptions options = m_packCompression;
+    if (m_packDataTextures.count(ToLower(NormalizePath(filename))) > 0)
+    {
+      options.Format    = TextureCompressionOptions::Codec::UASTC;
+      options.Srgb      = false;
+      options.NormalMap = false;
+    }
+
+    return CompressFileToMemory(filename, options, encoded) && !encoded.empty();
+  }
+
+  bool FileManager::AddFileToZip(ZipFile zfile, const char* filename, const std::vector<ubyte>* preEncoded)
   {
     if (zfile == NULL || filename == NULL)
     {
@@ -524,41 +598,36 @@ namespace ToolKit
     // A texture that never went through Import still ships compressed: the encoded bytes replace the
     // file's own bytes under the same entry name, which is what keeps every material reference in the
     // pak valid (the runtime sniffs the container, not the extension).
-    std::vector<ubyte> encoded;
+    std::vector<ubyte> owned;
+    const std::vector<ubyte>* encoded = preEncoded;
+
+    if (encoded == nullptr && ShouldCompressForPack(filename))
+    {
+      EncodeForPack(filename, owned);
+      encoded = &owned;
+    }
+
     std::vector<ubyte> raw;
     const char* data     = nullptr;
     size_t dataLength    = 0;
     uint64 originalBytes = 0;
 
-    if (ShouldCompressForPack(filename))
+    if (encoded != nullptr && !encoded->empty())
     {
-      // A data map takes the UASTC/linear settings: the pack step has no slot to read, but the
-      // materials it just loaded said which files are used as normal and metallic-roughness maps.
-      TextureCompressionOptions options = m_packCompression;
-      if (m_packDataTextures.count(ToLower(NormalizePath(String(filename)))) > 0)
-      {
-        options.Format    = TextureCompressionOptions::Codec::UASTC;
-        options.Srgb      = false;
-        options.NormalMap = false;
-      }
+      data          = reinterpret_cast<const char*>(encoded->data());
+      dataLength    = encoded->size();
+      originalBytes = GetFileSize(filename);
 
-      if (CompressFileToMemory(filename, options, encoded) && !encoded.empty())
-      {
-        data          = reinterpret_cast<const char*>(encoded.data());
-        dataLength    = encoded.size();
-        originalBytes = GetFileSize(filename);
+      m_packStats.Encoded++;
+      m_packStats.InputBytes += originalBytes;
+      m_packStats.OutputBytes += dataLength;
 
-        m_packStats.Encoded++;
-        m_packStats.InputBytes += originalBytes;
-        m_packStats.OutputBytes += dataLength;
-
-        TK_LOG("Packed compressed: %s (%llu -> %zu bytes)", filenameStr.c_str(), originalBytes, dataLength);
-      }
-      else
-      {
-        m_packStats.Failed++;
-        TK_WRN("Could not compress %s, packing the file as it is.", filename);
-      }
+      TK_LOG("Packed compressed: %s (%llu -> %zu bytes)", filenameStr.c_str(), originalBytes, dataLength);
+    }
+    else if (encoded != nullptr)
+    {
+      m_packStats.Failed++;
+      TK_WRN("Could not compress %s, packing the file as it is.", filename);
     }
 
     if (data == nullptr)

@@ -9,6 +9,8 @@
 #include <Common/PlatformHelper.h>
 #include <DdsLoader.h>
 #include <DirectionComponent.h>
+#include "Threads.h"
+
 #include <Image.h>
 #include <Material.h>
 #include <MaterialComponent.h>
@@ -35,9 +37,6 @@
 
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
-#include <deque>
-#include <mutex>
 #include <thread>
 
 using std::cout;
@@ -124,185 +123,103 @@ namespace ToolKit
   int g_textureWorkers = 0;
 
   /**
-   * Encodes the textures the material loop hands over, on a small thread pool.
+   * One texture waiting for the encoder.
    *
    * Encoding a 2048x2048 normal map to UASTC takes ten seconds or more, and the importer used to do
    * that inline: a scene with a few hundred textures spent all of its time in a serial chain of
-   * encodes while one core worked and the rest of the machine idled. The material loop now decodes
-   * the source image - tens of milliseconds - and queues the pixels, so the encode runs on the pool
-   * while the importer keeps building materials, meshes and the scene.
+   * encodes while the rest of the machine idled. The material loop decodes the source image - tens
+   * of milliseconds - and queues the pixels; the encodes run on the engine's bulk pool, which sizes
+   * itself from the machine instead of a hard coded thread count.
    *
-   * One texture is still encoded single threaded, so the bytes do not depend on the pool size: only
-   * the wall clock does. The queue is bounded because a decoded 2K image is 16 MB and a scene can
-   * reference hundreds of them.
+   * The queue is a window rather than the whole scene, because a decoded 2K image is 16 MB. One
+   * texture is still encoded single threaded, so the bytes never depend on the pool width.
    */
-  class TextureEncodePool
+  struct PendingEncode
   {
-   public:
-    struct Job
-    {
-      std::vector<ubyte> Pixels;
-      int Width  = 0;
-      int Height = 0;
-      String Dest;
-      TextureCompressionOptions Options;
-    };
-
-    TextureEncodePool() = default;
-
-    ~TextureEncodePool()
-    {
-      // The importer stops the pool explicitly, while the logger is still alive.
-      if (!m_workers.empty())
-      {
-        Stop();
-      }
-    }
-
-    void Start(int workerCount)
-    {
-      if (!m_workers.empty())
-      {
-        return;
-      }
-
-      m_workerCount = std::max(1, workerCount);
-      m_capacity    = m_workerCount * 2;
-      m_started     = std::chrono::steady_clock::now();
-
-      m_workers.reserve((size_t) m_workerCount);
-      for (int i = 0; i < m_workerCount; ++i)
-      {
-        m_workers.emplace_back(
-            [this]()
-            {
-              Worker();
-            });
-      }
-    }
-
-    void Enqueue(Job&& job)
-    {
-      std::unique_lock<std::mutex> lock(m_mutex);
-
-      // Back pressure instead of unbounded memory: the producer waits for a slot.
-      m_room.wait(lock, [this]() { return m_stop || (int) m_queue.size() < m_capacity; });
-      if (m_stop)
-      {
-        return;
-      }
-
-      m_queue.push_back(std::move(job));
-      m_work.notify_one();
-    }
-
-    void Stop()
-    {
-      {
-        std::unique_lock<std::mutex> lock(m_mutex);
-        if (m_stop)
-        {
-          return;
-        }
-        m_stop = true;
-      }
-
-      m_work.notify_all();
-      m_room.notify_all();
-
-      for (std::thread& worker : m_workers)
-      {
-        if (worker.joinable())
-        {
-          worker.join();
-        }
-      }
-      m_workers.clear();
-
-      const double wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - m_started).count();
-      const int encoded = m_encoded.load();
-      if (encoded > 0)
-      {
-        const double cpuSeconds = (double) m_encodeMs.load() / 1000.0;
-        TK_LOG("Texture encoding: %d texture(s) on %d worker(s), %.1f s of encode, %.1f s wall.",
-               encoded,
-               m_workerCount,
-               cpuSeconds,
-               wall);
-      }
-      if (const int failures = m_failed.load(); failures > 0)
-      {
-        TK_ERR("Texture encoding: %d texture(s) failed; the materials that reference them will miss "
-               "those maps.",
-               failures);
-      }
-    }
-
-    int Completed() const { return m_encoded.load(); }
-
-   private:
-    void Worker()
-    {
-      for (;;)
-      {
-        Job job;
-        {
-          std::unique_lock<std::mutex> lock(m_mutex);
-          m_work.wait(lock, [this]() { return m_stop || !m_queue.empty(); });
-
-          if (m_queue.empty())
-          {
-            return; // stopped and drained
-          }
-
-          job = std::move(m_queue.front());
-          m_queue.pop_front();
-        }
-        m_room.notify_one();
-
-        std::vector<ubyte> ktx2;
-        const auto encodeStart = std::chrono::steady_clock::now();
-
-        const bool encoded = CompressImageTopDownToKtx2(job.Pixels.data(),
-                                                        job.Width,
-                                                        job.Height,
-                                                        job.Options,
-                                                        ktx2) &&
-                             WriteKtx2(job.Dest, ktx2);
-
-        const auto elapsed =
-            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - encodeStart);
-        m_encodeMs += (int64) elapsed.count();
-        m_encoded++;
-
-        if (!encoded)
-        {
-          m_failed++;
-          TK_ERR("Texture encoding failed for '%s'; the material will reference a missing file.",
-                 job.Dest.c_str());
-        }
-      }
-    }
-
-   private:
-    std::vector<std::thread> m_workers;
-    std::deque<Job> m_queue;
-    std::mutex m_mutex;
-    std::condition_variable m_work;
-    std::condition_variable m_room;
-
-    int m_workerCount = 1;
-    int m_capacity    = 2;
-    bool m_stop       = false;
-
-    std::chrono::steady_clock::time_point m_started;
-
-    std::atomic<int> m_encoded {0};
-    std::atomic<int> m_failed {0};
-    std::atomic<int64> m_encodeMs {0};
+    std::vector<ubyte> Pixels;
+    int Width  = 0;
+    int Height = 0;
+    String Dest;
+    TextureCompressionOptions Options;
   };
 
-  TextureEncodePool g_encodePool;
+  std::vector<PendingEncode> g_pendingEncodes;
+  std::atomic<int> g_encodedTextures {0};
+  std::atomic<int> g_failedTextures {0};
+  double g_encodeWallSeconds = 0.0;
+
+  /** How many decoded images are held before the window is encoded. */
+  size_t EncodeWindowSize()
+  {
+    // Two images per pool thread: enough to keep the pool fed while the last one finishes, small
+    // enough that a scene's decoded pixels never sit in memory at once.
+    const int threads = GetWorkerManager()->GetThreadCount(WorkerManager::BulkPool);
+    return (size_t) std::max(1, threads * 2);
+  }
+
+  /** Encodes the queued window on the bulk pool and writes the containers. */
+  void FlushTextureEncodes()
+  {
+    if (g_pendingEncodes.empty())
+    {
+      return;
+    }
+
+    const auto start = std::chrono::steady_clock::now();
+
+    std::for_each(TKExecBy(WorkerManager::BulkPool),
+                  g_pendingEncodes.begin(),
+                  g_pendingEncodes.end(),
+                  [](PendingEncode& job)
+                  {
+                    std::vector<ubyte> ktx2;
+                    const bool encoded = CompressImageTopDownToKtx2(job.Pixels.data(),
+                                                                   job.Width,
+                                                                   job.Height,
+                                                                   job.Options,
+                                                                   ktx2) &&
+                                         WriteKtx2(job.Dest, ktx2);
+
+                    job.Pixels.clear();
+
+                    if (encoded)
+                    {
+                      g_encodedTextures++;
+                    }
+                    else
+                    {
+                      g_failedTextures++;
+                      TK_ERR("Texture encoding failed for '%s'; the material will reference a missing file.",
+                             job.Dest.c_str());
+                    }
+                  });
+
+    g_encodeWallSeconds +=
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    g_pendingEncodes.clear();
+  }
+
+  /** Queues a decoded image, flushing the window when it is full. */
+  void QueueTextureEncode(std::vector<ubyte>&& pixels,
+                          int width,
+                          int height,
+                          const String& dest,
+                          const TextureCompressionOptions& options)
+  {
+    PendingEncode job;
+    job.Pixels  = std::move(pixels);
+    job.Width   = width;
+    job.Height  = height;
+    job.Dest    = dest;
+    job.Options = options;
+
+    g_pendingEncodes.push_back(std::move(job));
+
+    if (g_pendingEncodes.size() >= EncodeWindowSize())
+    {
+      FlushTextureEncodes();
+    }
+  }
 
   /** Decodes an image file with stb, top row first, ready for the encoder. */
   bool DecodeImageTopDown(const string& path, std::vector<ubyte>& pixels, int& width, int& height)
@@ -1009,8 +926,8 @@ namespace ToolKit
             {
               const TextureCompressionOptions options = CompressionOptionsForSlot(textureAssimpType);
 
-              // Decode here, encode on the pool. The decode is tens of milliseconds and decides the
-              // fallback; the encode is seconds and is what the pool exists for.
+              // Decode here, encode on the bulk pool. The decode is tens of milliseconds and decides
+              // the fallback; the encode is seconds and is what the pool exists for.
               std::vector<ubyte> pixels;
               int textureWidth  = 0;
               int textureHeight = 0;
@@ -1021,13 +938,7 @@ namespace ToolKit
 
               if (decoded)
               {
-                TextureEncodePool::Job job;
-                job.Pixels   = std::move(pixels);
-                job.Width    = textureWidth;
-                job.Height   = textureHeight;
-                job.Dest     = textPath;
-                job.Options  = options;
-                g_encodePool.Enqueue(std::move(job));
+                QueueTextureEncode(std::move(pixels), textureWidth, textureHeight, textPath, options);
               }
               else if (needsDecode)
               {
@@ -2213,7 +2124,7 @@ namespace ToolKit
       if (argc < 2)
       {
         cout << "usage: Import 'fileToImport.format' <op> -t 'importTo' <op> -s 1.0 <op> -o 0 <op> "
-                "-tex etc1s|uastc|none <op> -tq 75 <op> -j 8";
+                "-tex etc1s|uastc|none <op> -tq 75 <op> -j <bulk threads>";
         throw(-1);
       }
 
@@ -2369,17 +2280,18 @@ namespace ToolKit
       // inside .material / .mesh / .scene files, leaving "<target>/file".
       g_proxy->m_resourceRoot = "Temp";
 
-      // Encoding a scene's textures takes minutes; a pool turns that into a fraction of the wall
-      // clock while the importer keeps working. Sixteen workers is the default on a machine that has
-      // the cores for it - each one peaks around 250 MB - and the clamp keeps a small laptop at
-      // cores - 2 instead of thrashing.
+      // The encode itself runs on the engine's bulk pool; -j only overrides how many threads that
+      // pool uses, and by default it is sized from the machine in WorkerManager::Init.
       {
-        const int cores = (int) std::thread::hardware_concurrency();
-        const int workers =
-            g_textureWorkers > 0 ? g_textureWorkers : std::max(1, std::min(16, cores - 2));
+        ThreadPool& bulkPool = GetWorkerManager()->GetPool(WorkerManager::BulkPool);
+        if (g_textureWorkers > 0)
+        {
+          bulkPool.set_num_threads((unsigned int) g_textureWorkers);
+        }
 
-        g_encodePool.Start(workers);
-        TK_LOG("Texture encoding: %d worker thread(s) of %d core(s).", workers, cores);
+        TK_LOG("Texture encoding: %u bulk thread(s) of %u core(s).",
+               bulkPool.get_num_threads(),
+               std::thread::hardware_concurrency());
       }
 
       for (int i = 0; i < (int) (files.size()); i++)
@@ -2464,8 +2376,18 @@ namespace ToolKit
                sceneSave);
       }
 
-      // Textures encode in the background; everything that reads them needs them on disk first.
-      g_encodePool.Stop();
+      // The last window may still be queued; everything that reads the textures needs them on disk
+      // before the process reports its output files.
+      FlushTextureEncodes();
+
+      if (const int encoded = g_encodedTextures.load(); encoded > 0)
+      {
+        TK_LOG("Texture encoding: %d texture(s), %d failed, %.1f s of wall on %u bulk thread(s).",
+               encoded,
+               g_failedTextures.load(),
+               g_encodeWallSeconds,
+               GetWorkerManager()->GetPool(WorkerManager::BulkPool).get_num_threads());
+      }
 
       // Report all in use files.
       fstream inUse("out.txt", ios::out);

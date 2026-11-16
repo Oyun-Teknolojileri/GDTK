@@ -13,6 +13,7 @@
 #include <RenderSystem.h>
 #include <SDL.h>
 #include <Texture.h>
+#include <Threads.h>
 #include <ToolKit.h>
 #include <Types.h>
 #include <Util.h>
@@ -126,6 +127,12 @@ namespace ToolKit
      * raw PNG atlas. Pass --no-compress to pack the files as they are.
      */
     bool m_compressTextures = true;
+
+    /**
+     * Width of the pool the textures are encoded on. 0 keeps the bulk pool's own size, which
+     * WorkerManager derives from the machine; --threads N overrides it for one run.
+     */
+    int m_packThreads = 0;
 
     String m_icon;
     String m_appName;
@@ -258,6 +265,15 @@ namespace ToolKit
       options.Format  = TextureCompressionOptions::Codec::ETC1S;
       options.Quality = 75;
       fileManager->SetPackCompressionOptions(options);
+
+      // The encode runs on the engine's bulk pool; --threads only changes its width for this run.
+      ThreadPool& bulkPool = GetWorkerManager()->GetPool(WorkerManager::BulkPool);
+      if (m_packThreads > 0)
+      {
+        bulkPool.set_num_threads((unsigned int) m_packThreads);
+      }
+
+      TK_LOG("Packing textures on %u bulk thread(s).", bulkPool.get_num_threads());
     }
     else
     {
@@ -1205,6 +1221,7 @@ namespace ToolKit
     // particular run.
     //   --pack          pack the resources before publishing
     //   --no-compress   pack the images as they are, without encoding them to KTX2
+    //   --threads N     width of the pool the textures are encoded on
     //   --help          print the flags and exit
     for (int i = 1; i < argc; i++)
     {
@@ -1217,15 +1234,20 @@ namespace ToolKit
       {
         packer.m_compressTextures = false;
       }
+      else if (flag == "--threads" && i + 1 < argc)
+      {
+        packer.m_packThreads = std::max(1, std::atoi(argv[++i]));
+      }
       else if (flag == "--help" || flag == "-h")
       {
         // printf, not TK_LOG: the logger is not attached to the console this early, so anything
         // logged here is swallowed.
-        printf("Usage: Packer [--pack] [--no-compress]\n");
+        printf("Usage: Packer [--pack] [--no-compress] [--threads N]\n");
         printf("  PublishArguments.txt in the working directory holds the publish settings.\n");
         printf("  --pack         pack the resources before publishing, instead of shipping the pak on disk.\n");
         printf("                 A Deploy publish and a publish with no pak pack without it.\n");
         printf("  --no-compress  pack uncompressed images as they are instead of encoding them to KTX2.\n");
+        printf("  --threads N    encode on N threads instead of the bulk pool's own width.\n");
         return 0;
       }
     }

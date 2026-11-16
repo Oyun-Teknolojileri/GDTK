@@ -122,7 +122,18 @@ namespace ToolKit
     void GetAllUsedResourcePaths();
 
     bool ZipPack(const String& zipName);
-    bool AddFileToZip(ZipFile zfile, const char* filename);
+    bool AddFileToZip(ZipFile zfile, const char* filename, const std::vector<ubyte>* encoded = nullptr);
+
+    /**
+     * Encodes one resource for the pak, if it is a texture that should be compressed.
+     *
+     * Fills `encoded` with the container bytes; leaves it empty when the file needs no compression
+     * or the encode failed. ZipPack calls this on a pool and hands the result to AddFileToZip, so
+     * the encode - which is seconds per texture - runs off the pack loop's thread.
+     *
+     * @return True when `encoded` holds container bytes.
+     */
+    bool EncodeForPack(const String& filename, std::vector<ubyte>& encoded);
 
     void GetAllPaths(const String& path);
     void GetExtraFilePaths();
