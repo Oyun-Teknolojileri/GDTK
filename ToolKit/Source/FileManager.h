@@ -32,6 +32,19 @@ namespace ToolKit
     /** Returns a hdri image raw data and its properties in the arguments. Used in Texture::Load to create resource. */
     float* GetHdriFile(const String& filePath, int* x, int* y, int* comp, int reqComp);
 
+    /**
+     * Reads a resource as raw bytes: from the open pak when there is one, from disk otherwise.
+     *
+     * The image accessors above hand the file straight to stb_image, which cannot help with a
+     * container the engine parses itself (KTX2). Going through one byte reader keeps the pak and the
+     * loose-file paths identical for those.
+     *
+     * @param filePath Resource path, absolute or relative to the resource root.
+     * @param out Receives the file contents. Untouched when the function returns false.
+     * @return False when the file is missing on both the pak and the disk.
+     */
+    bool ReadFileBuffer(const String& filePath, std::vector<ubyte>& out);
+
     /** Returns a decoded audio file or null if no decoder found. Used in Audio::Load to create resource. */
     SoundBuffer GetAudioFile(const String& filePath);
 

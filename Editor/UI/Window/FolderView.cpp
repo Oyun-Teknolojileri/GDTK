@@ -500,7 +500,7 @@ namespace ToolKit
           };
 
           static std::unordered_set<String>
-              thumbExtensions {PNG, JPG, JPEG, TGA, BMP, PSD, HDR, MESH, SKINMESH, MATERIAL, WAW, MP3};
+              thumbExtensions {PNG, JPG, JPEG, TGA, BMP, PSD, HDR, KTX2, MESH, SKINMESH, MATERIAL, WAW, MP3};
 
           if (dirEnt.m_isDirectory)
           {

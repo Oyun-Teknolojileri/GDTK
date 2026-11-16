@@ -12,6 +12,7 @@
 #include "Types.h"
 
 #include <memory>
+#include <vector>
 
 namespace ToolKit
 {
@@ -121,6 +122,23 @@ namespace ToolKit
     virtual void DestroyTexture(Texture* tex)                                                               = 0;
     virtual void ApplyTextureSettings(Texture* tex)                                                         = 0;
     virtual void GenerateMipmaps(Texture* tex)                                                              = 0;
+
+    /**
+     * The block compressed formats this backend can upload, in preference order.
+     *
+     * The default is empty, and that means "no compressed textures here": the KTX2 loader then
+     * transcodes to RGBA8 and the ordinary CreateTexture path uploads it. The null backend and the
+     * Vulkan backend (which has no compressed upload yet) rely on that default, and it is what makes
+     * compressed assets safe on a device or a build that cannot take them.
+     *
+     * The answer is cached when the backend starts, so it is safe to call from a loading thread and
+     * it never touches the GPU.
+     */
+    virtual const std::vector<CompressedFormat>& GetSupportedCompressedFormats() const
+    {
+      static const std::vector<CompressedFormat> none;
+      return none;
+    }
     virtual void UpdateTextureRegion(Texture* tex, const void* data)                                        = 0;
     virtual void SetTextureMaxMipLevel(Texture* tex, int maxLevel)                                          = 0;
     virtual void AllocateCubemapMipStorage(Texture* tex)                                                    = 0;

@@ -65,42 +65,6 @@ namespace ToolKit
     TKGLProcLoader g_glGetProcAddress = nullptr;
 
 #if defined(TK_ANDROID)
-    /**
-     * Whether the driver lists an extension.
-     *
-     * GL ES 3.0 removes the GL_EXTENSIONS string: glGetString returns null for it on a 3.2 context,
-     * which silently turned every string probe below into "not supported". The list is enumerated
-     * instead, which is the form 3.x defines, and the name is matched with or without its GL_
-     * prefix.
-     */
-    bool HasGlExtension(const char* name)
-    {
-      GLint extensionCount = 0;
-      glGetIntegerv(GL_NUM_EXTENSIONS, &extensionCount);
-
-      for (GLint i = 0; i < extensionCount; ++i)
-      {
-        const GLubyte* extension = glGetStringi(GL_EXTENSIONS, (GLuint) i);
-        if (extension == nullptr)
-        {
-          continue;
-        }
-
-        const char* plainName = (const char*) extension;
-        if (std::strncmp(plainName, "GL_", 3) == 0)
-        {
-          plainName += 3;
-        }
-
-        if (std::strcmp(plainName, name) == 0)
-        {
-          return true;
-        }
-      }
-
-      return false;
-    }
-
     /** How many extensions the driver lists, so a "not supported" answer can be read as one. */
     int GlExtensionCount()
     {
@@ -118,6 +82,57 @@ namespace ToolKit
       return nullptr;
     }
     return g_glGetProcAddress(name);
+  }
+
+  bool HasGlExtension(const char* name)
+  {
+    if (name == nullptr)
+    {
+      return false;
+    }
+
+    // GL ES 3.0 (and therefore WebGL 2) dropped the GL_EXTENSIONS string: glGetString answers null
+    // for it, which silently turns every string probe into "not supported". The list is enumerated
+    // instead, which is the form 3.x defines, and the name is matched with or without its GL_
+    // prefix because WebGL reports the bare name.
+    GLint extensionCount = 0;
+    glGetIntegerv(GL_NUM_EXTENSIONS, &extensionCount);
+
+    for (GLint i = 0; i < extensionCount; ++i)
+    {
+      const GLubyte* extension = glGetStringi(GL_EXTENSIONS, (GLuint) i);
+      if (extension == nullptr)
+      {
+        continue;
+      }
+
+      const char* plainName = (const char*) extension;
+      if (std::strncmp(plainName, "GL_", 3) == 0)
+      {
+        plainName += 3;
+      }
+
+      if (std::strcmp(plainName, name) == 0)
+      {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  void EnableGlExtension(const char* name)
+  {
+#if defined(TK_WEB)
+    // WebGL turns an extension's enums on only after the page asks for it. Asking is cheap and
+    // idempotent, so callers do not have to know whether the extension was already enabled.
+    if (EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context = emscripten_webgl_get_current_context())
+    {
+      emscripten_webgl_enable_extension(context, name);
+    }
+#else
+    (void) name;
+#endif
   }
 
   void LoadGlFunctions(void* glGetProcAddres)
@@ -272,52 +287,14 @@ namespace ToolKit
     tk_glLabelObjectEXT       = (TKGL_LabelObject) emscripten_webgl_get_proc_address("glLabelObjectEXT");
     tk_glGetObjectLabelEXT    = (TKGL_GetObjectLabel) emscripten_webgl_get_proc_address("glGetObjectLabelEXT");
 
-    // Listing an extension in GL_EXTENSIONS is not the same as having it: WebGL turns an
-    // extension's enums on only after the page asks for it. Ask for the ones the engine depends on
-    // before the probes below can report them, or the probe answers "supported" and the call that
-    // uses the extension is rejected:
-    //   - EXT_texture_filter_anisotropic: TEXTURE_MAX_ANISOTROPY_EXT was rejected with INVALID_ENUM
-    //     on every 2D texture that enabled anisotropic filtering.
-    //   - OES_texture_float_linear: linear filtering of a float target (the shadow blur draws into
-    //     an RG16F target and asks for SampleLinear) is rejected the same way.
-    if (EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context = emscripten_webgl_get_current_context())
-    {
-      emscripten_webgl_enable_extension(context, "EXT_texture_filter_anisotropic");
-      emscripten_webgl_enable_extension(context, "OES_texture_float_linear");
-    }
+    // Enabling is separate from probing: the browser reports an extension it has not been asked for
+    // as absent, so the three feature gates below are asked for first (see EnableGlExtension).
+    EnableGlExtension("EXT_texture_filter_anisotropic");
+    EnableGlExtension("OES_texture_float_linear");
 
-    // WebGL 2 is GL ES 3.0, where GL_EXTENSIONS is not a valid argument for
-    // glGetString (it returns null there). Query the enumeration instead, and
-    // accept the name with or without the "GL_" prefix: WebGL reports
-    // extensions as "EXT_texture_filter_anisotropic", the GL headers use
-    // "GL_EXT_texture_filter_anisotropic".
-    auto HasExtension = [](const char* name) -> bool
-    {
-      GLint extensionCount = 0;
-      glGetIntegerv(GL_NUM_EXTENSIONS, &extensionCount);
-      for (GLint i = 0; i < extensionCount; ++i)
-      {
-        const char* extension = (const char*) glGetStringi(GL_EXTENSIONS, i);
-        if (extension == nullptr)
-        {
-          continue;
-        }
-        const char* plainName = extension;
-        if (std::strncmp(plainName, "GL_", 3) == 0)
-        {
-          plainName += 3;
-        }
-        if (std::strcmp(plainName, name) == 0)
-        {
-          return true;
-        }
-      }
-      return false;
-    };
-
-    TK_GL_OES_texture_float_linear       = HasExtension("OES_texture_float_linear");
-    TK_GL_EXT_texture_filter_anisotropic = HasExtension("EXT_texture_filter_anisotropic");
-    TK_GL_EXT_depth_clamp                = HasExtension("EXT_depth_clamp");
+    TK_GL_OES_texture_float_linear       = HasGlExtension("OES_texture_float_linear");
+    TK_GL_EXT_texture_filter_anisotropic = HasGlExtension("EXT_texture_filter_anisotropic");
+    TK_GL_EXT_depth_clamp                = HasGlExtension("EXT_depth_clamp");
 #endif
   }
 

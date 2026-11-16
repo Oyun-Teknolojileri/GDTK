@@ -259,10 +259,13 @@ if(TARGET basisu_encoder)
 endif()
 
 if(TARGET basisu)
-    set_target_properties(basisu PROPERTIES
-        EXCLUDE_FROM_ALL TRUE
-        RUNTIME_OUTPUT_DIRECTORY "${TK_DEPENDECY_OUT_DIR}"
-    )
+    # Upstream points CMAKE_RUNTIME_OUTPUT_DIRECTORY at <source>/bin, and a multi-config generator
+    # bakes that into the per-config properties at target creation, so the generic property below
+    # is not enough: building the CLI would drop its binary into the submodule working tree.
+    set_target_properties(basisu PROPERTIES EXCLUDE_FROM_ALL TRUE)
+    foreach(_basisu_cfg DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
+        set_target_properties(basisu PROPERTIES RUNTIME_OUTPUT_DIRECTORY_${_basisu_cfg} "${TK_DEPENDECY_OUT_DIR}")
+    endforeach()
 endif()
 
 #---- SDL2 ----#

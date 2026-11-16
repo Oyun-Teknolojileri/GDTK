@@ -78,6 +78,8 @@ namespace ToolKit
     void DestroyTexture(Texture* tex) override;
     void ApplyTextureSettings(Texture* tex) override;
     void GenerateMipmaps(Texture* tex) override;
+
+    const std::vector<CompressedFormat>& GetSupportedCompressedFormats() const override;
     void UpdateTextureRegion(Texture* tex, const void* data) override;
     void SetTextureMaxMipLevel(Texture* tex, int maxLevel) override;
     void AllocateCubemapMipStorage(Texture* tex) override;
@@ -146,6 +148,15 @@ namespace ToolKit
     void RestoreFboBindings();
     void SetDrawBuffers(Framebuffer* fb);
     void CheckFramebufferComplete(Framebuffer* fb);
+
+    /** Queries the driver once, at context creation, for the block formats it can upload. */
+    void ProbeCompressedTextureFormats();
+
+    /**
+     * Block formats this driver accepts, in preference order. Filled by InitBackend and only read
+     * afterwards, so a loading thread can ask without touching the GL context.
+     */
+    std::vector<CompressedFormat> m_compressedFormats;
 
     RenderState m_lastAppliedState;
     bool m_firstBind = true;

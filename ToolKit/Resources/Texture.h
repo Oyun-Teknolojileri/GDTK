@@ -98,12 +98,30 @@ namespace ToolKit
     /** Removes image data. */
     virtual void Clear();
 
+    /**
+     * Decodes a KTX2 container into either block compressed levels or, when the backend can not
+     * upload any compressed format, plain RGBA8 in m_image.
+     */
+    void LoadKtx2(const ubyte* data, size_t size);
+
+    /**
+     * Bytes the GPU resource occupies, before the per-target multipliers UnInit applies (MSAA
+     * samples, array layers, cube faces).
+     */
+    uint64 GetGpuDataSize() const;
+
    public:
     GpuResourceDataPtr m_gpuData;
     int m_width       = 0;
     int m_height      = 0;
     uint8* m_image    = nullptr;
     float* m_imagef   = nullptr;
+
+    /** Block format of m_compressedLevels. None means the pixels live in m_image. */
+    CompressedFormat m_compressedFormat = CompressedFormat::None;
+
+    /** GPU ready mip levels of a block compressed texture, largest first. A CPU side mirror of m_image. */
+    std::vector<TextureLevel> m_compressedLevels;
 
     /** Number of channels (r, g, b, a) for loaded images. */
     int m_numChannels = 0;

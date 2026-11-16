@@ -184,10 +184,82 @@ namespace ToolKit
   #define GL_QUERY_RESULT_AVAILABLE_EXT 0x8867
 #endif
 
+  // Block compressed texture formats
+  //////////////////////////////////////////
+  //
+  // None of the S3TC / BPTC / ASTC enums come from the headers this file builds against: glad's
+  // generated header carries the core GL 4.x set but not the EXT/KHR spellings, and emscripten's
+  // GLES3 headers stop at the ETC2 enums that ES 3.0 made core. The values are the registry ones.
+
+  #ifndef GL_COMPRESSED_RGB_S3TC_DXT1_EXT
+    #define GL_COMPRESSED_RGB_S3TC_DXT1_EXT 0x83F0
+  #endif
+
+  #ifndef GL_COMPRESSED_RGBA_S3TC_DXT5_EXT
+    #define GL_COMPRESSED_RGBA_S3TC_DXT5_EXT 0x83F3
+  #endif
+
+  #ifndef GL_COMPRESSED_SRGB_S3TC_DXT1_EXT
+    #define GL_COMPRESSED_SRGB_S3TC_DXT1_EXT 0x8C4C
+  #endif
+
+  #ifndef GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT
+    #define GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT 0x8C4F
+  #endif
+
+  #ifndef GL_COMPRESSED_RGBA_BPTC_UNORM
+    #define GL_COMPRESSED_RGBA_BPTC_UNORM 0x8E8C
+  #endif
+
+  #ifndef GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM
+    #define GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM 0x8E8D
+  #endif
+
+  #ifndef GL_COMPRESSED_RGB8_ETC2
+    #define GL_COMPRESSED_RGB8_ETC2 0x9274
+  #endif
+
+  #ifndef GL_COMPRESSED_SRGB8_ETC2
+    #define GL_COMPRESSED_SRGB8_ETC2 0x9275
+  #endif
+
+  #ifndef GL_COMPRESSED_RGBA8_ETC2_EAC
+    #define GL_COMPRESSED_RGBA8_ETC2_EAC 0x9278
+  #endif
+
+  #ifndef GL_COMPRESSED_SRGB8_ALPHA8_ETC2_EAC
+    #define GL_COMPRESSED_SRGB8_ALPHA8_ETC2_EAC 0x9279
+  #endif
+
+  #ifndef GL_COMPRESSED_RGBA_ASTC_4x4_KHR
+    #define GL_COMPRESSED_RGBA_ASTC_4x4_KHR 0x93B0
+  #endif
+
+  #ifndef GL_COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR
+    #define GL_COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR 0x93D0
+  #endif
+
   // GL Loader function
   //////////////////////////////////////////
 
   extern void LoadGlFunctions(void* glGetProcAddres);
+
+  /**
+   * True when the driver lists the extension. The name is matched with or without its "GL_" prefix,
+   * and the browser's "WEBGL_*" spelling is matched by passing it verbatim.
+   *
+   * GL ES 3.0 removed the GL_EXTENSIONS string -- glGetString answers null for it -- so the list is
+   * enumerated through GL_NUM_EXTENSIONS / glGetStringi on every platform.
+   */
+  TK_API bool HasGlExtension(const char* name);
+
+  /**
+   * Makes a WebGL extension's enums usable. A no-op everywhere else.
+   *
+   * On the web an extension that merely appears in GL_EXTENSIONS is not enabled yet, and using its
+   * enums raises INVALID_ENUM. Listing is not having (see LoadGlFunctions).
+   */
+  TK_API void EnableGlExtension(const char* name);
 
   // Object debug labels
   //////////////////////////////////////////

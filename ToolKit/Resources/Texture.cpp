@@ -13,6 +13,7 @@
 #include "FullQuadPass.h"
 #include "IGraphicsBackend.h"
 #include "Image.h"
+#include "Ktx2Texture.h"
 #include "Logger.h"
 #include "Material.h"
 #include "RenderSystem.h"
@@ -21,12 +22,51 @@
 #include "Stats.h"
 #include "ToolKit.h"
 
+#include <cstdlib>
+#include <cstring>
+
 #include <glm/gtc/packing.hpp>
 
 #include "DebugNew.h"
 
 namespace ToolKit
 {
+
+  namespace
+  {
+    /**
+     * Picks the first format the backend offers that can hold the texture's channels.
+     *
+     * BC1 and ETC2_RGB have no alpha, so an alpha carrying texture skips them. The backend's list is
+     * already in preference order, which is why this does not rank anything itself.
+     */
+    CompressedFormat ChooseCompressedFormat(const std::vector<CompressedFormat>& supported, bool hasAlpha)
+    {
+      for (CompressedFormat format : supported)
+      {
+        switch (format)
+        {
+          case CompressedFormat::BC1:
+          case CompressedFormat::ETC2_RGB:
+            if (!hasAlpha)
+            {
+              return format;
+            }
+            break;
+          case CompressedFormat::BC3:
+          case CompressedFormat::BC7:
+          case CompressedFormat::ETC2_RGBA:
+          case CompressedFormat::ASTC_4x4:
+            return format;
+          default:
+            // BC5 carries two channels; it is a normal map target, never a general one.
+            break;
+        }
+      }
+
+      return CompressedFormat::None;
+    }
+  } // namespace
 
   // Texture
   //////////////////////////////////////////
@@ -80,21 +120,84 @@ namespace ToolKit
       return;
     }
 
+    // A reload (Material::MakeSureItsDataTexture asks for one when the settings change) must not
+    // stack a second copy of the pixels on top of the first.
+    Clear();
+
     if (m_settings.Type == GraphicTypes::TypeFloat || m_settings.Type == GraphicTypes::TypeHalfFloat)
     {
-
       if ((m_imagef = GetFileManager()->GetHdriFile(GetFile(), &m_width, &m_height, &m_numChannels, 4)))
       {
         m_loaded = true;
       }
+      return;
     }
-    else
+
+    std::vector<ubyte> file;
+    if (!GetFileManager()->ReadFileBuffer(GetFile(), file))
     {
-      if ((m_image = GetFileManager()->GetImageFile(GetFile(), &m_width, &m_height, &m_numChannels, 4)))
-      {
-        m_loaded = true;
-      }
+      return;
     }
+
+    // KTX2 before stb_image: the container is not an image format stb knows, and going through one
+    // byte reader keeps the pak and the loose-file paths on the same code.
+    if (IsKtx2Data(file.data(), file.size()))
+    {
+      LoadKtx2(file.data(), file.size());
+      return;
+    }
+
+    if ((m_image = ImageLoadFromMemory(file.data(), (int) file.size(), &m_width, &m_height, &m_numChannels, 4)))
+    {
+      m_loaded = true;
+    }
+  }
+
+  void Texture::LoadKtx2(const ubyte* data, size_t size)
+  {
+    Ktx2Info info;
+    if (!Ktx2ReadInfo(data, size, info))
+    {
+      return;
+    }
+
+    m_width       = info.Width;
+    m_height      = info.Height;
+    m_numChannels = info.HasAlpha ? 4 : 3;
+
+    // The backend answers with what it can upload. An empty list means plain RGBA8, which is what
+    // the null backend of the tools answers, and Vulkan until it grows a compressed upload path.
+    CompressedFormat format = CompressedFormat::None;
+    if (IGraphicsBackend* backend = GetBackend_noexcep())
+    {
+      format = ChooseCompressedFormat(backend->GetSupportedCompressedFormats(), info.HasAlpha);
+    }
+
+    if (format != CompressedFormat::None && Ktx2Transcode(data, size, format, m_compressedLevels))
+    {
+      m_compressedFormat = format;
+      m_loaded           = true;
+      return;
+    }
+
+    std::vector<TextureLevel> decoded;
+    if (!Ktx2DecodeRgba8(data, size, decoded) || decoded.empty())
+    {
+      return;
+    }
+
+    // Only the base level: for a plain texture the GL side regenerates the chain exactly as it does
+    // for a PNG, so the other levels would be thrown away anyway.
+    const TextureLevel& base = decoded.front();
+    m_image                  = (uint8*) std::malloc(base.Data.size());
+    if (m_image == nullptr)
+    {
+      TK_ERR("KTX2: out of memory while decoding '%s'.", GetFile().c_str());
+      return;
+    }
+
+    std::memcpy(m_image, base.Data.data(), base.Data.size());
+    m_loaded = true;
   }
 
   void Texture::Init(bool flushClientSideArray)
@@ -105,7 +208,7 @@ namespace ToolKit
     }
 
     // Sanity checks
-    if ((m_image == nullptr && m_imagef == nullptr))
+    if ((m_image == nullptr && m_imagef == nullptr && m_compressedLevels.empty()))
     {
       assert(0 && "No texture data.");
       return;
@@ -119,15 +222,16 @@ namespace ToolKit
 
     assert(m_gpuData == nullptr && "Texture already initialized.");
 
-    uint64 pixelCount         = (uint64) m_width * (uint64) m_height;
     IGraphicsBackend* backend = GetRenderSystem()->GetBackend();
     assert(backend && "Graphics backend not available during Texture::Init");
 
     backend->CreateTexture(this);
     backend->ApplyTextureSettings(this);
-    Stats::AddVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat));
+    Stats::AddVRAMUsageInBytes(GetGpuDataSize());
 
-    if (m_settings.GenerateMipMap)
+    // A block compressed upload already carries the mip chain the encoder wrote. Generating one on
+    // the GPU is unnecessary there, and glGenerateMipmap on these formats is driver dependent.
+    if (m_settings.GenerateMipMap && m_compressedLevels.empty())
     {
       backend->GenerateMipmaps(this);
     }
@@ -157,19 +261,20 @@ namespace ToolKit
     }
 
     // VRAM accounting
+    const uint64 gpuBytes = GetGpuDataSize();
     if (m_settings.Target == GraphicTypes::Target2D)
     {
       int msaaScale = m_settings.msaaCount > MsaaSampleCount::x0 ? (int) m_settings.msaaCount : 1;
-      Stats::RemoveVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat) * msaaScale);
+      Stats::RemoveVRAMUsageInBytes(gpuBytes * msaaScale);
     }
     else if (m_settings.Target == GraphicTypes::Target2DArray)
     {
       assert(m_settings.Layers > 0 && "Layer count must be greater than 0");
-      Stats::RemoveVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat) * m_settings.Layers);
+      Stats::RemoveVRAMUsageInBytes(gpuBytes * m_settings.Layers);
     }
     else if (m_settings.Target == GraphicTypes::TargetCubeMap)
     {
-      Stats::RemoveVRAMUsageInBytes(pixelCount * BytesOfFormat(m_settings.InternalFormat) * 6);
+      Stats::RemoveVRAMUsageInBytes(gpuBytes * 6);
     }
 
     m_initiated = false;
@@ -209,6 +314,24 @@ namespace ToolKit
 
     m_image  = nullptr;
     m_imagef = nullptr;
+
+    m_compressedLevels.clear();
+    m_compressedFormat = CompressedFormat::None;
+  }
+
+  uint64 Texture::GetGpuDataSize() const
+  {
+    if (!m_compressedLevels.empty())
+    {
+      uint64 size = 0;
+      for (const TextureLevel& level : m_compressedLevels)
+      {
+        size += level.Data.size();
+      }
+      return size;
+    }
+
+    return (uint64) m_width * (uint64) m_height * (uint64) BytesOfFormat(m_settings.InternalFormat);
   }
 
   void Texture::ApplyTextureSettings(const TextureSettings& settings)

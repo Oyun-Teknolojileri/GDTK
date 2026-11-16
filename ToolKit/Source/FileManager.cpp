@@ -69,6 +69,56 @@ namespace ToolKit
     return std::get<float*>(data);
   }
 
+  bool FileManager::ReadFileBuffer(const String& filePath, std::vector<ubyte>& out)
+  {
+    out.clear();
+
+    String relativePath = filePath;
+    GetRelativeResourcesPath(relativePath);
+
+    if (!m_zfile && !m_ignorePakFile)
+    {
+      String pakPath = ConcatPaths({ResourceParentPath(), TKResourcePak});
+      if (CheckSystemFile(pakPath))
+      {
+        m_zfile = unzOpen(pakPath.c_str());
+      }
+    }
+
+    if (m_zfile && !m_ignorePakFile)
+    {
+      GenerateOffsetTableForPakFiles();
+
+      uint bufferSize   = 0;
+      ubyte* fileBuffer = ReadFileBufferFromZip(m_zfile, relativePath, bufferSize);
+      if (fileBuffer == nullptr)
+      {
+        return false;
+      }
+
+      out.assign(fileBuffer, fileBuffer + bufferSize);
+      SafeDelArray(fileBuffer);
+      return true;
+    }
+
+    std::ifstream file(filePath, std::ios::binary | std::ios::ate);
+    if (!file.is_open())
+    {
+      return false;
+    }
+
+    const std::streamoff size = file.tellg();
+    if (size <= 0)
+    {
+      return false;
+    }
+
+    out.resize((size_t) size);
+    file.seekg(0, std::ios::beg);
+    file.read(reinterpret_cast<char*>(out.data()), size);
+    return file.good();
+  }
+
   FileManager::FileDataType FileManager::GetFile(FileType fileType, ImageFileInfo& fileInfo)
   {
     // Get relative path from Resources directory
