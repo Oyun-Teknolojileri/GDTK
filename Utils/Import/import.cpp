@@ -2343,6 +2343,15 @@ namespace ToolKit
       GetLogger()->SetPlatformConsoleFn([](LogType type, const String& msg) -> void
                                         { ToolKit::PlatformHelpers::OutputLog((int) type, msg.c_str()); });
 
+      // The phase timings and the encode summary are TK_LOG lines, and TK_LOG reaches nothing but
+      // OutputDebugString without a writer. A headless import that says where its time went is the
+      // whole point of the measurement, so echo to stdout like Packer does.
+      GetLogger()->SetWriteConsoleFn(
+          [](LogType, String msg) -> void
+          {
+            printf("%s", msg.c_str());
+          });
+
       // Init SDL with dummy driver (no video / GPU required).
       // Only events and gamecontroller are needed for the engine to boot.
       SDL_Init(SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER);
