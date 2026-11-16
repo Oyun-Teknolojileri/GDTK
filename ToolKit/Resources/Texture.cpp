@@ -177,6 +177,15 @@ namespace ToolKit
     {
       m_compressedFormat = format;
       m_loaded           = true;
+
+      // One line per container, next to the "Shader in compile" spam: without it there is no way to
+      // tell a texture that came out of the pak as compressed data from one that quietly fell back.
+      TK_LOG("KTX2 '%s': %dx%d, %d level(s), format %d.",
+             GetFile().c_str(),
+             m_width,
+             m_height,
+             (int) m_compressedLevels.size(),
+             (int) format);
       return;
     }
 
