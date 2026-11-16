@@ -58,7 +58,9 @@ endif()
 list(JOIN _TK_CONFIGS ";" _TK_CONFIGS_STR)
 set_target_properties(basisu_encoder PROPERTIES
   IMPORTED_CONFIGURATIONS "${_TK_CONFIGS_STR}"
-  INTERFACE_INCLUDE_DIRECTORIES "${_TK_BASISU_SRC};${_TK_BASISU_SRC}/transcoder"
+  # encoder/ is on the include path because TextureCompression.cpp includes basisu_enc.h; the
+  # transcoder directory is what Ktx2Texture.cpp needs.
+  INTERFACE_INCLUDE_DIRECTORIES "${_TK_BASISU_SRC};${_TK_BASISU_SRC}/transcoder;${_TK_BASISU_SRC}/encoder"
   INTERFACE_COMPILE_DEFINITIONS "BASISD_SUPPORT_KTX2=1;BASISD_SUPPORT_KTX2_ZSTD=0"
 )
 

@@ -26,6 +26,16 @@ if(NOT TK_VULKAN)
   list(FILTER TOOLKIT_SOURCES EXCLUDE REGEX ".*/Render/Vulkan/.*\\.cpp$")
 endif()
 
+# The texture encoder is a host tool feature: Import and Packer write KTX2, a game only reads it.
+# Desktop compiles the real encoder and drops the no-op TU; Web and Android are the other way round,
+# so neither the wasm nor the APK carries a block encoder. The stub exists so callers (FileManager,
+# the tools) need no preprocessor guard.
+if(EMSCRIPTEN OR ANDROID)
+  list(FILTER TOOLKIT_SOURCES EXCLUDE REGEX ".*/Resources/TextureCompression\\.cpp$")
+else()
+  list(FILTER TOOLKIT_SOURCES EXCLUDE REGEX ".*/Resources/TextureCompressionStub\\.cpp$")
+endif()
+
 # Emscripten has no dynamic library support without side modules, and a web
 # game links the engine into the single .wasm anyway. Android loads one library per
 # app (libmain.so) the same way. Static keeps the whole engine in one link unit with

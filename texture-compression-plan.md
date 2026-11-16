@@ -1,7 +1,7 @@
 # Texture Compression (KTX2 / Basis Universal) -- Implementation Plan
 
 > Working plan for GPU texture compression in GDTK.
-> Status: phases 0 and 1 delivered (dependency, GL compressed upload, KTX2 loader). Phases 2-5
+> Status: phases 0-2 delivered (dependency, GL compressed upload, KTX2 loader, encoder). Phases 3-5
 > pending.
 > Keep this file in sync while the work is in progress; delete it once the feature lands and the
 > permanent description lives in `gdtk-overview.md`.
@@ -261,7 +261,7 @@ Each phase is usable on its own: 0 unblocks, 1 makes the engine *read* KTX2, 2 p
 |---|---|---|---|
 | 0 | basisu dependency, CMake, build verification | S | - (delivered) |
 | 1 | KTX2 loader + GL compressed upload + capability query | L | 0 (delivered) |
-| 2 | Encoder (`TextureCompression.*`) - file, memory, batched | S | 0 |
+| 2 | Encoder (`TextureCompression.*`) - file, memory, batched | S | 0 (delivered) |
 | 3 | Import integration (slot aware) | M | 1, 2 |
 | 4 | Pack integration (legacy files, no rename) | S | 1, 2 |
 | 5 | Verification on Windows / Web / Android, docs | M | 3, 4 |
@@ -407,58 +407,85 @@ Still unverified at the end of this phase: the Web and Android transcoder-only t
 
 </details>
 
-### Phase 2 -- encoder
+### Phase 2 -- encoder (delivered)
 
-`ToolKit/Resources/TextureCompression.{h,cpp}`, plus `TextureCompressionStub.cpp`. `ToolKit`
-links `basisu_encoder` PRIVATE on desktop and filters `TextureCompression.cpp` out of the
-Web/Android source list in favour of the stub (4.2). The encode API is `TK_API`, like
-`FileManager::PackResources`, because Import and Packer call it across the DLL boundary.
-
-Small surface (basisu types stay out of the header):
+`ToolKit/Resources/TextureCompression.{h,cpp}` plus `TextureCompressionStub.cpp`, filtered by
+platform in `ToolKit/CMakeLists.txt` (the desktop build links `basisu_encoder`, which already
+contains the transcoder). The API is `TK_API`, like `FileManager::PackResources`, because Import and
+Packer call it across the DLL boundary.
 
 ```cpp
 struct TextureCompressionOptions
 {
   enum class Codec { ETC1S, UASTC };
-  Codec Codec             = Codec::ETC1S;
-  int Quality             = 75;      // [1,100]
-  int Effort              = 3;       // [0,10]
-  bool Srgb               = true;
-  bool NormalMap          = false;   // linear metrics, 1,1,1,1 weights, mip renorm
-  bool GenerateMipmaps    = true;
+  Codec Format         = Codec::ETC1S;   // named Format, see below
+  int Quality          = 75;            // [1,100]
+  int Effort           = 3;             // [0,10]
+  bool Srgb            = true;
+  bool NormalMap       = false;         // linear metrics, flat weights, mip renormalisation
+  bool GenerateMipmaps = true;
 };
 
-// Source pixels are RGBA8, top row first, no flip applied.
-bool CompressImage(const ubyte* rgba8, int width, int height,
-                   const TextureCompressionOptions& options,
-                   std::vector<ubyte>& outKtx2);
-
-bool CompressFile(const String& sourceImage, const String& destKtx2,
-                  const TextureCompressionOptions& options);
-
-struct TextureCompressionJob { String Source; String Destination; TextureCompressionOptions Options; };
+bool CompressImageToKtx2(const ubyte* rgba8, int width, int height, const Options&, std::vector<ubyte>&);
+bool CompressFileToMemory(const String& sourceImage, const Options&, std::vector<ubyte>&);
+bool CompressFileToKtx2(const String& sourceImage, const String& destKtx2, const Options&);
 bool CompressFiles(const std::vector<TextureCompressionJob>& jobs, int threadCount);
 ```
 
-Implementation notes:
+What the sketch got wrong or did not say:
 
-* `basisu_encoder_init()` once; `basis_parallel_compress(threadCount, paramsVec, results)` for the
-  batch entry point (it returns `parallel_results::m_ktx2_file`, memory only).
+* **`Codec Codec` does not compile.** A member with the same name as its type hides the type name
+  inside the struct, so `TextureCompressionOptions::Codec::UASTC` stops resolving. The member is
+  called `Format`.
+* **No `basis_parallel_compress`.** It is for many small textures; here one texture is enough work
+  for its own thread and the batch is parallelised *across* textures with `std::thread`. This also
+  keeps the output deterministic: one image is always encoded single threaded (`m_multithreading`
+  off, a 1 thread `job_pool`), which matters because Import and the Packer encode the same source
+  with the same options and must agree byte for byte.
+* **`get_output_ktx2_file()`** with `m_create_ktx2_file = true` and
+  `m_write_output_basis_or_ktx2_files = false` is the in-memory path; the pack step needs bytes, not
+  a temp file.
+* **The row order is the encoder's job.** `glTexImage2D` reads the first row as the bottom row, and
+  the engine has always satisfied that by flipping in stb (`ImageSetVerticalOnLoad`). Import and
+  Packer run headless where that switch is off, so the encoder flips explicitly
+  (`ImageLoadTopDown` + a manual row swap) instead of depending on host state.
+* `basisu_comp.h` is the header (`basisu_enc.h` alone has neither `basis_compressor_params` nor
+  `BASISU_MAX_IMAGE_DIMENSION`), and `encoder/` has to be on the imported target's include path.
+
+Verification actually run (same throwaway harness):
+
+| Check | Result |
+|---|---|
+| ETC1S encode of the test PNG | 47,193 bytes, quality 75 / effort 2 |
+| Two encodes of the same input | byte identical (deterministic) |
+| UASTC normal-map encode | 161,568 bytes, same size the basisu CLI produces for the same options |
+| Read back through the phase 1 loader | 345x345, 9 levels, sRGB flag as configured |
+| Decoded vs bottom-up reference (GL upload order) | mean abs 5.24, the codec's own error |
+| Decoded vs file-order reference | mean abs 48.00 |
+
+That last row is the point of the flip test: the container provably holds the rows in the order the
+GL upload needs, not the order the file has.
+
+Not verified in this phase: the stub build itself (it only compiles for Web/Android; the CMake
+filter was confirmed by inspecting the generated project, and the stub is trivial).
+
+<details>
+<summary>Original checklist, for the record</summary>
+
+* `basisu_encoder_init()` once; `basis_parallel_compress` for the batch entry point.
 * `params.set_format_mode_and_quality_effort(mode, quality, effort)`,
   `params.set_srgb_options(srgb)`, `m_mip_gen`, `m_ktx2_uastc_supercompression = KTX2_SS_NONE`,
   `m_tex_type = cBASISTexType2D`, `m_check_for_alpha` (alpha detected -> forced), `m_pJob_pool`
   mandatory even single threaded.
 * Source decoding is `stb_image`-based (`ImageLoad*` from the engine), not basisu's own wuffs
   readers, so exactly one PNG/JPG decoder decides pixel values.
-* The stub implements the same three entry points, logs once and returns false, so nothing above
-  it needs a platform check.
+* The stub implements the same entry points, logs once and returns false, so nothing above it needs
+  a platform check.
 * The `-normal_map` equivalent: `set_srgb_options(false)`, `set_ldr_srgb_channel_weights(false)`,
   `m_mip_renormalize = true`.
 * Reject > `BASISU_MAX_IMAGE_DIMENSION` (16384) and 0-sized input with a `TK_ERR`.
 
-Acceptance: a small harness (a console command in a test build, or a throwaway `main`) encodes a
-PNG to `.ktx2`, phase 1 loads it back, and the decoded pixels match the source within the codec's
-expected error.
+</details>
 
 ### Phase 3 -- import
 
