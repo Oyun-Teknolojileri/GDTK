@@ -120,6 +120,13 @@ namespace ToolKit
      */
     bool m_forcePack = false;
 
+    /**
+     * Encodes the images the pack meets that are still in an uncompressed format (see
+     * FileManager::SetPackCompressionOptions). On by default: a shipped pak has no reason to carry a
+     * raw PNG atlas. Pass --no-compress to pack the files as they are.
+     */
+    bool m_compressTextures = true;
+
     String m_icon;
     String m_appName;
     int m_minSdk            = 27;
@@ -242,10 +249,39 @@ namespace ToolKit
       return -1;
     }
 
-    int packResult = GetFileManager()->PackResources();
+    // The images Import did not produce (a project older than KTX2, or a texture dropped into
+    // Resources by hand) are encoded here, into the pak only: the project on disk is never touched.
+    FileManager* fileManager = GetFileManager();
+    if (m_compressTextures)
+    {
+      TextureCompressionOptions options;
+      options.Format  = TextureCompressionOptions::Codec::ETC1S;
+      options.Quality = 75;
+      fileManager->SetPackCompressionOptions(options);
+    }
+    else
+    {
+      fileManager->DisablePackCompression();
+    }
+
+    int packResult = fileManager->PackResources();
     if (packResult != 0)
     {
       return packResult;
+    }
+
+    const FileManager::PackCompressionStats stats = fileManager->GetPackCompressionStats();
+    if (stats.Encoded > 0 || stats.Failed > 0)
+    {
+      TK_LOG("Packed %d texture(s) compressed: %llu KB -> %llu KB (%d failed, packed as they are).",
+             stats.Encoded,
+             stats.InputBytes / 1024,
+             stats.OutputBytes / 1024,
+             stats.Failed);
+    }
+    else if (m_compressTextures)
+    {
+      TK_LOG("Packed no uncompressed textures; every image was already a KTX2 container.");
     }
 
     return 0;
@@ -1167,8 +1203,9 @@ namespace ToolKit
 
     // Command line flags. PublishArguments.txt carries the settings; these carry the intent of this
     // particular run.
-    //   --pack     pack the resources before publishing
-    //   --help     print the flags and exit
+    //   --pack          pack the resources before publishing
+    //   --no-compress   pack the images as they are, without encoding them to KTX2
+    //   --help          print the flags and exit
     for (int i = 1; i < argc; i++)
     {
       const String flag = argv[i];
@@ -1176,14 +1213,19 @@ namespace ToolKit
       {
         packer.m_forcePack = true;
       }
+      else if (flag == "--no-compress")
+      {
+        packer.m_compressTextures = false;
+      }
       else if (flag == "--help" || flag == "-h")
       {
         // printf, not TK_LOG: the logger is not attached to the console this early, so anything
         // logged here is swallowed.
-        printf("Usage: Packer [--pack]\n");
+        printf("Usage: Packer [--pack] [--no-compress]\n");
         printf("  PublishArguments.txt in the working directory holds the publish settings.\n");
-        printf("  --pack  pack the resources before publishing, instead of shipping the pak on disk.\n");
-        printf("          A Deploy publish and a publish with no pak pack without it.\n");
+        printf("  --pack         pack the resources before publishing, instead of shipping the pak on disk.\n");
+        printf("                 A Deploy publish and a publish with no pak pack without it.\n");
+        printf("  --no-compress  pack uncompressed images as they are instead of encoding them to KTX2.\n");
         return 0;
       }
     }

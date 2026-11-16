@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include "TextureCompression.h"
 #include "Types.h"
 
 namespace ToolKit
@@ -20,6 +21,15 @@ namespace ToolKit
   class TK_API FileManager
   {
    public:
+    /** What the pack step did to the textures it met, for the tool's summary line. */
+    struct PackCompressionStats
+    {
+      int Encoded     = 0;
+      int Failed      = 0;
+      uint64 InputBytes  = 0;
+      uint64 OutputBytes = 0;
+    };
+
     FileManager();  //!< Empty constructor.
     ~FileManager(); //!< Closes pak file if any open.
 
@@ -58,6 +68,22 @@ namespace ToolKit
      * All files must be in the Resources folder of the project.
      */
     int PackResources();
+
+    /**
+     * Turns on texture compression for the next PackResources call.
+     *
+     * Every image the pack meets that is not already a KTX2 container (and not HDRI, and not one of
+     * the engine's own resources) is encoded and stored under its own entry name, so the material
+     * references inside the pak keep pointing at it. The runtime sniffs the container, not the
+     * extension, which is what makes that safe.
+     */
+    void SetPackCompressionOptions(const TextureCompressionOptions& options);
+
+    /** Packs images untouched. The pre KTX2 behaviour, used by Packer's --no-compress. */
+    void DisablePackCompression();
+
+    /** What the last pack did to the textures it met. */
+    PackCompressionStats GetPackCompressionStats() const;
 
     bool CheckFileFromResources(const String& path); //!< Checks the given file in first resource path than in pak file.
     void GetRelativeResourcesPath(String& path);     //!< Converts the path, relative to the Resources folder.
@@ -115,11 +141,22 @@ namespace ToolKit
     void GenerateOffsetTableForPakFiles();
     bool IsFileInPak(const String& filename);
 
+    /** True when the pack step should encode this file instead of storing it as it is. */
+    bool ShouldCompressForPack(const String& filename);
+
+    /** Size on disk, for the pack summary. */
+    uint64 GetFileSize(const String& filename);
+
    private:
     StringSet m_allPaths;
     std::unordered_map<String, std::pair<uint64, uint>> m_zipFilesOffsetTable;
     bool m_offsetTableCreated = false;
     ZipFile m_zfile           = nullptr;
+
+    /** Pack step texture compression (see SetPackCompressionOptions). */
+    TextureCompressionOptions m_packCompression;
+    bool m_compressTexturesInPack = false;
+    PackCompressionStats m_packStats;
 
    public:
     bool m_ignorePakFile = false;

@@ -1830,6 +1830,19 @@ Release / publish CLI. Bundles projects for Windows, Web, Android. Links
 SDL2, ToolKit (no assimp). The editor's Publish dialog drives it through
 `PublishArguments.txt` (project, workspace, app name, platform, config, ...).
 
+**Packing compresses textures as well.** Every image the pack meets that is not already a KTX2
+container - a texture dropped into `Resources` by hand, or a project that predates KTX2 - is encoded
+(`FileManager::SetPackCompressionOptions`) and stored **under its own entry name**, because the
+material references inside the pak are written as `.png` paths and the runtime sniffs the container
+instead of trusting the extension. The project on disk is never modified. HDRI and the engine's own
+resources are skipped, and `Packer.exe --no-compress` packs everything as it is. The run logs the
+ratio (`370289 -> 47600 bytes` for the 345x345 test image).
+
+One FileManager fix came out of this: the pak offset table used to be marked complete even when no
+pak existed yet, so a lookup during packing poisoned every later read of the pak the pack had just
+written. `GenerateOffsetTableForPakFiles` no longer caches a missing pak, and `CloseZipFile` /
+`PackResources` drop the table when the pak is replaced.
+
 `Packer::WebPublish` is the web path: it runs `emcmake cmake -S . -B
 ./Intermediate/Web -DTK_PLATFORM=Web -DCMAKE_BUILD_TYPE=<cfg>` then `emmake cmake
 --build ./Intermediate/Web` in the project directory, and copies

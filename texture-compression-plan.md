@@ -1,7 +1,8 @@
 # Texture Compression (KTX2 / Basis Universal) -- Implementation Plan
 
 > Working plan for GPU texture compression in GDTK.
-> Status: phases 0-3 delivered (dependency, upload, loader, encoder, import). Phases 4-5 pending.
+> Status: phases 0-4 delivered (dependency, upload, loader, encoder, import, pack). Phase 5
+> (platform verification) pending.
 > Keep this file in sync while the work is in progress; delete it once the feature lands and the
 > permanent description lives in `gdtk-overview.md`.
 
@@ -262,7 +263,7 @@ Each phase is usable on its own: 0 unblocks, 1 makes the engine *read* KTX2, 2 p
 | 1 | KTX2 loader + GL compressed upload + capability query | L | 0 (delivered) |
 | 2 | Encoder (`TextureCompression.*`) - file, memory, batched | S | 0 (delivered) |
 | 3 | Import integration (slot aware) | M | 1, 2 (delivered) |
-| 4 | Pack integration (legacy files, no rename) | S | 1, 2 |
+| 4 | Pack integration (legacy files, no rename) | S | 1, 2 (delivered) |
 | 5 | Verification on Windows / Web / Android, docs | M | 3, 4 |
 
 Size is relative effort, not a schedule.
@@ -568,7 +569,41 @@ metallic-roughness; `Resources/Textures` contains only `.ktx2`; the material ope
 
 </details>
 
-### Phase 4 -- pack
+### Phase 4 -- pack (delivered)
+
+`FileManager::AddFileToZip` asks `ShouldCompressForPack` first and, when the answer is yes, encodes
+the file with `CompressFileToMemory` and writes the **container bytes under the file's own entry
+name**. The options arrive through `SetPackCompressionOptions`; `DisablePackCompression` is what
+`Packer.exe --no-compress` calls. The run logs the ratio through `GetPackCompressionStats`.
+
+What differed from the sketch:
+
+* **No parallel pre-pass or path -> bytes cache.** `AddFileToZip` is called one file at a time from
+  `ZipPack`, and each call encodes what it needs; a cache would only pay off for a pak with hundreds
+  of images, and the simpler shape is one code path with no ordering assumptions.
+* **No size threshold.** The sketch skipped images below 64x64; nothing here needs that, and a small
+  texture compresses in milliseconds.
+* **Scope is "under the project resource root, not already a container, not HDRI"**, checked by
+  string prefix against `ResourcePath()`, so the engine's shared resources are never touched.
+
+Verification actually run (`tmp` harness, a scratch project whose only texture is a 370 KB PNG
+listed in `ExtraFiles.txt`):
+
+| Check | Result |
+|---|---|
+| Pack with compression on | `encoded=1`, 370,289 -> 47,600 bytes |
+| The pak entry `Textures/raw.png` read back through `FileManager::ReadFileBuffer` | 47,600 bytes, KTX2 identifier present, parses as 345x345 / 9 levels |
+| Pack with `--no-compress` | `encoded=0`, entry is the 370,289 byte PNG, identifier absent |
+| Project on disk | untouched (the encode happens into the pak only) |
+
+That test also surfaced a real FileManager bug, fixed in the same commit:
+`GenerateOffsetTableForPakFiles` marked the table complete even when no pak existed, so a lookup
+during packing left the table empty and every later read of the freshly written pak failed. It no
+longer caches a missing pak, and `CloseZipFile` / `PackResources` drop the table when the pak is
+replaced.
+
+<details>
+<summary>Original checklist, for the record</summary>
 
 1. `FileManager::AddFileToZip` (`FileManager.cpp:441`) asks
    `TextureCompression::CompressImageFile` first; bytes coming back are written under the same
@@ -584,8 +619,7 @@ metallic-roughness; `Resources/Textures` contains only `.ktx2`; the material ope
 4. Import-independent: this also compresses hand-copied PNGs and projects imported before this
    feature existed.
 
-Acceptance: pack a project whose Textures folder is plain PNG; the pak runs, and the log reports
-the compression ratio. A pak packed with `--no-compress` still runs (no regression).
+</details>
 
 ### Phase 5 -- verification and docs
 
