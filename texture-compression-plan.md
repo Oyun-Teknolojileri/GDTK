@@ -1,8 +1,8 @@
 # Texture Compression (KTX2 / Basis Universal) -- Implementation Plan
 
 > Working plan for GPU texture compression in GDTK.
-> Status: phases 0-4 delivered and committed; phase 5 verified on desktop and compiled for Web/Android,
-> with the browser and device runs still open (see the phase 5 section).
+> Status: all phases delivered and committed; verified on desktop GL, in headless Chrome
+> (SwiftShader) and on an Android device. Follow-ups live in the phase 5 section.
 > Keep this file in sync while the work is in progress; delete it once the feature lands and the
 > permanent description lives in `gdtk-overview.md`.
 
@@ -264,7 +264,7 @@ Each phase is usable on its own: 0 unblocks, 1 makes the engine *read* KTX2, 2 p
 | 2 | Encoder (`TextureCompression.*`) - file, memory, batched | S | 0 (delivered) |
 | 3 | Import integration (slot aware) | M | 1, 2 (delivered) |
 | 4 | Pack integration (legacy files, no rename) | S | 1, 2 (delivered) |
-| 5 | Verification on Windows / Web / Android, docs | M | 3, 4 (desktop done, mobile open) |
+| 5 | Verification on Windows / Web / Android, docs | M | 3, 4 (delivered) |
 
 Size is relative effort, not a schedule.
 
@@ -621,39 +621,49 @@ replaced.
 
 </details>
 
-### Phase 5 -- verification and docs (partially delivered)
+### Phase 5 -- verification and docs (delivered)
 
-What was verified, on this machine:
+Run against `C:\Users\Cihan\Documents\TKMyWorkSpace\insomnia`, a real project whose textures are
+JPEG/PNG and whose pak predates KTX2. Every platform this plan targets was exercised, not just
+compiled.
 
 | Platform | Check | Result |
 |---|---|---|
-| Desktop GL 4.3 | capability probe | reports BC7; BC1/BC3 are absent because this driver has S3TC without the sRGB enums, which the probe treats as "no BC" on purpose |
-| Desktop GL 4.3 | compressed upload of a real container | `compressed=1`, internal format `0x8E8D` (`GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM`), no GL error |
-| Desktop GL 4.3 | blocks the driver holds | `GL_TEXTURE_COMPRESSED_IMAGE_SIZE` is 121,104 bytes, exactly what the transcoder produced, and `glGetCompressedTexImage` returns identical bytes |
-| Desktop GL 4.3 | pixels the driver decodes | 2.05 mean channel error against the container's own RGBA8 decode - the BC7 quantization |
-| Web | transcoder compiles for wasm | `emcc 4.0.9` builds `basisu_transcoder.cpp` for `wasm32` with `-DBASISD_SUPPORT_KTX2=1 -DBASISD_SUPPORT_KTX2_ZSTD=0` |
-| Android | transcoder compiles for arm64 | NDK 25.1.8937393, `--target=aarch64-linux-android27 -Wall`, no warnings |
-| Desktop | importer | encodes a diffuse slot to `.ktx2`; material and `out.txt` reference the container |
-| Desktop | packer | encodes a leftover PNG into the pak under its own entry name; `--no-compress` stores it untouched |
+| Desktop GL 4.3 | capability probe | reports BC7 only; BC1/BC3 are absent because this driver has S3TC without the sRGB enums, which the probe treats as "no BC" on purpose |
+| Desktop GL 4.3 | compressed upload of a real container | `compressed=1`, internal format `0x8E8D`, no GL error |
+| Desktop GL 4.3 | blocks the driver holds | `GL_TEXTURE_COMPRESSED_IMAGE_SIZE` equals what the transcoder produced, and `glGetCompressedTexImage` returns identical bytes |
+| Desktop GL 4.3 | pixels the driver decodes | 2.05 mean channel error against the container's own RGBA8 decode |
+| Desktop | importer | a textured OBJ imports to `.ktx2`; the material and `out.txt` reference the container |
+| Desktop | packer | the insomnia pak went from 22 raw images to 22 containers, same entry names |
+| Web | engine build | emscripten 4.0.9 builds ToolKit for `wasm32`, including `Ktx2Texture.cpp`, and builds `libbasisu_transcoder.a` from source |
+| Web | game bundle | `emcmake` build of the project: `.wasm` + a `.data` that preloads the compressed pak |
+| Web | runtime, headless Chrome + SwiftShader | probe prints `ASTC_4x4 BC7 BC3 BC1 ETC2_RGBA ETC2_RGB`; 22 `KTX2 '...': ... format 7` lines (ASTC 4x4, 10-11 levels); no GL error; scene renders and culls 1386/1783 entities |
+| Android | APK build | Gradle + NDK arm64: `libmain.so` 6.3 MB, contains the loader and the **stub** message and none of the encoder - the encoder really is out of a game payload |
+| Android | runtime, Galaxy device | probe prints `ASTC_4x4 ETC2_RGBA ETC2_RGB`; 22 `format 7` (ASTC) loads; 0 GL errors; screenshot shows the city scene correctly textured, upright, at ~6-8 fps |
+| Both | flip convention | the device screenshot is upright (leg signage reads correctly), which is the visual check the plan asked for |
 
-Still open, and why:
+Two things this run taught that the code now encodes:
 
-* **No browser run.** `Packer::WebPublish` needs a game project to drive the emscripten pass; the
-  transcoder compiling for wasm is the part of the web path this change introduces, but the
-  extension probing (`emscripten_webgl_enable_extension` + `WEBGL_compressed_texture_*`) has never
-  executed. SwiftShader may well report no compressed format, which would make the RGBA8 fallback
-  the path a headless Chrome run exercises - worth knowing, not yet known.
-* **No device run.** The Android build of the engine itself (not just the transcoder) and the
-  ETC2/ASTC path are unverified; the NDK compile only proves the new dependency is portable.
-* **No visual regression.** The flip convention was verified numerically (decode vs a bottom-up
-  reference at 5.24, vs a file-order reference at 48.00), not by looking at a rendered frame. The
-  "up arrow" test image the plan asks for still has to be rendered in the editor on each platform.
+* **The pack step must classify data maps.** The first real pack compressed the project's normal maps
+  as ETC1S, which is exactly the mistake the plan warns about. `CollectDataTexturePaths` now asks the
+  materials the pack just loaded which files they use as normal / metallic-roughness maps and encodes
+  those as UASTC with linear metrics.
+* **An Android APK can silently ship a stale engine.** Gradle's `externalNativeBuild` reused a
+  `.cxx` tree from before this branch, and the resulting `libmain.so` had no KTX2 loader at all: the
+  pak was full of containers, every texture failed, and the scene rendered white. Deleting
+  `Android/app/.cxx` and `Android/app/build` and rebuilding fixed it. Anyone testing engine changes
+  on a device has to force a clean native build first.
+
+Also worth recording, since it is the first honest number: on a project whose sources are already
+JPEG the pak **grows**, 16.05 MB -> 16.75 MB. ETC1S at quality 75 is ~0.75 bits/texel and a
+1024x1024 JPEG is usually smaller, while UASTC data maps are 8 bits/texel. The gain is VRAM and load
+time (4 MB RGBA8 -> 1.4 MB BC7/ASTC, 0.5-0.9 MB ETC2), not download size. Per-slot quality and UASTC
+RDO are the obvious follow-ups.
 
 Docs are done and live in `gdtk-overview.md`: 5.2 (probe, enums, compressed upload), 6.3 (level
-layout and the encoder), 11.1 (import encodes by slot), 11.2 (pack converts in place),
-12.1 (the basisu dependency and why one archive per platform), 14 (file lookup rows). This file stays
-until the three items above are closed, because the overview now describes the shipped behaviour and
-this file still holds the open questions.
+layout and the encoder), 11.1 (import encodes by slot), 11.2 (pack converts in place, data-map
+classification, the size trade), 12.1 (the basisu dependency and why one archive per platform),
+14 (file lookup rows).
 
 <details>
 <summary>Original checklist, for the record</summary>

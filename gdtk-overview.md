@@ -1835,8 +1835,19 @@ container - a texture dropped into `Resources` by hand, or a project that predat
 (`FileManager::SetPackCompressionOptions`) and stored **under its own entry name**, because the
 material references inside the pak are written as `.png` paths and the runtime sniffs the container
 instead of trusting the extension. The project on disk is never modified. HDRI and the engine's own
-resources are skipped, and `Packer.exe --no-compress` packs everything as it is. The run logs the
-ratio (`370289 -> 47600 bytes` for the 345x345 test image).
+resources are skipped, and `Packer.exe --no-compress` packs everything as it is.
+
+The pack step has no material slot to read, but the materials it just loaded know what each file is
+used for: `CollectDataTexturePaths` records the paths a material uses as a normal or
+metallic-roughness map, and those are encoded as UASTC with linear metrics while everything else takes
+ETC1S. Compressing a normal map as colour is the one mistake this pipeline must not make on its own,
+so that classification is not optional.
+
+On a project whose textures are already JPEG, the pak can grow (ETC1S at quality 75 is roughly
+0.75 bits per texel, a 1024x1024 JPEG is often smaller, and UASTC data maps are 8 bits per texel).
+The win there is VRAM and load time, not download size: 1024x1024 RGBA8 is 4 MB on the GPU, the same
+texture is 1.4 MB as BC7/ASTC 4x4 and 0.5-0.9 MB as ETC2. For a project shipping raw PNG/TGA sources
+both numbers move in the right direction. Quality and RDO tuning per slot is the open follow-up.
 
 One FileManager fix came out of this: the pak offset table used to be marked complete even when no
 pak existed yet, so a lookup during packing poisoned every later read of the pak the pack had just
