@@ -1,7 +1,8 @@
 # Texture Compression (KTX2 / Basis Universal) -- Implementation Plan
 
 > Working plan for GPU texture compression in GDTK.
-> Status: phase 0 delivered (dependency, CMake wiring, build verification). Phases 1-5 pending.
+> Status: phases 0 and 1 delivered (dependency, GL compressed upload, KTX2 loader). Phases 2-5
+> pending.
 > Keep this file in sync while the work is in progress; delete it once the feature lands and the
 > permanent description lives in `gdtk-overview.md`.
 
@@ -259,7 +260,7 @@ Each phase is usable on its own: 0 unblocks, 1 makes the engine *read* KTX2, 2 p
 | Phase | Content | Size | Depends on |
 |---|---|---|---|
 | 0 | basisu dependency, CMake, build verification | S | - (delivered) |
-| 1 | KTX2 loader + GL compressed upload + capability query | L | 0 |
+| 1 | KTX2 loader + GL compressed upload + capability query | L | 0 (delivered) |
 | 2 | Encoder (`TextureCompression.*`) - file, memory, batched | S | 0 |
 | 3 | Import integration (slot aware) | M | 1, 2 |
 | 4 | Pack integration (legacy files, no rename) | S | 1, 2 |
@@ -312,7 +313,57 @@ Original checklist, for the record:
 6. `ToolKit/CMakeLists.txt`: one platform branch for the link.
 7. Size delta recorded (see the table above: zero until code references the archive).
 
-### Phase 1 -- runtime
+### Phase 1 -- runtime (delivered)
+
+What landed, and what the original sketch got wrong:
+
+1. `Types.h` / `Util.cpp`: `.ktx2` joins the supported image formats, plus `CompressedFormat` and
+   `TextureLevel` (a level's width/height are the source dimensions; a block level's buffer is
+   `ceil(w/4) * ceil(h/4) * blockBytes`).
+2. `IGraphicsBackend::GetSupportedCompressedFormats`, defaulted to an empty list so Vulkan and the
+   null backend keep compiling and keep falling back to RGBA8 without a line of their own.
+3. `ToolKit/Resources/Ktx2Texture.{h,cpp}`: `IsKtx2Data`, `Ktx2ReadInfo`, `Ktx2Transcode`,
+   `Ktx2DecodeRgba8` over `basist::ktx2_transcoder`, with `basisu_transcoder_init()` behind a
+   `std::once_flag`.
+4. `Texture`: `m_compressedFormat` + `m_compressedLevels`, sniffing `Load` through
+   `FileManager::ReadFileBuffer`, compressed-aware `Init`/`UnInit`/`Clear`/VRAM accounting, and a
+   `Material::MakeSureItsDataTexture` that treats block data as client side data (otherwise every
+   normal map is decoded twice).
+5. `GLBackend`: `ProbeCompressedTextureFormats` once at context creation, and a
+   `glCompressedTexImage2D` branch that picks the sRGB or linear internal format from
+   `TextureSettings`.
+6. `TKOpenGL.h`: the S3TC / BPTC / ASTC enums the headers do not carry, plus shared
+   `HasGlExtension` / `EnableGlExtension` (three per-platform copies of the probe are gone).
+
+Two things the plan predicted wrong, both found by running it:
+
+* **Buffer sizing for the RGBA8 fallback.** The plan said the transcoder emits padded blocks. True
+  for block formats, false for uncompressed ones: `transcode_slice` defaults the row pitch to
+  `orig_width` and the row count to `orig_height`, so an uncompressed transcode is written at the
+  source size. Sizing that buffer from the padded grid shifts every row and produces an image that
+  looks plausible and is wrong. The first harness run reported a mean channel error of 44 against
+  basisu's own decode; after the fix it is 0.
+* **The GL probe cannot be string-only.** BPTC is core from 4.2 and S3TC with its sRGB enums from
+  4.4, and a driver that has them that way does not list the extensions. On the NVIDIA 4.3 driver
+  used here, `EXT_texture_compression_s3tc` is listed but neither `EXT_texture_compression_bptc`
+  nor `EXT_texture_compression_s3tc_srgb` is, so the first probe reported zero formats on a fully
+  capable GPU. The probe now reads `GL_MAJOR_VERSION` / `GL_MINOR_VERSION` first.
+
+Verification actually run (throwaway harness under `tmp/ktx2-check`, not committed):
+
+| Check | Result |
+|---|---|
+| Parse a 345x345 ETC1S and a UASTC container written by the basisu CLI | 9 levels, correct alpha/sRGB flags |
+| BC7 transcode level sizes | exactly `ceil(w/4) * ceil(h/4) * 16` for all 9 levels |
+| RGBA8 fallback against basisu's own RGBA32 decode | byte identical (mean abs 6.64 vs the source PNG, same number basisu reports) |
+| Real GL 4.3 context, sRGB upload | no GL error, driver reports `compressed=1`, internal format `0x8E8D` |
+| `ToolKitd.dll` size | 10,488,832 -> 13,333,504 (+2.8 MB Debug; the transcoder object) |
+
+Still unverified at the end of this phase: the Web and Android transcoder-only targets, and the
+`Texture::Load` path driven by a real asset (phase 3 covers both).
+
+<details>
+<summary>Original checklist, for the record</summary>
 
 1. `Types.h`: `static const String KTX2(".ktx2")`, `SupportedImageFormat` includes it
    (`Util.cpp:721`); `enum class CompressedFormat : ubyte { None, BC1, BC3, BC5, BC7, ETC2_RGB,
@@ -354,9 +405,7 @@ Original checklist, for the record:
 10. `FolderView` thumbnail extension list (`FolderView.cpp:503`) and any other extension table
     gain `.ktx2`.
 
-Acceptance: a hand-made KTX2 placed in `Resources/Textures` and referenced from a material renders
-correctly on desktop GL (BC7), and the same project renders on a machine forced to the RGBA32
-fallback. Debug log shows the chosen format per texture.
+</details>
 
 ### Phase 2 -- encoder
 
