@@ -41,15 +41,14 @@ namespace ToolKit
         ResourcePtr resource = MakeNewPtr<T>();
         if (!CheckFile(file))
         {
+          String rel = GetRelativeResourcePath(file);
           String def = GetDefaultResource(T::StaticClass());
           if (!CheckFile(def))
           {
-            TK_ERR("No default for Class %s", T::StaticClass()->Name.c_str());
+            TK_ERR("No default for Class: %s File: %s", T::StaticClass()->Name.c_str(), rel.c_str());
             assert(0 && "No default resource!");
             return nullptr;
           }
-
-          String rel = GetRelativeResourcePath(file);
 
           // A missing file has a sensible answer for a material or a shader - a default that still draws
           // something - and none at all for a scene: the default scene is empty, so the caller gets a black
