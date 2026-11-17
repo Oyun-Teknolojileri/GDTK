@@ -1891,6 +1891,24 @@ pak existed yet, so a lookup during packing poisoned every later read of the pak
 written. `GenerateOffsetTableForPakFiles` no longer caches a missing pak, and `CloseZipFile` /
 `PackResources` drop the table when the pak is replaced.
 
+**What a publish does about packing is a setting, not a rule in the Packer.** `Projects -> Publish ->
+Packer` holds `Pack on Debug`, `Pack on Develop`, `Pack on Deploy` and `Compress textures`, plus a
+`Pack Resources` action that packs immediately with those settings. They are stored in the project's
+`Config/Editor.settings` as `<Settings><Packer debug="" develop="" deploy="" compress=""/>` (Deploy on,
+the other two off, compress on) and read back by `App::DeSerializeImp`; a settings file without the
+node keeps the defaults.
+
+`PublishManager::PackerCommand` turns them into the Packer's command line: `--pack` when the setting
+for the config being published is on (and always for the `Pack Resources` action), `--no-compress`
+when the textures should ship as they are. `Packer::Publish` no longer decides by config or by a
+missing pak - `wantPack` is `--pack` or the pack-only mode, and a skipped pack logs which pak it
+ships and warns when there is none.
+
+The importer has its own switch, `ImportData.CompressTextures`, on the Import dialog: the editor
+appends `-tex none` to the Import command line when it is off. It is deliberately not tied to the
+publish setting - one import may have to keep the source images while the next publish still packs
+compressed, and the other way round.
+
 `Packer::WebPublish` is the web path: it runs `emcmake cmake -S . -B
 ./Intermediate/Web -DTK_PLATFORM=Web -DCMAKE_BUILD_TYPE=<cfg>` then `emmake cmake
 --build ./Intermediate/Web` in the project directory, and copies

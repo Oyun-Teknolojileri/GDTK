@@ -150,6 +150,12 @@ namespace ToolKit
         bool ShowImportWindow = false;
         bool Overwrite        = false;
         bool optimize         = false;
+        /**
+         * Whether this import encodes the images to KTX2. Deliberately its own switch: an import
+         * that has to keep the source images is a different decision from what a publish packs, so
+         * it is not tied to Publish -> Packer's Compress textures.
+         */
+        bool CompressTextures        = true;
         StringArray Files;
         String SubDir;
         float Scale                  = 1.0f;

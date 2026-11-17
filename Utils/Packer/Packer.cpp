@@ -330,17 +330,12 @@ namespace ToolKit
 
   int Packer::Publish()
   {
-    // Packing is opt in, because a publish is also how a debug or develop build gets onto a device
-    // during development, and repacking 16 MB of resources on every one of those iterations is time
-    // nobody gets back.
-    //
-    // It is still not left to chance: --pack asks for it explicitly, a Deploy publish packs because
-    // that is the build that ships, and a publish with no pak at all packs because there would be
-    // nothing to run. Anything that must not ship a stale pak - scripts, automation - should pass
-    // --pack and stop thinking about it.
-    const bool isPlugin   = m_platform == PublishPlatform::EditorPlugin || m_platform == PublishPlatform::GamePlugin;
-    const bool pakMissing = !CheckSystemFile(PakPath());
-    const bool wantPack   = m_forcePack || m_publishConfig == PublishConfig::Deploy || pakMissing || m_onlyPack;
+    // Packing is decided by the caller, not by the config: the editor passes --pack when its
+    // Publish -> Packer setting for this config says so (Pack on Debug / Develop / Deploy), and
+    // scripts pass it when they want a fresh pak. --pack, --only-pack and the --pack that a "Pack
+    // Resources" run always sends are the whole rule; a publish without it ships the pak on disk.
+    const bool isPlugin = m_platform == PublishPlatform::EditorPlugin || m_platform == PublishPlatform::GamePlugin;
+    const bool wantPack = m_forcePack || m_onlyPack;
 
     if (!isPlugin)
     {
@@ -366,7 +361,14 @@ namespace ToolKit
       }
       else
       {
-        TK_LOG("Packing skipped (Debug/Develop publish without --pack), shipping the existing pak.\n");
+        const bool pakExists = CheckSystemFile(PakPath());
+        TK_LOG("Packing skipped (no --pack for this publish), shipping the existing pak.\n");
+
+        if (!pakExists)
+        {
+          TK_WRN("There is no pak to ship: this build will start without resources. Turn on Pack for "
+                 "this config under Projects -> Publish -> Packer, or pass --pack.");
+        }
       }
 
       // The pak is the identity of what ships, packed this run or left over from an earlier one.

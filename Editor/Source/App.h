@@ -271,6 +271,19 @@ namespace ToolKit
       bool m_showBVHNodes                      = false;
       bool m_selectEffectingLights             = false;
       bool m_windowMaximized                   = false;
+
+      /**
+       * Publish -> Packer settings, persisted in the project's Config/Editor.settings.
+       *
+       * A publish packs the resources when the setting for its config says so; Deploy is the build
+       * that ships, so it packs by default, while Debug and Develop are the iterations where
+       * repacking tens of megabytes on every run is the time nobody gets back.
+       */
+      bool m_packOnDebug          = false;
+      bool m_packOnDevelop        = false;
+      bool m_packOnDeploy         = true;
+      /** Encode the images that are not KTX2 containers yet while packing. */
+      bool m_compressTextures = true;
       /**
        * Client size the editor window has while it is not maximized. A maximized window reports the
        * screen size, so this is the size the window comes back with and the one that gets saved.
