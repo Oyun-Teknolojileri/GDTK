@@ -15,6 +15,12 @@
 namespace ToolKit
 {
 
+  namespace
+  {
+    /** Upper bound for the bulk pool; see the comment in WorkerManager::Init. */
+    constexpr unsigned int MaxBulkThreads = 16;
+  } // namespace
+
   WorkerManager::WorkerManager() {}
 
   WorkerManager::~WorkerManager() { UnInit(); }
@@ -26,11 +32,21 @@ namespace ToolKit
     {
       m_frameWorkers      = new ThreadPool(glm::min(coreCount, 2u));
       m_backgroundWorkers = new ThreadPool(glm::min(coreCount, 2u));
+      // No bulk pool on the web: the pthread pool is fixed size and an extra thread it was not
+      // sized for can deadlock the runtime. GetPool(BulkPool) falls back to the background pool.
     }
     else
     {
       m_frameWorkers      = new ThreadPool(glm::min(coreCount, 4u));
       m_backgroundWorkers = new ThreadPool(glm::min(coreCount, 2u));
+
+      // Batch work gets the machine minus two cores for the caller and the OS, capped at
+      // MaxBulkThreads. The cap is a memory decision, not a speed one: encoding a 2K texture peaks
+      // around 250 MB per worker, and on a 32 core box 16 threads measured the same wall clock as
+      // 30 (the encode is memory bandwidth bound there) at less than half the peak RSS. Tools can
+      // still ask for another width with set_num_threads.
+      const unsigned int usable = coreCount > 2u ? coreCount - 2u : 1u;
+      m_bulkWorkers             = new ThreadPool(std::min(MaxBulkThreads, std::max(1u, usable)));
     }
 
     Main::GetInstance()->RegisterPostUpdateFunction([this](float deltaTime) -> void
@@ -41,6 +57,7 @@ namespace ToolKit
   {
     SafeDel(m_frameWorkers);
     SafeDel(m_backgroundWorkers);
+    SafeDel(m_bulkWorkers);
   }
 
   ThreadPool& WorkerManager::GetPool(Executor executor)
@@ -49,6 +66,10 @@ namespace ToolKit
     {
       case WorkerManager::Executor::BackgroundPool:
         return *m_backgroundWorkers;
+      case WorkerManager::Executor::BulkPool:
+        // The web build has no bulk pool; batch work runs on the background pool there, which is
+        // the same width the engine already uses for off-frame work.
+        return m_bulkWorkers ? *m_bulkWorkers : *m_backgroundWorkers;
       case WorkerManager::Executor::FramePool:
       default:
         return *m_frameWorkers;

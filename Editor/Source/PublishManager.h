@@ -56,6 +56,14 @@ namespace ToolKit
      private:
       String ConstructPublishArgs(PublishPlatform platform, PublishConfig publishConfig, bool packOnly);
 
+      /**
+       * The command line for the Packer, built from the Publish -> Packer settings.
+       *
+       * The Packer has no opinion of its own any more: this adds --pack when the setting for the
+       * config says pack, and --no-compress when the images should ship as they are.
+       */
+      StringArray PackerCommand(const String& packerPath, PublishConfig publishConfig, bool packOnly) const;
+
      public:
       TexturePtr m_icon = nullptr;
       String m_appName;

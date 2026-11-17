@@ -1217,9 +1217,39 @@ namespace ToolKit
 
       if (ImGui::BeginMenu("Publish"))
       {
-        if (ImGui::MenuItem("Pack"))
+        // The pack settings and the pack action live together: the checkboxes decide what a publish
+        // does, the action always packs right now, with the settings below it.
+        if (ImGui::BeginMenu("Packer"))
         {
-          GetApp()->PackResources();
+          App* app = GetApp();
+
+          ImGui::MenuItem("Pack on Debug", nullptr, &app->m_packOnDebug);
+          AddTooltipToLastItem("Pack the resources before a Debug publish.\nOff by default: a debug "
+                               "iteration would repack tens of megabytes every time.");
+
+          ImGui::MenuItem("Pack on Develop", nullptr, &app->m_packOnDevelop);
+          AddTooltipToLastItem("Pack the resources before a Develop publish.");
+
+          ImGui::MenuItem("Pack on Deploy", nullptr, &app->m_packOnDeploy);
+          AddTooltipToLastItem("Pack the resources before a Deploy publish.\nOn by default: that is "
+                               "the build that ships.");
+
+          ImGui::Separator();
+
+          ImGui::MenuItem("Compress textures", nullptr, &app->m_compressTextures);
+          AddTooltipToLastItem("Encode the images that are not KTX2 containers yet while packing.\n"
+                               "Off packs every image as it is on disk.");
+
+          ImGui::Separator();
+
+          if (ImGui::MenuItem("Pack Resources"))
+          {
+            GetApp()->PackResources();
+          }
+
+          AddTooltipToLastItem("Packs the project's resources now, with the settings above.");
+
+          ImGui::EndMenu();
         }
 
         if (ImGui::BeginMenu("Web"))
@@ -1386,6 +1416,9 @@ namespace ToolKit
         ImGui::Checkbox("Optimize", &ImportData.optimize);
         AddTooltipToLastItem("Optimize the object to be imported.\nSometimes import may fail due to this operation. "
                              "In that case try without optimizations enabled.");
+        ImGui::Checkbox("Compress textures", &ImportData.CompressTextures);
+        AddTooltipToLastItem("Encode the imported images to KTX2 containers.\nOff copies them as they are.\n"
+                             "This is the import's own switch; Publish -> Packer has its own.");
         ImGui::PushItemWidth(100);
         ImGui::InputFloat("Scale", &ImportData.Scale);
         ImGui::PopItemWidth();

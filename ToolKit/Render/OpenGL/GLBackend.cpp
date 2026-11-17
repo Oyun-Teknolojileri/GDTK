@@ -87,6 +87,37 @@ namespace ToolKit
     return table[(int) t];
   }
 
+  /**
+   * The GL internal format a block compressed upload uses.
+   *
+   * The sRGB variant is chosen from the texture's settings, not from the container: the engine
+   * decides sRGB-ness per use (Material::MakeSureItsDataTexture flips normal and metallic-roughness
+   * maps to a linear format), so the same block data has to be uploadable either way.
+   */
+  static GLenum ToGLCompressedFormat(CompressedFormat format, bool srgb)
+  {
+    switch (format)
+    {
+      case CompressedFormat::BC1:
+        return srgb ? GL_COMPRESSED_SRGB_S3TC_DXT1_EXT : GL_COMPRESSED_RGB_S3TC_DXT1_EXT;
+      case CompressedFormat::BC3:
+        return srgb ? GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT : GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
+      case CompressedFormat::BC7:
+        return srgb ? GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM : GL_COMPRESSED_RGBA_BPTC_UNORM;
+      case CompressedFormat::ETC2_RGB:
+        return srgb ? GL_COMPRESSED_SRGB8_ETC2 : GL_COMPRESSED_RGB8_ETC2;
+      case CompressedFormat::ETC2_RGBA:
+        return srgb ? GL_COMPRESSED_SRGB8_ALPHA8_ETC2_EAC : GL_COMPRESSED_RGBA8_ETC2_EAC;
+      case CompressedFormat::ASTC_4x4:
+        return srgb ? GL_COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR : GL_COMPRESSED_RGBA_ASTC_4x4_KHR;
+      default:
+        // BC5 is a two channel normal map target and is not reachable through the texture loader
+        // yet; there is no general purpose fallback, so the caller must not ask.
+        assert(false && "No GL format for this compressed format.");
+        return GL_COMPRESSED_RGBA_BPTC_UNORM;
+    }
+  }
+
   static GLbitfield ToGLBitfield(GraphicBitFields f)
   {
     GLbitfield bits = 0;
@@ -198,6 +229,125 @@ namespace ToolKit
 #ifdef GL_TEXTURE_CUBE_MAP_SEAMLESS
     glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
 #endif
+
+    ProbeCompressedTextureFormats();
+  }
+
+  void GLBackend::ProbeCompressedTextureFormats()
+  {
+    m_compressedFormats.clear();
+
+    // On the web an extension has to be requested before its enums are valid; a listed extension is
+    // not an enabled one (see EnableGlExtension). The calls are no-ops on every other platform.
+    EnableGlExtension("EXT_texture_compression_bptc");
+    EnableGlExtension("WEBGL_compressed_texture_astc");
+    EnableGlExtension("WEBGL_compressed_texture_s3tc");
+    EnableGlExtension("WEBGL_compressed_texture_s3tc_srgb");
+    EnableGlExtension("WEBGL_compressed_texture_etc");
+
+    const bool astc =
+        HasGlExtension("WEBGL_compressed_texture_astc") || HasGlExtension("KHR_texture_compression_astc_ldr");
+
+    // Desktop GL promotes these to core, and a driver that has them that way does not repeat them
+    // in the extension list: BPTC (BC7) is core from 4.2, S3TC with its sRGB enums from 4.4. A
+    // driver like NVIDIA 4.3 reports EXT_texture_compression_s3tc but neither BPTC's nor S3TC's
+    // sRGB extension, so string probing alone finds no BC format on a perfectly capable GPU.
+    GLint majorVersion = 0;
+    GLint minorVersion = 0;
+    glGetIntegerv(GL_MAJOR_VERSION, &majorVersion);
+    glGetIntegerv(GL_MINOR_VERSION, &minorVersion);
+    const int version = majorVersion * 10 + minorVersion;
+
+    const bool bptc = version >= 42 || HasGlExtension("EXT_texture_compression_bptc") ||
+                      HasGlExtension("ARB_texture_compression_bptc");
+
+    // S3TC only counts when the sRGB enums are usable too: BC blocks uploaded through the linear
+    // enums for a texture the material samples as sRGB come out visibly washed out.
+    const bool s3tcSrgb = HasGlExtension("EXT_texture_compression_s3tc_srgb") ||
+                          HasGlExtension("WEBGL_compressed_texture_s3tc_srgb");
+    const bool s3tc = version >= 44 || s3tcSrgb;
+
+    // ETC2 is core in GL ES 3.0, so a phone has it without any extension string. WebGL 2 is ES 3.0
+    // in a browser wrapper, where nothing is usable before it is enabled.
+#if defined(TK_WEB)
+    const bool etc = HasGlExtension("WEBGL_compressed_texture_etc");
+#elif defined(TK_GL_ES_3_0)
+    const bool etc = true;
+#else
+    const bool etc = HasGlExtension("EXT_texture_compression_etc");
+#endif
+
+    // Order is the upload preference the texture loader follows: the format with the best quality
+    // per byte that the device actually has. Desktop GPUs have BC and rarely ASTC, phones have the
+    // opposite, and the list ends up in the right order for both.
+#if defined(TK_GL_ES_3_0) && !defined(TK_WEB)
+    if (astc)
+    {
+      m_compressedFormats.push_back(CompressedFormat::ASTC_4x4);
+    }
+    if (etc)
+    {
+      m_compressedFormats.push_back(CompressedFormat::ETC2_RGBA);
+      m_compressedFormats.push_back(CompressedFormat::ETC2_RGB);
+    }
+#else
+    if (astc)
+    {
+      m_compressedFormats.push_back(CompressedFormat::ASTC_4x4);
+    }
+    if (bptc)
+    {
+      m_compressedFormats.push_back(CompressedFormat::BC7);
+    }
+    if (s3tc)
+    {
+      m_compressedFormats.push_back(CompressedFormat::BC3);
+      m_compressedFormats.push_back(CompressedFormat::BC1);
+    }
+    if (etc)
+    {
+      m_compressedFormats.push_back(CompressedFormat::ETC2_RGBA);
+      m_compressedFormats.push_back(CompressedFormat::ETC2_RGB);
+    }
+#endif
+
+    String supported;
+    auto nameOf = [](CompressedFormat format) -> const char*
+    {
+      switch (format)
+      {
+        case CompressedFormat::BC1:
+          return "BC1";
+        case CompressedFormat::BC3:
+          return "BC3";
+        case CompressedFormat::BC5:
+          return "BC5";
+        case CompressedFormat::BC7:
+          return "BC7";
+        case CompressedFormat::ETC2_RGB:
+          return "ETC2_RGB";
+        case CompressedFormat::ETC2_RGBA:
+          return "ETC2_RGBA";
+        case CompressedFormat::ASTC_4x4:
+          return "ASTC_4x4";
+        default:
+          return "None";
+      }
+    };
+
+    for (CompressedFormat format : m_compressedFormats)
+    {
+      supported += nameOf(format);
+      supported += " ";
+    }
+
+    TK_LOG("Compressed texture formats: %s",
+           m_compressedFormats.empty() ? "none, KTX2 decodes to RGBA8" : supported.c_str());
+  }
+
+  const std::vector<CompressedFormat>& GLBackend::GetSupportedCompressedFormats() const
+  {
+    return m_compressedFormats;
   }
 
   void GLBackend::BeginFrame() { m_firstBind = true; }
@@ -1154,6 +1304,33 @@ namespace ToolKit
 
     if (s.Target == GraphicTypes::Target2D)
     {
+      if (!tex->m_compressedLevels.empty())
+      {
+        // Block compressed upload: one call per mip level, with the level's own dimensions. The
+        // buffer already holds whole 4x4 blocks, which is what glCompressedTexImage2D derives from
+        // the width/height it is given, so a texture whose size is not a multiple of four uploads
+        // correctly at its source size.
+        const GLenum internalFormat =
+            ToGLCompressedFormat(tex->m_compressedFormat, s.InternalFormat == GraphicTypes::FormatSRGB8_A8);
+
+        for (size_t level = 0; level < tex->m_compressedLevels.size(); ++level)
+        {
+          const TextureLevel& src = tex->m_compressedLevels[level];
+          glCompressedTexImage2D(GL_TEXTURE_2D,
+                                 (GLint) level,
+                                 (GLint) internalFormat,
+                                 src.Width,
+                                 src.Height,
+                                 0,
+                                 (GLsizei) src.Data.size(),
+                                 src.Data.data());
+        }
+
+        tex->m_gpuData = std::move(glData);
+        SetDebugLabel(tex);
+        return;
+      }
+
       // Texture or RenderTarget (non-MSAA 2D)
       void* data = tex->m_imagef ? (void*) tex->m_imagef : (void*) tex->m_image;
       glTexImage2D(GL_TEXTURE_2D,

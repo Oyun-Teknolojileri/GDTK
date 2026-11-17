@@ -103,6 +103,7 @@ namespace ToolKit
       MainThread,     //!< Tasks in this executor runs in sync with main thread at the end of the current frame.
       FramePool,      //!< Tasks that need to be completed within the frame should use this pool.
       BackgroundPool, //!< Tasks that needs to be completed in the background should be performed using this pool.
+      BulkPool,       //!< Batch work that may take the whole machine, such as texture encoding in the tools.
     };
 
    public:
@@ -138,6 +139,10 @@ namespace ToolKit
       {
         return m_backgroundWorkers->submit(func, std::forward<A>(args)...);
       }
+      else if (exec == BulkPool && m_bulkWorkers)
+      {
+        return m_bulkWorkers->submit(func, std::forward<A>(args)...);
+      }
       else if (exec == MainThread)
       {
         std::shared_ptr<std::packaged_task<R()>> ptask =
@@ -161,6 +166,16 @@ namespace ToolKit
 
     /** Tasks that needs to be run in the background should be performed using this pool. */
     ThreadPool* m_backgroundWorkers = nullptr;
+
+    /**
+     * Pool for batch work that is allowed to use every core.
+     *
+     * The frame and background pools are deliberately small - they serve the engine, where a task
+     * should finish within a frame - so a tool that has to encode a few hundred textures needs one
+     * that scales with the machine instead. Null on the web, where the pthread pool is fixed and
+     * the bulk work falls back to the background pool.
+     */
+    ThreadPool* m_bulkWorkers = nullptr;
 
     /** Tasks that will be executed at the main thread frame end is stored here. */
     TaskQueue m_mainThreadTasks;

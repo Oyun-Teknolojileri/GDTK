@@ -13,6 +13,7 @@
 #include <RenderSystem.h>
 #include <SDL.h>
 #include <Texture.h>
+#include <Threads.h>
 #include <ToolKit.h>
 #include <Types.h>
 #include <Util.h>
@@ -119,6 +120,19 @@ namespace ToolKit
      * iterations fast; Deploy and a missing pak pack either way.
      */
     bool m_forcePack = false;
+
+    /**
+     * Encodes the images the pack meets that are still in an uncompressed format (see
+     * FileManager::SetPackCompressionOptions). On by default: a shipped pak has no reason to carry a
+     * raw PNG atlas. Pass --no-compress to pack the files as they are.
+     */
+    bool m_compressTextures = true;
+
+    /**
+     * Width of the pool the textures are encoded on. 0 keeps the bulk pool's own size, which
+     * WorkerManager derives from the machine; --threads N overrides it for one run.
+     */
+    int m_packThreads = 0;
 
     String m_icon;
     String m_appName;
@@ -242,10 +256,48 @@ namespace ToolKit
       return -1;
     }
 
-    int packResult = GetFileManager()->PackResources();
+    // The images Import did not produce (a project older than KTX2, or a texture dropped into
+    // Resources by hand) are encoded here, into the pak only: the project on disk is never touched.
+    FileManager* fileManager = GetFileManager();
+    if (m_compressTextures)
+    {
+      TextureCompressionOptions options;
+      options.Format  = TextureCompressionOptions::Codec::ETC1S;
+      options.Quality = 75;
+      fileManager->SetPackCompressionOptions(options);
+
+      // The encode runs on the engine's bulk pool; --threads only changes its width for this run.
+      ThreadPool& bulkPool = GetWorkerManager()->GetPool(WorkerManager::BulkPool);
+      if (m_packThreads > 0)
+      {
+        bulkPool.set_num_threads((unsigned int) m_packThreads);
+      }
+
+      TK_LOG("Packing textures on %u bulk thread(s).", bulkPool.get_num_threads());
+    }
+    else
+    {
+      fileManager->DisablePackCompression();
+    }
+
+    int packResult = fileManager->PackResources();
     if (packResult != 0)
     {
       return packResult;
+    }
+
+    const FileManager::PackCompressionStats stats = fileManager->GetPackCompressionStats();
+    if (stats.Encoded > 0 || stats.Failed > 0)
+    {
+      TK_LOG("Packed %d texture(s) compressed: %llu KB -> %llu KB (%d failed, packed as they are).",
+             stats.Encoded,
+             stats.InputBytes / 1024,
+             stats.OutputBytes / 1024,
+             stats.Failed);
+    }
+    else if (m_compressTextures)
+    {
+      TK_LOG("Packed no uncompressed textures; every image was already a KTX2 container.");
     }
 
     return 0;
@@ -278,17 +330,12 @@ namespace ToolKit
 
   int Packer::Publish()
   {
-    // Packing is opt in, because a publish is also how a debug or develop build gets onto a device
-    // during development, and repacking 16 MB of resources on every one of those iterations is time
-    // nobody gets back.
-    //
-    // It is still not left to chance: --pack asks for it explicitly, a Deploy publish packs because
-    // that is the build that ships, and a publish with no pak at all packs because there would be
-    // nothing to run. Anything that must not ship a stale pak - scripts, automation - should pass
-    // --pack and stop thinking about it.
-    const bool isPlugin   = m_platform == PublishPlatform::EditorPlugin || m_platform == PublishPlatform::GamePlugin;
-    const bool pakMissing = !CheckSystemFile(PakPath());
-    const bool wantPack   = m_forcePack || m_publishConfig == PublishConfig::Deploy || pakMissing || m_onlyPack;
+    // Packing is decided by the caller, not by the config: the editor passes --pack when its
+    // Publish -> Packer setting for this config says so (Pack on Debug / Develop / Deploy), and
+    // scripts pass it when they want a fresh pak. --pack, --only-pack and the --pack that a "Pack
+    // Resources" run always sends are the whole rule; a publish without it ships the pak on disk.
+    const bool isPlugin = m_platform == PublishPlatform::EditorPlugin || m_platform == PublishPlatform::GamePlugin;
+    const bool wantPack = m_forcePack || m_onlyPack;
 
     if (!isPlugin)
     {
@@ -314,7 +361,14 @@ namespace ToolKit
       }
       else
       {
-        TK_LOG("Packing skipped (Debug/Develop publish without --pack), shipping the existing pak.\n");
+        const bool pakExists = CheckSystemFile(PakPath());
+        TK_LOG("Packing skipped (no --pack for this publish), shipping the existing pak.\n");
+
+        if (!pakExists)
+        {
+          TK_WRN("There is no pak to ship: this build will start without resources. Turn on Pack for "
+                 "this config under Projects -> Publish -> Packer, or pass --pack.");
+        }
       }
 
       // The pak is the identity of what ships, packed this run or left over from an earlier one.
@@ -1167,8 +1221,10 @@ namespace ToolKit
 
     // Command line flags. PublishArguments.txt carries the settings; these carry the intent of this
     // particular run.
-    //   --pack     pack the resources before publishing
-    //   --help     print the flags and exit
+    //   --pack          pack the resources before publishing
+    //   --no-compress   pack the images as they are, without encoding them to KTX2
+    //   --threads N     width of the pool the textures are encoded on
+    //   --help          print the flags and exit
     for (int i = 1; i < argc; i++)
     {
       const String flag = argv[i];
@@ -1176,14 +1232,24 @@ namespace ToolKit
       {
         packer.m_forcePack = true;
       }
+      else if (flag == "--no-compress")
+      {
+        packer.m_compressTextures = false;
+      }
+      else if (flag == "--threads" && i + 1 < argc)
+      {
+        packer.m_packThreads = std::max(1, std::atoi(argv[++i]));
+      }
       else if (flag == "--help" || flag == "-h")
       {
         // printf, not TK_LOG: the logger is not attached to the console this early, so anything
         // logged here is swallowed.
-        printf("Usage: Packer [--pack]\n");
+        printf("Usage: Packer [--pack] [--no-compress] [--threads N]\n");
         printf("  PublishArguments.txt in the working directory holds the publish settings.\n");
-        printf("  --pack  pack the resources before publishing, instead of shipping the pak on disk.\n");
-        printf("          A Deploy publish and a publish with no pak pack without it.\n");
+        printf("  --pack         pack the resources before publishing, instead of shipping the pak on disk.\n");
+        printf("                 A Deploy publish and a publish with no pak pack without it.\n");
+        printf("  --no-compress  pack uncompressed images as they are instead of encoding them to KTX2.\n");
+        printf("  --threads N    encode on N threads instead of the bulk pool's own width.\n");
         return 0;
       }
     }

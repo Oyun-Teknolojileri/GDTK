@@ -9,6 +9,8 @@
 #include <Common/PlatformHelper.h>
 #include <DdsLoader.h>
 #include <DirectionComponent.h>
+#include "Threads.h"
+
 #include <Image.h>
 #include <Material.h>
 #include <MaterialComponent.h>
@@ -18,6 +20,7 @@
 #include <SDL.h>
 #include <Scene.h>
 #include <Texture.h>
+#include <TextureCompression.h>
 #include <ToolKit.h>
 #include <Types.h>
 #include <Util.h>
@@ -31,6 +34,10 @@
 #include <iostream>
 #include <limits>
 #include <unordered_set>
+
+#include <atomic>
+#include <chrono>
+#include <thread>
 
 using std::cout;
 using std::endl;
@@ -97,6 +104,137 @@ namespace ToolKit
   // bind transform when a channel name matches multiple bone nodes.
   const float g_animChannelMatchEps = 0.01f;
   String g_currentExt;
+
+  // Texture compression settings, overridden from the command line (-tex, -tq).
+  enum class ImportTextureMode
+  {
+    /** Encode by material slot: ETC1S for colour, UASTC for data maps. The default. */
+    BySlot,
+    /** Force UASTC everywhere, for projects where the extra quality is worth the size. */
+    Uastc,
+    /** Copy the source image as it is, the pre KTX2 behaviour. */
+    Uncompressed
+  };
+
+  ImportTextureMode g_textureMode = ImportTextureMode::BySlot;
+  int g_textureQuality            = 75;
+
+  /** Encoder worker count. 0 means "derive it from the machine" (-j overrides it). */
+  int g_textureWorkers = 0;
+
+  /**
+   * One texture waiting for the encoder.
+   *
+   * Encoding a 2048x2048 normal map to UASTC takes ten seconds or more, and the importer used to do
+   * that inline: a scene with a few hundred textures spent all of its time in a serial chain of
+   * encodes while the rest of the machine idled. The material loop decodes the source image - tens
+   * of milliseconds - and queues the pixels; the encodes run on the engine's bulk pool, which sizes
+   * itself from the machine instead of a hard coded thread count.
+   *
+   * The queue is a window rather than the whole scene, because a decoded 2K image is 16 MB. One
+   * texture is still encoded single threaded, so the bytes never depend on the pool width.
+   */
+  struct PendingEncode
+  {
+    std::vector<ubyte> Pixels;
+    int Width  = 0;
+    int Height = 0;
+    String Dest;
+    TextureCompressionOptions Options;
+  };
+
+  std::vector<PendingEncode> g_pendingEncodes;
+  std::atomic<int> g_encodedTextures {0};
+  std::atomic<int> g_failedTextures {0};
+  double g_encodeWallSeconds = 0.0;
+
+  /** How many decoded images are held before the window is encoded. */
+  size_t EncodeWindowSize()
+  {
+    // Two images per pool thread: enough to keep the pool fed while the last one finishes, small
+    // enough that a scene's decoded pixels never sit in memory at once.
+    const int threads = GetWorkerManager()->GetThreadCount(WorkerManager::BulkPool);
+    return (size_t) std::max(1, threads * 2);
+  }
+
+  /** Encodes the queued window on the bulk pool and writes the containers. */
+  void FlushTextureEncodes()
+  {
+    if (g_pendingEncodes.empty())
+    {
+      return;
+    }
+
+    const auto start = std::chrono::steady_clock::now();
+
+    std::for_each(TKExecBy(WorkerManager::BulkPool),
+                  g_pendingEncodes.begin(),
+                  g_pendingEncodes.end(),
+                  [](PendingEncode& job)
+                  {
+                    std::vector<ubyte> ktx2;
+                    const bool encoded = CompressImageTopDownToKtx2(job.Pixels.data(),
+                                                                   job.Width,
+                                                                   job.Height,
+                                                                   job.Options,
+                                                                   ktx2) &&
+                                         WriteKtx2(job.Dest, ktx2);
+
+                    job.Pixels.clear();
+
+                    if (encoded)
+                    {
+                      g_encodedTextures++;
+                    }
+                    else
+                    {
+                      g_failedTextures++;
+                      TK_ERR("Texture encoding failed for '%s'; the material will reference a missing file.",
+                             job.Dest.c_str());
+                    }
+                  });
+
+    g_encodeWallSeconds +=
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    g_pendingEncodes.clear();
+  }
+
+  /** Queues a decoded image, flushing the window when it is full. */
+  void QueueTextureEncode(std::vector<ubyte>&& pixels,
+                          int width,
+                          int height,
+                          const String& dest,
+                          const TextureCompressionOptions& options)
+  {
+    PendingEncode job;
+    job.Pixels  = std::move(pixels);
+    job.Width   = width;
+    job.Height  = height;
+    job.Dest    = dest;
+    job.Options = options;
+
+    g_pendingEncodes.push_back(std::move(job));
+
+    if (g_pendingEncodes.size() >= EncodeWindowSize())
+    {
+      FlushTextureEncodes();
+    }
+  }
+
+  /** Decodes an image file with stb, top row first, ready for the encoder. */
+  bool DecodeImageTopDown(const string& path, std::vector<ubyte>& pixels, int& width, int& height)
+  {
+    int channels = 0;
+    ubyte* decoded = ImageLoadTopDown(path.c_str(), &width, &height, &channels, 4);
+    if (decoded == nullptr)
+    {
+      return false;
+    }
+
+    pixels.assign(decoded, decoded + (size_t) width * (size_t) height * 4u);
+    ImageFree(decoded);
+    return true;
+  }
 
   class BoneNode
   {
@@ -182,6 +320,64 @@ namespace ToolKit
     String ext;
     DecomposePath(fileName, nullptr, nullptr, &ext);
     return ToLower(ext) == ".dds";
+  }
+
+  /** File extensions the importer encodes. HDRI keeps its float format and is only copied. */
+  bool NeedsKtx2Encoding(const string& fileName)
+  {
+    String ext;
+    DecomposePath(fileName, nullptr, nullptr, &ext);
+    ext = ToLower(ext);
+
+    if (ext == HDR)
+    {
+      return false;
+    }
+
+    return ext == PNG || ext == JPG || ext == JPEG || ext == TGA || ext == BMP || ext == PSD || NeedsDdsConversion(fileName);
+  }
+
+  /**
+   * Codec settings for a material slot.
+   *
+   * Colour maps are perceptual, so ETC1S is the right trade there. Normal and metallic-roughness
+   * maps hold numbers, not colour: they need UASTC, linear metrics and, for normals, mip
+   * renormalisation, or the surface shading is visibly wrong.
+   */
+  TextureCompressionOptions CompressionOptionsForSlot(aiTextureType type)
+  {
+    TextureCompressionOptions options;
+    options.Quality = g_textureQuality;
+
+    switch (type)
+    {
+      case aiTextureType_NORMALS:
+      case aiTextureType_NORMAL_CAMERA:
+        options.Format    = TextureCompressionOptions::Codec::UASTC;
+        options.Srgb      = false;
+        options.NormalMap = true;
+        break;
+      case aiTextureType_UNKNOWN:
+      case aiTextureType_METALNESS:
+      case aiTextureType_DIFFUSE_ROUGHNESS:
+      case aiTextureType_AMBIENT_OCCLUSION:
+        options.Format    = TextureCompressionOptions::Codec::UASTC;
+        options.Srgb      = false;
+        options.NormalMap = false;
+        break;
+      default:
+        options.Format    = TextureCompressionOptions::Codec::ETC1S;
+        options.Srgb      = true;
+        options.NormalMap = false;
+        break;
+    }
+
+    if (g_textureMode == ImportTextureMode::Uastc)
+    {
+      options.Format = TextureCompressionOptions::Codec::UASTC;
+    }
+
+    return options;
   }
 
   void ClearForbidden(string& str)
@@ -656,11 +852,22 @@ namespace ToolKit
         // A DDS reference is decoded into a PNG next to the imported assets, see DdsLoader.h.
         const bool needsDecode  = NeedsDdsConversion(fileName);
         const string sourceName = fileName;
+
+        // LDR images are encoded to KTX2 and the material points at the container; HDRI is copied
+        // as it is. `-tex none` restores the old copy behaviour.
+        const bool encode  = g_textureMode != ImportTextureMode::Uncompressed && NeedsKtx2Encoding(fileName);
+        String encodedExt;
         if (needsDecode)
         {
           String name, ext;
           DecomposePath(fileName, nullptr, &name, &ext);
-          fileName = name + PNG;
+          fileName = name + (encode ? KTX2 : PNG);
+        }
+        else if (encode)
+        {
+          String path, name, ext;
+          DecomposePath(fileName, &path, &name, &ext);
+          fileName = path + name + KTX2;
         }
 
         string textPath = NormalizePath(PathToString(fs::path(texDir + fileName).lexically_normal()));
@@ -689,6 +896,18 @@ namespace ToolKit
             sourcePath = PathToString(fullPath);
           }
 
+          // A previous import left the uncompressed image in the texture folder (this project was
+          // imported before KTX2 existed). Prefer it over hunting through the source folder.
+          if (encode && !CheckSystemFile(sourcePath))
+          {
+            const String legacyPath =
+                NormalizePath(PathToString(fs::path(texDir + sourceName).lexically_normal()));
+            if (CheckSystemFile(legacyPath))
+            {
+              sourcePath = legacyPath;
+            }
+          }
+
           ifstream sourceFile;
           sourceFile.open(sourcePath, ios::binary | ios::in);
           if (sourceFile.good())
@@ -703,7 +922,56 @@ namespace ToolKit
               }
             }
 
-            if (needsDecode)
+            if (encode)
+            {
+              const TextureCompressionOptions options = CompressionOptionsForSlot(textureAssimpType);
+
+              // Decode here, encode on the bulk pool. The decode is tens of milliseconds and decides
+              // the fallback; the encode is seconds and is what the pool exists for.
+              std::vector<ubyte> pixels;
+              int textureWidth  = 0;
+              int textureHeight = 0;
+
+              const bool decoded = needsDecode
+                                       ? DecodeDdsToRgba(sourcePath, pixels, textureWidth, textureHeight)
+                                       : DecodeImageTopDown(sourcePath, pixels, textureWidth, textureHeight);
+
+              if (decoded)
+              {
+                QueueTextureEncode(std::move(pixels), textureWidth, textureHeight, textPath, options);
+              }
+              else if (needsDecode)
+              {
+                if (g_skippedTextures.insert(sourceName).second)
+                {
+                  Assimp::DefaultLogger::get()->warn("Texture '" + sourceName +
+                                                     "' uses a DDS format the importer can not "
+                                                     "decode, so the material imports without it.");
+                }
+                sourceFile.close();
+                return nullptr;
+              }
+              else
+              {
+                // Compression is a size optimisation, not a correctness requirement: an image the
+                // decoder rejects is still copied, so the material points at something the engine
+                // can load.
+                Assimp::DefaultLogger::get()->warn("Texture '" + sourceName +
+                                                   "' could not be decoded for compression, importing "
+                                                   "it uncompressed.");
+
+                textPath = NormalizePath(PathToString(fs::path(texDir + sourceName).lexically_normal()));
+                fs::copy(sourcePath, textPath, fs::copy_options::overwrite_existing);
+              }
+
+              // An embedded texture's intermediate file only existed to be encoded.
+              if (embedded && !needsDecode && CheckSystemFile(sourcePath) && sourcePath != textPath)
+              {
+                std::error_code removeErr;
+                fs::remove(sourcePath, removeErr);
+              }
+            }
+            else if (needsDecode)
             {
               if (!ConvertDdsToPng(sourcePath, textPath))
               {
@@ -1855,7 +2123,8 @@ namespace ToolKit
     {
       if (argc < 2)
       {
-        cout << "usage: Import 'fileToImport.format' <op> -t 'importTo' <op> -s 1.0 <op> -o 0";
+        cout << "usage: Import 'fileToImport.format' <op> -t 'importTo' <op> -s 1.0 <op> -o 0 <op> "
+                "-tex etc1s|uastc|none <op> -tq 75 <op> -j <bulk threads>";
         throw(-1);
       }
 
@@ -1889,6 +2158,36 @@ namespace ToolKit
         if (arg == "-o")
         {
           optimizationLevel = std::atoi(argv[i + 1]);
+        }
+
+        // Texture compression. The defaults produce the small, perceptual containers a project
+        // ships with; -tex none restores the pre KTX2 behaviour of copying the images.
+        if (arg == "-tex")
+        {
+          const string mode = ToLower(argv[i + 1]);
+          if (mode == "none")
+          {
+            g_textureMode = ImportTextureMode::Uncompressed;
+          }
+          else if (mode == "uastc")
+          {
+            g_textureMode = ImportTextureMode::Uastc;
+          }
+          else
+          {
+            g_textureMode = ImportTextureMode::BySlot;
+          }
+        }
+
+        if (arg == "-tq")
+        {
+          g_textureQuality = std::max(1, std::min(100, std::atoi(argv[i + 1])));
+        }
+
+        // Worker threads for the texture encode. 0 or absent derives it from the core count.
+        if (arg == "-j")
+        {
+          g_textureWorkers = std::max(1, std::min(64, std::atoi(argv[i + 1])));
         }
       }
 
@@ -1955,6 +2254,15 @@ namespace ToolKit
       GetLogger()->SetPlatformConsoleFn([](LogType type, const String& msg) -> void
                                         { ToolKit::PlatformHelpers::OutputLog((int) type, msg.c_str()); });
 
+      // The phase timings and the encode summary are TK_LOG lines, and TK_LOG reaches nothing but
+      // OutputDebugString without a writer. A headless import that says where its time went is the
+      // whole point of the measurement, so echo to stdout like Packer does.
+      GetLogger()->SetWriteConsoleFn(
+          [](LogType, String msg) -> void
+          {
+            printf("%s", msg.c_str());
+          });
+
       // Init SDL with dummy driver (no video / GPU required).
       // Only events and gamecontroller are needed for the engine to boot.
       SDL_Init(SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER);
@@ -1971,6 +2279,20 @@ namespace ToolKit
       // strips Temp + the type layer from every cross-reference it serializes
       // inside .material / .mesh / .scene files, leaving "<target>/file".
       g_proxy->m_resourceRoot = "Temp";
+
+      // The encode itself runs on the engine's bulk pool; -j only overrides how many threads that
+      // pool uses, and by default it is sized from the machine in WorkerManager::Init.
+      {
+        ThreadPool& bulkPool = GetWorkerManager()->GetPool(WorkerManager::BulkPool);
+        if (g_textureWorkers > 0)
+        {
+          bulkPool.set_num_threads((unsigned int) g_textureWorkers);
+        }
+
+        TK_LOG("Texture encoding: %u bulk thread(s) of %u core(s).",
+               bulkPool.get_num_threads(),
+               std::thread::hardware_concurrency());
+      }
 
       for (int i = 0; i < (int) (files.size()); i++)
       {
@@ -1998,6 +2320,17 @@ namespace ToolKit
         g_scene                 = scene;
         isSkeletonEntityCreated = false;
 
+        // Phase timings, so a slow import says which stage it is spending the time in instead of
+        // leaving the user to guess. Textures are the usual answer on scene sized assets.
+        auto phaseStart = std::chrono::steady_clock::now();
+        auto since      = [&phaseStart]() -> double
+        {
+          const double seconds =
+              std::chrono::duration<double>(std::chrono::steady_clock::now() - phaseStart).count();
+          phaseStart = std::chrono::steady_clock::now();
+          return seconds;
+        };
+
         String fileName;
         DecomposePath(file, nullptr, &fileName, &g_currentExt);
         string meshDestFile   = meshDest + fileName;
@@ -2006,18 +2339,22 @@ namespace ToolKit
 
         // Create Textures to reference in Materials
         ImportTextures(texDest);
+        const double builtinImages = since();
 
         // Create Materials to reference in Meshes
         ImportMaterial(matDest, texDest, file);
+        const double materials = since();
 
         // Create a Skeleton to reference in Meshes
         ImportSkeleton(meshDestFile);
 
         // Import animations after skeleton so g_skeletonMap is available.
         ImportAnimation(meshDest);
+        const double skeletonAnim = since();
 
         // Add Meshes.
         ImportMeshes(meshDestFile);
+        const double meshes = since();
 
         // Add lights.
         ImportLights();
@@ -2027,6 +2364,29 @@ namespace ToolKit
 
         // Create Meshes & Scene
         ImportScene(prefabDestFile);
+        const double sceneSave = since();
+
+        TK_LOG("Import phases for '%s': embedded images %.1f s, materials %.1f s, skeleton+anim %.1f s, "
+               "meshes %.1f s, scene %.1f s.",
+               fileName.c_str(),
+               builtinImages,
+               materials,
+               skeletonAnim,
+               meshes,
+               sceneSave);
+      }
+
+      // The last window may still be queued; everything that reads the textures needs them on disk
+      // before the process reports its output files.
+      FlushTextureEncodes();
+
+      if (const int encoded = g_encodedTextures.load(); encoded > 0)
+      {
+        TK_LOG("Texture encoding: %d texture(s), %d failed, %.1f s of wall on %u bulk thread(s).",
+               encoded,
+               g_failedTextures.load(),
+               g_encodeWallSeconds,
+               GetWorkerManager()->GetPool(WorkerManager::BulkPool).get_num_threads());
       }
 
       // Report all in use files.

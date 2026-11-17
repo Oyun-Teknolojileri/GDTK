@@ -548,7 +548,12 @@ namespace ToolKit
       }
     }
 
-    bool flush = current.Type == GraphicTypes::TypeFloat ? texture->m_imagef == nullptr : texture->m_image == nullptr;
+    // "No client side data" covers the block compressed case too: a KTX2 texture keeps its levels
+    // in m_compressedLevels, and reloading it just to change the sampler settings would decode the
+    // container a second time for nothing.
+    bool flush = current.Type == GraphicTypes::TypeFloat
+                     ? texture->m_imagef == nullptr
+                     : (texture->m_image == nullptr && texture->m_compressedLevels.empty());
 
     texture->UnInit();
     if (flush)
@@ -564,7 +569,7 @@ namespace ToolKit
     // in linear space, and the texture applies them when it finally loads. "Could not load" covers a
     // missing file as well as a format the image loader does not decode (DDS, for instance), so this
     // has to stay a warning and not a crash.
-    if (texture->m_image == nullptr && texture->m_imagef == nullptr)
+    if (texture->m_image == nullptr && texture->m_imagef == nullptr && texture->m_compressedLevels.empty())
     {
       TK_WRN("'%s' has no image data; keeping its data texture settings without initializing it.",
              texture->GetFile().c_str());

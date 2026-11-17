@@ -26,6 +26,16 @@ if(NOT TK_VULKAN)
   list(FILTER TOOLKIT_SOURCES EXCLUDE REGEX ".*/Render/Vulkan/.*\\.cpp$")
 endif()
 
+# The texture encoder is a host tool feature: Import and Packer write KTX2, a game only reads it.
+# Desktop compiles the real encoder and drops the no-op TU; Web and Android are the other way round,
+# so neither the wasm nor the APK carries a block encoder. The stub exists so callers (FileManager,
+# the tools) need no preprocessor guard.
+if(EMSCRIPTEN OR ANDROID)
+  list(FILTER TOOLKIT_SOURCES EXCLUDE REGEX ".*/Resources/TextureCompression\\.cpp$")
+else()
+  list(FILTER TOOLKIT_SOURCES EXCLUDE REGEX ".*/Resources/TextureCompressionStub\\.cpp$")
+endif()
+
 # Emscripten has no dynamic library support without side modules, and a web
 # game links the engine into the single .wasm anyway. Android loads one library per
 # app (libmain.so) the same way. Static keeps the whole engine in one link unit with
@@ -203,6 +213,23 @@ target_link_libraries(ToolKit PRIVATE
   minizip
   zstd
 )
+
+# Basis Universal -- KTX2 texture compression.
+#
+# Desktop links `basisu_encoder`, upstream's single archive that contains both
+# the encoder and the transcoder (Dependency/CMakeLists.txt documents why one
+# archive per platform rather than two libraries). Web/Android link the
+# transcoder-only target created in Dependency/CMakeLists.txt, so a game payload
+# never carries the encoder.
+#
+# BASISD_SUPPORT_KTX2_ZSTD=0 arrives through both targets' interface
+# definitions: the pak applies zstd to every entry, and a second zstd inside
+# ToolKit would collide with the copy minizip already links.
+if(EMSCRIPTEN OR ANDROID)
+  target_link_libraries(ToolKit PRIVATE basisu_transcoder)
+else()
+  target_link_libraries(ToolKit PRIVATE basisu_encoder)
+endif()
 
 # Platform-specific link libraries.
 # Note: GL is intentionally NOT linked here. ToolKit uses glad (vendored)

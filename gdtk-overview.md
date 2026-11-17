@@ -941,6 +941,27 @@ GL_EXTENSIONS)` returns null on ES 3.0 as well, so `LoadGlFunctions` enumerates 
 readback goes through `getBufferSubData` once the fence is polled - a frame later the transfer has landed and the
 copy does not wait for the GPU (see 5.1). Emscripten's GLES header does not declare `getBufferSubData` even though
 the WebGL 2 binding exists, so `GLBackend.cpp` declares the entry point itself.
+
+**Compressed textures upload through `glCompressedTexImage2D`, and the capability list is built once at context
+creation.** `ProbeCompressedTextureFormats` answers `GetSupportedCompressedFormats()` with an empty list or with
+`ASTC_4x4` / `BC7` / `BC3` / `BC1` / `ETC2_RGBA` / `ETC2_RGB` in upload preference order; the texture loader
+transcodes a KTX2 container into the first entry that can hold its channels and falls back to RGBA8 when the list
+is empty. Two things about the probe are not obvious:
+
+- **Desktop GL promotes these formats to core, and a driver that has them that way does not repeat them in the
+  extension list.** BPTC (BC7) is core from 4.2 and S3TC with its sRGB enums from 4.4, so the probe checks the
+  context version (`GL_MAJOR_VERSION` / `GL_MINOR_VERSION`) before the strings. On a plain string probe an
+  NVIDIA 4.3 driver reports neither `EXT_texture_compression_bptc` nor `EXT_texture_compression_s3tc_srgb` and
+  the engine would find no BC format at all on a capable GPU.
+- **The sRGB variant has to be there.** A BC texture sampled as sRGB but uploaded through the linear enum comes out
+  washed out, so a driver with plain S3TC and no sRGB enums is treated as having no BC. ETC2 is core in GL ES 3.0
+  and needs no string on Android; on the web every format has to be enabled with `EnableGlExtension` first, because
+  listing an extension is not having it.
+
+`TKOpenGL.h` defines the S3TC / BPTC / ASTC enums itself: glad's generated header stops at the core GL 4.x set and
+emscripten's GLES3 headers stop at the ETC2 enums that ES 3.0 made core. `HasGlExtension` / `EnableGlExtension`
+there are the shared probe, replacing the three per-platform copies the file used to carry.
+
 ### 5.3 Vulkan Backend (Vulkan/ directory)
 - `VulkanBackend.h` (main implementation)
 - `VulkanBindings.h` (binding marshalling)
@@ -989,6 +1010,27 @@ Base class for every loadable asset. Inherits Object. Has lifecycle: `Load()` (C
   whole param block -- a freshly imported material loaded with nothing but its id and name.
 - **Shader** (Shader.h): supports `VertexShader`, `FragmentShader`, `IncludeShader`. Has `ShaderDefine` + `ShaderDefineArray` for variants. Master vs include shader concept: master defines the entry + variant defines; include has no entry. Each shader has `ShaderResourceArray m_resources` declaring texture/UBO bindings with `ViewType` (`Tex2D`, `Tex2DArray`, `TexCube`) — used by Vulkan to pick the right dummy texture for unbound slots.
 - **Texture** (Texture.h), **CubeMap** (Texture.h subclass), **RenderTarget** (offscreen target), **Audio**, **Animation** (`Animation.h` + `AnimationControllerComponent`), **Skeleton** (`Skeleton.h` + `SkeletonComponent`), **SpriteSheet**, **Prefab**, **Plugin**.
+
+  A texture's pixels arrive one of three ways: `m_image` holds 8 bit RGBA for the ordinary stb path,
+  `m_imagef` holds float data for HDRI, and `m_compressedLevels` + `m_compressedFormat` hold GPU ready
+  block data for a KTX2 container. `Texture::Load` reads the file as bytes
+  (`FileManager::ReadFileBuffer`, which serves the pak and the disk the same way) and sniffs the KTX2
+  identifier: a container is transcoded through `Ktx2Texture.h` into whatever
+  `IGraphicsBackend::GetSupportedCompressedFormats()` offers, and into plain RGBA8 when the backend
+  offers nothing (the null backend of the tools, and Vulkan until it grows a compressed upload path).
+  `Texture::Init` uploads the levels with `glCompressedTexImage2D` and skips `GenerateMipmaps`,
+  because the encoder already wrote the chain. sRGB is a property of the use, not of the file: the GL
+  internal format comes from `TextureSettings::InternalFormat`, so the same blocks upload as
+  `GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM` for an albedo and `GL_COMPRESSED_RGBA_BPTC_UNORM` for a
+  normal or metallic-roughness map after `Material::MakeSureItsDataTexture` flips it to linear.
+
+  The other direction, writing a container, is `TextureCompression.h`: Import and the pack step encode
+  through it. It compiles on desktop only - Web and Android link `TextureCompressionStub.cpp` instead,
+  because the encoder is an authoring feature that would only bloat a game payload, and the stub keeps
+  the callers free of preprocessor guards. One image encodes deterministically (single threaded inside
+  a texture), so the same source produces the same bytes from either tool, and `CompressFiles` gets its
+  speed by encoding several textures at once. The encode path flips the rows into the same bottom-up
+  order the stb path produces, which is what `glTexImage2D` expects of the first row it is handed.
 
 ### 6.3.1 Animation playback
 
@@ -1702,10 +1744,14 @@ switches targets hands back its input at the marker position.
 
 ### 10.1 WorkerManager
 
-Three executors:
+Four executors:
 - `MainThread` — runs at end of current frame, in `WorkerManager::ExecuteTasks` tick (sync with main).
-- `FramePool` — for tasks that **must** complete in the current frame (uses `m_frameWorkers` thread pool).
-- `BackgroundPool` — for long-running async work (uses `m_backgroundWorkers` thread pool).
+- `FramePool` — for tasks that **must** complete in the current frame (uses `m_frameWorkers` thread pool, `min(cores, 4)`).
+- `BackgroundPool` — for long-running async work (uses `m_backgroundWorkers` thread pool, `min(cores, 2)`).
+- `BulkPool` - batch work that may take the whole machine (uses `m_bulkWorkers`, `min(16, cores - 2)`). The
+  tools encode textures on it (`Import`'s window and `FileManager::ZipPack`); the frame and background
+  pools stay small on purpose because they serve frames, not batch jobs. It does not exist on the web,
+  where the pthread pool is fixed size and `GetPool(BulkPool)` returns the background pool.
 
 `AsyncTask(Executor, F, args...)` returns a `std::future<R>`. If `Main::m_threaded == false`, falls back to MainThread regardless of choice.
 
@@ -1757,20 +1803,111 @@ normal mapped surface black in the lit view and in the normal debug view.
 Meshes without UVs get no tangents, which is fine because they have no normal
 map to sample.
 
-Texture references are copied next to the imported asset and referenced from
-the material. Decoding goes through stb_image, which has no DDS reader, so a
-DDS reference is converted to PNG on the way in (`Utils/Import/DdsLoader.*`,
-BC1 / BC3 / BC5) and the material points at the converted file. A DDS the
-loader cannot decode is reported once per file and skipped, so the material
+Texture references are **encoded to KTX2** next to the imported asset and referenced
+from the material as `Textures/<target>/<name>.ktx2`. The codec follows the material
+slot: colour maps (diffuse / base colour / emissive) become ETC1S with sRGB metrics,
+normal and metallic-roughness maps become UASTC with linear metrics, and only normals
+get mip renormalisation - compressing a normal map as colour is what makes a surface
+shade wrong. HDRI keeps its float format and is copied. `-tex none` restores the old
+copy-the-image behaviour, `-tex uastc` forces UASTC everywhere and `-tq 1..100` sets
+the quality (default 75).
+
+stb_image has no DDS reader, so a DDS reference is decoded by the importer itself
+(`Utils/Import/DdsLoader.*`, BC1 / BC3 / BC5) and those pixels go **straight into the
+encoder** (`CompressImageTopDownToKtx2`, the variant that flips file order into the GL
+upload order). There used to be a PNG detour here - decode to PNG, then let the encoder
+decode that PNG again - which cost an encode and a decode of the same image for a file
+that only existed to be read back. The PNG is now only written by the fallback below.
+An embedded glTF/FBX texture's intermediate file is deleted once it has been encoded. A
+DDS the loader cannot decode is reported once per file and skipped, so the material
 imports without that map instead of carrying a path the engine can never load.
-The same rule keeps `Material::MakeSureItsDataTexture` from initializing a
-texture that has no pixel data; that path warns and keeps the linear data
-settings.
+
+Compression is a size optimisation and never a correctness requirement: if an encode
+fails the source image is copied (a DDS is written out as PNG, since the engine has no
+DDS reader), the material points at that plain file and the importer warns. The same
+rule keeps `Material::MakeSureItsDataTexture` from initializing a texture that has no
+pixel data; that path warns and keeps the linear data settings.
+
+Re-importing a project that predates KTX2 finds the old `.png` in the texture folder and
+encodes from that when the source folder no longer has the image, so a re-import does
+not silently drop textures whose originals were moved into the project.
+
+**The encode runs on the engine's bulk pool, not inline.** Encoding a 2048x2048 normal map to UASTC is
+ten seconds, and a scene sized asset references hundreds of them; done one at a time inside the
+material loop, the Bistro exterior spent over forty minutes with one core busy. The loop now decodes
+each source image (tens of milliseconds, and it decides the fallback) and queues the pixels; the
+encodes run as one windowed `std::for_each(TKExecBy(WorkerManager::BulkPool), ...)` pass, so the width
+follows the machine instead of a hard coded number. The window is bounded because a decoded 2K image is
+16 MB: `EncodeWindowSize()` holds two images per pool thread. A texture is still encoded single
+threaded, so the bytes do not depend on the pool width.
+`-j N` overrides that width (`GetPool(BulkPool).set_num_threads(N)`); without it the pool runs at the
+size `WorkerManager::Init` picked.
+
+Same asset, same machine: 251 textures in ~39 minutes without finishing before, 274 textures in 232 s
+on the bulk pool (16 threads by default) - the per texture CPU cost is unchanged at ~9 s, the win is entirely
+overlap. The pool is capped at 16 threads because more does not pay: at 30 threads the same asset measured the
+same wall clock at 5.2 GB peak RSS instead of 3 GB, the encode being memory bandwidth bound long before
+it is core bound.
+
+The importer also logs its phase timings (embedded images, materials, skeleton+animation, meshes,
+scene) and reports the encode wall clock against the pool width, so a slow run names the stage instead
+of leaving it to guesswork.
 
 ### 11.2 Packer (`Utils/Packer/`)
 Release / publish CLI. Bundles projects for Windows, Web, Android. Links
 SDL2, ToolKit (no assimp). The editor's Publish dialog drives it through
 `PublishArguments.txt` (project, workspace, app name, platform, config, ...).
+
+**Packing compresses textures as well.** Every image the pack meets that is not already a KTX2
+container - a texture dropped into `Resources` by hand, or a project that predates KTX2 - is encoded
+(`FileManager::SetPackCompressionOptions`) and stored **under its own entry name**, because the
+material references inside the pak are written as `.png` paths and the runtime sniffs the container
+instead of trusting the extension. The project on disk is never modified. HDRI and the engine's own
+resources are skipped, and `Packer.exe --no-compress` packs everything as it is.
+
+The pack step has no material slot to read, but the materials it just loaded know what each file is
+used for: `CollectDataTexturePaths` records the paths a material uses as a normal or
+metallic-roughness map, and those are encoded as UASTC with linear metrics while everything else takes
+ETC1S. Compressing a normal map as colour is the one mistake this pipeline must not make on its own,
+so that classification is not optional.
+
+On a project whose textures are already JPEG, the pak can grow (ETC1S at quality 75 is roughly
+0.75 bits per texel, a 1024x1024 JPEG is often smaller, and UASTC data maps are 8 bits per texel).
+The win there is VRAM and load time, not download size: 1024x1024 RGBA8 is 4 MB on the GPU, the same
+texture is 1.4 MB as BC7/ASTC 4x4 and 0.5-0.9 MB as ETC2. For a project shipping raw PNG/TGA sources
+both numbers move in the right direction. Quality and RDO tuning per slot is the open follow-up.
+
+**The pack encodes in parallel too.** `ZipPack` takes the path set in windows of `PackEncodeWindow`
+(32), encodes each window on the engine's bulk pool (`std::for_each(TKExecBy(WorkerManager::BulkPool),
+...)`) and then writes it in order - the zip writer stays the only thread that touches the archive, and
+a window is the memory bound. `AddFileToZip` grew a `preEncoded` parameter for this: nullptr means
+"decide yourself", an empty vector means "tried and failed", which is what stops a fallback from paying
+for the same multi-second encode twice. A 22 texture project packs in 27 s serially and 11 s this way;
+the rest of the wall clock is the scene load and zstd of the pak, which stay serial. --threads N overrides
+the pool width for one run (4 threads measures 18 s on the same project).
+
+One FileManager fix came out of this: the pak offset table used to be marked complete even when no
+pak existed yet, so a lookup during packing poisoned every later read of the pak the pack had just
+written. `GenerateOffsetTableForPakFiles` no longer caches a missing pak, and `CloseZipFile` /
+`PackResources` drop the table when the pak is replaced.
+
+**What a publish does about packing is a setting, not a rule in the Packer.** `Projects -> Publish ->
+Packer` holds `Pack on Debug`, `Pack on Develop`, `Pack on Deploy` and `Compress textures`, plus a
+`Pack Resources` action that packs immediately with those settings. They are stored in the project's
+`Config/Editor.settings` as `<Settings><Packer debug="" develop="" deploy="" compress=""/>` (Deploy on,
+the other two off, compress on) and read back by `App::DeSerializeImp`; a settings file without the
+node keeps the defaults.
+
+`PublishManager::PackerCommand` turns them into the Packer's command line: `--pack` when the setting
+for the config being published is on (and always for the `Pack Resources` action), `--no-compress`
+when the textures should ship as they are. `Packer::Publish` no longer decides by config or by a
+missing pak - `wantPack` is `--pack` or the pack-only mode, and a skipped pack logs which pak it
+ships and warns when there is none.
+
+The importer has its own switch, `ImportData.CompressTextures`, on the Import dialog: the editor
+appends `-tex none` to the Import command line when it is off. It is deliberately not tied to the
+publish setting - one import may have to keep the source images while the next publish still packs
+compressed, and the other way round.
 
 `Packer::WebPublish` is the web path: it runs `emcmake cmake -S . -B
 ./Intermediate/Web -DTK_PLATFORM=Web -DCMAKE_BUILD_TYPE=<cfg>` then `emmake cmake
@@ -1890,8 +2027,9 @@ python3 BuildScripts/build_dependencies.py
 Use `--configs Debug Release` (default), `--skip-assimp` / `--skip-imgui` to
 drop deps you do not need right now, and `--clean` to wipe
 `Dependency/Intermediate/<Platform>/` before configuring. The script is
-cross-platform: on Windows it picks `Ninja` if available, otherwise
-`Visual Studio 17 2022`; on Linux it picks `Ninja` or `Unix Makefiles`.
+cross-platform: on Windows it uses the Visual Studio generator when `cl.exe` is
+reachable and falls back to `Ninja` otherwise; on Linux it picks `Ninja` or
+`Unix Makefiles`.
 
 The dependency build produces **flat** output names for assimp — `assimp.lib` /
 `assimpd.lib` and `assimp.dll` / `assimpd.dll` (Debug vs Release split is via
@@ -1903,6 +2041,25 @@ against (`assimp.lib` / `assimpd.lib` in `AdditionalDependencies`), and it is
 stable across MSVC toolsets (vc142 / vc143 / vc145 all produce the same name).
 Upstream assimp's compiler-suffixed name (`assimp-vc143-mt.lib`) is no longer
 emitted into the dependency output directory.
+
+**Basis Universal is the one dependency that builds a different library per
+platform** (`Dependency/basis_universal`, submodule pinned to the `v2_50` tag of
+the `Oyun-Teknolojileri` fork). Upstream ships a single static archive,
+`basisu_encoder`, and it already contains `transcoder/basisu_transcoder.cpp`, so
+a desktop build links that one archive and gets the KTX2 transcoder and the GPU
+texture encoder together — there is no second archive, and no way to end up with
+two copies of the `basist` symbols inside `libToolKit`. Web and Android build a
+transcoder-only target from `transcoder/basisu_transcoder.cpp` directly in
+`Dependency/CMakeLists.txt`; the encoder is a host tool feature and never enters
+a game payload. `BASISU_ZSTD=OFF` (desktop) and `BASISD_SUPPORT_KTX2_ZSTD=0`
+(everywhere) keep basisu's bundled zstd out of the tree: `ToolKit` already links
+zstd through minizip, the pak applies zstd to every entry, and a second copy of
+`ZSTD_*` inside one shared library is a duplicate symbol error on MSVC. The
+define travels through the imported target's INTERFACE definitions because
+`transcoder/basisu_transcoder.h` reads it at class-layout level, so a consumer
+built with the header default (1) would disagree with the archive about the KTX2
+classes. The CLI and the examples stay out of ALL and their runtime output is
+redirected, so building one never writes into the submodule working tree.
 
 ### 12.2 Build engine + tools
 
@@ -1975,14 +2132,15 @@ toolchain pass and links one `.wasm`.
 ```
 project CMakeLists (TK_PLATFORM=Web)
   add_subdirectory(${TOOLKIT_DIR})        engine root, EMSCRIPTEN branch
-    add_subdirectory(Dependency)          minizip + zstd from source (static)
+    add_subdirectory(Dependency)          minizip + zstd + basisu transcoder (static)
     add_subdirectory(ToolKit)             engine as a STATIC library
   add_subdirectory(Codes)                 game executable, -sUSE_SDL=2
 ```
 
-- `Dependency/CMakeLists.txt` keeps a web branch that builds only `minizip` and
-  the `zstd` it fetches (SDL2 comes from the emscripten port, imgui and assimp
-  are desktop-only), and returns before the SDL2/assimp/imgui subprojects.
+- `Dependency/CMakeLists.txt` keeps a web branch that builds only `minizip`, the
+  `zstd` it fetches and the Basis Universal transcoder target (SDL2 comes from
+  the emscripten port, imgui / assimp / the basisu encoder are desktop-only), and
+  returns before the SDL2/assimp/imgui subprojects.
 - `ToolKit/CMakeLists.txt` builds `ToolKit` as a STATIC library on emscripten and
   carries `-pthread` on its PUBLIC compile/link interface, so the game inherits
   the threaded ABI. The engine, editor, workspace helper and CLI tools are not
@@ -2088,6 +2246,9 @@ When writing/editing any `.h`/`.cpp` in this repo:
 | Workspace (project and workspace management) | `Modules/Workspace/Source/Workspace.h` |
 | Build deps | `BuildScripts/build_dependencies.py` |
 | Dep wrapper (assimp name fix, output dirs) | `Dependency/CMakeLists.txt` |
+| KTX2 container parse + transcode (Basis Universal) | `ToolKit/Resources/Ktx2Texture.h` |
+| KTX2 encoding (host tools only) | `ToolKit/Resources/TextureCompression.h` |
+| Compressed format list + level layout | `ToolKit/Source/Types.h` (`CompressedFormat`, `TextureLevel`) |
 | Solution (generated by CMake, not checked in) | `Intermediate/<Platform>/<Config>/GDTK.slnx` |
 
 ---

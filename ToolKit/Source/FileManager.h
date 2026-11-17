@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include "TextureCompression.h"
 #include "Types.h"
 
 namespace ToolKit
@@ -20,6 +21,15 @@ namespace ToolKit
   class TK_API FileManager
   {
    public:
+    /** What the pack step did to the textures it met, for the tool's summary line. */
+    struct PackCompressionStats
+    {
+      int Encoded     = 0;
+      int Failed      = 0;
+      uint64 InputBytes  = 0;
+      uint64 OutputBytes = 0;
+    };
+
     FileManager();  //!< Empty constructor.
     ~FileManager(); //!< Closes pak file if any open.
 
@@ -31,6 +41,19 @@ namespace ToolKit
 
     /** Returns a hdri image raw data and its properties in the arguments. Used in Texture::Load to create resource. */
     float* GetHdriFile(const String& filePath, int* x, int* y, int* comp, int reqComp);
+
+    /**
+     * Reads a resource as raw bytes: from the open pak when there is one, from disk otherwise.
+     *
+     * The image accessors above hand the file straight to stb_image, which cannot help with a
+     * container the engine parses itself (KTX2). Going through one byte reader keeps the pak and the
+     * loose-file paths identical for those.
+     *
+     * @param filePath Resource path, absolute or relative to the resource root.
+     * @param out Receives the file contents. Untouched when the function returns false.
+     * @return False when the file is missing on both the pak and the disk.
+     */
+    bool ReadFileBuffer(const String& filePath, std::vector<ubyte>& out);
 
     /** Returns a decoded audio file or null if no decoder found. Used in Audio::Load to create resource. */
     SoundBuffer GetAudioFile(const String& filePath);
@@ -45,6 +68,22 @@ namespace ToolKit
      * All files must be in the Resources folder of the project.
      */
     int PackResources();
+
+    /**
+     * Turns on texture compression for the next PackResources call.
+     *
+     * Every image the pack meets that is not already a KTX2 container (and not HDRI, and not one of
+     * the engine's own resources) is encoded and stored under its own entry name, so the material
+     * references inside the pak keep pointing at it. The runtime sniffs the container, not the
+     * extension, which is what makes that safe.
+     */
+    void SetPackCompressionOptions(const TextureCompressionOptions& options);
+
+    /** Packs images untouched. The pre KTX2 behaviour, used by Packer's --no-compress. */
+    void DisablePackCompression();
+
+    /** What the last pack did to the textures it met. */
+    PackCompressionStats GetPackCompressionStats() const;
 
     bool CheckFileFromResources(const String& path); //!< Checks the given file in first resource path than in pak file.
     void GetRelativeResourcesPath(String& path);     //!< Converts the path, relative to the Resources folder.
@@ -83,7 +122,18 @@ namespace ToolKit
     void GetAllUsedResourcePaths();
 
     bool ZipPack(const String& zipName);
-    bool AddFileToZip(ZipFile zfile, const char* filename);
+    bool AddFileToZip(ZipFile zfile, const char* filename, const std::vector<ubyte>* encoded = nullptr);
+
+    /**
+     * Encodes one resource for the pak, if it is a texture that should be compressed.
+     *
+     * Fills `encoded` with the container bytes; leaves it empty when the file needs no compression
+     * or the encode failed. ZipPack calls this on a pool and hands the result to AddFileToZip, so
+     * the encode - which is seconds per texture - runs off the pack loop's thread.
+     *
+     * @return True when `encoded` holds container bytes.
+     */
+    bool EncodeForPack(const String& filename, std::vector<ubyte>& encoded);
 
     void GetAllPaths(const String& path);
     void GetExtraFilePaths();
@@ -102,11 +152,32 @@ namespace ToolKit
     void GenerateOffsetTableForPakFiles();
     bool IsFileInPak(const String& filename);
 
+    /** True when the pack step should encode this file instead of storing it as it is. */
+    bool ShouldCompressForPack(const String& filename);
+
+    /**
+     * Fills m_packDataTextures from the materials the pack just loaded, so a normal or
+     * metallic-roughness map is encoded as data (UASTC, linear) even though the pack step itself has
+     * no material slot to consult.
+     */
+    void CollectDataTexturePaths();
+
+    /** Size on disk, for the pack summary. */
+    uint64 GetFileSize(const String& filename);
+
    private:
     StringSet m_allPaths;
     std::unordered_map<String, std::pair<uint64, uint>> m_zipFilesOffsetTable;
     bool m_offsetTableCreated = false;
     ZipFile m_zfile           = nullptr;
+
+    /** Pack step texture compression (see SetPackCompressionOptions). */
+    TextureCompressionOptions m_packCompression;
+    bool m_compressTexturesInPack = false;
+    PackCompressionStats m_packStats;
+
+    /** Normalized, lower case paths the loaded materials use as normal / metallic-roughness maps. */
+    StringSet m_packDataTextures;
 
    public:
     bool m_ignorePakFile = false;

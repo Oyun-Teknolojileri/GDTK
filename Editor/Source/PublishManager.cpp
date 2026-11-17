@@ -121,7 +121,32 @@ namespace ToolKit
         };
       }
 
-      GetApp()->ExecSysCommand({packerPath}, isAsync, true, afterPackFn);
+      GetApp()->ExecSysCommand(PackerCommand(packerPath, PublishConfig::Debug, true), isAsync, true, afterPackFn);
+    }
+
+    StringArray PublishManager::PackerCommand(const String& packerPath,
+                                              PublishConfig publishConfig,
+                                              bool packOnly) const
+    {
+      StringArray argv = {packerPath};
+
+      // Pack only mode is the Pack Resources action: it exists to pack, so it always asks for it.
+      const App* app = GetApp();
+      const bool pack = packOnly || (publishConfig == PublishConfig::Debug ? app->m_packOnDebug
+                                       : publishConfig == PublishConfig::Develop ? app->m_packOnDevelop
+                                                                                 : app->m_packOnDeploy);
+
+      if (pack)
+      {
+        argv.push_back("--pack");
+      }
+
+      if (!app->m_compressTextures)
+      {
+        argv.push_back("--no-compress");
+      }
+
+      return argv;
     }
 
     void PublishManager::Pack()
@@ -162,7 +187,7 @@ namespace ToolKit
         m_isBuilding = false;
       };
 
-      GetApp()->ExecSysCommand({packerPath}, true, true, afterPackFn);
+      GetApp()->ExecSysCommand(PackerCommand(packerPath, PublishConfig::Debug, true), true, true, afterPackFn);
     }
 
     String PublishManager::ConstructPublishArgs(PublishPlatform platform, PublishConfig publishConfig, bool packOnly)

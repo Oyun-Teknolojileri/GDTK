@@ -1022,6 +1022,14 @@ namespace ToolKit
           importArgv.push_back(String("-o"));
           importArgv.push_back(std::to_string(UI::ImportData.optimize));
 
+          // The import dialog's own switch, not the publish settings: a single import may have to
+          // keep the source images while a publish still packs compressed, and the other way round.
+          if (!UI::ImportData.CompressTextures)
+          {
+            importArgv.push_back(String("-tex"));
+            importArgv.push_back(String("none"));
+          }
+
           // Execute command
           result = ExecSysCommand(importArgv, false, false);
           if (result != 0)
@@ -1734,6 +1742,15 @@ namespace ToolKit
         WriteAttr(setNode, docPtr, "maximized", std::to_string(maximized));
         WriteAttr(setNode, docPtr, "theme", std::to_string((int) UI::GetCurrentTheme()));
 
+        // Publish -> Packer. The Packer no longer decides by config on its own: a publish tells it
+        // --pack when the setting for that config is on, and --no-compress when the images should
+        // ship as they are. Deploy defaults to on because that is the build that ships.
+        XmlNode* packerNode = CreateXmlNode(docPtr, "Packer", settings);
+        WriteAttr(packerNode, docPtr, "debug", std::to_string(m_packOnDebug));
+        WriteAttr(packerNode, docPtr, "develop", std::to_string(m_packOnDevelop));
+        WriteAttr(packerNode, docPtr, "deploy", std::to_string(m_packOnDeploy));
+        WriteAttr(packerNode, docPtr, "compress", std::to_string(m_compressTextures));
+
         // The scene this project was left on. It belongs here, in the project's own
         // Config/Editor.settings, and not in the user's Workspace.settings: that file
         // only records which workspace and project are open, and the editor rewrites it
@@ -1854,6 +1871,16 @@ namespace ToolKit
             String scene;
             ReadAttr(sceneNode, "path", scene);
             m_workspace->SetScene(scene);
+          }
+
+          // Publish -> Packer. A settings file without the node keeps the defaults the members
+          // carry, so an editor that predates it starts with "pack on deploy, compress textures".
+          if (XmlNode* packerNode = settings->first_node("Packer"))
+          {
+            ReadAttr(packerNode, "debug", m_packOnDebug);
+            ReadAttr(packerNode, "develop", m_packOnDevelop);
+            ReadAttr(packerNode, "deploy", m_packOnDeploy);
+            ReadAttr(packerNode, "compress", m_compressTextures);
           }
         }
 

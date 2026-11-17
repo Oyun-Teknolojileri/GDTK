@@ -328,6 +328,7 @@ if(NOT EMSCRIPTEN AND NOT ANDROID)
   find_package(zstd     REQUIRED CONFIG)
   find_package(assimp   REQUIRED CONFIG)
   find_package(imgui    REQUIRED CONFIG)
+  find_package(basisu   REQUIRED CONFIG)
 endif()
 
 # --------------------------------------------------------------------------- #

@@ -258,6 +258,7 @@ namespace ToolKit
   static const String BMP(".bmp");
   static const String PSD(".psd");
   static const String HDR(".hdr");
+  static const String KTX2(".ktx2");
   static const String WAW(".waw");
   static const String MP3(".mp3");
 
@@ -430,6 +431,38 @@ namespace ToolKit
         return 1;
     }
   }
+
+  /**
+   * A GPU block compressed texture format, named after the layout of the data rather than the API
+   * that uploads it: the same BC7 blocks go to GL_COMPRESSED_RGBA_BPTC_UNORM through OpenGL and to
+   * a BC7 VkFormat through Vulkan.
+   *
+   * None means the texture carries no block data at all; its pixels live in Texture::m_image.
+   */
+  enum class CompressedFormat : ubyte
+  {
+    None = 0,
+    BC1,
+    BC3,
+    BC5,
+    BC7,
+    ETC2_RGB,
+    ETC2_RGBA,
+    ASTC_4x4
+  };
+
+  /**
+   * One mip level of GPU ready texture data, either block compressed or plain 8 bit RGBA.
+   *
+   * Width / Height are the source dimensions. A block compressed level's buffer is
+   * ceil(width / 4) * ceil(height / 4) blocks, so its size is not width * height * bpp.
+   */
+  struct TextureLevel
+  {
+    int Width  = 0;
+    int Height = 0;
+    std::vector<ubyte> Data;
+  };
 
   // String defines.
   static const String TKBrdfLutTexture        = "GLOBAL_BRDF_LUT_TEXTURE";

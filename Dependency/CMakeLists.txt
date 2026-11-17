@@ -5,21 +5,23 @@ project(ToolKitDependencies)
 
 #---- WEB (EMSCRIPTEN) ----
 #
-# A web build needs exactly two compiled dependencies: minizip (zip / pak
-# access) and the zstd it decompresses with. SDL2 comes from emscripten's own
-# port (-sUSE_SDL=2), and the desktop-only libraries below (imgui, assimp) are
+# A web build needs exactly three compiled dependencies: minizip (zip / pak
+# access), the zstd it decompresses with, and the Basis Universal transcoder
+# that reads KTX2 textures. SDL2 comes from emscripten's own port (-sUSE_SDL=2),
+# and the desktop-only libraries below (imgui, assimp, the basisu encoder) are
 # not part of a web game: ToolKit does not reference them, only the editor /
-# launcher / importer do.
+# launcher / importer / packer do.
 #
 # The web tree is always configured as a subproject of a game project, so the
 # artifacts stay in that project's build tree instead of the engine's
 # Dependency/Intermediate tree, which only holds prebuilt desktop artifacts.
 if(ANDROID)
-    # An Android build needs the same two compiled libraries as the web one (minizip for the pak,
-    # zstd for the compression method it uses) plus SDL2 itself: the NDK has no emscripten style
-    # port, so the vendored source is compiled here with the Android backends SDL2 enables on its
-    # own (SDL_VIDEO_DRIVER_ANDROID, SDL_AUDIODRIVER_OPENSLES / AAUDIO). Everything else is header
-    # only (glm, stb, RapidXml, poolstl, glad) and needs no build step.
+    # An Android build needs the same compiled libraries as the web one (minizip for the pak, zstd
+    # for the compression method it uses, the Basis Universal transcoder for KTX2 textures) plus
+    # SDL2 itself: the NDK has no emscripten style port, so the vendored source is compiled here
+    # with the Android backends SDL2 enables on its own (SDL_VIDEO_DRIVER_ANDROID,
+    # SDL_AUDIODRIVER_OPENSLES / AAUDIO). Everything else is header only (glm, stb, RapidXml,
+    # poolstl, glad) and needs no build step.
     set(TK_DEPENDECY_OUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/lib")
     set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${TK_DEPENDECY_OUT_DIR}")
     set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${TK_DEPENDECY_OUT_DIR}")
@@ -55,6 +57,17 @@ if(ANDROID)
     set(SDL_TEST OFF CACHE BOOL "" FORCE)
     set(SDL_TESTS OFF CACHE BOOL "" FORCE)
     add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/SDL2 ${CMAKE_CURRENT_BINARY_DIR}/SDL2)
+
+    # Basis Universal transcoder only -- the engine's KTX2 reader. The encoder is
+    # a host tool feature and never enters a game payload. See the desktop basisu
+    # block further down for why KTX2 zstd is off.
+    add_library(basisu_transcoder STATIC
+        ${CMAKE_CURRENT_LIST_DIR}/basis_universal/transcoder/basisu_transcoder.cpp)
+    target_include_directories(basisu_transcoder PUBLIC
+        ${CMAKE_CURRENT_LIST_DIR}/basis_universal/transcoder)
+    target_compile_definitions(basisu_transcoder PUBLIC
+        BASISD_SUPPORT_KTX2=1
+        BASISD_SUPPORT_KTX2_ZSTD=0)
 
     return()
 endif()
@@ -92,6 +105,17 @@ if(EMSCRIPTEN)
     if(TARGET libzstd_static AND NOT TARGET zstd)
         add_library(zstd ALIAS libzstd_static)
     endif()
+
+    # Basis Universal transcoder only -- the engine's KTX2 reader. The encoder is
+    # a host tool feature and never enters the wasm. See the desktop basisu block
+    # further down for why KTX2 zstd is off.
+    add_library(basisu_transcoder STATIC
+        ${CMAKE_CURRENT_LIST_DIR}/basis_universal/transcoder/basisu_transcoder.cpp)
+    target_include_directories(basisu_transcoder PUBLIC
+        ${CMAKE_CURRENT_LIST_DIR}/basis_universal/transcoder)
+    target_compile_definitions(basisu_transcoder PUBLIC
+        BASISD_SUPPORT_KTX2=1
+        BASISD_SUPPORT_KTX2_ZSTD=0)
 
     return()
 endif()
@@ -170,7 +194,7 @@ if (NOT ${SKIP_ASSIMP})
     # / assimpd-vc143-mt.lib). That breaks downstream projects whenever the
     # MSVC toolset changes (vc142 <-> vc143 <-> vc14x). The Import project links
     # against the unsuffixed "assimp.lib" / "assimpd.lib", so we override the
-    # output name here, on the wrapper level only — assimp's own CMakeLists
+    # output name here, on the wrapper level only -- assimp's own CMakeLists
     # files are NOT modified. Platform-specific prefixes/suffixes (.lib/.dll on
     # Windows, .a/.so + SONAME on Linux/macOS, .a/.bc on Emscripten) are still
     # applied by CMake automatically; we only strip the *internal* suffix.
@@ -188,6 +212,60 @@ if (NOT ${SKIP_ASSIMP})
             COMPILE_PDB_NAME_DEBUG   "assimpd"
         )
     endif()
+endif()
+
+#---- BASIS UNIVERSAL (KTX2 transcoder + GPU texture encoder) ----#
+#
+# One basisu static library per platform, never two:
+#
+#   desktop    basisu_encoder -- upstream's library, which already contains
+#              transcoder/basisu_transcoder.cpp (upstream CMakeLists.txt:259).
+#              Linking it gives ToolKit the transcoder and the encoder from a
+#              single archive, so there is no way to end up with two copies of
+#              the basist symbols inside libToolKit.
+#   Web/Android a transcoder-only target built in the early-return blocks at
+#              the top of this file (see there). The encoder is a host tool
+#              feature; a game payload has no use for it.
+#
+# BASISU_ZSTD=OFF is not a size optimisation. basisu compiles zstd into the same
+# static library and ToolKit already links zstd through minizip, so a second
+# copy of ZSTD_* inside one shared library is a duplicate symbol error on MSVC.
+# The pak applies zstd to every entry anyway, which leaves KTX2 supercompression
+# with nothing to gain for shipped data. Upstream's own comment requires the
+# matching BASISD_SUPPORT_KTX2_ZSTD=0 define, which this switch sets (see
+# basis_universal/CMakeLists.txt:435).
+#
+# The CLI and the examples are not part of the engine: they stay out of ALL and
+# their runtime output is redirected, so building one never writes into the
+# submodule working tree (upstream points CMAKE_RUNTIME_OUTPUT_DIRECTORY at
+# <source>/bin).
+set(BASISU_DIR "${CMAKE_CURRENT_LIST_DIR}/basis_universal")
+set(BASISU_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(BASISU_OPENCL OFF CACHE BOOL "" FORCE)
+set(BASISU_ZSTD OFF CACHE BOOL "" FORCE)
+set(BASISU_SAN OFF CACHE BOOL "" FORCE)
+set(BASISU_BUILD_PYTHON OFF CACHE BOOL "" FORCE)
+set(CMAKE_DEBUG_POSTFIX d)
+add_subdirectory(${BASISU_DIR} ${CMAKE_CURRENT_LIST_DIR}/Intermediate/${TK_PLATFORM}/basis_universal)
+
+if(TARGET basisu_encoder)
+    set_target_properties(basisu_encoder PROPERTIES
+        OUTPUT_NAME              "basisu_encoder"
+        ARCHIVE_OUTPUT_NAME      "basisu_encoder"
+        ARCHIVE_OUTPUT_DIRECTORY "${TK_DEPENDECY_OUT_DIR}"
+        LIBRARY_OUTPUT_DIRECTORY "${TK_DEPENDECY_OUT_DIR}"
+        RUNTIME_OUTPUT_DIRECTORY "${TK_DEPENDECY_OUT_DIR}"
+    )
+endif()
+
+if(TARGET basisu)
+    # Upstream points CMAKE_RUNTIME_OUTPUT_DIRECTORY at <source>/bin, and a multi-config generator
+    # bakes that into the per-config properties at target creation, so the generic property below
+    # is not enough: building the CLI would drop its binary into the submodule working tree.
+    set_target_properties(basisu PROPERTIES EXCLUDE_FROM_ALL TRUE)
+    foreach(_basisu_cfg DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
+        set_target_properties(basisu PROPERTIES RUNTIME_OUTPUT_DIRECTORY_${_basisu_cfg} "${TK_DEPENDECY_OUT_DIR}")
+    endforeach()
 endif()
 
 #---- SDL2 ----#

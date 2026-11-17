@@ -15,16 +15,31 @@
 #include "RenderSystem.h"
 #include "Scene.h"
 #include "Shader.h"
+#include "Threads.h"
 #include "ToolKit.h"
 
 #include <mz.h>
 #include <unzip.h>
 #include <zip.h>
 
+#include <algorithm>
+
 #include "DebugNew.h"
 
 namespace ToolKit
 {
+
+  namespace
+  {
+    /**
+     * Containers held in memory while the pack encodes a window of files.
+     *
+     * The window is the memory bound: an encoded 2K container is megabytes, and the writer only
+     * holds one window at a time.
+     */
+    constexpr size_t PackEncodeWindow = 32;
+  } // namespace
+
   FileManager::FileManager() {}
 
   FileManager::~FileManager()
@@ -43,6 +58,11 @@ namespace ToolKit
       unzClose(m_zfile);
       m_zfile = nullptr;
     }
+
+    // The table describes one pak. Once the handle is gone the table is stale, and a pack that
+    // rewrote the pak while this process runs has to be able to read the new one back.
+    m_zipFilesOffsetTable.clear();
+    m_offsetTableCreated = false;
   }
 
   XmlFilePtr FileManager::GetXmlFile(const String& filePath)
@@ -67,6 +87,56 @@ namespace ToolKit
     ImageFileInfo fileInfo = {path, x, y, comp, reqComp};
     FileDataType data      = GetFile(FileType::ImageFloat, fileInfo);
     return std::get<float*>(data);
+  }
+
+  bool FileManager::ReadFileBuffer(const String& filePath, std::vector<ubyte>& out)
+  {
+    out.clear();
+
+    String relativePath = filePath;
+    GetRelativeResourcesPath(relativePath);
+
+    if (!m_zfile && !m_ignorePakFile)
+    {
+      String pakPath = ConcatPaths({ResourceParentPath(), TKResourcePak});
+      if (CheckSystemFile(pakPath))
+      {
+        m_zfile = unzOpen(pakPath.c_str());
+      }
+    }
+
+    if (m_zfile && !m_ignorePakFile)
+    {
+      GenerateOffsetTableForPakFiles();
+
+      uint bufferSize   = 0;
+      ubyte* fileBuffer = ReadFileBufferFromZip(m_zfile, relativePath, bufferSize);
+      if (fileBuffer == nullptr)
+      {
+        return false;
+      }
+
+      out.assign(fileBuffer, fileBuffer + bufferSize);
+      SafeDelArray(fileBuffer);
+      return true;
+    }
+
+    std::ifstream file(filePath, std::ios::binary | std::ios::ate);
+    if (!file.is_open())
+    {
+      return false;
+    }
+
+    const std::streamoff size = file.tellg();
+    if (size <= 0)
+    {
+      return false;
+    }
+
+    out.resize((size_t) size);
+    file.seekg(0, std::ios::beg);
+    file.read(reinterpret_cast<char*>(out.data()), size);
+    return file.good();
   }
 
   FileManager::FileDataType FileManager::GetFile(FileType fileType, ImageFileInfo& fileInfo)
@@ -164,6 +234,11 @@ namespace ToolKit
   {
     String zipFile = ConcatPaths({ResourceParentPath(), TKResourcePak});
 
+    // The pak is about to be replaced: drop the handle and the offset table that describes the old
+    // one, or anything reading the resources later in this process keeps looking at a file that is
+    // gone.
+    CloseZipFile();
+
     if (CheckSystemFile(zipFile.c_str()))
     {
       if (m_zfile)
@@ -190,6 +265,11 @@ namespace ToolKit
     // Get all paths of resources
     TK_LOG("Getting all used paths\n");
     GetAllUsedResourcePaths();
+
+    // Which of those paths are data maps. The pack step has no material slot to look at, but the
+    // materials it just loaded know what they use a texture for, and a normal map compressed as
+    // colour is the one mistake this pipeline must not make on its own.
+    CollectDataTexturePaths();
 
     // Zip used resources
     if (!ZipPack(zipFile))
@@ -424,12 +504,49 @@ namespace ToolKit
       return false;
     }
 
-    // Add files to zip
-    for (const String& path : m_allPaths)
+    // The pack loop cost is dominated by texture encoding, which is seconds per image and used to
+    // run inline: a project that still ships plain images spent all of its time with one core busy.
+    // Paths are taken in windows, the window is encoded on a pool, and the window is then written in
+    // order - the writer is the only thread that touches the zip, and memory stays bounded because a
+    // window holds at most PackEncodeWindow containers.
+    std::vector<String> paths(m_allPaths.begin(), m_allPaths.end());
+    std::vector<std::vector<ubyte>> encodedWindow(PackEncodeWindow);
+
+    for (size_t begin = 0; begin < paths.size(); begin += PackEncodeWindow)
     {
-      if (!AddFileToZip(zFile, path.c_str()))
+      const size_t end = std::min(begin + PackEncodeWindow, paths.size());
+
+      for (std::vector<ubyte>& slot : encodedWindow)
       {
-        TK_WRN("Failed to add this file to zip: %s\n", path.c_str());
+        slot.clear();
+      }
+
+      // The engine's bulk pool decides the width; the loop itself only walks the window.
+      std::for_each(TKExecBy(WorkerManager::BulkPool),
+                    paths.begin() + (std::ptrdiff_t) begin,
+                    paths.begin() + (std::ptrdiff_t) end,
+                    [this, begin, &paths, &encodedWindow](const String& path)
+                    {
+                      const size_t index = (size_t) (&path - paths.data());
+                      if (ShouldCompressForPack(path))
+                      {
+                        EncodeForPack(path, encodedWindow[index - begin]);
+                      }
+                    });
+
+      for (size_t index = begin; index < end; ++index)
+      {
+        // Only hand the window result over when this file was a compression candidate; nullptr means
+        // "decide for yourself", and an empty vector means "tried and failed", which must not be
+        // retried with a second multi second encode.
+        const std::vector<ubyte>* encoded = ShouldCompressForPack(paths[index])
+                                                ? &encodedWindow[index - begin]
+                                                : nullptr;
+
+        if (!AddFileToZip(zFile, paths[index].c_str(), encoded))
+        {
+          TK_WRN("Failed to add this file to zip: %s\n", paths[index].c_str());
+        }
       }
     }
 
@@ -438,75 +555,214 @@ namespace ToolKit
     return true;
   }
 
-  bool FileManager::AddFileToZip(ZipFile zfile, const char* filename)
+  bool FileManager::EncodeForPack(const String& filename, std::vector<ubyte>& encoded)
   {
-    FILE* f;
-    int ret;
-    size_t red;
-    size_t flen;
+    encoded.clear();
 
+    if (!ShouldCompressForPack(filename.c_str()))
+    {
+      return false;
+    }
+
+    // A data map takes the UASTC/linear settings: the pack step has no slot to read, but the
+    // materials it just loaded said which files are used as normal and metallic-roughness maps.
+    TextureCompressionOptions options = m_packCompression;
+    if (m_packDataTextures.count(ToLower(NormalizePath(filename))) > 0)
+    {
+      options.Format    = TextureCompressionOptions::Codec::UASTC;
+      options.Srgb      = false;
+      options.NormalMap = false;
+    }
+
+    return CompressFileToMemory(filename, options, encoded) && !encoded.empty();
+  }
+
+  bool FileManager::AddFileToZip(ZipFile zfile, const char* filename, const std::vector<ubyte>* preEncoded)
+  {
     if (zfile == NULL || filename == NULL)
     {
       return false;
     }
 
-    f = fopen(filename, "rb");
-    if (f == NULL)
-    {
-      return false;
-    }
-
-    // Get length of the file
-    std::basic_ifstream<char> stream(filename, std::ios::binary);
-    if (!stream)
-    {
-      return false;
-    }
-    stream.unsetf(std::ios::skipws);
-    stream.seekg(0, std::ios::end); // Determine stream size
-    flen               = stream.tellg();
-
     String filenameStr = String(filename);
     size_t index       = filenameStr.find("Resources");
-    if (index != String::npos)
-    {
-      constexpr int length = sizeof("Resources");
-      filenameStr          = filenameStr.substr(index + length);
-    }
-    else
+    if (index == String::npos)
     {
       TK_ERR("Resource is not under resources path: %s", filename);
       return false;
     }
 
+    constexpr int length = sizeof("Resources");
+    filenameStr          = filenameStr.substr(index + length);
+
+    // A texture that never went through Import still ships compressed: the encoded bytes replace the
+    // file's own bytes under the same entry name, which is what keeps every material reference in the
+    // pak valid (the runtime sniffs the container, not the extension).
+    std::vector<ubyte> owned;
+    const std::vector<ubyte>* encoded = preEncoded;
+
+    if (encoded == nullptr && ShouldCompressForPack(filename))
+    {
+      EncodeForPack(filename, owned);
+      encoded = &owned;
+    }
+
+    std::vector<ubyte> raw;
+    const char* data     = nullptr;
+    size_t dataLength    = 0;
+    uint64 originalBytes = 0;
+
+    if (encoded != nullptr && !encoded->empty())
+    {
+      data          = reinterpret_cast<const char*>(encoded->data());
+      dataLength    = encoded->size();
+      originalBytes = GetFileSize(filename);
+
+      m_packStats.Encoded++;
+      m_packStats.InputBytes += originalBytes;
+      m_packStats.OutputBytes += dataLength;
+
+      TK_LOG("Packed compressed: %s (%llu -> %zu bytes)", filenameStr.c_str(), originalBytes, dataLength);
+    }
+    else if (encoded != nullptr)
+    {
+      m_packStats.Failed++;
+      TK_WRN("Could not compress %s, packing the file as it is.", filename);
+    }
+
+    if (data == nullptr)
+    {
+      std::basic_ifstream<char> stream(filename, std::ios::binary);
+      if (!stream)
+      {
+        return false;
+      }
+      stream.unsetf(std::ios::skipws);
+      stream.seekg(0, std::ios::end); // Determine stream size
+      const size_t flen = (size_t) stream.tellg();
+
+      stream.seekg(0, std::ios::beg);
+      raw.resize(flen);
+      stream.read(reinterpret_cast<char*>(raw.data()), (std::streamsize) flen);
+      if (!stream.good() && !stream.eof())
+      {
+        return false;
+      }
+
+      data       = reinterpret_cast<const char*>(raw.data());
+      dataLength = raw.size();
+    }
+
     // Compression level is -1 which is default, use 0 for no compression, 1 for best speed.
-    ret =
-        zipOpenNewFileInZip64(zfile, filenameStr.c_str(), NULL, NULL, 0, NULL, 0, NULL, MZ_COMPRESS_METHOD_ZSTD, -1, 0);
+    const int ret = zipOpenNewFileInZip64(zfile,
+                                          filenameStr.c_str(),
+                                          NULL,
+                                          NULL,
+                                          0,
+                                          NULL,
+                                          0,
+                                          NULL,
+                                          MZ_COMPRESS_METHOD_ZSTD,
+                                          -1,
+                                          0);
 
     if (ret != ZIP_OK)
     {
-      fclose(f);
       zipCloseFileInZip(zfile);
       return false;
     }
 
-    char* fileData = reinterpret_cast<char*>(malloc((flen + 1) * static_cast<uint>(sizeof(char))));
-    red            = fread(fileData, 1, flen, f);
-    ret            = zipWriteInFileInZip(zfile, fileData, static_cast<uint>(flen));
-
-    if (ret != ZIP_OK)
+    if (zipWriteInFileInZip(zfile, data, static_cast<uint>(dataLength)) != ZIP_OK)
     {
-      fclose(f);
       zipCloseFileInZip(zfile);
       return false;
     }
 
-    free(fileData);
-    fclose(f);
     zipCloseFileInZip(zfile);
 
     return true;
   }
+
+  void FileManager::SetPackCompressionOptions(const TextureCompressionOptions& options)
+  {
+    m_packCompression     = options;
+    m_compressTexturesInPack = true;
+  }
+
+  void FileManager::DisablePackCompression() { m_compressTexturesInPack = false; }
+
+  bool FileManager::ShouldCompressForPack(const String& filename)
+  {
+    if (!m_compressTexturesInPack)
+    {
+      return false;
+    }
+
+    String ext;
+    DecomposePath(filename, nullptr, nullptr, &ext);
+    ext = ToLower(ext);
+
+    // HDRI stays float, KTX2 is already a container, and the rest of the engine's own resources
+    // (icons, splash) are tiny, so they are packed untouched.
+    if (ext == KTX2 || ext == HDR || !SupportedImageFormat(ext))
+    {
+      return false;
+    }
+
+    // Only the project's own resources. DefaultPath() is the engine's shared resource folder, which
+    // every project ships as it is.
+    const String resourceRoot = NormalizePath(ResourcePath());
+    const String filePath     = NormalizePath(filename);
+    return filePath.rfind(resourceRoot, 0) == 0;
+  }
+
+  void FileManager::CollectDataTexturePaths()
+  {
+    m_packDataTextures.clear();
+
+    auto add = [this](const TexturePtr& texture)
+    {
+      if (texture == nullptr)
+      {
+        return;
+      }
+
+      String path = texture->GetFile();
+      NormalizePathInplace(path);
+      UnixifyPath(path);
+      m_packDataTextures.insert(ToLower(path));
+    };
+
+    size_t materialCount = 0;
+    for (const auto& entry : GetMaterialManager()->m_storage)
+    {
+      MaterialPtr material = std::dynamic_pointer_cast<Material>(entry.second);
+      if (material == nullptr)
+      {
+        continue;
+      }
+
+      materialCount++;
+
+      // Normal and metallic-roughness maps hold numbers, not colour. Colour maps need no list:
+      // they are what the default options already describe.
+      add(material->GetNormalTextureVal());
+      add(material->GetMetallicRoughnessTextureVal());
+    }
+
+    TK_LOG("Packing: %zu data texture path(s) known from %zu material(s).",
+           m_packDataTextures.size(),
+           materialCount);
+  }
+
+  uint64 FileManager::GetFileSize(const String& filename)
+  {
+    std::error_code err;
+    const std::uintmax_t size = std::filesystem::file_size(filename, err);
+    return err ? 0 : (uint64) size;
+  }
+
+  FileManager::PackCompressionStats FileManager::GetPackCompressionStats() const { return m_packStats; }
 
   void FileManager::GetAllPaths(const String& path)
   {
@@ -808,6 +1064,14 @@ namespace ToolKit
     if (!m_zfile)
     {
       m_zfile = unzOpen(pakPath.c_str());
+    }
+
+    // No pak (yet). Caching an empty table here is what used to make every later read fail: a lookup
+    // during packing runs before the pak exists, and after the pack the table was already marked
+    // complete with nothing in it.
+    if (m_zfile == nullptr)
+    {
+      return;
     }
 
     if (unzGoToFirstFile(m_zfile) == UNZ_OK)
