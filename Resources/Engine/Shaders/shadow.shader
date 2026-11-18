@@ -193,20 +193,29 @@ float SampleShadow2D
 #endif
 }
 
-// Paraboloid Shadow Sampling (Point lights)
+// Omnidirectional Shadow Sampling (Point lights)
 //
-// A point light renders one map per hemisphere instead of six cube faces: the scene is projected onto
-// a paraboloid, radii divided by 1.15 so the hemisphere sits inside about 87 percent of the map and the
-// stretched rim is never read. Two maps per light is a third of the atlas a cube needed.
+// A point light renders its shadow map in one of two layouts, chosen per light and carried in
+// shadowMode, so this function has to know both:
 //
-// The render side puts the camera at the light looking along -Z and turns it half a turn about Y for the
-// other half, so the covered hemisphere always has a negative z in its view space. This mirrors that:
-// the half with a negative world z uses the direction as is, the other half negates x and z.
+//   Dual Paraboloid  one map per hemisphere, two atlas slots. The scene is projected onto a
+//                    paraboloid, radii divided by ParaboloidRimInv so the hemisphere sits inside
+//                    about 87 percent of the map and the stretched rim is never read. A third of
+//                    the atlas a cube needs, and the default.
+//   Cube Map         six maps, one per cube face, six atlas slots. Sharper - no rim to crop - and
+//                    the layout a light falls back to when it needs the quality.
+//
+// The two agree on everything after the direction is turned into (uv inside the map, slot offset
+// inside the light's run), which is where they are joined below.
 // ---------------------------------------------------------------------------
 
 // Radii are divided by this before projecting, so the hemisphere occupies about 87 percent of the map
 // and the rim, where the projection stretches without bound, stays outside the part that is sampled.
 const float ParaboloidRimInv = 0.98039216;
+
+// Matches PointShadowMode in EngineSettings.h. The project setting and a light's own override are
+// resolved on the CPU and arrive here as LightCacheItem::CommonData::shadowMode.
+const int PointShadowCubeMap = 1;
 
 float SampleShadowOmni
 (
@@ -215,6 +224,7 @@ float SampleShadowOmni
 	float shadowAtlasResRatio,
 	int shadowAtlasLayer,
 	vec3 dir,
+	int shadowMode,
 	float texelSize,
 	float currDepth,
 	float LBR,
@@ -226,35 +236,61 @@ float SampleShadowOmni
 
 	vec3 d = normalize(dir);
 
-	// Which map holds this half, and what the direction looks like in that map's own frame.
-	//
-	// The engine camera looks along +Z when it has no rotation, and its view flips z, so slot 0 - drawn
-	// with no rotation - holds the half where the world z of the direction is positive, with z flipped.
-	// Slot 1 is drawn with the camera turned half a turn about Y, which flips x instead. Getting this
-	// backwards leaves x and y looking right while the shadow follows the light along z, because the
-	// wrong half only mirrors z.
-	int side = d.z >= 0.0 ? 0 : 1;
-	vec3 v = side == 0 ? vec3(d.x, d.y, -d.z) : vec3(-d.x, d.y, d.z);
+	// Where inside its map this direction lands, and which map of the light's run holds it.
+	vec2 uvInMap;
+	int slotOffset;
 
-	// Same projection as the shadow vertex shader, rim scale included.
-	//
-	// The rows are read back mirrored: the shadow pass writes the map through the light's camera view,
-	// whose vertical axis is the reverse of the one this sampler builds its direction in (the same
-	// reversal the cube path had to compensate for). Without it the shadow follows the light when the
-	// light is moved up or down instead of sliding the other way along the wall.
-	float denom = max(1.0 - v.z, 1e-4);
-	vec2 proj = (v.xy / denom) * ParaboloidRimInv;
-	vec2 uvInMap = proj * 0.5 + 0.5;
-	uvInMap.y = 1.0 - uvInMap.y;
+	if (shadowMode == PointShadowCubeMap)
+	{
+		// One map per face: UVWToUVLayer picks the dominant axis of the direction and returns the uv
+		// to read with the face in z.
+		vec3 faceUv = UVWToUVLayer(d);
+		#ifdef VULKAN
+		// Vulkan stores V=0 at the top, the negative viewport height trick flips the rendered image
+		// relative to OpenGL, and UVWToUVLayer answers in the OpenGL convention.
+		faceUv.y = 1.0 - faceUv.y;
+		#endif
+
+		uvInMap = faceUv.xy;
+		slotOffset = int(faceUv.z);
+	}
+	else
+	{
+		// Paraboloid: the render side puts the camera at the light looking along -Z and turns it half a
+		// turn about Y for the other half, so the covered hemisphere always has a negative z in that
+		// map's view space. This mirrors that.
+		//
+		// The engine camera looks along +Z when it has no rotation, and its view flips z, so slot 0 -
+		// drawn with no rotation - holds the half where the world z of the direction is positive, with z
+		// flipped. Slot 1 is drawn with the camera turned half a turn about Y, which flips x instead.
+		// Getting this backwards leaves x and y looking right while the shadow follows the light along
+		// z, because the wrong half only mirrors z.
+		int side = d.z >= 0.0 ? 0 : 1;
+		vec3 v = side == 0 ? vec3(d.x, d.y, -d.z) : vec3(-d.x, d.y, d.z);
+
+		// Same projection as the shadow vertex shader, rim scale included.
+		//
+		// The rows are read back mirrored: the shadow pass writes the map through the light's camera
+		// view, whose vertical axis is the reverse of the one this sampler builds its direction in. The
+		// cube path above compensates for the same reversal, but on Vulkan only, and the two layouts
+		// cannot share the correction: without it here the shadow follows the light when the light is
+		// moved up or down instead of sliding the other way along the wall.
+		float denom = max(1.0 - v.z, 1e-4);
+		vec2 proj = (v.xy / denom) * ParaboloidRimInv;
+		uvInMap = proj * 0.5 + 0.5;
+		uvInMap.y = 1.0 - uvInMap.y;
+
+		slotOffset = side;
+	}
 
 	// Face 0's slot index from its pixel coordinate, then the absolute atlas coordinate of
-	// (baseIndex + side): the two hemispheres are consecutive slots.
+	// (baseIndex + slotOffset): a light's maps are one run of consecutive slots.
 	float mapsPerRow = floor(graphicConstants.shadowAtlasSize / shadowMapSize);
 	int baseIndex = int(startCoord.y / shadowMapSize) * int(mapsPerRow) + int(startCoord.x / shadowMapSize);
 
 	int layer = 0;
 	vec2 coord = vec2(0.0);
-	ShadowAtlasLut(shadowMapSize, vec2(0.0), baseIndex + side, layer, coord);
+	ShadowAtlasLut(shadowMapSize, vec2(0.0), baseIndex + slotOffset, layer, coord);
 	coord /= graphicConstants.shadowAtlasSize;
 
 	layer += shadowAtlasLayer;

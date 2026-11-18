@@ -149,6 +149,7 @@ float CalculatePointShadow
 	vec2 shadowAtlasCoord,
 	float shadowAtlasResRatio,
 	int shadowAtlasLayer,
+	int shadowMode,
 	float lightBleedReduction,
 	float shadowBias,
 	float precomputedDist
@@ -166,6 +167,7 @@ float CalculatePointShadow
 		shadowAtlasResRatio,
 		shadowAtlasLayer,
 		lightToFrag,
+		shadowMode,
 		texelSize,
 		currFragDepth,
 		lightBleedReduction,
@@ -397,6 +399,7 @@ vec3 PBRLighting
 				light.shadowAtlasCoord,
 				resRatio,
 				light.shadowAtlasLayer,
+				light.shadowMode,
 				light.bleedingReduction,
 				light.shadowBias,
 				lightDistance

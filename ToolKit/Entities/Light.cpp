@@ -265,8 +265,12 @@ namespace ToolKit
     data->castShadow          = GetCastShadowVal() && HasValidShadowSlot();
     data->shadowBias          = GetShadowBiasVal() * RHIConstants::ShadowBiasMultiplier;
     data->bleedingReduction   = GetBleedingReductionVal();
+
+    // Only a point light has a choice of shadow map layout; the shader reads the field from a point
+    // light's data only, and PointLight::GetCacheItem overwrites it with the resolved mode.
+    data->shadowMode          = (int) PointShadowMode::DualParaboloid;
     data->pad0                = 0.0f;
-    data->pad1                = 0.0f;
+
     float atlasSize           = (float) GetEngineSettings().m_graphics->m_shadows->GetShadowAtlasResolution();
     data->shadowAtlasResRatio = m_shadowResolution / atlasSize;
     data->shadowAtlasLayer    = m_shadowAtlasLayers[0];
@@ -666,6 +670,11 @@ namespace ToolKit
     m_lightCacheItem.data.radius       = GetRadiusVal();
     m_lightCacheItem.data.sourceRadius = GetSourceRadiusVal();
 
+    // The layout the shadow pass renders this light with, and therefore the sampler path the shading
+    // shader has to take. Resolved here, so the render side and the sample side cannot disagree.
+    m_lightCacheItem.data.shadowMode =
+        GetEngineSettings().m_graphics->m_shadows->GetResolvedPointShadowMode(GetForceCubemapShadowVal());
+
     m_lightCacheItem.Validate();
 
     return m_lightCacheItem;
@@ -690,6 +699,14 @@ namespace ToolKit
 
     Radius_Define(3.0f, "Light", 90, true, true, {false, true, 0.1f, 100000.0f, 0.3f});
     SourceRadius_Define(0.0f, "Light", 90, true, true, {false, true, 0.0f, 1000.0f, 0.01f});
+
+    // Off by default, so a light follows the project's PointShadowMode until someone asks otherwise.
+    ForceCubemapShadow_Define(false, "Light", 90, true, true, Animatable({true}));
+  }
+
+  bool PointLight::IsCubemapShadow() const
+  {
+    return GetEngineSettings().m_graphics->m_shadows->PointShadowUsesCubemap(GetForceCubemapShadowVal());
   }
 
   void PointLight::ParameterEventConstructor()
@@ -703,6 +720,11 @@ namespace ToolKit
     // highlight is, so this one goes through the edit path: the cache item has to be rebuilt before the
     // next draw reads it.
     ParamSourceRadius().m_onValueChangedFn.push_back([this](Value&, Value&) -> void { ParameterEdited(); });
+
+    // Switching the layout changes both what the shader samples and how many atlas slots the light
+    // holds, so it takes the edit path: the cache item is rebuilt with the new shadowMode and the
+    // shadow pass allocates a different sized run on the next frame.
+    ParamForceCubemapShadow().m_onValueChangedFn.push_back([this](Value&, Value&) -> void { ParameterEdited(); });
   }
 
   void PointLight::UpdateLocalBoundingBox()

@@ -25,6 +25,47 @@
 namespace ToolKit
 {
 
+  namespace
+  {
+    /**
+     * Resolves the shadow map layout of a light.
+     *
+     * The project setting picks the algorithm for point lights, and a light can ask for the cube on
+     * its own. Every other light type renders a single perspective map and answers false, which keeps
+     * the callers free of a light type test.
+     */
+    bool UseCubeShadowMap(const Light* light)
+    {
+      if (light->GetLightType() != Light::LightType::Point)
+      {
+        return false;
+      }
+
+      const ShadowSettingsPtr shadows = GetEngineSettings().m_graphics->m_shadows;
+      return shadows->PointShadowUsesCubemap(static_cast<const PointLight*>(light)->GetForceCubemapShadowVal());
+    }
+
+    /**
+     * Atlas slots a light's shadow map occupies.
+     *
+     * A point light needs one slot per map - six faces for a cube, two hemispheres for a paraboloid -
+     * a directional light one per cascade, and a spot light the single map it renders.
+     */
+    int ShadowSlotCount(const Light* light, bool cube)
+    {
+      switch (light->GetLightType())
+      {
+        case Light::LightType::Point:
+          return cube ? 6 : 2;
+        case Light::LightType::Directional:
+          return (int) GetEngineSettings().m_graphics->m_shadows->GetCascadeCountVal();
+        case Light::LightType::Spot:
+        default:
+          return 1;
+      }
+    }
+  } // namespace
+
   ShadowPass::ShadowPass() : Pass("ShadowPass")
   {
     // Order must match with TextureUtil.shader::UVWToUVLayer
@@ -292,16 +333,29 @@ namespace ToolKit
     {
       Stats::BeginGpuScope("Point Shadow Map");
 
-      // Two hemispheres, not six cube faces. The camera looks along -Z for the half where a fragment's
-      // z is negative and is turned around for the other half, which is the split the lighting shader
-      // mirrors when it samples.
-      for (int i = 0; i < 2; i++)
+      // Two layouts, same camera, different maps. A paraboloid light renders one map per hemisphere
+      // and the camera looks along -Z for the half where a fragment's z is negative and is turned
+      // around for the other half. A cube light renders the six face orientations instead, which is
+      // the same camera one face at a time. Either way the split the lighting shader mirrors when it
+      // samples is exactly this count and these orientations, so the two must not drift apart.
+      const bool cube    = UseCubeShadowMap(light);
+      const int mapCount = ShadowSlotCount(light, cube);
+
+      for (int i = 0; i < mapCount; i++)
       {
         switchToLayer(light->m_shadowAtlasLayers[i]);
 
         light->m_shadowCamera->m_node->SetTranslation(light->m_node->GetTranslation());
-        light->m_shadowCamera->m_node->SetOrientation(i == 0 ? Quaternion(1.0f, 0.0f, 0.0f, 0.0f)
-                                                             : m_paraboloidBackRotation);
+
+        if (cube)
+        {
+          light->m_shadowCamera->m_node->SetOrientation(m_cubeMapRotations[i]);
+        }
+        else
+        {
+          light->m_shadowCamera->m_node->SetOrientation(i == 0 ? Quaternion(1.0f, 0.0f, 0.0f, 0.0f)
+                                                               : m_paraboloidBackRotation);
+        }
 
         // The camera hands the renderer a cached view matrix and only rebuilds it once something has
         // invalidated the cache, which the node update does - but too late, after SetCamera has already
@@ -684,12 +738,16 @@ namespace ToolKit
     }
 
     // A point light does not cover a cone, it covers a sphere, so the light camera's 90 degree frustum
-    // dropped the casters standing near the rim of its map. The sphere is too generous in the other
-    // direction though: each map only holds one hemisphere, and a caster behind the light projects into
-    // the other map through the stretched rim, where it occludes what the front half should show. So the
-    // test is the box around the hemisphere this map covers, which is the sphere cut in half along the
-    // axis the camera looks down.
-    const bool hemisphereCull = lightType == Light::LightType::Point;
+    // dropped the casters standing near the rim of its paraboloid map. The sphere is too generous in the
+    // other direction though: each paraboloid map only holds one hemisphere, and a caster behind the light
+    // projects into the other map through the stretched rim, where it occludes what the front half should
+    // show. So the test is the box around the hemisphere this map covers, which is the sphere cut in half
+    // along the axis the camera looks down.
+    //
+    // A cube light needs none of that: each map is a 90 degree face and the camera frustum is exactly the
+    // volume that face covers, so the plain frustum test below is already correct for it.
+    const bool cubeShadowMap  = UseCubeShadowMap(light);
+    const bool hemisphereCull = lightType == Light::LightType::Point && !cubeShadowMap;
     BoundingBox hemisphereBox;
     if (hemisphereCull)
     {
@@ -728,19 +786,20 @@ namespace ToolKit
     };
 
     // Set material and program.
-    // A point light projects each hemisphere onto a paraboloid rather than rendering six cube faces,
-    // so it takes its own vertex shader: the projection is not a matrix the camera could supply.
-    const bool paraboloidShadowMap = lightType == Light::LightType::Point;
-    MaterialPtr shadowMaterial    = m_shadowMatOrtho;
-    if (paraboloidShadowMap)
+    // A paraboloid point light projects each hemisphere rather than rendering six cube faces, and the
+    // projection is not a matrix the camera could supply, so it takes its own vertex shader. A cube
+    // point light is a plain perspective camera per face and uses the same material as a spot light.
+    MaterialPtr shadowMaterial = m_shadowMatOrtho;
+    if (lightType == Light::LightType::Point)
     {
-      shadowMaterial = m_shadowMatParaboloid;
+      shadowMaterial = cubeShadowMap ? m_shadowMatPersp : m_shadowMatParaboloid;
     }
     else if (!orthogonalShadowMap)
     {
       shadowMaterial = m_shadowMatPersp;
     }
-    ShaderPtr frag             = shadowMaterial->GetFragmentShaderVal();
+
+    ShaderPtr frag = shadowMaterial->GetFragmentShaderVal();
     frag->SetDefine("DrawAlphaMasked", "0");
     ShaderPtr vert = shadowMaterial->GetVertexShaderVal();
     vert->SetDefine("DrawAlphaMasked", "0");
@@ -974,8 +1033,6 @@ namespace ToolKit
       return;
     }
 
-    const int cascadeCount = shadows->GetCascadeCountVal();
-
     // Blur each light's shadow slots grouped by atlas layer.
     for (int layerIndex = 0; layerIndex < (int) m_atlasLayerSwitchIndices.size(); layerIndex++)
     {
@@ -995,21 +1052,11 @@ namespace ToolKit
       for (int i = begin; i < end; i++)
       {
         Light* light   = m_lights[i];
-        int slotCount  = 0;
+        // Same slot count the map was rendered with, so a blur never walks past a light's own maps
+        // into the next light's. Entries the atlas did not hand out read back as layer -1 and are
+        // skipped below.
+        int slotCount  = ShadowSlotCount(light, UseCubeShadowMap(light));
         int resolution = (int) light->m_shadowResolution;
-
-        switch (light->GetLightType())
-        {
-          case Light::LightType::Directional:
-            slotCount = cascadeCount;
-            break;
-          case Light::LightType::Point:
-            slotCount = 6;
-            break;
-          case Light::LightType::Spot:
-            slotCount = 1;
-            break;
-        }
 
         for (int s = 0; s < slotCount; s++)
         {
@@ -1205,8 +1252,11 @@ namespace ToolKit
 
     for (const LocalCandidate& candidate : candidates)
     {
-      Light* light     = candidate.light;
-      const int needed = (light->GetLightType() == Light::LightType::Point) ? 2 : 1;
+      Light* light = candidate.light;
+
+      // Six slots for a cube light, two for a paraboloid one. Either way they have to be one run,
+      // because the shader finds a face or a hemisphere by stepping the slot grid from the first.
+      const int needed = ShadowSlotCount(light, UseCubeShadowMap(light));
       const uint64 id  = light->GetIdVal();
 
       ShadowAtlas::SlotInfo slots[6];

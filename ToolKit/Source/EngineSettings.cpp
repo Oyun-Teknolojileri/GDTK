@@ -67,6 +67,16 @@ namespace ToolKit
     ShadowAtlasResolution_Define(AtlasResolution1K, "ShadowSettings", 0, 0, 0);
     Use2XShadowAtlasSlots_Define(false, "ShadowSettings", 0, 0, 0);
 
+    // Project wide point light shadow algorithm. Dual Paraboloid is the default, so a project written
+    // before this setting existed keeps the layout it was authored with.
+    MultiChoiceVariant pointShadowModeMcv = {
+        {CreateMultiChoiceParameter("Dual Paraboloid", (int) PointShadowMode::DualParaboloid),
+         CreateMultiChoiceParameter("Cube Map", (int) PointShadowMode::CubeMap)},
+        0
+    };
+
+    PointShadowMode_Define(pointShadowModeMcv, "ShadowSettings", 0, true, true);
+
     MultiChoiceVariant kernelMcv = {
         {CreateMultiChoiceParameter("3x3", 3),
          CreateMultiChoiceParameter("5x5", 5),
@@ -130,6 +140,16 @@ namespace ToolKit
 
     Value tmp(0);
     m_updateGraphicConstantsFn(tmp, tmp);
+  }
+
+  bool ShadowSettings::PointShadowUsesCubemap(bool forceCubemap) const
+  {
+    if (forceCubemap)
+    {
+      return true;
+    }
+
+    return GetPointShadowModeVal().GetEnum<PointShadowMode>() == PointShadowMode::CubeMap;
   }
 
   // GraphicSettings

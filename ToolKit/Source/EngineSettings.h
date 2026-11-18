@@ -50,6 +50,20 @@ namespace ToolKit
   //////////////////////////////////////////
 
   /**
+   * How a point light renders and samples its shadow map.
+   *
+   * The values are the ABI between LightCacheItem::CommonData::shadowMode and shadow.shader, so
+   * the two have to stay in step.
+   */
+  enum class PointShadowMode : int
+  {
+    /** Two maps, each holding one hemisphere projected onto a paraboloid. Two atlas slots. */
+    DualParaboloid = 0,
+    /** Six maps, one per cube face. Six atlas slots, and the sharper of the two. */
+    CubeMap        = 1
+  };
+
+  /**
    * Shadow settings class that holds all the shadow settings.
    * It is used to configure the shadows at runtime.
    */
@@ -57,6 +71,31 @@ namespace ToolKit
   {
    public:
     TKDeclareClass(ShadowSettings, Object);
+
+    /**
+     * Resolves whether a point light renders six cube faces instead of two paraboloid maps.
+     *
+     * The project setting selects the algorithm for every point light; a light may additionally ask
+     * for the cube on its own, so one light that needs a sharper shadow does not force the whole
+     * project onto the six slot cost. The override only ever raises the quality - a light asking for
+     * a cube in a cube project is already one - so it never contradicts the project setting, it only
+     * pre-empts the paraboloid default.
+     *
+     * @param forceCubemap The light's own override, PointLight::GetForceCubemapShadowVal().
+     * @return True when the light renders and samples as a cube map.
+     */
+    bool PointShadowUsesCubemap(bool forceCubemap) const;
+
+    /**
+     * The value LightCacheItem::CommonData::shadowMode carries for a point light, which is what the
+     * shading shader branches on. Same decision as PointShadowUsesCubemap, in the encoding the UBO
+     * and the shader agree on.
+     */
+    int GetResolvedPointShadowMode(bool forceCubemap) const
+    {
+      return static_cast<int>(PointShadowUsesCubemap(forceCubemap) ? PointShadowMode::CubeMap
+                                                                   : PointShadowMode::DualParaboloid);
+    }
 
     /** Returns last cascade's shadow camera far distance. */
     float GetShadowMaxDistance() const { return GetCascadeDistancesVal()[GetCascadeCountVal() - 1]; }
@@ -160,6 +199,17 @@ namespace ToolKit
 
     /** Slot density of the dense layout that Use2XShadowAtlasSlots selects. */
     static constexpr int TwoXSlotScale    = 2;
+
+    /**
+     * Shadow map layout a point light renders with.
+     *
+     * Dual Paraboloid is the default and what the engine shipped with: two maps per light, each
+     * holding one hemisphere, so a project fits three times as many shadow casting point lights.
+     * Cube Map renders six faces and is sharper - the projection has no rim where the paraboloid
+     * stretches - but costs six atlas slots per light instead of two. A single light can override
+     * the paraboloid default on its own, see PointLight::ForceCubemapShadow.
+     */
+    TKDeclareParam(MultiChoiceVariant, PointShadowMode);
 
     /**
      * Shadow PCF filtering sample count. Controls shadow softness.

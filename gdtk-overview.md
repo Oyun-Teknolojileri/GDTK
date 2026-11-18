@@ -833,15 +833,34 @@ neither of which moves on its own. A light whose volume reaches past the last ca
 slot. One that already holds a tier gets its exact slots back while they are still free, so a light
 entering or leaving the view does not shuffle the atlas under the others.
 
-**Point light shadows are paraboloid.** Instead of six cube faces a point light renders two maps, one per
-hemisphere, with the projection done in `paraboloidDepthVert.shader` (a projection, not a camera matrix).
-Radii are divided by 1.02 so the rim, where the projection stretches without bound, is barely sampled; a
-stronger crop leaves the last band of each map empty and opens a gap along the seam. Sampling in
-`shadow.shader` picks the map by the sign of the direction's z and mirrors the axis the render side
-turned. Culling for a point light uses the box around the hemisphere that map covers: a sphere lets the
-far side project into the near map and occlude it, and the light camera's frustum is narrower than a
-hemisphere and drops the casters near the rim. Two slots per light lets three times as many point lights
-into the atlas.
+**Point light shadows have two layouts, and the project picks one.** `ShadowSettings::PointShadowMode`
+selects the algorithm for every point light; `PointLight::ForceCubemapShadow` lets one light raise its
+own quality without moving the whole project. Both resolve through
+`ShadowSettings::PointShadowUsesCubemap`, which is the single place the render side and the sample side
+ask, so they cannot disagree: the resolved `PointShadowMode` value travels to the shader in
+`LightCacheItem::CommonData::shadowMode` (an alignment slot, so the light UBO did not grow).
+
+*Dual Paraboloid* (default) renders two maps, one per hemisphere, with the projection done in
+`paraboloidDepthVert.shader` (a projection, not a camera matrix). Radii are divided by 1.02 so the rim,
+where the projection stretches without bound, is barely sampled; a stronger crop leaves the last band of
+each map empty and opens a gap along the seam. Sampling in `shadow.shader` picks the map by the sign of
+the direction's z and mirrors the axis the render side turned. Culling for a paraboloid point light uses
+the box around the hemisphere that map covers: a sphere lets the far side project into the near map and
+occlude it, and the light camera's frustum is narrower than a hemisphere and drops the casters near the
+rim. Two slots per light lets three times as many point lights into the atlas.
+
+*Cube Map* renders six faces with `perspectiveDepthVert.shader` and the face orientations in
+`ShadowPass::m_cubeMapRotations` (the same order as `UVWToUVLayer` in `textureUtil.shader`), so the
+projection is the light camera's own and no special vertex shader exists. Each face covers exactly a 90
+degree frustum, so the plain frustum cull is already correct and the hemisphere box is paraboloid only.
+Sampling goes through `UVWToUVLayer`, with a V flip on Vulkan that the paraboloid path does not need and
+cannot share. Six slots per light means three times the atlas cost for the same number of lights: the
+quarter tier holds twelve slots, so a 1K atlas fits two cube point lights against six paraboloid ones,
+and `Use2XShadowAtlasSlots` or a larger atlas is what buys the difference back.
+
+Both layouts carry their depth as the euclidean distance to the light over the far plane
+(`perspectiveDepthFrag.shader`, `paraboloidDepthVert.shader`), which is why one sampler body fits both
+and only the direction-to-map-UV step differs.
 
 
 ### 4.5 Renderer (Renderer.h)

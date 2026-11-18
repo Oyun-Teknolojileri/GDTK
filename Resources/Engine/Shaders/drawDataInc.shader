@@ -188,7 +188,7 @@
 	int castShadow;															\
 	float shadowBias;														\
 	float bleedingReduction;												\
-	float padx;																\
+	int shadowMode;															\
 	float pady;																\
 	vec2 shadowAtlasCoord;													\
 	float shadowAtlasResRatio;												\

@@ -329,6 +329,14 @@ namespace ToolKit
                                  "shadow sampling, so a scene that needs no shadows pays neither.\n"
                                  "On: every light with its own Cast Shadow set still casts.");
 
+        // Point light layout, project wide. Per light override: a point light's Force Cubemap Shadow.
+        CustomDataView::ShowVariant(&shadows->ParamPointShadowMode(), nullptr);
+        UI::AddTooltipToLastItem("Shadow map layout every point light renders with.\n"
+                                 "Dual Paraboloid: two maps per light, a third of the atlas, softer\n"
+                                 "and cheapest. Cube Map: six faces per light, sharper, three times\n"
+                                 "the atlas slots, so fewer point lights fit.\n"
+                                 "A single light can override this with Force Cubemap Shadow.");
+
         // VSM Blur settings.
         ImGui::SeparatorText("VSM Blur");
 

@@ -27,8 +27,8 @@ namespace ToolKit
       int castShadow;            //!< States if the light casts shadow or not.
       float shadowBias;          //!< Bias for shadow map generation.
       float bleedingReduction;   //!< Reduces shadow bleeding artifacts.
+      int shadowMode;            //!< PointShadowMode the map was rendered with. Takes an alignment slot.
       float pad0;                //!< Padding for alignment.
-      float pad1;                //!< Padding for alignment.
       Vec2 shadowAtlasCoord;     //!< Start coordinates of the shadow map in the texture.
       float shadowAtlasResRatio; //!< Shadow resolution ratio (resolution / atlasSize).
       int shadowAtlasLayer;      //!< Shows which index the shadow texture is in.
@@ -310,6 +310,23 @@ namespace ToolKit
     TKDeclareParam(float, Radius);
     /** Radius of the emitting sphere, in world units. Zero keeps a point light and its sharp highlight. */
     TKDeclareParam(float, SourceRadius);
+
+    /**
+     * Renders this light's shadow as six cube faces even when the project asks for paraboloid maps.
+     *
+     * The project setting, ShadowSettings::PointShadowMode, is what every point light follows, so a
+     * project can pick one layout for all of them. This is the per light exception: one light that
+     * needs a sharper shadow - no rim, no projection stretch - asks for the cube on its own without
+     * costing every other light in the scene the three extra atlas slots.
+     *
+     * It only raises the quality: in a project already set to Cube Map this adds nothing, and the
+     * reverse (forcing paraboloid maps in a cube project) is deliberately not offered, so the project
+     * setting stays the ceiling a game ships with.
+     */
+    TKDeclareParam(bool, ForceCubemapShadow);
+
+    /** True when this light renders and samples its shadow as a cube map, project setting included. */
+    bool IsCubemapShadow() const;
 
     /** World space Bounding volume, updated after call to UpdateShadowCamera(). */
     BoundingSphere m_boundingSphereCache;
