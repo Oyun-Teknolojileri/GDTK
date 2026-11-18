@@ -379,7 +379,9 @@ aware - it is what a roughness only g buffer allows, so a rough metal keeps more
 should.
 
 A pixel the ray could not answer is left to the forward pass. The trace writes a binary coverage - one
-where it hit, zero where it did not - and a miss writes the reflection it was already holding back into
+where it hit, zero where it did not - and zero radiance where it did not, so nothing of the pass reaches the
+pixel; a ray that points back at the camera is one of those misses, and treating it as an environment answer
+with full coverage is what painted the middle of a probe lit sphere with the sky. A miss writes the reflection it was already holding back into
 the history with its coverage decayed, so the pixel settles onto the shading model's own reflection over
 a handful of frames instead of jumping between a screen space colour and the sky from one frame to the
 next. That matters because the shading model is the part that knows about the scene's reflection probes:

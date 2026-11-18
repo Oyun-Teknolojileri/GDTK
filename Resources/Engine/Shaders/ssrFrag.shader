@@ -365,14 +365,16 @@ void main()
 		rayDir = normalize(reflect(rayDir, geoNormal));
 	}
 
-	// Rays pointing back at the camera can not hit anything the depth buffer holds: what they reflect is
-	// behind the viewer. The environment is the whole answer for them, and writing it here - rather than a
-	// zero - is what keeps the middle of a mirror from turning black.
+	// A ray pointing back at the camera cannot hit anything the depth buffer holds: what it reflects sits
+	// behind the viewer. That is a miss like any other, so the pixel is left to the forward pass - the only
+	// place that knows about the scene's reflection probes - and the trace contributes nothing. Writing the
+	// environment here with a coverage of one is what painted the middle of a sphere with the sky while the
+	// probe's own reflection, which the shading model had already computed, was replaced by it. The early exit
+	// also skipped the debug views, which is why the sky used to show up even in the confidence view.
 	if (rayDir.z > 0.0)
 	{
-		vec3 worldDir = mat3(ssrPass.inverseView) * rayDir;
-		fragColor     = vec4(EnvironmentRadiance(worldDir, roughness), 1.0);
-		fragHit       = vec4(0.0);
+		fragColor = DebugViewEnabled() ? vec4(0.0, 0.0, 0.0, 1.0) : vec4(0.0);
+		fragHit   = vec4(0.0);
 		return;
 	}
 
@@ -647,7 +649,11 @@ void main()
 	}
 
 	vec3 envRadiance = EnvironmentRadiance(worldRayDir, roughness);
-	vec3 radiance    = mix(envRadiance, hitRadiance, trust);
+	// A miss contributes nothing. The pixel keeps the forward pass's own reflection - the one that knows
+	// about the scene's probes - and the coverage the trace writes is what tells the composite to leave it
+	// alone. Writing the sky here instead is what painted a probe lit surface with the sky for the frames its
+	// coverage took to fade.
+	vec3 radiance = confidence > 0.0 ? mix(envRadiance, hitRadiance, trust) : vec3(0.0);
 
 	// Debug view: show what this pass produces at each stage, so an artifact is told apart instead
 	// of guessed at. The resolve pass hands these through unchanged.
