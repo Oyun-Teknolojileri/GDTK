@@ -409,8 +409,9 @@ namespace ToolKit
                                      cameraView,
                                      nearClip,
                                      farClip,
-                                     shadows->GetStableShadowMapVal());
-      FitViewFrustumIntoLightFrustum(m_cascadeCullCameras[i], cameraView, nearClip, farClip, false);
+                                     shadows->GetStableShadowMapVal(),
+                                     i);
+      FitViewFrustumIntoLightFrustum(m_cascadeCullCameras[i], cameraView, nearClip, farClip, false, i);
 
       if (i + 1 < cascades)
       {
@@ -470,7 +471,8 @@ namespace ToolKit
                                                         CameraPtr viewCamera,
                                                         float near,
                                                         float far,
-                                                        bool stableFit)
+                                                        bool stableFit,
+                                                        int cascade)
   {
     // View camera has near far distances coming from i'th cascade boundaries.
     // Shadow camera is aligned with light direction, and positioned to the view camera frustum's center.
@@ -523,11 +525,27 @@ namespace ToolKit
         radius = glm::max(radius, glm::distance(center, frustum[i]));
       }
 
-      // Quantize the radius to 1/16 of a world unit so that float noise in the centroid can not
-      // change the volume. The step has to stay fine: the near cascade is only a few units wide, so
-      // a coarse step (half a unit) would spend a double digit percentage of its extent on slack
-      // and blur the cascade the player looks at most.
-      radius                = glm::ceil(radius * 16.0f) / 16.0f;
+      // Quantize the radius so that float noise in the centroid can not change the volume. The step has to
+      // stay fine: the near cascade is only a few units wide, so a coarse step (half a unit) would spend a
+      // double digit percentage of its extent on slack and blur the cascade the player looks at most.
+      //
+      // Crossing a step changes the world size of a shadow texel, and with it the scale of the projection,
+      // so a radius that hovers on a step alternates between two scales and every shadow edge slides with
+      // it. The value therefore keeps what it has and only takes a new quantized value when the fit needs
+      // more room, or when it is clearly oversized; growing late would clip a shadow, so growth is prompt
+      // and the dead band sits on the way down.
+      constexpr float SHADOW_RADIUS_STEP   = 1.0f / 16.0f;
+      constexpr float SHADOW_RADIUS_SHRINK = 0.9f;
+      float& quantized                     = m_cascadeShadowRadii[cascade];
+
+      const float snapped = glm::ceil(radius / SHADOW_RADIUS_STEP) * SHADOW_RADIUS_STEP;
+      if (quantized <= 0.0f || radius > quantized || quantized > radius / SHADOW_RADIUS_SHRINK)
+      {
+        quantized = snapped;
+      }
+
+      radius                = glm::max(quantized, snapped);
+      quantized             = radius;
       tightShadowVolume.min = Vec3(-radius);
       tightShadowVolume.max = Vec3(radius);
     }

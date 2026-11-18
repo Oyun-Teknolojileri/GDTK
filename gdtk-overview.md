@@ -803,6 +803,19 @@ the switch back on restores the authored shadows with exactly the filtering the 
 which hand-editing the PCF tap count to zero could not do. On the reference phone the difference is
 30.9 fps to 60 (vsync) at the demo scene's 65 % resolution.
 
+**Directional cascade fitting.** Each cascade is fitted to the view frustum's slice in light space
+(`DirectionalLight::UpdateShadowFrustum`). With `ShadowSettings::StableShadowMap` on, the fit puts a
+sphere around the slice instead of a box (`FitViewFrustumIntoLightFrustum`), so rotating the camera
+does not change the volume, and the light camera's origin is snapped to the shadow map's texel grid. The
+sphere's radius is quantised to a sixteenth of a world unit so that float noise in the centroid cannot
+change the volume, and the quantised value is **held across frames**: crossing a step changes the world
+size of a texel, i.e. the scale of the projection, and a radius that hovers on a step alternates between
+two scales, which slides every shadow edge (measured as a cascade fitted at 9.5 for 635 frames and 9.562
+for 155). The held value therefore only moves when the fit needs more room, or when it is more than ten
+percent oversized; growing late would clip a shadow, so growth is prompt and the dead band sits on the
+way down. The light camera's basis is derived from the light direction and a fixed world up, which was
+measured not to flip while the camera moves (the threshold that switches to +X never engaged).
+
 Scenes with a skinned or animated job disable the cache (`m_jobCacheUnusable`): those transforms
 move without a spatial invalidation, which no counter can see.
 

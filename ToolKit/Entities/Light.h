@@ -219,7 +219,8 @@ namespace ToolKit
                                         CameraPtr viewCamera,
                                         float near,
                                         float far,
-                                        bool stableFit);
+                                        bool stableFit,
+                                        int cascade);
 
    public:
     /** Angular radius of the emitter, in degrees. The sun is 0.265, which keeps its highlight physical. */
@@ -227,6 +228,13 @@ namespace ToolKit
 
     /** Cascades are rendered with these cameras, due to stable fit, frustum can be larger than actual coverage. */
     CameraPtrArray m_cascadeShadowCameras;
+
+    /**
+     * Fitted radius of each cascade, held across frames. The stable fit keeps the value it has while the
+     * frustum fits inside it, so the scale of the projection - and with it the world size of a shadow texel
+     * - does not change while the camera moves inside the slack.
+     */
+    float m_cascadeShadowRadii[RHIConstants::MaxCascadeCount] = {0.0f};
 
     /** Scene is culled with these tightly fit cameras to create render jobs for shadow map generation. */
     CameraPtrArray m_cascadeCullCameras;
