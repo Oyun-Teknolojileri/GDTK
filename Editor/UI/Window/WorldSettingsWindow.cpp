@@ -278,6 +278,33 @@ namespace ToolKit
         // how many samples a pixel holds now, not by a fixed share of the history, and a control that does
         // nothing is worse than one that is not there. The parameters stay in the settings so existing
         // scenes keep loading and the pass keeps accepting them.
+        // How the reflection trades a still frame against a moving one: the history response is the length of
+        // the accumulation window, the hold is how long a pixel the ray no longer answers keeps its reflection,
+        // and the blur is how much of the roughness blur the mip gather carries instead of the sampled rays.
+        float ssrHistoryResponse = pps->GetSSRHistoryResponseVal();
+        if (ImGui::SliderFloat("History Response", &ssrHistoryResponse, 0.5f, 0.99f, "%.2f"))
+        {
+          pps->SetSSRHistoryResponseVal(ssrHistoryResponse);
+        }
+
+        float ssrHistoryHold = pps->GetSSRHistoryHoldVal();
+        if (ImGui::SliderFloat("History Hold", &ssrHistoryHold, 0.0f, 0.98f, "%.2f"))
+        {
+          pps->SetSSRHistoryHoldVal(ssrHistoryHold);
+        }
+
+        float ssrLobeWidth = pps->GetSSRLobeWidthVal();
+        if (ImGui::SliderFloat("Lobe Width", &ssrLobeWidth, 0.5f, 4.0f, "%.2f"))
+        {
+          pps->SetSSRLobeWidthVal(ssrLobeWidth);
+        }
+
+        float ssrReflectionBlur = pps->GetSSRReflectionBlurVal();
+        if (ImGui::SliderFloat("Reflection Blur", &ssrReflectionBlur, 0.0f, 1.0f, "%.2f"))
+        {
+          pps->SetSSRReflectionBlurVal(ssrReflectionBlur);
+        }
+
         float ssrBrdfBias = pps->GetSSRBRDFBiasVal();
         if (ImGui::DragFloat("BRDF Bias", &ssrBrdfBias, 0.01f, 0.0f, 1.0f))
         {
@@ -302,7 +329,8 @@ namespace ToolKit
                                                "Hit UV",
                                                "Ray Length",
                                                "Hit Error",
-                                               "March Cost"};
+                                               "March Cost",
+                                               "Sample"};
 
           int ssrDebugMode = pps->GetSSRDebugViewModeVal();
           ImGui::SameLine();

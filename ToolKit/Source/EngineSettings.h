@@ -398,6 +398,27 @@ namespace ToolKit
      * traffic and costs the sharpness of a mirror reflection.
      */
     TKDeclareParam(int, SSRQuality);
+    /**
+     * Share of the accumulated reflection a pixel keeps when its reprojection matches, per frame. High is a
+     * long window: a still camera converges to a smooth reflection and a moving one drags it behind.
+     */
+    TKDeclareParam(float, SSRHistoryResponse);
+    /**
+     * Share of the accumulated reflection a pixel keeps when the screen space ray did not answer it, per
+     * frame. Low settles onto the forward shading quickly, high holds the last reflection longer.
+     */
+    TKDeclareParam(float, SSRHistoryHold);
+    /**
+     * How much of the roughness blur the mip gather carries, as a multiplier on the cone it derives from the
+     * lobe. Lower leaves the blur to the sampled rays, which is sharper and noisier.
+     */
+    TKDeclareParam(float, SSRReflectionBlur);
+    /**
+     * Multiplier on the lobe the reflection samples. One is the physical roughness, larger spreads the
+     * samples wider: the hit pattern becomes grain instead of a coherent field, which costs noise where a
+     * narrow lobe costs a wave.
+     */
+    TKDeclareParam(float, SSRLobeWidth);
     TKDeclareParam(bool, SSRDebugView);
     TKDeclareParam(int, SSRDebugViewMode);
 

@@ -64,6 +64,11 @@ TK_SAMPLER_BINDING(8) uniform sampler2D s_velPrev;         // xy: the previous f
 // less, low enough that it does not reject the frame outright.
 #define SSR_DEFAULT_VARIANCE 1.0
 
+// Weight of a pixel whose ray answered nothing, per frame: 0.85 fades a reflection out over about fifteen
+// frames. The rise is what a hit climbs at, so a pixel that answers again comes back over the same span.
+#define SSR_COVERAGE_DECAY 0.85
+#define SSR_COVERAGE_RISE 0.15
+
 // How much of the accumulated history a pixel keeps when its reprojection matches perfectly. It trades
 // convergence against how fast the reflection follows a change: 0.98 is a fifty frame equivalent, which is
 // what a single sampled ray needs before it stops crawling.
@@ -141,6 +146,38 @@ void main()
 
 	float roughness = gBuf.a;
 	vec4  center    = texture(s_trace, uv);
+
+	// A debug view shows what the trace produced for this frame, so it has to bypass the accumulation: a
+	// resolved debug view is a temporal average of the very thing that is being looked at.
+	if (ssrPass.flags.x > 0.5)
+	{
+		fragColor = center;
+		fragCount = vec4(1.0, 1.0, 0.0, 0.0);
+		return;
+	}
+
+	// Coverage is carried across frames: how much of this pixel the ray answers, smoothed so that one
+	// sampled direction cannot switch the whole pixel on and off. It rides in the counter target's green
+	// channel, which nothing else uses.
+	vec4  previous  = texture(s_history, uv);
+	float prevCover = texture(s_historyCount, uv).g;
+
+	// A pixel the ray did not answer keeps the reflection it already had and only loses weight. Writing the
+	// environment's radiance here instead is what made a pixel jump between a screen space reflection and the
+	// sky from one frame to the next; decaying the weight lets the same pixel settle onto the forward pass's
+	// own probe or sky over a handful of frames, and the accumulation it left behind is still in place when
+	// the ray answers again.
+	if (center.a <= 0.5)
+	{
+		fragColor = vec4(previous.rgb, previous.a);
+		fragCount = vec4(1.0, prevCover * clamp(ssrPass.denoiser.w, 0.0, 0.99), 0.0, 0.0);
+		return;
+	}
+
+	// How fast a pixel that answers again comes back, and how fast one that stops answering lets go, both
+	// from the settings: the pair is what a project tunes between a still and a moving camera.
+	float coverageRise = 1.0 - clamp(ssrPass.denoiser.w, 0.0, 0.99);
+	float coverage     = mix(prevCover, 1.0, coverageRise);
 
 	// A mirror is sampled along the exact mirror direction, so there is no stochastic noise to accumulate
 	// and nothing to ghost: keeping a history for it is what put bands on a moving mirror. It is filtered
@@ -280,7 +317,7 @@ void main()
 	if (isMirror)
 	{
 		fragColor = vec4(center.rgb, 0.0);
-		fragCount = vec4(1.0, 0.0, 0.0, 0.0);
+		fragCount = vec4(1.0, coverage, 0.0, 0.0);
 		return;
 	}
 
@@ -311,7 +348,7 @@ void main()
 	// for the debug view but not trusted with the blend: it is a value read back from a target, and a target
 	// that reads as one sample while it holds thirty cannot be told apart from a rejected history from here,
 	// whereas the factor is computed from this frame's own g buffer.
-	float blend  = mix(0.0, SSR_HISTORY_RESPONSE_MAX, smoothstep(0.0, 1.0, clamp(disocclusion, 0.0, 1.0)));
+	float blend  = mix(0.0, clamp(ssrPass.denoiser.z, 0.0, 0.99), smoothstep(0.0, 1.0, clamp(disocclusion, 0.0, 1.0)));
 	vec3  result = mix(newSignal, clippedHistory, blend);
 
 	// Temporal variance: how far the accumulated value sits from what this frame produced. The reference
@@ -326,7 +363,7 @@ void main()
 	}
 
 	fragColor = vec4(result, outVariance);
-	fragCount = vec4(count, 0.0, 0.0, 0.0);
+	fragCount = vec4(count, coverage, 0.0, 0.0);
 }
 
 	-->

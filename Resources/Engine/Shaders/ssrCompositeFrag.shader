@@ -18,7 +18,7 @@ layout (location = 0) out vec4 fragColor;
 
 TK_SAMPLER_BINDING(0) uniform sampler2D s_trace;      // rgb: accumulated reflection, a: its variance.
 TK_SAMPLER_BINDING(1) uniform sampler2D s_sceneColor; // Scene color before this pass, the fallback.
-TK_SAMPLER_BINDING(2) uniform sampler2D s_coverage;    // a: 1 where this pixel is a reflective surface.
+TK_SAMPLER_BINDING(2) uniform sampler2D s_coverage;    // g: how much of the pixel the ray answers, accumulated
 TK_SAMPLER_BINDING(3) uniform sampler2D s_normalDepth; // a: roughness of the surface under the pixel.
 
 // Reads the accumulated reflection. At half resolution the upsample is done here rather than by the
@@ -75,7 +75,7 @@ void main()
 	// name, and it is not metalness aware either: it is what a roughness only g buffer allows.
 	float roughness     = texture(s_normalDepth, uv).a;
 	float specularShare = clamp(0.04 + 0.96 * pow(1.0 - clamp(roughness, 0.0, 1.0), 3.0), 0.0, 1.0);
-	float coverage      = texture(s_coverage, uv).a;
+	float coverage      = texture(s_coverage, uv).g;
 
 	float weight = clamp(coverage * specularShare * ssrPass.params.x, 0.0, 1.0);
 

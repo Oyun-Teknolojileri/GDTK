@@ -148,7 +148,12 @@ float InterleavedGradientNoise(vec2 pixel)
 vec2 SampleSequence(vec2 pixel, float frame)
 {
 	vec2 offset = fract(frame * vec2(0.7548776662, 0.5698402910));
-	return texture(s_blueNoise, (pixel + offset * 128.0) / 128.0).rg;
+	// The half texel matters: without it every pixel samples the corner shared by four texels, the bilinear
+	// filter averages them, and neighbouring pixels then read almost the same two numbers. A sample field that
+	// is smooth across the screen makes whole regions hit and miss together, which is a reflection that
+	// breathes instead of one that grains.
+	vec2 texel = (pixel + 0.5 + offset * 128.0) / 128.0;
+	return texture(s_blueNoise, texel).rg;
 }
 
 // Visible normal distribution sampling (Heitz 2018). Returns the half vector of a microfacet that
@@ -238,6 +243,7 @@ float EdgeFade(vec2 uv)
 // The modes are the numbers the editor's list is indexed with, so they are consecutive: a gap here is a
 // slot the panel has to show as unavailable.
 #define SSR_DEBUG_MARCH_COST 7
+#define SSR_DEBUG_SAMPLE      8
 
 // Depth a screen pixel spans, for the adaptive thickness of the hit test.
 #define SSR_THICKNESS_PIXELS 4.0
@@ -262,7 +268,8 @@ int DebugViewMode()
 // `rayPixels` is the screen space length of the ray: the footprint grows with it.
 float ReflectionLod(float roughness, float rayPixels, float brdfBias)
 {
-	float cone   = max(roughness * roughness * (1.0 - clamp(brdfBias, 0.0, 0.99)) * 0.5, 0.0001);
+	float cone   = max(roughness * roughness * (1.0 - clamp(brdfBias, 0.0, 0.99)) *
+	                     max(ssrPass.quality.z, 0.0), 0.0001);
 	float maxLod = log2(max(max(ssrPass.screenParams.z, ssrPass.screenParams.w), 2.0));
 
 	return clamp(log2(max(cone * rayPixels, 1.0)), 0.0, maxLod);
@@ -340,7 +347,9 @@ void main()
 	// the samples over the frames. The bias bends the sample back towards the mirror direction.
 	vec3 V      = normalize(viewPos);
 	vec2 Xi     = SampleSequence(gl_FragCoord.xy, ssrPass.flags.w);
-	float alpha = max(roughness * roughness, 0.0001);
+	// The lobe the pixel samples. The width multiplier is the artist's handle on how much of the roughness
+	// shows up as noise in a frame rather than as blur over the frames.
+	float alpha = clamp(roughness * roughness * max(ssrPass.quality.w, 0.01), 0.0001, 1.0);
 	vec3 H      = SampleReflectionHalf(V, normal, alpha, Xi, clamp(ssrPass.temporal.x, 0.0, 1.0));
 	vec3 rayDir = reflect(V, H);
 	float pdf   = ReflectionPdf(-V, normal, H, alpha);
@@ -672,7 +681,15 @@ void main()
 			fragColor = vec4(vec3(marchedIterations / max(stepCount, 1.0)), 1.0);
 			return;
 		}
-		if (mode == SSR_DEBUG_HIT_ERROR)
+		// The two random numbers this pixel's lobe sample was drawn from. Per pixel blue noise reads as fine
+	// grain here; a value that is flat across the screen would mean every pixel shares one sample.
+	if (mode == SSR_DEBUG_SAMPLE)
+	{
+		fragColor = vec4(fract(Xi), 0.0, 1.0);
+		return;
+	}
+
+	if (mode == SSR_DEBUG_HIT_ERROR)
 		{
 			// How far the ray ended up from the surface it crossed, in units of the thickness. Bright
 			// bands here mean the depth the march compared against is wrong or too coarse.
@@ -680,13 +697,16 @@ void main()
 			return;
 		}
 
-		fragColor = vec4(radiance, 1.0);
+		fragColor = vec4(radiance, confidence > 0.0 ? 1.0 : 0.0);
 		return;
 	}
 
-	// rgb: the complete reflection, a: coverage - one where this pixel is a reflective surface. A miss is
-	// not "no data" any more: it is the environment's reflection, which accumulates just as well as a hit.
-	fragColor = vec4(radiance, 1.0);
+	// rgb: the reflection, a: one when the screen space ray answered this pixel and zero when it did not.
+	// A miss means the pixel is left alone, which is what keeps the forward pass's own reflection - the one
+	// that knows about the scene's reflection probes and falls back to the sky only where a probe does not
+	// reach. The alpha is the hit and nothing else: a weight that varied with the hit's confidence would move
+	// with every sampled direction and the reflection would pulse.
+	fragColor = vec4(radiance, confidence > 0.0 ? 1.0 : 0.0);
 }
 
 	-->

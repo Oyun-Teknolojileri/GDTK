@@ -65,6 +65,18 @@ namespace ToolKit
     m_blueNoise = MakeNewPtr<Texture>();
     m_blueNoise->SetFile(TexturePath("blueNoise.png", true));
     m_blueNoise->Load();
+
+    // The tile is data, not a picture. Left as it loads, an sRGB target gamma decodes it, which warps the
+    // uniform distribution the sampler walks: most values land near zero and the sampled directions lean to
+    // one side of the lobe instead of spreading over it.
+    TextureSettings noiseSet = m_blueNoise->Settings();
+    noiseSet.InternalFormat  = GraphicTypes::FormatRGBA8;
+    noiseSet.Format          = GraphicTypes::FormatRGBA;
+    noiseSet.Type            = GraphicTypes::TypeUnsignedByte;
+    noiseSet.MinFilter       = GraphicTypes::SampleNearest;
+    noiseSet.MagFilter       = GraphicTypes::SampleNearest;
+    m_blueNoise->Settings(noiseSet);
+
     m_blueNoise->Init();
 
     // The composite goes into a target of the pass's own, so the frame it copied stays read only for
@@ -435,13 +447,19 @@ namespace ToolKit
     m_passDataBuffer.m_data.environment = Vec4(envIntensity, envMaxMip, envIntensity > 0.0f ? 1.0f : 0.0f, 0.0f);
 
     m_passDataBuffer.m_data.denoiser =
-        Vec4(glm::max(m_params.MaxSamples, 1.0f), glm::max(m_params.HistoryClipWeight, 0.0f), 0.0f, 0.0f);
+        Vec4(glm::max(m_params.MaxSamples, 1.0f),
+             glm::max(m_params.HistoryClipWeight, 0.0f),
+             glm::clamp(m_params.HistoryResponse, 0.0f, 0.99f),
+             glm::clamp(m_params.HistoryHold, 0.0f, 0.99f));
 
     // Quality: how many taps the spatial filter may use, and the scale the reflection was traced at so a
     // shader that needs to know the grid can ask.
     const int   taps  = m_params.Quality >= 1 ? SSR_FILTER_TAPS_HIGH : SSR_FILTER_TAPS_LOW;
     const float scale = 1.0f / float(divisor);
-    m_passDataBuffer.m_data.quality = Vec4(float(taps), scale, 0.0f, 0.0f);
+    m_passDataBuffer.m_data.quality = Vec4(float(taps),
+                                           scale,
+                                           glm::max(m_params.ReflectionBlur, 0.0f),
+                                           glm::max(m_params.LobeWidth, 0.01f));
 
     m_quadPass->m_params.frameBuffer->ReconstructIfNeeded({ssrSize.x, ssrSize.y, false, false});
     m_quadPass->m_params.frameBuffer->SetColorAttachment(Framebuffer::Attachment::ColorAttachment0, m_traceTexture);
@@ -623,7 +641,7 @@ namespace ToolKit
     m_requirements.frameBuffer                        = m_compositePass->m_params.frameBuffer;
     m_requirements.semanticTextures["s_trace"]        = m_history[writeIndex];
     m_requirements.semanticTextures["s_sceneColor"]   = m_copyTexture;
-    m_requirements.semanticTextures["s_coverage"]     = m_traceTexture;
+    m_requirements.semanticTextures["s_coverage"]     = m_historyCount[writeIndex];
     m_requirements.semanticTextures["s_normalDepth"]  = normalDepth;
     m_requirements.customUbos[7]                      = &m_passDataBuffer.GetBuffer();
 

@@ -24,8 +24,8 @@ TK_UBO_BINDING(7) uniform SsrPassData
   vec4 temporal;           // x: brdf bias, y: reset the history
   vec4 velocity;           // x: 1 when the object motion targets are bound
   vec4 environment;        // x: intensity, y: highest mip the cubemap carries, z: 1 when bound
-  vec4 denoiser;           // x: sample cap, y: history clip weight
-  vec4 quality;            // x: spatial filter taps, y: resolution scale the target is traced at
+  vec4 denoiser;           // x: sample cap, y: history clip weight, z: history response, w: history hold
+  vec4 quality;            // x: filter taps, y: resolution scale, z: mip gather blur, w: lobe width
 } ssrPass;
 
 #endif

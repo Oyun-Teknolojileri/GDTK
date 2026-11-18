@@ -378,6 +378,27 @@ at full strength every rough wall came out painted with the sky. It is not a Fre
 aware - it is what a roughness only g buffer allows, so a rough metal keeps more of its albedo than it
 should.
 
+A pixel the ray could not answer is left to the forward pass. The trace writes a binary coverage - one
+where it hit, zero where it did not - and a miss writes the reflection it was already holding back into
+the history with its coverage decayed, so the pixel settles onto the shading model's own reflection over
+a handful of frames instead of jumping between a screen space colour and the sky from one frame to the
+next. That matters because the shading model is the part that knows about the scene's reflection probes:
+`IBLPBR` already evaluates the two local volumes and blends the sky into whatever they do not cover, so
+letting a miss alone is what makes the fallback the same algorithm a surface would have used anyway.
+Coverage rides in the counter target's green channel and the composite weighs the reflection by it.
+
+Four knobs tune the trade, all in the post processing panel: History Response (the length of the
+accumulation window), History Hold (how fast a pixel that stops being answered lets go), Reflection Blur
+(how much of the roughness blur the mip gather carries instead of the rays) and Lobe Width (a multiplier on
+the sampled lobe's alpha). Their defaults are the ones a scene was tuned with: 0.7, 0.6, 0.1 and 1.5.
+
+The sample sequence itself had two faults that made neighbouring pixels share almost the same two random
+numbers: the tile was loaded as sRGB, so its uniform values were gamma decoded, and it was read without the
+half texel offset, so every pixel took the bilinear average of the four texels around a corner. Measured on
+the raw target, adjacent pixels went from a correlation of 0.93 to 0.15 - which is what a sample sequence is
+for: a smooth sample field makes whole regions of the screen hit and miss together, and a reflection that
+breathes instead of one that grains.
+
 The roughness in that g buffer is per pixel and comes from the material's metallic roughness texture when
 it carries one (glTF: green channel, multiplied by the material's roughness factor) and from the factor
 alone otherwise. Writing the factor for both cases is what kept a textured material out of the reflections:

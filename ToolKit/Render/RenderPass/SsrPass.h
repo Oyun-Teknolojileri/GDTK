@@ -45,7 +45,7 @@ namespace ToolKit
     Vec4 velocity;
     /** .x = environment intensity, .y = highest mip the cubemap carries, .z = 1 when it is bound. */
     Vec4 environment;
-    /** .x = sample cap, .y = history clip weight. */
+    /** .x = sample cap, .y = history clip weight, .z = history response, .w = history hold. */
     Vec4 denoiser;
     /** .x = spatial filter taps, .y = resolution the reflection is traced at (1 or 0.5). */
     Vec4 quality;
@@ -115,6 +115,18 @@ namespace ToolKit
 
     /** Multiplier on the clip box the history is pulled into. 0 disables the accumulation. */
     float HistoryClipWeight            = 1.0f;
+
+    /** Share of the accumulated reflection kept when the reprojection matches, per frame. */
+    float HistoryResponse              = 0.9f;
+
+    /** Share kept when the ray did not answer the pixel, per frame. */
+    float HistoryHold                  = 0.85f;
+
+    /** Multiplier on the cone the mip gather derives from the lobe. */
+    float ReflectionBlur               = 0.35f;
+
+    /** Multiplier on the alpha of the sampled lobe. 1 is the physical roughness. */
+    float LobeWidth                    = 1.0f;
 
     /**
      * 2 traces and resolves at frame resolution, 1 at half and 0 at a quarter, with the composite doing

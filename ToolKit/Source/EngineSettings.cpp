@@ -286,18 +286,22 @@ namespace ToolKit
     SSAOHalfResolution_Define(true, "PostProcessingSettings", 0, 0, 0);
 
     SSREnabled_Define(false, "PostProcessingSettings", 0, 0, 0);
-    SSRIntensity_Define(0.5f, "PostProcessingSettings", 0, 0, 0);
+    SSRIntensity_Define(1.0f, "PostProcessingSettings", 0, 0, 0);
     SSRMaxDistance_Define(50.0f, "PostProcessingSettings", 0, 0, 0);
     SSRThickness_Define(0.4f, "PostProcessingSettings", 0, 0, 0);
     // The widest loop bound the shader has a variant for. A larger count used to make the shader divide the
     // screen into more steps than the loop could walk, which cut the reflections short.
-    SSRStepCount_Define(64, "PostProcessingSettings", 0, 0, 0);
-    SSRRoughnessCutoff_Define(0.6f, "PostProcessingSettings", 0, 0, 0);
-    SSREdgeFade_Define(0.05f, "PostProcessingSettings", 0, 0, 0);
-    SSRScreenFadeStart_Define(0.5f, "PostProcessingSettings", 0, 0, 0);
-    SSRRangeFadeStart_Define(0.6f, "PostProcessingSettings", 0, 0, 0);
-    SSRBRDFBias_Define(0.7f, "PostProcessingSettings", 0, 0, 0);
+    SSRStepCount_Define(16, "PostProcessingSettings", 0, 0, 0);
+    SSRRoughnessCutoff_Define(1.0f, "PostProcessingSettings", 0, 0, 0);
+    SSREdgeFade_Define(0.0f, "PostProcessingSettings", 0, 0, 0);
+    SSRScreenFadeStart_Define(0.95f, "PostProcessingSettings", 0, 0, 0);
+    SSRRangeFadeStart_Define(0.95f, "PostProcessingSettings", 0, 0, 0);
+    SSRBRDFBias_Define(0.0f, "PostProcessingSettings", 0, 0, 0);
     SSRQuality_Define(2, "PostProcessingSettings", 0, 0, 0);
+    SSRHistoryResponse_Define(0.7f, "PostProcessingSettings", 0, 0, 0);
+    SSRHistoryHold_Define(0.6f, "PostProcessingSettings", 0, 0, 0);
+    SSRReflectionBlur_Define(0.1f, "PostProcessingSettings", 0, 0, 0);
+    SSRLobeWidth_Define(1.5f, "PostProcessingSettings", 0, 0, 0);
     SSRDebugView_Define(false, "PostProcessingSettings", 0, 0, 0);
     SSRDebugViewMode_Define(0, "PostProcessingSettings", 0, 0, 0);
 
