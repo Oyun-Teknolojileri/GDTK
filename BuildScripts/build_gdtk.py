@@ -38,6 +38,9 @@ from typing import List, Optional, Tuple
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT_DIR = SCRIPT_DIR.parent
 DEP_INT = ROOT_DIR / "Dependency" / "Intermediate"
+# One <dep>-config.cmake wrapper per dependency the engine imports; see the
+# dependency gate below for why the set lives here and not in a literal list.
+CONFIG_SRC = ROOT_DIR / "Dependency" / "Config"
 
 # Default build configurations. RelWithDebInfo and MinSizeRel are
 # included for completeness but the main development loop is Debug.
@@ -62,36 +65,48 @@ from _common import (  # noqa: E402  -- intentional import after sys.path tweak
 # --------------------------------------------------------------------------- #
 
 def check_dependencies(platform: str, config: str) -> Tuple[bool, Path]:
-    """Check whether Dependency/Intermediate/<Plat>/<Cfg> is populated.
+    """Check whether Dependency/Intermediate/<Plat>/<Cfg> is fully populated.
 
-    Returns (present, deps_dir). When the directory is missing or the
-    SDL2 spot-check fails, present is False and the caller is expected
-    to invoke build_dependencies.py to populate it. A True result
-    with the SDL2 spot-check still missing is a soft warning -- CMake
-    will surface a clearer error if a real dep is actually missing.
+    Returns (present, deps_dir). present is False both when the directory
+    is missing and when it exists but a dependency was added since it was
+    last built, and the caller is expected to invoke build_dependencies.py
+    to populate it.
 
-    The root CMakeLists imports ToolKit's runtime deps from there and
-    FATAL_ERRORs if any of them are missing. Catching the absence
-    here produces a friendlier message that points the user at
-    build_dependencies.py, and lets us auto-invoke it instead of
-    failing the engine build outright.
+    The check is "every Dependency/Config/<dep>-config.cmake wrapper has
+    been staged as <deps>/<Cfg>/<dep>/<dep>Config.cmake", which is exactly
+    the set of find_package(<dep> REQUIRED CONFIG) calls the root
+    CMakeLists makes. It is deliberately derived from Dependency/Config/
+    rather than from a hand written list of artifact names: a dep added
+    there is covered with no change to this gate, and the gate cannot
+    drift out of sync with what the engine actually imports.
+
+    build_dependencies.py stages the wrappers as its last step, after a
+    successful build, so a missing wrapper also means the artifacts are
+    not trustworthy. Getting this wrong is what a stale tree looks like:
+    before basisu was covered here, adding the dep left the tree looking
+    populated, the gate skipped build_dependencies.py, and the engine
+    configure died on "Could not find a package configuration file
+    provided by basisu" -- an error from CMake that says nothing about
+    the real fix, which is rebuilding the dependency tree.
     """
     deps_dir = DEP_INT / platform / config
     if not deps_dir.exists():
         return False, deps_dir
 
-    # Cheap spot-check: every config directory should at least contain
-    # the SDL2 .so / .dll we linked against. The list matches what
-    # build_dependencies.py produces today; if a new dep is added
-    # there, the worst case is that this gate is a no-op, not a false
-    # negative -- CMake will still surface a clear error.
-    if platform == "Windows":
-        candidates = ["SDL2d.dll", "SDL2.dll"]
-    else:
-        candidates = ["libSDL2-2.0.so", "libSDL2-2.0d.so"]
-    if not any((deps_dir / c).exists() for c in candidates):
-        warn(f"{deps_dir} exists but no SDL2 runtime artifact was found in it.")
-        warn("build_dependencies.py may have been interrupted -- re-run it.")
+    missing: List[str] = []
+    for src in sorted(CONFIG_SRC.glob("*-config.cmake")):
+        # SDL2-config.cmake -> dep "SDL2" -> <deps>/SDL2/SDL2Config.cmake.
+        # Mirrors the staging layout in build_dependencies.stage_dep_configs().
+        dep = src.name[: -len("-config.cmake")]
+        if not (deps_dir / dep / f"{dep}Config.cmake").exists():
+            missing.append(dep)
+
+    if missing:
+        warn(f"{deps_dir} is missing staged dependency config(s): {', '.join(missing)}.")
+        warn(
+            "The dependency tree predates those deps -- build_dependencies.py "
+            "must be re-run for this configuration."
+        )
         return False, deps_dir
     return True, deps_dir
 

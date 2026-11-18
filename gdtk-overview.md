@@ -2155,6 +2155,15 @@ classified as `Web` rather than `Linux` (the emscripten platform module reports
 under `Dependency/Intermediate/<Platform>/<Config>/<dep>/`. Engine binaries
 are installed into `Bin<Config>/` via `cmake --install ... --prefix .`.
 
+`build_gdtk.py`'s dependency gate keys off that same wrapper set: a config
+whose tree is missing any staged `<dep>/<dep>Config.cmake` counts as stale,
+and the script re-runs `build_dependencies.py` before configuring. The gate
+reads `Dependency/Config/`, so adding a dep there needs no gate change --
+a hand-written artifact list (the gate used to spot-check SDL2 only) let the
+`basisu` addition through and surfaced instead as
+`Could not find a package configuration file provided by "basisu"` during
+the engine configure.
+
 The root file is written to be usable as a subproject (`add_subdirectory`), which
 is what the web path does: every source/build path in it is expressed with
 `CMAKE_CURRENT_SOURCE_DIR` / `CMAKE_CURRENT_BINARY_DIR`, not `CMAKE_SOURCE_DIR`.
