@@ -1076,6 +1076,13 @@ Base class for every loadable asset. Inherits Object. Has lifecycle: `Load()` (C
   clamped cosine, i.e. the same quantity `Hdri::m_diffuseEnvMap` holds, which is what lets the shader
   multiply albedo with either. `ProbeBake.exe` (`--selftest` for the analytic checks) writes it.
 
+  Each material's albedo and emissive come from its maps when it carries them -- the mean of the
+  texture, linearized, because a probe only sees the radiance a surface carries per unit area -- and
+  from `Color` / `EmissiveColor` otherwise, which is the same either/or `defaultFragment.shader` does.
+  Reading the colours alone traced a city with no light in it: a night scene keeps its window glow in
+  an emissive map next to a black `EmissiveColor`, and a textured wall keeps a white `Color` next to
+  a dark map.
+
   The runtime half is `LightProbeVolumeComponent` (`ToolKit/Components/`), which loads the file, keeps
   three channel major `RGBA16F` `DataTexture`s (L1 only, see `probeGI.shader`) and registers itself in
   `Scene::m_probeVolumeCache`. `RenderJobProcessor::AssignEnvironment` gives each job the smallest baked

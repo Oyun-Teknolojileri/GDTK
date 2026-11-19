@@ -15,7 +15,9 @@
 #include "Mesh.h"
 #include "MeshComponent.h"
 #include "Scene.h"
+#include "Texture.h"
 
+#include <cmath>
 #include <unordered_map>
 
 namespace ToolKit
@@ -29,6 +31,87 @@ namespace ToolKit
 
       /** Lights fainter than this contribute nothing worth a shadow ray. */
       constexpr float MinLightIntensity = 1e-5f;
+
+      /**
+       * Mean colour of a texture, in the linear space the GPU samples it in.
+       *
+       * A probe can not resolve what a map paints over a surface, only the radiance that surface
+       * carries per unit area, which is the map's mean. Textures load as sRGB (FormatSRGB8_A8 is
+       * the default, and the GPU linearizes it on sample), so the mean is taken after the same
+       * conversion: a mostly black emissive map with a few bright panes would otherwise average
+       * far brighter than it renders.
+       */
+      bool AverageTextureColor(const TexturePtr& texture, Vec3& out)
+      {
+        if (texture == nullptr)
+        {
+          return false;
+        }
+
+        // The bake runs headless, so the pixels are asked for explicitly: a material that was
+        // never drawn has not touched its textures yet.
+        if (texture->m_image == nullptr && texture->m_imagef == nullptr &&
+            texture->m_compressedLevels.empty())
+        {
+          texture->Load();
+        }
+
+        const size_t texelCount = (size_t) texture->m_width * (size_t) texture->m_height;
+        if (texelCount == 0)
+        {
+          return false;
+        }
+
+        // A component count below three means a grey map; replicate the first channel rather than
+        // reading past the pixel.
+        const int channels = glm::max(texture->m_numChannels, 1);
+        Vec3 sum(0.0f);
+
+        if (texture->m_imagef != nullptr)
+        {
+          for (size_t i = 0; i < texelCount; ++i)
+          {
+            const float* pixel = texture->m_imagef + i * channels;
+            sum += Vec3(pixel[0],
+                        channels > 1 ? pixel[1] : pixel[0],
+                        channels > 2 ? pixel[2] : pixel[0]);
+          }
+          out = sum / (float) texelCount;
+          return true;
+        }
+
+        if (texture->m_image == nullptr)
+        {
+          // Block compressed levels have no CPU side pixels to average; the caller falls back to
+          // the material's colour, which is what an untextured material contributes anyway.
+          return false;
+        }
+
+        // 8 bit sRGB to linear, once per byte value: a pow() per channel per texel is otherwise
+        // the entire cost of this function on a 2k map.
+        static float srgbToLinear[256];
+        static bool tableBuilt = false;
+        if (!tableBuilt)
+        {
+          for (int i = 0; i < 256; ++i)
+          {
+            const float c   = (float) i / 255.0f;
+            srgbToLinear[i] = c <= 0.04045f ? c / 12.92f : (float) std::pow((c + 0.055) / 1.055, 2.4);
+          }
+          tableBuilt = true;
+        }
+
+        for (size_t i = 0; i < texelCount; ++i)
+        {
+          const ubyte* pixel = texture->m_image + i * channels;
+          sum += Vec3(srgbToLinear[pixel[0]],
+                      srgbToLinear[channels > 1 ? pixel[1] : pixel[0]],
+                      srgbToLinear[channels > 2 ? pixel[2] : pixel[0]]);
+        }
+
+        out = sum / (float) texelCount;
+        return true;
+      }
 
       uint MaterialIndex(BakeScene& scene,
                            std::unordered_map<const Material*, uint>& cache,
@@ -46,12 +129,44 @@ namespace ToolKit
         }
 
         SurfaceMaterial surface;
-        surface.albedo   = material->GetColorVal();
-        surface.emissive = material->GetEmissiveColorVal();
+
+        // The forward shader reads a diffuse or emissive map *instead of* the matching colour
+        // (defaultFragment.shader: texture(s_diffuseColor) / texture(s_emissiveColor)), so the bake
+        // mirrors that instead of adding the two. This is what makes a night city work: the lit
+        // windows live in an emissive map next to a black EmissiveColor, and reading the colour
+        // alone traced a city with no light in it.
+        Vec3 average;
+        if (AverageTextureColor(material->GetDiffuseTextureVal(), average))
+        {
+          surface.albedo = average;
+        }
+        else
+        {
+          surface.albedo = material->GetColorVal();
+        }
+
+        if (AverageTextureColor(material->GetEmissiveTextureVal(), average))
+        {
+          surface.emissive = average;
+        }
+        else
+        {
+          surface.emissive = material->GetEmissiveColorVal();
+        }
 
         const uint index      = (uint) scene.materials.size();
         scene.materials.push_back(surface);
         cache[material.get()]   = index;
+
+        // One line per material, because "the bake is dark" is the question this data answers.
+        TK_LOG("Probe bake material '%s': albedo %.3f %.3f %.3f, emissive %.3f %.3f %.3f.",
+               material->GetFile().c_str(),
+               surface.albedo.x,
+               surface.albedo.y,
+               surface.albedo.z,
+               surface.emissive.x,
+               surface.emissive.y,
+               surface.emissive.z);
 
         return index;
       }
