@@ -263,7 +263,11 @@ namespace ToolKit
                     const int jobBase           = submeshIndexLookup[nttIndex];
 
                     // Lights and environment are identical for all submeshes of the same entity.
+                    // The entity is set before the assignments: the probe volume lookup reads it
+                    // to reach the scene's baked volumes, and the job array is reused across
+                    // frames, so until this write the entry still holds last frame's entity.
                     RenderJob& firstJob         = jobArray[jobBase];
+                    firstJob.Entity             = ntt;
                     firstJob.BoundingBox        = rd.bbox;
                     AssignLight(firstJob, lights, dirLightEndIndex);
                     AssignEnvironment(firstJob, environments);
@@ -310,6 +314,7 @@ namespace ToolKit
                         job.lights                     = firstJob.lights;
                         job.EnvironmentVolume          = firstJob.EnvironmentVolume;
                         job.SecondaryEnvironmentVolume = firstJob.SecondaryEnvironmentVolume;
+                        job.ProbeVolume                = firstJob.ProbeVolume;
                       }
                     }
                   });
