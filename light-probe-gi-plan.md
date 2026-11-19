@@ -603,7 +603,9 @@ vec3 ProbeIrradiance(vec3 worldPos, vec3 n, out float weight)
 
   ... z slice math from 4.2, 6 fetches, mix, then the 9 term dot ...
 
-  return E;
+  // An L2 projection of a fully occluded direction can undershoot zero, and a negative
+  // irradiance subtracts light. The bake self test measures about -0.01 on a blocked normal.
+  return max(E, vec3(0.0));
 }
 #endif
 ```
@@ -783,6 +785,40 @@ on that scene lands under the probe budget and bakes in under a minute.
 
 A moving light cannot be baked. The amortised option is the one the reflection volumes already
 use: a capture, or a small path trace, for a handful of probes per frame.
+
+### Phase 1 status (landed)
+
+What exists today:
+
+- `ToolKit/Resources/ProbeVolume.h/.cpp`: `ProbeVolumeData` and the `.pgi` reader / writer, plus
+  the `UVec3` typedef the engine was missing.
+- `Modules/LightProbeBake`: scene snapshot, triangle BVH (binned SAH, built over an index array),
+  path tracer (next event estimation, cosine bounce, Russian roulette), SH projection, the
+  parallel bake over `WorkerManager::BulkPool`, cancellation and the buried probe fill.
+- `ProbeBake.exe`: `--root/--scene/--out` plus `--res/--samples/--bounces/--box/--quality/--seed`,
+  and `--selftest`, which checks the projection against a uniform sky and an emissive ceiling
+  analytically with no scene loaded.
+
+Measured on `alafranga/Resources/Scenes/unity-city.scene` (2.83M triangles, 6885 entities,
+Release build):
+
+| Work | Time |
+|---|---|
+| Snapshot + BVH build | 1.08 s |
+| 2048 probes x 128 samples x 3 bounces | 0.05 s |
+| Whole run, including the scene load | 1.13 s |
+| Output | 218 KB (`16x8x16`, L2) |
+
+The same run in a Debug build spends 24.8 s in the BVH build, which is the number to quote when
+someone times a bake from the editor before the release tooling exists.
+
+Not done yet: the raster cross check from Phase 1 (needs the editor path), the runtime shader,
+the component and the editor UI.
+
+One finding that reached the shader spec: an L2 projection of a fully occluded direction can
+come out slightly negative (the selftest's occluded normal reads -0.009). `probeGI.shader` has
+to clamp its result to zero before it multiplies the albedo, or a shadowed corner subtracts
+light.
 
 ---
 

@@ -40,6 +40,9 @@ GDTK/
 │   ├── RenderDoc/               # Editor glue for the capture core (static library)
 │   │   ├── Source/              # Editor capture directory, commands, menu entries
 │   │   └── Scripts/             # Report tooling: .rdc -> json / markdown / PNGs
+│   ├── LightProbeBake/          # CPU path traced diffuse GI bake (static library + ProbeBake CLI)
+│   │   ├── Source/              # Snapshot, triangle BVH, path tracer, SH projection
+│   │   └── Tools/               # ProbeBake.exe, headless bake of one scene to one .pgi
 ├── Templates/
 │   ├── Plugin/                  # Plugin template
 │   └── Game/                    # Game template
@@ -1065,6 +1068,14 @@ Base class for every loadable asset. Inherits Object. Has lifecycle: `Load()` (C
   whole param block -- a freshly imported material loaded with nothing but its id and name.
 - **Shader** (Shader.h): supports `VertexShader`, `FragmentShader`, `IncludeShader`. Has `ShaderDefine` + `ShaderDefineArray` for variants. Master vs include shader concept: master defines the entry + variant defines; include has no entry. Each shader has `ShaderResourceArray m_resources` declaring texture/UBO bindings with `ViewType` (`Tex2D`, `Tex2DArray`, `TexCube`) — used by Vulkan to pick the right dummy texture for unbound slots.
 - **Texture** (Texture.h), **CubeMap** (Texture.h subclass), **RenderTarget** (offscreen target), **Audio**, **Animation** (`Animation.h` + `AnimationControllerComponent`), **Skeleton** (`Skeleton.h` + `SkeletonComponent`), **SpriteSheet**, **Prefab**, **Plugin**.
+- **ProbeVolume** (`ProbeVolume.h`): not an `Object`, a plain struct plus a `.pgi` reader / writer, because
+  the bake lives in `Modules/LightProbeBake` and the runtime lives in the engine. Holds a dense grid
+  (`resolution`), the volume box (`transform`, `boxMin`, `boxMax`), the quality (L1 = 4 or L2 = 9
+  coefficients), the coefficients (`probeCount * coefficientCount * 3` floats, probe major) and a per
+  probe validity mask. The coefficients are the irradiance divided by pi and already convolved with the
+  clamped cosine, i.e. the same quantity `Hdri::m_diffuseEnvMap` holds, which is what lets the shader
+  multiply albedo with either. `ProbeBake.exe` (`--selftest` for the analytic checks) writes it; nothing
+  reads it into a `DataTexture` yet.
 
   A texture's pixels arrive one of three ways: `m_image` holds 8 bit RGBA for the ordinary stb path,
   `m_imagef` holds float data for HDRI, and `m_compressedLevels` + `m_compressedFormat` hold GPU ready
@@ -2306,6 +2317,9 @@ When writing/editing any `.h`/`.cpp` in this repo:
 | Editor API for modules (console commands, console output) | `Editor/Source/EditorApi.h` |
 | Frame capture request hook (game code) | `ToolKit/Source/FrameCapture.h` |
 | Capture and its report tool (capture -> .rdc -> json / markdown / PNGs) | `Modules/RenderDoc/README.md` |
+| Baked probe volume data + `.pgi` file format | `ToolKit/Resources/ProbeVolume.h` |
+| Probe bake entry point (snapshot, BVH, path tracer) | `Modules/LightProbeBake/Source/LightProbeBake.h` |
+| Diffuse GI design and phase list | `light-probe-gi-plan.md` |
 | Host / platform glue (exec paths, shortcuts, app icon) | `ToolKit/Common/PlatformHelper.h` |
 | Workspace (project and workspace management) | `Modules/Workspace/Source/Workspace.h` |
 | Build deps | `BuildScripts/build_dependencies.py` |

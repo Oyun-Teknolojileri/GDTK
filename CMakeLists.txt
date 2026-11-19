@@ -361,6 +361,10 @@ if(NOT EMSCRIPTEN AND NOT ANDROID)
   # RenderDoc capture module: the editor links it and calls it through the few
   # entry points in RenderDocModule.h.
   add_subdirectory(Modules/RenderDoc ${GDTK_INTERMEDIATE_DIR}/build-RenderDoc)
+  # Light probe bake module: the CPU path tracer behind the diffuse GI bake, plus
+  # the ProbeBake command line front end. Editor and Packer link the library;
+  # a game and the web build never see it.
+  add_subdirectory(Modules/LightProbeBake ${GDTK_INTERMEDIATE_DIR}/build-LightProbeBake)
   add_subdirectory(Editor    ${GDTK_INTERMEDIATE_DIR}/build-Editor)
   add_subdirectory(Utils/Launcher ${GDTK_INTERMEDIATE_DIR}/build-Launcher)
   add_subdirectory(Utils/Import   ${GDTK_INTERMEDIATE_DIR}/build-Import)
@@ -387,7 +391,7 @@ endif()
 if(NOT EMSCRIPTEN AND NOT ANDROID)
   # GDTK targets -- install alongside the build output (idempotent since
   # RUNTIME_OUTPUT_DIRECTORY already points at Bin<Config>/).
-  install(TARGETS ToolKit Editor Launcher Import Packer Workspace
+  install(TARGETS ToolKit Editor Launcher Import Packer Workspace LightProbeBake ProbeBake
     RUNTIME DESTINATION "Bin$<CONFIG>"
     LIBRARY DESTINATION "Bin$<CONFIG>"
     ARCHIVE DESTINATION "Bin$<CONFIG>"
