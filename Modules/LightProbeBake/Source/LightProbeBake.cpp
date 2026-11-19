@@ -121,8 +121,6 @@ namespace ToolKit
 
     bool Bake(const BakeRequest& request, BakeResult& result)
     {
-      const auto startTime = std::chrono::steady_clock::now();
-
       result = BakeResult {};
 
       if (request.scene == nullptr)
@@ -130,6 +128,46 @@ namespace ToolKit
         result.error = "No scene to bake.";
         return false;
       }
+
+      const auto snapshotStart = std::chrono::steady_clock::now();
+
+      BakeScene scene;
+      if (!BuildBakeScene(request.scene, scene, result.error))
+      {
+        return false;
+      }
+
+      const double snapshotSeconds =
+          std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::steady_clock::now() -
+                                                                    snapshotStart)
+              .count();
+
+      // The snapshot reads engine objects, so it happens on the calling thread. A caller that wants
+      // the tracing off the frame thread snapshots first and calls TraceBakeScene itself, which is
+      // what the editor does: snapshotting from a worker raced the frame loop and wrote NaN
+      // coefficients into the file.
+      if (!TraceBakeScene(scene, request, result))
+      {
+        return false;
+      }
+
+      result.seconds += snapshotSeconds;
+      return true;
+    }
+
+    bool TraceBakeScene(const BakeScene& bakeScene, const BakeRequest& request, BakeResult& result)
+    {
+      const auto startTime = std::chrono::steady_clock::now();
+
+      result = BakeResult {};
+
+      if (bakeScene.Empty())
+      {
+        result.error = "No geometry to trace.";
+        return false;
+      }
+
+      const BakeScene& scene = bakeScene;
 
       const UVec3 resolution = glm::max(request.resolution, UVec3(1));
       const size_t probeCount = (size_t) resolution.x * resolution.y * resolution.z;
@@ -147,17 +185,6 @@ namespace ToolKit
         return false;
       }
 
-      BakeScene scene;
-      const auto snapshotStart = std::chrono::steady_clock::now();
-      if (!BuildBakeScene(request.scene, scene, result.error))
-      {
-        return false;
-      }
-      const double snapshotSeconds =
-          std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::steady_clock::now() -
-                                                                    snapshotStart)
-              .count();
-
       TK_LOG("Probe bake: %zu probes (%ux%ux%u), %zu triangles, %zu lights, %d samples, %d bounces.",
              probeCount,
              resolution.x,
@@ -167,8 +194,6 @@ namespace ToolKit
              scene.lights.size(),
              request.samples,
              request.bounces);
-
-      TK_LOG("Probe bake: snapshot and BVH took %.2f seconds.", snapshotSeconds);
 
       if (!scene.sky.enabled)
       {

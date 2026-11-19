@@ -224,6 +224,14 @@ namespace ToolKit
         }
       }
 
+      // A non finite sample poisons every coefficient it lands in, and the shader interpolates a
+      // NaN probe across the whole cell it shares with its neighbours - the volume goes dark as if
+      // the bake had never run. One wrong probe is a bug; a NaN probe is a dead volume.
+      if (!glm::all(glm::isfinite(radiance)))
+      {
+        return Vec3(0.0f);
+      }
+
       const float magnitude = glm::max(glm::max(radiance.x, radiance.y), radiance.z);
       if (magnitude > MaxRadiance)
       {

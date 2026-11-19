@@ -75,5 +75,15 @@ namespace ToolKit
      */
     bool Bake(const BakeRequest& request, BakeResult& result);
 
+    /**
+     * Traces a scene that the caller already flattened with BuildBakeScene.
+     *
+     * The snapshot has to be taken on the thread that owns the scene, because BuildBakeScene reads
+     * engine objects; only this half, which touches nothing but the snapshot, may run on a worker.
+     * Snapshotting from a worker raced the editor's frame loop and wrote NaN coefficients, which
+     * the shader then interpolates across the whole volume.
+     */
+    bool TraceBakeScene(const BakeScene& snapshot, const BakeRequest& request, BakeResult& result);
+
   } // namespace LightProbeBake
 } // namespace ToolKit

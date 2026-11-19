@@ -119,6 +119,19 @@ namespace ToolKit
       request.cancel     = &m_cancel;
       request.onProgress = [this](float progress) -> void { m_progress = progress; };
 
+      // The snapshot is taken here, on the frame thread: BuildBakeScene reads engine objects, and
+      // doing that from the bake thread raced the frame loop - the coefficients came back as NaN,
+      // which the shader interpolates across the whole volume and the GI disappears. Only the
+      // tracing runs on the thread.
+      auto snapshot = std::make_shared<LightProbeBake::BakeScene>();
+      String snapshotError;
+      if (!LightProbeBake::BuildBakeScene(scene.get(), *snapshot, snapshotError))
+      {
+        std::lock_guard<std::mutex> lock(m_statusMutex);
+        m_status = "Bake failed: " + snapshotError;
+        return;
+      }
+
       {
         std::lock_guard<std::mutex> lock(m_statusMutex);
         m_status = Format("Baking %ux%ux%u probes, %d samples, %d bounces...",
@@ -135,10 +148,10 @@ namespace ToolKit
 
       // Joined by Update on the main thread, or by the destructor when the component dies first.
       m_bakeThread = std::thread(
-          [this, request, absoluteFile, resolution]() -> void
+          [this, snapshot, request, absoluteFile, resolution]() -> void
           {
             LightProbeBake::BakeResult result;
-            const bool baked = LightProbeBake::Bake(request, result);
+            const bool baked = LightProbeBake::TraceBakeScene(*snapshot, request, result);
 
             bool saved = false;
             if (baked)
@@ -223,9 +236,17 @@ namespace ToolKit
       }
 
       // Setting the path is what a hand authored volume does, and it runs the component's own
-      // reload path. A re-bake of the same file does not change the value, so LoadBake follows.
-      SetBakeFileVal(ResolveBakeFile());
-      LoadBake();
+      // reload path. A re-bake of the same file does not change the value, and the setter would
+      // not fire, so the load is called directly in that case - once, either way.
+      const String bakeFile = ResolveBakeFile();
+      if (GetBakeFileVal() != bakeFile)
+      {
+        SetBakeFileVal(bakeFile);
+      }
+      else
+      {
+        LoadBake();
+      }
     }
 
   } // namespace Editor
