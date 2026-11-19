@@ -63,6 +63,7 @@ namespace ToolKit
     TKDeclareParam(int, BakeSamples);
     TKDeclareParam(int, BakeBounces);
     TKDeclareParam(int, BakeSeed);
+    TKDeclareParam(int, BakeDenoise);
     TKDeclareParam(float, Intensity);
     TKDeclareParam(float, AmbientOcclusionStrength);
 

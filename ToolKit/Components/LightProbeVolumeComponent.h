@@ -142,6 +142,9 @@ namespace ToolKit
     /** Sampling seed, so the same settings reproduce the same bake. */
     TKDeclareParam(int, BakeSeed);
 
+    /** Grid relaxation passes after tracing; 0 keeps the raw samples. */
+    TKDeclareParam(int, BakeDenoise);
+
     /** Fits Size and PositionOffset to the scene bounds. Also on the LightProbe entity. */
     TKDeclareParam(VariantCallback, FitToScene);
 

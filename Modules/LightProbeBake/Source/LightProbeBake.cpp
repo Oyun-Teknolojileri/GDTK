@@ -59,6 +59,76 @@ namespace ToolKit
         return false;
       }
 
+      /**
+       * Relaxes the grid: every probe moves halfway to the mean of its in range neighbours.
+       *
+       * Each probe is an independent Monte Carlo estimate, so neighbouring probes of a smooth
+       * function disagree by the sampling error, and the shader's trilinear interpolation turns that
+       * disagreement into clouds on the wall. Reading from a copy makes the pass symmetric, so it
+       * does not drift the signal toward the low index corner.
+       */
+      void DenoiseSh(const UVec3& resolution, std::vector<Sh9>& sh, int iterations)
+      {
+        if (iterations <= 0 || sh.empty())
+        {
+          return;
+        }
+
+        constexpr float Relaxation = 0.5f;
+        std::vector<Sh9> source(sh.size());
+
+        for (int iteration = 0; iteration < iterations; ++iteration)
+        {
+          source = sh;
+
+          for (uint z = 0; z < resolution.z; ++z)
+          {
+            for (uint y = 0; y < resolution.y; ++y)
+            {
+              for (uint x = 0; x < resolution.x; ++x)
+              {
+                Sh9 mean;
+                for (int c = 0; c < ShCoefficientCount; ++c)
+                {
+                  mean.c[c] = Vec3(0.0f);
+                }
+                int neighbours = 0;
+
+                const auto accumulate = [&](uint nz, uint ny, uint nx) -> void
+                {
+                  const Sh9& other = source[((size_t) nz * resolution.y + ny) * resolution.x + nx];
+                  for (int c = 0; c < ShCoefficientCount; ++c)
+                  {
+                    mean.c[c] += other.c[c];
+                  }
+                  ++neighbours;
+                };
+
+                if (x > 0) accumulate(z, y, x - 1);
+                if (x + 1 < resolution.x) accumulate(z, y, x + 1);
+                if (y > 0) accumulate(z, y - 1, x);
+                if (y + 1 < resolution.y) accumulate(z, y + 1, x);
+                if (z > 0) accumulate(z - 1, y, x);
+                if (z + 1 < resolution.z) accumulate(z + 1, y, x);
+
+                if (neighbours == 0)
+                {
+                  continue;
+                }
+
+                Sh9& target = sh[((size_t) z * resolution.y + y) * resolution.x + x];
+                const float inv = 1.0f / (float) neighbours;
+                for (int c = 0; c < ShCoefficientCount; ++c)
+                {
+                  const Vec3 averaged = mean.c[c] * inv;
+                  target.c[c]         = glm::mix(target.c[c], averaged, Relaxation);
+                }
+              }
+            }
+          }
+        }
+      }
+
       /** Deterministic per probe stream, independent of how the pool split the work. */
       Pcg32 ProbeRng(size_t probeIndex, uint seed)
       {
@@ -322,6 +392,12 @@ namespace ToolKit
         }
       }
       result.buriedProbes = buriedProbes;
+
+      DenoiseSh(resolution, sh, request.denoiseIterations);
+      if (request.denoiseIterations > 0)
+      {
+        TK_LOG("Probe bake: denoised the grid with %d passes.", request.denoiseIterations);
+      }
 
       const uint coefficientCount = (uint) request.quality;
 

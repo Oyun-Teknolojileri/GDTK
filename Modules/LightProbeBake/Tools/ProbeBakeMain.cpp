@@ -165,8 +165,9 @@ namespace ToolKit
       printf("  --bounces <n>      Surface bounces per path. Default 4.\n");
       printf("  --box <minx,miny,minz,maxx,maxy,maxz>\n");
       printf("                     World space volume box. Default: the scene bounds, padded.\n");
-      printf("  --quality <l1|l2>  Coefficients stored per probe. Default l2.\n");
+      printf("  --quality <l1|l2>  Coefficients stored per probe. Default l1.\n");
       printf("  --seed <n>         Sampling seed. Default 0.\n");
+      printf("  --denoise <n>      Grid relaxation passes after tracing. Default 2, 0 keeps raw.\n");
     }
 
     bool ParseFloat3(const char* text, Vec3& out)
@@ -214,7 +215,7 @@ namespace ToolKit
     String resourceRoot;
     String sceneFile;
     String outFile;
-    String qualityArg = "l2";
+    String qualityArg = "l1";
 
     LightProbeBake::BakeRequest request;
     bool boxGiven = false;
@@ -303,6 +304,15 @@ namespace ToolKit
           return 1;
         }
         request.seed = (uint) std::strtoul(value, nullptr, 10);
+      }
+      else if (flag == "--denoise")
+      {
+        const char* value = next("--denoise");
+        if (value == nullptr)
+        {
+          return 1;
+        }
+        request.denoiseIterations = std::max(0, std::atoi(value));
       }
       else if (flag == "--quality")
       {

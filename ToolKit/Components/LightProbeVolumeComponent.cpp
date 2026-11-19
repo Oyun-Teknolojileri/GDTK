@@ -166,6 +166,13 @@ namespace ToolKit
                     true,
                     {false, true, 0.0f, (float) MaxBakeSeed, 1.0f});
 
+    BakeDenoise_Define(2,
+                       LightProbeVolumeCategory.Name,
+                       LightProbeVolumeCategory.Priority,
+                       true,
+                       true,
+                       {false, true, 0.0f, 8.0f, 1.0f});
+
     LightProbeVolumeComponentWeakPtr weakSelf = Self<LightProbeVolumeComponent>();
     FitToScene_Define(
         [weakSelf]() -> void
@@ -329,11 +336,13 @@ namespace ToolKit
       return false;
     }
 
-    const UVec3 resolution = m_data.resolution;
+    const UVec3 resolution      = m_data.resolution;
     const uint coefficientCount = m_data.CoefficientCount();
 
-    // The shader samples the quadratic set truncated to L1: four coefficients, one colour
-    // channel per texture.
+    // The shader samples the quadratic set truncated to L1: four coefficients, one colour channel
+    // per texture. A quadratic bake still loads - the extra coefficients are simply not read - and
+    // it is not worth the space either way: a 2.25x larger file for a difference that does not show
+    // on a surface, because the cosine convolution has already flattened the band a probe carries.
     if (coefficientCount < 4 || resolution.x == 0 || resolution.y == 0 || resolution.z == 0)
     {
       return false;

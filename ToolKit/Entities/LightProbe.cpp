@@ -97,6 +97,7 @@ namespace ToolKit
     SetBakeSamplesVal(probe->GetBakeSamplesVal());
     SetBakeBouncesVal(probe->GetBakeBouncesVal());
     SetBakeSeedVal(probe->GetBakeSeedVal());
+    SetBakeDenoiseVal(probe->GetBakeDenoiseVal());
     SetIntensityVal(probe->GetIntensityVal());
     SetAmbientOcclusionStrengthVal(probe->GetAmbientOcclusionStrengthVal());
 
@@ -123,6 +124,7 @@ namespace ToolKit
     probe->SetBakeSamplesVal(GetBakeSamplesVal());
     probe->SetBakeBouncesVal(GetBakeBouncesVal());
     probe->SetBakeSeedVal(GetBakeSeedVal());
+    probe->SetBakeDenoiseVal(GetBakeDenoiseVal());
     probe->SetIntensityVal(GetIntensityVal());
     probe->SetAmbientOcclusionStrengthVal(GetAmbientOcclusionStrengthVal());
   }
@@ -152,6 +154,8 @@ namespace ToolKit
                        {false, true, 1.0f, 16.0f, 1.0f});
 
     BakeSeed_Define(0, category, priority, true, true, {false, true, 0.0f, 1000000.0f, 1.0f});
+
+    BakeDenoise_Define(2, category, priority, true, true, {false, true, 0.0f, 8.0f, 1.0f});
 
     Intensity_Define(1.0f, category, priority, true, true,
                      {false, true, 0.0f, 100000.0f, 0.1f});
@@ -210,6 +214,7 @@ namespace ToolKit
     ParamBakeSamples().m_onValueChangedFn.push_back(push);
     ParamBakeBounces().m_onValueChangedFn.push_back(push);
     ParamBakeSeed().m_onValueChangedFn.push_back(push);
+    ParamBakeDenoise().m_onValueChangedFn.push_back(push);
     ParamIntensity().m_onValueChangedFn.push_back(push);
     ParamAmbientOcclusionStrength().m_onValueChangedFn.push_back(push);
   }

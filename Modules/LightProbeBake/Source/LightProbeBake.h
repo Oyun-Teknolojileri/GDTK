@@ -50,7 +50,20 @@ namespace ToolKit
       /** Mixed into the per probe sample seed. */
       uint seed = 0;
 
-      ProbeVolumeQuality quality = ProbeVolumeQuality::L2;
+      /**
+       * Relaxation passes over the grid after tracing, each moving a probe halfway to the mean of
+       * its six neighbours. Zero keeps the raw samples. Two is enough to take the salt and pepper
+       * out of a probe volume without rounding off the shadows it carries: a probe is a coarse
+       * sample of a smooth function, so the noise between neighbours is what the eye reads as
+       * clouds on a wall.
+       */
+      int denoiseIterations = 2;
+
+      /**
+       * L1 by default. The runtime uploads the four coefficients of the cosine band a diffuse
+       * surface answers to; a quadratic bake is 2.25x the file for a difference that does not show.
+       */
+      ProbeVolumeQuality quality = ProbeVolumeQuality::L1;
 
       /** Polled once per probe. May be null. */
       std::atomic<bool>* cancel = nullptr;

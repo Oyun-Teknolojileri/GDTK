@@ -112,9 +112,10 @@ namespace ToolKit
       request.samples    = GetBakeSamplesVal();
       request.bounces    = GetBakeBouncesVal();
       request.seed       = (uint) glm::max(GetBakeSeedVal(), 0);
+      request.denoiseIterations = glm::max(GetBakeDenoiseVal(), 0);
 
-      // L1 is what the runtime uploads and all probeGI.shader reads; a quadratic bake would only
-      // cost twice the file and the same tracing time for coefficients nothing samples.
+      // L1: the runtime reads four coefficients, and a quadratic bake measured no visible
+      // difference on top of them for a 2.25x larger file.
       request.quality    = ProbeVolumeQuality::L1;
       request.cancel     = &m_cancel;
       request.onProgress = [this](float progress) -> void { m_progress = progress; };
