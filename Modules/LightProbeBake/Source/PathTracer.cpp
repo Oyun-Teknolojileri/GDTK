@@ -33,6 +33,12 @@ namespace ToolKit
        */
       constexpr float ShadowRayShrink = 2.0f * ShadowEpsilon;
 
+      /**
+       * How many blended surfaces one path may walk through before it gives up. Glass facades
+       * stack two or three deep; the cap is there so a degenerate geometry can not spin the loop.
+       */
+      constexpr int MaxPassThroughs = 16;
+
       /** Mirrors DistanceAttenuation in lighting.shader. */
       inline float DistanceAttenuation(float distanceSquared, float radius)
       {
@@ -124,6 +130,7 @@ namespace ToolKit
 
       Vec3 rayOrigin    = origin;
       Vec3 rayDirection = glm::normalize(direction);
+      int passThroughs  = 0;
 
       for (int bounce = 0; bounce <= context.maxBounces; ++bounce)
       {
@@ -140,6 +147,23 @@ namespace ToolKit
                                                                      (uint) scene->materials.size() - 1)];
 
         const Vec3 position = rayOrigin + rayDirection * hit.t;
+
+        // A blended surface neither blocks the path nor bounces it: the ray carries on straight
+        // through, and the surface still emits, so a lit window behind glass reaches the probe.
+        // This is not a bounce, so the loop counter does not advance.
+        if (material.passesLight)
+        {
+          radiance += throughput * material.emissive;
+
+          if (++passThroughs > MaxPassThroughs)
+          {
+            break;
+          }
+
+          rayOrigin = position + rayDirection * ShadowEpsilon;
+          --bounce;
+          continue;
+        }
 
         Vec3 normal = tri.n0 * (1.0f - hit.u - hit.v) + tri.n1 * hit.u + tri.n2 * hit.v;
         if (glm::length(normal) < 1e-6f)
@@ -170,7 +194,10 @@ namespace ToolKit
 
           const float shadowTMax = glm::min(distance - ShadowRayShrink, RayFar);
           if (shadowTMax > ShadowEpsilon &&
-              scene->bvh.Occluded(position + normal * ShadowEpsilon, directionToLight, shadowTMax))
+              scene->bvh.Occluded(position + normal * ShadowEpsilon,
+                                  directionToLight,
+                                  shadowTMax,
+                                  &scene->materialsPassingLight))
           {
             continue;
           }

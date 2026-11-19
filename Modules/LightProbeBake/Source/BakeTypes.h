@@ -42,8 +42,16 @@ namespace ToolKit
     /** What the baker needs to know about a surface. Textures are not sampled. */
     struct SurfaceMaterial
     {
-      Vec3 albedo = Vec3(0.8f);
+      Vec3 albedo   = Vec3(0.8f);
       Vec3 emissive = Vec3(0.0f);
+
+      /**
+       * A blended surface (glass, water, an additive glow) neither blocks the path nor bounces
+       * it: the ray continues straight through and the surface still emits. Treating one as a
+       * solid occluder is what turned a glass facade into a wall in the bake, darkening every
+       * probe behind it.
+       */
+      bool passesLight = false;
     };
 
     enum class LightKind : uint8

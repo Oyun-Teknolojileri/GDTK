@@ -36,6 +36,13 @@ namespace ToolKit
       SkyModel sky;
       Bvh bvh;
 
+      /**
+       * One byte per material, non zero where light passes through. The Bvh knows a hit by its
+       * triangle and its material index, not by the material itself, so the flag is flattened
+       * here once instead of being looked up per shadow ray.
+       */
+      std::vector<ubyte> materialsPassingLight;
+
       /** Bounds of the static geometry, used to fit a volume when the caller did not. */
       Vec3 boundsMin = Vec3(0.0f);
       Vec3 boundsMax = Vec3(0.0f);

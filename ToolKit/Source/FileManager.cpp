@@ -487,6 +487,37 @@ namespace ToolKit
     // Layers
     GetAllPaths(LayerPath(""));
 
+    // Light probe bakes. A .pgi is not a Resource: a component names it in a string parameter and
+    // ProbeVolume.cpp loads it, so none of the managers above reports it. Without this walk a
+    // published build keeps its scenes and silently loses its global illumination, because the
+    // file they reference never enters the pak.
+    for (auto& sceneEntry : GetSceneManager()->m_storage)
+    {
+      Scene* scene = sceneEntry.second != nullptr ? sceneEntry.second->As<Scene>() : nullptr;
+      if (scene == nullptr)
+      {
+        continue;
+      }
+
+      for (const EntityPtr& ntt : scene->GetEntities())
+      {
+        LightProbeVolumeComponentPtr probe = ntt->GetComponent<LightProbeVolumeComponent>();
+        if (probe == nullptr || probe->GetBakeFileVal().empty())
+        {
+          continue;
+        }
+
+        String probePath = probe->GetBakeFileVal();
+        if (!std::filesystem::path(probePath).is_absolute())
+        {
+          probePath = ConcatPaths({ResourcePath(), probePath});
+        }
+
+        NormalizePathInplace(probePath);
+        m_allPaths.insert(probePath);
+      }
+    }
+
     // Extra files that the use provided
     GetExtraFilePaths();
   }

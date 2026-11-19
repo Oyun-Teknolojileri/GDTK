@@ -32,8 +32,16 @@ namespace ToolKit
       /** Nearest hit along the ray within `tMax`. */
       bool Intersect(const Vec3& origin, const Vec3& direction, float tMax, RayHit& hit) const;
 
-      /** Any hit along the ray within `tMax`, stopping at the first one (shadow rays). */
-      bool Occluded(const Vec3& origin, const Vec3& direction, float tMax) const;
+      /**
+       * Any opaquing hit along the ray within `tMax`.
+       * @param passing One byte per material, non zero where light passes through. Such a triangle
+       * is not an occluder, so the ray walks past a glass facade instead of stopping on it. Null
+       * treats every triangle as opaque.
+       */
+      bool Occluded(const Vec3& origin,
+                    const Vec3& direction,
+                    float tMax,
+                    const std::vector<ubyte>* passing = nullptr) const;
 
       const std::vector<Triangle>& Triangles() const { return m_triangles; }
 

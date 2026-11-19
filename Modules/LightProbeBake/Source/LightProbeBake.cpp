@@ -42,11 +42,13 @@ namespace ToolKit
 
           const Vec3 origin = position + direction * 1e-4f;
           const bool positive =
-              scene.bvh.Occluded(origin, direction, enclosureDistance + 1e-4f);
+              scene.bvh.Occluded(origin, direction, enclosureDistance + 1e-4f, &scene.materialsPassingLight);
 
           const Vec3 negativeOrigin = position - direction * 1e-4f;
-          const bool negative =
-              scene.bvh.Occluded(negativeOrigin, -direction, enclosureDistance + 1e-4f);
+          const bool negative = scene.bvh.Occluded(negativeOrigin,
+                                                   -direction,
+                                                   enclosureDistance + 1e-4f,
+                                                   &scene.materialsPassingLight);
 
           if (positive && negative)
           {

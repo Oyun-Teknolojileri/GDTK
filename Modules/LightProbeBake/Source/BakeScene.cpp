@@ -154,19 +154,25 @@ namespace ToolKit
           surface.emissive = material->GetEmissiveColorVal();
         }
 
+        // The frame draws a blended material over what is behind it, so a glass facade is not a
+        // wall: light goes through it in the bake too. Additive materials (a glow, a light cone)
+        // are in the same group and only ever emit.
+        surface.passesLight = material->IsTranslucent();
+
         const uint index      = (uint) scene.materials.size();
         scene.materials.push_back(surface);
         cache[material.get()]   = index;
 
         // One line per material, because "the bake is dark" is the question this data answers.
-        TK_LOG("Probe bake material '%s': albedo %.3f %.3f %.3f, emissive %.3f %.3f %.3f.",
+        TK_LOG("Probe bake material '%s': albedo %.3f %.3f %.3f, emissive %.3f %.3f %.3f%s.",
                material->GetFile().c_str(),
                surface.albedo.x,
                surface.albedo.y,
                surface.albedo.z,
                surface.emissive.x,
                surface.emissive.y,
-               surface.emissive.z);
+               surface.emissive.z,
+               surface.passesLight ? ", light passes through" : "");
 
         return index;
       }
@@ -366,6 +372,13 @@ namespace ToolKit
       out.bvh.Build(std::move(triangles));
       out.boundsMin = out.bvh.BoundsMin();
       out.boundsMax = out.bvh.BoundsMax();
+
+      // Flattened once: a shadow ray asks the Bvh, which knows a material index and nothing else.
+      out.materialsPassingLight.resize(out.materials.size(), 0);
+      for (size_t i = 0; i < out.materials.size(); ++i)
+      {
+        out.materialsPassingLight[i] = out.materials[i].passesLight ? 1 : 0;
+      }
 
       return true;
     }

@@ -376,7 +376,10 @@ namespace ToolKit
       return found;
     }
 
-    bool Bvh::Occluded(const Vec3& origin, const Vec3& direction, float tMax) const
+    bool Bvh::Occluded(const Vec3& origin,
+                       const Vec3& direction,
+                       float tMax,
+                       const std::vector<ubyte>* passing) const
     {
       if (m_nodes.empty())
       {
@@ -409,6 +412,16 @@ namespace ToolKit
             float v = 0.0f;
             if (IntersectTriangle(m_indices[i], origin, direction, t, u, v) && t < tMax)
             {
+              if (passing != nullptr)
+              {
+                const uint material = m_triangles[m_indices[i]].material;
+                if (material < passing->size() && (*passing)[material] != 0)
+                {
+                  // Light passes through this one, so it is not an occluder: look past it.
+                  continue;
+                }
+              }
+
               return true;
             }
           }

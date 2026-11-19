@@ -1083,6 +1083,11 @@ Base class for every loadable asset. Inherits Object. Has lifecycle: `Load()` (C
   an emissive map next to a black `EmissiveColor`, and a textured wall keeps a white `Color` next to
   a dark map.
 
+  A blended material (`Material::IsTranslucent`: glass, water, an additive glow) does not block a
+  path in the tracer - the ray carries on from the hit point and the surface still emits - and the
+  Bvh occlusion test walks past it through `BakeScene::materialsPassingLight`, so a glass facade
+  stops being a wall. Transmittance is not modelled: a blended surface passes light whole.
+
   The runtime half is `LightProbeVolumeComponent` (`ToolKit/Components/`), which loads the file, keeps
   three channel major `RGBA16F` `DataTexture`s (L1 only, see `probeGI.shader`) and registers itself in
   `Scene::m_probeVolumeCache`. `RenderJobProcessor::AssignEnvironment` gives each job the smallest baked
@@ -1971,6 +1976,15 @@ One FileManager fix came out of this: the pak offset table used to be marked com
 pak existed yet, so a lookup during packing poisoned every later read of the pak the pack had just
 written. `GenerateOffsetTableForPakFiles` no longer caches a missing pak, and `CloseZipFile` /
 `PackResources` drop the table when the pak is replaced.
+
+**Not everything a scene references is a `Resource`.** The path set comes from the resource managers
+(`GetAllUsedResourcePaths`) plus `ExtraFiles.txt`, and a light probe volume is neither: a
+`LightProbeVolumeComponent` names its `.pgi` in a string parameter. The pack step walks the loaded
+scenes for those components and adds the file, and `LoadProbeVolume` reads through
+`FileManager::ReadFileBuffer` instead of an `ifstream`, so the bake travels inside the pak like every
+other resource. The editor is not the host that proves this - it sets `m_ignorePakFile` and reads
+loose files (`Editor/Source/main.cpp`, and the Launcher does the same), while the game template
+leaves the flag alone and therefore reads the pak.
 
 **What a publish does about packing is a setting, not a rule in the Packer.** `Projects -> Publish ->
 Packer` holds `Pack on Debug`, `Pack on Develop`, `Pack on Deploy` and `Compress textures`, plus a
