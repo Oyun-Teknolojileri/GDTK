@@ -540,6 +540,37 @@ namespace ToolKit
         }
       }
     }
+
+    // Probe volume: the smallest baked one that contains the object, the same rule. A scene
+    // without any baked volume leaves the job with none and the shader contributes nothing.
+    job.ProbeVolume = nullptr;
+    if (job.Entity != nullptr)
+    {
+      if (ScenePtr scene = job.Entity->m_scene.lock())
+      {
+        float bestVolume = FLT_MAX;
+        for (const LightProbeVolumeComponentPtr& probe : scene->GetProbeVolumes())
+        {
+          if (probe == nullptr || !probe->IsBaked())
+          {
+            continue;
+          }
+
+          const BoundingBox& vbb = probe->GetBoundingBox();
+          if (BoxBoxIntersection(vbb, job.BoundingBox) == IntersectResult::Outside)
+          {
+            continue;
+          }
+
+          const float volume = vbb.Volume();
+          if (job.ProbeVolume == nullptr || volume < bestVolume)
+          {
+            bestVolume      = volume;
+            job.ProbeVolume = probe.get();
+          }
+        }
+      }
+    }
   }
 
   void RenderJobProcessor::CalculateStdev(const RenderJobArray& rjVec, float& stdev, Vec3& mean)

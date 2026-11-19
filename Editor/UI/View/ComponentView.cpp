@@ -16,6 +16,7 @@
 #include <AnimationControllerComponent.h>
 #include <EnvironmentComponent.h>
 #include <FileManager.h>
+#include <LightProbeVolumeComponent.h>
 #include <Material.h>
 #include <Mesh.h>
 
@@ -931,6 +932,23 @@ namespace ToolKit
             {
               editor->SetStatusMsg(g_statusFailed);
               TK_WRN("Skeleton Component already exists.");
+            }
+          }
+
+          if (ImGui::MenuItem("Light Probe Volume Component"))
+          {
+            if (ntt->GetComponentFast<LightProbeVolumeComponent>() == nullptr)
+            {
+              LightProbeVolumeComponentPtr probeCom = MakeNewPtr<LightProbeVolumeComponent>();
+              ntt->AddComponent(probeCom);
+              componentAdded = true;
+
+              editor->SetStatusMsg(g_successStr);
+            }
+            else
+            {
+              editor->SetStatusMsg(g_statusFailed);
+              TK_WRN("Light Probe Volume Component already exists.");
             }
           }
 

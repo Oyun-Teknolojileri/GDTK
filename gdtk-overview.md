@@ -1074,8 +1074,16 @@ Base class for every loadable asset. Inherits Object. Has lifecycle: `Load()` (C
   coefficients), the coefficients (`probeCount * coefficientCount * 3` floats, probe major) and a per
   probe validity mask. The coefficients are the irradiance divided by pi and already convolved with the
   clamped cosine, i.e. the same quantity `Hdri::m_diffuseEnvMap` holds, which is what lets the shader
-  multiply albedo with either. `ProbeBake.exe` (`--selftest` for the analytic checks) writes it; nothing
-  reads it into a `DataTexture` yet.
+  multiply albedo with either. `ProbeBake.exe` (`--selftest` for the analytic checks) writes it.
+
+  The runtime half is `LightProbeVolumeComponent` (`ToolKit/Components/`), which loads the file, keeps
+  three channel major `RGBA16F` `DataTexture`s (L1 only, see `probeGI.shader`) and registers itself in
+  `Scene::m_probeVolumeCache`. `RenderJobProcessor::AssignEnvironment` gives each job the smallest baked
+  volume containing it, the job carries it as `RenderJob::ProbeVolume`, and `Renderer::SetDataTextures`
+  binds the three textures and fills the `probe*` block of the `PerDrawData` UBO. `probeGI.shader`
+  evaluates the four L1 coefficients and `IBLPBR` (`ibl.shader`) reports its diffuse part through an out
+  parameter so `defaultFragment.shader` can swap it for the probe where the volume is active; the
+  specular part keeps coming from the sky and environment cubemaps.
 
   A texture's pixels arrive one of three ways: `m_image` holds 8 bit RGBA for the ordinary stb path,
   `m_imagef` holds float data for HDRI, and `m_compressedLevels` + `m_compressedFormat` hold GPU ready

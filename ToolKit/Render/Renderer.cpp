@@ -1185,6 +1185,65 @@ namespace ToolKit
         SetTexture((ubyte) slot, m_brdfLut);
     }
 
+    // Probe volume, bound per job: the job carries the smallest baked volume containing it.
+    m_drawCommand.SetProbeVolumeEnabled(false);
+    m_drawCommand.SetProbeVolumeIntensity(0.0f);
+    m_drawCommand.SetProbeVolumeAmbientOcclusion(1.0f);
+
+    LightProbeVolumeComponent* probeComp = job.ProbeVolume;
+    if (probeComp != nullptr && probeComp->EnsureShaderTextures())
+    {
+      bool bound = true;
+      for (int channel = 0; channel < 3; ++channel)
+      {
+        const String name = channel == 0 ? "s_probeSH0" : (channel == 1 ? "s_probeSH1" : "s_probeSH2");
+        const int slot      = m_currentProgram->GetTextureSlot(name.c_str());
+        DataTexturePtr tex  = probeComp->GetShaderTexture(channel);
+
+        if (slot != -1 && tex != nullptr)
+        {
+          SetTexture((ubyte) slot, tex);
+        }
+        else
+        {
+          bound = false;
+        }
+      }
+
+      if (bound)
+      {
+        const ProbeVolumeData& data = probeComp->GetProbeData();
+        const Vec3 half             = probeComp->GetSizeVal() * 0.5f;
+
+        if (!m_loggedProbeBinding)
+        {
+          m_loggedProbeBinding = true;
+          TK_LOG("Light probe volume: bound %ux%ux%u probes to slots %d %d %d.",
+                 data.resolution.x,
+                 data.resolution.y,
+                 data.resolution.z,
+                 m_currentProgram->GetTextureSlot("s_probeSH0"),
+                 m_currentProgram->GetTextureSlot("s_probeSH1"),
+                 m_currentProgram->GetTextureSlot("s_probeSH2"));
+        }
+
+        m_drawCommand.SetProbeVolumeEnabled(true);
+        m_drawCommand.SetProbeVolumeIntensity(probeComp->GetIntensityVal());
+        m_drawCommand.SetProbeVolumeAmbientOcclusion(probeComp->GetAmbientOcclusionStrengthVal());
+        m_drawCommand.SetProbeVolumeMin(probeComp->GetPositionOffsetVal() - half);
+        m_drawCommand.SetProbeVolumeMax(probeComp->GetPositionOffsetVal() + half);
+        m_drawCommand.SetProbeVolumeResolution(Vec3(data.resolution));
+
+        // The bakes were traced in world space, so the box is the only thing that needs the
+        // volume transform: the coefficients are already oriented.
+        if (const EntityPtr& owner = probeComp->OwnerEntity())
+        {
+          m_drawCommand.SetProbeVolumeInverseTransform(
+              glm::inverse(owner->m_node->GetTransform(TransformationSpace::TS_WORLD)));
+        }
+      }
+    }
+
     // AO texture.
     if (m_ambientOcculusionInUse)
     {

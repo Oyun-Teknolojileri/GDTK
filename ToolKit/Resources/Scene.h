@@ -14,6 +14,7 @@
 #include "AABBTree.h"
 #include "EngineSettings.h"
 #include "EnvironmentComponent.h"
+#include "LightProbeVolumeComponent.h"
 #include "Resource.h"
 #include "Sky.h"
 #include "Types.h"
@@ -169,6 +170,18 @@ namespace ToolKit
 
     /** Removes an environment component from the volume cache. */
     void RemoveEnvironmentVolume(EnvironmentComponent* envComp);
+
+    /**
+     * Returns the baked light probe volumes of the scene. A job is assigned the smallest one
+     * that contains it, the same rule the environment volumes follow.
+     */
+    LightProbeVolumeComponentPtrArray& GetProbeVolumes() const;
+
+    /** Adds a probe volume component to the cache. */
+    void AddProbeVolume(const LightProbeVolumeComponentPtr& probeComp);
+
+    /** Removes a probe volume component from the cache. */
+    void RemoveProbeVolume(LightProbeVolumeComponent* probeComp);
 
     /**
      * Gets the first entity in the scene with the given name.
@@ -340,6 +353,7 @@ namespace ToolKit
     mutable LightRawPtrArray m_lightCache;                         //!< Cached light entities which is added to scene.
     mutable LightRawPtrArray m_directionalLightCache;              //!< Cached directional lights in the scene.
     mutable EnvironmentComponentPtrArray m_environmentVolumeCache; //!< Environment volumes in the scene.
+    mutable LightProbeVolumeComponentPtrArray m_probeVolumeCache;  //!< Baked probe volumes in the scene.
     mutable SkyBasePtr m_skyCache;                                 //!< Last added sky.
 
     std::unordered_map<ObjectId, int> m_entityIdToIndex; //!< Fast entity ID lookup map.

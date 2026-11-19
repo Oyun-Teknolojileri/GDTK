@@ -4,6 +4,7 @@
 	<include name = "pbrCommon.shader" />
 	<include name = "drawDataInc.shader" />
 	<include name = "perDrawDataInc.shader" />
+	<include name = "probeGI.shader" />
 	<texture slot = "7"  name = "s_irradianceMap"  viewType = "cube" />
 	<texture slot = "10" name = "s_brdfLut" />
 	<texture slot = "11" name = "s_secondaryIrradiance" viewType = "cube" />
@@ -81,9 +82,10 @@ vec3 SpecularDFG(vec2 dfg, vec3 f0)
 // Sky IBL evaluation (returns raw sky color, no weighting)
 // ---------------------------------------------------------------------------
 
-vec3 EvalSky(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float perceptualRoughness, vec3 E, vec3 energyComp)
+vec3 EvalSky(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float perceptualRoughness, vec3 E, vec3 energyComp, out vec3 diffuseOut)
 {
 	vec3 color = vec3(0.0);
+	diffuseOut = vec3(0.0);
 
 	float skyIntensity = GetSkyIntensity();
 	if (skyIntensity <= 0.0)
@@ -95,7 +97,8 @@ vec3 EvalSky(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float per
 	vec3 diffuseColor = albedo * (1.0 - metallic);
 	vec3 iblDiffuseVec = (perDraw._iblRotation * vec4(normal, 0.0)).xyz;
 	vec3 irradiance = texture(s_skyIrradiance, iblDiffuseVec).rgb;
-	color += diffuseColor * irradiance * (1.0 - E);
+	diffuseOut = diffuseColor * irradiance * (1.0 - E);
+	color += diffuseOut;
 
 	// Specular
 	vec3 R = reflect(-fragToEye, normal);
@@ -178,6 +181,7 @@ vec3 EvalVolumeSpecular(int vol, vec3 normal, vec3 fragToEye, float perceptualRo
 struct VolumeAccum
 {
 	vec3 color;     // sum(volumeColor * blend)
+	vec3 diffuse;   // sum(diffuse part * blend), the probe volume replaces this
 	float weight;   // sum(blend)
 	float maxBlend; // max(blend)
 	bool interior;  // true when any contributing volume is flagged interior
@@ -198,6 +202,7 @@ void AccumulateVolume(int vol, vec3 normal, vec3 fragToEye, vec3 albedo, float m
 	vec3 volumeColor = (Fd + Fr) * GetVolumeIntensity(vol);
 
 	accum.color += volumeColor * blend;
+	accum.diffuse += (Fd * GetVolumeIntensity(vol)) * blend;
 	accum.weight += blend;
 	accum.maxBlend = max(accum.maxBlend, blend);
 	accum.interior = accum.interior || IsVolumeInterior(vol);
@@ -208,8 +213,10 @@ void AccumulateVolume(int vol, vec3 normal, vec3 fragToEye, vec3 albedo, float m
 // whatever weight no volume covered.
 // ---------------------------------------------------------------------------
 
-vec3 IBLPBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float perceptualRoughness, vec2 dfg, vec3 energyComp, vec3 worldPos)
+vec3 IBLPBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float perceptualRoughness, vec2 dfg, vec3 energyComp, vec3 worldPos, out vec3 diffuseOut)
 {
+	diffuseOut = vec3(0.0);
+
 	if (!IsIBLInUse())
 	{
 		return vec3(0.0);
@@ -219,10 +226,12 @@ vec3 IBLPBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float perc
 	vec3 E = SpecularDFG(dfg, f0);
 
 	// Evaluate sky once: it is both the outside fallback and the boundary blend target.
-	vec3 skyColor = EvalSky(normal, fragToEye, albedo, metallic, perceptualRoughness, E, energyComp);
+	vec3 skyDiffuse;
+	vec3 skyColor = EvalSky(normal, fragToEye, albedo, metallic, perceptualRoughness, E, energyComp, skyDiffuse);
 
 	VolumeAccum accum;
 	accum.color    = vec3(0.0);
+	accum.diffuse  = vec3(0.0);
 	accum.weight   = 0.0;
 	accum.maxBlend = 0.0;
 	accum.interior = false;
@@ -233,6 +242,7 @@ vec3 IBLPBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float perc
 	// Outside every volume: pure sky.
 	if (accum.weight <= 0.0)
 	{
+		diffuseOut = skyDiffuse;
 		return skyColor;
 	}
 
@@ -240,8 +250,11 @@ vec3 IBLPBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float perc
 	// sky out of the pixel entirely, exterior ones fade into it over their fade
 	// distance.
 	float skyWeight = accum.interior ? 0.0 : (1.0 - accum.maxBlend);
+	float totalWeight = accum.weight + skyWeight;
 
-	return (accum.color + skyColor * skyWeight) / (accum.weight + skyWeight);
+	diffuseOut = (accum.diffuse + skyDiffuse * skyWeight) / totalWeight;
+
+	return (accum.color + skyColor * skyWeight) / totalWeight;
 }
 
 #endif

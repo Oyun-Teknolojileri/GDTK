@@ -148,7 +148,27 @@
 		vec3 irradiance = PBRLighting(v_worldPos, v_viewDepth, n, e, camera.position, color.xyz, metallic, roughness, energyComp);
 
 		float ambientOcclusion = AmbientOcclusion();
-		irradiance += IBLPBR(n, e, color.xyz, metallic, perceptualRoughness, dfg, energyComp, v_worldPos) * ambientOcclusion;
+
+		vec3 iblDiffuse;
+		vec3 ibl = IBLPBR(n, e, color.xyz, metallic, perceptualRoughness, dfg, energyComp, v_worldPos, iblDiffuse) *
+		           ambientOcclusion;
+
+		// Baked probe volume. It replaces the diffuse part of the sky and of the environment
+		// volumes, because the bake already contains both with the visibility the probe saw.
+		// The specular part stays on the cubemaps: a probe cannot carry a reflection.
+		float probeWeight = 0.0;
+		vec3 probe = ProbeIrradiance(v_worldPos, n, probeWeight);
+		if (probeWeight > 0.0)
+		{
+			vec3 E = SpecularDFG(dfg, f0);
+			float aoStrength = perDraw._drawCommand.probeParams.z;
+			vec3 probeDiffuse = probe * color.xyz * (1.0 - metallic) * (1.0 - E) *
+			                    mix(1.0, ambientOcclusion, aoStrength);
+
+			ibl = mix(ibl, ibl - iblDiffuse * ambientOcclusion + probeDiffuse, probeWeight);
+		}
+
+		irradiance += ibl;
 
 		fragColor = vec4(irradiance, color.a) + vec4(emissive, 0.0);
 	}

@@ -10,6 +10,7 @@
 #include "Logger.h"
 
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 
 namespace ToolKit
@@ -53,6 +54,19 @@ namespace ToolKit
     }
 
     std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+    if (!stream.is_open())
+    {
+      // A tool that has to be told to create its own output folder is a tool that fails on its
+      // first run, so the folder is created here and the open is retried once.
+      std::error_code error;
+      const std::filesystem::path parent = std::filesystem::path(path).parent_path();
+      if (!parent.empty())
+      {
+        std::filesystem::create_directories(parent, error);
+        stream.open(path, std::ios::binary | std::ios::trunc);
+      }
+    }
+
     if (!stream.is_open())
     {
       TK_ERR("Probe volume '%s' can not be opened for writing.", path.c_str());

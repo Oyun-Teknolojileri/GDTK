@@ -127,14 +127,24 @@ dOmega = 4 / (res * res * pow(1 + u*u + v*v, 1.5))
 
 ### 4.2 Layout on the GPU
 
-Each probe is one cell of a `resX x resY x resZ` grid. The SH is stored as **three RGBA16F
-textures, each holding three coefficients in its RGB channels**:
+The arithmetic decides the layout, so it is worth doing before the table. A coefficient is a
+colour triple, three floats. L2 is nine coefficients, 27 floats per probe. One RGBA16F texel
+carries four floats, so L2 needs at least seven texels per probe: three textures cannot hold
+it, and six fetches cannot carry it either (6 x 4 = 24 < 27). The first version of this plan
+claimed otherwise; the table below is the corrected one.
+
+**What is implemented: L1, four coefficients, 12 floats, three texels.** The bake still
+produces L2 by default (`--quality l2`), and the runtime reads the first four coefficients of
+it, which is exact: the L1 coefficients of an L2 projection are the L1 projection.
+
+Each texel holds one colour channel of all four coefficients, so a fetch returns four scalars
+of the same channel:
 
 | Texture | R | G | B | A |
 |---|---|---|---|---|
-| `s_probeSH0` | c0 | c1 | c2 | - |
-| `s_probeSH1` | c3 | c4 | c5 | - |
-| `s_probeSH2` | c6 | c7 | c8 | - |
+| `s_probeSH0` | c0.r | c1.r | c2.r | c3.r |
+| `s_probeSH1` | c0.g | c1.g | c2.g | c3.g |
+| `s_probeSH2` | c0.b | c1.b | c2.b | c3.b |
 
 Each texture is `resX` wide and `resY * resZ` tall: the z slices are stacked vertically, so
 a slice is a block of `resY` rows. This buys hardware bilinear filtering across the two grid
@@ -150,12 +160,14 @@ st1      = vec2(uvw.x, (z1 * res.y + ty) / (res.y * res.z))
 ```
 
 Six `texture()` fetches (three textures times two slices), one `mix` per texture, then the
-nine term dot above. The y clamp is not cosmetic: without it the bilinear footprint of the
-first and last row of a slice reaches into the neighbouring slice.
+four term dot. The y clamp is not cosmetic: without it the bilinear footprint of the first and
+last row of a slice reaches into the neighbouring slice. Implementation:
+`Resources/Engine/Shaders/probeGI.shader`.
 
-**L1 variant** for a tight texture unit or fill rate budget: 4 coefficients, one texture
-(RGB = c0..c2, A = c3), two fetches. Same baker, a flag in the component and a shader define.
-Worth having because of the unit budget in 9.1 and because mobile web is a real target.
+L2 storage, when the extra band is wanted: seven channels rather than three, i.e. seven
+samplers and fourteen fetches, or a 3D texture with seven coefficient planes per probe (one
+unit, fourteen fetches, needs the `Texture3D` work from 6.4). Both are a shader and an upload
+change, not a format change, because the `.pgi` already stores all nine.
 
 ### 4.3 Size
 

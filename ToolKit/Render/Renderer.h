@@ -57,6 +57,15 @@ namespace ToolKit
     Vec4 vol1InvTransform0, vol1InvTransform1, vol1InvTransform2, vol1InvTransform3;
     Vec4 vol1WorldTransform0, vol1WorldTransform1, vol1WorldTransform2, vol1WorldTransform3;
 
+    // --- Probe volume (8 Vec4) ---
+
+    /** x: enabled, y: intensity, z: ambient occlusion strength, w: unused */
+    Vec4 probeParams;
+    Vec4 probeMin; /**< xyz: volume min (local space) */
+    Vec4 probeMax; /**< xyz: volume max (local space) */
+    Vec4 probeRes; /**< xyz: probes along each axis */
+    Vec4 probeInvTransform0, probeInvTransform1, probeInvTransform2, probeInvTransform3;
+
     // --- Global setters ---
 
     void SetIblInUse(bool inUse) { global0.x = inUse ? 1.0f : 0.0f; }
@@ -103,6 +112,28 @@ namespace ToolKit
       WldT(vol, 1) = Vec4(m[1]);
       WldT(vol, 2) = Vec4(m[2]);
       WldT(vol, 3) = Vec4(m[3]);
+    }
+
+    // --- Probe volume setters ---
+
+    void SetProbeVolumeEnabled(bool enabled) { probeParams.x = enabled ? 1.0f : 0.0f; }
+
+    void SetProbeVolumeIntensity(float intensity) { probeParams.y = intensity; }
+
+    void SetProbeVolumeAmbientOcclusion(float strength) { probeParams.z = strength; }
+
+    void SetProbeVolumeMin(const Vec3& minVal) { probeMin = Vec4(minVal, 0.0f); }
+
+    void SetProbeVolumeMax(const Vec3& maxVal) { probeMax = Vec4(maxVal, 0.0f); }
+
+    void SetProbeVolumeResolution(const Vec3& resolution) { probeRes = Vec4(resolution, 0.0f); }
+
+    void SetProbeVolumeInverseTransform(const Mat4& m)
+    {
+      probeInvTransform0 = Vec4(m[0]);
+      probeInvTransform1 = Vec4(m[1]);
+      probeInvTransform2 = Vec4(m[2]);
+      probeInvTransform3 = Vec4(m[3]);
     }
 
    private:
@@ -615,6 +646,9 @@ namespace ToolKit
     uint m_batchInstanceCount      = 1;
 
     std::array<int, RHIConstants::TextureSlotCount> m_textureSlots;
+
+    /** One shot log that says the probe binding path ran, so a silent no-op is visible. */
+    bool m_loggedProbeBinding = false;
 
     /** Current viewport size (x,y) and position (z,w) */
     UVec4 m_viewportRect;

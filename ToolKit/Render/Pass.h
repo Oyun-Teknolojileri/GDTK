@@ -8,6 +8,7 @@
 #pragma once
 
 #include "EnvironmentComponent.h"
+#include "LightProbeVolumeComponent.h"
 #include "RenderState.h"
 #include "Renderer.h"
 #include "UniformBuffer.h"
@@ -139,6 +140,7 @@ namespace ToolKit
     Material* Material                               = nullptr; //!< Material to render job with.
     EnvironmentComponent* EnvironmentVolume          = nullptr; //!< EnvironmentVolume effecting this entity, if any.
     EnvironmentComponent* SecondaryEnvironmentVolume = nullptr; //!< Secondary env volume for IBL blending.
+    LightProbeVolumeComponent* ProbeVolume           = nullptr; //!< Baked probe volume containing this entity.
     bool ShadowCaster                                = true;    //!< Account in shadow map construction.
     bool frustumCulled                               = false;   //!< States that the job is culled by a camera.
     bool requireCullFlip = false; //!< Negative determinant in transform requires cull side flip.
