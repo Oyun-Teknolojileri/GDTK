@@ -20,6 +20,7 @@
 #include <DirectionComponent.h>
 #include <EnvironmentComponent.h>
 #include <GradientSky.h>
+#include <LightProbeVolumeComponent.h>
 #include <Material.h>
 #include <MaterialComponent.h>
 #include <MathUtil.h>
@@ -366,6 +367,21 @@ namespace ToolKit
           Mat4 worldTransform = ntt->m_node->GetTransform(TransformationSpace::TS_WORLD);
           app->m_perFrameDebugObjects.push_back(
               CreateBoundingBoxDebugObject(localBB, g_environmentGizmoColor, 1.0f, &worldTransform));
+        }
+
+        if (LightProbeVolumeComponentPtr probeCom = ntt->GetComponent<LightProbeVolumeComponent>())
+        {
+          // Same shape of box as an environment volume, in the owner's local space, so the volume
+          // the box edit tool scales is exactly the volume that is drawn.
+          Vec3 offset = probeCom->GetPositionOffsetVal();
+          Vec3 half   = probeCom->GetSizeVal() * 0.5f;
+          BoundingBox localBB;
+          localBB.min         = offset - half;
+          localBB.max         = offset + half;
+
+          Mat4 worldTransform = ntt->m_node->GetTransform(TransformationSpace::TS_WORLD);
+          app->m_perFrameDebugObjects.push_back(
+              CreateBoundingBoxDebugObject(localBB, g_lightProbeGizmoColor, 1.0f, &worldTransform));
         }
 
         if (app->m_showSelectionBoundary && ntt->IsDrawable())

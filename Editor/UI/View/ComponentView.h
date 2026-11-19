@@ -21,6 +21,13 @@ namespace ToolKit
       static bool ShowComponentBlock(ComponentPtr& comp, const bool modifiableComp);
 
       /**
+       * Draws the Bake button of a light probe volume, or the progress bar and the cancel button
+       * while a bake runs. The parameter view calls this instead of drawing a plain button,
+       * because progress is state the component owns and not a value in its parameter block.
+       */
+      static void ShowLightProbeBake(ComponentPtr comp);
+
+      /**
        * Drops the file scope state kept by this view (the pending extra animation track and the
        * root motion preview cache). Must be called while the engine is still alive
        * (App::Destroy), because the state owns engine resources.

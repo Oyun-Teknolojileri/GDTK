@@ -9,6 +9,8 @@
 
 #include "Action.h"
 #include "App.h"
+#include "EditorLightProbeVolumeComponent.h"
+#include "EditorScene.h"
 #include "EditorViewport.h"
 #include "ProjectThumbnail.h"
 #include "TransformMod.h"
@@ -354,6 +356,73 @@ namespace ToolKit
     }
 
     void ImportSlient(TagArgArray tagArgs) { BoolCheck(tagArgs, &GetApp()->m_importSlient); }
+
+    void BakeLightProbeExec(TagArgArray tagArgs)
+    {
+      EditorScenePtr scene = GetApp()->GetCurrentScene();
+      if (scene == nullptr)
+      {
+        WriteConsoleLine("BakeLightProbe: there is no current scene.", LogType::Error);
+        return;
+      }
+
+      // An argument names the entity, otherwise the selected one is used and then the first
+      // volume in the scene, so a scene with a single probe volume needs no argument at all.
+      String wanted;
+      if (!tagArgs.empty() && !tagArgs.front().second.empty())
+      {
+        wanted = tagArgs.front().second.front();
+      }
+
+      EditorLightProbeVolumeComponent* target = nullptr;
+      EntityPtrArray selection;
+      scene->GetSelectedEntities(selection);
+
+      auto pickFrom = [&](const EntityPtrArray& entities) -> void
+      {
+        for (const EntityPtr& ntt : entities)
+        {
+          if (ntt == nullptr || (target != nullptr))
+          {
+            continue;
+          }
+
+          if (!wanted.empty() && ntt->GetNameVal() != wanted)
+          {
+            continue;
+          }
+
+          if (EditorLightProbeVolumeComponent* comp =
+                  ntt->GetComponentFast<EditorLightProbeVolumeComponent>())
+          {
+            target = comp;
+          }
+        }
+      };
+
+      pickFrom(selection);
+      if (target == nullptr)
+      {
+        pickFrom(scene->GetEntities());
+      }
+
+      if (target == nullptr)
+      {
+        WriteConsoleLine("BakeLightProbe: no light probe volume" +
+                             (wanted.empty() ? String("") : " on '" + wanted + "'") + " in this scene.",
+                         LogType::Error);
+        return;
+      }
+
+      if (target->IsBaking())
+      {
+        WriteConsoleLine("BakeLightProbe: a bake is already running.", LogType::Warning);
+        return;
+      }
+
+      target->RequestBake();
+      WriteConsoleLine("BakeLightProbe: started, watch the component in the inspector.", LogType::Memo);
+    }
 
     void SelectByTag(TagArgArray tagArgs)
     {
@@ -850,6 +919,7 @@ namespace ToolKit
       RegisterConsoleCommand(g_setTransformOrientationCmd, SetTransformOrientationExec);
       RegisterConsoleCommand(g_importSlientCmd, ImportSlient);
       RegisterConsoleCommand(g_selectByTag, SelectByTag);
+      RegisterConsoleCommand(g_bakeLightProbeCmd, BakeLightProbeExec);
       RegisterConsoleCommand(g_lookAt, LookAt);
       RegisterConsoleCommand(g_applyTransformToMesh, ApplyTransformToMesh);
       RegisterConsoleCommand(g_saveMesh, SaveMesh);

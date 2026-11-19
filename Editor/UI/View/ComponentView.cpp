@@ -10,6 +10,7 @@
 #include "Action.h"
 #include "App.h"
 #include "CustomDataView.h"
+#include "EditorLightProbeVolumeComponent.h"
 #include "EditorScene.h"
 
 #include <AABBOverrideComponent.h>
@@ -191,6 +192,36 @@ namespace ToolKit
 
         ImGui::EndDisabled();
       }
+    }
+
+    void ComponentView::ShowLightProbeBake(ComponentPtr comp)
+    {
+      LightProbeVolumeComponent* probe = comp != nullptr ? comp->As<LightProbeVolumeComponent>() : nullptr;
+      if (probe == nullptr)
+      {
+        return;
+      }
+
+      if (probe->IsBaking())
+      {
+        ImGui::ProgressBar(probe->GetBakeProgress(), ImVec2(-1.0f, 0.0f), nullptr);
+        ImGui::TextWrapped("%s", probe->GetBakeStatus().c_str());
+
+        if (UI::BeginCenteredTextButton("Cancel", "CancelBake"))
+        {
+          probe->RequestCancelBake();
+        }
+        UI::EndCenteredTextButton();
+        return;
+      }
+
+      if (UI::BeginCenteredTextButton("Bake", "StartBake"))
+      {
+        probe->RequestBake();
+      }
+      UI::EndCenteredTextButton();
+
+      ImGui::TextWrapped("%s", probe->GetBakeStatus().c_str());
     }
 
     void ComponentView::ShowAnimControllerComponent(ParameterVariant* var, ComponentPtr comp)
@@ -939,8 +970,14 @@ namespace ToolKit
           {
             if (ntt->GetComponentFast<LightProbeVolumeComponent>() == nullptr)
             {
-              LightProbeVolumeComponentPtr probeCom = MakeNewPtr<LightProbeVolumeComponent>();
-              ntt->AddComponent(probeCom);
+              // Through the factory, so an editor build gets the subclass with the Bake button.
+              ComponentPtr probeBase =
+                  MakeNewPtrCasted<Component>(LightProbeVolumeComponent::StaticClass()->Name);
+              if (probeBase == nullptr)
+              {
+                probeBase = MakeNewPtr<LightProbeVolumeComponent>();
+              }
+              ntt->AddComponent(probeBase);
               componentAdded = true;
 
               editor->SetStatusMsg(g_successStr);

@@ -59,6 +59,10 @@ namespace ToolKit
     const String g_selectByTag("SelectByTag");
     TK_EDITOR_API void SelectByTag(TagArgArray tagArgs);
 
+    /** BakeLightProbe [<entity name>]: bakes a probe volume of the current scene. */
+    const String g_bakeLightProbeCmd("BakeLightProbe");
+    TK_EDITOR_API void BakeLightProbeExec(TagArgArray tagArgs);
+
     const String g_lookAt("LookAt");
     TK_EDITOR_API void LookAt(TagArgArray tagArgs);
 

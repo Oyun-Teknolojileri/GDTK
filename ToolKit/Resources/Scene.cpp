@@ -192,10 +192,12 @@ namespace ToolKit
       envComp->Init(true);
     }
 
-    // A probe volume loads its bake once and then does nothing; the Init early outs.
+    // A probe volume loads its bake once and then does nothing; the Init early outs. The Update is
+    // where a host that runs work around the volume (the editor's bake) ticks.
     for (const LightProbeVolumeComponentPtr& probeComp : m_probeVolumeCache)
     {
       probeComp->Init(true);
+      probeComp->Update();
     }
 
     for (Light* light : m_lightCache)

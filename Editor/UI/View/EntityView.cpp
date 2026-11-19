@@ -8,6 +8,7 @@
 #include "EntityView.h"
 
 #include "App.h"
+#include "ComponentView.h"
 #include "CustomDataView.h"
 #include "TransformMod.h"
 
@@ -15,6 +16,7 @@
 #include <Drawable.h>
 #include <GradientSky.h>
 #include <Image.h>
+#include <LightProbe.h>
 #include <Material.h>
 #include <MathUtil.h>
 #include <Mesh.h>
@@ -528,6 +530,17 @@ namespace ToolKit
 
             for (ParameterVariant* var : varCallbacks)
             {
+              // The probe bake button reports the progress of the bake the volume component runs;
+              // no generic callback widget can know about that.
+              if (var->m_name == "Bake")
+              {
+                if (LightProbe* probe = ntt->As<LightProbe>())
+                {
+                  ComponentView::ShowLightProbeBake(probe->GetProbeVolume());
+                  continue;
+                }
+              }
+
               CustomDataView::ShowVariant(var, nullptr);
             }
           }

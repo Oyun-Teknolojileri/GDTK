@@ -1097,6 +1097,27 @@ Base class for every loadable asset. Inherits Object. Has lifecycle: `Load()` (C
   parameter so `defaultFragment.shader` can swap it for the probe where the volume is active; the
   specular part keeps coming from the sky and environment cubemaps.
 
+  **The authoring half.** A `LightProbe` entity (`ToolKit/Entities/LightProbe.h`) owns a volume the
+  way a primitive owns its mesh: it creates the component through the object factory, so an editor
+  build gets `EditorLightProbeVolumeComponent` (where the bake runner lives) instead of the engine
+  type, mirrors the component's parameters into its own `Light Probe` group and hides the
+  component's group with `ParameterBlock::ExposeByCategory`, so the inspector shows one block. The
+  mirror pushes entity -> component on edit and is refreshed from the component once per frame,
+  because the box edit tool writes `Size` straight onto the component. `FitToScene` sets the box to
+  the scene bounds with the same padding `ProbeBake` applies when it is given none, in the node's
+  local space.
+
+  The bake itself is editor side: `EditorLightProbeVolumeComponent` runs `LightProbeBake::Bake` on a
+  thread of its own with a progress callback and a cancel token, writes the `.pgi` and reloads it.
+  The per frame tick that joins that thread comes from `LightProbeVolumeComponent::Update`, which
+  `Scene::Update` calls next to the `Init` it already ran - deliberately not from the main thread
+  task queue, because a poll that re-schedules itself from inside a task extends the frame's task
+  loop. The buttons reach the runner through `RequestBake` / `RequestCancelBake` / `IsBaking` /
+  `GetBakeProgress` / `GetBakeStatus`, virtuals the engine base leaves empty, so `ToolKit` never
+  links the baker and a game answers "not baked" without it. `BoxEditMod` hands the box the same
+  handles an environment volume gets and `EditorRenderer` draws it; the console has
+  `BakeLightProbe [<entity>]` for a headless trigger.
+
   A texture's pixels arrive one of three ways: `m_image` holds 8 bit RGBA for the ordinary stb path,
   `m_imagef` holds float data for HDRI, and `m_compressedLevels` + `m_compressedFormat` hold GPU ready
   block data for a KTX2 container. `Texture::Load` reads the file as bytes

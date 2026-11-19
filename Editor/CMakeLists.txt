@@ -134,6 +134,7 @@ target_link_libraries(Editor PRIVATE
   ToolKit
   Workspace
   RenderDoc
+  LightProbeBake
   SDL2
   SDL2main
   imgui

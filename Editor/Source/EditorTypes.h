@@ -163,6 +163,8 @@ const String g_worldSettingsStr("World Settings");
     const Vec3 g_cameraGizmoColor              = Vec3(0.0f);
     const Vec3 g_lightGizmoColor               = Vec3(0.0f);
     const Vec3 g_environmentGizmoColor         = Vec3(0.0f);
+    /** Cyan enough to read against the night scenes the probe volumes are baked for. */
+    const Vec3 g_lightProbeGizmoColor          = Vec3(0.35f, 0.8f, 1.0f);
     const Vec3 g_gizmoLocked                   = Vec3(0.3f);
     const std::vector<Vec3> g_gizmoColor       = {g_gizmoRed, g_gizmoGreen, g_gizmoBlue};
     const Vec4 g_wndBgColor                    = Vec4(0.007024517f, 0.00959683f, 0.018735119f, 1.0f);

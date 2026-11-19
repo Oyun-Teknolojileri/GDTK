@@ -23,6 +23,7 @@
 namespace ToolKit
 {
   typedef std::shared_ptr<class LightProbeVolumeComponent> LightProbeVolumeComponentPtr;
+  typedef std::weak_ptr<class LightProbeVolumeComponent> LightProbeVolumeComponentWeakPtr;
   typedef std::vector<LightProbeVolumeComponentPtr> LightProbeVolumeComponentPtrArray;
 
   static VariantCategory LightProbeVolumeCategory {"Light Probe Volume", 91};
@@ -39,6 +40,15 @@ namespace ToolKit
 
     void Init(bool flushClientSideArray);
     void UnInit();
+
+    /**
+     * Called once per frame for every volume in the scene's cache, next to Init.
+     *
+     * Nothing in the engine needs it - the volume is data and upload only - but a host that runs
+     * work around the volume (the editor's bake) needs a per frame tick, and this is the one the
+     * scene already provides without a task that has to re-schedule itself.
+     */
+    virtual void Update();
 
     const BoundingBox& GetBoundingBox();
     void InvalidateSpatialCaches();
@@ -62,6 +72,42 @@ namespace ToolKit
     /** The three slice stacked coefficient textures, or null before EnsureShaderTextures. */
     DataTexturePtr GetShaderTexture(int index) const;
 
+    /** Probe grid a bake would produce for the current box and spacing. */
+    UVec3 ComputeBakeResolution() const;
+
+    /**
+     * Bake file relative to the resource root, including the default it would be baked to.
+     * an empty BakeFile resolves to `LightProbes/<scene name>.pgi`, which is what the editor's
+     * Bake button writes and the pack step then finds.
+     */
+    String ResolveBakeFile();
+
+    /**
+     * Resizes the volume to the scene bounds, padded the way the ProbeBake tool pads when it is
+     * given no box: 2% of the largest extent, at least 10 cm. The box is written in local space,
+     * so an offset or rotated node keeps its own frame.
+     */
+    void FitToScene();
+
+    // The bake itself lives in `Modules/LightProbeBake`, which the engine does not depend on, so
+    // the volume only offers the hooks and a host that links the baker (the editor) overrides
+    // them. A game answers "not baking" and the bake buttons do nothing.
+    //////////////////////////////////////////
+
+    /** Starts a bake. The engine base never bakes. */
+    virtual void RequestBake() {}
+
+    /** Asks a running bake to stop. */
+    virtual void RequestCancelBake() {}
+
+    virtual bool IsBaking() const { return false; }
+
+    /** Fractions of the probes traced, 0 to 1. */
+    virtual float GetBakeProgress() const { return 0.0f; }
+
+    /** One line the inspector shows under the bake button. */
+    virtual String GetBakeStatus() const { return "Not baked."; }
+
    protected:
     void ParameterConstructor() override;
     void ParameterEventConstructor() override;
@@ -75,6 +121,21 @@ namespace ToolKit
 
     /** Bake file, relative to the resource root. Empty means not baked. */
     TKDeclareParam(String, BakeFile);
+
+    /** Distance between neighbouring probes in world units; the probe grid follows from it. */
+    TKDeclareParam(float, ProbeSpacing);
+
+    /** Paths traced per probe. More is smoother and slower. */
+    TKDeclareParam(int, BakeSamples);
+
+    /** Surface bounces per path. */
+    TKDeclareParam(int, BakeBounces);
+
+    /** Sampling seed, so the same settings reproduce the same bake. */
+    TKDeclareParam(int, BakeSeed);
+
+    /** Fits Size and PositionOffset to the scene bounds. Also on the LightProbe entity. */
+    TKDeclareParam(VariantCallback, FitToScene);
 
     TKDeclareParam(float, Intensity);
     TKDeclareParam(float, AmbientOcclusionStrength);

@@ -13,6 +13,7 @@
 #include "EditorScene.h"
 #include "MultiChoiceWindow.h"
 
+#include <LightProbeVolumeComponent.h>
 #include <Material.h>
 #include <Mesh.h>
 #include <Prefab.h>
@@ -911,6 +912,14 @@ namespace ToolKit
         break;
         case ParameterVariant::VariantType::VariantCallback:
         {
+          // The probe bake button is not a plain button: it reports the progress of the bake the
+          // component is running and offers a cancel while it runs.
+          if (comp != nullptr && comp->IsA<LightProbeVolumeComponent>() && var->m_name == "Bake")
+          {
+            ComponentView::ShowLightProbeBake(comp);
+            break;
+          }
+
           if (UI::BeginCenteredTextButton(var->m_name))
           {
             VariantCallback callback = var->GetVar<VariantCallback>();

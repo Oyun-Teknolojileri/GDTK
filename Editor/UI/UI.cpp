@@ -23,6 +23,7 @@
 
 #include <Audio.h>
 #include <GradientSky.h>
+#include <LightProbe.h>
 #include <MathUtil.h>
 #include <Prefab.h>
 #include <SDL.h>
@@ -1817,6 +1818,7 @@ namespace ToolKit
 
           {Sky::StaticClass()->Name,              ICON_FA_SKYATLAS ICON_SPACE    },
           {GradientSky::StaticClass()->Name,      ICON_FA_SKYATLAS ICON_SPACE    },
+          {LightProbe::StaticClass()->Name,       ICON_FA_CUBE ICON_SPACE        },
       };
 
       auto entityIcon = EntityTypeToIconMap.find(Class->Name);

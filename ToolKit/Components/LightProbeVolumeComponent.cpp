@@ -20,6 +20,26 @@
 namespace ToolKit
 {
 
+  namespace
+  {
+    /**
+     * The probe grid is derived from the spacing, so these are the only numbers that keep a typo
+     * from asking for a billion probes: a 5 km box at 5 cm spacing is 8000^3 cells.
+     */
+    constexpr float DefaultProbeSpacing = 8.0f;
+    constexpr float MinProbeSpacing     = 0.05f;
+    constexpr float MaxProbeSpacing     = 1000.0f;
+    constexpr int MaxProbesPerAxis      = 256;
+
+    constexpr int DefaultBakeSamples = 512;
+    constexpr int MinBakeSamples     = 1;
+    constexpr int MaxBakeSamples     = 16384;
+    constexpr int MinBakeBounces     = 1;
+    constexpr int MaxBakeBounces     = 16;
+    constexpr int DefaultBakeBounces = 4;
+    constexpr int MaxBakeSeed        = 1000000;
+  } // namespace
+
   TKDefineClass(LightProbeVolumeComponent, Component);
 
   LightProbeVolumeComponent::LightProbeVolumeComponent() {}
@@ -66,6 +86,8 @@ namespace ToolKit
       LoadBake();
     }
   }
+
+  void LightProbeVolumeComponent::Update() {}
 
   void LightProbeVolumeComponent::UnInit()
   {
@@ -115,6 +137,48 @@ namespace ToolKit
                     LightProbeVolumeCategory.Priority,
                     true,
                     true);
+
+    ProbeSpacing_Define(DefaultProbeSpacing,
+                        LightProbeVolumeCategory.Name,
+                        LightProbeVolumeCategory.Priority,
+                        true,
+                        true,
+                        {false, true, MinProbeSpacing, MaxProbeSpacing, 0.5f});
+
+    BakeSamples_Define(DefaultBakeSamples,
+                       LightProbeVolumeCategory.Name,
+                       LightProbeVolumeCategory.Priority,
+                       true,
+                       true,
+                       {false, true, (float) MinBakeSamples, (float) MaxBakeSamples, 1.0f});
+
+    BakeBounces_Define(DefaultBakeBounces,
+                       LightProbeVolumeCategory.Name,
+                       LightProbeVolumeCategory.Priority,
+                       true,
+                       true,
+                       {false, true, (float) MinBakeBounces, (float) MaxBakeBounces, 1.0f});
+
+    BakeSeed_Define(0,
+                    LightProbeVolumeCategory.Name,
+                    LightProbeVolumeCategory.Priority,
+                    true,
+                    true,
+                    {false, true, 0.0f, (float) MaxBakeSeed, 1.0f});
+
+    LightProbeVolumeComponentWeakPtr weakSelf = Self<LightProbeVolumeComponent>();
+    FitToScene_Define(
+        [weakSelf]() -> void
+        {
+          if (LightProbeVolumeComponentPtr self = weakSelf.lock())
+          {
+            self->FitToScene();
+          }
+        },
+        LightProbeVolumeCategory.Name,
+        LightProbeVolumeCategory.Priority,
+        true,
+        true);
 
     Intensity_Define(1.0f,
                      LightProbeVolumeCategory.Name,
@@ -320,6 +384,93 @@ namespace ToolKit
   }
 
   void LightProbeVolumeComponent::InvalidateSpatialCaches() { m_spatialCachesInvalidated = true; }
+
+  void LightProbeVolumeComponent::FitToScene()
+  {
+    EntityPtr owner = OwnerEntity();
+    if (owner == nullptr)
+    {
+      return;
+    }
+
+    ScenePtr scene = owner->m_scene.lock();
+    if (scene == nullptr)
+    {
+      return;
+    }
+
+    BoundingBox bounds = scene->GetSceneBoundary();
+    const Vec3 extent  = bounds.max - bounds.min;
+    if (glm::any(glm::lessThanEqual(extent, Vec3(0.0f))))
+    {
+      return;
+    }
+
+    // Same padding the ProbeBake tool fits when it is given no box.
+    const float padding =
+        glm::max(glm::max(extent.x, glm::max(extent.y, extent.z)) * 0.02f, 0.1f);
+    bounds.min -= Vec3(padding);
+    bounds.max += Vec3(padding);
+
+    // The scene bound is world space; Size and PositionOffset are the node's local space, so the
+    // world box comes through the inverse of the node transform and is re-fitted there.
+    const Mat4 toLocal = glm::inverse(owner->m_node->GetTransform(TransformationSpace::TS_WORLD));
+
+    Vec3Array corners;
+    GetCorners(bounds, corners);
+
+    BoundingBox local;
+    local.min = Vec3(FLT_MAX);
+    local.max = Vec3(-FLT_MAX);
+    for (const Vec3& corner : corners)
+    {
+      const Vec3 localCorner = Vec3(toLocal * Vec4(corner, 1.0f));
+      local.min              = glm::min(local.min, localCorner);
+      local.max              = glm::max(local.max, localCorner);
+    }
+
+    SetSizeVal(local.max - local.min);
+    SetPositionOffsetVal((local.min + local.max) * 0.5f);
+  }
+
+  UVec3 LightProbeVolumeComponent::ComputeBakeResolution() const
+  {
+    const Vec3 size    = glm::max(GetSizeVal(), Vec3(MinProbeSpacing));
+    const float spacing = glm::clamp(GetProbeSpacingVal(), MinProbeSpacing, MaxProbeSpacing);
+
+    // A box that is an exact multiple of the spacing lands a probe on both faces, so the cell
+    // count is rounded rather than ceiled; one probe per axis is the floor.
+    const Vec3 cells = glm::round(size / spacing);
+    const Vec3 clamped = glm::clamp(cells, Vec3(1.0f), Vec3((float) MaxProbesPerAxis));
+    return UVec3(clamped);
+  }
+
+  String LightProbeVolumeComponent::ResolveBakeFile()
+  {
+    const String file = GetBakeFileVal();
+    if (!file.empty())
+    {
+      return file;
+    }
+
+    // Nothing named yet: default next to the scene that owns the volume, so a bake started from the
+    // editor lands where the pack step and a hand written path both look for it.
+    String sceneName = "scene";
+    if (EntityPtr owner = OwnerEntity())
+    {
+      if (ScenePtr scene = owner->m_scene.lock())
+      {
+        String name, ext;
+        DecomposePath(scene->GetFile(), nullptr, &name, &ext);
+        if (!name.empty())
+        {
+          sceneName = name;
+        }
+      }
+    }
+
+    return ConcatPaths({"LightProbes", sceneName + ".pgi"});
+  }
 
   void LightProbeVolumeComponent::UpdateBoundingBoxCache()
   {
