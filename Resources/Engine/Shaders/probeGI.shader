@@ -56,10 +56,12 @@ vec3 ProbeIrradiance(vec3 worldPos, vec3 n, out float weight)
 	vec3 local = (invTransform * vec4(worldPos, 1.0)).xyz;
 	vec3 uvw = (local - probeMin.xyz) / max(probeMax.xyz - probeMin.xyz, vec3(1e-5));
 
-	// Fade over one cell at the boundary so the hand off to the sky does not step.
-	float fadeBand = 1.0 / max(min(res.x, min(res.y, res.z)), 1.0);
-	vec3 edge = min(uvw, 1.0 - uvw);
-	weight = clamp(min(min(edge.x, edge.y), edge.z) / fadeBand, 0.0, 1.0);
+	// Fade over half a cell at the boundary so the hand off to the sky does not step. The band is
+	// measured in cells of the axis it belongs to: one cell taken from the smallest axis and applied
+	// to all of them made a volume with few slices in y fade across a third of its height, so most
+	// of a room was a sky and probe blend and the probe never owned the pixel it was baked for.
+	vec3 edgeCells = min(uvw, 1.0 - uvw) * res;
+	weight = clamp(2.0 * min(min(edgeCells.x, edgeCells.y), edgeCells.z), 0.0, 1.0);
 
 	vec3 clamped = clamp(uvw, 0.0, 1.0);
 

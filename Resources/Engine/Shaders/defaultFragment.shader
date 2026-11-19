@@ -150,12 +150,29 @@
 		float ambientOcclusion = AmbientOcclusion();
 
 		vec3 iblDiffuse;
-		vec3 ibl = IBLPBR(n, e, color.xyz, metallic, perceptualRoughness, dfg, energyComp, v_worldPos, iblDiffuse) *
-		           ambientOcclusion;
+		vec3 skyIrradianceRef;
+		vec3 iblRaw = IBLPBR(n,
+		                     e,
+		                     color.xyz,
+		                     metallic,
+		                     perceptualRoughness,
+		                     dfg,
+		                     energyComp,
+		                     v_worldPos,
+		                     iblDiffuse,
+		                     skyIrradianceRef);
 
-		// Baked probe volume. It replaces the diffuse part of the sky and of the environment
-		// volumes, because the bake already contains both with the visibility the probe saw.
-		// The specular part stays on the cubemaps: a probe cannot carry a reflection.
+		// Split the cubemap term into what a probe can carry and what it cannot. The specular part
+		// stays on the maps: a probe holds irradiance, not a reflection.
+		vec3 iblSpecular = max(iblRaw - iblDiffuse, vec3(0.0));
+		vec3 ibl         = iblSpecular * ambientOcclusion + iblDiffuse * ambientOcclusion;
+
+		// Baked probe volume. Where it covers the pixel it is the whole diffuse term: the bake
+		// already contains the sky and the environment volumes with the visibility the probe saw,
+		// so the sky's diffuse is replaced rather than corrected. It used to be subtracted back out
+		// of the blended IBL value, which only worked while the two numbers agreed - the sky path
+		// scaled its reported diffuse differently from the colour it returned, so a sky intensity
+		// below one removed more than the sky had added and the walls went negative.
 		float probeWeight = 0.0;
 		vec3 probe = ProbeIrradiance(v_worldPos, n, probeWeight);
 		if (probeWeight > 0.0)
@@ -165,7 +182,25 @@
 			vec3 probeDiffuse = probe * color.xyz * (1.0 - metallic) * (1.0 - E) *
 			                    mix(1.0, ambientOcclusion, aoStrength);
 
-			ibl = mix(ibl, ibl - iblDiffuse * ambientOcclusion + probeDiffuse, probeWeight);
+			// Specular occlusion from the probe. The cubemap term here is the *unoccluded* sky, while
+			// the probe holds the same irradiance as the bake measured it through the geometry, so
+			// their ratio is how much of the sky this location really sees. Reflections damped by it
+			// stay part of the lighting instead of floating over a room the probe painted dark, which
+			// is the usual treatment where a volume carries no reflection of its own.
+			float skyLuminance   = dot(skyIrradianceRef, vec3(0.2126, 0.7152, 0.0722));
+			float probeLuminance = dot(probe, vec3(0.2126, 0.7152, 0.0722));
+			float specularOcc    = skyLuminance > 1e-4 ?
+			                           clamp(probeLuminance / skyLuminance, 0.0, 1.0) :
+			                           1.0;
+
+			// Only the broad, ambient end of the reflection is damped this way: a mirror inside the
+			// volume still shows what it can see, because its reflection is not ambient.
+			specularOcc = mix(1.0, specularOcc, perceptualRoughness);
+
+			vec3 probeSpecular = iblSpecular * mix(1.0, specularOcc, probeWeight);
+
+			ibl = probeSpecular * ambientOcclusion +
+			      mix(iblDiffuse * ambientOcclusion, probeDiffuse, probeWeight);
 		}
 
 		irradiance += ibl;

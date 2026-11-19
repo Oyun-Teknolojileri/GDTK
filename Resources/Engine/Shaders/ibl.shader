@@ -82,10 +82,11 @@ vec3 SpecularDFG(vec2 dfg, vec3 f0)
 // Sky IBL evaluation (returns raw sky color, no weighting)
 // ---------------------------------------------------------------------------
 
-vec3 EvalSky(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float perceptualRoughness, vec3 E, vec3 energyComp, out vec3 diffuseOut)
+vec3 EvalSky(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float perceptualRoughness, vec3 E, vec3 energyComp, out vec3 diffuseOut, out vec3 irradianceOut)
 {
 	vec3 color = vec3(0.0);
 	diffuseOut = vec3(0.0);
+	irradianceOut = vec3(0.0);
 
 	float skyIntensity = GetSkyIntensity();
 	if (skyIntensity <= 0.0)
@@ -97,8 +98,20 @@ vec3 EvalSky(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float per
 	vec3 diffuseColor = albedo * (1.0 - metallic);
 	vec3 iblDiffuseVec = (perDraw._iblRotation * vec4(normal, 0.0)).xyz;
 	vec3 irradiance = texture(s_skyIrradiance, iblDiffuseVec).rgb;
+
+	// The unoccluded sky irradiance at this normal, scaled the way the sky is applied. A light probe
+	// holds the same quantity with the visibility its bake measured, so the ratio of the two is how
+	// much of the sky this location actually sees - which is what damps the reflections.
+	irradianceOut = irradiance * skyIntensity;
+
 	diffuseOut = diffuseColor * irradiance * (1.0 - E);
 	color += diffuseOut;
+
+	// The caller uses diffuseOut to split the specular part back out of the value this returns, so
+	// it has to carry the same sky intensity the return does. It used to come back unscaled while
+	// the colour was multiplied at the bottom of this function, which made "take the sky's diffuse
+	// away again" remove more than the sky had ever added whenever intensity was below one.
+	diffuseOut *= skyIntensity;
 
 	// Specular
 	vec3 R = reflect(-fragToEye, normal);
@@ -213,9 +226,10 @@ void AccumulateVolume(int vol, vec3 normal, vec3 fragToEye, vec3 albedo, float m
 // whatever weight no volume covered.
 // ---------------------------------------------------------------------------
 
-vec3 IBLPBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float perceptualRoughness, vec2 dfg, vec3 energyComp, vec3 worldPos, out vec3 diffuseOut)
+vec3 IBLPBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float perceptualRoughness, vec2 dfg, vec3 energyComp, vec3 worldPos, out vec3 diffuseOut, out vec3 skyIrradianceOut)
 {
 	diffuseOut = vec3(0.0);
+	skyIrradianceOut = vec3(0.0);
 
 	if (!IsIBLInUse())
 	{
@@ -227,7 +241,15 @@ vec3 IBLPBR(vec3 normal, vec3 fragToEye, vec3 albedo, float metallic, float perc
 
 	// Evaluate sky once: it is both the outside fallback and the boundary blend target.
 	vec3 skyDiffuse;
-	vec3 skyColor = EvalSky(normal, fragToEye, albedo, metallic, perceptualRoughness, E, energyComp, skyDiffuse);
+	vec3 skyColor = EvalSky(normal,
+	                        fragToEye,
+	                        albedo,
+	                        metallic,
+	                        perceptualRoughness,
+	                        E,
+	                        energyComp,
+	                        skyDiffuse,
+	                        skyIrradianceOut);
 
 	VolumeAccum accum;
 	accum.color    = vec3(0.0);
