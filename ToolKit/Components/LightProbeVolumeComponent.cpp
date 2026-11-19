@@ -247,12 +247,46 @@ namespace ToolKit
     // The box belongs to the bake: the coefficients only mean something inside the volume they
     // were traced in. Adopting the file's box removes the chance of an author sizing the box by
     // hand and sampling the grid where it has no data.
-    const Vec3 boxMin = m_data.boxMin;
-    const Vec3 boxMax = m_data.boxMax;
-    if (glm::all(glm::greaterThan(boxMax, boxMin)))
+    //
+    // The file stores the box in world space, the one the tracer covered, while Size and
+    // PositionOffset are the node's local space. Writing the world box into them moved the volume
+    // by the node's own transform - the box jumps the moment a bake lands and the probes then
+    // sample where the geometry is not.
+    BoundingBox fileBox;
+    fileBox.min = m_data.boxMin;
+    fileBox.max = m_data.boxMax;
+    if (glm::all(glm::greaterThan(fileBox.max, fileBox.min)))
     {
-      SetPositionOffsetVal((boxMin + boxMax) * 0.5f);
-      SetSizeVal(boxMax - boxMin);
+      const BoundingBox local = WorldBoxToLocal(fileBox);
+
+      // A box the author already sized wins: a bake is always traced from it, so the two agree,
+      // and re-adopting on every load is what made a rotated node grow its box a little per bake
+      // (the traced box is axis aligned, its local image is not). The file's box is only taken
+      // when there is none yet, which is the "point a fresh volume at an existing bake" case.
+      const Vec3 currentSize = GetSizeVal();
+      if (!glm::all(glm::greaterThan(currentSize, Vec3(MinProbeSpacing))))
+      {
+        SetPositionOffsetVal((local.min + local.max) * 0.5f);
+        SetSizeVal(local.max - local.min);
+      }
+      else
+      {
+        const Vec3 fileSize = local.max - local.min;
+        const Vec3 drift    = glm::abs(fileSize - currentSize) / glm::max(currentSize, Vec3(MinProbeSpacing));
+        if (glm::any(glm::greaterThan(drift, Vec3(0.05f))))
+        {
+          TK_WRN("Light probe volume: the bake '%s' was traced for a %.2f x %.2f x %.2f volume but "
+                 "this one is %.2f x %.2f x %.2f. Re-bake it, or the probes will be sampled where "
+                 "the grid has no data.",
+                 path.c_str(),
+                 fileSize.x,
+                 fileSize.y,
+                 fileSize.z,
+                 currentSize.x,
+                 currentSize.y,
+                 currentSize.z);
+        }
+      }
     }
 
     InvalidateSpatialCaches();
@@ -385,6 +419,33 @@ namespace ToolKit
 
   void LightProbeVolumeComponent::InvalidateSpatialCaches() { m_spatialCachesInvalidated = true; }
 
+  BoundingBox LightProbeVolumeComponent::WorldBoxToLocal(const BoundingBox& worldBox)
+  {
+    BoundingBox local = worldBox;
+
+    EntityPtr owner = OwnerEntity();
+    if (owner == nullptr)
+    {
+      return local;
+    }
+
+    const Mat4 toLocal = glm::inverse(owner->m_node->GetTransform(TransformationSpace::TS_WORLD));
+
+    Vec3Array corners;
+    GetCorners(worldBox, corners);
+
+    local.min = Vec3(FLT_MAX);
+    local.max = Vec3(-FLT_MAX);
+    for (const Vec3& corner : corners)
+    {
+      const Vec3 localCorner = Vec3(toLocal * Vec4(corner, 1.0f));
+      local.min              = glm::min(local.min, localCorner);
+      local.max              = glm::max(local.max, localCorner);
+    }
+
+    return local;
+  }
+
   void LightProbeVolumeComponent::FitToScene()
   {
     EntityPtr owner = OwnerEntity();
@@ -412,23 +473,8 @@ namespace ToolKit
     bounds.min -= Vec3(padding);
     bounds.max += Vec3(padding);
 
-    // The scene bound is world space; Size and PositionOffset are the node's local space, so the
-    // world box comes through the inverse of the node transform and is re-fitted there.
-    const Mat4 toLocal = glm::inverse(owner->m_node->GetTransform(TransformationSpace::TS_WORLD));
-
-    Vec3Array corners;
-    GetCorners(bounds, corners);
-
-    BoundingBox local;
-    local.min = Vec3(FLT_MAX);
-    local.max = Vec3(-FLT_MAX);
-    for (const Vec3& corner : corners)
-    {
-      const Vec3 localCorner = Vec3(toLocal * Vec4(corner, 1.0f));
-      local.min              = glm::min(local.min, localCorner);
-      local.max              = glm::max(local.max, localCorner);
-    }
-
+    // The scene bound is world space; Size and PositionOffset are the node's local space.
+    const BoundingBox local = WorldBoxToLocal(bounds);
     SetSizeVal(local.max - local.min);
     SetPositionOffsetVal((local.min + local.max) * 0.5f);
   }

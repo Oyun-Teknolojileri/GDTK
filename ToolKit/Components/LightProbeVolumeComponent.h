@@ -115,6 +115,14 @@ namespace ToolKit
    private:
     void UpdateBoundingBoxCache();
 
+    /**
+     * Fits a world space box into the owner node's local space.
+     *
+     * Size and PositionOffset are local, while a bake traces and stores a world space box, so every
+     * place that moves a box between the two goes through here.
+     */
+    BoundingBox WorldBoxToLocal(const BoundingBox& worldBox);
+
    public:
     TKDeclareParam(Vec3, Size);
     TKDeclareParam(Vec3, PositionOffset);
