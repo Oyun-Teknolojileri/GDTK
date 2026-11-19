@@ -12,6 +12,7 @@
 #include "GradientSky.h"
 #include "Light.h"
 #include "Material.h"
+#include "MaterialComponent.h"
 #include "Mesh.h"
 #include "MeshComponent.h"
 #include "Scene.h"
@@ -213,8 +214,20 @@ namespace ToolKit
         const Mat4 world        = entity->m_node->GetTransform(TransformationSpace::TS_WORLD);
         const Mat3 normalMatrix = glm::transpose(glm::inverse(Mat3(world)));
 
-        for (Mesh* mesh : meshComp->GetMeshVal()->GetAllMeshes())
+        // The material an entity actually draws with: the renderer takes the MaterialComponent's
+        // slot for the submesh first and falls back to the material inside the mesh resource. The
+        // bake has to read the same one - reading past the component shaded every overridden
+        // surface with the engine default, which on a scene built from primitives is every one.
+        const MaterialPtrArray* materialList = nullptr;
+        if (MaterialComponent* matComp = entity->GetComponentFast<MaterialComponent>())
         {
+          materialList = &matComp->GetMaterialList();
+        }
+
+        const std::vector<Mesh*>& meshes = meshComp->GetMeshVal()->GetAllMeshes();
+        for (size_t subMeshIndx = 0; subMeshIndx < meshes.size(); ++subMeshIndx)
+        {
+          Mesh* mesh = meshes[subMeshIndx];
           if (mesh == nullptr)
           {
             continue;
@@ -226,7 +239,17 @@ namespace ToolKit
             continue;
           }
 
-          const uint material = MaterialIndex(out, materialCache, mesh->m_material);
+          MaterialPtr drawn = nullptr;
+          if (materialList != nullptr && subMeshIndx < materialList->size())
+          {
+            drawn = (*materialList)[subMeshIndx];
+          }
+          if (drawn == nullptr)
+          {
+            drawn = mesh->m_material;
+          }
+
+          const uint material = MaterialIndex(out, materialCache, drawn);
 
           auto addTriangle = [&](const Vertex& a, const Vertex& b, const Vertex& c)
           {
