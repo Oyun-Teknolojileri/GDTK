@@ -8,6 +8,7 @@
 #include "NullBackend.h"
 
 #include "Logger.h"
+#include "RHI.h"
 #include "ToolKit.h"
 
 namespace ToolKit
@@ -98,6 +99,9 @@ namespace ToolKit
   // ---- queries ----
   String NullBackend::GetBackendRendererString() { return "Null Backend (headless)"; }
   int NullBackend::GetMaxArrayTextureLayers() { return 0; }
+
+  // No GPU to ask: the engine's own slot table is the widest answer anything can use here.
+  int NullBackend::GetMaxTextureUnits() { return RHIConstants::TextureSlotCount; }
 
   // ---- srgb ----
   void NullBackend::SetSrgbAutoEncoding(bool) {}

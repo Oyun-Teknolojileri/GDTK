@@ -115,6 +115,7 @@ namespace ToolKit
     // ---- queries ----
     String GetBackendRendererString() override;
     int GetMaxArrayTextureLayers() override;
+    int GetMaxTextureUnits() override;
 
     // ---- srgb ----
     void SetSrgbAutoEncoding(bool enable) override;

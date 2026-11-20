@@ -111,6 +111,7 @@ namespace ToolKit
     void SetUniform4f(int location, const Vec4& value) override;
     String GetBackendRendererString() override;
     int GetMaxArrayTextureLayers() override;
+    int GetMaxTextureUnits() override;
     void SetSrgbAutoEncoding(bool enable) override;
     void Finish() override;
     void SetDefaultClearColor(const Vec4& color) override;
@@ -180,6 +181,12 @@ namespace ToolKit
     };
 
     TextureSlotState m_textureSlotCache[32];
+
+    /** Fragment texture units, queried once at first use. -1 means "not asked yet". */
+    int m_maxTextureUnits = -1;
+
+    /** One shot, so a program over the unit budget names itself once instead of every draw. */
+    bool m_loggedTextureUnitOverflow = false;
 
     // VAO cache
     uint m_currentVAO        = (uint) -1;

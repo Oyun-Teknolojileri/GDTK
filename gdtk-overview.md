@@ -941,6 +941,7 @@ Core API:
 - Draw: `BindPipeline`, `SubmitPerDrawData`, `BindTexture(slot, tex)`, `BindUniformBuffer(name, ub)`, `Draw(DrawDesc)`
 - FB ops: `ResolveFramebuffer`, `CopyFramebuffer`, `BlitToScreen`
 - Queries: `StartTimerQuery`, `EndTimerQuery`, `GetElapsedTime`
+- Capability queries: `GetMaxArrayTextureLayers`, `GetMaxTextureUnits`
 - Texture mgmt: `CreateTexture`, `DestroyTexture`, `ApplyTextureSettings`, `GenerateMipmaps`, `UpdateTextureRegion`, `SetTextureMaxMipLevel`, `AllocateCubemapMipStorage`, `CopyCubemapFaceFromFramebuffer`, `SetTextureSwizzleAlpha`
 - Mesh mgmt: `CreateMesh`, `DestroyMesh`
 - Read back: `ReadPixels` (blocking) and `BeginReadPixels` / `EndReadPixels`, the polled pair the depth grid uses
@@ -969,6 +970,14 @@ expensive spot, and it is the spot a naive "just read it synchronously" lands on
 The null backend answers false too, and Vulkan's `ReadPixels` is still a TODO, so on those the grid silently
 never arrives - which is why the engine logs once when a grid read comes back empty rather than leaving culling off
 with nothing said.
+
+**Texture units are asked for, not assumed.** `GetMaxTextureUnits()` is the fragment stage's sampler
+budget: GL answers with `GL_MAX_TEXTURE_IMAGE_UNITS` (16 on GL ES 3.0, which is what the web and the
+Android GL path get), Vulkan takes the smaller of the per-stage and per-set sampler limits, and the
+null backend reports the engine's slot table. `Renderer` logs it once at startup and drops every bind
+above it, because `glActiveTexture` past the limit is an error that leaves the previous unit selected
+and silently moves the next bind onto it. The forward shader declares samplers up to slot 20, so the
+number is what tells a mobile target how much of that budget it actually has.
 
 `PassDesc` = `{ target framebuffer, clearBits, discardBits, clearColor, loadColor, loadDepth }`
 `DrawDesc` = `{ mesh, vertexLayout, indexed, elementCount, instanceCount, drawType }`

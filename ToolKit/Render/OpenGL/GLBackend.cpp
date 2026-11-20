@@ -2079,8 +2079,21 @@ namespace ToolKit
 
   void GLBackend::BindTextureDirect(uint target, uint id, uint slot)
   {
-    if (slot >= 32)
+    // Past the device's unit count glActiveTexture is an error and the previous unit stays selected,
+    // so the bind that follows would land on a texture the shader is already sampling. Dropping the
+    // bind keeps the rest of the draw intact; the warning names the slot once so the budget is
+    // visible instead of silently corrupting a neighbour.
+    if (slot >= (uint) GetMaxTextureUnits())
     {
+      if (!m_loggedTextureUnitOverflow)
+      {
+        m_loggedTextureUnitOverflow = true;
+        GetLogger()->Log(LogType::Warning,
+                         "Texture slot %u exceeds the %d units this device exposes; the bind is dropped. "
+                         "Trim the forward shader's sampler count or raise the target's unit budget.",
+                         slot,
+                         GetMaxTextureUnits());
+      }
       return;
     }
 
@@ -2123,6 +2136,17 @@ namespace ToolKit
     GLint maxLayers = 0;
     glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS, &maxLayers);
     return (int) maxLayers;
+  }
+
+  int GLBackend::GetMaxTextureUnits()
+  {
+    if (m_maxTextureUnits < 0)
+    {
+      GLint units = 0;
+      glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &units);
+      m_maxTextureUnits = units > 0 ? (int) units : 1;
+    }
+    return m_maxTextureUnits;
   }
 
   void GLBackend::SetSrgbAutoEncoding(bool enable)

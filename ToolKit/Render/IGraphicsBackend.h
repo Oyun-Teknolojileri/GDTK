@@ -211,6 +211,16 @@ namespace ToolKit
 
     virtual int GetMaxArrayTextureLayers()                                                                  = 0;
 
+    /**
+     * Texture units the fragment stage can sample from at once.
+     *
+     * GL ES 3.0 only guarantees 16, while the forward shader declares slots up to 20, so the number
+     * has to be asked for rather than assumed: the renderer logs it at startup and drops every bind
+     * above it, because glActiveTexture past the limit is an error that leaves the previous unit
+     * selected and silently moves the next bind onto it.
+     */
+    virtual int GetMaxTextureUnits()                                                                        = 0;
+
     virtual void SetSrgbAutoEncoding(bool enable)                                                           = 0;
 
     virtual void Finish()                                                                                   = 0;

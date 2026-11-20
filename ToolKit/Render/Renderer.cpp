@@ -106,6 +106,15 @@ namespace ToolKit
     String renderer = m_backend->GetBackendRendererString();
     GetLogger()->Log(String("Graphics Card ") + renderer);
 
+    // The forward shader declares samplers up to slot 20 while GL ES 3.0 only guarantees 16, and the
+    // engine never used to ask. Logging the answer makes the unit budget of the target visible on the
+    // device itself, which is the only place the mobile number can be read. This goes through Log()
+    // rather than TK_LOG because that is the path that reaches Log.txt as well as the console.
+    GetLogger()->Log(LogType::Memo,
+                     "Texture units: %d fragment samplers available (engine slot table %u).",
+                     GetMaxTextureUnits(),
+                     (uint) RHIConstants::TextureSlotCount);
+
     // Validate sRGB automatic encoding on backbuffer if enabled.
     RenderSystem* rsys = GetRenderSystem();
     if (rsys && rsys->m_backbufferFormatIsSRGB)
@@ -165,6 +174,15 @@ namespace ToolKit
       m_maxArrayTextureLayers = m_backend->GetMaxArrayTextureLayers();
     }
     return m_maxArrayTextureLayers;
+  }
+
+  int Renderer::GetMaxTextureUnits()
+  {
+    if (m_maxTextureUnits == -1)
+    {
+      m_maxTextureUnits = m_backend->GetMaxTextureUnits();
+    }
+    return m_maxTextureUnits;
   }
 
   void Renderer::SetPassState(const RenderState& state)
@@ -1039,7 +1057,12 @@ namespace ToolKit
 
   void Renderer::ResetUsedTextureSlots()
   {
-    for (int i = 0; i < RHIConstants::TextureSlotCount; i++)
+    // Stop at the device's unit count, not at the engine's slot table: glActiveTexture past the limit
+    // is an error that leaves the previous unit selected, so the next bind lands on a texture the
+    // shader still samples. This used to walk all 32 slots unconditionally.
+    const int units     = GetMaxTextureUnits();
+    const int unitCount = units < RHIConstants::TextureSlotCount ? units : (int) RHIConstants::TextureSlotCount;
+    for (int i = 0; i < unitCount; i++)
     {
       SetTexture(i, nullptr);
     }
@@ -1402,6 +1425,23 @@ namespace ToolKit
   void Renderer::SetTexture(ubyte slotIndx, TexturePtr texture)
   {
     assert(slotIndx < RHIConstants::TextureSlotCount && "You exceed texture slot count");
+
+    // Every sampler a program declares above the device's unit count is a slot that can never be
+    // bound. Dropping it here keeps the draw alive and names the budget once, instead of letting the
+    // backend issue an invalid glActiveTexture for it on every draw.
+    if (slotIndx >= GetMaxTextureUnits())
+    {
+      if (!m_loggedTextureUnitOverflow)
+      {
+        m_loggedTextureUnitOverflow = true;
+        GetLogger()->Log(LogType::Warning,
+                         "Shader sampler slot %d exceeds the %d units this device exposes; the bind is "
+                         "dropped.",
+                         (int) slotIndx,
+                         GetMaxTextureUnits());
+      }
+      return;
+    }
 
     // A slot left empty does not sample as "nothing": GL hands the shader black opaque and WebGL
     // logs a warning on every draw that samples it. Bind the black stand-in instead, which is the

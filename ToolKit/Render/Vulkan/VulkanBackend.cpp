@@ -12,6 +12,7 @@
 #include "GpuProgram.h"
 #include "Logger.h"
 #include "Mesh.h"
+#include "RHI.h"
 #include "Shader.h"
 #include "Texture.h"
 #include "ToolKit.h"
@@ -3485,6 +3486,23 @@ namespace ToolKit
     VkPhysicalDeviceProperties props {};
     vkGetPhysicalDeviceProperties(m_context->GetPhysicalDevice(), &props);
     return (int) props.limits.maxImageArrayLayers;
+  }
+
+  int VulkanBackend::GetMaxTextureUnits()
+  {
+    if (m_context == nullptr || m_context->GetPhysicalDevice() == VK_NULL_HANDLE)
+    {
+      return RHIConstants::TextureSlotCount;
+    }
+
+    VkPhysicalDeviceProperties props {};
+    vkGetPhysicalDeviceProperties(m_context->GetPhysicalDevice(), &props);
+
+    // The engine binds its samplers from one descriptor set, so both the per stage and the per set
+    // budget have to hold. The smaller of the two is what a draw can actually sample from.
+    const uint perStage = props.limits.maxPerStageDescriptorSamplers;
+    const uint perSet   = props.limits.maxDescriptorSetSamplers;
+    return (int) (perStage < perSet ? perStage : perSet);
   }
 
   void VulkanBackend::SetSrgbAutoEncoding(bool enable)
