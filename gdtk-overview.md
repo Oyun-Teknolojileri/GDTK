@@ -1137,6 +1137,18 @@ Base class for every loadable asset. Inherits Object. Has lifecycle: `Load()` (C
   handles an environment volume gets and `EditorRenderer` draws it; the console has
   `BakeLightProbe [<entity>]` for a headless trigger.
 
+  **Reflection probes.** `ReflectionProbe` (`ToolKit/Entities/ReflectionProbe.h`) is the authoring
+  entity for a local volume that supplies reflections only: it always owns an `EnvironmentComponent`,
+  mirrors its parameters and hides the component's group the way `LightProbe` does, and starts with a
+  fileless (dynamic) Hdri so the component captures the room on init. It exposes `Capture` and
+  `CenterToArea`. Selecting one draws an editor-only chrome ball at the volume centre through
+  `reflectionPreviewFrag.shader`, which samples the probe's own prefiltered cubemap at mip zero and
+  adds no direct light, ambient, emissive or Fresnel: the preview shows the capture, not the room's
+  lighting. The ball is cached on `EditorRenderer` and never enters the scene, so a game never draws
+  it, and the probe entities carry their own billboards (`Icons/light_probe.png`,
+  `Icons/reflection_probe.png`). The material manager exposes a plain `chrome.material` (white,
+  metallic one, roughness zero) for levels.
+
   A texture's pixels arrive one of three ways: `m_image` holds 8 bit RGBA for the ordinary stb path,
   `m_imagef` holds float data for HDRI, and `m_compressedLevels` + `m_compressedFormat` hold GPU ready
   block data for a KTX2 container. `Texture::Load` reads the file as bytes
@@ -2378,6 +2390,7 @@ When writing/editing any `.h`/`.cpp` in this repo:
 | Framebuffer | `ToolKit/Render/Framebuffer.h` |
 | Viewport | `ToolKit/Source/Viewport.h` |
 | Entity | `ToolKit/Entities/Entity.h` |
+| Reflection probe entity | `ToolKit/Entities/ReflectionProbe.h` |
 | Node | `ToolKit/Source/Node.h` |
 | Component | `ToolKit/Components/Component.h` |
 | Scene | `ToolKit/Resources/Scene.h` |
