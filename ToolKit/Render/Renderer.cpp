@@ -1117,13 +1117,12 @@ namespace ToolKit
     if (envCom && envCom->GetHdriVal() != nullptr)
     {
       const HdriPtr& hdriPtr     = envCom->GetHdriVal();
-      CubeMapPtr& diffuseEnvMap  = hdriPtr->m_diffuseEnvMap;
       CubeMapPtr& specularEnvMap = hdriPtr->m_specularEnvMap;
 
-      if (diffuseEnvMap && specularEnvMap && m_brdfLut)
+      // A local volume is a reflection source: its irradiance cache is not bound any
+      // more, the baked probe volume owns the diffuse term.
+      if (specularEnvMap && m_brdfLut)
       {
-        if (int slot = m_currentProgram->GetTextureSlot("s_irradianceMap"); slot != -1)
-          SetTexture((ubyte) slot, diffuseEnvMap);
         if (int slot = m_currentProgram->GetTextureSlot("s_iblSpecular"); slot != -1)
           SetTexture((ubyte) slot, specularEnvMap);
 
@@ -1156,13 +1155,10 @@ namespace ToolKit
         if (secEnvCom && secEnvCom->GetHdriVal() != nullptr)
         {
           const HdriPtr& secHdri  = secEnvCom->GetHdriVal();
-          CubeMapPtr& secDiffuse  = secHdri->m_diffuseEnvMap;
           CubeMapPtr& secSpecular = secHdri->m_specularEnvMap;
 
-          if (secDiffuse && secSpecular)
+          if (secSpecular)
           {
-            if (int slot = m_currentProgram->GetTextureSlot("s_secondaryIrradiance"); slot != -1)
-              SetTexture((ubyte) slot, secDiffuse);
             if (int slot = m_currentProgram->GetTextureSlot("s_secondarySpecular"); slot != -1)
               SetTexture((ubyte) slot, secSpecular);
             m_drawCommand.SetVolumeIntensity(1, secEnvCom->GetIntensityVal());

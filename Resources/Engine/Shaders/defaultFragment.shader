@@ -151,28 +151,25 @@
 
 		vec3 iblDiffuse;
 		vec3 skyIrradianceRef;
-		vec3 iblRaw = IBLPBR(n,
-		                     e,
-		                     color.xyz,
-		                     metallic,
-		                     perceptualRoughness,
-		                     dfg,
-		                     energyComp,
-		                     v_worldPos,
-		                     iblDiffuse,
-		                     skyIrradianceRef);
+		vec3 iblSpecular = IBLPBR(n,
+		                          e,
+		                          color.xyz,
+		                          metallic,
+		                          perceptualRoughness,
+		                          dfg,
+		                          energyComp,
+		                          v_worldPos,
+		                          iblDiffuse,
+		                          skyIrradianceRef);
 
-		// Split the cubemap term into what a probe can carry and what it cannot. The specular part
-		// stays on the maps: a probe holds irradiance, not a reflection.
-		vec3 iblSpecular = max(iblRaw - iblDiffuse, vec3(0.0));
-		vec3 ibl         = iblSpecular * ambientOcclusion + iblDiffuse * ambientOcclusion;
+		// IBLPBR returns the cubemap specular term and hands the sky's diffuse back
+		// separately: a local volume carries no diffuse any more, so the probe volume
+		// below replaces exactly the sky ambient and nothing else.
+		vec3 ibl = iblSpecular * ambientOcclusion + iblDiffuse * ambientOcclusion;
 
 		// Baked probe volume. Where it covers the pixel it is the whole diffuse term: the bake
-		// already contains the sky and the environment volumes with the visibility the probe saw,
-		// so the sky's diffuse is replaced rather than corrected. It used to be subtracted back out
-		// of the blended IBL value, which only worked while the two numbers agreed - the sky path
-		// scaled its reported diffuse differently from the colour it returned, so a sky intensity
-		// below one removed more than the sky had added and the walls went negative.
+		// already contains the sky and the scene's light with the visibility the probe saw, so
+		// the sky's diffuse is replaced rather than corrected.
 		float probeWeight = 0.0;
 		vec3 probe = ProbeIrradiance(v_worldPos, n, probeWeight);
 		if (probeWeight > 0.0)

@@ -10,7 +10,9 @@
 ## 1. Goal
 
 The forward path shades direct light per object (`lighting.shader`) and adds image based
-lighting from the sky plus up to two local environment volumes (`ibl.shader`). There is no
+lighting from the sky plus up to two local environment volumes (`ibl.shader`). The sky supplies
+diffuse and specular; a local volume supplies the specular half, and the ambient (diffuse) term is
+what the baked probe volume replaces. There is no
 bounce term: a room lit by one lamp has a black ceiling, a wall next to a bright window does
 not glow, and the sky irradiance is applied with full visibility, so an interior is lit as if
 its roof did not exist. That missing term is the diffuse GI ask.

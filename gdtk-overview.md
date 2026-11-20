@@ -387,9 +387,9 @@ pixel; a ray that points back at the camera is one of those misses, and treating
 with full coverage is what painted the middle of a probe lit sphere with the sky. A miss writes the reflection it was already holding back into
 the history with its coverage decayed, so the pixel settles onto the shading model's own reflection over
 a handful of frames instead of jumping between a screen space colour and the sky from one frame to the
-next. That matters because the shading model is the part that knows about the scene's reflection probes:
-`IBLPBR` already evaluates the two local volumes and blends the sky into whatever they do not cover, so
-letting a miss alone is what makes the fallback the same algorithm a surface would have used anyway.
+next. That matters because the shading model is the part that knows about the scene's reflection sources:
+`IBLPBR` already blends the two local volumes' specular against the sky, so letting a miss alone is what
+makes the fallback the same algorithm a surface would have used anyway.
 Coverage rides in the counter target's green channel and the composite weighs the reflection by it.
 
 Four knobs tune the trade, all in the post processing panel: History Response (the length of the
@@ -913,7 +913,7 @@ All bind at fixed slots (0-6 are the global engine buffers, 7 and up are pass sp
 
 The big per-object uniform block. Carries:
 - `global0/1` — flags (IBL in use, AO in use, sky intensity, light counts)
-- Two **environment volumes** (primary + secondary for IBL blending), each with 11 `Vec4`:
+- Two **environment volumes** (primary + secondary for the specular blend), each with 11 `Vec4`:
   - `vol[0|1]Params` (intensity, fadeDistance, interior, pccEnabled)
   - `vol[0|1]Min/Max` (AABB in local space)
   - `vol[0|1]InvT[0..3]` (inverse world transform)
@@ -923,9 +923,13 @@ Both slots are filled by `RenderJobProcessor::AssignEnvironment` with the two sm
 non-sky volumes (sky owned volumes are filtered out and contribute through the global sky instead).
 `ibl.shader` combines them as a weighted average: each volume's weight is its fade factor and the sky
 takes only the weight the strongest volume did not cover (`skyWeight = 1 - max(blend)`). A pixel fully
-covered by a volume therefore gets no sky at all, a pixel inside a fade band fades into the sky, and
-`Interior` volumes keep the sky out of the pixel entirely. The fade distance is clamped per axis to
+covered by a volume therefore gets no sky specular at all, a pixel inside a fade band fades into the sky,
+and `Interior` volumes keep the sky out of the pixel entirely. The fade distance is clamped per axis to
 that axis' own half extent, so every volume keeps a full weight core however small or thin it is.
+
+A local volume is a **reflection source**: its irradiance cache is not bound any more, so the average
+above covers the specular term only. The sky's diffuse is the ambient term, an interior volume pins it
+out, and the baked probe volume replaces it wherever one covers the pixel.
 
 ---
 
@@ -1098,13 +1102,13 @@ Base class for every loadable asset. Inherits Object. Has lifecycle: `Load()` (C
   stops being a wall. Transmittance is not modelled: a blended surface passes light whole.
 
   The runtime half is `LightProbeVolumeComponent` (`ToolKit/Components/`), which loads the file, keeps
-  three channel major `RGBA16F` `DataTexture`s (L1 only, see `probeGI.shader`) and registers itself in
-  `Scene::m_probeVolumeCache`. `RenderJobProcessor::AssignEnvironment` gives each job the smallest baked
-  volume containing it, the job carries it as `RenderJob::ProbeVolume`, and `Renderer::SetDataTextures`
-  binds the three textures and fills the `probe*` block of the `PerDrawData` UBO. `probeGI.shader`
-  evaluates the four L1 coefficients and `IBLPBR` (`ibl.shader`) reports its diffuse part through an out
-  parameter so `defaultFragment.shader` can swap it for the probe where the volume is active; the
-  specular part keeps coming from the sky and environment cubemaps.
+  the L1 grid in one three layer `RGBA16F` `DataTexture` (one array layer per colour channel, see
+  `probeGI.shader`) and registers itself in `Scene::m_probeVolumeCache`. `RenderJobProcessor::AssignEnvironment`
+  gives each job the smallest baked volume containing it, the job carries it as `RenderJob::ProbeVolume`,
+  and `Renderer::SetDataTextures` binds the array texture at slot 6 and fills the `probe*` block of the
+  `PerDrawData` UBO. `probeGI.shader` evaluates the four L1 coefficients and `IBLPBR` (`ibl.shader`)
+  reports the sky's diffuse through an out parameter, which `defaultFragment.shader` swaps for the probe
+  where the volume is active; the specular term keeps coming from the sky and the local volume cubemaps.
 
   **The authoring half.** A `LightProbe` entity (`ToolKit/Entities/LightProbe.h`) owns a volume the
   way a primitive owns its mesh: it creates the component through the object factory, so an editor
@@ -1252,7 +1256,7 @@ The "thing in the scene". Inherits `Object`. Components attached for behavior:
 - `MaterialComponent`
 - `AnimationControllerComponent`
 - `SkeletonComponent`
-- `EnvironmentComponent` (IBL volume)
+- `EnvironmentComponent` (IBL volume, specular only: the probe volume owns diffuse)
 - `DirectionComponent` (directional light, billboard etc.)
 - `AABBOverrideComponent`
 - `EditorLight`, `EditorCamera`, `EditorBillboard` (editor-only)
