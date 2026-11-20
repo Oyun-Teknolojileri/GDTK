@@ -3514,6 +3514,18 @@ namespace ToolKit
     return (int) (perStage < perSet ? perStage : perSet);
   }
 
+  int VulkanBackend::GetMaxTextureSize()
+  {
+    if (m_context == nullptr || m_context->GetPhysicalDevice() == VK_NULL_HANDLE)
+    {
+      return RHIConstants::MaxTextureSize;
+    }
+
+    VkPhysicalDeviceProperties props {};
+    vkGetPhysicalDeviceProperties(m_context->GetPhysicalDevice(), &props);
+    return (int) props.limits.maxImageDimension2D;
+  }
+
   void VulkanBackend::SetSrgbAutoEncoding(bool enable)
   {
     // Vulkan handles sRGB via swapchain format; no-op here.

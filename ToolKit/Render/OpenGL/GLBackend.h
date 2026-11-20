@@ -111,6 +111,7 @@ namespace ToolKit
     String GetBackendRendererString() override;
     int GetMaxArrayTextureLayers() override;
     int GetMaxTextureUnits() override;
+    int GetMaxTextureSize() override;
     void SetSrgbAutoEncoding(bool enable) override;
     void Finish() override;
     void SetDefaultClearColor(const Vec4& color) override;
@@ -175,6 +176,9 @@ namespace ToolKit
     // Texture unit budget
     /** Fragment texture units, queried once at first use. -1 means "not asked yet". */
     int m_maxTextureUnits = -1;
+
+    /** Largest 2D texture dimension, queried once at first use. -1 means "not asked yet". */
+    int m_maxTextureSize = -1;
 
     /** One shot, so a program over the unit budget names itself once instead of every draw. */
     bool m_loggedTextureUnitOverflow = false;

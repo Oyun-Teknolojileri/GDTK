@@ -221,6 +221,9 @@ namespace ToolKit
      */
     virtual int GetMaxTextureUnits()                                                                        = 0;
 
+    /** Largest width or height a 2D texture (or a 2D array layer) may have on this device. */
+    virtual int GetMaxTextureSize()                                                                         = 0;
+
     virtual void SetSrgbAutoEncoding(bool enable)                                                           = 0;
 
     virtual void Finish()                                                                                   = 0;

@@ -945,7 +945,7 @@ Core API:
 - Draw: `BindPipeline`, `SubmitPerDrawData`, `BindTexture(slot, tex)`, `BindUniformBuffer(name, ub)`, `Draw(DrawDesc)`
 - FB ops: `ResolveFramebuffer`, `CopyFramebuffer`, `BlitToScreen`
 - Queries: `StartTimerQuery`, `EndTimerQuery`, `GetElapsedTime`
-- Capability queries: `GetMaxArrayTextureLayers`, `GetMaxTextureUnits`
+- Capability queries: `GetMaxArrayTextureLayers`, `GetMaxTextureUnits`, `GetMaxTextureSize`
 - Texture mgmt: `CreateTexture`, `DestroyTexture`, `ApplyTextureSettings`, `GenerateMipmaps`, `UpdateTextureRegion`, `SetTextureMaxMipLevel`, `AllocateCubemapMipStorage`, `CopyCubemapFaceFromFramebuffer`, `SetTextureSwizzleAlpha`
 - Mesh mgmt: `CreateMesh`, `DestroyMesh`
 - Read back: `ReadPixels` (blocking) and `BeginReadPixels` / `EndReadPixels`, the polled pair the depth grid uses
@@ -980,8 +980,14 @@ budget: GL answers with `GL_MAX_TEXTURE_IMAGE_UNITS` (16 on GL ES 3.0, which is 
 Android GL path get), Vulkan takes the smaller of the per-stage and per-set sampler limits, and the
 null backend reports the engine's slot table. `Renderer` logs it once at startup and drops every bind
 above it, because `glActiveTexture` past the limit is an error that leaves the previous unit selected
-and silently moves the next bind onto it. The forward shader declares samplers up to slot 20, so the
-number is what tells a mobile target how much of that budget it actually has.
+and silently moves the next bind onto it. The forward shader's highest slot is 14, so the number is
+what tells a mobile target how much of that budget it actually has.
+
+`GetMaxTextureSize()` answers the same way for the largest 2D texture, and the probe volume checks the
+grid against it before uploading: the grid stacks its z slices vertically into `res.y * res.z` rows,
+which is 5304 for the 80x52x102 bake in the test scene and over the 4096 a GL ES 3.0 device only
+guarantees. A grid that does not fit is refused with an error naming the number, instead of uploading
+an incomplete texture that samples black.
 
 `PassDesc` = `{ target framebuffer, clearBits, discardBits, clearColor, loadColor, loadDepth }`
 `DrawDesc` = `{ mesh, vertexLayout, indexed, elementCount, instanceCount, drawType }`

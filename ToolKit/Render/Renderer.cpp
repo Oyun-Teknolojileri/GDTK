@@ -105,14 +105,17 @@ namespace ToolKit
     String renderer = m_backend->GetBackendRendererString();
     GetLogger()->Log(String("Graphics Card ") + renderer);
 
-    // The forward shader declares samplers up to slot 20 while GL ES 3.0 only guarantees 16, and the
-    // engine never used to ask. Logging the answer makes the unit budget of the target visible on the
-    // device itself, which is the only place the mobile number can be read. This goes through Log()
-    // rather than TK_LOG because that is the path that reaches Log.txt as well as the console.
+    // The forward shader declares samplers up to slot 14 while GL ES 3.0 only guarantees 16 units,
+    // and the probe grid stacks its z slices into a texture that can outgrow the device's largest
+    // 2D texture. Logging both makes the budget of the target visible on the device itself, which
+    // is the only place the mobile numbers can be read. This goes through Log() rather than TK_LOG
+    // because that is the path that reaches Log.txt as well as the console.
     GetLogger()->Log(LogType::Memo,
-                     "Texture units: %d fragment samplers available (engine slot table %u).",
+                     "Texture units: %d fragment samplers available (engine slot table %u), "
+                     "largest texture %d.",
                      GetMaxTextureUnits(),
-                     (uint) RHIConstants::TextureSlotCount);
+                     (uint) RHIConstants::TextureSlotCount,
+                     GetMaxTextureSize());
 
     // Validate sRGB automatic encoding on backbuffer if enabled.
     RenderSystem* rsys = GetRenderSystem();
@@ -182,6 +185,15 @@ namespace ToolKit
       m_maxTextureUnits = m_backend->GetMaxTextureUnits();
     }
     return m_maxTextureUnits;
+  }
+
+  int Renderer::GetMaxTextureSize()
+  {
+    if (m_maxTextureSize == -1)
+    {
+      m_maxTextureSize = m_backend->GetMaxTextureSize();
+    }
+    return m_maxTextureSize;
   }
 
   void Renderer::SetPassState(const RenderState& state)

@@ -17,6 +17,13 @@ namespace ToolKit
   struct RHIConstants
   {
     static constexpr ubyte TextureSlotCount              = 32;
+
+    /**
+     * Upper bound any backend this engine runs on supports, and the answer a backend that cannot
+     * ask its device gives. GL ES 3.0 only guarantees 4096; the constant is the ceiling, not a
+     * promise, which is why the renderer asks and only falls back to it.
+     */
+    static constexpr int MaxTextureSize                  = 16384;
     static constexpr ubyte MaxLightsPerObject            = 128;
     static constexpr uint ShadowAtlasSlot                = 8;
     static constexpr uint SpecularIBLLods                = 7;

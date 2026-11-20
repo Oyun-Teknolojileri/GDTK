@@ -102,6 +102,7 @@ namespace ToolKit
 
   // No GPU to ask: the engine's own slot table is the widest answer anything can use here.
   int NullBackend::GetMaxTextureUnits() { return RHIConstants::TextureSlotCount; }
+  int NullBackend::GetMaxTextureSize() { return RHIConstants::MaxTextureSize; }
 
   // ---- srgb ----
   void NullBackend::SetSrgbAutoEncoding(bool) {}

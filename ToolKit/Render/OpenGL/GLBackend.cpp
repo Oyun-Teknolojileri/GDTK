@@ -2152,6 +2152,17 @@ namespace ToolKit
     return m_maxTextureUnits;
   }
 
+  int GLBackend::GetMaxTextureSize()
+  {
+    if (m_maxTextureSize < 0)
+    {
+      GLint size = 0;
+      glGetIntegerv(GL_MAX_TEXTURE_SIZE, &size);
+      m_maxTextureSize = size > 0 ? (int) size : RHIConstants::MaxTextureSize;
+    }
+    return m_maxTextureSize;
+  }
+
   void GLBackend::SetSrgbAutoEncoding(bool enable)
   {
 #ifdef GL_FRAMEBUFFER_SRGB

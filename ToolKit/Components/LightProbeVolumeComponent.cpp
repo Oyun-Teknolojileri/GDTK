@@ -8,7 +8,9 @@
 #include "LightProbeVolumeComponent.h"
 
 #include "Entity.h"
+#include "IGraphicsBackend.h"
 #include "MathUtil.h"
+#include "RenderSystem.h"
 #include "Scene.h"
 #include "Texture.h"
 #include "ToolKit.h"
@@ -349,6 +351,29 @@ namespace ToolKit
     const uint height = resolution.y * resolution.z;
     const size_t layerTexels = (size_t) width * height;
     const size_t layerStride = layerTexels * 4;
+
+    // The z slices are stacked vertically, so the texture is res.y * res.z rows tall. A grid the
+    // device cannot hold would come back as an incomplete texture and sample black, so name the
+    // limit and refuse instead of uploading it.
+    int maxTextureSize = 0;
+    if (RenderSystem* renderSystem = GetRenderSystem())
+    {
+      if (IGraphicsBackend* backend = renderSystem->GetBackend())
+      {
+        maxTextureSize = backend->GetMaxTextureSize();
+      }
+    }
+
+    if (maxTextureSize > 0 && ((int) width > maxTextureSize || (int) height > maxTextureSize))
+    {
+      GetLogger()->Log(LogType::Error,
+                       "Light probe volume: the L1 grid needs a %ux%u texture, but this device's "
+                       "largest is %d. Rebake with a larger ProbeSpacing.",
+                       width,
+                       height,
+                       maxTextureSize);
+      return false;
+    }
 
     TextureSettings settings;
     settings.Target         = GraphicTypes::Target2DArray;

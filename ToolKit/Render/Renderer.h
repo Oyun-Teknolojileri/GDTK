@@ -532,6 +532,9 @@ namespace ToolKit
     /** Fragment texture units the device exposes; cached after the first backend query. */
     int GetMaxTextureUnits();
 
+    /** Largest 2D texture dimension the device supports; cached after the first query. */
+    int GetMaxTextureSize();
+
     /** Sets the passive pipeline state (depth test/write, depth func, stencil, color mask,
      *  depth clamp) that will be merged with each render job's active material state at draw time.
      *  Active fields (cullMode, blendFunction, drawType, alphaMaskTreshold, lineWidth) are
@@ -681,6 +684,7 @@ namespace ToolKit
 
     int m_maxArrayTextureLayers            = -1;
     int m_maxTextureUnits                  = -1;
+    int m_maxTextureSize                   = -1;
 
     /** One shot, so a program over the unit budget names itself once instead of every draw. */
     bool m_loggedTextureUnitOverflow       = false;
