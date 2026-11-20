@@ -12,6 +12,7 @@
 #include "EditorLightProbeVolumeComponent.h"
 #include "EditorScene.h"
 #include "EditorViewport.h"
+#include "OutlinerWindow.h"
 #include "ProjectThumbnail.h"
 #include "TransformMod.h"
 #include "WorkspaceTypes.h"
@@ -693,7 +694,7 @@ namespace ToolKit
 
     void SelectSimilar(TagArgArray tagArgs)
     {
-      auto showUsage = []() { TK_WRN("call command with arg: --by <material, mesh>"); };
+      auto showUsage = []() { TK_WRN("call command with arg: --by <class, material, mesh>"); };
       if (tagArgs.empty())
       {
         showUsage();
@@ -717,6 +718,22 @@ namespace ToolKit
 
       if (EditorScenePtr currScene = GetApp()->GetCurrentScene())
       {
+        // Reveal the result in the outliner once. The selection is read back from the scene
+        // instead of using the match list: AddToSelection folds a prefab child into its root,
+        // so the two sets can differ.
+        auto revealSelection = [currScene]() -> void
+        {
+          EntityPtrArray finalSelection;
+          currScene->GetSelectedEntities(finalSelection);
+
+          // The window drops the forced open set a couple of frames later, so the author can
+          // close the branches again afterwards.
+          if (auto outliner = GetApp()->GetOutliner())
+          {
+            outliner->RevealSelection(finalSelection);
+          }
+        };
+
         if (EntityPtr currNtt = currScene->GetCurrentSelection())
         {
           // For now select all similar meshes.
@@ -740,6 +757,7 @@ namespace ToolKit
                     });
 
                 currScene->AddToSelection(sameEntities, false);
+                revealSelection();
               }
             }
           }
@@ -763,8 +781,35 @@ namespace ToolKit
                     });
 
                 currScene->AddToSelection(sameEntities, false);
+                revealSelection();
               }
             }
+          }
+          else if (searchBy == "class")
+          {
+            // Exact class, not the base chain: selecting a Cube means the cubes, not every
+            // entity that happens to inherit from the same base. The editor renames a few
+            // classes through ObjectFactory::Override (EditorCamera is Camera), and Class()
+            // reports the registered name, so an editor camera matches a scene camera.
+            //
+            // The scene's own entity list is walked rather than a filtered view or the render
+            // jobs: a render job only exists for an entity with a mesh, and the command has to
+            // reach lights, cameras, probe volumes and empty nodes too.
+            ClassMeta* entityClass            = currNtt->Class();
+            const EntityPtrArray& allEntities = currScene->GetEntities();
+
+            EntityPtrArray sameEntities;
+            sameEntities.reserve(allEntities.size());
+            for (const EntityPtr& ntt : allEntities)
+            {
+              if (ntt != nullptr && ntt->Class() == entityClass)
+              {
+                sameEntities.push_back(ntt);
+              }
+            }
+
+            currScene->AddToSelection(sameEntities, false);
+            revealSelection();
           }
           else
           {

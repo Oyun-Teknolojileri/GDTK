@@ -638,7 +638,7 @@ namespace ToolKit
         }
 
         RenderJobArray renderJobs;
-        RenderJobArray billboardJobs;
+        EntityRawPtrArray billboardNtties;
         for (EntityPtr entity : highlightList)
         {
           // Disable light gizmos
@@ -648,21 +648,41 @@ namespace ToolKit
           }
 
           // Add billboards to draw list
-          EntityPtr billboard = m_params.App->GetCurrentScene()->GetBillboard(entity);
+          EditorScenePtr scene = m_params.App->GetCurrentScene();
+          EntityPtr billboard  = scene->GetBillboard(entity);
+
+          if (billboard == nullptr)
+          {
+            // The map is filled lazily by the inspector, so a bulk selection holds entities
+            // that never had a billboard made for them and their gizmo would never be
+            // highlighted.
+            scene->ValidateBillboard(entity);
+            billboard = scene->GetBillboard(entity);
+          }
 
           if (billboard)
           {
             static_cast<Billboard*>(billboard.get())->LookAt(viewportCamera, viewport->GetBillboardScale());
-
-            RenderJobProcessor::CreateRenderJobs(billboardJobs, billboard);
+            billboardNtties.push_back(billboard.get());
           }
         }
 
         EntityRawPtrArray rawNtties = ToEntityRawPtrArray(highlightList);
         RenderJobProcessor::CreateRenderJobs(renderJobs, rawNtties, true);
-        renderJobs.insert(renderJobs.end(), billboardJobs.begin(), billboardJobs.end());
+
+        // One call for the whole batch: CreateRenderJobs reuses its output array when the size
+        // matches, so calling it once per billboard overwrites the previous job and only the
+        // last billboard of a bulk selection ends up highlighted.
+        RenderJobArray billboardJobs;
+        RenderJobProcessor::CreateRenderJobs(billboardJobs, billboardNtties, true);
 
         FrustumCull(renderJobs, viewportCamera, m_unCulledRenderJobs);
+
+        // Billboards are appended after the cull, not before it: they are camera facing gizmos
+        // that the editor draws without a frustum test everywhere else, and a gizmo bounding box
+        // taken before LookAt sits at the origin, so culling them drops the highlight of every
+        // selected light.
+        m_unCulledRenderJobs.insert(m_unCulledRenderJobs.end(), billboardJobs.begin(), billboardJobs.end());
 
         // Set parameters of pass
         m_outlinePass->m_params.Camera       = viewportCamera;

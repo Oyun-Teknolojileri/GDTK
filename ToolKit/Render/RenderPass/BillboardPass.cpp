@@ -9,11 +9,43 @@
 
 #include "Entity.h"
 #include "Material.h"
+#include "Shader.h"
+
+#include <algorithm>
 
 #include <DebugNew.h>
 
 namespace ToolKit
 {
+  namespace
+  {
+    /**
+     * Alpha masked materials discard in the fragment shader, and the discard is compiled in through
+     * the DrawAlphaMasked define. The forward pass sets that define per draw range; a billboard
+     * carries its blend state on its material, so each job selects its own variant.
+     * @return Shader whose define was set, null when the shader does not declare the define.
+     */
+    ShaderPtr SetAlphaMaskVariant(Material* material)
+    {
+      ShaderPtr frag = material->GetFragmentShaderVal();
+      if (frag == nullptr)
+      {
+        return nullptr;
+      }
+
+      const auto defineItr = std::find_if(frag->m_defineArray.begin(),
+                                          frag->m_defineArray.end(),
+                                          [](const ShaderDefine& def) { return def.define == "DrawAlphaMasked"; });
+      if (defineItr == frag->m_defineArray.end())
+      {
+        return nullptr;
+      }
+
+      frag->SetDefine("DrawAlphaMasked", material->IsAlphaMasked() ? "1" : "0");
+      return frag;
+    }
+  } // namespace
+
   BillboardPass::BillboardPass() : Pass("BillboardPass") {}
 
   void BillboardPass::Render()
@@ -28,10 +60,9 @@ namespace ToolKit
     CameraPtr cam = vp->GetCamera();
     renderer->SetCamera(cam, true);
 
-    GpuProgramManager* gpuProgramManager = renderer->GetGpuProgramManager();
+    ShaderPtr maskVariantShader = nullptr;
 
-    auto renderBillboardsFn              = [this, cam, renderer, gpuProgramManager](EntityPtrArray& billboards,
-                                                                                    bool depthTest) -> void
+    auto renderBillboardsFn = [this, renderer, &maskVariantShader](EntityPtrArray& billboards, bool depthTest) -> void
     {
       m_renderData.jobs.clear();
 
@@ -43,11 +74,28 @@ namespace ToolKit
       m_passState.depthTestEnabled = depthTest;
       renderer->SetPassState(m_passState);
 
-      renderer->RenderWithProgramFromMaterial(m_renderData.jobs);
+      for (const RenderJob& job : m_renderData.jobs)
+      {
+        // The material has to be initiated before the shader accepts a define variant.
+        job.Material->Init();
+        if (ShaderPtr shader = SetAlphaMaskVariant(job.Material))
+        {
+          maskVariantShader = shader;
+        }
+
+        renderer->RenderWithProgramFromMaterial(job);
+      }
     };
 
     renderBillboardsFn(m_noDepthBillboards, false);
     renderBillboardsFn(m_params.Billboards, true);
+
+    // DrawAlphaMasked lives on the shared unlit shader, which every pass compiles its own variants
+    // from. Leave it at the value the rest of the frame expects instead of the last billboard's.
+    if (maskVariantShader != nullptr)
+    {
+      maskVariantShader->SetDefine("DrawAlphaMasked", "0");
+    }
   }
 
   void BillboardPass::PreRender()

@@ -16,6 +16,16 @@ namespace ToolKit
   namespace Editor
   {
 
+    namespace
+    {
+      /**
+       * Icons are authored with a binary alpha and an antialiased rim. A masked billboard writes
+       * depth, so it needs the rim cut at a threshold instead of blended; half way keeps the rim
+       * from turning into a dark fringe.
+       */
+      constexpr float BillboardAlphaMaskThreshold = 0.1f;
+    } // namespace
+
     TKDefineAbstractClass(EditorBillboardBase, Billboard);
 
     EditorBillboardBase::EditorBillboardBase() {}
@@ -41,7 +51,8 @@ namespace ToolKit
       MaterialPtr matPtr    = GetMaterialManager()->GetCopyOfUnlitMaterial();
       matPtr->UnInit();
       matPtr->SetDiffuseTextureVal(m_iconImage);
-      matPtr->SetBlendState(BlendFunction::SRC_ALPHA_ONE_MINUS_SRC_ALPHA);
+      matPtr->SetBlendState(BlendFunction::ALPHA_MASK);
+      matPtr->SetAlphaMaskThreshold(BillboardAlphaMaskThreshold);
       meshPtr->m_material = matPtr;
       mCom->SetMeshVal(meshPtr);
     }

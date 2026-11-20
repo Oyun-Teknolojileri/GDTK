@@ -1517,6 +1517,15 @@ generated id: the layout file matches a window by name, and a name that changes 
 session made the window a first use every time, which kept it floating and growing the
 layout file with one stale entry per session.
 
+`OutlinerWindow::RevealSelection(entities)` opens the branches a bulk selection lives in
+for one frame and scrolls to its last entity, then drops the forced open set so the
+author's own expansion state comes back. The console's `SelectSimilar` command
+(`--by class|material|mesh`) ends every branch with it. The class branch matches `Class()`
+exactly -- the registered name, so the editor's renamed `Camera` and the light overrides
+match the scene's own classes -- and walks `Scene::GetEntities()` instead of render jobs,
+because a job only exists for an entity with a mesh and the command has to reach lights,
+cameras, probe volumes and empty nodes.
+
 ### 9.4 EditorRenderer (Editor/EditorRenderer.h)
 Editor version of `Renderer` path. Adds `GizmoPass` and editor grid pass. Multiple viewports (4-up default).
 
