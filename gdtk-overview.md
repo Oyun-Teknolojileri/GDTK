@@ -263,6 +263,15 @@ guaranteed to reach 2^9, and texel coordinates (an instance table row, a depth g
 precision is where a mobile GPU actually pays, so lowering anything back to `lowp` / `mediump` is a
 measurement to make per fetch, not a default to inherit.
 
+The same rule crosses the stage boundary. The linker compares the two stages' UBO record types field by
+field, **field precision included**, so a fragment shader that links against a vertex shader stating
+`precision highp int;` has to state it too, or every shared light block (`drawDataInc.shader`, whose
+`SpotLightData` carries `int` members) makes the whole program fail to link with a message that names the
+same type twice: ``uniform `spotLightArray' declared as type `SpotLightData[32]' and type
+`SpotLightData[32]'``. `reflectionPreviewFrag.shader` was the one shader in that state, and the failure is
+quiet in the frame - the draw is still recorded and nothing rasterizes - which is how the reflection
+probe's preview sphere went missing.
+
 `ShadowSettings::ParameterEventConstructor` is the hook that pushes the values into the graphics constant buffer via `ValueUpdateFn`.
 
 ### 3.3 Logging (Logger.h)
@@ -1141,11 +1150,16 @@ Base class for every loadable asset. Inherits Object. Has lifecycle: `Load()` (C
   entity for a local volume that supplies reflections only: it always owns an `EnvironmentComponent`,
   mirrors its parameters and hides the component's group the way `LightProbe` does, and starts with a
   fileless (dynamic) Hdri so the component captures the room on init. It exposes `Capture` and
-  `CenterToArea`. Selecting one draws an editor-only chrome ball at the volume centre through
-  `reflectionPreviewFrag.shader`, which samples the probe's own prefiltered cubemap at mip zero and
-  adds no direct light, ambient, emissive or Fresnel: the preview shows the capture, not the room's
-  lighting. The ball is cached on `EditorRenderer` and never enters the scene, so a game never draws
-  it, and the probe entities carry their own billboards (`Icons/light_probe.png`,
+  `CenterToArea`. The mirror pushes only the value that changed - every write fires the component's
+  change events, and `Size` / `PositionOffset` are the two that mark its spatial caches dirty, which
+  is the editor's cue to capture again - so a probe captures in exactly the cases a plain environment
+  component does: a changed volume, the first init, or the `Capture` button. `EditorEnvironmentComponent`
+  mirrors a capture's new Hdri and a box edit's volume back into the entity, because those reach the
+  component without passing through it. Selecting one draws an editor-only chrome ball at the volume
+  centre through `reflectionPreviewFrag.shader`, which samples the probe's own prefiltered cubemap at
+  mip zero and adds no direct light, ambient, emissive or Fresnel: the preview shows the capture, not
+  the room's lighting. The ball is cached on `EditorRenderer` and never enters the scene, so a game
+  never draws it, and the probe entities carry their own billboards (`Icons/light_probe.png`,
   `Icons/reflection_probe.png`). The material manager exposes a plain `chrome.material` (white,
   metallic one, roughness zero) for levels.
 

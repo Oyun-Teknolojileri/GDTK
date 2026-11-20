@@ -52,7 +52,10 @@ namespace ToolKit
     /** Copies the component's values into this entity's parameters. */
     void SyncFromComponent();
 
-    /** Writes this entity's parameters into the component. */
+    /**
+     * Writes this entity's parameters into the component, and only the ones that differ, so an edit
+     * fires the component's change events for the value the author touched and for nothing else.
+     */
     void SyncToComponent();
 
    public:

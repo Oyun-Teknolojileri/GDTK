@@ -7,7 +7,13 @@
 	<source>
 	<!--
 
+	// The int precision has to match defaultVertex.shader's. This shader links against it and both
+	// stages include drawDataInc.shader, whose light UBOs carry `int` members; a stage that leaves
+	// the int precision at its default makes the linker see two different SpotLightData records and
+	// it refuses the whole program ("uniform `spotLightArray' declared as type `SpotLightData[32]'
+	// and type `SpotLightData[32]'"), which left the probe preview sphere undrawn.
 	precision highp float;
+	precision highp int;
 
 	TK_LOC(0) in vec3 v_worldPos;
 	TK_LOC(1) in vec3 v_worldNormal;

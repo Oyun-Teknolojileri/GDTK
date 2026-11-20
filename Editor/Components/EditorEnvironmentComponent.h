@@ -30,6 +30,7 @@ namespace ToolKit
 
      private:
       void ParameterConstructor() override;
+      void ParameterEventConstructor() override;
       void ScheduleCapturePollingTask();
 
      public:

@@ -111,16 +111,71 @@ namespace ToolKit
       return;
     }
 
-    env->SetHdriVal(GetHdriVal());
-    env->SetSizeVal(GetSizeVal());
-    env->SetPositionOffsetVal(GetPositionOffsetVal());
-    env->SetIlluminateVal(GetIlluminateVal());
-    env->SetParallaxCorrectionVal(GetParallaxCorrectionVal());
-    env->SetInteriorVal(GetInteriorVal());
-    env->SetIntensityVal(GetIntensityVal());
-    env->SetFadeVal(GetFadeVal());
-    env->SetCaptureFarVal(GetCaptureFarVal());
-    env->SetCaptureResolutionVal(GetCaptureResolutionVal());
+    // Only a value that actually differs is written. Every write fires the component's change
+    // events, and Size and PositionOffset are the two that mark its spatial caches dirty - which is
+    // the editor's cue to capture the room again. Pushing the whole mirror on every edit therefore
+    // made a probe re-capture for any parameter at all (the fade, the intensity), and it wrote back
+    // the values the entity happened to hold, so a captured cubemap or a box the user had just
+    // resized was reverted by the next unrelated edit. Comparing keeps a probe's capture cases the
+    // same as a plain environment component's: a changed volume, and nothing else.
+    const HdriPtr hdri = GetHdriVal();
+    if (env->GetHdriVal() != hdri)
+    {
+      env->SetHdriVal(hdri);
+    }
+
+    const Vec3 size = GetSizeVal();
+    if (env->GetSizeVal() != size)
+    {
+      env->SetSizeVal(size);
+    }
+
+    const Vec3 offset = GetPositionOffsetVal();
+    if (env->GetPositionOffsetVal() != offset)
+    {
+      env->SetPositionOffsetVal(offset);
+    }
+
+    if (env->GetIlluminateVal() != GetIlluminateVal())
+    {
+      env->SetIlluminateVal(GetIlluminateVal());
+    }
+
+    if (env->GetParallaxCorrectionVal() != GetParallaxCorrectionVal())
+    {
+      env->SetParallaxCorrectionVal(GetParallaxCorrectionVal());
+    }
+
+    if (env->GetInteriorVal() != GetInteriorVal())
+    {
+      env->SetInteriorVal(GetInteriorVal());
+    }
+
+    const float intensity = GetIntensityVal();
+    if (env->GetIntensityVal() != intensity)
+    {
+      env->SetIntensityVal(intensity);
+    }
+
+    const float fade = GetFadeVal();
+    if (env->GetFadeVal() != fade)
+    {
+      env->SetFadeVal(fade);
+    }
+
+    const float captureFar = GetCaptureFarVal();
+    if (env->GetCaptureFarVal() != captureFar)
+    {
+      env->SetCaptureFarVal(captureFar);
+    }
+
+    // The choices block has no comparison of its own, and the selected index is what the capture
+    // reads, so the index is what decides whether the value has to travel.
+    const MultiChoiceVariant& resolution = GetCaptureResolutionVal();
+    if (env->GetCaptureResolutionVal().CurrentVal.Index != resolution.CurrentVal.Index)
+    {
+      env->SetCaptureResolutionVal(resolution);
+    }
   }
 
   void ReflectionProbe::ParameterConstructor()

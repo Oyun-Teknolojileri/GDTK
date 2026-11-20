@@ -1,5 +1,6 @@
 #include "EditorEnvironmentComponent.h"
 
+#include <ReflectionProbe.h>
 #include <RenderSystem.h>
 #include <Sky.h>
 #include <Threads.h>
@@ -113,6 +114,36 @@ namespace ToolKit
           EnvironmentComponentCategory.Priority,
           true,
           true);
+    }
+
+    void EditorEnvironmentComponent::ParameterEventConstructor()
+    {
+      Super::ParameterEventConstructor();
+
+      // Three values reach this component without passing through its owner entity: a capture
+      // replaces the Hdri, and the box edit tool writes Size and PositionOffset straight onto the
+      // component. A reflection probe mirrors these into its own parameter group, which is what the
+      // inspector shows, so they are mirrored back here - otherwise the entity keeps the value from
+      // before the capture or the resize, and the next edit of any parameter would carry that stale
+      // value back into the component. SyncFromComponent guards itself, so the refresh does not
+      // write back into the component.
+      const auto mirror = [this](Value&, Value&) -> void
+      {
+        EntityPtr owner = OwnerEntity();
+        if (owner == nullptr)
+        {
+          return;
+        }
+
+        if (ReflectionProbe* probe = owner->As<ReflectionProbe>())
+        {
+          probe->SyncFromComponent();
+        }
+      };
+
+      ParamHdri().m_onValueChangedFn.push_back(mirror);
+      ParamSize().m_onValueChangedFn.push_back(mirror);
+      ParamPositionOffset().m_onValueChangedFn.push_back(mirror);
     }
 
     XmlNode* EditorEnvironmentComponent::SerializeImp(XmlDocument* doc, XmlNode* parent) const
