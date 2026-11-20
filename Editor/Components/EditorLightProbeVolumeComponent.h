@@ -30,7 +30,7 @@ namespace ToolKit
 {
   namespace Editor
   {
-    class TK_API EditorLightProbeVolumeComponent : public LightProbeVolumeComponent
+    class TK_EDITOR_API EditorLightProbeVolumeComponent : public LightProbeVolumeComponent
     {
      public:
       TKDeclareClass(EditorLightProbeVolumeComponent, LightProbeVolumeComponent);
