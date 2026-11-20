@@ -1415,11 +1415,35 @@ namespace ToolKit
       if (!m_loggedTextureUnitOverflow)
       {
         m_loggedTextureUnitOverflow = true;
+
+        // Name the program and its declared samplers: the slot alone says nothing about which
+        // shader is over budget, and on a device this is the only clue the log carries.
+        String program = "unknown";
+        if (m_currentProgram != nullptr && m_currentProgram->m_shaders.size() > 1 &&
+            m_currentProgram->m_shaders[1] != nullptr)
+        {
+          program = m_currentProgram->m_shaders[1]->GetFile();
+        }
+
+        String resources;
+        if (m_currentProgram != nullptr)
+        {
+          for (const ShaderResource& res : m_currentProgram->m_resources)
+          {
+            if (res.type == ShaderResource::Type::Texture)
+            {
+              resources += res.name + "=" + std::to_string(res.slot) + " ";
+            }
+          }
+        }
+
         GetLogger()->Log(LogType::Warning,
                          "Shader sampler slot %d exceeds the %d units this device exposes; the bind is "
-                         "dropped.",
+                         "dropped. Fragment shader: %s. Texture resources: %s",
                          (int) slotIndx,
-                         GetMaxTextureUnits());
+                         GetMaxTextureUnits(),
+                         program.c_str(),
+                         resources.c_str());
       }
       return;
     }
