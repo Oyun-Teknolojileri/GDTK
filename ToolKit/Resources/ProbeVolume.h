@@ -12,8 +12,8 @@
  *
  * Baked diffuse irradiance for a grid of light probes, and the file format it travels in.
  *
- * The data is consumed by the renderer (`s_probeSH0..2`) and produced by
- * `Modules/LightProbeBake`. Both sides link this header, which is why the format lives in the
+ * The data is consumed by the renderer (`s_probeSH`, a three layer coefficient array) and produced
+ * by `Modules/LightProbeBake`. Both sides link this header, which is why the format lives in the
  * engine and not in the module.
  */
 

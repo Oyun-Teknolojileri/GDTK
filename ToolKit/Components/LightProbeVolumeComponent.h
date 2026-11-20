@@ -61,7 +61,7 @@ namespace ToolKit
     bool IsBaked() const { return !m_data.coefficients.empty(); }
 
     /**
-     * Creates or refreshes the three shader textures from the L1 subset of the bake.
+     * Creates or refreshes the shader texture from the L1 subset of the bake.
      * Has to run on the render thread, because it creates GPU textures.
      * @return False when there is nothing to upload.
      */
@@ -69,8 +69,8 @@ namespace ToolKit
 
     const ProbeVolumeData& GetProbeData() const { return m_data; }
 
-    /** The three slice stacked coefficient textures, or null before EnsureShaderTextures. */
-    DataTexturePtr GetShaderTexture(int index) const;
+    /** The slice stacked coefficient array, or null before EnsureShaderTextures. */
+    DataTexturePtr GetShaderTexture() const;
 
     /** Probe grid a bake would produce for the current box and spacing. */
     UVec3 ComputeBakeResolution() const;
@@ -157,8 +157,8 @@ namespace ToolKit
     BoundingBox m_boundingBoxCache;
     ProbeVolumeData m_data;
 
-    /** Channel major L1 storage: texture k holds component k of coefficients 0..3. */
-    DataTexturePtr m_shTextures[3];
+    /** Channel major L1 storage: array layer k holds component k of coefficients 0..3. */
+    DataTexturePtr m_shTexture;
     bool m_texturesValid = false;
     bool m_initialized   = false;
   };

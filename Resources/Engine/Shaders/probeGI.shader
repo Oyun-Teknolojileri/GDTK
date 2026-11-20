@@ -2,9 +2,7 @@
 	<type name = "includeShader" />
 	<include name = "vulkanCompatInc.shader" />
 	<include name = "perDrawDataInc.shader" />
-	<texture slot = "18" name = "s_probeSH0" />
-	<texture slot = "19" name = "s_probeSH1" />
-	<texture slot = "20" name = "s_probeSH2" />
+	<texture slot = "6" name = "s_probeSH" viewType = "2darray" />
 	<source>
 	<!--
 
@@ -17,20 +15,18 @@
 // spherical harmonics (see ToolKit/Resources/ProbeVolume.h). The runtime keeps the four L1
 // coefficients, which is the low frequency part a diffuse surface can respond to.
 //
-// Storage is channel major: one texture per colour channel, each texel holding the four
-// coefficients of that channel in rgba. The volume's z slices are stacked vertically, so a
-// slice is a block of `res.y` rows and the bilinear fetch interpolates x and y for free; z is
+// Storage is channel major: one array layer per colour channel, each layer holding the four
+// coefficients of that channel in rgba. The volume's z slices are stacked vertically inside a layer,
+// so a slice is a block of `res.y` rows and the bilinear fetch interpolates x and y for free; z is
 // interpolated by hand between two slices, and `ty` is clamped inside its slice so the filter
 // never reaches into the neighbouring one.
 
-TK_SAMPLER_BINDING(18) uniform sampler2D s_probeSH0;
-TK_SAMPLER_BINDING(19) uniform sampler2D s_probeSH1;
-TK_SAMPLER_BINDING(20) uniform sampler2D s_probeSH2;
+TK_SAMPLER_BINDING(6) uniform sampler2DArray s_probeSH;
 
-vec4 SampleProbeSliceChannel(sampler2D channel, float x, float ty, float z, float resY, float resZ)
+vec4 SampleProbeSliceChannel(float x, float ty, float z, float resY, float resZ, int channel)
 {
 	float v = (z * resY + ty) / (resY * resZ);
-	return texture(channel, vec2(x, v));
+	return texture(s_probeSH, vec3(x, v, float(channel)));
 }
 
 // Returns E / pi at worldPos for the world normal n. Writes the volume weight the caller uses
@@ -71,14 +67,14 @@ vec3 ProbeIrradiance(vec3 worldPos, vec3 n, out float weight)
 	float z1 = min(z0 + 1.0, res.z - 1.0);
 	float tz = zf - z0;
 
-	vec4 c0 = mix(SampleProbeSliceChannel(s_probeSH0, clamped.x, ty, z0, res.y, res.z),
-	              SampleProbeSliceChannel(s_probeSH0, clamped.x, ty, z1, res.y, res.z),
+	vec4 c0 = mix(SampleProbeSliceChannel(clamped.x, ty, z0, res.y, res.z, 0),
+	              SampleProbeSliceChannel(clamped.x, ty, z1, res.y, res.z, 0),
 	              tz);
-	vec4 c1 = mix(SampleProbeSliceChannel(s_probeSH1, clamped.x, ty, z0, res.y, res.z),
-	              SampleProbeSliceChannel(s_probeSH1, clamped.x, ty, z1, res.y, res.z),
+	vec4 c1 = mix(SampleProbeSliceChannel(clamped.x, ty, z0, res.y, res.z, 1),
+	              SampleProbeSliceChannel(clamped.x, ty, z1, res.y, res.z, 1),
 	              tz);
-	vec4 c2 = mix(SampleProbeSliceChannel(s_probeSH2, clamped.x, ty, z0, res.y, res.z),
-	              SampleProbeSliceChannel(s_probeSH2, clamped.x, ty, z1, res.y, res.z),
+	vec4 c2 = mix(SampleProbeSliceChannel(clamped.x, ty, z0, res.y, res.z, 2),
+	              SampleProbeSliceChannel(clamped.x, ty, z1, res.y, res.z, 2),
 	              tz);
 
 	// Channel major to coefficient major.

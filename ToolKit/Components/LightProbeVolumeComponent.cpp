@@ -91,13 +91,10 @@ namespace ToolKit
 
   void LightProbeVolumeComponent::UnInit()
   {
-    for (DataTexturePtr& texture : m_shTextures)
+    if (m_shTexture != nullptr)
     {
-      if (texture != nullptr)
-      {
-        texture->UnInit();
-        texture = nullptr;
-      }
+      m_shTexture->UnInit();
+      m_shTexture = nullptr;
     }
 
     m_texturesValid = false;
@@ -326,7 +323,7 @@ namespace ToolKit
 
   bool LightProbeVolumeComponent::EnsureShaderTextures()
   {
-    if (m_texturesValid && m_shTextures[0] != nullptr)
+    if (m_texturesValid && m_shTexture != nullptr)
     {
       return true;
     }
@@ -350,9 +347,12 @@ namespace ToolKit
 
     const uint width  = resolution.x;
     const uint height = resolution.y * resolution.z;
+    const size_t layerTexels = (size_t) width * height;
+    const size_t layerStride = layerTexels * 4;
 
     TextureSettings settings;
-    settings.Target         = GraphicTypes::Target2D;
+    settings.Target         = GraphicTypes::Target2DArray;
+    settings.Layers         = 3;
     settings.WarpS          = GraphicTypes::UVClampToEdge;
     settings.WarpT          = GraphicTypes::UVClampToEdge;
     settings.MinFilter      = GraphicTypes::SampleLinear;
@@ -361,11 +361,9 @@ namespace ToolKit
     settings.Format         = GraphicTypes::FormatRGBA;
     settings.Type           = GraphicTypes::TypeFloat;
 
-    std::vector<float> pixels[3];
-    for (int channel = 0; channel < 3; ++channel)
-    {
-      pixels[channel].assign((size_t) width * height * 4, 0.0f);
-    }
+    // Layer major, one layer per colour channel: the shader addresses a channel with the array
+    // layer index, so one sampler carries all three.
+    std::vector<float> pixels(layerStride * 3, 0.0f);
 
     for (uint z = 0; z < resolution.z; ++z)
     {
@@ -381,40 +379,33 @@ namespace ToolKit
             for (uint coefficient = 0; coefficient < 4; ++coefficient)
             {
               const size_t source = (probe * coefficientCount + coefficient) * 3 + channel;
-              pixels[channel][texel * 4 + coefficient] = m_data.coefficients[source];
+              pixels[(size_t) channel * layerStride + texel * 4 + coefficient] = m_data.coefficients[source];
             }
           }
         }
       }
     }
 
-    for (int channel = 0; channel < 3; ++channel)
-    {
-      DataTexturePtr texture = MakeNewPtr<DataTexture>(width, height, settings, "ProbeSH");
-      texture->Init(pixels[channel].data());
-      m_shTextures[channel] = texture;
-    }
+    DataTexturePtr texture = MakeNewPtr<DataTexture>(width, height, settings, "ProbeSH");
+    texture->Init(pixels.data());
+    m_shTexture = texture;
 
     m_texturesValid = true;
 
-    TK_LOG("Light probe volume: uploaded the L1 grid as %ux%u, %ux%ux%u probes.",
-           width,
-           height,
-           resolution.x,
-           resolution.y,
-           resolution.z);
+    // Log() rather than TK_LOG: this line is how a device build proves the array upload happened,
+    // so it has to reach Log.txt and not only the editor console.
+    GetLogger()->Log(LogType::Memo,
+                     "Light probe volume: uploaded the L1 grid as %ux%u x 3 layers, %ux%ux%u probes.",
+                     width,
+                     height,
+                     resolution.x,
+                     resolution.y,
+                     resolution.z);
 
     return true;
   }
 
-  DataTexturePtr LightProbeVolumeComponent::GetShaderTexture(int index) const
-  {
-    if (index < 0 || index >= 3)
-    {
-      return nullptr;
-    }
-    return m_shTextures[index];
-  }
+  DataTexturePtr LightProbeVolumeComponent::GetShaderTexture() const { return m_shTexture; }
 
   const BoundingBox& LightProbeVolumeComponent::GetBoundingBox()
   {

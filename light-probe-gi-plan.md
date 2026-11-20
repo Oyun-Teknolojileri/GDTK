@@ -138,15 +138,16 @@ produces L2 by default (`--quality l2`), and the runtime reads the first four co
 it, which is exact: the L1 coefficients of an L2 projection are the L1 projection.
 
 Each texel holds one colour channel of all four coefficients, so a fetch returns four scalars
-of the same channel:
+of the same channel. The three channels are the layers of one 2D array texture, which keeps the
+probe on a single sampler:
 
-| Texture | R | G | B | A |
+| Layer | R | G | B | A |
 |---|---|---|---|---|
-| `s_probeSH0` | c0.r | c1.r | c2.r | c3.r |
-| `s_probeSH1` | c0.g | c1.g | c2.g | c3.g |
-| `s_probeSH2` | c0.b | c1.b | c2.b | c3.b |
+| 0 (`s_probeSH`) | c0.r | c1.r | c2.r | c3.r |
+| 1 | c0.g | c1.g | c2.g | c3.g |
+| 2 | c0.b | c1.b | c2.b | c3.b |
 
-Each texture is `resX` wide and `resY * resZ` tall: the z slices are stacked vertically, so
+Each layer is `resX` wide and `resY * resZ` tall: the z slices are stacked vertically, so
 a slice is a block of `resY` rows. This buys hardware bilinear filtering across the two grid
 axes inside a slice for free, and leaves only the z axis to be interpolated by hand:
 
@@ -571,16 +572,19 @@ volume containing it (4.4). A scene with no probe volume renders exactly as it d
   `RenderJob` (`Pass.h:140`), filled by `AssignEnvironment` (`Pass.cpp:499`) and part of the
   `ForwardPass` sort key (`ForwardPass.cpp:297`), so a batch only ever needs one texture set
   bound.
-- `Renderer::SetDataTextures` (`Renderer.cpp:1054`) binds the three (or one) `DataTexture`s
-  from `job.ProbeVolume`, next to the sky and volume branches, and only when the program
-  declares `s_probeSH0` (`m_currentProgram->GetTextureSlot`), so custom shader materials that
-  do not include `ibl.shader` pay nothing.
+- `Renderer::SetDataTextures` (`Renderer.cpp:1054`) binds the array `DataTexture` from
+  `job.ProbeVolume`, next to the sky and volume branches, and only when the program declares
+  `s_probeSH` (`m_currentProgram->GetTextureSlot`), so custom shader materials that do not
+  include `ibl.shader` pay nothing.
 - Volume transform, min, inv size and resolution go into the `PerDrawData` UBO next to the
   existing `vol0*` / `vol1*` blocks (`perDrawDataInc.shader`, `PerDrawUboLayout` in
   `Renderer.h`). Both sides change in lockstep; there is room.
-- A `DataTexture` with `FormatRGBA16F` and `TypeFloat` already uploads correctly through
-  `GLBackend::CreateTexture` (`data = tex->m_imagef ? ... : tex->m_image`), and something
-  has to call `Map()` on it when the bake finishes. No backend change.
+- A `DataTexture` with `FormatRGBA16F` and `TypeFloat` uploads through
+  `GLBackend::CreateTexture` (`data = tex->m_imagef ? ... : tex->m_image`). Array targets needed
+  one addition there: the declared `Layers` are copied as one contiguous layer major block
+  (`glTexSubImage3D` on GL, one copy region per layer on Vulkan), because the array branch used
+  to allocate empty storage only. Something still has to call `Map()` on it when the bake
+  finishes.
 
 ### 6.3 Shader
 
@@ -590,9 +594,7 @@ New include `Resources/Engine/Shaders/probeGI.shader`:
 #ifndef PROBE_GI
 #define PROBE_GI
 
-TK_SAMPLER_BINDING(18) uniform sampler2D s_probeSH0;
-TK_SAMPLER_BINDING(19) uniform sampler2D s_probeSH1;
-TK_SAMPLER_BINDING(20) uniform sampler2D s_probeSH2;
+TK_SAMPLER_BINDING(6) uniform sampler2DArray s_probeSH;
 
 // Returns E / pi for the world normal n at worldPos, and writes the volume weight the
 // caller uses to blend against the sky and the local volumes.
@@ -839,9 +841,9 @@ light.
 - Desktop GL, Vulkan, and headless Chrome (SwiftShader), as the other render work uses.
 - `dumpbin` style check is not relevant, but the web build has to be republished before
   testing, and `?loglevel=1` keeps the console readable.
-- A RenderDoc capture of one frame with the volume on: the forward pass should show the three
-  probe samplers bound, `s_probeSH0..2`, in the pass' texture list. If they are missing, the
-  slot lookup failed and the shader silently read a default texture.
+- A RenderDoc capture of one frame with the volume on: the forward pass should show the probe
+  array sampler bound, `s_probeSH`, in the pass' texture list. If it is missing, the slot lookup
+  failed and the shader silently read a default texture.
 - The probe cache file has to survive the Pak round trip (pack, run from the pak, not from a
   loose resources folder).
 - The `ProbeBake` CLI on the same scene as the editor bake has to produce a bit identical

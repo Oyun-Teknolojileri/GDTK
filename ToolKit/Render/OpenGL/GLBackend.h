@@ -105,7 +105,6 @@ namespace ToolKit
     void BindVAO(uint vao);
 
     void InvalidateFboCache(uint id);
-    void InvalidateTextureCache(uint id);
 
     // Phase 7a: Custom uniforms and renderer utility
     void SetUniform4f(int location, const Vec4& value) override;
@@ -173,15 +172,7 @@ namespace ToolKit
     IntArray m_storedReadFboStack;
     IntArray m_storedDrawFboStack;
 
-    // Texture slot cache
-    struct TextureSlotState
-    {
-      uint textureID = 0;
-      uint target    = 0;
-    };
-
-    TextureSlotState m_textureSlotCache[32];
-
+    // Texture unit budget
     /** Fragment texture units, queried once at first use. -1 means "not asked yet". */
     int m_maxTextureUnits = -1;
 

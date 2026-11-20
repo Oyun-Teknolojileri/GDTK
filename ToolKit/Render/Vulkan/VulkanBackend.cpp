@@ -2354,7 +2354,16 @@ namespace ToolKit
       const void* pixels       = tex->m_imagef ? (const void*) tex->m_imagef : (const void*) tex->m_image;
       const int bpp            = BytesOfFormat(tex->Settings().InternalFormat);
       const VkDeviceSize bytes = (VkDeviceSize) tex->m_width * tex->m_height * bpp;
-      UploadTexelData(m_context.get(), data.get(), pixels, bytes, 0, 0);
+
+      // An array hands one contiguous block, layer 0 first; each layer is its own copy region.
+      const uint layers = tex->Settings().Target == GraphicTypes::Target2DArray
+                              ? (uint) std::max(1, tex->Settings().Layers)
+                              : 1u;
+      for (uint layer = 0; layer < layers; ++layer)
+      {
+        const ubyte* layerPixels = (const ubyte*) pixels + (size_t) layer * (size_t) bytes;
+        UploadTexelData(m_context.get(), data.get(), layerPixels, bytes, layer, 0);
+      }
     }
     else if (hasCubemapData)
     {

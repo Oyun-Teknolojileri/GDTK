@@ -540,7 +540,6 @@ namespace ToolKit
 
     void BindProgramOfMaterial(Material* material);
     void BindProgram(const GpuProgramPtr& program);
-    void ResetUsedTextureSlots();
 
     /** Initialize brdf lut textures. */
     void GenerateBRDFLutTexture();
@@ -647,8 +646,6 @@ namespace ToolKit
     /** .x = first instance of the current batch; 0 count means "not instanced". */
     uint m_batchFirstInstance      = 0;
     uint m_batchInstanceCount      = 1;
-
-    std::array<int, RHIConstants::TextureSlotCount> m_textureSlots;
 
     /** One shot log that says the probe binding path ran, so a silent no-op is visible. */
     bool m_loggedProbeBinding = false;

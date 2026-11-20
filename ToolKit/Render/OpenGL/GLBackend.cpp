@@ -1409,6 +1409,24 @@ namespace ToolKit
                    ToGLGraphicType(s.Format),
                    ToGLGraphicType(s.Type),
                    nullptr);
+
+      // A DataTexture hands one contiguous block, layer 0 first. A render target passes null and
+      // keeps the empty allocation the call above just made.
+      void* data = tex->m_imagef ? (void*) tex->m_imagef : (void*) tex->m_image;
+      if (data != nullptr)
+      {
+        glTexSubImage3D(GL_TEXTURE_2D_ARRAY,
+                        0,
+                        0,
+                        0,
+                        0,
+                        tex->m_width,
+                        tex->m_height,
+                        s.Layers,
+                        ToGLGraphicType(s.Format),
+                        ToGLGraphicType(s.Type),
+                        data);
+      }
     }
 
     tex->m_gpuData = std::move(glData);
@@ -1429,7 +1447,6 @@ namespace ToolKit
     }
     else
     {
-      InvalidateTextureCache(gl->textureId);
       glDeleteTextures(1, &gl->textureId);
     }
 
@@ -2039,18 +2056,6 @@ namespace ToolKit
     }
   }
 
-  void GLBackend::InvalidateTextureCache(uint id)
-  {
-    for (int i = 0; i < 32; i++)
-    {
-      if (m_textureSlotCache[i].textureID == id)
-      {
-        m_textureSlotCache[i].textureID = 0;
-        m_textureSlotCache[i].target    = 0;
-      }
-    }
-  }
-
   void GLBackend::BindFramebuffer(uint target, uint id)
   {
     if (target == GL_FRAMEBUFFER)
@@ -2107,8 +2112,6 @@ namespace ToolKit
     // driver call in the tens of nanoseconds; correctness is worth more.
     glActiveTexture(GL_TEXTURE0 + slot);
     glBindTexture(target, id);
-    m_textureSlotCache[slot].textureID = id;
-    m_textureSlotCache[slot].target    = target;
   }
 
   void GLBackend::BindVAO(uint vao)

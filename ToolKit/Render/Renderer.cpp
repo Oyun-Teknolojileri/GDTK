@@ -44,7 +44,6 @@ namespace ToolKit
 
   Renderer::Renderer()
   {
-    m_textureSlots.fill(-1);
     m_activePointLightIndices.fill(-1);
     m_activeSpotLightIndices.fill(-1);
 
@@ -1055,19 +1054,6 @@ namespace ToolKit
     m_currentProgram = program;
   }
 
-  void Renderer::ResetUsedTextureSlots()
-  {
-    // Stop at the device's unit count, not at the engine's slot table: glActiveTexture past the limit
-    // is an error that leaves the previous unit selected, so the next bind lands on a texture the
-    // shader still samples. This used to walk all 32 slots unconditionally.
-    const int units     = GetMaxTextureUnits();
-    const int unitCount = units < RHIConstants::TextureSlotCount ? units : (int) RHIConstants::TextureSlotCount;
-    for (int i = 0; i < unitCount; i++)
-    {
-      SetTexture(i, nullptr);
-    }
-  }
-
   void Renderer::SetDirectionalLights(const LightRawPtrArray& lights)
   {
     m_globalGpuBuffers->directionalLightBuffer.Map(lights);
@@ -1216,38 +1202,25 @@ namespace ToolKit
     LightProbeVolumeComponent* probeComp = job.ProbeVolume;
     if (probeComp != nullptr && probeComp->EnsureShaderTextures())
     {
-      bool bound = true;
-      for (int channel = 0; channel < 3; ++channel)
-      {
-        const String name = channel == 0 ? "s_probeSH0" : (channel == 1 ? "s_probeSH1" : "s_probeSH2");
-        const int slot      = m_currentProgram->GetTextureSlot(name.c_str());
-        DataTexturePtr tex  = probeComp->GetShaderTexture(channel);
+      const int slot     = m_currentProgram->GetTextureSlot("s_probeSH");
+      DataTexturePtr tex = probeComp->GetShaderTexture();
 
-        if (slot != -1 && tex != nullptr)
-        {
-          SetTexture((ubyte) slot, tex);
-        }
-        else
-        {
-          bound = false;
-        }
-      }
-
-      if (bound)
+      if (slot != -1 && tex != nullptr)
       {
+        SetTexture((ubyte) slot, tex);
+
         const ProbeVolumeData& data = probeComp->GetProbeData();
         const Vec3 half             = probeComp->GetSizeVal() * 0.5f;
 
         if (!m_loggedProbeBinding)
         {
           m_loggedProbeBinding = true;
-          TK_LOG("Light probe volume: bound %ux%ux%u probes to slots %d %d %d.",
-                 data.resolution.x,
-                 data.resolution.y,
-                 data.resolution.z,
-                 m_currentProgram->GetTextureSlot("s_probeSH0"),
-                 m_currentProgram->GetTextureSlot("s_probeSH1"),
-                 m_currentProgram->GetTextureSlot("s_probeSH2"));
+          GetLogger()->Log(LogType::Memo,
+                           "Light probe volume: bound %ux%ux%u probes to slot %d.",
+                           data.resolution.x,
+                           data.resolution.y,
+                           data.resolution.z,
+                           slot);
         }
 
         m_drawCommand.SetProbeVolumeEnabled(true);

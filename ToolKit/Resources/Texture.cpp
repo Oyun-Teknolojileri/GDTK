@@ -465,7 +465,14 @@ namespace ToolKit
     backend->ApplyTextureSettings(this);
     m_image = nullptr; // DataTexture doesn't own the data
 
-    Stats::AddVRAMUsageInBytes((uint64) (m_width * m_height) * BytesOfFormat(m_settings.InternalFormat));
+    // DataTexture doesn't own the data after this; the GPU does. Array targets account for every
+    // layer, matching what Texture::UnInit subtracts for the same texture.
+    uint64 gpuBytes = (uint64) (m_width * m_height) * BytesOfFormat(m_settings.InternalFormat);
+    if (m_settings.Target == GraphicTypes::Target2DArray && m_settings.Layers > 0)
+    {
+      gpuBytes *= (uint64) m_settings.Layers;
+    }
+    Stats::AddVRAMUsageInBytes(gpuBytes);
 
     m_loaded    = true;
     m_initiated = true;
@@ -492,7 +499,12 @@ namespace ToolKit
       return;
     }
 
-    Stats::RemoveVRAMUsageInBytes((uint64) (m_width * m_height) * BytesOfFormat(m_settings.InternalFormat));
+    uint64 gpuBytes = (uint64) (m_width * m_height) * BytesOfFormat(m_settings.InternalFormat);
+    if (m_settings.Target == GraphicTypes::Target2DArray && m_settings.Layers > 0)
+    {
+      gpuBytes *= (uint64) m_settings.Layers;
+    }
+    Stats::RemoveVRAMUsageInBytes(gpuBytes);
 
     if (IGraphicsBackend* backend = GetBackend_noexcep())
     {
