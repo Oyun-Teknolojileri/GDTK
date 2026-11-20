@@ -383,12 +383,7 @@ namespace ToolKit
     Metallic_Define(0.2f, MaterialCategory.Name, MaterialCategory.Priority, true, false, Animatable({}));
     Roughness_Define(0.5f, MaterialCategory.Name, MaterialCategory.Priority, true, false, Animatable({}));
     Color_Define(Vec3(1.0f), MaterialCategory.Name, MaterialCategory.Priority, true, false, Animatable({true}));
-    EmissiveColor_Define(Vec3(0.0f),
-                         MaterialCategory.Name,
-                         MaterialCategory.Priority,
-                         true,
-                         false,
-                         Animatable({true}));
+    EmissiveColor_Define(Vec3(0.0f), MaterialCategory.Name, MaterialCategory.Priority, true, false, Animatable({true}));
   }
 
   void Material::ParameterEventConstructor()
@@ -639,6 +634,17 @@ namespace ToolKit
     material->SetDiffuseTextureVal(texMan->Create<Texture>(TexturePath(TKDefaultImage, true)));
     material->Init();
     m_storage[MaterialPath("unlit.material", true)] = material;
+
+    // Chrome. White, fully metallic and mirror smooth, and textureless on purpose: the default
+    // texture is a coloured placeholder and would tint the reflection. The reflection probe
+    // preview draws with this, and a level can reference it as chrome.material.
+    material                                        = GetCopyOfUnlitMaterial();
+    material->SetColorVal(Vec3(1.0f));
+    material->SetMetallicVal(1.0f);
+    material->SetRoughnessVal(0.0f);
+    material->Init();
+    m_chromeMaterial                                = material;
+    m_storage[MaterialPath(TKChromeMaterial, true)] = material;
   }
 
   bool MaterialManager::CanStore(ClassMeta* Class) { return Class == Material::StaticClass(); }
@@ -646,6 +652,8 @@ namespace ToolKit
   String MaterialManager::GetDefaultResource(ClassMeta* Class) { return MaterialPath("missing.material", true); }
 
   MaterialPtr MaterialManager::GetDefaultMaterial() { return m_defaultMaterial; }
+
+  MaterialPtr MaterialManager::GetChromeMaterial() { return m_chromeMaterial; }
 
   MaterialPtr MaterialManager::GetCopyOfUnlitMaterial(bool storeInMaterialManager)
   {

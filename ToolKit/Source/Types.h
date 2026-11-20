@@ -471,6 +471,7 @@ namespace ToolKit
   static const String TKDefaultGradientSky    = "DefaultGradientSky";
   static const String TKDefaultHdri           = "defaultHDRI.hdr";
   static const String TKDefaultImage          = "default.png";
+  static const String TKChromeMaterial        = "chrome.material";
   static const String TKResourcePak           = "MinResources.pak";
 
   // Version defines.

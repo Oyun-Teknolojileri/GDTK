@@ -32,6 +32,8 @@ namespace ToolKit
         BoxEdit,
         Sky,
         Light,
+        LightProbe,
+        ReflectionProbe,
         Anchor
       };
 
@@ -77,6 +79,40 @@ namespace ToolKit
 
       LightBillboard();
       virtual ~LightBillboard();
+      BillboardType GetBillboardType() const override;
+      void LookAt(CameraPtr cam, float scale) override;
+
+     private:
+      void Generate() override;
+    };
+
+    // LightProbeBillboard
+    //////////////////////////////////////////
+
+    class TK_EDITOR_API LightProbeBillboard : public EditorBillboardBase
+    {
+     public:
+      TKDeclareClass(LightProbeBillboard, EditorBillboardBase);
+
+      LightProbeBillboard();
+      virtual ~LightProbeBillboard();
+      BillboardType GetBillboardType() const override;
+      void LookAt(CameraPtr cam, float scale) override;
+
+     private:
+      void Generate() override;
+    };
+
+    // ReflectionProbeBillboard
+    //////////////////////////////////////////
+
+    class TK_EDITOR_API ReflectionProbeBillboard : public EditorBillboardBase
+    {
+     public:
+      TKDeclareClass(ReflectionProbeBillboard, EditorBillboardBase);
+
+      ReflectionProbeBillboard();
+      virtual ~ReflectionProbeBillboard();
       BillboardType GetBillboardType() const override;
       void LookAt(CameraPtr cam, float scale) override;
 

@@ -205,6 +205,8 @@ namespace ToolKit
       static TexturePtr m_viewZoomIcon;
       static TexturePtr m_gridIcon;
       static TexturePtr m_skyIcon;
+      static TexturePtr m_lightProbeIcon;
+      static TexturePtr m_reflectionProbeIcon;
       static TexturePtr m_closeIcon;
       static TexturePtr m_phoneRotateIcon;
       static TexturePtr m_studioLightsToggleIcon;

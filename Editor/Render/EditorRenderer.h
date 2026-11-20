@@ -21,6 +21,8 @@
 
 namespace ToolKit
 {
+  class Sphere;
+
   namespace Editor
   {
 
@@ -137,6 +139,18 @@ namespace ToolKit
 
       /** Resolved viewport frame buffer is stored here. */
       FramebufferPtr m_resolvedFramebuffer = nullptr;
+
+      /**
+       * Chrome spheres that preview what a reflection probe captured, keyed by the probe's id.
+       *
+       * They live here and not in the scene: a preview is editor only, so it must never be saved
+       * or drawn by a game, and owning them on the renderer is what releases them with it instead
+       * of at process exit (see AGENTS.md, object lifetime).
+       */
+      std::unordered_map<ObjectId, std::shared_ptr<Sphere>> m_reflectionPreviews;
+
+      /** Reflection only material the preview spheres draw with; see reflectionPreviewFrag.shader. */
+      MaterialPtr m_reflectionPreviewMaterial = nullptr;
     };
 
   } // namespace Editor

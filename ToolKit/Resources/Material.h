@@ -172,6 +172,13 @@ namespace ToolKit
     bool CanStore(ClassMeta* Class) override;
     String GetDefaultResource(ClassMeta* Class) override;
     MaterialPtr GetDefaultMaterial();
+
+    /**
+     * White, fully metallic and mirror smooth, textureless. A reflection probe preview is drawn
+     * with it, and a level can reference it as `chrome.material`.
+     */
+    MaterialPtr GetChromeMaterial();
+
     MaterialPtr GetCopyOfUnlitMaterial(bool storeInMaterialManager = true);
     MaterialPtr GetCopyOfUIMaterial(bool storeInMaterialManager = true);
     MaterialPtr GetCopyOfUnlitColorMaterial(bool storeInMaterialManager = true);
@@ -179,6 +186,7 @@ namespace ToolKit
 
    private:
     MaterialPtr m_defaultMaterial = nullptr;
+    MaterialPtr m_chromeMaterial  = nullptr;
   };
 
 } // namespace ToolKit

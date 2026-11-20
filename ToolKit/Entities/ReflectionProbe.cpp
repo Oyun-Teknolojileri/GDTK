@@ -177,6 +177,39 @@ namespace ToolKit
         priority,
         true,
         true);
+
+    CenterToArea_Define(
+        [weakSelf]() -> void
+        {
+          if (ReflectionProbePtr self = weakSelf.lock())
+          {
+            EnvironmentComponentPtr env = self->GetEnvironmentComponent();
+            if (env == nullptr)
+            {
+              return;
+            }
+
+            const Vec3 offset = env->GetPositionOffsetVal();
+            if (offset == Vec3(0.0f))
+            {
+              return;
+            }
+
+            // Move the node onto the volume centre and drop the offset, so the entity and the box
+            // share one origin from then on.
+            const Mat4 world  = self->m_node->GetTransform(TransformationSpace::TS_WORLD);
+            const Vec3 center = Vec3(world * Vec4(offset, 1.0f));
+
+            self->m_node->SetTranslation(center, TransformationSpace::TS_WORLD);
+            env->SetPositionOffsetVal(Vec3(0.0f));
+
+            self->SyncFromComponent();
+          }
+        },
+        category,
+        priority,
+        true,
+        true);
   }
 
   void ReflectionProbe::ParameterEventConstructor()

@@ -89,5 +89,43 @@ namespace ToolKit
       EditorBillboardBase::Generate();
     }
 
+    TKDefineClass(LightProbeBillboard, EditorBillboardBase);
+
+    LightProbeBillboard::LightProbeBillboard() : EditorBillboardBase({true, 3.5f, 10.0f}) {}
+
+    LightProbeBillboard::~LightProbeBillboard() {}
+
+    EditorBillboardBase::BillboardType LightProbeBillboard::GetBillboardType() const
+    {
+      return BillboardType::LightProbe;
+    }
+
+    void LightProbeBillboard::LookAt(CameraPtr cam, float scale) { Super::LookAt(cam, scale); }
+
+    void LightProbeBillboard::Generate()
+    {
+      m_iconImage = UI::m_lightProbeIcon;
+      EditorBillboardBase::Generate();
+    }
+
+    TKDefineClass(ReflectionProbeBillboard, EditorBillboardBase);
+
+    ReflectionProbeBillboard::ReflectionProbeBillboard() : EditorBillboardBase({true, 3.5f, 10.0f}) {}
+
+    ReflectionProbeBillboard::~ReflectionProbeBillboard() {}
+
+    EditorBillboardBase::BillboardType ReflectionProbeBillboard::GetBillboardType() const
+    {
+      return BillboardType::ReflectionProbe;
+    }
+
+    void ReflectionProbeBillboard::LookAt(CameraPtr cam, float scale) { Super::LookAt(cam, scale); }
+
+    void ReflectionProbeBillboard::Generate()
+    {
+      m_iconImage = UI::m_reflectionProbeIcon;
+      EditorBillboardBase::Generate();
+    }
+
   } // namespace Editor
 } // namespace ToolKit

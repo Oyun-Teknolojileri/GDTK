@@ -26,6 +26,8 @@
 #include <MathUtil.h>
 #include <Prefab.h>
 #include <Primative.h>
+#include <ReflectionProbe.h>
+#include <Shader.h>
 #include <UIManager.h>
 #include <Util.h>
 
@@ -475,10 +477,112 @@ namespace ToolKit
         }
       }
 
+      // Reflection probe previews. A chrome sphere at the volume centre, showing the cubemap the
+      // probe captured. It is editor only: the sphere is cached on this renderer and added to this
+      // frame's editor entities, so it is never part of the scene and a game never sees it. It is
+      // only drawn for the selected probe - a level full of probes would otherwise put a ball in
+      // every room - and ShowChromeSphere turns it off for the selected one.
+      std::unordered_map<ObjectId, EnvironmentComponent*> previewEnvironments;
+      std::vector<ObjectId> sceneProbes;
+      for (EntityPtr ntt : scene->GetEntities())
+      {
+        ReflectionProbe* probe = ntt->As<ReflectionProbe>();
+        if (probe == nullptr)
+        {
+          continue;
+        }
+
+        EnvironmentComponentPtr env = probe->GetEnvironmentComponent();
+        if (env == nullptr)
+        {
+          continue;
+        }
+
+        sceneProbes.push_back(probe->GetIdVal());
+
+        // Only the probe being edited gets a ball: a level full of probes would otherwise put one
+        // in every room, and the ball doubles as the selection feedback.
+        if (std::find(m_selecteds.begin(), m_selecteds.end(), ntt) == m_selecteds.end())
+        {
+          continue;
+        }
+
+        SpherePtr& preview = m_reflectionPreviews[probe->GetIdVal()];
+        if (preview == nullptr)
+        {
+          preview = MakeNewPtr<Sphere>();
+          preview->SetNameVal("ReflectionProbePreview");
+
+          // A reflection only material: the cubemap and nothing else, so the ball shows what the
+          // probe captured instead of the room's own lighting.
+          if (m_reflectionPreviewMaterial == nullptr)
+          {
+            m_reflectionPreviewMaterial = MakeNewPtr<Material>();
+            m_reflectionPreviewMaterial->SetVertexShaderVal(
+                GetShaderManager()->Create<Shader>(ShaderPath("defaultVertex.shader", true)));
+            m_reflectionPreviewMaterial->SetFragmentShaderVal(
+                GetShaderManager()->Create<Shader>(ShaderPath("reflectionPreviewFrag.shader", true)));
+            m_reflectionPreviewMaterial->Init();
+          }
+
+          if (MaterialComponentPtr matComp = preview->GetMaterialComponent())
+          {
+            matComp->SetFirstMaterial(m_reflectionPreviewMaterial);
+            matComp->Init(false);
+          }
+
+          if (MeshComponentPtr meshComp = preview->GetMeshComponent())
+          {
+            meshComp->Init(false);
+          }
+        }
+
+        // The volume centre in world space. The sphere primitive has a unit radius, so a 0.25
+        // scale is the half metre ball a probe is inspected with.
+        const Mat4 world = probe->m_node->GetTransform(TransformationSpace::TS_WORLD);
+        preview->m_node->SetTranslation(Vec3(world * Vec4(probe->GetPositionOffsetVal(), 1.0f)),
+                                        TransformationSpace::TS_WORLD);
+        preview->m_node->SetScale(Vec3(0.25f));
+
+        previewEnvironments[preview->GetIdVal()] = env.get();
+        editorEntities.push_back(preview);
+      }
+
+      // Drop the previews of probes that left the scene. A deselected probe keeps its cached
+      // sphere, so selecting it again does not rebuild the mesh and material.
+      for (auto it = m_reflectionPreviews.begin(); it != m_reflectionPreviews.end();)
+      {
+        if (std::find(sceneProbes.begin(), sceneProbes.end(), it->first) == sceneProbes.end())
+        {
+          it = m_reflectionPreviews.erase(it);
+        }
+        else
+        {
+          ++it;
+        }
+      }
+
       // Editor pass.
       m_renderData.jobs.clear();
       EntityRawPtrArray rawNtties = ToEntityRawPtrArray(editorEntities);
       RenderJobProcessor::CreateRenderJobs(m_renderData.jobs, rawNtties);
+
+      // A preview reflects the probe it belongs to: its jobs carry that volume's cubemap.
+      for (RenderJob& job : m_renderData.jobs)
+      {
+        if (job.Entity == nullptr)
+        {
+          continue;
+        }
+
+        const auto envIt = previewEnvironments.find(job.Entity->GetIdVal());
+        if (envIt != previewEnvironments.end())
+        {
+          job.EnvironmentVolume          = envIt->second;
+          job.SecondaryEnvironmentVolume = nullptr;
+        }
+      }
+
       RenderJobProcessor::SeperateRenderData(m_renderData, true);
 
       m_editorPass->m_params.renderData     = &m_renderData;

@@ -70,6 +70,9 @@ namespace ToolKit
     /** Captures the surroundings into the probe's cubemap. */
     TKDeclareParam(VariantCallback, Capture);
 
+    /** Moves the node to the centre of the volume, so the entity sits where it reflects from. */
+    TKDeclareParam(VariantCallback, CenterToArea);
+
    protected:
     void ParameterConstructor() override;
     void ParameterEventConstructor() override;
