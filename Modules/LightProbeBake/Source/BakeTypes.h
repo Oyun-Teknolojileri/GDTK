@@ -19,6 +19,7 @@
 
 #include <cmath>
 #include <cfloat>
+#include <vector>
 
 namespace ToolKit
 {
@@ -76,11 +77,17 @@ namespace ToolKit
     };
 
     /**
-     * Vertical gradient sky, the analytic stand in for the gradient sky entity.
+     * The sky a ray sees when it misses the geometry.
      *
-     * The HDRI path is not sampled yet: a scene lit by an HDRI falls back to `enabled = false`,
-     * which the baker logs. That keeps the first version honest instead of quietly baking a
-     * black environment.
+     * Two forms share the struct: the analytic vertical gradient of a GradientSky, and an
+     * equirectangular HDRI image resampled on the CPU. The HDRI is kept as plain float texels so
+     * the snapshot still owns no engine object.
+     *
+     * The image is sampled the way the renderer converts it for the GPU
+     * (equirectToCubeFrag.shader): the same equirectangular mapping, the same `1 - exp(-c)` curve
+     * GenerateCubemapFrom2DTexture applies with an exposure of one, and the same sky orientation.
+     * A sky that lit the frame with one curve and the probes with another would meet the probe
+     * volume at a visible seam.
      */
     struct SkyModel
     {
@@ -90,21 +97,61 @@ namespace ToolKit
       float exponent = 1.0f;
       bool enabled   = false;
 
-      Vec3 Sample(const Vec3& direction) const
-      {
-        if (!enabled)
-        {
-          return Vec3(0.0f);
-        }
+      /** Equirectangular HDRI, row major RGB float, row 0 at the top of the image. */
+      std::vector<float> hdri;
+      int hdriWidth  = 0;
+      int hdriHeight = 0;
 
-        const float y = glm::clamp(direction.y, -1.0f, 1.0f);
-        if (y >= 0.0f)
-        {
-          return glm::mix(middle, top, std::pow(y, exponent));
-        }
-        return glm::mix(middle, bottom, std::pow(-y, exponent));
-      }
+      /** Sky node orientation, the rotation the renderer applies to the IBL lookup direction. */
+      Mat3 rotation = Mat3(1.0f);
+
+      Vec3 Sample(const Vec3& direction) const;
     };
+
+    inline Vec3 SkyModel::Sample(const Vec3& direction) const
+    {
+      if (!enabled)
+      {
+        return Vec3(0.0f);
+      }
+
+      const Vec3 dir = glm::normalize(rotation * direction);
+
+      if (!hdri.empty())
+      {
+        // equirectToCubeFrag.shader: uv = (atan(z, x), asin(y)) * (1 / 2pi, 1 / pi) + 0.5.
+        const float u = std::atan2(dir.z, dir.x) * 0.15915494f + 0.5f;
+        const float v = std::asin(glm::clamp(dir.y, -1.0f, 1.0f)) * 0.31830989f + 0.5f;
+
+        // v grows towards up while row 0 is the top of the image, so the row runs backwards. u
+        // wraps around the seam at the back of the sphere; v clamps at the poles.
+        const float x  = u * (float) hdriWidth - 0.5f;
+        const float y  = (1.0f - v) * (float) hdriHeight - 0.5f;
+        const int x0   = (int) std::floor(x);
+        const int y0   = (int) std::floor(y);
+        const float fx = x - (float) x0;
+        const float fy = y - (float) y0;
+
+        const auto texel = [this](int tx, int ty) -> Vec3
+        {
+          tx = ((tx % hdriWidth) + hdriWidth) % hdriWidth;
+          ty = glm::clamp(ty, 0, hdriHeight - 1);
+          const float* pixel = hdri.data() + ((size_t) ty * (size_t) hdriWidth + (size_t) tx) * 3;
+          return Vec3(pixel[0], pixel[1], pixel[2]);
+        };
+
+        const Vec3 bottomRow = glm::mix(texel(x0, y0), texel(x0 + 1, y0), fx);
+        const Vec3 topRow    = glm::mix(texel(x0, y0 + 1), texel(x0 + 1, y0 + 1), fx);
+        return glm::mix(bottomRow, topRow, fy);
+      }
+
+      const float y = glm::clamp(dir.y, -1.0f, 1.0f);
+      if (y >= 0.0f)
+      {
+        return glm::mix(middle, top, std::pow(y, exponent));
+      }
+      return glm::mix(middle, bottom, std::pow(-y, exponent));
+    }
 
     struct RayHit
     {

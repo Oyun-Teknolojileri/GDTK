@@ -345,7 +345,7 @@ namespace ToolKit
 
   void Texture::ApplyTextureSettings(const TextureSettings& settings)
   {
-    // Settings struct updated — re-apply via backend if already on GPU
+    // Settings struct updated - re-apply via backend if already on GPU
     m_settings = settings;
     if (m_initiated)
     {
@@ -540,7 +540,7 @@ namespace ToolKit
 
     assert(targetTextureSettings.Target == GraphicTypes::TargetCubeMap);
 
-    m_gpuData    = cubeMapTarget->m_gpuData; // Shared — both CubeMap and consumedRT use same GPU resource.
+    m_gpuData    = cubeMapTarget->m_gpuData; // Shared - both CubeMap and consumedRT use same GPU resource.
     m_width      = cubeMapTarget->m_width;
     m_height     = cubeMapTarget->m_height;
 
@@ -939,16 +939,21 @@ namespace ToolKit
     }
   }
 
-  void Hdri::GenerateIrradianceCaches(Renderer* renderer)
+  void Hdri::GenerateSpecularEnvCache(Renderer* renderer)
   {
     // Pre-filtered and mip mapped environment map (drives reflections).
-    // mip-0 work = size² × 6 × SAMPLE_COUNT (preFilterEnvMapFrag). Generating at the full source
+    // mip-0 work = size^2 * 6 * SAMPLE_COUNT (preFilterEnvMapFrag). Generating at the full source
     // width with 1024 samples ran ~1.6G samples and tripped the amdgpu gfx-ring watchdog ->
-    // VK_ERROR_DEVICE_LOST. 512/face (the editor's env-map cap) × 256 samples = ~400M, 4× under the
+    // VK_ERROR_DEVICE_LOST. 512/face (the editor's env-map cap) * 256 samples = ~400M, 4x under the
     // hang point. If a larger source is ever allowed, drop SAMPLE_COUNT proportionally to stay safe.
     constexpr int kSpecularEnvMapSize = 512;
     const int specularEnvMapSize      = glm::min(kSpecularEnvMapSize, m_cubemap->m_width);
     m_specularEnvMap = renderer->GenerateSpecularEnvMap(m_cubemap, specularEnvMapSize, RHIConstants::SpecularIBLLods);
+  }
+
+  void Hdri::GenerateIrradianceCaches(Renderer* renderer)
+  {
+    GenerateSpecularEnvCache(renderer);
 
     // Generate diffuse irradience cubemap images
     int size         = glm::max(64, m_width / 32); // Smaller size for diffuse.

@@ -301,10 +301,12 @@ namespace ToolKit
            // Restore illuminate state.
            SetIlluminateVal(wasIlluminate);
 
-           // Create a dynamic HDRI and assign the captured cubemap.
+           // Create a dynamic HDRI and assign the captured cubemap. A local volume is a
+           // reflection source, so only the specular chain is built; the irradiance cache this
+           // used to generate was never sampled by the forward shader.
            HdriPtr hdri    = MakeNewPtr<Hdri>();
            hdri->m_cubemap = cubemap;
-           hdri->GenerateIrradianceCaches(renderer);
+           hdri->GenerateSpecularEnvCache(renderer);
            hdri->m_initiated = true;
 
            SetHdriVal(hdri);

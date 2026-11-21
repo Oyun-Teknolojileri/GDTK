@@ -83,3 +83,4 @@ Modules/RenderDoc/Scripts/**/__pycache__/
 
 # Build logs written by BuildScripts/build_fast.ps1
 /Temp/
+/tmp

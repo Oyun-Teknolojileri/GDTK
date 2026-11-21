@@ -38,10 +38,11 @@ namespace ToolKit
     constexpr float Pi = 3.14159265359f;
 
     /**
-     * Analytic checks for the two pieces that would be invisible to break and wrong to ship: the
-     * spherical harmonic projection and the path tracer's radiance hand off.
+     * Analytic checks for the pieces that would be invisible to break and wrong to ship: the
+     * spherical harmonic projection, the path tracer's radiance hand off and the equirectangular
+     * sky mapping.
      *
-     * No engine, no resources: both scenes are built in memory.
+     * No engine, no resources: every scene is built in memory.
      */
     int RunSelfTest()
     {
@@ -145,6 +146,42 @@ namespace ToolKit
         if (down.x > 0.02f)
         {
           printf("[selftest] FAIL: the down normal receives light through the ceiling.\n");
+          failures++;
+        }
+      }
+
+      // 3. The equirectangular sky: the top row of the image is up, and the sky node rotation turns
+      // it. A constant row means the longitude does not enter the result, so a wrong row order is
+      // the only thing this can fail on.
+      {
+        BakeScene scene;
+        scene.sky.enabled    = true;
+        scene.sky.hdriWidth  = 4;
+        scene.sky.hdriHeight = 2;
+        scene.sky.hdri.assign(4 * 2 * 3, 1.0f);
+
+        for (size_t i = 12; i < 24; ++i) // Second row: the bottom of the image.
+        {
+          scene.sky.hdri[i] = 0.0f;
+        }
+
+        const Vec3 up      = scene.sky.Sample(Vec3(0.0f, 1.0f, 0.0f));
+        const Vec3 down    = scene.sky.Sample(Vec3(0.0f, -1.0f, 0.0f));
+        const Vec3 horizon = scene.sky.Sample(Vec3(0.0f, 0.0f, 1.0f));
+
+        printf("[selftest] equirect sky: up %.3f, down %.3f, horizon %.3f\n", up.x, down.x, horizon.x);
+
+        if (up.x < 0.99f || down.x > 0.01f || std::abs(horizon.x - 0.5f) > 0.01f)
+        {
+          printf("[selftest] FAIL: the equirect sky is upside down or does not interpolate.\n");
+          failures++;
+        }
+
+        // Half a turn about X puts the bright row below the horizon.
+        scene.sky.rotation = glm::mat3_cast(glm::angleAxis(Pi, Vec3(1.0f, 0.0f, 0.0f)));
+        if (scene.sky.Sample(Vec3(0.0f, 1.0f, 0.0f)).x > 0.01f)
+        {
+          printf("[selftest] FAIL: the sky node rotation is not applied to the bake.\n");
           failures++;
         }
       }

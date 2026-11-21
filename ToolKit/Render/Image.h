@@ -38,6 +38,16 @@ namespace ToolKit
   TK_API int WritePNG(StringView filename, int x, int y, int comp, const void* data, int stride_bytes);
   TK_API int WriteHdr(StringView filename, int x, int y, int comp, const float* data);
   TK_API void ImageSetVerticalOnLoad(bool val);
+
+  /**
+   * Row order ImageLoad / ImageLoadF currently produce.
+   *
+   * The switch above is process wide state, so a loader that gets its pixels from FileManager has
+   * to ask which way they came back rather than assume one: it is on once the graphics system is
+   * up and off in a host that never created one.
+   */
+  TK_API bool ImageGetVerticalOnLoad();
+
   TK_API void ImageFree(void* img);
 
 } // namespace ToolKit

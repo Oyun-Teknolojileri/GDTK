@@ -267,7 +267,7 @@ namespace ToolKit
 
       if (!scene.sky.enabled)
       {
-        TK_LOG("Probe bake: the scene has no gradient sky the baker samples, so paths that miss "
+        TK_LOG("Probe bake: the scene has no sky the baker can sample, so paths that miss "
                "contribute nothing.");
       }
 

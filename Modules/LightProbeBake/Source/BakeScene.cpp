@@ -9,7 +9,9 @@
 
 #include "DirectionComponent.h"
 #include "EnvironmentComponent.h"
+#include "FileManager.h"
 #include "GradientSky.h"
+#include "Image.h"
 #include "Light.h"
 #include "Material.h"
 #include "MaterialComponent.h"
@@ -114,9 +116,104 @@ namespace ToolKit
         return true;
       }
 
+      /**
+       * Width the sky HDRI is resampled to before tracing.
+       *
+       * A probe stores the irradiance arriving at a point, not the sky's detail, so a 4k equirect
+       * would cost a hundred megabytes of floats for information the SH projection drops anyway.
+       * The box filter that gets it down also keeps a small and very bright sun from turning into
+       * a dot that lands between probes.
+       */
+      constexpr int MaxSkyHdriWidth = 1024;
+
+      /**
+       * Reads an HDRI file into the snapshot as an equirectangular RGB buffer.
+       *
+       * The pixels come through FileManager, which loads HDRIs flipped for the GL texture path.
+       * That switch is process wide, so the row order is asked for instead of assumed and the
+       * buffer is written top down either way.
+       *
+       * Radiance goes through `1 - exp(-c)` for the same reason: GenerateCubemapFrom2DTexture runs
+       * the source through that curve with an exposure of one before anything samples the sky, so
+       * an HDRI carrying a 5000 nit sun lights the frame with a sky in which the sun is about one.
+       * A bake of the raw image would put the probe and the frame in different ranges, and the
+       * probe volume would only have to match them again at runtime.
+       */
+      bool LoadHdriSky(const String& file, float intensity, SkyModel& sky)
+      {
+        if (file.empty())
+        {
+          TK_WRN("Probe bake: the sky has no HDRI file to sample, paths that miss stay black.");
+          return false;
+        }
+
+        int width     = 0;
+        int height    = 0;
+        int channels  = 0;
+        float* pixels = GetFileManager()->GetHdriFile(file, &width, &height, &channels, 4);
+        if (pixels == nullptr || width <= 0 || height <= 0)
+        {
+          TK_WRN("Probe bake: the sky HDRI '%s' could not be read, paths that miss stay black.",
+                 file.c_str());
+          return false;
+        }
+
+        const bool flipped = ImageGetVerticalOnLoad();
+
+        const int targetWidth  = glm::min(width, MaxSkyHdriWidth);
+        const int targetHeight = glm::max(1, (int) std::lround((double) height * targetWidth / (double) width));
+
+        sky.hdriWidth  = targetWidth;
+        sky.hdriHeight = targetHeight;
+        sky.hdri.assign((size_t) targetWidth * (size_t) targetHeight * 3, 0.0f);
+
+        for (int y = 0; y < targetHeight; ++y)
+        {
+          // Destination rows are top down; the source may be either way up.
+          const int srcY0 = (int) ((int64) y * height / targetHeight);
+          const int srcY1 = glm::max(srcY0 + 1, (int) ((int64) (y + 1) * height / targetHeight));
+
+          for (int x = 0; x < targetWidth; ++x)
+          {
+            const int srcX0 = (int) ((int64) x * width / targetWidth);
+            const int srcX1 = glm::max(srcX0 + 1, (int) ((int64) (x + 1) * width / targetWidth));
+
+            Vec3 sum(0.0f);
+            int count = 0;
+            for (int sy = srcY0; sy < srcY1; ++sy)
+            {
+              const int row     = flipped ? (height - 1 - sy) : sy;
+              const float* line = pixels + (size_t) row * (size_t) width * 4;
+              for (int sx = srcX0; sx < srcX1; ++sx)
+              {
+                const float* pixel = line + (size_t) sx * 4;
+                sum += Vec3(pixel[0], pixel[1], pixel[2]);
+                ++count;
+              }
+            }
+
+            Vec3 color = count > 0 ? sum / (float) count : Vec3(0.0f);
+            color.x    = 1.0f - std::exp(-color.x);
+            color.y    = 1.0f - std::exp(-color.y);
+            color.z    = 1.0f - std::exp(-color.z);
+            color *= intensity;
+
+            float* dst = sky.hdri.data() + ((size_t) y * (size_t) targetWidth + x) * 3;
+            dst[0]     = color.x;
+            dst[1]     = color.y;
+            dst[2]     = color.z;
+          }
+        }
+
+        ImageFree(pixels);
+
+        TK_LOG("Probe bake: sky HDRI '%s' resampled to %dx%d.", file.c_str(), targetWidth, targetHeight);
+        return true;
+      }
+
       uint MaterialIndex(BakeScene& scene,
-                           std::unordered_map<const Material*, uint>& cache,
-                           const MaterialPtr& material)
+                         std::unordered_map<const Material*, uint>& cache,
+                         const MaterialPtr& material)
       {
         if (material == nullptr)
         {
@@ -358,30 +455,38 @@ namespace ToolKit
         out.lights.push_back(outLight);
       }
 
-      // Sky.
+      // Sky. The gradient is read from the entity; an HDRI is read from the file it names, because
+      // by the time a scene is edited or reloaded the Hdri's pixels are a GPU cubemap and the CPU
+      // side image may already have been flushed.
       if (SkyBasePtr sky = scene->GetSky())
       {
+        EnvironmentComponent* env = sky->GetComponentFast<EnvironmentComponent>();
+        const bool illuminate     = env == nullptr || env->GetIlluminateVal();
+        const float intensity     = env == nullptr ? 1.0f : env->GetIntensityVal();
+
+        // The renderer rotates every IBL lookup by the sky node's orientation, so the baker has to
+        // see the same sky in the same direction the frame does.
+        out.sky.rotation = glm::mat3_cast(sky->m_node->GetOrientation(TransformationSpace::TS_WORLD));
+        out.sky.enabled  = illuminate;
+
         if (GradientSky* gradient = sky->As<GradientSky>())
         {
-          out.sky.top      = gradient->GetTopColorVal();
-          out.sky.middle   = gradient->GetMiddleColorVal();
-          out.sky.bottom   = gradient->GetBottomColorVal();
+          out.sky.top      = gradient->GetTopColorVal() * intensity;
+          out.sky.middle   = gradient->GetMiddleColorVal() * intensity;
+          out.sky.bottom   = gradient->GetBottomColorVal() * intensity;
           out.sky.exponent = glm::max(gradient->GetGradientExponentVal(), 0.01f);
-          out.sky.enabled  = true;
-
-          if (EnvironmentComponent* env = sky->GetComponentFast<EnvironmentComponent>())
+        }
+        else if (illuminate && intensity > 0.0f)
+        {
+          HdriPtr hdri = env != nullptr ? env->GetHdriVal() : nullptr;
+          if (hdri == nullptr)
           {
-            if (!env->GetIlluminateVal())
-            {
-              out.sky.enabled = false;
-            }
-            else
-            {
-              const float intensity = env->GetIntensityVal();
-              out.sky.top *= intensity;
-              out.sky.middle *= intensity;
-              out.sky.bottom *= intensity;
-            }
+            TK_WRN("Probe bake: the sky has no HDRI assigned, paths that miss stay black.");
+            out.sky.enabled = false;
+          }
+          else if (!LoadHdriSky(hdri->GetFile(), intensity, out.sky))
+          {
+            out.sky.enabled = false;
           }
         }
       }

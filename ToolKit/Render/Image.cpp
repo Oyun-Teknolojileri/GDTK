@@ -110,6 +110,8 @@ namespace ToolKit
     stbi_set_flip_vertically_on_load(val);
   }
 
+  bool ImageGetVerticalOnLoad() { return s_verticalFlipOnLoad; }
+
   void ImageFree(void* img) { stbi_image_free(img); }
 
 } // namespace ToolKit

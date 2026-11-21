@@ -1146,6 +1146,14 @@ Base class for every loadable asset. Inherits Object. Has lifecycle: `Load()` (C
   handles an environment volume gets and `EditorRenderer` draws it; the console has
   `BakeLightProbe [<entity>]` for a headless trigger.
 
+  The sky a miss sees is either the `GradientSky` parameters, evaluated analytically, or an
+  equirectangular HDRI resampled on the CPU into the snapshot (`BakeScene::BuildBakeScene`).
+  The image is read from the file the sky names, not from the `Hdri` resource, whose pixels are a
+  GPU cubemap by then; it goes through the same `1 - exp(-c)` curve
+  `Renderer::GenerateCubemapFrom2DTexture` applies with an exposure of one and the same sky node
+  orientation, so the baked ambient lands in the range the forward pass lights the frame with.
+  The width is capped (`MaxSkyHdriWidth`) because a probe stores irradiance, not sky detail.
+
   **Reflection probes.** `ReflectionProbe` (`ToolKit/Entities/ReflectionProbe.h`) is the authoring
   entity for a local volume that supplies reflections only: it always owns an `EnvironmentComponent`,
   mirrors its parameters and hides the component's group the way `LightProbe` does, and starts with a
@@ -1153,7 +1161,10 @@ Base class for every loadable asset. Inherits Object. Has lifecycle: `Load()` (C
   `CenterToArea`. The mirror pushes only the value that changed - every write fires the component's
   change events, and `Size` / `PositionOffset` are the two that mark its spatial caches dirty, which
   is the editor's cue to capture again - so a probe captures in exactly the cases a plain environment
-  component does: a changed volume, the first init, or the `Capture` button. `EditorEnvironmentComponent`
+  component does: a changed volume, the first init, or the `Capture` button. A capture builds the
+  pre-filtered specular chain only (`Hdri::GenerateSpecularEnvCache`): the forward shader samples a
+  local volume's specular cubemap and never its irradiance one, so the diffuse convolution the old
+  `GenerateIrradianceCaches` did was work whose result nothing read. `EditorEnvironmentComponent`
   mirrors a capture's new Hdri and a box edit's volume back into the entity, because those reach the
   component without passing through it. Selecting one draws an editor-only chrome ball at the volume
   centre through `reflectionPreviewFrag.shader`, which samples the probe's own prefiltered cubemap at
@@ -1295,6 +1306,14 @@ The "thing in the scene". Inherits `Object`. Components attached for behavior:
 - `EditorEnvironmentComponent` (editor-only)
 
 Has `ObjectPtr Copy()`, `RemoveResources()`, `Parent()`, `IsDrawable()`, `SetPose(anim, time)`, `GetBoundingBox(inWorld)`, `IsVisible()`, `SetVisibility(vis, deep)`.
+
+**A sky entity owns the component; the entity keeps the authored values.** `SkyBase::Init` resolves
+the Hdri: a null *or fileless* one falls back to `TextureManager::GetDefaultResource`
+(`Textures/defaultHDRI.hdr`), because the scene loader turns an empty `Hdri` parameter into a default
+constructed (dynamic) Hdri rather than a null one, and nothing can build a cubemap from that. The
+same `Init` pushes the entity's `Illuminate` / `Intensity` into the component - the renderer and the
+probe bake read the component - and `Sky` mirrors the resolved Hdri back into its own parameter, so a
+save records the image the sky actually draws instead of an empty tag.
 
 ### 7.2 Node (Node.h)
 Transform / hierarchy. `m_inheritScale`, `m_inheritTranslate`, `m_inheritRotate`. `Parent()` traverses up.
