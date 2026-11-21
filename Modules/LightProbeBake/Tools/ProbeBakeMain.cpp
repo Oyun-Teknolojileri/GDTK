@@ -205,6 +205,8 @@ namespace ToolKit
       printf("  --quality <l1|l2>  Coefficients stored per probe. Default l1.\n");
       printf("  --seed <n>         Sampling seed. Default 0.\n");
       printf("  --denoise <n>      Grid relaxation passes after tracing. Default 2, 0 keeps raw.\n");
+      printf("  --sparse <cells>   Trace only the probes within this many cells of a surface and\n");
+      printf("                     fill the rest from a neighbour. Default 2, 0 traces them all.\n");
     }
 
     bool ParseFloat3(const char* text, Vec3& out)
@@ -351,6 +353,15 @@ namespace ToolKit
         }
         request.denoiseIterations = std::max(0, std::atoi(value));
       }
+      else if (flag == "--sparse")
+      {
+        const char* value = next("--sparse");
+        if (value == nullptr)
+        {
+          return 1;
+        }
+        request.traceRadius = std::max(0.0f, (float) std::atof(value));
+      }
       else if (flag == "--quality")
       {
         const char* value = next("--quality");
@@ -483,13 +494,13 @@ namespace ToolKit
       return 1;
     }
 
-    printf("Wrote %s: %ux%ux%u probes, %u valid, %u buried, %u unfillable, %.2f s, %.1f KB.\n",
+    printf("Wrote %s: %ux%ux%u probes, %u valid, %u filled, %u unfillable, %.2f s, %.1f KB.\n",
            outFile.c_str(),
            result.data.resolution.x,
            result.data.resolution.y,
            result.data.resolution.z,
            result.validProbes,
-           result.buriedProbes,
+           result.filledProbes,
            result.invalidProbes,
            result.seconds,
            (double) result.data.AllocatedBytes() / 1024.0);

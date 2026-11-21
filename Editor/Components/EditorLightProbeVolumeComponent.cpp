@@ -128,6 +128,7 @@ namespace ToolKit
       request.bounces    = GetBakeBouncesVal();
       request.seed       = (uint) glm::max(GetBakeSeedVal(), 0);
       request.denoiseIterations = glm::max(GetBakeDenoiseVal(), 0);
+      request.traceRadius      = glm::max(GetProbeTraceRadiusVal(), 0.0f);
 
       // L1: the runtime reads four coefficients, and a quadratic bake measured no visible
       // difference on top of them for a 2.25x larger file.
@@ -191,12 +192,12 @@ namespace ToolKit
             }
             else
             {
-              m_status = Format("Baked %ux%ux%u probes in %.1f s (%u buried).",
+              m_status = Format("Baked %ux%ux%u probes in %.1f s (%u filled).",
                                       resolution.x,
                                       resolution.y,
                                       resolution.z,
                                       result.seconds,
-                                      result.buriedProbes);
+                                      result.filledProbes);
             }
 
             m_bakeSucceeded = baked && saved;

@@ -33,6 +33,9 @@ namespace ToolKit
     constexpr float MaxProbeSpacing     = 1000.0f;
     constexpr int MaxProbesPerAxis      = 256;
 
+    constexpr float DefaultProbeTraceRadius = 2.0f;
+    constexpr float MaxProbeTraceRadius     = 16.0f;
+
     constexpr int DefaultBakeSamples = 512;
     constexpr int MinBakeSamples     = 1;
     constexpr int MaxBakeSamples     = 16384;
@@ -143,6 +146,13 @@ namespace ToolKit
                         true,
                         true,
                         {false, true, MinProbeSpacing, MaxProbeSpacing, 0.5f});
+
+    ProbeTraceRadius_Define(DefaultProbeTraceRadius,
+                             LightProbeVolumeCategory.Name,
+                             LightProbeVolumeCategory.Priority,
+                             true,
+                             true,
+                             {false, true, 0.0f, MaxProbeTraceRadius, 0.5f});
 
     BakeSamples_Define(DefaultBakeSamples,
                        LightProbeVolumeCategory.Name,

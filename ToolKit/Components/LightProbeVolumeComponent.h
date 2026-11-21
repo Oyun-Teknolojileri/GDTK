@@ -133,6 +133,17 @@ namespace ToolKit
     /** Distance between neighbouring probes in world units; the probe grid follows from it. */
     TKDeclareParam(float, ProbeSpacing);
 
+    /**
+     * Radius, in cells, around the scene in which probes are traced.
+     *
+     * Nothing samples a probe in open air directly: the shader interpolates for surfaces, and a
+     * surface sits within a cell diagonal of the probes it reads. So only the probes within this
+     * distance of some surface are traced; the rest are filled from their nearest traced neighbour
+     * and keep a zero in the validity mask, which is what keeps them out of the point view. Tracing
+     * every probe is what a bake spends its time on in an open scene. Zero traces every probe.
+     */
+    TKDeclareParam(float, ProbeTraceRadius);
+
     /** Paths traced per probe. More is smoother and slower. */
     TKDeclareParam(int, BakeSamples);
 

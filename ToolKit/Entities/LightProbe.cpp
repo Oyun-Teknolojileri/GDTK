@@ -94,6 +94,7 @@ namespace ToolKit
     SetPositionOffsetVal(probe->GetPositionOffsetVal());
     SetBakeFileVal(probe->GetBakeFileVal());
     SetProbeSpacingVal(probe->GetProbeSpacingVal());
+    SetProbeTraceRadiusVal(probe->GetProbeTraceRadiusVal());
     SetBakeSamplesVal(probe->GetBakeSamplesVal());
     SetBakeBouncesVal(probe->GetBakeBouncesVal());
     SetBakeSeedVal(probe->GetBakeSeedVal());
@@ -121,6 +122,7 @@ namespace ToolKit
     probe->SetPositionOffsetVal(GetPositionOffsetVal());
     probe->SetBakeFileVal(GetBakeFileVal());
     probe->SetProbeSpacingVal(GetProbeSpacingVal());
+    probe->SetProbeTraceRadiusVal(GetProbeTraceRadiusVal());
     probe->SetBakeSamplesVal(GetBakeSamplesVal());
     probe->SetBakeBouncesVal(GetBakeBouncesVal());
     probe->SetBakeSeedVal(GetBakeSeedVal());
@@ -146,6 +148,9 @@ namespace ToolKit
 
     ProbeSpacing_Define(DefaultProbeSpacing, category, priority, true, true,
                         {false, true, 0.05f, 1000.0f, 0.5f});
+
+    ProbeTraceRadius_Define(2.0f, category, priority, true, true,
+                             {false, true, 0.0f, 16.0f, 0.5f});
 
     BakeSamples_Define(DefaultBakeSamples, category, priority, true, true,
                        {false, true, 1.0f, 16384.0f, 1.0f});
@@ -211,6 +216,7 @@ namespace ToolKit
     ParamPositionOffset().m_onValueChangedFn.push_back(push);
     ParamBakeFile().m_onValueChangedFn.push_back(push);
     ParamProbeSpacing().m_onValueChangedFn.push_back(push);
+    ParamProbeTraceRadius().m_onValueChangedFn.push_back(push);
     ParamBakeSamples().m_onValueChangedFn.push_back(push);
     ParamBakeBounces().m_onValueChangedFn.push_back(push);
     ParamBakeSeed().m_onValueChangedFn.push_back(push);

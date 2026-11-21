@@ -60,6 +60,32 @@ namespace ToolKit
       }
 
       /**
+       * True when no surface is within `distance` along any of the six axes.
+       *
+       * A probe in open air only serves the interpolation of its neighbours: nothing samples it
+       * directly, and the irradiance field out there is smooth, so tracing it spends the expensive
+       * part of the bake - samples times bounces ray casts with a shadow ray per hit - on a value a
+       * neighbour can stand in for. Six axis rays are a cheap lower bound on the distance, and the
+       * multiplier in the caller is what keeps the bound on the safe side.
+       */
+      bool IsProbeFarFromGeometry(const BakeScene& scene, const Vec3& position, float distance)
+      {
+        for (int axis = 0; axis < 3; ++axis)
+        {
+          Vec3 direction(0.0f);
+          direction[axis] = 1.0f;
+
+          if (scene.bvh.Occluded(position, direction, distance) ||
+              scene.bvh.Occluded(position, -direction, distance))
+          {
+            return false;
+          }
+        }
+
+        return true;
+      }
+
+      /**
        * Relaxes the grid: every probe moves halfway to the mean of its in range neighbours.
        *
        * Each probe is an independent Monte Carlo estimate, so neighbouring probes of a smooth
@@ -295,6 +321,19 @@ namespace ToolKit
                                           boxSize.z / (float) resolution.z);
       const float enclosureDistance = smallestCell * EnclosureFraction;
 
+      // The axis ray test below reports a distance about 1.4 times the true one for a surface seen
+      // at an angle, so the radius is stretched to keep the probes a surface interpolates from
+      // inside the traced set.
+      constexpr float SparseAxisSafety = 1.5f;
+      const float traceDistance = smallestCell * glm::max(request.traceRadius, 0.0f) * SparseAxisSafety;
+
+      if (request.traceRadius > 0.0f)
+      {
+        TK_LOG("Probe bake: tracing the probes within %.2f world units of a surface, filling the "
+               "rest from a neighbour.",
+               traceDistance);
+      }
+
       const int samples = glm::max(1, request.samples);
       const TraceContext traceContext {&scene, glm::max(1, request.bounces)};
 
@@ -317,7 +356,9 @@ namespace ToolKit
                           return;
                         }
 
-                        if (IsProbeEnclosed(scene, positions[index], enclosureDistance))
+                        if (IsProbeEnclosed(scene, positions[index], enclosureDistance) ||
+                            (traceDistance > 0.0f &&
+                             IsProbeFarFromGeometry(scene, positions[index], traceDistance)))
                         {
                           valid[index] = 0;
                         }
@@ -363,9 +404,11 @@ namespace ToolKit
         return false;
       }
 
-      // Fill the probes that sit inside geometry from the nearest valid neighbour, so the
-      // interpolation across a wall does not pull towards black.
-      uint buriedProbes = 0;
+      // Fill the probes that were skipped - inside geometry, or too far from any surface - from the
+      // nearest traced neighbour, so the interpolation cannot pull towards a hole. The fill does
+      // not clear the validity of the probe: the mask stays a record of what was actually traced,
+      // which is what the editor's point view draws.
+      uint filledProbes = 0;
       for (uint z = 0; z < resolution.z; ++z)
       {
         for (uint y = 0; y < resolution.y; ++y)
@@ -378,20 +421,15 @@ namespace ToolKit
               continue;
             }
 
-            buriedProbes++;
-            if (FillFromNearestValid(resolution, valid, sh, x, y, z))
-            {
-              // The filled probe keeps a valid mask of one: its neighbours are its data.
-              valid[index] = 1;
-            }
-            else
+            filledProbes++;
+            if (!FillFromNearestValid(resolution, valid, sh, x, y, z))
             {
               result.invalidProbes++;
             }
           }
         }
       }
-      result.buriedProbes = buriedProbes;
+      result.filledProbes = filledProbes;
 
       DenoiseSh(resolution, sh, request.denoiseIterations);
       if (request.denoiseIterations > 0)
@@ -434,9 +472,9 @@ namespace ToolKit
       result.seconds =
           std::chrono::duration_cast<std::chrono::duration<double>>(endTime - startTime).count();
 
-      TK_LOG("Probe bake: %u valid, %u buried (filled from a neighbour), %u unfillable, %.2f seconds, %.1f KB.",
+      TK_LOG("Probe bake: %u traced, %u filled from a neighbour, %u unfillable, %.2f seconds, %.1f KB.",
              result.validProbes,
-             result.buriedProbes,
+             result.filledProbes,
              result.invalidProbes,
              result.seconds,
              (double) data.AllocatedBytes() / 1024.0);

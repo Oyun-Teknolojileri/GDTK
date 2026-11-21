@@ -1104,6 +1104,14 @@ Base class for every loadable asset. Inherits Object. Has lifecycle: `Load()` (C
   clamped cosine, i.e. the same quantity `Hdri::m_diffuseEnvMap` holds, which is what lets the shader
   multiply albedo with either. `ProbeBake.exe` (`--selftest` for the analytic checks) writes it.
 
+  The grid is dense but not every probe is traced. `ProbeTraceRadius` (entity, component and
+  `BakeRequest`, in cells, `--sparse` on the CLI) keeps the bake to the probes within that distance
+  of some surface: nothing samples a probe in open air directly, the shader interpolates for
+  surfaces, and a surface sits within a cell diagonal of the probes it reads, so a probe farther out
+  is filled from its nearest traced neighbour instead. The mask is the record of what was traced -
+  a filled probe keeps a zero in it - which is also what the editor's point view draws, so the
+  points that appear are the ones the bake actually sampled. Zero traces every probe.
+
   Each material's albedo and emissive come from its maps when it carries them -- the mean of the
   texture, linearized, because a probe only sees the radiance a surface carries per unit area -- and
   from `Color` / `EmissiveColor` otherwise, which is the same either/or `defaultFragment.shader` does.

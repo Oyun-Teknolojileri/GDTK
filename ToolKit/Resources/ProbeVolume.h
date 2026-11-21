@@ -67,7 +67,12 @@ namespace ToolKit
      */
     std::vector<float> coefficients;
 
-    /** One entry per probe. False for a probe the baker found inside geometry. */
+    /**
+     * One entry per probe. False for a probe the baker did not trace: it is inside geometry, or it
+     * is farther than the bake's sparse radius from every surface. Such a probe still carries
+     * coefficients - they are copied from its nearest traced neighbour, so the grid interpolates -
+     * and the mask is the record of which probes were actually sampled.
+     */
     std::vector<uint8> valid;
 
     uint CoefficientCount() const { return (uint) quality; }

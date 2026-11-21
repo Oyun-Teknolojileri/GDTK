@@ -60,6 +60,7 @@ namespace ToolKit
     TKDeclareParam(Vec3, PositionOffset);
     TKDeclareParam(String, BakeFile);
     TKDeclareParam(float, ProbeSpacing);
+    TKDeclareParam(float, ProbeTraceRadius);
     TKDeclareParam(int, BakeSamples);
     TKDeclareParam(int, BakeBounces);
     TKDeclareParam(int, BakeSeed);
