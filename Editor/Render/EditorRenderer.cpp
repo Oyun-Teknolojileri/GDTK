@@ -734,8 +734,11 @@ namespace ToolKit
             {
               const size_t index = ((size_t) z * resolution.y + y) * resolution.x + x;
 
-              // A probe the bake found inside geometry holds nothing worth showing, and a dot in
-              // the middle of a wall is what it looks like.
+              // The mask is the record of what the bake traced, so a zero here is a probe that
+              // either sits inside geometry or was too far from a surface to be worth sampling -
+              // and it carries a copy of a neighbour, which is not a value of its own to show. On
+              // a sparse bake this is what turns the grid into the shape of the geometry: the
+              // dots that appear are the probes that were actually traced.
               if (baked && index < data.valid.size() && data.valid[index] == 0)
               {
                 continue;

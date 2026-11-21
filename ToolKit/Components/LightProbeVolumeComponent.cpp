@@ -317,11 +317,12 @@ namespace ToolKit
       }
     }
 
-    TK_LOG("Light probe volume: loaded '%s' (%ux%ux%u probes, %s).",
+    TK_LOG("Light probe volume: loaded '%s' (%ux%ux%u probes, %zu traced, %s).",
            path.c_str(),
            m_data.resolution.x,
            m_data.resolution.y,
            m_data.resolution.z,
+           m_data.TracedCount(),
            m_data.CoefficientCount() == 4 ? "L1" : "L2");
 
     return true;

@@ -192,11 +192,12 @@ namespace ToolKit
             }
             else
             {
-              m_status = Format("Baked %ux%ux%u probes in %.1f s (%u filled).",
+              m_status = Format("Baked %ux%ux%u probes in %.1f s (%u traced, %u filled).",
                                       resolution.x,
                                       resolution.y,
                                       resolution.z,
                                       result.seconds,
+                                      result.validProbes,
                                       result.filledProbes);
             }
 

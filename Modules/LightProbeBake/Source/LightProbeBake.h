@@ -46,8 +46,9 @@ namespace ToolKit
        *
        * A probe farther than this from every surface is filled from its nearest traced neighbour,
        * so the grid still interpolates everywhere and only the tracing is saved - in an open scene
-       * that is most of the work. Nothing samples a probe in open air directly; a surface sits
-       * within a cell diagonal of the probes it reads. Zero traces every probe.
+       * that is most of the work, and the written file follows: it stores the traced probes only.
+       * Nothing samples a probe in open air directly; a surface sits within a cell diagonal of the
+       * probes it reads. Zero traces every probe.
        */
       float traceRadius = 2.0f;
 
@@ -86,10 +87,13 @@ namespace ToolKit
     {
       ProbeVolumeData data;
       String error;
+      /** Probes the trace actually sampled. */
       uint validProbes   = 0;
+      /** Probes nothing could be copied from: a grid with no traced probe at all. */
       uint invalidProbes = 0;
       /** Probes the bake skipped - inside geometry, or too far from any surface - and filled from a
-       *  neighbour. They keep a validity mask of zero: the mask records what was traced. */
+       *  neighbour. They keep a validity mask of zero, the mask records what was traced, and the
+       *  writer leaves their coefficients out of the file. */
       uint filledProbes  = 0;
       double seconds       = 0.0;
     };

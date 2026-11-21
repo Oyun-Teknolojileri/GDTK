@@ -1112,6 +1112,17 @@ Base class for every loadable asset. Inherits Object. Has lifecycle: `Load()` (C
   a filled probe keeps a zero in it - which is also what the editor's point view draws, so the
   points that appear are the ones the bake actually sampled. Zero traces every probe.
 
+  The sparsity is in the file and not only in the bake. A filled probe is a copy of a traced one, so
+  `.pgi` version 2 stores the mask (a bit per probe) and the traced coefficient rows only;
+  `LoadProbeVolume` puts the copies back with `FillUntracedProbes`, which is the same pass - and
+  the same values - the bake ran before it wrote. The fill only reads the mask and the traced rows,
+  never another filled probe, so it is idempotent and the reloaded grid is bit identical to the one
+  the bake held. `ms-box` at 16x8x16 with `--sparse 2` is 98 KB of coefficients down to 37 KB of
+  file; a bake that traces every probe still saves the seven eighths of the mask that a byte per
+  probe spent. Version 1 files (dense, one mask byte per probe) still load and are not refilled. The
+  texture stays dense either way: the shader addresses the grid arithmetically and has no structure
+  to look a probe up in, so the VRAM a volume costs is unchanged by any of this.
+
   Each material's albedo and emissive come from its maps when it carries them -- the mean of the
   texture, linearized, because a probe only sees the radiance a surface carries per unit area -- and
   from `Color` / `EmissiveColor` otherwise, which is the same either/or `defaultFragment.shader` does.

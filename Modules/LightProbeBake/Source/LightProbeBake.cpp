@@ -92,20 +92,32 @@ namespace ToolKit
        * function disagree by the sampling error, and the shader's trilinear interpolation turns that
        * disagreement into clouds on the wall. Reading from a copy makes the pass symmetric, so it
        * does not drift the signal toward the low index corner.
+       *
+       * It relaxes the stored coefficients only, and each of them independently, so running it on
+       * the grid the file keeps gives the same numbers the quadratic set gave for its first four.
+       *
+       * The whole grid takes part, filled probes included: they were placed from a neighbour before
+       * this pass runs, so there is no zero for the relaxation to drag the traced probes toward.
        */
-      void DenoiseSh(const UVec3& resolution, std::vector<Sh9>& sh, int iterations)
+      void DenoiseProbes(ProbeVolumeData& data, int iterations)
       {
-        if (iterations <= 0 || sh.empty())
+        const UVec3 resolution = data.resolution;
+        const size_t stride     = (size_t) data.CoefficientCount() * 3;
+        const size_t probeCount = data.ProbeCount();
+
+        if (iterations <= 0 || probeCount == 0 || data.coefficients.size() != probeCount * stride)
         {
           return;
         }
 
         constexpr float Relaxation = 0.5f;
-        std::vector<Sh9> source(sh.size());
+        std::vector<float> source(data.coefficients.size());
+        std::vector<float> mean(stride, 0.0f);
+        float* coefficients = data.coefficients.data();
 
         for (int iteration = 0; iteration < iterations; ++iteration)
         {
-          source = sh;
+          source = data.coefficients;
 
           for (uint z = 0; z < resolution.z; ++z)
           {
@@ -113,19 +125,16 @@ namespace ToolKit
             {
               for (uint x = 0; x < resolution.x; ++x)
               {
-                Sh9 mean;
-                for (int c = 0; c < ShCoefficientCount; ++c)
-                {
-                  mean.c[c] = Vec3(0.0f);
-                }
+                std::fill(mean.begin(), mean.end(), 0.0f);
                 int neighbours = 0;
 
                 const auto accumulate = [&](uint nz, uint ny, uint nx) -> void
                 {
-                  const Sh9& other = source[((size_t) nz * resolution.y + ny) * resolution.x + nx];
-                  for (int c = 0; c < ShCoefficientCount; ++c)
+                  const size_t index = ((size_t) nz * resolution.y + ny) * resolution.x + nx;
+                  const float* other = &source[index * stride];
+                  for (size_t entry = 0; entry < stride; ++entry)
                   {
-                    mean.c[c] += other.c[c];
+                    mean[entry] += other[entry];
                   }
                   ++neighbours;
                 };
@@ -142,12 +151,12 @@ namespace ToolKit
                   continue;
                 }
 
-                Sh9& target = sh[((size_t) z * resolution.y + y) * resolution.x + x];
-                const float inv = 1.0f / (float) neighbours;
-                for (int c = 0; c < ShCoefficientCount; ++c)
+                const size_t index = ((size_t) z * resolution.y + y) * resolution.x + x;
+                float* target      = &coefficients[index * stride];
+                const float inv    = 1.0f / (float) neighbours;
+                for (size_t entry = 0; entry < stride; ++entry)
                 {
-                  const Vec3 averaged = mean.c[c] * inv;
-                  target.c[c]         = glm::mix(target.c[c], averaged, Relaxation);
+                  target[entry] = glm::mix(target[entry], mean[entry] * inv, Relaxation);
                 }
               }
             }
@@ -160,58 +169,6 @@ namespace ToolKit
       {
         const uint64 mixed = (uint64) probeIndex * 0x9e3779b97f4a7c15ULL ^ ((uint64) seed << 32u);
         return Pcg32(mixed);
-      }
-
-      /**
-       * Copies the coefficients of the nearest valid probe into `target`.
-       * @return False when no probe of the grid was valid.
-       */
-      bool FillFromNearestValid(const UVec3& resolution,
-                                const std::vector<uint8>& valid,
-                                std::vector<Sh9>& sh,
-                                uint targetX,
-                                uint targetY,
-                                uint targetZ)
-      {
-        const int maxRadius = (int) glm::max(glm::max(resolution.x, resolution.y), resolution.z);
-
-        for (int radius = 1; radius <= maxRadius; ++radius)
-        {
-          for (int dz = -radius; dz <= radius; ++dz)
-          {
-            for (int dy = -radius; dy <= radius; ++dy)
-            {
-              for (int dx = -radius; dx <= radius; ++dx)
-              {
-                // Only the shell at this radius, the inside was searched already.
-                if (glm::abs(dx) != radius && glm::abs(dy) != radius && glm::abs(dz) != radius)
-                {
-                  continue;
-                }
-
-                const int x = (int) targetX + dx;
-                const int y = (int) targetY + dy;
-                const int z = (int) targetZ + dz;
-                if (x < 0 || y < 0 || z < 0 || x >= (int) resolution.x || y >= (int) resolution.y ||
-                    z >= (int) resolution.z)
-                {
-                  continue;
-                }
-
-                const size_t index = ((size_t) z * resolution.y + y) * resolution.x + x;
-                if (!valid[index])
-                {
-                  continue;
-                }
-
-                sh[((size_t) targetZ * resolution.y + targetY) * resolution.x + targetX] = sh[index];
-                return true;
-              }
-            }
-          }
-        }
-
-        return false;
       }
     } // namespace
 
@@ -337,8 +294,23 @@ namespace ToolKit
       const int samples = glm::max(1, request.samples);
       const TraceContext traceContext {&scene, glm::max(1, request.bounces)};
 
-      std::vector<Sh9> sh(probeCount);
-      std::vector<uint8> valid(probeCount, 1);
+      const uint coefficientCount = (uint) request.quality;
+      const size_t stride         = (size_t) coefficientCount * 3;
+
+      // The trace writes the grid the file and the load are built on, not an intermediate set the
+      // rest of the bake converts from: a quadratic projection is trimmed to the coefficients the
+      // quality stores, and each of them is independent of the others, so the stored values are
+      // the ones the full set would have given.
+      ProbeVolumeData& data = result.data;
+      data.version          = ProbeVolumeData::CurrentVersion;
+      data.resolution       = resolution;
+      data.transform        = request.volumeTransform;
+      data.boxMin           = request.boxMin;
+      data.boxMax           = request.boxMax;
+      data.quality          = request.quality;
+      data.coefficients.assign(probeCount * stride, 0.0f);
+      data.valid.assign(probeCount, 1);
+
       std::atomic<size_t> completed {0};
 
       {
@@ -349,7 +321,7 @@ namespace ToolKit
                       iota_iter<size_t>(probeCount),
                       [&](size_t index)
                       {
-                        sh[index] = Sh9 {};
+                        float* row = &data.coefficients[index * stride];
 
                         if (request.cancel != nullptr && request.cancel->load())
                         {
@@ -360,7 +332,7 @@ namespace ToolKit
                             (traceDistance > 0.0f &&
                              IsProbeFarFromGeometry(scene, positions[index], traceDistance)))
                         {
-                          valid[index] = 0;
+                          data.valid[index] = 0;
                         }
                         else
                         {
@@ -374,18 +346,24 @@ namespace ToolKit
                             float basis[ShCoefficientCount];
                             ShBasis(direction, basis);
 
-                            for (int coefficient = 0; coefficient < ShCoefficientCount; ++coefficient)
+                            for (uint coefficient = 0; coefficient < coefficientCount; ++coefficient)
                             {
-                              sh[index].c[coefficient] += radiance * basis[coefficient];
+                              const Vec3 weighted = radiance * basis[coefficient];
+                              row[coefficient * 3 + 0] += weighted.x;
+                              row[coefficient * 3 + 1] += weighted.y;
+                              row[coefficient * 3 + 2] += weighted.z;
                             }
                           }
 
                           // 4 pi / N for the sphere integral, then the cosine convolution and
                           // the division by pi that the shader expects.
                           const float scale = 4.0f * Pi / (float) samples;
-                          for (int coefficient = 0; coefficient < ShCoefficientCount; ++coefficient)
+                          for (uint coefficient = 0; coefficient < coefficientCount; ++coefficient)
                           {
-                            sh[index].c[coefficient] *= scale * ShBandFactor[coefficient];
+                            const float factor = scale * ShBandFactor[coefficient];
+                            row[coefficient * 3 + 0] *= factor;
+                            row[coefficient * 3 + 1] *= factor;
+                            row[coefficient * 3 + 2] *= factor;
                           }
                         }
 
@@ -404,80 +382,39 @@ namespace ToolKit
         return false;
       }
 
-      // Fill the probes that were skipped - inside geometry, or too far from any surface - from the
-      // nearest traced neighbour, so the interpolation cannot pull towards a hole. The fill does
-      // not clear the validity of the probe: the mask stays a record of what was actually traced,
-      // which is what the editor's point view draws.
-      uint filledProbes = 0;
-      for (uint z = 0; z < resolution.z; ++z)
-      {
-        for (uint y = 0; y < resolution.y; ++y)
-        {
-          for (uint x = 0; x < resolution.x; ++x)
-          {
-            const size_t index = ((size_t) z * resolution.y + y) * resolution.x + x;
-            if (valid[index])
-            {
-              continue;
-            }
+      // A skipped probe - inside geometry, or too far from any surface - is a copy of its nearest
+      // traced neighbour. The denoise below reads the whole grid, so that copy has to be there
+      // first: a relaxation that averaged the traced probes against zeros would darken the wall
+      // next to them.
+      ProbeVolumeFill fill = FillUntracedProbes(data);
 
-            filledProbes++;
-            if (!FillFromNearestValid(resolution, valid, sh, x, y, z))
-            {
-              result.invalidProbes++;
-            }
-          }
-        }
-      }
-      result.filledProbes = filledProbes;
-
-      DenoiseSh(resolution, sh, request.denoiseIterations);
+      DenoiseProbes(data, request.denoiseIterations);
       if (request.denoiseIterations > 0)
       {
         TK_LOG("Probe bake: denoised the grid with %d passes.", request.denoiseIterations);
+
+        // The relaxation moved the traced probes, so the copies made above are stale. This second
+        // pass is the one that counts: the writer leaves those probes out of the file and the
+        // loader repeats this exact pass, which is what makes a reload and the bake agree.
+        fill = FillUntracedProbes(data);
       }
 
-      const uint coefficientCount = (uint) request.quality;
-
-      ProbeVolumeData& data = result.data;
-      data.version          = ProbeVolumeData::CurrentVersion;
-      data.resolution       = resolution;
-      data.transform        = request.volumeTransform;
-      data.boxMin           = request.boxMin;
-      data.boxMax           = request.boxMax;
-      data.quality          = request.quality;
-      data.coefficients.resize(probeCount * coefficientCount * 3);
-      data.valid.resize(probeCount);
-
-      for (size_t probe = 0; probe < probeCount; ++probe)
-      {
-        for (uint coefficient = 0; coefficient < coefficientCount; ++coefficient)
-        {
-          const Vec3& value = sh[probe].c[coefficient];
-          const size_t base = (probe * coefficientCount + coefficient) * 3;
-
-          data.coefficients[base + 0] = value.x;
-          data.coefficients[base + 1] = value.y;
-          data.coefficients[base + 2] = value.z;
-        }
-
-        data.valid[probe] = valid[probe];
-        if (valid[probe])
-        {
-          result.validProbes++;
-        }
-      }
+      result.validProbes   = (uint) data.TracedCount();
+      result.filledProbes  = fill.filled;
+      result.invalidProbes = fill.unfillable;
 
       const auto endTime = std::chrono::steady_clock::now();
       result.seconds =
           std::chrono::duration_cast<std::chrono::duration<double>>(endTime - startTime).count();
 
-      TK_LOG("Probe bake: %u traced, %u filled from a neighbour, %u unfillable, %.2f seconds, %.1f KB.",
+      TK_LOG("Probe bake: %u traced, %u filled from a neighbour, %u unfillable, %.2f seconds, "
+             "%.1f KB dense, %.1f KB stored.",
              result.validProbes,
              result.filledProbes,
              result.invalidProbes,
              result.seconds,
-             (double) data.AllocatedBytes() / 1024.0);
+             (double) data.AllocatedBytes() / 1024.0,
+             (double) data.StoredBytes() / 1024.0);
 
       return true;
     }

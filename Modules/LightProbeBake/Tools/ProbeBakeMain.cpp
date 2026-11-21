@@ -30,6 +30,8 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <filesystem>
 
 namespace ToolKit
 {
@@ -494,7 +496,12 @@ namespace ToolKit
       return 1;
     }
 
-    printf("Wrote %s: %ux%ux%u probes, %u valid, %u filled, %u unfillable, %.2f s, %.1f KB.\n",
+    // The file size rather than the grid's: the writer stores the traced probes only, and the
+    // number a project actually carries around is the one on disk.
+    std::error_code sizeError;
+    const auto fileBytes = std::filesystem::file_size(outFile, sizeError);
+
+    printf("Wrote %s: %ux%ux%u probes, %u traced, %u filled, %u unfillable, %.2f s, %.1f KB.\n",
            outFile.c_str(),
            result.data.resolution.x,
            result.data.resolution.y,
@@ -503,10 +510,12 @@ namespace ToolKit
            result.filledProbes,
            result.invalidProbes,
            result.seconds,
-           (double) result.data.AllocatedBytes() / 1024.0);
+           sizeError ? 0.0 : (double) fileBytes / 1024.0);
 
     // Round trip check: the runtime reads what this writes, so a file that does not load back
-    // is a failure worth catching here and not in the editor.
+    // is a failure worth catching here and not in the editor. The coefficients are compared and
+    // not only the extents: the fill that puts the skipped probes back runs on both sides, and it
+    // is the only reason this file can leave them out.
     ProbeVolumeData reloaded;
     if (!LoadProbeVolume(outFile, reloaded))
     {
@@ -521,6 +530,20 @@ namespace ToolKit
     if (!sameGrid)
     {
       printf("The written file loads back with a different grid.\n");
+      return 1;
+    }
+
+    if (reloaded.valid != result.data.valid)
+    {
+      printf("The written file loads back with a different trace mask.\n");
+      return 1;
+    }
+
+    if (std::memcmp(reloaded.coefficients.data(),
+                    result.data.coefficients.data(),
+                    reloaded.coefficients.size() * sizeof(float)) != 0)
+    {
+      printf("The written file loads back with different coefficients.\n");
       return 1;
     }
 
