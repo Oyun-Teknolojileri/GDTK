@@ -18,8 +18,10 @@
 
 #include <Camera.h>
 #include <DirectionComponent.h>
+#include <EditorLightProbeVolumeComponent.h>
 #include <EnvironmentComponent.h>
 #include <GradientSky.h>
+#include <LightProbe.h>
 #include <LightProbeVolumeComponent.h>
 #include <Material.h>
 #include <MaterialComponent.h>
@@ -49,6 +51,7 @@ namespace ToolKit
       m_editorPass      = nullptr;
       m_gizmoPass       = nullptr;
       m_outlinePass     = nullptr;
+      m_probeVisual     = nullptr;
     }
 
     void EditorRenderer::PrepareOverlay(Renderer* renderer, Viewport* viewport)
@@ -211,6 +214,13 @@ namespace ToolKit
         m_passArray.clear();
 
         // Draw editor objects.
+        if (!m_probeVisual->m_params.Samples.empty())
+        {
+          m_probeVisual->m_params.Cam         = m_camera;
+          m_probeVisual->m_params.FrameBuffer = mainBuffer;
+          m_passArray.push_back(m_probeVisual);
+        }
+
         if (!m_renderData.jobs.empty())
         {
           m_passArray.push_back(m_editorPass);
@@ -563,6 +573,9 @@ namespace ToolKit
         }
       }
 
+      // Light probe sample points of the selected volumes, drawn by their own instanced pass.
+      GatherLightProbeSamples(scene);
+
       // Editor pass.
       m_renderData.jobs.clear();
       EntityRawPtrArray rawNtties = ToEntityRawPtrArray(editorEntities);
@@ -630,6 +643,120 @@ namespace ToolKit
       m_params.App->m_perFrameDebugObjects.clear(); 
     }
 
+    namespace
+    {
+      /** Colour a volume that has not been baked yet is drawn with. */
+      const Vec3 UnbakedProbeColor(0.5f);
+
+      /**
+       * Colour of a baked probe: the DC term of its spherical harmonics.
+       *
+       * The coefficients are stored already convolved with the clamped cosine and divided by pi, so
+       * the first one is the omnidirectional irradiance at that point. 0.282095 is the Y00 basis
+       * value, the constant probeGI.shader applies for the same term, and the volume's intensity
+       * scales it the way the forward pass scales the ambient it contributes.
+       */
+      Vec3 ProbeSampleColor(const ProbeVolumeData& data, size_t index, float intensity)
+      {
+        const size_t stride = (size_t) data.CoefficientCount() * 3;
+        if ((index + 1) * stride > data.coefficients.size())
+        {
+          return Vec3(0.0f);
+        }
+
+        const float* coefficient = data.coefficients.data() + index * stride;
+        const Vec3 color =
+            Vec3(coefficient[0], coefficient[1], coefficient[2]) * (0.282095f * intensity);
+
+        return glm::clamp(color, Vec3(0.0f), Vec3(1.0f));
+      }
+    } // namespace
+
+    void EditorRenderer::GatherLightProbeSamples(const ScenePtr& scene)
+    {
+      m_probeVisual->m_params.Samples.clear();
+
+      if (scene == nullptr)
+      {
+        return;
+      }
+
+      for (const EntityPtr& ntt : scene->GetEntities())
+      {
+        LightProbe* probe = ntt->As<LightProbe>();
+        if (probe == nullptr)
+        {
+          continue;
+        }
+
+        // The volume's own toggle, not the selection: a level keeps the points on for the volume it
+        // is lighting, and several volumes can be shown at once. The flag lives on the editor
+        // component, the half a viewport view belongs to.
+        LightProbeVolumeComponentPtr volume = probe->GetProbeVolume();
+        if (volume == nullptr)
+        {
+          continue;
+        }
+
+        const auto* editorVolume = volume->As<EditorLightProbeVolumeComponent>();
+        if (editorVolume == nullptr || !editorVolume->GetVisualiseProbeVal())
+        {
+          continue;
+        }
+
+        const ProbeVolumeData& data = volume->GetProbeData();
+        const bool baked            = volume->IsBaked();
+
+        // A baked volume keeps the resolution it was baked at while the box follows the entity,
+        // which is the pairing the forward pass interpolates. Before a bake the grid is the one the
+        // volume would bake, so the point layout can be inspected ahead of it.
+        const UVec3 resolution  = baked ? data.resolution : volume->ComputeBakeResolution();
+        const size_t probeCount = (size_t) resolution.x * resolution.y * resolution.z;
+        if (probeCount == 0)
+        {
+          continue;
+        }
+
+        const Mat4 world      = probe->m_node->GetTransform(TransformationSpace::TS_WORLD);
+        const Vec3 size       = volume->GetSizeVal();
+        const Vec3 boxMin     = volume->GetPositionOffsetVal() - size * 0.5f;
+        const float intensity = volume->GetIntensityVal();
+        const float markerRadius = editorVolume->GetVisualiseProbeSizeVal();
+
+        std::vector<Vec4>& samples = m_probeVisual->m_params.Samples;
+        samples.reserve(samples.size() + probeCount * 2);
+
+        for (uint z = 0; z < resolution.z; ++z)
+        {
+          for (uint y = 0; y < resolution.y; ++y)
+          {
+            for (uint x = 0; x < resolution.x; ++x)
+            {
+              const size_t index = ((size_t) z * resolution.y + y) * resolution.x + x;
+
+              // A probe the bake found inside geometry holds nothing worth showing, and a dot in
+              // the middle of a wall is what it looks like.
+              if (baked && index < data.valid.size() && data.valid[index] == 0)
+              {
+                continue;
+              }
+
+              // The same cell centres the baker traces, so a point sits where its probe is.
+              const Vec3 uvw((x + 0.5f) / (float) resolution.x,
+                             (y + 0.5f) / (float) resolution.y,
+                             (z + 0.5f) / (float) resolution.z);
+              const Vec3 local    = boxMin + uvw * size;
+              const Vec3 position = Vec3(world * Vec4(local, 1.0f));
+              const Vec3 color    = baked ? ProbeSampleColor(data, index, intensity) : UnbakedProbeColor;
+
+              samples.push_back(Vec4(position, markerRadius));
+              samples.push_back(Vec4(color, 1.0f));
+            }
+          }
+        }
+      }
+    }
+
     void EditorRenderer::SetLitMode(Renderer* renderer, EditorLitMode mode)
     {
       switch (mode)
@@ -673,6 +800,7 @@ namespace ToolKit
       m_editorPass          = MakeNewPtr<ForwardRenderPass>();
       m_gizmoPass           = MakeNewPtr<GizmoPass>();
       m_outlinePass         = MakeNewPtr<OutlinePass>();
+      m_probeVisual         = MakeNewPtr<LightProbeVisualPass>();
       m_skipFramePass       = MakeNewPtr<FullQuadPass>();
       m_resolvedFramebuffer = MakeNewPtr<Framebuffer>();
     }

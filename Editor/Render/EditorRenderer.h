@@ -11,6 +11,7 @@
 #include "EditorTypes.h"
 #include "Gizmo.h"
 #include "GizmoPass.h"
+#include "LightProbeVisualPass.h"
 
 #include <BillboardPass.h>
 #include <BloomPass.h>
@@ -82,6 +83,18 @@ namespace ToolKit
       void InitRenderer();
       void OutlineSelecteds(Renderer* renderer);
 
+      /**
+       * Fills the light probe visual pass with the sample points of every light probe that asked to
+       * be drawn.
+       *
+       * Each volume owns the decision through its `VisualiseProbe` parameter, so the points belong
+       * to the level rather than to the current selection: several volumes can be shown at once,
+       * and deselecting one no longer hides it. A volume that has not been baked yet still shows
+       * its grid, in neutral grey, so the point layout can be inspected before the bake that
+       * colours it.
+       */
+      void GatherLightProbeSamples(const ScenePtr& scene);
+
      public:
       /** Pass parameters. */
       EditorRenderParams m_params;
@@ -102,6 +115,7 @@ namespace ToolKit
       SSAOPassPtr m_ssaoPass                 = nullptr;
       OutlinePassPtr m_outlinePass           = nullptr;
       FullQuadPassPtr m_skipFramePass        = nullptr;
+      LightProbeVisualPassPtr m_probeVisual  = nullptr;
       CameraPtr m_camera                     = nullptr;
 
       /** Selected entity list. */

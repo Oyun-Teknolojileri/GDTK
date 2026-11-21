@@ -1146,6 +1146,20 @@ Base class for every loadable asset. Inherits Object. Has lifecycle: `Load()` (C
   handles an environment volume gets and `EditorRenderer` draws it; the console has
   `BakeLightProbe [<entity>]` for a headless trigger.
 
+  **The sample point visual.** `VisualiseProbe` on `EditorLightProbeVolumeComponent` draws the
+  volume's grid in the viewport, through `Editor::LightProbeVisualPass` (`Editor/Render/Pass/`). The
+  flag is stored on the editor half - nothing in the renderer or the bake reads it, and a shipped
+  game has no viewport to draw it in - and `EntityView` draws that one variant inside the entity's
+  `Light Probe` block, lifting `m_exposed` for the call because `ExposeByCategory` hid the whole
+  volume group behind the entity's mirror. So the row reads like any other value of the probe while
+  the storage stays off the engine types. The pass draws every point
+  as one instanced sphere - one mesh and one material for the whole grid, so sixteen by eight by
+  sixteen points cost a draw call - with the position, the radius and the colour fetched per
+  instance from a table the pass uploads. The colour is the DC term of the probe's spherical
+  harmonics, the ambient light arriving there, drawn unlit; a volume with no bake shows the grid it
+  would bake in neutral grey. The forward pass could not carry this: its batching needs identical
+  materials (so no per-point colour) and it excludes shader materials outright.
+
   The sky a miss sees is either the `GradientSky` parameters, evaluated analytically, or an
   equirectangular HDRI resampled on the CPU into the snapshot (`BakeScene::BuildBakeScene`).
   The image is read from the file the sky names, not from the `Hdri` resource, whose pixels are a

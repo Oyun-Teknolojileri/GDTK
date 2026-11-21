@@ -81,6 +81,18 @@ namespace ToolKit
 
      public:
       TKDeclareParam(VariantCallback, Bake);
+
+      /**
+       * Draws the volume's sample points in the viewport.
+       *
+       * An editor view toggle, so it lives on the editor half and not on the engine component or
+       * the entity: nothing in the renderer or the bake reads it, and a shipped game has no
+       * viewport to draw it in.
+       */
+      TKDeclareParam(bool, VisualiseProbe);
+
+      /** Radius of one sample point marker, in world units. Only the view above reads it. */
+      TKDeclareParam(float, VisualiseProbeSize);
     };
 
     typedef std::shared_ptr<EditorLightProbeVolumeComponent> EditorLightProbeVolumeComponentPtr;

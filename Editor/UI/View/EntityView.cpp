@@ -14,6 +14,7 @@
 
 #include <Canvas.h>
 #include <Drawable.h>
+#include <EditorLightProbeVolumeComponent.h>
 #include <GradientSky.h>
 #include <Image.h>
 #include <LightProbe.h>
@@ -521,6 +522,40 @@ namespace ToolKit
             var->m_onValueChangedFn.push_back(multiUpdate);
             CustomDataView::ShowVariant(var, nullptr);
             var->m_onValueChangedFn.pop_back();
+          }
+
+          // The light probe's editor only rows. The values are stored on the editor half of the
+          // volume - a viewport toggle is not the engine entity's business - and are drawn here so
+          // they sit among the values they belong to instead of under Functions with the Bake
+          // button.
+          if (category.Name == LightProbeCategory.Name)
+          {
+            if (LightProbe* probe = ntt->As<LightProbe>())
+            {
+              LightProbeVolumeComponentPtr volume = probe->GetProbeVolume();
+              auto* editorVolume =
+                  volume != nullptr ? volume->As<EditorLightProbeVolumeComponent>() : nullptr;
+
+              if (editorVolume != nullptr)
+              {
+                // The volume's own group is hidden - the inspector shows the entity's mirror - and
+                // ExposeByCategory hid every variant of it along with the group. These rows are
+                // drawn by hand, so the flag is lifted for the call and put back afterwards.
+                const auto showEditorRow = [editorVolume](ParameterVariant* var) -> void
+                {
+                  const bool exposed = var->m_exposed;
+                  var->m_exposed     = true;
+                  CustomDataView::ShowVariant(var,
+                                              editorVolume->Self<EditorLightProbeVolumeComponent>(),
+                                              CustomDataView::MultiUpdate(
+                                                  var, EditorLightProbeVolumeComponent::StaticClass()));
+                  var->m_exposed = exposed;
+                };
+
+                showEditorRow(&editorVolume->ParamVisualiseProbe());
+                showEditorRow(&editorVolume->ParamVisualiseProbeSize());
+              }
+            }
           }
 
           if (!varCallbacks.empty())

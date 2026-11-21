@@ -73,6 +73,21 @@ namespace ToolKit
           LightProbeVolumeCategory.Priority,
           true,
           true);
+
+      // The volume's own parameter group stays hidden, so EntityView draws these two by hand
+      // inside the entity's Light Probe block.
+      VisualiseProbe_Define(false,
+                            LightProbeVolumeCategory.Name,
+                            LightProbeVolumeCategory.Priority,
+                            false,
+                            true);
+
+      VisualiseProbeSize_Define(0.05f,
+                                LightProbeVolumeCategory.Name,
+                                LightProbeVolumeCategory.Priority,
+                                false,
+                                true,
+                                {false, true, 0.001f, 10.0f, 0.01f});
     }
 
     void EditorLightProbeVolumeComponent::RequestBake()
