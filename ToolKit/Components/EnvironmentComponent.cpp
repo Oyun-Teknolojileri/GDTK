@@ -269,23 +269,27 @@ namespace ToolKit
     static const Vec3 faceNormals[6] =
         {Vec3(1, 0, 0), Vec3(-1, 0, 0), Vec3(0, 1, 0), Vec3(0, -1, 0), Vec3(0, 0, 1), Vec3(0, 0, -1)};
 
-    // Compute the per-face far clip distance. The distance is measured in local space (from the
-    // origin offset to the volume edge along each face normal) and then taken to world units with
-    // the world length of that face axis, because the capture camera clips in world space: an
-    // unscaled entity keeps its current behaviour, a scaled one no longer clips its own volume.
+    // Compute the per-face far clip distance. The cube is captured at the node origin - the same
+    // point `ibl.shader` projects its parallax corrected reflections from, since
+    // GetParallaxCorrectedReflection normalizes the box intersection as a direction from the local
+    // origin - so a face reaches as far as the far side of the box in its own direction. That is
+    // the box centre's projection plus the half extent along the axis. The distance is measured in
+    // local space and taken to world units with the world length of that face axis, because the
+    // capture camera clips in world space: a scaled entity would otherwise clip its own volume.
     // CaptureFar is an extra world-space distance on top of it.
     float minDist = 0.01f;
     float perFaceClipDist[6];
     for (int i = 0; i < 6; i++)
     {
-      Vec3 edge          = faceNormals[i] * half;
-      float dist         = glm::abs(glm::dot(faceNormals[i], edge) - glm::dot(faceNormals[i], offset));
-      float axisScale    = glm::length(Vec3(worldTransform * Vec4(faceNormals[i], 0.0f)));
+      const Vec3 normal  = faceNormals[i];
+      const float extent = glm::dot(glm::abs(normal), half);
+      float dist         = glm::dot(normal, offset) + extent;
+      float axisScale    = glm::length(Vec3(worldTransform * Vec4(normal, 0.0f)));
       perFaceClipDist[i] = glm::max(dist * axisScale + extraFar, minDist);
     }
 
     GetRenderSystem()->AddRenderTask(
-        {[this, worldTransform, offset, minDist, res, perFaceClipDist](Renderer* renderer) -> void
+        {[this, worldTransform, minDist, res, perFaceClipDist](Renderer* renderer) -> void
          {
            // Disable self-illumination during capture to prevent feedback loop.
            bool wasIlluminate = GetIlluminateVal();
@@ -295,8 +299,14 @@ namespace ToolKit
            ForwardSceneRenderPath capturePath;
            capturePath.m_params.Scene = GetSceneManager()->GetCurrentScene();
 
-           CubeMapPtr cubemap =
-               renderer->RenderToCubeMap(&capturePath, worldTransform, offset, minDist, 1000.0f, res, perFaceClipDist);
+           // A zero origin offset puts the capture camera on the node origin.
+           CubeMapPtr cubemap = renderer->RenderToCubeMap(&capturePath,
+                                                          worldTransform,
+                                                          Vec3(0.0f),
+                                                          minDist,
+                                                          1000.0f,
+                                                          res,
+                                                          perFaceClipDist);
 
            // Restore illuminate state.
            SetIlluminateVal(wasIlluminate);

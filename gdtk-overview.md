@@ -1166,13 +1166,16 @@ Base class for every loadable asset. Inherits Object. Has lifecycle: `Load()` (C
   local volume's specular cubemap and never its irradiance one, so the diffuse convolution the old
   `GenerateIrradianceCaches` did was work whose result nothing read. `EditorEnvironmentComponent`
   mirrors a capture's new Hdri and a box edit's volume back into the entity, because those reach the
-  component without passing through it. Selecting one draws an editor-only chrome ball at the volume
-  centre through `reflectionPreviewFrag.shader`, which samples the probe's own prefiltered cubemap at
-  mip zero and adds no direct light, ambient, emissive or Fresnel: the preview shows the capture, not
-  the room's lighting. The ball is cached on `EditorRenderer` and never enters the scene, so a game
-  never draws it, and the probe entities carry their own billboards (`Icons/light_probe.png`,
-  `Icons/reflection_probe.png`). The material manager exposes a plain `chrome.material` (white,
-  metallic one, roughness zero) for levels.
+  component without passing through it. The cube is captured at the probe's node origin, which is
+  also the point `ibl.shader` projects its parallax corrected reflections from: the shader
+  normalizes the box intersection as a direction from the local origin, so `PositionOffset` moves
+  the box around that point and not the point itself. Selecting a probe draws an editor-only chrome
+  ball on the same origin through `reflectionPreviewFrag.shader`, which samples the probe's own
+  prefiltered cubemap at mip zero and adds no direct light, ambient, emissive or Fresnel: the
+  preview shows the capture, not the room's lighting. The ball is cached on `EditorRenderer` and
+  never enters the scene, so a game never draws it, and the probe entities carry their own
+  billboards (`Icons/light_probe.png`, `Icons/reflection_probe.png`). The material manager exposes a
+  plain `chrome.material` (white, metallic one, roughness zero) for levels.
 
   A texture's pixels arrive one of three ways: `m_image` holds 8 bit RGBA for the ordinary stb path,
   `m_imagef` holds float data for HDRI, and `m_compressedLevels` + `m_compressedFormat` hold GPU ready

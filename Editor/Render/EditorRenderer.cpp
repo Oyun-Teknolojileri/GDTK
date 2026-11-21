@@ -420,7 +420,7 @@ namespace ToolKit
       m_billboardPass->m_params.Viewport   = m_params.Viewport;
 
       // Grid. UpdateShaderParams (which Map()s GridPassData into slot 7) must happen AFTER the
-      // shadow/ssao/sky passes that share slot 7 — earlier passes (e.g. ShadowPass via gauss blur)
+      // shadow/ssao/sky passes that share slot 7 - earlier passes (e.g. ShadowPass via gauss blur)
       // would otherwise displace the grid buffer before the forward pass draws the grid. Hook it
       // into ForwardRenderPass::PreRender so the timing is right regardless of which earlier
       // passes are active in this frame.
@@ -477,10 +477,10 @@ namespace ToolKit
         }
       }
 
-      // Reflection probe previews. A chrome sphere at the volume centre, showing the cubemap the
-      // probe captured. It is editor only: the sphere is cached on this renderer and added to this
-      // frame's editor entities, so it is never part of the scene and a game never sees it. It is
-      // only drawn for the selected probe - a level full of probes would otherwise put a ball in
+      // Reflection probe previews. A chrome sphere on the probe's own origin, showing the cubemap
+      // the probe captured. It is editor only: the sphere is cached on this renderer and added to
+      // this frame's editor entities, so it is never part of the scene and a game never sees it. It
+      // is only drawn for the selected probe - a level full of probes would otherwise put a ball in
       // every room - and ShowChromeSphere turns it off for the selected one.
       std::unordered_map<ObjectId, EnvironmentComponent*> previewEnvironments;
       std::vector<ObjectId> sceneProbes;
@@ -537,10 +537,11 @@ namespace ToolKit
           }
         }
 
-        // The volume centre in world space. The sphere primitive has a unit radius, so a 0.25
-        // scale is the half metre ball a probe is inspected with.
-        const Mat4 world = probe->m_node->GetTransform(TransformationSpace::TS_WORLD);
-        preview->m_node->SetTranslation(Vec3(world * Vec4(probe->GetPositionOffsetVal(), 1.0f)),
+        // The probe's own origin in world space, which is where the capture is rendered from and
+        // what its parallax corrected reflections are projected against. PositionOffset moves the
+        // box around that point, it does not move the point. The sphere primitive has a unit
+        // radius, so a 0.25 scale is the half metre ball a probe is inspected with.
+        preview->m_node->SetTranslation(probe->m_node->GetTranslation(TransformationSpace::TS_WORLD),
                                         TransformationSpace::TS_WORLD);
         preview->m_node->SetScale(Vec3(0.25f));
 
