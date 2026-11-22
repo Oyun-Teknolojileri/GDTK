@@ -69,60 +69,74 @@ namespace ToolKit
     }
   } // namespace
 
-  size_t FindNearestTracedProbe(const ProbeVolumeData& data, size_t probe)
+  void BuildNearestTracedMap(const ProbeVolumeData& data, std::vector<uint>& nearest)
   {
     const UVec3 resolution = data.resolution;
     const size_t probeCount = data.ProbeCount();
 
-    if (probeCount == 0 || data.valid.size() != probeCount || probe >= probeCount)
+    nearest.assign(probeCount, NoTracedProbe);
+    if (probeCount == 0 || data.valid.size() != probeCount)
     {
-      return (size_t) -1;
+      return;
     }
 
-    const int target[3] = {(int) (probe % resolution.x),
-                           (int) ((probe / resolution.x) % resolution.y),
-                           (int) (probe / ((size_t) resolution.x * resolution.y))};
-    const int limit[3]  = {(int) resolution.x, (int) resolution.y, (int) resolution.z};
-    const int maxRadius = FillSearchRadius(resolution);
-
-    for (int radius = 1; radius <= maxRadius; ++radius)
+    // Seeds first, in index order, so the walk is deterministic. A queue of probe indices is all
+    // the state a six neighbour walk needs.
+    std::vector<uint> queue;
+    queue.reserve(probeCount);
+    for (size_t probe = 0; probe < probeCount; ++probe)
     {
-      for (int dz = -radius; dz <= radius; ++dz)
+      if (data.valid[probe])
       {
-        for (int dy = -radius; dy <= radius; ++dy)
-        {
-          for (int dx = -radius; dx <= radius; ++dx)
-          {
-            // Only the shell at this radius, the inside was searched already.
-            const bool onShell = dx == radius || dx == -radius || dy == radius || dy == -radius ||
-                                 dz == radius || dz == -radius;
-            if (!onShell)
-            {
-              continue;
-            }
-
-            const int x = target[0] + dx;
-            const int y = target[1] + dy;
-            const int z = target[2] + dz;
-            if (x < 0 || y < 0 || z < 0 || x >= limit[0] || y >= limit[1] || z >= limit[2])
-            {
-              continue;
-            }
-
-            const size_t index = ((size_t) z * resolution.y + y) * resolution.x + x;
-            if (data.valid[index])
-            {
-              return index;
-            }
-          }
-        }
+        nearest[probe] = (uint) probe;
+        queue.push_back((uint) probe);
       }
     }
 
-    return (size_t) -1;
+    const int strideX = 1;
+    const int strideY = (int) resolution.x;
+    const int strideZ = (int) (resolution.x * resolution.y);
+    const int limitX  = (int) resolution.x;
+    const int limitY  = (int) resolution.y;
+    const int limitZ  = (int) resolution.z;
+
+    for (size_t head = 0; head < queue.size(); ++head)
+    {
+      const uint current = queue[head];
+      const uint source  = nearest[current];
+
+      const int x = (int) (current % resolution.x);
+      const int y = (int) ((current / resolution.x) % resolution.y);
+      const int z = (int) (current / ((size_t) resolution.x * resolution.y));
+
+      // A fixed order over the six faces keeps the tie between two equally near sources stable.
+      const int offsets[6] = {x > 0 ? -strideX : 0,
+                              x + 1 < limitX ? strideX : 0,
+                              y > 0 ? -strideY : 0,
+                              y + 1 < limitY ? strideY : 0,
+                              z > 0 ? -strideZ : 0,
+                              z + 1 < limitZ ? strideZ : 0};
+
+      for (int face = 0; face < 6; ++face)
+      {
+        if (offsets[face] == 0)
+        {
+          continue;
+        }
+
+        const uint neighbour = (uint) ((int) current + offsets[face]);
+        if (nearest[neighbour] != NoTracedProbe)
+        {
+          continue;
+        }
+
+        nearest[neighbour] = source;
+        queue.push_back(neighbour);
+      }
+    }
   }
 
-  ProbeVolumeFill FillUntracedProbes(ProbeVolumeData& data)
+  ProbeVolumeFill FillUntracedProbes(ProbeVolumeData& data, const std::vector<uint>* nearest)
   {
     ProbeVolumeFill result {};
 
@@ -136,12 +150,18 @@ namespace ToolKit
       return result;
     }
 
-    // Nothing to copy from. The search would expand to the far corner and find nothing for every
-    // single probe, which on a large grid is hours of walking for an empty answer.
+    // Nothing to copy from. Walking the grid would find nothing for every single probe.
     if (data.TracedCount() == 0)
     {
       result.unfillable = (uint) probeCount;
       return result;
+    }
+
+    std::vector<uint> owned;
+    if (nearest == nullptr || nearest->size() != probeCount)
+    {
+      BuildNearestTracedMap(data, owned);
+      nearest = &owned;
     }
 
     const bool walled = data.blocked.size() == probeCount;
@@ -154,8 +174,8 @@ namespace ToolKit
         continue;
       }
 
-      const size_t source = FindNearestTracedProbe(data, target);
-      if (source == (size_t) -1)
+      const uint source = (*nearest)[target];
+      if (source == NoTracedProbe)
       {
         ++result.unfillable;
         continue;
@@ -170,7 +190,7 @@ namespace ToolKit
       }
 
       std::memcpy(&coefficients[target * stride],
-                  &coefficients[source * stride],
+                  &coefficients[(size_t) source * stride],
                   stride * sizeof(float));
       ++result.filled;
     }

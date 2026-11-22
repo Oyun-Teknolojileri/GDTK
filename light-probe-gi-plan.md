@@ -906,33 +906,72 @@ One array layer per channel plus coverage, `resX` wide and `resY * resZ` tall, s
 32 bytes and the tallest volume the grid can hold is `resY * resZ <= max texture size` - a 128^3
 grid is 16384 rows, which is the limit on most devices, and 67 MB of VRAM.
 
-Unreal's volumetric lightmap is the shape to copy: 4x4x4 cell bricks, an indirection table, denser
+Measured before building any of it, on the three scenes at hand (dense = 32 bytes per probe, bricks
+at B cells plus a 1 probe border so hardware filtering stays inside a brick, versus the same bricks
+with the 8 corner fetch done by hand and no border):
+
+| scene | probes | dense | B=4 bordered | B=4 hand | B=8 bordered | live bricks |
+|---|---|---|---|---|---|---|
+| ms-box 16x8x16 | 2048 | 64 KB | 78 KB (+22%) | 40 KB (-38%) | 91 KB (+42%) | 62% |
+| lightroom 77x43x85 | 281435 | 8.8 MB | 10.2 MB (+19%) | 5.2 MB (-39%) | 11.0 MB (+25%) | 55% |
+| unity-city 64x16x64 | 65536 | 2.0 MB | 2.2 MB (+12%) | 1.1 MB (-43%) | 2.2 MB (+8%) | 57% |
+
+So the bordered brick loses everywhere: our sparsity is per probe (an air probe is filled, a wall
+probe is blocked), not per region, and geometry reaches into more than half of the bricks, so the
+border costs more than the dead bricks save. The hand fetch is the only variant that wins, at 8
+corner fetches x 4 layers plus 8 indirection fetches per pixel. Bricks would win in an open world
+where more than half the bricks are dead; these scenes are not that.
+
+The levers that do move VRAM, measured on the lightroom grid above: the spacing (0.1 m is 8.8 MB,
+0.25 m is 0.55 MB), the coefficient count (an L0 layout is one texel per probe, 8 bytes, and the
+coverage rides in its alpha), and the coverage layer itself at 8 of the 32 bytes.
+
+Unreal's volumetric lightmap is still the shape to copy for an open world: 4x4x4 cell bricks, an
+indirection table, denser
 bricks around static geometry, and a brick memory budget that discards the bricks farthest from
 geometry first. That pays back the eight bytes per probe the coverage layer added, lifts the height
 cap, and is the only real answer to the VRAM question for a large volume.
 
-### 13.3 The denoise still lifts 532 sealed probes on `lightroom`
+### 13.3 The fill walked the grid once per probe, and that was the bake
+
+`FillUntracedProbes` asked for the nearest traced probe with one shell by shell search per filled
+probe, and `MarkBlockedFills` asked again, so a sparse bake paid 386k searches. Measured on
+`lightroom` at 77x43x85 with one sample per probe, which leaves the tracer almost no work: 7.56
+seconds, against 0.07 for the same grid with `--sparse 0`. The path tracer was 1.3 of the 8.8
+seconds the 64 sample bake took.
+
+`BuildNearestTracedMap` replaces it with one breadth first walk out of the traced set: six steps
+from every probe, deterministic, and the same map on a bake and on a load of its file. That takes
+the fill side from 7.5 seconds to 0.13, and the whole 64 sample bake from 8.85 seconds to 1.26.
+Tracing is now the cost again, which is where it belongs.
+
+What is left of the wall time on a large scene is the fixed part: `unity-city` at 64x16x64 reads
+0.21 seconds inside the bake against 2.7 seconds of wall time, and the difference is scene load,
+the snapshot and the BVH build - single threaded today. Parallelising or caching the BVH is the
+next lever for a big scene, and it is CPU work that keeps the bake headless.
+
+### 13.4 The denoise still lifts 532 sealed probes on `lightroom`
 
 Those are probes that traced to exactly zero and then took light from a neighbour a ray does
 reach. That is the blur doing its job across a shadow boundary, not a leak through a wall, but it
 is worth a look if it ever shows as a halo: the options are an epsilon test on the traced
 magnitude or a bounce count that reaches the probe.
 
-### 13.4 What the coverage layer costs
+### 13.5 What the coverage layer costs
 
 Two extra bilinear fetches per pixel in the forward shader (one per z slice) and eight bytes per
 probe. Both were taken deliberately: the forward program already declares samplers up to slot 14
 and GL ES 3.0 guarantees sixteen units, so a texture of its own would have spent the last slot.
 Measure the frame time with a volume bound before adding another sampler anywhere.
 
-### 13.5 L2 and de-ringing
+### 13.6 L2 and de-ringing
 
 The runtime reads four coefficients. Unreal stores the third order set with a smoothing control
 against ringing; we would need nine coefficients, three more samplers (or the `Texture3D` path from
 6.4) and a de-ringing pass in the bake. Only worth it if the directionality of the probe term
 becomes the complaint - a wall next to a window is where it would show.
 
-### 13.6 Authoring and diagnostics
+### 13.7 Authoring and diagnostics
 
 - The point view draws only the traced probes. Drawing the blocked ones in a distinct colour would
   make the bake state visible while authoring, next to the traced/filled counts the inspector
@@ -941,7 +980,7 @@ becomes the complaint - a wall next to a window is where it would show.
   from a `.pgi`. The tools used to find the leak in this pass lived in `/tmp`; a flag would make
   the same check repeatable on a build machine.
 
-### 13.7 Every existing bake has to be re-baked
+### 13.8 Every existing bake has to be re-baked
 
 Version 3 is the only layout the loader reads, and a version 2 file is refused with a message
 naming both versions. That was deliberate (a volume is cheap to bake again) and it means every

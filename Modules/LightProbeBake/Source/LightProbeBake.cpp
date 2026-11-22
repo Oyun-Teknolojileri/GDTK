@@ -104,6 +104,7 @@ namespace ToolKit
        */
       void MarkBlockedFills(const BakeScene& scene,
                             const std::vector<Vec3>& positions,
+                            const std::vector<uint>& nearest,
                             ProbeVolumeData& data)
       {
         const size_t probeCount = data.ProbeCount();
@@ -111,20 +112,20 @@ namespace ToolKit
 
         for (size_t probe = 0; probe < probeCount; ++probe)
         {
-          if (data.valid[probe] || probe >= positions.size())
+          if (data.valid[probe] || probe >= positions.size() || nearest.size() != probeCount)
           {
             continue;
           }
 
-          const size_t source = FindNearestTracedProbe(data, probe);
-          if (source == (size_t) -1)
+          const uint source = nearest[probe];
+          if (source == NoTracedProbe)
           {
             // No traced probe anywhere: the fill reports that as unfillable, not as walled off.
             continue;
           }
 
           const Vec3 from      = positions[probe];
-          const Vec3 delta     = positions[source] - from;
+          const Vec3 delta     = positions[(size_t) source] - from;
           const float distance = glm::length(delta);
           if (distance <= 0.0f)
           {
@@ -538,9 +539,15 @@ namespace ToolKit
                request.denoiseIterations);
       }
 
-      MarkBlockedFills(scene, positions, data);
+      // One walk over the grid answers "which traced probe is nearest" for every probe, and both
+      // the blocked marking and the fill read it. Building it per probe was the whole cost of a
+      // fine spaced bake.
+      std::vector<uint> nearest;
+      BuildNearestTracedMap(data, nearest);
 
-      const ProbeVolumeFill fill = FillUntracedProbes(data);
+      MarkBlockedFills(scene, positions, nearest, data);
+
+      const ProbeVolumeFill fill = FillUntracedProbes(data, &nearest);
 
       result.validProbes   = (uint) data.TracedCount();
       result.filledProbes  = fill.filled;
