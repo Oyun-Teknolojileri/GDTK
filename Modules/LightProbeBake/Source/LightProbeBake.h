@@ -89,11 +89,12 @@ namespace ToolKit
       String error;
       /** Probes the trace actually sampled. */
       uint validProbes   = 0;
-      /** Probes nothing could be copied from: a grid with no traced probe at all. */
+      /** Probes left at zero: the way to the neighbour they would copy crosses geometry, or the
+       *  grid holds no traced probe at all. The file records them so a reload keeps the zeros. */
       uint invalidProbes = 0;
-      /** Probes the bake skipped - inside geometry, or too far from any surface - and filled from a
-       *  neighbour. They keep a validity mask of zero, the mask records what was traced, and the
-       *  writer leaves their coefficients out of the file. */
+      /** Probes the bake skipped - inside geometry, or too far from any surface - that took the
+       *  coefficients of a traced neighbour they can see. They keep a validity mask of zero, the
+       *  mask records what was traced, and the writer leaves their coefficients out of the file. */
       uint filledProbes  = 0;
       double seconds       = 0.0;
     };

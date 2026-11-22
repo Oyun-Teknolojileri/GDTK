@@ -501,7 +501,7 @@ namespace ToolKit
     std::error_code sizeError;
     const auto fileBytes = std::filesystem::file_size(outFile, sizeError);
 
-    printf("Wrote %s: %ux%ux%u probes, %u traced, %u filled, %u unfillable, %.2f s, %.1f KB.\n",
+    printf("Wrote %s: %ux%ux%u probes, %u traced, %u filled, %u left zero, %.2f s, %.1f KB.\n",
            outFile.c_str(),
            result.data.resolution.x,
            result.data.resolution.y,

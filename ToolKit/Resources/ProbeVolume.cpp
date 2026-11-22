@@ -69,6 +69,59 @@ namespace ToolKit
     }
   } // namespace
 
+  size_t FindNearestTracedProbe(const ProbeVolumeData& data, size_t probe)
+  {
+    const UVec3 resolution = data.resolution;
+    const size_t probeCount = data.ProbeCount();
+
+    if (probeCount == 0 || data.valid.size() != probeCount || probe >= probeCount)
+    {
+      return (size_t) -1;
+    }
+
+    const int target[3] = {(int) (probe % resolution.x),
+                           (int) ((probe / resolution.x) % resolution.y),
+                           (int) (probe / ((size_t) resolution.x * resolution.y))};
+    const int limit[3]  = {(int) resolution.x, (int) resolution.y, (int) resolution.z};
+    const int maxRadius = FillSearchRadius(resolution);
+
+    for (int radius = 1; radius <= maxRadius; ++radius)
+    {
+      for (int dz = -radius; dz <= radius; ++dz)
+      {
+        for (int dy = -radius; dy <= radius; ++dy)
+        {
+          for (int dx = -radius; dx <= radius; ++dx)
+          {
+            // Only the shell at this radius, the inside was searched already.
+            const bool onShell = dx == radius || dx == -radius || dy == radius || dy == -radius ||
+                                 dz == radius || dz == -radius;
+            if (!onShell)
+            {
+              continue;
+            }
+
+            const int x = target[0] + dx;
+            const int y = target[1] + dy;
+            const int z = target[2] + dz;
+            if (x < 0 || y < 0 || z < 0 || x >= limit[0] || y >= limit[1] || z >= limit[2])
+            {
+              continue;
+            }
+
+            const size_t index = ((size_t) z * resolution.y + y) * resolution.x + x;
+            if (data.valid[index])
+            {
+              return index;
+            }
+          }
+        }
+      }
+    }
+
+    return (size_t) -1;
+  }
+
   ProbeVolumeFill FillUntracedProbes(ProbeVolumeData& data)
   {
     ProbeVolumeFill result {};
@@ -91,72 +144,35 @@ namespace ToolKit
       return result;
     }
 
-    const int maxRadius = FillSearchRadius(resolution);
+    const bool walled = data.blocked.size() == probeCount;
     float* coefficients = data.coefficients.data();
 
-    for (uint z = 0; z < resolution.z; ++z)
+    for (size_t target = 0; target < probeCount; ++target)
     {
-      for (uint y = 0; y < resolution.y; ++y)
+      if (data.valid[target])
       {
-        for (uint x = 0; x < resolution.x; ++x)
-        {
-          const size_t target = ((size_t) z * resolution.y + y) * resolution.x + x;
-          if (data.valid[target])
-          {
-            continue;
-          }
-
-          bool filled = false;
-          for (int radius = 1; radius <= maxRadius && !filled; ++radius)
-          {
-            for (int dz = -radius; dz <= radius && !filled; ++dz)
-            {
-              for (int dy = -radius; dy <= radius && !filled; ++dy)
-              {
-                for (int dx = -radius; dx <= radius && !filled; ++dx)
-                {
-                  // Only the shell at this radius, the inside was searched already.
-                  const bool onShell = dx == radius || dx == -radius || dy == radius ||
-                                       dy == -radius || dz == radius || dz == -radius;
-                  if (!onShell)
-                  {
-                    continue;
-                  }
-
-                  const int sx = (int) x + dx;
-                  const int sy = (int) y + dy;
-                  const int sz = (int) z + dz;
-                  if (sx < 0 || sy < 0 || sz < 0 || sx >= (int) resolution.x ||
-                      sy >= (int) resolution.y || sz >= (int) resolution.z)
-                  {
-                    continue;
-                  }
-
-                  const size_t source = ((size_t) sz * resolution.y + sy) * resolution.x + sx;
-                  if (!data.valid[source])
-                  {
-                    continue;
-                  }
-
-                  std::memcpy(&coefficients[target * stride],
-                              &coefficients[source * stride],
-                              stride * sizeof(float));
-                  filled = true;
-                }
-              }
-            }
-          }
-
-          if (filled)
-          {
-            ++result.filled;
-          }
-          else
-          {
-            ++result.unfillable;
-          }
-        }
+        continue;
       }
+
+      const size_t source = FindNearestTracedProbe(data, target);
+      if (source == (size_t) -1)
+      {
+        ++result.unfillable;
+        continue;
+      }
+
+      // The bake found geometry between this probe and the neighbour it would copy. A zero is what
+      // that probe actually holds; the copy would hand it the light from the other side of a wall.
+      if (walled && data.blocked[target])
+      {
+        ++result.blocked;
+        continue;
+      }
+
+      std::memcpy(&coefficients[target * stride],
+                  &coefficients[source * stride],
+                  stride * sizeof(float));
+      ++result.filled;
     }
 
     return result;
@@ -185,10 +201,12 @@ namespace ToolKit
 
     // A volume without a mask marks every probe traced, so a caller that never ran a sparse bake
     // writes the whole grid - the same payload version 1 carried, only with a packed mask.
-    const bool masked = data.valid.size() == probeCount;
+    const bool masked  = data.valid.size() == probeCount;
+    const bool walled  = data.blocked.size() == probeCount;
     const size_t tracedCount = data.TracedCount();
 
     std::vector<uint8> mask(data.MaskBytes(), 0);
+    std::vector<uint8> blockedMask(data.MaskBytes(), 0);
     std::vector<float> packed(tracedCount * stride);
     size_t written = 0;
 
@@ -196,6 +214,13 @@ namespace ToolKit
     {
       if (masked && data.valid[probe] == 0)
       {
+        // The bake found the way to a traced neighbour walled off: the file says so, so the loader
+        // leaves the probe at zero instead of copying across a wall.
+        if (walled && data.blocked[probe])
+        {
+          blockedMask[MaskByteOf(probe)] |= MaskBitOf(probe);
+        }
+
         continue;
       }
 
@@ -252,6 +277,8 @@ namespace ToolKit
     WritePod(stream, tracedProbes);
 
     stream.write(reinterpret_cast<const char*>(mask.data()), (std::streamsize) mask.size());
+    stream.write(reinterpret_cast<const char*>(blockedMask.data()),
+                 (std::streamsize) blockedMask.size());
     stream.write(reinterpret_cast<const char*>(packed.data()),
                  (std::streamsize) (packed.size() * sizeof(float)));
 
@@ -313,12 +340,12 @@ namespace ToolKit
       return false;
     }
 
-    // A layout bump does not invalidate the older files: a dense payload is still a volume, and
-    // the fill below rests on the mask either way.
+    // One layout, no migrations: a volume is cheap to bake again, and carrying the readers for two
+    // retired layouts through every change to the fill was the more expensive choice.
     uint version = 0;
-    if (!reader.Pod(version) || version < 1 || version > ProbeVolumeData::CurrentVersion)
+    if (!reader.Pod(version) || version != ProbeVolumeData::CurrentVersion)
     {
-      TK_ERR("Probe volume '%s' has version %u, this build reads versions 1 to %u.",
+      TK_ERR("Probe volume '%s' has version %u, this build reads version %u. Bake it again.",
              path.c_str(),
              version,
              ProbeVolumeData::CurrentVersion);
@@ -376,22 +403,8 @@ namespace ToolKit
 
     data.coefficients.assign(probeCount * stride, 0.0f);
     data.valid.assign(probeCount, 0);
+    data.blocked.assign(probeCount, 0);
 
-    if (version == 1)
-    {
-      // Dense: every probe, then one byte of mask per probe. Nothing to fill, the old writer
-      // stored the neighbours' copies itself.
-      if (!reader.Read(data.coefficients.data(), probeCount * stride * sizeof(float)) ||
-          !reader.Read(data.valid.data(), probeCount))
-      {
-        TK_ERR("Probe volume '%s' ended in its payload.", path.c_str());
-        return false;
-      }
-
-      return true;
-    }
-
-    // 2: the mask a bit per probe, then the rows of the probes that bit marks as traced.
     uint64 tracedProbes = 0;
     if (!reader.Pod(tracedProbes) || tracedProbes > (uint64) probeCount)
     {
@@ -402,16 +415,26 @@ namespace ToolKit
       return false;
     }
 
+    size_t marked = 0;
+
+    // The mask, a bit per probe, says what the bake sampled. The second one says which of the
+    // probes it skipped it could not reach, so those load back as zeros instead of as a copy taken
+    // through a wall. Then the rows of the probes the first mask marks as traced.
     std::vector<uint8> mask(data.MaskBytes(), 0);
-    if (!reader.Read(mask.data(), mask.size()))
+    std::vector<uint8> blockedMask(data.MaskBytes(), 0);
+    if (!reader.Read(mask.data(), mask.size()) ||
+        !reader.Read(blockedMask.data(), blockedMask.size()))
     {
-      TK_ERR("Probe volume '%s' ended in its mask.", path.c_str());
+      TK_ERR("Probe volume '%s' ended in its masks.", path.c_str());
       return false;
     }
 
-    size_t marked = 0;
     for (size_t probe = 0; probe < probeCount; ++probe)
     {
+      if ((blockedMask[MaskByteOf(probe)] & MaskBitOf(probe)) != 0)
+      {
+        data.blocked[probe] = 1;
+      }
       if ((mask[MaskByteOf(probe)] & MaskBitOf(probe)) == 0)
       {
         continue;

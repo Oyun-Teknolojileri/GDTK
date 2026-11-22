@@ -688,16 +688,17 @@ sampling block.
 
 ### 9.1 Texture unit budget
 
-The forward shader declares samplers up to slot 17 (`s_skyIrradiance`, `s_skySpecular`). GL ES
-3.0 guarantees 16 fragment texture units; desktop drivers usually report 32, and the engine
-never queries `GL_MAX_TEXTURE_IMAGE_UNITS`. Adding three samplers may therefore work on the
-desktop and fail on a browser or phone.
+The forward program declares samplers on slots 0 to 14: 0/1/4/9 from `defaultFragment`, 5 from
+`AO`, 7/10/11/12/13 from `ibl`, 8 from `lighting`, 6 from `probeGI`, and 2/3/14 from the vertex
+side (`skinning`, `drawDataInc`, `perDrawDataInc`, `instanceDataInc`). GL ES 3.0 guarantees 16
+fragment texture units and desktop drivers usually report 32, so the forward program sits at 15 of
+16 on the guaranteed floor with one slot left.
 
-**Measure first** (`gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS)` in the target browser, and
-check the GL error log for `glActiveTexture` failures, since `ResetUsedTextureSlots` walks all
-32 slots every frame). Mitigations, in order of preference:
+That is why the probe coverage rides in a fourth array layer of `s_probeSH` instead of a texture of
+its own (13.4). Anything that needs another sampler has to take one back first. Mitigations, in
+order of preference:
 
-1. L1 for the web: one extra sampler (slot 18), nothing else changes.
+1. Fold the new data into an existing sampler's array layers, the way the coverage layer did.
 2. Reuse the secondary volume slots (11, 12) when no secondary volume is active. Fragile,
    only if 1 is not enough.
 3. Merge the two local volume sampler sets into one 2D array and recover three slots.
@@ -864,3 +865,85 @@ light.
    in the module; the `Utils/` tools are the other convention in this repo)
 4. Should the probe term be applied to alpha-masked foliage? It is a full surface term, so
    yes, but foliage is where a coarse grid shows the most.
+
+---
+
+## 13. Status after the wall-leak pass
+
+Landed on top of Phase 4: the fill and the denoise no longer move light across geometry, and the
+runtime drops a probe the bake could not reach instead of reading it as black.
+
+- `.pgi` version 3 stores two bit masks: what the bake traced, and which of the skipped probes it
+  could not reach (a wall stood between the probe and every traced neighbour). The fill copies only
+  into the second kind's complement, so a four centimetre gap between two wall boxes no longer
+  inherits the sky from the far side of a face.
+- The denoise runs over the traced probes only, and only averages a neighbour that a ray actually
+  reaches (`BuildNeighbourVisibility`, six bits per probe, cast once per bake).
+- The runtime divides the sampled irradiance by the sampled coverage, which rides in a fourth
+  array layer of `s_probeSH` (see 13.4).
+- Measured: `closedbox.scene` reads 0.000000 across its interior with eight denoise passes;
+  `lightroom.scene` at 30x17x34 with six passes drops from 6477 to 532 the number of probes that
+  had traced to exactly zero and came back non zero.
+
+What is left, in the order it is worth doing:
+
+### 13.1 Inside detection still misses solid geometry
+
+`IsProbeEnclosed` is a thin-slab test: a hit on both sides of one axis within a quarter of a cell.
+Measured on `closedbox.scene` at a half metre cell, a probe one centimetre inside a face is not
+detected, because the second surface is half a metre away. So only zero thickness faces and walls
+thinner than half a cell are caught; a probe inside a thick solid is traced (it comes out black,
+which is right) and then takes part in the denoise as a traced probe.
+
+The replacement is a flood fill from the volume boundary: a probe reached from the box edge through
+one ray per face neighbour is "open air", everything else is enclosed, and the enclosed set becomes
+the skipped set. Parity along a ray is not enough on its own - the inside of a room is inside a
+closed shell too, and a room's interior is exactly what must stay traced.
+
+### 13.2 The texture is dense: there are no bricks
+
+One array layer per channel plus coverage, `resX` wide and `resY * resZ` tall, so a probe costs
+32 bytes and the tallest volume the grid can hold is `resY * resZ <= max texture size` - a 128^3
+grid is 16384 rows, which is the limit on most devices, and 67 MB of VRAM.
+
+Unreal's volumetric lightmap is the shape to copy: 4x4x4 cell bricks, an indirection table, denser
+bricks around static geometry, and a brick memory budget that discards the bricks farthest from
+geometry first. That pays back the eight bytes per probe the coverage layer added, lifts the height
+cap, and is the only real answer to the VRAM question for a large volume.
+
+### 13.3 The denoise still lifts 532 sealed probes on `lightroom`
+
+Those are probes that traced to exactly zero and then took light from a neighbour a ray does
+reach. That is the blur doing its job across a shadow boundary, not a leak through a wall, but it
+is worth a look if it ever shows as a halo: the options are an epsilon test on the traced
+magnitude or a bounce count that reaches the probe.
+
+### 13.4 What the coverage layer costs
+
+Two extra bilinear fetches per pixel in the forward shader (one per z slice) and eight bytes per
+probe. Both were taken deliberately: the forward program already declares samplers up to slot 14
+and GL ES 3.0 guarantees sixteen units, so a texture of its own would have spent the last slot.
+Measure the frame time with a volume bound before adding another sampler anywhere.
+
+### 13.5 L2 and de-ringing
+
+The runtime reads four coefficients. Unreal stores the third order set with a smoothing control
+against ringing; we would need nine coefficients, three more samplers (or the `Texture3D` path from
+6.4) and a de-ringing pass in the bake. Only worth it if the directionality of the probe term
+becomes the complaint - a wall next to a window is where it would show.
+
+### 13.6 Authoring and diagnostics
+
+- The point view draws only the traced probes. Drawing the blocked ones in a distinct colour would
+  make the bake state visible while authoring, next to the traced/filled counts the inspector
+  already reports.
+- `ProbeBake --verify <file>`: traced / filled / blocked counts and the per probe reason, read back
+  from a `.pgi`. The tools used to find the leak in this pass lived in `/tmp`; a flag would make
+  the same check repeatable on a build machine.
+
+### 13.7 Every existing bake has to be re-baked
+
+Version 3 is the only layout the loader reads, and a version 2 file is refused with a message
+naming both versions. That was deliberate (a volume is cheap to bake again) and it means every
+project in the workspace needs one pass of `ProbeBake` after this lands.
+

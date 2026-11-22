@@ -388,7 +388,7 @@ namespace ToolKit
 
     TextureSettings settings;
     settings.Target         = GraphicTypes::Target2DArray;
-    settings.Layers         = 3;
+    settings.Layers         = 4;
     settings.WarpS          = GraphicTypes::UVClampToEdge;
     settings.WarpT          = GraphicTypes::UVClampToEdge;
     settings.MinFilter      = GraphicTypes::SampleLinear;
@@ -398,8 +398,17 @@ namespace ToolKit
     settings.Type           = GraphicTypes::TypeFloat;
 
     // Layer major, one layer per colour channel: the shader addresses a channel with the array
-    // layer index, so one sampler carries all three.
-    std::vector<float> pixels(layerStride * 3, 0.0f);
+    // layer index, so one sampler carries all three. The fourth layer is not a colour: its red
+    // channel is the coverage the shader divides by, 1 where the probe carries a value and 0 where
+    // the bake left it at zero because geometry stood between it and every traced neighbour.
+    //
+    // It rides in the array instead of a texture of its own because the forward program already
+    // declares samplers up to slot 14, and GL ES 3.0 only guarantees sixteen units. Eight more
+    // bytes per probe is the cheaper of the two, and a brick structure would take them back.
+    const bool blockedKnown = m_data.blocked.size() == m_data.ProbeCount();
+    size_t blockedCount     = 0;
+
+    std::vector<float> pixels(layerStride * 4, 0.0f);
 
     for (uint z = 0; z < resolution.z; ++z)
     {
@@ -418,6 +427,10 @@ namespace ToolKit
               pixels[(size_t) channel * layerStride + texel * 4 + coefficient] = m_data.coefficients[source];
             }
           }
+
+          const bool blocked = blockedKnown && m_data.blocked[probe];
+          pixels[(size_t) 3 * layerStride + texel * 4] = blocked ? 0.0f : 1.0f;
+          blockedCount += blocked ? 1 : 0;
         }
       }
     }
@@ -431,12 +444,14 @@ namespace ToolKit
     // Log() rather than TK_LOG: this line is how a device build proves the array upload happened,
     // so it has to reach Log.txt and not only the editor console.
     GetLogger()->Log(LogType::Memo,
-                     "Light probe volume: uploaded the L1 grid as %ux%u x 3 layers, %ux%ux%u probes.",
+                     "Light probe volume: uploaded the L1 grid as %ux%u x 4 layers, %ux%ux%u probes "
+                     "(%zu of them unwalled enough to sample).",
                      width,
                      height,
                      resolution.x,
                      resolution.y,
-                     resolution.z);
+                     resolution.z,
+                     m_data.ProbeCount() - blockedCount);
 
     return true;
   }

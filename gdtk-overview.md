@@ -1112,16 +1112,41 @@ Base class for every loadable asset. Inherits Object. Has lifecycle: `Load()` (C
   a filled probe keeps a zero in it - which is also what the editor's point view draws, so the
   points that appear are the ones the bake actually sampled. Zero traces every probe.
 
+  Filling is for the shader, not for the view. It interpolates the grid trilinearly and has no
+  notion of a probe being valid, so a skipped probe left at zero would pull every surface that
+  shares its cell halfway to black. But a copy must only travel where the light could: one ray to
+  the very neighbour the fill would take decides it, and when geometry stands between them the
+  probe is recorded as blocked and stays zero. Without that check a probe in the four centimetre
+  gap between two wall boxes took the sky-lit air from the far side of a face, and a re-bake of a
+  closed box lit 134 of those across walls - measured on `closedbox.scene`, and the reason its
+  interior read 0.0001 instead of 0.
+
+  The denoise runs over the traced probes only, on both sides of the average. It used to relax the
+  whole grid, filled copies included, and it was those copies that carried light around the outside
+  of a wall into the inside: the same closed box measured 438 lit probes with eight passes and 56
+  once the copies were out of the mean, and its interior went from 0.0001 to exactly zero. A probe
+  that was never traced holds no measurement of its own, so it has no business in a mean either.
+
+  A neighbour also has to be visible before it is averaged in (`BuildNeighbourVisibility`: six bits
+  per probe, one ray per direction, cast once and shared by every pass). Excluding the filled copies
+  was only half of it - the grid knows nothing about geometry and a cell can straddle a surface, so
+  any face with no thickness, or a wall thinner than a cell, let the lit side blur into the dark
+  side. On `lightroom` at 30x17x34 with six passes, 6477 of the 7365 probes that had traced to
+  exactly zero came back non zero without the ray test and 532 with it; those 532 have a neighbour
+  in the same open space, so the blur is doing its job. `closedbox` reads 0.000000 across its
+  interior with eight passes either way.
+
   The sparsity is in the file and not only in the bake. A filled probe is a copy of a traced one, so
-  `.pgi` version 2 stores the mask (a bit per probe) and the traced coefficient rows only;
-  `LoadProbeVolume` puts the copies back with `FillUntracedProbes`, which is the same pass - and
-  the same values - the bake ran before it wrote. The fill only reads the mask and the traced rows,
-  never another filled probe, so it is idempotent and the reloaded grid is bit identical to the one
-  the bake held. `ms-box` at 16x8x16 with `--sparse 2` is 98 KB of coefficients down to 37 KB of
-  file; a bake that traces every probe still saves the seven eighths of the mask that a byte per
-  probe spent. Version 1 files (dense, one mask byte per probe) still load and are not refilled. The
-  texture stays dense either way: the shader addresses the grid arithmetically and has no structure
-  to look a probe up in, so the VRAM a volume costs is unchanged by any of this.
+  `.pgi` version 3 stores the mask (a bit per probe), the blocked mask, and the traced coefficient
+  rows only; `LoadProbeVolume` puts the copies back with `FillUntracedProbes`, which is the same pass
+  - and the same values - the bake ran before it wrote. The fill reads the two masks and the traced
+  rows, never another filled probe, so it is idempotent and the reloaded grid is bit identical to
+  the one the bake held. `ms-box` at 16x8x16 with `--sparse 2` is 98 KB of coefficients down to 37 KB
+  of file; a bake that traces every probe still saves the seven eighths of the mask that a byte per
+  probe spent. A file from an older layout is refused with a message rather than migrated: the bake
+  is the migration. The texture stays dense either way: the shader addresses the grid
+  arithmetically and has no structure to look a probe up in, so the VRAM a volume costs is unchanged
+  by any of this.
 
   Each material's albedo and emissive come from its maps when it carries them -- the mean of the
   texture, linearized, because a probe only sees the radiance a surface carries per unit area -- and
@@ -1136,13 +1161,24 @@ Base class for every loadable asset. Inherits Object. Has lifecycle: `Load()` (C
   stops being a wall. Transmittance is not modelled: a blended surface passes light whole.
 
   The runtime half is `LightProbeVolumeComponent` (`ToolKit/Components/`), which loads the file, keeps
-  the L1 grid in one three layer `RGBA16F` `DataTexture` (one array layer per colour channel, see
-  `probeGI.shader`) and registers itself in `Scene::m_probeVolumeCache`. `RenderJobProcessor::AssignEnvironment`
-  gives each job the smallest baked volume containing it, the job carries it as `RenderJob::ProbeVolume`,
-  and `Renderer::SetDataTextures` binds the array texture at slot 6 and fills the `probe*` block of the
-  `PerDrawData` UBO. `probeGI.shader` evaluates the four L1 coefficients and `IBLPBR` (`ibl.shader`)
-  reports the sky's diffuse through an out parameter, which `defaultFragment.shader` swaps for the probe
-  where the volume is active; the specular term keeps coming from the sky and the local volume cubemaps.
+  the L1 grid in one four layer `RGBA16F` `DataTexture` (one array layer per colour channel plus a
+  coverage layer, see `probeGI.shader`) and registers itself in `Scene::m_probeVolumeCache`.
+  `RenderJobProcessor::AssignEnvironment` gives each job the smallest baked volume containing it, the
+  job carries it as `RenderJob::ProbeVolume`, and `Renderer::SetDataTextures` binds the array texture at
+  slot 6 and fills the `probe*` block of the `PerDrawData` UBO. `probeGI.shader` evaluates the four L1
+  coefficients and `IBLPBR` (`ibl.shader`) reports the sky's diffuse through an out parameter, which
+  `defaultFragment.shader` swaps for the probe where the volume is active; the specular term keeps
+  coming from the sky and the local volume cubemaps.
+
+  The coverage layer is what makes a blocked probe harmless instead of black. Its red channel is one
+  where the probe holds a value and zero where the bake left it at zero, and the sampled irradiance is
+  divided by the sampled coverage at the same address with the same filter - the trilinear weight of
+  the probes that carry something, which is the same as dropping the empty ones and renormalising the
+  rest. Unreal's volumetric lightmap and Unity's adaptive probe volumes do the same, and it is what
+  lets the bake leave a walled-off probe at zero instead of copying a value through a wall. It rides
+  in the array rather than in a texture of its own because the forward program already declares
+  samplers up to slot 14 and GL ES 3.0 only guarantees sixteen units: eight more bytes per probe is
+  the cheaper of the two, and a brick structure takes them back.
 
   **The authoring half.** A `LightProbe` entity (`ToolKit/Entities/LightProbe.h`) owns a volume the
   way a primitive owns its mesh: it creates the component through the object factory, so an editor

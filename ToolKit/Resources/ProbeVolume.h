@@ -12,8 +12,9 @@
  *
  * Baked diffuse irradiance for a grid of light probes, and the file format it travels in.
  *
- * The data is consumed by the renderer (`s_probeSH`, a three layer coefficient array) and produced
- * by `Modules/LightProbeBake`. Both sides link this header, which is why the format lives in the
+ * The data is consumed by the renderer (`s_probeSH`: one array layer per colour channel plus a
+ * coverage layer, so a blocked probe can be dropped instead of read as black) and produced by
+ * `Modules/LightProbeBake`. Both sides link this header, which is why the format lives in the
  * engine and not in the module.
  *
  * The grid is dense at runtime and sparse in the file. A probe is either traced or filled from its
@@ -21,6 +22,11 @@
  * file leaves them out and `LoadProbeVolume` puts them back with `FillUntracedProbes`. A bake that
  * traced 780 of 2048 probes used to write 98 KB of coefficients; the traced ones are 37 KB, and
  * the grid that comes back is the same one, bit for bit.
+ *
+ * A copy only travels where the light can: the bake casts one ray to the neighbour it would copy
+ * and, when a wall stands in between, records the probe as blocked and leaves it at zero. Handing a
+ * probe inside a wall the sky-lit value from the other side of a face is what made walls glow from
+ * the inside out.
  */
 
 #include "Types.h"
@@ -52,10 +58,13 @@ namespace ToolKit
     /**
      * Bump when the binary layout below changes.
      *
-     * 1 stores every probe and one byte of mask per probe. 2 stores the traced probes only and
-     * packs the mask a bit per probe; both load to the same dense grid, so a 1 file is still read.
+     * 3 is the only layout this build reads: the traced coefficient rows, a bit per probe saying
+     * which probes those rows belong to, and a second mask saying which of the skipped probes the
+     * bake could not reach. An older file is refused with a message instead of migrated - a volume
+     * is cheap to bake again, and carrying retired readers through every change to the fill was the
+     * more expensive of the two.
      */
-    static constexpr uint CurrentVersion = 2;
+    static constexpr uint CurrentVersion = 3;
 
     uint version = CurrentVersion;
 
@@ -85,20 +94,41 @@ namespace ToolKit
     /**
      * One entry per probe. False for a probe the baker did not trace: it is inside geometry, or it
      * is farther than the bake's sparse radius from every surface. Such a probe still carries
-     * coefficients - they are copied from its nearest traced neighbour, so the grid interpolates -
-     * and the mask is the record of which probes were actually sampled.
+     * coefficients, so the grid interpolates, and the mask is the record of which probes were
+     * actually sampled.
      *
      * This is also what the file stores of it, and what the editor's point view reads to leave the
      * filled probes out of the drawing.
      */
     std::vector<uint8> valid;
 
+    /**
+     * One entry per probe, non zero where the bake found no traced probe this one can see, so it
+     * carries zeros instead of a copy.
+     *
+     * The copy exists for the shader, which interpolates the grid trilinearly and would otherwise
+     * pull a surface next to a filled probe towards black. But a copy taken through a wall is
+     * worse than a zero: a probe in the four centimetre gap between two wall boxes used to inherit
+     * the sky-lit air on the other side of a face, and the wall then glowed from the inside out. So
+     * the bake casts one ray to the neighbour it would copy and, when geometry stands between them,
+     * records that here and leaves the probe alone.
+     *
+     * Empty when the volume was not checked - a version 1 or 2 file, or a grid whose bake did not
+     * run the test. Every untraced probe is then filled, which is what those bakes meant.
+     */
+    std::vector<uint8> blocked;
+
     uint CoefficientCount() const { return (uint) quality; }
 
     size_t ProbeCount() const { return (size_t) resolution.x * resolution.y * resolution.z; }
 
-    /** Bytes the coefficients and the validity mask occupy, dense grid included. */
-    size_t AllocatedBytes() const { return coefficients.size() * sizeof(float) + valid.size(); }
+    /**
+     * Bytes the coefficients and the two masks occupy, dense grid included.
+     */
+    size_t AllocatedBytes() const
+    {
+      return coefficients.size() * sizeof(float) + valid.size() + blocked.size();
+    }
 
     /**
      * Probes the mask marks as traced.
@@ -125,37 +155,51 @@ namespace ToolKit
       return traced;
     }
 
-    /** Bytes of the validity mask in the file: one bit per probe. */
+    /** Bytes of one validity mask in the file: one bit per probe. The file carries two. */
     size_t MaskBytes() const { return (ProbeCount() + 7) / 8; }
 
-    /** Bytes the file spends on this grid: the mask and the traced coefficient rows. */
+    /** Bytes the file spends on this grid: the two masks and the traced coefficient rows. */
     size_t StoredBytes() const
     {
-      return MaskBytes() + TracedCount() * (size_t) CoefficientCount() * 3 * sizeof(float);
+      return 2 * MaskBytes() + TracedCount() * (size_t) CoefficientCount() * 3 * sizeof(float);
     }
   };
 
-  /** How a fill went: probes it could place, and probes with no traced neighbour anywhere. */
+  /** How a fill went: probes it could place, and why the rest stayed zero. */
   struct TK_API ProbeVolumeFill
   {
-    uint filled     = 0;
+    /** Probes that took the coefficients of a traced neighbour. */
+    uint filled = 0;
+    /** Probes left at zero because the shortest way to a traced probe crosses geometry. */
+    uint blocked = 0;
+    /** Probes left at zero because the grid holds no traced probe at all. */
     uint unfillable = 0;
   };
 
   /**
+   * Index of the traced probe closest to `probe`, or `(size_t) -1` when the grid has none.
+   *
+   * The search walks outward shell by shell, so the distance it returns is the nearest one the
+   * grid allows. Filled probes are skipped: only a probe with its own coefficients can be a source.
+   */
+  TK_API size_t FindNearestTracedProbe(const ProbeVolumeData& data, size_t probe);
+
+  /**
    * Copies the coefficients of the nearest traced probe into every probe the mask marks as filled.
    *
-   * The search walks outward shell by shell around the target, so the copy comes from the closest
-   * traced probe and the interpolation across it cannot pull towards a hole. A filled probe keeps
-   * its zero in the mask, which is what makes the pass idempotent and lets the loader rebuild a
-   * file the writer left sparse.
+   * The interpolation across a filled probe must not pull a surface towards a hole, so a copy is
+   * the answer - but only when the value can travel. A probe the `blocked` mask marks as walled off
+   * from every traced neighbour keeps its zeros: copying the sky-lit air from the far side of a
+   * face is what made a wall glow from the inside out.
    *
-   * Every probe is an independent copy of a traced one, so the grid this produces does not depend
-   * on the order the probes are visited in - a bake and a load of the same file agree exactly.
+   * A filled probe keeps its zero in the mask, which is what makes the pass idempotent and lets the
+   * loader rebuild a file the writer left sparse. Every probe is an independent copy of a traced
+   * one, so the grid this produces does not depend on the order the probes are visited in - a bake
+   * and a load of the same file agree exactly.
    *
    * @param data Grid to fill in place. Its coefficients and mask have to be dense and consistent;
-   *             a volume that does not match those are left untouched.
-   * @return How many probes were filled and how many had no traced probe to copy from.
+   *             a volume that does not match those is left untouched.
+   * @return How many probes were filled and how many were left zero, by reason.
    */
   TK_API ProbeVolumeFill FillUntracedProbes(ProbeVolumeData& data);
 

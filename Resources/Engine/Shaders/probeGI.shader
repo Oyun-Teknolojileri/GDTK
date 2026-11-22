@@ -20,6 +20,13 @@
 // so a slice is a block of `res.y` rows and the bilinear fetch interpolates x and y for free; z is
 // interpolated by hand between two slices, and `ty` is clamped inside its slice so the filter
 // never reaches into the neighbouring one.
+//
+// The fourth layer is not a colour. Its red channel is the coverage of the probe: one where the
+// bake gave it a value, zero where geometry stood between it and every traced neighbour. A probe
+// left at zero would darken every surface that shares its cell, so the sampled irradiance is
+// divided by the sampled coverage - the trilinear weight of the probes that do hold something,
+// which is the same as dropping the empty ones and renormalising the rest. The unbound default of
+// the sampler is white, so a program that never binds a volume keeps reading coverage one.
 
 TK_SAMPLER_BINDING(6) uniform sampler2DArray s_probeSH;
 
@@ -27,6 +34,12 @@ vec4 SampleProbeSliceChannel(float x, float ty, float z, float resY, float resZ,
 {
 	float v = (z * resY + ty) / (resY * resZ);
 	return texture(s_probeSH, vec3(x, v, float(channel)));
+}
+
+float SampleProbeCoverage(float x, float ty, float z, float resY, float resZ)
+{
+	float v = (z * resY + ty) / (resY * resZ);
+	return texture(s_probeSH, vec3(x, v, 3.0)).r;
 }
 
 // Returns E / pi at worldPos for the world normal n. Writes the volume weight the caller uses
@@ -77,6 +90,12 @@ vec3 ProbeIrradiance(vec3 worldPos, vec3 n, out float weight)
 	              SampleProbeSliceChannel(clamped.x, ty, z1, res.y, res.z, 2),
 	              tz);
 
+	// Same address, same filter, one layer further out: the trilinear weight of the probes that
+	// hold a value. The blocked ones contribute their zeros to the sum above and nothing here.
+	float coverage = mix(SampleProbeCoverage(clamped.x, ty, z0, res.y, res.z),
+	                     SampleProbeCoverage(clamped.x, ty, z1, res.y, res.z),
+	                     tz);
+
 	// Channel major to coefficient major.
 	vec3 s0 = vec3(c0.x, c1.x, c2.x);
 	vec3 s1 = vec3(c0.y, c1.y, c2.y);
@@ -87,6 +106,11 @@ vec3 ProbeIrradiance(vec3 worldPos, vec3 n, out float weight)
 	                  s1 * (0.488603 * n.y) +
 	                  s2 * (0.488603 * n.z) +
 	                  s3 * (0.488603 * n.x);
+
+	// Dividing by the coverage renormalises what is left, so a probe the bake could not reach
+	// behaves as an absent probe rather than as a black one. The guard keeps a cell whose corners
+	// are all blocked from scaling a rounding error into a light.
+	irradiance /= max(coverage, 1e-3);
 
 	// An L1 projection of a fully occluded direction can undershoot zero, and a negative
 	// irradiance subtracts light.
