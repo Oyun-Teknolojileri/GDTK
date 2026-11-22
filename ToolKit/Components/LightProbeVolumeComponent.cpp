@@ -223,6 +223,15 @@ namespace ToolKit
     ParamBakeFile().m_onValueChangedFn.push_back(
         [this](Value&, Value&) -> void
         {
+          // A setter fires this whether or not the value changed and the entity mirrors every
+          // parameter it owns into here on any edit, so without the guard a drag of the intensity
+          // re-read the bake once per tick: two and a half million probes, plus the grid walk the
+          // load does to put the skipped ones back.
+          if (!m_loadedBakeFile.empty() && GetBakeFileVal() == m_loadedBakeFile)
+          {
+            return;
+          }
+
           UnloadBake();
 
           // The editor adds a component to an entity that is already in the scene, so nothing
@@ -317,6 +326,8 @@ namespace ToolKit
       }
     }
 
+    m_loadedBakeFile = file;
+
     TK_LOG("Light probe volume: loaded '%s' (%ux%ux%u probes, %zu traced, %s).",
            path.c_str(),
            m_data.resolution.x,
@@ -332,6 +343,7 @@ namespace ToolKit
   {
     UnInit();
     m_data = ProbeVolumeData {};
+    m_loadedBakeFile.clear();
   }
 
   bool LightProbeVolumeComponent::EnsureShaderTextures()

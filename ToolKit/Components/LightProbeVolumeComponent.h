@@ -168,6 +168,16 @@ namespace ToolKit
     BoundingBox m_boundingBoxCache;
     ProbeVolumeData m_data;
 
+    /**
+     * The BakeFile value the coefficients in m_data were read from.
+     *
+     * A parameter setter fires its callbacks whether or not the value changed, and a LightProbe
+     * entity mirrors every one of its parameters into this component on any edit - so the BakeFile
+     * callback used to unload and re-read the bake on every slider tick. On a five centimetre grid
+     * that is two and a half million probes rebuilt for one drag of the intensity.
+     */
+    String m_loadedBakeFile;
+
     /** Channel major L1 storage: array layer k holds component k of coefficients 0..3. */
     DataTexturePtr m_shTexture;
     bool m_texturesValid = false;
