@@ -55,24 +55,32 @@ namespace ToolKit
 
     void EditorEnvironmentComponent::ScheduleCapturePollingTask()
     {
+      // The task outlives the frame it is queued in and re-enqueues itself, so it can run after
+      // the component is gone: deleting the entity, reloading the scene or undoing the edit that
+      // started the timer all destroy it while a task is still in the main thread queue. A raw
+      // this there reads freed memory, so the task holds a weak reference and leaves when the
+      // component it was polling for no longer exists.
+      EditorEnvironmentComponentWeakPtr weakSelf = Self<EditorEnvironmentComponent>();
+
       TKAsyncTask(WorkerManager::MainThread,
-                  [this]() -> void
+                  [weakSelf]() -> void
                   {
-                    if (!m_captureTimerActive)
+                    EditorEnvironmentComponentPtr self = weakSelf.lock();
+                    if (self == nullptr || !self->m_captureTimerActive)
                     {
                       return;
                     }
 
-                    float elapsed = GetTiming()->CurrentTime - m_captureTimerStart;
+                    float elapsed = GetTiming()->CurrentTime - self->m_captureTimerStart;
                     if (elapsed >= CaptureDebounceTime)
                     {
-                      m_captureTimerActive = false;
-                      CaptureEnvironment();
+                      self->m_captureTimerActive = false;
+                      self->CaptureEnvironment();
                     }
                     else
                     {
                       // Not expired yet, re-enqueue for the next frame.
-                      ScheduleCapturePollingTask();
+                      self->ScheduleCapturePollingTask();
                     }
                   });
     }

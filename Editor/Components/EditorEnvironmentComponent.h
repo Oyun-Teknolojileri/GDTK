@@ -44,6 +44,7 @@ namespace ToolKit
     };
 
     typedef std::shared_ptr<EditorEnvironmentComponent> EditorEnvironmentComponentPtr;
+    typedef std::weak_ptr<EditorEnvironmentComponent> EditorEnvironmentComponentWeakPtr;
 
   } // namespace Editor
 } // namespace ToolKit
