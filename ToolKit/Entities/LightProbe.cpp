@@ -102,6 +102,7 @@ namespace ToolKit
     SetBakeDenoiseVal(probe->GetBakeDenoiseVal());
     SetIntensityVal(probe->GetIntensityVal());
     SetAmbientOcclusionStrengthVal(probe->GetAmbientOcclusionStrengthVal());
+    SetNormalOffsetVal(probe->GetNormalOffsetVal());
 
     m_syncing = false;
   }
@@ -131,6 +132,7 @@ namespace ToolKit
     probe->SetBakeDenoiseVal(GetBakeDenoiseVal());
     probe->SetIntensityVal(GetIntensityVal());
     probe->SetAmbientOcclusionStrengthVal(GetAmbientOcclusionStrengthVal());
+    probe->SetNormalOffsetVal(GetNormalOffsetVal());
   }
 
   void LightProbe::ParameterConstructor()
@@ -178,6 +180,9 @@ namespace ToolKit
 
     AmbientOcclusionStrength_Define(1.0f, category, priority, true, true,
                                     {false, true, 0.0f, 1.0f, 0.05f});
+
+    NormalOffset_Define(0.5f, category, priority, true, true,
+                        {false, true, 0.0f, 2.0f, 0.25f});
 
     LightProbeWeakPtr weakSelf = Self<LightProbe>();
 
@@ -235,6 +240,7 @@ namespace ToolKit
     ParamBakeDenoise().m_onValueChangedFn.push_back(push);
     ParamIntensity().m_onValueChangedFn.push_back(push);
     ParamAmbientOcclusionStrength().m_onValueChangedFn.push_back(push);
+    ParamNormalOffset().m_onValueChangedFn.push_back(push);
   }
 
   XmlNode* LightProbe::DeSerializeImp(const SerializationFileInfo& info, XmlNode* parent)

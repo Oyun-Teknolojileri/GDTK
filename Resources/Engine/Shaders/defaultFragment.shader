@@ -171,7 +171,7 @@
 		// already contains the sky and the scene's light with the visibility the probe saw, so
 		// the sky's diffuse is replaced rather than corrected.
 		float probeWeight = 0.0;
-		vec3 probe = ProbeIrradiance(v_worldPos, n, probeWeight);
+		vec3 probe = ProbeIrradiance(v_worldPos, n, v_worldNormal, probeWeight);
 		if (probeWeight > 0.0)
 		{
 			vec3 E = SpecularDFG(dfg, f0);

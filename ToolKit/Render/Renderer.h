@@ -134,7 +134,14 @@ namespace ToolKit
 
     void SetProbeVolumeMax(const Vec3& maxVal) { probeMax = Vec4(maxVal, 0.0f); }
 
-    void SetProbeVolumeResolution(const Vec3& resolution) { probeRes = Vec4(resolution, 0.0f); }
+    /**
+     * Probe count per axis. The free w carries the normal offset of the lookup, in cells, see
+     * LightProbeVolumeComponent::NormalOffset.
+     */
+    void SetProbeVolumeResolution(const Vec3& resolution, float normalOffset = 0.0f)
+    {
+      probeRes = Vec4(resolution, normalOffset);
+    }
 
     void SetProbeVolumeInverseTransform(const Mat4& m)
     {

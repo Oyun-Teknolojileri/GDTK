@@ -71,6 +71,9 @@ namespace ToolKit
     TKDeclareParam(float, Intensity);
     TKDeclareParam(float, AmbientOcclusionStrength);
 
+    /** Shifts the probe lookup along the normal, in cells. See the component. */
+    TKDeclareParam(float, NormalOffset);
+
     /** Fits the volume to the scene bounds. */
     TKDeclareParam(VariantCallback, FitToScene);
 

@@ -223,6 +223,13 @@ namespace ToolKit
                                     true,
                                     true,
                                     {false, true, 0.0f, 1.0f, 0.05f});
+
+    NormalOffset_Define(0.5f,
+                        LightProbeVolumeCategory.Name,
+                        LightProbeVolumeCategory.Priority,
+                        true,
+                        true,
+                        {false, true, 0.0f, 2.0f, 0.25f});
   }
 
   void LightProbeVolumeComponent::ParameterEventConstructor()

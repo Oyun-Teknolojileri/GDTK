@@ -1185,6 +1185,20 @@ Base class for every loadable asset. Inherits Object. Has lifecycle: `Load()` (C
   `probeGI.shader` then reads the coverage as one and never samples the layer that is not there. The
   flag fits in `probeParams.w`, which was unused, so the saving costs no sampler and no unit.
 
+  The lookup is offset along the surface normal before it is sampled, which is what keeps a surface
+  next to a wall from reading the probes on the far side of it. The filter reaches one cell past the
+  sample point, so the share of the far side a wall of thickness `t` over a spacing `s` contributes is
+  about `max(0, 1 - t / s - offset)`: with no offset a paper thin wall carries half the outside light
+  and a wall a full cell thick carries none. `NormalOffset` (per volume, in cells, 0 to 2 by 0.25,
+  default 0.5) is that term. The scale is in cells because the cost of a large offset is cell
+  relative - one cell is ten centimetres on a 0.1 m volume and four metres on a 4 m one - so a far
+  field volume stays at half a cell while an interior one needs a full cell to clear a thin wall. It
+  is a shading time value, so changing it needs no re-bake, and it rides in `probeRes.w`, which was
+  free. The offset is built in the volume's local space from the interpolated surface normal
+  (`v_worldNormal`, never the normal mapped one: a bump would push the lookup into the geometry it was
+  meant to leave). The edge fade keeps using the unshifted position, so a volume's coverage does not
+  shrink with the offset and its border does not fall back to the sky.
+
   A volume uploads as a 2D array of `res.x` by `res.y * res.z` texels, so a grid only fits a device
   whose largest texture side covers both. `ProbeCapacity` picks that side by device class - 2048 is
   the GL ES 3.0 minimum, 4096 a typical phone, 8192 a high end one, 16384 a desktop GPU, 32768 the

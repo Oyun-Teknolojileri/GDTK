@@ -46,7 +46,11 @@ float SampleProbeCoverage(float x, float ty, float z, float resY, float resZ)
 
 // Returns E / pi at worldPos for the world normal n. Writes the volume weight the caller uses
 // to blend the probe against the sky and the environment volumes; zero outside the box.
-vec3 ProbeIrradiance(vec3 worldPos, vec3 n, out float weight)
+//
+// geoNormal is the interpolated surface normal, not the normal mapped one: the optional offset
+// below moves the lookup away from the surface, and a perturbed normal can push it into the
+// geometry it was meant to leave. The weight keeps using the unshifted position.
+vec3 ProbeIrradiance(vec3 worldPos, vec3 n, vec3 geoNormal, out float weight)
 {
 	weight = 0.0;
 
@@ -64,8 +68,21 @@ vec3 ProbeIrradiance(vec3 worldPos, vec3 n, out float weight)
 	                         perDraw._drawCommand.probeInvT2,
 	                         perDraw._drawCommand.probeInvT3);
 
+	vec3 size = max(probeMax.xyz - probeMin.xyz, vec3(1e-5));
 	vec3 local = (invTransform * vec4(worldPos, 1.0)).xyz;
-	vec3 uvw = (local - probeMin.xyz) / max(probeMax.xyz - probeMin.xyz, vec3(1e-5));
+	vec3 uvw = (local - probeMin.xyz) / size;
+
+	// Half a cell along the normal, transformed into the volume's local space so a rotated or
+	// scaled node needs no special case. Only the lookup moves: the fade below stays on the real
+	// position, so the coverage of the volume does not shrink with the offset.
+	vec3 uvwSample = uvw;
+	if (perDraw._drawCommand.probeRes.w > 0.0)
+	{
+		vec3 cell   = size / res;
+		float scale = perDraw._drawCommand.probeRes.w;
+		vec3 nLocal = normalize((invTransform * vec4(geoNormal, 0.0)).xyz);
+		uvwSample += nLocal * (scale * dot(cell, abs(nLocal))) / size;
+	}
 
 	// Fade over half a cell at the boundary so the hand off to the sky does not step. The band is
 	// measured in cells of the axis it belongs to: one cell taken from the smallest axis and applied
@@ -74,7 +91,7 @@ vec3 ProbeIrradiance(vec3 worldPos, vec3 n, out float weight)
 	vec3 edgeCells = min(uvw, 1.0 - uvw) * res;
 	weight = clamp(2.0 * min(min(edgeCells.x, edgeCells.y), edgeCells.z), 0.0, 1.0);
 
-	vec3 clamped = clamp(uvw, 0.0, 1.0);
+	vec3 clamped = clamp(uvwSample, 0.0, 1.0);
 
 	float ty = clamp(clamped.y * res.y - 0.5, 0.0, res.y - 1.0) + 0.5;
 	float zf = clamp(clamped.z * res.z - 0.5, 0.0, res.z - 1.0);

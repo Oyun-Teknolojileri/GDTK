@@ -213,6 +213,20 @@ namespace ToolKit
     TKDeclareParam(float, Intensity);
     TKDeclareParam(float, AmbientOcclusionStrength);
 
+    /**
+     * Shifts the probe lookup along the surface normal before sampling, in cells.
+     *
+     * The trilinear filter reaches one cell past the sample point, so a surface next to a wall
+     * reads the probes on the far side of it. Moving the lookup into the side the pixel belongs to
+     * keeps that footprint on one side; a wall of thickness t over a spacing s leaks about
+     * max(0, 1 - t / s - scale) of the far side. Half a cell clears a wall half a cell thick, a
+     * paper thin one needs a full cell.
+     *
+     * The scale is in cells, so the same value costs centimetres on a fine volume and metres on a
+     * coarse one: keep a far field volume at half a cell. Zero reproduces the unshifted lookup.
+     */
+    TKDeclareParam(float, NormalOffset);
+
     bool m_spatialCachesInvalidated = true;
 
    private:

@@ -1238,7 +1238,7 @@ namespace ToolKit
         m_drawCommand.SetProbeVolumeCoverage(probeComp->HasCoverageLayer());
         m_drawCommand.SetProbeVolumeMin(probeComp->GetPositionOffsetVal() - half);
         m_drawCommand.SetProbeVolumeMax(probeComp->GetPositionOffsetVal() + half);
-        m_drawCommand.SetProbeVolumeResolution(Vec3(data.resolution));
+        m_drawCommand.SetProbeVolumeResolution(Vec3(data.resolution), probeComp->GetNormalOffsetVal());
 
         // The bakes were traced in world space, so the box is the only thing that needs the
         // volume transform: the coefficients are already oriented.
