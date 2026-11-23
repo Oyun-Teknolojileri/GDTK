@@ -59,7 +59,7 @@ namespace ToolKit
 
     // --- Probe volume (8 Vec4) ---
 
-    /** x: enabled, y: intensity, z: ambient occlusion strength, w: unused */
+    /** x: enabled, y: intensity, z: ambient occlusion strength, w: has a coverage layer */
     Vec4 probeParams;
     Vec4 probeMin; /**< xyz: volume min (local space) */
     Vec4 probeMax; /**< xyz: volume max (local space) */
@@ -121,6 +121,14 @@ namespace ToolKit
     void SetProbeVolumeIntensity(float intensity) { probeParams.y = intensity; }
 
     void SetProbeVolumeAmbientOcclusion(float strength) { probeParams.z = strength; }
+
+    /**
+     * True when the volume's texture carries the coverage layer.
+     *
+     * A volume with no walled off probe is uploaded as three layers instead of four and the shader
+     * reads the coverage as one; see probeGI.shader and LightProbeVolumeComponent::HasCoverageLayer.
+     */
+    void SetProbeVolumeCoverage(bool hasCoverage) { probeParams.w = hasCoverage ? 1.0f : 0.0f; }
 
     void SetProbeVolumeMin(const Vec3& minVal) { probeMin = Vec4(minVal, 0.0f); }
 

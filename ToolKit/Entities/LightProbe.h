@@ -61,6 +61,9 @@ namespace ToolKit
     TKDeclareParam(String, BakeFile);
     TKDeclareParam(float, ProbeSpacing);
     TKDeclareParam(float, ProbeTraceRadius);
+
+    /** Texture side the target device allows; a grid over it is refused. See the component. */
+    TKDeclareParam(MultiChoiceVariant, ProbeCapacity);
     TKDeclareParam(int, BakeSamples);
     TKDeclareParam(int, BakeBounces);
     TKDeclareParam(int, BakeSeed);

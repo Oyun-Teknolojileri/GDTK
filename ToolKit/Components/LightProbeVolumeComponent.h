@@ -72,8 +72,44 @@ namespace ToolKit
     /** The slice stacked coefficient array, or null before EnsureShaderTextures. */
     DataTexturePtr GetShaderTexture() const;
 
-    /** Probe grid a bake would produce for the current box and spacing. */
+    /**
+     * Probe grid a bake would produce for the current box and spacing, capped per axis only.
+     *
+     * Whether it fits the chosen ProbeCapacity is a separate question, answered by ProbeGridFits:
+     * the bake refuses a grid that does not, instead of silently covering a smaller one.
+     */
     UVec3 ComputeBakeResolution() const;
+
+    /** Largest texture side the selected ProbeCapacity allows, in texels. */
+    int ProbeCapacityTexels() const;
+
+    /** True when the grid needs no more than the selected capacity on either texture side. */
+    bool ProbeGridFits(const UVec3& resolution) const;
+
+    /** Grid a spacing produces: the box divided by it, rounded and clamped per axis. */
+    UVec3 GridForSpacing(float spacing) const;
+
+    /**
+     * Smallest spacing whose grid fits the selected capacity, or -1 when none does.
+     *
+     * Bisected over GridForSpacing rather than estimated: the rounding and the per axis clamp make
+     * the grid a step function of the spacing, so an estimate recommends a value that still does
+     * not fit and the author ends up bisecting it by hand.
+     */
+    float SmallestFittingSpacing() const;
+
+    /**
+     * One line naming what does not fit and what to set instead.
+     *
+     * Either a larger capacity that would hold the grid, or - when no preset is large enough - the
+     * smallest ProbeSpacing that shrinks it into the selected one. Naming the number is the point:
+     * a warning that only says "over budget" leaves the author bisecting the spacing by hand.
+     */
+    String ProbeGridAdvice(const UVec3& resolution) const;
+
+    /** True when the uploaded texture carries the coverage layer; false means every probe has a
+     *  value and the shader treats the coverage as one. */
+    bool HasCoverageLayer() const { return m_coverageLayer; }
 
     /**
      * Bake file relative to the resource root, including the default it would be baked to.
@@ -144,6 +180,21 @@ namespace ToolKit
      */
     TKDeclareParam(float, ProbeTraceRadius);
 
+    /**
+     * Largest texture side the target device allows, in texels.
+     *
+     * The volume uploads as a 2D array of `res.x` by `res.y * res.z` texels, so a grid fits when
+     * both of those are within the device's largest texture side. Picking it by device class is
+     * what keeps a bake from being unusable on the machine it ships to: 2048 is the GL ES 3.0
+     * minimum, 4096 a typical phone, 8192 a high end one, 16384 a desktop GPU and 32768 the
+     * largest current desktop parts report.
+     *
+     * The bake does not scale a grid down to fit. A grid over this is refused, with the spacing
+     * that would fit, because a bake that quietly covers less than it says is what makes the
+     * lighting wrong in a way nobody can see from the settings.
+     */
+    TKDeclareParam(MultiChoiceVariant, ProbeCapacity);
+
     /** Paths traced per probe. More is smoother and slower. */
     TKDeclareParam(int, BakeSamples);
 
@@ -181,6 +232,9 @@ namespace ToolKit
     /** Channel major L1 storage: array layer k holds component k of coefficients 0..3. */
     DataTexturePtr m_shTexture;
     bool m_texturesValid = false;
+
+    /** True when the uploaded texture has the fourth, coverage, layer; see HasCoverageLayer. */
+    bool m_coverageLayer = false;
     bool m_initialized   = false;
   };
 

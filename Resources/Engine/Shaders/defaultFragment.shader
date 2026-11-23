@@ -181,18 +181,16 @@
 
 			// Specular occlusion from the probe. The cubemap term here is the *unoccluded* sky, while
 			// the probe holds the same irradiance as the bake measured it through the geometry, so
-			// their ratio is how much of the sky this location really sees. Reflections damped by it
-			// stay part of the lighting instead of floating over a room the probe painted dark, which
-			// is the usual treatment where a volume carries no reflection of its own.
+			// their ratio is how much of the sky this location really sees. It damps the whole
+			// ambient reflection, not only its rough end: the sky the probe could not see must not
+			// be reflected at any roughness, or a closed room keeps a sheen of the sky it never
+			// receives. A smooth surface inside the volume reflects what the screen space pass and
+			// the local volume cubemaps can see, and the sky cubemap is only their fallback.
 			float skyLuminance   = dot(skyIrradianceRef, vec3(0.2126, 0.7152, 0.0722));
 			float probeLuminance = dot(probe, vec3(0.2126, 0.7152, 0.0722));
 			float specularOcc    = skyLuminance > 1e-4 ?
 			                           clamp(probeLuminance / skyLuminance, 0.0, 1.0) :
 			                           1.0;
-
-			// Only the broad, ambient end of the reflection is damped this way: a mirror inside the
-			// volume still shows what it can see, because its reflection is not ambient.
-			specularOcc = mix(1.0, specularOcc, perceptualRoughness);
 
 			vec3 probeSpecular = iblSpecular * mix(1.0, specularOcc, probeWeight);
 

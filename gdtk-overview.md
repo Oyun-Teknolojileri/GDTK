@@ -1180,6 +1180,24 @@ Base class for every loadable asset. Inherits Object. Has lifecycle: `Load()` (C
   samplers up to slot 14 and GL ES 3.0 only guarantees sixteen units: eight more bytes per probe is
   the cheaper of the two, and a brick structure takes them back.
 
+  That layer is only uploaded when the volume needs it. A bake with no walled-off probe uploads three
+  layers instead of four, which is a quarter of the texture, and sets `probeParams.w` to zero;
+  `probeGI.shader` then reads the coverage as one and never samples the layer that is not there. The
+  flag fits in `probeParams.w`, which was unused, so the saving costs no sampler and no unit.
+
+  A volume uploads as a 2D array of `res.x` by `res.y * res.z` texels, so a grid only fits a device
+  whose largest texture side covers both. `ProbeCapacity` picks that side by device class - 2048 is
+  the GL ES 3.0 minimum, 4096 a typical phone, 8192 a high end one, 16384 a desktop GPU, 32768 the
+  largest current desktop parts report - and is mirrored on the `LightProbe` entity with the rest of
+  the bake settings. A grid over it is **refused**, not scaled down: `ProbeGridAdvice` names the
+  smallest capacity that would hold it and, when a spacing also does, the `ProbeSpacing` that
+  shrinks the grid into the selected one - the spacing is found by bisecting the same rounding and
+  per axis clamp the bake uses, so the number it prints is the number that works. A bake that
+  quietly covers a coarser grid than the settings say is wrong in a way the inspector cannot show,
+  and bisecting the spacing by hand is what the advice exists to save. `ProbeBake` carries the same
+  check as `--capacity` and refuses with the numbers. The load-time device limit check stays as the
+  backstop for a file baked for a machine with a larger texture side.
+
   **The authoring half.** A `LightProbe` entity (`ToolKit/Entities/LightProbe.h`) owns a volume the
   way a primitive owns its mesh: it creates the component through the object factory, so an editor
   build gets `EditorLightProbeVolumeComponent` (where the bake runner lives) instead of the engine

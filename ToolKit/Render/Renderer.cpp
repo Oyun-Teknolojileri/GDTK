@@ -1206,6 +1206,7 @@ namespace ToolKit
     m_drawCommand.SetProbeVolumeEnabled(false);
     m_drawCommand.SetProbeVolumeIntensity(0.0f);
     m_drawCommand.SetProbeVolumeAmbientOcclusion(1.0f);
+    m_drawCommand.SetProbeVolumeCoverage(false);
 
     LightProbeVolumeComponent* probeComp = job.ProbeVolume;
     if (probeComp != nullptr && probeComp->EnsureShaderTextures())
@@ -1234,6 +1235,7 @@ namespace ToolKit
         m_drawCommand.SetProbeVolumeEnabled(true);
         m_drawCommand.SetProbeVolumeIntensity(probeComp->GetIntensityVal());
         m_drawCommand.SetProbeVolumeAmbientOcclusion(probeComp->GetAmbientOcclusionStrengthVal());
+        m_drawCommand.SetProbeVolumeCoverage(probeComp->HasCoverageLayer());
         m_drawCommand.SetProbeVolumeMin(probeComp->GetPositionOffsetVal() - half);
         m_drawCommand.SetProbeVolumeMax(probeComp->GetPositionOffsetVal() + half);
         m_drawCommand.SetProbeVolumeResolution(Vec3(data.resolution));

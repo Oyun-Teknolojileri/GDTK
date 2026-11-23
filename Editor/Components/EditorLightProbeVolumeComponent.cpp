@@ -112,8 +112,22 @@ namespace ToolKit
       // The bake traces world space radiance, so it gets the world box. A rotated node is the one
       // case this does not represent exactly: the grid is traced axis aligned around the world
       // bounds while the shader maps it back through the node's inverse transform.
-      const BoundingBox box       = GetBoundingBox();
-      const UVec3 resolution      = ComputeBakeResolution();
+      const BoundingBox box  = GetBoundingBox();
+      const UVec3 resolution = ComputeBakeResolution();
+
+      // A grid over the selected capacity is refused rather than scaled down: a bake that covers a
+      // coarser grid than the settings say is wrong in a way the author cannot see. The advice line
+      // names the capacity or the spacing that would fit, so nothing has to be bisected by hand.
+      if (!ProbeGridFits(resolution))
+      {
+        const String advice = ProbeGridAdvice(resolution);
+        TK_WRN("Light probe volume: %s", advice.c_str());
+
+        std::lock_guard<std::mutex> lock(m_statusMutex);
+        m_status = "Bake refused. " + advice;
+        return;
+      }
+
       const String relativeFile   = ResolveBakeFile();
       const bool absoluteBakeFile = std::filesystem::path(relativeFile).is_absolute();
       const String absoluteFile =

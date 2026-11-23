@@ -103,6 +103,7 @@ namespace ToolKit
     }
 
     m_texturesValid = false;
+    m_coverageLayer = false;
   }
 
   ComponentPtr LightProbeVolumeComponent::Copy(EntityPtr ntt)
@@ -153,6 +154,19 @@ namespace ToolKit
                              true,
                              true,
                              {false, true, 0.0f, MaxProbeTraceRadius, 0.5f});
+
+    MultiChoiceVariant capacity;
+    capacity.Choices.push_back(CreateMultiChoiceParameter("2048 (ES 3.0 minimum)", 2048));
+    capacity.Choices.push_back(CreateMultiChoiceParameter("4096 (typical mobile)", 4096));
+    capacity.Choices.push_back(CreateMultiChoiceParameter("8192 (high end mobile)", 8192));
+    capacity.Choices.push_back(CreateMultiChoiceParameter("16384 (desktop)", 16384));
+    capacity.Choices.push_back(CreateMultiChoiceParameter("32768 (high end desktop)", 32768));
+    capacity.CurrentVal.Index = 3;
+    ProbeCapacity_Define(capacity,
+                         LightProbeVolumeCategory.Name,
+                         LightProbeVolumeCategory.Priority,
+                         true,
+                         true);
 
     BakeSamples_Define(DefaultBakeSamples,
                        LightProbeVolumeCategory.Name,
@@ -390,17 +404,41 @@ namespace ToolKit
     if (maxTextureSize > 0 && ((int) width > maxTextureSize || (int) height > maxTextureSize))
     {
       GetLogger()->Log(LogType::Error,
-                       "Light probe volume: the L1 grid needs a %ux%u texture, but this device's "
-                       "largest is %d. Rebake with a larger ProbeSpacing.",
+                       "Light probe volume: the %ux%ux%u grid is %u x %u texels, over this device's "
+                       "limit of %d for a texture side. That is %zu probes, up to %.1f MB of "
+                       "texture. Rebake it with a larger ProbeSpacing, or raise ProbeCapacity to a "
+                       "device class this grid actually fits.",
+                       resolution.x,
+                       resolution.y,
+                       resolution.z,
                        width,
                        height,
-                       maxTextureSize);
+                       maxTextureSize,
+                       m_data.ProbeCount(),
+                       (double) (m_data.ProbeCount() * 32) / (1024.0 * 1024.0));
       return false;
     }
 
+    // The coverage layer is only needed when some probe is walled off from every traced neighbour.
+    // Without one it would be a full layer of ones - eight bytes per probe, three channels of them
+    // never read - feeding a division that cannot change the result. probeParams.w tells the shader
+    // which shape it was given; see probeGI.shader.
+    const bool blockedKnown = m_data.blocked.size() == m_data.ProbeCount();
+    size_t blockedCount     = 0;
+    if (blockedKnown)
+    {
+      for (uint8 blocked : m_data.blocked)
+      {
+        blockedCount += blocked ? 1 : 0;
+      }
+    }
+
+    const bool coverageLayer = blockedCount > 0;
+    const uint layerCount    = coverageLayer ? 4u : 3u;
+
     TextureSettings settings;
     settings.Target         = GraphicTypes::Target2DArray;
-    settings.Layers         = 4;
+    settings.Layers         = layerCount;
     settings.WarpS          = GraphicTypes::UVClampToEdge;
     settings.WarpT          = GraphicTypes::UVClampToEdge;
     settings.MinFilter      = GraphicTypes::SampleLinear;
@@ -410,17 +448,13 @@ namespace ToolKit
     settings.Type           = GraphicTypes::TypeFloat;
 
     // Layer major, one layer per colour channel: the shader addresses a channel with the array
-    // layer index, so one sampler carries all three. The fourth layer is not a colour: its red
-    // channel is the coverage the shader divides by, 1 where the probe carries a value and 0 where
-    // the bake left it at zero because geometry stood between it and every traced neighbour.
-    //
-    // It rides in the array instead of a texture of its own because the forward program already
-    // declares samplers up to slot 14, and GL ES 3.0 only guarantees sixteen units. Eight more
-    // bytes per probe is the cheaper of the two, and a brick structure would take them back.
-    const bool blockedKnown = m_data.blocked.size() == m_data.ProbeCount();
-    size_t blockedCount     = 0;
-
-    std::vector<float> pixels(layerStride * 4, 0.0f);
+    // layer index, so one sampler carries all three. When a probe is walled off from every traced
+    // neighbour the bake left it at zero, and reading that as black would darken the surfaces that
+    // share its cell, so a fourth layer carries the coverage the shader divides by. When nothing is
+    // walled off the layer is dropped and the shader is told to treat the coverage as one - the
+    // flag rides in probeParams.w, because a texture of its own would need a sixteenth sampler and
+    // GL ES 3.0 only guarantees sixteen units.
+    std::vector<float> pixels(layerStride * layerCount, 0.0f);
 
     for (uint z = 0; z < resolution.z; ++z)
     {
@@ -440,26 +474,30 @@ namespace ToolKit
             }
           }
 
-          const bool blocked = blockedKnown && m_data.blocked[probe];
-          pixels[(size_t) 3 * layerStride + texel * 4] = blocked ? 0.0f : 1.0f;
-          blockedCount += blocked ? 1 : 0;
+          if (coverageLayer)
+          {
+            const bool blocked = blockedKnown && m_data.blocked[probe];
+            pixels[(size_t) 3 * layerStride + texel * 4] = blocked ? 0.0f : 1.0f;
+          }
         }
       }
     }
 
     DataTexturePtr texture = MakeNewPtr<DataTexture>(width, height, settings, "ProbeSH");
     texture->Init(pixels.data());
-    m_shTexture = texture;
+    m_shTexture     = texture;
+    m_coverageLayer = coverageLayer;
 
     m_texturesValid = true;
 
     // Log() rather than TK_LOG: this line is how a device build proves the array upload happened,
     // so it has to reach Log.txt and not only the editor console.
     GetLogger()->Log(LogType::Memo,
-                     "Light probe volume: uploaded the L1 grid as %ux%u x 4 layers, %ux%ux%u probes "
+                     "Light probe volume: uploaded the L1 grid as %ux%u x %u layers, %ux%ux%u probes "
                      "(%zu of them unwalled enough to sample).",
                      width,
                      height,
+                     layerCount,
                      resolution.x,
                      resolution.y,
                      resolution.z,
@@ -542,16 +580,136 @@ namespace ToolKit
     SetPositionOffsetVal((local.min + local.max) * 0.5f);
   }
 
-  UVec3 LightProbeVolumeComponent::ComputeBakeResolution() const
+  UVec3 LightProbeVolumeComponent::GridForSpacing(float spacing) const
   {
-    const Vec3 size    = glm::max(GetSizeVal(), Vec3(MinProbeSpacing));
-    const float spacing = glm::clamp(GetProbeSpacingVal(), MinProbeSpacing, MaxProbeSpacing);
+    const Vec3 size = glm::max(GetSizeVal(), Vec3(MinProbeSpacing));
+    spacing         = glm::clamp(spacing, MinProbeSpacing, MaxProbeSpacing);
 
     // A box that is an exact multiple of the spacing lands a probe on both faces, so the cell
-    // count is rounded rather than ceiled; one probe per axis is the floor.
-    const Vec3 cells = glm::round(size / spacing);
+    // count is rounded rather than ceiled; one probe per axis is the floor and MaxProbesPerAxis
+    // the ceiling, which a fine spacing over a large box reaches long before the capacity does.
+    const Vec3 cells   = glm::round(size / spacing);
     const Vec3 clamped = glm::clamp(cells, Vec3(1.0f), Vec3((float) MaxProbesPerAxis));
     return UVec3(clamped);
+  }
+
+  UVec3 LightProbeVolumeComponent::ComputeBakeResolution() const
+  {
+    return GridForSpacing(GetProbeSpacingVal());
+  }
+
+  float LightProbeVolumeComponent::SmallestFittingSpacing() const
+  {
+    const float current = glm::clamp(GetProbeSpacingVal(), MinProbeSpacing, MaxProbeSpacing);
+    if (ProbeGridFits(GridForSpacing(current)))
+    {
+      return current;
+    }
+
+    // The grid a spacing produces is a rounding and a per axis clamp, so the fitting spacing is
+    // bisected over that same function. An estimate that ignores the clamp recommends a spacing
+    // that still does not fit, which is exactly how the author ends up bisecting it by hand.
+    if (!ProbeGridFits(GridForSpacing(MaxProbeSpacing)))
+    {
+      return -1.0f;
+    }
+
+    float low  = current;
+    float high = MaxProbeSpacing;
+    for (int iteration = 0; iteration < 48; ++iteration)
+    {
+      const float middle = (low + high) * 0.5f;
+      if (ProbeGridFits(GridForSpacing(middle)))
+      {
+        high = middle;
+      }
+      else
+      {
+        low = middle;
+      }
+    }
+
+    // Rounded up to the two decimals the inspector shows, so the number printed is the number that
+    // works once it is typed in.
+    return glm::min(std::ceil(high * 100.0f) / 100.0f, MaxProbeSpacing);
+  }
+
+  int LightProbeVolumeComponent::ProbeCapacityTexels() const
+  {
+    return glm::max(GetProbeCapacityVal().GetValue<int>(), 1);
+  }
+
+  bool LightProbeVolumeComponent::ProbeGridFits(const UVec3& resolution) const
+  {
+    const size_t capacity = (size_t) ProbeCapacityTexels();
+    return (size_t) resolution.x <= capacity && (size_t) resolution.y * resolution.z <= capacity;
+  }
+
+  String LightProbeVolumeComponent::ProbeGridAdvice(const UVec3& resolution) const
+  {
+    const int capacity  = ProbeCapacityTexels();
+    const size_t height = (size_t) resolution.y * resolution.z;
+    const size_t needed = glm::max((size_t) resolution.x, height);
+    const float current = glm::clamp(GetProbeSpacingVal(), MinProbeSpacing, MaxProbeSpacing);
+    const float spacing = SmallestFittingSpacing();
+
+    // The capacity first: it is one combo change, and the spacing the author typed stays. The
+    // spacing is still named when it also works, so a project locked to a device class can get
+    // there without raising the capacity past what it ships to.
+    for (int preset : {2048, 4096, 8192, 16384, 32768})
+    {
+      if (needed > (size_t) preset)
+      {
+        continue;
+      }
+
+      if (spacing > 0.0f)
+      {
+        return Format("%ux%ux%u probes need a %zu texel texture side; this volume's capacity is "
+                      "%d. Select the %d capacity, or raise ProbeSpacing from %.2f to %.2f.",
+                      resolution.x,
+                      resolution.y,
+                      resolution.z,
+                      needed,
+                      capacity,
+                      preset,
+                      current,
+                      spacing);
+      }
+
+      return Format("%ux%ux%u probes need a %zu texel texture side; this volume's capacity is "
+                    "%d. Select the %d capacity.",
+                    resolution.x,
+                    resolution.y,
+                    resolution.z,
+                    needed,
+                    capacity,
+                    preset);
+    }
+
+    // No preset reaches it, so the grid itself has to be coarser.
+    if (spacing > 0.0f)
+    {
+      return Format("%ux%ux%u probes need a %zu texel texture side, over every capacity preset; "
+                    "this volume's is %d. Raise ProbeSpacing from %.2f to %.2f.",
+                    resolution.x,
+                    resolution.y,
+                    resolution.z,
+                    needed,
+                    capacity,
+                    current,
+                    spacing);
+    }
+
+    return Format("%ux%ux%u probes need a %zu texel texture side even at the coarsest ProbeSpacing "
+                  "(%.2f); the box is larger than the per axis limit of %d probes allows. Shrink "
+                  "Size, or raise ProbeCapacity if the target device has room for it.",
+                  resolution.x,
+                  resolution.y,
+                  resolution.z,
+                  needed,
+                  MaxProbeSpacing,
+                  MaxProbesPerAxis);
   }
 
   String LightProbeVolumeComponent::ResolveBakeFile()

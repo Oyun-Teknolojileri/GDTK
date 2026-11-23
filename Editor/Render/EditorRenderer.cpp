@@ -709,10 +709,12 @@ namespace ToolKit
 
         // A baked volume keeps the resolution it was baked at while the box follows the entity,
         // which is the pairing the forward pass interpolates. Before a bake the grid is the one the
-        // volume would bake, so the point layout can be inspected ahead of it.
+        // volume would bake, so the point layout can be inspected ahead of it. A grid the capacity
+        // refuses is not drawn: it cannot be baked, and a preview of millions of points that will
+        // never exist is worse than none.
         const UVec3 resolution  = baked ? data.resolution : volume->ComputeBakeResolution();
         const size_t probeCount = (size_t) resolution.x * resolution.y * resolution.z;
-        if (probeCount == 0)
+        if (probeCount == 0 || !volume->ProbeGridFits(resolution))
         {
           continue;
         }

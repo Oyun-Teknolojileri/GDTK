@@ -21,12 +21,14 @@
 // interpolated by hand between two slices, and `ty` is clamped inside its slice so the filter
 // never reaches into the neighbouring one.
 //
-// The fourth layer is not a colour. Its red channel is the coverage of the probe: one where the
-// bake gave it a value, zero where geometry stood between it and every traced neighbour. A probe
-// left at zero would darken every surface that shares its cell, so the sampled irradiance is
-// divided by the sampled coverage - the trilinear weight of the probes that do hold something,
-// which is the same as dropping the empty ones and renormalising the rest. The unbound default of
-// the sampler is white, so a program that never binds a volume keeps reading coverage one.
+// A fourth layer is uploaded only when the bake had probes it could not reach: its red channel is
+// the coverage of the probe, one where the bake gave it a value, zero where geometry stood between
+// it and every traced neighbour. A probe left at zero would darken every surface that shares its
+// cell, so the sampled irradiance is divided by the sampled coverage - the trilinear weight of the
+// probes that do hold something, which is the same as dropping the empty ones and renormalising the
+// rest. A volume with nothing walled off is uploaded with three layers and probeParams.w is zero,
+// which makes the coverage one and saves a quarter of the texture. The unbound default of the
+// sampler is white, so a program that never binds a volume keeps reading coverage one.
 
 TK_SAMPLER_BINDING(6) uniform sampler2DArray s_probeSH;
 
@@ -92,9 +94,17 @@ vec3 ProbeIrradiance(vec3 worldPos, vec3 n, out float weight)
 
 	// Same address, same filter, one layer further out: the trilinear weight of the probes that
 	// hold a value. The blocked ones contribute their zeros to the sum above and nothing here.
-	float coverage = mix(SampleProbeCoverage(clamped.x, ty, z0, res.y, res.z),
-	                     SampleProbeCoverage(clamped.x, ty, z1, res.y, res.z),
-	                     tz);
+	//
+	// That layer is only uploaded when the volume has a probe the bake could not reach, because
+	// otherwise it is a layer of ones that costs a quarter of the texture. probeParams.w says
+	// which shape this volume was given; three layers means every probe holds a value.
+	float coverage = 1.0;
+	if (perDraw._drawCommand.probeParams.w > 0.5)
+	{
+		coverage = mix(SampleProbeCoverage(clamped.x, ty, z0, res.y, res.z),
+		               SampleProbeCoverage(clamped.x, ty, z1, res.y, res.z),
+		               tz);
+	}
 
 	// Channel major to coefficient major.
 	vec3 s0 = vec3(c0.x, c1.x, c2.x);

@@ -209,6 +209,8 @@ namespace ToolKit
       printf("  --denoise <n>      Grid relaxation passes after tracing. Default 2, 0 keeps raw.\n");
       printf("  --sparse <cells>   Trace only the probes within this many cells of a surface and\n");
       printf("                     fill the rest from a neighbour. Default 2, 0 traces them all.\n");
+      printf("  --capacity <n>     Largest texture side the target device allows, in texels. The\n");
+      printf("                     grid is refused if it does not fit. Default 16384.\n");
     }
 
     bool ParseFloat3(const char* text, Vec3& out)
@@ -260,6 +262,9 @@ namespace ToolKit
 
     LightProbeBake::BakeRequest request;
     bool boxGiven = false;
+
+    /** Texture side the bake's grid has to fit; the editor carries this per volume as ProbeCapacity. */
+    int capacity = 16384;
 
     for (int i = 1; i < argc; ++i)
     {
@@ -318,6 +323,15 @@ namespace ToolKit
           printf("--res expects x,y,z.\n");
           return 1;
         }
+      }
+      else if (flag == "--capacity")
+      {
+        const char* value = next("--capacity");
+        if (value == nullptr)
+        {
+          return 1;
+        }
+        capacity = std::max(2, std::atoi(value));
       }
       else if (flag == "--samples")
       {
@@ -395,6 +409,27 @@ namespace ToolKit
     {
       PrintUsage();
       return 1;
+    }
+
+    // The volume uploads as a 2D array of res.x by res.y * res.z texels, so the grid has to fit the
+    // texture side the target device allows. Refused rather than scaled: the caller asked for these
+    // numbers, and a bake of a grid it did not ask for is the kind of surprise that costs a day.
+    {
+      const size_t height = (size_t) request.resolution.y * request.resolution.z;
+      const size_t needed = std::max((size_t) request.resolution.x, height);
+      if (needed > (size_t) capacity)
+      {
+        printf("--res %ux%ux%u needs a %zu texel texture side, capacity is %d.\n",
+               request.resolution.x,
+               request.resolution.y,
+               request.resolution.z,
+               needed,
+               capacity);
+        printf("A cubic grid fits %d probes per axis at this capacity; pass a coarser --res, or a "
+               "larger --capacity for the device you bake for.\n",
+               (int) std::sqrt((double) capacity));
+        return 1;
+      }
     }
 
     request.quality = qualityArg == "l1" ? ProbeVolumeQuality::L1 : ProbeVolumeQuality::L2;
