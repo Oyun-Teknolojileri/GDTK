@@ -9,7 +9,10 @@
 
 #include "Action.h"
 #include "App.h"
+#include "EditorLightProbeVolumeComponent.h"
+#include "EditorScene.h"
 #include "EditorViewport.h"
+#include "OutlinerWindow.h"
 #include "ProjectThumbnail.h"
 #include "TransformMod.h"
 #include "WorkspaceTypes.h"
@@ -355,6 +358,73 @@ namespace ToolKit
 
     void ImportSlient(TagArgArray tagArgs) { BoolCheck(tagArgs, &GetApp()->m_importSlient); }
 
+    void BakeLightProbeExec(TagArgArray tagArgs)
+    {
+      EditorScenePtr scene = GetApp()->GetCurrentScene();
+      if (scene == nullptr)
+      {
+        WriteConsoleLine("BakeLightProbe: there is no current scene.", LogType::Error);
+        return;
+      }
+
+      // An argument names the entity, otherwise the selected one is used and then the first
+      // volume in the scene, so a scene with a single probe volume needs no argument at all.
+      String wanted;
+      if (!tagArgs.empty() && !tagArgs.front().second.empty())
+      {
+        wanted = tagArgs.front().second.front();
+      }
+
+      EditorLightProbeVolumeComponent* target = nullptr;
+      EntityPtrArray selection;
+      scene->GetSelectedEntities(selection);
+
+      auto pickFrom = [&](const EntityPtrArray& entities) -> void
+      {
+        for (const EntityPtr& ntt : entities)
+        {
+          if (ntt == nullptr || (target != nullptr))
+          {
+            continue;
+          }
+
+          if (!wanted.empty() && ntt->GetNameVal() != wanted)
+          {
+            continue;
+          }
+
+          if (EditorLightProbeVolumeComponent* comp =
+                  ntt->GetComponentFast<EditorLightProbeVolumeComponent>())
+          {
+            target = comp;
+          }
+        }
+      };
+
+      pickFrom(selection);
+      if (target == nullptr)
+      {
+        pickFrom(scene->GetEntities());
+      }
+
+      if (target == nullptr)
+      {
+        WriteConsoleLine("BakeLightProbe: no light probe volume" +
+                             (wanted.empty() ? String("") : " on '" + wanted + "'") + " in this scene.",
+                         LogType::Error);
+        return;
+      }
+
+      if (target->IsBaking())
+      {
+        WriteConsoleLine("BakeLightProbe: a bake is already running.", LogType::Warning);
+        return;
+      }
+
+      target->RequestBake();
+      WriteConsoleLine("BakeLightProbe: started, watch the component in the inspector.", LogType::Memo);
+    }
+
     void SelectByTag(TagArgArray tagArgs)
     {
       if (tagArgs.empty())
@@ -624,7 +694,7 @@ namespace ToolKit
 
     void SelectSimilar(TagArgArray tagArgs)
     {
-      auto showUsage = []() { TK_WRN("call command with arg: --by <material, mesh>"); };
+      auto showUsage = []() { TK_WRN("call command with arg: --by <class, material, mesh>"); };
       if (tagArgs.empty())
       {
         showUsage();
@@ -648,6 +718,22 @@ namespace ToolKit
 
       if (EditorScenePtr currScene = GetApp()->GetCurrentScene())
       {
+        // Reveal the result in the outliner once. The selection is read back from the scene
+        // instead of using the match list: AddToSelection folds a prefab child into its root,
+        // so the two sets can differ.
+        auto revealSelection = [currScene]() -> void
+        {
+          EntityPtrArray finalSelection;
+          currScene->GetSelectedEntities(finalSelection);
+
+          // The window drops the forced open set a couple of frames later, so the author can
+          // close the branches again afterwards.
+          if (auto outliner = GetApp()->GetOutliner())
+          {
+            outliner->RevealSelection(finalSelection);
+          }
+        };
+
         if (EntityPtr currNtt = currScene->GetCurrentSelection())
         {
           // For now select all similar meshes.
@@ -671,6 +757,7 @@ namespace ToolKit
                     });
 
                 currScene->AddToSelection(sameEntities, false);
+                revealSelection();
               }
             }
           }
@@ -694,8 +781,35 @@ namespace ToolKit
                     });
 
                 currScene->AddToSelection(sameEntities, false);
+                revealSelection();
               }
             }
+          }
+          else if (searchBy == "class")
+          {
+            // Exact class, not the base chain: selecting a Cube means the cubes, not every
+            // entity that happens to inherit from the same base. The editor renames a few
+            // classes through ObjectFactory::Override (EditorCamera is Camera), and Class()
+            // reports the registered name, so an editor camera matches a scene camera.
+            //
+            // The scene's own entity list is walked rather than a filtered view or the render
+            // jobs: a render job only exists for an entity with a mesh, and the command has to
+            // reach lights, cameras, probe volumes and empty nodes too.
+            ClassMeta* entityClass            = currNtt->Class();
+            const EntityPtrArray& allEntities = currScene->GetEntities();
+
+            EntityPtrArray sameEntities;
+            sameEntities.reserve(allEntities.size());
+            for (const EntityPtr& ntt : allEntities)
+            {
+              if (ntt != nullptr && ntt->Class() == entityClass)
+              {
+                sameEntities.push_back(ntt);
+              }
+            }
+
+            currScene->AddToSelection(sameEntities, false);
+            revealSelection();
           }
           else
           {
@@ -850,6 +964,7 @@ namespace ToolKit
       RegisterConsoleCommand(g_setTransformOrientationCmd, SetTransformOrientationExec);
       RegisterConsoleCommand(g_importSlientCmd, ImportSlient);
       RegisterConsoleCommand(g_selectByTag, SelectByTag);
+      RegisterConsoleCommand(g_bakeLightProbeCmd, BakeLightProbeExec);
       RegisterConsoleCommand(g_lookAt, LookAt);
       RegisterConsoleCommand(g_applyTransformToMesh, ApplyTransformToMesh);
       RegisterConsoleCommand(g_saveMesh, SaveMesh);

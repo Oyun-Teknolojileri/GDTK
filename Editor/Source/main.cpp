@@ -13,6 +13,7 @@
 #include "EditorCamera.h"
 #include "EditorCanvas.h"
 #include "EditorEnvironmentComponent.h"
+#include "EditorLightProbeVolumeComponent.h"
 #include "EditorViewport2d.h"
 #include "Gizmo.h"
 #include "Grid.h"
@@ -340,6 +341,7 @@ namespace ToolKit
             objFactory->Override<EditorCamera, Camera>();
             objFactory->Override<EditorCanvas, Canvas>();
             objFactory->Override<EditorEnvironmentComponent, EnvironmentComponent>();
+            objFactory->Override<EditorLightProbeVolumeComponent, LightProbeVolumeComponent>();
 
             // Let editor use actual resource path instead of the one in the pak file.
             // pak maybe not upto date.

@@ -13,6 +13,9 @@
 #include "OutlinerWindow.h"
 #include "Prefab.h"
 
+#include <LightProbe.h>
+#include <ReflectionProbe.h>
+
 namespace ToolKit
 {
   namespace Editor
@@ -518,6 +521,23 @@ namespace ToolKit
         m_billboards.push_back(billboard);
       };
 
+      // A probe carries its own icon: the light probe volume and the reflection probe are not
+      // environment volumes as far as the viewport is concerned, even though one of them owns an
+      // EnvironmentComponent.
+      if (entity->IsA<LightProbe>())
+      {
+        LightProbeBillboardPtr billboard = MakeNewPtr<LightProbeBillboard>();
+        addBillboardFn(billboard);
+        return;
+      }
+
+      if (entity->IsA<ReflectionProbe>())
+      {
+        ReflectionProbeBillboardPtr billboard = MakeNewPtr<ReflectionProbeBillboard>();
+        addBillboardFn(billboard);
+        return;
+      }
+
       // Check environment component
       bool envExist = entity->GetComponent<EnvironmentComponent>() != nullptr;
       if (envExist || entity->IsA<Sky>())
@@ -591,8 +611,18 @@ namespace ToolKit
         }
       };
 
-      // Check Sky billboard. Precedence over light billboard.
-      if (entity->GetComponent<EnvironmentComponent>())
+      // Check Sky billboard. Precedence over light billboard. The two probe types are checked
+      // first, because a reflection probe owns an EnvironmentComponent and would otherwise take
+      // the sky icon.
+      if (entity->IsA<LightProbe>())
+      {
+        sanitizeFn(EditorBillboardBase::BillboardType::LightProbe);
+      }
+      else if (entity->IsA<ReflectionProbe>())
+      {
+        sanitizeFn(EditorBillboardBase::BillboardType::ReflectionProbe);
+      }
+      else if (entity->GetComponent<EnvironmentComponent>())
       {
         sanitizeFn(EditorBillboardBase::BillboardType::Sky);
       }

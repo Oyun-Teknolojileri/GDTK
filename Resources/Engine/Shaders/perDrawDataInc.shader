@@ -49,6 +49,16 @@ struct DrawCommandLayout
 	vec4 vol1WldT1;
 	vec4 vol1WldT2;
 	vec4 vol1WldT3;
+
+	// Probe volume (L1 irradiance grid). x: enabled, y: intensity, z: ao strength.
+	vec4 probeParams;
+	vec4 probeMin;
+	vec4 probeMax;
+	vec4 probeRes;
+	vec4 probeInvT0;
+	vec4 probeInvT1;
+	vec4 probeInvT2;
+	vec4 probeInvT3;
 };
 
 struct MaterialDataLayout

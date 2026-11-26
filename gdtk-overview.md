@@ -40,6 +40,9 @@ GDTK/
 │   ├── RenderDoc/               # Editor glue for the capture core (static library)
 │   │   ├── Source/              # Editor capture directory, commands, menu entries
 │   │   └── Scripts/             # Report tooling: .rdc -> json / markdown / PNGs
+│   ├── LightProbeBake/          # CPU path traced diffuse GI bake (static library + ProbeBake CLI)
+│   │   ├── Source/              # Snapshot, triangle BVH, path tracer, SH projection
+│   │   └── Tools/               # ProbeBake.exe, headless bake of one scene to one .pgi
 ├── Templates/
 │   ├── Plugin/                  # Plugin template
 │   └── Game/                    # Game template
@@ -260,6 +263,15 @@ guaranteed to reach 2^9, and texel coordinates (an instance table row, a depth g
 precision is where a mobile GPU actually pays, so lowering anything back to `lowp` / `mediump` is a
 measurement to make per fetch, not a default to inherit.
 
+The same rule crosses the stage boundary. The linker compares the two stages' UBO record types field by
+field, **field precision included**, so a fragment shader that links against a vertex shader stating
+`precision highp int;` has to state it too, or every shared light block (`drawDataInc.shader`, whose
+`SpotLightData` carries `int` members) makes the whole program fail to link with a message that names the
+same type twice: ``uniform `spotLightArray' declared as type `SpotLightData[32]' and type
+`SpotLightData[32]'``. `reflectionPreviewFrag.shader` was the one shader in that state, and the failure is
+quiet in the frame - the draw is still recorded and nothing rasterizes - which is how the reflection
+probe's preview sphere went missing.
+
 `ShadowSettings::ParameterEventConstructor` is the hook that pushes the values into the graphics constant buffer via `ValueUpdateFn`.
 
 ### 3.3 Logging (Logger.h)
@@ -384,9 +396,9 @@ pixel; a ray that points back at the camera is one of those misses, and treating
 with full coverage is what painted the middle of a probe lit sphere with the sky. A miss writes the reflection it was already holding back into
 the history with its coverage decayed, so the pixel settles onto the shading model's own reflection over
 a handful of frames instead of jumping between a screen space colour and the sky from one frame to the
-next. That matters because the shading model is the part that knows about the scene's reflection probes:
-`IBLPBR` already evaluates the two local volumes and blends the sky into whatever they do not cover, so
-letting a miss alone is what makes the fallback the same algorithm a surface would have used anyway.
+next. That matters because the shading model is the part that knows about the scene's reflection sources:
+`IBLPBR` already blends the two local volumes' specular against the sky, so letting a miss alone is what
+makes the fallback the same algorithm a surface would have used anyway.
 Coverage rides in the counter target's green channel and the composite weighs the reflection by it.
 
 Four knobs tune the trade, all in the post processing panel: History Response (the length of the
@@ -910,7 +922,7 @@ All bind at fixed slots (0-6 are the global engine buffers, 7 and up are pass sp
 
 The big per-object uniform block. Carries:
 - `global0/1` — flags (IBL in use, AO in use, sky intensity, light counts)
-- Two **environment volumes** (primary + secondary for IBL blending), each with 11 `Vec4`:
+- Two **environment volumes** (primary + secondary for the specular blend), each with 11 `Vec4`:
   - `vol[0|1]Params` (intensity, fadeDistance, interior, pccEnabled)
   - `vol[0|1]Min/Max` (AABB in local space)
   - `vol[0|1]InvT[0..3]` (inverse world transform)
@@ -920,9 +932,13 @@ Both slots are filled by `RenderJobProcessor::AssignEnvironment` with the two sm
 non-sky volumes (sky owned volumes are filtered out and contribute through the global sky instead).
 `ibl.shader` combines them as a weighted average: each volume's weight is its fade factor and the sky
 takes only the weight the strongest volume did not cover (`skyWeight = 1 - max(blend)`). A pixel fully
-covered by a volume therefore gets no sky at all, a pixel inside a fade band fades into the sky, and
-`Interior` volumes keep the sky out of the pixel entirely. The fade distance is clamped per axis to
+covered by a volume therefore gets no sky specular at all, a pixel inside a fade band fades into the sky,
+and `Interior` volumes keep the sky out of the pixel entirely. The fade distance is clamped per axis to
 that axis' own half extent, so every volume keeps a full weight core however small or thin it is.
+
+A local volume is a **reflection source**: its irradiance cache is not bound any more, so the average
+above covers the specular term only. The sky's diffuse is the ambient term, an interior volume pins it
+out, and the baked probe volume replaces it wherever one covers the pixel.
 
 ---
 
@@ -938,6 +954,7 @@ Core API:
 - Draw: `BindPipeline`, `SubmitPerDrawData`, `BindTexture(slot, tex)`, `BindUniformBuffer(name, ub)`, `Draw(DrawDesc)`
 - FB ops: `ResolveFramebuffer`, `CopyFramebuffer`, `BlitToScreen`
 - Queries: `StartTimerQuery`, `EndTimerQuery`, `GetElapsedTime`
+- Capability queries: `GetMaxArrayTextureLayers`, `GetMaxTextureUnits`, `GetMaxTextureSize`
 - Texture mgmt: `CreateTexture`, `DestroyTexture`, `ApplyTextureSettings`, `GenerateMipmaps`, `UpdateTextureRegion`, `SetTextureMaxMipLevel`, `AllocateCubemapMipStorage`, `CopyCubemapFaceFromFramebuffer`, `SetTextureSwizzleAlpha`
 - Mesh mgmt: `CreateMesh`, `DestroyMesh`
 - Read back: `ReadPixels` (blocking) and `BeginReadPixels` / `EndReadPixels`, the polled pair the depth grid uses
@@ -966,6 +983,20 @@ expensive spot, and it is the spot a naive "just read it synchronously" lands on
 The null backend answers false too, and Vulkan's `ReadPixels` is still a TODO, so on those the grid silently
 never arrives - which is why the engine logs once when a grid read comes back empty rather than leaving culling off
 with nothing said.
+
+**Texture units are asked for, not assumed.** `GetMaxTextureUnits()` is the fragment stage's sampler
+budget: GL answers with `GL_MAX_TEXTURE_IMAGE_UNITS` (16 on GL ES 3.0, which is what the web and the
+Android GL path get), Vulkan takes the smaller of the per-stage and per-set sampler limits, and the
+null backend reports the engine's slot table. `Renderer` logs it once at startup and drops every bind
+above it, because `glActiveTexture` past the limit is an error that leaves the previous unit selected
+and silently moves the next bind onto it. The forward shader's highest slot is 14, so the number is
+what tells a mobile target how much of that budget it actually has.
+
+`GetMaxTextureSize()` answers the same way for the largest 2D texture, and the probe volume checks the
+grid against it before uploading: the grid stacks its z slices vertically into `res.y * res.z` rows,
+which is 5304 for the 80x52x102 bake in the test scene and over the 4096 a GL ES 3.0 device only
+guarantees. A grid that does not fit is refused with an error naming the number, instead of uploading
+an incomplete texture that samples black.
 
 `PassDesc` = `{ target framebuffer, clearBits, discardBits, clearColor, loadColor, loadDepth }`
 `DrawDesc` = `{ mesh, vertexLayout, indexed, elementCount, instanceCount, drawType }`
@@ -1065,6 +1096,187 @@ Base class for every loadable asset. Inherits Object. Has lifecycle: `Load()` (C
   whole param block -- a freshly imported material loaded with nothing but its id and name.
 - **Shader** (Shader.h): supports `VertexShader`, `FragmentShader`, `IncludeShader`. Has `ShaderDefine` + `ShaderDefineArray` for variants. Master vs include shader concept: master defines the entry + variant defines; include has no entry. Each shader has `ShaderResourceArray m_resources` declaring texture/UBO bindings with `ViewType` (`Tex2D`, `Tex2DArray`, `TexCube`) — used by Vulkan to pick the right dummy texture for unbound slots.
 - **Texture** (Texture.h), **CubeMap** (Texture.h subclass), **RenderTarget** (offscreen target), **Audio**, **Animation** (`Animation.h` + `AnimationControllerComponent`), **Skeleton** (`Skeleton.h` + `SkeletonComponent`), **SpriteSheet**, **Prefab**, **Plugin**.
+- **ProbeVolume** (`ProbeVolume.h`): not an `Object`, a plain struct plus a `.pgi` reader / writer, because
+  the bake lives in `Modules/LightProbeBake` and the runtime lives in the engine. Holds a dense grid
+  (`resolution`), the volume box (`transform`, `boxMin`, `boxMax`), the quality (L1 = 4 or L2 = 9
+  coefficients), the coefficients (`probeCount * coefficientCount * 3` floats, probe major) and a per
+  probe validity mask. The coefficients are the irradiance divided by pi and already convolved with the
+  clamped cosine, i.e. the same quantity `Hdri::m_diffuseEnvMap` holds, which is what lets the shader
+  multiply albedo with either. `ProbeBake.exe` (`--selftest` for the analytic checks) writes it.
+
+  The grid is dense but not every probe is traced. `ProbeTraceRadius` (entity, component and
+  `BakeRequest`, in cells, `--sparse` on the CLI) keeps the bake to the probes within that distance
+  of some surface: nothing samples a probe in open air directly, the shader interpolates for
+  surfaces, and a surface sits within a cell diagonal of the probes it reads, so a probe farther out
+  is filled from its nearest traced neighbour instead. The mask is the record of what was traced -
+  a filled probe keeps a zero in it - which is also what the editor's point view draws, so the
+  points that appear are the ones the bake actually sampled. Zero traces every probe.
+
+  Filling is for the shader, not for the view. It interpolates the grid trilinearly and has no
+  notion of a probe being valid, so a skipped probe left at zero would pull every surface that
+  shares its cell halfway to black. But a copy must only travel where the light could: one ray to
+  the very neighbour the fill would take decides it, and when geometry stands between them the
+  probe is recorded as blocked and stays zero. Without that check a probe in the four centimetre
+  gap between two wall boxes took the sky-lit air from the far side of a face, and a re-bake of a
+  closed box lit 134 of those across walls - measured on `closedbox.scene`, and the reason its
+  interior read 0.0001 instead of 0.
+
+  The denoise runs over the traced probes only, on both sides of the average. It used to relax the
+  whole grid, filled copies included, and it was those copies that carried light around the outside
+  of a wall into the inside: the same closed box measured 438 lit probes with eight passes and 56
+  once the copies were out of the mean, and its interior went from 0.0001 to exactly zero. A probe
+  that was never traced holds no measurement of its own, so it has no business in a mean either.
+
+  A neighbour also has to be visible before it is averaged in (`BuildNeighbourVisibility`: six bits
+  per probe, one ray per direction, cast once and shared by every pass). Excluding the filled copies
+  was only half of it - the grid knows nothing about geometry and a cell can straddle a surface, so
+  any face with no thickness, or a wall thinner than a cell, let the lit side blur into the dark
+  side. On `lightroom` at 30x17x34 with six passes, 6477 of the 7365 probes that had traced to
+  exactly zero came back non zero without the ray test and 532 with it; those 532 have a neighbour
+  in the same open space, so the blur is doing its job. `closedbox` reads 0.000000 across its
+  interior with eight passes either way.
+
+  The sparsity is in the file and not only in the bake. A filled probe is a copy of a traced one, so
+  `.pgi` version 3 stores the mask (a bit per probe), the blocked mask, and the traced coefficient
+  rows only; `LoadProbeVolume` puts the copies back with `FillUntracedProbes`, which is the same pass
+  - and the same values - the bake ran before it wrote. The fill reads the two masks and the traced
+  rows, never another filled probe, so it is idempotent and the reloaded grid is bit identical to
+  the one the bake held. `ms-box` at 16x8x16 with `--sparse 2` is 98 KB of coefficients down to 37 KB
+  of file; a bake that traces every probe still saves the seven eighths of the mask that a byte per
+  probe spent. A file from an older layout is refused with a message rather than migrated: the bake
+  is the migration. The texture stays dense either way: the shader addresses the grid
+  arithmetically and has no structure to look a probe up in, so the VRAM a volume costs is unchanged
+  by any of this.
+
+  Each material's albedo and emissive come from its maps when it carries them -- the mean of the
+  texture, linearized, because a probe only sees the radiance a surface carries per unit area -- and
+  from `Color` / `EmissiveColor` otherwise, which is the same either/or `defaultFragment.shader` does.
+  Reading the colours alone traced a city with no light in it: a night scene keeps its window glow in
+  an emissive map next to a black `EmissiveColor`, and a textured wall keeps a white `Color` next to
+  a dark map.
+
+  A blended material (`Material::IsTranslucent`: glass, water, an additive glow) does not block a
+  path in the tracer - the ray carries on from the hit point and the surface still emits - and the
+  Bvh occlusion test walks past it through `BakeScene::materialsPassingLight`, so a glass facade
+  stops being a wall. Transmittance is not modelled: a blended surface passes light whole.
+
+  The runtime half is `LightProbeVolumeComponent` (`ToolKit/Components/`), which loads the file, keeps
+  the L1 grid in one four layer `RGBA16F` `DataTexture` (one array layer per colour channel plus a
+  coverage layer, see `probeGI.shader`) and registers itself in `Scene::m_probeVolumeCache`.
+  `RenderJobProcessor::AssignEnvironment` gives each job the smallest baked volume containing it, the
+  job carries it as `RenderJob::ProbeVolume`, and `Renderer::SetDataTextures` binds the array texture at
+  slot 6 and fills the `probe*` block of the `PerDrawData` UBO. `probeGI.shader` evaluates the four L1
+  coefficients and `IBLPBR` (`ibl.shader`) reports the sky's diffuse through an out parameter, which
+  `defaultFragment.shader` swaps for the probe where the volume is active; the specular term keeps
+  coming from the sky and the local volume cubemaps.
+
+  The coverage layer is what makes a blocked probe harmless instead of black. Its red channel is one
+  where the probe holds a value and zero where the bake left it at zero, and the sampled irradiance is
+  divided by the sampled coverage at the same address with the same filter - the trilinear weight of
+  the probes that carry something, which is the same as dropping the empty ones and renormalising the
+  rest. Unreal's volumetric lightmap and Unity's adaptive probe volumes do the same, and it is what
+  lets the bake leave a walled-off probe at zero instead of copying a value through a wall. It rides
+  in the array rather than in a texture of its own because the forward program already declares
+  samplers up to slot 14 and GL ES 3.0 only guarantees sixteen units: eight more bytes per probe is
+  the cheaper of the two, and a brick structure takes them back.
+
+  That layer is only uploaded when the volume needs it. A bake with no walled-off probe uploads three
+  layers instead of four, which is a quarter of the texture, and sets `probeParams.w` to zero;
+  `probeGI.shader` then reads the coverage as one and never samples the layer that is not there. The
+  flag fits in `probeParams.w`, which was unused, so the saving costs no sampler and no unit.
+
+  The lookup is offset along the surface normal before it is sampled, which is what keeps a surface
+  next to a wall from reading the probes on the far side of it. The filter reaches one cell past the
+  sample point, so the share of the far side a wall of thickness `t` over a spacing `s` contributes is
+  about `max(0, 1 - t / s - offset)`: with no offset a paper thin wall carries half the outside light
+  and a wall a full cell thick carries none. `NormalOffset` (per volume, in cells, 0 to 2 by 0.25,
+  default 0.5) is that term. The scale is in cells because the cost of a large offset is cell
+  relative - one cell is ten centimetres on a 0.1 m volume and four metres on a 4 m one - so a far
+  field volume stays at half a cell while an interior one needs a full cell to clear a thin wall. It
+  is a shading time value, so changing it needs no re-bake, and it rides in `probeRes.w`, which was
+  free. The offset is built in the volume's local space from the interpolated surface normal
+  (`v_worldNormal`, never the normal mapped one: a bump would push the lookup into the geometry it was
+  meant to leave). The edge fade keeps using the unshifted position, so a volume's coverage does not
+  shrink with the offset and its border does not fall back to the sky.
+
+  A volume uploads as a 2D array of `res.x` by `res.y * res.z` texels, so a grid only fits a device
+  whose largest texture side covers both. `ProbeCapacity` picks that side by device class - 2048 is
+  the GL ES 3.0 minimum, 4096 a typical phone, 8192 a high end one, 16384 a desktop GPU, 32768 the
+  largest current desktop parts report - and is mirrored on the `LightProbe` entity with the rest of
+  the bake settings. A grid over it is **refused**, not scaled down: `ProbeGridAdvice` names the
+  smallest capacity that would hold it and, when a spacing also does, the `ProbeSpacing` that
+  shrinks the grid into the selected one - the spacing is found by bisecting the same rounding and
+  per axis clamp the bake uses, so the number it prints is the number that works. A bake that
+  quietly covers a coarser grid than the settings say is wrong in a way the inspector cannot show,
+  and bisecting the spacing by hand is what the advice exists to save. `ProbeBake` carries the same
+  check as `--capacity` and refuses with the numbers. The load-time device limit check stays as the
+  backstop for a file baked for a machine with a larger texture side.
+
+  **The authoring half.** A `LightProbe` entity (`ToolKit/Entities/LightProbe.h`) owns a volume the
+  way a primitive owns its mesh: it creates the component through the object factory, so an editor
+  build gets `EditorLightProbeVolumeComponent` (where the bake runner lives) instead of the engine
+  type, mirrors the component's parameters into its own `Light Probe` group and hides the
+  component's group with `ParameterBlock::ExposeByCategory`, so the inspector shows one block. The
+  mirror pushes entity -> component on edit and is refreshed from the component once per frame,
+  because the box edit tool writes `Size` straight onto the component. `FitToScene` sets the box to
+  the scene bounds with the same padding `ProbeBake` applies when it is given none, in the node's
+  local space.
+
+  The bake itself is editor side: `EditorLightProbeVolumeComponent` runs `LightProbeBake::Bake` on a
+  thread of its own with a progress callback and a cancel token, writes the `.pgi` and reloads it.
+  The per frame tick that joins that thread comes from `LightProbeVolumeComponent::Update`, which
+  `Scene::Update` calls next to the `Init` it already ran - deliberately not from the main thread
+  task queue, because a poll that re-schedules itself from inside a task extends the frame's task
+  loop. The buttons reach the runner through `RequestBake` / `RequestCancelBake` / `IsBaking` /
+  `GetBakeProgress` / `GetBakeStatus`, virtuals the engine base leaves empty, so `ToolKit` never
+  links the baker and a game answers "not baked" without it. `BoxEditMod` hands the box the same
+  handles an environment volume gets and `EditorRenderer` draws it; the console has
+  `BakeLightProbe [<entity>]` for a headless trigger.
+
+  **The sample point visual.** `VisualiseProbe` on `EditorLightProbeVolumeComponent` draws the
+  volume's grid in the viewport, through `Editor::LightProbeVisualPass` (`Editor/Render/Pass/`). The
+  flag is stored on the editor half - nothing in the renderer or the bake reads it, and a shipped
+  game has no viewport to draw it in - and `EntityView` draws that one variant inside the entity's
+  `Light Probe` block, lifting `m_exposed` for the call because `ExposeByCategory` hid the whole
+  volume group behind the entity's mirror. So the row reads like any other value of the probe while
+  the storage stays off the engine types. The pass draws every point
+  as one instanced sphere - one mesh and one material for the whole grid, so sixteen by eight by
+  sixteen points cost a draw call - with the position, the radius and the colour fetched per
+  instance from a table the pass uploads. The colour is the DC term of the probe's spherical
+  harmonics, the ambient light arriving there, drawn unlit; a volume with no bake shows the grid it
+  would bake in neutral grey. The forward pass could not carry this: its batching needs identical
+  materials (so no per-point colour) and it excludes shader materials outright.
+
+  The sky a miss sees is either the `GradientSky` parameters, evaluated analytically, or an
+  equirectangular HDRI resampled on the CPU into the snapshot (`BakeScene::BuildBakeScene`).
+  The image is read from the file the sky names, not from the `Hdri` resource, whose pixels are a
+  GPU cubemap by then; it goes through the same `1 - exp(-c)` curve
+  `Renderer::GenerateCubemapFrom2DTexture` applies with an exposure of one and the same sky node
+  orientation, so the baked ambient lands in the range the forward pass lights the frame with.
+  The width is capped (`MaxSkyHdriWidth`) because a probe stores irradiance, not sky detail.
+
+  **Reflection probes.** `ReflectionProbe` (`ToolKit/Entities/ReflectionProbe.h`) is the authoring
+  entity for a local volume that supplies reflections only: it always owns an `EnvironmentComponent`,
+  mirrors its parameters and hides the component's group the way `LightProbe` does, and starts with a
+  fileless (dynamic) Hdri so the component captures the room on init. It exposes `Capture` and
+  `CenterToArea`. The mirror pushes only the value that changed - every write fires the component's
+  change events, and `Size` / `PositionOffset` are the two that mark its spatial caches dirty, which
+  is the editor's cue to capture again - so a probe captures in exactly the cases a plain environment
+  component does: a changed volume, the first init, or the `Capture` button. A capture builds the
+  pre-filtered specular chain only (`Hdri::GenerateSpecularEnvCache`): the forward shader samples a
+  local volume's specular cubemap and never its irradiance one, so the diffuse convolution the old
+  `GenerateIrradianceCaches` did was work whose result nothing read. `EditorEnvironmentComponent`
+  mirrors a capture's new Hdri and a box edit's volume back into the entity, because those reach the
+  component without passing through it. The cube is captured at the probe's node origin, which is
+  also the point `ibl.shader` projects its parallax corrected reflections from: the shader
+  normalizes the box intersection as a direction from the local origin, so `PositionOffset` moves
+  the box around that point and not the point itself. Selecting a probe draws an editor-only chrome
+  ball on the same origin through `reflectionPreviewFrag.shader`, which samples the probe's own
+  prefiltered cubemap at mip zero and adds no direct light, ambient, emissive or Fresnel: the
+  preview shows the capture, not the room's lighting. The ball is cached on `EditorRenderer` and
+  never enters the scene, so a game never draws it, and the probe entities carry their own
+  billboards (`Icons/light_probe.png`, `Icons/reflection_probe.png`). The material manager exposes a
+  plain `chrome.material` (white, metallic one, roughness zero) for levels.
 
   A texture's pixels arrive one of three ways: `m_image` holds 8 bit RGBA for the ordinary stb path,
   `m_imagef` holds float data for HDRI, and `m_compressedLevels` + `m_compressedFormat` hold GPU ready
@@ -1191,13 +1403,21 @@ The "thing in the scene". Inherits `Object`. Components attached for behavior:
 - `MaterialComponent`
 - `AnimationControllerComponent`
 - `SkeletonComponent`
-- `EnvironmentComponent` (IBL volume)
+- `EnvironmentComponent` (IBL volume, specular only: the probe volume owns diffuse)
 - `DirectionComponent` (directional light, billboard etc.)
 - `AABBOverrideComponent`
 - `EditorLight`, `EditorCamera`, `EditorBillboard` (editor-only)
 - `EditorEnvironmentComponent` (editor-only)
 
 Has `ObjectPtr Copy()`, `RemoveResources()`, `Parent()`, `IsDrawable()`, `SetPose(anim, time)`, `GetBoundingBox(inWorld)`, `IsVisible()`, `SetVisibility(vis, deep)`.
+
+**A sky entity owns the component; the entity keeps the authored values.** `SkyBase::Init` resolves
+the Hdri: a null *or fileless* one falls back to `TextureManager::GetDefaultResource`
+(`Textures/defaultHDRI.hdr`), because the scene loader turns an empty `Hdri` parameter into a default
+constructed (dynamic) Hdri rather than a null one, and nothing can build a cubemap from that. The
+same `Init` pushes the entity's `Illuminate` / `Intensity` into the component - the renderer and the
+probe bake read the component - and `Sky` mirrors the resolved Hdri back into its own parameter, so a
+save records the image the sky actually draws instead of an empty tag.
 
 ### 7.2 Node (Node.h)
 Transform / hierarchy. `m_inheritScale`, `m_inheritTranslate`, `m_inheritRotate`. `Parent()` traverses up.
@@ -1464,6 +1684,15 @@ sits in a tab that was not open yet keeps its state until it is.
 generated id: the layout file matches a window by name, and a name that changes every
 session made the window a first use every time, which kept it floating and growing the
 layout file with one stale entry per session.
+
+`OutlinerWindow::RevealSelection(entities)` opens the branches a bulk selection lives in
+for one frame and scrolls to its last entity, then drops the forced open set so the
+author's own expansion state comes back. The console's `SelectSimilar` command
+(`--by class|material|mesh`) ends every branch with it. The class branch matches `Class()`
+exactly -- the registered name, so the editor's renamed `Camera` and the light overrides
+match the scene's own classes -- and walks `Scene::GetEntities()` instead of render jobs,
+because a job only exists for an entity with a mesh and the command has to reach lights,
+cameras, probe volumes and empty nodes.
 
 ### 9.4 EditorRenderer (Editor/EditorRenderer.h)
 Editor version of `Renderer` path. Adds `GizmoPass` and editor grid pass. Multiple viewports (4-up default).
@@ -1946,6 +2175,15 @@ pak existed yet, so a lookup during packing poisoned every later read of the pak
 written. `GenerateOffsetTableForPakFiles` no longer caches a missing pak, and `CloseZipFile` /
 `PackResources` drop the table when the pak is replaced.
 
+**Not everything a scene references is a `Resource`.** The path set comes from the resource managers
+(`GetAllUsedResourcePaths`) plus `ExtraFiles.txt`, and a light probe volume is neither: a
+`LightProbeVolumeComponent` names its `.pgi` in a string parameter. The pack step walks the loaded
+scenes for those components and adds the file, and `LoadProbeVolume` reads through
+`FileManager::ReadFileBuffer` instead of an `ifstream`, so the bake travels inside the pak like every
+other resource. The editor is not the host that proves this - it sets `m_ignorePakFile` and reads
+loose files (`Editor/Source/main.cpp`, and the Launcher does the same), while the game template
+leaves the flag alone and therefore reads the pak.
+
 **What a publish does about packing is a setting, not a rule in the Packer.** `Projects -> Publish ->
 Packer` holds `Pack on Debug`, `Pack on Develop`, `Pack on Deploy` and `Compress textures`, plus a
 `Pack Resources` action that packs immediately with those settings. They are stored in the project's
@@ -2289,6 +2527,7 @@ When writing/editing any `.h`/`.cpp` in this repo:
 | Framebuffer | `ToolKit/Render/Framebuffer.h` |
 | Viewport | `ToolKit/Source/Viewport.h` |
 | Entity | `ToolKit/Entities/Entity.h` |
+| Reflection probe entity | `ToolKit/Entities/ReflectionProbe.h` |
 | Node | `ToolKit/Source/Node.h` |
 | Component | `ToolKit/Components/Component.h` |
 | Scene | `ToolKit/Resources/Scene.h` |
@@ -2306,6 +2545,9 @@ When writing/editing any `.h`/`.cpp` in this repo:
 | Editor API for modules (console commands, console output) | `Editor/Source/EditorApi.h` |
 | Frame capture request hook (game code) | `ToolKit/Source/FrameCapture.h` |
 | Capture and its report tool (capture -> .rdc -> json / markdown / PNGs) | `Modules/RenderDoc/README.md` |
+| Baked probe volume data + `.pgi` file format | `ToolKit/Resources/ProbeVolume.h` |
+| Probe bake entry point (snapshot, BVH, path tracer) | `Modules/LightProbeBake/Source/LightProbeBake.h` |
+| Diffuse GI design and phase list | `light-probe-gi-plan.md` |
 | Host / platform glue (exec paths, shortcuts, app icon) | `ToolKit/Common/PlatformHelper.h` |
 | Workspace (project and workspace management) | `Modules/Workspace/Source/Workspace.h` |
 | Build deps | `BuildScripts/build_dependencies.py` |

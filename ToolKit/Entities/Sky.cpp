@@ -55,8 +55,15 @@ namespace ToolKit
     else
     {
       // Check if there is a loaded hdr.
+      //
+      // A fileless one counts as missing. The scene loader turns an empty Hdri parameter into a
+      // default constructed Hdri instead of a null one (ParameterBlock, the HdriPtr case), so a
+      // scene saved without an assigned HDRI loads as a dynamic Hdri holding no image. Nothing
+      // can build a cubemap from that - Hdri::Init returns early without m_imagef, and
+      // EnvironmentComponent::Init skips the capture for a sky - and reading it as "assigned"
+      // left the sky drawing nothing and lighting nothing.
       hdri = envComp->GetHdriVal();
-      if (hdri == nullptr)
+      if (hdri == nullptr || hdri->IsDynamic())
       {
         // Use default hdr image.
         TextureManager* tman = GetTextureManager();
@@ -69,6 +76,15 @@ namespace ToolKit
 
     // Associate hdr.
     envComp->SetHdriVal(hdri);
+
+    // The entity carries these two, the component is what the renderer and the bake read, and a
+    // scene file keeps both. The entity is the authoring surface - the inspector shows it and
+    // SerializeImp writes it - so it is the one that wins when the two disagree. Pushing them
+    // here rather than only from the change events is what makes a scene whose copies drifted
+    // apart light the frame the way the inspector says, and it covers a GradientSky, whose init
+    // completes on a render task long after its parameters were edited.
+    envComp->SetIlluminateVal(GetIlluminateVal());
+    envComp->SetIntensityVal(GetIntensityVal());
 
     envComp->SetSizeVal(Vec3(TK_FLT_MAX));
     envComp->OwnerEntity(Self<Entity>());
@@ -212,10 +228,11 @@ namespace ToolKit
     ParamIlluminate().m_onValueChangedFn.push_back(
         [this](Value& oldVal, Value& newVal) -> void
         {
-          if (IsInitialized())
+          // A null component is the only thing to guard here: gating on IsInitialized dropped
+          // every edit made before a GradientSky's render task had completed.
+          if (EnvironmentComponentPtr env = GetComponent<EnvironmentComponent>())
           {
-            bool val = std::get<bool>(newVal);
-            GetComponent<EnvironmentComponent>()->SetIlluminateVal(val);
+            env->SetIlluminateVal(std::get<bool>(newVal));
           }
         });
 
@@ -223,9 +240,9 @@ namespace ToolKit
     ParamIntensity().m_onValueChangedFn.push_back(
         [this](Value& oldVal, Value& newVal) -> void
         {
-          if (IsInitialized())
+          if (EnvironmentComponentPtr env = GetComponent<EnvironmentComponent>())
           {
-            GetComponent<EnvironmentComponent>()->SetIntensityVal(std::get<float>(newVal));
+            env->SetIntensityVal(std::get<float>(newVal));
           }
         });
   }
@@ -265,6 +282,23 @@ namespace ToolKit
     }
 
     SkyBase::Init();
+
+    // Mirror the Hdri the component resolved back into this entity's parameter. The component is
+    // what renders, and it falls back to the engine default when the scene carries no image; the
+    // entity is what a save writes, so without this a sky drawing the default HDRI serialized an
+    // empty Hdri tag and loaded back as a fileless Hdri that draws nothing.
+    if (EnvironmentComponentPtr env = GetComponent<EnvironmentComponent>())
+    {
+      if (GetHdriVal() != env->GetHdriVal())
+      {
+        SetHdriVal(env->GetHdriVal());
+      }
+
+      if (HdriPtr resolved = env->GetHdriVal())
+      {
+        TK_LOG("Sky '%s': environment map '%s'.", GetNameVal().c_str(), resolved->GetFile().c_str());
+      }
+    }
 
     // Skybox material
     ShaderPtr vert = GetShaderManager()->Create<Shader>(ShaderPath("skyboxVert.shader", true));
@@ -327,8 +361,15 @@ namespace ToolKit
     ParamHdri().m_onValueChangedFn.push_back(
         [this](Value& oldVal, Value& newVal) -> void
         {
+          // The component does not exist yet when this fires during construction, and Init writes
+          // this same value into the entity, so neither a missing component nor an unchanged value
+          // may fall through to the component: the latter would re-run its irradiance scheduling.
           EnvironmentComponentPtr environmentCom = GetComponent<EnvironmentComponent>();
-          environmentCom->SetHdriVal(std::get<HdriPtr>(newVal));
+          const HdriPtr& hdri                    = std::get<HdriPtr>(newVal);
+          if (environmentCom != nullptr && environmentCom->GetHdriVal() != hdri)
+          {
+            environmentCom->SetHdriVal(hdri);
+          }
         });
   }
 

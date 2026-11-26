@@ -271,6 +271,16 @@ namespace ToolKit
      */
     void GenerateIrradianceCaches(class Renderer* renderer);
 
+    /**
+     * Builds the pre-filtered specular chain and nothing else.
+     *
+     * A local environment volume is a reflection source: the forward shader samples its specular
+     * cubemap and never its irradiance one, so capturing a probe has no reason to pay for the
+     * diffuse convolution. The sky needs both, which is why the two halves are split.
+     * Make sure this called from render thread. Use render task.
+     */
+    void GenerateSpecularEnvCache(class Renderer* renderer);
+
     /** Returns the environment map baked file name without mip level post fix. */
     String GenerateBakedEnvironmentFileBaseName();
     /** Returns diffuse irradiance file name for the given hdri image. */

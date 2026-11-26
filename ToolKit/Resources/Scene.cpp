@@ -192,6 +192,14 @@ namespace ToolKit
       envComp->Init(true);
     }
 
+    // A probe volume loads its bake once and then does nothing; the Init early outs. The Update is
+    // where a host that runs work around the volume (the editor's bake) ticks.
+    for (const LightProbeVolumeComponentPtr& probeComp : m_probeVolumeCache)
+    {
+      probeComp->Init(true);
+      probeComp->Update();
+    }
+
     for (Light* light : m_lightCache)
     {
       light->UpdateShadowCamera();
@@ -477,6 +485,8 @@ namespace ToolKit
 
   EnvironmentComponentPtrArray& Scene::GetEnvironmentVolumes() const { return m_environmentVolumeCache; }
 
+  LightProbeVolumeComponentPtrArray& Scene::GetProbeVolumes() const { return m_probeVolumeCache; }
+
   EntityPtr Scene::GetFirstByName(const String& name)
   {
     for (EntityPtr ntt : m_entities)
@@ -693,6 +703,49 @@ namespace ToolKit
           remove(m_environmentVolumeCache, envComp);
         }
       }
+    }
+
+    if (const LightProbeVolumeComponentPtr& probeComp = ntt->GetComponent<LightProbeVolumeComponent>())
+    {
+      if (add)
+      {
+        m_probeVolumeCache.push_back(probeComp);
+      }
+      else
+      {
+        remove(m_probeVolumeCache, probeComp);
+      }
+    }
+  }
+
+  void Scene::AddProbeVolume(const LightProbeVolumeComponentPtr& probeComp)
+  {
+    if (probeComp == nullptr)
+    {
+      return;
+    }
+
+    if (std::find(m_probeVolumeCache.begin(), m_probeVolumeCache.end(), probeComp) == m_probeVolumeCache.end())
+    {
+      m_probeVolumeCache.push_back(probeComp);
+    }
+  }
+
+  void Scene::RemoveProbeVolume(LightProbeVolumeComponent* probeComp)
+  {
+    if (probeComp == nullptr)
+    {
+      return;
+    }
+
+    auto itr = std::find_if(m_probeVolumeCache.begin(),
+                            m_probeVolumeCache.end(),
+                            [probeComp](const LightProbeVolumeComponentPtr& ptr)
+                            { return ptr.get() == probeComp; });
+
+    if (itr != m_probeVolumeCache.end())
+    {
+      m_probeVolumeCache.erase(itr);
     }
   }
 

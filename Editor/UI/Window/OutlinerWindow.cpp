@@ -551,6 +551,13 @@ namespace ToolKit
         m_oddAlternatingPattern      = 0;
         m_anyEntityHovered           = false;
 
+        // The forced open set from a reveal lives for a couple of frames and then stops being
+        // applied, so the tree goes back to the author's own expansion state.
+        if (m_openNodesFramesLeft > 0 && --m_openNodesFramesLeft == 0)
+        {
+          m_openNodes.clear();
+        }
+
         const EntityPtrArray& ntties = currScene->GetEntities();
         m_roots.clear();
         m_indexToEntity.clear();
@@ -687,10 +694,40 @@ namespace ToolKit
       GetParents(ntt, m_nttFocusPath);
     }
 
+    void OutlinerWindow::RevealSelection(const EntityPtrArray& entities)
+    {
+      m_openNodes.clear();
+
+      for (const EntityPtr& ntt : entities)
+      {
+        if (ntt == nullptr)
+        {
+          continue;
+        }
+
+        m_openNodes.insert(ntt->GetIdVal());
+
+        EntityPtrArray parents;
+        GetParents(ntt, parents);
+        for (const EntityPtr& parent : parents)
+        {
+          m_openNodes.insert(parent->GetIdVal());
+        }
+      }
+
+      // The set is applied for a couple of frames and then dropped: the tree remembers its own
+      // open state, so the author can close the branches again and they stay closed.
+      m_openNodesFramesLeft = 2;
+      m_scrollToEntity      = entities.empty() ? 0 : entities.back()->GetIdVal();
+    }
+
     void OutlinerWindow::ClearOutliner()
     {
       m_nttFocusPath.clear();
       m_shownEntities.clear();
+      m_openNodes.clear();
+      m_openNodesFramesLeft = 0;
+      m_scrollToEntity      = 0;
       m_indexToEntity.clear();
       m_draggingEntities.clear();
       m_roots.clear();
@@ -861,6 +898,18 @@ namespace ToolKit
         focusToItem = focusIndx == 0;
       }
 
+      // Every node on the path to a selected entity is opened, so a multi selection is visible
+      // instead of hiding behind closed branches.
+      if (m_openNodes.find(ntt->GetIdVal()) != m_openNodes.end())
+      {
+        nextItemOpen = true;
+      }
+
+      if (m_scrollToEntity != 0 && m_scrollToEntity == ntt->GetIdVal())
+      {
+        focusToItem = true;
+      }
+
       if (nextItemOpen)
       {
         ImGui::SetNextItemOpen(true);
@@ -926,6 +975,7 @@ namespace ToolKit
       {
         ImGui::SetScrollHereY();
         m_nttFocusPath.clear();
+        m_scrollToEntity = 0;
       }
 
       SetItemState(ntt);

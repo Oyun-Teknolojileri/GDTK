@@ -121,6 +121,7 @@ namespace ToolKit
   typedef std::vector<Vec4> Vec4Array;
   typedef glm::ivec4 IVec4;
   typedef glm::uvec4 UVec4;
+  typedef glm::uvec3 UVec3;
   typedef glm::uvec2 UVec2;
   typedef glm::mat4 Mat4;
   typedef std::vector<Mat4> Mat4Array;
@@ -470,6 +471,7 @@ namespace ToolKit
   static const String TKDefaultGradientSky    = "DefaultGradientSky";
   static const String TKDefaultHdri           = "defaultHDRI.hdr";
   static const String TKDefaultImage          = "default.png";
+  static const String TKChromeMaterial        = "chrome.material";
   static const String TKResourcePak           = "MinResources.pak";
 
   // Version defines.

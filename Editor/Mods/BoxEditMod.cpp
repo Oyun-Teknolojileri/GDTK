@@ -15,6 +15,7 @@
 #include <AABBOverrideComponent.h>
 #include <DirectionComponent.h>
 #include <EnvironmentComponent.h>
+#include <LightProbeVolumeComponent.h>
 #include <MathUtil.h>
 #include <SDL.h>
 
@@ -189,7 +190,30 @@ namespace ToolKit
         return ctx;
       }
 
-      // Priority 2: AABBOverrideComponent.
+      // Priority 2: LightProbeVolumeComponent. The probe box is the same shape of thing as an
+      // environment volume - a position offset and a size in the owner's local space - so the same
+      // handles scale it, and resizing it re-derives the probe grid the next bake uses.
+      if (LightProbeVolumeComponentPtr probeComp = ntt->GetComponent<LightProbeVolumeComponent>())
+      {
+        ctx.GetBoundingBox = [probeComp]()
+        {
+          Vec3 offset = probeComp->GetPositionOffsetVal();
+          Vec3 half   = probeComp->GetSizeVal() * 0.5f;
+          BoundingBox bb;
+          bb.min = offset - half;
+          bb.max = offset + half;
+          return bb;
+        };
+        ctx.GetWorldTransform = [ntt]()
+        { return ntt->m_node->GetTransform(TransformationSpace::TS_WORLD); };
+        ctx.GetSize           = [probeComp]() { return probeComp->GetSizeVal(); };
+        ctx.GetPositionOffset = [probeComp]() { return probeComp->GetPositionOffsetVal(); };
+        ctx.SetSize           = [probeComp](const Vec3& s) { probeComp->SetSizeVal(s); };
+        ctx.SetPositionOffset = [probeComp](const Vec3& o) { probeComp->SetPositionOffsetVal(o); };
+        return ctx;
+      }
+
+      // Priority 3: AABBOverrideComponent.
       if (AABBOverrideComponentPtr aabbComp = ntt->GetComponent<AABBOverrideComponent>())
       {
         ctx.GetBoundingBox    = [aabbComp]() { return aabbComp->GetBoundingBox(); };
@@ -201,7 +225,7 @@ namespace ToolKit
         return ctx;
       }
 
-      // Priority 3: Any entity with a bounding box use local-axis scale + displacement.
+      // Priority 4: Any entity with a bounding box use local-axis scale + displacement.
       // Scale grows both directions, so we compensate with a position offset to
       // make it appear as single-face movement.
       // GetSize/SetSize work in world-space extents (localBBSize * scale) so that

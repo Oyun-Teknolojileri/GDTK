@@ -148,7 +148,57 @@
 		vec3 irradiance = PBRLighting(v_worldPos, v_viewDepth, n, e, camera.position, color.xyz, metallic, roughness, energyComp);
 
 		float ambientOcclusion = AmbientOcclusion();
-		irradiance += IBLPBR(n, e, color.xyz, metallic, perceptualRoughness, dfg, energyComp, v_worldPos) * ambientOcclusion;
+
+		vec3 iblDiffuse;
+		vec3 skyIrradianceRef;
+		vec3 iblSpecular = IBLPBR(n,
+		                          e,
+		                          color.xyz,
+		                          metallic,
+		                          perceptualRoughness,
+		                          dfg,
+		                          energyComp,
+		                          v_worldPos,
+		                          iblDiffuse,
+		                          skyIrradianceRef);
+
+		// IBLPBR returns the cubemap specular term and hands the sky's diffuse back
+		// separately: a local volume carries no diffuse any more, so the probe volume
+		// below replaces exactly the sky ambient and nothing else.
+		vec3 ibl = iblSpecular * ambientOcclusion + iblDiffuse * ambientOcclusion;
+
+		// Baked probe volume. Where it covers the pixel it is the whole diffuse term: the bake
+		// already contains the sky and the scene's light with the visibility the probe saw, so
+		// the sky's diffuse is replaced rather than corrected.
+		float probeWeight = 0.0;
+		vec3 probe = ProbeIrradiance(v_worldPos, n, v_worldNormal, probeWeight);
+		if (probeWeight > 0.0)
+		{
+			vec3 E = SpecularDFG(dfg, f0);
+			float aoStrength = perDraw._drawCommand.probeParams.z;
+			vec3 probeDiffuse = probe * color.xyz * (1.0 - metallic) * (1.0 - E) *
+			                    mix(1.0, ambientOcclusion, aoStrength);
+
+			// Specular occlusion from the probe. The cubemap term here is the *unoccluded* sky, while
+			// the probe holds the same irradiance as the bake measured it through the geometry, so
+			// their ratio is how much of the sky this location really sees. It damps the whole
+			// ambient reflection, not only its rough end: the sky the probe could not see must not
+			// be reflected at any roughness, or a closed room keeps a sheen of the sky it never
+			// receives. A smooth surface inside the volume reflects what the screen space pass and
+			// the local volume cubemaps can see, and the sky cubemap is only their fallback.
+			float skyLuminance   = dot(skyIrradianceRef, vec3(0.2126, 0.7152, 0.0722));
+			float probeLuminance = dot(probe, vec3(0.2126, 0.7152, 0.0722));
+			float specularOcc    = skyLuminance > 1e-4 ?
+			                           clamp(probeLuminance / skyLuminance, 0.0, 1.0) :
+			                           1.0;
+
+			vec3 probeSpecular = iblSpecular * mix(1.0, specularOcc, probeWeight);
+
+			ibl = probeSpecular * ambientOcclusion +
+			      mix(iblDiffuse * ambientOcclusion, probeDiffuse, probeWeight);
+		}
+
+		irradiance += ibl;
 
 		fragColor = vec4(irradiance, color.a) + vec4(emissive, 0.0);
 	}

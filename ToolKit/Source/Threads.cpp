@@ -99,12 +99,37 @@ namespace ToolKit
 
   void WorkerManager::ExecuteTasks(TaskQueue& queue, std::mutex& mex)
   {
-    for (int i = 0; i < (int) queue.size(); i++)
+    // Two things shape this loop, and both have bitten.
+    //
+    // The count is taken once, under the lock. A task that enqueues another one - a poll that
+    // re-schedules itself while its work is still running - used to extend the loop from the
+    // inside, which spins the frame thread until that work finished: the editor stopped drawing
+    // and looked hung.
+    //
+    // The queue is also drained by Flush at shutdown, and can be drained by a task that runs here
+    // and tears something down. So the pop re-checks for empty and stops, instead of calling
+    // front() on a queue that is already gone - that is the !this->empty() assert in stl_queue.h.
+    // The task is popped from the queue this call was handed, not from the member, so a caller
+    // that passes a different queue gets what it asked for.
+    size_t taskCount = 0;
     {
-      mex.lock();
-      std::packaged_task<void()> task {std::move(queue.front())};
-      m_mainThreadTasks.pop();
-      mex.unlock();
+      const std::lock_guard<std::mutex> lock(mex);
+      taskCount = queue.size();
+    }
+
+    for (size_t i = 0; i < taskCount; i++)
+    {
+      std::packaged_task<void()> task;
+      {
+        const std::lock_guard<std::mutex> lock(mex);
+        if (queue.empty())
+        {
+          break;
+        }
+
+        task = std::move(queue.front());
+        queue.pop();
+      }
 
       task();
     }

@@ -23,6 +23,8 @@
 
 #include <Audio.h>
 #include <GradientSky.h>
+#include <LightProbe.h>
+#include <ReflectionProbe.h>
 #include <MathUtil.h>
 #include <Prefab.h>
 #include <SDL.h>
@@ -91,6 +93,8 @@ namespace ToolKit
     TexturePtr UI::m_viewZoomIcon;
     TexturePtr UI::m_gridIcon;
     TexturePtr UI::m_skyIcon;
+TexturePtr UI::m_lightProbeIcon;
+TexturePtr UI::m_reflectionProbeIcon;
     TexturePtr UI::m_closeIcon;
     TexturePtr UI::m_phoneRotateIcon;
     TexturePtr UI::m_studioLightsToggleIcon;
@@ -229,6 +233,8 @@ namespace ToolKit
       m_viewZoomIcon           = nullptr;
       m_gridIcon               = nullptr;
       m_skyIcon                = nullptr;
+      m_lightProbeIcon         = nullptr;
+      m_reflectionProbeIcon    = nullptr;
       m_closeIcon              = nullptr;
       m_phoneRotateIcon        = nullptr;
       m_studioLightsToggleIcon = nullptr;
@@ -340,6 +346,8 @@ namespace ToolKit
       LoadIcon(m_viewZoomIcon, "Icons/view_zoom.png");
       LoadIcon(m_gridIcon, "Icons/grid.png");
       LoadIcon(m_skyIcon, "Icons/outliner_data_volume.png");
+      LoadIcon(m_lightProbeIcon, "Icons/light_probe.png");
+      LoadIcon(m_reflectionProbeIcon, "Icons/reflection_probe.png");
       LoadIcon(m_closeIcon, "Icons/close.png");
       LoadIcon(m_phoneRotateIcon, "Icons/rotate-icon.png");
       LoadIcon(m_studioLightsToggleIcon, "Icons/studio_lights_toggle.png");
@@ -1817,6 +1825,8 @@ namespace ToolKit
 
           {Sky::StaticClass()->Name,              ICON_FA_SKYATLAS ICON_SPACE    },
           {GradientSky::StaticClass()->Name,      ICON_FA_SKYATLAS ICON_SPACE    },
+          {LightProbe::StaticClass()->Name,       ICON_FA_CUBE ICON_SPACE        },
+          {ReflectionProbe::StaticClass()->Name,  ICON_FA_CIRCLE ICON_SPACE      },
       };
 
       auto entityIcon = EntityTypeToIconMap.find(Class->Name);

@@ -25,6 +25,13 @@ namespace ToolKit
       void Show() override;
       void DispatchSignals() const override;
       void Focus(EntityPtr ntt);
+
+      /**
+       * Opens the branches the given entities live in, once: the tree is forced open for the
+       * next frame and then left alone, so the author can close what they want afterwards.
+       * Used by bulk selections such as the console's SelectSimilar.
+       */
+      void RevealSelection(const EntityPtrArray& entities);
       void ClearOutliner();
 
       // moves the entities below m_insertSelectedIndex
@@ -59,6 +66,15 @@ namespace ToolKit
        */
       EntityPtrArray m_nttFocusPath;
       std::unordered_set<EntityPtr> m_shownEntities;
+
+      /** Ids of the nodes that have to be open to reveal the current selection. */
+      std::unordered_set<ObjectId> m_openNodes;
+
+      /** Frames the open set is still forced open for. Zero means the set is spent. */
+      int m_openNodesFramesLeft = 0;
+
+      /** Node to scroll to on this frame, zero when nothing has to be revealed. */
+      ObjectId m_scrollToEntity = 0;
       /**
        * entities up to down when we look at node tree.
        * these are imgui visible entities.

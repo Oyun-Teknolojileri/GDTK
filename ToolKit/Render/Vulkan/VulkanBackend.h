@@ -113,6 +113,8 @@ namespace ToolKit
     void SetUniform4f(int location, const Vec4& value) override;
     String GetBackendRendererString() override;
     int GetMaxArrayTextureLayers() override;
+    int GetMaxTextureUnits() override;
+    int GetMaxTextureSize() override;
     void SetSrgbAutoEncoding(bool enable) override;
     void Finish() override;
     void SetDefaultClearColor(const Vec4& color) override;

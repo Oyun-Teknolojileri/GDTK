@@ -1409,6 +1409,24 @@ namespace ToolKit
                    ToGLGraphicType(s.Format),
                    ToGLGraphicType(s.Type),
                    nullptr);
+
+      // A DataTexture hands one contiguous block, layer 0 first. A render target passes null and
+      // keeps the empty allocation the call above just made.
+      void* data = tex->m_imagef ? (void*) tex->m_imagef : (void*) tex->m_image;
+      if (data != nullptr)
+      {
+        glTexSubImage3D(GL_TEXTURE_2D_ARRAY,
+                        0,
+                        0,
+                        0,
+                        0,
+                        tex->m_width,
+                        tex->m_height,
+                        s.Layers,
+                        ToGLGraphicType(s.Format),
+                        ToGLGraphicType(s.Type),
+                        data);
+      }
     }
 
     tex->m_gpuData = std::move(glData);
@@ -1429,7 +1447,6 @@ namespace ToolKit
     }
     else
     {
-      InvalidateTextureCache(gl->textureId);
       glDeleteTextures(1, &gl->textureId);
     }
 
@@ -2039,18 +2056,6 @@ namespace ToolKit
     }
   }
 
-  void GLBackend::InvalidateTextureCache(uint id)
-  {
-    for (int i = 0; i < 32; i++)
-    {
-      if (m_textureSlotCache[i].textureID == id)
-      {
-        m_textureSlotCache[i].textureID = 0;
-        m_textureSlotCache[i].target    = 0;
-      }
-    }
-  }
-
   void GLBackend::BindFramebuffer(uint target, uint id)
   {
     if (target == GL_FRAMEBUFFER)
@@ -2079,8 +2084,21 @@ namespace ToolKit
 
   void GLBackend::BindTextureDirect(uint target, uint id, uint slot)
   {
-    if (slot >= 32)
+    // Past the device's unit count glActiveTexture is an error and the previous unit stays selected,
+    // so the bind that follows would land on a texture the shader is already sampling. Dropping the
+    // bind keeps the rest of the draw intact; the warning names the slot once so the budget is
+    // visible instead of silently corrupting a neighbour.
+    if (slot >= (uint) GetMaxTextureUnits())
     {
+      if (!m_loggedTextureUnitOverflow)
+      {
+        m_loggedTextureUnitOverflow = true;
+        GetLogger()->Log(LogType::Warning,
+                         "Texture slot %u exceeds the %d units this device exposes; the bind is dropped. "
+                         "Trim the forward shader's sampler count or raise the target's unit budget.",
+                         slot,
+                         GetMaxTextureUnits());
+      }
       return;
     }
 
@@ -2094,8 +2112,6 @@ namespace ToolKit
     // driver call in the tens of nanoseconds; correctness is worth more.
     glActiveTexture(GL_TEXTURE0 + slot);
     glBindTexture(target, id);
-    m_textureSlotCache[slot].textureID = id;
-    m_textureSlotCache[slot].target    = target;
   }
 
   void GLBackend::BindVAO(uint vao)
@@ -2123,6 +2139,28 @@ namespace ToolKit
     GLint maxLayers = 0;
     glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS, &maxLayers);
     return (int) maxLayers;
+  }
+
+  int GLBackend::GetMaxTextureUnits()
+  {
+    if (m_maxTextureUnits < 0)
+    {
+      GLint units = 0;
+      glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &units);
+      m_maxTextureUnits = units > 0 ? (int) units : 1;
+    }
+    return m_maxTextureUnits;
+  }
+
+  int GLBackend::GetMaxTextureSize()
+  {
+    if (m_maxTextureSize < 0)
+    {
+      GLint size = 0;
+      glGetIntegerv(GL_MAX_TEXTURE_SIZE, &size);
+      m_maxTextureSize = size > 0 ? (int) size : RHIConstants::MaxTextureSize;
+    }
+    return m_maxTextureSize;
   }
 
   void GLBackend::SetSrgbAutoEncoding(bool enable)

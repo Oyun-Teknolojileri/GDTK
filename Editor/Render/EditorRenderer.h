@@ -11,6 +11,7 @@
 #include "EditorTypes.h"
 #include "Gizmo.h"
 #include "GizmoPass.h"
+#include "LightProbeVisualPass.h"
 
 #include <BillboardPass.h>
 #include <BloomPass.h>
@@ -21,6 +22,8 @@
 
 namespace ToolKit
 {
+  class Sphere;
+
   namespace Editor
   {
 
@@ -80,6 +83,18 @@ namespace ToolKit
       void InitRenderer();
       void OutlineSelecteds(Renderer* renderer);
 
+      /**
+       * Fills the light probe visual pass with the sample points of every light probe that asked to
+       * be drawn.
+       *
+       * Each volume owns the decision through its `VisualiseProbe` parameter, so the points belong
+       * to the level rather than to the current selection: several volumes can be shown at once,
+       * and deselecting one no longer hides it. A volume that has not been baked yet still shows
+       * its grid, in neutral grey, so the point layout can be inspected before the bake that
+       * colours it.
+       */
+      void GatherLightProbeSamples(const ScenePtr& scene);
+
      public:
       /** Pass parameters. */
       EditorRenderParams m_params;
@@ -100,6 +115,7 @@ namespace ToolKit
       SSAOPassPtr m_ssaoPass                 = nullptr;
       OutlinePassPtr m_outlinePass           = nullptr;
       FullQuadPassPtr m_skipFramePass        = nullptr;
+      LightProbeVisualPassPtr m_probeVisual  = nullptr;
       CameraPtr m_camera                     = nullptr;
 
       /** Selected entity list. */
@@ -137,6 +153,18 @@ namespace ToolKit
 
       /** Resolved viewport frame buffer is stored here. */
       FramebufferPtr m_resolvedFramebuffer = nullptr;
+
+      /**
+       * Chrome spheres that preview what a reflection probe captured, keyed by the probe's id.
+       *
+       * They live here and not in the scene: a preview is editor only, so it must never be saved
+       * or drawn by a game, and owning them on the renderer is what releases them with it instead
+       * of at process exit (see AGENTS.md, object lifetime).
+       */
+      std::unordered_map<ObjectId, std::shared_ptr<Sphere>> m_reflectionPreviews;
+
+      /** Reflection only material the preview spheres draw with; see reflectionPreviewFrag.shader. */
+      MaterialPtr m_reflectionPreviewMaterial = nullptr;
     };
 
   } // namespace Editor

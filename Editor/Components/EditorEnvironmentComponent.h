@@ -30,6 +30,7 @@ namespace ToolKit
 
      private:
       void ParameterConstructor() override;
+      void ParameterEventConstructor() override;
       void ScheduleCapturePollingTask();
 
      public:
@@ -43,6 +44,7 @@ namespace ToolKit
     };
 
     typedef std::shared_ptr<EditorEnvironmentComponent> EditorEnvironmentComponentPtr;
+    typedef std::weak_ptr<EditorEnvironmentComponent> EditorEnvironmentComponentWeakPtr;
 
   } // namespace Editor
 } // namespace ToolKit

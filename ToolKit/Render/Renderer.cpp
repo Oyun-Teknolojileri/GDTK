@@ -44,7 +44,6 @@ namespace ToolKit
 
   Renderer::Renderer()
   {
-    m_textureSlots.fill(-1);
     m_activePointLightIndices.fill(-1);
     m_activeSpotLightIndices.fill(-1);
 
@@ -106,6 +105,18 @@ namespace ToolKit
     String renderer = m_backend->GetBackendRendererString();
     GetLogger()->Log(String("Graphics Card ") + renderer);
 
+    // The forward shader declares samplers up to slot 14 while GL ES 3.0 only guarantees 16 units,
+    // and the probe grid stacks its z slices into a texture that can outgrow the device's largest
+    // 2D texture. Logging both makes the budget of the target visible on the device itself, which
+    // is the only place the mobile numbers can be read. This goes through Log() rather than TK_LOG
+    // because that is the path that reaches Log.txt as well as the console.
+    GetLogger()->Log(LogType::Memo,
+                     "Texture units: %d fragment samplers available (engine slot table %u), "
+                     "largest texture %d.",
+                     GetMaxTextureUnits(),
+                     (uint) RHIConstants::TextureSlotCount,
+                     GetMaxTextureSize());
+
     // Validate sRGB automatic encoding on backbuffer if enabled.
     RenderSystem* rsys = GetRenderSystem();
     if (rsys && rsys->m_backbufferFormatIsSRGB)
@@ -165,6 +176,24 @@ namespace ToolKit
       m_maxArrayTextureLayers = m_backend->GetMaxArrayTextureLayers();
     }
     return m_maxArrayTextureLayers;
+  }
+
+  int Renderer::GetMaxTextureUnits()
+  {
+    if (m_maxTextureUnits == -1)
+    {
+      m_maxTextureUnits = m_backend->GetMaxTextureUnits();
+    }
+    return m_maxTextureUnits;
+  }
+
+  int Renderer::GetMaxTextureSize()
+  {
+    if (m_maxTextureSize == -1)
+    {
+      m_maxTextureSize = m_backend->GetMaxTextureSize();
+    }
+    return m_maxTextureSize;
   }
 
   void Renderer::SetPassState(const RenderState& state)
@@ -1037,14 +1066,6 @@ namespace ToolKit
     m_currentProgram = program;
   }
 
-  void Renderer::ResetUsedTextureSlots()
-  {
-    for (int i = 0; i < RHIConstants::TextureSlotCount; i++)
-    {
-      SetTexture(i, nullptr);
-    }
-  }
-
   void Renderer::SetDirectionalLights(const LightRawPtrArray& lights)
   {
     m_globalGpuBuffers->directionalLightBuffer.Map(lights);
@@ -1108,13 +1129,12 @@ namespace ToolKit
     if (envCom && envCom->GetHdriVal() != nullptr)
     {
       const HdriPtr& hdriPtr     = envCom->GetHdriVal();
-      CubeMapPtr& diffuseEnvMap  = hdriPtr->m_diffuseEnvMap;
       CubeMapPtr& specularEnvMap = hdriPtr->m_specularEnvMap;
 
-      if (diffuseEnvMap && specularEnvMap && m_brdfLut)
+      // A local volume is a reflection source: its irradiance cache is not bound any
+      // more, the baked probe volume owns the diffuse term.
+      if (specularEnvMap && m_brdfLut)
       {
-        if (int slot = m_currentProgram->GetTextureSlot("s_irradianceMap"); slot != -1)
-          SetTexture((ubyte) slot, diffuseEnvMap);
         if (int slot = m_currentProgram->GetTextureSlot("s_iblSpecular"); slot != -1)
           SetTexture((ubyte) slot, specularEnvMap);
 
@@ -1147,13 +1167,10 @@ namespace ToolKit
         if (secEnvCom && secEnvCom->GetHdriVal() != nullptr)
         {
           const HdriPtr& secHdri  = secEnvCom->GetHdriVal();
-          CubeMapPtr& secDiffuse  = secHdri->m_diffuseEnvMap;
           CubeMapPtr& secSpecular = secHdri->m_specularEnvMap;
 
-          if (secDiffuse && secSpecular)
+          if (secSpecular)
           {
-            if (int slot = m_currentProgram->GetTextureSlot("s_secondaryIrradiance"); slot != -1)
-              SetTexture((ubyte) slot, secDiffuse);
             if (int slot = m_currentProgram->GetTextureSlot("s_secondarySpecular"); slot != -1)
               SetTexture((ubyte) slot, secSpecular);
             m_drawCommand.SetVolumeIntensity(1, secEnvCom->GetIntensityVal());
@@ -1183,6 +1200,54 @@ namespace ToolKit
       m_drawCommand.SetIblInUse(true);
       if (int slot = m_currentProgram->m_materialSamplers.brdfLut; slot != -1)
         SetTexture((ubyte) slot, m_brdfLut);
+    }
+
+    // Probe volume, bound per job: the job carries the smallest baked volume containing it.
+    m_drawCommand.SetProbeVolumeEnabled(false);
+    m_drawCommand.SetProbeVolumeIntensity(0.0f);
+    m_drawCommand.SetProbeVolumeAmbientOcclusion(1.0f);
+    m_drawCommand.SetProbeVolumeCoverage(false);
+
+    LightProbeVolumeComponent* probeComp = job.ProbeVolume;
+    if (probeComp != nullptr && probeComp->EnsureShaderTextures())
+    {
+      const int slot     = m_currentProgram->GetTextureSlot("s_probeSH");
+      DataTexturePtr tex = probeComp->GetShaderTexture();
+
+      if (slot != -1 && tex != nullptr)
+      {
+        SetTexture((ubyte) slot, tex);
+
+        const ProbeVolumeData& data = probeComp->GetProbeData();
+        const Vec3 half             = probeComp->GetSizeVal() * 0.5f;
+
+        if (!m_loggedProbeBinding)
+        {
+          m_loggedProbeBinding = true;
+          GetLogger()->Log(LogType::Memo,
+                           "Light probe volume: bound %ux%ux%u probes to slot %d.",
+                           data.resolution.x,
+                           data.resolution.y,
+                           data.resolution.z,
+                           slot);
+        }
+
+        m_drawCommand.SetProbeVolumeEnabled(true);
+        m_drawCommand.SetProbeVolumeIntensity(probeComp->GetIntensityVal());
+        m_drawCommand.SetProbeVolumeAmbientOcclusion(probeComp->GetAmbientOcclusionStrengthVal());
+        m_drawCommand.SetProbeVolumeCoverage(probeComp->HasCoverageLayer());
+        m_drawCommand.SetProbeVolumeMin(probeComp->GetPositionOffsetVal() - half);
+        m_drawCommand.SetProbeVolumeMax(probeComp->GetPositionOffsetVal() + half);
+        m_drawCommand.SetProbeVolumeResolution(Vec3(data.resolution), probeComp->GetNormalOffsetVal());
+
+        // The bakes were traced in world space, so the box is the only thing that needs the
+        // volume transform: the coefficients are already oriented.
+        if (const EntityPtr& owner = probeComp->OwnerEntity())
+        {
+          m_drawCommand.SetProbeVolumeInverseTransform(
+              glm::inverse(owner->m_node->GetTransform(TransformationSpace::TS_WORLD)));
+        }
+      }
     }
 
     // AO texture.
@@ -1343,6 +1408,47 @@ namespace ToolKit
   void Renderer::SetTexture(ubyte slotIndx, TexturePtr texture)
   {
     assert(slotIndx < RHIConstants::TextureSlotCount && "You exceed texture slot count");
+
+    // Every sampler a program declares above the device's unit count is a slot that can never be
+    // bound. Dropping it here keeps the draw alive and names the budget once, instead of letting the
+    // backend issue an invalid glActiveTexture for it on every draw.
+    if (slotIndx >= GetMaxTextureUnits())
+    {
+      if (!m_loggedTextureUnitOverflow)
+      {
+        m_loggedTextureUnitOverflow = true;
+
+        // Name the program and its declared samplers: the slot alone says nothing about which
+        // shader is over budget, and on a device this is the only clue the log carries.
+        String program = "unknown";
+        if (m_currentProgram != nullptr && m_currentProgram->m_shaders.size() > 1 &&
+            m_currentProgram->m_shaders[1] != nullptr)
+        {
+          program = m_currentProgram->m_shaders[1]->GetFile();
+        }
+
+        String resources;
+        if (m_currentProgram != nullptr)
+        {
+          for (const ShaderResource& res : m_currentProgram->m_resources)
+          {
+            if (res.type == ShaderResource::Type::Texture)
+            {
+              resources += res.name + "=" + std::to_string(res.slot) + " ";
+            }
+          }
+        }
+
+        GetLogger()->Log(LogType::Warning,
+                         "Shader sampler slot %d exceeds the %d units this device exposes; the bind is "
+                         "dropped. Fragment shader: %s. Texture resources: %s",
+                         (int) slotIndx,
+                         GetMaxTextureUnits(),
+                         program.c_str(),
+                         resources.c_str());
+      }
+      return;
+    }
 
     // A slot left empty does not sample as "nothing": GL hands the shader black opaque and WebGL
     // logs a warning on every draw that samples it. Bind the black stand-in instead, which is the

@@ -18,13 +18,18 @@
 
 #include <Camera.h>
 #include <DirectionComponent.h>
+#include <EditorLightProbeVolumeComponent.h>
 #include <EnvironmentComponent.h>
 #include <GradientSky.h>
+#include <LightProbe.h>
+#include <LightProbeVolumeComponent.h>
 #include <Material.h>
 #include <MaterialComponent.h>
 #include <MathUtil.h>
 #include <Prefab.h>
 #include <Primative.h>
+#include <ReflectionProbe.h>
+#include <Shader.h>
 #include <UIManager.h>
 #include <Util.h>
 
@@ -46,6 +51,7 @@ namespace ToolKit
       m_editorPass      = nullptr;
       m_gizmoPass       = nullptr;
       m_outlinePass     = nullptr;
+      m_probeVisual     = nullptr;
     }
 
     void EditorRenderer::PrepareOverlay(Renderer* renderer, Viewport* viewport)
@@ -208,6 +214,13 @@ namespace ToolKit
         m_passArray.clear();
 
         // Draw editor objects.
+        if (!m_probeVisual->m_params.Samples.empty())
+        {
+          m_probeVisual->m_params.Cam         = m_camera;
+          m_probeVisual->m_params.FrameBuffer = mainBuffer;
+          m_passArray.push_back(m_probeVisual);
+        }
+
         if (!m_renderData.jobs.empty())
         {
           m_passArray.push_back(m_editorPass);
@@ -368,6 +381,21 @@ namespace ToolKit
               CreateBoundingBoxDebugObject(localBB, g_environmentGizmoColor, 1.0f, &worldTransform));
         }
 
+        if (LightProbeVolumeComponentPtr probeCom = ntt->GetComponent<LightProbeVolumeComponent>())
+        {
+          // Same shape of box as an environment volume, in the owner's local space, so the volume
+          // the box edit tool scales is exactly the volume that is drawn.
+          Vec3 offset = probeCom->GetPositionOffsetVal();
+          Vec3 half   = probeCom->GetSizeVal() * 0.5f;
+          BoundingBox localBB;
+          localBB.min         = offset - half;
+          localBB.max         = offset + half;
+
+          Mat4 worldTransform = ntt->m_node->GetTransform(TransformationSpace::TS_WORLD);
+          app->m_perFrameDebugObjects.push_back(
+              CreateBoundingBoxDebugObject(localBB, g_lightProbeGizmoColor, 1.0f, &worldTransform));
+        }
+
         if (app->m_showSelectionBoundary && ntt->IsDrawable())
         {
           app->m_perFrameDebugObjects.push_back(CreateBoundingBoxDebugObject(ntt->GetBoundingBox(true)));
@@ -402,7 +430,7 @@ namespace ToolKit
       m_billboardPass->m_params.Viewport   = m_params.Viewport;
 
       // Grid. UpdateShaderParams (which Map()s GridPassData into slot 7) must happen AFTER the
-      // shadow/ssao/sky passes that share slot 7 — earlier passes (e.g. ShadowPass via gauss blur)
+      // shadow/ssao/sky passes that share slot 7 - earlier passes (e.g. ShadowPass via gauss blur)
       // would otherwise displace the grid buffer before the forward pass draws the grid. Hook it
       // into ForwardRenderPass::PreRender so the timing is right regardless of which earlier
       // passes are active in this frame.
@@ -459,10 +487,116 @@ namespace ToolKit
         }
       }
 
+      // Reflection probe previews. A chrome sphere on the probe's own origin, showing the cubemap
+      // the probe captured. It is editor only: the sphere is cached on this renderer and added to
+      // this frame's editor entities, so it is never part of the scene and a game never sees it. It
+      // is only drawn for the selected probe - a level full of probes would otherwise put a ball in
+      // every room - and ShowChromeSphere turns it off for the selected one.
+      std::unordered_map<ObjectId, EnvironmentComponent*> previewEnvironments;
+      std::vector<ObjectId> sceneProbes;
+      for (EntityPtr ntt : scene->GetEntities())
+      {
+        ReflectionProbe* probe = ntt->As<ReflectionProbe>();
+        if (probe == nullptr)
+        {
+          continue;
+        }
+
+        EnvironmentComponentPtr env = probe->GetEnvironmentComponent();
+        if (env == nullptr)
+        {
+          continue;
+        }
+
+        sceneProbes.push_back(probe->GetIdVal());
+
+        // Only the probe being edited gets a ball: a level full of probes would otherwise put one
+        // in every room, and the ball doubles as the selection feedback.
+        if (std::find(m_selecteds.begin(), m_selecteds.end(), ntt) == m_selecteds.end())
+        {
+          continue;
+        }
+
+        SpherePtr& preview = m_reflectionPreviews[probe->GetIdVal()];
+        if (preview == nullptr)
+        {
+          preview = MakeNewPtr<Sphere>();
+          preview->SetNameVal("ReflectionProbePreview");
+
+          // A reflection only material: the cubemap and nothing else, so the ball shows what the
+          // probe captured instead of the room's own lighting.
+          if (m_reflectionPreviewMaterial == nullptr)
+          {
+            m_reflectionPreviewMaterial = MakeNewPtr<Material>();
+            m_reflectionPreviewMaterial->SetVertexShaderVal(
+                GetShaderManager()->Create<Shader>(ShaderPath("defaultVertex.shader", true)));
+            m_reflectionPreviewMaterial->SetFragmentShaderVal(
+                GetShaderManager()->Create<Shader>(ShaderPath("reflectionPreviewFrag.shader", true)));
+            m_reflectionPreviewMaterial->Init();
+          }
+
+          if (MaterialComponentPtr matComp = preview->GetMaterialComponent())
+          {
+            matComp->SetFirstMaterial(m_reflectionPreviewMaterial);
+            matComp->Init(false);
+          }
+
+          if (MeshComponentPtr meshComp = preview->GetMeshComponent())
+          {
+            meshComp->Init(false);
+          }
+        }
+
+        // The probe's own origin in world space, which is where the capture is rendered from and
+        // what its parallax corrected reflections are projected against. PositionOffset moves the
+        // box around that point, it does not move the point. The sphere primitive has a unit
+        // radius, so a 0.25 scale is the half metre ball a probe is inspected with.
+        preview->m_node->SetTranslation(probe->m_node->GetTranslation(TransformationSpace::TS_WORLD),
+                                        TransformationSpace::TS_WORLD);
+        preview->m_node->SetScale(Vec3(0.25f));
+
+        previewEnvironments[preview->GetIdVal()] = env.get();
+        editorEntities.push_back(preview);
+      }
+
+      // Drop the previews of probes that left the scene. A deselected probe keeps its cached
+      // sphere, so selecting it again does not rebuild the mesh and material.
+      for (auto it = m_reflectionPreviews.begin(); it != m_reflectionPreviews.end();)
+      {
+        if (std::find(sceneProbes.begin(), sceneProbes.end(), it->first) == sceneProbes.end())
+        {
+          it = m_reflectionPreviews.erase(it);
+        }
+        else
+        {
+          ++it;
+        }
+      }
+
+      // Light probe sample points of the selected volumes, drawn by their own instanced pass.
+      GatherLightProbeSamples(scene);
+
       // Editor pass.
       m_renderData.jobs.clear();
       EntityRawPtrArray rawNtties = ToEntityRawPtrArray(editorEntities);
       RenderJobProcessor::CreateRenderJobs(m_renderData.jobs, rawNtties);
+
+      // A preview reflects the probe it belongs to: its jobs carry that volume's cubemap.
+      for (RenderJob& job : m_renderData.jobs)
+      {
+        if (job.Entity == nullptr)
+        {
+          continue;
+        }
+
+        const auto envIt = previewEnvironments.find(job.Entity->GetIdVal());
+        if (envIt != previewEnvironments.end())
+        {
+          job.EnvironmentVolume          = envIt->second;
+          job.SecondaryEnvironmentVolume = nullptr;
+        }
+      }
+
       RenderJobProcessor::SeperateRenderData(m_renderData, true);
 
       m_editorPass->m_params.renderData     = &m_renderData;
@@ -509,6 +643,125 @@ namespace ToolKit
       m_params.App->m_perFrameDebugObjects.clear(); 
     }
 
+    namespace
+    {
+      /** Colour a volume that has not been baked yet is drawn with. */
+      const Vec3 UnbakedProbeColor(0.5f);
+
+      /**
+       * Colour of a baked probe: the DC term of its spherical harmonics.
+       *
+       * The coefficients are stored already convolved with the clamped cosine and divided by pi, so
+       * the first one is the omnidirectional irradiance at that point. 0.282095 is the Y00 basis
+       * value, the constant probeGI.shader applies for the same term, and the volume's intensity
+       * scales it the way the forward pass scales the ambient it contributes.
+       */
+      Vec3 ProbeSampleColor(const ProbeVolumeData& data, size_t index, float intensity)
+      {
+        const size_t stride = (size_t) data.CoefficientCount() * 3;
+        if ((index + 1) * stride > data.coefficients.size())
+        {
+          return Vec3(0.0f);
+        }
+
+        const float* coefficient = data.coefficients.data() + index * stride;
+        const Vec3 color =
+            Vec3(coefficient[0], coefficient[1], coefficient[2]) * (0.282095f * intensity);
+
+        return glm::clamp(color, Vec3(0.0f), Vec3(1.0f));
+      }
+    } // namespace
+
+    void EditorRenderer::GatherLightProbeSamples(const ScenePtr& scene)
+    {
+      m_probeVisual->m_params.Samples.clear();
+
+      if (scene == nullptr)
+      {
+        return;
+      }
+
+      for (const EntityPtr& ntt : scene->GetEntities())
+      {
+        LightProbe* probe = ntt->As<LightProbe>();
+        if (probe == nullptr)
+        {
+          continue;
+        }
+
+        // The volume's own toggle, not the selection: a level keeps the points on for the volume it
+        // is lighting, and several volumes can be shown at once. The flag lives on the editor
+        // component, the half a viewport view belongs to.
+        LightProbeVolumeComponentPtr volume = probe->GetProbeVolume();
+        if (volume == nullptr)
+        {
+          continue;
+        }
+
+        const auto* editorVolume = volume->As<EditorLightProbeVolumeComponent>();
+        if (editorVolume == nullptr || !editorVolume->GetVisualiseProbeVal())
+        {
+          continue;
+        }
+
+        const ProbeVolumeData& data = volume->GetProbeData();
+        const bool baked            = volume->IsBaked();
+
+        // A baked volume keeps the resolution it was baked at while the box follows the entity,
+        // which is the pairing the forward pass interpolates. Before a bake the grid is the one the
+        // volume would bake, so the point layout can be inspected ahead of it. A grid the capacity
+        // refuses is not drawn: it cannot be baked, and a preview of millions of points that will
+        // never exist is worse than none.
+        const UVec3 resolution  = baked ? data.resolution : volume->ComputeBakeResolution();
+        const size_t probeCount = (size_t) resolution.x * resolution.y * resolution.z;
+        if (probeCount == 0 || !volume->ProbeGridFits(resolution))
+        {
+          continue;
+        }
+
+        const Mat4 world      = probe->m_node->GetTransform(TransformationSpace::TS_WORLD);
+        const Vec3 size       = volume->GetSizeVal();
+        const Vec3 boxMin     = volume->GetPositionOffsetVal() - size * 0.5f;
+        const float intensity = volume->GetIntensityVal();
+        const float markerRadius = editorVolume->GetVisualiseProbeSizeVal();
+
+        std::vector<Vec4>& samples = m_probeVisual->m_params.Samples;
+        samples.reserve(samples.size() + probeCount * 2);
+
+        for (uint z = 0; z < resolution.z; ++z)
+        {
+          for (uint y = 0; y < resolution.y; ++y)
+          {
+            for (uint x = 0; x < resolution.x; ++x)
+            {
+              const size_t index = ((size_t) z * resolution.y + y) * resolution.x + x;
+
+              // The mask is the record of what the bake traced, so a zero here is a probe that
+              // either sits inside geometry or was too far from a surface to be worth sampling -
+              // and it carries a copy of a neighbour, which is not a value of its own to show. On
+              // a sparse bake this is what turns the grid into the shape of the geometry: the
+              // dots that appear are the probes that were actually traced.
+              if (baked && index < data.valid.size() && data.valid[index] == 0)
+              {
+                continue;
+              }
+
+              // The same cell centres the baker traces, so a point sits where its probe is.
+              const Vec3 uvw((x + 0.5f) / (float) resolution.x,
+                             (y + 0.5f) / (float) resolution.y,
+                             (z + 0.5f) / (float) resolution.z);
+              const Vec3 local    = boxMin + uvw * size;
+              const Vec3 position = Vec3(world * Vec4(local, 1.0f));
+              const Vec3 color    = baked ? ProbeSampleColor(data, index, intensity) : UnbakedProbeColor;
+
+              samples.push_back(Vec4(position, markerRadius));
+              samples.push_back(Vec4(color, 1.0f));
+            }
+          }
+        }
+      }
+    }
+
     void EditorRenderer::SetLitMode(Renderer* renderer, EditorLitMode mode)
     {
       switch (mode)
@@ -552,6 +805,7 @@ namespace ToolKit
       m_editorPass          = MakeNewPtr<ForwardRenderPass>();
       m_gizmoPass           = MakeNewPtr<GizmoPass>();
       m_outlinePass         = MakeNewPtr<OutlinePass>();
+      m_probeVisual         = MakeNewPtr<LightProbeVisualPass>();
       m_skipFramePass       = MakeNewPtr<FullQuadPass>();
       m_resolvedFramebuffer = MakeNewPtr<Framebuffer>();
     }
@@ -622,7 +876,7 @@ namespace ToolKit
         }
 
         RenderJobArray renderJobs;
-        RenderJobArray billboardJobs;
+        EntityRawPtrArray billboardNtties;
         for (EntityPtr entity : highlightList)
         {
           // Disable light gizmos
@@ -632,21 +886,41 @@ namespace ToolKit
           }
 
           // Add billboards to draw list
-          EntityPtr billboard = m_params.App->GetCurrentScene()->GetBillboard(entity);
+          EditorScenePtr scene = m_params.App->GetCurrentScene();
+          EntityPtr billboard  = scene->GetBillboard(entity);
+
+          if (billboard == nullptr)
+          {
+            // The map is filled lazily by the inspector, so a bulk selection holds entities
+            // that never had a billboard made for them and their gizmo would never be
+            // highlighted.
+            scene->ValidateBillboard(entity);
+            billboard = scene->GetBillboard(entity);
+          }
 
           if (billboard)
           {
             static_cast<Billboard*>(billboard.get())->LookAt(viewportCamera, viewport->GetBillboardScale());
-
-            RenderJobProcessor::CreateRenderJobs(billboardJobs, billboard);
+            billboardNtties.push_back(billboard.get());
           }
         }
 
         EntityRawPtrArray rawNtties = ToEntityRawPtrArray(highlightList);
         RenderJobProcessor::CreateRenderJobs(renderJobs, rawNtties, true);
-        renderJobs.insert(renderJobs.end(), billboardJobs.begin(), billboardJobs.end());
+
+        // One call for the whole batch: CreateRenderJobs reuses its output array when the size
+        // matches, so calling it once per billboard overwrites the previous job and only the
+        // last billboard of a bulk selection ends up highlighted.
+        RenderJobArray billboardJobs;
+        RenderJobProcessor::CreateRenderJobs(billboardJobs, billboardNtties, true);
 
         FrustumCull(renderJobs, viewportCamera, m_unCulledRenderJobs);
+
+        // Billboards are appended after the cull, not before it: they are camera facing gizmos
+        // that the editor draws without a frustum test everywhere else, and a gizmo bounding box
+        // taken before LookAt sits at the origin, so culling them drops the highlight of every
+        // selected light.
+        m_unCulledRenderJobs.insert(m_unCulledRenderJobs.end(), billboardJobs.begin(), billboardJobs.end());
 
         // Set parameters of pass
         m_outlinePass->m_params.Camera       = viewportCamera;

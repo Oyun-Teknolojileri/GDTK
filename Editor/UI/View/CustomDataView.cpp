@@ -13,6 +13,7 @@
 #include "EditorScene.h"
 #include "MultiChoiceWindow.h"
 
+#include <LightProbeVolumeComponent.h>
 #include <Material.h>
 #include <Mesh.h>
 #include <Prefab.h>
@@ -911,6 +912,14 @@ namespace ToolKit
         break;
         case ParameterVariant::VariantType::VariantCallback:
         {
+          // The probe bake button is not a plain button: it reports the progress of the bake the
+          // component is running and offers a cancel while it runs.
+          if (comp != nullptr && comp->IsA<LightProbeVolumeComponent>() && var->m_name == "Bake")
+          {
+            ComponentView::ShowLightProbeBake(comp);
+            break;
+          }
+
           if (UI::BeginCenteredTextButton(var->m_name))
           {
             VariantCallback callback = var->GetVar<VariantCallback>();
@@ -930,9 +939,19 @@ namespace ToolKit
               bool isSelected = i == mcv->CurrentVal.Index;
               if (ImGui::Selectable(mcv->Choices[i].m_name.c_str(), isSelected))
               {
-                Value oldVal    = mcv->CurrentVal.Index;
-                Value newVal    = i;
-                mcv->CurrentVal = i;
+                const uint previous = mcv->CurrentVal.Index;
+
+                MultiChoiceVariant next = *mcv;
+                next.CurrentVal.Index   = i;
+
+                Value oldVal = previous;
+                Value newVal = i;
+
+                // Through the parameter, which is what fires its change callbacks. Setting the
+                // index alone left every listener blind: a value mirrored onto a component by an
+                // on value changed handler never arrived, and the combo looked locked because the
+                // next frame synced the old selection back over it.
+                *var = next;
 
                 if (callback)
                 {

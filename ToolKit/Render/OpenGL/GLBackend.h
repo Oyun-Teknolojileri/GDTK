@@ -105,12 +105,13 @@ namespace ToolKit
     void BindVAO(uint vao);
 
     void InvalidateFboCache(uint id);
-    void InvalidateTextureCache(uint id);
 
     // Phase 7a: Custom uniforms and renderer utility
     void SetUniform4f(int location, const Vec4& value) override;
     String GetBackendRendererString() override;
     int GetMaxArrayTextureLayers() override;
+    int GetMaxTextureUnits() override;
+    int GetMaxTextureSize() override;
     void SetSrgbAutoEncoding(bool enable) override;
     void Finish() override;
     void SetDefaultClearColor(const Vec4& color) override;
@@ -172,14 +173,15 @@ namespace ToolKit
     IntArray m_storedReadFboStack;
     IntArray m_storedDrawFboStack;
 
-    // Texture slot cache
-    struct TextureSlotState
-    {
-      uint textureID = 0;
-      uint target    = 0;
-    };
+    // Texture unit budget
+    /** Fragment texture units, queried once at first use. -1 means "not asked yet". */
+    int m_maxTextureUnits = -1;
 
-    TextureSlotState m_textureSlotCache[32];
+    /** Largest 2D texture dimension, queried once at first use. -1 means "not asked yet". */
+    int m_maxTextureSize = -1;
+
+    /** One shot, so a program over the unit budget names itself once instead of every draw. */
+    bool m_loggedTextureUnitOverflow = false;
 
     // VAO cache
     uint m_currentVAO        = (uint) -1;

@@ -295,7 +295,8 @@ namespace ToolKit
         return false;
       }
       if (a.EnvironmentVolume != b.EnvironmentVolume ||
-          a.SecondaryEnvironmentVolume != b.SecondaryEnvironmentVolume)
+          a.SecondaryEnvironmentVolume != b.SecondaryEnvironmentVolume ||
+          a.ProbeVolume != b.ProbeVolume)
       {
         return false;
       }
