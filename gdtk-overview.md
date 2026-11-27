@@ -1551,17 +1551,28 @@ keeps are worth knowing:
   yet (`WIN_MaximizeWindow` checks `SDL_WINDOW_RESIZABLE`), and the window the editor
   creates only becomes resizable at that point, so maximizing it earlier (from
   `App::Init`) did nothing and the editor always came back at its un-maximized size.
-- The editor window also has to **come to the front** once the splash screen is gone.
-  The splash is a window of its own on its own thread and `SplashScreen::Hide` joins
-  that thread, so it is already destroyed when `SDL_ShowWindow` runs for the editor
-  window: Windows gives the foreground to some other window at that moment, which is
-  why the editor used to come up behind it. `Editor/Source/main.cpp` raises the window
-  with `SDL_HINT_FORCE_RAISEWINDOW` set for that one call, because a plain raise only
-  reaches `SetForegroundWindow`, which Windows refuses while the calling process is not
-  the foreground process; the forceful path attaches to the foreground thread, moves the
-  window to the top and back, then focuses it. The raise runs **before** the maximize of
-  the bullet above, because the forceful path calls `ShowWindow(SW_RESTORE)`, which
-  would undo a maximize that had just been applied.
+- The editor window is **shown and raised before the splash window is destroyed**, and
+  that order is what gives it the keyboard. The splash is a window of its own on its own
+  thread and owns the foreground while the editor initializes, so `SDL_ShowWindow` +
+  `SDL_RaiseWindow` still run inside the foreground process and the raise can take the
+  foreground over. Destroying the splash first (`SplashScreen::Hide` joins the thread)
+  hands the foreground to another window, and Windows then refuses `SetForegroundWindow`
+  for the editor window that is shown right after: the window comes up with the OS focus
+  inside its own, now background, thread but never becomes the foreground window.
+  SDL's `WIN_UpdateFocus` only records a keyboard focus gain when
+  `GetForegroundWindow()` returns the window, so SDL's keyboard focus stays `NULL` and
+  every key event it posts carries window id 0 -- which `ImGui_ImplSDL2_ProcessEvent`
+  drops as "not a known viewport". Mouse events keep the id of the window that received
+  them, so the mouse worked while WASD and text input did not, until a taskbar click
+  produced a real activation. The raise sets `SDL_HINT_FORCE_RAISEWINDOW` for that one
+  call because a plain raise only reaches `SetForegroundWindow`, which Windows refuses
+  while the calling process is not the foreground process; the forceful path attaches to
+  the foreground thread, moves the window to the top and back, then focuses it.
+  `SDL_SetWindowBordered`, `SDL_SetWindowResizable` and the maximize of the bullet above
+  run **after** the splash is gone, so the SDL window events they produce are still
+  queued for the editor's first frame instead of being consumed by the splash thread's
+  poll loop; the maximize also has to stay after the raise, because the forceful path
+  calls `ShowWindow(SW_RESTORE)` and would undo a maximize applied before it.
 - Like every other setting, the geometry is written when the editor saves its settings,
   that is on a clean quit. A session that is killed leaves the last geometry unsaved.
 

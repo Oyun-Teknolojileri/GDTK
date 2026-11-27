@@ -390,37 +390,53 @@ namespace ToolKit
             g_splash->SetInfoText("Ready");
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-            g_splash->Hide();
-            delete g_splash;
-            g_splash = nullptr;
-
+            // The editor window has to take the input focus while the splash screen is still on
+            // screen, because the splash window is the foreground window and its process is this
+            // one. Destroying the splash first -- what this code used to do -- makes Windows hand
+            // the foreground to another window, and a window that is shown right after that has
+            // nobody left to inherit it from: SetForegroundWindow is refused.
+            //
+            // That refusal is what broke the keyboard. The editor window still gets the OS focus
+            // inside its own, now background, thread, but SDL only records a keyboard focus gain
+            // in WIN_UpdateFocus when GetForegroundWindow() returns the window. SDL's keyboard
+            // focus therefore stays NULL, every key event it posts carries window id 0 (it is
+            // taken from the keyboard focus window), and ImGui_ImplSDL2_ProcessEvent drops key
+            // events whose window id does not resolve to a viewport. Mouse events keep the id of
+            // the window that received them, which is why the mouse kept working while WASD and
+            // text input did not, and why clicking the taskbar icon (a real activation, the one
+            // this call borrows from the still visible splash) brought the keyboard back.
+            //
+            // Showing the window is not enough on its own: ShowWindow(SW_SHOW) is not required to
+            // activate a window when somebody else holds the foreground. SDL_RaiseWindow with
+            // SDL_HINT_FORCE_RAISEWINDOW set is the call that does it (see below).
             SDL_ShowWindow(g_window);
-            SDL_SetWindowBordered(g_window, SDL_TRUE);
-            SDL_SetWindowResizable(g_window, SDL_TRUE);
 
-            // The editor window has to end up in front of whatever is on the screen: the user waits
-            // for the splash screen to leave and the editor to appear, and it used to appear behind
-            // the window that took the foreground when the splash closed.
-            //
-            // The splash screen is a window of its own on its own thread, and SplashScreen::Hide
-            // joins that thread, so it is already destroyed at this point. Windows hands the
-            // foreground to some other window the moment the splash goes away, which is why the
-            // editor does not inherit it, and SDL_ShowWindow only activates a window when nothing
-            // else holds the foreground.
-            //
             // A plain SDL_RaiseWindow is not enough either: its Win32 implementation calls
             // SetForegroundWindow and Windows refuses that while the calling process is not the
             // foreground process. SDL_HINT_FORCE_RAISEWINDOW switches it to the forceful path for
             // this one call -- attach to the foreground thread, move the window to the top and back,
             // SetForegroundWindow, then SetFocus -- which is what actually brings the editor to the
-            // front. The hint is reset immediately because it would otherwise apply to every later
-            // raise, including the ones ImGui does for its own popup windows.
-            //
-            // This is the order the two calls have to keep: the forceful path calls
-            // ShowWindow(SW_RESTORE), so a maximize applied before it would be undone.
+            // front and focuses it. The hint is reset immediately because it would otherwise apply
+            // to every later raise, including the ones ImGui does for its own popup windows.
             SDL_SetHint(SDL_HINT_FORCE_RAISEWINDOW, "1");
             SDL_RaiseWindow(g_window);
             SDL_SetHint(SDL_HINT_FORCE_RAISEWINDOW, "0");
+
+            // The editor window owns the foreground now, so the splash can be destroyed without
+            // taking the editor's activation with it. Destroying it also clears SDL's keyboard
+            // focus when the destroyed window owns it, which is another reason to get the editor
+            // window focused first.
+            g_splash->Hide();
+            delete g_splash;
+            g_splash = nullptr;
+
+            // The frame and the maximize come after the splash is gone, so the SDL window events
+            // the OS generates for them are still queued when the editor's first frame pumps SDL
+            // instead of being consumed by the splash thread's own poll loop. App::OnResize learns
+            // the size of the window from SDL_WINDOWEVENT_RESIZED, and a swallowed resize event
+            // would leave the renderer at the size the window had before the maximize.
+            SDL_SetWindowBordered(g_window, SDL_TRUE);
+            SDL_SetWindowResizable(g_window, SDL_TRUE);
 
             // Maximizing is what the project settings recorded, and it has to happen here, after
             // SDL_SetWindowResizable: SDL refuses to maximize a window that is not resizable yet
@@ -428,6 +444,9 @@ namespace ToolKit
             // only becomes resizable at this point. The maximize the editor applied while the
             // window was still hidden and non-resizable did nothing, so the editor always came
             // back at its un-maximized size whatever the settings said.
+            //
+            // It also has to stay after the raise: the forceful path calls
+            // ShowWindow(SW_RESTORE), so a maximize applied before it would be undone.
             if (g_app->m_windowMaximized)
             {
               SDL_MaximizeWindow(g_window);
