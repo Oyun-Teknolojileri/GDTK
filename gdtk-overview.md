@@ -2610,6 +2610,12 @@ here, so a later session does not have to reintroduce a plan file to find it.
 **Dope sheet.** Auto key writing and skeleton / bone rows; every other phase of the sheet is in (see
 9.7 for what it does today).
 
+**Editor only entities in a game pick.** A camera entity carries a gizmo mesh in an editor build, so a
+game plugin that picks in PIE can hit the editor's representation of its own camera where the standalone
+scene has nothing to hit (the third person camera boom did exactly that). `PickObject`'s
+`includeEditorOverlays` flag covers the billboards; what is missing is a marker on editor only entities
+and a pick that leaves them out for the whole PIE session. Not started, the plugins work around it.
+
 **Animation interpolation.** Free mode (`KeyInterp::Free` with a per key `m_inTangent` / `m_outTangent`),
 draggable handles in the curve view (read only today), and loop seam tangents, which need a loop flag on
 `Animation` first. Everything else landed: `Stepped` / `Linear` / `Smooth` / `Flat`, `ResolveSegment`,
