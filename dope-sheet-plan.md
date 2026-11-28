@@ -364,7 +364,8 @@ because a refactor had dropped it):
   clip that reaches an entity through an `AnimControllerComponent` moves it without plugin code.
   Records that request root motion are skipped there -- they stay under root motion control, which
   accumulates deltas on the node instead of setting it. Node tracks are not pose blended: when two
-  records overlap during a fade, the one played last owns the node.
+  records overlap during a fade, the incoming record owns the node from the first frame and the
+  fading one is skipped.
 * `Animation::GetPose(Node*, time, keyName)` resolves the track by name and falls back to the first
   track, so a multi entity clip drives each node from its own curve while single curve clips keep
   their old behavior. `Entity::SetPose` passes the entity name, which the importer already uses as
@@ -433,8 +434,9 @@ Still open from Phase 3: multi key selection, box select, copy/paste, and bulk m
   must drive `DynamicBone::node` instead of the entity node. Needs a row tree per entity.
 * Runtime node animation: **done early, see 3.12** -- `AnimationPlayer::Update` poses non skinned
   entity nodes and `Animation::GetPose(Node*, time, keyName)` resolves the track by name.
-  What is left here is pose blending for node tracks (fades currently let the last record own the
-  node) and a decision on whether prefab instances should share one track.
+  What is left here is pose blending for node tracks (a fade hands the node to the incoming record
+  instead of interpolating between the two poses) and a decision on whether prefab instances should
+  share one track.
 * Curve view / easing: `Key` has no tangent or interpolation mode today (linear + slerp only);
   adding modes is an engine + serialization change. Planned separately, for node tracks only, in
   `animation-interpolation-plan.md` (per key `Stepped` / `Linear` / `Smooth` / `Flat`, auto clamped

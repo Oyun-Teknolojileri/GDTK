@@ -99,20 +99,39 @@ namespace ToolKit
 
     Play(nextAnimName, false);
 
-    if (activeRecord != nullptr && lastActiveRecord != nullptr)
+    // Nothing to fade: no record was playing, the name resolved to the record that is already
+    // playing, or the lookup failed and left the current record in place.
+    if (activeRecord == nullptr || lastActiveRecord == nullptr || activeRecord == lastActiveRecord)
     {
-      // set blending data
-
-      // check if they have same bones
-      assert(HaveSameKeys(activeRecord->m_animation->m_keys, lastActiveRecord->m_animation->m_keys) &&
-             "Blend animation is for different skeleton than the animation to blend with!");
-
-      activeRecord->m_blendingData.recordToBlend                 = lastActiveRecord;
-      lastActiveRecord->m_blendingData.recordToBlend             = nullptr;
-      lastActiveRecord->m_blendingData.blendCurrentDurationInSec = transitionDuration;
-      lastActiveRecord->m_blendingData.blendTotalDurationInSec   = transitionDuration;
-      lastActiveRecord->m_blendingData.recordToBeBlended         = activeRecord;
+      return;
     }
+
+    // A zero length blend is a hard cut, and the factor it would compute divides by zero.
+    if (transitionDuration <= 0.0f)
+    {
+      return;
+    }
+
+    // The clips are not compared track by track on purpose. AnimationPlayer writes one animation
+    // data texture per (skeleton, clip) pair, and a texture holds a row for every bone of the
+    // skeleton -- a bone the clip has no track for keeps its bind pose (see
+    // CreateAnimationDataTexture). The two textures of a blend are therefore lined up bone by bone
+    // even when the clips animate different subsets of the rig, which is the normal case for a
+    // library where each clip carries only the tracks it moves. The old HaveSameKeys() assert
+    // rejected exactly that case and made such clips impossible to cross fade.
+    if (activeRecord->m_animation == nullptr || activeRecord->m_animation->m_keys.empty() ||
+        lastActiveRecord->m_animation == nullptr || lastActiveRecord->m_animation->m_keys.empty())
+    {
+      return;
+    }
+
+    // Set the blending data. The outgoing record counts the transition down and is dropped from
+    // the animation player when it reaches zero, while the incoming record shows both poses.
+    activeRecord->m_blendingData.recordToBlend                 = lastActiveRecord;
+    lastActiveRecord->m_blendingData.recordToBlend             = nullptr;
+    lastActiveRecord->m_blendingData.blendCurrentDurationInSec = transitionDuration;
+    lastActiveRecord->m_blendingData.blendTotalDurationInSec   = transitionDuration;
+    lastActiveRecord->m_blendingData.recordToBeBlended         = activeRecord;
   }
 
   void AnimControllerComponent::Play(const String& signalName, bool stopPrevAnim)

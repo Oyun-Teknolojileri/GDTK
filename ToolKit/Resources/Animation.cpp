@@ -1199,6 +1199,16 @@ namespace ToolKit
     {
       AnimRecordPtr record = *it;
 
+      // A record that another record is blending from is only fading out. The record that started
+      // the blend owns the pose of the entity and carries this one as its blend source, so writing
+      // the anim data from both of them lets whichever record sits later in the array win. A clip
+      // keeps its slot in the array when it is played again, so re-entering it (Idle -> Run ->
+      // Idle) dropped the blend and the incoming pose until the fade out finished.
+      if (record->m_blendingData.recordToBeBlended != nullptr)
+      {
+        continue;
+      }
+
       if (EntityPtr ntt = record->m_entity.lock())
       {
         MeshComponentPtr meshComp   = ntt->GetMeshComponent();
@@ -1222,15 +1232,24 @@ namespace ToolKit
           skComp->m_animData.keyFrameInterpolationTime = ratio;
           skComp->m_animData.currentAnimation          = record->m_animation;
 
-          AnimRecordPtr recordToBlend                  = record->m_blendingData.recordToBlend;
-          if (recordToBlend != nullptr)
+          AnimRecordPtr recordToBlend = record->m_blendingData.recordToBlend;
+          if (recordToBlend != nullptr && recordToBlend->m_animation != nullptr &&
+              !recordToBlend->m_animation->m_keys.empty())
           {
             KeyArray& blendAnimKeys = (*(recordToBlend->m_animation->m_keys.begin())).second;
             recordToBlend->m_animation->GetNearestKeys(blendAnimKeys, key1, key2, ratio, recordToBlend->m_currentTime);
 
+            // The countdown of the outgoing record runs from the transition duration to zero,
+            // which means the factor starts at one (the outgoing pose alone) and ends at zero (the
+            // incoming pose alone). Easing it keeps the fade from starting and ending with a
+            // visible step, which a linear ramp does on a fast gait change. The clamp guards a
+            // record that was re-used before its own countdown was over.
+            float blendFactor = recordToBlend->m_blendingData.blendCurrentDurationInSec /
+                                recordToBlend->m_blendingData.blendTotalDurationInSec;
+            blendFactor = glm::clamp(blendFactor, 0.0f, 1.0f);
+
             skComp->m_animData.blendKeyFrameCount   = (float) blendAnimKeys.size();
-            skComp->m_animData.animationBlendFactor = recordToBlend->m_blendingData.blendCurrentDurationInSec /
-                                                      recordToBlend->m_blendingData.blendTotalDurationInSec;
+            skComp->m_animData.animationBlendFactor = blendFactor * blendFactor * (3.0f - 2.0f * blendFactor);
             skComp->m_animData.blendFirstKeyFrame   = (float) key1 / skComp->m_animData.blendKeyFrameCount;
             skComp->m_animData.blendSecondKeyFrame  = (float) key2 / skComp->m_animData.blendKeyFrameCount;
             skComp->m_animData.blendKeyFrameInterpolationTime = ratio;
@@ -1254,10 +1273,13 @@ namespace ToolKit
       }
     }
 
-    // Apply root motion for records that request it.
+    // Apply root motion for records that request it. A record that is fading out is skipped: its
+    // displacement belongs to the pose that is being blended away, and the record it hands over to
+    // owns the motion from the frame the blend starts.
     for (AnimRecordPtr record : m_records)
     {
-      if (record->m_state == AnimRecord::State::Play && record->m_applyRootMotion)
+      if (record->m_state == AnimRecord::State::Play && record->m_applyRootMotion &&
+          record->m_blendingData.recordToBeBlended == nullptr)
       {
         ApplyRootMotion(record);
       }
@@ -1434,20 +1456,34 @@ namespace ToolKit
     uint width         = (int) skeleton->m_bones.size() * 4; // number of bones * 4 (each element holds a row of matrix)
     uint sizeOfElement = 16 * 4;                             // size of an element in bytes
 
-    char* buffer       = new char[height * width * sizeOfElement];
+    // The longest track decides the height of the texture. It is known before the walk below, which
+    // lets the buffer be sized for the texture instead of the key frame limit, and every byte of it
+    // written here: the shader reads the whole texture back, so a row the walk does not reach may
+    // not keep whatever the allocator left in it.
+    uint maxKeyCount = 0;
+    for (const auto& entry : anim->m_keys)
+    {
+      maxKeyCount = std::max(maxKeyCount, (uint) entry.second.size());
+    }
 
-    uint maxKeyCount   = 0;
+    if (maxKeyCount == 0)
+    {
+      return nullptr;
+    }
+
+    if (maxKeyCount > height)
+    {
+      TK_ERR("The maximum number of key frames for animations is 1024!");
+      TK_ERR("Animation \"%s\" has more than 1024 key frames.", anim->GetFile().c_str());
+      return nullptr;
+    }
+
+    char* buffer = new char[(size_t) maxKeyCount * width * sizeOfElement];
+    memset(buffer, 0, (size_t) maxKeyCount * width * sizeOfElement);
+
     uint keyframeIndex = 0;
     while (true)
     {
-      if (keyframeIndex >= height)
-      {
-        TK_ERR("The maximum number of key frames for animations is 1024!");
-        TK_ERR("Animation \"%s\" has more than 1024 key frames.", anim->GetFile().c_str());
-        SafeDelArray(buffer);
-        return nullptr;
-      }
-
       bool keysframesLeft = false;
       std::vector<std::pair<Node*, uint>> boneNodes;
 
@@ -1469,23 +1505,29 @@ namespace ToolKit
         }
 
         std::vector<Key>& keyArray = *keys;
-        if (keyArray.size() <= keyframeIndex)
+        if (keyArray.empty())
         {
+          dBone.node->SetLocalTransforms(dBone.m_restTranslation, dBone.m_restRotation, dBone.m_restScale);
+          boneNodes.push_back(std::make_pair(dBone.node, dBone.boneIndx));
           continue;
         }
-        else
+
+        if (keyArray.size() <= keyframeIndex)
         {
-          if (maxKeyCount < keyArray.size())
-          {
-            maxKeyCount = (uint) keyArray.size();
-          }
-
-          keysframesLeft = true;
-
-          Key& key       = keyArray[keyframeIndex];
-          dBone.node->SetLocalTransforms(key.m_position, key.m_rotation, key.m_scale);
+          // A track shorter than the clip holds its last key for the remaining frames instead of
+          // leaving its rows of the texture untouched, which no reader could tell apart from a
+          // bind pose row.
+          const Key& lastKey = keyArray.back();
+          dBone.node->SetLocalTransforms(lastKey.m_position, lastKey.m_rotation, lastKey.m_scale);
           boneNodes.push_back(std::make_pair(dBone.node, dBone.boneIndx));
+          continue;
         }
+
+        keysframesLeft = true;
+
+        Key& key       = keyArray[keyframeIndex];
+        dBone.node->SetLocalTransforms(key.m_position, key.m_rotation, key.m_scale);
+        boneNodes.push_back(std::make_pair(dBone.node, dBone.boneIndx));
       }
 
       if (!keysframesLeft)

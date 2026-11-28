@@ -1381,7 +1381,18 @@ reads back as one shot).
   and falls back to the first track for clips that carry a single curve. Records that request root
   motion are skipped in this branch: they stay under `ApplyRootMotion`, which accumulates deltas on
   the node (from the track named in `Animation::m_rootKey`) instead of setting it. Node tracks are
-  not pose blended -- during a fade the record played last owns the node.
+  not pose blended -- during a fade the incoming record owns the node from the first frame, the
+  fading one is skipped (see below).
+
+While a fade runs, both records of the pair keep advancing their own times -- the outgoing clip
+stays where it was when the fade started, which is what makes a transition pick the pose up instead
+of restarting it -- but only the record that owns the pose writes it: `Update` skips every record
+that another record is blending from. A replayed clip keeps its slot in the player's record array,
+so without that skip a round trip (`A` -> `B` -> `A`) let the fading record overwrite the incoming
+pose and dropped the blend until the countdown ended. The factor is eased, so a fade neither starts
+nor ends with a visible step, and the two clips of a fade do not have to animate the same tracks:
+the animation data texture is indexed by skeleton bone, and a bone a clip has no track for reads
+back as its bind pose.
 
 A clip does not have to animate every bone of its skeleton. `DynamicBoneMap::DynamicBone` captures
 the bone's local bind translation / rotation / scale while the map is built, and
@@ -1390,7 +1401,9 @@ track for. Resetting such a bone to origin (the old behaviour) collapses every m
 it, which surfaces as detached hands, boots or facial parts on rigs whose clips animate a subset of
 the skeleton. The local bind pose has to be captured at load time, not derived from
 `StaticBone::m_inverseWorldMatrix`: that matrix does not carry the mesh-to-skeleton conversion, so
-the inverse of it is not the bone's T-pose world transform.
+the inverse of it is not the bone's T-pose world transform. The texture buffer is sized for the
+clip's longest track and zeroed, and a track that ends earlier than that holds its last key, so no
+row of the texture is left to whatever the allocator had in the buffer.
 
 Two entities that share a name (prefab instances) resolve to the same track by name.
 
