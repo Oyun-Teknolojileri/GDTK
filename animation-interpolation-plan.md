@@ -1,7 +1,8 @@
 # Animation Interpolation (Node Tracks) -- Implementation Plan
 
 > Working plan for smooth key interpolation on **node / entity tracks**.
-> Companion to `dope-sheet-plan.md` (its phase 4 "Curve view / easing" item).
+> Companion to the dope sheet editor (`Editor/UI/View/DopeSheetView.*`), which is where its modes are
+> set and drawn.
 > Status: all review decisions closed (see 2, 2.3 and 10), work not started.
 > Scope: **CPU node tracks only.** The skeleton path and the GPU animation data texture are
 > explicitly out of scope (see 9).
@@ -376,8 +377,9 @@ need quaternion tangents to look smooth.
 ### 5.6 Stepped semantics
 
 `Stepped` holds the key's values for the whole segment and the next key's values appear exactly on
-the next key's frame. Position, rotation and scale all hold together (a `Key` is monolithic, see
-`dope-sheet-plan.md` 2.1). This is the "deliberate hard stop" mode: impact frames, stop motion.
+the next key's frame. Position, rotation and scale all hold together (a `Key` is monolithic: one track
+stores all three channels, see `gdtk-overview.md` 9.7). This is the "deliberate hard stop" mode:
+impact frames, stop motion.
 
 ### 5.7 Cost
 
@@ -403,7 +405,6 @@ behind a dirty flag, not globally.
 | `Editor/UI/View/DopeSheetView.h` | `KeyInterp m_newKeyInterp = KeyInterp::Linear;` (session preference, 7.1), helper declarations |
 | `Editor/Source/Action.h` / `.cpp` | optional convenience `KeyEditAction::SetInterp(clip, track, frame, KeyInterp)` -- read the key, change the mode, hand it to the existing `SetKey`. No new action class, `FrameState` already carries the whole `Key` |
 | `Utils/Import/import.cpp:500`, `:591` | **unchanged**: the importer's keys keep the `Linear` default, so imported clips look exactly as they do today (they are baked per frame anyway, so tangent shaping would be invisible) |
-| `dope-sheet-plan.md:438` | cross reference this file (done) |
 | `gdtk-overview.md:428-457` | update when phase A lands: the `Key` description and the sampling paragraph |
 
 ## 7. Dope sheet UI (phase C)

@@ -4,7 +4,7 @@
 > from the dope sheet, next to the node transform tracks that already work.
 >
 > Status: design agreed with the user, not started. Slices below are ordered, each one usable on its
-> own. This is a work item of its own, not a numbered phase of `dope-sheet-plan.md`.
+> own. It is a work item of its own, not a phase of the dope sheet editor.
 
 ---
 

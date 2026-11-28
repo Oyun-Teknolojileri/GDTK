@@ -1788,9 +1788,9 @@ by app id instead.
 ### 9.7 Dope Sheet editor (Editor/UI/View/DopeSheetView.*)
 
 `DopeSheetView` + `DopeSheetWindow` (`g_dopeSheetStr`, opened from the Windows menu) are the
-frame based keyframe editor for entity node transforms. Non skinned entity nodes are covered; one key
-is selected and copied at a time, and skeleton / bone rows, auto key and multi key selection with bulk
-move are later phases (see `dope-sheet-plan.md`).
+frame based keyframe editor for entity node transforms. Non skinned entity nodes are covered, keys are
+edited as a set (select, bulk move, copy / paste, delete, all undoable), and what is still open is
+skeleton / bone rows and auto key writing.
 
 Model:
 
