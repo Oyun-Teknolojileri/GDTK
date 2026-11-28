@@ -193,7 +193,7 @@ namespace ToolKit
         {
           Ray ray                             = vp->RayFromMousePosition();
           EditorScenePtr currScene            = GetApp()->GetCurrentScene();
-          EditorScene::PickData pd            = currScene->PickObject(ray);
+          EditorScene::PickData pd            = currScene->PickObject(ray, {}, {}, true);
           GetApp()->m_cursor->m_worldLocation = pd.pickPos;
         }
         return;
@@ -320,7 +320,7 @@ namespace ToolKit
 
           Ray ray                  = vp->RayFromMousePosition();
           EditorScenePtr currScene = GetApp()->GetCurrentScene();
-          EditorScene::PickData pd = currScene->PickObject(ray, m_ignoreList);
+          EditorScene::PickData pd = currScene->PickObject(ray, m_ignoreList, {}, true);
           m_pickData.push_back(pd);
 
           if (GetApp()->m_showPickingDebug)

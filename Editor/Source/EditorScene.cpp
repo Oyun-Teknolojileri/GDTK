@@ -427,14 +427,22 @@ namespace ToolKit
 
     void EditorScene::SelectByTag(const String& tag) { AddToSelection(GetByTag(tag), false); }
 
-    Scene::PickData EditorScene::PickObject(const Ray& ray, const IDArray& ignoreList, const EntityPtrArray& extraList)
+    Scene::PickData EditorScene::PickObject(const Ray& ray,
+                                            const IDArray& ignoreList,
+                                            const EntityPtrArray& extraList,
+                                            bool includeEditorOverlays)
     {
-      // Add billboards to scene
+      // Billboards only take part when the caller asks for them. A game plugin picks with them off:
+      // an icon is placed a few units in front of the viewport camera, so a trace that starts at the
+      // character would hit the sky or light icon and stop there.
       EntityPtrArray temp = extraList;
-      temp.insert(temp.end(), m_billboards.begin(), m_billboards.end());
-      UpdateBillboardsForPicking();
+      if (includeEditorOverlays)
+      {
+        temp.insert(temp.end(), m_billboards.begin(), m_billboards.end());
+        UpdateBillboardsForPicking();
+      }
 
-      Scene::PickData pdata = Scene::PickObject(ray, ignoreList, temp);
+      Scene::PickData pdata = Scene::PickObject(ray, ignoreList, temp, includeEditorOverlays);
 
       // If the billboards are picked, pick the entity
       if (pdata.entity != nullptr && pdata.entity->IsA<Billboard>() &&

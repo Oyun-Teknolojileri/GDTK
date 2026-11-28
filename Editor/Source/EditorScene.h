@@ -83,8 +83,9 @@ namespace ToolKit
 
       // Pick operations
       PickData PickObject(const Ray& ray,
-                          const IDArray& ignoreList       = {},
-                          const EntityPtrArray& extraList = {}) override;
+                          const IDArray& ignoreList      = {},
+                          const EntityPtrArray& extraList = {},
+                          bool includeEditorOverlays     = false) override;
 
       void PickObject(const Frustum& frustum,
                       PickDataArray& pickedObjects,

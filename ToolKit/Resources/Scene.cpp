@@ -219,8 +219,14 @@ namespace ToolKit
     GetSceneManager()->Remove(other->GetFile());
   }
 
-  Scene::PickData Scene::PickObject(const Ray& ray, const IDArray& ignoreList, const EntityPtrArray& extraList)
+  Scene::PickData Scene::PickObject(const Ray& ray,
+                                    const IDArray& ignoreList,
+                                    const EntityPtrArray& extraList,
+                                    bool includeEditorOverlays)
   {
+    // A plain scene has no editor overlays; only EditorScene adds them.
+    (void) includeEditorOverlays;
+
     PickData pd;
     pd.pickPos                  = ray.position + ray.direction * 5.0f;
 

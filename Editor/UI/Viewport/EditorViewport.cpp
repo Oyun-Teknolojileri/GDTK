@@ -914,7 +914,7 @@ namespace ToolKit
             if (!hitFound)
             {
               Ray orbitRay             = RayFromMousePosition();
-              EditorScene::PickData pd = currScene->PickObject(orbitRay);
+              EditorScene::PickData pd = currScene->PickObject(orbitRay, {}, {}, true);
 
               if (pd.entity == nullptr)
               {
@@ -1143,7 +1143,7 @@ namespace ToolKit
           {
             // Find the drop entity
             Ray ray                  = RayFromMousePosition();
-            EditorScene::PickData pd = currScene->PickObject(ray);
+            EditorScene::PickData pd = currScene->PickObject(ray, {}, {}, true);
             if (pd.entity != nullptr && pd.entity->IsDrawable())
             {
               // If there is a mesh component, update material component.
@@ -1344,7 +1344,7 @@ namespace ToolKit
         ignoreList.push_back((*boundingBox)->GetIdVal());
       }
 
-      EditorScene::PickData pd = currScene->PickObject(ray, ignoreList);
+      EditorScene::PickData pd = currScene->PickObject(ray, ignoreList, {}, true);
       bool meshFound           = false;
       if (pd.entity != nullptr)
       {

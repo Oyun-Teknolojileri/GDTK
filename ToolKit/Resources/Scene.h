@@ -104,10 +104,18 @@ namespace ToolKit
      * operation.
      * @param extraList A list of extra entity pointers to include in the
      * picking operation.
+     * @param includeEditorOverlays When the scene is an editor scene, its billboard icons take
+     * part in the pick as well. Editor interaction asks for them so an icon can be clicked; game
+     * code leaves it off, because an icon is placed a few units in front of the viewport camera
+     * and would otherwise block every pick a game makes from the same area (a boom trace that
+     * hits the sky icon, for instance, collapses onto the character).
      *
      * @return A PickData struct containing the result of the picking operation.
      */
-    virtual PickData PickObject(const Ray& ray, const IDArray& ignoreList = {}, const EntityPtrArray& extraList = {});
+    virtual PickData PickObject(const Ray& ray,
+                                const IDArray& ignoreList      = {},
+                                const EntityPtrArray& extraList = {},
+                                bool includeEditorOverlays     = false);
 
     /**
      * Performs a frustum culling operation on the scene to find all objects
