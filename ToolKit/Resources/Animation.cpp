@@ -1460,7 +1460,10 @@ namespace ToolKit
         KeyArray* keys = anim->m_keys.Find(name);
         if (keys == nullptr)
         {
-          dBone.node->SetLocalTransforms(Vec3(), Quaternion(), Vec3(1.0f));
+          // Bones the clip does not animate keep their local bind transform. The previous
+          // behaviour reset them to origin, which collapsed every mesh part weighted to a bone
+          // outside the clip (hands, boots, facial parts on a rig whose clips animate a subset).
+          dBone.node->SetLocalTransforms(dBone.m_restTranslation, dBone.m_restRotation, dBone.m_restScale);
           boneNodes.push_back(std::make_pair(dBone.node, dBone.boneIndx));
           continue;
         }

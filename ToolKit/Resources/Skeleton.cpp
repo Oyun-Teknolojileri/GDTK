@@ -68,6 +68,12 @@ namespace ToolKit
       parent->node->AddChild(bone.node);
     }
 
+    // Capture the bind pose while the node still carries it. The nodes are animated in place by
+    // AnimationPlayer::CreateAnimationDataTexture, so reading them later is not reliable.
+    bone.m_restTranslation = bone.node->GetTranslation(TransformationSpace::TS_LOCAL);
+    bone.m_restRotation    = bone.node->GetOrientation(TransformationSpace::TS_LOCAL);
+    bone.m_restScale       = bone.node->GetScale();
+
     m_boneMap.insert({boneName, bone});
   }
 
@@ -82,9 +88,12 @@ namespace ToolKit
     for (const auto& tPoseBone : skeleton->m_Tpose.m_boneMap)
     {
       DynamicBone newBone;
-      newBone.boneIndx = tPoseBone.second.boneIndx;
-      newBone.node     = new Node();
-      *newBone.node    = *tPoseBone.second.node;
+      newBone.boneIndx          = tPoseBone.second.boneIndx;
+      newBone.node              = new Node();
+      *newBone.node             = *tPoseBone.second.node;
+      newBone.m_restTranslation = tPoseBone.second.m_restTranslation;
+      newBone.m_restRotation    = tPoseBone.second.m_restRotation;
+      newBone.m_restScale       = tPoseBone.second.m_restScale;
       m_boneMap.insert({tPoseBone.first, newBone});
     }
 

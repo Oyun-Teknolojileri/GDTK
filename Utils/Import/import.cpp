@@ -31,6 +31,7 @@
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 
+#include <algorithm>
 #include <iostream>
 #include <limits>
 #include <unordered_set>
@@ -1241,18 +1242,35 @@ namespace ToolKit
       {
         if (!skinData.empty() && skinData.find(vIndex) != skinData.end())
         {
-          for (int j = 0; j < 4; j++)
+          // GDTK skinning supports four influences per vertex. Assimp reports the influences in
+          // mesh bone order, not by weight, so taking the first four silently drops the bones
+          // that actually move the vertex. Sort by weight, keep the strongest four and
+          // renormalize, otherwise the dropped weight makes the vertex stick between bones.
+          std::vector<std::pair<int, float>>& influences = skinData[vIndex];
+          std::sort(influences.begin(),
+                    influences.end(),
+                    [](const std::pair<int, float>& lhs, const std::pair<int, float>& rhs) -> bool
+                    { return lhs.second > rhs.second; });
+
+          const size_t influenceCount = std::min<size_t>(influences.size(), 4);
+          float totalWeight           = 0.0f;
+          for (size_t i = 0; i < influenceCount; ++i)
           {
-            if (j >= (int) (skinData[vIndex].size()))
-            {
-              skinData[vIndex].push_back(std::pair<int, float>(0, 0.0f));
-            }
+            totalWeight += influences[i].second;
           }
 
           for (ubyte i = 0; i < 4; i++)
           {
-            v.bones[i]   = (float) skinData[vIndex][i].first;
-            v.weights[i] = skinData[vIndex][i].second;
+            if (i < influenceCount && totalWeight > 0.0f)
+            {
+              v.bones[i]   = (float) influences[i].first;
+              v.weights[i] = influences[i].second / totalWeight;
+            }
+            else
+            {
+              v.bones[i]   = 0.0f;
+              v.weights[i] = 0.0f;
+            }
           }
         }
       }
@@ -1703,6 +1721,13 @@ namespace ToolKit
   // same-name FBX animation channels collapse into a single aiNodeAnim.
   void ImportSkeleton(string& filePath)
   {
+    // Every file starts with an empty skeleton. An animation-only FBX has no meshes and
+    // returns below; leaving the previous file's maps in place would let ImportAnimation read
+    // node pointers that belong to the scene that was already released.
+    g_skeletonMap.clear();
+    g_nodeToEntry.clear();
+    g_aiBoneToEntry.clear();
+
     // Index every scene node by its original name (duplicates included).
     g_nameToNodes.clear();
     std::function<void(aiNode*)> indexNodesFn = [&indexNodesFn](aiNode* node) -> void

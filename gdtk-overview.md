@@ -1383,6 +1383,15 @@ reads back as one shot).
   the node (from the track named in `Animation::m_rootKey`) instead of setting it. Node tracks are
   not pose blended -- during a fade the record played last owns the node.
 
+A clip does not have to animate every bone of its skeleton. `DynamicBoneMap::DynamicBone` captures
+the bone's local bind translation / rotation / scale while the map is built, and
+`AnimationPlayer::CreateAnimationDataTexture` writes that bind transform for a bone the clip has no
+track for. Resetting such a bone to origin (the old behaviour) collapses every mesh part weighted to
+it, which surfaces as detached hands, boots or facial parts on rigs whose clips animate a subset of
+the skeleton. The local bind pose has to be captured at load time, not derived from
+`StaticBone::m_inverseWorldMatrix`: that matrix does not carry the mesh-to-skeleton conversion, so
+the inverse of it is not the bone's T-pose world transform.
+
 Two entities that share a name (prefab instances) resolve to the same track by name.
 
 `Animation::SetKey(trackName, frame, key)` is the one entry point that inserts, replaces or removes

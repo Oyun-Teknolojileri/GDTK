@@ -34,8 +34,16 @@ namespace ToolKit
     struct DynamicBone
     {
       // Should be same with matching static bone's element index
-      uint boneIndx;
-      Node* node;
+      uint boneIndx = 0;
+      Node* node    = nullptr;
+
+      // Local bind transform of the bone, captured while the map is built. The animation data
+      // texture uses it for bones a clip does not animate; deriving it from the inverse bind
+      // matrix is not possible because that matrix does not carry the mesh-to-skeleton
+      // conversion.
+      Vec3 m_restTranslation    = Vec3(0.0f);
+      Quaternion m_restRotation = Quaternion(1.0f, 0.0f, 0.0f, 0.0f);
+      Vec3 m_restScale          = Vec3(1.0f);
     };
 
     DynamicBoneMap();
