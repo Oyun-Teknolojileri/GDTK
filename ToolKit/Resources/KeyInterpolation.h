@@ -13,7 +13,7 @@
  *
  * Nothing here depends on the engine: glm values, plain scalars and the standard library
  * only. That is deliberate, it lets the math be compiled and asserted on its own, without
- * a window, a backend or a scene (see animation-interpolation-plan.md, section 8).
+ * a window, a backend or a scene (Intermediate/interp_blender_check.cpp is what proves it).
  *
  * glm's storage options are expected to be set before this header is reached. The engine
  * does it in Types.h / stdafx.h; a standalone build has to do the same.

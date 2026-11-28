@@ -1355,8 +1355,8 @@ the sheet's own readout. Track ids are `"<entity>.<param>"`, `"<entity>.<compone
 `"<entity>.MaterialComponent.<index>.<param>"`, `Animation::ResolveParamTrack` resolves one against an
 entity and `ApplyParamTracks` writes the sampled value through the variant, so the parameter's change
 callbacks run. Only parameters a `UIHint` marks `animatable` are keyable, and the variant type decides
-whether a curve interpolates (float, vec2, vec3, vec4) or steps (everything else). See
-`parameter-animation-plan.md` for the full design.
+whether a curve interpolates (float, vec2, vec3, vec4) or steps (everything else). 9.7 covers the
+sheet side of it, 16 lists the parameters that are still waiting to be marked animatable.
 
 Reaching an entity at runtime needs an `AnimControllerComponent` on it: the component keeps a
 signal -> `AnimRecord` map (one record = one entity + one clip + `ApplyRootMotion` + `m_loop`), and
@@ -2567,7 +2567,6 @@ When writing/editing any `.h`/`.cpp` in this repo:
 | Threads / Worker | `ToolKit/Source/Threads.h` |
 | Editor app | `Editor/Source/App.h` |
 | Animation resource / tracks / player | `ToolKit/Resources/Animation.h` |
-| Parameter animation plan | `parameter-animation-plan.md` |
 | Key interpolation modes + sampling math | `ToolKit/Resources/KeyInterpolation.h` |
 | Undoable editor actions (incl. key edits) | `Editor/Source/Action.h` |
 | Dope sheet editor (view + window) | `Editor/UI/View/DopeSheetView.h` |
@@ -2580,7 +2579,7 @@ When writing/editing any `.h`/`.cpp` in this repo:
 | Capture and its report tool (capture -> .rdc -> json / markdown / PNGs) | `Modules/RenderDoc/README.md` |
 | Baked probe volume data + `.pgi` file format | `ToolKit/Resources/ProbeVolume.h` |
 | Probe bake entry point (snapshot, BVH, path tracer) | `Modules/LightProbeBake/Source/LightProbeBake.h` |
-| Diffuse GI design and phase list | `light-probe-gi-plan.md` |
+| Open work collected from the retired plan docs | `gdtk-overview.md` 16 |
 | Host / platform glue (exec paths, shortcuts, app icon) | `ToolKit/Common/PlatformHelper.h` |
 | Workspace (project and workspace management) | `Modules/Workspace/Source/Workspace.h` |
 | Build deps | `BuildScripts/build_dependencies.py` |
@@ -2600,3 +2599,38 @@ Before changing anything, open these in order:
 3. The corresponding `.cpp` in the same folder (use `Get-ChildItem -Filter *.cpp` if the impl file is named differently from the header).
 4. If touching the editor: `Editor/Source/App.h` + the relevant `Editor/Editor*.h`.
 5. If touching shaders: matching `.shader` file in `Resources/Engine/Shaders/`.
+
+---
+
+## 16. Pending Work (folded from the retired plan docs)
+
+The per feature plans were retired once their work landed. What they still listed as open is collected
+here, so a later session does not have to reintroduce a plan file to find it.
+
+**Dope sheet.** Auto key writing and skeleton / bone rows; every other phase of the sheet is in (see
+9.7 for what it does today).
+
+**Animation interpolation.** Free mode (`KeyInterp::Free` with a per key `m_inTangent` / `m_outTangent`),
+draggable handles in the curve view (read only today), and loop seam tangents, which need a loop flag on
+`Animation` first. Everything else landed: `Stepped` / `Linear` / `Smooth` / `Flat`, `ResolveSegment`,
+auto tangents, four component rotation sampling, the file format that carries the mode, the
+`Interpolation` menu, the key shapes and the `New key` combo.
+
+**Parameter animation.** `EnvironmentComponent` (`Intensity`, `Fade`, `Size`, `CaptureFar`) and `Light`
+(`ShadowBias`, `BleedingReduction`) keep plain `{...}` hints, so they are not `animatable` and get no
+diamond. A parameter track on a material that several entities share has no warning yet, and the diamond
+menu has no `Show in Dope Sheet`. Optional: per channel parameter rows in the curve view, and parameter
+tracks that follow a clip fade (`ApplyParamTracks` gets no blend factor today).
+
+**Diffuse GI / probe volume.** The inside test is still the thin slab (`IsProbeEnclosed`), so a probe
+that sits in solid geometry is only caught in the easy cases. Denoising lifts some probes sealed in a
+closed room, blocked probes are not coloured in the point view and `ProbeBake` has no `--verify`. Three
+bakes on disk are older versions (`MultiverseGo/Resources/LightProbes`), which the v3 loader refuses. A
+bake carries no settings hash, so an out of date bake looks current. No quality setting reaches the
+published Web build, there is no fit to selection or probe budget, and Phase 5 (dynamic probes) is
+untouched. The brick / APV path lives on `feature/light-probe-apv` with its own plan.
+
+**Texture compression.** Phases 0-4 shipped (see 5.2, 6.3 and 11). Open: the forced RGBA32 fallback was
+never exercised on desktop GL, there is no visual matrix for checker / arrow / normal / alpha cutout
+textures, per slot quality and UASTC RDO are not exposed (one global import quality), and
+`EngineSettings` has no compression block.
